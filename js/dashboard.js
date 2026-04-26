@@ -568,5 +568,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('period-form')?.addEventListener('submit', handlePeriodFormSubmit)
 
   showPageLoader(false)
+  window._adminNav = (view) => { if (routes[view]) routes[view]() }
   await renderOverview()
 })

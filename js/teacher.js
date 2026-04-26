@@ -76,6 +76,14 @@ function navigate(view) {
 window._navTo  = navigate
 window._goBack = () => navigate('my-courses')
 
+// เปิด quota popup จากหน้าภาพรวม (ไม่มี course context)
+window._showQuotaFromOverview = () => {
+  const myClasses = _teacher ? [] : []
+  getMyClasses(_teacher?.id ?? null).then(cls => {
+    _showQuotaPopup(cls.length, null)
+  }).catch(() => _showQuotaPopup(2, null))
+}
+
 window._openLifeSkillScore = (room) => navigate('life-skill-score')
 window._openReligionScore  = (room) => navigate('prayer-score')
 window._openReadingScore   = ()     => navigate('reading-score')
@@ -203,8 +211,8 @@ function _showQuotaPopup(count, course) {
                       rounded-xl p-4 transition-all">
             <div class="flex items-start justify-between mb-2">
               <div>
-                <p class="font-bold text-gray-800">รายวิชา</p>
-                <p class="text-xs text-gray-400 mt-0.5">เพิ่มห้องสำหรับ <b>"${course?.subject_name ?? 'วิชานี้'}"</b> เท่านั้น</p>
+                <p class="font-bold text-gray-800">รายห้อง</p>
+                <p class="text-xs text-gray-400 mt-0.5">เพิ่มได้ <b>1 ห้องเรียน</b> ต่อการชำระเงิน</p>
               </div>
               <div class="text-right flex-shrink-0 ml-3">
                 <p class="text-2xl font-extrabold text-indigo-600">49<span class="text-sm font-normal text-gray-400"> บ.</span></p>
@@ -212,8 +220,8 @@ function _showQuotaPopup(count, course) {
               </div>
             </div>
             <div class="space-y-1 text-xs text-gray-500">
-              <p>✅ สร้างห้องเรียนได้ไม่จำกัดสำหรับวิชานี้</p>
-              <p>✅ เหมาะสำหรับครูที่สอนไม่กี่วิชา</p>
+              <p>✅ เพิ่ม 1 ห้องเรียนทันที</p>
+              <p>✅ เหมาะถ้าต้องการเพิ่มเพียง 1-2 ห้อง</p>
             </div>
           </div>
         </label>

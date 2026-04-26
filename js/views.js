@@ -56,7 +56,9 @@ export async function renderOverview() {
       <h3 class="text-2xl font-bold text-indigo-900 mb-1">ยินดีต้อนรับเข้าสู่ระบบ ปพ.5 👋</h3>
       <p class="text-gray-500 text-sm">จัดการข้อมูลครู นักเรียน และห้องเรียนได้จากเมนูด้านซ้าย</p>
     </div>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="stat-grid">
+
+    <!-- สถิติหลัก -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4" id="stat-grid">
       ${['teachers','students','classes','subjects'].map(k => `
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
           <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl
@@ -70,14 +72,80 @@ export async function renderOverview() {
           </div>
         </div>`).join('')}
     </div>
+
+    <!-- แถวที่สอง: ลงทะเบียน + pending payments -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <!-- ครูที่ลงทะเบียนแล้ว -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <h4 class="font-semibold text-gray-700 mb-3">🔑 บัญชีผู้ใช้ครู</h4>
+        <div class="flex gap-4">
+          <div class="flex-1 text-center bg-emerald-50 rounded-xl py-3">
+            <p id="stat-registered" class="text-2xl font-bold text-emerald-700">—</p>
+            <p class="text-xs text-gray-500 mt-0.5">ลงทะเบียนแล้ว</p>
+          </div>
+          <div class="flex-1 text-center bg-gray-50 rounded-xl py-3">
+            <p id="stat-unregistered" class="text-2xl font-bold text-gray-500">—</p>
+            <p class="text-xs text-gray-500 mt-0.5">ยังไม่มีบัญชี</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending payments -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-semibold text-gray-700">💳 การชำระเงิน</h4>
+          <button onclick="window._adminNav?.('payments')"
+            class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">ดูทั้งหมด →</button>
+        </div>
+        <div id="pending-payments-list">
+          <p class="text-sm text-gray-400 text-center py-3">กำลังโหลด...</p>
+        </div>
+      </div>
+    </div>
   </div>`)
 
   try {
-    const stats = await getStats()
+    const [stats, payments, teachers] = await Promise.all([
+      getStats(),
+      getAllPaymentRequests().catch(()=>[]),
+      getTeachers().catch(()=>[]),
+    ])
+
+    // สถิติหลัก
     Object.entries(stats).forEach(([k, v]) => {
       const el = document.getElementById(`stat-${k}`)
       if (el) el.textContent = v.toLocaleString()
     })
+
+    // ครูที่ลงทะเบียน vs ยังไม่มีบัญชี
+    const registered   = teachers.filter(t => t.profile_id).length
+    const unregistered = teachers.length - registered
+    const regEl = document.getElementById('stat-registered')
+    const unrEl = document.getElementById('stat-unregistered')
+    if (regEl) regEl.textContent = registered
+    if (unrEl) unrEl.textContent = unregistered
+
+    // Pending payments
+    const pending  = payments.filter(p => p.status === 'pending')
+    const listEl   = document.getElementById('pending-payments-list')
+    if (listEl) {
+      if (!pending.length) {
+        listEl.innerHTML = `<p class="text-sm text-gray-400 text-center py-3">ไม่มีคำขอรอดำเนินการ ✅</p>`
+      } else {
+        listEl.innerHTML = pending.slice(0,3).map(p => `
+          <div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+            <div>
+              <p class="text-sm font-medium text-gray-800">${p.teachers?.full_name ?? '—'}</p>
+              <p class="text-xs text-gray-400">${p.package_type==='semester'?'เหมาทั้งเทอม 299 บ.':'รายห้อง 49 บ.'} · ${new Date(p.created_at).toLocaleDateString('th-TH')}</p>
+            </div>
+            <button onclick="window._adminNav?.('payments')"
+              class="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-medium hover:bg-amber-200">
+              ตรวจสอบ
+            </button>
+          </div>`).join('')
+        + (pending.length > 3 ? `<p class="text-xs text-center text-gray-400 pt-2">และอีก ${pending.length-3} รายการ</p>` : '')
+      }
+    }
   } catch {
     showToast('โหลดข้อมูลสรุปไม่สำเร็จ', 'error')
   }

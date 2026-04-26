@@ -107,7 +107,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         <span class="text-sm font-bold ${quotaColor}">${quotaLabel}</span>
       </div>
       ${!isPaid ? `
-      <div class="w-full bg-gray-100 rounded-full h-2.5 mb-3">
+      <div class="w-full bg-gray-100 rounded-full h-2.5 mb-2">
         <div class="bg-${usedSlots >= FREE_LIMIT ? 'red' : 'emerald'}-500 h-2.5 rounded-full transition-all"
           style="width:${Math.min(100, (usedSlots/FREE_LIMIT)*100)}%"></div>
       </div>
@@ -116,10 +116,29 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         <span>ฟรี ${FREE_LIMIT} ห้อง</span>
       </div>
       ${usedSlots >= FREE_LIMIT ? `
-      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-        💡 ครบโควตาฟรีแล้ว — กด <b>+ ลงทะเบียนรายวิชา</b> เพื่อดูตัวเลือกอัปเกรด
-      </div>` : ''}` : `
-      <p class="text-sm text-emerald-600">✅ แพ็กเกจ${teacher?.teachers_quota?.package_type === 'semester' ? 'เหมาทั้งเทอม' : 'รายวิชา'} — สร้างได้ไม่จำกัด</p>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+        <p class="text-xs text-amber-700 font-medium">🔒 ครบโควตาฟรีแล้ว — เลือกแพ็กเกจเพื่อเพิ่มห้องเรียนต่อ</p>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-white rounded-xl p-3 border border-amber-200 text-center">
+            <p class="text-xs text-gray-500 mb-1">รายห้อง</p>
+            <p class="text-lg font-extrabold text-indigo-600">49 <span class="text-xs font-normal text-gray-400">บ./ห้อง</span></p>
+            <p class="text-[10px] text-gray-400">เพิ่มทีละห้อง</p>
+          </div>
+          <div class="bg-white rounded-xl p-3 border border-emerald-300 text-center relative">
+            <span class="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[9px] px-2 py-0.5 rounded-full">แนะนำ</span>
+            <p class="text-xs text-gray-500 mb-1">เหมาทั้งเทอม</p>
+            <p class="text-lg font-extrabold text-emerald-600">299 <span class="text-xs font-normal text-gray-400">บ./เทอม</span></p>
+            <p class="text-[10px] text-gray-400">ไม่จำกัดห้อง</p>
+          </div>
+        </div>
+        <button id="btn-upgrade-overview"
+          class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+          🚀 ดูแพ็กเกจและชำระเงิน
+        </button>
+      </div>` : `
+      <p class="text-xs text-gray-400">เหลืออีก <b class="text-emerald-600">${freeLeft} ห้อง</b> ก่อนต้องอัปเกรด</p>`}
+      ` : `
+      <p class="text-sm text-emerald-600">✅ แพ็กเกจ${teacher?.teachers_quota?.package_type === 'semester' ? 'เหมาทั้งเทอม' : 'รายห้อง'} — สร้างได้ไม่จำกัด</p>
       `}
     </div>
     <!-- Homeroom role buttons -->
@@ -170,6 +189,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>` : ''}
   </div>`)
 
+  // ผูกปุ่มอัปเกรดในภาพรวม → เปิด quota popup
+  document.getElementById('btn-upgrade-overview')?.addEventListener('click', () => {
+    window._showQuotaFromOverview?.()
+  })
 }
 
 // ─── View: My Courses ─────────────────────────────────────────────────────────
