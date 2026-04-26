@@ -73,6 +73,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     ? await getMySubjects(teacher.id).catch(()=>[])
     : await getMasterSubjects().catch(()=>[])
   const classes  = await getMyClasses(teacher?.id ?? null).catch(()=>[])
+  const FREE_LIMIT = 2
+  const isPaid     = teacher?.teachers_quota?.is_paid ?? false
+  const usedSlots  = classes.length
+  const freeLeft   = isPaid ? '∞' : Math.max(0, FREE_LIMIT - usedSlots)
+  const quotaColor = isPaid ? 'text-emerald-700' : usedSlots >= FREE_LIMIT ? 'text-red-600' : 'text-amber-600'
+  const quotaLabel = isPaid ? 'ไม่จำกัด ✅' : usedSlots >= FREE_LIMIT ? 'ครบโควตาฟรีแล้ว 🔒' : `เหลืออีก ${freeLeft} ห้อง`
+
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
     <div class="bg-gradient-to-r from-emerald-50 to-white rounded-2xl border border-gray-100 p-7 mb-6">
       <h3 class="text-2xl font-bold text-emerald-900 mb-1">ยินดีต้อนรับ ${teacher?.full_name ?? 'คุณครู'} 👋</h3>
@@ -91,6 +98,29 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             <p class="text-2xl font-bold ${c.color}">${c.value}</p>
           </div>
         </div>`).join('')}
+    </div>
+
+    <!-- โควตาห้องเรียน -->
+    <div class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h4 class="font-semibold text-gray-700">🎯 โควตาห้องเรียน</h4>
+        <span class="text-sm font-bold ${quotaColor}">${quotaLabel}</span>
+      </div>
+      ${!isPaid ? `
+      <div class="w-full bg-gray-100 rounded-full h-2.5 mb-3">
+        <div class="bg-${usedSlots >= FREE_LIMIT ? 'red' : 'emerald'}-500 h-2.5 rounded-full transition-all"
+          style="width:${Math.min(100, (usedSlots/FREE_LIMIT)*100)}%"></div>
+      </div>
+      <div class="flex justify-between text-xs text-gray-400 mb-3">
+        <span>ใช้แล้ว ${usedSlots} ห้อง</span>
+        <span>ฟรี ${FREE_LIMIT} ห้อง</span>
+      </div>
+      ${usedSlots >= FREE_LIMIT ? `
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+        💡 ครบโควตาฟรีแล้ว — กด <b>+ ลงทะเบียนรายวิชา</b> เพื่อดูตัวเลือกอัปเกรด
+      </div>` : ''}` : `
+      <p class="text-sm text-emerald-600">✅ แพ็กเกจ${teacher?.teachers_quota?.package_type === 'semester' ? 'เหมาทั้งเทอม' : 'รายวิชา'} — สร้างได้ไม่จำกัด</p>
+      `}
     </div>
     <!-- Homeroom role buttons -->
     ${homeroomRooms.length > 0 ? `

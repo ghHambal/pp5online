@@ -145,14 +145,16 @@ window._openRegisterClass = async (courseId) => {
   const course = subjects.find(s => s.id === courseId)
   if (!course) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
 
-  // ── ตรวจโควตา ──
-  const quota   = _teacher?.teachers_quota
-  const isPaid  = quota?.is_paid ?? false
-  const created = quota?.total_classes_created ?? 0
+  // ── ตรวจโควตา (นับจาก DB จริงเสมอ) ──
+  const quota    = _teacher?.teachers_quota
+  const isPaid   = quota?.is_paid ?? false
   const FREE_LIMIT = 2
 
-  if (!isPaid && created >= FREE_LIMIT) {
-    _showQuotaPopup(created, course); return
+  if (!isPaid) {
+    const myClasses = await getMyClasses(_teacher?.id ?? null).catch(()=>[])
+    if (myClasses.length >= FREE_LIMIT) {
+      _showQuotaPopup(myClasses.length, course); return
+    }
   }
 
   renderClassForm(_teacher, course)
