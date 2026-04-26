@@ -552,7 +552,7 @@ export async function getStudentsByRoom(room) {
   const { data, error } = await supabase
     .from('students')
     .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
-    .eq('religion_room', room)
+    .eq('main_room', room)
     .order('student_code')
   if (error) throw error
   return data ?? []
