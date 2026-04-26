@@ -563,22 +563,27 @@ export async function renderClasses() {
     el.innerHTML = `<table class="w-full text-sm">
       <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
         <tr>
-          <th class="px-5 py-3 text-left">ชื่อห้องเรียน</th>
+          <th class="px-5 py-3 text-left">ห้องเรียน</th>
           <th class="px-5 py-3 text-left hidden sm:table-cell">วิชา</th>
-          <th class="px-5 py-3 text-left hidden md:table-cell">ครู</th>
-          <th class="px-5 py-3 text-center hidden md:table-cell">ปีการศึกษา</th>
+          <th class="px-5 py-3 text-left hidden md:table-cell">กลุ่มทักษะ</th>
+          <th class="px-5 py-3 text-left hidden lg:table-cell">Google Sheet</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
         ${classes.map(c => `
         <tr class="hover:bg-gray-50 transition">
-          <td class="px-5 py-4 font-semibold text-gray-800">${c.name ?? '—'}</td>
+          <td class="px-5 py-4 font-semibold text-gray-800">${c.class_name ?? '—'}</td>
           <td class="px-5 py-4 text-gray-600 hidden sm:table-cell">
-            ${c.master_subjects ? `<span class="font-mono text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">${c.master_subjects.code}</span>
-            <span class="ml-2">${c.master_subjects.name_th}</span>` : '—'}
+            ${c.master_subjects
+              ? `<span class="font-mono text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded mr-1">${c.master_subjects.subject_code ?? '—'}</span>${c.master_subjects.subject_name ?? '—'}`
+              : '—'}
           </td>
-          <td class="px-5 py-4 text-gray-600 hidden md:table-cell">${c.profiles?.full_name ?? '—'}</td>
-          <td class="px-5 py-4 text-center text-gray-500 hidden md:table-cell">${c.academic_year ?? '—'}/${c.semester ?? '—'}</td>
+          <td class="px-5 py-4 hidden md:table-cell">
+            <span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">${c.skill_group ?? '—'}</span>
+          </td>
+          <td class="px-5 py-4 text-xs text-gray-400 hidden lg:table-cell font-mono">
+            ${c.google_sheet_id ? `<span class="truncate block max-w-[160px]">${c.google_sheet_id}</span>` : '—'}
+          </td>
         </tr>`).join('')}
       </tbody>
     </table>`

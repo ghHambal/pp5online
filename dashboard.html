@@ -31,74 +31,82 @@
 
     <!-- Nav -->
     <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
-      <p class="px-4 pt-2 pb-1 text-xs text-indigo-400 uppercase tracking-widest">ภาพรวม</p>
+
+      <!-- ภาพรวม -->
       <a href="#" data-nav="overview"
         class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
                bg-indigo-800 text-white">
         <span>📊</span> ภาพรวมระบบ
       </a>
 
-      <p class="px-4 pt-3 pb-1 text-xs text-indigo-400 uppercase tracking-widest">จัดการข้อมูล</p>
+      <!-- บุคลากร -->
+      <p class="px-4 pt-4 pb-1 text-[10px] text-indigo-400 uppercase tracking-widest font-semibold">👥 บุคลากร</p>
       <a href="#" data-nav="teachers"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
                text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>👩‍🏫</span> จัดการครู/บุคลากร
+        <span>👩‍🏫</span> ครู / บุคลากร
       </a>
       <a href="#" data-nav="registered-teachers"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
                text-indigo-200 hover:bg-indigo-800 hover:text-white">
         <span>🔑</span> บัญชีผู้ใช้ครู
       </a>
-      <a href="#" data-nav="students"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>👦</span> จัดการนักเรียน
-      </a>
-      <a href="#" data-nav="classes"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>🏫</span> จัดการห้องเรียน
-      </a>
-      <a href="#" data-nav="departments"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>🗂️</span> กลุ่มสาระการเรียนรู้
-      </a>
-      <a href="#" data-nav="subjects"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>📚</span> จัดการรายวิชา
-      </a>
-      <a href="#" data-nav="periods"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>🕐</span> คาบและเวลาเรียน
-      </a>
       <a href="#" data-nav="homeroom"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
                text-indigo-200 hover:bg-indigo-800 hover:text-white">
         <span>🏠</span> ครูที่ปรึกษา
       </a>
-      <a href="#" data-nav="score-col-config"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+      <a href="#" data-nav="students"
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
                text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>📋</span> คอลัมน์คะแนน (Sheet)
-      </a>
-      <a href="#" data-nav="import"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-indigo-200 hover:bg-indigo-800 hover:text-white">
-        <span>📥</span> นำเข้าข้อมูล CSV
+        <span>👦</span> นักเรียน
       </a>
 
+      <!-- วิชาการ -->
+      <p class="px-4 pt-4 pb-1 text-[10px] text-indigo-400 uppercase tracking-widest font-semibold">📚 วิชาการ</p>
+      <a href="#" data-nav="departments"
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🗂️</span> กลุ่มสาระ
+      </a>
+      <a href="#" data-nav="subjects"
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>📚</span> รายวิชา
+      </a>
+      <a href="#" data-nav="classes"
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🏫</span> ห้องเรียน
+      </a>
+      <a href="#" data-nav="periods"
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🕐</span> คาบเรียน
+      </a>
+      <a href="#" data-nav="score-col-config"
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>📋</span> คอลัมน์คะแนน
+      </a>
+
+      <!-- ข้อมูลและปฏิทิน -->
+      <p class="px-4 pt-4 pb-1 text-[10px] text-indigo-400 uppercase tracking-widest font-semibold">🗓️ ข้อมูลและปฏิทิน</p>
+      <a href="#" data-nav="import"
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>📥</span> นำเข้า CSV
+      </a>
       <a href="#" data-nav="holidays"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
                text-indigo-200 hover:bg-indigo-800 hover:text-white">
         <span>📅</span> วันหยุดโรงเรียน
       </a>
 
-      <p class="px-4 pt-3 pb-1 text-xs text-indigo-400 uppercase tracking-widest">ผู้ดูแล</p>
+      <!-- ผู้ดูแล -->
+      <p class="px-4 pt-4 pb-1 text-[10px] text-indigo-400 uppercase tracking-widest font-semibold">⚙️ ผู้ดูแล</p>
       <a href="#" data-nav="payments"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+        class="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition
                text-indigo-200 hover:bg-indigo-800 hover:text-white">
         <span>💳</span> การชำระเงิน
         <span id="badge-payments" class="hidden ml-auto bg-red-500 text-white text-[10px]
