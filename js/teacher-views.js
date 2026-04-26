@@ -1027,7 +1027,7 @@ export async function renderClassForm(teacher, course) {
         day5_date: document.getElementById('cls-day5').value || null,
         day6_date: document.getElementById('cls-day6').value || null,
       }
-      const created = await createClass(payload)
+      const created = await createClass(payload, teacher?.id ?? null)
 
       // enroll all students in the room
       if (_students.length && created?.id) {

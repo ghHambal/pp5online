@@ -142,8 +142,52 @@ window._openRegisterClass = async (courseId) => {
     ? await getMySubjects(_teacher.id).catch(()=>[])
     : await getMasterSubjects().catch(()=>[])
   const course = subjects.find(s => s.id === courseId)
-  if (course) renderClassForm(_teacher, course)
-  else showToast('ไม่พบข้อมูลคอร์ส', 'error')
+  if (!course) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
+
+  // ── ตรวจโควตา ──
+  const quota   = _teacher?.teachers_quota
+  const isPaid  = quota?.is_paid ?? false
+  const created = quota?.total_classes_created ?? 0
+  const FREE_LIMIT = 2
+
+  if (!isPaid && created >= FREE_LIMIT) {
+    _showQuotaPopup(created); return
+  }
+
+  renderClassForm(_teacher, course)
+}
+
+function _showQuotaPopup(count) {
+  document.getElementById('quota-popup')?.remove()
+  const el = document.createElement('div')
+  el.id = 'quota-popup'
+  el.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+      <div class="text-5xl mb-3">🔒</div>
+      <h3 class="text-lg font-bold text-gray-800 mb-1">ครบโควตาฟรีแล้ว</h3>
+      <p class="text-sm text-gray-500 mb-1">คุณสร้างห้องเรียนไปแล้ว <span class="font-bold text-indigo-600">${count} ห้อง</span></p>
+      <p class="text-sm text-gray-500 mb-4">แพ็กเกจฟรีสร้างได้ <span class="font-bold">2 ห้อง</span> เพื่อสร้างเพิ่ม กรุณาอัปเกรด</p>
+      <div class="bg-indigo-50 rounded-xl p-4 mb-4 text-left space-y-1.5">
+        <p class="text-xs font-semibold text-indigo-700 mb-2">📦 แพ็กเกจไม่จำกัดห้องเรียน</p>
+        <p class="text-xs text-gray-600">✅ สร้างห้องเรียนได้ไม่จำกัด</p>
+        <p class="text-xs text-gray-600">✅ รองรับนักเรียนทุกคน</p>
+        <p class="text-xs text-gray-600">✅ ฟีเจอร์ครบทุกอย่าง</p>
+        <p class="text-sm font-bold text-indigo-700 mt-2">ติดต่อผู้ดูแลระบบ</p>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="document.getElementById('quota-popup').remove()"
+          class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+          ปิด
+        </button>
+        <a href="mailto:kruhambalwaji@gmail.com?subject=ขออัปเกรดแพ็กเกจ ปพ.5 ออนไลน์"
+          class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 flex items-center justify-center">
+          ติดต่อเลย
+        </a>
+      </div>
+    </div>`
+  document.body.appendChild(el)
+  el.addEventListener('click', e => { if (e.target === el) el.remove() })
 }
 
 // ─── Sidebar header: logo + term ─────────────────────────────────────────────

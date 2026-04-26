@@ -20,7 +20,7 @@ export async function updateSystemConfig(key, value) {
 export async function getMyTeacherProfile(profileId) {
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id')
+    .select('id, teacher_code, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, teachers_quota(total_classes_created, is_paid)')
     .eq('profile_id', profileId)
     .maybeSingle()
   if (error) throw error
@@ -596,10 +596,14 @@ export async function deleteClass(id) {
   if (error) throw error
 }
 
-export async function createClass(payload) {
+export async function createClass(payload, teacherId = null) {
   const { data, error } = await supabase
     .from('classes').insert(payload).select('id').single()
   if (error) throw error
+  // อัปเดตโควตา
+  if (teacherId) {
+    await supabase.rpc('increment_class_quota', { p_teacher_id: teacherId }).catch(()=>{})
+  }
   return data
 }
 
