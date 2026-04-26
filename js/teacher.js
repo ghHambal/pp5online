@@ -150,19 +150,22 @@ window._openRegisterClass = async (courseId) => {
 async function loadSidebarHeader(teacher) {
   try {
     const cfg = await getSystemConfig()
-    // ภาคเรียน / ปีการศึกษา
-    const term = cfg.semester ?? '—'
-    const year = cfg.academic_year ?? '—'
+
+    // ภาคเรียน / ปีการศึกษา (keys ตรงกับที่ admin บันทึก)
+    const term = cfg.semester ?? cfg.semester ?? '—'
+    const year = cfg.academicYear ?? cfg.academic_year ?? '—'
     const termEl = document.getElementById('sidebar-term')
     if (termEl) termEl.textContent = `ภาคเรียนที่ ${term} / ${year}`
 
-    // โลโก้: เลือกตามประเภทครู (มัธยม vs ปวช)
-    const cat = teacher?.category ?? ''
-    const isVoc = /ปวช/i.test(cat)
-    const logoUrl = isVoc ? (cfg.logo_voc_url ?? cfg.logo_url ?? '') : (cfg.logo_url ?? '')
+    // โลโก้: มัธยม → samaiLogoUrl, ปวช → porworLogoUrl
+    const cat    = teacher?.category ?? ''
+    const isVoc  = /ปวช/i.test(cat)
+    const logoUrl = isVoc
+      ? (cfg.porworLogoUrl ?? cfg.samaiLogoUrl ?? '')
+      : (cfg.samaiLogoUrl ?? '')
 
-    const logoImg  = document.getElementById('school-logo')
-    const logoFb   = document.getElementById('school-logo-fallback')
+    const logoImg = document.getElementById('school-logo')
+    const logoFb  = document.getElementById('school-logo-fallback')
     if (logoImg && logoUrl) {
       logoImg.src = logoUrl
       logoImg.classList.remove('hidden')
