@@ -1817,7 +1817,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
   const pctBg    = p => p >= 80 ? 'bg-emerald-50' : p >= 60 ? 'bg-amber-50' : 'bg-red-50'
   const modal = document.createElement('div')
   modal.id = 'att-stats-modal'
-  modal.className = 'fixed inset-0 z-50 bg-white flex flex-col'
+  modal.className = 'fixed inset-0 z-[80] bg-white flex flex-col'
   modal.innerHTML = `
     <!-- Header -->
     <div class="flex items-center gap-3 px-4 py-3 border-b bg-white shadow-sm flex-shrink-0">
@@ -2067,7 +2067,7 @@ function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSes
   let syncEnabled = hasMulti
   const modal = document.createElement('div')
   modal.id = 'att-form-modal'
-  modal.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4'
+  modal.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-4'
   modal.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
       <!-- Header -->
@@ -2989,7 +2989,7 @@ function _showPrayerStats(teacher, room, students, weeks, prayMap, allDays, year
 
   const modal = document.createElement('div')
   modal.id = 'prayer-stats-modal'
-  modal.className = 'fixed inset-0 z-50 bg-white flex flex-col'
+  modal.className = 'fixed inset-0 z-[80] bg-white flex flex-col'
   modal.innerHTML = `
     <div class="flex items-center gap-3 px-4 py-3 border-b bg-emerald-700 text-white flex-shrink-0">
       <button id="prayer-stats-close" class="text-white/70 hover:text-white text-xl">✕</button>
@@ -3142,7 +3142,7 @@ function _showStudentAttendanceDetail(student, no, sessions, attMap, holidaySet,
 
   const modal = document.createElement('div')
   modal.id = 'student-att-detail'
-  modal.className = 'fixed inset-0 z-[60] bg-white flex flex-col'
+  modal.className = 'fixed inset-0 z-[80] bg-white flex flex-col'
   modal.innerHTML = `
     <div class="flex items-center gap-3 px-4 py-3 bg-emerald-700 text-white flex-shrink-0">
       <button id="sad-close" class="text-white/70 hover:text-white text-xl">✕</button>
@@ -3207,7 +3207,7 @@ function _showStudentPrayerDetail(stat, weeks, prayMap, allDays, scCls) {
 
   const modal = document.createElement('div')
   modal.id = 'student-detail-modal'
-  modal.className = 'fixed inset-0 z-[60] bg-white flex flex-col'
+  modal.className = 'fixed inset-0 z-[80] bg-white flex flex-col'
   modal.innerHTML = `
     <!-- Header -->
     <div class="flex items-center gap-3 px-4 py-3 bg-emerald-800 text-white flex-shrink-0">
