@@ -452,9 +452,7 @@ async function _showPaymentPage(pkgType, course) {
         status:       'pending',
       })
       const slipUrl = await uploadPaymentSlip(slipFile, req.id)
-      await createPaymentRequest({ ...req, slip_url: slipUrl })  // อัปเดต URL
-      // อัปเดต slip_url
-      const { supabase } = await import('./supabase.js')
+      // อัปเดต slip_url ด้วย UPDATE (ไม่ใช่ INSERT ซ้ำ)
       await supabase.from('payment_requests').update({ slip_url: slipUrl }).eq('id', req.id)
 
       wrap.remove()
