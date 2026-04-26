@@ -5,7 +5,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          getHomeroomTeachers, upsertHomeroomTeacher, deleteHomeroomTeacher,
          getScoreColumnConfig, upsertScoreColumnConfig,
          getUniqueRooms, unlinkTeacherAccount,
-         getSchoolHolidaysFull, upsertHoliday, deleteHoliday } from './api.js'
+         getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
+         getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -683,6 +684,14 @@ export async function renderSettings() {
         { key: 'porworAcademicHeadSignUrl',  label: 'ลายเซ็นหัวหน้าวิชาการ',   type: 'upload' },
         { key: 'porworDirectorName',         label: 'ผู้อำนวยการ',              type: 'text' },
         { key: 'porworDirectorSignUrl',      label: 'ลายเซ็นผู้อำนวยการ',       type: 'upload' },
+      ]},
+      { label: '💳 การชำระเงิน (แสดงให้ครูเห็นเมื่อซื้อแพ็กเกจ)', keys: [
+        { key: 'paymentAccountName',  label: 'ชื่อบัญชี',                    type: 'text' },
+        { key: 'paymentBankName',     label: 'ธนาคาร',                       type: 'text' },
+        { key: 'paymentAccountNo',    label: 'เลขบัญชี',                     type: 'text' },
+        { key: 'paymentPromptpay',    label: 'เบอร์ PromptPay / เลขประจำตัว', type: 'text' },
+        { key: 'paymentQrUrl',        label: 'QR Code PromptPay',             type: 'upload' },
+        { key: 'paymentNote',         label: 'หมายเหตุ (เช่น เวลาทำการ)',     type: 'text' },
       ]},
     ]
 
@@ -1841,5 +1850,238 @@ export function renderImport() {
     } finally {
       btn.disabled = false
     }
+  })
+}
+
+// ─── Admin: Payment Requests ──────────────────────────────────────────────────
+export async function renderPayments() {
+  setActiveNav('payments')
+  document.getElementById('page-title').textContent = 'การชำระเงิน'
+
+  setContent(`<div class="max-w-2xl mx-auto animate-fade">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">💳 คำขอชำระเงิน</h2>
+        <p class="text-xs text-gray-400 mt-0.5">ตรวจสอบสลิปและอนุมัติแพ็กเกจให้ครู</p>
+      </div>
+      <button id="pay-refresh" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+        🔄 รีเฟรช
+      </button>
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="flex gap-2 mb-4 border-b border-gray-200">
+      ${['ทั้งหมด','รอตรวจสอบ','อนุมัติแล้ว','ปฏิเสธ'].map((t,i) =>
+        `<button class="pay-tab text-sm font-medium px-3 py-2 border-b-2 transition
+          ${i===0 ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-400 hover:text-gray-600'}"
+          data-filter="${['all','pending','approved','rejected'][i]}">${t}</button>`
+      ).join('')}
+    </div>
+
+    <div id="pay-list" class="space-y-3">
+      <div class="text-center py-12 text-gray-400">
+        <div class="animate-spin text-3xl mb-2">⏳</div>
+        <p class="text-sm">กำลังโหลด...</p>
+      </div>
+    </div>
+  </div>`)
+
+  let allRequests = []
+  let currentFilter = 'all'
+
+  const render = () => {
+    const list = document.getElementById('pay-list')
+    if (!list) return
+    const filtered = currentFilter === 'all'
+      ? allRequests
+      : allRequests.filter(r => r.status === currentFilter)
+
+    if (!filtered.length) {
+      list.innerHTML = `<div class="text-center py-12 text-gray-400">
+        <p class="text-3xl mb-2">📭</p>
+        <p class="text-sm">ไม่มีคำขอในหมวดนี้</p>
+      </div>`
+      return
+    }
+
+    list.innerHTML = filtered.map(r => {
+      const statusCfg = {
+        pending:  { label: '⏳ รอตรวจสอบ', cls: 'bg-amber-100 text-amber-700' },
+        approved: { label: '✅ อนุมัติแล้ว', cls: 'bg-emerald-100 text-emerald-700' },
+        rejected: { label: '❌ ปฏิเสธ',     cls: 'bg-red-100 text-red-700' },
+      }[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-600' }
+
+      const pkgLabel = r.package_type === 'semester'
+        ? '📦 เหมาทั้งเทอม (299 บ.)'
+        : `📘 รายวิชา — ${r.master_subjects?.subject_name ?? '—'} (49 บ.)`
+
+      const date = new Date(r.created_at).toLocaleDateString('th-TH', {
+        day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit'
+      })
+
+      return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" data-id="${r.id}">
+
+        <!-- Header การ์ด -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-600 text-sm flex-shrink-0">
+              ${(r.teachers?.full_name ?? '?').charAt(0)}
+            </div>
+            <div>
+              <p class="font-semibold text-gray-800 text-sm">${r.teachers?.full_name ?? '—'}</p>
+              <p class="text-xs text-gray-400">รหัส ${r.teachers?.teacher_code ?? '—'} · ${r.teachers?.phone ?? '—'}</p>
+            </div>
+          </div>
+          <span class="text-[11px] font-medium px-2.5 py-1 rounded-full flex-shrink-0 ${statusCfg.cls}">
+            ${statusCfg.label}
+          </span>
+        </div>
+
+        <!-- รายละเอียด -->
+        <div class="px-4 py-3 space-y-2">
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">แพ็กเกจ</span>
+            <span class="font-medium text-gray-700">${pkgLabel}</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">ส่งเมื่อ</span>
+            <span class="text-gray-600">${date}</span>
+          </div>
+          ${r.admin_note ? `
+          <div class="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
+            💬 หมายเหตุ: ${r.admin_note}
+          </div>` : ''}
+        </div>
+
+        <!-- สลิป -->
+        ${r.slip_url ? `
+        <div class="px-4 pb-3">
+          <button class="view-slip-btn w-full py-2 rounded-xl border border-gray-200 text-sm text-indigo-600 font-medium hover:bg-indigo-50 transition"
+            data-url="${r.slip_url}">
+            🖼 ดูสลิปการโอนเงิน
+          </button>
+        </div>` : `
+        <div class="px-4 pb-3">
+          <p class="text-xs text-gray-400 text-center italic">ยังไม่มีสลิป</p>
+        </div>`}
+
+        <!-- Actions (เฉพาะ pending) -->
+        ${r.status === 'pending' ? `
+        <div class="flex gap-2 px-4 pb-4">
+          <button class="reject-btn flex-1 py-2.5 rounded-xl border-2 border-red-200 text-red-600
+                         text-sm font-semibold hover:bg-red-50 transition" data-id="${r.id}">
+            ❌ ปฏิเสธ
+          </button>
+          <button class="approve-btn flex-1 py-2.5 rounded-xl bg-emerald-600 text-white
+                         text-sm font-semibold hover:bg-emerald-700 transition"
+            data-id="${r.id}" data-teacher="${r.teachers?.id}" data-pkg="${r.package_type}">
+            ✅ อนุมัติ
+          </button>
+        </div>` : ''}
+      </div>`
+    }).join('')
+
+    // ── Approve ──
+    list.querySelectorAll('.approve-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`อนุมัติคำขอนี้?\nครูจะสามารถสร้างห้องเรียนได้ทันที`)) return
+        btn.disabled = true; btn.textContent = '⏳ กำลังอนุมัติ...'
+        try {
+          await reviewPaymentRequest(parseInt(btn.dataset.id), 'approved')
+          await approveTeacherQuota(parseInt(btn.dataset.teacher), btn.dataset.pkg)
+          showToast('อนุมัติแล้ว ✅', 'success')
+          window._refreshPaymentBadge?.()
+          allRequests = await getAllPaymentRequests()
+          render()
+        } catch { showToast('เกิดข้อผิดพลาด', 'error'); btn.disabled = false; btn.textContent = '✅ อนุมัติ' }
+      })
+    })
+
+    // ── Reject ──
+    list.querySelectorAll('.reject-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _showRejectModal(parseInt(btn.dataset.id), async (note) => {
+          await reviewPaymentRequest(parseInt(btn.dataset.id), 'rejected', note)
+          showToast('ปฏิเสธแล้ว', 'info')
+          window._refreshPaymentBadge?.()
+          allRequests = await getAllPaymentRequests()
+          render()
+        })
+      })
+    })
+
+    // ── View slip ──
+    list.querySelectorAll('.view-slip-btn').forEach(btn => {
+      btn.addEventListener('click', () => _showSlipModal(btn.dataset.url))
+    })
+  }
+
+  // โหลดข้อมูล
+  try {
+    allRequests = await getAllPaymentRequests()
+    render()
+  } catch { showToast('โหลดข้อมูลไม่สำเร็จ', 'error') }
+
+  // Filter tabs
+  document.querySelectorAll('.pay-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentFilter = tab.dataset.filter
+      document.querySelectorAll('.pay-tab').forEach(t => {
+        t.classList.toggle('border-indigo-600', t === tab)
+        t.classList.toggle('text-indigo-600',   t === tab)
+        t.classList.toggle('border-transparent', t !== tab)
+        t.classList.toggle('text-gray-400',      t !== tab)
+      })
+      render()
+    })
+  })
+
+  document.getElementById('pay-refresh')?.addEventListener('click', async () => {
+    allRequests = await getAllPaymentRequests()
+    render()
+    showToast('รีเฟรชแล้ว', 'success')
+  })
+}
+
+// popup ดูสลิป
+function _showSlipModal(url) {
+  const el = document.createElement('div')
+  el.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4'
+  el.innerHTML = `
+    <div class="relative max-w-sm w-full">
+      <button class="absolute -top-10 right-0 text-white text-2xl">✕</button>
+      <img src="${url}" class="w-full rounded-2xl shadow-2xl object-contain max-h-[80vh]"/>
+      <a href="${url}" target="_blank" download
+        class="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white text-gray-700 text-sm font-medium">
+        ⬇️ ดาวน์โหลดสลิป
+      </a>
+    </div>`
+  document.body.appendChild(el)
+  el.querySelector('button').addEventListener('click', () => el.remove())
+  el.addEventListener('click', e => { if (e.target === el) el.remove() })
+}
+
+// popup ปฏิเสธพร้อมเหตุผล
+function _showRejectModal(id, onConfirm) {
+  const el = document.createElement('div')
+  el.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5">
+      <h3 class="font-bold text-gray-800 mb-3">❌ ปฏิเสธคำขอ</h3>
+      <p class="text-xs text-gray-500 mb-2">ระบุเหตุผล (ครูจะเห็นข้อความนี้)</p>
+      <textarea id="reject-note" rows="3" placeholder="เช่น สลิปไม่ชัด กรุณาส่งใหม่"
+        class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-400 resize-none"></textarea>
+      <div class="flex gap-2 mt-3">
+        <button id="rj-cancel" class="flex-1 py-2.5 rounded-xl border text-sm text-gray-600">ยกเลิก</button>
+        <button id="rj-confirm" class="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold">ยืนยันปฏิเสธ</button>
+      </div>
+    </div>`
+  document.body.appendChild(el)
+  el.querySelector('#rj-cancel').addEventListener('click', () => el.remove())
+  el.querySelector('#rj-confirm').addEventListener('click', async () => {
+    const note = el.querySelector('#reject-note').value.trim() || null
+    el.remove()
+    await onConfirm(note)
   })
 }

@@ -4,11 +4,12 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderSettings, renderImport, renderSubjects, renderSubjectTable,
          renderDepartments, renderDeptTable, renderPeriods,
          renderHomeroom, renderScoreColConfig, renderRegisteredTeachers,
-         renderHolidays } from './views.js'
+         renderHolidays, renderPayments } from './views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
          getDepartments, createDepartment, updateDepartment, deleteDepartment,
-         getPeriods, upsertPeriod, deletePeriod } from './api.js'
+         getPeriods, upsertPeriod, deletePeriod,
+         getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota } from './api.js'
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 
@@ -446,6 +447,27 @@ export async function handleDeletePeriod(id) {
   } catch { showToast('ลบไม่สำเร็จ', 'error') }
 }
 
+// ─── Payment Badge ────────────────────────────────────────────────────────────
+async function _loadPaymentBadge() {
+  try {
+    const all     = await getAllPaymentRequests()
+    const pending = all.filter(r => r.status === 'pending').length
+    const badge   = document.getElementById('badge-payments')
+    if (!badge) return
+    if (pending > 0) {
+      badge.textContent = pending > 9 ? '9+' : pending
+      badge.classList.remove('hidden')
+      badge.classList.add('flex')
+    } else {
+      badge.classList.add('hidden')
+      badge.classList.remove('flex')
+    }
+  } catch { /* ไม่ critical */ }
+}
+
+// expose สำหรับ views.js ใช้หลังอนุมัติ
+window._refreshPaymentBadge = _loadPaymentBadge
+
 // _goBack สำหรับ course form ในบริบท admin → กลับไปหน้า subjects
 window._goBack = () => renderSubjects()
 
@@ -477,6 +499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'score-col-config':    renderScoreColConfig,
     'registered-teachers': renderRegisteredTeachers,
     'holidays':            renderHolidays,
+    'payments':            renderPayments,
     settings:    renderSettings,
     import:      renderImport,
   }
@@ -501,6 +524,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
+
+  // โหลด badge จำนวน pending payments
+  _loadPaymentBadge()
+  setInterval(_loadPaymentBadge, 60000) // refresh ทุก 1 นาที
 
   // Teacher modal
   document.getElementById('modal-close')?.addEventListener('click', closeTeacherModal)

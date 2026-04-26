@@ -644,3 +644,87 @@ export async function getRegistry(semester, academicYear) {
   if (error) throw error
   return data ?? []
 }
+
+// ─── Payment Requests ─────────────────────────────────────────────────────────
+
+// ครูสร้างคำขอชำระเงิน
+export async function createPaymentRequest(payload) {
+  const { data, error } = await supabase
+    .from('payment_requests')
+    .insert(payload)
+    .select('id')
+    .single()
+  if (error) throw error
+  return data
+}
+
+// ดึงคำขอของครูคนนี้
+export async function getMyPaymentRequests(teacherId) {
+  const { data, error } = await supabase
+    .from('payment_requests')
+    .select('id, package_type, amount, status, slip_url, admin_note, created_at, master_subjects(subject_name)')
+    .eq('teacher_id', teacherId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+// แอดมินดึงคำขอทั้งหมด (pending ก่อน)
+export async function getAllPaymentRequests() {
+  const { data, error } = await supabase
+    .from('payment_requests')
+    .select(`
+      id, package_type, amount, status, slip_url, admin_note,
+      created_at, reviewed_at,
+      teachers ( id, full_name, teacher_code, phone ),
+      master_subjects ( subject_name )
+    `)
+    .order('status')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+// แอดมินอัปเดตสถานะ
+export async function reviewPaymentRequest(id, status, adminNote = null) {
+  const { error } = await supabase
+    .from('payment_requests')
+    .update({ status, admin_note: adminNote, reviewed_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// อัปเดตโควตาหลังอนุมัติ
+export async function approveTeacherQuota(teacherId, packageType) {
+  const isPaid = true
+  const { error } = await supabase
+    .from('teachers_quota')
+    .upsert(
+      { teacher_id: teacherId, is_paid: isPaid,
+        package_type: packageType,
+        paid_at: new Date().toISOString() },
+      { onConflict: 'teacher_id' }
+    )
+  if (error) throw error
+}
+
+// อัปโหลดสลิป
+export async function uploadPaymentSlip(file, requestId) {
+  const ext  = file.name.split('.').pop()
+  const path = `slips/${requestId}_${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('payment-slips')
+    .upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('payment-slips').getPublicUrl(path)
+  return data.publicUrl
+}
+
+// ดึง URL สลิป (signed — ป้องกันคนอื่นเข้า)
+export async function getSlipSignedUrl(path) {
+  const { data, error } = await supabase.storage
+    .from('payment-slips')
+    .createSignedUrl(path, 3600)
+  if (error) throw error
+  return data.signedUrl
+}
