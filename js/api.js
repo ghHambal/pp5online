@@ -600,9 +600,11 @@ export async function createClass(payload, teacherId = null) {
   const { data, error } = await supabase
     .from('classes').insert(payload).select('id').single()
   if (error) throw error
-  // อัปเดตโควตา
+  // อัปเดตโควตา (ไม่ block ถ้า rpc ล้มเหลว)
   if (teacherId) {
-    await supabase.rpc('increment_class_quota', { p_teacher_id: teacherId }).catch(()=>{})
+    try {
+      await supabase.rpc('increment_class_quota', { p_teacher_id: teacherId })
+    } catch { /* ไม่ critical */ }
   }
   return data
 }
