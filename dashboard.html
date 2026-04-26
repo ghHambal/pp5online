@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ.5 ออนไลน์ — แดชบอร์ด</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body class="bg-gray-50 flex h-screen overflow-hidden">
+
+  <!-- ─── Sidebar ─────────────────────────────────────────────────────────── -->
+  <div id="sidebar-overlay" class="hidden fixed inset-0 z-20 bg-black/40 md:hidden"></div>
+  <aside id="sidebar"
+    class="w-64 bg-indigo-900 text-white flex flex-col flex-shrink-0
+           fixed inset-y-0 left-0 z-30 shadow-xl
+           -translate-x-full md:translate-x-0 md:static
+           transition-transform duration-200">
+
+    <!-- Brand -->
+    <div class="px-5 py-6 border-b border-indigo-800">
+      <h2 class="text-xl font-bold tracking-tight">ปพ.5 ออนไลน์</h2>
+      <p class="text-xs text-indigo-300 mt-0.5">Admin Dashboard</p>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <p class="px-4 pt-2 pb-1 text-xs text-indigo-400 uppercase tracking-widest">ภาพรวม</p>
+      <a href="#" data-nav="overview"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               bg-indigo-800 text-white">
+        <span>📊</span> ภาพรวมระบบ
+      </a>
+
+      <p class="px-4 pt-3 pb-1 text-xs text-indigo-400 uppercase tracking-widest">จัดการข้อมูล</p>
+      <a href="#" data-nav="teachers"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>👩‍🏫</span> จัดการครู/บุคลากร
+      </a>
+      <a href="#" data-nav="registered-teachers"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🔑</span> บัญชีผู้ใช้ครู
+      </a>
+      <a href="#" data-nav="students"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>👦</span> จัดการนักเรียน
+      </a>
+      <a href="#" data-nav="classes"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🏫</span> จัดการห้องเรียน
+      </a>
+      <a href="#" data-nav="departments"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🗂️</span> กลุ่มสาระการเรียนรู้
+      </a>
+      <a href="#" data-nav="subjects"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>📚</span> จัดการรายวิชา
+      </a>
+      <a href="#" data-nav="periods"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🕐</span> คาบและเวลาเรียน
+      </a>
+      <a href="#" data-nav="homeroom"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>🏠</span> ครูที่ปรึกษา
+      </a>
+      <a href="#" data-nav="score-col-config"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>📋</span> คอลัมน์คะแนน (Sheet)
+      </a>
+      <a href="#" data-nav="import"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>📥</span> นำเข้าข้อมูล CSV
+      </a>
+
+      <a href="#" data-nav="holidays"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>📅</span> วันหยุดโรงเรียน
+      </a>
+
+      <p class="px-4 pt-3 pb-1 text-xs text-indigo-400 uppercase tracking-widest">ผู้ดูแล</p>
+      <a href="#" data-nav="settings"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-indigo-200 hover:bg-indigo-800 hover:text-white">
+        <span>⚙️</span> ตั้งค่าระบบ
+      </a>
+    </nav>
+
+    <!-- User + Logout -->
+    <div class="p-3 border-t border-indigo-800">
+      <button id="btn-logout"
+        class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm
+               font-medium text-indigo-200 hover:bg-red-500 hover:text-white transition">
+        🚪 ออกจากระบบ
+      </button>
+    </div>
+  </aside>
+
+  <!-- ─── Main ─────────────────────────────────────────────────────────────── -->
+  <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+
+    <!-- Topbar -->
+    <header class="bg-white shadow-sm h-16 flex items-center justify-between px-5 z-20 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <button id="btn-menu" class="md:hidden text-gray-500 hover:text-indigo-600 text-xl p-1">☰</button>
+        <h1 id="page-title" class="text-lg font-bold text-gray-800">ภาพรวมระบบ</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="text-right hidden sm:block">
+          <p id="user-name" class="text-sm font-semibold text-gray-800">—</p>
+          <p id="user-role" class="text-xs text-indigo-500">—</p>
+        </div>
+        <div id="user-avatar"
+          class="w-9 h-9 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white
+                 rounded-full flex items-center justify-center font-bold text-sm shadow-sm">
+          ?
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 overflow-y-auto p-5 sm:p-6">
+      <div id="main-content">
+        <!-- rendered by views.js -->
+      </div>
+    </main>
+  </div>
+
+  <!-- ─── Teacher Modal ─────────────────────────────────────────────────────── -->
+  <div id="teacher-modal"
+    class="hidden fixed inset-0 z-50 items-center justify-center p-4">
+
+    <!-- Backdrop -->
+    <div id="modal-backdrop" class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+
+    <!-- Card -->
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-7 z-10">
+
+      <div class="flex items-center justify-between mb-6">
+        <h2 id="modal-title" class="text-lg font-bold text-gray-800">เพิ่มครูใหม่</h2>
+        <button id="modal-close" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      </div>
+
+      <form id="teacher-form" novalidate class="space-y-4">
+        <input type="hidden" id="modal-id" />
+        <input type="hidden" id="modal-image-url" />
+
+        <!-- รูปโปรไฟล์ — บนสุด -->
+        <div class="flex flex-col items-center pb-2">
+          <div id="modal-avatar-preview"
+            class="w-20 h-20 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400
+                   flex items-center justify-center text-white font-bold text-2xl
+                   overflow-hidden border-4 border-white shadow-md">
+            ?
+          </div>
+          <label class="mt-2 cursor-pointer">
+            <span class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">📷 เปลี่ยนรูป</span>
+            <input id="modal-photo-file" type="file" accept="image/*" class="hidden" />
+          </label>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">รหัสครู</label>
+            <input id="modal-code" type="text" placeholder="เช่น T001"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
+            <select id="modal-category"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white">
+              <option value="">— เลือก —</option>
+              <option value="สามัญ">สามัญ</option>
+              <option value="ศาสนา">ศาสนา</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- เพิ่มเติม: ประเภทบุคลากร และ กลุ่มวิชา -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ประเภทบุคลากร</label>
+            <select id="modal-personnel-type" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white">
+              <option value="ครู">ครู</option>
+              <option value="บุคลากร">บุคลากร</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มวิชา</label>
+            <select id="modal-subject-group" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white">
+              <option value="">— เลือก —</option>
+              <option value="ACDM">สามัญมัธยม (ACDM)</option>
+              <option value="AGM">ศาสนามัธยม (AGM)</option>
+              <option value="ACDMVOC">สามัญปวช (ACDMVOC)</option>
+              <option value="AGMVOC">ศาสนาปวช (AGMVOC)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระ (หมวด)</label>
+            <input id="modal-dept" type="text" placeholder="เช่น วิทยาศาสตร์" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มทักษะ</label>
+            <input id="modal-skill-group" type="text" placeholder="เช่น ทักษะวิชาชีพ" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล <span class="text-red-400">*</span></label>
+          <input id="modal-name" type="text" placeholder="นายสมชาย ใจดี"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
+          <input id="modal-phone" type="tel" placeholder="08x-xxx-xxxx"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="modal-cancel"
+            onclick="document.getElementById('teacher-modal').classList.add('hidden')"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">
+            ยกเลิก
+          </button>
+          <button id="modal-save-btn" type="submit"
+            class="btn-primary flex-1 py-2.5 rounded-xl text-white text-sm font-semibold">
+            บันทึก
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── Department Modal ────────────────────────────────────────────────────── -->
+  <div id="dept-modal" class="hidden fixed inset-0 z-50 items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="dept-modal-backdrop"></div>
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-7 z-10">
+      <div class="flex items-center justify-between mb-6">
+        <h2 id="dept-modal-title" class="text-lg font-bold text-gray-800">เพิ่มกลุ่มสาระ</h2>
+        <button id="dept-modal-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <form id="dept-form" novalidate class="space-y-4">
+        <input type="hidden" id="dept-id" />
+        <input type="hidden" id="dept-teacher-code" />
+        <input type="hidden" id="dept-photo-url" />
+        <input type="hidden" id="dept-sign-url" />
+
+        <!-- รูปโปรไฟล์หัวหน้า — บนสุด -->
+        <div class="flex flex-col items-center pb-2">
+          <div id="dept-photo-preview"
+            class="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center
+                   text-4xl overflow-hidden border-4 border-white shadow-md">👤</div>
+          <label class="mt-2 cursor-pointer">
+            <span class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">📷 เปลี่ยนรูป</span>
+            <input id="dept-photo-file" type="file" accept="image/*" class="hidden" />
+          </label>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">รหัสกลุ่มสาระ <span class="text-red-400">*</span></label>
+            <input id="dept-code" type="text" placeholder="เช่น MATH"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อกลุ่มสาระ <span class="text-red-400">*</span></label>
+            <input id="dept-name" type="text" placeholder="เช่น คณิตศาสตร์"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+        </div>
+
+        <!-- หัวหน้ากลุ่มสาระ — dual-input (รหัส + ชื่อ) -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">หัวหน้ากลุ่มสาระ</label>
+          <div class="flex gap-2 mb-2">
+            <!-- รหัสครู (1/3) -->
+            <div class="w-1/3">
+              <p class="text-xs text-gray-400 mb-1">รหัสครู</p>
+              <input id="dept-teacher-code-input" type="text" autocomplete="off"
+                placeholder="เช่น 101"
+                class="input-field w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm" />
+            </div>
+            <!-- ค้นหาชื่อ (2/3) -->
+            <div class="flex-1 relative">
+              <p class="text-xs text-gray-400 mb-1">ชื่อ-สกุล (พิมพ์เพื่อค้นหา)</p>
+              <input id="dept-teacher-search" type="text" autocomplete="off"
+                placeholder="ชื่อครูผู้สอน..."
+                class="input-field w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm" />
+              <div id="dept-teacher-dropdown"
+                class="hidden absolute z-20 w-full mt-1 bg-white border border-gray-200
+                       rounded-xl shadow-lg overflow-y-auto"
+                style="max-height:200px">
+              </div>
+            </div>
+          </div>
+          <!-- แสดงครูที่เลือก -->
+          <div id="dept-selected-teacher"
+            class="hidden items-center gap-2 px-3 py-2 bg-indigo-50 rounded-xl text-sm text-indigo-700">
+            <span class="text-indigo-400">✓</span>
+            <span id="dept-selected-name" class="font-medium"></span>
+            <button type="button" id="dept-clear-teacher"
+              class="ml-auto text-gray-400 hover:text-red-400 text-xs">✕</button>
+          </div>
+        </div>
+
+        <!-- ลายเซ็น -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">รูปลายเซ็นหัวหน้า</label>
+          <div class="flex items-center gap-3">
+            <div id="dept-sign-preview"
+              class="h-10 w-28 bg-gray-50 rounded-lg border border-gray-100 overflow-hidden
+                     flex items-center justify-center text-gray-300 text-xs flex-shrink-0">ลายเซ็น</div>
+            <label class="cursor-pointer">
+              <span class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium
+                           text-gray-600 hover:bg-gray-50 transition">เลือกรูป</span>
+              <input id="dept-sign-file" type="file" accept="image/*" class="hidden" />
+            </label>
+          </div>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="dept-modal-cancel"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+            ยกเลิก
+          </button>
+          <button id="dept-save-btn" type="submit"
+            class="btn-primary flex-1 py-2.5 rounded-xl text-white text-sm font-semibold">
+            บันทึก
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── Period Modal ───────────────────────────────────────────────────────── -->
+  <div id="period-modal" class="hidden fixed inset-0 z-50 items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="period-modal-backdrop"></div>
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-7 z-10">
+      <div class="flex items-center justify-between mb-6">
+        <h2 id="period-modal-title" class="text-lg font-bold text-gray-800">เพิ่มคาบเรียน</h2>
+        <button id="period-modal-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <form id="period-form" novalidate class="space-y-4">
+        <input type="hidden" id="period-id" />
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">คาบที่ <span class="text-red-400">*</span></label>
+          <input id="period-no" type="number" min="1" max="20" placeholder="1"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">เวลาเริ่ม</label>
+            <input id="period-start" type="time"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">เวลาสิ้นสุด</label>
+            <input id="period-end" type="time"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="period-modal-cancel"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+            ยกเลิก
+          </button>
+          <button id="period-save-btn" type="submit"
+            class="btn-primary flex-1 py-2.5 rounded-xl text-white text-sm font-semibold">
+            บันทึก
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── Subject Modal ──────────────────────────────────────────────────────── -->
+  <div id="subject-modal" class="hidden fixed inset-0 z-50 items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="subject-modal-backdrop"></div>
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg p-7 z-10 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-6">
+        <h2 id="subject-modal-title" class="text-lg font-bold text-gray-800">เพิ่มรายวิชา</h2>
+        <button id="subject-modal-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <form id="subject-form" novalidate class="space-y-4">
+        <input type="hidden" id="sub-id" />
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">รหัสวิชา</label>
+            <input id="sub-code" type="text" placeholder="เช่น ค21101"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">หน่วยกิต</label>
+            <input id="sub-credit" type="number" step="0.5" min="0" placeholder="1.0"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อวิชา <span class="text-red-400">*</span></label>
+          <input id="sub-name" type="text" placeholder="คณิตศาสตร์พื้นฐาน"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระ (dept)</label>
+            <input id="sub-dept" type="text" placeholder="MATH"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ชั้นปี</label>
+            <input id="sub-grade" type="text" placeholder="ม.4"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มทักษะ (Sheet)</label>
+            <select id="sub-skill-group" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white">
+              <option value="">— ไม่ระบุ —</option>
+              <option value="วิชาการ">วิชาการ (FL/FM/FP)</option>
+              <option value="ภาษา">ภาษา (EH-EV/EX-FE)</option>
+              <option value="ชีวิต">ชีวิต (EK-EV/EX-FE)</option>
+              <option value="ศาสนามัธยม">ศาสนามัธยม (EJ-EV/EX-FE)</option>
+              <option value="ศาสนาปวช">ศาสนาปวช (EJ-EV/EX-FE)</option>
+              <option value="สามัญปวช">สามัญปวช (EH-EQ)</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">สาระการเรียนรู้</label>
+          <input id="sub-learning-area" type="text" placeholder="เช่น จำนวนและพีชคณิต"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="subject-modal-cancel"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+            ยกเลิก
+          </button>
+          <button id="sub-save-btn" type="submit"
+            class="btn-primary flex-1 py-2.5 rounded-xl text-white text-sm font-semibold">
+            บันทึก
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts (ES Modules) -->
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

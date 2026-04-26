@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ.5 ออนไลน์ — ครูผู้สอน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body class="bg-gray-50 flex h-screen overflow-hidden">
+
+  <!-- ─── Sidebar ──────────────────────────────────────────────────────────── -->
+  <div id="sidebar-overlay" class="hidden fixed inset-0 z-[60] bg-black/50"></div>
+  <aside id="sidebar"
+    class="w-64 bg-emerald-900 text-white flex flex-col flex-shrink-0
+           fixed inset-y-0 left-0 z-[70] shadow-2xl
+           -translate-x-full md:translate-x-0
+           transition-transform duration-200">
+
+    <!-- App Header -->
+    <div class="px-4 py-4 border-b border-emerald-800 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <div id="school-logo-wrap" class="w-11 h-11 rounded-xl bg-emerald-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+          <img id="school-logo" src="" alt="" class="w-full h-full object-cover hidden"/>
+          <span id="school-logo-fallback" class="text-xl">🏫</span>
+        </div>
+        <div class="min-w-0">
+          <h2 class="text-sm font-bold tracking-tight leading-tight">ปพ.5 ออนไลน์</h2>
+          <p id="sidebar-term" class="text-[11px] text-emerald-300 truncate">—</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teacher Profile Mini (คลิกได้) -->
+    <div class="px-4 py-3 border-b border-emerald-800 flex items-center gap-3
+                cursor-pointer hover:bg-emerald-800 transition" onclick="window._navTo('profile')"
+         title="คลิกเพื่อแก้ไขโปรไฟล์">
+      <div id="t-avatar"
+        class="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-400
+               flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden">
+        ?
+      </div>
+      <div class="min-w-0">
+        <p id="t-name" class="text-sm font-semibold truncate">—</p>
+        <p id="t-code" class="text-xs text-emerald-300 truncate">—</p>
+      </div>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <p class="px-4 pt-1 pb-1 text-xs text-emerald-400 uppercase tracking-widest">รายวิชา</p>
+      <a href="#" data-nav="overview"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               bg-emerald-800 text-white">
+        <span>📊</span> ภาพรวม
+      </a>
+      <a href="#" data-nav="my-courses"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📖</span> คอร์สวิชาของฉัน
+      </a>
+      <a href="#" data-nav="my-classes"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏫</span> ห้องเรียนของฉัน
+      </a>
+
+      <!-- งานรายภาคเรียน (หัวข้อแสดงเสมอ, รายการแสดงตามบทบาท) -->
+      <div id="sem-work-section">
+        <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายภาคเรียน</p>
+        <a id="menu-life-skill" href="#" data-nav="life-skill-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🌱</span> บันทึกคะแนนทักษะชีวิต
+        </a>
+        <a id="menu-reading" href="#" data-nav="reading-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📖</span> บันทึกคะแนนอ่านคิดวิเคราะห์
+        </a>
+        <a id="menu-prayer" href="#" data-nav="prayer-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🕌</span> บันทึกคะแนนละหมาด
+        </a>
+      </div>
+
+      <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายวัน</p>
+      <a href="#" data-nav="attendance"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>✅</span> เช็คชื่อ
+      </a>
+      <a href="#" data-nav="grades"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📝</span> บันทึกคะแนน
+      </a>
+      <a href="#" data-nav="requests"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🔔</span> คำร้องนักเรียน
+        <span id="badge-requests" class="hidden ml-auto bg-red-500 text-white text-xs
+               rounded-full w-5 h-5 flex items-center justify-center font-bold">0</span>
+      </a>
+      <a href="#" data-nav="schedule"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🗓️</span> ตารางสอน
+      </a>
+    </nav>
+
+    <div class="p-3 border-t border-emerald-800 flex-shrink-0">
+      <button id="btn-logout"
+        class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm
+               font-medium text-emerald-200 hover:bg-red-500 hover:text-white transition">
+        🚪 ออกจากระบบ
+      </button>
+      <div class="mt-2 text-center">
+        <p class="text-[10px] text-emerald-600 leading-relaxed">
+          พัฒนาโดย <span class="text-emerald-400 font-medium">KruHambalWaji</span><br/>
+          ปพ.5 ออนไลน์ © 2026
+        </p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Main ─────────────────────────────────────────────────────────────── -->
+  <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden md:ml-64">
+
+    <header class="bg-white shadow-sm h-16 flex items-center justify-between px-5 z-20 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <button id="btn-menu" class="md:hidden text-gray-500 hover:text-emerald-600 text-xl p-1">☰</button>
+        <h1 id="page-title" class="text-lg font-bold text-gray-800">ภาพรวม</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="text-right hidden sm:block">
+          <p id="user-name" class="text-sm font-semibold text-gray-800">—</p>
+          <p class="text-xs text-emerald-500">ครูผู้สอน</p>
+        </div>
+        <div id="user-avatar"
+          class="w-9 h-9 bg-gradient-to-tr from-emerald-500 to-teal-500 text-white
+                 rounded-full flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
+          ?
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-5 sm:p-6">
+      <div id="main-content">
+        <!-- rendered by teacher-views.js -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script type="module" src="js/teacher.js"></script>
+</body>
+</html>
