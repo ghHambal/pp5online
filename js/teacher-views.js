@@ -3255,12 +3255,13 @@ export async function renderGradesGrid(teacher, classData) {
     </svg> กำลังโหลด...</div>`)
 
   try {
-    const [students, rawCols, scoreRows, midSheetOpts, finSheetOpts] = await Promise.all([
+    const [students, rawCols, scoreRows, midSheetOpts, finSheetOpts, regularSheetOpts] = await Promise.all([
       getClassStudents(classData.id),
       getScoreColumns(classData.id),
       getStudentScores(classData.id),
       getSheetColumnOptions(classData.id, 'กลางภาค'),
       getSheetColumnOptions(classData.id, 'ปลายภาค'),
+      getSheetColumnOptions(classData.id, 'ระหว่างเรียน'),
     ])
 
     let allCols = rawCols
@@ -3317,10 +3318,20 @@ export async function renderGradesGrid(teacher, classData) {
         data-toggle="${id}">${label}</button>`
 
     const _showSheetColPopup = (el, colId) => {
-      // หา assignment_type จริงของคอลัมน์นี้ ('midterm'|'final')
       const col = [...midCols, ...finalCols].find(c => c.id === colId)
       const isFinal = col?.assignment_type === 'final'
-      const cfg  = isFinal ? finSheetOpts : midSheetOpts   // { cols, isFixed }
+
+      // ตรวจชื่อคอลัมน์ว่าเป็นประเภทสอบหรือเปล่า
+      const kind = detectAssignmentKind(col?.assignment_name || '')
+      const isExam = kind === 'กลางภาค' || kind === 'ปลายภาค' || kind === 'สอบปรับ'
+
+      // ถ้าชื่อบ่งบอกว่าเป็นสอบ → ใช้ config กลางภาค/ปลายภาค (อาจ fixed)
+      // ถ้าไม่ใช่สอบ → ใช้ config ระหว่างเรียน (เลือกได้อิสระ)
+      let cfg
+      if (isExam && isFinal) cfg = finSheetOpts
+      else if (isExam && !isFinal) cfg = midSheetOpts
+      else cfg = regularSheetOpts.cols.length > 0 ? regularSheetOpts : (isFinal ? finSheetOpts : midSheetOpts)
+
       const opts = cfg.cols
       const isFixed = cfg.isFixed
       document.querySelectorAll('.sheet-col-popup').forEach(p=>p.remove())
