@@ -486,29 +486,61 @@ window.handleDeleteDept    = handleDeleteDept
 window.openPeriodModal     = openPeriodModal
 window.handleDeletePeriod  = handleDeletePeriod
 
-// ─── Admin: ดูตารางสอนของครู ──────────────────────────────────────────────────
+// ─── Admin: ดูตารางสอนของครู (Fullscreen Overlay) ────────────────────────────
 window._adminViewSchedule = async (teacherId, teacherName) => {
-  const { getSystemConfig, getMySchedule } = await import('./api.js')
+  document.getElementById('admin-sched-overlay')?.remove()
+
+  const { getSystemConfig } = await import('./api.js')
   const cfg  = await getSystemConfig().catch(()=>({}))
   const year = parseInt(cfg.academicYear ?? 2568)
   const sem  = parseInt(cfg.semester ?? 1)
 
-  // สร้าง teacher-like object สำหรับ renderScheduleGrid
-  const fakeTeacher = { id: teacherId, full_name: teacherName }
+  // สร้าง overlay เต็มจอ — แยกจาก admin DOM
+  const overlay = document.createElement('div')
+  overlay.id = 'admin-sched-overlay'
+  overlay.className = 'fixed inset-0 z-[200] bg-gray-50 flex flex-col'
+  overlay.innerHTML = `
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200 px-5 h-14 flex items-center gap-4 flex-shrink-0 shadow-sm">
+      <button id="aso-close"
+        class="flex items-center gap-2 text-sm text-gray-500 hover:text-indigo-600 font-medium transition">
+        ← กลับ
+      </button>
+      <div class="w-px h-5 bg-gray-200"></div>
+      <div>
+        <p class="text-sm font-bold text-gray-800">🗓️ ตารางสอน — ${teacherName}</p>
+        <p class="text-xs text-gray-400">ภาค ${sem} / ${year} · แก้ไขได้</p>
+      </div>
+    </div>
+    <!-- Content -->
+    <div id="aso-content" class="flex-1 overflow-y-auto p-5">
+      <div class="flex justify-center py-12 text-gray-400">
+        <svg class="animate-spin h-6 w-6 mr-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        กำลังโหลดตารางสอน...
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
 
-  document.getElementById('page-title').textContent = `ตารางสอน — ${teacherName}`
-  document.querySelectorAll('[data-nav]').forEach(l => l.classList.remove('bg-indigo-800','text-white'))
+  overlay.querySelector('#aso-close').addEventListener('click', () => overlay.remove())
 
-  await renderScheduleGrid(fakeTeacher, year, sem, cfg)
+  // Override setContent ชั่วคราวให้ render ใน #aso-content แทน #main-content
+  const asoContent = overlay.querySelector('#aso-content')
+  const origMainContent = document.getElementById('main-content')
 
-  // เพิ่มปุ่มกลับ
-  const main = document.getElementById('main-content')
-  if (main) {
-    const backBtn = document.createElement('button')
-    backBtn.className = 'mt-4 text-sm text-gray-500 hover:text-indigo-600'
-    backBtn.textContent = '← กลับหน้าครู'
-    backBtn.addEventListener('click', () => renderTeachers())
-    main.insertBefore(backBtn, main.firstChild)
+  // Swap: ทำให้ renderScheduleGrid คิดว่า #main-content คือ asoContent
+  if (origMainContent) origMainContent.id = 'main-content-bak'
+  asoContent.id = 'main-content'
+
+  try {
+    const fakeTeacher = { id: teacherId, full_name: teacherName }
+    await renderScheduleGrid(fakeTeacher, year, sem, cfg)
+  } finally {
+    // Restore
+    asoContent.id = 'aso-content'
+    if (origMainContent) origMainContent.id = 'main-content'
   }
 }
 
