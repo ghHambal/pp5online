@@ -918,6 +918,10 @@ export async function renderSettings() {
         { key: 'geminiApiKey',         label: 'Gemini API Key',                       type: 'password' },
         { key: 'geminiModel',          label: 'Gemini Model',                         type: 'text' },
       ]},
+      { label: '🌱 คะแนนทักษะชีวิต', keys: [
+        { key: 'lifeSkillSheetId', label: 'Google Sheet ID (กลาง สำหรับ Sync คะแนนทักษะชีวิต)',
+          type: 'text' },
+      ]},
     ]
 
     const fieldHTML = ({ key, label, type, options }) => {

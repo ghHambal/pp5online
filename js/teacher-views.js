@@ -1142,6 +1142,18 @@ export async function renderClassForm(teacher, course) {
           <select id="cls-head" class="${SELECT_CLS}">
             <option value="">— เลือกหัวหน้าห้อง —</option>
           </select>
+          <!-- Card แสดงหัวหน้าห้องที่เลือก -->
+          <div id="cls-head-card" class="hidden mt-2 flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+            <div id="cls-head-avatar" class="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center text-gray-400">
+              👤
+            </div>
+            <div class="min-w-0">
+              <p id="cls-head-name" class="font-semibold text-emerald-900 text-sm truncate"></p>
+              <p id="cls-head-code" class="text-xs text-emerald-600 font-mono mt-0.5"></p>
+              <p id="cls-head-room" class="text-xs text-gray-400 mt-0.5"></p>
+            </div>
+            <span class="ml-auto text-emerald-500 text-lg flex-shrink-0">✓</span>
+          </div>
         </div>
         <!-- วันสอน 6 คาบแรก -->
         <div>
@@ -1231,42 +1243,113 @@ export async function renderClassForm(teacher, course) {
       // head student options
       const headSel = document.getElementById('cls-head')
       headSel.innerHTML = '<option value="">— เลือกหัวหน้าห้อง —</option>' +
-        _students.map(s=>`<option value="${s.id}">${s.full_name} (${s.student_code})</option>`).join('')
+        _students.map(s=>`<option value="${s.id}" data-code="${s.student_code}" data-room="${s.main_room??''}" data-img="${s.image_url??''}">${s.full_name} (${s.student_code})</option>`).join('')
       document.getElementById('cls-students-section').classList.remove('hidden')
       document.getElementById('cls-head-section').classList.remove('hidden')
+
+      // Card แสดงหัวหน้าห้องเมื่อเลือก
+      const _updateHeadCard = () => {
+        const opt  = headSel.options[headSel.selectedIndex]
+        const card = document.getElementById('cls-head-card')
+        if (!opt || !opt.value) { card?.classList.add('hidden'); return }
+        const name = opt.text.split(' (')[0]
+        const code = opt.dataset.code ?? ''
+        const room = opt.dataset.room ?? ''
+        const img  = opt.dataset.img ?? ''
+        document.getElementById('cls-head-name').textContent = name
+        document.getElementById('cls-head-code').textContent = `รหัส: ${code}`
+        document.getElementById('cls-head-room').textContent = room ? `ห้อง: ${room}` : ''
+        const avatarEl = document.getElementById('cls-head-avatar')
+        avatarEl.innerHTML = img
+          ? `<img src="${img}" class="w-full h-full object-cover" />`
+          : `<div class="w-full h-full flex items-center justify-center bg-gradient-to-tr from-emerald-200 to-teal-200 text-emerald-700 font-bold text-lg">${name.charAt(0)}</div>`
+        card?.classList.remove('hidden')
+      }
+      headSel.addEventListener('change', _updateHeadCard)
     } catch { showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ','error') }
   })
 
-  // ─── Auto-calculate dates จากตารางสอน ────────────────────────────────────
+  // ─── Auto-calculate dates — Popup เลือกวิชาจากตารางสอน ──────────────────
   document.getElementById('btn-auto-dates')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-auto-dates')
+    const btn   = document.getElementById('btn-auto-dates')
     const infoEl = document.getElementById('auto-dates-info')
-    btn.textContent = '⏳ กำลังดึงตาราง...'
-    btn.disabled = true
+    btn.textContent = '⏳ กำลังดึงตาราง...'; btn.disabled = true
     try {
       const curYear = parseInt(termCfg.academicYear ?? 2568)
       const curSem  = parseInt(termCfg.semester ?? 1)
       const sched   = teacher ? await getMySchedule(teacher.id, curYear, curSem).catch(()=>[]) : []
-      // กรองเฉพาะ entries ของวิชานี้
-      const entries = sched.filter(e => e.subject_id === course.id)
-      if (!entries.length) {
-        infoEl.textContent = '⚠️ ยังไม่มีตารางสอนสำหรับวิชานี้ — กรุณากรอกวันเอง'
+
+      if (!sched.length) {
+        infoEl.textContent = '⚠️ ยังไม่มีตารางสอน — กรุณากรอกวันเอง'
         infoEl.classList.remove('hidden'); return
       }
-      const dates = _calcSixPeriodDates(entries, termStart)
-      const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ']
-      dates.forEach((d, i) => {
-        const el = document.getElementById(`cls-day${i+1}`)
-        if (el) el.value = d.toISOString().slice(0,10)
+
+      // จัดกลุ่ม entries ตามวิชา+ห้อง
+      const groups = {}
+      sched.forEach(e => {
+        const key  = `${e.subject_name ?? e.master_subjects?.subject_name ?? '?'}|${e.class_name ?? ''}`
+        if (!groups[key]) groups[key] = { label: `${e.subject_name ?? e.master_subjects?.subject_name ?? '?'}${e.class_name ? ` — ${e.class_name}` : ''}`, entries: [] }
+        groups[key].entries.push(e)
       })
-      infoEl.textContent = `✅ คำนวณจาก ${entries.length} ช่องตาราง — ตรวจสอบแล้วแก้ไขได้`
-      infoEl.classList.remove('hidden')
+
+      const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ']
+      const _descEntries = (entries) => {
+        const expanded = []
+        entries.forEach(e => { for (let i=0;i<(e.span_periods??1);i++) expanded.push({dow:e.day_of_week,pno:(e.period_no??0)+i}) })
+        expanded.sort((a,b)=>a.dow!==b.dow?a.dow-b.dow:a.pno-b.pno)
+        const byDay = {}
+        expanded.forEach(p => { if(!byDay[p.dow]) byDay[p.dow]=[]; byDay[p.dow].push(p.pno) })
+        return Object.entries(byDay).map(([d,ps])=>`${DAY_TH[d]} คาบ ${ps.join(',')}`).join(' · ')
+      }
+
+      // แสดง popup เลือกวิชา
+      const wrap = document.createElement('div')
+      wrap.id = 'dates-popup'
+      wrap.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+      wrap.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 class="font-bold text-gray-800">🗓️ เลือกวิชาจากตารางสอน</h3>
+            <button id="dates-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
+          <div class="px-5 py-4 space-y-2 max-h-72 overflow-y-auto">
+            <p class="text-xs text-gray-400 mb-3">เลือกวิชาที่ต้องการคำนวณวัน 6 คาบแรก</p>
+            ${Object.entries(groups).map(([key, g]) => `
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer transition">
+              <input type="radio" name="dates-subj" value="${key}" class="mt-0.5 text-indigo-600 flex-shrink-0" />
+              <div>
+                <p class="text-sm font-medium text-gray-800">${g.label}</p>
+                <p class="text-xs text-gray-400 mt-0.5">${_descEntries(g.entries)}</p>
+              </div>
+            </label>`).join('')}
+          </div>
+          <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex gap-3">
+            <button id="dates-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+            <button id="dates-calc" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">คำนวณ</button>
+          </div>
+        </div>`
+      document.body.appendChild(wrap)
+      wrap.querySelector('#dates-close').addEventListener('click', () => wrap.remove())
+      wrap.querySelector('#dates-cancel').addEventListener('click', () => wrap.remove())
+
+      wrap.querySelector('#dates-calc').addEventListener('click', () => {
+        const key = wrap.querySelector('input[name="dates-subj"]:checked')?.value
+        if (!key) { alert('กรุณาเลือกวิชาก่อน'); return }
+        wrap.remove()
+        const entries = groups[key].entries
+        const dates   = _calcSixPeriodDates(entries, termStart)
+        dates.forEach((d, i) => {
+          const el = document.getElementById(`cls-day${i+1}`)
+          if (el) el.value = d.toISOString().slice(0,10)
+        })
+        infoEl.textContent = `✅ คำนวณจาก "${groups[key].label}" — ${entries.length} ช่องตาราง — ตรวจสอบแล้วแก้ไขได้`
+        infoEl.classList.remove('hidden')
+      })
     } catch (err) {
       infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message ?? '')
       infoEl.classList.remove('hidden')
     } finally {
-      btn.textContent = '🗓️ คำนวณจากตารางสอน'
-      btn.disabled = false
+      btn.textContent = '🗓️ คำนวณจากตารางสอน'; btn.disabled = false
     }
   })
 
@@ -1399,7 +1482,10 @@ export async function renderMyClasses(teacher) {
       const cls = window._classCache?.[classId]
       if (cls) renderGradesGrid(teacher, cls)
     }
-    window._openScoreCols  = (classId, className) => renderScoreColumns(teacher, classId, className)
+    window._openScoreCols  = (classId, className) => {
+      const cls = window._classCache?.[classId]
+      renderScoreColumns(teacher, classId, className, cls)
+    }
     window._editClass = (classId) => {
       const c = window._classCache?.[classId]
       if (c) renderClassEditForm(teacher, c)
@@ -1427,9 +1513,10 @@ const TYPE_COLOR  = {
   'คะแนนพิเศษ':   'bg-purple-50 text-purple-700',
 }
 
-export async function renderScoreColumns(teacher, classId, className) {
+export async function renderScoreColumns(teacher, classId, className, classData = null) {
   setActiveNav('my-classes')
   setTitle(`คอลัมน์คะแนน — ${className}`)
+  const isLifeSkill = (classData?.skill_group ?? classData?.master_subjects?.skill_group ?? '') === 'ชีวิต'
   const _reload = async () => {
     const cols = await getScoreColumns(classId)
     window._scoreColCache = Object.fromEntries(cols.map(c => [c.id, c]))
@@ -1582,13 +1669,18 @@ export async function renderScoreColumns(teacher, classId, className) {
     })
   }
   setContent(`<div class="max-w-3xl mx-auto animate-fade">
-    <div class="flex items-center gap-3 mb-5">
+    <div class="flex items-center gap-3 mb-5 flex-wrap">
       <button onclick="window._navTo?.('my-classes') || history.back()"
         class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
-      <div>
+      <div class="flex-1 min-w-0">
         <h2 class="text-lg font-bold text-gray-800">คอลัมน์คะแนน</h2>
         <p class="text-xs text-gray-400">${className} — ระบุตำแหน่งคอลัมน์ใน Google Sheet</p>
       </div>
+      ${isLifeSkill ? `
+      <button id="btn-fill-lifeskill"
+        class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition flex-shrink-0">
+        🌱 เติมคะแนนทักษะชีวิต
+      </button>` : ''}
     </div>
     <div id="sc-content"><div class="flex justify-center py-8 text-gray-400">
       <svg class="animate-spin h-5 w-5 mr-2 text-amber-400" viewBox="0 0 24 24" fill="none">
@@ -1598,6 +1690,43 @@ export async function renderScoreColumns(teacher, classId, className) {
     </div></div>
   </div>`)
   await _reload()
+
+  // ─── Auto-fill คอลัมน์ทักษะชีวิต (เฉพาะห้อง skill_group = 'ชีวิต') ─────────
+  document.getElementById('btn-fill-lifeskill')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-fill-lifeskill')
+    btn.disabled = true; btn.textContent = '⏳ กำลังเติม...'
+    try {
+      const cfg  = await getSystemConfig().catch(()=>({}))
+      const year = parseInt(cfg.academicYear ?? 2568)
+      const sem  = parseInt(cfg.semester ?? 1)
+      const lsCols = await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])
+      if (!lsCols.length) { showToast('ยังไม่มีหัวข้อทักษะชีวิต — ให้แอดมินเพิ่มก่อน', 'warning'); return }
+
+      // ตรวจว่ามีคอลัมน์กลางภาคอยู่แล้วไหม (ไม่ duplicate)
+      const existing = await getScoreColumns(classId)
+      const existingNames = new Set(existing.filter(c => c.assignment_type === 'กลางภาค').map(c => c.assignment_name))
+
+      let added = 0
+      for (const col of lsCols) {
+        if (existingNames.has(col.name)) continue
+        await createScoreColumn({
+          class_id:        classId,
+          assignment_name: col.name,
+          assignment_type: 'กลางภาค',
+          sheet_column:    col.sheet_col ?? '',
+          max_score:       col.max_score ?? 20,
+        })
+        added++
+      }
+      showToast(added > 0 ? `เพิ่ม ${added} คอลัมน์สำเร็จ ✅` : 'มีคอลัมน์ทักษะชีวิตอยู่แล้ว', added > 0 ? 'success' : 'info')
+      await _reload()
+    } catch (err) {
+      showToast('เติมไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally {
+      const b = document.getElementById('btn-fill-lifeskill')
+      if (b) { b.disabled = false; b.textContent = '🌱 เติมคะแนนทักษะชีวิต' }
+    }
+  })
 
 }
 
