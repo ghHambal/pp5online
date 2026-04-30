@@ -4,7 +4,8 @@
       "Bash(grep -c \"^$\" /Users/admin/pp5-online/js/teacher-views.js)",
       "Bash(python3)",
       "Bash(python3 -c ' *)",
-      "Bash(grep -n \"const val = scoreMap\\\\|value=\\\\\"\\\\${val}\\\\\"\" /Users/admin/pp5-online/js/teacher-views.js)"
+      "Bash(grep -n \"const val = scoreMap\\\\|value=\\\\\"\\\\${val}\\\\\"\" /Users/admin/pp5-online/js/teacher-views.js)",
+      "Bash(npx vite *)"
     ]
   }
 }

@@ -23,27 +23,29 @@ async function requireAuth() {
 
 // ─── Load user info (profiles ใหม่ไม่มี full_name → ดึงจาก teachers) ─────────
 async function loadUserProfile(userId) {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, user_code')
-    .eq('id', userId)
-    .maybeSingle()
-
-  let name = 'ผู้ใช้งาน'
-
-  if (profile?.role === 'teacher' || profile?.role === 'admin') {
-    const { data: teacher } = await supabase
-      .from('teachers')
-      .select('full_name')
-      .eq('profile_id', userId)
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, user_code')
+      .eq('id', userId)
       .maybeSingle()
-    name = teacher?.full_name ?? profile?.user_code ?? 'ผู้ใช้งาน'
-  }
 
-  const roleLabel = profile?.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ครูผู้สอน'
-  document.getElementById('user-name').textContent   = name
-  document.getElementById('user-role').textContent   = roleLabel
-  document.getElementById('user-avatar').textContent = name.charAt(0).toUpperCase()
+    let name = 'ผู้ใช้งาน'
+
+    if (profile?.role === 'teacher' || profile?.role === 'admin') {
+      const { data: teacher } = await supabase
+        .from('teachers')
+        .select('full_name')
+        .eq('profile_id', userId)
+        .maybeSingle()
+      name = teacher?.full_name ?? profile?.user_code ?? 'ผู้ใช้งาน'
+    }
+
+    const roleLabel = profile?.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ครูผู้สอน'
+    document.getElementById('user-name').textContent   = name
+    document.getElementById('user-role').textContent   = roleLabel
+    document.getElementById('user-avatar').textContent = name.charAt(0).toUpperCase()
+  } catch { /* ไม่ block init */ }
 }
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
@@ -224,8 +226,8 @@ export async function handleDeleteSubject(id, name) {
 // ─── Department Modal ─────────────────────────────────────────────────────────
 export async function openDeptModal(id = null) {
   const modal = document.getElementById('dept-modal')
-  ;['dept-id','dept-code','dept-name','dept-teacher-code','dept-photo-url','dept-sign-url']
-    .forEach(i => { document.getElementById(i).value = '' })
+  ;['dept-id','dept-code','dept-name','dept-teacher-code','dept-photo-url','dept-sign-url','dept-category']
+    .forEach(i => { const el = document.getElementById(i); if (el) el.value = '' })
   document.getElementById('dept-photo-preview').innerHTML      = '👤'
   document.getElementById('dept-sign-preview').innerHTML       = 'ลายเซ็น'
   document.getElementById('dept-teacher-search').value         = ''
@@ -321,6 +323,8 @@ export async function openDeptModal(id = null) {
         document.getElementById('dept-teacher-code').value = d.teacher_code   ?? ''
         document.getElementById('dept-photo-url').value     = d.head_photo_url ?? ''
         document.getElementById('dept-sign-url').value      = d.head_sign_url  ?? ''
+        const catEl = document.getElementById('dept-category')
+        if (catEl) catEl.value = d.category ?? ''
         if (d.teacher_code) {
           const t = allTeachers.find(x => x.teacher_code === d.teacher_code)
           if (t) _selectTeacher(t)
@@ -364,6 +368,7 @@ async function handleDeptFormSubmit(e) {
       teacher_code:   teacherCode,
       head_photo_url: document.getElementById('dept-photo-url').value || null,
       head_sign_url:  document.getElementById('dept-sign-url').value  || null,
+      category:       document.getElementById('dept-category')?.value || null,
     }
 
     // upload รูปโปรไฟล์
@@ -485,6 +490,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   const session = await requireAuth()
   if (!session) return
 
+  document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
+
+  // Teacher modal
+  document.getElementById('modal-close')?.addEventListener('click', closeTeacherModal)
+  document.getElementById('modal-backdrop')?.addEventListener('click', closeTeacherModal)
+  document.getElementById('teacher-form')?.addEventListener('submit', handleTeacherFormSubmit)
+  document.getElementById('modal-photo-file')?.addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return
+    _updateAvatarPreview(URL.createObjectURL(file), '')
+  })
+
+  // Dept modal
+  document.getElementById('dept-modal-close')?.addEventListener('click', closeDeptModal)
+  document.getElementById('dept-modal-backdrop')?.addEventListener('click', closeDeptModal)
+  document.getElementById('dept-modal-cancel')?.addEventListener('click', closeDeptModal)
+  document.getElementById('dept-form')?.addEventListener('submit', handleDeptFormSubmit)
+  document.getElementById('dept-photo-file')?.addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return
+    document.getElementById('dept-photo-preview').innerHTML =
+      `<img src="${URL.createObjectURL(f)}" class="w-full h-full object-cover" />`
+  })
+  document.getElementById('dept-sign-file')?.addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return
+    document.getElementById('dept-sign-preview').innerHTML =
+      `<img src="${URL.createObjectURL(f)}" class="w-full h-full object-contain" />`
+  })
+
+  // Period modal
+  document.getElementById('period-modal-close')?.addEventListener('click', closePeriodModal)
+  document.getElementById('period-modal-backdrop')?.addEventListener('click', closePeriodModal)
+  document.getElementById('period-modal-cancel')?.addEventListener('click', closePeriodModal)
+  document.getElementById('period-form')?.addEventListener('submit', handlePeriodFormSubmit)
+
   await loadUserProfile(session.user.id)
 
   const routes = {
@@ -509,63 +547,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault()
       const view = link.dataset.nav
       if (routes[view]) routes[view]()
+      // ปิด sidebar บน mobile หลังคลิก nav item
+      document.getElementById('sidebar')?.classList.add('-translate-x-full')
+      document.getElementById('sidebar-overlay')?.classList.add('hidden')
     })
   })
-
-  const sidebar = document.getElementById('sidebar')
-  const overlay = document.getElementById('sidebar-overlay')
-  document.getElementById('btn-menu')?.addEventListener('click', () => {
-    sidebar.classList.toggle('-translate-x-full')
-    overlay.classList.toggle('hidden')
-  })
-  overlay?.addEventListener('click', () => {
-    sidebar.classList.add('-translate-x-full')
-    overlay.classList.add('hidden')
-  })
-
-  document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 
   // โหลด badge จำนวน pending payments
   _loadPaymentBadge()
   setInterval(_loadPaymentBadge, 60000) // refresh ทุก 1 นาที
-
-  // Teacher modal
-  document.getElementById('modal-close')?.addEventListener('click', closeTeacherModal)
-  document.getElementById('modal-backdrop')?.addEventListener('click', closeTeacherModal)
-  document.getElementById('teacher-form')?.addEventListener('submit', handleTeacherFormSubmit)
-
-  // Teacher photo upload — preview ทันที, upload จริงตอนกด save
-  document.getElementById('modal-photo-file')?.addEventListener('change', e => {
-    const file = e.target.files[0]
-    if (!file) return
-    const url = URL.createObjectURL(file)
-    _updateAvatarPreview(url, '')
-  })
-
-  // Subject modal
-  // subject modal เก่าถูกแทนที่ด้วย renderCourseForm แล้ว
-
-  // Dept modal — preview รูป/ลายเซ็น
-  document.getElementById('dept-modal-close')?.addEventListener('click', closeDeptModal)
-  document.getElementById('dept-modal-backdrop')?.addEventListener('click', closeDeptModal)
-  document.getElementById('dept-modal-cancel')?.addEventListener('click', closeDeptModal)
-  document.getElementById('dept-form')?.addEventListener('submit', handleDeptFormSubmit)
-  document.getElementById('dept-photo-file')?.addEventListener('change', e => {
-    const f = e.target.files[0]; if (!f) return
-    document.getElementById('dept-photo-preview').innerHTML =
-      `<img src="${URL.createObjectURL(f)}" class="w-full h-full object-cover" />`
-  })
-  document.getElementById('dept-sign-file')?.addEventListener('change', e => {
-    const f = e.target.files[0]; if (!f) return
-    document.getElementById('dept-sign-preview').innerHTML =
-      `<img src="${URL.createObjectURL(f)}" class="w-full h-full object-contain" />`
-  })
-
-  // Period modal
-  document.getElementById('period-modal-close')?.addEventListener('click', closePeriodModal)
-  document.getElementById('period-modal-backdrop')?.addEventListener('click', closePeriodModal)
-  document.getElementById('period-modal-cancel')?.addEventListener('click', closePeriodModal)
-  document.getElementById('period-form')?.addEventListener('submit', handlePeriodFormSubmit)
 
   showPageLoader(false)
   window._adminNav = (view) => { if (routes[view]) routes[view]() }

@@ -7,8 +7,13 @@ async function checkSession() {
   const { data: { session } } = await supabase.auth.getSession()
 
   if (session) {
-    // Already logged in → redirect to dashboard
-    window.location.href = 'dashboard.html'
+    // เช็ค role ก่อน redirect — ครูไปหน้าครู, แอดมินไปหน้าแอดมิน
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single()
+    window.location.href = profile?.role === 'admin' ? 'dashboard.html' : 'teacher.html'
   } else {
     showPageLoader(false)
   }

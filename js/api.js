@@ -152,7 +152,7 @@ export async function getClasses() {
     .select(`
       id, class_name, skill_group, google_sheet_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( subject_code, subject_name, dept )
+      master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit )
     `)
     .order('class_name')
   if (error) throw error
@@ -167,6 +167,16 @@ export async function getStudents() {
     .order('student_code')
   if (error) throw error
   return data ?? []
+}
+
+export async function updateStudent(id, payload) {
+  const { error } = await supabase.from('students').update(payload).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteStudent(id) {
+  const { error } = await supabase.from('students').delete().eq('id', id)
+  if (error) throw error
 }
 
 // ─── Homeroom Teachers ────────────────────────────────────────────────────────
@@ -490,6 +500,7 @@ export async function getDepartments() {
     .from('departments')
     .select('id, dept_code, dept_name, head_name, head_photo_url, head_sign_url, teacher_code')
     .order('dept_code')
+  // NOTE: เพิ่ม category ใน SELECT หลังจากรัน patch_departments_category.sql แล้ว
   if (error) throw error
   return data ?? []
 }
@@ -729,4 +740,58 @@ export async function getSlipSignedUrl(path) {
     .createSignedUrl(path, 3600)
   if (error) throw error
   return data.signedUrl
+}
+
+// ─── Teacher Schedules ────────────────────────────────────────────────────────
+export async function getMySchedule(teacherId, academicYear, semester) {
+  const { data, error } = await supabase
+    .from('teacher_schedules')
+    .select('id, day_of_week, period_no, span_periods, note, subject_id, subject_name, class_name, teacher_name, master_subjects(subject_name, subject_code)')
+    .eq('teacher_id', teacherId)
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+    .order('day_of_week').order('period_no')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertScheduleEntry(payload) {
+  const { error } = await supabase
+    .from('teacher_schedules')
+    .upsert(payload, { onConflict: 'teacher_id,day_of_week,period_no,academic_year,semester' })
+  if (error) throw error
+}
+
+export async function deleteScheduleEntry(id) {
+  const { error } = await supabase.from('teacher_schedules').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteScheduleByTeacher(teacherId, academicYear, semester) {
+  const { error } = await supabase.from('teacher_schedules')
+    .delete()
+    .eq('teacher_id', teacherId)
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+  if (error) throw error
+}
+
+// ─── Friday Periods ───────────────────────────────────────────────────────────
+export async function getPeriodsByType(dayType = 'regular') {
+  const { data, error } = await supabase
+    .from('school_periods')
+    .select('id, period_no, start_time, end_time, day_type')
+    .eq('day_type', dayType)
+    .order('period_no')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getAllPeriods() {
+  const { data, error } = await supabase
+    .from('school_periods')
+    .select('id, period_no, start_time, end_time, day_type')
+    .order('day_type').order('period_no')
+  if (error) throw error
+  return data ?? []
 }

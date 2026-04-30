@@ -2,6 +2,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getSystemConfig, updateSystemConfig, getMasterSubjects,
          getDepartments, getPeriods, createSubject,
          updateClass, deleteClass,
+         updateStudent, deleteStudent,
          getHomeroomTeachers, upsertHomeroomTeacher, deleteHomeroomTeacher,
          getScoreColumnConfig, upsertScoreColumnConfig,
          getUniqueRooms, unlinkTeacherAccount,
@@ -560,13 +561,14 @@ export async function renderClasses() {
       </div>`
       return
     }
-    el.innerHTML = `<table class="w-full text-sm">
+    el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm">
       <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
         <tr>
           <th class="px-5 py-3 text-left">ห้องเรียน</th>
           <th class="px-5 py-3 text-left hidden sm:table-cell">วิชา</th>
           <th class="px-5 py-3 text-left hidden md:table-cell">กลุ่มทักษะ</th>
           <th class="px-5 py-3 text-left hidden lg:table-cell">Google Sheet</th>
+          <th class="px-5 py-3 text-right">จัดการ</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
@@ -584,9 +586,31 @@ export async function renderClasses() {
           <td class="px-5 py-4 text-xs text-gray-400 hidden lg:table-cell font-mono">
             ${c.google_sheet_id ? `<span class="truncate block max-w-[160px]">${c.google_sheet_id}</span>` : '—'}
           </td>
+          <td class="px-5 py-4 text-right whitespace-nowrap">
+            <button onclick="window._adminEditClass(${c.id})"
+              class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
+            <button onclick="window._adminDeleteClass(${c.id},'${(c.class_name??'').replace(/'/g,'')}')"
+              class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>
+          </td>
         </tr>`).join('')}
       </tbody>
-    </table>`
+    </table></div>`
+
+    // cache classes for edit
+    window._adminClassCache = Object.fromEntries(classes.map(c=>[c.id,c]))
+
+    window._adminEditClass = (id) => {
+      const cls = window._adminClassCache?.[id]
+      if (cls) renderClassEditForm(null, cls)
+    }
+    window._adminDeleteClass = async (id, name) => {
+      if (!confirm(`ยืนยันลบห้องเรียน "${name}"?\nข้อมูลนักเรียน เช็คชื่อ และคะแนนในห้องนี้จะถูกลบด้วย`)) return
+      try {
+        await deleteClass(id)
+        showToast(`ลบห้องเรียน "${name}" แล้ว`, 'success')
+        renderClasses()
+      } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+    }
   } catch {
     showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ', 'error')
   }
@@ -644,6 +668,9 @@ export async function renderStudents() {
       </div>
     </div>`)
 
+    // cache all students
+    let studentCache = Object.fromEntries(all.map(s=>[s.id,s]))
+
     const _renderTable = (rows) => {
       const el = document.getElementById('student-table-wrap')
       document.getElementById('sf-count').textContent = rows.length
@@ -659,6 +686,7 @@ export async function renderStudents() {
             <th class="px-4 py-3 text-center">ชั้นสามัญ</th>
             <th class="px-4 py-3 text-center hidden sm:table-cell">ชั้นศาสนา</th>
             <th class="px-4 py-3 text-center hidden md:table-cell">เพศ</th>
+            <th class="px-4 py-3 text-right">จัดการ</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
@@ -684,9 +712,116 @@ export async function renderStudents() {
                 : '<span class="text-gray-300">—</span>'}
             </td>
             <td class="px-4 py-3 text-center text-xs hidden md:table-cell text-gray-500">${s.gender??'—'}</td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <button onclick="window._editStudent(${s.id})"
+                class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
+              <button onclick="window._deleteStudent(${s.id},'${(s.full_name??'').replace(/'/g,'')}')"
+                class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>
+            </td>
           </tr>`).join('')}
         </tbody>
       </table></div>`
+    }
+
+    // student CRUD handlers
+    window._deleteStudent = async (id, name) => {
+      if (!confirm(`ยืนยันลบนักเรียน "${name}"?\nข้อมูลเช็คชื่อและคะแนนของนักเรียนคนนี้จะถูกลบด้วย`)) return
+      try {
+        await deleteStudent(id)
+        delete studentCache[id]
+        all.splice(all.findIndex(s=>s.id===id), 1)
+        showToast(`ลบ "${name}" แล้ว`, 'success')
+        _filter()
+      } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+    }
+
+    window._editStudent = (id) => {
+      const s = studentCache[id]; if (!s) return
+      _openStudentModal(s, async (payload) => {
+        await updateStudent(id, payload)
+        Object.assign(s, payload)
+        studentCache[id] = s
+        _filter()
+      })
+    }
+
+    function _openStudentModal(s, onSave) {
+      document.getElementById('stu-modal')?.remove()
+      const m = document.createElement('div')
+      m.id = 'stu-modal'
+      m.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+      m.innerHTML = `
+        <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[95vh]">
+          <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+            <h3 class="font-bold text-gray-800">แก้ไขข้อมูลนักเรียน</h3>
+            <button id="stu-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
+          <div class="overflow-auto flex-1 px-5 py-4">
+            <form id="stu-form" class="space-y-4">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">รหัสนักเรียน</label>
+                  <input id="sf-code" type="text" value="${s.student_code??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">เพศ</label>
+                  <select id="sf-gender-val" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full bg-white">
+                    <option value="">—</option>
+                    <option value="ชาย" ${s.gender==='ชาย'?'selected':''}>ชาย</option>
+                    <option value="หญิง" ${s.gender==='หญิง'?'selected':''}>หญิง</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label>
+                <input id="sf-name" type="text" value="${s.full_name??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">ห้องสามัญ</label>
+                  <input id="sf-main-room" type="text" value="${s.main_room??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">ห้องศาสนา</label>
+                  <input id="sf-rel-room" type="text" value="${s.religion_room??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
+                </div>
+              </div>
+              <div class="flex gap-3 pt-2">
+                <button type="button" id="stu-cancel"
+                  class="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+                  ยกเลิก
+                </button>
+                <button id="stu-save" type="submit"
+                  class="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
+                  บันทึก
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>`
+      document.body.appendChild(m)
+      m.querySelector('#stu-close').addEventListener('click', ()=>m.remove())
+      m.querySelector('#stu-cancel').addEventListener('click', ()=>m.remove())
+      m.addEventListener('click', e=>{ if(e.target===m) m.remove() })
+      m.querySelector('#stu-form').addEventListener('submit', async e => {
+        e.preventDefault()
+        const btn = m.querySelector('#stu-save')
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+        try {
+          const payload = {
+            student_code:  m.querySelector('#sf-code').value.trim() || null,
+            full_name:     m.querySelector('#sf-name').value.trim() || null,
+            main_room:     m.querySelector('#sf-main-room').value.trim() || null,
+            religion_room: m.querySelector('#sf-rel-room').value.trim() || null,
+            gender:        m.querySelector('#sf-gender-val').value || null,
+          }
+          await onSave(payload)
+          showToast('บันทึกสำเร็จ', 'success')
+          m.remove()
+        } catch (err) {
+          showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+        } finally { btn.disabled = false; btn.textContent = 'บันทึก' }
+      })
     }
 
     _renderTable(all)
@@ -766,6 +901,19 @@ export async function renderSettings() {
         { key: 'paymentQrUrl',        label: 'QR Code PromptPay',             type: 'upload' },
         { key: 'paymentNote',         label: 'หมายเหตุ (เช่น เวลาทำการ)',     type: 'text' },
       ]},
+      { label: '📦 แพ็กเกจและโควตา', keys: [
+        { key: 'freeClassQuota',      label: 'โควตาห้องเรียนฟรี (ห้อง)',       type: 'text' },
+        { key: 'pricePerClass',       label: 'ราคาเพิ่มรายห้อง (บาท)',         type: 'text' },
+        { key: 'priceSemester',       label: 'ราคาแพ็กเกจเหมาทั้งเทอม (บาท)', type: 'text' },
+        { key: 'pkgPerClassDesc',     label: 'คำอธิบายแพ็กเกจรายห้อง',        type: 'text' },
+        { key: 'pkgSemesterDesc',     label: 'คำอธิบายแพ็กเกจเหมาทั้งเทอม',  type: 'text' },
+      ]},
+      { label: '🗓️ ตารางสอน', keys: [
+        { key: 'hasFriday',            label: 'เปิดวันศุกร์ (เฉพาะครูห้องโปรแกรม)', type: 'toggle' },
+        { key: 'scheduleVisionEnabled',label: 'เปิดฟีเจอร์วิเคราะห์รูปตาราง (AI)',   type: 'toggle' },
+        { key: 'geminiApiKey',         label: 'Gemini API Key',                       type: 'password' },
+        { key: 'geminiModel',          label: 'Gemini Model',                         type: 'text' },
+      ]},
     ]
 
     const fieldHTML = ({ key, label, type, options }) => {
@@ -808,6 +956,27 @@ export async function renderSettings() {
             </label>
             <input type="hidden" ${base} value="${val}" />
           </div>
+        </div>`
+      if (type === 'toggle') {
+        const isOn = val === 'true'
+        return `<div class="mb-4 flex items-center justify-between">
+          <label class="text-sm font-medium text-gray-600">${label}</label>
+          <button type="button" ${base} data-on="${isOn}"
+            onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className=this.dataset.on==='true'?'w-12 h-6 rounded-full transition-colors bg-emerald-500 relative':'w-12 h-6 rounded-full transition-colors bg-gray-300 relative';this.querySelector('span').className=this.dataset.on==='true'?'absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform':'absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform'"
+            class="w-12 h-6 rounded-full transition-colors ${isOn ? 'bg-emerald-500' : 'bg-gray-300'} relative">
+            <span class="${isOn ? 'absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform' : 'absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform'}"></span>
+          </button>
+        </div>`
+      }
+      if (type === 'password')
+        return `<div class="mb-4">
+          <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
+          <div class="flex gap-2">
+            <input type="password" ${base} value="${val}" class="${cls} flex-1" placeholder="sk-..." autocomplete="off" />
+            <button type="button" class="px-3 py-2.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50"
+              onclick="const i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'ดู':'ซ่อน'">ดู</button>
+          </div>
+          <p class="text-xs text-amber-600 mt-1">⚠️ เก็บไว้เป็นความลับ ไม่แชร์กับใคร</p>
         </div>`
       return `<div class="mb-4">
         <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
@@ -873,9 +1042,11 @@ export async function renderSettings() {
         btn.disabled = true
         btn.textContent = 'กำลังบันทึก...'
         try {
-          await Promise.all([...inputs].map(el =>
-            updateSystemConfig(el.dataset.key, el.value)
-          ))
+          await Promise.all([...inputs].map(el => {
+            // toggle button: อ่านจาก data-on แทน value
+            const val = el.tagName === 'BUTTON' ? (el.dataset.on ?? 'false') : el.value
+            return updateSystemConfig(el.dataset.key, val)
+          }))
           showToast('บันทึกสำเร็จ', 'success')
         } catch {
           showToast('บันทึกไม่สำเร็จ', 'error')

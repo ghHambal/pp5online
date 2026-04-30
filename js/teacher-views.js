@@ -9,7 +9,9 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getPrayerRecords, savePrayerRecords, savePrayerCell,
          getStudentScores, saveStudentScore,
          getSheetColumnOptions, detectAssignmentKind, colTypeToThai,
-         getUniqueRooms, getUniqueReligionRooms } from './api.js'
+         getUniqueRooms, getUniqueReligionRooms,
+         getMySchedule, upsertScheduleEntry, deleteScheduleEntry,
+         deleteScheduleByTeacher, getPeriods, getAllPeriods } from './api.js'
 
 import { uploadTeacherPhoto } from './storage.js'
 
@@ -33,6 +35,48 @@ const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py
 const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm'
 
 // ─── Phone formatter ──────────────────────────────────────────────────────────
+
+// คำนวณ 6 วันสอนแรก จาก teacher_schedules entries + termStart date string
+function _calcSixPeriodDates(entries, termStartStr) {
+  // Expand span_periods → รายการคาบแต่ละ 45 นาที
+  const periods = []
+  for (const e of entries) {
+    const span = e.span_periods ?? 1
+    for (let i = 0; i < span; i++) {
+      periods.push({ dow: e.day_of_week, pno: (e.period_no ?? 0) + i })
+    }
+  }
+  // เรียง: วัน → คาบ
+  periods.sort((a,b) => a.dow !== b.dow ? a.dow - b.dow : a.pno - b.pno)
+  if (!periods.length) return []
+
+  // หาวันแรกของแต่ละ dow ที่ >= termStart
+  const termStart = new Date(termStartStr + 'T00:00:00')
+  const firstDate = {}
+  for (const p of periods) {
+    if (firstDate[p.dow]) continue
+    const d = new Date(termStart)
+    // getDay(): 0=Sun,1=Mon,...,6=Sat; dow: 0=อา,1=จ,...,5=ศ (ตรงกัน)
+    while (d.getDay() !== p.dow) d.setDate(d.getDate() + 1)
+    firstDate[p.dow] = new Date(d)
+  }
+
+  // Generate จนครบ 6 คาบ โดย วนสัปดาห์
+  const result = []
+  let week = 0
+  while (result.length < 6) {
+    for (const p of periods) {
+      const base = firstDate[p.dow]
+      if (!base) continue
+      const d = new Date(base)
+      d.setDate(d.getDate() + week * 7)
+      result.push(d)
+      if (result.length >= 6) break
+    }
+    week++
+  }
+  return result.slice(0, 6)
+}
 
 function formatPhone(digits) {
   const d = digits.replace(/\D/g,'').slice(0,10)
@@ -69,11 +113,12 @@ function setActiveNav(nav) {
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
   setTitle('ภาพรวม')
-  const subjects = teacher
-    ? await getMySubjects(teacher.id).catch(()=>[])
-    : await getMasterSubjects().catch(()=>[])
-  const classes  = await getMyClasses(teacher?.id ?? null).catch(()=>[])
-  const FREE_LIMIT = 2
+  const [subjects, classes, cfg] = await Promise.all([
+    teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
+    getMyClasses(teacher?.id ?? null).catch(()=>[]),
+    getSystemConfig().catch(()=>({})),
+  ])
+  const FREE_LIMIT = parseInt(cfg.freeClassQuota ?? 2)
   const isPaid     = teacher?.teachers_quota?.is_paid ?? false
   const usedSlots  = classes.length
   const freeLeft   = isPaid ? '∞' : Math.max(0, FREE_LIMIT - usedSlots)
@@ -121,13 +166,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         <div class="grid grid-cols-2 gap-2">
           <div class="bg-white rounded-xl p-3 border border-amber-200 text-center">
             <p class="text-xs text-gray-500 mb-1">รายห้อง</p>
-            <p class="text-lg font-extrabold text-indigo-600">49 <span class="text-xs font-normal text-gray-400">บ./ห้อง</span></p>
+            <p class="text-lg font-extrabold text-indigo-600">${parseInt(cfg.pricePerClass ?? 49)} <span class="text-xs font-normal text-gray-400">บ./ห้อง</span></p>
             <p class="text-[10px] text-gray-400">เพิ่มทีละห้อง</p>
           </div>
           <div class="bg-white rounded-xl p-3 border border-emerald-300 text-center relative">
             <span class="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[9px] px-2 py-0.5 rounded-full">แนะนำ</span>
             <p class="text-xs text-gray-500 mb-1">เหมาทั้งเทอม</p>
-            <p class="text-lg font-extrabold text-emerald-600">299 <span class="text-xs font-normal text-gray-400">บ./เทอม</span></p>
+            <p class="text-lg font-extrabold text-emerald-600">${parseInt(cfg.priceSemester ?? 299)} <span class="text-xs font-normal text-gray-400">บ./เทอม</span></p>
             <p class="text-[10px] text-gray-400">ไม่จำกัดห้อง</p>
           </div>
         </div>
@@ -281,7 +326,6 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
   setActiveNav('my-courses')
   setTitle(editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์ส')
 
-  // โหลดข้อมูลสำหรับ dropdown
   const [depts, teachers] = await Promise.all([
     getDepartments().catch(()=>[]),
     getTeachers().catch(()=>[]),
@@ -289,11 +333,33 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
 
   // unique dept names (no duplicates for display)
   const uniqueDepts = [...new Map(depts.map(d=>[d.dept_code,d])).values()]
+
+  // map subject_group → dept category
+  const _sgToCategory = sg =>
+    (sg === 'ACDM' || sg === 'ACDMVOC') ? 'สามัญ' :
+    (sg === 'AGM'  || sg === 'AGMVOC')  ? 'ศาสนา' : null
+
+  // filter depts by subject_group (graceful: if no category set, show all)
+  const _filterDepts = sg => {
+    const cat = _sgToCategory(sg)
+    if (!cat) return uniqueDepts
+    const filtered = uniqueDepts.filter(d => d.category === cat)
+    return filtered.length ? filtered : uniqueDepts
+  }
+
+  // สร้าง <option> จาก dept list
+  const _deptOptions = (list, selectedCode='') =>
+    `<option value="">— เลือกกลุ่มสาระ —</option>` +
+    list.map(d=>`<option value="${d.dept_code}" ${d.dept_code===selectedCode?'selected':''}>${d.dept_name}</option>`).join('')
+
+  // all unique dept heads (for typeahead)
+  const allHeads = [...new Set(depts.map(d=>d.head_name).filter(Boolean))]
+
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
       <button onclick="window._goBack()"
         class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
-      <h2 class="text-lg font-bold text-gray-800">ลงทะเบียนเปิดคอร์สวิชา</h2>
+      <h2 class="text-lg font-bold text-gray-800">${editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์สวิชา'}</h2>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
       <form id="course-form" novalidate class="space-y-5">
@@ -316,8 +382,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
             กลุ่มสาระการเรียนรู้ <span class="text-red-400">*</span>
           </label>
           <select id="cf-dept" class="${SELECT_CLS}">
-            <option value="">— เลือกกลุ่มสาระ —</option>
-            ${uniqueDepts.map(d=>`<option value="${d.dept_code}">${d.dept_name}</option>`).join('')}
+            ${_deptOptions(uniqueDepts)}
           </select>
         </div>
         <!-- ชื่อวิชา + รหัสวิชา -->
@@ -382,14 +447,19 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
           <label class="block text-sm font-semibold text-gray-700 mb-1">เบอร์ติดต่อครู</label>
           <input id="cf-phone" type="tel" inputmode="numeric" placeholder="0XX XXX XXXX"
             maxlength="12" class="${INPUT_CLS}" />
-          <p class="text-xs text-gray-400 mt-1">ระบบจะจัดรูปแบบให้อัตโนมัติ 0XX XXX XXXX</p>
+          <p class="text-xs text-gray-400 mt-1">เบอร์จะถูกเติมอัตโนมัติเมื่อเลือกครูผู้สอน</p>
         </div>
-        <!-- หัวหน้าหมวด (auto-fill) -->
+        <!-- หัวหน้ากลุ่มสาระ (typeahead) -->
         <div class="bg-gray-50 rounded-xl p-4">
-          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้ากลุ่มสาระ (auto)</label>
-          <input id="cf-dept-head" type="text" placeholder="ระบบจะเติมให้อัตโนมัติเมื่อเลือกกลุ่มสาระ"
-            class="${INPUT_CLS} bg-white" />
-          <p class="text-xs text-gray-400 mt-1">แก้ไขได้ถ้าไม่ถูกต้อง</p>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้ากลุ่มสาระ</label>
+          <div class="relative">
+            <input id="cf-dept-head" type="text" placeholder="พิมพ์เพื่อค้นหา หรือระบบเติมอัตโนมัติ"
+              class="${INPUT_CLS} bg-white" autocomplete="off" />
+            <div id="cf-head-dropdown"
+              class="hidden absolute z-20 w-full mt-1 bg-white border border-gray-200
+                     rounded-xl shadow-lg overflow-y-auto" style="max-height:180px"></div>
+          </div>
+          <p class="text-xs text-gray-400 mt-1">เติมอัตโนมัติตามกลุ่มสาระ — แก้ไขได้</p>
         </div>
         <!-- Buttons -->
         <div class="flex gap-3 pt-2">
@@ -399,7 +469,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
           </button>
           <button id="cf-submit" type="submit"
             class="btn-primary flex-1 py-3 rounded-xl text-white text-sm font-semibold">
-            บันทึกคอร์สวิชา
+            ${editData ? 'บันทึกการแก้ไข' : 'บันทึกคอร์สวิชา'}
           </button>
         </div>
       </form>
@@ -408,15 +478,22 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
 
   // ─── Bind logic ──────────────────────────────────────────────────────────
 
-  // 1. กลุ่มวิชา → update ชั้นปี options + hint รหัสวิชา
   const HINTS = {
     ACDM: 'มัธยม: แนะนำรูปแบบ ค32110 (ตัวอักษร+เลข 5 หลัก)',
     AGM: 'ศาสนา: อิสระ เช่น ฮ21101',
     ACDMVOC: 'ปวช: อิสระ',
     AGMVOC: 'ศาสนาปวช: อิสระ',
   }
+
+  // 1. กลุ่มวิชา → กรองกลุ่มสาระ + อัปเดต grade options + hint
   document.getElementById('cf-subg').addEventListener('change', e => {
     const sg = e.target.value
+    // อัปเดต dept dropdown
+    const deptEl = document.getElementById('cf-dept')
+    const prevVal = deptEl.value
+    deptEl.innerHTML = _deptOptions(_filterDepts(sg))
+    if (prevVal) deptEl.value = prevVal  // คงค่าเดิมถ้ายังอยู่ใน list
+    // อัปเดต grade
     const gradeEl = document.getElementById('cf-grade')
     const opts = GRADE_OPTS[sg] ?? []
     gradeEl.innerHTML = opts.length
@@ -426,14 +503,52 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     document.getElementById('cf-code-hint').textContent = HINTS[sg] ?? ''
   })
 
-  // 2. กลุ่มสาระ → auto-fill หัวหน้าหมวด
+  // 2. กลุ่มสาระ → auto-fill หัวหน้าหมวด (เฉพาะถ้ายังไม่ได้พิมพ์เอง)
   document.getElementById('cf-dept').addEventListener('change', e => {
     const code = e.target.value
-    const d = depts.find(x => x.dept_code === code && x.head_name)
-    document.getElementById('cf-dept-head').value = d?.head_name ?? ''
+    const heads = depts.filter(x => x.dept_code === code && x.head_name).map(x => x.head_name)
+    const headEl = document.getElementById('cf-dept-head')
+    if (heads.length === 1) {
+      headEl.value = heads[0]
+    } else if (heads.length > 1) {
+      headEl.value = ''
+      _renderHeadDrop(heads)
+    } else {
+      headEl.value = ''
+    }
   })
 
-  // 3. Teacher search (same dual-input pattern)
+  // 3. หัวหน้ากลุ่มสาระ — typeahead
+  const headEl   = document.getElementById('cf-dept-head')
+  const headDrop = document.getElementById('cf-head-dropdown')
+
+  function _renderHeadDrop(list) {
+    headDrop.innerHTML = list.map(h=>
+      `<div class="px-4 py-2.5 text-sm cursor-pointer hover:bg-emerald-50 border-b border-gray-50 last:border-0 head-opt"
+        data-val="${h}">${h}</div>`
+    ).join('')
+    headDrop.querySelectorAll('.head-opt').forEach(el =>
+      el.addEventListener('mousedown', ev => {
+        ev.preventDefault()
+        headEl.value = el.dataset.val
+        headDrop.classList.add('hidden')
+      })
+    )
+    headDrop.classList.toggle('hidden', !list.length)
+  }
+
+  headEl.addEventListener('input', () => {
+    const q = headEl.value.toLowerCase()
+    const filtered = allHeads.filter(h => h.toLowerCase().includes(q))
+    _renderHeadDrop(q ? filtered : allHeads)
+  })
+  headEl.addEventListener('focus', () => {
+    const q = headEl.value.toLowerCase()
+    _renderHeadDrop(q ? allHeads.filter(h=>h.toLowerCase().includes(q)) : allHeads)
+  })
+  headEl.addEventListener('blur', () => setTimeout(()=>headDrop.classList.add('hidden'),150))
+
+  // 4. Teacher search (dual-input pattern)
   const codeEl   = document.getElementById('cf-teacher-code')
   const nameEl   = document.getElementById('cf-teacher-search')
   const dropEl   = document.getElementById('cf-teacher-dropdown')
@@ -441,17 +556,13 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
   const selName  = document.getElementById('cf-teacher-name')
   const clearBtn = document.getElementById('cf-teacher-clear')
   const idEl     = document.getElementById('cf-teacher-id')
+  const phoneEl  = document.getElementById('cf-phone')
 
-  // pre-fill ครูปัจจุบัน
-  if (teacher) {
-    const me = teachers.find(t => t.id === teacher.id)
-    if (me) _pickTeacher(me)
-  }
   function _pickTeacher(t) {
     if (!t) {
       idEl.value = ''; codeEl.value = ''; nameEl.value = ''
       selEl.classList.add('hidden'); selEl.classList.remove('flex')
-      document.getElementById('cf-phone').value = ''
+      phoneEl.value = ''
       return
     }
     idEl.value   = t.id
@@ -459,7 +570,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     nameEl.value = t.full_name    ?? ''
     selName.textContent = `${t.full_name}${t.teacher_code ? ` (${t.teacher_code})` : ''}`
     selEl.classList.remove('hidden'); selEl.classList.add('flex')
-    document.getElementById('cf-phone').value = formatPhone(t.phone ?? '')
+    phoneEl.value = formatPhone(t.phone ?? '')
     dropEl.classList.add('hidden')
   }
   function _renderDrop(list) {
@@ -479,6 +590,13 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     )
     dropEl.classList.remove('hidden')
   }
+
+  // pre-fill ครูปัจจุบัน
+  if (teacher && !editData) {
+    const me = teachers.find(t => t.id === teacher.id)
+    if (me) _pickTeacher(me)
+  }
+
   codeEl.oninput = () => {
     const q = codeEl.value.trim().toLowerCase()
     if (!q) { _pickTeacher(null); return }
@@ -497,23 +615,22 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
   nameEl.onblur = () => setTimeout(()=>dropEl.classList.add('hidden'),150)
   clearBtn.addEventListener('click', ()=>_pickTeacher(null))
 
-  // 4. Phone formatting
-  document.getElementById('cf-phone').addEventListener('input', e => {
-    const formatted = formatPhone(e.target.value)
-    e.target.value = formatted
-  })
+  // 5. Phone formatting
+  phoneEl.addEventListener('input', e => { e.target.value = formatPhone(e.target.value) })
 
-  // 5. Pre-fill ถ้าเป็นโหมดแก้ไข
+  // 6. Pre-fill ถ้าเป็นโหมดแก้ไข
   if (editData) {
-    document.getElementById('cf-name').value    = editData.subject_name ?? ''
-    document.getElementById('cf-code').value    = editData.subject_code ?? ''
-    document.getElementById('cf-dept-head').value = editData.learning_area ?? ''
+    document.getElementById('cf-name').value  = editData.subject_name ?? ''
+    document.getElementById('cf-code').value  = editData.subject_code ?? ''
     if (editData.credit) document.getElementById('cf-credit').value = String(editData.credit)
 
-    // กลุ่มวิชา → อัปเดต grade options → set grade
+    // กลุ่มวิชา → filter dept → update grade
     if (editData.subject_group) {
       const subgEl = document.getElementById('cf-subg')
       subgEl.value = editData.subject_group
+      // กรองกลุ่มสาระ
+      document.getElementById('cf-dept').innerHTML = _deptOptions(_filterDepts(editData.subject_group))
+      // grade options
       const gradeEl = document.getElementById('cf-grade')
       const opts = GRADE_OPTS[editData.subject_group] ?? []
       gradeEl.innerHTML = ['<option value="">— เลือกชั้นปี —</option>',
@@ -522,28 +639,31 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
       document.getElementById('cf-code-hint').textContent = HINTS[editData.subject_group] ?? ''
     }
 
-    // กลุ่มสาระ → dept head
-    if (editData.dept) {
-      const deptEl = document.getElementById('cf-dept')
-      deptEl.value = editData.dept
-      if (!editData.learning_area) {
-        const d = depts.find(x => x.dept_code === editData.dept && x.head_name)
-        if (d) document.getElementById('cf-dept-head').value = d.head_name ?? ''
-      }
+    // กลุ่มสาระ
+    if (editData.dept) document.getElementById('cf-dept').value = editData.dept
+
+    // หัวหน้ากลุ่มสาระ: ใช้จาก editData.learning_area ก่อน, ถ้าไม่มี auto-fill จาก dept
+    if (editData.learning_area) {
+      headEl.value = editData.learning_area
+    } else if (editData.dept) {
+      const d = depts.find(x => x.dept_code === editData.dept && x.head_name)
+      headEl.value = d?.head_name ?? ''
     }
 
-    // ครูผู้สอน
+    // ครูผู้สอน → phone มาจาก teacher record
     if (editData.teacher_id) {
       const t = teachers.find(x => x.id === editData.teacher_id)
       if (t) _pickTeacher(t)
+    } else {
+      // ไม่มี teacher_id → pre-fill ครูปัจจุบัน
+      if (teacher) {
+        const me = teachers.find(t => t.id === teacher.id)
+        if (me) _pickTeacher(me)
+      }
     }
-
-    // ปุ่มบันทึก
-    document.getElementById('cf-submit').textContent = 'บันทึกการแก้ไข'
-    document.querySelector('#course-form h2') // title already set above
   }
 
-  // 6. Form submit
+  // 7. Form submit
   document.getElementById('course-form').addEventListener('submit', async e => {
     e.preventDefault()
     const btn = document.getElementById('cf-submit')
@@ -553,14 +673,15 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     const code   = document.getElementById('cf-code').value.trim()
     const credit = parseFloat(document.getElementById('cf-credit').value) || null
     const grade  = document.getElementById('cf-grade').value
-    const tid    = document.getElementById('cf-teacher-id').value
-    const phone  = document.getElementById('cf-phone').value.trim()
-    const head   = document.getElementById('cf-dept-head').value.trim()
+    const tid    = idEl.value
+    const phone  = phoneEl.value.trim()
+    const head   = headEl.value.trim()
     if (!subg || !name || !grade) {
       showToast('กรุณากรอกกลุ่มวิชา ชื่อวิชา และชั้นปี','warning'); return
     }
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
+      const resolvedTeacherId = tid ? Number(tid) : (teacher?.id ?? null)
       await onSave({
         subject_group: subg,
         dept:          dept || null,
@@ -568,15 +689,19 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
         subject_code:  code || null,
         credit,
         grade_level:   grade,
-        teacher_id:    tid ? Number(tid) : (teacher?.id ?? null),
+        teacher_id:    resolvedTeacherId,
         learning_area: head || null,
       })
+      // บันทึก phone ลง teachers table ถ้ากรอก (เฉพาะกรณีเป็นครูคนเดียวกัน)
+      if (phone && resolvedTeacherId && resolvedTeacherId === teacher?.id) {
+        await updateMyProfile(teacher.id, { phone }).catch(()=>{})
+      }
       showToast('บันทึกคอร์สวิชาสำเร็จ','success')
       window._goBack()
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
     } finally {
-      btn.disabled = false; btn.textContent = 'บันทึกคอร์สวิชา'
+      btn.disabled = false; btn.textContent = editData ? 'บันทึกการแก้ไข' : 'บันทึกคอร์สวิชา'
     }
   })
 
@@ -596,6 +721,13 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
   const curYear = parseInt(cfg.academicYear ?? 2568)
   const curSem  = parseInt(cfg.semester ?? 1)
   const uniqueDepts = [...new Map(depts.map(d=>[d.dept_code,d])).values()]
+
+  // helper: กรอง dept ตาม category ครู
+  const _deptOptsForCat = (cat, selectedCode='') => {
+    const list = cat ? uniqueDepts.filter(d => !d.category || d.category === cat) : uniqueDepts
+    return `<option value="">— เลือกกลุ่มสาระ —</option>` +
+      list.map(d=>`<option value="${d.dept_code}" ${d.dept_code===selectedCode?'selected':''}>${d.dept_name}</option>`).join('')
+  }
 
   // ห้องสามัญ = main_room ที่ขึ้นต้นด้วย ม.
   const samaiRooms   = allRooms.filter(r => /^ม\./.test(r))
@@ -636,12 +768,11 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
             value="${teacher?.phone??''}" placeholder="0XX XXX XXXX"
             class="${INPUT_CLS}" />
         </div>
-        <!-- กลุ่มสาระ -->
+        <!-- กลุ่มสาระ (กรองตาม ประเภทครู) -->
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-1">กลุ่มสาระการเรียนรู้</label>
           <select id="setup-dept" class="${SELECT_CLS}">
-            <option value="">— เลือกกลุ่มสาระ —</option>
-            ${uniqueDepts.map(d=>`<option value="${d.dept_code}" ${teacher?.dept===d.dept_code?'selected':''}>${d.dept_name}</option>`).join('')}
+            ${_deptOptsForCat(teacher?.category, teacher?.dept ?? '')}
           </select>
         </div>
         <!-- กลุ่มวิชา -->
@@ -721,7 +852,14 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
   }
   _updateRoomVisibility()  // set initial state
   document.querySelectorAll('input[name="setup-category"]').forEach(r =>
-    r.addEventListener('change', _updateRoomVisibility)
+    r.addEventListener('change', () => {
+      _updateRoomVisibility()
+      // อัปเดต กลุ่มสาระ dropdown ตามประเภทครูที่เลือก
+      const cat = document.querySelector('input[name="setup-category"]:checked')?.value
+      const deptSel = document.getElementById('setup-dept')
+      const curVal  = deptSel?.value
+      if (deptSel) deptSel.innerHTML = _deptOptsForCat(cat, curVal)
+    })
   )
 
   // phone format
@@ -771,9 +909,22 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
 
 // ─── View: Profile Edit ───────────────────────────────────────────────────────
 
-export function renderProfile(teacher, onRefresh) {
+export async function renderProfile(teacher, onRefresh) {
   setActiveNav('profile')
   setTitle('โปรไฟล์ของฉัน')
+
+  // โหลด departments สำหรับ dropdown กลุ่มสาระ
+  const depts = await getDepartments().catch(()=>[])
+  const uniqueDepts = [...new Map(depts.map(d=>[d.dept_code,d])).values()]
+
+  // กรองกลุ่มสาระตามประเภทครู
+  const teacherCat = teacher?.category
+  const filteredDepts = teacherCat
+    ? uniqueDepts.filter(d => !d.category || d.category === teacherCat)
+    : uniqueDepts
+
+  const phoneDisplay = formatPhone(teacher?.phone ?? '')
+
   setContent(`<div class="max-w-lg mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
       <button onclick="window._navTo('overview')" class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
@@ -784,11 +935,9 @@ export function renderProfile(teacher, onRefresh) {
       <div class="flex flex-col items-center mb-6">
         <div id="prof-avatar"
           class="w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-400
-
                  text-white text-3xl font-bold flex items-center justify-center
                  overflow-hidden border-4 border-white shadow-md">
           ${teacher?.image_url
-
             ? `<img src="${teacher.image_url}" class="w-full h-full object-cover" />`
             : (teacher?.full_name ?? 'ค').charAt(0).toUpperCase()}
         </div>
@@ -805,7 +954,7 @@ export function renderProfile(teacher, onRefresh) {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">รหัสครู</label>
-            <input id="prof-code" type="text" value="${teacher?.teacher_code??''}"
+            <input type="text" value="${teacher?.teacher_code??''}"
               class="${INPUT_CLS} bg-gray-50" readonly />
           </div>
           <div>
@@ -820,12 +969,18 @@ export function renderProfile(teacher, onRefresh) {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
-          <input id="prof-phone" type="tel" inputmode="numeric" value="${teacher?.phone??''}"
-            maxlength="12" class="${INPUT_CLS}" />
+          <input id="prof-phone" type="tel" inputmode="numeric" value="${phoneDisplay}"
+            placeholder="0XX XXX XXXX" maxlength="12" class="${INPUT_CLS}" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระ</label>
-          <input id="prof-dept" type="text" value="${teacher?.dept??''}" class="${INPUT_CLS}" />
+          <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระการเรียนรู้</label>
+          <select id="prof-dept" class="${SELECT_CLS}">
+            <option value="">— เลือกกลุ่มสาระ —</option>
+            ${filteredDepts.map(d=>`<option value="${d.dept_code}" ${d.dept_code===teacher?.dept?'selected':''}>${d.dept_name}</option>`).join('')}
+          </select>
+          ${filteredDepts.length === 0 ? `
+          <input type="text" id="prof-dept-txt" value="${teacher?.dept??''}" placeholder="รหัสกลุ่มสาระ"
+            class="${INPUT_CLS} mt-1" />` : ''}
         </div>
         <div class="flex gap-3 pt-2">
           <button type="button" onclick="window._navTo('overview')"
@@ -844,8 +999,7 @@ export function renderProfile(teacher, onRefresh) {
 
   // phone format
   document.getElementById('prof-phone').addEventListener('input', e => {
-    const d = e.target.value.replace(/\D/g,'').slice(0,10)
-    e.target.value = d.length<=3?d:d.length<=6?`${d.slice(0,3)} ${d.slice(3)}`:`${d.slice(0,3)} ${d.slice(3,6)} ${d.slice(6)}`
+    e.target.value = formatPhone(e.target.value)
   })
 
   // photo preview
@@ -863,16 +1017,20 @@ export function renderProfile(teacher, onRefresh) {
     if (!name) { showToast('กรุณากรอกชื่อ-นามสกุล','warning'); return }
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
+      const deptEl = document.getElementById('prof-dept')
+      const deptTxt = document.getElementById('prof-dept-txt')
       const payload = {
         full_name: name,
-        phone:     document.getElementById('prof-phone').value.trim() || null,
-        dept:      document.getElementById('prof-dept').value.trim()  || null,
+        phone: document.getElementById('prof-phone').value.trim() || null,
+        dept:  (deptEl?.value || deptTxt?.value || '').trim() || null,
       }
       const photoFile = document.getElementById('prof-photo-file').files?.[0]
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
       await updateMyProfile(teacher.id, payload)
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
       if (onRefresh) await onRefresh(teacher.profile_id)
+      // re-render ด้วย teacher ใหม่ที่โหลดมาจาก onRefresh
+      // (จะถูก call จาก teacher.js ซึ่งอัปเดต _teacher แล้ว navigate('profile') ใหม่)
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
     } finally {
@@ -971,7 +1129,14 @@ export async function renderClassForm(teacher, course) {
         </div>
         <!-- วันสอน 6 คาบแรก -->
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-2">วันสอน 6 คาบแรก</label>
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-sm font-semibold text-gray-700">วันสอน 6 คาบแรก</label>
+            <button type="button" id="btn-auto-dates"
+              class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+              🗓️ คำนวณจากตารางสอน
+            </button>
+          </div>
+          <div id="auto-dates-info" class="hidden mb-2 bg-indigo-50 rounded-xl px-3 py-2 text-xs text-indigo-700"></div>
           <div class="grid grid-cols-3 gap-2">
             ${[1,2,3,4,5,6].map(n=>`
             <div>
@@ -1054,6 +1219,39 @@ export async function renderClassForm(teacher, course) {
       document.getElementById('cls-students-section').classList.remove('hidden')
       document.getElementById('cls-head-section').classList.remove('hidden')
     } catch { showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ','error') }
+  })
+
+  // ─── Auto-calculate dates จากตารางสอน ────────────────────────────────────
+  document.getElementById('btn-auto-dates')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-auto-dates')
+    const infoEl = document.getElementById('auto-dates-info')
+    btn.textContent = '⏳ กำลังดึงตาราง...'
+    btn.disabled = true
+    try {
+      const curYear = parseInt(termCfg.academicYear ?? 2568)
+      const curSem  = parseInt(termCfg.semester ?? 1)
+      const sched   = teacher ? await getMySchedule(teacher.id, curYear, curSem).catch(()=>[]) : []
+      // กรองเฉพาะ entries ของวิชานี้
+      const entries = sched.filter(e => e.subject_id === course.id)
+      if (!entries.length) {
+        infoEl.textContent = '⚠️ ยังไม่มีตารางสอนสำหรับวิชานี้ — กรุณากรอกวันเอง'
+        infoEl.classList.remove('hidden'); return
+      }
+      const dates = _calcSixPeriodDates(entries, termStart)
+      const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ']
+      dates.forEach((d, i) => {
+        const el = document.getElementById(`cls-day${i+1}`)
+        if (el) el.value = d.toISOString().slice(0,10)
+      })
+      infoEl.textContent = `✅ คำนวณจาก ${entries.length} ช่องตาราง — ตรวจสอบแล้วแก้ไขได้`
+      infoEl.classList.remove('hidden')
+    } catch (err) {
+      infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message ?? '')
+      infoEl.classList.remove('hidden')
+    } finally {
+      btn.textContent = '🗓️ คำนวณจากตารางสอน'
+      btn.disabled = false
+    }
   })
 
   // ─── Save ─────────────────────────────────────────────────────────────────
@@ -3938,12 +4136,874 @@ export function renderRequests() {
 
 }
 
-export function renderSchedule() {
+export async function renderSchedule(teacher) {
   setActiveNav('schedule')
   setTitle('ตารางสอน')
-  setContent(`<div class="text-center py-20 text-gray-400">
-    <p class="text-5xl mb-4">🗓️</p>
-    <p class="font-medium">ตารางสอน — เร็วๆ นี้</p>
+  const cfg = await getSystemConfig().catch(()=>({}))
+  const curYear = parseInt(cfg.academicYear ?? 2568)
+  const curSem  = parseInt(cfg.semester ?? 1)
+  await renderScheduleGrid(teacher, curYear, curSem, cfg)
+}
+
+// ─── Schedule Grid (ดูและแก้ไขตาราง) ─────────────────────────────────────────
+export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn = null) {
+  setActiveNav('schedule')
+  setTitle('ตารางสอน')
+
+  const cfg      = cfgIn ?? await getSystemConfig().catch(()=>({}))
+  const hasFri   = cfg.hasFriday === 'true'
+  const visionOn = cfg.scheduleVisionEnabled === 'true'
+  const geminiKey= cfg.geminiApiKey ?? ''
+
+  const [periods, subjects, scheduleData] = await Promise.all([
+    getPeriods().catch(()=>[]),
+    teacher ? getMySubjects(teacher.id).catch(()=>[]) : Promise.resolve([]),
+    teacher ? getMySchedule(teacher.id, academicYear, semester).catch(()=>[]) : Promise.resolve([]),
+  ])
+
+  // วันในสัปดาห์ 0=อา, 1=จ, 2=อ, 3=พ, 4=พฤ, (5=ศ ถ้าเปิด)
+  const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
+  const DAY_SHORT  = ['อา','จ','อ','พ','พฤ','ศ']
+  const DAY_COLORS = ['bg-purple-50','bg-blue-50','bg-green-50','bg-yellow-50','bg-orange-50','bg-pink-50']
+  const numDays    = hasFri ? 6 : 5
+  const days       = Array.from({length: numDays}, (_,i) => i) // [0,1,2,3,4] or [...,5]
+
+  // map scheduleData → {`${dow}-${pno}`: entry}
+  const schedMap = {}
+  for (const s of scheduleData) {
+    schedMap[`${s.day_of_week}-${s.period_no}`] = s
+    if ((s.span_periods ?? 1) > 1) {
+      schedMap[`${s.day_of_week}-${s.period_no + 1}`] = { ...s, _secondary: true }
+    }
+  }
+
+  // สีวิชา: โหลดจาก localStorage ถ้ามี (ครูปรับได้)
+  const COLOR_PRESETS = [
+    {bg:'bg-emerald-100',text:'text-emerald-800',hex:'#d1fae5'},
+    {bg:'bg-indigo-100', text:'text-indigo-800', hex:'#e0e7ff'},
+    {bg:'bg-amber-100',  text:'text-amber-800',  hex:'#fef3c7'},
+    {bg:'bg-rose-100',   text:'text-rose-800',   hex:'#ffe4e6'},
+    {bg:'bg-cyan-100',   text:'text-cyan-800',   hex:'#cffafe'},
+    {bg:'bg-violet-100', text:'text-violet-800', hex:'#ede9fe'},
+    {bg:'bg-lime-100',   text:'text-lime-800',   hex:'#ecfccb'},
+    {bg:'bg-orange-100', text:'text-orange-800', hex:'#ffedd5'},
+    {bg:'bg-pink-100',   text:'text-pink-800',   hex:'#fce7f3'},
+    {bg:'bg-teal-100',   text:'text-teal-800',   hex:'#ccfbf1'},
+  ]
+  const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
+  let savedColors = {}
+  try { savedColors = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
+
+  const subjectColorMap = {}
+  subjects.forEach((s, i) => {
+    const ci = savedColors[s.id] ?? savedColors[s.subject_name] ?? i % COLOR_PRESETS.length
+    const entry = { cls: `${COLOR_PRESETS[ci].bg} ${COLOR_PRESETS[ci].text}`, idx: ci }
+    subjectColorMap[s.id] = entry
+    if (s.subject_name) subjectColorMap[s.subject_name] = entry
+  })
+
+  const _saveColors = () => {
+    const map = {}
+    subjects.forEach(s => { if (subjectColorMap[s.id]) map[s.id] = subjectColorMap[s.id].idx })
+    localStorage.setItem(colorStorageKey, JSON.stringify(map))
+  }
+
+  setContent(`<div class="max-w-full animate-fade">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">ตารางสอน</h2>
+        <p class="text-xs text-gray-400 mt-0.5">ภาค ${semester} / ${academicYear} — คลิกช่องเพื่อกำหนดวิชา</p>
+      </div>
+      <div class="flex gap-2">
+        ${visionOn && geminiKey ? `
+        <button id="btn-upload-schedule"
+          class="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition flex items-center gap-2">
+          🤖 อัปโหลดรูปตาราง
+        </button>` : ''}
+        <button id="btn-clear-schedule"
+          class="px-4 py-2 rounded-xl border border-red-200 text-red-500 text-sm font-medium hover:bg-red-50 transition">
+          ล้างตาราง
+        </button>
+      </div>
+    </div>
+
+    <!-- ตารางสอน -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-auto">
+      <table class="w-full text-xs border-collapse" style="min-width:520px">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="border border-gray-100 px-3 py-2.5 text-center text-gray-500 w-24 font-medium">คาบ / เวลา</th>
+            ${days.map(d => `
+            <th class="border border-gray-100 px-3 py-2.5 text-center font-semibold text-gray-700 ${DAY_COLORS[d]}">
+              ${DAY_NAMES[d]}
+            </th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${periods.map(p => `
+          <tr class="hover:bg-gray-50/50">
+            <td class="border border-gray-100 px-3 py-2 text-center bg-gray-50">
+              <p class="font-bold text-gray-700">คาบ ${p.period_no}</p>
+              <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)}–${p.end_time?.slice(0,5)}</p>
+            </td>
+            ${days.map(d => {
+              const key = `${d}-${p.period_no}`
+              const entry = schedMap[key]
+              if (entry?._secondary) return '' // span จาก คาบก่อนหน้า
+              const subj = entry ? subjects.find(s => s.id === entry.subject_id) : null
+              const span = entry?.span_periods ?? 1
+              // ชื่อที่จะแสดง: ใช้ entry.subject_name ถ้ามี หรือ subj.subject_name
+              const dispSubj  = entry?.subject_name ?? subj?.subject_name ?? null
+              const dispClass = entry?.class_name   ?? null
+              const dispTeach = entry?.teacher_name ?? null
+              // สี: ใช้ colorKey = subject_name หรือ subject_id
+              const colorKey  = entry?.subject_name ?? (subj?.id ? String(subj.id) : null)
+              const clrInfo   = colorKey ? (subjectColorMap[colorKey] ?? subjectColorMap[subj?.id] ?? null) : null
+              const clr       = clrInfo?.cls ?? (dispSubj ? 'bg-gray-100 text-gray-700' : '')
+              return `<td class="border border-gray-100 p-1 align-top cursor-pointer
+                hover:bg-indigo-50 transition-colors text-center schedule-cell"
+                data-dow="${d}" data-period="${p.period_no}"
+                ${span > 1 ? `rowspan="${span}"` : ''}>
+                ${dispSubj ? `
+                <div class="rounded-lg px-2 py-1.5 ${clr} h-full min-h-[50px] flex flex-col justify-center gap-0.5">
+                  <p class="font-bold leading-tight text-xs">${dispSubj}</p>
+                  ${dispClass ? `<p class="text-[10px] opacity-80 leading-tight">${dispClass}</p>` : ''}
+                  ${dispTeach ? `<p class="text-[9px] opacity-60 leading-tight">${dispTeach}</p>` : ''}
+                  ${span > 1 ? `<p class="text-[9px] opacity-50">${span} คาบ</p>` : ''}
+                </div>` : `
+                <div class="h-10 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                  <span class="text-indigo-300 text-lg">＋</span>
+                </div>`}
+              </td>`
+            }).join('')}
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Legend วิชา -->
+    ${subjects.length > 0 ? `
+    <div class="mt-4">
+      <p class="text-xs text-gray-400 mb-2">คลิกที่ชื่อวิชาเพื่อเปลี่ยนสี</p>
+      <div class="flex flex-wrap gap-2">
+        ${subjects.map(s => `
+        <button type="button" class="subj-color-btn inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${subjectColorMap[s.id]?.cls ?? ''}"
+          data-sid="${s.id}">
+          🎨 ${s.subject_name}
+        </button>`).join('')}
+      </div>
+    </div>` : ''}
   </div>`)
 
+  // ─── Click cell → popup ────────────────────────────────────────────────────
+  document.querySelectorAll('.schedule-cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const dow    = parseInt(cell.dataset.dow)
+      const period = parseInt(cell.dataset.period)
+      const key    = `${dow}-${period}`
+      const entry  = schedMap[key]
+      if (entry?._secondary) return
+      _openSchedulePopup({
+        teacher, dow, period, periods, subjects, entry,
+        academicYear, semester, subjectColorMap,
+        onSave: async (payload) => {
+          await upsertScheduleEntry({ teacher_id: teacher.id, ...payload })
+          await renderScheduleGrid(teacher, academicYear, semester, cfg)
+        },
+        onDelete: async () => {
+          if (entry) await deleteScheduleEntry(entry.id)
+          await renderScheduleGrid(teacher, academicYear, semester, cfg)
+        },
+      })
+    })
+  })
+
+  // ─── เปลี่ยนสีวิชา ────────────────────────────────────────────────────────
+  document.querySelectorAll('.subj-color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sid = parseInt(btn.dataset.sid)
+      const cur = subjectColorMap[sid]?.idx ?? 0
+      const next = (cur + 1) % COLOR_PRESETS.length
+      subjectColorMap[sid] = { cls: `${COLOR_PRESETS[next].bg} ${COLOR_PRESETS[next].text}`, idx: next }
+      _saveColors()
+      // re-render เฉพาะสีในตาราง (ไม่ต้อง reload ทั้งหมด)
+      renderScheduleGrid(teacher, academicYear, semester, cfg)
+    })
+  })
+
+  // ─── ล้างตาราง ────────────────────────────────────────────────────────────
+  document.getElementById('btn-clear-schedule')?.addEventListener('click', async () => {
+    if (!confirm('ยืนยันล้างตารางสอนทั้งหมด?')) return
+    await deleteScheduleByTeacher(teacher.id, academicYear, semester)
+    await renderScheduleGrid(teacher, academicYear, semester, cfg)
+    showToast('ล้างตารางแล้ว', 'success')
+  })
+
+  // ─── Upload รูป + Gemini Vision ───────────────────────────────────────────
+  document.getElementById('btn-upload-schedule')?.addEventListener('click', () => {
+    _openVisionUpload(teacher, subjects, periods, academicYear, semester, geminiKey, cfg)
+  })
+}
+
+// ─── Popup กำหนดวิชาลงช่องตาราง (Group Card format) ─────────────────────────
+async function _openSchedulePopup({ teacher, dow, period, periods, subjects, entry, academicYear, semester, subjectColorMap, onSave, onDelete }) {
+  document.getElementById('sched-popup')?.remove()
+
+  const allRooms   = await getUniqueRooms().catch(()=>[])
+  const religRooms = await getUniqueReligionRooms().catch(()=>[])
+  const allRoomList = [...new Set([...allRooms, ...religRooms])].sort()
+
+  const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
+  const PERIOD_NOS = periods.map(p => p.period_no)
+  const p = periods.find(x => x.period_no === period)
+
+  const COLOR_PRESETS = [
+    {bg:'bg-emerald-100',text:'text-emerald-800',dot:'#10b981'},
+    {bg:'bg-indigo-100', text:'text-indigo-800', dot:'#6366f1'},
+    {bg:'bg-amber-100',  text:'text-amber-800',  dot:'#f59e0b'},
+    {bg:'bg-rose-100',   text:'text-rose-800',   dot:'#f43f5e'},
+    {bg:'bg-cyan-100',   text:'text-cyan-800',   dot:'#06b6d4'},
+    {bg:'bg-violet-100', text:'text-violet-800', dot:'#8b5cf6'},
+    {bg:'bg-lime-100',   text:'text-lime-800',   dot:'#84cc16'},
+    {bg:'bg-orange-100', text:'text-orange-800', dot:'#f97316'},
+    {bg:'bg-pink-100',   text:'text-pink-800',   dot:'#ec4899'},
+    {bg:'bg-teal-100',   text:'text-teal-800',   dot:'#14b8a6'},
+  ]
+  const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
+  let savedColors = {}
+  try { savedColors = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
+
+  // กำหนดสีเริ่มต้น
+  const initSubjName  = entry?.subject_name ?? (entry?.subject_id ? subjects.find(s=>s.id===entry.subject_id)?.subject_name ?? '' : '')
+  let colorIdx = savedColors[initSubjName] ?? savedColors[entry?.subject_id] ?? 0
+
+  const subjSuggestions = subjects.map(s => `<option value="${s.subject_name}">`).join('')
+  const roomSuggestions = allRoomList.map(r => `<option value="${r}">`).join('')
+  const dayOpts    = DAY_NAMES.map((n,i)=>`<option value="${i}">${n}</option>`).join('')
+  const periodOpts = PERIOD_NOS.map(n=>`<option value="${n}">คาบ ${n}</option>`).join('')
+
+  // sessions เริ่มต้น: คาบที่คลิก + คาบเดิมถ้ามี
+  let sessions = entry
+    ? [{ day_of_week: entry.day_of_week, period_no: entry.period_no, span_periods: entry.span_periods ?? 1 }]
+    : [{ day_of_week: dow, period_no: period, span_periods: 1 }]
+
+  const wrap = document.createElement('div')
+  wrap.id = 'sched-popup'
+  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  document.body.appendChild(wrap)
+
+  function _render() {
+    const clr = COLOR_PRESETS[colorIdx]
+    wrap.innerHTML = `
+      <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <!-- Header -->
+        <div class="px-5 pt-5 pb-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 class="font-bold text-gray-800">กำหนดวิชา</h3>
+            <p class="text-xs text-gray-400">${DAY_NAMES[dow]} คาบ ${period}${p ? ` (${p.start_time?.slice(0,5)}–${p.end_time?.slice(0,5)})` : ''}</p>
+          </div>
+          <button id="sp-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+        </div>
+        <!-- Card body -->
+        <div class="overflow-auto flex-1 px-5 py-4">
+          <div class="border-2 rounded-xl overflow-hidden" style="border-color:${clr.dot}">
+            <!-- Subject info -->
+            <div class="px-4 py-3 flex items-start gap-3" style="background:${clr.dot}18">
+              <button id="sp-color" type="button"
+                class="w-8 h-8 rounded-full flex-shrink-0 border-2 border-white shadow mt-0.5"
+                style="background:${clr.dot}" title="คลิกเปลี่ยนสี"></button>
+              <div class="flex-1 space-y-1.5 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา</span>
+                  <input id="sp-subj-name" list="sp-subj-list" class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs font-semibold"
+                    value="${initSubjName}" placeholder="ชื่อวิชา" />
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ห้อง</span>
+                  <input id="sp-class" list="sp-room-list" class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs"
+                    value="${entry?.class_name ?? ''}" placeholder="ชั้น/ห้อง เช่น ม.6/2" />
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ครู</span>
+                  <input id="sp-teacher" class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-500"
+                    value="${entry?.teacher_name ?? ''}" placeholder="ชื่อครู (ไม่บังคับ)" />
+                  <button id="sp-hide-teacher" type="button" class="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap">ไม่แสดง</button>
+                </div>
+              </div>
+            </div>
+            <!-- Sessions -->
+            <div id="sp-sessions" class="px-4 pt-3 pb-2 space-y-1.5">
+              ${sessions.map((s, si) => `
+              <div class="flex items-center gap-1.5 sp-sess-row" data-si="${si}">
+                <select class="sp-dow border border-gray-100 rounded-lg px-2 py-1 text-xs bg-white flex-1" data-si="${si}">
+                  ${dayOpts}
+                </select>
+                <select class="sp-period border border-gray-100 rounded-lg px-2 py-1 text-xs bg-white flex-1" data-si="${si}">
+                  ${periodOpts}
+                </select>
+                <select class="sp-span border border-gray-100 rounded-lg px-2 py-1 text-xs bg-white" data-si="${si}">
+                  <option value="1">1 คาบ</option>
+                  <option value="2">2 คาบ</option>
+                  <option value="3">3 คาบ</option>
+                  <option value="4">4 คาบ</option>
+                </select>
+                <button type="button" class="sp-del-sess text-red-300 hover:text-red-500 text-base" data-si="${si}">✕</button>
+              </div>`).join('')}
+              <button id="sp-add-sess" type="button"
+                class="w-full py-1.5 rounded-lg border border-dashed border-gray-200 text-[11px] text-gray-400 hover:border-indigo-300 hover:text-indigo-400 transition">
+                + เพิ่มคาบ
+              </button>
+            </div>
+            <!-- Footer -->
+            <div class="px-4 pb-3 flex gap-2">
+              <button id="sp-save" type="button"
+                class="flex-1 py-2 rounded-xl text-xs font-semibold text-white transition"
+                style="background:${clr.dot}">บันทึก</button>
+              ${entry ? `<button id="sp-delete" type="button"
+                class="py-2 px-3 rounded-xl border border-red-200 text-xs text-red-400 hover:bg-red-50">ลบ</button>` : ''}
+            </div>
+          </div>
+          <datalist id="sp-subj-list">${subjSuggestions}</datalist>
+          <datalist id="sp-room-list">${roomSuggestions}</datalist>
+        </div>
+        <!-- Global cancel -->
+        <div class="px-5 pb-5 pt-2 border-t border-gray-100 flex-shrink-0">
+          <button id="sp-cancel" class="w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        </div>
+      </div>`
+
+    // Set session dropdown values
+    sessions.forEach((s, si) => {
+      const row = wrap.querySelector(`.sp-sess-row[data-si="${si}"]`)
+      if (!row) return
+      row.querySelector('.sp-dow').value    = s.day_of_week ?? dow
+      row.querySelector('.sp-period').value = s.period_no  ?? period
+      row.querySelector('.sp-span').value   = s.span_periods ?? 1
+    })
+
+    // Bind events
+    wrap.querySelector('#sp-close').addEventListener('click', () => wrap.remove())
+    wrap.querySelector('#sp-cancel').addEventListener('click', () => wrap.remove())
+
+    wrap.querySelector('#sp-color').addEventListener('click', () => {
+      colorIdx = (colorIdx + 1) % COLOR_PRESETS.length; _render()
+    })
+    wrap.querySelector('#sp-hide-teacher').addEventListener('click', () => {
+      wrap.querySelector('#sp-teacher').value = ''
+    })
+
+    wrap.querySelectorAll('.sp-dow').forEach(el =>
+      el.addEventListener('change', () => { sessions[+el.dataset.si].day_of_week = +el.value }))
+    wrap.querySelectorAll('.sp-period').forEach(el =>
+      el.addEventListener('change', () => { sessions[+el.dataset.si].period_no = +el.value }))
+    wrap.querySelectorAll('.sp-span').forEach(el =>
+      el.addEventListener('change', () => { sessions[+el.dataset.si].span_periods = +el.value }))
+    wrap.querySelectorAll('.sp-del-sess').forEach(btn =>
+      btn.addEventListener('click', () => {
+        sessions.splice(+btn.dataset.si, 1)
+        if (!sessions.length) sessions.push({ day_of_week: dow, period_no: period, span_periods: 1 })
+        _render()
+      }))
+    wrap.querySelector('#sp-add-sess').addEventListener('click', () => {
+      sessions.push({ day_of_week: dow, period_no: PERIOD_NOS[0] ?? period, span_periods: 1 })
+      _render()
+    })
+
+    wrap.querySelector('#sp-delete')?.addEventListener('click', async () => {
+      wrap.remove(); await onDelete()
+    })
+
+    wrap.querySelector('#sp-save').addEventListener('click', async () => {
+      const subjName  = wrap.querySelector('#sp-subj-name').value.trim() || null
+      const className = wrap.querySelector('#sp-class').value.trim()     || null
+      const teachName = wrap.querySelector('#sp-teacher').value.trim()   || null
+      const subjId    = subjects.find(s => s.subject_name === subjName)?.id ?? null
+
+      // บันทึกสีลง localStorage
+      if (subjName) {
+        const cm = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
+        cm[subjName] = colorIdx
+        localStorage.setItem(colorStorageKey, JSON.stringify(cm))
+      }
+
+      wrap.remove()
+      await onSave({
+        day_of_week:  sessions[0]?.day_of_week ?? dow,
+        period_no:    sessions[0]?.period_no   ?? period,
+        span_periods: sessions[0]?.span_periods ?? 1,
+        subject_id:   subjId,
+        subject_name: subjName,
+        class_name:   className,
+        teacher_name: teachName,
+        note: null,
+        academic_year: academicYear,
+        semester,
+      })
+    })
+  }
+
+  _render()
+}
+
+// ─── Vision Upload — Gemini วิเคราะห์รูปตาราง ────────────────────────────────
+async function _openVisionUpload(teacher, subjects, periods, academicYear, semester, geminiKey, cfg) {
+  document.getElementById('vision-upload')?.remove()
+
+  // โหลด rooms สำหรับ suggest class_name
+  const allRooms = await getUniqueRooms().catch(()=>[])
+  const religRooms = await getUniqueReligionRooms().catch(()=>[])
+  const allRoomList = [...new Set([...allRooms, ...religRooms])].sort()
+
+  const wrap = document.createElement('div')
+  wrap.id = 'vision-upload'
+  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.innerHTML = `
+    <div class="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[95vh]">
+      <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
+        <div class="flex-1">
+          <h3 class="font-bold text-gray-800">🤖 วิเคราะห์รูปตารางสอน</h3>
+          <p class="text-xs text-gray-400 mt-0.5">อัปโหลดรูปตารางสอน → AI จะเติมข้อมูลลงตารางให้</p>
+        </div>
+        <button id="vision-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <div class="overflow-auto flex-1 px-5 py-4 space-y-4">
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+          💡 แต่ละช่องตารางมี 3 บรรทัด: <b>ชื่อวิชา</b> (ตัวหนา) / <b>ชั้น/ห้อง</b> / <b>ชื่อครู</b>
+        </div>
+        <label id="vision-label"
+          class="flex flex-col items-center gap-3 border-2 border-dashed border-violet-200
+                 rounded-xl py-8 cursor-pointer hover:bg-violet-50 hover:border-violet-400 transition">
+          <span class="text-5xl">📷</span>
+          <span class="text-sm font-medium text-gray-600">แตะเพื่อเลือกรูปตาราง</span>
+          <span class="text-xs text-gray-400">JPG, PNG — ควรชัดเจนและครบทั้งตาราง</span>
+          <input type="file" id="vision-file" accept="image/*" class="sr-only" />
+        </label>
+        <div id="vision-preview" class="hidden">
+          <img id="vision-img" class="w-full rounded-xl max-h-40 object-contain border border-gray-100" />
+        </div>
+        <p id="vision-status" class="text-sm text-center text-gray-400 hidden"></p>
+        <div id="vision-result" class="hidden space-y-3">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            ผลการวิเคราะห์ — แก้ไขได้ก่อนบันทึก
+          </p>
+          <div id="vision-groups" class="space-y-3"></div>
+          <button id="vision-add-group"
+            class="w-full py-2 rounded-xl border-2 border-dashed border-gray-200
+                   text-xs text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition">
+            + เพิ่มกลุ่มวิชาใหม่
+          </button>
+        </div>
+      </div>
+      <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex gap-3 flex-shrink-0">
+        <button id="vision-cancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button id="vision-analyze" class="flex-1 py-3 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50" disabled>
+          🔍 วิเคราะห์
+        </button>
+        <button id="vision-save" class="hidden flex-1 py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700">
+          ✅ บันทึก
+        </button>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+
+  wrap.querySelector('#vision-cancel').addEventListener('click', () => wrap.remove())
+  wrap.querySelector('#vision-close').addEventListener('click', () => wrap.remove())
+
+  // ─── State ────────────────────────────────────────────────────────────────
+  let imgBase64 = null
+  let imgMimeType = 'image/jpeg'
+  // groups: [{key, subject_name, class_name, teacher_name, subject_id, color_idx, sessions:[{dow,period,span}]}]
+  let groups = []
+
+  const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
+  const PERIOD_NOS = periods.map(p => p.period_no)
+  const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
+  let colorMap = {}
+  try { colorMap = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
+
+  const COLORS = [
+    {cls:'bg-emerald-100 text-emerald-800', dot:'#10b981'},
+    {cls:'bg-indigo-100 text-indigo-800',   dot:'#6366f1'},
+    {cls:'bg-amber-100 text-amber-800',     dot:'#f59e0b'},
+    {cls:'bg-rose-100 text-rose-800',       dot:'#f43f5e'},
+    {cls:'bg-cyan-100 text-cyan-800',       dot:'#06b6d4'},
+    {cls:'bg-violet-100 text-violet-800',   dot:'#8b5cf6'},
+    {cls:'bg-lime-100 text-lime-800',       dot:'#84cc16'},
+    {cls:'bg-orange-100 text-orange-800',   dot:'#f97316'},
+    {cls:'bg-pink-100 text-pink-800',       dot:'#ec4899'},
+    {cls:'bg-teal-100 text-teal-800',       dot:'#14b8a6'},
+  ]
+
+  // ─── Render groups ────────────────────────────────────────────────────────
+  function _renderGroups() {
+    const container = wrap.querySelector('#vision-groups')
+    if (!container) return
+
+    const dayOpts    = DAY_NAMES.map((n,i)=>`<option value="${i}">${n}</option>`).join('')
+    const periodOpts = PERIOD_NOS.map(n=>`<option value="${n}">คาบ ${n}</option>`).join('')
+    const subjSuggestions = subjects.map(s => `<option value="${s.subject_name}">`).join('')
+    const roomSuggestions = allRoomList.map(r => `<option value="${r}">`).join('')
+
+    container.innerHTML = ''
+    groups.forEach((g, gi) => {
+      const ci  = g.color_idx ?? (gi % COLORS.length)
+      const clr = COLORS[ci]
+      const card = document.createElement('div')
+      card.className = 'border-2 rounded-xl overflow-hidden vg-card'
+      card.style.borderColor = clr.dot
+      card.innerHTML = `
+        <!-- Group header -->
+        <div class="px-4 py-3 flex items-start gap-3" style="background:${clr.dot}18">
+          <button type="button" class="vg-color w-8 h-8 rounded-full flex-shrink-0 border-2 border-white shadow mt-0.5"
+            style="background:${clr.dot}" title="คลิกเปลี่ยนสี" data-gi="${gi}"></button>
+          <div class="flex-1 space-y-1.5 min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา</span>
+              <input list="subj-list-${gi}" class="vg-subj-name flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs font-semibold"
+                value="${g.subject_name ?? ''}" placeholder="ชื่อวิชา" data-gi="${gi}" />
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ห้อง</span>
+              <input list="room-list-${gi}" class="vg-class flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs"
+                value="${g.class_name ?? ''}" placeholder="ชั้น/ห้อง เช่น ม.6/2" data-gi="${gi}" />
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ครู</span>
+              <input class="vg-teacher flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-500"
+                value="${g.teacher_name ?? ''}" placeholder="ชื่อครู (ไม่บังคับ)" data-gi="${gi}" />
+              <button type="button" class="vg-hide-teacher text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap" data-gi="${gi}">
+                ไม่แสดงชื่อครู
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- Sessions -->
+        <div class="px-4 pt-3 pb-2 space-y-1.5 vg-sessions" data-gi="${gi}">
+          ${g.sessions.map((s, si) => `
+          <div class="flex items-center gap-1.5 vs-row" data-gi="${gi}" data-si="${si}">
+            <select class="vs-dow border border-gray-100 rounded-lg px-2 py-1 text-xs bg-white flex-1" data-gi="${gi}" data-si="${si}">
+              ${dayOpts}
+            </select>
+            <select class="vs-period border border-gray-100 rounded-lg px-2 py-1 text-xs bg-white flex-1" data-gi="${gi}" data-si="${si}">
+              ${periodOpts}
+            </select>
+            <select class="vs-span border border-gray-100 rounded-lg px-2 py-1 text-xs bg-white" data-gi="${gi}" data-si="${si}">
+              <option value="1">1 คาบ</option>
+              <option value="2">2 คาบ</option>
+              <option value="3">3 คาบ</option>
+              <option value="4">4 คาบ</option>
+            </select>
+            <button type="button" class="vs-del text-red-300 hover:text-red-500 text-base" data-gi="${gi}" data-si="${si}">✕</button>
+          </div>`).join('')}
+          <button type="button" class="vg-add-session w-full py-1.5 rounded-lg border border-dashed border-gray-200
+            text-[11px] text-gray-400 hover:border-indigo-300 hover:text-indigo-400 transition" data-gi="${gi}">
+            + เพิ่มคาบ
+          </button>
+        </div>
+        <!-- Group footer: บันทึกกลุ่มนี้ + ลบกลุ่ม -->
+        <div class="px-4 pb-3 flex gap-2">
+          <button type="button" class="vg-save-group flex-1 py-2 rounded-xl text-xs font-semibold text-white transition"
+            style="background:${clr.dot}" data-gi="${gi}">
+            ✅ บันทึกกลุ่มนี้
+          </button>
+          <button type="button" class="vg-del-group py-2 px-3 rounded-xl border border-red-200 text-xs text-red-400 hover:bg-red-50 transition" data-gi="${gi}">
+            ลบกลุ่ม
+          </button>
+        </div>
+        <datalist id="subj-list-${gi}">${subjSuggestions}</datalist>
+        <datalist id="room-list-${gi}">${roomSuggestions}</datalist>`
+
+      container.appendChild(card)
+
+      // Set session values
+      g.sessions.forEach((s, si) => {
+        const row = card.querySelector(`.vs-row[data-gi="${gi}"][data-si="${si}"]`)
+        if (!row) return
+        row.querySelector('.vs-dow').value    = s.day_of_week ?? 0
+        row.querySelector('.vs-period').value = s.period_no ?? 1
+        row.querySelector('.vs-span').value   = s.span_periods ?? 1
+      })
+    })
+
+    // Bind events
+    container.querySelectorAll('.vg-color').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const gi = +btn.dataset.gi
+        groups[gi].color_idx = ((groups[gi].color_idx ?? gi) + 1) % COLORS.length
+        _renderGroups()
+      })
+    })
+    container.querySelectorAll('.vg-subj-name').forEach(el =>
+      el.addEventListener('input', () => { groups[+el.dataset.gi].subject_name = el.value }))
+    container.querySelectorAll('.vg-class').forEach(el =>
+      el.addEventListener('input', () => { groups[+el.dataset.gi].class_name = el.value }))
+    container.querySelectorAll('.vg-teacher').forEach(el =>
+      el.addEventListener('input', () => { groups[+el.dataset.gi].teacher_name = el.value }))
+    container.querySelectorAll('.vg-hide-teacher').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const gi = +btn.dataset.gi
+        groups[gi].teacher_name = ''
+        const inp = container.querySelector(`.vg-teacher[data-gi="${gi}"]`)
+        if (inp) inp.value = ''
+      }))
+    container.querySelectorAll('.vg-del-group').forEach(btn =>
+      btn.addEventListener('click', () => { groups.splice(+btn.dataset.gi, 1); _renderGroups() }))
+    container.querySelectorAll('.vg-save-group').forEach(btn =>
+      btn.addEventListener('click', async () => {
+        const gi  = +btn.dataset.gi
+        const g   = groups[gi]
+        const origText = btn.textContent
+        btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
+        try {
+          // บันทึกสีลง localStorage
+          const newColorMap = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
+          if (g.subject_name) newColorMap[g.subject_name] = g.color_idx ?? 0
+          localStorage.setItem(colorStorageKey, JSON.stringify(newColorMap))
+
+          await Promise.all(g.sessions.map(s => upsertScheduleEntry({
+            teacher_id:   teacher.id,
+            subject_id:   g.subject_id ?? null,
+            subject_name: g.subject_name?.trim() || null,
+            class_name:   g.class_name?.trim()   || null,
+            teacher_name: g.teacher_name?.trim()  || null,
+            day_of_week:  s.day_of_week,
+            period_no:    s.period_no,
+            span_periods: s.span_periods ?? 1,
+            academic_year: academicYear,
+            semester,
+          })))
+          btn.textContent = '✅ บันทึกแล้ว'
+          btn.style.background = '#16a34a'
+          setTimeout(() => { btn.disabled = false; btn.textContent = origText; btn.style.background = '' ; btn.style.background = COLORS[g.color_idx ?? 0]?.dot ?? '' }, 2000)
+          // อัปเดตตารางหลังบ้านแบบ silent (ไม่ปิด popup)
+          renderScheduleGrid(teacher, academicYear, semester, cfg).catch(()=>{})
+        } catch (err) {
+          showToast('บันทึกกลุ่มนี้ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = origText
+        }
+      }))
+    container.querySelectorAll('.vs-dow').forEach(el =>
+      el.addEventListener('change', () => { groups[+el.dataset.gi].sessions[+el.dataset.si].day_of_week = +el.value }))
+    container.querySelectorAll('.vs-period').forEach(el =>
+      el.addEventListener('change', () => { groups[+el.dataset.gi].sessions[+el.dataset.si].period_no = +el.value }))
+    container.querySelectorAll('.vs-span').forEach(el =>
+      el.addEventListener('change', () => { groups[+el.dataset.gi].sessions[+el.dataset.si].span_periods = +el.value }))
+    container.querySelectorAll('.vs-del').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const g = groups[+btn.dataset.gi]
+        g.sessions.splice(+btn.dataset.si, 1)
+        if (!g.sessions.length) groups.splice(+btn.dataset.gi, 1)
+        _renderGroups()
+      }))
+    container.querySelectorAll('.vg-add-session').forEach(btn =>
+      btn.addEventListener('click', () => {
+        groups[+btn.dataset.gi].sessions.push({ day_of_week: 0, period_no: PERIOD_NOS[0] ?? 1, span_periods: 1 })
+        _renderGroups()
+      }))
+  }
+
+  // ─── Upload file ──────────────────────────────────────────────────────────
+  wrap.querySelector('#vision-file').addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return
+    imgMimeType = file.type || 'image/jpeg'
+    const reader = new FileReader()
+    reader.onload = ev => {
+      imgBase64 = ev.target.result.split(',')[1]
+      wrap.querySelector('#vision-img').src = ev.target.result
+      wrap.querySelector('#vision-preview').classList.remove('hidden')
+      wrap.querySelector('#vision-analyze').disabled = false
+      wrap.querySelector('#vision-label').classList.add('hidden')
+    }
+    reader.readAsDataURL(file)
+  })
+
+  // ─── Analyze ──────────────────────────────────────────────────────────────
+  wrap.querySelector('#vision-analyze').addEventListener('click', async () => {
+    if (!imgBase64) return
+    const btn    = wrap.querySelector('#vision-analyze')
+    const status = wrap.querySelector('#vision-status')
+    btn.disabled = true; btn.textContent = '⏳ กำลังวิเคราะห์...'
+    status.textContent = 'กำลังส่งรูปไป Gemini AI...'; status.classList.remove('hidden')
+    try {
+      if (!geminiKey) throw new Error('ยังไม่ได้ตั้งค่า Gemini API Key ในหน้าแอดมิน')
+
+      const subjList   = subjects.map(s=>`"${s.subject_name}" (id:${s.id})`).join(', ')
+      const periodList = periods.map(p=>`คาบ ${p.period_no}: ${p.start_time?.slice(0,5)}-${p.end_time?.slice(0,5)}`).join(', ')
+      const prompt = `วิเคราะห์ตารางสอนในภาพนี้อย่างละเอียด
+แต่ละช่องในตารางมี 3 ส่วน: บรรทัด1=ชื่อวิชา(ตัวหนาภาษาอังกฤษ), บรรทัด2=ชั้น/ห้องเรียน, บรรทัด3=ชื่อครู
+คาบเรียน: ${periodList}
+วันเรียน: 0=อาทิตย์,1=จันทร์,2=อังคาร,3=พุธ,4=พฤหัส,5=ศุกร์
+วิชาที่ครูสอน (อาจตรงกับในตาราง): ${subjList || 'ไม่ระบุ'}
+
+สำคัญ: จัดกลุ่มตามวิชา+ห้องเรียน เช่น MATH ม.5/Ash-Shafi'i ที่สอนหลายวัน ให้อยู่ในกลุ่มเดียวกัน
+
+Return JSON array เท่านั้น (ไม่มีข้อความอื่น):
+[{
+  "subject_name": "MATH",
+  "class_name": "M.5 Ash-Shafi'i",
+  "teacher_name": "Hambali Waji",
+  "subject_id": null,
+  "sessions": [
+    {"day_of_week":0,"period_no":1,"span_periods":2},
+    {"day_of_week":1,"period_no":3,"span_periods":1}
+  ]
+}]
+- subject_id: ใส่ id ถ้า subject_name ตรงกับวิชาในรายการ ถ้าไม่ตรงให้ null
+- span_periods: 1,2,3,4 ตามจำนวนช่องที่รวมกัน (merged cells)
+- ช่องว่างไม่ต้องใส่`
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models/${cfg.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${geminiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [
+            { text: prompt },
+            { inline_data: { mime_type: imgMimeType, data: imgBase64 } }
+          ]}]})
+        }
+      )
+      const json = await res.json()
+      if (json.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
+
+      const text  = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\[[\s\S]*?\])/)
+      const jsonStr = match ? (match[1] ?? match[0]) : null
+      if (!jsonStr) { console.error('Raw:', text); throw new Error('AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง') }
+
+      const raw = JSON.parse(jsonStr)
+      groups = raw.map((g, i) => ({
+        ...g,
+        color_idx: colorMap[g.subject_name ?? ''] ?? (i % COLORS.length),
+        sessions: (g.sessions ?? []).map(s => ({ ...s })),
+      }))
+
+      _renderGroups()
+      wrap.querySelector('#vision-result').classList.remove('hidden')
+      wrap.querySelector('#vision-save').classList.remove('hidden')
+      const total = groups.reduce((n, g) => n + g.sessions.length, 0)
+      status.textContent = `✅ พบ ${groups.length} กลุ่มวิชา ${total} คาบ — ตรวจสอบแล้วกด "บันทึก"`
+    } catch (err) {
+      console.error('Vision error:', err)
+      status.innerHTML = `<span class="text-red-500">❌ ${err.message ?? 'ไม่ทราบสาเหตุ'}</span><br/><span class="text-gray-400 text-xs">ดู Console เพื่อดูรายละเอียด</span>`
+    } finally {
+      btn.disabled = false; btn.textContent = '🔍 วิเคราะห์อีกครั้ง'
+    }
+  })
+
+  // เพิ่มกลุ่มวิชาใหม่เอง
+  wrap.querySelector('#vision-add-group').addEventListener('click', () => {
+    groups.push({ subject_name: '', class_name: '', teacher_name: '', subject_id: null,
+      color_idx: groups.length % COLORS.length, sessions: [{ day_of_week: 0, period_no: PERIOD_NOS[0] ?? 1, span_periods: 1 }] })
+    wrap.querySelector('#vision-result').classList.remove('hidden')
+    wrap.querySelector('#vision-save').classList.remove('hidden')
+    _renderGroups()
+  })
+
+  // ─── Save ─────────────────────────────────────────────────────────────────
+  wrap.querySelector('#vision-save').addEventListener('click', async () => {
+    const btn = wrap.querySelector('#vision-save')
+    btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
+    try {
+      // บันทึกสีลง localStorage
+      const newColorMap = {}
+      groups.forEach(g => { if (g.subject_name) newColorMap[g.subject_name] = g.color_idx ?? 0 })
+      localStorage.setItem(colorStorageKey, JSON.stringify({...colorMap, ...newColorMap}))
+
+      // flatten groups → entries
+      const entries = []
+      for (const g of groups) {
+        for (const s of g.sessions) {
+          entries.push({
+            teacher_id:   teacher.id,
+            subject_id:   g.subject_id ?? null,
+            subject_name: g.subject_name?.trim() || null,
+            class_name:   g.class_name?.trim()   || null,
+            teacher_name: g.teacher_name?.trim()  || null,
+            day_of_week:  s.day_of_week,
+            period_no:    s.period_no,
+            span_periods: s.span_periods ?? 1,
+            academic_year: academicYear,
+            semester,
+          })
+        }
+      }
+      await Promise.all(entries.map(e => upsertScheduleEntry(e)))
+      wrap.remove()
+      showToast(`บันทึก ${groups.length} กลุ่มวิชา (${entries.length} คาบ) ✅`, 'success')
+      await renderScheduleGrid(teacher, academicYear, semester, cfg)
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = '✅ บันทึก'
+    }
+  })
+}
+
+// ─── Schedule Builder (หลัง profile setup) ───────────────────────────────────
+export async function renderScheduleBuilder(teacher, onComplete) {
+  const cfg      = await getSystemConfig().catch(()=>({}))
+  const curYear  = parseInt(cfg.academicYear ?? 2568)
+  const curSem   = parseInt(cfg.semester ?? 1)
+  const visionOn = cfg.scheduleVisionEnabled === 'true'
+  const geminiKey= cfg.geminiApiKey ?? ''
+
+  setActiveNav('schedule')
+  setTitle('สร้างตารางสอน')
+
+  setContent(`<div class="max-w-2xl mx-auto animate-fade">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-gradient-to-tr from-indigo-400 to-violet-400 text-white
+                  text-3xl rounded-full flex items-center justify-center mx-auto mb-3 shadow-md">
+        🗓️
+      </div>
+      <h2 class="text-2xl font-bold text-gray-800">สร้างตารางสอน</h2>
+      <p class="text-gray-500 text-sm mt-1">ภาค ${curSem} / ${curYear}</p>
+    </div>
+
+    ${visionOn && geminiKey ? `
+    <div class="bg-violet-50 border border-violet-200 rounded-2xl p-6 mb-4">
+      <div class="flex items-start gap-4">
+        <div class="text-4xl flex-shrink-0">🤖</div>
+        <div class="flex-1">
+          <h3 class="font-bold text-violet-900 mb-1">แนะนำ: อัปโหลดรูปตาราง</h3>
+          <p class="text-sm text-violet-700 mb-3">
+            แคปหน้าจอตารางสอนที่โรงเรียนออกให้ แล้วให้ AI อ่านข้อมูลเติมลงตารางให้อัตโนมัติ
+            จากนั้นตรวจสอบและแก้ไขได้
+          </p>
+          <button id="btn-open-vision"
+            class="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition">
+            📷 อัปโหลดรูปตาราง
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="text-center text-gray-400 text-sm mb-4">— หรือ —</div>` : ''}
+
+    <div class="bg-white border border-gray-100 rounded-2xl p-6">
+      <h3 class="font-bold text-gray-800 mb-2">กรอกตารางเอง</h3>
+      <p class="text-sm text-gray-500 mb-4">คลิกช่องตารางเพื่อเลือกวิชาที่สอนในแต่ละคาบ</p>
+      <button id="btn-open-grid"
+        class="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+        ✏️ เปิดตารางสอน
+      </button>
+    </div>
+
+    <div class="mt-6 text-center">
+      <button id="btn-skip-schedule"
+        class="text-sm text-gray-400 hover:text-gray-600 underline">
+        ข้ามไปก่อน (กรอกทีหลังในเมนูตารางสอน)
+      </button>
+    </div>
+  </div>`)
+
+  const subjects = teacher ? await getMySubjects(teacher.id).catch(()=>[]) : []
+  const periods  = await getPeriods().catch(()=>[])
+
+  document.getElementById('btn-open-vision')?.addEventListener('click', () => {
+    _openVisionUpload(teacher, subjects, periods, curYear, curSem, geminiKey, cfg)
+  })
+  document.getElementById('btn-open-grid')?.addEventListener('click', () => {
+    renderScheduleGrid(teacher, curYear, curSem, cfg)
+  })
+  document.getElementById('btn-skip-schedule')?.addEventListener('click', () => {
+    if (onComplete) onComplete()
+  })
 }

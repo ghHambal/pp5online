@@ -4,12 +4,13 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests } from './api.js'
+import { promptpayQRDataURL } from './promptpay.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm,
   renderMyClasses, renderAttendance, renderGrades,
   renderRequests, renderSchedule, renderProfile, renderClassForm,
   renderLifeSkillScore, renderReadingScore, renderPrayerScore,
-  renderProfileSetup,
+  renderProfileSetup, renderScheduleBuilder,
 } from './teacher-views.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
@@ -62,7 +63,8 @@ const ROUTES = {
   'prayer-score':     () => renderPrayerScore(_teacher, _homeroomRooms.filter(r=>r.category==='ศาสนา')),
   'grades':      () => renderGrades(),
   'requests':    () => renderRequests(),
-  'schedule':    () => renderSchedule(),
+  'schedule':    () => renderSchedule(_teacher),
+  'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _refreshProfile),
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),
 }
@@ -78,10 +80,11 @@ window._goBack = () => navigate('my-courses')
 
 // เปิด quota popup จากหน้าภาพรวม (ไม่มี course context)
 window._showQuotaFromOverview = () => {
-  const myClasses = _teacher ? [] : []
-  getMyClasses(_teacher?.id ?? null).then(cls => {
-    _showQuotaPopup(cls.length, null)
-  }).catch(() => _showQuotaPopup(2, null))
+  Promise.all([
+    getMyClasses(_teacher?.id ?? null).catch(()=>[]),
+    getSystemConfig().catch(()=>({})),
+  ]).then(([cls, cfg]) => _showQuotaPopup(cls.length, null, cfg))
+    .catch(()  => _showQuotaPopup(0, null, {}))
 }
 
 window._openLifeSkillScore = (room) => navigate('life-skill-score')
@@ -109,13 +112,13 @@ async function _refreshProfile(userId) {
   await loadTeacherInfo(userId)
 }
 
-// หลัง setup เสร็จ → reload ทุกอย่างแล้วไป overview
+// หลัง setup เสร็จ → reload แล้วไป schedule-builder (บังคับสร้างตาราง)
 async function _onSetupComplete(userId) {
   _teacher       = await getMyTeacherProfile(userId)
   _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
   await loadTeacherInfo(userId)
   _applyRoleMenus()
-  navigate('overview')
+  navigate('schedule-builder')
 }
 
 window._openCourseForm = () => {
@@ -156,12 +159,15 @@ window._openRegisterClass = async (courseId) => {
   // ── ตรวจโควตา (นับจาก DB จริงเสมอ) ──
   const quota    = _teacher?.teachers_quota
   const isPaid   = quota?.is_paid ?? false
-  const FREE_LIMIT = 2
 
   if (!isPaid) {
-    const myClasses = await getMyClasses(_teacher?.id ?? null).catch(()=>[])
-    if (myClasses.length >= FREE_LIMIT) {
-      _showQuotaPopup(myClasses.length, course); return
+    const [myClasses, cfg] = await Promise.all([
+      getMyClasses(_teacher?.id ?? null).catch(()=>[]),
+      getSystemConfig().catch(()=>({})),
+    ])
+    const freeLimit = parseInt(cfg.freeClassQuota ?? 2)
+    if (myClasses.length >= freeLimit) {
+      _showQuotaPopup(myClasses.length, course, cfg); return
     }
   }
 
@@ -169,7 +175,7 @@ window._openRegisterClass = async (courseId) => {
 }
 
 // ── หน้า 1: เลือกแพ็กเกจ ────────────────────────────────────────────────────
-function _showQuotaPopup(count, course) {
+function _showQuotaPopup(count, course, cfg = {}) {
   document.getElementById('quota-popup')?.remove()
   const wrap = document.createElement('div')
   wrap.id = 'quota-popup'
@@ -193,13 +199,21 @@ function _showQuotaPopup(count, course) {
       <div class="overflow-auto flex-1 px-5 py-4 space-y-4">
 
         <!-- สถานะปัจจุบัน -->
+        ${(() => {
+          const freeQ  = parseInt(cfg.freeClassQuota ?? 2)
+          const pClass = parseInt(cfg.pricePerClass   ?? 49)
+          const pSem   = parseInt(cfg.priceSemester   ?? 299)
+          const descC  = cfg.pkgPerClassDesc  ?? 'เพิ่มได้ 1 ห้องเรียนต่อการชำระเงิน'
+          const descS  = cfg.pkgSemesterDesc  ?? 'ทุกวิชา ทุกห้อง ไม่จำกัด'
+          const nextNo = freeQ + 1
+          return `
         <div class="bg-gray-50 rounded-xl p-3.5 text-sm">
           <p class="text-gray-600">คุณสร้างห้องเรียนไปแล้ว
             <span class="font-bold text-indigo-600">${count} ห้อง</span>
-            จาก <span class="font-bold">2 ห้องฟรี</span>
+            จาก <span class="font-bold">${freeQ} ห้องฟรี</span>
           </p>
           <p class="text-gray-400 text-xs mt-1">
-            การสร้างห้องเรียนตั้งแต่ห้องที่ 3 เป็นต้นไป
+            การสร้างห้องเรียนตั้งแต่ห้องที่ ${nextNo} เป็นต้นไป
             จำเป็นต้องเลือกแพ็กเกจด้านล่าง
           </p>
         </div>
@@ -212,10 +226,10 @@ function _showQuotaPopup(count, course) {
             <div class="flex items-start justify-between mb-2">
               <div>
                 <p class="font-bold text-gray-800">รายห้อง</p>
-                <p class="text-xs text-gray-400 mt-0.5">เพิ่มได้ <b>1 ห้องเรียน</b> ต่อการชำระเงิน</p>
+                <p class="text-xs text-gray-400 mt-0.5">${descC}</p>
               </div>
               <div class="text-right flex-shrink-0 ml-3">
-                <p class="text-2xl font-extrabold text-indigo-600">49<span class="text-sm font-normal text-gray-400"> บ.</span></p>
+                <p class="text-2xl font-extrabold text-indigo-600">${pClass}<span class="text-sm font-normal text-gray-400"> บ.</span></p>
                 <p class="text-[10px] text-gray-400">ต่อวิชา / เทอม</p>
               </div>
             </div>
@@ -237,10 +251,10 @@ function _showQuotaPopup(count, course) {
             <div class="flex items-start justify-between mb-2">
               <div>
                 <p class="font-bold text-gray-800">เหมาทั้งเทอม</p>
-                <p class="text-xs text-gray-400 mt-0.5">ทุกวิชา ทุกห้อง ไม่จำกัด</p>
+                <p class="text-xs text-gray-400 mt-0.5">${descS}</p>
               </div>
               <div class="text-right flex-shrink-0 ml-3">
-                <p class="text-2xl font-extrabold text-emerald-600">299<span class="text-sm font-normal text-gray-400"> บ.</span></p>
+                <p class="text-2xl font-extrabold text-emerald-600">${pSem}<span class="text-sm font-normal text-gray-400"> บ.</span></p>
                 <p class="text-[10px] text-gray-400">ต่อเทอม</p>
               </div>
             </div>
@@ -250,7 +264,8 @@ function _showQuotaPopup(count, course) {
               <p>✅ ใช้ได้ตลอดภาคเรียนนี้</p>
             </div>
           </div>
-        </label>
+        </label>`
+        })()}
 
         <p class="text-[11px] text-gray-400 text-center">
           💡 ชำระเงินผ่าน PromptPay / โอนเงิน แล้วอัปโหลดสลิป<br/>
@@ -278,17 +293,108 @@ function _showQuotaPopup(count, course) {
     const pkg = wrap.querySelector('input[name="pkg"]:checked')?.value
     if (!pkg) { alert('กรุณาเลือกแพ็กเกจก่อนครับ'); return }
     wrap.remove()
-    _showPaymentPage(pkg, course)
+    if (pkg === 'per_subject') {
+      _showRoomCountPage(course, cfg)
+    } else {
+      _showPaymentPage(pkg, course, 1, cfg)
+    }
   })
 }
 
-// ── หน้า 2: ชำระเงิน ─────────────────────────────────────────────────────────
-async function _showPaymentPage(pkgType, course) {
+// ── หน้า 1.5: เลือกจำนวนห้อง (per_subject) ──────────────────────────────────
+function _showRoomCountPage(course, cfg = {}) {
+  document.getElementById('room-count-page')?.remove()
+  const pClass = parseInt(cfg.pricePerClass ?? 49)
+  const wrap = document.createElement('div')
+  wrap.id = 'room-count-page'
+  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+
+  wrap.innerHTML = `
+    <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
+        <button id="rc-back" class="text-gray-400 hover:text-gray-600 text-xl leading-none">←</button>
+        <div class="flex-1">
+          <h3 class="font-bold text-gray-800">แพ็กเกจรายห้อง</h3>
+          <p class="text-xs text-gray-400">${pClass} บาท / ห้อง / เทอม</p>
+        </div>
+      </div>
+      <div class="px-5 py-6 flex flex-col gap-5">
+        <p class="text-sm text-gray-600">ต้องการเพิ่มห้องเรียนอีกกี่ห้อง?</p>
+        <div class="flex items-center justify-center gap-5">
+          <button id="rc-minus"
+            class="w-12 h-12 rounded-xl border-2 border-gray-200 text-2xl font-bold text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition flex items-center justify-center">
+            −
+          </button>
+          <div class="text-center min-w-[80px]">
+            <p id="rc-count" class="text-5xl font-extrabold text-indigo-600">1</p>
+            <p class="text-xs text-gray-400 mt-1">ห้อง</p>
+          </div>
+          <button id="rc-plus"
+            class="w-12 h-12 rounded-xl border-2 border-gray-200 text-2xl font-bold text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition flex items-center justify-center">
+            ＋
+          </button>
+        </div>
+        <div class="bg-indigo-50 rounded-xl p-4 text-center">
+          <p class="text-xs text-gray-500 mb-1">ยอดที่ต้องชำระ</p>
+          <p id="rc-total" class="text-3xl font-extrabold text-indigo-600">${pClass} <span class="text-sm font-normal text-gray-400">บาท</span></p>
+          <p class="text-xs text-gray-400 mt-1">(${pClass} บ. × 1 ห้อง)</p>
+        </div>
+      </div>
+      <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex gap-3 flex-shrink-0">
+        <button id="rc-cancel"
+          class="flex-1 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 font-medium">
+          ยกเลิก
+        </button>
+        <button id="rc-next"
+          class="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition">
+          ถัดไป →
+        </button>
+      </div>
+    </div>`
+
+  document.body.appendChild(wrap)
+
+  let count = 1
+  const countEl = wrap.querySelector('#rc-count')
+  const totalEl = wrap.querySelector('#rc-total')
+
+  const updateDisplay = () => {
+    countEl.textContent = count
+    const total = pClass * count
+    totalEl.innerHTML = `${total.toLocaleString()} <span class="text-sm font-normal text-gray-400">บาท</span>`
+    totalEl.nextElementSibling.textContent = `(${pClass} บ. × ${count} ห้อง)`
+    wrap.querySelector('#rc-minus').disabled = count <= 1
+  }
+
+  wrap.querySelector('#rc-minus').addEventListener('click', () => { if (count > 1) { count--; updateDisplay() } })
+  wrap.querySelector('#rc-plus').addEventListener('click', () => { count++; updateDisplay() })
+  wrap.querySelector('#rc-back').addEventListener('click', () => {
+    wrap.remove()
+    _showQuotaPopup(0, course, cfg)
+  })
+  wrap.querySelector('#rc-cancel').addEventListener('click', () => wrap.remove())
+  wrap.querySelector('#rc-next').addEventListener('click', () => {
+    wrap.remove()
+    _showPaymentPage('per_subject', course, count, cfg)
+  })
+}
+
+// ── หน้า 2: ชำระเงิน (รองรับ QR Code + จำนวนห้อง) ──────────────────────────
+async function _showPaymentPage(pkgType, course, roomCount = 1, cfgIn = null) {
   document.getElementById('payment-page')?.remove()
 
-  const cfg = await getSystemConfig().catch(() => ({}))
-  const amount = pkgType === 'semester' ? 299 : 49
-  const pkgLabel = pkgType === 'semester' ? 'เหมาทั้งเทอม (299 บ.)' : `รายวิชา — ${course?.subject_name ?? ''} (49 บ.)`
+  const cfg    = cfgIn ?? await getSystemConfig().catch(() => ({}))
+  const pClass = parseInt(cfg.pricePerClass ?? 49)
+  const pSem   = parseInt(cfg.priceSemester ?? 299)
+  const ppMobile = (cfg.paymentPromptpay ?? '0825424340').replace(/\D/g, '')
+
+  const amount = pkgType === 'semester' ? pSem : pClass * roomCount
+  const pkgLabel = pkgType === 'semester'
+    ? `เหมาทั้งเทอม`
+    : `รายห้อง × ${roomCount} ห้อง`
+  const pkgDetail = pkgType === 'semester'
+    ? `ทุกวิชา ทุกห้อง ตลอดเทอม`
+    : `${pClass} บ. × ${roomCount} ห้อง = ${amount.toLocaleString()} บ.`
 
   const wrap = document.createElement('div')
   wrap.id = 'payment-page'
@@ -301,35 +407,42 @@ async function _showPaymentPage(pkgType, course) {
       <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
         <button id="pp-back" class="text-gray-400 hover:text-gray-600 text-xl leading-none mr-1">←</button>
         <div class="flex-1">
-          <h3 class="font-bold text-gray-800">ชำระเงิน</h3>
-          <p class="text-xs text-gray-400">แพ็กเกจ: ${pkgLabel}</p>
+          <h3 class="font-bold text-gray-800">ชำระเงิน — ${pkgLabel}</h3>
+          <p class="text-xs text-gray-400">${pkgDetail}</p>
         </div>
-        <div class="bg-indigo-600 text-white text-sm font-bold px-3 py-1 rounded-full">
-          ${amount} บ.
+        <div class="bg-indigo-600 text-white text-sm font-bold px-3 py-1.5 rounded-full whitespace-nowrap">
+          ${amount.toLocaleString()} บ.
         </div>
       </div>
 
       <!-- Body -->
       <div class="overflow-auto flex-1 px-5 py-4 space-y-4">
 
-        <!-- QR Code -->
-        ${cfg.paymentQrUrl ? `
+        <!-- QR Code PromptPay (dynamic) -->
         <div class="text-center">
           <p class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">สแกน QR PromptPay</p>
-          <img src="${cfg.paymentQrUrl}" class="mx-auto h-44 object-contain rounded-xl border border-gray-100 shadow-sm"/>
-        </div>` : ''}
+          <div id="pp-qr-wrap" class="flex flex-col items-center gap-2">
+            <div class="w-[220px] h-[220px] bg-gray-100 rounded-xl flex items-center justify-center animate-pulse mx-auto">
+              <p class="text-xs text-gray-400">กำลังสร้าง QR...</p>
+            </div>
+          </div>
+          <div class="mt-2 inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2">
+            <span class="text-xs text-gray-500">ยอดที่ต้องชำระ</span>
+            <span class="font-extrabold text-emerald-700 text-lg">${amount.toLocaleString()} บาท</span>
+          </div>
+          <p class="text-[11px] text-gray-400 mt-1">พร้อมเพย์ ${ppMobile.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')}</p>
+        </div>
 
-        <!-- รายละเอียดบัญชี -->
+        <!-- รายละเอียดบัญชี (คัดลอกได้) -->
         <div class="bg-gray-50 rounded-xl p-4 space-y-2.5">
           <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">ข้อมูลการโอน</p>
-          ${cfg.paymentPromptpay ? `
           <div class="flex justify-between items-center">
-            <span class="text-xs text-gray-500">PromptPay</span>
-            <button class="copy-btn font-mono text-sm font-bold text-indigo-600 flex items-center gap-1"
-              data-copy="${cfg.paymentPromptpay}">
-              ${cfg.paymentPromptpay} <span class="text-[10px] text-gray-400">คัดลอก</span>
+            <span class="text-xs text-gray-500">พร้อมเพย์</span>
+            <button class="copy-btn font-mono text-sm font-bold text-indigo-600 flex items-center gap-1.5"
+              data-copy="${ppMobile}">
+              ${ppMobile.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3')} <span class="text-[10px] text-gray-400">คัดลอก</span>
             </button>
-          </div>` : ''}
+          </div>
           ${cfg.paymentBankName ? `
           <div class="flex justify-between items-center">
             <span class="text-xs text-gray-500">ธนาคาร</span>
@@ -338,7 +451,7 @@ async function _showPaymentPage(pkgType, course) {
           ${cfg.paymentAccountNo ? `
           <div class="flex justify-between items-center">
             <span class="text-xs text-gray-500">เลขบัญชี</span>
-            <button class="copy-btn font-mono text-sm font-bold text-indigo-600 flex items-center gap-1"
+            <button class="copy-btn font-mono text-sm font-bold text-indigo-600 flex items-center gap-1.5"
               data-copy="${cfg.paymentAccountNo}">
               ${cfg.paymentAccountNo} <span class="text-[10px] text-gray-400">คัดลอก</span>
             </button>
@@ -349,8 +462,7 @@ async function _showPaymentPage(pkgType, course) {
             <span class="text-sm font-medium text-gray-700">${cfg.paymentAccountName}</span>
           </div>` : ''}
           ${cfg.paymentNote ? `
-          <p class="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mt-1">${cfg.paymentNote}</p>
-          ` : ''}
+          <p class="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mt-1">${cfg.paymentNote}</p>` : ''}
         </div>
 
         <!-- อัปโหลดสลิป -->
@@ -372,8 +484,7 @@ async function _showPaymentPage(pkgType, course) {
         </div>
 
         <p class="text-[11px] text-gray-400 text-center">
-          หลังส่งหลักฐาน แอดมินจะตรวจสอบและอนุมัติภายใน 24 ชั่วโมง<br/>
-          คุณจะได้รับแจ้งเตือนเมื่ออนุมัติแล้ว
+          หลังส่งหลักฐาน แอดมินจะตรวจสอบและอนุมัติภายใน 24 ชั่วโมง
         </p>
       </div>
 
@@ -390,11 +501,28 @@ async function _showPaymentPage(pkgType, course) {
 
   document.body.appendChild(wrap)
 
+  // สร้าง QR Code ตามยอดจริง
+  promptpayQRDataURL(ppMobile, amount).then(dataUrl => {
+    const qrWrap = wrap.querySelector('#pp-qr-wrap')
+    if (qrWrap) qrWrap.innerHTML = `
+      <img src="${dataUrl}" class="w-[220px] h-[220px] rounded-xl border border-gray-100 shadow-sm mx-auto" />
+      <p class="text-[10px] text-gray-400">QR สำหรับ ${amount.toLocaleString()} บาทเท่านั้น</p>`
+  }).catch(() => {
+    // fallback: ใช้รูป QR จาก admin settings ถ้ามี
+    if (cfg.paymentQrUrl) {
+      const qrWrap = wrap.querySelector('#pp-qr-wrap')
+      if (qrWrap) qrWrap.innerHTML = `<img src="${cfg.paymentQrUrl}" class="mx-auto h-[220px] object-contain rounded-xl border border-gray-100 shadow-sm" />`
+    }
+  })
+
   // ← กลับ
   wrap.querySelector('#pp-back').addEventListener('click', () => {
     wrap.remove()
-    const quota = _teacher?.teachers_quota
-    _showQuotaPopup(quota?.total_classes_created ?? 0, course)
+    if (pkgType === 'per_subject') {
+      _showRoomCountPage(course, cfg)
+    } else {
+      _showQuotaPopup(_teacher?.teachers_quota?.total_classes_created ?? 0, course, cfg)
+    }
   })
 
   // คัดลอก
@@ -448,11 +576,11 @@ async function _showPaymentPage(pkgType, course) {
         teacher_id:   _teacher.id,
         package_type: pkgType,
         amount,
+        room_count:   pkgType === 'per_subject' ? roomCount : null,
         subject_id:   pkgType === 'per_subject' ? (course?.id ?? null) : null,
         status:       'pending',
       })
       const slipUrl = await uploadPaymentSlip(slipFile, req.id)
-      // อัปเดต slip_url ด้วย UPDATE (ไม่ใช่ INSERT ซ้ำ)
       await supabase.from('payment_requests').update({ slip_url: slipUrl }).eq('id', req.id)
 
       wrap.remove()
