@@ -306,7 +306,9 @@ export function renderTeacherTable(teachers) {
             <td class="px-4 py-3 text-center hidden lg:table-cell">
               ${catBadge(t.category)}
             </td>
-            <td class="px-4 py-3 text-right">
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <button onclick="window._adminViewSchedule(${t.id},'${(t.full_name??'').replace(/'/g,'')}')"
+                class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-3">🗓️ ตาราง</button>
               <button onclick="openTeacherModal(${t.id})"
                 class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
               <button onclick="handleDeleteTeacher(${t.id}, '${t.full_name}')"

@@ -5,6 +5,7 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderDepartments, renderDeptTable, renderPeriods,
          renderHomeroom, renderScoreColConfig, renderRegisteredTeachers,
          renderHolidays, renderPayments } from './views.js'
+import { renderScheduleGrid } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
          getDepartments, createDepartment, updateDepartment, deleteDepartment,
@@ -484,6 +485,32 @@ window.openDeptModal       = openDeptModal
 window.handleDeleteDept    = handleDeleteDept
 window.openPeriodModal     = openPeriodModal
 window.handleDeletePeriod  = handleDeletePeriod
+
+// ─── Admin: ดูตารางสอนของครู ──────────────────────────────────────────────────
+window._adminViewSchedule = async (teacherId, teacherName) => {
+  const { getSystemConfig, getMySchedule } = await import('./api.js')
+  const cfg  = await getSystemConfig().catch(()=>({}))
+  const year = parseInt(cfg.academicYear ?? 2568)
+  const sem  = parseInt(cfg.semester ?? 1)
+
+  // สร้าง teacher-like object สำหรับ renderScheduleGrid
+  const fakeTeacher = { id: teacherId, full_name: teacherName }
+
+  document.getElementById('page-title').textContent = `ตารางสอน — ${teacherName}`
+  document.querySelectorAll('[data-nav]').forEach(l => l.classList.remove('bg-indigo-800','text-white'))
+
+  await renderScheduleGrid(fakeTeacher, year, sem, cfg)
+
+  // เพิ่มปุ่มกลับ
+  const main = document.getElementById('main-content')
+  if (main) {
+    const backBtn = document.createElement('button')
+    backBtn.className = 'mt-4 text-sm text-gray-500 hover:text-indigo-600'
+    backBtn.textContent = '← กลับหน้าครู'
+    backBtn.addEventListener('click', () => renderTeachers())
+    main.insertBefore(backBtn, main.firstChild)
+  }
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {

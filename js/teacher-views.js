@@ -118,8 +118,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
   ])
-  const FREE_LIMIT = parseInt(cfg.freeClassQuota ?? 2)
-  const isPaid     = teacher?.teachers_quota?.is_paid ?? false
+  const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
+  const academicYear = parseInt(cfg.academicYear ?? 2568)
+  const semester     = parseInt(cfg.semester ?? 1)
+  const isPaid       = teacher?.teachers_quota?.is_paid ?? false
   const usedSlots  = classes.length
   const freeLeft   = isPaid ? '∞' : Math.max(0, FREE_LIMIT - usedSlots)
   const quotaColor = isPaid ? 'text-emerald-700' : usedSlots >= FREE_LIMIT ? 'text-red-600' : 'text-amber-600'
@@ -132,17 +134,30 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
-        { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50' },
-        { label:'ห้องเรียน', value: classes.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50' },
-        { label:'คำร้องรออนุมัติ', value: '—', icon:'🔔', color:'text-red-700', bg:'bg-red-50' },
+        { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50', nav:'my-courses' },
+        { label:'ห้องเรียน', value: classes.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50', nav:'my-classes' },
+        { label:'คำร้องรออนุมัติ', value: '—', icon:'🔔', color:'text-red-700', bg:'bg-red-50', nav:'requests' },
       ].map(c=>`
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+        <div onclick="window._navTo('${c.nav}')"
+          class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer hover:shadow-md hover:border-gray-200 transition">
           <div class="w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center text-xl">${c.icon}</div>
           <div>
             <p class="text-xs text-gray-500">${c.label}</p>
             <p class="text-2xl font-bold ${c.color}">${c.value}</p>
           </div>
         </div>`).join('')}
+    </div>
+
+    <!-- ปุ่มตารางสอน -->
+    <div onclick="window._navTo('schedule')"
+      class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4
+             cursor-pointer hover:shadow-md hover:border-indigo-200 hover:bg-indigo-50/30 transition group">
+      <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">🗓️</div>
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-gray-800 text-sm">ตารางสอนของฉัน</p>
+        <p class="text-xs text-gray-400 mt-0.5">ภาค ${semester} / ${academicYear} — คลิกเพื่อดูและแก้ไขตาราง</p>
+      </div>
+      <span class="text-gray-300 group-hover:text-indigo-400 transition text-lg">→</span>
     </div>
 
     <!-- โควตาห้องเรียน -->
