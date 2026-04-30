@@ -2381,14 +2381,25 @@ export async function renderLifeSkillAdmin() {
           <tbody class="divide-y divide-gray-50">${cols.map(colRow).join('')}</tbody>
         </table>`
 
-    const sheetIdBlock = (cfgKey, catLabel, dotColor) => `
-      <div class="px-5 py-3 bg-gray-50/60 border-t border-gray-100 flex items-center gap-3">
-        <span class="text-xs text-gray-500 whitespace-nowrap">Google Sheet ID (${catLabel}):</span>
-        <input type="text" id="lsk-sheet-${cfgKey}" value="${cfg[cfgKey] ?? ''}"
-          placeholder="วาง Sheet ID จาก URL ..."
-          class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-        <button class="lsk-save-sheet px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition"
-          data-key="${cfgKey}">บันทึก</button>
+    // cfgKey = base key เช่น 'lifeSkillSheetIdSamai' → tab key = 'lifeSkillSheetTabSamai'
+    const _tabKey = (idKey) => idKey.replace('SheetId', 'SheetTab')
+    const sheetIdBlock = (cfgKey, catLabel) => `
+      <div class="px-5 py-4 bg-gray-50/60 border-t border-gray-100 space-y-2">
+        <p class="text-xs font-semibold text-gray-500 mb-1">🔗 เชื่อมกับ Google Sheet (${catLabel})</p>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400 w-20 flex-shrink-0">Sheet ID:</span>
+          <input type="text" id="lsk-sheet-${cfgKey}" value="${cfg[cfgKey] ?? ''}"
+            placeholder="1BxiMV...xxxxxxx"
+            class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400 w-20 flex-shrink-0">ชื่อแท็บ:</span>
+          <input type="text" id="lsk-tab-${cfgKey}" value="${cfg[_tabKey(cfgKey)] ?? ''}"
+            placeholder="เช่น ทักษะชีวิต, Sheet1"
+            class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <button class="lsk-save-sheet px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition flex-shrink-0"
+            data-key="${cfgKey}" data-tab-key="${_tabKey(cfgKey)}">บันทึก</button>
+        </div>
       </div>`
 
     setContent(`<div class="max-w-4xl mx-auto animate-fade space-y-6">
@@ -2447,19 +2458,24 @@ export async function renderLifeSkillAdmin() {
       })
     })
 
-    // บันทึก Sheet ID
+    // บันทึก Sheet ID + Tab
     document.querySelectorAll('.lsk-save-sheet').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const key = btn.dataset.key
-        const val = document.getElementById(`lsk-sheet-${key}`)?.value.trim() ?? ''
+        const key    = btn.dataset.key
+        const tabKey = btn.dataset.tabKey
+        const val    = document.getElementById(`lsk-sheet-${key}`)?.value.trim() ?? ''
+        const tabVal = document.getElementById(`lsk-tab-${key}`)?.value.trim() ?? ''
         const origText = btn.textContent
         btn.disabled = true; btn.textContent = '⏳'
         try {
-          await updateSystemConfig(key, val)
-          cfg[key] = val  // อัปเดต local cfg
+          await Promise.all([
+            updateSystemConfig(key, val),
+            updateSystemConfig(tabKey, tabVal),
+          ])
+          cfg[key] = val; cfg[tabKey] = tabVal
           btn.textContent = '✅'; btn.style.background = '#16a34a'
           setTimeout(() => { btn.disabled = false; btn.textContent = origText; btn.style.background = '' }, 1500)
-          showToast('บันทึก Sheet ID แล้ว', 'success')
+          showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว', 'success')
         } catch {
           showToast('บันทึกไม่สำเร็จ', 'error')
           btn.disabled = false; btn.textContent = origText
@@ -2613,16 +2629,25 @@ export async function renderReadingAdmin() {
           <span class="ml-auto text-xs text-gray-400">${cols.length} หัวข้อ · รวม ${cols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
         </div>
         <div>${tableHTML}</div>
-        <!-- Sheet ID -->
-        <div class="px-5 py-3 bg-gray-50/60 border-t border-gray-100 flex items-center gap-3">
-          <span class="text-xs text-gray-500 whitespace-nowrap">Google Sheet ID:</span>
-          <input type="text" id="rsa-sheet-id" value="${cfg.readingScoreSheetId ?? ''}"
-            placeholder="วาง Sheet ID จาก URL ..."
-            class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-          <button id="rsa-save-sheet"
-            class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition">
-            บันทึก
-          </button>
+        <!-- Sheet ID + Tab -->
+        <div class="px-5 py-4 bg-gray-50/60 border-t border-gray-100 space-y-2">
+          <p class="text-xs font-semibold text-gray-500 mb-1">🔗 เชื่อมกับ Google Sheet</p>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-400 w-20 flex-shrink-0">Sheet ID:</span>
+            <input type="text" id="rsa-sheet-id" value="${cfg.readingScoreSheetId ?? ''}"
+              placeholder="1BxiMV...xxxxxxx"
+              class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-400 w-20 flex-shrink-0">ชื่อแท็บ:</span>
+            <input type="text" id="rsa-sheet-tab" value="${cfg.readingScoreSheetTab ?? ''}"
+              placeholder="เช่น อ่านคิดวิเคราะห์, Sheet1"
+              class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <button id="rsa-save-sheet"
+              class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition flex-shrink-0">
+              บันทึก
+            </button>
+          </div>
         </div>
       </div>
     </div>`)
@@ -2647,15 +2672,19 @@ export async function renderReadingAdmin() {
     })
 
     document.getElementById('rsa-save-sheet').addEventListener('click', async () => {
-      const btn = document.getElementById('rsa-save-sheet')
-      const val = document.getElementById('rsa-sheet-id')?.value.trim() ?? ''
+      const btn    = document.getElementById('rsa-save-sheet')
+      const val    = document.getElementById('rsa-sheet-id')?.value.trim() ?? ''
+      const tabVal = document.getElementById('rsa-sheet-tab')?.value.trim() ?? ''
       btn.disabled = true; btn.textContent = '⏳'
       try {
-        await updateSystemConfig('readingScoreSheetId', val)
-        cfg.readingScoreSheetId = val
+        await Promise.all([
+          updateSystemConfig('readingScoreSheetId', val),
+          updateSystemConfig('readingScoreSheetTab', tabVal),
+        ])
+        cfg.readingScoreSheetId = val; cfg.readingScoreSheetTab = tabVal
         btn.textContent = '✅'; btn.style.background = '#16a34a'
         setTimeout(() => { btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' }, 1500)
-        showToast('บันทึก Sheet ID แล้ว', 'success')
+        showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว', 'success')
       } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึก' }
     })
   }
