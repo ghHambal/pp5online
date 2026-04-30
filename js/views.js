@@ -9,7 +9,9 @@ import { getStats, getTeachers, getClasses, getStudents,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
          getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
          getLifeSkillColumns, createLifeSkillColumn,
-         updateLifeSkillColumn, deleteLifeSkillColumn } from './api.js'
+         updateLifeSkillColumn, deleteLifeSkillColumn,
+         getReadingScoreColumns, createReadingScoreColumn,
+         updateReadingScoreColumn, deleteReadingScoreColumn } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -2546,6 +2548,182 @@ function _openModal(col, year, sem, onSave) {
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       btn.disabled = false; btn.textContent = isEdit ? 'บันทึก' : 'เพิ่ม'
+    }
+  })
+}
+
+// ─── Admin: จัดการคอลัมน์คะแนนการอ่านคิดวิเคราะห์ ───────────────────────────
+export async function renderReadingAdmin() {
+  setActiveNav('reading-admin')
+  document.getElementById('page-title').textContent = 'คะแนนอ่านคิดวิเคราะห์'
+
+  const cfg  = await getSystemConfig().catch(()=>({}))
+  const year = parseInt(cfg.academicYear ?? 2568)
+  const sem  = parseInt(cfg.semester ?? 1)
+
+  const _reload = async () => {
+    const cols = await getReadingScoreColumns(year, sem).catch(()=>[])
+    _render(cols)
+  }
+
+  const _render = (cols) => {
+    const colRow = (c) => `
+      <tr class="hover:bg-gray-50 transition" data-id="${c.id}">
+        <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.name}</td>
+        <td class="px-4 py-3 text-center text-sm text-gray-600">${c.max_score}</td>
+        <td class="px-4 py-3 text-center font-mono text-xs text-indigo-600">${c.sheet_col ?? '—'}</td>
+        <td class="px-4 py-3 text-center text-xs text-gray-400">${c.sort_order}</td>
+        <td class="px-4 py-3 text-right whitespace-nowrap">
+          <button class="rsa-edit text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3" data-id="${c.id}">แก้ไข</button>
+          <button class="rsa-del text-xs text-red-400 hover:text-red-600 font-medium" data-id="${c.id}" data-name="${c.name}">ลบ</button>
+        </td>
+      </tr>`
+
+    const tableHTML = !cols.length
+      ? `<p class="text-center py-8 text-gray-400 text-sm">ยังไม่มีคอลัมน์ — กดเพิ่มด้านบน</p>`
+      : `<table class="w-full text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+            <tr>
+              <th class="px-4 py-3 text-left">ชื่อหัวข้อ</th>
+              <th class="px-4 py-3 text-center">คะแนนเต็ม</th>
+              <th class="px-4 py-3 text-center">คอลัมน์ Sheet</th>
+              <th class="px-4 py-3 text-center">ลำดับ</th>
+              <th class="px-4 py-3 text-right">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">${cols.map(colRow).join('')}</tbody>
+        </table>`
+
+    setContent(`<div class="max-w-4xl mx-auto animate-fade space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800">คอลัมน์คะแนนอ่านคิดวิเคราะห์และเขียน</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year} — สำหรับครูกลุ่มสาระภาษาไทย</p>
+        </div>
+        <button id="rsa-add-btn"
+          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+          ＋ เพิ่มหัวข้อ
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+          <h3 class="text-sm font-semibold text-gray-700">📖 หัวข้อคะแนน</h3>
+          <span class="ml-auto text-xs text-gray-400">${cols.length} หัวข้อ · รวม ${cols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
+        </div>
+        <div>${tableHTML}</div>
+        <!-- Sheet ID -->
+        <div class="px-5 py-3 bg-gray-50/60 border-t border-gray-100 flex items-center gap-3">
+          <span class="text-xs text-gray-500 whitespace-nowrap">Google Sheet ID:</span>
+          <input type="text" id="rsa-sheet-id" value="${cfg.readingScoreSheetId ?? ''}"
+            placeholder="วาง Sheet ID จาก URL ..."
+            class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <button id="rsa-save-sheet"
+            class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition">
+            บันทึก
+          </button>
+        </div>
+      </div>
+    </div>`)
+
+    // ─── Handlers ──────────────────────────────────────────────────────────
+    document.getElementById('rsa-add-btn').addEventListener('click', () => _openReadingModal(null, year, sem, _reload))
+
+    document.querySelectorAll('.rsa-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const col = cols.find(c => c.id === +btn.dataset.id)
+        if (col) _openReadingModal(col, year, sem, _reload)
+      })
+    })
+    document.querySelectorAll('.rsa-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?`)) return
+        try {
+          await deleteReadingScoreColumn(+btn.dataset.id)
+          showToast('ลบแล้ว', 'success'); _reload()
+        } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+      })
+    })
+
+    document.getElementById('rsa-save-sheet').addEventListener('click', async () => {
+      const btn = document.getElementById('rsa-save-sheet')
+      const val = document.getElementById('rsa-sheet-id')?.value.trim() ?? ''
+      btn.disabled = true; btn.textContent = '⏳'
+      try {
+        await updateSystemConfig('readingScoreSheetId', val)
+        cfg.readingScoreSheetId = val
+        btn.textContent = '✅'; btn.style.background = '#16a34a'
+        setTimeout(() => { btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' }, 1500)
+        showToast('บันทึก Sheet ID แล้ว', 'success')
+      } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึก' }
+    })
+  }
+
+  _reload()
+}
+
+function _openReadingModal(col, year, sem, onSave) {
+  document.getElementById('rsa-modal')?.remove()
+  const isEdit = !!col
+  const m = document.createElement('div')
+  m.id = 'rsa-modal'
+  m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+  m.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-7">
+      <h3 class="text-lg font-bold text-gray-800 mb-5">${isEdit?'แก้ไขหัวข้อ':'เพิ่มหัวข้อ'}</h3>
+      <form id="rsa-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อหัวข้อ <span class="text-red-400">*</span></label>
+          <input id="rsa-name" type="text" value="${col?.name??''}" placeholder="เช่น การอ่านออกเสียง"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" required />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">คะแนนเต็ม</label>
+            <input id="rsa-max" type="number" min="1" max="100" value="${col?.max_score??20}"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ลำดับ</label>
+            <input id="rsa-order" type="number" min="0" value="${col?.sort_order??0}"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">คอลัมน์ Google Sheet</label>
+          <input id="rsa-sheetcol" type="text" value="${col?.sheet_col??''}" placeholder="เช่น EH"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono uppercase" />
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="rsa-cancel"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button type="submit" id="rsa-save"
+            class="btn-primary flex-1 py-2.5 rounded-xl text-white text-sm font-semibold">${isEdit?'บันทึก':'เพิ่ม'}</button>
+        </div>
+      </form>
+    </div>`
+  document.body.appendChild(m)
+  m.querySelector('#rsa-cancel').addEventListener('click', () => m.remove())
+  m.addEventListener('click', e => { if(e.target===m) m.remove() })
+  m.querySelector('#rsa-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const btn = m.querySelector('#rsa-save')
+    btn.disabled=true; btn.textContent='กำลังบันทึก...'
+    try {
+      const payload = {
+        name:          m.querySelector('#rsa-name').value.trim(),
+        max_score:     parseInt(m.querySelector('#rsa-max').value)||20,
+        sort_order:    parseInt(m.querySelector('#rsa-order').value)||0,
+        sheet_col:     m.querySelector('#rsa-sheetcol').value.trim().toUpperCase()||null,
+        academic_year: year, semester: sem,
+      }
+      if (isEdit) await updateReadingScoreColumn(col.id, payload)
+      else        await createReadingScoreColumn(payload)
+      showToast('บันทึกสำเร็จ','success'); m.remove(); onSave()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
+      btn.disabled=false; btn.textContent=isEdit?'บันทึก':'เพิ่ม'
     }
   })
 }

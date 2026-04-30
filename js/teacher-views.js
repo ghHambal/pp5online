@@ -12,7 +12,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getUniqueRooms, getUniqueReligionRooms,
          getMySchedule, upsertScheduleEntry, deleteScheduleEntry,
          deleteScheduleByTeacher, getPeriods, getAllPeriods,
-         getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore } from './api.js'
+         getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
+         getReadingScoreColumns, getReadingScores, upsertReadingScore } from './api.js'
 
 import { uploadTeacherPhoto } from './storage.js'
 
@@ -3073,19 +3074,194 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
   _load(currentRoom)
 }
 
-export function renderReadingScore(teacher) {
+export async function renderReadingScore(teacher) {
   setActiveNav('reading-score')
   setTitle('บันทึกคะแนนอ่านคิดวิเคราะห์')
-  setContent(`<div class="max-w-3xl mx-auto animate-fade">
-    <h2 class="text-lg font-bold text-gray-800 mb-4">📖 บันทึกคะแนนการอ่านคิดวิเคราะห์และเขียน</h2>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-400">
-      <p class="text-4xl mb-3">📖</p>
-      <p class="font-medium text-gray-600">ระบบบันทึกคะแนนการอ่านคิดวิเคราะห์</p>
-      <p class="text-sm mt-1">สำหรับครูภาษาไทย — บันทึกได้ทุกห้องที่สอน</p>
-      <p class="text-xs text-gray-300 mt-3">เร็วๆ นี้</p>
-    </div>
-  </div>`)
 
+  const cfg  = await getSystemConfig().catch(()=>({}))
+  const year = parseInt(cfg.academicYear ?? 2568)
+  const sem  = parseInt(cfg.semester ?? 1)
+
+  // โหลดห้องที่ครูสอน (ทุกห้องของครูคนนี้)
+  const myClasses = teacher ? await getMyClasses(teacher.id).catch(()=>[]) : []
+  const rooms = [...new Set(myClasses.map(c => c.class_name).filter(Boolean))].sort()
+
+  if (!rooms.length) {
+    setContent(`<div class="max-w-lg mx-auto text-center py-16 text-gray-400">
+      <p class="text-4xl mb-3">📖</p>
+      <p class="font-medium">ยังไม่มีห้องเรียน</p>
+      <p class="text-xs mt-1">กรุณาลงทะเบียนห้องเรียนก่อนบันทึกคะแนน</p>
+    </div>`)
+    return
+  }
+
+  let currentRoom = rooms[0]
+
+  const _load = async (room) => {
+    currentRoom = room
+    setContent(`<div class="flex justify-center py-12 text-gray-400">
+      <svg class="animate-spin h-6 w-6 text-indigo-400" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+    </div>`)
+
+    const [columns, students] = await Promise.all([
+      getReadingScoreColumns(year, sem).catch(()=>[]),
+      getStudentsByRoom(room).catch(()=>[]),
+    ])
+
+    if (!columns.length) {
+      setContent(`<div class="max-w-lg mx-auto text-center py-16">
+        <p class="text-4xl mb-3">📖</p>
+        <p class="font-medium text-gray-600">ยังไม่มีหัวข้อคะแนนอ่านคิดวิเคราะห์</p>
+        <p class="text-sm text-gray-400 mt-1">ให้แอดมินเพิ่มหัวข้อในเมนู "คะแนนอ่านคิดวิเคราะห์" ก่อนครับ</p>
+      </div>`)
+      return
+    }
+
+    const colIds   = columns.map(c => c.id)
+    const scores   = await getReadingScores(colIds).catch(()=>[])
+    const scoreMap = {}
+    scores.forEach(s => {
+      if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
+      scoreMap[s.student_id][s.column_id] = s.score
+    })
+
+    const totalMax = columns.reduce((s,c) => s + (c.max_score ?? 0), 0)
+    const stickyL  = 'sticky left-0 z-10 bg-white border-r border-gray-100'
+    const stickyM  = 'sticky z-10 bg-white border-r border-gray-100'
+    const thBase   = 'border border-gray-100 text-center text-xs px-2 py-2 font-medium'
+
+    setContent(`<div class="animate-fade">
+      <div class="flex items-center gap-3 mb-4 flex-wrap">
+        <button onclick="window._navTo('overview')" class="text-sm text-gray-500 hover:text-indigo-600">← กลับ</button>
+        <h2 class="font-bold text-gray-800">📖 คะแนนอ่านคิดวิเคราะห์และเขียน</h2>
+        ${rooms.length > 1 ? `
+        <select id="rs-room-sel" class="text-xs border border-gray-200 rounded-xl px-3 py-1.5 bg-white ml-2">
+          ${rooms.map(r=>`<option value="${r}" ${r===room?'selected':''}>${r}</option>`).join('')}
+        </select>` : `<span class="text-sm font-semibold text-indigo-700">${room}</span>`}
+        <span class="text-xs text-gray-400 ml-auto">ภาค ${sem} / ${year}</span>
+      </div>
+
+      <div class="text-xs text-gray-400 mb-2">
+        💡 <b>Tab / →</b> ขวา · <b>Enter / ↓</b> ลง · <b>↑ ↓ ← →</b> เลื่อน · บันทึกอัตโนมัติ
+      </div>
+
+      <div class="overflow-auto rounded-2xl border border-gray-100 shadow-sm bg-white">
+        <table class="border-collapse text-xs" style="min-width:max-content">
+          <thead>
+            <tr style="position:sticky;top:0;z-index:20">
+              <th class="${stickyL} ${thBase} bg-gray-50 text-left px-3" style="min-width:40px">#</th>
+              <th class="${stickyM} ${thBase} bg-gray-50 text-left px-2" style="left:40px;min-width:60px">รหัส</th>
+              <th class="${stickyM} ${thBase} bg-gray-50 text-left px-3" style="left:100px;min-width:180px">ชื่อ-นามสกุล</th>
+              ${columns.map(c=>`
+              <th class="${thBase} bg-indigo-50 text-indigo-800" style="min-width:80px">
+                <div class="font-semibold leading-tight">${c.name}</div>
+                <div class="text-[10px] font-normal text-indigo-500 mt-0.5">/${c.max_score}</div>
+              </th>`).join('')}
+              <th class="${thBase} bg-violet-50 text-violet-700" style="min-width:70px">
+                รวม<br/><span class="text-[10px] font-normal">/${totalMax}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            ${students.map((s,i) => {
+              const sScores = scoreMap[s.id] ?? {}
+              const total   = columns.reduce((sum,c) => sum + (parseFloat(sScores[c.id] ?? 0) || 0), 0)
+              return `<tr class="hover:bg-gray-50/50" data-sid="${s.id}">
+                <td class="${stickyL} border border-gray-100 text-center text-gray-400 px-2" style="min-width:40px">${i+1}</td>
+                <td class="${stickyM} border border-gray-100 font-mono text-gray-500 px-2" style="left:40px;min-width:60px">${s.student_code}</td>
+                <td class="${stickyM} border border-gray-100 px-3 py-1.5" style="left:100px;min-width:180px">
+                  <div class="flex items-center gap-2">
+                    ${s.image_url
+                      ? `<img src="${s.image_url}" class="w-7 h-7 rounded-full object-cover flex-shrink-0"/>`
+                      : `<div class="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-200 to-violet-200
+                                    flex items-center justify-center text-xs font-bold text-indigo-700 flex-shrink-0">
+                           ${(s.full_name??'?').charAt(0)}
+                         </div>`}
+                    <span class="text-gray-800 font-medium truncate max-w-[130px]">${s.full_name}</span>
+                  </div>
+                </td>
+                ${columns.map(c => {
+                  const val = sScores[c.id] ?? ''
+                  return `<td class="border border-gray-100 p-0 rs-score-cell"
+                    data-sid="${s.id}" data-cid="${c.id}" data-max="${c.max_score}">
+                    <input type="number" min="0" max="${c.max_score}" step="0.5"
+                      class="rs-input w-full h-full px-2 py-2 text-center text-xs bg-transparent outline-none
+                             focus:bg-indigo-50 focus:ring-2 focus:ring-inset focus:ring-indigo-300 transition"
+                      value="${val}" placeholder="—"
+                      data-sid="${s.id}" data-cid="${c.id}" data-max="${c.max_score}"
+                      data-row="${i}" data-col="${columns.findIndex(x=>x.id===c.id)}" />
+                  </td>`
+                }).join('')}
+                <td class="border border-gray-100 text-center font-semibold text-violet-700 rs-total" data-sid="${s.id}">
+                  ${total > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}
+                </td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`)
+
+    document.getElementById('rs-room-sel')?.addEventListener('change', e => _load(e.target.value))
+
+    // Spreadsheet navigation + auto-save (เหมือน Life Skill ทุกอย่าง)
+    const inputs   = [...document.querySelectorAll('.rs-input')]
+    const numCols  = columns.length
+    const numRows  = students.length
+
+    const _getInput = (row, col) => inputs.find(i => +i.dataset.row === row && +i.dataset.col === col)
+    const _moveTo   = (row, col) => {
+      if (row < 0) row = 0; if (row >= numRows) row = numRows-1
+      if (col < 0) col = numCols-1; if (col >= numCols) col = 0
+      const t = _getInput(row, col); t?.focus(); t?.select()
+    }
+    const _flash = (inp, ok) => {
+      const td = inp.closest('td'); if (!td) return
+      const cls = ok ? 'ring-2 ring-inset ring-indigo-400 bg-indigo-50' : 'ring-2 ring-inset ring-red-400 bg-red-50'
+      td.classList.add(...cls.split(' '))
+      setTimeout(() => td.classList.remove(...cls.split(' ')), 1200)
+    }
+    const _updateTotal = (sid) => {
+      const totalEl = document.querySelector(`.rs-total[data-sid="${sid}"]`); if (!totalEl) return
+      const sum = inputs.filter(i => +i.dataset.sid === +sid).reduce((s,i) => s+(parseFloat(i.value)||0), 0)
+      totalEl.textContent = sum > 0 ? sum.toFixed(1).replace(/\.0$/,'') : '—'
+    }
+    const _save = async (inp) => {
+      const sid=+inp.dataset.sid, cid=+inp.dataset.cid, max=+inp.dataset.max
+      const score = inp.value.trim()==='' ? null : parseFloat(inp.value)
+      if (score!==null && (score<0||score>max)) { _flash(inp,false); return }
+      try { await upsertReadingScore(sid,cid,score,teacher?.id??null); _flash(inp,true); _updateTotal(sid) }
+      catch { _flash(inp,false) }
+    }
+    inputs.forEach(inp => {
+      inp.addEventListener('blur', () => _save(inp))
+      inp.addEventListener('keydown', e => {
+        const row=+inp.dataset.row, col=+inp.dataset.col
+        switch(e.key) {
+          case 'Tab': e.preventDefault(); e.shiftKey?(col>0?_moveTo(row,col-1):_moveTo(row-1,numCols-1)):(col<numCols-1?_moveTo(row,col+1):_moveTo(row+1,0)); break
+          case 'Enter': e.preventDefault(); _save(inp); row<numRows-1?_moveTo(row+1,col):_moveTo(0,col); break
+          case 'ArrowDown': e.preventDefault(); _moveTo(row<numRows-1?row+1:0,col); break
+          case 'ArrowUp':   e.preventDefault(); _moveTo(row>0?row-1:numRows-1,col); break
+          case 'ArrowRight':e.preventDefault(); col<numCols-1?_moveTo(row,col+1):_moveTo(row+1,0); break
+          case 'ArrowLeft': e.preventDefault(); col>0?_moveTo(row,col-1):_moveTo(row-1,numCols-1); break
+          case 'Home': e.preventDefault(); e.ctrlKey?_moveTo(0,0):_moveTo(row,0); break
+          case 'End':  e.preventDefault(); e.ctrlKey?_moveTo(numRows-1,numCols-1):_moveTo(row,numCols-1); break
+          case 'Escape': inp.blur(); break
+        }
+      })
+      inp.addEventListener('input', () => {
+        const max=+inp.dataset.max, maxLen=String(Math.floor(max)).length
+        if (inp.value.replace(/[^0-9]/g,'').length>=maxLen && !inp.value.includes('.')) {
+          _save(inp); setTimeout(()=>_moveTo(+inp.dataset.row,+inp.dataset.col+1),50)
+        }
+      })
+    })
+  }
+
+  _load(currentRoom)
 }
 
 // ─── Prayer Score Constants ───────────────────────────────────────────────────

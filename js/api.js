@@ -840,3 +840,47 @@ export async function upsertLifeSkillScore(studentId, columnId, score, teacherId
              { onConflict: 'student_id,column_id' })
   if (error) throw error
 }
+
+// ─── Reading Score Columns (admin) ───────────────────────────────────────────
+export async function getReadingScoreColumns(academicYear, semester) {
+  const { data, error } = await supabase.from('reading_score_columns')
+    .select('id, name, max_score, sheet_col, sort_order, academic_year, semester')
+    .eq('academic_year', academicYear).eq('semester', semester)
+    .order('sort_order').order('id')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createReadingScoreColumn(payload) {
+  const { error } = await supabase.from('reading_score_columns').insert(payload)
+  if (error) throw error
+}
+
+export async function updateReadingScoreColumn(id, payload) {
+  const { error } = await supabase.from('reading_score_columns').update(payload).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteReadingScoreColumn(id) {
+  const { error } = await supabase.from('reading_score_columns').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─── Reading Scores (teacher) ─────────────────────────────────────────────────
+export async function getReadingScores(columnIds) {
+  if (!columnIds.length) return []
+  const { data, error } = await supabase.from('reading_scores')
+    .select('id, student_id, column_id, score')
+    .in('column_id', columnIds)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertReadingScore(studentId, columnId, score, teacherId) {
+  const { error } = await supabase.from('reading_scores')
+    .upsert({ student_id: studentId, column_id: columnId,
+              score: score ?? null, updated_by: teacherId,
+              updated_at: new Date().toISOString() },
+             { onConflict: 'student_id,column_id' })
+  if (error) throw error
+}
