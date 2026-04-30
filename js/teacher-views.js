@@ -4195,11 +4195,30 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   try { savedColors = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
 
   const subjectColorMap = {}
+  // โหลดสีจาก master_subjects
   subjects.forEach((s, i) => {
     const ci = savedColors[s.id] ?? savedColors[s.subject_name] ?? i % COLOR_PRESETS.length
-    const entry = { cls: `${COLOR_PRESETS[ci].bg} ${COLOR_PRESETS[ci].text}`, idx: ci }
-    subjectColorMap[s.id] = entry
-    if (s.subject_name) subjectColorMap[s.subject_name] = entry
+    const e = { cls: `${COLOR_PRESETS[ci].bg} ${COLOR_PRESETS[ci].text}`, idx: ci }
+    subjectColorMap[s.id] = e
+    if (s.subject_name) subjectColorMap[s.subject_name] = e
+  })
+  // เพิ่มสีจาก localStorage สำหรับชื่อวิชาจากตารางสอน (ที่ไม่ได้อยู่ใน master_subjects)
+  Object.entries(savedColors).forEach(([key, ci]) => {
+    if (!subjectColorMap[key]) {
+      const cp = COLOR_PRESETS[ci % COLOR_PRESETS.length]
+      subjectColorMap[key] = { cls: `${cp.bg} ${cp.text}`, idx: ci }
+    }
+  })
+  // กำหนดสีใหม่ให้ชื่อวิชาจาก schedule entries ที่ยังไม่มีสี
+  let autoColorIdx = subjects.length
+  scheduleData.forEach(entry => {
+    const key = entry.subject_name
+    if (key && !subjectColorMap[key]) {
+      const ci = autoColorIdx % COLOR_PRESETS.length
+      const cp = COLOR_PRESETS[ci]
+      subjectColorMap[key] = { cls: `${cp.bg} ${cp.text}`, idx: ci }
+      autoColorIdx++
+    }
   })
 
   const _saveColors = () => {
@@ -4260,19 +4279,22 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
               const colorKey  = entry?.subject_name ?? (subj?.id ? String(subj.id) : null)
               const clrInfo   = colorKey ? (subjectColorMap[colorKey] ?? subjectColorMap[subj?.id] ?? null) : null
               const clr       = clrInfo?.cls ?? (dispSubj ? 'bg-gray-100 text-gray-700' : '')
-              return `<td class="border border-gray-100 p-1 align-top cursor-pointer
-                hover:bg-indigo-50 transition-colors text-center schedule-cell"
+              // height:1px บน td → ทำให้ h-full ของ child ทำงานใน table cell ได้
+              return `<td class="border border-gray-100 p-0 cursor-pointer
+                hover:bg-indigo-50/30 transition-colors schedule-cell"
+                style="height:1px"
                 data-dow="${d}" data-period="${p.period_no}"
                 ${span > 1 ? `rowspan="${span}"` : ''}>
                 ${dispSubj ? `
-                <div class="rounded-lg px-2 py-1.5 ${clr} h-full min-h-[50px] flex flex-col justify-center gap-0.5">
-                  <p class="font-bold leading-tight text-xs">${dispSubj}</p>
+                <div class="w-full h-full rounded-none ${clr} flex flex-col justify-center items-center
+                  gap-0.5 px-2 py-2 text-center" style="min-height:52px">
+                  <p class="font-bold leading-tight text-xs break-words">${dispSubj}</p>
                   ${dispClass ? `<p class="text-[10px] opacity-80 leading-tight">${dispClass}</p>` : ''}
-                  ${dispTeach ? `<p class="text-[9px] opacity-60 leading-tight">${dispTeach}</p>` : ''}
-                  ${span > 1 ? `<p class="text-[9px] opacity-50">${span} คาบ</p>` : ''}
+                  ${dispTeach ? `<p class="text-[9px] opacity-55 leading-tight">${dispTeach}</p>` : ''}
+                  ${span > 1 ? `<p class="text-[9px] opacity-40 mt-0.5">${span} คาบ</p>` : ''}
                 </div>` : `
-                <div class="h-10 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                  <span class="text-indigo-300 text-lg">＋</span>
+                <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity" style="min-height:52px">
+                  <span class="text-indigo-200 text-2xl">＋</span>
                 </div>`}
               </td>`
             }).join('')}
@@ -4281,18 +4303,24 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
       </table>
     </div>
 
-    <!-- Legend วิชา -->
-    ${subjects.length > 0 ? `
-    <div class="mt-4">
-      <p class="text-xs text-gray-400 mb-2">คลิกที่ชื่อวิชาเพื่อเปลี่ยนสี</p>
-      <div class="flex flex-wrap gap-2">
-        ${subjects.map(s => `
-        <button type="button" class="subj-color-btn inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${subjectColorMap[s.id]?.cls ?? ''}"
-          data-sid="${s.id}">
-          🎨 ${s.subject_name}
-        </button>`).join('')}
-      </div>
-    </div>` : ''}
+    <!-- Legend วิชา (รวม master_subjects + schedule entries) -->
+    ${(() => {
+      // รวมชื่อวิชาทั้งหมดที่มีในตาราง
+      const legendNames = new Set()
+      subjects.forEach(s => { if (s.subject_name) legendNames.add(s.subject_name) })
+      scheduleData.forEach(e => { if (e.subject_name) legendNames.add(e.subject_name) })
+      if (!legendNames.size) return ''
+      return `<div class="mt-4">
+        <p class="text-xs text-gray-400 mb-2">คลิกที่ชื่อวิชาเพื่อเปลี่ยนสี</p>
+        <div class="flex flex-wrap gap-2">
+          ${[...legendNames].map(name => `
+          <button type="button" class="legend-color-btn inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${subjectColorMap[name]?.cls ?? 'bg-gray-100 text-gray-600'}"
+            data-name="${name.replace(/"/g,'&quot;')}">
+            🎨 ${name}
+          </button>`).join('')}
+        </div>
+      </div>`
+    })()}
   </div>`)
 
   // ─── Click cell → popup ────────────────────────────────────────────────────
@@ -4318,15 +4346,18 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     })
   })
 
-  // ─── เปลี่ยนสีวิชา ────────────────────────────────────────────────────────
-  document.querySelectorAll('.subj-color-btn').forEach(btn => {
+  // ─── เปลี่ยนสีวิชา (ทุกชื่อวิชาในตาราง) ─────────────────────────────────
+  document.querySelectorAll('.legend-color-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const sid = parseInt(btn.dataset.sid)
-      const cur = subjectColorMap[sid]?.idx ?? 0
+      const name = btn.dataset.name
+      const cur  = subjectColorMap[name]?.idx ?? 0
       const next = (cur + 1) % COLOR_PRESETS.length
-      subjectColorMap[sid] = { cls: `${COLOR_PRESETS[next].bg} ${COLOR_PRESETS[next].text}`, idx: next }
-      _saveColors()
-      // re-render เฉพาะสีในตาราง (ไม่ต้อง reload ทั้งหมด)
+      const newEntry = { cls: `${COLOR_PRESETS[next].bg} ${COLOR_PRESETS[next].text}`, idx: next }
+      subjectColorMap[name] = newEntry
+      // บันทึกลง localStorage
+      const stored = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
+      stored[name] = next
+      localStorage.setItem(colorStorageKey, JSON.stringify(stored))
       renderScheduleGrid(teacher, academicYear, semester, cfg)
     })
   })
