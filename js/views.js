@@ -918,10 +918,6 @@ export async function renderSettings() {
         { key: 'geminiApiKey',         label: 'Gemini API Key',                       type: 'password' },
         { key: 'geminiModel',          label: 'Gemini Model',                         type: 'text' },
       ]},
-      { label: '🌱 คะแนนทักษะชีวิต', keys: [
-        { key: 'lifeSkillSheetId', label: 'Google Sheet ID (กลาง สำหรับ Sync คะแนนทักษะชีวิต)',
-          type: 'text' },
-      ]},
     ]
 
     const fieldHTML = ({ key, label, type, options }) => {
@@ -2368,7 +2364,7 @@ export async function renderLifeSkillAdmin() {
         </td>
       </tr>`
 
-    const tableHTML = (cols, cat) => !cols.length
+    const tableHTML = (cols) => !cols.length
       ? `<p class="text-center py-8 text-gray-400 text-sm">ยังไม่มีคอลัมน์ — กดเพิ่มด้านล่าง</p>`
       : `<table class="w-full text-sm">
           <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
@@ -2382,6 +2378,16 @@ export async function renderLifeSkillAdmin() {
           </thead>
           <tbody class="divide-y divide-gray-50">${cols.map(colRow).join('')}</tbody>
         </table>`
+
+    const sheetIdBlock = (cfgKey, catLabel, dotColor) => `
+      <div class="px-5 py-3 bg-gray-50/60 border-t border-gray-100 flex items-center gap-3">
+        <span class="text-xs text-gray-500 whitespace-nowrap">Google Sheet ID (${catLabel}):</span>
+        <input type="text" id="lsk-sheet-${cfgKey}" value="${cfg[cfgKey] ?? ''}"
+          placeholder="วาง Sheet ID จาก URL ..."
+          class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <button class="lsk-save-sheet px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition"
+          data-key="${cfgKey}">บันทึก</button>
+      </div>`
 
     setContent(`<div class="max-w-4xl mx-auto animate-fade space-y-6">
       <div class="flex items-center justify-between">
@@ -2402,7 +2408,8 @@ export async function renderLifeSkillAdmin() {
           <h3 class="text-sm font-semibold text-gray-700">ประเภทสามัญ</h3>
           <span class="ml-auto text-xs text-gray-400">${samaiCols.length} หัวข้อ · รวม ${samaiCols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
         </div>
-        <div id="lsk-samai">${tableHTML(samaiCols,'สามัญ')}</div>
+        <div id="lsk-samai">${tableHTML(samaiCols)}</div>
+        ${sheetIdBlock('lifeSkillSheetIdSamai', 'สามัญ', 'blue')}
       </div>
 
       <!-- ศาสนา -->
@@ -2412,7 +2419,8 @@ export async function renderLifeSkillAdmin() {
           <h3 class="text-sm font-semibold text-gray-700">ประเภทศาสนา</h3>
           <span class="ml-auto text-xs text-gray-400">${sadsanaCols.length} หัวข้อ · รวม ${sadsanaCols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
         </div>
-        <div id="lsk-sadsana">${tableHTML(sadsanaCols,'ศาสนา')}</div>
+        <div id="lsk-sadsana">${tableHTML(sadsanaCols)}</div>
+        ${sheetIdBlock('lifeSkillSheetIdSadsana', 'ศาสนา', 'amber')}
       </div>
     </div>`)
 
@@ -2434,6 +2442,26 @@ export async function renderLifeSkillAdmin() {
           showToast('ลบแล้ว', 'success')
           _reload()
         } catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      })
+    })
+
+    // บันทึก Sheet ID
+    document.querySelectorAll('.lsk-save-sheet').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const key = btn.dataset.key
+        const val = document.getElementById(`lsk-sheet-${key}`)?.value.trim() ?? ''
+        const origText = btn.textContent
+        btn.disabled = true; btn.textContent = '⏳'
+        try {
+          await updateSystemConfig(key, val)
+          cfg[key] = val  // อัปเดต local cfg
+          btn.textContent = '✅'; btn.style.background = '#16a34a'
+          setTimeout(() => { btn.disabled = false; btn.textContent = origText; btn.style.background = '' }, 1500)
+          showToast('บันทึก Sheet ID แล้ว', 'success')
+        } catch {
+          showToast('บันทึกไม่สำเร็จ', 'error')
+          btn.disabled = false; btn.textContent = origText
+        }
       })
     })
   }
