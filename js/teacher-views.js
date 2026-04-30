@@ -2879,31 +2879,50 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
       // Auto-save on blur
       inp.addEventListener('blur', () => _save(inp))
 
-      // Keyboard navigation
+      // Keyboard navigation — เลื่อนได้อิสระทุกทิศ เหมือน Excel/Sheets
       inp.addEventListener('keydown', e => {
         const row = +inp.dataset.row
         const col = +inp.dataset.col
         switch (e.key) {
           case 'Tab':
             e.preventDefault()
-            e.shiftKey ? _moveTo(row, col-1) : _moveTo(row, col+1); break
+            if (e.shiftKey) {
+              col > 0 ? _moveTo(row, col-1) : _moveTo(row-1, numCols-1)
+            } else {
+              col < numCols-1 ? _moveTo(row, col+1) : _moveTo(row+1, 0)
+            }
+            break
           case 'Enter':
             e.preventDefault()
-            _save(inp); _moveTo(row+1, col); break
+            _save(inp)
+            row < numRows-1 ? _moveTo(row+1, col) : _moveTo(0, col)
+            break
           case 'ArrowDown':
-            e.preventDefault(); _moveTo(row+1, col); break
+            e.preventDefault()
+            _moveTo(row < numRows-1 ? row+1 : 0, col)
+            break
           case 'ArrowUp':
-            e.preventDefault(); _moveTo(row-1, col); break
+            e.preventDefault()
+            _moveTo(row > 0 ? row-1 : numRows-1, col)
+            break
           case 'ArrowRight':
-            if (inp.selectionStart === inp.value.length) { e.preventDefault(); _moveTo(row, col+1) }
+            e.preventDefault()
+            col < numCols-1 ? _moveTo(row, col+1) : _moveTo(row+1, 0)
             break
           case 'ArrowLeft':
-            if (inp.selectionStart === 0) { e.preventDefault(); _moveTo(row, col-1) }
+            e.preventDefault()
+            col > 0 ? _moveTo(row, col-1) : _moveTo(row-1, numCols-1)
             break
           case 'Home':
-            if (e.ctrlKey) { e.preventDefault(); _moveTo(row, 0) }; break
+            e.preventDefault()
+            e.ctrlKey ? _moveTo(0, 0) : _moveTo(row, 0)
+            break
           case 'End':
-            if (e.ctrlKey) { e.preventDefault(); _moveTo(row, numCols-1) }; break
+            e.preventDefault()
+            e.ctrlKey ? _moveTo(numRows-1, numCols-1) : _moveTo(row, numCols-1)
+            break
+          case 'Escape':
+            inp.blur(); break
         }
       })
 
