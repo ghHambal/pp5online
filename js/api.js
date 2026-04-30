@@ -795,3 +795,48 @@ export async function getAllPeriods() {
   if (error) throw error
   return data ?? []
 }
+
+// ─── Life Skill Columns (admin) ───────────────────────────────────────────────
+export async function getLifeSkillColumns(academicYear, semester, category = null) {
+  let q = supabase.from('life_skill_columns')
+    .select('id, name, max_score, sheet_col, sort_order, category, academic_year, semester')
+    .eq('academic_year', academicYear).eq('semester', semester)
+    .order('sort_order').order('id')
+  if (category) q = q.eq('category', category)
+  const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createLifeSkillColumn(payload) {
+  const { error } = await supabase.from('life_skill_columns').insert(payload)
+  if (error) throw error
+}
+
+export async function updateLifeSkillColumn(id, payload) {
+  const { error } = await supabase.from('life_skill_columns').update(payload).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteLifeSkillColumn(id) {
+  const { error } = await supabase.from('life_skill_columns').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─── Life Skill Scores (teacher) ─────────────────────────────────────────────
+export async function getLifeSkillScores(columnIds) {
+  if (!columnIds.length) return []
+  const { data, error } = await supabase.from('life_skill_scores')
+    .select('id, student_id, column_id, score')
+    .in('column_id', columnIds)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertLifeSkillScore(studentId, columnId, score, teacherId) {
+  const { error } = await supabase.from('life_skill_scores')
+    .upsert({ student_id: studentId, column_id: columnId,
+              score: score ?? null, updated_by: teacherId, updated_at: new Date().toISOString() },
+             { onConflict: 'student_id,column_id' })
+  if (error) throw error
+}

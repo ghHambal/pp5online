@@ -7,7 +7,9 @@ import { getStats, getTeachers, getClasses, getStudents,
          getScoreColumnConfig, upsertScoreColumnConfig,
          getUniqueRooms, unlinkTeacherAccount,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
-         getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota } from './api.js'
+         getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
+         getLifeSkillColumns, createLifeSkillColumn,
+         updateLifeSkillColumn, deleteLifeSkillColumn } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -2329,5 +2331,189 @@ function _showRejectModal(id, onConfirm) {
     const note = el.querySelector('#reject-note').value.trim() || null
     el.remove()
     await onConfirm(note)
+  })
+}
+
+// ─── Admin: จัดการคอลัมน์คะแนนทักษะชีวิต ─────────────────────────────────────
+export async function renderLifeSkillAdmin() {
+  setActiveNav('life-skill-admin')
+  document.getElementById('page-title').textContent = 'คะแนนทักษะชีวิต'
+
+  const cfg  = await getSystemConfig().catch(()=>({}))
+  const year = parseInt(cfg.academicYear ?? 2568)
+  const sem  = parseInt(cfg.semester ?? 1)
+
+  const _reload = async () => {
+    const [samaiCols, sadsanaCols] = await Promise.all([
+      getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[]),
+      getLifeSkillColumns(year, sem, 'ศาสนา').catch(()=>[]),
+    ])
+    _render(samaiCols, sadsanaCols)
+  }
+
+  const _render = (samaiCols, sadsanaCols) => {
+    const colRow = (c) => `
+      <tr class="hover:bg-gray-50 transition lsk-row" data-id="${c.id}">
+        <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.name}</td>
+        <td class="px-4 py-3 text-center text-sm text-gray-600">${c.max_score}</td>
+        <td class="px-4 py-3 text-center font-mono text-xs text-indigo-600">${c.sheet_col ?? '—'}</td>
+        <td class="px-4 py-3 text-center text-xs text-gray-400">${c.sort_order}</td>
+        <td class="px-4 py-3 text-right whitespace-nowrap">
+          <button class="lsk-edit text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3" data-id="${c.id}">แก้ไข</button>
+          <button class="lsk-del text-xs text-red-400 hover:text-red-600 font-medium" data-id="${c.id}" data-name="${c.name}">ลบ</button>
+        </td>
+      </tr>`
+
+    const tableHTML = (cols, cat) => !cols.length
+      ? `<p class="text-center py-8 text-gray-400 text-sm">ยังไม่มีคอลัมน์ — กดเพิ่มด้านล่าง</p>`
+      : `<table class="w-full text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+            <tr>
+              <th class="px-4 py-3 text-left">ชื่อหัวข้อ</th>
+              <th class="px-4 py-3 text-center">คะแนนเต็ม</th>
+              <th class="px-4 py-3 text-center">คอลัมน์ Sheet</th>
+              <th class="px-4 py-3 text-center">ลำดับ</th>
+              <th class="px-4 py-3 text-right">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">${cols.map(colRow).join('')}</tbody>
+        </table>`
+
+    setContent(`<div class="max-w-4xl mx-auto animate-fade space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800">คอลัมน์คะแนนทักษะชีวิต</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year} — กำหนดหัวข้อและคอลัมน์ Sheet สำหรับ Sync</p>
+        </div>
+        <button id="lsk-add-btn"
+          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+          ＋ เพิ่มหัวข้อ
+        </button>
+      </div>
+
+      <!-- สามัญ -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          <h3 class="text-sm font-semibold text-gray-700">ประเภทสามัญ</h3>
+          <span class="ml-auto text-xs text-gray-400">${samaiCols.length} หัวข้อ · รวม ${samaiCols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
+        </div>
+        <div id="lsk-samai">${tableHTML(samaiCols,'สามัญ')}</div>
+      </div>
+
+      <!-- ศาสนา -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <h3 class="text-sm font-semibold text-gray-700">ประเภทศาสนา</h3>
+          <span class="ml-auto text-xs text-gray-400">${sadsanaCols.length} หัวข้อ · รวม ${sadsanaCols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
+        </div>
+        <div id="lsk-sadsana">${tableHTML(sadsanaCols,'ศาสนา')}</div>
+      </div>
+    </div>`)
+
+    // ─── Handlers ──────────────────────────────────────────────────────────
+    document.getElementById('lsk-add-btn').addEventListener('click', () => _openModal(null, year, sem, _reload))
+
+    document.querySelectorAll('.lsk-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = +btn.dataset.id
+        const col = [...samaiCols, ...sadsanaCols].find(c => c.id === id)
+        if (col) _openModal(col, year, sem, _reload)
+      })
+    })
+    document.querySelectorAll('.lsk-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?\nคะแนนของนักเรียนทั้งหมดในหัวข้อนี้จะถูกลบด้วย`)) return
+        try {
+          await deleteLifeSkillColumn(+btn.dataset.id)
+          showToast('ลบแล้ว', 'success')
+          _reload()
+        } catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      })
+    })
+  }
+
+  _reload()
+}
+
+function _openModal(col, year, sem, onSave) {
+  document.getElementById('lsk-modal')?.remove()
+  const isEdit = !!col
+  const m = document.createElement('div')
+  m.id = 'lsk-modal'
+  m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+  m.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-7">
+      <h3 class="text-lg font-bold text-gray-800 mb-5">${isEdit ? 'แก้ไขหัวข้อ' : 'เพิ่มหัวข้อ'}</h3>
+      <form id="lsk-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อหัวข้อ <span class="text-red-400">*</span></label>
+          <input id="lsk-name" type="text" value="${col?.name ?? ''}" placeholder="เช่น ปฏิบัติศาสนา"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" required />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">คะแนนเต็ม</label>
+            <input id="lsk-max" type="number" min="1" max="100" value="${col?.max_score ?? 20}"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">ลำดับ</label>
+            <input id="lsk-order" type="number" min="0" value="${col?.sort_order ?? 0}"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">คอลัมน์ Google Sheet <span class="text-xs text-gray-400">(เช่น EH)</span></label>
+          <input id="lsk-sheetcol" type="text" value="${col?.sheet_col ?? ''}" placeholder="EH"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono uppercase" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
+          <select id="lsk-cat" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white">
+            <option value="สามัญ"  ${(col?.category??'สามัญ')==='สามัญ' ?'selected':''}>สามัญ</option>
+            <option value="ศาสนา" ${col?.category==='ศาสนา'?'selected':''}>ศาสนา</option>
+          </select>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" id="lsk-cancel"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+            ยกเลิก
+          </button>
+          <button type="submit" id="lsk-save"
+            class="btn-primary flex-1 py-2.5 rounded-xl text-white text-sm font-semibold">
+            ${isEdit ? 'บันทึก' : 'เพิ่ม'}
+          </button>
+        </div>
+      </form>
+    </div>`
+  document.body.appendChild(m)
+  m.querySelector('#lsk-cancel').addEventListener('click', () => m.remove())
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+
+  m.querySelector('#lsk-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const btn = m.querySelector('#lsk-save')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      const payload = {
+        name:          m.querySelector('#lsk-name').value.trim(),
+        max_score:     parseInt(m.querySelector('#lsk-max').value) || 20,
+        sort_order:    parseInt(m.querySelector('#lsk-order').value) || 0,
+        sheet_col:     m.querySelector('#lsk-sheetcol').value.trim().toUpperCase() || null,
+        category:      m.querySelector('#lsk-cat').value,
+        academic_year: year,
+        semester:      sem,
+      }
+      if (isEdit) await updateLifeSkillColumn(col.id, payload)
+      else        await createLifeSkillColumn(payload)
+      showToast('บันทึกสำเร็จ', 'success')
+      m.remove()
+      onSave()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = isEdit ? 'บันทึก' : 'เพิ่ม'
+    }
   })
 }

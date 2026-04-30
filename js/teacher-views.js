@@ -11,7 +11,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getSheetColumnOptions, detectAssignmentKind, colTypeToThai,
          getUniqueRooms, getUniqueReligionRooms,
          getMySchedule, upsertScheduleEntry, deleteScheduleEntry,
-         deleteScheduleByTeacher, getPeriods, getAllPeriods } from './api.js'
+         deleteScheduleByTeacher, getPeriods, getAllPeriods,
+         getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore } from './api.js'
 
 import { uploadTeacherPhoto } from './storage.js'
 
@@ -2694,19 +2695,234 @@ export async function renderAttendance(teacher) {
 
 // ─── งานรายภาคเรียน ───────────────────────────────────────────────────────────
 
-export function renderLifeSkillScore(teacher, homeroomRooms) {
+export async function renderLifeSkillScore(teacher, homeroomRooms) {
   setActiveNav('life-skill-score')
   setTitle('บันทึกคะแนนทักษะชีวิต')
-  setContent(`<div class="max-w-3xl mx-auto animate-fade">
-    <h2 class="text-lg font-bold text-gray-800 mb-4">📊 บันทึกคะแนนทักษะชีวิต</h2>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-400">
-      <p class="text-4xl mb-3">🌱</p>
-      <p class="font-medium text-gray-600">ระบบบันทึกคะแนนทักษะชีวิต</p>
-      <p class="text-sm mt-1">ห้องที่รับผิดชอบ: ${homeroomRooms.map(r=>r.main_room).join(', ') || '—'}</p>
-      <p class="text-xs text-gray-300 mt-3">เร็วๆ นี้</p>
-    </div>
-  </div>`)
 
+  const samaiRooms = homeroomRooms.filter(r => r.category === 'สามัญ')
+  if (!samaiRooms.length) {
+    setContent(`<div class="max-w-lg mx-auto text-center py-16 text-gray-400">
+      <p class="text-4xl mb-3">🌱</p>
+      <p class="font-medium">ไม่มีห้องที่ปรึกษาสามัญ</p>
+      <p class="text-xs mt-1">ฟีเจอร์นี้สำหรับครูที่ปรึกษาชั้นสามัญเท่านั้น</p>
+    </div>`)
+    return
+  }
+
+  const cfg  = await getSystemConfig().catch(()=>({}))
+  const year = parseInt(cfg.academicYear ?? 2568)
+  const sem  = parseInt(cfg.semester ?? 1)
+
+  let currentRoom = samaiRooms[0].main_room
+
+  const _load = async (room) => {
+    currentRoom = room
+    setContent(`<div class="flex justify-center py-12 text-gray-400">
+      <svg class="animate-spin h-6 w-6 text-emerald-400" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+    </div>`)
+
+    const [columns, students] = await Promise.all([
+      getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[]),
+      getStudentsByRoom(room).catch(()=>[]),
+    ])
+
+    if (!columns.length) {
+      setContent(`<div class="max-w-lg mx-auto text-center py-16">
+        <p class="text-4xl mb-3">🌱</p>
+        <p class="font-medium text-gray-600">ยังไม่มีหัวข้อคะแนนทักษะชีวิต</p>
+        <p class="text-sm text-gray-400 mt-1">ให้แอดมินเพิ่มหัวข้อในเมนู "คะแนนทักษะชีวิต" ก่อนครับ</p>
+      </div>`)
+      return
+    }
+
+    const colIds  = columns.map(c => c.id)
+    const scores  = await getLifeSkillScores(colIds).catch(()=>[])
+    const scoreMap = {}  // scoreMap[studentId][columnId] = score
+    scores.forEach(s => {
+      if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
+      scoreMap[s.student_id][s.column_id] = s.score
+    })
+
+    const totalMax = columns.reduce((s,c) => s + (c.max_score ?? 0), 0)
+    const stickyL  = 'sticky left-0 z-10 bg-white border-r border-gray-100'
+    const stickyM  = 'sticky z-10 bg-white border-r border-gray-100'
+    const thBase   = 'border border-gray-100 text-center text-xs px-2 py-2 font-medium'
+
+    setContent(`<div class="animate-fade">
+      <div class="flex items-center gap-3 mb-4 flex-wrap">
+        <button onclick="window._navTo('overview')" class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
+        <h2 class="font-bold text-gray-800">🌱 คะแนนทักษะชีวิต</h2>
+        ${samaiRooms.length > 1 ? `
+        <select id="ls-room-sel" class="text-xs border border-gray-200 rounded-xl px-3 py-1.5 bg-white ml-2">
+          ${samaiRooms.map(r=>`<option value="${r.main_room}" ${r.main_room===room?'selected':''}>${r.main_room}</option>`).join('')}
+        </select>` : `<span class="text-sm font-semibold text-emerald-700">${room}</span>`}
+        <span class="text-xs text-gray-400 ml-auto">ภาค ${sem} / ${year}</span>
+      </div>
+
+      <div class="text-xs text-gray-400 mb-2">
+        💡 ใช้ <b>Tab / →</b> เลื่อนขวา · <b>Enter / ↓</b> เลื่อนลง · <b>↑ ↓ ← →</b> เลื่อนทิศทาง · บันทึกอัตโนมัติเมื่อออกจากช่อง
+      </div>
+
+      <div class="overflow-auto rounded-2xl border border-gray-100 shadow-sm bg-white">
+        <table class="border-collapse text-xs" style="min-width:max-content">
+          <thead>
+            <tr style="position:sticky;top:0;z-index:20">
+              <th class="${stickyL} ${thBase} bg-gray-50 text-left px-3" style="min-width:40px">#</th>
+              <th class="${stickyM} ${thBase} bg-gray-50 text-left px-2" style="left:40px;min-width:60px">รหัส</th>
+              <th class="${stickyM} ${thBase} bg-gray-50 text-left px-3" style="left:100px;min-width:180px">ชื่อ-นามสกุล</th>
+              ${columns.map(c=>`
+              <th class="${thBase} bg-emerald-50 text-emerald-800" style="min-width:80px">
+                <div class="font-semibold leading-tight">${c.name}</div>
+                <div class="text-[10px] font-normal text-emerald-600 mt-0.5">/${c.max_score}</div>
+              </th>`).join('')}
+              <th class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:70px">
+                รวม<br/><span class="text-[10px] font-normal">/${totalMax}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            ${students.map((s,i) => {
+              const sScores = scoreMap[s.id] ?? {}
+              const total   = columns.reduce((sum,c) => sum + (parseFloat(sScores[c.id] ?? 0) || 0), 0)
+              return `<tr class="hover:bg-gray-50/50 ls-row" data-sid="${s.id}">
+                <td class="${stickyL} border border-gray-100 text-center text-gray-400 px-2" style="min-width:40px">${i+1}</td>
+                <td class="${stickyM} border border-gray-100 font-mono text-gray-500 px-2" style="left:40px;min-width:60px">${s.student_code}</td>
+                <td class="${stickyM} border border-gray-100 px-3 py-1.5" style="left:100px;min-width:180px">
+                  <div class="flex items-center gap-2">
+                    ${s.image_url
+                      ? `<img src="${s.image_url}" class="w-7 h-7 rounded-full object-cover flex-shrink-0"/>`
+                      : `<div class="w-7 h-7 rounded-full bg-gradient-to-tr from-emerald-200 to-teal-200
+                                    flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0">
+                           ${(s.full_name??'?').charAt(0)}
+                         </div>`}
+                    <span class="text-gray-800 font-medium truncate max-w-[130px]">${s.full_name}</span>
+                  </div>
+                </td>
+                ${columns.map(c => {
+                  const val = sScores[c.id] ?? ''
+                  return `<td class="border border-gray-100 p-0 ls-score-cell"
+                    data-sid="${s.id}" data-cid="${c.id}" data-max="${c.max_score}">
+                    <input type="number" min="0" max="${c.max_score}" step="0.5"
+                      class="ls-input w-full h-full px-2 py-2 text-center text-xs bg-transparent outline-none
+                             focus:bg-indigo-50 focus:ring-2 focus:ring-inset focus:ring-indigo-300 transition"
+                      value="${val}" placeholder="—"
+                      data-sid="${s.id}" data-cid="${c.id}" data-max="${c.max_score}" data-row="${i}" data-col="${columns.findIndex(x=>x.id===c.id)}" />
+                  </td>`
+                }).join('')}
+                <td class="border border-gray-100 text-center font-semibold text-indigo-700 ls-total" data-sid="${s.id}">
+                  ${total > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}
+                </td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`)
+
+    // ── Room selector ────────────────────────────────────────────────────────
+    document.getElementById('ls-room-sel')?.addEventListener('change', e => _load(e.target.value))
+
+    // ── Spreadsheet keyboard navigation + auto-save ──────────────────────────
+    const inputs   = [...document.querySelectorAll('.ls-input')]
+    const numCols  = columns.length
+    const numRows  = students.length
+
+    const _getInput = (row, col) =>
+      inputs.find(inp => +inp.dataset.row === row && +inp.dataset.col === col)
+
+    const _moveTo = (row, col) => {
+      if (row < 0) row = 0
+      if (row >= numRows) row = numRows - 1
+      if (col < 0) col = numCols - 1
+      if (col >= numCols) col = 0
+      const target = _getInput(row, col)
+      target?.focus()
+      target?.select()
+    }
+
+    const _flashCell = (inp, ok) => {
+      const td = inp.closest('td')
+      if (!td) return
+      const cls = ok ? 'ring-2 ring-inset ring-emerald-400 bg-emerald-50' : 'ring-2 ring-inset ring-red-400 bg-red-50'
+      td.classList.add(...cls.split(' '))
+      setTimeout(() => td.classList.remove(...cls.split(' ')), 1200)
+    }
+
+    const _updateTotal = (sid) => {
+      const totalEl = document.querySelector(`.ls-total[data-sid="${sid}"]`)
+      if (!totalEl) return
+      const rowInputs = inputs.filter(inp => +inp.dataset.sid === +sid)
+      const sum = rowInputs.reduce((s, inp) => s + (parseFloat(inp.value) || 0), 0)
+      totalEl.textContent = sum > 0 ? sum.toFixed(1).replace(/\.0$/,'') : '—'
+    }
+
+    const _save = async (inp) => {
+      const sid    = +inp.dataset.sid
+      const cid    = +inp.dataset.cid
+      const max    = +inp.dataset.max
+      const rawVal = inp.value.trim()
+      const score  = rawVal === '' ? null : parseFloat(rawVal)
+      if (score !== null && (score < 0 || score > max)) {
+        _flashCell(inp, false); return
+      }
+      try {
+        await upsertLifeSkillScore(sid, cid, score, teacher?.id ?? null)
+        _flashCell(inp, true)
+        _updateTotal(sid)
+      } catch { _flashCell(inp, false) }
+    }
+
+    inputs.forEach(inp => {
+      // Auto-save on blur
+      inp.addEventListener('blur', () => _save(inp))
+
+      // Keyboard navigation
+      inp.addEventListener('keydown', e => {
+        const row = +inp.dataset.row
+        const col = +inp.dataset.col
+        switch (e.key) {
+          case 'Tab':
+            e.preventDefault()
+            e.shiftKey ? _moveTo(row, col-1) : _moveTo(row, col+1); break
+          case 'Enter':
+            e.preventDefault()
+            _save(inp); _moveTo(row+1, col); break
+          case 'ArrowDown':
+            e.preventDefault(); _moveTo(row+1, col); break
+          case 'ArrowUp':
+            e.preventDefault(); _moveTo(row-1, col); break
+          case 'ArrowRight':
+            if (inp.selectionStart === inp.value.length) { e.preventDefault(); _moveTo(row, col+1) }
+            break
+          case 'ArrowLeft':
+            if (inp.selectionStart === 0) { e.preventDefault(); _moveTo(row, col-1) }
+            break
+          case 'Home':
+            if (e.ctrlKey) { e.preventDefault(); _moveTo(row, 0) }; break
+          case 'End':
+            if (e.ctrlKey) { e.preventDefault(); _moveTo(row, numCols-1) }; break
+        }
+      })
+
+      // กรอกตัวเลขครบ digits → บันทึก+เลื่อน
+      inp.addEventListener('input', () => {
+        const max   = +inp.dataset.max
+        const maxLen = String(Math.floor(max)).length
+        const digits = inp.value.replace('.','').replace('-','').length
+        if (digits >= maxLen && !inp.value.includes('.')) {
+          const row = +inp.dataset.row
+          const col = +inp.dataset.col
+          _save(inp)
+          setTimeout(() => _moveTo(row, col+1), 50)
+        }
+      })
+    })
+  }
+
+  _load(currentRoom)
 }
 
 export function renderReadingScore(teacher) {
