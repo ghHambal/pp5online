@@ -204,11 +204,12 @@ export async function getUniqueRooms() {
 }
 
 export async function getUniqueReligionRooms() {
+  // ใช้ range ใหญ่เพื่อไม่ถูก Supabase default limit 1000
   const { data, error } = await supabase
     .from('students')
     .select('religion_room')
     .not('religion_room', 'is', null)
-    .order('religion_room')
+    .range(0, 9999)
   if (error) throw error
   return [...new Set((data ?? []).map(s => s.religion_room).filter(Boolean))].sort()
 }

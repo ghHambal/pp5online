@@ -3071,10 +3071,16 @@ export async function renderPrayerAdmin() {
     const allDays  = weeks.flatMap(w => w.days)
 
     document.getElementById('pr-tab-actions').innerHTML = `
-      <button id="btn-sync-prayer"
-        class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
-        ↑ Sync ไปชีท Solat
-      </button>`
+      <div class="flex gap-2">
+        <button id="btn-sync-all-prayer"
+          class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition">
+          ↑ Sync ทุกห้อง
+        </button>
+        <button id="btn-sync-prayer"
+          class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
+          ↑ Sync ห้องนี้
+        </button>
+      </div>`
 
     document.getElementById('pr-tab-content').innerHTML = `
       <div class="flex items-center gap-2 flex-wrap mb-3">
@@ -3312,6 +3318,7 @@ export async function renderPrayerAdmin() {
       _renderGrid(filtered, room)
     })
 
+    // ─── Sync ห้องนี้ ─────────────────────────────────────────────────────────
     document.getElementById('btn-sync-prayer').addEventListener('click', async () => {
       const btn = document.getElementById('btn-sync-prayer')
       if (!cfg.prayerSheetId) { showToast('ยังไม่ได้ตั้งค่า Sheet ID — ไปที่แท็บ ⚙️ ตั้งค่า', 'warning'); return }
@@ -3326,7 +3333,48 @@ export async function renderPrayerAdmin() {
           cfg.prayerStudentRange||'A3:A3000', syncDates, adminPrayMap, syncStudents)
         showToast(`Sync ละหมาด ${syncStudents.length} คน × ${syncDates.length} วัน สำเร็จ`, 'success')
       } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
-      finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีท Solat' }
+      finally { btn.disabled=false; btn.textContent='↑ Sync ห้องนี้' }
+    })
+
+    // ─── Sync ทุกห้อง (Batch) ────────────────────────────────────────────────
+    document.getElementById('btn-sync-all-prayer').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-sync-all-prayer')
+      if (!cfg.prayerSheetId) { showToast('ยังไม่ได้ตั้งค่า Sheet ID — ไปที่แท็บ ⚙️ ตั้งค่า', 'warning'); return }
+      btn.disabled=true; btn.textContent='⏳ กำลังโหลดทุกห้อง...'
+      try {
+        const { syncPrayerSheet } = await import('./sync.js')
+        const { getAllPrayerRecords: _all, getStudents: _stuAll } = await import('./api.js')
+
+        // โหลดข้อมูลทั้งหมด
+        const [allRecords, allStudents] = await Promise.all([
+          _all(),
+          _stuAll(),
+        ])
+
+        // สร้าง prayMap รวมทุกห้อง
+        const allPrayMap = {}
+        for (const r of allRecords) {
+          if (!allPrayMap[r.student_id]) allPrayMap[r.student_id] = {}
+          allPrayMap[r.student_id][r.check_date] = r.status
+        }
+
+        // เฉพาะนักเรียนที่มี religion_room
+        const stuWithReligion = allStudents.filter(s => s.religion_room)
+        const syncStudents    = stuWithReligion.map(s => ({ id: s.id, student_code: s.student_code }))
+
+        const allDates = [...new Set(allRecords.map(r => r.check_date))].sort()
+        const syncDates = [...new Set([...orderedDates, ...allDates])].sort()
+
+        if (!syncDates.length || !syncStudents.length) {
+          showToast('ยังไม่มีข้อมูลละหมาดในระบบ', 'warning'); return
+        }
+
+        btn.textContent = `⏳ Sync ${syncStudents.length} คน × ${syncDates.length} วัน...`
+        await syncPrayerSheet(cfg.prayerSheetId, cfg.prayerSheetTab||'Solat',
+          cfg.prayerStudentRange||'A3:A3000', syncDates, allPrayMap, syncStudents)
+        showToast(`✅ Sync ทุกห้อง ${syncStudents.length} คน × ${syncDates.length} วัน สำเร็จ`, 'success')
+      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+      finally { btn.disabled=false; btn.textContent='↑ Sync ทุกห้อง' }
     })
 
     // ─── Admin Week Modal ──────────────────────────────────────────────────
