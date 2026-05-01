@@ -896,13 +896,14 @@ async function _fetchStudentsById(ids) {
   return Object.fromEntries((data ?? []).map(s => [s.id, s]))
 }
 
-export async function savePrayerCellAdmin(studentId, room, checkDate, status) {
+export async function savePrayerCellAdmin(studentId, room, checkDate, status, weekNumber = null) {
   // ใช้ RPC SECURITY DEFINER — bypass RLS ทั้งหมด
   const { error } = await supabase.rpc('save_prayer_admin', {
-    p_student_id: studentId,
-    p_room:       room,
-    p_date:       checkDate,
-    p_status:     status ?? null,
+    p_student_id:  studentId,
+    p_room:        room,
+    p_date:        checkDate,
+    p_status:      status ?? null,
+    p_week_number: weekNumber,
   })
   if (error) throw error
 }

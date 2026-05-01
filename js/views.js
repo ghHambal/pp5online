@@ -3147,7 +3147,8 @@ export async function renderPrayerAdmin() {
 
       // 4. Save to DB + glow feedback
       try {
-        await savePrayerCellAdmin(sid, room, ds, st)
+        const weekN = weeks.find(w => w.days.some(d => d.ds === ds))?.n ?? null
+        await savePrayerCellAdmin(sid, room, ds, st, weekN)
         _glow(gridCell, true)
         _glow(modalCell, true)
       } catch(err) {
