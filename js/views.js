@@ -5,7 +5,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          updateStudent, deleteStudent,
          getHomeroomTeachers, upsertHomeroomTeacher, deleteHomeroomTeacher,
          getScoreColumnConfig, upsertScoreColumnConfig,
-         getUniqueRooms, unlinkTeacherAccount,
+         getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
          getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
          getLifeSkillColumns, createLifeSkillColumn,
@@ -13,7 +13,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReadingScoreColumns, createReadingScoreColumn,
          updateReadingScoreColumn, deleteReadingScoreColumn,
          getAllLifeSkillScores, getAllReadingScores, getAllPrayerRecords,
-         savePrayerCellAdmin, getStudentsByReligionRoom } from './api.js'
+         savePrayerCellAdmin, getStudentsByReligionRoom,
+         getPrayerRecordsByRoom } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -3008,25 +3009,12 @@ export async function renderPrayerAdmin() {
   setActiveNav('prayer-admin')
   document.getElementById('page-title').textContent = 'คะแนนละหมาด'
 
-  const cfg = await getSystemConfig().catch(() => ({}))
-  const records = await getAllPrayerRecords().catch(() => [])
-
-  // build stuMap + prayMap
-  const stuMap  = {}
-  const prayMap = {}
-  for (const r of records) {
-    const sid = r.student_id
-    if (!stuMap[sid]) { stuMap[sid] = { id: sid, ...(r.students ?? {}), pray:0, absent:0, other:0 }; prayMap[sid] = {} }
-    prayMap[sid][r.check_date] = r.status
-    if (r.status==='pray') stuMap[sid].pray++
-    else if (r.status==='absent') stuMap[sid].absent++
-    else stuMap[sid].other++
-  }
-  const orderedDates = [...new Set(records.map(r => r.check_date))].sort()
-  const allStudents  = Object.values(stuMap).sort((a,b) =>
-    (a.religion_room??'').localeCompare(b.religion_room??'',undefined,{numeric:true})
-    || (a.student_code??'').localeCompare(b.student_code??''))
-  const rooms = [...new Set(allStudents.map(s=>s.religion_room).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+  // โหลดแค่ config + รายชื่อห้อง (เร็ว) — records โหลดทีหลังตอนเลือกห้อง
+  const [cfg, allReligionRooms] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    getUniqueReligionRooms().catch(() => []),
+  ])
+  const rooms = allReligionRooms
 
   // ─── Shell (tabs) ─────────────────────────────────────────────────────────
   setContent(`<div class="max-w-5xl mx-auto animate-fade">
@@ -3096,12 +3084,12 @@ export async function renderPrayerAdmin() {
     const scCls = s => s >= 8 ? 'text-emerald-600' : s >= 6 ? 'text-amber-500' : 'text-red-600'
     const dayW = 30, nameW = 160
 
-    // prayMap เป็น mutable สำหรับ admin edit
+    // prayMap สร้างต่อห้อง — เริ่มว่าง, โหลดเมื่อเลือกห้อง
     const adminPrayMap = {}
-    for (const [sid, m] of Object.entries(prayMap)) adminPrayMap[sid] = { ...m }
 
     // state ห้องและ list นักเรียน
-    let _stuList = []  // students ที่โหลดจาก religion room
+    let _stuList = []
+    let orderedDates = []  // วันทั้งหมดที่มีข้อมูลในห้องที่เลือก
 
     const _updateScore = (sid) => {
       const sMap  = adminPrayMap[sid] ?? {}
@@ -3216,11 +3204,25 @@ export async function renderPrayerAdmin() {
       document.getElementById('pr-grid-wrap').innerHTML =
         `<div class="p-10 text-center text-gray-400">กำลังโหลด...</div>`
       try {
-        _stuList = await getStudentsByReligionRoom(room)
-        // merge image_url into adminPrayMap if not yet loaded
+        // โหลด students + records พร้อมกัน (เร็วกว่า 2×)
+        const [students, records] = await Promise.all([
+          getStudentsByReligionRoom(room),
+          getPrayerRecordsByRoom(room),
+        ])
+        _stuList = students
+
+        // สร้าง prayMap เฉพาะห้องนี้
         for (const s of _stuList) {
           if (!adminPrayMap[s.id]) adminPrayMap[s.id] = {}
         }
+        for (const r of records) {
+          if (!adminPrayMap[r.student_id]) adminPrayMap[r.student_id] = {}
+          adminPrayMap[r.student_id][r.check_date] = r.status
+        }
+
+        // orderedDates จาก semester config (ไม่ต้องรอ records)
+        orderedDates = allDays.map(d => d.ds)
+
         const filtered = q
           ? _stuList.filter(s => s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
           : _stuList
@@ -3261,9 +3263,7 @@ export async function renderPrayerAdmin() {
       btn.disabled=true; btn.textContent='⏳ กำลัง Sync...'
       try {
         const { syncPrayerSheet } = await import('./sync.js')
-        const syncStudents = _stuList.length
-          ? _stuList.map(s => ({ id: s.id, student_code: s.student_code }))
-          : allStudents.map(s => ({ id: s.id, student_code: s.student_code }))
+        const syncStudents = _stuList.map(s => ({ id: s.id, student_code: s.student_code }))
         await syncPrayerSheet(cfg.prayerSheetId, cfg.prayerSheetTab||'Solat',
           cfg.prayerStudentRange||'A3:A200', syncDates, adminPrayMap, syncStudents)
         showToast(`Sync ละหมาด ${syncStudents.length} คน × ${syncDates.length} วัน สำเร็จ`, 'success')

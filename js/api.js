@@ -896,16 +896,25 @@ async function _fetchStudentsById(ids) {
   return Object.fromEntries((data ?? []).map(s => [s.id, s]))
 }
 
-export async function savePrayerCellAdmin(studentId, room, checkDate, status, weekNumber = null) {
-  // Admin: ลบ records ทุก teacher สำหรับ student+date นี้ แล้ว insert ใหม่
-  await supabase.from('prayer_records').delete()
-    .eq('student_id', studentId).eq('main_room', room).eq('check_date', checkDate)
-  if (status) {
-    const payload = { student_id: studentId, main_room: room, check_date: checkDate, status }
-    if (weekNumber !== null) payload.week_number = weekNumber
-    const { error } = await supabase.from('prayer_records').insert(payload)
-    if (error) throw error
-  }
+export async function savePrayerCellAdmin(studentId, room, checkDate, status) {
+  // ใช้ RPC SECURITY DEFINER — bypass RLS ทั้งหมด
+  const { error } = await supabase.rpc('save_prayer_admin', {
+    p_student_id: studentId,
+    p_room:       room,
+    p_date:       checkDate,
+    p_status:     status ?? null,
+  })
+  if (error) throw error
+}
+
+export async function getPrayerRecordsByRoom(room) {
+  // โหลดเฉพาะห้องที่เลือก — เร็วกว่า getAllPrayerRecords มาก
+  const { data, error } = await supabase.from('prayer_records')
+    .select('student_id, check_date, status')
+    .eq('main_room', room)
+    .order('check_date')
+  if (error) throw error
+  return data ?? []
 }
 
 export async function getAllLifeSkillScores(academicYear, semester) {
