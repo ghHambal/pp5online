@@ -959,3 +959,20 @@ export async function getAllPrayerRecords() {
   const stuMap = await _fetchStudentsById([...new Set((data ?? []).map(r => r.student_id))])
   return (data ?? []).map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
 }
+
+// ─── Get all classes with enrolled students for reading eval fill ─────────────
+export async function getAllClassesForFill() {
+  const { data, error } = await supabase
+    .from('classes')
+    .select(`
+      id, class_name, google_sheet_id,
+      class_students ( students ( id, student_code ) )
+    `)
+    .not('google_sheet_id', 'is', null)
+    .neq('google_sheet_id', '')
+  if (error) throw error
+  return (data ?? []).map(cls => ({
+    ...cls,
+    students: (cls.class_students ?? []).map(cs => cs.students).filter(Boolean),
+  }))
+}

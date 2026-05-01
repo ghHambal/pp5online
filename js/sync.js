@@ -274,5 +274,35 @@ export async function syncPrayerSheet(sheetId, tabName, studentColRange, ordered
   })
 }
 
+/**
+ * Sync ผลการประเมินอ่านคิดวิเคราะห์ (label text) ไปยังชีทของทุกรายวิชา
+ * @param {Array}  classes   - [{id, google_sheet_id, students:[{id,student_code}]}]
+ * @param {Object} evalMap   - {studentId: {label:'ดีเยี่ยม'|'ดี'|'พอใช้'|'ปรับปรุง', score100}}
+ * @param {string} sheetCol  - คอลัมน์ในชีทรายวิชาที่จะเขียนผลประเมิน เช่น 'EZ'
+ */
+export async function syncReadingEvalToClassSheets(classes, evalMap, sheetCol) {
+  if (!sheetCol) throw new Error('ยังไม่ได้กำหนดคอลัมน์ผลประเมินในชีทรายวิชา')
+  const gasUrl = await _getGasUrl()
+
+  for (const cls of classes) {
+    if (!cls.google_sheet_id) continue
+    const records = (cls.students ?? [])
+      .filter(s => evalMap[s.id])
+      .map(s => ({
+        studentCode: String(s.student_code),
+        colLetter:   sheetCol,
+        value:       evalMap[s.id].label,
+      }))
+    if (!records.length) continue
+    await _post(gasUrl, {
+      action:          'sync_scores',
+      sheetId:         cls.google_sheet_id,
+      tabName:         SHEET_TAB,
+      studentColRange: STU_RANGE,
+      records,
+    })
+  }
+}
+
 // รีเซ็ต cache เมื่อ config เปลี่ยน (เรียกจาก admin settings)
 export function clearSyncCache() { _cfgCache = null }

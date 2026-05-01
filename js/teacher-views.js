@@ -130,9 +130,36 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const quotaLabel = isPaid ? 'ไม่จำกัด ✅' : usedSlots >= FREE_LIMIT ? 'ครบโควตาฟรีแล้ว 🔒' : `เหลืออีก ${freeLeft} ห้อง`
 
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
-    <div class="bg-gradient-to-r from-emerald-50 to-white rounded-2xl border border-gray-100 p-7 mb-6">
-      <h3 class="text-2xl font-bold text-emerald-900 mb-1">ยินดีต้อนรับ ${teacher?.full_name ?? 'คุณครู'} 👋</h3>
-      <p class="text-gray-500 text-sm">จัดการรายวิชาและห้องเรียนของคุณได้จากเมนูด้านซ้าย</p>
+
+    <!-- การ์ดโปรไฟล์ครู -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5 flex items-center gap-4">
+      <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-100 flex-shrink-0
+                  bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
+                  text-white text-3xl font-bold">
+        ${teacher?.image_url
+          ? `<img src="${teacher.image_url}" class="w-full h-full object-cover"/>`
+          : (teacher?.full_name ?? 'ค').charAt(0).toUpperCase()}
+      </div>
+      <div class="flex-1 min-w-0">
+        <h3 class="font-bold text-gray-800 text-lg truncate">${teacher?.full_name ?? '—'}</h3>
+        <p class="text-xs text-gray-400 mt-0.5">รหัสครู ${teacher?.teacher_code ?? '—'} · ${teacher?.category ?? '—'}</p>
+        <div class="flex flex-wrap gap-1.5 mt-2">
+          ${teacher?.dept
+            ? `<span class="px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-700 font-medium">📚 ${teacher.dept}</span>`
+            : `<span class="px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-600 font-medium">⚠️ ยังไม่ระบุกลุ่มสาระ</span>`}
+          ${homeroomRooms.map(r =>
+            `<span class="px-2 py-0.5 rounded-full text-xs ${r.category==='สามัญ'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'} font-medium">🏠 ${r.main_room}</span>`
+          ).join('')}
+          ${homeroomRooms.length === 0
+            ? `<span class="px-2 py-0.5 rounded-full text-xs bg-gray-50 text-gray-400">ไม่มีห้องที่ปรึกษา</span>`
+            : ''}
+        </div>
+      </div>
+      <button onclick="window._navTo('profile')"
+        class="flex-shrink-0 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500
+               hover:bg-gray-50 hover:text-gray-700 transition whitespace-nowrap">
+        ✏️ แก้ไขโปรไฟล์
+      </button>
     </div>
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
@@ -227,16 +254,22 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>`).join('')}
       </div>
     </div>` : ''}
-    <!-- ภาษาไทย → อ่านคิดวิเคราะห์ -->
-    ${teacher?.dept === 'THAI' ? `
-    <div class="mt-4 bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between">
-      <div>
-        <p class="font-semibold text-indigo-800 text-sm">📖 ระบบบันทึกคะแนนการอ่านคิดวิเคราะห์และเขียน</p>
-        <p class="text-xs text-indigo-500 mt-0.5">สำหรับครูภาษาไทยโดยเฉพาะ</p>
+    <!-- ภาษาไทย → อ่านคิดวิเคราะห์ (ปุ่มเดียว + popup เลือกห้อง) -->
+    ${teacher?.dept === 'THAI' ? (() => {
+      const readingRooms = [...new Set(classes.map(c => c.class_name).filter(Boolean))].sort()
+      const roomsJson = JSON.stringify(readingRooms).replace(/"/g, '&quot;')
+      return `
+    <div onclick="window._openReadingScorePicker('${roomsJson}')"
+      class="mt-4 bg-white rounded-2xl border border-indigo-100 shadow-sm p-4 flex items-center gap-4
+             cursor-pointer hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50/30 transition group">
+      <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">📖</div>
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-gray-800 text-sm">บันทึกคะแนนอ่านคิดวิเคราะห์และเขียน</p>
+        <p class="text-xs text-gray-400 mt-0.5">${readingRooms.length > 0 ? `${readingRooms.length} ห้อง — คลิกเพื่อเลือกห้อง` : 'ยังไม่มีห้องเรียน'}</p>
       </div>
-      <button onclick="window._openReadingScore()"
-        class="btn-primary px-4 py-2 text-white text-sm font-medium rounded-xl">เปิดระบบ →</button>
-    </div>` : ''}
+      <span class="text-gray-300 group-hover:text-indigo-400 transition text-lg">→</span>
+    </div>`
+    })() : ''}
     ${subjects.length > 0 ? `
     <div class="mt-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <h4 class="font-semibold text-gray-700 mb-3">คอร์สวิชาล่าสุด</h4>
@@ -990,14 +1023,27 @@ export async function renderProfile(teacher, onRefresh) {
             placeholder="0XX XXX XXXX" maxlength="12" class="${INPUT_CLS}" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระการเรียนรู้</label>
-          <select id="prof-dept" class="${SELECT_CLS}">
-            <option value="">— เลือกกลุ่มสาระ —</option>
-            ${filteredDepts.map(d=>`<option value="${d.dept_code}" ${d.dept_code===teacher?.dept?'selected':''}>${d.dept_name}</option>`).join('')}
+          <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระการเรียนรู้ (dept)</label>
+          ${filteredDepts.length > 0
+            ? `<select id="prof-dept" class="${SELECT_CLS} mb-1">
+                <option value="">— เลือกจากรายการ —</option>
+                ${filteredDepts.map(d=>`<option value="${d.dept_code}" ${d.dept_code===teacher?.dept?'selected':''}>${d.dept_name} (${d.dept_code})</option>`).join('')}
+               </select>`
+            : `<input type="hidden" id="prof-dept" value="" />`}
+          <input type="text" id="prof-dept-txt" value="${teacher?.dept??''}"
+            placeholder="หรือพิมพ์รหัสตรง เช่น THAI, MATH, SCI"
+            class="${INPUT_CLS} font-mono uppercase" />
+          <p class="text-[11px] text-gray-400 mt-1">ปุ่มบันทึกคะแนนอ่านฯ จะโชว์เมื่อรหัส = <b>THAI</b></p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มวิชา (subject_group)</label>
+          <select id="prof-subg" class="${SELECT_CLS}">
+            <option value="">— เลือกกลุ่มวิชา —</option>
+            <option value="ACDM"    ${teacher?.subject_group==='ACDM'   ?'selected':''}>สามัญมัธยม (ACDM)</option>
+            <option value="AGM"     ${teacher?.subject_group==='AGM'    ?'selected':''}>ศาสนามัธยม (AGM)</option>
+            <option value="ACDMVOC" ${teacher?.subject_group==='ACDMVOC'?'selected':''}>สามัญปวช (ACDMVOC)</option>
+            <option value="AGMVOC"  ${teacher?.subject_group==='AGMVOC' ?'selected':''}>ศาสนาปวช (AGMVOC)</option>
           </select>
-          ${filteredDepts.length === 0 ? `
-          <input type="text" id="prof-dept-txt" value="${teacher?.dept??''}" placeholder="รหัสกลุ่มสาระ"
-            class="${INPUT_CLS} mt-1" />` : ''}
         </div>
         <div class="flex gap-3 pt-2">
           <button type="button" onclick="window._navTo('overview')"
@@ -1034,12 +1080,16 @@ export async function renderProfile(teacher, onRefresh) {
     if (!name) { showToast('กรุณากรอกชื่อ-นามสกุล','warning'); return }
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
-      const deptEl = document.getElementById('prof-dept')
+      const deptSel = document.getElementById('prof-dept')
       const deptTxt = document.getElementById('prof-dept-txt')
+      const subgEl  = document.getElementById('prof-subg')
+      // text input override select (ถ้ากรอกตรงให้ใช้ก่อน)
+      const deptVal = (deptTxt?.value.trim().toUpperCase() || deptSel?.value || '').trim() || null
       const payload = {
-        full_name: name,
-        phone: document.getElementById('prof-phone').value.trim() || null,
-        dept:  (deptEl?.value || deptTxt?.value || '').trim() || null,
+        full_name:     name,
+        phone:         document.getElementById('prof-phone').value.trim() || null,
+        dept:          deptVal,
+        subject_group: subgEl?.value || null,
       }
       const photoFile = document.getElementById('prof-photo-file').files?.[0]
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
@@ -3218,7 +3268,7 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
   _load(currentRoom)
 }
 
-export async function renderReadingScore(teacher) {
+export async function renderReadingScore(teacher, initialRoom = null) {
   setActiveNav('reading-score')
   setTitle('บันทึกคะแนนอ่านคิดวิเคราะห์')
 
@@ -3239,7 +3289,7 @@ export async function renderReadingScore(teacher) {
     return
   }
 
-  let currentRoom = rooms[0]
+  let currentRoom = (initialRoom && rooms.includes(initialRoom)) ? initialRoom : rooms[0]
 
   const _load = async (room) => {
     currentRoom = room
@@ -3307,6 +3357,12 @@ export async function renderReadingScore(teacher) {
               <th class="${thBase} bg-violet-50 text-violet-700" style="min-width:70px">
                 รวม<br/><span class="text-[10px] font-normal">/${totalMax}</span>
               </th>
+              <th class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:60px">
+                /100
+              </th>
+              <th class="${thBase} bg-purple-50 text-purple-700" style="min-width:90px">
+                ผลประเมิน
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -3342,6 +3398,12 @@ export async function renderReadingScore(teacher) {
                 <td class="border border-gray-100 text-center font-semibold text-violet-700 rs-total" data-sid="${s.id}">
                   ${total > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}
                 </td>
+                <td class="border border-gray-100 text-center text-xs font-medium text-indigo-600 rs-score100" data-sid="${s.id}">
+                  ${total > 0 ? (total/2).toFixed(1).replace(/\.0$/,'') : '—'}
+                </td>
+                <td class="border border-gray-100 text-center rs-label" data-sid="${s.id}">
+                  ${total > 0 ? _readingEvalBadge(total/2) : '—'}
+                </td>
               </tr>`
             }).join('')}
           </tbody>
@@ -3369,9 +3431,13 @@ export async function renderReadingScore(teacher) {
       setTimeout(() => td.classList.remove(...cls.split(' ')), 1200)
     }
     const _updateTotal = (sid) => {
-      const totalEl = document.querySelector(`.rs-total[data-sid="${sid}"]`); if (!totalEl) return
+      const totalEl  = document.querySelector(`.rs-total[data-sid="${sid}"]`); if (!totalEl) return
+      const s100El   = document.querySelector(`.rs-score100[data-sid="${sid}"]`)
+      const labelEl  = document.querySelector(`.rs-label[data-sid="${sid}"]`)
       const sum = inputs.filter(i => +i.dataset.sid === +sid).reduce((s,i) => s+(parseFloat(i.value)||0), 0)
       totalEl.textContent = sum > 0 ? sum.toFixed(1).replace(/\.0$/,'') : '—'
+      if (s100El)  s100El.textContent = sum > 0 ? (sum/2).toFixed(1).replace(/\.0$/,'') : '—'
+      if (labelEl) labelEl.innerHTML  = sum > 0 ? _readingEvalBadge(sum/2) : '—'
     }
     const _save = async (inp) => {
       const sid=+inp.dataset.sid, cid=+inp.dataset.cid, max=+inp.dataset.max
@@ -3406,6 +3472,19 @@ export async function renderReadingScore(teacher) {
   }
 
   _load(currentRoom)
+}
+
+// ─── Reading Score Eval Constants ────────────────────────────────────────────
+const READING_GRADES = [
+  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50' },
+  { label: 'ดี',       min: 65, cls: 'text-blue-700 bg-blue-50' },
+  { label: 'พอใช้',   min: 50, cls: 'text-yellow-700 bg-yellow-50' },
+  { label: 'ปรับปรุง', min: 0,  cls: 'text-red-600 bg-red-50' },
+]
+const _readingGrade = (s) => READING_GRADES.find(g => s >= g.min) ?? READING_GRADES[3]
+const _readingEvalBadge = (s) => {
+  const g = _readingGrade(s)
+  return `<span class="px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${g.cls}">${g.label}</span>`
 }
 
 // ─── Prayer Score Constants ───────────────────────────────────────────────────
@@ -4205,14 +4284,31 @@ export async function renderGradesGrid(teacher, classData) {
     </svg> กำลังโหลด...</div>`)
 
   try {
-    const [students, rawCols, scoreRows, midSheetOpts, finSheetOpts, regularSheetOpts] = await Promise.all([
+    const [students, rawCols, scoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg] = await Promise.all([
       getClassStudents(classData.id),
       getScoreColumns(classData.id),
       getStudentScores(classData.id),
       getSheetColumnOptions(classData.id, 'กลางภาค'),
       getSheetColumnOptions(classData.id, 'ปลายภาค'),
       getSheetColumnOptions(classData.id, 'ระหว่างเรียน'),
+      getSystemConfig().catch(()=>({})),
     ])
+
+    // โหลดข้อมูลคะแนนอ่านคิดวิเคราะห์ → สร้าง evalMap ต่อ studentId
+    const _rsYear = parseInt(sysCfg.academicYear ?? 2568)
+    const _rsSem  = parseInt(sysCfg.semester ?? 1)
+    const _rsCols = await getReadingScoreColumns(_rsYear, _rsSem).catch(()=>[])
+    const _rsRows = _rsCols.length ? await getReadingScores(_rsCols.map(c=>c.id)).catch(()=>[]) : []
+    const _rsTotals = {}
+    for (const r of _rsRows) {
+      _rsTotals[r.student_id] = (_rsTotals[r.student_id] ?? 0) + (parseFloat(r.score) || 0)
+    }
+    const readingEvalMap = {}
+    for (const [sidStr, total] of Object.entries(_rsTotals)) {
+      const score100 = total / 2
+      const g = _readingGrade(score100)
+      readingEvalMap[parseInt(sidStr)] = { score100, label: g.label, cls: g.cls }
+    }
 
     let allCols = rawCols
     if (allCols.length === 0) {
@@ -4596,7 +4692,7 @@ export async function renderGradesGrid(teacher, classData) {
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
           ${toggleForceGrade?`<th class="${thBase} bg-rose-50 text-rose-600 text-xs" style="min-width:50px" rowspan="3">บังคับ<div class="text-[9px] font-normal text-rose-300">เกรด</div></th>`:''}
           ${toggleKhuna?`<th class="${thBase} bg-emerald-50 font-medium text-emerald-700 text-xs" style="min-width:72px" rowspan="3">คุณลักษณะ</th>`:''}
-          ${toggleRead?`<th class="${thBase} bg-sky-50 font-medium text-sky-600 text-xs" style="min-width:62px" rowspan="3">การอ่าน<div class="text-[9px] font-normal text-sky-300">ซิงค์อนาคต</div></th>`:''}
+          ${toggleRead?`<th class="${thBase} bg-sky-50 font-medium text-sky-600 text-xs" style="min-width:82px" rowspan="3">การอ่านฯ<div class="text-[9px] font-normal text-sky-400">ผลประเมิน</div></th>`:''}
         </tr>
         <tr style="position:sticky;top:24px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
@@ -4658,7 +4754,7 @@ export async function renderGradesGrid(teacher, classData) {
             <input class="force-input w-full h-full text-center text-xs bg-transparent focus:bg-rose-100 focus:outline-none text-rose-600 font-bold"
               type="text" placeholder="—" value="${fg}" data-sid="${s.id}" maxlength="4"/></td>`:''}
           ${toggleKhuna?`<td class="border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}" id="gkhuna-${s.id}">${khuna.label}</td>`:''}
-          ${toggleRead?`<td class="border border-blue-50 text-center text-gray-300 text-[10px]">—</td>`:''}
+          ${toggleRead?(()=>{const re=readingEvalMap[s.id];return re?`<td class="border border-sky-100 text-center bg-sky-50/40 text-[11px] font-semibold ${re.cls}" id="gread-${s.id}">${re.label}</td>`:`<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-${s.id}">—</td>`})():''}
         </tr>`}).join('')
 
       wrap.innerHTML = `<table class="border-collapse text-xs" style="min-width:max-content">

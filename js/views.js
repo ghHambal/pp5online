@@ -2704,6 +2704,16 @@ function _openModal(col, year, sem, onSave) {
   })
 }
 
+// ─── Reading Score Eval Helpers ───────────────────────────────────────────────
+const _RS_GRADES = [
+  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50' },
+  { label: 'ดี',       min: 65, cls: 'text-blue-700 bg-blue-50' },
+  { label: 'พอใช้',   min: 50, cls: 'text-yellow-700 bg-yellow-50' },
+  { label: 'ปรับปรุง', min: 0,  cls: 'text-red-600 bg-red-50' },
+]
+const _rsGrade = (s) => _RS_GRADES.find(g => s >= g.min) ?? _RS_GRADES[3]
+const _rsBadge = (s) => { const g = _rsGrade(s); return `<span class="px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${g.cls}">${g.label}</span>` }
+
 // ─── Admin: คะแนนอ่านคิดวิเคราะห์และเขียน ────────────────────────────────────
 export async function renderReadingAdmin() {
   setActiveNav('reading-admin')
@@ -2761,6 +2771,10 @@ export async function renderReadingAdmin() {
 
   const _showScores = async () => {
     document.getElementById('rsa-tab-actions').innerHTML = `
+      <button id="btn-fill-reading-eval"
+        class="px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-xl hover:bg-violet-700 transition">
+        📝 ป้อนผล → ทุกวิชา
+      </button>
       <button id="btn-sync-rs"
         class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
         ↑ Sync ไปชีทกลาง
@@ -2798,11 +2812,15 @@ export async function renderReadingAdmin() {
               <th class="text-left px-3 py-2.5 text-gray-400 w-20">ห้อง</th>
               ${columns.map(c=>`<th class="text-center px-2 py-2.5 text-gray-600 font-semibold min-w-[60px]">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
               <th class="text-center px-3 py-2.5 text-indigo-600 font-semibold">รวม</th>
+              <th class="text-center px-3 py-2.5 text-indigo-700 font-semibold min-w-[55px]">/100</th>
+              <th class="text-center px-3 py-2.5 text-purple-700 font-semibold min-w-[85px]">ผลประเมิน</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
             ${list.map((s,i) => {
-              const total = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
+              const total   = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
+              const score100 = total / 2
+              const badge   = total > 0 ? _rsBadge(score100) : '<span class="text-gray-300">—</span>'
               return `<tr class="hover:bg-indigo-50/30 transition">
                 <td class="px-3 py-2 text-gray-400 sticky left-0 bg-white">${i+1}</td>
                 <td class="px-3 py-2 font-mono text-gray-700 sticky left-8 bg-white">${s.student_code??'—'}</td>
@@ -2813,6 +2831,8 @@ export async function renderReadingAdmin() {
                   return `<td class="px-2 py-2 text-center ${v!=null?'text-gray-800 font-medium':'text-gray-300'}">${v??'—'}</td>`
                 }).join('')}
                 <td class="px-3 py-2 text-center font-semibold text-indigo-600">${total||'—'}</td>
+                <td class="px-3 py-2 text-center text-xs font-medium text-indigo-600">${total > 0 ? score100.toFixed(1).replace(/\.0$/,'') : '—'}</td>
+                <td class="px-3 py-2 text-center">${badge}</td>
               </tr>`
             }).join('')}
           </tbody>
@@ -2840,6 +2860,28 @@ export async function renderReadingAdmin() {
         showToast(`Sync อ่านคิดวิเคราะห์ ${stuList.length} คน สำเร็จ`, 'success')
       } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
       finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
+    })
+
+    document.getElementById('btn-fill-reading-eval')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-fill-reading-eval')
+      if (!cfg.readingEvalClassSheetCol) { showToast('ยังไม่ได้ตั้งค่าคอลัมน์ Sheet ผลประเมิน (ตั้งค่าคอลัมน์ → ตั้งค่าในแท็บ)','warning'); return }
+      btn.disabled=true; btn.textContent='⏳ กำลังป้อน...'
+      try {
+        const { syncReadingEvalToClassSheets } = await import('./sync.js')
+        const { getAllClassesForFill } = await import('./api.js')
+        const evalMap = {}
+        for (const s of allStudents) {
+          const total = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
+          if (total > 0) {
+            const score100 = total / 2
+            evalMap[s.id] = { label: _rsGrade(score100).label, score100 }
+          }
+        }
+        const classes = await getAllClassesForFill()
+        await syncReadingEvalToClassSheets(classes, evalMap, cfg.readingEvalClassSheetCol)
+        showToast(`ป้อนผลประเมินอ่านฯ ไป ${classes.length} ห้องสำเร็จ`, 'success')
+      } catch(err) { showToast('ป้อนไม่สำเร็จ: '+(err.message??''),'error') }
+      finally { btn.disabled=false; btn.textContent='📝 ป้อนผล → ทุกวิชา' }
     })
   }
 
@@ -2874,6 +2916,16 @@ export async function renderReadingAdmin() {
               class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             <button id="rsa-save-sheet" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition flex-shrink-0">บันทึก</button>
           </div>
+          <div class="border-t border-gray-100 mt-3 pt-3">
+            <p class="text-xs font-semibold text-gray-500 mb-2">📝 ป้อนผลประเมิน → ชีทรายวิชา (ทุกห้อง)</p>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-400 w-20 flex-shrink-0">คอลัมน์:</span>
+              <input type="text" id="rsa-eval-col" value="${cfg.readingEvalClassSheetCol??''}" placeholder="เช่น EZ"
+                class="w-24 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono uppercase bg-white focus:outline-none focus:ring-2 focus:ring-violet-300" maxlength="4" />
+              <span class="text-xs text-gray-400">คอลัมน์ในชีทรายวิชาครูสำหรับเก็บผลการประเมิน (ดีเยี่ยม/ดี/พอใช้/ปรับปรุง)</span>
+              <button id="rsa-save-eval-col" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition flex-shrink-0">บันทึก</button>
+            </div>
+          </div>
         </div>
       </div>`
     document.getElementById('rsa-add-btn').addEventListener('click', () => _openReadingModal(null, year, sem, _reload))
@@ -2898,6 +2950,18 @@ export async function renderReadingAdmin() {
         btn.textContent='✅'; btn.style.background='#16a34a'
         setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' },1500)
         showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว','success')
+      } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึก' }
+    })
+    document.getElementById('rsa-save-eval-col')?.addEventListener('click', async () => {
+      const btn=document.getElementById('rsa-save-eval-col')
+      const val=(document.getElementById('rsa-eval-col')?.value.trim()??'').toUpperCase()
+      btn.disabled=true; btn.textContent='⏳'
+      try {
+        await updateSystemConfig('readingEvalClassSheetCol', val)
+        cfg.readingEvalClassSheetCol = val
+        btn.textContent='✅'; btn.style.background='#16a34a'
+        setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' },1500)
+        showToast('บันทึกคอลัมน์ผลประเมินแล้ว','success')
       } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึก' }
     })
   }
@@ -3321,8 +3385,12 @@ export async function renderPrayerAdmin() {
       _curRoom = room
       document.getElementById('pr-room-label').textContent = room
       document.getElementById('pr-room-dropdown').classList.add('hidden')
-      document.querySelectorAll('.pr-room-item').forEach(b =>
-        b.classList.toggle('bg-indigo-50 font-semibold text-indigo-700', b.dataset.room === room))
+      document.querySelectorAll('.pr-room-item').forEach(b => {
+        const active = b.dataset.room === room
+        b.classList.toggle('bg-indigo-50', active)
+        b.classList.toggle('font-semibold', active)
+        b.classList.toggle('text-indigo-700', active)
+      })
       const q = document.getElementById('pr-filter-search').value.toLowerCase()
       _loadRoom(room, q)
     }

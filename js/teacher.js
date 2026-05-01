@@ -59,7 +59,7 @@ const ROUTES = {
   'my-classes':  () => renderMyClasses(_teacher),
   'attendance':       () => renderAttendance(_teacher),
   'life-skill-score': () => renderLifeSkillScore(_teacher, _homeroomRooms.filter(r=>r.category==='สามัญ')),
-  'reading-score':    () => renderReadingScore(_teacher),
+  'reading-score':    () => { const r = window._pendingReadingRoom; window._pendingReadingRoom = null; renderReadingScore(_teacher, r) },
   'prayer-score':     () => renderPrayerScore(_teacher, _homeroomRooms.filter(r=>r.category==='ศาสนา')),
   'grades':      () => renderGrades(),
   'requests':    () => renderRequests(),
@@ -87,9 +87,43 @@ window._showQuotaFromOverview = () => {
     .catch(()  => _showQuotaPopup(0, null, {}))
 }
 
-window._openLifeSkillScore = (room) => navigate('life-skill-score')
-window._openReligionScore  = (room) => navigate('prayer-score')
-window._openReadingScore   = ()     => navigate('reading-score')
+window._openLifeSkillScore    = (room) => navigate('life-skill-score')
+window._openReligionScore     = (room) => navigate('prayer-score')
+window._openReadingScore      = ()     => { window._pendingReadingRoom = null; navigate('reading-score') }
+window._openReadingScoreRoom  = (room) => { window._pendingReadingRoom = room; navigate('reading-score') }
+
+window._openReadingScorePicker = (roomsJson) => {
+  let rooms = []
+  try { rooms = JSON.parse(roomsJson.replace(/&quot;/g, '"')) } catch { rooms = [] }
+  if (!rooms.length) { showToast('ยังไม่มีห้องเรียน — ลงทะเบียนห้องก่อนบันทึกคะแนน', 'warning'); return }
+
+  document.getElementById('rsp-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'rsp-modal'
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-fade">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-gray-800">📖 เลือกห้องบันทึกคะแนน</h3>
+          <p class="text-xs text-gray-400 mt-0.5">อ่านคิดวิเคราะห์และเขียน</p>
+        </div>
+        <button id="rsp-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+      </div>
+      <div class="p-4 grid grid-cols-2 gap-2 max-h-80 overflow-y-auto">
+        ${rooms.map(r => `
+        <button class="rsp-room px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-800
+                       text-sm font-medium hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition text-center"
+          data-room="${r}">${r}</button>`).join('')}
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+  modal.querySelector('#rsp-close').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+  modal.querySelectorAll('.rsp-room').forEach(btn => {
+    btn.addEventListener('click', () => { modal.remove(); window._openReadingScoreRoom(btn.dataset.room) })
+  })
+}
 
 function _applyRoleMenus() {
   const hasLifeSkill = _homeroomRooms.some(r => r.category === 'สามัญ')
@@ -109,7 +143,10 @@ function _applyRoleMenus() {
 // refresh profile หลัง save
 async function _refreshProfile(userId) {
   _teacher = await getMyTeacherProfile(userId)
+  _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
   await loadTeacherInfo(userId)
+  _applyRoleMenus()
+  navigate('profile')   // re-render ฟอร์มด้วย _teacher ที่อัปเดตแล้ว
 }
 
 // หลัง setup เสร็จ → reload แล้วไป schedule-builder (บังคับสร้างตาราง)
