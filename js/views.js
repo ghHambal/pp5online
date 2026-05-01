@@ -3084,10 +3084,27 @@ export async function renderPrayerAdmin() {
 
     document.getElementById('pr-tab-content').innerHTML = `
       <div class="flex items-center gap-2 flex-wrap mb-3">
-        <select id="pr-filter-room"
-          class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[160px]">
-          ${rooms.map(r=>`<option value="${r}">${r}</option>`).join('')}
-        </select>
+        <!-- Room searchable picker -->
+        <div class="relative" id="pr-room-picker-wrap">
+          <button id="pr-room-btn" type="button"
+            class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[180px] text-left flex items-center justify-between gap-2">
+            <span id="pr-room-label" class="truncate">${rooms[0] ?? '—'}</span>
+            <span class="text-gray-400">▾</span>
+          </button>
+          <div id="pr-room-dropdown"
+            class="hidden absolute top-full left-0 z-50 mt-1 w-72 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+            <div class="p-2 border-b border-gray-100">
+              <input id="pr-room-search" type="text" placeholder="ค้นหาห้อง... (74 ห้อง)"
+                class="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
+            <div id="pr-room-list" class="overflow-y-auto" style="max-height:260px">
+              ${rooms.map(r=>`<button type="button" data-room="${r}"
+                class="pr-room-item w-full text-left px-4 py-2 text-sm hover:bg-indigo-50 transition">
+                ${r}
+              </button>`).join('')}
+            </div>
+          </div>
+        </div>
         <input id="pr-filter-search" type="text" placeholder="ค้นหาชื่อ / รหัสนักเรียน"
           class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
         <span id="pr-filter-count" class="text-xs text-gray-400 flex-shrink-0"></span>
@@ -3247,7 +3264,7 @@ export async function renderPrayerAdmin() {
         if (!th) return
         const weekN = +th.dataset.week
         const week  = weeks.find(w => w.n === weekN)
-        if (week) _openAdminWeekModal(week, _stuList, document.getElementById('pr-filter-room').value)
+        if (week) _openAdminWeekModal(week, _stuList, _curRoom)
       })
 
       // Click cell → เปิด Picker (เหมือนครูเป๊ะ)
@@ -3297,25 +3314,60 @@ export async function renderPrayerAdmin() {
       }
     }
 
-    // Initial load
-    const initRoom = rooms[0] ?? ''
-    if (initRoom) {
-      document.getElementById('pr-filter-room').value = initRoom
-      _loadRoom(initRoom)
+    // ─── Room Picker ──────────────────────────────────────────────────────────
+    let _curRoom = rooms[0] ?? ''
+
+    const _setRoom = (room) => {
+      _curRoom = room
+      document.getElementById('pr-room-label').textContent = room
+      document.getElementById('pr-room-dropdown').classList.add('hidden')
+      document.querySelectorAll('.pr-room-item').forEach(b =>
+        b.classList.toggle('bg-indigo-50 font-semibold text-indigo-700', b.dataset.room === room))
+      const q = document.getElementById('pr-filter-search').value.toLowerCase()
+      _loadRoom(room, q)
     }
 
-    document.getElementById('pr-filter-room').addEventListener('change', e => {
-      const q = document.getElementById('pr-filter-search').value.toLowerCase()
-      _loadRoom(e.target.value, q)
+    // Toggle dropdown
+    document.getElementById('pr-room-btn').addEventListener('click', e => {
+      e.stopPropagation()
+      const dd = document.getElementById('pr-room-dropdown')
+      dd.classList.toggle('hidden')
+      if (!dd.classList.contains('hidden')) {
+        document.getElementById('pr-room-search').focus()
+      }
     })
+
+    // Filter rooms in dropdown
+    document.getElementById('pr-room-search').addEventListener('input', e => {
+      const q = e.target.value.toLowerCase()
+      document.querySelectorAll('.pr-room-item').forEach(btn => {
+        btn.style.display = btn.dataset.room.toLowerCase().includes(q) ? '' : 'none'
+      })
+    })
+
+    // Select room
+    document.getElementById('pr-room-list').addEventListener('click', e => {
+      const btn = e.target.closest('.pr-room-item')
+      if (!btn) return
+      _setRoom(btn.dataset.room)
+    })
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+      document.getElementById('pr-room-dropdown')?.classList.add('hidden')
+    }, { capture: true, once: false })
+
+    // Initial load
+    if (_curRoom) _setRoom(_curRoom)
+
+    // Student search
     document.getElementById('pr-filter-search').addEventListener('input', e => {
-      const room = document.getElementById('pr-filter-room').value
-      const q    = e.target.value.toLowerCase()
+      const q = e.target.value.toLowerCase()
       if (!_stuList.length) return
       const filtered = q
         ? _stuList.filter(s => s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
         : _stuList
-      _renderGrid(filtered, room)
+      _renderGrid(filtered, _curRoom)
     })
 
     // ─── Sync ห้องนี้ ─────────────────────────────────────────────────────────
