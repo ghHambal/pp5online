@@ -2970,11 +2970,36 @@ function _scoreTable(columns, rows) {
 // ─── Prayer helpers (mirror teacher-views.js) ────────────────────────────────
 
 const _PST = {
-  pray:     { label: '/', color: 'text-emerald-600 font-bold', bg: 'bg-emerald-50',  score: 2  },
-  absent:   { label: 'X', color: 'text-red-600 font-bold',     bg: 'bg-red-50',      score: 0  },
-  usor:     { label: 'U', color: 'text-purple-600 font-bold',  bg: 'bg-purple-50',   score: 1  },
-  followed: { label: '-', color: 'text-blue-500 font-bold',    bg: 'bg-blue-50',     score: 1  },
-  avoid:    { label: 'N', color: 'text-orange-500 font-bold',  bg: 'bg-orange-50',   score: -1 },
+  pray:     { label: '/', color: 'text-emerald-600 font-bold', bg: 'bg-emerald-50',  score: 2,  fullLabel: 'ละหมาด' },
+  absent:   { label: 'X', color: 'text-red-600 font-bold',     bg: 'bg-red-50',      score: 0,  fullLabel: 'ขาดละหมาด' },
+  usor:     { label: 'U', color: 'text-purple-600 font-bold',  bg: 'bg-purple-50',   score: 1,  fullLabel: 'อูโซร/ประจำเดือน' },
+  followed: { label: '-', color: 'text-blue-500 font-bold',    bg: 'bg-blue-50',     score: 1,  fullLabel: 'ติดตามแล้ว' },
+  avoid:    { label: 'N', color: 'text-orange-500 font-bold',  bg: 'bg-orange-50',   score: -1, fullLabel: 'หลีกเลี่ยง' },
+}
+
+function _adminPicker(e, onSelect) {
+  document.getElementById('admin-picker')?.remove()
+  const picker = document.createElement('div')
+  picker.id = 'admin-picker'
+  picker.className = 'fixed z-[200] bg-white border border-gray-200 rounded-xl shadow-xl p-2 flex gap-1.5 flex-wrap'
+  const rect = (e.target.closest('td,th,button') ?? e.target).getBoundingClientRect()
+  picker.style.top  = Math.min(rect.bottom + 4, window.innerHeight - 60) + 'px'
+  picker.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 220)) + 'px'
+  const clearBtn = document.createElement('button')
+  clearBtn.className = 'px-2 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 hover:bg-gray-200'
+  clearBtn.textContent = '✕ ล้าง'
+  clearBtn.onclick = () => { picker.remove(); onSelect(null) }
+  picker.appendChild(clearBtn)
+  Object.entries(_PST).forEach(([key, v]) => {
+    const btn = document.createElement('button')
+    btn.className = `px-3 py-1.5 rounded-lg text-sm font-bold ${v.bg} ${v.color} hover:opacity-80 transition`
+    btn.textContent = v.label
+    btn.title = v.fullLabel
+    btn.onclick = () => { picker.remove(); onSelect(key) }
+    picker.appendChild(btn)
+  })
+  document.body.appendChild(picker)
+  setTimeout(() => document.addEventListener('click', () => picker.remove(), { once: true }), 50)
 }
 const _DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 
@@ -3045,8 +3070,6 @@ export async function renderPrayerAdmin() {
     const weeks    = (semStart && semEnd) ? _genWeeks(semStart, semEnd) : []
     const allDays  = weeks.flatMap(w => w.days)
 
-    const CYCLE = [null, 'pray', 'absent', 'usor', 'followed', 'avoid']
-
     document.getElementById('pr-tab-actions').innerHTML = `
       <button id="btn-sync-prayer"
         class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
@@ -3062,7 +3085,6 @@ export async function renderPrayerAdmin() {
         <input id="pr-filter-search" type="text" placeholder="ค้นหาชื่อ / รหัสนักเรียน"
           class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
         <span id="pr-filter-count" class="text-xs text-gray-400 flex-shrink-0"></span>
-        <div id="pr-saving" class="hidden text-xs text-emerald-600 font-medium">💾 บันทึก...</div>
         <div class="flex gap-1 text-xs flex-shrink-0 flex-wrap">
           ${Object.values(_PST).map(v=>`<span class="px-1.5 py-0.5 ${v.bg} ${v.color} rounded cursor-default">${v.label}=${v.fullLabel??''}</span>`).join('')}
         </div>
@@ -3089,7 +3111,60 @@ export async function renderPrayerAdmin() {
 
     // state ห้องและ list นักเรียน
     let _stuList = []
-    let orderedDates = []  // วันทั้งหมดที่มีข้อมูลในห้องที่เลือก
+    let orderedDates = []
+
+    // ─── เหมือนครูเป๊ะ: glow + optimistic UI + RPC save ─────────────────────
+    const _glow = (el, ok = true) => {
+      if (!el) return
+      el.style.outline = `2px solid ${ok ? '#059669' : '#ef4444'}`
+      el.style.outlineOffset = '1px'
+      setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = '' }, 700)
+    }
+
+    const _saveAdminCell = async (sid, ds, room, st) => {
+      // 1. Optimistic update
+      if (!adminPrayMap[sid]) adminPrayMap[sid] = {}
+      if (st === null) delete adminPrayMap[sid][ds]
+      else adminPrayMap[sid][ds] = st
+
+      // 2. อัปเดต grid cell
+      const gridCell = document.querySelector(`.pr-cell[data-sid="${sid}"][data-date="${ds}"]`)
+      if (gridCell) {
+        const p = st ? _PST[st] : null
+        Object.values(_PST).forEach(v => gridCell.classList.remove(v.bg))
+        if (p) { gridCell.classList.add(p.bg); gridCell.innerHTML = `<span class="${p.color} text-xs">${p.label}</span>` }
+        else gridCell.innerHTML = ''
+      }
+      _updateScore(sid)
+
+      // 3. อัปเดต modal cell (ถ้าเปิดอยู่)
+      const modalCell = document.querySelector(`.adm-cell[data-sid="${sid}"][data-date="${ds}"]`)
+      if (modalCell) {
+        const p = st ? _PST[st] : null
+        modalCell.className = `adm-cell w-10 h-10 rounded-xl border-2 flex items-center justify-center text-sm font-bold transition hover:border-indigo-300 ${p ? p.bg + ' border-transparent' : 'bg-gray-50 border-gray-100'}`
+        modalCell.innerHTML = p ? `<span class="${p.color}">${p.label}</span>` : '<span class="text-gray-200">·</span>'
+      }
+
+      // 4. Save to DB + glow feedback
+      try {
+        await savePrayerCellAdmin(sid, room, ds, st)
+        _glow(gridCell, true)
+        _glow(modalCell, true)
+      } catch(err) {
+        console.error('[prayer save]', err)
+        _glow(gridCell, false)
+        _glow(modalCell, false)
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    }
+
+    const _saveBatchAdmin = async (pairs, room) => {
+      const results = await Promise.allSettled(
+        pairs.map(([sid, ds, st]) => _saveAdminCell(sid, ds, room, st))
+      )
+      const failed = results.filter(r => r.status === 'rejected').length
+      if (failed > 0) showToast(`บันทึกไม่สำเร็จ ${failed} รายการ`, 'error')
+    }
 
     const _updateScore = (sid) => {
       const sMap  = adminPrayMap[sid] ?? {}
@@ -3168,34 +3243,15 @@ export async function renderPrayerAdmin() {
         if (week) _openAdminWeekModal(week, _stuList, document.getElementById('pr-filter-room').value)
       })
 
-      // Click cell → cycle + save
-      document.getElementById('pr-grid-wrap').addEventListener('click', async e => {
+      // Click cell → เปิด Picker (เหมือนครูเป๊ะ)
+      document.getElementById('pr-grid-wrap').addEventListener('click', e => {
         const cell = e.target.closest('.pr-cell')
         if (!cell) return
+        e.stopPropagation()
         const sid  = +cell.dataset.sid
         const ds   = cell.dataset.date
         const room = cell.dataset.room
-        if (!adminPrayMap[sid]) adminPrayMap[sid] = {}
-        const cur  = adminPrayMap[sid][ds] ?? null
-        const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length]
-        adminPrayMap[sid][ds] = next
-
-        // update cell UI
-        const p = next ? _PST[next] : null
-        Object.values(_PST).forEach(v => cell.classList.remove(v.bg))
-        if (p) { cell.classList.add(p.bg); cell.innerHTML = `<span class="${p.color} text-xs">${p.label}</span>` }
-        else   { cell.innerHTML = '' }
-        _updateScore(sid)
-
-        // save to Supabase
-        document.getElementById('pr-saving')?.classList.remove('hidden')
-        try {
-          await savePrayerCellAdmin(sid, room, ds, next ?? null)
-        } catch(err) {
-          showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
-        } finally {
-          document.getElementById('pr-saving')?.classList.add('hidden')
-        }
+        _adminPicker(e, (st) => _saveAdminCell(sid, ds, room, st))
       })
     }
 
@@ -3339,59 +3395,40 @@ export async function renderPrayerAdmin() {
         </div>`
       document.body.appendChild(m)
 
-      const _refreshCell = (sid, ds) => {
-        const btn = m.querySelector(`.adm-cell[data-sid="${sid}"][data-date="${ds}"]`)
-        if (!btn) return
-        const st = adminPrayMap[sid]?.[ds] ?? null
-        const p  = st ? _PST[st] : null
-        btn.className = `adm-cell w-10 h-10 rounded-xl border-2 border-gray-100 flex items-center justify-center text-sm font-bold transition hover:border-indigo-300 ${p ? p.bg + ' border-transparent' : 'bg-gray-50'}`
-        btn.innerHTML = p ? `<span class="${p.color}">${p.label}</span>` : '<span class="text-gray-200">·</span>'
-        _updateScore(sid)
-      }
-
-      const _saveCell = async (sid, ds, roomVal, status) => {
-        if (!adminPrayMap[sid]) adminPrayMap[sid] = {}
-        adminPrayMap[sid][ds] = status
-        _refreshCell(sid, ds)
-        document.getElementById('pr-saving')?.classList.remove('hidden')
-        try { await savePrayerCellAdmin(sid, roomVal, ds, status ?? null) }
-        catch(err) { showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error') }
-        finally { document.getElementById('pr-saving')?.classList.add('hidden') }
-      }
-
-      // Click cell
-      m.querySelector('#adm-modal-body').addEventListener('click', async e => {
-        const btn = e.target.closest('.adm-cell')
-        if (!btn) return
-        const sid  = +btn.dataset.sid
-        const ds   = btn.dataset.date
-        const r    = btn.dataset.room
-        const cur  = adminPrayMap[sid]?.[ds] ?? null
-        const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length]
-        await _saveCell(sid, ds, r, next)
+      // Cell click → Picker (เหมือนครูเป๊ะ)
+      m.querySelector('#adm-modal-body').addEventListener('click', e => {
+        const cell = e.target.closest('.adm-cell')
+        if (!cell) return
+        e.stopPropagation()
+        const sid = +cell.dataset.sid
+        const ds  = cell.dataset.date
+        _adminPicker(e, (st) => _saveAdminCell(sid, ds, room, st))
       })
 
-      // AllDay per column
+      // AllDay per column → Picker
       m.querySelectorAll('.adm-day-all').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const ds = btn.dataset.date, r = btn.dataset.room
-          for (const s of students) await _saveCell(s.id, ds, r, 'pray')
+        btn.addEventListener('click', e => {
+          e.stopPropagation()
+          const ds = btn.dataset.date
+          _adminPicker(e, (st) => _saveBatchAdmin(students.map(s => [s.id, ds, st]), room))
         })
       })
 
-      // ตั้งครบ per row
+      // ตั้งครบ per row → Picker
       m.querySelectorAll('.adm-row-all').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const sid = +btn.dataset.sid, r = btn.dataset.room
-          for (const d of week.days) await _saveCell(sid, d.ds, r, 'pray')
+        btn.addEventListener('click', e => {
+          e.stopPropagation()
+          const sid = +btn.dataset.sid
+          _adminPicker(e, (st) => _saveBatchAdmin(week.days.map(d => [sid, d.ds, st]), room))
         })
       })
 
-      // AllCheck (ทุกคน ทุกวันในสัปดาห์)
-      m.querySelector('#adm-all-check').addEventListener('click', async () => {
-        for (const s of students)
-          for (const d of week.days)
-            await _saveCell(s.id, d.ds, room, 'pray')
+      // AllCheck → Picker (ทุกคน ทุกวัน)
+      m.querySelector('#adm-all-check').addEventListener('click', e => {
+        e.stopPropagation()
+        _adminPicker(e, (st) => _saveBatchAdmin(
+          students.flatMap(s => week.days.map(d => [s.id, d.ds, st])), room
+        ))
       })
 
       m.querySelector('#adm-modal-close').addEventListener('click', () => m.remove())
