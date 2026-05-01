@@ -18,7 +18,7 @@ INSERT INTO system_config (key, value) VALUES ('readingScoreSheetTab', 'หน�
 -- 4. system_config: Prayer Sheet (ละหมาด) — Solat tab, A3:A สำหรับรหัสนักเรียน, D เป็นต้นไปสำหรับคะแนนรายวัน
 INSERT INTO system_config (key, value) VALUES ('prayerSheetId',      '') ON CONFLICT (key) DO NOTHING;
 INSERT INTO system_config (key, value) VALUES ('prayerSheetTab',     'Solat') ON CONFLICT (key) DO NOTHING;
-INSERT INTO system_config (key, value) VALUES ('prayerStudentRange', 'A3:A200') ON CONFLICT (key) DO NOTHING;
+INSERT INTO system_config (key, value) VALUES ('prayerStudentRange', 'A3:A3000') ON CONFLICT (key) DO NOTHING;
 
 -- Allow admin to save prayer records without teacher_id
 ALTER TABLE prayer_records ALTER COLUMN teacher_id DROP NOT NULL;

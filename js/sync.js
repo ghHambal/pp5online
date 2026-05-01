@@ -268,7 +268,7 @@ export async function syncPrayerSheet(sheetId, tabName, studentColRange, ordered
     action:          'sync_attendance',  // ใช้ action เดียวกับเช็คชื่อ
     sheetId,
     tabName:         tabName || 'Solat',
-    studentColRange: studentColRange || 'A3:A200',
+    studentColRange: studentColRange || 'A3:A3000',
     attStartCol:     4,                  // column D
     records,
   })

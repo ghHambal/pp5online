@@ -3322,7 +3322,7 @@ export async function renderPrayerAdmin() {
         const { syncPrayerSheet } = await import('./sync.js')
         const syncStudents = _stuList.map(s => ({ id: s.id, student_code: s.student_code }))
         await syncPrayerSheet(cfg.prayerSheetId, cfg.prayerSheetTab||'Solat',
-          cfg.prayerStudentRange||'A3:A200', syncDates, adminPrayMap, syncStudents)
+          cfg.prayerStudentRange||'A3:A3000', syncDates, adminPrayMap, syncStudents)
         showToast(`Sync ละหมาด ${syncStudents.length} คน × ${syncDates.length} วัน สำเร็จ`, 'success')
       } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
       finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีท Solat' }
@@ -3469,9 +3469,9 @@ export async function renderPrayerAdmin() {
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">ช่วงรหัสนักเรียน</label>
-            <input type="text" id="pr-stu-range" value="${cfg.prayerStudentRange??'A3:A200'}" placeholder="A3:A200"
+            <input type="text" id="pr-stu-range" value="${cfg.prayerStudentRange??'A3:A3000'}" placeholder="A3:A3000"
               class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            <p class="text-xs text-gray-400 mt-1">คอลัมน์ที่บันทึกรหัสนักเรียนในแท็บ Solat — ค่า default: <code>A3:A200</code></p>
+            <p class="text-xs text-gray-400 mt-1">คอลัมน์ที่บันทึกรหัสนักเรียนในแท็บ Solat — ค่า default: <code>A3:A3000</code></p>
           </div>
           <div class="pt-2 border-t border-gray-50">
             <p class="text-xs text-gray-400 mb-3">💡 คอลัมน์คะแนนรายวันเริ่มที่ <b>D</b> เป็นต้นไป (D=วันที่ 1, E=วันที่ 2, ...) เหมือนระบบเช็คชื่อ</p>
@@ -3487,7 +3487,7 @@ export async function renderPrayerAdmin() {
       const btn   = document.getElementById('pr-save-cfg')
       const sid   = document.getElementById('pr-sheet-id').value.trim()
       const tab   = document.getElementById('pr-sheet-tab').value.trim() || 'Solat'
-      const range = document.getElementById('pr-stu-range').value.trim() || 'A3:A200'
+      const range = document.getElementById('pr-stu-range').value.trim() || 'A3:A3000'
       btn.disabled=true; btn.textContent='⏳ กำลังบันทึก...'
       try {
         await Promise.all([
