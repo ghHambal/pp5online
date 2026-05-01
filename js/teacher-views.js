@@ -1450,6 +1450,11 @@ export async function renderMyClasses(teacher) {
                   class="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition text-center">
                   📝 คะแนน
                 </button>
+                ${c.google_sheet_id ? `
+                <button onclick="window._openSyncModal(${c.id})"
+                  class="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition text-center">
+                  ↑ Sync ไปชีท
+                </button>` : ''}
                 <div class="flex gap-1">
                   <button onclick="window._editClass(${c.id})"
                     class="flex-1 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition text-center">
@@ -1498,6 +1503,132 @@ export async function renderMyClasses(teacher) {
         showToast(`ลบ "${name}" แล้ว`, 'success')
         renderMyClasses(teacher)
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+    }
+
+    window._openSyncModal = (classId) => {
+      const cls = window._classCache?.[classId]
+      if (!cls) return
+      document.getElementById('sync-modal')?.remove()
+      const m = document.createElement('div')
+      m.id = 'sync-modal'
+      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+      m.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <h3 class="font-bold text-gray-800 text-base mb-1">📤 Sync ไปยัง Google Sheet</h3>
+          <p class="text-xs text-gray-400 mb-4">ห้อง: ${cls.class_name} · Sheet: ✓</p>
+          <div class="space-y-3 mb-5">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" id="sync-opt-info" checked
+                class="mt-0.5 w-4 h-4 rounded accent-violet-600" />
+              <div>
+                <p class="text-sm font-medium text-gray-700">ข้อมูลรายวิชา</p>
+                <p class="text-xs text-gray-400">ชื่อวิชา รหัส หน่วยกิต ครู วันสอน หัวหน้าห้อง</p>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" id="sync-opt-att" checked
+                class="mt-0.5 w-4 h-4 rounded accent-teal-600" />
+              <div>
+                <p class="text-sm font-medium text-gray-700">เช็คชื่อ</p>
+                <p class="text-xs text-gray-400">ม / ข / ส / ก / ป — คอลัมน์ N เป็นต้นไป</p>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" id="sync-opt-score" checked
+                class="mt-0.5 w-4 h-4 rounded accent-indigo-600" />
+              <div>
+                <p class="text-sm font-medium text-gray-700">คะแนน</p>
+                <p class="text-xs text-gray-400">คะแนนย่อยตามคอลัมน์ที่ตั้งค่าไว้</p>
+              </div>
+            </label>
+          </div>
+          <div id="sync-progress" class="hidden mb-3 text-xs text-teal-600 font-medium"></div>
+          <div class="flex gap-3">
+            <button id="btn-sync-cancel"
+              class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+              ยกเลิก
+            </button>
+            <button id="btn-sync-go"
+              class="flex-1 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 transition">
+              Sync ที่เลือก
+            </button>
+          </div>
+        </div>`
+      document.body.appendChild(m)
+      m.querySelector('#btn-sync-cancel').addEventListener('click', () => m.remove())
+      m.addEventListener('click', e => { if (e.target === m) m.remove() })
+
+      m.querySelector('#btn-sync-go').addEventListener('click', async () => {
+        const doInfo  = m.querySelector('#sync-opt-info').checked
+        const doAtt   = m.querySelector('#sync-opt-att').checked
+        const doScore = m.querySelector('#sync-opt-score').checked
+        if (!doInfo && !doAtt && !doScore) { showToast('เลือกอย่างน้อย 1 รายการ', 'warning'); return }
+
+        const btn  = m.querySelector('#btn-sync-go')
+        const prog = m.querySelector('#sync-progress')
+        btn.disabled = true; btn.textContent = '⏳ กำลัง Sync...'
+        prog.classList.remove('hidden')
+
+        const { syncClassInfo, syncAttendance, syncScores } = await import('./sync.js')
+        const { getDepartments, getScoreColumns, getStudentScores } = await import('./api.js')
+        const errors = []
+
+        try {
+          if (doInfo) {
+            prog.textContent = '📋 Sync ข้อมูลรายวิชา...'
+            const depts = await getDepartments().catch(() => [])
+            const dept  = depts.find(d => d.dept_name === cls.master_subjects?.dept)
+            await syncClassInfo(
+              cls.google_sheet_id, cls,
+              { full_name: teacher?.full_name, phone: teacher?.phone },
+              {
+                headStudentName: cls.students?.full_name ?? '',
+                deptName:        cls.master_subjects?.dept ?? '',
+                headDeptName:    dept?.head_name ?? '',
+              }
+            )
+          }
+        } catch (err) { errors.push('รายวิชา: ' + (err.message ?? '')) }
+
+        try {
+          if (doAtt) {
+            prog.textContent = '✅ Sync เช็คชื่อ...'
+            const credit   = cls.master_subjects?.credit ?? 1
+            const sessions = _generateSessions(cls, credit)
+            const [students, attRows] = await Promise.all([
+              getClassStudents(classId),
+              getClassAttendanceAll(classId),
+            ])
+            const attMap = {}
+            for (const r of attRows) {
+              if (!attMap[r.student_id]) attMap[r.student_id] = {}
+              attMap[r.student_id][r.session_number] = r.status
+            }
+            await syncAttendance(cls.google_sheet_id, sessions, attMap, students)
+          }
+        } catch (err) { errors.push('เช็คชื่อ: ' + (err.message ?? '')) }
+
+        try {
+          if (doScore) {
+            prog.textContent = '📝 Sync คะแนน...'
+            const [scoreColumns, scores, students] = await Promise.all([
+              getScoreColumns(classId),
+              getStudentScores(classId),
+              getClassStudents(classId),
+            ])
+            if (scoreColumns.length) {
+              await syncScores(cls.google_sheet_id, scoreColumns, scores, students)
+            }
+          }
+        } catch (err) { errors.push('คะแนน: ' + (err.message ?? '')) }
+
+        m.remove()
+        if (errors.length) {
+          showToast('Sync บางส่วนไม่สำเร็จ:\n' + errors.join('\n'), 'error')
+        } else {
+          showToast(`Sync สำเร็จ — ${cls.class_name}`, 'success')
+        }
+      })
     }
   } catch { showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ', 'error') }
 

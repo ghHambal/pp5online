@@ -38,9 +38,10 @@ export async function getMyClasses(teacherId) {
   const { data, error } = await supabase
     .from('classes')
     .select(`
-      id, class_name, skill_group, google_sheet_id,
+      id, class_name, skill_group, google_sheet_id, gas_url, head_student_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( subject_code, subject_name, dept, grade_level, subject_group, credit )
+      master_subjects ( subject_code, subject_name, dept, grade_level, subject_group, credit ),
+      students ( full_name )
     `)
     .in('course_id', ids)
     .order('class_name')
@@ -150,7 +151,7 @@ export async function getClasses() {
   const { data, error } = await supabase
     .from('classes')
     .select(`
-      id, class_name, skill_group, google_sheet_id,
+      id, class_name, skill_group, google_sheet_id, gas_url,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit )
     `)
@@ -883,4 +884,63 @@ export async function upsertReadingScore(studentId, columnId, score, teacherId) 
               updated_at: new Date().toISOString() },
              { onConflict: 'student_id,column_id' })
   if (error) throw error
+}
+
+// ─── Admin Score Overview ─────────────────────────────────────────────────────
+
+async function _fetchStudentsById(ids) {
+  if (!ids.length) return {}
+  const { data } = await supabase.from('students')
+    .select('id, student_code, full_name, main_room, religion_room, image_url')
+    .in('id', ids)
+  return Object.fromEntries((data ?? []).map(s => [s.id, s]))
+}
+
+export async function savePrayerCellAdmin(studentId, room, checkDate, status, weekNumber = null) {
+  // Admin: ลบ records ทุก teacher สำหรับ student+date นี้ แล้ว insert ใหม่
+  await supabase.from('prayer_records').delete()
+    .eq('student_id', studentId).eq('main_room', room).eq('check_date', checkDate)
+  if (status) {
+    const payload = { student_id: studentId, main_room: room, check_date: checkDate, status }
+    if (weekNumber !== null) payload.week_number = weekNumber
+    const { error } = await supabase.from('prayer_records').insert(payload)
+    if (error) throw error
+  }
+}
+
+export async function getAllLifeSkillScores(academicYear, semester) {
+  const { data: cols } = await supabase.from('life_skill_columns')
+    .select('id, name, max_score, sheet_col, category')
+    .eq('academic_year', academicYear).eq('semester', semester)
+    .order('sort_order')
+  if (!cols?.length) return { columns: [], scores: [] }
+  const { data: raw } = await supabase.from('life_skill_scores')
+    .select('student_id, column_id, score')
+    .in('column_id', cols.map(c => c.id))
+  const stuMap = await _fetchStudentsById([...new Set((raw ?? []).map(r => r.student_id))])
+  const scores = (raw ?? []).map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
+  return { columns: cols ?? [], scores }
+}
+
+export async function getAllReadingScores(academicYear, semester) {
+  const { data: cols } = await supabase.from('reading_score_columns')
+    .select('id, name, max_score, sheet_col')
+    .eq('academic_year', academicYear).eq('semester', semester)
+    .order('sort_order')
+  if (!cols?.length) return { columns: [], scores: [] }
+  const { data: raw } = await supabase.from('reading_scores')
+    .select('student_id, column_id, score')
+    .in('column_id', cols.map(c => c.id))
+  const stuMap = await _fetchStudentsById([...new Set((raw ?? []).map(r => r.student_id))])
+  const scores = (raw ?? []).map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
+  return { columns: cols ?? [], scores }
+}
+
+export async function getAllPrayerRecords() {
+  const { data, error } = await supabase.from('prayer_records')
+    .select('student_id, check_date, status')
+    .order('check_date')
+  if (error) throw error
+  const stuMap = await _fetchStudentsById([...new Set((data ?? []).map(r => r.student_id))])
+  return (data ?? []).map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
 }

@@ -11,7 +11,9 @@ import { getStats, getTeachers, getClasses, getStudents,
          getLifeSkillColumns, createLifeSkillColumn,
          updateLifeSkillColumn, deleteLifeSkillColumn,
          getReadingScoreColumns, createReadingScoreColumn,
-         updateReadingScoreColumn, deleteReadingScoreColumn } from './api.js'
+         updateReadingScoreColumn, deleteReadingScoreColumn,
+         getAllLifeSkillScores, getAllReadingScores, getAllPrayerRecords,
+         savePrayerCellAdmin, getStudentsByReligionRoom } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -913,6 +915,25 @@ export async function renderSettings() {
         { key: 'priceSemester',       label: 'ราคาแพ็กเกจเหมาทั้งเทอม (บาท)', type: 'text' },
         { key: 'pkgPerClassDesc',     label: 'คำอธิบายแพ็กเกจรายห้อง',        type: 'text' },
         { key: 'pkgSemesterDesc',     label: 'คำอธิบายแพ็กเกจเหมาทั้งเทอม',  type: 'text' },
+      ]},
+      { label: '🔗 Sync Engine — Google Sheet', keys: [
+        { key: 'centralGasUrl',            label: 'Central GAS URL (Admin deploy ครั้งเดียว — ใช้ร่วมทุก Sync)', type: 'text' },
+        { key: 'classInfoTab',             label: 'Tab ข้อมูลรายวิชาในชีทครู (ชื่อแท็บ)', type: 'text' },
+        { key: 'classInfoSubjectNameCell', label: 'Cell ชื่อรายวิชา', type: 'text' },
+        { key: 'classInfoSubjectCodeCell', label: 'Cell รหัสวิชา', type: 'text' },
+        { key: 'classInfoCreditCell',      label: 'Cell หน่วยกิต', type: 'text' },
+        { key: 'classInfoGradeCell',       label: 'Cell ชั้นเรียน', type: 'text' },
+        { key: 'classInfoHeadStudentCell', label: 'Cell หัวหน้าห้อง', type: 'text' },
+        { key: 'classInfoDay1Cell',        label: 'Cell วันสอนคาบที่ 1', type: 'text' },
+        { key: 'classInfoDay2Cell',        label: 'Cell วันสอนคาบที่ 2', type: 'text' },
+        { key: 'classInfoDay3Cell',        label: 'Cell วันสอนคาบที่ 3', type: 'text' },
+        { key: 'classInfoDay4Cell',        label: 'Cell วันสอนคาบที่ 4', type: 'text' },
+        { key: 'classInfoDay5Cell',        label: 'Cell วันสอนคาบที่ 5', type: 'text' },
+        { key: 'classInfoDay6Cell',        label: 'Cell วันสอนคาบที่ 6', type: 'text' },
+        { key: 'classInfoTeacherNameCell', label: 'Cell ครูผู้สอน', type: 'text' },
+        { key: 'classInfoTeacherPhoneCell',label: 'Cell เบอร์ติดต่อ', type: 'text' },
+        { key: 'classInfoDeptCell',        label: 'Cell กลุ่มสาระ', type: 'text' },
+        { key: 'classInfoHeadDeptCell',    label: 'Cell หัวหน้าหมวด', type: 'text' },
       ]},
       { label: '🗓️ ตารางสอน', keys: [
         { key: 'hasFriday',            label: 'เปิดวันศุกร์ (เฉพาะครูห้องโปรแกรม)', type: 'toggle' },
@@ -2402,86 +2423,200 @@ export async function renderLifeSkillAdmin() {
         </div>
       </div>`
 
-    setContent(`<div class="max-w-4xl mx-auto animate-fade space-y-6">
-      <div class="flex items-center justify-between">
+    setContent(`<div class="max-w-5xl mx-auto animate-fade">
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">คอลัมน์คะแนนทักษะชีวิต</h2>
-          <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year} — กำหนดหัวข้อและคอลัมน์ Sheet สำหรับ Sync</p>
+          <h2 class="text-lg font-bold text-gray-800">🌱 คะแนนทักษะชีวิต</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year}</p>
         </div>
-        <button id="lsk-add-btn"
-          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
-          ＋ เพิ่มหัวข้อ
+        <div class="flex gap-2" id="lsk-tab-actions"></div>
+      </div>
+      <!-- Tabs -->
+      <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
+        <button id="lsk-tab-scores" data-tab="scores"
+          class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
+          📊 คะแนน
+        </button>
+        <button id="lsk-tab-config" data-tab="config"
+          class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
+          ⚙️ ตั้งค่าคอลัมน์
         </button>
       </div>
-
-      <!-- สามัญ -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-          <h3 class="text-sm font-semibold text-gray-700">ประเภทสามัญ</h3>
-          <span class="ml-auto text-xs text-gray-400">${samaiCols.length} หัวข้อ · รวม ${samaiCols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
-        </div>
-        <div id="lsk-samai">${tableHTML(samaiCols)}</div>
-        ${sheetIdBlock('lifeSkillSheetIdSamai', 'สามัญ', 'blue')}
-      </div>
-
-      <!-- ศาสนา -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-          <h3 class="text-sm font-semibold text-gray-700">ประเภทศาสนา</h3>
-          <span class="ml-auto text-xs text-gray-400">${sadsanaCols.length} หัวข้อ · รวม ${sadsanaCols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
-        </div>
-        <div id="lsk-sadsana">${tableHTML(sadsanaCols)}</div>
-        ${sheetIdBlock('lifeSkillSheetIdSadsana', 'ศาสนา', 'amber')}
-      </div>
+      <!-- Tab content -->
+      <div id="lsk-tab-content"></div>
     </div>`)
 
-    // ─── Handlers ──────────────────────────────────────────────────────────
-    document.getElementById('lsk-add-btn').addEventListener('click', () => _openModal(null, year, sem, _reload))
+    const allCols = [...samaiCols, ...sadsanaCols]
 
-    document.querySelectorAll('.lsk-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = +btn.dataset.id
-        const col = [...samaiCols, ...sadsanaCols].find(c => c.id === id)
-        if (col) _openModal(col, year, sem, _reload)
-      })
-    })
-    document.querySelectorAll('.lsk-del').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?\nคะแนนของนักเรียนทั้งหมดในหัวข้อนี้จะถูกลบด้วย`)) return
-        try {
-          await deleteLifeSkillColumn(+btn.dataset.id)
-          showToast('ลบแล้ว', 'success')
-          _reload()
-        } catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
-      })
-    })
+    const _showScores = async () => {
+      document.getElementById('lsk-tab-actions').innerHTML = `
+        <button id="btn-sync-ls"
+          class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
+          ↑ Sync ไปชีทกลาง
+        </button>`
+      document.getElementById('lsk-tab-content').innerHTML = `
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 flex flex-wrap gap-3 items-center">
+          <select id="lsk-filter-cat" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <option value="">ทุกประเภท</option>
+            <option value="สามัญ">สามัญ</option>
+            <option value="ศาสนา">ศาสนา</option>
+          </select>
+          <input id="lsk-filter-search" type="text" placeholder="ค้นหาชื่อ / รหัส"
+            class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <span id="lsk-filter-count" class="text-xs text-gray-400"></span>
+        </div>
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+          <div id="lsk-score-table"><div class="p-10 text-center text-gray-400">กำลังโหลด...</div></div>
+        </div>`
 
-    // บันทึก Sheet ID + Tab
-    document.querySelectorAll('.lsk-save-sheet').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const key    = btn.dataset.key
-        const tabKey = btn.dataset.tabKey
-        const val    = document.getElementById(`lsk-sheet-${key}`)?.value.trim() ?? ''
-        const tabVal = document.getElementById(`lsk-tab-${key}`)?.value.trim() ?? ''
-        const origText = btn.textContent
-        btn.disabled = true; btn.textContent = '⏳'
+      const { columns, scores } = await getAllLifeSkillScores(year, sem).catch(()=>({ columns:[], scores:[] }))
+      const scoreMap = {}
+      for (const s of scores) {
+        if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
+        scoreMap[s.student_id][s.column_id] = s.score
+      }
+      const allStudents = [...new Map(scores.map(s =>
+        [s.student_id, { id: s.student_id, ...s.students }])).values()]
+        .sort((a,b) => (a.main_room??a.religion_room??'').localeCompare(b.main_room??b.religion_room??'',undefined,{numeric:true}) || (a.student_code??'').localeCompare(b.student_code??''))
+
+      const _renderTable = (list) => {
+        document.getElementById('lsk-filter-count').textContent = `${list.length} คน`
+        if (!list.length) { document.getElementById('lsk-score-table').innerHTML = `<div class="p-10 text-center text-gray-400">ไม่พบข้อมูล</div>`; return }
+        document.getElementById('lsk-score-table').innerHTML = `
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th class="text-left px-3 py-2.5 text-gray-500 w-8 sticky left-0 bg-gray-50">#</th>
+                <th class="text-left px-3 py-2.5 text-gray-600 font-semibold w-20 sticky left-8 bg-gray-50">รหัส</th>
+                <th class="text-left px-3 py-2.5 text-gray-600 font-semibold min-w-[130px]">ชื่อ</th>
+                <th class="text-left px-3 py-2.5 text-gray-400 w-20">ห้อง</th>
+                ${columns.map(c=>`<th class="text-center px-2 py-2.5 text-gray-600 font-semibold min-w-[60px] whitespace-nowrap">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
+                <th class="text-center px-3 py-2.5 text-indigo-600 font-semibold">รวม</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              ${list.map((s,i) => {
+                const cat = s.religion_room ? 'ศาสนา' : 'สามัญ'
+                const room = s.main_room ?? s.religion_room ?? '—'
+                const total = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
+                return `<tr class="hover:bg-indigo-50/30 transition">
+                  <td class="px-3 py-2 text-gray-400 sticky left-0 bg-white">${i+1}</td>
+                  <td class="px-3 py-2 font-mono text-gray-700 sticky left-8 bg-white">${s.student_code??'—'}</td>
+                  <td class="px-3 py-2 text-gray-800">${s.full_name??'—'}</td>
+                  <td class="px-3 py-2 text-gray-400">${room}</td>
+                  ${columns.map(c => {
+                    const v = scoreMap[s.id]?.[c.id]
+                    return `<td class="px-2 py-2 text-center ${v!=null?'text-gray-800 font-medium':'text-gray-300'}">${v??'—'}</td>`
+                  }).join('')}
+                  <td class="px-3 py-2 text-center font-semibold text-indigo-600">${total||'—'}</td>
+                </tr>`
+              }).join('')}
+            </tbody>
+          </table>`
+      }
+
+      let _lskFiltered = [...allStudents]
+      _renderTable(_lskFiltered)
+
+      const _applyLskFilter = () => {
+        const cat = document.getElementById('lsk-filter-cat').value
+        const q   = document.getElementById('lsk-filter-search').value.toLowerCase()
+        _lskFiltered = allStudents.filter(s => {
+          const isCatMatch = !cat || (cat==='ศาสนา' ? !!s.religion_room : !s.religion_room)
+          return isCatMatch && (!q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
+        })
+        _renderTable(_lskFiltered)
+      }
+      document.getElementById('lsk-filter-cat').addEventListener('change', _applyLskFilter)
+      document.getElementById('lsk-filter-search').addEventListener('input', _applyLskFilter)
+
+      document.getElementById('btn-sync-ls')?.addEventListener('click', async () => {
+        const btn = document.getElementById('btn-sync-ls')
+        btn.disabled = true; btn.textContent = '⏳ กำลัง Sync...'
         try {
-          await Promise.all([
-            updateSystemConfig(key, val),
-            updateSystemConfig(tabKey, tabVal),
-          ])
-          cfg[key] = val; cfg[tabKey] = tabVal
-          btn.textContent = '✅'; btn.style.background = '#16a34a'
-          setTimeout(() => { btn.disabled = false; btn.textContent = origText; btn.style.background = '' }, 1500)
-          showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว', 'success')
-        } catch {
-          showToast('บันทึกไม่สำเร็จ', 'error')
-          btn.disabled = false; btn.textContent = origText
-        }
+          const { syncCentralBatch } = await import('./sync.js')
+          const cat = document.getElementById('lsk-filter-cat').value
+          const sheetId = cat==='ศาสนา' ? cfg.lifeSkillSheetIdSamai : (cfg.lifeSkillSheetIdSamai||cfg.lifeSkillSheetIdSadsana)
+          const tabName = cat==='ศาสนา' ? cfg.lifeSkillSheetTabSadsana : cfg.lifeSkillSheetTabSamai
+          if (!sheetId) { showToast('ยังไม่ได้ตั้งค่า Sheet ID — ไปที่ ตั้งค่าระบบ','warning'); btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง'; return }
+          const stuList = _lskFiltered.map(s => ({ id: s.id, student_code: s.student_code }))
+          const scList  = scores.filter(sc => stuList.some(s=>s.id===sc.student_id))
+          await syncCentralBatch(sheetId, tabName, columns, scList, stuList)
+          showToast(`Sync ทักษะชีวิต ${stuList.length} คน สำเร็จ`, 'success')
+        } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+        finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
       })
-    })
+    }
+
+    const _showConfig = () => {
+      document.getElementById('lsk-tab-actions').innerHTML = `
+        <button id="lsk-add-btn" class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl">＋ เพิ่มหัวข้อ</button>`
+      document.getElementById('lsk-tab-content').innerHTML = `<div class="space-y-6">
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+            <h3 class="text-sm font-semibold text-gray-700">ประเภทสามัญ</h3>
+            <span class="ml-auto text-xs text-gray-400">${samaiCols.length} หัวข้อ</span>
+          </div>
+          <div id="lsk-samai">${tableHTML(samaiCols)}</div>
+          ${sheetIdBlock('lifeSkillSheetIdSamai', 'สามัญ')}
+        </div>
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+            <h3 class="text-sm font-semibold text-gray-700">ประเภทศาสนา</h3>
+            <span class="ml-auto text-xs text-gray-400">${sadsanaCols.length} หัวข้อ</span>
+          </div>
+          <div id="lsk-sadsana">${tableHTML(sadsanaCols)}</div>
+          ${sheetIdBlock('lifeSkillSheetIdSadsana', 'ศาสนา')}
+        </div>
+      </div>`
+      document.getElementById('lsk-add-btn').addEventListener('click', () => _openModal(null, year, sem, _reload))
+      document.querySelectorAll('.lsk-edit').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const col = allCols.find(c => c.id === +btn.dataset.id)
+          if (col) _openModal(col, year, sem, _reload)
+        })
+      })
+      document.querySelectorAll('.lsk-del').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?`)) return
+          try { await deleteLifeSkillColumn(+btn.dataset.id); showToast('ลบแล้ว','success'); _reload() }
+          catch(err) { showToast('ลบไม่สำเร็จ: '+(err.message??''),'error') }
+        })
+      })
+      document.querySelectorAll('.lsk-save-sheet').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const key = btn.dataset.key; const tabKey = btn.dataset.tabKey
+          const val = document.getElementById(`lsk-sheet-${key}`)?.value.trim()??''
+          const tabVal = document.getElementById(`lsk-tab-${key}`)?.value.trim()??''
+          const orig = btn.textContent; btn.disabled=true; btn.textContent='⏳'
+          try {
+            await Promise.all([updateSystemConfig(key,val), updateSystemConfig(tabKey,tabVal)])
+            cfg[key]=val; cfg[tabKey]=tabVal
+            btn.textContent='✅'; btn.style.background='#16a34a'
+            setTimeout(()=>{ btn.disabled=false; btn.textContent=orig; btn.style.background='' },1500)
+            showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว','success')
+          } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent=orig }
+        })
+      })
+    }
+
+    const _switchTab = (tab) => {
+      document.querySelectorAll('[data-tab]').forEach(b => {
+        const isActive = b.dataset.tab === tab
+        b.className = isActive
+          ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
+          : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
+      })
+      if (tab === 'scores') _showScores()
+      else _showConfig()
+    }
+    document.getElementById('lsk-tab-scores').addEventListener('click', () => _switchTab('scores'))
+    document.getElementById('lsk-tab-config').addEventListener('click', () => _switchTab('config'))
+    _switchTab('scores')
+
   }
 
   _reload()
@@ -2568,7 +2703,7 @@ function _openModal(col, year, sem, onSave) {
   })
 }
 
-// ─── Admin: จัดการคอลัมน์คะแนนการอ่านคิดวิเคราะห์ ───────────────────────────
+// ─── Admin: คะแนนอ่านคิดวิเคราะห์และเขียน ────────────────────────────────────
 export async function renderReadingAdmin() {
   setActiveNav('reading-admin')
   document.getElementById('page-title').textContent = 'คะแนนอ่านคิดวิเคราะห์'
@@ -2577,119 +2712,771 @@ export async function renderReadingAdmin() {
   const year = parseInt(cfg.academicYear ?? 2568)
   const sem  = parseInt(cfg.semester ?? 1)
 
+  const _colRow = (c) => `
+    <tr class="hover:bg-gray-50 transition" data-id="${c.id}">
+      <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.name}</td>
+      <td class="px-4 py-3 text-center text-sm text-gray-600">${c.max_score}</td>
+      <td class="px-4 py-3 text-center font-mono text-xs text-indigo-600">${c.sheet_col ?? '—'}</td>
+      <td class="px-4 py-3 text-center text-xs text-gray-400">${c.sort_order}</td>
+      <td class="px-4 py-3 text-right whitespace-nowrap">
+        <button class="rsa-edit text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3" data-id="${c.id}">แก้ไข</button>
+        <button class="rsa-del text-xs text-red-400 hover:text-red-600 font-medium" data-id="${c.id}" data-name="${c.name}">ลบ</button>
+      </td>
+    </tr>`
+
+  let _cols = []
+
   const _reload = async () => {
-    const cols = await getReadingScoreColumns(year, sem).catch(()=>[])
-    _render(cols)
+    _cols = await getReadingScoreColumns(year, sem).catch(()=>[])
+    _renderShell()
+    const activeTab = document.querySelector('[data-tab].bg-white')?.dataset.tab ?? 'scores'
+    _switchTab(activeTab)
   }
 
-  const _render = (cols) => {
-    const colRow = (c) => `
-      <tr class="hover:bg-gray-50 transition" data-id="${c.id}">
-        <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.name}</td>
-        <td class="px-4 py-3 text-center text-sm text-gray-600">${c.max_score}</td>
-        <td class="px-4 py-3 text-center font-mono text-xs text-indigo-600">${c.sheet_col ?? '—'}</td>
-        <td class="px-4 py-3 text-center text-xs text-gray-400">${c.sort_order}</td>
-        <td class="px-4 py-3 text-right whitespace-nowrap">
-          <button class="rsa-edit text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3" data-id="${c.id}">แก้ไข</button>
-          <button class="rsa-del text-xs text-red-400 hover:text-red-600 font-medium" data-id="${c.id}" data-name="${c.name}">ลบ</button>
-        </td>
-      </tr>`
-
-    const tableHTML = !cols.length
-      ? `<p class="text-center py-8 text-gray-400 text-sm">ยังไม่มีคอลัมน์ — กดเพิ่มด้านบน</p>`
-      : `<table class="w-full text-sm">
-          <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
-            <tr>
-              <th class="px-4 py-3 text-left">ชื่อหัวข้อ</th>
-              <th class="px-4 py-3 text-center">คะแนนเต็ม</th>
-              <th class="px-4 py-3 text-center">คอลัมน์ Sheet</th>
-              <th class="px-4 py-3 text-center">ลำดับ</th>
-              <th class="px-4 py-3 text-right">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-50">${cols.map(colRow).join('')}</tbody>
-        </table>`
-
-    setContent(`<div class="max-w-4xl mx-auto animate-fade space-y-6">
-      <div class="flex items-center justify-between">
+  const _renderShell = () => {
+    setContent(`<div class="max-w-5xl mx-auto animate-fade">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">คอลัมน์คะแนนอ่านคิดวิเคราะห์และเขียน</h2>
-          <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year} — สำหรับครูกลุ่มสาระภาษาไทย</p>
+          <h2 class="text-lg font-bold text-gray-800">📖 คะแนนอ่านคิดวิเคราะห์และเขียน</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year}</p>
         </div>
-        <button id="rsa-add-btn"
-          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
-          ＋ เพิ่มหัวข้อ
+        <div class="flex gap-2" id="rsa-tab-actions"></div>
+      </div>
+      <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
+        <button id="rsa-tab-scores" data-tab="scores"
+          class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
+          📊 คะแนน
+        </button>
+        <button id="rsa-tab-config" data-tab="config"
+          class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
+          ⚙️ ตั้งค่าคอลัมน์
         </button>
       </div>
+      <div id="rsa-tab-content"></div>
+    </div>`)
+    document.getElementById('rsa-tab-scores').addEventListener('click', () => _switchTab('scores'))
+    document.getElementById('rsa-tab-config').addEventListener('click', () => _switchTab('config'))
+  }
 
+  const _showScores = async () => {
+    document.getElementById('rsa-tab-actions').innerHTML = `
+      <button id="btn-sync-rs"
+        class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
+        ↑ Sync ไปชีทกลาง
+      </button>`
+    document.getElementById('rsa-tab-content').innerHTML = `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 flex flex-wrap gap-3 items-center">
+        <input id="rsa-filter-search" type="text" placeholder="ค้นหาชื่อ / รหัสนักเรียน"
+          class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 flex-1 min-w-[200px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <span id="rsa-filter-count" class="text-xs text-gray-400"></span>
+      </div>
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        <div id="rsa-score-table"><div class="p-10 text-center text-gray-400">กำลังโหลด...</div></div>
+      </div>`
+
+    const { columns, scores } = await getAllReadingScores(year, sem).catch(()=>({ columns:[], scores:[] }))
+    const scoreMap = {}
+    for (const s of scores) {
+      if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
+      scoreMap[s.student_id][s.column_id] = s.score
+    }
+    const allStudents = [...new Map(scores.map(s =>
+      [s.student_id, { id: s.student_id, ...s.students }])).values()]
+      .sort((a,b) => (a.main_room??'').localeCompare(b.main_room??'',undefined,{numeric:true}) || (a.student_code??'').localeCompare(b.student_code??''))
+
+    const _renderTable = (list) => {
+      document.getElementById('rsa-filter-count').textContent = `${list.length} คน`
+      if (!list.length) { document.getElementById('rsa-score-table').innerHTML = `<div class="p-10 text-center text-gray-400">ไม่พบข้อมูล</div>`; return }
+      document.getElementById('rsa-score-table').innerHTML = `
+        <table class="w-full text-xs">
+          <thead class="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th class="text-left px-3 py-2.5 text-gray-500 w-8 sticky left-0 bg-gray-50">#</th>
+              <th class="text-left px-3 py-2.5 text-gray-600 font-semibold w-20 sticky left-8 bg-gray-50">รหัส</th>
+              <th class="text-left px-3 py-2.5 text-gray-600 font-semibold min-w-[130px]">ชื่อ</th>
+              <th class="text-left px-3 py-2.5 text-gray-400 w-20">ห้อง</th>
+              ${columns.map(c=>`<th class="text-center px-2 py-2.5 text-gray-600 font-semibold min-w-[60px]">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
+              <th class="text-center px-3 py-2.5 text-indigo-600 font-semibold">รวม</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            ${list.map((s,i) => {
+              const total = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
+              return `<tr class="hover:bg-indigo-50/30 transition">
+                <td class="px-3 py-2 text-gray-400 sticky left-0 bg-white">${i+1}</td>
+                <td class="px-3 py-2 font-mono text-gray-700 sticky left-8 bg-white">${s.student_code??'—'}</td>
+                <td class="px-3 py-2 text-gray-800">${s.full_name??'—'}</td>
+                <td class="px-3 py-2 text-gray-400">${s.main_room??'—'}</td>
+                ${columns.map(c=>{
+                  const v = scoreMap[s.id]?.[c.id]
+                  return `<td class="px-2 py-2 text-center ${v!=null?'text-gray-800 font-medium':'text-gray-300'}">${v??'—'}</td>`
+                }).join('')}
+                <td class="px-3 py-2 text-center font-semibold text-indigo-600">${total||'—'}</td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>`
+    }
+
+    let _rsFiltered = [...allStudents]
+    _renderTable(_rsFiltered)
+
+    document.getElementById('rsa-filter-search').addEventListener('input', e => {
+      const q = e.target.value.toLowerCase()
+      _rsFiltered = allStudents.filter(s => !q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
+      _renderTable(_rsFiltered)
+    })
+
+    document.getElementById('btn-sync-rs')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-sync-rs')
+      if (!cfg.readingScoreSheetId) { showToast('ยังไม่ได้ตั้งค่า Sheet ID','warning'); return }
+      btn.disabled=true; btn.textContent='⏳ กำลัง Sync...'
+      try {
+        const { syncCentralBatch } = await import('./sync.js')
+        const stuList = _rsFiltered.map(s => ({ id: s.id, student_code: s.student_code }))
+        const scList  = scores.filter(sc => stuList.some(s=>s.id===sc.student_id))
+        await syncCentralBatch(cfg.readingScoreSheetId, cfg.readingScoreSheetTab, columns, scList, stuList)
+        showToast(`Sync อ่านคิดวิเคราะห์ ${stuList.length} คน สำเร็จ`, 'success')
+      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+      finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
+    })
+  }
+
+  const _showConfig = () => {
+    document.getElementById('rsa-tab-actions').innerHTML = `
+      <button id="rsa-add-btn" class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl">＋ เพิ่มหัวข้อ</button>`
+    const tableHTML = !_cols.length
+      ? `<p class="text-center py-8 text-gray-400 text-sm">ยังไม่มีคอลัมน์ — กดเพิ่มด้านบน</p>`
+      : `<table class="w-full text-sm"><thead class="bg-gray-50 text-xs text-gray-500 uppercase"><tr>
+          <th class="px-4 py-3 text-left">ชื่อหัวข้อ</th><th class="px-4 py-3 text-center">คะแนนเต็ม</th>
+          <th class="px-4 py-3 text-center">คอลัมน์ Sheet</th><th class="px-4 py-3 text-center">ลำดับ</th>
+          <th class="px-4 py-3 text-right">จัดการ</th></tr></thead>
+          <tbody class="divide-y divide-gray-50">${_cols.map(_colRow).join('')}</tbody></table>`
+    document.getElementById('rsa-tab-content').innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
           <h3 class="text-sm font-semibold text-gray-700">📖 หัวข้อคะแนน</h3>
-          <span class="ml-auto text-xs text-gray-400">${cols.length} หัวข้อ · รวม ${cols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
+          <span class="ml-auto text-xs text-gray-400">${_cols.length} หัวข้อ · รวม ${_cols.reduce((s,c)=>s+c.max_score,0)} คะแนน</span>
         </div>
         <div>${tableHTML}</div>
-        <!-- Sheet ID + Tab -->
         <div class="px-5 py-4 bg-gray-50/60 border-t border-gray-100 space-y-2">
           <p class="text-xs font-semibold text-gray-500 mb-1">🔗 เชื่อมกับ Google Sheet</p>
           <div class="flex items-center gap-2">
             <span class="text-xs text-gray-400 w-20 flex-shrink-0">Sheet ID:</span>
-            <input type="text" id="rsa-sheet-id" value="${cfg.readingScoreSheetId ?? ''}"
-              placeholder="1BxiMV...xxxxxxx"
+            <input type="text" id="rsa-sheet-id" value="${cfg.readingScoreSheetId??''}" placeholder="1BxiMV..."
               class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           </div>
           <div class="flex items-center gap-2">
             <span class="text-xs text-gray-400 w-20 flex-shrink-0">ชื่อแท็บ:</span>
-            <input type="text" id="rsa-sheet-tab" value="${cfg.readingScoreSheetTab ?? ''}"
-              placeholder="เช่น อ่านคิดวิเคราะห์, Sheet1"
+            <input type="text" id="rsa-sheet-tab" value="${cfg.readingScoreSheetTab??''}" placeholder="Sheet1"
               class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            <button id="rsa-save-sheet"
-              class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition flex-shrink-0">
-              บันทึก
-            </button>
+            <button id="rsa-save-sheet" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition flex-shrink-0">บันทึก</button>
           </div>
         </div>
-      </div>
-    </div>`)
-
-    // ─── Handlers ──────────────────────────────────────────────────────────
+      </div>`
     document.getElementById('rsa-add-btn').addEventListener('click', () => _openReadingModal(null, year, sem, _reload))
-
     document.querySelectorAll('.rsa-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const col = cols.find(c => c.id === +btn.dataset.id)
-        if (col) _openReadingModal(col, year, sem, _reload)
-      })
+      btn.addEventListener('click', () => { const col=_cols.find(c=>c.id===+btn.dataset.id); if(col) _openReadingModal(col,year,sem,_reload) })
     })
     document.querySelectorAll('.rsa-del').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?`)) return
-        try {
-          await deleteReadingScoreColumn(+btn.dataset.id)
-          showToast('ลบแล้ว', 'success'); _reload()
-        } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+        try { await deleteReadingScoreColumn(+btn.dataset.id); showToast('ลบแล้ว','success'); _reload() }
+        catch(err) { showToast('ลบไม่สำเร็จ: '+(err.message??''),'error') }
       })
     })
-
-    document.getElementById('rsa-save-sheet').addEventListener('click', async () => {
-      const btn    = document.getElementById('rsa-save-sheet')
-      const val    = document.getElementById('rsa-sheet-id')?.value.trim() ?? ''
-      const tabVal = document.getElementById('rsa-sheet-tab')?.value.trim() ?? ''
-      btn.disabled = true; btn.textContent = '⏳'
+    document.getElementById('rsa-save-sheet')?.addEventListener('click', async () => {
+      const btn=document.getElementById('rsa-save-sheet')
+      const val=document.getElementById('rsa-sheet-id')?.value.trim()??''
+      const tabVal=document.getElementById('rsa-sheet-tab')?.value.trim()??''
+      btn.disabled=true; btn.textContent='⏳'
       try {
-        await Promise.all([
-          updateSystemConfig('readingScoreSheetId', val),
-          updateSystemConfig('readingScoreSheetTab', tabVal),
-        ])
-        cfg.readingScoreSheetId = val; cfg.readingScoreSheetTab = tabVal
-        btn.textContent = '✅'; btn.style.background = '#16a34a'
-        setTimeout(() => { btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' }, 1500)
-        showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว', 'success')
+        await Promise.all([updateSystemConfig('readingScoreSheetId',val), updateSystemConfig('readingScoreSheetTab',tabVal)])
+        cfg.readingScoreSheetId=val; cfg.readingScoreSheetTab=tabVal
+        btn.textContent='✅'; btn.style.background='#16a34a'
+        setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' },1500)
+        showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว','success')
       } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึก' }
     })
   }
 
+  const _switchTab = (tab) => {
+    document.querySelectorAll('[data-tab]').forEach(b => {
+      b.className = b.dataset.tab===tab
+        ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
+        : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
+    })
+    if (tab==='scores') _showScores(); else _showConfig()
+  }
+
   _reload()
+}
+
+// ─── Admin Score Overview Helper ──────────────────────────────────────────────
+
+function _scoreOverviewShell(title, icon, sheetUrl, onSyncAll) {
+  return `<div class="max-w-5xl mx-auto animate-fade">
+    <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">${icon} ${title}</h2>
+        <p class="text-xs text-gray-400 mt-0.5">ภาพรวมคะแนนทุกห้อง — Admin เท่านั้น</p>
+      </div>
+      <div class="flex gap-2">
+        ${onSyncAll ? `<button id="btn-sync-all-central"
+          class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
+          ↑ Sync ทั้งหมดไปชีทกลาง
+        </button>` : ''}
+        ${sheetUrl ? `<a href="${sheetUrl}" target="_blank" rel="noopener"
+          class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition flex items-center gap-1">
+          📊 เปิด Google Sheet
+        </a>` : `<span class="px-4 py-2 bg-gray-100 text-gray-400 text-sm rounded-xl">ยังไม่ได้ตั้งค่า Sheet ID</span>`}
+      </div>
+    </div>
+    <div id="score-overview-body"></div>
+  </div>`
+}
+
+function _scoreTable(columns, rows) {
+  if (!columns.length) return `<div class="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">ยังไม่มีคอลัมน์คะแนน</div>`
+  return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+    <table class="w-full text-xs">
+      <thead class="bg-gray-50 border-b border-gray-100">
+        <tr>
+          <th class="text-left px-3 py-2.5 font-semibold text-gray-600 sticky left-0 bg-gray-50">#</th>
+          <th class="text-left px-3 py-2.5 font-semibold text-gray-600 sticky left-8 bg-gray-50 min-w-[80px]">รหัส</th>
+          <th class="text-left px-3 py-2.5 font-semibold text-gray-600 min-w-[130px]">ชื่อ</th>
+          <th class="text-left px-3 py-2.5 font-semibold text-gray-500 min-w-[80px]">ห้อง</th>
+          ${columns.map(c => `<th class="px-3 py-2.5 text-center font-semibold text-gray-600 min-w-[60px]">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        ${rows.map((r,i) => `<tr class="hover:bg-gray-50/50">
+          <td class="px-3 py-2 text-gray-400 sticky left-0 bg-white">${i+1}</td>
+          <td class="px-3 py-2 font-mono text-gray-700 sticky left-8 bg-white">${r.code}</td>
+          <td class="px-3 py-2 text-gray-700">${r.name}</td>
+          <td class="px-3 py-2 text-gray-400">${r.room}</td>
+          ${columns.map(c => {
+            const v = r.scores[c.id]
+            return `<td class="px-3 py-2 text-center ${v != null ? 'text-gray-800 font-medium' : 'text-gray-300'}">${v ?? '—'}</td>`
+          }).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`
+}
+
+// ─── Prayer helpers (mirror teacher-views.js) ────────────────────────────────
+
+const _PST = {
+  pray:     { label: '/', color: 'text-emerald-600 font-bold', bg: 'bg-emerald-50',  score: 2  },
+  absent:   { label: 'X', color: 'text-red-600 font-bold',     bg: 'bg-red-50',      score: 0  },
+  usor:     { label: 'U', color: 'text-purple-600 font-bold',  bg: 'bg-purple-50',   score: 1  },
+  followed: { label: '-', color: 'text-blue-500 font-bold',    bg: 'bg-blue-50',     score: 1  },
+  avoid:    { label: 'N', color: 'text-orange-500 font-bold',  bg: 'bg-orange-50',   score: -1 },
+}
+const _DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
+
+function _genWeeks(startStr, endStr) {
+  const weeks = [], start = new Date(startStr), end = new Date(endStr)
+  const diff = start.getDay() % 7
+  if (diff) start.setDate(start.getDate() - diff)
+  let cur = new Date(start), wn = 1
+  while (cur <= end) {
+    const days = []
+    for (let d = 0; d < 5; d++) {
+      const dt = new Date(cur); dt.setDate(dt.getDate() + d)
+      if (dt <= end) days.push({ date: new Date(dt), ds: dt.toISOString().slice(0, 10) })
+    }
+    if (days.length) { weeks.push({ n: wn, days }); wn++ }
+    cur.setDate(cur.getDate() + 7)
+  }
+  return weeks
+}
+
+function _prayScore(sMap, allDays) {
+  const earned = allDays.reduce((s, d) => s + (_PST[sMap[d.ds]]?.score ?? 0), 0)
+  const max    = allDays.length * 2
+  return max > 0 ? Math.min(10, Math.max(0, Math.round((earned / max) * 100) / 10)) : 0
+}
+
+function _fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}` }
+
+// ─── Admin: ละหมาด ───────────────────────────────────────────────────────────
+
+export async function renderPrayerAdmin() {
+  setActiveNav('prayer-admin')
+  document.getElementById('page-title').textContent = 'คะแนนละหมาด'
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const records = await getAllPrayerRecords().catch(() => [])
+
+  // build stuMap + prayMap
+  const stuMap  = {}
+  const prayMap = {}
+  for (const r of records) {
+    const sid = r.student_id
+    if (!stuMap[sid]) { stuMap[sid] = { id: sid, ...(r.students ?? {}), pray:0, absent:0, other:0 }; prayMap[sid] = {} }
+    prayMap[sid][r.check_date] = r.status
+    if (r.status==='pray') stuMap[sid].pray++
+    else if (r.status==='absent') stuMap[sid].absent++
+    else stuMap[sid].other++
+  }
+  const orderedDates = [...new Set(records.map(r => r.check_date))].sort()
+  const allStudents  = Object.values(stuMap).sort((a,b) =>
+    (a.religion_room??'').localeCompare(b.religion_room??'',undefined,{numeric:true})
+    || (a.student_code??'').localeCompare(b.student_code??''))
+  const rooms = [...new Set(allStudents.map(s=>s.religion_room).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))
+
+  // ─── Shell (tabs) ─────────────────────────────────────────────────────────
+  setContent(`<div class="max-w-5xl mx-auto animate-fade">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">🕌 คะแนนละหมาด</h2>
+        <p class="text-xs text-gray-400 mt-0.5">บันทึกการมาละหมาดทุกห้อง — Sync รายวันลงชีท Solat</p>
+      </div>
+      <div id="pr-tab-actions"></div>
+    </div>
+    <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
+      <button id="pr-tab-scores" data-tab="scores"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
+        📊 คะแนน
+      </button>
+      <button id="pr-tab-config" data-tab="config"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
+        ⚙️ ตั้งค่า
+      </button>
+    </div>
+    <div id="pr-tab-content"></div>
+  </div>`)
+
+  // ─── Tab: คะแนน ───────────────────────────────────────────────────────────
+  const _showScores = () => {
+    const semStart = cfg.semester_start
+    const semEnd   = cfg.semester_end
+    const weeks    = (semStart && semEnd) ? _genWeeks(semStart, semEnd) : []
+    const allDays  = weeks.flatMap(w => w.days)
+
+    const CYCLE = [null, 'pray', 'absent', 'usor', 'followed', 'avoid']
+
+    document.getElementById('pr-tab-actions').innerHTML = `
+      <button id="btn-sync-prayer"
+        class="px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700 transition">
+        ↑ Sync ไปชีท Solat
+      </button>`
+
+    document.getElementById('pr-tab-content').innerHTML = `
+      <div class="flex items-center gap-2 flex-wrap mb-3">
+        <select id="pr-filter-room"
+          class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[160px]">
+          ${rooms.map(r=>`<option value="${r}">${r}</option>`).join('')}
+        </select>
+        <input id="pr-filter-search" type="text" placeholder="ค้นหาชื่อ / รหัสนักเรียน"
+          class="text-sm border border-gray-200 rounded-xl px-3 py-1.5 flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <span id="pr-filter-count" class="text-xs text-gray-400 flex-shrink-0"></span>
+        <div id="pr-saving" class="hidden text-xs text-emerald-600 font-medium">💾 บันทึก...</div>
+        <div class="flex gap-1 text-xs flex-shrink-0 flex-wrap">
+          ${Object.values(_PST).map(v=>`<span class="px-1.5 py-0.5 ${v.bg} ${v.color} rounded cursor-default">${v.label}=${v.fullLabel??''}</span>`).join('')}
+        </div>
+      </div>
+      ${!semStart || !semEnd
+        ? `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center text-amber-700 text-sm">
+             ⚠️ ยังไม่ได้ตั้งค่าวันเปิด-ปิดภาคเรียน — ไปที่ <b>ตั้งค่าระบบ → 📅 ช่วงเวลาภาคเรียน</b>
+           </div>`
+        : `<div class="overflow-auto rounded-2xl border border-gray-100 shadow-sm bg-white"
+              style="max-height:calc(100vh - 260px)">
+             <div id="pr-grid-wrap"><div class="p-12 text-center text-gray-400">กำลังโหลด...</div></div>
+           </div>`}`
+
+    if (!semStart || !semEnd) return
+
+    const thB  = 'border border-gray-200 text-center text-xs select-none'
+    const stL  = 'sticky left-0 z-20 bg-white border border-gray-200'
+    const stM  = 'sticky z-20 bg-white border border-gray-200'
+    const scCls = s => s >= 8 ? 'text-emerald-600' : s >= 6 ? 'text-amber-500' : 'text-red-600'
+    const dayW = 30, nameW = 160
+
+    // prayMap เป็น mutable สำหรับ admin edit
+    const adminPrayMap = {}
+    for (const [sid, m] of Object.entries(prayMap)) adminPrayMap[sid] = { ...m }
+
+    // state ห้องและ list นักเรียน
+    let _stuList = []  // students ที่โหลดจาก religion room
+
+    const _updateScore = (sid) => {
+      const sMap  = adminPrayMap[sid] ?? {}
+      const score = _prayScore(sMap, allDays)
+      const el    = document.getElementById(`pr-sc-${sid}`)
+      if (el) { el.textContent = score; el.className = `border border-indigo-100 text-center bg-indigo-50 font-bold ${scCls(score)} text-xs` }
+    }
+
+    const _renderGrid = (list, curRoom) => {
+      document.getElementById('pr-filter-count').textContent = `${list.length} คน · ${allDays.length} วัน`
+      if (!list.length) {
+        document.getElementById('pr-grid-wrap').innerHTML = `<div class="p-12 text-center text-gray-400">ไม่พบนักเรียน</div>`
+        return
+      }
+      document.getElementById('pr-grid-wrap').innerHTML =
+        `<table class="border-collapse text-xs" style="min-width:max-content">
+          <thead>
+            <tr style="position:sticky;top:0;z-index:30">
+              <th class="${stL} bg-gray-50 text-gray-400 font-normal text-center" style="width:28px">#</th>
+              <th class="${stM} bg-gray-50" style="left:28px;width:68px">รหัส</th>
+              <th class="${stM} bg-gray-50 text-left px-2" style="left:96px;min-width:${nameW}px">ชื่อ-นามสกุล</th>
+              ${weeks.map(w=>`<th colspan="${w.days.length}"
+                class="${thB} bg-emerald-600 text-white font-semibold whitespace-nowrap
+                  cursor-pointer hover:bg-emerald-700 transition pr-week-th"
+                data-week="${w.n}" title="คลิกเพื่อบันทึกสัปดาห์ที่ ${w.n}">
+                Week${w.n} ✎</th>`).join('')}
+              <th class="${thB} bg-indigo-50 text-indigo-700 font-semibold" style="min-width:48px">คะแนน<br/>/10</th>
+            </tr>
+            <tr style="position:sticky;top:24px;z-index:30">
+              <th class="${stL} bg-gray-100 text-gray-500" style="width:28px">#</th>
+              <th class="${stM} bg-gray-100 text-gray-500" style="left:28px;width:68px">รหัส</th>
+              <th class="${stM} bg-gray-100 text-gray-400 text-left px-2" style="left:96px;min-width:${nameW}px">ชื่อ</th>
+              ${weeks.flatMap(w=>w.days.map(d=>`<th class="${thB} bg-gray-100 text-gray-400 font-normal"
+                style="width:${dayW}px;min-width:${dayW}px;font-size:9px">
+                ${_DAY_TH[d.date.getDay()]}<br/>${_fmtD(d.date)}</th>`)).join('')}
+              <th class="${thB} bg-indigo-50"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((s,i) => {
+              const sMap  = adminPrayMap[s.id] ?? {}
+              const score = _prayScore(sMap, allDays)
+              return `<tr class="hover:bg-gray-50/60" data-sid="${s.id}">
+                <td class="${stL} text-center text-gray-400" style="width:28px">${i+1}</td>
+                <td class="${stM} text-center font-mono text-gray-600" style="left:28px;width:68px">${s.student_code??'—'}</td>
+                <td class="${stM} px-2" style="left:96px;min-width:${nameW}px">
+                  <div class="flex items-center gap-1.5 py-0.5">
+                    ${s.image_url
+                      ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0"/>`
+                      : `<div class="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0 text-xs">👤</div>`}
+                    <span class="text-gray-800 text-xs truncate max-w-[110px]">${s.full_name??'—'}</span>
+                  </div>
+                </td>
+                ${weeks.flatMap(w=>w.days.map(d=>{
+                  const st = sMap[d.ds]??null, p = st?_PST[st]:null
+                  return `<td class="border border-gray-100 text-center cursor-pointer select-none
+                    pr-cell hover:bg-gray-100 transition ${p?p.bg:''}"
+                    data-sid="${s.id}" data-date="${d.ds}" data-room="${curRoom}"
+                    style="width:${dayW}px;min-width:${dayW}px;height:28px">
+                    ${p?`<span class="${p.color} text-xs">${p.label}</span>`:''}
+                  </td>`
+                })).join('')}
+                <td class="border border-indigo-100 text-center bg-indigo-50 font-bold ${scCls(score)} text-xs"
+                  id="pr-sc-${s.id}" style="min-width:48px">${score}</td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>`
+
+      // Click Week header → open week modal
+      document.getElementById('pr-grid-wrap').addEventListener('click', e => {
+        const th = e.target.closest('.pr-week-th')
+        if (!th) return
+        const weekN = +th.dataset.week
+        const week  = weeks.find(w => w.n === weekN)
+        if (week) _openAdminWeekModal(week, _stuList, document.getElementById('pr-filter-room').value)
+      })
+
+      // Click cell → cycle + save
+      document.getElementById('pr-grid-wrap').addEventListener('click', async e => {
+        const cell = e.target.closest('.pr-cell')
+        if (!cell) return
+        const sid  = +cell.dataset.sid
+        const ds   = cell.dataset.date
+        const room = cell.dataset.room
+        if (!adminPrayMap[sid]) adminPrayMap[sid] = {}
+        const cur  = adminPrayMap[sid][ds] ?? null
+        const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length]
+        adminPrayMap[sid][ds] = next
+
+        // update cell UI
+        const p = next ? _PST[next] : null
+        Object.values(_PST).forEach(v => cell.classList.remove(v.bg))
+        if (p) { cell.classList.add(p.bg); cell.innerHTML = `<span class="${p.color} text-xs">${p.label}</span>` }
+        else   { cell.innerHTML = '' }
+        _updateScore(sid)
+
+        // save to Supabase
+        document.getElementById('pr-saving')?.classList.remove('hidden')
+        try {
+          await savePrayerCellAdmin(sid, room, ds, next ?? null)
+        } catch(err) {
+          showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+        } finally {
+          document.getElementById('pr-saving')?.classList.add('hidden')
+        }
+      })
+    }
+
+    // Load students by room
+    const _loadRoom = async (room, q = '') => {
+      document.getElementById('pr-grid-wrap').innerHTML =
+        `<div class="p-10 text-center text-gray-400">กำลังโหลด...</div>`
+      try {
+        _stuList = await getStudentsByReligionRoom(room)
+        // merge image_url into adminPrayMap if not yet loaded
+        for (const s of _stuList) {
+          if (!adminPrayMap[s.id]) adminPrayMap[s.id] = {}
+        }
+        const filtered = q
+          ? _stuList.filter(s => s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
+          : _stuList
+        _renderGrid(filtered, room)
+      } catch(err) {
+        document.getElementById('pr-grid-wrap').innerHTML =
+          `<div class="p-10 text-center text-red-400">โหลดไม่สำเร็จ: ${err.message}</div>`
+      }
+    }
+
+    // Initial load
+    const initRoom = rooms[0] ?? ''
+    if (initRoom) {
+      document.getElementById('pr-filter-room').value = initRoom
+      _loadRoom(initRoom)
+    }
+
+    document.getElementById('pr-filter-room').addEventListener('change', e => {
+      const q = document.getElementById('pr-filter-search').value.toLowerCase()
+      _loadRoom(e.target.value, q)
+    })
+    document.getElementById('pr-filter-search').addEventListener('input', e => {
+      const room = document.getElementById('pr-filter-room').value
+      const q    = e.target.value.toLowerCase()
+      if (!_stuList.length) return
+      const filtered = q
+        ? _stuList.filter(s => s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
+        : _stuList
+      _renderGrid(filtered, room)
+    })
+
+    document.getElementById('btn-sync-prayer').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-sync-prayer')
+      if (!cfg.prayerSheetId) { showToast('ยังไม่ได้ตั้งค่า Sheet ID — ไปที่แท็บ ⚙️ ตั้งค่า', 'warning'); return }
+      const activeDates = Object.values(adminPrayMap).flatMap(m => Object.keys(m))
+      const syncDates   = [...new Set([...orderedDates, ...activeDates])].sort()
+      if (!syncDates.length) { showToast('ยังไม่มีข้อมูลละหมาดในระบบ', 'warning'); return }
+      btn.disabled=true; btn.textContent='⏳ กำลัง Sync...'
+      try {
+        const { syncPrayerSheet } = await import('./sync.js')
+        const syncStudents = _stuList.length
+          ? _stuList.map(s => ({ id: s.id, student_code: s.student_code }))
+          : allStudents.map(s => ({ id: s.id, student_code: s.student_code }))
+        await syncPrayerSheet(cfg.prayerSheetId, cfg.prayerSheetTab||'Solat',
+          cfg.prayerStudentRange||'A3:A200', syncDates, adminPrayMap, syncStudents)
+        showToast(`Sync ละหมาด ${syncStudents.length} คน × ${syncDates.length} วัน สำเร็จ`, 'success')
+      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+      finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีท Solat' }
+    })
+
+    // ─── Admin Week Modal ──────────────────────────────────────────────────
+    const _openAdminWeekModal = (week, students, room) => {
+      document.getElementById('admin-prayer-modal')?.remove()
+      const m = document.createElement('div')
+      m.id = 'admin-prayer-modal'
+      m.className = 'fixed inset-0 z-50 flex flex-col bg-white'
+
+      const dateRange = `${_fmtD(week.days[0].date)}–${_fmtD(week.days[week.days.length-1].date)}`
+
+      const _cellHtml = (sid, ds) => {
+        const st = adminPrayMap[sid]?.[ds] ?? null
+        const p  = st ? _PST[st] : null
+        return `<button class="adm-cell w-10 h-10 rounded-xl border-2 border-gray-100
+          flex items-center justify-center text-sm font-bold transition
+          hover:border-indigo-300 ${p ? p.bg + ' border-transparent' : 'bg-gray-50'}"
+          data-sid="${sid}" data-date="${ds}" data-room="${room}">
+          ${p ? `<span class="${p.color}">${p.label}</span>` : '<span class="text-gray-200">·</span>'}
+        </button>`
+      }
+
+      m.innerHTML = `
+        <div class="bg-emerald-700 text-white px-4 py-3 flex items-center gap-3 flex-shrink-0">
+          <button id="adm-modal-close" class="text-white/80 hover:text-white text-lg leading-none">✕</button>
+          <div class="flex-1 min-w-0">
+            <p class="font-bold text-sm">🕌 บันทึกละหมาด — สัปดาห์ที่ ${week.n}</p>
+            <p class="text-xs text-emerald-200">${dateRange} · ${room}</p>
+          </div>
+          <button id="adm-all-check"
+            class="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-medium rounded-lg transition">
+            AllCheck
+          </button>
+        </div>
+        <div class="overflow-auto flex-1">
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+              <tr>
+                <th class="text-left px-3 py-2.5 font-semibold text-gray-600 min-w-[160px]">นักเรียน</th>
+                ${week.days.map(d=>`
+                  <th class="text-center px-2 py-2.5 min-w-[60px]">
+                    <div class="font-semibold text-gray-700">${_DAY_TH[d.date.getDay()]} ${_fmtD(d.date)}</div>
+                    <button class="adm-day-all mt-1 text-xs px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition font-medium"
+                      data-date="${d.ds}" data-room="${room}">AllDay</button>
+                  </th>`).join('')}
+                <th class="text-center px-2 py-2.5 min-w-[80px] font-semibold text-gray-600">ทั้งสัปดาห์</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50" id="adm-modal-body">
+              ${students.map(s => `
+                <tr class="hover:bg-gray-50/50" data-sid="${s.id}">
+                  <td class="px-3 py-2">
+                    <div class="flex items-center gap-2">
+                      ${s.image_url
+                        ? `<img src="${s.image_url}" class="w-8 h-8 rounded-full object-cover flex-shrink-0"/>`
+                        : `<div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">👤</div>`}
+                      <span class="text-gray-800 truncate max-w-[120px]">${s.full_name??'—'}</span>
+                    </div>
+                  </td>
+                  ${week.days.map(d => `<td class="px-2 py-2 text-center">${_cellHtml(s.id, d.ds)}</td>`).join('')}
+                  <td class="px-2 py-2 text-center">
+                    <button class="adm-row-all px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition"
+                      data-sid="${s.id}" data-room="${room}">ตั้งครบ ▾</button>
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+      document.body.appendChild(m)
+
+      const _refreshCell = (sid, ds) => {
+        const btn = m.querySelector(`.adm-cell[data-sid="${sid}"][data-date="${ds}"]`)
+        if (!btn) return
+        const st = adminPrayMap[sid]?.[ds] ?? null
+        const p  = st ? _PST[st] : null
+        btn.className = `adm-cell w-10 h-10 rounded-xl border-2 border-gray-100 flex items-center justify-center text-sm font-bold transition hover:border-indigo-300 ${p ? p.bg + ' border-transparent' : 'bg-gray-50'}`
+        btn.innerHTML = p ? `<span class="${p.color}">${p.label}</span>` : '<span class="text-gray-200">·</span>'
+        _updateScore(sid)
+      }
+
+      const _saveCell = async (sid, ds, roomVal, status) => {
+        if (!adminPrayMap[sid]) adminPrayMap[sid] = {}
+        adminPrayMap[sid][ds] = status
+        _refreshCell(sid, ds)
+        document.getElementById('pr-saving')?.classList.remove('hidden')
+        try { await savePrayerCellAdmin(sid, roomVal, ds, status ?? null) }
+        catch(err) { showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error') }
+        finally { document.getElementById('pr-saving')?.classList.add('hidden') }
+      }
+
+      // Click cell
+      m.querySelector('#adm-modal-body').addEventListener('click', async e => {
+        const btn = e.target.closest('.adm-cell')
+        if (!btn) return
+        const sid  = +btn.dataset.sid
+        const ds   = btn.dataset.date
+        const r    = btn.dataset.room
+        const cur  = adminPrayMap[sid]?.[ds] ?? null
+        const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length]
+        await _saveCell(sid, ds, r, next)
+      })
+
+      // AllDay per column
+      m.querySelectorAll('.adm-day-all').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const ds = btn.dataset.date, r = btn.dataset.room
+          for (const s of students) await _saveCell(s.id, ds, r, 'pray')
+        })
+      })
+
+      // ตั้งครบ per row
+      m.querySelectorAll('.adm-row-all').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = +btn.dataset.sid, r = btn.dataset.room
+          for (const d of week.days) await _saveCell(sid, d.ds, r, 'pray')
+        })
+      })
+
+      // AllCheck (ทุกคน ทุกวันในสัปดาห์)
+      m.querySelector('#adm-all-check').addEventListener('click', async () => {
+        for (const s of students)
+          for (const d of week.days)
+            await _saveCell(s.id, d.ds, room, 'pray')
+      })
+
+      m.querySelector('#adm-modal-close').addEventListener('click', () => m.remove())
+    }
+  }
+
+  // ─── Tab: ตั้งค่า ──────────────────────────────────────────────────────────
+  const _showConfig = () => {
+    document.getElementById('pr-tab-actions').innerHTML = ''
+    document.getElementById('pr-tab-content').innerHTML = `
+      <!-- Filter/Search bar (สอดคล้องกับ UI ของครูศาสนา) -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 flex flex-wrap gap-3 items-center">
+        <select id="pr-cfg-room" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[160px]">
+          <option value="">ทุกห้อง (ชีทกลาง)</option>
+          ${rooms.map(r=>`<option value="${r}">${r}</option>`).join('')}
+        </select>
+        <input id="pr-cfg-search" type="text" placeholder="ค้นหาการตั้งค่า..."
+          class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+      </div>
+
+      <!-- ตั้งค่า Sheet (Solat) -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="text-sm font-semibold text-gray-700">🔗 Google Sheet ละหมาด (Solat)</span>
+        </div>
+        <div class="px-5 py-4 space-y-2.5">
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Sheet ID</label>
+            <input type="text" id="pr-sheet-id" value="${cfg.prayerSheetId??''}" placeholder="วาง ID จาก URL ของ Google Sheet"
+              class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <p class="text-xs text-gray-400 mt-1">URL: docs.google.com/spreadsheets/d/<b>[ID ตรงนี้]</b>/edit</p>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">ชื่อแท็บ</label>
+            <input type="text" id="pr-sheet-tab" value="${cfg.prayerSheetTab??'Solat'}" placeholder="Solat"
+              class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">ช่วงรหัสนักเรียน</label>
+            <input type="text" id="pr-stu-range" value="${cfg.prayerStudentRange??'A3:A200'}" placeholder="A3:A200"
+              class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <p class="text-xs text-gray-400 mt-1">คอลัมน์ที่บันทึกรหัสนักเรียนในแท็บ Solat — ค่า default: <code>A3:A200</code></p>
+          </div>
+          <div class="pt-2 border-t border-gray-50">
+            <p class="text-xs text-gray-400 mb-3">💡 คอลัมน์คะแนนรายวันเริ่มที่ <b>D</b> เป็นต้นไป (D=วันที่ 1, E=วันที่ 2, ...) เหมือนระบบเช็คชื่อ</p>
+            <button id="pr-save-cfg"
+              class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+              บันทึกการตั้งค่า
+            </button>
+          </div>
+        </div>
+      </div>`
+
+    document.getElementById('pr-save-cfg').addEventListener('click', async () => {
+      const btn   = document.getElementById('pr-save-cfg')
+      const sid   = document.getElementById('pr-sheet-id').value.trim()
+      const tab   = document.getElementById('pr-sheet-tab').value.trim() || 'Solat'
+      const range = document.getElementById('pr-stu-range').value.trim() || 'A3:A200'
+      btn.disabled=true; btn.textContent='⏳ กำลังบันทึก...'
+      try {
+        await Promise.all([
+          updateSystemConfig('prayerSheetId', sid),
+          updateSystemConfig('prayerSheetTab', tab),
+          updateSystemConfig('prayerStudentRange', range),
+        ])
+        cfg.prayerSheetId=sid; cfg.prayerSheetTab=tab; cfg.prayerStudentRange=range
+        btn.textContent='✅ บันทึกแล้ว'; btn.style.background='#16a34a'
+        setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึกการตั้งค่า'; btn.style.background='' }, 1800)
+        showToast('บันทึก Sheet config ละหมาดแล้ว', 'success')
+      } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึกการตั้งค่า' }
+    })
+  }
+
+  // ─── Tab switcher ──────────────────────────────────────────────────────────
+  const _switchTab = (tab) => {
+    document.querySelectorAll('[data-tab]').forEach(b => {
+      b.className = b.dataset.tab===tab
+        ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
+        : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
+    })
+    if (tab==='scores') _showScores(); else _showConfig()
+  }
+  document.getElementById('pr-tab-scores').addEventListener('click', ()=>_switchTab('scores'))
+  document.getElementById('pr-tab-config').addEventListener('click', ()=>_switchTab('config'))
+  _switchTab('scores')
 }
 
 function _openReadingModal(col, year, sem, onSave) {

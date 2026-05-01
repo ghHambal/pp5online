@@ -4,7 +4,8 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderSettings, renderImport, renderSubjects, renderSubjectTable,
          renderDepartments, renderDeptTable, renderPeriods,
          renderHomeroom, renderScoreColConfig, renderRegisteredTeachers,
-         renderHolidays, renderPayments, renderLifeSkillAdmin, renderReadingAdmin } from './views.js'
+         renderHolidays, renderPayments, renderLifeSkillAdmin, renderReadingAdmin,
+         renderPrayerAdmin } from './views.js'
 import { renderScheduleGrid } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
@@ -599,6 +600,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'payments':            renderPayments,
     'life-skill-admin':    renderLifeSkillAdmin,
     'reading-admin':       renderReadingAdmin,
+    'prayer-admin':        renderPrayerAdmin,
     settings:    renderSettings,
     import:      renderImport,
   }
