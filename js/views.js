@@ -3267,10 +3267,11 @@ export async function renderPrayerAdmin() {
         ])
         _stuList = students
 
-        // สร้าง prayMap เฉพาะห้องนี้
-        for (const s of _stuList) {
-          if (!adminPrayMap[s.id]) adminPrayMap[s.id] = {}
-        }
+        // reset prayMap ทุกครั้งที่เปลี่ยนห้อง — ไม่ให้ข้อมูลห้องเดิมปน
+        Object.keys(adminPrayMap).forEach(k => delete adminPrayMap[k])
+
+        // โหลดข้อมูลเฉพาะห้องนี้
+        for (const s of _stuList) adminPrayMap[s.id] = {}
         for (const r of records) {
           if (!adminPrayMap[r.student_id]) adminPrayMap[r.student_id] = {}
           adminPrayMap[r.student_id][r.check_date] = r.status

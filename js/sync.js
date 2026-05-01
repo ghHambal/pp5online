@@ -254,16 +254,15 @@ export async function syncPrayerSheet(sheetId, tabName, studentColRange, ordered
     }
   }
 
-  // DEBUG: เปิด DevTools → Console ดูก่อน Sync
+  // DEBUG
   console.log('[syncPrayer] students:', students.length,
     '| orderedDates:', orderedDates.length,
     '| records to send:', records.length,
-    '| sheetId:', sheetId,
-    '| tabName:', tabName,
-    '| sample prayMap keys:', Object.keys(prayMap).slice(0,3))
-  if (records.length === 0) {
-    console.warn('[syncPrayer] records = 0 → GAS จะไม่เขียนอะไรลงชีทเลย!')
-  }
+    '| tabName:', tabName)
+  console.log('[syncPrayer] sample studentCodes in records:',
+    [...new Set(records.map(r => r.studentCode))].slice(0, 10))
+  console.log('[syncPrayer] sample students from _stuList:',
+    students.slice(0, 5).map(s => ({ id: s.id, code: s.student_code })))
 
   await _post(gasUrl, {
     action:          'sync_attendance',  // ใช้ action เดียวกับเช็คชื่อ
