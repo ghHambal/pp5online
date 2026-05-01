@@ -908,10 +908,14 @@ export async function savePrayerCellAdmin(studentId, room, checkDate, status) {
 }
 
 export async function getPrayerRecordsByRoom(room) {
-  // โหลดเฉพาะห้องที่เลือก — เร็วกว่า getAllPrayerRecords มาก
+  // ค้นหาผ่าน student_id ของห้องนั้น — ไม่พึ่ง main_room ซึ่งครูอาจบันทึกต่างกัน
+  const { data: students } = await supabase.from('students')
+    .select('id').eq('religion_room', room)
+  if (!students?.length) return []
+  const ids = students.map(s => s.id)
   const { data, error } = await supabase.from('prayer_records')
     .select('student_id, check_date, status')
-    .eq('main_room', room)
+    .in('student_id', ids)
     .order('check_date')
   if (error) throw error
   return data ?? []
