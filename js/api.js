@@ -40,7 +40,7 @@ export async function getMyClasses(teacherId) {
     .select(`
       id, class_name, skill_group, google_sheet_id, gas_url, head_student_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( subject_code, subject_name, dept, grade_level, subject_group, credit ),
+      master_subjects ( subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
       students ( full_name )
     `)
     .in('course_id', ids)

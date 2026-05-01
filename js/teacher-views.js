@@ -1570,28 +1570,34 @@ export async function renderMyClasses(teacher) {
         prog.classList.remove('hidden')
 
         const { syncClassInfo, syncAttendance, syncScores } = await import('./sync.js')
-        const { getDepartments, getScoreColumns, getStudentScores, getTeacherById } = await import('./api.js')
+        const { getDepartments, getTeachers, getScoreColumns, getStudentScores, getTeacherById } = await import('./api.js')
         const errors = []
 
         try {
           if (doInfo) {
             prog.textContent = '📋 Sync ข้อมูลรายวิชา...'
             // ดึงข้อมูลครูจาก teacher_id ใน master_subjects (ถูกต้องกว่าใช้ session)
-            const [depts, courseTeacher] = await Promise.all([
+            const [depts, allTeachers, courseTeacher] = await Promise.all([
               getDepartments().catch(() => []),
+              getTeachers().catch(() => []),
               cls.master_subjects?.teacher_id
                 ? getTeacherById(cls.master_subjects.teacher_id).catch(() => null)
                 : Promise.resolve(null),
             ])
             const syncTeacher = courseTeacher ?? teacher  // fallback ไปใช้ session
             const dept = depts.find(d => d.dept_name === cls.master_subjects?.dept)
+            // head_name = ชื่อที่บันทึกตอนตั้งค่ากลุ่มสาระ, fallback → หาจาก teacher_code
+            const deptHeadTeacher = dept?.teacher_code
+              ? allTeachers.find(t => t.teacher_code === dept.teacher_code)
+              : null
+            const headDeptName = dept?.head_name || deptHeadTeacher?.full_name || ''
             await syncClassInfo(
               cls.google_sheet_id, cls,
               { full_name: syncTeacher?.full_name ?? '', phone: syncTeacher?.phone ?? '' },
               {
                 headStudentName: cls.students?.full_name ?? '',
                 deptName:        cls.master_subjects?.dept ?? '',
-                headDeptName:    dept?.head_name ?? '',
+                headDeptName,
               }
             )
           }
