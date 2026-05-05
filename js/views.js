@@ -350,11 +350,13 @@ export async function renderRegisteredTeachers() {
     const registered   = all.filter(t => t.profile_id)
     const unregistered = all.filter(t => !t.profile_id)
 
-    const statCard = (label, count, color) =>
-      `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+    const statCard = (tab, label, count, color) =>
+      `<button type="button" data-rt-tab="${tab}"
+        class="rt-stat-card bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4 text-left
+               hover:border-emerald-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-200 transition">
         <div class="w-12 h-12 rounded-xl ${color} flex items-center justify-center text-xl font-bold">${count}</div>
         <p class="text-sm text-gray-500">${label}</p>
-      </div>`
+      </button>`
 
     const depts = [...new Set(all.map(t => t.dept).filter(Boolean))].sort()
 
@@ -366,25 +368,9 @@ export async function renderRegisteredTeachers() {
 
       <!-- Stats -->
       <div class="grid grid-cols-3 gap-3">
-        ${statCard('ทั้งหมด', all.length, 'bg-indigo-100 text-indigo-700')}
-        ${statCard('มีบัญชีแล้ว', registered.length, 'bg-emerald-100 text-emerald-700')}
-        ${statCard('ยังไม่ลงทะเบียน', unregistered.length, 'bg-amber-100 text-amber-700')}
-      </div>
-
-      <!-- Tab filter -->
-      <div class="flex flex-wrap gap-2">
-        <button id="tab-all" data-tab="all"
-          class="tab-btn px-4 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white transition">
-          ทั้งหมด (${all.length})
-        </button>
-        <button id="tab-reg" data-tab="registered"
-          class="tab-btn px-4 py-2 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
-          มีบัญชี (${registered.length})
-        </button>
-        <button id="tab-unreg" data-tab="unregistered"
-          class="tab-btn px-4 py-2 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
-          ยังไม่ลงทะเบียน (${unregistered.length})
-        </button>
+        ${statCard('all', 'ทั้งหมด', all.length, 'bg-indigo-100 text-indigo-700')}
+        ${statCard('registered', 'มีบัญชีแล้ว', registered.length, 'bg-emerald-100 text-emerald-700')}
+        ${statCard('unregistered', 'ยังไม่ลงทะเบียน', unregistered.length, 'bg-amber-100 text-amber-700')}
       </div>
 
       <!-- Search + filter bar -->
@@ -415,6 +401,29 @@ export async function renderRegisteredTeachers() {
     </div>`)
 
     let _tabPool = all
+    let activeTab = 'all'
+
+    const updateStatCards = () => {
+      document.querySelectorAll('[data-rt-tab]').forEach(card => {
+        const active = card.dataset.rtTab === activeTab
+        card.classList.toggle('border-emerald-400', active)
+        card.classList.toggle('bg-emerald-50', active)
+        card.classList.toggle('shadow-lg', active)
+        card.classList.toggle('shadow-emerald-100', active)
+        card.classList.toggle('ring-2', active)
+        card.classList.toggle('ring-emerald-200', active)
+        card.classList.toggle('border-gray-100', !active)
+        card.querySelector('p')?.classList.toggle('text-emerald-700', active)
+      })
+    }
+
+    const setAccountTab = (tab) => {
+      activeTab = tab
+      _tabPool = tab === 'registered' ? registered : tab === 'unregistered' ? unregistered : all
+      updateStatCards()
+      applyFilters()
+    }
+
     const renderTable = (rows) => {
       const wrap = document.getElementById('reg-teacher-table')
       if (!wrap) return
@@ -504,23 +513,10 @@ export async function renderRegisteredTeachers() {
       renderTable(rows)
     }
 
-    renderTable(all)
-
-    // Tab switching
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => {
-          b.classList.replace('bg-indigo-600', 'bg-white')
-          b.classList.replace('text-white', 'text-gray-600')
-          b.classList.add('border', 'border-gray-200')
-        })
-        btn.classList.remove('bg-white', 'text-gray-600', 'border', 'border-gray-200')
-        btn.classList.add('bg-indigo-600', 'text-white')
-        const tab = btn.dataset.tab
-        _tabPool = tab === 'registered' ? registered : tab === 'unregistered' ? unregistered : all
-        applyFilters()
-      })
+    document.querySelectorAll('[data-rt-tab]').forEach(card => {
+      card.addEventListener('click', () => setAccountTab(card.dataset.rtTab))
     })
+    setAccountTab('all')
 
     // Search + select listeners
     ;['rt-q', 'rt-cat', 'rt-dept'].forEach(id => {
