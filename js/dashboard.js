@@ -20,6 +20,19 @@ async function requireAuth() {
   showPageLoader(true)
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) { window.location.replace('index.html'); return null }
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', session.user.id)
+    .maybeSingle()
+
+  if (error || profile?.role !== 'admin') {
+    showToast('หน้านี้สำหรับผู้ดูแลระบบเท่านั้น', 'warning')
+    setTimeout(() => window.location.replace('teacher.html'), 600)
+    return null
+  }
+
   return session
 }
 
