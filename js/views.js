@@ -24,6 +24,7 @@ import { openTeacherModal, handleDeleteTeacher,
          openPeriodModal, handleDeletePeriod } from './dashboard.js'
 import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './import.js'
 import { uploadSystemAsset } from './storage.js'
+import { syncSubjectCatalog } from './sync.js'
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 function _grade(room) {
@@ -1327,12 +1328,16 @@ export async function renderSubjects() {
   </div>`)
 
   try {
-    const [rawSubjects, rawClasses, allTeachers] = await Promise.all([
+    const [rawSubjects, rawClasses, allTeachers, departments, cfg] = await Promise.all([
       getMasterSubjects(),
       getClasses(),
       getTeachers().catch(()=>[]),
+      getDepartments().catch(()=>[]),
+      getSystemConfig().catch(()=>({})),
     ])
     const teacherById = Object.fromEntries(allTeachers.map(t => [t.id, t]))
+    const deptByCode = Object.fromEntries(departments.map(d => [d.dept_code, d]))
+    const deptByName = Object.fromEntries(departments.map(d => [d.dept_name, d]))
     const withTeacher = row => ({
       ...row,
       _teacher_name: teacherById[row.teacher_id]?.full_name ?? '',
@@ -1363,10 +1368,16 @@ export async function renderSubjects() {
           <h2 class="text-lg font-bold text-gray-800">จัดการรายวิชา</h2>
           <p class="text-xs text-gray-400 mt-0.5">Admin และครูเจ้าของรายวิชาสามารถแก้ไขได้</p>
         </div>
-        <button id="sub-action-btn" onclick="window._subAction()"
-          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
-          <span>＋</span> เพิ่มคอร์ส
-        </button>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button id="btn-sync-subjects-central"
+            class="px-4 py-2.5 text-sm font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition">
+            ↑ ซิงค์รายวิชา → 169
+          </button>
+          <button id="sub-action-btn" onclick="window._subAction()"
+            class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+            <span>＋</span> เพิ่มคอร์ส
+          </button>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -1471,6 +1482,46 @@ export async function renderSubjects() {
         _applyFilter()
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
     }
+
+    document.getElementById('btn-sync-subjects-central')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget
+      const orig = btn.textContent
+      try {
+        btn.disabled = true
+        btn.textContent = 'กำลังซิงค์...'
+
+        const rows = allSubjects.map(s => {
+          const teacher = teacherById[s.teacher_id] ?? {}
+          const dept = deptByCode[s.dept] ?? deptByName[s.dept] ?? {}
+          const teacherName = teacher.full_name ?? ''
+          const subjectName = s.subject_name ?? ''
+          const subjectCode = s.subject_code ?? ''
+
+          return {
+            subject_group: s.subject_group ?? '',
+            sbJect: `${subjectName}_(${subjectCode})_${teacherName}`,
+            subject_name: subjectName,
+            subject_code: subjectCode,
+            credit: s.credit ?? '',
+            year: cfg.academicYear ?? '',
+            semester: cfg.semester ?? '',
+            grade_level: s.grade_level ?? '',
+            teacher_name: teacherName,
+            teacher_code: teacher.teacher_code ?? '',
+            dept_name: dept.dept_name ?? s.dept ?? '',
+            dept_code: dept.dept_code ?? s.dept ?? '',
+          }
+        })
+
+        const count = await syncSubjectCatalog(rows)
+        showToast(`ส่งคำสั่งซิงค์รายวิชา ${count} รายการไปแท็บ 169 แล้ว`, 'success')
+      } catch (err) {
+        showToast('ซิงค์รายวิชาไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      } finally {
+        btn.disabled = false
+        btn.textContent = orig
+      }
+    })
 
     window._switchSubjectTab = (tab) => {
       currentTab = tab

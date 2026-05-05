@@ -29,6 +29,7 @@ function doPost(e) {
     if (action === 'sync_attendance') return _syncAttendance(payload)
     if (action === 'sync_scores')     return _syncScores(payload)
     if (action === 'sync_cells')      return _syncCells(payload)
+    if (action === 'sync_table')      return _syncTable(payload)
 
     return _json({ ok: false, error: 'Unknown action: ' + action })
   } catch (err) {
@@ -103,6 +104,31 @@ function _syncCells(payload) {
 
   SpreadsheetApp.flush()
   return _json({ ok: true, written: payload.cells.length })
+}
+
+// ─── Sync Table (ล้างแท็บแล้วเขียน header + rows) ─────────────────────────
+// payload: {
+//   sheetId, tabName,
+//   headers: ['subject_group', ...],
+//   rows: [[...], [...]]
+// }
+
+function _syncTable(payload) {
+  var ss = SpreadsheetApp.openById(payload.sheetId)
+  var sheet = ss.getSheetByName(payload.tabName)
+  if (!sheet) sheet = ss.insertSheet(payload.tabName)
+
+  var headers = payload.headers || []
+  var rows = payload.rows || []
+  var values = [headers].concat(rows)
+
+  sheet.clearContents()
+  if (values.length && headers.length) {
+    sheet.getRange(1, 1, values.length, headers.length).setValues(values)
+  }
+
+  SpreadsheetApp.flush()
+  return _json({ ok: true, written: rows.length })
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

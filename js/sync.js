@@ -3,6 +3,23 @@
 const SHEET_TAB = 'หน้าหลัก'
 const STU_RANGE = 'J8:J72'
 const ATT_START = 14  // Column N
+const CENTRAL_SUBJECT_SHEET_ID = '19esDfxhPg1ksnOC-KYXTMVY40p0Y08xLZ5XZVpVTyT0'
+const CENTRAL_SUBJECT_TAB = '169'
+
+const CENTRAL_SUBJECT_HEADERS = [
+  'subject_group',
+  'sbJect',
+  'subject_name',
+  'subject_code',
+  'credit',
+  'year',
+  'semester',
+  'grade_level',
+  'teacher_name',
+  'teacher_code',
+  'dept_name',
+  'dept_code',
+]
 
 const ATT_MAP = {
   present: 'ม',
@@ -221,6 +238,26 @@ export async function syncClassInfo(sheetId, classData, teacherData = {}, extraD
     tabName: cfg.classInfoTab || 'หน้าหลัก',
     cells,
   })
+}
+
+/**
+ * Sync ทะเบียนรายวิชากลับไปยัง Google Sheet ฐานข้อมูลกลาง
+ * @param {Array} rows - ข้อมูลตาม CENTRAL_SUBJECT_HEADERS
+ */
+export async function syncSubjectCatalog(rows) {
+  const gasUrl = await _getGasUrl()
+
+  await _post(gasUrl, {
+    action:  'sync_table',
+    sheetId: CENTRAL_SUBJECT_SHEET_ID,
+    tabName: CENTRAL_SUBJECT_TAB,
+    headers: CENTRAL_SUBJECT_HEADERS,
+    rows: (rows ?? []).map(row =>
+      CENTRAL_SUBJECT_HEADERS.map(key => row?.[key] ?? '')
+    ),
+  })
+
+  return rows?.length ?? 0
 }
 
 // ─── Prayer Sheet Sync (Solat tab) ───────────────────────────────────────────
