@@ -873,7 +873,15 @@ export async function renderStudents() {
     const _filter = () => {
       const q  = document.getElementById('sf-q').value.toLowerCase()
       const gr = document.getElementById('sf-grade').value
-      const rm = document.getElementById('sf-room').value
+      const roomEl = document.getElementById('sf-room')
+      const currentRoom = roomEl.value
+      const roomOptions = _opts(all
+        .filter(s => !gr || _grade(s.main_room) === gr)
+        .map(s => _room(s.main_room)))
+      if (!roomOptions.includes(currentRoom)) roomEl.value = ''
+      roomEl.innerHTML = '<option value="">ทุกห้อง</option>' +
+        roomOptions.map(r => `<option value="${r}" ${r === roomEl.value ? 'selected' : ''}>ห้อง ${r}</option>`).join('')
+      const rm = roomEl.value
       const gn = document.getElementById('sf-gender').value
       const ps = document.getElementById('sf-page-size').value
       pageSize = ps === 'all' ? 'all' : Number(ps)
