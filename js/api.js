@@ -1,5 +1,7 @@
 import { supabase } from './supabase.js'
 
+const STUDENT_QUERY_RANGE = [0, 9999]
+
 // ─── System Config ────────────────────────────────────────────────────────────
 export async function getSystemConfig() {
   const { data, error } = await supabase
@@ -166,6 +168,7 @@ export async function getStudents() {
     .from('students')
     .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
     .order('student_code')
+    .range(...STUDENT_QUERY_RANGE)
   if (error) throw error
   return data ?? []
 }
@@ -199,6 +202,7 @@ export async function getUniqueRooms() {
     .select('main_room')
     .not('main_room', 'is', null)
     .order('main_room')
+    .range(...STUDENT_QUERY_RANGE)
   if (error) throw error
   return [...new Set((data ?? []).map(s => s.main_room).filter(Boolean))].sort()
 }
@@ -567,6 +571,7 @@ export async function getStudentsByRoom(room) {
     .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
     .eq('main_room', room)
     .order('student_code')
+    .range(...STUDENT_QUERY_RANGE)
   if (error) throw error
   return data ?? []
 }
@@ -577,6 +582,7 @@ export async function getStudentsByReligionRoom(room) {
     .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
     .eq('religion_room', room)
     .order('student_code')
+    .range(...STUDENT_QUERY_RANGE)
   if (error) throw error
   return data ?? []
 }
@@ -587,6 +593,7 @@ export async function getReligionRoomsByGrade(gradePrefix) {
     .select('religion_room')
     .not('religion_room', 'is', null)
     .order('religion_room')
+    .range(...STUDENT_QUERY_RANGE)
   if (error) throw error
   const all = [...new Set((data ?? []).map(s => s.religion_room).filter(Boolean))].sort()
   if (!gradePrefix) return all
@@ -894,6 +901,7 @@ async function _fetchStudentsById(ids) {
   const { data } = await supabase.from('students')
     .select('id, student_code, full_name, main_room, religion_room, image_url')
     .in('id', ids)
+    .range(...STUDENT_QUERY_RANGE)
   return Object.fromEntries((data ?? []).map(s => [s.id, s]))
 }
 
@@ -913,6 +921,7 @@ export async function getPrayerRecordsByRoom(room) {
   // ค้นหาผ่าน student_id ของห้องนั้น — ไม่พึ่ง main_room ซึ่งครูอาจบันทึกต่างกัน
   const { data: students } = await supabase.from('students')
     .select('id').eq('religion_room', room)
+    .range(...STUDENT_QUERY_RANGE)
   if (!students?.length) return []
   const ids = students.map(s => s.id)
   const { data, error } = await supabase.from('prayer_records')
