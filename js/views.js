@@ -69,7 +69,9 @@ export async function renderOverview() {
     <!-- สถิติหลัก -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4" id="stat-grid">
       ${['teachers','students','classes','subjects'].map(k => `
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+        <button type="button" onclick="window._adminNav?.('${k}')"
+          class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 text-left
+                 hover:border-indigo-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-200 transition">
           <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl
             ${k==='teachers'?'bg-indigo-100':k==='students'?'bg-purple-100':k==='classes'?'bg-blue-100':'bg-green-100'}">
             ${{teachers:'👩‍🏫',students:'👦',classes:'🏫',subjects:'📚'}[k]}
@@ -79,7 +81,7 @@ export async function renderOverview() {
             <p id="stat-${k}" class="text-2xl font-bold
               ${k==='teachers'?'text-indigo-700':k==='students'?'text-purple-700':k==='classes'?'text-blue-700':'text-green-700'}">—</p>
           </div>
-        </div>`).join('')}
+        </button>`).join('')}
     </div>
 
     <!-- แถวที่สอง: ลงทะเบียน + pending payments -->
@@ -88,14 +90,18 @@ export async function renderOverview() {
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h4 class="font-semibold text-gray-700 mb-3">🔑 บัญชีผู้ใช้ครู</h4>
         <div class="flex gap-4">
-          <div class="flex-1 text-center bg-emerald-50 rounded-xl py-3">
+          <button type="button" onclick="window._adminNav?.('registered-teachers')"
+            class="flex-1 text-center bg-emerald-50 rounded-xl py-3 hover:bg-emerald-100
+                   focus:outline-none focus:ring-2 focus:ring-emerald-200 transition">
             <p id="stat-registered" class="text-2xl font-bold text-emerald-700">—</p>
             <p class="text-xs text-gray-500 mt-0.5">ลงทะเบียนแล้ว</p>
-          </div>
-          <div class="flex-1 text-center bg-gray-50 rounded-xl py-3">
+          </button>
+          <button type="button" onclick="window._adminNav?.('registered-teachers')"
+            class="flex-1 text-center bg-gray-50 rounded-xl py-3 hover:bg-gray-100
+                   focus:outline-none focus:ring-2 focus:ring-gray-200 transition">
             <p id="stat-unregistered" class="text-2xl font-bold text-gray-500">—</p>
             <p class="text-xs text-gray-500 mt-0.5">ยังไม่มีบัญชี</p>
-          </div>
+          </button>
         </div>
       </div>
 
