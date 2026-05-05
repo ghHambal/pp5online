@@ -153,7 +153,7 @@ export async function getClasses() {
     .select(`
       id, class_name, skill_group, google_sheet_id, gas_url,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit )
+      master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit, teacher_id )
     `)
     .order('class_name')
   if (error) throw error

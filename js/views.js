@@ -40,6 +40,7 @@ function _opts(arr) {
 }
 const SELECT_CLS = 'border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400'
 const SEARCH_CLS = 'border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400'
+const _onclickText = value => String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 function setActiveNav(viewName) {
@@ -314,7 +315,7 @@ export function renderTeacherTable(teachers) {
               ${catBadge(t.category)}
             </td>
             <td class="px-4 py-3 text-right whitespace-nowrap">
-              <button onclick="window._adminViewSchedule(${t.id},'${(t.full_name??'').replace(/'/g,'')}')"
+              <button onclick="window._adminViewSchedule(${t.id},'${_onclickText(t.full_name)}')"
                 class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-3">🗓️ ตาราง</button>
               <button onclick="openTeacherModal(${t.id})"
                 class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
@@ -467,8 +468,10 @@ export async function renderRegisteredTeachers() {
                     }
                   </td>
                   <td class="px-4 py-3 text-right">
+                    <button onclick="window._adminViewSchedule(${t.id},'${_onclickText(t.full_name)}')"
+                      class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-3">🗓️ ตาราง</button>
                     ${hasAcc
-                      ? `<button onclick="handleUnlinkTeacher(${t.id}, '${(t.full_name ?? '').replace(/'/g, '')}')"
+                      ? `<button onclick="handleUnlinkTeacher(${t.id}, '${_onclickText(t.full_name)}')"
                           class="text-xs text-red-400 hover:text-red-600 font-medium">
                           ยกเลิกบัญชี</button>`
                       : `<span class="text-xs text-gray-300">—</span>`
@@ -562,7 +565,11 @@ export async function renderClasses() {
   </div>`)
 
   try {
-    const classes = await getClasses()
+    const [classes, teachers] = await Promise.all([
+      getClasses(),
+      getTeachers().catch(()=>[]),
+    ])
+    const teacherById = Object.fromEntries(teachers.map(t => [t.id, t]))
     const el = document.getElementById('class-list')
     if (classes.length === 0) {
       el.innerHTML = `<div class="text-center py-16 text-gray-400">
@@ -596,6 +603,10 @@ export async function renderClasses() {
             ${c.google_sheet_id ? `<span class="truncate block max-w-[160px]">${c.google_sheet_id}</span>` : '—'}
           </td>
           <td class="px-5 py-4 text-right whitespace-nowrap">
+            ${c.master_subjects?.teacher_id
+              ? `<button onclick="window._adminViewSchedule(${c.master_subjects.teacher_id},'${_onclickText(teacherById[c.master_subjects.teacher_id]?.full_name ?? c.master_subjects.subject_name ?? c.class_name)}')"
+                  class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-3">🗓️ ตาราง</button>`
+              : ''}
             <button onclick="window._adminEditClass(${c.id})"
               class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
             <button onclick="window._adminDeleteClass(${c.id},'${(c.class_name??'').replace(/'/g,'')}')"
@@ -1257,7 +1268,26 @@ export async function renderSubjects() {
   </div>`)
 
   try {
-    const [allSubjects, allClasses] = await Promise.all([getMasterSubjects(), getClasses()])
+    const [rawSubjects, rawClasses, allTeachers] = await Promise.all([
+      getMasterSubjects(),
+      getClasses(),
+      getTeachers().catch(()=>[]),
+    ])
+    const teacherById = Object.fromEntries(allTeachers.map(t => [t.id, t]))
+    const withTeacher = row => ({
+      ...row,
+      _teacher_name: teacherById[row.teacher_id]?.full_name ?? '',
+    })
+    const allSubjects = rawSubjects.map(withTeacher)
+    const allClasses = rawClasses.map(c => ({
+      ...c,
+      master_subjects: c.master_subjects
+        ? {
+            ...c.master_subjects,
+            _teacher_name: teacherById[c.master_subjects.teacher_id]?.full_name ?? '',
+          }
+        : c.master_subjects,
+    }))
     const depts = _opts(allSubjects.map(s => s.dept))
     const skills = _opts(allSubjects.map(s => s.skill_group))
 
@@ -1431,6 +1461,7 @@ export function renderSubjectTable(subjects) {
         <td class="px-4 py-3">
           <p class="font-semibold text-gray-800 text-sm">${s.subject_name}</p>
           <p class="text-xs text-indigo-500 font-mono">${s.subject_code??'—'}</p>
+          ${s._teacher_name ? `<p class="text-xs text-gray-400 mt-0.5">ครูผู้สอน: ${s._teacher_name}</p>` : ''}
         </td>
         <td class="px-4 py-3 hidden sm:table-cell">
           ${s.dept?`<span class="px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-700">${s.dept}</span>`:'<span class="text-gray-300 text-xs">—</span>'}
@@ -1438,8 +1469,12 @@ export function renderSubjectTable(subjects) {
         <td class="px-4 py-3 text-center text-xs text-gray-500 hidden md:table-cell">${s.grade_level??'—'}</td>
         <td class="px-4 py-3 text-center text-xs text-gray-500 hidden md:table-cell">${s.credit??'—'}</td>
         <td class="px-4 py-3 text-right">
+          ${s.teacher_id
+            ? `<button onclick="window._adminViewSchedule(${s.teacher_id},'${_onclickText(s._teacher_name || s.subject_name)}')"
+                class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-3">🗓️ ตาราง</button>`
+            : ''}
           <button onclick="openSubjectModal(${s.id})" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
-          <button onclick="handleDeleteSubject(${s.id},'${s.subject_name.replace(/'/g,"\\'")}'"
+          <button onclick="handleDeleteSubject(${s.id},'${_onclickText(s.subject_name)}')"
             class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>
         </td>
       </tr>`).join('')}
@@ -1473,6 +1508,7 @@ function _renderClassTable(classes) {
         <td class="px-4 py-3">
           <p class="font-semibold text-gray-800 text-sm">${c.class_name??'—'}</p>
           <p class="text-xs text-indigo-500">${c.master_subjects?.subject_name??'—'}</p>
+          ${c.master_subjects?._teacher_name ? `<p class="text-xs text-gray-400 mt-0.5">ครูผู้สอน: ${c.master_subjects._teacher_name}</p>` : ''}
         </td>
         <td class="px-4 py-3 hidden sm:table-cell">
           ${c.master_subjects?.dept
@@ -1485,6 +1521,10 @@ function _renderClassTable(classes) {
             : '<span class="text-gray-300 text-xs">—</span>'}
         </td>
         <td class="px-4 py-3 text-right">
+          ${c.master_subjects?.teacher_id
+            ? `<button onclick="window._adminViewSchedule(${c.master_subjects.teacher_id},'${_onclickText(c.master_subjects._teacher_name || c.master_subjects.subject_name || c.class_name)}')"
+                class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-2">🗓️ ตาราง</button>`
+            : ''}
           <button onclick="window._adminScoreCols(${c.id},'${c.class_name}')"
             class="text-xs bg-amber-500 text-white px-2 py-1 rounded-lg hover:bg-amber-600 mr-2">📋 คะแนน</button>
           <button onclick="window._adminEditClass(${c.id})"
