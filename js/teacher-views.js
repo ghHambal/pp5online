@@ -4959,7 +4959,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   // วันในสัปดาห์ 0=อา, 1=จ, 2=อ, 3=พ, 4=พฤ, (5=ศ ถ้าเปิด)
   const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
   const DAY_SHORT  = ['อา','จ','อ','พ','พฤ','ศ']
-  const DAY_COLORS = ['bg-purple-50','bg-blue-50','bg-green-50','bg-yellow-50','bg-orange-50','bg-pink-50']
+  const DAY_COLORS = ['bg-red-50','bg-yellow-50','bg-pink-50','bg-green-50','bg-orange-50','bg-purple-50','bg-blue-50']
   const numDays    = hasFri ? 6 : 5
   const days       = Array.from({length: numDays}, (_,i) => i) // [0,1,2,3,4] or [...,5]
 
@@ -4984,10 +4984,20 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     {bg:'bg-orange-100', text:'text-orange-800', hex:'#ffedd5'},
     {bg:'bg-pink-100',   text:'text-pink-800',   hex:'#fce7f3'},
     {bg:'bg-teal-100',   text:'text-teal-800',   hex:'#ccfbf1'},
+    {bg:'bg-green-100',  text:'text-green-800',  hex:'#a3f9d7'},
+    {bg:'bg-brown-100',   text:'text-brown-800', hex:'#d7ccc8'},
+    {bg:'bg-gold-100',   text:'text-gold-800',   hex:'#ffecd2'},
   ]
   const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
   let savedColors = {}
   try { savedColors = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
+  const _scheduleColorKey = (subjectName, className, fallbackId = null) => {
+    const subj = String(subjectName ?? '').trim()
+    const cls  = String(className ?? '').trim()
+    if (subj && cls) return `${subj} — ${cls}`
+    if (subj) return subj
+    return fallbackId != null ? String(fallbackId) : ''
+  }
 
   const subjectColorMap = {}
   // โหลดสีจาก master_subjects
@@ -5007,7 +5017,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   // กำหนดสีใหม่ให้ชื่อวิชาจาก schedule entries ที่ยังไม่มีสี
   let autoColorIdx = subjects.length
   scheduleData.forEach(entry => {
-    const key = entry.subject_name
+    const key = _scheduleColorKey(entry.subject_name, entry.class_name, entry.subject_id)
     if (key && !subjectColorMap[key]) {
       const ci = autoColorIdx % COLOR_PRESETS.length
       const cp = COLOR_PRESETS[ci]
@@ -5070,8 +5080,8 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
               const dispSubj  = entry?.subject_name ?? subj?.subject_name ?? null
               const dispClass = entry?.class_name   ?? null
               const dispTeach = entry?.teacher_name ?? null
-              // สี: ใช้ colorKey = subject_name หรือ subject_id
-              const colorKey  = entry?.subject_name ?? (subj?.id ? String(subj.id) : null)
+              // สี: แยกตามรายวิชา + ห้องเรียน เพื่อให้วิชาเดียวกันคนละห้องตั้งสีแยกได้
+              const colorKey  = _scheduleColorKey(dispSubj, dispClass, subj?.id)
               const clrInfo   = colorKey ? (subjectColorMap[colorKey] ?? subjectColorMap[subj?.id] ?? null) : null
               const clr       = clrInfo?.cls ?? (dispSubj ? 'bg-gray-100 text-gray-700' : '')
               // height:1px บน td → ทำให้ h-full ของ child ทำงานใน table cell ได้
@@ -5103,7 +5113,10 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
       // รวมชื่อวิชาทั้งหมดที่มีในตาราง
       const legendNames = new Set()
       subjects.forEach(s => { if (s.subject_name) legendNames.add(s.subject_name) })
-      scheduleData.forEach(e => { if (e.subject_name) legendNames.add(e.subject_name) })
+      scheduleData.forEach(e => {
+        const key = _scheduleColorKey(e.subject_name, e.class_name, e.subject_id)
+        if (key) legendNames.add(key)
+      })
       if (!legendNames.size) return ''
       return `<div class="mt-4">
         <p class="text-xs text-gray-400 mb-2">คลิกที่ชื่อวิชาเพื่อเปลี่ยนสี</p>
@@ -5198,10 +5211,18 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
   const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
   let savedColors = {}
   try { savedColors = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
+  const _scheduleColorKey = (subjectName, className, fallbackId = null) => {
+    const subj = String(subjectName ?? '').trim()
+    const cls  = String(className ?? '').trim()
+    if (subj && cls) return `${subj} — ${cls}`
+    if (subj) return subj
+    return fallbackId != null ? String(fallbackId) : ''
+  }
 
   // กำหนดสีเริ่มต้น
   const initSubjName  = entry?.subject_name ?? (entry?.subject_id ? subjects.find(s=>s.id===entry.subject_id)?.subject_name ?? '' : '')
-  let colorIdx = savedColors[initSubjName] ?? savedColors[entry?.subject_id] ?? 0
+  const initColorKey  = _scheduleColorKey(initSubjName, entry?.class_name, entry?.subject_id)
+  let colorIdx = savedColors[initColorKey] ?? savedColors[initSubjName] ?? savedColors[entry?.subject_id] ?? 0
 
   const subjSuggestions = subjects.map(s => `<option value="${s.subject_name}">`).join('')
   const roomSuggestions = allRoomList.map(r => `<option value="${r}">`).join('')
@@ -5348,7 +5369,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
       // บันทึกสีลง localStorage
       if (subjName) {
         const cm = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
-        cm[subjName] = colorIdx
+        cm[_scheduleColorKey(subjName, className, subjId)] = colorIdx
         localStorage.setItem(colorStorageKey, JSON.stringify(cm))
       }
 
@@ -5446,6 +5467,11 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
   const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
   let colorMap = {}
   try { colorMap = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
+  const _scheduleColorKey = (subjectName, className) => {
+    const subj = String(subjectName ?? '').trim()
+    const cls  = String(className ?? '').trim()
+    return subj && cls ? `${subj} — ${cls}` : subj
+  }
 
   const COLORS = [
     {cls:'bg-emerald-100 text-emerald-800', dot:'#10b981'},
@@ -5583,7 +5609,8 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         try {
           // บันทึกสีลง localStorage
           const newColorMap = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
-          if (g.subject_name) newColorMap[g.subject_name] = g.color_idx ?? 0
+          const colorKey = _scheduleColorKey(g.subject_name, g.class_name)
+          if (colorKey) newColorMap[colorKey] = g.color_idx ?? 0
           localStorage.setItem(colorStorageKey, JSON.stringify(newColorMap))
 
           await Promise.all(g.sessions.map(s => upsertScheduleEntry({
@@ -5698,7 +5725,7 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
       const raw = JSON.parse(jsonStr)
       groups = raw.map((g, i) => ({
         ...g,
-        color_idx: colorMap[g.subject_name ?? ''] ?? (i % COLORS.length),
+        color_idx: colorMap[_scheduleColorKey(g.subject_name, g.class_name)] ?? colorMap[g.subject_name ?? ''] ?? (i % COLORS.length),
         sessions: (g.sessions ?? []).map(s => ({ ...s })),
       }))
 
@@ -5731,7 +5758,10 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
     try {
       // บันทึกสีลง localStorage
       const newColorMap = {}
-      groups.forEach(g => { if (g.subject_name) newColorMap[g.subject_name] = g.color_idx ?? 0 })
+      groups.forEach(g => {
+        const colorKey = _scheduleColorKey(g.subject_name, g.class_name)
+        if (colorKey) newColorMap[colorKey] = g.color_idx ?? 0
+      })
       localStorage.setItem(colorStorageKey, JSON.stringify({...colorMap, ...newColorMap}))
 
       // flatten groups → entries
