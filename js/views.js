@@ -8,6 +8,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
          getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
+         getScheduleTeacherIds,
          getLifeSkillColumns, createLifeSkillColumn,
          updateLifeSkillColumn, deleteLifeSkillColumn,
          getReadingScoreColumns, createReadingScoreColumn,
@@ -346,9 +347,18 @@ export async function renderRegisteredTeachers() {
   </div>`)
 
   try {
-    const all = await getTeachers()
+    const cfg = await getSystemConfig().catch(()=>({}))
+    const curYear = parseInt(cfg.academicYear ?? new Date().getFullYear()+543)
+    const curSem = parseInt(cfg.semester ?? 1)
+    const [all, scheduleTeacherIds] = await Promise.all([
+      getTeachers(),
+      getScheduleTeacherIds(curYear, curSem).catch(()=>[]),
+    ])
+    const scheduledSet = new Set(scheduleTeacherIds)
     const registered   = all.filter(t => t.profile_id)
     const unregistered = all.filter(t => !t.profile_id)
+    const registeredWithSchedule = registered.filter(t => scheduledSet.has(t.id))
+    const registeredNoSchedule = registered.filter(t => !scheduledSet.has(t.id))
 
     const statCard = (tab, label, count, color) =>
       `<button type="button" data-rt-tab="${tab}"
@@ -371,6 +381,11 @@ export async function renderRegisteredTeachers() {
         ${statCard('all', 'ทั้งหมด', all.length, 'bg-indigo-100 text-indigo-700')}
         ${statCard('registered', 'มีบัญชีแล้ว', registered.length, 'bg-emerald-100 text-emerald-700')}
         ${statCard('unregistered', 'ยังไม่ลงทะเบียน', unregistered.length, 'bg-amber-100 text-amber-700')}
+      </div>
+
+      <div id="rt-schedule-stats" class="hidden grid grid-cols-2 gap-3">
+        ${statCard('scheduled', 'สร้างตารางสอนแล้ว', registeredWithSchedule.length, 'bg-green-100 text-green-700')}
+        ${statCard('unscheduled', 'ยังไม่สร้างตารางสอน', registeredNoSchedule.length, 'bg-gray-100 text-gray-600')}
       </div>
 
       <!-- Search + filter bar -->
@@ -402,10 +417,11 @@ export async function renderRegisteredTeachers() {
 
     let _tabPool = all
     let activeTab = 'all'
+    let scheduleFilter = null
 
     const updateStatCards = () => {
       document.querySelectorAll('[data-rt-tab]').forEach(card => {
-        const active = card.dataset.rtTab === activeTab
+        const active = card.dataset.rtTab === activeTab || card.dataset.rtTab === scheduleFilter
         card.classList.toggle('border-emerald-400', active)
         card.classList.toggle('bg-emerald-50', active)
         card.classList.toggle('shadow-lg', active)
@@ -418,8 +434,15 @@ export async function renderRegisteredTeachers() {
     }
 
     const setAccountTab = (tab) => {
-      activeTab = tab
-      _tabPool = tab === 'registered' ? registered : tab === 'unregistered' ? unregistered : all
+      if (tab === 'scheduled' || tab === 'unscheduled') {
+        activeTab = 'registered'
+        scheduleFilter = tab
+      } else {
+        activeTab = tab
+        scheduleFilter = null
+      }
+      _tabPool = activeTab === 'registered' ? registered : activeTab === 'unregistered' ? unregistered : all
+      document.getElementById('rt-schedule-stats')?.classList.toggle('hidden', activeTab !== 'registered')
       updateStatCards()
       applyFilters()
     }
@@ -448,6 +471,7 @@ export async function renderRegisteredTeachers() {
               ${rows.map(t => {
                 const initials = (t.full_name ?? '?').charAt(0).toUpperCase()
                 const hasAcc   = !!t.profile_id
+                const hasSchedule = scheduledSet.has(t.id)
                 return `
                 <tr class="hover:bg-gray-50 transition">
                   <td class="px-5 py-4">
@@ -483,10 +507,14 @@ export async function renderRegisteredTeachers() {
                     }
                   </td>
                   <td class="px-4 py-3 text-right">
-                    <button onclick="window._adminViewSchedule(${t.id},'${_onclickText(t.full_name)}')"
-                      class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-3">🗓️ ตาราง</button>
                     ${hasAcc
-                      ? `<button onclick="handleUnlinkTeacher(${t.id}, '${_onclickText(t.full_name)}')"
+                      ? `<button onclick="window._adminViewSchedule(${t.id},'${_onclickText(t.full_name)}')"
+                          class="text-xs font-medium mr-3 px-2.5 py-1 rounded-lg border
+                            ${hasSchedule
+                              ? 'text-emerald-700 border-emerald-300 bg-emerald-50 shadow-sm shadow-emerald-100 hover:bg-emerald-100'
+                              : 'text-violet-600 border-transparent hover:text-violet-800'}">
+                          🗓️ ตาราง</button>
+                        <button onclick="handleUnlinkTeacher(${t.id}, '${_onclickText(t.full_name)}')"
                           class="text-xs text-red-400 hover:text-red-600 font-medium">
                           ยกเลิกบัญชี</button>`
                       : `<span class="text-xs text-gray-300">—</span>`
@@ -506,7 +534,8 @@ export async function renderRegisteredTeachers() {
       const rows = _tabPool.filter(t =>
         (!q    || [t.full_name, t.teacher_code].some(v => (v ?? '').toLowerCase().includes(q))) &&
         (!cat  || t.category === cat) &&
-        (!dept || t.dept     === dept)
+        (!dept || t.dept     === dept) &&
+        (!scheduleFilter || (scheduleFilter === 'scheduled' ? scheduledSet.has(t.id) : !scheduledSet.has(t.id)))
       )
       const countEl = document.getElementById('rt-count')
       if (countEl) countEl.textContent = rows.length

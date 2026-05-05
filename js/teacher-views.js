@@ -5236,7 +5236,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
 
   const wrap = document.createElement('div')
   wrap.id = 'sched-popup'
-  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.className = 'fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
   document.body.appendChild(wrap)
 
   function _render() {

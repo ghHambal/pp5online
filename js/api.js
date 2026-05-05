@@ -784,6 +784,18 @@ export async function getMySchedule(teacherId, academicYear, semester) {
   return data ?? []
 }
 
+export async function getScheduleTeacherIds(academicYear, semester) {
+  const { data, error } = await supabase
+    .from('teacher_schedules')
+    .select('teacher_id')
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+    .not('teacher_id', 'is', null)
+    .range(0, 9999)
+  if (error) throw error
+  return [...new Set((data ?? []).map(r => r.teacher_id).filter(Boolean))]
+}
+
 export async function upsertScheduleEntry(payload) {
   const { error } = await supabase
     .from('teacher_schedules')
