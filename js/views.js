@@ -683,9 +683,18 @@ export async function renderStudents() {
             <option value="ชาย">ชาย</option>
             <option value="หญิง">หญิง</option>
           </select>
+          <select id="sf-page-size" class="${SELECT_CLS}">
+            <option value="50">แสดง 50 คน</option>
+            <option value="100">แสดง 100 คน</option>
+            <option value="500">แสดง 500 คน</option>
+            <option value="1000" selected>แสดง 1000 คน</option>
+            <option value="all">แสดงทั้งหมด</option>
+          </select>
         </div>
         <p class="text-xs text-gray-400 mt-2">
-          พบ <span id="sf-count" class="font-semibold text-indigo-600">${all.length}</span> / ${all.length} รายการ
+          แสดง <span id="sf-showing" class="font-semibold text-indigo-600">${Math.min(all.length, 1000)}</span>
+          จาก <span id="sf-count" class="font-semibold text-indigo-600">${all.length}</span>
+          / ${all.length} รายการ
         </p>
       </div>
 
@@ -696,10 +705,13 @@ export async function renderStudents() {
 
     // cache all students
     let studentCache = Object.fromEntries(all.map(s=>[s.id,s]))
+    let pageSize = 1000
 
     const _renderTable = (rows) => {
       const el = document.getElementById('student-table-wrap')
+      const visibleRows = pageSize === 'all' ? rows : rows.slice(0, pageSize)
       document.getElementById('sf-count').textContent = rows.length
+      document.getElementById('sf-showing').textContent = visibleRows.length
       if (!rows.length) {
         el.innerHTML = `<div class="text-center py-16 text-gray-400">
           <p class="text-4xl mb-3">🔍</p><p>ไม่พบข้อมูลที่ค้นหา</p></div>`; return
@@ -716,7 +728,7 @@ export async function renderStudents() {
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
-          ${rows.map(s => `
+          ${visibleRows.map(s => `
           <tr class="hover:bg-gray-50 transition">
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
@@ -746,7 +758,13 @@ export async function renderStudents() {
             </td>
           </tr>`).join('')}
         </tbody>
-      </table></div>`
+      </table>
+      ${visibleRows.length < rows.length
+        ? `<div class="px-4 py-3 text-center text-xs text-gray-400 border-t border-gray-50">
+            เลือกจำนวนที่แสดงด้านบนเพื่อดูรายการเพิ่มเติม
+          </div>`
+        : ''}
+      </div>`
     }
 
     // student CRUD handlers
@@ -857,6 +875,8 @@ export async function renderStudents() {
       const gr = document.getElementById('sf-grade').value
       const rm = document.getElementById('sf-room').value
       const gn = document.getElementById('sf-gender').value
+      const ps = document.getElementById('sf-page-size').value
+      pageSize = ps === 'all' ? 'all' : Number(ps)
       _renderTable(all.filter(s =>
         (!q  || [s.full_name,s.student_code,s.main_room,s.religion_room].some(v=>(v??'').toLowerCase().includes(q))) &&
         (!gr || _grade(s.main_room) === gr) &&
@@ -864,7 +884,7 @@ export async function renderStudents() {
         (!gn || s.gender === gn)
       ))
     }
-    ['sf-q','sf-grade','sf-room','sf-gender'].forEach(id => {
+    ['sf-q','sf-grade','sf-room','sf-gender','sf-page-size'].forEach(id => {
       document.getElementById(id)?.addEventListener('input',  _filter)
       document.getElementById(id)?.addEventListener('change', _filter)
     })

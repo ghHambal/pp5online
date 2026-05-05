@@ -1,6 +1,22 @@
 import { supabase } from './supabase.js'
 
 const STUDENT_QUERY_RANGE = [0, 9999]
+const STUDENT_QUERY_PAGE_SIZE = 1000
+
+async function _fetchAllStudents(selectColumns, configure = q => q, orderColumn = null) {
+  const rows = []
+  for (let from = STUDENT_QUERY_RANGE[0]; from <= STUDENT_QUERY_RANGE[1]; from += STUDENT_QUERY_PAGE_SIZE) {
+    const to = Math.min(from + STUDENT_QUERY_PAGE_SIZE - 1, STUDENT_QUERY_RANGE[1])
+    let q = supabase.from('students').select(selectColumns)
+    q = configure(q)
+    if (orderColumn) q = q.order(orderColumn)
+    const { data, error } = await q.range(from, to)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if (!data || data.length < STUDENT_QUERY_PAGE_SIZE) break
+  }
+  return rows
+}
 
 // ─── System Config ────────────────────────────────────────────────────────────
 export async function getSystemConfig() {
@@ -164,13 +180,11 @@ export async function getClasses() {
 
 // ─── Students ─────────────────────────────────────────────────────────────────
 export async function getStudents() {
-  const { data, error } = await supabase
-    .from('students')
-    .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
-    .order('student_code')
-    .range(...STUDENT_QUERY_RANGE)
-  if (error) throw error
-  return data ?? []
+  return _fetchAllStudents(
+    'id, student_code, full_name, main_room, religion_room, gender, image_url',
+    q => q,
+    'student_code'
+  )
 }
 
 export async function updateStudent(id, payload) {
@@ -197,13 +211,11 @@ export async function getHomeroomTeachers(academicYear, semester) {
 }
 
 export async function getUniqueRooms() {
-  const { data, error } = await supabase
-    .from('students')
-    .select('main_room')
-    .not('main_room', 'is', null)
-    .order('main_room')
-    .range(...STUDENT_QUERY_RANGE)
-  if (error) throw error
+  const data = await _fetchAllStudents(
+    'main_room',
+    q => q.not('main_room', 'is', null),
+    'main_room'
+  )
   return [...new Set((data ?? []).map(s => s.main_room).filter(Boolean))].sort()
 }
 
@@ -566,35 +578,27 @@ export async function getRoomsByGrade(gradePrefix) {
 }
 
 export async function getStudentsByRoom(room) {
-  const { data, error } = await supabase
-    .from('students')
-    .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
-    .eq('main_room', room)
-    .order('student_code')
-    .range(...STUDENT_QUERY_RANGE)
-  if (error) throw error
-  return data ?? []
+  return _fetchAllStudents(
+    'id, student_code, full_name, main_room, religion_room, gender, image_url',
+    q => q.eq('main_room', room),
+    'student_code'
+  )
 }
 
 export async function getStudentsByReligionRoom(room) {
-  const { data, error } = await supabase
-    .from('students')
-    .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
-    .eq('religion_room', room)
-    .order('student_code')
-    .range(...STUDENT_QUERY_RANGE)
-  if (error) throw error
-  return data ?? []
+  return _fetchAllStudents(
+    'id, student_code, full_name, main_room, religion_room, gender, image_url',
+    q => q.eq('religion_room', room),
+    'student_code'
+  )
 }
 
 export async function getReligionRoomsByGrade(gradePrefix) {
-  const { data, error } = await supabase
-    .from('students')
-    .select('religion_room')
-    .not('religion_room', 'is', null)
-    .order('religion_room')
-    .range(...STUDENT_QUERY_RANGE)
-  if (error) throw error
+  const data = await _fetchAllStudents(
+    'religion_room',
+    q => q.not('religion_room', 'is', null),
+    'religion_room'
+  )
   const all = [...new Set((data ?? []).map(s => s.religion_room).filter(Boolean))].sort()
   if (!gradePrefix) return all
   // "PR 1" → match "PR1/..." หรือ "PR 1/..."
