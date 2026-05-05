@@ -3,7 +3,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getDepartments, getPeriods, createSubject,
          updateClass, deleteClass,
          updateStudent, deleteStudent,
-         getHomeroomTeachers, upsertHomeroomTeacher, deleteHomeroomTeacher,
+         getHomeroomTeachers, assignHomeroomTeacher, deleteHomeroomTeacher,
          getScoreColumnConfig, upsertScoreColumnConfig,
          getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
@@ -1582,54 +1582,19 @@ export async function renderHomeroom() {
         <h2 class="text-lg font-bold text-gray-800">ครูที่ปรึกษา</h2>
         <p class="text-xs text-gray-400 mt-0.5">ภาคเรียน ${curSem}/${curYear}</p>
       </div>
-      <button onclick="window._addHomeroom()"
-        class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
-        <span>＋</span> เพิ่มครูที่ปรึกษา
+    </div>
+
+    <div class="flex gap-2 mb-4">
+      <button id="hr-tab-samai" data-hr-tab="สามัญ"
+        class="hr-tab px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white transition">
+        สามัญ
+      </button>
+      <button id="hr-tab-religion" data-hr-tab="ศาสนา"
+        class="hr-tab px-5 py-2 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+        ศาสนา
       </button>
     </div>
 
-    <!-- Form -->
-    <div id="homeroom-form-wrap" class="hidden bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
-      <h4 id="homeroom-form-title" class="font-semibold text-gray-700 mb-4">เพิ่มครูที่ปรึกษา</h4>
-      <form id="homeroom-form" class="grid grid-cols-2 gap-3">
-        <input type="hidden" id="hr-edit-id" />
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">รหัสครู / ค้นหาชื่อ</label>
-          <input id="hr-teacher-code" type="text" placeholder="รหัสครู"
-            class="${SELECT_CLS}" autocomplete="off" />
-        </div>
-        <div class="relative">
-          <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อครู</label>
-          <input id="hr-teacher-name" type="text" placeholder="พิมพ์เพื่อค้นหา..."
-            class="${SELECT_CLS}" autocomplete="off" />
-          <div id="hr-teacher-dropdown"
-            class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-y-auto"
-            style="max-height:160px"></div>
-        </div>
-        <input type="hidden" id="hr-teacher-id" />
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">ห้องที่ดูแล</label>
-          <select id="hr-room" class="${SELECT_CLS}">
-            <option value="">— กำลังโหลด... —</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">ประเภท</label>
-          <select id="hr-category" class="${SELECT_CLS}">
-            <option value="สามัญ">สามัญ</option>
-            <option value="ศาสนา">ศาสนา</option>
-          </select>
-        </div>
-        <div class="col-span-2 flex gap-3 pt-1">
-          <button type="button" onclick="document.getElementById('homeroom-form-wrap').classList.add('hidden')"
-            class="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-          <button id="hr-save" type="submit"
-            class="btn-primary flex-1 py-2 rounded-xl text-white text-sm font-semibold">บันทึก</button>
-        </div>
-      </form>
-    </div>
-
-    <!-- Table -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div id="homeroom-table-wrap">
         <div class="flex justify-center py-10 text-gray-400">
@@ -1642,119 +1607,168 @@ export async function renderHomeroom() {
     </div>
   </div>`)
 
-  let allTeachers = await getTeachers().catch(()=>[])
+  const [allTeachers, samaiRooms, religionRooms] = await Promise.all([
+    getTeachers().catch(()=>[]),
+    getUniqueRooms().catch(()=>[]),
+    getUniqueReligionRooms().catch(()=>[]),
+  ])
+  let activeCategory = 'สามัญ'
 
-  // โหลดห้องจาก students.main_room
-  const rooms = await getUniqueRooms().catch(()=>[])
-  const roomSel = document.getElementById('hr-room')
-  if (roomSel) {
-    roomSel.innerHTML = `<option value="">— เลือกห้อง —</option>` +
-      rooms.map(r => `<option value="${r}">${r}</option>`).join('')
+  const _assignmentMap = rows => Object.fromEntries(
+    rows
+      .filter(r => r.category === activeCategory)
+      .map(r => [r.main_room, r])
+  )
+
+  const _setTabUI = () => {
+    document.querySelectorAll('.hr-tab').forEach(btn => {
+      const active = btn.dataset.hrTab === activeCategory
+      btn.className = active
+        ? 'hr-tab px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white transition'
+        : 'hr-tab px-5 py-2 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition'
+    })
   }
 
   const _renderTable = async () => {
+    _setTabUI()
     const rows = await getHomeroomTeachers(curYear, curSem)
+    const assigned = _assignmentMap(rows)
+    const rooms = activeCategory === 'สามัญ' ? samaiRooms : religionRooms
     const wrap = document.getElementById('homeroom-table-wrap')
-    if (!rows.length) {
+    if (!rooms.length) {
       wrap.innerHTML = `<div class="text-center py-12 text-gray-400">
-        <p class="text-3xl mb-2">🏠</p><p>ยังไม่มีครูที่ปรึกษา</p></div>`; return
+        <p class="text-3xl mb-2">🏠</p><p>ยังไม่พบห้องเรียนประเภท${activeCategory}</p></div>`; return
     }
     wrap.innerHTML = `<table class="w-full text-sm">
       <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
         <tr>
           <th class="px-5 py-3 text-left">ห้อง</th>
           <th class="px-5 py-3 text-left">ครูที่ปรึกษา</th>
-          <th class="px-5 py-3 text-center">ประเภท</th>
           <th class="px-5 py-3 text-right">จัดการ</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
-        ${rows.map(r=>`
+        ${rooms.map(room => {
+          const r = assigned[room]
+          return `
         <tr class="hover:bg-gray-50 transition">
-          <td class="px-5 py-3 font-semibold text-gray-800">${r.main_room}</td>
+          <td class="px-5 py-3 font-semibold text-gray-800">${room}</td>
           <td class="px-5 py-3 text-gray-600">
-            ${r.teachers?.full_name??'—'}
-            <span class="text-xs text-gray-400 ml-1">${r.teachers?.teacher_code?`(${r.teachers.teacher_code})`:''}</span>
-          </td>
-          <td class="px-5 py-3 text-center">
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium ${r.category==='สามัญ'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'}">${r.category??'—'}</span>
+            ${r
+              ? `<span class="font-medium text-gray-800">${r.teachers?.full_name??'—'}</span>
+                 <span class="text-xs text-gray-400 ml-1">${r.teachers?.teacher_code?`(${r.teachers.teacher_code})`:''}</span>`
+              : `<button onclick="window._openHomeroomPicker('${_onclickText(room)}','${activeCategory}')"
+                   class="text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-full">
+                   ยังไม่มีครูที่ปรึกษา
+                 </button>`}
           </td>
           <td class="px-5 py-3 text-right">
-            <button onclick="window._deleteHomeroom(${r.id},'${r.main_room}')"
-              class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>
+            <button onclick="window._openHomeroomPicker('${_onclickText(room)}','${activeCategory}')"
+              class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">${r ? 'เปลี่ยน' : 'เลือกครู'}</button>
+            ${r ? `<button onclick="window._deleteHomeroom(${r.id},'${_onclickText(room)}')"
+              class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>` : ''}
           </td>
-        </tr>`).join('')}
+        </tr>`}).join('')}
       </tbody>
     </table>`
   }
 
   await _renderTable()
 
-  // Teacher search in form
-  const codeEl = document.getElementById('hr-teacher-code')
-  const nameEl = document.getElementById('hr-teacher-name')
-  const dropEl = document.getElementById('hr-teacher-dropdown')
-  const idEl   = document.getElementById('hr-teacher-id')
-
-  const _pickT = (t) => {
-    idEl.value   = t ? t.id : ''
-    codeEl.value = t ? (t.teacher_code ?? '') : ''
-    nameEl.value = t ? t.full_name : ''
-    dropEl.classList.add('hidden')
-  }
-  const _renderDrop = (list) => {
-    dropEl.innerHTML = !list.length
-      ? `<p class="px-4 py-3 text-sm text-gray-400">ไม่พบ</p>`
-      : list.map(t=>`<div class="px-4 py-2.5 text-sm cursor-pointer hover:bg-indigo-50 t-opt" data-id="${t.id}">
-           <span class="font-mono text-xs text-gray-400 mr-2">${t.teacher_code??''}</span>${t.full_name}</div>`).join('')
-    dropEl.querySelectorAll('.t-opt').forEach(el =>
-      el.addEventListener('mousedown', e => { e.preventDefault(); _pickT(allTeachers.find(x=>String(x.id)===el.dataset.id)) }))
-    dropEl.classList.remove('hidden')
-  }
-  codeEl.oninput = () => {
-    const q = codeEl.value.toLowerCase()
-    const ex = allTeachers.find(t=>(t.teacher_code??'').toLowerCase()===q)
-    if (ex) _pickT(ex)
-    else if (q) _renderDrop(allTeachers.filter(t=>(t.teacher_code??'').toLowerCase().startsWith(q)))
-  }
-  nameEl.onfocus = () => _renderDrop(allTeachers)
-  nameEl.oninput = () => {
-    const q = nameEl.value.toLowerCase()
-    _renderDrop(q ? allTeachers.filter(t=>t.full_name.toLowerCase().includes(q)) : allTeachers)
-  }
-  nameEl.onblur = () => setTimeout(()=>dropEl.classList.add('hidden'),150)
-
-  window._addHomeroom = () => {
-    _pickT(null)
-    document.getElementById('hr-room').value     = ''
-    document.getElementById('hr-edit-id').value  = ''
-    document.getElementById('homeroom-form-title').textContent = 'เพิ่มครูที่ปรึกษา'
-    document.getElementById('homeroom-form-wrap').classList.remove('hidden')
-  }
   window._deleteHomeroom = async (id, room) => {
     if (!confirm(`ยืนยันลบครูที่ปรึกษาห้อง ${room}?`)) return
     try { await deleteHomeroomTeacher(id); showToast('ลบแล้ว','success'); await _renderTable() }
     catch { showToast('ลบไม่สำเร็จ','error') }
   }
 
-  document.getElementById('homeroom-form').addEventListener('submit', async e => {
-    e.preventDefault()
-    const btn = document.getElementById('hr-save')
-    const tid = document.getElementById('hr-teacher-id').value
-    const room = document.getElementById('hr-room').value.trim()
-    if (!tid || !room) { showToast('กรุณาเลือกครูและห้องเรียน','warning'); return }
-    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-    try {
-      await upsertHomeroomTeacher({
-        teacher_id: Number(tid), main_room: room,
-        category:   document.getElementById('hr-category').value,
-        academic_year: curYear, semester: curSem,
+  window._openHomeroomPicker = (room, category) => {
+    document.getElementById('hr-picker')?.remove()
+    let selected = null
+    const m = document.createElement('div')
+    m.id = 'hr-picker'
+    m.className = 'fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+    m.innerHTML = `
+      <div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl p-5">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 class="font-bold text-gray-800">เลือกครูที่ปรึกษา</h3>
+            <p class="text-xs text-gray-400 mt-0.5">${category} · ห้อง ${room}</p>
+          </div>
+          <button id="hrp-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+        </div>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <input id="hrp-code" class="${SELECT_CLS}" placeholder="พิมพ์รหัสครู" autocomplete="off" />
+          <input id="hrp-name" class="${SELECT_CLS}" placeholder="พิมพ์ชื่อครู" autocomplete="off" />
+        </div>
+        <div id="hrp-results" class="border border-gray-100 rounded-xl overflow-y-auto mb-4" style="max-height:240px"></div>
+        <button id="hrp-save" disabled
+          class="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40">
+          เลือกครูที่ปรึกษา
+        </button>
+      </div>`
+    document.body.appendChild(m)
+
+    const resultEl = m.querySelector('#hrp-results')
+    const saveBtn = m.querySelector('#hrp-save')
+    const renderResults = (list) => {
+      resultEl.innerHTML = !list.length
+        ? `<p class="px-4 py-8 text-center text-sm text-gray-400">ไม่พบครู</p>`
+        : list.slice(0, 20).map(t => `
+          <button type="button" data-id="${t.id}"
+            class="hrp-option w-full px-4 py-3 text-left text-sm hover:bg-indigo-50 border-b border-gray-50 last:border-0">
+            <span class="font-mono text-xs text-gray-400 mr-2">${t.teacher_code ?? '—'}</span>
+            <span class="font-medium text-gray-800">${t.full_name}</span>
+          </button>`).join('')
+      resultEl.querySelectorAll('.hrp-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selected = allTeachers.find(t => String(t.id) === btn.dataset.id)
+          resultEl.querySelectorAll('.hrp-option').forEach(x => x.classList.remove('bg-emerald-50', 'text-emerald-700'))
+          btn.classList.add('bg-emerald-50', 'text-emerald-700')
+          saveBtn.disabled = false
+        })
       })
-      showToast('บันทึกสำเร็จ','success')
-      document.getElementById('homeroom-form-wrap').classList.add('hidden')
+    }
+    const filterTeachers = () => {
+      const code = m.querySelector('#hrp-code').value.trim().toLowerCase()
+      const name = m.querySelector('#hrp-name').value.trim().toLowerCase()
+      renderResults(allTeachers.filter(t =>
+        (!code || (t.teacher_code ?? '').toLowerCase().includes(code)) &&
+        (!name || (t.full_name ?? '').toLowerCase().includes(name))
+      ))
+    }
+    m.querySelector('#hrp-close').addEventListener('click', () => m.remove())
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#hrp-code').addEventListener('input', filterTeachers)
+    m.querySelector('#hrp-name').addEventListener('input', filterTeachers)
+    saveBtn.addEventListener('click', async () => {
+      if (!selected) return
+      saveBtn.disabled = true
+      saveBtn.textContent = 'กำลังบันทึก...'
+      try {
+        await assignHomeroomTeacher({
+          teacher_id: selected.id,
+          main_room: room,
+          category,
+          academic_year: curYear,
+          semester: curSem,
+        })
+        showToast('บันทึกครูที่ปรึกษาสำเร็จ', 'success')
+        m.remove()
+        await _renderTable()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        saveBtn.disabled = false
+        saveBtn.textContent = 'เลือกครูที่ปรึกษา'
+      }
+    })
+    renderResults(allTeachers)
+  }
+
+  document.querySelectorAll('.hr-tab').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      activeCategory = btn.dataset.hrTab
       await _renderTable()
-    } catch (err) { showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error') }
-    finally { btn.disabled = false; btn.textContent = 'บันทึก' }
+    })
   })
 }
 

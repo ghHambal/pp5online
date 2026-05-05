@@ -220,13 +220,11 @@ export async function getUniqueRooms() {
 }
 
 export async function getUniqueReligionRooms() {
-  // ใช้ range ใหญ่เพื่อไม่ถูก Supabase default limit 1000
-  const { data, error } = await supabase
-    .from('students')
-    .select('religion_room')
-    .not('religion_room', 'is', null)
-    .range(0, 9999)
-  if (error) throw error
+  const data = await _fetchAllStudents(
+    'religion_room',
+    q => q.not('religion_room', 'is', null),
+    'religion_room'
+  )
   return [...new Set((data ?? []).map(s => s.religion_room).filter(Boolean))].sort()
 }
 
@@ -325,6 +323,24 @@ export async function upsertHomeroomTeacher(payload) {
   const { error } = await supabase
     .from('homeroom_teachers')
     .upsert(payload, { onConflict: 'teacher_id,main_room,category,academic_year,semester' })
+  if (error) throw error
+}
+
+export async function assignHomeroomTeacher(payload) {
+  const { teacher_id, main_room, category, academic_year, semester } = payload
+  const deleteQuery = supabase
+    .from('homeroom_teachers')
+    .delete()
+    .eq('main_room', main_room)
+    .eq('category', category)
+    .eq('academic_year', academic_year)
+    .eq('semester', semester)
+  const { error: deleteError } = await deleteQuery
+  if (deleteError) throw deleteError
+
+  const { error } = await supabase
+    .from('homeroom_teachers')
+    .insert({ teacher_id, main_room, category, academic_year, semester })
   if (error) throw error
 }
 
