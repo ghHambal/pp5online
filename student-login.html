@@ -214,13 +214,8 @@
         hide('step-code')
 
         if (stu.has_account) {
-          // มีบัญชีแล้ว → ดึง profile_id แล้วหา email
-          const { data: stuFull } = await supabase
-            .from('students').select('profile_id').eq('student_code', code).maybeSingle()
-          const { data: email } = stuFull?.profile_id
-            ? await supabase.rpc('resolve_student_login_email', { p_profile_id: stuFull.profile_id })
-            : { data: null }
-          _email = email
+          // มีบัญชีแล้ว → ใช้ login_email ที่ function คืนมาโดยตรง
+          _email = stu.login_email
           fillPreview('', stu)
           show('step-login')
           document.getElementById('inp-password').focus()

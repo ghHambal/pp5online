@@ -10,7 +10,8 @@ RETURNS TABLE (
   full_name    TEXT,
   main_room    TEXT,
   image_url    TEXT,
-  has_account  BOOLEAN
+  has_account  BOOLEAN,
+  login_email  TEXT
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -24,7 +25,11 @@ BEGIN
     s.full_name,
     s.main_room,
     s.image_url,
-    (s.profile_id IS NOT NULL) AS has_account
+    (s.profile_id IS NOT NULL)                                AS has_account,
+    CASE WHEN s.profile_id IS NOT NULL
+         THEN (SELECT email FROM auth.users WHERE id = s.profile_id)
+         ELSE NULL
+    END                                                       AS login_email
   FROM students s
   WHERE s.student_code = p_student_code
   LIMIT 1;
