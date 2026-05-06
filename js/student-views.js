@@ -683,7 +683,13 @@ export async function renderExamRequestForm(student, classId) {
       <h2 class="font-bold text-gray-800 mb-1">📝 ยื่นคำร้อง</h2>
       <p class="text-xs text-gray-400 mb-5">${ms?.subject_name ?? ''} · ${cls.class_name ?? ''}</p>
 
-      <form id="req-form" class="space-y-4">
+      ${hasSchedule ? `
+      <div id="schedule-first-gate" class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <p class="text-sm font-bold text-emerald-800">เลือกคาบว่างของครูก่อน</p>
+        <p class="mt-1 text-xs text-emerald-600">ระบบจะเปิดตารางสอนให้เลือกวันและคาบ แล้วค่อยกรอกข้อมูลคำร้องต่อ</p>
+      </div>` : ''}
+
+      <form id="req-form" class="space-y-4 ${hasSchedule ? 'hidden' : ''}">
         <!-- ประเภทคำร้อง -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1.5">ประเภทคำร้อง <span class="text-red-400">*</span></label>
@@ -766,7 +772,7 @@ export async function renderExamRequestForm(student, classId) {
             <button type="button" id="close-schedule-modal"
               class="w-9 h-9 rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600">×</button>
           </div>
-          <p class="text-[11px] text-emerald-600 font-medium mb-2">สีเขียว = คาบว่างที่เลือกได้</p>
+          <p class="text-[11px] text-emerald-600 font-medium mb-2">กรุณาเลือกคาบว่างก่อนกรอกคำร้อง · สีเขียว = คาบว่างที่เลือกได้</p>
           ${_buildScheduleGrid()}
           <p class="text-[11px] text-gray-400 mt-3">ระบบจะนำวันในสัปดาห์ปัจจุบันและคาบที่เลือกไปเติมในคำร้องให้อัตโนมัติ</p>
         </div>
@@ -791,11 +797,15 @@ export async function renderExamRequestForm(student, classId) {
       modal?.classList.add('flex')
     })
     document.getElementById('close-schedule-modal')?.addEventListener('click', () => {
+      if (!_selectedPeriod) {
+        window._stuOpenClassTab?.(classId, 'requests')
+        return
+      }
       modal?.classList.add('hidden')
       modal?.classList.remove('flex')
     })
     modal?.addEventListener('click', e => {
-      if (e.target === modal) {
+      if (e.target === modal && _selectedPeriod) {
         modal.classList.add('hidden')
         modal.classList.remove('flex')
       }
@@ -819,6 +829,8 @@ export async function renderExamRequestForm(student, classId) {
         if (summaryText) summaryText.textContent = `คาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)}`
         const pickerLabel = document.getElementById('schedule-picker-label')
         if (pickerLabel) pickerLabel.textContent = `เลือกคาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)} แล้ว`
+        document.getElementById('schedule-first-gate')?.classList.add('hidden')
+        document.getElementById('req-form')?.classList.remove('hidden')
 
         // Highlight selected cell, remove from others
         document.querySelectorAll('.sched-period-btn').forEach(b => {
