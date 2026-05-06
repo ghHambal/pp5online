@@ -3,6 +3,8 @@
 -- (จำเป็นสำหรับขั้นตอนแรกของ student-login.html ก่อน login)
 -- รัน 1 ครั้งใน Supabase SQL Editor
 
+DROP FUNCTION IF EXISTS public.lookup_student_by_code(TEXT);
+
 CREATE OR REPLACE FUNCTION public.lookup_student_by_code(p_student_code TEXT)
 RETURNS TABLE (
   id           INT,
