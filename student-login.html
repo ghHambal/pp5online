@@ -200,13 +200,12 @@
       hide('step1-msg')
 
       try {
-        const { data: stu } = await supabase
-          .from('students')
-          .select('id, student_code, full_name, main_room, image_url, profile_id')
-          .eq('student_code', code)
-          .maybeSingle()
+        // ใช้ SECURITY DEFINER function เพื่อให้ anon user ค้นหาได้
+        const { data: rows, error: lookupErr } = await supabase
+          .rpc('lookup_student_by_code', { p_student_code: code })
 
-        if (!stu) {
+        const stu = rows?.[0] ?? null
+        if (lookupErr || !stu) {
           showMsg('step1-msg', 'ไม่พบรหัสนักเรียน "' + code + '" ในระบบ', 'error')
           btn.disabled = false; btn.textContent = 'ถัดไป →'; return
         }
@@ -214,10 +213,13 @@
         _student = stu
         hide('step-code')
 
-        if (stu.profile_id) {
-          // มีบัญชีแล้ว → ดึง email แล้วแสดงช่องรหัสผ่าน
-          const { data: email } = await supabase
-            .rpc('resolve_student_login_email', { p_profile_id: stu.profile_id })
+        if (stu.has_account) {
+          // มีบัญชีแล้ว → ดึง profile_id แล้วหา email
+          const { data: stuFull } = await supabase
+            .from('students').select('profile_id').eq('student_code', code).maybeSingle()
+          const { data: email } = stuFull?.profile_id
+            ? await supabase.rpc('resolve_student_login_email', { p_profile_id: stuFull.profile_id })
+            : { data: null }
           _email = email
           fillPreview('', stu)
           show('step-login')
