@@ -1,7 +1,7 @@
 import {
   getMyEnrolledClasses, getMyScores, getMyAttendance,
   getMyExamRequests, submitExamRequest, cancelExamRequest,
-  getTeacherFreePeriods, getSchoolPeriods, getScoreColumnsForClass,
+  getTeacherFreePeriods, getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
 } from './student-api.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -46,6 +46,43 @@ function _gradeColor(pct) {
   if (pct >= 65) return 'text-blue-600'
   if (pct >= 50) return 'text-amber-600'
   return 'text-red-500'
+}
+
+// ─── Subject color helper ──────────────────────────────────────────────────────
+function _subjectColorCls(cls) {
+  const sg  = cls.master_subjects?.subject_group ?? ''
+  const sk  = cls.skill_group ?? ''
+  const cat = cls.master_subjects?.teachers?.category ?? ''
+  if (cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC')
+    return { bg:'bg-amber-50', border:'border-amber-200', text:'text-amber-800', tag:'bg-amber-100 text-amber-700', accent:'border-l-amber-400' }
+  if (sg === 'ACDMVOC' || sk === 'สามัญปวช')
+    return { bg:'bg-purple-50', border:'border-purple-200', text:'text-purple-800', tag:'bg-purple-100 text-purple-700', accent:'border-l-purple-400' }
+  if (sk === 'ภาษา')
+    return { bg:'bg-blue-50', border:'border-blue-200', text:'text-blue-800', tag:'bg-blue-100 text-blue-700', accent:'border-l-blue-400' }
+  if (sk === 'ชีวิต')
+    return { bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-800', tag:'bg-emerald-100 text-emerald-700', accent:'border-l-emerald-400' }
+  if (sk === 'วิชาการ')
+    return { bg:'bg-orange-50', border:'border-orange-200', text:'text-orange-800', tag:'bg-orange-100 text-orange-700', accent:'border-l-orange-400' }
+  return { bg:'bg-gray-50', border:'border-gray-200', text:'text-gray-800', tag:'bg-gray-100 text-gray-600', accent:'border-l-gray-300' }
+}
+
+// ─── Week date helpers ────────────────────────────────────────────────────────
+function _getWeekDates() {
+  const today = new Date()
+  const dow = today.getDay() // 0=Sun
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+  const dates = {}
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i - 1)
+    dates[i] = d
+  }
+  return dates
+}
+
+function _fmtDateTH(d) {
+  return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()+543}`
 }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
@@ -161,41 +198,67 @@ export async function renderStudentSubjects(student) {
     return
   }
 
+  // Group into สามัญ (ACDM/ACDMVOC) and ศาสนา (AGM/AGMVOC)
+  const samai   = classes.filter(c => {
+    const sg = c.master_subjects?.subject_group ?? ''
+    const cat = c.master_subjects?.teachers?.category ?? ''
+    return !( cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC' )
+  })
+  const satsana = classes.filter(c => {
+    const sg = c.master_subjects?.subject_group ?? ''
+    const cat = c.master_subjects?.teachers?.category ?? ''
+    return ( cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC' )
+  })
+
+  const _renderCard = (cls) => {
+    const ms = cls.master_subjects
+    const teacher = ms?.teachers
+    const c = _subjectColorCls(cls)
+    return `<div onclick="window._stuOpenClass(${cls.id})"
+      class="${c.bg} ${c.border} border border-l-4 ${c.accent} rounded-2xl shadow-sm p-4 cursor-pointer hover:shadow-md transition">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1 min-w-0">
+          <p class="font-bold ${c.text} text-sm leading-tight">${ms?.subject_name ?? '—'}</p>
+          <p class="text-xs text-gray-400 mt-0.5 font-mono">${ms?.subject_code ?? ''}</p>
+        </div>
+        <div class="flex flex-col items-end gap-1 flex-shrink-0">
+          ${cls.skill_group
+            ? `<span class="text-[10px] px-2 py-0.5 rounded-full ${c.tag} font-medium">${cls.skill_group}</span>`
+            : ''}
+          <span class="text-[10px] text-gray-400">${ms?.credit ?? '—'} หน่วยกิต</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mt-3 pt-3 border-t border-white/60">
+        <div class="flex items-center gap-1.5">
+          ${teacher?.image_url
+            ? `<img src="${teacher.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
+            : `<div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600 font-medium">${(teacher?.full_name??'ค').charAt(0)}</div>`}
+          <span class="text-xs text-gray-600">${teacher?.full_name ?? '—'}</span>
+        </div>
+        <span class="ml-auto text-xs text-gray-400">${cls.class_name ?? ''}</span>
+      </div>
+    </div>`
+  }
+
+  const _renderSection = (title, icon, items) => {
+    if (!items.length) return ''
+    return `
+      <div class="mb-5">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-base">${icon}</span>
+          <h3 class="font-bold text-gray-700 text-sm">${title}</h3>
+          <span class="ml-1 text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">${items.length} วิชา</span>
+        </div>
+        <div class="space-y-3">
+          ${items.map(_renderCard).join('')}
+        </div>
+      </div>`
+  }
+
   setContent(`
     <h2 class="font-bold text-gray-800 mb-4">📚 รายวิชาของฉัน <span class="text-sm font-normal text-gray-400">(${classes.length} วิชา)</span></h2>
-    <div class="space-y-3">
-      ${classes.map(cls => {
-        const ms = cls.master_subjects
-        const teacher = ms?.teachers
-        const skillColors = {
-          ภาษา:'bg-blue-50 border-blue-100', ชีวิต:'bg-emerald-50 border-emerald-100',
-          วิชาการ:'bg-orange-50 border-orange-100', ศาสนามัธยม:'bg-amber-50 border-amber-100',
-        }
-        const bg = skillColors[cls.skill_group] ?? 'bg-white border-gray-100'
-        return `<div onclick="window._stuOpenClass(${cls.id})"
-          class="${bg} rounded-2xl border shadow-sm p-4 cursor-pointer hover:shadow-md transition">
-          <div class="flex items-start justify-between gap-2">
-            <div class="flex-1 min-w-0">
-              <p class="font-bold text-gray-800 text-sm leading-tight">${ms?.subject_name ?? '—'}</p>
-              <p class="text-xs text-gray-400 mt-0.5 font-mono">${ms?.subject_code ?? ''}</p>
-            </div>
-            <div class="flex flex-col items-end gap-1 flex-shrink-0">
-              ${cls.skill_group ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-white/80 text-gray-600 border border-gray-100">${cls.skill_group}</span>` : ''}
-              <span class="text-[10px] text-gray-400">${ms?.credit ?? '—'} หน่วยกิต</span>
-            </div>
-          </div>
-          <div class="flex items-center gap-3 mt-3 pt-3 border-t border-white/60">
-            <div class="flex items-center gap-1.5">
-              ${teacher?.image_url
-                ? `<img src="${teacher.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
-                : `<div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600 font-medium">${(teacher?.full_name??'ค').charAt(0)}</div>`}
-              <span class="text-xs text-gray-600">${teacher?.full_name ?? '—'}</span>
-            </div>
-            <span class="ml-auto text-xs text-gray-400">${cls.class_name ?? ''}</span>
-          </div>
-        </div>`
-      }).join('')}
-    </div>
+    ${_renderSection('วิชาสามัญ', '📖', samai)}
+    ${_renderSection('วิชาศาสนา', '🕌', satsana)}
   `)
 }
 
@@ -235,45 +298,99 @@ export async function renderStudentSubjectDetail(student, classId) {
   const attPresent = attendance.filter(a => a.status === 'present').length
   const attPct     = attTotal > 0 ? Math.round(attPresent / attTotal * 100) : null
 
-  const _scoreRow = (col) => {
+  // Grade label + color
+  const _gradeLabel = (p) => {
+    if (p >= 80) return { label:'ดีเยี่ยม', cls:'bg-emerald-100 text-emerald-700' }
+    if (p >= 65) return { label:'ดี',       cls:'bg-blue-100 text-blue-700' }
+    if (p >= 50) return { label:'พอใช้',    cls:'bg-yellow-100 text-yellow-700' }
+    return              { label:'ปรับปรุง', cls:'bg-red-100 text-red-600' }
+  }
+  const grade = totalMax > 0 ? _gradeLabel(pct) : null
+
+  // Score table row
+  const _scoreTableRow = (col) => {
     const sc = scoreMap[col.id]
-    const raw = parseFloat(sc?.original_score ?? 0) || 0
-    const fin = parseFloat(sc?.final_score ?? sc?.original_score ?? 0) || 0
+    const hasScore = sc && (sc.final_score != null || sc.original_score != null)
+    const val = hasScore ? (parseFloat(sc?.final_score ?? sc?.original_score) || 0) : null
+    const pctCol = (val != null && col.max_score > 0) ? Math.round(val / col.max_score * 100) : null
     const hasRetake = sc?.retake_score != null
-    const pctCol = col.max_score > 0 ? fin/col.max_score*100 : 0
-    return `<div class="flex items-center gap-2 py-2.5 border-b border-gray-50 last:border-0">
-      <div class="flex-1 min-w-0">
-        <p class="text-sm text-gray-700 truncate">${col.assignment_name}</p>
-        <p class="text-[10px] text-gray-400">${col.assignment_type} · เต็ม ${col.max_score}</p>
+
+    return `<tr class="border-b border-gray-100 last:border-0">
+      <td class="py-2.5 px-3 text-xs text-gray-700 w-full">
+        ${col.assignment_name}
+        ${hasRetake ? `<span class="ml-1 text-[10px] text-purple-500">(ปรับ)</span>` : ''}
+      </td>
+      <td class="py-2.5 px-3 text-center text-xs font-bold ${val != null ? 'text-blue-600' : 'text-gray-300'} whitespace-nowrap">
+        ${val != null ? val.toFixed(1).replace(/\.0$/, '') : '—'}
+      </td>
+      <td class="py-2.5 px-3 text-center text-xs text-gray-400 whitespace-nowrap">/${col.max_score}</td>
+      <td class="py-2.5 px-3 text-center text-xs ${val != null ? 'text-gray-500' : 'text-gray-300'} whitespace-nowrap">
+        ${pctCol != null ? pctCol+'%' : '—%'}
+      </td>
+    </tr>`
+  }
+
+  const _scoreTable = (cols, totalScore, maxScore, summaryBg, label) => {
+    if (!cols.length) return ''
+    const sumPct = maxScore > 0 ? Math.round(totalScore / maxScore * 100) : 0
+    return `
+    <div class="mb-4">
+      <div class="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100">
+        <span class="text-sm">${label}</span>
       </div>
-      <div class="text-right flex-shrink-0">
-        ${sc ? `
-          <p class="font-bold text-sm ${_gradeColor(pctCol)}">${fin > 0 ? fin.toFixed(1).replace(/\.0$/,'') : '—'}</p>
-          ${hasRetake ? `<p class="text-[10px] text-gray-400">ปรับ: ${sc.retake_score}</p>` : ''}
-        ` : `<p class="text-sm text-gray-300">—</p>`}
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="bg-gray-50 text-[10px] text-gray-400 uppercase tracking-wide">
+              <th class="py-2 px-3 text-left font-semibold">ชื่องาน</th>
+              <th class="py-2 px-3 text-center font-semibold">คะแนน</th>
+              <th class="py-2 px-3 text-center font-semibold">เต็ม</th>
+              <th class="py-2 px-3 text-center font-semibold">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cols.map(_scoreTableRow).join('')}
+            <tr class="${summaryBg}">
+              <td class="py-2.5 px-3 text-xs font-bold text-gray-700">รวม</td>
+              <td class="py-2.5 px-3 text-center text-xs font-bold text-gray-800">${totalScore.toFixed(1).replace(/\.0$/,'')}</td>
+              <td class="py-2.5 px-3 text-center text-xs font-bold text-gray-500">/${maxScore}</td>
+              <td class="py-2.5 px-3 text-center text-xs font-bold text-gray-600">${sumPct}%</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>`
   }
+
+  const colorCls = _subjectColorCls(cls)
 
   setContent(`
     <button onclick="window._stuNav('subjects')" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← กลับรายวิชา</button>
 
     <!-- Header card -->
-    <div class="bg-gradient-to-br from-emerald-600 to-teal-600 rounded-2xl p-5 text-white mb-4">
-      <p class="text-xs text-emerald-200 font-mono mb-1">${ms?.subject_code ?? ''}</p>
-      <h2 class="font-bold text-lg leading-tight">${ms?.subject_name ?? '—'}</h2>
-      <p class="text-xs text-emerald-200 mt-1">${teacher?.full_name ?? '—'} · ${cls.class_name ?? ''}</p>
-      <div class="mt-4 flex items-end justify-between">
-        <div>
-          <p class="text-xs text-emerald-200">คะแนนรวม</p>
-          <p class="text-3xl font-bold">${total > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}<span class="text-sm font-normal text-emerald-300">/${totalMax}</span></p>
-        </div>
-        ${attPct !== null ? `
-        <div class="text-right">
-          <p class="text-xs text-emerald-200">เข้าเรียน</p>
-          <p class="text-xl font-bold">${attPct}%</p>
-          <p class="text-[10px] text-emerald-300">${attPresent}/${attTotal} คาบ</p>
-        </div>` : ''}
+    <div class="${colorCls.bg} ${colorCls.border} border border-l-4 ${colorCls.accent} rounded-2xl p-4 mb-4 flex items-start gap-3">
+      <!-- Student image -->
+      <div class="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
+                  flex items-center justify-center text-white text-xl font-bold border-2 border-white shadow">
+        ${student.image_url
+          ? `<img src="${student.image_url}" class="w-full h-full object-cover"/>`
+          : (student.full_name??'น').charAt(0)}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="font-bold ${colorCls.text} text-sm leading-tight">${ms?.subject_name ?? '—'}</p>
+        <p class="text-[11px] text-gray-400 font-mono mt-0.5">${ms?.subject_code ?? ''}</p>
+        <p class="text-xs text-gray-500 mt-0.5">${student.full_name} · ${student.student_code}</p>
+        <p class="text-[11px] text-gray-400 mt-0.5">${teacher?.full_name ?? '—'} · ${cls.class_name ?? ''}</p>
+      </div>
+      <!-- Score + grade top-right -->
+      <div class="flex-shrink-0 text-right">
+        <p class="text-2xl font-bold text-gray-800">${totalMax > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}</p>
+        <p class="text-[10px] text-gray-400">/${totalMax} คะแนน</p>
+        ${grade
+          ? `<span class="inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${grade.cls}">${grade.label}</span>`
+          : ''}
+        <button onclick="window._stuNav('subjects')"
+          class="block mt-2 ml-auto text-gray-300 hover:text-gray-500 text-lg leading-none">×</button>
       </div>
     </div>
 
@@ -284,27 +401,26 @@ export async function renderStudentSubjectDetail(student, classId) {
       📝 ยื่นคำร้องสอบย้อนหลัง / ปรับคะแนน
     </button>
 
-    <!-- Scores -->
+    <!-- Score tables -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
-      <div class="px-4 py-3 border-b border-gray-50">
+      <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <h3 class="font-semibold text-gray-700 text-sm">📊 คะแนนย่อย</h3>
+        ${totalMax > 0 ? `<span class="text-xs text-gray-400">${pct.toFixed(0)}% รวม</span>` : ''}
       </div>
-      ${columns.length === 0 ? `<p class="px-4 py-6 text-center text-xs text-gray-300">ยังไม่มีคะแนน</p>` : `
-      <div class="px-4">
-        ${midCols.length > 0 ? `
-        <p class="text-[10px] font-semibold text-blue-500 uppercase tracking-wider mt-3 mb-1">กลางภาค (${midScore.toFixed(1).replace(/\.0$/,'')}/${midMax})</p>
-        ${midCols.map(_scoreRow).join('')}` : ''}
-        ${finCols.length > 0 ? `
-        <p class="text-[10px] font-semibold text-purple-500 uppercase tracking-wider mt-3 mb-1">ปลายภาค (${finScore.toFixed(1).replace(/\.0$/,'')}/${finMax})</p>
-        ${finCols.map(_scoreRow).join('')}` : ''}
-      </div>`}
+      ${columns.length === 0
+        ? `<p class="px-4 py-6 text-center text-xs text-gray-300">ยังไม่มีคะแนน</p>`
+        : `<div>
+            ${_scoreTable(midCols, midScore, midMax, 'bg-blue-50', '📘 กลางภาค')}
+            ${_scoreTable(finCols, finScore, finMax, 'bg-purple-50', '📙 ปลายภาค')}
+          </div>`}
     </div>
 
     <!-- Attendance summary -->
     ${attTotal > 0 ? `
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <div class="px-4 py-3 border-b border-gray-50">
+      <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <h3 class="font-semibold text-gray-700 text-sm">📅 การเข้าเรียน</h3>
+        ${attPct !== null ? `<span class="text-xs text-gray-400">${attPresent}/${attTotal} คาบ · ${attPct}%</span>` : ''}
       </div>
       <div class="px-4 py-3 grid grid-cols-5 gap-1.5">
         ${attendance.map(a => `
@@ -409,16 +525,90 @@ export async function renderExamRequestForm(student, classId) {
   const ms = cls.master_subjects
   const teacherId = ms?.teacher_id
 
-  const [columns, freePeriods, periods] = await Promise.all([
+  const [columns, schedule, periods] = await Promise.all([
     getScoreColumnsForClass(classId).catch(()=>[]),
-    teacherId ? getTeacherFreePeriods(teacherId).catch(()=>[]) : Promise.resolve([]),
+    teacherId ? getTeacherFullSchedule(teacherId).catch(()=>[]) : Promise.resolve([]),
     getSchoolPeriods().catch(()=>[]),
   ])
 
   const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
+  const weekDates = _getWeekDates()
+
+  // Build schedule lookup: { 'day_period': { is_free, class_id } }
+  const schedMap = {}
+  for (const row of schedule) {
+    schedMap[`${row.day_of_week}_${row.period_no}`] = row
+  }
+
+  const hasSchedule = schedule.length > 0
 
   const INPUT = 'w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white'
   const SELECT = INPUT + ' cursor-pointer'
+
+  // Persistent state for selected period (will be set via JS after render)
+  let _selectedPeriod = null
+
+  // Build schedule grid HTML (Mon–Fri = days 1–5)
+  const _buildScheduleGrid = () => {
+    const workDays = [1, 2, 3, 4, 5]
+    const dayNames = { 1:'จ', 2:'อ', 3:'พ', 4:'พฤ', 5:'ศ' }
+
+    const headerCells = workDays.map(d => {
+      const date = weekDates[d]
+      return `<th class="py-2 px-1 text-center">
+        <p class="text-xs font-bold text-gray-600">${dayNames[d]}</p>
+        <p class="text-[10px] text-gray-400">${date.getDate()}/${date.getMonth()+1}</p>
+      </th>`
+    }).join('')
+
+    const rows = periods.map(p => {
+      const cells = workDays.map(d => {
+        const key = `${d}_${p.period_no}`
+        const slot = schedMap[key]
+        if (!slot) {
+          // No data for this slot — gray disabled
+          return `<td class="py-1 px-1">
+            <div class="flex flex-col items-center justify-center h-12 rounded-lg bg-gray-50 border border-gray-100 text-gray-300 text-[10px]">
+              <span>—</span>
+            </div>
+          </td>`
+        }
+        if (slot.is_free) {
+          // Free period — green, clickable
+          return `<td class="py-1 px-1">
+            <button type="button"
+              data-period="${p.period_no}" data-day="${d}"
+              class="sched-period-btn w-full flex flex-col items-center justify-center h-12 rounded-lg
+                     bg-emerald-50 border-2 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-400
+                     transition cursor-pointer text-emerald-700 text-[10px] font-medium">
+              <span class="font-bold text-xs">คาบ${p.period_no}</span>
+              <span class="text-emerald-500">${p.start_time.slice(0,5)}</span>
+            </button>
+          </td>`
+        } else {
+          // Busy period — gray disabled
+          return `<td class="py-1 px-1">
+            <div class="flex flex-col items-center justify-center h-12 rounded-lg
+                        bg-gray-100 border border-gray-200 text-gray-400 text-[10px]">
+              <span class="font-bold text-xs text-gray-400">คาบ${p.period_no}</span>
+              <span class="text-[9px]">ไม่ว่าง</span>
+            </div>
+          </td>`
+        }
+      }).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
+
+    return `
+    <div class="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+      <table class="w-full min-w-[280px]">
+        <thead class="bg-gray-50 border-b border-gray-100">
+          <tr>${headerCells}</tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">${rows}</tbody>
+      </table>
+    </div>`
+  }
 
   setContent(`
     <button onclick="window._stuOpenClass(${classId})" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← กลับรายวิชา</button>
@@ -452,36 +642,36 @@ export async function renderExamRequestForm(student, classId) {
           </select>
         </div>
 
-        <!-- วันที่ -->
+        <!-- Schedule grid / manual date -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1.5">วันที่ขอสอบ <span class="text-red-400">*</span></label>
-          <input type="date" id="req-date" class="${INPUT}" required
-            min="${new Date().toISOString().slice(0,10)}" />
-        </div>
-
-        <!-- คาบ -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1.5">คาบที่ขอสอบ <span class="text-red-400">*</span></label>
-          ${freePeriods.length > 0 ? `
-          <div class="space-y-1.5">
-            <p class="text-[11px] text-emerald-600 font-medium mb-2">✅ คาบว่างของครู (แนะนำ)</p>
-            <div class="grid grid-cols-3 gap-2">
-              ${freePeriods.map(fp => {
-                const p = periodMap[fp.period_no]
-                return `<label class="flex flex-col items-center border-2 border-gray-200 rounded-xl px-2 py-2 cursor-pointer
-                               has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 transition text-center">
-                  <input type="radio" name="req_period" value="${fp.period_no}" class="accent-emerald-500 mb-1" required />
-                  <span class="text-xs font-bold text-gray-700">คาบ ${fp.period_no}</span>
-                  <span class="text-[9px] text-gray-400">${DAY_TH[fp.day_of_week]??'—'}</span>
-                  ${p ? `<span class="text-[9px] text-gray-400">${p.start_time.slice(0,5)}</span>` : ''}
-                </label>`
-              }).join('')}
+          <label class="block text-sm font-medium text-gray-700 mb-2">วันและคาบที่ขอสอบ <span class="text-red-400">*</span></label>
+          ${hasSchedule ? `
+          <p class="text-[11px] text-emerald-600 font-medium mb-2">✅ เลือกคาบว่างของครู (สีเขียว = ว่าง)</p>
+          ${_buildScheduleGrid()}
+          <!-- Selected summary -->
+          <div id="period-summary" class="hidden mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <p class="text-sm font-semibold text-emerald-700">✅ เลือกแล้ว: <span id="period-summary-text"></span></p>
+          </div>
+          <!-- Hidden inputs auto-filled by grid -->
+          <input type="hidden" id="req-date" />
+          <input type="hidden" id="req-period-hidden" />
+          ` : `
+          <!-- No schedule data: show manual inputs -->
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">วันที่ขอสอบ</label>
+              <input type="date" id="req-date" class="${INPUT}"
+                min="${new Date().toISOString().slice(0,10)}" required />
             </div>
-          </div>` : `
-          <select id="req-period-sel" class="${SELECT}" required>
-            <option value="">— เลือกคาบ —</option>
-            ${periods.map(p => `<option value="${p.period_no}">คาบ ${p.period_no} (${p.start_time.slice(0,5)}–${p.end_time.slice(0,5)})</option>`).join('')}
-          </select>`}
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">คาบที่ขอสอบ</label>
+              <select id="req-period-sel" class="${SELECT}" required>
+                <option value="">— เลือกคาบ —</option>
+                ${periods.map(p => `<option value="${p.period_no}">คาบ ${p.period_no} (${p.start_time.slice(0,5)}–${p.end_time.slice(0,5)})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          `}
         </div>
 
         <!-- เหตุผล (แสดงเมื่อสอบย้อนหลัง) -->
@@ -510,19 +700,54 @@ export async function renderExamRequestForm(student, classId) {
     })
   })
 
+  // Schedule grid: period cell click handlers
+  if (hasSchedule) {
+    document.querySelectorAll('.sched-period-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const periodNo  = parseInt(btn.dataset.period)
+        const dayOfWeek = parseInt(btn.dataset.day)
+        const date      = weekDates[dayOfWeek]
+        _selectedPeriod = { period_no: periodNo, day_of_week: dayOfWeek, date }
+
+        // Fill hidden inputs
+        document.getElementById('req-date').value          = date.toISOString().slice(0, 10)
+        document.getElementById('req-period-hidden').value = periodNo
+
+        // Show summary
+        const summary = document.getElementById('period-summary')
+        const summaryText = document.getElementById('period-summary-text')
+        summary?.classList.remove('hidden')
+        if (summaryText) summaryText.textContent = `คาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)}`
+
+        // Highlight selected cell, remove from others
+        document.querySelectorAll('.sched-period-btn').forEach(b => {
+          b.classList.toggle('ring-2',   b === btn)
+          b.classList.toggle('ring-emerald-500', b === btn)
+          b.classList.toggle('bg-emerald-200',   b === btn)
+        })
+      })
+    })
+  }
+
   // Submit
   document.getElementById('req-form').addEventListener('submit', async e => {
     e.preventDefault()
-    const btn = document.getElementById('req-submit')
-    const type = document.querySelector('input[name="req_type"]:checked')?.value
-    const colId = document.getElementById('req-col').value
-    const date = document.getElementById('req-date').value
-    const periodRadio = document.querySelector('input[name="req_period"]:checked')
-    const periodSel = document.getElementById('req-period-sel')
-    const period = periodRadio?.value || periodSel?.value
+    const btn    = document.getElementById('req-submit')
+    const type   = document.querySelector('input[name="req_type"]:checked')?.value
+    const colId  = document.getElementById('req-col').value
     const reason = document.getElementById('req-reason')?.value.trim() || null
 
-    if (!type || !colId || !date || !period) { showToast('กรุณากรอกข้อมูลให้ครบ','warning'); return }
+    // Get date + period from either hidden fields (schedule mode) or manual inputs
+    const dateVal  = document.getElementById('req-date')?.value
+    const periodVal = hasSchedule
+      ? document.getElementById('req-period-hidden')?.value
+      : document.getElementById('req-period-sel')?.value
+
+    if (!type || !colId || !dateVal || !periodVal) {
+      showToast('กรุณากรอกข้อมูลให้ครบ', 'warning')
+      if (hasSchedule && !periodVal) showToast('กรุณาเลือกคาบจากตาราง', 'warning')
+      return
+    }
     if (type === 'สอบย้อนหลัง' && !reason) { showToast('กรุณาระบุเหตุผล','warning'); return }
 
     btn.disabled = true; btn.textContent = 'กำลังยื่น...'
@@ -532,8 +757,8 @@ export async function renderExamRequestForm(student, classId) {
         class_id: classId,
         assignment_id: parseInt(colId),
         request_type: type,
-        requested_date: date,
-        requested_period_no: parseInt(period),
+        requested_date: dateVal,
+        requested_period_no: parseInt(periodVal),
         reason: type === 'สอบย้อนหลัง' ? reason : null,
         status: 'pending',
       })

@@ -23,8 +23,8 @@ export async function getMyEnrolledClasses(studentId) {
         id, class_name, skill_group, google_sheet_id,
         day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
         master_subjects (
-          id, subject_code, subject_name, dept, grade_level, credit, teacher_id,
-          teachers ( id, full_name, phone, image_url )
+          id, subject_code, subject_name, dept, grade_level, credit, teacher_id, subject_group,
+          teachers ( id, full_name, phone, image_url, category )
         )
       )
     `)
@@ -101,6 +101,18 @@ export async function getTeacherFreePeriods(teacherId) {
     .select('day_of_week, period_no, is_free')
     .eq('teacher_id', teacherId)
     .eq('is_free', true)
+    .order('day_of_week')
+    .order('period_no')
+  if (error) throw error
+  return data ?? []
+}
+
+// ─── Teacher Full Schedule (all periods) ─────────────────────────────────────
+export async function getTeacherFullSchedule(teacherId) {
+  const { data, error } = await supabase
+    .from('teacher_schedules')
+    .select('day_of_week, period_no, is_free, class_id')
+    .eq('teacher_id', teacherId)
     .order('day_of_week')
     .order('period_no')
   if (error) throw error
