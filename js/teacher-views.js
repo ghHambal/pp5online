@@ -1026,8 +1026,14 @@ export async function renderProfile(teacher, onRefresh) {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">อีเมลบัญชี</label>
-          <input id="prof-email" type="email" value="${teacher?.auth_email??''}" class="${INPUT_CLS}" />
-          <p class="text-[11px] text-gray-400 mt-1">ใช้เป็นค่าเริ่มต้นตอนแชร์ไฟล์สำเนา Google Sheet ให้ครู</p>
+          <input id="prof-email" type="email" value="${teacher?.auth_email || teacher?.login_email || ''}" class="${INPUT_CLS}" />
+          <p class="text-[11px] text-gray-400 mt-1">ใช้เข้าสู่ระบบและใช้เป็นค่าเริ่มต้นตอนแชร์ไฟล์สำเนา Google Sheet ให้ครู</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ยูเซอร์เนมส่วนตัว</label>
+          <input id="prof-username" type="text" value="${teacher?.username??''}" placeholder="เช่น hambal.waji"
+            class="${INPUT_CLS} font-mono lowercase" />
+          <p class="text-[11px] text-gray-400 mt-1">ใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง 3-32 ตัวอักษร เพื่อใช้ล็อกอินแทนอีเมลได้</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
@@ -1097,21 +1103,29 @@ export async function renderProfile(teacher, onRefresh) {
       const subgEl  = document.getElementById('prof-subg')
       // text input override select (ถ้ากรอกตรงให้ใช้ก่อน)
       const deptVal = (deptTxt?.value.trim().toUpperCase() || deptSel?.value || '').trim() || null
+      const username = document.getElementById('prof-username').value.trim().toLowerCase()
+      const email = document.getElementById('prof-email').value.trim()
+      if (username && !/^[a-z0-9._-]{3,32}$/.test(username)) {
+        showToast('ยูเซอร์เนมต้องใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง 3-32 ตัวอักษร', 'warning')
+        btn.disabled = false; btn.textContent = 'บันทึก'
+        return
+      }
       const payload = {
         full_name:     name,
         phone:         document.getElementById('prof-phone').value.trim() || null,
         dept:          deptVal,
         subject_group: subgEl?.value || null,
+        username:      username || null,
+        login_email:   email || null,
       }
       const photoFile = document.getElementById('prof-photo-file').files?.[0]
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
-      await updateMyProfile(teacher.id, payload)
-      const email = document.getElementById('prof-email').value.trim()
       if (email && email !== (teacher.auth_email ?? '')) {
         const { error } = await supabase.auth.updateUser({ email })
         if (error) throw error
         showToast('ส่งคำขอเปลี่ยนอีเมลแล้ว กรุณายืนยันอีเมลใหม่ถ้าระบบร้องขอ', 'info')
       }
+      await updateMyProfile(teacher.id, payload)
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
       if (onRefresh) await onRefresh(teacher.profile_id)
       // re-render ด้วย teacher ใหม่ที่โหลดมาจาก onRefresh
@@ -1875,7 +1889,7 @@ export async function renderMyClasses(teacher) {
       document.getElementById('class-copy-modal')?.remove()
       const ms = cls.master_subjects ?? {}
       const defaultName = `${ms.subject_name || 'ปพ5'}_${cls.class_name || ''}_${teacher?.full_name || ''}`.replace(/\s+/g, ' ').trim()
-      const defaultEmail = teacher?.auth_email || ''
+      const defaultEmail = teacher?.auth_email || teacher?.login_email || ''
       const m = document.createElement('div')
       m.id = 'class-copy-modal'
       m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'

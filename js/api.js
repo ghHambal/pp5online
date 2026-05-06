@@ -38,7 +38,7 @@ export async function updateSystemConfig(key, value) {
 export async function getMyTeacherProfile(profileId) {
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, teachers_quota(total_classes_created, is_paid)')
+    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, teachers_quota(total_classes_created, is_paid)')
     .eq('profile_id', profileId)
     .maybeSingle()
   if (error) throw error
@@ -112,7 +112,7 @@ export async function getTeachers() {
   const { data, error } = await supabase
     .from('teachers')
     .select(`
-      id, teacher_code, full_name, category, phone, image_url, profile_id,
+      id, teacher_code, username, login_email, full_name, category, phone, image_url, profile_id,
       dept, skill_group, subject_group, staff_type,
       teachers_quota ( total_classes_created, is_paid )
     `)
@@ -124,7 +124,7 @@ export async function getTeachers() {
 export async function getTeacherById(id) {
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, full_name, category, phone, image_url, profile_id')
+    .select('id, teacher_code, username, login_email, full_name, category, phone, image_url, profile_id')
     .eq('id', id)
     .single()
   if (error) throw error

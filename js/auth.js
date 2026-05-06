@@ -23,23 +23,32 @@ async function checkSession() {
 async function handleLogin(e) {
   e.preventDefault()
 
-  const email    = document.getElementById('email').value.trim()
+  const identifier = document.getElementById('email').value.trim()
   const password = document.getElementById('password').value
   const btn      = document.getElementById('btn-login')
 
-  if (!email || !password) {
-    showToast('กรุณากรอก Email และรหัสผ่าน', 'warning')
+  if (!identifier || !password) {
+    showToast('กรุณากรอกอีเมล ยูเซอร์เนม หรือรหัสครู และรหัสผ่าน', 'warning')
     return
   }
 
   setButtonLoading(btn, true)
+
+  let email = identifier
+  try {
+    email = await resolveLoginEmail(identifier)
+  } catch (err) {
+    setButtonLoading(btn, false)
+    showToast(err.message ?? 'ไม่พบข้อมูลเข้าสู่ระบบนี้', 'error')
+    return
+  }
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error) {
     setButtonLoading(btn, false)
     const msg = error.message.includes('Invalid login credentials')
-      ? 'Email หรือรหัสผ่านไม่ถูกต้อง'
+      ? 'ข้อมูลเข้าสู่ระบบหรือรหัสผ่านไม่ถูกต้อง'
       : error.message
     showToast(msg, 'error')
     return
@@ -63,6 +72,41 @@ async function handleLogin(e) {
   }, 800)
 }
 
+function normalizeUsername(value) {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+function teacherCodeCandidates(value) {
+  const raw = String(value ?? '').trim()
+  if (!/^\d+$/.test(raw)) return []
+  const codes = new Set([raw])
+  if (/^[12]\d{2}$/.test(raw)) {
+    codes.add(raw[0] + raw.slice(1).padStart(3, '0'))
+  }
+  return Array.from(codes)
+}
+
+async function resolveLoginEmail(identifier) {
+  const raw = identifier.trim()
+  if (raw.includes('@')) return raw
+
+  const username = normalizeUsername(raw)
+  const codeList = teacherCodeCandidates(raw)
+  if (!codeList.length && !/^[a-z0-9._-]{3,32}$/.test(username)) {
+    throw new Error('ยูเซอร์เนมต้องใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง')
+  }
+
+  const { data, error } = await supabase.rpc('resolve_teacher_login_email', {
+    p_identifier: raw,
+  })
+  if (error) throw error
+
+  if (!data) {
+    throw new Error('บัญชีครูนี้ยังไม่มีอีเมลสำหรับเข้าสู่ระบบ กรุณาเข้าสู่ระบบด้วยอีเมลเดิมหรือติดต่อผู้ดูแล')
+  }
+  return data
+}
+
 // ─── Generate next teacher code ──────────────────────────────────────────────
 async function generateNextCode(category) {
   const prefix = category === 'ศาสนา' ? '2' : '1'
@@ -70,13 +114,15 @@ async function generateNextCode(category) {
     .from('teachers')
     .select('teacher_code')
     .like('teacher_code', `${prefix}%`)
-    .order('teacher_code', { ascending: false })
-    .limit(1)
 
-  if (!data || data.length === 0) return `${prefix}01`
-  const maxNum = parseInt(data[0].teacher_code, 10)
-  if (isNaN(maxNum)) return `${prefix}01`
-  return String(maxNum + 1)
+  const maxSuffix = (data ?? []).reduce((max, row) => {
+    const code = String(row.teacher_code ?? '')
+    if (!code.startsWith(prefix)) return max
+    const suffix = parseInt(code.slice(1), 10)
+    return Number.isFinite(suffix) ? Math.max(max, suffix) : max
+  }, 0)
+
+  return `${prefix}${String(maxSuffix + 1).padStart(3, '0')}`
 }
 
 // ─── Request Code Modal ────────────────────────────────────────────────────────
@@ -161,12 +207,13 @@ async function searchTeacherByName(query) {
 // ─── Teacher lookup (anon) ────────────────────────────────────────────────────
 async function lookupTeacher(code) {
   if (!code) return null
+  const codes = teacherCodeCandidates(code)
   const { data } = await supabase
     .from('teachers')
     .select('id, teacher_code, full_name, dept, category')
-    .eq('teacher_code', code.trim())
-    .maybeSingle()
-  return data
+    .in('teacher_code', codes.length ? codes : [code.trim()])
+    .limit(1)
+  return data?.[0] ?? null
 }
 
 // ─── Register ─────────────────────────────────────────────────────────────────
@@ -204,7 +251,7 @@ async function handleRegister(e) {
   if (teacherId && data?.user) {
     const { error: linkErr } = await supabase
       .from('teachers')
-      .update({ profile_id: data.user.id })
+      .update({ profile_id: data.user.id, login_email: email })
       .eq('id', Number(teacherId))
       .is('profile_id', null)
 

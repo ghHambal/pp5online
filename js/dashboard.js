@@ -78,6 +78,8 @@ export async function openTeacherModal(id = null) {
   document.getElementById('modal-name').value      = ''
   document.getElementById('modal-category').value  = ''
   document.getElementById('modal-phone').value     = ''
+  document.getElementById('modal-login-email').value = ''
+  document.getElementById('modal-username').value  = ''
   document.getElementById('modal-image-url').value = ''
   document.getElementById('modal-title').textContent = id ? 'แก้ไขข้อมูลครู' : 'เพิ่มครูใหม่'
 
@@ -89,6 +91,8 @@ export async function openTeacherModal(id = null) {
       document.getElementById('modal-name').value      = t.full_name    ?? ''
       document.getElementById('modal-category').value  = t.category     ?? ''
       document.getElementById('modal-phone').value     = t.phone        ?? ''
+      document.getElementById('modal-login-email').value = t.login_email ?? ''
+      document.getElementById('modal-username').value  = t.username     ?? ''
       document.getElementById('modal-image-url').value = t.image_url    ?? ''
       _updateAvatarPreview(t.image_url, t.full_name)
     } catch {
@@ -111,11 +115,18 @@ async function handleTeacherFormSubmit(e) {
   e.preventDefault()
   const btn      = document.getElementById('modal-save-btn')
   const id       = document.getElementById('modal-id').value
+  const username = document.getElementById('modal-username').value.trim().toLowerCase()
+  if (username && !/^[a-z0-9._-]{3,32}$/.test(username)) {
+    showToast('ยูเซอร์เนมต้องใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง 3-32 ตัวอักษร', 'warning')
+    return
+  }
   const payload  = {
     teacher_code: document.getElementById('modal-code').value.trim()      || null,
     full_name:    document.getElementById('modal-name').value.trim(),
     category:     document.getElementById('modal-category').value         || null,
     phone:        document.getElementById('modal-phone').value.trim()     || null,
+    login_email:  document.getElementById('modal-login-email').value.trim() || null,
+    username:     username || null,
     image_url:    document.getElementById('modal-image-url').value.trim() || null,
   }
 

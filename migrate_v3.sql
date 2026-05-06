@@ -230,6 +230,8 @@ CREATE TRIGGER on_auth_user_created
 CREATE TABLE teachers (
   id           SERIAL PRIMARY KEY,
   teacher_code TEXT   UNIQUE,
+  username     TEXT,
+  login_email  TEXT,
   full_name    TEXT   NOT NULL,
   personnel_type TEXT   DEFAULT 'ครู' CHECK (personnel_type IN ('ครู','บุคลากร')),
   category     TEXT   CHECK (category IN ('สามัญ','ศาสนา')),
@@ -241,6 +243,13 @@ CREATE TABLE teachers (
   profile_id   UUID   REFERENCES profiles(id) ON DELETE SET NULL
 );
 
+CREATE UNIQUE INDEX teachers_username_lower_uidx
+  ON teachers (lower(username))
+  WHERE username IS NOT NULL AND trim(username) <> '';
+
+CREATE UNIQUE INDEX teachers_login_email_lower_uidx
+  ON teachers (lower(login_email))
+  WHERE login_email IS NOT NULL AND trim(login_email) <> '';
 
 -- 5. TEACHERS_QUOTA
 CREATE TABLE teachers_quota (
@@ -428,6 +437,51 @@ CREATE POLICY "profiles_own"    ON profiles           FOR UPDATE TO authenticate
 CREATE POLICY "profiles_admin"  ON profiles           FOR ALL    TO authenticated USING (get_user_role()='admin');
 CREATE POLICY "teachers_read"   ON teachers           FOR SELECT TO authenticated USING (true);
 CREATE POLICY "teachers_admin"  ON teachers           FOR ALL    TO authenticated USING (get_user_role()='admin');
+
+CREATE OR REPLACE FUNCTION public.resolve_teacher_login_email(p_identifier TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_identifier TEXT := trim(coalesce(p_identifier, ''));
+  v_username TEXT := lower(trim(coalesce(p_identifier, '')));
+  v_legacy_code TEXT;
+  v_email TEXT;
+BEGIN
+  IF v_identifier = '' THEN
+    RETURN NULL;
+  END IF;
+
+  IF position('@' IN v_identifier) > 0 THEN
+    RETURN v_identifier;
+  END IF;
+
+  IF v_identifier ~ '^[12][0-9]{2}$' THEN
+    v_legacy_code := substring(v_identifier FROM 1 FOR 1) || lpad(substring(v_identifier FROM 2), 3, '0');
+  END IF;
+
+  SELECT t.login_email
+  INTO v_email
+  FROM public.teachers t
+  WHERE (v_username ~ '^[a-z0-9._-]{3,32}$' AND lower(t.username) = v_username)
+     OR t.teacher_code = v_identifier
+     OR (v_legacy_code IS NOT NULL AND t.teacher_code = v_legacy_code)
+  ORDER BY
+    CASE
+      WHEN t.teacher_code = v_identifier THEN 0
+      WHEN v_legacy_code IS NOT NULL AND t.teacher_code = v_legacy_code THEN 1
+      ELSE 2
+    END
+  LIMIT 1;
+
+  RETURN v_email;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.resolve_teacher_login_email(TEXT) TO anon, authenticated;
+
 CREATE POLICY "quota_own"       ON teachers_quota     FOR SELECT TO authenticated
   USING (teacher_id IN (SELECT id FROM teachers WHERE profile_id=auth.uid()));
 CREATE POLICY "quota_admin"     ON teachers_quota     FOR ALL    TO authenticated USING (get_user_role()='admin');
