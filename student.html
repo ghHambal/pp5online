@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ.5 ออนไลน์ — นักเรียน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css" />
+</head>
+
+<body class="bg-gray-50 flex flex-col h-screen overflow-hidden">
+
+  <!-- ─── Top Header ──────────────────────────────────────────────────────────── -->
+  <header class="bg-white border-b border-gray-100 shadow-sm flex-shrink-0 z-30">
+    <div class="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div id="stu-logo-wrap"
+          class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+          <img id="stu-logo" src="" alt="" class="w-full h-full object-cover hidden"/>
+          <span id="stu-logo-fallback" class="text-sm">🏫</span>
+        </div>
+        <div>
+          <p id="stu-school-name" class="text-xs font-bold text-gray-700 leading-tight">ปพ.5 ออนไลน์</p>
+          <p id="stu-term" class="text-[10px] text-gray-400">—</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <div id="stu-avatar"
+          class="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-400
+                 flex items-center justify-center font-bold text-sm text-white overflow-hidden cursor-pointer"
+          onclick="window._stuNav('profile')">
+          ?
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── Page Content ────────────────────────────────────────────────────────── -->
+  <main id="stu-content" class="flex-1 overflow-y-auto">
+    <div class="flex justify-center py-16 text-gray-400">
+      <svg class="animate-spin h-6 w-6 text-emerald-400" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+    </div>
+  </main>
+
+  <!-- ─── Bottom Navigation ───────────────────────────────────────────────────── -->
+  <nav class="bg-white border-t border-gray-100 shadow-[0_-1px_4px_rgba(0,0,0,0.06)] flex-shrink-0 z-30 safe-area-bottom">
+    <div class="max-w-lg mx-auto flex">
+      <button class="stu-nav-btn flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5" data-view="overview">
+        <span class="text-xl">🏠</span>
+        <span class="text-[10px] font-medium text-gray-500">ภาพรวม</span>
+      </button>
+      <button class="stu-nav-btn flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5" data-view="subjects">
+        <span class="text-xl">📚</span>
+        <span class="text-[10px] font-medium text-gray-500">รายวิชา</span>
+      </button>
+      <button class="stu-nav-btn flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5" data-view="requests">
+        <span class="text-xl">📝</span>
+        <span class="text-[10px] font-medium text-gray-500">คำร้อง</span>
+      </button>
+      <button class="stu-nav-btn flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5" data-view="profile">
+        <span class="text-xl">👤</span>
+        <span class="text-[10px] font-medium text-gray-500">โปรไฟล์</span>
+      </button>
+    </div>
+  </nav>
+
+  <script type="module" src="/js/student.js"></script>
+</body>
+</html>

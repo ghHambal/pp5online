@@ -13,7 +13,9 @@ async function checkSession() {
       .select('role')
       .eq('id', session.user.id)
       .single()
-    window.location.href = profile?.role === 'admin' ? 'dashboard.html' : 'teacher.html'
+    if (profile?.role === 'admin') window.location.href = 'dashboard.html'
+    else if (profile?.role === 'student') window.location.href = 'student.html'
+    else window.location.href = 'teacher.html'
   } else {
     showPageLoader(false)
   }
@@ -64,11 +66,9 @@ async function handleLogin(e) {
     .single()
 
   setTimeout(() => {
-    if (profile?.role === 'admin') {
-      window.location.href = 'dashboard.html'
-    } else {
-      window.location.href = 'teacher.html'
-    }
+    if (profile?.role === 'admin') window.location.href = 'dashboard.html'
+    else if (profile?.role === 'student') window.location.href = 'student.html'
+    else window.location.href = 'teacher.html'
   }, 800)
 }
 
@@ -90,21 +90,30 @@ async function resolveLoginEmail(identifier) {
   const raw = identifier.trim()
   if (raw.includes('@')) return raw
 
-  const username = normalizeUsername(raw)
-  const codeList = teacherCodeCandidates(raw)
-  if (!codeList.length && !/^[a-z0-9._-]{3,32}$/.test(username)) {
-    throw new Error('ยูเซอร์เนมต้องใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง')
-  }
-
-  const { data, error } = await supabase.rpc('resolve_teacher_login_email', {
+  // ลองหาในตาราง teachers ก่อน (username / รหัสครู)
+  const { data: teacherEmail, error: tErr } = await supabase.rpc('resolve_teacher_login_email', {
     p_identifier: raw,
   })
-  if (error) throw error
+  if (tErr) throw tErr
+  if (teacherEmail) return teacherEmail
 
-  if (!data) {
-    throw new Error('บัญชีครูนี้ยังไม่มีอีเมลสำหรับเข้าสู่ระบบ กรุณาเข้าสู่ระบบด้วยอีเมลเดิมหรือติดต่อผู้ดูแล')
+  // ลองหาในตาราง students (student_code)
+  const { data: stuData } = await supabase
+    .from('students')
+    .select('profile_id')
+    .eq('student_code', raw)
+    .not('profile_id', 'is', null)
+    .maybeSingle()
+
+  if (stuData?.profile_id) {
+    // ดึง email จาก profiles (ผ่าน RPC เพราะ auth.users เข้าตรงไม่ได้)
+    const { data: emailData, error: eErr } = await supabase.rpc('resolve_student_login_email', {
+      p_profile_id: stuData.profile_id,
+    })
+    if (!eErr && emailData) return emailData
   }
-  return data
+
+  throw new Error('ไม่พบบัญชีนี้ในระบบ กรุณาตรวจสอบรหัสครู / รหัสนักเรียน หรือเข้าสู่ระบบด้วยอีเมล')
 }
 
 // ─── Generate next teacher code ──────────────────────────────────────────────
