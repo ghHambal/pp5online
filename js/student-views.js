@@ -615,6 +615,27 @@ export async function renderExamRequestForm(student, classId) {
   }
 
   const hasSchedule = schedule.length > 0
+  if (!hasSchedule) {
+    setContent(`
+      <button onclick="window._stuOpenClassTab(${classId}, 'requests')"
+        class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← กลับคำร้อง</button>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <h2 class="font-bold text-gray-800 mb-1">📝 ยื่นคำร้อง</h2>
+        <p class="text-xs text-gray-400 mb-5">${ms?.subject_name ?? ''} · ${cls.class_name ?? ''}</p>
+
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center">
+          <p class="text-3xl mb-2">📅</p>
+          <p class="text-sm font-bold text-amber-800">ยังไม่สามารถยื่นคำร้องได้</p>
+          <p class="mt-2 text-xs leading-relaxed text-amber-700">
+            ครูผู้สอนยังไม่ได้สร้างตารางสอนในระบบ จึงยังไม่สามารถเลือกคาบว่างสำหรับขอสอบได้
+          </p>
+          <p class="mt-2 text-xs text-amber-600">กรุณาติดต่อครูผู้สอนให้สร้างตารางสอนก่อน</p>
+        </div>
+      </div>
+    `)
+    return
+  }
 
   const INPUT = 'w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-white'
   const SELECT = INPUT + ' cursor-pointer'
