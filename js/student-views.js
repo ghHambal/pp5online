@@ -3,6 +3,7 @@ import {
   getMyExamRequests, submitExamRequest, cancelExamRequest,
   getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
 } from './student-api.js'
+import { getThemeConfig } from './theme.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setContent(html) {
@@ -34,6 +35,30 @@ const STATUS_BADGE = {
   rejected: { label:'ปฏิเสธ',       cls:'bg-red-50 text-red-600 border-red-200' },
 }
 const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
+
+function _hexToRgb(hex) {
+  const safe = /^#[0-9a-f]{6}$/i.test(String(hex ?? '')) ? hex : '#059669'
+  const h = safe.slice(1)
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  }
+}
+
+function _rgbToHex({ r, g, b }) {
+  return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')
+}
+
+function _mixHex(hex, target, amount) {
+  const a = _hexToRgb(hex)
+  const b = _hexToRgb(target)
+  return _rgbToHex({
+    r: a.r + (b.r - a.r) * amount,
+    g: a.g + (b.g - a.g) * amount,
+    b: a.b + (b.b - a.b) * amount,
+  })
+}
 
 function _fmtDate(d) {
   if (!d) return '—'
@@ -78,6 +103,36 @@ function _subjectColorCls(cls) {
   if (sk === 'วิชาการ')
     return { bg:'bg-orange-50', border:'border-orange-200', text:'text-orange-800', tag:'bg-orange-100 text-orange-700', accent:'border-l-orange-400' }
   return { bg:'bg-gray-50', border:'border-gray-200', text:'text-gray-800', tag:'bg-gray-100 text-gray-600', accent:'border-l-gray-300' }
+}
+
+function _subjectGroupMeta(cls, cfg = {}) {
+  const sg = cls.master_subjects?.subject_group ?? ''
+  const sk = cls.skill_group ?? ''
+  const cat = cls.master_subjects?.teachers?.category ?? ''
+  const color = (() => {
+    if (cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC') return cfg.teacherReligionColor || '#b45309'
+    if (sg === 'ACDMVOC' || sk === 'สามัญปวช') return cfg.teacherVocColor || '#7c3aed'
+    if (sk === 'ภาษา') return cfg.teacherLanguageColor || '#2563eb'
+    if (sk === 'ชีวิต') return cfg.teacherLifeColor || '#059669'
+    if (sk === 'วิชาการ') return cfg.teacherAcademicColor || '#ea580c'
+    return cfg.teacherDefaultColor || '#059669'
+  })()
+  const label = (() => {
+    if (cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC') return sg === 'AGMVOC' ? 'กลุ่มวิชาศาสนา ปวช' : 'กลุ่มวิชาศาสนา'
+    if (sg === 'ACDMVOC' || sk === 'สามัญปวช') return 'กลุ่มสามัญ ปวช'
+    if (sk) return `กลุ่มทักษะ: ${sk}`
+    return 'กลุ่มวิชาสามัญ'
+  })()
+  const short = label.replace('กลุ่มทักษะ: ', '')
+  return {
+    color,
+    label,
+    short,
+    bg: _mixHex(color, '#ffffff', 0.9),
+    badgeBg: _mixHex(color, '#ffffff', 0.86),
+    border: _mixHex(color, '#ffffff', 0.35),
+    text: _mixHex(color, '#000000', 0.35),
+  }
 }
 
 // ─── Week date helpers ────────────────────────────────────────────────────────
@@ -212,7 +267,10 @@ export async function renderStudentSubjects(student) {
     </svg>
   </div>`)
 
-  const classes = await getMyEnrolledClasses(student.id).catch(()=>[])
+  const [classes, themeCfg] = await Promise.all([
+    getMyEnrolledClasses(student.id).catch(()=>[]),
+    getThemeConfig().catch(()=>({})),
+  ])
 
   if (!classes.length) {
     setContent(`<div class="text-center py-16 text-gray-300">
@@ -238,18 +296,19 @@ export async function renderStudentSubjects(student) {
   const _renderCard = (cls) => {
     const ms = cls.master_subjects
     const teacher = ms?.teachers
-    const c = _subjectColorCls(cls)
+    const meta = _subjectGroupMeta(cls, themeCfg)
     return `<div onclick="window._stuOpenClass(${cls.id})"
-      class="${c.bg} ${c.border} border border-l-4 ${c.accent} rounded-2xl shadow-sm p-4 cursor-pointer hover:shadow-md transition">
+      class="border border-l-4 rounded-2xl shadow-sm p-4 cursor-pointer hover:shadow-md transition"
+      style="background:${meta.bg}; border-color:${meta.border}; border-left-color:${meta.color};">
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
-          <p class="font-bold ${c.text} text-sm leading-tight">${ms?.subject_name ?? '—'}</p>
+          <p class="font-bold text-sm leading-tight" style="color:${meta.text};">${ms?.subject_name ?? '—'}</p>
           <p class="text-xs text-gray-400 mt-0.5 font-mono">${ms?.subject_code ?? ''}</p>
+          <p class="text-[11px] font-medium mt-1" style="color:${meta.text};">${meta.label}</p>
         </div>
         <div class="flex flex-col items-end gap-1 flex-shrink-0">
-          ${cls.skill_group
-            ? `<span class="text-[10px] px-2 py-0.5 rounded-full ${c.tag} font-medium">${cls.skill_group}</span>`
-            : ''}
+          <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+            style="background:${meta.badgeBg}; color:${meta.text};">${meta.short}</span>
           <span class="text-[10px] text-gray-400">${ms?.credit ?? '—'} หน่วยกิต</span>
         </div>
       </div>
@@ -742,7 +801,7 @@ export async function renderExamRequestForm(student, classId) {
         const date = weekDates[d]
         const isPast = date < today
         if (!slot) {
-          return `<td class="border border-gray-100 p-0">
+          return `<td class="border border-gray-100 p-0" style="height:1px">
             <button type="button"
               data-period="${p.period_no}" data-day="${d}" data-week-offset="${weekOffset}"
               ${isPast ? 'disabled aria-disabled="true"' : ''}
@@ -758,7 +817,7 @@ export async function renderExamRequestForm(student, classId) {
         const colorKey = _scheduleColorKey(slot.subject_name, slot.class_name, slot.subject_id)
         const colorIdx = scheduleColorMap[colorKey] ?? 0
         const colorCls = _colorForIndex(colorIdx)
-        return `<td class="border border-gray-100 p-0" ${span > 1 ? `rowspan="${span}"` : ''}>
+        return `<td class="border border-gray-100 p-0" style="height:1px" ${span > 1 ? `rowspan="${span}"` : ''}>
           <div class="w-full h-full ${colorCls} flex flex-col justify-center items-center
                       gap-0.5 px-2 py-2 text-center" style="min-height:52px">
             <p class="font-bold leading-tight text-xs break-words">${slot.subject_name ?? 'ไม่ว่าง'}</p>
