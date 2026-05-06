@@ -15,91 +15,143 @@
   <div class="login-card rounded-3xl shadow-2xl w-full max-w-sm p-8">
 
     <!-- Logo + Title -->
-    <div class="flex flex-col items-center mb-8">
+    <div class="flex flex-col items-center mb-7">
       <div class="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center mb-4 text-3xl">🎒</div>
-      <h1 class="text-2xl font-bold text-gray-800 tracking-tight">เข้าสู่ระบบนักเรียน</h1>
+      <h1 class="text-2xl font-bold text-gray-800">เข้าสู่ระบบนักเรียน</h1>
       <p id="school-name" class="text-sm text-gray-400 mt-1">ปพ.5 ออนไลน์</p>
     </div>
 
-    <!-- Login Form -->
-    <form id="stu-login-form" novalidate class="space-y-5">
-
-      <div>
-        <label for="stu-code" class="block text-sm font-medium text-gray-700 mb-1">
-          รหัสนักเรียน
-        </label>
-        <input id="stu-code" type="text" inputmode="numeric"
-          autocomplete="username"
-          placeholder="เช่น 26826"
-          required
-          class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-400 font-mono tracking-wider" />
-      </div>
-
-      <div>
-        <label for="stu-password" class="block text-sm font-medium text-gray-700 mb-1">
-          รหัสผ่าน
-        </label>
-        <div class="relative">
-          <input id="stu-password" type="password"
-            autocomplete="current-password"
-            placeholder="••••••••"
-            required
-            class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 pr-12 text-sm text-gray-800 placeholder-gray-400" />
-          <button type="button" id="stu-toggle-pw"
-            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none"
-            tabindex="-1">
-            <span id="stu-eye-icon">👁️</span>
-          </button>
+    <!-- ─── Step 1: กรอกรหัสนักเรียน ─── -->
+    <div id="step-code">
+      <p class="text-xs text-gray-500 text-center mb-5">กรอกรหัสนักเรียนของคุณเพื่อเริ่มต้น</p>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">รหัสนักเรียน</label>
+          <input id="inp-code" type="text" inputmode="numeric"
+            placeholder="เช่น 26826" autofocus
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-mono tracking-wider text-center text-lg" />
         </div>
+        <div id="step1-msg" class="hidden text-sm text-center py-2.5 rounded-xl"></div>
+        <button id="btn-next"
+          class="btn-primary w-full text-white font-semibold py-3 rounded-xl text-sm">
+          ถัดไป →
+        </button>
+      </div>
+    </div>
+
+    <!-- ─── Step 2A: มีบัญชีแล้ว → กรอกรหัสผ่าน ─── -->
+    <div id="step-login" class="hidden">
+      <!-- Student preview -->
+      <div id="stu-preview" class="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3 mb-5">
+        <div id="stu-avatar"
+          class="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-400
+                 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 overflow-hidden">
+          ?
+        </div>
+        <div class="min-w-0">
+          <p id="stu-name" class="font-semibold text-gray-800 text-sm truncate">—</p>
+          <p id="stu-room" class="text-xs text-gray-400 mt-0.5">—</p>
+        </div>
+        <button id="btn-change-code" class="ml-auto text-xs text-gray-400 hover:text-gray-600 flex-shrink-0">เปลี่ยน</button>
       </div>
 
-      <div id="stu-login-msg" class="hidden text-sm text-center py-2.5 rounded-xl"></div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
+          <div class="relative">
+            <input id="inp-password" type="password" autocomplete="current-password"
+              placeholder="••••••••"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 pr-12 text-sm" />
+            <button type="button" id="toggle-pw"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none" tabindex="-1">
+              <span id="eye-icon">👁️</span>
+            </button>
+          </div>
+        </div>
+        <div id="login-msg" class="hidden text-sm text-center py-2.5 rounded-xl"></div>
+        <button id="btn-login"
+          class="btn-primary w-full text-white font-semibold py-3 rounded-xl text-sm">
+          เข้าสู่ระบบ
+        </button>
+      </div>
+    </div>
 
-      <button id="btn-stu-login" type="submit"
-        class="btn-primary w-full text-white font-semibold py-3 rounded-xl text-sm">
-        เข้าสู่ระบบ
-      </button>
+    <!-- ─── Step 2B: ครั้งแรก → ตั้งรหัสผ่าน ─── -->
+    <div id="step-register" class="hidden">
+      <div id="stu-preview-reg" class="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 mb-2">
+        <div id="stu-avatar-reg"
+          class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400
+                 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 overflow-hidden">
+          ?
+        </div>
+        <div class="min-w-0">
+          <p id="stu-name-reg" class="font-semibold text-gray-800 text-sm truncate">—</p>
+          <p id="stu-room-reg" class="text-xs text-gray-400 mt-0.5">—</p>
+        </div>
+        <button id="btn-change-code-reg" class="ml-auto text-xs text-gray-400 hover:text-gray-600 flex-shrink-0">เปลี่ยน</button>
+      </div>
+      <p class="text-xs text-indigo-600 text-center mb-4">🎉 ยินดีต้อนรับ! ตั้งรหัสผ่านสำหรับครั้งถัดไป</p>
 
-    </form>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ตั้งรหัสผ่าน <span class="text-gray-400 font-normal">(อย่างน้อย 6 ตัว)</span></label>
+          <div class="relative">
+            <input id="inp-new-pw" type="password" autocomplete="new-password"
+              placeholder="ตั้งรหัสผ่านที่จำง่าย"
+              class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 pr-12 text-sm" />
+            <button type="button" id="toggle-new-pw"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none" tabindex="-1">
+              <span id="eye-icon-new">👁️</span>
+            </button>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ยืนยันรหัสผ่าน</label>
+          <input id="inp-confirm-pw" type="password" autocomplete="new-password"
+            placeholder="กรอกรหัสผ่านอีกครั้ง"
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
+        </div>
+        <div id="reg-msg" class="hidden text-sm text-center py-2.5 rounded-xl"></div>
+        <button id="btn-create-account"
+          class="btn-primary w-full text-white font-semibold py-3 rounded-xl text-sm">
+          สร้างบัญชีและเข้าสู่ระบบ
+        </button>
+      </div>
+    </div>
 
-    <!-- Link back to teacher login -->
     <p class="text-center text-xs text-gray-400 mt-6">
       คุณครู?
       <a href="index.html" class="text-indigo-500 hover:text-indigo-700 font-medium">เข้าสู่ระบบครู →</a>
     </p>
-
   </div>
 
   <script type="module">
     import { supabase } from '/js/supabase.js'
 
-    // ─── Check if already logged in ──────────────────────────────────────────
+    // ─── Redirect if already logged in ───────────────────────────────────────
     const { data: { session } } = await supabase.auth.getSession()
     if (session) {
-      const { data: profile } = await supabase
-        .from('profiles').select('role').eq('id', session.user.id).single()
-      if (profile?.role === 'student') { window.location.replace('student.html'); }
+      const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
+      if (p?.role === 'student') { window.location.replace('student.html'); }
     }
 
-    // ─── Load school name from system_config ─────────────────────────────────
+    // ─── Load school name ─────────────────────────────────────────────────────
     try {
-      const { data } = await supabase.from('system_config').select('key, value')
-        .in('key', ['schoolName'])
+      const { data } = await supabase.from('system_config').select('key,value').in('key', ['schoolName'])
       const cfg = Object.fromEntries((data ?? []).map(r => [r.key, r.value]))
       if (cfg.schoolName) document.getElementById('school-name').textContent = cfg.schoolName
-    } catch { /* ไม่แสดง error ถ้าโหลด config ไม่ได้ */ }
+    } catch { /* ignore */ }
 
-    // ─── Toggle password ─────────────────────────────────────────────────────
-    document.getElementById('stu-toggle-pw').addEventListener('click', () => {
-      const inp = document.getElementById('stu-password')
-      const ico = document.getElementById('stu-eye-icon')
-      inp.type = inp.type === 'password' ? 'text' : 'password'
-      ico.textContent = inp.type === 'password' ? '👁️' : '🙈'
-    })
+    // ─── State ────────────────────────────────────────────────────────────────
+    let _student = null   // {id, student_code, full_name, main_room, image_url, profile_id}
+    let _email   = null   // email ที่จะใช้ login
 
-    // ─── Login ────────────────────────────────────────────────────────────────
-    function showMsg(text, type) {
-      const el = document.getElementById('stu-login-msg')
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+    const show = (id) => document.getElementById(id).classList.remove('hidden')
+    const hide = (id) => document.getElementById(id).classList.add('hidden')
+
+    function showMsg(elId, text, type) {
+      const el = document.getElementById(elId)
       el.className = `text-sm text-center py-2.5 rounded-xl ${
         type === 'error' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'
       }`
@@ -107,54 +159,151 @@
       el.classList.remove('hidden')
     }
 
-    document.getElementById('stu-login-form').addEventListener('submit', async e => {
-      e.preventDefault()
-      const code = document.getElementById('stu-code').value.trim()
-      const password = document.getElementById('stu-password').value
-      const btn = document.getElementById('btn-stu-login')
-      const msg = document.getElementById('stu-login-msg')
+    function fillPreview(nameSuffix, stu) {
+      const avatarEl = document.getElementById('stu-avatar' + nameSuffix)
+      const nameEl   = document.getElementById('stu-name'  + nameSuffix)
+      const roomEl   = document.getElementById('stu-room'  + nameSuffix)
+      nameEl.textContent = stu.full_name
+      roomEl.textContent = `รหัส ${stu.student_code}${stu.main_room ? ' · ห้อง ' + stu.main_room : ''}`
+      if (stu.image_url) {
+        avatarEl.innerHTML = `<img src="${stu.image_url}" class="w-full h-full object-cover"/>`
+      } else {
+        avatarEl.textContent = (stu.full_name ?? 'น').charAt(0)
+      }
+    }
 
-      if (!code || !password) { showMsg('กรุณากรอกรหัสนักเรียนและรหัสผ่าน', 'error'); return }
+    function goBack() {
+      hide('step-login'); hide('step-register')
+      show('step-code')
+      document.getElementById('inp-code').focus()
+    }
 
-      btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...'
-      msg.classList.add('hidden')
+    // ─── Toggle password visibility ───────────────────────────────────────────
+    ;[['toggle-pw','inp-password','eye-icon'], ['toggle-new-pw','inp-new-pw','eye-icon-new']].forEach(([btn,inp,ico]) => {
+      document.getElementById(btn)?.addEventListener('click', () => {
+        const el = document.getElementById(inp)
+        el.type = el.type === 'password' ? 'text' : 'password'
+        document.getElementById(ico).textContent = el.type === 'password' ? '👁️' : '🙈'
+      })
+    })
+    document.getElementById('btn-change-code').addEventListener('click', goBack)
+    document.getElementById('btn-change-code-reg').addEventListener('click', goBack)
+
+    // ─── Step 1: ตรวจสอบรหัสนักเรียน ─────────────────────────────────────────
+    async function handleNext() {
+      const code = document.getElementById('inp-code').value.trim()
+      if (!code) { showMsg('step1-msg', 'กรุณากรอกรหัสนักเรียน', 'error'); return }
+
+      const btn = document.getElementById('btn-next')
+      btn.disabled = true; btn.textContent = 'กำลังตรวจสอบ...'
+      hide('step1-msg')
 
       try {
-        // 1. หา profile_id จาก student_code
         const { data: stu } = await supabase
           .from('students')
-          .select('profile_id')
+          .select('id, student_code, full_name, main_room, image_url, profile_id')
           .eq('student_code', code)
-          .not('profile_id', 'is', null)
           .maybeSingle()
 
-        if (!stu?.profile_id) {
-          showMsg('ไม่พบรหัสนักเรียนนี้ในระบบ หรือยังไม่ได้สร้างบัญชี', 'error')
-          btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; return
+        if (!stu) {
+          showMsg('step1-msg', 'ไม่พบรหัสนักเรียน "' + code + '" ในระบบ', 'error')
+          btn.disabled = false; btn.textContent = 'ถัดไป →'; return
         }
 
-        // 2. ดึง email จาก resolve function
-        const { data: email, error: rpcErr } = await supabase
-          .rpc('resolve_student_login_email', { p_profile_id: stu.profile_id })
+        _student = stu
+        hide('step-code')
 
-        if (rpcErr || !email) {
-          showMsg('ไม่พบอีเมลสำหรับบัญชีนี้ กรุณาติดต่อผู้ดูแลระบบ', 'error')
-          btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; return
+        if (stu.profile_id) {
+          // มีบัญชีแล้ว → ดึง email แล้วแสดงช่องรหัสผ่าน
+          const { data: email } = await supabase
+            .rpc('resolve_student_login_email', { p_profile_id: stu.profile_id })
+          _email = email
+          fillPreview('', stu)
+          show('step-login')
+          document.getElementById('inp-password').focus()
+        } else {
+          // ครั้งแรก → ให้ตั้งรหัสผ่าน
+          _email = `stu${stu.student_code}@student.pp5.local`
+          fillPreview('-reg', stu)
+          show('step-register')
+          document.getElementById('inp-new-pw').focus()
         }
+      } catch (err) {
+        showMsg('step1-msg', 'เกิดข้อผิดพลาด: ' + (err.message ?? ''), 'error')
+      } finally {
+        btn.disabled = false; btn.textContent = 'ถัดไป →'
+      }
+    }
 
-        // 3. Login ด้วย email + password
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) {
-          showMsg(error.message.includes('Invalid') ? 'รหัสผ่านไม่ถูกต้อง' : error.message, 'error')
-          btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; return
-        }
+    document.getElementById('btn-next').addEventListener('click', handleNext)
+    document.getElementById('inp-code').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleNext()
+    })
 
-        showMsg('เข้าสู่ระบบสำเร็จ ✅', 'success')
-        setTimeout(() => { window.location.href = 'student.html' }, 600)
+    // ─── Step 2A: Login ───────────────────────────────────────────────────────
+    document.getElementById('btn-login').addEventListener('click', async () => {
+      const pw  = document.getElementById('inp-password').value
+      const btn = document.getElementById('btn-login')
+      if (!pw) { showMsg('login-msg', 'กรุณากรอกรหัสผ่าน', 'error'); return }
+      if (!_email) { showMsg('login-msg', 'เกิดข้อผิดพลาด กรุณาเริ่มใหม่', 'error'); goBack(); return }
+
+      btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...'
+      hide('login-msg')
+
+      const { error } = await supabase.auth.signInWithPassword({ email: _email, password: pw })
+      if (error) {
+        showMsg('login-msg', error.message.includes('Invalid') ? 'รหัสผ่านไม่ถูกต้อง' : error.message, 'error')
+        btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; return
+      }
+      showMsg('login-msg', 'เข้าสู่ระบบสำเร็จ ✅', 'success')
+      setTimeout(() => { window.location.href = 'student.html' }, 500)
+    })
+
+    document.getElementById('inp-password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('btn-login').click()
+    })
+
+    // ─── Step 2B: สร้างบัญชีครั้งแรก ─────────────────────────────────────────
+    document.getElementById('btn-create-account').addEventListener('click', async () => {
+      const pw  = document.getElementById('inp-new-pw').value
+      const pw2 = document.getElementById('inp-confirm-pw').value
+      const btn = document.getElementById('btn-create-account')
+
+      if (!pw || pw.length < 6) { showMsg('reg-msg', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error'); return }
+      if (pw !== pw2)            { showMsg('reg-msg', 'รหัสผ่านทั้งสองช่องไม่ตรงกัน', 'error'); return }
+
+      btn.disabled = true; btn.textContent = 'กำลังสร้างบัญชี...'
+      hide('reg-msg')
+
+      try {
+        // 1. สร้าง Supabase Auth account
+        const { data, error: signUpErr } = await supabase.auth.signUp({
+          email: _email,
+          password: pw,
+          options: {
+            data: { full_name: _student.full_name, role: 'student', user_code: _student.student_code }
+          }
+        })
+        if (signUpErr) throw signUpErr
+
+        // 2. รอให้ trigger สร้าง profile record
+        await new Promise(r => setTimeout(r, 1000))
+
+        // 3. ผูก profile_id + set role='student' ผ่าน SECURITY DEFINER function
+        const { data: linked } = await supabase.rpc('link_student_profile', {
+          p_student_code: _student.student_code,
+        })
+        if (!linked) throw new Error('ผูกบัญชีไม่สำเร็จ กรุณาติดต่อผู้ดูแลระบบ')
+
+        showMsg('reg-msg', 'สร้างบัญชีสำเร็จ 🎉 กำลังเข้าสู่ระบบ...', 'success')
+        setTimeout(() => { window.location.href = 'student.html' }, 800)
 
       } catch (err) {
-        showMsg('เกิดข้อผิดพลาด: ' + (err.message ?? ''), 'error')
-        btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'
+        const msg = err.message?.includes('already registered')
+          ? 'บัญชีนี้มีอยู่แล้ว กรุณาติดต่อผู้ดูแลระบบ'
+          : 'เกิดข้อผิดพลาด: ' + (err.message ?? '')
+        showMsg('reg-msg', msg, 'error')
+        btn.disabled = false; btn.textContent = 'สร้างบัญชีและเข้าสู่ระบบ'
       }
     })
   </script>
