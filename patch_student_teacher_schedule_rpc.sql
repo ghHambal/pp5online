@@ -2,6 +2,8 @@
 -- RPC ให้นักเรียนดึงตารางสอนเต็มของครูผู้สอนรายวิชาที่ตนเองลงเรียน
 -- รัน 1 ครั้งใน Supabase SQL Editor
 
+DROP FUNCTION IF EXISTS public.get_enrolled_teacher_schedule(INT);
+
 CREATE OR REPLACE FUNCTION public.get_enrolled_teacher_schedule(p_class_id INT)
 RETURNS TABLE (
   day_of_week  INT,
