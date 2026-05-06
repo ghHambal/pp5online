@@ -565,27 +565,6 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         </div>`)
     }
 
-    // ── คะแนนที่ยังไม่มีข้อมูล ──
-    const missing = columns.filter(c => {
-      const sc = scoreMap[c.id]
-      return !sc || (sc.final_score == null && sc.original_score == null)
-    })
-    if (missing.length > 0) {
-      items.push(`
-        <div class="bg-white rounded-2xl border border-amber-100 shadow-sm p-4">
-          <p class="text-sm font-semibold text-amber-700 mb-2">⚠️ คะแนนที่ยังไม่มีข้อมูล (${missing.length} รายการ)</p>
-          <div class="space-y-1.5">
-            ${missing.map(c => `
-            <div class="flex items-center gap-2 text-xs text-gray-600">
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>
-              <span>${c.assignment_name}</span>
-              <span class="ml-auto text-gray-400">/${c.max_score}</span>
-            </div>`).join('')}
-          </div>
-          <p class="text-[10px] text-gray-400 mt-2">หากขาดสอบ สามารถยื่นคำร้องในแท็บ "คำร้อง"</p>
-        </div>`)
-    }
-
     return `
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-bold text-gray-800">✅ ภารกิจ / สิ่งที่ต้องทำ</h2>
