@@ -6,9 +6,11 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main:      resolve(__dirname, 'index.html'),
-        teacher:   resolve(__dirname, 'teacher.html'),
-        dashboard: resolve(__dirname, 'dashboard.html'),
+        main:          resolve(__dirname, 'index.html'),
+        teacher:       resolve(__dirname, 'teacher.html'),
+        dashboard:     resolve(__dirname, 'dashboard.html'),
+        student:       resolve(__dirname, 'student.html'),
+        studentLogin:  resolve(__dirname, 'student-login.html'),
       },
     },
     chunkSizeWarningLimit: 600,
