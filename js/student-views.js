@@ -1,7 +1,7 @@
 import {
   getMyEnrolledClasses, getMyScores, getMyAttendance,
   getMyExamRequests, submitExamRequest, cancelExamRequest,
-  getTeacherFreePeriods, getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
+  getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
 } from './student-api.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -694,7 +694,7 @@ export async function renderExamRequestForm(student, classId) {
         const key = `${d}_${p.period_no}`
         const slot = schedMap[key]
         if (slot?._secondary) return ''
-        if (!slot || slot.is_free) {
+        if (!slot) {
           return `<td class="border border-gray-100 p-0">
             <button type="button"
               data-period="${p.period_no}" data-day="${d}"

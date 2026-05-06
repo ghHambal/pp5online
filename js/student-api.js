@@ -94,19 +94,6 @@ export async function cancelExamRequest(id) {
   if (error) throw error
 }
 
-// ─── Teacher Schedule (free periods) ─────────────────────────────────────────
-export async function getTeacherFreePeriods(teacherId) {
-  const { data, error } = await supabase
-    .from('teacher_schedules')
-    .select('day_of_week, period_no, is_free')
-    .eq('teacher_id', teacherId)
-    .eq('is_free', true)
-    .order('day_of_week')
-    .order('period_no')
-  if (error) throw error
-  return data ?? []
-}
-
 // ─── Teacher Full Schedule (all periods) ─────────────────────────────────────
 export async function getTeacherFullSchedule(teacherId, classId = null) {
   if (classId) {
@@ -118,7 +105,7 @@ export async function getTeacherFullSchedule(teacherId, classId = null) {
 
   const { data, error } = await supabase
     .from('teacher_schedules')
-    .select('day_of_week, period_no, span_periods, is_free, class_id, subject_name, class_name, teacher_name')
+    .select('day_of_week, period_no, span_periods, class_id, subject_name, class_name, teacher_name')
     .eq('teacher_id', teacherId)
     .order('day_of_week')
     .order('period_no')
