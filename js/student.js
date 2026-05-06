@@ -12,6 +12,8 @@ import { getSystemConfig } from './api.js'
 import { applyThemeForRole } from './theme.js'
 
 let _student = null
+let _activeClassId = null
+let _activeSubjectTab = 'todo'
 
 // ─── Auth Guard ───────────────────────────────────────────────────────────────
 async function init() {
@@ -74,21 +76,69 @@ const ROUTES = {
   profile:  () => renderStudentProfile(_student, _handleLogout),
 }
 
-function navigate(view) {
-  // Update bottom nav active state
+function _navButtonHTML(view, icon, label, mode = 'main') {
+  return `<button class="stu-nav-btn flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5" data-view="${view}" data-mode="${mode}">
+    <span class="text-xl">${icon}</span>
+    <span class="text-[10px] font-medium text-gray-500">${label}</span>
+  </button>`
+}
+
+function _renderMainNav(activeView = 'overview') {
+  const nav = document.getElementById('stu-bottom-nav')
+  if (!nav) return
+  nav.innerHTML = [
+    _navButtonHTML('overview', '🏠', 'ภาพรวม'),
+    _navButtonHTML('subjects', '📚', 'รายวิชา'),
+    _navButtonHTML('requests', '📝', 'คำร้อง'),
+    _navButtonHTML('profile', '👤', 'โปรไฟล์'),
+  ].join('')
+  _bindNav()
+  _setBottomNavActive(activeView)
+}
+
+function _renderSubjectNav(activeTab = 'todo') {
+  const nav = document.getElementById('stu-bottom-nav')
+  if (!nav) return
+  nav.innerHTML = [
+    _navButtonHTML('overview', '🏠', 'ภาพรวม', 'subject'),
+    _navButtonHTML('todo', '✅', 'ต้องทำ', 'subject'),
+    _navButtonHTML('scores', '📊', 'คะแนน', 'subject'),
+    _navButtonHTML('requests', '📝', 'คำร้อง', 'subject'),
+  ].join('')
+  _bindNav()
+  _setBottomNavActive(activeTab)
+}
+
+function _setBottomNavActive(activeView) {
   document.querySelectorAll('.stu-nav-btn').forEach(btn => {
-    const isActive = btn.dataset.view === view
+    const isActive = btn.dataset.view === activeView
     const span = btn.querySelector('span:last-child')
     btn.classList.toggle('text-emerald-600', isActive)
     if (span) span.classList.toggle('text-emerald-600', isActive)
   })
+}
+
+function navigate(view) {
+  _activeClassId = null
+  _activeSubjectTab = 'todo'
+  _renderMainNav(view)
   const fn = ROUTES[view]
   if (fn) fn()
 }
 
 function _bindNav() {
   document.querySelectorAll('.stu-nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => navigate(btn.dataset.view))
+    btn.addEventListener('click', () => {
+      if (btn.dataset.mode === 'subject') {
+        if (btn.dataset.view === 'overview') {
+          navigate('overview')
+        } else if (_activeClassId) {
+          openClassTab(_activeClassId, btn.dataset.view)
+        }
+        return
+      }
+      navigate(btn.dataset.view)
+    })
   })
 }
 
@@ -100,25 +150,26 @@ async function _handleLogout() {
 // ─── Global window handlers ───────────────────────────────────────────────────
 window._stuNav = navigate
 
+function openClassTab(classId, tab = 'todo') {
+  _activeClassId = classId
+  _activeSubjectTab = tab
+  _renderSubjectNav(tab)
+  renderStudentSubjectDetail(_student, classId, tab)
+}
+
 window._stuOpenClass = (classId) => {
-  renderStudentSubjectDetail(_student, classId)
-  // Update nav to subjects
-  document.querySelectorAll('.stu-nav-btn').forEach(btn => {
-    const span = btn.querySelector('span:last-child')
-    const isActive = btn.dataset.view === 'subjects'
-    btn.classList.toggle('text-emerald-600', isActive)
-    if (span) span.classList.toggle('text-emerald-600', isActive)
-  })
+  openClassTab(classId, 'todo')
+}
+
+window._stuOpenClassTab = (classId, tab = 'todo') => {
+  openClassTab(classId, tab)
 }
 
 window._stuOpenRequest = (classId) => {
+  _activeClassId = classId
+  _activeSubjectTab = 'requests'
+  _renderSubjectNav('requests')
   renderExamRequestForm(_student, classId)
-  document.querySelectorAll('.stu-nav-btn').forEach(btn => {
-    const span = btn.querySelector('span:last-child')
-    const isActive = btn.dataset.view === 'requests'
-    btn.classList.toggle('text-emerald-600', isActive)
-    if (span) span.classList.toggle('text-emerald-600', isActive)
-  })
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────

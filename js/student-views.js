@@ -41,6 +41,20 @@ function _fmtDate(d) {
   return `${dt.getDate()}/${dt.getMonth()+1}/${dt.getFullYear()+543}`
 }
 
+function _daysUntilLabel(value) {
+  if (!value) return ''
+  const target = new Date(value)
+  const today = new Date()
+  target.setHours(0,0,0,0)
+  today.setHours(0,0,0,0)
+  const diff = Math.round((target - today) / 86400000)
+  if (diff > 1) return `อีก ${diff} วัน`
+  if (diff === 1) return 'พรุ่งนี้'
+  if (diff === 0) return 'วันนี้'
+  if (diff === -1) return 'เมื่อวาน'
+  return `ผ่านมาแล้ว ${Math.abs(diff)} วัน`
+}
+
 function _gradeColor(pct) {
   if (pct >= 80) return 'text-emerald-700'
   if (pct >= 65) return 'text-blue-600'
@@ -263,7 +277,7 @@ export async function renderStudentSubjects(student) {
 }
 
 // ─── Subject Detail ───────────────────────────────────────────────────────────
-export async function renderStudentSubjectDetail(student, classId) {
+export async function renderStudentSubjectDetail(student, classId, tab = 'todo') {
   setContent(`<div class="flex justify-center py-10 text-gray-300">
     <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -275,10 +289,12 @@ export async function renderStudentSubjectDetail(student, classId) {
   const cls = classes.find(c => c.id === classId)
   if (!cls) { setContent(`<p class="text-center py-10 text-gray-400">ไม่พบรายวิชา</p>`); return }
 
-  const [{ columns, scores }, attendance] = await Promise.all([
+  const [{ columns, scores }, attendance, requestsAll] = await Promise.all([
     getMyScores(student.id, classId).catch(()=>({ columns:[], scores:[] })),
     getMyAttendance(student.id, classId).catch(()=>[]),
+    getMyExamRequests(student.id).catch(()=>[]),
   ])
+  const requests = requestsAll.filter(r => r.classes?.id === classId)
 
   const scoreMap = Object.fromEntries(scores.map(s => [s.assignment_id, s]))
   const ms = cls.master_subjects
@@ -363,13 +379,21 @@ export async function renderStudentSubjectDetail(student, classId) {
   }
 
   const colorCls = _subjectColorCls(cls)
+  const missingCols = columns.filter(col => {
+    const sc = scoreMap[col.id]
+    return !(sc && (sc.final_score != null || sc.original_score != null))
+  })
+  const pendingRequests = requests.filter(r => r.status === 'pending')
+  const upcomingRequests = requests.filter(r => {
+    const d = r.requested_date ? new Date(r.requested_date) : null
+    if (!d) return false
+    d.setHours(0,0,0,0)
+    const today = new Date(); today.setHours(0,0,0,0)
+    return d >= today
+  })
 
-  setContent(`
-    <button onclick="window._stuNav('subjects')" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← กลับรายวิชา</button>
-
-    <!-- Header card -->
+  const _subjectHeader = () => `
     <div class="${colorCls.bg} ${colorCls.border} border border-l-4 ${colorCls.accent} rounded-2xl p-4 mb-4 flex items-start gap-3">
-      <!-- Student image -->
       <div class="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
                   flex items-center justify-center text-white text-xl font-bold border-2 border-white shadow">
         ${student.image_url
@@ -382,40 +406,98 @@ export async function renderStudentSubjectDetail(student, classId) {
         <p class="text-xs text-gray-500 mt-0.5">${student.full_name} · ${student.student_code}</p>
         <p class="text-[11px] text-gray-400 mt-0.5">${teacher?.full_name ?? '—'} · ${cls.class_name ?? ''}</p>
       </div>
-      <!-- Score + grade top-right -->
       <div class="flex-shrink-0 text-right">
         <p class="text-2xl font-bold text-gray-800">${totalMax > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}</p>
         <p class="text-[10px] text-gray-400">/${totalMax} คะแนน</p>
         ${grade
           ? `<span class="inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${grade.cls}">${grade.label}</span>`
           : ''}
-        <button onclick="window._stuNav('subjects')"
-          class="block mt-2 ml-auto text-gray-300 hover:text-gray-500 text-lg leading-none">×</button>
       </div>
+    </div>`
+
+  const _requestCard = (r) => {
+    const s = STATUS_BADGE[r.status] ?? STATUS_BADGE.pending
+    const col = r.class_score_columns
+    const when = _daysUntilLabel(r.requested_date)
+    return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="min-w-0">
+          <p class="font-semibold text-gray-800 text-sm truncate">${r.request_type}</p>
+          ${col ? `<p class="text-[11px] text-gray-400 mt-0.5">${col.assignment_name}</p>` : ''}
+        </div>
+        <span class="flex-shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-full border ${s.cls}">${s.label}</span>
+      </div>
+      <div class="space-y-1 text-xs text-gray-500">
+        <p>📅 ${_fmtDate(r.requested_date)}${r.requested_period_no ? ` · คาบ ${r.requested_period_no}` : ''}${when ? ` · ${when}` : ''}</p>
+        ${r.reason ? `<p>💬 ${r.reason}</p>` : ''}
+        ${r.teacher_comment ? `<p class="${r.status==='approved'?'text-emerald-600':'text-red-500'}">👩‍🏫 ${r.teacher_comment}</p>` : ''}
+      </div>
+      ${r.status === 'pending' ? `
+        <button onclick="window._stuCancelRequest(${r.id}, ${classId})"
+          class="mt-3 text-xs text-red-400 hover:text-red-600 font-medium">✕ ยกเลิกคำร้อง</button>` : ''}
+    </div>`
+  }
+
+  const _todoContent = () => {
+    const items = []
+    pendingRequests.forEach(r => {
+      const col = r.class_score_columns?.assignment_name ? ` · ${r.class_score_columns.assignment_name}` : ''
+      items.push(`<div class="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="font-semibold text-amber-800 text-sm">คำร้องรอดำเนินการ${col}</p>
+            <p class="text-xs text-amber-600 mt-1">${_fmtDate(r.requested_date)}${r.requested_period_no ? ` · คาบ ${r.requested_period_no}` : ''}</p>
+          </div>
+          <span class="text-[11px] font-bold text-amber-700 bg-white/70 px-2 py-1 rounded-full">${_daysUntilLabel(r.requested_date)}</span>
+        </div>
+      </div>`)
+    })
+    upcomingRequests
+      .filter(r => r.status !== 'pending')
+      .forEach(r => items.push(`<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+        <p class="font-semibold text-blue-800 text-sm">${r.request_type}ที่กำลังจะถึง</p>
+        <p class="text-xs text-blue-600 mt-1">${_fmtDate(r.requested_date)} · ${_daysUntilLabel(r.requested_date)}</p>
+      </div>`))
+    missingCols.slice(0, 5).forEach(col => items.push(`<div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="font-semibold text-gray-800 text-sm">${col.assignment_name}</p>
+          <p class="text-xs text-gray-400 mt-1">ยังไม่มีคะแนนบันทึกในระบบ</p>
+        </div>
+        <span class="text-[11px] font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-full">/${col.max_score}</span>
+      </div>
+    </div>`))
+
+    return `
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-gray-800">✅ สิ่งที่ต้องทำ</h2>
+        <button onclick="window._stuOpenClassTab(${classId}, 'scores')" class="text-xs text-emerald-600 font-medium">ดูคะแนน →</button>
+      </div>
+      ${items.length ? `<div class="space-y-3">${items.join('')}</div>` : `
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-300">
+          <p class="text-4xl mb-2">🎉</p>
+          <p class="text-sm font-medium text-gray-500">ตอนนี้ยังไม่มีรายการที่ต้องทำ</p>
+          <p class="text-xs mt-1">ถ้าครูประกาศกำหนดสอบหรือมีคำร้องค้าง ระบบจะแสดงที่นี่</p>
+        </div>`}
+      <button onclick="window._stuOpenRequest(${classId})"
+        class="w-full mt-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition">
+        📝 ยื่นคำร้องในรายวิชานี้
+      </button>`
+  }
+
+  const _scoresContent = () => `
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-gray-800">📊 สรุปคะแนน</h2>
+      ${totalMax > 0 ? `<span class="text-xs text-gray-400">${pct.toFixed(0)}% รวม</span>` : ''}
     </div>
-
-    <!-- Submit request button -->
-    <button onclick="window._stuOpenRequest(${cls.id})"
-      class="w-full mb-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm
-             hover:bg-indigo-700 transition flex items-center justify-center gap-2">
-      📝 ยื่นคำร้องสอบย้อนหลัง / ปรับคะแนน
-    </button>
-
-    <!-- Score tables -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
-      <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-        <h3 class="font-semibold text-gray-700 text-sm">📊 คะแนนย่อย</h3>
-        ${totalMax > 0 ? `<span class="text-xs text-gray-400">${pct.toFixed(0)}% รวม</span>` : ''}
-      </div>
       ${columns.length === 0
-        ? `<p class="px-4 py-6 text-center text-xs text-gray-300">ยังไม่มีคะแนน</p>`
+        ? `<p class="px-4 py-8 text-center text-xs text-gray-300">ยังไม่มีคะแนน</p>`
         : `<div>
             ${_scoreTable(midCols, midScore, midMax, 'bg-blue-50', '📘 กลางภาค')}
             ${_scoreTable(finCols, finScore, finMax, 'bg-purple-50', '📙 ปลายภาค')}
           </div>`}
     </div>
-
-    <!-- Attendance summary -->
     ${attTotal > 0 ? `
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
@@ -432,8 +514,39 @@ export async function renderStudentSubjectDetail(student, classId) {
           </span>
         </div>`).join('')}
       </div>
-    </div>` : ''}
+    </div>` : ''}`
+
+  const _requestsContent = () => `
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-gray-800">📝 คำร้องรายวิชา</h2>
+      <button onclick="window._stuOpenRequest(${classId})" class="text-xs text-indigo-600 font-semibold">+ ยื่นคำร้อง</button>
+    </div>
+    ${requests.length ? `<div class="space-y-3">${requests.map(_requestCard).join('')}</div>` : `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-300">
+        <p class="text-4xl mb-2">📭</p>
+        <p class="text-sm">ยังไม่มีคำร้องในรายวิชานี้</p>
+      </div>`}`
+
+  const content = tab === 'scores'
+    ? _scoresContent()
+    : tab === 'requests'
+      ? _requestsContent()
+      : _todoContent()
+
+  setContent(`
+    <button onclick="window._stuNav('subjects')" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← รายวิชาอื่น</button>
+    ${_subjectHeader()}
+    ${content}
   `)
+
+  window._stuCancelRequest = async (id, targetClassId = classId) => {
+    if (!confirm('ยืนยันยกเลิกคำร้องนี้?')) return
+    try {
+      await cancelExamRequest(id)
+      showToast('ยกเลิกคำร้องแล้ว', 'success')
+      window._stuOpenClassTab(targetClassId, 'requests')
+    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: '+(err.message??''), 'error') }
+  }
 }
 
 // ─── Exam Requests List ───────────────────────────────────────────────────────
@@ -763,7 +876,7 @@ export async function renderExamRequestForm(student, classId) {
         status: 'pending',
       })
       showToast('ยื่นคำร้องสำเร็จ ✅', 'success')
-      window._stuNav('requests')
+      window._stuOpenClassTab(classId, 'requests')
     } catch (err) {
       showToast('ยื่นไม่สำเร็จ: '+(err.message??''), 'error')
     } finally { btn.disabled = false; btn.textContent = 'ยื่นคำร้อง' }
