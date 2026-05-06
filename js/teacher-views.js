@@ -1448,6 +1448,15 @@ export async function renderClassForm(teacher, course) {
 
 // ─── Placeholder views ────────────────────────────────────────────────────────
 
+const _htmlEsc = value => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const _sheetUrl = sheetId => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit`
+
 export async function renderMyClasses(teacher) {
   setActiveNav('my-classes')
   setTitle('ห้องเรียนของฉัน')
@@ -1508,9 +1517,9 @@ export async function renderMyClasses(teacher) {
                   📝 คะแนน
                 </button>
                 ${c.google_sheet_id ? `
-                <button onclick="window._openSyncModal(${c.id})"
+                <button onclick="window._openSheetToolsModal(${c.id})"
                   class="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition text-center">
-                  ↑ Sync ไปชีท
+                  📄 จัดการชีท
                 </button>` : ''}
                 <div class="flex gap-1">
                   <button onclick="window._editClass(${c.id})"
@@ -1560,6 +1569,220 @@ export async function renderMyClasses(teacher) {
         showToast(`ลบ "${name}" แล้ว`, 'success')
         renderMyClasses(teacher)
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+    }
+
+    const _openPrintableRoster = async (cls, type) => {
+      const win = window.open('', '_blank')
+      if (!win) {
+        showToast('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup ก่อน', 'warning')
+        return
+      }
+      win.document.write('<p style="font-family:sans-serif;padding:24px">กำลังสร้างเอกสาร...</p>')
+      try {
+        const [cfg, students, scoreColumns] = await Promise.all([
+          getSystemConfig().catch(() => ({})),
+          getClassStudents(cls.id),
+          type === 'score' ? getScoreColumns(cls.id) : Promise.resolve([]),
+        ])
+        const ms = cls.master_subjects ?? {}
+        const isVoc = ['ACDMVOC', 'AGMVOC'].includes(ms.subject_group)
+        const schoolName = isVoc
+          ? (cfg.porworCollegeName || cfg.samaiSchoolName || 'โรงเรียน')
+          : (cfg.samaiSchoolName || cfg.porworCollegeName || 'โรงเรียน')
+        const logoUrl = isVoc
+          ? (cfg.porworLogoBwUrl || cfg.porworLogoUrl || cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || '')
+          : (cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || cfg.porworLogoBwUrl || cfg.porworLogoUrl || '')
+        const title = type === 'score' ? 'ใบรายชื่อนักเรียนสำหรับบันทึกคะแนน' : 'ใบรายชื่อนักเรียนสำหรับเช็คชื่อ'
+        const scoreHeaders = scoreColumns.map(c => `
+          <th class="score-col">
+            <div>${_htmlEsc(c.assignment_name || '-')}</div>
+            <small>/${_htmlEsc(c.max_score ?? '')}</small>
+          </th>`).join('')
+        const scoreCells = scoreColumns.map(() => '<td class="score-cell"></td>').join('')
+        const attendanceHeaders = Array.from({ length: 12 }, (_, i) => `<th class="check-col">${i + 1}</th>`).join('')
+        const attendanceCells = Array.from({ length: 12 }, () => '<td class="check-cell"></td>').join('')
+        const rows = students.map((s, i) => `
+          <tr>
+            <td class="no">${i + 1}</td>
+            <td class="code">${_htmlEsc(s.student_code)}</td>
+            <td class="name">${_htmlEsc(s.full_name)}</td>
+            ${type === 'score' ? scoreCells : attendanceCells}
+            <td class="note"></td>
+          </tr>`).join('')
+        const doc = `<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <title>${_htmlEsc(title)} - ${_htmlEsc(ms.subject_name || '')}</title>
+  <style>
+    @page { size: A4 landscape; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Sarabun", "TH Sarabun New", Arial, sans-serif; color: #111827; margin: 0; background: #f3f4f6; }
+    .toolbar { position: sticky; top: 0; display: flex; gap: 8px; justify-content: flex-end; padding: 10px; background: white; border-bottom: 1px solid #e5e7eb; }
+    .toolbar button { border: 1px solid #d1d5db; background: white; border-radius: 8px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+    .toolbar .primary { background: #4f46e5; color: white; border-color: #4f46e5; }
+    .page { width: 297mm; min-height: 210mm; margin: 12px auto; padding: 10mm; background: white; }
+    .header { display: grid; grid-template-columns: 70px 1fr 150px; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .logo { width: 58px; height: 58px; object-fit: contain; }
+    .school { text-align: center; line-height: 1.3; }
+    .school h1 { margin: 0; font-size: 20px; }
+    .school h2 { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
+    .meta { font-size: 12px; line-height: 1.7; }
+    .meta strong { display: inline-block; min-width: 66px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+    th, td { border: 1px solid #111827; padding: 3px 4px; vertical-align: middle; }
+    th { background: #f3f4f6; font-weight: 700; text-align: center; }
+    .no { width: 28px; text-align: center; }
+    .code { width: 62px; text-align: center; font-family: monospace; }
+    .name { width: 150px; }
+    .check-col, .check-cell { width: 34px; height: 22px; text-align: center; }
+    .score-col, .score-cell { width: 58px; text-align: center; }
+    .score-col div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .score-col small { display: block; color: #6b7280; font-weight: 400; }
+    .note { width: 70px; }
+    .signature { display: flex; justify-content: flex-end; margin-top: 18px; font-size: 12px; }
+    .signature div { width: 220px; text-align: center; line-height: 2; }
+    @media print {
+      body { background: white; }
+      .toolbar { display: none; }
+      .page { margin: 0; box-shadow: none; width: auto; min-height: auto; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button onclick="window.close()">ปิด</button>
+    <button class="primary" onclick="window.print()">พิมพ์</button>
+  </div>
+  <main class="page">
+    <section class="header">
+      <div>${logoUrl ? `<img class="logo" src="${_htmlEsc(logoUrl)}" />` : ''}</div>
+      <div class="school">
+        <h1>${_htmlEsc(schoolName)}</h1>
+        <h2>${_htmlEsc(title)}</h2>
+      </div>
+      <div class="meta">
+        <div><strong>ภาคเรียน</strong> ${_htmlEsc(cfg.semester || '')}/${_htmlEsc(cfg.academicYear || '')}</div>
+        <div><strong>ห้อง</strong> ${_htmlEsc(cls.class_name || '')}</div>
+        <div><strong>จำนวน</strong> ${students.length} คน</div>
+      </div>
+    </section>
+    <section class="meta" style="margin-bottom:8px">
+      <div><strong>รายวิชา</strong> ${_htmlEsc(ms.subject_name || '')}</div>
+      <div><strong>รหัสวิชา</strong> ${_htmlEsc(ms.subject_code || '')}</div>
+      <div><strong>ครูผู้สอน</strong> ${_htmlEsc(teacher?.full_name || '')}</div>
+    </section>
+    <table>
+      <thead>
+        <tr>
+          <th class="no">#</th>
+          <th class="code">รหัส</th>
+          <th class="name">ชื่อ-นามสกุล</th>
+          ${type === 'score' ? scoreHeaders : attendanceHeaders}
+          <th class="note">หมายเหตุ</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <section class="signature">
+      <div>
+        ลงชื่อ ........................................ ครูผู้สอน<br />
+        (${_htmlEsc(teacher?.full_name || '')})
+      </div>
+    </section>
+  </main>
+</body>
+</html>`
+        win.document.open()
+        win.document.write(doc)
+        win.document.close()
+      } catch (err) {
+        win.close()
+        showToast('สร้างใบรายชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    }
+
+    window._openRosterPicker = (classId) => {
+      const cls = window._classCache?.[classId]
+      if (!cls) return
+      document.getElementById('roster-picker-modal')?.remove()
+      const m = document.createElement('div')
+      m.id = 'roster-picker-modal'
+      m.className = 'fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40'
+      m.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <h3 class="font-bold text-gray-800 text-base mb-1">สร้างใบรายชื่อ</h3>
+        <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.master_subjects?.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+        <div class="grid gap-3">
+          <button id="btn-roster-att" class="py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">✅ สร้างใบเช็คชื่อ</button>
+          <button id="btn-roster-score" class="py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">📝 สร้างใบบันทึกคะแนน</button>
+          <button id="btn-roster-close" class="py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        </div>
+      </div>`
+      document.body.appendChild(m)
+      m.querySelector('#btn-roster-close').addEventListener('click', () => m.remove())
+      m.addEventListener('click', e => { if (e.target === m) m.remove() })
+      m.querySelector('#btn-roster-att').addEventListener('click', () => { m.remove(); _openPrintableRoster(cls, 'attendance') })
+      m.querySelector('#btn-roster-score').addEventListener('click', () => { m.remove(); _openPrintableRoster(cls, 'score') })
+    }
+
+    window._openSheetToolsModal = (classId) => {
+      const cls = window._classCache?.[classId]
+      if (!cls?.google_sheet_id) return
+      document.getElementById('sheet-tools-modal')?.remove()
+      const sheetUrl = _sheetUrl(cls.google_sheet_id)
+      const m = document.createElement('div')
+      m.id = 'sheet-tools-modal'
+      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+      m.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <h3 class="font-bold text-gray-800 text-base mb-1">จัดการ Google Sheet</h3>
+        <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.master_subjects?.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+        <div class="space-y-2">
+          <button id="btn-share-sheet" class="w-full text-left px-4 py-3 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-sm font-semibold">🔓 เปิดสิทธิ์ให้ทุกคนที่มีลิงก์ดูชีทได้</button>
+          <button id="btn-open-sheet" class="w-full text-left px-4 py-3 rounded-xl border border-blue-100 bg-blue-50 text-blue-800 hover:bg-blue-100 text-sm font-semibold">📊 เปิดชีท</button>
+          <button id="btn-copy-sheet" class="w-full text-left px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 text-sm font-semibold">🔗 คัดลอกลิงก์ชีท</button>
+          <div class="pt-3 mt-3 border-t border-gray-100">
+            <p class="text-xs font-semibold text-gray-500 mb-2">ใบรายชื่อนักเรียน</p>
+            <button id="btn-roster-menu" class="w-full text-left px-4 py-3 rounded-xl border border-violet-100 bg-violet-50 text-violet-800 hover:bg-violet-100 text-sm font-semibold">🖨️ สร้างใบรายชื่อ</button>
+          </div>
+          <button id="btn-open-sync" class="w-full text-left px-4 py-3 rounded-xl border border-teal-100 bg-teal-50 text-teal-800 hover:bg-teal-100 text-sm font-semibold">↑ Sync ข้อมูลไปชีท</button>
+        </div>
+        <button id="btn-sheet-tools-close" class="mt-4 w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ปิด</button>
+      </div>`
+      document.body.appendChild(m)
+      m.querySelector('#btn-sheet-tools-close').addEventListener('click', () => m.remove())
+      m.addEventListener('click', e => { if (e.target === m) m.remove() })
+      m.querySelector('#btn-open-sheet').addEventListener('click', () => window.open(sheetUrl, '_blank'))
+      m.querySelector('#btn-copy-sheet').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(sheetUrl)
+          showToast('คัดลอกลิงก์ชีทแล้ว', 'success')
+        } catch {
+          showToast('คัดลอกไม่สำเร็จ', 'error')
+        }
+      })
+      m.querySelector('#btn-share-sheet').addEventListener('click', async () => {
+        const btn = m.querySelector('#btn-share-sheet')
+        btn.disabled = true
+        btn.textContent = '⏳ กำลังเปิดสิทธิ์...'
+        try {
+          const { shareSheetForView } = await import('./sync.js')
+          await shareSheetForView(cls.google_sheet_id)
+          showToast('ส่งคำสั่งเปิดสิทธิ์แล้ว กรุณารอสักครู่แล้วลองเปิดลิงก์', 'success')
+          btn.textContent = '✅ ส่งคำสั่งเปิดสิทธิ์แล้ว'
+        } catch (err) {
+          btn.disabled = false
+          btn.textContent = '🔓 เปิดสิทธิ์ให้ทุกคนที่มีลิงก์ดูชีทได้'
+          showToast('เปิดสิทธิ์ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        }
+      })
+      m.querySelector('#btn-roster-menu').addEventListener('click', () => {
+        m.remove()
+        window._openRosterPicker(classId)
+      })
+      m.querySelector('#btn-open-sync').addEventListener('click', () => {
+        m.remove()
+        window._openSyncModal(classId)
+      })
     }
 
     window._openSyncModal = (classId) => {

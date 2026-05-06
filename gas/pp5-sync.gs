@@ -30,11 +30,21 @@ function doPost(e) {
     if (action === 'sync_scores')     return _syncScores(payload)
     if (action === 'sync_cells')      return _syncCells(payload)
     if (action === 'sync_table')      return _syncTable(payload)
+    if (action === 'share_sheet_view') return _shareSheetView(payload)
 
     return _json({ ok: false, error: 'Unknown action: ' + action })
   } catch (err) {
     return _json({ ok: false, error: err.message })
   }
+}
+
+function _shareSheetView(payload) {
+  if (!payload.sheetId) return _json({ ok: false, error: 'Missing sheetId' })
+
+  var file = DriveApp.getFileById(payload.sheetId)
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW)
+
+  return _json({ ok: true, sheetId: payload.sheetId, url: file.getUrl() })
 }
 
 // ─── Sync เช็คชื่อ ───────────────────────────────────────────────────────────

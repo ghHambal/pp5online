@@ -970,6 +970,7 @@ export async function renderSettings() {
       { label: '🏫 โรงเรียนสามัญ', keys: [
         { key: 'samaiSchoolName',          label: 'ชื่อโรงเรียน',                type: 'text' },
         { key: 'samaiLogoUrl',             label: 'โลโก้โรงเรียน',              type: 'upload' },
+        { key: 'samaiLogoBwUrl',           label: 'โลโก้โรงเรียนขาวดำ',          type: 'upload' },
         { key: 'samaiRegistrarName',       label: 'หัวหน้าฝ่ายทะเบียน',        type: 'text' },
         { key: 'samaiRegistrarSignUrl',    label: 'ลายเซ็นหัวหน้าฝ่ายทะเบียน', type: 'upload' },
         { key: 'samaiAcademicHeadName',    label: 'หัวหน้าวิชาการ',             type: 'text' },
@@ -980,6 +981,7 @@ export async function renderSettings() {
       { label: '🎓 วิทยาลัยปวช', keys: [
         { key: 'porworCollegeName',          label: 'ชื่อวิทยาลัย',              type: 'text' },
         { key: 'porworLogoUrl',              label: 'โลโก้วิทยาลัย',            type: 'upload' },
+        { key: 'porworLogoBwUrl',            label: 'โลโก้วิทยาลัยขาวดำ',        type: 'upload' },
         { key: 'porworRegistrarName',        label: 'หัวหน้าฝ่ายทะเบียน',      type: 'text' },
         { key: 'porworRegistrarSignUrl',     label: 'ลายเซ็นหัวหน้าฝ่ายทะเบียน',type: 'upload' },
         { key: 'porworAcademicHeadName',     label: 'หัวหน้าวิชาการ',           type: 'text' },

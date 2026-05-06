@@ -274,6 +274,16 @@ export async function syncSubjectCatalog(rows, options = {}) {
   return rows?.length ?? 0
 }
 
+export async function shareSheetForView(sheetId) {
+  if (!sheetId) throw new Error('ยังไม่ได้ตั้งค่า Google Sheet ID')
+  const gasUrl = await _getGasUrl()
+
+  await _post(gasUrl, {
+    action: 'share_sheet_view',
+    sheetId,
+  })
+}
+
 // ─── Prayer Sheet Sync (Solat tab) ───────────────────────────────────────────
 // status label map เหมือนใน teacher-views.js
 const PRAYER_LABEL = { pray: '/', absent: 'X', usor: 'U', followed: '-', avoid: 'N' }
