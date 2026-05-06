@@ -14,6 +14,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
          getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota } from './api.js'
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
+import { applyThemeForRole } from './theme.js'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -573,6 +574,7 @@ window._adminViewSchedule = async (teacherId, teacherName) => {
 document.addEventListener('DOMContentLoaded', async () => {
   const session = await requireAuth()
   if (!session) return
+  await applyThemeForRole('admin')
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 

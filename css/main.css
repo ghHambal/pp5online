@@ -5,9 +5,19 @@
 /* ─── Base ──────────────────────────────────────────────────────────────────── */
 * { font-family: 'Sarabun', sans-serif; }
 
+:root {
+  --theme-primary: #4f46e5;
+  --theme-primary-dark: #312e81;
+  --theme-primary-soft: #eef2ff;
+  --theme-primary-ring: #c7d2fe;
+  --theme-primary-rgb: 79 70 229;
+  --theme-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --theme-login-bg: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #2563eb 100%);
+}
+
 /* ─── Login ─────────────────────────────────────────────────────────────────── */
 .login-bg {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #2563eb 100%);
+  background: var(--theme-login-bg);
   min-height: 100vh;
 }
 .login-card {
@@ -20,13 +30,13 @@
 .input-field { transition: border-color 0.2s, box-shadow 0.2s; }
 .input-field:focus {
   outline: none;
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  border-color: var(--theme-primary);
+  box-shadow: 0 0 0 3px rgb(var(--theme-primary-rgb) / 0.15);
 }
 
 /* ─── Button ─────────────────────────────────────────────────────────────────── */
 .btn-primary {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: var(--theme-gradient);
   transition: opacity 0.2s, transform 0.1s;
 }
 .btn-primary:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
@@ -42,11 +52,49 @@
 
 /* ─── Logo ───────────────────────────────────────────────────────────────────── */
 .logo-ring {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: var(--theme-gradient);
   padding: 3px; border-radius: 50%;
 }
 .logo-inner {
   background: white; border-radius: 50%;
   width: 72px; height: 72px;
   display: flex; align-items: center; justify-content: center;
+}
+
+#sidebar {
+  background: var(--theme-primary-dark) !important;
+}
+#sidebar [data-nav] {
+  color: color-mix(in srgb, white 78%, var(--theme-primary)) !important;
+}
+#sidebar [data-nav].bg-indigo-800,
+#sidebar [data-nav].bg-emerald-800,
+#sidebar [data-nav]:hover {
+  background: var(--theme-primary) !important;
+  color: #fff !important;
+}
+#sidebar [class*="border-indigo"],
+#sidebar [class*="border-emerald"] {
+  border-color: color-mix(in srgb, var(--theme-primary) 60%, black) !important;
+}
+#sidebar [class*="text-indigo"],
+#sidebar [class*="text-emerald"] {
+  color: color-mix(in srgb, white 72%, var(--theme-primary)) !important;
+}
+#sidebar .bg-indigo-800,
+#sidebar .bg-emerald-800 {
+  background: var(--theme-primary) !important;
+}
+
+.text-indigo-600,
+.text-emerald-600 {
+  color: var(--theme-primary) !important;
+}
+.bg-indigo-50,
+.bg-emerald-50 {
+  background-color: var(--theme-primary-soft) !important;
+}
+.border-indigo-400,
+.border-emerald-400 {
+  border-color: var(--theme-primary-ring) !important;
 }

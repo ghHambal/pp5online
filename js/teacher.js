@@ -6,6 +6,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
+import { applyThemeForRole } from './theme.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm,
   renderMyClasses, renderAttendance, renderGrades,
@@ -30,6 +31,7 @@ async function loadTeacherInfo(userId) {
   _teacher = await getMyTeacherProfile(userId)
   const { data: { session } } = await supabase.auth.getSession()
   if (_teacher) _teacher.auth_email = session?.user?.email ?? ''
+  await applyThemeForRole('teacher', _teacher ?? {})
 
   const name   = _teacher?.full_name ?? 'ครูผู้สอน'
   const code   = _teacher?.teacher_code ? `รหัส ${_teacher.teacher_code}` : ''

@@ -37,6 +37,16 @@ CREATE TABLE system_config (
 INSERT INTO system_config (key, value) VALUES
   -- ── ทั่วไป ──────────────────────────────────────────────
   ('appColor',                    '#007bff'),
+  ('loginColor',                  '#4f46e5'),
+  ('adminColor',                  '#4f46e5'),
+  ('teacherDefaultColor',         '#059669'),
+  ('teacherLanguageColor',        '#2563eb'),
+  ('teacherLifeColor',            '#059669'),
+  ('teacherAcademicColor',        '#ea580c'),
+  ('teacherVocColor',             '#7c3aed'),
+  ('teacherReligionColor',        '#b45309'),
+  ('studentColor',                '#0891b2'),
+  ('loginLogoUrl',                ''),
   ('semester',                    '1'),
   ('academicYear',                '2568'),
   -- ── โรงเรียนสามัญ ───────────────────────────────────────

@@ -25,6 +25,7 @@ import { openTeacherModal, handleDeleteTeacher,
          openPeriodModal, handleDeletePeriod } from './dashboard.js'
 import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './import.js'
 import { uploadSystemAsset } from './storage.js'
+import { applyThemeForRole } from './theme.js'
 import {
   DEFAULT_SUBJECT_SYNC_COLUMNS,
   DEFAULT_SUBJECT_SYNC_KEY_FIELD,
@@ -961,8 +962,20 @@ export async function renderSettings() {
     const GROUPS = [
       { label: '⚙️ ทั่วไป', keys: [
         { key: 'appColor',    label: 'สีระบบ',        type: 'color' },
+        { key: 'loginColor',  label: 'สีหน้าล็อกอิน', type: 'color' },
+        { key: 'loginLogoUrl',label: 'โลโก้หน้าล็อกอิน', type: 'upload' },
         { key: 'semester',    label: 'ภาคเรียนที่',   type: 'select', options: ['1','2'] },
         { key: 'academicYear',label: 'ปีการศึกษา',    type: 'text' },
+      ]},
+      { label: '🎨 ธีมสีหน้าต่าง ๆ', keys: [
+        { key: 'adminColor',            label: 'สีหน้าแอดมิน', type: 'color' },
+        { key: 'teacherDefaultColor',   label: 'สีหน้าครูทั่วไป', type: 'color' },
+        { key: 'teacherLanguageColor',  label: 'สีครูกลุ่มทักษะภาษา', type: 'color' },
+        { key: 'teacherLifeColor',      label: 'สีครูกลุ่มทักษะชีวิต', type: 'color' },
+        { key: 'teacherAcademicColor',  label: 'สีครูกลุ่มทักษะวิชาการ', type: 'color' },
+        { key: 'teacherVocColor',       label: 'สีครูกลุ่ม ปวช/สามัญปวช', type: 'color' },
+        { key: 'teacherReligionColor',  label: 'สีครูกลุ่มวิชาศาสนา', type: 'color' },
+        { key: 'studentColor',          label: 'สีหน้านักเรียน', type: 'color' },
       ]},
       { label: '📅 ช่วงเวลาภาคเรียน (สำหรับระบบละหมาด)', keys: [
         { key: 'semester_start', label: 'วันเปิดภาคเรียน (YYYY-MM-DD)', type: 'date' },
@@ -1037,6 +1050,18 @@ export async function renderSettings() {
         { key: 'geminiModel',          label: 'Gemini Model',                         type: 'text' },
       ]},
     ]
+    const COLOR_DEFAULTS = {
+      appColor: '#007bff',
+      loginColor: '#4f46e5',
+      adminColor: '#4f46e5',
+      teacherDefaultColor: '#059669',
+      teacherLanguageColor: '#2563eb',
+      teacherLifeColor: '#059669',
+      teacherAcademicColor: '#ea580c',
+      teacherVocColor: '#7c3aed',
+      teacherReligionColor: '#b45309',
+      studentColor: '#0891b2',
+    }
 
     const fieldHTML = ({ key, label, type, options, placeholder }) => {
       const val = cfg[key] ?? ''
@@ -1047,9 +1072,9 @@ export async function renderSettings() {
         return `<div class="mb-4">
           <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
           <div class="flex items-center gap-3">
-            <input type="color" ${base} value="${val || '#007bff'}"
+            <input type="color" ${base} value="${val || COLOR_DEFAULTS[key] || '#007bff'}"
               class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
-            <span id="cfg-${key}-txt" class="text-sm text-gray-500">${val || '#007bff'}</span>
+            <span id="cfg-${key}-txt" class="text-sm text-gray-500">${val || COLOR_DEFAULTS[key] || '#007bff'}</span>
           </div>
         </div>`
       if (type === 'date')
@@ -1169,6 +1194,7 @@ export async function renderSettings() {
             const val = el.tagName === 'BUTTON' ? (el.dataset.on ?? 'false') : el.value
             return updateSystemConfig(el.dataset.key, val)
           }))
+          await applyThemeForRole('admin', {}, true)
           showToast('บันทึกสำเร็จ', 'success')
         } catch {
           showToast('บันทึกไม่สำเร็จ', 'error')
