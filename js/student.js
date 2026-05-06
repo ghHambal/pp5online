@@ -9,6 +9,7 @@ import {
   renderStudentProfile,
 } from './student-views.js'
 import { getSystemConfig } from './api.js'
+import { applyThemeForRole } from './theme.js'
 
 let _student = null
 
@@ -21,6 +22,7 @@ async function init() {
     .from('profiles').select('role').eq('id', session.user.id).single()
 
   if (profile?.role !== 'student') { window.location.replace('index.html'); return }
+  await applyThemeForRole('student')
 
   _student = await getMyStudentProfile()
   if (!_student) {
@@ -44,7 +46,7 @@ async function _loadHeader() {
   const name = _student?.full_name ?? 'นักเรียน'
 
   // school logo
-  const logo = cfg.logoUrl
+  const logo = cfg.loginLogoUrl || cfg.logoUrl || cfg.samaiLogoUrl || cfg.porworLogoUrl
   if (logo) {
     document.getElementById('stu-logo').src = logo
     document.getElementById('stu-logo').classList.remove('hidden')

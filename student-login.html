@@ -8,6 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/main.css" />
+  <script type="module">
+    import { applyThemeForRole } from './js/theme.js'
+    applyThemeForRole('student')
+  </script>
 </head>
 
 <body class="login-bg flex items-center justify-center min-h-screen p-4">
@@ -16,7 +20,10 @@
 
     <!-- Logo + Title -->
     <div class="flex flex-col items-center mb-7">
-      <div class="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center mb-4 text-3xl">🎒</div>
+      <div class="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center mb-4 text-3xl overflow-hidden">
+        <img data-theme-logo src="" alt="" class="hidden w-full h-full object-contain" />
+        <span data-theme-logo-fallback>🎒</span>
+      </div>
       <h1 class="text-2xl font-bold text-gray-800">เข้าสู่ระบบนักเรียน</h1>
       <p id="school-name" class="text-sm text-gray-400 mt-1">ปพ.5 ออนไลน์</p>
     </div>
