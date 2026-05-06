@@ -24,7 +24,13 @@ import { openTeacherModal, handleDeleteTeacher,
          openPeriodModal, handleDeletePeriod } from './dashboard.js'
 import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './import.js'
 import { uploadSystemAsset } from './storage.js'
-import { syncSubjectCatalog } from './sync.js'
+import {
+  DEFAULT_SUBJECT_SYNC_COLUMNS,
+  DEFAULT_SUBJECT_SYNC_SHEET_ID,
+  DEFAULT_SUBJECT_SYNC_TAB,
+  SUBJECT_SYNC_COLUMNS,
+  syncSubjectCatalog,
+} from './sync.js'
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 function _grade(room) {
@@ -43,6 +49,12 @@ function _opts(arr) {
 const SELECT_CLS = 'border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-indigo-400'
 const SEARCH_CLS = 'border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400'
 const _onclickText = value => String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+const _esc = value => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 function setActiveNav(viewName) {
@@ -1354,6 +1366,18 @@ export async function renderSubjects() {
     }))
     const depts = _opts(allSubjects.map(s => s.dept))
     const skills = _opts(allSubjects.map(s => s.skill_group))
+    let subjectSyncCfg = {
+      sheetId: cfg.subjectSyncSheetId || DEFAULT_SUBJECT_SYNC_SHEET_ID,
+      tabName: cfg.subjectSyncTabName || DEFAULT_SUBJECT_SYNC_TAB,
+      columns: (() => {
+        try {
+          const parsed = JSON.parse(cfg.subjectSyncColumns || 'null')
+          return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_SUBJECT_SYNC_COLUMNS
+        } catch {
+          return DEFAULT_SUBJECT_SYNC_COLUMNS
+        }
+      })(),
+    }
 
     const SUBG_OPTIONS = `
       <option value="">ทุกกลุ่มวิชา</option>
@@ -1371,7 +1395,7 @@ export async function renderSubjects() {
         <div class="flex flex-wrap justify-end gap-2">
           <button id="btn-sync-subjects-central"
             class="px-4 py-2.5 text-sm font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition">
-            ↑ ซิงค์รายวิชา → 169
+            ↑ ซิงค์รายวิชา → ${_esc(subjectSyncCfg.tabName || DEFAULT_SUBJECT_SYNC_TAB)}
           </button>
           <button id="sub-action-btn" onclick="window._subAction()"
             class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
@@ -1390,10 +1414,14 @@ export async function renderSubjects() {
           class="px-5 py-2 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50">
           🏫 รายวิชาที่เปิดสอน
         </button>
+        <button id="stab-sync" onclick="_switchSubjectTab('sync')"
+          class="px-5 py-2 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50">
+          ⚙️ ตั้งค่าซิงค์ชีท
+        </button>
       </div>
 
       <!-- Filter Bar -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+      <div id="subject-filter-bar" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
         <div class="flex flex-wrap gap-2">
           <input id="subf-q" type="text" placeholder="🔍 ค้นหารหัส ชื่อ..." class="${SEARCH_CLS} flex-1 min-w-40" />
           <select id="subf-dept" class="${SELECT_CLS}">
@@ -1418,7 +1446,106 @@ export async function renderSubjects() {
 
     let currentTab = 'course'
 
+    const _setButtonText = () => {
+      const btn = document.getElementById('sub-action-btn')
+      if (btn) {
+        btn.innerHTML = currentTab === 'course'
+          ? '<span>＋</span> เพิ่มคอร์ส'
+          : currentTab === 'class'
+            ? '<span>＋</span> เพิ่มรายวิชา'
+            : '<span>✓</span> บันทึกตั้งค่า'
+      }
+      const syncBtn = document.getElementById('btn-sync-subjects-central')
+      if (syncBtn) syncBtn.textContent = `↑ ซิงค์รายวิชา → ${subjectSyncCfg.tabName || DEFAULT_SUBJECT_SYNC_TAB}`
+    }
+
+    const _buildSubjectSyncRows = () => allSubjects.map(s => {
+      const teacher = teacherById[s.teacher_id] ?? {}
+      const dept = deptByCode[s.dept] ?? deptByName[s.dept] ?? {}
+      const teacherName = teacher.full_name ?? ''
+      const subjectName = s.subject_name ?? ''
+      const subjectCode = s.subject_code ?? ''
+
+      return {
+        subject_group: s.subject_group ?? '',
+        sbJect: `${subjectName}_(${subjectCode})_${teacherName}`,
+        subject_name: subjectName,
+        subject_code: subjectCode,
+        credit: s.credit ?? '',
+        year: cfg.academicYear ?? '',
+        semester: cfg.semester ?? '',
+        grade_level: s.grade_level ?? '',
+        teacher_name: teacherName,
+        teacher_code: teacher.teacher_code ?? '',
+        dept_name: dept.dept_name ?? s.dept ?? '',
+        dept_code: dept.dept_code ?? s.dept ?? '',
+      }
+    })
+
+    const _renderSubjectSyncSettings = () => {
+      const selected = new Set(subjectSyncCfg.columns)
+      document.getElementById('subject-table-wrap').innerHTML = `
+        <div class="p-5 md:p-6">
+          <div class="grid md:grid-cols-2 gap-4 mb-5">
+            <div>
+              <label class="block text-sm font-semibold text-gray-600 mb-1">Google Sheet ID ปลายทาง</label>
+              <input id="subject-sync-sheet-id" type="text" value="${_esc(subjectSyncCfg.sheetId)}"
+                class="input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
+                placeholder="เช่น 19esDfxhPg1ksnOC-..." />
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-600 mb-1">ชื่อแท็บปลายทาง</label>
+              <input id="subject-sync-tab-name" type="text" value="${_esc(subjectSyncCfg.tabName)}"
+                class="input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
+                placeholder="เช่น 169" />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 class="text-sm font-bold text-gray-700">คอลัมน์ที่จะซิงค์กลับชีท</h3>
+              <p class="text-xs text-gray-400 mt-0.5">ระบบจะเขียนหัวตารางตามลำดับด้านล่าง และส่งเฉพาะคอลัมน์ที่เลือก</p>
+            </div>
+            <button id="subject-sync-select-defaults" type="button"
+              class="px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50">
+              ค่าเริ่มต้น
+            </button>
+          </div>
+
+          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            ${SUBJECT_SYNC_COLUMNS.map(col => `
+              <label class="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm text-gray-700">
+                <input type="checkbox" class="subject-sync-col w-4 h-4 accent-emerald-600"
+                  value="${_esc(col.key)}" ${selected.has(col.key) ? 'checked' : ''} />
+                <span>
+                  <span class="font-semibold">${_esc(col.key)}</span>
+                  <span class="block text-xs text-gray-400">${_esc(col.label)}</span>
+                </span>
+              </label>
+            `).join('')}
+          </div>
+
+          <div class="mt-5 rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3 text-xs text-emerald-800">
+            คอลัมน์ <span class="font-bold">sbJect</span> จะถูกสร้างเป็นรูปแบบ
+            <span class="font-bold">subject_name_(subject_code)_teacher_name</span>
+          </div>
+        </div>`
+
+      document.getElementById('subject-sync-select-defaults')?.addEventListener('click', () => {
+        document.querySelectorAll('.subject-sync-col').forEach(inp => {
+          inp.checked = DEFAULT_SUBJECT_SYNC_COLUMNS.includes(inp.value)
+        })
+      })
+    }
+
     const _applyFilter = () => {
+      document.getElementById('subject-filter-bar')?.classList.toggle('hidden', currentTab === 'sync')
+      _setButtonText()
+      if (currentTab === 'sync') {
+        _renderSubjectSyncSettings()
+        return
+      }
+
       const q  = document.getElementById('subf-q').value.toLowerCase()
       const dp = document.getElementById('subf-dept').value
       const sk = document.getElementById('subf-skill').value
@@ -1445,15 +1572,45 @@ export async function renderSubjects() {
     }
 
     // action ปุ่มมุมขวาบน
-    window._subAction = () => {
+    window._subAction = async () => {
       if (currentTab === 'course') {
         renderCourseForm(null, async (payload) => {
           await createSubject(payload)
           await renderSubjects()
         })
-      } else {
+      } else if (currentTab === 'class') {
         // admin เลือกคอร์สก่อน แล้วลงทะเบียนห้อง
         _renderAdminCoursePicker()
+      } else {
+        const sheetId = document.getElementById('subject-sync-sheet-id')?.value.trim() ?? ''
+        const tabName = document.getElementById('subject-sync-tab-name')?.value.trim() ?? ''
+        const columns = [...document.querySelectorAll('.subject-sync-col:checked')].map(inp => inp.value)
+        if (!sheetId || !tabName) {
+          showToast('กรุณากรอก Sheet ID และชื่อแท็บปลายทาง', 'warning')
+          return
+        }
+        if (!columns.length) {
+          showToast('กรุณาเลือกคอลัมน์อย่างน้อย 1 คอลัมน์', 'warning')
+          return
+        }
+        const btn = document.getElementById('sub-action-btn')
+        const orig = btn?.innerHTML
+        if (btn) { btn.disabled = true; btn.textContent = 'กำลังบันทึก...' }
+        try {
+          await Promise.all([
+            updateSystemConfig('subjectSyncSheetId', sheetId),
+            updateSystemConfig('subjectSyncTabName', tabName),
+            updateSystemConfig('subjectSyncColumns', JSON.stringify(columns)),
+          ])
+          subjectSyncCfg = { sheetId, tabName, columns }
+          _setButtonText()
+          showToast('บันทึกตั้งค่าซิงค์รายวิชาแล้ว', 'success')
+        } catch (err) {
+          showToast('บันทึกตั้งค่าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        } finally {
+          if (btn) { btn.disabled = false; btn.innerHTML = orig }
+          _setButtonText()
+        }
       }
     }
 
@@ -1490,31 +1647,12 @@ export async function renderSubjects() {
         btn.disabled = true
         btn.textContent = 'กำลังซิงค์...'
 
-        const rows = allSubjects.map(s => {
-          const teacher = teacherById[s.teacher_id] ?? {}
-          const dept = deptByCode[s.dept] ?? deptByName[s.dept] ?? {}
-          const teacherName = teacher.full_name ?? ''
-          const subjectName = s.subject_name ?? ''
-          const subjectCode = s.subject_code ?? ''
-
-          return {
-            subject_group: s.subject_group ?? '',
-            sbJect: `${subjectName}_(${subjectCode})_${teacherName}`,
-            subject_name: subjectName,
-            subject_code: subjectCode,
-            credit: s.credit ?? '',
-            year: cfg.academicYear ?? '',
-            semester: cfg.semester ?? '',
-            grade_level: s.grade_level ?? '',
-            teacher_name: teacherName,
-            teacher_code: teacher.teacher_code ?? '',
-            dept_name: dept.dept_name ?? s.dept ?? '',
-            dept_code: dept.dept_code ?? s.dept ?? '',
-          }
+        const count = await syncSubjectCatalog(_buildSubjectSyncRows(), {
+          sheetId: subjectSyncCfg.sheetId,
+          tabName: subjectSyncCfg.tabName,
+          headers: subjectSyncCfg.columns,
         })
-
-        const count = await syncSubjectCatalog(rows)
-        showToast(`ส่งคำสั่งซิงค์รายวิชา ${count} รายการไปแท็บ 169 แล้ว`, 'success')
+        showToast(`ส่งคำสั่งซิงค์รายวิชา ${count} รายการไปแท็บ ${subjectSyncCfg.tabName} แล้ว`, 'success')
       } catch (err) {
         showToast('ซิงค์รายวิชาไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       } finally {
@@ -1532,9 +1670,9 @@ export async function renderSubjects() {
       document.getElementById('stab-class').className = tab === 'class'
         ? 'px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white'
         : 'px-5 py-2 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-      // update button text
-      const btn = document.getElementById('sub-action-btn')
-      if (btn) btn.innerHTML = tab === 'course' ? '<span>＋</span> เพิ่มคอร์ส' : '<span>＋</span> เพิ่มรายวิชา'
+      document.getElementById('stab-sync').className = tab === 'sync'
+        ? 'px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white'
+        : 'px-5 py-2 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
       _applyFilter()
     }
 

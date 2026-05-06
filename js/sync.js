@@ -3,23 +3,25 @@
 const SHEET_TAB = 'หน้าหลัก'
 const STU_RANGE = 'J8:J72'
 const ATT_START = 14  // Column N
-const CENTRAL_SUBJECT_SHEET_ID = '19esDfxhPg1ksnOC-KYXTMVY40p0Y08xLZ5XZVpVTyT0'
-const CENTRAL_SUBJECT_TAB = '169'
+export const DEFAULT_SUBJECT_SYNC_SHEET_ID = '19esDfxhPg1ksnOC-KYXTMVY40p0Y08xLZ5XZVpVTyT0'
+export const DEFAULT_SUBJECT_SYNC_TAB = '169'
 
-const CENTRAL_SUBJECT_HEADERS = [
-  'subject_group',
-  'sbJect',
-  'subject_name',
-  'subject_code',
-  'credit',
-  'year',
-  'semester',
-  'grade_level',
-  'teacher_name',
-  'teacher_code',
-  'dept_name',
-  'dept_code',
+export const SUBJECT_SYNC_COLUMNS = [
+  { key: 'subject_group', label: 'กลุ่มวิชา' },
+  { key: 'sbJect', label: 'ชื่อวิชาแบบไฟล์เดิม' },
+  { key: 'subject_name', label: 'ชื่อวิชา' },
+  { key: 'subject_code', label: 'รหัสวิชา' },
+  { key: 'credit', label: 'หน่วยกิต' },
+  { key: 'year', label: 'ปีการศึกษา' },
+  { key: 'semester', label: 'ภาคเรียน' },
+  { key: 'grade_level', label: 'ระดับชั้น' },
+  { key: 'teacher_name', label: 'ชื่อครู' },
+  { key: 'teacher_code', label: 'รหัสครู' },
+  { key: 'dept_name', label: 'ชื่อกลุ่มสาระ' },
+  { key: 'dept_code', label: 'รหัสกลุ่มสาระ' },
 ]
+
+export const DEFAULT_SUBJECT_SYNC_COLUMNS = SUBJECT_SYNC_COLUMNS.map(c => c.key)
 
 const ATT_MAP = {
   present: 'ม',
@@ -244,16 +246,23 @@ export async function syncClassInfo(sheetId, classData, teacherData = {}, extraD
  * Sync ทะเบียนรายวิชากลับไปยัง Google Sheet ฐานข้อมูลกลาง
  * @param {Array} rows - ข้อมูลตาม CENTRAL_SUBJECT_HEADERS
  */
-export async function syncSubjectCatalog(rows) {
+export async function syncSubjectCatalog(rows, options = {}) {
   const gasUrl = await _getGasUrl()
+  const headers = options.headers?.length ? options.headers : DEFAULT_SUBJECT_SYNC_COLUMNS
+  const sheetId = options.sheetId || DEFAULT_SUBJECT_SYNC_SHEET_ID
+  const tabName = options.tabName || DEFAULT_SUBJECT_SYNC_TAB
+
+  if (!sheetId) throw new Error('ยังไม่ได้ตั้งค่า Sheet ID ปลายทาง')
+  if (!tabName) throw new Error('ยังไม่ได้ตั้งค่าชื่อแท็บปลายทาง')
+  if (!headers.length) throw new Error('กรุณาเลือกคอลัมน์อย่างน้อย 1 คอลัมน์')
 
   await _post(gasUrl, {
     action:  'sync_table',
-    sheetId: CENTRAL_SUBJECT_SHEET_ID,
-    tabName: CENTRAL_SUBJECT_TAB,
-    headers: CENTRAL_SUBJECT_HEADERS,
+    sheetId,
+    tabName,
+    headers,
     rows: (rows ?? []).map(row =>
-      CENTRAL_SUBJECT_HEADERS.map(key => row?.[key] ?? '')
+      headers.map(key => row?.[key] ?? '')
     ),
   })
 
