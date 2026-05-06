@@ -1113,6 +1113,49 @@ function _calcAttendanceScore(rows) {
   return Math.round((attended / rows.length) * 100) / 10
 }
 
+export async function fillLifeSkillScoresForClass(classId, academicYear, semester) {
+  const columns = (await getLifeSkillColumns(academicYear, semester, 'สามัญ')).slice(0, 3)
+  if (!columns.length) return { classes: 0, columns: 0, scores: 0, columnNames: [] }
+
+  const { data: cls, error } = await supabase
+    .from('classes')
+    .select('id, class_students ( student_id )')
+    .eq('id', classId)
+    .single()
+  if (error) throw error
+
+  const students = (cls?.class_students ?? []).map(r => r.student_id).filter(Boolean)
+  if (!students.length) return { classes: 0, columns: columns.length, scores: 0, columnNames: columns.map(c => c.name) }
+
+  const colIds = columns.map(c => c.id)
+  const scoreRows = await _fetchPaged(
+    'life_skill_scores',
+    'student_id, column_id, score',
+    q => q.in('column_id', colIds).in('student_id', students)
+  )
+  const scoreMap = {}
+  for (const row of scoreRows) {
+    if (!scoreMap[row.student_id]) scoreMap[row.student_id] = {}
+    scoreMap[row.student_id][row.column_id] = row.score
+  }
+
+  let scoreCount = 0
+  for (const col of columns) {
+    const classColId = await _ensureClassScoreColumn(classId, col.name, col.max_score ?? 10, col.sheet_col ?? '')
+    const rows = students
+      .filter(studentId => scoreMap[studentId]?.[col.id] !== undefined && scoreMap[studentId]?.[col.id] !== null)
+      .map(studentId => ({
+        assignment_id: classColId,
+        student_id: studentId,
+        original_score: scoreMap[studentId][col.id],
+        final_score: scoreMap[studentId][col.id],
+      }))
+    scoreCount += await _upsertStudentScoreRows(rows)
+  }
+
+  return { classes: 1, columns: columns.length, scores: scoreCount, columnNames: columns.map(c => c.name) }
+}
+
 export async function fillLifeSkillScoresToClassScores(academicYear, semester) {
   const columns = (await getLifeSkillColumns(academicYear, semester, 'สามัญ')).slice(0, 3)
   if (!columns.length) return { classes: 0, columns: 0, scores: 0 }
@@ -1162,6 +1205,75 @@ export async function fillLifeSkillScoresToClassScores(academicYear, semester) {
   }
 
   return { classes: classCount, columns: ensuredColumns, scores: scoreCount }
+}
+
+export async function fillPrayerScoresForReligionClass(classId, options = {}) {
+  const start = options.semesterStart
+  const end = options.semesterEnd
+  const allDays = _dateListForTerm(start, end)
+  if (!allDays.length) throw new Error('ยังไม่ได้ตั้งค่าวันเปิด-ปิดภาคเรียน')
+
+  const { data: cls, error } = await supabase
+    .from('classes')
+    .select(`
+      id,
+      master_subjects ( subject_group ),
+      class_students ( student_id )
+    `)
+    .eq('id', classId)
+    .single()
+  if (error) throw error
+
+  if (!['AGM', 'AGMVOC'].includes(cls?.master_subjects?.subject_group)) {
+    return { classes: 0, columns: 0, scores: 0, columnNames: [] }
+  }
+
+  const students = (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
+  if (!students.length) return { classes: 0, columns: 2, scores: 0, columnNames: ['คะแนนละหมาด', 'คะแนนมาเรียน'] }
+
+  const prayerRecords = await _fetchPaged(
+    'prayer_records',
+    'student_id, check_date, status',
+    q => q.gte('check_date', start).lte('check_date', end).in('student_id', students)
+  )
+  const prayerMap = {}
+  for (const r of prayerRecords) {
+    if (!prayerMap[r.student_id]) prayerMap[r.student_id] = {}
+    prayerMap[r.student_id][r.check_date] = r.status
+  }
+
+  const attendanceRows = await _fetchPaged(
+    'attendances',
+    'student_id, status',
+    q => q.eq('class_id', classId)
+  )
+  const attendanceMap = {}
+  for (const r of attendanceRows) {
+    if (!attendanceMap[r.student_id]) attendanceMap[r.student_id] = []
+    attendanceMap[r.student_id].push(r)
+  }
+
+  const prayerColId = await _ensureClassScoreColumn(classId, 'คะแนนละหมาด', 10, '', 'ระหว่างเรียน')
+  const attColId = await _ensureClassScoreColumn(classId, 'คะแนนมาเรียน', 10, '', 'ระหว่างเรียน')
+
+  const prayerRows = students.map(studentId => {
+    const score = _calcPrayerScoreFromMap(prayerMap[studentId] ?? {}, allDays)
+    return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
+  })
+  const attRows = students
+    .map(studentId => {
+      const score = _calcAttendanceScore(attendanceMap[studentId] ?? [])
+      return score === null ? null : {
+        assignment_id: attColId,
+        student_id: studentId,
+        original_score: score,
+        final_score: score,
+      }
+    })
+    .filter(Boolean)
+
+  const scoreCount = await _upsertStudentScoreRows([...prayerRows, ...attRows])
+  return { classes: 1, columns: 2, scores: scoreCount, columnNames: ['คะแนนละหมาด', 'คะแนนมาเรียน'] }
 }
 
 export async function fillPrayerScoresToReligionClassScores(options = {}) {

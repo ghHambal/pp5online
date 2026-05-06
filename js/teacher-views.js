@@ -13,7 +13,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getMySchedule, upsertScheduleEntry, deleteScheduleEntry,
          deleteScheduleByTeacher, getPeriods, getAllPeriods,
          getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
-         getReadingScoreColumns, getReadingScores, upsertReadingScore } from './api.js'
+         getReadingScoreColumns, getReadingScores, upsertReadingScore,
+         fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass } from './api.js'
 
 import { uploadTeacherPhoto } from './storage.js'
 
@@ -1475,13 +1476,19 @@ export async function renderMyClasses(teacher) {
       <div class="grid gap-4">
         ${classes.map(c => {
           const ms = c.master_subjects
+          const isReligionGroup = ['AGM', 'AGMVOC'].includes(ms?.subject_group)
+          const groupBadge = isReligionGroup
+            ? { text: 'กลุ่มวิชาศาสนา', cls: 'bg-amber-50 text-amber-700' }
+            : c.skill_group
+              ? { text: `กลุ่มทักษะ: ${c.skill_group}`, cls: 'bg-blue-50 text-blue-700' }
+              : null
           return `
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition">
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1 flex-wrap">
                   <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
-                  ${c.skill_group ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">${c.skill_group}</span>` : ''}
+                  ${groupBadge ? `<span class="px-2 py-0.5 ${groupBadge.cls} text-xs rounded-full">${groupBadge.text}</span>` : ''}
                   ${c.google_sheet_id
 
                     ? `<span class="px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full">✓ Sheet</span>`
@@ -4284,7 +4291,7 @@ export async function renderGradesGrid(teacher, classData) {
     </svg> กำลังโหลด...</div>`)
 
   try {
-    const [students, rawCols, scoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg] = await Promise.all([
+    const [students, rawCols, rawScoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg] = await Promise.all([
       getClassStudents(classData.id),
       getScoreColumns(classData.id),
       getStudentScores(classData.id),
@@ -4297,6 +4304,25 @@ export async function renderGradesGrid(teacher, classData) {
     // โหลดข้อมูลคะแนนอ่านคิดวิเคราะห์ → สร้าง evalMap ต่อ studentId
     const _rsYear = parseInt(sysCfg.academicYear ?? 2568)
     const _rsSem  = parseInt(sysCfg.semester ?? 1)
+    const subjectGroup = ms?.subject_group ?? ''
+    const isLifeSkillClass = classData?.skill_group === 'ชีวิต'
+    const isReligionClass = ['AGM', 'AGMVOC'].includes(subjectGroup)
+    let scoreRows = rawScoreRows
+    let priorityColumnNames = []
+
+    if (isLifeSkillClass) {
+      const result = await fillLifeSkillScoresForClass(classData.id, _rsYear, _rsSem)
+      priorityColumnNames = result.columnNames ?? []
+      scoreRows = await getStudentScores(classData.id)
+    } else if (isReligionClass) {
+      const result = await fillPrayerScoresForReligionClass(classData.id, {
+        semesterStart: sysCfg.semester_start,
+        semesterEnd: sysCfg.semester_end,
+      })
+      priorityColumnNames = result.columnNames ?? ['คะแนนละหมาด', 'คะแนนมาเรียน']
+      scoreRows = await getStudentScores(classData.id)
+    }
+
     const _rsCols = await getReadingScoreColumns(_rsYear, _rsSem).catch(()=>[])
     const _rsRows = _rsCols.length ? await getReadingScores(_rsCols.map(c=>c.id)).catch(()=>[]) : []
     const _rsTotals = {}
@@ -4310,7 +4336,7 @@ export async function renderGradesGrid(teacher, classData) {
       readingEvalMap[parseInt(sidStr)] = { score100, label: g.label, cls: g.cls }
     }
 
-    let allCols = rawCols
+    let allCols = priorityColumnNames.length ? await getScoreColumns(classData.id) : rawCols
     if (allCols.length === 0) {
       const mkCol = (type, n) => createScoreColumn({
         class_id: classData.id, assignment_name: `คะแนนที่ ${n}`,
@@ -4319,6 +4345,18 @@ export async function renderGradesGrid(teacher, classData) {
       for (let i = 1; i <= 5; i++) await mkCol('midterm', i)
       for (let i = 1; i <= 5; i++) await mkCol('final', i)
       allCols = await getScoreColumns(classData.id)
+    }
+    if (priorityColumnNames.length) {
+      allCols = [...allCols].sort((a, b) => {
+        const ai = priorityColumnNames.indexOf(a.assignment_name)
+        const bi = priorityColumnNames.indexOf(b.assignment_name)
+        if (ai >= 0 || bi >= 0) {
+          if (ai < 0) return 1
+          if (bi < 0) return -1
+          return ai - bi
+        }
+        return (a.id ?? 0) - (b.id ?? 0)
+      })
     }
 
     const midCols   = allCols.filter(c => c.assignment_type !== 'final')
