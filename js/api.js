@@ -1100,6 +1100,11 @@ function _dateListForTerm(startStr, endStr) {
 }
 
 const _PRAYER_SCORE = { pray: 2, absent: 0, usor: 1, followed: 1, avoid: -1 }
+const _LIFE_SKILL_SHEET_COLUMNS = ['EH', 'EI', 'EJ']
+const _RELIGION_REQUIRED_COLUMNS = [
+  { name: 'คะแนนมาเรียน', sheetColumn: 'EH' },
+  { name: 'คะแนนละหมาด', sheetColumn: 'EI' },
+]
 
 function _calcPrayerScoreFromMap(sMap, allDays) {
   const earned = allDays.reduce((sum, d) => sum + (_PRAYER_SCORE[sMap[d.ds]] ?? 0), 0)
@@ -1140,8 +1145,8 @@ export async function fillLifeSkillScoresForClass(classId, academicYear, semeste
   }
 
   let scoreCount = 0
-  for (const col of columns) {
-    const classColId = await _ensureClassScoreColumn(classId, col.name, col.max_score ?? 10, col.sheet_col ?? '')
+  for (const [idx, col] of columns.entries()) {
+    const classColId = await _ensureClassScoreColumn(classId, col.name, col.max_score ?? 10, _LIFE_SKILL_SHEET_COLUMNS[idx] ?? '')
     const rows = students
       .filter(studentId => scoreMap[studentId]?.[col.id] !== undefined && scoreMap[studentId]?.[col.id] !== null)
       .map(studentId => ({
@@ -1189,8 +1194,8 @@ export async function fillLifeSkillScoresToClassScores(academicYear, semester) {
     const students = (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
     if (!students.length) continue
     classCount++
-    for (const col of columns) {
-      const classColId = await _ensureClassScoreColumn(cls.id, col.name, col.max_score ?? 10, col.sheet_col ?? '')
+    for (const [idx, col] of columns.entries()) {
+      const classColId = await _ensureClassScoreColumn(cls.id, col.name, col.max_score ?? 10, _LIFE_SKILL_SHEET_COLUMNS[idx] ?? '')
       ensuredColumns++
       const rows = students
         .filter(studentId => scoreMap[studentId]?.[col.id] !== undefined && scoreMap[studentId]?.[col.id] !== null)
@@ -1229,7 +1234,7 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
   }
 
   const students = (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
-  if (!students.length) return { classes: 0, columns: 2, scores: 0, columnNames: ['คะแนนละหมาด', 'คะแนนมาเรียน'] }
+  if (!students.length) return { classes: 0, columns: 2, scores: 0, columnNames: _RELIGION_REQUIRED_COLUMNS.map(c => c.name) }
 
   const prayerRecords = await _fetchPaged(
     'prayer_records',
@@ -1253,8 +1258,8 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
     attendanceMap[r.student_id].push(r)
   }
 
-  const prayerColId = await _ensureClassScoreColumn(classId, 'คะแนนละหมาด', 10, '', 'ระหว่างเรียน')
-  const attColId = await _ensureClassScoreColumn(classId, 'คะแนนมาเรียน', 10, '', 'ระหว่างเรียน')
+  const attColId = await _ensureClassScoreColumn(classId, 'คะแนนมาเรียน', 10, 'EH', 'ระหว่างเรียน')
+  const prayerColId = await _ensureClassScoreColumn(classId, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
 
   const prayerRows = students.map(studentId => {
     const score = _calcPrayerScoreFromMap(prayerMap[studentId] ?? {}, allDays)
@@ -1273,7 +1278,7 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
     .filter(Boolean)
 
   const scoreCount = await _upsertStudentScoreRows([...prayerRows, ...attRows])
-  return { classes: 1, columns: 2, scores: scoreCount, columnNames: ['คะแนนละหมาด', 'คะแนนมาเรียน'] }
+  return { classes: 1, columns: 2, scores: scoreCount, columnNames: _RELIGION_REQUIRED_COLUMNS.map(c => c.name) }
 }
 
 export async function fillPrayerScoresToReligionClassScores(options = {}) {
@@ -1334,8 +1339,8 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
     if (!students.length) continue
     classCount++
 
-    const prayerColId = await _ensureClassScoreColumn(cls.id, 'คะแนนละหมาด', 10, '', 'ระหว่างเรียน')
-    const attColId = await _ensureClassScoreColumn(cls.id, 'คะแนนมาเรียน', 10, '', 'ระหว่างเรียน')
+    const attColId = await _ensureClassScoreColumn(cls.id, 'คะแนนมาเรียน', 10, 'EH', 'ระหว่างเรียน')
+    const prayerColId = await _ensureClassScoreColumn(cls.id, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
     ensuredColumns += 2
 
     const prayerRows = students.map(studentId => {

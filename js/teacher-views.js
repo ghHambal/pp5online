@@ -4319,7 +4319,7 @@ export async function renderGradesGrid(teacher, classData) {
         semesterStart: sysCfg.semester_start,
         semesterEnd: sysCfg.semester_end,
       })
-      priorityColumnNames = result.columnNames ?? ['คะแนนละหมาด', 'คะแนนมาเรียน']
+      priorityColumnNames = result.columnNames ?? ['คะแนนมาเรียน', 'คะแนนละหมาด']
       scoreRows = await getStudentScores(classData.id)
     }
 
