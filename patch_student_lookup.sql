@@ -29,7 +29,7 @@ BEGIN
     s.image_url,
     (s.profile_id IS NOT NULL)                                AS has_account,
     CASE WHEN s.profile_id IS NOT NULL
-         THEN (SELECT email FROM auth.users WHERE id = s.profile_id)
+         THEN (SELECT u.email FROM auth.users u WHERE u.id = s.profile_id)
          ELSE NULL
     END                                                       AS login_email
   FROM students s
