@@ -1457,6 +1457,63 @@ const _htmlEsc = value => String(value ?? '')
 
 const _sheetUrl = sheetId => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit`
 
+function _transparentEdgeDarkLogo(url) {
+  if (!url) return Promise.resolve('')
+  return new Promise(resolve => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onerror = () => resolve(url)
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
+        ctx.drawImage(img, 0, 0)
+        const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const { data, width, height } = image
+        const seen = new Uint8Array(width * height)
+        const stack = []
+        const isDark = idx => {
+          const off = idx * 4
+          return data[off + 3] > 0 && data[off] < 70 && data[off + 1] < 70 && data[off + 2] < 70
+        }
+        const push = (x, y) => {
+          if (x < 0 || y < 0 || x >= width || y >= height) return
+          const idx = y * width + x
+          if (seen[idx] || !isDark(idx)) return
+          seen[idx] = 1
+          stack.push(idx)
+        }
+        for (let x = 0; x < width; x++) {
+          push(x, 0)
+          push(x, height - 1)
+        }
+        for (let y = 0; y < height; y++) {
+          push(0, y)
+          push(width - 1, y)
+        }
+        while (stack.length) {
+          const idx = stack.pop()
+          const off = idx * 4
+          data[off + 3] = 0
+          const x = idx % width
+          const y = Math.floor(idx / width)
+          push(x + 1, y)
+          push(x - 1, y)
+          push(x, y + 1)
+          push(x, y - 1)
+        }
+        ctx.putImageData(image, 0, 0)
+        resolve(canvas.toDataURL('image/png'))
+      } catch {
+        resolve(url)
+      }
+    }
+    img.src = url
+  })
+}
+
 export async function renderMyClasses(teacher) {
   setActiveNav('my-classes')
   setTitle('ห้องเรียนของฉัน')
@@ -1592,6 +1649,7 @@ export async function renderMyClasses(teacher) {
         const logoUrl = isVoc
           ? (cfg.porworLogoBwUrl || cfg.porworLogoUrl || cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || '')
           : (cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || cfg.porworLogoBwUrl || cfg.porworLogoUrl || '')
+        const printLogoUrl = await _transparentEdgeDarkLogo(logoUrl)
         const title = type === 'score' ? 'ใบรายชื่อนักเรียนสำหรับบันทึกคะแนน' : 'ใบรายชื่อนักเรียนสำหรับเช็คชื่อ'
         const isLandscape = orientation !== 'portrait'
         const pageWidth = isLandscape ? '297mm' : '210mm'
@@ -1630,7 +1688,7 @@ export async function renderMyClasses(teacher) {
     .page { width: ${pageWidth}; min-height: ${pageHeight}; margin: 12px auto; padding: 10mm; background: white; }
     .header { display: grid; grid-template-columns: 70px 1fr 150px; align-items: center; gap: 12px; margin-bottom: 10px; }
     .logo-wrap { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; background: transparent; }
-    .logo { width: 58px; height: 58px; object-fit: contain; mix-blend-mode: multiply; filter: grayscale(1) contrast(1.18); }
+    .logo { width: 58px; height: 58px; object-fit: contain; filter: grayscale(1) contrast(1.18); }
     .school { text-align: center; line-height: 1.3; }
     .school h1 { margin: 0; font-size: 20px; }
     .school h2 { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
@@ -1675,7 +1733,7 @@ export async function renderMyClasses(teacher) {
   </div>
   <main class="page">
     <section class="header">
-      <div class="logo-wrap">${logoUrl ? `<img class="logo" src="${_htmlEsc(logoUrl)}" />` : ''}</div>
+      <div class="logo-wrap">${printLogoUrl ? `<img class="logo" src="${_htmlEsc(printLogoUrl)}" />` : ''}</div>
       <div class="school">
         <h1>${_htmlEsc(schoolName)}</h1>
         <h2>${_htmlEsc(title)}</h2>
