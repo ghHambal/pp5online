@@ -2691,14 +2691,11 @@ export async function renderLifeSkillAdmin() {
   const sem  = parseInt(cfg.semester ?? 1)
 
   const _reload = async () => {
-    const [samaiCols, sadsanaCols] = await Promise.all([
-      getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[]),
-      getLifeSkillColumns(year, sem, 'ศาสนา').catch(()=>[]),
-    ])
-    _render(samaiCols, sadsanaCols)
+    const samaiCols = await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])
+    _render(samaiCols)
   }
 
-  const _render = (samaiCols, sadsanaCols) => {
+  const _render = (samaiCols) => {
     const colRow = (c) => `
       <tr class="hover:bg-gray-50 transition lsk-row" data-id="${c.id}">
         <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.name}</td>
@@ -2778,7 +2775,7 @@ export async function renderLifeSkillAdmin() {
       <div id="lsk-tab-content"></div>
     </div>`)
 
-    const allCols = [...samaiCols, ...sadsanaCols]
+    const allCols = [...samaiCols]
 
     const _showScores = async () => {
       document.getElementById('lsk-tab-actions').innerHTML = `
@@ -2788,10 +2785,11 @@ export async function renderLifeSkillAdmin() {
         </button>`
       document.getElementById('lsk-tab-content').innerHTML = `
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 flex flex-wrap gap-3 items-center">
-          <select id="lsk-filter-cat" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
-            <option value="">ทุกประเภท</option>
-            <option value="สามัญ">สามัญ</option>
-            <option value="ศาสนา">ศาสนา</option>
+          <select id="lsk-filter-grade" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <option value="">ทุกระดับชั้น</option>
+          </select>
+          <select id="lsk-filter-room" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <option value="">ทุกห้อง</option>
           </select>
           <input id="lsk-filter-search" type="text" placeholder="ค้นหาชื่อ / รหัส"
             class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 flex-1 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
@@ -2801,28 +2799,37 @@ export async function renderLifeSkillAdmin() {
           <div id="lsk-score-table"><div class="p-10 text-center text-gray-400">กำลังโหลด...</div></div>
         </div>`
 
-      const [{ columns, scores }, roster] = await Promise.all([
+      const [{ columns: rawColumns, scores }, roster] = await Promise.all([
         getAllLifeSkillScores(year, sem).catch(()=>({ columns:[], scores:[] })),
         getStudents().catch(()=>[]),
       ])
+      const columns = (rawColumns ?? []).filter(c => c.category === 'สามัญ')
       const scoreMap = {}
       for (const s of scores) {
         if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
         scoreMap[s.student_id][s.column_id] = s.score
       }
       const allStudents = roster
-        .filter(s => s?.id && s?.student_code)
-        .sort((a,b) => (a.main_room??a.religion_room??'').localeCompare(b.main_room??b.religion_room??'',undefined,{numeric:true}) || (a.student_code??'').localeCompare(b.student_code??''))
+        .filter(s => s?.id && s?.student_code && s?.main_room)
+        .sort((a,b) => (a.main_room??'').localeCompare(b.main_room??'',undefined,{numeric:true}) || (a.student_code??'').localeCompare(b.student_code??''))
 
-      const _columnsForCat = (cat) => cat ? columns.filter(c => c.category === cat) : columns
-      const _studentsForCat = (cat, list = allStudents) => {
-        if (cat === 'สามัญ') return list.filter(s => s.main_room)
-        if (cat === 'ศาสนา') return list.filter(s => s.religion_room)
-        return list
+      const gradeEl = document.getElementById('lsk-filter-grade')
+      const roomEl = document.getElementById('lsk-filter-room')
+      gradeEl.innerHTML = '<option value="">ทุกระดับชั้น</option>' +
+        _opts(allStudents.map(s => _grade(s.main_room))).map(g => `<option value="${g}">${g}</option>`).join('')
+
+      const _syncRoomOptions = () => {
+        const grade = gradeEl.value
+        const current = roomEl.value
+        const rooms = _opts(allStudents
+          .filter(s => !grade || _grade(s.main_room) === grade)
+          .map(s => _room(s.main_room)))
+        roomEl.innerHTML = '<option value="">ทุกห้อง</option>' +
+          rooms.map(r => `<option value="${r}" ${r === current ? 'selected' : ''}>ห้อง ${r}</option>`).join('')
+        if (current && !rooms.includes(current)) roomEl.value = ''
       }
 
-      const _renderTable = (list, cat = document.getElementById('lsk-filter-cat')?.value ?? '') => {
-        const visibleCols = _columnsForCat(cat)
+      const _renderTable = (list) => {
         document.getElementById('lsk-filter-count').textContent = `${list.length} คน`
         if (!list.length) { document.getElementById('lsk-score-table').innerHTML = `<div class="p-10 text-center text-gray-400">ไม่พบข้อมูล</div>`; return }
         document.getElementById('lsk-score-table').innerHTML = `
@@ -2833,20 +2840,19 @@ export async function renderLifeSkillAdmin() {
                 <th class="text-left px-3 py-2.5 text-gray-600 font-semibold w-20 sticky left-8 bg-gray-50">รหัส</th>
                 <th class="text-left px-3 py-2.5 text-gray-600 font-semibold min-w-[130px]">ชื่อ</th>
                 <th class="text-left px-3 py-2.5 text-gray-400 w-20">ห้อง</th>
-                ${visibleCols.map(c=>`<th class="text-center px-2 py-2.5 text-gray-600 font-semibold min-w-[60px] whitespace-nowrap">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
+                ${columns.map(c=>`<th class="text-center px-2 py-2.5 text-gray-600 font-semibold min-w-[60px] whitespace-nowrap">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
                 <th class="text-center px-3 py-2.5 text-indigo-600 font-semibold">รวม</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
               ${list.map((s,i) => {
-                const room = cat === 'ศาสนา' ? (s.religion_room ?? '—') : (s.main_room ?? s.religion_room ?? '—')
-                const total = visibleCols.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
+                const total = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
                 return `<tr class="hover:bg-indigo-50/30 transition">
                   <td class="px-3 py-2 text-gray-400 sticky left-0 bg-white">${i+1}</td>
                   <td class="px-3 py-2 font-mono text-gray-700 sticky left-8 bg-white">${s.student_code??'—'}</td>
                   <td class="px-3 py-2 text-gray-800">${s.full_name??'—'}</td>
-                  <td class="px-3 py-2 text-gray-400">${room}</td>
-                  ${visibleCols.map(c => {
+                  <td class="px-3 py-2 text-gray-400">${s.main_room ?? '—'}</td>
+                  ${columns.map(c => {
                     const v = scoreMap[s.id]?.[c.id]
                     return `<td class="px-2 py-2 text-center ${v!=null?'text-gray-800 font-medium':'text-gray-300'}">${v??'—'}</td>`
                   }).join('')}
@@ -2857,18 +2863,24 @@ export async function renderLifeSkillAdmin() {
           </table>`
       }
 
+      _syncRoomOptions()
       let _lskFiltered = [...allStudents]
       _renderTable(_lskFiltered)
 
       const _applyLskFilter = () => {
-        const cat = document.getElementById('lsk-filter-cat').value
+        _syncRoomOptions()
+        const grade = gradeEl.value
+        const room = roomEl.value
         const q   = document.getElementById('lsk-filter-search').value.toLowerCase()
-        _lskFiltered = _studentsForCat(cat).filter(s =>
-          !q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q)
+        _lskFiltered = allStudents.filter(s =>
+          (!grade || _grade(s.main_room) === grade) &&
+          (!room || _room(s.main_room) === room) &&
+          (!q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
         )
-        _renderTable(_lskFiltered, cat)
+        _renderTable(_lskFiltered)
       }
-      document.getElementById('lsk-filter-cat').addEventListener('change', _applyLskFilter)
+      gradeEl.addEventListener('change', _applyLskFilter)
+      roomEl.addEventListener('change', _applyLskFilter)
       document.getElementById('lsk-filter-search').addEventListener('input', _applyLskFilter)
 
       document.getElementById('btn-sync-ls')?.addEventListener('click', async () => {
@@ -2876,40 +2888,28 @@ export async function renderLifeSkillAdmin() {
         btn.disabled = true; btn.textContent = '⏳ กำลัง Sync...'
         try {
           const { syncCentralBatch } = await import('./sync.js')
-          const cat = document.getElementById('lsk-filter-cat').value
-          const targets = (cat ? [cat] : ['สามัญ', 'ศาสนา']).map(category => ({
-            category,
-            sheetId: category === 'ศาสนา' ? cfg.lifeSkillSheetIdSadsana : cfg.lifeSkillSheetIdSamai,
-            tabName: category === 'ศาสนา' ? cfg.lifeSkillSheetTabSadsana : cfg.lifeSkillSheetTabSamai,
-            range: category === 'ศาสนา' ? (cfg.lifeSkillStudentRangeSadsana || 'J8:J3000') : (cfg.lifeSkillStudentRangeSamai || 'J8:J3000'),
-            columns: _columnsForCat(category),
-            students: _studentsForCat(category, cat ? _lskFiltered : allStudents),
-          })).filter(t => t.columns.length)
-
-          if (!targets.length) {
+          if (!columns.length) {
             showToast('ยังไม่มีคอลัมน์สำหรับซิงค์', 'warning')
             return
           }
-
-          let totalStudents = 0
-          let totalRecords = 0
-          for (const target of targets) {
-            if (!target.sheetId) throw new Error(`ยังไม่ได้ตั้งค่า Sheet ID (${target.category})`)
-            const stuList = target.students.map(s => ({ id: s.id, student_code: s.student_code }))
-            const stuIds = new Set(stuList.map(s => s.id))
-            const colIds = new Set(target.columns.map(c => c.id))
-            const scList = scores.filter(sc => stuIds.has(sc.student_id) && colIds.has(sc.column_id))
-            totalRecords += await syncCentralBatch(
-              target.sheetId,
-              target.tabName,
-              target.columns,
-              scList,
-              stuList,
-              { studentColRange: target.range }
-            )
-            totalStudents += stuList.length
+          if (!cfg.lifeSkillSheetIdSamai) throw new Error('ยังไม่ได้ตั้งค่า Sheet ID (สามัญ)')
+          const stuList = _lskFiltered.map(s => ({ id: s.id, student_code: s.student_code }))
+          const stuIds = new Set(stuList.map(s => s.id))
+          const colIds = new Set(columns.map(c => c.id))
+          const scList = scores.filter(sc => stuIds.has(sc.student_id) && colIds.has(sc.column_id))
+          const totalRecords = await syncCentralBatch(
+            cfg.lifeSkillSheetIdSamai,
+            cfg.lifeSkillSheetTabSamai,
+            columns,
+            scList,
+            stuList,
+            { studentColRange: cfg.lifeSkillStudentRangeSamai || 'J8:J3000' }
+          )
+          if (!totalRecords) {
+            showToast('ยังไม่มีคะแนนที่พร้อมซิงค์ในกลุ่มที่เลือก', 'warning')
+            return
           }
-          showToast(`ส่งคำสั่ง Sync ทักษะชีวิต ${totalStudents} คน / ${totalRecords} คะแนนแล้ว`, 'success')
+          showToast(`ส่งคำสั่ง Sync ทักษะชีวิต ${stuList.length} คน / ${totalRecords} คะแนนแล้ว`, 'success')
         } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
         finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
       })
@@ -2927,15 +2927,6 @@ export async function renderLifeSkillAdmin() {
           </div>
           <div id="lsk-samai">${tableHTML(samaiCols)}</div>
           ${sheetIdBlock('lifeSkillSheetIdSamai', 'สามัญ')}
-        </div>
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-            <h3 class="text-sm font-semibold text-gray-700">ประเภทศาสนา</h3>
-            <span class="ml-auto text-xs text-gray-400">${sadsanaCols.length} หัวข้อ</span>
-          </div>
-          <div id="lsk-sadsana">${tableHTML(sadsanaCols)}</div>
-          ${sheetIdBlock('lifeSkillSheetIdSadsana', 'ศาสนา')}
         </div>
       </div>`
       document.getElementById('lsk-add-btn').addEventListener('click', () => _openModal(null, year, sem, _reload))
@@ -3026,13 +3017,6 @@ function _openModal(col, year, sem, onSave) {
           <input id="lsk-sheetcol" type="text" value="${col?.sheet_col ?? ''}" placeholder="EH"
             class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono uppercase" />
         </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
-          <select id="lsk-cat" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white">
-            <option value="สามัญ"  ${(col?.category??'สามัญ')==='สามัญ' ?'selected':''}>สามัญ</option>
-            <option value="ศาสนา" ${col?.category==='ศาสนา'?'selected':''}>ศาสนา</option>
-          </select>
-        </div>
         <div class="flex gap-3 pt-2">
           <button type="button" id="lsk-cancel"
             class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
@@ -3059,7 +3043,7 @@ function _openModal(col, year, sem, onSave) {
         max_score:     parseInt(m.querySelector('#lsk-max').value) || 20,
         sort_order:    parseInt(m.querySelector('#lsk-order').value) || 0,
         sheet_col:     m.querySelector('#lsk-sheetcol').value.trim().toUpperCase() || null,
-        category:      m.querySelector('#lsk-cat').value,
+        category:      'สามัญ',
         academic_year: year,
         semester:      sem,
       }

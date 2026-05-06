@@ -94,17 +94,15 @@ Admin can assign missing homeroom advisors by searching teacher code/name.
 
 Admin page: `renderLifeSkillAdmin` in `js/views.js`.
 
-Life skill sync uses category-specific settings:
+Life skill sync uses these settings:
 
 - `lifeSkillSheetIdSamai`
 - `lifeSkillSheetTabSamai`
 - `lifeSkillStudentRangeSamai`
-- `lifeSkillSheetIdSadsana`
-- `lifeSkillSheetTabSadsana`
-- `lifeSkillStudentRangeSadsana`
 
 The sync writes by student code using `syncCentralBatch` in `js/sync.js`.
 Use a wide student-code range for central sheets, for example `J8:J3000`, because the old default `J8:J72` is only suitable for small per-class sheets.
+Life skill scores are currently for `สามัญ` only; do not reintroduce the `ศาสนา` life-skill section unless the user explicitly asks.
 
 ## Recent Behavior To Preserve
 
