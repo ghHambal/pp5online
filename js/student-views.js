@@ -432,21 +432,65 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const _todoContent = () => {
     const items = []
 
+    // ── วันเรียนถัดไป (countdown) ──
+    const sessionDates = [cls.day1_date, cls.day2_date, cls.day3_date,
+                          cls.day4_date, cls.day5_date, cls.day6_date].filter(Boolean)
+    const today = new Date(); today.setHours(0,0,0,0)
+    const upcoming = sessionDates
+      .map(d => new Date(d))
+      .filter(d => { d.setHours(0,0,0,0); return d >= today })
+      .sort((a,b) => a-b)
+
+    if (upcoming.length > 0) {
+      const next = upcoming[0]
+      const diff = Math.round((next - today) / 86400000)
+      const diffLabel = diff === 0 ? '🔴 วันนี้!' : diff === 1 ? '🟡 พรุ่งนี้' : `⏰ อีก ${diff} วัน`
+      const dayName = DAY_TH[next.getDay()] ?? ''
+      items.push(`
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl bg-emerald-50 flex flex-col items-center justify-center flex-shrink-0">
+            <span class="text-xs text-emerald-600 font-bold">${dayName}</span>
+            <span class="text-lg font-extrabold text-emerald-700 leading-tight">${next.getDate()}</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800">📅 วันเรียนถัดไป</p>
+            <p class="text-xs text-gray-400 mt-0.5">${_fmtDate(next.toISOString().slice(0,10))}</p>
+          </div>
+          <span class="text-xs font-bold ${diff === 0 ? 'text-red-500' : diff === 1 ? 'text-amber-500' : 'text-emerald-600'}">${diffLabel}</span>
+        </div>`)
+    }
+
+    // ── คะแนนค้าง (ยังไม่มีค่า) ──
+    const missing = columns.filter(c => {
+      const sc = scoreMap[c.id]
+      return !sc || (sc.final_score == null && sc.original_score == null)
+    })
+    if (missing.length > 0) {
+      items.push(`
+        <div class="bg-white rounded-2xl border border-amber-100 shadow-sm p-4">
+          <p class="text-sm font-semibold text-amber-700 mb-2">⚠️ คะแนนที่ยังไม่มีข้อมูล (${missing.length} รายการ)</p>
+          <div class="space-y-1.5">
+            ${missing.map(c => `
+            <div class="flex items-center gap-2 text-xs text-gray-600">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>
+              <span>${c.assignment_name}</span>
+              <span class="ml-auto text-gray-400">/${c.max_score}</span>
+            </div>`).join('')}
+          </div>
+          <p class="text-[10px] text-gray-400 mt-2">หากขาดสอบ สามารถยื่นคำร้องในแท็บ "คำร้อง"</p>
+        </div>`)
+    }
+
     return `
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-bold text-gray-800">✅ สิ่งที่ต้องทำ</h2>
-        <button onclick="window._stuOpenClassTab(${classId}, 'scores')" class="text-xs text-emerald-600 font-medium">ดูคะแนน →</button>
+        <h2 class="font-bold text-gray-800">✅ ภารกิจ / สิ่งที่ต้องทำ</h2>
       </div>
       ${items.length ? `<div class="space-y-3">${items.join('')}</div>` : `
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-300">
           <p class="text-4xl mb-2">🎉</p>
-          <p class="text-sm font-medium text-gray-500">ตอนนี้ยังไม่มีรายการที่ต้องทำ</p>
-          <p class="text-xs mt-1">ถ้าครูประกาศกำหนดสอบหรือแจ้งงานในรายวิชา ระบบจะแสดงพร้อมนับถอยหลังที่นี่</p>
-        </div>`}
-      <button onclick="window._stuOpenRequest(${classId})"
-        class="w-full mt-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition">
-        📝 ยื่นคำร้องในรายวิชานี้
-      </button>`
+          <p class="text-sm font-medium text-gray-500">ไม่มีรายการที่ต้องทำ</p>
+          <p class="text-xs mt-1">ถ้าครูแจ้งกำหนดสอบ ระบบจะนับถอยหลังให้ที่นี่</p>
+        </div>`}`
   }
 
   const _scoresContent = () => `
@@ -481,10 +525,12 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     </div>` : ''}`
 
   const _requestsContent = () => `
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="font-bold text-gray-800">📝 คำร้องรายวิชา</h2>
-      <button onclick="window._stuOpenRequest(${classId})" class="text-xs text-indigo-600 font-semibold">+ ยื่นคำร้อง</button>
-    </div>
+    <button onclick="window._stuOpenRequest(${classId})"
+      class="w-full mb-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm
+             hover:bg-indigo-700 transition flex items-center justify-center gap-2">
+      📝 ยื่นคำร้องสอบย้อนหลัง / ปรับคะแนน
+    </button>
+    <h2 class="font-bold text-gray-800 mb-3">ประวัติคำร้องในรายวิชานี้</h2>
     ${requests.length ? `<div class="space-y-3">${requests.map(_requestCard).join('')}</div>` : `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-300">
         <p class="text-4xl mb-2">📭</p>
@@ -497,9 +543,23 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       ? _requestsContent()
       : _todoContent()
 
+  const _tabBtn = (key, icon, label) => {
+    const active = tab === key
+    return `<button onclick="window._stuOpenClassTab(${classId},'${key}')"
+      class="flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-medium border-b-2 transition
+             ${active ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
+      <span class="text-base">${icon}</span>${label}
+    </button>`
+  }
+
   setContent(`
     <button onclick="window._stuNav('subjects')" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← รายวิชาอื่น</button>
     ${_subjectHeader()}
+    <div class="flex bg-white rounded-xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+      ${_tabBtn('todo',     '✅', 'ภารกิจ')}
+      ${_tabBtn('scores',  '📊', 'คะแนน')}
+      ${_tabBtn('requests','📝', 'คำร้อง')}
+    </div>
     ${content}
   `)
 
