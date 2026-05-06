@@ -111,7 +111,7 @@ export async function getTeacherFreePeriods(teacherId) {
 export async function getTeacherFullSchedule(teacherId) {
   const { data, error } = await supabase
     .from('teacher_schedules')
-    .select('day_of_week, period_no, is_free, class_id')
+    .select('day_of_week, period_no, span_periods, is_free, class_id, subject_name, class_name, teacher_name')
     .eq('teacher_id', teacherId)
     .order('day_of_week')
     .order('period_no')

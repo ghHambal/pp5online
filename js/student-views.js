@@ -33,7 +33,7 @@ const STATUS_BADGE = {
   approved: { label:'อนุมัติแล้ว',  cls:'bg-emerald-50 text-emerald-700 border-emerald-200' },
   rejected: { label:'ปฏิเสธ',       cls:'bg-red-50 text-red-600 border-red-200' },
 }
-const DAY_TH = ['','จ','อ','พ','พฤ','ศ','ส','อา']
+const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 
 function _fmtDate(d) {
   if (!d) return '—'
@@ -86,7 +86,10 @@ function _getWeekDates() {
   const dow = today.getDay() // 0=Sun
   const monday = new Date(today)
   monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() - 1)
   const dates = {}
+  dates[0] = sunday
   for (let i = 1; i <= 7; i++) {
     const d = new Date(monday)
     d.setDate(monday.getDate() + i - 1)
@@ -608,10 +611,14 @@ export async function renderExamRequestForm(student, classId) {
   const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
   const weekDates = _getWeekDates()
 
-  // Build schedule lookup: { 'day_period': { is_free, class_id } }
+  // Build schedule lookup: { 'day_period': entry }, including multi-period spans.
   const schedMap = {}
   for (const row of schedule) {
     schedMap[`${row.day_of_week}_${row.period_no}`] = row
+    const span = row.span_periods ?? 1
+    for (let i = 1; i < span; i++) {
+      schedMap[`${row.day_of_week}_${row.period_no + i}`] = { ...row, _secondary: true }
+    }
   }
 
   const hasSchedule = schedule.length > 0
@@ -643,56 +650,67 @@ export async function renderExamRequestForm(student, classId) {
   // Persistent state for selected period (will be set via JS after render)
   let _selectedPeriod = null
 
-  // Build schedule grid HTML (Mon–Fri = days 1–5)
+  // Build full teacher schedule grid (Sun–Fri), where empty cells are free.
   const _buildScheduleGrid = () => {
-    const workDays = [1, 2, 3, 4, 5]
-    const dayNames = { 1:'จ', 2:'อ', 3:'พ', 4:'พฤ', 5:'ศ' }
+    const workDays = [0, 1, 2, 3, 4, 5]
+    const dayNames = { 0:'อาทิตย์', 1:'จันทร์', 2:'อังคาร', 3:'พุธ', 4:'พฤหัส', 5:'ศุกร์' }
+    const dayColors = { 0:'bg-red-50', 1:'bg-yellow-50', 2:'bg-pink-50', 3:'bg-green-50', 4:'bg-orange-50', 5:'bg-purple-50' }
 
     const headerCells = workDays.map(d => {
       const date = weekDates[d]
-      return `<th class="py-2 px-1 text-center">
-        <p class="text-xs font-bold text-gray-600">${dayNames[d]}</p>
+      return `<th class="border border-gray-100 px-3 py-3 text-center ${dayColors[d]}">
+        <p class="text-sm font-bold text-gray-700">${dayNames[d]}</p>
         <p class="text-[10px] text-gray-400">${date.getDate()}/${date.getMonth()+1}</p>
       </th>`
     }).join('')
 
     const rows = periods.map(p => {
+      const start = p.start_time?.slice(0,5) ?? ''
+      const end = p.end_time?.slice(0,5) ?? ''
       const cells = workDays.map(d => {
         const key = `${d}_${p.period_no}`
         const slot = schedMap[key]
+        if (slot?._secondary) return ''
         if (!slot || slot.is_free) {
-          // No schedule for this slot, or explicitly free — clickable.
-          return `<td class="py-1 px-1">
+          return `<td class="border border-gray-100 p-0">
             <button type="button"
               data-period="${p.period_no}" data-day="${d}"
-              class="sched-period-btn w-full flex flex-col items-center justify-center h-12 rounded-lg
-                     bg-emerald-50 border-2 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-400
-                     transition cursor-pointer text-emerald-700 text-[10px] font-medium">
-              <span class="font-bold text-xs">คาบ${p.period_no}</span>
-              <span class="text-emerald-500">${slot?.is_free ? p.start_time.slice(0,5) : 'ว่าง'}</span>
+              class="sched-period-btn group w-full min-h-[66px] flex items-center justify-center
+                     bg-white hover:bg-emerald-50 hover:ring-2 hover:ring-inset hover:ring-emerald-300
+                     transition cursor-pointer text-emerald-600 text-xs font-semibold">
+              <span class="opacity-0 group-hover:opacity-100 transition">เลือกคาบว่าง</span>
             </button>
           </td>`
-        } else {
-          // Teacher has a scheduled class here — disabled.
-          return `<td class="py-1 px-1">
-            <div class="flex flex-col items-center justify-center h-12 rounded-lg
-                        bg-gray-100 border border-gray-200 text-gray-400 text-[10px]">
-              <span class="font-bold text-xs text-gray-400">คาบ${p.period_no}</span>
-              <span class="text-[9px]">ไม่ว่าง</span>
-            </div>
-          </td>`
         }
+        const span = slot.span_periods ?? 1
+        return `<td class="border border-gray-100 p-0" ${span > 1 ? `rowspan="${span}"` : ''}>
+          <div class="w-full min-h-[66px] h-full bg-emerald-100 text-emerald-900 flex flex-col
+                      items-center justify-center px-2 py-2 text-center">
+            <p class="text-sm font-bold leading-tight">${slot.subject_name ?? 'ไม่ว่าง'}</p>
+            ${slot.class_name ? `<p class="text-xs leading-tight opacity-80 mt-1">${slot.class_name}</p>` : ''}
+            ${span > 1 ? `<p class="text-[10px] opacity-50 mt-1">${span} คาบ</p>` : ''}
+          </div>
+        </td>`
       }).join('')
-      return `<tr>${cells}</tr>`
+      return `<tr>
+        <td class="border border-gray-100 px-3 py-3 text-center bg-gray-50 sticky left-0 z-10">
+          <p class="font-bold text-gray-700">คาบ ${p.period_no}</p>
+          <p class="text-xs text-gray-400">${start}–${end}</p>
+        </td>
+        ${cells}
+      </tr>`
     }).join('')
 
     return `
-    <div class="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-      <table class="w-full min-w-[280px]">
-        <thead class="bg-gray-50 border-b border-gray-100">
-          <tr>${headerCells}</tr>
+    <div class="overflow-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <table class="w-full min-w-[760px] border-collapse text-xs">
+        <thead>
+          <tr>
+            <th class="border border-gray-100 px-3 py-3 text-center bg-gray-50 text-gray-500 sticky left-0 z-20 w-28">คาบ / เวลา</th>
+            ${headerCells}
+          </tr>
         </thead>
-        <tbody class="divide-y divide-gray-50">${rows}</tbody>
+        <tbody>${rows}</tbody>
       </table>
     </div>`
   }
@@ -784,7 +802,7 @@ export async function renderExamRequestForm(student, classId) {
     </div>
     ${hasSchedule ? `
       <div id="teacher-schedule-modal" class="hidden fixed inset-0 z-[120] bg-black/50 p-4 items-center justify-center">
-        <div class="w-full max-w-lg max-h-[88vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-5">
+        <div class="w-full max-w-5xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-5">
           <div class="flex items-start justify-between gap-3 mb-4">
             <div>
               <h3 class="font-bold text-gray-800">เลือกคาบว่างของครู</h3>
