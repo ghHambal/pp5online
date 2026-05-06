@@ -3136,6 +3136,12 @@ export async function renderReadingAdmin() {
       </button>`
     document.getElementById('rsa-tab-content').innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 mb-4 flex flex-wrap gap-3 items-center">
+        <select id="rsa-filter-grade" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">ทุกระดับชั้น</option>
+        </select>
+        <select id="rsa-filter-room" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">ทุกห้อง</option>
+        </select>
         <input id="rsa-filter-search" type="text" placeholder="ค้นหาชื่อ / รหัสนักเรียน"
           class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 flex-1 min-w-[200px] focus:outline-none focus:ring-2 focus:ring-indigo-300" />
         <span id="rsa-filter-count" class="text-xs text-gray-400"></span>
@@ -3144,15 +3150,34 @@ export async function renderReadingAdmin() {
         <div id="rsa-score-table"><div class="p-10 text-center text-gray-400">กำลังโหลด...</div></div>
       </div>`
 
-    const { columns, scores } = await getAllReadingScores(year, sem).catch(()=>({ columns:[], scores:[] }))
+    const [{ columns, scores }, roster] = await Promise.all([
+      getAllReadingScores(year, sem).catch(()=>({ columns:[], scores:[] })),
+      getStudents().catch(()=>[]),
+    ])
     const scoreMap = {}
     for (const s of scores) {
       if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
       scoreMap[s.student_id][s.column_id] = s.score
     }
-    const allStudents = [...new Map(scores.map(s =>
-      [s.student_id, { id: s.student_id, ...s.students }])).values()]
+    const allStudents = roster
+      .filter(s => s?.id && s?.student_code && s?.main_room)
       .sort((a,b) => (a.main_room??'').localeCompare(b.main_room??'',undefined,{numeric:true}) || (a.student_code??'').localeCompare(b.student_code??''))
+
+    const gradeEl = document.getElementById('rsa-filter-grade')
+    const roomEl = document.getElementById('rsa-filter-room')
+    gradeEl.innerHTML = '<option value="">ทุกระดับชั้น</option>' +
+      _opts(allStudents.map(s => _grade(s.main_room))).map(g => `<option value="${g}">${g}</option>`).join('')
+
+    const _syncRoomOptions = () => {
+      const grade = gradeEl.value
+      const current = roomEl.value
+      const rooms = _opts(allStudents
+        .filter(s => !grade || _grade(s.main_room) === grade)
+        .map(s => _room(s.main_room)))
+      roomEl.innerHTML = '<option value="">ทุกห้อง</option>' +
+        rooms.map(r => `<option value="${r}" ${r === current ? 'selected' : ''}>ห้อง ${r}</option>`).join('')
+      if (current && !rooms.includes(current)) roomEl.value = ''
+    }
 
     const _renderTable = (list) => {
       document.getElementById('rsa-filter-count').textContent = `${list.length} คน`
@@ -3194,14 +3219,25 @@ export async function renderReadingAdmin() {
         </table>`
     }
 
+    _syncRoomOptions()
     let _rsFiltered = [...allStudents]
     _renderTable(_rsFiltered)
 
-    document.getElementById('rsa-filter-search').addEventListener('input', e => {
-      const q = e.target.value.toLowerCase()
-      _rsFiltered = allStudents.filter(s => !q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
+    const _applyRsFilter = () => {
+      _syncRoomOptions()
+      const grade = gradeEl.value
+      const room = roomEl.value
+      const q = document.getElementById('rsa-filter-search').value.toLowerCase()
+      _rsFiltered = allStudents.filter(s =>
+        (!grade || _grade(s.main_room) === grade) &&
+        (!room || _room(s.main_room) === room) &&
+        (!q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
+      )
       _renderTable(_rsFiltered)
-    })
+    }
+    gradeEl.addEventListener('change', _applyRsFilter)
+    roomEl.addEventListener('change', _applyRsFilter)
+    document.getElementById('rsa-filter-search').addEventListener('input', _applyRsFilter)
 
     document.getElementById('btn-sync-rs')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-sync-rs')
@@ -3210,9 +3246,22 @@ export async function renderReadingAdmin() {
       try {
         const { syncCentralBatch } = await import('./sync.js')
         const stuList = _rsFiltered.map(s => ({ id: s.id, student_code: s.student_code }))
-        const scList  = scores.filter(sc => stuList.some(s=>s.id===sc.student_id))
-        await syncCentralBatch(cfg.readingScoreSheetId, cfg.readingScoreSheetTab, columns, scList, stuList)
-        showToast(`Sync อ่านคิดวิเคราะห์ ${stuList.length} คน สำเร็จ`, 'success')
+        const stuIds = new Set(stuList.map(s => s.id))
+        const colIds = new Set(columns.map(c => c.id))
+        const scList = scores.filter(sc => stuIds.has(sc.student_id) && colIds.has(sc.column_id))
+        const totalRecords = await syncCentralBatch(
+          cfg.readingScoreSheetId,
+          cfg.readingScoreSheetTab,
+          columns,
+          scList,
+          stuList,
+          { studentColRange: cfg.readingScoreStudentRange || 'J8:J3000' }
+        )
+        if (!totalRecords) {
+          showToast('ยังไม่มีคะแนนอ่านคิดวิเคราะห์ที่พร้อมซิงค์ในกลุ่มที่เลือก', 'warning')
+          return
+        }
+        showToast(`ส่งคำสั่ง Sync อ่านคิดวิเคราะห์ ${stuList.length} คน / ${totalRecords} คะแนนแล้ว`, 'success')
       } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
       finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
     })
@@ -3269,6 +3318,11 @@ export async function renderReadingAdmin() {
             <span class="text-xs text-gray-400 w-20 flex-shrink-0">ชื่อแท็บ:</span>
             <input type="text" id="rsa-sheet-tab" value="${cfg.readingScoreSheetTab??''}" placeholder="Sheet1"
               class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-400 w-20 flex-shrink-0">ช่วงรหัส:</span>
+            <input type="text" id="rsa-student-range" value="${cfg.readingScoreStudentRange??'J8:J3000'}" placeholder="เช่น J8:J3000"
+              class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             <button id="rsa-save-sheet" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition flex-shrink-0">บันทึก</button>
           </div>
           <div class="border-t border-gray-100 mt-3 pt-3">
@@ -3298,10 +3352,15 @@ export async function renderReadingAdmin() {
       const btn=document.getElementById('rsa-save-sheet')
       const val=document.getElementById('rsa-sheet-id')?.value.trim()??''
       const tabVal=document.getElementById('rsa-sheet-tab')?.value.trim()??''
+      const rangeVal=document.getElementById('rsa-student-range')?.value.trim()??'J8:J3000'
       btn.disabled=true; btn.textContent='⏳'
       try {
-        await Promise.all([updateSystemConfig('readingScoreSheetId',val), updateSystemConfig('readingScoreSheetTab',tabVal)])
-        cfg.readingScoreSheetId=val; cfg.readingScoreSheetTab=tabVal
+        await Promise.all([
+          updateSystemConfig('readingScoreSheetId',val),
+          updateSystemConfig('readingScoreSheetTab',tabVal),
+          updateSystemConfig('readingScoreStudentRange',rangeVal),
+        ])
+        cfg.readingScoreSheetId=val; cfg.readingScoreSheetTab=tabVal; cfg.readingScoreStudentRange=rangeVal
         btn.textContent='✅'; btn.style.background='#16a34a'
         setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' },1500)
         showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว','success')

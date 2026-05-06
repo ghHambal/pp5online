@@ -104,6 +104,18 @@ The sync writes by student code using `syncCentralBatch` in `js/sync.js`.
 Use a wide student-code range for central sheets, for example `J8:J3000`, because the old default `J8:J72` is only suitable for small per-class sheets.
 Life skill scores are currently for `สามัญ` only; do not reintroduce the `ศาสนา` life-skill section unless the user explicitly asks.
 
+### Reading Score Sync
+
+Admin page: `renderReadingAdmin` in `js/views.js`.
+
+Reading central sync should follow the same proven pattern as life skill sync:
+
+- Load the full student roster with `getStudents()`, not only students that already have scores.
+- Provide grade and room filters where room options depend on the selected grade.
+- Store the central-sheet student-code lookup range in `readingScoreStudentRange`.
+- Use a wide range such as `J8:J3000` for central sheets.
+- Warn instead of showing success when there are zero score records to send.
+
 ## Recent Behavior To Preserve
 
 - Student admin list fetches beyond Supabase's 1000-row range limit.
