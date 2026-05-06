@@ -1715,12 +1715,23 @@ const TYPE_COLOR  = {
   'คะแนนพิเศษ':   'bg-purple-50 text-purple-700',
 }
 
+const RELIGION_LOCKED_SCORE_COLUMNS = ['คะแนนมาเรียน', 'คะแนนละหมาด']
+
 export async function renderScoreColumns(teacher, classId, className, classData = null) {
   setActiveNav('my-classes')
   setTitle(`คอลัมน์คะแนน — ${className}`)
   const isLifeSkill = (classData?.skill_group ?? classData?.master_subjects?.skill_group ?? '') === 'ชีวิต'
+  const isReligion = ['AGM', 'AGMVOC'].includes(classData?.master_subjects?.subject_group)
+  let lockedScoreColumnIds = new Set()
   const _reload = async () => {
     const cols = await getScoreColumns(classId)
+    const cfg = await getSystemConfig().catch(()=>({}))
+    const year = parseInt(cfg.academicYear ?? 2568)
+    const sem = parseInt(cfg.semester ?? 1)
+    const lockedNames = isLifeSkill
+      ? (await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])).slice(0, 3).map(c => c.name)
+      : isReligion ? RELIGION_LOCKED_SCORE_COLUMNS : []
+    lockedScoreColumnIds = new Set(cols.filter(c => lockedNames.includes(c.assignment_name)).map(c => c.id))
     window._scoreColCache = Object.fromEntries(cols.map(c => [c.id, c]))
     const grouped = SCORE_TYPES.map(t => ({ type: t, items: cols.filter(c => c.assignment_type === t) }))
     const totalScore = cols.reduce((sum, c) => sum + (Number(c.max_score) || 0), 0)
@@ -1760,18 +1771,22 @@ export async function renderScoreColumns(teacher, classId, className, classData 
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-50">
-                ${g.items.map(c => `
-                <tr class="hover:bg-gray-50">
+                ${g.items.map(c => {
+                  const locked = lockedScoreColumnIds.has(c.id)
+                  return `
+                <tr class="${locked ? 'bg-emerald-50/35' : 'hover:bg-gray-50'}">
                   <td class="px-4 py-2.5 font-medium text-gray-800">${c.assignment_name}</td>
                   <td class="px-4 py-2.5 text-center font-mono text-indigo-600 text-xs">${c.sheet_column}</td>
                   <td class="px-4 py-2.5 text-center text-gray-600">${c.max_score??'—'}</td>
                   <td class="px-4 py-2.5 text-right">
-                    <button onclick="window._editScoreCol(${c.id})"
-                      class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-2">แก้ไข</button>
-                    <button onclick="window._deleteScoreCol(${c.id})"
-                      class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>
+                    ${locked
+                      ? `<span class="text-xs text-emerald-700 font-medium">ระบบล็อก</span>`
+                      : `<button onclick="window._editScoreCol(${c.id})"
+                          class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-2">แก้ไข</button>
+                        <button onclick="window._deleteScoreCol(${c.id})"
+                          class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>`}
                   </td>
-                </tr>`).join('')}
+                </tr>`}).join('')}
               </tbody>
             </table>`}
       </div>`).join('')}
@@ -1830,6 +1845,10 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     window._editScoreCol = (id) => {
       const c = window._scoreColCache?.[id]
       if (!c) return
+      if (lockedScoreColumnIds.has(id)) {
+        showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถแก้ไขได้', 'warning')
+        return
+      }
       document.getElementById('sc-edit-id').value = id
       document.getElementById('sc-name').value    = c.assignment_name
       document.getElementById('sc-col').value     = c.sheet_column
@@ -1839,6 +1858,10 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       document.getElementById('sc-form-wrap').classList.remove('hidden')
     }
     window._deleteScoreCol = async (id) => {
+      if (lockedScoreColumnIds.has(id)) {
+        showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning')
+        return
+      }
       if (!confirm('ยืนยันลบคอลัมน์นี้?')) return
       try {
         await deleteScoreColumn(id)
@@ -4358,6 +4381,15 @@ export async function renderGradesGrid(teacher, classData) {
         return (a.id ?? 0) - (b.id ?? 0)
       })
     }
+    const lockedScoreColumnIds = new Set(
+      priorityColumnNames.length
+        ? allCols.filter(c => priorityColumnNames.includes(c.assignment_name)).map(c => c.id)
+        : []
+    )
+    const _isLockedScoreColumn = colOrId => {
+      const id = typeof colOrId === 'object' ? colOrId?.id : colOrId
+      return lockedScoreColumnIds.has(id)
+    }
 
     const midCols   = allCols.filter(c => c.assignment_type !== 'final')
     const finalCols = allCols.filter(c => c.assignment_type === 'final')
@@ -4402,6 +4434,10 @@ export async function renderGradesGrid(teacher, classData) {
         data-toggle="${id}">${label}</button>`
 
     const _showSheetColPopup = (el, colId) => {
+      if (_isLockedScoreColumn(colId)) {
+        showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถแก้คอลัมน์ Sheet ได้', 'warning')
+        return
+      }
       const col = [...midCols, ...finalCols].find(c => c.id === colId)
       const isFinal = col?.assignment_type === 'final'
 
@@ -4487,6 +4523,10 @@ export async function renderGradesGrid(teacher, classData) {
     }
 
     const _showMaxScorePopup = (el, colId) => {
+      if (_isLockedScoreColumn(colId)) {
+        showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถแก้คะแนนเต็มได้', 'warning')
+        return
+      }
       document.querySelectorAll('.max-score-popup').forEach(p=>p.remove())
       const col=[...midCols,...finalCols].find(c=>c.id===colId)
       const rect=el.getBoundingClientRect()
@@ -4628,12 +4668,14 @@ export async function renderGradesGrid(teacher, classData) {
       modal.id = 'manage-cols-modal'
       modal.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4'
       const colRow = col => `
-        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 hover:border-gray-200 bg-gray-50/60">
+        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border ${_isLockedScoreColumn(col) ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-100 hover:border-gray-200 bg-gray-50/60'}">
           <span class="font-mono text-[11px] w-10 text-center rounded px-1 py-0.5 ${col.assignment_type==='final'?'bg-purple-50 text-purple-600':'bg-blue-50 text-blue-600'}">${col.sheet_column||'—'}</span>
           <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name||'—'}</span>
           <span class="text-[11px] text-gray-400">/${col.max_score||0}</span>
-          <button class="mcm-del text-gray-300 hover:text-red-400 text-sm transition-colors px-1 rounded hover:bg-red-50"
-            data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>
+          ${_isLockedScoreColumn(col)
+            ? `<span class="text-[10px] text-emerald-700 font-semibold">ล็อก</span>`
+            : `<button class="mcm-del text-gray-300 hover:text-red-400 text-sm transition-colors px-1 rounded hover:bg-red-50"
+                data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>`}
         </div>`
       modal.innerHTML = `<div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[80vh] flex flex-col">
         <div class="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
@@ -4676,6 +4718,10 @@ export async function renderGradesGrid(teacher, classData) {
         btn.addEventListener('click',async()=>{
           const colId=parseInt(btn.dataset.colid)
           const col=[...midCols,...finalCols].find(c=>c.id===colId)
+          if (_isLockedScoreColumn(colId)) {
+            showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning')
+            return
+          }
           if(!confirm(`ลบคอลัมน์ "${col?.assignment_name||'นี้'}"?\nคะแนนทั้งหมดของคอลัมน์นี้จะถูกลบด้วย`))return
           try{
             await deleteScoreColumn(colId)
@@ -4734,30 +4780,30 @@ export async function renderGradesGrid(teacher, classData) {
         </tr>
         <tr style="position:sticky;top:24px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-sheet-ref font-mono text-blue-600 text-[11px] cursor-pointer hover:bg-blue-100 block text-center rounded px-1 py-0.5"
-              data-colid="${c.id}">${c.sheet_column||'—'}</span>
+            <span class="col-sheet-ref font-mono text-[11px] block text-center rounded px-1 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-blue-600 cursor-pointer hover:bg-blue-100'}"
+              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
           </th>`).join('')}
           <th class="${thBase} bg-blue-50" style="width:30px">
             <button class="btn-add-col text-blue-500 hover:bg-blue-100 rounded-full w-5 h-5 font-bold text-sm leading-none mx-auto block" data-type="midterm">＋</button></th>
           ${finalCols.map(c=>`<th class="${thBase} bg-purple-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-sheet-ref font-mono text-purple-600 text-[11px] cursor-pointer hover:bg-purple-100 block text-center rounded px-1 py-0.5"
-              data-colid="${c.id}">${c.sheet_column||'—'}</span>
+            <span class="col-sheet-ref font-mono text-[11px] block text-center rounded px-1 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-purple-600 cursor-pointer hover:bg-purple-100'}"
+              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
           </th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px">
             <button class="btn-add-col text-purple-500 hover:bg-purple-100 rounded-full w-5 h-5 font-bold text-sm leading-none mx-auto block" data-type="final">＋</button></th>
         </tr>
         <tr style="position:sticky;top:48px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-edit text-gray-700 text-[11px] cursor-text hover:bg-blue-50 px-1 rounded block truncate"
-              contenteditable="true" data-colid="${c.id}" data-field="assignment_name">${c.assignment_name||'—'}</span>
-            <span class="col-max text-[10px] text-gray-400 cursor-pointer hover:text-blue-500 hover:underline select-none"
-              data-colid="${c.id}">/<span class="font-medium">${c.max_score||0}</span></span></th>`).join('')}
+            <span class="col-edit text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-blue-50'}"
+              contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : ''}">${c.assignment_name||'—'}</span>
+            <span class="col-max text-[10px] select-none ${_isLockedScoreColumn(c) ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-400 cursor-pointer hover:text-blue-500 hover:underline'}"
+              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span></th>`).join('')}
           <th class="${thBase} bg-blue-50" style="width:30px"></th>
           ${finalCols.map(c=>`<th class="${thBase} bg-purple-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-edit text-gray-700 text-[11px] cursor-text hover:bg-purple-50 px-1 rounded block truncate"
-              contenteditable="true" data-colid="${c.id}" data-field="assignment_name">${c.assignment_name||'—'}</span>
-            <span class="col-max text-[10px] text-gray-400 cursor-pointer hover:text-purple-500 hover:underline select-none"
-              data-colid="${c.id}">/<span class="font-medium">${c.max_score||0}</span></span></th>`).join('')}
+            <span class="col-edit text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-purple-50'}"
+              contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : ''}">${c.assignment_name||'—'}</span>
+            <span class="col-max text-[10px] select-none ${_isLockedScoreColumn(c) ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-400 cursor-pointer hover:text-purple-500 hover:underline'}"
+              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span></th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px"></th>
         </tr>`
 
@@ -4776,15 +4822,15 @@ export async function renderGradesGrid(teacher, classData) {
           </td>
           ${midCols.map(c=>{const v=_getScore(s.id,c.id)??'';return `<td class="border border-gray-100 text-center p-0"
             style="width:${colW}px;min-width:${colW}px;height:30px">
-            <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:rounded"
+            <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:rounded'}"
               type="number" min="0" max="${c.max_score}" step="0.5" value="${v}" placeholder="—"
-              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}"/></td>`}).join('')}
+              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/></td>`}).join('')}
           <td id="gmid-${s.id}" class="border border-gray-50 bg-blue-50/40 text-center text-[10px] text-blue-600 font-medium" style="width:34px">${midRaw>0?midRaw.toFixed(1):'—'}</td>
           ${finalCols.map(c=>{const v=_getScore(s.id,c.id)??'';return `<td class="border border-gray-100 text-center p-0"
             style="width:${colW}px;min-width:${colW}px;height:30px">
-            <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-purple-50 focus:outline-none focus:ring-1 focus:ring-purple-300 focus:rounded"
+            <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-purple-50 focus:outline-none focus:ring-1 focus:ring-purple-300 focus:rounded'}"
               type="number" min="0" max="${c.max_score}" step="0.5" value="${v}" placeholder="—"
-              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}"/></td>`}).join('')}
+              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/></td>`}).join('')}
           <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?finRaw.toFixed(1):'—'}</td>
           <td class="border border-amber-100 text-center bg-amber-50 font-bold text-amber-700" id="gtotal-${s.id}" style="min-width:58px">${total>0?total:'—'}</td>
           <td class="border border-purple-100 text-center bg-purple-50 font-bold text-purple-700" id="ggrade-${s.id}" style="min-width:50px">${displayGrade}</td>
@@ -4805,6 +4851,10 @@ export async function renderGradesGrid(teacher, classData) {
         const forceInp=e.target.closest('.force-input')
         if (gradeInp) {
           const sid=parseInt(gradeInp.dataset.sid),colId=parseInt(gradeInp.dataset.col),max=parseFloat(gradeInp.dataset.max)
+          if (_isLockedScoreColumn(colId)) {
+            showToast('คะแนนนี้มาจากระบบกลาง ครูไม่สามารถแก้ไขได้', 'warning')
+            return
+          }
           let val=gradeInp.value.trim()
           if(val!==''&&parseFloat(val)>max){gradeInp.value=max;val=String(max)}
           if(val!==''&&parseFloat(val)<0){gradeInp.value=0;val='0'}
@@ -4852,6 +4902,7 @@ export async function renderGradesGrid(teacher, classData) {
       wrap.querySelectorAll('.col-edit').forEach(el=>{
         el.addEventListener('blur',async()=>{
           const colId=parseInt(el.dataset.colid),newName=el.textContent.trim()
+          if (_isLockedScoreColumn(colId)) return
           try{
             await updateScoreColumn(colId,{assignment_name:newName||null})
             const col=[...midCols,...finalCols].find(c=>c.id===colId)
@@ -4862,11 +4913,25 @@ export async function renderGradesGrid(teacher, classData) {
       })
       // ── Sheet col ref popup ──
       wrap.querySelectorAll('.col-sheet-ref').forEach(el=>{
-        el.addEventListener('click',()=>_showSheetColPopup(el,parseInt(el.dataset.colid)))
+        el.addEventListener('click',()=>{
+          const colId = parseInt(el.dataset.colid)
+          if (_isLockedScoreColumn(colId)) {
+            showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถแก้คอลัมน์ Sheet ได้', 'warning')
+            return
+          }
+          _showSheetColPopup(el, colId)
+        })
       })
       // ── Max score popup ──
       wrap.querySelectorAll('.col-max').forEach(el=>{
-        el.addEventListener('click',()=>_showMaxScorePopup(el,parseInt(el.dataset.colid)))
+        el.addEventListener('click',()=>{
+          const colId = parseInt(el.dataset.colid)
+          if (_isLockedScoreColumn(colId)) {
+            showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถแก้คะแนนเต็มได้', 'warning')
+            return
+          }
+          _showMaxScorePopup(el, colId)
+        })
       })
       // ── Add col ──
       wrap.querySelectorAll('.btn-add-col').forEach(btn=>{
