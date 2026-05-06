@@ -14,7 +14,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          deleteScheduleByTeacher, getPeriods, getAllPeriods,
          getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
          getReadingScoreColumns, getReadingScores, upsertReadingScore,
-         fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass } from './api.js'
+         fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
+         getTeacherExamRequests, reviewExamRequest, updateExamResult } from './api.js'
 import { supabase } from './supabase.js'
 
 import { uploadTeacherPhoto } from './storage.js'
@@ -5497,14 +5498,200 @@ function _openAddColumnModal(classData, type, onDone) {
 }
 
 
-export function renderRequests() {
+export async function renderRequests(teacher) {
   setActiveNav('requests')
   setTitle('คำร้องนักเรียน')
-  setContent(`<div class="text-center py-20 text-gray-400">
-    <p class="text-5xl mb-4">🔔</p>
-    <p class="font-medium">ระบบคำร้อง — เร็วๆ นี้</p>
+
+  if (!teacher) {
+    setContent(`<div class="text-center py-20 text-gray-400"><p class="text-5xl mb-4">🔔</p><p>กรุณาเข้าสู่ระบบ</p></div>`)
+    return
+  }
+
+  setContent(`<div class="flex justify-center py-16 text-gray-300">
+    <svg class="animate-spin h-6 w-6 text-indigo-400" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
   </div>`)
 
+  const all = await getTeacherExamRequests(teacher.id).catch(()=>[])
+
+  const FILTER_TABS = [
+    { key: 'pending',  label: 'รอดำเนินการ', cls: 'text-amber-600'  },
+    { key: 'approved', label: 'อนุมัติแล้ว',  cls: 'text-emerald-600'},
+    { key: 'rejected', label: 'ปฏิเสธ',       cls: 'text-red-500'   },
+    { key: 'all',      label: 'ทั้งหมด',      cls: 'text-gray-600'  },
+  ]
+
+  let _curFilter = 'pending'
+
+  const _fmtDate = (d) => {
+    if (!d) return '—'
+    const dt = new Date(d)
+    return `${dt.getDate()}/${dt.getMonth()+1}/${dt.getFullYear()+543}`
+  }
+
+  const _isExamDatePast = (dateStr) => {
+    if (!dateStr) return false
+    const d = new Date(dateStr); d.setHours(23,59,59,0)
+    return d < new Date()
+  }
+
+  const _requestCard = (r) => {
+    const stu  = r.students
+    const cls  = r.classes
+    const col  = r.class_score_columns
+    const isPast = _isExamDatePast(r.requested_date)
+    const canResult = r.status === 'approved' && isPast && r.exam_attended == null
+
+    const statusBadge = r.status === 'pending'
+      ? `<span class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">⏳ รอดำเนินการ</span>`
+      : r.status === 'approved'
+        ? `<span class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✅ อนุมัติ</span>`
+        : `<span class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-200">✕ ปฏิเสธ</span>`
+
+    const attendanceBadge = r.exam_attended === true
+      ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">📝 มาสอบแล้ว${r.exam_score != null ? ' · '+r.exam_score+' คะแนน' : ''}</span>`
+      : r.exam_attended === false
+        ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">❌ ขาดสอบ</span>`
+        : ''
+
+    return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4" id="req-card-${r.id}">
+      <!-- Header -->
+      <div class="flex items-start gap-3 mb-3">
+        <div class="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-indigo-300 to-purple-300
+                    flex items-center justify-center text-white text-sm font-bold">
+          ${stu?.image_url ? `<img src="${stu.image_url}" class="w-full h-full object-cover"/>` : (stu?.full_name??'น').charAt(0)}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-semibold text-gray-800 text-sm truncate">${stu?.full_name ?? '—'}</p>
+          <p class="text-xs text-gray-400">${stu?.student_code ?? ''} · ${stu?.main_room ?? ''}</p>
+        </div>
+        ${statusBadge}
+      </div>
+      <!-- Info -->
+      <div class="bg-gray-50 rounded-xl p-3 space-y-1.5 text-xs text-gray-600 mb-3">
+        <div class="flex gap-2"><span class="text-gray-400 w-16">วิชา</span><span class="font-medium text-gray-800">${cls?.master_subjects?.subject_name ?? '—'} (${cls?.class_name ?? ''})</span></div>
+        <div class="flex gap-2"><span class="text-gray-400 w-16">ประเภท</span><span>${r.request_type}</span></div>
+        ${col ? `<div class="flex gap-2"><span class="text-gray-400 w-16">หัวข้อ</span><span>${col.assignment_name} (เต็ม ${col.max_score})</span></div>` : ''}
+        <div class="flex gap-2"><span class="text-gray-400 w-16">วันที่</span><span>${_fmtDate(r.requested_date)}${r.requested_period_no ? ' · คาบ '+r.requested_period_no : ''}</span></div>
+        ${r.reason ? `<div class="flex gap-2"><span class="text-gray-400 w-16">เหตุผล</span><span>${r.reason}</span></div>` : ''}
+        ${r.teacher_comment ? `<div class="flex gap-2"><span class="text-gray-400 w-16">หมายเหตุ</span><span class="${r.status==='rejected'?'text-red-600':'text-emerald-600'} font-medium">${r.teacher_comment}</span></div>` : ''}
+        ${attendanceBadge ? `<div class="mt-1">${attendanceBadge}</div>` : ''}
+      </div>
+      <!-- Actions -->
+      ${r.status === 'pending' ? `
+      <div class="flex gap-2">
+        <button onclick="window._approveRequest(${r.id})"
+          class="flex-1 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition">
+          ✅ อนุมัติ
+        </button>
+        <button onclick="window._rejectRequest(${r.id})"
+          class="flex-1 py-2 rounded-xl bg-red-50 text-red-600 border border-red-200 text-xs font-semibold hover:bg-red-100 transition">
+          ✕ ปฏิเสธ
+        </button>
+      </div>` : ''}
+      ${canResult ? `
+      <div class="border-t border-gray-100 pt-3">
+        <p class="text-xs text-gray-500 mb-2 font-medium">ผลการสอบ (วันสอบผ่านแล้ว)</p>
+        <div class="flex gap-2">
+          <button onclick="window._markAttended(${r.id}, ${stu?.id ?? 'null'}, ${col?.id ?? 'null'}, ${col?.max_score ?? 100})"
+            class="flex-1 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition">
+            📝 มาสอบ — ใส่คะแนน
+          </button>
+          <button onclick="window._markAbsent(${r.id})"
+            class="flex-1 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-semibold hover:bg-gray-200 transition">
+            ❌ ขาดสอบ
+          </button>
+        </div>
+      </div>` : ''}
+    </div>`
+  }
+
+  const _render = () => {
+    const list = _curFilter === 'all' ? all : all.filter(r => r.status === _curFilter)
+    const counts = Object.fromEntries(FILTER_TABS.map(t => [t.key, t.key === 'all' ? all.length : all.filter(r => r.status === t.key).length]))
+
+    document.getElementById('req-content').innerHTML = list.length
+      ? `<div class="space-y-3">${list.map(_requestCard).join('')}</div>`
+      : `<div class="text-center py-16 text-gray-300">
+          <p class="text-4xl mb-3">📭</p>
+          <p class="text-sm">ไม่มีคำร้อง${_curFilter !== 'all' ? 'ในสถานะนี้' : ''}</p>
+        </div>`
+
+    // update tab active styles
+    document.querySelectorAll('.req-tab').forEach(btn => {
+      const active = btn.dataset.filter === _curFilter
+      btn.className = `req-tab flex-1 py-2 text-xs font-medium rounded-lg transition
+        ${active ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`
+    })
+  }
+
+  setContent(`<div class="max-w-2xl mx-auto animate-fade">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-gray-800">🔔 คำร้องนักเรียน</h2>
+      <span class="text-xs text-gray-400">${all.length} รายการ</span>
+    </div>
+    <!-- Filter tabs -->
+    <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-4">
+      ${FILTER_TABS.map(t => `
+      <button class="req-tab flex-1 py-2 text-xs font-medium rounded-lg transition text-gray-500 hover:text-gray-700"
+        data-filter="${t.key}">
+        ${t.label}${all.filter(r => t.key !== 'all' && r.status === t.key).length > 0 ? ` (${all.filter(r => r.status === t.key).length})` : t.key === 'all' ? ` (${all.length})` : ''}
+      </button>`).join('')}
+    </div>
+    <div id="req-content"></div>
+  </div>`)
+
+  document.querySelectorAll('.req-tab').forEach(btn => {
+    btn.addEventListener('click', () => { _curFilter = btn.dataset.filter; _render() })
+  })
+  _render()
+
+  // ── Action handlers ──────────────────────────────────────────────────────────
+  window._approveRequest = async (id) => {
+    const comment = prompt('หมายเหตุถึงนักเรียน (ไม่บังคับ):') ?? ''
+    try {
+      await reviewExamRequest(id, { status: 'approved', teacher_comment: comment || null })
+      showToast('อนุมัติคำร้องแล้ว ✅', 'success')
+      renderRequests(teacher)
+    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  }
+
+  window._rejectRequest = async (id) => {
+    // popup บังคับใส่เหตุผล
+    const comment = prompt('⚠️ กรุณาระบุเหตุผลที่ปฏิเสธ (บังคับ):')
+    if (comment == null) return           // กด Cancel
+    if (!comment.trim()) { showToast('กรุณาระบุเหตุผลก่อนปฏิเสธ', 'warning'); return }
+    try {
+      await reviewExamRequest(id, { status: 'rejected', teacher_comment: comment.trim() })
+      showToast('บันทึกการปฏิเสธแล้ว', 'success')
+      renderRequests(teacher)
+    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  }
+
+  window._markAttended = async (id, studentId, assignmentId, maxScore) => {
+    const scoreStr = prompt(`ใส่คะแนนที่สอบได้ (เต็ม ${maxScore}):`)
+    if (scoreStr == null) return
+    const score = parseFloat(scoreStr)
+    if (isNaN(score) || score < 0 || score > maxScore) {
+      showToast(`คะแนนต้องอยู่ระหว่าง 0 – ${maxScore}`, 'warning'); return
+    }
+    try {
+      await updateExamResult(id, { exam_attended: true, exam_score: score, studentId, assignmentId })
+      showToast('บันทึกผลสอบและคะแนนแล้ว ✅', 'success')
+      renderRequests(teacher)
+    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  }
+
+  window._markAbsent = async (id) => {
+    if (!confirm('ยืนยันว่านักเรียนขาดสอบ?')) return
+    try {
+      await updateExamResult(id, { exam_attended: false, exam_score: null })
+      showToast('บันทึกว่าขาดสอบแล้ว', 'success')
+      renderRequests(teacher)
+    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  }
 }
 
 export async function renderSchedule(teacher) {

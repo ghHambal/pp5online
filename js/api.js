@@ -1365,3 +1365,61 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
 
   return { classes: classCount, columns: ensuredColumns, scores: scoreCount }
 }
+
+// ─── Exam Requests (Teacher) ──────────────────────────────────────────────────
+
+export async function getTeacherExamRequests(teacherId) {
+  const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
+  const subjectIds = (subjects.data ?? []).map(s => s.id)
+  if (!subjectIds.length) return []
+  const { data: classRows } = await supabase.from('classes').select('id').in('course_id', subjectIds)
+  const cids = (classRows ?? []).map(c => c.id)
+  if (!cids.length) return []
+  const { data, error } = await supabase
+    .from('exam_requests')
+    .select(`
+      id, request_type, requested_date, requested_period_no,
+      reason, status, teacher_comment, exam_attended, exam_score,
+      students ( id, student_code, full_name, main_room, image_url ),
+      classes ( id, class_name, master_subjects ( subject_name, subject_code ) ),
+      class_score_columns ( id, assignment_name, max_score )
+    `)
+    .in('class_id', cids)
+    .order('requested_date', { ascending: false })
+    .order('id', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function reviewExamRequest(id, { status, teacher_comment }) {
+  const { error } = await supabase.from('exam_requests')
+    .update({ status, teacher_comment })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function updateExamResult(id, { exam_attended, exam_score, studentId, assignmentId }) {
+  const { error } = await supabase.from('exam_requests')
+    .update({ exam_attended, exam_score: exam_attended ? (exam_score ?? null) : null })
+    .eq('id', id)
+  if (error) throw error
+  if (exam_attended && exam_score != null && assignmentId && studentId) {
+    await supabase.from('student_scores').upsert({
+      student_id: studentId, assignment_id: assignmentId,
+      original_score: exam_score, final_score: exam_score,
+    }, { onConflict: 'student_id,assignment_id' })
+  }
+}
+
+export async function getPendingExamRequestCount(teacherId) {
+  const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
+  const subjectIds = (subjects.data ?? []).map(s => s.id)
+  if (!subjectIds.length) return 0
+  const { data: classRows } = await supabase.from('classes').select('id').in('course_id', subjectIds)
+  const cids = (classRows ?? []).map(c => c.id)
+  if (!cids.length) return 0
+  const { count } = await supabase.from('exam_requests')
+    .select('*', { count: 'exact', head: true })
+    .in('class_id', cids).eq('status', 'pending')
+  return count ?? 0
+}

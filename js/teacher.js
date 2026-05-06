@@ -3,6 +3,7 @@ import { showToast, showPageLoader } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
+         getPendingExamRequestCount,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
@@ -67,7 +68,7 @@ const ROUTES = {
   'reading-score':    () => { const r = window._pendingReadingRoom; window._pendingReadingRoom = null; renderReadingScore(_teacher, r) },
   'prayer-score':     () => renderPrayerScore(_teacher, _homeroomRooms.filter(r=>r.category==='ศาสนา')),
   'grades':      () => renderGrades(),
-  'requests':    () => renderRequests(),
+  'requests':    () => renderRequests(_teacher),
   'schedule':    () => renderSchedule(_teacher),
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _refreshProfile),
@@ -202,6 +203,21 @@ window._openReadingScorePicker = (roomsJson) => {
   modal.querySelectorAll('.rsp-room').forEach(btn => {
     btn.addEventListener('click', () => { modal.remove(); window._openReadingScoreRoom(btn.dataset.room) })
   })
+}
+
+async function _updateRequestsBadge() {
+  if (!_teacher) return
+  try {
+    const count = await getPendingExamRequestCount(_teacher.id)
+    const badge = document.getElementById('badge-requests')
+    if (!badge) return
+    if (count > 0) {
+      badge.textContent = count > 99 ? '99+' : count
+      badge.classList.remove('hidden')
+    } else {
+      badge.classList.add('hidden')
+    }
+  } catch { /* ไม่ crash ถ้า badge โหลดไม่ได้ */ }
 }
 
 function _applyRoleMenus() {
@@ -779,6 +795,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
   _applyRoleMenus()
   loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
+  _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
 
   // Sidebar nav clicks
   document.querySelectorAll('[data-nav]').forEach(link => {
