@@ -142,9 +142,10 @@ export async function syncScores(sheetId, scoreColumns, scores, students) {
  * @param {Array}  scores   - [{student_id, column_id, score}]
  * @param {Array}  students - [{id, student_code}]
  */
-export async function syncCentralBatch(sheetId, tabName, columns, scores, students) {
+export async function syncCentralBatch(sheetId, tabName, columns, scores, students, options = {}) {
   if (!sheetId) throw new Error('ยังไม่ได้ตั้งค่า Sheet ID สำหรับชีทกลาง')
   const gasUrl = await _getGasUrl()
+  const studentColRange = options.studentColRange || STU_RANGE
 
   const colMap = Object.fromEntries(columns.map(c => [c.id, c.sheet_col]))
   const stuMap = Object.fromEntries(students.map(s => [s.id, s.student_code]))
@@ -161,9 +162,11 @@ export async function syncCentralBatch(sheetId, tabName, columns, scores, studen
     action:          'sync_scores',
     sheetId,
     tabName:         tabName || SHEET_TAB,
-    studentColRange: STU_RANGE,
+    studentColRange,
     records,
   })
+
+  return records.length
 }
 
 /**

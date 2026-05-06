@@ -2726,8 +2726,9 @@ export async function renderLifeSkillAdmin() {
           <tbody class="divide-y divide-gray-50">${cols.map(colRow).join('')}</tbody>
         </table>`
 
-    // cfgKey = base key เช่น 'lifeSkillSheetIdSamai' → tab key = 'lifeSkillSheetTabSamai'
+    // cfgKey = base key เช่น 'lifeSkillSheetIdSamai' → tab/range key ตามกลุ่มเดียวกัน
     const _tabKey = (idKey) => idKey.replace('SheetId', 'SheetTab')
+    const _rangeKey = (idKey) => idKey.replace('SheetId', 'StudentRange')
     const sheetIdBlock = (cfgKey, catLabel) => `
       <div class="px-5 py-4 bg-gray-50/60 border-t border-gray-100 space-y-2">
         <p class="text-xs font-semibold text-gray-500 mb-1">🔗 เชื่อมกับ Google Sheet (${catLabel})</p>
@@ -2742,8 +2743,14 @@ export async function renderLifeSkillAdmin() {
           <input type="text" id="lsk-tab-${cfgKey}" value="${cfg[_tabKey(cfgKey)] ?? ''}"
             placeholder="เช่น ทักษะชีวิต, Sheet1"
             class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400 w-20 flex-shrink-0">ช่วงรหัส:</span>
+          <input type="text" id="lsk-range-${cfgKey}" value="${cfg[_rangeKey(cfgKey)] ?? 'J8:J3000'}"
+            placeholder="เช่น J8:J3000"
+            class="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           <button class="lsk-save-sheet px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition flex-shrink-0"
-            data-key="${cfgKey}" data-tab-key="${_tabKey(cfgKey)}">บันทึก</button>
+            data-key="${cfgKey}" data-tab-key="${_tabKey(cfgKey)}" data-range-key="${_rangeKey(cfgKey)}">บันทึก</button>
         </div>
       </div>`
 
@@ -2794,17 +2801,28 @@ export async function renderLifeSkillAdmin() {
           <div id="lsk-score-table"><div class="p-10 text-center text-gray-400">กำลังโหลด...</div></div>
         </div>`
 
-      const { columns, scores } = await getAllLifeSkillScores(year, sem).catch(()=>({ columns:[], scores:[] }))
+      const [{ columns, scores }, roster] = await Promise.all([
+        getAllLifeSkillScores(year, sem).catch(()=>({ columns:[], scores:[] })),
+        getStudents().catch(()=>[]),
+      ])
       const scoreMap = {}
       for (const s of scores) {
         if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
         scoreMap[s.student_id][s.column_id] = s.score
       }
-      const allStudents = [...new Map(scores.map(s =>
-        [s.student_id, { id: s.student_id, ...s.students }])).values()]
+      const allStudents = roster
+        .filter(s => s?.id && s?.student_code)
         .sort((a,b) => (a.main_room??a.religion_room??'').localeCompare(b.main_room??b.religion_room??'',undefined,{numeric:true}) || (a.student_code??'').localeCompare(b.student_code??''))
 
-      const _renderTable = (list) => {
+      const _columnsForCat = (cat) => cat ? columns.filter(c => c.category === cat) : columns
+      const _studentsForCat = (cat, list = allStudents) => {
+        if (cat === 'สามัญ') return list.filter(s => s.main_room)
+        if (cat === 'ศาสนา') return list.filter(s => s.religion_room)
+        return list
+      }
+
+      const _renderTable = (list, cat = document.getElementById('lsk-filter-cat')?.value ?? '') => {
+        const visibleCols = _columnsForCat(cat)
         document.getElementById('lsk-filter-count').textContent = `${list.length} คน`
         if (!list.length) { document.getElementById('lsk-score-table').innerHTML = `<div class="p-10 text-center text-gray-400">ไม่พบข้อมูล</div>`; return }
         document.getElementById('lsk-score-table').innerHTML = `
@@ -2815,21 +2833,20 @@ export async function renderLifeSkillAdmin() {
                 <th class="text-left px-3 py-2.5 text-gray-600 font-semibold w-20 sticky left-8 bg-gray-50">รหัส</th>
                 <th class="text-left px-3 py-2.5 text-gray-600 font-semibold min-w-[130px]">ชื่อ</th>
                 <th class="text-left px-3 py-2.5 text-gray-400 w-20">ห้อง</th>
-                ${columns.map(c=>`<th class="text-center px-2 py-2.5 text-gray-600 font-semibold min-w-[60px] whitespace-nowrap">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
+                ${visibleCols.map(c=>`<th class="text-center px-2 py-2.5 text-gray-600 font-semibold min-w-[60px] whitespace-nowrap">${c.name}<br><span class="font-normal text-gray-400">(${c.max_score})</span></th>`).join('')}
                 <th class="text-center px-3 py-2.5 text-indigo-600 font-semibold">รวม</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
               ${list.map((s,i) => {
-                const cat = s.religion_room ? 'ศาสนา' : 'สามัญ'
-                const room = s.main_room ?? s.religion_room ?? '—'
-                const total = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
+                const room = cat === 'ศาสนา' ? (s.religion_room ?? '—') : (s.main_room ?? s.religion_room ?? '—')
+                const total = visibleCols.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
                 return `<tr class="hover:bg-indigo-50/30 transition">
                   <td class="px-3 py-2 text-gray-400 sticky left-0 bg-white">${i+1}</td>
                   <td class="px-3 py-2 font-mono text-gray-700 sticky left-8 bg-white">${s.student_code??'—'}</td>
                   <td class="px-3 py-2 text-gray-800">${s.full_name??'—'}</td>
                   <td class="px-3 py-2 text-gray-400">${room}</td>
-                  ${columns.map(c => {
+                  ${visibleCols.map(c => {
                     const v = scoreMap[s.id]?.[c.id]
                     return `<td class="px-2 py-2 text-center ${v!=null?'text-gray-800 font-medium':'text-gray-300'}">${v??'—'}</td>`
                   }).join('')}
@@ -2846,11 +2863,10 @@ export async function renderLifeSkillAdmin() {
       const _applyLskFilter = () => {
         const cat = document.getElementById('lsk-filter-cat').value
         const q   = document.getElementById('lsk-filter-search').value.toLowerCase()
-        _lskFiltered = allStudents.filter(s => {
-          const isCatMatch = !cat || (cat==='ศาสนา' ? !!s.religion_room : !s.religion_room)
-          return isCatMatch && (!q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q))
-        })
-        _renderTable(_lskFiltered)
+        _lskFiltered = _studentsForCat(cat).filter(s =>
+          !q || s.full_name?.toLowerCase().includes(q) || s.student_code?.includes(q)
+        )
+        _renderTable(_lskFiltered, cat)
       }
       document.getElementById('lsk-filter-cat').addEventListener('change', _applyLskFilter)
       document.getElementById('lsk-filter-search').addEventListener('input', _applyLskFilter)
@@ -2861,13 +2877,39 @@ export async function renderLifeSkillAdmin() {
         try {
           const { syncCentralBatch } = await import('./sync.js')
           const cat = document.getElementById('lsk-filter-cat').value
-          const sheetId = cat==='ศาสนา' ? cfg.lifeSkillSheetIdSamai : (cfg.lifeSkillSheetIdSamai||cfg.lifeSkillSheetIdSadsana)
-          const tabName = cat==='ศาสนา' ? cfg.lifeSkillSheetTabSadsana : cfg.lifeSkillSheetTabSamai
-          if (!sheetId) { showToast('ยังไม่ได้ตั้งค่า Sheet ID — ไปที่ ตั้งค่าระบบ','warning'); btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง'; return }
-          const stuList = _lskFiltered.map(s => ({ id: s.id, student_code: s.student_code }))
-          const scList  = scores.filter(sc => stuList.some(s=>s.id===sc.student_id))
-          await syncCentralBatch(sheetId, tabName, columns, scList, stuList)
-          showToast(`Sync ทักษะชีวิต ${stuList.length} คน สำเร็จ`, 'success')
+          const targets = (cat ? [cat] : ['สามัญ', 'ศาสนา']).map(category => ({
+            category,
+            sheetId: category === 'ศาสนา' ? cfg.lifeSkillSheetIdSadsana : cfg.lifeSkillSheetIdSamai,
+            tabName: category === 'ศาสนา' ? cfg.lifeSkillSheetTabSadsana : cfg.lifeSkillSheetTabSamai,
+            range: category === 'ศาสนา' ? (cfg.lifeSkillStudentRangeSadsana || 'J8:J3000') : (cfg.lifeSkillStudentRangeSamai || 'J8:J3000'),
+            columns: _columnsForCat(category),
+            students: _studentsForCat(category, cat ? _lskFiltered : allStudents),
+          })).filter(t => t.columns.length)
+
+          if (!targets.length) {
+            showToast('ยังไม่มีคอลัมน์สำหรับซิงค์', 'warning')
+            return
+          }
+
+          let totalStudents = 0
+          let totalRecords = 0
+          for (const target of targets) {
+            if (!target.sheetId) throw new Error(`ยังไม่ได้ตั้งค่า Sheet ID (${target.category})`)
+            const stuList = target.students.map(s => ({ id: s.id, student_code: s.student_code }))
+            const stuIds = new Set(stuList.map(s => s.id))
+            const colIds = new Set(target.columns.map(c => c.id))
+            const scList = scores.filter(sc => stuIds.has(sc.student_id) && colIds.has(sc.column_id))
+            totalRecords += await syncCentralBatch(
+              target.sheetId,
+              target.tabName,
+              target.columns,
+              scList,
+              stuList,
+              { studentColRange: target.range }
+            )
+            totalStudents += stuList.length
+          }
+          showToast(`ส่งคำสั่ง Sync ทักษะชีวิต ${totalStudents} คน / ${totalRecords} คะแนนแล้ว`, 'success')
         } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
         finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
       })
@@ -2913,12 +2955,18 @@ export async function renderLifeSkillAdmin() {
       document.querySelectorAll('.lsk-save-sheet').forEach(btn => {
         btn.addEventListener('click', async () => {
           const key = btn.dataset.key; const tabKey = btn.dataset.tabKey
+          const rangeKey = btn.dataset.rangeKey
           const val = document.getElementById(`lsk-sheet-${key}`)?.value.trim()??''
           const tabVal = document.getElementById(`lsk-tab-${key}`)?.value.trim()??''
+          const rangeVal = document.getElementById(`lsk-range-${key}`)?.value.trim()??'J8:J3000'
           const orig = btn.textContent; btn.disabled=true; btn.textContent='⏳'
           try {
-            await Promise.all([updateSystemConfig(key,val), updateSystemConfig(tabKey,tabVal)])
-            cfg[key]=val; cfg[tabKey]=tabVal
+            await Promise.all([
+              updateSystemConfig(key,val),
+              updateSystemConfig(tabKey,tabVal),
+              updateSystemConfig(rangeKey,rangeVal),
+            ])
+            cfg[key]=val; cfg[tabKey]=tabVal; cfg[rangeKey]=rangeVal
             btn.textContent='✅'; btn.style.background='#16a34a'
             setTimeout(()=>{ btn.disabled=false; btn.textContent=orig; btn.style.background='' },1500)
             showToast('บันทึก Sheet ID + ชื่อแท็บแล้ว','success')

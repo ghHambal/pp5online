@@ -90,6 +90,22 @@ It supports two categories:
 
 Admin can assign missing homeroom advisors by searching teacher code/name.
 
+### Life Skill Score Sync
+
+Admin page: `renderLifeSkillAdmin` in `js/views.js`.
+
+Life skill sync uses category-specific settings:
+
+- `lifeSkillSheetIdSamai`
+- `lifeSkillSheetTabSamai`
+- `lifeSkillStudentRangeSamai`
+- `lifeSkillSheetIdSadsana`
+- `lifeSkillSheetTabSadsana`
+- `lifeSkillStudentRangeSadsana`
+
+The sync writes by student code using `syncCentralBatch` in `js/sync.js`.
+Use a wide student-code range for central sheets, for example `J8:J3000`, because the old default `J8:J72` is only suitable for small per-class sheets.
+
 ## Recent Behavior To Preserve
 
 - Student admin list fetches beyond Supabase's 1000-row range limit.
