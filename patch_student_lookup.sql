@@ -22,16 +22,16 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    s.id,
-    s.student_code,
-    s.full_name,
-    s.main_room,
-    s.image_url,
+    s.id::INT,
+    s.student_code::TEXT,
+    s.full_name::TEXT,
+    s.main_room::TEXT,
+    s.image_url::TEXT,
     (s.profile_id IS NOT NULL)                                AS has_account,
     CASE WHEN s.profile_id IS NOT NULL
-         THEN (SELECT u.email FROM auth.users u WHERE u.id = s.profile_id)
+         THEN (SELECT u.email::TEXT FROM auth.users u WHERE u.id = s.profile_id)
          ELSE NULL
-    END                                                       AS login_email
+    END::TEXT                                                 AS login_email
   FROM students s
   WHERE s.student_code = p_student_code
   LIMIT 1;
