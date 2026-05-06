@@ -247,7 +247,7 @@ CREATE UNIQUE INDEX teachers_username_lower_uidx
   ON teachers (lower(username))
   WHERE username IS NOT NULL AND trim(username) <> '';
 
-CREATE UNIQUE INDEX teachers_login_email_lower_uidx
+CREATE INDEX teachers_login_email_lower_idx
   ON teachers (lower(login_email))
   WHERE login_email IS NOT NULL AND trim(login_email) <> '';
 

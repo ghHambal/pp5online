@@ -22,7 +22,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS teachers_username_lower_uidx
   ON public.teachers (lower(username))
   WHERE username IS NOT NULL AND trim(username) <> '';
 
-CREATE UNIQUE INDEX IF NOT EXISTS teachers_login_email_lower_uidx
+DROP INDEX IF EXISTS public.teachers_login_email_lower_uidx;
+
+CREATE INDEX IF NOT EXISTS teachers_login_email_lower_idx
   ON public.teachers (lower(login_email))
   WHERE login_email IS NOT NULL AND trim(login_email) <> '';
 
