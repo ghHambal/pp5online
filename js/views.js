@@ -26,6 +26,7 @@ import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './im
 import { uploadSystemAsset } from './storage.js'
 import {
   DEFAULT_SUBJECT_SYNC_COLUMNS,
+  DEFAULT_SUBJECT_SYNC_KEY_FIELD,
   DEFAULT_SUBJECT_SYNC_SHEET_ID,
   DEFAULT_SUBJECT_SYNC_TAB,
   SUBJECT_SYNC_COLUMNS,
@@ -1369,6 +1370,7 @@ export async function renderSubjects() {
     let subjectSyncCfg = {
       sheetId: cfg.subjectSyncSheetId || DEFAULT_SUBJECT_SYNC_SHEET_ID,
       tabName: cfg.subjectSyncTabName || DEFAULT_SUBJECT_SYNC_TAB,
+      keyField: cfg.subjectSyncKeyField || DEFAULT_SUBJECT_SYNC_KEY_FIELD,
       columns: (() => {
         try {
           const parsed = JSON.parse(cfg.subjectSyncColumns || 'null')
@@ -1501,6 +1503,21 @@ export async function renderSubjects() {
             </div>
           </div>
 
+          <div class="mb-5">
+            <label class="block text-sm font-semibold text-gray-600 mb-1">คอลัมน์สำหรับเทียบข้อมูลเดิม</label>
+            <select id="subject-sync-key-field"
+              class="input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white">
+              ${SUBJECT_SYNC_COLUMNS.map(col => `
+                <option value="${_esc(col.key)}" ${subjectSyncCfg.keyField === col.key ? 'selected' : ''}>
+                  ${_esc(col.key)} - ${_esc(col.label)}
+                </option>
+              `).join('')}
+            </select>
+            <p class="text-xs text-gray-400 mt-1">
+              ถ้าพบค่าเดียวกันในชีทเดิม ระบบจะอัปเดตแถวนั้น ถ้าไม่พบจะเพิ่มแถวใหม่โดยไม่ล้างข้อมูลเดิม
+            </p>
+          </div>
+
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
               <h3 class="text-sm font-bold text-gray-700">คอลัมน์ที่จะซิงค์กลับชีท</h3>
@@ -1584,7 +1601,9 @@ export async function renderSubjects() {
       } else {
         const sheetId = document.getElementById('subject-sync-sheet-id')?.value.trim() ?? ''
         const tabName = document.getElementById('subject-sync-tab-name')?.value.trim() ?? ''
-        const columns = [...document.querySelectorAll('.subject-sync-col:checked')].map(inp => inp.value)
+        const keyField = document.getElementById('subject-sync-key-field')?.value ?? DEFAULT_SUBJECT_SYNC_KEY_FIELD
+        const selectedColumns = [...document.querySelectorAll('.subject-sync-col:checked')].map(inp => inp.value)
+        const columns = selectedColumns.includes(keyField) ? selectedColumns : [keyField, ...selectedColumns]
         if (!sheetId || !tabName) {
           showToast('กรุณากรอก Sheet ID และชื่อแท็บปลายทาง', 'warning')
           return
@@ -1600,9 +1619,10 @@ export async function renderSubjects() {
           await Promise.all([
             updateSystemConfig('subjectSyncSheetId', sheetId),
             updateSystemConfig('subjectSyncTabName', tabName),
+            updateSystemConfig('subjectSyncKeyField', keyField),
             updateSystemConfig('subjectSyncColumns', JSON.stringify(columns)),
           ])
-          subjectSyncCfg = { sheetId, tabName, columns }
+          subjectSyncCfg = { sheetId, tabName, keyField, columns }
           _setButtonText()
           showToast('บันทึกตั้งค่าซิงค์รายวิชาแล้ว', 'success')
         } catch (err) {
@@ -1651,6 +1671,7 @@ export async function renderSubjects() {
           sheetId: subjectSyncCfg.sheetId,
           tabName: subjectSyncCfg.tabName,
           headers: subjectSyncCfg.columns,
+          keyField: subjectSyncCfg.keyField,
         })
         showToast(`ส่งคำสั่งซิงค์รายวิชา ${count} รายการไปแท็บ ${subjectSyncCfg.tabName} แล้ว`, 'success')
       } catch (err) {

@@ -22,6 +22,7 @@ export const SUBJECT_SYNC_COLUMNS = [
 ]
 
 export const DEFAULT_SUBJECT_SYNC_COLUMNS = SUBJECT_SYNC_COLUMNS.map(c => c.key)
+export const DEFAULT_SUBJECT_SYNC_KEY_FIELD = 'subject_code'
 
 const ATT_MAP = {
   present: 'ม',
@@ -251,19 +252,20 @@ export async function syncSubjectCatalog(rows, options = {}) {
   const headers = options.headers?.length ? options.headers : DEFAULT_SUBJECT_SYNC_COLUMNS
   const sheetId = options.sheetId || DEFAULT_SUBJECT_SYNC_SHEET_ID
   const tabName = options.tabName || DEFAULT_SUBJECT_SYNC_TAB
+  const keyField = options.keyField || DEFAULT_SUBJECT_SYNC_KEY_FIELD
 
   if (!sheetId) throw new Error('ยังไม่ได้ตั้งค่า Sheet ID ปลายทาง')
   if (!tabName) throw new Error('ยังไม่ได้ตั้งค่าชื่อแท็บปลายทาง')
   if (!headers.length) throw new Error('กรุณาเลือกคอลัมน์อย่างน้อย 1 คอลัมน์')
+  if (!keyField) throw new Error('กรุณาเลือกคอลัมน์สำหรับเทียบข้อมูลเดิม')
 
   await _post(gasUrl, {
     action:  'sync_table',
     sheetId,
     tabName,
     headers,
-    rows: (rows ?? []).map(row =>
-      headers.map(key => row?.[key] ?? '')
-    ),
+    keyField,
+    records: rows ?? [],
   })
 
   return rows?.length ?? 0

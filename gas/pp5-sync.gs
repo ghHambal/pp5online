@@ -106,11 +106,12 @@ function _syncCells(payload) {
   return _json({ ok: true, written: payload.cells.length })
 }
 
-// ─── Sync Table (ล้างแท็บแล้วเขียน header + rows) ─────────────────────────
+// ─── Sync Table (จับคู่ด้วย header แล้วเพิ่ม/อัปเดตแถว) ───────────────────
 // payload: {
 //   sheetId, tabName,
 //   headers: ['subject_group', ...],
-//   rows: [[...], [...]]
+//   keyField: 'subject_code',
+//   records: [{subject_group:'ACDM', ...}]
 // }
 
 function _syncTable(payload) {
@@ -119,16 +120,71 @@ function _syncTable(payload) {
   if (!sheet) sheet = ss.insertSheet(payload.tabName)
 
   var headers = payload.headers || []
-  var rows = payload.rows || []
-  var values = [headers].concat(rows)
+  var keyField = payload.keyField || 'subject_code'
+  var records = payload.records || []
+  if (!records.length && payload.rows) {
+    records = payload.rows.map(function(row) {
+      var obj = {}
+      headers.forEach(function(h, i) { obj[h] = row[i] })
+      return obj
+    })
+  }
+  if (!headers.length) return _json({ ok: false, error: 'No headers provided' })
+  if (headers.indexOf(keyField) === -1) headers.unshift(keyField)
 
-  sheet.clearContents()
-  if (values.length && headers.length) {
-    sheet.getRange(1, 1, values.length, headers.length).setValues(values)
+  var lastCol = sheet.getLastColumn()
+  var lastRow = sheet.getLastRow()
+  var currentHeaders = lastCol
+    ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h).trim() })
+    : []
+
+  if (!currentHeaders.length || currentHeaders.every(function(h) { return !h })) {
+    currentHeaders = headers.slice()
+    sheet.getRange(1, 1, 1, currentHeaders.length).setValues([currentHeaders])
+  } else {
+    headers.forEach(function(h) {
+      if (currentHeaders.indexOf(h) === -1) currentHeaders.push(h)
+    })
+    sheet.getRange(1, 1, 1, currentHeaders.length).setValues([currentHeaders])
   }
 
+  var colByHeader = {}
+  currentHeaders.forEach(function(h, i) {
+    if (h) colByHeader[h] = i + 1
+  })
+
+  var keyCol = colByHeader[keyField]
+  if (!keyCol) return _json({ ok: false, error: 'Missing key header: ' + keyField })
+
+  var rowByKey = {}
+  lastRow = sheet.getLastRow()
+  if (lastRow >= 2) {
+    var keyValues = sheet.getRange(2, keyCol, lastRow - 1, 1).getValues()
+    keyValues.forEach(function(row, i) {
+      var key = String(row[0]).trim()
+      if (key) rowByKey[key] = i + 2
+    })
+  }
+
+  var written = 0
+  records.forEach(function(record) {
+    var key = String(record[keyField] || '').trim()
+    if (!key) return
+    var rowIndex = rowByKey[key]
+    if (!rowIndex) {
+      rowIndex = sheet.getLastRow() + 1
+      rowByKey[key] = rowIndex
+    }
+    headers.forEach(function(h) {
+      var col = colByHeader[h]
+      if (!col) return
+      sheet.getRange(rowIndex, col).setValue(record[h] ?? '')
+    })
+    written++
+  })
+
   SpreadsheetApp.flush()
-  return _json({ ok: true, written: rows.length })
+  return _json({ ok: true, written: written, mode: 'upsert_by_header' })
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
