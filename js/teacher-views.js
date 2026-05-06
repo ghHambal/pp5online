@@ -1571,7 +1571,7 @@ export async function renderMyClasses(teacher) {
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
     }
 
-    const _openPrintableRoster = async (cls, type) => {
+    const _openPrintableRoster = async (cls, type, orientation = 'landscape') => {
       const win = window.open('', '_blank')
       if (!win) {
         showToast('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup ก่อน', 'warning')
@@ -1593,11 +1593,17 @@ export async function renderMyClasses(teacher) {
           ? (cfg.porworLogoBwUrl || cfg.porworLogoUrl || cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || '')
           : (cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || cfg.porworLogoBwUrl || cfg.porworLogoUrl || '')
         const title = type === 'score' ? 'ใบรายชื่อนักเรียนสำหรับบันทึกคะแนน' : 'ใบรายชื่อนักเรียนสำหรับเช็คชื่อ'
-        const scoreHeaders = scoreColumns.map(c => `
-          <th class="score-col">
-            <div>${_htmlEsc(c.assignment_name || '-')}</div>
+        const isLandscape = orientation !== 'portrait'
+        const pageWidth = isLandscape ? '297mm' : '210mm'
+        const pageHeight = isLandscape ? '210mm' : '297mm'
+        const scoreHeaders = scoreColumns.map(c => {
+          const name = c.assignment_name || '-'
+          const long = name.length > 8 || scoreColumns.length > (isLandscape ? 10 : 6)
+          return `
+          <th class="score-col ${long ? 'long' : ''}">
+            <div class="score-label" title="${_htmlEsc(name)}">${_htmlEsc(name)}</div>
             <small>/${_htmlEsc(c.max_score ?? '')}</small>
-          </th>`).join('')
+          </th>`}).join('')
         const scoreCells = scoreColumns.map(() => '<td class="score-cell"></td>').join('')
         const attendanceHeaders = Array.from({ length: 12 }, (_, i) => `<th class="check-col">${i + 1}</th>`).join('')
         const attendanceCells = Array.from({ length: 12 }, () => '<td class="check-cell"></td>').join('')
@@ -1615,29 +1621,42 @@ export async function renderMyClasses(teacher) {
   <meta charset="utf-8" />
   <title>${_htmlEsc(title)} - ${_htmlEsc(ms.subject_name || '')}</title>
   <style>
-    @page { size: A4 landscape; margin: 10mm; }
+    @page { size: A4 ${isLandscape ? 'landscape' : 'portrait'}; margin: 10mm; }
     * { box-sizing: border-box; }
     body { font-family: "Sarabun", "TH Sarabun New", Arial, sans-serif; color: #111827; margin: 0; background: #f3f4f6; }
     .toolbar { position: sticky; top: 0; display: flex; gap: 8px; justify-content: flex-end; padding: 10px; background: white; border-bottom: 1px solid #e5e7eb; }
     .toolbar button { border: 1px solid #d1d5db; background: white; border-radius: 8px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
     .toolbar .primary { background: #4f46e5; color: white; border-color: #4f46e5; }
-    .page { width: 297mm; min-height: 210mm; margin: 12px auto; padding: 10mm; background: white; }
+    .page { width: ${pageWidth}; min-height: ${pageHeight}; margin: 12px auto; padding: 10mm; background: white; }
     .header { display: grid; grid-template-columns: 70px 1fr 150px; align-items: center; gap: 12px; margin-bottom: 10px; }
-    .logo { width: 58px; height: 58px; object-fit: contain; }
+    .logo-wrap { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; background: transparent; }
+    .logo { width: 58px; height: 58px; object-fit: contain; mix-blend-mode: multiply; filter: grayscale(1) contrast(1.18); }
     .school { text-align: center; line-height: 1.3; }
     .school h1 { margin: 0; font-size: 20px; }
     .school h2 { margin: 3px 0 0; font-size: 16px; font-weight: 700; }
     .meta { font-size: 12px; line-height: 1.7; }
     .meta strong { display: inline-block; min-width: 66px; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: ${isLandscape ? '11px' : '10px'}; }
     th, td { border: 1px solid #111827; padding: 3px 4px; vertical-align: middle; }
     th { background: #f3f4f6; font-weight: 700; text-align: center; }
     .no { width: 28px; text-align: center; }
     .code { width: 62px; text-align: center; font-family: monospace; }
-    .name { width: 150px; }
-    .check-col, .check-cell { width: 34px; height: 22px; text-align: center; }
-    .score-col, .score-cell { width: 58px; text-align: center; }
-    .score-col div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .name { width: ${isLandscape ? '150px' : '120px'}; }
+    .check-col, .check-cell { width: ${isLandscape ? '34px' : '24px'}; height: 22px; text-align: center; }
+    .score-col, .score-cell { width: ${isLandscape ? '58px' : '42px'}; text-align: center; }
+    .score-col { height: 46px; vertical-align: bottom; }
+    .score-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15; }
+    .score-col.long { height: 72px; padding: 2px 1px; }
+    .score-col.long .score-label {
+      width: 66px;
+      max-width: 66px;
+      margin: 0 auto 2px;
+      transform: rotate(-28deg);
+      transform-origin: 50% 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .score-col small { display: block; color: #6b7280; font-weight: 400; }
     .note { width: 70px; }
     .signature { display: flex; justify-content: flex-end; margin-top: 18px; font-size: 12px; }
@@ -1656,7 +1675,7 @@ export async function renderMyClasses(teacher) {
   </div>
   <main class="page">
     <section class="header">
-      <div>${logoUrl ? `<img class="logo" src="${_htmlEsc(logoUrl)}" />` : ''}</div>
+      <div class="logo-wrap">${logoUrl ? `<img class="logo" src="${_htmlEsc(logoUrl)}" />` : ''}</div>
       <div class="school">
         <h1>${_htmlEsc(schoolName)}</h1>
         <h2>${_htmlEsc(title)}</h2>
@@ -1712,6 +1731,19 @@ export async function renderMyClasses(teacher) {
       m.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
         <h3 class="font-bold text-gray-800 text-base mb-1">สร้างใบรายชื่อ</h3>
         <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.master_subjects?.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+        <div class="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <p class="text-xs font-semibold text-gray-500 mb-2">แนวหน้ากระดาษ</p>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="cursor-pointer">
+              <input class="hidden roster-orientation" type="radio" name="roster-orientation" value="portrait" />
+              <span class="roster-orientation-card block text-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600">แนวตั้ง</span>
+            </label>
+            <label class="cursor-pointer">
+              <input class="hidden roster-orientation" type="radio" name="roster-orientation" value="landscape" checked />
+              <span class="roster-orientation-card block text-center rounded-lg border border-indigo-500 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">แนวนอน</span>
+            </label>
+          </div>
+        </div>
         <div class="grid gap-3">
           <button id="btn-roster-att" class="py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">✅ สร้างใบเช็คชื่อ</button>
           <button id="btn-roster-score" class="py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">📝 สร้างใบบันทึกคะแนน</button>
@@ -1719,10 +1751,27 @@ export async function renderMyClasses(teacher) {
         </div>
       </div>`
       document.body.appendChild(m)
+      const _getOrientation = () => m.querySelector('.roster-orientation:checked')?.value || 'landscape'
+      m.querySelectorAll('.roster-orientation').forEach(inp => {
+        inp.addEventListener('change', () => {
+          m.querySelectorAll('.roster-orientation-card').forEach(card => {
+            card.className = 'roster-orientation-card block text-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600'
+          })
+          inp.nextElementSibling.className = 'roster-orientation-card block text-center rounded-lg border border-indigo-500 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700'
+        })
+      })
       m.querySelector('#btn-roster-close').addEventListener('click', () => m.remove())
       m.addEventListener('click', e => { if (e.target === m) m.remove() })
-      m.querySelector('#btn-roster-att').addEventListener('click', () => { m.remove(); _openPrintableRoster(cls, 'attendance') })
-      m.querySelector('#btn-roster-score').addEventListener('click', () => { m.remove(); _openPrintableRoster(cls, 'score') })
+      m.querySelector('#btn-roster-att').addEventListener('click', () => {
+        const orientation = _getOrientation()
+        m.remove()
+        _openPrintableRoster(cls, 'attendance', orientation)
+      })
+      m.querySelector('#btn-roster-score').addEventListener('click', () => {
+        const orientation = _getOrientation()
+        m.remove()
+        _openPrintableRoster(cls, 'score', orientation)
+      })
     }
 
     window._openSheetToolsModal = (classId) => {
@@ -1744,7 +1793,7 @@ export async function renderMyClasses(teacher) {
             <p class="text-xs font-semibold text-gray-500 mb-2">ใบรายชื่อนักเรียน</p>
             <button id="btn-roster-menu" class="w-full text-left px-4 py-3 rounded-xl border border-violet-100 bg-violet-50 text-violet-800 hover:bg-violet-100 text-sm font-semibold">🖨️ สร้างใบรายชื่อ</button>
           </div>
-          <button id="btn-open-sync" class="w-full text-left px-4 py-3 rounded-xl border border-teal-100 bg-teal-50 text-teal-800 hover:bg-teal-100 text-sm font-semibold">↑ Sync ข้อมูลไปชีท</button>
+          <button id="btn-open-sync" class="w-full text-left px-4 py-3 rounded-xl border border-teal-100 bg-teal-50 text-teal-800 hover:bg-teal-100 text-sm font-semibold">🔗 Sync ข้อมูลไปชีท</button>
         </div>
         <button id="btn-sheet-tools-close" class="mt-4 w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ปิด</button>
       </div>`
@@ -1794,7 +1843,7 @@ export async function renderMyClasses(teacher) {
       m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
       m.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-          <h3 class="font-bold text-gray-800 text-base mb-1">📤 Sync ไปยัง Google Sheet</h3>
+          <h3 class="font-bold text-gray-800 text-base mb-1">🔗 Sync ไปยัง Google Sheet</h3>
           <p class="text-xs text-gray-400 mb-4">ห้อง: ${cls.class_name} · Sheet: ✓</p>
           <div class="space-y-3 mb-5">
             <label class="flex items-start gap-3 cursor-pointer">
@@ -1830,7 +1879,7 @@ export async function renderMyClasses(teacher) {
             </button>
             <button id="btn-sync-go"
               class="flex-1 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 transition">
-              Sync ที่เลือก
+              🔗 Sync ที่เลือก
             </button>
           </div>
         </div>`
