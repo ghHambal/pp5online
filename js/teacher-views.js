@@ -1461,6 +1461,13 @@ const _htmlEsc = value => String(value ?? '')
   .replace(/'/g, '&#39;')
 
 const _sheetUrl = sheetId => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit`
+const _sheetCopyUrl = sheetId => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/copy`
+const _extractSheetId = value => {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/) || raw.match(/^[a-zA-Z0-9_-]{20,}$/)
+  return Array.isArray(match) ? (match[1] || match[0]) : ''
+}
 
 function _transparentEdgeDarkLogo(url) {
   if (!url) return Promise.resolve('')
@@ -1874,6 +1881,41 @@ export async function renderMyClasses(teacher) {
       document.body.appendChild(m)
       m.querySelector('#copy-cancel').addEventListener('click', () => m.remove())
       m.addEventListener('click', e => { if (e.target === m) m.remove() })
+      const showManualCopy = message => {
+        const copyUrl = _sheetCopyUrl(tpl.id)
+        m.querySelector('#copy-result').innerHTML = `
+          <div class="rounded-xl bg-amber-50 border border-amber-100 p-3">
+            <p class="font-semibold text-amber-800 mb-1">ใช้วิธีทำสำเนาด้วย Google แทน</p>
+            <p class="text-xs text-amber-700 mb-3">${_htmlEsc(message || 'หากสร้างอัตโนมัติไม่สำเร็จ ให้กดปุ่มด้านล่างเพื่อทำสำเนา แล้วนำลิงก์ไฟล์ใหม่มาวาง')}</p>
+            <a href="${copyUrl}" target="_blank" rel="noopener noreferrer"
+              class="block w-full py-2 rounded-lg bg-blue-600 text-white text-center text-sm font-semibold hover:bg-blue-700">
+              เปิดหน้าทำสำเนาของ Google
+            </a>
+            <label class="block text-xs font-semibold text-gray-600 mt-3 mb-1">วางลิงก์หรือ ID ของไฟล์ที่ทำสำเนาเสร็จแล้ว</label>
+            <input id="manual-sheet-id" class="${INPUT_CLS}" placeholder="https://docs.google.com/spreadsheets/d/..." />
+            <button id="manual-save-sheet" class="mt-3 w-full py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">
+              บันทึก Sheet ID เข้ารายวิชา
+            </button>
+          </div>`
+        m.querySelector('#copy-result').classList.remove('hidden')
+        m.querySelector('#manual-save-sheet').addEventListener('click', async () => {
+          const input = m.querySelector('#manual-sheet-id')
+          const newId = _extractSheetId(input.value)
+          if (!newId) {
+            showToast('กรุณาวางลิงก์หรือ Sheet ID ของไฟล์สำเนา', 'warning')
+            return
+          }
+          try {
+            await updateClass(cls.id, { google_sheet_id: newId })
+            cls.google_sheet_id = newId
+            showToast('บันทึก Sheet ID เข้ารายวิชาแล้ว', 'success')
+            m.remove()
+            renderMyClasses(teacher)
+          } catch (err) {
+            showToast('บันทึก Sheet ID ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          }
+        })
+      }
       m.querySelector('#copy-go').addEventListener('click', async () => {
         const btn = m.querySelector('#copy-go')
         const name = m.querySelector('#copy-file-name').value.trim() || defaultName || 'สำเนาไฟล์ ปพ.5'
@@ -1897,7 +1939,8 @@ export async function renderMyClasses(teacher) {
         } catch (err) {
           btn.disabled = false
           btn.textContent = 'สร้างสำเนา'
-          showToast('สร้างสำเนาไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('สร้างอัตโนมัติไม่สำเร็จ เปิดวิธีทำสำเนาด้วย Google แทน', 'warning')
+          showManualCopy(err.message ?? '')
         }
       })
     }
