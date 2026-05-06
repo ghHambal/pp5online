@@ -561,23 +561,9 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       ? _requestsContent()
       : _todoContent()
 
-  const _tabBtn = (key, icon, label) => {
-    const active = tab === key
-    return `<button onclick="window._stuOpenClassTab(${classId},'${key}')"
-      class="flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-medium border-b-2 transition
-             ${active ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
-      <span class="text-base">${icon}</span>${label}
-    </button>`
-  }
-
   setContent(`
     <button onclick="window._stuNav('subjects')" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← รายวิชาอื่น</button>
     ${_subjectHeader()}
-    <div class="flex bg-white rounded-xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
-      ${_tabBtn('todo',     '✅', 'ภารกิจ')}
-      ${_tabBtn('scores',  '📊', 'คะแนน')}
-      ${_tabBtn('requests','📝', 'คำร้อง')}
-    </div>
     ${content}
   `)
 
