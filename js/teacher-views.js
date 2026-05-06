@@ -15,6 +15,7 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
          getReadingScoreColumns, getReadingScores, upsertReadingScore,
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass } from './api.js'
+import { supabase } from './supabase.js'
 
 import { uploadTeacherPhoto } from './storage.js'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -1024,6 +1025,11 @@ export async function renderProfile(teacher, onRefresh) {
           <input id="prof-name" type="text" value="${teacher?.full_name??''}" class="${INPUT_CLS}" />
         </div>
         <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">อีเมลบัญชี</label>
+          <input id="prof-email" type="email" value="${teacher?.auth_email??''}" class="${INPUT_CLS}" />
+          <p class="text-[11px] text-gray-400 mt-1">ใช้เป็นค่าเริ่มต้นตอนแชร์ไฟล์สำเนา Google Sheet ให้ครู</p>
+        </div>
+        <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
           <input id="prof-phone" type="tel" inputmode="numeric" value="${phoneDisplay}"
             placeholder="0XX XXX XXXX" maxlength="12" class="${INPUT_CLS}" />
@@ -1100,6 +1106,12 @@ export async function renderProfile(teacher, onRefresh) {
       const photoFile = document.getElementById('prof-photo-file').files?.[0]
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
       await updateMyProfile(teacher.id, payload)
+      const email = document.getElementById('prof-email').value.trim()
+      if (email && email !== (teacher.auth_email ?? '')) {
+        const { error } = await supabase.auth.updateUser({ email })
+        if (error) throw error
+        showToast('ส่งคำขอเปลี่ยนอีเมลแล้ว กรุณายืนยันอีเมลใหม่ถ้าระบบร้องขอ', 'info')
+      }
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
       if (onRefresh) await onRefresh(teacher.profile_id)
       // re-render ด้วย teacher ใหม่ที่โหลดมาจาก onRefresh
@@ -1863,6 +1875,7 @@ export async function renderMyClasses(teacher) {
       document.getElementById('class-copy-modal')?.remove()
       const ms = cls.master_subjects ?? {}
       const defaultName = `${ms.subject_name || 'ปพ5'}_${cls.class_name || ''}_${teacher?.full_name || ''}`.replace(/\s+/g, ' ').trim()
+      const defaultEmail = teacher?.auth_email || ''
       const m = document.createElement('div')
       m.id = 'class-copy-modal'
       m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
@@ -1871,7 +1884,9 @@ export async function renderMyClasses(teacher) {
         <p class="text-xs text-gray-400 mb-4">${_htmlEsc(tpl.label || '')} · ${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
         <label class="block text-sm font-semibold text-gray-700 mb-1">ตั้งชื่อไฟล์สำเนา</label>
         <input id="copy-file-name" class="${INPUT_CLS}" value="${_htmlEsc(defaultName)}" />
-        <p class="text-xs text-gray-400 mt-2">ระบบจะสร้างสำเนาและบันทึก Sheet ID กลับเข้ารายวิชานี้อัตโนมัติ</p>
+        <label class="block text-sm font-semibold text-gray-700 mt-3 mb-1">อีเมลที่จะให้สิทธิ์ไฟล์</label>
+        <input id="copy-target-email" type="email" class="${INPUT_CLS}" value="${_htmlEsc(defaultEmail)}" placeholder="teacher@example.com" />
+        <p class="text-xs text-gray-400 mt-2">ระบบจะสร้างสำเนาในบัญชีผู้ดูแลและแชร์สิทธิ์แก้ไขให้ email นี้ พร้อมบันทึก Sheet ID กลับเข้ารายวิชาอัตโนมัติ</p>
         <div id="copy-result" class="hidden mt-4 rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-sm"></div>
         <div class="flex gap-3 mt-5">
           <button id="copy-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
@@ -1919,10 +1934,11 @@ export async function renderMyClasses(teacher) {
       m.querySelector('#copy-go').addEventListener('click', async () => {
         const btn = m.querySelector('#copy-go')
         const name = m.querySelector('#copy-file-name').value.trim() || defaultName || 'สำเนาไฟล์ ปพ.5'
+        const targetEmail = m.querySelector('#copy-target-email').value.trim()
         btn.disabled = true
         btn.textContent = 'กำลังสร้าง...'
         try {
-          const result = await copySheetTemplate(tpl.id, name)
+          const result = await copySheetTemplate(tpl.id, name, targetEmail)
           const newId = result.newSheetId
           if (!newId) throw new Error('GAS ไม่ได้ส่ง Sheet ID กลับมา')
           await updateClass(cls.id, { google_sheet_id: newId })

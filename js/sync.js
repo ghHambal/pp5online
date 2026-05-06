@@ -350,7 +350,7 @@ export async function shareSheetForView(sheetId) {
   })
 }
 
-export async function copySheetTemplate(templateSheetId, fileName) {
+export async function copySheetTemplate(templateSheetId, fileName, targetEmail = '') {
   const templateId = extractSheetId(templateSheetId)
   if (!templateId) throw new Error('ยังไม่ได้ตั้งค่าไฟล์ต้นฉบับสำหรับทำสำเนา')
   const gasUrl = await _getGasUrl()
@@ -358,6 +358,7 @@ export async function copySheetTemplate(templateSheetId, fileName) {
     action: 'copy_sheet_template',
     templateSheetId: templateId,
     fileName: fileName || 'สำเนาไฟล์ ปพ.5',
+    targetEmail: targetEmail || '',
   })
 }
 

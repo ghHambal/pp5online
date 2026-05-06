@@ -28,6 +28,8 @@ async function requireAuth() {
 // ─── Load teacher info ────────────────────────────────────────────────────────
 async function loadTeacherInfo(userId) {
   _teacher = await getMyTeacherProfile(userId)
+  const { data: { session } } = await supabase.auth.getSession()
+  if (_teacher) _teacher.auth_email = session?.user?.email ?? ''
 
   const name   = _teacher?.full_name ?? 'ครูผู้สอน'
   const code   = _teacher?.teacher_code ? `รหัส ${_teacher.teacher_code}` : ''

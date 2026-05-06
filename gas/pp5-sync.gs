@@ -58,13 +58,18 @@ function _jsonp(e, obj) {
 function _copySheetTemplate(payload) {
   if (!payload.templateSheetId) return { ok: false, error: 'Missing templateSheetId' }
   var name = payload.fileName || 'สำเนาไฟล์ ปพ.5'
+  var targetEmail = payload.targetEmail || ''
   var file = DriveApp.getFileById(payload.templateSheetId)
   var copy = file.makeCopy(name)
+  if (targetEmail) {
+    copy.addEditor(targetEmail)
+  }
   return {
     ok: true,
     newSheetId: copy.getId(),
     url: copy.getUrl(),
     name: copy.getName(),
+    sharedTo: targetEmail,
   }
 }
 
