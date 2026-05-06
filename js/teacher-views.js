@@ -119,10 +119,12 @@ function setActiveNav(nav) {
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
   setTitle('ภาพรวม')
-  const [subjects, classes, cfg] = await Promise.all([
+  const { getPendingExamRequestCount } = await import('./api.js')
+  const [subjects, classes, cfg, pendingRequests] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
+    teacher ? getPendingExamRequestCount(teacher.id).catch(()=>0) : Promise.resolve(0),
   ])
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
@@ -169,7 +171,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       ${[
         { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50', nav:'my-courses' },
         { label:'ห้องเรียน', value: classes.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50', nav:'my-classes' },
-        { label:'คำร้องรออนุมัติ', value: '—', icon:'🔔', color:'text-red-700', bg:'bg-red-50', nav:'requests' },
+        { label:'คำร้องรออนุมัติ', value: pendingRequests, icon:'🔔', color: pendingRequests > 0 ? 'text-red-700' : 'text-gray-400', bg:'bg-red-50', nav:'requests' },
       ].map(c=>`
         <div onclick="window._navTo('${c.nav}')"
           class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer hover:shadow-md hover:border-gray-200 transition">
@@ -5648,49 +5650,119 @@ export async function renderRequests(teacher) {
   })
   _render()
 
+  // ── Custom modal helper ───────────────────────────────────────────────────────
+  const _showModal = ({ title, body, confirmLabel, confirmCls = 'bg-emerald-600 hover:bg-emerald-700', onConfirm }) => {
+    document.getElementById('req-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'req-modal'
+    m.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-fade">
+        <div class="px-5 py-4 border-b border-gray-100">
+          <h3 class="font-bold text-gray-800">${title}</h3>
+        </div>
+        <div class="px-5 py-4">${body}</div>
+        <div class="px-5 pb-5 flex gap-2">
+          <button id="req-modal-cancel"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+            ยกเลิก
+          </button>
+          <button id="req-modal-confirm"
+            class="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold ${confirmCls}">
+            ${confirmLabel}
+          </button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.querySelector('#req-modal-cancel').addEventListener('click', () => m.remove())
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#req-modal-confirm').addEventListener('click', () => {
+      onConfirm(m)
+    })
+  }
+
   // ── Action handlers ──────────────────────────────────────────────────────────
-  window._approveRequest = async (id) => {
-    const comment = prompt('หมายเหตุถึงนักเรียน (ไม่บังคับ):') ?? ''
-    try {
-      await reviewExamRequest(id, { status: 'approved', teacher_comment: comment || null })
-      showToast('อนุมัติคำร้องแล้ว ✅', 'success')
-      renderRequests(teacher)
-    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  window._approveRequest = (id) => {
+    _showModal({
+      title: '✅ อนุมัติคำร้อง',
+      body: `<label class="block text-sm text-gray-600 mb-1.5">หมายเหตุถึงนักเรียน <span class="text-gray-400">(ไม่บังคับ)</span></label>
+             <textarea id="req-modal-comment" rows="3" placeholder="เช่น นัดสอบวันอังคาร คาบ 3 ห้องครู..."
+               class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none"></textarea>`,
+      confirmLabel: 'ยืนยันอนุมัติ',
+      onConfirm: async (m) => {
+        const comment = m.querySelector('#req-modal-comment').value.trim() || null
+        m.remove()
+        try {
+          await reviewExamRequest(id, { status: 'approved', teacher_comment: comment })
+          showToast('อนุมัติคำร้องแล้ว ✅', 'success')
+          renderRequests(teacher)
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      }
+    })
   }
 
-  window._rejectRequest = async (id) => {
-    // popup บังคับใส่เหตุผล
-    const comment = prompt('⚠️ กรุณาระบุเหตุผลที่ปฏิเสธ (บังคับ):')
-    if (comment == null) return           // กด Cancel
-    if (!comment.trim()) { showToast('กรุณาระบุเหตุผลก่อนปฏิเสธ', 'warning'); return }
-    try {
-      await reviewExamRequest(id, { status: 'rejected', teacher_comment: comment.trim() })
-      showToast('บันทึกการปฏิเสธแล้ว', 'success')
-      renderRequests(teacher)
-    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  window._rejectRequest = (id) => {
+    _showModal({
+      title: '✕ ปฏิเสธคำร้อง',
+      body: `<label class="block text-sm text-gray-600 mb-1.5">เหตุผลที่ปฏิเสธ <span class="text-red-500">*</span></label>
+             <textarea id="req-modal-comment" rows="3" placeholder="กรุณาระบุเหตุผล..."
+               class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"></textarea>
+             <p class="text-xs text-red-400 mt-1">บังคับกรอกทุกครั้งที่ปฏิเสธ</p>`,
+      confirmLabel: 'ยืนยันปฏิเสธ',
+      confirmCls: 'bg-red-500 hover:bg-red-600',
+      onConfirm: async (m) => {
+        const comment = m.querySelector('#req-modal-comment').value.trim()
+        if (!comment) { showToast('กรุณาระบุเหตุผลก่อนปฏิเสธ', 'warning'); return }
+        m.remove()
+        try {
+          await reviewExamRequest(id, { status: 'rejected', teacher_comment: comment })
+          showToast('บันทึกการปฏิเสธแล้ว', 'success')
+          renderRequests(teacher)
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      }
+    })
   }
 
-  window._markAttended = async (id, studentId, assignmentId, maxScore) => {
-    const scoreStr = prompt(`ใส่คะแนนที่สอบได้ (เต็ม ${maxScore}):`)
-    if (scoreStr == null) return
-    const score = parseFloat(scoreStr)
-    if (isNaN(score) || score < 0 || score > maxScore) {
-      showToast(`คะแนนต้องอยู่ระหว่าง 0 – ${maxScore}`, 'warning'); return
-    }
-    try {
-      await updateExamResult(id, { exam_attended: true, exam_score: score, studentId, assignmentId })
-      showToast('บันทึกผลสอบและคะแนนแล้ว ✅', 'success')
-      renderRequests(teacher)
-    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  window._markAttended = (id, studentId, assignmentId, maxScore) => {
+    _showModal({
+      title: '📝 บันทึกผลการสอบ — มาสอบ',
+      body: `<label class="block text-sm text-gray-600 mb-1.5">คะแนนที่สอบได้ <span class="text-red-500">*</span> <span class="text-gray-400">(เต็ม ${maxScore})</span></label>
+             <input id="req-modal-score" type="number" min="0" max="${maxScore}" step="0.5"
+               placeholder="0 – ${maxScore}"
+               class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center text-lg font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />`,
+      confirmLabel: 'บันทึกคะแนน',
+      confirmCls: 'bg-blue-600 hover:bg-blue-700',
+      onConfirm: async (m) => {
+        const scoreStr = m.querySelector('#req-modal-score').value
+        const score = parseFloat(scoreStr)
+        if (isNaN(score) || score < 0 || score > maxScore) {
+          showToast(`คะแนนต้องอยู่ระหว่าง 0 – ${maxScore}`, 'warning'); return
+        }
+        m.remove()
+        try {
+          await updateExamResult(id, { exam_attended: true, exam_score: score, studentId, assignmentId })
+          showToast('บันทึกผลสอบและคะแนนแล้ว ✅', 'success')
+          renderRequests(teacher)
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      }
+    })
   }
 
-  window._markAbsent = async (id) => {
-    if (!confirm('ยืนยันว่านักเรียนขาดสอบ?')) return
-    try {
-      await updateExamResult(id, { exam_attended: false, exam_score: null })
-      showToast('บันทึกว่าขาดสอบแล้ว', 'success')
-      renderRequests(teacher)
-    } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  window._markAbsent = (id) => {
+    _showModal({
+      title: '❌ บันทึกว่าขาดสอบ',
+      body: `<p class="text-sm text-gray-600">ยืนยันว่านักเรียนไม่มาสอบตามนัด?</p>`,
+      confirmLabel: 'ยืนยัน — ขาดสอบ',
+      confirmCls: 'bg-gray-600 hover:bg-gray-700',
+      onConfirm: async (m) => {
+        m.remove()
+        try {
+          await updateExamResult(id, { exam_attended: false, exam_score: null })
+          showToast('บันทึกว่าขาดสอบแล้ว', 'success')
+          renderRequests(teacher)
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      }
+    })
   }
 }
 

@@ -70,9 +70,9 @@ export async function getMyExamRequests(studentId) {
     .from('exam_requests')
     .select(`
       id, request_type, requested_date, requested_period_no,
-      reason, status, teacher_comment, created_at,
+      reason, status, teacher_comment, exam_attended, exam_score,
       classes ( id, class_name, master_subjects ( subject_name, subject_code ) ),
-      class_score_columns ( assignment_name )
+      class_score_columns ( assignment_name, max_score )
     `)
     .eq('student_id', studentId)
     .order('id', { ascending: false })
