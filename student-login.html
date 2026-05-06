@@ -211,8 +211,14 @@
         const { data: rows, error: lookupErr } = await supabase
           .rpc('lookup_student_by_code', { p_student_code: code })
 
+        if (lookupErr) {
+          console.error('[lookup_student_by_code]', lookupErr)
+          showMsg('step1-msg', 'เกิดข้อผิดพลาดระบบ: ' + (lookupErr.message ?? '') + ' — กรุณาติดต่อผู้ดูแล', 'error')
+          btn.disabled = false; btn.textContent = 'ถัดไป →'; return
+        }
+
         const stu = rows?.[0] ?? null
-        if (lookupErr || !stu) {
+        if (!stu) {
           showMsg('step1-msg', 'ไม่พบรหัสนักเรียน "' + code + '" ในระบบ', 'error')
           btn.disabled = false; btn.textContent = 'ถัดไป →'; return
         }
