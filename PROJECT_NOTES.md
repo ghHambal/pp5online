@@ -103,6 +103,18 @@ Life skill sync uses these settings:
 The sync writes by student code using `syncCentralBatch` in `js/sync.js`.
 Use a wide student-code range for central sheets, for example `J8:J3000`, because the old default `J8:J72` is only suitable for small per-class sheets.
 Life skill scores are currently for `สามัญ` only; do not reintroduce the `ศาสนา` life-skill section unless the user explicitly asks.
+Life skill scores can also be pushed into subject class scores with `fillLifeSkillScoresToClassScores`; this targets classes whose `skill_group` is `ชีวิต`, ensures the first three life-skill columns exist as class score columns, and upserts matching `student_scores`.
+
+### Prayer Score To Religion Subjects
+
+Admin prayer page: `renderPrayerAdmin` in `js/views.js`.
+
+`fillPrayerScoresToReligionClassScores` pushes central prayer and attendance scores into religion subject classes:
+
+- Target subject groups: `AGM` and `AGMVOC`.
+- Ensure class score columns `คะแนนละหมาด` and `คะแนนมาเรียน`, both full score 10.
+- Prayer score uses the same semester date range and prayer scoring formula as the prayer UI.
+- Attendance score uses the class's own attendance rows; `present` and `late` count as attended.
 
 ### Reading Score Sync
 

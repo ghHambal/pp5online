@@ -1017,3 +1017,234 @@ export async function getAllClassesForFill() {
     students: (cls.class_students ?? []).map(cs => cs.students).filter(Boolean),
   }))
 }
+
+async function _ensureClassScoreColumn(classId, name, maxScore, sheetColumn = '', type = 'ระหว่างเรียน') {
+  const { data: existing, error: findErr } = await supabase
+    .from('class_score_columns')
+    .select('id, assignment_name, assignment_type, sheet_column, max_score')
+    .eq('class_id', classId)
+    .eq('assignment_name', name)
+    .limit(1)
+  if (findErr) throw findErr
+
+  const payload = {
+    assignment_name: name,
+    assignment_type: type,
+    sheet_column: sheetColumn || '',
+    max_score: maxScore ?? 10,
+  }
+
+  if (existing?.length) {
+    const id = existing[0].id
+    if (!sheetColumn && existing[0].sheet_column) payload.sheet_column = existing[0].sheet_column
+    const { error } = await supabase
+      .from('class_score_columns')
+      .update(payload)
+      .eq('id', id)
+    if (error) throw error
+    return id
+  }
+
+  const { data, error } = await supabase
+    .from('class_score_columns')
+    .insert({ class_id: classId, ...payload })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+async function _upsertStudentScoreRows(rows) {
+  const clean = rows.filter(r => r.assignment_id && r.student_id)
+  for (let i = 0; i < clean.length; i += 500) {
+    const chunk = clean.slice(i, i + 500)
+    const { error } = await supabase
+      .from('student_scores')
+      .upsert(chunk, { onConflict: 'assignment_id,student_id' })
+    if (error) throw error
+  }
+  return clean.length
+}
+
+async function _fetchPaged(table, selectColumns, configure = q => q) {
+  const rows = []
+  const pageSize = 1000
+  for (let from = 0; from <= 99999; from += pageSize) {
+    let q = supabase.from(table).select(selectColumns)
+    q = configure(q)
+    const { data, error } = await q.range(from, from + pageSize - 1)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if (!data || data.length < pageSize) break
+  }
+  return rows
+}
+
+function _dateListForTerm(startStr, endStr) {
+  if (!startStr || !endStr) return []
+  const start = new Date(startStr)
+  const end = new Date(endStr)
+  const diff = start.getDay() % 7
+  if (diff) start.setDate(start.getDate() - diff)
+  const days = []
+  let cur = new Date(start)
+  while (cur <= end) {
+    for (let d = 0; d < 5; d++) {
+      const dt = new Date(cur)
+      dt.setDate(dt.getDate() + d)
+      if (dt <= end) days.push({ ds: dt.toISOString().slice(0, 10) })
+    }
+    cur.setDate(cur.getDate() + 7)
+  }
+  return days
+}
+
+const _PRAYER_SCORE = { pray: 2, absent: 0, usor: 1, followed: 1, avoid: -1 }
+
+function _calcPrayerScoreFromMap(sMap, allDays) {
+  const earned = allDays.reduce((sum, d) => sum + (_PRAYER_SCORE[sMap[d.ds]] ?? 0), 0)
+  const max = allDays.length * 2
+  return max > 0 ? Math.min(10, Math.max(0, Math.round((earned / max) * 100) / 10)) : 0
+}
+
+function _calcAttendanceScore(rows) {
+  if (!rows.length) return null
+  const attended = rows.filter(r => r.status === 'present' || r.status === 'late').length
+  return Math.round((attended / rows.length) * 100) / 10
+}
+
+export async function fillLifeSkillScoresToClassScores(academicYear, semester) {
+  const columns = (await getLifeSkillColumns(academicYear, semester, 'สามัญ')).slice(0, 3)
+  if (!columns.length) return { classes: 0, columns: 0, scores: 0 }
+
+  const { data: classes, error } = await supabase
+    .from('classes')
+    .select(`
+      id, class_name, skill_group,
+      class_students ( student_id )
+    `)
+    .eq('skill_group', 'ชีวิต')
+    .range(0, 9999)
+  if (error) throw error
+
+  const colIds = columns.map(c => c.id)
+  const scoreRows = await _fetchPaged(
+    'life_skill_scores',
+    'student_id, column_id, score',
+    q => q.in('column_id', colIds)
+  )
+  const scoreMap = {}
+  for (const row of scoreRows) {
+    if (!scoreMap[row.student_id]) scoreMap[row.student_id] = {}
+    scoreMap[row.student_id][row.column_id] = row.score
+  }
+
+  let scoreCount = 0
+  let classCount = 0
+  let ensuredColumns = 0
+  for (const cls of classes ?? []) {
+    const students = (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
+    if (!students.length) continue
+    classCount++
+    for (const col of columns) {
+      const classColId = await _ensureClassScoreColumn(cls.id, col.name, col.max_score ?? 10, col.sheet_col ?? '')
+      ensuredColumns++
+      const rows = students
+        .filter(studentId => scoreMap[studentId]?.[col.id] !== undefined && scoreMap[studentId]?.[col.id] !== null)
+        .map(studentId => ({
+          assignment_id: classColId,
+          student_id: studentId,
+          original_score: scoreMap[studentId][col.id],
+          final_score: scoreMap[studentId][col.id],
+        }))
+      scoreCount += await _upsertStudentScoreRows(rows)
+    }
+  }
+
+  return { classes: classCount, columns: ensuredColumns, scores: scoreCount }
+}
+
+export async function fillPrayerScoresToReligionClassScores(options = {}) {
+  const start = options.semesterStart
+  const end = options.semesterEnd
+  const allDays = _dateListForTerm(start, end)
+  if (!allDays.length) throw new Error('ยังไม่ได้ตั้งค่าวันเปิด-ปิดภาคเรียน')
+
+  const { data: classes, error } = await supabase
+    .from('classes')
+    .select(`
+      id, class_name, skill_group,
+      master_subjects ( subject_group ),
+      class_students ( student_id )
+    `)
+    .range(0, 9999)
+  if (error) throw error
+
+  const religionClasses = (classes ?? []).filter(cls =>
+    ['AGM', 'AGMVOC'].includes(cls.master_subjects?.subject_group)
+  )
+  const studentIds = [...new Set(religionClasses.flatMap(cls =>
+    (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
+  ))]
+  if (!studentIds.length) return { classes: 0, columns: 0, scores: 0 }
+
+  const prayerRecords = await _fetchPaged(
+    'prayer_records',
+    'student_id, check_date, status',
+    q => q.gte('check_date', start).lte('check_date', end)
+  )
+  const studentIdSet = new Set(studentIds)
+  const prayerMap = {}
+  for (const r of prayerRecords) {
+    if (!studentIdSet.has(r.student_id)) continue
+    if (!prayerMap[r.student_id]) prayerMap[r.student_id] = {}
+    prayerMap[r.student_id][r.check_date] = r.status
+  }
+
+  const classIds = religionClasses.map(c => c.id)
+  const attendanceRows = await _fetchPaged(
+    'attendances',
+    'class_id, student_id, status',
+    q => q.in('class_id', classIds)
+  )
+  const attendanceMap = {}
+  for (const r of attendanceRows) {
+    const key = `${r.class_id}:${r.student_id}`
+    if (!attendanceMap[key]) attendanceMap[key] = []
+    attendanceMap[key].push(r)
+  }
+
+  let scoreCount = 0
+  let classCount = 0
+  let ensuredColumns = 0
+  for (const cls of religionClasses) {
+    const students = (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
+    if (!students.length) continue
+    classCount++
+
+    const prayerColId = await _ensureClassScoreColumn(cls.id, 'คะแนนละหมาด', 10, '', 'ระหว่างเรียน')
+    const attColId = await _ensureClassScoreColumn(cls.id, 'คะแนนมาเรียน', 10, '', 'ระหว่างเรียน')
+    ensuredColumns += 2
+
+    const prayerRows = students.map(studentId => {
+      const score = _calcPrayerScoreFromMap(prayerMap[studentId] ?? {}, allDays)
+      return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
+    })
+    const attRows = students
+      .map(studentId => {
+        const score = _calcAttendanceScore(attendanceMap[`${cls.id}:${studentId}`] ?? [])
+        return score === null ? null : {
+          assignment_id: attColId,
+          student_id: studentId,
+          original_score: score,
+          final_score: score,
+        }
+      })
+      .filter(Boolean)
+
+    scoreCount += await _upsertStudentScoreRows(prayerRows)
+    scoreCount += await _upsertStudentScoreRows(attRows)
+  }
+
+  return { classes: classCount, columns: ensuredColumns, scores: scoreCount }
+}

@@ -15,7 +15,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          updateReadingScoreColumn, deleteReadingScoreColumn,
          getAllLifeSkillScores, getAllReadingScores, getAllPrayerRecords,
          savePrayerCellAdmin, getStudentsByReligionRoom,
-         getPrayerRecordsByRoom } from './api.js'
+         getPrayerRecordsByRoom, fillLifeSkillScoresToClassScores,
+         fillPrayerScoresToReligionClassScores } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -2758,7 +2759,13 @@ export async function renderLifeSkillAdmin() {
           <h2 class="text-lg font-bold text-gray-800">🌱 คะแนนทักษะชีวิต</h2>
           <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year}</p>
         </div>
-        <div class="flex gap-2" id="lsk-tab-actions"></div>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button id="btn-fill-ls-classes"
+            class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">
+            เติมเข้ารายวิชาทักษะชีวิต
+          </button>
+          <div class="flex gap-2" id="lsk-tab-actions"></div>
+        </div>
       </div>
       <!-- Tabs -->
       <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
@@ -2776,6 +2783,23 @@ export async function renderLifeSkillAdmin() {
     </div>`)
 
     const allCols = [...samaiCols]
+
+    document.getElementById('btn-fill-ls-classes')?.addEventListener('click', async () => {
+      if (!confirm('ยืนยันเติมคะแนนทักษะชีวิตไปยังรายวิชากลุ่มทักษะชีวิตทั้งหมด?')) return
+      const btn = document.getElementById('btn-fill-ls-classes')
+      const orig = btn.textContent
+      btn.disabled = true
+      btn.textContent = 'กำลังเติม...'
+      try {
+        const result = await fillLifeSkillScoresToClassScores(year, sem)
+        showToast(`เติมทักษะชีวิต ${result.classes} รายวิชา / ${result.scores} คะแนนแล้ว`, 'success')
+      } catch (err) {
+        showToast('เติมไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      } finally {
+        btn.disabled = false
+        btn.textContent = orig
+      }
+    })
 
     const _showScores = async () => {
       document.getElementById('lsk-tab-actions').innerHTML = `
@@ -3549,7 +3573,11 @@ export async function renderPrayerAdmin() {
     const allDays  = weeks.flatMap(w => w.days)
 
     document.getElementById('pr-tab-actions').innerHTML = `
-      <div class="flex gap-2">
+      <div class="flex flex-wrap justify-end gap-2">
+        <button id="btn-fill-prayer-classes"
+          class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">
+          เติมเข้ารายวิชาศาสนา
+        </button>
         <button id="btn-sync-all-prayer"
           class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition">
           ↑ Sync ทุกห้อง
@@ -3559,6 +3587,26 @@ export async function renderPrayerAdmin() {
           ↑ Sync ห้องนี้
         </button>
       </div>`
+
+    document.getElementById('btn-fill-prayer-classes')?.addEventListener('click', async () => {
+      if (!confirm('ยืนยันเติมคะแนนละหมาดและคะแนนมาเรียนไปยังรายวิชาศาสนาทั้งหมด?')) return
+      const btn = document.getElementById('btn-fill-prayer-classes')
+      const orig = btn.textContent
+      btn.disabled = true
+      btn.textContent = 'กำลังเติม...'
+      try {
+        const result = await fillPrayerScoresToReligionClassScores({
+          semesterStart: cfg.semester_start,
+          semesterEnd: cfg.semester_end,
+        })
+        showToast(`เติมรายวิชาศาสนา ${result.classes} รายวิชา / ${result.scores} คะแนนแล้ว`, 'success')
+      } catch (err) {
+        showToast('เติมไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      } finally {
+        btn.disabled = false
+        btn.textContent = orig
+      }
+    })
 
     document.getElementById('pr-tab-content').innerHTML = `
       <div class="flex items-center gap-2 flex-wrap mb-3">
@@ -4084,6 +4132,7 @@ export async function renderPrayerAdmin() {
         showToast('บันทึก Sheet config ละหมาดแล้ว', 'success')
       } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึกการตั้งค่า' }
     })
+
   }
 
   // ─── Tab switcher ──────────────────────────────────────────────────────────
