@@ -9,6 +9,7 @@ RETURNS TABLE (
   day_of_week  INT,
   period_no    INT,
   span_periods INT,
+  subject_id   INT,
   subject_name TEXT,
   class_name   TEXT,
   teacher_name TEXT
@@ -51,6 +52,7 @@ BEGIN
     ts.day_of_week::INT,
     ts.period_no::INT,
     COALESCE(ts.span_periods, 1)::INT,
+    ts.subject_id::INT,
     COALESCE(ts.subject_name, sched_ms.subject_name, 'ไม่ว่าง')::TEXT,
     ts.class_name::TEXT,
     COALESCE(ts.teacher_name, t.full_name)::TEXT

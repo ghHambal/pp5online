@@ -81,11 +81,12 @@ function _subjectColorCls(cls) {
 }
 
 // ─── Week date helpers ────────────────────────────────────────────────────────
-function _getWeekDates() {
+function _getWeekDates(weekOffset = 0) {
   const today = new Date()
   const dow = today.getDay() // 0=Sun
   const monday = new Date(today)
   monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1))
+  monday.setDate(monday.getDate() + (weekOffset * 7))
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() - 1)
   const dates = {}
@@ -100,6 +101,13 @@ function _getWeekDates() {
 
 function _fmtDateTH(d) {
   return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()+543}`
+}
+
+function _localDateValue(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
@@ -625,9 +633,6 @@ export async function renderExamRequestForm(student, classId) {
     getSchoolPeriods().catch(()=>[]),
   ])
 
-  const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
-  const weekDates = _getWeekDates()
-
   // Build schedule lookup: { 'day_period': entry }, including multi-period spans.
   const schedMap = {}
   for (const row of schedule) {
@@ -672,18 +677,58 @@ export async function renderExamRequestForm(student, classId) {
 
   // Persistent state for selected period (will be set via JS after render)
   let _selectedPeriod = null
+  let _selectedWeekOffset = 0
+
+  const SCHEDULE_COLOR_PRESETS = [
+    { bg:'bg-emerald-100', text:'text-emerald-800' },
+    { bg:'bg-indigo-100',  text:'text-indigo-800' },
+    { bg:'bg-amber-100',   text:'text-amber-800' },
+    { bg:'bg-rose-100',    text:'text-rose-800' },
+    { bg:'bg-cyan-100',    text:'text-cyan-800' },
+    { bg:'bg-violet-100',  text:'text-violet-800' },
+    { bg:'bg-lime-100',    text:'text-lime-800' },
+    { bg:'bg-orange-100',  text:'text-orange-800' },
+    { bg:'bg-pink-100',    text:'text-pink-800' },
+    { bg:'bg-teal-100',    text:'text-teal-800' },
+    { bg:'bg-green-100',   text:'text-green-800' },
+  ]
+  const _scheduleColorKey = (subjectName, className, fallbackId = null) => {
+    const subj = String(subjectName ?? '').trim()
+    const room = String(className ?? '').trim()
+    if (subj && room) return `${subj} — ${room}`
+    if (subj) return subj
+    return fallbackId != null ? String(fallbackId) : ''
+  }
+  const _colorForIndex = (idx) => {
+    const preset = SCHEDULE_COLOR_PRESETS[idx % SCHEDULE_COLOR_PRESETS.length]
+    return `${preset.bg} ${preset.text}`
+  }
+  let savedScheduleColors = {}
+  try { savedScheduleColors = JSON.parse(localStorage.getItem(`scheduleColors_${teacherId ?? 'x'}`) ?? '{}') } catch {}
+  const scheduleColorMap = {}
+  let autoColorIdx = 0
+  schedule.forEach(entry => {
+    const key = _scheduleColorKey(entry.subject_name, entry.class_name, entry.subject_id)
+    if (!key || scheduleColorMap[key] != null) return
+    const savedIdx = savedScheduleColors[key] ?? savedScheduleColors[entry.subject_id] ?? savedScheduleColors[entry.subject_name]
+    const parsedIdx = Number(savedIdx)
+    scheduleColorMap[key] = Number.isFinite(parsedIdx) ? parsedIdx : autoColorIdx++
+  })
 
   // Build full teacher schedule grid (Sun–Fri), where empty cells are free.
-  const _buildScheduleGrid = () => {
+  const _buildScheduleGrid = (weekOffset = 0) => {
     const workDays = [0, 1, 2, 3, 4, 5]
     const dayNames = { 0:'อาทิตย์', 1:'จันทร์', 2:'อังคาร', 3:'พุธ', 4:'พฤหัส', 5:'ศุกร์' }
     const dayColors = { 0:'bg-red-50', 1:'bg-yellow-50', 2:'bg-pink-50', 3:'bg-green-50', 4:'bg-orange-50', 5:'bg-purple-50' }
+    const weekDates = _getWeekDates(weekOffset)
+    const today = new Date()
+    today.setHours(0,0,0,0)
 
     const headerCells = workDays.map(d => {
       const date = weekDates[d]
-      return `<th class="border border-gray-100 px-3 py-3 text-center ${dayColors[d]}">
+      return `<th class="border border-gray-100 px-3 py-2.5 text-center font-semibold text-gray-700 ${dayColors[d]}">
         <p class="text-sm font-bold text-gray-700">${dayNames[d]}</p>
-        <p class="text-[10px] text-gray-400">${date.getDate()}/${date.getMonth()+1}</p>
+        <p class="text-xs text-gray-400">${date.getDate()}/${date.getMonth()+1}</p>
       </th>`
     }).join('')
 
@@ -694,31 +739,39 @@ export async function renderExamRequestForm(student, classId) {
         const key = `${d}_${p.period_no}`
         const slot = schedMap[key]
         if (slot?._secondary) return ''
+        const date = weekDates[d]
+        const isPast = date < today
         if (!slot) {
           return `<td class="border border-gray-100 p-0">
             <button type="button"
-              data-period="${p.period_no}" data-day="${d}"
-              class="sched-period-btn group w-full min-h-[66px] flex items-center justify-center
-                     bg-white hover:bg-emerald-50 hover:ring-2 hover:ring-inset hover:ring-emerald-300
-                     transition cursor-pointer text-emerald-600 text-xs font-semibold">
-              <span class="opacity-0 group-hover:opacity-100 transition">เลือกคาบว่าง</span>
+              data-period="${p.period_no}" data-day="${d}" data-week-offset="${weekOffset}"
+              ${isPast ? 'disabled aria-disabled="true"' : ''}
+              class="sched-period-btn group w-full h-full min-h-[52px] flex items-center justify-center
+                     ${isPast
+                       ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                       : 'bg-white hover:bg-indigo-50/30 transition-colors cursor-pointer text-indigo-300'}">
+              <span class="${isPast ? 'opacity-100 text-[10px]' : 'opacity-0 group-hover:opacity-100 text-2xl'} transition">${isPast ? 'ล็อก' : '＋'}</span>
             </button>
           </td>`
         }
         const span = slot.span_periods ?? 1
+        const colorKey = _scheduleColorKey(slot.subject_name, slot.class_name, slot.subject_id)
+        const colorIdx = scheduleColorMap[colorKey] ?? 0
+        const colorCls = _colorForIndex(colorIdx)
         return `<td class="border border-gray-100 p-0" ${span > 1 ? `rowspan="${span}"` : ''}>
-          <div class="w-full min-h-[66px] h-full bg-emerald-100 text-emerald-900 flex flex-col
-                      items-center justify-center px-2 py-2 text-center">
-            <p class="text-sm font-bold leading-tight">${slot.subject_name ?? 'ไม่ว่าง'}</p>
-            ${slot.class_name ? `<p class="text-xs leading-tight opacity-80 mt-1">${slot.class_name}</p>` : ''}
-            ${span > 1 ? `<p class="text-[10px] opacity-50 mt-1">${span} คาบ</p>` : ''}
+          <div class="w-full h-full ${colorCls} flex flex-col justify-center items-center
+                      gap-0.5 px-2 py-2 text-center" style="min-height:52px">
+            <p class="font-bold leading-tight text-xs break-words">${slot.subject_name ?? 'ไม่ว่าง'}</p>
+            ${slot.class_name ? `<p class="text-[10px] opacity-80 leading-tight">${slot.class_name}</p>` : ''}
+            ${slot.teacher_name ? `<p class="text-[9px] opacity-55 leading-tight">${slot.teacher_name}</p>` : ''}
+            ${span > 1 ? `<p class="text-[9px] opacity-40 mt-0.5">${span} คาบ</p>` : ''}
           </div>
         </td>`
       }).join('')
       return `<tr>
-        <td class="border border-gray-100 px-3 py-3 text-center bg-gray-50 sticky left-0 z-10">
+        <td class="border border-gray-100 px-3 py-2 text-center bg-gray-50 sticky left-0 z-10">
           <p class="font-bold text-gray-700">คาบ ${p.period_no}</p>
-          <p class="text-xs text-gray-400">${start}–${end}</p>
+          <p class="text-[10px] text-gray-400">${start}–${end}</p>
         </td>
         ${cells}
       </tr>`
@@ -728,14 +781,20 @@ export async function renderExamRequestForm(student, classId) {
     <div class="overflow-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
       <table class="w-full min-w-[760px] border-collapse text-xs">
         <thead>
-          <tr>
-            <th class="border border-gray-100 px-3 py-3 text-center bg-gray-50 text-gray-500 sticky left-0 z-20 w-28">คาบ / เวลา</th>
+          <tr class="bg-gray-50">
+            <th class="border border-gray-100 px-3 py-2.5 text-center bg-gray-50 text-gray-500 sticky left-0 z-20 w-24 font-medium">คาบ / เวลา</th>
             ${headerCells}
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`
+  }
+
+  const _weekOptionLabel = (offset) => {
+    const dates = _getWeekDates(offset)
+    const prefix = offset === 0 ? 'สัปดาห์นี้' : offset === 1 ? 'สัปดาห์หน้า' : `อีก ${offset} สัปดาห์`
+    return `${prefix} (${_fmtDateTH(dates[0])} - ${_fmtDateTH(dates[5])})`
   }
 
   setContent(`
@@ -834,9 +893,15 @@ export async function renderExamRequestForm(student, classId) {
             <button type="button" id="close-schedule-modal"
               class="w-9 h-9 rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600">×</button>
           </div>
-          <p class="text-[11px] text-emerald-600 font-medium mb-2">กรุณาเลือกคาบว่างก่อนกรอกคำร้อง · สีเขียว = คาบว่างที่เลือกได้</p>
-          ${_buildScheduleGrid()}
-          <p class="text-[11px] text-gray-400 mt-3">ระบบจะนำวันในสัปดาห์ปัจจุบันและคาบที่เลือกไปเติมในคำร้องให้อัตโนมัติ</p>
+          <div class="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <p class="text-[11px] text-emerald-600 font-medium">กรุณาเลือกคาบว่างก่อนกรอกคำร้อง · ช่องว่างที่ไม่ถูกล็อกเลือกได้</p>
+            <select id="schedule-week-select"
+              class="border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
+              ${[0,1,2,3,4].map(offset => `<option value="${offset}">${_weekOptionLabel(offset)}</option>`).join('')}
+            </select>
+          </div>
+          <div id="schedule-grid-wrap">${_buildScheduleGrid(0)}</div>
+          <p class="text-[11px] text-gray-400 mt-3">ระบบจะนำวันของสัปดาห์ที่เลือกและคาบที่เลือกไปเติมในคำร้องให้อัตโนมัติ</p>
         </div>
       </div>` : ''}
   `)
@@ -873,36 +938,48 @@ export async function renderExamRequestForm(student, classId) {
       }
     })
 
-    document.querySelectorAll('.sched-period-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const periodNo  = parseInt(btn.dataset.period)
-        const dayOfWeek = parseInt(btn.dataset.day)
-        const date      = weekDates[dayOfWeek]
-        _selectedPeriod = { period_no: periodNo, day_of_week: dayOfWeek, date }
+    const bindScheduleButtons = () => {
+      document.querySelectorAll('.sched-period-btn:not([disabled])').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const periodNo   = parseInt(btn.dataset.period)
+          const dayOfWeek  = parseInt(btn.dataset.day)
+          const weekOffset = parseInt(btn.dataset.weekOffset ?? _selectedWeekOffset)
+          const weekDates  = _getWeekDates(weekOffset)
+          const date       = weekDates[dayOfWeek]
+          _selectedPeriod = { period_no: periodNo, day_of_week: dayOfWeek, date, week_offset: weekOffset }
 
-        // Fill hidden inputs
-        document.getElementById('req-date').value          = date.toISOString().slice(0, 10)
-        document.getElementById('req-period-hidden').value = periodNo
+          // Fill hidden inputs
+          document.getElementById('req-date').value          = _localDateValue(date)
+          document.getElementById('req-period-hidden').value = periodNo
 
-        // Show summary
-        const summary = document.getElementById('period-summary')
-        const summaryText = document.getElementById('period-summary-text')
-        summary?.classList.remove('hidden')
-        if (summaryText) summaryText.textContent = `คาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)}`
-        const pickerLabel = document.getElementById('schedule-picker-label')
-        if (pickerLabel) pickerLabel.textContent = `เลือกคาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)} แล้ว`
-        document.getElementById('schedule-first-gate')?.classList.add('hidden')
-        document.getElementById('req-form')?.classList.remove('hidden')
+          // Show summary
+          const summary = document.getElementById('period-summary')
+          const summaryText = document.getElementById('period-summary-text')
+          summary?.classList.remove('hidden')
+          if (summaryText) summaryText.textContent = `คาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)}`
+          const pickerLabel = document.getElementById('schedule-picker-label')
+          if (pickerLabel) pickerLabel.textContent = `เลือกคาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)} แล้ว`
+          document.getElementById('schedule-first-gate')?.classList.add('hidden')
+          document.getElementById('req-form')?.classList.remove('hidden')
 
-        // Highlight selected cell, remove from others
-        document.querySelectorAll('.sched-period-btn').forEach(b => {
-          b.classList.toggle('ring-2',   b === btn)
-          b.classList.toggle('ring-emerald-500', b === btn)
-          b.classList.toggle('bg-emerald-200',   b === btn)
+          // Highlight selected cell, remove from others
+          document.querySelectorAll('.sched-period-btn').forEach(b => {
+            b.classList.toggle('ring-2',   b === btn)
+            b.classList.toggle('ring-emerald-500', b === btn)
+            b.classList.toggle('bg-emerald-200',   b === btn)
+          })
+          modal?.classList.add('hidden')
+          modal?.classList.remove('flex')
         })
-        modal?.classList.add('hidden')
-        modal?.classList.remove('flex')
       })
+    }
+
+    bindScheduleButtons()
+    document.getElementById('schedule-week-select')?.addEventListener('change', e => {
+      _selectedWeekOffset = parseInt(e.target.value || '0')
+      const wrap = document.getElementById('schedule-grid-wrap')
+      if (wrap) wrap.innerHTML = _buildScheduleGrid(_selectedWeekOffset)
+      bindScheduleButtons()
     })
     setTimeout(() => {
       modal?.classList.remove('hidden')
