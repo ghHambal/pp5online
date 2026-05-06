@@ -108,7 +108,14 @@ export async function getTeacherFreePeriods(teacherId) {
 }
 
 // ─── Teacher Full Schedule (all periods) ─────────────────────────────────────
-export async function getTeacherFullSchedule(teacherId) {
+export async function getTeacherFullSchedule(teacherId, classId = null) {
+  if (classId) {
+    const { data, error } = await supabase
+      .rpc('get_enrolled_teacher_schedule', { p_class_id: classId })
+    if (!error) return data ?? []
+    console.warn('get_enrolled_teacher_schedule failed, falling back to direct query:', error)
+  }
+
   const { data, error } = await supabase
     .from('teacher_schedules')
     .select('day_of_week, period_no, span_periods, is_free, class_id, subject_name, class_name, teacher_name')

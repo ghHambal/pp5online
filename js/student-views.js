@@ -612,10 +612,16 @@ export async function renderExamRequestForm(student, classId) {
 
   const ms = cls.master_subjects
   const teacherId = ms?.teacher_id
+  let scheduleLoadError = null
 
   const [columns, schedule, periods] = await Promise.all([
     getScoreColumnsForClass(classId).catch(()=>[]),
-    teacherId ? getTeacherFullSchedule(teacherId).catch(()=>[]) : Promise.resolve([]),
+    teacherId
+      ? getTeacherFullSchedule(teacherId, classId).catch(err => {
+          scheduleLoadError = err
+          return []
+        })
+      : Promise.resolve([]),
     getSchoolPeriods().catch(()=>[]),
   ])
 
@@ -646,9 +652,15 @@ export async function renderExamRequestForm(student, classId) {
           <p class="text-3xl mb-2">📅</p>
           <p class="text-sm font-bold text-amber-800">ยังไม่สามารถยื่นคำร้องได้</p>
           <p class="mt-2 text-xs leading-relaxed text-amber-700">
-            ครูผู้สอนยังไม่ได้สร้างตารางสอนในระบบ จึงยังไม่สามารถเลือกคาบว่างสำหรับขอสอบได้
+            ${!teacherId
+              ? 'รายวิชานี้ยังไม่ได้ผูกข้อมูลครูผู้สอนในระบบ จึงยังไม่สามารถเปิดตารางครูได้'
+              : scheduleLoadError
+                ? `ระบบอ่านตารางครูไม่สำเร็จ: ${scheduleLoadError.message ?? scheduleLoadError}`
+                : 'ครูผู้สอนยังไม่ได้สร้างตารางสอนในระบบ จึงยังไม่สามารถเลือกคาบว่างสำหรับขอสอบได้'}
           </p>
-          <p class="mt-2 text-xs text-amber-600">กรุณาติดต่อครูผู้สอนให้สร้างตารางสอนก่อน</p>
+          <p class="mt-2 text-xs text-amber-600">
+            ${!teacherId ? 'กรุณาติดต่อผู้ดูแลให้ตรวจการผูกครูประจำรายวิชา' : 'กรุณาติดต่อครูผู้สอนหรือผู้ดูแลระบบ'}
+          </p>
         </div>
       </div>
     `)
