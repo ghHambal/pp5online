@@ -499,6 +499,93 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const _todoContent = () => {
     const items = []
 
+    // ── คำร้องที่รอดำเนินการ ──
+    const pendingReqs = requests.filter(r => r.status === 'pending')
+    if (pendingReqs.length > 0) {
+      pendingReqs.forEach(r => {
+        const col = r.class_score_columns
+        const when = _daysUntilLabel(r.requested_date)
+        items.push(`
+          <div class="bg-white rounded-2xl border border-amber-100 shadow-sm p-4 flex items-start gap-3">
+            <span class="text-2xl flex-shrink-0">⏳</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-800">${r.request_type} — รอครูอนุมัติ</p>
+              ${col ? `<p class="text-xs text-gray-500 mt-0.5">หัวข้อ: ${col.assignment_name}</p>` : ''}
+              <p class="text-xs text-amber-600 mt-0.5">📅 ${_fmtDate(r.requested_date)}${r.requested_period_no ? ` · คาบ ${r.requested_period_no}` : ''}${when ? ` · ${when}` : ''}</p>
+            </div>
+            <span class="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รอดำเนินการ</span>
+          </div>`)
+      })
+    }
+
+    // ── คำร้องที่อนุมัติแล้ว รอสอบ ──
+    const approvedReqs = requests.filter(r => r.status === 'approved' && r.exam_attended == null)
+    if (approvedReqs.length > 0) {
+      approvedReqs.forEach(r => {
+        const col = r.class_score_columns
+        const when = _daysUntilLabel(r.requested_date)
+        items.push(`
+          <div class="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 flex items-start gap-3">
+            <span class="text-2xl flex-shrink-0">✅</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-800">${r.request_type} — อนุมัติแล้ว รอสอบ</p>
+              ${col ? `<p class="text-xs text-gray-500 mt-0.5">หัวข้อ: ${col.assignment_name}</p>` : ''}
+              <p class="text-xs text-emerald-600 mt-0.5">📅 ${_fmtDate(r.requested_date)}${r.requested_period_no ? ` · คาบ ${r.requested_period_no}` : ''}${when ? ` · ${when}` : ''}</p>
+              ${r.teacher_comment ? `<p class="text-xs text-gray-400 mt-0.5">💬 ${r.teacher_comment}</p>` : ''}
+            </div>
+          </div>`)
+      })
+    }
+
+    // ── วันเรียนถัดไป (countdown) ──
+    const sessionDates = [cls.day1_date, cls.day2_date, cls.day3_date,
+                          cls.day4_date, cls.day5_date, cls.day6_date].filter(Boolean)
+    const today = new Date(); today.setHours(0,0,0,0)
+    const upcoming = sessionDates
+      .map(d => { const dt = new Date(d); dt.setHours(0,0,0,0); return dt })
+      .filter(d => d >= today)
+      .sort((a,b) => a-b)
+
+    if (upcoming.length > 0) {
+      const next = upcoming[0]
+      const diff = Math.round((next - today) / 86400000)
+      const diffLabel = diff === 0 ? '🔴 วันนี้!' : diff === 1 ? '🟡 พรุ่งนี้' : `⏰ อีก ${diff} วัน`
+      const dayName = DAY_TH[next.getDay()] ?? ''
+      items.push(`
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl bg-emerald-50 flex flex-col items-center justify-center flex-shrink-0">
+            <span class="text-xs text-emerald-600 font-bold">${dayName}</span>
+            <span class="text-lg font-extrabold text-emerald-700 leading-tight">${next.getDate()}</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800">📅 วันเรียนถัดไป</p>
+            <p class="text-xs text-gray-400 mt-0.5">${_fmtDate(next.toISOString().slice(0,10))}</p>
+          </div>
+          <span class="text-xs font-bold ${diff === 0 ? 'text-red-500' : diff === 1 ? 'text-amber-500' : 'text-emerald-600'}">${diffLabel}</span>
+        </div>`)
+    }
+
+    // ── คะแนนที่ยังไม่มีข้อมูล ──
+    const missing = columns.filter(c => {
+      const sc = scoreMap[c.id]
+      return !sc || (sc.final_score == null && sc.original_score == null)
+    })
+    if (missing.length > 0) {
+      items.push(`
+        <div class="bg-white rounded-2xl border border-amber-100 shadow-sm p-4">
+          <p class="text-sm font-semibold text-amber-700 mb-2">⚠️ คะแนนที่ยังไม่มีข้อมูล (${missing.length} รายการ)</p>
+          <div class="space-y-1.5">
+            ${missing.map(c => `
+            <div class="flex items-center gap-2 text-xs text-gray-600">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>
+              <span>${c.assignment_name}</span>
+              <span class="ml-auto text-gray-400">/${c.max_score}</span>
+            </div>`).join('')}
+          </div>
+          <p class="text-[10px] text-gray-400 mt-2">หากขาดสอบ สามารถยื่นคำร้องในแท็บ "คำร้อง"</p>
+        </div>`)
+    }
+
     return `
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-bold text-gray-800">✅ ภารกิจ / สิ่งที่ต้องทำ</h2>
