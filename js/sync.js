@@ -24,6 +24,40 @@ export const SUBJECT_SYNC_COLUMNS = [
 export const DEFAULT_SUBJECT_SYNC_COLUMNS = SUBJECT_SYNC_COLUMNS.map(c => c.key)
 export const DEFAULT_SUBJECT_SYNC_KEY_FIELD = 'subject_code'
 
+export const COPY_TEMPLATE_CONFIG = [
+  { key: 'copyTemplateLanguageId', label: 'ทักษะภาษา', category: 'สามัญ', skillGroup: 'ภาษา', defaultId: '10ThIi5-awfd88hYKMNon-Gr61JhlNeSwWPZzufX_Hho', color: 'bg-blue-400 hover:bg-blue-500' },
+  { key: 'copyTemplateLifeId', label: 'ทักษะชีวิต', category: 'สามัญ', skillGroup: 'ชีวิต', defaultId: '12yXA_e63t1Q-st49ZQvUc0cSvDc9HVfHHYalsJEe9fU', color: 'bg-green-400 hover:bg-green-500' },
+  { key: 'copyTemplateAcademicId', label: 'ทักษะวิชาการ', category: 'สามัญ', skillGroup: 'วิชาการ', defaultId: '1erUS3QAwxxrl6mXyKR3VL2vZ6emuIwc6S-OCHMfKKFQ', color: 'bg-orange-400 hover:bg-orange-500' },
+  { key: 'copyTemplateVocAcademicId', label: 'ปวช สามัญ', category: 'สามัญ', skillGroup: 'สามัญปวช', defaultId: '134UMhcZ3-da8zojiIbw3B6b09Z-2vQMwugIE7vH1E84', color: 'bg-purple-400 hover:bg-purple-500' },
+  { key: 'copyTemplateReligionSecondaryId', label: 'ศาสนา มัธยม', category: 'ศาสนา', skillGroup: 'ศาสนามัธยม', defaultId: '1SND7G9tC0h8CW1XOU-y7zT8L40amaCIgAQVGsDG0-ik', color: 'bg-yellow-400 hover:bg-yellow-500 text-gray-800' },
+  { key: 'copyTemplateReligionVocId', label: 'ศาสนา ปวช', category: 'ศาสนา', skillGroup: 'ศาสนาปวช', defaultId: '14gpXFBwVb2zhlnUoa4bQie3Q_Cbez7YaQviHidGzb4A', color: 'bg-red-400 hover:bg-red-500' },
+]
+
+export function extractSheetId(value) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/) || raw.match(/^[a-zA-Z0-9_-]{20,}$/)
+  return Array.isArray(match) ? (match[1] || match[0]) : raw
+}
+
+export function getCopyTemplateId(cfg = {}, key) {
+  const item = COPY_TEMPLATE_CONFIG.find(t => t.key === key)
+  return extractSheetId(cfg[key] || item?.defaultId || '')
+}
+
+export function getCopyTemplateForClass(cfg = {}, cls = {}) {
+  const ms = cls.master_subjects ?? cls
+  const subjectGroup = ms.subject_group
+  const skill = cls.skill_group ?? ms.skill_group
+  if (subjectGroup === 'AGMVOC') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateReligionVocId'), id: getCopyTemplateId(cfg, 'copyTemplateReligionVocId') }
+  if (subjectGroup === 'AGM') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateReligionSecondaryId'), id: getCopyTemplateId(cfg, 'copyTemplateReligionSecondaryId') }
+  if (subjectGroup === 'ACDMVOC' && skill === 'สามัญปวช') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateVocAcademicId'), id: getCopyTemplateId(cfg, 'copyTemplateVocAcademicId') }
+  if (skill === 'ภาษา') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateLanguageId'), id: getCopyTemplateId(cfg, 'copyTemplateLanguageId') }
+  if (skill === 'ชีวิต') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateLifeId'), id: getCopyTemplateId(cfg, 'copyTemplateLifeId') }
+  if (skill === 'วิชาการ') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateAcademicId'), id: getCopyTemplateId(cfg, 'copyTemplateAcademicId') }
+  return null
+}
+
 const ATT_MAP = {
   present: 'ม',
   absent:  'ข',
@@ -59,6 +93,38 @@ async function _post(gasUrl, payload) {
   } catch (err) {
     throw new Error('เชื่อมต่อ GAS ไม่สำเร็จ: ' + (err.message ?? ''))
   }
+}
+
+function _jsonp(gasUrl, payload) {
+  return new Promise((resolve, reject) => {
+    const callback = `__pp5Jsonp_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const url = new URL(gasUrl)
+    url.searchParams.set('callback', callback)
+    Object.entries(payload).forEach(([key, value]) => url.searchParams.set(key, value ?? ''))
+
+    const script = document.createElement('script')
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('รอคำตอบจาก GAS นานเกินไป'))
+    }, 45000)
+    const cleanup = () => {
+      clearTimeout(timer)
+      delete window[callback]
+      script.remove()
+    }
+
+    window[callback] = result => {
+      cleanup()
+      if (result?.ok === false) reject(new Error(result.error || 'GAS ทำงานไม่สำเร็จ'))
+      else resolve(result)
+    }
+    script.onerror = () => {
+      cleanup()
+      reject(new Error('เชื่อมต่อ GAS ไม่สำเร็จ'))
+    }
+    script.src = url.toString()
+    document.head.appendChild(script)
+  })
 }
 
 // ─── Part 1: ชีทรายวิชาครู ────────────────────────────────────────────────────
@@ -281,6 +347,17 @@ export async function shareSheetForView(sheetId) {
   await _post(gasUrl, {
     action: 'share_sheet_view',
     sheetId,
+  })
+}
+
+export async function copySheetTemplate(templateSheetId, fileName) {
+  const templateId = extractSheetId(templateSheetId)
+  if (!templateId) throw new Error('ยังไม่ได้ตั้งค่าไฟล์ต้นฉบับสำหรับทำสำเนา')
+  const gasUrl = await _getGasUrl()
+  return _jsonp(gasUrl, {
+    action: 'copy_sheet_template',
+    templateSheetId: templateId,
+    fileName: fileName || 'สำเนาไฟล์ ปพ.5',
   })
 }
 

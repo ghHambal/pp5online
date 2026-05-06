@@ -5,6 +5,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
+import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm,
   renderMyClasses, renderAttendance, renderGrades,
@@ -77,6 +78,80 @@ function navigate(view) {
 // expose to window for onclick in views
 window._navTo  = navigate
 window._goBack = () => navigate('my-courses')
+
+const _esc = value => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const _copyUrl = id => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/copy`
+
+async function _showStandaloneCopyFlow() {
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const groups = {
+    start: [
+      { key: 'สามัญ', label: '📚 สามัญ' },
+      { key: 'ศาสนา', label: '🕌 ศาสนา' },
+    ],
+    สามัญ: COPY_TEMPLATE_CONFIG.filter(t => t.category === 'สามัญ'),
+    ศาสนา: COPY_TEMPLATE_CONFIG.filter(t => t.category === 'ศาสนา'),
+  }
+  const steps = ['start']
+  document.getElementById('standalone-copy-modal')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'standalone-copy-modal'
+  wrap.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+  wrap.innerHTML = `<div class="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6">
+    <div class="flex items-start justify-between gap-3 mb-4">
+      <div>
+        <h3 class="text-xl font-bold text-pink-500 leading-tight">สร้างสำเนาไฟล์ ปพ5Online</h3>
+        <p class="text-xs text-gray-400 mt-1">สำหรับใช้งานไฟล์ Google Sheet แบบเดิม</p>
+      </div>
+      <button id="copy-flow-close" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+    </div>
+    <div id="copy-flow-app"></div>
+  </div>`
+  document.body.appendChild(wrap)
+  const app = wrap.querySelector('#copy-flow-app')
+  const render = () => {
+    const current = steps[steps.length - 1]
+    const opts = groups[current] || []
+    app.innerHTML = `
+      <div class="text-center text-lg text-gray-600 mb-4">${steps.length === 1 ? 'เลือกหมวดหมู่' : 'เลือกกลุ่ม/ประเภท'}</div>
+      <div class="flex flex-col gap-3">
+        ${opts.map(opt => {
+          const id = opt.defaultId ? getCopyTemplateId(cfg, opt.key) : ''
+          return id ? `
+            <a href="${_copyUrl(id)}" target="_blank" rel="noopener noreferrer"
+              class="w-full ${opt.color || 'bg-gradient-to-r from-pink-400 to-green-400'} text-white font-semibold py-3 rounded-2xl shadow-md hover:scale-[1.02] transition-all text-center block text-lg">
+              🔗 เปิดไฟล์: ${_esc(opt.label)}
+            </a>` : `
+            <button data-next="${_esc(opt.key)}"
+              class="copy-flow-next w-full bg-pink-200 hover:bg-pink-300 text-pink-700 font-medium py-3 rounded-2xl shadow text-lg transition-all">
+              ${_esc(opt.label)}
+            </button>`
+        }).join('')}
+      </div>
+      ${steps.length > 1 ? `<button id="copy-flow-back" class="mt-6 text-sm text-gray-400 underline hover:text-pink-400 transition-all">⬅️ ย้อนกลับ</button>` : ''}`
+    app.querySelectorAll('.copy-flow-next').forEach(btn => {
+      btn.addEventListener('click', () => {
+        steps.push(btn.dataset.next)
+        render()
+      })
+    })
+    app.querySelector('#copy-flow-back')?.addEventListener('click', () => {
+      if (steps.length > 1) steps.pop()
+      render()
+    })
+  }
+  wrap.querySelector('#copy-flow-close').addEventListener('click', () => wrap.remove())
+  wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove() })
+  render()
+}
+
+window._openStandaloneCopyFlow = _showStandaloneCopyFlow
 
 // เปิด quota popup จากหน้าภาพรวม (ไม่มี course context)
 window._showQuotaFromOverview = () => {
@@ -308,6 +383,10 @@ function _showQuotaPopup(count, course, cfg = {}) {
           💡 ชำระเงินผ่าน PromptPay / โอนเงิน แล้วอัปโหลดสลิป<br/>
           แอดมินจะอนุมัติภายใน 24 ชั่วโมง
         </p>
+        <button id="qp-copy-file"
+          class="w-full py-2.5 rounded-xl border border-amber-200 bg-white text-amber-700 text-sm font-semibold hover:bg-amber-50 transition">
+          🔗 ทำสำเนาไฟล์ ปพ.5 ใช้งานฟรี
+        </button>
       </div>
 
       <!-- Footer -->
@@ -326,6 +405,10 @@ function _showQuotaPopup(count, course, cfg = {}) {
   document.body.appendChild(wrap)
 
   wrap.querySelector('#qp-cancel').addEventListener('click', () => wrap.remove())
+  wrap.querySelector('#qp-copy-file').addEventListener('click', () => {
+    wrap.remove()
+    _showStandaloneCopyFlow()
+  })
   wrap.querySelector('#qp-next').addEventListener('click', () => {
     const pkg = wrap.querySelector('input[name="pkg"]:checked')?.value
     if (!pkg) { alert('กรุณาเลือกแพ็กเกจก่อนครับ'); return }

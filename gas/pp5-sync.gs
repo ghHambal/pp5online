@@ -21,6 +21,17 @@
 //
 // =========================================================================
 
+function doGet(e) {
+  try {
+    var payload = e.parameter || {}
+    var action = payload.action
+    if (action === 'copy_sheet_template') return _jsonp(e, _copySheetTemplate(payload))
+    return _jsonp(e, { ok: false, error: 'Unknown action: ' + action })
+  } catch (err) {
+    return _jsonp(e, { ok: false, error: err.message })
+  }
+}
+
 function doPost(e) {
   try {
     var payload = JSON.parse(e.postData.contents)
@@ -35,6 +46,25 @@ function doPost(e) {
     return _json({ ok: false, error: 'Unknown action: ' + action })
   } catch (err) {
     return _json({ ok: false, error: err.message })
+  }
+}
+
+function _jsonp(e, obj) {
+  var callback = (e.parameter && e.parameter.callback) || 'callback'
+  var body = callback + '(' + JSON.stringify(obj) + ');'
+  return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JAVASCRIPT)
+}
+
+function _copySheetTemplate(payload) {
+  if (!payload.templateSheetId) return { ok: false, error: 'Missing templateSheetId' }
+  var name = payload.fileName || 'สำเนาไฟล์ ปพ.5'
+  var file = DriveApp.getFileById(payload.templateSheetId)
+  var copy = file.makeCopy(name)
+  return {
+    ok: true,
+    newSheetId: copy.getId(),
+    url: copy.getUrl(),
+    name: copy.getName(),
   }
 }
 

@@ -30,6 +30,7 @@ import {
   DEFAULT_SUBJECT_SYNC_KEY_FIELD,
   DEFAULT_SUBJECT_SYNC_SHEET_ID,
   DEFAULT_SUBJECT_SYNC_TAB,
+  COPY_TEMPLATE_CONFIG,
   SUBJECT_SYNC_COLUMNS,
   syncSubjectCatalog,
 } from './sync.js'
@@ -1023,6 +1024,12 @@ export async function renderSettings() {
         { key: 'classInfoDeptCell',        label: 'Cell กลุ่มสาระ', type: 'text' },
         { key: 'classInfoHeadDeptCell',    label: 'Cell หัวหน้าหมวด', type: 'text' },
       ]},
+      { label: '📄 ไฟล์สำเนา ปพ.5', keys: COPY_TEMPLATE_CONFIG.map(t => ({
+        key: t.key,
+        label: `Template ${t.category} — ${t.label}`,
+        type: 'text',
+        placeholder: t.defaultId,
+      }))},
       { label: '🗓️ ตารางสอน', keys: [
         { key: 'hasFriday',            label: 'เปิดวันศุกร์ (เฉพาะครูห้องโปรแกรม)', type: 'toggle' },
         { key: 'scheduleVisionEnabled',label: 'เปิดฟีเจอร์วิเคราะห์รูปตาราง (AI)',   type: 'toggle' },
@@ -1031,7 +1038,7 @@ export async function renderSettings() {
       ]},
     ]
 
-    const fieldHTML = ({ key, label, type, options }) => {
+    const fieldHTML = ({ key, label, type, options, placeholder }) => {
       const val = cfg[key] ?? ''
       const base = `id="cfg-${key}" data-key="${key}"`
       const cls  = 'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm'
@@ -1095,7 +1102,7 @@ export async function renderSettings() {
         </div>`
       return `<div class="mb-4">
         <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
-        <input type="text" ${base} value="${val}" class="${cls}" />
+        <input type="text" ${base} value="${val}" placeholder="${placeholder ?? ''}" class="${cls}" />
       </div>`
     }
 

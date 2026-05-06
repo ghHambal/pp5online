@@ -17,6 +17,7 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass } from './api.js'
 
 import { uploadTeacherPhoto } from './storage.js'
+import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 
 import { showToast } from './ui.js'
 
@@ -224,6 +225,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         <button id="btn-upgrade-overview"
           class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
           🚀 ดูแพ็กเกจและชำระเงิน
+        </button>
+        <button onclick="window._openStandaloneCopyFlow?.()"
+          class="w-full py-2.5 rounded-xl border border-amber-200 bg-white text-amber-700 text-sm font-semibold hover:bg-amber-50 transition">
+          🔗 ทำสำเนาไฟล์ ปพ.5 ใช้งานฟรี
         </button>
       </div>` : `
       <p class="text-xs text-gray-400">เหลืออีก <b class="text-emerald-600">${freeLeft} ห้อง</b> ก่อนต้องอัปเกรด</p>`}
@@ -1153,7 +1158,7 @@ export async function renderClassForm(teacher, course) {
         <!-- Google Sheet ID -->
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-1">
-            Google Sheet ID <span class="text-red-400">*</span>
+            Google Sheet ID <span class="text-gray-400 font-normal">(เว้นว่างได้)</span>
           </label>
           <input id="cls-sheet-id" type="text" placeholder="วาง ID จาก URL ของ Google Sheet"
             class="${INPUT_CLS}" />
@@ -1524,7 +1529,10 @@ export async function renderMyClasses(teacher) {
     </svg> กำลังโหลด...
   </div>`)
   try {
-    const classes = await getMyClasses(teacher?.id ?? null)
+    const [classes, copyCfg] = await Promise.all([
+      getMyClasses(teacher?.id ?? null),
+      getSystemConfig().catch(() => ({})),
+    ])
     window._classCache = Object.fromEntries(classes.map(c => [c.id, c]))
     setContent(`<div class="max-w-5xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-5">
@@ -1542,6 +1550,7 @@ export async function renderMyClasses(teacher) {
       <div class="grid gap-4">
         ${classes.map(c => {
           const ms = c.master_subjects
+          const copyTemplate = getCopyTemplateForClass(copyCfg, c)
           const isReligionGroup = ['AGM', 'AGMVOC'].includes(ms?.subject_group)
           const groupBadge = isReligionGroup
             ? { text: 'กลุ่มวิชาศาสนา', cls: 'bg-amber-50 text-amber-700' }
@@ -1577,6 +1586,10 @@ export async function renderMyClasses(teacher) {
                 <button onclick="window._openSheetToolsModal(${c.id})"
                   class="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition text-center">
                   📄 จัดการชีท
+                </button>` : copyTemplate?.id ? `
+                <button onclick="window._openClassCopyModal(${c.id})"
+                  class="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition text-center">
+                  🔗 ทำสำเนาชีท
                 </button>` : ''}
                 <div class="flex gap-1">
                   <button onclick="window._editClass(${c.id})"
@@ -1829,6 +1842,63 @@ export async function renderMyClasses(teacher) {
         const orientation = _getOrientation()
         m.remove()
         _openPrintableRoster(cls, 'score', orientation)
+      })
+    }
+
+    window._openClassCopyModal = (classId) => {
+      const cls = window._classCache?.[classId]
+      if (!cls) return
+      const tpl = getCopyTemplateForClass(copyCfg, cls)
+      if (!tpl?.id) {
+        showToast('ยังไม่ได้ตั้งค่าไฟล์ต้นฉบับสำหรับกลุ่มวิชานี้', 'warning')
+        return
+      }
+      document.getElementById('class-copy-modal')?.remove()
+      const ms = cls.master_subjects ?? {}
+      const defaultName = `${ms.subject_name || 'ปพ5'}_${cls.class_name || ''}_${teacher?.full_name || ''}`.replace(/\s+/g, ' ').trim()
+      const m = document.createElement('div')
+      m.id = 'class-copy-modal'
+      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+      m.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <h3 class="font-bold text-gray-800 text-base mb-1">🔗 ทำสำเนาชีทสำหรับรายวิชานี้</h3>
+        <p class="text-xs text-gray-400 mb-4">${_htmlEsc(tpl.label || '')} · ${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">ตั้งชื่อไฟล์สำเนา</label>
+        <input id="copy-file-name" class="${INPUT_CLS}" value="${_htmlEsc(defaultName)}" />
+        <p class="text-xs text-gray-400 mt-2">ระบบจะสร้างสำเนาและบันทึก Sheet ID กลับเข้ารายวิชานี้อัตโนมัติ</p>
+        <div id="copy-result" class="hidden mt-4 rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-sm"></div>
+        <div class="flex gap-3 mt-5">
+          <button id="copy-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="copy-go" class="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600">สร้างสำเนา</button>
+        </div>
+      </div>`
+      document.body.appendChild(m)
+      m.querySelector('#copy-cancel').addEventListener('click', () => m.remove())
+      m.addEventListener('click', e => { if (e.target === m) m.remove() })
+      m.querySelector('#copy-go').addEventListener('click', async () => {
+        const btn = m.querySelector('#copy-go')
+        const name = m.querySelector('#copy-file-name').value.trim() || defaultName || 'สำเนาไฟล์ ปพ.5'
+        btn.disabled = true
+        btn.textContent = 'กำลังสร้าง...'
+        try {
+          const result = await copySheetTemplate(tpl.id, name)
+          const newId = result.newSheetId
+          if (!newId) throw new Error('GAS ไม่ได้ส่ง Sheet ID กลับมา')
+          await updateClass(cls.id, { google_sheet_id: newId })
+          cls.google_sheet_id = newId
+          const url = result.url || _sheetUrl(newId)
+          m.querySelector('#copy-result').innerHTML = `
+            <p class="font-semibold text-emerald-800 mb-2">สร้างไฟล์สำเนาและบันทึกเข้ารายวิชาแล้ว</p>
+            <button id="copy-open" class="w-full py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">เปิดไฟล์สำเนา</button>`
+          m.querySelector('#copy-result').classList.remove('hidden')
+          m.querySelector('#copy-open').addEventListener('click', () => window.open(url, '_blank'))
+          btn.textContent = 'สร้างแล้ว'
+          showToast('สร้างสำเนาและบันทึก Sheet ID แล้ว', 'success')
+          setTimeout(() => renderMyClasses(teacher), 900)
+        } catch (err) {
+          btn.disabled = false
+          btn.textContent = 'สร้างสำเนา'
+          showToast('สร้างสำเนาไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        }
       })
     }
 
