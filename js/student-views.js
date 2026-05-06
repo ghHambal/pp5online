@@ -639,16 +639,8 @@ export async function renderExamRequestForm(student, classId) {
       const cells = workDays.map(d => {
         const key = `${d}_${p.period_no}`
         const slot = schedMap[key]
-        if (!slot) {
-          // No data for this slot — gray disabled
-          return `<td class="py-1 px-1">
-            <div class="flex flex-col items-center justify-center h-12 rounded-lg bg-gray-50 border border-gray-100 text-gray-300 text-[10px]">
-              <span>—</span>
-            </div>
-          </td>`
-        }
-        if (slot.is_free) {
-          // Free period — green, clickable
+        if (!slot || slot.is_free) {
+          // No schedule for this slot, or explicitly free — clickable.
           return `<td class="py-1 px-1">
             <button type="button"
               data-period="${p.period_no}" data-day="${d}"
@@ -656,11 +648,11 @@ export async function renderExamRequestForm(student, classId) {
                      bg-emerald-50 border-2 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-400
                      transition cursor-pointer text-emerald-700 text-[10px] font-medium">
               <span class="font-bold text-xs">คาบ${p.period_no}</span>
-              <span class="text-emerald-500">${p.start_time.slice(0,5)}</span>
+              <span class="text-emerald-500">${slot?.is_free ? p.start_time.slice(0,5) : 'ว่าง'}</span>
             </button>
           </td>`
         } else {
-          // Busy period — gray disabled
+          // Teacher has a scheduled class here — disabled.
           return `<td class="py-1 px-1">
             <div class="flex flex-col items-center justify-center h-12 rounded-lg
                         bg-gray-100 border border-gray-200 text-gray-400 text-[10px]">
@@ -838,6 +830,10 @@ export async function renderExamRequestForm(student, classId) {
         modal?.classList.remove('flex')
       })
     })
+    setTimeout(() => {
+      modal?.classList.remove('hidden')
+      modal?.classList.add('flex')
+    }, 80)
   }
 
   // Submit
@@ -856,7 +852,12 @@ export async function renderExamRequestForm(student, classId) {
 
     if (!type || !colId || !dateVal || !periodVal) {
       showToast('กรุณากรอกข้อมูลให้ครบ', 'warning')
-      if (hasSchedule && !periodVal) showToast('กรุณาเลือกคาบจากตาราง', 'warning')
+      if (hasSchedule && !periodVal) {
+        showToast('กรุณาเลือกคาบว่างจากตารางครู', 'warning')
+        const modal = document.getElementById('teacher-schedule-modal')
+        modal?.classList.remove('hidden')
+        modal?.classList.add('flex')
+      }
       return
     }
     if (type === 'สอบย้อนหลัง' && !reason) { showToast('กรุณาระบุเหตุผล','warning'); return }
