@@ -1423,3 +1423,13 @@ export async function getPendingExamRequestCount(teacherId) {
     .in('class_id', cids).eq('status', 'pending')
   return count ?? 0
 }
+
+export async function getMissedExamCount(studentId) {
+  const { count, error } = await supabase
+    .from('exam_requests')
+    .select('*', { count: 'exact', head: true })
+    .eq('student_id', studentId)
+    .eq('exam_attended', false)
+  if (error) throw error
+  return count ?? 0
+}

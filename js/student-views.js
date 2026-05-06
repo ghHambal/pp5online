@@ -1,6 +1,7 @@
 import {
   getMyEnrolledClasses, getMyScores, getMyAttendance,
   getMyExamRequests, submitExamRequest, cancelExamRequest,
+  getMissedExamCount,
   getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
@@ -725,9 +726,32 @@ export async function renderExamRequestForm(student, classId) {
     </svg>
   </div>`)
 
-  const classes = await getMyEnrolledClasses(student.id).catch(()=>[])
+  const [classes, missedCount] = await Promise.all([
+    getMyEnrolledClasses(student.id).catch(()=>[]),
+    getMissedExamCount(student.id).catch(()=>0),
+  ])
   const cls = classes.find(c => c.id === classId)
   if (!cls) { setContent(`<p class="text-center py-10 text-gray-400">ไม่พบรายวิชา</p>`); return }
+
+  // บล็อกถ้าผิดนัด ≥ 2 ครั้ง
+  if (missedCount >= 2) {
+    setContent(`
+      <button onclick="window._stuOpenClassTab(${classId},'requests')" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← กลับ</button>
+      <div class="bg-white rounded-2xl border border-red-100 shadow-sm p-6 text-center">
+        <p class="text-4xl mb-3">🚫</p>
+        <p class="font-bold text-red-700 text-base mb-2">ไม่สามารถยื่นคำร้องได้</p>
+        <p class="text-sm text-gray-500">เนื่องจากผิดนัดสอบครบ <b class="text-red-600">2 ครั้ง</b> แล้ว</p>
+        <p class="text-xs text-gray-400 mt-2">กรุณาติดต่อครูผู้สอนโดยตรง</p>
+      </div>`)
+    return
+  }
+
+  // แสดง warning ถ้าผิดนัด 1 ครั้งแล้ว
+  const missedWarning = missedCount === 1
+    ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-700 font-medium">
+         ⚠️ คุณผิดนัดสอบมาแล้ว 1 ครั้ง — หากผิดนัดอีก 1 ครั้ง จะไม่สามารถยื่นคำร้องได้อีก
+       </div>`
+    : ''
 
   const ms = cls.master_subjects
   const teacherId = ms?.teacher_id
@@ -913,7 +937,8 @@ export async function renderExamRequestForm(student, classId) {
 
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <h2 class="font-bold text-gray-800 mb-1">📝 ยื่นคำร้อง</h2>
-      <p class="text-xs text-gray-400 mb-5">${ms?.subject_name ?? ''} · ${cls.class_name ?? ''}</p>
+      <p class="text-xs text-gray-400 mb-3">${ms?.subject_name ?? ''} · ${cls.class_name ?? ''}</p>
+      ${missedWarning}
 
       ${hasSchedule ? `
       <div id="schedule-first-gate" class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">

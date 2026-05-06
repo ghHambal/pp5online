@@ -5543,8 +5543,9 @@ export async function renderRequests(teacher) {
     const stu  = r.students
     const cls  = r.classes
     const col  = r.class_score_columns
-    const isPast = _isExamDatePast(r.requested_date)
-    const canResult = r.status === 'approved' && isPast && r.exam_attended == null
+    // แสดงปุ่มผลสอบทันทีที่อนุมัติ (ไม่ต้องรอวันผ่าน)
+    const canResult   = r.status === 'approved' && r.exam_attended == null
+    const canEditScore= r.status === 'approved' && r.exam_attended === true
 
     const statusBadge = r.status === 'pending'
       ? `<span class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">⏳ รอดำเนินการ</span>`
@@ -5553,9 +5554,9 @@ export async function renderRequests(teacher) {
         : `<span class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-200">✕ ปฏิเสธ</span>`
 
     const attendanceBadge = r.exam_attended === true
-      ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">📝 มาสอบแล้ว${r.exam_score != null ? ' · '+r.exam_score+' คะแนน' : ''}</span>`
+      ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">📝 มาสอบแล้ว${r.exam_score != null ? ' · <b>'+r.exam_score+'</b> คะแนน' : ' (ยังไม่ได้ใส่คะแนน)'}</span>`
       : r.exam_attended === false
-        ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">❌ ขาดสอบ</span>`
+        ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-100">❌ ขาดสอบ/ผิดนัด</span>`
         : ''
 
     return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4" id="req-card-${r.id}">
@@ -5595,17 +5596,25 @@ export async function renderRequests(teacher) {
       </div>` : ''}
       ${canResult ? `
       <div class="border-t border-gray-100 pt-3">
-        <p class="text-xs text-gray-500 mb-2 font-medium">ผลการสอบ (วันสอบผ่านแล้ว)</p>
+        <p class="text-xs text-gray-500 mb-2 font-medium">📋 บันทึกผลการสอบ</p>
         <div class="flex gap-2">
-          <button onclick="window._markAttended(${r.id}, ${stu?.id ?? 'null'}, ${col?.id ?? 'null'}, ${col?.max_score ?? 100})"
+          <button onclick="window._markAttended(${r.id}, ${stu?.id ?? 'null'}, ${col?.id ?? 'null'}, ${col?.max_score ?? 100}, null)"
             class="flex-1 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition">
-            📝 มาสอบ — ใส่คะแนน
+            📝 มาสอบแล้ว + ใส่คะแนน
           </button>
-          <button onclick="window._markAbsent(${r.id})"
-            class="flex-1 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-semibold hover:bg-gray-200 transition">
-            ❌ ขาดสอบ
+          <button onclick="window._markAbsent(${r.id}, ${stu?.id ?? 'null'})"
+            class="flex-1 py-2 rounded-xl bg-red-50 text-red-600 border border-red-100 text-xs font-semibold hover:bg-red-100 transition">
+            ❌ ขาดสอบ/ผิดนัด
           </button>
         </div>
+      </div>` : ''}
+      ${canEditScore ? `
+      <div class="border-t border-gray-100 pt-3 flex items-center justify-between">
+        <p class="text-xs text-blue-600 font-medium">📝 มาสอบแล้ว${r.exam_score != null ? ' · คะแนน '+r.exam_score : ''}</p>
+        <button onclick="window._markAttended(${r.id}, ${stu?.id ?? 'null'}, ${col?.id ?? 'null'}, ${col?.max_score ?? 100}, ${r.exam_score ?? 'null'})"
+          class="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition font-medium">
+          ✏️ แก้ไขคะแนน
+        </button>
       </div>` : ''}
     </div>`
   }
@@ -5723,14 +5732,16 @@ export async function renderRequests(teacher) {
     })
   }
 
-  window._markAttended = (id, studentId, assignmentId, maxScore) => {
+  window._markAttended = (id, studentId, assignmentId, maxScore, currentScore) => {
+    const isEdit = currentScore != null
     _showModal({
-      title: '📝 บันทึกผลการสอบ — มาสอบ',
+      title: isEdit ? '✏️ แก้ไขคะแนน' : '📝 บันทึกผลการสอบ — มาสอบ',
       body: `<label class="block text-sm text-gray-600 mb-1.5">คะแนนที่สอบได้ <span class="text-red-500">*</span> <span class="text-gray-400">(เต็ม ${maxScore})</span></label>
              <input id="req-modal-score" type="number" min="0" max="${maxScore}" step="0.5"
+               value="${isEdit ? currentScore : ''}"
                placeholder="0 – ${maxScore}"
-               class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center text-lg font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />`,
-      confirmLabel: 'บันทึกคะแนน',
+               class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />`,
+      confirmLabel: isEdit ? 'บันทึกการแก้ไข' : 'บันทึกคะแนน',
       confirmCls: 'bg-blue-600 hover:bg-blue-700',
       onConfirm: async (m) => {
         const scoreStr = m.querySelector('#req-modal-score').value
@@ -5741,24 +5752,35 @@ export async function renderRequests(teacher) {
         m.remove()
         try {
           await updateExamResult(id, { exam_attended: true, exam_score: score, studentId, assignmentId })
-          showToast('บันทึกผลสอบและคะแนนแล้ว ✅', 'success')
+          showToast(isEdit ? 'แก้ไขคะแนนแล้ว ✅' : 'บันทึกผลสอบและคะแนนแล้ว ✅', 'success')
           renderRequests(teacher)
         } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
       }
     })
   }
 
-  window._markAbsent = (id) => {
+  window._markAbsent = (id, studentId) => {
+    // ตรวจสอบจำนวนครั้งที่ผิดนัดก่อน
+    const missedCount = all.filter(r =>
+      r.students?.id === studentId && r.exam_attended === false
+    ).length
+
     _showModal({
-      title: '❌ บันทึกว่าขาดสอบ',
-      body: `<p class="text-sm text-gray-600">ยืนยันว่านักเรียนไม่มาสอบตามนัด?</p>`,
-      confirmLabel: 'ยืนยัน — ขาดสอบ',
-      confirmCls: 'bg-gray-600 hover:bg-gray-700',
+      title: '❌ ขาดสอบ / ผิดนัด',
+      body: `<p class="text-sm text-gray-600 mb-2">ยืนยันว่านักเรียนไม่มาสอบตามนัด?</p>
+             ${missedCount >= 1
+               ? `<div class="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 font-medium">
+                    ⚠️ นักเรียนผิดนัดมาแล้ว <b>${missedCount}</b> ครั้ง
+                    ${missedCount + 1 >= 2 ? '<br/>หากยืนยัน จะครบ 2 ครั้ง — <b>นักเรียนจะไม่สามารถยื่นคำร้องได้อีก</b>' : ''}
+                  </div>`
+               : ''}`,
+      confirmLabel: 'ยืนยัน — ขาดสอบ/ผิดนัด',
+      confirmCls: 'bg-red-500 hover:bg-red-600',
       onConfirm: async (m) => {
         m.remove()
         try {
           await updateExamResult(id, { exam_attended: false, exam_score: null })
-          showToast('บันทึกว่าขาดสอบแล้ว', 'success')
+          showToast('บันทึกว่าขาดสอบ/ผิดนัดแล้ว', 'success')
           renderRequests(teacher)
         } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
       }

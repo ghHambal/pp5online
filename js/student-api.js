@@ -80,7 +80,20 @@ export async function getMyExamRequests(studentId) {
   return data ?? []
 }
 
+export async function getMissedExamCount(studentId) {
+  const { count, error } = await supabase
+    .from('exam_requests')
+    .select('*', { count: 'exact', head: true })
+    .eq('student_id', studentId)
+    .eq('exam_attended', false)
+  if (error) throw error
+  return count ?? 0
+}
+
 export async function submitExamRequest(payload) {
+  // ตรวจสอบจำนวนผิดนัดก่อนยื่น
+  const missed = await getMissedExamCount(payload.student_id)
+  if (missed >= 2) throw new Error('ไม่สามารถยื่นคำร้องได้ เนื่องจากผิดนัดสอบครบ 2 ครั้งแล้ว')
   const { error } = await supabase.from('exam_requests').insert(payload)
   if (error) throw error
 }
