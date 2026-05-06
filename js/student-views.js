@@ -379,18 +379,6 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   }
 
   const colorCls = _subjectColorCls(cls)
-  const missingCols = columns.filter(col => {
-    const sc = scoreMap[col.id]
-    return !(sc && (sc.final_score != null || sc.original_score != null))
-  })
-  const pendingRequests = requests.filter(r => r.status === 'pending')
-  const upcomingRequests = requests.filter(r => {
-    const d = r.requested_date ? new Date(r.requested_date) : null
-    if (!d) return false
-    d.setHours(0,0,0,0)
-    const today = new Date(); today.setHours(0,0,0,0)
-    return d >= today
-  })
 
   const _subjectHeader = () => `
     <div class="${colorCls.bg} ${colorCls.border} border border-l-4 ${colorCls.accent} rounded-2xl p-4 mb-4 flex items-start gap-3">
@@ -440,33 +428,6 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
 
   const _todoContent = () => {
     const items = []
-    pendingRequests.forEach(r => {
-      const col = r.class_score_columns?.assignment_name ? ` · ${r.class_score_columns.assignment_name}` : ''
-      items.push(`<div class="bg-amber-50 border border-amber-100 rounded-2xl p-4">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="font-semibold text-amber-800 text-sm">คำร้องรอดำเนินการ${col}</p>
-            <p class="text-xs text-amber-600 mt-1">${_fmtDate(r.requested_date)}${r.requested_period_no ? ` · คาบ ${r.requested_period_no}` : ''}</p>
-          </div>
-          <span class="text-[11px] font-bold text-amber-700 bg-white/70 px-2 py-1 rounded-full">${_daysUntilLabel(r.requested_date)}</span>
-        </div>
-      </div>`)
-    })
-    upcomingRequests
-      .filter(r => r.status !== 'pending')
-      .forEach(r => items.push(`<div class="bg-blue-50 border border-blue-100 rounded-2xl p-4">
-        <p class="font-semibold text-blue-800 text-sm">${r.request_type}ที่กำลังจะถึง</p>
-        <p class="text-xs text-blue-600 mt-1">${_fmtDate(r.requested_date)} · ${_daysUntilLabel(r.requested_date)}</p>
-      </div>`))
-    missingCols.slice(0, 5).forEach(col => items.push(`<div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="font-semibold text-gray-800 text-sm">${col.assignment_name}</p>
-          <p class="text-xs text-gray-400 mt-1">ยังไม่มีคะแนนบันทึกในระบบ</p>
-        </div>
-        <span class="text-[11px] font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-full">/${col.max_score}</span>
-      </div>
-    </div>`))
 
     return `
       <div class="flex items-center justify-between mb-3">
@@ -477,7 +438,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-300">
           <p class="text-4xl mb-2">🎉</p>
           <p class="text-sm font-medium text-gray-500">ตอนนี้ยังไม่มีรายการที่ต้องทำ</p>
-          <p class="text-xs mt-1">ถ้าครูประกาศกำหนดสอบหรือมีคำร้องค้าง ระบบจะแสดงที่นี่</p>
+          <p class="text-xs mt-1">ถ้าครูประกาศกำหนดสอบหรือแจ้งงานในรายวิชา ระบบจะแสดงพร้อมนับถอยหลังที่นี่</p>
         </div>`}
       <button onclick="window._stuOpenRequest(${classId})"
         class="w-full mt-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 transition">
@@ -759,13 +720,14 @@ export async function renderExamRequestForm(student, classId) {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">วันและคาบที่ขอสอบ <span class="text-red-400">*</span></label>
           ${hasSchedule ? `
-          <p class="text-[11px] text-emerald-600 font-medium mb-2">✅ เลือกคาบว่างของครู (สีเขียว = ว่าง)</p>
-          ${_buildScheduleGrid()}
-          <!-- Selected summary -->
+          <button type="button" id="open-schedule-modal"
+            class="w-full border-2 border-emerald-200 rounded-xl px-4 py-3 text-left bg-emerald-50 hover:bg-emerald-100 transition">
+            <p class="text-sm font-semibold text-emerald-700">ดูตารางครูและเลือกคาบว่าง</p>
+            <p id="schedule-picker-label" class="text-xs text-emerald-500 mt-0.5">แตะเพื่อเปิดตารางสอนของครูในสัปดาห์นี้</p>
+          </button>
           <div id="period-summary" class="hidden mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
             <p class="text-sm font-semibold text-emerald-700">✅ เลือกแล้ว: <span id="period-summary-text"></span></p>
           </div>
-          <!-- Hidden inputs auto-filled by grid -->
           <input type="hidden" id="req-date" />
           <input type="hidden" id="req-period-hidden" />
           ` : `
@@ -801,6 +763,22 @@ export async function renderExamRequestForm(student, classId) {
         </button>
       </form>
     </div>
+    ${hasSchedule ? `
+      <div id="teacher-schedule-modal" class="hidden fixed inset-0 z-[120] bg-black/50 p-4 items-center justify-center">
+        <div class="w-full max-w-lg max-h-[88vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-5">
+          <div class="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h3 class="font-bold text-gray-800">เลือกคาบว่างของครู</h3>
+              <p class="text-xs text-gray-400 mt-0.5">${teacherId ? (ms?.teachers?.full_name ?? 'ครูผู้สอน') : 'ครูผู้สอน'} · ${ms?.subject_name ?? ''}</p>
+            </div>
+            <button type="button" id="close-schedule-modal"
+              class="w-9 h-9 rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600">×</button>
+          </div>
+          <p class="text-[11px] text-emerald-600 font-medium mb-2">สีเขียว = คาบว่างที่เลือกได้</p>
+          ${_buildScheduleGrid()}
+          <p class="text-[11px] text-gray-400 mt-3">ระบบจะนำวันในสัปดาห์ปัจจุบันและคาบที่เลือกไปเติมในคำร้องให้อัตโนมัติ</p>
+        </div>
+      </div>` : ''}
   `)
 
   // Show/hide reason field based on type
@@ -815,6 +793,22 @@ export async function renderExamRequestForm(student, classId) {
 
   // Schedule grid: period cell click handlers
   if (hasSchedule) {
+    const modal = document.getElementById('teacher-schedule-modal')
+    document.getElementById('open-schedule-modal')?.addEventListener('click', () => {
+      modal?.classList.remove('hidden')
+      modal?.classList.add('flex')
+    })
+    document.getElementById('close-schedule-modal')?.addEventListener('click', () => {
+      modal?.classList.add('hidden')
+      modal?.classList.remove('flex')
+    })
+    modal?.addEventListener('click', e => {
+      if (e.target === modal) {
+        modal.classList.add('hidden')
+        modal.classList.remove('flex')
+      }
+    })
+
     document.querySelectorAll('.sched-period-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const periodNo  = parseInt(btn.dataset.period)
@@ -831,6 +825,8 @@ export async function renderExamRequestForm(student, classId) {
         const summaryText = document.getElementById('period-summary-text')
         summary?.classList.remove('hidden')
         if (summaryText) summaryText.textContent = `คาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)}`
+        const pickerLabel = document.getElementById('schedule-picker-label')
+        if (pickerLabel) pickerLabel.textContent = `เลือกคาบ ${periodNo} วัน${DAY_TH[dayOfWeek]??''} ${_fmtDateTH(date)} แล้ว`
 
         // Highlight selected cell, remove from others
         document.querySelectorAll('.sched-period-btn').forEach(b => {
@@ -838,6 +834,8 @@ export async function renderExamRequestForm(student, classId) {
           b.classList.toggle('ring-emerald-500', b === btn)
           b.classList.toggle('bg-emerald-200',   b === btn)
         })
+        modal?.classList.add('hidden')
+        modal?.classList.remove('flex')
       })
     })
   }
