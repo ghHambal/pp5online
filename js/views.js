@@ -965,6 +965,7 @@ export async function renderSettings() {
         { key: 'appColor',    label: 'สีระบบ',        type: 'color' },
         { key: 'loginColor',  label: 'สีหน้าล็อกอิน', type: 'color' },
         { key: 'loginLogoUrl',label: 'โลโก้หน้าล็อกอิน', type: 'upload' },
+        { key: 'developerCreditText', label: 'ข้อความเครดิตผู้พัฒนา', type: 'text' },
         { key: 'semester',    label: 'ภาคเรียนที่',   type: 'select', options: ['1','2'] },
         { key: 'academicYear',label: 'ปีการศึกษา',    type: 'text' },
       ]},

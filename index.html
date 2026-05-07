@@ -117,6 +117,7 @@
         🎒 สำหรับนักเรียน
       </a>
     </p>
+    <p data-dev-credit class="text-center text-[11px] text-gray-400 mt-4">พัฒนาโดย KruHambalWaji</p>
   </div>
 
   <!-- ─── Register Card ───────────────────────────────────────── -->
@@ -204,6 +205,7 @@
         เข้าสู่ระบบ
       </button>
     </p>
+    <p data-dev-credit class="text-center text-[11px] text-gray-400 mt-4">พัฒนาโดย KruHambalWaji</p>
   </div>
 
   <!-- ─── Modal: ลงทะเบียนขอรหัสครู ─────────────────────────────────────── -->
@@ -283,6 +285,16 @@
   </div>
 
   <!-- Auth logic (ES Module) -->
+  <script type="module">
+    import { supabase } from '/js/supabase.js'
+    ;(async () => {
+      try {
+        const { data } = await supabase.from('system_config').select('key,value').eq('key', 'developerCreditText')
+        const credit = data?.[0]?.value
+        if (credit) document.querySelectorAll('[data-dev-credit]').forEach(el => { el.textContent = credit })
+      } catch { /* ignore */ }
+    })()
+  </script>
   <script type="module" src="js/auth.js"></script>
 </body>
 </html>
