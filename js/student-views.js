@@ -46,6 +46,13 @@ const PRAYER_SCORE = {
   avoid: { label: 'N', score: -1, cls: 'bg-orange-50 text-orange-600 border-orange-100', title: 'หลีกเลี่ยง' },
 }
 
+const READING_EVAL_GRADES = [
+  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+  { label: 'ดี', min: 65, cls: 'text-blue-700 bg-blue-50 border-blue-100' },
+  { label: 'พอใช้', min: 50, cls: 'text-yellow-700 bg-yellow-50 border-yellow-100' },
+  { label: 'ปรับปรุง', min: 0, cls: 'text-red-600 bg-red-50 border-red-100' },
+]
+
 function _hexToRgb(hex) {
   const safe = /^#[0-9a-f]{6}$/i.test(String(hex ?? '')) ? hex : '#059669'
   const h = safe.slice(1)
@@ -197,6 +204,10 @@ function _scoreRows(columns, scores) {
   return (columns ?? []).map(c => ({ ...c, score: map[c.id] ?? null }))
 }
 
+function _readingEvalGrade(score100) {
+  return READING_EVAL_GRADES.find(g => score100 >= g.min) ?? READING_EVAL_GRADES[READING_EVAL_GRADES.length - 1]
+}
+
 // ─── Overview ─────────────────────────────────────────────────────────────────
 export async function renderStudentOverview(student) {
   setContent(`<div class="flex justify-center py-10 text-gray-300">
@@ -310,6 +321,10 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
 
   const lifeRows = _scoreRows(life.columns, life.scores)
   const readingRows = _scoreRows(reading.columns, reading.scores)
+  const readingTotal = readingRows.reduce((sum, r) => sum + (parseFloat(r.score) || 0), 0)
+  const readingMax = readingRows.reduce((sum, r) => sum + (parseFloat(r.max_score) || 0), 0)
+  const readingScore100 = readingMax > 0 ? Math.round((readingTotal / readingMax) * 1000) / 10 : 0
+  const readingEval = readingTotal > 0 ? _readingEvalGrade(readingScore100) : null
   const prayerMap = Object.fromEntries((prayers ?? []).map(r => [r.check_date, r.status]))
   const weeks = _generatePrayerWeeks(cfg.semester_start, prayers ?? [])
   const allPrayerDays = weeks.flatMap(w => w.days)
@@ -387,7 +402,33 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
   const content = {
     life: scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600'),
     prayer: prayerCard,
-    reading: scoreCard('คะแนนอ่านคิดวิเคราะห์ฯ', '📖', readingRows, 'text-sky-600'),
+    reading: `
+      <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+        <div class="px-4 py-4 flex items-center justify-between gap-4">
+          <div>
+            <h3 class="font-bold text-gray-800 text-sm">📝 ผลประเมินการอ่าน</h3>
+            <p class="text-[11px] text-gray-400 mt-0.5">คำนวณจากคะแนนอ่านคิดวิเคราะห์ฯ ทั้งหมด</p>
+          </div>
+          <div class="text-right flex-shrink-0">
+            ${readingEval
+              ? `<span class="inline-flex px-3 py-1 rounded-full border text-sm font-bold ${readingEval.cls}">${readingEval.label}</span>`
+              : `<span class="text-sm font-semibold text-gray-300">—</span>`}
+            <p class="text-[11px] text-gray-400 mt-1">${readingTotal ? `${readingScore100} / 100` : 'ยังไม่มีคะแนน'}</p>
+          </div>
+        </div>
+        <div class="px-4 pb-4 grid grid-cols-2 gap-3 text-center">
+          <div class="rounded-xl bg-sky-50 border border-sky-100 py-3">
+            <p class="text-lg font-bold text-sky-700">${readingTotal || '—'}</p>
+            <p class="text-[10px] text-sky-500">คะแนนรวม / ${readingMax || '—'}</p>
+          </div>
+          <div class="rounded-xl bg-indigo-50 border border-indigo-100 py-3">
+            <p class="text-lg font-bold text-indigo-700">${readingTotal ? readingScore100 : '—'}</p>
+            <p class="text-[10px] text-indigo-500">คะแนนเทียบ 100</p>
+          </div>
+        </div>
+      </section>
+      ${scoreCard('คะแนนอ่านคิดวิเคราะห์ฯ', '📖', readingRows, 'text-sky-600')}
+    `,
   }[activeTab] ?? scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600')
 
   setContent(`
