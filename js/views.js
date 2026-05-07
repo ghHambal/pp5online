@@ -4356,43 +4356,43 @@ export async function renderAdminProfile() {
     setTimeout(() => el.classList.add('hidden'), 3500)
   }
 
+  // helper: upsert ผ่าน SECURITY DEFINER RPC (bypass RLS)
+  const _upsertAdminProfile = async (fields) => {
+    const { data, error } = await supabase.rpc('upsert_admin_teacher_profile', {
+      p_profile_id:  userId,
+      p_full_name:   fields.full_name   ?? null,
+      p_username:    fields.username    ?? null,
+      p_login_email: fields.login_email ?? null,
+    })
+    if (error) throw error
+    return data
+  }
+
   // บันทึกชื่อ
   document.getElementById('btn-save-name').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-save-name')
+    const btn  = document.getElementById('btn-save-name')
     const name = document.getElementById('adm-name').value.trim()
     if (!name) { _msg('name-msg', 'กรุณากรอกชื่อ-นามสกุล', false); return }
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
-      if (teacher?.id) {
-        await supabase.from('teachers').update({ full_name: name }).eq('id', teacher.id)
-      }
+      await _upsertAdminProfile({ full_name: name, login_email: currentEmail })
       _msg('name-msg', 'บันทึกชื่อสำเร็จ ✅', true)
-      document.getElementById('user-name')?.textContent && (document.getElementById('user-name').textContent = name)
+      const nameEl = document.getElementById('user-name')
+      if (nameEl) nameEl.textContent = name
     } catch (err) { _msg('name-msg', 'บันทึกไม่สำเร็จ: ' + (err.message ?? ''), false) }
     finally { btn.disabled = false; btn.textContent = 'บันทึกชื่อ' }
   })
 
   // บันทึก Username
   document.getElementById('btn-save-username').addEventListener('click', async () => {
-    const btn      = document.getElementById('btn-save-username')
-    const rawVal   = document.getElementById('adm-username').value.trim().toLowerCase()
-    const valid    = /^[a-z0-9._-]{3,32}$/.test(rawVal)
-    if (!rawVal)  { _msg('username-msg', 'กรุณากรอก username', false); return }
-    if (!valid)   { _msg('username-msg', 'username ต้องมี 3–32 ตัว ใช้ได้เฉพาะ a-z 0-9 . - _', false); return }
+    const btn    = document.getElementById('btn-save-username')
+    const rawVal = document.getElementById('adm-username').value.trim().toLowerCase()
+    const valid  = /^[a-z0-9._-]{3,32}$/.test(rawVal)
+    if (!rawVal) { _msg('username-msg', 'กรุณากรอก username', false); return }
+    if (!valid)  { _msg('username-msg', 'username ต้องมี 3–32 ตัว ใช้ได้เฉพาะ a-z 0-9 . - _', false); return }
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
-      if (teacher?.id) {
-        // มี teachers record อยู่แล้ว → update
-        const { error } = await supabase.from('teachers')
-          .update({ username: rawVal, login_email: currentEmail })
-          .eq('id', teacher.id)
-        if (error) throw error
-      } else {
-        // แอดมินยังไม่มี teachers record → สร้างใหม่และผูก profile_id
-        const { error } = await supabase.from('teachers')
-          .insert({ username: rawVal, login_email: currentEmail, profile_id: userId, staff_type: 'แอดมิน' })
-        if (error) throw error
-      }
+      await _upsertAdminProfile({ username: rawVal, login_email: currentEmail })
       _msg('username-msg', `บันทึก username "${rawVal}" สำเร็จ ✅ ใช้ login ได้เลย`, true)
       document.getElementById('adm-username').value = rawVal
     } catch (err) {
