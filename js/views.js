@@ -4255,14 +4255,20 @@ export async function renderAdminProfile() {
   setActiveNav('admin-profile')
   document.getElementById('page-title').textContent = 'โปรไฟล์ของฉัน'
 
-  const { data: { session } } = await supabase.auth.getSession()
-  const userId = session?.user?.id
-  const currentEmail = session?.user?.email ?? ''
-
-  // ดึงข้อมูลชื่อจาก teachers (ถ้ามี)
-  const { data: teacher } = userId
-    ? await supabase.from('teachers').select('id, full_name, image_url').eq('profile_id', userId).maybeSingle().catch(()=>({ data: null }))
-    : { data: null }
+  let userId = null, currentEmail = '', teacher = null
+  try {
+    const { data: sessionData } = await supabase.auth.getSession()
+    userId       = sessionData?.session?.user?.id ?? null
+    currentEmail = sessionData?.session?.user?.email ?? ''
+    if (userId) {
+      const { data } = await supabase
+        .from('teachers')
+        .select('id, full_name, image_url')
+        .eq('profile_id', userId)
+        .maybeSingle()
+      teacher = data ?? null
+    }
+  } catch { /* ไม่ block render */ }
 
   const INPUT = 'w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white'
 
