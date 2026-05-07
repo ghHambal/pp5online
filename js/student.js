@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { getMyStudentProfile } from './student-api.js'
+import { getMyStudentProfile, getMyExamRequests } from './student-api.js'
 import {
   renderStudentOverview,
   renderStudentSubjects,
@@ -40,6 +40,7 @@ async function init() {
   await _loadHeader()
   _bindNav()
   navigate('overview')
+  _startStudentPolling()   // polling 30 วิ
 }
 
 // ─── Load header info ─────────────────────────────────────────────────────────
@@ -174,6 +175,61 @@ window._stuOpenRequest = (classId) => {
   _activeSubjectTab = 'requests'
   _renderSubjectNav('requests')
   renderExamRequestForm(_student, classId)
+}
+
+// ─── Polling: ตรวจสถานะคำร้องทุก 30 วินาที ───────────────────────────────────
+let _lastRequestStatuses = null  // null = ยังไม่เคยโหลด
+
+function _showStuToast(msg, type = 'info') {
+  const colors = { success:'bg-emerald-500', error:'bg-red-500', warning:'bg-amber-500', info:'bg-indigo-500' }
+  const t = document.createElement('div')
+  t.className = `fixed top-4 left-1/2 -translate-x-1/2 z-[999] px-4 py-2.5 rounded-xl text-white text-sm
+                 font-medium shadow-lg ${colors[type]??colors.info}`
+  t.textContent = msg
+  document.body.appendChild(t)
+  setTimeout(() => t.remove(), 3000)
+}
+
+async function _pollStudentRequests() {
+  if (!_student || document.visibilityState !== 'visible') return
+  try {
+    const requests = await getMyExamRequests(_student.id)
+
+    if (_lastRequestStatuses === null) {
+      // load ครั้งแรก — จำสถานะไว้ ไม่ toast
+      _lastRequestStatuses = Object.fromEntries(requests.map(r => [r.id, r.status]))
+      return
+    }
+
+    for (const r of requests) {
+      const prev = _lastRequestStatuses[r.id]
+      if (prev === undefined) {
+        // คำร้องใหม่ที่ยังไม่เคยเห็น (ไม่น่าเกิด แต่ handle ไว้)
+        _lastRequestStatuses[r.id] = r.status
+        continue
+      }
+      if (prev !== r.status) {
+        // สถานะเปลี่ยน!
+        const subj = r.classes?.master_subjects?.subject_name ?? 'รายวิชา'
+        if (r.status === 'approved') {
+          _showStuToast(`✅ คำร้อง "${subj}" ได้รับการอนุมัติแล้ว`, 'success')
+        } else if (r.status === 'rejected') {
+          _showStuToast(`❌ คำร้อง "${subj}" ถูกปฏิเสธ`, 'warning')
+        }
+        _lastRequestStatuses[r.id] = r.status
+      }
+    }
+  } catch { /* ไม่ crash */ }
+}
+
+function _startStudentPolling() {
+  const INTERVAL = 30000
+  setInterval(() => {
+    if (document.visibilityState === 'visible') _pollStudentRequests()
+  }, INTERVAL)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _pollStudentRequests()
+  })
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────

@@ -205,19 +205,39 @@ window._openReadingScorePicker = (roomsJson) => {
   })
 }
 
+let _lastPendingCount = null
+
 async function _updateRequestsBadge() {
   if (!_teacher) return
   try {
     const count = await getPendingExamRequestCount(_teacher.id)
     const badge = document.getElementById('badge-requests')
-    if (!badge) return
-    if (count > 0) {
-      badge.textContent = count > 99 ? '99+' : count
-      badge.classList.remove('hidden')
-    } else {
-      badge.classList.add('hidden')
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : count
+        badge.classList.remove('hidden')
+      } else {
+        badge.classList.add('hidden')
+      }
     }
-  } catch { /* ไม่ crash ถ้า badge โหลดไม่ได้ */ }
+    // แจ้งเตือนถ้ามีคำร้องใหม่เข้ามา (ไม่แจ้งตอน load ครั้งแรก)
+    if (_lastPendingCount !== null && count > _lastPendingCount) {
+      const diff = count - _lastPendingCount
+      showToast(`🔔 มีคำร้องนักเรียนใหม่ ${diff} รายการ`, 'info')
+    }
+    _lastPendingCount = count
+  } catch { /* ไม่ crash */ }
+}
+
+function _startPolling() {
+  const INTERVAL = 30000 // 30 วินาที
+  setInterval(() => {
+    if (document.visibilityState === 'visible') _updateRequestsBadge()
+  }, INTERVAL)
+  // resume ทันทีเมื่อ user กลับมาที่แท็บ
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _updateRequestsBadge()
+  })
 }
 
 function _applyRoleMenus() {
@@ -796,6 +816,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _applyRoleMenus()
   loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
   _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
+  _startPolling()              // polling 30 วิ
 
   // Sidebar nav clicks
   document.querySelectorAll('[data-nav]').forEach(link => {
