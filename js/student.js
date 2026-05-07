@@ -51,13 +51,14 @@ async function _loadHeader() {
   // school logo by class/room: contains "ปวช." = ปวช, otherwise มัธยม
   const roomText = `${_student?.main_room ?? ''} ${_student?.religion_room ?? ''}`
   const isVocStudent = roomText.includes('ปวช.')
-  const logo = isVocStudent
-    ? (cfg.porworLogoUrl || cfg.samaiLogoUrl || cfg.loginLogoUrl || cfg.logoUrl)
-    : (cfg.samaiLogoUrl || cfg.loginLogoUrl || cfg.logoUrl || cfg.porworLogoUrl)
+  const logo = isVocStudent ? cfg.porworLogoUrl : cfg.samaiLogoUrl
   if (logo) {
     document.getElementById('stu-logo').src = logo
     document.getElementById('stu-logo').classList.remove('hidden')
     document.getElementById('stu-logo-fallback').classList.add('hidden')
+  } else {
+    document.getElementById('stu-logo').classList.add('hidden')
+    document.getElementById('stu-logo-fallback').classList.remove('hidden')
   }
   const room = _student?.main_room || _student?.religion_room || '—'
   document.getElementById('stu-school-name').textContent = name
