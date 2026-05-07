@@ -389,7 +389,7 @@ function _openMonitorModal(type, raw, cfg, year, sem, allTeachers = []) {
   if (type === 'reading')   _renderReadingMonitor(body, raw, year, sem, ctx)
 
   m.querySelector('#modal-print-btn').addEventListener('click', () => _printMonitor(cfg, type))
-  m.querySelector('#modal-doc-btn').addEventListener('click', () => _downloadMemo(cfg, type))
+  m.querySelector('#modal-doc-btn').addEventListener('click', () => _downloadMemo(cfg, type, raw))
 }
 
 // helper: สร้าง cell ครูที่ปรึกษา (ชื่อเด่น, ห้องเล็ก, ปุ่มระบุถ้าไม่มี)
@@ -758,90 +758,174 @@ async function _attachHrAssignEvents(container, ctx, onSaved) {
 
 function _printMonitor(cfg, tab) {
   const tabLabel = { prayer:'ละหมาด', lifeskill:'ทักษะชีวิต', reading:'อ่านคิดวิเคราะห์' }[tab] ?? tab
-  const content = document.getElementById('monitor-content')?.innerHTML ?? ''
+  // ดึงเนื้อหาจาก modal-body (ไม่ใช่ monitor-content ที่ไม่มีอยู่จริง)
+  const bodyEl  = document.getElementById('modal-body')
+  if (!bodyEl) { showToast('ไม่พบเนื้อหาสำหรับพิมพ์','error'); return }
+  // clone เพื่อลบ interactive elements (button, select)
+  const clone = bodyEl.cloneNode(true)
+  clone.querySelectorAll('button, select, input').forEach(el => el.remove())
+  const content = clone.innerHTML
+
   const w = window.open('', '_blank')
+  if (!w) { showToast('กรุณาอนุญาต popup ในเบราว์เซอร์','error'); return }
   w.document.write(`<!DOCTYPE html><html lang="th"><head>
     <meta charset="UTF-8"/>
     <title>ติดตามความคืบหน้า — ${tabLabel}</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet"/>
     <style>
-      body { font-family: Sarabun, sans-serif; font-size: 13px; margin: 20px; color: #1f2937; }
-      h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-      p.sub { font-size: 12px; color: #6b7280; margin-bottom: 16px; }
-      table { width: 100%; border-collapse: collapse; font-size: 11px; }
-      th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: center; }
-      th { background: #f9fafb; font-weight: 600; }
-      td:first-child { text-align: left; font-weight: 500; }
-      .bg-emerald-50 { background: #ecfdf5; color: #047857; }
-      .bg-amber-50   { background: #fffbeb; color: #b45309; }
-      .bg-red-50     { background: #fef2f2; color: #dc2626; }
-      @media print { body { margin: 10mm; } }
+      * { box-sizing: border-box; }
+      body { font-family: Sarabun, sans-serif; font-size: 12px; margin: 16px; color: #1f2937; }
+      h2 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+      p { font-size: 12px; color: #6b7280; margin: 2px 0 12px; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 8px 0; }
+      th, td { border: 1px solid #d1d5db; padding: 5px 8px; text-align: center; }
+      th { background: #f3f4f6; font-weight: 600; }
+      td:first-child { text-align: left; }
+      .bg-emerald-50,.bg-emerald-100 { background: #d1fae5 !important; }
+      .bg-amber-50,.bg-amber-100 { background: #fef3c7 !important; }
+      .bg-red-50,.bg-red-100 { background: #fee2e2 !important; }
+      .bg-indigo-50 { background: #e0e7ff !important; }
+      .bg-gray-50,.bg-gray-100 { background: #f9fafb !important; }
+      .hidden { display: none !important; }
+      @media print { @page { margin: 10mm; } body { margin: 0; } }
     </style>
   </head><body>
     <h2>ติดตามความคืบหน้า — ${tabLabel}</h2>
-    <p class="sub">โรงเรียน: ${cfg.samaiSchoolName ?? cfg.schoolName ?? ''} · ภาค ${cfg.semester ?? '—'}/${cfg.academicYear ?? '—'} · พิมพ์: ${new Date().toLocaleDateString('th-TH')}</p>
+    <p>โรงเรียน: ${cfg.samaiSchoolName ?? cfg.schoolName ?? ''} &nbsp;·&nbsp; ภาค ${cfg.semester ?? '—'}/${cfg.academicYear ?? '—'} &nbsp;·&nbsp; พิมพ์: ${new Date().toLocaleDateString('th-TH')}</p>
     ${content}
   </body></html>`)
   w.document.close()
-  setTimeout(() => w.print(), 500)
+  setTimeout(() => w.print(), 600)
 }
 
-function _downloadMemo(cfg, tab) {
-  const tabLabel = { prayer:'ละหมาด', lifeskill:'ทักษะชีวิต', reading:'อ่านคิดวิเคราะห์' }[tab] ?? tab
-  const today = new Date()
-  const dateTH = `${today.getDate()} ${['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'][today.getMonth()]} ${today.getFullYear()+543}`
+// สร้างตารางสรุป "ค้างดำเนินการ" สำหรับ memo จาก raw data
+function _memoTableRows(tab, raw, cfg) {
+  const MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
+  const teacherByRoom = {}
+  for (const ht of (raw?.homerooms ?? [])) {
+    if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? '—'
+  }
+
+  if (tab === 'prayer') {
+    const { roomStudents, weekRoomRec, W } = raw ?? {}
+    if (!roomStudents) return '<p style="color:#6b7280;font-style:italic">ไม่มีข้อมูล</p>'
+    const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
+    const pending = rooms.filter(r => {
+      const t = roomStudents[r].length; if (!t) return false
+      return (weekRoomRec[r]?.[W-1]?.size ?? 0) < t
+    })
+    if (!pending.length) return '<p style="color:#047857">✅ ทุกห้องบันทึกข้อมูลครบถ้วนแล้ว</p>'
+    const rows = pending.map((r, i) => {
+      const t = roomStudents[r].length
+      const d = weekRoomRec[r]?.[W-1]?.size ?? 0
+      return `<tr>
+        <td>${i+1}</td>
+        <td>${teacherByRoom[r] ?? '—'}</td>
+        <td>${r}</td>
+        <td>${t}</td>
+        <td>${d}</td>
+        <td style="color:#dc2626">${t-d}</td>
+      </tr>`
+    }).join('')
+    return `<table>
+      <thead><tr><th>ที่</th><th>ครูที่ปรึกษา</th><th>ห้อง</th><th>นักเรียน</th><th>บันทึกแล้ว</th><th>ค้าง</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="font-size:11px;color:#6b7280">* ข้อมูลสัปดาห์ที่ ${(W??0)-1} ณ วันที่ ${new Date().toLocaleDateString('th-TH')}</p>`
+  }
+
+  // lifeskill / reading
+  const { roomStudents, scored } = raw ?? {}
+  if (!roomStudents) return '<p style="color:#6b7280;font-style:italic">ไม่มีข้อมูล</p>'
+  const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
+  const pending = rooms.filter(r => {
+    const stuList = roomStudents[r] ?? []
+    return stuList.length > 0 && !stuList.every(s => scored.has(s.id ?? s))
+  })
+  if (!pending.length) return '<p style="color:#047857">✅ ทุกห้องกรอกคะแนนครบถ้วนแล้ว</p>'
+  const rows = pending.map((r, i) => {
+    const stuList = roomStudents[r] ?? []
+    const done = stuList.filter(s => scored.has(s.id ?? s)).length
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${teacherByRoom[r] ?? '—'}</td>
+      <td>${r}</td>
+      <td>${stuList.length}</td>
+      <td>${done}</td>
+      <td style="color:#dc2626">${stuList.length - done}</td>
+    </tr>`
+  }).join('')
+  return `<table>
+    <thead><tr><th>ที่</th><th>ครูที่ปรึกษา</th><th>ห้อง</th><th>นักเรียน</th><th>กรอกแล้ว</th><th>ค้าง</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p style="font-size:11px;color:#6b7280">* ภาคเรียนที่ ${cfg.semester??'—'}/${cfg.academicYear??'—'} ณ วันที่ ${new Date().toLocaleDateString('th-TH')}</p>`
+}
+
+function _downloadMemo(cfg, tab, raw) {
+  const tabLabel  = { prayer:'ละหมาด', lifeskill:'ทักษะชีวิต', reading:'อ่านคิดวิเคราะห์' }[tab] ?? tab
+  const today     = new Date()
+  const MONTHS    = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
+  const dateTH    = `${today.getDate()} ${MONTHS[today.getMonth()]} ${today.getFullYear()+543}`
   const schoolName = cfg.samaiSchoolName ?? cfg.schoolName ?? 'โรงเรียน'
-  const content = document.getElementById('monitor-content')?.innerHTML ?? ''
+  const tableContent = _memoTableRows(tab, raw, cfg)
 
   const html = `<!DOCTYPE html><html lang="th"><head>
     <meta charset="UTF-8"/>
-    <title>บันทึกข้อความ</title>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet"/>
+    <title>บันทึกข้อความ — ${tabLabel}</title>
     <style>
-      body { font-family: Sarabun, sans-serif; font-size: 14px; margin: 25mm 20mm; color: #000; line-height: 1.8; }
-      .header { text-align: center; margin-bottom: 24px; }
-      .header h1 { font-size: 18px; font-weight: 700; margin: 0; }
-      .header p { font-size: 14px; margin: 2px 0; }
-      .fields { margin-bottom: 20px; }
-      .field { display: flex; gap: 8px; margin-bottom: 4px; }
-      .field-label { min-width: 80px; font-weight: 600; }
-      .body-text { margin-bottom: 16px; text-indent: 2em; }
-      table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; }
-      th, td { border: 1px solid #999; padding: 5px 8px; }
-      th { background: #f5f5f5; font-weight: 600; }
-      .signature { margin-top: 40px; text-align: right; }
-      @media print { body { margin: 15mm; } }
+      * { box-sizing: border-box; }
+      body { font-family: 'TH Sarabun New', Sarabun, sans-serif; font-size: 16pt; margin: 25.4mm 25.4mm 25.4mm 30mm; color: #000; line-height: 1.8; }
+      .doc-title { text-align: center; font-size: 18pt; font-weight: bold; margin-bottom: 6px; border-bottom: 2px solid #000; padding-bottom: 6px; }
+      .doc-school { text-align: center; font-size: 14pt; margin-bottom: 20px; }
+      .fields { margin-bottom: 16px; }
+      .field { display: flex; margin-bottom: 6px; }
+      .field-label { min-width: 90px; font-weight: bold; }
+      .field-val { flex: 1; border-bottom: 1px dotted #999; padding-bottom: 2px; }
+      p.indent { text-indent: 2.5em; margin: 8px 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 13pt; margin: 12px 0; }
+      th, td { border: 1px solid #333; padding: 5px 10px; text-align: center; }
+      th { background: #e5e5e5; font-weight: bold; }
+      td:nth-child(2) { text-align: left; }
+      td:nth-child(3) { text-align: left; }
+      .sign-block { margin-top: 48px; text-align: center; float: right; width: 280px; }
+      .sign-line { border-bottom: 1px solid #000; width: 240px; margin: 0 auto 4px; height: 28px; }
+      @media print { @page { size: A4; margin: 20mm 20mm 20mm 25mm; } body { margin: 0; } }
     </style>
   </head><body>
-    <div class="header">
-      <h1>บันทึกข้อความ</h1>
-      <p>${schoolName}</p>
-    </div>
+    <div class="doc-title">บันทึกข้อความ</div>
+    <div class="doc-school">${schoolName}</div>
     <div class="fields">
-      <div class="field"><span class="field-label">ที่</span><span>______/______</span></div>
-      <div class="field"><span class="field-label">วันที่</span><span>${dateTH}</span></div>
-      <div class="field"><span class="field-label">เรื่อง</span><span>ขอให้เร่งดำเนินการกรอกข้อมูล${tabLabel}ในระบบ ปพ.5 ออนไลน์</span></div>
-      <div class="field"><span class="field-label">เรียน</span><span>ครูผู้รับผิดชอบที่ยังไม่ดำเนินการ</span></div>
+      <div class="field"><span class="field-label">ที่&nbsp;&nbsp;</span><span class="field-val">&nbsp;</span></div>
+      <div class="field"><span class="field-label">วันที่&nbsp;&nbsp;</span><span class="field-val">${dateTH}</span></div>
+      <div class="field"><span class="field-label">เรื่อง&nbsp;&nbsp;</span><span class="field-val">รายงานความคืบหน้าการบันทึกข้อมูล${tabLabel} ภาคเรียนที่ ${cfg.semester??'—'} ปีการศึกษา ${cfg.academicYear??'—'}</span></div>
+      <div class="field"><span class="field-label">เรียน&nbsp;&nbsp;</span><span class="field-val">ผู้อำนวยการโรงเรียน${schoolName}</span></div>
     </div>
-    <p class="body-text">ตามที่โรงเรียน${schoolName} ได้ใช้ระบบ ปพ.5 ออนไลน์ ในการบันทึกข้อมูล${tabLabel} ภาคเรียนที่ ${cfg.semester ?? '—'} ปีการศึกษา ${cfg.academicYear ?? '—'} นั้น</p>
-    <p class="body-text">บัดนี้ ปรากฏว่ายังมีครูผู้รับผิดชอบบางส่วนที่ยังไม่ได้ดำเนินการกรอกข้อมูลตามที่กำหนด ดังรายละเอียดต่อไปนี้</p>
-    ${content}
-    <p class="body-text" style="margin-top:16px">จึงขอให้ครูผู้รับผิดชอบดำเนินการกรอกข้อมูลดังกล่าวให้แล้วเสร็จโดยเร็ว หากมีข้อสงสัยประการใดโปรดติดต่อฝ่ายวิชาการ</p>
-    <div class="signature">
-      <p>ลงชื่อ .....................................................</p>
-      <p>( ...................................................... )</p>
-      <p>ตำแหน่ง .................................................</p>
-      <p>${dateTH}</p>
+    <hr style="border:none;border-top:1px solid #ccc;margin:12px 0"/>
+    <p class="indent">ตามที่โรงเรียน${schoolName} ได้ใช้ระบบ ปพ.5 ออนไลน์ ในการบันทึกข้อมูล${tabLabel}ของนักเรียน
+ภาคเรียนที่ ${cfg.semester??'—'} ปีการศึกษา ${cfg.academicYear??'—'} นั้น</p>
+    <p class="indent">บัดนี้ ฝ่ายวิชาการได้ตรวจสอบสถานะการดำเนินงาน ณ วันที่ ${dateTH}
+พบว่ายังมีครูที่ปรึกษาบางห้องที่ยังไม่ได้ดำเนินการกรอกข้อมูล ดังรายละเอียดต่อไปนี้</p>
+    ${tableContent}
+    <p class="indent">จึงเรียนมาเพื่อโปรดทราบ และขอให้ผู้เกี่ยวข้องเร่งดำเนินการกรอกข้อมูลให้แล้วเสร็จ
+ภายในระยะเวลาที่กำหนด หากมีข้อสงสัยประการใดโปรดติดต่อฝ่ายวิชาการโดยตรง</p>
+    <div class="sign-block">
+      <p style="margin:0 0 4px">ลงชื่อ</p>
+      <div class="sign-line"></div>
+      <p style="margin:0">(....................................)</p>
+      <p style="margin:4px 0 0">ตำแหน่ง .....................................</p>
+      <p style="margin:4px 0 0">${dateTH}</p>
     </div>
+    <div style="clear:both"></div>
   </body></html>`
 
-  const blob = new Blob([html], { type: 'application/msword' })
+  const blob = new Blob(['﻿' + html], { type: 'application/msword;charset=utf-8' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href = url
-  a.download = `บันทึกข้อความ_${tabLabel}_${cfg.academicYear ?? ''}.doc`
+  a.download = `บันทึกข้อความ_${tabLabel}_${cfg.academicYear ?? new Date().getFullYear()+543}.doc`
   a.click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 
 // ─── View: Teachers ───────────────────────────────────────────────────────────
