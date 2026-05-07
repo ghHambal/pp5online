@@ -4264,7 +4264,7 @@ export async function renderAdminProfile() {
     if (userId) {
       const { data } = await supabase
         .from('teachers')
-        .select('id, full_name, image_url')
+        .select('id, full_name, image_url, username, login_email')
         .eq('profile_id', userId)
         .maybeSingle()
       teacher = data ?? null
@@ -4299,6 +4299,24 @@ export async function renderAdminProfile() {
         บันทึกชื่อ
       </button>
       <div id="name-msg" class="hidden text-xs text-center mt-2 py-2 rounded-lg"></div>
+    </div>
+
+    <!-- ตั้ง Username -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
+      <h3 class="font-semibold text-gray-700 mb-1 text-sm">🔑 ยูเซอร์เนม (สำหรับ login)</h3>
+      ${teacher?.username
+        ? `<p class="text-xs text-gray-400 mb-3">ปัจจุบัน: <span class="font-medium text-gray-700 font-mono">${teacher.username}</span></p>`
+        : `<p class="text-xs text-amber-500 mb-3">⚠️ ยังไม่ได้ตั้งยูเซอร์เนม — ตั้งเพื่อ login โดยไม่ต้องใช้อีเมล</p>`}
+      <input id="adm-username" type="text" value="${teacher?.username ?? ''}"
+        placeholder="เช่น admin.school (a-z, 0-9, ., -, _ เท่านั้น)"
+        autocomplete="username"
+        class="${INPUT} mb-1 font-mono lowercase" maxlength="32" />
+      <p class="text-[11px] text-gray-400 mb-3">3–32 ตัว ใช้ได้เฉพาะ a-z, 0-9, จุด, ขีดกลาง, ขีดล่าง</p>
+      <button id="btn-save-username"
+        class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+        บันทึก Username
+      </button>
+      <div id="username-msg" class="hidden text-xs text-center mt-2 py-2 rounded-lg"></div>
     </div>
 
     <!-- แก้ไขอีเมล -->
@@ -4352,6 +4370,45 @@ export async function renderAdminProfile() {
       document.getElementById('user-name')?.textContent && (document.getElementById('user-name').textContent = name)
     } catch (err) { _msg('name-msg', 'บันทึกไม่สำเร็จ: ' + (err.message ?? ''), false) }
     finally { btn.disabled = false; btn.textContent = 'บันทึกชื่อ' }
+  })
+
+  // บันทึก Username
+  document.getElementById('btn-save-username').addEventListener('click', async () => {
+    const btn      = document.getElementById('btn-save-username')
+    const rawVal   = document.getElementById('adm-username').value.trim().toLowerCase()
+    const valid    = /^[a-z0-9._-]{3,32}$/.test(rawVal)
+    if (!rawVal)  { _msg('username-msg', 'กรุณากรอก username', false); return }
+    if (!valid)   { _msg('username-msg', 'username ต้องมี 3–32 ตัว ใช้ได้เฉพาะ a-z 0-9 . - _', false); return }
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      if (teacher?.id) {
+        // มี teachers record อยู่แล้ว → update
+        const { error } = await supabase.from('teachers')
+          .update({ username: rawVal, login_email: currentEmail })
+          .eq('id', teacher.id)
+        if (error) throw error
+      } else {
+        // แอดมินยังไม่มี teachers record → สร้างใหม่และผูก profile_id
+        const { error } = await supabase.from('teachers')
+          .insert({ username: rawVal, login_email: currentEmail, profile_id: userId, staff_type: 'แอดมิน' })
+        if (error) throw error
+      }
+      _msg('username-msg', `บันทึก username "${rawVal}" สำเร็จ ✅ ใช้ login ได้เลย`, true)
+      document.getElementById('adm-username').value = rawVal
+    } catch (err) {
+      const msg = err.message?.includes('unique') || err.message?.includes('duplicate')
+        ? `username "${rawVal}" ถูกใช้แล้ว — ลองชื่ออื่น`
+        : 'บันทึกไม่สำเร็จ: ' + (err.message ?? '')
+      _msg('username-msg', msg, false)
+    }
+    finally { btn.disabled = false; btn.textContent = 'บันทึก Username' }
+  })
+
+  // force lowercase ขณะพิมพ์
+  document.getElementById('adm-username').addEventListener('input', e => {
+    const pos = e.target.selectionStart
+    e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '')
+    e.target.setSelectionRange(pos, pos)
   })
 
   // เปลี่ยนอีเมล
