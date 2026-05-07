@@ -47,8 +47,12 @@ async function _loadHeader() {
   const cfg = await getSystemConfig().catch(()=>({}))
   const name = _student?.full_name ?? 'นักเรียน'
 
-  // school logo
-  const logo = cfg.loginLogoUrl || cfg.logoUrl || cfg.samaiLogoUrl || cfg.porworLogoUrl
+  // school logo by student affiliation
+  const roomForLogo = _student?.main_room || _student?.religion_room || ''
+  const isVocStudent = /ปวช|อป\.?|voc/i.test(roomForLogo)
+  const logo = isVocStudent
+    ? (cfg.porworLogoUrl || cfg.samaiLogoUrl || cfg.loginLogoUrl || cfg.logoUrl)
+    : (cfg.samaiLogoUrl || cfg.loginLogoUrl || cfg.logoUrl || cfg.porworLogoUrl)
   if (logo) {
     document.getElementById('stu-logo').src = logo
     document.getElementById('stu-logo').classList.remove('hidden')

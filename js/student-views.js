@@ -294,10 +294,41 @@ export async function renderStudentSubjects(student) {
     return ( cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC' )
   })
 
+  const viewMode = localStorage.getItem('studentSubjectsView') === 'grid' ? 'grid' : 'list'
+  const isGrid = viewMode === 'grid'
+
+  window._stuSetSubjectView = (mode) => {
+    localStorage.setItem('studentSubjectsView', mode === 'grid' ? 'grid' : 'list')
+    renderStudentSubjects(student)
+  }
+
   const _renderCard = (cls) => {
     const ms = cls.master_subjects
     const teacher = ms?.teachers
     const meta = _subjectGroupMeta(cls, themeCfg)
+    if (isGrid) {
+      return `<button onclick="window._stuOpenClass(${cls.id})"
+        class="min-h-[132px] border border-l-4 rounded-2xl shadow-sm p-2.5 text-left cursor-pointer hover:shadow-md transition overflow-hidden"
+        style="background:${meta.bg}; border-color:${meta.border}; border-left-color:${meta.color};">
+        <div class="h-full flex flex-col">
+          <div class="flex items-start justify-between gap-1">
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-semibold max-w-full truncate"
+              style="background:${meta.badgeBg}; color:${meta.text};">${meta.short}</span>
+          </div>
+          <div class="mt-2 min-w-0">
+            <p class="font-bold text-[12px] leading-tight line-clamp-2" style="color:${meta.text};">${ms?.subject_name ?? '—'}</p>
+            <p class="text-[10px] text-gray-400 mt-0.5 font-mono truncate">${ms?.subject_code ?? ''}</p>
+            <p class="text-[10px] text-gray-500 mt-1 truncate">${cls.class_name ?? ''}</p>
+          </div>
+          <div class="mt-auto pt-2 flex items-center gap-1.5 min-w-0">
+            ${teacher?.image_url
+              ? `<img src="${teacher.image_url}" class="w-5 h-5 rounded-full object-cover flex-shrink-0"/>`
+              : `<div class="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px] text-gray-600 font-medium flex-shrink-0">${(teacher?.full_name??'ค').charAt(0)}</div>`}
+            <span class="text-[10px] text-gray-500 truncate">${teacher?.full_name ?? '—'}</span>
+          </div>
+        </div>
+      </button>`
+    }
     return `<div onclick="window._stuOpenClass(${cls.id})"
       class="border border-l-4 rounded-2xl shadow-sm p-4 cursor-pointer hover:shadow-md transition"
       style="background:${meta.bg}; border-color:${meta.border}; border-left-color:${meta.color};">
@@ -334,14 +365,22 @@ export async function renderStudentSubjects(student) {
           <h3 class="font-bold text-gray-700 text-sm">${title}</h3>
           <span class="ml-1 text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">${items.length} วิชา</span>
         </div>
-        <div class="space-y-3">
+        <div class="${isGrid ? 'grid grid-cols-3 gap-2' : 'space-y-3'}">
           ${items.map(_renderCard).join('')}
         </div>
       </div>`
   }
 
   setContent(`
-    <h2 class="font-bold text-gray-800 mb-4">📚 รายวิชาของฉัน <span class="text-sm font-normal text-gray-400">(${classes.length} วิชา)</span></h2>
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <h2 class="font-bold text-gray-800">📚 รายวิชาของฉัน <span class="text-sm font-normal text-gray-400">(${classes.length} วิชา)</span></h2>
+      <div class="flex items-center bg-gray-100 rounded-xl p-1 flex-shrink-0">
+        <button type="button" onclick="window._stuSetSubjectView('list')"
+          class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${!isGrid ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-400'}">แถบ</button>
+        <button type="button" onclick="window._stuSetSubjectView('grid')"
+          class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${isGrid ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-400'}">กริด</button>
+      </div>
+    </div>
     ${_renderSection('วิชาสามัญ', '📖', samai)}
     ${_renderSection('วิชาศาสนา', '🕌', satsana)}
   `)
