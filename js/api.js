@@ -677,6 +677,32 @@ export async function deleteSubject(id) {
   if (error) throw error
 }
 
+// ─── Course PP5 Document Page 2 ───────────────────────────────────────────────
+export async function getCourseDocPage2(subjectId) {
+  const { data, error } = await supabase
+    .from('course_doc_page2')
+    .select('*')
+    .eq('subject_id', subjectId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function saveCourseDocPage2(subjectId, payload) {
+  const row = {
+    subject_id: subjectId,
+    ...payload,
+    updated_at: new Date().toISOString(),
+  }
+  const { data, error } = await supabase
+    .from('course_doc_page2')
+    .upsert(row, { onConflict: 'subject_id' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 // ─── Academic Registry ────────────────────────────────────────────────────────
 export async function getRegistry(semester, academicYear) {
   const { data, error } = await supabase

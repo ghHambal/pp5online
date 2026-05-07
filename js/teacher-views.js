@@ -15,6 +15,7 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
          getReadingScoreColumns, getReadingScores, upsertReadingScore,
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
+         getCourseDocPage2, saveCourseDocPage2,
          getTeacherExamRequests, reviewExamRequest, updateExamResult } from './api.js'
 import { supabase } from './supabase.js'
 
@@ -361,6 +362,10 @@ export async function renderMyCourses(teacher) {
                     class="text-xs bg-emerald-600 text-white px-2 py-1.5 rounded-lg hover:bg-emerald-700">
                     ＋ห้อง
                   </button>
+                  <button onclick="window._openCourseDocPage2(${s.id})"
+                    class="text-xs text-emerald-700 hover:text-emerald-900 font-medium px-2 py-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50">
+                    คำอธิบายฯ
+                  </button>
                   <button onclick="window._editCourse(${s.id})"
                     class="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1.5 border border-indigo-200 rounded-lg">
                     แก้ไข
@@ -378,6 +383,275 @@ export async function renderMyCourses(teacher) {
     </div>`)
   } catch { showToast('โหลดข้อมูลไม่สำเร็จ','error') }
 
+}
+
+export async function openCourseDocPage2Modal(teacher, course) {
+  const existing = await getCourseDocPage2(course.id).catch(err => {
+    showToast('โหลดคำอธิบายฯ ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    return null
+  })
+
+  const normalizeColumns = value => {
+    const cols = Array.isArray(value) ? value : ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด']
+    return cols.length ? cols.map(c => String(c ?? '')) : ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด']
+  }
+  const normalizeRows = (value, colCount) => {
+    const rows = Array.isArray(value) ? value : []
+    const fixed = rows.map(row => {
+      const cells = Array.isArray(row) ? row : Object.values(row ?? {})
+      return Array.from({ length: colCount }, (_, i) => String(cells[i] ?? ''))
+    })
+    return fixed.length ? fixed : Array.from({ length: 12 }, () => Array.from({ length: colCount }, () => ''))
+  }
+  const uniqueInts = value => [...new Set((Array.isArray(value) ? value : [])
+    .map(n => parseInt(n, 10)).filter(n => Number.isFinite(n) && n > 0))]
+
+  let columns = normalizeColumns(existing?.table_columns)
+  let rows = normalizeRows(existing?.table_rows, columns.length)
+  let midItems = uniqueInts(existing?.midterm_objective_items)
+  let finalItems = uniqueInts(existing?.final_objective_items)
+  let textDir = ['auto', 'rtl', 'ltr'].includes(existing?.text_direction) ? existing.text_direction : 'auto'
+  let description = existing?.description || ''
+  let signerName = existing?.signer_name || course.learning_area || ''
+
+  document.getElementById('course-doc-page2-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'course-doc-page2-modal'
+  modal.className = 'fixed inset-0 z-[160] bg-white flex flex-col'
+  document.body.appendChild(modal)
+
+  const dirAttr = () => textDir === 'auto' ? 'auto' : textDir
+  const selectedText = items => items.length ? [...items].sort((a, b) => a - b).join(', ') : 'ยังไม่เลือก'
+  const objectiveOptions = () => {
+    const max = rows.length
+    return Array.from({ length: max }, (_, i) => i + 1)
+      .filter(n => rows[n - 1]?.some(cell => String(cell ?? '').trim()))
+  }
+
+  const render = () => {
+    const opts = objectiveOptions()
+    modal.innerHTML = `
+      <div class="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="text-lg sm:text-xl font-bold text-gray-800">คำอธิบายฯ</h2>
+          <p class="text-xs text-gray-400 truncate">${_htmlEsc(course.subject_name)} · ${_htmlEsc(course.subject_code || '—')} · ใช้ร่วมทุกห้องในคอร์สนี้</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="cd2-close" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50">ปิด</button>
+          <button id="cd2-save" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">บันทึก</button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto bg-gray-50">
+        <div class="max-w-6xl mx-auto p-4 sm:p-6 space-y-4">
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
+            <div class="grid md:grid-cols-[1fr_220px] gap-4">
+              <label class="block">
+                <span class="block text-sm font-semibold text-gray-700 mb-2">คำอธิบายรายวิชา / ผลการเรียนรู้ภาพรวม</span>
+                <textarea id="cd2-description" rows="5" dir="${dirAttr()}"
+                  class="${INPUT_CLS} min-h-[132px] leading-7"
+                  placeholder="พิมพ์ภาษาไทย อาหรับ หรือภาษาอื่นได้ ระบบจะรองรับทิศทางข้อความอัตโนมัติ">${_htmlEsc(description)}</textarea>
+              </label>
+              <div class="space-y-3">
+                <label class="block">
+                  <span class="block text-sm font-semibold text-gray-700 mb-2">ทิศทางข้อความ</span>
+                  <select id="cd2-dir" class="${SELECT_CLS}">
+                    <option value="auto" ${textDir === 'auto' ? 'selected' : ''}>อัตโนมัติ</option>
+                    <option value="rtl" ${textDir === 'rtl' ? 'selected' : ''}>ขวาไปซ้าย (Arabic)</option>
+                    <option value="ltr" ${textDir === 'ltr' ? 'selected' : ''}>ซ้ายไปขวา</option>
+                  </select>
+                </label>
+                <label class="block">
+                  <span class="block text-sm font-semibold text-gray-700 mb-2">ผู้ลงนาม</span>
+                  <input id="cd2-signer" class="${INPUT_CLS}" value="${_htmlEsc(signerName)}" placeholder="หัวหน้ากลุ่มสาระ" />
+                  <p class="text-xs text-gray-400 mt-1">ใช้ตำแหน่งหัวหน้ากลุ่มสาระในเอกสาร</p>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="font-bold text-gray-800">มาตรฐาน / ตัวชี้วัด / ผลการเรียนรู้</h3>
+                <p class="text-xs text-gray-400 mt-0.5">เลขแถวที่มีข้อความจะกลายเป็นตัวเลือก “ข้อที่” สำหรับกลางภาคและปลายภาค</p>
+              </div>
+              <div class="flex gap-2">
+                <button id="cd2-add-col" class="px-3 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-50">+ คอลัมน์</button>
+                <button id="cd2-add-row" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">+ แถว</button>
+              </div>
+            </div>
+            <div class="overflow-auto">
+              <table class="w-full min-w-[780px] border-collapse text-sm">
+                <thead>
+                  <tr class="bg-gray-50">
+                    <th class="w-14 px-3 py-2 border border-gray-100 text-gray-500">ข้อ</th>
+                    ${columns.map((c, i) => `
+                      <th class="min-w-[240px] px-2 py-2 border border-gray-100">
+                        <div class="flex items-center gap-2">
+                          <input data-col="${i}" class="cd2-col ${INPUT_CLS} py-2 font-semibold" value="${_htmlEsc(c)}" dir="${dirAttr()}" />
+                          ${columns.length > 1 ? `<button data-del-col="${i}" class="cd2-del-col text-red-400 hover:text-red-600 px-1" title="ลบคอลัมน์">×</button>` : ''}
+                        </div>
+                      </th>`).join('')}
+                    <th class="w-16 px-2 py-2 border border-gray-100"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((row, r) => `
+                    <tr>
+                      <td class="px-3 py-2 border border-gray-100 text-center font-semibold text-gray-500">${r + 1}</td>
+                      ${columns.map((_, c) => `
+                        <td class="p-1 border border-gray-100 align-top">
+                          <textarea data-row="${r}" data-cell="${c}" rows="2" dir="${dirAttr()}"
+                            class="cd2-cell w-full min-h-[58px] resize-y rounded-lg border border-transparent px-3 py-2 text-sm leading-6 focus:border-emerald-300 focus:outline-none">${_htmlEsc(row[c] || '')}</textarea>
+                        </td>`).join('')}
+                      <td class="px-2 py-2 border border-gray-100 text-center">
+                        <button data-del-row="${r}" class="cd2-del-row text-xs text-red-400 hover:text-red-600">ลบ</button>
+                      </td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
+            <h3 class="font-bold text-gray-800 mb-3">จุดประสงค์วัดผล</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <button id="cd2-pick-mid" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
+                <p class="text-sm font-semibold text-gray-700">จุดประสงค์วัดผลกลางภาค ข้อที่</p>
+                <p class="mt-2 text-lg font-bold text-emerald-700">${_htmlEsc(selectedText(midItems))}</p>
+              </button>
+              <button id="cd2-pick-final" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
+                <p class="text-sm font-semibold text-gray-700">จุดประสงค์วัดผลปลายภาค ข้อที่</p>
+                <p class="mt-2 text-lg font-bold text-emerald-700">${_htmlEsc(selectedText(finalItems))}</p>
+              </button>
+            </div>
+            ${opts.length ? '' : `<p class="text-xs text-amber-600 mt-3">ยังไม่มีข้อให้เลือก กรุณาพิมพ์ข้อมูลอย่างน้อย 1 แถวในตารางด้านบน</p>`}
+          </div>
+        </div>
+      </div>`
+
+    wireEvents()
+  }
+
+  const syncFromDom = () => {
+    description = modal.querySelector('#cd2-description')?.value ?? ''
+    signerName = modal.querySelector('#cd2-signer')?.value ?? ''
+    textDir = modal.querySelector('#cd2-dir')?.value ?? textDir
+    modal.querySelectorAll('.cd2-col').forEach(input => {
+      columns[Number(input.dataset.col)] = input.value
+    })
+    modal.querySelectorAll('.cd2-cell').forEach(input => {
+      const r = Number(input.dataset.row)
+      const c = Number(input.dataset.cell)
+      if (!rows[r]) rows[r] = Array.from({ length: columns.length }, () => '')
+      rows[r][c] = input.value
+    })
+    return { desc: description, signer: signerName }
+  }
+
+  const openPicker = kind => {
+    syncFromDom()
+    const current = kind === 'mid' ? midItems : finalItems
+    const opts = objectiveOptions()
+    if (!opts.length) { showToast('กรุณาพิมพ์รายการในตารางก่อน', 'warning'); return }
+    document.getElementById('cd2-picker')?.remove()
+    const picker = document.createElement('div')
+    picker.id = 'cd2-picker'
+    picker.className = 'fixed inset-0 z-[180] flex items-center justify-center bg-black/40 p-4'
+    picker.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 class="font-bold text-gray-800">${kind === 'mid' ? 'เลือกข้อกลางภาค' : 'เลือกข้อปลายภาค'}</h3>
+          <button id="cd2-picker-close" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        </div>
+        <div class="p-5 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[55vh] overflow-y-auto">
+          ${opts.map(n => `
+            <label class="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold hover:bg-emerald-50">
+              <input type="checkbox" class="cd2-choice accent-emerald-600" value="${n}" ${current.includes(n) ? 'checked' : ''}>
+              ${n}
+            </label>`).join('')}
+        </div>
+        <div class="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+          <button id="cd2-picker-cancel" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm">ยกเลิก</button>
+          <button id="cd2-picker-ok" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold">ตกลง</button>
+        </div>
+      </div>`
+    document.body.appendChild(picker)
+    const close = () => picker.remove()
+    picker.querySelector('#cd2-picker-close').addEventListener('click', close)
+    picker.querySelector('#cd2-picker-cancel').addEventListener('click', close)
+    picker.querySelector('#cd2-picker-ok').addEventListener('click', () => {
+      const picked = [...picker.querySelectorAll('.cd2-choice:checked')].map(el => Number(el.value))
+      if (kind === 'mid') midItems = picked
+      else finalItems = picked
+      close()
+      render()
+    })
+  }
+
+  const wireEvents = () => {
+    modal.querySelector('#cd2-close').addEventListener('click', () => modal.remove())
+    modal.querySelector('#cd2-dir').addEventListener('change', e => {
+      syncFromDom()
+      textDir = e.target.value
+      render()
+    })
+    modal.querySelector('#cd2-add-col').addEventListener('click', () => {
+      syncFromDom()
+      columns.push(`คอลัมน์ ${columns.length + 1}`)
+      rows = rows.map(row => [...row, ''])
+      render()
+    })
+    modal.querySelector('#cd2-add-row').addEventListener('click', () => {
+      syncFromDom()
+      rows.push(Array.from({ length: columns.length }, () => ''))
+      render()
+    })
+    modal.querySelectorAll('.cd2-del-col').forEach(btn => btn.addEventListener('click', () => {
+      syncFromDom()
+      const idx = Number(btn.dataset.delCol)
+      columns.splice(idx, 1)
+      rows = rows.map(row => row.filter((_, i) => i !== idx))
+      render()
+    }))
+    modal.querySelectorAll('.cd2-del-row').forEach(btn => btn.addEventListener('click', () => {
+      syncFromDom()
+      const idx = Number(btn.dataset.delRow)
+      rows.splice(idx, 1)
+      midItems = midItems.filter(n => n !== idx + 1).map(n => n > idx + 1 ? n - 1 : n)
+      finalItems = finalItems.filter(n => n !== idx + 1).map(n => n > idx + 1 ? n - 1 : n)
+      render()
+    }))
+    modal.querySelector('#cd2-pick-mid').addEventListener('click', () => openPicker('mid'))
+    modal.querySelector('#cd2-pick-final').addEventListener('click', () => openPicker('final'))
+    modal.querySelector('#cd2-save').addEventListener('click', async () => {
+      const { desc, signer } = syncFromDom()
+      const btn = modal.querySelector('#cd2-save')
+      btn.disabled = true
+      btn.textContent = 'กำลังบันทึก...'
+      try {
+        await saveCourseDocPage2(course.id, {
+          description: desc,
+          table_columns: columns.map((c, i) => c.trim() || `คอลัมน์ ${i + 1}`),
+          table_rows: rows.map(row => row.slice(0, columns.length)),
+          midterm_objective_items: midItems,
+          final_objective_items: finalItems,
+          signer_name: signer.trim() || null,
+          text_direction: textDir,
+          updated_by: teacher?.id ?? null,
+        })
+        showToast('บันทึกคำอธิบายฯ สำเร็จ', 'success')
+        modal.remove()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+        btn.textContent = 'บันทึก'
+      }
+    })
+  }
+
+  render()
 }
 
 // ─── Course Registration Form (2.1) ──────────────────────────────────────────

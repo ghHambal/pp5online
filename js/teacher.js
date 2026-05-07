@@ -13,7 +13,7 @@ import {
   renderMyClasses, renderAttendance, renderGrades,
   renderRequests, renderSchedule, renderProfile, renderClassForm,
   renderLifeSkillScore, renderReadingScore, renderPrayerScore,
-  renderProfileSetup, renderScheduleBuilder,
+  renderProfileSetup, renderScheduleBuilder, openCourseDocPage2Modal,
 } from './teacher-views.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
@@ -324,6 +324,15 @@ window._openRegisterClass = async (courseId) => {
   }
 
   renderClassForm(_teacher, course)
+}
+
+window._openCourseDocPage2 = async (courseId) => {
+  const subjects = _teacher
+    ? await getMySubjects(_teacher.id).catch(()=>[])
+    : await getMasterSubjects().catch(()=>[])
+  const course = subjects.find(s => s.id === courseId)
+  if (!course) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
+  await openCourseDocPage2Modal(_teacher, course)
 }
 
 // ── หน้า 1: เลือกแพ็กเกจ ────────────────────────────────────────────────────
