@@ -477,6 +477,8 @@ export async function openCourseDocPage2Modal(teacher, course) {
                 <p class="text-xs text-gray-400 mt-0.5">เลขแถวที่มีข้อความจะกลายเป็นตัวเลือก “ข้อที่” สำหรับกลางภาคและปลายภาค</p>
               </div>
               <div class="flex gap-2">
+                <button id="cd2-template-basic" class="px-3 py-2 rounded-xl border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50">พื้นฐาน 2 คอลัมน์</button>
+                <button id="cd2-template-extra" class="px-3 py-2 rounded-xl border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50">เพิ่มเติม 1 คอลัมน์</button>
                 <button id="cd2-add-col" class="px-3 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-50">+ คอลัมน์</button>
                 <button id="cd2-add-row" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">+ แถว</button>
               </div>
@@ -596,6 +598,25 @@ export async function openCourseDocPage2Modal(teacher, course) {
       syncFromDom()
       textDir = e.target.value
       render()
+    })
+    const applyTemplate = nextColumns => {
+      syncFromDom()
+      const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim()))
+      if (hasContent && !confirm('เปลี่ยนรูปแบบคอลัมน์หรือไม่? ข้อมูลเดิมจะถูกจัดให้เข้ากับคอลัมน์ใหม่')) return
+      const oldRows = rows
+      columns = nextColumns
+      rows = oldRows.map(row => {
+        if (nextColumns.length === 1) return [row.filter(Boolean).join(' ').trim()]
+        return Array.from({ length: nextColumns.length }, (_, i) => row[i] ?? '')
+      })
+      if (!rows.length) rows = Array.from({ length: 12 }, () => Array.from({ length: columns.length }, () => ''))
+      render()
+    }
+    modal.querySelector('#cd2-template-basic').addEventListener('click', () => {
+      applyTemplate(['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'])
+    })
+    modal.querySelector('#cd2-template-extra').addEventListener('click', () => {
+      applyTemplate(['ผลการเรียนรู้'])
     })
     modal.querySelector('#cd2-add-col').addEventListener('click', () => {
       syncFromDom()
