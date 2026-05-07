@@ -137,6 +137,7 @@ export async function renderOverview() {
         </div>
       </div>
     </div>
+    <div id="monitor-shell" class="mt-6"></div>
   </div>`)
 
   try {
@@ -182,11 +183,9 @@ export async function renderOverview() {
       }
     }
     // ── Monitoring section ──────────────────────────────────────────────────────
-    const cfg = await getSystemConfig().catch(()=>({}))
-    const monitorEl = document.createElement('div')
-    monitorEl.className = 'mt-6'
-    document.querySelector('#main-content > div')?.appendChild(monitorEl)
-    _renderMonitoringShell(monitorEl, cfg)
+    const cfg       = await getSystemConfig().catch(()=>({}))
+    const monitorEl = document.getElementById('monitor-shell')
+    if (monitorEl) _renderMonitoringShell(monitorEl, cfg)
 
   } catch {
     showToast('โหลดข้อมูลสรุปไม่สำเร็จ', 'error')
@@ -196,13 +195,13 @@ export async function renderOverview() {
 // ─── Admin Monitoring Section ─────────────────────────────────────────────────
 
 // ─── Monitoring: ข้อมูล summary สำหรับการ์ด ──────────────────────────────────
-async function _calcPrayerSummary() {
-  const { records, students } = await getPrayerMonitoringData()
+async function _calcPrayerSummary(year, sem) {
+  const { records, students, homerooms } = await getPrayerMonitoringData(year, sem)
   const roomStudents = {}
   for (const s of students) {
     if (!s.religion_room) continue
     if (!roomStudents[s.religion_room]) roomStudents[s.religion_room] = []
-    roomStudents[s.religion_room].push(s.id)
+    roomStudents[s.religion_room].push({ id: s.id, full_name: s.full_name, student_code: s.student_code })
   }
   const weekRoomRec = {}, weekRoomAbsent = {}
   const allWeeks = new Set()
@@ -239,11 +238,12 @@ async function _calcPrayerSummary() {
   })
   const total = rooms.length
   const done  = rooms.length - recordPending.length
-  return { total, done, recordPending: recordPending.length, followPending: followPending.length, week: W, _raw: { records, students, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W } }
+  return { total, done, recordPending: recordPending.length, followPending: followPending.length, week: W,
+    _raw: { records, students, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W, homerooms } }
 }
 
 async function _calcSkillSummary(year, sem) {
-  const { columns, scores, students } = await getLifeSkillMonitoringData(year, sem)
+  const { columns, scores, students, homerooms } = await getLifeSkillMonitoringData(year, sem)
   const roomStudents = {}
   for (const s of students) {
     if (!s.main_room) continue
@@ -253,11 +253,11 @@ async function _calcSkillSummary(year, sem) {
   const scored = new Set(scores.map(s => s.student_id))
   const rooms  = Object.keys(roomStudents)
   const done   = rooms.filter(r => roomStudents[r].every(id => scored.has(id))).length
-  return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored } }
+  return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored, homerooms } }
 }
 
 async function _calcReadingSummary(year, sem) {
-  const { columns, scores, students } = await getReadingMonitoringData(year, sem)
+  const { columns, scores, students, homerooms } = await getReadingMonitoringData(year, sem)
   const roomStudents = {}
   for (const s of students) {
     if (!s.main_room) continue
@@ -267,7 +267,7 @@ async function _calcReadingSummary(year, sem) {
   const scored = new Set(scores.map(s => s.student_id))
   const rooms  = Object.keys(roomStudents)
   const done   = rooms.filter(r => roomStudents[r].every(id => scored.has(id))).length
-  return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored } }
+  return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored, homerooms } }
 }
 
 // ─── Monitoring Shell (cards) ─────────────────────────────────────────────────
@@ -293,7 +293,7 @@ async function _renderMonitoringShell(container, cfg) {
 
   // โหลด 3 cards พร้อมกัน
   const [prayer, skill, reading] = await Promise.allSettled([
-    _calcPrayerSummary(),
+    _calcPrayerSummary(year, sem),
     _calcSkillSummary(year, sem),
     _calcReadingSummary(year, sem),
   ])
@@ -378,13 +378,26 @@ async function _renderPrayerMonitor(container, raw) {
 
   if (!weeks.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีข้อมูลละหมาด</p>`; return }
 
+  // map: room → teacher name (from homeroom_teachers, keyed by main_room = religion_room)
+  const teacherByRoom = {}
+  for (const ht of (homerooms ?? [])) {
+    if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? '—'
+  }
+
   const rooms = Object.keys(roomStudents).sort()
   const weeksToShow = weeks.slice(-10)
+  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-2'
 
-  // Logic ใหม่: rolling 2-week window
-  // สัปดาห์ปัจจุบัน W = สัปดาห์ที่กำลังดำเนินการ (max week in records)
-  // บันทึกค้าง: ห้องที่สัปดาห์ W-1 ยังกรอกไม่ครบ (ควรกรอกภายใน W)
-  // ติดตามค้าง: ห้องที่ขาด W-2 แต่ยังไม่เปลี่ยนสถานะใน W-1
+  // helper: room cell with teacher name prominent
+  const _roomCell = (room, badges = '') => {
+    const tname = teacherByRoom[room]
+    return `<td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[140px]">
+      ${tname ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p>
+                 <p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
+              : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
+      ${badges}
+    </td>`
+  }
 
   const recordPendingRooms = rooms.filter(r => {
     const total = roomStudents[r].length
@@ -400,74 +413,43 @@ async function _renderPrayerMonitor(container, raw) {
     })
   })
 
-  const alertHtml = (recordPendingRooms.length + followPendingRooms.length > 0) ? `
-    <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      ${recordPendingRooms.length > 0 ? `
-      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
-        <p class="text-xs font-bold text-amber-800 mb-2">📋 บันทึกค้าง — สัปดาห์ที่ ${W-1} (ควรกรอกภายในสัปดาห์ ${W})</p>
-        <div class="flex flex-wrap gap-1.5">
-          ${recordPendingRooms.map(r => {
-            const done = weekRoomRec[r]?.[W-1]?.size ?? 0
-            const total = roomStudents[r].length
-            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${r} (${done}/${total})</span>`
-          }).join('')}
-        </div>
-      </div>` : ''}
-      ${followPendingRooms.length > 0 ? `
-      <div class="bg-red-50 border border-red-200 rounded-xl p-3">
-        <p class="text-xs font-bold text-red-800 mb-2">⚠️ ติดตามค้าง — ขาดสัปดาห์ที่ ${W-2} ยังไม่เปลี่ยนสถานะใน สัปดาห์ ${W-1}</p>
-        <div class="flex flex-wrap gap-1.5">
-          ${followPendingRooms.map(r => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">${r}</span>`).join('')}
-        </div>
-      </div>` : ''}
-    </div>` : `<div class="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700 font-medium">✅ ไม่มีรายการค้างทั้งบันทึกและติดตาม</div>`
+  // ── Tab 1: บันทึกคะแนน (recording grid) ────────────────────────────────────
+  const _tab1Html = () => {
+    const colHeaders = weeksToShow.map(w => `
+      <th class="${thBase} ${w===W?'bg-indigo-50 text-indigo-700 font-bold':''}" style="min-width:80px">
+        สัปดาห์ ${w}${w===W-1?`<div class="text-[8px] text-amber-500 font-normal">📋 ควรกรอก</div>`:''}
+      </th>`).join('')
 
-  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-2'
+    const rows = rooms.map(room => {
+      const stuList = roomStudents[room] ?? []
+      const total = stuList.length
+      const isRecPending  = recordPendingRooms.includes(room)
+      const isFollPending = followPendingRooms.includes(room)
+      const badges = (isRecPending ? `<span class="text-[9px] text-amber-600">📋</span>` : '') +
+                     (isFollPending ? `<span class="text-[9px] text-red-500">⚠️</span>` : '')
+      return `<tr class="hover:bg-gray-50">
+        ${_roomCell(room, badges)}
+        <td class="border border-gray-100 text-center text-gray-400 text-xs">${total}</td>
+        ${weeksToShow.map(w => {
+          const done = weekRoomRec[room]?.[w]?.size ?? 0
+          const pct  = total > 0 ? Math.round(done/total*100) : 0
+          const bg   = done===0 ? 'bg-red-50 text-red-400' : pct>=100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          return `<td class="border border-gray-100 text-center py-2 text-xs ${bg} ${w===W?'ring-1 ring-inset ring-indigo-300':''}">
+            <div class="font-bold">${pct}%</div>
+            <div class="text-[9px] opacity-60">${done}/${total}</div>
+          </td>`
+        }).join('')}
+      </tr>`
+    }).join('')
 
-  // คอลัมน์แต่ละสัปดาห์: W-n = บันทึก, W-n → follow up
-  const colHeaders = weeksToShow.map(w => {
-    const isRecordDue  = w === W-1  // บันทึก W-1 ควรมีใน W
-    const isFollowDue  = w === W-1  // ติดตาม W-2 ควรมีใน W-1
-    return `<th class="${thBase} ${w===W?'bg-indigo-50 text-indigo-700 font-bold':''}" style="min-width:80px">
-      สัปดาห์ ${w}
-      ${w===W-1?`<div class="text-[8px] text-amber-500 font-normal">📋 ควรกรอก</div>`:''}
-    </th>`
-  }).join('')
-
-  const tableHtml = `
-    <div class="overflow-auto rounded-xl border border-gray-100">
+    return `<div class="overflow-auto rounded-xl border border-gray-100">
       <table class="border-collapse text-xs" style="min-width:max-content;width:100%">
-        <thead>
-          <tr style="position:sticky;top:0;z-index:10">
-            <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[100px]">ห้องที่ปรึกษา</th>
-            <th class="${thBase} bg-gray-100">นักเรียน</th>
-            ${colHeaders}
-          </tr>
-        </thead>
-        <tbody>
-          ${rooms.map(room => {
-            const total = roomStudents[room]?.length ?? 0
-            const isRecPending  = recordPendingRooms.includes(room)
-            const isFollPending = followPendingRooms.includes(room)
-            return `<tr class="hover:bg-gray-50">
-              <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">
-                ${room}
-                ${isRecPending  ? `<span class="ml-1 text-[9px] text-amber-600">📋</span>` : ''}
-                ${isFollPending ? `<span class="ml-1 text-[9px] text-red-500">⚠️</span>` : ''}
-              </td>
-              <td class="border border-gray-100 text-center text-gray-400">${total}</td>
-              ${weeksToShow.map(w => {
-                const done = weekRoomRec[room]?.[w]?.size ?? 0
-                const pct  = total > 0 ? Math.round(done/total*100) : 0
-                const bg   = done===0 ? 'bg-red-50 text-red-400' : pct>=100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                return `<td class="border border-gray-100 text-center py-2 ${bg} ${w===W?'ring-1 ring-inset ring-indigo-300':''}">
-                  <div class="font-bold">${pct}%</div>
-                  <div class="text-[9px] opacity-60">${done}/${total}</div>
-                </td>`
-              }).join('')}
-            </tr>`
-          }).join('')}
-        </tbody>
+        <thead><tr style="position:sticky;top:0;z-index:10">
+          <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
+          <th class="${thBase} bg-gray-100">นักเรียน</th>
+          ${colHeaders}
+        </tr></thead>
+        <tbody>${rows}</tbody>
       </table>
     </div>
     <div class="flex flex-wrap gap-4 mt-3 text-[11px] text-gray-500">
@@ -476,21 +458,133 @@ async function _renderPrayerMonitor(container, raw) {
       <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-100"></span>ยังไม่กรอก</span>
       <span class="text-gray-400 ml-auto">📋 = บันทึกค้าง · ⚠️ = ติดตามค้าง</span>
     </div>`
+  }
 
-  container.innerHTML = alertHtml + tableHtml
+  // ── Tab 2: ติดตามนักเรียน (follow-up per student) ───────────────────────────
+  const _tab2Html = () => {
+    // รวมนักเรียนที่ขาดในสัปดาห์ต่างๆ พร้อมสถานะติดตาม
+    const rows = []
+    for (const room of rooms) {
+      const stuList = roomStudents[room] ?? []
+      const stuMap = Object.fromEntries(stuList.map(s => [s.id, s]))
+      // ตรวจทุกสัปดาห์ที่มีข้อมูล absent
+      const absWeeks = Object.keys(weekRoomAbsent[room] ?? {}).map(Number).sort((a,b)=>a-b)
+      for (const absW of absWeeks) {
+        const absentIds = [...(weekRoomAbsent[room]?.[absW] ?? [])]
+        for (const sid of absentIds) {
+          const stu = stuMap[sid]
+          const followW = absW + 1
+          const followRecs = records.filter(rec => rec.main_room===room && rec.week_number===followW && rec.student_id===sid)
+          const followed = followRecs.some(rec => rec.status==='followed'||rec.status==='avoid')
+          const followStatus = followed ? 'followed' : (followW > W ? 'pending' : 'overdue')
+          rows.push({ room, stu, absW, followW, followStatus })
+        }
+      }
+    }
+
+    if (!rows.length) return `<div class="text-center py-16 text-gray-400 text-sm">✅ ไม่มีนักเรียนขาดละหมาดในระบบ</div>`
+
+    const statusBadge = (s, fw) => ({
+      followed: `<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-medium">✅ ติดตามแล้ว</span>`,
+      overdue:  `<span class="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[10px] font-medium">⚠️ ค้างติดตาม</span>`,
+      pending:  `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px]">รอสัปดาห์ที่ ${fw}</span>`,
+    }[s] ?? '')
+
+    const tableRows = rows.map(({ room, stu, absW, followW, followStatus }) => {
+      const tname = teacherByRoom[room]
+      return `<tr class="hover:bg-gray-50">
+        <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[140px]">
+          ${tname ? `<p class="font-semibold text-gray-800 text-xs">${tname}</p><p class="text-[10px] text-gray-400">${room}</p>`
+                  : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
+        </td>
+        <td class="border border-gray-100 px-3 py-2 text-xs text-gray-800">${stu?.full_name ?? '—'}<br/><span class="text-[10px] text-gray-400">${stu?.student_code ?? ''}</span></td>
+        <td class="border border-gray-100 text-center text-xs text-amber-700 bg-amber-50">สัปดาห์ที่ ${absW}</td>
+        <td class="border border-gray-100 text-center text-xs text-gray-500">สัปดาห์ที่ ${followW}</td>
+        <td class="border border-gray-100 text-center py-1.5">${statusBadge(followStatus, followW)}</td>
+      </tr>`
+    }).join('')
+
+    return `<div class="overflow-auto rounded-xl border border-gray-100">
+      <table class="border-collapse text-xs" style="min-width:max-content;width:100%">
+        <thead><tr style="position:sticky;top:0;z-index:10">
+          <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
+          <th class="${thBase} text-left bg-gray-100 min-w-[160px]">นักเรียน</th>
+          <th class="${thBase} bg-amber-50 text-amber-700">ขาดสัปดาห์ที่</th>
+          <th class="${thBase} bg-gray-100">ติดตามสัปดาห์ที่</th>
+          <th class="${thBase} bg-gray-100" style="min-width:130px">สถานะ</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <p class="text-[11px] text-gray-400 mt-2">* แสดงทุกสัปดาห์ที่มีการขาด · สัปดาห์ปัจจุบัน W=${W}</p>`
+  }
+
+  // ── Render tabs ─────────────────────────────────────────────────────────────
+  const TAB_CLS    = 'px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition'
+  const TAB_ACTIVE = `${TAB_CLS} border-indigo-600 text-indigo-700 bg-indigo-50`
+  const TAB_IDLE   = `${TAB_CLS} border-transparent text-gray-500 hover:text-gray-700`
+
+  const alertSummary = (recordPendingRooms.length + followPendingRooms.length > 0) ? `
+    <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      ${recordPendingRooms.length > 0 ? `
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+        <p class="text-xs font-bold text-amber-800 mb-2">📋 บันทึกค้าง — สัปดาห์ที่ ${W-1} (ควรกรอกภายในสัปดาห์ ${W})</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${recordPendingRooms.map(r => {
+            const done = weekRoomRec[r]?.[W-1]?.size ?? 0
+            const total = roomStudents[r].length
+            const tname = teacherByRoom[r]
+            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${tname ? tname+' / ' : ''}${r} (${done}/${total})</span>`
+          }).join('')}
+        </div>
+      </div>` : ''}
+      ${followPendingRooms.length > 0 ? `
+      <div class="bg-red-50 border border-red-200 rounded-xl p-3">
+        <p class="text-xs font-bold text-red-800 mb-2">⚠️ ติดตามค้าง — ขาดสัปดาห์ที่ ${W-2} ยังไม่เปลี่ยนสถานะในสัปดาห์ ${W-1}</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${followPendingRooms.map(r => {
+            const tname = teacherByRoom[r]
+            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">${tname ? tname+' / ' : ''}${r}</span>`
+          }).join('')}
+        </div>
+      </div>` : ''}
+    </div>` : `<div class="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700 font-medium">✅ ไม่มีรายการค้างทั้งบันทึกและติดตาม</div>`
+
+  container.innerHTML = `
+    ${alertSummary}
+    <div class="flex gap-0 border-b border-gray-200 mb-4">
+      <button class="prayer-tab ${TAB_ACTIVE}" data-tab="record">📋 ความคืบหน้าการบันทึก</button>
+      <button class="prayer-tab ${TAB_IDLE}"   data-tab="follow">⚠️ ความคืบหน้าการติดตาม</button>
+    </div>
+    <div id="prayer-tab-content"></div>`
+
+  const contentEl = container.querySelector('#prayer-tab-content')
+  const renderTab = tab => {
+    contentEl.innerHTML = tab === 'record' ? _tab1Html() : _tab2Html()
+    container.querySelectorAll('.prayer-tab').forEach(btn => {
+      const active = btn.dataset.tab === tab
+      btn.className = active ? `prayer-tab ${TAB_ACTIVE}` : `prayer-tab ${TAB_IDLE}`
+    })
+  }
+  container.querySelectorAll('.prayer-tab').forEach(btn =>
+    btn.addEventListener('click', () => renderTab(btn.dataset.tab))
+  )
+  renderTab('record')
 }
 
 function _renderLifeSkillMonitor(container, raw, year, sem) {
   if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
-  const { columns, roomStudents, scored } = raw
+  const { columns, roomStudents, scored, homerooms } = raw
   if (!columns.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีคอลัมน์ทักษะชีวิต</p>`; return }
+  const teacherByRoom = {}
+  for (const ht of (homerooms ?? [])) { if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? '—' }
   const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
   const thB = 'border border-gray-100 text-center text-[10px] px-2 py-2'
   container.innerHTML = `
     <div class="overflow-auto rounded-xl border border-gray-100">
       <table class="border-collapse text-xs" style="width:100%">
         <thead><tr style="position:sticky;top:0;z-index:10">
-          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[100px]">ห้อง (ที่ปรึกษา)</th>
+          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
           <th class="${thB} bg-gray-100">นักเรียน</th>
           <th class="${thB} bg-emerald-50 text-emerald-700">กรอกแล้ว</th>
           <th class="${thB} bg-red-50 text-red-500">ค้าง</th>
@@ -504,8 +598,12 @@ function _renderLifeSkillMonitor(container, raw, year, sem) {
             const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
             const barCls  = pct>=100?'bg-emerald-500':pct>=50?'bg-amber-400':'bg-red-400'
+            const tname   = teacherByRoom[room]
             return `<tr class="hover:bg-gray-50">
-              <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">${room}</td>
+              <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white">
+                ${tname ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p><p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
+                        : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
+              </td>
               <td class="border border-gray-100 text-center text-gray-500">${total}</td>
               <td class="border border-gray-100 text-center text-emerald-600 font-medium">${done}</td>
               <td class="border border-gray-100 text-center ${miss>0?'text-red-500 font-medium':'text-gray-300'}">${miss||'—'}</td>
@@ -525,15 +623,17 @@ function _renderLifeSkillMonitor(container, raw, year, sem) {
 
 function _renderReadingMonitor(container, raw, year, sem) {
   if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
-  const { columns, roomStudents, scored } = raw
+  const { columns, roomStudents, scored, homerooms } = raw
   if (!columns.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีคอลัมน์คะแนนอ่านคิดวิเคราะห์</p>`; return }
+  const teacherByRoom = {}
+  for (const ht of (homerooms ?? [])) { if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? '—' }
   const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
   const thB = 'border border-gray-100 text-center text-[10px] px-2 py-2'
   container.innerHTML = `
     <div class="overflow-auto rounded-xl border border-gray-100">
       <table class="border-collapse text-xs" style="width:100%">
         <thead><tr style="position:sticky;top:0;z-index:10">
-          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[100px]">ห้องเรียน</th>
+          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
           <th class="${thB} bg-gray-100">นักเรียน</th>
           <th class="${thB} bg-indigo-50 text-indigo-700">กรอกแล้ว</th>
           <th class="${thB} bg-red-50 text-red-500">ค้าง</th>
@@ -547,8 +647,12 @@ function _renderReadingMonitor(container, raw, year, sem) {
             const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
             const barCls  = pct>=100?'bg-indigo-500':pct>=50?'bg-amber-400':'bg-red-400'
+            const tname   = teacherByRoom[room]
             return `<tr class="hover:bg-gray-50">
-              <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">${room}</td>
+              <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white">
+                ${tname ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p><p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
+                        : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
+              </td>
               <td class="border border-gray-100 text-center text-gray-500">${total}</td>
               <td class="border border-gray-100 text-center text-indigo-600 font-medium">${done}</td>
               <td class="border border-gray-100 text-center ${miss>0?'text-red-500 font-medium':'text-gray-300'}">${miss||'—'}</td>
