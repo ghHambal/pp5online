@@ -16,6 +16,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAllLifeSkillScores, getAllReadingScores, getAllPrayerRecords,
          savePrayerCellAdmin, getStudentsByReligionRoom,
          getPrayerRecordsByRoom, fillLifeSkillScoresToClassScores,
+         getPrayerMonitoringData, getLifeSkillMonitoringData, getReadingMonitoringData,
          fillPrayerScoresToReligionClassScores } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
@@ -180,9 +181,412 @@ export async function renderOverview() {
         + (pending.length > 3 ? `<p class="text-xs text-center text-gray-400 pt-2">และอีก ${pending.length-3} รายการ</p>` : '')
       }
     }
+    // ── Monitoring section ──────────────────────────────────────────────────────
+    const cfg = await getSystemConfig().catch(()=>({}))
+    const monitorEl = document.createElement('div')
+    monitorEl.className = 'mt-6'
+    document.querySelector('#main-content > div')?.appendChild(monitorEl)
+    _renderMonitoringShell(monitorEl, cfg)
+
   } catch {
     showToast('โหลดข้อมูลสรุปไม่สำเร็จ', 'error')
   }
+}
+
+// ─── Admin Monitoring Section ─────────────────────────────────────────────────
+
+function _renderMonitoringShell(container, cfg) {
+  const year = parseInt(cfg.academicYear ?? 2568)
+  const sem  = parseInt(cfg.semester ?? 1)
+  let _tab = 'prayer'
+  let _filter = 'all'
+
+  const _tabBtn = (key, icon, label) => {
+    const active = _tab === key
+    return `<button class="monitor-tab flex-1 py-2 text-xs font-semibold rounded-lg transition
+      ${active ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}"
+      data-tab="${key}">${icon} ${label}</button>`
+  }
+
+  container.innerHTML = `
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between flex-wrap gap-3">
+        <h3 class="font-bold text-gray-800">📊 ติดตามความคืบหน้า</h3>
+        <div class="flex items-center gap-2">
+          <select id="monitor-filter" class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300">
+            <option value="all">ทุกห้อง</option>
+            <option value="สามัญ">ห้องสามัญ</option>
+            <option value="ศาสนา">ห้องศาสนา</option>
+          </select>
+          <button id="monitor-print" class="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition">🖨️ พิมพ์</button>
+          <button id="monitor-doc" class="text-xs px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition">📄 บันทึกข้อความ</button>
+        </div>
+      </div>
+      <div class="flex gap-1 bg-gray-100 p-1 mx-5 my-3 rounded-xl">
+        ${_tabBtn('prayer','🕌','ละหมาด (รายสัปดาห์)')}
+        ${_tabBtn('lifeskill','🌱','ทักษะชีวิต (รายเทอม)')}
+        ${_tabBtn('reading','📖','อ่านคิดวิเคราะห์ (รายเทอม)')}
+      </div>
+      <div id="monitor-content" class="px-5 pb-5">
+        <div class="text-center py-8 text-gray-300">
+          <svg class="animate-spin h-6 w-6 mx-auto mb-2 text-indigo-300" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>กำลังโหลด...
+        </div>
+      </div>
+    </div>`
+
+  const _load = async () => {
+    const content = document.getElementById('monitor-content')
+    if (!content) return
+    content.innerHTML = `<div class="text-center py-8 text-indigo-300">
+      <svg class="animate-spin h-6 w-6 mx-auto" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg></div>`
+    try {
+      if (_tab === 'prayer')    await _renderPrayerMonitor(content, _filter)
+      if (_tab === 'lifeskill') await _renderLifeSkillMonitor(content, year, sem, _filter)
+      if (_tab === 'reading')   await _renderReadingMonitor(content, year, sem, _filter)
+    } catch (err) {
+      content.innerHTML = `<p class="text-center py-6 text-red-400 text-sm">โหลดไม่สำเร็จ: ${err.message ?? ''}</p>`
+    }
+  }
+
+  container.querySelectorAll('.monitor-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _tab = btn.dataset.tab
+      container.querySelectorAll('.monitor-tab').forEach(b => {
+        const a = b.dataset.tab === _tab
+        b.className = `monitor-tab flex-1 py-2 text-xs font-semibold rounded-lg transition
+          ${a ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`
+      })
+      _load()
+    })
+  })
+  container.querySelector('#monitor-filter').addEventListener('change', e => { _filter = e.target.value; _load() })
+  container.querySelector('#monitor-print').addEventListener('click', () => _printMonitor(cfg, _tab))
+  container.querySelector('#monitor-doc').addEventListener('click', () => _downloadMemo(cfg, _tab))
+
+  _load()
+}
+
+async function _renderPrayerMonitor(container, filter) {
+  const { records, students } = await getPrayerMonitoringData()
+
+  // กลุ่มห้อง
+  const roomStudents = {}
+  for (const s of students) {
+    const r = s.religion_room
+    if (!r) continue
+    if (!roomStudents[r]) roomStudents[r] = []
+    roomStudents[r].push(s.id)
+  }
+
+  // กลุ่ม records ตาม room+week
+  const weekRoomRecorded = {}  // {room: {week: Set(studentIds)}}
+  const weekRoomAbsent   = {}  // {room: {week: Set(studentIds)}} ขาด
+  const allWeeks = new Set()
+  for (const rec of records) {
+    const r = rec.main_room; const w = rec.week_number
+    if (!r || !w) continue
+    allWeeks.add(w)
+    if (!weekRoomRecorded[r]) weekRoomRecorded[r] = {}
+    if (!weekRoomRecorded[r][w]) weekRoomRecorded[r][w] = new Set()
+    weekRoomRecorded[r][w].add(rec.student_id)
+    if (rec.status === 'absent') {
+      if (!weekRoomAbsent[r]) weekRoomAbsent[r] = {}
+      if (!weekRoomAbsent[r][w]) weekRoomAbsent[r][w] = new Set()
+      weekRoomAbsent[r][w].add(rec.student_id)
+    }
+  }
+
+  const weeks = [...allWeeks].sort((a,b) => a-b)
+  const maxWeek = weeks[weeks.length-1] ?? 0
+  const prevWeek = maxWeek - 1
+
+  // ห้องที่ต้องติดตาม (มีขาดสัปดาห์ที่แล้ว แต่ยังไม่กรอกติดตาม)
+  const followupAlert = {}
+  for (const room of Object.keys(weekRoomAbsent)) {
+    const absentPrev = weekRoomAbsent[room]?.[prevWeek]
+    if (!absentPrev?.size) continue
+    const recordedCurrent = weekRoomRecorded[room]?.[maxWeek] ?? new Set()
+    const needFollowup = [...absentPrev].filter(sid => {
+      // ตรวจว่าสัปดาห์ปัจจุบัน student นี้มี status followed หรือ avoid ไหม
+      const currentRecs = records.filter(r => r.main_room === room && r.week_number === maxWeek && r.student_id === sid)
+      return !currentRecs.some(r => r.status === 'followed' || r.status === 'avoid')
+    })
+    if (needFollowup.length > 0) followupAlert[room] = needFollowup.length
+  }
+
+  let rooms = Object.keys(roomStudents).sort()
+  if (filter !== 'all') rooms = rooms.filter(r => filter === 'ศาสนา')
+
+  if (!weeks.length) {
+    container.innerHTML = `<p class="text-center py-6 text-gray-400 text-sm">ยังไม่มีข้อมูลละหมาด</p>`; return
+  }
+
+  // Alert section
+  const alertHtml = Object.keys(followupAlert).length > 0 ? `
+    <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-4">
+      <p class="text-sm font-bold text-red-700 mb-2">⚠️ ห้องที่ต้องติดตาม (สัปดาห์ที่ ${maxWeek})</p>
+      <div class="flex flex-wrap gap-2">
+        ${Object.entries(followupAlert).map(([room, count]) =>
+          `<span class="px-2.5 py-1 rounded-full bg-red-100 text-red-700 text-xs font-medium">
+            ${room} — ${count} คน ยังไม่ติดตาม
+          </span>`).join('')}
+      </div>
+      <p class="text-xs text-red-500 mt-2">นักเรียนขาดละหมาดสัปดาห์ที่ ${prevWeek} ยังไม่ถูกเปลี่ยนเป็น "ติดตามแล้ว" หรือ "หลีกเลี่ยง"</p>
+    </div>` : ''
+
+  // Grid
+  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-1.5'
+  const weeksToShow = weeks.slice(-8) // แสดง 8 สัปดาห์ล่าสุด
+
+  const tableHtml = `
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse text-xs" style="min-width:max-content">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="${thBase} text-left sticky left-0 bg-gray-50 min-w-[100px]">ห้อง</th>
+            <th class="${thBase} bg-gray-50">รวมนักเรียน</th>
+            ${weeksToShow.map(w => `<th class="${thBase} ${w===maxWeek?'bg-indigo-50 text-indigo-700':''}">สัปดาห์ ${w}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${rooms.map(room => {
+            const total = roomStudents[room]?.length ?? 0
+            return `<tr class="hover:bg-gray-50">
+              <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">
+                ${room}
+                ${followupAlert[room] ? `<span class="ml-1 text-[10px] text-red-500">⚠️ ${followupAlert[room]} คน</span>` : ''}
+              </td>
+              <td class="border border-gray-100 text-center text-gray-400 text-xs">${total}</td>
+              ${weeksToShow.map(w => {
+                const recorded = weekRoomRecorded[room]?.[w]?.size ?? 0
+                const pct = total > 0 ? Math.round(recorded/total*100) : 0
+                const cls = recorded === 0 ? 'bg-red-50 text-red-500' : pct >= 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                return `<td class="border border-gray-100 text-center py-2 ${cls} ${w===maxWeek?'ring-1 ring-inset ring-indigo-200':''}">
+                  <div class="font-bold">${pct}%</div>
+                  <div class="text-[9px] opacity-70">${recorded}/${total}</div>
+                </td>`
+              }).join('')}
+            </tr>`
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex gap-4 mt-3 text-[11px] text-gray-500">
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-emerald-100"></span> กรอกครบ (100%)</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-amber-100"></span> กรอกบางส่วน</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-red-100"></span> ยังไม่กรอก</span>
+    </div>`
+
+  container.innerHTML = alertHtml + tableHtml
+}
+
+async function _renderLifeSkillMonitor(container, year, sem, filter) {
+  const { columns, scores, students } = await getLifeSkillMonitoringData(year, sem)
+  if (!columns.length) { container.innerHTML = `<p class="text-center py-6 text-gray-400 text-sm">ยังไม่มีคอลัมน์ทักษะชีวิต</p>`; return }
+
+  // group นักเรียนตามห้อง
+  const roomStudents = {}
+  for (const s of students) {
+    if (!s.main_room) continue
+    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
+    roomStudents[s.main_room].push(s.id)
+  }
+  // นับจำนวนนักเรียนที่มีคะแนน (อย่างน้อย 1 คอลัมน์)
+  const scoredStudents = new Set(scores.map(s => s.student_id))
+
+  let rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}))
+  if (filter === 'ศาสนา') rooms = [] // life skill เป็นสามัญ
+
+  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-1.5'
+  container.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse text-xs" style="min-width:max-content">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="${thBase} text-left sticky left-0 bg-gray-50 min-w-[100px]">ห้อง (ที่ปรึกษา)</th>
+            <th class="${thBase}">รวมนักเรียน</th>
+            <th class="${thBase} text-emerald-700">กรอกแล้ว</th>
+            <th class="${thBase} text-red-500">ยังไม่กรอก</th>
+            <th class="${thBase}">ความครบถ้วน</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rooms.map(room => {
+            const stuList = roomStudents[room] ?? []
+            const total   = stuList.length
+            const done    = stuList.filter(id => scoredStudents.has(id)).length
+            const missing = total - done
+            const pct     = total > 0 ? Math.round(done/total*100) : 0
+            const barCls  = pct >= 100 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'
+            return `<tr class="hover:bg-gray-50">
+              <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">${room}</td>
+              <td class="border border-gray-100 text-center text-gray-500">${total}</td>
+              <td class="border border-gray-100 text-center text-emerald-600 font-medium">${done}</td>
+              <td class="border border-gray-100 text-center ${missing>0?'text-red-500 font-medium':'text-gray-300'}">${missing||'—'}</td>
+              <td class="border border-gray-100 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-gray-100 rounded-full h-2">
+                    <div class="${barCls} h-2 rounded-full" style="width:${pct}%"></div>
+                  </div>
+                  <span class="text-[10px] font-bold ${pct>=100?'text-emerald-600':pct>=50?'text-amber-600':'text-red-500'}">${pct}%</span>
+                </div>
+              </td>
+            </tr>`
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-gray-400 mt-2">* นับจากนักเรียนที่มีคะแนนทักษะชีวิตอย่างน้อย 1 รายการ ภาค ${sem}/${year}</p>`
+}
+
+async function _renderReadingMonitor(container, year, sem, filter) {
+  const { columns, scores, students } = await getReadingMonitoringData(year, sem)
+  if (!columns.length) { container.innerHTML = `<p class="text-center py-6 text-gray-400 text-sm">ยังไม่มีคอลัมน์คะแนนอ่านคิดวิเคราะห์</p>`; return }
+
+  const roomStudents = {}
+  for (const s of students) {
+    if (!s.main_room) continue
+    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
+    roomStudents[s.main_room].push(s.id)
+  }
+  const scoredStudents = new Set(scores.map(s => s.student_id))
+
+  let rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}))
+
+  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-1.5'
+  container.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse text-xs" style="min-width:max-content">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="${thBase} text-left sticky left-0 bg-gray-50 min-w-[100px]">ห้องเรียน</th>
+            <th class="${thBase}">รวมนักเรียน</th>
+            <th class="${thBase} text-indigo-700">กรอกแล้ว</th>
+            <th class="${thBase} text-red-500">ยังไม่กรอก</th>
+            <th class="${thBase}">ความครบถ้วน</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rooms.map(room => {
+            const stuList = roomStudents[room] ?? []
+            const total   = stuList.length
+            const done    = stuList.filter(id => scoredStudents.has(id)).length
+            const missing = total - done
+            const pct     = total > 0 ? Math.round(done/total*100) : 0
+            const barCls  = pct >= 100 ? 'bg-indigo-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'
+            return `<tr class="hover:bg-gray-50">
+              <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">${room}</td>
+              <td class="border border-gray-100 text-center text-gray-500">${total}</td>
+              <td class="border border-gray-100 text-center text-indigo-600 font-medium">${done}</td>
+              <td class="border border-gray-100 text-center ${missing>0?'text-red-500 font-medium':'text-gray-300'}">${missing||'—'}</td>
+              <td class="border border-gray-100 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-gray-100 rounded-full h-2">
+                    <div class="${barCls} h-2 rounded-full" style="width:${pct}%"></div>
+                  </div>
+                  <span class="text-[10px] font-bold ${pct>=100?'text-indigo-600':pct>=50?'text-amber-600':'text-red-500'}">${pct}%</span>
+                </div>
+              </td>
+            </tr>`
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-xs text-gray-400 mt-2">* ภาค ${sem}/${year} · รวม ${columns.length} หัวข้อ</p>`
+}
+
+function _printMonitor(cfg, tab) {
+  const tabLabel = { prayer:'ละหมาด', lifeskill:'ทักษะชีวิต', reading:'อ่านคิดวิเคราะห์' }[tab] ?? tab
+  const content = document.getElementById('monitor-content')?.innerHTML ?? ''
+  const w = window.open('', '_blank')
+  w.document.write(`<!DOCTYPE html><html lang="th"><head>
+    <meta charset="UTF-8"/>
+    <title>ติดตามความคืบหน้า — ${tabLabel}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet"/>
+    <style>
+      body { font-family: Sarabun, sans-serif; font-size: 13px; margin: 20px; color: #1f2937; }
+      h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+      p.sub { font-size: 12px; color: #6b7280; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: center; }
+      th { background: #f9fafb; font-weight: 600; }
+      td:first-child { text-align: left; font-weight: 500; }
+      .bg-emerald-50 { background: #ecfdf5; color: #047857; }
+      .bg-amber-50   { background: #fffbeb; color: #b45309; }
+      .bg-red-50     { background: #fef2f2; color: #dc2626; }
+      @media print { body { margin: 10mm; } }
+    </style>
+  </head><body>
+    <h2>ติดตามความคืบหน้า — ${tabLabel}</h2>
+    <p class="sub">โรงเรียน: ${cfg.samaiSchoolName ?? cfg.schoolName ?? ''} · ภาค ${cfg.semester ?? '—'}/${cfg.academicYear ?? '—'} · พิมพ์: ${new Date().toLocaleDateString('th-TH')}</p>
+    ${content}
+  </body></html>`)
+  w.document.close()
+  setTimeout(() => w.print(), 500)
+}
+
+function _downloadMemo(cfg, tab) {
+  const tabLabel = { prayer:'ละหมาด', lifeskill:'ทักษะชีวิต', reading:'อ่านคิดวิเคราะห์' }[tab] ?? tab
+  const today = new Date()
+  const dateTH = `${today.getDate()} ${['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'][today.getMonth()]} ${today.getFullYear()+543}`
+  const schoolName = cfg.samaiSchoolName ?? cfg.schoolName ?? 'โรงเรียน'
+  const content = document.getElementById('monitor-content')?.innerHTML ?? ''
+
+  const html = `<!DOCTYPE html><html lang="th"><head>
+    <meta charset="UTF-8"/>
+    <title>บันทึกข้อความ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet"/>
+    <style>
+      body { font-family: Sarabun, sans-serif; font-size: 14px; margin: 25mm 20mm; color: #000; line-height: 1.8; }
+      .header { text-align: center; margin-bottom: 24px; }
+      .header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+      .header p { font-size: 14px; margin: 2px 0; }
+      .fields { margin-bottom: 20px; }
+      .field { display: flex; gap: 8px; margin-bottom: 4px; }
+      .field-label { min-width: 80px; font-weight: 600; }
+      .body-text { margin-bottom: 16px; text-indent: 2em; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 12px 0; }
+      th, td { border: 1px solid #999; padding: 5px 8px; }
+      th { background: #f5f5f5; font-weight: 600; }
+      .signature { margin-top: 40px; text-align: right; }
+      @media print { body { margin: 15mm; } }
+    </style>
+  </head><body>
+    <div class="header">
+      <h1>บันทึกข้อความ</h1>
+      <p>${schoolName}</p>
+    </div>
+    <div class="fields">
+      <div class="field"><span class="field-label">ที่</span><span>______/______</span></div>
+      <div class="field"><span class="field-label">วันที่</span><span>${dateTH}</span></div>
+      <div class="field"><span class="field-label">เรื่อง</span><span>ขอให้เร่งดำเนินการกรอกข้อมูล${tabLabel}ในระบบ ปพ.5 ออนไลน์</span></div>
+      <div class="field"><span class="field-label">เรียน</span><span>ครูผู้รับผิดชอบที่ยังไม่ดำเนินการ</span></div>
+    </div>
+    <p class="body-text">ตามที่โรงเรียน${schoolName} ได้ใช้ระบบ ปพ.5 ออนไลน์ ในการบันทึกข้อมูล${tabLabel} ภาคเรียนที่ ${cfg.semester ?? '—'} ปีการศึกษา ${cfg.academicYear ?? '—'} นั้น</p>
+    <p class="body-text">บัดนี้ ปรากฏว่ายังมีครูผู้รับผิดชอบบางส่วนที่ยังไม่ได้ดำเนินการกรอกข้อมูลตามที่กำหนด ดังรายละเอียดต่อไปนี้</p>
+    ${content}
+    <p class="body-text" style="margin-top:16px">จึงขอให้ครูผู้รับผิดชอบดำเนินการกรอกข้อมูลดังกล่าวให้แล้วเสร็จโดยเร็ว หากมีข้อสงสัยประการใดโปรดติดต่อฝ่ายวิชาการ</p>
+    <div class="signature">
+      <p>ลงชื่อ .....................................................</p>
+      <p>( ...................................................... )</p>
+      <p>ตำแหน่ง .................................................</p>
+      <p>${dateTH}</p>
+    </div>
+  </body></html>`
+
+  const blob = new Blob([html], { type: 'application/msword' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href = url
+  a.download = `บันทึกข้อความ_${tabLabel}_${cfg.academicYear ?? ''}.doc`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ─── View: Teachers ───────────────────────────────────────────────────────────

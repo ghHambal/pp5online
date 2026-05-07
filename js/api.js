@@ -1433,3 +1433,33 @@ export async function getMissedExamCount(studentId) {
   if (error) throw error
   return count ?? 0
 }
+
+// ─── Monitoring Data ──────────────────────────────────────────────────────────
+
+export async function getPrayerMonitoringData() {
+  const [{ data: records, error }, { data: students }] = await Promise.all([
+    supabase.from('prayer_records')
+      .select('student_id, main_room, status, week_number, check_date')
+      .not('week_number', 'is', null)
+      .order('week_number').order('main_room'),
+    supabase.from('students')
+      .select('id, full_name, student_code, religion_room')
+      .not('religion_room', 'is', null).neq('religion_room', ''),
+  ])
+  if (error) throw error
+  return { records: records ?? [], students: students ?? [] }
+}
+
+export async function getLifeSkillMonitoringData(academicYear, semester) {
+  const { columns, scores } = await getAllLifeSkillScores(academicYear, semester)
+  const { data: students } = await supabase
+    .from('students').select('id, main_room').not('main_room','is',null).neq('main_room','')
+  return { columns: columns ?? [], scores: scores ?? [], students: students ?? [] }
+}
+
+export async function getReadingMonitoringData(academicYear, semester) {
+  const { columns, scores } = await getAllReadingScores(academicYear, semester)
+  const { data: students } = await supabase
+    .from('students').select('id, main_room').not('main_room','is',null).neq('main_room','')
+  return { columns: columns ?? [], scores: scores ?? [], students: students ?? [] }
+}
