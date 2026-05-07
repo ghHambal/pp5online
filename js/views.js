@@ -194,15 +194,28 @@ export async function renderOverview() {
 
 // ─── Admin Monitoring Section ─────────────────────────────────────────────────
 
+// ─── Monitoring: helpers ──────────────────────────────────────────────────────
+
+// สร้าง roomStudents จาก homerooms (source หลัก) + overlay นักเรียน
+function _buildRoomStudents(homerooms, students, roomField) {
+  const roomStudents = {}
+  for (const ht of homerooms) {
+    if (ht.main_room) roomStudents[ht.main_room] = []  // init ทุกห้องจาก homeroom
+  }
+  for (const s of students) {
+    const r = s[roomField]
+    if (!r) continue
+    if (!roomStudents[r]) roomStudents[r] = []  // ห้องที่ไม่อยู่ใน homeroom แต่มีนักเรียน
+    roomStudents[r].push({ id: s.id, full_name: s.full_name ?? '', student_code: s.student_code ?? '' })
+  }
+  return roomStudents
+}
+
 // ─── Monitoring: ข้อมูล summary สำหรับการ์ด ──────────────────────────────────
 async function _calcPrayerSummary(year, sem) {
   const { records, students, homerooms } = await getPrayerMonitoringData(year, sem)
-  const roomStudents = {}
-  for (const s of students) {
-    if (!s.religion_room) continue
-    if (!roomStudents[s.religion_room]) roomStudents[s.religion_room] = []
-    roomStudents[s.religion_room].push({ id: s.id, full_name: s.full_name, student_code: s.student_code })
-  }
+  // ใช้ homerooms (category='ศาสนา') เป็น source หลัก; religion_room เป็น field ของนักเรียน
+  const roomStudents = _buildRoomStudents(homerooms, students, 'religion_room')
   const weekRoomRec = {}, weekRoomAbsent = {}
   const allWeeks = new Set()
   for (const rec of records) {
@@ -221,13 +234,11 @@ async function _calcPrayerSummary(year, sem) {
   const weeks = [...allWeeks].sort((a,b)=>a-b)
   const W = weeks[weeks.length-1] ?? 0
   const rooms = Object.keys(roomStudents)
-  // บันทึกค้าง: ห้องที่ W-1 ยังไม่ครบ (ควรกรอกภายใน W)
   const recordPending = rooms.filter(r => {
     const total = roomStudents[r].length
     const done  = weekRoomRec[r]?.[W-1]?.size ?? 0
     return total > 0 && done < total
   })
-  // ติดตามค้าง: ห้องที่ขาด W-2 แต่ใน W-1 ยังไม่เปลี่ยนสถานะ
   const followPending = rooms.filter(room => {
     const absentW2 = weekRoomAbsent[room]?.[W-2]
     if (!absentW2?.size) return false
@@ -237,36 +248,31 @@ async function _calcPrayerSummary(year, sem) {
     })
   })
   const total = rooms.length
-  const done  = rooms.length - recordPending.length
+  const done  = rooms.filter(r => {
+    const t = roomStudents[r].length; if (!t) return false
+    return weekRoomRec[r]?.[W-1]?.size >= t
+  }).length
   return { total, done, recordPending: recordPending.length, followPending: followPending.length, week: W,
     _raw: { records, students, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W, homerooms } }
 }
 
 async function _calcSkillSummary(year, sem) {
   const { columns, scores, students, homerooms } = await getLifeSkillMonitoringData(year, sem)
-  const roomStudents = {}
-  for (const s of students) {
-    if (!s.main_room) continue
-    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
-    roomStudents[s.main_room].push(s.id)
-  }
+  // ใช้ homerooms (category='สามัญ') เป็น source หลัก
+  const roomStudents = _buildRoomStudents(homerooms, students, 'main_room')
   const scored = new Set(scores.map(s => s.student_id))
   const rooms  = Object.keys(roomStudents)
-  const done   = rooms.filter(r => roomStudents[r].every(id => scored.has(id))).length
+  const done   = rooms.filter(r => roomStudents[r].length > 0 && roomStudents[r].every(s => scored.has(s.id ?? s))).length
   return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored, homerooms } }
 }
 
 async function _calcReadingSummary(year, sem) {
   const { columns, scores, students, homerooms } = await getReadingMonitoringData(year, sem)
-  const roomStudents = {}
-  for (const s of students) {
-    if (!s.main_room) continue
-    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
-    roomStudents[s.main_room].push(s.id)
-  }
+  // ใช้ homerooms (category='สามัญ') เป็น source หลัก
+  const roomStudents = _buildRoomStudents(homerooms, students, 'main_room')
   const scored = new Set(scores.map(s => s.student_id))
   const rooms  = Object.keys(roomStudents)
-  const done   = rooms.filter(r => roomStudents[r].every(id => scored.has(id))).length
+  const done   = rooms.filter(r => roomStudents[r].length > 0 && roomStudents[r].every(s => scored.has(s.id ?? s))).length
   return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored, homerooms } }
 }
 
@@ -372,117 +378,98 @@ function _openMonitorModal(type, raw, cfg, year, sem) {
   m.querySelector('#modal-doc-btn').addEventListener('click', () => _downloadMemo(cfg, type))
 }
 
-async function _renderPrayerMonitor(container, raw) {
+function _renderPrayerMonitor(container, raw) {
   if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
-  const { records, students, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W } = raw
+  const { records, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W, homerooms } = raw
 
-  if (!weeks.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีข้อมูลละหมาด</p>`; return }
+  // ห้องจาก homerooms (category='ศาสนา') เป็น source หลัก
+  const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
 
-  // map: room → teacher name (from homeroom_teachers, keyed by main_room = religion_room)
+  // map: room → teacher name
   const teacherByRoom = {}
   for (const ht of (homerooms ?? [])) {
-    if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? '—'
+    if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? ''
   }
 
-  const rooms = Object.keys(roomStudents).sort()
-  const weeksToShow = weeks.slice(-10)
   const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-2'
+  const TAB_CLS    = 'px-4 py-2 text-sm font-medium border-b-2 transition'
+  const TAB_ACTIVE = `${TAB_CLS} border-indigo-600 text-indigo-700 bg-indigo-50`
+  const TAB_IDLE   = `${TAB_CLS} border-transparent text-gray-500 hover:text-gray-700`
 
-  // helper: room cell with teacher name prominent
-  const _roomCell = (room, badges = '') => {
+  const _roomCell = (room, extra = '') => {
     const tname = teacherByRoom[room]
-    return `<td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[140px]">
-      ${tname ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p>
-                 <p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
-              : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
-      ${badges}
+    return `<td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[150px]">
+      ${tname
+        ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p><p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
+        : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
+      ${extra}
     </td>`
   }
 
-  const recordPendingRooms = rooms.filter(r => {
-    const total = roomStudents[r].length
-    const done  = weekRoomRec[r]?.[W-1]?.size ?? 0
-    return total > 0 && done < total
-  })
-  const followPendingRooms = rooms.filter(room => {
-    const absentW2 = weekRoomAbsent[room]?.[W-2]
-    if (!absentW2?.size) return false
-    return [...absentW2].some(sid => {
-      const recs = records.filter(rec => rec.main_room===room && rec.week_number===W-1 && rec.student_id===sid)
-      return !recs.some(rec => rec.status==='followed'||rec.status==='avoid')
-    })
-  })
-
-  // ── Tab 1: บันทึกคะแนน (recording grid) ────────────────────────────────────
-  const _tab1Html = () => {
-    const colHeaders = weeksToShow.map(w => `
-      <th class="${thBase} ${w===W?'bg-indigo-50 text-indigo-700 font-bold':''}" style="min-width:80px">
-        สัปดาห์ ${w}${w===W-1?`<div class="text-[8px] text-amber-500 font-normal">📋 ควรกรอก</div>`:''}
-      </th>`).join('')
+  // ── Tab 1: ความคืบหน้าการบันทึกคะแนนละหมาดรายสัปดาห์ ─────────────────────
+  const _tab1Html = (selWeek) => {
+    // selWeek: สัปดาห์ที่เลือกดู (default = W-1 = สัปดาห์ล่าสุดที่ควรกรอก)
+    const displayW = selWeek ?? (W > 0 ? W-1 : W)
+    const weekOpts = weeks.map(w => `<option value="${w}" ${w===displayW?'selected':''}>${w===W?`สัปดาห์ที่ ${w} (ปัจจุบัน)`:w===W-1?`สัปดาห์ที่ ${w} (ควรกรอก)`:`สัปดาห์ที่ ${w}`}</option>`).join('')
 
     const rows = rooms.map(room => {
       const stuList = roomStudents[room] ?? []
       const total = stuList.length
-      const isRecPending  = recordPendingRooms.includes(room)
-      const isFollPending = followPendingRooms.includes(room)
-      const badges = (isRecPending ? `<span class="text-[9px] text-amber-600">📋</span>` : '') +
-                     (isFollPending ? `<span class="text-[9px] text-red-500">⚠️</span>` : '')
+      const done  = weekRoomRec[room]?.[displayW]?.size ?? 0
+      const pct   = total > 0 ? Math.round(done/total*100) : 0
+      const bg    = total===0?'bg-gray-50 text-gray-300':done===0?'bg-red-50 text-red-400':pct>=100?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'
+      const barCl = pct>=100?'bg-emerald-500':pct>=50?'bg-amber-400':'bg-red-400'
+      const isPending = total>0 && done<total
+      const badge = isPending ? `<span class="text-[9px] text-amber-600 ml-1">📋</span>` : ''
       return `<tr class="hover:bg-gray-50">
-        ${_roomCell(room, badges)}
-        <td class="border border-gray-100 text-center text-gray-400 text-xs">${total}</td>
-        ${weeksToShow.map(w => {
-          const done = weekRoomRec[room]?.[w]?.size ?? 0
-          const pct  = total > 0 ? Math.round(done/total*100) : 0
-          const bg   = done===0 ? 'bg-red-50 text-red-400' : pct>=100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-          return `<td class="border border-gray-100 text-center py-2 text-xs ${bg} ${w===W?'ring-1 ring-inset ring-indigo-300':''}">
-            <div class="font-bold">${pct}%</div>
-            <div class="text-[9px] opacity-60">${done}/${total}</div>
-          </td>`
-        }).join('')}
+        ${_roomCell(room, badge)}
+        <td class="border border-gray-100 text-center text-gray-500 text-xs">${total}</td>
+        <td class="border border-gray-100 text-center py-2 text-xs ${bg}">
+          <div class="font-bold">${total>0?pct+'%':'—'}</div>
+          <div class="text-[9px] opacity-70">${total>0?done+'/'+total:''}</div>
+        </td>
+        <td class="border border-gray-100 px-3 py-2">
+          ${total>0?`<div class="flex items-center gap-2">
+            <div class="flex-1 bg-gray-100 rounded-full h-2"><div class="${barCl} h-2 rounded-full" style="width:${pct}%"></div></div>
+            <span class="text-[10px] font-bold ${pct>=100?'text-emerald-600':pct>=50?'text-amber-600':'text-red-500'}">${pct}%</span>
+          </div>`:'<span class="text-[10px] text-gray-300">ไม่มีนักเรียน</span>'}
+        </td>
       </tr>`
     }).join('')
 
-    return `<div class="overflow-auto rounded-xl border border-gray-100">
-      <table class="border-collapse text-xs" style="min-width:max-content;width:100%">
+    return `<div class="flex items-center gap-3 mb-3">
+      <label class="text-xs font-medium text-gray-600">เลือกสัปดาห์:</label>
+      <select id="prayer-week-sel" class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+        ${weekOpts}
+      </select>
+      <span class="text-[11px] text-gray-400">${rooms.length} ห้อง</span>
+    </div>
+    <div class="overflow-auto rounded-xl border border-gray-100">
+      <table class="border-collapse text-xs" style="width:100%">
         <thead><tr style="position:sticky;top:0;z-index:10">
-          <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
+          <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[150px]">ครูที่ปรึกษาศาสนา</th>
           <th class="${thBase} bg-gray-100">นักเรียน</th>
-          ${colHeaders}
+          <th class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:80px">บันทึกแล้ว</th>
+          <th class="${thBase} bg-gray-100" style="min-width:140px">ความคืบหน้า</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
     <div class="flex flex-wrap gap-4 mt-3 text-[11px] text-gray-500">
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-100"></span>กรอกครบ (100%)</span>
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-100"></span>กรอกบางส่วน</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-100"></span>บันทึกครบ 100%</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-100"></span>บางส่วน</span>
       <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-100"></span>ยังไม่กรอก</span>
-      <span class="text-gray-400 ml-auto">📋 = บันทึกค้าง · ⚠️ = ติดตามค้าง</span>
     </div>`
   }
 
-  // ── Tab 2: ติดตามนักเรียน (follow-up per student) ───────────────────────────
-  const _tab2Html = () => {
-    // รวมนักเรียนที่ขาดในสัปดาห์ต่างๆ พร้อมสถานะติดตาม
-    const rows = []
-    for (const room of rooms) {
-      const stuList = roomStudents[room] ?? []
-      const stuMap = Object.fromEntries(stuList.map(s => [s.id, s]))
-      // ตรวจทุกสัปดาห์ที่มีข้อมูล absent
-      const absWeeks = Object.keys(weekRoomAbsent[room] ?? {}).map(Number).sort((a,b)=>a-b)
-      for (const absW of absWeeks) {
-        const absentIds = [...(weekRoomAbsent[room]?.[absW] ?? [])]
-        for (const sid of absentIds) {
-          const stu = stuMap[sid]
-          const followW = absW + 1
-          const followRecs = records.filter(rec => rec.main_room===room && rec.week_number===followW && rec.student_id===sid)
-          const followed = followRecs.some(rec => rec.status==='followed'||rec.status==='avoid')
-          const followStatus = followed ? 'followed' : (followW > W ? 'pending' : 'overdue')
-          rows.push({ room, stu, absW, followW, followStatus })
-        }
-      }
-    }
-
-    if (!rows.length) return `<div class="text-center py-16 text-gray-400 text-sm">✅ ไม่มีนักเรียนขาดละหมาดในระบบ</div>`
+  // ── Tab 2: ความคืบหน้าการติดตามนักเรียนที่ขาดละหมาด ──────────────────────
+  const _tab2Html = (selWeek) => {
+    // selWeek: สัปดาห์ที่ขาด (ติดตามใน selWeek+1)
+    // default = W-2 (ขาดใน W-2, ควรติดตามใน W-1)
+    const absW    = selWeek ?? (W > 1 ? W-2 : weeks[0] ?? 1)
+    const followW = absW + 1
+    // สัปดาห์ที่มีข้อมูล absent
+    const absWeekOpts = weeks.map(w => `<option value="${w}" ${w===absW?'selected':''}>${w===W-2?`สัปดาห์ที่ ${w} (ควรติดตาม)`:w===W-1?`สัปดาห์ที่ ${w} (ล่าสุด)`:`สัปดาห์ที่ ${w}`}</option>`).join('')
 
     const statusBadge = (s, fw) => ({
       followed: `<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-medium">✅ ติดตามแล้ว</span>`,
@@ -490,82 +477,114 @@ async function _renderPrayerMonitor(container, raw) {
       pending:  `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px]">รอสัปดาห์ที่ ${fw}</span>`,
     }[s] ?? '')
 
-    const tableRows = rows.map(({ room, stu, absW, followW, followStatus }) => {
+    // รวม rows: นักเรียนที่ขาดใน absW
+    const followRows = []
+    for (const room of rooms) {
+      const stuList = roomStudents[room] ?? []
+      const stuMap  = Object.fromEntries(stuList.map(s => [s.id ?? s, s]))
+      const absentIds = [...(weekRoomAbsent[room]?.[absW] ?? [])]
+      for (const sid of absentIds) {
+        const stu = stuMap[sid]
+        const followRecs = records.filter(rec => rec.main_room===room && rec.week_number===followW && rec.student_id===sid)
+        const followed   = followRecs.some(rec => rec.status==='followed'||rec.status==='avoid')
+        const status     = followed ? 'followed' : (followW > W ? 'pending' : 'overdue')
+        followRows.push({ room, stu, status })
+      }
+    }
+
+    const tableRows = followRows.length ? followRows.map(({ room, stu, status }) => {
       const tname = teacherByRoom[room]
       return `<tr class="hover:bg-gray-50">
-        <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[140px]">
+        <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[150px]">
           ${tname ? `<p class="font-semibold text-gray-800 text-xs">${tname}</p><p class="text-[10px] text-gray-400">${room}</p>`
                   : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
         </td>
-        <td class="border border-gray-100 px-3 py-2 text-xs text-gray-800">${stu?.full_name ?? '—'}<br/><span class="text-[10px] text-gray-400">${stu?.student_code ?? ''}</span></td>
-        <td class="border border-gray-100 text-center text-xs text-amber-700 bg-amber-50">สัปดาห์ที่ ${absW}</td>
-        <td class="border border-gray-100 text-center text-xs text-gray-500">สัปดาห์ที่ ${followW}</td>
-        <td class="border border-gray-100 text-center py-1.5">${statusBadge(followStatus, followW)}</td>
+        <td class="border border-gray-100 px-3 py-2 text-xs">
+          <p class="text-gray-800 font-medium">${stu?.full_name ?? '—'}</p>
+          <p class="text-[10px] text-gray-400">${stu?.student_code ?? ''}</p>
+        </td>
+        <td class="border border-gray-100 text-center py-1.5">${statusBadge(status, followW)}</td>
       </tr>`
-    }).join('')
+    }).join('') : `<tr><td colspan="3" class="py-10 text-center text-gray-400 text-sm">✅ ไม่มีข้อมูลการขาดสำหรับสัปดาห์ที่ ${absW}</td></tr>`
 
-    return `<div class="overflow-auto rounded-xl border border-gray-100">
-      <table class="border-collapse text-xs" style="min-width:max-content;width:100%">
+    return `<div class="flex items-center gap-3 mb-3">
+      <label class="text-xs font-medium text-gray-600">นักเรียนที่ขาดสัปดาห์:</label>
+      <select id="prayer-follow-week-sel" class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+        ${absWeekOpts}
+      </select>
+      <span class="text-[11px] text-gray-400">ติดตามสัปดาห์ที่ ${followW} · พบ ${followRows.length} คน</span>
+    </div>
+    <div class="overflow-auto rounded-xl border border-gray-100">
+      <table class="border-collapse text-xs" style="width:100%">
         <thead><tr style="position:sticky;top:0;z-index:10">
-          <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
+          <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[150px]">ครูที่ปรึกษาศาสนา</th>
           <th class="${thBase} text-left bg-gray-100 min-w-[160px]">นักเรียน</th>
-          <th class="${thBase} bg-amber-50 text-amber-700">ขาดสัปดาห์ที่</th>
-          <th class="${thBase} bg-gray-100">ติดตามสัปดาห์ที่</th>
-          <th class="${thBase} bg-gray-100" style="min-width:130px">สถานะ</th>
+          <th class="${thBase} bg-gray-100" style="min-width:140px">สถานะการติดตาม</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
-    </div>
-    <p class="text-[11px] text-gray-400 mt-2">* แสดงทุกสัปดาห์ที่มีการขาด · สัปดาห์ปัจจุบัน W=${W}</p>`
+    </div>`
   }
 
-  // ── Render tabs ─────────────────────────────────────────────────────────────
-  const TAB_CLS    = 'px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition'
-  const TAB_ACTIVE = `${TAB_CLS} border-indigo-600 text-indigo-700 bg-indigo-50`
-  const TAB_IDLE   = `${TAB_CLS} border-transparent text-gray-500 hover:text-gray-700`
-
-  const alertSummary = (recordPendingRooms.length + followPendingRooms.length > 0) ? `
+  // สรุป alert ด้านบน
+  const recordPending = rooms.filter(r => { const t=roomStudents[r].length; return t>0 && (weekRoomRec[r]?.[W-1]?.size??0)<t })
+  const followPending = rooms.filter(room => {
+    const absentW2 = weekRoomAbsent[room]?.[W-2]
+    if (!absentW2?.size) return false
+    return [...absentW2].some(sid => {
+      const recs = records.filter(rec => rec.main_room===room && rec.week_number===W-1 && rec.student_id===sid)
+      return !recs.some(rec => rec.status==='followed'||rec.status==='avoid')
+    })
+  })
+  const alertHtml = weeks.length === 0 ? `<div class="mb-3 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">ℹ️ ยังไม่มีข้อมูลการบันทึกละหมาด — แสดงรายชื่อห้องจากฐานข้อมูลครูที่ปรึกษา</div>` :
+    (recordPending.length + followPending.length > 0) ? `
     <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      ${recordPendingRooms.length > 0 ? `
-      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
-        <p class="text-xs font-bold text-amber-800 mb-2">📋 บันทึกค้าง — สัปดาห์ที่ ${W-1} (ควรกรอกภายในสัปดาห์ ${W})</p>
+      ${recordPending.length > 0 ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+        <p class="text-xs font-bold text-amber-800 mb-2">📋 บันทึกค้าง — สัปดาห์ที่ ${W-1}</p>
         <div class="flex flex-wrap gap-1.5">
-          ${recordPendingRooms.map(r => {
-            const done = weekRoomRec[r]?.[W-1]?.size ?? 0
-            const total = roomStudents[r].length
-            const tname = teacherByRoom[r]
-            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${tname ? tname+' / ' : ''}${r} (${done}/${total})</span>`
+          ${recordPending.map(r => {
+            const t = roomStudents[r].length
+            const d = weekRoomRec[r]?.[W-1]?.size ?? 0
+            const tn = teacherByRoom[r]
+            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${tn?tn+' / ':''}${r} (${d}/${t})</span>`
           }).join('')}
         </div>
       </div>` : ''}
-      ${followPendingRooms.length > 0 ? `
-      <div class="bg-red-50 border border-red-200 rounded-xl p-3">
-        <p class="text-xs font-bold text-red-800 mb-2">⚠️ ติดตามค้าง — ขาดสัปดาห์ที่ ${W-2} ยังไม่เปลี่ยนสถานะในสัปดาห์ ${W-1}</p>
+      ${followPending.length > 0 ? `<div class="bg-red-50 border border-red-200 rounded-xl p-3">
+        <p class="text-xs font-bold text-red-800 mb-2">⚠️ ติดตามค้าง — ขาดสัปดาห์ที่ ${W-2}</p>
         <div class="flex flex-wrap gap-1.5">
-          ${followPendingRooms.map(r => {
-            const tname = teacherByRoom[r]
-            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">${tname ? tname+' / ' : ''}${r}</span>`
+          ${followPending.map(r => {
+            const tn = teacherByRoom[r]
+            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">${tn?tn+' / ':''}${r}</span>`
           }).join('')}
         </div>
       </div>` : ''}
     </div>` : `<div class="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700 font-medium">✅ ไม่มีรายการค้างทั้งบันทึกและติดตาม</div>`
 
   container.innerHTML = `
-    ${alertSummary}
+    ${alertHtml}
     <div class="flex gap-0 border-b border-gray-200 mb-4">
       <button class="prayer-tab ${TAB_ACTIVE}" data-tab="record">📋 ความคืบหน้าการบันทึก</button>
       <button class="prayer-tab ${TAB_IDLE}"   data-tab="follow">⚠️ ความคืบหน้าการติดตาม</button>
     </div>
     <div id="prayer-tab-content"></div>`
 
-  const contentEl = container.querySelector('#prayer-tab-content')
-  const renderTab = tab => {
-    contentEl.innerHTML = tab === 'record' ? _tab1Html() : _tab2Html()
+  const contentEl  = container.querySelector('#prayer-tab-content')
+  let curTab = 'record'
+
+  const renderTab = (tab, selWeek) => {
+    curTab = tab
+    contentEl.innerHTML = tab === 'record' ? _tab1Html(selWeek) : _tab2Html(selWeek)
     container.querySelectorAll('.prayer-tab').forEach(btn => {
-      const active = btn.dataset.tab === tab
-      btn.className = active ? `prayer-tab ${TAB_ACTIVE}` : `prayer-tab ${TAB_IDLE}`
+      btn.className = btn.dataset.tab === tab ? `prayer-tab ${TAB_ACTIVE}` : `prayer-tab ${TAB_IDLE}`
     })
+    // สัปดาห์ picker events
+    const sel1 = contentEl.querySelector('#prayer-week-sel')
+    if (sel1) sel1.addEventListener('change', e => renderTab('record', parseInt(e.target.value)))
+    const sel2 = contentEl.querySelector('#prayer-follow-week-sel')
+    if (sel2) sel2.addEventListener('change', e => renderTab('follow', parseInt(e.target.value)))
   }
+
   container.querySelectorAll('.prayer-tab').forEach(btn =>
     btn.addEventListener('click', () => renderTab(btn.dataset.tab))
   )
@@ -594,7 +613,7 @@ function _renderLifeSkillMonitor(container, raw, year, sem) {
           ${rooms.map(room => {
             const stuList = roomStudents[room] ?? []
             const total   = stuList.length
-            const done    = stuList.filter(id => scored.has(id)).length
+            const done    = stuList.filter(s => scored.has(s.id ?? s)).length
             const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
             const barCls  = pct>=100?'bg-emerald-500':pct>=50?'bg-amber-400':'bg-red-400'
@@ -643,7 +662,7 @@ function _renderReadingMonitor(container, raw, year, sem) {
           ${rooms.map(room => {
             const stuList = roomStudents[room] ?? []
             const total   = stuList.length
-            const done    = stuList.filter(id => scored.has(id)).length
+            const done    = stuList.filter(s => scored.has(s.id ?? s)).length
             const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
             const barCls  = pct>=100?'bg-indigo-500':pct>=50?'bg-amber-400':'bg-red-400'

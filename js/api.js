@@ -1450,7 +1450,9 @@ export async function getPrayerMonitoringData(academicYear, semester) {
     supabase.from('homeroom_teachers')
       .select('main_room, category, teachers(full_name)')
       .eq('academic_year', academicYear)
-      .eq('semester', semester),
+      .eq('semester', semester)
+      .eq('category', 'ศาสนา')
+      .order('main_room'),
   ])
   if (error) throw error
   return { records: records ?? [], students: students ?? [], homerooms: homerooms ?? [] }
@@ -1463,7 +1465,9 @@ export async function getLifeSkillMonitoringData(academicYear, semester) {
     supabase.from('homeroom_teachers')
       .select('main_room, category, teachers(full_name)')
       .eq('academic_year', academicYear)
-      .eq('semester', semester),
+      .eq('semester', semester)
+      .eq('category', 'สามัญ')
+      .order('main_room'),
   ])
   return { columns: columns ?? [], scores: scores ?? [], students: students ?? [], homerooms: homerooms ?? [] }
 }
@@ -1475,7 +1479,9 @@ export async function getReadingMonitoringData(academicYear, semester) {
     supabase.from('homeroom_teachers')
       .select('main_room, category, teachers(full_name)')
       .eq('academic_year', academicYear)
-      .eq('semester', semester),
+      .eq('semester', semester)
+      .eq('category', 'สามัญ')
+      .order('main_room'),
   ])
   return { columns: columns ?? [], scores: scores ?? [], students: students ?? [], homerooms: homerooms ?? [] }
 }
