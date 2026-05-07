@@ -15,6 +15,7 @@ import { applyThemeForRole } from './theme.js'
 let _student = null
 let _activeClassId = null
 let _activeSubjectTab = 'todo'
+let _activeScoreTab = 'life'
 
 // ─── Auth Guard ───────────────────────────────────────────────────────────────
 async function init() {
@@ -79,7 +80,7 @@ async function _loadHeader() {
 const ROUTES = {
   overview: () => renderStudentOverview(_student),
   subjects: () => renderStudentSubjects(_student),
-  scores:   () => renderStudentMyScores(_student),
+  scores:   () => renderStudentMyScores(_student, _activeScoreTab),
   requests: () => renderStudentRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
 }
@@ -117,6 +118,19 @@ function _renderSubjectNav(activeTab = 'todo') {
   _setBottomNavActive(activeTab)
 }
 
+function _renderScoreNav(activeTab = 'life') {
+  const nav = document.getElementById('stu-bottom-nav')
+  if (!nav) return
+  nav.innerHTML = [
+    _navButtonHTML('overview', '🏠', 'ภาพรวม', 'score'),
+    _navButtonHTML('life', '🌱', 'ทักษะชีวิต', 'score'),
+    _navButtonHTML('prayer', '🕌', 'ละหมาด', 'score'),
+    _navButtonHTML('reading', '📖', 'อ่านฯ', 'score'),
+  ].join('')
+  _bindNav()
+  _setBottomNavActive(activeTab)
+}
+
 function _setBottomNavActive(activeView) {
   document.querySelectorAll('.stu-nav-btn').forEach(btn => {
     const isActive = btn.dataset.view === activeView
@@ -129,6 +143,12 @@ function _setBottomNavActive(activeView) {
 function navigate(view) {
   _activeClassId = null
   _activeSubjectTab = 'todo'
+  if (view === 'scores') {
+    _activeScoreTab = 'life'
+    _renderScoreNav(_activeScoreTab)
+    ROUTES.scores()
+    return
+  }
   _renderMainNav(view)
   const fn = ROUTES[view]
   if (fn) fn()
@@ -142,6 +162,16 @@ function _bindNav() {
           navigate('overview')
         } else if (_activeClassId) {
           openClassTab(_activeClassId, btn.dataset.view)
+        }
+        return
+      }
+      if (btn.dataset.mode === 'score') {
+        if (btn.dataset.view === 'overview') {
+          navigate('overview')
+        } else {
+          _activeScoreTab = btn.dataset.view
+          _renderScoreNav(_activeScoreTab)
+          renderStudentMyScores(_student, _activeScoreTab)
         }
         return
       }

@@ -291,7 +291,7 @@ export async function renderStudentOverview(student) {
 }
 
 // ─── My Score Hub ────────────────────────────────────────────────────────────
-export async function renderStudentMyScores(student) {
+export async function renderStudentMyScores(student, activeTab = 'life') {
   setContent(`<div class="flex justify-center py-10 text-gray-300">
     <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -338,12 +338,7 @@ export async function renderStudentMyScores(student) {
       </div>` : `<div class="py-8 text-center text-gray-300 text-sm">ยังไม่มีข้อมูลคะแนน</div>`}
     </section>`
 
-  setContent(`
-    <h2 class="font-bold text-gray-800 mb-1">📊 คะแนนของฉัน</h2>
-    <p class="text-xs text-gray-400 mb-4">คะแนนรวมอื่น ๆ นอกเหนือจากคะแนนรายวิชา · ภาค ${sem ?? '—'} / ${year ?? '—'}</p>
-
-    ${scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600')}
-
+  const prayerCard = `
     <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <div>
@@ -381,8 +376,25 @@ export async function renderStudentMyScores(student) {
         ${Object.values(PRAYER_SCORE).map(s => `<span><b class="${s.cls.split(' ').find(c=>c.startsWith('text-')) ?? ''}">${s.label}</b> ${s.title}</span>`).join('')}
       </div>
     </section>
+  `
 
-    ${scoreCard('คะแนนอ่านคิดวิเคราะห์ฯ', '📖', readingRows, 'text-sky-600')}
+  const tabTitle = {
+    life: 'คะแนนทักษะชีวิต',
+    prayer: 'คะแนนละหมาด',
+    reading: 'คะแนนอ่านคิดวิเคราะห์ฯ',
+  }[activeTab] ?? 'คะแนนทักษะชีวิต'
+
+  const content = {
+    life: scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600'),
+    prayer: prayerCard,
+    reading: scoreCard('คะแนนอ่านคิดวิเคราะห์ฯ', '📖', readingRows, 'text-sky-600'),
+  }[activeTab] ?? scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600')
+
+  setContent(`
+    <h2 class="font-bold text-gray-800 mb-1">📊 คะแนนของฉัน</h2>
+    <p class="text-xs text-gray-400 mb-2">คะแนนรวมอื่น ๆ นอกเหนือจากคะแนนรายวิชา · ภาค ${sem ?? '—'} / ${year ?? '—'}</p>
+    <p class="text-sm font-semibold text-gray-700 mb-4">${tabTitle}</p>
+    ${content}
   `)
 }
 
