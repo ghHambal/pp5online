@@ -1361,6 +1361,38 @@ export async function renderExamRequestForm(student, classId) {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export async function renderStudentProfile(student, onLogout) {
+  const cfg = await getSystemConfig().catch(()=>({}))
+
+  const _contactLinks = () => {
+    const items = [
+      cfg.contactPhone    && { icon:'📞', label: cfg.contactPhone,    href: `tel:${cfg.contactPhone.replace(/\s/g,'')}` },
+      cfg.contactLine     && { icon:'💬', label: 'LINE OA',           href: cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}` },
+      cfg.contactFacebook && { icon:'📘', label: 'Facebook',          href: cfg.contactFacebook },
+      cfg.contactEmail    && { icon:'📧', label: cfg.contactEmail,    href: `mailto:${cfg.contactEmail}` },
+      cfg.contactOther    && { icon:'🔗', label: cfg.contactOther,    href: null },
+    ].filter(Boolean)
+    if (!items.length) return ''
+    return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+        <div class="px-5 py-3 border-b border-gray-50">
+          <p class="text-sm font-semibold text-gray-700">📞 ติดต่อผู้ดูแลระบบ</p>
+        </div>
+        <div class="px-5 py-3 space-y-2.5">
+          ${items.map(l => l.href
+            ? `<a href="${l.href}" target="_blank" rel="noopener"
+                class="flex items-center gap-3 text-sm text-indigo-600 hover:text-indigo-800 transition">
+                <span class="text-base">${l.icon}</span>
+                <span>${l.label}</span>
+               </a>`
+            : `<div class="flex items-center gap-3 text-sm text-gray-600">
+                <span class="text-base">${l.icon}</span>
+                <span>${l.label}</span>
+               </div>`
+          ).join('')}
+        </div>
+      </div>`
+  }
+
   setContent(`
     <h2 class="font-bold text-gray-800 mb-4">👤 โปรไฟล์ของฉัน</h2>
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 flex items-center gap-4">
@@ -1392,6 +1424,8 @@ export async function renderStudentProfile(student, onLogout) {
         <span class="text-sm font-medium text-gray-800">${student.religion_room}</span>
       </div>` : ''}
     </div>
+
+    ${_contactLinks()}
 
     <button id="stu-logout-btn"
       class="w-full py-3 rounded-xl border-2 border-red-200 text-red-500 font-semibold text-sm

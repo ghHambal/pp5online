@@ -1005,6 +1005,13 @@ export async function renderSettings() {
         { key: 'porworDirectorName',         label: 'ผู้อำนวยการ',              type: 'text' },
         { key: 'porworDirectorSignUrl',      label: 'ลายเซ็นผู้อำนวยการ',       type: 'upload' },
       ]},
+      { label: '📞 ช่องทางติดต่อ (แสดงในหน้าครูและนักเรียน)', keys: [
+        { key: 'contactPhone',    label: 'เบอร์มือถือ/โทรศัพท์',      type: 'text' },
+        { key: 'contactLine',     label: 'LINE OA / LINE ID',           type: 'text' },
+        { key: 'contactFacebook', label: 'Facebook Page URL',           type: 'text' },
+        { key: 'contactEmail',    label: 'อีเมลติดต่อ',                type: 'text' },
+        { key: 'contactOther',    label: 'ช่องทางอื่น (แสดงตรงๆ)',    type: 'text' },
+      ]},
       { label: '💳 การชำระเงิน (แสดงให้ครูเห็นเมื่อซื้อแพ็กเกจ)', keys: [
         { key: 'paymentAccountName',  label: 'ชื่อบัญชี',                    type: 'text' },
         { key: 'paymentBankName',     label: 'ธนาคาร',                       type: 'text' },

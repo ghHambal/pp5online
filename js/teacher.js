@@ -803,6 +803,33 @@ async function loadSidebarHeader(teacher) {
       logoImg.classList.remove('hidden')
       logoFb?.classList.add('hidden')
     }
+
+    // ช่องทางติดต่อ
+    const contactEl = document.getElementById('sidebar-contact')
+    if (contactEl) {
+      const links = [
+        cfg.contactPhone    && { icon:'📞', label: cfg.contactPhone,    href: `tel:${cfg.contactPhone.replace(/\s/g,'')}` },
+        cfg.contactLine     && { icon:'💬', label: 'LINE',              href: cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}` },
+        cfg.contactFacebook && { icon:'📘', label: 'Facebook',          href: cfg.contactFacebook },
+        cfg.contactEmail    && { icon:'📧', label: cfg.contactEmail,    href: `mailto:${cfg.contactEmail}` },
+        cfg.contactOther    && { icon:'🔗', label: cfg.contactOther,    href: null },
+      ].filter(Boolean)
+
+      if (links.length > 0) {
+        contactEl.innerHTML = `
+          <p class="text-[10px] text-emerald-400 uppercase tracking-widest mb-1.5">ติดต่อผู้ดูแล</p>
+          ${links.map(l => l.href
+            ? `<a href="${l.href}" target="_blank" rel="noopener"
+                class="flex items-center gap-1.5 text-[11px] text-emerald-300 hover:text-white transition py-0.5">
+                <span>${l.icon}</span><span class="truncate">${l.label}</span>
+               </a>`
+            : `<p class="flex items-center gap-1.5 text-[11px] text-emerald-300 py-0.5">
+                <span>${l.icon}</span><span class="truncate">${l.label}</span>
+               </p>`
+          ).join('')}`
+        contactEl.classList.remove('hidden')
+      }
+    }
   } catch { /* ไม่ critical */ }
 }
 
