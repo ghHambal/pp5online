@@ -26,6 +26,7 @@ import { openTeacherModal, handleDeleteTeacher,
 import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './import.js'
 import { uploadSystemAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
+import { supabase } from './supabase.js'
 import {
   DEFAULT_SUBJECT_SYNC_COLUMNS,
   DEFAULT_SUBJECT_SYNC_KEY_FIELD,
