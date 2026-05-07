@@ -3,6 +3,7 @@ import { getMyStudentProfile, getMyExamRequests } from './student-api.js'
 import {
   renderStudentOverview,
   renderStudentSubjects,
+  renderStudentMyScores,
   renderStudentSubjectDetail,
   renderStudentRequests,
   renderExamRequestForm,
@@ -78,6 +79,7 @@ async function _loadHeader() {
 const ROUTES = {
   overview: () => renderStudentOverview(_student),
   subjects: () => renderStudentSubjects(_student),
+  scores:   () => renderStudentMyScores(_student),
   requests: () => renderStudentRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
 }
@@ -95,7 +97,7 @@ function _renderMainNav(activeView = 'overview') {
   nav.innerHTML = [
     _navButtonHTML('overview', '🏠', 'ภาพรวม'),
     _navButtonHTML('subjects', '📚', 'รายวิชา'),
-    _navButtonHTML('requests', '📝', 'คำร้อง'),
+    _navButtonHTML('scores', '📊', 'คะแนน'),
     _navButtonHTML('profile', '👤', 'โปรไฟล์'),
   ].join('')
   _bindNav()

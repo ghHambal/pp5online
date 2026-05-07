@@ -3,8 +3,10 @@ import {
   getMyExamRequests, submitExamRequest, cancelExamRequest,
   getMissedExamCount,
   getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
+  getMyLifeSkillScores, getMyReadingScores, getMyPrayerRecords,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
+import { getSystemConfig } from './api.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setContent(html) {
@@ -36,6 +38,13 @@ const STATUS_BADGE = {
   rejected: { label:'ปฏิเสธ',       cls:'bg-red-50 text-red-600 border-red-200' },
 }
 const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
+const PRAYER_SCORE = {
+  pray: { label: '/', score: 2, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100', title: 'ละหมาด' },
+  absent: { label: 'X', score: 0, cls: 'bg-red-50 text-red-600 border-red-100', title: 'ขาดละหมาด' },
+  usor: { label: 'U', score: 1, cls: 'bg-purple-50 text-purple-600 border-purple-100', title: 'อูโซร' },
+  followed: { label: '-', score: 1, cls: 'bg-blue-50 text-blue-600 border-blue-100', title: 'ติดตามแล้ว' },
+  avoid: { label: 'N', score: -1, cls: 'bg-orange-50 text-orange-600 border-orange-100', title: 'หลีกเลี่ยง' },
+}
 
 function _hexToRgb(hex) {
   const safe = /^#[0-9a-f]{6}$/i.test(String(hex ?? '')) ? hex : '#059669'
@@ -166,6 +175,28 @@ function _localDateValue(d) {
   return `${y}-${m}-${day}`
 }
 
+function _generatePrayerWeeks(startValue, records = []) {
+  const firstRecord = records.map(r => r.check_date).filter(Boolean).sort()[0]
+  const base = startValue || firstRecord || new Date().toISOString().slice(0, 10)
+  const start = new Date(base)
+  start.setHours(0,0,0,0)
+  const diff = start.getDay()
+  if (diff) start.setDate(start.getDate() - diff)
+  return Array.from({ length: 20 }, (_, wi) => {
+    const days = Array.from({ length: 5 }, (_, di) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() + (wi * 7) + di)
+      return { date, ds: _localDateValue(date), day: DAY_TH[di] }
+    })
+    return { n: wi + 1, days }
+  })
+}
+
+function _scoreRows(columns, scores) {
+  const map = Object.fromEntries((scores ?? []).map(s => [s.column_id, s.score]))
+  return (columns ?? []).map(c => ({ ...c, score: map[c.id] ?? null }))
+}
+
 // ─── Overview ─────────────────────────────────────────────────────────────────
 export async function renderStudentOverview(student) {
   setContent(`<div class="flex justify-center py-10 text-gray-300">
@@ -221,11 +252,11 @@ export async function renderStudentOverview(student) {
         <p class="font-semibold text-sm">รายวิชาของฉัน</p>
         <p class="text-[11px] text-emerald-200 mt-0.5">${classes.length} วิชา</p>
       </button>
-      <button onclick="window._stuNav('requests')"
+      <button onclick="window._stuNav('scores')"
         class="bg-indigo-600 text-white rounded-xl p-4 text-left hover:bg-indigo-700 transition">
-        <p class="text-xl mb-1">📝</p>
-        <p class="font-semibold text-sm">ยื่นคำร้อง</p>
-        <p class="text-[11px] text-indigo-200 mt-0.5">สอบย้อนหลัง / ปรับคะแนน</p>
+        <p class="text-xl mb-1">📊</p>
+        <p class="font-semibold text-sm">คะแนนของฉัน</p>
+        <p class="text-[11px] text-indigo-200 mt-0.5">ทักษะชีวิต / ละหมาด / อ่านฯ</p>
       </button>
     </div>
 
@@ -256,6 +287,102 @@ export async function renderStudentOverview(student) {
       <p class="text-3xl mb-2">📭</p>
       <p class="text-sm">ยังไม่มีคำร้อง</p>
     </div>`}
+  `)
+}
+
+// ─── My Score Hub ────────────────────────────────────────────────────────────
+export async function renderStudentMyScores(student) {
+  setContent(`<div class="flex justify-center py-10 text-gray-300">
+    <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>`)
+
+  const cfg = await getSystemConfig().catch(()=>({}))
+  const year = cfg.academicYear
+  const sem = cfg.semester
+  const [life, reading, prayers] = await Promise.all([
+    getMyLifeSkillScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
+    getMyReadingScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
+    getMyPrayerRecords(student.id).catch(err => Object.assign([], { error: err })),
+  ])
+
+  const lifeRows = _scoreRows(life.columns, life.scores)
+  const readingRows = _scoreRows(reading.columns, reading.scores)
+  const prayerMap = Object.fromEntries((prayers ?? []).map(r => [r.check_date, r.status]))
+  const weeks = _generatePrayerWeeks(cfg.semester_start, prayers ?? [])
+  const allPrayerDays = weeks.flatMap(w => w.days)
+  const prayerEarned = allPrayerDays.reduce((sum, d) => sum + (PRAYER_SCORE[prayerMap[d.ds]]?.score ?? 0), 0)
+  const prayerMax = allPrayerDays.length * 2
+  const prayerScore = prayerMax ? Math.max(0, Math.round((prayerEarned / prayerMax) * 100) / 10) : 0
+
+  const scoreCard = (title, icon, rows, color) => `
+    <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+      <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+        <h3 class="font-bold text-gray-800 text-sm">${icon} ${title}</h3>
+        <span class="text-[11px] text-gray-400">${rows.length} หัวข้อ</span>
+      </div>
+      ${rows.length ? `<div class="divide-y divide-gray-50">
+        ${rows.map(r => `
+          <div class="px-4 py-3 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-gray-700 truncate">${r.name}</p>
+              <p class="text-[11px] text-gray-400">${r.sheet_col ? `คอลัมน์ ${r.sheet_col} · ` : ''}เต็ม ${r.max_score ?? '—'}</p>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <p class="text-lg font-bold ${color}">${r.score ?? '—'}</p>
+              <p class="text-[10px] text-gray-400">/ ${r.max_score ?? '—'}</p>
+            </div>
+          </div>`).join('')}
+      </div>` : `<div class="py-8 text-center text-gray-300 text-sm">ยังไม่มีข้อมูลคะแนน</div>`}
+    </section>`
+
+  setContent(`
+    <h2 class="font-bold text-gray-800 mb-1">📊 คะแนนของฉัน</h2>
+    <p class="text-xs text-gray-400 mb-4">คะแนนรวมอื่น ๆ นอกเหนือจากคะแนนรายวิชา · ภาค ${sem ?? '—'} / ${year ?? '—'}</p>
+
+    ${scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600')}
+
+    <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+      <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">🕌 คะแนนละหมาด</h3>
+          <p class="text-[11px] text-gray-400 mt-0.5">20 สัปดาห์ · สัปดาห์ละ 5 วัน</p>
+        </div>
+        <div class="text-right">
+          <p class="text-lg font-bold text-amber-600">${prayerScore}</p>
+          <p class="text-[10px] text-gray-400">/ 10</p>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[520px] text-xs">
+          <thead>
+            <tr class="bg-gray-50 text-gray-500">
+              <th class="px-2 py-2 text-left font-semibold">สัปดาห์</th>
+              ${['อา','จ','อ','พ','พฤ'].map(d => `<th class="px-2 py-2 text-center font-semibold">${d}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            ${weeks.map(w => `<tr>
+              <td class="px-2 py-2 font-semibold text-gray-600">สัปดาห์ ${w.n}</td>
+              ${w.days.map(d => {
+                const st = prayerMap[d.ds]
+                const cfg = PRAYER_SCORE[st]
+                return `<td class="px-1 py-1 text-center">
+                  <span title="${cfg?.title ?? 'ยังไม่บันทึก'}" class="inline-flex items-center justify-center w-8 h-8 rounded-lg border text-[11px] font-bold ${cfg?.cls ?? 'bg-gray-50 text-gray-300 border-gray-100'}">${cfg?.label ?? '—'}</span>
+                </td>`
+              }).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="px-4 py-3 border-t border-gray-50 flex flex-wrap gap-2 text-[10px] text-gray-400">
+        ${Object.values(PRAYER_SCORE).map(s => `<span><b class="${s.cls.split(' ').find(c=>c.startsWith('text-')) ?? ''}">${s.label}</b> ${s.title}</span>`).join('')}
+      </div>
+    </section>
+
+    ${scoreCard('คะแนนอ่านคิดวิเคราะห์ฯ', '📖', readingRows, 'text-sky-600')}
   `)
 }
 

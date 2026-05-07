@@ -48,13 +48,14 @@
 | 15 | `patch_student_lookup.sql` | `lookup_student_by_code()` RPC สำหรับ anonymous lookup ตอน login | ✅ จำเป็น |
 | 16 | `patch_student_teacher_schedule_read.sql` | RLS ให้นักเรียนอ่านตารางสอนครูที่สอนตัวเอง | ✅ จำเป็น |
 | 17 | `patch_student_teacher_schedule_rpc.sql` | RPC `get_enrolled_teacher_schedule()` สำหรับนักเรียนดูตารางสอนครู | ✅ รันหลัง patch_student_teacher_schedule_read |
+| 18 | `patch_student_my_scores_rls.sql` | RLS ให้นักเรียนอ่านคะแนนละหมาดของตัวเองในหน้า "คะแนนของฉัน" | ✅ จำเป็นสำหรับหน้า คะแนนของฉัน |
 
 ### กลุ่ม F — ระบบคำร้องและ Theme
 
 | ลำดับ | ไฟล์ | สิ่งที่ทำ | จำเป็น? |
 |-------|------|-----------|---------|
-| 18 | `patch_exam_requests.sql` | เพิ่ม `exam_attended` + `exam_score` ใน exam_requests + RLS ครู | ✅ จำเป็น |
-| 19 | `patch_theme_config.sql` | เติมค่าเริ่มต้น theme colors ใน system_config | 🔵 Optional — ถ้าต้องการสีเริ่มต้น |
+| 19 | `patch_exam_requests.sql` | เพิ่ม `exam_attended` + `exam_score` ใน exam_requests + RLS ครู | ✅ จำเป็น |
+| 20 | `patch_theme_config.sql` | เติมค่าเริ่มต้น theme colors ใน system_config | 🔵 Optional — ถ้าต้องการสีเริ่มต้น |
 
 ---
 

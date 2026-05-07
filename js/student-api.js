@@ -146,3 +146,49 @@ export async function getScoreColumnsForClass(classId) {
   if (error) throw error
   return data ?? []
 }
+
+// ─── My Cross-System Scores ──────────────────────────────────────────────────
+export async function getMyLifeSkillScores(studentId, academicYear, semester) {
+  let q = supabase.from('life_skill_columns')
+    .select('id, name, max_score, sheet_col, sort_order, category')
+    .order('sort_order').order('id')
+  if (academicYear) q = q.eq('academic_year', Number(academicYear))
+  if (semester) q = q.eq('semester', Number(semester))
+  const { data: columns, error: colErr } = await q
+  if (colErr) throw colErr
+  if (!columns?.length) return { columns: [], scores: [] }
+
+  const { data: scores, error } = await supabase.from('life_skill_scores')
+    .select('column_id, score')
+    .eq('student_id', studentId)
+    .in('column_id', columns.map(c => c.id))
+  if (error) throw error
+  return { columns, scores: scores ?? [] }
+}
+
+export async function getMyReadingScores(studentId, academicYear, semester) {
+  let q = supabase.from('reading_score_columns')
+    .select('id, name, max_score, sheet_col, sort_order')
+    .order('sort_order').order('id')
+  if (academicYear) q = q.eq('academic_year', Number(academicYear))
+  if (semester) q = q.eq('semester', Number(semester))
+  const { data: columns, error: colErr } = await q
+  if (colErr) throw colErr
+  if (!columns?.length) return { columns: [], scores: [] }
+
+  const { data: scores, error } = await supabase.from('reading_scores')
+    .select('column_id, score')
+    .eq('student_id', studentId)
+    .in('column_id', columns.map(c => c.id))
+  if (error) throw error
+  return { columns, scores: scores ?? [] }
+}
+
+export async function getMyPrayerRecords(studentId) {
+  const { data, error } = await supabase.from('prayer_records')
+    .select('check_date, status, week_number')
+    .eq('student_id', studentId)
+    .order('check_date')
+  if (error) throw error
+  return data ?? []
+}
