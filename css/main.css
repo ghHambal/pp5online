@@ -80,6 +80,17 @@
   overflow: hidden;
 }
 
+/* ─── Mobile Bottom Nav ─────────────────────────────────────────────────────── */
+.safe-area-bottom {
+  padding-bottom: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+.safe-area-bottom .stu-nav-btn {
+  min-height: 76px;
+  padding-top: 0.8rem;
+  padding-bottom: 0.8rem;
+}
+
 #sidebar {
   background: var(--theme-primary-dark) !important;
 }
