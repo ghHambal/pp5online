@@ -4248,3 +4248,134 @@ function _openReadingModal(col, year, sem, onSave) {
     }
   })
 }
+
+// ─── Admin: โปรไฟล์ของฉัน ─────────────────────────────────────────────────────
+export async function renderAdminProfile() {
+  setActiveNav('admin-profile')
+  document.getElementById('page-title').textContent = 'โปรไฟล์ของฉัน'
+
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user?.id
+  const currentEmail = session?.user?.email ?? ''
+
+  // ดึงข้อมูลชื่อจาก teachers (ถ้ามี)
+  const { data: teacher } = userId
+    ? await supabase.from('teachers').select('id, full_name, image_url').eq('profile_id', userId).maybeSingle().catch(()=>({ data: null }))
+    : { data: null }
+
+  const INPUT = 'w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white'
+
+  setContent(`<div class="max-w-lg mx-auto animate-fade">
+    <h2 class="text-lg font-bold text-gray-800 mb-5">👤 โปรไฟล์ของฉัน</h2>
+
+    <!-- Avatar -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4 flex flex-col items-center">
+      <div id="adm-avatar"
+        class="w-24 h-24 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500
+               text-white text-3xl font-bold flex items-center justify-center overflow-hidden border-4 border-white shadow-md mb-3">
+        ${teacher?.image_url
+          ? `<img src="${teacher.image_url}" class="w-full h-full object-cover"/>`
+          : (teacher?.full_name ?? 'A').charAt(0).toUpperCase()}
+      </div>
+      <p class="text-sm font-semibold text-gray-700">${teacher?.full_name ?? 'ผู้ดูแลระบบ'}</p>
+      <p class="text-xs text-indigo-500 mt-0.5">ผู้ดูแลระบบ</p>
+    </div>
+
+    <!-- แก้ไขชื่อ -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
+      <h3 class="font-semibold text-gray-700 mb-3 text-sm">📝 ชื่อ-นามสกุล</h3>
+      <input id="adm-name" type="text" value="${teacher?.full_name ?? ''}"
+        placeholder="ชื่อ-นามสกุล" class="${INPUT} mb-3" />
+      <button id="btn-save-name"
+        class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+        บันทึกชื่อ
+      </button>
+      <div id="name-msg" class="hidden text-xs text-center mt-2 py-2 rounded-lg"></div>
+    </div>
+
+    <!-- แก้ไขอีเมล -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
+      <h3 class="font-semibold text-gray-700 mb-1 text-sm">📧 อีเมล</h3>
+      <p class="text-xs text-gray-400 mb-3">ปัจจุบัน: <span class="font-medium text-gray-600">${currentEmail}</span></p>
+      <input id="adm-email" type="email" placeholder="อีเมลใหม่"
+        class="${INPUT} mb-3" />
+      <button id="btn-save-email"
+        class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+        เปลี่ยนอีเมล
+      </button>
+      <div id="email-msg" class="hidden text-xs text-center mt-2 py-2 rounded-lg"></div>
+      <p class="text-[11px] text-gray-400 mt-2 text-center">ระบบจะส่งลิงก์ยืนยันไปยังอีเมลใหม่ก่อนอัปเดต</p>
+    </div>
+
+    <!-- เปลี่ยนรหัสผ่าน -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <h3 class="font-semibold text-gray-700 mb-3 text-sm">🔒 เปลี่ยนรหัสผ่าน</h3>
+      <input id="adm-pw" type="password" placeholder="รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)"
+        class="${INPUT} mb-2" />
+      <input id="adm-pw2" type="password" placeholder="ยืนยันรหัสผ่านใหม่"
+        class="${INPUT} mb-3" />
+      <button id="btn-save-pw"
+        class="w-full py-2.5 rounded-xl bg-gray-700 text-white text-sm font-semibold hover:bg-gray-800 transition">
+        เปลี่ยนรหัสผ่าน
+      </button>
+      <div id="pw-msg" class="hidden text-xs text-center mt-2 py-2 rounded-lg"></div>
+    </div>
+  </div>`)
+
+  const _msg = (elId, text, ok) => {
+    const el = document.getElementById(elId)
+    el.className = `text-xs text-center mt-2 py-2 rounded-lg ${ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`
+    el.textContent = text
+    el.classList.remove('hidden')
+    setTimeout(() => el.classList.add('hidden'), 3500)
+  }
+
+  // บันทึกชื่อ
+  document.getElementById('btn-save-name').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-save-name')
+    const name = document.getElementById('adm-name').value.trim()
+    if (!name) { _msg('name-msg', 'กรุณากรอกชื่อ-นามสกุล', false); return }
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      if (teacher?.id) {
+        await supabase.from('teachers').update({ full_name: name }).eq('id', teacher.id)
+      }
+      _msg('name-msg', 'บันทึกชื่อสำเร็จ ✅', true)
+      document.getElementById('user-name')?.textContent && (document.getElementById('user-name').textContent = name)
+    } catch (err) { _msg('name-msg', 'บันทึกไม่สำเร็จ: ' + (err.message ?? ''), false) }
+    finally { btn.disabled = false; btn.textContent = 'บันทึกชื่อ' }
+  })
+
+  // เปลี่ยนอีเมล
+  document.getElementById('btn-save-email').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-save-email')
+    const email = document.getElementById('adm-email').value.trim()
+    if (!email || !email.includes('@')) { _msg('email-msg', 'กรุณากรอกอีเมลให้ถูกต้อง', false); return }
+    btn.disabled = true; btn.textContent = 'กำลังส่งลิงก์...'
+    try {
+      const { error } = await supabase.auth.updateUser({ email })
+      if (error) throw error
+      _msg('email-msg', 'ส่งลิงก์ยืนยันไปที่ ' + email + ' แล้ว ✅', true)
+      document.getElementById('adm-email').value = ''
+    } catch (err) { _msg('email-msg', 'ไม่สำเร็จ: ' + (err.message ?? ''), false) }
+    finally { btn.disabled = false; btn.textContent = 'เปลี่ยนอีเมล' }
+  })
+
+  // เปลี่ยนรหัสผ่าน
+  document.getElementById('btn-save-pw').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-save-pw')
+    const pw  = document.getElementById('adm-pw').value
+    const pw2 = document.getElementById('adm-pw2').value
+    if (!pw || pw.length < 6) { _msg('pw-msg', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', false); return }
+    if (pw !== pw2)            { _msg('pw-msg', 'รหัสผ่านทั้งสองช่องไม่ตรงกัน', false); return }
+    btn.disabled = true; btn.textContent = 'กำลังเปลี่ยน...'
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw })
+      if (error) throw error
+      _msg('pw-msg', 'เปลี่ยนรหัสผ่านสำเร็จ ✅', true)
+      document.getElementById('adm-pw').value  = ''
+      document.getElementById('adm-pw2').value = ''
+    } catch (err) { _msg('pw-msg', 'ไม่สำเร็จ: ' + (err.message ?? ''), false) }
+    finally { btn.disabled = false; btn.textContent = 'เปลี่ยนรหัสผ่าน' }
+  })
+}
