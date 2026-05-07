@@ -479,9 +479,10 @@ export async function savePrayerRecords(records) {
   if (!records.length) return
   // Delete ก่อน แล้ว insert ใหม่ (ไม่ต้องพึ่ง unique constraint)
   for (const r of records) {
-    await supabase.from('prayer_records').delete()
+    const { error: deleteError } = await supabase.from('prayer_records').delete()
       .eq('teacher_id', r.teacher_id).eq('student_id', r.student_id)
       .eq('main_room', r.main_room).eq('check_date', r.check_date)
+    if (deleteError) throw deleteError
   }
   const { error } = await supabase.from('prayer_records').insert(records)
   if (error) throw error
@@ -489,9 +490,10 @@ export async function savePrayerRecords(records) {
 
 export async function savePrayerCell(teacherId, studentId, room, checkDate, status, weekNumber = null) {
   // ลบก่อนเสมอ (ไม่ต้องพึ่ง unique constraint)
-  await supabase.from('prayer_records').delete()
+  const { error: deleteError } = await supabase.from('prayer_records').delete()
     .eq('teacher_id', teacherId).eq('student_id', studentId)
     .eq('main_room', room).eq('check_date', checkDate)
+  if (deleteError) throw deleteError
 
   if (status) {
     const payload = { teacher_id: teacherId, student_id: studentId, main_room: room,

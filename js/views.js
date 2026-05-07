@@ -195,181 +195,274 @@ export async function renderOverview() {
 
 // ─── Admin Monitoring Section ─────────────────────────────────────────────────
 
-function _renderMonitoringShell(container, cfg) {
-  const year = parseInt(cfg.academicYear ?? 2568)
-  const sem  = parseInt(cfg.semester ?? 1)
-  let _tab = 'prayer'
-  let _filter = 'all'
-
-  const _tabBtn = (key, icon, label) => {
-    const active = _tab === key
-    return `<button class="monitor-tab flex-1 py-2 text-xs font-semibold rounded-lg transition
-      ${active ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}"
-      data-tab="${key}">${icon} ${label}</button>`
-  }
-
-  container.innerHTML = `
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between flex-wrap gap-3">
-        <h3 class="font-bold text-gray-800">📊 ติดตามความคืบหน้า</h3>
-        <div class="flex items-center gap-2">
-          <select id="monitor-filter" class="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300">
-            <option value="all">ทุกห้อง</option>
-            <option value="สามัญ">ห้องสามัญ</option>
-            <option value="ศาสนา">ห้องศาสนา</option>
-          </select>
-          <button id="monitor-print" class="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition">🖨️ พิมพ์</button>
-          <button id="monitor-doc" class="text-xs px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition">📄 บันทึกข้อความ</button>
-        </div>
-      </div>
-      <div class="flex gap-1 bg-gray-100 p-1 mx-5 my-3 rounded-xl">
-        ${_tabBtn('prayer','🕌','ละหมาด (รายสัปดาห์)')}
-        ${_tabBtn('lifeskill','🌱','ทักษะชีวิต (รายเทอม)')}
-        ${_tabBtn('reading','📖','อ่านคิดวิเคราะห์ (รายเทอม)')}
-      </div>
-      <div id="monitor-content" class="px-5 pb-5">
-        <div class="text-center py-8 text-gray-300">
-          <svg class="animate-spin h-6 w-6 mx-auto mb-2 text-indigo-300" viewBox="0 0 24 24" fill="none">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-          </svg>กำลังโหลด...
-        </div>
-      </div>
-    </div>`
-
-  const _load = async () => {
-    const content = document.getElementById('monitor-content')
-    if (!content) return
-    content.innerHTML = `<div class="text-center py-8 text-indigo-300">
-      <svg class="animate-spin h-6 w-6 mx-auto" viewBox="0 0 24 24" fill="none">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-      </svg></div>`
-    try {
-      if (_tab === 'prayer')    await _renderPrayerMonitor(content, _filter)
-      if (_tab === 'lifeskill') await _renderLifeSkillMonitor(content, year, sem, _filter)
-      if (_tab === 'reading')   await _renderReadingMonitor(content, year, sem, _filter)
-    } catch (err) {
-      content.innerHTML = `<p class="text-center py-6 text-red-400 text-sm">โหลดไม่สำเร็จ: ${err.message ?? ''}</p>`
-    }
-  }
-
-  container.querySelectorAll('.monitor-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _tab = btn.dataset.tab
-      container.querySelectorAll('.monitor-tab').forEach(b => {
-        const a = b.dataset.tab === _tab
-        b.className = `monitor-tab flex-1 py-2 text-xs font-semibold rounded-lg transition
-          ${a ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`
-      })
-      _load()
-    })
-  })
-  container.querySelector('#monitor-filter').addEventListener('change', e => { _filter = e.target.value; _load() })
-  container.querySelector('#monitor-print').addEventListener('click', () => _printMonitor(cfg, _tab))
-  container.querySelector('#monitor-doc').addEventListener('click', () => _downloadMemo(cfg, _tab))
-
-  _load()
-}
-
-async function _renderPrayerMonitor(container, filter) {
+// ─── Monitoring: ข้อมูล summary สำหรับการ์ด ──────────────────────────────────
+async function _calcPrayerSummary() {
   const { records, students } = await getPrayerMonitoringData()
-
-  // กลุ่มห้อง
   const roomStudents = {}
   for (const s of students) {
-    const r = s.religion_room
-    if (!r) continue
-    if (!roomStudents[r]) roomStudents[r] = []
-    roomStudents[r].push(s.id)
+    if (!s.religion_room) continue
+    if (!roomStudents[s.religion_room]) roomStudents[s.religion_room] = []
+    roomStudents[s.religion_room].push(s.id)
   }
-
-  // กลุ่ม records ตาม room+week
-  const weekRoomRecorded = {}  // {room: {week: Set(studentIds)}}
-  const weekRoomAbsent   = {}  // {room: {week: Set(studentIds)}} ขาด
+  const weekRoomRec = {}, weekRoomAbsent = {}
   const allWeeks = new Set()
   for (const rec of records) {
     const r = rec.main_room; const w = rec.week_number
     if (!r || !w) continue
     allWeeks.add(w)
-    if (!weekRoomRecorded[r]) weekRoomRecorded[r] = {}
-    if (!weekRoomRecorded[r][w]) weekRoomRecorded[r][w] = new Set()
-    weekRoomRecorded[r][w].add(rec.student_id)
+    if (!weekRoomRec[r]) weekRoomRec[r] = {}
+    if (!weekRoomRec[r][w]) weekRoomRec[r][w] = new Set()
+    weekRoomRec[r][w].add(rec.student_id)
     if (rec.status === 'absent') {
       if (!weekRoomAbsent[r]) weekRoomAbsent[r] = {}
       if (!weekRoomAbsent[r][w]) weekRoomAbsent[r][w] = new Set()
       weekRoomAbsent[r][w].add(rec.student_id)
     }
   }
-
-  const weeks = [...allWeeks].sort((a,b) => a-b)
-  const maxWeek = weeks[weeks.length-1] ?? 0
-  const prevWeek = maxWeek - 1
-
-  // ห้องที่ต้องติดตาม (มีขาดสัปดาห์ที่แล้ว แต่ยังไม่กรอกติดตาม)
-  const followupAlert = {}
-  for (const room of Object.keys(weekRoomAbsent)) {
-    const absentPrev = weekRoomAbsent[room]?.[prevWeek]
-    if (!absentPrev?.size) continue
-    const recordedCurrent = weekRoomRecorded[room]?.[maxWeek] ?? new Set()
-    const needFollowup = [...absentPrev].filter(sid => {
-      // ตรวจว่าสัปดาห์ปัจจุบัน student นี้มี status followed หรือ avoid ไหม
-      const currentRecs = records.filter(r => r.main_room === room && r.week_number === maxWeek && r.student_id === sid)
-      return !currentRecs.some(r => r.status === 'followed' || r.status === 'avoid')
+  const weeks = [...allWeeks].sort((a,b)=>a-b)
+  const W = weeks[weeks.length-1] ?? 0
+  const rooms = Object.keys(roomStudents)
+  // บันทึกค้าง: ห้องที่ W-1 ยังไม่ครบ (ควรกรอกภายใน W)
+  const recordPending = rooms.filter(r => {
+    const total = roomStudents[r].length
+    const done  = weekRoomRec[r]?.[W-1]?.size ?? 0
+    return total > 0 && done < total
+  })
+  // ติดตามค้าง: ห้องที่ขาด W-2 แต่ใน W-1 ยังไม่เปลี่ยนสถานะ
+  const followPending = rooms.filter(room => {
+    const absentW2 = weekRoomAbsent[room]?.[W-2]
+    if (!absentW2?.size) return false
+    return [...absentW2].some(sid => {
+      const recs = records.filter(rec => rec.main_room===room && rec.week_number===W-1 && rec.student_id===sid)
+      return !recs.some(rec => rec.status==='followed'||rec.status==='avoid')
     })
-    if (needFollowup.length > 0) followupAlert[room] = needFollowup.length
+  })
+  const total = rooms.length
+  const done  = rooms.length - recordPending.length
+  return { total, done, recordPending: recordPending.length, followPending: followPending.length, week: W, _raw: { records, students, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W } }
+}
+
+async function _calcSkillSummary(year, sem) {
+  const { columns, scores, students } = await getLifeSkillMonitoringData(year, sem)
+  const roomStudents = {}
+  for (const s of students) {
+    if (!s.main_room) continue
+    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
+    roomStudents[s.main_room].push(s.id)
   }
+  const scored = new Set(scores.map(s => s.student_id))
+  const rooms  = Object.keys(roomStudents)
+  const done   = rooms.filter(r => roomStudents[r].every(id => scored.has(id))).length
+  return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored } }
+}
 
-  let rooms = Object.keys(roomStudents).sort()
-  if (filter !== 'all') rooms = rooms.filter(r => filter === 'ศาสนา')
-
-  if (!weeks.length) {
-    container.innerHTML = `<p class="text-center py-6 text-gray-400 text-sm">ยังไม่มีข้อมูลละหมาด</p>`; return
+async function _calcReadingSummary(year, sem) {
+  const { columns, scores, students } = await getReadingMonitoringData(year, sem)
+  const roomStudents = {}
+  for (const s of students) {
+    if (!s.main_room) continue
+    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
+    roomStudents[s.main_room].push(s.id)
   }
+  const scored = new Set(scores.map(s => s.student_id))
+  const rooms  = Object.keys(roomStudents)
+  const done   = rooms.filter(r => roomStudents[r].every(id => scored.has(id))).length
+  return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored } }
+}
 
-  // Alert section
-  const alertHtml = Object.keys(followupAlert).length > 0 ? `
-    <div class="mb-4 bg-red-50 border border-red-200 rounded-xl p-4">
-      <p class="text-sm font-bold text-red-700 mb-2">⚠️ ห้องที่ต้องติดตาม (สัปดาห์ที่ ${maxWeek})</p>
-      <div class="flex flex-wrap gap-2">
-        ${Object.entries(followupAlert).map(([room, count]) =>
-          `<span class="px-2.5 py-1 rounded-full bg-red-100 text-red-700 text-xs font-medium">
-            ${room} — ${count} คน ยังไม่ติดตาม
-          </span>`).join('')}
+// ─── Monitoring Shell (cards) ─────────────────────────────────────────────────
+async function _renderMonitoringShell(container, cfg) {
+  const year = parseInt(cfg.academicYear ?? 2568)
+  const sem  = parseInt(cfg.semester ?? 1)
+
+  container.innerHTML = `
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <h3 class="font-bold text-gray-800 mb-4">📊 ติดตามความคืบหน้า</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="monitor-cards">
+        ${['prayer','lifeskill','reading'].map(k => `
+        <div class="monitor-card rounded-xl border border-gray-100 p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition bg-gray-50"
+          data-type="${k}">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-xl">${{prayer:'🕌',lifeskill:'🌱',reading:'📖'}[k]}</span>
+            <p class="font-semibold text-sm text-gray-700">${{prayer:'ละหมาด (รายสัปดาห์)',lifeskill:'ทักษะชีวิต (รายเทอม)',reading:'อ่านคิดวิเคราะห์ (รายเทอม)'}[k]}</p>
+          </div>
+          <div id="card-${k}" class="text-center py-4 text-gray-300 text-xs">กำลังโหลด...</div>
+        </div>`).join('')}
       </div>
-      <p class="text-xs text-red-500 mt-2">นักเรียนขาดละหมาดสัปดาห์ที่ ${prevWeek} ยังไม่ถูกเปลี่ยนเป็น "ติดตามแล้ว" หรือ "หลีกเลี่ยง"</p>
-    </div>` : ''
+    </div>`
 
-  // Grid
-  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-1.5'
-  const weeksToShow = weeks.slice(-8) // แสดง 8 สัปดาห์ล่าสุด
+  // โหลด 3 cards พร้อมกัน
+  const [prayer, skill, reading] = await Promise.allSettled([
+    _calcPrayerSummary(),
+    _calcSkillSummary(year, sem),
+    _calcReadingSummary(year, sem),
+  ])
+
+  const _cardContent = (type, result) => {
+    const el = document.getElementById(`card-${type}`)
+    if (!el) return
+    if (result.status === 'rejected') {
+      el.innerHTML = `<p class="text-red-400 text-xs">โหลดไม่สำเร็จ</p>`; return
+    }
+    const d = result.value
+    if (type === 'prayer') {
+      const pct = d.total > 0 ? Math.round(d.done/d.total*100) : 0
+      const alertCount = d.recordPending + d.followPending
+      el.innerHTML = `
+        <p class="text-3xl font-extrabold ${pct>=100?'text-emerald-600':pct>=60?'text-amber-500':'text-red-500'}">${pct}%</p>
+        <p class="text-xs text-gray-400 mt-1">กรอกครบ ${d.done}/${d.total} ห้อง (สัปดาห์ที่ ${d.week-1})</p>
+        ${alertCount>0 ? `<div class="mt-2 flex flex-wrap gap-1 justify-center">
+          ${d.recordPending>0?`<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">บันทึกค้าง ${d.recordPending} ห้อง</span>`:''}
+          ${d.followPending>0?`<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600">ติดตามค้าง ${d.followPending} ห้อง</span>`:''}
+        </div>` : `<p class="text-[10px] text-emerald-500 mt-1">✅ ไม่มีรายการค้าง</p>`}
+        <p class="text-[10px] text-indigo-500 mt-2 font-medium">คลิกเพื่อดูรายละเอียด →</p>`
+    } else {
+      const pct = d.total > 0 ? Math.round(d.done/d.total*100) : 0
+      el.innerHTML = `
+        <p class="text-3xl font-extrabold ${pct>=100?'text-emerald-600':pct>=60?'text-amber-500':'text-red-500'}">${pct}%</p>
+        <p class="text-xs text-gray-400 mt-1">ครบ ${d.done}/${d.total} ห้อง</p>
+        ${d.pending>0 ? `<p class="text-[10px] text-red-500 mt-1">ค้าง ${d.pending} ห้อง</p>` : `<p class="text-[10px] text-emerald-500 mt-1">✅ กรอกครบทุกห้อง</p>`}
+        <p class="text-[10px] text-indigo-500 mt-2 font-medium">คลิกเพื่อดูรายละเอียด →</p>`
+    }
+  }
+
+  _cardContent('prayer',    prayer)
+  _cardContent('lifeskill', skill)
+  _cardContent('reading',   reading)
+
+  // click card → modal
+  container.querySelectorAll('.monitor-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const type = card.dataset.type
+      const raw  = type==='prayer' ? prayer.value?._raw : type==='lifeskill' ? skill.value?._raw : reading.value?._raw
+      _openMonitorModal(type, raw, cfg, year, sem)
+    })
+  })
+}
+
+// ─── Monitor Modal ────────────────────────────────────────────────────────────
+function _openMonitorModal(type, raw, cfg, year, sem) {
+  document.getElementById('monitor-modal')?.remove()
+  const titles = { prayer:'🕌 ละหมาด — รายสัปดาห์', lifeskill:'🌱 ทักษะชีวิต — รายเทอม', reading:'📖 อ่านคิดวิเคราะห์ — รายเทอม' }
+  const m = document.createElement('div')
+  m.id = 'monitor-modal'
+  m.className = 'fixed inset-0 z-[90] flex flex-col bg-white'
+  m.innerHTML = `
+    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-white shadow-sm flex-shrink-0">
+      <div>
+        <h2 class="font-bold text-gray-800 text-base">${titles[type]}</h2>
+        <p class="text-xs text-gray-400">ภาค ${cfg.semester??'—'}/${cfg.academicYear??'—'}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="modal-print-btn" class="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition">🖨️ พิมพ์</button>
+        <button id="modal-doc-btn" class="text-xs px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition">📄 บันทึกข้อความ</button>
+        <button id="monitor-modal-close" class="ml-2 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 text-xl leading-none">×</button>
+      </div>
+    </div>
+    <div id="modal-body" class="flex-1 overflow-auto p-5"></div>`
+  document.body.appendChild(m)
+  m.querySelector('#monitor-modal-close').addEventListener('click', () => m.remove())
+
+  const body = m.querySelector('#modal-body')
+  if (type === 'prayer')    _renderPrayerMonitor(body, raw)
+  if (type === 'lifeskill') _renderLifeSkillMonitor(body, raw, year, sem)
+  if (type === 'reading')   _renderReadingMonitor(body, raw, year, sem)
+
+  m.querySelector('#modal-print-btn').addEventListener('click', () => _printMonitor(cfg, type))
+  m.querySelector('#modal-doc-btn').addEventListener('click', () => _downloadMemo(cfg, type))
+}
+
+async function _renderPrayerMonitor(container, raw) {
+  if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
+  const { records, students, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W } = raw
+
+  if (!weeks.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีข้อมูลละหมาด</p>`; return }
+
+  const rooms = Object.keys(roomStudents).sort()
+  const weeksToShow = weeks.slice(-10)
+
+  // Logic ใหม่: rolling 2-week window
+  // สัปดาห์ปัจจุบัน W = สัปดาห์ที่กำลังดำเนินการ (max week in records)
+  // บันทึกค้าง: ห้องที่สัปดาห์ W-1 ยังกรอกไม่ครบ (ควรกรอกภายใน W)
+  // ติดตามค้าง: ห้องที่ขาด W-2 แต่ยังไม่เปลี่ยนสถานะใน W-1
+
+  const recordPendingRooms = rooms.filter(r => {
+    const total = roomStudents[r].length
+    const done  = weekRoomRec[r]?.[W-1]?.size ?? 0
+    return total > 0 && done < total
+  })
+  const followPendingRooms = rooms.filter(room => {
+    const absentW2 = weekRoomAbsent[room]?.[W-2]
+    if (!absentW2?.size) return false
+    return [...absentW2].some(sid => {
+      const recs = records.filter(rec => rec.main_room===room && rec.week_number===W-1 && rec.student_id===sid)
+      return !recs.some(rec => rec.status==='followed'||rec.status==='avoid')
+    })
+  })
+
+  const alertHtml = (recordPendingRooms.length + followPendingRooms.length > 0) ? `
+    <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      ${recordPendingRooms.length > 0 ? `
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+        <p class="text-xs font-bold text-amber-800 mb-2">📋 บันทึกค้าง — สัปดาห์ที่ ${W-1} (ควรกรอกภายในสัปดาห์ ${W})</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${recordPendingRooms.map(r => {
+            const done = weekRoomRec[r]?.[W-1]?.size ?? 0
+            const total = roomStudents[r].length
+            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${r} (${done}/${total})</span>`
+          }).join('')}
+        </div>
+      </div>` : ''}
+      ${followPendingRooms.length > 0 ? `
+      <div class="bg-red-50 border border-red-200 rounded-xl p-3">
+        <p class="text-xs font-bold text-red-800 mb-2">⚠️ ติดตามค้าง — ขาดสัปดาห์ที่ ${W-2} ยังไม่เปลี่ยนสถานะใน สัปดาห์ ${W-1}</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${followPendingRooms.map(r => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">${r}</span>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>` : `<div class="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700 font-medium">✅ ไม่มีรายการค้างทั้งบันทึกและติดตาม</div>`
+
+  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-2'
+
+  // คอลัมน์แต่ละสัปดาห์: W-n = บันทึก, W-n → follow up
+  const colHeaders = weeksToShow.map(w => {
+    const isRecordDue  = w === W-1  // บันทึก W-1 ควรมีใน W
+    const isFollowDue  = w === W-1  // ติดตาม W-2 ควรมีใน W-1
+    return `<th class="${thBase} ${w===W?'bg-indigo-50 text-indigo-700 font-bold':''}" style="min-width:80px">
+      สัปดาห์ ${w}
+      ${w===W-1?`<div class="text-[8px] text-amber-500 font-normal">📋 ควรกรอก</div>`:''}
+    </th>`
+  }).join('')
 
   const tableHtml = `
-    <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-xs" style="min-width:max-content">
+    <div class="overflow-auto rounded-xl border border-gray-100">
+      <table class="border-collapse text-xs" style="min-width:max-content;width:100%">
         <thead>
-          <tr class="bg-gray-50">
-            <th class="${thBase} text-left sticky left-0 bg-gray-50 min-w-[100px]">ห้อง</th>
-            <th class="${thBase} bg-gray-50">รวมนักเรียน</th>
-            ${weeksToShow.map(w => `<th class="${thBase} ${w===maxWeek?'bg-indigo-50 text-indigo-700':''}">สัปดาห์ ${w}</th>`).join('')}
+          <tr style="position:sticky;top:0;z-index:10">
+            <th class="${thBase} text-left bg-gray-100 sticky left-0 z-20 min-w-[100px]">ห้องที่ปรึกษา</th>
+            <th class="${thBase} bg-gray-100">นักเรียน</th>
+            ${colHeaders}
           </tr>
         </thead>
         <tbody>
           ${rooms.map(room => {
             const total = roomStudents[room]?.length ?? 0
+            const isRecPending  = recordPendingRooms.includes(room)
+            const isFollPending = followPendingRooms.includes(room)
             return `<tr class="hover:bg-gray-50">
               <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">
                 ${room}
-                ${followupAlert[room] ? `<span class="ml-1 text-[10px] text-red-500">⚠️ ${followupAlert[room]} คน</span>` : ''}
+                ${isRecPending  ? `<span class="ml-1 text-[9px] text-amber-600">📋</span>` : ''}
+                ${isFollPending ? `<span class="ml-1 text-[9px] text-red-500">⚠️</span>` : ''}
               </td>
-              <td class="border border-gray-100 text-center text-gray-400 text-xs">${total}</td>
+              <td class="border border-gray-100 text-center text-gray-400">${total}</td>
               ${weeksToShow.map(w => {
-                const recorded = weekRoomRecorded[room]?.[w]?.size ?? 0
-                const pct = total > 0 ? Math.round(recorded/total*100) : 0
-                const cls = recorded === 0 ? 'bg-red-50 text-red-500' : pct >= 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                return `<td class="border border-gray-100 text-center py-2 ${cls} ${w===maxWeek?'ring-1 ring-inset ring-indigo-200':''}">
+                const done = weekRoomRec[room]?.[w]?.size ?? 0
+                const pct  = total > 0 ? Math.round(done/total*100) : 0
+                const bg   = done===0 ? 'bg-red-50 text-red-400' : pct>=100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                return `<td class="border border-gray-100 text-center py-2 ${bg} ${w===W?'ring-1 ring-inset ring-indigo-300':''}">
                   <div class="font-bold">${pct}%</div>
-                  <div class="text-[9px] opacity-70">${recorded}/${total}</div>
+                  <div class="text-[9px] opacity-60">${done}/${total}</div>
                 </td>`
               }).join('')}
             </tr>`
@@ -377,63 +470,48 @@ async function _renderPrayerMonitor(container, filter) {
         </tbody>
       </table>
     </div>
-    <div class="flex gap-4 mt-3 text-[11px] text-gray-500">
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-emerald-100"></span> กรอกครบ (100%)</span>
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-amber-100"></span> กรอกบางส่วน</span>
-      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-red-100"></span> ยังไม่กรอก</span>
+    <div class="flex flex-wrap gap-4 mt-3 text-[11px] text-gray-500">
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-100"></span>กรอกครบ (100%)</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-100"></span>กรอกบางส่วน</span>
+      <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-100"></span>ยังไม่กรอก</span>
+      <span class="text-gray-400 ml-auto">📋 = บันทึกค้าง · ⚠️ = ติดตามค้าง</span>
     </div>`
 
   container.innerHTML = alertHtml + tableHtml
 }
 
-async function _renderLifeSkillMonitor(container, year, sem, filter) {
-  const { columns, scores, students } = await getLifeSkillMonitoringData(year, sem)
-  if (!columns.length) { container.innerHTML = `<p class="text-center py-6 text-gray-400 text-sm">ยังไม่มีคอลัมน์ทักษะชีวิต</p>`; return }
-
-  // group นักเรียนตามห้อง
-  const roomStudents = {}
-  for (const s of students) {
-    if (!s.main_room) continue
-    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
-    roomStudents[s.main_room].push(s.id)
-  }
-  // นับจำนวนนักเรียนที่มีคะแนน (อย่างน้อย 1 คอลัมน์)
-  const scoredStudents = new Set(scores.map(s => s.student_id))
-
-  let rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}))
-  if (filter === 'ศาสนา') rooms = [] // life skill เป็นสามัญ
-
-  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-1.5'
+function _renderLifeSkillMonitor(container, raw, year, sem) {
+  if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
+  const { columns, roomStudents, scored } = raw
+  if (!columns.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีคอลัมน์ทักษะชีวิต</p>`; return }
+  const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
+  const thB = 'border border-gray-100 text-center text-[10px] px-2 py-2'
   container.innerHTML = `
-    <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-xs" style="min-width:max-content">
-        <thead>
-          <tr class="bg-gray-50">
-            <th class="${thBase} text-left sticky left-0 bg-gray-50 min-w-[100px]">ห้อง (ที่ปรึกษา)</th>
-            <th class="${thBase}">รวมนักเรียน</th>
-            <th class="${thBase} text-emerald-700">กรอกแล้ว</th>
-            <th class="${thBase} text-red-500">ยังไม่กรอก</th>
-            <th class="${thBase}">ความครบถ้วน</th>
-          </tr>
-        </thead>
+    <div class="overflow-auto rounded-xl border border-gray-100">
+      <table class="border-collapse text-xs" style="width:100%">
+        <thead><tr style="position:sticky;top:0;z-index:10">
+          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[100px]">ห้อง (ที่ปรึกษา)</th>
+          <th class="${thB} bg-gray-100">นักเรียน</th>
+          <th class="${thB} bg-emerald-50 text-emerald-700">กรอกแล้ว</th>
+          <th class="${thB} bg-red-50 text-red-500">ค้าง</th>
+          <th class="${thB} bg-gray-100" style="min-width:140px">ความคืบหน้า</th>
+        </tr></thead>
         <tbody>
           ${rooms.map(room => {
             const stuList = roomStudents[room] ?? []
             const total   = stuList.length
-            const done    = stuList.filter(id => scoredStudents.has(id)).length
-            const missing = total - done
+            const done    = stuList.filter(id => scored.has(id)).length
+            const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
-            const barCls  = pct >= 100 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'
+            const barCls  = pct>=100?'bg-emerald-500':pct>=50?'bg-amber-400':'bg-red-400'
             return `<tr class="hover:bg-gray-50">
               <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">${room}</td>
               <td class="border border-gray-100 text-center text-gray-500">${total}</td>
               <td class="border border-gray-100 text-center text-emerald-600 font-medium">${done}</td>
-              <td class="border border-gray-100 text-center ${missing>0?'text-red-500 font-medium':'text-gray-300'}">${missing||'—'}</td>
+              <td class="border border-gray-100 text-center ${miss>0?'text-red-500 font-medium':'text-gray-300'}">${miss||'—'}</td>
               <td class="border border-gray-100 px-3 py-2">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-100 rounded-full h-2">
-                    <div class="${barCls} h-2 rounded-full" style="width:${pct}%"></div>
-                  </div>
+                  <div class="flex-1 bg-gray-100 rounded-full h-2"><div class="${barCls} h-2 rounded-full" style="width:${pct}%"></div></div>
                   <span class="text-[10px] font-bold ${pct>=100?'text-emerald-600':pct>=50?'text-amber-600':'text-red-500'}">${pct}%</span>
                 </div>
               </td>
@@ -442,54 +520,41 @@ async function _renderLifeSkillMonitor(container, year, sem, filter) {
         </tbody>
       </table>
     </div>
-    <p class="text-xs text-gray-400 mt-2">* นับจากนักเรียนที่มีคะแนนทักษะชีวิตอย่างน้อย 1 รายการ ภาค ${sem}/${year}</p>`
+    <p class="text-xs text-gray-400 mt-2">* นับจากนักเรียนที่มีคะแนนอย่างน้อย 1 รายการ ภาค ${sem}/${year}</p>`
 }
 
-async function _renderReadingMonitor(container, year, sem, filter) {
-  const { columns, scores, students } = await getReadingMonitoringData(year, sem)
-  if (!columns.length) { container.innerHTML = `<p class="text-center py-6 text-gray-400 text-sm">ยังไม่มีคอลัมน์คะแนนอ่านคิดวิเคราะห์</p>`; return }
-
-  const roomStudents = {}
-  for (const s of students) {
-    if (!s.main_room) continue
-    if (!roomStudents[s.main_room]) roomStudents[s.main_room] = []
-    roomStudents[s.main_room].push(s.id)
-  }
-  const scoredStudents = new Set(scores.map(s => s.student_id))
-
-  let rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}))
-
-  const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-1.5'
+function _renderReadingMonitor(container, raw, year, sem) {
+  if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
+  const { columns, roomStudents, scored } = raw
+  if (!columns.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีคอลัมน์คะแนนอ่านคิดวิเคราะห์</p>`; return }
+  const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
+  const thB = 'border border-gray-100 text-center text-[10px] px-2 py-2'
   container.innerHTML = `
-    <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-xs" style="min-width:max-content">
-        <thead>
-          <tr class="bg-gray-50">
-            <th class="${thBase} text-left sticky left-0 bg-gray-50 min-w-[100px]">ห้องเรียน</th>
-            <th class="${thBase}">รวมนักเรียน</th>
-            <th class="${thBase} text-indigo-700">กรอกแล้ว</th>
-            <th class="${thBase} text-red-500">ยังไม่กรอก</th>
-            <th class="${thBase}">ความครบถ้วน</th>
-          </tr>
-        </thead>
+    <div class="overflow-auto rounded-xl border border-gray-100">
+      <table class="border-collapse text-xs" style="width:100%">
+        <thead><tr style="position:sticky;top:0;z-index:10">
+          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[100px]">ห้องเรียน</th>
+          <th class="${thB} bg-gray-100">นักเรียน</th>
+          <th class="${thB} bg-indigo-50 text-indigo-700">กรอกแล้ว</th>
+          <th class="${thB} bg-red-50 text-red-500">ค้าง</th>
+          <th class="${thB} bg-gray-100" style="min-width:140px">ความคืบหน้า</th>
+        </tr></thead>
         <tbody>
           ${rooms.map(room => {
             const stuList = roomStudents[room] ?? []
             const total   = stuList.length
-            const done    = stuList.filter(id => scoredStudents.has(id)).length
-            const missing = total - done
+            const done    = stuList.filter(id => scored.has(id)).length
+            const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
-            const barCls  = pct >= 100 ? 'bg-indigo-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400'
+            const barCls  = pct>=100?'bg-indigo-500':pct>=50?'bg-amber-400':'bg-red-400'
             return `<tr class="hover:bg-gray-50">
               <td class="border border-gray-100 px-3 py-2 font-medium text-gray-800 sticky left-0 bg-white">${room}</td>
               <td class="border border-gray-100 text-center text-gray-500">${total}</td>
               <td class="border border-gray-100 text-center text-indigo-600 font-medium">${done}</td>
-              <td class="border border-gray-100 text-center ${missing>0?'text-red-500 font-medium':'text-gray-300'}">${missing||'—'}</td>
+              <td class="border border-gray-100 text-center ${miss>0?'text-red-500 font-medium':'text-gray-300'}">${miss||'—'}</td>
               <td class="border border-gray-100 px-3 py-2">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-gray-100 rounded-full h-2">
-                    <div class="${barCls} h-2 rounded-full" style="width:${pct}%"></div>
-                  </div>
+                  <div class="flex-1 bg-gray-100 rounded-full h-2"><div class="${barCls} h-2 rounded-full" style="width:${pct}%"></div></div>
                   <span class="text-[10px] font-bold ${pct>=100?'text-indigo-600':pct>=50?'text-amber-600':'text-red-500'}">${pct}%</span>
                 </div>
               </td>
@@ -498,7 +563,7 @@ async function _renderReadingMonitor(container, year, sem, filter) {
         </tbody>
       </table>
     </div>
-    <p class="text-xs text-gray-400 mt-2">* ภาค ${sem}/${year} · รวม ${columns.length} หัวข้อ</p>`
+    <p class="text-xs text-gray-400 mt-2">* ภาค ${sem}/${year} · ${columns.length} หัวข้อ</p>`
 }
 
 function _printMonitor(cfg, tab) {
