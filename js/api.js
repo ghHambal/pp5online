@@ -1439,49 +1439,51 @@ export async function getMissedExamCount(studentId) {
 // ─── Monitoring Data ──────────────────────────────────────────────────────────
 
 export async function getPrayerMonitoringData(academicYear, semester) {
-  const [{ data: records, error }, { data: students }, { data: homerooms }] = await Promise.all([
+  // ใช้ _fetchAllStudents เพื่อ paginate ครบทุกคน (มากกว่า 1000)
+  const [{ data: records, error }, students, { data: homerooms }] = await Promise.all([
     supabase.from('prayer_records')
       .select('student_id, main_room, status, week_number, check_date')
       .not('week_number', 'is', null)
       .order('week_number').order('main_room'),
-    supabase.from('students')
-      .select('id, full_name, student_code, religion_room')
-      .not('religion_room', 'is', null).neq('religion_room', ''),
+    _fetchAllStudents(
+      'id, full_name, student_code, religion_room',
+      q => q.not('religion_room', 'is', null).neq('religion_room', '')
+    ),
     supabase.from('homeroom_teachers')
-      .select('main_room, category, teachers(full_name)')
+      .select('id, main_room, category, teacher_id, teachers(id, full_name, teacher_code)')
       .eq('academic_year', academicYear)
       .eq('semester', semester)
       .eq('category', 'ศาสนา')
       .order('main_room'),
   ])
   if (error) throw error
-  return { records: records ?? [], students: students ?? [], homerooms: homerooms ?? [] }
+  return { records: records ?? [], students, homerooms: homerooms ?? [] }
 }
 
 export async function getLifeSkillMonitoringData(academicYear, semester) {
-  const [{ columns, scores }, { data: students }, { data: homerooms }] = await Promise.all([
+  const [{ columns, scores }, students, { data: homerooms }] = await Promise.all([
     getAllLifeSkillScores(academicYear, semester),
-    supabase.from('students').select('id, main_room').not('main_room','is',null).neq('main_room',''),
+    _fetchAllStudents('id, main_room', q => q.not('main_room','is',null).neq('main_room','')),
     supabase.from('homeroom_teachers')
-      .select('main_room, category, teachers(full_name)')
+      .select('id, main_room, category, teacher_id, teachers(id, full_name, teacher_code)')
       .eq('academic_year', academicYear)
       .eq('semester', semester)
       .eq('category', 'สามัญ')
       .order('main_room'),
   ])
-  return { columns: columns ?? [], scores: scores ?? [], students: students ?? [], homerooms: homerooms ?? [] }
+  return { columns: columns ?? [], scores: scores ?? [], students, homerooms: homerooms ?? [] }
 }
 
 export async function getReadingMonitoringData(academicYear, semester) {
-  const [{ columns, scores }, { data: students }, { data: homerooms }] = await Promise.all([
+  const [{ columns, scores }, students, { data: homerooms }] = await Promise.all([
     getAllReadingScores(academicYear, semester),
-    supabase.from('students').select('id, main_room').not('main_room','is',null).neq('main_room',''),
+    _fetchAllStudents('id, main_room', q => q.not('main_room','is',null).neq('main_room','')),
     supabase.from('homeroom_teachers')
-      .select('main_room, category, teachers(full_name)')
+      .select('id, main_room, category, teacher_id, teachers(id, full_name, teacher_code)')
       .eq('academic_year', academicYear)
       .eq('semester', semester)
       .eq('category', 'สามัญ')
       .order('main_room'),
   ])
-  return { columns: columns ?? [], scores: scores ?? [], students: students ?? [], homerooms: homerooms ?? [] }
+  return { columns: columns ?? [], scores: scores ?? [], students, homerooms: homerooms ?? [] }
 }

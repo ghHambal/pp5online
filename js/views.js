@@ -212,9 +212,8 @@ function _buildRoomStudents(homerooms, students, roomField) {
 }
 
 // ─── Monitoring: ข้อมูล summary สำหรับการ์ด ──────────────────────────────────
-async function _calcPrayerSummary(year, sem) {
+async function _calcPrayerSummary(year, sem, semStart) {
   const { records, students, homerooms } = await getPrayerMonitoringData(year, sem)
-  // ใช้ homerooms (category='ศาสนา') เป็น source หลัก; religion_room เป็น field ของนักเรียน
   const roomStudents = _buildRoomStudents(homerooms, students, 'religion_room')
   const weekRoomRec = {}, weekRoomAbsent = {}
   const allWeeks = new Set()
@@ -232,7 +231,8 @@ async function _calcPrayerSummary(year, sem) {
     }
   }
   const weeks = [...allWeeks].sort((a,b)=>a-b)
-  const W = weeks[weeks.length-1] ?? 0
+  // W = สัปดาห์ปัจจุบันจากวันเปิดภาคเรียน (ถ้าตั้งค่าไว้) หรือ max จาก records
+  const W = semStart ? _currentWeek(semStart) : (weeks[weeks.length-1] ?? 0)
   const rooms = Object.keys(roomStudents)
   const recordPending = rooms.filter(r => {
     const total = roomStudents[r].length
@@ -250,7 +250,7 @@ async function _calcPrayerSummary(year, sem) {
   const total = rooms.length
   const done  = rooms.filter(r => {
     const t = roomStudents[r].length; if (!t) return false
-    return weekRoomRec[r]?.[W-1]?.size >= t
+    return (weekRoomRec[r]?.[W-1]?.size ?? 0) >= t
   }).length
   return { total, done, recordPending: recordPending.length, followPending: followPending.length, week: W,
     _raw: { records, students, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W, homerooms } }
@@ -276,6 +276,16 @@ async function _calcReadingSummary(year, sem) {
   return { total: rooms.length, done, pending: rooms.length - done, _raw: { columns, scores, students, roomStudents, scored, homerooms } }
 }
 
+// คำนวณสัปดาห์ปัจจุบันจากวันเปิดภาคเรียน
+function _currentWeek(semesterStart) {
+  if (!semesterStart) return 0
+  const start = new Date(semesterStart)
+  if (isNaN(start)) return 0
+  const diffMs = Date.now() - start.getTime()
+  if (diffMs < 0) return 0  // ยังไม่ถึงเปิดภาค
+  return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1
+}
+
 // ─── Monitoring Shell (cards) ─────────────────────────────────────────────────
 async function _renderMonitoringShell(container, cfg) {
   const year = parseInt(cfg.academicYear ?? 2568)
@@ -297,12 +307,14 @@ async function _renderMonitoringShell(container, cfg) {
       </div>
     </div>`
 
-  // โหลด 3 cards พร้อมกัน
-  const [prayer, skill, reading] = await Promise.allSettled([
-    _calcPrayerSummary(year, sem),
+  // โหลด 3 cards + ดึง teachers สำหรับ assign ในกรณีไม่มีครูที่ปรึกษา
+  const [prayer, skill, reading, teachersRes] = await Promise.allSettled([
+    _calcPrayerSummary(year, sem, cfg.semester_start),
     _calcSkillSummary(year, sem),
     _calcReadingSummary(year, sem),
+    getTeachers().catch(()=>[]),
   ])
+  const allTeachers = teachersRes.status === 'fulfilled' ? teachersRes.value : []
 
   const _cardContent = (type, result) => {
     const el = document.getElementById(`card-${type}`)
@@ -341,13 +353,13 @@ async function _renderMonitoringShell(container, cfg) {
     card.addEventListener('click', () => {
       const type = card.dataset.type
       const raw  = type==='prayer' ? prayer.value?._raw : type==='lifeskill' ? skill.value?._raw : reading.value?._raw
-      _openMonitorModal(type, raw, cfg, year, sem)
+      _openMonitorModal(type, raw, cfg, year, sem, allTeachers)
     })
   })
 }
 
 // ─── Monitor Modal ────────────────────────────────────────────────────────────
-function _openMonitorModal(type, raw, cfg, year, sem) {
+function _openMonitorModal(type, raw, cfg, year, sem, allTeachers = []) {
   document.getElementById('monitor-modal')?.remove()
   const titles = { prayer:'🕌 ละหมาด — รายสัปดาห์', lifeskill:'🌱 ทักษะชีวิต — รายเทอม', reading:'📖 อ่านคิดวิเคราะห์ — รายเทอม' }
   const m = document.createElement('div')
@@ -370,25 +382,52 @@ function _openMonitorModal(type, raw, cfg, year, sem) {
   m.querySelector('#monitor-modal-close').addEventListener('click', () => m.remove())
 
   const body = m.querySelector('#modal-body')
-  if (type === 'prayer')    _renderPrayerMonitor(body, raw)
-  if (type === 'lifeskill') _renderLifeSkillMonitor(body, raw, year, sem)
-  if (type === 'reading')   _renderReadingMonitor(body, raw, year, sem)
+  const category = type === 'prayer' ? 'ศาสนา' : 'สามัญ'
+  const ctx = { allTeachers, year, sem, category }
+  if (type === 'prayer')    _renderPrayerMonitor(body, raw, ctx)
+  if (type === 'lifeskill') _renderLifeSkillMonitor(body, raw, year, sem, ctx)
+  if (type === 'reading')   _renderReadingMonitor(body, raw, year, sem, ctx)
 
   m.querySelector('#modal-print-btn').addEventListener('click', () => _printMonitor(cfg, type))
   m.querySelector('#modal-doc-btn').addEventListener('click', () => _downloadMemo(cfg, type))
 }
 
-function _renderPrayerMonitor(container, raw) {
+// helper: สร้าง cell ครูที่ปรึกษา (ชื่อเด่น, ห้องเล็ก, ปุ่มระบุถ้าไม่มี)
+function _teacherCell(room, teacherByRoom, homeroomMap, ctx) {
+  const tname = teacherByRoom[room]
+  const { allTeachers, year, sem, category } = ctx ?? {}
+  if (tname) {
+    return `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p>
+            <p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
+  }
+  // ไม่มีครูที่ปรึกษา → ปุ่มระบุ
+  const teacherOpts = (allTeachers ?? [])
+    .map(t => `<option value="${t.id}">${t.full_name ?? ''}${t.teacher_code?` (${t.teacher_code})`:''}</option>`)
+    .join('')
+  const pickerId = `pick-${room.replace(/[^a-zA-Z0-9]/g,'_')}`
+  return `<p class="text-[11px] font-medium text-gray-500">${room}</p>
+    <button class="hr-assign-btn mt-1 text-[10px] font-medium text-amber-600 hover:text-amber-800 underline underline-offset-2"
+      data-room="${room}" data-picker="${pickerId}">
+      ยังไม่ระบุครูที่ปรึกษา ⊕
+    </button>
+    <div id="${pickerId}" class="hidden mt-2 flex gap-1 items-center">
+      <select class="hr-sel text-[10px] border border-gray-200 rounded-lg px-2 py-1 bg-white flex-1 focus:outline-none">
+        <option value="">-- เลือกครู --</option>${teacherOpts}
+      </select>
+      <button class="hr-save-btn text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700"
+        data-room="${room}" data-year="${year}" data-sem="${sem}" data-cat="${category}">บันทึก</button>
+    </div>`
+}
+
+function _renderPrayerMonitor(container, raw, ctx = {}) {
   if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
   const { records, roomStudents, weekRoomRec, weekRoomAbsent, weeks, W, homerooms } = raw
 
-  // ห้องจาก homerooms (category='ศาสนา') เป็น source หลัก
   const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
-
-  // map: room → teacher name
   const teacherByRoom = {}
+  const homeroomMap   = {}
   for (const ht of (homerooms ?? [])) {
-    if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? ''
+    if (ht.main_room) { teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? ''; homeroomMap[ht.main_room] = ht }
   }
 
   const thBase = 'border border-gray-100 text-center text-[10px] px-2 py-2'
@@ -396,15 +435,9 @@ function _renderPrayerMonitor(container, raw) {
   const TAB_ACTIVE = `${TAB_CLS} border-indigo-600 text-indigo-700 bg-indigo-50`
   const TAB_IDLE   = `${TAB_CLS} border-transparent text-gray-500 hover:text-gray-700`
 
-  const _roomCell = (room, extra = '') => {
-    const tname = teacherByRoom[room]
-    return `<td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[150px]">
-      ${tname
-        ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p><p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
-        : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
-      ${extra}
-    </td>`
-  }
+  const _roomCell = (room, extra = '') => `<td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[150px]">
+    ${_teacherCell(room, teacherByRoom, homeroomMap, ctx)}${extra}
+  </td>`
 
   // ── Tab 1: ความคืบหน้าการบันทึกคะแนนละหมาดรายสัปดาห์ ─────────────────────
   const _tab1Html = (selWeek) => {
@@ -578,11 +611,11 @@ function _renderPrayerMonitor(container, raw) {
     container.querySelectorAll('.prayer-tab').forEach(btn => {
       btn.className = btn.dataset.tab === tab ? `prayer-tab ${TAB_ACTIVE}` : `prayer-tab ${TAB_IDLE}`
     })
-    // สัปดาห์ picker events
     const sel1 = contentEl.querySelector('#prayer-week-sel')
     if (sel1) sel1.addEventListener('change', e => renderTab('record', parseInt(e.target.value)))
     const sel2 = contentEl.querySelector('#prayer-follow-week-sel')
     if (sel2) sel2.addEventListener('change', e => renderTab('follow', parseInt(e.target.value)))
+    _attachHrAssignEvents(contentEl, ctx, () => renderTab(curTab, selWeek))
   }
 
   container.querySelectorAll('.prayer-tab').forEach(btn =>
@@ -591,19 +624,19 @@ function _renderPrayerMonitor(container, raw) {
   renderTab('record')
 }
 
-function _renderLifeSkillMonitor(container, raw, year, sem) {
+function _renderLifeSkillMonitor(container, raw, year, sem, ctx = {}) {
   if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
   const { columns, roomStudents, scored, homerooms } = raw
   if (!columns.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีคอลัมน์ทักษะชีวิต</p>`; return }
-  const teacherByRoom = {}
-  for (const ht of (homerooms ?? [])) { if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? '—' }
+  const teacherByRoom = {}, homeroomMap = {}
+  for (const ht of (homerooms ?? [])) { if (ht.main_room) { teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? ''; homeroomMap[ht.main_room] = ht } }
   const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
   const thB = 'border border-gray-100 text-center text-[10px] px-2 py-2'
   container.innerHTML = `
     <div class="overflow-auto rounded-xl border border-gray-100">
       <table class="border-collapse text-xs" style="width:100%">
         <thead><tr style="position:sticky;top:0;z-index:10">
-          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
+          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[160px]">ครูที่ปรึกษาสามัญ</th>
           <th class="${thB} bg-gray-100">นักเรียน</th>
           <th class="${thB} bg-emerald-50 text-emerald-700">กรอกแล้ว</th>
           <th class="${thB} bg-red-50 text-red-500">ค้าง</th>
@@ -617,11 +650,9 @@ function _renderLifeSkillMonitor(container, raw, year, sem) {
             const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
             const barCls  = pct>=100?'bg-emerald-500':pct>=50?'bg-amber-400':'bg-red-400'
-            const tname   = teacherByRoom[room]
             return `<tr class="hover:bg-gray-50">
-              <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white">
-                ${tname ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p><p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
-                        : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
+              <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[160px]">
+                ${_teacherCell(room, teacherByRoom, homeroomMap, ctx)}
               </td>
               <td class="border border-gray-100 text-center text-gray-500">${total}</td>
               <td class="border border-gray-100 text-center text-emerald-600 font-medium">${done}</td>
@@ -637,22 +668,23 @@ function _renderLifeSkillMonitor(container, raw, year, sem) {
         </tbody>
       </table>
     </div>
-    <p class="text-xs text-gray-400 mt-2">* นับจากนักเรียนที่มีคะแนนอย่างน้อย 1 รายการ ภาค ${sem}/${year}</p>`
+    <p class="text-xs text-gray-400 mt-2">* ภาค ${sem}/${year} · ${rooms.length} ห้อง</p>`
+  _attachHrAssignEvents(container, ctx, () => _renderLifeSkillMonitor(container, raw, year, sem, ctx))
 }
 
-function _renderReadingMonitor(container, raw, year, sem) {
+function _renderReadingMonitor(container, raw, year, sem, ctx = {}) {
   if (!raw) { container.innerHTML = `<p class="text-center py-10 text-gray-400">ไม่มีข้อมูล</p>`; return }
   const { columns, roomStudents, scored, homerooms } = raw
   if (!columns.length) { container.innerHTML = `<p class="text-center py-10 text-gray-400 text-sm">ยังไม่มีคอลัมน์คะแนนอ่านคิดวิเคราะห์</p>`; return }
-  const teacherByRoom = {}
-  for (const ht of (homerooms ?? [])) { if (ht.main_room) teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? '—' }
+  const teacherByRoom = {}, homeroomMap = {}
+  for (const ht of (homerooms ?? [])) { if (ht.main_room) { teacherByRoom[ht.main_room] = ht.teachers?.full_name ?? ''; homeroomMap[ht.main_room] = ht } }
   const rooms = Object.keys(roomStudents).sort((a,b) => a.localeCompare(b,undefined,{numeric:true}))
   const thB = 'border border-gray-100 text-center text-[10px] px-2 py-2'
   container.innerHTML = `
     <div class="overflow-auto rounded-xl border border-gray-100">
       <table class="border-collapse text-xs" style="width:100%">
         <thead><tr style="position:sticky;top:0;z-index:10">
-          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[140px]">ครูที่ปรึกษา</th>
+          <th class="${thB} text-left bg-gray-100 sticky left-0 z-20 min-w-[160px]">ครูที่ปรึกษาสามัญ</th>
           <th class="${thB} bg-gray-100">นักเรียน</th>
           <th class="${thB} bg-indigo-50 text-indigo-700">กรอกแล้ว</th>
           <th class="${thB} bg-red-50 text-red-500">ค้าง</th>
@@ -666,11 +698,9 @@ function _renderReadingMonitor(container, raw, year, sem) {
             const miss    = total - done
             const pct     = total > 0 ? Math.round(done/total*100) : 0
             const barCls  = pct>=100?'bg-indigo-500':pct>=50?'bg-amber-400':'bg-red-400'
-            const tname   = teacherByRoom[room]
             return `<tr class="hover:bg-gray-50">
-              <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white">
-                ${tname ? `<p class="font-semibold text-gray-800 text-xs leading-tight">${tname}</p><p class="text-[10px] text-gray-400 mt-0.5">${room}</p>`
-                        : `<p class="font-semibold text-gray-800 text-xs">${room}</p>`}
+              <td class="border border-gray-100 px-3 py-2 sticky left-0 bg-white min-w-[160px]">
+                ${_teacherCell(room, teacherByRoom, homeroomMap, ctx)}
               </td>
               <td class="border border-gray-100 text-center text-gray-500">${total}</td>
               <td class="border border-gray-100 text-center text-indigo-600 font-medium">${done}</td>
@@ -686,7 +716,44 @@ function _renderReadingMonitor(container, raw, year, sem) {
         </tbody>
       </table>
     </div>
-    <p class="text-xs text-gray-400 mt-2">* ภาค ${sem}/${year} · ${columns.length} หัวข้อ</p>`
+    <p class="text-xs text-gray-400 mt-2">* ภาค ${sem}/${year} · ${rooms.length} ห้อง · ${columns.length} หัวข้อ</p>`
+  _attachHrAssignEvents(container, ctx, () => _renderReadingMonitor(container, raw, year, sem, ctx))
+}
+
+// ── Assign homeroom teacher จาก monitoring modal ─────────────────────────────
+async function _attachHrAssignEvents(container, ctx, onSaved) {
+  const { allTeachers, year, sem, category } = ctx ?? {}
+  if (!allTeachers?.length) return
+
+  // toggle picker เมื่อคลิกปุ่ม "ยังไม่ระบุ"
+  container.querySelectorAll('.hr-assign-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pickerId = btn.dataset.picker
+      const picker = document.getElementById(pickerId)
+      if (!picker) return
+      picker.classList.toggle('hidden')
+    })
+  })
+
+  // บันทึกครูที่ปรึกษา
+  container.querySelectorAll('.hr-save-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const room = btn.dataset.room
+      const pickerId = `pick-${room.replace(/[^a-zA-Z0-9]/g,'_')}`
+      const sel = document.getElementById(pickerId)?.querySelector('.hr-sel')
+      const teacherId = sel?.value
+      if (!teacherId) { showToast('กรุณาเลือกครู','error'); return }
+      btn.disabled = true; btn.textContent = '...'
+      try {
+        await assignHomeroomTeacher({ teacher_id: teacherId, main_room: room, category, academic_year: year, semester: sem })
+        showToast(`ระบุครูที่ปรึกษาห้อง ${room} แล้ว ✅`, 'success')
+        if (onSaved) onSaved()
+      } catch(e) {
+        showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+        btn.disabled = false; btn.textContent = 'บันทึก'
+      }
+    })
+  })
 }
 
 function _printMonitor(cfg, tab) {
