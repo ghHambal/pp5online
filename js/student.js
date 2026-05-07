@@ -48,9 +48,11 @@ async function _loadHeader() {
   const cfg = await getSystemConfig().catch(()=>({}))
   const name = _student?.full_name ?? 'นักเรียน'
 
-  // school logo by student affiliation
-  const roomForLogo = _student?.main_room || _student?.religion_room || ''
-  const isVocStudent = /ปวช|อป\.?|voc/i.test(roomForLogo)
+  // school logo by student code: 5 digits = มัธยม, more than 5 = ปวช
+  const studentCodeText = String(_student?.student_code ?? '').trim()
+  const studentCodeDigits = studentCodeText.replace(/\D/g, '')
+  const studentCodeLength = studentCodeDigits.length || studentCodeText.length
+  const isVocStudent = studentCodeLength > 5
   const logo = isVocStudent
     ? (cfg.porworLogoUrl || cfg.samaiLogoUrl || cfg.loginLogoUrl || cfg.logoUrl)
     : (cfg.samaiLogoUrl || cfg.loginLogoUrl || cfg.logoUrl || cfg.porworLogoUrl)
