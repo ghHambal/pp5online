@@ -755,6 +755,10 @@ export async function renderExamRequestForm(student, classId) {
 
   const ms = cls.master_subjects
   const teacherId = ms?.teacher_id
+  const teacher = ms?.teachers
+  const teacherName = teacherId ? (teacher?.full_name ?? 'ครูผู้สอน') : 'ครูผู้สอน'
+  const teacherInitial = String(teacherName || 'ค').trim().charAt(0).toUpperCase() || 'ค'
+  const studentRoom = student?.main_room || student?.religion_room || cls.class_name || '—'
   let scheduleLoadError = null
 
   const [columns, schedule, periods] = await Promise.all([
@@ -1022,9 +1026,17 @@ export async function renderExamRequestForm(student, classId) {
       <div id="teacher-schedule-modal" class="hidden fixed inset-0 z-[120] bg-black/50 p-4 items-center justify-center">
         <div class="w-full max-w-5xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-5">
           <div class="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 class="font-bold text-gray-800">เลือกคาบว่างของครู</h3>
-              <p class="text-xs text-gray-400 mt-0.5">${teacherId ? (ms?.teachers?.full_name ?? 'ครูผู้สอน') : 'ครูผู้สอน'} · ${ms?.subject_name ?? ''}</p>
+            <div class="flex items-start gap-3 min-w-0">
+              <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center overflow-hidden flex-shrink-0 font-bold shadow-sm">
+                ${teacher?.image_url
+                  ? `<img src="${teacher.image_url}" class="w-full h-full object-cover" alt="รูปครูผู้สอน"/>`
+                  : `<span>${teacherInitial}</span>`}
+              </div>
+              <div class="min-w-0">
+                <h3 class="font-bold text-gray-800">เลือกคาบว่างของครู</h3>
+                <p class="text-xs text-gray-500 mt-0.5 truncate">${teacherName} · ${ms?.subject_name ?? ''}</p>
+                <p class="text-[11px] text-gray-400 mt-0.5 truncate">นักเรียน ${student?.full_name ?? '—'} · รหัส ${student?.student_code ?? '—'} · ห้อง ${studentRoom}</p>
+              </div>
             </div>
             <button type="button" id="close-schedule-modal"
               class="w-9 h-9 rounded-full bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600">×</button>

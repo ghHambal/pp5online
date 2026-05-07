@@ -20,8 +20,6 @@ SET search_path = public
 AS $$
 DECLARE
   v_teacher_id INT;
-  v_year INT;
-  v_semester INT;
 BEGIN
   SELECT ms.teacher_id
     INTO v_teacher_id
@@ -37,16 +35,6 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT value::INT INTO v_year
-  FROM public.system_config
-  WHERE key = 'academicYear'
-  LIMIT 1;
-
-  SELECT value::INT INTO v_semester
-  FROM public.system_config
-  WHERE key = 'semester'
-  LIMIT 1;
-
   RETURN QUERY
   SELECT
     ts.day_of_week::INT,
@@ -60,8 +48,6 @@ BEGIN
   LEFT JOIN public.master_subjects sched_ms ON sched_ms.id = ts.subject_id
   LEFT JOIN public.teachers t ON t.id = ts.teacher_id
   WHERE ts.teacher_id = v_teacher_id
-    AND (v_year IS NULL OR ts.academic_year IS NULL OR ts.academic_year = v_year)
-    AND (v_semester IS NULL OR ts.semester IS NULL OR ts.semester = v_semester)
   ORDER BY ts.day_of_week, ts.period_no;
 END;
 $$;
