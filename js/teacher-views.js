@@ -3702,7 +3702,11 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
         await upsertLifeSkillScore(sid, cid, score, teacher?.id ?? null)
         _flashCell(inp, true)
         _updateTotal(sid)
-      } catch { _flashCell(inp, false) }
+      } catch (err) {
+        console.error('[life skill save]', err)
+        _flashCell(inp, false)
+        showToast(`บันทึกทักษะชีวิตไม่สำเร็จ: ${err.message ?? ''}`, 'error')
+      }
     }
 
     inputs.forEach(inp => {
