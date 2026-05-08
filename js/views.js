@@ -1693,7 +1693,7 @@ export async function renderSettings() {
   setActiveNav('settings')
   document.getElementById('page-title').textContent = 'ตั้งค่าระบบ'
 
-  setContent(`<div class="max-w-3xl mx-auto animate-fade">
+  setContent(`<div class="max-w-4xl mx-auto animate-fade">
     <div class="flex items-center justify-center py-16 text-gray-400">
       <svg class="animate-spin h-6 w-6 mr-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -1705,258 +1705,347 @@ export async function renderSettings() {
   try {
     const cfg = await getSystemConfig()
 
-    const GROUPS = [
-      { label: '⚙️ ทั่วไป', keys: [
-        { key: 'appColor',    label: 'สีระบบ',        type: 'color' },
-        { key: 'loginColor',  label: 'สีหน้าล็อกอิน', type: 'color' },
-        { key: 'loginLogoUrl',label: 'โลโก้หน้าล็อกอิน', type: 'upload' },
-        { key: 'developerCreditText', label: 'ข้อความเครดิตผู้พัฒนา', type: 'text' },
-        { key: 'semester',    label: 'ภาคเรียนที่',   type: 'select', options: ['1','2'] },
-        { key: 'academicYear',label: 'ปีการศึกษา',    type: 'text' },
-      ]},
-      { label: '🎨 ธีมสีหน้าต่าง ๆ', keys: [
-        { key: 'adminColor',            label: 'สีหน้าแอดมิน', type: 'color' },
-        { key: 'teacherDefaultColor',   label: 'สีหน้าครูทั่วไป', type: 'color' },
-        { key: 'teacherLanguageColor',  label: 'สีครูกลุ่มทักษะภาษา', type: 'color' },
-        { key: 'teacherLifeColor',      label: 'สีครูกลุ่มทักษะชีวิต', type: 'color' },
-        { key: 'teacherAcademicColor',  label: 'สีครูกลุ่มทักษะวิชาการ', type: 'color' },
-        { key: 'teacherVocColor',       label: 'สีครูกลุ่ม ปวช/สามัญปวช', type: 'color' },
-        { key: 'teacherReligionColor',  label: 'สีครูกลุ่มวิชาศาสนา', type: 'color' },
-        { key: 'studentColor',          label: 'สีหน้านักเรียน', type: 'color' },
-      ]},
-      { label: '📅 ช่วงเวลาภาคเรียน (สำหรับระบบละหมาด)', keys: [
-        { key: 'semester_start', label: 'วันเปิดภาคเรียน (YYYY-MM-DD)', type: 'date' },
-        { key: 'semester_end',   label: 'วันปิดภาคเรียน (YYYY-MM-DD)',  type: 'date' },
-      ]},
-      { label: '🏫 โรงเรียนสามัญ', keys: [
-        { key: 'samaiSchoolName',          label: 'ชื่อโรงเรียน',                type: 'text' },
-        { key: 'samaiLogoUrl',             label: 'โลโก้โรงเรียน',              type: 'upload' },
-        { key: 'samaiLogoBwUrl',           label: 'โลโก้โรงเรียนขาวดำ',          type: 'upload' },
-        { key: 'samaiRegistrarName',       label: 'หัวหน้าฝ่ายทะเบียน',        type: 'text' },
-        { key: 'samaiRegistrarSignUrl',    label: 'ลายเซ็นหัวหน้าฝ่ายทะเบียน', type: 'upload' },
-        { key: 'samaiAcademicHeadName',    label: 'หัวหน้าวิชาการ',             type: 'text' },
-        { key: 'samaiAcademicHeadSignUrl', label: 'ลายเซ็นหัวหน้าวิชาการ',     type: 'upload' },
-        { key: 'samaiDirectorName',        label: 'ผู้อำนวยการ',                type: 'text' },
-        { key: 'samaiDirectorSignUrl',     label: 'ลายเซ็นผู้อำนวยการ',         type: 'upload' },
-      ]},
-      { label: '🎓 วิทยาลัยปวช', keys: [
-        { key: 'porworCollegeName',          label: 'ชื่อวิทยาลัย',              type: 'text' },
-        { key: 'porworLogoUrl',              label: 'โลโก้วิทยาลัย',            type: 'upload' },
-        { key: 'porworLogoBwUrl',            label: 'โลโก้วิทยาลัยขาวดำ',        type: 'upload' },
-        { key: 'porworRegistrarName',        label: 'หัวหน้าฝ่ายทะเบียน',      type: 'text' },
-        { key: 'porworRegistrarSignUrl',     label: 'ลายเซ็นหัวหน้าฝ่ายทะเบียน',type: 'upload' },
-        { key: 'porworAcademicHeadName',     label: 'หัวหน้าวิชาการ',           type: 'text' },
-        { key: 'porworAcademicHeadSignUrl',  label: 'ลายเซ็นหัวหน้าวิชาการ',   type: 'upload' },
-        { key: 'porworDirectorName',         label: 'ผู้อำนวยการ',              type: 'text' },
-        { key: 'porworDirectorSignUrl',      label: 'ลายเซ็นผู้อำนวยการ',       type: 'upload' },
-      ]},
-      { label: '📞 ช่องทางติดต่อ (แสดงในหน้าครูและนักเรียน)', keys: [
-        { key: 'contactPhone',    label: 'เบอร์มือถือ/โทรศัพท์',      type: 'text' },
-        { key: 'contactLine',     label: 'LINE OA / LINE ID',           type: 'text' },
-        { key: 'contactFacebook', label: 'Facebook Page URL',           type: 'text' },
-        { key: 'contactEmail',    label: 'อีเมลติดต่อ',                type: 'text' },
-        { key: 'contactOther',    label: 'ช่องทางอื่น (แสดงตรงๆ)',    type: 'text' },
-      ]},
-      { label: '💳 การชำระเงิน (แสดงให้ครูเห็นเมื่อซื้อแพ็กเกจ)', keys: [
-        { key: 'paymentAccountName',  label: 'ชื่อบัญชี',                    type: 'text' },
-        { key: 'paymentBankName',     label: 'ธนาคาร',                       type: 'text' },
-        { key: 'paymentAccountNo',    label: 'เลขบัญชี',                     type: 'text' },
-        { key: 'paymentPromptpay',    label: 'เบอร์ PromptPay / เลขประจำตัว', type: 'text' },
-        { key: 'paymentQrUrl',        label: 'QR Code PromptPay',             type: 'upload' },
-        { key: 'paymentNote',         label: 'หมายเหตุ (เช่น เวลาทำการ)',     type: 'text' },
-      ]},
-      { label: '📦 แพ็กเกจและโควตา', keys: [
-        { key: 'freeClassQuota',      label: 'โควตาห้องเรียนฟรี (ห้อง)',       type: 'text' },
-        { key: 'pricePerClass',       label: 'ราคาเพิ่มรายห้อง (บาท)',         type: 'text' },
-        { key: 'priceSemester',       label: 'ราคาแพ็กเกจเหมาทั้งเทอม (บาท)', type: 'text' },
-        { key: 'pkgPerClassDesc',     label: 'คำอธิบายแพ็กเกจรายห้อง',        type: 'text' },
-        { key: 'pkgSemesterDesc',     label: 'คำอธิบายแพ็กเกจเหมาทั้งเทอม',  type: 'text' },
-      ]},
-      { label: '🔗 Sync Engine — Google Sheet', keys: [
-        { key: 'centralGasUrl',            label: 'Central GAS URL (Admin deploy ครั้งเดียว — ใช้ร่วมทุก Sync)', type: 'text' },
-        { key: 'classInfoTab',             label: 'Tab ข้อมูลรายวิชาในชีทครู (ชื่อแท็บ)', type: 'text' },
-        { key: 'classInfoSubjectNameCell', label: 'Cell ชื่อรายวิชา', type: 'text' },
-        { key: 'classInfoSubjectCodeCell', label: 'Cell รหัสวิชา', type: 'text' },
-        { key: 'classInfoCreditCell',      label: 'Cell หน่วยกิต', type: 'text' },
-        { key: 'classInfoGradeCell',       label: 'Cell ชั้นเรียน', type: 'text' },
-        { key: 'classInfoHeadStudentCell', label: 'Cell หัวหน้าห้อง', type: 'text' },
-        { key: 'classInfoDay1Cell',        label: 'Cell วันสอนคาบที่ 1', type: 'text' },
-        { key: 'classInfoDay2Cell',        label: 'Cell วันสอนคาบที่ 2', type: 'text' },
-        { key: 'classInfoDay3Cell',        label: 'Cell วันสอนคาบที่ 3', type: 'text' },
-        { key: 'classInfoDay4Cell',        label: 'Cell วันสอนคาบที่ 4', type: 'text' },
-        { key: 'classInfoDay5Cell',        label: 'Cell วันสอนคาบที่ 5', type: 'text' },
-        { key: 'classInfoDay6Cell',        label: 'Cell วันสอนคาบที่ 6', type: 'text' },
-        { key: 'classInfoTeacherNameCell', label: 'Cell ครูผู้สอน', type: 'text' },
-        { key: 'classInfoTeacherPhoneCell',label: 'Cell เบอร์ติดต่อ', type: 'text' },
-        { key: 'classInfoDeptCell',        label: 'Cell กลุ่มสาระ', type: 'text' },
-        { key: 'classInfoHeadDeptCell',    label: 'Cell หัวหน้าหมวด', type: 'text' },
-      ]},
-      { label: '📄 ไฟล์สำเนา ปพ.5', keys: COPY_TEMPLATE_CONFIG.map(t => ({
-        key: t.key,
-        label: `Template ${t.category} — ${t.label}`,
-        type: 'text',
-        placeholder: t.defaultId,
-      }))},
-      { label: '🗓️ ตารางสอน', keys: [
-        { key: 'hasFriday',            label: 'เปิดวันศุกร์ (เฉพาะครูห้องโปรแกรม)', type: 'toggle' },
-        { key: 'scheduleVisionEnabled',label: 'เปิดฟีเจอร์วิเคราะห์รูปตาราง (AI)',   type: 'toggle' },
-        { key: 'geminiApiKey',         label: 'Gemini API Key',                       type: 'password' },
-        { key: 'geminiModel',          label: 'Gemini Model',                         type: 'text' },
-      ]},
-    ]
+    // ─── Field renderers ────────────────────────────────────────────────────────
     const COLOR_DEFAULTS = {
-      appColor: '#007bff',
-      loginColor: '#4f46e5',
-      adminColor: '#4f46e5',
-      teacherDefaultColor: '#059669',
-      teacherLanguageColor: '#2563eb',
-      teacherLifeColor: '#059669',
-      teacherAcademicColor: '#ea580c',
-      teacherVocColor: '#7c3aed',
-      teacherReligionColor: '#b45309',
-      studentColor: '#0891b2',
+      appColor:'#007bff', loginColor:'#4f46e5', adminColor:'#4f46e5',
+      teacherDefaultColor:'#059669', teacherLanguageColor:'#2563eb',
+      teacherLifeColor:'#059669', teacherAcademicColor:'#ea580c',
+      teacherVocColor:'#7c3aed', teacherReligionColor:'#b45309', studentColor:'#0891b2',
     }
+    const INPUT = 'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200'
 
-    const fieldHTML = ({ key, label, type, options, placeholder }) => {
-      const val = cfg[key] ?? ''
+    const fld = ({ key, label, type, options, placeholder, hint }) => {
+      const val  = cfg[key] ?? ''
       const base = `id="cfg-${key}" data-key="${key}"`
-      const cls  = 'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm'
+      const wrap = (inner, h = '') =>
+        `<div class="mb-5">
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">${label}</label>
+          ${inner}
+          ${h ? `<p class="text-[11px] text-gray-400 mt-1">${h}</p>` : ''}
+        </div>`
 
-      if (type === 'color')
-        return `<div class="mb-4">
-          <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
-          <div class="flex items-center gap-3">
-            <input type="color" ${base} value="${val || COLOR_DEFAULTS[key] || '#007bff'}"
-              class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
-            <span id="cfg-${key}-txt" class="text-sm text-gray-500">${val || COLOR_DEFAULTS[key] || '#007bff'}</span>
-          </div>
-        </div>`
-      if (type === 'date')
-        return `<div class="mb-4">
-          <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
-          <input type="date" ${base} value="${val || ''}" class="${cls}" />
-        </div>`
-      if (type === 'select')
-        return `<div class="mb-4">
-          <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
-          <select ${base} class="${cls} bg-white">
-            ${options.map(o => `<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}
-          </select>
-        </div>`
-      if (type === 'upload')
-        return `<div class="mb-4">
-          <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
-          <div class="flex items-center gap-3">
-            ${val ? `<img src="${val}" class="h-10 max-w-[120px] object-contain rounded border border-gray-100" />` : ''}
-            <label class="cursor-pointer">
-              <span class="inline-block px-3 py-1.5 rounded-lg border border-gray-200
-                           text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
-                ${val ? 'เปลี่ยน' : 'อัปโหลด'}
-              </span>
-              <input type="file" accept="image/*" class="hidden cfg-upload-file" data-key="${key}" />
-            </label>
-            <input type="hidden" ${base} value="${val}" />
-          </div>
-        </div>`
+      if (type === 'color') return wrap(`
+        <div class="flex items-center gap-3">
+          <input type="color" ${base} value="${val || COLOR_DEFAULTS[key] || '#007bff'}"
+            class="w-11 h-11 rounded-xl border border-gray-200 cursor-pointer p-0.5 shadow-sm" />
+          <span id="cfg-${key}-txt" class="text-sm font-mono text-gray-600">${val || COLOR_DEFAULTS[key] || '#007bff'}</span>
+        </div>`, hint)
+
+      if (type === 'date') return wrap(
+        `<input type="date" ${base} value="${val}" class="${INPUT}" />`, hint)
+
+      if (type === 'select') return wrap(`
+        <select ${base} class="${INPUT} bg-white">
+          ${(options ?? []).map(o => `<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}
+        </select>`, hint)
+
+      if (type === 'upload') return wrap(`
+        <div class="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+          ${val ? `<img src="${val}" class="h-14 max-w-[140px] object-contain rounded-lg border border-gray-200 bg-white p-1" />` : '<div class="w-14 h-14 rounded-lg bg-gray-200 flex items-center justify-center text-gray-400 text-2xl">🖼️</div>'}
+          <label class="cursor-pointer flex-1">
+            <span class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300
+                         text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 transition shadow-sm">
+              📁 ${val ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}
+            </span>
+            <input type="file" accept="image/*" class="hidden cfg-upload-file" data-key="${key}" />
+          </label>
+          <input type="hidden" ${base} value="${val}" />
+        </div>`, hint)
+
       if (type === 'toggle') {
-        const isOn = val === 'true'
-        return `<div class="mb-4 flex items-center justify-between">
-          <label class="text-sm font-medium text-gray-600">${label}</label>
-          <button type="button" ${base} data-on="${isOn}"
-            onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className=this.dataset.on==='true'?'w-12 h-6 rounded-full transition-colors bg-emerald-500 relative':'w-12 h-6 rounded-full transition-colors bg-gray-300 relative';this.querySelector('span').className=this.dataset.on==='true'?'absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform':'absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform'"
-            class="w-12 h-6 rounded-full transition-colors ${isOn ? 'bg-emerald-500' : 'bg-gray-300'} relative">
-            <span class="${isOn ? 'absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform' : 'absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transition-transform'}"></span>
-          </button>
-        </div>`
+        const on = val === 'true'
+        return wrap(`
+          <button type="button" ${base} data-on="${on}"
+            onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className='cfg-toggle w-14 h-7 rounded-full transition-colors relative shadow-inner '+(this.dataset.on==='true'?'bg-emerald-500':'bg-gray-300');this.querySelector('span').style.transform=this.dataset.on==='true'?'translateX(28px)':'translateX(2px)'"
+            class="cfg-toggle w-14 h-7 rounded-full transition-colors relative shadow-inner ${on ? 'bg-emerald-500' : 'bg-gray-300'}">
+            <span class="absolute top-1.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+              style="transform:translateX(${on ? '28' : '2'}px)"></span>
+          </button>`, hint)
       }
-      if (type === 'password')
-        return `<div class="mb-4">
-          <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
-          <div class="flex gap-2">
-            <input type="password" ${base} value="${val}" class="${cls} flex-1" placeholder="sk-..." autocomplete="off" />
-            <button type="button" class="px-3 py-2.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50"
-              onclick="const i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'ดู':'ซ่อน'">ดู</button>
-          </div>
-          <p class="text-xs text-amber-600 mt-1">⚠️ เก็บไว้เป็นความลับ ไม่แชร์กับใคร</p>
-        </div>`
-      return `<div class="mb-4">
-        <label class="block text-sm font-medium text-gray-600 mb-1">${label}</label>
-        <input type="text" ${base} value="${val}" placeholder="${placeholder ?? ''}" class="${cls}" />
-      </div>`
+
+      if (type === 'password') return wrap(`
+        <div class="flex gap-2">
+          <input type="password" ${base} value="${val}" class="${INPUT} flex-1" placeholder="sk-..." autocomplete="off" />
+          <button type="button" class="px-4 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 font-medium"
+            onclick="const i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'ดู':'ซ่อน'">ดู</button>
+        </div>
+        <p class="text-[11px] text-amber-600 mt-1">⚠️ เก็บเป็นความลับ — ห้ามแชร์</p>`, hint)
+
+      // default text
+      return wrap(`<input type="text" ${base} value="${val ?? ''}" placeholder="${placeholder ?? ''}" class="${INPUT}" />`, hint)
     }
 
-    setContent(`
-      <div class="max-w-3xl mx-auto animate-fade space-y-6">
-        ${GROUPS.map(g => `
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-            <h3 class="text-sm font-bold text-gray-700 mb-5">${g.label}</h3>
-            ${g.keys.map(fieldHTML).join('')}
-            <div class="flex justify-end mt-2">
-              <button data-save-group="${g.label}"
-                class="btn-primary px-6 py-2 text-white text-sm font-medium rounded-xl">
-                บันทึกกลุ่มนี้
-              </button>
-            </div>
-          </div>`).join('')}
-      </div>`)
+    // ─── Tab definitions ────────────────────────────────────────────────────────
+    const TABS = [
+      { id:'general',  icon:'⚙️',  label:'ทั่วไป' },
+      { id:'theme',    icon:'🎨',  label:'ธีมสี' },
+      { id:'school',   icon:'🏫',  label:'สถานศึกษา' },
+      { id:'prayer',   icon:'🕌',  label:'ระบบละหมาด' },
+      { id:'contact',  icon:'📞',  label:'ติดต่อ' },
+      { id:'payment',  icon:'💳',  label:'ชำระเงิน' },
+      { id:'package',  icon:'📦',  label:'แพ็กเกจ' },
+      { id:'sync',     icon:'🔗',  label:'Google Sync' },
+      { id:'template', icon:'📄',  label:'เทมเพลต ปพ.5' },
+      { id:'schedule', icon:'🗓️', label:'ตารางสอน' },
+    ]
 
-    // color preview sync
-    document.querySelectorAll('input[type=color]').forEach(inp => {
-      inp.addEventListener('input', () => {
-        document.getElementById(`${inp.id}-txt`).textContent = inp.value
-      })
-    })
+    // ─── Panel content per tab ──────────────────────────────────────────────────
+    const panelContent = tabId => {
+      const section = (title, fields) =>
+        `<div class="mb-6">
+          ${title ? `<p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">${title}</p>` : ''}
+          ${fields.map(fld).join('')}
+        </div>`
 
-    // upload fields — อัปโหลดทันที แล้วอัปเดต hidden input + preview
-    document.querySelectorAll('.cfg-upload-file').forEach(fileInput => {
-      fileInput.addEventListener('change', async e => {
-        const file = e.target.files[0]
-        if (!file) return
-        const key    = fileInput.dataset.key
-        const hidden = document.getElementById(`cfg-${key}`)
-        fileInput.disabled = true
-        try {
-          const url = await uploadSystemAsset(key, file)
-          hidden.value = url
-          await updateSystemConfig(key, url)
-          showToast(`อัปโหลด ${key} สำเร็จ`, 'success')
-          // refresh preview
-          const imgEl = fileInput.closest('div.flex')?.querySelector('img')
-          if (imgEl) { imgEl.src = url } else {
-            const span = fileInput.previousElementSibling
-            if (span) span.insertAdjacentHTML('beforebegin',
-              `<img src="${url}" class="h-10 max-w-[120px] object-contain rounded border border-gray-100" />`)
-          }
-        } catch (err) {
-          showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        } finally {
-          fileInput.disabled = false
-        }
-      })
-    })
+      if (tabId === 'general') return [
+        section('ปีการศึกษา', [
+          { key:'semester',    label:'ภาคเรียนที่',   type:'select', options:['1','2'] },
+          { key:'academicYear',label:'ปีการศึกษา (พ.ศ.)', type:'text', placeholder:'เช่น 2568' },
+        ]),
+        section('หน้าเข้าสู่ระบบ', [
+          { key:'loginColor',  label:'สีพื้นหลัง Login',  type:'color' },
+          { key:'loginLogoUrl',label:'โลโก้หน้า Login',   type:'upload' },
+          { key:'appColor',    label:'สีหลักของระบบ',     type:'color' },
+        ]),
+        section('เบ็ดเตล็ด', [
+          { key:'developerCreditText', label:'ข้อความเครดิตผู้พัฒนา', type:'text', placeholder:'พัฒนาโดย...' },
+        ]),
+      ].join('')
 
-    // save per group
-    document.querySelectorAll('[data-save-group]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const card = btn.closest('.bg-white')
-        const inputs = card.querySelectorAll('[data-key]')
-        btn.disabled = true
-        btn.textContent = 'กำลังบันทึก...'
-        try {
-          await Promise.all([...inputs].map(el => {
-            // toggle button: อ่านจาก data-on แทน value
-            const val = el.tagName === 'BUTTON' ? (el.dataset.on ?? 'false') : el.value
-            return updateSystemConfig(el.dataset.key, val)
-          }))
-          await applyThemeForRole('admin', {}, true)
-          showToast('บันทึกสำเร็จ', 'success')
-        } catch {
-          showToast('บันทึกไม่สำเร็จ', 'error')
-        } finally {
-          btn.disabled = false
-          btn.textContent = 'บันทึกกลุ่มนี้'
-        }
+      if (tabId === 'theme') return `
+        <p class="text-xs text-gray-400 mb-5">สีของแต่ละบทบาทจะนำไปใช้กับ sidebar และ header โดยอัตโนมัติ</p>
+        <div class="grid grid-cols-2 gap-x-8">
+          ${[
+            { key:'adminColor',           label:'แอดมิน' },
+            { key:'teacherDefaultColor',  label:'ครูทั่วไป' },
+            { key:'teacherLanguageColor', label:'ครูกลุ่มภาษา' },
+            { key:'teacherLifeColor',     label:'ครูกลุ่มชีวิต' },
+            { key:'teacherAcademicColor', label:'ครูกลุ่มวิชาการ' },
+            { key:'teacherVocColor',      label:'ครูปวช/สามัญปวช' },
+            { key:'teacherReligionColor', label:'ครูกลุ่มศาสนา' },
+            { key:'studentColor',         label:'นักเรียน' },
+          ].map(f => fld({ ...f, type:'color' })).join('')}
+        </div>`
+
+      if (tabId === 'school') {
+        const schoolFields = (prefix, labels) => [
+          { key:`${prefix}SchoolName`,          label:labels.name,       type:'text' },
+          { key:`${prefix}LogoUrl`,             label:'โลโก้สี',         type:'upload' },
+          { key:`${prefix}LogoBwUrl`,           label:'โลโก้ขาวดำ',      type:'upload' },
+          { key:`${prefix}DirectorName`,        label:'ผู้อำนวยการ',      type:'text' },
+          { key:`${prefix}DirectorSignUrl`,     label:'ลายเซ็นผู้อำนวยการ', type:'upload' },
+          { key:`${prefix}AcademicHeadName`,    label:'หัวหน้าวิชาการ',  type:'text' },
+          { key:`${prefix}AcademicHeadSignUrl`, label:'ลายเซ็นหัวหน้าวิชาการ', type:'upload' },
+          { key:`${prefix}RegistrarName`,       label:'หัวหน้าฝ่ายทะเบียน', type:'text' },
+          { key:`${prefix}RegistrarSignUrl`,    label:'ลายเซ็นหัวหน้าฝ่ายทะเบียน', type:'upload' },
+        ]
+        return `
+          <div class="flex gap-2 mb-5" id="school-subtabs">
+            <button class="school-stab px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white" data-stab="samai">🏫 โรงเรียนสามัญ</button>
+            <button class="school-stab px-5 py-2 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50" data-stab="porwor">🎓 วิทยาลัยปวช</button>
+          </div>
+          <div id="school-samai">${schoolFields('samai',{name:'ชื่อโรงเรียน'}).map(fld).join('')}</div>
+          <div id="school-porwor" class="hidden">${schoolFields('porwor',{name:'ชื่อวิทยาลัย'}).map(fld).join('')}</div>`
+      }
+
+      if (tabId === 'prayer') return [
+        section('ช่วงเวลาภาคเรียน', [
+          { key:'semester_start', label:'วันเปิดภาคเรียน', type:'date', hint:'ใช้คำนวณสัปดาห์ปัจจุบันอัตโนมัติในระบบบันทึกละหมาด' },
+          { key:'semester_end',   label:'วันปิดภาคเรียน',  type:'date' },
+        ]),
+      ].join('')
+
+      if (tabId === 'contact') return [
+        section('ช่องทางติดต่อ (แสดงในหน้าครูและนักเรียน)', [
+          { key:'contactPhone',    label:'เบอร์โทรศัพท์',     type:'text', placeholder:'08x-xxx-xxxx' },
+          { key:'contactLine',     label:'LINE OA / LINE ID',  type:'text', placeholder:'@lineid' },
+          { key:'contactFacebook', label:'Facebook Page URL',  type:'text', placeholder:'https://fb.com/...' },
+          { key:'contactEmail',    label:'อีเมลติดต่อ',        type:'text', placeholder:'admin@school.ac.th' },
+          { key:'contactOther',    label:'ช่องทางอื่น',        type:'text', placeholder:'แสดงข้อความตรงๆ เช่น Line OA: ชื่อ' },
+        ]),
+      ].join('')
+
+      if (tabId === 'payment') return [
+        section('บัญชีรับโอน', [
+          { key:'paymentBankName',    label:'ธนาคาร',      type:'text', placeholder:'ธนาคารกสิกรไทย' },
+          { key:'paymentAccountName', label:'ชื่อบัญชี',   type:'text' },
+          { key:'paymentAccountNo',   label:'เลขที่บัญชี', type:'text', placeholder:'xxx-x-xxxxx-x' },
+          { key:'paymentPromptpay',   label:'เบอร์/เลข PromptPay', type:'text', placeholder:'08x-xxx-xxxx หรือ 1-xxxx-xxxxx-xx-x' },
+        ]),
+        section('QR และหมายเหตุ', [
+          { key:'paymentQrUrl',  label:'QR Code PromptPay', type:'upload' },
+          { key:'paymentNote',   label:'หมายเหตุ', type:'text', placeholder:'เช่น โอนในวันทำการ จ-ศ 08:00-16:00' },
+        ]),
+      ].join('')
+
+      if (tabId === 'package') return [
+        section('โควตาและราคา', [
+          { key:'freeClassQuota', label:'โควตาห้องฟรี (ห้อง)',       type:'text', placeholder:'3' },
+          { key:'pricePerClass',  label:'ราคาเพิ่มรายห้อง (บาท)',    type:'text', placeholder:'49' },
+          { key:'priceSemester',  label:'ราคาแพ็กเกจเหมาทั้งเทอม (บาท)', type:'text', placeholder:'299' },
+        ]),
+        section('คำอธิบายแพ็กเกจ (แสดงในหน้าซื้อของครู)', [
+          { key:'pkgPerClassDesc',  label:'คำอธิบายรายห้อง',       type:'text', placeholder:'เพิ่มห้องเรียนได้ 1 ห้อง' },
+          { key:'pkgSemesterDesc',  label:'คำอธิบายเหมาทั้งเทอม', type:'text', placeholder:'ไม่จำกัดห้องตลอดภาคเรียน' },
+        ]),
+      ].join('')
+
+      if (tabId === 'sync') {
+        const cellFields = [
+          ['classInfoSubjectNameCell', 'ชื่อรายวิชา'], ['classInfoSubjectCodeCell','รหัสวิชา'],
+          ['classInfoCreditCell','หน่วยกิต'],          ['classInfoGradeCell','ชั้นเรียน'],
+          ['classInfoHeadStudentCell','หัวหน้าห้อง'],  ['classInfoDay1Cell','วันสอนคาบ 1'],
+          ['classInfoDay2Cell','วันสอนคาบ 2'],         ['classInfoDay3Cell','วันสอนคาบ 3'],
+          ['classInfoDay4Cell','วันสอนคาบ 4'],         ['classInfoDay5Cell','วันสอนคาบ 5'],
+          ['classInfoDay6Cell','วันสอนคาบ 6'],         ['classInfoTeacherNameCell','ครูผู้สอน'],
+          ['classInfoTeacherPhoneCell','เบอร์ติดต่อ'], ['classInfoDeptCell','กลุ่มสาระ'],
+          ['classInfoHeadDeptCell','หัวหน้าหมวด'],
+        ]
+        return `
+          ${fld({ key:'centralGasUrl', label:'Central GAS URL', type:'text',
+            placeholder:'https://script.google.com/macros/s/...',
+            hint:'Deploy ครั้งเดียว ใช้ร่วมกันทุก Sync ในระบบ' })}
+          ${fld({ key:'classInfoTab', label:'ชื่อแท็บข้อมูลรายวิชาในชีทครู', type:'text', placeholder:'ข้อมูลรายวิชา' })}
+          <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-3 pb-2 border-b border-gray-100">ตำแหน่ง Cell ข้อมูลในชีทครู</p>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            ${cellFields.map(([key, label]) => {
+              const val = cfg[key] ?? ''
+              return `<div class="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                <p class="text-[10px] font-semibold text-gray-500 mb-1.5">${label}</p>
+                <input type="text" id="cfg-${key}" data-key="${key}" value="${val}"
+                  placeholder="A1" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 bg-white" />
+              </div>`
+            }).join('')}
+          </div>`
+      }
+
+      if (tabId === 'template') return `
+        <p class="text-xs text-gray-400 mb-5">ใส่ Google Drive File ID ของไฟล์ต้นแบบ ปพ.5 แต่ละประเภท</p>
+        ${COPY_TEMPLATE_CONFIG.map(t => fld({
+          key: t.key,
+          label: `${t.category} — ${t.label}`,
+          type: 'text',
+          placeholder: t.defaultId,
+          hint: `default: ${t.defaultId}`,
+        })).join('')}`
+
+      if (tabId === 'schedule') return [
+        section('การแสดงผลตาราง', [
+          { key:'hasFriday', label:'เปิดสอนวันศุกร์', type:'toggle',
+            hint:'เปิดเพื่อแสดงคอลัมน์วันศุกร์ในตารางสอนครู' },
+        ]),
+        section('AI วิเคราะห์ตาราง (Gemini)', [
+          { key:'scheduleVisionEnabled', label:'เปิดฟีเจอร์วิเคราะห์รูปตาราง', type:'toggle' },
+          { key:'geminiApiKey',   label:'Gemini API Key',  type:'password' },
+          { key:'geminiModel',    label:'Gemini Model',    type:'text', placeholder:'gemini-1.5-flash' },
+        ]),
+      ].join('')
+
+      return ''
+    }
+
+    // ─── Render shell ────────────────────────────────────────────────────────────
+    let activeTab = 'general'
+
+    setContent(`<div class="max-w-4xl mx-auto animate-fade">
+      <!-- Tab bar -->
+      <div class="flex gap-1 overflow-x-auto pb-1 mb-6 scrollbar-hide" id="cfg-tabbar">
+        ${TABS.map(t => `
+          <button class="cfg-tab flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition whitespace-nowrap
+            ${t.id === activeTab ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}"
+            data-tab="${t.id}">
+            <span>${t.icon}</span><span class="hidden sm:inline">${t.label}</span>
+          </button>`).join('')}
+      </div>
+      <!-- Panel -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 md:p-8" id="cfg-panel">
+        <div id="cfg-panel-inner"></div>
+        <div class="border-t border-gray-100 pt-5 mt-6 flex items-center justify-between">
+          <p class="text-xs text-gray-400" id="cfg-save-hint"></p>
+          <button id="cfg-save-btn" class="btn-primary px-8 py-2.5 text-white text-sm font-semibold rounded-xl shadow">
+            บันทึก
+          </button>
+        </div>
+      </div>
+    </div>`)
+
+    // ─── Tab switcher ────────────────────────────────────────────────────────────
+    const renderTab = (tabId) => {
+      activeTab = tabId
+      document.querySelectorAll('.cfg-tab').forEach(btn => {
+        const on = btn.dataset.tab === tabId
+        btn.className = `cfg-tab flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition whitespace-nowrap ${on ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`
       })
+      document.getElementById('cfg-panel-inner').innerHTML = panelContent(tabId)
+      document.getElementById('cfg-save-hint').textContent = ''
+
+      // color preview sync
+      document.querySelectorAll('#cfg-panel-inner input[type=color]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const txt = document.getElementById(`${inp.id}-txt`)
+          if (txt) txt.textContent = inp.value
+        })
+      })
+
+      // school sub-tabs
+      document.querySelectorAll('.school-stab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const stab = btn.dataset.stab
+          document.querySelectorAll('.school-stab').forEach(b => {
+            b.className = `school-stab px-5 py-2 rounded-xl text-sm font-semibold ${b.dataset.stab===stab ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`
+          })
+          document.getElementById('school-samai').classList.toggle('hidden', stab !== 'samai')
+          document.getElementById('school-porwor').classList.toggle('hidden', stab !== 'porwor')
+        })
+      })
+
+      // upload handlers
+      document.querySelectorAll('#cfg-panel-inner .cfg-upload-file').forEach(fi => {
+        fi.addEventListener('change', async e => {
+          const file = e.target.files[0]; if (!file) return
+          const key = fi.dataset.key
+          const hidden = document.getElementById(`cfg-${key}`)
+          fi.disabled = true
+          try {
+            const url = await uploadSystemAsset(key, file)
+            if (hidden) hidden.value = url
+            await updateSystemConfig(key, url)
+            showToast(`อัปโหลดสำเร็จ ✅`, 'success')
+            // refresh preview
+            const imgEl = fi.closest('.flex')?.querySelector('img')
+            const iconEl = fi.closest('.flex')?.querySelector('div.w-14')
+            if (imgEl) { imgEl.src = url }
+            else if (iconEl) { iconEl.outerHTML = `<img src="${url}" class="h-14 max-w-[140px] object-contain rounded-lg border border-gray-200 bg-white p-1" />` }
+          } catch (err) {
+            showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          } finally { fi.disabled = false }
+        })
+      })
+    }
+
+    document.querySelectorAll('.cfg-tab').forEach(btn =>
+      btn.addEventListener('click', () => renderTab(btn.dataset.tab))
+    )
+    renderTab(activeTab)
+
+    // ─── Save button ─────────────────────────────────────────────────────────────
+    document.getElementById('cfg-save-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('cfg-save-btn')
+      const inputs = document.querySelectorAll('#cfg-panel-inner [data-key]')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await Promise.all([...inputs].map(el => {
+          const val = el.tagName === 'BUTTON' ? (el.dataset.on ?? 'false') : el.value
+          return updateSystemConfig(el.dataset.key, val)
+        }))
+        await applyThemeForRole('admin', {}, true)
+        showToast('บันทึกสำเร็จ ✅', 'success')
+        document.getElementById('cfg-save-hint').textContent = `บันทึกล่าสุด: ${new Date().toLocaleTimeString('th-TH')}`
+      } catch {
+        showToast('บันทึกไม่สำเร็จ', 'error')
+      } finally {
+        btn.disabled = false; btn.textContent = 'บันทึก'
+      }
     })
 
   } catch {
