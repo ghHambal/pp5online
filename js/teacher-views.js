@@ -455,38 +455,12 @@ export async function openCourseDocPage2Modal(teacher, course) {
       <div class="flex-1 overflow-y-auto bg-gray-50">
         <div class="max-w-6xl mx-auto p-4 sm:p-6 space-y-4">
           <div class="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 sm:p-5">
-            <div class="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <h3 class="font-bold text-gray-800">ช่วยเติมข้อมูล</h3>
-                <p class="text-xs text-gray-400 mt-0.5">ระบุบท/เรื่องด้านล่างแล้วเลือกวิธีเติม — ระบบจะนำข้อมูลมาใส่ในตารางและคำอธิบายให้</p>
-              </div>
-              <div class="flex flex-col sm:flex-row gap-2 mt-1 sm:mt-0">
-                <div class="flex flex-col items-center gap-0.5">
-                  <button id="cd2-search-curriculum"
-                    class="w-full sm:w-auto px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-60 flex items-center gap-1.5">
-                    🔍 ค้นหลักสูตร
-                  </button>
-                  <span class="text-[10px] text-gray-400">จากฐานข้อมูลแกนกลาง</span>
-                </div>
-                <div class="flex flex-col items-center gap-0.5">
-                  <button id="cd2-auto-fill"
-                    class="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 flex items-center gap-1.5">
-                    ✨ ให้ AI ร่าง
-                  </button>
-                  <span class="text-[10px] text-gray-400">Gemini สร้างจากชื่อวิชา</span>
-                </div>
-                <div class="flex flex-col items-center gap-0.5">
-                  <label class="cursor-pointer w-full sm:w-auto">
-                    <span id="cd2-img-btn"
-                      class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
-                      📷 อ่านจากรูป
-                    </span>
-                    <input type="file" id="cd2-img-input" accept="image/*" class="hidden" />
-                  </label>
-                  <span class="text-[10px] text-gray-400">AI อ่านรูป/ภาพถ่าย</span>
-                </div>
-              </div>
+            <div>
+              <h3 class="font-bold text-gray-800">ช่วยเติมข้อมูล</h3>
+              <p class="text-xs text-gray-400 mt-0.5">ระบุบท/เรื่องด้านล่าง แล้วเลือกวิธีเติมข้อมูล</p>
             </div>
+
+            <!-- topic list -->
             <div class="mt-4 space-y-2">
               <div class="flex items-center justify-between mb-1">
                 <span class="text-xs font-semibold text-gray-500">บท / เรื่องที่สอน (เพิ่มได้หลายบท)</span>
@@ -496,7 +470,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
                 ${topicList.map((t, i) => `
                   <div class="flex gap-2 cd2-topic-row">
                     <input class="cd2-topic-input ${INPUT_CLS} flex-1" value="${_htmlEsc(t)}"
-                      placeholder="เช่น สถิติ, ทศนิยม, การอ่านจับใจความ, الفقه" dir="${dirAttr()}" data-idx="${i}" />
+                      placeholder="เช่น สถิติ, เลขกำลัง, การอ่านจับใจความ" dir="${dirAttr()}" data-idx="${i}" />
                     ${topicList.length > 1 ? `<button type="button" class="cd2-topic-del px-3 rounded-xl border border-red-100 text-red-400 hover:bg-red-50 text-sm" data-idx="${i}">✕</button>` : ''}
                   </div>`).join('')}
               </div>
@@ -505,7 +479,36 @@ export async function openCourseDocPage2Modal(teacher, course) {
                 <span class="text-base leading-none">＋</span> เพิ่มบท
               </button>
             </div>
-            ${aiStatusText ? `<p class="text-xs text-amber-600 mt-3">${_htmlEsc(aiStatusText)}</p>` : ''}
+
+            <!-- 3 action buttons grid -->
+            <div class="grid grid-cols-3 gap-2 mt-4">
+              <div class="flex flex-col items-center gap-1">
+                <button id="cd2-search-curriculum"
+                  class="w-full py-2.5 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1">
+                  🔍 ค้นหลักสูตร
+                </button>
+                <span class="text-[10px] text-gray-400 text-center">ฐานข้อมูลแกนกลาง</span>
+              </div>
+              <div class="flex flex-col items-center gap-1">
+                <button id="cd2-auto-fill"
+                  class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1">
+                  ✨ ให้ AI ร่าง
+                </button>
+                <span class="text-[10px] text-gray-400 text-center">Gemini + บทที่ระบุ</span>
+              </div>
+              <div class="flex flex-col items-center gap-1">
+                <label class="cursor-pointer w-full">
+                  <span id="cd2-img-btn"
+                    class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 flex items-center justify-center gap-1">
+                    📷 อ่านจากรูป
+                  </span>
+                  <input type="file" id="cd2-img-input" accept="image/*" class="hidden" />
+                </label>
+                <span class="text-[10px] text-gray-400 text-center">AI อ่านภาพถ่าย</span>
+              </div>
+            </div>
+
+            ${aiStatusText ? `<p class="text-xs mt-3 ${aiStatusText.startsWith('✅') ? 'text-emerald-600' : 'text-amber-600'}">${_htmlEsc(aiStatusText)}</p>` : ''}
           </div>
 
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
@@ -682,9 +685,9 @@ export async function openCourseDocPage2Modal(teacher, course) {
 - ชื่อวิชา: ${course.subject_name || ''}
 - รหัสวิชา: ${course.subject_code || ''}
 - ชั้น: ${course.grade_level || ''}
-- กลุ่มสาระ: ${course.dept || ''}
+- กลุ่มสาระ: ${deptThai || course.dept || ''}
 - หน่วยกิต: ${course.credit || ''}
-- เรื่อง/สาระการเรียนรู้ที่ครูระบุ: ${curriculumTopic || 'ไม่ระบุ'}
+- เรื่อง/บทที่สอน: ${topicList.filter(Boolean).join(', ') || 'ไม่ระบุ'}
 
 งาน:
 1. ร่างคำอธิบายรายวิชาสั้น กระชับ เป็นทางการ
