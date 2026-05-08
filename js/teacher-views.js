@@ -415,7 +415,13 @@ export async function openCourseDocPage2Modal(teacher, course) {
   let signerName = existing?.signer_name || course.learning_area || ''
   let curriculumTopic = ''
   let aiStatusText = ''
-  const cfg = await getSystemConfig().catch(() => ({}))
+  const [cfg, depts] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    getDepartments().catch(() => []),
+  ])
+  // แปลง dept_code (THAI/MATH/...) → dept_name ภาษาไทย สำหรับค้นหลักสูตรแกนกลาง
+  const deptRec   = depts.find(d => d.dept_code === course.dept)
+  const deptThai  = deptRec?.dept_name ?? course.dept ?? ''
 
   document.getElementById('course-doc-page2-modal')?.remove()
   const modal = document.createElement('div')
@@ -451,11 +457,19 @@ export async function openCourseDocPage2Modal(teacher, course) {
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h3 class="font-bold text-gray-800">เติมข้อมูลอัตโนมัติ</h3>
-                <p class="text-xs text-gray-400 mt-0.5">กรอกเรื่องหรือสาระการเรียนรู้ ระบบจะค้นหลักสูตรแกนกลางก่อน ถ้าไม่พบจะให้ Gemini ร่างให้</p>
+                <p class="text-xs text-gray-400 mt-0.5">พิมพ์เรื่อง → ค้นหลักสูตรแกนกลาง → ถ้าไม่พบให้ Gemini ร่าง · หรืออัปโหลดรูปเพื่อให้ AI อ่านตาราง</p>
               </div>
-              <button id="cd2-auto-fill" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
-                เติมอัตโนมัติ
-              </button>
+              <div class="flex gap-2">
+                <button id="cd2-auto-fill" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
+                  เติมอัตโนมัติ
+                </button>
+                <label class="cursor-pointer">
+                  <span id="cd2-img-btn" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+                    📷 จากรูป
+                  </span>
+                  <input type="file" id="cd2-img-input" accept="image/*" class="hidden" />
+                </label>
+              </div>
             </div>
             <div class="grid md:grid-cols-[1fr_auto] gap-3 mt-4">
               <input id="cd2-topic" class="${INPUT_CLS}" value="${_htmlEsc(curriculumTopic)}"
@@ -728,7 +742,7 @@ Return JSON object เท่านั้น:
           subjectName: course.subject_name,
           subjectCode: course.subject_code,
           gradeLevel: course.grade_level,
-          dept: course.dept,
+          dept: deptThai,   // ใช้ชื่อภาษาไทย ไม่ใช่ code
           topic: curriculumTopic,
         }).catch(() => [])
         if (records.length) {
@@ -746,6 +760,83 @@ Return JSON object เท่านั้น:
         btn.textContent = 'เติมอัตโนมัติ'
       }
     })
+    // ── อัปโหลดรูป → Gemini Vision อ่านตาราง ────────────────────────────────
+    modal.querySelector('#cd2-img-input').addEventListener('change', async e => {
+      const file = e.target.files?.[0]; if (!file) return
+      const geminiKey = cfg.geminiApiKey ?? ''
+      if (!geminiKey) { showToast('กรุณาตั้งค่า Gemini API Key ในหน้าแอดมิน', 'error'); return }
+
+      const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
+      if (hasContent && !confirm('เติมข้อมูลจากรูปภาพ ทับข้อมูลที่มีอยู่หรือไม่?')) {
+        e.target.value = ''; return
+      }
+
+      const btn = modal.querySelector('#cd2-img-btn')
+      btn.textContent = '⏳ กำลังอ่าน...'
+
+      try {
+        // แปลงรูปเป็น base64
+        const base64 = await new Promise((res, rej) => {
+          const reader = new FileReader()
+          reader.onload = () => res(reader.result.split(',')[1])
+          reader.onerror = rej
+          reader.readAsDataURL(file)
+        })
+
+        const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
+        const tableMode = isExtra
+          ? 'รายวิชาเพิ่มเติม ใช้คอลัมน์เดียวชื่อ "ผลการเรียนรู้"'
+          : 'รายวิชาพื้นฐาน ใช้ 2 คอลัมน์ชื่อ "มาตรฐานการเรียนรู้" และ "ตัวชี้วัด"'
+
+        const prompt = `คุณเป็นผู้ช่วยครูไทย ดูรูปภาพนี้ซึ่งอาจเป็นหน้าหนังสือ, เอกสารหลักสูตร, หรือตาราง ปพ.5
+ข้อมูลรายวิชา: "${course.subject_name ?? ''}" รหัส ${course.subject_code ?? ''} ชั้น ${course.grade_level ?? ''} กลุ่มสาระ ${deptThai}
+
+สกัดข้อมูลต่อไปนี้จากรูป:
+1. คำอธิบายรายวิชา / ผลการเรียนรู้ภาพรวม (ถ้ามี)
+2. รายการมาตรฐานการเรียนรู้ / ตัวชี้วัด / ผลการเรียนรู้ (${tableMode})
+3. แนะนำข้อที่ควรวัดผลกลางภาคและปลายภาค
+
+ตอบเป็น JSON เท่านั้น (ไม่มีข้อความอื่น):
+{
+  "description": "...",
+  "columns": ["มาตรฐานการเรียนรู้", "ตัวชี้วัด"],
+  "rows": [["...", "..."]],
+  "midterm_items": [1,2,3],
+  "final_items": [4,5,6]
+}`
+
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1/models/${cfg.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { text: prompt },
+                  { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } },
+                ]
+              }]
+            }),
+          }
+        )
+        const json = await res.json()
+        if (json.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+        const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/)
+        const jsonStr = match ? (match[1] ?? match[0]) : null
+        if (!jsonStr) throw new Error('AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง')
+        applyGeneratedDoc(JSON.parse(jsonStr))
+        aiStatusText = 'AI อ่านจากรูปภาพแล้ว — กรุณาตรวจสอบความถูกต้องก่อนบันทึก'
+        render()
+      } catch (err) {
+        showToast('อ่านรูปไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      } finally {
+        btn.textContent = '📷 จากรูป'
+        e.target.value = ''
+      }
+    })
+
     const applyTemplate = nextColumns => {
       syncFromDom()
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim()))
