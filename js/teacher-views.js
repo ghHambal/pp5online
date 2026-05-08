@@ -457,19 +457,34 @@ export async function openCourseDocPage2Modal(teacher, course) {
           <div class="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 sm:p-5">
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <h3 class="font-bold text-gray-800">เติมข้อมูลอัตโนมัติ</h3>
-                <p class="text-xs text-gray-400 mt-0.5">พิมพ์เรื่อง → ค้นหลักสูตรแกนกลาง → ถ้าไม่พบให้ Gemini ร่าง · หรืออัปโหลดรูปเพื่อให้ AI อ่านตาราง</p>
+                <h3 class="font-bold text-gray-800">ช่วยเติมข้อมูล</h3>
+                <p class="text-xs text-gray-400 mt-0.5">ระบุบท/เรื่องด้านล่างแล้วเลือกวิธีเติม — ระบบจะนำข้อมูลมาใส่ในตารางและคำอธิบายให้</p>
               </div>
-              <div class="flex gap-2">
-                <button id="cd2-auto-fill" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
-                  เติมอัตโนมัติ
-                </button>
-                <label class="cursor-pointer">
-                  <span id="cd2-img-btn" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
-                    📷 จากรูป
-                  </span>
-                  <input type="file" id="cd2-img-input" accept="image/*" class="hidden" />
-                </label>
+              <div class="flex flex-col sm:flex-row gap-2 mt-1 sm:mt-0">
+                <div class="flex flex-col items-center gap-0.5">
+                  <button id="cd2-search-curriculum"
+                    class="w-full sm:w-auto px-4 py-2 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-60 flex items-center gap-1.5">
+                    🔍 ค้นหลักสูตร
+                  </button>
+                  <span class="text-[10px] text-gray-400">จากฐานข้อมูลแกนกลาง</span>
+                </div>
+                <div class="flex flex-col items-center gap-0.5">
+                  <button id="cd2-auto-fill"
+                    class="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 flex items-center gap-1.5">
+                    ✨ ให้ AI ร่าง
+                  </button>
+                  <span class="text-[10px] text-gray-400">Gemini สร้างจากชื่อวิชา</span>
+                </div>
+                <div class="flex flex-col items-center gap-0.5">
+                  <label class="cursor-pointer w-full sm:w-auto">
+                    <span id="cd2-img-btn"
+                      class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+                      📷 อ่านจากรูป
+                    </span>
+                    <input type="file" id="cd2-img-input" accept="image/*" class="hidden" />
+                  </label>
+                  <span class="text-[10px] text-gray-400">AI อ่านรูป/ภาพถ่าย</span>
+                </div>
               </div>
             </div>
             <div class="mt-4 space-y-2">
@@ -754,34 +769,51 @@ Return JSON object เท่านั้น:
       textDir = e.target.value
       render()
     })
-    modal.querySelector('#cd2-auto-fill').addEventListener('click', async () => {
+    // ── ค้นหลักสูตรแกนกลาง (DB เท่านั้น) ─────────────────────────────────────
+    modal.querySelector('#cd2-search-curriculum').addEventListener('click', async () => {
       syncFromDom()
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
-      if (hasContent && !confirm('เติมข้อมูลอัตโนมัติทับข้อมูลที่มีอยู่หรือไม่?')) return
-      const btn = modal.querySelector('#cd2-auto-fill')
-      btn.disabled = true
-      btn.textContent = 'กำลังค้น/ร่าง...'
+      if (hasContent && !confirm('ค้นหลักสูตรแล้วจะทับข้อมูลที่มีอยู่ ดำเนินการต่อหรือไม่?')) return
+      const btn = modal.querySelector('#cd2-search-curriculum')
+      btn.disabled = true; btn.innerHTML = '⏳ กำลังค้น...'
       try {
         const records = await findCurriculumStandards({
           subjectName: course.subject_name,
           subjectCode: course.subject_code,
           gradeLevel: course.grade_level,
-          dept: deptThai,   // ใช้ชื่อภาษาไทย ไม่ใช่ code
+          dept: deptThai,
           topic: topicList.filter(Boolean).join(' '),
-        }).catch(() => [])
+        })
         if (records.length) {
           applyGeneratedDoc(buildDocFromCurriculum(records))
-          aiStatusText = `เติมจากฐานหลักสูตรแกนกลาง ${records.length} รายการแล้ว กรุณาตรวจสอบก่อนบันทึก`
+          aiStatusText = `✅ พบ ${records.length} รายการในฐานหลักสูตรแกนกลาง — กรุณาตรวจสอบก่อนบันทึก`
         } else {
-          const generated = await generateDocWithGemini()
-          applyGeneratedDoc(generated)
-          aiStatusText = 'Gemini ร่างข้อมูลให้แล้ว กรุณาตรวจสอบความถูกต้องก่อนบันทึก'
+          aiStatusText = '⚠️ ไม่พบข้อมูลในฐานหลักสูตรแกนกลาง — ลองใช้ "ให้ AI ร่าง" แทน'
         }
         render()
       } catch (err) {
-        showToast('เติมอัตโนมัติไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        btn.disabled = false
-        btn.textContent = 'เติมอัตโนมัติ'
+        showToast('ค้นหลักสูตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      } finally {
+        btn.disabled = false; btn.innerHTML = '🔍 ค้นหลักสูตร'
+      }
+    })
+
+    // ── ให้ AI ร่าง (Gemini เท่านั้น) ─────────────────────────────────────────
+    modal.querySelector('#cd2-auto-fill').addEventListener('click', async () => {
+      syncFromDom()
+      const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
+      if (hasContent && !confirm('ให้ AI ร่างใหม่ทับข้อมูลที่มีอยู่หรือไม่?')) return
+      const btn = modal.querySelector('#cd2-auto-fill')
+      btn.disabled = true; btn.innerHTML = '⏳ AI กำลังร่าง...'
+      try {
+        const generated = await generateDocWithGemini()
+        applyGeneratedDoc(generated)
+        aiStatusText = '✨ AI ร่างข้อมูลให้แล้ว — กรุณาตรวจสอบความถูกต้องก่อนบันทึก'
+        render()
+      } catch (err) {
+        showToast('AI ร่างไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      } finally {
+        btn.disabled = false; btn.innerHTML = '✨ ให้ AI ร่าง'
       }
     })
     // ── อัปโหลดรูป → Gemini Vision อ่านตาราง ────────────────────────────────
