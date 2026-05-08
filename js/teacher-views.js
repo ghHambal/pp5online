@@ -15,7 +15,7 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
          getReadingScoreColumns, getReadingScores, upsertReadingScore,
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
-         getCourseDocPage2, saveCourseDocPage2,
+         getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
          getTeacherExamRequests, reviewExamRequest, updateExamResult } from './api.js'
 import { supabase } from './supabase.js'
 
@@ -413,6 +413,9 @@ export async function openCourseDocPage2Modal(teacher, course) {
   let textDir = ['auto', 'rtl', 'ltr'].includes(existing?.text_direction) ? existing.text_direction : 'auto'
   let description = existing?.description || ''
   let signerName = existing?.signer_name || course.learning_area || ''
+  let curriculumTopic = ''
+  let aiStatusText = ''
+  const cfg = await getSystemConfig().catch(() => ({}))
 
   document.getElementById('course-doc-page2-modal')?.remove()
   const modal = document.createElement('div')
@@ -444,6 +447,26 @@ export async function openCourseDocPage2Modal(teacher, course) {
 
       <div class="flex-1 overflow-y-auto bg-gray-50">
         <div class="max-w-6xl mx-auto p-4 sm:p-6 space-y-4">
+          <div class="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 sm:p-5">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="font-bold text-gray-800">เติมข้อมูลอัตโนมัติ</h3>
+                <p class="text-xs text-gray-400 mt-0.5">กรอกเรื่องหรือสาระการเรียนรู้ ระบบจะค้นหลักสูตรแกนกลางก่อน ถ้าไม่พบจะให้ Gemini ร่างให้</p>
+              </div>
+              <button id="cd2-auto-fill" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
+                เติมอัตโนมัติ
+              </button>
+            </div>
+            <div class="grid md:grid-cols-[1fr_auto] gap-3 mt-4">
+              <input id="cd2-topic" class="${INPUT_CLS}" value="${_htmlEsc(curriculumTopic)}"
+                placeholder="เช่น สถิติ, ทศนิยม, การอ่านจับใจความ, الفقه" dir="${dirAttr()}" />
+              <div class="text-xs text-gray-400 flex items-center">
+                ${_htmlEsc(course.grade_level || 'ไม่ระบุชั้น')} · ${_htmlEsc(course.dept || 'ไม่ระบุกลุ่มสาระ')}
+              </div>
+            </div>
+            ${aiStatusText ? `<p class="text-xs text-amber-600 mt-3">${_htmlEsc(aiStatusText)}</p>` : ''}
+          </div>
+
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
             <div class="grid md:grid-cols-[1fr_220px] gap-4">
               <label class="block">
@@ -537,6 +560,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
   }
 
   const syncFromDom = () => {
+    curriculumTopic = modal.querySelector('#cd2-topic')?.value ?? ''
     description = modal.querySelector('#cd2-description')?.value ?? ''
     signerName = modal.querySelector('#cd2-signer')?.value ?? ''
     textDir = modal.querySelector('#cd2-dir')?.value ?? textDir
@@ -550,6 +574,99 @@ export async function openCourseDocPage2Modal(teacher, course) {
       rows[r][c] = input.value
     })
     return { desc: description, signer: signerName }
+  }
+
+  const applyGeneratedDoc = result => {
+    const nextColumns = Array.isArray(result?.columns) && result.columns.length
+      ? result.columns.map(c => String(c ?? '').trim()).filter(Boolean)
+      : ['ผลการเรียนรู้']
+    const nextRows = Array.isArray(result?.rows)
+      ? result.rows.map(row => {
+          const cells = Array.isArray(row) ? row : Object.values(row ?? {})
+          return Array.from({ length: nextColumns.length }, (_, i) => String(cells[i] ?? '').trim())
+        }).filter(row => row.some(Boolean))
+      : []
+    columns = nextColumns
+    rows = nextRows.length ? nextRows : Array.from({ length: 12 }, () => Array.from({ length: columns.length }, () => ''))
+    if (result?.description) description = String(result.description)
+    midItems = uniqueInts(result?.midterm_items ?? result?.midtermObjectiveItems)
+    finalItems = uniqueInts(result?.final_items ?? result?.finalObjectiveItems)
+    if (!midItems.length) midItems = objectiveOptions().slice(0, Math.min(3, objectiveOptions().length))
+    if (!finalItems.length) finalItems = objectiveOptions().slice(-Math.min(3, objectiveOptions().length))
+  }
+
+  const buildDocFromCurriculum = records => {
+    const hasOutcome = records.some(r => String(r.learning_outcome_text ?? '').trim())
+    if (hasOutcome) {
+      return {
+        source: 'curriculum',
+        columns: ['ผลการเรียนรู้'],
+        rows: records.map((r, i) => [`${r.item_no ?? i + 1}.${r.learning_outcome_text ?? r.indicator_text ?? r.standard_text ?? ''}`]),
+        description,
+        midterm_items: records.slice(0, Math.ceil(records.length / 2)).map((_, i) => i + 1),
+        final_items: records.slice(Math.ceil(records.length / 2)).map((_, i) => i + 1 + Math.ceil(records.length / 2)),
+      }
+    }
+    return {
+      source: 'curriculum',
+      columns: ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'],
+      rows: records.map((r, i) => [
+        `${r.item_no ?? i + 1}.) ${r.standard_code || r.standard_text || ''}`.trim(),
+        r.indicator_text || r.learning_outcome_text || '',
+      ]),
+      description,
+      midterm_items: records.slice(0, Math.ceil(records.length / 2)).map((_, i) => i + 1),
+      final_items: records.slice(Math.ceil(records.length / 2)).map((_, i) => i + 1 + Math.ceil(records.length / 2)),
+    }
+  }
+
+  const generateDocWithGemini = async () => {
+    const geminiKey = cfg.geminiApiKey ?? ''
+    if (!geminiKey) throw new Error('ยังไม่ได้ตั้งค่า Gemini API Key ในหน้าแอดมิน')
+    const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
+    const tableMode = isExtra
+      ? 'รายวิชาเพิ่มเติมหรือรายวิชาอื่น ให้ใช้คอลัมน์เดียวชื่อ "ผลการเรียนรู้"'
+      : 'รายวิชาพื้นฐาน ให้ใช้ 2 คอลัมน์ชื่อ "มาตรฐานการเรียนรู้" และ "ตัวชี้วัด"'
+    const prompt = `คุณเป็นผู้ช่วยจัดทำเอกสาร ปพ.5 ภาษาไทยอย่างเป็นทางการสำหรับครู
+ข้อมูลคอร์ส:
+- ชื่อวิชา: ${course.subject_name || ''}
+- รหัสวิชา: ${course.subject_code || ''}
+- ชั้น: ${course.grade_level || ''}
+- กลุ่มสาระ: ${course.dept || ''}
+- หน่วยกิต: ${course.credit || ''}
+- เรื่อง/สาระการเรียนรู้ที่ครูระบุ: ${curriculumTopic || 'ไม่ระบุ'}
+
+งาน:
+1. ร่างคำอธิบายรายวิชาสั้น กระชับ เป็นทางการ
+2. สร้างรายการในตารางตามรูปแบบนี้: ${tableMode}
+3. สร้างประมาณ 5-8 ข้อที่ใช้เป็นตัวเลือกข้อจุดประสงค์วัดผล
+4. เลือกข้อสำหรับกลางภาคและปลายภาคอย่างเหมาะสม
+5. ถ้าเป็นเนื้อหาอาหรับ/อิสลาม ให้รองรับข้อความอาหรับได้ แต่คำอธิบายหลักใช้ภาษาไทย
+
+Return JSON object เท่านั้น:
+{
+  "description": "...",
+  "columns": ["..."],
+  "rows": [["..."], ["..."]],
+  "midterm_items": [1,2],
+  "final_items": [3,4,5]
+}`
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/${cfg.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    )
+    const json = await res.json()
+    if (json.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
+    const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/)
+    const jsonStr = match ? (match[1] ?? match[0]) : null
+    if (!jsonStr) throw new Error('AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง')
+    return JSON.parse(jsonStr)
   }
 
   const openPicker = kind => {
@@ -598,6 +715,36 @@ export async function openCourseDocPage2Modal(teacher, course) {
       syncFromDom()
       textDir = e.target.value
       render()
+    })
+    modal.querySelector('#cd2-auto-fill').addEventListener('click', async () => {
+      syncFromDom()
+      const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
+      if (hasContent && !confirm('เติมข้อมูลอัตโนมัติทับข้อมูลที่มีอยู่หรือไม่?')) return
+      const btn = modal.querySelector('#cd2-auto-fill')
+      btn.disabled = true
+      btn.textContent = 'กำลังค้น/ร่าง...'
+      try {
+        const records = await findCurriculumStandards({
+          subjectName: course.subject_name,
+          subjectCode: course.subject_code,
+          gradeLevel: course.grade_level,
+          dept: course.dept,
+          topic: curriculumTopic,
+        }).catch(() => [])
+        if (records.length) {
+          applyGeneratedDoc(buildDocFromCurriculum(records))
+          aiStatusText = `เติมจากฐานหลักสูตรแกนกลาง ${records.length} รายการแล้ว กรุณาตรวจสอบก่อนบันทึก`
+        } else {
+          const generated = await generateDocWithGemini()
+          applyGeneratedDoc(generated)
+          aiStatusText = 'Gemini ร่างข้อมูลให้แล้ว กรุณาตรวจสอบความถูกต้องก่อนบันทึก'
+        }
+        render()
+      } catch (err) {
+        showToast('เติมอัตโนมัติไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+        btn.textContent = 'เติมอัตโนมัติ'
+      }
     })
     const applyTemplate = nextColumns => {
       syncFromDom()

@@ -703,6 +703,32 @@ export async function saveCourseDocPage2(subjectId, payload) {
   return data
 }
 
+export async function findCurriculumStandards({ subjectName, subjectCode, gradeLevel, dept, topic }) {
+  const filterText = value => String(value ?? '').trim().replace(/[(),]/g, ' ')
+  let q = supabase
+    .from('curriculum_standards')
+    .select('*')
+    .order('item_no')
+
+  const grade = filterText(gradeLevel)
+  const code = filterText(subjectCode)
+  const name = filterText(subjectName)
+  const deptName = filterText(dept)
+  const searchTopic = filterText(topic)
+
+  if (grade) q = q.or(`grade_level.is.null,grade_level.eq.${grade}`)
+  if (code) q = q.or(`subject_code.is.null,subject_code.eq.${code}`)
+  else if (name) q = q.ilike('subject_name', `%${name}%`)
+  if (deptName) q = q.or(`dept.is.null,dept.eq.${deptName}`)
+  if (searchTopic) {
+    q = q.or(`strand.ilike.%${searchTopic}%,topic.ilike.%${searchTopic}%,standard_text.ilike.%${searchTopic}%,indicator_text.ilike.%${searchTopic}%,learning_outcome_text.ilike.%${searchTopic}%`)
+  }
+
+  const { data, error } = await q.limit(80)
+  if (error) throw error
+  return data ?? []
+}
+
 // ─── Academic Registry ────────────────────────────────────────────────────────
 export async function getRegistry(semester, academicYear) {
   const { data, error } = await supabase
