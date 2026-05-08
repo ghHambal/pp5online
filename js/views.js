@@ -17,7 +17,9 @@ import { getStats, getTeachers, getClasses, getStudents,
          savePrayerCellAdmin, getStudentsByReligionRoom,
          getPrayerRecordsByRoom, fillLifeSkillScoresToClassScores,
          getPrayerMonitoringData, getLifeSkillMonitoringData, getReadingMonitoringData,
-         fillPrayerScoresToReligionClassScores } from './api.js'
+         fillPrayerScoresToReligionClassScores,
+         getCurriculumStandards, createCurriculumStandard, updateCurriculumStandard,
+         deleteCurriculumStandard, importCurriculumStandards } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -2115,6 +2117,301 @@ export async function renderPeriods() {
       </tbody>
     </table>`
   } catch { showToast('โหลดข้อมูลไม่สำเร็จ', 'error') }
+}
+
+// ─── View: Curriculum Standards ───────────────────────────────────────────────
+function _parseCurriculumCsv(text) {
+  const rows = []
+  let row = []
+  let field = ''
+  let quoted = false
+
+  for (let i = 0; i < String(text ?? '').length; i++) {
+    const ch = text[i]
+    const next = text[i + 1]
+    if (quoted) {
+      if (ch === '"' && next === '"') { field += '"'; i++ }
+      else if (ch === '"') quoted = false
+      else field += ch
+    } else if (ch === '"') quoted = true
+    else if (ch === ',') { row.push(field); field = '' }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+    else if (ch !== '\r') field += ch
+  }
+  if (field || row.length) { row.push(field); rows.push(row) }
+  if (rows.length < 2) return []
+
+  const headers = rows[0].map(h => h.trim())
+  const allowed = [
+    'subject_name', 'subject_code', 'dept', 'grade_level', 'strand', 'topic',
+    'item_no', 'standard_code', 'standard_text', 'indicator_code',
+    'indicator_text', 'learning_outcome_text', 'source_note',
+  ]
+  return rows.slice(1).map(cols => {
+    const raw = Object.fromEntries(headers.map((h, i) => [h, cols[i] ?? '']))
+    const item = {}
+    allowed.forEach(key => {
+      const value = String(raw[key] ?? '').trim()
+      if (key === 'item_no') {
+        const parsed = Number(value)
+        item[key] = value && Number.isFinite(parsed) ? parsed : null
+      } else item[key] = value || null
+    })
+    return item
+  }).filter(item => item.subject_name || item.subject_code || item.standard_text || item.indicator_text || item.learning_outcome_text)
+}
+
+function _curriculumFormField(name, label, value = '', type = 'text') {
+  const control = type === 'textarea'
+    ? `<textarea name="${name}" rows="3" dir="auto" class="${SEARCH_CLS} w-full min-h-[92px] resize-y">${_esc(value)}</textarea>`
+    : `<input name="${name}" value="${_esc(value)}" dir="auto" class="${SEARCH_CLS} w-full" />`
+  return `<label class="block">
+    <span class="block text-xs font-semibold text-gray-500 mb-1">${label}</span>
+    ${control}
+  </label>`
+}
+
+export async function renderCurriculum() {
+  setActiveNav('curriculum')
+  document.getElementById('page-title').textContent = 'จัดการหลักสูตร'
+  setContent(`<div class="flex justify-center py-16 text-gray-400">
+    <svg class="animate-spin h-6 w-6 mr-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg> กำลังโหลด...
+  </div>`)
+
+  try {
+    let filters = window._curriculumFilters || { q: '', dept: '', gradeLevel: '', subjectCode: '' }
+    const [rows, departments] = await Promise.all([
+      getCurriculumStandards(filters),
+      getDepartments().catch(() => []),
+    ])
+    const depts = _opts([...departments.map(d => d.dept_name), ...departments.map(d => d.dept_code), ...rows.map(r => r.dept)])
+    const grades = _opts(rows.map(r => r.grade_level))
+    const byId = Object.fromEntries(rows.map(r => [r.id, r]))
+    window._curriculumRows = byId
+
+    const openModal = (row = {}) => {
+      const isEdit = Boolean(row.id)
+      const modal = document.createElement('div')
+      modal.className = 'fixed inset-0 z-[80] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4'
+      modal.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div class="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900">${isEdit ? 'แก้ไขข้อมูลหลักสูตร' : 'เพิ่มข้อมูลหลักสูตร'}</h3>
+            <p class="text-sm text-gray-400">รองรับภาษาไทย อังกฤษ และอาหรับด้วยช่องพิมพ์แบบ dir=auto</p>
+          </div>
+          <button type="button" data-close class="w-11 h-11 rounded-full bg-gray-100 text-gray-400 text-2xl hover:bg-gray-200">×</button>
+        </div>
+        <form id="curriculum-form" class="p-6 overflow-y-auto space-y-5">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            ${_curriculumFormField('subject_name', 'ชื่อรายวิชา', row.subject_name)}
+            ${_curriculumFormField('subject_code', 'รหัสวิชา', row.subject_code)}
+            ${_curriculumFormField('dept', 'กลุ่มสาระ/กลุ่มวิชา', row.dept)}
+            ${_curriculumFormField('grade_level', 'ระดับชั้น', row.grade_level)}
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            ${_curriculumFormField('strand', 'สาระ', row.strand)}
+            ${_curriculumFormField('topic', 'เรื่อง/สาระการเรียนรู้', row.topic)}
+            ${_curriculumFormField('item_no', 'ลำดับข้อ', row.item_no ?? '')}
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            ${_curriculumFormField('standard_code', 'รหัสมาตรฐาน', row.standard_code)}
+            ${_curriculumFormField('indicator_code', 'รหัสตัวชี้วัด', row.indicator_code)}
+          </div>
+          ${_curriculumFormField('standard_text', 'มาตรฐานการเรียนรู้', row.standard_text, 'textarea')}
+          ${_curriculumFormField('indicator_text', 'ตัวชี้วัด', row.indicator_text, 'textarea')}
+          ${_curriculumFormField('learning_outcome_text', 'ผลการเรียนรู้ (สำหรับรายวิชาเพิ่มเติม)', row.learning_outcome_text, 'textarea')}
+          ${_curriculumFormField('source_note', 'แหล่งที่มา/หมายเหตุ', row.source_note, 'textarea')}
+          <div class="sticky bottom-0 bg-white border-t pt-4 flex gap-3 justify-end">
+            <button type="button" data-close class="px-6 py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold">ยกเลิก</button>
+            <button class="px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">บันทึก</button>
+          </div>
+        </form>
+      </div>`
+      document.body.appendChild(modal)
+      modal.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => modal.remove()))
+      modal.querySelector('#curriculum-form').addEventListener('submit', async e => {
+        e.preventDefault()
+        const fd = new FormData(e.currentTarget)
+        const payload = {}
+        ;['subject_name','subject_code','dept','grade_level','strand','topic','standard_code','standard_text','indicator_code','indicator_text','learning_outcome_text','source_note'].forEach(key => {
+          payload[key] = String(fd.get(key) ?? '').trim() || null
+        })
+        const itemNo = String(fd.get('item_no') ?? '').trim()
+        const parsedItemNo = Number(itemNo)
+        payload.item_no = itemNo && Number.isFinite(parsedItemNo) ? parsedItemNo : null
+        try {
+          if (isEdit) await updateCurriculumStandard(row.id, payload)
+          else await createCurriculumStandard(payload)
+          showToast('บันทึกข้อมูลหลักสูตรแล้ว', 'success')
+          modal.remove()
+          await renderCurriculum()
+        } catch (err) {
+          showToast(err.message || 'บันทึกไม่สำเร็จ', 'error')
+        }
+      })
+    }
+
+    const openImport = () => {
+      const modal = document.createElement('div')
+      const header = 'subject_name,subject_code,dept,grade_level,strand,topic,item_no,standard_code,standard_text,indicator_code,indicator_text,learning_outcome_text,source_note'
+      modal.className = 'fixed inset-0 z-[80] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4'
+      modal.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div class="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900">นำเข้าหลักสูตรด้วย CSV</h3>
+            <p class="text-sm text-gray-400">ระบบจะเพิ่มข้อมูลใหม่เข้าไป ไม่ล้างข้อมูลเดิม</p>
+          </div>
+          <button type="button" data-close class="w-11 h-11 rounded-full bg-gray-100 text-gray-400 text-2xl hover:bg-gray-200">×</button>
+        </div>
+        <div class="p-6 overflow-y-auto space-y-4">
+          <div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-4 text-sm text-indigo-900">
+            <div class="font-semibold mb-2">หัวคอลัมน์ที่รองรับ</div>
+            <code class="block whitespace-pre-wrap break-all text-xs">${header}</code>
+          </div>
+          <input id="curriculum-csv-file" type="file" accept=".csv,text/csv" class="${SEARCH_CLS} w-full" />
+          <textarea id="curriculum-csv-text" rows="12" class="${SEARCH_CLS} w-full font-mono text-xs" placeholder="${header}\nภาษาอังกฤษพื้นฐาน,อ31102,ภาษาต่างประเทศ,ม.6,ภาษาเพื่อการสื่อสาร,Past tense,1,ต 1.1,เข้าใจและตีความเรื่องที่ฟังและอ่าน,ต 1.1 ม.6/1,ปฏิบัติตามคำแนะนำในคู่มือ,,"></textarea>
+          <div class="flex gap-3 justify-end">
+            <button type="button" data-close class="px-6 py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold">ยกเลิก</button>
+            <button id="curriculum-import-submit" class="px-6 py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700">นำเข้า</button>
+          </div>
+        </div>
+      </div>`
+      document.body.appendChild(modal)
+      modal.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => modal.remove()))
+      modal.querySelector('#curriculum-csv-file').addEventListener('change', e => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        const reader = new FileReader()
+        reader.onload = () => { modal.querySelector('#curriculum-csv-text').value = reader.result || '' }
+        reader.readAsText(file)
+      })
+      modal.querySelector('#curriculum-import-submit').addEventListener('click', async () => {
+        const parsed = _parseCurriculumCsv(modal.querySelector('#curriculum-csv-text').value)
+        if (!parsed.length) return showToast('ไม่พบข้อมูลที่นำเข้าได้', 'warning')
+        try {
+          const count = await importCurriculumStandards(parsed)
+          showToast(`นำเข้าแล้ว ${count} รายการ`, 'success')
+          modal.remove()
+          await renderCurriculum()
+        } catch (err) {
+          showToast(err.message || 'นำเข้าไม่สำเร็จ', 'error')
+        }
+      })
+    }
+
+    window._curriculumOpenModal = () => openModal()
+    window._curriculumEdit = id => openModal(window._curriculumRows?.[id] || {})
+    window._curriculumDelete = async id => {
+      if (!confirm('ลบข้อมูลหลักสูตรรายการนี้?')) return
+      try {
+        await deleteCurriculumStandard(id)
+        showToast('ลบข้อมูลแล้ว', 'success')
+        await renderCurriculum()
+      } catch (err) {
+        showToast(err.message || 'ลบไม่สำเร็จ', 'error')
+      }
+    }
+    window._curriculumOpenImport = openImport
+
+    setContent(`<div class="max-w-7xl mx-auto space-y-5 animate-fade">
+      <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">จัดการหลักสูตร</h2>
+          <p class="text-gray-400 text-sm mt-1">ฐานมาตรฐาน ตัวชี้วัด และผลการเรียนรู้ สำหรับเติมข้อมูลเอกสาร ปพ.5 รายคอร์ส</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="_curriculumOpenImport()" class="px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold hover:bg-emerald-100">📥 นำเข้า CSV</button>
+          <button onclick="_curriculumOpenModal()" class="px-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">+ เพิ่มรายการ</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+        <input id="cur-filter-q" value="${_esc(filters.q)}" class="${SEARCH_CLS}" placeholder="ค้นหาวิชา มาตรฐาน ตัวชี้วัด..." />
+        <input id="cur-filter-code" value="${_esc(filters.subjectCode)}" class="${SEARCH_CLS}" placeholder="รหัสวิชา..." />
+        <select id="cur-filter-dept" class="${SELECT_CLS}">
+          <option value="">ทุกกลุ่มสาระ</option>
+          ${depts.map(d => `<option value="${_esc(d)}" ${d === filters.dept ? 'selected' : ''}>${_esc(d)}</option>`).join('')}
+        </select>
+        <select id="cur-filter-grade" class="${SELECT_CLS}">
+          <option value="">ทุกระดับชั้น</option>
+          ${grades.map(g => `<option value="${_esc(g)}" ${g === filters.gradeLevel ? 'selected' : ''}>${_esc(g)}</option>`).join('')}
+        </select>
+        <button id="cur-filter-submit" class="rounded-xl bg-gray-900 text-white font-semibold px-4 py-2 hover:bg-gray-800">ค้นหา</button>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b flex items-center justify-between">
+          <h3 class="font-bold text-gray-800">รายการหลักสูตร</h3>
+          <span class="text-sm text-gray-400">พบ <b class="text-indigo-600">${rows.length}</b> รายการ</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500">
+              <tr>
+                <th class="text-left px-5 py-3 min-w-[220px]">รายวิชา</th>
+                <th class="text-left px-5 py-3 min-w-[160px]">เรื่อง/สาระ</th>
+                <th class="text-left px-5 py-3 min-w-[260px]">มาตรฐาน</th>
+                <th class="text-left px-5 py-3 min-w-[320px]">ตัวชี้วัด / ผลการเรียนรู้</th>
+                <th class="text-right px-5 py-3 min-w-[120px]">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${rows.length ? rows.map(r => `<tr class="hover:bg-gray-50/70 align-top">
+                <td class="px-5 py-4">
+                  <div class="font-semibold text-gray-900">${_esc(r.subject_name || 'ไม่ระบุวิชา')}</div>
+                  <div class="text-indigo-500 font-mono">${_esc(r.subject_code || '—')}</div>
+                  <div class="text-xs text-gray-400 mt-1">${_esc(r.dept || '—')} · ${_esc(r.grade_level || 'ทุกชั้น')}</div>
+                </td>
+                <td class="px-5 py-4">
+                  <div class="font-semibold text-gray-700">${_esc(r.topic || '—')}</div>
+                  <div class="text-xs text-gray-400 mt-1">${_esc(r.strand || '')}</div>
+                </td>
+                <td class="px-5 py-4">
+                  <div class="font-mono text-xs text-indigo-500">${_esc(r.standard_code || '')}</div>
+                  <div class="text-gray-700 whitespace-pre-wrap" dir="auto">${_esc(r.standard_text || '—')}</div>
+                </td>
+                <td class="px-5 py-4">
+                  <div class="font-mono text-xs text-indigo-500">${_esc(r.indicator_code || '')}</div>
+                  <div class="text-gray-700 whitespace-pre-wrap" dir="auto">${_esc(r.indicator_text || r.learning_outcome_text || '—')}</div>
+                </td>
+                <td class="px-5 py-4 text-right whitespace-nowrap">
+                  <button onclick="_curriculumEdit('${_onclickText(r.id)}')" class="text-indigo-600 hover:text-indigo-800 font-semibold mr-3">แก้ไข</button>
+                  <button onclick="_curriculumDelete('${_onclickText(r.id)}')" class="text-red-400 hover:text-red-600 font-semibold">ลบ</button>
+                </td>
+              </tr>`).join('') : `<tr><td colspan="5" class="px-5 py-16 text-center text-gray-400">ยังไม่มีข้อมูลหลักสูตร</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`)
+
+    const reload = () => {
+      filters = {
+        q: document.getElementById('cur-filter-q')?.value || '',
+        subjectCode: document.getElementById('cur-filter-code')?.value || '',
+        dept: document.getElementById('cur-filter-dept')?.value || '',
+        gradeLevel: document.getElementById('cur-filter-grade')?.value || '',
+      }
+      window._curriculumFilters = filters
+      renderCurriculum()
+    }
+    ;['cur-filter-q','cur-filter-code'].forEach(id => {
+      document.getElementById(id)?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') reload()
+      })
+    })
+    ;['cur-filter-dept','cur-filter-grade'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', reload)
+    })
+    document.getElementById('cur-filter-submit')?.addEventListener('click', reload)
+  } catch (err) {
+    setContent(`<div class="max-w-3xl mx-auto bg-red-50 border border-red-100 rounded-2xl p-6 text-red-700">
+      โหลดข้อมูลหลักสูตรไม่สำเร็จ: ${_esc(err.message || err)}
+    </div>`)
+  }
 }
 
 // ─── View: Subjects (2 tabs) ──────────────────────────────────────────────────

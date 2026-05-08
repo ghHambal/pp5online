@@ -729,6 +729,85 @@ export async function findCurriculumStandards({ subjectName, subjectCode, gradeL
   return data ?? []
 }
 
+export async function getCurriculumStandards(filters = {}) {
+  const clean = value => String(value ?? '').trim().replace(/[(),]/g, ' ')
+  const keyword = clean(filters.q)
+  const dept = clean(filters.dept)
+  const gradeLevel = clean(filters.gradeLevel)
+  const subjectCode = clean(filters.subjectCode)
+
+  let q = supabase
+    .from('curriculum_standards')
+    .select('*')
+    .order('subject_code', { ascending: true, nullsFirst: false })
+    .order('grade_level', { ascending: true, nullsFirst: false })
+    .order('item_no', { ascending: true, nullsFirst: false })
+
+  if (dept) q = q.eq('dept', dept)
+  if (gradeLevel) q = q.eq('grade_level', gradeLevel)
+  if (subjectCode) q = q.ilike('subject_code', `%${subjectCode}%`)
+  if (keyword) {
+    q = q.or([
+      `subject_name.ilike.%${keyword}%`,
+      `subject_code.ilike.%${keyword}%`,
+      `dept.ilike.%${keyword}%`,
+      `grade_level.ilike.%${keyword}%`,
+      `strand.ilike.%${keyword}%`,
+      `topic.ilike.%${keyword}%`,
+      `standard_code.ilike.%${keyword}%`,
+      `standard_text.ilike.%${keyword}%`,
+      `indicator_code.ilike.%${keyword}%`,
+      `indicator_text.ilike.%${keyword}%`,
+      `learning_outcome_text.ilike.%${keyword}%`,
+    ].join(','))
+  }
+
+  const { data, error } = await q.limit(1000)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createCurriculumStandard(payload) {
+  const { data, error } = await supabase
+    .from('curriculum_standards')
+    .insert(payload)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateCurriculumStandard(id, payload) {
+  const { data, error } = await supabase
+    .from('curriculum_standards')
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCurriculumStandard(id) {
+  const { error } = await supabase
+    .from('curriculum_standards')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function importCurriculumStandards(rows) {
+  if (!Array.isArray(rows) || !rows.length) return 0
+  let inserted = 0
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500)
+    const { error } = await supabase.from('curriculum_standards').insert(chunk)
+    if (error) throw error
+    inserted += chunk.length
+  }
+  return inserted
+}
+
 // ─── Academic Registry ────────────────────────────────────────────────────────
 export async function getRegistry(semester, academicYear) {
   const { data, error } = await supabase

@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { showToast, showPageLoader, setButtonLoading } from './ui.js'
 import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTeacherTable,
-         renderSettings, renderImport, renderSubjects, renderSubjectTable,
+         renderSettings, renderImport, renderSubjects, renderSubjectTable, renderCurriculum,
          renderDepartments, renderDeptTable, renderPeriods,
          renderHomeroom, renderScoreColConfig, renderRegisteredTeachers,
          renderHolidays, renderPayments, renderLifeSkillAdmin, renderReadingAdmin,
@@ -618,6 +618,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     students:    renderStudents,
     departments: renderDepartments,
     subjects:    renderSubjects,
+    curriculum:  renderCurriculum,
     periods:     renderPeriods,
     homeroom:              renderHomeroom,
     'score-col-config':    renderScoreColConfig,
