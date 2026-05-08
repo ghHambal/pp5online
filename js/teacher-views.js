@@ -408,12 +408,13 @@ export async function openCourseDocPage2Modal(teacher, course) {
 
   let columns = normalizeColumns(existing?.table_columns)
   let rows = normalizeRows(existing?.table_rows, columns.length)
-  let midItems = uniqueInts(existing?.midterm_objective_items)
-  let finalItems = uniqueInts(existing?.final_objective_items)
-  let textDir = ['auto', 'rtl', 'ltr'].includes(existing?.text_direction) ? existing.text_direction : 'auto'
-  let description = existing?.description || ''
-  let signerName = existing?.signer_name || course.learning_area || ''
-  let curriculumTopic = ''
+  let midItems     = uniqueInts(existing?.midterm_objective_items)
+  let betweenItems = uniqueInts(existing?.between_objective_items)
+  let finalItems   = uniqueInts(existing?.final_objective_items)
+  let textDir      = ['auto', 'rtl', 'ltr'].includes(existing?.text_direction) ? existing.text_direction : 'auto'
+  let description  = existing?.description || ''
+  let signerName   = existing?.signer_name || course.learning_area || ''
+  let topicList    = existing?.topic_list?.length ? existing.topic_list : ['']  // หลายบท
   let aiStatusText = ''
   const [cfg, depts] = await Promise.all([
     getSystemConfig().catch(() => ({})),
@@ -471,12 +472,23 @@ export async function openCourseDocPage2Modal(teacher, course) {
                 </label>
               </div>
             </div>
-            <div class="grid md:grid-cols-[1fr_auto] gap-3 mt-4">
-              <input id="cd2-topic" class="${INPUT_CLS}" value="${_htmlEsc(curriculumTopic)}"
-                placeholder="เช่น สถิติ, ทศนิยม, การอ่านจับใจความ, الفقه" dir="${dirAttr()}" />
-              <div class="text-xs text-gray-400 flex items-center">
-                ${_htmlEsc(course.grade_level || 'ไม่ระบุชั้น')} · ${_htmlEsc(course.dept || 'ไม่ระบุกลุ่มสาระ')}
+            <div class="mt-4 space-y-2">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-semibold text-gray-500">บท / เรื่องที่สอน (เพิ่มได้หลายบท)</span>
+                <span class="text-xs text-gray-400">${_htmlEsc(course.grade_level || '')} · ${_htmlEsc(deptThai || '')}</span>
               </div>
+              <div id="cd2-topic-list" class="space-y-2">
+                ${topicList.map((t, i) => `
+                  <div class="flex gap-2 cd2-topic-row">
+                    <input class="cd2-topic-input ${INPUT_CLS} flex-1" value="${_htmlEsc(t)}"
+                      placeholder="เช่น สถิติ, ทศนิยม, การอ่านจับใจความ, الفقه" dir="${dirAttr()}" data-idx="${i}" />
+                    ${topicList.length > 1 ? `<button type="button" class="cd2-topic-del px-3 rounded-xl border border-red-100 text-red-400 hover:bg-red-50 text-sm" data-idx="${i}">✕</button>` : ''}
+                  </div>`).join('')}
+              </div>
+              <button id="cd2-add-topic" type="button"
+                class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 mt-1">
+                <span class="text-base leading-none">＋</span> เพิ่มบท
+              </button>
             </div>
             ${aiStatusText ? `<p class="text-xs text-amber-600 mt-3">${_htmlEsc(aiStatusText)}</p>` : ''}
           </div>
@@ -554,15 +566,19 @@ export async function openCourseDocPage2Modal(teacher, course) {
           </div>
 
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
-            <h3 class="font-bold text-gray-800 mb-3">จุดประสงค์วัดผล</h3>
-            <div class="grid sm:grid-cols-2 gap-3">
+            <h3 class="font-bold text-gray-800 mb-3">จุดประสงค์วัดผล <span class="text-xs font-normal text-gray-400">(คลิกเพื่อเลือกข้อ)</span></h3>
+            <div class="grid sm:grid-cols-3 gap-3">
               <button id="cd2-pick-mid" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
-                <p class="text-sm font-semibold text-gray-700">จุดประสงค์วัดผลกลางภาค ข้อที่</p>
-                <p class="mt-2 text-lg font-bold text-emerald-700">${_htmlEsc(selectedText(midItems))}</p>
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">กลางภาค ข้อที่</p>
+                <p class="mt-2 text-base font-bold text-emerald-700 leading-snug">${_htmlEsc(selectedText(midItems))}</p>
               </button>
-              <button id="cd2-pick-final" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
-                <p class="text-sm font-semibold text-gray-700">จุดประสงค์วัดผลปลายภาค ข้อที่</p>
-                <p class="mt-2 text-lg font-bold text-emerald-700">${_htmlEsc(selectedText(finalItems))}</p>
+              <button id="cd2-pick-between" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">ระหว่างภาค ข้อที่</p>
+                <p class="mt-2 text-base font-bold text-blue-600 leading-snug">${_htmlEsc(selectedText(betweenItems))}</p>
+              </button>
+              <button id="cd2-pick-final" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50 transition">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">ปลายภาค ข้อที่</p>
+                <p class="mt-2 text-base font-bold text-purple-700 leading-snug">${_htmlEsc(selectedText(finalItems))}</p>
               </button>
             </div>
             ${opts.length ? '' : `<p class="text-xs text-amber-600 mt-3">ยังไม่มีข้อให้เลือก กรุณาพิมพ์ข้อมูลอย่างน้อย 1 แถวในตารางด้านบน</p>`}
@@ -574,7 +590,8 @@ export async function openCourseDocPage2Modal(teacher, course) {
   }
 
   const syncFromDom = () => {
-    curriculumTopic = modal.querySelector('#cd2-topic')?.value ?? ''
+    topicList = [...modal.querySelectorAll('.cd2-topic-input')].map(el => el.value.trim()).filter(Boolean)
+    if (!topicList.length) topicList = ['']
     description = modal.querySelector('#cd2-description')?.value ?? ''
     signerName = modal.querySelector('#cd2-signer')?.value ?? ''
     textDir = modal.querySelector('#cd2-dir')?.value ?? textDir
@@ -603,10 +620,14 @@ export async function openCourseDocPage2Modal(teacher, course) {
     columns = nextColumns
     rows = nextRows.length ? nextRows : Array.from({ length: 12 }, () => Array.from({ length: columns.length }, () => ''))
     if (result?.description) description = String(result.description)
-    midItems = uniqueInts(result?.midterm_items ?? result?.midtermObjectiveItems)
-    finalItems = uniqueInts(result?.final_items ?? result?.finalObjectiveItems)
-    if (!midItems.length) midItems = objectiveOptions().slice(0, Math.min(3, objectiveOptions().length))
-    if (!finalItems.length) finalItems = objectiveOptions().slice(-Math.min(3, objectiveOptions().length))
+    midItems     = uniqueInts(result?.midterm_items ?? result?.midtermObjectiveItems)
+    betweenItems = uniqueInts(result?.between_items ?? result?.betweenObjectiveItems)
+    finalItems   = uniqueInts(result?.final_items   ?? result?.finalObjectiveItems)
+    const opts = objectiveOptions()
+    const half = Math.ceil(opts.length / 2)
+    if (!midItems.length)     midItems     = opts.slice(0, Math.min(3, half))
+    if (!betweenItems.length) betweenItems = opts.slice(0, Math.min(4, opts.length))
+    if (!finalItems.length)   finalItems   = opts.slice(-Math.min(3, opts.length))
   }
 
   const buildDocFromCurriculum = records => {
@@ -685,29 +706,32 @@ Return JSON object เท่านั้น:
 
   const openPicker = kind => {
     syncFromDom()
-    const current = kind === 'mid' ? midItems : finalItems
+    const current = kind === 'mid' ? midItems : kind === 'between' ? betweenItems : finalItems
     const opts = objectiveOptions()
     if (!opts.length) { showToast('กรุณาพิมพ์รายการในตารางก่อน', 'warning'); return }
     document.getElementById('cd2-picker')?.remove()
+    const titles  = { mid:'เลือกข้อกลางภาค', between:'เลือกข้อระหว่างภาค', final:'เลือกข้อปลายภาค' }
+    const accents = { mid:'accent-emerald-600', between:'accent-blue-600', final:'accent-purple-600' }
+    const okCls   = { mid:'bg-emerald-600', between:'bg-blue-600', final:'bg-purple-600' }
     const picker = document.createElement('div')
     picker.id = 'cd2-picker'
     picker.className = 'fixed inset-0 z-[180] flex items-center justify-center bg-black/40 p-4'
     picker.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="font-bold text-gray-800">${kind === 'mid' ? 'เลือกข้อกลางภาค' : 'เลือกข้อปลายภาค'}</h3>
+          <h3 class="font-bold text-gray-800">${titles[kind]}</h3>
           <button id="cd2-picker-close" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
         </div>
         <div class="p-5 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[55vh] overflow-y-auto">
           ${opts.map(n => `
-            <label class="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold hover:bg-emerald-50">
-              <input type="checkbox" class="cd2-choice accent-emerald-600" value="${n}" ${current.includes(n) ? 'checked' : ''}>
+            <label class="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" class="cd2-choice ${accents[kind]}" value="${n}" ${current.includes(n) ? 'checked' : ''}>
               ${n}
             </label>`).join('')}
         </div>
         <div class="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
           <button id="cd2-picker-cancel" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm">ยกเลิก</button>
-          <button id="cd2-picker-ok" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold">ตกลง</button>
+          <button id="cd2-picker-ok" class="px-5 py-2 rounded-xl ${okCls[kind]} text-white text-sm font-semibold">ตกลง</button>
         </div>
       </div>`
     document.body.appendChild(picker)
@@ -717,9 +741,9 @@ Return JSON object เท่านั้น:
     picker.querySelector('#cd2-picker-ok').addEventListener('click', () => {
       const picked = [...picker.querySelectorAll('.cd2-choice:checked')].map(el => Number(el.value))
       if (kind === 'mid') midItems = picked
+      else if (kind === 'between') betweenItems = picked
       else finalItems = picked
-      close()
-      render()
+      close(); render()
     })
   }
 
@@ -743,7 +767,7 @@ Return JSON object เท่านั้น:
           subjectCode: course.subject_code,
           gradeLevel: course.grade_level,
           dept: deptThai,   // ใช้ชื่อภาษาไทย ไม่ใช่ code
-          topic: curriculumTopic,
+          topic: topicList.filter(Boolean).join(' '),
         }).catch(() => [])
         if (records.length) {
           applyGeneratedDoc(buildDocFromCurriculum(records))
@@ -878,12 +902,29 @@ Return JSON object เท่านั้น:
       syncFromDom()
       const idx = Number(btn.dataset.delRow)
       rows.splice(idx, 1)
-      midItems = midItems.filter(n => n !== idx + 1).map(n => n > idx + 1 ? n - 1 : n)
-      finalItems = finalItems.filter(n => n !== idx + 1).map(n => n > idx + 1 ? n - 1 : n)
+      const adj = items => items.filter(n => n !== idx + 1).map(n => n > idx + 1 ? n - 1 : n)
+      midItems = adj(midItems); betweenItems = adj(betweenItems); finalItems = adj(finalItems)
       render()
     }))
-    modal.querySelector('#cd2-pick-mid').addEventListener('click', () => openPicker('mid'))
-    modal.querySelector('#cd2-pick-final').addEventListener('click', () => openPicker('final'))
+    modal.querySelector('#cd2-pick-mid').addEventListener('click',     () => openPicker('mid'))
+    modal.querySelector('#cd2-pick-between').addEventListener('click', () => openPicker('between'))
+    modal.querySelector('#cd2-pick-final').addEventListener('click',   () => openPicker('final'))
+
+    // ── topic เพิ่ม/ลบ ─────────────────────────────────────────────────────
+    modal.querySelector('#cd2-add-topic').addEventListener('click', () => {
+      syncFromDom()
+      topicList.push('')
+      render()
+    })
+    modal.querySelectorAll('.cd2-topic-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        syncFromDom()
+        topicList.splice(Number(btn.dataset.idx), 1)
+        if (!topicList.length) topicList = ['']
+        render()
+      })
+    })
+
     modal.querySelector('#cd2-save').addEventListener('click', async () => {
       const { desc, signer } = syncFromDom()
       const btn = modal.querySelector('#cd2-save')
@@ -894,7 +935,9 @@ Return JSON object เท่านั้น:
           description: desc,
           table_columns: columns.map((c, i) => c.trim() || `คอลัมน์ ${i + 1}`),
           table_rows: rows.map(row => row.slice(0, columns.length)),
+          topic_list: topicList.filter(Boolean),
           midterm_objective_items: midItems,
+          between_objective_items: betweenItems,
           final_objective_items: finalItems,
           signer_name: signer.trim() || null,
           text_direction: textDir,
