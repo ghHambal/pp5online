@@ -568,13 +568,13 @@ export async function openCourseDocPage2Modal(teacher, course) {
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
             <h3 class="font-bold text-gray-800 mb-3">จุดประสงค์วัดผล <span class="text-xs font-normal text-gray-400">(คลิกเพื่อเลือกข้อ)</span></h3>
             <div class="grid sm:grid-cols-3 gap-3">
-              <button id="cd2-pick-mid" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
-                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">กลางภาค ข้อที่</p>
-                <p class="mt-2 text-base font-bold text-emerald-700 leading-snug">${_htmlEsc(selectedText(midItems))}</p>
-              </button>
               <button id="cd2-pick-between" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition">
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">ระหว่างภาค ข้อที่</p>
                 <p class="mt-2 text-base font-bold text-blue-600 leading-snug">${_htmlEsc(selectedText(betweenItems))}</p>
+              </button>
+              <button id="cd2-pick-mid" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">กลางภาค ข้อที่</p>
+                <p class="mt-2 text-base font-bold text-emerald-700 leading-snug">${_htmlEsc(selectedText(midItems))}</p>
               </button>
               <button id="cd2-pick-final" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50 transition">
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">ปลายภาค ข้อที่</p>
