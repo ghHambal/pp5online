@@ -290,15 +290,46 @@ window._editCourse = async (id) => {
   }, editData)
 }
 
-window._deleteCourse = async (id, name) => {
-  if (!confirm(`ยืนยันลบคอร์ส "${name}"?\nห้องเรียนทั้งหมดที่ผูกกับคอร์สนี้จะถูกลบด้วย`)) return
-  try {
-    await deleteSubject(id)
-    showToast(`ลบ "${name}" แล้ว`, 'success')
-    navigate('my-courses')
-  } catch (err) {
-    showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-  }
+window._deleteCourse = (id, name) => {
+  // ใช้ modal แทน confirm() เพื่อรองรับทุก browser/PWA
+  document.getElementById('del-course-modal')?.remove()
+  const m = document.createElement('div')
+  m.id = 'del-course-modal'
+  m.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4'
+  m.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-fade">
+      <div class="text-center mb-5">
+        <div class="text-4xl mb-3">🗑️</div>
+        <h3 class="font-bold text-gray-800 text-base mb-1">ลบคอร์สวิชา</h3>
+        <p class="text-sm text-gray-500">"${name}"</p>
+        <p class="text-xs text-red-500 mt-2">⚠️ ห้องเรียนทั้งหมดในคอร์สนี้จะถูกลบด้วย</p>
+      </div>
+      <div class="flex gap-3">
+        <button id="del-course-cancel"
+          class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50">
+          ยกเลิก
+        </button>
+        <button id="del-course-confirm"
+          class="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600">
+          ลบ
+        </button>
+      </div>
+    </div>`
+  document.body.appendChild(m)
+  m.querySelector('#del-course-cancel').addEventListener('click', () => m.remove())
+  m.querySelector('#del-course-confirm').addEventListener('click', async () => {
+    const btn = m.querySelector('#del-course-confirm')
+    btn.disabled = true; btn.textContent = 'กำลังลบ...'
+    try {
+      await deleteSubject(id)
+      m.remove()
+      showToast(`ลบ "${name}" แล้ว`, 'success')
+      navigate('my-courses')
+    } catch (err) {
+      m.remove()
+      showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  })
 }
 
 window._openRegisterClass = async (courseId) => {
@@ -813,30 +844,60 @@ async function loadSidebarHeader(teacher) {
       logoFb?.classList.add('hidden')
     }
 
-    // ช่องทางติดต่อ
+    // ช่องทางติดต่อ — แสดงเป็นปุ่มเดียว เมื่อคลิกเปิด popup กลางหน้าจอ
     const contactEl = document.getElementById('sidebar-contact')
     if (contactEl) {
       const links = [
         cfg.contactPhone    && { icon:'📞', label: cfg.contactPhone,    href: `tel:${cfg.contactPhone.replace(/\s/g,'')}` },
-        cfg.contactLine     && { icon:'💬', label: 'LINE',              href: cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}` },
+        cfg.contactLine     && { icon:'💬', label: 'LINE: ' + cfg.contactLine, href: cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}` },
         cfg.contactFacebook && { icon:'📘', label: 'Facebook',          href: cfg.contactFacebook },
         cfg.contactEmail    && { icon:'📧', label: cfg.contactEmail,    href: `mailto:${cfg.contactEmail}` },
         cfg.contactOther    && { icon:'🔗', label: cfg.contactOther,    href: null },
       ].filter(Boolean)
 
       if (links.length > 0) {
+        // เก็บ links ไว้ใน global สำหรับ popup
+        window._contactLinks = links
+
         contactEl.innerHTML = `
-          <p class="text-[10px] text-emerald-400 uppercase tracking-widest mb-1.5">ติดต่อผู้ดูแล</p>
-          ${links.map(l => l.href
-            ? `<a href="${l.href}" target="_blank" rel="noopener"
-                class="flex items-center gap-1.5 text-[11px] text-emerald-300 hover:text-white transition py-0.5">
-                <span>${l.icon}</span><span class="truncate">${l.label}</span>
-               </a>`
-            : `<p class="flex items-center gap-1.5 text-[11px] text-emerald-300 py-0.5">
-                <span>${l.icon}</span><span class="truncate">${l.label}</span>
-               </p>`
-          ).join('')}`
+          <button id="btn-contact-admin"
+            class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm
+                   font-medium text-emerald-200 hover:bg-emerald-700 border border-emerald-700 transition">
+            📞 ติดต่อผู้ดูแล
+          </button>`
         contactEl.classList.remove('hidden')
+
+        document.getElementById('btn-contact-admin').addEventListener('click', () => {
+          document.getElementById('contact-modal')?.remove()
+          const m = document.createElement('div')
+          m.id = 'contact-modal'
+          m.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4'
+          m.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade">
+              <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 class="font-bold text-gray-800">📞 ติดต่อผู้ดูแลระบบ</h3>
+                <button id="contact-modal-close"
+                  class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 text-lg">×</button>
+              </div>
+              <div class="p-5 space-y-3">
+                ${links.map(l => l.href
+                  ? `<a href="${l.href}" target="_blank" rel="noopener"
+                      class="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 hover:bg-emerald-50 hover:text-emerald-700 transition group">
+                        <span class="text-xl">${l.icon}</span>
+                        <span class="text-sm font-medium text-gray-700 group-hover:text-emerald-700 break-all">${l.label}</span>
+                        <span class="ml-auto text-gray-300 group-hover:text-emerald-400 text-xs">→</span>
+                      </a>`
+                  : `<div class="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50">
+                       <span class="text-xl">${l.icon}</span>
+                       <span class="text-sm font-medium text-gray-700 break-all">${l.label}</span>
+                     </div>`
+                ).join('')}
+              </div>
+            </div>`
+          document.body.appendChild(m)
+          m.querySelector('#contact-modal-close').addEventListener('click', () => m.remove())
+          m.addEventListener('click', e => { if (e.target === m) m.remove() })
+        })
       }
     }
   } catch { /* ไม่ critical */ }
