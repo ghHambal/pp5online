@@ -370,8 +370,8 @@ export async function renderMyCourses(teacher) {
                     class="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1.5 border border-indigo-200 rounded-lg">
                     แก้ไข
                   </button>
-                  <button onclick="window._deleteCourse(${s.id},'${s.subject_name.replace(/'/g,"\\'")}')'"
-                    class="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1.5 border border-red-100 rounded-lg">
+                  <button class="cd2-del-course-btn text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1.5 border border-red-100 rounded-lg"
+                    data-id="${s.id}" data-name="${_htmlEsc(s.subject_name)}">
                     ลบ
                   </button>
                 </div>
@@ -381,6 +381,14 @@ export async function renderMyCourses(teacher) {
         </table>
       </div>`}
     </div>`)
+
+    // ผูก event ลบคอร์ส (ใช้ data-id แทน inline onclick เพื่อหลีกเลี่ยงปัญหา escape)
+    document.querySelectorAll('.cd2-del-course-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        window._deleteCourse(Number(btn.dataset.id), btn.dataset.name)
+      })
+    })
+
   } catch { showToast('โหลดข้อมูลไม่สำเร็จ','error') }
 
 }
