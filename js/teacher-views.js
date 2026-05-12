@@ -16,7 +16,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getReadingScoreColumns, getReadingScores, upsertReadingScore,
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
          getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
-         getTeacherExamRequests, reviewExamRequest, updateExamResult } from './api.js'
+         getTeacherExamRequests, reviewExamRequest, updateExamResult,
+         getTeacherPackageAccess } from './api.js'
 import { supabase } from './supabase.js'
 
 import { uploadTeacherPhoto } from './storage.js'
@@ -121,20 +122,30 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
   setTitle('ภาพรวม')
   const { getPendingExamRequestCount } = await import('./api.js')
-  const [subjects, classes, cfg, pendingRequests] = await Promise.all([
+  const [subjects, classes, cfg, pendingRequests, packageAccess] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
     teacher ? getPendingExamRequestCount(teacher.id).catch(()=>0) : Promise.resolve(0),
+    teacher ? getTeacherPackageAccess(teacher.id).catch(()=>({ hasSemester: false, paidRoomCount: 0 })) : Promise.resolve({ hasSemester: false, paidRoomCount: 0 }),
   ])
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
-  const isPaid       = teacher?.teachers_quota?.is_paid ?? false
+  const quota        = teacher?.teachers_quota
+  const legacyUnlimited = quota?.is_paid && !quota?.package_type && !packageAccess.hasSemester && !packageAccess.paidRoomCount
+  const hasSemester = packageAccess.hasSemester || quota?.package_type === 'semester' || legacyUnlimited
+  const paidRoomCount = packageAccess.paidRoomCount
+  const classLimit = hasSemester ? Infinity : FREE_LIMIT + paidRoomCount
   const usedSlots  = classes.length
-  const freeLeft   = isPaid ? '∞' : Math.max(0, FREE_LIMIT - usedSlots)
-  const quotaColor = isPaid ? 'text-emerald-700' : usedSlots >= FREE_LIMIT ? 'text-red-600' : 'text-amber-600'
-  const quotaLabel = isPaid ? 'ไม่จำกัด ✅' : usedSlots >= FREE_LIMIT ? 'ครบโควตาฟรีแล้ว 🔒' : `เหลืออีก ${freeLeft} ห้อง`
+  const freeLeft   = hasSemester ? '∞' : Math.max(0, classLimit - usedSlots)
+  const quotaColor = hasSemester ? 'text-emerald-700' : usedSlots >= classLimit ? 'text-red-600' : 'text-amber-600'
+  const quotaLabel = hasSemester ? 'ไม่จำกัด ✅' : usedSlots >= classLimit ? 'ครบโควตาแล้ว 🔒' : `เหลืออีก ${freeLeft} ห้อง`
+  const packageText = hasSemester
+    ? 'เหมาทั้งเทอม — สร้างได้ไม่จำกัด'
+    : paidRoomCount > 0
+      ? `รายห้อง ${paidRoomCount} ห้อง — ใช้แล้ว ${usedSlots}/${classLimit} ห้อง`
+      : `ยังไม่เลือกแพ็กเกจ — ใช้โควตาฟรี ${usedSlots}/${FREE_LIMIT} ห้อง`
 
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
 
@@ -202,18 +213,18 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         <h4 class="font-semibold text-gray-700">🎯 โควตาห้องเรียน</h4>
         <span class="text-sm font-bold ${quotaColor}">${quotaLabel}</span>
       </div>
-      ${!isPaid ? `
+      ${!hasSemester ? `
       <div class="w-full bg-gray-100 rounded-full h-2.5 mb-2">
-        <div class="bg-${usedSlots >= FREE_LIMIT ? 'red' : 'emerald'}-500 h-2.5 rounded-full transition-all"
-          style="width:${Math.min(100, (usedSlots/FREE_LIMIT)*100)}%"></div>
+        <div class="bg-${usedSlots >= classLimit ? 'red' : 'emerald'}-500 h-2.5 rounded-full transition-all"
+          style="width:${Math.min(100, (usedSlots/classLimit)*100)}%"></div>
       </div>
       <div class="flex justify-between text-xs text-gray-400 mb-3">
         <span>ใช้แล้ว ${usedSlots} ห้อง</span>
-        <span>ฟรี ${FREE_LIMIT} ห้อง</span>
+        <span>${paidRoomCount > 0 ? `สิทธิ์รวม ${classLimit} ห้อง` : `ฟรี ${FREE_LIMIT} ห้อง`}</span>
       </div>
-      ${usedSlots >= FREE_LIMIT ? `
+      ${usedSlots >= classLimit ? `
       <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-        <p class="text-xs text-amber-700 font-medium">🔒 ครบโควตาฟรีแล้ว — เลือกแพ็กเกจเพื่อเพิ่มห้องเรียนต่อ</p>
+        <p class="text-xs text-amber-700 font-medium">🔒 ครบโควตาแล้ว — เลือกแพ็กเกจเพื่อเพิ่มห้องเรียนต่อ</p>
         <div class="grid grid-cols-2 gap-2">
           <div class="bg-white rounded-xl p-3 border border-amber-200 text-center">
             <p class="text-xs text-gray-500 mb-1">รายห้อง</p>
@@ -238,7 +249,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       </div>` : `
       <p class="text-xs text-gray-400">เหลืออีก <b class="text-emerald-600">${freeLeft} ห้อง</b> ก่อนต้องอัปเกรด</p>`}
       ` : `
-      <p class="text-sm text-emerald-600">✅ แพ็กเกจ${teacher?.teachers_quota?.package_type === 'semester' ? 'เหมาทั้งเทอม' : 'รายห้อง'} — สร้างได้ไม่จำกัด</p>
+      <p class="text-sm text-emerald-600">✅ แพ็กเกจ${packageText}</p>
       `}
     </div>
     <!-- Homeroom role buttons -->

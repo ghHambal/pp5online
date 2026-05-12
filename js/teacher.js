@@ -4,7 +4,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
          getPendingExamRequestCount,
-         createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests } from './api.js'
+         createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests,
+         getTeacherPackageAccess } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -340,18 +341,19 @@ window._openRegisterClass = async (courseId) => {
   if (!course) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
 
   // ── ตรวจโควตา (นับจาก DB จริงเสมอ) ──
-  const quota    = _teacher?.teachers_quota
-  const isPaid   = quota?.is_paid ?? false
+  const quota = _teacher?.teachers_quota
+  const [myClasses, cfg, packageAccess] = await Promise.all([
+    getMyClasses(_teacher?.id ?? null).catch(()=>[]),
+    getSystemConfig().catch(()=>({})),
+    getTeacherPackageAccess(_teacher?.id ?? null).catch(()=>({ hasSemester: false, paidRoomCount: 0 })),
+  ])
+  const freeLimit = parseInt(cfg.freeClassQuota ?? 2)
+  const legacyUnlimited = quota?.is_paid && !quota?.package_type && !packageAccess.hasSemester && !packageAccess.paidRoomCount
+  const hasSemester = packageAccess.hasSemester || quota?.package_type === 'semester' || legacyUnlimited
+  const classLimit = hasSemester ? Infinity : freeLimit + packageAccess.paidRoomCount
 
-  if (!isPaid) {
-    const [myClasses, cfg] = await Promise.all([
-      getMyClasses(_teacher?.id ?? null).catch(()=>[]),
-      getSystemConfig().catch(()=>({})),
-    ])
-    const freeLimit = parseInt(cfg.freeClassQuota ?? 2)
-    if (myClasses.length >= freeLimit) {
-      _showQuotaPopup(myClasses.length, course, cfg); return
-    }
+  if (myClasses.length >= classLimit) {
+    _showQuotaPopup(myClasses.length, course, cfg); return
   }
 
   renderClassForm(_teacher, course)

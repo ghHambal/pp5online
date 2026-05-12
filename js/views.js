@@ -8,6 +8,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
          getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
+         getPaymentSlipViewUrl,
          getScheduleTeacherIds,
          getLifeSkillColumns, createLifeSkillColumn,
          updateLifeSkillColumn, deleteLifeSkillColumn,
@@ -174,7 +175,7 @@ export async function renderOverview() {
           <div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
             <div>
               <p class="text-sm font-medium text-gray-800">${p.teachers?.full_name ?? '—'}</p>
-              <p class="text-xs text-gray-400">${p.package_type==='semester'?'เหมาทั้งเทอม 299 บ.':'รายห้อง 49 บ.'} · ${new Date(p.created_at).toLocaleDateString('th-TH')}</p>
+              <p class="text-xs text-gray-400">${p.package_type==='semester' ? `เหมาทั้งเทอม ${p.amount ?? 299} บ.` : `รายห้อง ${parseInt(p.room_count ?? 1) || 1} ห้อง ${p.amount ?? 49} บ.`} · ${new Date(p.created_at).toLocaleDateString('th-TH')}</p>
             </div>
             <button onclick="window._adminNav?.('payments')"
               class="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-medium hover:bg-amber-200">
@@ -1113,11 +1114,50 @@ export async function renderRegisteredTeachers() {
     const cfg = await getSystemConfig().catch(()=>({}))
     const curYear = parseInt(cfg.academicYear ?? new Date().getFullYear()+543)
     const curSem = parseInt(cfg.semester ?? 1)
-    const [all, scheduleTeacherIds] = await Promise.all([
+    const [all, scheduleTeacherIds, paymentRequests, classes] = await Promise.all([
       getTeachers(),
       getScheduleTeacherIds(curYear, curSem).catch(()=>[]),
+      getAllPaymentRequests().catch(()=>[]),
+      getClasses().catch(()=>[]),
     ])
     const scheduledSet = new Set(scheduleTeacherIds)
+    const approvedPayments = paymentRequests.filter(r => r.status === 'approved')
+    const classCountByTeacher = new Map()
+    classes.forEach(cls => {
+      const teacherId = cls.master_subjects?.teacher_id
+      if (teacherId) classCountByTeacher.set(teacherId, (classCountByTeacher.get(teacherId) ?? 0) + 1)
+    })
+    const packageInfo = (teacher) => {
+      const quota = teacher.teachers_quota
+      const used = classCountByTeacher.get(teacher.id) ?? quota?.total_classes_created ?? 0
+      const teacherPayments = approvedPayments.filter(r => r.teachers?.id === teacher.id)
+      const paidRoomCount = teacherPayments
+        .filter(r => r.package_type === 'per_subject')
+        .reduce((sum, r) => sum + (parseInt(r.room_count ?? 1) || 1), 0)
+      const hasSemester = teacherPayments.some(r => r.package_type === 'semester') || quota?.package_type === 'semester'
+      const legacyPaid = quota?.is_paid && !quota?.package_type && !hasSemester && !paidRoomCount
+      const freeLimit = parseInt(cfg.freeClassQuota ?? 2)
+
+      if (hasSemester || legacyPaid) {
+        return {
+          label: hasSemester ? 'เหมาทั้งเทอม' : 'แพ็กเกจเดิม',
+          detail: `ใช้แล้ว ${used} ห้อง`,
+          cls: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        }
+      }
+      if (paidRoomCount > 0) {
+        return {
+          label: `รายห้อง ${paidRoomCount} ห้อง`,
+          detail: `ใช้แล้ว ${used}/${freeLimit + paidRoomCount} ห้อง`,
+          cls: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+        }
+      }
+      return {
+        label: 'ยังไม่เลือก',
+        detail: `ใช้โควตาฟรี ${used}/${freeLimit} ห้อง`,
+        cls: used >= freeLimit ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-gray-50 text-gray-600 border-gray-100',
+      }
+    }
     const registered   = all.filter(t => t.profile_id)
     const unregistered = all.filter(t => !t.profile_id)
     const registeredWithSchedule = registered.filter(t => scheduledSet.has(t.id))
@@ -1133,7 +1173,7 @@ export async function renderRegisteredTeachers() {
 
     const depts = [...new Set(all.map(t => t.dept).filter(Boolean))].sort()
 
-    setContent(`<div class="max-w-5xl mx-auto animate-fade space-y-5">
+    setContent(`<div class="max-w-6xl mx-auto animate-fade space-y-5">
       <div>
         <h2 class="text-lg font-bold text-gray-800">บัญชีผู้ใช้ครู</h2>
         <p class="text-xs text-gray-400 mt-0.5">ติดตามสถานะการลงทะเบียนของครูและบุคลากร</p>
@@ -1226,6 +1266,7 @@ export async function renderRegisteredTeachers() {
                 <th class="px-5 py-3 text-left">ครู / บุคลากร</th>
                 <th class="px-4 py-3 text-left hidden sm:table-cell">รหัส</th>
                 <th class="px-4 py-3 text-center hidden md:table-cell">ประเภท</th>
+                <th class="px-4 py-3 text-left hidden lg:table-cell">แพ็กเกจ / โควตา</th>
                 <th class="px-4 py-3 text-center">สถานะบัญชี</th>
                 <th class="px-4 py-3 text-right">จัดการ</th>
               </tr>
@@ -1235,6 +1276,7 @@ export async function renderRegisteredTeachers() {
                 const initials = (t.full_name ?? '?').charAt(0).toUpperCase()
                 const hasAcc   = !!t.profile_id
                 const hasSchedule = scheduledSet.has(t.id)
+                const pkg = packageInfo(t)
                 return `
                 <tr class="hover:bg-gray-50 transition">
                   <td class="px-5 py-4">
@@ -1260,6 +1302,12 @@ export async function renderRegisteredTeachers() {
                             ${t.category==='สามัญ' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}">
                           ${t.category}</span>`
                       : '<span class="text-gray-300 text-xs">—</span>'}
+                  </td>
+                  <td class="px-4 py-3 hidden lg:table-cell">
+                    <span class="inline-flex px-2.5 py-1 rounded-full border text-xs font-semibold ${pkg.cls}">
+                      ${pkg.label}
+                    </span>
+                    <p class="text-[11px] text-gray-400 mt-1">${pkg.detail}</p>
                   </td>
                   <td class="px-4 py-3 text-center">
                     ${hasAcc
@@ -3681,8 +3729,8 @@ export async function renderPayments() {
       }[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-600' }
 
       const pkgLabel = r.package_type === 'semester'
-        ? '📦 เหมาทั้งเทอม (299 บ.)'
-        : `📘 รายวิชา — ${r.master_subjects?.subject_name ?? '—'} (49 บ.)`
+        ? `📦 เหมาทั้งเทอม (${r.amount ?? 299} บ.)`
+        : `📘 รายห้อง ${parseInt(r.room_count ?? 1) || 1} ห้อง (${r.amount ?? 49} บ.)`
 
       const date = new Date(r.created_at).toLocaleDateString('th-TH', {
         day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit'
@@ -3727,7 +3775,7 @@ export async function renderPayments() {
         ${r.slip_url ? `
         <div class="px-4 pb-3">
           <button class="view-slip-btn w-full py-2 rounded-xl border border-gray-200 text-sm text-indigo-600 font-medium hover:bg-indigo-50 transition"
-            data-url="${r.slip_url}">
+            data-url="${_esc(r.slip_url)}">
             🖼 ดูสลิปการโอนเงิน
           </button>
         </div>` : `
@@ -3814,14 +3862,16 @@ export async function renderPayments() {
 }
 
 // popup ดูสลิป
-function _showSlipModal(url) {
+async function _showSlipModal(url) {
   const el = document.createElement('div')
   el.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4'
   el.innerHTML = `
-    <div class="relative max-w-sm w-full">
+    <div class="relative max-w-2xl w-full">
       <button class="absolute -top-10 right-0 text-white text-2xl">✕</button>
-      <img src="${url}" class="w-full rounded-2xl shadow-2xl object-contain max-h-[80vh]"/>
-      <a href="${url}" target="_blank" download
+      <div id="slip-viewer" class="bg-white rounded-2xl shadow-2xl min-h-40 flex items-center justify-center text-sm text-gray-400">
+        กำลังเปิดสลิป...
+      </div>
+      <a id="slip-download" href="${_esc(url)}" target="_blank" rel="noopener" download
         class="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white text-gray-700 text-sm font-medium">
         ⬇️ ดาวน์โหลดสลิป
       </a>
@@ -3829,6 +3879,19 @@ function _showSlipModal(url) {
   document.body.appendChild(el)
   el.querySelector('button').addEventListener('click', () => el.remove())
   el.addEventListener('click', e => { if (e.target === el) el.remove() })
+
+  const viewer = el.querySelector('#slip-viewer')
+  const link = el.querySelector('#slip-download')
+  const viewUrl = await getPaymentSlipViewUrl(url)
+  const safeUrl = _esc(viewUrl)
+  const isPdf = String(viewUrl).split('?')[0].toLowerCase().endsWith('.pdf')
+  if (link) link.href = viewUrl
+  if (viewer) {
+    viewer.innerHTML = isPdf
+      ? `<iframe src="${safeUrl}" class="w-full h-[75vh] rounded-2xl border-0 bg-white"></iframe>`
+      : `<img src="${safeUrl}" class="w-full rounded-2xl object-contain max-h-[75vh] bg-white"
+          onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'p-6 text-center text-sm text-gray-500 bg-white rounded-2xl',textContent:'เปิดภาพสลิปในหน้านี้ไม่สำเร็จ กรุณากดดาวน์โหลดสลิป'}))"/>`
+  }
 }
 
 // popup ปฏิเสธพร้อมเหตุผล

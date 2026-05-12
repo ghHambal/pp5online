@@ -38,7 +38,7 @@ export async function updateSystemConfig(key, value) {
 export async function getMyTeacherProfile(profileId) {
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, teachers_quota(total_classes_created, is_paid)')
+    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
     .eq('profile_id', profileId)
     .maybeSingle()
   if (error) throw error
@@ -114,7 +114,7 @@ export async function getTeachers() {
     .select(`
       id, teacher_code, username, login_email, full_name, category, phone, image_url, profile_id,
       dept, skill_group, subject_group, staff_type,
-      teachers_quota ( total_classes_created, is_paid )
+      teachers_quota ( total_classes_created, is_paid, package_type, paid_at )
     `)
     .order('full_name')
   if (error) throw error
@@ -837,7 +837,7 @@ export async function createPaymentRequest(payload) {
 export async function getMyPaymentRequests(teacherId) {
   const { data, error } = await supabase
     .from('payment_requests')
-    .select('id, package_type, amount, status, slip_url, admin_note, created_at, master_subjects(subject_name)')
+    .select('id, package_type, amount, room_count, status, slip_url, admin_note, created_at, master_subjects(subject_name)')
     .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -850,7 +850,7 @@ export async function getAllPaymentRequests() {
     .from('payment_requests')
     .select(`
       id, package_type, amount, status, slip_url, admin_note,
-      created_at, reviewed_at,
+      room_count, created_at, reviewed_at,
       teachers ( id, full_name, teacher_code, phone ),
       master_subjects ( subject_name )
     `)
@@ -867,6 +867,24 @@ export async function reviewPaymentRequest(id, status, adminNote = null) {
     .update({ status, admin_note: adminNote, reviewed_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+}
+
+export async function getTeacherPackageAccess(teacherId) {
+  if (!teacherId) return { hasSemester: false, paidRoomCount: 0, approvedRequests: [] }
+  const { data, error } = await supabase
+    .from('payment_requests')
+    .select('id, package_type, room_count, status')
+    .eq('teacher_id', teacherId)
+    .eq('status', 'approved')
+  if (error) throw error
+
+  const approvedRequests = data ?? []
+  const hasSemester = approvedRequests.some(r => r.package_type === 'semester')
+  const paidRoomCount = approvedRequests
+    .filter(r => r.package_type === 'per_subject')
+    .reduce((sum, r) => sum + (parseInt(r.room_count ?? 1) || 1), 0)
+
+  return { hasSemester, paidRoomCount, approvedRequests }
 }
 
 // อัปเดตโควตาหลังอนุมัติ
@@ -902,6 +920,29 @@ export async function getSlipSignedUrl(path) {
     .createSignedUrl(path, 3600)
   if (error) throw error
   return data.signedUrl
+}
+
+export async function getPaymentSlipViewUrl(slipUrl) {
+  const raw = String(slipUrl ?? '').trim()
+  if (!raw) return ''
+
+  let path = raw
+  try {
+    const url = new URL(raw)
+    const publicMarker = '/storage/v1/object/public/payment-slips/'
+    const signedMarker = '/storage/v1/object/sign/payment-slips/'
+    const marker = url.pathname.includes(publicMarker) ? publicMarker : signedMarker
+    if (url.pathname.includes(marker)) {
+      path = decodeURIComponent(url.pathname.split(marker)[1] ?? '')
+    }
+  } catch {}
+
+  if (!path || /^https?:\/\//i.test(path)) return raw
+  try {
+    return await getSlipSignedUrl(path)
+  } catch {
+    return raw
+  }
 }
 
 // ─── Teacher Schedules ────────────────────────────────────────────────────────
