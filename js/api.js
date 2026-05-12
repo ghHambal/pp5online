@@ -991,6 +991,28 @@ export async function deleteScheduleByTeacher(teacherId, academicYear, semester)
   if (error) throw error
 }
 
+export async function getTeacherRoomColors(teacherId) {
+  const { data, error } = await supabase
+    .from('teacher_room_colors')
+    .select('room_key, class_name, color_hex')
+    .eq('teacher_id', teacherId)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveTeacherRoomColor({ teacher_id, room_key, class_name, color_hex }) {
+  const { error } = await supabase
+    .from('teacher_room_colors')
+    .upsert({
+      teacher_id,
+      room_key,
+      class_name,
+      color_hex,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'teacher_id,room_key' })
+  if (error) throw error
+}
+
 // ─── Friday Periods ───────────────────────────────────────────────────────────
 export async function getPeriodsByType(dayType = 'regular') {
   const { data, error } = await supabase

@@ -12,6 +12,7 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getUniqueRooms, getUniqueReligionRooms,
          getMySchedule, upsertScheduleEntry, deleteScheduleEntry,
          deleteScheduleByTeacher, getPeriods, getAllPeriods,
+         getTeacherRoomColors, saveTeacherRoomColor,
          getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
          getReadingScoreColumns, getReadingScores, upsertReadingScore,
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
@@ -26,7 +27,7 @@ import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { showToast } from './ui.js'
 import { renderClassEditForm } from './teacher-class-forms.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
-import { scheduleColorFor, scheduleColorKey, scheduleColorLabel } from './teacher-schedule-colors.js'
+import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey, scheduleColorKey, scheduleColorLabel } from './teacher-schedule-colors.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
 
@@ -1875,10 +1876,12 @@ export async function renderMyClasses(teacher) {
     </svg> กำลังโหลด...
   </div>`)
   try {
-    const [classes, copyCfg] = await Promise.all([
+    const [classes, copyCfg, roomColorRows] = await Promise.all([
       getMyClasses(teacher?.id ?? null),
       getSystemConfig().catch(() => ({})),
+      teacher?.id ? getTeacherRoomColors(teacher.id).catch(() => []) : Promise.resolve([]),
     ])
+    const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
     window._classCache = Object.fromEntries(classes.map(c => [c.id, c]))
     const courseGroupMap = new Map()
     classes.forEach(c => {
@@ -1937,12 +1940,14 @@ export async function renderMyClasses(teacher) {
           const ms = c.master_subjects
           const copyTemplate = getCopyTemplateForClass(copyCfg, c)
           const isReligionGroup = ['AGM', 'AGMVOC'].includes(ms?.subject_group)
-          const classColor = scheduleColorFor({
+          const colorInput = {
             teacherId: teacher?.id,
             className: c.class_name,
             subjectName: ms?.subject_name,
             fallbackId: c.id,
-          })
+          }
+          const colorKey = roomColorKey(colorInput)
+          const classColor = resolveScheduleColor(colorInput, roomColorMap)
           const groupBadge = isReligionGroup
             ? { text: 'กลุ่มวิชาศาสนา', cls: 'bg-amber-50 text-amber-700' }
             : c.skill_group
@@ -1962,7 +1967,17 @@ export async function renderMyClasses(teacher) {
                     : `<span class="px-2 py-0.5 bg-white/70 text-gray-400 text-xs rounded-full">ไม่มี Sheet</span>`}
                 </div>
                 <h3 class="font-bold text-gray-800 text-base">${ms?.subject_name??'—'}</h3>
-                <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.dot}">${c.class_name}</span></p>
+                <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.text}">${c.class_name}</span></p>
+                <div class="mt-2 flex flex-wrap gap-1.5" aria-label="เลือกสีประจำห้อง">
+                  ${SCHEDULE_COLOR_PRESETS.map(p => `
+                  <button type="button"
+                    class="my-class-color-chip w-5 h-5 rounded-full border-2 ${p.dot.toLowerCase() === classColor.dot.toLowerCase() ? 'border-gray-700' : 'border-white'} shadow-sm"
+                    style="background:${p.dot}"
+                    data-room-key="${_htmlEsc(colorKey)}"
+                    data-class-name="${_htmlEsc(c.class_name)}"
+                    data-color="${p.dot}"
+                    title="เลือกสี ${_htmlEsc(c.class_name)}"></button>`).join('')}
+                </div>
               </div>
               <!-- Actions -->
               <div class="flex flex-col gap-1.5 flex-shrink-0">
@@ -2035,6 +2050,24 @@ export async function renderMyClasses(teacher) {
         renderMyClasses(teacher)
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
     }
+
+    document.querySelectorAll('.my-class-color-chip').forEach(btn => {
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation()
+        try {
+          await saveTeacherRoomColor({
+            teacher_id: teacher.id,
+            room_key: btn.dataset.roomKey,
+            class_name: btn.dataset.className,
+            color_hex: btn.dataset.color,
+          })
+          showToast('บันทึกสีห้องแล้ว', 'success')
+          renderMyClasses(teacher)
+        } catch (err) {
+          showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'error')
+        }
+      })
+    })
 
     const _openPrintableRoster = async (cls, type, orientation = 'landscape') => {
       const win = window.open('', '_blank')
@@ -5831,11 +5864,13 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   const visionOn = cfg.scheduleVisionEnabled === 'true'
   const geminiKey= cfg.geminiApiKey ?? ''
 
-  const [periods, subjects, scheduleData] = await Promise.all([
+  const [periods, subjects, scheduleData, roomColorRows] = await Promise.all([
     getPeriods().catch(()=>[]),
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getMySchedule(teacher.id, academicYear, semester).catch(()=>[]) : Promise.resolve([]),
+    teacher ? getTeacherRoomColors(teacher.id).catch(()=>[]) : Promise.resolve([]),
   ])
+  const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
 
   // วันในสัปดาห์ 0=อา, 1=จ, 2=อ, 3=พ, 4=พฤ, (5=ศ ถ้าเปิด)
   const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
@@ -5853,12 +5888,12 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     }
   }
 
-  const _entryColor = (entry = {}, subj = null) => scheduleColorFor({
+  const _entryColor = (entry = {}, subj = null) => resolveScheduleColor({
     teacherId: teacher?.id,
     className: entry.class_name,
     subjectName: entry.subject_name ?? subj?.subject_name,
     fallbackId: entry.subject_id ?? subj?.id,
-  })
+  }, roomColorMap)
 
   setContent(`<div class="max-w-full animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -5910,7 +5945,6 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
               const dispTeach = entry?.teacher_name ?? null
               // สีล็อกตามครู+ห้องเรียน ให้คงที่ข้ามเครื่องและข้ามวัน
               const clrInfo   = _entryColor(entry, subj)
-              const clr       = dispSubj ? clrInfo.cls : ''
               // height:1px บน td → ทำให้ h-full ของ child ทำงานใน table cell ได้
               return `<td class="border border-gray-100 p-0 cursor-pointer
                 hover:bg-indigo-50/30 transition-colors schedule-cell"
@@ -5918,8 +5952,8 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
                 data-dow="${d}" data-period="${p.period_no}"
                 ${span > 1 ? `rowspan="${span}"` : ''}>
                 ${dispSubj ? `
-                <div class="w-full h-full rounded-none ${clr} flex flex-col justify-center items-center
-                  gap-0.5 px-2 py-2 text-center" style="min-height:52px">
+                <div class="w-full h-full rounded-none flex flex-col justify-center items-center
+                  gap-0.5 px-2 py-2 text-center" style="min-height:52px;background:${clrInfo.hex};color:${clrInfo.text}">
                   <p class="font-bold leading-tight text-xs break-words">${dispSubj}</p>
                   ${dispClass ? `<p class="text-[10px] opacity-80 leading-tight">${dispClass}</p>` : ''}
                   ${dispTeach ? `<p class="text-[9px] opacity-55 leading-tight">${dispTeach}</p>` : ''}
@@ -5950,6 +5984,12 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
         if (seen.has(key)) return
         seen.add(key)
         legendItems.push({
+          roomKey: roomColorKey({
+            className: e.class_name,
+            subjectName: e.subject_name ?? subj?.subject_name,
+            fallbackId: e.subject_id,
+          }),
+          className: e.class_name ?? '',
           label: scheduleColorLabel({
             subjectName: e.subject_name ?? subj?.subject_name,
             className: e.class_name,
@@ -5960,12 +6000,25 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
       })
       if (!legendItems.length) return ''
       return `<div class="mt-4">
-        <p class="text-xs text-gray-400 mb-2">สีประจำห้องของครู (คงที่ทุกเครื่อง)</p>
-        <div class="flex flex-wrap gap-2">
+        <p class="text-xs text-gray-400 mb-2">สีประจำห้องของครู</p>
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           ${legendItems.map(item => `
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${item.color.cls}">
-            🎨 ${item.label}
-          </span>`).join('')}
+          <div class="rounded-xl border border-gray-100 bg-white px-3 py-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-4 h-4 rounded-full flex-shrink-0" style="background:${item.color.dot}"></span>
+              <span class="text-xs font-medium text-gray-700 truncate">${item.label}</span>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              ${SCHEDULE_COLOR_PRESETS.map(p => `
+              <button type="button"
+                class="schedule-room-color-chip w-5 h-5 rounded-full border-2 ${p.dot.toLowerCase() === item.color.dot.toLowerCase() ? 'border-gray-700' : 'border-white'} shadow-sm"
+                style="background:${p.dot}"
+                data-room-key="${_htmlEsc(item.roomKey)}"
+                data-class-name="${_htmlEsc(item.className)}"
+                data-color="${p.dot}"
+                title="เลือกสี ${_htmlEsc(item.label)}"></button>`).join('')}
+            </div>
+          </div>`).join('')}
         </div>
       </div>`
     })()}
@@ -5981,7 +6034,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
       if (entry?._secondary) return
       _openSchedulePopup({
         teacher, dow, period, periods, subjects, entry,
-        academicYear, semester,
+        academicYear, semester, roomColorMap,
         onSave: async (payload) => {
           await upsertScheduleEntry({ teacher_id: teacher.id, ...payload })
           await renderScheduleGrid(teacher, academicYear, semester, cfg)
@@ -5991,6 +6044,23 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
           await renderScheduleGrid(teacher, academicYear, semester, cfg)
         },
       })
+    })
+  })
+
+  document.querySelectorAll('.schedule-room-color-chip').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await saveTeacherRoomColor({
+          teacher_id: teacher.id,
+          room_key: btn.dataset.roomKey,
+          class_name: btn.dataset.className,
+          color_hex: btn.dataset.color,
+        })
+        showToast('บันทึกสีห้องแล้ว', 'success')
+        await renderScheduleGrid(teacher, academicYear, semester, cfg)
+      } catch (err) {
+        showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'error')
+      }
     })
   })
 
@@ -6009,7 +6079,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
 }
 
 // ─── Popup กำหนดวิชาลงช่องตาราง (Group Card format) ─────────────────────────
-async function _openSchedulePopup({ teacher, dow, period, periods, subjects, entry, academicYear, semester, onSave, onDelete }) {
+async function _openSchedulePopup({ teacher, dow, period, periods, subjects, entry, academicYear, semester, roomColorMap = {}, onSave, onDelete }) {
   document.getElementById('sched-popup')?.remove()
 
   const allRooms   = await getUniqueRooms().catch(()=>[])
@@ -6021,12 +6091,15 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
   const p = periods.find(x => x.period_no === period)
 
   const initSubjName  = entry?.subject_name ?? (entry?.subject_id ? subjects.find(s=>s.id===entry.subject_id)?.subject_name ?? '' : '')
-  const popupColor = scheduleColorFor({
+  let formSubjName = initSubjName
+  let formClassName = entry?.class_name ?? ''
+  let formTeacherName = entry?.teacher_name ?? ''
+  let selectedColorHex = resolveScheduleColor({
     teacherId: teacher?.id,
-    className: entry?.class_name,
+    className: formClassName,
     subjectName: initSubjName,
     fallbackId: entry?.subject_id,
-  })
+  }, roomColorMap).dot
 
   const subjSuggestions = subjects.map(s => `<option value="${s.subject_name}">`).join('')
   const roomSuggestions = allRoomList.map(r => `<option value="${r}">`).join('')
@@ -6044,7 +6117,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
   document.body.appendChild(wrap)
 
   function _render() {
-    const clr = popupColor
+    const clr = colorMetaForHex(selectedColorHex)
     wrap.innerHTML = `
       <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
         <!-- Header -->
@@ -6067,18 +6140,29 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
                 <div class="flex items-center gap-1.5">
                   <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา</span>
                   <input id="sp-subj-name" list="sp-subj-list" class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs font-semibold"
-                    value="${initSubjName}" placeholder="ชื่อวิชา" />
+                    value="${_htmlEsc(formSubjName)}" placeholder="ชื่อวิชา" />
                 </div>
                 <div class="flex items-center gap-1.5">
                   <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ห้อง</span>
                   <input id="sp-class" list="sp-room-list" class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs"
-                    value="${entry?.class_name ?? ''}" placeholder="ชั้น/ห้อง เช่น ม.6/2" />
+                    value="${_htmlEsc(formClassName)}" placeholder="ชั้น/ห้อง เช่น ม.6/2" />
                 </div>
                 <div class="flex items-center gap-1.5">
                   <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ครู</span>
                   <input id="sp-teacher" class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-500"
-                    value="${entry?.teacher_name ?? ''}" placeholder="ชื่อครู (ไม่บังคับ)" />
+                    value="${_htmlEsc(formTeacherName)}" placeholder="ชื่อครู (ไม่บังคับ)" />
                   <button id="sp-hide-teacher" type="button" class="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap">ไม่แสดง</button>
+                </div>
+                <div class="flex items-center gap-1.5 pt-1">
+                  <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">สี</span>
+                  <div class="flex flex-wrap gap-1.5">
+                    ${SCHEDULE_COLOR_PRESETS.map(p => `
+                    <button type="button"
+                      class="sp-color-option w-5 h-5 rounded-full border-2 ${p.dot.toLowerCase() === selectedColorHex.toLowerCase() ? 'border-gray-700' : 'border-white'} shadow-sm"
+                      style="background:${p.dot}"
+                      data-color="${p.dot}"
+                      title="เลือกสี"></button>`).join('')}
+                  </div>
                 </div>
               </div>
             </div>
@@ -6136,9 +6220,18 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
     wrap.querySelector('#sp-close').addEventListener('click', () => wrap.remove())
     wrap.querySelector('#sp-cancel').addEventListener('click', () => wrap.remove())
 
+    wrap.querySelector('#sp-subj-name').addEventListener('input', e => { formSubjName = e.target.value })
+    wrap.querySelector('#sp-class').addEventListener('input', e => { formClassName = e.target.value })
+    wrap.querySelector('#sp-teacher').addEventListener('input', e => { formTeacherName = e.target.value })
     wrap.querySelector('#sp-hide-teacher').addEventListener('click', () => {
+      formTeacherName = ''
       wrap.querySelector('#sp-teacher').value = ''
     })
+    wrap.querySelectorAll('.sp-color-option').forEach(btn =>
+      btn.addEventListener('click', () => {
+        selectedColorHex = btn.dataset.color
+        _render()
+      }))
 
     wrap.querySelectorAll('.sp-dow').forEach(el =>
       el.addEventListener('change', () => { sessions[+el.dataset.si].day_of_week = +el.value }))
@@ -6167,6 +6260,19 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
       const teachName = wrap.querySelector('#sp-teacher').value.trim()   || null
       const subjId    = subjects.find(s => s.subject_name === subjName)?.id ?? null
 
+      if (className || subjName || subjId) {
+        try {
+          await saveTeacherRoomColor({
+            teacher_id: teacher.id,
+            room_key: roomColorKey({ className, subjectName: subjName, fallbackId: subjId }),
+            class_name: className,
+            color_hex: selectedColorHex,
+          })
+        } catch (err) {
+          showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'warning')
+        }
+      }
+
       wrap.remove()
       await onSave({
         day_of_week:  sessions[0]?.day_of_week ?? dow,
@@ -6194,6 +6300,8 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
   const allRooms = await getUniqueRooms().catch(()=>[])
   const religRooms = await getUniqueReligionRooms().catch(()=>[])
   const allRoomList = [...new Set([...allRooms, ...religRooms])].sort()
+  const roomColorRows = teacher?.id ? await getTeacherRoomColors(teacher.id).catch(()=>[]) : []
+  const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
 
   const wrap = document.createElement('div')
   wrap.id = 'vision-upload'
@@ -6271,12 +6379,12 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
 
     container.innerHTML = ''
     groups.forEach((g, gi) => {
-      const clr = scheduleColorFor({
+      const clr = g.color_hex ? colorMetaForHex(g.color_hex) : resolveScheduleColor({
         teacherId: teacher?.id,
         className: g.class_name,
         subjectName: g.subject_name,
         fallbackId: g.subject_id,
-      })
+      }, roomColorMap)
       const card = document.createElement('div')
       card.className = 'border-2 rounded-xl overflow-hidden vg-card'
       card.style.borderColor = clr.dot
@@ -6303,6 +6411,18 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
               <button type="button" class="vg-hide-teacher text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap" data-gi="${gi}">
                 ไม่แสดงชื่อครู
               </button>
+            </div>
+            <div class="flex items-center gap-1.5 pt-1">
+              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">สี</span>
+              <div class="flex flex-wrap gap-1.5">
+                ${SCHEDULE_COLOR_PRESETS.map(p => `
+                <button type="button"
+                  class="vg-color-option w-5 h-5 rounded-full border-2 ${p.dot.toLowerCase() === clr.dot.toLowerCase() ? 'border-gray-700' : 'border-white'} shadow-sm"
+                  style="background:${p.dot}"
+                  data-gi="${gi}"
+                  data-color="${p.dot}"
+                  title="เลือกสี"></button>`).join('')}
+              </div>
             </div>
           </div>
         </div>
@@ -6368,6 +6488,11 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         const inp = container.querySelector(`.vg-teacher[data-gi="${gi}"]`)
         if (inp) inp.value = ''
       }))
+    container.querySelectorAll('.vg-color-option').forEach(btn =>
+      btn.addEventListener('click', () => {
+        groups[+btn.dataset.gi].color_hex = btn.dataset.color
+        _renderGroups()
+      }))
     container.querySelectorAll('.vg-del-group').forEach(btn =>
       btn.addEventListener('click', () => { groups.splice(+btn.dataset.gi, 1); _renderGroups() }))
     container.querySelectorAll('.vg-save-group').forEach(btn =>
@@ -6377,6 +6502,20 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         const origText = btn.textContent
         btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
         try {
+          const colorHex = g.color_hex ?? resolveScheduleColor({
+            teacherId: teacher?.id,
+            className: g.class_name,
+            subjectName: g.subject_name,
+            fallbackId: g.subject_id,
+          }, roomColorMap).dot
+          if (g.class_name || g.subject_name || g.subject_id) {
+            await saveTeacherRoomColor({
+              teacher_id: teacher.id,
+              room_key: roomColorKey({ className: g.class_name, subjectName: g.subject_name, fallbackId: g.subject_id }),
+              class_name: g.class_name?.trim() || null,
+              color_hex: colorHex,
+            }).catch(err => showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'warning'))
+          }
           await Promise.all(g.sessions.map(s => upsertScheduleEntry({
             teacher_id:   teacher.id,
             subject_id:   g.subject_id ?? null,
@@ -6392,12 +6531,12 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
           btn.textContent = '✅ บันทึกแล้ว'
           btn.style.background = '#16a34a'
           setTimeout(() => {
-            const nextColor = scheduleColorFor({
+            const nextColor = g.color_hex ? colorMetaForHex(g.color_hex) : resolveScheduleColor({
               teacherId: teacher?.id,
               className: g.class_name,
               subjectName: g.subject_name,
               fallbackId: g.subject_id,
-            })
+            }, roomColorMap)
             btn.disabled = false
             btn.textContent = origText
             btn.style.background = nextColor.dot
@@ -6532,6 +6671,20 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
       // flatten groups → entries
       const entries = []
       for (const g of groups) {
+        const colorHex = g.color_hex ?? resolveScheduleColor({
+          teacherId: teacher?.id,
+          className: g.class_name,
+          subjectName: g.subject_name,
+          fallbackId: g.subject_id,
+        }, roomColorMap).dot
+        if (g.class_name || g.subject_name || g.subject_id) {
+          await saveTeacherRoomColor({
+            teacher_id: teacher.id,
+            room_key: roomColorKey({ className: g.class_name, subjectName: g.subject_name, fallbackId: g.subject_id }),
+            class_name: g.class_name?.trim() || null,
+            color_hex: colorHex,
+          }).catch(err => showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'warning'))
+        }
         for (const s of g.sessions) {
           entries.push({
             teacher_id:   teacher.id,

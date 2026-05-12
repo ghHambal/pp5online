@@ -14,6 +14,7 @@ export const SCHEDULE_COLOR_PRESETS = [
 ]
 
 const _norm = (value) => String(value ?? '').trim().toLowerCase()
+const _HEX_RE = /^#[0-9a-f]{6}$/i
 
 function _hashString(value) {
   let hash = 2166136261
@@ -26,16 +27,61 @@ function _hashString(value) {
 
 export function scheduleColorKey({ teacherId = '', className = '', subjectName = '', fallbackId = '' } = {}) {
   const scope = _norm(teacherId)
+  return `${scope}|${roomColorKey({ className, subjectName, fallbackId })}`
+}
+
+export function roomColorKey({ className = '', subjectName = '', fallbackId = '' } = {}) {
   const room = _norm(className)
   const subject = _norm(subjectName)
   const fallback = _norm(fallbackId)
-  return `${scope}|${room || subject || fallback || 'default'}`
+  return room || subject || fallback || 'default'
+}
+
+function _hexToRgb(hex) {
+  const clean = _HEX_RE.test(hex) ? hex.slice(1) : 'e0e7ff'
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+  }
+}
+
+function _rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map(n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0')).join('')}`
+}
+
+function _mixHex(a, b, weight = 0.5) {
+  const ca = _hexToRgb(a)
+  const cb = _hexToRgb(b)
+  return _rgbToHex({
+    r: ca.r * (1 - weight) + cb.r * weight,
+    g: ca.g * (1 - weight) + cb.g * weight,
+    b: ca.b * (1 - weight) + cb.b * weight,
+  })
+}
+
+export function colorMetaForHex(hex) {
+  const safeHex = _HEX_RE.test(String(hex ?? '')) ? String(hex).toLowerCase() : '#6366f1'
+  return {
+    cls: '',
+    hex: safeHex,
+    soft: _mixHex(safeHex, '#ffffff', 0.86),
+    border: _mixHex(safeHex, '#ffffff', 0.45),
+    dot: safeHex,
+    text: _mixHex(safeHex, '#000000', 0.28),
+  }
 }
 
 export function scheduleColorFor(input = {}) {
   const key = scheduleColorKey(input)
   const idx = _hashString(key) % SCHEDULE_COLOR_PRESETS.length
-  return { ...SCHEDULE_COLOR_PRESETS[idx], idx, key }
+  return { ...colorMetaForHex(SCHEDULE_COLOR_PRESETS[idx].dot), cls: SCHEDULE_COLOR_PRESETS[idx].cls, idx, key }
+}
+
+export function resolveScheduleColor(input = {}, savedColors = {}) {
+  const key = roomColorKey(input)
+  const saved = savedColors instanceof Map ? savedColors.get(key) : savedColors[key]
+  return saved ? colorMetaForHex(saved) : scheduleColorFor(input)
 }
 
 export function scheduleColorLabel({ subjectName = '', className = '', fallbackId = '' } = {}) {
