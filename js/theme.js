@@ -70,23 +70,46 @@ export function pickThemeColor(cfg = {}, role = 'app', context = {}) {
 }
 
 function applyLogo(cfg = {}) {
-  const logoUrl = cfg.loginLogoUrl || cfg.samaiLogoUrl || cfg.porworLogoUrl || ''
+  const logoUrls = [cfg.loginLogoUrl, cfg.samaiLogoUrl, cfg.porworLogoUrl]
+    .map(url => String(url ?? '').trim())
+    .filter(Boolean)
+  const uniqueLogoUrls = [...new Set(logoUrls)]
+
+  const applyImage = (img, fallback) => {
+    let index = 0
+
+    img.classList.add('hidden')
+    fallback?.classList.remove('hidden')
+    if (!uniqueLogoUrls.length) {
+      img.removeAttribute('src')
+      return
+    }
+
+    img.onload = () => {
+      img.classList.remove('hidden')
+      fallback?.classList.add('hidden')
+    }
+    img.onerror = () => {
+      index += 1
+      if (index < uniqueLogoUrls.length) {
+        img.src = uniqueLogoUrls[index]
+        return
+      }
+
+      img.classList.add('hidden')
+      fallback?.classList.remove('hidden')
+      img.removeAttribute('src')
+    }
+    img.src = uniqueLogoUrls[index]
+  }
+
   document.querySelectorAll('[data-theme-logo]').forEach(img => {
-    if (!logoUrl) return
-    img.src = logoUrl
-    img.classList.remove('hidden')
-  })
-  document.querySelectorAll('[data-theme-logo-fallback]').forEach(el => {
-    if (logoUrl) el.classList.add('hidden')
+    applyImage(img, img.parentElement?.querySelector('[data-theme-logo-fallback]'))
   })
 
   const sidebarLogo = document.getElementById('school-logo')
   const sidebarFallback = document.getElementById('school-logo-fallback')
-  if (sidebarLogo && logoUrl) {
-    sidebarLogo.src = logoUrl
-    sidebarLogo.classList.remove('hidden')
-    sidebarFallback?.classList.add('hidden')
-  }
+  if (sidebarLogo) applyImage(sidebarLogo, sidebarFallback)
 }
 
 export async function applyThemeForRole(role = 'app', context = {}, force = false) {
