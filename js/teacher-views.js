@@ -44,9 +44,31 @@ const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py
 
 // ─── Phone formatter ──────────────────────────────────────────────────────────
 
+function _parseDateOnly(value) {
+  if (!value) return null
+  if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), value.getDate())
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+function _dateInputValue(value) {
+  const d = _parseDateOnly(value)
+  if (!d) return ''
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 // คำนวณ 6 วันสอนแรก จาก teacher_schedules entries + termStart date string
 function _calcSixPeriodDates(entries, termStartStr) {
-  // Expand span_periods → รายการคาบแต่ละ 45 นาที
+  const termStart = _parseDateOnly(termStartStr) ?? _parseDateOnly(new Date())
+  const startDow = termStart.getDay()
+
+  // Expand span_periods → รายการคาบจริงในตาราง
   const periods = []
   for (const e of entries) {
     const span = e.span_periods ?? 1
@@ -54,30 +76,20 @@ function _calcSixPeriodDates(entries, termStartStr) {
       periods.push({ dow: e.day_of_week, pno: (e.period_no ?? 0) + i })
     }
   }
-  // เรียง: วัน → คาบ
-  periods.sort((a,b) => a.dow !== b.dow ? a.dow - b.dow : a.pno - b.pno)
+  periods.sort((a, b) => {
+    const aOffset = (a.dow - startDow + 7) % 7
+    const bOffset = (b.dow - startDow + 7) % 7
+    return aOffset !== bOffset ? aOffset - bOffset : a.pno - b.pno
+  })
   if (!periods.length) return []
-
-  // หาวันแรกของแต่ละ dow ที่ >= termStart
-  const termStart = new Date(termStartStr + 'T00:00:00')
-  const firstDate = {}
-  for (const p of periods) {
-    if (firstDate[p.dow]) continue
-    const d = new Date(termStart)
-    // getDay(): 0=Sun,1=Mon,...,6=Sat; dow: 0=อา,1=จ,...,5=ศ (ตรงกัน)
-    while (d.getDay() !== p.dow) d.setDate(d.getDate() + 1)
-    firstDate[p.dow] = new Date(d)
-  }
 
   // Generate จนครบ 6 คาบ โดย วนสัปดาห์
   const result = []
   let week = 0
   while (result.length < 6) {
     for (const p of periods) {
-      const base = firstDate[p.dow]
-      if (!base) continue
-      const d = new Date(base)
-      d.setDate(d.getDate() + week * 7)
+      const d = new Date(termStart)
+      d.setDate(d.getDate() + ((p.dow - startDow + 7) % 7) + week * 7)
       result.push(d)
       if (result.length >= 6) break
     }
@@ -1786,7 +1798,7 @@ export async function renderClassForm(teacher, course) {
   setTitle('ลงทะเบียนรายวิชา')
   const depts    = await getDepartments().catch(()=>[])
   const termCfg  = await getSystemConfig().catch(()=>({}))
-  const termStart = termCfg.term_start_date ?? new Date().toISOString().slice(0,10)
+  const termStart = termCfg.semester_start ?? termCfg.term_start_date ?? _dateInputValue(new Date())
   const skillOpts = SKILL_GROUPS[course.subject_group] ?? []
   const autoSkill = skillOpts.length === 1
 
@@ -2056,7 +2068,7 @@ export async function renderClassForm(teacher, course) {
         const dates   = _calcSixPeriodDates(entries, termStart)
         dates.forEach((d, i) => {
           const el = document.getElementById(`cls-day${i+1}`)
-          if (el) el.value = d.toISOString().slice(0,10)
+          if (el) el.value = _dateInputValue(d)
         })
         infoEl.textContent = `✅ คำนวณจาก "${groups[key].label}" — ${entries.length} ช่องตาราง — ตรวจสอบแล้วแก้ไขได้`
         infoEl.classList.remove('hidden')
@@ -2275,7 +2287,7 @@ export async function renderMyClasses(teacher) {
               ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date]
                 .filter(Boolean)
                 .map((d,i)=>`<span class="text-xs bg-gray-50 text-gray-500 px-2 py-1 rounded-lg">
-                  คาบ${i+1}: ${new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short'})}
+                  คาบ${i+1}: ${_parseDateOnly(d).toLocaleDateString('th-TH',{day:'numeric',month:'short'})}
                 </span>`).join('')}
             </div>` : ''}
           </div>`
@@ -3069,6 +3081,7 @@ export async function renderClassEditForm(teacher, classData) {
   const ms       = classData.master_subjects
   const skillOpts = SKILL_GROUPS[ms?.subject_group] ?? []
   const autoSkill = skillOpts.length === 1
+  const classStudents = await getClassStudents(classData.id).catch(()=>[])
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
       <button onclick="window._navTo?.('my-classes') || history.back()"
@@ -3099,6 +3112,19 @@ export async function renderClassEditForm(teacher, classData) {
                  <option value="">— เลือกกลุ่มทักษะ —</option>
                  ${skillOpts.map(s=>`<option value="${s}" ${s===classData.skill_group?'selected':''}>${s}</option>`).join('')}
                </select>`}
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้าห้อง</label>
+          <select id="ce-head" class="${SELECT_CLS}">
+            <option value="">— ยังไม่ระบุหัวหน้าห้อง —</option>
+            ${classStudents.map(s => `
+              <option value="${s.id}" ${Number(classData.head_student_id) === Number(s.id) ? 'selected' : ''}>
+                ${s.full_name} (${s.student_code})
+              </option>`).join('')}
+          </select>
+          ${classStudents.length
+            ? '<p class="text-xs text-gray-400 mt-1">เลือกได้จากนักเรียนที่อยู่ในห้องนี้</p>'
+            : '<p class="text-xs text-amber-500 mt-1">ยังไม่พบนักเรียนในห้องนี้ จึงยังเลือกหัวหน้าห้องไม่ได้</p>'}
         </div>
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-2">วันสอน 6 คาบแรก</label>
@@ -3133,6 +3159,7 @@ export async function renderClassEditForm(teacher, classData) {
       await updateClass(classData.id, {
         google_sheet_id: document.getElementById('ce-sheet').value.trim() || null,
         skill_group:     document.getElementById('ce-skill').value || null,
+        head_student_id: document.getElementById('ce-head').value ? Number(document.getElementById('ce-head').value) : null,
         day1_date: document.getElementById('ce-day1').value || null,
         day2_date: document.getElementById('ce-day2').value || null,
         day3_date: document.getElementById('ce-day3').value || null,
@@ -3168,7 +3195,7 @@ function _generateSessions(classData, credit) {
   const perWeek = Math.round((credit ?? 1) * 2)
   const total   = Math.round((credit ?? 1) * 2 * 20)
   const bases   = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
-    .map(k => classData[k]).filter(Boolean).slice(0, perWeek).map(d => new Date(d))
+    .map(k => classData[k]).filter(Boolean).slice(0, perWeek).map(d => _parseDateOnly(d)).filter(Boolean)
   if (!bases.length) return []
   const sessions = []
   let week = 0
@@ -3177,7 +3204,7 @@ function _generateSessions(classData, credit) {
       if (sessions.length >= total) break
       const d = new Date(base)
       d.setDate(d.getDate() + week * 7)
-      const ds = d.toISOString().slice(0,10)
+      const ds = _dateInputValue(d)
       sessions.push({ n: sessions.length + 1, date: d, ds })
     }
     week++
@@ -3480,7 +3507,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
     const d   = new Date(sess.date)
     const day = d.getDay() || 7
     const mon = new Date(d); mon.setDate(d.getDate() - day + 1)
-    const wk  = mon.toISOString().slice(0,10)
+    const wk  = _dateInputValue(mon)
     if (!weekMap[wk]) weekMap[wk] = { label: `${_fmtDate(mon)}`, sessions: [] }
     weekMap[wk].sessions.push(sess)
   }
