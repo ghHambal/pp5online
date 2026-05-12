@@ -24,6 +24,11 @@ import { uploadTeacherPhoto } from './storage.js'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 
 import { showToast } from './ui.js'
+import { renderClassEditForm } from './teacher-class-forms.js'
+import { renderScoreColumns } from './teacher-score-columns.js'
+import { scheduleColorFor, scheduleColorKey, scheduleColorLabel } from './teacher-schedule-colors.js'
+export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
+export { renderScoreColumns } from './teacher-score-columns.js'
 
 // ─── Grade options per subject group ─────────────────────────────────────────
 
@@ -1786,343 +1791,6 @@ export async function renderProfile(teacher, onRefresh) {
 
 // ─── View: Class Registration Form (2.2) ──────────────────────────────────────
 
-const SKILL_GROUPS = {
-  ACDM:    ['วิชาการ','ภาษา','ชีวิต'],   // สามัญมัธยม — ต้องเลือก
-  AGM:     ['ศาสนามัธยม'],               // ศาสนามัธยม — fixed
-  ACDMVOC: ['วิชาการ','ภาษา','สามัญปวช'], // สามัญปวช — ต้องเลือก
-  AGMVOC:  ['ศาสนาปวช'],                 // ศาสนาปวช — fixed
-}
-
-export async function renderClassForm(teacher, course) {
-  setActiveNav('my-courses')
-  setTitle('ลงทะเบียนรายวิชา')
-  const depts    = await getDepartments().catch(()=>[])
-  const termCfg  = await getSystemConfig().catch(()=>({}))
-  const termStart = termCfg.semester_start ?? termCfg.term_start_date ?? _dateInputValue(new Date())
-  const skillOpts = SKILL_GROUPS[course.subject_group] ?? []
-  const autoSkill = skillOpts.length === 1
-
-  // Dept head from departments
-  const deptRec = depts.find(d => d.dept_code === course.dept)
-  const gradePrefix = course.grade_level
-  const isReligionGrade = /^(PR|อก|อป)/i.test(gradePrefix ?? '')
-  const rooms = gradePrefix
-    ? (isReligionGrade
-        ? await getReligionRoomsByGrade(gradePrefix).catch(()=>[])
-        : await getRoomsByGrade(gradePrefix).catch(()=>[]))
-    : []
-  setContent(`<div class="max-w-2xl mx-auto animate-fade">
-    <div class="flex items-center gap-3 mb-6">
-      <button onclick="window._goBack()" class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
-      <h2 class="text-lg font-bold text-gray-800">ลงทะเบียนรายวิชา</h2>
-    </div>
-    <!-- คอร์สที่เลือก -->
-    <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-5 flex items-center gap-4">
-      <div class="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-xl">📖</div>
-      <div>
-        <p class="font-semibold text-emerald-900">${course.subject_name}</p>
-        <p class="text-xs text-emerald-600 font-mono">${course.subject_code??'—'} · ${course.credit??'—'} หน่วยกิต · ${course.grade_level??'—'}</p>
-      </div>
-    </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
-      <form id="class-form" novalidate class="space-y-5">
-        <!-- Google Sheet ID -->
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">
-            Google Sheet ID <span class="text-gray-400 font-normal">(เว้นว่างได้)</span>
-          </label>
-          <input id="cls-sheet-id" type="text" placeholder="วาง ID จาก URL ของ Google Sheet"
-            class="${INPUT_CLS}" />
-          <p class="text-xs text-gray-400 mt-1">URL: docs.google.com/spreadsheets/d/<b>[ID ตรงนี้]</b>/edit</p>
-        </div>
-        <!-- กลุ่มทักษะ -->
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">กลุ่มทักษะ <span class="text-red-400">*</span></label>
-          ${autoSkill
-            ? `<input type="text" value="${skillOpts[0]}" class="${INPUT_CLS} bg-gray-50" readonly />
-               <input type="hidden" id="cls-skill" value="${skillOpts[0]}" />`
-            : `<select id="cls-skill" class="${SELECT_CLS}">
-                 <option value="">— เลือกกลุ่มทักษะ —</option>
-                 ${skillOpts.map(s=>`<option value="${s}">${s}</option>`).join('')}
-               </select>`}
-        </div>
-        <!-- ชั้นเรียน -->
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">ชั้นเรียน <span class="text-red-400">*</span></label>
-          ${rooms.length
-            ? `<select id="cls-room" class="${SELECT_CLS}">
-                <option value="">— เลือกห้องเรียน —</option>
-                ${rooms.map(r=>`<option value="${r}">${r}</option>`).join('')}
-               </select>`
-            : `<input id="cls-room" type="text" placeholder="พิมพ์ชื่อห้อง เช่น PR 1/7 Ikhlas" class="${INPUT_CLS}" autocomplete="off" />
-               <p class="text-xs text-amber-500 mt-1">⚠️ ไม่พบห้อง ${gradePrefix} — พิมพ์ชื่อห้องตรงๆ หรืออัปโหลดนักเรียนพร้อม column <b>religion_room</b></p>`}
-        </div>
-        <!-- นักเรียนในห้อง -->
-        <div id="cls-students-section" class="hidden">
-          <label class="block text-sm font-semibold text-gray-700 mb-2">
-            นักเรียนในห้อง <span id="cls-student-count" class="text-xs text-gray-400 font-normal"></span>
-          </label>
-          <div id="cls-students-list" class="border border-gray-100 rounded-xl overflow-hidden max-h-52 overflow-y-auto"></div>
-        </div>
-        <!-- หัวหน้าห้อง -->
-        <div id="cls-head-section" class="hidden">
-          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้าห้อง</label>
-          <select id="cls-head" class="${SELECT_CLS}">
-            <option value="">— เลือกหัวหน้าห้อง —</option>
-          </select>
-          <!-- Card แสดงหัวหน้าห้องที่เลือก -->
-          <div id="cls-head-card" class="hidden mt-2 flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
-            <div id="cls-head-avatar" class="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center text-gray-400">
-              👤
-            </div>
-            <div class="min-w-0">
-              <p id="cls-head-name" class="font-semibold text-emerald-900 text-sm truncate"></p>
-              <p id="cls-head-code" class="text-xs text-emerald-600 font-mono mt-0.5"></p>
-              <p id="cls-head-room" class="text-xs text-gray-400 mt-0.5"></p>
-            </div>
-            <span class="ml-auto text-emerald-500 text-lg flex-shrink-0">✓</span>
-          </div>
-        </div>
-        <!-- วันสอน 6 คาบแรก -->
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <label class="block text-sm font-semibold text-gray-700">วันสอน 6 คาบแรก</label>
-            <button type="button" id="btn-auto-dates"
-              class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
-              🗓️ คำนวณจากตารางสอน
-            </button>
-          </div>
-          <div id="auto-dates-info" class="hidden mb-2 bg-indigo-50 rounded-xl px-3 py-2 text-xs text-indigo-700"></div>
-          <div class="grid grid-cols-3 gap-2">
-            ${[1,2,3,4,5,6].map(n=>`
-            <div>
-              <p class="text-xs text-gray-400 mb-1">คาบที่ ${n}</p>
-              <input id="cls-day${n}" type="date" value="${termStart}" class="${INPUT_CLS} text-xs" />
-            </div>`).join('')}
-          </div>
-        </div>
-        <!-- ข้อมูล auto (แสดง readonly) -->
-        <div class="bg-gray-50 rounded-xl p-4 space-y-2">
-          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ข้อมูลที่ซิงค์ไปยัง Google Sheet</p>
-          <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
-            <div><span class="text-gray-400">รหัสวิชา:</span> ${course.subject_code??'—'}</div>
-            <div><span class="text-gray-400">หน่วยกิต:</span> ${course.credit??'—'}</div>
-            <div><span class="text-gray-400">ชั้นปี:</span> ${course.grade_level??'—'}</div>
-            <div><span class="text-gray-400">กลุ่มสาระ:</span> ${deptRec?.dept_name??course.dept??'—'}</div>
-            <div class="col-span-2"><span class="text-gray-400">หัวหน้าหมวด:</span> ${deptRec?.head_name??'—'}</div>
-            <div class="col-span-2"><span class="text-gray-400">ครูผู้สอน:</span> ${teacher?.full_name??'—'} ${teacher?.phone?`(${teacher.phone})`:''}
-            </div>
-          </div>
-        </div>
-        <!-- Buttons -->
-        <div class="flex gap-3 pt-2">
-          <button type="button" onclick="window._goBack()"
-            class="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
-            ยกเลิก
-          </button>
-          <button id="cls-submit" type="submit"
-            class="btn-primary flex-1 py-3 rounded-xl text-white text-sm font-semibold">
-            บันทึกและเปิดรายวิชา
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>`)
-
-  // ─── Load students when room selected ────────────────────────────────────────
-  let _students = []
-  document.getElementById('cls-room').addEventListener('change', async e => {
-    const room = e.target.value
-    if (!room) {
-      document.getElementById('cls-students-section').classList.add('hidden')
-      document.getElementById('cls-head-section').classList.add('hidden')
-      return
-    }
-    try {
-      _students = isReligionGrade
-        ? await getStudentsByReligionRoom(room)
-        : await getStudentsByRoom(room)
-      document.getElementById('cls-student-count').textContent = `(${_students.length} คน)`
-      document.getElementById('cls-students-list').innerHTML = !_students.length
-        ? `<p class="text-center py-4 text-gray-400 text-sm">ไม่พบนักเรียนในห้องนี้</p>`
-        : `<table class="w-full text-xs">
-            <thead class="bg-gray-50 text-gray-500">
-              <tr>
-                <th class="px-3 py-2 text-left">รหัส</th>
-                <th class="px-3 py-2 text-left">ชื่อ-สกุล</th>
-                <th class="px-3 py-2 text-center">ศาสนา</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              ${_students.map(s=>`
-              <tr class="hover:bg-gray-50">
-                <td class="px-3 py-2 font-mono text-indigo-600">${s.student_code}</td>
-                <td class="px-3 py-2">
-                  <div class="flex items-center gap-2">
-                    ${s.image_url?`<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />`:''}
-                    ${s.full_name}
-                  </div>
-                </td>
-                <td class="px-3 py-2 text-center text-gray-400">${s.religion_room??'—'}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>`
-
-      // head student options
-      const headSel = document.getElementById('cls-head')
-      headSel.innerHTML = '<option value="">— เลือกหัวหน้าห้อง —</option>' +
-        _students.map(s=>`<option value="${s.id}" data-code="${s.student_code}" data-room="${s.main_room??''}" data-img="${s.image_url??''}">${s.full_name} (${s.student_code})</option>`).join('')
-      document.getElementById('cls-students-section').classList.remove('hidden')
-      document.getElementById('cls-head-section').classList.remove('hidden')
-
-      // Card แสดงหัวหน้าห้องเมื่อเลือก
-      const _updateHeadCard = () => {
-        const opt  = headSel.options[headSel.selectedIndex]
-        const card = document.getElementById('cls-head-card')
-        if (!opt || !opt.value) { card?.classList.add('hidden'); return }
-        const name = opt.text.split(' (')[0]
-        const code = opt.dataset.code ?? ''
-        const room = opt.dataset.room ?? ''
-        const img  = opt.dataset.img ?? ''
-        document.getElementById('cls-head-name').textContent = name
-        document.getElementById('cls-head-code').textContent = `รหัส: ${code}`
-        document.getElementById('cls-head-room').textContent = room ? `ห้อง: ${room}` : ''
-        const avatarEl = document.getElementById('cls-head-avatar')
-        avatarEl.innerHTML = img
-          ? `<img src="${img}" class="w-full h-full object-cover" />`
-          : `<div class="w-full h-full flex items-center justify-center bg-gradient-to-tr from-emerald-200 to-teal-200 text-emerald-700 font-bold text-lg">${name.charAt(0)}</div>`
-        card?.classList.remove('hidden')
-      }
-      headSel.addEventListener('change', _updateHeadCard)
-    } catch { showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ','error') }
-  })
-
-  // ─── Auto-calculate dates — Popup เลือกวิชาจากตารางสอน ──────────────────
-  document.getElementById('btn-auto-dates')?.addEventListener('click', async () => {
-    const btn   = document.getElementById('btn-auto-dates')
-    const infoEl = document.getElementById('auto-dates-info')
-    btn.textContent = '⏳ กำลังดึงตาราง...'; btn.disabled = true
-    try {
-      const curYear = parseInt(termCfg.academicYear ?? 2568)
-      const curSem  = parseInt(termCfg.semester ?? 1)
-      const sched   = teacher ? await getMySchedule(teacher.id, curYear, curSem).catch(()=>[]) : []
-
-      if (!sched.length) {
-        infoEl.textContent = '⚠️ ยังไม่มีตารางสอน — กรุณากรอกวันเอง'
-        infoEl.classList.remove('hidden'); return
-      }
-
-      // จัดกลุ่ม entries ตามวิชา+ห้อง
-      const groups = {}
-      sched.forEach(e => {
-        const key  = `${e.subject_name ?? e.master_subjects?.subject_name ?? '?'}|${e.class_name ?? ''}`
-        if (!groups[key]) groups[key] = { label: `${e.subject_name ?? e.master_subjects?.subject_name ?? '?'}${e.class_name ? ` — ${e.class_name}` : ''}`, entries: [] }
-        groups[key].entries.push(e)
-      })
-
-      const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ']
-      const _descEntries = (entries) => {
-        const expanded = []
-        entries.forEach(e => { for (let i=0;i<(e.span_periods??1);i++) expanded.push({dow:e.day_of_week,pno:(e.period_no??0)+i}) })
-        expanded.sort((a,b)=>a.dow!==b.dow?a.dow-b.dow:a.pno-b.pno)
-        const byDay = {}
-        expanded.forEach(p => { if(!byDay[p.dow]) byDay[p.dow]=[]; byDay[p.dow].push(p.pno) })
-        return Object.entries(byDay).map(([d,ps])=>`${DAY_TH[d]} คาบ ${ps.join(',')}`).join(' · ')
-      }
-
-      // แสดง popup เลือกวิชา
-      const wrap = document.createElement('div')
-      wrap.id = 'dates-popup'
-      wrap.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
-      wrap.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
-          <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 class="font-bold text-gray-800">🗓️ เลือกวิชาจากตารางสอน</h3>
-            <button id="dates-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-          </div>
-          <div class="px-5 py-4 space-y-2 max-h-72 overflow-y-auto">
-            <p class="text-xs text-gray-400 mb-3">เลือกวิชาที่ต้องการคำนวณวัน 6 คาบแรก</p>
-            ${Object.entries(groups).map(([key, g]) => `
-            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer transition">
-              <input type="radio" name="dates-subj" value="${key}" class="mt-0.5 text-indigo-600 flex-shrink-0" />
-              <div>
-                <p class="text-sm font-medium text-gray-800">${g.label}</p>
-                <p class="text-xs text-gray-400 mt-0.5">${_descEntries(g.entries)}</p>
-              </div>
-            </label>`).join('')}
-          </div>
-          <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex gap-3">
-            <button id="dates-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-            <button id="dates-calc" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">คำนวณ</button>
-          </div>
-        </div>`
-      document.body.appendChild(wrap)
-      wrap.querySelector('#dates-close').addEventListener('click', () => wrap.remove())
-      wrap.querySelector('#dates-cancel').addEventListener('click', () => wrap.remove())
-
-      wrap.querySelector('#dates-calc').addEventListener('click', () => {
-        const key = wrap.querySelector('input[name="dates-subj"]:checked')?.value
-        if (!key) { alert('กรุณาเลือกวิชาก่อน'); return }
-        wrap.remove()
-        const entries = groups[key].entries
-        const dates   = _calcSixPeriodDates(entries, termStart)
-        dates.forEach((d, i) => {
-          const el = document.getElementById(`cls-day${i+1}`)
-          if (el) el.value = _dateInputValue(d)
-        })
-        infoEl.textContent = `✅ คำนวณจาก "${groups[key].label}" — ${entries.length} ช่องตาราง — ตรวจสอบแล้วแก้ไขได้`
-        infoEl.classList.remove('hidden')
-      })
-    } catch (err) {
-      infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message ?? '')
-      infoEl.classList.remove('hidden')
-    } finally {
-      btn.textContent = '🗓️ คำนวณจากตารางสอน'; btn.disabled = false
-    }
-  })
-
-  // ─── Save ─────────────────────────────────────────────────────────────────
-  document.getElementById('class-form').addEventListener('submit', async e => {
-    e.preventDefault()
-    const btn = document.getElementById('cls-submit')
-    const sheetId = document.getElementById('cls-sheet-id').value.trim()
-    const skill   = document.getElementById('cls-skill').value
-    const room    = document.getElementById('cls-room').value
-    const headId  = document.getElementById('cls-head').value
-    if (!room) { showToast('กรุณาเลือกชั้นเรียน','warning'); return }
-    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-    try {
-      const payload = {
-        course_id:       course.id,
-        class_name:      room,
-        skill_group:     skill || null,
-        google_sheet_id: sheetId || null,
-        head_student_id: headId ? Number(headId) : null,
-        day1_date: document.getElementById('cls-day1').value || null,
-        day2_date: document.getElementById('cls-day2').value || null,
-        day3_date: document.getElementById('cls-day3').value || null,
-        day4_date: document.getElementById('cls-day4').value || null,
-        day5_date: document.getElementById('cls-day5').value || null,
-        day6_date: document.getElementById('cls-day6').value || null,
-      }
-      const created = await createClass(payload, teacher?.id ?? null)
-
-      // enroll all students in the room
-      if (_students.length && created?.id) {
-        await enrollStudents(created.id, _students.map(s => s.id))
-      }
-      showToast(`เปิดรายวิชา ${room} สำเร็จ! นักเรียน ${_students.length} คน`,'success')
-      window._goBack()
-    } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
-    } finally {
-      btn.disabled = false; btn.textContent = 'บันทึกและเปิดรายวิชา'
-    }
-  })
-
-}
-
-// ─── Placeholder views ────────────────────────────────────────────────────────
 
 const _htmlEsc = value => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -2212,6 +1880,31 @@ export async function renderMyClasses(teacher) {
       getSystemConfig().catch(() => ({})),
     ])
     window._classCache = Object.fromEntries(classes.map(c => [c.id, c]))
+    const courseGroupMap = new Map()
+    classes.forEach(c => {
+      const ms = c.master_subjects ?? {}
+      const keyParts = [
+        c.course_id ?? ms.id ?? '',
+        ms.subject_code ?? '',
+        ms.subject_name ?? '',
+        ms.subject_group ?? '',
+      ]
+      const key = keyParts.some(Boolean) ? keyParts.join('|') : `class-${c.id}`
+      if (!courseGroupMap.has(key)) {
+        courseGroupMap.set(key, { key, masterSubject: ms, classes: [] })
+      }
+      courseGroupMap.get(key).classes.push(c)
+    })
+    const courseGroups = [...courseGroupMap.values()]
+      .map(group => ({
+        ...group,
+        classes: group.classes.sort((a, b) => String(a.class_name ?? '').localeCompare(String(b.class_name ?? ''), 'th')),
+      }))
+      .sort((a, b) => {
+        const aMs = a.masterSubject ?? {}
+        const bMs = b.masterSubject ?? {}
+        return String(aMs.subject_name ?? '').localeCompare(String(bMs.subject_name ?? ''), 'th')
+      })
     setContent(`<div class="max-w-5xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-5">
         <div>
@@ -2225,30 +1918,51 @@ export async function renderMyClasses(teacher) {
         <p class="font-medium">ยังไม่มีห้องเรียน</p>
         <p class="text-xs mt-1">ไปที่ "คอร์สวิชาของฉัน" แล้วกด "＋ห้อง"</p>
       </div>` : `
-      <div class="grid gap-4">
-        ${classes.map(c => {
+      <div class="space-y-5">
+        ${courseGroups.map(group => {
+          const groupMs = group.masterSubject ?? {}
+          return `
+          <section class="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-mono rounded-full">${groupMs.subject_code??'—'}</span>
+                  <h3 class="font-bold text-gray-800 text-base">${groupMs.subject_name??'—'}</h3>
+                </div>
+                <p class="text-xs text-gray-400 mt-1">${group.classes.length} ห้องเรียนในคอร์สนี้</p>
+              </div>
+            </div>
+            <div class="grid gap-3 p-4 md:grid-cols-2">
+        ${group.classes.map(c => {
           const ms = c.master_subjects
           const copyTemplate = getCopyTemplateForClass(copyCfg, c)
           const isReligionGroup = ['AGM', 'AGMVOC'].includes(ms?.subject_group)
+          const classColor = scheduleColorFor({
+            teacherId: teacher?.id,
+            className: c.class_name,
+            subjectName: ms?.subject_name,
+            fallbackId: c.id,
+          })
           const groupBadge = isReligionGroup
             ? { text: 'กลุ่มวิชาศาสนา', cls: 'bg-amber-50 text-amber-700' }
             : c.skill_group
               ? { text: `กลุ่มทักษะ: ${c.skill_group}`, cls: 'bg-blue-50 text-blue-700' }
               : null
           return `
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition">
+          <div class="rounded-2xl border shadow-sm p-5 hover:shadow-md transition"
+            style="background:${classColor.soft}; border-color:${classColor.border}">
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1 flex-wrap">
-                  <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
+                  <span class="px-2 py-0.5 bg-white/80 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
                   ${groupBadge ? `<span class="px-2 py-0.5 ${groupBadge.cls} text-xs rounded-full">${groupBadge.text}</span>` : ''}
                   ${c.google_sheet_id
 
-                    ? `<span class="px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full">✓ Sheet</span>`
-                    : `<span class="px-2 py-0.5 bg-gray-50 text-gray-400 text-xs rounded-full">ไม่มี Sheet</span>`}
+                    ? `<span class="px-2 py-0.5 bg-white/80 text-green-700 text-xs rounded-full">✓ Sheet</span>`
+                    : `<span class="px-2 py-0.5 bg-white/70 text-gray-400 text-xs rounded-full">ไม่มี Sheet</span>`}
                 </div>
                 <h3 class="font-bold text-gray-800 text-base">${ms?.subject_name??'—'}</h3>
-                <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold text-emerald-700">${c.class_name}</span></p>
+                <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.dot}">${c.class_name}</span></p>
               </div>
               <!-- Actions -->
               <div class="flex flex-col gap-1.5 flex-shrink-0">
@@ -2283,14 +1997,17 @@ export async function renderMyClasses(teacher) {
             </div>
             <!-- วันสอน -->
             ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date].some(Boolean) ? `
-            <div class="mt-3 pt-3 border-t border-gray-50 flex flex-wrap gap-2">
+            <div class="mt-3 pt-3 border-t border-white/70 flex flex-wrap gap-2">
               ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date]
                 .filter(Boolean)
-                .map((d,i)=>`<span class="text-xs bg-gray-50 text-gray-500 px-2 py-1 rounded-lg">
+                .map((d,i)=>`<span class="text-xs bg-white/75 text-gray-500 px-2 py-1 rounded-lg">
                   คาบ${i+1}: ${_parseDateOnly(d).toLocaleDateString('th-TH',{day:'numeric',month:'short'})}
                 </span>`).join('')}
             </div>` : ''}
           </div>`
+        }).join('')}
+            </div>
+          </section>`
         }).join('')}
       </div>`}
     </div>`)
@@ -2824,360 +2541,6 @@ export async function renderMyClasses(teacher) {
 
 // ─── Score Column Management ──────────────────────────────────────────────────
 
-const SCORE_TYPES = ['ระหว่างเรียน','กลางภาค','ปลายภาค','คะแนนพิเศษ']
-
-const TYPE_COLOR  = {
-  'ระหว่างเรียน': 'bg-blue-50 text-blue-700',
-  'กลางภาค':      'bg-amber-50 text-amber-700',
-  'ปลายภาค':      'bg-red-50 text-red-700',
-  'คะแนนพิเศษ':   'bg-purple-50 text-purple-700',
-}
-
-const RELIGION_LOCKED_SCORE_COLUMNS = ['คะแนนมาเรียน', 'คะแนนละหมาด']
-
-export async function renderScoreColumns(teacher, classId, className, classData = null) {
-  setActiveNav('my-classes')
-  setTitle(`คอลัมน์คะแนน — ${className}`)
-  const isLifeSkill = (classData?.skill_group ?? classData?.master_subjects?.skill_group ?? '') === 'ชีวิต'
-  const isReligion = ['AGM', 'AGMVOC'].includes(classData?.master_subjects?.subject_group)
-  let lockedScoreColumnIds = new Set()
-  const _reload = async () => {
-    const cols = await getScoreColumns(classId)
-    const cfg = await getSystemConfig().catch(()=>({}))
-    const year = parseInt(cfg.academicYear ?? 2568)
-    const sem = parseInt(cfg.semester ?? 1)
-    const lockedNames = isLifeSkill
-      ? (await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])).slice(0, 3).map(c => c.name)
-      : isReligion ? RELIGION_LOCKED_SCORE_COLUMNS : []
-    lockedScoreColumnIds = new Set(cols.filter(c => lockedNames.includes(c.assignment_name)).map(c => c.id))
-    window._scoreColCache = Object.fromEntries(cols.map(c => [c.id, c]))
-    const grouped = SCORE_TYPES.map(t => ({ type: t, items: cols.filter(c => c.assignment_type === t) }))
-    const totalScore = cols.reduce((sum, c) => sum + (Number(c.max_score) || 0), 0)
-    document.getElementById('sc-content').innerHTML = `
-      <!-- สรุปคะแนนรวม -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center justify-between">
-        <div>
-          <p class="text-xs text-gray-400">คะแนนรวมทุกหมวด</p>
-          <p class="text-2xl font-bold text-indigo-700">${totalScore} คะแนน</p>
-        </div>
-        <div class="text-xs text-gray-400 text-right">
-          <p>${cols.length} คอลัมน์</p>
-          <p class="mt-1">กลางภาค: ${cols.filter(c=>c.assignment_type==='กลางภาค').reduce((s,c)=>s+(Number(c.max_score)||0),0)} |
-             ปลายภาค: ${cols.filter(c=>c.assignment_type==='ปลายภาค').reduce((s,c)=>s+(Number(c.max_score)||0),0)}</p>
-        </div>
-      </div>
-      <!-- ตารางแยกตามหมวด -->
-      ${grouped.map(g => `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
-        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
-          <div class="flex items-center gap-2">
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLOR[g.type]??''}">${g.type}</span>
-            <span class="text-xs text-gray-400">รวม ${g.items.reduce((s,c)=>s+(Number(c.max_score)||0),0)} คะแนน</span>
-          </div>
-          <button onclick="window._addScoreCol('${g.type}')"
-            class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">＋ เพิ่ม</button>
-        </div>
-        ${!g.items.length
-          ? `<p class="text-center py-6 text-gray-300 text-sm">ยังไม่มีคอลัมน์ — กด "＋ เพิ่ม"</p>`
-          : `<table class="w-full text-sm">
-              <thead class="bg-gray-50 text-xs text-gray-400 uppercase">
-                <tr>
-                  <th class="px-4 py-2 text-left">ชื่อรายการ</th>
-                  <th class="px-4 py-2 text-center">คอลัมน์ Sheet</th>
-                  <th class="px-4 py-2 text-center">คะแนนเต็ม</th>
-                  <th class="px-4 py-2 text-right">จัดการ</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-50">
-                ${g.items.map(c => {
-                  const locked = lockedScoreColumnIds.has(c.id)
-                  return `
-                <tr class="${locked ? 'bg-emerald-50/35' : 'hover:bg-gray-50'}">
-                  <td class="px-4 py-2.5 font-medium text-gray-800">${c.assignment_name}</td>
-                  <td class="px-4 py-2.5 text-center font-mono text-indigo-600 text-xs">${c.sheet_column}</td>
-                  <td class="px-4 py-2.5 text-center text-gray-600">${c.max_score??'—'}</td>
-                  <td class="px-4 py-2.5 text-right">
-                    ${locked
-                      ? `<span class="text-xs text-emerald-700 font-medium">ระบบล็อก</span>`
-                      : `<button onclick="window._editScoreCol(${c.id})"
-                          class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-2">แก้ไข</button>
-                        <button onclick="window._deleteScoreCol(${c.id})"
-                          class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>`}
-                  </td>
-                </tr>`}).join('')}
-              </tbody>
-            </table>`}
-      </div>`).join('')}
-      <!-- Form เพิ่ม/แก้ไข -->
-      <div id="sc-form-wrap" class="hidden bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <h4 id="sc-form-title" class="font-semibold text-gray-700 mb-4">เพิ่มคอลัมน์คะแนน</h4>
-        <form id="sc-form" class="grid grid-cols-2 gap-3">
-          <input type="hidden" id="sc-edit-id" />
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อรายการ <span class="text-red-400">*</span></label>
-            <input id="sc-name" type="text" placeholder="เช่น คะแนนเก็บ 1"
-              class="${INPUT_CLS}" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">หมวด <span class="text-red-400">*</span></label>
-            <select id="sc-type" class="${SELECT_CLS}">
-              ${SCORE_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">คอลัมน์ใน Sheet <span class="text-red-400">*</span>
-              <span class="text-gray-400 font-normal ml-1">(เช่น EK, EX, A)</span>
-            </label>
-            <input id="sc-col" type="text" placeholder="EK"
-              class="${INPUT_CLS} font-mono uppercase" maxlength="4" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">คะแนนเต็ม</label>
-            <input id="sc-max" type="number" min="1" max="100" placeholder="20"
-              class="${INPUT_CLS}" />
-          </div>
-          <div class="col-span-2 flex gap-3 pt-1">
-            <button type="button" onclick="document.getElementById('sc-form-wrap').classList.add('hidden')"
-              class="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-              ยกเลิก
-            </button>
-            <button id="sc-save" type="submit"
-              class="btn-primary flex-1 py-2 rounded-xl text-white text-sm font-semibold">
-              บันทึก
-            </button>
-          </div>
-        </form>
-      </div>`
-
-    // ─── bind CRUD actions ──────────────────────────────────────────────────
-    window._addScoreCol = (type) => {
-      document.getElementById('sc-edit-id').value = ''
-      document.getElementById('sc-name').value    = ''
-      document.getElementById('sc-col').value     = ''
-      document.getElementById('sc-max').value     = ''
-      document.getElementById('sc-type').value    = type
-      document.getElementById('sc-form-title').textContent = `เพิ่มคอลัมน์ — ${type}`
-      document.getElementById('sc-form-wrap').classList.remove('hidden')
-      document.getElementById('sc-name').focus()
-    }
-    window._editScoreCol = (id) => {
-      const c = window._scoreColCache?.[id]
-      if (!c) return
-      if (lockedScoreColumnIds.has(id)) {
-        showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถแก้ไขได้', 'warning')
-        return
-      }
-      document.getElementById('sc-edit-id').value = id
-      document.getElementById('sc-name').value    = c.assignment_name
-      document.getElementById('sc-col').value     = c.sheet_column
-      document.getElementById('sc-max').value     = c.max_score ?? ''
-      document.getElementById('sc-type').value    = c.assignment_type
-      document.getElementById('sc-form-title').textContent = 'แก้ไขคอลัมน์'
-      document.getElementById('sc-form-wrap').classList.remove('hidden')
-    }
-    window._deleteScoreCol = async (id) => {
-      if (lockedScoreColumnIds.has(id)) {
-        showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning')
-        return
-      }
-      if (!confirm('ยืนยันลบคอลัมน์นี้?')) return
-      try {
-        await deleteScoreColumn(id)
-        showToast('ลบแล้ว', 'success')
-        await _reload()
-      } catch (err) { showToast('ลบไม่สำเร็จ', 'error') }
-    }
-    document.getElementById('sc-form')?.addEventListener('submit', async e => {
-      e.preventDefault()
-      const btn  = document.getElementById('sc-save')
-      const id   = document.getElementById('sc-edit-id').value
-      const name = document.getElementById('sc-name').value.trim()
-      const col  = document.getElementById('sc-col').value.trim().toUpperCase()
-      const type = document.getElementById('sc-type').value
-      const max  = parseInt(document.getElementById('sc-max').value) || null
-      if (!name || !col) { showToast('กรุณากรอกชื่อและคอลัมน์ Sheet', 'warning'); return }
-      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-      try {
-        const payload = { assignment_name: name, assignment_type: type, sheet_column: col, max_score: max }
-        if (id) await updateScoreColumn(Number(id), payload)
-        else    await createScoreColumn({ ...payload, class_id: classId })
-        showToast('บันทึกสำเร็จ', 'success')
-        document.getElementById('sc-form-wrap').classList.add('hidden')
-        await _reload()
-      } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
-      } finally {
-        btn.disabled = false; btn.textContent = 'บันทึก'
-      }
-    })
-  }
-  setContent(`<div class="max-w-3xl mx-auto animate-fade">
-    <div class="flex items-center gap-3 mb-5 flex-wrap">
-      <button onclick="window._navTo?.('my-classes') || history.back()"
-        class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
-      <div class="flex-1 min-w-0">
-        <h2 class="text-lg font-bold text-gray-800">คอลัมน์คะแนน</h2>
-        <p class="text-xs text-gray-400">${className} — ระบุตำแหน่งคอลัมน์ใน Google Sheet</p>
-      </div>
-      ${isLifeSkill ? `
-      <button id="btn-fill-lifeskill"
-        class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition flex-shrink-0">
-        🌱 เติมคะแนนทักษะชีวิต
-      </button>` : ''}
-    </div>
-    <div id="sc-content"><div class="flex justify-center py-8 text-gray-400">
-      <svg class="animate-spin h-5 w-5 mr-2 text-amber-400" viewBox="0 0 24 24" fill="none">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-      </svg> กำลังโหลด...
-    </div></div>
-  </div>`)
-  await _reload()
-
-  // ─── Auto-fill คอลัมน์ทักษะชีวิต (เฉพาะห้อง skill_group = 'ชีวิต') ─────────
-  document.getElementById('btn-fill-lifeskill')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-fill-lifeskill')
-    btn.disabled = true; btn.textContent = '⏳ กำลังเติม...'
-    try {
-      const cfg  = await getSystemConfig().catch(()=>({}))
-      const year = parseInt(cfg.academicYear ?? 2568)
-      const sem  = parseInt(cfg.semester ?? 1)
-      const lsCols = await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])
-      if (!lsCols.length) { showToast('ยังไม่มีหัวข้อทักษะชีวิต — ให้แอดมินเพิ่มก่อน', 'warning'); return }
-
-      // ตรวจว่ามีคอลัมน์กลางภาคอยู่แล้วไหม (ไม่ duplicate)
-      const existing = await getScoreColumns(classId)
-      const existingNames = new Set(existing.filter(c => c.assignment_type === 'กลางภาค').map(c => c.assignment_name))
-
-      let added = 0
-      for (const col of lsCols) {
-        if (existingNames.has(col.name)) continue
-        await createScoreColumn({
-          class_id:        classId,
-          assignment_name: col.name,
-          assignment_type: 'กลางภาค',
-          sheet_column:    col.sheet_col ?? '',
-          max_score:       col.max_score ?? 20,
-        })
-        added++
-      }
-      showToast(added > 0 ? `เพิ่ม ${added} คอลัมน์สำเร็จ ✅` : 'มีคอลัมน์ทักษะชีวิตอยู่แล้ว', added > 0 ? 'success' : 'info')
-      await _reload()
-    } catch (err) {
-      showToast('เติมไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-    } finally {
-      const b = document.getElementById('btn-fill-lifeskill')
-      if (b) { b.disabled = false; b.textContent = '🌱 เติมคะแนนทักษะชีวิต' }
-    }
-  })
-
-}
-
-// ─── Class Edit Form ──────────────────────────────────────────────────────────
-
-export async function renderClassEditForm(teacher, classData) {
-  setActiveNav('my-classes')
-  setTitle('แก้ไขห้องเรียน')
-  const ms       = classData.master_subjects
-  const skillOpts = SKILL_GROUPS[ms?.subject_group] ?? []
-  const autoSkill = skillOpts.length === 1
-  const classStudents = await getClassStudents(classData.id).catch(()=>[])
-  setContent(`<div class="max-w-2xl mx-auto animate-fade">
-    <div class="flex items-center gap-3 mb-6">
-      <button onclick="window._navTo?.('my-classes') || history.back()"
-        class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
-      <h2 class="text-lg font-bold text-gray-800">แก้ไขห้องเรียน</h2>
-    </div>
-    <!-- ข้อมูลคงที่ -->
-    <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-5">
-      <p class="text-xs text-emerald-500 font-medium mb-1">คอร์สวิชา / ห้องเรียน (เปลี่ยนไม่ได้)</p>
-      <p class="font-bold text-emerald-900">${ms?.subject_name??'—'}
-        <span class="font-mono text-sm ml-2 text-emerald-600">${ms?.subject_code??''}</span>
-      </p>
-      <p class="text-sm text-emerald-700 mt-0.5">ห้อง: <strong>${classData.class_name}</strong></p>
-    </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
-      <form id="cls-edit-form" class="space-y-5">
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">Google Sheet ID</label>
-          <input id="ce-sheet" type="text" value="${classData.google_sheet_id??''}"
-            placeholder="วาง ID จาก URL ของ Google Sheet" class="${INPUT_CLS}" />
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">กลุ่มทักษะ</label>
-          ${autoSkill
-            ? `<input type="text" value="${skillOpts[0]}" class="${INPUT_CLS} bg-gray-50" readonly />
-               <input type="hidden" id="ce-skill" value="${skillOpts[0]}" />`
-            : `<select id="ce-skill" class="${SELECT_CLS}">
-                 <option value="">— เลือกกลุ่มทักษะ —</option>
-                 ${skillOpts.map(s=>`<option value="${s}" ${s===classData.skill_group?'selected':''}>${s}</option>`).join('')}
-               </select>`}
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้าห้อง</label>
-          <select id="ce-head" class="${SELECT_CLS}">
-            <option value="">— ยังไม่ระบุหัวหน้าห้อง —</option>
-            ${classStudents.map(s => `
-              <option value="${s.id}" ${Number(classData.head_student_id) === Number(s.id) ? 'selected' : ''}>
-                ${s.full_name} (${s.student_code})
-              </option>`).join('')}
-          </select>
-          ${classStudents.length
-            ? '<p class="text-xs text-gray-400 mt-1">เลือกได้จากนักเรียนที่อยู่ในห้องนี้</p>'
-            : '<p class="text-xs text-amber-500 mt-1">ยังไม่พบนักเรียนในห้องนี้ จึงยังเลือกหัวหน้าห้องไม่ได้</p>'}
-        </div>
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-2">วันสอน 6 คาบแรก</label>
-          <div class="grid grid-cols-3 gap-2">
-            ${[1,2,3,4,5,6].map(n=>`
-            <div>
-              <p class="text-xs text-gray-400 mb-1">คาบที่ ${n}</p>
-              <input id="ce-day${n}" type="date"
-                value="${classData[`day${n}_date`]??''}" class="${INPUT_CLS} text-xs" />
-            </div>`).join('')}
-          </div>
-        </div>
-        <div class="flex gap-3 pt-2">
-          <button type="button"
-            onclick="window._navTo?.('my-classes') || history.back()"
-            class="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
-            ยกเลิก
-          </button>
-          <button id="ce-submit" type="submit"
-            class="btn-primary flex-1 py-3 rounded-xl text-white text-sm font-semibold">
-            บันทึกการแก้ไข
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>`)
-  document.getElementById('cls-edit-form').addEventListener('submit', async e => {
-    e.preventDefault()
-    const btn = document.getElementById('ce-submit')
-    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-    try {
-      await updateClass(classData.id, {
-        google_sheet_id: document.getElementById('ce-sheet').value.trim() || null,
-        skill_group:     document.getElementById('ce-skill').value || null,
-        head_student_id: document.getElementById('ce-head').value ? Number(document.getElementById('ce-head').value) : null,
-        day1_date: document.getElementById('ce-day1').value || null,
-        day2_date: document.getElementById('ce-day2').value || null,
-        day3_date: document.getElementById('ce-day3').value || null,
-        day4_date: document.getElementById('ce-day4').value || null,
-        day5_date: document.getElementById('ce-day5').value || null,
-        day6_date: document.getElementById('ce-day6').value || null,
-      })
-      showToast('บันทึกสำเร็จ', 'success')
-      if (window._navTo) window._navTo('my-classes')
-      else history.back()
-    } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
-    } finally {
-      btn.disabled = false; btn.textContent = 'บันทึกการแก้ไข'
-    }
-  })
-
-}
 
 // ─── Attendance Grid ──────────────────────────────────────────────────────────
 
@@ -6490,65 +5853,12 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     }
   }
 
-  // สีวิชา: โหลดจาก localStorage ถ้ามี (ครูปรับได้)
-  const COLOR_PRESETS = [
-    {bg:'bg-emerald-100',text:'text-emerald-800',hex:'#d1fae5'},
-    {bg:'bg-indigo-100', text:'text-indigo-800', hex:'#e0e7ff'},
-    {bg:'bg-amber-100',  text:'text-amber-800',  hex:'#fef3c7'},
-    {bg:'bg-rose-100',   text:'text-rose-800',   hex:'#ffe4e6'},
-    {bg:'bg-cyan-100',   text:'text-cyan-800',   hex:'#cffafe'},
-    {bg:'bg-violet-100', text:'text-violet-800', hex:'#ede9fe'},
-    {bg:'bg-lime-100',   text:'text-lime-800',   hex:'#ecfccb'},
-    {bg:'bg-orange-100', text:'text-orange-800', hex:'#ffedd5'},
-    {bg:'bg-pink-100',   text:'text-pink-800',   hex:'#fce7f3'},
-    {bg:'bg-teal-100',   text:'text-teal-800',   hex:'#ccfbf1'},
-    {bg:'bg-green-100',  text:'text-green-800',  hex:'#a3f9d7'},
-    {bg:'bg-brown-100',   text:'text-brown-800', hex:'#d7ccc8'},
-    {bg:'bg-gold-100',   text:'text-gold-800',   hex:'#ffecd2'},
-  ]
-  const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
-  let savedColors = {}
-  try { savedColors = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
-  const _scheduleColorKey = (subjectName, className, fallbackId = null) => {
-    const subj = String(subjectName ?? '').trim()
-    const cls  = String(className ?? '').trim()
-    if (subj && cls) return `${subj} — ${cls}`
-    if (subj) return subj
-    return fallbackId != null ? String(fallbackId) : ''
-  }
-
-  const subjectColorMap = {}
-  // โหลดสีจาก master_subjects
-  subjects.forEach((s, i) => {
-    const ci = savedColors[s.id] ?? savedColors[s.subject_name] ?? i % COLOR_PRESETS.length
-    const e = { cls: `${COLOR_PRESETS[ci].bg} ${COLOR_PRESETS[ci].text}`, idx: ci }
-    subjectColorMap[s.id] = e
-    if (s.subject_name) subjectColorMap[s.subject_name] = e
+  const _entryColor = (entry = {}, subj = null) => scheduleColorFor({
+    teacherId: teacher?.id,
+    className: entry.class_name,
+    subjectName: entry.subject_name ?? subj?.subject_name,
+    fallbackId: entry.subject_id ?? subj?.id,
   })
-  // เพิ่มสีจาก localStorage สำหรับชื่อวิชาจากตารางสอน (ที่ไม่ได้อยู่ใน master_subjects)
-  Object.entries(savedColors).forEach(([key, ci]) => {
-    if (!subjectColorMap[key]) {
-      const cp = COLOR_PRESETS[ci % COLOR_PRESETS.length]
-      subjectColorMap[key] = { cls: `${cp.bg} ${cp.text}`, idx: ci }
-    }
-  })
-  // กำหนดสีใหม่ให้ชื่อวิชาจาก schedule entries ที่ยังไม่มีสี
-  let autoColorIdx = subjects.length
-  scheduleData.forEach(entry => {
-    const key = _scheduleColorKey(entry.subject_name, entry.class_name, entry.subject_id)
-    if (key && !subjectColorMap[key]) {
-      const ci = autoColorIdx % COLOR_PRESETS.length
-      const cp = COLOR_PRESETS[ci]
-      subjectColorMap[key] = { cls: `${cp.bg} ${cp.text}`, idx: ci }
-      autoColorIdx++
-    }
-  })
-
-  const _saveColors = () => {
-    const map = {}
-    subjects.forEach(s => { if (subjectColorMap[s.id]) map[s.id] = subjectColorMap[s.id].idx })
-    localStorage.setItem(colorStorageKey, JSON.stringify(map))
-  }
 
   setContent(`<div class="max-w-full animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -6598,10 +5908,9 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
               const dispSubj  = entry?.subject_name ?? subj?.subject_name ?? null
               const dispClass = entry?.class_name   ?? null
               const dispTeach = entry?.teacher_name ?? null
-              // สี: แยกตามรายวิชา + ห้องเรียน เพื่อให้วิชาเดียวกันคนละห้องตั้งสีแยกได้
-              const colorKey  = _scheduleColorKey(dispSubj, dispClass, subj?.id)
-              const clrInfo   = colorKey ? (subjectColorMap[colorKey] ?? subjectColorMap[subj?.id] ?? null) : null
-              const clr       = clrInfo?.cls ?? (dispSubj ? 'bg-gray-100 text-gray-700' : '')
+              // สีล็อกตามครู+ห้องเรียน ให้คงที่ข้ามเครื่องและข้ามวัน
+              const clrInfo   = _entryColor(entry, subj)
+              const clr       = dispSubj ? clrInfo.cls : ''
               // height:1px บน td → ทำให้ h-full ของ child ทำงานใน table cell ได้
               return `<td class="border border-gray-100 p-0 cursor-pointer
                 hover:bg-indigo-50/30 transition-colors schedule-cell"
@@ -6626,24 +5935,37 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
       </table>
     </div>
 
-    <!-- Legend วิชา (รวม master_subjects + schedule entries) -->
+    <!-- Legend สีประจำห้อง -->
     ${(() => {
-      // รวมชื่อวิชาทั้งหมดที่มีในตาราง
-      const legendNames = new Set()
-      subjects.forEach(s => { if (s.subject_name) legendNames.add(s.subject_name) })
+      const legendItems = []
+      const seen = new Set()
       scheduleData.forEach(e => {
-        const key = _scheduleColorKey(e.subject_name, e.class_name, e.subject_id)
-        if (key) legendNames.add(key)
+        const subj = subjects.find(s => s.id === e.subject_id)
+        const key = scheduleColorKey({
+          teacherId: teacher?.id,
+          className: e.class_name,
+          subjectName: e.subject_name ?? subj?.subject_name,
+          fallbackId: e.subject_id,
+        })
+        if (seen.has(key)) return
+        seen.add(key)
+        legendItems.push({
+          label: scheduleColorLabel({
+            subjectName: e.subject_name ?? subj?.subject_name,
+            className: e.class_name,
+            fallbackId: e.subject_id,
+          }),
+          color: _entryColor(e, subj),
+        })
       })
-      if (!legendNames.size) return ''
+      if (!legendItems.length) return ''
       return `<div class="mt-4">
-        <p class="text-xs text-gray-400 mb-2">คลิกที่ชื่อวิชาเพื่อเปลี่ยนสี</p>
+        <p class="text-xs text-gray-400 mb-2">สีประจำห้องของครู (คงที่ทุกเครื่อง)</p>
         <div class="flex flex-wrap gap-2">
-          ${[...legendNames].map(name => `
-          <button type="button" class="legend-color-btn inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${subjectColorMap[name]?.cls ?? 'bg-gray-100 text-gray-600'}"
-            data-name="${name.replace(/"/g,'&quot;')}">
-            🎨 ${name}
-          </button>`).join('')}
+          ${legendItems.map(item => `
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${item.color.cls}">
+            🎨 ${item.label}
+          </span>`).join('')}
         </div>
       </div>`
     })()}
@@ -6659,7 +5981,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
       if (entry?._secondary) return
       _openSchedulePopup({
         teacher, dow, period, periods, subjects, entry,
-        academicYear, semester, subjectColorMap,
+        academicYear, semester,
         onSave: async (payload) => {
           await upsertScheduleEntry({ teacher_id: teacher.id, ...payload })
           await renderScheduleGrid(teacher, academicYear, semester, cfg)
@@ -6669,22 +5991,6 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
           await renderScheduleGrid(teacher, academicYear, semester, cfg)
         },
       })
-    })
-  })
-
-  // ─── เปลี่ยนสีวิชา (ทุกชื่อวิชาในตาราง) ─────────────────────────────────
-  document.querySelectorAll('.legend-color-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const name = btn.dataset.name
-      const cur  = subjectColorMap[name]?.idx ?? 0
-      const next = (cur + 1) % COLOR_PRESETS.length
-      const newEntry = { cls: `${COLOR_PRESETS[next].bg} ${COLOR_PRESETS[next].text}`, idx: next }
-      subjectColorMap[name] = newEntry
-      // บันทึกลง localStorage
-      const stored = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
-      stored[name] = next
-      localStorage.setItem(colorStorageKey, JSON.stringify(stored))
-      renderScheduleGrid(teacher, academicYear, semester, cfg)
     })
   })
 
@@ -6703,7 +6009,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
 }
 
 // ─── Popup กำหนดวิชาลงช่องตาราง (Group Card format) ─────────────────────────
-async function _openSchedulePopup({ teacher, dow, period, periods, subjects, entry, academicYear, semester, subjectColorMap, onSave, onDelete }) {
+async function _openSchedulePopup({ teacher, dow, period, periods, subjects, entry, academicYear, semester, onSave, onDelete }) {
   document.getElementById('sched-popup')?.remove()
 
   const allRooms   = await getUniqueRooms().catch(()=>[])
@@ -6714,33 +6020,13 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
   const PERIOD_NOS = periods.map(p => p.period_no)
   const p = periods.find(x => x.period_no === period)
 
-  const COLOR_PRESETS = [
-    {bg:'bg-emerald-100',text:'text-emerald-800',dot:'#10b981'},
-    {bg:'bg-indigo-100', text:'text-indigo-800', dot:'#6366f1'},
-    {bg:'bg-amber-100',  text:'text-amber-800',  dot:'#f59e0b'},
-    {bg:'bg-rose-100',   text:'text-rose-800',   dot:'#f43f5e'},
-    {bg:'bg-cyan-100',   text:'text-cyan-800',   dot:'#06b6d4'},
-    {bg:'bg-violet-100', text:'text-violet-800', dot:'#8b5cf6'},
-    {bg:'bg-lime-100',   text:'text-lime-800',   dot:'#84cc16'},
-    {bg:'bg-orange-100', text:'text-orange-800', dot:'#f97316'},
-    {bg:'bg-pink-100',   text:'text-pink-800',   dot:'#ec4899'},
-    {bg:'bg-teal-100',   text:'text-teal-800',   dot:'#14b8a6'},
-  ]
-  const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
-  let savedColors = {}
-  try { savedColors = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
-  const _scheduleColorKey = (subjectName, className, fallbackId = null) => {
-    const subj = String(subjectName ?? '').trim()
-    const cls  = String(className ?? '').trim()
-    if (subj && cls) return `${subj} — ${cls}`
-    if (subj) return subj
-    return fallbackId != null ? String(fallbackId) : ''
-  }
-
-  // กำหนดสีเริ่มต้น
   const initSubjName  = entry?.subject_name ?? (entry?.subject_id ? subjects.find(s=>s.id===entry.subject_id)?.subject_name ?? '' : '')
-  const initColorKey  = _scheduleColorKey(initSubjName, entry?.class_name, entry?.subject_id)
-  let colorIdx = savedColors[initColorKey] ?? savedColors[initSubjName] ?? savedColors[entry?.subject_id] ?? 0
+  const popupColor = scheduleColorFor({
+    teacherId: teacher?.id,
+    className: entry?.class_name,
+    subjectName: initSubjName,
+    fallbackId: entry?.subject_id,
+  })
 
   const subjSuggestions = subjects.map(s => `<option value="${s.subject_name}">`).join('')
   const roomSuggestions = allRoomList.map(r => `<option value="${r}">`).join('')
@@ -6758,7 +6044,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
   document.body.appendChild(wrap)
 
   function _render() {
-    const clr = COLOR_PRESETS[colorIdx]
+    const clr = popupColor
     wrap.innerHTML = `
       <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
         <!-- Header -->
@@ -6775,8 +6061,8 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
             <!-- Subject info -->
             <div class="px-4 py-3 flex items-start gap-3" style="background:${clr.dot}18">
               <button id="sp-color" type="button"
-                class="w-8 h-8 rounded-full flex-shrink-0 border-2 border-white shadow mt-0.5"
-                style="background:${clr.dot}" title="คลิกเปลี่ยนสี"></button>
+                class="w-8 h-8 rounded-full flex-shrink-0 border-2 border-white shadow mt-0.5 cursor-default"
+                style="background:${clr.dot}" title="สีประจำห้อง"></button>
               <div class="flex-1 space-y-1.5 min-w-0">
                 <div class="flex items-center gap-1.5">
                   <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา</span>
@@ -6850,9 +6136,6 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
     wrap.querySelector('#sp-close').addEventListener('click', () => wrap.remove())
     wrap.querySelector('#sp-cancel').addEventListener('click', () => wrap.remove())
 
-    wrap.querySelector('#sp-color').addEventListener('click', () => {
-      colorIdx = (colorIdx + 1) % COLOR_PRESETS.length; _render()
-    })
     wrap.querySelector('#sp-hide-teacher').addEventListener('click', () => {
       wrap.querySelector('#sp-teacher').value = ''
     })
@@ -6883,13 +6166,6 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
       const className = wrap.querySelector('#sp-class').value.trim()     || null
       const teachName = wrap.querySelector('#sp-teacher').value.trim()   || null
       const subjId    = subjects.find(s => s.subject_name === subjName)?.id ?? null
-
-      // บันทึกสีลง localStorage
-      if (subjName) {
-        const cm = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
-        cm[_scheduleColorKey(subjName, className, subjId)] = colorIdx
-        localStorage.setItem(colorStorageKey, JSON.stringify(cm))
-      }
 
       wrap.remove()
       await onSave({
@@ -6977,32 +6253,11 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
   // ─── State ────────────────────────────────────────────────────────────────
   let imgBase64 = null
   let imgMimeType = 'image/jpeg'
-  // groups: [{key, subject_name, class_name, teacher_name, subject_id, color_idx, sessions:[{dow,period,span}]}]
+  // groups: [{key, subject_name, class_name, teacher_name, subject_id, sessions:[{dow,period,span}]}]
   let groups = []
 
   const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
   const PERIOD_NOS = periods.map(p => p.period_no)
-  const colorStorageKey = `scheduleColors_${teacher?.id ?? 'x'}`
-  let colorMap = {}
-  try { colorMap = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}') } catch {}
-  const _scheduleColorKey = (subjectName, className) => {
-    const subj = String(subjectName ?? '').trim()
-    const cls  = String(className ?? '').trim()
-    return subj && cls ? `${subj} — ${cls}` : subj
-  }
-
-  const COLORS = [
-    {cls:'bg-emerald-100 text-emerald-800', dot:'#10b981'},
-    {cls:'bg-indigo-100 text-indigo-800',   dot:'#6366f1'},
-    {cls:'bg-amber-100 text-amber-800',     dot:'#f59e0b'},
-    {cls:'bg-rose-100 text-rose-800',       dot:'#f43f5e'},
-    {cls:'bg-cyan-100 text-cyan-800',       dot:'#06b6d4'},
-    {cls:'bg-violet-100 text-violet-800',   dot:'#8b5cf6'},
-    {cls:'bg-lime-100 text-lime-800',       dot:'#84cc16'},
-    {cls:'bg-orange-100 text-orange-800',   dot:'#f97316'},
-    {cls:'bg-pink-100 text-pink-800',       dot:'#ec4899'},
-    {cls:'bg-teal-100 text-teal-800',       dot:'#14b8a6'},
-  ]
 
   // ─── Render groups ────────────────────────────────────────────────────────
   function _renderGroups() {
@@ -7016,8 +6271,12 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
 
     container.innerHTML = ''
     groups.forEach((g, gi) => {
-      const ci  = g.color_idx ?? (gi % COLORS.length)
-      const clr = COLORS[ci]
+      const clr = scheduleColorFor({
+        teacherId: teacher?.id,
+        className: g.class_name,
+        subjectName: g.subject_name,
+        fallbackId: g.subject_id,
+      })
       const card = document.createElement('div')
       card.className = 'border-2 rounded-xl overflow-hidden vg-card'
       card.style.borderColor = clr.dot
@@ -7025,7 +6284,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         <!-- Group header -->
         <div class="px-4 py-3 flex items-start gap-3" style="background:${clr.dot}18">
           <button type="button" class="vg-color w-8 h-8 rounded-full flex-shrink-0 border-2 border-white shadow mt-0.5"
-            style="background:${clr.dot}" title="คลิกเปลี่ยนสี" data-gi="${gi}"></button>
+            style="background:${clr.dot}" title="สีประจำห้อง" data-gi="${gi}"></button>
           <div class="flex-1 space-y-1.5 min-w-0">
             <div class="flex items-center gap-1.5">
               <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา</span>
@@ -7096,13 +6355,6 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
     })
 
     // Bind events
-    container.querySelectorAll('.vg-color').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const gi = +btn.dataset.gi
-        groups[gi].color_idx = ((groups[gi].color_idx ?? gi) + 1) % COLORS.length
-        _renderGroups()
-      })
-    })
     container.querySelectorAll('.vg-subj-name').forEach(el =>
       el.addEventListener('input', () => { groups[+el.dataset.gi].subject_name = el.value }))
     container.querySelectorAll('.vg-class').forEach(el =>
@@ -7125,12 +6377,6 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         const origText = btn.textContent
         btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
         try {
-          // บันทึกสีลง localStorage
-          const newColorMap = JSON.parse(localStorage.getItem(colorStorageKey) ?? '{}')
-          const colorKey = _scheduleColorKey(g.subject_name, g.class_name)
-          if (colorKey) newColorMap[colorKey] = g.color_idx ?? 0
-          localStorage.setItem(colorStorageKey, JSON.stringify(newColorMap))
-
           await Promise.all(g.sessions.map(s => upsertScheduleEntry({
             teacher_id:   teacher.id,
             subject_id:   g.subject_id ?? null,
@@ -7145,7 +6391,17 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
           })))
           btn.textContent = '✅ บันทึกแล้ว'
           btn.style.background = '#16a34a'
-          setTimeout(() => { btn.disabled = false; btn.textContent = origText; btn.style.background = '' ; btn.style.background = COLORS[g.color_idx ?? 0]?.dot ?? '' }, 2000)
+          setTimeout(() => {
+            const nextColor = scheduleColorFor({
+              teacherId: teacher?.id,
+              className: g.class_name,
+              subjectName: g.subject_name,
+              fallbackId: g.subject_id,
+            })
+            btn.disabled = false
+            btn.textContent = origText
+            btn.style.background = nextColor.dot
+          }, 2000)
           // อัปเดตตารางหลังบ้านแบบ silent (ไม่ปิด popup)
           renderScheduleGrid(teacher, academicYear, semester, cfg).catch(()=>{})
         } catch (err) {
@@ -7241,9 +6497,8 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
       if (!jsonStr) { console.error('Raw:', text); throw new Error('AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง') }
 
       const raw = JSON.parse(jsonStr)
-      groups = raw.map((g, i) => ({
+      groups = raw.map(g => ({
         ...g,
-        color_idx: colorMap[_scheduleColorKey(g.subject_name, g.class_name)] ?? colorMap[g.subject_name ?? ''] ?? (i % COLORS.length),
         sessions: (g.sessions ?? []).map(s => ({ ...s })),
       }))
 
@@ -7263,7 +6518,7 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
   // เพิ่มกลุ่มวิชาใหม่เอง
   wrap.querySelector('#vision-add-group').addEventListener('click', () => {
     groups.push({ subject_name: '', class_name: '', teacher_name: '', subject_id: null,
-      color_idx: groups.length % COLORS.length, sessions: [{ day_of_week: 0, period_no: PERIOD_NOS[0] ?? 1, span_periods: 1 }] })
+      sessions: [{ day_of_week: 0, period_no: PERIOD_NOS[0] ?? 1, span_periods: 1 }] })
     wrap.querySelector('#vision-result').classList.remove('hidden')
     wrap.querySelector('#vision-save').classList.remove('hidden')
     _renderGroups()
@@ -7274,14 +6529,6 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
     const btn = wrap.querySelector('#vision-save')
     btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
     try {
-      // บันทึกสีลง localStorage
-      const newColorMap = {}
-      groups.forEach(g => {
-        const colorKey = _scheduleColorKey(g.subject_name, g.class_name)
-        if (colorKey) newColorMap[colorKey] = g.color_idx ?? 0
-      })
-      localStorage.setItem(colorStorageKey, JSON.stringify({...colorMap, ...newColorMap}))
-
       // flatten groups → entries
       const entries = []
       for (const g of groups) {
