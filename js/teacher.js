@@ -5,7 +5,9 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
          getPendingExamRequestCount,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests,
-         getTeacherPackageAccess, getMyDonationRequests } from './api.js'
+         getTeacherPackageAccess, getMyDonationRequests,
+         getMySchedule, getPeriods,
+         getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -1174,6 +1176,149 @@ async function loadSidebarHeader(teacher) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// ── ตรวจสอบการเชื่อมโยงตารางสอน ──────────────────────────────────────────────
+
+async function _checkScheduleLinkPopup() {
+  try {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const academicYear = parseInt(cfg.academicYear ?? 2568)
+    const semester     = parseInt(cfg.semester ?? 1)
+    const [classes, schedule, links] = await Promise.all([
+      getMyClasses(_teacher.id).catch(() => []),
+      getMySchedule(_teacher.id, academicYear, semester).catch(() => []),
+      getClassScheduleLinks(_teacher.id).catch(() => []),
+    ])
+    if (!classes.length) return
+    if (!schedule.length) { _showScheduleLinkPrompt('no_schedule'); return }
+    const linkedIds = new Set(links.map(l => l.class_id))
+    const unlinked  = classes.filter(c => !linkedIds.has(c.id)).length
+    if (unlinked > 0) _showScheduleLinkPrompt('has_unlinked', unlinked)
+  } catch {}
+}
+
+function _showScheduleLinkPrompt(type, count = 0) {
+  document.getElementById('sched-link-prompt')?.remove()
+  const isNoSchedule = type === 'no_schedule'
+  const wrap = document.createElement('div')
+  wrap.id = 'sched-link-prompt'
+  wrap.className = 'fixed inset-0 z-[85] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6'
+  wrap.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="bg-gradient-to-br ${isNoSchedule ? 'from-indigo-500 to-purple-500' : 'from-amber-400 to-orange-400'} px-6 py-6 text-center">
+        <div class="text-4xl mb-2">${isNoSchedule ? '🗓️' : '🔗'}</div>
+        <h3 class="text-white font-bold text-base">${isNoSchedule ? 'ยังไม่มีตารางสอน' : `มี ${count} ห้องที่ยังไม่เชื่อมโยง`}</h3>
+        <p class="text-white/80 text-xs mt-1">${isNoSchedule
+          ? 'สร้างตารางสอนเพื่อรับสิทธิ์การแจ้งเตือนและการเรียงห้อง'
+          : 'เชื่อมโยงห้องเรียนกับตารางสอนเพื่อใช้ฟีเจอร์เต็มประสิทธิภาพ'}</p>
+      </div>
+      <div class="p-6">
+        <div class="space-y-2 mb-5">
+          ${['แจ้งเตือนวันนี้สอนวิชาอะไร กี่โมง',
+             'Countdown นับถอยหลังก่อนเข้าสอน',
+             'เรียงห้องเรียนตามเวลาที่ใกล้ที่สุด',
+             'แสดงวัน/คาบบนการ์ดแต่ละห้อง',
+            ].map(t => `<p class="text-xs text-gray-500">✅ ${t}</p>`).join('')}
+        </div>
+        <button id="slp-go"
+          class="w-full py-3 rounded-2xl ${isNoSchedule ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-amber-500 hover:bg-amber-600'}
+                 text-white font-bold text-sm shadow-md transition mb-2">
+          ${isNoSchedule ? '🗓️ สร้างตารางสอนตอนนี้' : '🔗 ไปเชื่อมโยงห้องเรียน'}
+        </button>
+        <button id="slp-close"
+          class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition">
+          ภายหลัง
+        </button>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+  wrap.querySelector('#slp-go').addEventListener('click', () => {
+    wrap.remove()
+    window._navTo(isNoSchedule ? 'schedule-builder' : 'my-classes')
+  })
+  wrap.querySelector('#slp-close').addEventListener('click', () => wrap.remove())
+}
+
+window._openScheduleLinkModal = async (classId, className) => {
+  try {
+    showToast('กำลังโหลด...', 'info')
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const academicYear = parseInt(cfg.academicYear ?? 2568)
+    const semester     = parseInt(cfg.semester ?? 1)
+    const [schedule, links, periods] = await Promise.all([
+      getMySchedule(_teacher?.id, academicYear, semester).catch(() => []),
+      getClassScheduleLinks(_teacher?.id).catch(() => []),
+      getPeriods().catch(() => []),
+    ])
+    if (!schedule.length) {
+      showToast('ยังไม่มีตารางสอน กรุณาสร้างตารางสอนก่อนครับ', 'error')
+      return
+    }
+    const currentLinkedIds = new Set(links.filter(l => l.class_id === classId).map(l => l.teacher_schedule_id))
+    const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
+    const DAYS_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+
+    document.getElementById('sched-link-modal')?.remove()
+    const wrap = document.createElement('div')
+    wrap.id = 'sched-link-modal'
+    wrap.className = 'fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+    wrap.innerHTML = `
+      <div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh]">
+        <div class="flex justify-center pt-3 pb-1 sm:hidden"><div class="w-10 h-1 rounded-full bg-gray-200"></div></div>
+        <div class="px-5 pt-4 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
+          <button id="slm-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+          <div class="flex-1 min-w-0">
+            <h3 class="font-bold text-gray-800">🔗 เชื่อมโยงตารางสอน</h3>
+            <p class="text-xs text-gray-400 truncate">${className}</p>
+          </div>
+          <button id="slm-save" class="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition">
+            บันทึก
+          </button>
+        </div>
+        <div class="px-5 py-3 overflow-auto flex-1">
+          <p class="text-xs text-gray-400 mb-3">เลือกคาบสอนที่ตรงกับห้องนี้ (เลือกได้หลายคาบ)</p>
+          <div class="space-y-2">
+            ${schedule.map(s => {
+              const p = periodMap[s.period_no]
+              const time = p ? `${p.start_time.substring(0,5)}–${p.end_time.substring(0,5)}` : ''
+              const span = s.span_periods > 1 ? `–${s.period_no + s.span_periods - 1}` : ''
+              return `
+              <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer transition">
+                <input type="checkbox" class="slm-cb w-4 h-4 rounded accent-indigo-600" value="${s.id}" ${currentLinkedIds.has(s.id) ? 'checked' : ''} />
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-semibold text-gray-800">${DAYS_TH[s.day_of_week]} · คาบ ${s.period_no}${span}</p>
+                  <p class="text-xs text-gray-400">${time}${s.class_name ? ` · ${s.class_name}` : ''}</p>
+                </div>
+              </label>`
+            }).join('')}
+          </div>
+        </div>
+      </div>`
+    document.body.appendChild(wrap)
+    wrap.querySelector('#slm-close').addEventListener('click', () => wrap.remove())
+    wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove() })
+    wrap.querySelector('#slm-save').addEventListener('click', async () => {
+      const btn = wrap.querySelector('#slm-save')
+      btn.disabled = true; btn.textContent = '⏳'
+      try {
+        const checked   = [...wrap.querySelectorAll('.slm-cb:checked')].map(el => parseInt(el.value))
+        const unchecked = [...wrap.querySelectorAll('.slm-cb:not(:checked)')].map(el => parseInt(el.value))
+        await Promise.all([
+          ...checked.filter(id => !currentLinkedIds.has(id)).map(id => linkClassToSchedule(classId, id)),
+          ...unchecked.filter(id => currentLinkedIds.has(id)).map(id => unlinkClassFromSchedule(classId, id)),
+        ])
+        showToast('บันทึกการเชื่อมโยงแล้ว ✅', 'success')
+        wrap.remove()
+        window._navTo('my-classes')
+      } catch (e) {
+        showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึก'
+      }
+    })
+  } catch (e) {
+    showToast('โหลดข้อมูลไม่ได้: ' + (e.message ?? ''), 'error')
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const session = await requireAuth()
   if (!session) return
@@ -1185,6 +1330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
   _startPolling()              // polling 30 วิ
   if (_teacher?.id) _initDonationFlow(_teacher.id)
+  if (_teacher?.id) _checkScheduleLinkPopup()
 
   // Sidebar nav clicks
   document.querySelectorAll('[data-nav]').forEach(link => {

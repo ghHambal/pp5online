@@ -1005,6 +1005,40 @@ export async function getMyDonationRequests(teacherId) {
   return data ?? []
 }
 
+// ─── Class-Schedule Links ─────────────────────────────────────────────────────
+
+export async function getClassScheduleLinks(teacherId) {
+  if (!teacherId) return []
+  const { data: subjData } = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
+  const subjectIds = (subjData ?? []).map(s => s.id)
+  if (!subjectIds.length) return []
+  const { data: clsData } = await supabase.from('classes').select('id').in('course_id', subjectIds)
+  const classIds = (clsData ?? []).map(c => c.id)
+  if (!classIds.length) return []
+  const { data, error } = await supabase
+    .from('class_schedule_links')
+    .select('id, class_id, teacher_schedule_id')
+    .in('class_id', classIds)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function linkClassToSchedule(classId, scheduleId) {
+  const { error } = await supabase
+    .from('class_schedule_links')
+    .upsert({ class_id: classId, teacher_schedule_id: scheduleId }, { onConflict: 'class_id,teacher_schedule_id' })
+  if (error) throw error
+}
+
+export async function unlinkClassFromSchedule(classId, scheduleId) {
+  const { error } = await supabase
+    .from('class_schedule_links')
+    .delete()
+    .eq('class_id', classId)
+    .eq('teacher_schedule_id', scheduleId)
+  if (error) throw error
+}
+
 // ─── Teacher Schedules ────────────────────────────────────────────────────────
 export async function getMySchedule(teacherId, academicYear, semester) {
   const { data, error } = await supabase

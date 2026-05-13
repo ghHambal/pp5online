@@ -19,7 +19,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
          getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
          getTeacherExamRequests, reviewExamRequest, updateExamResult,
-         getTeacherPackageAccess } from './api.js'
+         getTeacherPackageAccess,
+         getClassScheduleLinks } from './api.js'
 import { supabase } from './supabase.js'
 
 import { uploadTeacherPhoto } from './storage.js'
@@ -137,6 +138,68 @@ function setActiveNav(nav) {
 
 // ─── View: Overview ───────────────────────────────────────────────────────────
 
+// ── Schedule-link helpers ─────────────────────────────────────────────────────
+
+const _DAYS_TH_SHORT = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
+const _DAYS_TH_FULL  = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+
+function _nextPeriodMins(classId, linksByClass, scheduleMap, periodMap) {
+  const now = new Date()
+  const dow = now.getDay()
+  const nowMins = now.getHours() * 60 + now.getMinutes()
+  const schedIds = linksByClass[classId] ?? []
+  if (!schedIds.length) return Infinity
+  let min = Infinity
+  for (const sid of schedIds) {
+    const slot = scheduleMap[sid]
+    if (!slot) continue
+    const p = periodMap[slot.period_no]
+    if (!p) continue
+    const [h, m] = p.start_time.split(':').map(Number)
+    const slotMins = h * 60 + m
+    let daysUntil = (slot.day_of_week - dow + 7) % 7
+    if (daysUntil === 0 && slotMins <= nowMins) daysUntil = 7
+    min = Math.min(min, daysUntil * 1440 + slotMins)
+  }
+  return min
+}
+
+function _scheduleChips(classId, linksByClass, scheduleMap, periodMap) {
+  const schedIds = linksByClass[classId] ?? []
+  if (!schedIds.length) return ''
+  return schedIds
+    .map(sid => {
+      const slot = scheduleMap[sid]
+      if (!slot) return ''
+      const p = periodMap[slot.period_no]
+      const span = slot.span_periods > 1 ? `–${slot.period_no + slot.span_periods - 1}` : ''
+      const time = p ? ` ${p.start_time.substring(0, 5)}` : ''
+      return `<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-white/80 text-indigo-700 text-xs rounded-lg font-medium border border-indigo-100">
+        ${_DAYS_TH_SHORT[slot.day_of_week]} คาบ${slot.period_no}${span}${time}
+      </span>`
+    })
+    .filter(Boolean)
+    .join('')
+}
+
+function _countdownInfo(startTime, endTime) {
+  if (!startTime) return { label: '—', cls: 'text-gray-400' }
+  const now = new Date()
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = (endTime ?? '23:59').split(':').map(Number)
+  const startMs = (sh * 60 + sm) * 60000
+  const endMs   = (eh * 60 + em) * 60000
+  const nowMs   = (now.getHours() * 60 + now.getMinutes()) * 60000
+  if (nowMs >= endMs)   return { label: 'เสร็จแล้ว', cls: 'text-gray-400' }
+  if (nowMs >= startMs) return { label: '🟢 กำลังสอน', cls: 'text-emerald-600 font-bold' }
+  const mins = Math.floor((startMs - nowMs) / 60000)
+  if (mins < 60) return { label: `⏰ อีก ${mins} นาที`, cls: mins <= 15 ? 'text-red-600 font-bold' : 'text-amber-600 font-semibold' }
+  const h = Math.floor(mins / 60), m = mins % 60
+  return { label: `อีก ${h} ชม.${m > 0 ? ` ${m} น.` : ''}`, cls: 'text-gray-500' }
+}
+
+let _todayWidgetTimer = null
+
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
   setTitle('ภาพรวม')
@@ -151,6 +214,31 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
+
+  if (_todayWidgetTimer) { clearInterval(_todayWidgetTimer); _todayWidgetTimer = null }
+
+  const [schedule, links, periods] = await Promise.all([
+    teacher ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
+    teacher ? getClassScheduleLinks(teacher.id).catch(() => []) : Promise.resolve([]),
+    getPeriods().catch(() => []),
+  ])
+
+  const _linksBySchedule = {}
+  links.forEach(l => {
+    if (!_linksBySchedule[l.teacher_schedule_id]) _linksBySchedule[l.teacher_schedule_id] = []
+    _linksBySchedule[l.teacher_schedule_id].push(l.class_id)
+  })
+  const _classMap   = Object.fromEntries(classes.map(c => [c.id, c]))
+  const _periodMap  = Object.fromEntries(periods.map(p => [p.period_no, p]))
+  const todayDow    = new Date().getDay()
+  const todayEntries = schedule
+    .filter(s => s.day_of_week === todayDow && (_linksBySchedule[s.id] ?? []).length > 0)
+    .map(s => ({
+      ...s,
+      linkedClasses: (_linksBySchedule[s.id] ?? []).map(id => _classMap[id]).filter(Boolean),
+      period: _periodMap[s.period_no],
+    }))
+    .sort((a, b) => a.period_no - b.period_no)
   const quota        = teacher?.teachers_quota
   const legacyUnlimited = quota?.is_paid && !quota?.package_type && !packageAccess.hasSemester && !packageAccess.paidRoomCount
   const hasSemester = packageAccess.hasSemester || quota?.package_type === 'semester' || legacyUnlimited
@@ -224,6 +312,55 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         <p class="text-xs text-gray-400 mt-0.5">ภาค ${semester} / ${academicYear} — คลิกเพื่อดูและแก้ไขตาราง</p>
       </div>
       <span class="text-gray-300 group-hover:text-indigo-400 transition text-lg">→</span>
+    </div>
+
+    <!-- Today's Classes Widget -->
+    <div id="today-widget" class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h4 class="font-semibold text-gray-700">📅 วันนี้ — ${_DAYS_TH_FULL[todayDow]}</h4>
+        ${schedule.length === 0
+          ? `<span class="text-[11px] text-gray-400">ยังไม่มีตารางสอน</span>`
+          : links.length === 0
+            ? `<span class="text-[11px] text-amber-500">ยังไม่เชื่อมโยงห้อง</span>`
+            : ''}
+      </div>
+      ${todayEntries.length === 0 ? `
+        <div class="text-center py-4 text-gray-300">
+          <p class="text-2xl mb-1">☕</p>
+          <p class="text-xs text-gray-400">${schedule.length === 0
+            ? 'สร้างตารางสอนเพื่อดูข้อมูลที่นี่'
+            : links.length === 0
+              ? 'เชื่อมโยงห้องเรียนกับตารางสอน'
+              : 'ไม่มีคาบสอนวันนี้'}</p>
+          ${schedule.length === 0
+            ? `<button onclick="window._navTo('schedule-builder')" class="mt-2 text-xs text-indigo-500 hover:underline">🗓️ สร้างตารางสอน</button>`
+            : links.length === 0
+              ? `<button onclick="window._navTo('my-classes')" class="mt-2 text-xs text-indigo-500 hover:underline">🔗 ไปเชื่อมโยงห้อง</button>`
+              : ''}
+        </div>` : `
+        <div class="space-y-2">
+          ${todayEntries.map((entry, i) => {
+            const cd = _countdownInfo(entry.period?.start_time, entry.period?.end_time)
+            const time = entry.period
+              ? `${entry.period.start_time.substring(0,5)}–${entry.period.end_time.substring(0,5)}`
+              : `คาบ ${entry.period_no}`
+            return `
+            <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+              <div class="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-600 flex-shrink-0">
+                ${entry.period_no}
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-semibold text-gray-700 truncate">
+                  ${entry.linkedClasses.map(c => c.master_subjects?.subject_name ?? c.class_name).join(', ')}
+                </p>
+                <p class="text-[11px] text-gray-400">
+                  ${entry.linkedClasses.map(c => c.class_name).join(', ')} · ${time}
+                </p>
+              </div>
+              <span id="today-cd-${i}" class="text-xs font-medium flex-shrink-0 ${cd.cls}">${cd.label}</span>
+            </div>`
+          }).join('')}
+        </div>`}
     </div>
 
     <!-- โควตาห้องเรียน -->
@@ -329,6 +466,19 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   document.getElementById('btn-upgrade-overview')?.addEventListener('click', () => {
     window._showQuotaFromOverview?.()
   })
+
+  // countdown อัปเดตทุก 30 วิ
+  if (todayEntries.length > 0) {
+    _todayWidgetTimer = setInterval(() => {
+      todayEntries.forEach((entry, i) => {
+        const el = document.getElementById(`today-cd-${i}`)
+        if (!el) { clearInterval(_todayWidgetTimer); return }
+        const cd = _countdownInfo(entry.period?.start_time, entry.period?.end_time)
+        el.textContent = cd.label
+        el.className = `text-xs font-medium flex-shrink-0 ${cd.cls}`
+      })
+    }, 30000)
+  }
 }
 
 // ─── View: My Courses ─────────────────────────────────────────────────────────
@@ -1882,6 +2032,21 @@ export async function renderMyClasses(teacher) {
       getSystemConfig().catch(() => ({})),
       teacher?.id ? getTeacherRoomColors(teacher.id).catch(() => []) : Promise.resolve([]),
     ])
+    const academicYear = parseInt(copyCfg.academicYear ?? 2568)
+    const semester     = parseInt(copyCfg.semester ?? 1)
+    const [schedule, links, periods] = await Promise.all([
+      teacher?.id ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
+      teacher?.id ? getClassScheduleLinks(teacher.id).catch(() => []) : Promise.resolve([]),
+      getPeriods().catch(() => []),
+    ])
+    const linksByClass  = {}
+    links.forEach(l => {
+      if (!linksByClass[l.class_id]) linksByClass[l.class_id] = []
+      linksByClass[l.class_id].push(l.teacher_schedule_id)
+    })
+    const scheduleMap = Object.fromEntries(schedule.map(s => [s.id, s]))
+    const periodMap   = Object.fromEntries(periods.map(p => [p.period_no, p]))
+
     const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
     window._classCache = Object.fromEntries(classes.map(c => [c.id, c]))
     const courseGroupMap = new Map()
@@ -1902,12 +2067,18 @@ export async function renderMyClasses(teacher) {
     const courseGroups = [...courseGroupMap.values()]
       .map(group => ({
         ...group,
-        classes: group.classes.sort((a, b) => String(a.class_name ?? '').localeCompare(String(b.class_name ?? ''), 'th')),
+        classes: group.classes.sort((a, b) => {
+          const aNext = _nextPeriodMins(a.id, linksByClass, scheduleMap, periodMap)
+          const bNext = _nextPeriodMins(b.id, linksByClass, scheduleMap, periodMap)
+          if (aNext !== bNext) return aNext - bNext
+          return String(a.class_name ?? '').localeCompare(String(b.class_name ?? ''), 'th')
+        }),
       }))
       .sort((a, b) => {
-        const aMs = a.masterSubject ?? {}
-        const bMs = b.masterSubject ?? {}
-        return String(aMs.subject_name ?? '').localeCompare(String(bMs.subject_name ?? ''), 'th')
+        const aNext = Math.min(...a.classes.map(c => _nextPeriodMins(c.id, linksByClass, scheduleMap, periodMap)))
+        const bNext = Math.min(...b.classes.map(c => _nextPeriodMins(c.id, linksByClass, scheduleMap, periodMap)))
+        if (aNext !== Infinity && bNext !== Infinity && aNext !== bNext) return aNext - bNext
+        return String(a.masterSubject?.subject_name ?? '').localeCompare(String(b.masterSubject?.subject_name ?? ''), 'th')
       })
     setContent(`<div class="max-w-5xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-5">
@@ -2004,9 +2175,26 @@ export async function renderMyClasses(teacher) {
                 </div>
               </div>
             </div>
+            <!-- ตารางสอน -->
+            <div class="mt-3 pt-3 border-t border-white/70">
+              ${(linksByClass[c.id] ?? []).length > 0 ? `
+              <div class="flex items-start gap-1.5 flex-wrap">
+                <span class="text-[10px] text-gray-400 mt-0.5 mr-0.5 flex-shrink-0">🔗</span>
+                ${_scheduleChips(c.id, linksByClass, scheduleMap, periodMap)}
+                <button onclick="window._openScheduleLinkModal(${c.id},'${c.class_name}')"
+                  class="text-[10px] px-2 py-0.5 rounded-lg border border-gray-200 text-gray-400 hover:text-indigo-500 hover:border-indigo-200 transition">
+                  แก้ไข
+                </button>
+              </div>` : `
+              <button onclick="window._openScheduleLinkModal(${c.id},'${c.class_name}')"
+                class="w-full py-2 rounded-xl border-2 border-dashed border-indigo-200 text-indigo-400 text-xs font-medium
+                       hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-600 transition flex items-center justify-center gap-1.5">
+                🔗 เชื่อมโยงตารางสอน
+              </button>`}
+            </div>
             <!-- วันสอน -->
             ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date].some(Boolean) ? `
-            <div class="mt-3 pt-3 border-t border-white/70 flex flex-wrap gap-2">
+            <div class="mt-2 flex flex-wrap gap-2">
               ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date]
                 .filter(Boolean)
                 .map((d,i)=>`<span class="text-xs bg-white/75 text-gray-500 px-2 py-1 rounded-lg">
