@@ -1840,9 +1840,9 @@ export async function renderProfile(teacher, onRefresh) {
           <input id="prof-name" type="text" value="${teacher?.full_name??''}" class="${INPUT_CLS}" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">อีเมลบัญชี</label>
-          <input id="prof-email" type="email" value="${teacher?.auth_email || teacher?.login_email || ''}" class="${INPUT_CLS}" />
-          <p class="text-[11px] text-gray-400 mt-1">ใช้เข้าสู่ระบบและใช้เป็นค่าเริ่มต้นตอนแชร์ไฟล์สำเนา Google Sheet ให้ครู</p>
+          <label class="block text-sm font-medium text-gray-700 mb-1">อีเมลติดต่อ</label>
+          <input id="prof-email" type="email" value="${teacher?.login_email || teacher?.auth_email || ''}" class="${INPUT_CLS}" />
+          <p class="text-[11px] text-gray-400 mt-1">ใช้เป็นค่าเริ่มต้นตอนแชร์ไฟล์ Google Sheet และสำหรับการแจ้งเตือนในอนาคต (บันทึกได้ทันที)</p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">ยูเซอร์เนมส่วนตัว</label>
@@ -1954,16 +1954,6 @@ export async function renderProfile(teacher, onRefresh) {
       }
       const photoFile = document.getElementById('prof-photo-file').files?.[0]
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
-      if (email && email !== (teacher.auth_email ?? '')) {
-        const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-        if (!validEmail) {
-          showToast('รูปแบบอีเมลไม่ถูกต้อง — ข้ามการเปลี่ยนอีเมล', 'warning')
-        } else {
-          const { error: emailErr } = await supabase.auth.updateUser({ email })
-          if (emailErr) showToast('เปลี่ยนอีเมลไม่สำเร็จ: ' + (emailErr.message ?? ''), 'warning')
-          else showToast('ส่งคำขอเปลี่ยนอีเมลแล้ว กรุณายืนยันอีเมลใหม่ถ้าระบบร้องขอ', 'info')
-        }
-      }
       await updateMyProfile(teacher.id, payload)
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
       if (onRefresh) await onRefresh(teacher.profile_id)
