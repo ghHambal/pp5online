@@ -1899,6 +1899,8 @@ export async function renderSettings() {
           { key:'loginColor',  label:'สีพื้นหลัง Login',  type:'color' },
           { key:'loginLogoUrl',label:'โลโก้หน้า Login',   type:'upload' },
           { key:'appColor',    label:'สีหลักของระบบ',     type:'color' },
+          { key:'studentLoginTitle',    label:'หัวข้อหลักหน้า Login นักเรียน', type:'text',
+            placeholder:'เข้าสู่ระบบนักเรียน' },
           { key:'studentLoginSubtitle', label:'Subtitle หน้า Login นักเรียน', type:'text',
             placeholder:'เช่น โรงเรียนมูลนิธิอาซิซสถาน',
             hint:'ถ้าไม่กรอก ระบบจะใช้ชื่อโรงเรียนจากแท็บ สถานศึกษา แทน' },
