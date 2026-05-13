@@ -1971,6 +1971,10 @@ export async function renderSettings() {
       ].join('')
 
       if (tabId === 'package') return [
+        section('การแจ้งเตือนก่อนเข้าสอน', [
+          { key:'notifyBeforeMinutes', label:'แจ้งเตือนก่อนเข้าสอนกี่นาที', type:'text', placeholder:'10',
+            hint:'ระบบจะแจ้งเตือน browser ก่อนถึงเวลาสอนตามจำนวนนาทีที่กำหนด (ต้องเชื่อมโยงตารางสอนก่อน)' },
+        ]),
         section('โหมดระบบโควตา', [
           { key:'quotaMode', label:'โหมดเมื่อครูครบโควตา', type:'select',
             options:[

@@ -1176,6 +1176,141 @@ async function loadSidebarHeader(teacher) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// ── Web Notifications ─────────────────────────────────────────────────────────
+
+async function _registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return
+  try {
+    await navigator.serviceWorker.register('/pp5online/sw.js', { scope: '/pp5online/' })
+  } catch {}
+}
+
+function _showNotifyPermissionBanner() {
+  if (document.getElementById('notify-banner')) return
+  const banner = document.createElement('div')
+  banner.id = 'notify-banner'
+  banner.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-[80] w-[90vw] max-w-sm bg-white rounded-2xl shadow-2xl border border-indigo-100 p-4 flex items-center gap-3 animate-fade'
+  banner.innerHTML = `
+    <div class="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-xl flex-shrink-0">🔔</div>
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-bold text-gray-800">เปิดการแจ้งเตือน?</p>
+      <p class="text-xs text-gray-400 mt-0.5">แจ้งก่อนเข้าสอนตามที่ตั้งค่าไว้</p>
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      <button id="notify-deny" class="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition">ไม่</button>
+      <button id="notify-allow" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold transition">เปิด</button>
+    </div>`
+  document.body.appendChild(banner)
+
+  banner.querySelector('#notify-deny').addEventListener('click', () => {
+    banner.remove()
+    localStorage.setItem('pp5_notify_dismissed', '1')
+  })
+  banner.querySelector('#notify-allow').addEventListener('click', async () => {
+    banner.remove()
+    const result = await Notification.requestPermission()
+    if (result === 'granted') {
+      showToast('เปิดการแจ้งเตือนแล้ว ✅', 'success')
+      if (_teacher?.id) await _scheduleClassNotifications(_teacher.id)
+    }
+  })
+
+  setTimeout(() => banner.remove(), 12000)
+}
+
+async function _scheduleClassNotifications(teacherId) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  try {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const notifyBefore = parseInt(cfg.notifyBeforeMinutes ?? 10)
+    const academicYear  = parseInt(cfg.academicYear ?? 2568)
+    const semester      = parseInt(cfg.semester ?? 1)
+
+    const [schedule, links, periods, classes] = await Promise.all([
+      getMySchedule(teacherId, academicYear, semester).catch(() => []),
+      getClassScheduleLinks(teacherId).catch(() => []),
+      getPeriods().catch(() => []),
+      getMyClasses(teacherId).catch(() => []),
+    ])
+
+    const now      = new Date()
+    const todayDow = now.getDay()
+    const nowMins  = now.getHours() * 60 + now.getMinutes()
+
+    const linksBySchedule = {}
+    links.forEach(l => {
+      if (!linksBySchedule[l.teacher_schedule_id]) linksBySchedule[l.teacher_schedule_id] = []
+      linksBySchedule[l.teacher_schedule_id].push(l.class_id)
+    })
+    const classMap  = Object.fromEntries(classes.map(c => [c.id, c]))
+    const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
+
+    // clear old timeouts
+    ;(window._notifyTimeouts ?? []).forEach(t => clearTimeout(t))
+    window._notifyTimeouts = []
+
+    const todayEntries = schedule
+      .filter(s => s.day_of_week === todayDow && (linksBySchedule[s.id] ?? []).length > 0)
+      .map(s => ({
+        ...s,
+        linkedClasses: (linksBySchedule[s.id] ?? []).map(id => classMap[id]).filter(Boolean),
+        period: periodMap[s.period_no],
+      }))
+
+    let scheduled = 0
+    for (const entry of todayEntries) {
+      if (!entry.period?.start_time) continue
+      const [h, m]    = entry.period.start_time.split(':').map(Number)
+      const startMins = h * 60 + m
+      const fireMins  = startMins - notifyBefore
+      const minsLeft  = fireMins - nowMins
+
+      if (minsLeft <= 0) continue
+
+      const subjectName = entry.linkedClasses[0]?.master_subjects?.subject_name ?? 'วิชา'
+      const classNames  = entry.linkedClasses.map(c => c.class_name).join(', ')
+      const timeStr     = entry.period.start_time.substring(0, 5)
+
+      const t = setTimeout(async () => {
+        const sw = await navigator.serviceWorker?.ready.catch(() => null)
+        const opts = {
+          body:             `${subjectName} · ${classNames}\nคาบ ${entry.period_no} เวลา ${timeStr}`,
+          icon:             '/pp5online/vite.svg',
+          badge:            '/pp5online/vite.svg',
+          tag:              `class-${entry.id}-${fireMins}`,
+          requireInteraction: false,
+          silent:           false,
+        }
+        if (sw) {
+          sw.showNotification(`🔔 อีก ${notifyBefore} นาที — คาบถัดไป`, opts)
+        } else {
+          new Notification(`🔔 อีก ${notifyBefore} นาที — คาบถัดไป`, opts)
+        }
+      }, minsLeft * 60000)
+
+      window._notifyTimeouts.push(t)
+      scheduled++
+    }
+
+    if (scheduled > 0) {
+      showToast(`ตั้งแจ้งเตือน ${scheduled} คาบสำหรับวันนี้ 🔔`, 'info')
+    }
+  } catch {}
+}
+
+async function _initNotifications(teacherId) {
+  if (!('Notification' in window)) return
+  await _registerServiceWorker()
+  if (Notification.permission === 'granted') {
+    await _scheduleClassNotifications(teacherId)
+  } else if (Notification.permission === 'default') {
+    const dismissed = localStorage.getItem('pp5_notify_dismissed')
+    if (!dismissed) {
+      setTimeout(_showNotifyPermissionBanner, 2000)
+    }
+  }
+}
+
 // ── ตรวจสอบการเชื่อมโยงตารางสอน ──────────────────────────────────────────────
 
 async function _checkScheduleLinkPopup() {
@@ -1448,6 +1583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _startPolling()              // polling 30 วิ
   if (_teacher?.id) _initDonationFlow(_teacher.id)
   if (_teacher?.id) _checkScheduleLinkPopup()
+  if (_teacher?.id) _initNotifications(_teacher.id)
 
   // Sidebar nav clicks
   document.querySelectorAll('[data-nav]').forEach(link => {
