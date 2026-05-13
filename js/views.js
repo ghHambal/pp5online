@@ -21,7 +21,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          fillPrayerScoresToReligionClassScores,
          getCurriculumStandards, createCurriculumStandard, updateCurriculumStandard,
          deleteCurriculumStandard, importCurriculumStandards,
-         getUsageStats } from './api.js'
+         getUsageStats,
+         getClassrooms, createClassroom, updateClassroom, deleteClassroom } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -5918,4 +5919,178 @@ export async function renderUsageStats() {
 
   await load()
   document.getElementById('stat-refresh')?.addEventListener('click', load)
+}
+
+// ─── Classrooms Admin ─────────────────────────────────────────────────────────
+export async function renderClassroomsAdmin() {
+  const setContent = html => { document.getElementById('main-content').innerHTML = html }
+  const setActive  = nav => document.querySelectorAll('[data-nav]').forEach(el => {
+    el.classList.toggle('bg-indigo-800', el.dataset.nav === nav)
+    el.classList.toggle('text-white', el.dataset.nav === nav)
+    el.classList.toggle('text-indigo-200', el.dataset.nav !== nav)
+  })
+  setActive('classrooms-admin')
+  document.getElementById('page-title').textContent = 'ห้องเรียน/แผนผัง'
+
+  const BUILDINGS = ['อาคาร 1','อาคาร 2','อาคาร 3','อาคาร 4','อาคาร 5','อาคาร 6']
+
+  const _reload = async () => {
+    const all = await getClassrooms()
+    const grouped = BUILDINGS.map(b => ({ building: b, rooms: all.filter(r => r.building === b) }))
+    const otherBuildings = [...new Set(all.map(r => r.building).filter(b => !BUILDINGS.includes(b)))]
+    otherBuildings.forEach(b => grouped.push({ building: b, rooms: all.filter(r => r.building === b) }))
+
+    document.getElementById('crm-content').innerHTML = grouped.filter(g => g.rooms.length > 0).map(g => `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50 bg-gray-50/50">
+          <h3 class="font-bold text-gray-700">🏫 ${g.building}
+            <span class="text-xs font-normal text-gray-400 ml-1">${g.rooms.length} ห้อง</span>
+          </h3>
+          <button class="crm-add-btn text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+            data-building="${g.building}">＋ เพิ่มห้อง</button>
+        </div>
+        <div class="divide-y divide-gray-50">
+          ${g.rooms.map(r => `
+          <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-gray-50 transition" data-id="${r.id}">
+            <span class="w-20 font-mono text-sm font-semibold text-indigo-700 flex-shrink-0">${r.room_number}</span>
+            <span class="flex-1 text-sm text-gray-700">${r.name ?? '—'}</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full ${r.is_teaching_room ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">
+              ${r.is_teaching_room ? 'ห้องเรียน' : 'ห้องพิเศษ'}
+            </span>
+            <button class="crm-edit-btn text-xs text-indigo-400 hover:text-indigo-700 px-2" data-id="${r.id}">แก้ไข</button>
+            <button class="crm-del-btn text-xs text-red-400 hover:text-red-600 px-1" data-id="${r.id}">ลบ</button>
+          </div>`).join('')}
+        </div>
+      </div>`).join('')
+
+    // bind events
+    document.querySelectorAll('.crm-add-btn').forEach(btn => {
+      btn.addEventListener('click', () => _openForm(null, btn.dataset.building, all))
+    })
+    document.querySelectorAll('.crm-edit-btn').forEach(btn => {
+      const room = all.find(r => r.id === parseInt(btn.dataset.id))
+      if (room) btn.addEventListener('click', () => _openForm(room, room.building, all))
+    })
+    document.querySelectorAll('.crm-del-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const room = all.find(r => r.id === parseInt(btn.dataset.id))
+        _confirmDelete(room)
+      })
+    })
+  }
+
+  const _confirmDelete = (room) => {
+    document.getElementById('crm-confirm')?.remove()
+    const el = document.createElement('div')
+    el.id = 'crm-confirm'
+    el.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-6'
+    el.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+      <div class="text-3xl mb-3">🗑️</div>
+      <h4 class="font-bold text-gray-800 mb-2">ลบห้อง ${room?.room_number}?</h4>
+      <p class="text-xs text-gray-400 mb-5">${room?.building}${room?.name ? ' · ' + room.name : ''}</p>
+      <div class="flex gap-3">
+        <button id="crm-conf-no" class="flex-1 py-2.5 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button id="crm-conf-yes" class="flex-1 py-2.5 rounded-2xl bg-red-500 text-white text-sm font-bold hover:bg-red-600">ลบ</button>
+      </div>
+    </div>`
+    document.body.appendChild(el)
+    el.querySelector('#crm-conf-no').addEventListener('click', () => el.remove())
+    el.querySelector('#crm-conf-yes').addEventListener('click', async () => {
+      el.remove()
+      try {
+        await deleteClassroom(room.id)
+        showToast('ลบห้องแล้ว ✅', 'success')
+        _reload()
+      } catch (e) { showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+    })
+  }
+
+  const _openForm = (room, defaultBuilding, all) => {
+    document.getElementById('crm-modal')?.remove()
+    const buildings = [...new Set(['อาคาร 1','อาคาร 2','อาคาร 3','อาคาร 4','อาคาร 5','อาคาร 6',
+      ...all.map(r => r.building)])]
+    const modal = document.createElement('div')
+    modal.id = 'crm-modal'
+    modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4'
+    modal.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+      <h3 class="font-bold text-gray-800 mb-4">${room ? 'แก้ไขห้อง' : 'เพิ่มห้องใหม่'}</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">อาคาร <span class="text-red-400">*</span></label>
+          <select id="crm-building" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white">
+            ${buildings.map(b => `<option value="${b}" ${b === (room?.building ?? defaultBuilding) ? 'selected' : ''}>${b}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">หมายเลขห้อง <span class="text-red-400">*</span></label>
+          <input id="crm-number" type="text" value="${room?.room_number ?? ''}" placeholder="เช่น 531, 212-213"
+            class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm font-mono" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">ชื่อห้อง (ถ้ามี)</label>
+          <input id="crm-name" type="text" value="${room?.name ?? ''}" placeholder="เช่น ห้องสมุด, ห้องพักครู"
+            class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div class="flex items-center gap-3">
+          <input type="checkbox" id="crm-teaching" class="w-4 h-4 accent-emerald-600 rounded"
+            ${(room?.is_teaching_room ?? true) ? 'checked' : ''} />
+          <label for="crm-teaching" class="text-sm text-gray-700">เป็นห้องเรียน (ครูสามารถเลือกได้)</label>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button id="crm-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="crm-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
+        </div>
+      </div>
+    </div>`
+    document.body.appendChild(modal)
+    modal.querySelector('#crm-cancel').addEventListener('click', () => modal.remove())
+    modal.querySelector('#crm-save').addEventListener('click', async () => {
+      const btn = modal.querySelector('#crm-save')
+      const building = modal.querySelector('#crm-building').value
+      const number   = modal.querySelector('#crm-number').value.trim()
+      const name     = modal.querySelector('#crm-name').value.trim() || null
+      const teaching = modal.querySelector('#crm-teaching').checked
+      if (!building || !number) { showToast('กรุณากรอกอาคารและหมายเลขห้อง', 'warning'); return }
+      btn.disabled = true; btn.textContent = '⏳'
+      try {
+        if (room) {
+          await updateClassroom(room.id, { building, room_number: number, name, is_teaching_room: teaching })
+        } else {
+          await createClassroom({ building, room_number: number, name, is_teaching_room: teaching })
+        }
+        showToast(room ? 'แก้ไขแล้ว ✅' : 'เพิ่มห้องแล้ว ✅', 'success')
+        modal.remove()
+        _reload()
+      } catch (e) {
+        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึก'
+      }
+    })
+  }
+
+  setContent(`<div class="max-w-3xl mx-auto animate-fade">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">🚪 ห้องเรียน / แผนผังอาคาร</h2>
+        <p class="text-xs text-gray-400 mt-0.5">จัดการหมายเลขห้องสำหรับครูเลือกระบุ</p>
+      </div>
+      <button id="crm-add-new" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
+        ＋ เพิ่มห้องใหม่
+      </button>
+    </div>
+    <div id="crm-content">
+      <div class="flex justify-center py-8 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
+  </div>`)
+
+  await _reload()
+  document.getElementById('crm-add-new')?.addEventListener('click', async () => {
+    const all = await getClassrooms().catch(() => [])
+    _openForm(null, 'อาคาร 1', all)
+  })
 }

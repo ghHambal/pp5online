@@ -1016,6 +1016,22 @@ export async function getClassrooms() {
   return data ?? []
 }
 
+export async function createClassroom(payload) {
+  const { data, error } = await supabase.from('classrooms').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateClassroom(id, payload) {
+  const { error } = await supabase.from('classrooms').update(payload).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteClassroom(id) {
+  const { error } = await supabase.from('classrooms').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function assignClassroom(classId, classroomId) {
   const { error } = await supabase
     .from('classes')
