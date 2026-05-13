@@ -9,6 +9,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   
   <link rel="stylesheet" href="/css/main.css" />
+  <style>
+    /* ซ่อน scrollbar ของ sidebar nav — คงเลื่อนได้แต่ไม่มีแถบ */
+    #sidebar nav::-webkit-scrollbar { display: none; }
+    #sidebar nav { scrollbar-width: none; -ms-overflow-style: none; }
+  </style>
 </head>
 
 <body class="bg-gray-50 flex h-screen overflow-hidden">
