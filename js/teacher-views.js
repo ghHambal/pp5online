@@ -5,7 +5,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          updateSubject, deleteSubject,
          getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
          getScoreColumnConfig, saveAttendance, getAttendanceByDate,
-         getClassStudents, getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
+         getClassStudents, getClassRosterStudents, getStudentByCode, addStudentToClass,
+         updateClassStudentActive, getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
          getPrayerRecords, savePrayerRecords, savePrayerCell,
          getStudentScores, saveStudentScore,
          getSheetColumnOptions, detectAssignmentKind, colTypeToThai,
@@ -27,7 +28,7 @@ import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { showToast } from './ui.js'
 import { renderClassEditForm } from './teacher-class-forms.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
-import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey, scheduleColorKey, scheduleColorLabel } from './teacher-schedule-colors.js'
+import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
 
@@ -1946,7 +1947,6 @@ export async function renderMyClasses(teacher) {
             subjectName: ms?.subject_name,
             fallbackId: c.id,
           }
-          const colorKey = roomColorKey(colorInput)
           const classColor = resolveScheduleColor(colorInput, roomColorMap)
           const groupBadge = isReligionGroup
             ? { text: 'กลุ่มวิชาศาสนา', cls: 'bg-amber-50 text-amber-700' }
@@ -1968,16 +1968,6 @@ export async function renderMyClasses(teacher) {
                 </div>
                 <h3 class="font-bold text-gray-800 text-base">${ms?.subject_name??'—'}</h3>
                 <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.text}">${c.class_name}</span></p>
-                <div class="mt-2 flex flex-wrap gap-1.5" aria-label="เลือกสีประจำห้อง">
-                  ${SCHEDULE_COLOR_PRESETS.map(p => `
-                  <button type="button"
-                    class="my-class-color-chip w-5 h-5 rounded-full border-2 ${p.dot.toLowerCase() === classColor.dot.toLowerCase() ? 'border-gray-700' : 'border-white'} shadow-sm"
-                    style="background:${p.dot}"
-                    data-room-key="${_htmlEsc(colorKey)}"
-                    data-class-name="${_htmlEsc(c.class_name)}"
-                    data-color="${p.dot}"
-                    title="เลือกสี ${_htmlEsc(c.class_name)}"></button>`).join('')}
-                </div>
               </div>
               <!-- Actions -->
               <div class="flex flex-col gap-1.5 flex-shrink-0">
@@ -1988,6 +1978,10 @@ export async function renderMyClasses(teacher) {
                 <button onclick="window._openGrades(${c.id})"
                   class="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition text-center">
                   📝 คะแนน
+                </button>
+                <button onclick="window._openStudentManager(${c.id})"
+                  class="px-3 py-1.5 bg-sky-600 text-white text-xs font-medium rounded-lg hover:bg-sky-700 transition text-center">
+                  👥 จัดการนักเรียน
                 </button>
                 ${c.google_sheet_id ? `
                 <button onclick="window._openSheetToolsModal(${c.id})"
@@ -2050,24 +2044,6 @@ export async function renderMyClasses(teacher) {
         renderMyClasses(teacher)
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
     }
-
-    document.querySelectorAll('.my-class-color-chip').forEach(btn => {
-      btn.addEventListener('click', async (ev) => {
-        ev.stopPropagation()
-        try {
-          await saveTeacherRoomColor({
-            teacher_id: teacher.id,
-            room_key: btn.dataset.roomKey,
-            class_name: btn.dataset.className,
-            color_hex: btn.dataset.color,
-          })
-          showToast('บันทึกสีห้องแล้ว', 'success')
-          renderMyClasses(teacher)
-        } catch (err) {
-          showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'error')
-        }
-      })
-    })
 
     const _openPrintableRoster = async (cls, type, orientation = 'landscape') => {
       const win = window.open('', '_blank')
@@ -2273,6 +2249,196 @@ export async function renderMyClasses(teacher) {
       })
     }
 
+    window._openStudentManager = async (classId) => {
+      const cls = window._classCache?.[classId]
+      if (!cls) return
+      setActiveNav('my-classes')
+      setTitle('จัดการนักเรียน')
+      setContent(`<div class="flex justify-center py-12 text-gray-400">
+        <svg class="animate-spin h-6 w-6 mr-3 text-sky-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลดรายชื่อนักเรียน...
+      </div>`)
+      try {
+        const students = await getClassRosterStudents(classId)
+        const viewKey = `classRosterView_${classId}`
+        const viewMode = localStorage.getItem(viewKey) || 'table'
+        const activeCount = students.filter(s => s.is_active).length
+        const ms = cls.master_subjects ?? {}
+        const avatar = (s, size = 'w-10 h-10') => s.image_url
+          ? `<img src="${_htmlEsc(s.image_url)}" class="${size} rounded-full object-cover bg-gray-100" loading="lazy" />`
+          : `<div class="${size} rounded-full bg-sky-100 text-sky-700 flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').trim().slice(0,1))}</div>`
+        const toggle = s => `
+          <button type="button" class="student-active-toggle relative inline-flex h-7 w-12 items-center rounded-full transition ${s.is_active ? 'bg-emerald-500' : 'bg-gray-300'}"
+            data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" aria-label="เปิดปิดสถานะเรียน">
+            <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${s.is_active ? 'translate-x-6' : 'translate-x-1'}"></span>
+          </button>`
+        const tableRows = students.map((s, i) => `
+          <tr class="${s.is_active ? 'bg-white' : 'bg-gray-50 text-gray-400'}">
+            <td class="px-3 py-2 text-center text-xs text-gray-400">${i + 1}</td>
+            <td class="px-3 py-2">${avatar(s)}</td>
+            <td class="px-3 py-2 font-mono text-sm">${_htmlEsc(s.student_code)}</td>
+            <td class="px-3 py-2">
+              <p class="font-semibold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
+              <p class="text-xs text-gray-400">${_htmlEsc(s.main_room || s.religion_room || '—')}</p>
+            </td>
+            <td class="px-3 py-2 text-center">${toggle(s)}</td>
+          </tr>`).join('')
+        const gridCards = students.map(s => `
+          <div class="rounded-2xl border ${s.is_active ? 'border-gray-100 bg-white' : 'border-gray-100 bg-gray-50 opacity-75'} p-4 shadow-sm">
+            <div class="flex items-start justify-between gap-3">
+              ${avatar(s, 'w-14 h-14')}
+              ${toggle(s)}
+            </div>
+            <p class="mt-3 font-bold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
+            <p class="text-xs font-mono text-sky-700 mt-0.5">${_htmlEsc(s.student_code)}</p>
+            <p class="text-xs text-gray-400 mt-0.5">${_htmlEsc(s.main_room || s.religion_room || '—')}</p>
+          </div>`).join('')
+
+        setContent(`<div class="max-w-6xl mx-auto animate-fade">
+          <div class="flex items-center gap-3 mb-5">
+            <button id="students-back" class="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">← กลับ</button>
+            <div class="min-w-0">
+              <h2 class="text-lg font-bold text-gray-800">จัดการนักเรียน</h2>
+              <p class="text-xs text-gray-400 mt-0.5 truncate">${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-700">ทั้งหมด ${students.length} คน · กำลังเรียน ${activeCount} คน</p>
+                <p class="text-xs text-gray-400 mt-0.5">ปิดสถานะเมื่อนักเรียนออกกลางคัน ระบบจะไม่ดึงไปเช็คชื่อ/ใบรายชื่อ</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <div class="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+                  <button class="student-view-toggle px-3 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'table' ? 'bg-white text-sky-700 shadow' : 'text-gray-500'}" data-view="table">ตาราง</button>
+                  <button class="student-view-toggle px-3 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'grid' ? 'bg-white text-sky-700 shadow' : 'text-gray-500'}" data-view="grid">กริด</button>
+                </div>
+                <button id="students-add" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700">＋ เพิ่มนักเรียน</button>
+                <button id="students-roster" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700">🖨️ สร้างใบรายชื่อ</button>
+              </div>
+            </div>
+            ${!students.length ? `
+              <div class="p-12 text-center text-gray-400">
+                <p class="text-4xl mb-3">👥</p>
+                <p class="font-medium">ยังไม่มีนักเรียนในรายวิชานี้</p>
+              </div>` : viewMode === 'grid' ? `
+              <div class="p-4 grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                ${gridCards}
+              </div>` : `
+              <div class="overflow-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50 text-gray-500">
+                    <tr>
+                      <th class="px-3 py-2 text-center w-12">#</th>
+                      <th class="px-3 py-2 text-left w-16">รูป</th>
+                      <th class="px-3 py-2 text-left w-28">รหัส</th>
+                      <th class="px-3 py-2 text-left">นักเรียน</th>
+                      <th class="px-3 py-2 text-center w-28">กำลังเรียน</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-50">${tableRows}</tbody>
+                </table>
+              </div>`}
+          </div>
+        </div>`)
+
+        const refresh = () => window._openStudentManager(classId)
+        document.getElementById('students-back')?.addEventListener('click', () => renderMyClasses(teacher))
+        document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
+        document.querySelectorAll('.student-view-toggle').forEach(btn => {
+          btn.addEventListener('click', () => {
+            localStorage.setItem(viewKey, btn.dataset.view)
+            refresh()
+          })
+        })
+        document.querySelectorAll('.student-active-toggle').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true
+            try {
+              await updateClassStudentActive(btn.dataset.enrollmentId, btn.dataset.next === 'true')
+              showToast('อัปเดตสถานะนักเรียนแล้ว', 'success')
+              refresh()
+            } catch (err) {
+              btn.disabled = false
+              showToast('อัปเดตสถานะไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            }
+          })
+        })
+        document.getElementById('students-add')?.addEventListener('click', () => {
+          document.getElementById('add-student-modal')?.remove()
+          const modal = document.createElement('div')
+          modal.id = 'add-student-modal'
+          modal.className = 'fixed inset-0 z-[90] bg-white flex flex-col'
+          modal.innerHTML = `<div class="p-5 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 class="text-xl font-bold text-gray-800">เพิ่มนักเรียนเข้ารายวิชา</h3>
+              <p class="text-xs text-gray-400 mt-1">${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+            </div>
+            <button id="add-student-close" class="text-3xl text-gray-400 hover:text-gray-600">×</button>
+          </div>
+          <div class="flex-1 overflow-auto p-5 max-w-2xl w-full mx-auto">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">รหัสนักเรียน</label>
+            <input id="add-student-code" class="${INPUT_CLS} text-lg font-mono" placeholder="เช่น 26826" autocomplete="off" autofocus />
+            <div id="add-student-result" class="mt-5"></div>
+          </div>`
+          document.body.appendChild(modal)
+          const result = modal.querySelector('#add-student-result')
+          let found = null
+          let timer = null
+          const renderResult = (html) => { result.innerHTML = html }
+          const lookup = async () => {
+            const code = modal.querySelector('#add-student-code').value.trim()
+            found = null
+            if (!code) { renderResult(''); return }
+            renderResult('<p class="text-sm text-gray-400">กำลังค้นหา...</p>')
+            try {
+              const s = await getStudentByCode(code)
+              if (!s) {
+                renderResult('<div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">ไม่พบนักเรียนรหัสนี้</div>')
+                return
+              }
+              found = s
+              renderResult(`<div class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm flex items-center gap-4">
+                ${avatar(s, 'w-16 h-16')}
+                <div class="flex-1 min-w-0">
+                  <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name)}</p>
+                  <p class="text-sm font-mono text-sky-700">${_htmlEsc(s.student_code)}</p>
+                  <p class="text-xs text-gray-400">${_htmlEsc(s.main_room || s.religion_room || '—')}</p>
+                </div>
+                <button id="add-student-confirm" class="px-4 py-2 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">เพิ่ม</button>
+              </div>`)
+              modal.querySelector('#add-student-confirm')?.addEventListener('click', async () => {
+                try {
+                  await addStudentToClass(classId, found.id)
+                  showToast('เพิ่มนักเรียนแล้ว', 'success')
+                  modal.remove()
+                  refresh()
+                } catch (err) {
+                  showToast('เพิ่มนักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+                }
+              })
+            } catch (err) {
+              renderResult(`<div class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">${_htmlEsc(err.message ?? 'ค้นหาไม่สำเร็จ')}</div>`)
+            }
+          }
+          modal.querySelector('#add-student-close').addEventListener('click', () => modal.remove())
+          modal.querySelector('#add-student-code').addEventListener('input', () => {
+            clearTimeout(timer)
+            timer = setTimeout(lookup, 350)
+          })
+          modal.querySelector('#add-student-code').addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); lookup() }
+          })
+          setTimeout(() => modal.querySelector('#add-student-code')?.focus(), 50)
+        })
+      } catch (err) {
+        showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        renderMyClasses(teacher)
+      }
+    }
+
     window._openClassCopyModal = (classId) => {
       const cls = window._classCache?.[classId]
       if (!cls) return
@@ -2385,10 +2551,6 @@ export async function renderMyClasses(teacher) {
           <button id="btn-share-sheet" class="w-full text-left px-4 py-3 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-sm font-semibold">🔓 เปิดสิทธิ์ให้ทุกคนที่มีลิงก์ดูชีทได้</button>
           <button id="btn-open-sheet" class="w-full text-left px-4 py-3 rounded-xl border border-blue-100 bg-blue-50 text-blue-800 hover:bg-blue-100 text-sm font-semibold">📊 เปิดชีท</button>
           <button id="btn-copy-sheet" class="w-full text-left px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 text-sm font-semibold">🔗 คัดลอกลิงก์ชีท</button>
-          <div class="pt-3 mt-3 border-t border-gray-100">
-            <p class="text-xs font-semibold text-gray-500 mb-2">ใบรายชื่อนักเรียน</p>
-            <button id="btn-roster-menu" class="w-full text-left px-4 py-3 rounded-xl border border-violet-100 bg-violet-50 text-violet-800 hover:bg-violet-100 text-sm font-semibold">🖨️ สร้างใบรายชื่อ</button>
-          </div>
           <button id="btn-open-sync" class="w-full text-left px-4 py-3 rounded-xl border border-teal-100 bg-teal-50 text-teal-800 hover:bg-teal-100 text-sm font-semibold">🔗 Sync ข้อมูลไปชีท</button>
         </div>
         <button id="btn-sheet-tools-close" class="mt-4 w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ปิด</button>
@@ -2419,10 +2581,6 @@ export async function renderMyClasses(teacher) {
           btn.textContent = '🔓 เปิดสิทธิ์ให้ทุกคนที่มีลิงก์ดูชีทได้'
           showToast('เปิดสิทธิ์ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
         }
-      })
-      m.querySelector('#btn-roster-menu').addEventListener('click', () => {
-        m.remove()
-        window._openRosterPicker(classId)
       })
       m.querySelector('#btn-open-sync').addEventListener('click', () => {
         m.remove()
@@ -5953,11 +6111,10 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
                 ${span > 1 ? `rowspan="${span}"` : ''}>
                 ${dispSubj ? `
                 <div class="w-full h-full rounded-none flex flex-col justify-center items-center
-                  gap-0.5 px-2 py-2 text-center" style="min-height:52px;background:${clrInfo.hex};color:${clrInfo.text}">
-                  <p class="font-bold leading-tight text-xs break-words">${dispSubj}</p>
-                  ${dispClass ? `<p class="text-[10px] opacity-80 leading-tight">${dispClass}</p>` : ''}
-                  ${dispTeach ? `<p class="text-[9px] opacity-55 leading-tight">${dispTeach}</p>` : ''}
-                  ${span > 1 ? `<p class="text-[9px] opacity-40 mt-0.5">${span} คาบ</p>` : ''}
+                  gap-1 px-2 py-2 text-center" style="min-height:64px;background:${clrInfo.soft};color:${clrInfo.text};border-left:4px solid ${clrInfo.dot}">
+                  <p class="font-extrabold leading-tight text-sm break-words w-full">${dispSubj}</p>
+                  ${dispClass ? `<p class="text-[11px] font-semibold opacity-90 leading-tight w-full">${dispClass}</p>` : ''}
+                  ${dispTeach ? `<p class="text-[10px] opacity-65 leading-tight w-full">${dispTeach}</p>` : ''}
                 </div>` : `
                 <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity" style="min-height:52px">
                   <span class="text-indigo-200 text-2xl">＋</span>
@@ -5969,59 +6126,6 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
       </table>
     </div>
 
-    <!-- Legend สีประจำห้อง -->
-    ${(() => {
-      const legendItems = []
-      const seen = new Set()
-      scheduleData.forEach(e => {
-        const subj = subjects.find(s => s.id === e.subject_id)
-        const key = scheduleColorKey({
-          teacherId: teacher?.id,
-          className: e.class_name,
-          subjectName: e.subject_name ?? subj?.subject_name,
-          fallbackId: e.subject_id,
-        })
-        if (seen.has(key)) return
-        seen.add(key)
-        legendItems.push({
-          roomKey: roomColorKey({
-            className: e.class_name,
-            subjectName: e.subject_name ?? subj?.subject_name,
-            fallbackId: e.subject_id,
-          }),
-          className: e.class_name ?? '',
-          label: scheduleColorLabel({
-            subjectName: e.subject_name ?? subj?.subject_name,
-            className: e.class_name,
-            fallbackId: e.subject_id,
-          }),
-          color: _entryColor(e, subj),
-        })
-      })
-      if (!legendItems.length) return ''
-      return `<div class="mt-4">
-        <p class="text-xs text-gray-400 mb-2">สีประจำห้องของครู</p>
-        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          ${legendItems.map(item => `
-          <div class="rounded-xl border border-gray-100 bg-white px-3 py-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="w-4 h-4 rounded-full flex-shrink-0" style="background:${item.color.dot}"></span>
-              <span class="text-xs font-medium text-gray-700 truncate">${item.label}</span>
-            </div>
-            <div class="mt-2 flex flex-wrap gap-1.5">
-              ${SCHEDULE_COLOR_PRESETS.map(p => `
-              <button type="button"
-                class="schedule-room-color-chip w-5 h-5 rounded-full border-2 ${p.dot.toLowerCase() === item.color.dot.toLowerCase() ? 'border-gray-700' : 'border-white'} shadow-sm"
-                style="background:${p.dot}"
-                data-room-key="${_htmlEsc(item.roomKey)}"
-                data-class-name="${_htmlEsc(item.className)}"
-                data-color="${p.dot}"
-                title="เลือกสี ${_htmlEsc(item.label)}"></button>`).join('')}
-            </div>
-          </div>`).join('')}
-        </div>
-      </div>`
-    })()}
   </div>`)
 
   // ─── Click cell → popup ────────────────────────────────────────────────────
@@ -6044,23 +6148,6 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
           await renderScheduleGrid(teacher, academicYear, semester, cfg)
         },
       })
-    })
-  })
-
-  document.querySelectorAll('.schedule-room-color-chip').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      try {
-        await saveTeacherRoomColor({
-          teacher_id: teacher.id,
-          room_key: btn.dataset.roomKey,
-          class_name: btn.dataset.className,
-          color_hex: btn.dataset.color,
-        })
-        showToast('บันทึกสีห้องแล้ว', 'success')
-        await renderScheduleGrid(teacher, academicYear, semester, cfg)
-      } catch (err) {
-        showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'error')
-      }
     })
   })
 
@@ -6100,6 +6187,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
     subjectName: initSubjName,
     fallbackId: entry?.subject_id,
   }, roomColorMap).dot
+  let colorPickerOpen = false
 
   const subjSuggestions = subjects.map(s => `<option value="${s.subject_name}">`).join('')
   const roomSuggestions = allRoomList.map(r => `<option value="${r}">`).join('')
@@ -6133,9 +6221,23 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
           <div class="border-2 rounded-xl overflow-hidden" style="border-color:${clr.dot}">
             <!-- Subject info -->
             <div class="px-4 py-3 flex items-start gap-3" style="background:${clr.dot}18">
-              <button id="sp-color" type="button"
-                class="w-8 h-8 rounded-full flex-shrink-0 border-2 border-white shadow mt-0.5 cursor-default"
-                style="background:${clr.dot}" title="สีประจำห้อง"></button>
+              <div class="relative flex-shrink-0 mt-0.5">
+                <button id="sp-color" type="button"
+                  class="w-11 h-11 rounded-full border-4 border-white shadow-md ring-2 ring-gray-200"
+                  style="background:${clr.dot}" title="เลือกสีรายวิชา"></button>
+                ${colorPickerOpen ? `
+                <div class="absolute left-0 top-14 z-[310] w-72 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl">
+                  <p class="text-xs font-bold text-gray-500 mb-2">สีรายวิชา</p>
+                  <div class="grid grid-cols-6 gap-2">
+                    ${SCHEDULE_COLOR_PRESETS.map(p => `
+                    <button type="button"
+                      class="sp-color-option w-8 h-8 rounded-full border-2 ${p.dot.toLowerCase() === selectedColorHex.toLowerCase() ? 'border-gray-800' : 'border-white'} shadow-sm"
+                      style="background:${p.dot}"
+                      data-color="${p.dot}"
+                      title="เลือกสี"></button>`).join('')}
+                  </div>
+                </div>` : ''}
+              </div>
               <div class="flex-1 space-y-1.5 min-w-0">
                 <div class="flex items-center gap-1.5">
                   <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา</span>
@@ -6152,17 +6254,6 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
                   <input id="sp-teacher" class="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-500"
                     value="${_htmlEsc(formTeacherName)}" placeholder="ชื่อครู (ไม่บังคับ)" />
                   <button id="sp-hide-teacher" type="button" class="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap">ไม่แสดง</button>
-                </div>
-                <div class="flex items-center gap-1.5 pt-1">
-                  <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">สี</span>
-                  <div class="flex flex-wrap gap-1.5">
-                    ${SCHEDULE_COLOR_PRESETS.map(p => `
-                    <button type="button"
-                      class="sp-color-option w-5 h-5 rounded-full border-2 ${p.dot.toLowerCase() === selectedColorHex.toLowerCase() ? 'border-gray-700' : 'border-white'} shadow-sm"
-                      style="background:${p.dot}"
-                      data-color="${p.dot}"
-                      title="เลือกสี"></button>`).join('')}
-                  </div>
                 </div>
               </div>
             </div>
@@ -6223,6 +6314,10 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
     wrap.querySelector('#sp-subj-name').addEventListener('input', e => { formSubjName = e.target.value })
     wrap.querySelector('#sp-class').addEventListener('input', e => { formClassName = e.target.value })
     wrap.querySelector('#sp-teacher').addEventListener('input', e => { formTeacherName = e.target.value })
+    wrap.querySelector('#sp-color').addEventListener('click', () => {
+      colorPickerOpen = !colorPickerOpen
+      _render()
+    })
     wrap.querySelector('#sp-hide-teacher').addEventListener('click', () => {
       formTeacherName = ''
       wrap.querySelector('#sp-teacher').value = ''
@@ -6230,6 +6325,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
     wrap.querySelectorAll('.sp-color-option').forEach(btn =>
       btn.addEventListener('click', () => {
         selectedColorHex = btn.dataset.color
+        colorPickerOpen = false
         _render()
       }))
 

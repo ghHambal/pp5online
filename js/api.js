@@ -241,11 +241,57 @@ export async function getMyHomeroomRooms(teacherId) {
 export async function getClassStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('students ( id, student_code, full_name, image_url )')
+    .select('is_active, students ( id, student_code, full_name, image_url, main_room, religion_room )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error
-  return (data ?? []).map(r => r.students).filter(Boolean)
+  return (data ?? [])
+    .filter(r => r.is_active !== false)
+    .map(r => r.students)
+    .filter(Boolean)
+}
+
+export async function getClassRosterStudents(classId) {
+  const { data, error } = await supabase
+    .from('class_students')
+    .select('id, is_active, students ( id, student_code, full_name, image_url, main_room, religion_room )')
+    .eq('class_id', classId)
+    .order('students(student_code)')
+  if (error) throw error
+  return (data ?? [])
+    .map(r => r.students ? {
+      ...r.students,
+      enrollment_id: r.id,
+      is_active: r.is_active !== false,
+    } : null)
+    .filter(Boolean)
+}
+
+export async function getStudentByCode(studentCode) {
+  const code = String(studentCode ?? '').trim()
+  if (!code) return null
+  const { data, error } = await supabase
+    .from('students')
+    .select('id, student_code, full_name, image_url, main_room, religion_room')
+    .eq('student_code', code)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
+}
+
+export async function addStudentToClass(classId, studentId) {
+  const { error } = await supabase
+    .from('class_students')
+    .upsert({ class_id: classId, student_id: studentId, is_active: true }, { onConflict: 'class_id,student_id' })
+  if (error) throw error
+}
+
+export async function updateClassStudentActive(enrollmentId, isActive) {
+  const { error } = await supabase
+    .from('class_students')
+    .update({ is_active: !!isActive })
+    .eq('id', enrollmentId)
+  if (error) throw error
 }
 
 export async function saveAttendance(records) {

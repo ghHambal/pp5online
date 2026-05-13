@@ -25,35 +25,36 @@
 | 7 | `patch_curriculum_standards.sql` | เพิ่มฐานข้อมูลหลักสูตรแกนกลางสำหรับเติมคำอธิบายฯ อัตโนมัติ | ✅ จำเป็นสำหรับเติมจากหลักสูตรจริง |
 | 8 | `patch_class_sync.sql` | เพิ่ม system_config keys สำหรับ cell mapping ข้อมูลรายวิชา → Google Sheet | ✅ จำเป็น |
 | 9 | `patch_teacher_room_colors.sql` | เพิ่มตารางสีประจำห้องของครู สำหรับตารางสอนและการ์ดห้องเรียน | ✅ จำเป็นสำหรับบันทึกสีข้ามเครื่อง |
-| 10 | `patch_sync.sql` | เพิ่ม system_config keys สำหรับ Central GAS URL + ชีทกลาง | ✅ จำเป็น |
+| 10 | `patch_class_students_active.sql` | เพิ่มสถานะ active/inactive ของนักเรียนในรายวิชา | ✅ จำเป็นสำหรับจัดการนักเรียนออกกลางคัน |
+| 11 | `patch_sync.sql` | เพิ่ม system_config keys สำหรับ Central GAS URL + ชีทกลาง | ✅ จำเป็น |
 
 ### กลุ่ม C — คะแนนพิเศษ
 
 | ลำดับ | ไฟล์ | สิ่งที่ทำ | จำเป็น? |
 |-------|------|-----------|---------|
-| 11 | `patch_life_skill.sql` | สร้างตาราง `life_skill_columns` + `life_skill_scores` + RLS | ✅ จำเป็น |
-| 12 | `patch_reading_score.sql` | สร้างตาราง `reading_score_columns` + `reading_scores` + RLS | ✅ จำเป็น |
-| 13 | `patch_reading_eval.sql` | เพิ่ม system_config keys สำหรับผลการประเมินอ่านคิดวิเคราะห์ | ✅ รันต่อจาก patch_reading_score |
-| 14 | `patch_prayer_rls.sql` | เพิ่มสิทธิ์ Admin จัดการ `prayer_records` | ✅ จำเป็น |
-| 15 | `patch_life_skill_homeroom_rls.sql` | RLS ให้ครูที่ปรึกษาสามัญแก้คะแนนทักษะชีวิตของนักเรียนในห้องตัวเอง | ✅ จำเป็นสำหรับบันทึกทักษะชีวิต |
+| 12 | `patch_life_skill.sql` | สร้างตาราง `life_skill_columns` + `life_skill_scores` + RLS | ✅ จำเป็น |
+| 13 | `patch_reading_score.sql` | สร้างตาราง `reading_score_columns` + `reading_scores` + RLS | ✅ จำเป็น |
+| 14 | `patch_reading_eval.sql` | เพิ่ม system_config keys สำหรับผลการประเมินอ่านคิดวิเคราะห์ | ✅ รันต่อจาก patch_reading_score |
+| 15 | `patch_prayer_rls.sql` | เพิ่มสิทธิ์ Admin จัดการ `prayer_records` | ✅ จำเป็น |
+| 16 | `patch_life_skill_homeroom_rls.sql` | RLS ให้ครูที่ปรึกษาสามัญแก้คะแนนทักษะชีวิตของนักเรียนในห้องตัวเอง | ✅ จำเป็นสำหรับบันทึกทักษะชีวิต |
 
 ### กลุ่ม D — ระบบ Login ครู
 
 | ลำดับ | ไฟล์ | สิ่งที่ทำ | จำเป็น? |
 |-------|------|-----------|---------|
-| 16 | `patch_teacher_login_username_codes.sql` | เพิ่ม `username` + `login_email` ใน teachers, normalize รหัสครู 4 หลัก, สร้าง `resolve_teacher_login_email()` RPC | ✅ จำเป็น สำหรับ login ด้วยรหัสครู/username |
-| 17 | `patch_teacher_self_update.sql` | RLS policy ให้ครู update ข้อมูลตัวเองใน teachers table ได้ | ✅ จำเป็น |
+| 17 | `patch_teacher_login_username_codes.sql` | เพิ่ม `username` + `login_email` ใน teachers, normalize รหัสครู 4 หลัก, สร้าง `resolve_teacher_login_email()` RPC | ✅ จำเป็น สำหรับ login ด้วยรหัสครู/username |
+| 18 | `patch_teacher_self_update.sql` | RLS policy ให้ครู update ข้อมูลตัวเองใน teachers table ได้ | ✅ จำเป็น |
 
 ### กลุ่ม E — Student Portal
 
 | ลำดับ | ไฟล์ | สิ่งที่ทำ | จำเป็น? |
 |-------|------|-----------|---------|
-| 18 | `patch_student_portal.sql` | RLS policies นักเรียน + `link_student_profile()` + `resolve_student_login_email()` | ✅ รันก่อน patch อื่นในกลุ่มนี้ |
-| 19 | `patch_student_lookup.sql` | `lookup_student_by_code()` RPC สำหรับ anonymous lookup ตอน login | ✅ จำเป็น |
-| 20 | `patch_student_teacher_schedule_read.sql` | RLS ให้นักเรียนอ่านตารางสอนครูที่สอนตัวเอง | ✅ จำเป็น |
-| 21 | `patch_student_teacher_schedule_rpc.sql` | RPC `get_enrolled_teacher_schedule()` สำหรับนักเรียนดูตารางสอนครู | ✅ รันหลัง patch_student_teacher_schedule_read |
-| 22 | `patch_student_my_scores_rls.sql` | RLS ให้นักเรียนอ่านคะแนนละหมาดของตัวเองในหน้า "คะแนนของฉัน" | ✅ จำเป็นสำหรับหน้า คะแนนของฉัน |
-| 23 | `patch_teacher_prayer_records_rls.sql` | RLS ให้ครูบันทึก/แก้ไข/ลบคะแนนละหมาดของตัวเอง | ✅ จำเป็นสำหรับบันทึกละหมาดฝั่งครู |
+| 19 | `patch_student_portal.sql` | RLS policies นักเรียน + `link_student_profile()` + `resolve_student_login_email()` | ✅ รันก่อน patch อื่นในกลุ่มนี้ |
+| 20 | `patch_student_lookup.sql` | `lookup_student_by_code()` RPC สำหรับ anonymous lookup ตอน login | ✅ จำเป็น |
+| 21 | `patch_student_teacher_schedule_read.sql` | RLS ให้นักเรียนอ่านตารางสอนครูที่สอนตัวเอง | ✅ จำเป็น |
+| 22 | `patch_student_teacher_schedule_rpc.sql` | RPC `get_enrolled_teacher_schedule()` สำหรับนักเรียนดูตารางสอนครู | ✅ รันหลัง patch_student_teacher_schedule_read |
+| 23 | `patch_student_my_scores_rls.sql` | RLS ให้นักเรียนอ่านคะแนนละหมาดของตัวเองในหน้า "คะแนนของฉัน" | ✅ จำเป็นสำหรับหน้า คะแนนของฉัน |
+| 24 | `patch_teacher_prayer_records_rls.sql` | RLS ให้ครูบันทึก/แก้ไข/ลบคะแนนละหมาดของตัวเอง | ✅ จำเป็นสำหรับบันทึกละหมาดฝั่งครู |
 
 ### กลุ่ม F — ระบบคำร้องและ Theme
 
