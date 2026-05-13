@@ -20,7 +20,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          getPrayerMonitoringData, getLifeSkillMonitoringData, getReadingMonitoringData,
          fillPrayerScoresToReligionClassScores,
          getCurriculumStandards, createCurriculumStandard, updateCurriculumStandard,
-         deleteCurriculumStandard, importCurriculumStandards } from './api.js'
+         deleteCurriculumStandard, importCurriculumStandards,
+         getUsageStats } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -5841,4 +5842,69 @@ export async function renderAdminProfile() {
     } catch (err) { _msg('pw-msg', 'ไม่สำเร็จ: ' + (err.message ?? ''), false) }
     finally { btn.disabled = false; btn.textContent = 'เปลี่ยนรหัสผ่าน' }
   })
+}
+
+// ─── Usage Stats ──────────────────────────────────────────────────────────────
+export async function renderUsageStats() {
+  const setContent = html => { document.getElementById('main-content').innerHTML = html }
+  const setActive  = nav => {
+    document.querySelectorAll('[data-nav]').forEach(el => {
+      const on = el.dataset.nav === nav
+      el.classList.toggle('bg-indigo-800', on)
+      el.classList.toggle('text-white', on)
+      el.classList.toggle('text-indigo-200', !on)
+    })
+  }
+  setActive('usage-stats')
+  document.getElementById('page-title').textContent = 'สถิติการใช้งาน'
+
+  setContent(`<div class="max-w-2xl mx-auto animate-fade">
+    <div class="mb-6">
+      <h2 class="text-lg font-bold text-gray-800">📊 สถิติการใช้งาน</h2>
+      <p class="text-xs text-gray-400 mt-0.5">นับจากการ login ล่าสุดของแต่ละบัญชี</p>
+    </div>
+    <div class="grid grid-cols-2 gap-4 mb-6">
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
+        <p class="text-xs text-gray-400 mb-1">👨‍🏫 ครูที่เข้าใช้วันนี้</p>
+        <p id="stat-teacher-today" class="text-4xl font-extrabold text-indigo-600">—</p>
+        <p class="text-xs text-gray-400 mt-1">คน</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
+        <p class="text-xs text-gray-400 mb-1">🎒 นักเรียนที่เข้าใช้วันนี้</p>
+        <p id="stat-student-today" class="text-4xl font-extrabold text-emerald-600">—</p>
+        <p class="text-xs text-gray-400 mt-1">คน</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
+        <p class="text-xs text-gray-400 mb-1">👨‍🏫 ครูในระบบทั้งหมด</p>
+        <p id="stat-teacher-total" class="text-4xl font-extrabold text-gray-700">—</p>
+        <p class="text-xs text-gray-400 mt-1">บัญชี</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
+        <p class="text-xs text-gray-400 mb-1">🎒 นักเรียนในระบบทั้งหมด</p>
+        <p id="stat-student-total" class="text-4xl font-extrabold text-gray-700">—</p>
+        <p class="text-xs text-gray-400 mt-1">บัญชี</p>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center justify-between">
+      <p class="text-xs text-gray-400">อัปเดตล่าสุด: <span id="stat-updated">—</span></p>
+      <button id="stat-refresh" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+        🔄 รีเฟรช
+      </button>
+    </div>
+  </div>`)
+
+  const load = async () => {
+    try {
+      const stats = await getUsageStats()
+      document.getElementById('stat-teacher-today').textContent = stats.teacherToday
+      document.getElementById('stat-student-today').textContent = stats.studentToday
+      document.getElementById('stat-teacher-total').textContent = stats.teacherTotal
+      document.getElementById('stat-student-total').textContent = stats.studentTotal
+      document.getElementById('stat-updated').textContent =
+        new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+    } catch { showToast('โหลดสถิติไม่สำเร็จ', 'error') }
+  }
+
+  await load()
+  document.getElementById('stat-refresh')?.addEventListener('click', load)
 }

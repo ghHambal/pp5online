@@ -1005,6 +1005,31 @@ export async function getMyDonationRequests(teacherId) {
   return data ?? []
 }
 
+// ─── Usage Tracking ──────────────────────────────────────────────────────────
+
+export async function updateLastSeen(table) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  await supabase.from(table).update({ last_seen_at: new Date().toISOString() }).eq('profile_id', user.id)
+}
+
+export async function getUsageStats() {
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+  const iso = todayStart.toISOString()
+  const [tTotal, tToday, sTotal, sToday] = await Promise.all([
+    supabase.from('teachers').select('id', { count: 'exact', head: true }),
+    supabase.from('teachers').select('id', { count: 'exact', head: true }).gte('last_seen_at', iso),
+    supabase.from('students').select('id', { count: 'exact', head: true }),
+    supabase.from('students').select('id', { count: 'exact', head: true }).gte('last_seen_at', iso),
+  ])
+  return {
+    teacherTotal: tTotal.count ?? 0,
+    teacherToday: tToday.count ?? 0,
+    studentTotal: sTotal.count ?? 0,
+    studentToday: sToday.count ?? 0,
+  }
+}
+
 // ─── Class-Schedule Links ─────────────────────────────────────────────────────
 
 export async function getClassScheduleLinks(teacherId) {

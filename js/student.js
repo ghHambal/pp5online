@@ -9,7 +9,7 @@ import {
   renderExamRequestForm,
   renderStudentProfile,
 } from './student-views.js'
-import { getSystemConfig } from './api.js'
+import { getSystemConfig, updateLastSeen } from './api.js'
 import { applyThemeForRole } from './theme.js'
 
 let _student = null
@@ -29,6 +29,7 @@ async function init() {
   await applyThemeForRole('student')
 
   _student = await getMyStudentProfile()
+  updateLastSeen('students').catch(() => {})
   if (!_student) {
     document.getElementById('stu-content').innerHTML = `
       <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">

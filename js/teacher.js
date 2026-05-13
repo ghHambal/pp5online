@@ -7,7 +7,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests,
          getTeacherPackageAccess, getMyDonationRequests,
          getMySchedule, getPeriods,
-         getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule } from './api.js'
+         getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
+         updateLastSeen } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -1581,6 +1582,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
   _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
   _startPolling()              // polling 30 วิ
+  updateLastSeen('teachers').catch(() => {})
   if (_teacher?.id) _initDonationFlow(_teacher.id)
   if (_teacher?.id) _checkScheduleLinkPopup()
   if (_teacher?.id) _initNotifications(_teacher.id)

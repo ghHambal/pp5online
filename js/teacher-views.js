@@ -1890,6 +1890,25 @@ export async function renderProfile(teacher, onRefresh) {
         </div>
       </form>
     </div>
+
+    <!-- เปลี่ยนรหัสผ่าน -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7 mt-4">
+      <h3 class="font-bold text-gray-800 mb-4">🔒 เปลี่ยนรหัสผ่าน</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่านใหม่ <span class="text-red-400">*</span></label>
+          <input id="prof-pw-new" type="password" placeholder="อย่างน้อย 6 ตัวอักษร" class="${INPUT_CLS}" autocomplete="new-password" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ยืนยันรหัสผ่านใหม่ <span class="text-red-400">*</span></label>
+          <input id="prof-pw-confirm" type="password" placeholder="พิมพ์ซ้ำอีกครั้ง" class="${INPUT_CLS}" autocomplete="new-password" />
+        </div>
+        <button id="prof-pw-save"
+          class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">
+          บันทึกรหัสผ่านใหม่
+        </button>
+      </div>
+    </div>
   </div>`)
   if (!teacher) return
 
@@ -1952,6 +1971,27 @@ export async function renderProfile(teacher, onRefresh) {
     }
   })
 
+  // เปลี่ยนรหัสผ่าน
+  document.getElementById('prof-pw-save')?.addEventListener('click', async () => {
+    const newPw  = document.getElementById('prof-pw-new').value
+    const confPw = document.getElementById('prof-pw-confirm').value
+    if (!newPw) { showToast('กรุณากรอกรหัสผ่านใหม่', 'warning'); return }
+    if (newPw.length < 6) { showToast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'warning'); return }
+    if (newPw !== confPw) { showToast('รหัสผ่านไม่ตรงกัน', 'warning'); return }
+    const btn = document.getElementById('prof-pw-save')
+    btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPw })
+      if (error) throw error
+      showToast('เปลี่ยนรหัสผ่านสำเร็จ ✅', 'success')
+      document.getElementById('prof-pw-new').value    = ''
+      document.getElementById('prof-pw-confirm').value = ''
+    } catch (err) {
+      showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally {
+      btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
+    }
+  })
 }
 
 // ─── View: Class Registration Form (2.2) ──────────────────────────────────────
