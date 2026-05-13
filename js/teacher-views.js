@@ -1955,9 +1955,14 @@ export async function renderProfile(teacher, onRefresh) {
       const photoFile = document.getElementById('prof-photo-file').files?.[0]
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
       if (email && email !== (teacher.auth_email ?? '')) {
-        const { error } = await supabase.auth.updateUser({ email })
-        if (error) throw error
-        showToast('ส่งคำขอเปลี่ยนอีเมลแล้ว กรุณายืนยันอีเมลใหม่ถ้าระบบร้องขอ', 'info')
+        const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+        if (!validEmail) {
+          showToast('รูปแบบอีเมลไม่ถูกต้อง — ข้ามการเปลี่ยนอีเมล', 'warning')
+        } else {
+          const { error: emailErr } = await supabase.auth.updateUser({ email })
+          if (emailErr) showToast('เปลี่ยนอีเมลไม่สำเร็จ: ' + (emailErr.message ?? ''), 'warning')
+          else showToast('ส่งคำขอเปลี่ยนอีเมลแล้ว กรุณายืนยันอีเมลใหม่ถ้าระบบร้องขอ', 'info')
+        }
       }
       await updateMyProfile(teacher.id, payload)
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
