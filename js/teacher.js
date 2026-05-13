@@ -1264,6 +1264,18 @@ window._openScheduleLinkModal = async (classId) => {
     const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
     const DAYS_TH   = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
 
+    // build map: scheduleId → other classes already linked (not current class)
+    const otherLinked = {} // scheduleId → [{className, subjectName}]
+    links.filter(l => l.class_id !== classId).forEach(l => {
+      const otherCls = window._classCache?.[l.class_id]
+      if (!otherCls) return
+      if (!otherLinked[l.teacher_schedule_id]) otherLinked[l.teacher_schedule_id] = []
+      otherLinked[l.teacher_schedule_id].push({
+        className:   otherCls.class_name ?? '—',
+        subjectName: otherCls.master_subjects?.subject_name ?? '—',
+      })
+    })
+
     const headerBg   = clsColor?.soft   ?? '#f0fdf4'
     const headerBdr  = clsColor?.border ?? '#d1fae5'
     const headerText = clsColor?.text   ?? '#065f46'
@@ -1274,22 +1286,38 @@ window._openScheduleLinkModal = async (classId) => {
     wrap.className = 'fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
 
     const renderSlotCard = (s, isSel) => {
-      const p    = periodMap[s.period_no]
-      const time = p ? `${p.start_time.substring(0,5)} – ${p.end_time.substring(0,5)}` : ''
-      const span = s.span_periods > 1 ? `–${s.period_no + s.span_periods - 1}` : ''
-      const selCls = isSel
-        ? 'border-emerald-400 bg-emerald-50 shadow-[0_0_0_3px_rgba(52,211,153,0.25)]'
-        : 'border-gray-200 bg-white hover:border-gray-300'
+      const p      = periodMap[s.period_no]
+      const time   = p ? `${p.start_time.substring(0,5)} – ${p.end_time.substring(0,5)}` : ''
+      const span   = s.span_periods > 1 ? `–${s.period_no + s.span_periods - 1}` : ''
+      const others = otherLinked[s.id] ?? []
+      const isLocked = others.length > 0 && !isSel
+
+      let cardCls, iconEl
+      if (isSel) {
+        cardCls = 'border-emerald-400 bg-emerald-50 shadow-[0_0_0_3px_rgba(52,211,153,0.25)]'
+        iconEl  = '<span class="text-xl flex-shrink-0 mt-0.5">✅</span>'
+      } else if (isLocked) {
+        cardCls = 'border-gray-200 bg-gray-50 opacity-70 cursor-pointer'
+        iconEl  = '<span class="text-xl flex-shrink-0 mt-0.5">🔒</span>'
+      } else {
+        cardCls = 'border-gray-200 bg-white hover:border-gray-300'
+        iconEl  = '<span class="text-xl flex-shrink-0 mt-0.5">⬜</span>'
+      }
+
+      const othersText = others.map(o => `${o.subjectName} (${o.className})`).join(', ')
+
       return `
-      <button type="button" class="slm-card w-full text-left p-4 rounded-2xl border-2 transition-all ${selCls}"
-        data-id="${s.id}" data-sel="${isSel ? '1' : '0'}">
+      <button type="button" class="slm-card w-full text-left p-4 rounded-2xl border-2 transition-all ${cardCls}"
+        data-id="${s.id}" data-sel="${isSel ? '1' : '0'}" data-locked="${isLocked ? '1' : '0'}"
+        data-others="${othersText.replace(/"/g, '&quot;')}">
         <div class="flex items-start justify-between gap-2">
-          <div>
+          <div class="flex-1 min-w-0">
             <p class="text-base font-bold text-gray-800">${DAYS_TH[s.day_of_week]} · คาบ ${s.period_no}${span}</p>
             <p class="text-sm text-gray-500 mt-0.5">${time}</p>
             ${s.class_name ? `<p class="text-base font-semibold mt-1" style="color:${headerText}">${s.class_name}</p>` : ''}
+            ${others.length > 0 ? `<p class="text-[11px] text-amber-600 mt-1.5">⚠️ เชื่อมกับ: ${othersText}</p>` : ''}
           </div>
-          <span class="text-xl flex-shrink-0 mt-0.5">${isSel ? '✅' : '⬜'}</span>
+          ${iconEl}
         </div>
       </button>`
     }
@@ -1335,10 +1363,51 @@ window._openScheduleLinkModal = async (classId) => {
     wrap.querySelector('#slm-list').addEventListener('click', e => {
       const card = e.target.closest('.slm-card')
       if (!card) return
-      const id  = parseInt(card.dataset.id)
-      const was = card.dataset.sel === '1'
+      const id     = parseInt(card.dataset.id)
+      const was    = card.dataset.sel === '1'
+      const locked = card.dataset.locked === '1'
+      const slot   = schedule.find(s => s.id === id)
+
+      if (locked && !was) {
+        // แสดง confirm popup ก่อน
+        document.getElementById('slm-confirm-popup')?.remove()
+        const popup = document.createElement('div')
+        popup.id = 'slm-confirm-popup'
+        popup.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-6'
+        const othersText = card.dataset.others
+        popup.innerHTML = `
+          <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+            <div class="text-3xl mb-3">⚠️</div>
+            <h4 class="font-bold text-gray-800 mb-2">คาบนี้ถูกเชื่อมโยงแล้ว</h4>
+            <p class="text-xs text-gray-500 leading-relaxed mb-5">
+              คาบนี้ถูกเชื่อมโยงกับ<br/>
+              <span class="font-semibold text-amber-700">${othersText}</span><br/>
+              ต้องการเชื่อมโยงเพิ่มเข้า<br/>
+              <span class="font-semibold text-indigo-700">${className}</span> ด้วยหรือไม่?
+            </p>
+            <div class="flex gap-2">
+              <button id="slm-conf-no"
+                class="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
+                ยกเลิก
+              </button>
+              <button id="slm-conf-yes"
+                class="flex-1 py-2.5 rounded-2xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition">
+                ยืนยัน
+              </button>
+            </div>
+          </div>`
+        document.body.appendChild(popup)
+        popup.querySelector('#slm-conf-no').addEventListener('click', () => popup.remove())
+        popup.querySelector('#slm-conf-yes').addEventListener('click', () => {
+          popup.remove()
+          selected.add(id)
+          card.outerHTML = renderSlotCard(slot, true)
+        })
+        return
+      }
+
       was ? selected.delete(id) : selected.add(id)
-      card.outerHTML = renderSlotCard(schedule.find(s => s.id === id), !was)
+      card.outerHTML = renderSlotCard(slot, !was)
     })
 
     wrap.querySelector('#slm-close').addEventListener('click', () => wrap.remove())
