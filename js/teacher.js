@@ -745,7 +745,14 @@ function _initDonateFloatingBtn(hasPendingDonation = false) {
 
 async function _initDonationFlow(teacherId) {
   try {
-    const requests = await getMyDonationRequests(teacherId)
+    const [requests, cfg] = await Promise.all([
+      getMyDonationRequests(teacherId),
+      getSystemConfig().catch(() => ({})),
+    ])
+
+    // โหมดเดิม — ไม่แสดงปุ่มโดเนทเลย
+    if ((cfg.quotaMode ?? 'payment') !== 'school_sponsored') return
+
     const approved = requests.find(r => r.package_type === 'donation' && r.status === 'approved')
     const pending  = requests.some(r => r.package_type === 'donation' && r.status === 'pending')
 
@@ -760,7 +767,7 @@ async function _initDonationFlow(teacherId) {
       _initDonateFloatingBtn(pending)
     }
   } catch {
-    _initDonateFloatingBtn(false)
+    // ไม่แสดงปุ่มถ้า config โหลดไม่ได้
   }
 }
 
