@@ -380,7 +380,7 @@ function _showQuotaPopup(count, course, cfg = {}) {
   document.getElementById('quota-popup')?.remove()
   const wrap = document.createElement('div')
   wrap.id = 'quota-popup'
-  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
   wrap.innerHTML = `
     <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
@@ -581,7 +581,7 @@ async function _showDonateModal(course, cfg = {}) {
   document.getElementById('donate-modal')?.remove()
   const wrap = document.createElement('div')
   wrap.id = 'donate-modal'
-  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
   const promptpay = cfg.paymentPromptpay ?? ''
 
@@ -777,7 +777,7 @@ function _showRoomCountPage(course, cfg = {}) {
   const pClass = parseInt(cfg.pricePerClass ?? 49)
   const wrap = document.createElement('div')
   wrap.id = 'room-count-page'
-  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
   wrap.innerHTML = `
     <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
@@ -868,7 +868,7 @@ async function _showPaymentPage(pkgType, course, roomCount = 1, cfgIn = null) {
 
   const wrap = document.createElement('div')
   wrap.id = 'payment-page'
-  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
   wrap.innerHTML = `
     <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[95vh]">
@@ -1425,7 +1425,7 @@ window._openScheduleLinkModal = async (classId) => {
     document.getElementById('sched-link-modal')?.remove()
     const wrap = document.createElement('div')
     wrap.id = 'sched-link-modal'
-    wrap.className = 'fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+    wrap.className = 'fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4'
 
     const renderSlotCard = (s, isSel) => {
       const p      = periodMap[s.period_no]
