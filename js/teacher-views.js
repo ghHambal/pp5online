@@ -493,9 +493,11 @@ export async function renderMyCourses(teacher) {
     </svg> กำลังโหลด...
   </div>`)
   try {
-    const subjects = teacher
-      ? await getMySubjects(teacher.id)
-      : await getMasterSubjects().catch(()=>[])
+    const [subjects, allClasses] = await Promise.all([
+      teacher ? getMySubjects(teacher.id) : getMasterSubjects().catch(()=>[]),
+      teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
+    ])
+    const subjects_orig = subjects // keep for compat
     setContent(`<div class="max-w-5xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-5">
         <div>
@@ -542,12 +544,16 @@ export async function renderMyCourses(teacher) {
                     class="text-xs bg-emerald-600 text-white px-2 py-1.5 rounded-lg hover:bg-emerald-700">
                     ＋ห้อง
                   </button>
+                  <button class="ccm-open-btn text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1.5 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition"
+                    data-sid="${s.id}" data-sname="${_htmlEsc(s.subject_name)}">
+                    ⚙️ คอลัมน์
+                  </button>
                   <button onclick="window._openCourseDocPage2(${s.id})"
                     class="text-xs text-emerald-700 hover:text-emerald-900 font-medium px-2 py-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50">
                     คำอธิบายฯ
                   </button>
                   <button onclick="window._editCourse(${s.id})"
-                    class="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1.5 border border-indigo-200 rounded-lg">
+                    class="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1.5 border border-gray-200 rounded-lg">
                     แก้ไข
                   </button>
                   <button class="cd2-del-course-btn text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1.5 border border-red-100 rounded-lg"
@@ -562,10 +568,17 @@ export async function renderMyCourses(teacher) {
       </div>`}
     </div>`)
 
-    // ผูก event ลบคอร์ส (ใช้ data-id แทน inline onclick เพื่อหลีกเลี่ยงปัญหา escape)
+    // ผูก event ลบคอร์ส
     document.querySelectorAll('.cd2-del-course-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         window._deleteCourse(Number(btn.dataset.id), btn.dataset.name)
+      })
+    })
+
+    // ผูก event ปุ่มจัดการคอลัมน์คะแนนระดับคอร์ส
+    document.querySelectorAll('.ccm-open-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _openCourseColsModal(parseInt(btn.dataset.sid), btn.dataset.sname, allClasses)
       })
     })
 
@@ -5230,6 +5243,7 @@ function _gradeToKhuna(grade) {
 }
 
 export async function renderGradesGrid(teacher, classData) {
+  window._currentGradeTeacher = teacher
   setActiveNav('grades')
   setTitle('บันทึกคะแนน')
   const ms = classData.master_subjects
@@ -6035,6 +6049,9 @@ export async function renderGradesGrid(teacher, classData) {
           <p class="text-xs text-gray-400">${ms?.subject_name??'—'} · ${classData.class_name} · ${students.length} คน</p>
         </div>
         <div id="grade-saving" class="hidden bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">💾 กำลังบันทึก...</div>
+        <button id="btn-copy-cols" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 text-sm text-indigo-600 hover:bg-indigo-50 transition flex-shrink-0">
+          📋 <span class="hidden sm:inline text-xs">สำเนาคอลัมน์</span>
+        </button>
         <button id="btn-manage-cols" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition flex-shrink-0">
           ⚙️ <span class="hidden sm:inline text-xs">จัดการคอลัมน์</span>
         </button>
@@ -6043,12 +6060,265 @@ export async function renderGradesGrid(teacher, classData) {
       <div class="flex-1 overflow-auto" id="grade-grid-wrap"></div>
     </div>`)
     document.getElementById('btn-manage-cols')?.addEventListener('click', _openManageColsModal)
+    document.getElementById('btn-copy-cols')?.addEventListener('click', () => _openCopyColsPopup(classData, allMyClasses))
     _renderToggleBar()
     _renderGrid()
 
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')
   }
+}
+
+// ─── Copy Columns Popup ───────────────────────────────────────────────────────
+async function _openCopyColsPopup(classData, allMyClasses) {
+  showToast('กำลังโหลด...', 'info')
+  const others = (await Promise.all(
+    (allMyClasses ?? []).filter(c => c.id !== classData.id).map(async c => {
+      const cols = await getScoreColumns(c.id).catch(() => [])
+      return cols.length ? { ...c, cols } : null
+    })
+  )).filter(Boolean)
+
+  if (!others.length) { showToast('ไม่พบห้องอื่นที่มีคอลัมน์คะแนน', 'info'); return }
+
+  document.getElementById('copy-cols-popup')?.remove()
+  const popup = document.createElement('div')
+  popup.id = 'copy-cols-popup'
+  popup.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-6'
+  popup.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="bg-gradient-to-br from-indigo-500 to-purple-500 px-6 py-5 text-center">
+        <div class="text-3xl mb-2">📋</div>
+        <h3 class="text-white font-bold text-base">สำเนาคอลัมน์คะแนน</h3>
+        <p class="text-indigo-100 text-xs mt-1">เลือกห้องที่ต้องการคัดลอกคอลัมน์จาก</p>
+      </div>
+      <div class="p-5 space-y-2 max-h-72 overflow-y-auto">
+        ${others.map(c => `
+        <div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-gray-800 truncate">${c.class_name}</p>
+            <p class="text-xs text-gray-400">${c.master_subjects?.subject_name ?? ''} · ${c.cols.length} คอลัมน์</p>
+          </div>
+          <button class="ccp-btn flex-shrink-0 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition"
+            data-src="${c.id}">คัดลอก</button>
+        </div>`).join('')}
+      </div>
+      <div class="px-5 pb-5">
+        <button id="ccp-close" class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition">ปิด</button>
+      </div>
+    </div>`
+  document.body.appendChild(popup)
+  popup.querySelector('#ccp-close').addEventListener('click', () => popup.remove())
+  popup.querySelectorAll('.ccp-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const src = others.find(c => c.id === parseInt(btn.dataset.src))
+      btn.disabled = true; btn.textContent = '⏳'
+      try {
+        const existing = await getScoreColumns(classData.id).catch(() => [])
+        const existNames = new Set(existing.map(c => c.assignment_name))
+        let added = 0
+        for (const col of src.cols) {
+          if (existNames.has(col.assignment_name)) continue
+          await createScoreColumn({ class_id: classData.id, assignment_name: col.assignment_name,
+            assignment_type: col.assignment_type, sheet_column: col.sheet_column ?? '', max_score: col.max_score })
+          added++
+        }
+        showToast(`คัดลอก ${added} คอลัมน์จาก ${src.class_name} ✅`, 'success')
+        popup.remove()
+        renderGradesGrid(window._currentGradeTeacher, classData)
+      } catch (err) {
+        showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'คัดลอก'
+      }
+    })
+  })
+}
+
+// ─── Course-level Column Modal ────────────────────────────────────────────────
+async function _openCourseColsModal(subjectId, subjectName, allClasses) {
+  const courseClasses = allClasses.filter(c => c.course_id === subjectId)
+  if (!courseClasses.length) { showToast('ยังไม่มีห้องเรียนในคอร์สนี้', 'warning'); return }
+
+  showToast('กำลังโหลด...', 'info')
+  const refClass = courseClasses[0]
+  let cols = await getScoreColumns(refClass.id).catch(() => [])
+
+  const TYPE_COLOR_LOCAL = {
+    midterm: 'bg-blue-50 text-blue-700', final: 'bg-purple-50 text-purple-700',
+    กลางภาค: 'bg-blue-50 text-blue-700', ปลายภาค: 'bg-purple-50 text-purple-700',
+  }
+  const midCols   = () => cols.filter(c => c.assignment_type === 'midterm' || c.assignment_type === 'กลางภาค')
+  const finalCols = () => cols.filter(c => c.assignment_type === 'final'   || c.assignment_type === 'ปลายภาค')
+
+  document.getElementById('course-cols-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'course-cols-modal'
+  modal.className = 'fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+
+  const colRow = col => `
+    <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 hover:border-gray-200 bg-gray-50/60">
+      <input type="checkbox" class="ccm-cb w-4 h-4 rounded accent-red-500 flex-shrink-0" data-name="${_esc(col.assignment_name)}" />
+      <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name}</span>
+      <span class="text-[11px] text-gray-400">/${col.max_score || 0}</span>
+      <button class="ccm-del text-gray-300 hover:text-red-400 text-lg px-1 rounded hover:bg-red-50 transition" data-name="${_esc(col.assignment_name)}">🗑</button>
+    </div>`
+
+  const renderModal = () => {
+    modal.innerHTML = `
+      <div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col">
+        <div class="flex justify-center pt-3 pb-1 sm:hidden"><div class="w-10 h-1 rounded-full bg-gray-200"></div></div>
+        <div class="px-5 py-4 border-b flex items-start justify-between gap-3 flex-shrink-0">
+          <div>
+            <h3 class="font-bold text-gray-800">⚙️ คอลัมน์คะแนน</h3>
+            <p class="text-xs text-gray-400 mt-0.5">${subjectName} · sync ${courseClasses.length} ห้อง</p>
+          </div>
+          <button id="ccm-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none flex-shrink-0">×</button>
+        </div>
+
+        <div class="overflow-auto flex-1 p-5 space-y-4">
+          <!-- bulk bar -->
+          <div id="ccm-bulk-bar" class="hidden flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+            <p id="ccm-bulk-count" class="text-xs font-semibold text-red-700">เลือก 0 รายการ</p>
+            <button id="ccm-bulk-del" class="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition">🗑️ ลบที่เลือก</button>
+          </div>
+
+          <div>
+            <h4 class="font-semibold text-blue-700 text-sm mb-2">📘 กลางภาค <span class="font-normal text-gray-400">(${midCols().length})</span></h4>
+            <div class="space-y-1.5">${midCols().map(colRow).join('') || '<p class="text-xs text-gray-300 py-2 text-center">ยังไม่มี</p>'}</div>
+            <button class="ccm-add mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-blue-200 text-blue-500 hover:border-blue-400 hover:bg-blue-50 text-sm transition" data-type="กลางภาค">＋ เพิ่มคอลัมน์กลางภาค</button>
+          </div>
+          <div>
+            <h4 class="font-semibold text-purple-700 text-sm mb-2">📙 ปลายภาค <span class="font-normal text-gray-400">(${finalCols().length})</span></h4>
+            <div class="space-y-1.5">${finalCols().map(colRow).join('') || '<p class="text-xs text-gray-300 py-2 text-center">ยังไม่มี</p>'}</div>
+            <button class="ccm-add mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-purple-200 text-purple-500 hover:border-purple-400 hover:bg-purple-50 text-sm transition" data-type="ปลายภาค">＋ เพิ่มคอลัมน์ปลายภาค</button>
+          </div>
+        </div>
+      </div>`
+
+    const _ccmConfirm = (msg, onConfirm) => {
+      document.getElementById('ccm-confirm')?.remove()
+      const p = document.createElement('div')
+      p.id = 'ccm-confirm'
+      p.className = 'fixed inset-0 z-[300] flex items-center justify-center p-6'
+      p.style.background = 'rgba(0,0,0,0.5)'
+      p.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+        <div class="text-3xl mb-3">🗑️</div>
+        <h4 class="font-bold text-gray-800 mb-2">ยืนยันการลบ</h4>
+        <p class="text-sm text-gray-500 leading-relaxed mb-5">${msg}</p>
+        <div class="flex gap-3">
+          <button id="ccm-conf-no" class="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">ยกเลิก</button>
+          <button id="ccm-conf-yes" class="flex-1 py-2.5 rounded-2xl bg-red-500 text-white text-sm font-bold hover:bg-red-600">ลบเลย</button>
+        </div>
+      </div>`
+      document.body.appendChild(p)
+      p.querySelector('#ccm-conf-no').addEventListener('click', () => p.remove())
+      p.querySelector('#ccm-conf-yes').addEventListener('click', () => { p.remove(); onConfirm() })
+    }
+
+    const _deleteByName = async (names) => {
+      // ลบใน refClass แล้ว propagate ไปทุกห้อง
+      for (const cls of courseClasses) {
+        const clsCols = await getScoreColumns(cls.id).catch(() => [])
+        for (const name of names) {
+          const found = clsCols.find(c => c.assignment_name === name)
+          if (found) await deleteScoreColumn(found.id).catch(() => {})
+        }
+      }
+      cols = await getScoreColumns(refClass.id).catch(() => [])
+      showToast(`ลบสำเร็จ — sync ทุก ${courseClasses.length} ห้องแล้ว ✅`, 'success')
+      renderModal()
+    }
+
+    const _updateBulk = () => {
+      const checked = [...modal.querySelectorAll('.ccm-cb:checked')]
+      const bar = modal.querySelector('#ccm-bulk-bar')
+      if (bar) {
+        bar.classList.toggle('hidden', !checked.length)
+        const el = bar.querySelector('#ccm-bulk-count')
+        if (el) el.textContent = `เลือก ${checked.length} รายการ`
+      }
+    }
+
+    modal.querySelector('#ccm-close').addEventListener('click', () => modal.remove())
+    modal.querySelectorAll('.ccm-cb').forEach(cb => cb.addEventListener('change', _updateBulk))
+    modal.querySelector('#ccm-bulk-del')?.addEventListener('click', () => {
+      const checked = [...modal.querySelectorAll('.ccm-cb:checked')]
+      const names = checked.map(cb => cb.dataset.name)
+      _ccmConfirm(`ลบ ${names.length} คอลัมน์จากทุกห้อง?<br/><span class="font-semibold text-sm">${names.join(', ')}</span>`, () => _deleteByName(names))
+    })
+
+    modal.querySelectorAll('.ccm-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _ccmConfirm(`ลบ <span class="font-semibold">"${btn.dataset.name}"</span> จากทุก ${courseClasses.length} ห้อง?`, () => _deleteByName([btn.dataset.name]))
+      })
+    })
+
+    modal.querySelectorAll('.ccm-add').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.type
+        // reuse add col modal but propagate to all classes
+        document.getElementById('add-col-modal')?.remove()
+        const hasSheet = !!(refClass?.google_sheet_id)
+        const clr = type === 'ปลายภาค' ? 'purple' : 'blue'
+        const addModal = document.createElement('div')
+        addModal.id = 'add-col-modal'
+        addModal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4'
+        addModal.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <h3 class="font-bold text-gray-800 mb-1">＋ เพิ่มคอลัมน์${type}</h3>
+          <p class="text-xs text-gray-400 mb-4">จะเพิ่มใน <b>ทุก ${courseClasses.length} ห้อง</b> ของ ${subjectName}</p>
+          <div class="space-y-3">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">ชื่องาน <span class="text-red-400">*</span></label>
+              <input id="acol2-name" type="text" placeholder="เช่น คะแนนเก็บ 1"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-${clr}-400"/></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">คะแนนเต็ม</label>
+                <input id="acol2-max" type="number" min="1" value="20"
+                  class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-${clr}-400"/></div>
+              ${hasSheet ? `<div><label class="block text-sm font-medium text-gray-700 mb-1">คอลัมน์ Sheet</label>
+                <input id="acol2-sheet" type="text" placeholder="EH"
+                  class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono uppercase focus:outline-none focus:border-${clr}-400"/></div>`
+              : `<input id="acol2-sheet" type="hidden" value=""/>`}
+            </div>
+            <div id="acol2-msg" class="hidden text-xs text-red-500"></div>
+            <div class="flex gap-3 pt-1">
+              <button id="acol2-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button id="acol2-save" class="flex-1 btn-primary py-2.5 rounded-xl text-white text-sm font-semibold">เพิ่มทุกห้อง</button>
+            </div>
+          </div>
+        </div>`
+        document.body.appendChild(addModal)
+        addModal.querySelector('#acol2-sheet')?.addEventListener('input', e => { e.target.value = e.target.value.toUpperCase() })
+        addModal.querySelector('#acol2-cancel').addEventListener('click', () => addModal.remove())
+        addModal.querySelector('#acol2-save').addEventListener('click', async () => {
+          const name  = addModal.querySelector('#acol2-name').value.trim()
+          const max   = parseFloat(addModal.querySelector('#acol2-max').value) || 20
+          const sheet = (addModal.querySelector('#acol2-sheet')?.value ?? '').trim().toUpperCase() || null
+          const msg   = addModal.querySelector('#acol2-msg')
+          if (!name) { msg.textContent = 'กรุณาระบุชื่องาน'; msg.classList.remove('hidden'); return }
+          const saveBtn = addModal.querySelector('#acol2-save')
+          saveBtn.disabled = true; saveBtn.textContent = '⏳ กำลังเพิ่ม...'
+          try {
+            for (const cls of courseClasses) {
+              const clsCols = await getScoreColumns(cls.id).catch(() => [])
+              if (clsCols.some(c => c.assignment_name === name)) continue
+              await createScoreColumn({ class_id: cls.id, assignment_name: name,
+                assignment_type: type, sheet_column: sheet, max_score: max })
+            }
+            addModal.remove()
+            showToast(`เพิ่ม "${name}" ใน ${courseClasses.length} ห้องแล้ว ✅`, 'success')
+            cols = await getScoreColumns(refClass.id).catch(() => [])
+            renderModal()
+          } catch (err) {
+            msg.textContent = 'เกิดข้อผิดพลาด: ' + (err.message ?? ''); msg.classList.remove('hidden')
+            saveBtn.disabled = false; saveBtn.textContent = 'เพิ่มทุกห้อง'
+          }
+        })
+      })
+    })
+  }
+
+  document.body.appendChild(modal)
+  renderModal()
 }
 
 // ─── Add Column Modal ─────────────────────────────────────────────────────────
