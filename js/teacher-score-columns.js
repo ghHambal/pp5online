@@ -1,18 +1,13 @@
 import { getScoreColumns, getSystemConfig, getLifeSkillColumns,
-         createScoreColumn, updateScoreColumn, deleteScoreColumn } from './api.js'
+         createScoreColumn, updateScoreColumn, deleteScoreColumn,
+         getMyClasses } from './api.js'
 import { showToast } from './ui.js'
 
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
 const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm'
 
-function setContent(html) {
-  document.getElementById('main-content').innerHTML = html
-}
-
-function setTitle(t) {
-  document.getElementById('page-title').textContent = t
-}
-
+function setContent(html) { document.getElementById('main-content').innerHTML = html }
+function setTitle(t)      { document.getElementById('page-title').textContent = t }
 function setActiveNav(nav) {
   document.querySelectorAll('[data-nav]').forEach(el => {
     const active = el.dataset.nav === nav
@@ -23,34 +18,153 @@ function setActiveNav(nav) {
 }
 
 const SCORE_TYPES = ['ระหว่างเรียน','กลางภาค','ปลายภาค','คะแนนพิเศษ']
-
 const TYPE_COLOR  = {
   'ระหว่างเรียน': 'bg-blue-50 text-blue-700',
   'กลางภาค':      'bg-amber-50 text-amber-700',
   'ปลายภาค':      'bg-red-50 text-red-700',
   'คะแนนพิเศษ':   'bg-purple-50 text-purple-700',
 }
-
 const RELIGION_LOCKED_SCORE_COLUMNS = ['คะแนนมาเรียน', 'คะแนนละหมาด']
 
+// ─── Confirm popup (ไม่ปิดด้วย backdrop) ─────────────────────────────────────
+function _showConfirm(message, onConfirm) {
+  document.getElementById('sc-confirm-popup')?.remove()
+  const el = document.createElement('div')
+  el.id = 'sc-confirm-popup'
+  el.className = 'fixed inset-0 z-[200] flex items-center justify-center p-6'
+  el.style.background = 'rgba(0,0,0,0.45)'
+  el.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+      <div class="text-3xl mb-3">🗑️</div>
+      <h4 class="font-bold text-gray-800 mb-2">ยืนยันการลบ</h4>
+      <p class="text-sm text-gray-500 leading-relaxed mb-5">${message}</p>
+      <div class="flex gap-3">
+        <button id="sc-conf-no"
+          class="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
+          ยกเลิก
+        </button>
+        <button id="sc-conf-yes"
+          class="flex-1 py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold shadow-sm transition">
+          ลบเลย
+        </button>
+      </div>
+    </div>`
+  document.body.appendChild(el)
+  el.querySelector('#sc-conf-no').addEventListener('click', () => el.remove())
+  el.querySelector('#sc-conf-yes').addEventListener('click', () => { el.remove(); onConfirm() })
+}
+
+// ─── Same-subject popup ───────────────────────────────────────────────────────
+async function _checkSameSubjectCols(teacher, classId, classData) {
+  if (!teacher?.id || !classData?.course_id) return
+  try {
+    const allClasses = await getMyClasses(teacher.id).catch(() => [])
+    const sameSubject = allClasses.filter(c => c.id !== classId && c.course_id === classData.course_id)
+    if (!sameSubject.length) return
+
+    const withCols = (await Promise.all(
+      sameSubject.map(async c => {
+        const cols = await getScoreColumns(c.id).catch(() => [])
+        return cols.length ? { ...c, cols } : null
+      })
+    )).filter(Boolean)
+    if (!withCols.length) return
+
+    // แสดง popup
+    document.getElementById('sc-same-subj-popup')?.remove()
+    const el = document.createElement('div')
+    el.id = 'sc-same-subj-popup'
+    el.className = 'fixed inset-0 z-[190] flex items-center justify-center p-6'
+    el.style.background = 'rgba(0,0,0,0.45)'
+    el.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="bg-gradient-to-br from-indigo-500 to-purple-500 px-6 py-5 text-center">
+          <div class="text-3xl mb-2">📋</div>
+          <h3 class="text-white font-bold text-base">พบวิชาเดียวกันในอีกห้อง</h3>
+          <p class="text-indigo-100 text-xs mt-1">ต้องการคัดลอกคอลัมน์คะแนนจากห้องที่มีอยู่แล้วไหม?</p>
+        </div>
+        <div class="p-5 space-y-2 max-h-60 overflow-y-auto">
+          ${withCols.map(c => `
+          <div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-gray-800 truncate">${c.class_name}</p>
+              <p class="text-xs text-gray-400">${c.cols.length} คอลัมน์</p>
+            </div>
+            <button class="copy-cols-btn flex-shrink-0 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition"
+              data-src="${c.id}">
+              คัดลอก
+            </button>
+          </div>`).join('')}
+        </div>
+        <div class="px-5 pb-5">
+          <button id="sc-ssp-close"
+            class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition">
+            ปิด
+          </button>
+        </div>
+      </div>`
+    document.body.appendChild(el)
+    el.querySelector('#sc-ssp-close').addEventListener('click', () => el.remove())
+    el.querySelectorAll('.copy-cols-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const srcId = parseInt(btn.dataset.src)
+        const src   = withCols.find(c => c.id === srcId)
+        btn.disabled = true; btn.textContent = '⏳'
+        try {
+          const existing = await getScoreColumns(classId).catch(() => [])
+          const existingNames = new Set(existing.map(c => c.assignment_name))
+          let added = 0
+          for (const col of src.cols) {
+            if (existingNames.has(col.assignment_name)) continue
+            await createScoreColumn({
+              class_id:        classId,
+              assignment_name: col.assignment_name,
+              assignment_type: col.assignment_type,
+              sheet_column:    col.sheet_column ?? '',
+              max_score:       col.max_score,
+            })
+            added++
+          }
+          showToast(`คัดลอก ${added} คอลัมน์จาก ${src.class_name} ✅`, 'success')
+          el.remove()
+          // reload content
+          window._scReload?.()
+        } catch (err) {
+          showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = 'คัดลอก'
+        }
+      })
+    })
+  } catch {}
+}
+
+// ─── Main export ──────────────────────────────────────────────────────────────
 export async function renderScoreColumns(teacher, classId, className, classData = null) {
   setActiveNav('my-classes')
   setTitle(`คอลัมน์คะแนน — ${className}`)
-  const isLifeSkill = (classData?.skill_group ?? classData?.master_subjects?.skill_group ?? '') === 'ชีวิต'
-  const isReligion = ['AGM', 'AGMVOC'].includes(classData?.master_subjects?.subject_group)
-  let lockedScoreColumnIds = new Set()
+
+  const isLifeSkill  = (classData?.skill_group ?? classData?.master_subjects?.skill_group ?? '') === 'ชีวิต'
+  const isReligion   = ['AGM', 'AGMVOC'].includes(classData?.master_subjects?.subject_group)
+  const hasSheet     = !!(classData?.google_sheet_id)
+  let   lockedScoreColumnIds = new Set()
+  let   checkedIds           = new Set()
+
   const _reload = async () => {
     const cols = await getScoreColumns(classId)
-    const cfg = await getSystemConfig().catch(()=>({}))
+    const cfg  = await getSystemConfig().catch(() => ({}))
     const year = parseInt(cfg.academicYear ?? 2568)
-    const sem = parseInt(cfg.semester ?? 1)
+    const sem  = parseInt(cfg.semester ?? 1)
     const lockedNames = isLifeSkill
-      ? (await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])).slice(0, 3).map(c => c.name)
+      ? (await getLifeSkillColumns(year, sem, 'สามัญ').catch(() => [])).slice(0, 3).map(c => c.name)
       : isReligion ? RELIGION_LOCKED_SCORE_COLUMNS : []
     lockedScoreColumnIds = new Set(cols.filter(c => lockedNames.includes(c.assignment_name)).map(c => c.id))
     window._scoreColCache = Object.fromEntries(cols.map(c => [c.id, c]))
-    const grouped = SCORE_TYPES.map(t => ({ type: t, items: cols.filter(c => c.assignment_type === t) }))
+    const grouped    = SCORE_TYPES.map(t => ({ type: t, items: cols.filter(c => c.assignment_type === t) }))
     const totalScore = cols.reduce((sum, c) => sum + (Number(c.max_score) || 0), 0)
+
+    // reset checked when reloading
+    checkedIds = new Set()
+
     document.getElementById('sc-content').innerHTML = `
       <!-- สรุปคะแนนรวม -->
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center justify-between">
@@ -64,6 +178,16 @@ export async function renderScoreColumns(teacher, classId, className, classData 
              ปลายภาค: ${cols.filter(c=>c.assignment_type==='ปลายภาค').reduce((s,c)=>s+(Number(c.max_score)||0),0)}</p>
         </div>
       </div>
+
+      <!-- แถบลบที่เลือก (ซ่อนจนกว่าจะมีการติ๊ก) -->
+      <div id="sc-bulk-bar" class="hidden mb-3 flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
+        <p id="sc-bulk-count" class="text-sm font-semibold text-red-700">เลือก 0 รายการ</p>
+        <button id="sc-bulk-delete"
+          class="px-4 py-1.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition">
+          🗑️ ลบที่เลือก
+        </button>
+      </div>
+
       <!-- ตารางแยกตามหมวด -->
       ${grouped.map(g => `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
@@ -80,8 +204,9 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           : `<table class="w-full text-sm">
               <thead class="bg-gray-50 text-xs text-gray-400 uppercase">
                 <tr>
+                  <th class="px-3 py-2 text-center w-8">เลือก</th>
                   <th class="px-4 py-2 text-left">ชื่อรายการ</th>
-                  <th class="px-4 py-2 text-center">คอลัมน์ Sheet</th>
+                  ${hasSheet ? `<th class="px-4 py-2 text-center">คอลัมน์ Sheet</th>` : ''}
                   <th class="px-4 py-2 text-center">คะแนนเต็ม</th>
                   <th class="px-4 py-2 text-right">จัดการ</th>
                 </tr>
@@ -91,9 +216,14 @@ export async function renderScoreColumns(teacher, classId, className, classData 
                   const locked = lockedScoreColumnIds.has(c.id)
                   return `
                 <tr class="${locked ? 'bg-emerald-50/35' : 'hover:bg-gray-50'}">
+                  <td class="px-3 py-2.5 text-center">
+                    ${locked
+                      ? `<span class="text-emerald-500 text-xs">🔒</span>`
+                      : `<input type="checkbox" class="sc-row-cb w-4 h-4 rounded accent-red-500" data-id="${c.id}" />`}
+                  </td>
                   <td class="px-4 py-2.5 font-medium text-gray-800">${c.assignment_name}</td>
-                  <td class="px-4 py-2.5 text-center font-mono text-indigo-600 text-xs">${c.sheet_column}</td>
-                  <td class="px-4 py-2.5 text-center text-gray-600">${c.max_score??'—'}</td>
+                  ${hasSheet ? `<td class="px-4 py-2.5 text-center font-mono text-indigo-600 text-xs">${c.sheet_column}</td>` : ''}
+                  <td class="px-4 py-2.5 text-center text-gray-600">${c.max_score ?? '—'}</td>
                   <td class="px-4 py-2.5 text-right">
                     ${locked
                       ? `<span class="text-xs text-emerald-700 font-medium">ระบบล็อก</span>`
@@ -102,10 +232,12 @@ export async function renderScoreColumns(teacher, classId, className, classData 
                         <button onclick="window._deleteScoreCol(${c.id})"
                           class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>`}
                   </td>
-                </tr>`}).join('')}
+                </tr>`
+                }).join('')}
               </tbody>
             </table>`}
       </div>`).join('')}
+
       <!-- Form เพิ่ม/แก้ไข -->
       <div id="sc-form-wrap" class="hidden bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h4 id="sc-form-title" class="font-semibold text-gray-700 mb-4">เพิ่มคอลัมน์คะแนน</h4>
@@ -113,8 +245,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           <input type="hidden" id="sc-edit-id" />
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อรายการ <span class="text-red-400">*</span></label>
-            <input id="sc-name" type="text" placeholder="เช่น คะแนนเก็บ 1"
-              class="${INPUT_CLS}" />
+            <input id="sc-name" type="text" placeholder="เช่น คะแนนเก็บ 1" class="${INPUT_CLS}" />
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">หมวด <span class="text-red-400">*</span></label>
@@ -122,20 +253,20 @@ export async function renderScoreColumns(teacher, classId, className, classData 
               ${SCORE_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}
             </select>
           </div>
+          ${hasSheet ? `
           <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">คอลัมน์ใน Sheet <span class="text-red-400">*</span>
+            <label class="block text-xs font-medium text-gray-600 mb-1">คอลัมน์ใน Sheet
               <span class="text-gray-400 font-normal ml-1">(เช่น EK, EX, A)</span>
             </label>
             <input id="sc-col" type="text" placeholder="EK"
               class="${INPUT_CLS} font-mono uppercase" maxlength="4" />
-          </div>
+          </div>` : `<input id="sc-col" type="hidden" value="" />`}
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1">คะแนนเต็ม</label>
-            <input id="sc-max" type="number" min="1" max="100" placeholder="20"
-              class="${INPUT_CLS}" />
+            <input id="sc-max" type="number" min="1" max="100" placeholder="20" class="${INPUT_CLS}" />
           </div>
           <div class="col-span-2 flex gap-3 pt-1">
-            <button type="button" onclick="document.getElementById('sc-form-wrap').classList.add('hidden')"
+            <button type="button" id="sc-form-cancel"
               class="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
               ยกเลิก
             </button>
@@ -147,7 +278,39 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         </form>
       </div>`
 
-    // ─── bind CRUD actions ──────────────────────────────────────────────────
+    // ─── bind: checkbox + bulk bar ─────────────────────────────────────────
+    const bulkBar   = document.getElementById('sc-bulk-bar')
+    const bulkCount = document.getElementById('sc-bulk-count')
+
+    const _updateBulkBar = () => {
+      const n = checkedIds.size
+      bulkBar.classList.toggle('hidden', n === 0)
+      bulkCount.textContent = `เลือก ${n} รายการ`
+    }
+
+    document.querySelectorAll('.sc-row-cb').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const id = parseInt(cb.dataset.id)
+        cb.checked ? checkedIds.add(id) : checkedIds.delete(id)
+        _updateBulkBar()
+      })
+    })
+
+    document.getElementById('sc-bulk-delete')?.addEventListener('click', () => {
+      const names = [...checkedIds]
+        .map(id => window._scoreColCache?.[id]?.assignment_name ?? `ID ${id}`)
+        .join(', ')
+      _showConfirm(`ลบ ${checkedIds.size} คอลัมน์:<br/><span class="font-semibold">${names}</span>`, async () => {
+        try {
+          await Promise.all([...checkedIds].map(id => deleteScoreColumn(id)))
+          showToast(`ลบ ${checkedIds.size} คอลัมน์แล้ว ✅`, 'success')
+          checkedIds = new Set()
+          await _reload()
+        } catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      })
+    })
+
+    // ─── bind: CRUD actions ────────────────────────────────────────────────
     window._addScoreCol = (type) => {
       document.getElementById('sc-edit-id').value = ''
       document.getElementById('sc-name').value    = ''
@@ -158,6 +321,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       document.getElementById('sc-form-wrap').classList.remove('hidden')
       document.getElementById('sc-name').focus()
     }
+
     window._editScoreCol = (id) => {
       const c = window._scoreColCache?.[id]
       if (!c) return
@@ -167,33 +331,41 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       }
       document.getElementById('sc-edit-id').value = id
       document.getElementById('sc-name').value    = c.assignment_name
-      document.getElementById('sc-col').value     = c.sheet_column
+      document.getElementById('sc-col').value     = c.sheet_column ?? ''
       document.getElementById('sc-max').value     = c.max_score ?? ''
       document.getElementById('sc-type').value    = c.assignment_type
       document.getElementById('sc-form-title').textContent = 'แก้ไขคอลัมน์'
       document.getElementById('sc-form-wrap').classList.remove('hidden')
     }
-    window._deleteScoreCol = async (id) => {
+
+    window._deleteScoreCol = (id) => {
       if (lockedScoreColumnIds.has(id)) {
         showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning')
         return
       }
-      if (!confirm('ยืนยันลบคอลัมน์นี้?')) return
-      try {
-        await deleteScoreColumn(id)
-        showToast('ลบแล้ว', 'success')
-        await _reload()
-      } catch (err) { showToast('ลบไม่สำเร็จ', 'error') }
+      const name = window._scoreColCache?.[id]?.assignment_name ?? 'คอลัมน์นี้'
+      _showConfirm(`ต้องการลบ <span class="font-semibold">"${name}"</span> ใช่ไหม?<br/><span class="text-xs text-red-500">คะแนนที่บันทึกไว้จะถูกลบด้วย</span>`, async () => {
+        try {
+          await deleteScoreColumn(id)
+          showToast('ลบแล้ว ✅', 'success')
+          await _reload()
+        } catch (err) { showToast('ลบไม่สำเร็จ', 'error') }
+      })
     }
+
+    document.getElementById('sc-form-cancel')?.addEventListener('click', () => {
+      document.getElementById('sc-form-wrap').classList.add('hidden')
+    })
+
     document.getElementById('sc-form')?.addEventListener('submit', async e => {
       e.preventDefault()
       const btn  = document.getElementById('sc-save')
       const id   = document.getElementById('sc-edit-id').value
       const name = document.getElementById('sc-name').value.trim()
-      const col  = document.getElementById('sc-col').value.trim().toUpperCase()
+      const col  = (document.getElementById('sc-col')?.value ?? '').trim().toUpperCase()
       const type = document.getElementById('sc-type').value
       const max  = parseInt(document.getElementById('sc-max').value) || null
-      if (!name || !col) { showToast('กรุณากรอกชื่อและคอลัมน์ Sheet', 'warning'); return }
+      if (!name) { showToast('กรุณากรอกชื่อรายการ', 'warning'); return }
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
         const payload = { assignment_name: name, assignment_type: type, sheet_column: col, max_score: max }
@@ -203,12 +375,16 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         document.getElementById('sc-form-wrap').classList.add('hidden')
         await _reload()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       } finally {
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })
   }
+
+  // expose reload for copy callback
+  window._scReload = _reload
+
   setContent(`<div class="max-w-3xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-5 flex-wrap">
       <button onclick="window._navTo?.('my-classes') || history.back()"
@@ -223,40 +399,35 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         🌱 เติมคะแนนทักษะชีวิต
       </button>` : ''}
     </div>
-    <div id="sc-content"><div class="flex justify-center py-8 text-gray-400">
-      <svg class="animate-spin h-5 w-5 mr-2 text-amber-400" viewBox="0 0 24 24" fill="none">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-      </svg> กำลังโหลด...
-    </div></div>
+    <div id="sc-content">
+      <div class="flex justify-center py-8 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-amber-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
   </div>`)
+
   await _reload()
 
-  // ─── Auto-fill คอลัมน์ทักษะชีวิต (เฉพาะห้อง skill_group = 'ชีวิต') ─────────
+  // ─── Auto-fill ทักษะชีวิต ─────────────────────────────────────────────────
   document.getElementById('btn-fill-lifeskill')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-fill-lifeskill')
     btn.disabled = true; btn.textContent = '⏳ กำลังเติม...'
     try {
-      const cfg  = await getSystemConfig().catch(()=>({}))
-      const year = parseInt(cfg.academicYear ?? 2568)
-      const sem  = parseInt(cfg.semester ?? 1)
-      const lsCols = await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])
+      const cfg    = await getSystemConfig().catch(() => ({}))
+      const year   = parseInt(cfg.academicYear ?? 2568)
+      const sem    = parseInt(cfg.semester ?? 1)
+      const lsCols = await getLifeSkillColumns(year, sem, 'สามัญ').catch(() => [])
       if (!lsCols.length) { showToast('ยังไม่มีหัวข้อทักษะชีวิต — ให้แอดมินเพิ่มก่อน', 'warning'); return }
-
-      // ตรวจว่ามีคอลัมน์กลางภาคอยู่แล้วไหม (ไม่ duplicate)
-      const existing = await getScoreColumns(classId)
+      const existing     = await getScoreColumns(classId)
       const existingNames = new Set(existing.filter(c => c.assignment_type === 'กลางภาค').map(c => c.assignment_name))
-
       let added = 0
       for (const col of lsCols) {
         if (existingNames.has(col.name)) continue
-        await createScoreColumn({
-          class_id:        classId,
-          assignment_name: col.name,
-          assignment_type: 'กลางภาค',
-          sheet_column:    col.sheet_col ?? '',
-          max_score:       col.max_score ?? 20,
-        })
+        await createScoreColumn({ class_id: classId, assignment_name: col.name,
+          assignment_type: 'กลางภาค', sheet_column: col.sheet_col ?? '', max_score: col.max_score ?? 20 })
         added++
       }
       showToast(added > 0 ? `เพิ่ม ${added} คอลัมน์สำเร็จ ✅` : 'มีคอลัมน์ทักษะชีวิตอยู่แล้ว', added > 0 ? 'success' : 'info')
@@ -269,6 +440,8 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     }
   })
 
+  // ─── ตรวจหาวิชาเดียวกันในห้องอื่น (หน่วงเล็กน้อยหลัง render) ──────────────
+  setTimeout(() => _checkSameSubjectCols(teacher, classId, classData), 500)
 }
 
 // ─── Class Edit Form ──────────────────────────────────────────────────────────
