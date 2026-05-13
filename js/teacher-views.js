@@ -2261,40 +2261,60 @@ export async function renderMyClasses(teacher) {
         </svg> กำลังโหลดรายชื่อนักเรียน...
       </div>`)
       try {
-        const students = await getClassRosterStudents(classId)
+        const [students, cfg] = await Promise.all([
+          getClassRosterStudents(classId),
+          getSystemConfig().catch(() => ({})),
+        ])
         const viewKey = `classRosterView_${classId}`
         const viewMode = localStorage.getItem(viewKey) || 'table'
         const activeCount = students.filter(s => s.is_active).length
         const ms = cls.master_subjects ?? {}
+        const isReligionCourse = ['AGM', 'AGMVOC'].includes(ms.subject_group)
+        const showHouseColor = cfg.showStudentHouseColor !== 'false'
+        const showShirtSize = cfg.showStudentSportsShirtSize !== 'false'
+        const displayRoom = s => isReligionCourse
+          ? (s.main_room || s.religion_room || '—')
+          : (s.religion_room || s.main_room || '—')
+        const extraBadges = s => `
+          ${showHouseColor ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium">สี: ${_htmlEsc(s.house_color || '—')}</span>` : ''}
+          ${showShirtSize ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[11px] font-medium">เสื้อ: ${_htmlEsc(s.sports_shirt_size || '—')}</span>` : ''}`
         const avatar = (s, size = 'w-10 h-10') => s.image_url
           ? `<img src="${_htmlEsc(s.image_url)}" class="${size} rounded-full object-cover bg-gray-100" loading="lazy" />`
           : `<div class="${size} rounded-full bg-sky-100 text-sky-700 flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').trim().slice(0,1))}</div>`
-        const toggle = s => `
-          <button type="button" class="student-active-toggle relative inline-flex h-7 w-12 items-center rounded-full transition ${s.is_active ? 'bg-emerald-500' : 'bg-gray-300'}"
-            data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" aria-label="เปิดปิดสถานะเรียน">
-            <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${s.is_active ? 'translate-x-6' : 'translate-x-1'}"></span>
-          </button>`
         const tableRows = students.map((s, i) => `
-          <tr class="${s.is_active ? 'bg-white' : 'bg-gray-50 text-gray-400'}">
+          <tr class="student-status-target cursor-pointer transition ${s.is_active ? 'bg-white hover:bg-emerald-50/40' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}"
+            data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
             <td class="px-3 py-2 text-center text-xs text-gray-400">${i + 1}</td>
             <td class="px-3 py-2">${avatar(s)}</td>
             <td class="px-3 py-2 font-mono text-sm">${_htmlEsc(s.student_code)}</td>
             <td class="px-3 py-2">
               <p class="font-semibold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
-              <p class="text-xs text-gray-400">${_htmlEsc(s.main_room || s.religion_room || '—')}</p>
+              <p class="text-xs text-gray-400">${_htmlEsc(displayRoom(s))}</p>
+              <div class="mt-1 flex flex-wrap gap-1">${extraBadges(s)}</div>
             </td>
-            <td class="px-3 py-2 text-center">${toggle(s)}</td>
+            ${showHouseColor ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.house_color || '—')}</td>` : ''}
+            ${showShirtSize ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.sports_shirt_size || '—')}</td>` : ''}
+            <td class="px-3 py-2 text-center">
+              <span class="inline-flex px-3 py-1 rounded-full text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
+                ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
+              </span>
+            </td>
           </tr>`).join('')
         const gridCards = students.map(s => `
-          <div class="rounded-2xl border ${s.is_active ? 'border-gray-100 bg-white' : 'border-gray-100 bg-gray-50 opacity-75'} p-4 shadow-sm">
+          <button type="button"
+            class="student-status-target text-left rounded-2xl border p-4 transition ${s.is_active ? 'border-emerald-300 bg-white shadow-[0_0_0_3px_rgba(16,185,129,0.12),0_8px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_0_0_4px_rgba(16,185,129,0.18),0_10px_24px_rgba(16,185,129,0.16)]' : 'border-gray-300 bg-gray-50 opacity-80 hover:opacity-100'}"
+            data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
             <div class="flex items-start justify-between gap-3">
               ${avatar(s, 'w-14 h-14')}
-              ${toggle(s)}
+              <span class="px-2 py-1 rounded-full text-[11px] font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
+                ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
+              </span>
             </div>
             <p class="mt-3 font-bold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
             <p class="text-xs font-mono text-sky-700 mt-0.5">${_htmlEsc(s.student_code)}</p>
-            <p class="text-xs text-gray-400 mt-0.5">${_htmlEsc(s.main_room || s.religion_room || '—')}</p>
-          </div>`).join('')
+            <p class="text-xs text-gray-400 mt-0.5">${_htmlEsc(displayRoom(s))}</p>
+            <div class="mt-2 flex flex-wrap gap-1">${extraBadges(s)}</div>
+          </button>`).join('')
 
         setContent(`<div class="max-w-6xl mx-auto animate-fade">
           <div class="flex items-center gap-3 mb-5">
@@ -2335,7 +2355,9 @@ export async function renderMyClasses(teacher) {
                       <th class="px-3 py-2 text-left w-16">รูป</th>
                       <th class="px-3 py-2 text-left w-28">รหัส</th>
                       <th class="px-3 py-2 text-left">นักเรียน</th>
-                      <th class="px-3 py-2 text-center w-28">กำลังเรียน</th>
+                      ${showHouseColor ? `<th class="px-3 py-2 text-center w-24">ประจำสี</th>` : ''}
+                      ${showShirtSize ? `<th class="px-3 py-2 text-center w-28">ไซด์เสื้อ</th>` : ''}
+                      <th class="px-3 py-2 text-center w-28">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-50">${tableRows}</tbody>
@@ -2353,17 +2375,40 @@ export async function renderMyClasses(teacher) {
             refresh()
           })
         })
-        document.querySelectorAll('.student-active-toggle').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            btn.disabled = true
-            try {
-              await updateClassStudentActive(btn.dataset.enrollmentId, btn.dataset.next === 'true')
-              showToast('อัปเดตสถานะนักเรียนแล้ว', 'success')
-              refresh()
-            } catch (err) {
-              btn.disabled = false
-              showToast('อัปเดตสถานะไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-            }
+        document.querySelectorAll('.student-status-target').forEach(el => {
+          el.addEventListener('click', () => {
+            const nextActive = el.dataset.next === 'true'
+            const studentName = el.dataset.name || 'นักเรียน'
+            document.getElementById('student-status-confirm')?.remove()
+            const modal = document.createElement('div')
+            modal.id = 'student-status-confirm'
+            modal.className = 'fixed inset-0 z-[95] bg-white flex flex-col'
+            modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
+              <div class="w-full max-w-md text-center">
+                <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl ${nextActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">
+                  ${nextActive ? '✓' : '−'}
+                </div>
+                <h3 class="text-2xl font-bold text-gray-800">${nextActive ? 'เปิดสถานะกำลังเรียน?' : 'ปิดสถานะกำลังเรียน?'}</h3>
+                <p class="mt-3 text-gray-500">${_htmlEsc(studentName)}</p>
+                <p class="mt-2 text-sm text-gray-400">${nextActive ? 'นักเรียนจะกลับมาอยู่ในเช็คชื่อ/ใบรายชื่อของรายวิชานี้' : 'นักเรียนจะไม่ถูกนำไปเช็คชื่อหรือใบรายชื่อของรายวิชานี้'}</p>
+                <div class="mt-8 grid grid-cols-2 gap-3">
+                  <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
+                  <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold ${nextActive ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-700 hover:bg-gray-800'}">ยืนยัน</button>
+                </div>
+              </div>
+            </div>`
+            document.body.appendChild(modal)
+            modal.querySelector('#student-status-cancel').addEventListener('click', () => modal.remove())
+            modal.querySelector('#student-status-ok').addEventListener('click', async () => {
+              try {
+                await updateClassStudentActive(el.dataset.enrollmentId, nextActive)
+                showToast('อัปเดตสถานะนักเรียนแล้ว', 'success')
+                modal.remove()
+                refresh()
+              } catch (err) {
+                showToast('อัปเดตสถานะไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+              }
+            })
           })
         })
         document.getElementById('students-add')?.addEventListener('click', () => {
@@ -2405,7 +2450,8 @@ export async function renderMyClasses(teacher) {
                 <div class="flex-1 min-w-0">
                   <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name)}</p>
                   <p class="text-sm font-mono text-sky-700">${_htmlEsc(s.student_code)}</p>
-                  <p class="text-xs text-gray-400">${_htmlEsc(s.main_room || s.religion_room || '—')}</p>
+                  <p class="text-xs text-gray-400">${_htmlEsc(displayRoom(s))}</p>
+                  <div class="mt-1 flex flex-wrap gap-1">${extraBadges(s)}</div>
                 </div>
                 <button id="add-student-confirm" class="px-4 py-2 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">เพิ่ม</button>
               </div>`)

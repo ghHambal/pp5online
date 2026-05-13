@@ -34,6 +34,8 @@ function mapStudent(row) {
     religion_room: row['grade_religion'] || row['religion_room'] || row['ห้องศาสนา'] || null,
     gender:        row['gender'] || row['เพศ'] || null,
     image_url:     row['photo_url'] || row['image_url'] || null,
+    house_color:   row['house_color'] || row['สี'] || row['ประจำสี'] || row['สีกีฬา'] || null,
+    sports_shirt_size: row['sports_shirt_size'] || row['shirt_size'] || row['ไซด์เสื้อกีฬาสี'] || row['ไซซ์เสื้อกีฬาสี'] || null,
   }
 }
 

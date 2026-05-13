@@ -1493,6 +1493,8 @@ export async function renderStudents() {
     const all = await getStudents()
     const grades  = _opts(all.map(s => _grade(s.main_room)))
     const rooms   = _opts(all.map(s => _room(s.main_room)))
+    const houseColors = _opts(all.map(s => s.house_color))
+    const shirtSizes = _opts(all.map(s => s.sports_shirt_size))
 
     setContent(`<div class="max-w-6xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-4">
@@ -1518,6 +1520,14 @@ export async function renderStudents() {
             <option value="">ทุกเพศ</option>
             <option value="ชาย">ชาย</option>
             <option value="หญิง">หญิง</option>
+          </select>
+          <select id="sf-house" class="${SELECT_CLS}">
+            <option value="">ทุกสี</option>
+            ${houseColors.map(c=>`<option value="${c}">${c}</option>`).join('')}
+          </select>
+          <select id="sf-shirt" class="${SELECT_CLS}">
+            <option value="">ทุกไซด์เสื้อ</option>
+            ${shirtSizes.map(s=>`<option value="${s}">${s}</option>`).join('')}
           </select>
           <select id="sf-page-size" class="${SELECT_CLS}">
             <option value="50">แสดง 50 คน</option>
@@ -1560,6 +1570,8 @@ export async function renderStudents() {
             <th class="px-4 py-3 text-center">ชั้นสามัญ</th>
             <th class="px-4 py-3 text-center hidden sm:table-cell">ชั้นศาสนา</th>
             <th class="px-4 py-3 text-center hidden md:table-cell">เพศ</th>
+            <th class="px-4 py-3 text-center hidden lg:table-cell">ประจำสี</th>
+            <th class="px-4 py-3 text-center hidden lg:table-cell">ไซด์เสื้อ</th>
             <th class="px-4 py-3 text-right">จัดการ</th>
           </tr>
         </thead>
@@ -1586,6 +1598,12 @@ export async function renderStudents() {
                 : '<span class="text-gray-300">—</span>'}
             </td>
             <td class="px-4 py-3 text-center text-xs hidden md:table-cell text-gray-500">${s.gender??'—'}</td>
+            <td class="px-4 py-3 text-center text-xs hidden lg:table-cell">
+              ${s.house_color ? `<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">${s.house_color}</span>` : '<span class="text-gray-300">—</span>'}
+            </td>
+            <td class="px-4 py-3 text-center text-xs hidden lg:table-cell">
+              ${s.sports_shirt_size ? `<span class="px-2 py-0.5 rounded-full bg-sky-50 text-sky-700">${s.sports_shirt_size}</span>` : '<span class="text-gray-300">—</span>'}
+            </td>
             <td class="px-4 py-3 text-right whitespace-nowrap">
               <button onclick="window._editStudent(${s.id})"
                 class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
@@ -1666,6 +1684,16 @@ export async function renderStudents() {
                   <input id="sf-rel-room" type="text" value="${s.religion_room??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
                 </div>
               </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">ประจำสี</label>
+                  <input id="sf-house-color" type="text" value="${s.house_color??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">ไซด์เสื้อกีฬาสี</label>
+                  <input id="sf-shirt-size" type="text" value="${s.sports_shirt_size??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
+                </div>
+              </div>
               <div class="flex gap-3 pt-2">
                 <button type="button" id="stu-cancel"
                   class="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
@@ -1694,6 +1722,8 @@ export async function renderStudents() {
             main_room:     m.querySelector('#sf-main-room').value.trim() || null,
             religion_room: m.querySelector('#sf-rel-room').value.trim() || null,
             gender:        m.querySelector('#sf-gender-val').value || null,
+            house_color:   m.querySelector('#sf-house-color').value.trim() || null,
+            sports_shirt_size: m.querySelector('#sf-shirt-size').value.trim() || null,
           }
           await onSave(payload)
           showToast('บันทึกสำเร็จ', 'success')
@@ -1719,16 +1749,20 @@ export async function renderStudents() {
         roomOptions.map(r => `<option value="${r}" ${r === roomEl.value ? 'selected' : ''}>ห้อง ${r}</option>`).join('')
       const rm = roomEl.value
       const gn = document.getElementById('sf-gender').value
+      const house = document.getElementById('sf-house').value
+      const shirt = document.getElementById('sf-shirt').value
       const ps = document.getElementById('sf-page-size').value
       pageSize = ps === 'all' ? 'all' : Number(ps)
       _renderTable(all.filter(s =>
         (!q  || [s.full_name,s.student_code,s.main_room,s.religion_room].some(v=>(v??'').toLowerCase().includes(q))) &&
         (!gr || _grade(s.main_room) === gr) &&
         (!rm || _room(s.main_room)  === rm) &&
-        (!gn || s.gender === gn)
+        (!gn || s.gender === gn) &&
+        (!house || s.house_color === house) &&
+        (!shirt || s.sports_shirt_size === shirt)
       ))
     }
-    ['sf-q','sf-grade','sf-room','sf-gender','sf-page-size'].forEach(id => {
+    ['sf-q','sf-grade','sf-room','sf-gender','sf-house','sf-shirt','sf-page-size'].forEach(id => {
       document.getElementById(id)?.addEventListener('input',  _filter)
       document.getElementById(id)?.addEventListener('change', _filter)
     })
@@ -1832,6 +1866,7 @@ export async function renderSettings() {
       { id:'contact',  icon:'📞',  label:'ติดต่อ' },
       { id:'payment',  icon:'💳',  label:'ชำระเงิน' },
       { id:'package',  icon:'📦',  label:'แพ็กเกจ' },
+      { id:'student',  icon:'👦',  label:'นักเรียน' },
       { id:'sync',     icon:'🔗',  label:'Google Sync' },
       { id:'template', icon:'📄',  label:'เทมเพลต ปพ.5' },
       { id:'schedule', icon:'🗓️', label:'ตารางสอน' },
@@ -1935,6 +1970,13 @@ export async function renderSettings() {
         section('คำอธิบายแพ็กเกจ (แสดงในหน้าซื้อของครู)', [
           { key:'pkgPerClassDesc',  label:'คำอธิบายรายห้อง',       type:'text', placeholder:'เพิ่มห้องเรียนได้ 1 ห้อง' },
           { key:'pkgSemesterDesc',  label:'คำอธิบายเหมาทั้งเทอม', type:'text', placeholder:'ไม่จำกัดห้องตลอดภาคเรียน' },
+        ]),
+      ].join('')
+
+      if (tabId === 'student') return [
+        section('การแสดงข้อมูลในหน้าจัดการนักเรียนของครู', [
+          { key:'showStudentHouseColor', label:'แสดงคอลัมน์ประจำสี', type:'toggle' },
+          { key:'showStudentSportsShirtSize', label:'แสดงคอลัมน์ไซด์เสื้อกีฬาสี', type:'toggle' },
         ]),
       ].join('')
 
@@ -3602,7 +3644,7 @@ export function renderImport() {
 
     const hints = {
       teachers: '<b>รูปแบบ CSV ครู:</b> teacher_code, teacher_name, phone, category (สามัญ/ศาสนา)',
-      students: '<b>รูปแบบ CSV นักเรียน:</b> student_id, student_name, grade_general, photo_url',
+      students: '<b>รูปแบบ CSV นักเรียน:</b> student_id, student_name, grade_general, grade_religion, photo_url, house_color, sports_shirt_size',
     }
     document.getElementById('import-hint').innerHTML = hints[type]
 

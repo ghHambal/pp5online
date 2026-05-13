@@ -181,7 +181,7 @@ export async function getClasses() {
 // ─── Students ─────────────────────────────────────────────────────────────────
 export async function getStudents() {
   return _fetchAllStudents(
-    'id, student_code, full_name, main_room, religion_room, gender, image_url',
+    'id, student_code, full_name, main_room, religion_room, gender, image_url, house_color, sports_shirt_size',
     q => q,
     'student_code'
   )
@@ -241,7 +241,7 @@ export async function getMyHomeroomRooms(teacherId) {
 export async function getClassStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('is_active, students ( id, student_code, full_name, image_url, main_room, religion_room )')
+    .select('is_active, students ( id, student_code, full_name, image_url, main_room, religion_room, house_color, sports_shirt_size )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error
@@ -254,7 +254,7 @@ export async function getClassStudents(classId) {
 export async function getClassRosterStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('id, is_active, students ( id, student_code, full_name, image_url, main_room, religion_room )')
+    .select('id, is_active, students ( id, student_code, full_name, image_url, main_room, religion_room, house_color, sports_shirt_size )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error
@@ -272,7 +272,7 @@ export async function getStudentByCode(studentCode) {
   if (!code) return null
   const { data, error } = await supabase
     .from('students')
-    .select('id, student_code, full_name, image_url, main_room, religion_room')
+    .select('id, student_code, full_name, image_url, main_room, religion_room, house_color, sports_shirt_size')
     .eq('student_code', code)
     .maybeSingle()
   if (error) throw error
@@ -643,7 +643,7 @@ export async function getRoomsByGrade(gradePrefix) {
 
 export async function getStudentsByRoom(room) {
   return _fetchAllStudents(
-    'id, student_code, full_name, main_room, religion_room, gender, image_url',
+    'id, student_code, full_name, main_room, religion_room, gender, image_url, house_color, sports_shirt_size',
     q => q.eq('main_room', room),
     'student_code'
   )
@@ -651,7 +651,7 @@ export async function getStudentsByRoom(room) {
 
 export async function getStudentsByReligionRoom(room) {
   return _fetchAllStudents(
-    'id, student_code, full_name, main_room, religion_room, gender, image_url',
+    'id, student_code, full_name, main_room, religion_room, gender, image_url, house_color, sports_shirt_size',
     q => q.eq('religion_room', room),
     'student_code'
   )
