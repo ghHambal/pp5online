@@ -57,6 +57,7 @@ export async function getMyClasses(teacherId) {
     .from('classes')
     .select(`
       id, course_id, class_name, skill_group, google_sheet_id, gas_url, head_student_id,
+      classroom_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
       students ( full_name )

@@ -95,7 +95,7 @@ export async function renderOverview() {
     <!-- สถิติหลัก -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4" id="stat-grid">
       ${['teachers','students','classes','subjects'].map(k => `
-        <button type="button" onclick="window._adminNav?.('${k}')"
+        <button type="button" onclick="window._adminNav?.('${k === 'classes' ? 'classrooms-admin' : k}')"
           class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 text-left
                  hover:border-indigo-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-200 transition">
           <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl

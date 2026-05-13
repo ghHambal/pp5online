@@ -2341,6 +2341,10 @@ export async function renderMyClasses(teacher) {
         btn.disabled = true; btn.textContent = '⏳'
         try {
           await assignClassroom(classId, roomId)
+          // update cache immediately so card re-renders with room info
+          if (window._classCache?.[classId]) {
+            window._classCache[classId].classroom_id = roomId
+          }
           showToast('บันทึกห้องสอนแล้ว ✅', 'success')
           modal.remove()
           renderMyClasses(teacher)
