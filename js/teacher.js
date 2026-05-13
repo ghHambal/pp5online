@@ -1238,7 +1238,12 @@ function _showScheduleLinkPrompt(type, count = 0) {
   wrap.querySelector('#slp-close').addEventListener('click', () => wrap.remove())
 }
 
-window._openScheduleLinkModal = async (classId, className) => {
+window._openScheduleLinkModal = async (classId) => {
+  const cls       = window._classCache?.[classId]
+  const clsColor  = window._classColorCache?.[classId]
+  const className = cls?.class_name ?? '—'
+  const ms        = cls?.master_subjects
+
   try {
     showToast('กำลังโหลด...', 'info')
     const cfg = await getSystemConfig().catch(() => ({}))
@@ -1253,65 +1258,108 @@ window._openScheduleLinkModal = async (classId, className) => {
       showToast('ยังไม่มีตารางสอน กรุณาสร้างตารางสอนก่อนครับ', 'error')
       return
     }
+
     const currentLinkedIds = new Set(links.filter(l => l.class_id === classId).map(l => l.teacher_schedule_id))
+    const selected = new Set(currentLinkedIds)
     const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
-    const DAYS_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+    const DAYS_TH   = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+
+    const headerBg   = clsColor?.soft   ?? '#f0fdf4'
+    const headerBdr  = clsColor?.border ?? '#d1fae5'
+    const headerText = clsColor?.text   ?? '#065f46'
 
     document.getElementById('sched-link-modal')?.remove()
     const wrap = document.createElement('div')
     wrap.id = 'sched-link-modal'
     wrap.className = 'fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
-    wrap.innerHTML = `
-      <div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[85vh]">
-        <div class="flex justify-center pt-3 pb-1 sm:hidden"><div class="w-10 h-1 rounded-full bg-gray-200"></div></div>
-        <div class="px-5 pt-4 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
-          <button id="slm-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
-          <div class="flex-1 min-w-0">
-            <h3 class="font-bold text-gray-800">🔗 เชื่อมโยงตารางสอน</h3>
-            <p class="text-xs text-gray-400 truncate">${className}</p>
+
+    const renderSlotCard = (s, isSel) => {
+      const p    = periodMap[s.period_no]
+      const time = p ? `${p.start_time.substring(0,5)} – ${p.end_time.substring(0,5)}` : ''
+      const span = s.span_periods > 1 ? `–${s.period_no + s.span_periods - 1}` : ''
+      const selCls = isSel
+        ? 'border-emerald-400 bg-emerald-50 shadow-[0_0_0_3px_rgba(52,211,153,0.25)]'
+        : 'border-gray-200 bg-white hover:border-gray-300'
+      return `
+      <button type="button" class="slm-card w-full text-left p-4 rounded-2xl border-2 transition-all ${selCls}"
+        data-id="${s.id}" data-sel="${isSel ? '1' : '0'}">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="text-base font-bold text-gray-800">${DAYS_TH[s.day_of_week]} · คาบ ${s.period_no}${span}</p>
+            <p class="text-sm text-gray-500 mt-0.5">${time}</p>
+            ${s.class_name ? `<p class="text-base font-semibold mt-1" style="color:${headerText}">${s.class_name}</p>` : ''}
           </div>
-          <button id="slm-save" class="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl hover:bg-indigo-700 transition">
-            บันทึก
+          <span class="text-xl flex-shrink-0 mt-0.5">${isSel ? '✅' : '⬜'}</span>
+        </div>
+      </button>`
+    }
+
+    wrap.innerHTML = `
+      <div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div class="flex justify-center pt-3 pb-1 sm:hidden"><div class="w-10 h-1 rounded-full bg-gray-200"></div></div>
+
+        <!-- Header พร้อมสีห้อง -->
+        <div class="px-5 pt-5 pb-4 border-b rounded-t-2xl flex-shrink-0"
+          style="background:${headerBg}; border-color:${headerBdr}">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold uppercase tracking-wider mb-1" style="color:${headerText}">🔗 เชื่อมโยงตารางสอน</p>
+              <h3 class="text-xl font-extrabold leading-tight" style="color:${headerText}">${className}</h3>
+              ${ms?.subject_name ? `<p class="text-sm mt-0.5" style="color:${headerText};opacity:.75">${ms.subject_name}</p>` : ''}
+            </div>
+            <button id="slm-close" class="text-2xl leading-none flex-shrink-0 opacity-60 hover:opacity-100 transition"
+              style="color:${headerText}">×</button>
+          </div>
+        </div>
+
+        <!-- Slot list -->
+        <div class="px-4 py-3 overflow-auto flex-1">
+          <p class="text-xs text-gray-400 mb-3">แตะการ์ดเพื่อเลือก/ยกเลิก (เลือกได้หลายคาบ)</p>
+          <div id="slm-list" class="space-y-2">
+            ${schedule.map(s => renderSlotCard(s, selected.has(s.id))).join('')}
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 pb-5 pt-3 border-t border-gray-100 flex-shrink-0">
+          <button id="slm-save"
+            class="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition">
+            บันทึกการเชื่อมโยง
           </button>
         </div>
-        <div class="px-5 py-3 overflow-auto flex-1">
-          <p class="text-xs text-gray-400 mb-3">เลือกคาบสอนที่ตรงกับห้องนี้ (เลือกได้หลายคาบ)</p>
-          <div class="space-y-2">
-            ${schedule.map(s => {
-              const p = periodMap[s.period_no]
-              const time = p ? `${p.start_time.substring(0,5)}–${p.end_time.substring(0,5)}` : ''
-              const span = s.span_periods > 1 ? `–${s.period_no + s.span_periods - 1}` : ''
-              return `
-              <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer transition">
-                <input type="checkbox" class="slm-cb w-4 h-4 rounded accent-indigo-600" value="${s.id}" ${currentLinkedIds.has(s.id) ? 'checked' : ''} />
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-semibold text-gray-800">${DAYS_TH[s.day_of_week]} · คาบ ${s.period_no}${span}</p>
-                  <p class="text-xs text-gray-400">${time}${s.class_name ? ` · ${s.class_name}` : ''}</p>
-                </div>
-              </label>`
-            }).join('')}
-          </div>
-        </div>
       </div>`
+
     document.body.appendChild(wrap)
+
+    // Toggle card
+    wrap.querySelector('#slm-list').addEventListener('click', e => {
+      const card = e.target.closest('.slm-card')
+      if (!card) return
+      const id  = parseInt(card.dataset.id)
+      const was = card.dataset.sel === '1'
+      was ? selected.delete(id) : selected.add(id)
+      card.outerHTML = renderSlotCard(schedule.find(s => s.id === id), !was)
+    })
+
     wrap.querySelector('#slm-close').addEventListener('click', () => wrap.remove())
     wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove() })
+
     wrap.querySelector('#slm-save').addEventListener('click', async () => {
       const btn = wrap.querySelector('#slm-save')
-      btn.disabled = true; btn.textContent = '⏳'
+      btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
       try {
-        const checked   = [...wrap.querySelectorAll('.slm-cb:checked')].map(el => parseInt(el.value))
-        const unchecked = [...wrap.querySelectorAll('.slm-cb:not(:checked)')].map(el => parseInt(el.value))
+        const toAdd = [...selected].filter(id => !currentLinkedIds.has(id))
+        const toDel = [...currentLinkedIds].filter(id => !selected.has(id))
         await Promise.all([
-          ...checked.filter(id => !currentLinkedIds.has(id)).map(id => linkClassToSchedule(classId, id)),
-          ...unchecked.filter(id => currentLinkedIds.has(id)).map(id => unlinkClassFromSchedule(classId, id)),
+          ...toAdd.map(id => linkClassToSchedule(classId, id)),
+          ...toDel.map(id => unlinkClassFromSchedule(classId, id)),
         ])
         showToast('บันทึกการเชื่อมโยงแล้ว ✅', 'success')
         wrap.remove()
         window._navTo('my-classes')
       } catch (e) {
         showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
-        btn.disabled = false; btn.textContent = 'บันทึก'
+        btn.disabled = false; btn.textContent = 'บันทึกการเชื่อมโยง'
       }
     })
   } catch (e) {

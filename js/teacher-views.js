@@ -2119,6 +2119,8 @@ export async function renderMyClasses(teacher) {
             fallbackId: c.id,
           }
           const classColor = resolveScheduleColor(colorInput, roomColorMap)
+          if (!window._classColorCache) window._classColorCache = {}
+          window._classColorCache[c.id] = classColor
           const groupBadge = isReligionGroup
             ? { text: 'กลุ่มวิชาศาสนา', cls: 'bg-amber-50 text-amber-700' }
             : c.skill_group
@@ -2181,12 +2183,12 @@ export async function renderMyClasses(teacher) {
               <div class="flex items-start gap-1.5 flex-wrap">
                 <span class="text-[10px] text-gray-400 mt-0.5 mr-0.5 flex-shrink-0">🔗</span>
                 ${_scheduleChips(c.id, linksByClass, scheduleMap, periodMap)}
-                <button onclick="window._openScheduleLinkModal(${c.id},'${c.class_name}')"
+                <button onclick="window._openScheduleLinkModal(${c.id})"
                   class="text-[10px] px-2 py-0.5 rounded-lg border border-gray-200 text-gray-400 hover:text-indigo-500 hover:border-indigo-200 transition">
                   แก้ไข
                 </button>
               </div>` : `
-              <button onclick="window._openScheduleLinkModal(${c.id},'${c.class_name}')"
+              <button onclick="window._openScheduleLinkModal(${c.id})"
                 class="w-full py-2 rounded-xl border-2 border-dashed border-indigo-200 text-indigo-400 text-xs font-medium
                        hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-600 transition flex items-center justify-center gap-1.5">
                 🔗 เชื่อมโยงตารางสอน
