@@ -2278,9 +2278,9 @@ export async function renderMyClasses(teacher) {
         const extraBadges = s => `
           ${showHouseColor ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium">สี: ${_htmlEsc(s.house_color || '—')}</span>` : ''}
           ${showShirtSize ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[11px] font-medium">เสื้อ: ${_htmlEsc(s.sports_shirt_size || '—')}</span>` : ''}`
-        const avatar = (s, size = 'w-10 h-10') => s.image_url
-          ? `<img src="${_htmlEsc(s.image_url)}" class="${size} rounded-full object-cover bg-gray-100" loading="lazy" />`
-          : `<div class="${size} rounded-full bg-sky-100 text-sky-700 flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').trim().slice(0,1))}</div>`
+        const avatar = (s, size = 'w-12 h-16') => s.image_url
+          ? `<img src="${_htmlEsc(s.image_url)}" class="${size} rounded-2xl object-cover bg-gray-100 border border-gray-100 shadow-sm" loading="lazy" />`
+          : `<div class="${size} rounded-2xl bg-sky-100 text-sky-700 border border-sky-100 shadow-sm flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').trim().slice(0,1))}</div>`
         const tableRows = students.map((s, i) => `
           <tr class="student-status-target cursor-pointer transition ${s.is_active ? 'bg-white hover:bg-emerald-50/40' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}"
             data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
@@ -2305,7 +2305,7 @@ export async function renderMyClasses(teacher) {
             class="student-status-target text-left rounded-2xl border p-4 transition ${s.is_active ? 'border-emerald-300 bg-white shadow-[0_0_0_3px_rgba(16,185,129,0.12),0_8px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_0_0_4px_rgba(16,185,129,0.18),0_10px_24px_rgba(16,185,129,0.16)]' : 'border-gray-300 bg-gray-50 opacity-80 hover:opacity-100'}"
             data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
             <div class="flex items-start justify-between gap-3">
-              ${avatar(s, 'w-14 h-14')}
+              ${avatar(s, 'w-20 h-28')}
               <span class="px-2 py-1 rounded-full text-[11px] font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
                 ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
               </span>
@@ -2446,7 +2446,7 @@ export async function renderMyClasses(teacher) {
               }
               found = s
               renderResult(`<div class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm flex items-center gap-4">
-                ${avatar(s, 'w-16 h-16')}
+                ${avatar(s, 'w-16 h-24')}
                 <div class="flex-1 min-w-0">
                   <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name)}</p>
                   <p class="text-sm font-mono text-sky-700">${_htmlEsc(s.student_code)}</p>
