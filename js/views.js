@@ -4455,7 +4455,7 @@ function _openModal(col, year, sem, onSave) {
   const isEdit = !!col
   const m = document.createElement('div')
   m.id = 'lsk-modal'
-  m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+  m.className = 'fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40'
   m.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-7">
       <h3 class="text-lg font-bold text-gray-800 mb-5">${isEdit ? 'แก้ไขหัวข้อ' : 'เพิ่มหัวข้อ'}</h3>
@@ -5405,7 +5405,7 @@ export async function renderPrayerAdmin() {
       document.getElementById('admin-prayer-modal')?.remove()
       const m = document.createElement('div')
       m.id = 'admin-prayer-modal'
-      m.className = 'fixed inset-0 z-50 flex flex-col bg-white'
+      m.className = 'fixed inset-0 z-[80] flex flex-col bg-white'
 
       const dateRange = `${_fmtD(week.days[0].date)}–${_fmtD(week.days[week.days.length-1].date)}`
 
@@ -5595,7 +5595,7 @@ function _openReadingModal(col, year, sem, onSave) {
   const isEdit = !!col
   const m = document.createElement('div')
   m.id = 'rsa-modal'
-  m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+  m.className = 'fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40'
   m.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-7">
       <h3 class="text-lg font-bold text-gray-800 mb-5">${isEdit?'แก้ไขหัวข้อ':'เพิ่มหัวข้อ'}</h3>
