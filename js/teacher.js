@@ -5,7 +5,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
          getPendingExamRequestCount,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests,
-         getTeacherPackageAccess } from './api.js'
+         getTeacherPackageAccess, getMyDonationRequests } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -370,6 +370,10 @@ window._openCourseDocPage2 = async (courseId) => {
 
 // ── หน้า 1: เลือกแพ็กเกจ ────────────────────────────────────────────────────
 function _showQuotaPopup(count, course, cfg = {}) {
+  if (cfg.quotaMode === 'school_sponsored') {
+    _showSchoolSponsoredPopup(count, course, cfg)
+    return
+  }
   document.getElementById('quota-popup')?.remove()
   const wrap = document.createElement('div')
   wrap.id = 'quota-popup'
@@ -501,6 +505,263 @@ function _showQuotaPopup(count, course, cfg = {}) {
       _showPaymentPage(pkg, course, 1, cfg)
     }
   })
+}
+
+// ── โหมดใหม่: โรงเรียนสนับสนุน ──────────────────────────────────────────────
+
+function _showSchoolSponsoredPopup(count, course, cfg = {}) {
+  document.getElementById('school-sponsored-popup')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'school-sponsored-popup'
+  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+
+  wrap.innerHTML = `
+    <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div class="flex justify-center pt-3 pb-1 sm:hidden">
+        <div class="w-10 h-1 rounded-full bg-gray-200"></div>
+      </div>
+      <div class="px-5 pt-4 pb-4 border-b border-gray-100">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🎉</div>
+          <div>
+            <h3 class="font-bold text-gray-800 leading-tight">ขอบคุณที่ใช้ระบบนี้ครับ</h3>
+            <p class="text-xs text-gray-400">ระบบ ปพ.5 ออนไลน์</p>
+          </div>
+        </div>
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+          <p class="text-sm font-semibold text-emerald-800">🏫 โรงเรียนดูแลให้แล้ว</p>
+          <p class="text-xs text-emerald-700 mt-1 leading-relaxed">
+            โรงเรียนได้สนับสนุนให้คุณครูทุกท่านใช้งานได้ไม่จำกัดวิชา — กดรับสิทธิ์ได้เลยครับ ไม่มีค่าใช้จ่ายใดๆ
+          </p>
+        </div>
+
+        <button id="sp-donate"
+          class="w-full py-4 rounded-2xl bg-amber-400 hover:bg-amber-500 active:bg-amber-600 text-white font-bold text-sm
+                 shadow-lg shadow-amber-200/60 transition-all flex items-center justify-center gap-2">
+          ☕ สนับสนุนผู้พัฒนาด้วย
+          <span class="font-normal text-xs opacity-90">ถ้าเห็นว่าระบบมีประโยชน์</span>
+        </button>
+
+        <button id="sp-access"
+          class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm
+                 shadow-lg shadow-emerald-200/60 transition-all flex items-center justify-center gap-2">
+          🎓 รับสิทธิ์ไม่จำกัดเลย
+        </button>
+
+        <p class="text-center text-[11px] text-gray-400 pb-1">กดปุ่มใดก็ได้ ไม่มีบังคับนะครับ 🙏</p>
+      </div>
+    </div>`
+
+  document.body.appendChild(wrap)
+
+  wrap.querySelector('#sp-donate').addEventListener('click', () => {
+    wrap.remove()
+    _showDonateModal(course, cfg)
+  })
+
+  wrap.querySelector('#sp-access').addEventListener('click', async () => {
+    const btn = wrap.querySelector('#sp-access')
+    btn.disabled = true
+    btn.textContent = '⏳ กำลังส่งคำขอ...'
+    try {
+      await createPaymentRequest({ teacher_id: _teacher?.id, package_type: 'school_sponsored', amount: 0, status: 'pending' })
+      showToast('ส่งคำขอแล้ว ✅ แอดมินจะอนุมัติให้เร็วๆ นี้ครับ', 'success')
+      wrap.remove()
+    } catch (e) {
+      showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
+      btn.disabled = false
+      btn.textContent = '🎓 รับสิทธิ์ไม่จำกัดเลย'
+    }
+  })
+}
+
+async function _showDonateModal(course, cfg = {}) {
+  document.getElementById('donate-modal')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'donate-modal'
+  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+
+  const promptpay = cfg.paymentPromptpay ?? ''
+
+  wrap.innerHTML = `
+    <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div class="flex justify-center pt-3 pb-1 sm:hidden">
+        <div class="w-10 h-1 rounded-full bg-gray-200"></div>
+      </div>
+      <div class="px-5 pt-4 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
+        <button id="donate-back" class="text-gray-400 hover:text-gray-600 text-xl leading-none">←</button>
+        <div class="flex-1">
+          <h3 class="font-bold text-gray-800">☕ สนับสนุนผู้พัฒนา</h3>
+          <p class="text-xs text-gray-400">ขอบคุณมากเลยครับ 🙏</p>
+        </div>
+      </div>
+      <div class="px-5 py-4 space-y-4 overflow-auto flex-1">
+        <p class="text-sm text-gray-600 text-center leading-relaxed">
+          ระบุจำนวนเงินที่ต้องการสนับสนุนได้เลยครับ<br/>
+          <span class="text-xs text-gray-400">ไม่มีขั้นต่ำ — ตามสะดวกเลยนะครับ</span>
+        </p>
+        <div class="flex items-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 focus-within:border-amber-400 transition">
+          <span class="text-2xl font-bold text-amber-500">฿</span>
+          <input id="donate-amount" type="number" min="1" placeholder="0"
+            class="flex-1 bg-transparent text-3xl font-extrabold text-amber-700 outline-none w-full" />
+        </div>
+        <div class="flex gap-2">
+          ${[20,50,100,200].map(v =>
+            `<button class="donate-quick flex-1 py-2 rounded-xl border-2 border-amber-200 text-amber-700 text-sm font-bold hover:bg-amber-50 transition">${v}</button>`
+          ).join('')}
+        </div>
+        <div id="donate-qr-area" class="hidden flex-col items-center gap-3 py-2">
+          <img id="donate-qr-img" class="w-56 h-56 rounded-2xl shadow-md" />
+          <p class="text-xs text-gray-500 text-center">สแกนด้วย app ธนาคาร หรือ PromptPay</p>
+        </div>
+        <button id="donate-gen-qr"
+          class="w-full py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-500 text-white font-bold text-sm shadow-md shadow-amber-200/50 transition">
+          สร้าง QR Code →
+        </button>
+        <button id="donate-confirm"
+          class="hidden w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-200/50 transition">
+          ✅ ฉันโอนแล้ว
+        </button>
+      </div>
+    </div>`
+
+  document.body.appendChild(wrap)
+
+  const amountInput = wrap.querySelector('#donate-amount')
+
+  wrap.querySelectorAll('.donate-quick').forEach(btn => {
+    btn.addEventListener('click', () => { amountInput.value = btn.textContent.trim() })
+  })
+
+  wrap.querySelector('#donate-back').addEventListener('click', () => {
+    wrap.remove()
+    _showSchoolSponsoredPopup(0, course, cfg)
+  })
+
+  wrap.querySelector('#donate-gen-qr').addEventListener('click', async () => {
+    const amount = parseFloat(amountInput.value)
+    if (!amount || amount <= 0) { showToast('กรุณาระบุจำนวนเงินครับ', 'error'); return }
+    if (!promptpay) { showToast('แอดมินยังไม่ได้ตั้งค่าเบอร์ PromptPay', 'error'); return }
+    try {
+      const dataUrl = await promptpayQRDataURL(promptpay, amount)
+      wrap.querySelector('#donate-qr-img').src = dataUrl
+      wrap.querySelector('#donate-qr-area').classList.remove('hidden')
+      wrap.querySelector('#donate-qr-area').classList.add('flex')
+      wrap.querySelector('#donate-confirm').classList.remove('hidden')
+      wrap.querySelector('#donate-gen-qr').classList.add('hidden')
+    } catch (e) {
+      showToast('สร้าง QR ไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+    }
+  })
+
+  wrap.querySelector('#donate-confirm').addEventListener('click', async () => {
+    const amount = parseFloat(amountInput.value)
+    const btn = wrap.querySelector('#donate-confirm')
+    btn.disabled = true; btn.textContent = '⏳ กำลังส่งข้อมูล...'
+    try {
+      await createPaymentRequest({ teacher_id: _teacher?.id, package_type: 'donation', amount, status: 'pending' })
+      showToast('ขอบคุณมากครับ! 🙏 แอดมินจะรับทราบและส่งการ์ดขอบคุณให้ครับ', 'success')
+      wrap.remove()
+      _initDonateFloatingBtn(true)
+    } catch (e) {
+      showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = '✅ ฉันโอนแล้ว'
+    }
+  })
+}
+
+function _showThankYouCard(request) {
+  document.getElementById('thankyou-card-modal')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'thankyou-card-modal'
+  wrap.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
+
+  wrap.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="bg-gradient-to-br from-amber-400 to-orange-400 px-6 py-8 text-center">
+        <div class="text-5xl mb-3">☕</div>
+        <h2 class="text-white font-bold text-xl">ขอบคุณครับ!</h2>
+        <p class="text-amber-100 text-sm mt-1">การสนับสนุนของคุณครูมีความหมายมากครับ</p>
+      </div>
+      <div class="px-6 py-5">
+        <div class="bg-amber-50 rounded-2xl p-4 text-sm text-amber-900 leading-relaxed whitespace-pre-line">
+          ${_esc(request.admin_note)}
+        </div>
+        <button id="tc-close"
+          class="mt-4 w-full py-3 rounded-2xl bg-amber-400 hover:bg-amber-500 text-white font-bold text-sm transition">
+          🙏 รับทราบ
+        </button>
+      </div>
+    </div>`
+
+  document.body.appendChild(wrap)
+
+  wrap.querySelector('#tc-close').addEventListener('click', () => {
+    localStorage.setItem(`pp5_thankyou_seen_${request.id}`, '1')
+    wrap.remove()
+    document.getElementById('donate-float-btn')?.remove()
+    _addDonateToSidebar()
+  })
+}
+
+function _addDonateToSidebar() {
+  if (document.getElementById('sidebar-donate-item')) return
+  const nav = document.querySelector('#sidebar nav')
+  if (!nav) return
+  const item = document.createElement('a')
+  item.id = 'sidebar-donate-item'
+  item.href = '#'
+  item.title = 'สนับสนุนผู้พัฒนาอีกครั้ง'
+  item.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-400/60 hover:text-amber-400 hover:bg-emerald-800/40 opacity-60 hover:opacity-100'
+  item.innerHTML = '<span>☕</span> สนับสนุนผู้พัฒนา'
+  item.addEventListener('click', async e => {
+    e.preventDefault()
+    const cfg = await getSystemConfig().catch(() => ({}))
+    _showDonateModal(null, cfg)
+  })
+  nav.appendChild(item)
+}
+
+function _initDonateFloatingBtn(hasPendingDonation = false) {
+  document.getElementById('donate-float-btn')?.remove()
+  const btn = document.createElement('button')
+  btn.id = 'donate-float-btn'
+  btn.title = hasPendingDonation ? 'รอแอดมินรับทราบการโดเนทของคุณ' : 'สนับสนุนผู้พัฒนา'
+  btn.className = 'fixed bottom-5 right-5 z-[70] w-14 h-14 rounded-full bg-amber-400 hover:bg-amber-500 text-white shadow-xl shadow-amber-300/50 flex items-center justify-center transition-transform hover:scale-110'
+  btn.innerHTML = hasPendingDonation
+    ? `<span class="text-2xl">☕</span>`
+    : `<span class="relative flex items-center justify-center w-full h-full">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-40"></span>
+        <span class="relative text-2xl">☕</span>
+       </span>`
+  btn.addEventListener('click', async () => {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    _showDonateModal(null, cfg)
+  })
+  document.body.appendChild(btn)
+}
+
+async function _initDonationFlow(teacherId) {
+  try {
+    const requests = await getMyDonationRequests(teacherId)
+    const approved = requests.find(r => r.package_type === 'donation' && r.status === 'approved')
+    const pending  = requests.some(r => r.package_type === 'donation' && r.status === 'pending')
+
+    if (approved) {
+      const seen = localStorage.getItem(`pp5_thankyou_seen_${approved.id}`)
+      if (!seen && approved.admin_note) {
+        _showThankYouCard(approved)
+      } else {
+        _addDonateToSidebar()
+      }
+    } else {
+      _initDonateFloatingBtn(pending)
+    }
+  } catch {
+    _initDonateFloatingBtn(false)
+  }
 }
 
 // ── หน้า 1.5: เลือกจำนวนห้อง (per_subject) ──────────────────────────────────
@@ -916,6 +1177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
   _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
   _startPolling()              // polling 30 วิ
+  if (_teacher?.id) _initDonationFlow(_teacher.id)
 
   // Sidebar nav clicks
   document.querySelectorAll('[data-nav]').forEach(link => {

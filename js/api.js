@@ -925,7 +925,9 @@ export async function getTeacherPackageAccess(teacherId) {
   if (error) throw error
 
   const approvedRequests = data ?? []
-  const hasSemester = approvedRequests.some(r => r.package_type === 'semester')
+  const hasSemester = approvedRequests.some(r =>
+    ['semester', 'school_sponsored', 'donation'].includes(r.package_type)
+  )
   const paidRoomCount = approvedRequests
     .filter(r => r.package_type === 'per_subject')
     .reduce((sum, r) => sum + (parseInt(r.room_count ?? 1) || 1), 0)
@@ -989,6 +991,18 @@ export async function getPaymentSlipViewUrl(slipUrl) {
   } catch {
     return raw
   }
+}
+
+export async function getMyDonationRequests(teacherId) {
+  if (!teacherId) return []
+  const { data, error } = await supabase
+    .from('payment_requests')
+    .select('id, package_type, status, admin_note, created_at')
+    .eq('teacher_id', teacherId)
+    .in('package_type', ['donation', 'school_sponsored'])
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
 }
 
 // ─── Teacher Schedules ────────────────────────────────────────────────────────

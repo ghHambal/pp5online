@@ -1797,7 +1797,7 @@ export async function renderSettings() {
     }
     const INPUT = 'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200'
 
-    const fld = ({ key, label, type, options, placeholder, hint }) => {
+    const fld = ({ key, label, type, options, placeholder, hint, rows }) => {
       const val  = cfg[key] ?? ''
       const base = `id="cfg-${key}" data-key="${key}"`
       const wrap = (inner, h = '') =>
@@ -1819,8 +1819,16 @@ export async function renderSettings() {
 
       if (type === 'select') return wrap(`
         <select ${base} class="${INPUT} bg-white">
-          ${(options ?? []).map(o => `<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}
+          ${(options ?? []).map(o => {
+            const v = typeof o === 'object' ? o.value : o
+            const t = typeof o === 'object' ? o.label : o
+            return `<option value="${v}" ${v===val?'selected':''}>${t}</option>`
+          }).join('')}
         </select>`, hint)
+
+      if (type === 'textarea') return wrap(
+        `<textarea ${base} rows="${rows ?? 3}" placeholder="${placeholder ?? ''}"
+          class="${INPUT} resize-none">${val ?? ''}</textarea>`, hint)
 
       if (type === 'upload') return wrap(`
         <div class="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
@@ -1963,7 +1971,19 @@ export async function renderSettings() {
       ].join('')
 
       if (tabId === 'package') return [
-        section('โควตาและราคา', [
+        section('โหมดระบบโควตา', [
+          { key:'quotaMode', label:'โหมดเมื่อครูครบโควตา', type:'select',
+            options:[
+              { value:'payment',          label:'โหมดเดิม — ซื้อแพ็กเกจ (รายห้อง / เหมาเทอม)' },
+              { value:'school_sponsored', label:'โหมดใหม่ — โรงเรียนสนับสนุน + เชิญโดเนท' },
+            ],
+            hint:'เลือกพฤติกรรมของระบบเมื่อครูใช้งานครบโควตาฟรี' },
+        ]),
+        section('การ์ดขอบคุณผู้โดเนท (โหมดใหม่)', [
+          { key:'donationThankYouCard', label:'ข้อความในการ์ดขอบคุณ', type:'textarea', rows:4,
+            placeholder:'เช่น ขอบคุณคุณครูมากเลยครับที่ช่วยสนับสนุนการพัฒนาระบบ...' },
+        ]),
+        section('โควตาและราคา (โหมดเดิม)', [
           { key:'freeClassQuota', label:'โควตาห้องฟรี (ห้อง)',       type:'text', placeholder:'3' },
           { key:'pricePerClass',  label:'ราคาเพิ่มรายห้อง (บาท)',    type:'text', placeholder:'49' },
           { key:'priceSemester',  label:'ราคาแพ็กเกจเหมาทั้งเทอม (บาท)', type:'text', placeholder:'299' },
@@ -3844,9 +3864,12 @@ export async function renderPayments() {
         rejected: { label: '❌ ปฏิเสธ',     cls: 'bg-red-100 text-red-700' },
       }[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-600' }
 
-      const pkgLabel = r.package_type === 'semester'
-        ? `📦 เหมาทั้งเทอม (${r.amount ?? 299} บ.)`
-        : `📘 รายห้อง ${parseInt(r.room_count ?? 1) || 1} ห้อง (${r.amount ?? 49} บ.)`
+      const pkgLabel = {
+        semester:         `📦 เหมาทั้งเทอม (${r.amount ?? 299} บ.)`,
+        per_subject:      `📘 รายห้อง ${parseInt(r.room_count ?? 1) || 1} ห้อง (${r.amount ?? 49} บ.)`,
+        donation:         `☕ โดเนท ${r.amount ?? 0} บ.`,
+        school_sponsored: `🏫 ขอสิทธิ์จากโรงเรียน (ไม่มีค่าใช้จ่าย)`,
+      }[r.package_type] ?? `${r.package_type} (${r.amount ?? 0} บ.)`
 
       const date = new Date(r.created_at).toLocaleDateString('th-TH', {
         day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit'
@@ -3900,25 +3923,65 @@ export async function renderPayments() {
         </div>`}
 
         <!-- Actions (เฉพาะ pending) -->
-        ${r.status === 'pending' ? `
-        <div class="flex gap-2 px-4 pb-4">
-          <button class="reject-btn flex-1 py-2.5 rounded-xl border-2 border-red-200 text-red-600
-                         text-sm font-semibold hover:bg-red-50 transition" data-id="${r.id}">
-            ❌ ปฏิเสธ
-          </button>
-          <button class="approve-btn flex-1 py-2.5 rounded-xl bg-emerald-600 text-white
-                         text-sm font-semibold hover:bg-emerald-700 transition"
-            data-id="${r.id}" data-teacher="${r.teachers?.id}" data-pkg="${r.package_type}">
-            ✅ อนุมัติ
-          </button>
-        </div>` : ''}
+        ${r.status === 'pending' ? (() => {
+          if (r.package_type === 'donation') return `
+          <div class="px-4 pb-4">
+            <button class="donate-ack-btn w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-500
+                           text-white text-sm font-semibold transition"
+              data-id="${r.id}" data-teacher="${r.teachers?.id}">
+              ☕ รับทราบ / ขอบคุณ
+            </button>
+          </div>`
+          if (r.package_type === 'school_sponsored') return `
+          <div class="px-4 pb-4">
+            <button class="approve-btn flex-1 w-full py-2.5 rounded-xl bg-emerald-600 text-white
+                           text-sm font-semibold hover:bg-emerald-700 transition"
+              data-id="${r.id}" data-teacher="${r.teachers?.id}" data-pkg="${r.package_type}">
+              🏫 อนุมัติสิทธิ์
+            </button>
+          </div>`
+          return `
+          <div class="flex gap-2 px-4 pb-4">
+            <button class="reject-btn flex-1 py-2.5 rounded-xl border-2 border-red-200 text-red-600
+                           text-sm font-semibold hover:bg-red-50 transition" data-id="${r.id}">
+              ❌ ปฏิเสธ
+            </button>
+            <button class="approve-btn flex-1 py-2.5 rounded-xl bg-emerald-600 text-white
+                           text-sm font-semibold hover:bg-emerald-700 transition"
+              data-id="${r.id}" data-teacher="${r.teachers?.id}" data-pkg="${r.package_type}">
+              ✅ อนุมัติ
+            </button>
+          </div>`
+        })() : ''}
       </div>`
     }).join('')
+
+    // ── Donate Acknowledge ──
+    list.querySelectorAll('.donate-ack-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const cfg = await getSystemConfig().catch(() => ({}))
+        const thankYouMsg = cfg.donationThankYouCard?.trim() || 'ขอบคุณคุณครูมากเลยครับที่ช่วยสนับสนุนการพัฒนาระบบ 🙏'
+        if (!confirm(`รับทราบการโดเนทนี้?\nระบบจะส่งการ์ดขอบคุณให้คุณครูทันที`)) return
+        btn.disabled = true; btn.textContent = '⏳ กำลังดำเนินการ...'
+        try {
+          await reviewPaymentRequest(parseInt(btn.dataset.id), 'approved', thankYouMsg)
+          await approveTeacherQuota(parseInt(btn.dataset.teacher), 'donation')
+          showToast('รับทราบแล้ว ✅ ส่งการ์ดขอบคุณให้ครูแล้ว', 'success')
+          window._refreshPaymentBadge?.()
+          allRequests = await getAllPaymentRequests()
+          render()
+        } catch { showToast('เกิดข้อผิดพลาด', 'error'); btn.disabled = false; btn.textContent = '☕ รับทราบ / ขอบคุณ' }
+      })
+    })
 
     // ── Approve ──
     list.querySelectorAll('.approve-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        if (!confirm(`อนุมัติคำขอนี้?\nครูจะสามารถสร้างห้องเรียนได้ทันที`)) return
+        const isSchoolSponsored = btn.dataset.pkg === 'school_sponsored'
+        const confirmMsg = isSchoolSponsored
+          ? `อนุมัติสิทธิ์ใช้งานไม่จำกัดให้ครูท่านนี้?`
+          : `อนุมัติคำขอนี้?\nครูจะสามารถสร้างห้องเรียนได้ทันที`
+        if (!confirm(confirmMsg)) return
         btn.disabled = true; btn.textContent = '⏳ กำลังอนุมัติ...'
         try {
           await reviewPaymentRequest(parseInt(btn.dataset.id), 'approved')
@@ -3927,7 +3990,7 @@ export async function renderPayments() {
           window._refreshPaymentBadge?.()
           allRequests = await getAllPaymentRequests()
           render()
-        } catch { showToast('เกิดข้อผิดพลาด', 'error'); btn.disabled = false; btn.textContent = '✅ อนุมัติ' }
+        } catch { showToast('เกิดข้อผิดพลาด', 'error'); btn.disabled = false; btn.textContent = isSchoolSponsored ? '🏫 อนุมัติสิทธิ์' : '✅ อนุมัติ' }
       })
     })
 
