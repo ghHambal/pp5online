@@ -3871,9 +3871,15 @@ export async function renderPayments() {
   const render = () => {
     const list = document.getElementById('pay-list')
     if (!list) return
-    const filtered = currentFilter === 'all'
+    const statusOrder = { pending: 0, approved: 1, rejected: 2 }
+    const filtered = (currentFilter === 'all'
       ? allRequests
       : allRequests.filter(r => r.status === currentFilter)
+    ).slice().sort((a, b) => {
+      const sDiff = (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
+      if (sDiff !== 0) return sDiff
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
 
     if (!filtered.length) {
       list.innerHTML = `<div class="text-center py-12 text-gray-400">
