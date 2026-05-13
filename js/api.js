@@ -1005,6 +1005,25 @@ export async function getMyDonationRequests(teacherId) {
   return data ?? []
 }
 
+// ─── Classrooms ──────────────────────────────────────────────────────────────
+
+export async function getClassrooms() {
+  const { data, error } = await supabase
+    .from('classrooms')
+    .select('id, building, room_number, name, is_teaching_room')
+    .order('building').order('room_number')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function assignClassroom(classId, classroomId) {
+  const { error } = await supabase
+    .from('classes')
+    .update({ classroom_id: classroomId })
+    .eq('id', classId)
+  if (error) throw error
+}
+
 // ─── Usage Tracking ──────────────────────────────────────────────────────────
 
 export async function updateLastSeen(table) {

@@ -20,7 +20,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
          getTeacherExamRequests, reviewExamRequest, updateExamResult,
          getTeacherPackageAccess,
-         getClassScheduleLinks } from './api.js'
+         getClassScheduleLinks,
+         getClassrooms, assignClassroom } from './api.js'
 import { supabase } from './supabase.js'
 
 import { uploadTeacherPhoto } from './storage.js'
@@ -217,11 +218,14 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   if (_todayWidgetTimer) { clearInterval(_todayWidgetTimer); _todayWidgetTimer = null }
 
-  const [schedule, links, periods] = await Promise.all([
+  const [schedule, links, periods, allClassrooms] = await Promise.all([
     teacher ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
     teacher ? getClassScheduleLinks(teacher.id).catch(() => []) : Promise.resolve([]),
     getPeriods().catch(() => []),
+    getClassrooms().catch(() => []),
   ])
+  window._classroomMapGlobal = Object.fromEntries(allClassrooms.map(r => [r.id, r]))
+  const _classroomMapGlobal = window._classroomMapGlobal
 
   const _linksBySchedule = {}
   links.forEach(l => {
@@ -354,7 +358,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
                   ${entry.linkedClasses.map(c => c.master_subjects?.subject_name ?? c.class_name).join(', ')}
                 </p>
                 <p class="text-[11px] text-gray-400">
-                  ${entry.linkedClasses.map(c => c.class_name).join(', ')} · ${time}
+                  ${entry.linkedClasses.map(c => {
+                    const cr = c.classroom_id ? _classroomMapGlobal[c.classroom_id] : null
+                    return c.class_name + (cr ? ` · 📍${cr.building} ${cr.room_number}` : '')
+                  }).join(', ')} · ${time}
                 </p>
               </div>
               <span id="today-cd-${i}" class="text-xs font-medium flex-shrink-0 ${cd.cls}">${cd.label}</span>
@@ -2075,11 +2082,13 @@ export async function renderMyClasses(teacher) {
     </svg> กำลังโหลด...
   </div>`)
   try {
-    const [classes, copyCfg, roomColorRows] = await Promise.all([
+    const [classes, copyCfg, roomColorRows, classrooms] = await Promise.all([
       getMyClasses(teacher?.id ?? null),
       getSystemConfig().catch(() => ({})),
       teacher?.id ? getTeacherRoomColors(teacher.id).catch(() => []) : Promise.resolve([]),
+      getClassrooms().catch(() => []),
     ])
+    const classroomMap = Object.fromEntries(classrooms.map(r => [r.id, r]))
     const academicYear = parseInt(copyCfg.academicYear ?? 2568)
     const semester     = parseInt(copyCfg.semester ?? 1)
     const [schedule, links, periods] = await Promise.all([
@@ -2242,6 +2251,22 @@ export async function renderMyClasses(teacher) {
                 🔗 เชื่อมโยงตารางสอน
               </button>`}
             </div>
+            <!-- ห้องสอน -->
+            <div class="mt-2">
+              ${c.classroom_id && classroomMap[c.classroom_id] ? (() => {
+                const cr = classroomMap[c.classroom_id]
+                return `<div class="flex items-center gap-1.5">
+                  <span class="text-xs text-gray-500">📍</span>
+                  <span class="text-xs font-medium text-gray-700">${cr.building} ห้อง ${cr.room_number}${cr.name ? ` (${cr.name})` : ''}</span>
+                  <button onclick="window._assignClassroom(${c.id})"
+                    class="ml-auto text-[10px] text-gray-400 hover:text-indigo-500 transition">แก้ไข</button>
+                </div>`
+              })() : `<button onclick="window._assignClassroom(${c.id})"
+                class="w-full py-1.5 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs hover:border-indigo-300 hover:text-indigo-500 transition flex items-center justify-center gap-1">
+                📍 ระบุห้องสอน
+              </button>`}
+            </div>
+
             <!-- วันสอน -->
             ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date].some(Boolean) ? `
             <div class="mt-2 flex flex-wrap gap-2">
@@ -2258,6 +2283,73 @@ export async function renderMyClasses(teacher) {
         }).join('')}
       </div>`}
     </div>`)
+    window._assignClassroom = (classId) => {
+      const cls = window._classCache?.[classId]
+      if (!cls) return
+      const buildings = [...new Set(classrooms.map(r => r.building))]
+      document.getElementById('assign-room-modal')?.remove()
+      const modal = document.createElement('div')
+      modal.id = 'assign-room-modal'
+      modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4'
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <h3 class="font-bold text-gray-800 mb-1">📍 ระบุห้องสอน</h3>
+          <p class="text-xs text-gray-400 mb-4">${cls.class_name} · ${cls.master_subjects?.subject_name ?? ''}</p>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">อาคาร</label>
+              <select id="arm-building" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white">
+                <option value="">— เลือกอาคาร —</option>
+                ${buildings.map(b => `<option value="${b}">${b}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">ห้อง</label>
+              <select id="arm-room" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white">
+                <option value="">— เลือกอาคารก่อน —</option>
+              </select>
+            </div>
+            <div class="flex gap-3 pt-1">
+              <button id="arm-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button id="arm-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
+            </div>
+          </div>
+        </div>`
+      document.body.appendChild(modal)
+      const buildSel = modal.querySelector('#arm-building')
+      const roomSel  = modal.querySelector('#arm-room')
+      // pre-select current
+      if (cls.classroom_id && classroomMap[cls.classroom_id]) {
+        const cr = classroomMap[cls.classroom_id]
+        buildSel.value = cr.building
+        buildSel.dispatchEvent(new Event('change'))
+      }
+      buildSel.addEventListener('change', () => {
+        const b = buildSel.value
+        const rooms = classrooms.filter(r => r.building === b)
+        roomSel.innerHTML = `<option value="">— เลือกห้อง —</option>` +
+          rooms.map(r => {
+            const label = r.name ? `${r.room_number} — ${r.name}` : r.room_number
+            const sel = r.id === cls.classroom_id ? 'selected' : ''
+            return `<option value="${r.id}" ${sel}>${label}</option>`
+          }).join('')
+      })
+      modal.querySelector('#arm-cancel').addEventListener('click', () => modal.remove())
+      modal.querySelector('#arm-save').addEventListener('click', async () => {
+        const btn = modal.querySelector('#arm-save')
+        const roomId = roomSel.value ? parseInt(roomSel.value) : null
+        btn.disabled = true; btn.textContent = '⏳'
+        try {
+          await assignClassroom(classId, roomId)
+          showToast('บันทึกห้องสอนแล้ว ✅', 'success')
+          modal.remove()
+          renderMyClasses(teacher)
+        } catch (e) {
+          showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = 'บันทึก'
+        }
+      })
+    }
     window._openAttendance = (classId) => {
       const cls = window._classCache?.[classId]
       if (cls) renderAttendanceGrid(teacher, cls)

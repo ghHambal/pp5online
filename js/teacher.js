@@ -1275,7 +1275,10 @@ async function _scheduleClassNotifications(teacherId) {
       if (minsLeft <= 0) continue
 
       const subjectName = entry.linkedClasses[0]?.master_subjects?.subject_name ?? 'วิชา'
-      const classNames  = entry.linkedClasses.map(c => c.class_name).join(', ')
+      const classNames  = entry.linkedClasses.map(c => {
+        const cr = c.classroom_id ? window._classroomMapGlobal?.[c.classroom_id] : null
+        return c.class_name + (cr ? ` 📍${cr.building} ${cr.room_number}` : '')
+      }).join(', ')
       const timeStr     = entry.period.start_time.substring(0, 5)
 
       const t = setTimeout(async () => {
