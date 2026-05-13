@@ -106,7 +106,7 @@ function _jsonp(gasUrl, payload) {
     const timer = setTimeout(() => {
       cleanup()
       reject(new Error('รอคำตอบจาก GAS นานเกินไป'))
-    }, 45000)
+    }, 120000)
     const cleanup = () => {
       clearTimeout(timer)
       delete window[callback]
@@ -338,6 +338,15 @@ export async function syncSubjectCatalog(rows, options = {}) {
   })
 
   return rows?.length ?? 0
+}
+
+export async function syncStudentsFromSheetNow(options = {}) {
+  const gasUrl = await _getGasUrl()
+  return _jsonp(gasUrl, {
+    action: 'sync_students_now',
+    tabName: options.tabName || '',
+    headerRow: options.headerRow || '',
+  })
 }
 
 export async function shareSheetForView(sheetId) {

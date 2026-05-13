@@ -39,6 +39,7 @@ import {
   COPY_TEMPLATE_CONFIG,
   SUBJECT_SYNC_COLUMNS,
   syncSubjectCatalog,
+  syncStudentsFromSheetNow,
 } from './sync.js'
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
@@ -1978,6 +1979,21 @@ export async function renderSettings() {
           { key:'showStudentHouseColor', label:'แสดงคอลัมน์ประจำสี', type:'toggle' },
           { key:'showStudentSportsShirtSize', label:'แสดงคอลัมน์ไซด์เสื้อกีฬาสี', type:'toggle' },
         ]),
+        section('ซิงก์ฐานข้อมูลนักเรียนจาก Google Sheet', [
+          { key:'studentSyncSheetId', label:'Google Sheet ID / URL แหล่งข้อมูลนักเรียน', type:'text', placeholder:'วาง ID หรือ URL ของ Google Sheet' },
+          { key:'studentSyncTabName', label:'ชื่อแท็บข้อมูลนักเรียน', type:'text', placeholder:'เช่น students หรือ ชื่อนักเรียน' },
+          { key:'studentSyncHeaderRow', label:'แถวหัวตาราง', type:'text', placeholder:'1' },
+        ]),
+        `<div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+          <p class="text-sm font-semibold text-emerald-900">ซิงก์รายสัปดาห์</p>
+          <p class="text-xs text-emerald-700 mt-1 leading-relaxed">
+            ปุ่มนี้ใช้ทดสอบซิงก์ทันที ส่วนรันอัตโนมัติรายสัปดาห์ให้ตั้ง trigger ใน Apps Script ที่ฟังก์ชัน <span class="font-mono">runWeeklyStudentSync</span>
+          </p>
+          <button id="btn-sync-students-now" type="button"
+            class="mt-3 inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm">
+            🔄 ซิงก์นักเรียนตอนนี้
+          </button>
+        </div>`,
       ].join('')
 
       if (tabId === 'sync') {
@@ -2088,6 +2104,31 @@ export async function renderSettings() {
           document.getElementById('school-porwor').classList.toggle('hidden', stab !== 'porwor')
         })
       })
+
+      const syncStudentsBtn = document.getElementById('btn-sync-students-now')
+      if (syncStudentsBtn) {
+        syncStudentsBtn.addEventListener('click', async () => {
+          const sheetId = document.getElementById('cfg-studentSyncSheetId')?.value?.trim() || ''
+          const tabName = document.getElementById('cfg-studentSyncTabName')?.value?.trim() || ''
+          const headerRow = document.getElementById('cfg-studentSyncHeaderRow')?.value?.trim() || '1'
+          syncStudentsBtn.disabled = true
+          syncStudentsBtn.textContent = 'กำลังซิงก์...'
+          try {
+            await Promise.all([
+              updateSystemConfig('studentSyncSheetId', sheetId),
+              updateSystemConfig('studentSyncTabName', tabName),
+              updateSystemConfig('studentSyncHeaderRow', headerRow),
+            ])
+            const res = await syncStudentsFromSheetNow({ sourceSheetId: sheetId, tabName, headerRow })
+            showToast(`ซิงก์นักเรียนสำเร็จ: อ่าน ${res.read ?? 0} แถว / บันทึก ${res.written ?? 0} คน ✅`, 'success')
+          } catch (err) {
+            showToast('ซิงก์นักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          } finally {
+            syncStudentsBtn.disabled = false
+            syncStudentsBtn.textContent = '🔄 ซิงก์นักเรียนตอนนี้'
+          }
+        })
+      }
 
       // upload handlers
       document.querySelectorAll('#cfg-panel-inner .cfg-upload-file').forEach(fi => {

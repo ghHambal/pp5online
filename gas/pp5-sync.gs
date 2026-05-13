@@ -15,6 +15,12 @@
 //      - Execute as:    Me  ← สำคัญ (รันด้วยบัญชี Admin)
 //      - Who has access: Anyone
 //   5. Copy Web App URL → วางใน Admin → ตั้งค่าระบบ → 🔗 Sync Engine → Central GAS URL
+//   6. สำหรับซิงก์นักเรียนจาก Google Sheet:
+//      - Project Settings → Script Properties
+//      - เพิ่ม SUPABASE_URL = https://xxxx.supabase.co
+//      - เพิ่ม SUPABASE_SERVICE_ROLE_KEY = service_role key
+//      - ตั้งค่า Sheet ID/Tab ในหน้า Admin → ตั้งค่าระบบ → นักเรียน
+//      - ถ้าต้องการรันรายสัปดาห์ ให้รัน installWeeklyStudentSyncTrigger() หนึ่งครั้ง
 //
 // เงื่อนไข: ชีทของครูต้องแชร์ edit ให้ email ของ Admin
 //   (ทำได้ง่ายเพราะ Admin เป็นคนสร้างสำเนาให้ครูอยู่แล้ว)
@@ -26,6 +32,7 @@ function doGet(e) {
     var payload = e.parameter || {}
     var action = payload.action
     if (action === 'copy_sheet_template') return _jsonp(e, _copySheetTemplate(payload))
+    if (action === 'sync_students_now') return _jsonp(e, _syncStudentsFromSheet(payload))
     return _jsonp(e, { ok: false, error: 'Unknown action: ' + action })
   } catch (err) {
     return _jsonp(e, { ok: false, error: err.message })
@@ -42,6 +49,7 @@ function doPost(e) {
     if (action === 'sync_cells')      return _syncCells(payload)
     if (action === 'sync_table')      return _syncTable(payload)
     if (action === 'share_sheet_view') return _shareSheetView(payload)
+    if (action === 'sync_students_from_sheet') return _json(_syncStudentsFromSheet(payload))
 
     return _json({ ok: false, error: 'Unknown action: ' + action })
   } catch (err) {
@@ -230,6 +238,214 @@ function _syncTable(payload) {
 
   SpreadsheetApp.flush()
   return _json({ ok: true, written: written, mode: 'upsert_by_header' })
+}
+
+// ─── Sync Students from Google Sheet → Supabase students ────────────────────
+// อ่านชีทนักเรียนของโรงเรียน แล้ว upsert เข้า students ด้วย student_code
+// รองรับหัวคอลัมน์ไทย/อังกฤษ เช่น รหัสนักเรียน, ชื่อ-สกุล, ห้องสามัญ,
+// ห้องศาสนา, รูปภาพ, ประจำสี, ไซด์เสื้อกีฬาสี
+
+function syncStudentsFromSheetNow() {
+  return _syncStudentsFromSheet({})
+}
+
+function runWeeklyStudentSync() {
+  return _syncStudentsFromSheet({})
+}
+
+function installWeeklyStudentSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'runWeeklyStudentSync') {
+      ScriptApp.deleteTrigger(trigger)
+    }
+  })
+
+  ScriptApp.newTrigger('runWeeklyStudentSync')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .atHour(3)
+    .create()
+
+  return { ok: true, trigger: 'runWeeklyStudentSync', schedule: 'MONDAY 03:00' }
+}
+
+function _syncStudentsFromSheet(payload) {
+  var cfg = _getStudentSyncConfig(payload || {})
+  var sheetId = cfg.sheetId
+  var tabName = cfg.tabName
+  var headerRow = cfg.headerRow || 1
+
+  if (!sheetId) return { ok: false, error: 'Missing student sync Sheet ID' }
+
+  var ss = SpreadsheetApp.openById(sheetId)
+  var sheet = tabName ? ss.getSheetByName(tabName) : ss.getSheets()[0]
+  if (!sheet) return { ok: false, error: 'ไม่พบแท็บข้อมูลนักเรียน: ' + tabName }
+
+  var lastRow = sheet.getLastRow()
+  var lastCol = sheet.getLastColumn()
+  if (lastRow <= headerRow || !lastCol) {
+    return { ok: true, read: 0, written: 0, skipped: 0, message: 'ไม่พบข้อมูลหลังหัวตาราง' }
+  }
+
+  var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(function(h) {
+    return String(h || '').trim()
+  })
+  var values = sheet.getRange(headerRow + 1, 1, lastRow - headerRow, lastCol).getValues()
+  var formulas = sheet.getRange(headerRow + 1, 1, lastRow - headerRow, lastCol).getFormulas()
+  var headerMap = _buildStudentHeaderMap(headers)
+  var records = []
+  var skipped = 0
+
+  values.forEach(function(row, rowIndex) {
+    var record = {}
+    Object.keys(headerMap).forEach(function(field) {
+      var colIndex = headerMap[field]
+      var value = row[colIndex]
+      if (field === 'image_url' && !value) value = _extractImageUrlFromFormula(formulas[rowIndex][colIndex])
+      value = _cleanCell(value)
+      if (field === 'student_code') value = String(value).replace(/\.0$/, '').trim()
+      if (value !== '') record[field] = value
+    })
+
+    if (!record.student_code || !record.full_name) {
+      skipped++
+      return
+    }
+    records.push(record)
+  })
+
+  var written = _upsertStudentsToSupabase(records)
+  return {
+    ok: true,
+    read: values.length,
+    written: written,
+    skipped: skipped,
+    sheetId: sheetId,
+    tabName: sheet.getName(),
+  }
+}
+
+function _getStudentSyncConfig(payload) {
+  var props = PropertiesService.getScriptProperties()
+  var cfg = {
+    sheetId: _extractSpreadsheetId(props.getProperty('STUDENT_SYNC_SHEET_ID') || ''),
+    tabName: payload.tabName || props.getProperty('STUDENT_SYNC_TAB_NAME') || '',
+    headerRow: parseInt(payload.headerRow || props.getProperty('STUDENT_SYNC_HEADER_ROW') || '1', 10) || 1,
+  }
+
+  if (cfg.sheetId) return cfg
+
+  var sys = _getSystemConfigValues(['studentSyncSheetId', 'studentSyncTabName', 'studentSyncHeaderRow'])
+  cfg.sheetId = _extractSpreadsheetId(sys.studentSyncSheetId || '')
+  cfg.tabName = cfg.tabName || sys.studentSyncTabName || ''
+  cfg.headerRow = parseInt(sys.studentSyncHeaderRow || cfg.headerRow || '1', 10) || 1
+  return cfg
+}
+
+function _getSystemConfigValues(keys) {
+  var endpoint = _supabaseEndpoint()
+  var url = endpoint.url + '/rest/v1/system_config?select=key,value&key=in.(' + keys.join(',') + ')'
+  var resp = UrlFetchApp.fetch(url, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      apikey: endpoint.key,
+      Authorization: 'Bearer ' + endpoint.key,
+    },
+  })
+  var code = resp.getResponseCode()
+  if (code < 200 || code >= 300) {
+    throw new Error('อ่าน system_config ไม่สำเร็จ: ' + resp.getContentText())
+  }
+  var rows = JSON.parse(resp.getContentText() || '[]')
+  var out = {}
+  rows.forEach(function(row) { out[row.key] = row.value })
+  return out
+}
+
+function _buildStudentHeaderMap(headers) {
+  var aliases = {
+    student_code: ['student_code', 'student_id', 'รหัสนักเรียน', 'เลขประจำตัว', 'รหัส'],
+    full_name: ['full_name', 'student_name', 'name', 'ชื่อ-สกุล', 'ชื่อสกุล', 'ชื่อนักเรียน', 'นักเรียน'],
+    main_room: ['main_room', 'grade_general', 'ห้องสามัญ', 'ชั้นสามัญ', 'ห้อง', 'ชั้นเรียน'],
+    religion_room: ['religion_room', 'grade_religion', 'ห้องศาสนา', 'ชั้นศาสนา'],
+    gender: ['gender', 'เพศ'],
+    image_url: ['image_url', 'photo_url', 'รูป', 'รูปภาพ', 'รูปนักเรียน', 'ลิงก์รูป', 'url รูป'],
+    house_color: ['house_color', 'ประจำสี', 'สี', 'สีกีฬา', 'สีประจำ'],
+    sports_shirt_size: ['sports_shirt_size', 'shirt_size', 'ไซด์เสื้อกีฬาสี', 'ไซซ์เสื้อกีฬาสี', 'ไซด์เสื้อ', 'ไซซ์เสื้อ', 'size'],
+  }
+  var normalizedHeaders = headers.map(_normalizeHeader)
+  var map = {}
+
+  Object.keys(aliases).forEach(function(field) {
+    aliases[field].some(function(alias) {
+      var idx = normalizedHeaders.indexOf(_normalizeHeader(alias))
+      if (idx >= 0) {
+        map[field] = idx
+        return true
+      }
+      return false
+    })
+  })
+  return map
+}
+
+function _upsertStudentsToSupabase(records) {
+  if (!records.length) return 0
+  var endpoint = _supabaseEndpoint()
+  var url = endpoint.url + '/rest/v1/students?on_conflict=student_code'
+  var written = 0
+
+  for (var i = 0; i < records.length; i += 200) {
+    var chunk = records.slice(i, i + 200)
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      muteHttpExceptions: true,
+      contentType: 'application/json',
+      headers: {
+        apikey: endpoint.key,
+        Authorization: 'Bearer ' + endpoint.key,
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      payload: JSON.stringify(chunk),
+    })
+    var code = resp.getResponseCode()
+    if (code < 200 || code >= 300) {
+      throw new Error('บันทึก students ไม่สำเร็จ: ' + resp.getContentText())
+    }
+    written += chunk.length
+  }
+  return written
+}
+
+function _supabaseEndpoint() {
+  var props = PropertiesService.getScriptProperties()
+  var url = String(props.getProperty('SUPABASE_URL') || '').replace(/\/$/, '')
+  var key = props.getProperty('SUPABASE_SERVICE_ROLE_KEY') || ''
+  if (!url || !key) throw new Error('ยังไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ใน Script Properties')
+  return { url: url, key: key }
+}
+
+function _normalizeHeader(value) {
+  return String(value || '').trim().toLowerCase().replace(/[\s_\-–—/().]+/g, '')
+}
+
+function _cleanCell(value) {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+  return String(value).trim()
+}
+
+function _extractImageUrlFromFormula(formula) {
+  var m = String(formula || '').match(/IMAGE\(\s*["']([^"']+)["']/i)
+  return m ? m[1] : ''
+}
+
+function _extractSpreadsheetId(value) {
+  var raw = String(value || '').trim()
+  if (!raw) return ''
+  var m = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)
+  return m ? m[1] : raw
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
