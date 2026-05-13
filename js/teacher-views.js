@@ -360,8 +360,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
                 <p class="text-[11px] text-gray-400">
                   ${entry.linkedClasses.map(c => {
                     const cr = c.classroom_id ? _classroomMapGlobal[c.classroom_id] : null
-                    return c.class_name + (cr ? ` · 📍${cr.building} ${cr.room_number}` : '')
-                  }).join(', ')} · ${time}
+                    return c.class_name + (cr ? ` 📍${cr.building} ห้อง ${cr.room_number}` : '')
+                  }).join(' · ')} · ${time}
                 </p>
               </div>
               <span id="today-cd-${i}" class="text-xs font-medium flex-shrink-0 ${cd.cls}">${cd.label}</span>
