@@ -516,13 +516,10 @@ function _showSchoolSponsoredPopup(count, course, cfg = {}) {
   document.getElementById('school-sponsored-popup')?.remove()
   const wrap = document.createElement('div')
   wrap.id = 'school-sponsored-popup'
-  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
   wrap.innerHTML = `
-    <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
-      <div class="flex justify-center pt-3 pb-1 sm:hidden">
-        <div class="w-10 h-1 rounded-full bg-gray-200"></div>
-      </div>
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
       <div class="px-5 pt-4 pb-4 border-b border-gray-100">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🎉</div>
@@ -1165,10 +1162,19 @@ async function loadSidebarHeader(teacher) {
                        <span class="text-sm font-medium text-gray-700 break-all">${l.label}</span>
                      </div>`
                 ).join('')}
+                <button id="contact-donate-btn"
+                  class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-semibold text-sm shadow-md shadow-amber-200/50 transition">
+                  ☕ สนับสนุนผู้พัฒนา
+                </button>
               </div>
             </div>`
           document.body.appendChild(m)
           m.querySelector('#contact-modal-close').addEventListener('click', () => m.remove())
+          m.querySelector('#contact-donate-btn')?.addEventListener('click', async () => {
+            m.remove()
+            const cfg = await getSystemConfig().catch(() => ({}))
+            _showDonateModal(null, cfg)
+          })
           m.addEventListener('click', e => { if (e.target === m) m.remove() })
         })
       }
