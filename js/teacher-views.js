@@ -2267,15 +2267,6 @@ export async function renderMyClasses(teacher) {
               </button>`}
             </div>
 
-            <!-- วันสอน -->
-            ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date].some(Boolean) ? `
-            <div class="mt-2 flex flex-wrap gap-2">
-              ${[c.day1_date,c.day2_date,c.day3_date,c.day4_date,c.day5_date,c.day6_date]
-                .filter(Boolean)
-                .map((d,i)=>`<span class="text-xs bg-white/75 text-gray-500 px-2 py-1 rounded-lg">
-                  คาบ${i+1}: ${_parseDateOnly(d).toLocaleDateString('th-TH',{day:'numeric',month:'short'})}
-                </span>`).join('')}
-            </div>` : ''}
           </div>`
         }).join('')}
             </div>
