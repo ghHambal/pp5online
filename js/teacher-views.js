@@ -2734,7 +2734,7 @@ export async function renderMyClasses(teacher) {
       document.getElementById('class-copy-modal')?.remove()
       const ms = cls.master_subjects ?? {}
       const defaultName = `${ms.subject_name || 'ปพ5'}_${cls.class_name || ''}_${teacher?.full_name || ''}`.replace(/\s+/g, ' ').trim()
-      const defaultEmail = teacher?.auth_email || teacher?.login_email || ''
+      const defaultEmail = teacher?.login_email || teacher?.auth_email || ''
       const m = document.createElement('div')
       m.id = 'class-copy-modal'
       m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
