@@ -5241,7 +5241,7 @@ export async function renderGradesGrid(teacher, classData) {
     </svg> กำลังโหลด...</div>`)
 
   try {
-    const [students, rawCols, rawScoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg] = await Promise.all([
+    const [students, rawCols, rawScoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg, allMyClasses] = await Promise.all([
       getClassStudents(classData.id),
       getScoreColumns(classData.id),
       getStudentScores(classData.id),
@@ -5249,7 +5249,73 @@ export async function renderGradesGrid(teacher, classData) {
       getSheetColumnOptions(classData.id, 'ปลายภาค'),
       getSheetColumnOptions(classData.id, 'ระหว่างเรียน'),
       getSystemConfig().catch(()=>({})),
+      teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
     ])
+
+    // ตรวจหาวิชาเดียวกันในห้องอื่น (หน่วงหลัง render)
+    if (classData.course_id && rawCols.length === 0) {
+      setTimeout(async () => {
+        try {
+          const sameSubject = allMyClasses.filter(c => c.id !== classData.id && c.course_id === classData.course_id)
+          const withCols = (await Promise.all(
+            sameSubject.map(async c => {
+              const cols = await getScoreColumns(c.id).catch(()=>[])
+              return cols.length ? { ...c, cols } : null
+            })
+          )).filter(Boolean)
+          if (!withCols.length) return
+          document.getElementById('grade-same-subj-popup')?.remove()
+          const popup = document.createElement('div')
+          popup.id = 'grade-same-subj-popup'
+          popup.className = 'fixed inset-0 z-[190] flex items-center justify-center p-6'
+          popup.style.background = 'rgba(0,0,0,0.45)'
+          popup.innerHTML = `
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+              <div class="bg-gradient-to-br from-indigo-500 to-purple-500 px-6 py-5 text-center">
+                <div class="text-3xl mb-2">📋</div>
+                <h3 class="text-white font-bold text-base">พบวิชาเดียวกันในอีกห้อง</h3>
+                <p class="text-indigo-100 text-xs mt-1">ยังไม่มีคอลัมน์คะแนน — ต้องการคัดลอกจากห้องที่มีอยู่แล้วไหม?</p>
+              </div>
+              <div class="p-5 space-y-2 max-h-60 overflow-y-auto">
+                ${withCols.map(c => `
+                <div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                  <div class="min-w-0">
+                    <p class="text-sm font-semibold text-gray-800 truncate">${c.class_name}</p>
+                    <p class="text-xs text-gray-400">${c.cols.length} คอลัมน์</p>
+                  </div>
+                  <button class="grade-copy-cols flex-shrink-0 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition"
+                    data-src="${c.id}">
+                    คัดลอก
+                  </button>
+                </div>`).join('')}
+              </div>
+              <div class="px-5 pb-5">
+                <button id="grade-ssp-close" class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition">ปิด</button>
+              </div>
+            </div>`
+          document.body.appendChild(popup)
+          popup.querySelector('#grade-ssp-close').addEventListener('click', () => popup.remove())
+          popup.querySelectorAll('.grade-copy-cols').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const src = withCols.find(c => c.id === parseInt(btn.dataset.src))
+              btn.disabled = true; btn.textContent = '⏳'
+              try {
+                for (const col of src.cols) {
+                  await createScoreColumn({ class_id: classData.id, assignment_name: col.assignment_name,
+                    assignment_type: col.assignment_type, sheet_column: col.sheet_column ?? '', max_score: col.max_score })
+                }
+                showToast(`คัดลอก ${src.cols.length} คอลัมน์จาก ${src.class_name} ✅`, 'success')
+                popup.remove()
+                renderGradesGrid(teacher, classData)
+              } catch (err) {
+                showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+                btn.disabled = false; btn.textContent = 'คัดลอก'
+              }
+            })
+          })
+        } catch {}
+      }, 600)
+    }
 
     // โหลดข้อมูลคะแนนอ่านคิดวิเคราะห์ → สร้าง evalMap ต่อ studentId
     const _rsYear = parseInt(sysCfg.academicYear ?? 2568)
@@ -5594,16 +5660,21 @@ export async function renderGradesGrid(teacher, classData) {
       const modal = document.createElement('div')
       modal.id = 'manage-cols-modal'
       modal.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4'
-      const colRow = col => `
-        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border ${_isLockedScoreColumn(col) ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-100 hover:border-gray-200 bg-gray-50/60'}">
-          <span class="font-mono text-[11px] w-10 text-center rounded px-1 py-0.5 ${col.assignment_type==='final'?'bg-purple-50 text-purple-600':'bg-blue-50 text-blue-600'}">${col.sheet_column||'—'}</span>
+      const colRow = col => {
+        const locked = _isLockedScoreColumn(col)
+        return `
+        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border ${locked ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-100 hover:border-gray-200 bg-gray-50/60'}">
+          ${locked
+            ? `<span class="w-4 text-emerald-500 text-xs flex-shrink-0">🔒</span>`
+            : `<input type="checkbox" class="mcm-cb w-4 h-4 rounded accent-red-500 flex-shrink-0" data-colid="${col.id}" />`}
           <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name||'—'}</span>
           <span class="text-[11px] text-gray-400">/${col.max_score||0}</span>
-          ${_isLockedScoreColumn(col)
+          ${locked
             ? `<span class="text-[10px] text-emerald-700 font-semibold">ล็อก</span>`
-            : `<button class="mcm-del text-gray-300 hover:text-red-400 text-sm transition-colors px-1 rounded hover:bg-red-50"
+            : `<button class="mcm-del text-gray-300 hover:text-red-400 text-lg transition-colors px-1 rounded hover:bg-red-50"
                 data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>`}
         </div>`
+      }
       modal.innerHTML = `<div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[80vh] flex flex-col">
         <div class="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
           <div>
@@ -5612,7 +5683,7 @@ export async function renderGradesGrid(teacher, classData) {
           </div>
           <button id="mcm-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
         </div>
-        <div class="overflow-auto flex-1 p-5 space-y-5">
+        <div class="overflow-auto flex-1 p-5 space-y-4">
           ${(midCols.length < 5 || finalCols.length < 5) ? `
           <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex items-center gap-3">
             <span class="text-xl">✨</span>
@@ -5622,45 +5693,127 @@ export async function renderGradesGrid(teacher, classData) {
             </div>
             <button id="mcm-fill-default" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition flex-shrink-0">เติมให้ครบ</button>
           </div>` : ''}
+          <!-- bulk bar -->
+          <div id="mcm-bulk-bar" class="hidden flex items-center justify-between gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+            <p id="mcm-bulk-count" class="text-xs font-semibold text-red-700">เลือก 0 รายการ</p>
+            <button id="mcm-bulk-del" class="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition">🗑️ ลบที่เลือก</button>
+          </div>
           <div>
             <div class="flex items-center justify-between mb-2">
               <h4 class="font-semibold text-blue-700 text-sm">📘 กลางภาค <span class="font-normal text-gray-400">(${midCols.length} คอลัมน์)</span></h4>
             </div>
-            <div class="space-y-1.5">${midCols.map(colRow).join('')}</div>
+            <div class="mcm-col-list space-y-1.5">${midCols.map(colRow).join('')}</div>
             <button class="mcm-add mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-blue-200 text-blue-500 hover:border-blue-400 hover:bg-blue-50 text-sm transition-colors" data-type="midterm">＋ เพิ่มคอลัมน์กลางภาค</button>
           </div>
           <div>
             <div class="flex items-center justify-between mb-2">
               <h4 class="font-semibold text-purple-700 text-sm">📙 ปลายภาค <span class="font-normal text-gray-400">(${finalCols.length} คอลัมน์)</span></h4>
             </div>
-            <div class="space-y-1.5">${finalCols.map(colRow).join('')}</div>
+            <div class="mcm-col-list space-y-1.5">${finalCols.map(colRow).join('')}</div>
             <button class="mcm-add mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-purple-200 text-purple-500 hover:border-purple-400 hover:bg-purple-50 text-sm transition-colors" data-type="final">＋ เพิ่มคอลัมน์ปลายภาค</button>
           </div>
         </div>
       </div>`
       document.body.appendChild(modal)
       modal.querySelector('#mcm-close').addEventListener('click',()=>modal.remove())
-      modal.addEventListener('click',e=>{if(e.target===modal)modal.remove()})
-      modal.querySelectorAll('.mcm-del').forEach(btn=>{
-        btn.addEventListener('click',async()=>{
-          const colId=parseInt(btn.dataset.colid)
-          const col=[...midCols,...finalCols].find(c=>c.id===colId)
-          if (_isLockedScoreColumn(colId)) {
-            showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning')
-            return
-          }
-          if(!confirm(`ลบคอลัมน์ "${col?.assignment_name||'นี้'}"?\nคะแนนทั้งหมดของคอลัมน์นี้จะถูกลบด้วย`))return
-          try{
-            await deleteScoreColumn(colId)
-            const mi=midCols.findIndex(c=>c.id===colId)
-            const fi=finalCols.findIndex(c=>c.id===colId)
-            if(mi!==-1)midCols.splice(mi,1)
-            if(fi!==-1)finalCols.splice(fi,1)
-            modal.remove();_renderGrid()
-            showToast('ลบคอลัมน์แล้ว','success')
-          }catch{showToast('ลบไม่สำเร็จ','error')}
+      // ไม่ปิดด้วย backdrop click
+
+      const _mcmConfirm = (message, onConfirm) => {
+        document.getElementById('mcm-del-confirm')?.remove()
+        const popup = document.createElement('div')
+        popup.id = 'mcm-del-confirm'
+        popup.className = 'fixed inset-0 z-[300] flex items-center justify-center p-6'
+        popup.style.background = 'rgba(0,0,0,0.5)'
+        popup.innerHTML = `
+          <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+            <div class="text-3xl mb-3">🗑️</div>
+            <h4 class="font-bold text-gray-800 mb-2">ยืนยันการลบ</h4>
+            <p class="text-sm text-gray-500 leading-relaxed mb-5">${message}</p>
+            <div class="flex gap-3">
+              <button id="mcm-conf-no" class="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">ยกเลิก</button>
+              <button id="mcm-conf-yes" class="flex-1 py-2.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold transition">ลบเลย</button>
+            </div>
+          </div>`
+        document.body.appendChild(popup)
+        popup.querySelector('#mcm-conf-no').addEventListener('click', () => popup.remove())
+        popup.querySelector('#mcm-conf-yes').addEventListener('click', () => { popup.remove(); onConfirm() })
+      }
+
+      const _rebindModal = () => {
+        // rebind delete buttons after re-render
+        modal.querySelectorAll('.mcm-del').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const colId = parseInt(btn.dataset.colid)
+            const col = [...midCols, ...finalCols].find(c => c.id === colId)
+            if (_isLockedScoreColumn(colId)) { showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning'); return }
+            _mcmConfirm(
+              `ต้องการลบ <span class="font-semibold">"${col?.assignment_name || 'คอลัมน์นี้'}"</span> ใช่ไหม?<br/><span class="text-xs text-red-500">คะแนนทั้งหมดของคอลัมน์นี้จะถูกลบด้วย</span>`,
+              async () => {
+                try {
+                  await deleteScoreColumn(colId)
+                  const mi = midCols.findIndex(c => c.id === colId)
+                  const fi = finalCols.findIndex(c => c.id === colId)
+                  if (mi !== -1) midCols.splice(mi, 1)
+                  if (fi !== -1) finalCols.splice(fi, 1)
+                  showToast('ลบคอลัมน์แล้ว ✅', 'success')
+                  _renderGrid()
+                  // re-render list inside modal without closing
+                  const listArea = modal.querySelector('.overflow-auto')
+                  if (listArea) {
+                    listArea.querySelector('.space-y-1\\.5')?.remove?.()
+                    // re-render mid list
+                    modal.querySelectorAll('.mcm-col-list').forEach((el, i) => {
+                      el.innerHTML = (i === 0 ? midCols : finalCols).map(colRow).join('')
+                    })
+                    _rebindModal()
+                  }
+                } catch { showToast('ลบไม่สำเร็จ', 'error') }
+              }
+            )
+          })
         })
-      })
+        // bulk delete bar
+        const _updateBulk = () => {
+          const checked = [...modal.querySelectorAll('.mcm-cb:checked')]
+          const bar = modal.querySelector('#mcm-bulk-bar')
+          if (bar) {
+            bar.classList.toggle('hidden', checked.length === 0)
+            const countEl = bar.querySelector('#mcm-bulk-count')
+            if (countEl) countEl.textContent = `เลือก ${checked.length} รายการ`
+          }
+        }
+        modal.querySelectorAll('.mcm-cb').forEach(cb => cb.addEventListener('change', _updateBulk))
+        modal.querySelector('#mcm-bulk-del')?.addEventListener('click', () => {
+          const checked = [...modal.querySelectorAll('.mcm-cb:checked')]
+          if (!checked.length) return
+          const names = checked.map(cb => {
+            const col = [...midCols, ...finalCols].find(c => c.id === parseInt(cb.dataset.colid))
+            return col?.assignment_name ?? `ID ${cb.dataset.colid}`
+          }).join(', ')
+          _mcmConfirm(
+            `ลบ ${checked.length} คอลัมน์:<br/><span class="font-semibold text-sm">${names}</span>`,
+            async () => {
+              try {
+                for (const cb of checked) {
+                  const colId = parseInt(cb.dataset.colid)
+                  await deleteScoreColumn(colId)
+                  const mi = midCols.findIndex(c => c.id === colId)
+                  const fi = finalCols.findIndex(c => c.id === colId)
+                  if (mi !== -1) midCols.splice(mi, 1)
+                  if (fi !== -1) finalCols.splice(fi, 1)
+                }
+                showToast(`ลบ ${checked.length} คอลัมน์แล้ว ✅`, 'success')
+                _renderGrid()
+                modal.querySelectorAll('.mcm-col-list').forEach((el, i) => {
+                  el.innerHTML = (i === 0 ? midCols : finalCols).map(colRow).join('')
+                })
+                _rebindModal()
+              } catch { showToast('ลบไม่สำเร็จ', 'error') }
+            }
+          )
+        })
+      }
+      _rebindModal()
       modal.querySelectorAll('.mcm-add').forEach(btn=>{
         btn.addEventListener('click',()=>{
           modal.remove()
@@ -5901,25 +6054,33 @@ export async function renderGradesGrid(teacher, classData) {
 // ─── Add Column Modal ─────────────────────────────────────────────────────────
 function _openAddColumnModal(classData, type, onDone) {
   document.getElementById('add-col-modal')?.remove()
-  const label = type==='final'?'ปลายภาค':'กลางภาค'
-  const clr   = type==='final'?'purple':'blue'
-  const modal = document.createElement('div')
+  const label    = type === 'final' ? 'ปลายภาค' : 'กลางภาค'
+  const clr      = type === 'final' ? 'purple' : 'blue'
+  const hasSheet = !!(classData?.google_sheet_id)
+  const modal    = document.createElement('div')
   modal.id = 'add-col-modal'
-  modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+  modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4'
   modal.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
     <h3 class="font-bold text-gray-800 mb-1">＋ เพิ่มคอลัมน์${label}</h3>
     <p class="text-xs text-gray-400 mb-4">คอลัมน์สำหรับ <b>${label}</b></p>
     <div class="space-y-3">
-      <div><label class="block text-sm font-medium text-gray-700 mb-1">ชื่องาน <span class="text-red-400">*</span></label>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่องาน <span class="text-red-400">*</span></label>
         <input id="acol-name" type="text" placeholder="เช่น งานที่ 1"
-          class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-${clr}-400"/></div>
+          class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-${clr}-400"/>
+      </div>
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">คะแนนเต็ม</label>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">คะแนนเต็ม</label>
           <input id="acol-max" type="number" min="1" value="20"
-            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-${clr}-400"/></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">คอลัมน์ Sheet</label>
+            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-${clr}-400"/>
+        </div>
+        ${hasSheet ? `
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">คอลัมน์ Sheet</label>
           <input id="acol-sheet" type="text" placeholder="EH"
-            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono uppercase focus:outline-none focus:border-${clr}-400"/></div>
+            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono uppercase focus:outline-none focus:border-${clr}-400"/>
+        </div>` : `<input id="acol-sheet" type="hidden" value=""/>`}
       </div>
       <div id="acol-msg" class="hidden text-xs text-red-500"></div>
       <div class="flex gap-3 pt-1">
@@ -5929,23 +6090,23 @@ function _openAddColumnModal(classData, type, onDone) {
     </div>
   </div>`
   document.body.appendChild(modal)
-  modal.querySelector('#acol-sheet').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase()})
-  modal.querySelector('#acol-cancel').addEventListener('click',()=>modal.remove())
-  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove()})
-  modal.querySelector('#acol-save').addEventListener('click',async()=>{
-    const name=modal.querySelector('#acol-name').value.trim()
-    const max=parseFloat(modal.querySelector('#acol-max').value)||20
-    const sheet=modal.querySelector('#acol-sheet').value.trim().toUpperCase()||null
-    const msg=modal.querySelector('#acol-msg')
-    if(!name){msg.textContent='กรุณาระบุชื่องาน';msg.classList.remove('hidden');return}
-    const btn=modal.querySelector('#acol-save')
-    btn.disabled=true;btn.textContent='กำลังเพิ่ม...'
-    try{
-      await createScoreColumn({class_id:classData.id,assignment_name:name,max_score:max,sheet_column:sheet,assignment_type:type})
-      modal.remove();showToast(`เพิ่มคอลัมน์ "${name}" แล้ว`,'success');onDone()
-    }catch(err){
-      msg.textContent='เกิดข้อผิดพลาด: '+(err.message??'');msg.classList.remove('hidden')
-      btn.disabled=false;btn.textContent='เพิ่มคอลัมน์'
+  modal.querySelector('#acol-sheet')?.addEventListener('input', e => { e.target.value = e.target.value.toUpperCase() })
+  modal.querySelector('#acol-cancel').addEventListener('click', () => modal.remove())
+  // ไม่ปิดด้วย backdrop click
+  modal.querySelector('#acol-save').addEventListener('click', async () => {
+    const name  = modal.querySelector('#acol-name').value.trim()
+    const max   = parseFloat(modal.querySelector('#acol-max').value) || 20
+    const sheet = (modal.querySelector('#acol-sheet')?.value ?? '').trim().toUpperCase() || null
+    const msg   = modal.querySelector('#acol-msg')
+    if (!name) { msg.textContent = 'กรุณาระบุชื่องาน'; msg.classList.remove('hidden'); return }
+    const btn = modal.querySelector('#acol-save')
+    btn.disabled = true; btn.textContent = 'กำลังเพิ่ม...'
+    try {
+      await createScoreColumn({ class_id: classData.id, assignment_name: name, max_score: max, sheet_column: sheet, assignment_type: type })
+      modal.remove(); showToast(`เพิ่มคอลัมน์ "${name}" แล้ว`, 'success'); onDone()
+    } catch (err) {
+      msg.textContent = 'เกิดข้อผิดพลาด: ' + (err.message ?? ''); msg.classList.remove('hidden')
+      btn.disabled = false; btn.textContent = 'เพิ่มคอลัมน์'
     }
   })
 }
