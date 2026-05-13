@@ -463,7 +463,14 @@ export async function renderClassEditForm(teacher, classData) {
             : '<p class="text-xs text-amber-500 mt-1">ยังไม่พบนักเรียนในห้องนี้ จึงยังเลือกหัวหน้าห้องไม่ได้</p>'}
         </div>
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-2">วันสอน 6 คาบแรก</label>
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-sm font-semibold text-gray-700">วันสอน 6 คาบแรก</label>
+            <button type="button" id="ce-btn-auto-dates"
+              class="text-xs px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium transition">
+              🗓️ คำนวณจากตารางสอน
+            </button>
+          </div>
+          <p id="ce-auto-dates-info" class="hidden text-xs text-emerald-600 mb-2"></p>
           <div class="grid grid-cols-3 gap-2">
             ${[1,2,3,4,5,6].map(n=>`
             <div>
@@ -487,6 +494,85 @@ export async function renderClassEditForm(teacher, classData) {
       </form>
     </div>
   </div>`)
+  // ─── คำนวณวันจากตารางสอน ────────────────────────────────────────────────
+  document.getElementById('ce-btn-auto-dates')?.addEventListener('click', async () => {
+    const btn    = document.getElementById('ce-btn-auto-dates')
+    const infoEl = document.getElementById('ce-auto-dates-info')
+    btn.textContent = '⏳ กำลังดึงตาราง...'; btn.disabled = true
+    try {
+      const termCfg2 = await getSystemConfig().catch(()=>({}))
+      const termStart = termCfg2.semester_start ?? termCfg2.term_start_date ?? _dateInputValue(new Date())
+      const curYear  = parseInt(termCfg2.academicYear ?? 2568)
+      const curSem   = parseInt(termCfg2.semester ?? 1)
+      const sched    = teacher ? await getMySchedule(teacher.id, curYear, curSem).catch(()=>[]) : []
+      if (!sched.length) {
+        infoEl.textContent = '⚠️ ยังไม่มีตารางสอน — กรุณากรอกวันเอง'
+        infoEl.classList.remove('hidden'); return
+      }
+      const groups = {}
+      sched.forEach(e => {
+        const key = `${e.subject_name ?? '?'}|${e.class_name ?? ''}`
+        if (!groups[key]) groups[key] = {
+          label: `${e.subject_name ?? '?'}${e.class_name ? ` — ${e.class_name}` : ''}`,
+          entries: []
+        }
+        groups[key].entries.push(e)
+      })
+      const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ']
+      const _desc = (entries) => {
+        const exp = []; entries.forEach(e => { for (let i=0;i<(e.span_periods??1);i++) exp.push({dow:e.day_of_week,pno:(e.period_no??0)+i}) })
+        exp.sort((a,b)=>a.dow!==b.dow?a.dow-b.dow:a.pno-b.pno)
+        const byDay = {}; exp.forEach(p => { if(!byDay[p.dow]) byDay[p.dow]=[]; byDay[p.dow].push(p.pno) })
+        return Object.entries(byDay).map(([d,ps])=>`${DAY_TH[d]} คาบ ${ps.join(',')}`).join(' · ')
+      }
+      const popup = document.createElement('div')
+      popup.id = 'ce-dates-popup'
+      popup.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+      popup.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 class="font-bold text-gray-800">🗓️ เลือกวิชาจากตารางสอน</h3>
+            <button id="ce-dates-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
+          <div class="px-5 py-4 space-y-2 max-h-72 overflow-y-auto">
+            <p class="text-xs text-gray-400 mb-3">เลือกวิชาที่ต้องการคำนวณวัน 6 คาบแรก</p>
+            ${Object.entries(groups).map(([key, g]) => `
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer transition">
+              <input type="radio" name="ce-dates-subj" value="${key}" class="mt-0.5 flex-shrink-0" />
+              <div>
+                <p class="text-sm font-medium text-gray-800">${g.label}</p>
+                <p class="text-xs text-gray-400 mt-0.5">${_desc(g.entries)}</p>
+              </div>
+            </label>`).join('')}
+          </div>
+          <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex gap-3">
+            <button id="ce-dates-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+            <button id="ce-dates-calc" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">คำนวณ</button>
+          </div>
+        </div>`
+      document.body.appendChild(popup)
+      popup.querySelector('#ce-dates-close').addEventListener('click', () => popup.remove())
+      popup.querySelector('#ce-dates-cancel').addEventListener('click', () => popup.remove())
+      popup.querySelector('#ce-dates-calc').addEventListener('click', () => {
+        const key = popup.querySelector('input[name="ce-dates-subj"]:checked')?.value
+        if (!key) { showToast('กรุณาเลือกวิชาก่อน', 'warning'); return }
+        popup.remove()
+        const dates = _calcSixPeriodDates(groups[key].entries, termStart)
+        dates.forEach((d, i) => {
+          const el = document.getElementById(`ce-day${i+1}`)
+          if (el) el.value = _dateInputValue(d)
+        })
+        infoEl.textContent = `✅ คำนวณจาก "${groups[key].label}" — ตรวจสอบและแก้ไขได้`
+        infoEl.classList.remove('hidden')
+      })
+    } catch (err) {
+      infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message ?? '')
+      infoEl.classList.remove('hidden')
+    } finally {
+      btn.textContent = '🗓️ คำนวณจากตารางสอน'; btn.disabled = false
+    }
+  })
+
   document.getElementById('cls-edit-form').addEventListener('submit', async e => {
     e.preventDefault()
     const btn = document.getElementById('ce-submit')
