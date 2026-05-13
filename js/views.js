@@ -1896,6 +1896,7 @@ export async function renderSettings() {
           { key:'academicYear',label:'ปีการศึกษา (พ.ศ.)', type:'text', placeholder:'เช่น 2568' },
         ]),
         section('หน้าเข้าสู่ระบบ', [
+          { key:'schoolName',  label:'ชื่อโรงเรียน (แสดงใต้หัวเรื่องหน้า Login)', type:'text', placeholder:'เช่น โรงเรียนอาซิซสถาน' },
           { key:'loginColor',  label:'สีพื้นหลัง Login',  type:'color' },
           { key:'loginLogoUrl',label:'โลโก้หน้า Login',   type:'upload' },
           { key:'appColor',    label:'สีหลักของระบบ',     type:'color' },
