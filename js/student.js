@@ -62,7 +62,7 @@ async function _loadHeader() {
     document.getElementById('stu-logo').classList.add('hidden')
     document.getElementById('stu-logo-fallback').classList.remove('hidden')
   }
-  const room = _student?.main_room || _student?.religion_room || '—'
+  const room = (_student?.main_room || _student?.religion_room || '—').replace(/\/\d+/, '').trim()
   document.getElementById('stu-school-name').textContent = name
   const yr = cfg.academicYear ?? '—', sem = cfg.semester ?? '—'
   document.getElementById('stu-term').textContent = `รหัส ${_student?.student_code ?? '—'} · ห้อง ${room} · ภาค ${sem} / ${yr}`

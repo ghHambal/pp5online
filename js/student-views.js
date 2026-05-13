@@ -228,16 +228,16 @@ export async function renderStudentOverview(student) {
 
   setContent(`
     <!-- Profile card -->
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3">
-      <div class="w-16 h-16 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
-                  flex items-center justify-center text-white text-2xl font-bold border-2 border-white shadow">
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-4">
+      <div class="w-14 h-20 rounded-t-2xl rounded-b-lg overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
+                  flex items-center justify-center text-white text-2xl font-bold shadow">
         ${student.image_url
-          ? `<img src="${student.image_url}" class="w-full h-full object-cover"/>`
+          ? `<img src="${student.image_url}" class="w-full h-full object-cover object-top"/>`
           : (student.full_name??'น').charAt(0)}
       </div>
       <div class="flex-1 min-w-0">
         <p class="font-bold text-gray-800 text-base truncate">${student.full_name}</p>
-        <p class="text-xs text-gray-400 mt-0.5">รหัส ${student.student_code} · ${student.main_room??'—'}</p>
+        <p class="text-xs text-gray-400 mt-0.5">รหัส ${student.student_code} · ${_roomDisplay(student.main_room??'—')}</p>
       </div>
     </div>
 
