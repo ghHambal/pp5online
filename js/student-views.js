@@ -1471,11 +1471,36 @@ export async function renderStudentProfile(student, onLogout) {
     ${_contactLinks()}
 
     <button id="stu-logout-btn"
-      class="w-full py-3 rounded-xl border-2 border-red-200 text-red-500 font-semibold text-sm
-             hover:bg-red-50 transition">
-      ออกจากระบบ
+      class="w-full py-3.5 rounded-2xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold text-sm
+             shadow-md shadow-red-200/60 transition flex items-center justify-center gap-2">
+      🚪 ออกจากระบบ
     </button>
   `)
 
-  document.getElementById('stu-logout-btn').addEventListener('click', onLogout)
+  document.getElementById('stu-logout-btn').addEventListener('click', () => {
+    document.getElementById('stu-logout-confirm')?.remove()
+    const modal = document.createElement('div')
+    modal.id = 'stu-logout-confirm'
+    modal.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6'
+    modal.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+        <div class="text-4xl mb-3">🚪</div>
+        <h3 class="font-bold text-gray-800 text-base mb-1">ออกจากระบบ?</h3>
+        <p class="text-xs text-gray-400 mb-6">คุณต้องการออกจากระบบใช่ไหมครับ</p>
+        <div class="flex gap-3">
+          <button id="stu-logout-cancel"
+            class="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-semibold text-sm hover:bg-gray-50 transition">
+            ยกเลิก
+          </button>
+          <button id="stu-logout-confirm-btn"
+            class="flex-1 py-3 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm shadow-md shadow-red-200/60 transition">
+            ยืนยัน
+          </button>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+    modal.querySelector('#stu-logout-cancel').addEventListener('click', () => modal.remove())
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+    modal.querySelector('#stu-logout-confirm-btn').addEventListener('click', onLogout)
+  })
 }
