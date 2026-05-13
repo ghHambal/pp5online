@@ -6112,24 +6112,59 @@ async function _openCopyColsPopup(classData, allMyClasses) {
   popup.querySelectorAll('.ccp-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const src = others.find(c => c.id === parseInt(btn.dataset.src))
-      btn.disabled = true; btn.textContent = '⏳'
-      try {
-        const existing = await getScoreColumns(classData.id).catch(() => [])
-        const existNames = new Set(existing.map(c => c.assignment_name))
-        let added = 0
-        for (const col of src.cols) {
-          if (existNames.has(col.assignment_name)) continue
-          await createScoreColumn({ class_id: classData.id, assignment_name: col.assignment_name,
-            assignment_type: col.assignment_type, sheet_column: col.sheet_column ?? '', max_score: col.max_score })
-          added++
+      // confirm mirror
+      document.getElementById('ccp-confirm')?.remove()
+      const conf = document.createElement('div')
+      conf.id = 'ccp-confirm'
+      conf.className = 'fixed inset-0 z-[300] flex items-center justify-center p-6'
+      conf.style.background = 'rgba(0,0,0,0.5)'
+      conf.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+        <div class="text-3xl mb-3">📋</div>
+        <h4 class="font-bold text-gray-800 mb-2">ยืนยันการ Mirror</h4>
+        <p class="text-sm text-gray-500 leading-relaxed mb-5">
+          คอลัมน์ของห้องนี้จะถูกทำให้เหมือน<br/>
+          <span class="font-semibold text-indigo-700">${src.class_name}</span><br/>
+          <span class="text-xs text-red-500">คอลัมน์ที่ต่างออกไปจะถูกลบหรือเพิ่ม/แก้ไข</span>
+        </p>
+        <div class="flex gap-3">
+          <button id="ccp-conf-no" class="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50">ยกเลิก</button>
+          <button id="ccp-conf-yes" class="flex-1 py-2.5 rounded-2xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">ยืนยัน</button>
+        </div>
+      </div>`
+      document.body.appendChild(conf)
+      conf.querySelector('#ccp-conf-no').addEventListener('click', () => conf.remove())
+      conf.querySelector('#ccp-conf-yes').addEventListener('click', async () => {
+        conf.remove(); btn.disabled = true; btn.textContent = '⏳'
+        try {
+          const existing = await getScoreColumns(classData.id).catch(() => [])
+          const srcMap = Object.fromEntries(src.cols.map(c => [c.assignment_name, c]))
+          const curMap = Object.fromEntries(existing.map(c => [c.assignment_name, c]))
+          // ลบที่ไม่มีในต้นทาง
+          for (const col of existing) {
+            if (!srcMap[col.assignment_name]) await deleteScoreColumn(col.id).catch(() => {})
+          }
+          // เพิ่ม/อัปเดตตามต้นทาง
+          for (const col of src.cols) {
+            if (curMap[col.assignment_name]) {
+              await updateScoreColumn(curMap[col.assignment_name].id, {
+                assignment_type: col.assignment_type,
+                sheet_column:    col.sheet_column ?? '',
+                max_score:       col.max_score,
+                assignment_name: col.assignment_name,
+              }).catch(() => {})
+            } else {
+              await createScoreColumn({ class_id: classData.id, assignment_name: col.assignment_name,
+                assignment_type: col.assignment_type, sheet_column: col.sheet_column ?? '', max_score: col.max_score })
+            }
+          }
+          showToast(`Mirror จาก ${src.class_name} สำเร็จ ✅`, 'success')
+          popup.remove()
+          renderGradesGrid(window._currentGradeTeacher, classData)
+        } catch (err) {
+          showToast('Mirror ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = 'คัดลอก'
         }
-        showToast(`คัดลอก ${added} คอลัมน์จาก ${src.class_name} ✅`, 'success')
-        popup.remove()
-        renderGradesGrid(window._currentGradeTeacher, classData)
-      } catch (err) {
-        showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        btn.disabled = false; btn.textContent = 'คัดลอก'
-      }
+      })
     })
   })
 }
@@ -6157,10 +6192,10 @@ async function _openCourseColsModal(subjectId, subjectName, allClasses) {
 
   const colRow = col => `
     <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 hover:border-gray-200 bg-gray-50/60">
-      <input type="checkbox" class="ccm-cb w-4 h-4 rounded accent-red-500 flex-shrink-0" data-name="${_esc(col.assignment_name)}" />
+      <input type="checkbox" class="ccm-cb w-4 h-4 rounded accent-red-500 flex-shrink-0" data-name="${_htmlEsc(col.assignment_name)}" />
       <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name}</span>
       <span class="text-[11px] text-gray-400">/${col.max_score || 0}</span>
-      <button class="ccm-del text-gray-300 hover:text-red-400 text-lg px-1 rounded hover:bg-red-50 transition" data-name="${_esc(col.assignment_name)}">🗑</button>
+      <button class="ccm-del text-gray-300 hover:text-red-400 text-lg px-1 rounded hover:bg-red-50 transition" data-name="${_htmlEsc(col.assignment_name)}">🗑</button>
     </div>`
 
   const renderModal = () => {
@@ -6302,7 +6337,7 @@ async function _openCourseColsModal(subjectId, subjectName, allClasses) {
               const clsCols = await getScoreColumns(cls.id).catch(() => [])
               if (clsCols.some(c => c.assignment_name === name)) continue
               await createScoreColumn({ class_id: cls.id, assignment_name: name,
-                assignment_type: type, sheet_column: sheet, max_score: max })
+                assignment_type: type, sheet_column: sheet ?? '', max_score: max })
             }
             addModal.remove()
             showToast(`เพิ่ม "${name}" ใน ${courseClasses.length} ห้องแล้ว ✅`, 'success')
@@ -6372,7 +6407,7 @@ function _openAddColumnModal(classData, type, onDone) {
     const btn = modal.querySelector('#acol-save')
     btn.disabled = true; btn.textContent = 'กำลังเพิ่ม...'
     try {
-      await createScoreColumn({ class_id: classData.id, assignment_name: name, max_score: max, sheet_column: sheet, assignment_type: type })
+      await createScoreColumn({ class_id: classData.id, assignment_name: name, max_score: max, sheet_column: sheet ?? '', assignment_type: type })
       modal.remove(); showToast(`เพิ่มคอลัมน์ "${name}" แล้ว`, 'success'); onDone()
     } catch (err) {
       msg.textContent = 'เกิดข้อผิดพลาด: ' + (err.message ?? ''); msg.classList.remove('hidden')
