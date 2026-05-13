@@ -1985,9 +1985,20 @@ export async function renderSettings() {
           { key:'studentSyncHeaderRow', label:'แถวหัวตาราง', type:'text', placeholder:'1' },
         ]),
         `<div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-          <p class="text-sm font-semibold text-emerald-900">ซิงก์รายสัปดาห์</p>
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-emerald-900">ซิงก์รายสัปดาห์</p>
+              <p class="text-xs text-emerald-700 mt-1 leading-relaxed">
+                ปุ่มนี้ใช้ทดสอบซิงก์ทันที ส่วนรันอัตโนมัติรายสัปดาห์ให้ตั้ง trigger ใน Apps Script ที่ฟังก์ชัน <span class="font-mono">runWeeklyStudentSync</span>
+              </p>
+            </div>
+            <button id="btn-download-student-sync-template" type="button"
+              class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-50 shadow-sm whitespace-nowrap">
+              ⬇️ ดาวน์โหลดเท็มเพลท
+            </button>
+          </div>
           <p class="text-xs text-emerald-700 mt-1 leading-relaxed">
-            ปุ่มนี้ใช้ทดสอบซิงก์ทันที ส่วนรันอัตโนมัติรายสัปดาห์ให้ตั้ง trigger ใน Apps Script ที่ฟังก์ชัน <span class="font-mono">runWeeklyStudentSync</span>
+            นำไฟล์เท็มเพลทไปเปิดด้วย Google Sheets แล้วใช้ชีทนั้นเป็นแหล่งซิงก์ได้เลย
           </p>
           <button id="btn-sync-students-now" type="button"
             class="mt-3 inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm">
@@ -2106,6 +2117,28 @@ export async function renderSettings() {
       })
 
       const syncStudentsBtn = document.getElementById('btn-sync-students-now')
+      const downloadStudentTemplateBtn = document.getElementById('btn-download-student-sync-template')
+      if (downloadStudentTemplateBtn) {
+        downloadStudentTemplateBtn.addEventListener('click', () => {
+          const rows = [
+            ['รหัสนักเรียน', 'ชื่อ-สกุล', 'ห้องสามัญ', 'ห้องศาสนา', 'เพศ', 'รูปภาพ', 'ประจำสี', 'ไซด์เสื้อกีฬาสี'],
+            ['24166', 'นายตัวอย่าง นักเรียน', 'ม.5/2 Delima', "อป.1/9 An-Nasa'i", 'ชาย', 'https://example.com/student-photo.jpg', 'เขียว', 'L'],
+          ]
+          const csv = '\uFEFF' + rows
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            .join('\n')
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = 'pp5-students-sync-template.csv'
+          document.body.appendChild(a)
+          a.click()
+          a.remove()
+          URL.revokeObjectURL(url)
+          showToast('ดาวน์โหลดเท็มเพลทแล้ว ✅', 'success')
+        })
+      }
       if (syncStudentsBtn) {
         syncStudentsBtn.addEventListener('click', async () => {
           const sheetId = document.getElementById('cfg-studentSyncSheetId')?.value?.trim() || ''
