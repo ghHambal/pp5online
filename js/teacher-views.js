@@ -6724,13 +6724,24 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   const visionOn = cfg.scheduleVisionEnabled === 'true'
   const geminiKey= cfg.geminiApiKey ?? ''
 
-  const [periods, subjects, scheduleData, roomColorRows] = await Promise.all([
+  const [periods, subjects, scheduleData, roomColorRows, links, allClasses] = await Promise.all([
     getPeriods().catch(()=>[]),
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getMySchedule(teacher.id, academicYear, semester).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTeacherRoomColors(teacher.id).catch(()=>[]) : Promise.resolve([]),
+    teacher ? getClassScheduleLinks(teacher.id).catch(()=>[]) : Promise.resolve([]),
+    teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
   ])
   const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
+
+  // map scheduleId → linked class (ใช้ class แรกที่ link ถ้ามีหลาย)
+  const classMap = Object.fromEntries(allClasses.map(c => [c.id, c]))
+  const linkedClassBySchedule = {}
+  links.forEach(l => {
+    if (!linkedClassBySchedule[l.teacher_schedule_id]) {
+      linkedClassBySchedule[l.teacher_schedule_id] = classMap[l.class_id]
+    }
+  })
 
   // วันในสัปดาห์ 0=อา, 1=จ, 2=อ, 3=พ, 4=พฤ, (5=ศ ถ้าเปิด)
   const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
@@ -6748,12 +6759,15 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     }
   }
 
-  const _entryColor = (entry = {}, subj = null) => resolveScheduleColor({
-    teacherId: teacher?.id,
-    className: entry.class_name,
-    subjectName: entry.subject_name ?? subj?.subject_name,
-    fallbackId: entry.subject_id ?? subj?.id,
-  }, roomColorMap)
+  const _entryColor = (entry = {}, subj = null) => {
+    const linked = entry?.id ? linkedClassBySchedule[entry.id] : null
+    return resolveScheduleColor({
+      teacherId:   teacher?.id,
+      className:   linked?.class_name ?? entry.class_name,
+      subjectName: linked?.master_subjects?.subject_name ?? entry.subject_name ?? subj?.subject_name,
+      fallbackId:  linked?.id ?? entry.subject_id ?? subj?.id,
+    }, roomColorMap)
+  }
 
   setContent(`<div class="max-w-full animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
