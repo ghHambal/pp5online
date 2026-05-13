@@ -1013,21 +1013,42 @@ export async function updateLastSeen(table) {
   await supabase.from(table).update({ last_seen_at: new Date().toISOString() }).eq('profile_id', user.id)
 }
 
+export async function logLogin(userType) {
+  await supabase.from('login_logs').insert({ user_type: userType })
+}
+
 export async function getUsageStats() {
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-  const iso = todayStart.toISOString()
-  const [tTotal, tToday, sTotal, sToday] = await Promise.all([
+  const now = new Date()
+  const todayIso  = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+  const monthIso  = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const [tTotal, sTotal, tToday, sToday, tMonth, sMonth] = await Promise.all([
     supabase.from('teachers').select('id', { count: 'exact', head: true }),
-    supabase.from('teachers').select('id', { count: 'exact', head: true }).gte('last_seen_at', iso),
     supabase.from('students').select('id', { count: 'exact', head: true }),
-    supabase.from('students').select('id', { count: 'exact', head: true }).gte('last_seen_at', iso),
+    supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','teacher').gte('logged_at', todayIso),
+    supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','student').gte('logged_at', todayIso),
+    supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','teacher').gte('logged_at', monthIso),
+    supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','student').gte('logged_at', monthIso),
   ])
   return {
     teacherTotal: tTotal.count ?? 0,
-    teacherToday: tToday.count ?? 0,
     studentTotal: sTotal.count ?? 0,
+    teacherToday: tToday.count ?? 0,
     studentToday: sToday.count ?? 0,
+    teacherMonth: tMonth.count ?? 0,
+    studentMonth: sMonth.count ?? 0,
   }
+}
+
+// query stats สำหรับหน้า login (ไม่ต้อง auth)
+export async function getPublicLoginStats(userType) {
+  const now = new Date()
+  const todayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+  const monthIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const [today, month] = await Promise.all([
+    supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type', userType).gte('logged_at', todayIso),
+    supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type', userType).gte('logged_at', monthIso),
+  ])
+  return { today: today.count ?? 0, month: month.count ?? 0 }
 }
 
 // ─── Class-Schedule Links ─────────────────────────────────────────────────────

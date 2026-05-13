@@ -8,7 +8,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getTeacherPackageAccess, getMyDonationRequests,
          getMySchedule, getPeriods,
          getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
-         updateLastSeen } from './api.js'
+         updateLastSeen, logLogin } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -1583,6 +1583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
   _startPolling()              // polling 30 วิ
   updateLastSeen('teachers').catch(() => {})
+  logLogin('teacher').catch(() => {})
   if (_teacher?.id) _initDonationFlow(_teacher.id)
   if (_teacher?.id) _checkScheduleLinkPopup()
   if (_teacher?.id) _initNotifications(_teacher.id)

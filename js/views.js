@@ -5858,48 +5858,48 @@ export async function renderUsageStats() {
   setActive('usage-stats')
   document.getElementById('page-title').textContent = 'สถิติการใช้งาน'
 
-  setContent(`<div class="max-w-2xl mx-auto animate-fade">
-    <div class="mb-6">
-      <h2 class="text-lg font-bold text-gray-800">📊 สถิติการใช้งาน</h2>
-      <p class="text-xs text-gray-400 mt-0.5">นับจากการ login ล่าสุดของแต่ละบัญชี</p>
+  const now = new Date()
+  const monthName = now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+
+  const statCard = (icon, label, id, color) => `
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 text-center">
+      <p class="text-xs text-gray-400 mb-2">${icon} ${label}</p>
+      <p id="${id}-today" class="text-3xl font-extrabold ${color}">—</p>
+      <p class="text-[10px] text-gray-400 mt-0.5">วันนี้</p>
+      <div class="mt-3 pt-3 border-t border-gray-50 flex justify-between text-xs">
+        <span class="text-gray-400">เดือนนี้</span>
+        <span id="${id}-month" class="font-bold text-gray-600">—</span>
+      </div>
+      <div class="flex justify-between text-xs mt-1">
+        <span class="text-gray-400">ทั้งหมดในระบบ</span>
+        <span id="${id}-total" class="font-bold text-gray-600">—</span>
+      </div>
+    </div>`
+
+  setContent(`<div class="max-w-xl mx-auto animate-fade">
+    <div class="mb-5 flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">📊 สถิติการใช้งาน</h2>
+        <p class="text-xs text-gray-400 mt-0.5">${monthName}</p>
+      </div>
+      <button id="stat-refresh" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">🔄 รีเฟรช</button>
     </div>
-    <div class="grid grid-cols-2 gap-4 mb-6">
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
-        <p class="text-xs text-gray-400 mb-1">👨‍🏫 ครูที่เข้าใช้วันนี้</p>
-        <p id="stat-teacher-today" class="text-4xl font-extrabold text-indigo-600">—</p>
-        <p class="text-xs text-gray-400 mt-1">คน</p>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
-        <p class="text-xs text-gray-400 mb-1">🎒 นักเรียนที่เข้าใช้วันนี้</p>
-        <p id="stat-student-today" class="text-4xl font-extrabold text-emerald-600">—</p>
-        <p class="text-xs text-gray-400 mt-1">คน</p>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
-        <p class="text-xs text-gray-400 mb-1">👨‍🏫 ครูในระบบทั้งหมด</p>
-        <p id="stat-teacher-total" class="text-4xl font-extrabold text-gray-700">—</p>
-        <p class="text-xs text-gray-400 mt-1">บัญชี</p>
-      </div>
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
-        <p class="text-xs text-gray-400 mb-1">🎒 นักเรียนในระบบทั้งหมด</p>
-        <p id="stat-student-total" class="text-4xl font-extrabold text-gray-700">—</p>
-        <p class="text-xs text-gray-400 mt-1">บัญชี</p>
-      </div>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      ${statCard('👨‍🏫','ครู','stat-teacher','text-indigo-600')}
+      ${statCard('🎒','นักเรียน','stat-student','text-emerald-600')}
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center justify-between">
-      <p class="text-xs text-gray-400">อัปเดตล่าสุด: <span id="stat-updated">—</span></p>
-      <button id="stat-refresh" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
-        🔄 รีเฟรช
-      </button>
-    </div>
+    <p class="text-center text-[11px] text-gray-400">อัปเดตล่าสุด: <span id="stat-updated">—</span></p>
   </div>`)
 
   const load = async () => {
     try {
-      const stats = await getUsageStats()
-      document.getElementById('stat-teacher-today').textContent = stats.teacherToday
-      document.getElementById('stat-student-today').textContent = stats.studentToday
-      document.getElementById('stat-teacher-total').textContent = stats.teacherTotal
-      document.getElementById('stat-student-total').textContent = stats.studentTotal
+      const s = await getUsageStats()
+      document.getElementById('stat-teacher-today').textContent = s.teacherToday
+      document.getElementById('stat-teacher-month').textContent = s.teacherMonth
+      document.getElementById('stat-teacher-total').textContent = s.teacherTotal
+      document.getElementById('stat-student-today').textContent = s.studentToday
+      document.getElementById('stat-student-month').textContent = s.studentMonth
+      document.getElementById('stat-student-total').textContent = s.studentTotal
       document.getElementById('stat-updated').textContent =
         new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
     } catch { showToast('โหลดสถิติไม่สำเร็จ', 'error') }
