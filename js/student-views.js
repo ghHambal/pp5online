@@ -8,6 +8,8 @@ import {
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
 
+const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setContent(html) {
   document.getElementById('stu-content').innerHTML =
@@ -498,7 +500,7 @@ export async function renderStudentSubjects(student) {
           <div class="mt-2 min-w-0">
             <p class="font-bold text-[12px] leading-tight line-clamp-2" style="color:${meta.text};">${ms?.subject_name ?? '—'}</p>
             <p class="text-[10px] text-gray-400 mt-0.5 font-mono truncate">${ms?.subject_code ?? ''}</p>
-            <p class="text-[10px] text-gray-500 mt-1 truncate">${cls.class_name ?? ''}</p>
+            <p class="text-[10px] text-gray-500 mt-1 truncate">${_roomDisplay(cls.class_name)}</p>
           </div>
           <div class="mt-auto pt-2 flex items-center gap-1.5 min-w-0">
             ${teacher?.image_url
@@ -531,7 +533,7 @@ export async function renderStudentSubjects(student) {
             : `<div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600 font-medium">${(teacher?.full_name??'ค').charAt(0)}</div>`}
           <span class="text-xs text-gray-600">${teacher?.full_name ?? '—'}</span>
         </div>
-        <span class="ml-auto text-xs text-gray-400">${cls.class_name ?? ''}</span>
+        <span class="ml-auto text-xs text-gray-400">${_roomDisplay(cls.class_name)}</span>
       </div>
     </div>`
   }
@@ -682,7 +684,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         <p class="font-bold ${colorCls.text} text-sm leading-tight">${ms?.subject_name ?? '—'}</p>
         <p class="text-[11px] text-gray-400 font-mono mt-0.5">${ms?.subject_code ?? ''}</p>
         <p class="text-xs text-gray-500 mt-0.5">${student.full_name} · ${student.student_code}</p>
-        <p class="text-[11px] text-gray-400 mt-0.5">${teacher?.full_name ?? '—'} · ${cls.class_name ?? ''}</p>
+        <p class="text-[11px] text-gray-400 mt-0.5">${teacher?.full_name ?? '—'} · ${_roomDisplay(cls.class_name)}</p>
       </div>
       <div class="flex-shrink-0 text-right">
         <p class="text-2xl font-bold text-gray-800">${totalMax > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}</p>
@@ -1009,7 +1011,7 @@ export async function renderExamRequestForm(student, classId) {
 
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h2 class="font-bold text-gray-800 mb-1">📝 ยื่นคำร้อง</h2>
-        <p class="text-xs text-gray-400 mb-5">${ms?.subject_name ?? ''} · ${cls.class_name ?? ''}</p>
+        <p class="text-xs text-gray-400 mb-5">${ms?.subject_name ?? ''} · ${_roomDisplay(cls.class_name)}</p>
 
         <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center">
           <p class="text-3xl mb-2">📅</p>
@@ -1120,7 +1122,7 @@ export async function renderExamRequestForm(student, classId) {
           <div class="w-full h-full ${colorCls} flex flex-col justify-center items-center
                       gap-0.5 px-2 py-2 text-center" style="min-height:52px">
             <p class="font-bold leading-tight text-xs break-words">${slot.subject_name ?? 'ไม่ว่าง'}</p>
-            ${slot.class_name ? `<p class="text-[10px] opacity-80 leading-tight">${slot.class_name}</p>` : ''}
+            ${slot.class_name ? `<p class="text-[10px] opacity-80 leading-tight">${_roomDisplay(slot.class_name)}</p>` : ''}
             ${slot.teacher_name ? `<p class="text-[9px] opacity-55 leading-tight">${slot.teacher_name}</p>` : ''}
             ${span > 1 ? `<p class="text-[9px] opacity-40 mt-0.5">${span} คาบ</p>` : ''}
           </div>
@@ -1160,7 +1162,7 @@ export async function renderExamRequestForm(student, classId) {
 
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <h2 class="font-bold text-gray-800 mb-1">📝 ยื่นคำร้อง</h2>
-      <p class="text-xs text-gray-400 mb-3">${ms?.subject_name ?? ''} · ${cls.class_name ?? ''}</p>
+      <p class="text-xs text-gray-400 mb-3">${ms?.subject_name ?? ''} · ${_roomDisplay(cls.class_name)}</p>
       ${missedWarning}
 
       ${hasSchedule ? `
