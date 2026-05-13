@@ -136,6 +136,7 @@
       <a href="index.html" class="text-indigo-500 hover:text-indigo-700 font-medium">เข้าสู่ระบบครู →</a>
     </p>
     <p data-dev-credit class="text-center text-[11px] text-gray-400 mt-4">พัฒนาโดย KruHambalWaji</p>
+    <p id="login-stats" class="text-center text-[10px] text-gray-300 mt-1"></p>
   </div>
 
   <script type="module">
@@ -157,6 +158,20 @@
       if (cfg.developerCreditText) {
         document.querySelectorAll('[data-dev-credit]').forEach(el => { el.textContent = cfg.developerCreditText })
       }
+    } catch { /* ignore */ }
+
+    // ─── Load student login stats ────────────────────────────────────────────
+    try {
+      const now = new Date()
+      const todayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+      const monthIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const [todayRes, monthRes, totalRes] = await Promise.all([
+        supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','student').gte('logged_at', todayIso),
+        supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','student').gte('logged_at', monthIso),
+        supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','student'),
+      ])
+      const el = document.getElementById('login-stats')
+      if (el) el.textContent = `🎒 นักเรียน: วันนี้ ${todayRes.count ?? 0} คน · เดือนนี้ ${monthRes.count ?? 0} คน · ทั้งหมด ${totalRes.count ?? 0} คน`
     } catch { /* ignore */ }
 
     // ─── State ────────────────────────────────────────────────────────────────

@@ -117,8 +117,139 @@
         🎒 สำหรับนักเรียน
       </a>
     </p>
+
+    <!-- Why use this? button -->
+    <div class="flex justify-center mt-4">
+      <button id="btn-why-pp5"
+        class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-emerald-600 transition underline underline-offset-2">
+        ✨ ทำไมต้องใช้ ปพ.5 ออนไลน์?
+      </button>
+    </div>
+
     <p data-dev-credit class="text-center text-[11px] text-gray-400 mt-4">พัฒนาโดย KruHambalWaji</p>
+    <p id="teacher-login-stats" class="text-center text-[10px] text-gray-300 mt-1"></p>
   </div>
+
+  <!-- ─── Why PP5 Modal ──────────────────────────────────────────── -->
+  <div id="why-pp5-modal"
+    class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+
+      <!-- Header -->
+      <div class="sticky top-0 bg-white rounded-t-3xl px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800">ทำไมต้องใช้ ปพ.5 ออนไลน์?</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ระบบสมุดคะแนนดิจิทัล ออกแบบมาเพื่อครูไทยโดยเฉพาะ</p>
+        </div>
+        <button id="btn-why-close"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 text-lg flex-shrink-0">×</button>
+      </div>
+
+      <!-- Content -->
+      <div class="px-6 py-5 space-y-6">
+
+        <!-- Pain point header -->
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+          <p class="text-sm font-semibold text-amber-800">📋 ครูยังต้องทำ ปพ.5 ด้วยมืออยู่ไหม?</p>
+          <p class="text-xs text-amber-600 mt-1">บันทึกคะแนน → พิมพ์ลงกระดาษ → คีย์เข้า Excel → ส่ง → แก้ใหม่ ซ้ำทุกเทอม</p>
+        </div>
+
+        <!-- Solution headline -->
+        <div class="text-center">
+          <p class="text-base font-bold text-emerald-700">ระบบนี้แก้ปัญหาทั้งหมดนั้น</p>
+          <p class="text-xs text-gray-500 mt-1">กรอกครั้งเดียว — ส่งทุกที่อัตโนมัติ</p>
+        </div>
+
+        <!-- Feature grid -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+            <div class="text-2xl mb-2">📊</div>
+            <p class="text-xs font-bold text-emerald-800">Sync Google Sheet อัตโนมัติ</p>
+            <p class="text-[11px] text-emerald-600 mt-1">บันทึกคะแนน/เช็คชื่อในระบบ → ส่งลง Sheet ทันที ไม่ต้องพิมพ์ซ้ำ</p>
+          </div>
+          <div class="rounded-2xl bg-blue-50 border border-blue-100 p-4">
+            <div class="text-2xl mb-2">✅</div>
+            <p class="text-xs font-bold text-blue-800">เช็คชื่อ+คะแนนในที่เดียว</p>
+            <p class="text-[11px] text-blue-600 mt-1">ทุกวิชา ทุกห้อง จัดการผ่านมือถือได้ทุกที่ทุกเวลา</p>
+          </div>
+          <div class="rounded-2xl bg-purple-50 border border-purple-100 p-4">
+            <div class="text-2xl mb-2">🤖</div>
+            <p class="text-xs font-bold text-purple-800">AI ช่วยร่างคำอธิบายรายวิชา</p>
+            <p class="text-[11px] text-purple-600 mt-1">พิมพ์ชื่อบท → AI ค้นหลักสูตรแกนกลาง → ร่างให้อัตโนมัติ</p>
+          </div>
+          <div class="rounded-2xl bg-orange-50 border border-orange-100 p-4">
+            <div class="text-2xl mb-2">📄</div>
+            <p class="text-xs font-bold text-orange-800">เอกสาร ปพ.5 พร้อมพิมพ์</p>
+            <p class="text-[11px] text-orange-600 mt-1">สร้างเอกสารถูกต้องตามรูปแบบ ส่งงานได้ทันที</p>
+          </div>
+          <div class="rounded-2xl bg-teal-50 border border-teal-100 p-4">
+            <div class="text-2xl mb-2">🕌</div>
+            <p class="text-xs font-bold text-teal-800">รองรับระบบละหมาด</p>
+            <p class="text-[11px] text-teal-600 mt-1">บันทึกคะแนนละหมาด ติดตามนักเรียนรายสัปดาห์ ดูรายงานได้ทันที</p>
+          </div>
+          <div class="rounded-2xl bg-rose-50 border border-rose-100 p-4">
+            <div class="text-2xl mb-2">🎒</div>
+            <p class="text-xs font-bold text-rose-800">นักเรียนยื่นคำร้องออนไลน์</p>
+            <p class="text-[11px] text-rose-600 mt-1">ขอสอบชดเชยผ่านระบบ ครูอนุมัติ/ปฏิเสธพร้อมแจ้งเตือน</p>
+          </div>
+        </div>
+
+        <!-- Workflow visual -->
+        <div class="bg-gray-50 rounded-2xl p-4">
+          <p class="text-xs font-bold text-gray-600 mb-3 text-center">⚡ Workflow ที่ครูได้ทันที</p>
+          <div class="flex items-center justify-between text-center text-[10px] gap-1">
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">🗓️</div>
+              <p class="font-semibold text-gray-700 mt-1">เปิดคอร์ส</p>
+              <p class="text-gray-400">1 ครั้ง/เทอม</p>
+            </div>
+            <div class="text-gray-300 text-base">→</div>
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">📝</div>
+              <p class="font-semibold text-gray-700 mt-1">เช็คชื่อ/คะแนน</p>
+              <p class="text-gray-400">รายวัน</p>
+            </div>
+            <div class="text-gray-300 text-base">→</div>
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">📊</div>
+              <p class="font-semibold text-gray-700 mt-1">ส่ง Sheet</p>
+              <p class="text-gray-400">อัตโนมัติ</p>
+            </div>
+            <div class="text-gray-300 text-base">→</div>
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">📄</div>
+              <p class="font-semibold text-gray-700 mt-1">ส่ง ปพ.5</p>
+              <p class="text-gray-400">คลิกเดียว</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <button id="btn-why-login"
+          class="w-full py-3.5 rounded-2xl btn-primary text-white font-bold text-sm">
+          เริ่มใช้งานฟรีเลย →
+        </button>
+        <p class="text-center text-[11px] text-gray-400">ฟรี 2 ห้องเรียน/วิชา — ไม่ต้องใช้บัตรเครดิต</p>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    ;(function() {
+      const modal   = document.getElementById('why-pp5-modal')
+      const btnOpen = document.getElementById('btn-why-pp5')
+      const btnClose= document.getElementById('btn-why-close')
+      const btnLogin= document.getElementById('btn-why-login')
+      btnOpen.addEventListener('click', () => modal.classList.remove('hidden'))
+      btnClose.addEventListener('click', () => modal.classList.add('hidden'))
+      btnLogin.addEventListener('click', () => {
+        modal.classList.add('hidden')
+        document.getElementById('login-identifier')?.focus()
+      })
+      modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden') })
+    })()
+  </script>
 
   <!-- ─── Register Card ───────────────────────────────────────── -->
   <div id="register-card"
@@ -292,6 +423,20 @@
         const { data } = await supabase.from('system_config').select('key,value').eq('key', 'developerCreditText')
         const credit = data?.[0]?.value
         if (credit) document.querySelectorAll('[data-dev-credit]').forEach(el => { el.textContent = credit })
+      } catch { /* ignore */ }
+
+      // ─── Teacher login stats ─────────────────────────────────────────────
+      try {
+        const now = new Date()
+        const todayIso = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+        const monthIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+        const [todayRes, monthRes, totalRes] = await Promise.all([
+          supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','teacher').gte('logged_at', todayIso),
+          supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','teacher').gte('logged_at', monthIso),
+          supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','teacher'),
+        ])
+        const el = document.getElementById('teacher-login-stats')
+        if (el) el.textContent = `👨‍🏫 ครู: วันนี้ ${todayRes.count ?? 0} คน · เดือนนี้ ${monthRes.count ?? 0} คน · ทั้งหมด ${totalRes.count ?? 0} คน`
       } catch { /* ignore */ }
     })()
   </script>
