@@ -524,33 +524,33 @@ function _showSchoolSponsoredPopup(count, course, cfg = {}) {
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🎉</div>
           <div>
-            <h3 class="font-bold text-gray-800 leading-tight">ขอบคุณที่ไว้วางใจใช้ระบบนี้ครับ</h3>
+            <h3 class="font-bold text-gray-800 leading-tight">${cfg.sponsoredHeaderTitle || 'ขอบคุณที่ไว้วางใจใช้ระบบนี้ครับ'}</h3>
             <p class="text-xs text-gray-400">ระบบ ปพ.5 ออนไลน์</p>
           </div>
         </div>
       </div>
       <div class="px-5 py-4 space-y-3">
         <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-          <p class="text-sm font-semibold text-emerald-800">🏫 คุณโรงเรียนฯ ดูแลคุณครูแล้ว</p>
+          <p class="text-sm font-semibold text-emerald-800">${cfg.sponsoredBoxTitle || '🏫 คุณโรงเรียนฯ ดูแลคุณครูแล้ว'}</p>
           <p class="text-xs text-emerald-700 mt-1 leading-relaxed">
-            ท่านผู้อำนวยการได้เปิดสิทธิ์ให้คุณครูทุกท่านใช้ได้ไม่จำกัดวิชา — เป็นของขวัญจากโรงเรียนให้คุณครูทุกท่านครับ
+            ${cfg.sponsoredBoxBody || 'ท่านผู้อำนวยการได้เปิดสิทธิ์ให้คุณครูทุกท่านใช้ได้ไม่จำกัดวิชา — เป็นของขวัญจากโรงเรียนให้คุณครูทุกท่านครับ'}
           </p>
         </div>
 
         <button id="sp-donate"
           class="w-full py-4 rounded-2xl bg-amber-400 hover:bg-amber-500 active:bg-amber-600 text-white font-bold text-sm
                  shadow-lg shadow-amber-200/60 transition-all flex items-center justify-center gap-2">
-          ☕ ขอบคุณผู้พัฒนาด้วยกาแฟสักแก้ว
-          <span class="font-normal text-xs opacity-90">ถ้าระบบนี้ช่วยงานคุณครูได้บ้าง</span>
+          ${cfg.sponsoredDonateBtn || '☕ ขอบคุณผู้พัฒนาด้วยกาแฟสักแก้ว'}
+          <span class="font-normal text-xs opacity-90">${cfg.sponsoredDonateSub || 'ถ้าระบบนี้ช่วยงานคุณครูได้บ้าง'}</span>
         </button>
 
         <button id="sp-access"
           class="w-full py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm
                  shadow-lg shadow-emerald-200/60 transition-all flex items-center justify-center gap-2">
-          ✨ รับของขวัญจากโรงเรียนเลย
+          ${cfg.sponsoredAccessBtn || '✨ รับของขวัญจากโรงเรียนเลย'}
         </button>
 
-        <p class="text-center text-[11px] text-gray-400 pb-1">ไม่ว่าจะกดปุ่มไหน คุณครูได้ใช้งานไม่จำกัดเหมือนกันเลยครับ 🙏</p>
+        <p class="text-center text-[11px] text-gray-400 pb-1">${cfg.sponsoredFooter || 'ไม่ว่าจะกดปุ่มไหน คุณครูได้ใช้งานไม่จำกัดเหมือนกันเลยครับ 🙏'}</p>
       </div>
     </div>`
 
