@@ -3148,61 +3148,83 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
 
     setContent(`
     <div class="max-w-5xl mx-auto animate-fade">
-      <!-- Breadcrumb -->
-      <div class="flex items-center gap-2 mb-4 text-sm text-gray-500">
-        <button onclick="window._backToClasses()"
-          class="hover:text-gray-800 transition flex items-center gap-1">
-          ← ห้องเรียนของฉัน
-        </button>
-        <span class="text-gray-300">/</span>
-        <span class="text-gray-700 font-medium">${_htmlEsc(ms.subject_name??'')} · ${_htmlEsc(cls.class_name??'')}</span>
-      </div>
 
-      <!-- Header card -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
-        <div class="flex items-start justify-between gap-4 flex-wrap">
+      <!-- ── Sticky top bar (mobile-first) ── -->
+      <div class="bg-white border-b border-gray-100 shadow-sm -mx-4 px-4 sm:-mx-6 sm:px-6 mb-4 sticky top-0 z-10">
+
+        <!-- Row 1: breadcrumb + class info -->
+        <div class="flex items-center gap-2 py-3">
+          <button onclick="window._backToClasses()"
+            class="flex-shrink-0 text-gray-400 hover:text-gray-700 transition p-1 -ml-1 rounded-lg hover:bg-gray-100"
+            aria-label="กลับ">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </button>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-2 flex-wrap">
-              <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-mono rounded-full">${_htmlEsc(ms.subject_code??'—')}</span>
-              ${cls.skill_group ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">กลุ่มทักษะ: ${_htmlEsc(cls.skill_group)}</span>` : ''}
-              ${isReligion ? `<span class="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-full">กลุ่มวิชาศาสนา</span>` : ''}
-              ${cls.google_sheet_id ? `<span class="px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full">✓ Sheet</span>` : ''}
-            </div>
-            <h2 class="text-xl font-bold text-gray-800">${_htmlEsc(ms.subject_name??'—')}</h2>
-            <p class="text-gray-500 mt-1">
-              ห้อง: <span class="font-semibold text-gray-700">${_htmlEsc(cls.class_name??'')}</span>
-              ${cr ? `<span class="ml-3 text-sm text-gray-400">📍 ${_htmlEsc(cr.building)} ห้อง ${_htmlEsc(cr.room_number)}${cr.name?` (${_htmlEsc(cr.name)})`:''}</span>` : ''}
+            <p class="font-bold text-gray-800 text-sm leading-tight truncate">${_htmlEsc(ms.subject_name??'—')}</p>
+            <p class="text-xs text-gray-500 truncate">
+              <span class="font-mono text-emerald-600">${_htmlEsc(ms.subject_code??'')}</span>
+              <span class="mx-1">·</span>${_htmlEsc(cls.class_name??'')}${cr ? ` · 📍 ${_htmlEsc(cr.building)} ${_htmlEsc(cr.room_number)}` : ''}
             </p>
           </div>
-          <div class="flex items-center gap-2 flex-wrap">
-            <button onclick="window._openPP5Doc(${classId})"
-              class="px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition">📄 ปพ.5</button>
-            ${sheetBtns}
-            <div class="w-px h-6 bg-gray-200"></div>
-            <button onclick="window._openCombinedEdit2(${classId})"
-              class="px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-50 transition">✏️ แก้ไข</button>
-            <button onclick="window._deleteClass(${classId},'${_htmlEsc(cls.class_name??'')}')"
-              class="px-3 py-2 border border-red-100 text-red-400 text-xs font-semibold rounded-xl hover:bg-red-50 transition">🗑️ ลบ</button>
+          <!-- badges desktop only -->
+          <div class="hidden sm:flex items-center gap-1.5 flex-shrink-0">
+            ${cls.skill_group ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">${_htmlEsc(cls.skill_group)}</span>` : ''}
+            ${isReligion ? `<span class="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-full">ศาสนา</span>` : ''}
+            ${cls.google_sheet_id ? `<span class="px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full">✓ Sheet</span>` : ''}
           </div>
+        </div>
+
+        <!-- Row 2: action buttons (scrollable on mobile) -->
+        <div class="flex gap-2 pb-3 overflow-x-auto no-scrollbar">
+          <button onclick="window._openPP5Doc(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition flex items-center gap-1.5">
+            📄 <span class="hidden xs:inline">ปพ.5</span><span class="xs:hidden">ปพ.5</span>
+          </button>
+          ${cls.google_sheet_id ? `
+          <button onclick="window._openSheetToolsModal(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 transition flex items-center gap-1.5">
+            ⚙️ <span>จัดการชีท</span>
+          </button>` : copyTemplate?.id ? `
+          <button onclick="window._openClassCopyModal(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-amber-500 text-white text-xs font-semibold rounded-xl hover:bg-amber-600 transition flex items-center gap-1.5">
+            🔗 <span>ทำสำเนาชีท</span>
+          </button>` : ''}
+          <div class="flex-shrink-0 w-px bg-gray-200 my-0.5"></div>
+          <button onclick="window._openCombinedEdit2(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-50 transition flex items-center gap-1.5">
+            ✏️ <span>แก้ไข</span>
+          </button>
+          <button onclick="window._deleteClass(${classId},'${_htmlEsc(cls.class_name??'')}')"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 border border-red-100 text-red-400 text-xs font-semibold rounded-xl hover:bg-red-50 transition flex items-center gap-1.5">
+            🗑️ <span>ลบ</span>
+          </button>
+        </div>
+
+        <!-- Row 3: tabs -->
+        <div class="flex border-t border-gray-100">
+          <button class="cd-tab active-tab flex-1 py-3 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px text-center" data-tab="students">
+            <span class="hidden sm:inline">👥 จัดการนักเรียน</span>
+            <span class="sm:hidden">👥 นักเรียน</span>
+          </button>
+          <button class="cd-tab flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition text-center" data-tab="attendance">
+            <span class="hidden sm:inline">✅ เช็คชื่อ</span>
+            <span class="sm:hidden">✅ เช็คชื่อ</span>
+          </button>
+          <button class="cd-tab flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition text-center" data-tab="grades">
+            <span class="hidden sm:inline">📝 คะแนน</span>
+            <span class="sm:hidden">📝 คะแนน</span>
+          </button>
         </div>
       </div>
 
-      <!-- Tabs -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div class="flex border-b border-gray-100">
-          <button class="cd-tab active-tab px-5 py-3.5 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px" data-tab="students">👥 จัดการนักเรียน</button>
-          <button class="cd-tab px-5 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition" data-tab="attendance">✅ เช็คชื่อ</button>
-          <button class="cd-tab px-5 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition" data-tab="grades">📝 คะแนน</button>
-        </div>
-        <div id="cd-tab-content" class="min-h-96">
-          <div class="flex justify-center py-12 text-gray-400">กำลังโหลด...</div>
-        </div>
-      </div>
+      <!-- Tab content -->
+      <div id="cd-tab-content" class="min-h-96"></div>
     </div>
     <style>
-      .btn-action { display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer;border:none; }
-      .btn-action.teal { background:#0d9488;color:#fff; } .btn-action.teal:hover { background:#0f766e; }
-      .btn-action.amber { background:#f59e0b;color:#fff; } .btn-action.amber:hover { background:#d97706; }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>`)
 
     // Tab switching
