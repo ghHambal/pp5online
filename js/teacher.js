@@ -1229,7 +1229,7 @@ async function _scheduleClassNotifications(teacherId) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return
   try {
     const cfg = await getSystemConfig().catch(() => ({}))
-    const notifyBefore = parseInt(cfg.notifyBeforeMinutes ?? 10)
+    const notifyBefore = parseInt(cfg.notifyBeforeMinutes) || 10
     const academicYear  = parseInt(cfg.academicYear ?? 2568)
     const semester      = parseInt(cfg.semester ?? 1)
 
