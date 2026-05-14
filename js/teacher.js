@@ -564,8 +564,17 @@ function _showSchoolSponsoredPopup(count, course, cfg = {}) {
   wrap.querySelector('#sp-access').addEventListener('click', async () => {
     const btn = wrap.querySelector('#sp-access')
     btn.disabled = true
-    btn.textContent = '⏳ กำลังส่งคำขอ...'
+    btn.textContent = '⏳ กำลังตรวจสอบ...'
     try {
+      const existing = await getMyPaymentRequests(_teacher?.id).catch(() => [])
+      const dup = existing.find(r => r.package_type === 'school_sponsored' &&
+        (r.status === 'pending' || r.status === 'approved'))
+      if (dup) {
+        showToast(dup.status === 'approved'
+          ? 'คุณได้รับสิทธิ์แล้วครับ ✅'
+          : 'ส่งคำขอไปแล้ว รอแอดมินอนุมัติครับ ⏳', 'info')
+        wrap.remove(); return
+      }
       await createPaymentRequest({ teacher_id: _teacher?.id, package_type: 'school_sponsored', amount: 0, status: 'pending' })
       showToast('ส่งคำขอแล้ว ✅ แอดมินจะอนุมัติให้เร็วๆ นี้ครับ', 'success')
       wrap.remove()

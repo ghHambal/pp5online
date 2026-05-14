@@ -3844,9 +3844,19 @@ export async function renderPayments() {
         <h2 class="text-lg font-bold text-gray-800">💳 คำขอชำระเงิน</h2>
         <p class="text-xs text-gray-400 mt-0.5">ตรวจสอบสลิปและอนุมัติแพ็กเกจให้ครู</p>
       </div>
-      <button id="pay-refresh" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
-        🔄 รีเฟรช
-      </button>
+      <div class="flex gap-2">
+        <button id="pay-bulk-approve"
+          class="hidden text-xs px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition">
+          ✅ อนุมัติที่เลือก
+        </button>
+        <button id="pay-approve-all"
+          class="text-xs px-3 py-1.5 rounded-xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold transition">
+          ✅ อนุมัติทั้งหมด
+        </button>
+        <button id="pay-refresh" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+          🔄 รีเฟรช
+        </button>
+      </div>
     </div>
 
     <!-- Filter tabs -->
@@ -3914,6 +3924,7 @@ export async function renderPayments() {
         <!-- Header การ์ด -->
         <div class="flex items-center justify-between px-4 py-3 border-b border-gray-50">
           <div class="flex items-center gap-3">
+            ${r.status === 'pending' ? `<input type="checkbox" class="pay-cb w-4 h-4 rounded accent-emerald-600 flex-shrink-0" data-id="${r.id}" data-teacher="${r.teachers?.id}" data-pkg="${r.package_type}" />` : ''}
             <div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-600 text-sm flex-shrink-0">
               ${(r.teachers?.full_name ?? '?').charAt(0)}
             </div>
@@ -4070,6 +4081,53 @@ export async function renderPayments() {
     allRequests = await getAllPaymentRequests()
     render()
     showToast('รีเฟรชแล้ว', 'success')
+  })
+
+  // ── checkbox → bulk approve bar ─────────────────────────────────────────
+  document.getElementById('pay-list').addEventListener('change', e => {
+    if (!e.target.classList.contains('pay-cb')) return
+    const checked = document.querySelectorAll('.pay-cb:checked')
+    const bulkBtn = document.getElementById('pay-bulk-approve')
+    if (checked.length > 0) {
+      bulkBtn.classList.remove('hidden')
+      bulkBtn.textContent = `✅ อนุมัติ ${checked.length} คน`
+    } else {
+      bulkBtn.classList.add('hidden')
+    }
+  })
+
+  const _approveRequests = async (items) => {
+    let done = 0
+    for (const item of items) {
+      try {
+        await reviewPaymentRequest(parseInt(item.id), 'approved')
+        await approveTeacherQuota(parseInt(item.teacher), item.pkg)
+        done++
+      } catch {}
+    }
+    showToast(`อนุมัติ ${done}/${items.length} รายการ ✅`, 'success')
+    window._refreshPaymentBadge?.()
+    allRequests = await getAllPaymentRequests()
+    render()
+    document.getElementById('pay-bulk-approve')?.classList.add('hidden')
+  }
+
+  document.getElementById('pay-bulk-approve')?.addEventListener('click', async () => {
+    const checked = [...document.querySelectorAll('.pay-cb:checked')]
+    if (!checked.length) return
+    if (!confirm(`อนุมัติ ${checked.length} คนที่เลือก?`)) return
+    await _approveRequests(checked.map(cb => ({
+      id: cb.dataset.id, teacher: cb.dataset.teacher, pkg: cb.dataset.pkg
+    })))
+  })
+
+  document.getElementById('pay-approve-all')?.addEventListener('click', async () => {
+    const pending = allRequests.filter(r => r.status === 'pending')
+    if (!pending.length) { showToast('ไม่มีรายการที่รออนุมัติ', 'info'); return }
+    if (!confirm(`อนุมัติทั้งหมด ${pending.length} รายการ?`)) return
+    await _approveRequests(pending.map(r => ({
+      id: r.id, teacher: r.teachers?.id, pkg: r.package_type
+    })))
   })
 }
 
