@@ -63,11 +63,11 @@ function _shortRoom(name) {
   return String(name ?? '').split(' ')[0]
 }
 
-// หาห้องศาสนาที่มีนักเรียนเยอะที่สุดในรายวิชา
-function _dominantReligionRoom(students) {
+// หาห้องที่มีนักเรียนเยอะที่สุด (ใช้ได้กับทั้ง main_room และ religion_room)
+function _dominantRoom(students, field) {
   const counts = {}
   for (const st of students) {
-    const r = st.religion_room
+    const r = st[field]
     if (r) counts[r] = (counts[r] ?? 0) + 1
   }
   let best = null, bestN = 0
@@ -76,6 +76,8 @@ function _dominantReligionRoom(students) {
   }
   return best
 }
+function _dominantReligionRoom(students) { return _dominantRoom(students, 'religion_room') }
+function _dominantMainRoom(students)     { return _dominantRoom(students, 'main_room') }
 
 function _calcGrade(pct) {
   if (pct >= 80) return 4
@@ -157,14 +159,23 @@ async function _loadDocData(classId) {
   }
 
   // homeroom advisors
-  const classRoom  = _shortRoom(cls.class_name) // ใช้แค่ระดับชั้น เช่น "ม.5/6"
-  const hrSamai    = homerooms.find(h => h.category !== 'ศาสนา' && h.main_room === classRoom) ?? null
+  const isRelSubject = ['AGM','AGMVOC'].includes(ms.subject_group)
+  const classRoom    = _shortRoom(cls.class_name)
+  const domMainRoom  = _dominantMainRoom(students)
+  const domRelRoom   = _dominantReligionRoom(students)
 
-  // ครูที่ปรึกษาศาสนา: ใช้ห้องศาสนาที่มีนักเรียนเยอะที่สุดในรายวิชา
-  const domRelRoom = _dominantReligionRoom(students)
-  const hrReligion = domRelRoom
-    ? (homerooms.find(h => h.category === 'ศาสนา' && h.main_room === domRelRoom) ?? null)
-    : null
+  let hrSamai, hrReligion
+  if (isRelSubject) {
+    // วิชาศาสนา: ครูศาสนา = ห้องของชั้นนั้น, ครูสามัญ = dominant main_room ของนักเรียน
+    hrReligion = homerooms.find(h => h.category === 'ศาสนา' && h.main_room === classRoom) ?? null
+    hrSamai    = domMainRoom ? homerooms.find(h => h.category !== 'ศาสนา' && h.main_room === domMainRoom) ?? null : null
+  } else {
+    // วิชาสามัญ: ครูสามัญ = ห้องของชั้นนั้น (fallback dominant), ครูศาสนา = dominant religion_room
+    hrSamai    = homerooms.find(h => h.category !== 'ศาสนา' && h.main_room === classRoom)
+                  ?? (domMainRoom ? homerooms.find(h => h.category !== 'ศาสนา' && h.main_room === domMainRoom) : null)
+                  ?? null
+    hrReligion = domRelRoom ? homerooms.find(h => h.category === 'ศาสนา' && h.main_room === domRelRoom) ?? null : null
+  }
 
   const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
   return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, sessions, hrSamai, hrReligion, academicYear, semester }
@@ -217,10 +228,16 @@ function _getCSS() {
       position: absolute; top: 24.5mm; right: 31.5mm;
       font-size: 12pt; font-weight: 400;
     }
-    .page-p1 .logo {
+    .page-p1 .logo-wrap {
       position: absolute; top: 17.6mm; left: 50%;
       transform: translateX(-50%);
-      display: block; width: 18.5mm; height: 18.5mm; object-fit: contain;
+      width: 18.5mm; height: 18.5mm;
+      border-radius: 50%; overflow: hidden;
+      background: #fff;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .page-p1 .logo-wrap img {
+      width: 100%; height: 100%; object-fit: contain; display: block;
     }
     .page-p1 .p1-title {
       position: absolute; top: 40.1mm; left: 0; width: 100%; margin: 0;
@@ -480,7 +497,7 @@ function _buildPage1(d) {
   return `
   <div class="page-p1">
     <div class="doc-code">ปพ5</div>
-    ${logoUrl ? `<img class="logo" src="${_esc(logoUrl)}" alt="ตราโรงเรียน" />` : ''}
+    ${logoUrl ? `<div class="logo-wrap"><img src="${_esc(logoUrl)}" alt="ตราโรงเรียน" /></div>` : ''}
 
     <h1 class="p1-title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</h1>
 
