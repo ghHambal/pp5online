@@ -3252,25 +3252,25 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
 
 // ─── Combined Edit Modal (ข้อมูล + ตารางสอน + ห้องสอน) ───────────────────────
 
-function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, onSaved) {
+async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, onSaved) {
   document.getElementById('combined-edit-modal')?.remove()
+
+  // โหลด students + termCfg
+  const [classStudents, termCfg] = await Promise.all([
+    getClassStudents(cls.id).catch(() => []),
+    getSystemConfig().catch(() => ({})),
+  ])
 
   const TAB_STYLE = (active) =>
     active
       ? 'cem-tab px-4 py-2.5 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px'
       : 'cem-tab px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition'
+  const INPUT_CLS = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200'
 
-  // --- ข้อมูลห้องสอน ---
   const buildingList = [...new Set(classrooms.map(r => r.building))].sort()
-  const crCur = cls.classroom_id ? classrooms.find(r => r.id === cls.classroom_id) : null
-
-  // --- ตารางสอนที่เชื่อมโยง ---
+  const crCur        = cls.classroom_id ? classrooms.find(r => r.id === cls.classroom_id) : null
   const linkedIds    = linksByClass[cls.id] ?? []
-  const scheduleList = schedule.filter(s => {
-    const ms = cls.master_subjects ?? {}
-    return !s.is_free && (s.subject_id === ms.id || s.class_name === cls.class_name || s.subject_name === ms.subject_name)
-  })
-  const DAY_TH = ['','จ','อ','พ','พฤ','ศ','ส','อา']
+  const DAY_TH       = ['','จ','อ','พ','พฤ','ศ','ส','อา']
 
   const modal = document.createElement('div')
   modal.id = 'combined-edit-modal'
@@ -3282,47 +3282,80 @@ function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass
         <button id="cem-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
       </div>
       <p class="text-xs text-gray-400 px-6 pb-3 flex-shrink-0">${_htmlEsc(cls.master_subjects?.subject_name??'')} · ${_htmlEsc(cls.class_name??'')}</p>
-      <!-- Tab bar -->
       <div class="flex border-b border-gray-100 px-6 flex-shrink-0">
         <button class="${TAB_STYLE(true)}" data-cem="info">ข้อมูลพื้นฐาน</button>
         <button class="${TAB_STYLE(false)}" data-cem="schedule">ตารางสอน</button>
         <button class="${TAB_STYLE(false)}" data-cem="room">ห้องสอน</button>
       </div>
-      <!-- Tab content -->
       <div id="cem-content" class="flex-1 overflow-y-auto px-6 py-4"></div>
-      <!-- Footer -->
       <div class="flex gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
         <button id="cem-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
         <button id="cem-save"   class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
       </div>
     </div>`
-
   document.body.appendChild(modal)
 
-  const cemContent = () => modal.querySelector('#cem-content')
-  let activeTab = 'info'
-
-  const infoHTML = () => `
-    <div class="space-y-3">
+  // ── infoHTML ─────────────────────────────────────────────────────────────────
+  const infoHTML = () => {
+    const headOpts = classStudents.map(s =>
+      `<option value="${s.id}" data-code="${_htmlEsc(s.student_code)}" data-img="${_htmlEsc(s.image_url??'')}" data-room="${_htmlEsc(s.main_room??'')}"
+         ${Number(cls.head_student_id)===Number(s.id)?'selected':''}>
+         ${_htmlEsc(s.full_name)} (${_htmlEsc(s.student_code)})</option>`).join('')
+    return `
+    <div class="space-y-4">
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1">ชื่อห้อง / ระดับชั้น</label>
-        <input id="cem-classname" type="text" value="${_htmlEsc(cls.class_name??'')}"
-          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        <input id="cem-classname" type="text" value="${_htmlEsc(cls.class_name??'')}" class="${INPUT_CLS}" />
       </div>
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1">กลุ่มทักษะ</label>
-        <input id="cem-skillgroup" type="text" value="${_htmlEsc(cls.skill_group??'')}"
-          placeholder="เช่น วิชาการ, ภาษา, ชีวิต"
-          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        <input id="cem-skillgroup" type="text" value="${_htmlEsc(cls.skill_group??'')}" placeholder="เช่น วิชาการ, ภาษา, ชีวิต" class="${INPUT_CLS}" />
       </div>
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1">Google Sheet ID</label>
-        <input id="cem-sheetid" type="text" value="${_htmlEsc(cls.google_sheet_id??'')}"
-          placeholder="ID จาก URL ของ Sheet"
-          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono" />
+        <input id="cem-sheetid" type="text" value="${_htmlEsc(cls.google_sheet_id??'')}" placeholder="ID จาก URL ของ Sheet" class="${INPUT_CLS} font-mono" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">หัวหน้าห้อง</label>
+        <select id="cem-head" class="${INPUT_CLS} bg-white">
+          <option value="">— ยังไม่ระบุ —</option>
+          ${headOpts}
+        </select>
+        ${classStudents.length === 0
+          ? `<p class="text-xs text-amber-500 mt-1">ยังไม่มีนักเรียนในห้อง จึงยังเลือกหัวหน้าไม่ได้</p>`
+          : ''}
+        <!-- Card หัวหน้าห้อง -->
+        <div id="cem-head-card" class="hidden mt-2 flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+          <div id="cem-head-avatar" class="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border border-gray-200"></div>
+          <div>
+            <p id="cem-head-name" class="font-semibold text-gray-800 text-sm"></p>
+            <p id="cem-head-code" class="text-xs text-gray-400"></p>
+            <p id="cem-head-room" class="text-xs text-gray-400"></p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-xs font-semibold text-gray-600">วันสอน 6 คาบแรก</label>
+          <button type="button" id="cem-auto-dates"
+            class="text-xs px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium transition">
+            🗓️ คำนวณจากตารางสอน
+          </button>
+        </div>
+        <p id="cem-dates-info" class="hidden text-xs text-emerald-600 mb-2"></p>
+        <div class="grid grid-cols-3 gap-2">
+          ${[1,2,3,4,5,6].map(n => `
+          <div>
+            <p class="text-xs text-gray-400 mb-1">คาบที่ ${n}</p>
+            <input id="cem-day${n}" type="date" value="${cls[`day${n}_date`]??''}"
+              class="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+          </div>`).join('')}
+        </div>
       </div>
     </div>`
+  }
 
+  // ── scheduleHTML ─────────────────────────────────────────────────────────────
   const scheduleHTML = () => {
     const allSchedule = schedule.filter(s => !s.is_free)
     if (!allSchedule.length)
@@ -3347,32 +3380,144 @@ function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass
       </div>`
   }
 
+  // ── roomHTML ──────────────────────────────────────────────────────────────────
   const roomHTML = () => `
     <div class="space-y-3">
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1">อาคาร</label>
-        <select id="cem-building" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+        <select id="cem-building" class="${INPUT_CLS} bg-white">
           <option value="">— ไม่ระบุ —</option>
           ${buildingList.map(b => `<option value="${b}" ${crCur?.building===b?'selected':''}>${b}</option>`).join('')}
         </select>
       </div>
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1">ห้อง</label>
-        <select id="cem-room" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+        <select id="cem-room" class="${INPUT_CLS} bg-white">
           <option value="">— เลือกอาคารก่อน —</option>
         </select>
       </div>
     </div>`
 
-  const showTab = (tabId) => {
-    activeTab = tabId
-    modal.querySelectorAll('.cem-tab').forEach(t => {
-      t.className = TAB_STYLE(t.dataset.cem === tabId)
+  // ── attach info tab events ────────────────────────────────────────────────────
+  const attachInfoEvents = () => {
+    const headSel  = modal.querySelector('#cem-head')
+    const headCard = modal.querySelector('#cem-head-card')
+
+    const updateHeadCard = () => {
+      const opt = headSel?.options[headSel.selectedIndex]
+      if (!opt?.value) { headCard?.classList.add('hidden'); return }
+      const name = opt.text.split(' (')[0]
+      const img  = opt.dataset.img ?? ''
+      modal.querySelector('#cem-head-name').textContent = name
+      modal.querySelector('#cem-head-code').textContent = `รหัส: ${opt.dataset.code??''}`
+      modal.querySelector('#cem-head-room').textContent = opt.dataset.room ? `ห้อง: ${opt.dataset.room}` : ''
+      const avatarEl = modal.querySelector('#cem-head-avatar')
+      avatarEl.innerHTML = img
+        ? `<img src="${img}" class="w-full h-full object-cover" />`
+        : `<div class="w-full h-full flex items-center justify-center bg-gradient-to-tr from-emerald-200 to-teal-200 text-emerald-700 font-bold text-lg">${name.charAt(0)}</div>`
+      headCard?.classList.remove('hidden')
+    }
+    headSel?.addEventListener('change', updateHeadCard)
+    if (headSel?.value) updateHeadCard()
+
+    // ── auto-dates button ─────────────────────────────────────────────────────
+    modal.querySelector('#cem-auto-dates')?.addEventListener('click', async () => {
+      const btn    = modal.querySelector('#cem-auto-dates')
+      const infoEl = modal.querySelector('#cem-dates-info')
+      btn.textContent = '⏳'; btn.disabled = true
+      try {
+        const curYear  = parseInt(termCfg.academicYear ?? 2568)
+        const curSem   = parseInt(termCfg.semester ?? 1)
+        const termStart = termCfg.semester_start ?? termCfg.term_start_date ?? _dateInputValue(new Date())
+        const sched = teacher ? await getMySchedule(teacher.id, curYear, curSem).catch(() => []) : []
+        if (!sched.length) {
+          infoEl.textContent = '⚠️ ยังไม่มีตารางสอน — กรุณากรอกวันเอง'
+          infoEl.classList.remove('hidden'); return
+        }
+        const groups = {}
+        sched.filter(s => !s.is_free).forEach(e => {
+          const key = `${e.subject_name??'?'}|${e.class_name??''}`
+          if (!groups[key]) groups[key] = { label: `${e.subject_name??'?'}${e.class_name?` — ${e.class_name}`:''}`, entries: [] }
+          groups[key].entries.push(e)
+        })
+        const DAY_TH2 = ['อา','จ','อ','พ','พฤ','ศ','ส']
+        const _desc = (entries) => {
+          const byDay = {}
+          entries.forEach(e => { if(!byDay[e.day_of_week]) byDay[e.day_of_week]=[]; byDay[e.day_of_week].push(e.period_no) })
+          return Object.entries(byDay).map(([d,ps])=>`${DAY_TH2[d]} คาบ ${ps.join(',')}`).join(' · ')
+        }
+        const popup = document.createElement('div')
+        popup.className = 'fixed inset-0 z-[600] flex items-center justify-center bg-black/50 p-4'
+        popup.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 class="font-bold text-gray-800">🗓️ เลือกวิชาจากตารางสอน</h3>
+              <button class="ce-close text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div class="px-5 py-4 space-y-2 max-h-72 overflow-y-auto">
+              <p class="text-xs text-gray-400 mb-3">เลือกวิชาที่ต้องการคำนวณวัน 6 คาบแรก</p>
+              ${Object.entries(groups).map(([key, g]) => `
+              <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer transition">
+                <input type="radio" name="cem-dates-subj" value="${_htmlEsc(key)}" class="mt-0.5 flex-shrink-0" />
+                <div>
+                  <p class="text-sm font-medium text-gray-800">${_htmlEsc(g.label)}</p>
+                  <p class="text-xs text-gray-400 mt-0.5">${_desc(g.entries)}</p>
+                </div>
+              </label>`).join('')}
+            </div>
+            <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex gap-3">
+              <button class="ce-close flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button id="cem-calc-btn" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">คำนวณ</button>
+            </div>
+          </div>`
+        document.body.appendChild(popup)
+        popup.querySelectorAll('.ce-close').forEach(b => b.addEventListener('click', () => popup.remove()))
+        popup.querySelector('#cem-calc-btn').addEventListener('click', () => {
+          const key = popup.querySelector('input[name="cem-dates-subj"]:checked')?.value
+          if (!key) { showToast('กรุณาเลือกวิชาก่อน', 'warning'); return }
+          popup.remove()
+          const g = groups[key]
+          if (!g) return
+          // คำนวณวันจาก entries
+          const tStart = _parseDateOnly(termStart) ?? new Date()
+          const startDow = tStart.getDay()
+          const periods = []
+          g.entries.forEach(e => { const sp = e.span_periods ?? 1; for(let i=0;i<sp;i++) periods.push({ dow:e.day_of_week, pno:(e.period_no??0)+i }) })
+          periods.sort((a,b) => { const ao=(a.dow-startDow+7)%7, bo=(b.dow-startDow+7)%7; return ao!==bo?ao-bo:a.pno-b.pno })
+          const result = []; let week = 0
+          while(result.length < 6) {
+            for(const p of periods) {
+              const d = new Date(tStart); d.setDate(d.getDate()+((p.dow-startDow+7)%7)+week*7)
+              result.push(d); if(result.length>=6) break
+            }
+            week++
+          }
+          result.slice(0,6).forEach((d,i) => {
+            const el = modal.querySelector(`#cem-day${i+1}`)
+            if(el) el.value = _dateInputValue(d)
+          })
+          infoEl.textContent = `✅ คำนวณจาก "${g.label}" — ตรวจสอบและแก้ไขได้`
+          infoEl.classList.remove('hidden')
+        })
+      } catch(err) {
+        infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message??'')
+        infoEl.classList.remove('hidden')
+      } finally {
+        btn.textContent = '🗓️ คำนวณจากตารางสอน'; btn.disabled = false
+      }
     })
-    const box = cemContent()
-    if (tabId === 'info')     { box.innerHTML = infoHTML() }
-    else if (tabId === 'schedule') { box.innerHTML = scheduleHTML() }
-    else {
+  }
+
+  // ── tab switching ─────────────────────────────────────────────────────────────
+  const showTab = (tabId) => {
+    modal.querySelectorAll('.cem-tab').forEach(t => { t.className = TAB_STYLE(t.dataset.cem === tabId) })
+    const box = modal.querySelector('#cem-content')
+    if (tabId === 'info') {
+      box.innerHTML = infoHTML()
+      attachInfoEvents()
+    } else if (tabId === 'schedule') {
+      box.innerHTML = scheduleHTML()
+    } else {
       box.innerHTML = roomHTML()
       const buildSel = box.querySelector('#cem-building')
       const roomSel  = box.querySelector('#cem-room')
@@ -3391,22 +3536,25 @@ function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass
   modal.querySelector('#cem-close').addEventListener('click', () => modal.remove())
   modal.querySelector('#cem-cancel').addEventListener('click', () => modal.remove())
 
+  // ── save ──────────────────────────────────────────────────────────────────────
   modal.querySelector('#cem-save').addEventListener('click', async () => {
     const btn = modal.querySelector('#cem-save')
     btn.disabled = true; btn.textContent = '⏳'
     try {
       const errors = []
-      // 1. ข้อมูลพื้นฐาน
-      const newName  = modal.querySelector('#cem-classname')?.value.trim()
-      const newSkill = modal.querySelector('#cem-skillgroup')?.value.trim()
-      const newSheet = modal.querySelector('#cem-sheetid')?.value.trim()
-      if (newName !== undefined) {
-        await updateClass(cls.id, {
-          class_name: newName || cls.class_name,
-          skill_group: newSkill || null,
-          google_sheet_id: newSheet || null,
-        }).catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
-      }
+      // 1. ข้อมูลพื้นฐาน (รวม head + dates)
+      await updateClass(cls.id, {
+        class_name:      modal.querySelector('#cem-classname')?.value.trim() || cls.class_name,
+        skill_group:     modal.querySelector('#cem-skillgroup')?.value.trim() || null,
+        google_sheet_id: modal.querySelector('#cem-sheetid')?.value.trim() || null,
+        head_student_id: modal.querySelector('#cem-head')?.value ? Number(modal.querySelector('#cem-head').value) : null,
+        day1_date:       modal.querySelector('#cem-day1')?.value || null,
+        day2_date:       modal.querySelector('#cem-day2')?.value || null,
+        day3_date:       modal.querySelector('#cem-day3')?.value || null,
+        day4_date:       modal.querySelector('#cem-day4')?.value || null,
+        day5_date:       modal.querySelector('#cem-day5')?.value || null,
+        day6_date:       modal.querySelector('#cem-day6')?.value || null,
+      }).catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
       // 2. ตารางสอน
       const chks = [...modal.querySelectorAll('.cem-sched-chk')]
       if (chks.length) {
@@ -3420,11 +3568,10 @@ function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass
       }
       // 3. ห้องสอน
       const roomSel = modal.querySelector('#cem-room')
-      if (roomSel) {
+      if (roomSel?.value !== undefined) {
         const roomId = roomSel.value ? parseInt(roomSel.value) : null
         await assignClassroom(cls.id, roomId).catch(e => errors.push('ห้องสอน: ' + (e.message??'')))
       }
-
       if (errors.length) showToast('บันทึกบางส่วนไม่สำเร็จ', 'warning')
       else showToast('บันทึกแล้ว ✅', 'success')
       modal.remove()
@@ -3434,7 +3581,6 @@ function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass
       btn.disabled = false; btn.textContent = 'บันทึก'
     }
   })
-
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
 }
 
