@@ -3230,13 +3230,32 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       })
       const box = tabContent()
       if (!box) return
-      box.innerHTML = `<div class="flex justify-center py-12 text-gray-400">กำลังโหลด...</div>`
-      if (tabId === 'students') {
-        window._openStudentManager(classId)
-      } else if (tabId === 'attendance') {
-        renderAttendanceGrid(teacher, cls)
-      } else if (tabId === 'grades') {
-        renderGradesGrid(teacher, cls)
+      box.innerHTML = `<div class="flex justify-center py-12 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-emerald-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>`
+
+      // Swap #main-content → box เพื่อให้ render functions เขียนลง tab แทน (pattern จาก dashboard.js)
+      const mainEl = document.getElementById('main-content')
+      if (mainEl) mainEl.id = 'main-content-bak'
+      box.id = 'main-content'
+      try {
+        if (tabId === 'students') {
+          await window._openStudentManager(classId)
+        } else if (tabId === 'attendance') {
+          await renderAttendanceGrid(teacher, cls)
+        } else if (tabId === 'grades') {
+          await renderGradesGrid(teacher, cls)
+        }
+      } finally {
+        // Restore IDs และ nav highlight
+        box.id = 'cd-tab-content'
+        const bak = document.getElementById('main-content-bak')
+        if (bak) bak.id = 'main-content'
+        setActiveNav('my-classes')
+        setTitle('ห้องเรียน')
       }
     }
     document.querySelectorAll('.cd-tab').forEach(t =>
