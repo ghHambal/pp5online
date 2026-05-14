@@ -2637,13 +2637,7 @@ export async function renderMyClasses(teacher) {
           </button>`).join('')
 
         setContent(`<div class="max-w-6xl mx-auto animate-fade">
-          <div class="flex items-center gap-3 mb-5">
-            <button id="students-back" class="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">← กลับ</button>
-            <div class="min-w-0">
-              <h2 class="text-lg font-bold text-gray-800">จัดการนักเรียน</h2>
-              <p class="text-xs text-gray-400 mt-0.5 truncate">${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
-            </div>
-          </div>
+          <div id="students-back-placeholder" class="hidden"></div>
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -2691,7 +2685,7 @@ export async function renderMyClasses(teacher) {
         </div>`)
 
         const refresh = () => window._openStudentManager(classId)
-        document.getElementById('students-back')?.addEventListener('click', () => renderMyClasses(teacher))
+        // students-back ถูกลบออก (อยู่ใน class detail sticky header แล้ว)
         document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
         document.querySelectorAll('.student-view-toggle').forEach(btn => {
           btn.addEventListener('click', () => {
