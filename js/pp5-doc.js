@@ -58,6 +58,25 @@ function _configPrefix(subjectGroup) {
   return ['ACDMVOC','AGMVOC'].includes(subjectGroup) ? 'porwor' : 'samai'
 }
 
+// ตัดชื่อห้องเหลือแค่ระดับชั้น เช่น "ม.5/6 Ash-Shafi'i" → "ม.5/6"
+function _shortRoom(name) {
+  return String(name ?? '').split(' ')[0]
+}
+
+// หาห้องศาสนาที่มีนักเรียนเยอะที่สุดในรายวิชา
+function _dominantReligionRoom(students) {
+  const counts = {}
+  for (const st of students) {
+    const r = st.religion_room
+    if (r) counts[r] = (counts[r] ?? 0) + 1
+  }
+  let best = null, bestN = 0
+  for (const [room, n] of Object.entries(counts)) {
+    if (n > bestN) { bestN = n; best = room }
+  }
+  return best
+}
+
 function _calcGrade(pct) {
   if (pct >= 80) return 4
   if (pct >= 75) return 3.5
@@ -136,10 +155,15 @@ async function _loadDocData(classId) {
     scoreMap[r.student_id][r.score_column_id] = r.score
   }
 
-  // homeroom advisors for this room
-  const classRoom  = cls.class_name ?? ''
+  // homeroom advisors
+  const classRoom  = _shortRoom(cls.class_name) // ใช้แค่ระดับชั้น เช่น "ม.5/6"
   const hrSamai    = homerooms.find(h => h.category !== 'ศาสนา' && h.main_room === classRoom) ?? null
-  const hrReligion = homerooms.find(h => h.category === 'ศาสนา' && h.main_room === classRoom) ?? null
+
+  // ครูที่ปรึกษาศาสนา: ใช้ห้องศาสนาที่มีนักเรียนเยอะที่สุดในรายวิชา
+  const domRelRoom = _dominantReligionRoom(students)
+  const hrReligion = domRelRoom
+    ? (homerooms.find(h => h.category === 'ศาสนา' && h.main_room === domRelRoom) ?? null)
+    : null
 
   return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, courseDoc, sessions, hrSamai, hrReligion, academicYear, semester }
 }
@@ -195,6 +219,7 @@ function _getCSS() {
       position: absolute; top: 17.6mm; left: 50%;
       transform: translateX(-50%);
       display: block; width: 18.5mm; height: 18.5mm; object-fit: contain;
+      mix-blend-mode: multiply;
     }
     .page-p1 .p1-title {
       position: absolute; top: 40.1mm; left: 0; width: 100%; margin: 0;
@@ -468,7 +493,7 @@ function _buildPage1(d) {
 
     <section class="info">
       <div class="info-line">
-        <span>${levelLbl}</span><span class="uline w-sm">${_esc(cls.class_name)}</span>
+        <span>${levelLbl}</span><span class="uline w-sm">${_esc(_shortRoom(cls.class_name))}</span>
         <span>ภาคเรียนที่</span><span class="uline w-md">${semester}</span>
         <span>ปีการศึกษา</span><span class="uline w-yr">${academicYear}</span>
       </div>
@@ -604,7 +629,7 @@ function _buildPage2(d) {
           <td style="border:none;">รหัสวิชา <u>${_esc(ms.subject_code??'')}</u> กลุ่มสาระการเรียนรู้ <u>${_esc(ms.dept??'')}</u></td>
         </tr>
         <tr>
-          <td style="border:none;">ระดับชั้น <u>${_esc(cls.class_name??'')}</u></td>
+          <td style="border:none;">ระดับชั้น <u>${_esc(_shortRoom(cls.class_name))}</u></td>
           <td style="border:none;">ภาคเรียนที่ <u>${semester}</u> ปีการศึกษา <u>${academicYear}</u> เวลา ชั่วโมง จำนวน <u>${credit}</u> หน่วยกิต</td>
         </tr>
         <tr>
@@ -692,7 +717,7 @@ function _buildAttPage(d, chunk, startNo) {
   return `
   <div class="page-tight">
     <div style="text-align:center;font-weight:700;font-size:10pt;margin-bottom:1.5mm;">
-      บันทึกการมาเรียนของนักเรียนชั้น ${_esc(cls.class_name)}
+      บันทึกการมาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}
     </div>
     <div class="att-hdr">
       ปีการศึกษา ${academicYear} &nbsp; ภาคเรียนที่ ${semester} &nbsp;
@@ -788,7 +813,7 @@ function _buildScorePage(d, chunk, colSlice, startNo, showRatio) {
   <div class="page">
     <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:2mm;">คะแนนการจัดการเรียนรู้</div>
     <div style="font-size:9pt;margin-bottom:1mm;">
-      รายวิชา ${_esc(ms.subject_name??'')} รหัสวิชา ${_esc(ms.subject_code??'')} ชั้น ${_esc(cls.class_name??'')}
+      รายวิชา ${_esc(ms.subject_name??'')} รหัสวิชา ${_esc(ms.subject_code??'')} ชั้น ${_esc(_shortRoom(cls.class_name))}
       ภาคเรียนที่ ${semester} ปีการศึกษา ${academicYear}
     </div>
     ${showRatio ? `<div style="font-size:8.5pt;margin-bottom:2mm;">${ratioStr}</div>` : ''}
@@ -867,7 +892,7 @@ function _buildPage5(d) {
       <span>รายวิชา ${_esc(ms.subject_name??'')} &emsp; รหัสวิชา ${_esc(ms.subject_code??'')} &emsp; กลุ่มสาระการเรียนรู้ ${_esc(ms.dept??'')}</span>
     </div>
     <div style="font-size:9pt;margin-bottom:2mm;">
-      ระดับชั้นมัธยมศึกษา ${_esc(cls.class_name??'')} &emsp; ภาคเรียนที่ ${semester} &emsp; ปีการศึกษา ${academicYear} &emsp; เวลา ชั่วโมง จำนวน ${credit} หน่วยกิต
+      ระดับชั้นมัธยมศึกษา ${_esc(_shortRoom(cls.class_name))} &emsp; ภาคเรียนที่ ${semester} &emsp; ปีการศึกษา ${academicYear} &emsp; เวลา ชั่วโมง จำนวน ${credit} หน่วยกิต
     </div>
     <div style="font-size:9pt;margin-bottom:3mm;">ครูผู้สอน ${_esc(teacher?.full_name??'')}</div>
 
@@ -915,7 +940,7 @@ export async function openPP5Doc(classId) {
   showToast('กำลังโหลดข้อมูลเอกสาร...', 'info')
   try {
     const d     = await _loadDocData(classId)
-    const title = `ปพ5_${d.ms.subject_code ?? d.ms.subject_name ?? ''}_${d.cls.class_name ?? ''}`
+    const title = `ปพ5_${d.ms.subject_code ?? d.ms.subject_name ?? ''}_${_shortRoom(d.cls.class_name)}`
     const html  = _buildFullDoc(d, title)
     const win   = window.open('', '_blank', 'width=900,height=700')
     if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์', 'warning'); return }
