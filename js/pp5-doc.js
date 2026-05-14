@@ -293,7 +293,7 @@ function _getCSS() {
       text-align: center; line-height: 5mm;
       padding: 0 1.5mm; font-weight: 600; white-space: nowrap;
     }
-    .page-p1 .uline-xl { display: block; min-height: 5.2mm; border-bottom: .35mm dotted #777; text-align: center; line-height: 5mm; font-weight: 600; }
+    .page-p1 .uline-xl { display: block; min-height: 5.2mm; border-bottom: .35mm dotted #777; text-align: left; padding-left: 4mm; line-height: 5mm; font-weight: 600; }
     .page-p1 .w-xs  { width: 17mm; } .page-p1 .w-sm  { width: 24mm; }
     .page-p1 .w-md  { width: 33mm; } .page-p1 .w-lg  { width: 48mm; }
     .page-p1 .w-yr  { width: 35mm; } .page-p1 .w-cd  { width: 25mm; }
