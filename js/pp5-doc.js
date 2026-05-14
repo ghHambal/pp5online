@@ -183,32 +183,38 @@ function _getCSS() {
     .font-bold   { font-weight: 700; }
 
     /* ── Page 1 ── */
-    .cover-header  { text-align: center; margin-bottom: 5mm; }
-    .cover-logo    { width: 22mm; height: 22mm; object-fit: contain; margin: 0 auto 2mm; display:block; }
-    .cover-title   { font-size: 12pt; font-weight: 600; margin-bottom: 2mm; }
-    .cover-school  { font-size: 18pt; font-weight: 700; line-height: 1.2; }
-    .cover-address { font-size: 13pt; font-weight: 600; }
-    .level-row     { font-size: 10pt; margin: 2mm 0 4mm; }
+    .cover-header  { text-align: center; margin-bottom: 4mm; }
+    .cover-logo    { width: 22mm; height: 22mm; object-fit: contain; margin: 3mm auto 2mm; display:block; }
+    .cover-title   { font-size: 12pt; font-weight: 700; margin-bottom: 2mm; }
+    .cover-school  { font-size: 20pt; font-weight: 700; line-height: 1.2; }
+    .cover-address { font-size: 14pt; font-weight: 700; }
+
+    .level-block   { display: inline-block; text-align: left; margin: 2mm 0 0; font-size: 10pt; }
+    .level-row-lbl { display: inline-block; vertical-align: top; padding-right: 4mm; }
+    .level-chk-col { display: inline-block; vertical-align: top; }
+    .level-chk-col div { margin-bottom: 1mm; }
     .checkbox      { display: inline-block; width: 11px; height: 11px; border: 1.5px solid #000;
                      vertical-align: middle; text-align: center; line-height: 9px; font-size: 8pt; margin-right: 2px; }
 
-    .cover-info    { width: 100%; border: none; margin: 0 0 3mm; }
-    .cover-info td { border: none; padding: 1px 3px; font-size: 10pt; }
-    .cover-info .lbl { width: 44mm; }
+    .cover-info    { width: 100%; border: none; margin: 3mm 0 2mm; }
+    .cover-info td { border: none; padding: 1.5px 3px; font-size: 10pt; }
+    .cover-info .lbl { width: 42mm; }
 
-    .grade-table   { margin: 3mm 0; font-size: 9pt; }
+    .grade-table   { margin: 2mm 0; font-size: 9pt; }
     .eval-table    { margin: 2mm 0; font-size: 9pt; }
 
-    .approve-section { border: 1px solid #000; padding: 3mm 5mm 4mm; margin-top: 3mm; }
-    .approve-title   { font-weight: 700; font-size: 10pt; margin-bottom: 6mm; }
-    .sign-row        { display: flex; justify-content: space-around; }
-    .sign-block      { text-align: center; flex: 1; }
-    .sign-img        { height: 12mm; max-width: 36mm; object-fit: contain; display: block; margin: 0 auto 1mm; }
-    .sign-line       { border-bottom: 1px solid #000; width: 52mm; margin: 0 auto 1mm; height: 12mm; display:flex; align-items:flex-end; justify-content:center; }
-    .sign-name       { font-size: 9pt; font-weight: 600; }
-    .sign-label      { font-size: 8.5pt; }
-    .propose-row     { display: flex; justify-content: space-around; margin-top: 2mm; }
-    .propose-block   { text-align: center; flex: 1; }
+    /* approval section */
+    .approve-section { border: 1px solid #000; padding: 3mm 5mm 5mm; margin-top: 3mm; }
+    .approve-title   { font-weight: 700; font-size: 10pt; margin-bottom: 4mm; }
+    .sig-line-row    { font-size: 10pt; margin-bottom: 2mm; display: flex; align-items: flex-end; gap: 3mm; }
+    .sig-ul          { flex: 1; border-bottom: 1px solid #000; text-align: center; font-weight: 700;
+                       font-size: 10pt; min-width: 50mm; padding: 0 2mm 1px; }
+    .sig-role        { white-space: nowrap; font-size: 10pt; }
+    .propose-cols    { display: flex; margin-top: 4mm; }
+    .propose-col     { flex: 1; text-align: center; font-size: 10pt; }
+    .propose-ul      { display: block; border-bottom: 1px solid #000; width: 70%; margin: 8mm auto 2mm; }
+    .propose-name    { font-weight: 700; font-size: 10pt; }
+    .propose-role    { font-size: 9.5pt; }
 
     /* ── Page 2 ── */
     .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; }
@@ -321,13 +327,12 @@ function _buildPage1(d) {
     }
   }
 
-  const signBlock = (url, name, label) => `
-    <div class="sign-block">
-      <div class="sign-line">
-        ${url ? `<img class="sign-img" src="${_esc(url)}" />` : ''}
-      </div>
-      <div class="sign-name">${name}</div>
-      <div class="sign-label">${label}</div>
+  // สร้างแถว "ลงชื่อ ..[name].. [role]"
+  const sigRow = (name, role) => `
+    <div class="sig-line-row">
+      <span style="white-space:nowrap;">ลงชื่อ</span>
+      <span class="sig-ul">${name}</span>
+      <span class="sig-role">${role}</span>
     </div>`
 
   return `
@@ -337,28 +342,23 @@ function _buildPage1(d) {
     <div class="cover-header">
       <div class="cover-title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</div>
 
-      ${isReligion ? `
-      <table style="border:none;margin:2mm auto 0;font-size:10pt;">
-        <tr>
-          <td style="border:none;padding:1px 6px 1px 0;vertical-align:top;">ระดับชั้นอิสลามศึกษา</td>
-          <td style="border:none;padding:1px 0;">
-            <span class="checkbox">${relLevel==='PR'?'✓':''}</span> ตอนต้น (PR)<br/>
-            <span class="checkbox">${relLevel==='อก'?'✓':''}</span> ตอนกลาง (อก.)<br/>
-            <span class="checkbox">${relLevel==='อป'?'✓':''}</span> ตอนปลาย (อป.)
-          </td>
-        </tr>
-      </table>` : `
-      <table style="border:none;margin:2mm auto 0;font-size:10pt;">
-        <tr>
-          <td style="border:none;padding:1px 6px 1px 0;vertical-align:middle;">ระดับชั้นมัธยมศึกษา</td>
-          <td style="border:none;padding:1px 0;">
-            <span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3)<br/>
-            <span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)
-          </td>
-        </tr>
-      </table>`}
+      <div style="text-align:center;">
+        <div class="level-block">
+          <span class="level-row-lbl">${isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'}</span>
+          <span class="level-chk-col">
+            ${isReligion ? `
+              <div><span class="checkbox">${relLevel==='PR'?'✓':''}</span> ตอนต้น (PR)</div>
+              <div><span class="checkbox">${relLevel==='อก'?'✓':''}</span> ตอนกลาง (อก.)</div>
+              <div><span class="checkbox">${relLevel==='อป'?'✓':''}</span> ตอนปลาย (อป.)</div>
+            ` : `
+              <div><span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3)</div>
+              <div><span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)</div>
+            `}
+          </span>
+        </div>
+      </div>
 
-      ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" style="margin-top:3mm;"/>` : '<div style="height:24mm;"></div>'}
+      ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" />` : '<div style="height:22mm;"></div>'}
       <div class="cover-school">${schoolName}</div>
       ${schoolAddress ? `<div class="cover-address">${schoolAddress}</div>` : ''}
     </div>
@@ -457,22 +457,25 @@ function _buildPage1(d) {
 
     <div class="approve-section">
       <div class="approve-title">การอนุมัติผลการพัฒนาคุณภาพผู้เรียน</div>
-      <div class="sign-row">
-        ${signBlock('', _esc(teacher?.full_name ?? ''), 'ครูผู้สอน')}
-        ${signBlock(deptHeadSign, deptHeadName, 'หัวหน้าหมวดวิชา')}
-        ${signBlock(regSign, regName, 'หัวหน้างานวัดผลและประเมินผล')}
-      </div>
-      <div style="margin-top:4mm;font-size:10pt;font-weight:600;">เสนอเพื่อพิจารณา</div>
-      <div class="propose-row" style="margin-top:2mm;">
-        <div class="propose-block">
-          ${signBlock(acadSign, acadName, 'หัวหน้าฝ่ายบริหารวิชาการ')}
-          <div style="margin-top:2mm;font-size:9pt;">
+      ${sigRow(_esc(teacher?.full_name ?? ''), 'ครูผู้สอน')}
+      ${sigRow(deptHeadName, 'หัวหน้าหมวดวิชา')}
+      ${sigRow(regName, 'หัวหน้างานวัดผลและประเมินผล')}
+
+      <div style="font-weight:700;font-size:10pt;margin-top:3mm;">เสนอเพื่อพิจารณา</div>
+      <div class="propose-cols">
+        <div class="propose-col">
+          <span class="propose-ul"></span>
+          <div class="propose-name">${acadName}</div>
+          <div class="propose-role">หัวหน้าฝ่ายบริหารวิชาการ</div>
+          <div style="margin-top:2mm;font-size:9.5pt;">
             <span class="checkbox">✓</span> อนุมัติ &emsp;
             <span class="checkbox">&nbsp;</span> ไม่อนุมัติ
           </div>
         </div>
-        <div class="propose-block">
-          ${signBlock(dirSign, dirName, `ผู้อำนวยการ${schoolName}`)}
+        <div class="propose-col">
+          <span class="propose-ul"></span>
+          <div class="propose-name">${dirName}</div>
+          <div class="propose-role">ผู้อำนวยการ${schoolName}</div>
         </div>
       </div>
     </div>
