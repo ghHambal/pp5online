@@ -3355,29 +3355,102 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
     </div>`
   }
 
+  // linked IDs ที่อาจเปลี่ยนแปลงระหว่าง session
+  const currentLinked = new Set(linkedIds)
+
   // ── scheduleHTML ─────────────────────────────────────────────────────────────
+  const scheduleCardStyle = (isLinked) => isLinked
+    ? 'cem-scard rounded-2xl border p-3.5 transition cursor-pointer border-emerald-300 bg-white shadow-[0_0_0_3px_rgba(16,185,129,0.12),0_4px_12px_rgba(16,185,129,0.1)]'
+    : 'cem-scard rounded-2xl border p-3.5 transition cursor-pointer border-gray-200 bg-gray-50/60 opacity-60 hover:opacity-90'
+
   const scheduleHTML = () => {
     const allSchedule = schedule.filter(s => !s.is_free)
     if (!allSchedule.length)
       return `<p class="text-sm text-gray-400 text-center py-8">ยังไม่มีตารางสอน กรุณาสร้างตารางสอนก่อน</p>`
     return `
-      <p class="text-xs text-gray-400 mb-3">เลือกคาบที่เชื่อมโยงกับห้องเรียนนี้</p>
+      <p class="text-xs text-gray-400 mb-3">คลิกคาบที่ต้องการเชื่อมโยงกับห้องเรียนนี้</p>
       <div class="space-y-2">
         ${allSchedule.map(s => {
           const p = periodMap[s.period_no]
-          const checked = linkedIds.includes(s.id) ? 'checked' : ''
+          const isLinked = currentLinked.has(s.id)
           const timeStr = p?.start_time ? p.start_time.slice(0,5) : `คาบ ${s.period_no}`
           return `
-          <label class="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
-            <input type="checkbox" class="cem-sched-chk w-4 h-4 accent-indigo-600 rounded" value="${s.id}" ${checked}/>
-            <div class="flex-1 text-sm">
-              <span class="font-medium text-gray-700">${DAY_TH[s.day_of_week]}</span>
-              <span class="text-gray-500 ml-2">${timeStr}</span>
-              ${s.subject_name ? `<span class="text-xs text-gray-400 ml-2">${_htmlEsc(s.subject_name)}</span>` : ''}
+          <button type="button" class="${scheduleCardStyle(isLinked)}"
+            data-sid="${s.id}" data-linked="${isLinked}">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3 text-sm min-w-0">
+                <span class="font-bold text-gray-700 flex-shrink-0">${DAY_TH[s.day_of_week]}</span>
+                <span class="text-gray-600 flex-shrink-0">${timeStr}</span>
+                ${s.subject_name ? `<span class="text-xs text-gray-400 truncate">${_htmlEsc(s.subject_name)}${s.class_name?` · ${_htmlEsc(s.class_name)}`:''}</span>` : ''}
+              </div>
+              ${isLinked ? `<span class="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold">✓</span>` : ''}
             </div>
-          </label>`
+          </button>`
         }).join('')}
       </div>`
+  }
+
+  const attachScheduleEvents = () => {
+    modal.querySelectorAll('.cem-scard').forEach(card => {
+      card.addEventListener('click', () => {
+        const sid     = parseInt(card.dataset.sid)
+        const isLinked = card.dataset.linked === 'true'
+        const action   = isLinked ? 'ยกเลิกการเชื่อมโยง' : 'เชื่อมโยง'
+        const entry    = schedule.find(s => s.id === sid)
+        const p        = entry ? periodMap[entry.period_no] : null
+        const timeStr  = p?.start_time ? p.start_time.slice(0,5) : `คาบ ${entry?.period_no??''}`
+        const dayStr   = entry ? DAY_TH[entry.day_of_week] : ''
+
+        // confirmation popup
+        const confirm  = document.createElement('div')
+        confirm.className = 'fixed inset-0 z-[600] flex items-center justify-center bg-black/50 p-4'
+        confirm.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 text-center">
+            <div class="text-3xl mb-3">${isLinked ? '🔓' : '🔗'}</div>
+            <p class="font-bold text-gray-800 mb-1">${action}คาบนี้?</p>
+            <p class="text-sm text-gray-500 mb-5">${dayStr} ${timeStr}${entry?.subject_name ? ` · ${_htmlEsc(entry.subject_name)}` : ''}</p>
+            <div class="flex gap-3">
+              <button id="cem-sc-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button id="cem-sc-ok" class="flex-1 py-2.5 rounded-xl ${isLinked ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white text-sm font-semibold">${action}</button>
+            </div>
+          </div>`
+        document.body.appendChild(confirm)
+        confirm.querySelector('#cem-sc-cancel').addEventListener('click', () => confirm.remove())
+        confirm.querySelector('#cem-sc-ok').addEventListener('click', async () => {
+          confirm.remove()
+          card.style.opacity = '0.4'
+          card.style.pointerEvents = 'none'
+          try {
+            if (isLinked) {
+              await unlinkClassFromSchedule(cls.id, sid)
+              currentLinked.delete(sid)
+            } else {
+              await linkClassToSchedule(cls.id, sid)
+              currentLinked.add(sid)
+            }
+            // update card style
+            const newLinked = currentLinked.has(sid)
+            card.className = scheduleCardStyle(newLinked)
+            card.dataset.linked = String(newLinked)
+            card.style.opacity = ''
+            card.style.pointerEvents = ''
+            card.innerHTML = `
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 text-sm min-w-0">
+                  <span class="font-bold text-gray-700 flex-shrink-0">${dayStr}</span>
+                  <span class="text-gray-600 flex-shrink-0">${timeStr}</span>
+                  ${entry?.subject_name ? `<span class="text-xs text-gray-400 truncate">${_htmlEsc(entry.subject_name)}${entry?.class_name?` · ${_htmlEsc(entry.class_name)}`:''}</span>` : ''}
+                </div>
+                ${newLinked ? `<span class="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold">✓</span>` : ''}
+              </div>`
+          } catch(e) {
+            card.style.opacity = ''
+            card.style.pointerEvents = ''
+            showToast('บันทึกไม่สำเร็จ: ' + (e.message??''), 'error')
+          }
+        })
+      })
+    })
   }
 
   // ── roomHTML ──────────────────────────────────────────────────────────────────
@@ -3517,6 +3590,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
       attachInfoEvents()
     } else if (tabId === 'schedule') {
       box.innerHTML = scheduleHTML()
+      attachScheduleEvents()
     } else {
       box.innerHTML = roomHTML()
       const buildSel = box.querySelector('#cem-building')
@@ -3555,17 +3629,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         day5_date:       modal.querySelector('#cem-day5')?.value || null,
         day6_date:       modal.querySelector('#cem-day6')?.value || null,
       }).catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
-      // 2. ตารางสอน
-      const chks = [...modal.querySelectorAll('.cem-sched-chk')]
-      if (chks.length) {
-        const selected = chks.filter(c => c.checked).map(c => parseInt(c.value))
-        const toAdd    = selected.filter(id => !linkedIds.includes(id))
-        const toRemove = linkedIds.filter(id => !selected.includes(id))
-        await Promise.all([
-          ...toAdd.map(id => linkClassToSchedule(cls.id, id).catch(e => errors.push(e.message??''))),
-          ...toRemove.map(id => unlinkClassFromSchedule(cls.id, id).catch(e => errors.push(e.message??''))),
-        ])
-      }
+      // 2. ตารางสอน — บันทึก real-time แล้วตอนคลิก ไม่ต้องทำซ้ำ
       // 3. ห้องสอน
       const roomSel = modal.querySelector('#cem-room')
       if (roomSel?.value !== undefined) {
