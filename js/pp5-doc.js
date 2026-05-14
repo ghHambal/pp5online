@@ -189,32 +189,31 @@ function _getCSS() {
     .cover-school  { font-size: 20pt; font-weight: 700; line-height: 1.2; }
     .cover-address { font-size: 14pt; font-weight: 700; }
 
-    .level-block   { display: inline-block; text-align: left; margin: 2mm 0 0; font-size: 10pt; }
-    .level-row-lbl { display: inline-block; vertical-align: top; padding-right: 4mm; }
-    .level-chk-col { display: inline-block; vertical-align: top; }
-    .level-chk-col div { margin-bottom: 1mm; }
     .checkbox      { display: inline-block; width: 11px; height: 11px; border: 1.5px solid #000;
                      vertical-align: middle; text-align: center; line-height: 9px; font-size: 8pt; margin-right: 2px; }
 
+    .level-tbl     { border: none !important; width: auto !important; margin: 2mm auto 0; font-size: 10pt; }
+    .level-tbl td  { border: none !important; padding: 1px 3px !important; vertical-align: top; }
+    .level-tbl .chk-item { display: block; margin-bottom: 1.5mm; white-space: nowrap; }
+
     .cover-info    { width: 100%; border: none; margin: 3mm 0 2mm; }
     .cover-info td { border: none; padding: 1.5px 3px; font-size: 10pt; }
-    .cover-info .lbl { width: 42mm; }
+    .cover-info .lbl { width: 44mm; }
 
     .grade-table   { margin: 2mm 0; font-size: 9pt; }
     .eval-table    { margin: 2mm 0; font-size: 9pt; }
 
     /* approval section */
     .approve-section { border: 1px solid #000; padding: 3mm 5mm 5mm; margin-top: 3mm; }
-    .approve-title   { font-weight: 700; font-size: 10pt; margin-bottom: 4mm; }
-    .sig-line-row    { font-size: 10pt; margin-bottom: 2mm; display: flex; align-items: flex-end; gap: 3mm; }
-    .sig-ul          { flex: 1; border-bottom: 1px solid #000; text-align: center; font-weight: 700;
-                       font-size: 10pt; min-width: 50mm; padding: 0 2mm 1px; }
-    .sig-role        { white-space: nowrap; font-size: 10pt; }
-    .propose-cols    { display: flex; margin-top: 4mm; }
+    .approve-title   { font-weight: 700; font-size: 10pt; margin-bottom: 3mm; }
+    .sig-line-row    { font-size: 10pt; margin-bottom: 2mm; }
+    .sig-name-ul     { display: inline-block; min-width: 55mm; border-bottom: 1px solid #000;
+                       text-align: center; font-weight: 700; padding: 0 3mm 0; }
+    .propose-wrap    { display: flex; margin-top: 3mm; gap: 4mm; }
     .propose-col     { flex: 1; text-align: center; font-size: 10pt; }
-    .propose-ul      { display: block; border-bottom: 1px solid #000; width: 70%; margin: 8mm auto 2mm; }
-    .propose-name    { font-weight: 700; font-size: 10pt; }
-    .propose-role    { font-size: 9.5pt; }
+    .propose-line    { display: block; border-bottom: 1px solid #000; width: 75%; margin: 8mm auto 2mm; }
+    .propose-name    { font-weight: 700; margin-bottom: 1mm; }
+    .propose-role    { font-size: 9.5pt; margin-bottom: 2mm; }
 
     /* ── Page 2 ── */
     .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; }
@@ -327,12 +326,9 @@ function _buildPage1(d) {
     }
   }
 
-  // สร้างแถว "ลงชื่อ ..[name].. [role]"
   const sigRow = (name, role) => `
     <div class="sig-line-row">
-      <span style="white-space:nowrap;">ลงชื่อ</span>
-      <span class="sig-ul">${name}</span>
-      <span class="sig-role">${role}</span>
+      ลงชื่อ <span class="sig-name-ul">${name}</span> ${role}
     </div>`
 
   return `
@@ -342,21 +338,21 @@ function _buildPage1(d) {
     <div class="cover-header">
       <div class="cover-title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</div>
 
-      <div style="text-align:center;">
-        <div class="level-block">
-          <span class="level-row-lbl">${isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'}</span>
-          <span class="level-chk-col">
+      <table class="level-tbl">
+        <tr>
+          <td style="white-space:nowrap;">${isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'}</td>
+          <td>
             ${isReligion ? `
-              <div><span class="checkbox">${relLevel==='PR'?'✓':''}</span> ตอนต้น (PR)</div>
-              <div><span class="checkbox">${relLevel==='อก'?'✓':''}</span> ตอนกลาง (อก.)</div>
-              <div><span class="checkbox">${relLevel==='อป'?'✓':''}</span> ตอนปลาย (อป.)</div>
+              <span class="chk-item"><span class="checkbox">${relLevel==='PR'?'✓':''}</span> ตอนต้น (PR)</span>
+              <span class="chk-item"><span class="checkbox">${relLevel==='อก'?'✓':''}</span> ตอนกลาง (อก.)</span>
+              <span class="chk-item"><span class="checkbox">${relLevel==='อป'?'✓':''}</span> ตอนปลาย (อป.)</span>
             ` : `
-              <div><span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3)</div>
-              <div><span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)</div>
+              <span class="chk-item"><span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3)</span>
+              <span class="chk-item"><span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)</span>
             `}
-          </span>
-        </div>
-      </div>
+          </td>
+        </tr>
+      </table>
 
       ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" />` : '<div style="height:22mm;"></div>'}
       <div class="cover-school">${schoolName}</div>
@@ -462,18 +458,20 @@ function _buildPage1(d) {
       ${sigRow(regName, 'หัวหน้างานวัดผลและประเมินผล')}
 
       <div style="font-weight:700;font-size:10pt;margin-top:3mm;">เสนอเพื่อพิจารณา</div>
-      <div class="propose-cols">
+      <div class="propose-wrap">
         <div class="propose-col">
-          <span class="propose-ul"></span>
+          <span class="propose-line"></span>
+          <div>ลงชื่อ</div>
           <div class="propose-name">${acadName}</div>
           <div class="propose-role">หัวหน้าฝ่ายบริหารวิชาการ</div>
-          <div style="margin-top:2mm;font-size:9.5pt;">
+          <div style="margin-top:1mm;font-size:9.5pt;">
             <span class="checkbox">✓</span> อนุมัติ &emsp;
             <span class="checkbox">&nbsp;</span> ไม่อนุมัติ
           </div>
         </div>
         <div class="propose-col">
-          <span class="propose-ul"></span>
+          <span class="propose-line"></span>
+          <div>ลงชื่อ</div>
           <div class="propose-name">${dirName}</div>
           <div class="propose-role">ผู้อำนวยการ${schoolName}</div>
         </div>
