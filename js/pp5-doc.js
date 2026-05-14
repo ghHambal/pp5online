@@ -182,38 +182,132 @@ function _getCSS() {
     .text-right  { text-align: right; }
     .font-bold   { font-weight: 700; }
 
-    /* ── Page 1 ── */
-    .cover-header  { text-align: center; margin-bottom: 4mm; }
-    .cover-logo    { width: 22mm; height: 22mm; object-fit: contain; margin: 3mm auto 2mm; display:block; }
-    .cover-title   { font-size: 12pt; font-weight: 700; margin-bottom: 2mm; }
-    .cover-school  { font-size: 20pt; font-weight: 700; line-height: 1.2; }
-    .cover-address { font-size: 14pt; font-weight: 700; }
+    /* ── Page 1 — absolute mm layout (ported from reference HTML) ── */
+    .page-p1 {
+      position: relative; width: 210mm; height: 297mm;
+      padding: 0; page-break-after: always; overflow: hidden;
+    }
+    .page-p1 .doc-code {
+      position: absolute; top: 24.5mm; right: 31.5mm;
+      font-size: 12pt; font-weight: 400;
+    }
+    .page-p1 .logo {
+      position: absolute; top: 17.6mm; left: 50%;
+      transform: translateX(-50%);
+      display: block; width: 18.5mm; height: 18.5mm; object-fit: contain;
+    }
+    .page-p1 .p1-title {
+      position: absolute; top: 40.1mm; left: 0; width: 100%; margin: 0;
+      text-align: center; font-size: 15.7pt; font-weight: 700; line-height: 1.05;
+    }
+    .page-p1 .level-row {
+      position: absolute; top: 48.9mm; left: 0; width: 100%;
+      font-size: 10.1pt; font-weight: 600;
+    }
+    .page-p1 .level-row .lbl {
+      position: absolute; top: 0; text-align: left; white-space: nowrap;
+    }
+    .page-p1 .checks {
+      position: absolute; top: -.15mm;
+      display: grid; gap: .9mm; font-size: 9.4pt; font-weight: 600;
+    }
+    .page-p1 .check-line { display: flex; align-items: center; gap: 2.3mm; white-space: nowrap; }
+    .page-p1 .box {
+      position: relative; display: inline-block;
+      width: 4.5mm; height: 4.5mm;
+      border: .52mm solid #111; border-radius: .6mm;
+      vertical-align: middle; flex: 0 0 auto;
+    }
+    .page-p1 .box.checked { background: #111; }
+    .page-p1 .box.checked::after {
+      content: ""; position: absolute;
+      left: 3px; top: .2mm; width: 1.5mm; height: 2.8mm;
+      border: solid #fff; border-width: 0 .52mm .52mm 0; transform: rotate(45deg);
+    }
+    .page-p1 .school {
+      position: absolute; top: 72mm; left: 0; width: 100%; margin: 0;
+      text-align: center; font-size: 24pt; line-height: 1.15; font-weight: 700;
+    }
+    .page-p1 .school-sub {
+      position: absolute; top: 84.2mm; left: 0; width: 100%; margin: 0;
+      text-align: center; font-size: 20pt; line-height: 1.15; font-weight: 700;
+    }
+    .page-p1 .info {
+      position: absolute; top: 94.6mm; left: 17.7mm; width: 174.7mm;
+      font-size: 10.5pt; font-weight: 600;
+    }
+    .page-p1 .info-line {
+      display: flex; align-items: flex-end; gap: 2.6mm;
+      margin-bottom: 1.45mm; white-space: nowrap;
+    }
+    .page-p1 .info-row-one {
+      display: grid; grid-template-columns: 32mm 1fr;
+      align-items: end; margin-bottom: 1.45mm;
+    }
+    .page-p1 .uline {
+      display: inline-block; min-height: 5.2mm;
+      border-bottom: .35mm dotted #777;
+      text-align: center; line-height: 5mm;
+      padding: 0 1.5mm; font-weight: 600; white-space: nowrap;
+    }
+    .page-p1 .uline-xl { display: block; min-height: 5.2mm; border-bottom: .35mm dotted #777; text-align: center; line-height: 5mm; font-weight: 600; }
+    .page-p1 .w-xs  { width: 17mm; } .page-p1 .w-sm  { width: 24mm; }
+    .page-p1 .w-md  { width: 33mm; } .page-p1 .w-lg  { width: 48mm; }
+    .page-p1 .w-yr  { width: 35mm; } .page-p1 .w-cd  { width: 25mm; }
 
-    .checkbox      { display: inline-block; width: 11px; height: 11px; border: 1.5px solid #000;
-                     vertical-align: middle; text-align: center; line-height: 9px; font-size: 8pt; margin-right: 2px; }
+    .page-p1 .summary-box {
+      position: absolute; top: 139.9mm; left: 17.7mm; width: 174.7mm;
+      border: .75mm solid #111;
+    }
+    .page-p1 .summary-box table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .page-p1 .summary-box th, .page-p1 .summary-box td {
+      border: 1.5px solid #111; padding: .8mm 1mm;
+      text-align: center; vertical-align: middle; font-size: 10.5pt; font-weight: 600;
+    }
+    .page-p1 .summary-box tr:first-child th { border-top: 0; }
+    .page-p1 .summary-box tr > *:first-child { border-left: 0; }
+    .page-p1 .summary-box tr > *:last-child  { border-right: 0; }
+    .page-p1 .summary-box tr:last-child td,
+    .page-p1 .summary-box tr:last-child th   { border-bottom: 0; }
+    .page-p1 .col-tot { width: 18.8mm; } .page-p1 .col-g   { width: 10.65mm; }
+    .page-p1 .col-gs  { width: 14.5mm; } .page-p1 .col-note{ width: 39mm; }
+    .page-p1 .col-elbl{ width: 46.5mm; }
+    .page-p1 .grade-table th, .page-p1 .grade-table td { height: 6.25mm; }
+    .page-p1 .grade-table tr:first-child th { height: 7.1mm; }
+    .page-p1 .stitle  { font-size: 10.2pt; }
+    .page-p1 .evspc   { height: 6.35mm; border-left: 0 !important; border-right: 0 !important; }
+    .page-p1 .eval-table tr:first-child th { border-top: 1.5px solid #111; }
+    .page-p1 .eval-table th, .page-p1 .eval-table td { height: 9.35mm; }
 
-    .level-tbl     { border: none !important; width: auto !important; margin: 2mm auto 0; font-size: 10pt; }
-    .level-tbl td  { border: none !important; padding: 1px 3px !important; vertical-align: top; }
-    .level-tbl .chk-item { display: block; margin-bottom: 1.5mm; white-space: nowrap; }
-
-    .cover-info    { width: 100%; border: none; margin: 3mm 0 2mm; }
-    .cover-info td { border: none; padding: 1.5px 3px; font-size: 10pt; }
-    .cover-info .lbl { width: 44mm; }
-
-    .grade-table   { margin: 2mm 0; font-size: 9pt; }
-    .eval-table    { margin: 2mm 0; font-size: 9pt; }
-
-    /* approval section */
-    .approve-section { border: 1px solid #000; padding: 3mm 5mm 5mm; margin-top: 3mm; }
-    .approve-title   { font-weight: 700; font-size: 10pt; margin-bottom: 3mm; }
-    .sig-line-row    { font-size: 10pt; margin-bottom: 2mm; }
-    .sig-name-ul     { display: inline-block; min-width: 55mm; border-bottom: 1px solid #000;
-                       text-align: center; font-weight: 700; padding: 0 3mm 0; }
-    .propose-wrap    { display: flex; margin-top: 3mm; gap: 4mm; }
-    .propose-col     { flex: 1; text-align: center; font-size: 10pt; }
-    .propose-line    { display: block; border-bottom: 1px solid #000; width: 75%; margin: 8mm auto 2mm; }
-    .propose-name    { font-weight: 700; margin-bottom: 1mm; }
-    .propose-role    { font-size: 9.5pt; margin-bottom: 2mm; }
+    .page-p1 .approval {
+      position: absolute; top: 208.1mm; left: 17.7mm;
+      width: 174.7mm; height: 72.7mm;
+      border: .75mm solid #111; padding: 3.8mm 5.5mm 3.5mm;
+      font-size: 10.4pt; font-weight: 600;
+    }
+    .page-p1 .apl-title { margin-bottom: 3mm; font-size: 10.6pt; font-weight: 700; }
+    .page-p1 .sig-row {
+      display: grid; grid-template-columns: 13mm 1fr 52mm;
+      align-items: end; gap: 1.4mm; margin-bottom: .55mm;
+    }
+    .page-p1 .sig-line {
+      display: block; border-bottom: .35mm dotted #777;
+      text-align: center; line-height: 5mm; min-height: 5.2mm; font-weight: 700;
+    }
+    .page-p1 .consider { margin-top: 3.2mm; font-weight: 700; }
+    .page-p1 .ctr-block { margin: 1.8mm auto 0; width: 66%; text-align: center; }
+    .page-p1 .ctr-sig {
+      display: grid; grid-template-columns: 12mm 1fr;
+      align-items: end; gap: 5px; margin: 0 auto; width: 100%;
+    }
+    .page-p1 .p1-role { margin-top: .6mm; }
+    .page-p1 .decision {
+      display: flex; justify-content: center; gap: 12mm;
+      align-items: center; margin-top: 2mm; font-size: 11.5pt;
+    }
+    .page-p1 .decision .box { width: 5.8mm; height: 5.8mm; border-color: #888; border-width: .65mm; }
+    .page-p1 .decision .box.checked { background: #888; }
+    .page-p1 .director { margin-top: 2mm; }
 
     /* ── Page 2 ── */
     .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; }
@@ -326,157 +420,160 @@ function _buildPage1(d) {
     }
   }
 
-  const sigRow = (name, role) => `
-    <div class="sig-line-row">
-      ลงชื่อ <span class="sig-name-ul">${name}</span> ${role}
+  const box = (checked) => `<span class="box${checked?' checked':''}"></span>`
+
+  // level label & checks positions
+  const levelLbl  = isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'
+  const lblLeft   = isReligion ? '76mm' : '83mm'
+  const chkLeft   = isReligion ? '115mm' : '117.4mm'
+
+  const checksHTML = isReligion ? `
+    <div class="check-line">${box(relLevel==='PR')}<span>ตอนต้น (PR)</span></div>
+    <div class="check-line">${box(relLevel==='อก')}<span>ตอนกลาง (อก.)</span></div>
+    <div class="check-line">${box(relLevel==='อป')}<span>ตอนปลาย (อป.)</span></div>
+  ` : `
+    <div class="check-line">${box(!isHighSchool)}<span>ตอนต้น (ม.1-ม.3)</span></div>
+    <div class="check-line">${box(isHighSchool)}<span>ตอนปลาย (ม.4-ม.6)</span></div>
+  `
+
+  const infoRow2 = isReligion ? `
+    <div class="info-line">
+      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(ms.dept??'')}</span>
+      <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
+    </div>` : `
+    <div class="info-line">
+      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(ms.dept??'')}</span>
+      <span>รายวิชา</span><span class="uline w-lg">${_esc(ms.subject_name??'')}</span>
+      <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>`
 
+  const gradeRow = [4,'3.5',3,'2.5',2,'1.5',1,0].map(g=>`<td>${gradeCounts[String(g)]||''}</td>`).join('')
+  const readRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalReadCount[k]||''}</td>`).join('')
+  const charRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalCharCount[k]||''}</td>`).join('')
+
   return `
-  <div class="page">
-    <div style="text-align:right;font-size:10pt;font-weight:700;">ปพ5</div>
+  <div class="page-p1">
+    <div class="doc-code">ปพ5</div>
+    ${logoUrl ? `<img class="logo" src="${_esc(logoUrl)}" alt="ตราโรงเรียน" />` : ''}
 
-    <div class="cover-header">
-      <div class="cover-title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</div>
+    <h1 class="p1-title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</h1>
 
-      <table class="level-tbl">
+    <section class="level-row">
+      <div class="lbl" style="left:${lblLeft};">${levelLbl}</div>
+      <div class="checks" style="left:${chkLeft};">${checksHTML}</div>
+    </section>
+
+    <div class="school">${schoolName}</div>
+    <div class="school-sub">${schoolAddress}</div>
+
+    <section class="info">
+      <div class="info-line">
+        <span>${levelLbl}</span><span class="uline w-sm">${_esc(cls.class_name)}</span>
+        <span>ภาคเรียนที่</span><span class="uline w-md">${semester}</span>
+        <span>ปีการศึกษา</span><span class="uline w-yr">${academicYear}</span>
+      </div>
+      ${infoRow2}
+      <div class="info-line">
+        <span>จำนวน</span><span class="uline w-xs">${credit}</span>
+        <span>หน่วยกิต</span>
+        <span>เวลาเรียน</span><span class="uline w-xs">${totalHrsPerWeek}</span>
+        <span>ชั่วโมง/สัปดาห์</span>
+        <span>รวมเวลาเรียน</span><span class="uline w-xs">${totalHrs}</span>
+        <span>ชั่วโมง/ภาค</span>
+      </div>
+      <div class="info-row-one"><span>ครูผู้สอน</span><span class="uline-xl">${_esc(teacher?.full_name??'')}</span></div>
+      <div class="info-row-one"><span>ครูที่ปรึกษาสามัญ</span><span class="uline-xl">${_esc(hrSamai?.teachers?.full_name??'')}</span></div>
+      <div class="info-row-one"><span>ครูที่ปรึกษาศาสนา</span><span class="uline-xl">${_esc(hrReligion?.teachers?.full_name??'')}</span></div>
+    </section>
+
+    <section class="summary-box">
+      <table class="grade-table">
+        <colgroup>
+          <col class="col-tot"/>
+          <col span="8" class="col-g"/>
+          <col span="2" class="col-gs"/>
+          <col class="col-note"/>
+        </colgroup>
         <tr>
-          <td style="white-space:nowrap;">${isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'}</td>
-          <td>
-            ${isReligion ? `
-              <span class="chk-item"><span class="checkbox">${relLevel==='PR'?'✓':''}</span> ตอนต้น (PR)</span>
-              <span class="chk-item"><span class="checkbox">${relLevel==='อก'?'✓':''}</span> ตอนกลาง (อก.)</span>
-              <span class="chk-item"><span class="checkbox">${relLevel==='อป'?'✓':''}</span> ตอนปลาย (อป.)</span>
-            ` : `
-              <span class="chk-item"><span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3)</span>
-              <span class="chk-item"><span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)</span>
-            `}
-          </td>
-        </tr>
-      </table>
-
-      ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" />` : '<div style="height:22mm;"></div>'}
-      <div class="cover-school">${schoolName}</div>
-      ${schoolAddress ? `<div class="cover-address">${schoolAddress}</div>` : ''}
-    </div>
-
-    <table class="cover-info">
-      <tr>
-        <td class="lbl">${isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'}</td>
-        <td><u>${_esc(cls.class_name)}</u></td>
-        <td>ภาคเรียนที่</td>
-        <td><u>${semester}</u></td>
-        <td>ปีการศึกษา</td>
-        <td><u>${academicYear}</u></td>
-      </tr>
-      ${isReligion ? `
-      <tr>
-        <td class="lbl">กลุ่มสาระการเรียนรู้</td>
-        <td colspan="3"><u>${_esc(ms.dept ?? '')}</u></td>
-        <td>รหัสวิชา</td>
-        <td><u>${_esc(ms.subject_code ?? '')}</u></td>
-      </tr>` : `
-      <tr>
-        <td class="lbl">กลุ่มสาระการเรียนรู้</td>
-        <td><u>${_esc(ms.dept ?? '')}</u></td>
-        <td>รายวิชา</td>
-        <td colspan="2"><u>${_esc(ms.subject_name ?? '')}</u></td>
-        <td>รหัสวิชา <u>${_esc(ms.subject_code ?? '')}</u></td>
-      </tr>`}
-      <tr>
-        <td>จำนวน</td>
-        <td><u>${credit}</u> หน่วยกิต</td>
-        <td>เวลาเรียน</td>
-        <td><u>${totalHrsPerWeek}</u> ชั่วโมง/สัปดาห์</td>
-        <td>รวมเวลาเรียน</td>
-        <td><u>${totalHrs}</u> ชั่วโมง/ภาค</td>
-      </tr>
-      <tr>
-        <td>ครูผู้สอน</td>
-        <td colspan="5"><u>${_esc(teacher?.full_name ?? '')}</u></td>
-      </tr>
-      <tr>
-        <td>ครูที่ปรึกษาสามัญ</td>
-        <td colspan="5"><u>${_esc(hrSamai?.teachers?.full_name ?? '')}</u></td>
-      </tr>
-      <tr>
-        <td>ครูที่ปรึกษาศาสนา</td>
-        <td colspan="5"><u>${_esc(hrReligion?.teachers?.full_name ?? '')}</u></td>
-      </tr>
-    </table>
-
-    <table class="grade-table">
-      <thead>
-        <tr>
-          <th rowspan="2">จำนวนนักเรียนทั้งหมด</th>
-          <th colspan="10">สรุปผลการเรียน<br><span style="font-weight:400;font-size:8.5pt;">จำนวนนักเรียนที่ได้รับผลการเรียน</span></th>
-          <th rowspan="2">หมายเหตุ</th>
-        </tr>
-        <tr>
-          ${[4,'3.5',3,'2.5',2,'1.5',1,0,'ร','มส'].map(g => `<th>${g}</th>`).join('')}
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="text-center font-bold">${students.length}</td>
-          ${[4,'3.5',3,'2.5',2,'1.5',1,0].map(g => `<td class="text-center">${gradeCounts[String(g)] || ''}</td>`).join('')}
-          <td class="text-center"></td>
-          <td class="text-center"></td>
-          <td></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <table class="eval-table">
-      <thead>
-        <tr>
-          <th>สรุปผลการประเมิน</th>
-          <th>ดีเยี่ยม</th>
-          <th>ดี</th>
-          <th>ผ่าน</th>
-          <th>ไม่ผ่าน</th>
+          <th rowspan="3">จำนวน<br>นักเรียน<br>ทั้งหมด</th>
+          <th colspan="10">สรุปผลการเรียน</th>
           <th>หมายเหตุ</th>
         </tr>
-      </thead>
-      <tbody>
         <tr>
-          <td>การประเมินการอ่าน คิดวิเคราะห์และเขียนสื่อความ</td>
-          ${['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td class="text-center">${evalReadCount[k]||''}</td>`).join('')}
-          <td></td>
+          <th colspan="10" class="stitle">จำนวนนักเรียนที่ได้รับผลการเรียน</th>
+          <td rowspan="2"></td>
         </tr>
         <tr>
-          <td>การประเมินคุณลักษณะอันพึงประสงค์</td>
-          ${['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td class="text-center">${evalCharCount[k]||''}</td>`).join('')}
-          <td></td>
+          <th>4</th><th>3.5</th><th>3</th><th>2.5</th>
+          <th>2</th><th>1.5</th><th>1</th><th>0</th>
+          <th>ร</th><th>มส</th>
         </tr>
-      </tbody>
-    </table>
+        <tr>
+          <td>${students.length}</td>${gradeRow}<td></td><td></td><td></td>
+        </tr>
+        <tr><td colspan="12" class="evspc"></td></tr>
+      </table>
+      <table class="eval-table">
+        <colgroup>
+          <col class="col-elbl"/><col/><col/><col/><col/><col class="col-note"/>
+        </colgroup>
+        <tr>
+          <th>สรุปผลการประเมิน</th>
+          <th>ดีเยี่ยม</th><th>ดี</th><th>ผ่าน</th><th>ไม่ผ่าน</th><th>หมายเหตุ</th>
+        </tr>
+        <tr>
+          <td>การประเมินการอ่าน คิด<br>วิเคราะห์และเขียนสื่อความ</td>
+          ${readRow}<td></td>
+        </tr>
+        <tr>
+          <td>การประเมินคุณลักษณะ<br>อันพึงประสงค์</td>
+          ${charRow}<td></td>
+        </tr>
+      </table>
+    </section>
 
-    <div class="approve-section">
-      <div class="approve-title">การอนุมัติผลการพัฒนาคุณภาพผู้เรียน</div>
-      ${sigRow(_esc(teacher?.full_name ?? ''), 'ครูผู้สอน')}
-      ${sigRow(deptHeadName, 'หัวหน้าหมวดวิชา')}
-      ${sigRow(regName, 'หัวหน้างานวัดผลและประเมินผล')}
+    <section class="approval">
+      <div class="apl-title">การอนุมัติผลการพัฒนาคุณภาพผู้เรียน</div>
 
-      <div style="font-weight:700;font-size:10pt;margin-top:3mm;">เสนอเพื่อพิจารณา</div>
-      <div class="propose-wrap">
-        <div class="propose-col">
-          <span class="propose-line"></span>
-          <div>ลงชื่อ</div>
-          <div class="propose-name">${acadName}</div>
-          <div class="propose-role">หัวหน้าฝ่ายบริหารวิชาการ</div>
-          <div style="margin-top:1mm;font-size:9.5pt;">
-            <span class="checkbox">✓</span> อนุมัติ &emsp;
-            <span class="checkbox">&nbsp;</span> ไม่อนุมัติ
-          </div>
-        </div>
-        <div class="propose-col">
-          <span class="propose-line"></span>
-          <div>ลงชื่อ</div>
-          <div class="propose-name">${dirName}</div>
-          <div class="propose-role">ผู้อำนวยการ${schoolName}</div>
-        </div>
+      <div class="sig-row">
+        <span>ลงชื่อ</span>
+        <span class="sig-line">${_esc(teacher?.full_name??'')}</span>
+        <span>ครูผู้สอน</span>
       </div>
-    </div>
+      <div class="sig-row">
+        <span>ลงชื่อ</span>
+        <span class="sig-line">${deptHeadName}</span>
+        <span>หัวหน้าหมวดวิชา</span>
+      </div>
+      <div class="sig-row">
+        <span>ลงชื่อ</span>
+        <span class="sig-line">${regName}</span>
+        <span>หัวหน้างานวัดผลและประเมินผล</span>
+      </div>
+
+      <div class="consider">เสนอเพื่อพิจารณา</div>
+
+      <div class="ctr-block">
+        <div class="ctr-sig">
+          <span>ลงชื่อ</span>
+          <span class="sig-line">${acadName}</span>
+        </div>
+        <div class="p1-role">หัวหน้าฝ่ายบริหารวิชาการ</div>
+      </div>
+
+      <div class="decision">
+        <span>${box(true)}&nbsp; อนุมัติ</span>
+        <span>${box(false)}&nbsp; ไม่อนุมัติ</span>
+      </div>
+
+      <div class="ctr-block director">
+        <div class="ctr-sig">
+          <span>ลงชื่อ</span>
+          <span class="sig-line">${dirName}</span>
+        </div>
+        <div class="p1-role">ผู้อำนวยการ${schoolName}</div>
+      </div>
+    </section>
   </div>`
 }
 
