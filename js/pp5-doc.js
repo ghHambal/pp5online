@@ -133,7 +133,8 @@ async function _loadDocData(classId) {
     ? await getTeacherById(ms.teacher_id).catch(() => null)
     : null
 
-  const dept = depts.find(d => d.dept_name === ms.dept) ?? null
+  // ms.dept เก็บ dept_code → ค้นหาด้วย dept_code ก่อน แล้ว fallback dept_name
+  const dept = depts.find(d => d.dept_code === ms.dept) ?? depts.find(d => d.dept_name === ms.dept) ?? null
 
   const courseDoc = ms.id
     ? await getCourseDocPage2(ms.id).catch(() => null)
@@ -165,7 +166,8 @@ async function _loadDocData(classId) {
     ? (homerooms.find(h => h.category === 'ศาสนา' && h.main_room === domRelRoom) ?? null)
     : null
 
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, courseDoc, sessions, hrSamai, hrReligion, academicYear, semester }
+  const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, sessions, hrSamai, hrReligion, academicYear, semester }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -219,7 +221,6 @@ function _getCSS() {
       position: absolute; top: 17.6mm; left: 50%;
       transform: translateX(-50%);
       display: block; width: 18.5mm; height: 18.5mm; object-fit: contain;
-      mix-blend-mode: multiply;
     }
     .page-p1 .p1-title {
       position: absolute; top: 40.1mm; left: 0; width: 100%; margin: 0;
@@ -378,7 +379,7 @@ function _getCSS() {
 // ─── Page 1: หน้าปก ───────────────────────────────────────────────────────────
 
 function _buildPage1(d) {
-  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, hrSamai, hrReligion, academicYear, semester } = d
+  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, hrSamai, hrReligion, academicYear, semester } = d
 
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
@@ -463,11 +464,11 @@ function _buildPage1(d) {
 
   const infoRow2 = isReligion ? `
     <div class="info-line">
-      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(ms.dept??'')}</span>
+      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(deptNameTH)}</span>
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>` : `
     <div class="info-line">
-      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(ms.dept??'')}</span>
+      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(deptNameTH)}</span>
       <span>รายวิชา</span><span class="uline w-lg">${_esc(ms.subject_name??'')}</span>
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>`
@@ -626,7 +627,7 @@ function _buildPage2(d) {
       <table style="border:none;width:100%;">
         <tr>
           <td style="border:none;width:50%;">รายวิชา <u>${_esc(ms.subject_name??'')}</u></td>
-          <td style="border:none;">รหัสวิชา <u>${_esc(ms.subject_code??'')}</u> กลุ่มสาระการเรียนรู้ <u>${_esc(ms.dept??'')}</u></td>
+          <td style="border:none;">รหัสวิชา <u>${_esc(ms.subject_code??'')}</u> กลุ่มสาระการเรียนรู้ <u>${_esc(deptNameTH)}</u></td>
         </tr>
         <tr>
           <td style="border:none;">ระดับชั้น <u>${_esc(_shortRoom(cls.class_name))}</u></td>
@@ -889,7 +890,7 @@ function _buildPage5(d) {
   <div class="page">
     <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:3mm;">รายละเอียดสัปดาห์/คาบ/วันที่สอน</div>
     <div style="font-size:9pt;margin-bottom:2mm;">
-      <span>รายวิชา ${_esc(ms.subject_name??'')} &emsp; รหัสวิชา ${_esc(ms.subject_code??'')} &emsp; กลุ่มสาระการเรียนรู้ ${_esc(ms.dept??'')}</span>
+      <span>รายวิชา ${_esc(ms.subject_name??'')} &emsp; รหัสวิชา ${_esc(ms.subject_code??'')} &emsp; กลุ่มสาระการเรียนรู้ ${_esc(deptNameTH)}</span>
     </div>
     <div style="font-size:9pt;margin-bottom:2mm;">
       ระดับชั้นมัธยมศึกษา ${_esc(_shortRoom(cls.class_name))} &emsp; ภาคเรียนที่ ${semester} &emsp; ปีการศึกษา ${academicYear} &emsp; เวลา ชั่วโมง จำนวน ${credit} หน่วยกิต
@@ -934,19 +935,105 @@ function _buildFullDoc(d, title) {
 </html>`
 }
 
+// ─── Page Viewer (full-screen modal + tabs) ──────────────────────────────────
+
+function _singlePageDoc(pageHTML) {
+  return `<!DOCTYPE html>
+<html lang="th"><head>
+<meta charset="UTF-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>${_getCSS()}
+body{background:#fff;margin:0;}
+@media print{@page{size:A4 portrait;margin:0;}.no-print{display:none!important;}}
+</style></head>
+<body>${pageHTML}</body></html>`
+}
+
+function _openViewer(d) {
+  document.getElementById('pp5-viewer')?.remove()
+
+  const pages = [
+    { label: 'หน้าปก', fn: () => _buildPage1(d) },
+    { label: 'มาตรฐาน/ตัวชี้วัด', fn: () => _buildPage2(d) },
+    { label: 'บันทึกการมาเรียน', fn: () => _buildPage3(d) },
+    { label: 'คะแนน', fn: () => _buildPage4(d) },
+    { label: 'วันที่สอน', fn: () => _buildPage5(d) },
+  ]
+
+  const viewer = document.createElement('div')
+  viewer.id = 'pp5-viewer'
+  viewer.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:#374151;'
+
+  const btnStyle = (active) =>
+    `border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-family:Sarabun,sans-serif;font-size:13px;font-weight:600;white-space:nowrap;` +
+    (active ? 'background:#2563eb;color:#fff;' : 'background:#4b5563;color:#d1d5db;')
+
+  viewer.innerHTML = `
+    <div style="background:#111827;padding:8px 12px;display:flex;align-items:center;gap:6px;flex-shrink:0;overflow-x:auto;">
+      <button id="pp5-v-close" style="${btnStyle(false)}background:#dc2626;color:#fff;">✕ ปิด</button>
+      <button id="pp5-v-print" style="${btnStyle(false)}background:#059669;color:#fff;">🖨️ พิมพ์หน้านี้</button>
+      <button id="pp5-v-printall" style="${btnStyle(false)}background:#7c3aed;color:#fff;">🖨️ พิมพ์ทั้งหมด</button>
+      <div style="width:1px;height:24px;background:#374151;flex-shrink:0;margin:0 2px;"></div>
+      ${pages.map((p, i) => `
+        <button class="pp5-vtab" data-i="${i}" style="${btnStyle(i===0)}">${p.label}</button>
+      `).join('')}
+    </div>
+    <div style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px;">
+      <iframe id="pp5-iframe" style="border:none;box-shadow:0 4px 32px rgba(0,0,0,.5);background:#fff;width:210mm;height:297mm;" scrolling="no"></iframe>
+    </div>`
+
+  document.body.appendChild(viewer)
+
+  const iframe   = viewer.querySelector('#pp5-iframe')
+  const tabs     = [...viewer.querySelectorAll('.pp5-vtab')]
+  let curIdx     = 0
+
+  function showPage(i) {
+    curIdx = i
+    tabs.forEach((t, ti) => t.style.cssText = btnStyle(ti === i) + t.style.cssText.replace(/background:[^;]+;color:[^;]+;/g,''))
+    // re-apply colors cleanly
+    tabs.forEach((t, ti) => {
+      if (ti === i) { t.style.background='#2563eb'; t.style.color='#fff' }
+      else          { t.style.background='#4b5563'; t.style.color='#d1d5db' }
+    })
+    const html = _singlePageDoc(pages[i].fn())
+    // attendance & score pages may be multi-page
+    const isMulti = i === 2 || i === 3
+    iframe.style.height = isMulti ? '900mm' : '297mm'
+    const doc = iframe.contentDocument
+    doc.open(); doc.write(html); doc.close()
+  }
+
+  showPage(0)
+
+  tabs.forEach((t, i) => t.addEventListener('click', () => showPage(i)))
+
+  viewer.querySelector('#pp5-v-close').addEventListener('click', () => viewer.remove())
+
+  viewer.querySelector('#pp5-v-print').addEventListener('click', () => {
+    iframe.contentWindow.focus()
+    iframe.contentWindow.print()
+  })
+
+  viewer.querySelector('#pp5-v-printall').addEventListener('click', () => {
+    const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
+    const html  = _buildFullDoc(d, title)
+    const win   = window.open('', '_blank', 'width=900,height=700')
+    if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
+    win.document.open(); win.document.write(html); win.document.close()
+    setTimeout(() => win.print(), 600)
+  })
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function openPP5Doc(classId) {
   showToast('กำลังโหลดข้อมูลเอกสาร...', 'info')
   try {
-    const d     = await _loadDocData(classId)
-    const title = `ปพ5_${d.ms.subject_code ?? d.ms.subject_name ?? ''}_${_shortRoom(d.cls.class_name)}`
-    const html  = _buildFullDoc(d, title)
-    const win   = window.open('', '_blank', 'width=900,height=700')
-    if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์', 'warning'); return }
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
+    const d = await _loadDocData(classId)
+    _openViewer(d)
   } catch (err) {
     console.error('[pp5-doc]', err)
     showToast('โหลดเอกสารไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -961,52 +1048,28 @@ export function openPP5CourseModal(courseClasses) {
   modal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4'
   modal.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-      <h3 class="font-bold text-gray-800 mb-1 text-base">📄 พิมพ์ ปพ.5</h3>
-      <p class="text-xs text-gray-400 mb-4">เลือกห้องที่ต้องการพิมพ์</p>
+      <h3 class="font-bold text-gray-800 mb-1 text-base">📄 เปิด ปพ.5</h3>
+      <p class="text-xs text-gray-400 mb-4">เลือกห้องที่ต้องการดู</p>
       <div class="space-y-2 mb-5">
+        ${courseClasses.map(c => `
         <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
-          <input type="checkbox" id="pp5-all" class="w-4 h-4 rounded accent-indigo-600" />
-          <span class="font-semibold text-sm text-gray-700">ทุกห้อง</span>
-        </label>
-        <div class="border-t pt-2 space-y-1">
-          ${courseClasses.map(c => `
-          <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
-            <input type="checkbox" class="pp5-cls-check w-4 h-4 rounded accent-indigo-600" value="${c.id}" />
-            <span class="text-sm text-gray-700">${_esc(c.class_name)}</span>
-          </label>`).join('')}
-        </div>
+          <input type="radio" name="pp5-cls" class="w-4 h-4 accent-indigo-600" value="${c.id}" />
+          <span class="text-sm text-gray-700">${_esc(_shortRoom(c.class_name))}</span>
+        </label>`).join('')}
       </div>
       <div class="flex gap-2">
         <button id="pp5-cancel" class="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-        <button id="pp5-print-btn" class="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">พิมพ์</button>
+        <button id="pp5-open-btn" class="flex-1 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700">เปิด</button>
       </div>
     </div>`
 
   document.body.appendChild(modal)
-
-  const allChk = modal.querySelector('#pp5-all')
-  const clsChks = [...modal.querySelectorAll('.pp5-cls-check')]
-
-  allChk.addEventListener('change', () => {
-    clsChks.forEach(ch => { ch.checked = allChk.checked })
-  })
-  clsChks.forEach(ch => {
-    ch.addEventListener('change', () => {
-      allChk.checked = clsChks.every(c => c.checked)
-    })
-  })
-
   modal.querySelector('#pp5-cancel').addEventListener('click', () => modal.remove())
-
-  modal.querySelector('#pp5-print-btn').addEventListener('click', async () => {
-    const selected = clsChks.filter(ch => ch.checked).map(ch => parseInt(ch.value))
-    if (!selected.length) { showToast('กรุณาเลือกอย่างน้อย 1 ห้อง', 'warning'); return }
+  modal.querySelector('#pp5-open-btn').addEventListener('click', async () => {
+    const sel = modal.querySelector('input[name="pp5-cls"]:checked')
+    if (!sel) { showToast('กรุณาเลือกห้อง', 'warning'); return }
     modal.remove()
-    for (const classId of selected) {
-      await openPP5Doc(classId)
-      if (selected.length > 1) await new Promise(r => setTimeout(r, 800))
-    }
+    await openPP5Doc(parseInt(sel.value))
   })
-
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
 }
