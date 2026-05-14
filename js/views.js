@@ -1788,11 +1788,19 @@ export async function renderSettings() {
   </div>`)
 
   try {
-    const [cfg, allDepts] = await Promise.all([
+    const [cfg, allDepts, allTeachers] = await Promise.all([
       getSystemConfig(),
       getDepartments().catch(() => []),
+      getTeachers().catch(() => []),
     ])
-    const deptCodes = [...new Set(allDepts.map(d => d.dept_code).filter(Boolean))].sort()
+    // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
+    const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HALTH','OCC','VOC',
+                              'ISL','ARB','BM','BML','MLB']
+    const deptCodes = [...new Set([
+      ...KNOWN_DEPT_CODES,
+      ...allDepts.map(d => d.dept_code).filter(Boolean),
+      ...allTeachers.map(t => t.dept).filter(Boolean),
+    ])].sort()
 
     // ─── Field renderers ────────────────────────────────────────────────────────
     const COLOR_DEFAULTS = {
