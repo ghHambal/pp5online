@@ -353,13 +353,27 @@ function _getCSS() {
     .page-p1 .director { margin-top: 2mm; }
 
     /* ── Page 2 ── */
+    .p2-wrap { width: 210mm; min-height: 297mm; padding: 10mm 14mm 10mm 14mm; page-break-after: always; display: flex; flex-direction: column; }
+    .p2-logo-wrap { width: 18mm; height: 18mm; border-radius: 50%; overflow: hidden; background: #fff; margin: 0 auto 2mm; display: flex; align-items: center; justify-content: center; }
+    .p2-logo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .p2-title { text-align: center; font-size: 13pt; font-weight: 700; margin-bottom: 2mm; }
     .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; }
-    .p2-hdr table { border: none; }
-    .p2-hdr td    { border: none; padding: 1px 2px; }
-    .std-table td:first-child { width: 28mm; }
-    .std-table td { height: 7.5mm; font-size: 9.5pt; }
-    .obj-row  { font-size: 9pt; margin-top: 2mm; }
-    .char-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4mm; font-size: 9pt; margin-top: 2mm; }
+    .p2-hdr table { border: none; width: 100%; }
+    .p2-hdr td { border: none; padding: 1px 0; }
+    .p2-uline { display: inline-block; border-bottom: .3mm solid #000; min-width: 20mm; text-align: center; padding: 0 1.5mm; font-weight: 600; }
+    .std-table { width: 100%; border-collapse: collapse; flex: 1; }
+    .std-table th { font-size: 10pt; padding: 1.5mm 2mm; border: .4mm solid #000; text-align: center; font-weight: 700; }
+    .std-table td { border: .4mm solid #000; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
+    .std-table td:first-child { width: 32mm; }
+    .std-table td.std-row { height: 7mm; }
+    .p2-footer { display: flex; gap: 6mm; margin-top: 3mm; font-size: 9pt; }
+    .p2-obj { flex: 0 0 auto; width: 60mm; }
+    .p2-obj p { margin-bottom: 1mm; }
+    .p2-obj u { min-width: 18mm; display: inline-block; text-align: center; }
+    .p2-char { flex: 1; }
+    .p2-char-title { font-weight: 700; margin-bottom: 1mm; }
+    .p2-char-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2mm; font-size: 8.5pt; }
+    .p2-sig { text-align: right; margin-top: 3mm; font-size: 9.5pt; }
 
     /* ── Page 3 attendance ── */
     .att-hdr   { font-size: 9pt; margin-bottom: 1.5mm; }
@@ -623,61 +637,84 @@ function _buildPage1(d) {
 // ─── Page 2: มาตรฐานการเรียนรู้และตัวชี้วัด ─────────────────────────────────
 
 function _buildPage2(d) {
-  const { cls, ms, credit, cfg, courseDoc, teacher, deptNameTH, academicYear, semester } = d
+  const { cls, ms, credit, cfg, courseDoc, teacher, deptNameTH, academicYear, semester, prefix } = d
 
-  const cols    = Array.isArray(courseDoc?.columns) ? courseDoc.columns : ['มาตรฐานการเรียนรู้','ตัวชี้วัด']
-  const rows    = Array.isArray(courseDoc?.rows)    ? courseDoc.rows    : Array.from({length:20},()=>cols.map(()=>''))
-  const midObj  = _esc(courseDoc?.midterm_objectives  ?? '')
-  const finalObj= _esc(courseDoc?.final_objectives    ?? '')
-  const allObj  = _esc(courseDoc?.all_objectives      ?? '')
+  const logoUrl  = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
+  const cols     = Array.isArray(courseDoc?.columns) ? courseDoc.columns : ['มาตรฐานการเรียนรู้','ตัวชี้วัด']
+  const rows     = Array.isArray(courseDoc?.rows)    ? courseDoc.rows    : Array.from({length:22},()=>cols.map(()=>''))
+  const midObj   = _esc(courseDoc?.midterm_objectives  ?? '')
+  const finalObj = _esc(courseDoc?.final_objectives    ?? '')
+  const allObj   = _esc(courseDoc?.all_objectives      ?? '')
+  const isReligion = ['AGM','AGMVOC'].includes(ms.subject_group)
 
-  const CHAR_TRAITS = [
-    '1 รักชาติ ศาสน์ กษัตริย์', '2 ซื่อสัตย์สุจริต', '3 มีวินัย',
-    '4 ใฝ่เรียนรู้', '5 อยู่อย่างพอเพียง', '6 มุ่งมั่นในการทำงาน',
-    '7 รักความเป็นไทย', '8 มีจิตสาธารณะ', '9 ปฏิบัติศาสนกิจอย่างสม่ำเสมอ',
-  ]
+  const CHAR_L = ['1 รักชาติ ศาสน์ กษัตริย์','2 ซื่อสัตย์สุจริต','3 มีวินัย','4 ใฝ่เรียนรู้','5 อยู่อย่างพอเพียง']
+  const CHAR_R = ['6 มุ่งมั่นในการทำงาน','7 รักความเป็นไทย','8 มีจิตสาธารณะ','9 ปฏิบัติศาสนกิจอย่างสม่ำเสมอ']
+
+  const uline = (v, w = '25mm') =>
+    `<span class="p2-uline" style="min-width:${w};">${_esc(v)}</span>`
+
+  const levelLbl = isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้น'
 
   return `
-  <div class="page">
-    <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:3mm;">มาตรฐานการเรียนรู้และตัวชี้วัด/รายภาค</div>
-    <div class="p2-header">
-      <table style="border:none;width:100%;">
+  <div class="p2-wrap">
+    <!-- Logo + Title -->
+    ${logoUrl ? `<div class="p2-logo-wrap"><img src="${_esc(logoUrl)}" alt="โลโก้"/></div>` : '<div style="height:5mm;"></div>'}
+    <div class="p2-title">มาตรฐานการเรียนรู้และตัวชี้วัด/รายภาค</div>
+
+    <!-- Header -->
+    <div class="p2-hdr">
+      <table>
         <tr>
-          <td style="border:none;width:50%;">รายวิชา <u>${_esc(ms.subject_name??'')}</u></td>
-          <td style="border:none;">รหัสวิชา <u>${_esc(ms.subject_code??'')}</u> กลุ่มสาระการเรียนรู้ <u>${_esc(deptNameTH)}</u></td>
+          <td style="width:50%;">รายวิชา ${uline(ms.subject_name??'','38mm')}</td>
+          <td>รหัสวิชา ${uline(ms.subject_code??'','18mm')} กลุ่มสาระการเรียนรู้ ${uline(deptNameTH,'28mm')}</td>
         </tr>
         <tr>
-          <td style="border:none;">ระดับชั้น <u>${_esc(_shortRoom(cls.class_name))}</u></td>
-          <td style="border:none;">ภาคเรียนที่ <u>${semester}</u> ปีการศึกษา <u>${academicYear}</u> เวลา ชั่วโมง จำนวน <u>${credit}</u> หน่วยกิต</td>
+          <td>${levelLbl} ${uline(_shortRoom(cls.class_name??''),'20mm')}</td>
+          <td>ภาคเรียนที่ ${uline(String(semester),'8mm')} ปีการศึกษา ${uline(String(academicYear),'14mm')} เวลา ชั่วโมง จำนวน ${uline(String(credit),'8mm')} หน่วยกิต</td>
         </tr>
         <tr>
-          <td style="border:none;">ครูผู้สอน <u>${_esc(teacher?.full_name??'')}</u></td>
-          <td style="border:none;"></td>
+          <td colspan="2">ครูผู้สอน ${uline(teacher?.full_name??'','55mm')}</td>
         </tr>
       </table>
     </div>
 
-    <table class="std-table" style="font-size:9.5pt;">
+    <!-- Standards Table -->
+    <table class="std-table">
       <thead>
-        <tr>${cols.map(c=>`<th>${_esc(c)}</th>`).join('')}</tr>
+        <tr>
+          <th style="width:32mm;">${_esc(cols[0] ?? 'มาตรฐานการเรียนรู้')}</th>
+          <th>${_esc(cols[1] ?? 'ตัวชี้วัด')}</th>
+        </tr>
       </thead>
       <tbody>
-        ${rows.map(row=>`<tr>${row.map(cell=>`<td style="height:8mm;">${_esc(cell)}</td>`).join('')}</tr>`).join('')}
+        ${rows.map(row => `<tr>
+          <td class="std-row">${_esc(Array.isArray(row) ? row[0] ?? '' : '')}</td>
+          <td class="std-row">${_esc(Array.isArray(row) ? row[1] ?? '' : '')}</td>
+        </tr>`).join('')}
       </tbody>
     </table>
 
-    <div class="obj-section">
-      <p>จุดประสงค์วัดผลรายจุดประสงค์ ข้อที่ <u>${_esc(allObj)}</u>&nbsp;&nbsp;&nbsp; <strong>คุณลักษณะอันพึงประสงค์</strong></p>
-      <p style="margin-top:1mm;">จุดประสงค์วัดผลกลางภาค ข้อที่ <u>${_esc(midObj)}</u></p>
-      <p style="margin-top:1mm;">จุดประสงค์วัดผลปลายภาค ข้อที่ <u>${_esc(finalObj)}</u></p>
+    <!-- Footer: Objectives + คุณลักษณะ -->
+    <div class="p2-footer">
+      <div class="p2-obj">
+        <p>จุดประสงค์วัดผลรายจุดประสงค์ ข้อที่ <u>${allObj}</u></p>
+        <p>จุดประสงค์วัดผลกลางภาค ข้อที่ <u>${midObj}</u></p>
+        <p>จุดประสงค์วัดผลปลายภาค ข้อที่ <u>${finalObj}</u></p>
+      </div>
+      <div class="p2-char">
+        <div class="p2-char-title">คุณลักษณะอันพึงประสงค์</div>
+        <div class="p2-char-grid">
+          <div>${CHAR_L.map(t=>`<div>${_esc(t)}</div>`).join('')}</div>
+          <div>${CHAR_R.map(t=>`<div>${_esc(t)}</div>`).join('')}</div>
+        </div>
+      </div>
     </div>
 
-    <div class="char-list" style="margin-top:2mm;">
-      ${CHAR_TRAITS.map(t=>`<div class="char-item">${_esc(t)}</div>`).join('')}
-    </div>
-
-    <div style="margin-top:auto;padding-top:4mm;text-align:right;font-size:9.5pt;">
-      ลงชื่อ ............................................. หัวหน้ากลุ่มสาระฯ
+    <!-- Signature -->
+    <div class="p2-sig">
+      ลงชื่อ .............................................
+      ${d.dept?.head_name ? `<span style="font-weight:700;">${_esc(d.dept.head_name)}</span>` : ''}
+      หัวหน้ากลุ่มสาระฯ
     </div>
   </div>`
 }
