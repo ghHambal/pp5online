@@ -29,6 +29,7 @@ import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 
 import { showToast } from './ui.js'
 import { renderClassEditForm } from './teacher-class-forms.js'
+import { openPP5Doc, openPP5CourseModal } from './pp5-doc.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
 import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
@@ -565,6 +566,10 @@ export async function renderMyCourses(teacher) {
                     class="text-xs text-emerald-700 hover:text-emerald-900 font-medium px-2 py-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50">
                     คำอธิบายฯ
                   </button>
+                  <button class="pp5-course-btn text-xs text-violet-700 hover:text-violet-900 font-medium px-2 py-1.5 border border-violet-200 rounded-lg hover:bg-violet-50 transition"
+                    data-sid="${s.id}">
+                    📄 ปพ.5
+                  </button>
                   <button onclick="window._editCourse(${s.id})"
                     class="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1.5 border border-gray-200 rounded-lg">
                     แก้ไข
@@ -592,6 +597,19 @@ export async function renderMyCourses(teacher) {
     document.querySelectorAll('.ccm-open-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         _openCourseColsModal(parseInt(btn.dataset.sid), btn.dataset.sname, allClasses)
+      })
+    })
+
+    // ผูก event ปุ่ม ปพ.5 ระดับคอร์ส
+    document.querySelectorAll('.pp5-course-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sid = parseInt(btn.dataset.sid)
+        const courseClasses = allClasses.filter(c => c.course_id === sid || c.master_subjects?.id === sid)
+        if (courseClasses.length === 1) {
+          openPP5Doc(courseClasses[0].id)
+        } else {
+          openPP5CourseModal(courseClasses)
+        }
       })
     })
 
@@ -2219,6 +2237,10 @@ export async function renderMyClasses(teacher) {
                   class="px-3 py-1.5 bg-sky-600 text-white text-xs font-medium rounded-lg hover:bg-sky-700 transition text-center">
                   👥 จัดการนักเรียน
                 </button>
+                <button onclick="window._openPP5Doc(${c.id})"
+                  class="px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition text-center">
+                  📄 ปพ.5
+                </button>
                 ${c.google_sheet_id ? `
                 <button onclick="window._openSheetToolsModal(${c.id})"
                   class="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition text-center">
@@ -2280,6 +2302,8 @@ export async function renderMyClasses(teacher) {
         }).join('')}
       </div>`}
     </div>`)
+    window._openPP5Doc = (classId) => openPP5Doc(classId)
+
     window._assignClassroom = (classId) => {
       const cls = window._classCache?.[classId]
       if (!cls) return

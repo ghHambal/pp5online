@@ -1941,6 +1941,7 @@ export async function renderSettings() {
       if (tabId === 'school') {
         const schoolFields = (prefix, labels) => [
           { key:`${prefix}SchoolName`,          label:labels.name,       type:'text' },
+          { key:`${prefix}SchoolAddress`,       label:'ที่ตั้ง (อำเภอ จังหวัด)', type:'text', placeholder:'อำเภอ... จังหวัด...' },
           { key:`${prefix}LogoUrl`,             label:'โลโก้สี',         type:'upload' },
           { key:`${prefix}LogoBwUrl`,           label:'โลโก้ขาวดำ',      type:'upload' },
           { key:`${prefix}DirectorName`,        label:'ผู้อำนวยการ',      type:'text' },
