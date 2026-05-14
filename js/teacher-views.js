@@ -2652,8 +2652,12 @@ export async function renderMyClasses(teacher) {
               </div>
               <div class="flex flex-wrap gap-2">
                 <div class="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
-                  <button class="student-view-toggle px-3 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'table' ? 'bg-white text-sky-700 shadow' : 'text-gray-500'}" data-view="table">ตาราง</button>
-                  <button class="student-view-toggle px-3 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'grid' ? 'bg-white text-sky-700 shadow' : 'text-gray-500'}" data-view="grid">กริด</button>
+                  <button class="student-view-toggle px-2.5 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'table' ? 'bg-white text-sky-700 shadow' : 'text-gray-400'}" data-view="table" title="มุมมองตาราง">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M10 6h4M10 18h4M3 6h4M3 18h4M17 6h4M17 18h4"/></svg>
+                  </button>
+                  <button class="student-view-toggle px-2.5 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'grid' ? 'bg-white text-sky-700 shadow' : 'text-gray-400'}" data-view="grid" title="มุมมองกริด">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                  </button>
                 </div>
                 <button id="students-add" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700">＋ เพิ่มนักเรียน</button>
                 <button id="students-roster" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700">🖨️ สร้างใบรายชื่อ</button>
@@ -3229,7 +3233,14 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
 
     // Tab switching
     const tabContent = () => document.getElementById('cd-tab-content')
-    window._backToClasses = () => renderMyClasses(teacher)
+    window._backToClasses = () => {
+      // Restore ID swap ก่อนออกจาก class detail page
+      const bak = document.getElementById('main-content-bak')
+      const cur = document.getElementById('main-content')
+      if (cur) cur.id = 'cd-tab-content'
+      if (bak) bak.id = 'main-content'
+      renderMyClasses(teacher)
+    }
     window._openPP5Doc    = (cid) => openPP5Doc(cid)
     window._openCombinedEdit2 = (cid) => {
       const c = window._classCache?.[cid]
@@ -3243,26 +3254,32 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       } catch (err) { showToast('ลบไม่สำเร็จ', 'error') }
     }
 
+    // Swap IDs ครั้งเดียวตอนเข้า class detail page
+    // จากนั้น keep active ตลอดเพื่อให้ event handlers ใน tab ยังคง setContent ลง tab
+    const box = tabContent()
+    if (box) {
+      const mainEl = document.getElementById('main-content')
+      if (mainEl && mainEl.id === 'main-content') {
+        mainEl.id = 'main-content-bak'
+        box.id = 'main-content'
+      }
+    }
+
     const loadTab = async (tabId) => {
       document.querySelectorAll('.cd-tab').forEach(t => {
         const isActive = t.dataset.tab === tabId
         t.className = isActive
-          ? 'cd-tab active-tab px-5 py-3.5 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px'
-          : 'cd-tab px-5 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition'
+          ? 'cd-tab active-tab flex-1 py-3 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px text-center'
+          : 'cd-tab flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition text-center'
       })
-      const box = tabContent()
-      if (!box) return
-      box.innerHTML = `<div class="flex justify-center py-12 text-gray-400">
+      const currentBox = document.getElementById('main-content') // === box หลัง swap
+      if (!currentBox) return
+      currentBox.innerHTML = `<div class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-5 w-5 mr-2 text-emerald-400" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
         </svg> กำลังโหลด...
       </div>`
-
-      // Swap #main-content → box เพื่อให้ render functions เขียนลง tab แทน (pattern จาก dashboard.js)
-      const mainEl = document.getElementById('main-content')
-      if (mainEl) mainEl.id = 'main-content-bak'
-      box.id = 'main-content'
       try {
         if (tabId === 'students') {
           await window._openStudentManager(classId)
@@ -3271,14 +3288,12 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
         } else if (tabId === 'grades') {
           await renderGradesGrid(teacher, cls)
         }
-      } finally {
-        // Restore IDs และ nav highlight
-        box.id = 'cd-tab-content'
-        const bak = document.getElementById('main-content-bak')
-        if (bak) bak.id = 'main-content'
-        setActiveNav('my-classes')
-        setTitle('ห้องเรียน')
+      } catch (err) {
+        console.error(err)
+        currentBox.innerHTML = `<div class="p-6 text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ</div>`
       }
+      setActiveNav('my-classes')
+      setTitle('ห้องเรียน')
     }
     document.querySelectorAll('.cd-tab').forEach(t =>
       t.addEventListener('click', () => loadTab(t.dataset.tab))
