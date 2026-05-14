@@ -20,7 +20,7 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
          getTeacherExamRequests, reviewExamRequest, updateExamResult,
          getTeacherPackageAccess,
-         getClassScheduleLinks,
+         getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
          getClassrooms, assignClassroom } from './api.js'
 import { supabase } from './supabase.js'
 
@@ -2207,94 +2207,54 @@ export async function renderMyClasses(teacher) {
             : c.skill_group
               ? { text: `กลุ่มทักษะ: ${c.skill_group}`, cls: 'bg-blue-50 text-blue-700' }
               : null
+          const cr        = c.classroom_id ? classroomMap[c.classroom_id] : null
+          const nextMins  = _nextPeriodMins(c.id, linksByClass, scheduleMap, periodMap)
+          const countdown = (() => {
+            if (!(linksByClass[c.id]??[]).length)
+              return `<span class="text-[11px] text-gray-400">🔗 ยังไม่ได้เชื่อมตารางสอน</span>`
+            if (nextMins === Infinity)
+              return `<span class="text-[11px] text-gray-400">📅 ไม่พบข้อมูลตาราง</span>`
+            if (nextMins <= 0)
+              return `<span class="text-[11px] text-emerald-600 font-semibold">🟢 กำลังสอนอยู่</span>`
+            if (nextMins < 60)
+              return `<span class="text-[11px] text-emerald-600">⏱ สอนในอีก ${Math.round(nextMins)} นาที</span>`
+            const h = Math.floor(nextMins/60), m = Math.round(nextMins%60)
+            if (h < 24)
+              return `<span class="text-[11px] text-blue-600">⏱ สอนในอีก ${h} ชม. ${m} นาที</span>`
+            return `<span class="text-[11px] text-gray-500">⏱ สอนในอีก ${Math.floor(h/24)} วัน</span>`
+          })()
+
           return `
-          <div class="rounded-2xl border shadow-sm p-5 hover:shadow-md transition"
-            style="background:${classColor.soft}; border-color:${classColor.border}">
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1 flex-wrap">
-                  <span class="px-2 py-0.5 bg-white/80 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
-                  ${groupBadge ? `<span class="px-2 py-0.5 ${groupBadge.cls} text-xs rounded-full">${groupBadge.text}</span>` : ''}
-                  ${c.google_sheet_id
-
-                    ? `<span class="px-2 py-0.5 bg-white/80 text-green-700 text-xs rounded-full">✓ Sheet</span>`
-                    : `<span class="px-2 py-0.5 bg-white/70 text-gray-400 text-xs rounded-full">ไม่มี Sheet</span>`}
+          <div class="rounded-2xl border shadow-sm hover:shadow-md transition cursor-pointer group"
+               style="background:${classColor.soft}; border-color:${classColor.border}"
+               onclick="window._openClassDetail(${c.id})">
+            <div class="p-4">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                    <span class="px-2 py-0.5 bg-white/80 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
+                    ${groupBadge ? `<span class="px-2 py-0.5 ${groupBadge.cls} text-xs rounded-full">${groupBadge.text}</span>` : ''}
+                    ${c.google_sheet_id
+                      ? `<span class="px-2 py-0.5 bg-white/80 text-green-700 text-xs rounded-full">✓ Sheet</span>`
+                      : ''}
+                  </div>
+                  <h3 class="font-bold text-gray-800 text-base">${ms?.subject_name??'—'}</h3>
+                  <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.text}">${c.class_name}</span>
+                    ${cr ? `<span class="ml-2 text-[11px] text-gray-400">📍 ${cr.building} ${cr.room_number}</span>` : ''}
+                  </p>
                 </div>
-                <h3 class="font-bold text-gray-800 text-base">${ms?.subject_name??'—'}</h3>
-                <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.text}">${c.class_name}</span></p>
-              </div>
-              <!-- Actions -->
-              <div class="flex flex-col gap-1.5 flex-shrink-0">
-                <button onclick="window._openAttendance(${c.id})"
-                  class="px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition text-center">
-                  ✅ เช็คชื่อ
-                </button>
-                <button onclick="window._openGrades(${c.id})"
-                  class="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition text-center">
-                  📝 คะแนน
-                </button>
-                <button onclick="window._openStudentManager(${c.id})"
-                  class="px-3 py-1.5 bg-sky-600 text-white text-xs font-medium rounded-lg hover:bg-sky-700 transition text-center">
-                  👥 จัดการนักเรียน
-                </button>
-                <button onclick="window._openPP5Doc(${c.id})"
-                  class="px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition text-center">
-                  📄 ปพ.5
-                </button>
-                ${c.google_sheet_id ? `
-                <button onclick="window._openSheetToolsModal(${c.id})"
-                  class="px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition text-center">
-                  📄 จัดการชีท
-                </button>` : copyTemplate?.id ? `
-                <button onclick="window._openClassCopyModal(${c.id})"
-                  class="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition text-center">
-                  🔗 ทำสำเนาชีท
-                </button>` : ''}
-                <div class="flex gap-1">
-                  <button onclick="window._editClass(${c.id})"
-                    class="flex-1 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition text-center">
-                    แก้ไข
-                  </button>
-                  <button onclick="window._deleteClass(${c.id},'${c.class_name}')"
-                    class="flex-1 py-1.5 border border-red-100 text-red-400 text-xs font-medium rounded-lg hover:bg-red-50 transition text-center">
-                    ลบ
-                  </button>
+                <div class="flex gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <button onclick="event.stopPropagation();window._openCombinedEdit(${c.id})"
+                    class="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-white/70 rounded-lg transition text-sm" title="แก้ไข">✏️</button>
+                  <button onclick="event.stopPropagation();window._deleteClass(${c.id},'${c.class_name}')"
+                    class="p-1.5 text-red-300 hover:text-red-500 hover:bg-white/70 rounded-lg transition text-sm" title="ลบ">🗑️</button>
                 </div>
               </div>
+              <div class="mt-3 pt-2.5 border-t border-white/60 flex items-center justify-between">
+                ${countdown}
+                <span class="text-[11px] text-gray-400 group-hover:text-indigo-500 transition">เปิดห้องเรียน →</span>
+              </div>
             </div>
-            <!-- ตารางสอน -->
-            <div class="mt-3 pt-3 border-t border-white/70">
-              ${(linksByClass[c.id] ?? []).length > 0 ? `
-              <div class="flex items-start gap-1.5 flex-wrap">
-                <span class="text-[10px] text-gray-400 mt-0.5 mr-0.5 flex-shrink-0">🔗</span>
-                ${_scheduleChips(c.id, linksByClass, scheduleMap, periodMap)}
-                <button onclick="window._openScheduleLinkModal(${c.id})"
-                  class="text-[10px] px-2 py-0.5 rounded-lg border border-gray-200 text-gray-400 hover:text-indigo-500 hover:border-indigo-200 transition">
-                  แก้ไข
-                </button>
-              </div>` : `
-              <button onclick="window._openScheduleLinkModal(${c.id})"
-                class="w-full py-2 rounded-xl border-2 border-dashed border-indigo-200 text-indigo-400 text-xs font-medium
-                       hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-600 transition flex items-center justify-center gap-1.5">
-                🔗 เชื่อมโยงตารางสอน
-              </button>`}
-            </div>
-            <!-- ห้องสอน -->
-            <div class="mt-2">
-              ${c.classroom_id && classroomMap[c.classroom_id] ? (() => {
-                const cr = classroomMap[c.classroom_id]
-                return `<div class="flex items-center gap-1.5">
-                  <span class="text-xs text-gray-500">📍</span>
-                  <span class="text-xs font-medium text-gray-700">${cr.building} ห้อง ${cr.room_number}${cr.name ? ` (${cr.name})` : ''}</span>
-                  <button onclick="window._assignClassroom(${c.id})"
-                    class="ml-auto text-[10px] text-gray-400 hover:text-indigo-500 transition">แก้ไข</button>
-                </div>`
-              })() : `<button onclick="window._assignClassroom(${c.id})"
-                class="w-full py-1.5 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs hover:border-indigo-300 hover:text-indigo-500 transition flex items-center justify-center gap-1">
-                📍 ระบุห้องสอน
-              </button>`}
-            </div>
-
           </div>`
         }).join('')}
             </div>
@@ -2302,7 +2262,12 @@ export async function renderMyClasses(teacher) {
         }).join('')}
       </div>`}
     </div>`)
-    window._openPP5Doc = (classId) => openPP5Doc(classId)
+    window._openPP5Doc     = (classId) => openPP5Doc(classId)
+    window._openClassDetail = (classId) => renderClassDetail(teacher, classId, { classes, scheduleMap, linksByClass, periodMap, classrooms, copyCfg })
+    window._openCombinedEdit = (classId) => {
+      const cls = window._classCache?.[classId]
+      if (cls) _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderMyClasses(teacher))
+    }
 
     window._assignClassroom = (classId) => {
       const cls = window._classCache?.[classId]
@@ -3129,6 +3094,348 @@ export async function renderMyClasses(teacher) {
     }
   } catch { showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ', 'error') }
 
+}
+
+// ─── Class Detail Page ────────────────────────────────────────────────────────
+
+export async function renderClassDetail(teacher, classId, ctx = {}) {
+  setActiveNav('my-classes')
+  setTitle('ห้องเรียน')
+  setContent(`<div class="flex justify-center py-12 text-gray-400">
+    <svg class="animate-spin h-6 w-6 mr-3 text-emerald-400" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg> กำลังโหลด...
+  </div>`)
+
+  try {
+    // โหลดข้อมูลห้อง (refresh เพื่อให้ได้ข้อมูลล่าสุด)
+    const [classes, copyCfg, classrooms] = await Promise.all([
+      getMyClasses(teacher?.id ?? null),
+      getSystemConfig().catch(() => ({})),
+      getClassrooms().catch(() => []),
+    ])
+    const cls = classes.find(c => c.id === classId)
+    if (!cls) { renderMyClasses(teacher); return }
+    const ms           = cls.master_subjects ?? {}
+    const classroomMap = Object.fromEntries(classrooms.map(r => [r.id, r]))
+    const cr           = cls.classroom_id ? classroomMap[cls.classroom_id] : null
+    window._classCache = Object.fromEntries(classes.map(c => [c.id, c]))
+
+    // schedule data for combined edit
+    const academicYear = parseInt(copyCfg.academicYear ?? 2568)
+    const semester     = parseInt(copyCfg.semester ?? 1)
+    const [schedule, links, periods] = await Promise.all([
+      teacher?.id ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
+      teacher?.id ? getClassScheduleLinks(teacher.id).catch(() => []) : Promise.resolve([]),
+      getPeriods().catch(() => []),
+    ])
+    const linksByClass = {}
+    links.forEach(l => {
+      if (!linksByClass[l.class_id]) linksByClass[l.class_id] = []
+      linksByClass[l.class_id].push(l.teacher_schedule_id)
+    })
+    const scheduleMap = Object.fromEntries(schedule.map(s => [s.id, s]))
+    const periodMap   = Object.fromEntries(periods.map(p => [p.period_no, p]))
+
+    const copyTemplate = getCopyTemplateForClass(copyCfg, cls)
+    const isReligion   = ['AGM','AGMVOC'].includes(ms.subject_group)
+    const sheetBtns    = cls.google_sheet_id
+      ? `<button onclick="window._openSheetToolsModal(${classId})" class="btn-action teal">⚙️ จัดการชีท</button>`
+      : copyTemplate?.id
+        ? `<button onclick="window._openClassCopyModal(${classId})" class="btn-action amber">🔗 ทำสำเนาชีท</button>`
+        : ''
+
+    setContent(`
+    <div class="max-w-5xl mx-auto animate-fade">
+      <!-- Breadcrumb -->
+      <div class="flex items-center gap-2 mb-4 text-sm text-gray-500">
+        <button onclick="window._backToClasses()"
+          class="hover:text-gray-800 transition flex items-center gap-1">
+          ← ห้องเรียนของฉัน
+        </button>
+        <span class="text-gray-300">/</span>
+        <span class="text-gray-700 font-medium">${_htmlEsc(ms.subject_name??'')} · ${_htmlEsc(cls.class_name??'')}</span>
+      </div>
+
+      <!-- Header card -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-2 flex-wrap">
+              <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-mono rounded-full">${_htmlEsc(ms.subject_code??'—')}</span>
+              ${cls.skill_group ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">กลุ่มทักษะ: ${_htmlEsc(cls.skill_group)}</span>` : ''}
+              ${isReligion ? `<span class="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-full">กลุ่มวิชาศาสนา</span>` : ''}
+              ${cls.google_sheet_id ? `<span class="px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full">✓ Sheet</span>` : ''}
+            </div>
+            <h2 class="text-xl font-bold text-gray-800">${_htmlEsc(ms.subject_name??'—')}</h2>
+            <p class="text-gray-500 mt-1">
+              ห้อง: <span class="font-semibold text-gray-700">${_htmlEsc(cls.class_name??'')}</span>
+              ${cr ? `<span class="ml-3 text-sm text-gray-400">📍 ${_htmlEsc(cr.building)} ห้อง ${_htmlEsc(cr.room_number)}${cr.name?` (${_htmlEsc(cr.name)})`:''}</span>` : ''}
+            </p>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="window._openPP5Doc(${classId})"
+              class="px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition">📄 ปพ.5</button>
+            ${sheetBtns}
+            <div class="w-px h-6 bg-gray-200"></div>
+            <button onclick="window._openCombinedEdit2(${classId})"
+              class="px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-50 transition">✏️ แก้ไข</button>
+            <button onclick="window._deleteClass(${classId},'${_htmlEsc(cls.class_name??'')}')"
+              class="px-3 py-2 border border-red-100 text-red-400 text-xs font-semibold rounded-xl hover:bg-red-50 transition">🗑️ ลบ</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="flex border-b border-gray-100">
+          <button class="cd-tab active-tab px-5 py-3.5 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px" data-tab="students">👥 จัดการนักเรียน</button>
+          <button class="cd-tab px-5 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition" data-tab="attendance">✅ เช็คชื่อ</button>
+          <button class="cd-tab px-5 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition" data-tab="grades">📝 คะแนน</button>
+        </div>
+        <div id="cd-tab-content" class="min-h-96">
+          <div class="flex justify-center py-12 text-gray-400">กำลังโหลด...</div>
+        </div>
+      </div>
+    </div>
+    <style>
+      .btn-action { display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer;border:none; }
+      .btn-action.teal { background:#0d9488;color:#fff; } .btn-action.teal:hover { background:#0f766e; }
+      .btn-action.amber { background:#f59e0b;color:#fff; } .btn-action.amber:hover { background:#d97706; }
+    </style>`)
+
+    // Tab switching
+    const tabContent = () => document.getElementById('cd-tab-content')
+    window._backToClasses = () => renderMyClasses(teacher)
+    window._openPP5Doc    = (cid) => openPP5Doc(cid)
+    window._openCombinedEdit2 = (cid) => {
+      const c = window._classCache?.[cid]
+      if (c) _openCombinedEditModal(teacher, c, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderClassDetail(teacher, cid))
+    }
+    window._deleteClass = async (cid, name) => {
+      if (!confirm(`ยืนยันลบห้องเรียน "${name}"?`)) return
+      try {
+        await deleteClass(cid); showToast(`ลบ "${name}" แล้ว`, 'success')
+        renderMyClasses(teacher)
+      } catch (err) { showToast('ลบไม่สำเร็จ', 'error') }
+    }
+
+    const loadTab = async (tabId) => {
+      document.querySelectorAll('.cd-tab').forEach(t => {
+        const isActive = t.dataset.tab === tabId
+        t.className = isActive
+          ? 'cd-tab active-tab px-5 py-3.5 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px'
+          : 'cd-tab px-5 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition'
+      })
+      const box = tabContent()
+      if (!box) return
+      box.innerHTML = `<div class="flex justify-center py-12 text-gray-400">กำลังโหลด...</div>`
+      if (tabId === 'students') {
+        window._openStudentManager(classId)
+      } else if (tabId === 'attendance') {
+        renderAttendanceGrid(teacher, cls)
+      } else if (tabId === 'grades') {
+        renderGradesGrid(teacher, cls)
+      }
+    }
+    document.querySelectorAll('.cd-tab').forEach(t =>
+      t.addEventListener('click', () => loadTab(t.dataset.tab))
+    )
+    loadTab('students')
+
+  } catch (err) {
+    console.error(err)
+    showToast('โหลดข้อมูลไม่สำเร็จ', 'error')
+  }
+}
+
+// ─── Combined Edit Modal (ข้อมูล + ตารางสอน + ห้องสอน) ───────────────────────
+
+function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, onSaved) {
+  document.getElementById('combined-edit-modal')?.remove()
+
+  const TAB_STYLE = (active) =>
+    active
+      ? 'cem-tab px-4 py-2.5 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px'
+      : 'cem-tab px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition'
+
+  // --- ข้อมูลห้องสอน ---
+  const buildingList = [...new Set(classrooms.map(r => r.building))].sort()
+  const crCur = cls.classroom_id ? classrooms.find(r => r.id === cls.classroom_id) : null
+
+  // --- ตารางสอนที่เชื่อมโยง ---
+  const linkedIds    = linksByClass[cls.id] ?? []
+  const scheduleList = schedule.filter(s => {
+    const ms = cls.master_subjects ?? {}
+    return !s.is_free && (s.subject_id === ms.id || s.class_name === cls.class_name || s.subject_name === ms.subject_name)
+  })
+  const DAY_TH = ['','จ','อ','พ','พฤ','ศ','ส','อา']
+
+  const modal = document.createElement('div')
+  modal.id = 'combined-edit-modal'
+  modal.className = 'fixed inset-0 z-[500] flex items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between px-6 pt-5 pb-0 flex-shrink-0">
+        <h3 class="font-bold text-gray-800 text-base">✏️ แก้ไขห้องเรียน</h3>
+        <button id="cem-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <p class="text-xs text-gray-400 px-6 pb-3 flex-shrink-0">${_htmlEsc(cls.master_subjects?.subject_name??'')} · ${_htmlEsc(cls.class_name??'')}</p>
+      <!-- Tab bar -->
+      <div class="flex border-b border-gray-100 px-6 flex-shrink-0">
+        <button class="${TAB_STYLE(true)}" data-cem="info">ข้อมูลพื้นฐาน</button>
+        <button class="${TAB_STYLE(false)}" data-cem="schedule">ตารางสอน</button>
+        <button class="${TAB_STYLE(false)}" data-cem="room">ห้องสอน</button>
+      </div>
+      <!-- Tab content -->
+      <div id="cem-content" class="flex-1 overflow-y-auto px-6 py-4"></div>
+      <!-- Footer -->
+      <div class="flex gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
+        <button id="cem-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button id="cem-save"   class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
+      </div>
+    </div>`
+
+  document.body.appendChild(modal)
+
+  const cemContent = () => modal.querySelector('#cem-content')
+  let activeTab = 'info'
+
+  const infoHTML = () => `
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">ชื่อห้อง / ระดับชั้น</label>
+        <input id="cem-classname" type="text" value="${_htmlEsc(cls.class_name??'')}"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">กลุ่มทักษะ</label>
+        <input id="cem-skillgroup" type="text" value="${_htmlEsc(cls.skill_group??'')}"
+          placeholder="เช่น วิชาการ, ภาษา, ชีวิต"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">Google Sheet ID</label>
+        <input id="cem-sheetid" type="text" value="${_htmlEsc(cls.google_sheet_id??'')}"
+          placeholder="ID จาก URL ของ Sheet"
+          class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono" />
+      </div>
+    </div>`
+
+  const scheduleHTML = () => {
+    const allSchedule = schedule.filter(s => !s.is_free)
+    if (!allSchedule.length)
+      return `<p class="text-sm text-gray-400 text-center py-8">ยังไม่มีตารางสอน กรุณาสร้างตารางสอนก่อน</p>`
+    return `
+      <p class="text-xs text-gray-400 mb-3">เลือกคาบที่เชื่อมโยงกับห้องเรียนนี้</p>
+      <div class="space-y-2">
+        ${allSchedule.map(s => {
+          const p = periodMap[s.period_no]
+          const checked = linkedIds.includes(s.id) ? 'checked' : ''
+          const timeStr = p?.start_time ? p.start_time.slice(0,5) : `คาบ ${s.period_no}`
+          return `
+          <label class="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
+            <input type="checkbox" class="cem-sched-chk w-4 h-4 accent-indigo-600 rounded" value="${s.id}" ${checked}/>
+            <div class="flex-1 text-sm">
+              <span class="font-medium text-gray-700">${DAY_TH[s.day_of_week]}</span>
+              <span class="text-gray-500 ml-2">${timeStr}</span>
+              ${s.subject_name ? `<span class="text-xs text-gray-400 ml-2">${_htmlEsc(s.subject_name)}</span>` : ''}
+            </div>
+          </label>`
+        }).join('')}
+      </div>`
+  }
+
+  const roomHTML = () => `
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">อาคาร</label>
+        <select id="cem-building" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+          <option value="">— ไม่ระบุ —</option>
+          ${buildingList.map(b => `<option value="${b}" ${crCur?.building===b?'selected':''}>${b}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">ห้อง</label>
+        <select id="cem-room" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+          <option value="">— เลือกอาคารก่อน —</option>
+        </select>
+      </div>
+    </div>`
+
+  const showTab = (tabId) => {
+    activeTab = tabId
+    modal.querySelectorAll('.cem-tab').forEach(t => {
+      t.className = TAB_STYLE(t.dataset.cem === tabId)
+    })
+    const box = cemContent()
+    if (tabId === 'info')     { box.innerHTML = infoHTML() }
+    else if (tabId === 'schedule') { box.innerHTML = scheduleHTML() }
+    else {
+      box.innerHTML = roomHTML()
+      const buildSel = box.querySelector('#cem-building')
+      const roomSel  = box.querySelector('#cem-room')
+      const fillRooms = (b) => {
+        const rooms = classrooms.filter(r => r.building === b)
+        roomSel.innerHTML = `<option value="">— เลือกห้อง —</option>` +
+          rooms.map(r => `<option value="${r.id}" ${r.id===cls.classroom_id?'selected':''}>${r.room_number}${r.name?` — ${r.name}`:''}</option>`).join('')
+      }
+      if (crCur?.building) fillRooms(crCur.building)
+      buildSel.addEventListener('change', () => fillRooms(buildSel.value))
+    }
+  }
+
+  showTab('info')
+  modal.querySelectorAll('.cem-tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.cem)))
+  modal.querySelector('#cem-close').addEventListener('click', () => modal.remove())
+  modal.querySelector('#cem-cancel').addEventListener('click', () => modal.remove())
+
+  modal.querySelector('#cem-save').addEventListener('click', async () => {
+    const btn = modal.querySelector('#cem-save')
+    btn.disabled = true; btn.textContent = '⏳'
+    try {
+      const errors = []
+      // 1. ข้อมูลพื้นฐาน
+      const newName  = modal.querySelector('#cem-classname')?.value.trim()
+      const newSkill = modal.querySelector('#cem-skillgroup')?.value.trim()
+      const newSheet = modal.querySelector('#cem-sheetid')?.value.trim()
+      if (newName !== undefined) {
+        await updateClass(cls.id, {
+          class_name: newName || cls.class_name,
+          skill_group: newSkill || null,
+          google_sheet_id: newSheet || null,
+        }).catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
+      }
+      // 2. ตารางสอน
+      const chks = [...modal.querySelectorAll('.cem-sched-chk')]
+      if (chks.length) {
+        const selected = chks.filter(c => c.checked).map(c => parseInt(c.value))
+        const toAdd    = selected.filter(id => !linkedIds.includes(id))
+        const toRemove = linkedIds.filter(id => !selected.includes(id))
+        await Promise.all([
+          ...toAdd.map(id => linkClassToSchedule(cls.id, id).catch(e => errors.push(e.message??''))),
+          ...toRemove.map(id => unlinkClassFromSchedule(cls.id, id).catch(e => errors.push(e.message??''))),
+        ])
+      }
+      // 3. ห้องสอน
+      const roomSel = modal.querySelector('#cem-room')
+      if (roomSel) {
+        const roomId = roomSel.value ? parseInt(roomSel.value) : null
+        await assignClassroom(cls.id, roomId).catch(e => errors.push('ห้องสอน: ' + (e.message??'')))
+      }
+
+      if (errors.length) showToast('บันทึกบางส่วนไม่สำเร็จ', 'warning')
+      else showToast('บันทึกแล้ว ✅', 'success')
+      modal.remove()
+      if (onSaved) onSaved()
+    } catch (e) {
+      showToast('บันทึกไม่สำเร็จ: ' + (e.message??''), 'error')
+      btn.disabled = false; btn.textContent = 'บันทึก'
+    }
+  })
+
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
 }
 
 // ─── Score Column Management ──────────────────────────────────────────────────
