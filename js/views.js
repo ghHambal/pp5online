@@ -1788,7 +1788,11 @@ export async function renderSettings() {
   </div>`)
 
   try {
-    const cfg = await getSystemConfig()
+    const [cfg, allDepts] = await Promise.all([
+      getSystemConfig(),
+      getDepartments().catch(() => []),
+    ])
+    const deptCodes = [...new Set(allDepts.map(d => d.dept_code).filter(Boolean))].sort()
 
     // ─── Field renderers ────────────────────────────────────────────────────────
     const COLOR_DEFAULTS = {
@@ -2100,9 +2104,19 @@ export async function renderSettings() {
         ]),
         section('AI วิเคราะห์ตาราง (Gemini)', [
           { key:'scheduleVisionEnabled', label:'เปิดฟีเจอร์วิเคราะห์รูปตาราง', type:'toggle' },
-          { key:'geminiApiKey',   label:'Gemini API Key',  type:'password' },
+          { key:'geminiApiKey',   label:'Gemini API Key (กลาง / fallback)',  type:'password',
+            hint:'ใช้เมื่อกลุ่มสาระไม่มี key ของตัวเอง' },
           { key:'geminiModel',    label:'Gemini Model',    type:'text', placeholder:'gemini-1.5-flash' },
         ]),
+        section('Gemini API Key แยกต่อกลุ่มสาระ', deptCodes.length
+          ? deptCodes.map(code => ({
+              key:  `geminiKey_${code}`,
+              label: `Key กลุ่มสาระ ${code}`,
+              type: 'password',
+              hint: `ครูที่มี dept = ${code} จะใช้ key นี้โดยอัตโนมัติ`,
+            }))
+          : [{ key:'geminiKey_MATH', label:'Key กลุ่มสาระ MATH (ตัวอย่าง)', type:'password' }]
+        ),
       ].join('')
 
       return ''

@@ -139,6 +139,12 @@ function setActiveNav(nav) {
 
 // ─── View: Overview ───────────────────────────────────────────────────────────
 
+// ── Gemini key resolver ───────────────────────────────────────────────────────
+function _resolveGeminiKey(cfg, teacher) {
+  const dept = teacher?.dept ?? ''
+  return (dept && cfg[`geminiKey_${dept}`]) || cfg.geminiApiKey || ''
+}
+
 // ── Schedule-link helpers ─────────────────────────────────────────────────────
 
 const _DAYS_TH_SHORT = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
@@ -882,7 +888,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
   }
 
   const generateDocWithGemini = async () => {
-    const geminiKey = cfg.geminiApiKey ?? ''
+    const geminiKey = _resolveGeminiKey(cfg, teacher)
     if (!geminiKey) throw new Error('ยังไม่ได้ตั้งค่า Gemini API Key ในหน้าแอดมิน')
     const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
     const tableMode = isExtra
@@ -1030,7 +1036,7 @@ Return JSON object เท่านั้น:
     // ── อัปโหลดรูป → Gemini Vision อ่านตาราง ────────────────────────────────
     modal.querySelector('#cd2-img-input').addEventListener('change', async e => {
       const file = e.target.files?.[0]; if (!file) return
-      const geminiKey = cfg.geminiApiKey ?? ''
+      const geminiKey = _resolveGeminiKey(cfg, teacher)
       if (!geminiKey) { showToast('กรุณาตั้งค่า Gemini API Key ในหน้าแอดมิน', 'error'); return }
 
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
@@ -6844,7 +6850,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   const cfg      = cfgIn ?? await getSystemConfig().catch(()=>({}))
   const hasFri   = cfg.hasFriday === 'true'
   const visionOn = cfg.scheduleVisionEnabled === 'true'
-  const geminiKey= cfg.geminiApiKey ?? ''
+  const geminiKey= _resolveGeminiKey(cfg, teacher)
 
   const [periods, subjects, scheduleData, roomColorRows, links, allClasses] = await Promise.all([
     getPeriods().catch(()=>[]),
@@ -7651,7 +7657,7 @@ export async function renderScheduleBuilder(teacher, onComplete) {
   const curYear  = parseInt(cfg.academicYear ?? 2568)
   const curSem   = parseInt(cfg.semester ?? 1)
   const visionOn = cfg.scheduleVisionEnabled === 'true'
-  const geminiKey= cfg.geminiApiKey ?? ''
+  const geminiKey= _resolveGeminiKey(cfg, teacher)
 
   setActiveNav('schedule')
   setTitle('สร้างตารางสอน')
