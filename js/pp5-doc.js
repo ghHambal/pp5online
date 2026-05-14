@@ -606,7 +606,7 @@ function _buildPage1(d) {
 // ─── Page 2: มาตรฐานการเรียนรู้และตัวชี้วัด ─────────────────────────────────
 
 function _buildPage2(d) {
-  const { cls, ms, credit, cfg, courseDoc, teacher, academicYear, semester } = d
+  const { cls, ms, credit, cfg, courseDoc, teacher, deptNameTH, academicYear, semester } = d
 
   const cols    = Array.isArray(courseDoc?.columns) ? courseDoc.columns : ['มาตรฐานการเรียนรู้','ตัวชี้วัด']
   const rows    = Array.isArray(courseDoc?.rows)    ? courseDoc.rows    : Array.from({length:20},()=>cols.map(()=>''))
@@ -855,7 +855,7 @@ function _buildScorePage(d, chunk, colSlice, startNo, showRatio) {
 // ─── Page 5: รายละเอียดสัปดาห์/คาบ/วันที่สอน ────────────────────────────────
 
 function _buildPage5(d) {
-  const { cls, ms, credit, teacher, academicYear, semester, sessions } = d
+  const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions } = d
 
   // group sessions into chunks of 3 columns × N rows
   const COLS = 3
