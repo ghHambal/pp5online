@@ -155,90 +155,99 @@ function _getCSS() {
     .page {
       width: 210mm;
       min-height: 297mm;
-      padding: 15mm 15mm 15mm 20mm;
+      padding: 12mm 12mm 12mm 18mm;
       page-break-after: always;
       position: relative;
     }
-    .page:last-child { page-break-after: avoid; }
-
-    .page-landscape {
-      width: 297mm;
-      min-height: 210mm;
-      padding: 10mm 10mm 10mm 12mm;
+    .page-tight {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 8mm 8mm 8mm 8mm;
       page-break-after: always;
+      position: relative;
     }
+    .page:last-child, .page-tight:last-child { page-break-after: avoid; }
 
     @media print {
       @page { size: A4 portrait; margin: 0; }
-      @page landscape { size: A4 landscape; margin: 0; }
-      .page-landscape { page: landscape; }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
     }
 
     table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #000; padding: 2px 4px; vertical-align: middle; }
+    td, th { border: 1px solid #000; padding: 2px 3px; vertical-align: middle; }
     th { font-weight: 600; text-align: center; }
 
     .text-center { text-align: center; }
     .text-right  { text-align: right; }
-    .text-left   { text-align: left; }
     .font-bold   { font-weight: 700; }
-    .text-sm     { font-size: 9pt; }
-    .text-xs     { font-size: 8pt; }
-    .text-lg     { font-size: 13pt; }
-    .text-xl     { font-size: 16pt; }
-    .text-2xl    { font-size: 20pt; }
 
-    /* Page 1 */
-    .cover-header  { text-align: center; margin-bottom: 6mm; }
-    .cover-logo    { width: 22mm; height: 22mm; object-fit: contain; margin-bottom: 2mm; }
+    /* ── Page 1 ── */
+    .cover-header  { text-align: center; margin-bottom: 5mm; }
+    .cover-logo    { width: 22mm; height: 22mm; object-fit: contain; margin: 0 auto 2mm; display:block; }
     .cover-title   { font-size: 12pt; font-weight: 600; margin-bottom: 2mm; }
-    .cover-school  { font-size: 18pt; font-weight: 700; }
+    .cover-school  { font-size: 18pt; font-weight: 700; line-height: 1.2; }
     .cover-address { font-size: 13pt; font-weight: 600; }
-    .cover-info    { width: 100%; margin: 4mm 0; border: none; }
-    .cover-info td { border: none; padding: 1.5px 4px; font-size: 10pt; }
-    .cover-info td:first-child { width: 48mm; }
-    .level-box     { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; }
-    .checkbox      { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #000; vertical-align: middle; text-align: center; line-height: 8px; font-size: 8pt; }
+    .level-row     { font-size: 10pt; margin: 2mm 0 4mm; }
+    .checkbox      { display: inline-block; width: 11px; height: 11px; border: 1.5px solid #000;
+                     vertical-align: middle; text-align: center; line-height: 9px; font-size: 8pt; margin-right: 2px; }
+
+    .cover-info    { width: 100%; border: none; margin: 0 0 3mm; }
+    .cover-info td { border: none; padding: 1px 3px; font-size: 10pt; }
+    .cover-info .lbl { width: 44mm; }
 
     .grade-table   { margin: 3mm 0; font-size: 9pt; }
-    .eval-table    { margin: 3mm 0; font-size: 9pt; }
+    .eval-table    { margin: 2mm 0; font-size: 9pt; }
 
-    .sign-section  { margin-top: 6mm; }
-    .sign-row      { display: flex; justify-content: space-between; margin-bottom: 4mm; }
-    .sign-block    { flex: 1; text-align: center; }
-    .sign-img      { height: 14mm; max-width: 40mm; object-fit: contain; margin: 0 auto 1mm; display: block; }
-    .sign-line     { border-bottom: 1px solid #000; width: 55mm; margin: 0 auto 1mm; }
-    .sign-label    { font-size: 8.5pt; }
-    .sign-name     { font-size: 9pt; font-weight: 600; }
+    .approve-section { border: 1px solid #000; padding: 3mm 5mm 4mm; margin-top: 3mm; }
+    .approve-title   { font-weight: 700; font-size: 10pt; margin-bottom: 6mm; }
+    .sign-row        { display: flex; justify-content: space-around; }
+    .sign-block      { text-align: center; flex: 1; }
+    .sign-img        { height: 12mm; max-width: 36mm; object-fit: contain; display: block; margin: 0 auto 1mm; }
+    .sign-line       { border-bottom: 1px solid #000; width: 52mm; margin: 0 auto 1mm; height: 12mm; display:flex; align-items:flex-end; justify-content:center; }
+    .sign-name       { font-size: 9pt; font-weight: 600; }
+    .sign-label      { font-size: 8.5pt; }
+    .propose-row     { display: flex; justify-content: space-around; margin-top: 2mm; }
+    .propose-block   { text-align: center; flex: 1; }
 
-    .approve-section { border: 1px solid #000; padding: 3mm 4mm; margin-top: 3mm; }
-    .approve-title   { font-weight: 700; font-size: 10pt; margin-bottom: 2mm; }
-
-    /* Page 2 */
-    .p2-header { margin-bottom: 3mm; font-size: 9.5pt; }
+    /* ── Page 2 ── */
+    .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; }
+    .p2-hdr table { border: none; }
+    .p2-hdr td    { border: none; padding: 1px 2px; }
     .std-table td:first-child { width: 28mm; }
-    .obj-section { margin-top: 3mm; font-size: 9.5pt; }
-    .char-list   { column-count: 2; margin-top: 2mm; font-size: 9pt; }
-    .char-item   { break-inside: avoid; padding: 1px 0; }
+    .std-table td { height: 7.5mm; font-size: 9.5pt; }
+    .obj-row  { font-size: 9pt; margin-top: 2mm; }
+    .char-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4mm; font-size: 9pt; margin-top: 2mm; }
 
-    /* Page 3 attendance */
-    .att-table th { font-size: 7.5pt; padding: 1px; }
-    .att-table td { font-size: 8pt; padding: 1px 2px; }
-    .att-name      { font-size: 8.5pt; white-space: nowrap; }
-    .att-absent    { color: #c00; font-weight: 600; }
-    .att-leave     { color: #00c; font-weight: 600; }
-    .att-sick      { color: #c60; font-weight: 600; }
+    /* ── Page 3 attendance ── */
+    .att-hdr   { font-size: 9pt; margin-bottom: 1.5mm; }
+    .att-legend { font-size: 8pt; margin-bottom: 1.5mm; }
+    .att-table  { table-layout: fixed; font-size: 6.5pt; }
+    .att-table th { padding: 1px; font-size: 6.5pt; }
+    .att-table td { padding: 0 1px; font-size: 6.5pt; text-align: center; }
+    .att-name  { text-align: left !important; font-size: 7.5pt; white-space: nowrap; overflow: hidden; }
+    .att-code  { font-size: 7pt; }
+    .att-absent { color: #c00; font-weight: 700; }
+    .att-leave  { color: #00c; font-weight: 700; }
+    .att-sick   { color: #c60; font-weight: 700; }
 
-    /* Page 4 scores */
-    .score-table th { font-size: 7pt; padding: 1px; writing-mode: vertical-lr; height: 22mm; }
-    .score-table th.normal { writing-mode: horizontal-tb; height: auto; }
+    /* ── Page 4 scores ── */
+    .score-table { table-layout: fixed; }
+    .score-table th.normal { font-size: 8pt; padding: 2px 3px; vertical-align: middle; }
+    .score-table th.vcol  { padding: 1px; vertical-align: bottom; height: 24mm; overflow: hidden; }
+    .score-table th.vcol .vwrap {
+      display: block; transform: rotate(-90deg); transform-origin: center center;
+      white-space: nowrap; font-size: 7pt; font-weight: 600;
+      width: 22mm; margin: auto; text-align: left;
+    }
     .score-table td { font-size: 8pt; padding: 1px 2px; text-align: center; }
-    .score-table td.name-cell { text-align: left; font-size: 8pt; white-space: nowrap; }
+    .score-table td.nm { text-align: left; font-size: 8pt; white-space: nowrap; overflow: hidden; }
+    .score-sig { margin-top: 6mm; display: flex; justify-content: space-between; font-size: 9pt; gap: 4mm; }
+    .score-sig-block { flex: 1; text-align: center; }
 
-    /* Page 5 */
-    .date-table td { font-size: 9pt; padding: 2px 5px; }
-    .date-table th { font-size: 9pt; padding: 2px 5px; }
+    /* ── Page 5 ── */
+    .date-table th { font-size: 9pt; padding: 2px 4px; }
+    .date-table td { font-size: 9pt; padding: 2px 4px; text-align: center; }
   `
 }
 
@@ -300,26 +309,27 @@ function _buildPage1(d) {
     }
   }
 
-  const signImg = (url, name, label) => `
+  const signBlock = (url, name, label) => `
     <div class="sign-block">
-      ${url ? `<img class="sign-img" src="${_esc(url)}" />` : '<div style="height:14mm"></div>'}
-      <div class="sign-line"></div>
+      <div class="sign-line">
+        ${url ? `<img class="sign-img" src="${_esc(url)}" />` : ''}
+      </div>
       <div class="sign-name">${name}</div>
       <div class="sign-label">${label}</div>
     </div>`
 
   return `
-  <div class="page" style="display:flex;flex-direction:column;">
+  <div class="page">
     <div style="text-align:right;font-size:10pt;font-weight:700;">ปพ5</div>
 
     <div class="cover-header">
       <div class="cover-title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</div>
-      <div style="font-size:10pt;margin-bottom:3mm;">
-        ระดับชั้นมัธยมศึกษา
-        <span class="level-box"><span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3)</span>
-        <span class="level-box"><span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)</span>
+      <div class="level-row">
+        ระดับชั้นมัธยมศึกษา &nbsp;
+        <span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3) &emsp;
+        <span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)
       </div>
-      ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" />` : ''}
+      ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" />` : '<div style="height:24mm;"></div>'}
       <div class="cover-school">${schoolName}</div>
       ${schoolAddress ? `<div class="cover-address">${schoolAddress}</div>` : ''}
     </div>
@@ -412,21 +422,21 @@ function _buildPage1(d) {
     <div class="approve-section">
       <div class="approve-title">การอนุมัติผลการพัฒนาคุณภาพผู้เรียน</div>
       <div class="sign-row">
-        ${signImg('', _esc(teacher?.full_name ?? ''), 'ครูผู้สอน')}
-        ${signImg(deptHeadSign, deptHeadName, 'หัวหน้าหมวดวิชา')}
-        ${signImg(regSign, regName, 'หัวหน้างานวัดผลและประเมินผล')}
+        ${signBlock('', _esc(teacher?.full_name ?? ''), 'ครูผู้สอน')}
+        ${signBlock(deptHeadSign, deptHeadName, 'หัวหน้าหมวดวิชา')}
+        ${signBlock(regSign, regName, 'หัวหน้างานวัดผลและประเมินผล')}
       </div>
-      <div style="margin-top:3mm;font-size:10pt;font-weight:600;">เสนอเพื่อพิจารณา</div>
-      <div class="sign-row" style="margin-top:3mm;">
-        <div style="flex:1;">
-          ${signImg(acadSign, acadName, 'หัวหน้าฝ่ายบริหารวิชาการ')}
-          <div style="text-align:center;font-size:9pt;margin-top:1mm;">
-            <span class="checkbox">✓</span> อนุมัติ &nbsp;&nbsp;
-            <span class="checkbox"> </span> ไม่อนุมัติ
+      <div style="margin-top:4mm;font-size:10pt;font-weight:600;">เสนอเพื่อพิจารณา</div>
+      <div class="propose-row" style="margin-top:2mm;">
+        <div class="propose-block">
+          ${signBlock(acadSign, acadName, 'หัวหน้าฝ่ายบริหารวิชาการ')}
+          <div style="margin-top:2mm;font-size:9pt;">
+            <span class="checkbox">✓</span> อนุมัติ &emsp;
+            <span class="checkbox">&nbsp;</span> ไม่อนุมัติ
           </div>
         </div>
-        <div style="flex:1;">
-          ${signImg(dirSign, dirName, `ผู้อำนวยการ${schoolName}`)}
+        <div class="propose-block">
+          ${signBlock(dirSign, dirName, `ผู้อำนวยการ${schoolName}`)}
         </div>
       </div>
     </div>
@@ -510,8 +520,11 @@ function _buildPage3(d) {
 }
 
 function _buildAttPage(d, chunk, startNo) {
-  const { cls, ms, credit, teacher, academicYear, semester } = d
+  const { cls, ms, teacher, academicYear, semester } = d
   const ATT_COLS = 40
+  // คำนวณให้ 40 คอลัมน์พอดี A4 (content width ~194mm หลังหักขอบ)
+  // เลขที่:6 รหัส:13 ชื่อ:36 รวม:10 → เหลือ 129mm / 40 = 3.2mm
+  const COL_W = '3.2mm'
 
   const rows = chunk.map((st, idx) => {
     const stAtt  = d.attMap[st.id] ?? {}
@@ -533,53 +546,51 @@ function _buildAttPage(d, chunk, startNo) {
 
     return `<tr>
       <td class="text-center">${startNo + idx}</td>
-      <td class="text-center">${_esc(st.student_code??'')}</td>
+      <td class="att-code text-center">${_esc(st.student_code??'')}</td>
       <td class="att-name">${_esc(st.full_name??'')}</td>
       ${cells.join('')}
       <td class="text-center font-bold">${total || ''}</td>
     </tr>`
   })
 
-  const colHeaders = Array.from({length: ATT_COLS}, (_, i) => `<th style="width:5.5mm;">${i+1}</th>`).join('')
+  const colHeaders = Array.from({length: ATT_COLS}, (_, i) => `<th>${i+1}</th>`).join('')
 
   return `
-  <div class="page" style="overflow:hidden;">
-    <div style="text-align:center;font-weight:700;font-size:10pt;margin-bottom:2mm;">
+  <div class="page-tight">
+    <div style="text-align:center;font-weight:700;font-size:10pt;margin-bottom:1.5mm;">
       บันทึกการมาเรียนของนักเรียนชั้น ${_esc(cls.class_name)}
     </div>
-    <div style="font-size:9pt;margin-bottom:2mm;">
+    <div class="att-hdr">
       ปีการศึกษา ${academicYear} &nbsp; ภาคเรียนที่ ${semester} &nbsp;
       รายวิชา ${_esc(ms.subject_name??'')} รหัสวิชา ${_esc(ms.subject_code??'')} &nbsp;
-      ครูผู้สอน ${_esc(d.teacher?.full_name??'')}
+      ครูผู้สอน ${_esc(teacher?.full_name??'')}
     </div>
-    <div style="font-size:8pt;margin-bottom:2mm;">
+    <div class="att-legend">
       บันทึกคาบที่สอนที่นักเรียนไม่ได้มาเรียน:
-      <span class="att-absent">ขาด</span>&nbsp;
-      <span class="att-leave">ลา</span>&nbsp;
+      <span class="att-absent">ขาด</span>&ensp;
+      <span class="att-leave">ลา</span>&ensp;
       <span class="att-sick">ป่วย</span>
     </div>
-    <div style="overflow-x:auto;">
-    <table class="att-table" style="font-size:7.5pt;table-layout:fixed;">
+    <table class="att-table">
       <colgroup>
-        <col style="width:7mm;"/>
-        <col style="width:14mm;"/>
-        <col style="width:38mm;"/>
-        ${Array.from({length:ATT_COLS},()=>'<col style="width:5.5mm;"/>').join('')}
+        <col style="width:6mm;"/>
+        <col style="width:13mm;"/>
+        <col style="width:36mm;"/>
+        ${Array.from({length:ATT_COLS},()=>`<col style="width:${COL_W};"/>`).join('')}
         <col style="width:10mm;"/>
       </colgroup>
       <thead>
         <tr>
-          <th rowspan="2">เลขที่</th>
-          <th rowspan="2">เลขประจำตัว</th>
-          <th rowspan="2">ชื่อ - สกุล</th>
-          <th colspan="${ATT_COLS}">บันทึกการไม่มาเรียน</th>
-          <th rowspan="2">รวมเวลาไม่มาเรียน</th>
+          <th rowspan="2" style="font-size:7pt;">เลขที่</th>
+          <th rowspan="2" style="font-size:7pt;">เลขประจำตัว</th>
+          <th rowspan="2" style="font-size:7pt;">ชื่อ - สกุล</th>
+          <th colspan="${ATT_COLS}" style="font-size:7pt;">บันทึกการไม่มาเรียน</th>
+          <th rowspan="2" style="font-size:7pt;">รวมเวลา<br/>ไม่มาเรียน</th>
         </tr>
         <tr>${colHeaders}</tr>
       </thead>
       <tbody>${rows.join('')}</tbody>
     </table>
-    </div>
   </div>`
 }
 
@@ -634,33 +645,49 @@ function _buildScorePage(d, chunk, colSlice, startNo, showRatio) {
   const finalMax   = finalScore?.full_score ?? 0
   const ratioStr   = `อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${between} / ${finalMax}`
 
+  const vHeader = (name, score) => `
+    <th class="vcol">
+      <span class="vwrap">${_esc(name)}<br/>(${score ?? ''})</span>
+    </th>`
+
   return `
   <div class="page">
-    <div style="text-align:center;font-weight:700;font-size:10pt;margin-bottom:2mm;">คะแนนการจัดการเรียนรู้</div>
-    <div style="font-size:8.5pt;margin-bottom:1mm;">
+    <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:2mm;">คะแนนการจัดการเรียนรู้</div>
+    <div style="font-size:9pt;margin-bottom:1mm;">
       รายวิชา ${_esc(ms.subject_name??'')} รหัสวิชา ${_esc(ms.subject_code??'')} ชั้น ${_esc(cls.class_name??'')}
       ภาคเรียนที่ ${semester} ปีการศึกษา ${academicYear}
     </div>
     ${showRatio ? `<div style="font-size:8.5pt;margin-bottom:2mm;">${ratioStr}</div>` : ''}
-    <div style="overflow-x:auto;">
     <table class="score-table">
       <thead>
         <tr>
-          <th class="normal" style="width:7mm;">เลขที่</th>
-          <th class="normal" style="width:14mm;">รหัส</th>
-          <th class="normal" style="width:38mm;text-align:left;">ชื่อ - สกุล</th>
-          ${colSlice.map(c=>`<th title="${_esc(c.column_name??'')}">${_esc(c.column_name??'')}<br><span style="font-size:6.5pt;">(${c.full_score??''})</span></th>`).join('')}
-          <th class="normal">รวม<br>(${sliceMax})</th>
-          ${isLast ? `<th class="normal">รวมทั้งหมด<br>(${maxTotal})</th><th class="normal">เกรด</th>` : ''}
+          <th class="normal" style="width:8mm;">เลขที่</th>
+          <th class="normal" style="width:15mm;">รหัส</th>
+          <th class="normal" style="width:40mm;text-align:left;">ชื่อ - สกุล</th>
+          ${colSlice.map(c => vHeader(c.column_name ?? '', c.full_score)).join('')}
+          <th class="normal" style="width:14mm;">รวม<br/>(${sliceMax})</th>
+          ${isLast ? `<th class="normal" style="width:18mm;">รวมทั้งหมด<br/>(${maxTotal})</th>
+                      <th class="normal" style="width:12mm;">ระดับผล<br/>การเรียน</th>` : ''}
         </tr>
       </thead>
       <tbody>${rows.join('')}</tbody>
     </table>
-    </div>
-    <div style="margin-top:6mm;display:flex;justify-content:space-between;font-size:9pt;">
-      <div>ลงชื่อ ............................................. ครูผู้สอน<br><span style="margin-left:8mm;">(${_esc(teacher?.full_name??'')})</span></div>
-      <div>ลงชื่อ ............................................. หัวหน้าหมวดวิชา<br><span style="margin-left:8mm;">(${_esc(d.dept?.head_name??'')})</span></div>
-      <div>ลงชื่อ ............................................. หัวหน้างานวัดผลและประเมินผล<br><span style="margin-left:8mm;">(${_esc(d.cfg[`${d.prefix}RegistrarName`]??'')})</span></div>
+    <div class="score-sig">
+      <div class="score-sig-block">
+        ลงชื่อ ................................................<br/>
+        ครูผู้สอน<br/>
+        <span style="font-size:8.5pt;">(${_esc(teacher?.full_name??'')})</span>
+      </div>
+      <div class="score-sig-block">
+        ลงชื่อ ................................................<br/>
+        หัวหน้าหมวดวิชา<br/>
+        <span style="font-size:8.5pt;">(${_esc(d.dept?.head_name??'')})</span>
+      </div>
+      <div class="score-sig-block">
+        ลงชื่อ ................................................<br/>
+        หัวหน้างานวัดผลและประเมินผล<br/>
+        <span style="font-size:8.5pt;">(${_esc(d.cfg[`${d.prefix}RegistrarName`]??'')})</span>
+      </div>
     </div>
   </div>`
 }
