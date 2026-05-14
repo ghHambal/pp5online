@@ -258,7 +258,8 @@ function _buildPage1(d) {
 
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
-  const logoUrl       = cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoUrl ?? ''
+  // ใช้โลโก้ขาวดำสำหรับเอกสาร
+  const logoUrl = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
 
   const dirName    = _esc(cfg[`${prefix}DirectorName`] ?? '')
   const dirSign    = cfg[`${prefix}DirectorSignUrl`] ?? ''
@@ -269,9 +270,20 @@ function _buildPage1(d) {
   const deptHeadName = _esc(dept?.head_name ?? '')
   const deptHeadSign = dept?.head_sign_url ?? ''
 
-  const isHighSchool = ['ม.4','ม.5','ม.6'].some(g => (ms.grade_level ?? '').includes(g.replace('ม.','')))
-    || ['ACDMVOC','AGMVOC'].includes(ms.subject_group)
-    || (ms.grade_level ?? '').match(/[4-6]/)
+  const isReligion   = ['AGM','AGMVOC'].includes(ms.subject_group)
+  const className    = cls.class_name ?? ''
+
+  // ตรวจระดับชั้น
+  const isHighSchool = !isReligion && (
+    ['4','5','6'].some(n => (ms.grade_level ?? '').includes(n)) ||
+    ['ACDMVOC'].includes(ms.subject_group)
+  )
+  // ระดับชั้นศาสนา: PR=ตอนต้น, อก.=ตอนกลาง, อป.=ตอนปลาย
+  const relLevel = isReligion
+    ? (className.startsWith('PR') ? 'PR'
+      : className.startsWith('อก') ? 'อก'
+      : className.startsWith('อป') ? 'อป' : '')
+    : ''
 
   const totalHrsPerWeek = credit * 2
   const totalHrs        = credit * 2 * 20
@@ -324,32 +336,56 @@ function _buildPage1(d) {
 
     <div class="cover-header">
       <div class="cover-title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</div>
-      <div class="level-row">
-        ระดับชั้นมัธยมศึกษา &nbsp;
-        <span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3) &emsp;
-        <span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)
-      </div>
-      ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" />` : '<div style="height:24mm;"></div>'}
+
+      ${isReligion ? `
+      <table style="border:none;margin:2mm auto 0;font-size:10pt;">
+        <tr>
+          <td style="border:none;padding:1px 6px 1px 0;vertical-align:top;">ระดับชั้นอิสลามศึกษา</td>
+          <td style="border:none;padding:1px 0;">
+            <span class="checkbox">${relLevel==='PR'?'✓':''}</span> ตอนต้น (PR)<br/>
+            <span class="checkbox">${relLevel==='อก'?'✓':''}</span> ตอนกลาง (อก.)<br/>
+            <span class="checkbox">${relLevel==='อป'?'✓':''}</span> ตอนปลาย (อป.)
+          </td>
+        </tr>
+      </table>` : `
+      <table style="border:none;margin:2mm auto 0;font-size:10pt;">
+        <tr>
+          <td style="border:none;padding:1px 6px 1px 0;vertical-align:middle;">ระดับชั้นมัธยมศึกษา</td>
+          <td style="border:none;padding:1px 0;">
+            <span class="checkbox">${!isHighSchool?'✓':''}</span> ตอนต้น (ม.1-ม.3)<br/>
+            <span class="checkbox">${isHighSchool?'✓':''}</span> ตอนปลาย (ม.4-ม.6)
+          </td>
+        </tr>
+      </table>`}
+
+      ${logoUrl ? `<img class="cover-logo" src="${_esc(logoUrl)}" style="margin-top:3mm;"/>` : '<div style="height:24mm;"></div>'}
       <div class="cover-school">${schoolName}</div>
       ${schoolAddress ? `<div class="cover-address">${schoolAddress}</div>` : ''}
     </div>
 
     <table class="cover-info">
       <tr>
-        <td>ระดับชั้นมัธยมศึกษา</td>
+        <td class="lbl">${isReligion ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'}</td>
         <td><u>${_esc(cls.class_name)}</u></td>
         <td>ภาคเรียนที่</td>
         <td><u>${semester}</u></td>
         <td>ปีการศึกษา</td>
         <td><u>${academicYear}</u></td>
       </tr>
+      ${isReligion ? `
       <tr>
-        <td>กลุ่มสาระการเรียนรู้</td>
-        <td colspan="2"><u>${_esc(ms.dept ?? '')}</u></td>
+        <td class="lbl">กลุ่มสาระการเรียนรู้</td>
+        <td colspan="3"><u>${_esc(ms.dept ?? '')}</u></td>
+        <td>รหัสวิชา</td>
+        <td><u>${_esc(ms.subject_code ?? '')}</u></td>
+      </tr>` : `
+      <tr>
+        <td class="lbl">กลุ่มสาระการเรียนรู้</td>
+        <td><u>${_esc(ms.dept ?? '')}</u></td>
         <td>รายวิชา</td>
-        <td><u>${_esc(ms.subject_name ?? '')}</u></td>
+        <td colspan="2"><u>${_esc(ms.subject_name ?? '')}</u></td>
         <td>รหัสวิชา <u>${_esc(ms.subject_code ?? '')}</u></td>
-      </tr>
+      </tr>`}
       <tr>
         <td>จำนวน</td>
         <td><u>${credit}</u> หน่วยกิต</td>
