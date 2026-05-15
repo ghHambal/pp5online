@@ -48,9 +48,35 @@ export async function uploadSystemAsset(key, file) {
   return uploadFile('system-assets', `${key}.jpg`, blob)
 }
 
-// รูปสติกเกอร์ PNG — ต้องรักษา transparency จึงไม่แปลงเป็น JPEG
+// บีบ PNG รักษา transparency (ไม่แปลงเป็น JPEG)
+function compressPng(file, { maxWidth = 400 } = {}) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = e => {
+      const img = new Image()
+      img.onerror = reject
+      img.onload = () => {
+        let w = img.naturalWidth, h = img.naturalHeight
+        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        canvas.toBlob(
+          blob => blob ? resolve(blob) : reject(new Error('compress failed')),
+          'image/png'
+        )
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+// รูปสติกเกอร์ PNG — รักษา transparency, บีบขนาดให้เล็กลง max 400px
 export async function uploadStickerPng(key, file) {
-  return uploadFile('system-assets', `${key}.png`, file, 'image/png')
+  const blob = await compressPng(file, { maxWidth: 400 })
+  return uploadFile('system-assets', `${key}.png`, blob, 'image/png')
 }
 
 // รูปโปรไฟล์ครู → บีบ max 400px (thumbnail), quality 0.80

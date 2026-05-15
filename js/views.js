@@ -2084,21 +2084,25 @@ export async function renderSettings() {
                   })
                 : featDefs.map(([icon,text,minTier])=>({icon,text,minTier}))
 
-              const tierLabels = ['ระดับ 1','ระดับ 2','ระดับ 3','ระดับ 4','ระดับ 5']
-              const tierColors = ['text-emerald-500','text-purple-500','text-amber-500','text-blue-500','text-yellow-600']
+              const TIER_HEX = ['#22C55E','#A855F7','#F59E0B','#3B82F6','#D4A017']
+
+              // ใช้ inline style แทน Tailwind dynamic class เพื่อหลีกเลี่ยง CDN scan issue
+              const tierBtnStyle = (n, selected) => selected
+                ? `border:2px solid ${TIER_HEX[n-1]};color:${TIER_HEX[n-1]};background:#fff;font-weight:700`
+                : 'border:2px solid #e5e7eb;color:#d1d5db;background:#fff'
 
               const rowHtml = (f, i) => `
                 <div class="feat-row flex items-center gap-2 p-2 bg-gray-50 rounded-xl" data-idx="${i}">
                   <input type="text" class="feat-icon w-10 text-center text-lg border border-gray-200 rounded-lg py-1 bg-white"
                     value="${f.icon}" placeholder="🏅" maxlength="4" />
-                  <input type="text" class="feat-text flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  <input type="text" class="feat-text flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white min-w-0"
                     value="${f.text}" placeholder="ชื่อฟีเจอร์" />
                   <div class="flex gap-1 flex-shrink-0">
                     ${[1,2,3,4,5].map(n => `
-                    <label class="cursor-pointer" title="${tierLabels[n-1]}">
+                    <label class="cursor-pointer" title="ระดับ ${n}">
                       <input type="radio" name="feat-tier-${i}" class="sr-only feat-tier-radio" value="${n}" ${f.minTier===n?'checked':''} />
-                      <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition
-                        ${f.minTier===n ? `border-current ${tierColors[n-1]} bg-white` : 'border-gray-200 text-gray-300 bg-white hover:border-gray-300'}">
+                      <span class="feat-tier-btn w-7 h-7 rounded-lg flex items-center justify-center text-xs transition cursor-pointer"
+                        style="${tierBtnStyle(n, f.minTier===n)}" data-n="${n}">
                         ${n}
                       </span>
                     </label>`).join('')}
@@ -2336,20 +2340,17 @@ export async function renderSettings() {
         if (hidden) hidden.value = val
       }
 
-      const tierColors = ['text-emerald-600','text-amber-600','text-yellow-600','text-blue-500','text-violet-600']
+      const FEAT_TIER_HEX = ['#22C55E','#A855F7','#F59E0B','#3B82F6','#D4A017']
       const _attachFeatRowEvents = (row) => {
-        // radio tier — update visual style
+        // radio tier — ใช้ inline style แทน className เพื่อหลีกเลี่ยง layout พัง
         row.querySelectorAll('.feat-tier-radio').forEach(radio => {
           radio.addEventListener('change', () => {
             const selected = parseInt(radio.value)
-            row.querySelectorAll('.feat-tier-radio').forEach((r,idx) => {
-              const span = r.nextElementSibling
-              const n = idx + 1
-              if (n === selected) {
-                span.className = `w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition border-current ${tierColors[idx]} bg-white`
-              } else {
-                span.className = 'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition border-gray-200 text-gray-300 bg-white hover:border-gray-300'
-              }
+            row.querySelectorAll('.feat-tier-btn').forEach(span => {
+              const n = parseInt(span.dataset.n)
+              span.style.cssText = n === selected
+                ? `border:2px solid ${FEAT_TIER_HEX[n-1]};color:${FEAT_TIER_HEX[n-1]};background:#fff;font-weight:700`
+                : 'border:2px solid #e5e7eb;color:#d1d5db;background:#fff'
             })
             _syncFeatHidden()
           })
@@ -2375,10 +2376,11 @@ export async function renderSettings() {
           <input type="text" class="feat-text flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white" value="" placeholder="ชื่อฟีเจอร์" />
           <div class="flex gap-1 flex-shrink-0">
             ${[1,2,3,4,5].map(n => `
-            <label class="cursor-pointer">
+            <label class="cursor-pointer" title="ระดับ ${n}">
               <input type="radio" name="feat-tier-${idx}" class="sr-only feat-tier-radio" value="${n}" ${n===1?'checked':''} />
-              <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition
-                ${n===1?`border-current ${tierColors[0]} bg-white`:'border-gray-200 text-gray-300 bg-white hover:border-gray-300'}">
+              <span class="feat-tier-btn w-7 h-7 rounded-lg flex items-center justify-center text-xs transition cursor-pointer"
+                style="${n===1?`border:2px solid ${FEAT_TIER_HEX[0]};color:${FEAT_TIER_HEX[0]};background:#fff;font-weight:700`:'border:2px solid #e5e7eb;color:#d1d5db;background:#fff'}"
+                data-n="${n}">
                 ${n}
               </span>
             </label>`).join('')}
