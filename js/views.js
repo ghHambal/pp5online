@@ -2308,27 +2308,108 @@ export async function renderSettings() {
         })
       })
 
+      // ── helper: parse tiers จาก cfg ──────────────────────────────────────────
+      const _adminParseTiers = (pcfg) => {
+        const raw = String(pcfg.donationStickerTiers ?? '').trim()
+        const minA = parseInt(pcfg.donationMinAmount ?? 99) || 99
+        const step = parseInt(pcfg.donationAmountStep ?? 50) || 50
+        const defs = [
+          [minA,       '☕','ผู้สนับสนุนเริ่มต้น',   'คุณครูเติมกำลังใจให้ผมพัฒนาต่อได้อีกวัน ☕','#f59e0b'],
+          [minA+step,  '🏅','ผู้สนับสนุนใจดี',      'คุณครูช่วยให้ระบบนี้เติบโตและยืนหยัดต่อได้','#c9a227'],
+          [minA+step*2,'🐘','ผู้สนับสนุนพิเศษ',     'คุณครูเป็นส่วนหนึ่งที่ทำให้ฟีเจอร์ใหม่เกิดขึ้นได้','#7a9ab0'],
+          [minA+step*3,'👑','ผู้สนับสนุนระดับตำนาน','คุณครูคือเสาหลักที่ค้ำจุนระบบนี้ไว้','#d4a017'],
+        ]
+        const rows = raw
+          ? raw.split('\n').filter(Boolean).map(l => {
+              const [a,s,t,n,c] = l.split('|').map(x=>x.trim())
+              return { amount:parseInt(a)||0, sticker:s||'🏅', title:t||'', note:n||'', color:c||'' }
+            }).filter(t=>t.amount>0)
+          : defs.map(([a,s,t,n,c])=>({amount:a,sticker:s,title:t,note:n,color:c}))
+        return rows.sort((a,b)=>a.amount-b.amount).map((t,i)=>{
+          const imgUrl = (pcfg[`donationStickerImg${i+1}`]??'').trim()
+          return (imgUrl && /^https?:\/\//.test(imgUrl)) ? {...t, sticker:imgUrl} : t
+        })
+      }
+
+      const _adminParseFeatures = (pcfg) => {
+        const raw = String(pcfg.donationSpecialFeatures ?? '').trim()
+        const defs = [
+          ['📣','ประกาศในห้องเรียน'],['🏅','ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท'],
+          ['📊','Dashboard วิเคราะห์เพิ่มเติม'],['🤖','AI ช่วยสร้างแผนหน้าเดียวรายครั้งสอน'],
+          ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา'],
+          ['✍️','ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับนำไปใช้กับ AI ส่วนตัวของครู'],
+        ]
+        if (!raw) return defs.map(([icon,text])=>({icon,text}))
+        return raw.split('\n').filter(Boolean).map(l=>{
+          const [icon,...rest] = l.includes('|') ? l.split('|').map(s=>s.trim()) : ['✨',l]
+          return {icon:icon||'✨', text:rest.join('|')||icon||l}
+        }).filter(f=>f.text)
+      }
+
+      const _showTierPreview = (tier, features, thankText) => {
+        document.getElementById('tier-preview-modal')?.remove()
+        const hex = tier.color || '#f59e0b'
+        const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16)
+        const s = String(tier.sticker ?? '')
+        const stickerEl = /^https?:\/\//.test(s)
+          ? `<img src="${s}" class="w-20 h-20 object-contain mx-auto mb-2 drop-shadow-lg" />`
+          : `<div class="text-6xl text-center mb-2">${s}</div>`
+        const pop = document.createElement('div')
+        pop.id = 'tier-preview-modal'
+        pop.className = 'fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
+        pop.innerHTML = `
+          <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs overflow-hidden max-h-[92vh] flex flex-col">
+            <div class="px-6 py-6 text-center flex-shrink-0" style="background:linear-gradient(135deg,rgba(${r},${g},${b},0.85),rgba(${r},${g},${b},1))">
+              ${stickerEl}
+              <div class="inline-block bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full mb-1">${tier.title}</div>
+              <h2 class="text-white font-bold text-lg">ขอบคุณครับ! 🙏</h2>
+              <p class="text-white/80 text-xs mt-0.5">ตัวอย่างสำหรับผู้โดเนท ${tier.amount} บาทขึ้นไป</p>
+            </div>
+            <div class="px-5 py-4 overflow-y-auto flex-1 space-y-3">
+              <div class="bg-amber-50 rounded-2xl p-4 text-sm text-amber-900 leading-relaxed whitespace-pre-line border border-amber-100">
+                ${thankText}
+              </div>
+              <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p class="text-xs font-bold text-emerald-800 mb-2.5">✨ สิทธิ์พิเศษที่คุณครูได้รับ</p>
+                <div class="space-y-1.5">
+                  ${features.map(f=>`<div class="flex items-start gap-2 text-sm text-emerald-900"><span class="flex-shrink-0">${f.icon}</span><span>${f.text}</span></div>`).join('')}
+                </div>
+              </div>
+              ${tier.note ? `<p class="text-xs text-center text-gray-400 italic">"${tier.note}"</p>` : ''}
+              <p class="text-[10px] text-gray-400 text-center leading-relaxed">
+                ฟีเจอร์เหล่านี้อยู่ระหว่างพัฒนาและจะทยอยเปิดใช้งานในอนาคต<br/>
+                คุณครูจะได้รับการแจ้งเตือนเมื่อพร้อมใช้งานครับ 🙏
+              </p>
+            </div>
+            <div class="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <p class="text-[10px] text-center text-amber-500 mb-2 font-semibold">🔧 โหมดตัวอย่าง (Admin)</p>
+              <button class="w-full py-2.5 rounded-2xl text-white font-bold text-sm"
+                style="background:rgba(${r},${g},${b},1)"
+                onclick="document.getElementById('tier-preview-modal')?.remove()">
+                ปิดตัวอย่าง
+              </button>
+            </div>
+          </div>`
+        document.body.appendChild(pop)
+        pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
+      }
+
       // preview thank you card — per tier
       document.querySelectorAll('.tier-preview-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', () => {
           const tierN = parseInt(btn.dataset.tier)
           const previewCfg = {}
           document.querySelectorAll('#cfg-panel-inner [id^="cfg-"]').forEach(el => {
             const k = el.id.replace(/^cfg-/, '')
             previewCfg[k] = el.value ?? el.dataset.on
           })
-          // คำนวณ amount ที่ตรงกับ tier N
-          const minA = parseInt(previewCfg.donationMinAmount ?? 99) || 99
-          const step = parseInt(previewCfg.donationAmountStep ?? 50) || 50
-          const tierAmount = minA + (tierN - 1) * step
-          const fakeRequest = { id: 'preview', amount: tierAmount, admin_note: '' }
-          if (window._showThankYouCardAdmin) {
-            btn.disabled = true; btn.textContent = '⏳'
-            await window._showThankYouCardAdmin(fakeRequest, previewCfg)
-            btn.disabled = false; btn.innerHTML = `👁️ ระดับ ${tierN}`
-          } else {
-            showToast('ไม่พบฟังก์ชัน preview — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'warning')
-          }
+          const tiers    = _adminParseTiers(previewCfg)
+          const features = _adminParseFeatures(previewCfg)
+          const tier     = tiers[tierN - 1] ?? tiers[0]
+          if (!tier) { showToast('ยังไม่มีข้อมูล tier', 'warning'); return }
+          const thankText = (previewCfg.donationThankYouCard ?? '').trim()
+            || `❤️ ขอบคุณจากใจครับคุณครู\n\nคุณครูคือหนึ่งในผู้สนับสนุนส่วนน้อยมาก ๆ\nที่มองเห็นคุณค่าของระบบ ปพ.5 ออนไลน์\nมากกว่าแค่ "เครื่องมือใช้งาน" 📝\n\nและในฐานะผู้สนับสนุน คุณครูจะได้รับสิทธิ์พิเศษด้านล่างนี้ด้วยนะครับ`
+          _showTierPreview(tier, features, thankText)
         })
       })
 
