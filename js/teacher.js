@@ -100,6 +100,62 @@ const _toPositiveInt = (value, fallback) => {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
+// ─── Donation AI — Gemini with key fallback ───────────────────────────────────
+// ดึง API keys สำรอง 1-4 จาก cfg (กรอง empty ออก)
+export function getDonationGeminiKeys(cfg) {
+  return [1,2,3,4]
+    .map(i => (cfg[`donationGeminiKey${i}`] ?? '').trim())
+    .filter(Boolean)
+}
+
+// เรียก Gemini โดยลอง keys ตามลำดับ — คืน { text, keyIndex } หรือ throw error
+export async function callDonationAI(cfg, prompt, { maxTokens = 1024 } = {}) {
+  const keys  = getDonationGeminiKeys(cfg)
+  const model = (cfg.donationGeminiModel ?? '').trim() || 'gemini-2.5-flash'
+  if (!keys.length) throw new Error('ยังไม่ได้ตั้งค่า Donation Gemini API Key ในหน้าแอดมิน')
+
+  let lastErr = null
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${keys[i]}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: maxTokens },
+          }),
+        }
+      )
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}))
+        const msg = errJson?.error?.message ?? `HTTP ${res.status}`
+        // quota หมด / rate limit → ลอง key ถัดไป
+        if (res.status === 429 || res.status === 503 || msg.includes('quota')) {
+          lastErr = new Error(`Key ${i+1}: ${msg}`)
+          continue
+        }
+        throw new Error(`Key ${i+1}: ${msg}`)
+      }
+      const data = await res.json()
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      return { text, keyIndex: i + 1 }
+    } catch (err) {
+      lastErr = err
+      // ถ้าเป็น network error ให้ลอง key ถัดไป
+      if (err.name === 'TypeError') continue
+      // ถ้า throw จากข้างใน (ไม่ใช่ quota) ให้ re-throw ทันที
+      if (!String(err.message).includes('Key ')) throw err
+    }
+  }
+  throw lastErr ?? new Error('Donation AI keys ทุกตัวใช้งานไม่ได้')
+}
+
+// export ให้หน้าอื่นใช้ผ่าน window ด้วย
+window._callDonationAI = callDonationAI
+window._getDonationGeminiKeys = getDonationGeminiKeys
+
 const _parseDonationFeatures = cfg => {
   const raw = String(cfg.donationSpecialFeatures ?? '').trim()
   const defaults = [

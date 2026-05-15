@@ -2065,6 +2065,15 @@ export async function renderSettings() {
                 placeholder:'📣|ประกาศในห้องเรียน\n🏅|ตรา/สติกเกอร์ผู้สนับสนุน\n📊|Dashboard วิเคราะห์เพิ่มเติม',
                 hint:'กรอกบรรทัดละ 1 รายการ รูปแบบ: ไอคอน|ข้อความ หรือกรอกข้อความอย่างเดียวก็ได้' },
             ]),
+            section('Gemini API Keys สำหรับฟีเจอร์ผู้สนับสนุน', [
+              { key:'donationGeminiKey1', label:'API Key หลัก (ลำดับ 1)', type:'password',
+                placeholder:'AIza...', hint:'ระบบจะใช้ key นี้ก่อน ถ้าหมด quota หรือ error จะข้ามไป key ถัดไปอัตโนมัติ' },
+              { key:'donationGeminiKey2', label:'API Key สำรอง (ลำดับ 2)', type:'password', placeholder:'AIza...' },
+              { key:'donationGeminiKey3', label:'API Key สำรอง (ลำดับ 3)', type:'password', placeholder:'AIza...' },
+              { key:'donationGeminiKey4', label:'API Key สำรอง (ลำดับ 4)', type:'password', placeholder:'AIza...' },
+              { key:'donationGeminiModel', label:'Gemini Model', type:'text',
+                placeholder:'gemini-2.5-flash', hint:'เว้นว่างเพื่อใช้ gemini-2.5-flash (แนะนำ)' },
+            ]),
             `<div class="mb-6">
               <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">อัปโหลดรูปสติกเกอร์ (PNG เท่านั้น)</p>
               <div class="space-y-3">${stickerUploads}</div>
