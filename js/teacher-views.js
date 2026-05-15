@@ -341,10 +341,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         ? `color:${donorTier.color};`
         : 'color:#f59e0b;'
       donorStickerHtml = `
-        <button id="donor-sticker-btn" class="flex flex-col items-center gap-0.5 cursor-pointer group mb-1" title="คลิกเพื่อดูสิทธิ์พิเศษ">
+        <button id="donor-sticker-btn" class="flex flex-col items-center gap-1 cursor-pointer group mb-1 max-w-[120px]" title="คลิกเพื่อดูสิทธิ์พิเศษ">
           ${imgEl}
-          <span class="text-[9px] font-bold leading-tight text-center whitespace-nowrap" style="${titleColor}">
-            ${donorTier.title}
+          <span class="text-[10px] font-semibold leading-snug text-center" style="${titleColor}">
+            ${donorTier.note || donorTier.title}
           </span>
           <span class="text-[8px] text-gray-400 group-hover:text-gray-600 transition">ดูสิทธิ์ →</span>
         </button>`
