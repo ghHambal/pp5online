@@ -2006,9 +2006,9 @@ export async function renderSettings() {
               <p class="text-sm font-semibold text-amber-900 mb-1">สติกเกอร์ระดับ ${n}</p>
               <label class="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-300 text-xs font-semibold text-amber-700 bg-white hover:bg-amber-50 transition shadow-sm">
                 📁 อัปโหลด PNG
-                <input type="file" accept="image/png" class="hidden pkg-sticker-upload" data-key="${key}" data-n="${n}" />
+                <input type="file" accept="image/png" class="hidden pkg-sticker-upload" data-skey="${key}" data-n="${n}" />
               </label>
-              ${val ? `<button type="button" class="ml-2 text-xs text-red-400 hover:text-red-600 pkg-sticker-clear" data-key="${key}" data-n="${n}">ลบ</button>` : ''}
+              ${val ? `<button type="button" class="ml-2 text-xs text-red-400 hover:text-red-600 pkg-sticker-clear" data-skey="${key}" data-n="${n}">ลบ</button>` : ''}
               <p class="text-[10px] text-amber-500 mt-1">บังคับไฟล์ PNG เท่านั้น — URL นี้สามารถนำไปใส่ในคอลัมน์สติกเกอร์ด้านล่างได้</p>
               <input type="hidden" id="cfg-${key}" value="${val}" />
               ${val ? `<p class="text-[10px] text-gray-400 mt-0.5 break-all font-mono">${val}</p>` : ''}
@@ -2273,7 +2273,7 @@ export async function renderSettings() {
         fi.addEventListener('change', async e => {
           const file = e.target.files[0]; if (!file) return
           if (file.type !== 'image/png') { showToast('กรุณาเลือกไฟล์ PNG เท่านั้น', 'error'); fi.value = ''; return }
-          const key = fi.dataset.key
+          const key = fi.dataset.skey
           const n   = fi.dataset.n
           fi.disabled = true
           try {
@@ -2314,7 +2314,7 @@ export async function renderSettings() {
       // sticker clear
       document.querySelectorAll('.pkg-sticker-clear').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const key = btn.dataset.key
+          const key = btn.dataset.skey
           const n   = btn.dataset.n
           await updateSystemConfig(key, '').catch(() => {})
           const hidden = document.getElementById(`cfg-${key}`)
