@@ -768,32 +768,74 @@ async function _showDonateModal(course, cfg = {}) {
   })
 }
 
-function _showThankYouCard(request) {
+async function _showThankYouCard(request) {
   document.getElementById('thankyou-card-modal')?.remove()
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const minAmount  = _toPositiveInt(cfg.donationMinAmount, 99)
+  const stepAmount = _toPositiveInt(cfg.donationAmountStep, 50)
+  const features   = _parseDonationFeatures(cfg)
+  const tiers      = _parseDonationStickers(cfg, minAmount, stepAmount)
+  const amount     = request.amount ?? 0
+  const tier       = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+  const thankText  = (cfg.donationThankYouCard ?? '').trim()
+    || 'ขอบคุณที่ช่วยสนับสนุนการพัฒนาระบบนะครับ\nคุณครูได้รับสิทธิ์พิเศษด้านล่างแล้ว 🎉'
+
+  const stickerEl = (() => {
+    if (!tier) return '<div class="text-5xl mb-3">☕</div>'
+    const s = String(tier.sticker ?? '')
+    if (/^https?:\/\//.test(s))
+      return `<div class="w-20 h-20 mx-auto mb-3 rounded-2xl overflow-hidden border-4 border-white/40 shadow-lg bg-white flex items-center justify-center">
+        <img src="${_esc(s)}" class="w-full h-full object-contain" /></div>`
+    return `<div class="text-5xl mb-3">${_esc(s || '☕')}</div>`
+  })()
+
   const wrap = document.createElement('div')
   wrap.id = 'thankyou-card-modal'
   wrap.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
 
   wrap.innerHTML = `
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
-      <div class="bg-gradient-to-br from-amber-400 to-orange-400 px-6 py-8 text-center">
-        <div class="text-5xl mb-3">☕</div>
-        <h2 class="text-white font-bold text-xl">ขอบคุณครับ!</h2>
-        <p class="text-amber-100 text-sm mt-1">การสนับสนุนของคุณครูมีความหมายมากครับ</p>
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[92vh] flex flex-col">
+      <!-- Header -->
+      <div class="bg-gradient-to-br from-amber-400 to-orange-500 px-6 py-6 text-center flex-shrink-0">
+        ${stickerEl}
+        ${tier ? `<div class="inline-block bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full mb-2">${_esc(tier.title)}</div>` : ''}
+        <h2 class="text-white font-bold text-xl">ขอบคุณครับ! 🙏</h2>
+        <p class="text-amber-100 text-sm mt-1">${amount ? `โดเนท ${amount.toLocaleString()} บาท` : 'การสนับสนุนของคุณครูมีความหมายมากครับ'}</p>
       </div>
-      <div class="px-6 py-5">
-        <div class="bg-amber-50 rounded-2xl p-4 text-sm text-amber-900 leading-relaxed whitespace-pre-line">
-          ${_esc(request.admin_note)}
-        </div>
+      <!-- Body -->
+      <div class="px-5 py-4 overflow-y-auto flex-1 space-y-4">
+        <!-- ข้อความขอบคุณ -->
+        ${(request.admin_note || thankText) ? `
+        <div class="bg-amber-50 rounded-2xl p-4 text-sm text-amber-900 leading-relaxed whitespace-pre-line border border-amber-100">
+          ${_esc(request.admin_note || thankText)}
+        </div>` : ''}
+        <!-- ฟีเจอร์พิเศษ -->
+        ${features.length ? `
+        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <p class="text-xs font-bold text-emerald-800 mb-2.5">✨ สิทธิ์พิเศษที่คุณครูได้รับ</p>
+          <div class="space-y-1.5">
+            ${features.map(f => `
+            <div class="flex items-start gap-2 text-sm text-emerald-900">
+              <span class="flex-shrink-0">${_esc(f.icon)}</span>
+              <span>${_esc(f.text)}</span>
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+        <!-- คำอธิบาย tier -->
+        ${tier?.note ? `
+        <p class="text-xs text-center text-gray-400 italic">"${_esc(tier.note)}"</p>` : ''}
+      </div>
+      <!-- Footer -->
+      <div class="px-5 py-4 border-t border-gray-100 flex-shrink-0">
         <button id="tc-close"
-          class="mt-4 w-full py-3 rounded-2xl bg-amber-400 hover:bg-amber-500 text-white font-bold text-sm transition">
-          🙏 รับทราบ
+          class="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-sm transition shadow-md">
+          รับทราบและเริ่มใช้งาน 🚀
         </button>
       </div>
     </div>`
 
   document.body.appendChild(wrap)
-
   wrap.querySelector('#tc-close').addEventListener('click', () => {
     localStorage.setItem(`pp5_thankyou_seen_${request.id}`, '1')
     wrap.remove()
