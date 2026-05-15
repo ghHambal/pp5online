@@ -640,11 +640,16 @@ function _buildPage2(d) {
   const { cls, ms, credit, cfg, courseDoc, teacher, deptNameTH, academicYear, semester, prefix } = d
 
   const logoUrl  = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
-  const cols     = Array.isArray(courseDoc?.columns) ? courseDoc.columns : ['มาตรฐานการเรียนรู้','ตัวชี้วัด']
-  const rows     = Array.isArray(courseDoc?.rows)    ? courseDoc.rows    : Array.from({length:22},()=>cols.map(()=>''))
-  const midObj   = _esc(courseDoc?.midterm_objectives  ?? '')
-  const finalObj = _esc(courseDoc?.final_objectives    ?? '')
-  const allObj   = _esc(courseDoc?.all_objectives      ?? '')
+  const cols    = Array.isArray(courseDoc?.table_columns) ? courseDoc.table_columns : ['มาตรฐานการเรียนรู้','ตัวชี้วัด']
+  const rawRows = Array.isArray(courseDoc?.table_rows) ? courseDoc.table_rows : []
+  const minRows = 22
+  const rows    = rawRows.length >= minRows
+    ? rawRows
+    : [...rawRows, ...Array.from({length: minRows - rawRows.length}, () => cols.map(() => ''))]
+  const _joinInts = (arr) => Array.isArray(arr) && arr.length ? arr.join(',') : ''
+  const allObj   = _joinInts(courseDoc?.between_objective_items)
+  const midObj   = _joinInts(courseDoc?.midterm_objective_items)
+  const finalObj = _joinInts(courseDoc?.final_objective_items)
   const isReligion = ['AGM','AGMVOC'].includes(ms.subject_group)
 
   const CHAR_L = ['1 รักชาติ ศาสน์ กษัตริย์','2 ซื่อสัตย์สุจริต','3 มีวินัย','4 ใฝ่เรียนรู้','5 อยู่อย่างพอเพียง']
@@ -670,7 +675,7 @@ function _buildPage2(d) {
         </tr>
         <tr>
           <td>${levelLbl} ${uline(_shortRoom(cls.class_name??''),'20mm')}</td>
-          <td>ภาคเรียนที่ ${uline(String(semester),'8mm')} ปีการศึกษา ${uline(String(academicYear),'14mm')} เวลา ชั่วโมง จำนวน ${uline(String(credit),'8mm')} หน่วยกิต</td>
+          <td>ภาคเรียนที่ ${uline(String(semester),'8mm')} ปีการศึกษา ${uline(String(academicYear),'14mm')} เวลา ${uline('','12mm')} ชั่วโมง จำนวน ${uline(String(credit),'8mm')} หน่วยกิต</td>
         </tr>
         <tr>
           <td colspan="2">ครูผู้สอน ${uline(teacher?.full_name??'','55mm')}</td>
@@ -712,9 +717,9 @@ function _buildPage2(d) {
 
     <!-- Signature -->
     <div class="p2-sig">
-      ลงชื่อ .............................................
-      ${d.dept?.head_name ? `<span style="font-weight:700;">${_esc(d.dept.head_name)}</span>` : ''}
-      หัวหน้ากลุ่มสาระฯ
+      ลงชื่อ <span style="display:inline-block;border-bottom:.3mm solid #000;min-width:60mm;text-align:center;padding:0 2mm;">
+        ${d.dept?.head_name ? _esc(d.dept.head_name) : ''}
+      </span> หัวหน้ากลุ่มสาระฯ
     </div>
   </div>`
 }
