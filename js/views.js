@@ -1992,7 +1992,7 @@ export async function renderSettings() {
 
       if (tabId === 'package') {
         // สร้าง sticker tier upload rows (PNG only)
-        const stickerCount = 4
+        const stickerCount = 5
         const stickerUploads = Array.from({length: stickerCount}, (_, i) => {
           const n = i + 1
           const key = `donationStickerImg${n}`
@@ -2058,7 +2058,7 @@ export async function renderSettings() {
               <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest pb-2 border-b border-gray-100">ดูตัวอย่างการ์ดขอบคุณ</p>
               <p class="text-xs text-gray-400 mb-2">เลือกระดับที่ต้องการดูตัวอย่าง ระบบจะอ่านค่าปัจจุบันใน form</p>
               <div class="grid grid-cols-2 gap-2" id="tier-preview-btns">
-                ${[1,2,3,4].map(n => `
+                ${[1,2,3,4,5].map(n => `
                 <button type="button" class="tier-preview-btn py-2 px-3 rounded-xl border-2 border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition flex items-center justify-center gap-1.5" data-tier="${n}">
                   👁️ ระดับ ${n}
                 </button>`).join('')}
