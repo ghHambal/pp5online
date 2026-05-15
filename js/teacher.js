@@ -189,21 +189,22 @@ const _getDonorTierIndex = (cfg, tiers, amount) => {
 const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
   const raw = String(cfg.donationStickerTiers ?? '').trim()
   const defaults = [
-    [49,  '🌱', 'ครูผู้จุดประกาย',     'คุณครูจุดประกายให้ผมมีแรงเดินต่ออีกก้าว 🤝'],
-    [99,  '☕', 'ครูผู้ร่วมฝัน',       'คุณครูเดินร่วมทางกับผมในความฝันนี้ 💭'],
-    [149, '🏅', 'ครูผู้ร่วมสร้าง',     'คุณครูเป็นส่วนหนึ่งที่ทำให้ระบบนี้เกิดขึ้นได้จริง 🌱'],
-    [199, '🐘', 'ครูผู้ร่วมขับเคลื่อน','คุณครูช่วยผลักดันให้ระบบนี้เดินหน้าต่อได้ 🌊'],
-    [249, '👑', 'ครูผู้ก่อตั้งร่วม',   'คุณครูคือเสาหลักที่ทำให้ระบบนี้ยืนหยัดได้ 🏛️'],
+    [49,  '🌱', 'ครูผู้จุดประกาย',     'คุณครูจุดประกายให้ผมมีแรงเดินต่ออีกก้าว 🤝',    '#22C55E'],
+    [99,  '☕', 'ครูผู้ร่วมฝัน',       'คุณครูเดินร่วมทางกับผมในความฝันนี้ 💭',          '#A855F7'],
+    [149, '🏅', 'ครูผู้ร่วมสร้าง',     'คุณครูเป็นส่วนหนึ่งที่ทำให้ระบบนี้เกิดขึ้นได้จริง 🌱','#F59E0B'],
+    [199, '🐘', 'ครูผู้ร่วมขับเคลื่อน','คุณครูช่วยผลักดันให้ระบบนี้เดินหน้าต่อได้ 🌊',   '#3B82F6'],
+    [249, '👑', 'ครูผู้ก่อตั้งร่วม',   'คุณครูคือเสาหลักที่ทำให้ระบบนี้ยืนหยัดได้ 🏛️',  '#D4A017'],
   ]
   const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
-    const [amount, sticker, title, note] = line.split('|').map(s => s.trim())
+    const [amount, sticker, title, note, color] = line.split('|').map(s => s.trim())
     return {
       amount: _toPositiveInt(amount, 0),
       sticker: sticker || '🏅',
       title: title || `ผู้สนับสนุน ${amount || ''} บาท`,
       note: note || 'ขอบคุณที่ช่วยสนับสนุนการพัฒนาระบบครับ',
+      color: color || '',
     }
-  }) : defaults.map(([amount, sticker, title, note]) => ({ amount, sticker, title, note }))
+  }) : defaults.map(([amount, sticker, title, note, color]) => ({ amount, sticker, title, note, color }))
   const sorted = rows.filter(t => t.amount > 0).sort((a, b) => a.amount - b.amount)
   // auto-link donationStickerImgN → tier N (override emoji ถ้ามีรูป upload)
   return sorted.map((t, i) => {
