@@ -287,7 +287,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
           return { amount:_toInt(a,0), sticker:s||'🏅', title:t||`ผู้สนับสนุน ${a} บาท`, note:n||'', color:c||'' }
         }).filter(t => t.amount > 0)
       : defs.map(([a,s,t,n,c]) => ({ amount:a, sticker:s, title:t, note:n, color:c }))
-    return rows.sort((a,b) => a.amount - b.amount)
+    const sorted = rows.sort((a,b) => a.amount - b.amount)
+    // auto-link donationStickerImgN → tier N (override emoji ถ้ามีรูป upload)
+    return sorted.map((t, i) => {
+      const imgUrl = cfg[`donationStickerImg${i+1}`] ?? ''
+      if (imgUrl && /^https?:\/\//.test(imgUrl)) return { ...t, sticker: imgUrl }
+      return t
+    })
   }
 
   // hex → inline glow style

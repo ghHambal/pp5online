@@ -134,7 +134,13 @@ const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
       note: note || 'ขอบคุณที่ช่วยสนับสนุนการพัฒนาระบบครับ',
     }
   }) : defaults.map(([amount, sticker, title, note]) => ({ amount, sticker, title, note }))
-  return rows.filter(t => t.amount > 0).sort((a, b) => a.amount - b.amount)
+  const sorted = rows.filter(t => t.amount > 0).sort((a, b) => a.amount - b.amount)
+  // auto-link donationStickerImgN → tier N (override emoji ถ้ามีรูป upload)
+  return sorted.map((t, i) => {
+    const imgUrl = cfg[`donationStickerImg${i+1}`] ?? ''
+    if (imgUrl && /^https?:\/\//.test(imgUrl)) return { ...t, sticker: imgUrl }
+    return t
+  })
 }
 
 const _donationStickerHtml = tier => {
