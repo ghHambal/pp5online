@@ -568,7 +568,7 @@ export async function renderMyCourses(teacher) {
                   </button>
                   <button class="pp5-course-btn text-xs text-violet-700 hover:text-violet-900 font-medium px-2 py-1.5 border border-violet-200 rounded-lg hover:bg-violet-50 transition"
                     data-sid="${s.id}">
-                    📄 ปพ.5
+                    💾 ปพ.5
                   </button>
                   <button onclick="window._editCourse(${s.id})"
                     class="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1.5 border border-gray-200 rounded-lg">
@@ -1234,8 +1234,20 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     getTeachers().catch(()=>[]),
   ])
 
-  // unique dept names (no duplicates for display)
-  const uniqueDepts = [...new Map(depts.map(d=>[d.dept_code,d])).values()]
+  // unique dept rows — deduplicate by id (ไม่ใช้ dept_code เพราะ SOC มี 2 แถว: สังคมฯ + อิญติมาอียะห์)
+  const uniqueDepts = [...new Map(depts.map(d=>[d.id,d])).values()]
+
+  // filter กลุ่มวิชา options by teacher.category
+  const teacherCat = teacher?.category ?? ''  // 'สามัญ' | 'ศาสนา' | ''
+  const ALL_SUBGROUPS = [
+    { value: 'ACDM',    label: 'สามัญมัธยม (ACDM)',   cat: 'สามัญ' },
+    { value: 'AGM',     label: 'ศาสนามัธยม (AGM)',    cat: 'ศาสนา' },
+    { value: 'ACDMVOC', label: 'สามัญปวช (ACDMVOC)',  cat: 'สามัญ' },
+    { value: 'AGMVOC',  label: 'ศาสนาปวช (AGMVOC)',  cat: 'ศาสนา' },
+  ]
+  const visibleSubgroups = teacherCat
+    ? ALL_SUBGROUPS.filter(s => s.cat === teacherCat)
+    : ALL_SUBGROUPS
 
   // map subject_group → dept category
   const _sgToCategory = sg =>
@@ -1273,10 +1285,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
           </label>
           <select id="cf-subg" class="${SELECT_CLS}">
             <option value="">— เลือกกลุ่มวิชา —</option>
-            <option value="ACDM">สามัญมัธยม (ACDM)</option>
-            <option value="AGM">ศาสนามัธยม (AGM)</option>
-            <option value="ACDMVOC">สามัญปวช (ACDMVOC)</option>
-            <option value="AGMVOC">ศาสนาปวช (AGMVOC)</option>
+            ${visibleSubgroups.map(s=>`<option value="${s.value}" ${editData?.subject_group===s.value?'selected':''}>${s.label}</option>`).join('')}
           </select>
         </div>
         <!-- กลุ่มสาระ -->
@@ -1285,7 +1294,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
             กลุ่มสาระการเรียนรู้ <span class="text-red-400">*</span>
           </label>
           <select id="cf-dept" class="${SELECT_CLS}">
-            ${_deptOptions(uniqueDepts)}
+            ${_deptOptions(editData?.subject_group ? _filterDepts(editData.subject_group) : (teacherCat ? uniqueDepts.filter(d=>d.category===teacherCat) : uniqueDepts), editData?.dept??'')}
           </select>
         </div>
         <!-- ชื่อวิชา + รหัสวิชา -->
@@ -2129,7 +2138,8 @@ export async function renderMyClasses(teacher) {
     const periodMap   = Object.fromEntries(periods.map(p => [p.period_no, p]))
 
     const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
-    window._classCache = Object.fromEntries(classes.map(c => [c.id, c]))
+    window._classCache  = Object.fromEntries(classes.map(c => [c.id, c]))
+    window._classesFlat = classes
     const courseGroupMap = new Map()
     classes.forEach(c => {
       const ms = c.master_subjects ?? {}
@@ -2211,7 +2221,8 @@ export async function renderMyClasses(teacher) {
           const nextMins  = _nextPeriodMins(c.id, linksByClass, scheduleMap, periodMap)
           const countdown = (() => {
             if (!(linksByClass[c.id]??[]).length)
-              return `<span class="text-[11px] text-gray-400">🔗 ยังไม่ได้เชื่อมตารางสอน</span>`
+              return `<button onclick="event.stopPropagation();window._openCombinedEdit(${c.id},'schedule')"
+                class="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium hover:underline transition">🔗 เชื่อมตารางสอน</button>`
             if (nextMins === Infinity)
               return `<span class="text-[11px] text-gray-400">📅 ไม่พบข้อมูลตาราง</span>`
             if (nextMins <= 0)
@@ -2264,9 +2275,9 @@ export async function renderMyClasses(teacher) {
     </div>`)
     window._openPP5Doc     = (classId) => openPP5Doc(classId)
     window._openClassDetail = (classId) => renderClassDetail(teacher, classId, { classes, scheduleMap, linksByClass, periodMap, classrooms, copyCfg })
-    window._openCombinedEdit = (classId) => {
+    window._openCombinedEdit = (classId, tab = 'info') => {
       const cls = window._classCache?.[classId]
-      if (cls) _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderMyClasses(teacher))
+      if (cls) _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderMyClasses(teacher), tab)
     }
 
     window._assignClassroom = (classId) => {
@@ -3178,7 +3189,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
         <div class="flex gap-2 pb-3 overflow-x-auto no-scrollbar">
           <button onclick="window._openPP5Doc(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition flex items-center gap-1.5">
-            📄 <span class="hidden xs:inline">ปพ.5</span><span class="xs:hidden">ปพ.5</span>
+            💾 <span class="hidden xs:inline">ปพ.5</span><span class="xs:hidden">ปพ.5</span>
           </button>
           ${cls.google_sheet_id ? `
           <button onclick="window._openSheetToolsModal(${classId})"
@@ -3302,7 +3313,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
 
 // ─── Combined Edit Modal (ข้อมูล + ตารางสอน + ห้องสอน) ───────────────────────
 
-async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, onSaved) {
+async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, onSaved, initialTab = 'info') {
   document.getElementById('combined-edit-modal')?.remove()
 
   // โหลด students + termCfg
@@ -3405,100 +3416,187 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
     </div>`
   }
 
-  // linked IDs ที่อาจเปลี่ยนแปลงระหว่าง session
+  // linked IDs ที่บันทึกใน DB แล้ว (อย่าแก้ไขโดยตรง)
   const currentLinked = new Set(linkedIds)
+  // pending state — เปลี่ยนได้จากการคลิก, save เมื่อกดปุ่ม
+  const pendingLinked = new Set(linkedIds)
+
+  // linksBySchedule: scheduleId → classId[] (สำหรับตรวจว่าคาบนี้ถูกใช้กับห้องไหน)
+  const linksBySchedule = {}
+  Object.entries(linksByClass).forEach(([cid, sids]) => {
+    sids.forEach(sid => {
+      if (!linksBySchedule[sid]) linksBySchedule[sid] = []
+      linksBySchedule[sid].push(Number(cid))
+    })
+  })
+  // map classId → class object (สำหรับแสดงชื่อห้อง)
+  const classById = Object.fromEntries((window._classesFlat ?? []).map(c => [c.id, c]))
 
   // ── scheduleHTML ─────────────────────────────────────────────────────────────
-  const scheduleCardStyle = (isLinked) => isLinked
-    ? 'cem-scard rounded-2xl border p-3.5 transition cursor-pointer border-emerald-300 bg-white shadow-[0_0_0_3px_rgba(16,185,129,0.12),0_4px_12px_rgba(16,185,129,0.1)]'
-    : 'cem-scard rounded-2xl border p-3.5 transition cursor-pointer border-gray-200 bg-gray-50/60 opacity-60 hover:opacity-90'
 
   const scheduleHTML = () => {
     const allSchedule = schedule.filter(s => !s.is_free)
     if (!allSchedule.length)
       return `<p class="text-sm text-gray-400 text-center py-8">ยังไม่มีตารางสอน กรุณาสร้างตารางสอนก่อน</p>`
+
+    const hasFri   = termCfg.hasFriday === 'true'
+    const numDays  = hasFri ? 6 : 5
+    const days     = Array.from({length: numDays}, (_, i) => i)
+    const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
+    const DAY_COLORS = ['bg-red-50','bg-yellow-50','bg-pink-50','bg-green-50','bg-orange-50','bg-purple-50']
+
+    // สร้าง schedMap: `${dow}-${period_no}` → entry
+    const schedMap = {}
+    allSchedule.forEach(s => {
+      schedMap[`${s.day_of_week}-${s.period_no}`] = s
+      const span = s.span_periods ?? 1
+      for (let i = 1; i < span; i++)
+        schedMap[`${s.day_of_week}-${s.period_no + i}`] = { ...s, _secondary: true }
+    })
+
+    const sortedPeriods = Object.values(periodMap).sort((a, b) => a.period_no - b.period_no)
+
+    // state: 'selected' | 'other' | 'none'
+    const _cellState = (sid) => {
+      if (pendingLinked.has(sid)) return 'selected'
+      const others = (linksBySchedule[sid] ?? []).filter(cid => cid !== cls.id)
+      return others.length ? 'other' : 'none'
+    }
+
+    // คืน HTML ของ content div เต็มความสูง (เหมือน renderScheduleGrid)
+    const _cellContent = (entry, state) => {
+      const subj = entry.subject_name ? _htmlEsc(entry.subject_name) : ''
+      const room = entry.class_name   ? _htmlEsc(entry.class_name)   : ''
+      if (state === 'selected')
+        return `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center
+          bg-emerald-100" style="min-height:52px;border-left:4px solid #10b981">
+          <p class="font-extrabold text-[11px] leading-tight text-emerald-800 break-words w-full">${subj}</p>
+          ${room ? `<p class="text-[10px] font-semibold text-emerald-600 leading-tight w-full">${room}</p>` : ''}
+        </div>`
+      if (state === 'other') {
+        const others = (linksBySchedule[entry.id] ?? []).filter(cid => cid !== cls.id)
+        const otherName = others.map(cid => classById[cid]?.class_name ?? `ห้อง ${cid}`).join(', ')
+        return `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center
+          bg-gray-100 opacity-50" style="min-height:52px;border-left:3px solid #9ca3af" title="ใช้กับ: ${otherName}">
+          <p class="font-bold text-[11px] leading-tight text-gray-400 break-words w-full">${subj}</p>
+          ${room ? `<p class="text-[10px] text-gray-400 leading-tight w-full">${room}</p>` : ''}
+        </div>`
+      }
+      return `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center
+        bg-white hover:bg-emerald-50 hover:border-l-4 hover:border-emerald-400 transition-all"
+        style="min-height:52px;border-left:3px solid #e5e7eb">
+        <p class="font-bold text-[11px] leading-tight text-gray-500 break-words w-full">${subj}</p>
+        ${room ? `<p class="text-[10px] text-gray-400 leading-tight w-full">${room}</p>` : ''}
+      </div>`
+    }
+
     return `
-      <p class="text-xs text-gray-400 mb-3">คลิกคาบที่ต้องการเชื่อมโยงกับห้องเรียนนี้</p>
-      <div class="space-y-2">
-        ${allSchedule.map(s => {
-          const p = periodMap[s.period_no]
-          const isLinked = currentLinked.has(s.id)
-          const timeStr = p?.start_time ? p.start_time.slice(0,5) : `คาบ ${s.period_no}`
-          return `
-          <button type="button" class="${scheduleCardStyle(isLinked)}"
-            data-sid="${s.id}" data-linked="${isLinked}">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-3 text-sm min-w-0">
-                <span class="font-bold text-gray-700 flex-shrink-0">${DAY_TH[s.day_of_week]}</span>
-                <span class="text-gray-600 flex-shrink-0">${timeStr}</span>
-                ${s.subject_name ? `<span class="text-xs text-gray-400 truncate">${_htmlEsc(s.subject_name)}${s.class_name?` · ${_htmlEsc(s.class_name)}`:''}</span>` : ''}
-              </div>
-              ${isLinked ? `<span class="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold">✓</span>` : ''}
-            </div>
-          </button>`
-        }).join('')}
+      <p class="text-xs text-gray-400 mb-2">คลิกคาบที่ต้องการเชื่อมโยง — กดบันทึกเพื่อยืนยัน</p>
+      <div class="overflow-auto rounded-xl border border-gray-100" style="max-height:55vh">
+        <table class="w-full text-xs border-collapse" style="min-width:300px">
+          <thead class="sticky top-0 z-10">
+            <tr class="bg-gray-50">
+              <th class="border border-gray-100 px-2 py-2 text-center text-gray-400 w-16 font-medium text-[10px]">คาบ</th>
+              ${days.map(d => `<th class="border border-gray-100 px-1 py-2 text-center font-semibold text-gray-700 text-[11px] ${DAY_COLORS[d]}">${DAY_NAMES[d]}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${sortedPeriods.map(p => `
+            <tr>
+              <td class="border border-gray-100 px-1 py-2 text-center bg-gray-50 align-middle">
+                <p class="font-bold text-gray-700 text-[10px]">คาบ ${p.period_no}</p>
+                <p class="text-[9px] text-gray-400">${p.start_time?.slice(0,5) ?? ''}</p>
+              </td>
+              ${days.map(d => {
+                const key   = `${d}-${p.period_no}`
+                const entry = schedMap[key]
+                if (entry?._secondary) return ''
+                if (!entry) return `<td class="border border-gray-100 p-0" style="min-width:56px;height:1px"></td>`
+                const span  = entry.span_periods ?? 1
+                const state = _cellState(entry.id)
+                return `<td class="border border-gray-100 p-0 cursor-pointer cem-srow"
+                  data-sid="${entry.id}" data-state="${state}"
+                  style="min-width:56px;height:1px" ${span > 1 ? `rowspan="${span}"` : ''}>
+                  ${_cellContent(entry, state)}
+                </td>`
+              }).join('')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
       </div>`
   }
 
-  const attachScheduleEvents = () => {
-    modal.querySelectorAll('.cem-scard').forEach(card => {
-      card.addEventListener('click', () => {
-        const sid     = parseInt(card.dataset.sid)
-        const isLinked = card.dataset.linked === 'true'
-        const action   = isLinked ? 'ยกเลิกการเชื่อมโยง' : 'เชื่อมโยง'
-        const entry    = schedule.find(s => s.id === sid)
-        const p        = entry ? periodMap[entry.period_no] : null
-        const timeStr  = p?.start_time ? p.start_time.slice(0,5) : `คาบ ${entry?.period_no??''}`
-        const dayStr   = entry ? DAY_TH[entry.day_of_week] : ''
+  const _refreshCell = (cell) => {
+    const sid   = parseInt(cell.dataset.sid)
+    const entry = schedule.find(s => s.id === sid)
+    if (!entry) return
+    const others = (linksBySchedule[sid] ?? []).filter(cid => cid !== cls.id)
+    const state  = pendingLinked.has(sid) ? 'selected' : others.length ? 'other' : 'none'
+    cell.dataset.state = state
+    const subj = entry.subject_name ? _htmlEsc(entry.subject_name) : ''
+    const room = entry.class_name   ? _htmlEsc(entry.class_name)   : ''
+    if (state === 'selected')
+      cell.innerHTML = `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center bg-emerald-100" style="min-height:52px;border-left:4px solid #10b981">
+        <p class="font-extrabold text-[11px] leading-tight text-emerald-800 break-words w-full">${subj}</p>
+        ${room ? `<p class="text-[10px] font-semibold text-emerald-600 leading-tight w-full">${room}</p>` : ''}
+      </div>`
+    else if (state === 'other') {
+      const otherName = others.map(cid => classById[cid]?.class_name ?? `ห้อง ${cid}`).join(', ')
+      cell.innerHTML = `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center bg-gray-100 opacity-50" style="min-height:52px;border-left:3px solid #9ca3af" title="ใช้กับ: ${otherName}">
+        <p class="font-bold text-[11px] leading-tight text-gray-400 break-words w-full">${subj}</p>
+        ${room ? `<p class="text-[10px] text-gray-400 leading-tight w-full">${room}</p>` : ''}
+      </div>`
+    } else {
+      cell.innerHTML = `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center bg-white hover:bg-emerald-50 transition-all" style="min-height:52px;border-left:3px solid #e5e7eb">
+        <p class="font-bold text-[11px] leading-tight text-gray-500 break-words w-full">${subj}</p>
+        ${room ? `<p class="text-[9px] text-gray-400 leading-tight">${room}</p>` : ''}
+      </div>`
+    }
+  }
 
-        // confirmation popup
-        const confirm  = document.createElement('div')
-        confirm.className = 'fixed inset-0 z-[600] flex items-center justify-center bg-black/50 p-4'
-        confirm.innerHTML = `
-          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 text-center">
-            <div class="text-3xl mb-3">${isLinked ? '🔓' : '🔗'}</div>
-            <p class="font-bold text-gray-800 mb-1">${action}คาบนี้?</p>
-            <p class="text-sm text-gray-500 mb-5">${dayStr} ${timeStr}${entry?.subject_name ? ` · ${_htmlEsc(entry.subject_name)}` : ''}</p>
-            <div class="flex gap-3">
-              <button id="cem-sc-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-              <button id="cem-sc-ok" class="flex-1 py-2.5 rounded-xl ${isLinked ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white text-sm font-semibold">${action}</button>
-            </div>
-          </div>`
-        document.body.appendChild(confirm)
-        confirm.querySelector('#cem-sc-cancel').addEventListener('click', () => confirm.remove())
-        confirm.querySelector('#cem-sc-ok').addEventListener('click', async () => {
-          confirm.remove()
-          card.style.opacity = '0.4'
-          card.style.pointerEvents = 'none'
-          try {
-            if (isLinked) {
-              await unlinkClassFromSchedule(cls.id, sid)
-              currentLinked.delete(sid)
-            } else {
-              await linkClassToSchedule(cls.id, sid)
-              currentLinked.add(sid)
-            }
-            // update card style
-            const newLinked = currentLinked.has(sid)
-            card.className = scheduleCardStyle(newLinked)
-            card.dataset.linked = String(newLinked)
-            card.style.opacity = ''
-            card.style.pointerEvents = ''
-            card.innerHTML = `
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-3 text-sm min-w-0">
-                  <span class="font-bold text-gray-700 flex-shrink-0">${dayStr}</span>
-                  <span class="text-gray-600 flex-shrink-0">${timeStr}</span>
-                  ${entry?.subject_name ? `<span class="text-xs text-gray-400 truncate">${_htmlEsc(entry.subject_name)}${entry?.class_name?` · ${_htmlEsc(entry.class_name)}`:''}</span>` : ''}
-                </div>
-                ${newLinked ? `<span class="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold">✓</span>` : ''}
-              </div>`
-          } catch(e) {
-            card.style.opacity = ''
-            card.style.pointerEvents = ''
-            showToast('บันทึกไม่สำเร็จ: ' + (e.message??''), 'error')
-          }
-        })
+  const attachScheduleEvents = () => {
+    modal.querySelectorAll('.cem-srow').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const sid   = parseInt(cell.dataset.sid)
+        const state = cell.dataset.state
+        const entry = schedule.find(s => s.id === sid)
+        if (!entry) return
+
+        if (state === 'other') {
+          // คาบนี้ถูกใช้กับห้องอื่น — ถามยืนยัน
+          const others = (linksBySchedule[sid] ?? []).filter(cid => cid !== cls.id)
+          const otherName = others.map(cid => classById[cid]?.class_name ?? `ห้อง ${cid}`).join(', ')
+          const p = periodMap[entry.period_no]
+          const timeStr = p?.start_time ? p.start_time.slice(0,5) : `คาบ ${entry.period_no}`
+          const cfm = document.createElement('div')
+          cfm.className = 'fixed inset-0 z-[600] flex items-center justify-center bg-black/50 p-4'
+          cfm.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 text-center">
+              <div class="text-2xl mb-2">⚠️</div>
+              <p class="font-bold text-gray-800 mb-1">คาบนี้ถูกเลือกแล้ว</p>
+              <p class="text-sm text-gray-500 mb-1">${DAY_TH[entry.day_of_week]} ${timeStr} · ${_htmlEsc(entry.subject_name ?? '')}</p>
+              <p class="text-xs text-amber-600 mb-4">ปัจจุบันเชื่อมกับ: <b>${otherName}</b><br>ต้องการย้ายมาใช้กับ <b>${_htmlEsc(cls.class_name)}</b> แทนไหม?</p>
+              <div class="flex gap-3">
+                <button class="cfm-cancel flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">ยกเลิก</button>
+                <button class="cfm-ok flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-semibold">ย้ายมาที่นี่</button>
+              </div>
+            </div>`
+          document.body.appendChild(cfm)
+          cfm.querySelector('.cfm-cancel').addEventListener('click', () => cfm.remove())
+          cfm.querySelector('.cfm-ok').addEventListener('click', () => {
+            cfm.remove()
+            pendingLinked.add(sid)
+            _refreshCell(cell)
+          })
+        } else if (state === 'selected') {
+          // ยกเลิกการเลือก
+          pendingLinked.delete(sid)
+          _refreshCell(cell)
+        } else {
+          // เลือกใหม่
+          pendingLinked.add(sid)
+          _refreshCell(cell)
+        }
       })
     })
   }
@@ -3655,7 +3753,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
     }
   }
 
-  showTab('info')
+  showTab(initialTab)
   modal.querySelectorAll('.cem-tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.cem)))
   modal.querySelector('#cem-close').addEventListener('click', () => modal.remove())
   modal.querySelector('#cem-cancel').addEventListener('click', () => modal.remove())
@@ -3679,7 +3777,14 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         day5_date:       modal.querySelector('#cem-day5')?.value || null,
         day6_date:       modal.querySelector('#cem-day6')?.value || null,
       }).catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
-      // 2. ตารางสอน — บันทึก real-time แล้วตอนคลิก ไม่ต้องทำซ้ำ
+      // 2. ตารางสอน — บันทึก pending changes
+      const toLink   = [...pendingLinked].filter(sid => !currentLinked.has(sid))
+      const toUnlink = [...currentLinked].filter(sid => !pendingLinked.has(sid))
+      for (const sid of toLink)   await linkClassToSchedule(cls.id, sid).catch(e => errors.push(`เชื่อม ${sid}: ${e.message??''}`))
+      for (const sid of toUnlink) await unlinkClassFromSchedule(cls.id, sid).catch(e => errors.push(`ยกเลิก ${sid}: ${e.message??''}`))
+      // sync currentLinked
+      toLink.forEach(sid => currentLinked.add(sid))
+      toUnlink.forEach(sid => currentLinked.delete(sid))
       // 3. ห้องสอน
       const roomSel = modal.querySelector('#cem-room')
       if (roomSel?.value !== undefined) {

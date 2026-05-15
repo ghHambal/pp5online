@@ -608,19 +608,32 @@ async function _showDonateModal(course, cfg = {}) {
       </div>
       <div class="px-5 py-4 space-y-4 overflow-auto flex-1">
         <p class="text-sm text-gray-600 text-center leading-relaxed">
-          ระบุจำนวนเงินที่ต้องการสนับสนุนได้เลยครับ<br/>
-          <span class="text-xs text-gray-400">ไม่มีขั้นต่ำ — ตามสะดวกเลยนะครับ</span>
+          สนับสนุนขั้นต่ำ 99 บาท เพื่อรับสิทธิ์ผู้สนับสนุน<br/>
+          <span class="text-xs text-gray-400">ระบบหลักใช้งานได้ไม่จำกัดอยู่แล้ว สิทธิ์นี้เป็นฟีเจอร์พิเศษเพิ่มเติมครับ</span>
         </p>
+        <div class="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+          <p class="text-xs font-bold text-amber-800 mb-2">ฟีเจอร์พิเศษสำหรับคุณครูที่โดเนท</p>
+          <div class="grid grid-cols-1 gap-2 text-[11px] text-amber-900 leading-snug">
+            <div class="flex gap-2"><span>📣</span><span>ประกาศในห้องเรียน</span></div>
+            <div class="flex gap-2"><span>🏅</span><span>ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท</span></div>
+            <div class="flex gap-2"><span>📊</span><span>Dashboard วิเคราะห์เพิ่มเติม</span></div>
+            <div class="flex gap-2"><span>🤖</span><span>AI ช่วยสร้างแผนการจัดการเรียนรู้หน้าเดียวทั้งเทอม</span></div>
+            <div class="flex gap-2"><span>🧩</span><span>AI ช่วยออกแบบแผนการจัดการเรียนรู้รายคาบ</span></div>
+          </div>
+        </div>
         <div class="flex items-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 focus-within:border-amber-400 transition">
           <span class="text-2xl font-bold text-amber-500">฿</span>
-          <input id="donate-amount" type="number" min="1" placeholder="0"
+          <input id="donate-amount" type="number" min="99" placeholder="99"
             class="flex-1 bg-transparent text-3xl font-extrabold text-amber-700 outline-none w-full" />
         </div>
-        <div class="flex gap-2">
-          ${[20,50,100,200].map(v =>
+        <div class="grid grid-cols-4 gap-2">
+          ${[99,199,299,499].map(v =>
             `<button class="donate-quick flex-1 py-2 rounded-xl border-2 border-amber-200 text-amber-700 text-sm font-bold hover:bg-amber-50 transition">${v}</button>`
           ).join('')}
         </div>
+        <p class="text-[11px] text-gray-400 text-center leading-relaxed">
+          ยอดที่สูงขึ้นใช้จัดระดับตราผู้สนับสนุนเท่านั้น ฟีเจอร์พิเศษจะได้รับเหมือนกันทุกคนที่โดเนทครับ
+        </p>
         <div id="donate-qr-area" class="hidden flex-col items-center gap-3 py-2">
           <img id="donate-qr-img" class="w-56 h-56 rounded-2xl shadow-md" />
           <p class="text-xs text-gray-500 text-center">สแกนด้วย app ธนาคาร หรือ PromptPay</p>
@@ -651,7 +664,7 @@ async function _showDonateModal(course, cfg = {}) {
 
   wrap.querySelector('#donate-gen-qr').addEventListener('click', async () => {
     const amount = parseFloat(amountInput.value)
-    if (!amount || amount <= 0) { showToast('กรุณาระบุจำนวนเงินครับ', 'error'); return }
+    if (!amount || amount < 99) { showToast('กรุณาระบุยอดโดเนทขั้นต่ำ 99 บาทครับ', 'error'); return }
     if (!promptpay) { showToast('แอดมินยังไม่ได้ตั้งค่าเบอร์ PromptPay', 'error'); return }
     try {
       const dataUrl = await promptpayQRDataURL(promptpay, amount)
@@ -1344,13 +1357,13 @@ async function _checkScheduleLinkPopup() {
     ])
     if (!classes.length) return
     if (!schedule.length) { _showScheduleLinkPrompt('no_schedule'); return }
-    const linkedIds = new Set(links.map(l => l.class_id))
-    const unlinked  = classes.filter(c => !linkedIds.has(c.id)).length
-    if (unlinked > 0) _showScheduleLinkPrompt('has_unlinked', unlinked)
+    const linkedIds    = new Set(links.map(l => l.class_id))
+    const unlinkedList = classes.filter(c => !linkedIds.has(c.id))
+    if (unlinkedList.length > 0) _showScheduleLinkPrompt('has_unlinked', unlinkedList.length, unlinkedList.map(c => c.id))
   } catch {}
 }
 
-function _showScheduleLinkPrompt(type, count = 0) {
+function _showScheduleLinkPrompt(type, count = 0, unlinkedIds = []) {
   document.getElementById('sched-link-prompt')?.remove()
   const isNoSchedule = type === 'no_schedule'
   const wrap = document.createElement('div')
@@ -1387,7 +1400,16 @@ function _showScheduleLinkPrompt(type, count = 0) {
   document.body.appendChild(wrap)
   wrap.querySelector('#slp-go').addEventListener('click', () => {
     wrap.remove()
-    window._navTo(isNoSchedule ? 'schedule-builder' : 'my-classes')
+    if (isNoSchedule) {
+      window._navTo('schedule-builder')
+    } else if (unlinkedIds.length === 1 && window._openCombinedEdit) {
+      // ห้องเดียว — เปิด modal ตารางสอนทันที
+      window._navTo('my-classes')
+      setTimeout(() => window._openCombinedEdit?.(unlinkedIds[0], 'schedule'), 400)
+    } else {
+      // หลายห้อง — ไปหน้า my-classes แล้วติ๊กเอง
+      window._navTo('my-classes')
+    }
   })
   wrap.querySelector('#slp-close').addEventListener('click', () => wrap.remove())
 }

@@ -581,9 +581,8 @@ export async function deleteScoreColumn(id) {
 export async function getDepartments() {
   const { data, error } = await supabase
     .from('departments')
-    .select('id, dept_code, dept_name, head_name, head_photo_url, head_sign_url, teacher_code')
+    .select('id, dept_code, dept_name, head_name, head_photo_url, head_sign_url, teacher_code, category')
     .order('dept_code')
-  // NOTE: เพิ่ม category ใน SELECT หลังจากรัน patch_departments_category.sql แล้ว
   if (error) throw error
   return data ?? []
 }
@@ -1856,4 +1855,64 @@ export async function getReadingMonitoringData(academicYear, semester) {
       .order('main_room'),
   ])
   return { columns: columns ?? [], scores: scores ?? [], students, homerooms: homerooms ?? [] }
+}
+
+// ─── PP5 Document ─────────────────────────────────────────────────────────────
+export async function getClassForDoc(classId) {
+  const { data, error } = await supabase
+    .from('classes')
+    .select(`
+      id, course_id, class_name, skill_group, head_student_id,
+      day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
+      master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id, phone ),
+      students ( full_name, student_code )
+    `)
+    .eq('id', classId)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function getClassAttendanceAllFull(classId) {
+  const { data, error } = await supabase
+    .from('attendances')
+    .select('student_id, session_number, check_date, status')
+    .eq('class_id', classId)
+    .order('session_number')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getReadingScoresForClass(studentIds, academicYear, semester) {
+  if (!studentIds.length) return { columns: [], scores: [] }
+  const { data: cols } = await supabase
+    .from('reading_score_columns')
+    .select('id, column_name, full_score')
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+  const colIds = (cols ?? []).map(c => c.id)
+  if (!colIds.length) return { columns: cols ?? [], scores: [] }
+  const { data: scores } = await supabase
+    .from('reading_scores')
+    .select('student_id, column_id, score')
+    .in('student_id', studentIds)
+    .in('column_id', colIds)
+  return { columns: cols ?? [], scores: scores ?? [] }
+}
+
+export async function getLifeSkillScoresForClass(studentIds, academicYear, semester) {
+  if (!studentIds.length) return { columns: [], scores: [] }
+  const { data: cols } = await supabase
+    .from('life_skill_columns')
+    .select('id, column_name, full_score')
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+  const colIds = (cols ?? []).map(c => c.id)
+  if (!colIds.length) return { columns: cols ?? [], scores: [] }
+  const { data: scores } = await supabase
+    .from('life_skill_scores')
+    .select('student_id, column_id, score')
+    .in('student_id', studentIds)
+    .in('column_id', colIds)
+  return { columns: cols ?? [], scores: scores ?? [] }
 }

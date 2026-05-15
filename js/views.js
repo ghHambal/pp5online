@@ -2353,7 +2353,10 @@ export function renderDeptTable(depts) {
               ${d.head_photo_url
                 ? `<img src="${d.head_photo_url}" class="w-7 h-7 rounded-full object-cover" />`
                 : `<div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-xs">?</div>`}
-              ${d.head_name ?? '—'}
+              <div>
+                <span>${d.head_name ?? '—'}</span>
+                ${d.teacher_code ? `<span class="block text-xs font-mono text-gray-400">${d.teacher_code}</span>` : ''}
+              </div>
             </div>
           </td>
           <td class="px-5 py-4 text-center hidden md:table-cell">
