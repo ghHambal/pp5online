@@ -48,6 +48,11 @@ export async function uploadSystemAsset(key, file) {
   return uploadFile('system-assets', `${key}.jpg`, blob)
 }
 
+// รูปสติกเกอร์ PNG — ต้องรักษา transparency จึงไม่แปลงเป็น JPEG
+export async function uploadStickerPng(key, file) {
+  return uploadFile('system-assets', `${key}.png`, file, 'image/png')
+}
+
 // รูปโปรไฟล์ครู → บีบ max 400px (thumbnail), quality 0.80
 export async function uploadTeacherPhoto(teacherId, file) {
   const blob = await compressImage(file, { maxWidth: 400, quality: 0.80 })

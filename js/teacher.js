@@ -768,10 +768,14 @@ async function _showDonateModal(course, cfg = {}) {
   })
 }
 
-async function _showThankYouCard(request) {
+// ให้ admin เรียกดูตัวอย่างได้โดยส่ง cfg มาเอง
+window._showThankYouCardAdmin = (request, cfgOverride) =>
+  _showThankYouCard(request, cfgOverride)
+
+async function _showThankYouCard(request, cfgOverride = null) {
   document.getElementById('thankyou-card-modal')?.remove()
 
-  const cfg = await getSystemConfig().catch(() => ({}))
+  const cfg = cfgOverride ?? await getSystemConfig().catch(() => ({}))
   const minAmount  = _toPositiveInt(cfg.donationMinAmount, 99)
   const stepAmount = _toPositiveInt(cfg.donationAmountStep, 50)
   const features   = _parseDonationFeatures(cfg)
@@ -852,20 +856,40 @@ async function _showThankYouCard(request) {
     localStorage.setItem(`pp5_thankyou_seen_${request.id}`, '1')
     wrap.remove()
     document.getElementById('donate-float-btn')?.remove()
-    _addDonateToSidebar()
+    _addDonateToSidebar(request)
   })
 }
 
-function _addDonateToSidebar() {
+async function _addDonateToSidebar(approvedRequest = null) {
   if (document.getElementById('sidebar-donate-item')) return
   const nav = document.querySelector('#sidebar nav')
   if (!nav) return
+
+  // ถ้า approved — แสดงสติกเกอร์ tier ของครูคนนี้
+  let stickerHtml = '<span>☕</span>'
+  let titleText   = 'สนับสนุนผู้พัฒนาอีกครั้ง'
+  if (approvedRequest) {
+    const cfg    = await getSystemConfig().catch(() => ({}))
+    const minAmt = _toPositiveInt(cfg.donationMinAmount, 99)
+    const step   = _toPositiveInt(cfg.donationAmountStep, 50)
+    const tiers  = _parseDonationStickers(cfg, minAmt, step)
+    const amount = approvedRequest.amount ?? 0
+    const tier   = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+    if (tier) {
+      const s = String(tier.sticker ?? '')
+      stickerHtml = /^https?:\/\//.test(s)
+        ? `<img src="${_esc(s)}" class="w-6 h-6 object-contain rounded" title="${_esc(tier.title)}" />`
+        : `<span title="${_esc(tier.title)}">${_esc(s || '🏅')}</span>`
+      titleText = `${tier.title} — คลิกเพื่อโดเนทอีกครั้ง`
+    }
+  }
+
   const item = document.createElement('a')
   item.id = 'sidebar-donate-item'
   item.href = '#'
-  item.title = 'สนับสนุนผู้พัฒนาอีกครั้ง'
+  item.title = titleText
   item.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-400/60 hover:text-amber-400 hover:bg-emerald-800/40 opacity-60 hover:opacity-100'
-  item.innerHTML = '<span>☕</span> สนับสนุนผู้พัฒนา'
+  item.innerHTML = `${stickerHtml} <span>${approvedRequest ? 'ผู้สนับสนุนระบบ' : 'สนับสนุนผู้พัฒนา'}</span>`
   item.addEventListener('click', async e => {
     e.preventDefault()
     const cfg = await getSystemConfig().catch(() => ({}))
@@ -911,7 +935,7 @@ async function _initDonationFlow(teacherId) {
       if (!seen && approved.admin_note) {
         _showThankYouCard(approved)
       } else {
-        _addDonateToSidebar()
+        _addDonateToSidebar(approved)
       }
     } else {
       _initDonateFloatingBtn(pending)

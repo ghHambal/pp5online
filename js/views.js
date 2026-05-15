@@ -30,7 +30,7 @@ import { openTeacherModal, handleDeleteTeacher,
          openDeptModal, handleDeleteDept,
          openPeriodModal, handleDeletePeriod } from './dashboard.js'
 import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './import.js'
-import { uploadSystemAsset } from './storage.js'
+import { uploadSystemAsset, uploadStickerPng } from './storage.js'
 import { applyThemeForRole } from './theme.js'
 import { supabase } from './supabase.js'
 import {
@@ -2054,6 +2054,12 @@ export async function renderSettings() {
                 placeholder:'❤️ ขอบคุณจากใจครับคุณครู\n\nคุณครูคือหนึ่งในผู้สนับสนุนส่วนน้อยมาก ๆ ที่มองเห็นคุณค่าของระบบ ปพ.5 ออนไลน์...',
                 hint:'เว้นว่างไว้เพื่อใช้ข้อความ default — ระบบจะต่อท้ายด้วยรายการฟีเจอร์พิเศษโดยอัตโนมัติ' },
             ]),
+            `<div class="mb-6">
+              <button id="btn-preview-thankyou" type="button"
+                class="w-full py-2.5 rounded-xl border-2 border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition flex items-center justify-center gap-2">
+                👁️ ดูตัวอย่างการ์ดขอบคุณ
+              </button>
+            </div>`,
             section('ฟีเจอร์พิเศษสำหรับผู้โดเนท', [
               { key:'donationSpecialFeatures', label:'รายการฟีเจอร์', type:'textarea', rows:6,
                 placeholder:'📣|ประกาศในห้องเรียน\n🏅|ตรา/สติกเกอร์ผู้สนับสนุน\n📊|Dashboard วิเคราะห์เพิ่มเติม',
@@ -2271,7 +2277,7 @@ export async function renderSettings() {
           const n   = fi.dataset.n
           fi.disabled = true
           try {
-            const url = await uploadSystemAsset(key, file)
+            const url = await uploadStickerPng(key, file)
             const hidden = document.getElementById(`cfg-${key}`)
             if (hidden) hidden.value = url
             await updateSystemConfig(key, url)
@@ -2287,6 +2293,22 @@ export async function renderSettings() {
             showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
           } finally { fi.disabled = false }
         })
+      })
+
+      // preview thank you card
+      document.getElementById('btn-preview-thankyou')?.addEventListener('click', async () => {
+        const previewCfg = {}
+        document.querySelectorAll('#cfg-panel-inner [id^="cfg-"]').forEach(el => {
+          const k = el.id.replace(/^cfg-/, '')
+          previewCfg[k] = el.value ?? el.dataset.on
+        })
+        // mock approved request
+        const fakeRequest = { id: 'preview', amount: parseInt(previewCfg.donationMinAmount ?? 99), admin_note: '' }
+        if (window._showThankYouCardAdmin) {
+          window._showThankYouCardAdmin(fakeRequest, previewCfg)
+        } else {
+          showToast('ไม่พบฟังก์ชัน preview — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'warning')
+        }
       })
 
       // sticker clear
