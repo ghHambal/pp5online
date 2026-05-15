@@ -274,27 +274,29 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     const raw = String(cfg.donationStickerTiers ?? '').trim()
     const minA = _toInt(cfg.donationMinAmount, 99)
     const step = _toInt(cfg.donationAmountStep, 50)
+    // field 5 = hex color สำหรับขอบเรืองแสง (optional)
     const defs = [
-      [minA,    '☕','ผู้สนับสนุนเริ่มต้น','ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
-      [minA+step,  '🌱','ผู้สนับสนุนอบอุ่น',   'ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
-      [minA+step*2,'⭐','ผู้สนับสนุนพิเศษ',   'สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
-      [minA+step*3,'💎','ผู้สนับสนุนใจดีมาก','เป็นแรงหนุนสำคัญของระบบนี้'],
+      [minA,    '☕','ผู้สนับสนุนเริ่มต้น','ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ',   '#f59e0b'],
+      [minA+step,  '🌱','ผู้สนับสนุนอบอุ่น',   'ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ','#10b981'],
+      [minA+step*2,'⭐','ผู้สนับสนุนพิเศษ',   'สนับสนุนการทำฟีเจอร์ใหม่ๆ',    '#3b82f6'],
+      [minA+step*3,'💎','ผู้สนับสนุนใจดีมาก','เป็นแรงหนุนสำคัญของระบบนี้',  '#8b5cf6'],
     ]
     const rows = raw
       ? raw.split('\n').filter(Boolean).map(l => {
-          const [a,s,t,n] = l.split('|').map(x=>x.trim())
-          return { amount:_toInt(a,0), sticker:s||'🏅', title:t||`ผู้สนับสนุน ${a} บาท`, note:n||'' }
+          const [a,s,t,n,c] = l.split('|').map(x=>x.trim())
+          return { amount:_toInt(a,0), sticker:s||'🏅', title:t||`ผู้สนับสนุน ${a} บาท`, note:n||'', color:c||'' }
         }).filter(t => t.amount > 0)
-      : defs.map(([a,s,t,n]) => ({ amount:a, sticker:s, title:t, note:n }))
+      : defs.map(([a,s,t,n,c]) => ({ amount:a, sticker:s, title:t, note:n, color:c }))
     return rows.sort((a,b) => a.amount - b.amount)
   }
-  // tier index → glow style (border + shadow)
-  const TIER_GLOW = [
-    'border-amber-300  shadow-[0_0_0_3px_rgba(251,191,36,0.35),0_4px_16px_rgba(251,191,36,0.2)]',   // tier 0 ☕
-    'border-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.35),0_4px_16px_rgba(52,211,153,0.2)]',  // tier 1 🌱
-    'border-blue-400   shadow-[0_0_0_3px_rgba(96,165,250,0.35),0_4px_16px_rgba(96,165,250,0.2)]',   // tier 2 ⭐
-    'border-violet-500 shadow-[0_0_0_3px_rgba(167,139,250,0.45),0_6px_20px_rgba(167,139,250,0.3)]', // tier 3 💎
-  ]
+
+  // hex → inline glow style
+  const _tierGlowStyle = (hex) => {
+    if (!hex) return ''
+    // hex → r,g,b
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16)
+    return `border:2px solid ${hex};box-shadow:0 0 0 4px rgba(${r},${g},${b},0.25),0 4px 20px rgba(${r},${g},${b},0.18);`
+  }
 
   // parse features list for popup
   const _parseFeatures = () => {
@@ -312,29 +314,30 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     }).filter(f => f.text)
   }
 
-  let donorTier = null
-  let donorTierIndex = 0
+  let donorTier      = null
   let donorStickerHtml = ''
-  let cardGlowClass = 'border-gray-100 shadow-sm'
+  let cardGlowStyle  = ''          // inline style สำหรับขอบการ์ด
+  let cardBorderCls  = 'border border-gray-100 shadow-sm'  // fallback
 
   if (approvedDonation && cfg.quotaMode === 'school_sponsored') {
-    const tiers   = _parseTiers()
-    const amount  = approvedDonation.amount ?? 0
-    const idx     = [...tiers].map((t,i)=>({t,i})).reverse().find(({t})=>amount>=t.amount)?.i ?? 0
-    donorTier      = tiers[idx] ?? tiers[0]
-    donorTierIndex = idx
-    cardGlowClass  = `border-2 ${TIER_GLOW[Math.min(idx, TIER_GLOW.length-1)]}`
+    const tiers  = _parseTiers()
+    const amount = approvedDonation.amount ?? 0
+    donorTier    = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
 
     if (donorTier) {
+      cardGlowStyle = _tierGlowStyle(donorTier.color)
+      cardBorderCls = ''   // ใช้ inline style แทน Tailwind
       const s = String(donorTier.sticker ?? '')
       const imgEl = /^https?:\/\//.test(s)
-        ? `<img src="${s}" class="w-10 h-10 object-contain drop-shadow-sm" />`
+        ? `<img src="${s}" class="w-12 h-12 object-contain drop-shadow" />`
         : `<span class="text-3xl leading-none">${s}</span>`
+      const titleColor = donorTier.color
+        ? `color:${donorTier.color};`
+        : 'color:#f59e0b;'
       donorStickerHtml = `
-        <button id="donor-sticker-btn" class="flex flex-col items-center gap-0.5 cursor-pointer group" title="คลิกเพื่อดูสิทธิ์พิเศษ">
+        <button id="donor-sticker-btn" class="flex flex-col items-center gap-0.5 cursor-pointer group mb-1" title="คลิกเพื่อดูสิทธิ์พิเศษ">
           ${imgEl}
-          <span class="text-[9px] font-bold leading-tight text-center whitespace-nowrap
-            ${donorTierIndex >= 3 ? 'text-violet-600' : donorTierIndex >= 2 ? 'text-blue-600' : donorTierIndex >= 1 ? 'text-emerald-600' : 'text-amber-600'}">
+          <span class="text-[9px] font-bold leading-tight text-center whitespace-nowrap" style="${titleColor}">
             ${donorTier.title}
           </span>
           <span class="text-[8px] text-gray-400 group-hover:text-gray-600 transition">ดูสิทธิ์ →</span>
@@ -345,7 +348,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
 
     <!-- การ์ดโปรไฟล์ครู -->
-    <div class="bg-white rounded-2xl ${cardGlowClass} p-5 mb-5 flex items-center gap-4">
+    <div class="bg-white rounded-2xl ${cardBorderCls} p-5 mb-5 flex items-center gap-4" style="${cardGlowStyle}">
       <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-100 flex-shrink-0
                   bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
                   text-white text-3xl font-bold">
@@ -565,17 +568,17 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   document.getElementById('donor-sticker-btn')?.addEventListener('click', () => {
     if (!donorTier) return
     const features = _parseFeatures()
-    const glowColors = ['amber','emerald','blue','violet']
-    const gc = glowColors[Math.min(donorTierIndex, glowColors.length-1)]
+    const hex   = donorTier.color || '#f59e0b'
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16)
     const s = String(donorTier.sticker ?? '')
     const stickerEl = /^https?:\/\//.test(s)
-      ? `<img src="${s}" class="w-16 h-16 object-contain mx-auto mb-2 drop-shadow" />`
-      : `<div class="text-5xl text-center mb-2">${s}</div>`
+      ? `<img src="${s}" class="w-20 h-20 object-contain mx-auto mb-2 drop-shadow-lg" />`
+      : `<div class="text-6xl text-center mb-2">${s}</div>`
     const pop = document.createElement('div')
     pop.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'
     pop.innerHTML = `
       <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs overflow-hidden">
-        <div class="bg-gradient-to-br from-${gc}-400 to-${gc}-600 px-6 py-5 text-center">
+        <div class="px-6 py-5 text-center" style="background:linear-gradient(135deg,rgba(${r},${g},${b},0.85),rgba(${r},${g},${b},1))">
           ${stickerEl}
           <p class="text-white font-bold text-base">${donorTier.title}</p>
           <p class="text-white/80 text-xs mt-0.5">${donorTier.note}</p>
@@ -593,7 +596,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             ฟีเจอร์เหล่านี้อยู่ระหว่างพัฒนาและจะทยอยเปิดใช้งานในอนาคต<br/>
             คุณครูจะได้รับการแจ้งเตือนเมื่อพร้อมใช้งานครับ 🙏
           </p>
-          <button class="mt-4 w-full py-2.5 rounded-2xl bg-${gc}-500 hover:bg-${gc}-600 text-white font-bold text-sm transition" onclick="this.closest('.fixed').remove()">
+          <button class="mt-4 w-full py-2.5 rounded-2xl text-white font-bold text-sm transition"
+            style="background:rgba(${r},${g},${b},1)" onclick="this.closest('.fixed').remove()">
             รับทราบ
           </button>
         </div>
