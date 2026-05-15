@@ -95,6 +95,64 @@ const _esc = value => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
 
+const _toPositiveInt = (value, fallback) => {
+  const n = parseInt(value, 10)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+const _parseDonationFeatures = cfg => {
+  const raw = String(cfg.donationSpecialFeatures ?? '').trim()
+  const defaults = [
+    ['📣', 'ประกาศในห้องเรียน'],
+    ['🏅', 'ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท'],
+    ['📊', 'Dashboard วิเคราะห์เพิ่มเติม'],
+    ['🤖', 'AI ช่วยสร้างแผนหน้าเดียวรายครั้งสอน'],
+    ['🧭', 'AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา'],
+    ['✍️', 'ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับนำไปใช้กับ AI ส่วนตัวของครู'],
+  ]
+  const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
+    const [icon, ...textParts] = line.includes('|') ? line.split('|').map(s => s.trim()) : ['', line]
+    return { icon: icon || '✨', text: textParts.join('|') || icon || line }
+  }) : defaults.map(([icon, text]) => ({ icon, text }))
+  return rows.filter(f => f.text)
+}
+
+const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
+  const raw = String(cfg.donationStickerTiers ?? '').trim()
+  const defaults = [
+    [minAmount, '☕', 'ผู้สนับสนุนเริ่มต้น', 'ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
+    [minAmount + stepAmount, '🌱', 'ผู้สนับสนุนอบอุ่น', 'ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
+    [minAmount + (stepAmount * 2), '⭐', 'ผู้สนับสนุนพิเศษ', 'สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
+    [minAmount + (stepAmount * 3), '💎', 'ผู้สนับสนุนใจดีมาก', 'เป็นแรงหนุนสำคัญของระบบนี้'],
+  ]
+  const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
+    const [amount, sticker, title, note] = line.split('|').map(s => s.trim())
+    return {
+      amount: _toPositiveInt(amount, 0),
+      sticker: sticker || '🏅',
+      title: title || `ผู้สนับสนุน ${amount || ''} บาท`,
+      note: note || 'ขอบคุณที่ช่วยสนับสนุนการพัฒนาระบบครับ',
+    }
+  }) : defaults.map(([amount, sticker, title, note]) => ({ amount, sticker, title, note }))
+  return rows.filter(t => t.amount > 0).sort((a, b) => a.amount - b.amount)
+}
+
+const _donationStickerHtml = tier => {
+  if (!tier) return ''
+  const sticker = String(tier.sticker ?? '')
+  const stickerEl = /^https?:\/\//.test(sticker)
+    ? `<img src="${_esc(sticker)}" class="w-14 h-14 object-contain rounded-2xl bg-white border border-amber-100 p-1" />`
+    : `<div class="w-14 h-14 rounded-2xl bg-white border border-amber-100 flex items-center justify-center text-3xl shadow-sm">${_esc(sticker || '🏅')}</div>`
+  return `
+    <div class="flex items-center gap-3 rounded-2xl border border-amber-200 bg-white p-3 shadow-sm">
+      ${stickerEl}
+      <div class="min-w-0">
+        <p class="text-sm font-bold text-amber-900">${_esc(tier.title)}</p>
+        <p class="text-[11px] text-amber-700 leading-relaxed">${_esc(tier.note)}</p>
+      </div>
+    </div>`
+}
+
 const _copyUrl = id => `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/copy`
 
 async function _showStandaloneCopyFlow() {
@@ -593,6 +651,13 @@ async function _showDonateModal(course, cfg = {}) {
   wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
   const promptpay = cfg.paymentPromptpay ?? ''
+  const minAmount = _toPositiveInt(cfg.donationMinAmount, 99)
+  const stepAmount = _toPositiveInt(cfg.donationAmountStep, 50)
+  const quickCount = Math.min(_toPositiveInt(cfg.donationQuickCount, 4), 8)
+  const quickAmounts = Array.from({ length: quickCount }, (_, i) => minAmount + (i * stepAmount))
+  const features = _parseDonationFeatures(cfg)
+  const stickerTiers = _parseDonationStickers(cfg, minAmount, stepAmount)
+  const firstTier = stickerTiers.find(t => minAmount >= t.amount) || stickerTiers[0]
 
   wrap.innerHTML = `
     <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
@@ -608,26 +673,25 @@ async function _showDonateModal(course, cfg = {}) {
       </div>
       <div class="px-5 py-4 space-y-4 overflow-auto flex-1">
         <p class="text-sm text-gray-600 text-center leading-relaxed">
-          สนับสนุนขั้นต่ำ 99 บาท เพื่อรับสิทธิ์ผู้สนับสนุน<br/>
+          สนับสนุนขั้นต่ำ ${minAmount} บาท เพื่อรับสิทธิ์ผู้สนับสนุน<br/>
           <span class="text-xs text-gray-400">ระบบหลักใช้งานได้ไม่จำกัดอยู่แล้ว สิทธิ์นี้เป็นฟีเจอร์พิเศษเพิ่มเติมครับ</span>
         </p>
         <div class="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
           <p class="text-xs font-bold text-amber-800 mb-2">ฟีเจอร์พิเศษสำหรับคุณครูที่โดเนท</p>
           <div class="grid grid-cols-1 gap-2 text-[11px] text-amber-900 leading-snug">
-            <div class="flex gap-2"><span>📣</span><span>ประกาศในห้องเรียน</span></div>
-            <div class="flex gap-2"><span>🏅</span><span>ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท</span></div>
-            <div class="flex gap-2"><span>📊</span><span>Dashboard วิเคราะห์เพิ่มเติม</span></div>
-            <div class="flex gap-2"><span>🤖</span><span>AI ช่วยสร้างแผนการจัดการเรียนรู้หน้าเดียวทั้งเทอม</span></div>
-            <div class="flex gap-2"><span>🧩</span><span>AI ช่วยออกแบบแผนการจัดการเรียนรู้รายคาบ</span></div>
+            ${features.map(f => `<div class="flex gap-2"><span>${_esc(f.icon)}</span><span>${_esc(f.text)}</span></div>`).join('')}
           </div>
+        </div>
+        <div id="donate-sticker-preview">
+          ${_donationStickerHtml(firstTier)}
         </div>
         <div class="flex items-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 focus-within:border-amber-400 transition">
           <span class="text-2xl font-bold text-amber-500">฿</span>
-          <input id="donate-amount" type="number" min="99" placeholder="99"
+          <input id="donate-amount" type="number" min="${minAmount}" step="${stepAmount}" value="${minAmount}" placeholder="${minAmount}"
             class="flex-1 bg-transparent text-3xl font-extrabold text-amber-700 outline-none w-full" />
         </div>
         <div class="grid grid-cols-4 gap-2">
-          ${[99,199,299,499].map(v =>
+          ${quickAmounts.map(v =>
             `<button class="donate-quick flex-1 py-2 rounded-xl border-2 border-amber-200 text-amber-700 text-sm font-bold hover:bg-amber-50 transition">${v}</button>`
           ).join('')}
         </div>
@@ -652,10 +716,20 @@ async function _showDonateModal(course, cfg = {}) {
   document.body.appendChild(wrap)
 
   const amountInput = wrap.querySelector('#donate-amount')
+  const stickerPreview = wrap.querySelector('#donate-sticker-preview')
+  const updateStickerPreview = () => {
+    const amount = parseFloat(amountInput.value)
+    const tier = [...stickerTiers].reverse().find(t => amount >= t.amount) || stickerTiers[0]
+    if (stickerPreview) stickerPreview.innerHTML = _donationStickerHtml(tier)
+  }
 
   wrap.querySelectorAll('.donate-quick').forEach(btn => {
-    btn.addEventListener('click', () => { amountInput.value = btn.textContent.trim() })
+    btn.addEventListener('click', () => {
+      amountInput.value = btn.textContent.trim()
+      updateStickerPreview()
+    })
   })
+  amountInput.addEventListener('input', updateStickerPreview)
 
   wrap.querySelector('#donate-back').addEventListener('click', () => {
     wrap.remove()
@@ -664,7 +738,7 @@ async function _showDonateModal(course, cfg = {}) {
 
   wrap.querySelector('#donate-gen-qr').addEventListener('click', async () => {
     const amount = parseFloat(amountInput.value)
-    if (!amount || amount < 99) { showToast('กรุณาระบุยอดโดเนทขั้นต่ำ 99 บาทครับ', 'error'); return }
+    if (!amount || amount < minAmount) { showToast(`กรุณาระบุยอดโดเนทขั้นต่ำ ${minAmount} บาทครับ`, 'error'); return }
     if (!promptpay) { showToast('แอดมินยังไม่ได้ตั้งค่าเบอร์ PromptPay', 'error'); return }
     try {
       const dataUrl = await promptpayQRDataURL(promptpay, amount)
