@@ -267,7 +267,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       ? `รายห้อง ${paidRoomCount} ห้อง — ใช้แล้ว ${usedSlots}/${classLimit} ห้อง`
       : `ยังไม่เลือกแพ็กเกจ — ใช้โควตาฟรี ${usedSlots}/${FREE_LIMIT} ห้อง`
 
-  // ─── Donation sticker ──────────────────────────────────────────────────────
+  // ─── Donation sticker + tier glow ─────────────────────────────────────────
   const approvedDonation = donationRequests.find(r => r.package_type === 'donation' && r.status === 'approved')
   const _toInt = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d }
   const _parseTiers = () => {
@@ -275,9 +275,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     const minA = _toInt(cfg.donationMinAmount, 99)
     const step = _toInt(cfg.donationAmountStep, 50)
     const defs = [
-      [minA,'☕','ผู้สนับสนุนเริ่มต้น','ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
-      [minA+step,'🌱','ผู้สนับสนุนอบอุ่น','ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
-      [minA+step*2,'⭐','ผู้สนับสนุนพิเศษ','สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
+      [minA,    '☕','ผู้สนับสนุนเริ่มต้น','ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
+      [minA+step,  '🌱','ผู้สนับสนุนอบอุ่น',   'ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
+      [minA+step*2,'⭐','ผู้สนับสนุนพิเศษ',   'สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
       [minA+step*3,'💎','ผู้สนับสนุนใจดีมาก','เป็นแรงหนุนสำคัญของระบบนี้'],
     ]
     const rows = raw
@@ -288,28 +288,64 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       : defs.map(([a,s,t,n]) => ({ amount:a, sticker:s, title:t, note:n }))
     return rows.sort((a,b) => a.amount - b.amount)
   }
+  // tier index → glow style (border + shadow)
+  const TIER_GLOW = [
+    'border-amber-300  shadow-[0_0_0_3px_rgba(251,191,36,0.35),0_4px_16px_rgba(251,191,36,0.2)]',   // tier 0 ☕
+    'border-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.35),0_4px_16px_rgba(52,211,153,0.2)]',  // tier 1 🌱
+    'border-blue-400   shadow-[0_0_0_3px_rgba(96,165,250,0.35),0_4px_16px_rgba(96,165,250,0.2)]',   // tier 2 ⭐
+    'border-violet-500 shadow-[0_0_0_3px_rgba(167,139,250,0.45),0_6px_20px_rgba(167,139,250,0.3)]', // tier 3 💎
+  ]
+
+  // parse features list for popup
+  const _parseFeatures = () => {
+    const raw = String(cfg.donationSpecialFeatures ?? '').trim()
+    const defs = [
+      ['📣','ประกาศในห้องเรียน'],['🏅','ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท'],
+      ['📊','Dashboard วิเคราะห์เพิ่มเติม'],['🤖','AI ช่วยสร้างแผนหน้าเดียวรายครั้งสอน'],
+      ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา'],
+      ['✍️','ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับนำไปใช้กับ AI ส่วนตัวของครู'],
+    ]
+    if (!raw) return defs.map(([icon,text]) => ({ icon, text }))
+    return raw.split('\n').filter(Boolean).map(l => {
+      const [icon,...rest] = l.includes('|') ? l.split('|').map(s=>s.trim()) : ['✨', l]
+      return { icon: icon||'✨', text: rest.join('|')||icon||l }
+    }).filter(f => f.text)
+  }
+
+  let donorTier = null
+  let donorTierIndex = 0
   let donorStickerHtml = ''
+  let cardGlowClass = 'border-gray-100 shadow-sm'
+
   if (approvedDonation && cfg.quotaMode === 'school_sponsored') {
-    const tiers = _parseTiers()
-    const amount = approvedDonation.amount ?? 0
-    const tier = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
-    if (tier) {
-      const s = String(tier.sticker ?? '')
+    const tiers   = _parseTiers()
+    const amount  = approvedDonation.amount ?? 0
+    const idx     = [...tiers].map((t,i)=>({t,i})).reverse().find(({t})=>amount>=t.amount)?.i ?? 0
+    donorTier      = tiers[idx] ?? tiers[0]
+    donorTierIndex = idx
+    cardGlowClass  = `border-2 ${TIER_GLOW[Math.min(idx, TIER_GLOW.length-1)]}`
+
+    if (donorTier) {
+      const s = String(donorTier.sticker ?? '')
       const imgEl = /^https?:\/\//.test(s)
-        ? `<img src="${s}" class="w-8 h-8 object-contain" />`
-        : `<span class="text-2xl leading-none">${s}</span>`
+        ? `<img src="${s}" class="w-10 h-10 object-contain drop-shadow-sm" />`
+        : `<span class="text-3xl leading-none">${s}</span>`
       donorStickerHtml = `
-        <div class="flex flex-col items-center gap-0.5 mb-1" title="${tier.title}">
+        <button id="donor-sticker-btn" class="flex flex-col items-center gap-0.5 cursor-pointer group" title="คลิกเพื่อดูสิทธิ์พิเศษ">
           ${imgEl}
-          <span class="text-[9px] text-amber-600 font-semibold leading-tight text-center whitespace-nowrap">${tier.title}</span>
-        </div>`
+          <span class="text-[9px] font-bold leading-tight text-center whitespace-nowrap
+            ${donorTierIndex >= 3 ? 'text-violet-600' : donorTierIndex >= 2 ? 'text-blue-600' : donorTierIndex >= 1 ? 'text-emerald-600' : 'text-amber-600'}">
+            ${donorTier.title}
+          </span>
+          <span class="text-[8px] text-gray-400 group-hover:text-gray-600 transition">ดูสิทธิ์ →</span>
+        </button>`
     }
   }
 
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
 
     <!-- การ์ดโปรไฟล์ครู -->
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5 flex items-center gap-4">
+    <div class="bg-white rounded-2xl ${cardGlowClass} p-5 mb-5 flex items-center gap-4">
       <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-100 flex-shrink-0
                   bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
                   text-white text-3xl font-bold">
@@ -332,7 +368,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             : ''}
         </div>
       </div>
-      <div class="flex-shrink-0 flex flex-col items-center gap-1">
+      <div class="flex-shrink-0 flex flex-col items-end gap-2">
         ${donorStickerHtml}
         <button onclick="window._navTo('profile')"
           class="text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500
@@ -523,6 +559,47 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   // ผูกปุ่มอัปเกรดในภาพรวม → เปิด quota popup
   document.getElementById('btn-upgrade-overview')?.addEventListener('click', () => {
     window._showQuotaFromOverview?.()
+  })
+
+  // donor sticker → features popup
+  document.getElementById('donor-sticker-btn')?.addEventListener('click', () => {
+    if (!donorTier) return
+    const features = _parseFeatures()
+    const glowColors = ['amber','emerald','blue','violet']
+    const gc = glowColors[Math.min(donorTierIndex, glowColors.length-1)]
+    const s = String(donorTier.sticker ?? '')
+    const stickerEl = /^https?:\/\//.test(s)
+      ? `<img src="${s}" class="w-16 h-16 object-contain mx-auto mb-2 drop-shadow" />`
+      : `<div class="text-5xl text-center mb-2">${s}</div>`
+    const pop = document.createElement('div')
+    pop.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'
+    pop.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs overflow-hidden">
+        <div class="bg-gradient-to-br from-${gc}-400 to-${gc}-600 px-6 py-5 text-center">
+          ${stickerEl}
+          <p class="text-white font-bold text-base">${donorTier.title}</p>
+          <p class="text-white/80 text-xs mt-0.5">${donorTier.note}</p>
+        </div>
+        <div class="px-5 py-4">
+          <p class="text-xs font-bold text-gray-700 mb-3">✨ สิทธิ์พิเศษที่คุณครูได้รับ</p>
+          <div class="space-y-2">
+            ${features.map(f => `
+            <div class="flex items-start gap-2.5 text-sm text-gray-700">
+              <span class="flex-shrink-0 text-base">${f.icon}</span>
+              <span class="leading-snug">${f.text}</span>
+            </div>`).join('')}
+          </div>
+          <p class="text-[10px] text-gray-400 mt-4 text-center leading-relaxed">
+            ฟีเจอร์เหล่านี้อยู่ระหว่างพัฒนาและจะทยอยเปิดใช้งานในอนาคต<br/>
+            คุณครูจะได้รับการแจ้งเตือนเมื่อพร้อมใช้งานครับ 🙏
+          </p>
+          <button class="mt-4 w-full py-2.5 rounded-2xl bg-${gc}-500 hover:bg-${gc}-600 text-white font-bold text-sm transition" onclick="this.closest('.fixed').remove()">
+            รับทราบ
+          </button>
+        </div>
+      </div>`
+    document.body.appendChild(pop)
+    pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
   })
 
   // countdown อัปเดตทุก 30 วิ
