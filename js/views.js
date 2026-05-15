@@ -1990,63 +1990,124 @@ export async function renderSettings() {
         ]),
       ].join('')
 
-      if (tabId === 'package') return [
-        section('การแจ้งเตือนก่อนเข้าสอน', [
-          { key:'notifyBeforeMinutes', label:'แจ้งเตือนก่อนเข้าสอนกี่นาที', type:'text', placeholder:'10',
-            hint:'ระบบจะแจ้งเตือน browser ก่อนถึงเวลาสอนตามจำนวนนาทีที่กำหนด (ต้องเชื่อมโยงตารางสอนก่อน)' },
-        ]),
-        section('โหมดระบบโควตา', [
-          { key:'quotaMode', label:'โหมดเมื่อครูครบโควตา', type:'select',
-            options:[
-              { value:'payment',          label:'โหมดเดิม — ซื้อแพ็กเกจ (รายห้อง / เหมาเทอม)' },
-              { value:'school_sponsored', label:'โหมดใหม่ — โรงเรียนสนับสนุน + เชิญโดเนท' },
-            ],
-            hint:'เลือกพฤติกรรมของระบบเมื่อครูใช้งานครบโควตาฟรี' },
-        ]),
-        section('การ์ดขอบคุณผู้โดเนท (โหมดใหม่)', [
-          { key:'donationThankYouCard', label:'ข้อความในการ์ดขอบคุณ', type:'textarea', rows:4,
-            placeholder:'เช่น ขอบคุณคุณครูมากเลยครับที่ช่วยสนับสนุนการพัฒนาระบบ...' },
-        ]),
-        section('สิทธิ์ผู้สนับสนุน / ฟีเจอร์พิเศษ (โหมดใหม่)', [
-          { key:'donationMinAmount', label:'ยอดโดเนทขั้นต่ำ (บาท)', type:'text', placeholder:'99',
-            hint:'ครูต้องระบุยอดอย่างน้อยเท่านี้จึงสร้าง QR Code ได้' },
-          { key:'donationAmountStep', label:'ช่วงเพิ่มราคาปุ่มลัด (บาท)', type:'text', placeholder:'50',
-            hint:'เช่น 50 = ปุ่มลัดจะแสดง 99, 149, 199, 249 เมื่อขั้นต่ำเป็น 99' },
-          { key:'donationQuickCount', label:'จำนวนปุ่มราคาลัด', type:'text', placeholder:'4',
-            hint:'แนะนำ 4 ปุ่ม เพื่อให้พอดีกับหน้าจอมือถือ' },
-          { key:'donationSpecialFeatures', label:'ฟีเจอร์พิเศษสำหรับผู้โดเนท', type:'textarea', rows:6,
-            placeholder:'📣|ประกาศในห้องเรียน\n🏅|ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท\n📊|Dashboard วิเคราะห์เพิ่มเติม\n🤖|AI ช่วยสร้างแผนหน้าเดียวรายครั้งสอน\n🧭|AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา\n✍️|ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับนำไปใช้กับ AI ส่วนตัวของครู',
-            hint:'กรอกบรรทัดละ 1 รายการ รูปแบบ: ไอคอน|ข้อความ หรือกรอกข้อความอย่างเดียวก็ได้' },
-          { key:'donationStickerTiers', label:'ระดับตรา/สติกเกอร์ผู้สนับสนุน', type:'textarea', rows:6,
-            placeholder:'99|☕|ผู้สนับสนุนเริ่มต้น|ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ\n149|🌱|ผู้สนับสนุนอบอุ่น|ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ\n199|⭐|ผู้สนับสนุนพิเศษ|สนับสนุนการทำฟีเจอร์ใหม่ๆ\n249|💎|ผู้สนับสนุนใจดีมาก|เป็นแรงหนุนสำคัญของระบบนี้',
-            hint:'กรอกบรรทัดละ 1 ระดับ รูปแบบ: ยอดขั้นต่ำ|สติกเกอร์หรือ URL รูป|ชื่อระดับ|คำอธิบาย' },
-        ]),
-        section('ข้อความใน Popup โหมดใหม่ (ปรับได้อิสระ)', [
-          { key:'sponsoredHeaderTitle', label:'หัวข้อหลัก', type:'text',
-            placeholder:'ขอบคุณที่ไว้วางใจใช้ระบบนี้ครับ' },
-          { key:'sponsoredBoxTitle', label:'หัวข้อกล่องสีเขียว', type:'text',
-            placeholder:'🏫 คุณโรงเรียนฯ ดูแลคุณครูแล้ว' },
-          { key:'sponsoredBoxBody', label:'ข้อความในกล่องสีเขียว', type:'textarea', rows:3,
-            placeholder:'ท่านผู้อำนวยการได้เปิดสิทธิ์ให้คุณครูทุกท่านใช้ได้ไม่จำกัดวิชา...' },
-          { key:'sponsoredDonateBtn', label:'ข้อความปุ่มโดเนท (หลัก)', type:'text',
-            placeholder:'☕ ขอบคุณผู้พัฒนาด้วยกาแฟสักแก้ว' },
-          { key:'sponsoredDonateSub', label:'ข้อความปุ่มโดเนท (รอง)', type:'text',
-            placeholder:'ถ้าระบบนี้ช่วยงานคุณครูได้บ้าง' },
-          { key:'sponsoredAccessBtn', label:'ข้อความปุ่มรับสิทธิ์', type:'text',
-            placeholder:'✨ รับของขวัญจากโรงเรียนเลย' },
-          { key:'sponsoredFooter', label:'ข้อความด้านล่าง', type:'text',
-            placeholder:'ไม่ว่าจะกดปุ่มไหน คุณครูได้ใช้งานไม่จำกัดเหมือนกันเลยครับ 🙏' },
-        ]),
-        section('โควตาและราคา (โหมดเดิม)', [
-          { key:'freeClassQuota', label:'โควตาห้องฟรี (ห้อง)',       type:'text', placeholder:'3' },
-          { key:'pricePerClass',  label:'ราคาเพิ่มรายห้อง (บาท)',    type:'text', placeholder:'49' },
-          { key:'priceSemester',  label:'ราคาแพ็กเกจเหมาทั้งเทอม (บาท)', type:'text', placeholder:'299' },
-        ]),
-        section('คำอธิบายแพ็กเกจ (แสดงในหน้าซื้อของครู)', [
-          { key:'pkgPerClassDesc',  label:'คำอธิบายรายห้อง',       type:'text', placeholder:'เพิ่มห้องเรียนได้ 1 ห้อง' },
-          { key:'pkgSemesterDesc',  label:'คำอธิบายเหมาทั้งเทอม', type:'text', placeholder:'ไม่จำกัดห้องตลอดภาคเรียน' },
-        ]),
-      ].join('')
+      if (tabId === 'package') {
+        // สร้าง sticker tier upload rows (PNG only)
+        const stickerCount = 4
+        const stickerUploads = Array.from({length: stickerCount}, (_, i) => {
+          const n = i + 1
+          const key = `donationStickerImg${n}`
+          const val = cfg[key] ?? ''
+          return `
+          <div class="flex items-center gap-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
+            <div class="flex-shrink-0 w-16 h-16 rounded-xl border-2 border-amber-200 bg-white flex items-center justify-center overflow-hidden">
+              ${val ? `<img src="${val}" class="w-full h-full object-contain" id="sticker-prev-${n}" />` : `<span id="sticker-prev-${n}" class="text-2xl text-gray-300">🏅</span>`}
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-amber-900 mb-1">สติกเกอร์ระดับ ${n}</p>
+              <label class="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-300 text-xs font-semibold text-amber-700 bg-white hover:bg-amber-50 transition shadow-sm">
+                📁 อัปโหลด PNG
+                <input type="file" accept="image/png" class="hidden pkg-sticker-upload" data-key="${key}" data-n="${n}" />
+              </label>
+              ${val ? `<button type="button" class="ml-2 text-xs text-red-400 hover:text-red-600 pkg-sticker-clear" data-key="${key}" data-n="${n}">ลบ</button>` : ''}
+              <p class="text-[10px] text-amber-500 mt-1">บังคับไฟล์ PNG เท่านั้น — URL นี้สามารถนำไปใส่ในคอลัมน์สติกเกอร์ด้านล่างได้</p>
+              <input type="hidden" id="cfg-${key}" value="${val}" />
+              ${val ? `<p class="text-[10px] text-gray-400 mt-0.5 break-all font-mono">${val}</p>` : ''}
+            </div>
+          </div>`
+        }).join('')
+
+        const pkgSubtabs = [
+          { id:'quota',    label:'🏆 โควตา / โหมด' },
+          { id:'donation', label:'🎁 Donation' },
+          { id:'popup',    label:'💬 ข้อความ Popup' },
+          { id:'legacy',   label:'🔧 โหมดเดิม' },
+        ]
+
+        const pkgPanels = {
+          quota: [
+            section('การแจ้งเตือนก่อนเข้าสอน', [
+              { key:'notifyBeforeMinutes', label:'แจ้งเตือนก่อนเข้าสอนกี่นาที', type:'text', placeholder:'10',
+                hint:'ระบบจะแจ้งเตือน browser ก่อนถึงเวลาสอนตามจำนวนนาทีที่กำหนด (ต้องเชื่อมโยงตารางสอนก่อน)' },
+            ]),
+            section('โหมดระบบโควตา', [
+              { key:'quotaMode', label:'โหมดเมื่อครูครบโควตา', type:'select',
+                options:[
+                  { value:'payment',          label:'โหมดเดิม — ซื้อแพ็กเกจ (รายห้อง / เหมาเทอม)' },
+                  { value:'school_sponsored', label:'โหมดใหม่ — โรงเรียนสนับสนุน + เชิญโดเนท' },
+                ],
+                hint:'เลือกพฤติกรรมของระบบเมื่อครูใช้งานครบโควตาฟรี' },
+              { key:'freeClassQuota', label:'โควตาห้องฟรี (ห้อง)', type:'text', placeholder:'3' },
+            ]),
+          ].join(''),
+
+          donation: [
+            section('ยอดและปุ่มลัด', [
+              { key:'donationMinAmount',  label:'ยอดโดเนทขั้นต่ำ (บาท)', type:'text', placeholder:'99',
+                hint:'ครูต้องระบุยอดอย่างน้อยเท่านี้จึงสร้าง QR Code ได้' },
+              { key:'donationAmountStep', label:'ช่วงเพิ่มราคาปุ่มลัด (บาท)', type:'text', placeholder:'50',
+                hint:'เช่น 50 = ปุ่มลัดจะแสดง 99, 149, 199, 249 เมื่อขั้นต่ำเป็น 99' },
+              { key:'donationQuickCount', label:'จำนวนปุ่มราคาลัด', type:'text', placeholder:'4',
+                hint:'แนะนำ 4 ปุ่ม เพื่อให้พอดีกับหน้าจอมือถือ' },
+            ]),
+            section('การ์ดขอบคุณ', [
+              { key:'donationThankYouCard', label:'ข้อความในการ์ดขอบคุณ', type:'textarea', rows:4,
+                placeholder:'เช่น ขอบคุณคุณครูมากเลยครับที่ช่วยสนับสนุนการพัฒนาระบบ...' },
+            ]),
+            section('ฟีเจอร์พิเศษสำหรับผู้โดเนท', [
+              { key:'donationSpecialFeatures', label:'รายการฟีเจอร์', type:'textarea', rows:6,
+                placeholder:'📣|ประกาศในห้องเรียน\n🏅|ตรา/สติกเกอร์ผู้สนับสนุน\n📊|Dashboard วิเคราะห์เพิ่มเติม',
+                hint:'กรอกบรรทัดละ 1 รายการ รูปแบบ: ไอคอน|ข้อความ หรือกรอกข้อความอย่างเดียวก็ได้' },
+            ]),
+            `<div class="mb-6">
+              <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">อัปโหลดรูปสติกเกอร์ (PNG เท่านั้น)</p>
+              <div class="space-y-3">${stickerUploads}</div>
+            </div>`,
+            section('ระดับตรา/สติกเกอร์ผู้สนับสนุน', [
+              { key:'donationStickerTiers', label:'ตั้งค่าระดับ (textarea)', type:'textarea', rows:6,
+                placeholder:'99|☕|ผู้สนับสนุนเริ่มต้น|ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ\n149|🌱|ผู้สนับสนุนอบอุ่น|ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ\n199|⭐|ผู้สนับสนุนพิเศษ|สนับสนุนการทำฟีเจอร์ใหม่ๆ\n249|💎|ผู้สนับสนุนใจดีมาก|เป็นแรงหนุนสำคัญของระบบนี้',
+                hint:'กรอกบรรทัดละ 1 ระดับ รูปแบบ: ยอดขั้นต่ำ|สติกเกอร์หรือ URL รูปจากด้านบน|ชื่อระดับ|คำอธิบาย' },
+            ]),
+          ].join(''),
+
+          popup: [
+            section('ข้อความใน Popup โหมดใหม่', [
+              { key:'sponsoredHeaderTitle', label:'หัวข้อหลัก', type:'text', placeholder:'ขอบคุณที่ไว้วางใจใช้ระบบนี้ครับ' },
+              { key:'sponsoredBoxTitle',    label:'หัวข้อกล่องสีเขียว', type:'text', placeholder:'🏫 คุณโรงเรียนฯ ดูแลคุณครูแล้ว' },
+              { key:'sponsoredBoxBody',     label:'ข้อความในกล่องสีเขียว', type:'textarea', rows:3,
+                placeholder:'ท่านผู้อำนวยการได้เปิดสิทธิ์ให้คุณครูทุกท่านใช้ได้ไม่จำกัดวิชา...' },
+              { key:'sponsoredDonateBtn',   label:'ข้อความปุ่มโดเนท (หลัก)', type:'text', placeholder:'☕ ขอบคุณผู้พัฒนาด้วยกาแฟสักแก้ว' },
+              { key:'sponsoredDonateSub',   label:'ข้อความปุ่มโดเนท (รอง)',  type:'text', placeholder:'ถ้าระบบนี้ช่วยงานคุณครูได้บ้าง' },
+              { key:'sponsoredAccessBtn',   label:'ข้อความปุ่มรับสิทธิ์',   type:'text', placeholder:'✨ รับของขวัญจากโรงเรียนเลย' },
+              { key:'sponsoredFooter',      label:'ข้อความด้านล่าง',        type:'text',
+                placeholder:'ไม่ว่าจะกดปุ่มไหน คุณครูได้ใช้งานไม่จำกัดเหมือนกันเลยครับ 🙏' },
+            ]),
+          ].join(''),
+
+          legacy: [
+            section('โควตาและราคา (โหมดเดิม)', [
+              { key:'pricePerClass',  label:'ราคาเพิ่มรายห้อง (บาท)',    type:'text', placeholder:'49' },
+              { key:'priceSemester',  label:'ราคาแพ็กเกจเหมาทั้งเทอม (บาท)', type:'text', placeholder:'299' },
+            ]),
+            section('คำอธิบายแพ็กเกจ (แสดงในหน้าซื้อของครู)', [
+              { key:'pkgPerClassDesc',  label:'คำอธิบายรายห้อง',       type:'text', placeholder:'เพิ่มห้องเรียนได้ 1 ห้อง' },
+              { key:'pkgSemesterDesc',  label:'คำอธิบายเหมาทั้งเทอม', type:'text', placeholder:'ไม่จำกัดห้องตลอดภาคเรียน' },
+            ]),
+          ].join(''),
+        }
+
+        const firstPkg = 'quota'
+        return `
+          <div class="flex gap-2 mb-5 flex-wrap" id="pkg-subtabs">
+            ${pkgSubtabs.map(t => `
+            <button class="pkg-stab px-4 py-2 rounded-xl text-sm font-semibold transition
+              ${t.id === firstPkg ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}"
+              data-pstab="${t.id}">${t.label}</button>`).join('')}
+          </div>
+          ${pkgSubtabs.map(t => `
+          <div id="pkg-panel-${t.id}" ${t.id !== firstPkg ? 'class="hidden"' : ''}>
+            ${pkgPanels[t.id] ?? ''}
+          </div>`).join('')}`
+      }
 
       if (tabId === 'student') return [
         section('การแสดงข้อมูลในหน้าจัดการนักเรียนของครู', [
@@ -2185,6 +2246,60 @@ export async function renderSettings() {
         inp.addEventListener('input', () => {
           const txt = document.getElementById(`${inp.id}-txt`)
           if (txt) txt.textContent = inp.value
+        })
+      })
+
+      // package sub-tabs
+      document.querySelectorAll('.pkg-stab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const t = btn.dataset.pstab
+          document.querySelectorAll('.pkg-stab').forEach(b => {
+            b.className = `pkg-stab px-4 py-2 rounded-xl text-sm font-semibold transition ${b.dataset.pstab === t ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`
+          })
+          document.querySelectorAll('[id^="pkg-panel-"]').forEach(p => p.classList.add('hidden'))
+          document.getElementById(`pkg-panel-${t}`)?.classList.remove('hidden')
+        })
+      })
+
+      // sticker PNG upload
+      document.querySelectorAll('.pkg-sticker-upload').forEach(fi => {
+        fi.addEventListener('change', async e => {
+          const file = e.target.files[0]; if (!file) return
+          if (file.type !== 'image/png') { showToast('กรุณาเลือกไฟล์ PNG เท่านั้น', 'error'); fi.value = ''; return }
+          const key = fi.dataset.key
+          const n   = fi.dataset.n
+          fi.disabled = true
+          try {
+            const url = await uploadSystemAsset(key, file)
+            const hidden = document.getElementById(`cfg-${key}`)
+            if (hidden) hidden.value = url
+            await updateSystemConfig(key, url)
+            // update preview
+            const prev = document.getElementById(`sticker-prev-${n}`)
+            if (prev) {
+              const img = document.createElement('img')
+              img.src = url; img.className = 'w-full h-full object-contain'
+              prev.replaceWith(img); img.id = `sticker-prev-${n}`
+            }
+            showToast(`อัปโหลดสติกเกอร์ ${n} สำเร็จ ✅`, 'success')
+          } catch (err) {
+            showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          } finally { fi.disabled = false }
+        })
+      })
+
+      // sticker clear
+      document.querySelectorAll('.pkg-sticker-clear').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const key = btn.dataset.key
+          const n   = btn.dataset.n
+          await updateSystemConfig(key, '').catch(() => {})
+          const hidden = document.getElementById(`cfg-${key}`)
+          if (hidden) hidden.value = ''
+          const prev = document.getElementById(`sticker-prev-${n}`)
+          if (prev) { prev.outerHTML = `<span id="sticker-prev-${n}" class="text-2xl text-gray-300">🏅</span>` }
+          btn.remove()
+          showToast('ลบสติกเกอร์แล้ว', 'success')
         })
       })
 
