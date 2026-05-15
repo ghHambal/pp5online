@@ -212,12 +212,14 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
   setTitle('ภาพรวม')
   const { getPendingExamRequestCount } = await import('./api.js')
-  const [subjects, classes, cfg, pendingRequests, packageAccess] = await Promise.all([
+  const { getMyDonationRequests } = await import('./api.js')
+  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
     teacher ? getPendingExamRequestCount(teacher.id).catch(()=>0) : Promise.resolve(0),
     teacher ? getTeacherPackageAccess(teacher.id).catch(()=>({ hasSemester: false, paidRoomCount: 0 })) : Promise.resolve({ hasSemester: false, paidRoomCount: 0 }),
+    teacher ? getMyDonationRequests(teacher.id).catch(()=>[]) : Promise.resolve([]),
   ])
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
@@ -265,6 +267,45 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       ? `รายห้อง ${paidRoomCount} ห้อง — ใช้แล้ว ${usedSlots}/${classLimit} ห้อง`
       : `ยังไม่เลือกแพ็กเกจ — ใช้โควตาฟรี ${usedSlots}/${FREE_LIMIT} ห้อง`
 
+  // ─── Donation sticker ──────────────────────────────────────────────────────
+  const approvedDonation = donationRequests.find(r => r.package_type === 'donation' && r.status === 'approved')
+  const _toInt = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d }
+  const _parseTiers = () => {
+    const raw = String(cfg.donationStickerTiers ?? '').trim()
+    const minA = _toInt(cfg.donationMinAmount, 99)
+    const step = _toInt(cfg.donationAmountStep, 50)
+    const defs = [
+      [minA,'☕','ผู้สนับสนุนเริ่มต้น','ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
+      [minA+step,'🌱','ผู้สนับสนุนอบอุ่น','ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
+      [minA+step*2,'⭐','ผู้สนับสนุนพิเศษ','สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
+      [minA+step*3,'💎','ผู้สนับสนุนใจดีมาก','เป็นแรงหนุนสำคัญของระบบนี้'],
+    ]
+    const rows = raw
+      ? raw.split('\n').filter(Boolean).map(l => {
+          const [a,s,t,n] = l.split('|').map(x=>x.trim())
+          return { amount:_toInt(a,0), sticker:s||'🏅', title:t||`ผู้สนับสนุน ${a} บาท`, note:n||'' }
+        }).filter(t => t.amount > 0)
+      : defs.map(([a,s,t,n]) => ({ amount:a, sticker:s, title:t, note:n }))
+    return rows.sort((a,b) => a.amount - b.amount)
+  }
+  let donorStickerHtml = ''
+  if (approvedDonation && cfg.quotaMode === 'school_sponsored') {
+    const tiers = _parseTiers()
+    const amount = approvedDonation.amount ?? 0
+    const tier = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+    if (tier) {
+      const s = String(tier.sticker ?? '')
+      const imgEl = /^https?:\/\//.test(s)
+        ? `<img src="${s}" class="w-8 h-8 object-contain" />`
+        : `<span class="text-2xl leading-none">${s}</span>`
+      donorStickerHtml = `
+        <div class="flex flex-col items-center gap-0.5 mb-1" title="${tier.title}">
+          ${imgEl}
+          <span class="text-[9px] text-amber-600 font-semibold leading-tight text-center whitespace-nowrap">${tier.title}</span>
+        </div>`
+    }
+  }
+
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
 
     <!-- การ์ดโปรไฟล์ครู -->
@@ -291,11 +332,14 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             : ''}
         </div>
       </div>
-      <button onclick="window._navTo('profile')"
-        class="flex-shrink-0 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500
-               hover:bg-gray-50 hover:text-gray-700 transition whitespace-nowrap">
-        ✏️ แก้ไขโปรไฟล์
-      </button>
+      <div class="flex-shrink-0 flex flex-col items-center gap-1">
+        ${donorStickerHtml}
+        <button onclick="window._navTo('profile')"
+          class="text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500
+                 hover:bg-gray-50 hover:text-gray-700 transition whitespace-nowrap">
+          ✏️ แก้ไขโปรไฟล์
+        </button>
+      </div>
     </div>
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
