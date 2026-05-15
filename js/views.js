@@ -2050,8 +2050,9 @@ export async function renderSettings() {
                 hint:'แนะนำ 4 ปุ่ม เพื่อให้พอดีกับหน้าจอมือถือ' },
             ]),
             section('การ์ดขอบคุณ', [
-              { key:'donationThankYouCard', label:'ข้อความในการ์ดขอบคุณ', type:'textarea', rows:4,
-                placeholder:'เช่น ขอบคุณคุณครูมากเลยครับที่ช่วยสนับสนุนการพัฒนาระบบ...' },
+              { key:'donationThankYouCard', label:'ข้อความในการ์ดขอบคุณ', type:'textarea', rows:6,
+                placeholder:'❤️ ขอบคุณจากใจครับคุณครู\n\nคุณครูคือหนึ่งในผู้สนับสนุนส่วนน้อยมาก ๆ ที่มองเห็นคุณค่าของระบบ ปพ.5 ออนไลน์...',
+                hint:'เว้นว่างไว้เพื่อใช้ข้อความ default — ระบบจะต่อท้ายด้วยรายการฟีเจอร์พิเศษโดยอัตโนมัติ' },
             ]),
             section('ฟีเจอร์พิเศษสำหรับผู้โดเนท', [
               { key:'donationSpecialFeatures', label:'รายการฟีเจอร์', type:'textarea', rows:6,
