@@ -2064,11 +2064,64 @@ export async function renderSettings() {
                 </button>`).join('')}
               </div>
             </div>`,
-            section('ฟีเจอร์พิเศษสำหรับผู้โดเนท', [
-              { key:'donationSpecialFeatures', label:'รายการฟีเจอร์', type:'textarea', rows:6,
-                placeholder:'📣|ประกาศในห้องเรียน\n🏅|ตรา/สติกเกอร์ผู้สนับสนุน\n📊|Dashboard วิเคราะห์เพิ่มเติม',
-                hint:'รูปแบบ: ไอคอน|ข้อความ|ระดับขั้นต่ำ (1-4) เช่น 🤖|AI แผนการสอน|2 — ระดับต่ำกว่าที่กำหนดจะเห็น 🔒' },
-            ]),
+            (() => {
+              // parse existing features from cfg
+              const rawFeat = String(cfg.donationSpecialFeatures ?? '').trim()
+              const featDefs = [
+                ['🌱','สติกเกอร์/ตราประจำระดับผู้สนับสนุน',1],
+                ['📣','ประกาศในห้องเรียนสำหรับนักเรียน',1],
+                ['✍️','ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว',1],
+                ['📊','Dashboard วิเคราะห์ภาพรวมห้องเรียน',2],
+                ['🤖','AI ช่วยสร้างแผนการสอน 1 หน้า รายครั้ง',2],
+                ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา',3],
+                ['⚡','Early Access ฟีเจอร์ใหม่ก่อนใคร',3],
+                ['📲','แจ้งเตือนอัตโนมัติ Telegram/LINE',4],
+              ]
+              const featRows = rawFeat
+                ? rawFeat.split('\n').filter(Boolean).map(l => {
+                    const p = l.split('|').map(s=>s.trim())
+                    return { icon: p[0]||'✨', text: p[1]||'', minTier: parseInt(p[2])||1 }
+                  })
+                : featDefs.map(([icon,text,minTier])=>({icon,text,minTier}))
+
+              const tierLabels = ['ระดับ 1','ระดับ 2','ระดับ 3','ระดับ 4','ระดับ 5']
+              const tierColors = ['text-emerald-600','text-amber-600','text-yellow-600','text-blue-500','text-violet-600']
+
+              const rowHtml = (f, i) => `
+                <div class="feat-row flex items-center gap-2 p-2 bg-gray-50 rounded-xl" data-idx="${i}">
+                  <input type="text" class="feat-icon w-10 text-center text-lg border border-gray-200 rounded-lg py-1 bg-white"
+                    value="${f.icon}" placeholder="🏅" maxlength="4" />
+                  <input type="text" class="feat-text flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                    value="${f.text}" placeholder="ชื่อฟีเจอร์" />
+                  <div class="flex gap-1 flex-shrink-0">
+                    ${[1,2,3,4,5].map(n => `
+                    <label class="cursor-pointer" title="${tierLabels[n-1]}">
+                      <input type="radio" name="feat-tier-${i}" class="sr-only feat-tier-radio" value="${n}" ${f.minTier===n?'checked':''} />
+                      <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition
+                        ${f.minTier===n ? `border-current ${tierColors[n-1]} bg-white` : 'border-gray-200 text-gray-300 bg-white hover:border-gray-300'}">
+                        ${n}
+                      </span>
+                    </label>`).join('')}
+                  </div>
+                  <button type="button" class="feat-del text-red-300 hover:text-red-500 text-lg flex-shrink-0" title="ลบ">✕</button>
+                </div>`
+
+              return `
+              <div class="mb-6">
+                <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-3 pb-2 border-b border-gray-100">ฟีเจอร์พิเศษสำหรับผู้โดเนท</p>
+                <p class="text-xs text-gray-400 mb-3">กำหนดว่าแต่ละฟีเจอร์ต้องเป็นระดับอะไรขึ้นไปถึงจะปลดล็อก — ระดับ 1 = ทุกคนที่โดเนทได้เลย</p>
+                <div id="feat-editor" class="space-y-2 mb-3">
+                  ${featRows.map((f,i) => rowHtml(f,i)).join('')}
+                </div>
+                <button type="button" id="feat-add"
+                  class="w-full py-2 rounded-xl border-2 border-dashed border-gray-200 text-sm text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition">
+                  + เพิ่มฟีเจอร์
+                </button>
+                <!-- hidden input ที่ save handler จะอ่าน -->
+                <input type="hidden" data-key="donationSpecialFeatures" id="cfg-donationSpecialFeatures"
+                  value="${(cfg.donationSpecialFeatures ?? '').replace(/"/g,'&quot;')}" />
+              </div>`
+            })(),
             section('Gemini API Keys สำหรับฟีเจอร์ผู้สนับสนุน', [
               { key:'donationGeminiKey1', label:'API Key หลัก (ลำดับ 1)', type:'password',
                 placeholder:'AIza...', hint:'ระบบจะใช้ key นี้ก่อน ถ้าหมด quota หรือ error จะข้ามไป key ถัดไปอัตโนมัติ' },
@@ -2267,6 +2320,73 @@ export async function renderSettings() {
           const txt = document.getElementById(`${inp.id}-txt`)
           if (txt) txt.textContent = inp.value
         })
+      })
+
+      // ── feature editor ────────────────────────────────────────────────────────
+      const _syncFeatHidden = () => {
+        const rows = [...document.querySelectorAll('#feat-editor .feat-row')]
+        const val = rows.map(row => {
+          const icon     = row.querySelector('.feat-icon')?.value.trim() || '✨'
+          const text     = row.querySelector('.feat-text')?.value.trim() || ''
+          const tierRadio = row.querySelector('.feat-tier-radio:checked')
+          const minTier  = tierRadio ? tierRadio.value : '1'
+          return text ? `${icon}|${text}|${minTier}` : null
+        }).filter(Boolean).join('\n')
+        const hidden = document.getElementById('cfg-donationSpecialFeatures')
+        if (hidden) hidden.value = val
+      }
+
+      const tierColors = ['text-emerald-600','text-amber-600','text-yellow-600','text-blue-500','text-violet-600']
+      const _attachFeatRowEvents = (row) => {
+        // radio tier — update visual style
+        row.querySelectorAll('.feat-tier-radio').forEach(radio => {
+          radio.addEventListener('change', () => {
+            const selected = parseInt(radio.value)
+            row.querySelectorAll('.feat-tier-radio').forEach((r,idx) => {
+              const span = r.nextElementSibling
+              const n = idx + 1
+              if (n === selected) {
+                span.className = `w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition border-current ${tierColors[idx]} bg-white`
+              } else {
+                span.className = 'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition border-gray-200 text-gray-300 bg-white hover:border-gray-300'
+              }
+            })
+            _syncFeatHidden()
+          })
+        })
+        row.querySelector('.feat-icon')?.addEventListener('input', _syncFeatHidden)
+        row.querySelector('.feat-text')?.addEventListener('input', _syncFeatHidden)
+        row.querySelector('.feat-del')?.addEventListener('click', () => {
+          row.remove(); _syncFeatHidden()
+        })
+      }
+
+      document.querySelectorAll('#feat-editor .feat-row').forEach(_attachFeatRowEvents)
+
+      document.getElementById('feat-add')?.addEventListener('click', () => {
+        const editor = document.getElementById('feat-editor')
+        if (!editor) return
+        const idx = editor.children.length
+        const div = document.createElement('div')
+        div.className = 'feat-row flex items-center gap-2 p-2 bg-gray-50 rounded-xl'
+        div.dataset.idx = idx
+        div.innerHTML = `
+          <input type="text" class="feat-icon w-10 text-center text-lg border border-gray-200 rounded-lg py-1 bg-white" value="✨" placeholder="🏅" maxlength="4" />
+          <input type="text" class="feat-text flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white" value="" placeholder="ชื่อฟีเจอร์" />
+          <div class="flex gap-1 flex-shrink-0">
+            ${[1,2,3,4,5].map(n => `
+            <label class="cursor-pointer">
+              <input type="radio" name="feat-tier-${idx}" class="sr-only feat-tier-radio" value="${n}" ${n===1?'checked':''} />
+              <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border-2 transition
+                ${n===1?`border-current ${tierColors[0]} bg-white`:'border-gray-200 text-gray-300 bg-white hover:border-gray-300'}">
+                ${n}
+              </span>
+            </label>`).join('')}
+          </div>
+          <button type="button" class="feat-del text-red-300 hover:text-red-500 text-lg flex-shrink-0" title="ลบ">✕</button>`
+        editor.appendChild(div)
+        _attachFeatRowEvents(div)
+        div.querySelector('.feat-text')?.focus()
       })
 
       // package sub-tabs
