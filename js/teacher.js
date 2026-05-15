@@ -189,10 +189,11 @@ const _getDonorTierIndex = (cfg, tiers, amount) => {
 const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
   const raw = String(cfg.donationStickerTiers ?? '').trim()
   const defaults = [
-    [minAmount,               '☕', 'ผู้สนับสนุนเริ่มต้น',    'ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
-    [minAmount + stepAmount,  '🏅', 'ผู้สนับสนุนใจดี',       'ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
-    [minAmount + stepAmount*2,'🐘', 'ผู้สนับสนุนพิเศษ',      'สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
-    [minAmount + stepAmount*3,'👑', 'ผู้สนับสนุนระดับตำนาน', 'เป็นแรงหนุนสำคัญของระบบนี้'],
+    [49,  '🌱', 'ครูผู้จุดประกาย',     'คุณครูจุดประกายให้ผมมีแรงเดินต่ออีกก้าว 🤝'],
+    [99,  '☕', 'ครูผู้ร่วมฝัน',       'คุณครูเดินร่วมทางกับผมในความฝันนี้ 💭'],
+    [149, '🏅', 'ครูผู้ร่วมสร้าง',     'คุณครูเป็นส่วนหนึ่งที่ทำให้ระบบนี้เกิดขึ้นได้จริง 🌱'],
+    [199, '🐘', 'ครูผู้ร่วมขับเคลื่อน','คุณครูช่วยผลักดันให้ระบบนี้เดินหน้าต่อได้ 🌊'],
+    [249, '👑', 'ครูผู้ก่อตั้งร่วม',   'คุณครูคือเสาหลักที่ทำให้ระบบนี้ยืนหยัดได้ 🏛️'],
   ]
   const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
     const [amount, sticker, title, note] = line.split('|').map(s => s.trim())
@@ -721,18 +722,43 @@ function _showSchoolSponsoredPopup(count, course, cfg = {}) {
 
 async function _showDonateModal(course, cfg = {}) {
   document.getElementById('donate-modal')?.remove()
+
+  // ── ป้องกันซ้ำ: เช็ค existing pending/approved ──────────────────────────────
+  if (_teacher?.id) {
+    try {
+      const existing = await getMyDonationRequests(_teacher.id)
+      const hasApproved = existing.some(r => r.package_type === 'donation' && r.status === 'approved')
+      const hasPending  = existing.some(r => r.package_type === 'donation' && r.status === 'pending')
+      if (hasApproved) {
+        showToast('คุณครูเป็นผู้สนับสนุนอยู่แล้วครับ 🙏', 'success'); return
+      }
+      if (hasPending) {
+        showToast('คุณครูส่งหลักฐานรอการอนุมัติอยู่แล้วครับ — กรุณารอแอดมินตรวจสอบก่อนนะครับ', 'warning'); return
+      }
+    } catch { /* ไม่ block ถ้า check ไม่ได้ */ }
+  }
+
   const wrap = document.createElement('div')
   wrap.id = 'donate-modal'
   wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
-  const promptpay = cfg.paymentPromptpay ?? ''
-  const minAmount = _toPositiveInt(cfg.donationMinAmount, 99)
+  const promptpay  = cfg.paymentPromptpay ?? ''
+  const minAmount  = _toPositiveInt(cfg.donationMinAmount, 49)
   const stepAmount = _toPositiveInt(cfg.donationAmountStep, 50)
   const quickCount = Math.min(_toPositiveInt(cfg.donationQuickCount, 4), 8)
-  const quickAmounts = Array.from({ length: quickCount }, (_, i) => minAmount + (i * stepAmount))
-  const features = _parseDonationFeatures(cfg)
-  const stickerTiers = _parseDonationStickers(cfg, minAmount, stepAmount)
-  const firstTier = stickerTiers.find(t => minAmount >= t.amount) || stickerTiers[0]
+  const quickAmounts  = Array.from({ length: quickCount }, (_, i) => minAmount + (i * stepAmount))
+  const allFeatures   = _parseDonationFeatures(cfg)
+  const stickerTiers  = _parseDonationStickers(cfg, minAmount, stepAmount)
+  const firstTier     = stickerTiers[0]
+
+  // render feature list ตาม tier index (1-based)
+  const _featureListHtml = (tierIdx) =>
+    allFeatures.map(f => {
+      const unlocked = tierIdx >= (f.minTier ?? 1)
+      return unlocked
+        ? `<div class="flex gap-2 text-amber-900"><span>${_esc(f.icon)}</span><span>${_esc(f.text)}</span></div>`
+        : `<div class="flex gap-2 text-gray-300 opacity-70"><span>🔒</span><span class="line-through">${_esc(f.text)}<span class="ml-1 text-[9px] no-underline not-italic text-gray-400">ระดับ ${f.minTier}+</span></span></div>`
+    }).join('')
 
   wrap.innerHTML = `
     <div class="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
@@ -751,15 +777,18 @@ async function _showDonateModal(course, cfg = {}) {
           สนับสนุนขั้นต่ำ ${minAmount} บาท เพื่อรับสิทธิ์ผู้สนับสนุน<br/>
           <span class="text-xs text-gray-400">ระบบหลักใช้งานได้ไม่จำกัดอยู่แล้ว สิทธิ์นี้เป็นฟีเจอร์พิเศษเพิ่มเติมครับ</span>
         </p>
+        <!-- Feature list: อัปเดตตาม amount -->
         <div class="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
           <p class="text-xs font-bold text-amber-800 mb-2">ฟีเจอร์พิเศษสำหรับคุณครูที่โดเนท</p>
-          <div class="grid grid-cols-1 gap-2 text-[11px] text-amber-900 leading-snug">
-            ${features.map(f => `<div class="flex gap-2"><span>${_esc(f.icon)}</span><span>${_esc(f.text)}</span></div>`).join('')}
+          <div id="donate-feature-list" class="grid grid-cols-1 gap-1.5 text-[11px] leading-snug">
+            ${_featureListHtml(1)}
           </div>
         </div>
+        <!-- Sticker preview -->
         <div id="donate-sticker-preview">
           ${_donationStickerHtml(firstTier)}
         </div>
+        <!-- Amount input -->
         <div class="flex items-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 focus-within:border-amber-400 transition">
           <span class="text-2xl font-bold text-amber-500">฿</span>
           <input id="donate-amount" type="number" min="${minAmount}" step="${stepAmount}" value="${minAmount}" placeholder="${minAmount}"
@@ -771,7 +800,7 @@ async function _showDonateModal(course, cfg = {}) {
           ).join('')}
         </div>
         <p class="text-[11px] text-gray-400 text-center leading-relaxed">
-          ยอดที่สูงขึ้นใช้จัดระดับตราผู้สนับสนุนเท่านั้น ฟีเจอร์พิเศษจะได้รับเหมือนกันทุกคนที่โดเนทครับ
+          ยอดที่สูงขึ้นจะปลดล็อกฟีเจอร์เพิ่มเติม และอัปเกรดระดับตราผู้สนับสนุนครับ
         </p>
         <div id="donate-qr-area" class="hidden flex-col items-center gap-3 py-2">
           <img id="donate-qr-img" class="w-56 h-56 rounded-2xl shadow-md" />
@@ -790,21 +819,25 @@ async function _showDonateModal(course, cfg = {}) {
 
   document.body.appendChild(wrap)
 
-  const amountInput = wrap.querySelector('#donate-amount')
+  const amountInput   = wrap.querySelector('#donate-amount')
   const stickerPreview = wrap.querySelector('#donate-sticker-preview')
-  const updateStickerPreview = () => {
-    const amount = parseFloat(amountInput.value)
-    const tier = [...stickerTiers].reverse().find(t => amount >= t.amount) || stickerTiers[0]
+  const featureList   = wrap.querySelector('#donate-feature-list')
+
+  const updatePreview = () => {
+    const amount   = parseFloat(amountInput.value) || 0
+    const tier     = [...stickerTiers].reverse().find(t => amount >= t.amount) || stickerTiers[0]
+    const tierIdx  = stickerTiers.indexOf(tier) + 1   // 1-based
     if (stickerPreview) stickerPreview.innerHTML = _donationStickerHtml(tier)
+    if (featureList)    featureList.innerHTML    = _featureListHtml(tierIdx)
   }
 
   wrap.querySelectorAll('.donate-quick').forEach(btn => {
     btn.addEventListener('click', () => {
       amountInput.value = btn.textContent.trim()
-      updateStickerPreview()
+      updatePreview()
     })
   })
-  amountInput.addEventListener('input', updateStickerPreview)
+  amountInput.addEventListener('input', updatePreview)
 
   wrap.querySelector('#donate-back').addEventListener('click', () => {
     wrap.remove()
