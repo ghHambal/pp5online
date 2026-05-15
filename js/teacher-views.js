@@ -304,19 +304,23 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     return `border:2px solid ${hex};box-shadow:0 0 0 4px rgba(${r},${g},${b},0.25),0 4px 20px rgba(${r},${g},${b},0.18);`
   }
 
-  // parse features list for popup
+  // parse features list — รูปแบบ: icon|text|minTier
   const _parseFeatures = () => {
     const raw = String(cfg.donationSpecialFeatures ?? '').trim()
     const defs = [
-      ['📣','ประกาศในห้องเรียน'],['🏅','ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท'],
-      ['📊','Dashboard วิเคราะห์เพิ่มเติม'],['🤖','AI ช่วยสร้างแผนหน้าเดียวรายครั้งสอน'],
-      ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา'],
-      ['✍️','ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับนำไปใช้กับ AI ส่วนตัวของครู'],
+      ['🏅','สติกเกอร์/ตราประจำระดับผู้สนับสนุน',1],
+      ['📣','ประกาศในห้องเรียนสำหรับนักเรียน',1],
+      ['✍️','ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว',1],
+      ['📊','Dashboard วิเคราะห์ภาพรวมห้องเรียน',2],
+      ['🤖','AI ช่วยสร้างแผนการสอน 1 หน้า รายครั้ง',2],
+      ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา',3],
+      ['⚡','Early Access ฟีเจอร์ใหม่ก่อนใคร',3],
+      ['📲','แจ้งเตือนอัตโนมัติ Telegram/LINE',4],
     ]
-    if (!raw) return defs.map(([icon,text]) => ({ icon, text }))
+    if (!raw) return defs.map(([icon,text,minTier]) => ({ icon, text, minTier }))
     return raw.split('\n').filter(Boolean).map(l => {
-      const [icon,...rest] = l.includes('|') ? l.split('|').map(s=>s.trim()) : ['✨', l]
-      return { icon: icon||'✨', text: rest.join('|')||icon||l }
+      const parts = l.split('|').map(s=>s.trim())
+      return { icon: parts[0]||'✨', text: parts[1]||parts[0]||l, minTier: parseInt(parts[2])||1 }
     }).filter(f => f.text)
   }
 
@@ -590,15 +594,27 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
           <p class="text-white/80 text-xs mt-0.5">${donorTier.note}</p>
         </div>
         <div class="px-5 py-4">
-          <p class="text-xs font-bold text-gray-700 mb-3">✨ สิทธิ์พิเศษที่คุณครูได้รับ</p>
+          <p class="text-xs font-bold text-gray-700 mb-3">✨ สิทธิ์พิเศษของคุณครู</p>
           <div class="space-y-2">
-            ${features.map(f => `
-            <div class="flex items-start gap-2.5 text-sm text-gray-700">
-              <span class="flex-shrink-0 text-base">${f.icon}</span>
-              <span class="leading-snug">${f.text}</span>
-            </div>`).join('')}
+            ${features.map(f => {
+              const unlocked = donorTierIndex >= (f.minTier ?? 1)
+              return unlocked
+                ? `<div class="flex items-start gap-2.5 text-sm text-gray-800">
+                     <span class="flex-shrink-0 text-base">${f.icon}</span>
+                     <span class="leading-snug">${f.text}</span>
+                   </div>`
+                : `<div class="flex items-start gap-2.5 text-sm text-gray-300">
+                     <span class="flex-shrink-0 text-base">🔒</span>
+                     <span class="leading-snug line-through">${f.text}</span>
+                     <span class="text-[10px] ml-auto whitespace-nowrap text-gray-400">ระดับ ${f.minTier}+</span>
+                   </div>`
+            }).join('')}
           </div>
-          <p class="text-[10px] text-gray-400 mt-4 text-center leading-relaxed">
+          ${donorTierIndex < 4 ? `
+          <div class="mt-3 pt-2.5 border-t border-gray-100 text-[10px] text-amber-600 text-center">
+            🔓 อัปเกรดระดับเพื่อปลดล็อกฟีเจอร์ที่เหลือ
+          </div>` : ''}
+          <p class="text-[10px] text-gray-400 mt-3 text-center leading-relaxed">
             ฟีเจอร์เหล่านี้อยู่ระหว่างพัฒนาและจะทยอยเปิดใช้งานในอนาคต<br/>
             คุณครูจะได้รับการแจ้งเตือนเมื่อพร้อมใช้งานครับ 🙏
           </p>

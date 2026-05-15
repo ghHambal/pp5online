@@ -156,21 +156,34 @@ export async function callDonationAI(cfg, prompt, { maxTokens = 1024 } = {}) {
 window._callDonationAI = callDonationAI
 window._getDonationGeminiKeys = getDonationGeminiKeys
 
+// รูปแบบ: icon|ข้อความ|minTier (minTier optional, default=1)
 const _parseDonationFeatures = cfg => {
   const raw = String(cfg.donationSpecialFeatures ?? '').trim()
   const defaults = [
-    ['📣', 'ประกาศในห้องเรียน'],
-    ['🏅', 'ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท'],
-    ['📊', 'Dashboard วิเคราะห์เพิ่มเติม'],
-    ['🤖', 'AI ช่วยสร้างแผนหน้าเดียวรายครั้งสอน'],
-    ['🧭', 'AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา'],
-    ['✍️', 'ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับนำไปใช้กับ AI ส่วนตัวของครู'],
+    ['🏅', 'สติกเกอร์/ตราประจำระดับผู้สนับสนุน',              1],
+    ['📣', 'ประกาศในห้องเรียนสำหรับนักเรียน',                  1],
+    ['✍️', 'ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว', 1],
+    ['📊', 'Dashboard วิเคราะห์ภาพรวมห้องเรียน',               2],
+    ['🤖', 'AI ช่วยสร้างแผนการสอน 1 หน้า รายครั้ง',            2],
+    ['🧭', 'AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา',             3],
+    ['⚡', 'Early Access ฟีเจอร์ใหม่ก่อนใคร',                  3],
+    ['📲', 'แจ้งเตือนอัตโนมัติ Telegram/LINE',                  4],
   ]
   const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
-    const [icon, ...textParts] = line.includes('|') ? line.split('|').map(s => s.trim()) : ['', line]
-    return { icon: icon || '✨', text: textParts.join('|') || icon || line }
-  }) : defaults.map(([icon, text]) => ({ icon, text }))
+    const parts = line.split('|').map(s => s.trim())
+    const icon    = parts[0] || '✨'
+    const text    = parts[1] || parts[0] || line
+    const minTier = parseInt(parts[2]) || 1
+    return { icon, text, minTier }
+  }) : defaults.map(([icon, text, minTier]) => ({ icon, text, minTier }))
   return rows.filter(f => f.text)
+}
+
+// คืน tier index (1-4) ของ approved donation — 0 = ไม่มี
+const _getDonorTierIndex = (cfg, tiers, amount) => {
+  if (!amount) return 0
+  const idx = [...tiers].map((t,i) => ({t,i})).reverse().find(({t}) => amount >= t.amount)?.i
+  return idx !== undefined ? idx + 1 : 0
 }
 
 const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
@@ -839,11 +852,12 @@ async function _showThankYouCard(request, cfgOverride = null) {
 
   const cfg = cfgOverride ?? await getSystemConfig().catch(() => ({}))
   const minAmount  = _toPositiveInt(cfg.donationMinAmount, 99)
-  const stepAmount = _toPositiveInt(cfg.donationAmountStep, 50)
-  const features   = _parseDonationFeatures(cfg)
-  const tiers      = _parseDonationStickers(cfg, minAmount, stepAmount)
-  const amount     = request.amount ?? 0
-  const tier       = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+  const stepAmount  = _toPositiveInt(cfg.donationAmountStep, 50)
+  const features    = _parseDonationFeatures(cfg)
+  const tiers       = _parseDonationStickers(cfg, minAmount, stepAmount)
+  const amount      = request.amount ?? 0
+  const tier        = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+  const tierIndex   = _getDonorTierIndex(cfg, tiers, amount)  // 1-4
   const thankText  = (cfg.donationThankYouCard ?? '').trim()
     || `❤️ ขอบคุณจากใจครับคุณครู
 
@@ -888,17 +902,29 @@ async function _showThankYouCard(request, cfgOverride = null) {
         <div class="bg-amber-50 rounded-2xl p-4 text-sm text-amber-900 leading-relaxed whitespace-pre-line border border-amber-100">
           ${_esc(request.admin_note || thankText)}
         </div>` : ''}
-        <!-- ฟีเจอร์พิเศษ -->
+        <!-- ฟีเจอร์พิเศษ: unlocked / locked -->
         ${features.length ? `
         <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-          <p class="text-xs font-bold text-emerald-800 mb-2.5">✨ สิทธิ์พิเศษที่คุณครูได้รับ</p>
+          <p class="text-xs font-bold text-emerald-800 mb-2.5">✨ สิทธิ์พิเศษของคุณครู</p>
           <div class="space-y-1.5">
-            ${features.map(f => `
-            <div class="flex items-start gap-2 text-sm text-emerald-900">
-              <span class="flex-shrink-0">${_esc(f.icon)}</span>
-              <span>${_esc(f.text)}</span>
-            </div>`).join('')}
+            ${features.map(f => {
+              const unlocked = tierIndex >= (f.minTier ?? 1)
+              return unlocked
+                ? `<div class="flex items-start gap-2 text-sm text-emerald-900">
+                     <span class="flex-shrink-0">${_esc(f.icon)}</span>
+                     <span>${_esc(f.text)}</span>
+                   </div>`
+                : `<div class="flex items-start gap-2 text-sm text-gray-400 opacity-60">
+                     <span class="flex-shrink-0">🔒</span>
+                     <span class="line-through">${_esc(f.text)}</span>
+                     <span class="text-[10px] ml-auto whitespace-nowrap">ระดับ ${f.minTier}+</span>
+                   </div>`
+            }).join('')}
           </div>
+          ${tierIndex < tiers.length ? `
+          <p class="text-[10px] text-emerald-700 mt-3 pt-2 border-t border-emerald-200">
+            🔓 อัปเกรดเพื่อปลดล็อกฟีเจอร์ที่เหลือได้เลยครับ
+          </p>` : ''}
         </div>` : ''}
         <!-- คำอธิบาย tier -->
         ${tier?.note ? `

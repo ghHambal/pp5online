@@ -2067,7 +2067,7 @@ export async function renderSettings() {
             section('ฟีเจอร์พิเศษสำหรับผู้โดเนท', [
               { key:'donationSpecialFeatures', label:'รายการฟีเจอร์', type:'textarea', rows:6,
                 placeholder:'📣|ประกาศในห้องเรียน\n🏅|ตรา/สติกเกอร์ผู้สนับสนุน\n📊|Dashboard วิเคราะห์เพิ่มเติม',
-                hint:'กรอกบรรทัดละ 1 รายการ รูปแบบ: ไอคอน|ข้อความ หรือกรอกข้อความอย่างเดียวก็ได้' },
+                hint:'รูปแบบ: ไอคอน|ข้อความ|ระดับขั้นต่ำ (1-4) เช่น 🤖|AI แผนการสอน|2 — ระดับต่ำกว่าที่กำหนดจะเห็น 🔒' },
             ]),
             section('Gemini API Keys สำหรับฟีเจอร์ผู้สนับสนุน', [
               { key:'donationGeminiKey1', label:'API Key หลัก (ลำดับ 1)', type:'password',
@@ -2334,19 +2334,23 @@ export async function renderSettings() {
       const _adminParseFeatures = (pcfg) => {
         const raw = String(pcfg.donationSpecialFeatures ?? '').trim()
         const defs = [
-          ['📣','ประกาศในห้องเรียน'],['🏅','ตรา/สติกเกอร์ผู้สนับสนุนตามระดับยอดโดเนท'],
-          ['📊','Dashboard วิเคราะห์เพิ่มเติม'],['🤖','AI ช่วยสร้างแผนหน้าเดียวรายครั้งสอน'],
-          ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา'],
-          ['✍️','ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับนำไปใช้กับ AI ส่วนตัวของครู'],
+          ['🏅','สติกเกอร์/ตราประจำระดับผู้สนับสนุน',1],
+          ['📣','ประกาศในห้องเรียนสำหรับนักเรียน',1],
+          ['✍️','ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว',1],
+          ['📊','Dashboard วิเคราะห์ภาพรวมห้องเรียน',2],
+          ['🤖','AI ช่วยสร้างแผนการสอน 1 หน้า รายครั้ง',2],
+          ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา',3],
+          ['⚡','Early Access ฟีเจอร์ใหม่ก่อนใคร',3],
+          ['📲','แจ้งเตือนอัตโนมัติ Telegram/LINE',4],
         ]
-        if (!raw) return defs.map(([icon,text])=>({icon,text}))
+        if (!raw) return defs.map(([icon,text,minTier])=>({icon,text,minTier}))
         return raw.split('\n').filter(Boolean).map(l=>{
-          const [icon,...rest] = l.includes('|') ? l.split('|').map(s=>s.trim()) : ['✨',l]
-          return {icon:icon||'✨', text:rest.join('|')||icon||l}
+          const p = l.split('|').map(s=>s.trim())
+          return {icon:p[0]||'✨', text:p[1]||p[0]||l, minTier:parseInt(p[2])||1}
         }).filter(f=>f.text)
       }
 
-      const _showTierPreview = (tier, features, thankText) => {
+      const _showTierPreview = (tier, features, thankText, tierN = 4) => {
         document.getElementById('tier-preview-modal')?.remove()
         const hex = tier.color || '#f59e0b'
         const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16)
@@ -2372,7 +2376,12 @@ export async function renderSettings() {
               <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                 <p class="text-xs font-bold text-emerald-800 mb-2.5">✨ สิทธิ์พิเศษที่คุณครูได้รับ</p>
                 <div class="space-y-1.5">
-                  ${features.map(f=>`<div class="flex items-start gap-2 text-sm text-emerald-900"><span class="flex-shrink-0">${f.icon}</span><span>${f.text}</span></div>`).join('')}
+                  ${features.map(f => {
+                    const unlocked = tierN >= (f.minTier ?? 1)
+                    return unlocked
+                      ? `<div class="flex items-start gap-2 text-sm text-emerald-900"><span class="flex-shrink-0">${f.icon}</span><span>${f.text}</span></div>`
+                      : `<div class="flex items-start gap-2 text-sm text-gray-300"><span class="flex-shrink-0">🔒</span><span class="line-through">${f.text}</span><span class="text-[10px] ml-auto whitespace-nowrap text-gray-400">ระดับ ${f.minTier}+</span></div>`
+                  }).join('')}
                 </div>
               </div>
               ${tier.note ? `<p class="text-xs text-center text-gray-400 italic">"${tier.note}"</p>` : ''}
@@ -2409,7 +2418,7 @@ export async function renderSettings() {
           if (!tier) { showToast('ยังไม่มีข้อมูล tier', 'warning'); return }
           const thankText = (previewCfg.donationThankYouCard ?? '').trim()
             || `❤️ ขอบคุณจากใจครับคุณครู\n\nคุณครูคือหนึ่งในผู้สนับสนุนส่วนน้อยมาก ๆ\nที่มองเห็นคุณค่าของระบบ ปพ.5 ออนไลน์\nมากกว่าแค่ "เครื่องมือใช้งาน" 📝\n\nและในฐานะผู้สนับสนุน คุณครูจะได้รับสิทธิ์พิเศษด้านล่างนี้ด้วยนะครับ`
-          _showTierPreview(tier, features, thankText)
+          _showTierPreview(tier, features, thankText, tierN)
         })
       })
 
