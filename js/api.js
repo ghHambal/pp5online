@@ -997,7 +997,7 @@ export async function getMyDonationRequests(teacherId) {
   if (!teacherId) return []
   const { data, error } = await supabase
     .from('payment_requests')
-    .select('id, package_type, status, admin_note, created_at')
+    .select('id, package_type, status, amount, admin_note, created_at')
     .eq('teacher_id', teacherId)
     .in('package_type', ['donation', 'school_sponsored'])
     .order('created_at', { ascending: false })

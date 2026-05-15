@@ -120,10 +120,10 @@ const _parseDonationFeatures = cfg => {
 const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
   const raw = String(cfg.donationStickerTiers ?? '').trim()
   const defaults = [
-    [minAmount, '☕', 'ผู้สนับสนุนเริ่มต้น', 'ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
-    [minAmount + stepAmount, '🌱', 'ผู้สนับสนุนอบอุ่น', 'ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
-    [minAmount + (stepAmount * 2), '⭐', 'ผู้สนับสนุนพิเศษ', 'สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
-    [minAmount + (stepAmount * 3), '💎', 'ผู้สนับสนุนใจดีมาก', 'เป็นแรงหนุนสำคัญของระบบนี้'],
+    [minAmount,               '☕', 'ผู้สนับสนุนเริ่มต้น',    'ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ'],
+    [minAmount + stepAmount,  '🏅', 'ผู้สนับสนุนใจดี',       'ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ'],
+    [minAmount + stepAmount*2,'🐘', 'ผู้สนับสนุนพิเศษ',      'สนับสนุนการทำฟีเจอร์ใหม่ๆ'],
+    [minAmount + stepAmount*3,'👑', 'ผู้สนับสนุนระดับตำนาน', 'เป็นแรงหนุนสำคัญของระบบนี้'],
   ]
   const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
     const [amount, sticker, title, note] = line.split('|').map(s => s.trim())
