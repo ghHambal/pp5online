@@ -2054,11 +2054,15 @@ export async function renderSettings() {
                 placeholder:'❤️ ขอบคุณจากใจครับคุณครู\n\nคุณครูคือหนึ่งในผู้สนับสนุนส่วนน้อยมาก ๆ ที่มองเห็นคุณค่าของระบบ ปพ.5 ออนไลน์...',
                 hint:'เว้นว่างไว้เพื่อใช้ข้อความ default — ระบบจะต่อท้ายด้วยรายการฟีเจอร์พิเศษโดยอัตโนมัติ' },
             ]),
-            `<div class="mb-6">
-              <button id="btn-preview-thankyou" type="button"
-                class="w-full py-2.5 rounded-xl border-2 border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition flex items-center justify-center gap-2">
-                👁️ ดูตัวอย่างการ์ดขอบคุณ
-              </button>
+            `<div class="mb-6 space-y-2">
+              <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest pb-2 border-b border-gray-100">ดูตัวอย่างการ์ดขอบคุณ</p>
+              <p class="text-xs text-gray-400 mb-2">เลือกระดับที่ต้องการดูตัวอย่าง ระบบจะอ่านค่าปัจจุบันใน form</p>
+              <div class="grid grid-cols-2 gap-2" id="tier-preview-btns">
+                ${[1,2,3,4].map(n => `
+                <button type="button" class="tier-preview-btn py-2 px-3 rounded-xl border-2 border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition flex items-center justify-center gap-1.5" data-tier="${n}">
+                  👁️ ระดับ ${n}
+                </button>`).join('')}
+              </div>
             </div>`,
             section('ฟีเจอร์พิเศษสำหรับผู้โดเนท', [
               { key:'donationSpecialFeatures', label:'รายการฟีเจอร์', type:'textarea', rows:6,
@@ -2304,20 +2308,28 @@ export async function renderSettings() {
         })
       })
 
-      // preview thank you card
-      document.getElementById('btn-preview-thankyou')?.addEventListener('click', async () => {
-        const previewCfg = {}
-        document.querySelectorAll('#cfg-panel-inner [id^="cfg-"]').forEach(el => {
-          const k = el.id.replace(/^cfg-/, '')
-          previewCfg[k] = el.value ?? el.dataset.on
+      // preview thank you card — per tier
+      document.querySelectorAll('.tier-preview-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const tierN = parseInt(btn.dataset.tier)
+          const previewCfg = {}
+          document.querySelectorAll('#cfg-panel-inner [id^="cfg-"]').forEach(el => {
+            const k = el.id.replace(/^cfg-/, '')
+            previewCfg[k] = el.value ?? el.dataset.on
+          })
+          // คำนวณ amount ที่ตรงกับ tier N
+          const minA = parseInt(previewCfg.donationMinAmount ?? 99) || 99
+          const step = parseInt(previewCfg.donationAmountStep ?? 50) || 50
+          const tierAmount = minA + (tierN - 1) * step
+          const fakeRequest = { id: 'preview', amount: tierAmount, admin_note: '' }
+          if (window._showThankYouCardAdmin) {
+            btn.disabled = true; btn.textContent = '⏳'
+            await window._showThankYouCardAdmin(fakeRequest, previewCfg)
+            btn.disabled = false; btn.innerHTML = `👁️ ระดับ ${tierN}`
+          } else {
+            showToast('ไม่พบฟังก์ชัน preview — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'warning')
+          }
         })
-        // mock approved request
-        const fakeRequest = { id: 'preview', amount: parseInt(previewCfg.donationMinAmount ?? 99), admin_note: '' }
-        if (window._showThankYouCardAdmin) {
-          window._showThankYouCardAdmin(fakeRequest, previewCfg)
-        } else {
-          showToast('ไม่พบฟังก์ชัน preview — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'warning')
-        }
       })
 
       // sticker clear
