@@ -807,13 +807,31 @@ async function _showDonateModal(course, cfg = {}) {
           <img id="donate-qr-img" class="w-56 h-56 rounded-2xl shadow-md" />
           <p class="text-xs text-gray-500 text-center">สแกนด้วย app ธนาคาร หรือ PromptPay</p>
         </div>
+        <!-- อัปโหลดสลิป (แสดงหลัง QR) -->
+        <div id="donate-slip-area" class="hidden space-y-2">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">อัปโหลดสลิปการโอนเงิน <span class="text-red-400">*</span></p>
+          <label id="donate-slip-label"
+            class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-amber-200
+                   rounded-xl py-5 cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition">
+            <span class="text-3xl">📎</span>
+            <span class="text-sm text-gray-500">แตะเพื่อเลือกรูปสลิป</span>
+            <span class="text-xs text-gray-400">รองรับ JPG, PNG, PDF</span>
+            <input type="file" id="donate-slip-file" accept="image/*,application/pdf" class="sr-only" />
+          </label>
+          <div id="donate-slip-preview" class="hidden relative">
+            <img id="donate-slip-img" class="w-full rounded-xl object-cover max-h-48 border border-gray-100" />
+            <p id="donate-slip-name" class="text-xs text-gray-500 mt-1 text-center truncate"></p>
+            <button id="donate-slip-remove" class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 text-xs flex items-center justify-center">✕</button>
+          </div>
+          <p id="donate-slip-err" class="hidden text-xs text-red-500 text-center">กรุณาอัปโหลดสลิปก่อนส่งนะครับ</p>
+        </div>
         <button id="donate-gen-qr"
           class="w-full py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-500 text-white font-bold text-sm shadow-md shadow-amber-200/50 transition">
           สร้าง QR Code →
         </button>
         <button id="donate-confirm"
           class="hidden w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-200/50 transition">
-          ✅ ฉันโอนแล้ว
+          ✅ ส่งหลักฐานการโอน
         </button>
       </div>
     </div>`
@@ -854,6 +872,7 @@ async function _showDonateModal(course, cfg = {}) {
       wrap.querySelector('#donate-qr-img').src = dataUrl
       wrap.querySelector('#donate-qr-area').classList.remove('hidden')
       wrap.querySelector('#donate-qr-area').classList.add('flex')
+      wrap.querySelector('#donate-slip-area').classList.remove('hidden')
       wrap.querySelector('#donate-confirm').classList.remove('hidden')
       wrap.querySelector('#donate-gen-qr').classList.add('hidden')
     } catch (e) {
@@ -861,18 +880,53 @@ async function _showDonateModal(course, cfg = {}) {
     }
   })
 
+  // slip upload handlers
+  let donateSlipFile = null
+  const slipFileInput = wrap.querySelector('#donate-slip-file')
+  const slipPreview   = wrap.querySelector('#donate-slip-preview')
+
+  slipFileInput?.addEventListener('change', e => {
+    donateSlipFile = e.target.files[0]
+    if (!donateSlipFile) return
+    wrap.querySelector('#donate-slip-name').textContent = donateSlipFile.name
+    if (donateSlipFile.type.startsWith('image/')) {
+      wrap.querySelector('#donate-slip-img').src = URL.createObjectURL(donateSlipFile)
+      wrap.querySelector('#donate-slip-img').classList.remove('hidden')
+    } else {
+      wrap.querySelector('#donate-slip-img').classList.add('hidden')
+    }
+    slipPreview.classList.remove('hidden')
+    wrap.querySelector('#donate-slip-label').classList.add('hidden')
+    wrap.querySelector('#donate-slip-err').classList.add('hidden')
+  })
+
+  wrap.querySelector('#donate-slip-remove')?.addEventListener('click', () => {
+    donateSlipFile = null; slipFileInput.value = ''
+    slipPreview.classList.add('hidden')
+    wrap.querySelector('#donate-slip-label').classList.remove('hidden')
+  })
+
   wrap.querySelector('#donate-confirm').addEventListener('click', async () => {
     const amount = parseFloat(amountInput.value)
+    // บังคับ slip ก่อนส่ง
+    if (!donateSlipFile) {
+      wrap.querySelector('#donate-slip-err').classList.remove('hidden')
+      wrap.querySelector('#donate-slip-area').scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
     const btn = wrap.querySelector('#donate-confirm')
     btn.disabled = true; btn.textContent = '⏳ กำลังส่งข้อมูล...'
     try {
-      await createPaymentRequest({ teacher_id: _teacher?.id, package_type: 'donation', amount, status: 'pending' })
-      showToast('ขอบคุณมากครับ! 🙏 แอดมินจะรับทราบและส่งการ์ดขอบคุณให้ครับ', 'success')
+      const req = await createPaymentRequest({ teacher_id: _teacher?.id, package_type: 'donation', amount, status: 'pending' })
+      // อัปโหลด slip แล้วอัปเดต request
+      const slipUrl = await uploadPaymentSlip(donateSlipFile, req.id)
+      await supabase.from('payment_requests').update({ slip_url: slipUrl }).eq('id', req.id)
+      showToast('ส่งหลักฐานสำเร็จ! 🙏 แอดมินจะตรวจสอบและส่งการ์ดขอบคุณให้ครับ', 'success')
       wrap.remove()
       _initDonateFloatingBtn(true)
     } catch (e) {
       showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
-      btn.disabled = false; btn.textContent = '✅ ฉันโอนแล้ว'
+      btn.disabled = false; btn.textContent = '✅ ส่งหลักฐานการโอน'
     }
   })
 }
