@@ -2532,6 +2532,20 @@ export async function renderMyClasses(teacher) {
       const src = window._classCache?.[classId]
       if (!src) return
 
+      // ─── โหลดห้องที่เหมาะสมตาม grade_level + subject_group ────────────────
+      const gradeLevel  = src.master_subjects?.grade_level ?? ''
+      const gradePrefix = gradeLevel.split('/')[0]   // "ม.5/6 Ash" → "ม.5"
+      const isReligion  = ['AGM', 'AGMVOC'].includes(src.skill_group ?? src.master_subjects?.subject_group ?? '')
+      const usedNames   = new Set((window._classesFlat ?? []).filter(c => c.course_id === src.course_id).map(c => c.class_name))
+
+      let roomOptions = []
+      try {
+        const allRooms = gradePrefix
+          ? await (isReligion ? getReligionRoomsByGrade(gradePrefix) : getRoomsByGrade(gradePrefix))
+          : []
+        roomOptions = allRooms.filter(r => !usedNames.has(r))
+      } catch { /* ถ้าโหลดไม่ได้ก็ fallback input ธรรมดา */ }
+
       // ─── Modal ───────────────────────────────────────────────────────────────
       const overlay = document.createElement('div')
       overlay.id = 'copy-class-overlay'
@@ -2540,10 +2554,18 @@ export async function renderMyClasses(teacher) {
         <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-7 animate-fade">
           <h3 class="text-base font-bold text-gray-800 mb-1">📋 ทำสำเนาห้องเรียน</h3>
           <p class="text-xs text-gray-400 mb-4">คัดลอกช่องคะแนนทั้งหมดจาก <span class="font-medium text-gray-600">${fromName}</span> ไปยังห้องใหม่</p>
-          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อห้องเรียนใหม่ <span class="text-red-400">*</span></label>
-          <input id="copy-class-name" type="text" placeholder="เช่น ม.5/3 Al-Ghazali"
-            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-1 focus:outline-none focus:ring-2 focus:ring-violet-200" />
-          <p class="text-[11px] text-gray-400 mb-5">นักเรียน วันเรียน และ Google Sheet ต้องตั้งค่าใหม่แยกต่างหาก</p>
+          <label class="block text-sm font-medium text-gray-700 mb-1">เลือกห้องเรียนใหม่ <span class="text-red-400">*</span></label>
+          ${roomOptions.length ? `
+          <select id="copy-class-select"
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200">
+            <option value="">— เลือกห้อง —</option>
+            ${roomOptions.map(r => `<option value="${r}">${r}</option>`).join('')}
+            <option value="__custom__">✏️ พิมพ์เอง...</option>
+          </select>` : ''}
+          <input id="copy-class-name" type="text"
+            placeholder="${roomOptions.length ? 'หรือพิมพ์ชื่อห้องเอง เช่น ม.5/3 Al-Ghazali' : 'เช่น ม.5/3 Al-Ghazali'}"
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm ${roomOptions.length ? 'hidden' : ''} focus:outline-none focus:ring-2 focus:ring-violet-200" />
+          <p class="text-[11px] text-gray-400 mt-1 mb-5">นักเรียน วันเรียน และ Google Sheet ต้องตั้งค่าใหม่แยกต่างหาก</p>
           <div class="flex gap-3">
             <button id="copy-class-cancel"
               class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">ยกเลิก</button>
@@ -2553,18 +2575,37 @@ export async function renderMyClasses(teacher) {
         </div>`
       document.body.appendChild(overlay)
 
+      const selectEl  = overlay.querySelector('#copy-class-select')
       const nameEl    = overlay.querySelector('#copy-class-name')
       const confirmEl = overlay.querySelector('#copy-class-confirm')
       const cancelEl  = overlay.querySelector('#copy-class-cancel')
-      nameEl.focus()
+
+      // toggle input เมื่อเลือก "พิมพ์เอง"
+      selectEl?.addEventListener('change', () => {
+        if (selectEl.value === '__custom__') {
+          nameEl.classList.remove('hidden')
+          nameEl.focus()
+        } else {
+          nameEl.classList.add('hidden')
+          nameEl.value = ''
+        }
+      })
+
+      if (!selectEl) nameEl.focus()
 
       const close = () => overlay.remove()
       cancelEl.addEventListener('click', close)
       overlay.addEventListener('click', e => { if (e.target === overlay) close() })
 
       confirmEl.addEventListener('click', async () => {
-        const newName = nameEl.value.trim()
-        if (!newName) { nameEl.classList.add('border-red-400'); nameEl.focus(); return }
+        const newName = selectEl && selectEl.value && selectEl.value !== '__custom__'
+          ? selectEl.value
+          : nameEl.value.trim()
+        if (!newName) {
+          ;(selectEl ?? nameEl).classList.add('ring-2', 'ring-red-300')
+          ;(selectEl ?? nameEl).focus()
+          return
+        }
         confirmEl.disabled = true
         confirmEl.textContent = 'กำลังสำเนา...'
 
