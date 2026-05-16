@@ -360,16 +360,16 @@ function _getCSS() {
     .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; }
     .p2-hdr table { border: none; width: 100%; }
     .p2-hdr td { border: none; padding: 1px 0; }
-    .p2-uline { display: inline-block; border-bottom: .3mm solid #000; min-width: 20mm; text-align: center; padding: 0 1.5mm; font-weight: 600; }
+    .p2-uline { display: inline-block; border-bottom: .3mm dashed #555; min-width: 20mm; text-align: center; padding: 0 1.5mm; font-weight: 600; }
     .std-table { width: 100%; border-collapse: collapse; flex: 1; }
     .std-table th { font-size: 10pt; padding: 1.5mm 2mm; border: .4mm solid #000; text-align: center; font-weight: 700; }
-    .std-table td { border: .4mm dashed #999; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
+    .std-table td { border: .4mm solid #000; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
     .std-table td:first-child { width: 32mm; }
     .std-table td.std-row { height: 7mm; }
     .p2-footer { display: flex; gap: 6mm; margin-top: 3mm; font-size: 9pt; }
     .p2-obj { flex: 0 0 auto; width: 60mm; }
     .p2-obj p { margin-bottom: 1mm; }
-    .p2-obj u { min-width: 18mm; display: inline-block; text-align: center; }
+    .p2-obj u { min-width: 18mm; display: inline-block; text-align: center; text-decoration: none; border-bottom: .3mm dashed #555; }
     .p2-char { flex: 1; }
     .p2-char-title { font-weight: 700; margin-bottom: 1mm; }
     .p2-char-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2mm; font-size: 8.5pt; }
@@ -717,7 +717,7 @@ function _buildPage2(d) {
 
     <!-- Signature -->
     <div class="p2-sig">
-      ลงชื่อ <span style="display:inline-block;border-bottom:.3mm solid #000;min-width:60mm;text-align:center;padding:0 2mm;">
+      ลงชื่อ <span style="display:inline-block;border-bottom:.3mm dashed #555;min-width:60mm;text-align:center;padding:0 2mm;">
         ${d.dept?.head_name ? _esc(d.dept.head_name) : ''}
       </span> หัวหน้ากลุ่มสาระฯ
     </div>
