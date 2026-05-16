@@ -2041,3 +2041,46 @@ export async function getSupervisorProgress() {
 
   return teacherMetrics
 }
+
+export async function getSupervisorComments(teacherId) {
+  const { data, error } = await supabase
+    .from('supervisor_comments')
+    .select('id, supervisor_id, metric, comment, created_at, teachers!supervisor_id(full_name)')
+    .eq('teacher_id', teacherId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addSupervisorComment(supervisorId, teacherId, metric, comment) {
+  const { error } = await supabase.from('supervisor_comments')
+    .insert({ supervisor_id: supervisorId, teacher_id: teacherId, metric, comment })
+  if (error) throw error
+}
+
+export async function deleteSupervisorComment(id) {
+  const { error } = await supabase.from('supervisor_comments').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getAttendanceSummaryByClass(classIds) {
+  if (!classIds.length) return []
+  const { data } = await supabase
+    .from('attendances')
+    .select('class_id, session_number, check_date')
+    .in('class_id', classIds)
+  return data ?? []
+}
+
+export async function getScoreSummaryByClass(classIds) {
+  if (!classIds.length) return { cols: [], scores: [] }
+  const { data: cols } = await supabase
+    .from('class_score_columns')
+    .select('id, class_id, assignment_name, max_score, assignment_type')
+    .in('class_id', classIds)
+  const colIds = (cols ?? []).map(c => c.id)
+  const { data: scores } = colIds.length
+    ? await supabase.from('student_scores').select('score_column_id').in('score_column_id', colIds)
+    : { data: [] }
+  return { cols: cols ?? [], scores: scores ?? [] }
+}
