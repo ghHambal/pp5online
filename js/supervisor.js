@@ -3,6 +3,8 @@ import {
   getSupervisorProgress, getDepartments,
   getSupervisorComments, addSupervisorComment, deleteSupervisorComment,
   getAttendanceSummaryByClass, getScoreSummaryByClass,
+  getClassStudentsAndScores, getClassAttendanceFull,
+  assignTeacherToDept,
 } from './api.js'
 import { openPP5Doc } from './pp5-doc.js'
 
@@ -359,7 +361,8 @@ async function _loadComments(teacherId) {
 async function _openMetricPopup(m, metric) {
   const titles = {profile:'👤 โปรไฟล์', dates:'📅 วันสอน', attendance:'✅ เช็คชื่อ', scores:'📊 คะแนน'}
   const overlay = _makeOverlay()
-  overlay.innerHTML = `<div class="sv-popup">
+  const wide = ['attendance','scores'].includes(metric) ? 'width:min(720px,96vw);' : ''
+  overlay.innerHTML = `<div class="sv-popup" style="${wide}">
     <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
     <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">${titles[metric]??metric} — ${m.full_name}</h3>
     <div id="sv-pop-body">⏳ กำลังโหลด...</div>
@@ -370,36 +373,122 @@ async function _openMetricPopup(m, metric) {
 
   const body = overlay.querySelector('#sv-pop-body')
   const classIds = m.myClasses.map(c=>c.id)
+  const today = new Date()
 
   if (metric==='profile') {
+    // โปรไฟล์: แสดง field ที่ขาด + ปุ่มเพิ่มสมาชิกกลุ่ม (ถ้าเป็น dept_head และครูยังไม่ได้ลงทะเบียน)
+    const hl = v => v ? '' : 'background:#fee2e2;border-radius:6px;'
     body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px;background:#f9fafb;border-radius:10px;">
+        ${m.image_url?`<img src="${m.image_url}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;">`
+          :`<div style="width:56px;height:56px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:24px;">📷</div>`}
+        <div>
+          <div style="font-weight:700;">${m.full_name}</div>
+          <div style="font-size:12px;color:#6b7280;">${m.isRegistered?`📧 ${m.login_email??''}`: '⚠ ยังไม่ลงทะเบียน'}</div>
+        </div>
+      </div>
       <div style="display:grid;gap:8px;">
-        ${_infoRow('รูปโปรไฟล์', m.image_url?'✓ มีรูป':'✗ ยังไม่มีรูป', !!m.image_url)}
-        ${_infoRow('เบอร์โทร', m.phone||'ยังไม่ระบุ', !!m.phone)}
-        ${_infoRow('กลุ่มสาระ', m.dept||'ยังไม่ระบุ', !!m.dept)}
-        ${_infoRow('ประเภท', m.category||'ยังไม่ระบุ', !!m.category)}
+        <div style="padding:8px 12px;border-radius:8px;${hl(m.image_url)}display:flex;justify-content:space-between;">
+          <span style="font-size:13px;">📷 รูปโปรไฟล์</span>
+          <span style="font-size:13px;font-weight:600;color:${m.image_url?'#059669':'#dc2626'};">${m.image_url?'✓ มีรูป':'✗ ยังไม่มีรูป'}</span>
+        </div>
+        <div style="padding:8px 12px;border-radius:8px;${hl(m.phone)}display:flex;justify-content:space-between;">
+          <span style="font-size:13px;">📱 เบอร์โทร</span>
+          <span style="font-size:13px;font-weight:600;color:${m.phone?'#059669':'#dc2626'};">${m.phone||'✗ ยังไม่ระบุ'}</span>
+        </div>
+        <div style="padding:8px 12px;border-radius:8px;${hl(m.dept)}display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:13px;">🏫 กลุ่มสาระ</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:13px;font-weight:600;color:${m.dept?'#059669':'#dc2626'};">${m.dept||'✗ ยังไม่ระบุ'}</span>
+            ${_selfTeacher?.position==='dept_head'&&!m.dept?`<button id="sv-assign-dept" style="padding:2px 8px;border:1px solid #6366f1;border-radius:6px;color:#6366f1;background:#eef2ff;font-size:11px;cursor:pointer;">+ กำหนดกลุ่ม</button>`:''}
+          </div>
+        </div>
+        <div style="padding:8px 12px;border-radius:8px;${hl(m.category)}display:flex;justify-content:space-between;">
+          <span style="font-size:13px;">👤 ประเภท</span>
+          <span style="font-size:13px;font-weight:600;color:${m.category?'#059669':'#dc2626'};">${m.category||'✗ ยังไม่ระบุ'}</span>
+        </div>
       </div>`
+
+    body.querySelector('#sv-assign-dept')?.addEventListener('click', async () => {
+      const dept = _selfTeacher?.dept
+      if (!dept) return
+      if (!confirm(`กำหนดกลุ่มสาระ "${dept}" ให้ ${m.full_name}?`)) return
+      try {
+        await assignTeacherToDept(m.id, dept)
+        m.dept = dept
+        showToast?.('กำหนดกลุ่มสาระแล้ว', 'success')
+        overlay.remove()
+      } catch(e) { alert(e.message) }
+    })
+
   } else if (metric==='dates') {
+    // วันสอน: คลิกแถวห้อง → popup แสดง 6 คาบแรก
     body.innerHTML = m.myClasses.map(c=>`
-      <div class="sv-cls-row" style="cursor:default;">
-        <span style="font-weight:600;">${c.class_name}</span>
-        <span style="font-size:12px;color:${c.day1_date?'#059669':'#dc2626'};">
-          ${c.day1_date?`✓ ${c.day1_date}`:'✗ ยังไม่ระบุ'}</span>
+      <div class="sv-cls-row sv-dates-cls" data-cid="${c.id}" style="cursor:pointer;">
+        <div>
+          <span style="font-weight:600;">${c.class_name}</span>
+          <span style="color:#6b7280;font-size:12px;margin-left:8px;">${c.master_subjects?.subject_name??''}</span>
+        </div>
+        <span style="font-size:12px;color:${c.day1_date?'#059669':'#dc2626'};">${c.day1_date?`✓ ระบุแล้ว`:'✗ ยังไม่ระบุ'} →</span>
       </div>`).join('') || '<div style="color:#9ca3af;">ไม่มีห้องเรียน</div>'
+
+    body.querySelectorAll('.sv-dates-cls').forEach(row=>{
+      row.addEventListener('click',()=>{
+        const cls = m.myClasses.find(c=>c.id===parseInt(row.dataset.cid))
+        if(!cls) return
+        const days = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
+        const pop = _makeOverlay()
+        pop.innerHTML = `<div class="sv-popup">
+          <button style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;" onclick="this.closest('.sv-overlay').remove()">✕</button>
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">${cls.class_name} — วันสอน 6 คาบแรก</h3>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">${cls.master_subjects?.subject_name??''}</div>
+          ${days.map((d,i)=>`
+            <div style="display:flex;justify-content:space-between;padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:13px;">
+              <span style="color:#374151;">คาบที่ ${i*2+1}–${i*2+2} (วันที่ ${i+1})</span>
+              <span style="font-weight:600;color:${cls[d]?'#059669':'#dc2626'};">${cls[d]||'—'}</span>
+            </div>`).join('')}
+        </div>`
+        document.body.appendChild(pop)
+        pop.addEventListener('click',e=>{if(e.target===pop)pop.remove()})
+      })
+    })
+
   } else if (metric==='attendance') {
+    // เช็คชื่อ: overview รายห้อง คลิก → ข้อมูลทั้งห้อง (นักเรียนทุกคน)
     const atts = await getAttendanceSummaryByClass(classIds)
     const byClass = {}
-    for(const a of atts){ if(!byClass[a.class_id]) byClass[a.class_id]={count:0,last:null}; byClass[a.class_id].count++; if(!byClass[a.class_id].last||a.check_date>byClass[a.class_id].last) byClass[a.class_id].last=a.check_date }
+    for(const a of atts){
+      if(!byClass[a.class_id]) byClass[a.class_id]={count:0,last:null}
+      byClass[a.class_id].count++
+      if(!byClass[a.class_id].last||a.check_date>byClass[a.class_id].last) byClass[a.class_id].last=a.check_date
+    }
     body.innerHTML = m.myClasses.map(c=>{
       const info = byClass[c.id]
-      return `<div class="sv-cls-row">
-        <span style="font-weight:600;">${c.class_name}</span>
+      const days = info?.last ? Math.floor((today - new Date(info.last))/86400000) : 999
+      const fresh = days<=7?'#059669':days<=14?'#d97706':'#dc2626'
+      const badge = !info?'':days<=7?'<span style="background:#d1fae5;color:#065f46;border-radius:8px;padding:1px 6px;font-size:10px;">ทันปัจจุบัน</span>'
+        :days<=14?'<span style="background:#fef3c7;color:#92400e;border-radius:8px;padding:1px 6px;font-size:10px;">ล่าช้าเล็กน้อย</span>'
+        :'<span style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:1px 6px;font-size:10px;">ล่าช้ามาก</span>'
+      return `<div class="sv-cls-row sv-att-cls" data-cid="${c.id}" style="cursor:pointer;">
+        <div>
+          <span style="font-weight:600;">${c.class_name}</span>
+          ${badge}
+        </div>
         <div style="text-align:right;font-size:12px;">
-          <div style="color:${info?'#059669':'#dc2626'};">${info?`${info.count} รายการ`:'ยังไม่มี'}</div>
-          ${info?`<div style="color:#6b7280;font-size:10px;">ล่าสุด: ${info.last?.slice(0,10)??''}</div>`:''}
+          <div style="color:${info?fresh:'#dc2626'};">${info?`${info.count} รายการ`:'ยังไม่มี'}</div>
+          ${info?`<div style="color:${fresh};font-size:10px;">ล่าสุด: ${info.last?.slice(0,10)??''}</div>`:''}
         </div>
       </div>`}).join('') || '<div style="color:#9ca3af;">ไม่มีห้องเรียน</div>'
+
+    body.querySelectorAll('.sv-att-cls').forEach(row=>{
+      row.addEventListener('click',()=>{
+        const cls = m.myClasses.find(c=>c.id===parseInt(row.dataset.cid))
+        if(cls) _openClassPopup(m, cls, 'att')
+      })
+    })
+
   } else if (metric==='scores') {
+    // คะแนน: overview รายห้อง คลิก → ตารางคะแนนนักเรียน
     const {cols, scores} = await getScoreSummaryByClass(classIds)
     const filled = new Set(scores.map(s=>s.score_column_id))
     const byClass = {}
@@ -407,69 +496,131 @@ async function _openMetricPopup(m, metric) {
     body.innerHTML = m.myClasses.map(c=>{
       const info = byClass[c.id]
       const pct = info?.cols?Math.round(info.filled/info.cols*100):null
-      return `<div class="sv-cls-row">
+      return `<div class="sv-cls-row sv-score-cls" data-cid="${c.id}" style="cursor:pointer;">
         <span style="font-weight:600;">${c.class_name}</span>
         <span style="font-size:12px;font-weight:700;color:${pct===null?'#9ca3af':pct>=80?'#059669':pct>=40?'#d97706':'#dc2626'};">
-          ${pct!==null?`${pct}% (${info.filled}/${info.cols} คอลัมน์)`:'ยังไม่มีคอลัมน์'}
+          ${pct!==null?`${pct}% (${info.filled}/${info.cols} คอลัมน์) →`:'ยังไม่มีคอลัมน์'}
         </span>
       </div>`}).join('') || '<div style="color:#9ca3af;">ไม่มีห้องเรียน</div>'
+
+    body.querySelectorAll('.sv-score-cls').forEach(row=>{
+      row.addEventListener('click',()=>{
+        const cls = m.myClasses.find(c=>c.id===parseInt(row.dataset.cid))
+        if(cls) _openClassPopup(m, cls, 'score')
+      })
+    })
   }
 }
 
-// ── class detail popup ────────────────────────────────────────────────────────
-async function _openClassPopup(m, cls) {
+// ── class full popup ──────────────────────────────────────────────────────────
+async function _openClassPopup(m, cls, defaultTab='att') {
   const overlay = _makeOverlay()
-  overlay.innerHTML = `<div class="sv-popup">
+  overlay.innerHTML = `<div class="sv-popup" style="width:min(800px,96vw);">
     <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
     <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">${cls.class_name}</h3>
-    <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">${cls.master_subjects?.subject_name??''} — ${m.full_name}</div>
-    <!-- mini tabs -->
+    <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">${cls.master_subjects?.subject_name??''} — ${m.full_name}</div>
     <div style="display:flex;gap:8px;margin-bottom:16px;">
-      <button class="sv-tab-btn active" data-tab="att">✅ เช็คชื่อ</button>
-      <button class="sv-tab-btn" data-tab="score">📊 คะแนน</button>
+      <button class="sv-tab-btn ${defaultTab==='att'?'active':''}" data-tab="att">✅ เช็คชื่อ</button>
+      <button class="sv-tab-btn ${defaultTab==='score'?'active':''}" data-tab="score">📊 คะแนน</button>
     </div>
-    <div id="sv-cls-body">⏳ กำลังโหลด...</div>
+    <div id="sv-cls-body" style="max-height:60vh;overflow-y:auto;">⏳ กำลังโหลด...</div>
   </div>`
   document.body.appendChild(overlay)
   overlay.querySelector('#sv-pop-close').onclick = ()=>overlay.remove()
   overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
 
-  // load data
-  const [atts, {cols, scores}] = await Promise.all([
-    getAttendanceSummaryByClass([cls.id]),
-    getScoreSummaryByClass([cls.id]),
+  const [attData, {students, cols, scores}] = await Promise.all([
+    getClassAttendanceFull(cls.id),
+    getClassStudentsAndScores(cls.id),
   ])
-  const filled = new Set(scores.map(s=>s.score_column_id))
+  const today = new Date()
 
   function renderTab(tab) {
     const body = overlay.querySelector('#sv-cls-body')
     if(tab==='att') {
-      const sessions = [...new Map(atts.map(a=>[a.session_number,a])).values()]
-        .sort((a,b)=>a.session_number-b.session_number)
-      body.innerHTML = sessions.length
-        ? `<div style="font-size:12px;color:#6b7280;margin-bottom:8px;">บันทึก ${sessions.length} คาบ</div>`
-          + sessions.map(a=>`<div style="display:flex;justify-content:space-between;padding:4px 8px;font-size:12px;border-bottom:1px solid #f3f4f6;">
-            <span>คาบที่ ${a.session_number}</span><span style="color:#6b7280;">${a.check_date?.slice(0,10)??''}</span></div>`).join('')
-        : '<div style="color:#9ca3af;font-size:13px;">ยังไม่มีการเช็คชื่อ</div>'
+      const sessions = [...new Set(attData.map(a=>a.session_number))].sort((a,b)=>a-b)
+      if(!sessions.length){ body.innerHTML='<div style="color:#9ca3af;padding:16px;">ยังไม่มีการเช็คชื่อ</div>'; return }
+      const lastDate = attData.reduce((m,a)=>a.check_date>m?a.check_date:m,'')
+      const days = lastDate?Math.floor((today-new Date(lastDate))/86400000):999
+      const badge = days<=7?'<span style="background:#d1fae5;color:#065f46;border-radius:8px;padding:2px 8px;font-size:11px;">ทันปัจจุบัน</span>'
+        :days<=14?'<span style="background:#fef3c7;color:#92400e;border-radius:8px;padding:2px 8px;font-size:11px;">ล่าช้าเล็กน้อย</span>'
+        :'<span style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:2px 8px;font-size:11px;">ล่าช้ามาก</span>'
+      // mini table: students × sessions
+      const attMap = {}
+      for(const a of attData) { if(!attMap[a.student_id]) attMap[a.student_id]={}; attMap[a.student_id][a.session_number]=a.status }
+      const dateMap = {}
+      for(const a of attData) { if(!dateMap[a.session_number]) dateMap[a.session_number]=a.check_date?.slice(0,10) }
+      const showSessions = sessions.slice(-20) // แสดง 20 คาบล่าสุด
+      body.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;">
+          <span>บันทึกทั้งหมด ${sessions.length} คาบ</span> ${badge}
+          <span style="color:#6b7280;font-size:12px;">ล่าสุด: ${lastDate?.slice(0,10)??''}</span>
+        </div>
+        <div style="overflow-x:auto;">
+        <table style="border-collapse:collapse;font-size:11px;width:100%;">
+          <thead>
+            <tr style="background:#f9fafb;">
+              <th style="padding:4px 8px;text-align:left;border:1px solid #e5e7eb;position:sticky;left:0;background:#f9fafb;">ชื่อนักเรียน</th>
+              ${showSessions.map(s=>`<th style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center;white-space:nowrap;">
+                <div>คาบ ${s}</div><div style="font-weight:400;color:#6b7280;font-size:10px;">${dateMap[s]??''}</div>
+              </th>`).join('')}
+              <th style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center;">ขาด</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${students.map(st=>{
+              const absent = showSessions.filter(s=>attMap[st.id]?.[s]==='absent').length
+              return `<tr>
+                <td style="padding:4px 8px;border:1px solid #e5e7eb;white-space:nowrap;position:sticky;left:0;background:#fff;">${st.full_name}</td>
+                ${showSessions.map(s=>{
+                  const status = attMap[st.id]?.[s]
+                  return `<td style="border:1px solid #e5e7eb;text-align:center;background:${status==='absent'?'#fee2e2':status==='present'?'#f0fdf4':''};">
+                    ${status==='absent'?'✗':status==='present'?'':''}</td>`
+                }).join('')}
+                <td style="border:1px solid #e5e7eb;text-align:center;font-weight:700;color:${absent>0?'#dc2626':'#059669'};">${absent||'0'}</td>
+              </tr>`}).join('')}
+          </tbody>
+        </table>
+        </div>`
     } else {
-      body.innerHTML = cols.filter(c=>c.class_id===cls.id).length
-        ? cols.filter(c=>c.class_id===cls.id).map(c=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;">
-            <span>${c.assignment_name??'—'} <span style="color:#9ca3af;">(${c.max_score})</span></span>
-            <span style="color:${filled.has(c.id)?'#059669':'#dc2626'};font-weight:700;">${filled.has(c.id)?'✓ มีคะแนน':'✗ ยังไม่กรอก'}</span>
-          </div>`).join('')
-        : '<div style="color:#9ca3af;font-size:13px;">ยังไม่มีคอลัมน์คะแนน</div>'
+      if(!cols.length){ body.innerHTML='<div style="color:#9ca3af;padding:16px;">ยังไม่มีคอลัมน์คะแนน</div>'; return }
+      const scoreMap = {}
+      for(const s of scores) { if(!scoreMap[s.student_id]) scoreMap[s.student_id]={}; scoreMap[s.student_id][s.score_column_id]=s.score }
+      body.innerHTML = `<div style="overflow-x:auto;">
+        <table style="border-collapse:collapse;font-size:11px;width:100%;">
+          <thead>
+            <tr style="background:#f9fafb;">
+              <th style="padding:4px 8px;text-align:left;border:1px solid #e5e7eb;position:sticky;left:0;background:#f9fafb;">ชื่อนักเรียน</th>
+              ${cols.map(c=>`<th style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center;white-space:nowrap;">
+                <div>${c.assignment_name??'—'}</div><div style="font-weight:400;color:#6b7280;font-size:10px;">/${c.max_score}</div>
+              </th>`).join('')}
+              <th style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center;">รวม</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${students.map(st=>{
+              const total = cols.reduce((s,c)=>s+(scoreMap[st.id]?.[c.id]??0),0)
+              return `<tr>
+                <td style="padding:4px 8px;border:1px solid #e5e7eb;white-space:nowrap;position:sticky;left:0;background:#fff;">${st.full_name}</td>
+                ${cols.map(c=>{
+                  const v = scoreMap[st.id]?.[c.id]
+                  return `<td style="border:1px solid #e5e7eb;text-align:center;color:${v!=null?'#374151':'#d1d5db'};">${v??'—'}</td>`
+                }).join('')}
+                <td style="border:1px solid #e5e7eb;text-align:center;font-weight:700;">${total}</td>
+              </tr>`}).join('')}
+          </tbody>
+        </table>
+        </div>`
     }
   }
 
   overlay.querySelectorAll('.sv-tab-btn').forEach(b=>{
     b.addEventListener('click',()=>{
       overlay.querySelectorAll('.sv-tab-btn').forEach(x=>x.classList.remove('active'))
-      b.classList.add('active')
-      renderTab(b.dataset.tab)
+      b.classList.add('active'); renderTab(b.dataset.tab)
     })
   })
-  renderTab('att')
+  renderTab(defaultTab)
 }
 
 // ── utils ─────────────────────────────────────────────────────────────────────

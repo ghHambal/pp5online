@@ -1942,7 +1942,7 @@ export async function getSupervisorProgress() {
     supabase.from('teachers')
       .select('id, full_name, category, dept, subject_group, image_url, phone, login_email, position, position_dept_id'),
     supabase.from('classes')
-      .select('id, class_name, day1_date, master_subjects!inner(id, teacher_id, subject_name, subject_code, subject_group)'),
+      .select('id, class_name, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date, master_subjects!inner(id, teacher_id, subject_name, subject_code, subject_group, credit)'),
     supabase.from('attendances')
       .select('class_id, check_date')
       .order('check_date', { ascending: false }),
@@ -2087,4 +2087,35 @@ export async function getScoreSummaryByClass(classIds) {
     ? await supabase.from('student_scores').select('score_column_id').in('score_column_id', colIds)
     : { data: [] }
   return { cols: cols ?? [], scores: scores ?? [] }
+}
+
+export async function getClassStudentsAndScores(classId) {
+  const [stRes, colRes] = await Promise.all([
+    supabase.from('students').select('id, student_code, full_name').eq('class_id', classId).order('student_code'),
+    supabase.from('class_score_columns').select('id, assignment_name, max_score, assignment_type').eq('class_id', classId).order('id'),
+  ])
+  const students = stRes.data ?? []
+  const cols     = colRes.data ?? []
+  const colIds   = cols.map(c => c.id)
+  const { data: scores } = colIds.length
+    ? await supabase.from('student_scores').select('student_id, score_column_id, score').in('score_column_id', colIds)
+    : { data: [] }
+  return { students, cols, scores: scores ?? [] }
+}
+
+export async function getClassAttendanceFull(classId) {
+  const { data } = await supabase
+    .from('attendances')
+    .select('student_id, session_number, check_date, status')
+    .eq('class_id', classId)
+    .order('session_number')
+  return data ?? []
+}
+
+// อัปเดต dept ให้ครูที่ยังไม่ลงทะเบียน (สำหรับหัวหน้ากลุ่มสาระ)
+export async function assignTeacherToDept(teacherId, dept) {
+  const { error } = await supabase.from('teachers')
+    .update({ dept })
+    .eq('id', teacherId)
+  if (error) throw error
 }
