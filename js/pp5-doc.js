@@ -1063,11 +1063,12 @@ function _buildScorePage(d, chunk, startNo) {
 // ─── Page 5: รายละเอียดสัปดาห์/คาบ/วันที่สอน ────────────────────────────────
 
 function _buildPage5(d) {
-  const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions } = d
+  const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions, cfg, prefix } = d
 
   const FIXED_ROWS = 40
   const COLS       = 3
   const perWeek    = Math.max(1, Math.round(credit * 2))
+  const logoUrl    = cfg?.[`${prefix}LogoBwUrl`] ?? cfg?.[`${prefix}LogoUrl`] ?? cfg?.samaiLogoBwUrl ?? cfg?.samaiLogoUrl ?? ''
 
   // แจกคาบลงแต่ละกลุ่ม: col0=คาบ1-40, col1=คาบ41-80, col2=คาบ81-120
   const colData = Array.from({length: COLS}, (_, ci) =>
@@ -1080,49 +1081,55 @@ function _buildPage5(d) {
   // คำนวณ rowspan ของช่องสัปดาห์แต่ละคอลัมน์
   const colRS = colData.map(col =>
     col.map((item, ri) => {
-      if (!item) return null                              // ไม่มีข้อมูล
-      if (ri > 0 && col[ri - 1]?.week === item.week) return 0  // ผสาน (skip)
+      if (!item) return null
+      if (ri > 0 && col[ri - 1]?.week === item.week) return 0
       let span = 1
       for (let r = ri + 1; r < FIXED_ROWS && col[r]?.week === item.week; r++) span++
       return span
     })
   )
 
+  // เส้นแนวตั้งหนาระหว่างกลุ่ม (กลุ่ม 1 และ 2 → thick right)
+  const GRP_SEP = 'border-right:2.5px solid #000;'
   const rows = Array.from({length: FIXED_ROWS}, (_, ri) => {
     const cells = Array.from({length: COLS}, (_, ci) => {
       const item = colData[ci][ri]
       const rs   = colRS[ci][ri]
-      if (!item) return '<td></td><td></td><td></td>'   // แถวว่าง
+      const sep  = ci < COLS - 1 ? GRP_SEP : ''    // เส้นหนาหลังกลุ่ม 1 และ 2
+      if (!item) return `<td></td><td></td><td style="${sep}"></td>`
       const wkCell = rs === 0 ? '' : `<td class="wk" rowspan="${rs}">${item.week}</td>`
-      return `${wkCell}<td class="ep">${item.sess.n}</td><td class="dt">${_fmtDateTH(item.sess.ds)}</td>`
+      return `${wkCell}<td class="ep">${item.sess.n}</td><td class="dt" style="${sep}">${_fmtDateTH(item.sess.ds)}</td>`
     }).join('')
     return `<tr>${cells}</tr>`
   })
 
-  const uline = (w, val='') => `<span style="display:inline-block;min-width:${w};border-bottom:.3mm dotted #000;text-align:center;padding:0 1mm;">${_esc(String(val))}</span>`
+  // helper: underline span; stretch=true → flex:1 (ยาวถึงขวา)
+  const uline = (w, val='', stretch=false) => {
+    const style = stretch
+      ? `flex:1;border-bottom:.3mm dotted #000;text-align:center;padding:0 1mm;`
+      : `display:inline-block;min-width:${w};border-bottom:.3mm dotted #000;text-align:center;padding:0 1mm;`
+    return `<span style="${style}">${_esc(String(val))}</span>`
+  }
+  const row = (content) => `<div style="display:flex;align-items:baseline;gap:2mm;font-size:9pt;margin-bottom:1.5mm;">${content}</div>`
 
   return `
   <div class="page" style="padding:12mm 10mm 8mm;">
+    ${logoUrl ? `<div style="text-align:center;margin-bottom:2mm;"><img src="${_esc(logoUrl)}" style="width:16mm;height:16mm;object-fit:contain;" alt="โลโก้"/></div>` : ''}
     <div style="text-align:center;font-weight:700;font-size:12pt;margin-bottom:3mm;">รายละเอียดสัปดาห์/คาบ/วันที่สอน</div>
-    <div style="font-size:9pt;margin-bottom:1.5mm;">
-      รายวิชา ${uline('40mm', ms.subject_name??'')}
-      &emsp; รหัสวิชา ${uline('22mm', ms.subject_code??'')}
-      &emsp; กลุ่มสาระการเรียนรู้ ${uline('34mm', deptNameTH)}
-    </div>
-    <div style="font-size:9pt;margin-bottom:1.5mm;">
-      ระดับชั้นมัธยมศึกษา ${uline('16mm', _shortRoom(cls.class_name))}
-      &emsp; ภาคเรียนที่ ${uline('10mm', semester)}
-      &emsp; ปีการศึกษา ${uline('18mm', academicYear)}
-      &emsp; เวลา ${uline('10mm')} ชั่วโมง
-      &emsp; จำนวน ${uline('10mm', credit)} หน่วยกิต
-    </div>
-    <div style="font-size:9pt;margin-bottom:3mm;">
-      ครูผู้สอน ${uline('60mm', teacher?.full_name??'')}
-    </div>
+    ${row(`<span>รายวิชา</span>${uline('40mm', ms.subject_name??'')}
+           <span>&emsp;รหัสวิชา</span>${uline('22mm', ms.subject_code??'')}
+           <span>&emsp;กลุ่มสาระการเรียนรู้</span>${uline('', deptNameTH, true)}`)}
+    ${row(`<span>ระดับชั้นมัธยมศึกษา</span>${uline('16mm', _shortRoom(cls.class_name))}
+           <span>&emsp;ภาคเรียนที่</span>${uline('10mm', semester)}
+           <span>&emsp;ปีการศึกษา</span>${uline('18mm', academicYear)}
+           <span>&emsp;เวลา</span>${uline('12mm')}
+           <span>ชั่วโมง&emsp;จำนวน</span>${uline('', credit, true)}
+           <span>หน่วยกิต</span>`)}
+    ${row(`<span>ครูผู้สอน</span>${uline('', teacher?.full_name??'', true)}`)}
     <table class="date-table">
       <colgroup>
-        <col class="wk"/><col class="ep"/><col class="dt"/>
-        <col class="wk"/><col class="ep"/><col class="dt"/>
+        <col class="wk"/><col class="ep"/><col class="dt" style="border-right:2.5px solid #000;"/>
+        <col class="wk"/><col class="ep"/><col class="dt" style="border-right:2.5px solid #000;"/>
         <col class="wk"/><col class="ep"/><col class="dt"/>
       </colgroup>
       <thead>
@@ -1130,9 +1137,9 @@ function _buildPage5(d) {
           <th colspan="9" style="font-size:10pt;">สัปดาห์/คาบ/วันที่สอน</th>
         </tr>
         <tr>
-          ${Array.from({length:COLS},()=>
-            '<th class="wk">สัปดาห์</th><th class="ep">คาบที่</th><th class="dt">วันที่/เดือน/ปี</th>'
-          ).join('')}
+          <th class="wk">สัปดาห์</th><th class="ep">คาบที่</th><th class="dt" style="${GRP_SEP}">วันที่/เดือน/ปี</th>
+          <th class="wk">สัปดาห์</th><th class="ep">คาบที่</th><th class="dt" style="${GRP_SEP}">วันที่/เดือน/ปี</th>
+          <th class="wk">สัปดาห์</th><th class="ep">คาบที่</th><th class="dt">วันที่/เดือน/ปี</th>
         </tr>
       </thead>
       <tbody>${rows.join('')}</tbody>
