@@ -954,14 +954,14 @@ function _buildScorePage(d, chunk, startNo) {
     return `<tr>
       <td>${startNo + idx}</td>
       <td>${_esc(st.student_code??'')}</td>
-      <td class="gs-name">${_esc(st.full_name??'')}</td>
+      <td class="gs-name" style="border-right:2.5px solid #000;">${_esc(st.full_name??'')}</td>
       ${bScores.map(v=>`<td>${v}</td>`).join('')}
       <td style="font-weight:700;">${bSum||''}</td>
       ${fScores.map(v=>`<td>${v}</td>`).join('')}
       <td style="font-weight:700;">${fSum||''}</td>
-      <td style="font-weight:700;">${total||''}</td>
+      <td style="font-weight:700;border-right:2.5px solid #000;">${total||''}</td>
       <td></td>
-      <td></td>
+      <td style="border-right:2.5px solid #000;"></td>
       <td style="font-weight:700;">${grade}</td>
     </tr>`
   })
@@ -997,18 +997,18 @@ function _buildScorePage(d, chunk, startNo) {
       <thead>
         <!-- Row 1: ผู้เรียน คลุม 3 คอลัมน์ + section header + result cols rs5 -->
         <tr>
-          <th colspan="3">ผู้เรียน</th>
-          <th colspan="${allSpan}">วัดผลระหว่างภาค / ปลายภาค</th>
+          <th colspan="3" style="border-right:2.5px solid #000;">ผู้เรียน</th>
+          <th colspan="${allSpan}" style="border-right:2.5px solid #000;">วัดผลระหว่างภาค / ปลายภาค</th>
           <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินการอ่านคิดวิเคราะห์และเขียน</span></th>
-          <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินคุณลักษณะอันพึงประสงค์</span></th>
+          <th rowspan="5" class="v" style="border-right:2.5px solid #000;"><span style="font-size:7px;">ประเมินคุณลักษณะอันพึงประสงค์</span></th>
           <th rowspan="5" class="v"><span>ระดับการเรียน</span></th>
         </tr>
         <!-- Row 2: เลขที่(v,rs4) | เลขประจำตัว(v,rs4) | ชื่อ-สกุล(rs4) | อัตราส่วน -->
         <tr>
           <th rowspan="4" class="v"><span>เลขที่</span></th>
           <th rowspan="4" class="v"><span>เลขประจำตัว</span></th>
-          <th rowspan="4">ชื่อ - สกุล</th>
-          <th colspan="${allSpan}" style="font-size:7px;padding:1px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
+          <th rowspan="4" style="border-right:2.5px solid #000;">ชื่อ - สกุล</th>
+          <th colspan="${allSpan}" style="font-size:7px;padding:1px;border-right:2.5px solid #000;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
         </tr>
         <!-- Row 3: between/final section headers (3 student cols covered by rs4) -->
         <tr>
@@ -1016,7 +1016,7 @@ function _buildScorePage(d, chunk, startNo) {
           <th rowspan="2" class="v"><span>รวมคะแนนระหว่างภาค</span></th>
           <th colspan="${allFinal.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนปลายภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
           <th rowspan="2" class="v"><span>รวมคะแนนปลายภาค</span></th>
-          <th rowspan="2" class="v"><span>รวมคะแนน 100</span></th>
+          <th rowspan="2" class="v" style="border-right:2.5px solid #000;"><span>รวมคะแนน 100</span></th>
         </tr>
         <!-- Row 4: column name verticals (3 student cols covered by rs4) -->
         <tr>
@@ -1029,7 +1029,7 @@ function _buildScorePage(d, chunk, startNo) {
           <th class="score-full">${betweenMax||''}</th>
           ${allFinal.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
           <th class="score-full">${finalMax||''}</th>
-          <th class="score-full">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
+          <th class="score-full" style="border-right:2.5px solid #000;">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
         </tr>
       </thead>
       <tbody>
