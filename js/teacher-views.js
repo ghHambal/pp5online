@@ -1977,13 +1977,13 @@ export async function renderProfile(teacher, onRefresh) {
 
   // โหลด departments สำหรับ dropdown กลุ่มสาระ
   const depts = await getDepartments().catch(()=>[])
-  const uniqueDepts = [...new Map(depts.map(d=>[d.dept_code,d])).values()]
 
-  // กรองกลุ่มสาระตามประเภทครู
+  // filter ก่อน dedup — เพื่อกัน SOC ของศาสนาไม่ให้ทับ SOC ของสามัญ (dept_code ซ้ำกัน)
   const teacherCat = teacher?.category
-  const filteredDepts = teacherCat
-    ? uniqueDepts.filter(d => !d.category || d.category === teacherCat)
-    : uniqueDepts
+  const filtered = teacherCat
+    ? depts.filter(d => !d.category || d.category === teacherCat)
+    : depts
+  const filteredDepts = [...new Map(filtered.map(d=>[d.dept_code,d])).values()]
 
   const phoneDisplay = formatPhone(teacher?.phone ?? '')
 
