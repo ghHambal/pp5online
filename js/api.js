@@ -1949,7 +1949,7 @@ export async function getSupervisorProgress() {
     supabase.from('class_score_columns')
       .select('id, class_id, assignment_name, max_score'),
     supabase.from('student_scores')
-      .select('score_column_id'),
+      .select('assignment_id'),
   ])
 
   const teachers  = teacherRes.data  ?? []
@@ -1976,7 +1976,7 @@ export async function getSupervisorProgress() {
   }
 
   // filled score column ids
-  const filledCols = new Set(scoreRows.map(s => s.score_column_id))
+  const filledCols = new Set(scoreRows.map(s => s.assignment_id))
 
   // index: class_id → score cols
   const colsByClass = {}
@@ -2084,7 +2084,7 @@ export async function getScoreSummaryByClass(classIds) {
     .in('class_id', classIds)
   const colIds = (cols ?? []).map(c => c.id)
   const { data: scores } = colIds.length
-    ? await supabase.from('student_scores').select('score_column_id').in('score_column_id', colIds)
+    ? await supabase.from('student_scores').select('assignment_id').in('assignment_id', colIds)
     : { data: [] }
   return { cols: cols ?? [], scores: scores ?? [] }
 }
@@ -2098,7 +2098,7 @@ export async function getClassStudentsAndScores(classId) {
   const cols     = colRes.data ?? []
   const colIds   = cols.map(c => c.id)
   const { data: scores } = colIds.length
-    ? await supabase.from('student_scores').select('student_id, score_column_id, score').in('score_column_id', colIds)
+    ? await supabase.from('student_scores').select('student_id, assignment_id, final_score').in('assignment_id', colIds)
     : { data: [] }
   return { students, cols, scores: scores ?? [] }
 }

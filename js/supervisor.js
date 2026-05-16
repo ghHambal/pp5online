@@ -89,7 +89,7 @@ export async function renderSupervisorDashboard(container, teacher) {
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
       <div>
         <h2 style="font-size:18px;font-weight:700;margin:0;">Dashboard ติดตามความคืบหน้า</h2>
-        <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">${POS_LABEL[teacher.position]??'หัวหน้า'} — ${teacher.full_name}</p>
+        <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">${POS_LABEL[teacher.position]??'หัวหน้า'}${teacher.dept?' — '+teacher.dept:''}<span style="color:#9ca3af;"> — ${teacher.full_name}</span></p>
       </div>
     </div>
     <div id="sv-loading" style="text-align:center;padding:40px;color:#6b7280;">⏳ กำลังโหลดข้อมูล...</div>
@@ -125,11 +125,18 @@ function _renderDashboard(el, metrics, teacher) {
             `${metrics.filter(m=>[m.profileStatus,m.attStatus,m.scoreStatus][i]==='ok').length}/${n} คน`)}
         </div>`).join('')}
     </div>
-    <!-- Dept tabs -->
-    ${showTabs?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;" id="sv-tabs">
-      <button class="sv-tab-btn active" data-dept="">ทั้งหมด (${n})</button>
-      ${deptKeys.map(d=>`<button class="sv-tab-btn" data-dept="${d}">${d} (${metrics.filter(m=>_deptKey(m)===d).length})</button>`).join('')}
-    </div>`:''}
+    <!-- Dept tabs + add member button -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+      ${showTabs?`<div style="display:flex;gap:8px;flex-wrap:wrap;" id="sv-tabs">
+        <button class="sv-tab-btn active" data-dept="">ทั้งหมด (${n})</button>
+        ${deptKeys.map(d=>`<button class="sv-tab-btn" data-dept="${d}">${d} (${metrics.filter(m=>_deptKey(m)===d).length})</button>`).join('')}
+      </div>`:'<div></div>'}
+      ${teacher.position==='dept_head'?`
+        <button id="sv-add-member"
+          style="margin-left:auto;padding:6px 14px;border:1.5px dashed #6366f1;border-radius:20px;background:#f5f3ff;color:#6366f1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">
+          + เพิ่มสมาชิกกลุ่ม
+        </button>`:''}
+    </div>
     <!-- Table -->
     <div style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;" id="sv-tbl">
       ${_table(metrics)}
@@ -147,6 +154,55 @@ function _renderDashboard(el, metrics, teacher) {
     })
   })
   _bindTable(el, metrics)
+
+  // เพิ่มสมาชิกกลุ่ม — เฉพาะ dept_head
+  el.querySelector('#sv-add-member')?.addEventListener('click', () => _showAddMemberModal(teacher))
+}
+
+async function _showAddMemberModal(teacher) {
+  const overlay = _makeOverlay()
+  overlay.innerHTML = `<div class="sv-popup">
+    <button style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;" onclick="this.closest('.sv-overlay').remove()">✕</button>
+    <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">+ เพิ่มสมาชิกกลุ่ม${teacher.dept?' '+teacher.dept:''}</h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">เลือกครูที่ยังไม่ได้ระบุกลุ่มสาระเพื่อเพิ่มเข้ากลุ่ม</p>
+    <div id="sv-unassigned-list">⏳ กำลังโหลด...</div>
+  </div>`
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove() })
+
+  // โหลดครูที่ยัง dept ว่าง
+  const unassigned = _allMetrics.filter(m => !m.dept && m.id !== _selfTeacher?.id)
+  const el = overlay.querySelector('#sv-unassigned-list')
+  if (!unassigned.length) {
+    el.innerHTML = '<div style="color:#9ca3af;font-size:13px;">ไม่มีครูที่รอกำหนดกลุ่มสาระ</div>'
+    return
+  }
+  el.innerHTML = unassigned.map(m => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid #f3f4f6;font-size:13px;">
+      <div>
+        <span style="font-weight:600;">${m.full_name}</span>
+        ${!m.isRegistered?'<span style="color:#d97706;font-size:11px;margin-left:6px;">ยังไม่ลงทะเบียน</span>':''}
+        <div style="font-size:11px;color:#6b7280;">${m.category??'—'}</div>
+      </div>
+      <button class="sv-assign-btn" data-tid="${m.id}" data-name="${m.full_name}"
+        style="padding:4px 12px;border:1px solid #6366f1;border-radius:8px;color:#6366f1;background:#f5f3ff;font-size:11px;cursor:pointer;font-family:inherit;">
+        + เพิ่ม
+      </button>
+    </div>`).join('')
+
+  el.querySelectorAll('.sv-assign-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(`เพิ่ม "${btn.dataset.name}" เข้ากลุ่ม ${teacher.dept}?`)) return
+      btn.disabled = true; btn.textContent = '⏳'
+      try {
+        await assignTeacherToDept(parseInt(btn.dataset.tid), teacher.dept)
+        // อัปเดต local cache
+        const m = _allMetrics.find(x => x.id === parseInt(btn.dataset.tid))
+        if (m) m.dept = teacher.dept
+        btn.textContent = '✓ เพิ่มแล้ว'; btn.style.background = '#d1fae5'; btn.style.color = '#065f46'
+      } catch(e) { btn.disabled = false; btn.textContent = '+ เพิ่ม'; alert(e.message) }
+    }
+  })
 }
 
 function _table(rows) {
