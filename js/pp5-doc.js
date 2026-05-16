@@ -363,7 +363,7 @@ function _getCSS() {
     .p2-uline { display: inline-block; border-bottom: .3mm solid #000; min-width: 20mm; text-align: center; padding: 0 1.5mm; font-weight: 600; }
     .std-table { width: 100%; border-collapse: collapse; flex: 1; }
     .std-table th { font-size: 10pt; padding: 1.5mm 2mm; border: .4mm solid #000; text-align: center; font-weight: 700; }
-    .std-table td { border: .4mm solid #000; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
+    .std-table td { border: .4mm dashed #999; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
     .std-table td:first-child { width: 32mm; }
     .std-table td.std-row { height: 7mm; }
     .p2-footer { display: flex; gap: 6mm; margin-top: 3mm; font-size: 9pt; }
