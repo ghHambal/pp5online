@@ -2041,6 +2041,10 @@ export async function renderSettings() {
           ].join(''),
 
           donation: [
+            section('การแสดงผล', [
+              { key:'donationPromoEnabled', label:'แสดง Popup โปรโมตสิทธิ์ผู้สนับสนุน', type:'toggle',
+                hint:'เปิด = ครูที่ยังไม่โดเนทจะเห็น popup โปรโมตอัตโนมัติ (suppressed 14 วัน)' },
+            ]),
             section('ยอดและปุ่มลัด', [
               { key:'donationMinAmount',  label:'ยอดโดเนทขั้นต่ำ (บาท)', type:'text', placeholder:'99',
                 hint:'ครูต้องระบุยอดอย่างน้อยเท่านี้จึงสร้าง QR Code ได้' },

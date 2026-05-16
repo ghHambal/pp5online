@@ -1277,8 +1277,7 @@ async function _initDonationFlow(teacherId) {
       }
     } else {
       _initDonateFloatingBtn(pending)
-      if (!pending) {
-        // แสดง promo popup ถ้ายังไม่ suppress
+      if (!pending && cfg.donationPromoEnabled !== 'false') {
         const PROMO_KEY = 'pp5_promo_seen'
         const seen = localStorage.getItem(PROMO_KEY)
         const expired = !seen || Date.now() - parseInt(seen) > 14 * 24 * 60 * 60 * 1000
