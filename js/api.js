@@ -2131,7 +2131,7 @@ export async function addSupervisorCommentWithNotify(supervisorId, teacherId, me
 export async function getUnreadNotifications(teacherId) {
   const { data } = await supabase
     .from('supervisor_comments')
-    .select('id, metric, comment, created_at, supervisor_id')
+    .select('id, metric, comment, created_at, supervisor_id, supervisor:supervisor_id(full_name, position)')
     .eq('teacher_id', teacherId)
     .eq('notify_teacher', true)
     .eq('is_read', false)

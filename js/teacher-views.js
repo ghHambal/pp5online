@@ -367,16 +367,20 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       const catLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
       const catColor = {general:'#374151',profile:'#5b21b6',dates:'#1e40af',attendance:'#065f46',scores:'#713f12'}
       const catBg    = {general:'#f3f4f6',profile:'#ede9fe',dates:'#dbeafe',attendance:'#d1fae5',scores:'#fef9c3'}
+      const posLabel = {dept_head:'หัวหน้ากลุ่มสาระ',registrar:'หัวหน้าฝ่ายทะเบียน',
+        academic_samai:'หัวหน้าวิชาการสามัญ',academic_religion:'หัวหน้าวิชาการศาสนา',academic_pvch:'หัวหน้าวิชาการปวช'}
       const tags = [...new Set(svNotifs.map(n=>n.metric))].map(m=>
         `<span style="background:${catBg[m]??'#f3f4f6'};color:${catColor[m]??'#374151'};border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;">${catLabel[m]??m}</span>`
       ).join('')
+      const senders = [...new Map(svNotifs.filter(n=>n.supervisor).map(n=>[n.supervisor_id, n.supervisor])).values()]
+      const senderNames = senders.map(sv => posLabel[sv.position] ?? 'หัวหน้า').join(', ') || 'หัวหน้า'
       return `
     <div id="sv-notif-banner" style="background:#fef3c7;border:1px solid #fbbf24;border-radius:12px;padding:12px 16px;margin-bottom:16px;cursor:pointer;display:flex;align-items:center;gap:10px;"
       onclick="if(window._showSvNotifPopup)window._showSvNotifPopup()">
       <span style="font-size:22px;flex-shrink:0;">🔔</span>
       <div style="flex:1;">
-        <div style="font-weight:700;font-size:13px;color:#92400e;margin-bottom:5px;">
-          มีข้อความจากหัวหน้า ${svNotifs.length} รายการ — คลิกเพื่อดู
+        <div style="font-weight:700;font-size:13px;color:#92400e;margin-bottom:3px;">
+          มีข้อความจาก${senderNames} ${svNotifs.length} รายการ — คลิกเพื่อดู
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;">${tags}</div>
       </div>

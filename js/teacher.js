@@ -1778,6 +1778,14 @@ async function _showNotifPopup(teacherId) {
   const metricLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
   const catColor = {general:'#f9fafb',profile:'#ede9fe',dates:'#dbeafe',attendance:'#d1fae5',scores:'#fef9c3'}
   const catText  = {general:'#374151',profile:'#5b21b6',dates:'#1e40af',attendance:'#065f46',scores:'#713f12'}
+  const posLabel = {dept_head:'หัวหน้ากลุ่มสาระ',registrar:'หัวหน้าฝ่ายทะเบียน',
+    academic_samai:'หัวหน้าวิชาการสามัญ',academic_religion:'หัวหน้าวิชาการศาสนา',academic_pvch:'หัวหน้าวิชาการปวช'}
+  const svName = n => {
+    const sv = n.supervisor
+    if (!sv) return 'หัวหน้า'
+    const pos = posLabel[sv.position] ?? 'หัวหน้า'
+    return sv.full_name ? `${pos} (${sv.full_name})` : pos
+  }
   const overlay = document.createElement('div')
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;'
   overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:min(500px,96vw);max-height:85vh;overflow-y:auto;padding:24px;position:relative;">
@@ -1793,6 +1801,7 @@ async function _showNotifPopup(teacherId) {
           </span>
           <span style="font-size:10px;color:#9ca3af;">${new Date(n.created_at).toLocaleString('th')}</span>
         </div>
+        <div style="font-size:11px;color:#6b7280;margin-bottom:4px;">จาก: ${svName(n)}</div>
         <div style="font-size:13px;color:#374151;line-height:1.5;">${n.comment}</div>
       </div>`).join('')}
     <button id="sv-mark-read"
