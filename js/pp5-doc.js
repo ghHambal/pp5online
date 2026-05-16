@@ -422,8 +422,8 @@ function _getCSS() {
     .grade-sheet th, .grade-sheet td { border: 1px solid #000; padding: 1px 2px; text-align: center; vertical-align: middle; height: var(--row-h, 5.8mm); overflow: hidden; }
     .grade-sheet th { font-weight: 700; }
     .grade-sheet .gs-name { text-align: left; padding-left: 2mm; }
-    .grade-sheet .v { height: 25mm !important; padding: 0; }
-    .grade-sheet .v > span { writing-mode: vertical-rl; transform: rotate(180deg); display: inline-block; white-space: nowrap; line-height: 1; font-size: 9px; }
+    .grade-sheet .v { height: 25mm !important; padding: 0; overflow: visible; }
+    .grade-sheet .v > span { writing-mode: vertical-rl; transform: rotate(180deg); display: inline-block; white-space: nowrap; line-height: 1; font-size: 9px; overflow: visible; }
     .grade-sheet .gs-small { font-size: 9px; }
     .grade-sheet .score-full { font-size: 10px; height: 4.5mm !important; }
     .grade-sheet .blank-head { background: #fff; }
@@ -996,12 +996,12 @@ function _buildScorePage(d, chunk, startNo) {
       </colgroup>
       <thead>
         <tr>
-          <th rowspan="4" class="v"><span>ที่</span></th>
+          <th rowspan="5" class="v"><span>ที่</span></th>
           <th colspan="2" rowspan="2">ผู้เรียน</th>
           <th colspan="${allSpan}">วัดผลระหว่างภาค / ปลายภาค</th>
-          <th rowspan="4" class="v"><span style="font-size:6px;">ประเมินการอ่าน<br/>คิดวิเคราะห์<br/>และเขียน</span></th>
-          <th rowspan="4" class="v"><span style="font-size:6px;">ประเมิน<br/>คุณลักษณะ<br/>อันพึงประสงค์</span></th>
-          <th rowspan="4" class="v"><span>ระดับ<br/>การเรียน</span></th>
+          <th rowspan="5" class="v"><span style="font-size:6px;">ประเมินการอ่าน<br/>คิดวิเคราะห์<br/>และเขียน</span></th>
+          <th rowspan="5" class="v"><span style="font-size:6px;">ประเมิน<br/>คุณลักษณะ<br/>อันพึงประสงค์</span></th>
+          <th rowspan="5" class="v"><span>ระดับ<br/>การเรียน</span></th>
         </tr>
         <tr>
           <th colspan="${allSpan}" style="font-size:7px;padding:1px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
@@ -1019,7 +1019,6 @@ function _buildScorePage(d, chunk, startNo) {
           ${allFinal.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.assignment_name??'')}</span></th>`).join('')}
         </tr>
         <tr>
-          <th class="score-full"></th>
           <th class="score-full">เลขประจำตัว</th>
           <th class="score-full"></th>
           ${allBetween.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
@@ -1027,9 +1026,6 @@ function _buildScorePage(d, chunk, startNo) {
           ${allFinal.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
           <th class="score-full">${finalMax||''}</th>
           <th class="score-full">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
-          <th class="score-full"></th>
-          <th class="score-full"></th>
-          <th class="score-full">เกรด</th>
         </tr>
       </thead>
       <tbody>
