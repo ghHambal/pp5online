@@ -99,11 +99,25 @@ export async function openTeacherModal(id = null) {
   document.getElementById('modal-login-email').value = ''
   document.getElementById('modal-username').value  = ''
   document.getElementById('modal-image-url').value = ''
+  document.getElementById('modal-position').value  = ''
+  document.getElementById('modal-pos-dept-wrap').style.display = 'none'
   document.getElementById('modal-title').textContent = id ? 'แก้ไขข้อมูลครู' : 'เพิ่มครูใหม่'
+
+  // โหลด dept options
+  try {
+    const { getDepartments } = await import('./api.js')
+    const depts = await getDepartments()
+    const sel = document.getElementById('modal-position-dept')
+    sel.innerHTML = '<option value="">— เลือกกลุ่มสาระ —</option>'
+      + depts.map(d => `<option value="${d.id}">${d.dept_name}</option>`).join('')
+  } catch {}
 
   if (id) {
     try {
-      const t = await getTeacherById(id)
+      const { data: t } = await (await import('./supabase.js')).supabase
+        .from('teachers')
+        .select('id,teacher_code,full_name,category,phone,login_email,username,image_url,position,position_dept_id')
+        .eq('id', id).single()
       document.getElementById('modal-id').value        = t.id
       document.getElementById('modal-code').value      = t.teacher_code ?? ''
       document.getElementById('modal-name').value      = t.full_name    ?? ''
@@ -112,6 +126,11 @@ export async function openTeacherModal(id = null) {
       document.getElementById('modal-login-email').value = t.login_email ?? ''
       document.getElementById('modal-username').value  = t.username     ?? ''
       document.getElementById('modal-image-url').value = t.image_url    ?? ''
+      document.getElementById('modal-position').value  = t.position     ?? ''
+      if (t.position === 'dept_head') {
+        document.getElementById('modal-pos-dept-wrap').style.display = 'block'
+        document.getElementById('modal-position-dept').value = t.position_dept_id ?? ''
+      }
       _updateAvatarPreview(t.image_url, t.full_name)
     } catch {
       showToast('โหลดข้อมูลไม่สำเร็จ', 'error'); return
@@ -138,14 +157,19 @@ async function handleTeacherFormSubmit(e) {
     showToast('ยูเซอร์เนมต้องใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง 3-32 ตัวอักษร', 'warning')
     return
   }
+  const posVal  = document.getElementById('modal-position').value || null
   const payload  = {
-    teacher_code: document.getElementById('modal-code').value.trim()      || null,
-    full_name:    document.getElementById('modal-name').value.trim(),
-    category:     document.getElementById('modal-category').value         || null,
-    phone:        document.getElementById('modal-phone').value.trim()     || null,
-    login_email:  document.getElementById('modal-login-email').value.trim() || null,
-    username:     username || null,
-    image_url:    document.getElementById('modal-image-url').value.trim() || null,
+    teacher_code:      document.getElementById('modal-code').value.trim()      || null,
+    full_name:         document.getElementById('modal-name').value.trim(),
+    category:          document.getElementById('modal-category').value         || null,
+    phone:             document.getElementById('modal-phone').value.trim()     || null,
+    login_email:       document.getElementById('modal-login-email').value.trim() || null,
+    username:          username || null,
+    image_url:         document.getElementById('modal-image-url').value.trim() || null,
+    position:          posVal,
+    position_dept_id:  posVal === 'dept_head'
+      ? (parseInt(document.getElementById('modal-position-dept').value) || null)
+      : null,
   }
 
   if (!payload.full_name) { showToast('กรุณากรอกชื่อ-นามสกุล', 'warning'); return }

@@ -38,7 +38,7 @@ export async function updateSystemConfig(key, value) {
 export async function getMyTeacherProfile(profileId) {
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
+    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, position_dept_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
     .eq('profile_id', profileId)
     .maybeSingle()
   if (error) throw error
@@ -1915,4 +1915,129 @@ export async function getLifeSkillScoresForClass(studentIds, academicYear, semes
     .in('student_id', studentIds)
     .in('column_id', colIds)
   return { columns: cols ?? [], scores: scores ?? [] }
+}
+
+// ─── Supervisor / Role System ─────────────────────────────────────────────────
+
+export async function getTeachersWithPositions() {
+  const { data, error } = await supabase
+    .from('teachers')
+    .select('id, teacher_code, full_name, category, dept, image_url, phone, position, position_dept_id')
+    .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function updateTeacherPosition(id, position, positionDeptId) {
+  const { error } = await supabase
+    .from('teachers')
+    .update({ position: position || null, position_dept_id: positionDeptId || null })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// โหลดข้อมูล progress ทั้งหมดสำหรับ supervisor dashboard
+export async function getSupervisorProgress() {
+  const [teacherRes, classRes, attRes, scoreColRes, scoreRes] = await Promise.all([
+    supabase.from('teachers')
+      .select('id, full_name, category, dept, image_url, phone, position, position_dept_id'),
+    supabase.from('classes')
+      .select('id, class_name, day1_date, master_subjects!inner(id, teacher_id, subject_name, subject_code, subject_group)'),
+    supabase.from('attendances')
+      .select('class_id, check_date')
+      .order('check_date', { ascending: false }),
+    supabase.from('class_score_columns')
+      .select('id, class_id, assignment_name, max_score'),
+    supabase.from('student_scores')
+      .select('score_column_id'),
+  ])
+
+  const teachers  = teacherRes.data  ?? []
+  const classes   = classRes.data    ?? []
+  const attRows   = attRes.data      ?? []
+  const scoreCols = scoreColRes.data ?? []
+  const scoreRows = scoreRes.data    ?? []
+
+  // index: class_id → teacher_id
+  const classTeacher = {}
+  const classDates   = {}
+  for (const c of classes) {
+    const tid = c.master_subjects?.teacher_id
+    if (tid) classTeacher[c.id] = tid
+    classDates[c.id] = !!c.day1_date
+  }
+
+  // index: class_id → last check_date
+  const attLast = {}
+  const attClasses = new Set()
+  for (const a of attRows) {
+    if (!attLast[a.class_id]) attLast[a.class_id] = a.check_date
+    attClasses.add(a.class_id)
+  }
+
+  // filled score column ids
+  const filledCols = new Set(scoreRows.map(s => s.score_column_id))
+
+  // index: class_id → score cols
+  const colsByClass = {}
+  for (const c of scoreCols) {
+    if (!colsByClass[c.class_id]) colsByClass[c.class_id] = []
+    colsByClass[c.class_id].push(c.id)
+  }
+
+  // คำนวณ metric ต่อครู
+  const today = new Date()
+  const teacherMetrics = teachers.map(t => {
+    const myClasses = classes.filter(c => c.master_subjects?.teacher_id === t.id)
+    const n = myClasses.length
+
+    // โปรไฟล์
+    const profileScore = (t.image_url ? 1 : 0) + (t.phone ? 1 : 0)
+    const profileStatus = profileScore === 2 ? 'ok' : profileScore === 1 ? 'warn' : 'none'
+
+    // วันสอน: กี่ห้องที่ระบุวันสอน
+    const datesOk = myClasses.filter(c => classDates[c.id]).length
+
+    // เช็คชื่อ: ห้องที่มีบันทึก + วันล่าสุด
+    let lastAtt = null
+    let attCount = 0
+    for (const c of myClasses) {
+      if (attClasses.has(c.id)) {
+        attCount++
+        const d = new Date(attLast[c.id])
+        if (!lastAtt || d > lastAtt) lastAtt = d
+      }
+    }
+    const daysSinceAtt = lastAtt ? Math.floor((today - lastAtt) / 86400000) : 999
+    const attStatus = n === 0 ? 'na'
+      : attCount === n && daysSinceAtt <= 14 ? 'ok'
+      : attCount > 0 ? 'warn' : 'none'
+
+    // คะแนน
+    let scoreColCount = 0, scoreFilledCount = 0
+    for (const c of myClasses) {
+      const cols = colsByClass[c.id] ?? []
+      scoreColCount += cols.length
+      scoreFilledCount += cols.filter(id => filledCols.has(id)).length
+    }
+    const scorePct = scoreColCount > 0 ? Math.round(scoreFilledCount / scoreColCount * 100) : null
+    const scoreStatus = scorePct === null ? 'na'
+      : scorePct >= 80 ? 'ok' : scorePct >= 40 ? 'warn' : 'none'
+
+    return {
+      ...t,
+      classCount: n,
+      datesOk,
+      attCount,
+      lastAtt,
+      daysSinceAtt,
+      attStatus,
+      profileStatus,
+      scorePct,
+      scoreStatus,
+      myClasses,
+    }
+  })
+
+  return teacherMetrics
 }

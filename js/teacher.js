@@ -19,6 +19,7 @@ import {
   renderLifeSkillScore, renderReadingScore, renderPrayerScore,
   renderProfileSetup, renderScheduleBuilder, openCourseDocPage2Modal,
 } from './teacher-views.js'
+import { renderSupervisorDashboard } from './supervisor.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
@@ -40,17 +41,27 @@ async function loadTeacherInfo(userId) {
 
   // เช็ค is_also_admin — ถ้าใช่แสดงปุ่มสลับเป็นแอดมิน
   const { data: profileRow } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
-  if (profileRow?.is_also_admin) {
-    const nav = document.querySelector('#sidebar nav')
-    if (nav) {
-      const switchBtn = document.createElement('a')
-      switchBtn.href = 'dashboard.html'
-      switchBtn.title = 'สลับไปหน้าแอดมิน'
-      switchBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-emerald-800/50 mt-2 border border-emerald-700/40'
-      switchBtn.style.color = '#6ee7b7'
-      switchBtn.innerHTML = `<span>⚙️</span><span>สลับเป็นแอดมิน</span>`
-      nav.appendChild(switchBtn)
-    }
+  const nav = document.querySelector('#sidebar nav')
+  if (profileRow?.is_also_admin && nav) {
+    const switchBtn = document.createElement('a')
+    switchBtn.href = 'dashboard.html'
+    switchBtn.title = 'สลับไปหน้าแอดมิน'
+    switchBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-emerald-800/50 mt-2 border border-emerald-700/40'
+    switchBtn.style.color = '#6ee7b7'
+    switchBtn.innerHTML = `<span>⚙️</span><span>สลับเป็นแอดมิน</span>`
+    nav.appendChild(switchBtn)
+  }
+
+  // เช็ค position — ถ้ามีบทบาทพิเศษแสดงปุ่มสลับ Dashboard
+  if (_teacher?.position && nav) {
+    const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
+      academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา' }[_teacher.position] ?? 'หัวหน้า'
+    const svBtn = document.createElement('button')
+    svBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-blue-800/50 mt-2 border border-blue-700/40 w-full text-left'
+    svBtn.style.color = '#93c5fd'
+    svBtn.innerHTML = `<span>📊</span><span>Dashboard ${posLabel}</span>`
+    svBtn.onclick = () => _toggleSupervisorMode(svBtn)
+    nav.appendChild(svBtn)
   }
 
   const name   = _teacher?.full_name ?? 'ครูผู้สอน'
@@ -1713,6 +1724,30 @@ async function loadSidebarHeader(teacher) {
       }
     }
   } catch { /* ไม่ critical */ }
+}
+
+// ─── Supervisor Mode Toggle ───────────────────────────────────────────────────
+let _supervisorMode = false
+
+function _toggleSupervisorMode(btn) {
+  const main = document.getElementById('main-content') ?? document.querySelector('main') ?? document.getElementById('content-area')
+  if (!main) return
+  _supervisorMode = !_supervisorMode
+  if (_supervisorMode) {
+    btn.style.background = 'rgba(29,78,216,.3)'
+    btn.style.opacity = '1'
+    btn.querySelector('span:last-child').textContent = 'กลับโหมดสอน'
+    renderSupervisorDashboard(main, _teacher)
+  } else {
+    btn.style.background = ''
+    btn.style.opacity = ''
+    btn.querySelector('span:last-child').textContent = `Dashboard ${
+      { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
+        academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา' }[_teacher?.position] ?? 'หัวหน้า'
+    }`
+    // กลับไปหน้า overview ของครู
+    window.dispatchEvent(new CustomEvent('teacher-nav', { detail: { view: 'overview' } }))
+  }
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
