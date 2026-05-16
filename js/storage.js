@@ -48,37 +48,10 @@ export async function uploadSystemAsset(key, file) {
   return uploadFile('system-assets', `${key}.jpg`, blob)
 }
 
-// บีบ PNG รักษา transparency (ไม่แปลงเป็น JPEG)
-function compressPng(file, { maxWidth = 400 } = {}) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = reject
-    reader.onload = e => {
-      const img = new Image()
-      img.onerror = reject
-      img.onload = () => {
-        let w = img.naturalWidth, h = img.naturalHeight
-        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
-        const canvas = document.createElement('canvas')
-        canvas.width = w; canvas.height = h
-        const ctx = canvas.getContext('2d')
-        ctx.clearRect(0, 0, w, h)   // ล้างเป็น transparent ก่อน
-        ctx.drawImage(img, 0, 0, w, h)
-        canvas.toBlob(
-          blob => blob ? resolve(blob) : reject(new Error('compress failed')),
-          'image/png'
-        )
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
-  })
-}
-
-// รูปสติกเกอร์ PNG — รักษา transparency, บีบขนาดให้เล็กลง max 400px
+// รูปสติกเกอร์ PNG — upload ตรงโดยไม่ผ่าน canvas เพื่อรักษา transparency 100%
+// (canvas.toBlob บางบราวเซอร์ไม่ preserve alpha channel ทำให้พื้นกลายเป็นขาว)
 export async function uploadStickerPng(key, file) {
-  const blob = await compressPng(file, { maxWidth: 400 })
-  return uploadFile('system-assets', `${key}.png`, blob, 'image/png')
+  return uploadFile('system-assets', `${key}.png`, file, 'image/png')
 }
 
 // รูปโปรไฟล์ครู → บีบ max 400px (thumbnail), quality 0.80
