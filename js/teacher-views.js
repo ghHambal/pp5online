@@ -2528,7 +2528,7 @@ export async function renderMyClasses(teacher) {
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
     }
 
-    window._copyClass = (classId, fromName) => {
+    window._copyClass = async (classId, fromName) => {
       const src = window._classCache?.[classId]
       if (!src) return
 
