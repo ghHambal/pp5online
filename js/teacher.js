@@ -1728,23 +1728,51 @@ async function loadSidebarHeader(teacher) {
 
 // ─── Supervisor Mode Toggle ───────────────────────────────────────────────────
 let _supervisorMode = false
+let _savedNavHTML  = null
 
 function _toggleSupervisorMode(btn) {
   const main = document.getElementById('main-content') ?? document.querySelector('main') ?? document.getElementById('content-area')
+  const nav  = document.querySelector('#sidebar nav')
   if (!main) return
+
   _supervisorMode = !_supervisorMode
+
   if (_supervisorMode) {
+    // บันทึก nav เดิม
+    if (nav) _savedNavHTML = nav.innerHTML
+
     btn.style.background = 'rgba(29,78,216,.3)'
     btn.style.opacity = '1'
-    btn.querySelector('span:last-child').textContent = 'กลับโหมดสอน'
+
+    // เปลี่ยน nav เป็นโหมดหัวหน้า
+    if (nav) {
+      const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
+        academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา',
+        academic_pvch:'หัวหน้าวิชาการปวช' }[_teacher?.position] ?? 'หัวหน้า'
+      nav.innerHTML = `
+        <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;margin-bottom:4px;">📊 ${posLabel}</div>
+        <button id="sv-nav-back" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
+          style="color:#d1fae5;">← กลับโหมดสอน</button>
+        <div style="height:1px;background:#065f46;margin:8px 12px;"></div>
+        <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;">ภาพรวม</div>
+        <button id="sv-nav-dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
+          style="color:#d1fae5;">📊 Dashboard ติดตาม</button>`
+      nav.querySelector('#sv-nav-back').onclick = () => _toggleSupervisorMode(btn)
+      nav.querySelector('#sv-nav-dashboard').onclick = () => renderSupervisorDashboard(main, _teacher)
+    }
+
     renderSupervisorDashboard(main, _teacher)
   } else {
-    btn.style.background = ''
-    btn.style.opacity = ''
-    btn.querySelector('span:last-child').textContent = `Dashboard ${
-      { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
-        academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา' }[_teacher?.position] ?? 'หัวหน้า'
-    }`
+    // คืน nav เดิม
+    if (nav && _savedNavHTML) {
+      nav.innerHTML = _savedNavHTML
+      _savedNavHTML = null
+      // re-bind supervisor toggle button
+      const newSvBtn = [...nav.querySelectorAll('button')].find(b => b.textContent.includes('Dashboard'))
+      if (newSvBtn) newSvBtn.onclick = () => _toggleSupervisorMode(newSvBtn)
+      // re-bind admin link (ถ้ามี)
+    }
+
     // กลับไปหน้า overview ของครู
     window.dispatchEvent(new CustomEvent('teacher-nav', { detail: { view: 'overview' } }))
   }

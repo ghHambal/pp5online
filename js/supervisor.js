@@ -4,6 +4,7 @@ import {
   getSupervisorComments, addSupervisorComment, deleteSupervisorComment,
   getAttendanceSummaryByClass, getScoreSummaryByClass,
 } from './api.js'
+import { openPP5Doc } from './pp5-doc.js'
 
 // ── inject styles once ────────────────────────────────────────────────────────
 ;(() => {
@@ -159,22 +160,21 @@ function _table(rows) {
     <tbody>${rows.map(m=>{
       const attTxt = m.attStatus==='na'?'–': m.lastAtt?`${m.daysSinceAtt}ว.ที่แล้ว`:'ยังไม่บันทึก'
       const attCol = m.daysSinceAtt<=7?'#059669':m.daysSinceAtt<=14?'#d97706':'#dc2626'
-      return `<tr class="sv-row" data-tid="${m.id}" style="border-bottom:1px solid #f3f4f6;cursor:pointer;">
+      const regBadge = !m.isRegistered
+        ? `<span style="display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;background:#fef3c7;color:#92400e;margin-left:4px;">ยังไม่ลงทะเบียน</span>` : ''
+      return `<tr class="sv-row" data-tid="${m.id}" style="border-bottom:1px solid #f3f4f6;cursor:pointer;${!m.isRegistered?'background:#fffbeb;':''}">
         <td style="padding:10px 12px;">
-          <div style="font-weight:600;font-size:13px;">${m.full_name??'—'}</div>
-          <div style="font-size:11px;color:#6b7280;">${m.dept??''} · ${m.category??''}</div>
+          <div style="font-weight:600;font-size:13px;">${m.full_name??'—'}${regBadge}</div>
+          <div style="font-size:11px;color:#6b7280;">${m.dept??'—'} · ${m.category??'—'}</div>
         </td>
-        <td style="padding:10px 12px;text-align:center;">${_badge(m.profileStatus)}</td>
+        <td style="padding:10px 12px;text-align:center;">${m.isRegistered?_badge(m.profileStatus):'<span style="color:#9ca3af;font-size:12px;">–</span>'}</td>
         <td style="padding:10px 12px;text-align:center;">
-          <span style="font-size:12px;font-weight:600;color:${m.datesOk===m.classCount&&m.classCount>0?'#059669':'#dc2626'};">
-            ${m.datesOk}/${m.classCount}</span></td>
+          ${m.isRegistered?`<span style="font-size:12px;font-weight:600;color:${m.datesOk===m.classCount&&m.classCount>0?'#059669':'#dc2626'};">${m.datesOk}/${m.classCount}</span>`:'<span style="color:#9ca3af;">–</span>'}</td>
         <td style="padding:10px 12px;text-align:center;">
-          ${_badge(m.attStatus)}
-          <div style="font-size:10px;color:${attCol};margin-top:2px;">${attTxt}</div>
+          ${m.isRegistered?`${_badge(m.attStatus)}<div style="font-size:10px;color:${attCol};margin-top:2px;">${attTxt}</div>`:'<span style="color:#9ca3af;">–</span>'}
         </td>
         <td style="padding:10px 12px;text-align:center;">
-          <span style="font-weight:700;color:${m.scorePct===null?'#9ca3af':m.scorePct>=80?'#059669':m.scorePct>=40?'#d97706':'#dc2626'};">
-            ${m.scorePct!==null?m.scorePct+'%':'–'}</span>
+          ${m.isRegistered?`<span style="font-weight:700;color:${m.scorePct===null?'#9ca3af':m.scorePct>=80?'#059669':m.scorePct>=40?'#d97706':'#dc2626'};">${m.scorePct!==null?m.scorePct+'%':'–'}</span>`:'<span style="color:#9ca3af;">–</span>'}
         </td>
         <td style="padding:10px 12px;text-align:center;">
           <button class="sv-detail-btn" data-tid="${m.id}"
@@ -240,17 +240,20 @@ function _showDetail(m) {
           รายวิชาที่รับผิดชอบ (${m.classCount} ห้อง)
         </div>
         ${m.myClasses.length?m.myClasses.map(c=>`
-          <div class="sv-cls-row" data-cid="${c.id}">
-            <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;margin-bottom:4px;background:#f9fafb;font-size:13px;">
+            <div style="flex:1;cursor:pointer;" class="sv-cls-row" data-cid="${c.id}">
               <span style="font-weight:600;">${c.class_name}</span>
               <span style="color:#6b7280;font-size:12px;margin-left:8px;">${c.master_subjects?.subject_name??''}</span>
+              <span style="margin-left:8px;font-size:11px;color:${c.day1_date?'#059669':'#dc2626'};">${c.day1_date?'✓':'✗'} วันสอน</span>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <span style="font-size:11px;color:${c.day1_date?'#059669':'#dc2626'};">${c.day1_date?'✓ วันสอน':'✗ วันสอน'}</span>
-              <span style="font-size:11px;color:#6366f1;">→ ดูรายละเอียด</span>
+            <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
+              <button class="sv-cls-row" data-cid="${c.id}"
+                style="padding:3px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;font-size:11px;cursor:pointer;">📊 รายละเอียด</button>
+              <button class="sv-pp5-btn" data-cid="${c.id}"
+                style="padding:3px 8px;border:1px solid #4f46e5;border-radius:6px;background:#eef2ff;color:#4f46e5;font-size:11px;cursor:pointer;">📄 ปพ.5</button>
             </div>
           </div>`).join('')
-          :`<div style="color:#9ca3af;font-size:13px;">ยังไม่มีห้องเรียน</div>`}
+          :`<div style="color:#9ca3af;font-size:13px;">ยังไม่มีห้องเรียน${!m.isRegistered?' (ครูยังไม่ได้ลงทะเบียนเข้าใช้งาน)':''}</div>`}
       </div>
       <!-- Comments -->
       <div id="sv-comments-section" style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:16px;">
@@ -285,10 +288,19 @@ function _showDetail(m) {
 
   // bind class rows → class detail popup
   root.querySelectorAll('.sv-cls-row').forEach(row=>{
-    row.onclick = () => {
+    row.addEventListener('click', e => {
+      e.stopPropagation()
       const cls = m.myClasses.find(c=>c.id===parseInt(row.dataset.cid))
       if(cls) _openClassPopup(m, cls)
-    }
+    })
+  })
+
+  // bind ปพ.5 buttons
+  root.querySelectorAll('.sv-pp5-btn').forEach(btn=>{
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      openPP5Doc(parseInt(btn.dataset.cid))
+    })
   })
 
   // load and bind comments

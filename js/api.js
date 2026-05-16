@@ -1940,7 +1940,7 @@ export async function updateTeacherPosition(id, position, positionDeptId) {
 export async function getSupervisorProgress() {
   const [teacherRes, classRes, attRes, scoreColRes, scoreRes] = await Promise.all([
     supabase.from('teachers')
-      .select('id, full_name, category, dept, image_url, phone, position, position_dept_id'),
+      .select('id, full_name, category, dept, subject_group, image_url, phone, login_email, position, position_dept_id'),
     supabase.from('classes')
       .select('id, class_name, day1_date, master_subjects!inner(id, teacher_id, subject_name, subject_code, subject_group)'),
     supabase.from('attendances')
@@ -1991,6 +1991,9 @@ export async function getSupervisorProgress() {
     const myClasses = classes.filter(c => c.master_subjects?.teacher_id === t.id)
     const n = myClasses.length
 
+    // ลงทะเบียนแล้วหรือยัง
+    const isRegistered = !!t.login_email
+
     // โปรไฟล์
     const profileScore = (t.image_url ? 1 : 0) + (t.phone ? 1 : 0)
     const profileStatus = profileScore === 2 ? 'ok' : profileScore === 1 ? 'warn' : 'none'
@@ -2026,6 +2029,7 @@ export async function getSupervisorProgress() {
 
     return {
       ...t,
+      isRegistered,
       classCount: n,
       datesOk,
       attCount,
