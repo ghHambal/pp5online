@@ -203,7 +203,7 @@ function _getCSS() {
       page-break-after: always;
       position: relative;
     }
-    .page:last-child, .page-tight:last-child { page-break-after: avoid; }
+    .page:last-child, .page-tight:last-child, .score-wrap:last-child { page-break-after: avoid; }
 
     @media print {
       @page { size: A4 portrait; margin: 0; }
@@ -391,40 +391,40 @@ function _getCSS() {
     .p2-sig { text-align: right; margin-top: 3mm; font-size: 9.5pt; }
 
     /* ── Page 3 attendance ── */
-    .att-top   { display: flex; align-items: center; gap: 3mm; margin-bottom: 2mm; }
+    .att-top   { display: flex; align-items: flex-start; gap: 3mm; margin-bottom: 2mm; }
     .att-logo  { width: 18mm; height: 18mm; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: #fff; display: flex; align-items: center; justify-content: center; }
     .att-logo img { width: 100%; height: 100%; object-fit: contain; }
-    .att-title-wrap { flex: 1; text-align: center; }
-    .att-title { font-weight: 700; font-size: 10pt; }
-    .att-hdr   { font-size: 9pt; margin-bottom: 1.5mm; }
+    .att-info  { flex: 1; font-size: 9pt; }
+    .att-title { font-weight: 700; font-size: 10pt; text-align: center; margin-bottom: 1.5mm; }
     .att-hdr-row { display: flex; align-items: baseline; gap: 1.5mm; margin-bottom: 1mm; }
     .att-hdr-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 5mm; margin-bottom: 1mm; }
     .att-hdr-col { display: flex; align-items: baseline; gap: 1mm; }
     .att-label { flex-shrink: 0; white-space: nowrap; }
     .att-uline { display: inline-block; border-bottom: .3mm dashed #555; min-width: 8mm; text-align: center; padding: 0 1mm; font-weight: 600; flex-shrink: 0; }
     .att-uline-fill { flex: 1; min-width: 15mm; }
-    .att-legend { font-size: 8pt; margin-bottom: 1.5mm; }
-    .att-table  { table-layout: fixed; font-size: 6.5pt; }
-    .att-table th { padding: 1px; font-size: 6.5pt; }
-    .att-table td { padding: 0 1px; font-size: 6.5pt; text-align: center; }
-    .att-name  { text-align: left !important; font-size: 7.5pt; white-space: nowrap; overflow: hidden; }
-    .att-code  { font-size: 7pt; }
+    .att-table  { table-layout: fixed; font-size: 6.5pt; width: 100%; border-collapse: collapse; }
+    .att-table th { padding: 1px 2px; font-size: 6.5pt; border: .4mm solid #000; }
+    .att-table td { padding: 0; font-size: 6.5pt; text-align: center; border: .3mm solid #000; height: 5.5mm; }
+    .att-name  { text-align: left !important; font-size: 7pt; padding-left: 1mm !important; white-space: nowrap; overflow: hidden; }
+    .att-code  { font-size: 6.5pt; }
+    .att-desc  { font-size: 6pt; font-weight: normal; line-height: 1.3; }
     .att-absent { color: #c00; font-weight: 700; }
     .att-leave  { color: #00c; font-weight: 700; }
     .att-sick   { color: #c60; font-weight: 700; }
 
     /* ── Page 4 scores ── */
-    .score-table { table-layout: fixed; }
-    .score-table th.normal { font-size: 8pt; padding: 2px 3px; vertical-align: middle; }
-    .score-table th.vcol  { padding: 1px; vertical-align: bottom; height: 24mm; overflow: hidden; }
-    .score-table th.vcol .vwrap {
-      display: block; transform: rotate(-90deg); transform-origin: center center;
-      white-space: nowrap; font-size: 7pt; font-weight: 600;
-      width: 22mm; margin: auto; text-align: left;
-    }
-    .score-table td { font-size: 8pt; padding: 1px 2px; text-align: center; }
-    .score-table td.nm { text-align: left; font-size: 8pt; white-space: nowrap; overflow: hidden; }
-    .score-sig { margin-top: 6mm; display: flex; justify-content: space-between; font-size: 9pt; gap: 4mm; }
+    .score-wrap { width: 210mm; min-height: 297mm; padding: 8mm 8mm 8mm 8mm; page-break-after: always; box-sizing: border-box; }
+    .score-info { font-size: 9pt; margin-bottom: 1.5mm; display: flex; flex-wrap: wrap; gap: 0 6mm; }
+    .score-info-item { display: flex; align-items: baseline; gap: 1mm; white-space: nowrap; }
+    .score-info-label { flex-shrink: 0; }
+    .score-info-val { border-bottom: .3mm dashed #555; min-width: 10mm; text-align: center; padding: 0 1mm; font-weight: 600; }
+    .score-info-val.wide { min-width: 40mm; }
+    .score-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 7pt; }
+    .score-table th { border: .3mm solid #000; padding: 1px 1px; text-align: center; vertical-align: middle; font-size: 7pt; line-height: 1.2; }
+    .score-table td { border: .3mm solid #000; padding: 0 1px; text-align: center; vertical-align: middle; font-size: 7pt; height: 5.5mm; }
+    .score-table td.sc-name { text-align: left; padding-left: 1mm; white-space: nowrap; overflow: hidden; font-size: 7pt; }
+    .score-table th.sc-section { font-size: 7pt; font-weight: 700; background: #f5f5f5; }
+    .score-sig { margin-top: 5mm; display: flex; justify-content: space-between; font-size: 9pt; gap: 4mm; }
     .score-sig-block { flex: 1; text-align: center; }
 
     /* ── Page 5 ── */
@@ -827,47 +827,37 @@ function _buildAttPage(d, chunk, startNo) {
 
   const colHeaders = Array.from({length: ATT_COLS}, (_, i) => `<th>${i+1}</th>`).join('')
 
+  const legendColspan = 3 + ATT_COLS + 1
+
   return `
   <div class="page-tight">
     <div class="att-top">
       ${logoUrl
         ? `<div class="att-logo"><img src="${_esc(logoUrl)}" alt="โลโก้" /></div>`
         : '<div style="width:18mm;flex-shrink:0;"></div>'}
-      <div class="att-title-wrap">
+      <div class="att-info">
         <div class="att-title">บันทึกการมาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}</div>
-      </div>
-      <div style="width:18mm;flex-shrink:0;"></div>
-    </div>
-    <div class="att-hdr">
-      <!-- แถว 1: ปีการศึกษา + ภาคเรียน -->
-      <div class="att-hdr-row">
-        <span class="att-label">ปีการศึกษา</span>
-        <span class="att-uline">${_esc(String(academicYear))}</span>
-        <span class="att-label" style="margin-left:4mm;">ภาคเรียนที่</span>
-        <span class="att-uline">${_esc(String(semester))}</span>
-      </div>
-      <!-- แถว 2: รายวิชา (ซ้าย) | รหัสวิชา (ขวา) -->
-      <div class="att-hdr-row2">
-        <div class="att-hdr-col">
-          <span class="att-label">รายวิชา</span>
-          <span class="att-uline att-uline-fill">${_esc(ms.subject_name??'')}</span>
+        <div class="att-hdr-row">
+          <span class="att-label">ปีการศึกษา</span>
+          <span class="att-uline">${_esc(String(academicYear))}</span>
+          <span class="att-label" style="margin-left:4mm;">ภาคเรียนที่</span>
+          <span class="att-uline">${_esc(String(semester))}</span>
         </div>
-        <div class="att-hdr-col">
-          <span class="att-label">รหัสวิชา</span>
-          <span class="att-uline att-uline-fill">${_esc(ms.subject_code??'')}</span>
+        <div class="att-hdr-row2">
+          <div class="att-hdr-col">
+            <span class="att-label">รายวิชา</span>
+            <span class="att-uline att-uline-fill">${_esc(ms.subject_name??'')}</span>
+          </div>
+          <div class="att-hdr-col">
+            <span class="att-label">รหัสวิชา</span>
+            <span class="att-uline att-uline-fill">${_esc(ms.subject_code??'')}</span>
+          </div>
+        </div>
+        <div class="att-hdr-row">
+          <span class="att-label">ครูผู้สอน</span>
+          <span class="att-uline att-uline-fill">${_esc(teacher?.full_name??'')}</span>
         </div>
       </div>
-      <!-- แถว 3: ครูผู้สอน -->
-      <div class="att-hdr-row">
-        <span class="att-label">ครูผู้สอน</span>
-        <span class="att-uline att-uline-fill">${_esc(teacher?.full_name??'')}</span>
-      </div>
-    </div>
-    <div class="att-legend">
-      บันทึกคาบที่สอนที่นักเรียนไม่ได้มาเรียน:
-      <span class="att-absent">ขาด</span>&ensp;
-      <span class="att-leave">ลา</span>&ensp;
-      <span class="att-sick">ป่วย</span>
     </div>
     <table class="att-table">
       <colgroup>
@@ -878,6 +868,14 @@ function _buildAttPage(d, chunk, startNo) {
         <col style="width:10mm;"/>
       </colgroup>
       <thead>
+        <tr>
+          <th colspan="${legendColspan}" style="text-align:left;font-weight:normal;padding:0.8mm 1mm;border-bottom:none;">
+            บันทึกคาบที่สอนที่นักเรียนไม่ได้มาเรียน:&ensp;
+            <span style="color:#c00;font-weight:700;">ขาด</span>&ensp;
+            <span style="color:#00c;font-weight:700;">ลา</span>&ensp;
+            <span style="color:#c60;font-weight:700;">ป่วย</span>
+          </th>
+        </tr>
         <tr>
           <th rowspan="2" style="font-size:7pt;">เลขที่</th>
           <th rowspan="2" style="font-size:7pt;">เลขประจำตัว</th>
@@ -895,77 +893,170 @@ function _buildAttPage(d, chunk, startNo) {
 // ─── Page 4: คะแนนการจัดการเรียนรู้ ─────────────────────────────────────────
 
 const ROWS_PER_SCORE_PAGE = 30
-const MAX_SCORE_COLS = 8
 
 function _buildPage4(d) {
-  const { students, scoreColumns, scoreMap } = d
+  const { students } = d
   const pages = []
-  // แบ่ง scoreColumns เป็นกลุ่มถ้ามีเยอะเกิน
-  for (let ci = 0; ci < Math.max(1, Math.ceil(scoreColumns.length / MAX_SCORE_COLS)); ci++) {
-    const colSlice = scoreColumns.slice(ci * MAX_SCORE_COLS, (ci + 1) * MAX_SCORE_COLS)
-    for (let si = 0; si < students.length; si += ROWS_PER_SCORE_PAGE) {
-      const studentChunk = students.slice(si, si + ROWS_PER_SCORE_PAGE)
-      pages.push(_buildScorePage(d, studentChunk, colSlice, si + 1, ci === 0))
-    }
+  for (let si = 0; si < students.length; si += ROWS_PER_SCORE_PAGE) {
+    pages.push(_buildScorePage(d, students.slice(si, si + ROWS_PER_SCORE_PAGE), si + 1))
   }
   return pages.join('')
 }
 
-function _buildScorePage(d, chunk, colSlice, startNo, showRatio) {
-  const { cls, ms, credit, teacher, academicYear, semester, scoreColumns, scoreMap } = d
+function _buildScorePage(d, chunk, startNo) {
+  const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
 
-  const maxTotal = scoreColumns.reduce((s, c) => s + (c.full_score ?? 0), 0)
-  const sliceMax = colSlice.reduce((s, c) => s + (c.full_score ?? 0), 0)
-  const isLast   = colSlice.length === scoreColumns.slice(colSlice.length * -1).length || scoreColumns.length <= MAX_SCORE_COLS
+  // แบ่งประเภทคอลัมน์
+  const formative  = scoreColumns.filter(c => c.assignment_type === 'formative'
+    || (!c.assignment_type && !c.column_name?.includes('กลางภาค') && !c.column_name?.includes('ปลายภาค')))
+  const midCol     = scoreColumns.find(c => c.assignment_type === 'midterm' || c.column_name?.includes('กลางภาค'))
+  const finalCol   = scoreColumns.find(c => c.assignment_type === 'final'   || c.column_name?.includes('ปลายภาค'))
 
+  const betweenMax = formative.reduce((s,c)=>s+(c.full_score??0),0) + (midCol?.full_score??0)
+  const betweenShow = 80
+  const finalMax   = finalCol?.full_score ?? 0
+  const finalShow  = 20
+
+  // colspan วัดผลระหว่างภาค = formative + (1 midterm ถ้ามี) + รวม + ลดส่วน + แสดงส่วน + คะแนน
+  const midColCount  = midCol ? 1 : 0
+  const betweenDerived = 4  // รวม / ลดส่วน / แสดงส่วน / คะแนน
+  const betweenSpan  = formative.length + midColCount + betweenDerived
+
+  // colspan วัดผลปลายภาค = (1 final ถ้ามี) + ลดส่วน + แสดงส่วน + คะแนน
+  const finalColCount = finalCol ? 1 : 0
+  const finalDerived  = 3  // ลดส่วน / แสดงส่วน / คะแนน
+  const finalSpan     = finalColCount + finalDerived
+
+  // สร้างแถวนักเรียน
   const rows = chunk.map((st, idx) => {
-    const stScores = scoreMap[st.id] ?? {}
-    const sliceSum = colSlice.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
-    const allSum   = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
-    const pct      = maxTotal > 0 ? (allSum / maxTotal) * 100 : null
-    const grade    = pct !== null ? _calcGrade(pct) : ''
+    const sc = scoreMap[st.id] ?? {}
+    const fScores   = formative.map(c => sc[c.id] ?? '')
+    const midRaw    = midCol  ? (sc[midCol.id]  ?? '') : ''
+    const finalRaw  = finalCol ? (sc[finalCol.id] ?? '') : ''
+
+    const fSum      = formative.reduce((s,c) => s + (sc[c.id]??0), 0)
+    const midNum    = midCol  ? (sc[midCol.id]  ?? 0) : 0
+    const betweenRaw = fSum + midNum
+    const bScaled   = betweenMax > 0 ? Math.round(betweenRaw * betweenShow / betweenMax * 10) / 10 : ''
+
+    const finalNum  = finalCol ? (sc[finalCol.id] ?? 0) : 0
+    const fScaled   = finalMax > 0 ? Math.round(finalNum * finalShow / finalMax * 10) / 10 : ''
+
+    const total     = (bScaled !== '' || fScaled !== '') ? ((bScaled||0) + (fScaled||0)) : ''
+    const grade     = total !== '' ? _calcGrade(total) : ''
 
     return `<tr>
-      <td class="text-center">${startNo + idx}</td>
-      <td class="text-center text-xs">${_esc(st.student_code??'')}</td>
-      <td class="name-cell">${_esc(st.full_name??'')}</td>
-      ${colSlice.map(c => `<td class="text-center">${stScores[c.id] ?? ''}</td>`).join('')}
-      <td class="text-center font-bold">${sliceSum || ''}</td>
-      ${isLast ? `<td class="text-center font-bold">${allSum || ''}</td>
-      <td class="text-center font-bold">${grade !== '' ? grade : ''}</td>` : ''}
+      <td>${startNo + idx}</td>
+      <td style="font-size:6pt;">${_esc(st.student_code??'')}</td>
+      <td class="sc-name">${_esc(st.full_name??'')}</td>
+      ${fScores.map(v => `<td>${v}</td>`).join('')}
+      ${midCol ? `<td>${midRaw}</td>` : ''}
+      <td>${betweenRaw || ''}</td>
+      <td style="color:#555;">${betweenMax}</td>
+      <td style="color:#555;">${betweenShow}</td>
+      <td style="font-weight:700;">${bScaled}</td>
+      ${finalCol ? `<td>${finalRaw}</td>` : ''}
+      <td style="color:#555;">${finalMax}</td>
+      <td style="color:#555;">${finalShow}</td>
+      <td style="font-weight:700;">${fScaled}</td>
+      <td style="font-weight:700;">${total}</td>
+      <td style="font-weight:700;">${grade}</td>
+      <td></td><td></td><td></td><td></td><td></td>
     </tr>`
   })
 
-  const formative  = scoreColumns.filter(c => c.assignment_type === 'formative' || (!c.assignment_type && c.column_name !== 'สอบกลางภาค' && c.column_name !== 'สอบปลายภาค'))
-  const midScore   = scoreColumns.find(c => c.assignment_type === 'midterm' || c.column_name?.includes('กลางภาค'))
-  const finalScore = scoreColumns.find(c => c.assignment_type === 'final'   || c.column_name?.includes('ปลายภาค'))
-  const between    = formative.reduce((s,c)=>s+(c.full_score??0),0) + (midScore?.full_score ?? 0)
-  const finalMax   = finalScore?.full_score ?? 0
-  const ratioStr   = `อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${between} / ${finalMax}`
+  // Row 3: แถวที่ 3 ของ header = ชื่อ/คะแนนเต็มของ formative แต่ละคอลัมน์
+  const row3Cells = formative.map((c, i) =>
+    `<th>จ.ป.ที่ ${i+1}<br/><span style="font-size:6pt;">(${c.full_score??''})</span></th>`
+  ).join('')
 
-  const vHeader = (name, score) => `
-    <th class="vcol">
-      <span class="vwrap">${_esc(name)}<br/>(${score ?? ''})</span>
-    </th>`
+  // ความกว้างคอลัมน์ (ออกแบบให้พอดี A4 content 194mm พร้อม padding 8mm)
+  const fW   = formative.length > 3 ? '7mm' : '8mm'
+  const midW = '9mm'
+  const drvW = '7mm'
+  const resW = '11mm'
+  const chrW = '5mm'
 
   return `
-  <div class="page">
+  <div class="score-wrap">
     <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:2mm;">คะแนนการจัดการเรียนรู้</div>
-    <div style="font-size:9pt;margin-bottom:1mm;">
-      รายวิชา ${_esc(ms.subject_name??'')} รหัสวิชา ${_esc(ms.subject_code??'')} ชั้น ${_esc(_shortRoom(cls.class_name))}
-      ภาคเรียนที่ ${semester} ปีการศึกษา ${academicYear}
+    <div class="score-info">
+      <div class="score-info-item">
+        <span class="score-info-label">รายวิชา</span>
+        <span class="score-info-val wide">${_esc(ms.subject_name??'')}</span>
+      </div>
+      <div class="score-info-item">
+        <span class="score-info-label">รหัสวิชา</span>
+        <span class="score-info-val">${_esc(ms.subject_code??'')}</span>
+      </div>
+      <div class="score-info-item">
+        <span class="score-info-label">ชั้น</span>
+        <span class="score-info-val">${_esc(_shortRoom(cls.class_name))}</span>
+      </div>
+      <div class="score-info-item">
+        <span class="score-info-label">ภาคเรียนที่</span>
+        <span class="score-info-val">${_esc(String(semester))}</span>
+      </div>
+      <div class="score-info-item">
+        <span class="score-info-label">ปีการศึกษา</span>
+        <span class="score-info-val">${_esc(String(academicYear))}</span>
+      </div>
     </div>
-    ${showRatio ? `<div style="font-size:8.5pt;margin-bottom:2mm;">${ratioStr}</div>` : ''}
     <table class="score-table">
+      <colgroup>
+        <col style="width:5mm;"/>
+        <col style="width:12mm;"/>
+        <col style="width:28mm;"/>
+        ${formative.map(()=>`<col style="width:${fW};"/>`).join('')}
+        ${midCol  ? `<col style="width:${midW};"/>` : ''}
+        <col style="width:${drvW};"/>
+        <col style="width:${drvW};"/>
+        <col style="width:${drvW};"/>
+        <col style="width:${drvW};"/>
+        ${finalCol ? `<col style="width:${midW};"/>` : ''}
+        <col style="width:${drvW};"/>
+        <col style="width:${drvW};"/>
+        <col style="width:${drvW};"/>
+        <col style="width:${resW};"/>
+        <col style="width:${resW};"/>
+        <col style="width:${chrW};"/>
+        <col style="width:${chrW};"/>
+        <col style="width:${chrW};"/>
+        <col style="width:${chrW};"/>
+        <col style="width:8mm;"/>
+      </colgroup>
       <thead>
+        <!-- แถว 1: หัวข้อหลัก -->
         <tr>
-          <th class="normal" style="width:8mm;">เลขที่</th>
-          <th class="normal" style="width:15mm;">รหัส</th>
-          <th class="normal" style="width:40mm;text-align:left;">ชื่อ - สกุล</th>
-          ${colSlice.map(c => vHeader(c.column_name ?? '', c.full_score)).join('')}
-          <th class="normal" style="width:14mm;">รวม<br/>(${sliceMax})</th>
-          ${isLast ? `<th class="normal" style="width:18mm;">รวมทั้งหมด<br/>(${maxTotal})</th>
-                      <th class="normal" style="width:12mm;">ระดับผล<br/>การเรียน</th>` : ''}
+          <th rowspan="3">เลขที่</th>
+          <th rowspan="3">เลขประจำตัว</th>
+          <th rowspan="3" style="text-align:left;padding-left:1mm;">ชื่อ - สกุล</th>
+          <th colspan="${betweenSpan}" class="sc-section">วัดผลระหว่างภาค&ensp;อัตราส่วน ${betweenMax}/${betweenShow}</th>
+          <th colspan="${finalSpan}" class="sc-section">วัดผลปลายภาค&ensp;อัตราส่วน ${finalMax}/${finalShow}</th>
+          <th rowspan="3">ผลรวม<br/><span style="font-size:6pt;">100 คะแนน</span></th>
+          <th rowspan="3">ระดับ<br/>ผลการเรียน</th>
+          <th rowspan="3">ลส</th>
+          <th rowspan="3">คบ</th>
+          <th rowspan="3">มู</th>
+          <th rowspan="3">รช</th>
+          <th rowspan="3">กิจกรรม</th>
+        </tr>
+        <!-- แถว 2: หัวย่อย -->
+        <tr>
+          ${formative.length > 0 ? `<th colspan="${formative.length}">คะแนนระหว่างเรียน</th>` : ''}
+          ${midCol  ? `<th rowspan="2">สอบ<br/>กลางภาค<br/><span style="font-size:6pt;">(${midCol.full_score??''})</span></th>` : ''}
+          <th rowspan="2">รวม<br/><span style="font-size:6pt;">(${betweenMax})</span></th>
+          <th rowspan="2">ลด<br/>ส่วน</th>
+          <th rowspan="2">แสดง<br/>ส่วน</th>
+          <th rowspan="2">คะแนน<br/><span style="font-size:6pt;">(${betweenShow})</span></th>
+          ${finalCol ? `<th rowspan="2">สอบ<br/>ปลายภาค<br/><span style="font-size:6pt;">(${finalMax})</span></th>` : ''}
+          <th rowspan="2">ลด<br/>ส่วน</th>
+          <th rowspan="2">แสดง<br/>ส่วน</th>
+          <th rowspan="2">คะแนน<br/><span style="font-size:6pt;">(${finalShow})</span></th>
+        </tr>
+        <!-- แถว 3: ชื่อ/คะแนนเต็มรายจุดประสงค์ -->
+        <tr>
+          ${row3Cells}
         </tr>
       </thead>
       <tbody>${rows.join('')}</tbody>
