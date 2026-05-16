@@ -341,7 +341,7 @@ async function _loadComments(teacherId) {
       <div style="display:flex;justify-content:space-between;align-items:start;padding:8px 10px;background:#f9fafb;border-radius:8px;margin-bottom:6px;font-size:12px;">
         <div>
           <span style="background:#e0e7ff;color:#3730a3;border-radius:6px;padding:1px 6px;font-size:10px;margin-right:6px;">${catLabel[c.metric]??c.metric}</span>
-          <strong>${c.teachers?.full_name??'หัวหน้า'}</strong>: ${c.comment}
+          <strong>${c.supervisor_id===_selfTeacher?.id?(_selfTeacher?.full_name??'หัวหน้า'):'หัวหน้า'}</strong>: ${c.comment}
           <div style="color:#9ca3af;font-size:10px;margin-top:2px;">${new Date(c.created_at).toLocaleString('th')}</div>
         </div>
         ${c.supervisor_id===_selfTeacher.id?`<button data-cid="${c.id}" class="sv-del-comment"
@@ -443,13 +443,14 @@ async function _openMetricPopup(m, metric) {
         const pop = _makeOverlay()
         pop.innerHTML = `<div class="sv-popup">
           <button style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;" onclick="this.closest('.sv-overlay').remove()">✕</button>
-          <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">${cls.class_name} — วันสอน 6 คาบแรก</h3>
-          <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">${cls.master_subjects?.subject_name??''}</div>
-          ${days.map((d,i)=>`
+          <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">${cls.class_name}</h3>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">${cls.master_subjects?.subject_name??''} — วันสอนที่ตั้งไว้</div>
+          ${days.filter(d=>cls[d]).map((d,i)=>`
             <div style="display:flex;justify-content:space-between;padding:7px 10px;border-bottom:1px solid #f3f4f6;font-size:13px;">
-              <span style="color:#374151;">คาบที่ ${i*2+1}–${i*2+2} (วันที่ ${i+1})</span>
-              <span style="font-weight:600;color:${cls[d]?'#059669':'#dc2626'};">${cls[d]||'—'}</span>
+              <span style="color:#374151;">วันสอนที่ ${i+1}</span>
+              <span style="font-weight:600;color:#059669;">${cls[d]}</span>
             </div>`).join('')}
+          ${!days.some(d=>cls[d])?`<div style="color:#dc2626;font-size:13px;padding:8px;">✗ ยังไม่ได้ตั้งวันสอน</div>`:''}
         </div>`
         document.body.appendChild(pop)
         pop.addEventListener('click',e=>{if(e.target===pop)pop.remove()})
@@ -517,23 +518,45 @@ async function _openMetricPopup(m, metric) {
 
 // ── class full popup ──────────────────────────────────────────────────────────
 async function _openClassPopup(m, cls, defaultTab='att') {
-  const overlay = _makeOverlay()
+  // เปิดหน้า class view เต็มหน้าจอผ่าน teacher-nav event
+  // เก็บ supervisor context ไว้ก่อน แล้วค่อยกลับ
   const clsMetric = defaultTab==='att' ? 'attendance' : 'scores'
-  overlay.innerHTML = `<div class="sv-popup" style="width:min(800px,96vw);">
-    <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
-    <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">${cls.class_name}</h3>
-    <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">${cls.master_subjects?.subject_name??''} — ${m.full_name}</div>
-    <div style="display:flex;gap:8px;margin-bottom:16px;">
-      <button class="sv-tab-btn ${defaultTab==='att'?'active':''}" data-tab="att">✅ เช็คชื่อ</button>
-      <button class="sv-tab-btn ${defaultTab==='score'?'active':''}" data-tab="score">📊 คะแนน</button>
-    </div>
-    <div id="sv-cls-body" style="max-height:50vh;overflow-y:auto;">⏳ กำลังโหลด...</div>
-    ${_miniCommentHTML(clsMetric)}
-  </div>`
-  document.body.appendChild(overlay)
-  overlay.querySelector('#sv-pop-close').onclick = ()=>overlay.remove()
-  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
-  _bindMiniComment(overlay, m.id, clsMetric)
+
+  // Floating back button
+  const fab = document.createElement('button')
+  fab.id = 'sv-fab-back'
+  fab.style.cssText = `position:fixed;bottom:20px;right:20px;z-index:9000;
+    background:#1d4ed8;color:#fff;border:none;border-radius:24px;
+    padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;
+    box-shadow:0 4px 12px rgba(0,0,0,.2);font-family:inherit;`
+  fab.textContent = '← กลับ Dashboard'
+  fab.onclick = () => {
+    fab.remove()
+    if (window._svBackFn) { window._svBackFn(); window._svBackFn = null }
+  }
+  document.body.appendChild(fab)
+
+  // สร้าง comment mini popup ลอย
+  const commentFloat = document.createElement('div')
+  commentFloat.style.cssText = `position:fixed;bottom:20px;left:20px;z-index:9000;
+    background:#fff;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.2);
+    padding:12px;width:280px;`
+  commentFloat.innerHTML = _miniCommentHTML(clsMetric)
+  document.body.appendChild(commentFloat)
+  _bindMiniComment(commentFloat, m.id, clsMetric)
+
+  // บันทึกสถานะ supervisor เพื่อกลับมา
+  const main = document.getElementById('main-content') ?? document.querySelector('main')
+  window._svBackFn = () => {
+    commentFloat.remove()
+    renderSupervisorDashboard(main, _selfTeacher)
+  }
+
+  // เปิด class view ผ่าน event ที่ teacher.js รับ
+  window.dispatchEvent(new CustomEvent('teacher-nav', {
+    detail: { view: defaultTab === 'att' ? 'attendance' : 'grades', classId: cls.id }
+  }))
+}
 
   const [attData, {students, cols, scores}] = await Promise.all([
     getClassAttendanceFull(cls.id),
@@ -663,7 +686,7 @@ async function _bindMiniComment(container, teacherId, metric) {
       const filtered = all.filter(c => c.metric === metric || metric === 'general')
       list.innerHTML = filtered.length ? filtered.map(c=>`
         <div style="font-size:11px;padding:4px 8px;background:#f9fafb;border-radius:6px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:start;">
-          <div><strong>${c.teachers?.full_name??'หัวหน้า'}</strong>: ${c.comment}
+          <div><strong>${c.supervisor_id===_selfTeacher?.id?(_selfTeacher?.full_name??'หัวหน้า'):'หัวหน้า'}</strong>: ${c.comment}
             ${c.notify_teacher?'<span style="color:#6366f1;font-size:10px;"> 🔔</span>':''}
             <div style="color:#9ca3af;font-size:10px;">${new Date(c.created_at).toLocaleString('th')}</div>
           </div>

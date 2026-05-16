@@ -369,10 +369,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       <span style="font-size:20px;">🔔</span>
       <div style="flex:1;">
         <div style="font-weight:700;font-size:13px;color:#92400e;">มีข้อความจากหัวหน้า ${svNotifs.length} รายการ</div>
-        <div style="font-size:12px;color:#b45309;">${svNotifs[0].teachers?.full_name??'หัวหน้า'}: ${svNotifs[0].comment}</div>
+        <div style="font-size:12px;color:#b45309;">${svNotifs[0].supervisor_id?'หัวหน้า':'หัวหน้า'}: ${svNotifs[0].comment}</div>
         <div class="sv-notif-detail" style="display:none;margin-top:8px;">
           ${svNotifs.slice(1).map(n=>`<div style="font-size:12px;color:#92400e;padding:4px 0;border-top:1px solid #fde68a;">
-            ${n.teachers?.full_name??'หัวหน้า'}: ${n.comment}</div>`).join('')}
+            ${'หัวหน้า'}: ${n.comment}</div>`).join('')}
         </div>
       </div>
       <button onclick="event.stopPropagation();if(window._markSvNotifsRead)window._markSvNotifsRead()"

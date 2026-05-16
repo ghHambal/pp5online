@@ -61,7 +61,7 @@ async function loadTeacherInfo(userId) {
     svBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-blue-800/50 mt-2 border border-blue-700/40 w-full text-left'
     svBtn.style.color = '#93c5fd'
     svBtn.innerHTML = `<span>📊</span><span>Dashboard ${posLabel}</span>`
-    svBtn.onclick = () => _toggleSupervisorMode(svBtn)
+    svBtn.onclick = _enterSupervisorMode
     nav.appendChild(svBtn)
   }
 
@@ -1779,7 +1779,7 @@ async function _showNotifPopup(teacherId) {
     ${_unreadNotifs.map(n=>`
       <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:4px;">
-          ${n.teachers?.full_name??'หัวหน้า'} · ${metricLabel[n.metric]??n.metric}
+          ${'หัวหน้า'} · ${metricLabel[n.metric]??n.metric}
         </div>
         <div style="font-size:13px;color:#374151;">${n.comment}</div>
         <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${new Date(n.created_at).toLocaleString('th')}</div>
@@ -1803,52 +1803,58 @@ async function _showNotifPopup(teacherId) {
 let _supervisorMode = false
 let _savedNavHTML  = null
 
-function _toggleSupervisorMode(btn) {
+function _enterSupervisorMode() {
   const main = document.getElementById('main-content') ?? document.querySelector('main') ?? document.getElementById('content-area')
   const nav  = document.querySelector('#sidebar nav')
-  if (!main) return
+  if (!main || _supervisorMode) return
+  _supervisorMode = true
+  if (nav) _savedNavHTML = nav.innerHTML
+  _renderSupervisorNav(nav, main)
+  renderSupervisorDashboard(main, _teacher)
+}
 
-  _supervisorMode = !_supervisorMode
-
-  if (_supervisorMode) {
-    // บันทึก nav เดิม
-    if (nav) _savedNavHTML = nav.innerHTML
-
-    btn.style.background = 'rgba(29,78,216,.3)'
-    btn.style.opacity = '1'
-
-    // เปลี่ยน nav เป็นโหมดหัวหน้า
-    if (nav) {
-      const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
-        academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา',
-        academic_pvch:'หัวหน้าวิชาการปวช' }[_teacher?.position] ?? 'หัวหน้า'
-      nav.innerHTML = `
-        <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;margin-bottom:4px;">📊 ${posLabel}</div>
-        <button id="sv-nav-back" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
-          style="color:#d1fae5;">← กลับโหมดสอน</button>
-        <div style="height:1px;background:#065f46;margin:8px 12px;"></div>
-        <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;">ภาพรวม</div>
-        <button id="sv-nav-dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
-          style="color:#d1fae5;">📊 Dashboard ติดตาม</button>`
-      nav.querySelector('#sv-nav-back').onclick = () => _toggleSupervisorMode(btn)
-      nav.querySelector('#sv-nav-dashboard').onclick = () => renderSupervisorDashboard(main, _teacher)
-    }
-
-    renderSupervisorDashboard(main, _teacher)
-  } else {
-    // คืน nav เดิม
-    if (nav && _savedNavHTML) {
-      nav.innerHTML = _savedNavHTML
-      _savedNavHTML = null
-      // re-bind supervisor toggle button
-      const newSvBtn = [...nav.querySelectorAll('button')].find(b => b.textContent.includes('Dashboard'))
-      if (newSvBtn) newSvBtn.onclick = () => _toggleSupervisorMode(newSvBtn)
-      // re-bind admin link (ถ้ามี)
-    }
-
-    // กลับไปหน้า overview ของครู
-    window.dispatchEvent(new CustomEvent('teacher-nav', { detail: { view: 'overview' } }))
+function _exitSupervisorMode() {
+  const main = document.getElementById('main-content') ?? document.querySelector('main') ?? document.getElementById('content-area')
+  const nav  = document.querySelector('#sidebar nav')
+  if (!_supervisorMode) return
+  _supervisorMode = false
+  if (nav && _savedNavHTML) {
+    nav.innerHTML = _savedNavHTML
+    _savedNavHTML = null
+    // re-bind all nav buttons
+    _rebindNav(nav, main)
   }
+  window.dispatchEvent(new CustomEvent('teacher-nav', { detail: { view: 'overview' } }))
+}
+
+function _renderSupervisorNav(nav, main) {
+  if (!nav) return
+  const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
+    academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา',
+    academic_pvch:'หัวหน้าวิชาการปวช' }[_teacher?.position] ?? 'หัวหน้า'
+  nav.innerHTML = `
+    <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;margin-bottom:4px;">📊 ${posLabel}</div>
+    <button id="sv-nav-back" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
+      style="color:#d1fae5;">← กลับโหมดสอน</button>
+    <div style="height:1px;background:#065f46;margin:8px 12px;"></div>
+    <button id="sv-nav-dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
+      style="color:#d1fae5;">📊 Dashboard ติดตาม</button>`
+  nav.querySelector('#sv-nav-back').onclick = _exitSupervisorMode
+  nav.querySelector('#sv-nav-dashboard').onclick = () => renderSupervisorDashboard(main, _teacher)
+}
+
+function _rebindNav(nav, main) {
+  // re-bind supervisor toggle button (by content matching)
+  nav.querySelectorAll('button').forEach(b => {
+    const txt = b.textContent.trim()
+    if (txt.includes('Dashboard')) b.onclick = _enterSupervisorMode
+  })
+}
+
+// kept for backward compat with onclick= in html
+function _toggleSupervisorMode() {
+  if (_supervisorMode) _exitSupervisorMode()
+  else _enterSupervisorMode()
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -2274,6 +2280,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (_teacher?.id) _initDonationFlow(_teacher.id)
   if (_teacher?.id) _checkScheduleLinkPopup()
   if (_teacher?.id) _initNotifications(_teacher.id)
+
+  // teacher-nav event (from supervisor dashboard)
+  window.addEventListener('teacher-nav', e => {
+    const { view, classId } = e.detail ?? {}
+    if (classId) window._sv_classId = classId
+    navigate(view ?? 'overview')
+  })
 
   // Sidebar nav clicks
   document.querySelectorAll('[data-nav]').forEach(link => {

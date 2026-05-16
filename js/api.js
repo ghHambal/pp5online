@@ -2049,7 +2049,7 @@ export async function getSupervisorProgress() {
 export async function getSupervisorComments(teacherId) {
   const { data, error } = await supabase
     .from('supervisor_comments')
-    .select('id, supervisor_id, metric, comment, created_at, teachers!supervisor_id(full_name)')
+    .select('id, supervisor_id, metric, comment, created_at')
     .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -2131,7 +2131,7 @@ export async function addSupervisorCommentWithNotify(supervisorId, teacherId, me
 export async function getUnreadNotifications(teacherId) {
   const { data } = await supabase
     .from('supervisor_comments')
-    .select('id, metric, comment, created_at, teachers!supervisor_id(full_name)')
+    .select('id, metric, comment, created_at, supervisor_id')
     .eq('teacher_id', teacherId)
     .eq('notify_teacher', true)
     .eq('is_read', false)
