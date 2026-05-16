@@ -363,25 +363,30 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
 
     <!-- แจ้งเตือนจากหัวหน้า -->
-    ${svNotifs.length ? `
-    <div id="sv-notif-banner" style="background:#fef3c7;border:1px solid #fbbf24;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;cursor:pointer;"
-      onclick="document.getElementById('sv-notif-banner').querySelector('.sv-notif-detail').style.display=document.getElementById('sv-notif-banner').querySelector('.sv-notif-detail').style.display==='none'?'block':'none'">
-      <span style="font-size:20px;">🔔</span>
+    ${svNotifs.length ? (() => {
+      const catLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
+      const catColor = {general:'#374151',profile:'#5b21b6',dates:'#1e40af',attendance:'#065f46',scores:'#713f12'}
+      const catBg    = {general:'#f3f4f6',profile:'#ede9fe',dates:'#dbeafe',attendance:'#d1fae5',scores:'#fef9c3'}
+      const tags = [...new Set(svNotifs.map(n=>n.metric))].map(m=>
+        `<span style="background:${catBg[m]??'#f3f4f6'};color:${catColor[m]??'#374151'};border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;">${catLabel[m]??m}</span>`
+      ).join('')
+      return `
+    <div id="sv-notif-banner" style="background:#fef3c7;border:1px solid #fbbf24;border-radius:12px;padding:12px 16px;margin-bottom:16px;cursor:pointer;display:flex;align-items:center;gap:10px;"
+      onclick="if(window._showSvNotifPopup)window._showSvNotifPopup()">
+      <span style="font-size:22px;flex-shrink:0;">🔔</span>
       <div style="flex:1;">
-        <div style="font-weight:700;font-size:13px;color:#92400e;">มีข้อความจากหัวหน้า ${svNotifs.length} รายการ</div>
-        <div style="font-size:12px;color:#b45309;">${svNotifs[0].supervisor_id?'หัวหน้า':'หัวหน้า'}: ${svNotifs[0].comment}</div>
-        <div class="sv-notif-detail" style="display:none;margin-top:8px;">
-          ${svNotifs.slice(1).map(n=>`<div style="font-size:12px;color:#92400e;padding:4px 0;border-top:1px solid #fde68a;">
-            ${'หัวหน้า'}: ${n.comment}</div>`).join('')}
+        <div style="font-weight:700;font-size:13px;color:#92400e;margin-bottom:5px;">
+          มีข้อความจากหัวหน้า ${svNotifs.length} รายการ — คลิกเพื่อดู
         </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${tags}</div>
       </div>
       <button onclick="event.stopPropagation();if(window._markSvNotifsRead)window._markSvNotifsRead()"
-        style="padding:4px 10px;border:1px solid #d97706;border-radius:6px;background:#fff;color:#92400e;font-size:11px;cursor:pointer;white-space:nowrap;">
+        style="padding:4px 12px;border:1px solid #d97706;border-radius:6px;background:#fff;color:#92400e;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit;">
         รับทราบ
       </button>
     </div>
     <script>window._markSvNotifsRead=async()=>{try{const{markNotificationsRead}=await import('./api.js');await markNotificationsRead(${teacher?.id});document.getElementById('sv-notif-banner')?.remove();document.querySelectorAll('#sv-notif-badge').forEach(el=>el.remove())}catch{}}<\/script>
-    ` : ''}
+    `})() : ''}
 
     <!-- การ์ดโปรไฟล์ครู -->
     <div class="bg-white rounded-2xl ${cardBorderCls} p-5 mb-5 flex items-center gap-4" style="${cardGlowStyle}">
@@ -3314,13 +3319,15 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
 
   try {
     // โหลดข้อมูลห้อง (refresh เพื่อให้ได้ข้อมูลล่าสุด)
-    const [classes, copyCfg, classrooms] = await Promise.all([
-      getMyClasses(teacher?.id ?? null),
+    // ถ้าอยู่ใน supervisor mode และส่ง ctx.classes มา ให้ใช้ข้อมูลนั้นเลย
+    const [classesFetched, copyCfg, classrooms] = await Promise.all([
+      ctx.classes ? Promise.resolve(ctx.classes) : getMyClasses(teacher?.id ?? null),
       getSystemConfig().catch(() => ({})),
       getClassrooms().catch(() => []),
     ])
+    const classes = classesFetched
     const cls = classes.find(c => c.id === classId)
-    if (!cls) { renderMyClasses(teacher); return }
+    if (!cls) { if (!ctx.supervisorMode) renderMyClasses(teacher); return }
     const ms           = cls.master_subjects ?? {}
     const classroomMap = Object.fromEntries(classrooms.map(r => [r.id, r]))
     const cr           = cls.classroom_id ? classroomMap[cls.classroom_id] : null
@@ -3498,7 +3505,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     document.querySelectorAll('.cd-tab').forEach(t =>
       t.addEventListener('click', () => loadTab(t.dataset.tab))
     )
-    loadTab('students')
+    loadTab(ctx.defaultTab ?? 'students')
 
   } catch (err) {
     console.error(err)

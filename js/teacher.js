@@ -1758,9 +1758,12 @@ function _renderNotifBadge() {
     badge.style.cssText = 'display:inline-block;background:#dc2626;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:6px;cursor:pointer;'
     badge.textContent = n
     badge.title = `${n} ข้อความจากหัวหน้า`
-    badge.onclick = () => _showNotifPopup(teacherId)
+    badge.onclick = () => _showNotifPopup(_teacher?.id)
     tName.parentElement?.appendChild(badge)
   }
+
+  // expose globally so banner can trigger popup
+  window._showSvNotifPopup = () => _showNotifPopup(_teacher?.id)
 
   // Push notification (ถ้า service worker พร้อม)
   if ('Notification' in window && Notification.permission === 'granted' && n > 0) {
@@ -2293,25 +2296,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('teacher-nav', async e => {
     const { view, classId } = e.detail ?? {}
     if (view === 'class-detail-sv' && classId) {
-      // Supervisor viewing another teacher's class (read-only, no student tab/edit buttons)
+      // Supervisor viewing another teacher's class (read-only, skip student tab)
       try {
         const cls = await getClassByIdFull(classId)
         if (cls) {
-          // Build minimal ctx for renderClassDetail — supervisor mode skips student tab
-          window._supervisorClassView = true
-          await renderClassDetail(null, classId, { supervisorMode: true, classes: [cls] })
-          window._supervisorClassView = false
-          // Post-process: hide student tab, edit/delete/copy buttons, rename ปพ.5
+          // stub out functions that require full teacher context
+          window._openStudentManager  = () => Promise.resolve()
+          window._openCombinedEditModal = () => {}
+          window._classCache = { [cls.id]: cls }
+
+          await renderClassDetail(_teacher, classId, {
+            supervisorMode: true,
+            classes: [cls],
+            defaultTab: 'attendance',  // skip student tab
+          })
+
+          // Post-process: hide student tab + edit/delete/copy; rename ปพ.5 button
           setTimeout(() => {
-            document.querySelectorAll('[data-tab="students"],[data-nav-tab="students"]').forEach(el => el.style.display = 'none')
-            document.querySelectorAll('[data-action="copy"],[data-action="edit"],[data-action="delete"]').forEach(el => el.style.display = 'none')
-            document.querySelectorAll('button').forEach(btn => {
-              if (btn.textContent.includes('ทำสำเนา') || btn.textContent.includes('แก้ไข') || btn.textContent.includes('ลบ')) btn.style.display = 'none'
-              if (btn.textContent.includes('ปพ.5') && !btn.textContent.includes('ดูภาพรวม')) btn.textContent = btn.textContent.replace('ปพ.5','📋 ดูภาพรวม ปพ.5')
+            document.querySelectorAll('.cd-tab').forEach(btn => {
+              if (btn.dataset.tab === 'students') btn.style.display = 'none'
             })
-          }, 300)
+            document.querySelectorAll('button').forEach(btn => {
+              const t = btn.textContent.trim()
+              if (['ทำสำเนา','แก้ไข','ลบ'].some(k => t.includes(k))) btn.style.display = 'none'
+              if (t.includes('ปพ.5') && !t.includes('ดูภาพรวม')) btn.innerHTML = '📋 ดูภาพรวม ปพ.5'
+            })
+          }, 200)
         }
-      } catch(err) { console.error(err) }
+      } catch(err) { console.error('supervisor class view error:', err) }
       return
     }
     if (classId) window._sv_classId = classId

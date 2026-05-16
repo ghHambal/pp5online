@@ -82,9 +82,11 @@ function _deptKey(m) { return m.dept ?? '—' }
 let _allMetrics = []
 let _selfTeacher = null
 let _depts = []
+let _svContainer = null  // main container reference for back navigation
 
 export async function renderSupervisorDashboard(container, teacher) {
   _selfTeacher = teacher
+  _svContainer = container  // store for back navigation
   container.innerHTML = `<div id="sv-root" style="padding:20px;max-width:1100px;margin:0 auto;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
       <div>
@@ -192,7 +194,7 @@ async function _showAddMemberModal(teacher) {
 
   el.querySelectorAll('.sv-assign-btn').forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`เพิ่ม "${btn.dataset.name}" เข้ากลุ่ม ${teacher.dept}?`)) return
+      const ok = await _customConfirm(`เพิ่ม "${btn.dataset.name}" เข้ากลุ่ม ${teacher.dept}?`); if (!ok) return
       btn.disabled = true; btn.textContent = '⏳'
       try {
         await assignTeacherToDept(parseInt(btn.dataset.tid), teacher.dept)
@@ -262,7 +264,8 @@ function _bindTable(root, metrics) {
 
 // ─── Full-screen teacher detail ───────────────────────────────────────────────
 function _showDetail(m) {
-  const root = document.getElementById('sv-root')
+  const root = _svContainer
+  if (!root) return
   const glow = v => v ? '' : 'box-shadow:0 0 0 2px #ef4444,0 0 8px rgba(239,68,68,.4);'
   const fieldBadge = (icon, label, val) =>
     `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;border:1.5px solid ${val?'#d1d5db':'#ef4444'};color:${val?'#374151':'#ef4444'};${val?'':'box-shadow:0 0 6px rgba(239,68,68,.25);'}">
@@ -335,34 +338,34 @@ function _showDetail(m) {
           + แสดงความคิดเห็น
         </button>
         <div id="sv-comment-ui" style="display:none;margin-top:12px;">
-          <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:8px;">เลือกหัวข้อที่ต้องการแสดงความเห็น:</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;" id="sv-cat-buttons">
+          <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:8px;">เลือกหัวข้อ (เลือกได้หลายข้อ):</div>
+          <div id="sv-cat-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
             ${['general:ทั่วไป','profile:โปรไฟล์','dates:วันสอน','attendance:เช็คชื่อ','scores:คะแนน'].map(s=>{
               const [val,label] = s.split(':')
-              return `<button class="sv-cat-btn" data-cat="${val}"
-                style="padding:6px 14px;border-radius:20px;border:1.5px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer;font-family:inherit;">${label}</button>`
+              return `<div class="sv-cat-row" data-cat="${val}"
+                style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;">
+                <div class="sv-cat-label" style="min-width:80px;font-size:13px;font-weight:600;color:#374151;padding-top:2px;">${label}</div>
+                <textarea class="sv-cat-textarea" data-cat="${val}" rows="2" maxlength="300"
+                  placeholder="พิมพ์ความคิดเห็นสำหรับ ${label}..."
+                  style="display:none;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit;resize:none;"></textarea>
+              </div>`
             }).join('')}
           </div>
-          <div id="sv-comment-input-area" style="display:none;">
-            <div style="font-size:11px;color:#6b7280;margin-bottom:6px;">หัวข้อ: <strong id="sv-selected-cat-label"></strong></div>
-            <textarea id="sv-comment-text" rows="3" maxlength="300" placeholder="พิมพ์ความคิดเห็น..."
-              style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:13px;font-family:inherit;resize:none;"></textarea>
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
-                <input id="sv-notify-chk" type="checkbox" checked/>
-                🔔 แจ้งเตือนครู
-              </label>
-              <button id="sv-save-comment"
-                style="padding:7px 18px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
-                บันทึก
-              </button>
-            </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+              <input id="sv-notify-chk" type="checkbox" checked/>
+              🔔 แจ้งเตือนครู
+            </label>
+            <button id="sv-save-comment"
+              style="padding:7px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+              บันทึกทั้งหมด
+            </button>
           </div>
         </div>
       </div>
     </div>`
 
-  document.getElementById('sv-back').onclick = () => renderSupervisorDashboard(root.parentElement, _selfTeacher)
+  document.getElementById('sv-back').onclick = () => renderSupervisorDashboard(_svContainer, _selfTeacher)
 
   // Profile hover
   const profileArea = document.getElementById('sv-profile-area')
@@ -388,38 +391,53 @@ function _showDetail(m) {
     })
   })
 
-  // Comment UI
-  let selectedCat = null
+  // Comment UI — vertical multi-select
   document.getElementById('sv-open-comment-ui').onclick = () => {
     document.getElementById('sv-comment-ui').style.display = ''
     document.getElementById('sv-open-comment-ui').style.display = 'none'
   }
-  document.querySelectorAll('.sv-cat-btn').forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll('.sv-cat-btn').forEach(b => {
-        b.style.background = '#fff'; b.style.borderColor = '#d1d5db'; b.style.color = '#374151'
-      })
-      btn.style.background = '#6366f1'; btn.style.borderColor = '#6366f1'; btn.style.color = '#fff'
-      selectedCat = btn.dataset.cat
-      document.getElementById('sv-selected-cat-label').textContent = btn.textContent
-      document.getElementById('sv-comment-input-area').style.display = ''
-      document.getElementById('sv-comment-text').focus()
+  const greenGlow = 'box-shadow:0 0 0 2px #059669,0 0 8px rgba(5,150,105,.3);border-color:#059669;background:#f0fdf4;'
+  document.querySelectorAll('.sv-cat-row').forEach(row => {
+    row.onclick = e => {
+      if (e.target.tagName === 'TEXTAREA') return
+      const ta = row.querySelector('textarea')
+      const isSelected = row.dataset.selected === '1'
+      if (isSelected) {
+        row.dataset.selected = '0'
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;'
+        ta.style.display = 'none'
+      } else {
+        row.dataset.selected = '1'
+        row.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:all .15s;${greenGlow}`
+        ta.style.display = ''
+        ta.focus()
+      }
     }
   })
   document.getElementById('sv-save-comment').onclick = async () => {
-    const txt = document.getElementById('sv-comment-text').value.trim()
     const notify = document.getElementById('sv-notify-chk').checked
-    if (!txt || !selectedCat) return
-    const btn = document.getElementById('sv-save-comment')
-    btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
+    const selected = [...document.querySelectorAll('.sv-cat-row[data-selected="1"]')]
+    const toSave = selected.map(row => ({
+      cat: row.dataset.cat,
+      txt: row.querySelector('textarea').value.trim()
+    })).filter(x => x.txt)
+    if (!toSave.length) { alert('กรุณาพิมพ์ความคิดเห็นอย่างน้อย 1 หัวข้อ'); return }
+    const saveBtn = document.getElementById('sv-save-comment')
+    saveBtn.disabled = true; saveBtn.textContent = '⏳ กำลังบันทึก...'
     try {
-      await addSupervisorCommentWithNotify(_selfTeacher.id, m.id, selectedCat, txt, notify)
-      document.getElementById('sv-comment-text').value = ''
+      for (const { cat, txt } of toSave) {
+        await addSupervisorCommentWithNotify(_selfTeacher.id, m.id, cat, txt, notify)
+      }
       document.getElementById('sv-comment-ui').style.display = 'none'
       document.getElementById('sv-open-comment-ui').style.display = ''
-      selectedCat = null
+      document.querySelectorAll('.sv-cat-row').forEach(row => {
+        row.dataset.selected = '0'
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;'
+        row.querySelector('textarea').style.display = 'none'
+        row.querySelector('textarea').value = ''
+      })
       await _loadPastComments(m.id)
-    } catch(e) { alert(e.message) } finally { btn.disabled = false; btn.textContent = 'บันทึก' }
+    } catch(e) { alert(e.message) } finally { saveBtn.disabled = false; saveBtn.textContent = 'บันทึกทั้งหมด' }
   }
 
   _loadPastComments(m.id)
@@ -585,6 +603,32 @@ function _makeOverlay() {
   el.className = 'sv-overlay'
   return el
 }
+
+// Custom confirm dialog (replaces browser confirm())
+function _customConfirm(message, confirmLabel='ตกลง', cancelLabel='ยกเลิก') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div')
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;'
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:24px 28px;width:min(360px,90vw);text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+      <div style="font-size:14px;font-weight:600;color:#111827;line-height:1.6;margin-bottom:20px;">${message}</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button id="sv-cfm-cancel"
+          style="flex:1;max-width:120px;padding:9px 0;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+          ${cancelLabel}
+        </button>
+        <button id="sv-cfm-ok"
+          style="flex:1;max-width:120px;padding:9px 0;border:none;border-radius:10px;background:#1d4ed8;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+          ${confirmLabel}
+        </button>
+      </div>
+    </div>`
+    document.body.appendChild(overlay)
+    overlay.querySelector('#sv-cfm-ok').onclick    = () => { overlay.remove(); resolve(true)  }
+    overlay.querySelector('#sv-cfm-cancel').onclick = () => { overlay.remove(); resolve(false) }
+    overlay.addEventListener('click', e => { if(e.target===overlay){ overlay.remove(); resolve(false) } })
+  })
+}
+
 function _infoRow(label, val, ok) {
   return `<div style="display:flex;justify-content:space-between;padding:8px 12px;background:#f9fafb;border-radius:8px;">
     <span style="font-size:13px;color:#374151;">${label}</span>
