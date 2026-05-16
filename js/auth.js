@@ -328,15 +328,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 500)
   })
 
-  // ─── Name search ──────────────────────────────────────────────────────────
-  const nameSearchEl  = document.getElementById('reg-name-search')
+  // ─── Name field — search-as-you-type ─────────────────────────────────────
   const nameResultsEl = document.getElementById('reg-name-results')
   let _nameTimer = null
+  let _nameSelected = false  // กันการ search ซ้ำหลังเลือกจาก dropdown
 
-  nameSearchEl?.addEventListener('input', () => {
+  regNameEl?.addEventListener('input', () => {
+    _nameSelected = false
     clearTimeout(_nameTimer)
-    const q = nameSearchEl.value.trim()
-    if (!q) { nameResultsEl.classList.add('hidden'); return }
+    const q = regNameEl.value.trim()
+    if (q.length < 2) { nameResultsEl?.classList.add('hidden'); return }
 
     _nameTimer = setTimeout(async () => {
       const results = await searchTeacherByName(q)
@@ -349,6 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
         nameResultsEl.innerHTML = results.map(t => `
           <button type="button"
             data-code="${t.teacher_code}"
+            data-name="${t.full_name}"
             class="name-result-btn w-full text-left px-4 py-3
                    hover:bg-indigo-50 transition
                    border-b border-gray-100 last:border-0">
@@ -362,20 +364,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         nameResultsEl.querySelectorAll('.name-result-btn').forEach(btn => {
           btn.addEventListener('click', () => {
+            _nameSelected = true
+            regNameEl.value = btn.dataset.name
             regCodeEl.value = btn.dataset.code
             regCodeEl.dispatchEvent(new Event('input'))
-            nameSearchEl.value = ''
             nameResultsEl.classList.add('hidden')
           })
         })
       }
-      nameResultsEl.classList.remove('hidden')
+      nameResultsEl?.classList.remove('hidden')
     }, 400)
   })
 
   // ปิด dropdown เมื่อคลิกออกนอก
   document.addEventListener('click', (e) => {
-    if (!nameSearchEl?.contains(e.target) && !nameResultsEl?.contains(e.target)) {
+    if (!regNameEl?.contains(e.target) && !nameResultsEl?.contains(e.target)) {
       nameResultsEl?.classList.add('hidden')
     }
   })
