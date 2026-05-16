@@ -945,7 +945,7 @@ async function _showThankYouCard(request, cfgOverride = null) {
   const tiers       = _parseDonationStickers(cfg, minAmount, stepAmount)
   const amount      = request.amount ?? 0
   const tier        = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
-  const tierIndex   = _getDonorTierIndex(cfg, tiers, amount)  // 1-4
+  const tierIndex   = _getDonorTierIndex(cfg, tiers, amount)  // 1-5
   const thankText  = (cfg.donationThankYouCard ?? '').trim()
     || `❤️ ขอบคุณจากใจครับคุณครู
 
@@ -976,12 +976,16 @@ async function _showThankYouCard(request, cfgOverride = null) {
 
   wrap.innerHTML = `
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[92vh] flex flex-col">
-      <!-- Header -->
-      <div class="bg-gradient-to-br from-amber-400 to-orange-500 px-6 py-6 text-center flex-shrink-0">
+      <!-- Header — สีตาม tier.color -->
+      <div class="px-6 py-6 text-center flex-shrink-0" style="${(() => {
+        const hex = tier?.color || '#f59e0b'
+        const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16)
+        return `background:linear-gradient(135deg,rgba(${r},${g},${b},0.85),rgba(${r},${g},${b},1))`
+      })()}">
         ${stickerEl}
         ${tier ? `<div class="inline-block bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full mb-2">${_esc(tier.title)}</div>` : ''}
         <h2 class="text-white font-bold text-xl">ขอบคุณครับ! 🙏</h2>
-        <p class="text-amber-100 text-sm mt-1">${amount ? `โดเนท ${amount.toLocaleString()} บาท` : 'การสนับสนุนของคุณครูมีความหมายมากครับ'}</p>
+        <p class="text-white/80 text-sm mt-1">${amount ? `โดเนท ${amount.toLocaleString()} บาท` : 'การสนับสนุนของคุณครูมีความหมายมากครับ'}</p>
       </div>
       <!-- Body -->
       <div class="px-5 py-4 overflow-y-auto flex-1 space-y-4">
@@ -1021,7 +1025,8 @@ async function _showThankYouCard(request, cfgOverride = null) {
       <!-- Footer -->
       <div class="px-5 py-4 border-t border-gray-100 flex-shrink-0">
         <button id="tc-close"
-          class="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-sm transition shadow-md">
+          class="w-full py-3 rounded-2xl text-white font-bold text-sm transition shadow-md"
+          style="background:${tier?.color || '#f59e0b'}">
           รับทราบและเริ่มใช้งาน 🚀
         </button>
       </div>
