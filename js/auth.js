@@ -201,12 +201,52 @@ function _resetRcOptions() {
   document.getElementById('rc-opt-sasana')?.classList.add('border-gray-200')
 }
 
+// ─── Duplicate registration alert ────────────────────────────────────────────
+function _maskEmail(email) {
+  if (!email) return '(ไม่ระบุ)'
+  const [local, domain] = email.split('@')
+  const masked = local.length <= 2 ? local[0] + '***' : local.slice(0, 2) + '***'
+  return masked + '@' + domain
+}
+
+function _showDuplicateAlert(teacher) {
+  const regDate = teacher.registered_at
+    ? new Date(teacher.registered_at).toLocaleString('th-TH', {
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      })
+    : null
+  const el = document.createElement('div')
+  el.id = 'dup-alert-overlay'
+  el.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm'
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-7 text-center animate-fade">
+      <div class="text-4xl mb-3">⚠️</div>
+      <h3 class="text-lg font-bold text-gray-800 mb-1">มีบัญชีในระบบแล้ว</h3>
+      <p class="text-sm text-gray-500 mb-4">
+        <span class="font-medium text-gray-700">${teacher.full_name}</span> (รหัส ${teacher.teacher_code})
+        ได้สมัครเข้าใช้งานไว้แล้ว
+      </p>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700 mb-5 text-left space-y-1">
+        <div>📧 อีเมล: <span class="font-mono">${_maskEmail(teacher.login_email)}</span></div>
+        ${regDate ? `<div>🕐 สมัครเมื่อ: ${regDate}</div>` : ''}
+      </div>
+      <p class="text-xs text-gray-400 mb-5">หากเป็นบัญชีของท่าน กรุณาใช้ "เข้าสู่ระบบ" แทน หรือติดต่อผู้ดูแลระบบ</p>
+      <button onclick="document.getElementById('dup-alert-overlay').remove()"
+        class="btn-primary w-full text-white font-semibold py-2.5 rounded-xl text-sm">
+        รับทราบ
+      </button>
+    </div>`
+  document.body.appendChild(el)
+  el.addEventListener('click', e => { if (e.target === el) el.remove() })
+}
+
 // ─── Search teacher by name (anon) ───────────────────────────────────────────
 async function searchTeacherByName(query) {
   if (!query || query.length < 2) return []
   const { data } = await supabase
     .from('teachers')
-    .select('id, teacher_code, full_name, dept, category')
+    .select('id, teacher_code, full_name, dept, category, profile_id, login_email, registered_at')
     .ilike('full_name', `%${query}%`)
     .order('full_name')
     .limit(8)
@@ -219,7 +259,7 @@ async function lookupTeacher(code) {
   const codes = teacherCodeCandidates(code)
   const { data } = await supabase
     .from('teachers')
-    .select('id, teacher_code, full_name, dept, category')
+    .select('id, teacher_code, full_name, dept, category, profile_id, login_email, registered_at')
     .in('teacher_code', codes.length ? codes : [code.trim()])
     .limit(1)
   return data?.[0] ?? null
@@ -260,7 +300,7 @@ async function handleRegister(e) {
   if (teacherId && data?.user) {
     const { error: linkErr } = await supabase
       .from('teachers')
-      .update({ profile_id: data.user.id, login_email: email })
+      .update({ profile_id: data.user.id, login_email: email, registered_at: new Date().toISOString() })
       .eq('id', Number(teacherId))
       .is('profile_id', null)
 
@@ -319,6 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
         codeMsgEl?.classList.add('hidden')
         regTeacherEl.value = teacher.id
         if (!regNameEl.value) regNameEl.value = teacher.full_name
+        if (teacher.profile_id) { _showDuplicateAlert(teacher); return }
       } else if (code.length >= 2) {
         previewEl?.classList.add('hidden')
         codeMsgEl?.classList.remove('hidden')
@@ -351,10 +392,16 @@ document.addEventListener('DOMContentLoaded', () => {
           <button type="button"
             data-code="${t.teacher_code}"
             data-name="${t.full_name}"
+            data-has-account="${t.profile_id ? '1' : ''}"
+            data-email="${t.login_email ?? ''}"
+            data-reg="${t.registered_at ?? ''}"
             class="name-result-btn w-full text-left px-4 py-3
                    hover:bg-indigo-50 transition
                    border-b border-gray-100 last:border-0">
-            <div class="text-sm font-medium text-gray-800">${t.full_name}</div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-gray-800">${t.full_name}</span>
+              ${t.profile_id ? '<span class="text-[10px] bg-amber-100 text-amber-600 rounded-full px-2 py-0.5 font-medium">มีบัญชีแล้ว</span>' : ''}
+            </div>
             <div class="text-xs text-gray-400 mt-0.5">
               รหัส ${t.teacher_code}
               ${t.dept ? '· ' + t.dept : ''}
@@ -364,11 +411,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         nameResultsEl.querySelectorAll('.name-result-btn').forEach(btn => {
           btn.addEventListener('click', () => {
+            nameResultsEl.classList.add('hidden')
+            if (btn.dataset.hasAccount) {
+              _showDuplicateAlert({
+                full_name: btn.dataset.name,
+                teacher_code: btn.dataset.code,
+                login_email: btn.dataset.email,
+                registered_at: btn.dataset.reg || null,
+                profile_id: true
+              })
+              return
+            }
             _nameSelected = true
             regNameEl.value = btn.dataset.name
             regCodeEl.value = btn.dataset.code
             regCodeEl.dispatchEvent(new Event('input'))
-            nameResultsEl.classList.add('hidden')
           })
         })
       }
