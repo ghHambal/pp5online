@@ -999,9 +999,9 @@ function _buildScorePage(d, chunk, startNo) {
           <th rowspan="5" class="v"><span>ที่</span></th>
           <th colspan="2" rowspan="2">ผู้เรียน</th>
           <th colspan="${allSpan}">วัดผลระหว่างภาค / ปลายภาค</th>
-          <th rowspan="5" class="v"><span style="font-size:6px;">ประเมินการอ่าน<br/>คิดวิเคราะห์<br/>และเขียน</span></th>
-          <th rowspan="5" class="v"><span style="font-size:6px;">ประเมิน<br/>คุณลักษณะ<br/>อันพึงประสงค์</span></th>
-          <th rowspan="5" class="v"><span>ระดับ<br/>การเรียน</span></th>
+          <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินการอ่านคิดวิเคราะห์และเขียน</span></th>
+          <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินคุณลักษณะอันพึงประสงค์</span></th>
+          <th rowspan="5" class="v"><span>ระดับการเรียน</span></th>
         </tr>
         <tr>
           <th colspan="${allSpan}" style="font-size:7px;padding:1px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
