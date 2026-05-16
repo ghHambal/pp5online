@@ -1004,13 +1004,13 @@ function _buildScorePage(d, chunk, startNo) {
           <th rowspan="4" class="v"><span>ระดับ<br/>การเรียน</span></th>
         </tr>
         <tr>
-          <th colspan="${allSpan}" style="font-size:9px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
+          <th colspan="${allSpan}" style="font-size:7px;padding:1px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
         </tr>
         <tr>
           <th colspan="2" rowspan="2">ชื่อ - สกุล</th>
-          <th colspan="${allBetween.length}">ผลการเรียนระหว่างเรียน/กลางภาค<br/><span class="gs-small">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
+          <th colspan="${allBetween.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนระหว่างเรียน/กลางภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
           <th rowspan="2" class="v"><span>รวมคะแนน<br/>ระหว่างภาค</span></th>
-          <th colspan="${allFinal.length}">ผลการเรียนปลายภาค<br/><span class="gs-small">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
+          <th colspan="${allFinal.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนปลายภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
           <th rowspan="2" class="v"><span>รวมคะแนน<br/>ปลายภาค</span></th>
           <th rowspan="2" class="v"><span>รวมคะแนน<br/>100</span></th>
         </tr>
