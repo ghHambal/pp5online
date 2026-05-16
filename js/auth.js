@@ -232,9 +232,9 @@ function _showDuplicateAlert(teacher) {
         ${regDate ? `<div>🕐 สมัครเมื่อ: ${regDate}</div>` : ''}
       </div>
       <p class="text-xs text-gray-400 mb-5">หากเป็นบัญชีของท่าน กรุณาใช้ "เข้าสู่ระบบ" แทน หรือติดต่อผู้ดูแลระบบ</p>
-      <button onclick="document.getElementById('dup-alert-overlay').remove()"
+      <button onclick="document.getElementById('dup-alert-overlay').remove();document.getElementById('btn-show-login')?.click()"
         class="btn-primary w-full text-white font-semibold py-2.5 rounded-xl text-sm">
-        รับทราบ
+        รับทราบ — ไปหน้าเข้าสู่ระบบ
       </button>
     </div>`
   document.body.appendChild(el)
