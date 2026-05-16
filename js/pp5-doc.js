@@ -436,7 +436,7 @@ function _getCSS() {
 
     /* ── Page 5 ── */
     .date-table { width:100%; border-collapse:collapse; border:1.5px solid #000; table-layout:fixed; }
-    .date-table th, .date-table td { font-size: 8.5pt; padding: 1px 3px; text-align: center; border: 1px solid #000; height: 6mm; }
+    .date-table th, .date-table td { font-size: 8.5pt; padding: 0 3px; text-align: center; border: 1px solid #000; height: 5mm; }
     .date-table th { font-weight:700; }
     .date-table .wk { width:12mm; }
     .date-table .ep { width:11mm; }
@@ -1090,7 +1090,7 @@ function _buildPage5(d) {
   )
 
   // เส้นแนวตั้งหนาระหว่างกลุ่ม (กลุ่ม 1 และ 2 → thick right)
-  const GRP_SEP = 'border-right:2.5px solid #000;'
+  const GRP_SEP = 'border-right:1.5px solid #000;'
   const rows = Array.from({length: FIXED_ROWS}, (_, ri) => {
     const cells = Array.from({length: COLS}, (_, ci) => {
       const item = colData[ci][ri]
@@ -1106,8 +1106,8 @@ function _buildPage5(d) {
   // helper: underline span; stretch=true → flex:1 (ยาวถึงขวา)
   const uline = (w, val='', stretch=false) => {
     const style = stretch
-      ? `flex:1;border-bottom:.3mm dotted #000;text-align:center;padding:0 1mm;`
-      : `display:inline-block;min-width:${w};border-bottom:.3mm dotted #000;text-align:center;padding:0 1mm;`
+      ? `flex:1;border-bottom:.3mm dotted #000;text-align:left;padding:0 1mm;`
+      : `display:inline-block;min-width:${w};border-bottom:.3mm dotted #000;text-align:left;padding:0 1mm;`
     return `<span style="${style}">${_esc(String(val))}</span>`
   }
   const row = (content) => `<div style="display:flex;align-items:baseline;gap:2mm;font-size:9pt;margin-bottom:1.5mm;">${content}</div>`
@@ -1125,7 +1125,7 @@ function _buildPage5(d) {
            <span>&emsp;เวลา</span>${uline('12mm')}
            <span>ชั่วโมง&emsp;จำนวน</span>${uline('', credit, true)}
            <span>หน่วยกิต</span>`)}
-    ${row(`<span>ครูผู้สอน</span>${uline('', teacher?.full_name??'', true)}`)}
+    ${row(`<span>ครูผู้สอน</span>${uline('80mm', teacher?.full_name??'')}`)}
     <table class="date-table">
       <colgroup>
         <col class="wk"/><col class="ep"/><col class="dt" style="border-right:2.5px solid #000;"/>
