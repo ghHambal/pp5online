@@ -478,12 +478,12 @@ function _buildPage1(d) {
   const totalHrs        = credit * 2 * 20
 
   // compute grade distribution
-  const maxTotal = scoreColumns.reduce((s, c) => s + (c.full_score ?? 0), 0)
+  const maxTotal = scoreColumns.reduce((s, c) => s + (c.max_score ?? 0), 0)
   const gradeCounts = { 4:0, '3.5':0, 3:0, '2.5':0, 2:0, '1.5':0, 1:0, 0:0 }
   const evalReadCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
   const evalCharCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
-  const readCol  = scoreColumns.find(c => (c.column_name ?? '').includes('อ่าน'))
-  const charCol  = scoreColumns.find(c => (c.column_name ?? '').includes('คุณลักษณะ') || (c.column_name ?? '').includes('จิตพิสัย'))
+  const readCol  = scoreColumns.find(c => (c.assignment_name ?? '').includes('อ่าน'))
+  const charCol  = scoreColumns.find(c => (c.assignment_name ?? '').includes('คุณลักษณะ') || (c.assignment_name ?? '').includes('จิตพิสัย'))
 
   for (const st of students) {
     const stScores = scoreMap[st.id] ?? {}
@@ -497,14 +497,14 @@ function _buildPage1(d) {
     if (readCol) {
       const rs = stScores[readCol.id]
       if (rs != null) {
-        const lbl = _evalLabel((rs / (readCol.full_score || 1)) * 100)
+        const lbl = _evalLabel((rs / (readCol.max_score || 1)) * 100)
         evalReadCount[lbl]++
       }
     }
     if (charCol) {
       const cs = stScores[charCol.id]
       if (cs != null) {
-        const lbl = _evalLabel((cs / (charCol.full_score || 1)) * 100)
+        const lbl = _evalLabel((cs / (charCol.max_score || 1)) * 100)
         evalCharCount[lbl]++
       }
     }
@@ -914,18 +914,18 @@ function _buildScorePage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
 
   // แบ่ง between (ทุก col ก่อน final) และ final
-  const finalIdx   = scoreColumns.findIndex(c => c.assignment_type === 'final' || c.column_name?.includes('ปลายภาค'))
+  const finalIdx   = scoreColumns.findIndex(c => c.assignment_type === 'final' || c.assignment_name?.includes('ปลายภาค'))
   const betweenCols = finalIdx > 0  ? scoreColumns.slice(0, finalIdx) : scoreColumns.slice()
   const finalCols   = finalIdx >= 0 ? scoreColumns.slice(finalIdx) : []
 
   // เติม col ว่างให้ครบอย่างน้อย 5 ฝั่ง (ทำให้ตารางมีโครงสร้างสมบูรณ์เสมอ)
   const B_MIN = 5, F_MIN = 5
-  const ECOL  = { id: null, column_name: '', full_score: '' }
+  const ECOL  = { id: null, assignment_name: '', max_score: '' }
   const allBetween = [...betweenCols, ...Array(Math.max(0, B_MIN - betweenCols.length)).fill(ECOL)]
   const allFinal   = [...finalCols,   ...Array(Math.max(0, F_MIN - finalCols.length)).fill(ECOL)]
 
-  const betweenMax = betweenCols.reduce((s,c)=>s+(c.full_score??0),0)
-  const finalMax   = finalCols.reduce((s,c)=>s+(c.full_score??0),0)
+  const betweenMax = betweenCols.reduce((s,c)=>s+(c.max_score??0),0)
+  const finalMax   = finalCols.reduce((s,c)=>s+(c.max_score??0),0)
 
   // colspan ใช้ allBetween/allFinal (รวม padding)
   const leftSpan  = allBetween.length + 1
@@ -1015,16 +1015,16 @@ function _buildScorePage(d, chunk, startNo) {
           <th rowspan="2" class="v"><span>รวมคะแนน<br/>100</span></th>
         </tr>
         <tr>
-          ${allBetween.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
-          ${allFinal.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
+          ${allBetween.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.assignment_name??'')}</span></th>`).join('')}
+          ${allFinal.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.assignment_name??'')}</span></th>`).join('')}
         </tr>
         <tr>
           <th class="score-full"></th>
           <th class="score-full">เลขประจำตัว</th>
           <th class="score-full"></th>
-          ${allBetween.map(c=>`<th class="score-full">${c.full_score??''}</th>`).join('')}
+          ${allBetween.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
           <th class="score-full">${betweenMax||''}</th>
-          ${allFinal.map(c=>`<th class="score-full">${c.full_score??''}</th>`).join('')}
+          ${allFinal.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
           <th class="score-full">${finalMax||''}</th>
           <th class="score-full">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
           <th class="score-full"></th>
