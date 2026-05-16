@@ -1,6 +1,7 @@
 import { getDepartments, getSystemConfig, getRoomsByGrade, getStudentsByRoom,
          getStudentsByReligionRoom, getReligionRoomsByGrade, getMySchedule,
-         createClass, updateClass, enrollStudents, getClassStudents } from './api.js'
+         createClass, updateClass, enrollStudents, getClassStudents,
+         getScoreColumns, createScoreColumn } from './api.js'
 import { showToast } from './ui.js'
 
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
@@ -80,9 +81,12 @@ const SKILL_GROUPS = {
   AGMVOC:  ['ศาสนาปวช'],                 // ศาสนาปวช — fixed
 }
 
-export async function renderClassForm(teacher, course) {
-  setActiveNav('my-courses')
-  setTitle('ลงทะเบียนรายวิชา')
+export async function renderClassForm(teacher, course, opts = {}) {
+  // opts.cloneFrom = classId ของห้องต้นฉบับที่จะสำเนาช่องคะแนน
+  const cloneFrom = opts.cloneFrom ?? null
+
+  setActiveNav(cloneFrom ? 'my-classes' : 'my-courses')
+  setTitle(cloneFrom ? 'ทำสำเนาห้องเรียน' : 'ลงทะเบียนรายวิชา')
   const depts    = await getDepartments().catch(()=>[])
   const termCfg  = await getSystemConfig().catch(()=>({}))
   const termStart = termCfg.semester_start ?? termCfg.term_start_date ?? _dateInputValue(new Date())
@@ -93,15 +97,24 @@ export async function renderClassForm(teacher, course) {
   const deptRec = depts.find(d => d.dept_code === course.dept)
   const gradePrefix = course.grade_level
   const isReligionGrade = /^(PR|อก|อป)/i.test(gradePrefix ?? '')
-  const rooms = gradePrefix
+
+  // กรองห้องที่มีอยู่ในคอร์สนี้แล้วออก (เฉพาะตอน clone)
+  const usedRooms = cloneFrom
+    ? new Set((window._classesFlat ?? []).filter(c => c.course_id === course.id).map(c => c.class_name))
+    : new Set()
+  const allRooms = gradePrefix
     ? (isReligionGrade
         ? await getReligionRoomsByGrade(gradePrefix).catch(()=>[])
         : await getRoomsByGrade(gradePrefix).catch(()=>[]))
     : []
+  const rooms = cloneFrom ? allRooms.filter(r => !usedRooms.has(r)) : allRooms
+
+  // skill ที่ pre-select จากต้นฉบับ (ถ้า clone)
+  const srcSkill = cloneFrom ? (opts.srcSkill ?? '') : ''
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
       <button onclick="window._goBack()" class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
-      <h2 class="text-lg font-bold text-gray-800">ลงทะเบียนรายวิชา</h2>
+      <h2 class="text-lg font-bold text-gray-800">${cloneFrom ? '📋 ทำสำเนาห้องเรียน' : 'ลงทะเบียนรายวิชา'}</h2>
     </div>
     <!-- คอร์สที่เลือก -->
     <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-5 flex items-center gap-4">
@@ -111,6 +124,9 @@ export async function renderClassForm(teacher, course) {
         <p class="text-xs text-emerald-600 font-mono">${course.subject_code??'—'} · ${course.credit??'—'} หน่วยกิต · ${course.grade_level??'—'}</p>
       </div>
     </div>
+    ${cloneFrom ? `<div class="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-5 text-xs text-violet-700">
+      📋 ระบบจะคัดลอกช่องคะแนนทั้งหมดจากห้องต้นฉบับให้อัตโนมัติ — นักเรียน วันเรียน และ Google Sheet ตั้งค่าได้ในขั้นตอนนี้
+    </div>` : ''}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
       <form id="class-form" novalidate class="space-y-5">
         <!-- Google Sheet ID -->
@@ -130,7 +146,7 @@ export async function renderClassForm(teacher, course) {
                <input type="hidden" id="cls-skill" value="${skillOpts[0]}" />`
             : `<select id="cls-skill" class="${SELECT_CLS}">
                  <option value="">— เลือกกลุ่มทักษะ —</option>
-                 ${skillOpts.map(s=>`<option value="${s}">${s}</option>`).join('')}
+                 ${skillOpts.map(s=>`<option value="${s}" ${s===srcSkill?'selected':''}>${s}</option>`).join('')}
                </select>`}
         </div>
         <!-- ชั้นเรียน -->
@@ -153,7 +169,9 @@ export async function renderClassForm(teacher, course) {
         </div>
         <!-- หัวหน้าห้อง -->
         <div id="cls-head-section" class="hidden">
-          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้าห้อง</label>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้าห้อง
+            <span class="font-normal text-gray-400 text-xs">(ไม่บังคับ — เลือกทีหลังได้ในหน้าตั้งค่าห้องเรียน)</span>
+          </label>
           <select id="cls-head" class="${SELECT_CLS}">
             <option value="">— เลือกหัวหน้าห้อง —</option>
           </select>
@@ -295,8 +313,13 @@ export async function renderClassForm(teacher, course) {
       const sched   = teacher ? await getMySchedule(teacher.id, curYear, curSem).catch(()=>[]) : []
 
       if (!sched.length) {
-        infoEl.textContent = '⚠️ ยังไม่มีตารางสอน — กรุณากรอกวันเอง'
-        infoEl.classList.remove('hidden'); return
+        infoEl.innerHTML = '⚠️ ยังไม่มีตารางสอน — <a href="#" id="goto-schedule" class="underline text-indigo-600 font-medium">สร้างตารางสอน</a> หรือกรอกวันเองด้านล่าง'
+        infoEl.classList.remove('hidden')
+        document.getElementById('goto-schedule')?.addEventListener('click', e => {
+          e.preventDefault(); window._navTo?.('schedule')
+        })
+        btn.disabled = false; btn.textContent = '🗓️ คำนวณจากตารางสอน'
+        return
       }
 
       // จัดกลุ่ม entries ตามวิชา+ห้อง
@@ -398,7 +421,27 @@ export async function renderClassForm(teacher, course) {
       if (_students.length && created?.id) {
         await enrollStudents(created.id, _students.map(s => s.id))
       }
-      showToast(`เปิดรายวิชา ${room} สำเร็จ! นักเรียน ${_students.length} คน`,'success')
+
+      // copy score columns จากห้องต้นฉบับ (ถ้า clone)
+      let copiedCols = 0
+      if (cloneFrom && created?.id) {
+        const srcCols = await getScoreColumns(cloneFrom).catch(() => [])
+        for (const col of srcCols) {
+          await createScoreColumn({
+            class_id:        created.id,
+            assignment_name: col.assignment_name,
+            assignment_type: col.assignment_type,
+            sheet_column:    col.sheet_column,
+            max_score:       col.max_score,
+          })
+        }
+        copiedCols = srcCols.length
+      }
+
+      const msg = cloneFrom
+        ? `ทำสำเนา "${room}" สำเร็จ — นักเรียน ${_students.length} คน · ช่องคะแนน ${copiedCols} ช่อง`
+        : `เปิดรายวิชา ${room} สำเร็จ! นักเรียน ${_students.length} คน`
+      showToast(msg, 'success')
       window._goBack()
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')

@@ -28,7 +28,7 @@ import { uploadTeacherPhoto } from './storage.js'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 
 import { showToast } from './ui.js'
-import { renderClassEditForm } from './teacher-class-forms.js'
+import { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 import { openPP5Doc, openPP5CourseModal } from './pp5-doc.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
 import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
@@ -2528,117 +2528,23 @@ export async function renderMyClasses(teacher) {
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
     }
 
-    window._copyClass = async (classId, fromName) => {
+    window._copyClass = (classId) => {
       const src = window._classCache?.[classId]
       if (!src) return
-
-      // ─── โหลดห้องที่เหมาะสมตาม grade_level + subject_group ────────────────
-      const gradeLevel  = src.master_subjects?.grade_level ?? ''
-      const gradePrefix = gradeLevel.split('/')[0]   // "ม.5/6 Ash" → "ม.5"
-      const isReligion  = ['AGM', 'AGMVOC'].includes(src.skill_group ?? src.master_subjects?.subject_group ?? '')
-      const usedNames   = new Set((window._classesFlat ?? []).filter(c => c.course_id === src.course_id).map(c => c.class_name))
-
-      let roomOptions = []
-      try {
-        const allRooms = gradePrefix
-          ? await (isReligion ? getReligionRoomsByGrade(gradePrefix) : getRoomsByGrade(gradePrefix))
-          : []
-        roomOptions = allRooms.filter(r => !usedNames.has(r))
-      } catch { /* ถ้าโหลดไม่ได้ก็ fallback input ธรรมดา */ }
-
-      // ─── Modal ───────────────────────────────────────────────────────────────
-      const overlay = document.createElement('div')
-      overlay.id = 'copy-class-overlay'
-      overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm'
-      overlay.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-7 animate-fade">
-          <h3 class="text-base font-bold text-gray-800 mb-1">📋 ทำสำเนาห้องเรียน</h3>
-          <p class="text-xs text-gray-400 mb-4">คัดลอกช่องคะแนนทั้งหมดจาก <span class="font-medium text-gray-600">${fromName}</span> ไปยังห้องใหม่</p>
-          <label class="block text-sm font-medium text-gray-700 mb-1">เลือกห้องเรียนใหม่ <span class="text-red-400">*</span></label>
-          ${roomOptions.length ? `
-          <select id="copy-class-select"
-            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm mb-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-200">
-            <option value="">— เลือกห้อง —</option>
-            ${roomOptions.map(r => `<option value="${r}">${r}</option>`).join('')}
-            <option value="__custom__">✏️ พิมพ์เอง...</option>
-          </select>` : ''}
-          <input id="copy-class-name" type="text"
-            placeholder="${roomOptions.length ? 'หรือพิมพ์ชื่อห้องเอง เช่น ม.5/3 Al-Ghazali' : 'เช่น ม.5/3 Al-Ghazali'}"
-            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm ${roomOptions.length ? 'hidden' : ''} focus:outline-none focus:ring-2 focus:ring-violet-200" />
-          <p class="text-[11px] text-gray-400 mt-1 mb-5">นักเรียน วันเรียน และ Google Sheet ต้องตั้งค่าใหม่แยกต่างหาก</p>
-          <div class="flex gap-3">
-            <button id="copy-class-cancel"
-              class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-            <button id="copy-class-confirm"
-              class="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition">ทำสำเนา</button>
-          </div>
-        </div>`
-      document.body.appendChild(overlay)
-
-      const selectEl  = overlay.querySelector('#copy-class-select')
-      const nameEl    = overlay.querySelector('#copy-class-name')
-      const confirmEl = overlay.querySelector('#copy-class-confirm')
-      const cancelEl  = overlay.querySelector('#copy-class-cancel')
-
-      // toggle input เมื่อเลือก "พิมพ์เอง"
-      selectEl?.addEventListener('change', () => {
-        if (selectEl.value === '__custom__') {
-          nameEl.classList.remove('hidden')
-          nameEl.focus()
-        } else {
-          nameEl.classList.add('hidden')
-          nameEl.value = ''
-        }
-      })
-
-      if (!selectEl) nameEl.focus()
-
-      const close = () => overlay.remove()
-      cancelEl.addEventListener('click', close)
-      overlay.addEventListener('click', e => { if (e.target === overlay) close() })
-
-      confirmEl.addEventListener('click', async () => {
-        const newName = selectEl && selectEl.value && selectEl.value !== '__custom__'
-          ? selectEl.value
-          : nameEl.value.trim()
-        if (!newName) {
-          ;(selectEl ?? nameEl).classList.add('ring-2', 'ring-red-300')
-          ;(selectEl ?? nameEl).focus()
-          return
-        }
-        confirmEl.disabled = true
-        confirmEl.textContent = 'กำลังสำเนา...'
-
-        try {
-          // 1) สร้างห้องเรียนใหม่ — copy เฉพาะ course_id, skill_group
-          const newClass = await createClass({
-            course_id:  src.course_id,
-            class_name: newName,
-            skill_group: src.skill_group ?? null,
-          }, teacher?.id ?? null)
-
-          // 2) ดึงช่องคะแนนต้นฉบับแล้ว insert ให้ห้องใหม่
-          const cols = await getScoreColumns(classId)
-          if (cols.length) {
-            for (const col of cols) {
-              await createScoreColumn({
-                class_id:        newClass.id,
-                assignment_name: col.assignment_name,
-                assignment_type: col.assignment_type,
-                sheet_column:    col.sheet_column,
-                max_score:       col.max_score,
-              })
-            }
-          }
-
-          close()
-          showToast(`สำเนาห้อง "${newName}" สำเร็จ — ช่องคะแนน ${cols.length} ช่อง`, 'success')
-          renderMyClasses(teacher)
-        } catch (err) {
-          confirmEl.disabled = false
-          confirmEl.textContent = 'ทำสำเนา'
-          showToast('สำเนาไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        }
+      // สร้าง course object จาก master_subjects ของต้นฉบับ
+      const ms = src.master_subjects ?? {}
+      const course = {
+        id:           src.course_id,
+        subject_name: ms.subject_name ?? '—',
+        subject_code: ms.subject_code ?? '',
+        credit:       ms.credit ?? '',
+        grade_level:  ms.grade_level ?? '',
+        dept:         ms.dept ?? src.dept ?? '',
+        subject_group: ms.subject_group ?? '',
+      }
+      renderClassForm(teacher, course, {
+        cloneFrom: classId,
+        srcSkill:  src.skill_group ?? '',
       })
     }
 
