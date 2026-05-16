@@ -357,10 +357,12 @@ function _getCSS() {
     .p2-logo-wrap { width: 18mm; height: 18mm; border-radius: 50%; overflow: hidden; background: #fff; margin: 0 auto 2mm; display: flex; align-items: center; justify-content: center; }
     .p2-logo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
     .p2-title { text-align: center; font-size: 13pt; font-weight: 700; margin-bottom: 2mm; }
-    .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; }
-    .p2-hdr table { border: none; width: 100%; }
-    .p2-hdr td { border: none; padding: 1px 0; }
-    .p2-uline { display: inline-block; border-bottom: .3mm dashed #555; min-width: 20mm; text-align: center; padding: 0 1.5mm; font-weight: 600; }
+    .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; display: grid; grid-template-columns: 1fr 1fr; gap: 0 5mm; }
+    .p2-hdr-col { display: flex; flex-direction: column; gap: 1.2mm; }
+    .p2-hdr-row { display: flex; align-items: baseline; gap: 1mm; }
+    .p2-label { flex-shrink: 0; white-space: nowrap; }
+    .p2-uline { display: inline-block; border-bottom: .3mm dashed #555; min-width: 8mm; text-align: center; padding: 0 1mm; font-weight: 600; flex-shrink: 0; }
+    .p2-uline-fill { flex: 1; min-width: 15mm; }
     .std-table { width: 100%; border-collapse: collapse; flex: 1; height: 0; }
     .std-table th { font-size: 10pt; padding: 1.5mm 2mm; border: .4mm solid #000; text-align: center; font-weight: 700; }
     .std-table td { border: .4mm solid #000; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
@@ -679,19 +681,44 @@ function _buildPage2(d) {
 
     <!-- Header -->
     <div class="p2-hdr">
-      <table>
-        <tr>
-          <td style="width:50%;">รายวิชา ${uline(ms.subject_name??'','38mm')}</td>
-          <td>รหัสวิชา ${uline(ms.subject_code??'','18mm')} กลุ่มสาระการเรียนรู้ ${uline(deptNameTH,'28mm')}</td>
-        </tr>
-        <tr>
-          <td>${levelLbl} ${uline(_shortRoom(cls.class_name??''),'20mm')}</td>
-          <td>ภาคเรียนที่ ${uline(String(semester),'8mm')} ปีการศึกษา ${uline(String(academicYear),'14mm')} เวลา ${uline('','12mm')} ชั่วโมง จำนวน ${uline(String(credit),'8mm')} หน่วยกิต</td>
-        </tr>
-        <tr>
-          <td colspan="2">ครูผู้สอน ${uline(teacher?.full_name??'','55mm')}</td>
-        </tr>
-      </table>
+      <!-- คอลัมน์ซ้าย -->
+      <div class="p2-hdr-col">
+        <div class="p2-hdr-row">
+          <span class="p2-label">รายวิชา</span>
+          <span class="p2-uline p2-uline-fill">${_esc(ms.subject_name??'')}</span>
+        </div>
+        <div class="p2-hdr-row">
+          <span class="p2-label">${levelLbl}</span>
+          <span class="p2-uline p2-uline-fill">${_esc(_shortRoom(cls.class_name??''))}</span>
+        </div>
+        <div class="p2-hdr-row">
+          <span class="p2-label">ครูผู้สอน</span>
+          <span class="p2-uline p2-uline-fill">${_esc(teacher?.full_name??'')}</span>
+        </div>
+      </div>
+      <!-- คอลัมน์ขวา -->
+      <div class="p2-hdr-col">
+        <div class="p2-hdr-row">
+          <span class="p2-label">รหัสวิชา</span>
+          <span class="p2-uline">${_esc(ms.subject_code??'')}</span>
+          <span class="p2-label">กลุ่มสาระการเรียนรู้</span>
+          <span class="p2-uline p2-uline-fill">${_esc(deptNameTH)}</span>
+        </div>
+        <div class="p2-hdr-row">
+          <span class="p2-label">ภาคเรียนที่</span>
+          <span class="p2-uline">${_esc(String(semester))}</span>
+          <span class="p2-label">ปีการศึกษา</span>
+          <span class="p2-uline">${_esc(String(academicYear))}</span>
+          <span class="p2-label">เวลา</span>
+          <span class="p2-uline p2-uline-fill"></span>
+          <span class="p2-label">ชั่วโมง</span>
+        </div>
+        <div class="p2-hdr-row">
+          <span class="p2-label">จำนวน</span>
+          <span class="p2-uline">${_esc(String(credit))}</span>
+          <span class="p2-label">หน่วยกิต</span>
+        </div>
+      </div>
     </div>
 
     <!-- Standards Table -->
