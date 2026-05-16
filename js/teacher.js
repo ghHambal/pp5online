@@ -9,7 +9,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getMySchedule, getPeriods,
          getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
          updateLastSeen, logLogin,
-         getUnreadNotifications, markNotificationsRead } from './api.js'
+         getUnreadNotifications, markNotificationsRead,
+         getClassByIdFull } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -19,6 +20,7 @@ import {
   renderRequests, renderSchedule, renderProfile, renderClassForm,
   renderLifeSkillScore, renderReadingScore, renderPrayerScore,
   renderProfileSetup, renderScheduleBuilder, openCourseDocPage2Modal,
+  renderClassDetail,
 } from './teacher-views.js'
 import { renderSupervisorDashboard } from './supervisor.js'
 
@@ -1771,21 +1773,27 @@ function _renderNotifBadge() {
 
 async function _showNotifPopup(teacherId) {
   const metricLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
+  const catColor = {general:'#f9fafb',profile:'#ede9fe',dates:'#dbeafe',attendance:'#d1fae5',scores:'#fef9c3'}
+  const catText  = {general:'#374151',profile:'#5b21b6',dates:'#1e40af',attendance:'#065f46',scores:'#713f12'}
   const overlay = document.createElement('div')
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;'
-  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:min(460px,96vw);max-height:80vh;overflow-y:auto;padding:24px;position:relative;">
+  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:min(500px,96vw);max-height:85vh;overflow-y:auto;padding:24px;position:relative;">
     <button style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;" onclick="this.closest('div').parentElement.remove()">✕</button>
-    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">🔔 ข้อความจากหัวหน้า (${_unreadNotifs.length})</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px;">🔔 ข้อความจากหัวหน้า</div>
+    <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">ได้รับการตรวจสอบแล้ว ${_unreadNotifs.length} รายการ</div>
     ${_unreadNotifs.map(n=>`
-      <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:8px;">
-        <div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:4px;">
-          ${'หัวหน้า'} · ${metricLabel[n.metric]??n.metric}
+      <div style="background:${catColor[n.metric]??'#f9fafb'};border-radius:12px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${catText[n.metric]??'#6b7280'};">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:11px;font-weight:700;color:${catText[n.metric]??'#374151'};background:${catColor[n.metric]??'#f9fafb'};
+            border:1px solid currentColor;border-radius:8px;padding:1px 8px;">
+            ${metricLabel[n.metric]??n.metric}
+          </span>
+          <span style="font-size:10px;color:#9ca3af;">${new Date(n.created_at).toLocaleString('th')}</span>
         </div>
-        <div style="font-size:13px;color:#374151;">${n.comment}</div>
-        <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${new Date(n.created_at).toLocaleString('th')}</div>
+        <div style="font-size:13px;color:#374151;line-height:1.5;">${n.comment}</div>
       </div>`).join('')}
     <button id="sv-mark-read"
-      style="width:100%;margin-top:8px;padding:8px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;">
+      style="width:100%;margin-top:8px;padding:10px;background:#059669;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
       ✓ รับทราบทั้งหมด
     </button>
   </div>`
@@ -2282,8 +2290,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (_teacher?.id) _initNotifications(_teacher.id)
 
   // teacher-nav event (from supervisor dashboard)
-  window.addEventListener('teacher-nav', e => {
+  window.addEventListener('teacher-nav', async e => {
     const { view, classId } = e.detail ?? {}
+    if (view === 'class-detail-sv' && classId) {
+      // Supervisor viewing another teacher's class (read-only, no student tab/edit buttons)
+      try {
+        const cls = await getClassByIdFull(classId)
+        if (cls) {
+          // Build minimal ctx for renderClassDetail — supervisor mode skips student tab
+          window._supervisorClassView = true
+          await renderClassDetail(null, classId, { supervisorMode: true, classes: [cls] })
+          window._supervisorClassView = false
+          // Post-process: hide student tab, edit/delete/copy buttons, rename ปพ.5
+          setTimeout(() => {
+            document.querySelectorAll('[data-tab="students"],[data-nav-tab="students"]').forEach(el => el.style.display = 'none')
+            document.querySelectorAll('[data-action="copy"],[data-action="edit"],[data-action="delete"]').forEach(el => el.style.display = 'none')
+            document.querySelectorAll('button').forEach(btn => {
+              if (btn.textContent.includes('ทำสำเนา') || btn.textContent.includes('แก้ไข') || btn.textContent.includes('ลบ')) btn.style.display = 'none'
+              if (btn.textContent.includes('ปพ.5') && !btn.textContent.includes('ดูภาพรวม')) btn.textContent = btn.textContent.replace('ปพ.5','📋 ดูภาพรวม ปพ.5')
+            })
+          }, 300)
+        }
+      } catch(err) { console.error(err) }
+      return
+    }
     if (classId) window._sv_classId = classId
     navigate(view ?? 'overview')
   })
