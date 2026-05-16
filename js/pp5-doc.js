@@ -1043,7 +1043,7 @@ function _buildScorePage(d, chunk, startNo) {
       </div>
       <div class="score-sig-row">
         <div class="score-sig-lbl">ลงชื่อ</div>
-        <div class="score-sig-line">${_esc(d.cfg[\`${d.prefix}RegistrarName\`]??'')}</div>
+        <div class="score-sig-line">${_esc(d.cfg[`${d.prefix}RegistrarName`]??'')}</div>
         <div class="score-sig-role">หัวหน้างานวัดผลและประเมินผล</div>
       </div>
     </div>
