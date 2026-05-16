@@ -435,8 +435,12 @@ function _getCSS() {
     .score-sig-role { text-align: left; padding-bottom: .7mm; white-space: nowrap; }
 
     /* ── Page 5 ── */
-    .date-table th { font-size: 9pt; padding: 2px 4px; }
-    .date-table td { font-size: 9pt; padding: 2px 4px; text-align: center; }
+    .date-table { width:100%; border-collapse:collapse; border:1.5px solid #000; table-layout:fixed; }
+    .date-table th, .date-table td { font-size: 8.5pt; padding: 1px 3px; text-align: center; border: 1px solid #000; height: 6mm; }
+    .date-table th { font-weight:700; }
+    .date-table .wk { width:12mm; }
+    .date-table .ep { width:11mm; }
+    .date-table .dt { width:20mm; }
   `
 }
 
@@ -954,14 +958,14 @@ function _buildScorePage(d, chunk, startNo) {
     return `<tr>
       <td>${startNo + idx}</td>
       <td>${_esc(st.student_code??'')}</td>
-      <td class="gs-name" style="border-right:2.5px solid #000;">${_esc(st.full_name??'')}</td>
+      <td class="gs-name" style="border-right:2.0px solid #000;">${_esc(st.full_name??'')}</td>
       ${bScores.map(v=>`<td>${v}</td>`).join('')}
       <td style="font-weight:700;">${bSum||''}</td>
       ${fScores.map(v=>`<td>${v}</td>`).join('')}
       <td style="font-weight:700;">${fSum||''}</td>
-      <td style="font-weight:700;border-right:2.5px solid #000;">${total||''}</td>
+      <td style="font-weight:700;border-right:2.0px solid #000;">${total||''}</td>
       <td></td>
-      <td style="border-right:2.5px solid #000;"></td>
+      <td style="border-right:2.0px solid #000;"></td>
       <td style="font-weight:700;">${grade}</td>
     </tr>`
   })
@@ -998,17 +1002,17 @@ function _buildScorePage(d, chunk, startNo) {
         <!-- Row 1: ผู้เรียน คลุม 3 คอลัมน์ + section header + result cols rs5 -->
         <tr>
           <th colspan="3" style="border-right:2.5px solid #000;">ผู้เรียน</th>
-          <th colspan="${allSpan}" style="border-right:2.5px solid #000;">วัดผลระหว่างภาค / ปลายภาค</th>
+          <th colspan="${allSpan}" style="border-right:2.0px solid #000;">วัดผลระหว่างภาค / ปลายภาค</th>
           <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินการอ่านคิดวิเคราะห์และเขียน</span></th>
-          <th rowspan="5" class="v" style="border-right:2.5px solid #000;"><span style="font-size:7px;">ประเมินคุณลักษณะอันพึงประสงค์</span></th>
+          <th rowspan="5" class="v" style="border-right:2.0px solid #000;"><span style="font-size:7px;">ประเมินคุณลักษณะอันพึงประสงค์</span></th>
           <th rowspan="5" class="v"><span>ระดับการเรียน</span></th>
         </tr>
         <!-- Row 2: เลขที่(v,rs4) | เลขประจำตัว(v,rs4) | ชื่อ-สกุล(rs4) | อัตราส่วน -->
         <tr>
           <th rowspan="4" class="v"><span>เลขที่</span></th>
           <th rowspan="4" class="v"><span>เลขประจำตัว</span></th>
-          <th rowspan="4" style="border-right:2.5px solid #000;">ชื่อ - สกุล</th>
-          <th colspan="${allSpan}" style="font-size:7px;padding:1px;border-right:2.5px solid #000;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
+          <th rowspan="4" style="border-right:2.0px solid #000;">ชื่อ - สกุล</th>
+          <th colspan="${allSpan}" style="font-size:7px;padding:1px;border-right:2.0px solid #000;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
         </tr>
         <!-- Row 3: between/final section headers (3 student cols covered by rs4) -->
         <tr>
@@ -1016,7 +1020,7 @@ function _buildScorePage(d, chunk, startNo) {
           <th rowspan="2" class="v"><span>รวมคะแนนระหว่างภาค</span></th>
           <th colspan="${allFinal.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนปลายภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
           <th rowspan="2" class="v"><span>รวมคะแนนปลายภาค</span></th>
-          <th rowspan="2" class="v" style="border-right:2.5px solid #000;"><span>รวมคะแนน 100</span></th>
+          <th rowspan="2" class="v" style="border-right:2.0px solid #000;"><span>รวมคะแนน 100</span></th>
         </tr>
         <!-- Row 4: column name verticals (3 student cols covered by rs4) -->
         <tr>
@@ -1029,7 +1033,7 @@ function _buildScorePage(d, chunk, startNo) {
           <th class="score-full">${betweenMax||''}</th>
           ${allFinal.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
           <th class="score-full">${finalMax||''}</th>
-          <th class="score-full" style="border-right:2.5px solid #000;">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
+          <th class="score-full" style="border-right:2.0px solid #000;">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
         </tr>
       </thead>
       <tbody>
@@ -1061,54 +1065,77 @@ function _buildScorePage(d, chunk, startNo) {
 function _buildPage5(d) {
   const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions } = d
 
-  // group sessions into chunks of 3 columns × N rows
-  const COLS = 3
-  const perCol = Math.ceil(sessions.length / COLS)
-  const colGroups = Array.from({length: COLS}, (_, ci) =>
-    sessions.slice(ci * perCol, (ci + 1) * perCol)
-  )
-  const maxRows = Math.max(...colGroups.map(g => g.length))
+  const FIXED_ROWS = 40
+  const COLS       = 3
+  const perWeek    = Math.max(1, Math.round(credit * 2))
 
-  let weekNum = 0
-  let weekTrack = {}
-
-  const tableRows = Array.from({length: maxRows}, (_, ri) => {
-    const cells = colGroups.map(group => {
-      const sess = group[ri]
-      if (!sess) return '<td></td><td></td><td></td>'
-      // compute week number
-      if (!weekTrack[sess.n]) {
-        const sessIdx = sessions.findIndex(s => s.n === sess.n)
-        const perWeek = Math.round(credit * 2)
-        weekTrack[sess.n] = Math.floor(sessIdx / perWeek) + 1
-      }
-      const wk = weekTrack[sess.n]
-      const showWeek = ri === 0 || (colGroups[0][ri] && weekTrack[colGroups[0][ri].n] !== weekTrack[colGroups[0][Math.max(0,ri-1)]?.n])
-
-      return `<td class="text-center">${wk}</td><td class="text-center">${sess.n}</td><td class="text-center">${_fmtDateTH(sess.ds)}</td>`
+  // แจกคาบลงแต่ละกลุ่ม: col0=คาบ1-40, col1=คาบ41-80, col2=คาบ81-120
+  const colData = Array.from({length: COLS}, (_, ci) =>
+    Array.from({length: FIXED_ROWS}, (_, ri) => {
+      const sess = sessions[ci * FIXED_ROWS + ri]
+      return sess ? { sess, week: Math.ceil(sess.n / perWeek) } : null
     })
-    return `<tr>${cells.join('')}</tr>`
+  )
+
+  // คำนวณ rowspan ของช่องสัปดาห์แต่ละคอลัมน์
+  const colRS = colData.map(col =>
+    col.map((item, ri) => {
+      if (!item) return null                              // ไม่มีข้อมูล
+      if (ri > 0 && col[ri - 1]?.week === item.week) return 0  // ผสาน (skip)
+      let span = 1
+      for (let r = ri + 1; r < FIXED_ROWS && col[r]?.week === item.week; r++) span++
+      return span
+    })
+  )
+
+  const rows = Array.from({length: FIXED_ROWS}, (_, ri) => {
+    const cells = Array.from({length: COLS}, (_, ci) => {
+      const item = colData[ci][ri]
+      const rs   = colRS[ci][ri]
+      if (!item) return '<td></td><td></td><td></td>'   // แถวว่าง
+      const wkCell = rs === 0 ? '' : `<td class="wk" rowspan="${rs}">${item.week}</td>`
+      return `${wkCell}<td class="ep">${item.sess.n}</td><td class="dt">${_fmtDateTH(item.sess.ds)}</td>`
+    }).join('')
+    return `<tr>${cells}</tr>`
   })
 
-  return `
-  <div class="page">
-    <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:3mm;">รายละเอียดสัปดาห์/คาบ/วันที่สอน</div>
-    <div style="font-size:9pt;margin-bottom:2mm;">
-      <span>รายวิชา ${_esc(ms.subject_name??'')} &emsp; รหัสวิชา ${_esc(ms.subject_code??'')} &emsp; กลุ่มสาระการเรียนรู้ ${_esc(deptNameTH)}</span>
-    </div>
-    <div style="font-size:9pt;margin-bottom:2mm;">
-      ระดับชั้นมัธยมศึกษา ${_esc(_shortRoom(cls.class_name))} &emsp; ภาคเรียนที่ ${semester} &emsp; ปีการศึกษา ${academicYear} &emsp; เวลา ชั่วโมง จำนวน ${credit} หน่วยกิต
-    </div>
-    <div style="font-size:9pt;margin-bottom:3mm;">ครูผู้สอน ${_esc(teacher?.full_name??'')}</div>
+  const uline = (w, val='') => `<span style="display:inline-block;min-width:${w};border-bottom:.3mm dotted #000;text-align:center;padding:0 1mm;">${_esc(String(val))}</span>`
 
-    <div style="text-align:center;font-weight:600;font-size:10pt;margin-bottom:2mm;">สัปดาห์/คาบ/วันที่สอน</div>
+  return `
+  <div class="page" style="padding:12mm 10mm 8mm;">
+    <div style="text-align:center;font-weight:700;font-size:12pt;margin-bottom:3mm;">รายละเอียดสัปดาห์/คาบ/วันที่สอน</div>
+    <div style="font-size:9pt;margin-bottom:1.5mm;">
+      รายวิชา ${uline('40mm', ms.subject_name??'')}
+      &emsp; รหัสวิชา ${uline('22mm', ms.subject_code??'')}
+      &emsp; กลุ่มสาระการเรียนรู้ ${uline('34mm', deptNameTH)}
+    </div>
+    <div style="font-size:9pt;margin-bottom:1.5mm;">
+      ระดับชั้นมัธยมศึกษา ${uline('16mm', _shortRoom(cls.class_name))}
+      &emsp; ภาคเรียนที่ ${uline('10mm', semester)}
+      &emsp; ปีการศึกษา ${uline('18mm', academicYear)}
+      &emsp; เวลา ${uline('10mm')} ชั่วโมง
+      &emsp; จำนวน ${uline('10mm', credit)} หน่วยกิต
+    </div>
+    <div style="font-size:9pt;margin-bottom:3mm;">
+      ครูผู้สอน ${uline('60mm', teacher?.full_name??'')}
+    </div>
     <table class="date-table">
+      <colgroup>
+        <col class="wk"/><col class="ep"/><col class="dt"/>
+        <col class="wk"/><col class="ep"/><col class="dt"/>
+        <col class="wk"/><col class="ep"/><col class="dt"/>
+      </colgroup>
       <thead>
         <tr>
-          ${Array.from({length:COLS},()=>'<th>สัปดาห์</th><th>คาบที่</th><th>วันที่/เดือน/ปี</th>').join('')}
+          <th colspan="9" style="font-size:10pt;">สัปดาห์/คาบ/วันที่สอน</th>
+        </tr>
+        <tr>
+          ${Array.from({length:COLS},()=>
+            '<th class="wk">สัปดาห์</th><th class="ep">คาบที่</th><th class="dt">วันที่/เดือน/ปี</th>'
+          ).join('')}
         </tr>
       </thead>
-      <tbody>${tableRows.join('')}</tbody>
+      <tbody>${rows.join('')}</tbody>
     </table>
   </div>`
 }
