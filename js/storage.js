@@ -61,7 +61,9 @@ function compressPng(file, { maxWidth = 400 } = {}) {
         if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth }
         const canvas = document.createElement('canvas')
         canvas.width = w; canvas.height = h
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        const ctx = canvas.getContext('2d')
+        ctx.clearRect(0, 0, w, h)   // ล้างเป็น transparent ก่อน
+        ctx.drawImage(img, 0, 0, w, h)
         canvas.toBlob(
           blob => blob ? resolve(blob) : reject(new Error('compress failed')),
           'image/png'
