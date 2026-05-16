@@ -419,13 +419,24 @@ function _getCSS() {
     .score-info-label { flex-shrink: 0; }
     .score-info-val { border-bottom: .3mm dashed #555; min-width: 10mm; text-align: center; padding: 0 1mm; font-weight: 600; }
     .score-info-val.wide { min-width: 40mm; }
-    .score-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 7pt; }
-    .score-table th { border: .3mm solid #000; padding: 1px 1px; text-align: center; vertical-align: middle; font-size: 7pt; line-height: 1.2; }
-    .score-table td { border: .3mm solid #000; padding: 0 1px; text-align: center; vertical-align: middle; font-size: 7pt; height: 5.5mm; }
-    .score-table td.sc-name { text-align: left; padding-left: 1mm; white-space: nowrap; overflow: hidden; font-size: 7pt; }
-    .score-table th.sc-section { font-size: 7pt; font-weight: 700; background: #f5f5f5; }
-    .score-sig { margin-top: 5mm; display: flex; justify-content: space-between; font-size: 9pt; gap: 4mm; }
-    .score-sig-block { flex: 1; text-align: center; }
+    .score-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 6.5pt; }
+    .score-table th { border: .3mm solid #000; padding: 1px; text-align: center; vertical-align: middle; font-size: 6.5pt; line-height: 1.2; font-weight: 600; }
+    .score-table td { border: .3mm solid #000; padding: 0; text-align: center; vertical-align: middle; font-size: 6.5pt; height: 5.5mm; }
+    .score-table td.sc-name { text-align: left; padding-left: 1mm; white-space: nowrap; overflow: hidden; font-size: 6.5pt; }
+    .score-table th.sc-sect { background: #eee; font-size: 6.5pt; }
+    /* vertical column name headers */
+    .sc-vcol { vertical-align: bottom !important; padding: 1mm 0 0.5mm !important; height: 22mm; overflow: hidden; }
+    .sc-vcol .vt {
+      display: block; transform: rotate(-90deg); transform-origin: center center;
+      white-space: nowrap; font-size: 6.5pt; font-weight: 600;
+      width: 20mm; margin: auto; text-align: left;
+    }
+    /* score amounts row (last thead row) */
+    .sc-score-row td { height: 5mm; font-size: 6.5pt; font-weight: 700; }
+    /* signature — stacked vertically */
+    .score-sig { margin-top: 5mm; font-size: 9pt; }
+    .score-sig-row { display: grid; grid-template-columns: auto 1fr auto; align-items: end; gap: 2mm; margin-bottom: 3mm; }
+    .score-sig-line { border-bottom: .3mm dotted #555; text-align: center; padding: 0 2mm; min-height: 5mm; font-weight: 600; }
 
     /* ── Page 5 ── */
     .date-table th { font-size: 9pt; padding: 2px 4px; }
@@ -907,29 +918,27 @@ function _buildScorePage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
 
   // แบ่งประเภทคอลัมน์
-  const formative  = scoreColumns.filter(c => c.assignment_type === 'formative'
+  const formative = scoreColumns.filter(c => c.assignment_type === 'formative'
     || (!c.assignment_type && !c.column_name?.includes('กลางภาค') && !c.column_name?.includes('ปลายภาค')))
-  const midCol     = scoreColumns.find(c => c.assignment_type === 'midterm' || c.column_name?.includes('กลางภาค'))
-  const finalCol   = scoreColumns.find(c => c.assignment_type === 'final'   || c.column_name?.includes('ปลายภาค'))
+  const midCol    = scoreColumns.find(c => c.assignment_type === 'midterm' || c.column_name?.includes('กลางภาค'))
+  const finalCol  = scoreColumns.find(c => c.assignment_type === 'final'   || c.column_name?.includes('ปลายภาค'))
 
-  const betweenMax = formative.reduce((s,c)=>s+(c.full_score??0),0) + (midCol?.full_score??0)
+  const betweenMax  = formative.reduce((s,c)=>s+(c.full_score??0),0) + (midCol?.full_score??0)
   const betweenShow = 80
-  const finalMax   = finalCol?.full_score ?? 0
-  const finalShow  = 20
+  const finalMax    = finalCol?.full_score ?? 0
+  const finalShow   = 20
 
-  // colspan วัดผลระหว่างภาค = formative + (1 midterm ถ้ามี) + รวม + ลดส่วน + แสดงส่วน + คะแนน
-  const midColCount  = midCol ? 1 : 0
-  const betweenDerived = 4  // รวม / ลดส่วน / แสดงส่วน / คะแนน
-  const betweenSpan  = formative.length + midColCount + betweenDerived
-
-  // colspan วัดผลปลายภาค = (1 final ถ้ามี) + ลดส่วน + แสดงส่วน + คะแนน
+  const midColCount   = midCol  ? 1 : 0
   const finalColCount = finalCol ? 1 : 0
-  const finalDerived  = 3  // ลดส่วน / แสดงส่วน / คะแนน
-  const finalSpan     = finalColCount + finalDerived
 
-  // สร้างแถวนักเรียน
+  // colspan สำหรับ rows 1-2 ที่ครอบทุก score column
+  const betweenSpan = formative.length + midColCount + 4  // +4 = รวม/ลดส่วน/แสดงส่วน/คะแนน
+  const finalSpan   = finalColCount + 3                   // +3 = ลดส่วน/แสดงส่วน/คะแนน
+  const allScoreSpan = betweenSpan + finalSpan
+
+  // ─── แถวนักเรียน ─────────────────────────────────────────────────────────────
   const rows = chunk.map((st, idx) => {
-    const sc = scoreMap[st.id] ?? {}
+    const sc        = scoreMap[st.id] ?? {}
     const fScores   = formative.map(c => sc[c.id] ?? '')
     const midRaw    = midCol  ? (sc[midCol.id]  ?? '') : ''
     const finalRaw  = finalCol ? (sc[finalCol.id] ?? '') : ''
@@ -942,71 +951,55 @@ function _buildScorePage(d, chunk, startNo) {
     const finalNum  = finalCol ? (sc[finalCol.id] ?? 0) : 0
     const fScaled   = finalMax > 0 ? Math.round(finalNum * finalShow / finalMax * 10) / 10 : ''
 
-    const total     = (bScaled !== '' || fScaled !== '') ? ((bScaled||0) + (fScaled||0)) : ''
+    const total     = (bScaled !== '' || fScaled !== '') ? +(((bScaled||0) + (fScaled||0)).toFixed(1)) : ''
     const grade     = total !== '' ? _calcGrade(total) : ''
 
     return `<tr>
       <td>${startNo + idx}</td>
-      <td style="font-size:6pt;">${_esc(st.student_code??'')}</td>
+      <td>${_esc(st.student_code??'')}</td>
       <td class="sc-name">${_esc(st.full_name??'')}</td>
       ${fScores.map(v => `<td>${v}</td>`).join('')}
-      ${midCol ? `<td>${midRaw}</td>` : ''}
+      ${midCol  ? `<td>${midRaw}</td>` : ''}
       <td>${betweenRaw || ''}</td>
-      <td style="color:#555;">${betweenMax}</td>
-      <td style="color:#555;">${betweenShow}</td>
+      <td></td>
+      <td></td>
       <td style="font-weight:700;">${bScaled}</td>
       ${finalCol ? `<td>${finalRaw}</td>` : ''}
-      <td style="color:#555;">${finalMax}</td>
-      <td style="color:#555;">${finalShow}</td>
+      <td></td>
+      <td></td>
       <td style="font-weight:700;">${fScaled}</td>
       <td style="font-weight:700;">${total}</td>
       <td style="font-weight:700;">${grade}</td>
-      <td></td><td></td><td></td><td></td><td></td>
     </tr>`
   })
 
-  // Row 3: แถวที่ 3 ของ header = ชื่อ/คะแนนเต็มของ formative แต่ละคอลัมน์
-  const row3Cells = formative.map((c, i) =>
-    `<th>จ.ป.ที่ ${i+1}<br/><span style="font-size:6pt;">(${c.full_score??''})</span></th>`
-  ).join('')
+  // แถวว่าง 1 แถวท้ายสุดเสมอ
+  const emptyRow = `<tr><td colspan="${3 + formative.length + midColCount + 4 + finalColCount + 3 + 2}"></td></tr>`
 
-  // ความกว้างคอลัมน์ (ออกแบบให้พอดี A4 content 194mm พร้อม padding 8mm)
+  // ความกว้างคอลัมน์ (A4 content 194mm)
   const fW   = formative.length > 3 ? '7mm' : '8mm'
   const midW = '9mm'
   const drvW = '7mm'
-  const resW = '11mm'
-  const chrW = '5mm'
+  const resW = '12mm'
+
+  // vcol helper
+  const vcol = txt => `<th class="sc-vcol"><span class="vt">${txt}</span></th>`
 
   return `
   <div class="score-wrap">
     <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:2mm;">คะแนนการจัดการเรียนรู้</div>
     <div class="score-info">
-      <div class="score-info-item">
-        <span class="score-info-label">รายวิชา</span>
-        <span class="score-info-val wide">${_esc(ms.subject_name??'')}</span>
-      </div>
-      <div class="score-info-item">
-        <span class="score-info-label">รหัสวิชา</span>
-        <span class="score-info-val">${_esc(ms.subject_code??'')}</span>
-      </div>
-      <div class="score-info-item">
-        <span class="score-info-label">ชั้น</span>
-        <span class="score-info-val">${_esc(_shortRoom(cls.class_name))}</span>
-      </div>
-      <div class="score-info-item">
-        <span class="score-info-label">ภาคเรียนที่</span>
-        <span class="score-info-val">${_esc(String(semester))}</span>
-      </div>
-      <div class="score-info-item">
-        <span class="score-info-label">ปีการศึกษา</span>
-        <span class="score-info-val">${_esc(String(academicYear))}</span>
-      </div>
+      <div class="score-info-item"><span class="score-info-label">รายวิชา</span><span class="score-info-val wide">${_esc(ms.subject_name??'')}</span></div>
+      <div class="score-info-item"><span class="score-info-label">รหัสวิชา</span><span class="score-info-val">${_esc(ms.subject_code??'')}</span></div>
+      <div class="score-info-item"><span class="score-info-label">ชั้น</span><span class="score-info-val">${_esc(_shortRoom(cls.class_name))}</span></div>
+      <div class="score-info-item"><span class="score-info-label">ภาคเรียนที่</span><span class="score-info-val">${_esc(String(semester))}</span></div>
+      <div class="score-info-item"><span class="score-info-label">ปีการศึกษา</span><span class="score-info-val">${_esc(String(academicYear))}</span></div>
     </div>
     <table class="score-table">
       <colgroup>
         <col style="width:5mm;"/>
         <col style="width:12mm;"/>
-        <col style="width:28mm;"/>
+        <col style="width:30mm;"/>
         ${formative.map(()=>`<col style="width:${fW};"/>`).join('')}
         ${midCol  ? `<col style="width:${midW};"/>` : ''}
         <col style="width:${drvW};"/>
@@ -1019,63 +1012,82 @@ function _buildScorePage(d, chunk, startNo) {
         <col style="width:${drvW};"/>
         <col style="width:${resW};"/>
         <col style="width:${resW};"/>
-        <col style="width:${chrW};"/>
-        <col style="width:${chrW};"/>
-        <col style="width:${chrW};"/>
-        <col style="width:${chrW};"/>
-        <col style="width:8mm;"/>
       </colgroup>
       <thead>
-        <!-- แถว 1: หัวข้อหลัก -->
+        <!-- แถว 1: ผู้เรียน rs4 + หัวข้อหลัก + result cols rs5 -->
         <tr>
-          <th rowspan="3">เลขที่</th>
-          <th rowspan="3">เลขประจำตัว</th>
-          <th rowspan="3" style="text-align:left;padding-left:1mm;">ชื่อ - สกุล</th>
-          <th colspan="${betweenSpan}" class="sc-section">วัดผลระหว่างภาค&ensp;อัตราส่วน ${betweenMax}/${betweenShow}</th>
-          <th colspan="${finalSpan}" class="sc-section">วัดผลปลายภาค&ensp;อัตราส่วน ${finalMax}/${finalShow}</th>
-          <th rowspan="3">ผลรวม<br/><span style="font-size:6pt;">100 คะแนน</span></th>
-          <th rowspan="3">ระดับ<br/>ผลการเรียน</th>
-          <th rowspan="3">ลส</th>
-          <th rowspan="3">คบ</th>
-          <th rowspan="3">มู</th>
-          <th rowspan="3">รช</th>
-          <th rowspan="3">กิจกรรม</th>
+          <th rowspan="4" colspan="3">ผู้เรียน</th>
+          <th colspan="${allScoreSpan}" class="sc-sect">วัดผลระหว่างภาค / ปลายภาค</th>
+          <th rowspan="5">ผลสัมฤทธิ์<br/>(100 คะแนน)</th>
+          <th rowspan="5">ระดับผลการเรียน</th>
         </tr>
-        <!-- แถว 2: หัวย่อย -->
+        <!-- แถว 2: อัตราส่วน -->
         <tr>
-          ${formative.length > 0 ? `<th colspan="${formative.length}">คะแนนระหว่างเรียน</th>` : ''}
-          ${midCol  ? `<th rowspan="2">สอบ<br/>กลางภาค<br/><span style="font-size:6pt;">(${midCol.full_score??''})</span></th>` : ''}
-          <th rowspan="2">รวม<br/><span style="font-size:6pt;">(${betweenMax})</span></th>
-          <th rowspan="2">ลด<br/>ส่วน</th>
-          <th rowspan="2">แสดง<br/>ส่วน</th>
-          <th rowspan="2">คะแนน<br/><span style="font-size:6pt;">(${betweenShow})</span></th>
-          ${finalCol ? `<th rowspan="2">สอบ<br/>ปลายภาค<br/><span style="font-size:6pt;">(${finalMax})</span></th>` : ''}
-          <th rowspan="2">ลด<br/>ส่วน</th>
-          <th rowspan="2">แสดง<br/>ส่วน</th>
-          <th rowspan="2">คะแนน<br/><span style="font-size:6pt;">(${finalShow})</span></th>
+          <th colspan="${allScoreSpan}" style="font-size:6pt;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenShow} / ${finalShow}</th>
         </tr>
-        <!-- แถว 3: ชื่อ/คะแนนเต็มรายจุดประสงค์ -->
+        <!-- แถว 3: ระหว่างเรียน/กลางภาค | ปลายภาค -->
         <tr>
-          ${row3Cells}
+          <th colspan="${betweenSpan}" class="sc-sect">ผลการเรียนรู้ระหว่างเรียน/กลางภาค</th>
+          <th colspan="${finalSpan}" class="sc-sect">ผลการเรียนรู้ปลายภาค</th>
+        </tr>
+        <!-- แถว 4: จุดประสงค์ + derived (rs2 ลงไปแถว 5) -->
+        <tr>
+          ${formative.length + midColCount > 0 ? `<th colspan="${formative.length + midColCount}">จุดประสงค์ที่ / คะแนนเต็ม</th>` : ''}
+          <th rowspan="2">รวม</th>
+          <th rowspan="2">ลดส่วน</th>
+          <th rowspan="2">แสดงส่วน</th>
+          <th rowspan="2">คะแนน</th>
+          ${finalColCount > 0 ? `<th colspan="${finalColCount}">จุดประสงค์ที่ / คะแนนเต็ม</th>` : ''}
+          <th rowspan="2">ลดส่วน</th>
+          <th rowspan="2">แสดงส่วน</th>
+          <th rowspan="2">คะแนน</th>
+        </tr>
+        <!-- แถว 5: ชื่อคอลัมน์แนวตั้ง (ผู้เรียน rs4 หมด → เพิ่ม 3 เซลล์; derived rs2 ยังครอบ) -->
+        <tr>
+          ${vcol('เลขที่')}
+          ${vcol('เลขประจำตัว')}
+          ${vcol('ชื่อ - สกุล')}
+          ${formative.map((c,i) => vcol(`จุดประสงค์ที่ ${i+1}`)).join('')}
+          ${midCol  ? vcol('สอบกลางภาค') : ''}
+          ${finalCol ? vcol('สอบปลายภาค') : ''}
+        </tr>
+        <!-- แถว 6: คะแนนเต็ม (derived rs2 หมด → เพิ่มเซลล์; result rs5 หมด → เพิ่มเซลล์) -->
+        <tr class="sc-score-row">
+          <td></td><td></td><td></td>
+          ${formative.map(c => `<td>${c.full_score??''}</td>`).join('')}
+          ${midCol  ? `<td>${midCol.full_score??''}</td>` : ''}
+          <td></td>
+          <td>${betweenMax}</td>
+          <td>${betweenShow}</td>
+          <td>${betweenShow}</td>
+          ${finalCol ? `<td>${finalMax}</td>` : ''}
+          <td></td>
+          <td>${finalMax}</td>
+          <td>${finalShow}</td>
+          <td>100</td>
+          <td></td>
         </tr>
       </thead>
-      <tbody>${rows.join('')}</tbody>
+      <tbody>
+        ${rows.join('')}
+        ${emptyRow}
+      </tbody>
     </table>
     <div class="score-sig">
-      <div class="score-sig-block">
-        ลงชื่อ ................................................<br/>
-        ครูผู้สอน<br/>
-        <span style="font-size:8.5pt;">(${_esc(teacher?.full_name??'')})</span>
+      <div class="score-sig-row">
+        <span>ลงชื่อ</span>
+        <span class="score-sig-line">${_esc(teacher?.full_name??'')}</span>
+        <span>ครูผู้สอน</span>
       </div>
-      <div class="score-sig-block">
-        ลงชื่อ ................................................<br/>
-        หัวหน้าหมวดวิชา<br/>
-        <span style="font-size:8.5pt;">(${_esc(d.dept?.head_name??'')})</span>
+      <div class="score-sig-row">
+        <span>ลงชื่อ</span>
+        <span class="score-sig-line">${_esc(d.dept?.head_name??'')}</span>
+        <span>หัวหน้าหมวดวิชา</span>
       </div>
-      <div class="score-sig-block">
-        ลงชื่อ ................................................<br/>
-        หัวหน้างานวัดผลและประเมินผล<br/>
-        <span style="font-size:8.5pt;">(${_esc(d.cfg[`${d.prefix}RegistrarName`]??'')})</span>
+      <div class="score-sig-row">
+        <span>ลงชื่อ</span>
+        <span class="score-sig-line">${_esc(d.cfg[`${d.prefix}RegistrarName`]??'')}</span>
+        <span>หัวหน้างานวัดผลและประเมินผล</span>
       </div>
     </div>
   </div>`
