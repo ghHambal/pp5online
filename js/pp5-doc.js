@@ -995,29 +995,36 @@ function _buildScorePage(d, chunk, startNo) {
         <col style="width:8.5mm;"/>
       </colgroup>
       <thead>
+        <!-- Row 1: ผู้เรียน คลุม 3 คอลัมน์ + section header + result cols rs5 -->
         <tr>
-          <th rowspan="5" class="v"><span>ที่</span></th>
-          <th colspan="2" rowspan="2">ผู้เรียน</th>
+          <th colspan="3">ผู้เรียน</th>
           <th colspan="${allSpan}">วัดผลระหว่างภาค / ปลายภาค</th>
           <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินการอ่านคิดวิเคราะห์และเขียน</span></th>
           <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินคุณลักษณะอันพึงประสงค์</span></th>
           <th rowspan="5" class="v"><span>ระดับการเรียน</span></th>
         </tr>
+        <!-- Row 2: ที่(v,rs4) | เลขประจำตัว(v,rs3) | ชื่อ-สกุล(rs2) | อัตราส่วน -->
         <tr>
+          <th rowspan="4" class="v"><span>ที่</span></th>
+          <th rowspan="3" class="v"><span>เลขประจำตัว</span></th>
+          <th rowspan="2">ชื่อ - สกุล</th>
           <th colspan="${allSpan}" style="font-size:7px;padding:1px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
         </tr>
+        <!-- Row 3: between/final section headers (ที่,เลขประจำตัว,ชื่อ-สกุล covered by rowspan) -->
         <tr>
-          <th colspan="2" rowspan="2">ชื่อ - สกุล</th>
           <th colspan="${allBetween.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนระหว่างเรียน/กลางภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
-          <th rowspan="2" class="v"><span>รวมคะแนน<br/>ระหว่างภาค</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนนระหว่างภาค</span></th>
           <th colspan="${allFinal.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนปลายภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
-          <th rowspan="2" class="v"><span>รวมคะแนน<br/>ปลายภาค</span></th>
-          <th rowspan="2" class="v"><span>รวมคะแนน<br/>100</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนนปลายภาค</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนน 100</span></th>
         </tr>
+        <!-- Row 4: ชื่อ-สกุล col freed (rs2 row2-3 ended) → empty cell; เลขประจำตัว rs3 covers col2 -->
         <tr>
+          <th></th>
           ${allBetween.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.assignment_name??'')}</span></th>`).join('')}
           ${allFinal.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.assignment_name??'')}</span></th>`).join('')}
         </tr>
+        <!-- Row 5: score-full; ที่ rs4 covers col1; เลขประจำตัว rs3 freed → label; ชื่อ-สกุล freed → empty -->
         <tr>
           <th class="score-full">เลขประจำตัว</th>
           <th class="score-full"></th>
