@@ -392,6 +392,12 @@ function _getCSS() {
 
     /* ── Page 3 attendance ── */
     .att-hdr   { font-size: 9pt; margin-bottom: 1.5mm; }
+    .att-hdr-row { display: flex; align-items: baseline; gap: 1.5mm; margin-bottom: 1mm; }
+    .att-hdr-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 5mm; margin-bottom: 1mm; }
+    .att-hdr-col { display: flex; align-items: baseline; gap: 1mm; }
+    .att-label { flex-shrink: 0; white-space: nowrap; }
+    .att-uline { display: inline-block; border-bottom: .3mm dashed #555; min-width: 8mm; text-align: center; padding: 0 1mm; font-weight: 600; flex-shrink: 0; }
+    .att-uline-fill { flex: 1; min-width: 15mm; }
     .att-legend { font-size: 8pt; margin-bottom: 1.5mm; }
     .att-table  { table-layout: fixed; font-size: 6.5pt; }
     .att-table th { padding: 1px; font-size: 6.5pt; }
@@ -821,9 +827,29 @@ function _buildAttPage(d, chunk, startNo) {
       บันทึกการมาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}
     </div>
     <div class="att-hdr">
-      ปีการศึกษา ${academicYear} &nbsp; ภาคเรียนที่ ${semester} &nbsp;
-      รายวิชา ${_esc(ms.subject_name??'')} รหัสวิชา ${_esc(ms.subject_code??'')} &nbsp;
-      ครูผู้สอน ${_esc(teacher?.full_name??'')}
+      <!-- แถว 1: ปีการศึกษา + ภาคเรียน -->
+      <div class="att-hdr-row">
+        <span class="att-label">ปีการศึกษา</span>
+        <span class="att-uline">${_esc(String(academicYear))}</span>
+        <span class="att-label" style="margin-left:4mm;">ภาคเรียนที่</span>
+        <span class="att-uline">${_esc(String(semester))}</span>
+      </div>
+      <!-- แถว 2: รายวิชา (ซ้าย) | รหัสวิชา (ขวา) -->
+      <div class="att-hdr-row2">
+        <div class="att-hdr-col">
+          <span class="att-label">รายวิชา</span>
+          <span class="att-uline att-uline-fill">${_esc(ms.subject_name??'')}</span>
+        </div>
+        <div class="att-hdr-col">
+          <span class="att-label">รหัสวิชา</span>
+          <span class="att-uline att-uline-fill">${_esc(ms.subject_code??'')}</span>
+        </div>
+      </div>
+      <!-- แถว 3: ครูผู้สอน -->
+      <div class="att-hdr-row">
+        <span class="att-label">ครูผู้สอน</span>
+        <span class="att-uline att-uline-fill">${_esc(teacher?.full_name??'')}</span>
+      </div>
     </div>
     <div class="att-legend">
       บันทึกคาบที่สอนที่นักเรียนไม่ได้มาเรียน:
