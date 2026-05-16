@@ -391,6 +391,11 @@ function _getCSS() {
     .p2-sig { text-align: right; margin-top: 3mm; font-size: 9.5pt; }
 
     /* ── Page 3 attendance ── */
+    .att-top   { display: flex; align-items: center; gap: 3mm; margin-bottom: 2mm; }
+    .att-logo  { width: 18mm; height: 18mm; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: #fff; display: flex; align-items: center; justify-content: center; }
+    .att-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .att-title-wrap { flex: 1; text-align: center; }
+    .att-title { font-weight: 700; font-size: 10pt; }
     .att-hdr   { font-size: 9pt; margin-bottom: 1.5mm; }
     .att-hdr-row { display: flex; align-items: baseline; gap: 1.5mm; margin-bottom: 1mm; }
     .att-hdr-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 5mm; margin-bottom: 1mm; }
@@ -786,7 +791,8 @@ function _buildPage3(d) {
 }
 
 function _buildAttPage(d, chunk, startNo) {
-  const { cls, ms, teacher, academicYear, semester } = d
+  const { cls, ms, teacher, academicYear, semester, cfg, prefix } = d
+  const logoUrl = cfg?.[`${prefix}LogoBwUrl`] ?? cfg?.[`${prefix}LogoUrl`] ?? cfg?.samaiLogoBwUrl ?? cfg?.samaiLogoUrl ?? ''
   const ATT_COLS = 40
   // คำนวณให้ 40 คอลัมน์พอดี A4 (content width ~194mm หลังหักขอบ)
   // เลขที่:6 รหัส:13 ชื่อ:36 รวม:10 → เหลือ 129mm / 40 = 3.2mm
@@ -823,8 +829,14 @@ function _buildAttPage(d, chunk, startNo) {
 
   return `
   <div class="page-tight">
-    <div style="text-align:center;font-weight:700;font-size:10pt;margin-bottom:1.5mm;">
-      บันทึกการมาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}
+    <div class="att-top">
+      ${logoUrl
+        ? `<div class="att-logo"><img src="${_esc(logoUrl)}" alt="โลโก้" /></div>`
+        : '<div style="width:18mm;flex-shrink:0;"></div>'}
+      <div class="att-title-wrap">
+        <div class="att-title">บันทึกการมาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}</div>
+      </div>
+      <div style="width:18mm;flex-shrink:0;"></div>
     </div>
     <div class="att-hdr">
       <!-- แถว 1: ปีการศึกษา + ภาคเรียน -->
