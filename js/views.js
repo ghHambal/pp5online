@@ -1999,7 +1999,7 @@ export async function renderSettings() {
           const val = cfg[key] ?? ''
           return `
           <div class="flex items-center gap-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
-            <div class="flex-shrink-0 w-16 h-16 rounded-xl border-2 border-amber-200 bg-white flex items-center justify-center overflow-hidden">
+            <div class="flex-shrink-0 w-16 h-16 rounded-xl border-2 border-amber-200 flex items-center justify-center overflow-hidden">
               ${val ? `<img src="${val}" class="w-full h-full object-contain" id="sticker-prev-${n}" />` : `<span id="sticker-prev-${n}" class="text-2xl text-gray-300">🏅</span>`}
             </div>
             <div class="flex-1 min-w-0">

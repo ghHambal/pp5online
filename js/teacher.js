@@ -218,8 +218,8 @@ const _donationStickerHtml = tier => {
   if (!tier) return ''
   const sticker = String(tier.sticker ?? '')
   const stickerEl = /^https?:\/\//.test(sticker)
-    ? `<img src="${_esc(sticker)}" class="w-14 h-14 object-contain rounded-2xl bg-white border border-amber-100 p-1" />`
-    : `<div class="w-14 h-14 rounded-2xl bg-white border border-amber-100 flex items-center justify-center text-3xl shadow-sm">${_esc(sticker || '🏅')}</div>`
+    ? `<img src="${_esc(sticker)}" class="w-14 h-14 object-contain drop-shadow-md" />`
+    : `<div class="w-14 h-14 flex items-center justify-center text-3xl">${_esc(sticker || '🏅')}</div>`
   return `
     <div class="flex items-center gap-3 rounded-2xl border border-amber-200 bg-white p-3 shadow-sm">
       ${stickerEl}
@@ -911,7 +911,7 @@ async function _showThankYouCard(request, cfgOverride = null) {
     if (!tier) return '<div class="text-5xl mb-3">☕</div>'
     const s = String(tier.sticker ?? '')
     if (/^https?:\/\//.test(s))
-      return `<div class="w-20 h-20 mx-auto mb-3 rounded-2xl overflow-hidden border-4 border-white/40 shadow-lg bg-white flex items-center justify-center">
+      return `<div class="w-20 h-20 mx-auto mb-3 flex items-center justify-center drop-shadow-lg">
         <img src="${_esc(s)}" class="w-full h-full object-contain" /></div>`
     return `<div class="text-5xl mb-3">${_esc(s || '☕')}</div>`
   })()
