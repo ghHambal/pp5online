@@ -326,14 +326,16 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   }
 
   let donorTier      = null
+  let donorTierIndex = 0   // 1-based
   let donorStickerHtml = ''
-  let cardGlowStyle  = ''          // inline style สำหรับขอบการ์ด
-  let cardBorderCls  = 'border border-gray-100 shadow-sm'  // fallback
+  let cardGlowStyle  = ''
+  let cardBorderCls  = 'border border-gray-100 shadow-sm'
 
   if (approvedDonation && cfg.quotaMode === 'school_sponsored') {
     const tiers  = _parseTiers()
     const amount = approvedDonation.amount ?? 0
     donorTier    = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+    donorTierIndex = donorTier ? tiers.indexOf(donorTier) + 1 : 0
 
     if (donorTier) {
       cardGlowStyle = _tierGlowStyle(donorTier.color)
