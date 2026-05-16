@@ -38,6 +38,21 @@ async function loadTeacherInfo(userId) {
   if (_teacher) _teacher.auth_email = session?.user?.email ?? ''
   await applyThemeForRole('teacher', _teacher ?? {})
 
+  // เช็ค is_also_admin — ถ้าใช่แสดงปุ่มสลับเป็นแอดมิน
+  const { data: profileRow } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
+  if (profileRow?.is_also_admin) {
+    const nav = document.querySelector('#sidebar nav')
+    if (nav) {
+      const switchBtn = document.createElement('a')
+      switchBtn.href = 'dashboard.html'
+      switchBtn.title = 'สลับไปหน้าแอดมิน'
+      switchBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-emerald-800/50 mt-2 border border-emerald-700/40'
+      switchBtn.style.color = '#6ee7b7'
+      switchBtn.innerHTML = `<span>⚙️</span><span>สลับเป็นแอดมิน</span>`
+      nav.appendChild(switchBtn)
+    }
+  }
+
   const name   = _teacher?.full_name ?? 'ครูผู้สอน'
   const code   = _teacher?.teacher_code ? `รหัส ${_teacher.teacher_code}` : ''
   const imgUrl = _teacher?.image_url ?? ''

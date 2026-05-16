@@ -25,11 +25,12 @@ async function requireAuth() {
 
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, is_also_admin')
     .eq('id', session.user.id)
     .maybeSingle()
 
-  if (error || profile?.role !== 'admin') {
+  // อนุญาต: role=admin หรือ is_also_admin=true
+  if (error || (profile?.role !== 'admin' && !profile?.is_also_admin)) {
     showToast('หน้านี้สำหรับผู้ดูแลระบบเท่านั้น', 'warning')
     setTimeout(() => window.location.replace('teacher.html'), 600)
     return null
@@ -63,6 +64,21 @@ async function loadUserProfile(userId) {
     document.getElementById('user-role').textContent   = roleLabel
     document.getElementById('user-avatar').textContent = name.charAt(0).toUpperCase()
   } catch { /* ไม่ block init */ }
+}
+
+// ─── Switch to teacher view (สำหรับ user ที่มีทั้งสองบทบาท) ──────────────────
+async function _addSwitchToTeacherBtn(userId) {
+  const { data: profile } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
+  if (!profile?.is_also_admin) return
+  const sidebar = document.querySelector('#sidebar nav') ?? document.querySelector('nav')
+  if (!sidebar) return
+  const btn = document.createElement('a')
+  btn.href = 'teacher.html'
+  btn.title = 'สลับไปหน้าครู'
+  btn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-indigo-800/50 mt-2 border border-indigo-600/40'
+  btn.style.color = '#a5b4fc'
+  btn.innerHTML = `<span>👨‍🏫</span><span>สลับเป็นครู</span>`
+  sidebar.appendChild(btn)
 }
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
@@ -611,6 +627,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('period-form')?.addEventListener('submit', handlePeriodFormSubmit)
 
   await loadUserProfile(session.user.id)
+  _addSwitchToTeacherBtn(session.user.id)
 
   const routes = {
     overview:    renderOverview,
