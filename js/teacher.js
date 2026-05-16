@@ -1098,6 +1098,151 @@ function _initDonateFloatingBtn(hasPendingDonation = false) {
   document.body.appendChild(btn)
 }
 
+// ── Promo Popup (ครูที่ยังไม่โดเนท) ─────────────────────────────────────────
+function _showPromoPopup(cfg, tiers, features) {
+  document.getElementById('promo-popup')?.remove()
+  const PROMO_KEY = 'pp5_promo_seen'
+  const minAmount = _toPositiveInt(cfg.donationMinAmount, 49)
+
+  // เริ่มต้นที่ tier 1
+  let activeTierIdx = 0  // 0-based index into tiers array
+
+  const _featureHtml = (idx) => {
+    const tierN = idx + 1  // 1-based
+    return features.map(f => {
+      const unlocked = tierN >= (f.minTier ?? 1)
+      return unlocked
+        ? `<div class="flex items-center gap-2.5 text-sm text-gray-800 py-1">
+             <span class="text-base flex-shrink-0">${_esc(f.icon)}</span>
+             <span>${_esc(f.text)}</span>
+           </div>`
+        : `<div class="flex items-center gap-2.5 text-sm text-gray-300 py-1">
+             <span class="text-base flex-shrink-0">🔒</span>
+             <span class="line-through">${_esc(f.text)}</span>
+             <span class="text-[10px] ml-auto whitespace-nowrap text-gray-400">ระดับ ${f.minTier}+</span>
+           </div>`
+    }).join('')
+  }
+
+  const wrap = document.createElement('div')
+  wrap.id = 'promo-popup'
+  wrap.className = 'fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4'
+
+  const _buildHtml = (idx) => {
+    const tier = tiers[idx]
+    const hex  = tier?.color || '#f59e0b'
+    const s    = String(tier?.sticker ?? '')
+    const imgEl = /^https?:\/\//.test(s)
+      ? `<img src="${_esc(s)}" class="w-16 h-16 object-contain drop-shadow-md" />`
+      : `<span class="text-5xl">${_esc(s || '🏅')}</span>`
+
+    return `
+    <div class="bg-white w-full sm:max-w-sm rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+      <!-- Sticker row -->
+      <div class="pt-5 px-5 pb-3 border-b border-gray-100 flex-shrink-0">
+        <p class="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">เลือกระดับที่สนใจ</p>
+        <div class="flex justify-center gap-2">
+          ${tiers.map((t, i) => {
+            const ts = String(t.sticker ?? '')
+            const tHex = t.color || '#f59e0b'
+            const isActive = i === idx
+            const sEl = /^https?:\/\//.test(ts)
+              ? `<img src="${_esc(ts)}" class="w-10 h-10 object-contain" />`
+              : `<span class="text-3xl">${_esc(ts)}</span>`
+            return `<button class="promo-tier-btn flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all"
+              data-idx="${i}"
+              style="${isActive ? `box-shadow:0 0 0 3px ${tHex};` : 'box-shadow:0 0 0 2px #e5e7eb;'}">
+              ${sEl}
+            </button>`
+          }).join('')}
+        </div>
+      </div>
+      <!-- Tier info + features -->
+      <div class="px-5 py-4 overflow-y-auto flex-1">
+        <div class="flex items-center gap-2 mb-1">
+          ${imgEl}
+          <div>
+            <p class="font-bold text-gray-800 text-base">${_esc(tier?.title ?? '')}</p>
+            <p class="text-xs" style="color:${hex}">${_esc(tier?.note ?? '')}</p>
+          </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2 mb-3">ยอดสนับสนุนขั้นต่ำ <span class="font-bold text-gray-700">${tier?.amount?.toLocaleString() ?? minAmount} บาท</span></p>
+        <div class="divide-y divide-gray-50">
+          ${_featureHtml(idx)}
+        </div>
+      </div>
+      <!-- Footer -->
+      <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex-shrink-0 space-y-3">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="promo-no-show" class="w-4 h-4 rounded accent-gray-400" />
+          <span class="text-xs text-gray-400">ไม่ต้องการให้แสดงหน้านี้อีก</span>
+        </label>
+        <button id="promo-support" class="w-full py-3 rounded-2xl text-white font-bold text-sm transition shadow-md"
+          style="background:${hex}">
+          สนับสนุนในระดับนี้ (${tier?.amount?.toLocaleString() ?? minAmount} บาท+)
+        </button>
+        <button id="promo-later" class="w-full text-sm text-gray-400 hover:text-gray-600 py-1 transition">
+          ภายหลัง
+        </button>
+      </div>
+    </div>`
+  }
+
+  wrap.innerHTML = _buildHtml(activeTierIdx)
+  document.body.appendChild(wrap)
+
+  const _rerender = (idx) => {
+    activeTierIdx = idx
+    wrap.querySelector('.bg-white').outerHTML = _buildHtml(idx)
+    // re-bind after rerender
+    _bind()
+  }
+
+  const _dismiss = () => {
+    if (wrap.querySelector('#promo-no-show')?.checked) {
+      localStorage.setItem(PROMO_KEY, String(Date.now()))
+    }
+    wrap.remove()
+  }
+
+  const _bind = () => {
+    wrap.querySelectorAll('.promo-tier-btn').forEach(btn => {
+      btn.addEventListener('click', () => _rerender(parseInt(btn.dataset.idx)))
+    })
+    wrap.querySelector('#promo-support')?.addEventListener('click', () => {
+      _dismiss()
+      _showDonateModal(null, cfg)
+    })
+    wrap.querySelector('#promo-later')?.addEventListener('click', _dismiss)
+    wrap.addEventListener('click', e => { if (e.target === wrap) _dismiss() })
+  }
+  _bind()
+}
+
+// ── Sidebar upgrade button (tier 1-4) ────────────────────────────────────────
+function _addUpgradeSidebar(cfg, tiers, currentTierIdx) {
+  if (document.getElementById('sidebar-upgrade-item')) return
+  const nav = document.querySelector('#sidebar nav')
+  if (!nav) return
+  const currentTier = tiers[currentTierIdx - 1]
+  const nextTier    = tiers[currentTierIdx]
+  const s = String(currentTier?.sticker ?? '')
+  const sEl = /^https?:\/\//.test(s)
+    ? `<img src="${_esc(s)}" class="w-5 h-5 object-contain flex-shrink-0" />`
+    : `<span class="flex-shrink-0">${_esc(s || '🏅')}</span>`
+  const item = document.createElement('a')
+  item.id = 'sidebar-upgrade-item'
+  item.href = '#'
+  item.className = 'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition text-amber-400/70 hover:text-amber-300 hover:bg-emerald-800/40 opacity-70 hover:opacity-100'
+  item.innerHTML = `${sEl} <span>อัปเกรดระดับ</span>`
+  item.title = nextTier ? `อัปเกรดเป็น ${nextTier.title}` : 'สนับสนุนเพิ่มเติม'
+  item.addEventListener('click', async e => {
+    e.preventDefault()
+    _showDonateModal(null, cfg)
+  })
+  nav.appendChild(item)
+}
+
 async function _initDonationFlow(teacherId) {
   try {
     const [requests, cfg] = await Promise.all([
@@ -1105,21 +1250,40 @@ async function _initDonationFlow(teacherId) {
       getSystemConfig().catch(() => ({})),
     ])
 
-    // โหมดเดิม — ไม่แสดงปุ่มโดเนทเลย
     if ((cfg.quotaMode ?? 'payment') !== 'school_sponsored') return
 
+    const minAmt  = _toPositiveInt(cfg.donationMinAmount, 49)
+    const step    = _toPositiveInt(cfg.donationAmountStep, 50)
+    const tiers   = _parseDonationStickers(cfg, minAmt, step)
+    const features = _parseDonationFeatures(cfg)
+    const maxTier = tiers.length  // 5
+
     const approved = requests.find(r => r.package_type === 'donation' && r.status === 'approved')
-    const pending  = requests.some(r => r.package_type === 'donation' && r.status === 'pending')
+    const pending  = requests.some(r  => r.package_type === 'donation' && r.status === 'pending')
 
     if (approved) {
+      // แสดงการ์ดขอบคุณครั้งแรก
       const seen = localStorage.getItem(`pp5_thankyou_seen_${approved.id}`)
-      if (!seen && approved.admin_note) {
-        _showThankYouCard(approved)
-      } else {
+      if (!seen && approved.admin_note) _showThankYouCard(approved)
+
+      const tierIndex = _getDonorTierIndex(cfg, tiers, approved.amount ?? 0)
+      if (tierIndex >= maxTier) {
+        // tier สูงสุด — แสดงแค่สติกเกอร์ใน sidebar
         _addDonateToSidebar(approved)
+      } else {
+        // tier ต่ำกว่าสูงสุด — แสดงปุ่มอัปเกรด
+        _addDonateToSidebar(approved)
+        _addUpgradeSidebar(cfg, tiers, tierIndex)
       }
     } else {
       _initDonateFloatingBtn(pending)
+      if (!pending) {
+        // แสดง promo popup ถ้ายังไม่ suppress
+        const PROMO_KEY = 'pp5_promo_seen'
+        const seen = localStorage.getItem(PROMO_KEY)
+        const expired = !seen || Date.now() - parseInt(seen) > 14 * 24 * 60 * 60 * 1000
+        if (expired) setTimeout(() => _showPromoPopup(cfg, tiers, features), 1500)
+      }
     }
   } catch {
     // ไม่แสดงปุ่มถ้า config โหลดไม่ได้
