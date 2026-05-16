@@ -413,30 +413,26 @@ function _getCSS() {
     .att-sick   { color: #c60; font-weight: 700; }
 
     /* ── Page 4 scores ── */
-    .score-wrap { width: 210mm; min-height: 297mm; padding: 8mm 8mm 8mm 8mm; page-break-after: always; box-sizing: border-box; }
-    .score-info { font-size: 9pt; margin-bottom: 1.5mm; display: flex; flex-wrap: wrap; gap: 0 6mm; }
-    .score-info-item { display: flex; align-items: baseline; gap: 1mm; white-space: nowrap; }
-    .score-info-label { flex-shrink: 0; }
-    .score-info-val { border-bottom: .3mm dashed #555; min-width: 10mm; text-align: center; padding: 0 1mm; font-weight: 600; }
-    .score-info-val.wide { min-width: 40mm; }
-    .score-table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 6.5pt; }
-    .score-table th { border: .3mm solid #000; padding: 1px; text-align: center; vertical-align: middle; font-size: 6.5pt; line-height: 1.2; font-weight: 600; }
-    .score-table td { border: .3mm solid #000; padding: 0; text-align: center; vertical-align: middle; font-size: 6.5pt; height: 5.5mm; }
-    .score-table td.sc-name { text-align: left; padding-left: 1mm; white-space: nowrap; overflow: hidden; font-size: 6.5pt; }
-    .score-table th.sc-sect { background: #eee; font-size: 6.5pt; }
-    /* vertical column name headers */
-    .sc-vcol { vertical-align: bottom !important; padding: 1mm 0 0.5mm !important; height: 22mm; overflow: hidden; }
-    .sc-vcol .vt {
-      display: block; transform: rotate(-90deg); transform-origin: center center;
-      white-space: nowrap; font-size: 6.5pt; font-weight: 600;
-      width: 20mm; margin: auto; text-align: left;
-    }
-    /* score amounts row (last thead row) */
-    .sc-score-row td { height: 5mm; font-size: 6.5pt; font-weight: 700; }
-    /* signature — stacked vertically */
-    .score-sig { margin-top: 5mm; font-size: 9pt; }
-    .score-sig-row { display: grid; grid-template-columns: auto 1fr auto; align-items: end; gap: 2mm; margin-bottom: 3mm; }
-    .score-sig-line { border-bottom: .3mm dotted #555; text-align: center; padding: 0 2mm; min-height: 5mm; font-weight: 600; }
+    .score-wrap { width: 210mm; min-height: 297mm; padding: 16mm 10mm 12mm; page-break-after: always; }
+    .score-top-info { display: grid; grid-template-columns: 1.25fr .95fr .75fr .75fr .9fr; gap: 5mm; align-items: end; font-size: 10px; font-weight: 700; line-height: 1; margin-bottom: 2mm; }
+    .sc-field { display: flex; align-items: end; white-space: nowrap; gap: 2mm; }
+    .sc-field .sc-lbl { flex: 0 0 auto; }
+    .sc-field .sc-val { flex: 1 1 auto; min-width: 18mm; text-align: center; border-bottom: 1px dotted #000; padding: 0 1mm 1px; font-weight: 700; }
+    .grade-sheet { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; font-size: 10px; line-height: 1.05; }
+    .grade-sheet th, .grade-sheet td { border: 1px solid #000; padding: 1px 2px; text-align: center; vertical-align: middle; height: 5.8mm; overflow: hidden; }
+    .grade-sheet th { font-weight: 700; }
+    .grade-sheet .gs-name { text-align: left; padding-left: 2mm; }
+    .grade-sheet .v { height: 25mm; padding: 0; }
+    .grade-sheet .v > span { writing-mode: vertical-rl; transform: rotate(180deg); display: inline-block; white-space: nowrap; line-height: 1; font-size: 9px; }
+    .grade-sheet .gs-small { font-size: 9px; }
+    .grade-sheet .score-full { font-size: 10px; height: 4.5mm; }
+    .grade-sheet .blank-head { background: #fff; }
+    /* signature */
+    .score-sig { width: 100%; margin-top: 3.5mm; padding-left: 58mm; font-size: 11px; font-weight: 700; line-height: 1; }
+    .score-sig-row { display: grid; grid-template-columns: 16mm 88mm 32mm; column-gap: 2mm; align-items: end; height: 6.7mm; margin-bottom: .5mm; }
+    .score-sig-lbl { text-align: left; padding-bottom: .7mm; }
+    .score-sig-line { border-bottom: 1px dotted #000; min-height: 4mm; text-align: center; padding-bottom: .6mm; font-weight: 600; }
+    .score-sig-role { text-align: left; padding-bottom: .7mm; white-space: nowrap; }
 
     /* ── Page 5 ── */
     .date-table th { font-size: 9pt; padding: 2px 4px; }
@@ -917,182 +913,116 @@ function _buildPage4(d) {
 function _buildScorePage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
 
-  // ─── แบ่งประเภทคอลัมน์ตามลำดับใน DB ──────────────────────────────────────────
-  // คอลัมน์ก่อน midterm = formative (จ.ป.)
-  // คอลัมน์ระหว่าง midterm กับ final = extraBetween (เช่น ลดส่วน แสดงส่วน)
-  // คอลัมน์หลัง final = extraFinal
-  const midIdx   = scoreColumns.findIndex(c => c.assignment_type === 'midterm' || c.column_name?.includes('กลางภาค'))
-  const finalIdx = scoreColumns.findIndex(c => c.assignment_type === 'final'   || c.column_name?.includes('ปลายภาค'))
-  const formative    = midIdx > 0  ? scoreColumns.slice(0, midIdx) : []
-  const midCol       = midIdx  >= 0 ? scoreColumns[midIdx]  : null
-  const extraBetween = (midIdx >= 0 && finalIdx > midIdx + 1) ? scoreColumns.slice(midIdx + 1, finalIdx) : []
-  const finalCol     = finalIdx >= 0 ? scoreColumns[finalIdx] : null
-  const extraFinal   = (finalIdx >= 0 && finalIdx < scoreColumns.length - 1) ? scoreColumns.slice(finalIdx + 1) : []
+  // แบ่ง between (ทุก col ก่อน final) และ final
+  const finalIdx   = scoreColumns.findIndex(c => c.assignment_type === 'final' || c.column_name?.includes('ปลายภาค'))
+  const betweenCols = finalIdx > 0  ? scoreColumns.slice(0, finalIdx) : scoreColumns.slice()
+  const finalCols   = finalIdx >= 0 ? scoreColumns.slice(finalIdx) : []
 
-  const midColCount   = midCol  ? 1 : 0
-  const finalColCount = finalCol ? 1 : 0
+  const betweenMax = betweenCols.reduce((s,c)=>s+(c.full_score??0),0)
+  const finalMax   = finalCols.reduce((s,c)=>s+(c.full_score??0),0)
 
-  // คะแนนเต็มแต่ละส่วน (ผลรวมของ col.full_score)
-  const betweenMax = formative.reduce((s,c)=>s+(c.full_score??0),0)
-    + (midCol?.full_score??0)
-    + extraBetween.reduce((s,c)=>s+(c.full_score??0),0)
-  const finalMax = (finalCol?.full_score??0)
-    + extraFinal.reduce((s,c)=>s+(c.full_score??0),0)
+  // colspan: left = betweenCols + 1(รวมระหว่าง); right = finalCols + 1(รวมปลาย) + 1(รวม100)
+  const leftSpan  = betweenCols.length + 1
+  const rightSpan = finalCols.length + 2
+  const allSpan   = leftSpan + rightSpan
+  const totalCols = 3 + allSpan + 4  // 3 info + scores + 4 result
 
-  // colspan
-  // between = F + mid + 1(รวม) + extraBetween + 1(คะแนน)
-  const betweenSpan  = formative.length + midColCount + 1 + extraBetween.length + 1
-  // final = final + extraFinal + 1(คะแนน)
-  const finalSpan    = finalColCount + extraFinal.length + 1
-  const allScoreSpan = betweenSpan + finalSpan
-  // result cols: ผลสัมฤทธิ์ ระดับ ผล เกรด = 4
-  const totalCols = 3 + allScoreSpan + 4
-
-  // ─── แถวนักเรียน ─────────────────────────────────────────────────────────────
+  // คำนวณคะแนน
   const rows = chunk.map((st, idx) => {
-    const sc       = scoreMap[st.id] ?? {}
-    const fScores  = formative.map(c => sc[c.id] ?? '')
-    const midRaw   = midCol  ? (sc[midCol.id]  ?? '') : ''
-    const ebScores = extraBetween.map(c => sc[c.id] ?? '')
-    const finalRaw = finalCol ? (sc[finalCol.id] ?? '') : ''
-    const efScores = extraFinal.map(c => sc[c.id] ?? '')
-
-    const fSum       = formative.reduce((s,c) => s + (sc[c.id]??0), 0)
-    const midNum     = midCol  ? (sc[midCol.id]  ?? 0) : 0
-    const rawBetween = fSum + midNum                                     // รวม (intermediate)
-    const ebSum      = extraBetween.reduce((s,c) => s + (sc[c.id]??0), 0)
-    const bScore     = rawBetween + ebSum                                // คะแนน between
-
-    const finalNum   = finalCol ? (sc[finalCol.id] ?? 0) : 0
-    const efSum      = extraFinal.reduce((s,c) => s + (sc[c.id]??0), 0)
-    const fScore     = finalNum + efSum                                  // คะแนน final
-
-    const total      = bScore + fScore
-    const evalTxt    = _evalLabel(total)
-    const passTxt    = total >= 50 ? 'ผ่าน' : 'ไม่ผ่าน'
-    const grade      = _calcGrade(total)
+    const sc    = scoreMap[st.id] ?? {}
+    const bScores = betweenCols.map(c => sc[c.id] ?? '')
+    const fScores = finalCols.map(c => sc[c.id] ?? '')
+    const bSum  = betweenCols.reduce((s,c)=>s+(sc[c.id]??0),0)
+    const fSum  = finalCols.reduce((s,c)=>s+(sc[c.id]??0),0)
+    const total = bSum + fSum
+    const bPct  = betweenMax > 0 ? bSum / betweenMax * 100 : 0
+    const fPct  = finalMax   > 0 ? fSum / finalMax   * 100 : 0
+    const grade = _calcGrade(total)
 
     return `<tr>
       <td>${startNo + idx}</td>
       <td>${_esc(st.student_code??'')}</td>
-      <td class="sc-name">${_esc(st.full_name??'')}</td>
+      <td class="gs-name">${_esc(st.full_name??'')}</td>
+      ${bScores.map(v=>`<td>${v}</td>`).join('')}
+      <td style="font-weight:700;">${bSum||''}</td>
       ${fScores.map(v=>`<td>${v}</td>`).join('')}
-      ${midCol  ? `<td>${midRaw}</td>` : ''}
-      <td>${rawBetween||''}</td>
-      ${ebScores.map(v=>`<td>${v}</td>`).join('')}
-      <td style="font-weight:700;">${bScore||''}</td>
-      ${finalCol ? `<td>${finalRaw}</td>` : ''}
-      ${efScores.map(v=>`<td>${v}</td>`).join('')}
-      <td style="font-weight:700;">${fScore||''}</td>
+      <td style="font-weight:700;">${fSum||''}</td>
       <td style="font-weight:700;">${total||''}</td>
-      <td>${evalTxt}</td>
-      <td>${passTxt}</td>
+      <td>${_evalLabel(bPct)}</td>
+      <td>${fPct >= 50 ? 'ผ่าน' : 'ไม่ผ่าน'}</td>
+      <td>${total >= 50 ? 'ผ่าน' : 'ไม่ผ่าน'}</td>
       <td style="font-weight:700;">${grade}</td>
     </tr>`
   })
 
   const emptyRow = `<tr><td colspan="${totalCols}"></td></tr>`
 
-  // ─── vcol helper ─────────────────────────────────────────────────────────────
-  const vcol = txt => `<th class="sc-vcol"><span class="vt">${_esc(txt)}</span></th>`
-
-  // ─── ความกว้างคอลัมน์ ─────────────────────────────────────────────────────────
-  const fW   = formative.length > 3 ? '7mm' : '8mm'
-  const midW = '9mm'
-  const ebW  = '9mm'
-  const sumW = '7mm'
-  const kW   = '9mm'
+  const bW = betweenCols.length > 6 ? '5mm' : '5.8mm'
+  const fW = finalCols.length   > 5 ? '5mm' : '5.5mm'
 
   return `
   <div class="score-wrap">
-    <div style="text-align:center;font-weight:700;font-size:11pt;margin-bottom:2mm;">คะแนนการจัดการเรียนรู้</div>
-    <div class="score-info">
-      <div class="score-info-item"><span class="score-info-label">รายวิชา</span><span class="score-info-val wide">${_esc(ms.subject_name??'')}</span></div>
-      <div class="score-info-item"><span class="score-info-label">รหัสวิชา</span><span class="score-info-val">${_esc(ms.subject_code??'')}</span></div>
-      <div class="score-info-item"><span class="score-info-label">ชั้น</span><span class="score-info-val">${_esc(_shortRoom(cls.class_name))}</span></div>
-      <div class="score-info-item"><span class="score-info-label">ภาคเรียนที่</span><span class="score-info-val">${_esc(String(semester))}</span></div>
-      <div class="score-info-item"><span class="score-info-label">ปีการศึกษา</span><span class="score-info-val">${_esc(String(academicYear))}</span></div>
+    <div class="score-top-info">
+      <div class="sc-field"><span class="sc-lbl">รายวิชา</span><span class="sc-val">${_esc(ms.subject_name??'')}</span></div>
+      <div class="sc-field"><span class="sc-lbl">รหัสวิชา</span><span class="sc-val">${_esc(ms.subject_code??'')}</span></div>
+      <div class="sc-field"><span class="sc-lbl">ชั้น</span><span class="sc-val">${_esc(_shortRoom(cls.class_name))}</span></div>
+      <div class="sc-field"><span class="sc-lbl">ภาคเรียนที่</span><span class="sc-val">${_esc(String(semester))}</span></div>
+      <div class="sc-field"><span class="sc-lbl">ปีการศึกษา</span><span class="sc-val">${_esc(String(academicYear))}</span></div>
     </div>
-    <table class="score-table">
+    <table class="grade-sheet">
       <colgroup>
         <col style="width:5mm;"/>
         <col style="width:12mm;"/>
-        <col style="width:30mm;"/>
-        ${formative.map(()=>`<col style="width:${fW};"/>`).join('')}
-        ${midCol  ? `<col style="width:${midW};"/>` : ''}
-        <col style="width:${sumW};"/>
-        ${extraBetween.map(()=>`<col style="width:${ebW};"/>`).join('')}
-        <col style="width:${kW};"/>
-        ${finalCol ? `<col style="width:${midW};"/>` : ''}
-        ${extraFinal.map(()=>`<col style="width:${ebW};"/>`).join('')}
-        <col style="width:${kW};"/>
-        <col style="width:9mm;"/>
-        <col style="width:16mm;"/>
-        <col style="width:12mm;"/>
+        <col style="width:45mm;"/>
+        ${betweenCols.map(()=>`<col style="width:${bW};"/>`).join('')}
+        <col style="width:7mm;"/>
+        ${finalCols.map(()=>`<col style="width:${fW};"/>`).join('')}
+        <col style="width:7mm;"/>
         <col style="width:8mm;"/>
+        <col style="width:8.5mm;"/>
+        <col style="width:8.5mm;"/>
+        <col style="width:8.5mm;"/>
+        <col style="width:8.5mm;"/>
       </colgroup>
       <thead>
-        <!-- แถว 1: ผู้เรียน rs4 + section header + result cols rs4 -->
         <tr>
-          <th rowspan="4" colspan="3">ผู้เรียน</th>
-          <th colspan="${allScoreSpan}" class="sc-sect">วัดผลระหว่างภาค / ปลายภาค</th>
-          <th rowspan="4">ผลสัมฤทธิ์<br/>(100 คะแนน)</th>
-          <th rowspan="4">ระดับผลการเรียน</th>
-          <th rowspan="4">ผล</th>
-          <th rowspan="4">เกรด</th>
+          <th rowspan="4" class="v"><span>ที่</span></th>
+          <th colspan="2" rowspan="2">ผู้เรียน</th>
+          <th colspan="${allSpan}">วัดผลระหว่างภาค / ปลายภาค</th>
+          <th rowspan="4" class="v"><span>ผลการเรียน<br/>ระหว่างภาค</span></th>
+          <th rowspan="4" class="v"><span>ผลการเรียน<br/>ปลายภาค</span></th>
+          <th rowspan="4" class="v"><span>ผลรวม<br/>(ผ่าน/ไม่ผ่าน)</span></th>
+          <th rowspan="4" class="v"><span>ระดับ<br/>การเรียน</span></th>
         </tr>
-        <!-- แถว 2: อัตราส่วน -->
         <tr>
-          <th colspan="${allScoreSpan}" style="font-size:6pt;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
+          <th colspan="${leftSpan}" style="font-size:9px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
+          <th colspan="${rightSpan}" class="blank-head"></th>
         </tr>
-        <!-- แถว 3: between | final -->
         <tr>
-          <th colspan="${betweenSpan}" class="sc-sect">ผลการเรียนรู้ระหว่างเรียน/กลางภาค</th>
-          <th colspan="${finalSpan}" class="sc-sect">ผลการเรียนรู้ปลายภาค</th>
+          <th colspan="2" rowspan="2">ชื่อ - สกุล</th>
+          <th colspan="${betweenCols.length}">ผลการเรียนระหว่างเรียน/กลางภาค<br/><span class="gs-small">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนน<br/>ระหว่างภาค</span></th>
+          <th colspan="${finalCols.length}">ผลการเรียนปลายภาค<br/><span class="gs-small">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนน<br/>ปลายภาค</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนน<br/>100</span></th>
         </tr>
-        <!-- แถว 4: จุดประสงค์ label (ไม่มี rowspan — ทุก col จะมี vertical name ใน row5) -->
         <tr>
-          ${formative.length + midColCount > 0 ? `<th colspan="${formative.length + midColCount}">จุดประสงค์ที่ / คะแนนเต็ม</th>` : ''}
-          <th></th>
-          ${extraBetween.map(()=>'<th></th>').join('')}
-          <th></th>
-          ${finalColCount > 0 ? `<th colspan="${finalColCount}">จุดประสงค์ที่ / คะแนนเต็ม</th>` : ''}
-          ${extraFinal.map(()=>'<th></th>').join('')}
-          <th></th>
+          ${betweenCols.map(c=>`<th class="v"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
+          ${finalCols.map(c=>`<th class="v"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
         </tr>
-        <!-- แถว 5: ชื่อคอลัมน์ทั้งหมดแนวตั้ง (ผู้เรียน rs4 หมด / result rs4 หมด → เพิ่มได้) -->
         <tr>
-          ${vcol('เลขที่')}
-          ${vcol('เลขประจำตัว')}
-          ${vcol('ชื่อ - สกุล')}
-          ${formative.map((c,i) => vcol(`จุดประสงค์ที่ ${i+1}`)).join('')}
-          ${midCol  ? vcol('สอบกลางภาค') : ''}
-          ${vcol('รวม')}
-          ${extraBetween.map(c => vcol(c.column_name??'')).join('')}
-          ${vcol(`คะแนน (${betweenMax})`)}
-          ${finalCol ? vcol('สอบปลายภาค') : ''}
-          ${extraFinal.map(c => vcol(c.column_name??'')).join('')}
-          ${vcol(`คะแนน (${finalMax})`)}
-          ${vcol('ผลสัมฤทธิ์')}
-          ${vcol('ระดับผลการเรียน')}
-          ${vcol('ผล')}
-          ${vcol('เกรด')}
-        </tr>
-        <!-- แถว 6: คะแนนเต็มแต่ละช่อง -->
-        <tr class="sc-score-row">
-          <td></td><td></td><td></td>
-          ${formative.map(c=>`<td>${c.full_score??''}</td>`).join('')}
-          ${midCol  ? `<td>${midCol.full_score??''}</td>` : ''}
-          <td></td>
-          ${extraBetween.map(c=>`<td>${c.full_score??''}</td>`).join('')}
-          <td>${betweenMax}</td>
-          ${finalCol ? `<td>${finalCol.full_score??''}</td>` : ''}
-          ${extraFinal.map(c=>`<td>${c.full_score??''}</td>`).join('')}
-          <td>${finalMax}</td>
-          <td>100</td>
-          <td></td>
-          <td></td>
-          <td>เกรด</td>
+          <th class="score-full"></th>
+          <th class="score-full">เลขประจำตัว</th>
+          <th class="score-full"></th>
+          ${betweenCols.map(c=>`<th class="score-full">${c.full_score??''}</th>`).join('')}
+          <th class="score-full">${betweenMax}</th>
+          ${finalCols.map(c=>`<th class="score-full">${c.full_score??''}</th>`).join('')}
+          <th class="score-full">${finalMax}</th>
+          <th class="score-full">100</th>
+          <th class="score-full"></th>
+          <th class="score-full"></th>
+          <th class="score-full"></th>
+          <th class="score-full">เกรด</th>
         </tr>
       </thead>
       <tbody>
@@ -1102,24 +1032,23 @@ function _buildScorePage(d, chunk, startNo) {
     </table>
     <div class="score-sig">
       <div class="score-sig-row">
-        <span>ลงชื่อ</span>
-        <span class="score-sig-line">${_esc(teacher?.full_name??'')}</span>
-        <span>ครูผู้สอน</span>
+        <div class="score-sig-lbl">ลงชื่อ</div>
+        <div class="score-sig-line">${_esc(teacher?.full_name??'')}</div>
+        <div class="score-sig-role">ครูผู้สอน</div>
       </div>
       <div class="score-sig-row">
-        <span>ลงชื่อ</span>
-        <span class="score-sig-line">${_esc(d.dept?.head_name??'')}</span>
-        <span>หัวหน้าหมวดวิชา</span>
+        <div class="score-sig-lbl">ลงชื่อ</div>
+        <div class="score-sig-line">${_esc(d.dept?.head_name??'')}</div>
+        <div class="score-sig-role">หัวหน้าหมวดวิชา</div>
       </div>
       <div class="score-sig-row">
-        <span>ลงชื่อ</span>
-        <span class="score-sig-line">${_esc(d.cfg[`${d.prefix}RegistrarName`]??'')}</span>
-        <span>หัวหน้างานวัดผลและประเมินผล</span>
+        <div class="score-sig-lbl">ลงชื่อ</div>
+        <div class="score-sig-line">${_esc(d.cfg[\`${d.prefix}RegistrarName\`]??'')}</div>
+        <div class="score-sig-role">หัวหน้างานวัดผลและประเมินผล</div>
       </div>
     </div>
   </div>`
 }
-
 // ─── Page 5: รายละเอียดสัปดาห์/คาบ/วันที่สอน ────────────────────────────────
 
 function _buildPage5(d) {
