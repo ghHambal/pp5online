@@ -361,11 +361,13 @@ function _getCSS() {
     .p2-hdr table { border: none; width: 100%; }
     .p2-hdr td { border: none; padding: 1px 0; }
     .p2-uline { display: inline-block; border-bottom: .3mm dashed #555; min-width: 20mm; text-align: center; padding: 0 1.5mm; font-weight: 600; }
-    .std-table { width: 100%; border-collapse: collapse; flex: 1; }
+    .std-table { width: 100%; border-collapse: collapse; flex: 1; height: 0; }
     .std-table th { font-size: 10pt; padding: 1.5mm 2mm; border: .4mm solid #000; text-align: center; font-weight: 700; }
     .std-table td { border: .4mm solid #000; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
     .std-table td:first-child { width: 32mm; }
     .std-table td.std-row { height: 7mm; }
+    .std-fill-row { height: 100%; }
+    .std-fill-row td { border: .4mm solid #000; }
     .p2-footer { display: flex; gap: 6mm; margin-top: 3mm; font-size: 9pt; }
     .p2-obj { flex: 0 0 auto; width: 60mm; }
     .p2-obj p { margin-bottom: 1mm; }
@@ -642,10 +644,8 @@ function _buildPage2(d) {
   const logoUrl  = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
   const cols    = Array.isArray(courseDoc?.table_columns) ? courseDoc.table_columns : ['มาตรฐานการเรียนรู้','ตัวชี้วัด']
   const rawRows = Array.isArray(courseDoc?.table_rows) ? courseDoc.table_rows : []
-  const minRows = 22
-  const rows    = rawRows.length >= minRows
-    ? rawRows
-    : [...rawRows, ...Array.from({length: minRows - rawRows.length}, () => cols.map(() => ''))]
+  // ไม่ pad แถวว่าง — ใช้ .std-fill-row ยืดเต็มพื้นที่ที่เหลือแทน
+  const rows    = rawRows
   const _joinInts = (arr) => Array.isArray(arr) && arr.length ? arr.join(',') : ''
   const allObj   = _joinInts(courseDoc?.between_objective_items)
   const midObj   = _joinInts(courseDoc?.midterm_objective_items)
@@ -696,6 +696,9 @@ function _buildPage2(d) {
           <td class="std-row">${_esc(Array.isArray(row) ? row[0] ?? '' : '')}</td>
           <td class="std-row">${_esc(Array.isArray(row) ? row[1] ?? '' : '')}</td>
         </tr>`).join('')}
+        <tr class="std-fill-row">
+          <td></td><td></td>
+        </tr>
       </tbody>
     </table>
 
