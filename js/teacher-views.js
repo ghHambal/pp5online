@@ -213,13 +213,15 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setTitle('ภาพรวม')
   const { getPendingExamRequestCount } = await import('./api.js')
   const { getMyDonationRequests } = await import('./api.js')
-  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests] = await Promise.all([
+  const { getUnreadNotifications } = await import('./api.js')
+  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests, svNotifs] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
     teacher ? getPendingExamRequestCount(teacher.id).catch(()=>0) : Promise.resolve(0),
     teacher ? getTeacherPackageAccess(teacher.id).catch(()=>({ hasSemester: false, paidRoomCount: 0 })) : Promise.resolve({ hasSemester: false, paidRoomCount: 0 }),
     teacher ? getMyDonationRequests(teacher.id).catch(()=>[]) : Promise.resolve([]),
+    teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
   ])
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
@@ -359,6 +361,27 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   }
 
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
+
+    <!-- แจ้งเตือนจากหัวหน้า -->
+    ${svNotifs.length ? `
+    <div id="sv-notif-banner" style="background:#fef3c7;border:1px solid #fbbf24;border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;cursor:pointer;"
+      onclick="document.getElementById('sv-notif-banner').querySelector('.sv-notif-detail').style.display=document.getElementById('sv-notif-banner').querySelector('.sv-notif-detail').style.display==='none'?'block':'none'">
+      <span style="font-size:20px;">🔔</span>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:13px;color:#92400e;">มีข้อความจากหัวหน้า ${svNotifs.length} รายการ</div>
+        <div style="font-size:12px;color:#b45309;">${svNotifs[0].teachers?.full_name??'หัวหน้า'}: ${svNotifs[0].comment}</div>
+        <div class="sv-notif-detail" style="display:none;margin-top:8px;">
+          ${svNotifs.slice(1).map(n=>`<div style="font-size:12px;color:#92400e;padding:4px 0;border-top:1px solid #fde68a;">
+            ${n.teachers?.full_name??'หัวหน้า'}: ${n.comment}</div>`).join('')}
+        </div>
+      </div>
+      <button onclick="event.stopPropagation();if(window._markSvNotifsRead)window._markSvNotifsRead()"
+        style="padding:4px 10px;border:1px solid #d97706;border-radius:6px;background:#fff;color:#92400e;font-size:11px;cursor:pointer;white-space:nowrap;">
+        รับทราบ
+      </button>
+    </div>
+    <script>window._markSvNotifsRead=async()=>{try{const{markNotificationsRead}=await import('./api.js');await markNotificationsRead(${teacher?.id});document.getElementById('sv-notif-banner')?.remove();document.querySelectorAll('#sv-notif-badge').forEach(el=>el.remove())}catch{}}<\/script>
+    ` : ''}
 
     <!-- การ์ดโปรไฟล์ครู -->
     <div class="bg-white rounded-2xl ${cardBorderCls} p-5 mb-5 flex items-center gap-4" style="${cardGlowStyle}">

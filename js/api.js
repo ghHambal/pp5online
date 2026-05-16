@@ -2119,3 +2119,30 @@ export async function assignTeacherToDept(teacherId, dept) {
     .eq('id', teacherId)
   if (error) throw error
 }
+
+// ── supervisor notifications ───────────────────────────────────────────────────
+
+export async function addSupervisorCommentWithNotify(supervisorId, teacherId, metric, comment, notify) {
+  const { error } = await supabase.from('supervisor_comments')
+    .insert({ supervisor_id: supervisorId, teacher_id: teacherId, metric, comment, notify_teacher: notify })
+  if (error) throw error
+}
+
+export async function getUnreadNotifications(teacherId) {
+  const { data } = await supabase
+    .from('supervisor_comments')
+    .select('id, metric, comment, created_at, teachers!supervisor_id(full_name)')
+    .eq('teacher_id', teacherId)
+    .eq('notify_teacher', true)
+    .eq('is_read', false)
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function markNotificationsRead(teacherId) {
+  await supabase.from('supervisor_comments')
+    .update({ is_read: true })
+    .eq('teacher_id', teacherId)
+    .eq('notify_teacher', true)
+    .eq('is_read', false)
+}

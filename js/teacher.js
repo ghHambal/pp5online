@@ -8,7 +8,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getTeacherPackageAccess, getMyDonationRequests,
          getMySchedule, getPeriods,
          getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
-         updateLastSeen, logLogin } from './api.js'
+         updateLastSeen, logLogin,
+         getUnreadNotifications, markNotificationsRead } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -77,6 +78,9 @@ async function loadTeacherInfo(userId) {
   }
   document.getElementById('t-name').textContent = name
   document.getElementById('t-code').textContent = code
+
+  // แจ้งเตือนจากหัวหน้า
+  if (_teacher?.id) _loadSupervisorNotifications(_teacher.id)
 
   // Header
   document.getElementById('user-name').textContent = name
@@ -1724,6 +1728,75 @@ async function loadSidebarHeader(teacher) {
       }
     }
   } catch { /* ไม่ critical */ }
+}
+
+// ─── Supervisor Notifications ────────────────────────────────────────────────
+let _unreadNotifs = []
+
+async function _loadSupervisorNotifications(teacherId) {
+  try {
+    _unreadNotifs = await getUnreadNotifications(teacherId)
+    _renderNotifBadge()
+  } catch {}
+}
+
+function _renderNotifBadge() {
+  // ลบ badge เก่า
+  document.querySelectorAll('#sv-notif-badge').forEach(el => el.remove())
+  if (!_unreadNotifs.length) return
+
+  const n = _unreadNotifs.length
+  const metricLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
+
+  // Badge ใน sidebar (ข้างชื่อครู)
+  const tName = document.getElementById('t-name')
+  if (tName) {
+    const badge = document.createElement('span')
+    badge.id = 'sv-notif-badge'
+    badge.style.cssText = 'display:inline-block;background:#dc2626;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;margin-left:6px;cursor:pointer;'
+    badge.textContent = n
+    badge.title = `${n} ข้อความจากหัวหน้า`
+    badge.onclick = () => _showNotifPopup(teacherId)
+    tName.parentElement?.appendChild(badge)
+  }
+
+  // Push notification (ถ้า service worker พร้อม)
+  if ('Notification' in window && Notification.permission === 'granted' && n > 0) {
+    new Notification('ปพ.5 ออนไลน์ — มีข้อความจากหัวหน้า', {
+      body: _unreadNotifs[0].comment,
+      icon: '/pp5online/public/pp5-form-logo.png',
+    })
+  }
+}
+
+async function _showNotifPopup(teacherId) {
+  const metricLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;'
+  overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:min(460px,96vw);max-height:80vh;overflow-y:auto;padding:24px;position:relative;">
+    <button style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;" onclick="this.closest('div').parentElement.remove()">✕</button>
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">🔔 ข้อความจากหัวหน้า (${_unreadNotifs.length})</div>
+    ${_unreadNotifs.map(n=>`
+      <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:4px;">
+          ${n.teachers?.full_name??'หัวหน้า'} · ${metricLabel[n.metric]??n.metric}
+        </div>
+        <div style="font-size:13px;color:#374151;">${n.comment}</div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${new Date(n.created_at).toLocaleString('th')}</div>
+      </div>`).join('')}
+    <button id="sv-mark-read"
+      style="width:100%;margin-top:8px;padding:8px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;">
+      ✓ รับทราบทั้งหมด
+    </button>
+  </div>`
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove() })
+  overlay.querySelector('#sv-mark-read').onclick = async () => {
+    await markNotificationsRead(teacherId)
+    _unreadNotifs = []
+    document.querySelectorAll('#sv-notif-badge').forEach(el => el.remove())
+    overlay.remove()
+  }
 }
 
 // ─── Supervisor Mode Toggle ───────────────────────────────────────────────────

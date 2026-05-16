@@ -2,6 +2,7 @@
 import {
   getSupervisorProgress, getDepartments,
   getSupervisorComments, addSupervisorComment, deleteSupervisorComment,
+  addSupervisorCommentWithNotify,
   getAttendanceSummaryByClass, getScoreSummaryByClass,
   getClassStudentsAndScores, getClassAttendanceFull,
   assignTeacherToDept,
@@ -366,10 +367,12 @@ async function _openMetricPopup(m, metric) {
     <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
     <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">${titles[metric]??metric} — ${m.full_name}</h3>
     <div id="sv-pop-body">⏳ กำลังโหลด...</div>
+    ${_miniCommentHTML(metric)}
   </div>`
   document.body.appendChild(overlay)
   overlay.querySelector('#sv-pop-close').onclick = ()=>overlay.remove()
   overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
+  _bindMiniComment(overlay, m.id, metric)
 
   const body = overlay.querySelector('#sv-pop-body')
   const classIds = m.myClasses.map(c=>c.id)
@@ -515,6 +518,7 @@ async function _openMetricPopup(m, metric) {
 // ── class full popup ──────────────────────────────────────────────────────────
 async function _openClassPopup(m, cls, defaultTab='att') {
   const overlay = _makeOverlay()
+  const clsMetric = defaultTab==='att' ? 'attendance' : 'scores'
   overlay.innerHTML = `<div class="sv-popup" style="width:min(800px,96vw);">
     <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
     <h3 style="font-size:15px;font-weight:700;margin-bottom:4px;">${cls.class_name}</h3>
@@ -523,11 +527,13 @@ async function _openClassPopup(m, cls, defaultTab='att') {
       <button class="sv-tab-btn ${defaultTab==='att'?'active':''}" data-tab="att">✅ เช็คชื่อ</button>
       <button class="sv-tab-btn ${defaultTab==='score'?'active':''}" data-tab="score">📊 คะแนน</button>
     </div>
-    <div id="sv-cls-body" style="max-height:60vh;overflow-y:auto;">⏳ กำลังโหลด...</div>
+    <div id="sv-cls-body" style="max-height:50vh;overflow-y:auto;">⏳ กำลังโหลด...</div>
+    ${_miniCommentHTML(clsMetric)}
   </div>`
   document.body.appendChild(overlay)
   overlay.querySelector('#sv-pop-close').onclick = ()=>overlay.remove()
   overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()})
+  _bindMiniComment(overlay, m.id, clsMetric)
 
   const [attData, {students, cols, scores}] = await Promise.all([
     getClassAttendanceFull(cls.id),
@@ -624,6 +630,75 @@ async function _openClassPopup(m, cls, defaultTab='att') {
 }
 
 // ── utils ─────────────────────────────────────────────────────────────────────
+// ── mini comment section (ใส่ใน popup ทุกที่) ────────────────────────────────
+function _miniCommentHTML(metric) {
+  const metricLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}[metric]??metric
+  return `
+  <div class="sv-mini-comment" data-metric="${metric}"
+    style="margin-top:14px;border-top:1px solid #e5e7eb;padding-top:12px;">
+    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">💬 Comment (${metricLabel})</div>
+    <div class="sv-mini-comment-list" style="max-height:120px;overflow-y:auto;margin-bottom:8px;"></div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <input class="sv-mini-comment-input" type="text" placeholder="พิมพ์ความเห็น..." maxlength="200"
+        style="flex:1;min-width:120px;border:1px solid #d1d5db;border-radius:8px;padding:5px 10px;font-size:12px;font-family:inherit;"/>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;white-space:nowrap;">
+        <input class="sv-mini-notify" type="checkbox"/>🔔แจ้งเตือน
+      </label>
+      <button class="sv-mini-send"
+        style="padding:5px 12px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;">
+        ส่ง
+      </button>
+    </div>
+  </div>`
+}
+
+async function _bindMiniComment(container, teacherId, metric) {
+  const section = container.querySelector(`.sv-mini-comment[data-metric="${metric}"]`)
+  if (!section) return
+
+  async function reload() {
+    const list = section.querySelector('.sv-mini-comment-list')
+    try {
+      const all = await getSupervisorComments(teacherId)
+      const filtered = all.filter(c => c.metric === metric || metric === 'general')
+      list.innerHTML = filtered.length ? filtered.map(c=>`
+        <div style="font-size:11px;padding:4px 8px;background:#f9fafb;border-radius:6px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:start;">
+          <div><strong>${c.teachers?.full_name??'หัวหน้า'}</strong>: ${c.comment}
+            ${c.notify_teacher?'<span style="color:#6366f1;font-size:10px;"> 🔔</span>':''}
+            <div style="color:#9ca3af;font-size:10px;">${new Date(c.created_at).toLocaleString('th')}</div>
+          </div>
+          ${c.supervisor_id===_selfTeacher?.id?`<button data-cid="${c.id}" class="sv-mini-del"
+            style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>`:''}
+        </div>`).join('')
+        : '<div style="color:#9ca3af;font-size:11px;">ยังไม่มีความเห็น</div>'
+      list.querySelectorAll('.sv-mini-del').forEach(b=>{
+        b.onclick = async () => {
+          await deleteSupervisorComment(parseInt(b.dataset.cid))
+          await reload()
+        }
+      })
+    } catch {}
+  }
+
+  const sendBtn = section.querySelector('.sv-mini-send')
+  const inp = section.querySelector('.sv-mini-comment-input')
+  const notify = section.querySelector('.sv-mini-notify')
+
+  sendBtn.onclick = async () => {
+    const txt = inp.value.trim()
+    if (!txt) return
+    sendBtn.disabled = true
+    try {
+      await addSupervisorCommentWithNotify(_selfTeacher.id, teacherId, metric, txt, notify.checked)
+      inp.value = ''
+      notify.checked = false
+      await reload()
+    } catch(e) { alert(e.message) } finally { sendBtn.disabled = false }
+  }
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') sendBtn.click() })
+  await reload()
+}
+
 function _makeOverlay() {
   const el = document.createElement('div')
   el.className = 'sv-overlay'
