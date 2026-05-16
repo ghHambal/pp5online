@@ -899,7 +899,7 @@ function _buildAttPage(d, chunk, startNo) {
 
 // ─── Page 4: คะแนนการจัดการเรียนรู้ ─────────────────────────────────────────
 
-const ROWS_PER_SCORE_PAGE = 30
+const ROWS_PER_SCORE_PAGE = 50
 
 function _buildPage4(d) {
   const { students } = d
@@ -931,11 +931,13 @@ function _buildScorePage(d, chunk, startNo) {
   const leftSpan  = allBetween.length + 1
   const rightSpan = allFinal.length + 2
   const allSpan   = leftSpan + rightSpan
-  const totalCols = 3 + allSpan + 4
+  // result: ผลการเรียนระหว่างภาค | ผลการเรียนปลายภาค | ประเมินอ่าน/คิดวิเคราะห์ | ประเมินคุณลักษณะ | ผลรวม | ระดับ = 6
+  const RES_COLS = 6
+  const totalCols = 3 + allSpan + RES_COLS
 
-  // adaptive row height: ประมาณ available = 297-28(margin)-8(info)-57(header)-25(sig) = 179mm
+  // adaptive row height: available ≈ 297 - top(16) - info(8) - header(~70) - sig(~25) - bottom(12) = 166mm
   const nDataRows = chunk.length + 1  // +1 แถวว่าง
-  const rowH = Math.max(4, Math.min(5.8, Math.floor(179 / nDataRows * 10) / 10)).toFixed(1)
+  const rowH = Math.max(3.8, Math.min(5.8, Math.floor(160 / nDataRows * 10) / 10)).toFixed(1)
 
   // คำนวณคะแนน
   const rows = chunk.map((st, idx) => {
@@ -960,6 +962,8 @@ function _buildScorePage(d, chunk, startNo) {
       <td style="font-weight:700;">${total||''}</td>
       <td>${_evalLabel(bPct)}</td>
       <td>${fPct >= 50 ? 'ผ่าน' : 'ไม่ผ่าน'}</td>
+      <td></td>
+      <td></td>
       <td>${total >= 50 ? 'ผ่าน' : 'ไม่ผ่าน'}</td>
       <td style="font-weight:700;">${grade}</td>
     </tr>`
@@ -993,6 +997,8 @@ function _buildScorePage(d, chunk, startNo) {
         <col style="width:8.5mm;"/>
         <col style="width:8.5mm;"/>
         <col style="width:8.5mm;"/>
+        <col style="width:8.5mm;"/>
+        <col style="width:8.5mm;"/>
       </colgroup>
       <thead>
         <tr>
@@ -1001,12 +1007,13 @@ function _buildScorePage(d, chunk, startNo) {
           <th colspan="${allSpan}">วัดผลระหว่างภาค / ปลายภาค</th>
           <th rowspan="4" class="v"><span>ผลการเรียน<br/>ระหว่างภาค</span></th>
           <th rowspan="4" class="v"><span>ผลการเรียน<br/>ปลายภาค</span></th>
+          <th rowspan="4" class="v"><span>ประเมินการอ่าน<br/>คิดวิเคราะห์<br/>และเขียน</span></th>
+          <th rowspan="4" class="v"><span>ประเมิน<br/>คุณลักษณะ<br/>อันพึงประสงค์</span></th>
           <th rowspan="4" class="v"><span>ผลรวม<br/>(ผ่าน/ไม่ผ่าน)</span></th>
           <th rowspan="4" class="v"><span>ระดับ<br/>การเรียน</span></th>
         </tr>
         <tr>
-          <th colspan="${leftSpan}" style="font-size:9px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
-          <th colspan="${rightSpan}" class="blank-head"></th>
+          <th colspan="${allSpan}" style="font-size:9px;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
         </tr>
         <tr>
           <th colspan="2" rowspan="2">ชื่อ - สกุล</th>
@@ -1017,18 +1024,20 @@ function _buildScorePage(d, chunk, startNo) {
           <th rowspan="2" class="v"><span>รวมคะแนน<br/>100</span></th>
         </tr>
         <tr>
-          ${allBetween.map(c=>`<th class="v"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
-          ${allFinal.map(c=>`<th class="v"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
+          ${allBetween.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
+          ${allFinal.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.column_name??'')}</span></th>`).join('')}
         </tr>
         <tr>
           <th class="score-full"></th>
           <th class="score-full">เลขประจำตัว</th>
           <th class="score-full"></th>
           ${allBetween.map(c=>`<th class="score-full">${c.full_score??''}</th>`).join('')}
-          <th class="score-full">${betweenMax}</th>
+          <th class="score-full">${betweenMax||''}</th>
           ${allFinal.map(c=>`<th class="score-full">${c.full_score??''}</th>`).join('')}
-          <th class="score-full">${finalMax}</th>
-          <th class="score-full">100</th>
+          <th class="score-full">${finalMax||''}</th>
+          <th class="score-full">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
+          <th class="score-full"></th>
+          <th class="score-full"></th>
           <th class="score-full"></th>
           <th class="score-full"></th>
           <th class="score-full"></th>
