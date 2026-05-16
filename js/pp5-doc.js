@@ -367,7 +367,18 @@ function _getCSS() {
     .std-table td:first-child { width: 32mm; }
     .std-table td.std-row { height: 7mm; }
     .std-fill-row { height: 100%; }
-    .std-fill-row td { border: .4mm solid #000; }
+    .std-fill-row td {
+      border: .4mm solid #000;
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(7mm - .4mm),
+        #000 calc(7mm - .4mm),
+        #000 7mm
+      );
+      background-size: 100% 7mm;
+      background-origin: border-box;
+    }
     .p2-footer { display: flex; gap: 6mm; margin-top: 3mm; font-size: 9pt; }
     .p2-obj { flex: 0 0 auto; width: 60mm; }
     .p2-obj p { margin-bottom: 1mm; }
