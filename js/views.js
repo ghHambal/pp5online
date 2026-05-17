@@ -1774,6 +1774,89 @@ export async function renderStudents() {
 }
 
 // ─── View: Settings ───────────────────────────────────────────────────────────
+// ─── Phrases panel (admin จัดการประโยคสำเร็จรูปของหัวหน้า) ───────────────────
+async function _renderPhrasesPanel() {
+  const { getCommentPhrases, addCommentPhrase, updateCommentPhrase, deleteCommentPhrase } = await import('./api.js')
+  const METRICS = [
+    { key:'general',    label:'ทั่วไป' },
+    { key:'profile',    label:'โปรไฟล์' },
+    { key:'dates',      label:'วันสอน' },
+    { key:'attendance', label:'เช็คชื่อ' },
+    { key:'scores',     label:'คะแนน' },
+  ]
+  const catColor = {general:'#f3f4f6',profile:'#ede9fe',dates:'#dbeafe',attendance:'#d1fae5',scores:'#fef9c3'}
+  const catText  = {general:'#374151',profile:'#5b21b6',dates:'#1e40af',attendance:'#065f46',scores:'#713f12'}
+
+  const el = document.createElement('div')
+  el.style.cssText = 'padding:4px 0;'
+
+  async function reload() {
+    const all = await getCommentPhrases().catch(() => [])
+    el.innerHTML = `
+      <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">
+        ประโยคเหล่านี้จะปรากฏเป็น chip ให้หัวหน้าคลิกเลือกตอนเขียนความคิดเห็น
+      </div>
+      ${METRICS.map(cat => {
+        const phrases = all.filter(p => p.metric === cat.key)
+        return `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-size:13px;font-weight:700;background:${catColor[cat.key]};color:${catText[cat.key]};padding:3px 12px;border-radius:20px;">${cat.label}</span>
+            <button class="ph-add-btn" data-metric="${cat.key}"
+              style="font-size:12px;padding:4px 12px;border:1px dashed #6366f1;border-radius:8px;background:#f5f3ff;color:#6366f1;cursor:pointer;font-family:inherit;">
+              + เพิ่มประโยค
+            </button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${phrases.map(p => `
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f9fafb;border-radius:8px;">
+                <input class="ph-edit-inp" data-id="${p.id}" value="${p.phrase.replace(/"/g,'&quot;')}"
+                  style="flex:1;border:none;background:transparent;font-size:13px;font-family:inherit;outline:none;"/>
+                <button class="ph-save-btn" data-id="${p.id}"
+                  style="font-size:11px;padding:3px 10px;border:1px solid #059669;border-radius:6px;background:#d1fae5;color:#065f46;cursor:pointer;font-family:inherit;white-space:nowrap;">
+                  บันทึก
+                </button>
+                <button class="ph-del-btn" data-id="${p.id}"
+                  style="font-size:11px;padding:3px 10px;border:1px solid #fca5a5;border-radius:6px;background:#fee2e2;color:#dc2626;cursor:pointer;font-family:inherit;">
+                  ลบ
+                </button>
+              </div>`).join('')}
+            ${!phrases.length ? `<div style="color:#9ca3af;font-size:12px;padding:4px 0;">ยังไม่มีประโยค</div>` : ''}
+          </div>
+        </div>`
+      }).join('')}
+    `
+    // bind add
+    el.querySelectorAll('.ph-add-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const phrase = prompt('พิมพ์ประโยคใหม่:')
+        if (!phrase?.trim()) return
+        await addCommentPhrase(btn.dataset.metric, phrase.trim())
+        reload()
+      }
+    })
+    // bind save
+    el.querySelectorAll('.ph-save-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const inp = el.querySelector(`.ph-edit-inp[data-id="${btn.dataset.id}"]`)
+        await updateCommentPhrase(parseInt(btn.dataset.id), inp.value.trim())
+        btn.textContent = '✓'; setTimeout(() => btn.textContent = 'บันทึก', 1000)
+      }
+    })
+    // bind delete
+    el.querySelectorAll('.ph-del-btn').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('ลบประโยคนี้?')) return
+        await deleteCommentPhrase(parseInt(btn.dataset.id))
+        reload()
+      }
+    })
+  }
+
+  await reload()
+  return el
+}
+
 export async function renderSettings() {
   setActiveNav('settings')
   document.getElementById('page-title').textContent = 'ตั้งค่าระบบ'
@@ -1890,6 +1973,7 @@ export async function renderSettings() {
       { id:'payment',  icon:'💳',  label:'ชำระเงิน' },
       { id:'package',  icon:'📦',  label:'แพ็กเกจ' },
       { id:'student',  icon:'👦',  label:'นักเรียน' },
+      { id:'phrases',  icon:'💬',  label:'ประโยคสำเร็จรูป' },
       { id:'sync',     icon:'🔗',  label:'Google Sync' },
       { id:'template', icon:'📄',  label:'เทมเพลต ปพ.5' },
       { id:'schedule', icon:'🗓️', label:'ตารางสอน' },
@@ -2262,6 +2346,8 @@ export async function renderSettings() {
           hint: `default: ${t.defaultId}`,
         })).join('')}`
 
+      if (tabId === 'phrases') return _renderPhrasesPanel()
+
       if (tabId === 'schedule') return [
         section('การแสดงผลตาราง', [
           { key:'hasFriday', label:'เปิดสอนวันศุกร์', type:'toggle',
@@ -2319,7 +2405,16 @@ export async function renderSettings() {
         const on = btn.dataset.tab === tabId
         btn.className = `cfg-tab flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition whitespace-nowrap ${on ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`
       })
-      document.getElementById('cfg-panel-inner').innerHTML = panelContent(tabId)
+      const content = panelContent(tabId)
+      const inner = document.getElementById('cfg-panel-inner')
+      if (content instanceof Promise) {
+        inner.innerHTML = '<div style="padding:24px;text-align:center;color:#9ca3af;">⏳ กำลังโหลด...</div>'
+        content.then(el => { inner.innerHTML = ''; if (el instanceof Element) inner.appendChild(el); else inner.innerHTML = el ?? '' })
+      } else if (content instanceof Element) {
+        inner.innerHTML = ''; inner.appendChild(content)
+      } else {
+        inner.innerHTML = content ?? ''
+      }
       document.getElementById('cfg-save-hint').textContent = ''
 
       // color preview sync

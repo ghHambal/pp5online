@@ -2147,6 +2147,25 @@ export async function markNotificationsRead(teacherId) {
     .eq('is_read', false)
 }
 
+export async function getCommentPhrases(metric) {
+  const q = supabase.from('supervisor_comment_phrases').select('*').order('sort_order')
+  if (metric) q.eq('metric', metric)
+  const { data } = await q
+  return data ?? []
+}
+export async function addCommentPhrase(metric, phrase) {
+  const { error } = await supabase.from('supervisor_comment_phrases').insert({ metric, phrase })
+  if (error) throw error
+}
+export async function updateCommentPhrase(id, phrase) {
+  const { error } = await supabase.from('supervisor_comment_phrases').update({ phrase }).eq('id', id)
+  if (error) throw error
+}
+export async function deleteCommentPhrase(id) {
+  const { error } = await supabase.from('supervisor_comment_phrases').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function getClassByIdFull(classId) {
   const { data, error } = await supabase
     .from('classes')

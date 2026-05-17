@@ -2,11 +2,20 @@
 import {
   getSupervisorProgress, getDepartments,
   getSupervisorComments, addSupervisorComment, deleteSupervisorComment,
-  addSupervisorCommentWithNotify,
+  addSupervisorCommentWithNotify, getCommentPhrases,
   getAttendanceSummaryByClass, getScoreSummaryByClass,
   getClassStudentsAndScores, getClassAttendanceFull,
   assignTeacherToDept,
 } from './api.js'
+
+let _phrases = {}  // cache: { metric: [phrase, ...] }
+
+async function _loadPhrases(metric) {
+  if (_phrases[metric]) return _phrases[metric]
+  const list = await getCommentPhrases(metric).catch(() => [])
+  _phrases[metric] = list.map(p => p.phrase)
+  return _phrases[metric]
+}
 import { openPP5Doc } from './pp5-doc.js'
 
 // ── inject styles once ────────────────────────────────────────────────────────
@@ -428,10 +437,13 @@ function _showDetail(m) {
               const [val,label] = s.split(':')
               return `<div class="sv-cat-row" data-cat="${val}"
                 style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;">
-                <div class="sv-cat-label" style="min-width:80px;font-size:13px;font-weight:600;color:#374151;padding-top:2px;">${label}</div>
-                <textarea class="sv-cat-textarea" data-cat="${val}" rows="2" maxlength="300"
-                  placeholder="พิมพ์ความคิดเห็นสำหรับ ${label}..."
-                  style="display:none;flex:1;border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit;resize:none;"></textarea>
+                <div class="sv-cat-label" style="min-width:80px;font-size:13px;font-weight:600;color:#374151;padding-top:6px;">${label}</div>
+                <div class="sv-cat-right" style="display:none;flex:1;flex-direction:column;gap:6px;">
+                  <div class="sv-phrase-chips" style="display:flex;flex-wrap:wrap;gap:5px;min-height:10px;"></div>
+                  <textarea class="sv-cat-textarea" data-cat="${val}" rows="2" maxlength="500"
+                    placeholder="พิมพ์ความคิดเห็นสำหรับ ${label}..."
+                    style="border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit;resize:none;width:100%;box-sizing:border-box;"></textarea>
+                </div>
               </div>`
             }).join('')}
           </div>
@@ -482,19 +494,45 @@ function _showDetail(m) {
   }
   const greenGlow = 'box-shadow:0 0 0 2px #059669,0 0 8px rgba(5,150,105,.3);border-color:#059669;background:#f0fdf4;'
   document.querySelectorAll('.sv-cat-row').forEach(row => {
-    row.onclick = e => {
-      if (e.target.tagName === 'TEXTAREA') return
+    row.onclick = async e => {
+      if (e.target.tagName === 'TEXTAREA' || e.target.closest('.sv-phrase-chips')) return
+      const right = row.querySelector('.sv-cat-right')
       const ta = row.querySelector('textarea')
       const isSelected = row.dataset.selected === '1'
       if (isSelected) {
         row.dataset.selected = '0'
         row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;'
-        ta.style.display = 'none'
+        right.style.display = 'none'
       } else {
         row.dataset.selected = '1'
         row.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:all .15s;${greenGlow}`
-        ta.style.display = ''
+        right.style.display = 'flex'
         ta.focus()
+        // โหลด phrases และสร้าง chips
+        const metric = row.dataset.cat
+        const chipsEl = row.querySelector('.sv-phrase-chips')
+        if (!chipsEl.children.length) {
+          const phrases = await _loadPhrases(metric)
+          chipsEl.innerHTML = phrases.map(p =>
+            `<span class="sv-phrase-chip"
+              style="padding:3px 10px;border-radius:20px;border:1px solid #d1d5db;background:#f9fafb;font-size:11px;cursor:pointer;color:#374151;transition:all .1s;"
+              onmouseover="this.style.background='#e0f2fe';this.style.borderColor='#0ea5e9'"
+              onmouseout="this.style.background='#f9fafb';this.style.borderColor='#d1d5db'">
+              ${p}
+            </span>`
+          ).join('')
+          chipsEl.querySelectorAll('.sv-phrase-chip').forEach((chip, i) => {
+            chip.addEventListener('click', e => {
+              e.stopPropagation()
+              const cur = ta.value.trim()
+              ta.value = cur ? cur + ' ' + phrases[i] : phrases[i]
+              ta.focus()
+              // flash chip
+              chip.style.background = '#d1fae5'; chip.style.borderColor = '#059669'
+              setTimeout(() => { chip.style.background = '#f9fafb'; chip.style.borderColor = '#d1d5db' }, 400)
+            })
+          })
+        }
       }
     }
   })
