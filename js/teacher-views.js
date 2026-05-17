@@ -206,6 +206,16 @@ function _countdownInfo(startTime, endTime) {
   return { label: `อีก ${h} ชม.${m > 0 ? ` ${m} น.` : ''}`, cls: 'text-gray-500' }
 }
 
+function _activeRemainingDisplay(endTime) {
+  if (!endTime) return '—'
+  const [eh, em] = endTime.split(':').map(Number)
+  const now = new Date()
+  const remMins = Math.ceil(((eh*60+em)*60000 - (now.getHours()*60+now.getMinutes())*60000 - now.getSeconds()*1000) / 60000)
+  if (remMins <= 0) return '0 น.'
+  if (remMins < 60) return `${remMins} น.`
+  return `${Math.floor(remMins/60)} ชม. ${remMins%60} น.`
+}
+
 let _todayWidgetTimer = null
 
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
@@ -254,6 +264,19 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       period: _periodMap[s.period_no],
     }))
     .sort((a, b) => a.period_no - b.period_no)
+
+  // แยก active entry + เรียง: กำลังสอน → upcoming → เสร็จแล้ว
+  const _entryStatus = e => {
+    const s = _countdownInfo(e.period?.start_time, e.period?.end_time)
+    if (s.label.includes('กำลังสอน')) return 0
+    if (s.label.startsWith('เสร็จ')) return 2
+    return 1
+  }
+  const activeEntry = todayEntries.find(e => _entryStatus(e) === 0) ?? null
+  const sortedTodayEntries = [...todayEntries]
+    .filter(e => e !== activeEntry)
+    .sort((a, b) => _entryStatus(a) - _entryStatus(b) || a.period_no - b.period_no)
+
   const quota        = teacher?.teachers_quota
   const legacyUnlimited = quota?.is_paid && !quota?.package_type && !packageAccess.hasSemester && !packageAccess.paidRoomCount
   const hasSemester = packageAccess.hasSemester || quota?.package_type === 'semester' || legacyUnlimited
@@ -453,6 +476,45 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       <span class="text-gray-300 group-hover:text-indigo-400 transition text-lg">→</span>
     </div>
 
+    <!-- Active class featured card -->
+    ${activeEntry ? (() => {
+      const cr0 = activeEntry.linkedClasses[0]?.classroom_id ? _classroomMapGlobal[activeEntry.linkedClasses[0].classroom_id] : null
+      const time = activeEntry.period
+        ? `${activeEntry.period.start_time.substring(0,5)}–${activeEntry.period.end_time.substring(0,5)}`
+        : `คาบ ${activeEntry.period_no}`
+      return `
+    <div id="active-class-card" class="mt-4 bg-white rounded-2xl p-5"
+      style="border:2px solid #059669;box-shadow:0 0 0 4px rgba(5,150,105,.12),0 0 24px rgba(5,150,105,.18);">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" style="animation:pulse 1.5s infinite"></span>
+        <span class="text-xs font-bold text-emerald-700 tracking-wide">🟢 กำลังสอนอยู่</span>
+        <span class="text-[11px] text-gray-400 ml-1">${time}</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-lg font-bold text-emerald-700 flex-shrink-0">
+          ${activeEntry.period_no}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-gray-800 text-sm truncate">
+            ${activeEntry.linkedClasses.map(c => c.master_subjects?.subject_name ?? c.class_name).join(', ')}
+          </p>
+          <p class="text-xs text-gray-500 mt-0.5">
+            ${activeEntry.linkedClasses.map(c => {
+              const cr = c.classroom_id ? _classroomMapGlobal[c.classroom_id] : null
+              return c.class_name + (cr ? ` · 📍${cr.building} ห้อง ${cr.room_number}` : '')
+            }).join(' · ')}
+          </p>
+        </div>
+        <div class="flex-shrink-0 text-right">
+          <div id="active-class-countdown" class="text-2xl font-bold text-emerald-600 tabular-nums">
+            ${_activeRemainingDisplay(activeEntry.period?.end_time)}
+          </div>
+          <div class="text-[10px] text-gray-400 mt-0.5">เหลืออีก</div>
+        </div>
+      </div>
+    </div>`
+    })() : ''}
+
     <!-- Today's Classes Widget -->
     <div id="today-widget" class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <div class="flex items-center justify-between mb-3">
@@ -478,18 +540,19 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
               : ''}
         </div>` : `
         <div class="space-y-2">
-          ${todayEntries.map((entry, i) => {
+          ${sortedTodayEntries.map((entry, i) => {
             const cd = _countdownInfo(entry.period?.start_time, entry.period?.end_time)
+            const isDone = cd.label.startsWith('เสร็จ')
             const time = entry.period
               ? `${entry.period.start_time.substring(0,5)}–${entry.period.end_time.substring(0,5)}`
               : `คาบ ${entry.period_no}`
             return `
-            <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
-              <div class="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-600 flex-shrink-0">
+            <div class="flex items-center gap-3 p-3 rounded-xl ${isDone ? 'bg-gray-50 opacity-60' : 'bg-gray-50'} border border-gray-100">
+              <div class="w-9 h-9 rounded-xl ${isDone ? 'bg-gray-100' : 'bg-indigo-100'} flex items-center justify-center text-sm font-bold ${isDone ? 'text-gray-400' : 'text-indigo-600'} flex-shrink-0">
                 ${entry.period_no}
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-xs font-semibold text-gray-700 truncate">
+                <p class="text-xs font-semibold ${isDone ? 'text-gray-400' : 'text-gray-700'} truncate">
                   ${entry.linkedClasses.map(c => c.master_subjects?.subject_name ?? c.class_name).join(', ')}
                 </p>
                 <p class="text-[11px] text-gray-400">
@@ -666,13 +729,24 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   // countdown อัปเดตทุก 30 วิ
   if (todayEntries.length > 0) {
     _todayWidgetTimer = setInterval(() => {
-      todayEntries.forEach((entry, i) => {
+      // update list countdown labels
+      sortedTodayEntries.forEach((entry, i) => {
         const el = document.getElementById(`today-cd-${i}`)
         if (!el) { clearInterval(_todayWidgetTimer); return }
         const cd = _countdownInfo(entry.period?.start_time, entry.period?.end_time)
         el.textContent = cd.label
         el.className = `text-xs font-medium flex-shrink-0 ${cd.cls}`
       })
+      // update active class countdown
+      const cdEl = document.getElementById('active-class-countdown')
+      if (cdEl && activeEntry) {
+        const cd = _countdownInfo(activeEntry.period?.start_time, activeEntry.period?.end_time)
+        if (cd.label.startsWith('เสร็จ')) {
+          document.getElementById('active-class-card')?.remove()
+        } else {
+          cdEl.textContent = _activeRemainingDisplay(activeEntry.period?.end_time)
+        }
+      }
     }, 30000)
   }
 }
