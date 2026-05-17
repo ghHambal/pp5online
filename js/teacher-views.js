@@ -4025,26 +4025,24 @@ const ATT_STATUS = {
 const ATT_CYCLE = [null, 'present', 'absent', 'late', 'excused', 'sick']
 
 function _generateSessions(classData, credit) {
-  const perWeek = Math.round((credit ?? 1) * 2)
-  const total   = Math.round((credit ?? 1) * 2 * 20)
-  const bases   = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
-    .map(k => classData[k]).filter(Boolean).slice(0, perWeek).map(d => _parseDateOnly(d)).filter(Boolean)
-    .sort((a, b) => a - b)  // เรียงตามวันที่จริง ไม่ใช่ลำดับ field
+  const total = Math.round((credit ?? 1) * 2 * 20)
+  // ใช้ทุก day ที่ครูตั้งค่า (day1–day6) เป็น base pattern แล้ว +7 ต่อเนื่อง
+  const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
+    .map(k => classData[k]).filter(Boolean).map(d => _parseDateOnly(d)).filter(Boolean)
+    .sort((a, b) => a - b)
   if (!bases.length) return []
   const sessions = []
-  let week = 0
+  let cycle = 0
   while (sessions.length < total) {
     for (const base of bases) {
       if (sessions.length >= total) break
       const d = new Date(base)
-      d.setDate(d.getDate() + week * 7)
-      const ds = _dateInputValue(d)
-      sessions.push({ n: sessions.length + 1, date: d, ds })
+      d.setDate(d.getDate() + cycle * 7)
+      sessions.push({ n: sessions.length + 1, date: d, ds: _dateInputValue(d) })
     }
-    week++
+    cycle++
   }
   return sessions
-
 }
 
 function _fmtDate(d) {
