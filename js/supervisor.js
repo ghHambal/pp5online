@@ -78,6 +78,16 @@ function _filterByRole(metrics, teacher) {
 
 // ── dept tab key ──────────────────────────────────────────────────────────────
 function _deptKey(m) { return m.dept ?? '—' }
+function _deptName(code) {
+  if (!code || code === '—') return '—'
+  const d = _depts.find(x => x.dept_code === code)
+  return d ? `${d.dept_name} (${code})` : code
+}
+
+// ── sort state ────────────────────────────────────────────────────────────────
+let _sortCol = null   // 'name' | 'dept' | 'profile' | 'dates' | 'att' | 'score'
+let _sortDir = 1      // 1 = asc, -1 = desc
+let _searchQ = ''
 
 // ─── Main render ──────────────────────────────────────────────────────────────
 let _allMetrics = []
@@ -129,10 +139,10 @@ function _renderDashboard(el, metrics, teacher) {
         </div>`).join('')}
     </div>
     <!-- Dept tabs + add member button -->
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
-      ${showTabs?`<div style="display:flex;gap:8px;flex-wrap:wrap;" id="sv-tabs">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+      ${showTabs?`<div style="display:flex;gap:6px;flex-wrap:wrap;" id="sv-tabs">
         <button class="sv-tab-btn active" data-dept="">ทั้งหมด (${n})</button>
-        ${deptKeys.map(d=>`<button class="sv-tab-btn" data-dept="${d}">${d} (${metrics.filter(m=>_deptKey(m)===d).length})</button>`).join('')}
+        ${deptKeys.map(d=>`<button class="sv-tab-btn" data-dept="${d}">${_deptName(d)} (${metrics.filter(m=>_deptKey(m)===d).length})</button>`).join('')}
       </div>`:'<div></div>'}
       ${teacher.position==='dept_head'?`
         <button id="sv-add-member"
@@ -140,22 +150,38 @@ function _renderDashboard(el, metrics, teacher) {
           + เพิ่มสมาชิกกลุ่ม
         </button>`:''}
     </div>
+    <!-- Search -->
+    <div style="margin-bottom:12px;">
+      <input id="sv-search" type="text" placeholder="🔍 ค้นหาชื่อ รหัส กลุ่มสาระ สถานะ..."
+        value="${_searchQ}"
+        style="width:100%;box-sizing:border-box;padding:8px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s;"
+        onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e5e7eb'"/>
+    </div>
     <!-- Table -->
     <div style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;" id="sv-tbl">
-      ${_table(metrics)}
+      ${_table(_applyFilter(metrics))}
     </div>`
 
   // tab events
+  let _activeDept = ''
   el.querySelectorAll('.sv-tab-btn').forEach(b=>{
     b.addEventListener('click',()=>{
       el.querySelectorAll('.sv-tab-btn').forEach(x=>x.classList.remove('active'))
       b.classList.add('active')
-      const d = b.dataset.dept
-      const f = d ? metrics.filter(m=>_deptKey(m)===d) : metrics
-      document.getElementById('sv-tbl').innerHTML = _table(f)
+      _activeDept = b.dataset.dept
+      document.getElementById('sv-tbl').innerHTML = _table(_applyFilter(_activeDept ? metrics.filter(m=>_deptKey(m)===_activeDept) : metrics))
       _bindTable(el, metrics)
     })
   })
+
+  // search
+  el.querySelector('#sv-search')?.addEventListener('input', e => {
+    _searchQ = e.target.value
+    const base = _activeDept ? metrics.filter(m=>_deptKey(m)===_activeDept) : metrics
+    document.getElementById('sv-tbl').innerHTML = _table(_applyFilter(base))
+    _bindTable(el, metrics)
+  })
+
   _bindTable(el, metrics)
 
   // เพิ่มสมาชิกกลุ่ม — เฉพาะ dept_head
@@ -208,15 +234,54 @@ async function _showAddMemberModal(teacher) {
   })
 }
 
+function _applyFilter(rows) {
+  let r = rows
+  if (_searchQ.trim()) {
+    const q = _searchQ.trim().toLowerCase()
+    r = r.filter(m =>
+      (m.full_name??'').toLowerCase().includes(q) ||
+      (m.dept??'').toLowerCase().includes(q) ||
+      (m.category??'').toLowerCase().includes(q) ||
+      (_deptName(m.dept)??'').toLowerCase().includes(q)
+    )
+  }
+  if (!_sortCol) return r
+  return [...r].sort((a, b) => {
+    let av, bv
+    switch(_sortCol) {
+      case 'name':    av = a.full_name??''; bv = b.full_name??''; break
+      case 'dept':    av = a.dept??''; bv = b.dept??''; break
+      case 'profile': av = a.profileStatus==='ok'?1:0; bv = b.profileStatus==='ok'?1:0; break
+      case 'dates':   av = a.datesOk??0; bv = b.datesOk??0; break
+      case 'att':     av = a.daysSinceAtt??999; bv = b.daysSinceAtt??999; break
+      case 'score':   av = a.scorePct??-1; bv = b.scorePct??-1; break
+    }
+    if (av < bv) return -_sortDir
+    if (av > bv) return _sortDir
+    return 0
+  })
+}
+
+function _thSort(col, label) {
+  const active = _sortCol === col
+  const arrow = active ? (_sortDir === 1 ? ' ↑' : ' ↓') : ' ↕'
+  return `<th class="sv-th-sort" data-col="${col}"
+    style="padding:10px 12px;text-align:center;font-size:12px;cursor:pointer;user-select:none;white-space:nowrap;
+      ${active?'color:#6366f1;':'color:#374151;'}">
+    ${label}<span style="opacity:.5;">${arrow}</span></th>`
+}
+
 function _table(rows) {
-  if (!rows.length) return `<div style="text-align:center;padding:24px;color:#9ca3af;">ไม่มีข้อมูลครู</div>`
+  if (!rows.length) return `<div style="text-align:center;padding:24px;color:#9ca3af;">ไม่พบข้อมูลครู</div>`
   return `<table style="width:100%;border-collapse:collapse;">
     <thead><tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">
-      <th style="padding:10px 12px;text-align:left;font-size:13px;">ครูผู้สอน</th>
-      <th style="padding:10px 12px;text-align:center;font-size:12px;">โปรไฟล์</th>
-      <th style="padding:10px 12px;text-align:center;font-size:12px;">วันสอน</th>
-      <th style="padding:10px 12px;text-align:center;font-size:12px;">เช็คชื่อ</th>
-      <th style="padding:10px 12px;text-align:center;font-size:12px;">คะแนน</th>
+      <th class="sv-th-sort" data-col="name" style="padding:10px 12px;text-align:left;font-size:13px;cursor:pointer;user-select:none;">
+        ครูผู้สอน${_sortCol==='name'?(_sortDir===1?' ↑':' ↓'):'<span style="opacity:.4;"> ↕</span>'}
+      </th>
+      ${_thSort('profile','โปรไฟล์')}
+      ${_thSort('dates','วันสอน')}
+      ${_thSort('att','เช็คชื่อ')}
+      ${_thSort('score','คะแนน')}
       <th style="padding:10px;"></th>
     </tr></thead>
     <tbody>${rows.map(m=>{
@@ -224,10 +289,18 @@ function _table(rows) {
       const attCol = m.daysSinceAtt<=7?'#059669':m.daysSinceAtt<=14?'#d97706':'#dc2626'
       const regBadge = !m.isRegistered
         ? `<span style="display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;background:#fef3c7;color:#92400e;margin-left:4px;">ยังไม่ลงทะเบียน</span>` : ''
+      const avatar = m.image_url
+        ? `<img src="${m.image_url}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+        : `<div style="width:34px;height:34px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">👤</div>`
       return `<tr class="sv-row" data-tid="${m.id}" style="border-bottom:1px solid #f3f4f6;cursor:pointer;${!m.isRegistered?'background:#fffbeb;':''}">
-        <td style="padding:10px 12px;">
-          <div style="font-weight:600;font-size:13px;">${m.full_name??'—'}${regBadge}</div>
-          <div style="font-size:11px;color:#6b7280;">${m.dept??'—'} · ${m.category??'—'}</div>
+        <td style="padding:8px 12px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            ${avatar}
+            <div>
+              <div style="font-weight:600;font-size:13px;">${m.full_name??'—'}${regBadge}</div>
+              <div style="font-size:11px;color:#6b7280;">${m.dept??'—'} · ${m.category??'—'}</div>
+            </div>
+          </div>
         </td>
         <td style="padding:10px 12px;text-align:center;">${m.isRegistered?_badge(m.profileStatus):'<span style="color:#9ca3af;font-size:12px;">–</span>'}</td>
         <td style="padding:10px 12px;text-align:center;">
@@ -259,6 +332,16 @@ function _bindTable(root, metrics) {
     r.addEventListener('click',()=>{
       const m = metrics.find(x=>x.id===parseInt(r.dataset.tid))
       if(m) _showDetail(m)
+    })
+  })
+  // sort headers
+  root.querySelectorAll('.sv-th-sort').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const col = th.dataset.col
+      if (_sortCol === col) _sortDir *= -1
+      else { _sortCol = col; _sortDir = 1 }
+      document.getElementById('sv-tbl').innerHTML = _table(_applyFilter(metrics))
+      _bindTable(root, metrics)
     })
   })
 }
