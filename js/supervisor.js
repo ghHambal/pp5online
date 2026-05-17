@@ -30,9 +30,15 @@ import { openPP5Doc } from './pp5-doc.js'
 })()
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-const POS_LABEL = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
-  academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา',
-  academic_pvch:'หัวหน้าวิชาการปวช' }
+const POS_LABEL = {
+  dept_head:         'หัวหน้ากลุ่มสาระ',
+  registrar_samai:   'หัวหน้าฝ่ายทะเบียน (สามัญ)',
+  registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)',
+  registrar_pvch:    'หัวหน้าฝ่ายทะเบียน (ปวช)',
+  academic_samai:    'หัวหน้าวิชาการสามัญ',
+  academic_religion: 'หัวหน้าวิชาการศาสนา',
+  academic_pvch:     'หัวหน้าวิชาการปวช',
+}
 
 function _badge(s) {
   const m = { ok:['#d1fae5','#065f46','✓'], warn:['#fef3c7','#92400e','⚠'], none:['#fee2e2','#991b1b','✗'], na:['#f3f4f6','#6b7280','–'] }
@@ -58,20 +64,15 @@ function _donut(pct, color, label, sub) {
 
 // ── role filter ───────────────────────────────────────────────────────────────
 function _filterByRole(metrics, teacher) {
-  // รวมตัวเอง — ไม่ exclude
-  if (teacher.position === 'dept_head') {
+  const p = teacher.position
+  if (p === 'dept_head')
     return metrics.filter(m => m.dept === teacher.dept)
-  }
-  if (teacher.position === 'academic_samai') {
-    return metrics.filter(m => m.category === 'สามัญ' && !['ACDMVOC'].includes(m.subject_group))
-  }
-  if (teacher.position === 'academic_religion') {
-    return metrics.filter(m => m.category === 'ศาสนา')
-  }
-  if (teacher.position === 'academic_pvch') {
+  if (p === 'academic_samai' || p === 'registrar_samai')
+    return metrics.filter(m => !['AGM','AGMVOC','ACDMVOC'].includes(m.subject_group))
+  if (p === 'academic_religion' || p === 'registrar_religion')
+    return metrics.filter(m => ['AGM','AGMVOC'].includes(m.subject_group))
+  if (p === 'academic_pvch' || p === 'registrar_pvch')
     return metrics.filter(m => m.subject_group === 'ACDMVOC')
-  }
-  // registrar = ทั้งหมด
   return metrics
 }
 
