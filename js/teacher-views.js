@@ -4107,7 +4107,7 @@ export async function renderAttendanceGrid(teacher, classData) {
     <div class="flex flex-col h-screen overflow-hidden animate-fade">
       <!-- Top bar -->
       <div class="flex items-center gap-3 px-4 py-3 bg-white border-b shadow-sm flex-shrink-0">
-        <button onclick="window._navTo('my-classes')"
+        <button onclick="if(window._backToClasses)window._backToClasses();else window._navTo('my-classes')"
           class="text-sm text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1">
           ← กลับ
         </button>
@@ -5597,7 +5597,7 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
     <div class="flex flex-col overflow-hidden animate-fade" style="height:calc(100vh - 64px)">
       <!-- Top bar -->
       <div class="flex items-center gap-2 px-4 py-3 bg-white border-b shadow-sm flex-shrink-0 flex-wrap">
-        <button onclick="window._navTo('my-classes')" class="text-sm text-emerald-600 hover:text-emerald-800 font-medium">← กลับ</button>
+        <button onclick="if(window._backToClasses)window._backToClasses();else window._navTo('my-classes')" class="text-sm text-emerald-600 hover:text-emerald-800 font-medium">← กลับ</button>
         <div class="flex-1 min-w-0">
           <h2 class="font-bold text-gray-800 text-sm">🕌 คะแนนละหมาด</h2>
           <p class="text-xs text-gray-400">${room} · ${weeks.length} สัปดาห์ · ${totalDays} วัน</p>
@@ -7072,7 +7072,7 @@ export async function renderGradesGrid(teacher, classData) {
     setContent(`
     <div class="flex flex-col overflow-hidden animate-fade" style="height:calc(100vh - 64px)">
       <div class="flex items-center gap-3 px-4 py-3 bg-white border-b shadow-sm flex-shrink-0">
-        <button onclick="window._navTo('my-classes')" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">← กลับ</button>
+        <button onclick="if(window._backToClasses)window._backToClasses();else window._navTo('my-classes')" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">← กลับ</button>
         <div class="flex-1 min-w-0">
           <h2 class="font-bold text-gray-800">📝 บันทึกคะแนน</h2>
           <p class="text-xs text-gray-400">${ms?.subject_name??'—'} · ${classData.class_name} · ${students.length} คน</p>
