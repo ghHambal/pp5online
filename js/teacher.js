@@ -2324,6 +2324,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             defaultTab: 'attendance',  // skip student tab
           })
 
+          // Override _backToClasses → กลับ supervisor detail แทน class list
+          if (window._svBackToDetail) {
+            const svBack = window._svBackToDetail
+            const origBack = window._backToClasses
+            window._backToClasses = () => {
+              // restore ID swap ที่ renderClassDetail ทำไว้
+              const bak = document.getElementById('main-content-bak')
+              const cur = document.getElementById('main-content')
+              if (cur) cur.id = 'cd-tab-content'
+              if (bak) bak.id = 'main-content'
+              svBack()
+            }
+          }
+
           // Post-process: hide student tab + edit/delete/copy; rename ปพ.5 button
           setTimeout(() => {
             document.querySelectorAll('.cd-tab').forEach(btn => {

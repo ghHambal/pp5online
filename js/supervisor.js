@@ -629,7 +629,6 @@ function _showTeacherProfile(m) {
 }
 
 function _openClassInSupervisor(m, cls) {
-  // floating back + navigate to teacher's class view
   document.getElementById('sv-fab-back')?.remove()
   const fab = document.createElement('button')
   fab.id = 'sv-fab-back'
@@ -638,11 +637,16 @@ function _openClassInSupervisor(m, cls) {
     padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;
     box-shadow:0 4px 12px rgba(0,0,0,.25);font-family:inherit;`
   fab.textContent = '← กลับ'
-  const main = document.getElementById('main-content') ?? document.querySelector('main')
   fab.onclick = () => { fab.remove(); _showDetail(m) }
   document.body.appendChild(fab)
 
-  // เก็บ supervisor flag เพื่อให้ teacher view ซ่อน elements ที่ไม่ต้องการ
+  // เก็บ callback ให้ teacher.js ใช้ override _backToClasses
+  window._svBackToDetail = () => {
+    document.getElementById('sv-fab-back')?.remove()
+    _showDetail(m)
+    window._svBackToDetail = null
+  }
+
   window._supervisorClassView = true
   window.dispatchEvent(new CustomEvent('teacher-nav', {
     detail: { view: 'class-detail-sv', classId: cls.id }
