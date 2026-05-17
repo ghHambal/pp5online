@@ -4029,6 +4029,7 @@ function _generateSessions(classData, credit) {
   const total   = Math.round((credit ?? 1) * 2 * 20)
   const bases   = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
     .map(k => classData[k]).filter(Boolean).slice(0, perWeek).map(d => _parseDateOnly(d)).filter(Boolean)
+    .sort((a, b) => a - b)  // เรียงตามวันที่จริง ไม่ใช่ลำดับ field
   if (!bases.length) return []
   const sessions = []
   let week = 0
