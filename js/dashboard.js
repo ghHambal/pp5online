@@ -68,11 +68,13 @@ async function loadUserProfile(userId) {
 
 // ─── Switch to teacher view (สำหรับ user ที่มีทั้งสองบทบาท) ──────────────────
 async function _addSwitchToTeacherBtn(userId) {
+  if (document.getElementById('btn-switch-teacher')) return  // ป้องกัน duplicate
   const { data: profile } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
   if (!profile?.is_also_admin) return
   const sidebar = document.querySelector('#sidebar nav') ?? document.querySelector('nav')
   if (!sidebar) return
   const btn = document.createElement('a')
+  btn.id = 'btn-switch-teacher'
   btn.href = 'teacher.html'
   btn.title = 'สลับไปหน้าครู'
   btn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-indigo-800/50 mt-2 border border-indigo-600/40'

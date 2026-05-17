@@ -55,11 +55,15 @@ async function loadTeacherInfo(userId) {
     nav.appendChild(switchBtn)
   }
 
-  // เช็ค position — ถ้ามีบทบาทพิเศษแสดงปุ่มสลับ Dashboard
-  if (_teacher?.position && nav) {
-    const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
-      academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา' }[_teacher.position] ?? 'หัวหน้า'
+  // เช็ค position — ถ้ามีบทบาทพิเศษแสดงปุ่มสลับ Dashboard (ป้องกัน duplicate)
+  if (_teacher?.position && nav && !document.getElementById('btn-sv-mode')) {
+    const posLabel = {
+      dept_head:'หัวหน้ากลุ่มสาระ',
+      registrar_samai:'หัวหน้าฝ่ายทะเบียน (สามัญ)', registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', registrar_pvch:'หัวหน้าฝ่ายทะเบียน (ปวช)',
+      academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา', academic_pvch:'หัวหน้าวิชาการปวช',
+    }[_teacher.position] ?? 'หัวหน้า'
     const svBtn = document.createElement('button')
+    svBtn.id = 'btn-sv-mode'
     svBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-blue-800/50 mt-2 border border-blue-700/40 w-full text-left'
     svBtn.style.color = '#93c5fd'
     svBtn.innerHTML = `<span>📊</span><span>Dashboard ${posLabel}</span>`
