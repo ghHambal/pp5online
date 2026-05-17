@@ -6985,10 +6985,14 @@ export async function renderGradesGrid(teacher, classData) {
           const nv=val===''?null:parseFloat(val)
           scoreMap[sid][colId]={orig:nv,retake:null,final:nv}
           gradeInp.style.outline='2px solid #6366f1';gradeInp.style.outlineOffset='1px'
-          setTimeout(()=>{gradeInp.style.outline='';gradeInp.style.outlineOffset=''},600)
           document.getElementById('grade-saving')?.classList.remove('hidden')
           try{
             await saveStudentScore(classData.id,sid,colId,val===''?null:val)
+            // ✅ green glow on success
+            gradeInp.style.outline=''
+            gradeInp.style.boxShadow='0 0 0 2px #059669,0 0 10px rgba(5,150,105,.45)'
+            gradeInp.style.background='#f0fdf4'
+            setTimeout(()=>{gradeInp.style.boxShadow='';gradeInp.style.background=''},900)
             const{midRaw:mRaw,finRaw:fRaw,total,grade,khuna}=_calcGradeRow(sid)
             const fg=scoreMap[sid]?.['__force']??''
             const midEl=document.getElementById(`gmid-${sid}`)
@@ -7013,13 +7017,27 @@ export async function renderGradesGrid(teacher, classData) {
           if(gEl)gEl.textContent=fg||(grade>0?grade.toFixed(1):'0')
         }
       })
-      // ── Tab/Enter nav ──
+      // ── Keyboard nav: Arrow + Enter + Tab ──
       tbl.addEventListener('keydown',e=>{
-        if(e.key!=='Tab'&&e.key!=='Enter')return
         const inp=e.target.closest('.grade-input');if(!inp)return
+        const navKeys=['Tab','Enter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']
+        if(!navKeys.includes(e.key))return
         e.preventDefault()
-        const inputs=[...wrap.querySelectorAll('.grade-input')]
-        inputs[inputs.indexOf(inp)+(e.shiftKey?-1:1)]?.focus()
+        const allInputs=[...wrap.querySelectorAll('.grade-input')]
+        const sids=[...new Set(allInputs.map(i=>i.dataset.sid))]
+        const cols=[...new Set(allInputs.map(i=>i.dataset.col))]
+        const nCols=cols.length
+        const idx=allInputs.indexOf(inp)
+        const row=Math.floor(idx/nCols), col=idx%nCols
+        let tr=row, tc=col
+        switch(e.key){
+          case 'Enter': case 'ArrowDown':  tr=row<sids.length-1?row+1:row; break
+          case 'ArrowUp':   tr=row>0?row-1:0; break
+          case 'Tab':       allInputs[idx+(e.shiftKey?-1:1)]?.focus(); return
+          case 'ArrowRight': tc=col<nCols-1?col+1:col; break
+          case 'ArrowLeft':  tc=col>0?col-1:0; break
+        }
+        allInputs[tr*nCols+tc]?.focus()
       })
       // ── Inline assignment name edit ──
       wrap.querySelectorAll('.col-edit').forEach(el=>{
