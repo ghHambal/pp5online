@@ -754,13 +754,12 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
 // ─── Lesson Plan Approval Document ───────────────────────────────────────────
 
-async function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts) {
+function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts) {
   const win = window.open('', '_blank')
   if (!win) { showToast('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup ก่อน', 'warning'); return }
   win.document.write('<p style="font-family:sans-serif;padding:24px">กำลังสร้างเอกสาร...</p>')
 
-  const rawLogoUrl  = cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
-  const logoDataUrl = rawLogoUrl ? await _transparentEdgeDarkLogo(rawLogoUrl).catch(() => rawLogoUrl) : ''
+  const rawLogoUrl = cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
 
   const credit      = Number(subject.credit ?? 1)
   const hrsPerWeek  = credit * 2
@@ -825,8 +824,8 @@ async function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg,
 <div class="page">
 
   <div class="logo">
-    ${logoDataUrl
-      ? `<img src="${logoDataUrl}" style="width:64px;height:64px;object-fit:contain;"/>`
+    ${rawLogoUrl
+      ? `<img src="${rawLogoUrl}" style="width:64px;height:64px;object-fit:contain;" onerror="this.style.display='none'"/>`
       : '<span style="font-size:12px;color:#999;">โลโก้</span>'}
   </div>
 
@@ -836,12 +835,12 @@ async function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg,
   <div class="fill" contenteditable="true" style="left:138px;top:157px;width:597px;">${_htmlEsc(schoolName)}</div>
 
   <div class="t b" style="left:58px;top:189px;">ที่</div>
-  <div class="fill" contenteditable="true" style="left:88px;top:183px;width:253px;">วช/พิเศษ</div>
+  <div class="fill" contenteditable="true" style="left:88px;top:183px;width:253px;text-align:left;font-weight:700;">วช/พิเศษ</div>
   <div class="t b" style="left:354px;top:189px;">วันที่</div>
   <div class="fill" contenteditable="true" style="left:394px;top:183px;width:341px;">${_htmlEsc(dateStr)}</div>
 
   <div class="t b" style="left:58px;top:215px;">เรื่อง</div>
-  <div class="fill" contenteditable="true" style="left:95px;top:209px;width:640px;">ขออนุญาตใช้แผนการจัดการเรียนรู้ ภาคเรียนที่ ${sem} ปีการศึกษา ${acYear}</div>
+  <div class="fill" contenteditable="true" style="left:95px;top:209px;width:640px;color:#000;text-align:left;">ขออนุญาตใช้แผนการจัดการเรียนรู้ ภาคเรียนที่ ${sem} ปีการศึกษา ${acYear}</div>
 
   <div class="t" style="left:58px;top:258px;">เรียน</div>
   <div class="fill" contenteditable="true" style="left:103px;top:252px;width:260px;">ผู้อำนวยการ${_htmlEsc(schoolName)}</div>
@@ -872,7 +871,7 @@ async function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg,
   <div class="fill" contenteditable="true" style="left:653px;top:376px;width:82px;">${_htmlEsc(gradeField)}</div>
 
   <div class="t" style="left:58px;top:408px;">จำนวนแผนการจัดการเรียนรู้</div>
-  <div class="fill" contenteditable="true" style="left:237px;top:402px;width:108px;">${totalHrs}</div>
+  <div class="fill" contenteditable="true" style="left:237px;top:402px;width:108px;"></div>
   <div class="t" style="left:374px;top:408px;">แผน</div>
 
   <div class="t" style="left:100px;top:456px;">จึงเรียนมาเพื่อโปรดพิจารณาอนุญาตให้ใช้ประกอบการเรียนการสอนต่อไป</div>
@@ -1051,7 +1050,7 @@ export async function renderMyCourses(teacher) {
         const courseClasses = allClasses.filter(c => c.course_id === sid || c.master_subjects?.id === sid)
         const { getSystemConfig: _cfg, getDepartments: _depts } = await import('./api.js')
         const [cfg, depts] = await Promise.all([_cfg().catch(()=>({})), _depts().catch(()=>[])])
-        await _openLessonPlanApproval(subj, courseClasses, teacher, cfg, depts)
+        _openLessonPlanApproval(subj, courseClasses, teacher, cfg, depts)
       })
     })
 
