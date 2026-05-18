@@ -2032,8 +2032,12 @@ export async function renderSettings() {
           { key:`${prefix}DirectorSignUrl`,     label:'ลายเซ็นผู้อำนวยการ', type:'upload' },
           { key:`${prefix}AcademicHeadName`,    label:'หัวหน้าวิชาการ',  type:'text' },
           { key:`${prefix}AcademicHeadSignUrl`, label:'ลายเซ็นหัวหน้าวิชาการ', type:'upload' },
-          { key:`${prefix}RegistrarName`,       label:'หัวหน้าฝ่ายทะเบียน', type:'text' },
-          { key:`${prefix}RegistrarSignUrl`,    label:'ลายเซ็นหัวหน้าฝ่ายทะเบียน', type:'upload' },
+          { key:`${prefix}RegistrarName`,       label: prefix === 'samai' ? 'หัวหน้าฝ่ายทะเบียน (สามัญ)' : 'หัวหน้าฝ่ายทะเบียน', type:'text' },
+          { key:`${prefix}RegistrarSignUrl`,    label: prefix === 'samai' ? 'ลายเซ็นหัวหน้าฝ่ายทะเบียน (สามัญ)' : 'ลายเซ็นหัวหน้าฝ่ายทะเบียน', type:'upload' },
+          ...(prefix === 'samai' ? [
+            { key:'agmRegistrarName',    label:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', type:'text', hint:'ใช้ในเอกสารรายวิชาศาสนา (AGM)' },
+            { key:'agmRegistrarSignUrl', label:'ลายเซ็นหัวหน้าฝ่ายทะเบียน (ศาสนา)', type:'upload' },
+          ] : []),
         ]
         return `
           <div class="flex gap-2 mb-5" id="school-subtabs">

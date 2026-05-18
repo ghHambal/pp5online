@@ -470,12 +470,16 @@ function _buildPage1(d) {
   const dirSign    = cfg[`${prefix}DirectorSignUrl`] ?? ''
   const acadName   = _esc(cfg[`${prefix}AcademicHeadName`] ?? '')
   const acadSign   = cfg[`${prefix}AcademicHeadSignUrl`] ?? ''
-  const regName    = _esc(cfg[`${prefix}RegistrarName`] ?? '')
-  const regSign    = cfg[`${prefix}RegistrarSignUrl`] ?? ''
+  const isReligion   = ['AGM','AGMVOC'].includes(ms.subject_group)
+  // ฝ่ายทะเบียน: ศาสนา → agmRegistrarName, สามัญ/ปวช → prefix ปกติ
+  const regName    = isReligion
+    ? _esc(cfg.agmRegistrarName ?? cfg[`${prefix}RegistrarName`] ?? '')
+    : _esc(cfg[`${prefix}RegistrarName`] ?? '')
+  const regSign    = isReligion
+    ? (cfg.agmRegistrarSignUrl ?? cfg[`${prefix}RegistrarSignUrl`] ?? '')
+    : (cfg[`${prefix}RegistrarSignUrl`] ?? '')
   const deptHeadName = _esc(dept?.head_name ?? '')
   const deptHeadSign = dept?.head_sign_url ?? ''
-
-  const isReligion   = ['AGM','AGMVOC'].includes(ms.subject_group)
   const className    = cls.class_name ?? ''
 
   // ตรวจระดับชั้น
@@ -1095,7 +1099,7 @@ function _buildScorePage(d, chunk, startNo) {
       </div>
       <div class="score-sig-row">
         <div class="score-sig-lbl">ลงชื่อ</div>
-        <div class="score-sig-line">${_esc(d.cfg[`${d.prefix}RegistrarName`]??'')}</div>
+        <div class="score-sig-line">${_esc(['AGM','AGMVOC'].includes(d.ms?.subject_group) ? (d.cfg.agmRegistrarName ?? d.cfg[`${d.prefix}RegistrarName`] ?? '') : (d.cfg[`${d.prefix}RegistrarName`] ?? ''))}</div>
         <div class="score-sig-role">หัวหน้างานวัดผลและประเมินผล</div>
       </div>
     </div>
