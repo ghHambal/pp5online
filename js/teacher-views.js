@@ -9397,3 +9397,71 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
 
   _renderPage()
 }
+
+// ─── Teacher Announcements View ───────────────────────────────────────────────
+
+export async function renderAnnouncementsView() {
+  setActiveNav('announcements-view')
+  setTitle('ประกาศ')
+  const { getActiveAnnouncements } = await import('./api.js')
+
+  setContent(`<div class="animate-fade">
+    <div class="mb-6">
+      <h2 class="text-xl font-bold text-gray-800">📢 ประกาศ</h2>
+      <p class="text-xs text-gray-400 mt-0.5">ประกาศจากทางโรงเรียน</p>
+    </div>
+    <div id="ann-view-list" class="space-y-4">
+      <div class="flex justify-center py-12 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-emerald-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
+  </div>`)
+
+  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const _fmtDate = d => new Date(d).toLocaleDateString('th-TH',{dateStyle:'long'})
+
+  try {
+    const items = await getActiveAnnouncements()
+    const list = document.getElementById('ann-view-list')
+    if (!list) return
+
+    if (!items.length) {
+      list.innerHTML = `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center text-gray-400">
+        <div class="text-5xl mb-4">📭</div>
+        <p class="font-semibold text-gray-500">ยังไม่มีประกาศในขณะนี้</p>
+      </div>`
+      return
+    }
+
+    list.innerHTML = items.map(a => `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+        ${a.priority > 0
+          ? `<div class="h-1.5 bg-gradient-to-r from-amber-400 to-orange-400"></div>`
+          : `<div class="h-1.5 bg-gradient-to-r from-emerald-400 to-teal-400"></div>`}
+        <div class="p-6">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-2xl flex-shrink-0">
+              ${a.priority > 0 ? '📌' : '📢'}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-2 flex-wrap">
+                ${a.priority > 0 ? `<span class="px-2.5 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">⭐ ปักหมุด</span>` : ''}
+              </div>
+              <h3 class="text-lg font-bold text-gray-800 mb-2">${_esc(a.title)}</h3>
+              ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">${_esc(a.body)}</p>` : ''}
+              <p class="text-xs text-gray-400 mt-4 flex items-center gap-1.5">
+                <span>🕐</span>
+                <span>${_fmtDate(a.created_at)}</span>
+                ${a.teachers?.full_name ? `<span>·</span><span>📝 ${_esc(a.teachers.full_name)}</span>` : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>`).join('')
+  } catch {
+    showToast('โหลดประกาศไม่สำเร็จ', 'error')
+  }
+}

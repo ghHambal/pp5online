@@ -6704,24 +6704,28 @@ export async function renderClassroomsAdmin() {
   })
 }
 
+
 // ─── Announcements ────────────────────────────────────────────────────────────
 
 export async function renderAnnouncements() {
   setActiveNav('announcements')
   document.getElementById('page-title').textContent = 'ประกาศ'
-  setContent(`<div class="animate-fade max-w-3xl mx-auto">
-    <div class="flex items-center justify-between mb-5">
+  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const _fmtDate = d => new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'})
+
+  setContent(`<div class="animate-fade">
+    <div class="flex items-center justify-between mb-6">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">📢 ประกาศ</h2>
+        <h2 class="text-xl font-bold text-gray-800">📢 ประกาศ</h2>
         <p class="text-xs text-gray-400 mt-0.5">ประกาศที่แสดงให้ครูทุกคนเห็นหลังล็อกอิน</p>
       </div>
       <button id="ann-create-btn"
-        class="px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition flex items-center gap-2">
-        ＋ สร้างประกาศใหม่
+        class="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition shadow-sm flex items-center gap-2">
+        <span class="text-base">＋</span> สร้างประกาศ
       </button>
     </div>
     <div id="ann-list" class="space-y-3">
-      <div class="flex justify-center py-8 text-gray-400">
+      <div class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
@@ -6730,76 +6734,82 @@ export async function renderAnnouncements() {
     </div>
   </div>`)
 
-  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-  const _fmtDate = d => new Date(d).toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'numeric' })
-
   const _renderList = async () => {
     const list = document.getElementById('ann-list')
     if (!list) return
     let items
     try { items = await getAllAnnouncements() }
-    catch { list.innerHTML = '<p class="text-red-400 text-sm">โหลดไม่สำเร็จ</p>'; return }
+    catch { list.innerHTML = '<p class="text-red-400 text-sm p-4">โหลดไม่สำเร็จ</p>'; return }
 
     if (!items.length) {
-      list.innerHTML = `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
-        <p class="text-4xl mb-3">📢</p><p class="font-medium">ยังไม่มีประกาศ</p>
+      list.innerHTML = `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center text-gray-400">
+        <div class="text-5xl mb-4">📢</div>
+        <p class="font-semibold text-gray-500">ยังไม่มีประกาศ</p>
+        <p class="text-xs mt-1">กดปุ่ม "สร้างประกาศ" ด้านบนเพื่อเริ่มต้น</p>
       </div>`
       return
     }
+
     list.innerHTML = items.map(a => `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex gap-4 items-start" data-id="${a.id}">
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 mb-1 flex-wrap">
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
-              ${a.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">
-              ${a.is_active ? '🟢 แสดงอยู่' : '⚫ ปิดอยู่'}
-            </span>
-            ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-semibold">⭐ ปักหมุด</span>` : ''}
-            <span class="text-xs text-gray-400">${_fmtDate(a.created_at)}</span>
-            ${a.teachers?.full_name ? `<span class="text-xs text-gray-400">· ${_esc(a.teachers.full_name)}</span>` : ''}
+      <div class="group bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden
+        ${a.is_active ? 'border-gray-100' : 'border-dashed border-gray-200 opacity-70'}" data-id="${a.id}">
+        ${a.priority > 0 ? `<div class="h-1 bg-gradient-to-r from-amber-400 to-orange-400"></div>` :
+          a.is_active ? `<div class="h-1 bg-gradient-to-r from-emerald-400 to-teal-400"></div>` :
+          `<div class="h-1 bg-gray-200"></div>`}
+        <div class="p-5 flex gap-4 items-start">
+          <div class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xl
+            ${a.is_active ? 'bg-indigo-50' : 'bg-gray-100'}">
+            ${a.priority > 0 ? '📌' : a.is_active ? '📢' : '📄'}
           </div>
-          <h3 class="font-bold text-gray-800 truncate">${_esc(a.title)}</h3>
-          ${a.body ? `<p class="text-sm text-gray-500 mt-1 line-clamp-2">${_esc(a.body)}</p>` : ''}
-        </div>
-        <div class="flex flex-col gap-1.5 flex-shrink-0">
-          <button class="ann-toggle-btn text-xs px-3 py-1.5 rounded-lg border font-medium transition
-            ${a.is_active ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}"
-            data-id="${a.id}" data-active="${a.is_active}">
-            ${a.is_active ? 'ปิด' : 'เปิด'}
-          </button>
-          <button class="ann-edit-btn text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium transition"
-            data-id="${a.id}">แก้ไข</button>
-          <button class="ann-del-btn text-xs px-3 py-1.5 rounded-lg border border-red-100 text-red-400 hover:bg-red-50 font-medium transition"
-            data-id="${a.id}" data-title="${_esc(a.title)}">ลบ</button>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide
+                ${a.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">
+                ${a.is_active ? '● แสดงอยู่' : '○ ปิดอยู่'}
+              </span>
+              ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
+            </div>
+            <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
+            ${a.body ? `<p class="text-sm text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">${_esc(a.body)}</p>` : ''}
+            <p class="text-[11px] text-gray-400 mt-2">
+              ${_fmtDate(a.created_at)}
+              ${a.teachers?.full_name ? ` · 📝 ${_esc(a.teachers.full_name)}` : ' · ⚙️ แอดมิน'}
+            </p>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button class="ann-toggle-btn px-3 py-1.5 rounded-lg text-xs font-semibold border transition
+              ${a.is_active ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}"
+              data-id="${a.id}" data-active="${a.is_active}">
+              ${a.is_active ? '⏸ ปิด' : '▶ เปิด'}
+            </button>
+            <button class="ann-edit-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition"
+              data-id="${a.id}">✏️ แก้ไข</button>
+            <button class="ann-del-btn p-1.5 rounded-lg border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-600 transition"
+              data-id="${a.id}" data-title="${_esc(a.title)}" title="ลบ">🗑</button>
+          </div>
         </div>
       </div>`).join('')
 
-    // Toggle
     list.querySelectorAll('.ann-toggle-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const id = Number(btn.dataset.id)
-        const isActive = btn.dataset.active === 'true'
-        btn.disabled = true
+        const id = Number(btn.dataset.id); const isActive = btn.dataset.active === 'true'
+        btn.disabled = true; btn.textContent = '...'
         try { await updateAnnouncement(id, { isActive: !isActive }); await _renderList() }
-        catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled = false }
+        catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled = false }
       })
     })
-    // Edit
     list.querySelectorAll('.ann-edit-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const card = btn.closest('[data-id]')
-        const id = Number(btn.dataset.id)
-        const item = items.find(a => a.id === id)
+        const item = items.find(a => a.id === Number(btn.dataset.id))
         if (item) _openAnnModal(item, _renderList)
       })
     })
-    // Delete
     list.querySelectorAll('.ann-del-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm(`ลบประกาศ "${btn.dataset.title}" ?`)) return
         btn.disabled = true
         try { await deleteAnnouncement(Number(btn.dataset.id)); await _renderList() }
-        catch { showToast('ลบไม่สำเร็จ', 'error'); btn.disabled = false }
+        catch { showToast('ลบไม่สำเร็จ','error'); btn.disabled = false }
       })
     })
   }
@@ -6813,39 +6823,39 @@ export async function renderAnnouncements() {
     m.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="font-bold text-gray-800">${isEdit ? '✏️ แก้ไขประกาศ' : '➕ สร้างประกาศใหม่'}</h3>
-          <button id="ann-modal-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          <h3 class="font-bold text-gray-800 text-base">${isEdit ? '✏️ แก้ไขประกาศ' : '➕ สร้างประกาศใหม่'}</h3>
+          <button id="ann-modal-close" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">✕</button>
         </div>
         <div class="px-6 py-5 space-y-4">
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1.5">หัวข้อ *</label>
-            <input id="ann-title" type="text" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              value="${_esc(item?.title ?? '')}" placeholder="หัวข้อประกาศ"/>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">หัวข้อ *</label>
+            <input id="ann-title" type="text" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
+              value="${_esc(item?.title ?? '')}" placeholder="ระบุหัวข้อประกาศ"/>
           </div>
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1.5">เนื้อหา</label>
-            <textarea id="ann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">เนื้อหา</label>
+            <textarea id="ann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
           </div>
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <label class="text-sm font-medium text-gray-700">แสดงให้ครูเห็น</label>
+          <div class="flex items-center justify-between pt-1">
+            <label class="flex items-center gap-3 cursor-pointer">
               <button type="button" id="ann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
-                onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className='w-14 h-7 rounded-full transition-colors relative shadow-inner '+(this.dataset.on==='true'?'bg-emerald-500':'bg-gray-300');this.querySelector('span').style.transform=this.dataset.on==='true'?'translateX(28px)':'translateX(2px)'"
-                class="w-14 h-7 rounded-full transition-colors relative shadow-inner ${item?.is_active !== false ? 'bg-emerald-500' : 'bg-gray-300'}">
-                <span class="absolute top-1.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
-                  style="transform:translateX(${item?.is_active !== false ? '28' : '2'}px)"></span>
+                onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className='w-12 h-6 rounded-full transition-colors relative shadow-inner '+(this.dataset.on==='true'?'bg-emerald-500':'bg-gray-300');this.querySelector('span').style.transform=this.dataset.on==='true'?'translateX(24px)':'translateX(2px)'"
+                class="w-12 h-6 rounded-full transition-colors relative shadow-inner ${item?.is_active !== false ? 'bg-emerald-500' : 'bg-gray-300'}">
+                <span class="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                  style="transform:translateX(${item?.is_active !== false ? '24' : '2'}px)"></span>
               </button>
-            </div>
-            <div class="flex items-center gap-3">
-              <label class="text-sm font-medium text-gray-700">ปักหมุด (ขึ้นก่อน)</label>
-              <input type="checkbox" id="ann-pin" class="w-4 h-4 accent-amber-500" ${(item?.priority ?? 0) > 0 ? 'checked' : ''}/>
-            </div>
+              <span class="text-sm font-medium text-gray-700">แสดงให้ครูเห็น</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="ann-pin" class="w-4 h-4 accent-amber-500 rounded" ${(item?.priority ?? 0) > 0 ? 'checked' : ''}/>
+              <span class="text-sm font-medium text-gray-700">⭐ ปักหมุด (ขึ้นก่อน)</span>
+            </label>
           </div>
         </div>
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-          <button id="ann-modal-cancel" class="px-5 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-          <button id="ann-modal-save" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">บันทึก</button>
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+          <button id="ann-modal-cancel" class="px-5 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-100 transition font-medium">ยกเลิก</button>
+          <button id="ann-modal-save" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition shadow-sm">บันทึก</button>
         </div>
       </div>`
     document.body.appendChild(m)
@@ -6853,10 +6863,9 @@ export async function renderAnnouncements() {
     m.querySelector('#ann-modal-close').onclick = close
     m.querySelector('#ann-modal-cancel').onclick = close
     m.addEventListener('click', e => { if (e.target === m) close() })
-
     m.querySelector('#ann-modal-save').addEventListener('click', async () => {
       const title = m.querySelector('#ann-title').value.trim()
-      if (!title) { showToast('กรุณากรอกหัวข้อ', 'warning'); return }
+      if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
       const body = m.querySelector('#ann-body').value.trim() || null
       const isActive = m.querySelector('#ann-active-toggle').dataset.on === 'true'
       const priority = m.querySelector('#ann-pin').checked ? 1 : 0
@@ -6865,10 +6874,9 @@ export async function renderAnnouncements() {
       try {
         if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority })
         else        await createAnnouncement({ title, body, isActive, priority })
-        showToast('บันทึกสำเร็จ ✅', 'success')
-        close(); await onDone()
+        showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
-        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })
@@ -6885,29 +6893,46 @@ export async function renderRolePermissions() {
   document.getElementById('page-title').textContent = 'สิทธิ์บทบาท'
 
   const POSITIONS = [
-    { key:'dept_head',         label:'หัวหน้ากลุ่มสาระ' },
-    { key:'registrar_samai',   label:'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
-    { key:'registrar_religion',label:'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
-    { key:'registrar_pvch',    label:'หัวหน้าฝ่ายทะเบียน (ปวช)' },
-    { key:'academic_samai',    label:'หัวหน้าวิชาการ (สามัญ)' },
-    { key:'academic_religion', label:'หัวหน้าวิชาการ (ศาสนา)' },
-    { key:'academic_pvch',     label:'หัวหน้าวิชาการ (ปวช)' },
+    { key:'dept_head',          label:'หัวหน้ากลุ่มสาระ' },
+    { key:'registrar_samai',    label:'ทะเบียน (สามัญ)' },
+    { key:'registrar_religion', label:'ทะเบียน (ศาสนา)' },
+    { key:'registrar_pvch',     label:'ทะเบียน (ปวช)' },
+    { key:'academic_samai',     label:'วิชาการ (สามัญ)' },
+    { key:'academic_religion',  label:'วิชาการ (ศาสนา)' },
+    { key:'academic_pvch',      label:'วิชาการ (ปวช)' },
   ]
-  const FEATURES = [
-    { key:'announce_create', label:'ประกาศ: สร้าง',       hint:'สร้างประกาศใหม่ได้' },
-    { key:'announce_manage', label:'ประกาศ: แก้ไข/ลบ',    hint:'แก้ไขหรือลบประกาศของตัวเองได้' },
-    { key:'lang_config',     label:'ตั้งค่าคำอธิบายฯ',    hint:'เข้าหน้าตั้งค่าภาษาในคำอธิบายรายวิชา' },
+  const FEATURE_GROUPS = [
+    { group:'📢 ประกาศ', features:[
+      { key:'announce_create', label:'สร้างประกาศ' },
+      { key:'announce_manage', label:'แก้ไข/ลบประกาศ' },
+    ]},
+    { group:'📚 วิชาการ', features:[
+      { key:'lang_config',      label:'ตั้งค่าคำอธิบายฯ' },
+      { key:'menu_curriculum',  label:'หลักสูตรแกนกลาง' },
+      { key:'menu_subjects',    label:'รายวิชา' },
+      { key:'menu_departments', label:'กลุ่มสาระ' },
+      { key:'menu_score_config',label:'คอลัมน์คะแนน' },
+      { key:'menu_life_skill',  label:'คะแนนทักษะชีวิต' },
+      { key:'menu_reading',     label:'คะแนนการอ่าน' },
+      { key:'menu_prayer',      label:'บันทึกละหมาด' },
+    ]},
+    { group:'📋 ทะเบียน/บุคลากร', features:[
+      { key:'menu_students',    label:'นักเรียน' },
+      { key:'menu_homeroom',    label:'ครูที่ปรึกษา' },
+      { key:'menu_holidays',    label:'วันหยุด' },
+      { key:'menu_periods',     label:'คาบเรียน' },
+      { key:'menu_classrooms',  label:'ห้องเรียน' },
+    ]},
   ]
+  const ALL_FEATURES = FEATURE_GROUPS.flatMap(g => g.features)
 
   setContent(`<div class="animate-fade">
-    <div class="flex items-center justify-between mb-5">
-      <div>
-        <h2 class="text-lg font-bold text-gray-800">🔐 สิทธิ์บทบาท</h2>
-        <p class="text-xs text-gray-400 mt-0.5">กำหนดว่าแต่ละบทบาทสามารถทำอะไรได้บ้างใน Supervisor mode</p>
-      </div>
+    <div class="mb-6">
+      <h2 class="text-xl font-bold text-gray-800">🔐 สิทธิ์บทบาท</h2>
+      <p class="text-xs text-gray-400 mt-0.5">กำหนดว่าแต่ละบทบาทสามารถเข้าถึงเมนูใดใน Supervisor mode — บันทึกทันทีเมื่อกด toggle</p>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <div id="perm-loading" class="flex justify-center py-8 text-gray-400">
+      <div id="perm-loading" class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
@@ -6919,58 +6944,62 @@ export async function renderRolePermissions() {
   let permMap = {}
   try { permMap = await getRolePermissions() } catch {}
 
-  const tableHtml = `
+  const container = document.querySelector('#perm-loading')?.closest('.bg-white')
+  if (!container) return
+
+  container.innerHTML = `
     <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-          <tr>
-            <th class="px-5 py-3 text-left font-semibold w-48">บทบาท</th>
-            ${FEATURES.map(f => `<th class="px-4 py-3 text-center font-semibold" title="${f.hint}">${f.label}</th>`).join('')}
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-100">
+            <th class="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10 w-44">ฟีเจอร์</th>
+            ${POSITIONS.map(p => `<th class="px-3 py-3.5 text-center text-xs font-bold text-gray-600 min-w-[80px]">${p.label}</th>`).join('')}
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-50">
-          ${POSITIONS.map(pos => `
-            <tr class="hover:bg-gray-50 transition">
-              <td class="px-5 py-3.5 font-medium text-gray-700">${pos.label}</td>
-              ${FEATURES.map(feat => {
-                const isOn = permMap[pos.key]?.[feat.key] ?? false
-                return `<td class="px-4 py-3.5 text-center">
-                  <button type="button"
-                    class="perm-toggle w-12 h-6 rounded-full transition-colors relative shadow-inner inline-block
-                      ${isOn ? 'bg-emerald-500' : 'bg-gray-300'}"
-                    data-position="${pos.key}" data-feature="${feat.key}" data-on="${isOn}">
-                    <span class="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform"
-                      style="transform:translateX(${isOn ? '26' : '2'}px)"></span>
-                  </button>
-                </td>`
-              }).join('')}
-            </tr>`).join('')}
+        <tbody>
+          ${FEATURE_GROUPS.map(g => `
+            <tr class="bg-indigo-50/50 border-y border-indigo-100">
+              <td colspan="${POSITIONS.length + 1}" class="px-5 py-2 text-xs font-bold text-indigo-600 uppercase tracking-wider sticky left-0">${g.group}</td>
+            </tr>
+            ${g.features.map(feat => `
+              <tr class="hover:bg-gray-50 border-b border-gray-50 transition-colors">
+                <td class="px-5 py-3 font-medium text-gray-700 text-sm sticky left-0 bg-white">${feat.label}</td>
+                ${POSITIONS.map(pos => {
+                  const isOn = permMap[pos.key]?.[feat.key] ?? false
+                  return `<td class="px-3 py-3 text-center">
+                    <button type="button"
+                      class="perm-toggle relative inline-flex w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none
+                        ${isOn ? 'bg-emerald-500' : 'bg-gray-300'}"
+                      data-position="${pos.key}" data-feature="${feat.key}" data-on="${isOn}">
+                      <span class="inline-block w-4 h-4 transform bg-white rounded-full shadow-sm transition-transform duration-200 mt-0.5 ml-0.5"
+                        style="transform:translateX(${isOn ? '20' : '0'}px)"></span>
+                    </button>
+                  </td>`
+                }).join('')}
+              </tr>`).join('')}
+          `).join('')}
         </tbody>
       </table>
     </div>
-    <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-      💡 การเปลี่ยนแปลงบันทึกทันที — ครูต้องล็อกอินใหม่เพื่อให้สิทธิ์มีผล
+    <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-2 text-xs text-gray-400">
+      <span>💡</span>
+      <span>ครูต้องล็อกอินใหม่เพื่อให้สิทธิ์มีผล · สิทธิ์เมนูต่างๆจะแสดงใน Supervisor mode ของบทบาทนั้น</span>
     </div>`
 
-  const container = document.querySelector('.bg-white.rounded-2xl.border')
-  if (container) container.innerHTML = tableHtml
-
-  document.querySelectorAll('.perm-toggle').forEach(btn => {
+  container.querySelectorAll('.perm-toggle').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const pos  = btn.dataset.position
-      const feat = btn.dataset.feature
-      const isOn = btn.dataset.on === 'true'
-      const newVal = !isOn
+      const pos = btn.dataset.position, feat = btn.dataset.feature
+      const isOn = btn.dataset.on === 'true', newVal = !isOn
       btn.disabled = true
       try {
         await saveRolePermission(pos, feat, newVal)
         btn.dataset.on = String(newVal)
-        btn.className = `perm-toggle w-12 h-6 rounded-full transition-colors relative shadow-inner inline-block ${newVal ? 'bg-emerald-500' : 'bg-gray-300'}`
-        btn.querySelector('span').style.transform = `translateX(${newVal ? '26' : '2'}px)`
+        btn.className = `perm-toggle relative inline-flex w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none ${newVal ? 'bg-emerald-500' : 'bg-gray-300'}`
+        btn.querySelector('span').style.transform = `translateX(${newVal ? '20' : '0'}px)`
         if (!permMap[pos]) permMap[pos] = {}
         permMap[pos][feat] = newVal
-        showToast(`อัปเดตสิทธิ์สำเร็จ`, 'success')
-      } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
+        showToast(`${newVal ? 'เปิด' : 'ปิด'}สิทธิ์สำเร็จ`, 'success')
+      } catch { showToast('บันทึกไม่สำเร็จ','error') }
       btn.disabled = false
     })
   })

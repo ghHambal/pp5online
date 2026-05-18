@@ -16,7 +16,7 @@ import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
 import {
-  renderTeacherOverview, renderMyCourses, renderCourseForm,
+  renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
   renderRequests, renderSchedule, renderProfile, renderClassForm,
   renderLifeSkillScore, renderReadingScore, renderPrayerScore,
@@ -105,6 +105,7 @@ async function loadTeacherInfo(userId) {
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const ROUTES = {
+  'announcements-view': () => renderAnnouncementsView(),
   'overview':    () => renderTeacherOverview(_teacher, _homeroomRooms),
   'my-courses':  () => renderMyCourses(_teacher),
   'my-classes':  () => renderMyClasses(_teacher),
@@ -1899,44 +1900,56 @@ async function _loadAnnouncementBanners() {
   } catch { /* ไม่ block */ }
 }
 
+// map feature key → { icon, label, renderFn }
+const _SV_MENU_ITEMS = [
+  { key:'announce_create',  icon:'📢', label:'จัดการประกาศ',   fn: async () => { const {renderAnnouncements} = await import('./views.js'); renderAnnouncements() }},
+  { key:'lang_config',      icon:'⚙️', label:'ตั้งค่าคำอธิบายฯ',fn: (t,a) => renderCourseDocLangConfig(t, a) },
+  { key:'menu_holidays',    icon:'📅', label:'วันหยุด',        fn: async () => { const {renderHolidays}     = await import('./views.js'); renderHolidays() }},
+  { key:'menu_periods',     icon:'🕐', label:'คาบเรียน',       fn: async () => { const {renderPeriods}      = await import('./views.js'); renderPeriods() }},
+  { key:'menu_curriculum',  icon:'📘', label:'หลักสูตรแกนกลาง',fn: async () => { const {renderCurriculum}   = await import('./views.js'); renderCurriculum() }},
+  { key:'menu_subjects',    icon:'📖', label:'รายวิชา',        fn: async () => { const {renderSubjects}     = await import('./views.js'); renderSubjects() }},
+  { key:'menu_departments', icon:'🏫', label:'กลุ่มสาระ',      fn: async () => { const {renderDepartments}  = await import('./views.js'); renderDepartments() }},
+  { key:'menu_homeroom',    icon:'🏠', label:'ครูที่ปรึกษา',   fn: async () => { const {renderHomeroom}     = await import('./views.js'); renderHomeroom() }},
+  { key:'menu_students',    icon:'👨‍🎓', label:'นักเรียน',       fn: async () => { const {renderStudents}     = await import('./views.js'); renderStudents() }},
+  { key:'menu_classrooms',  icon:'🚪', label:'ห้องเรียน',      fn: async () => { const {renderClassroomsAdmin} = await import('./views.js'); renderClassroomsAdmin() }},
+  { key:'menu_score_config',icon:'📊', label:'คอลัมน์คะแนน',   fn: async () => { const {renderScoreColConfig} = await import('./views.js'); renderScoreColConfig() }},
+  { key:'menu_life_skill',  icon:'🌱', label:'ทักษะชีวิต',     fn: async () => { const {renderLifeSkillAdmin} = await import('./views.js'); renderLifeSkillAdmin() }},
+  { key:'menu_reading',     icon:'📗', label:'การอ่าน',        fn: async () => { const {renderReadingAdmin}   = await import('./views.js'); renderReadingAdmin() }},
+  { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
+]
+
 function _renderSupervisorNav(nav, main, isAdmin = false) {
   if (!nav) return
-  const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
-    academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา',
-    academic_pvch:'หัวหน้าวิชาการปวช' }[_teacher?.position] ?? (isAdmin ? 'แอดมิน' : 'หัวหน้า')
+  const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'ทะเบียน (สามัญ)',
+    registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
+    academic_samai:'วิชาการ (สามัญ)', academic_religion:'วิชาการ (ศาสนา)',
+    academic_pvch:'วิชาการ (ปวช)' }[_teacher?.position] ?? (isAdmin ? 'แอดมิน' : 'หัวหน้า')
 
-  // สิทธิ์จาก DB (dynamic) หรือ hardcoded fallback สำหรับ admin
-  const canLangConfig     = isAdmin || _positionPerms.lang_config     || _teacher?.position === 'dept_head'
-  const canAnnCreate      = isAdmin || _positionPerms.announce_create
-  const canAnnManage      = isAdmin || _positionPerms.announce_manage
+  // รายการ menu ที่แสดง: admin เห็นทั้งหมด, supervisor เห็นตาม _positionPerms
+  const allowedItems = isAdmin
+    ? _SV_MENU_ITEMS
+    : _SV_MENU_ITEMS.filter(m => {
+        if (m.key === 'lang_config') return _positionPerms.lang_config || _teacher?.position === 'dept_head'
+        // announce_manage → ซ่อนซ้ำ ถ้ามี announce_create แล้ว
+        if (m.key === 'announce_manage') return false
+        return !!_positionPerms[m.key]
+      })
 
-  const _navBtn = (id, icon, label) =>
-    `<button id="${id}" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50" style="color:#d1fae5;">${icon} ${label}</button>`
+  const _btn = (id, icon, label) =>
+    `<button data-sv="${id}" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50" style="color:#d1fae5;">${icon} ${label}</button>`
 
   nav.innerHTML = `
     <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;margin-bottom:4px;">📊 ${posLabel}</div>
-    ${_navBtn('sv-nav-back',      '←',  'กลับโหมดสอน')}
+    ${_btn('back', '←', 'กลับโหมดสอน')}
     <div style="height:1px;background:#065f46;margin:8px 12px;"></div>
-    ${_navBtn('sv-nav-dashboard', '📊', 'Dashboard ติดตาม')}
-    ${canLangConfig  ? _navBtn('sv-nav-lang-config', '⚙️', 'ตั้งค่าคำอธิบายฯ') : ''}
-    ${(canAnnCreate || canAnnManage) ? _navBtn('sv-nav-announce', '📢', 'จัดการประกาศ') : ''}`
+    ${_btn('dashboard', '📊', 'Dashboard ติดตาม')}
+    ${allowedItems.map(m => _btn(m.key, m.icon, m.label)).join('')}`
 
-  nav.querySelector('#sv-nav-back').onclick = _exitSupervisorMode
-  nav.querySelector('#sv-nav-dashboard').onclick = () => renderSupervisorDashboard(main, _teacher)
-  nav.querySelector('#sv-nav-lang-config')?.addEventListener('click', () => {
-    renderCourseDocLangConfig(_teacher, isAdmin)
+  nav.querySelector('[data-sv="back"]').onclick = _exitSupervisorMode
+  nav.querySelector('[data-sv="dashboard"]').onclick = () => renderSupervisorDashboard(main, _teacher)
+  allowedItems.forEach(m => {
+    nav.querySelector(`[data-sv="${m.key}"]`)?.addEventListener('click', () => m.fn(_teacher, isAdmin))
   })
-  nav.querySelector('#sv-nav-announce')?.addEventListener('click', () => {
-    _openSupervisorAnnouncements(main, canAnnManage)
-  })
-}
-
-// หน้าจัดการประกาศใน Supervisor mode (ใช้ render function จาก views.js)
-async function _openSupervisorAnnouncements(main, canManage) {
-  const { renderAnnouncements } = await import('./views.js').catch(() => ({}))
-  if (renderAnnouncements) {
-    renderAnnouncements()
-  }
 }
 
 function _rebindNav(nav, main) {
