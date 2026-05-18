@@ -22,7 +22,9 @@ import { getStats, getTeachers, getClasses, getStudents,
          getCurriculumStandards, createCurriculumStandard, updateCurriculumStandard,
          deleteCurriculumStandard, importCurriculumStandards,
          getUsageStats, getTeachersWithPositions,
-         getClassrooms, createClassroom, updateClassroom, deleteClassroom } from './api.js'
+         getClassrooms, createClassroom, updateClassroom, deleteClassroom,
+         getRolePermissions, saveRolePermission,
+         getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -6699,5 +6701,277 @@ export async function renderClassroomsAdmin() {
   document.getElementById('crm-add-new')?.addEventListener('click', async () => {
     const all = await getClassrooms().catch(() => [])
     _openForm(null, 'อาคาร 1', all)
+  })
+}
+
+// ─── Announcements ────────────────────────────────────────────────────────────
+
+export async function renderAnnouncements() {
+  setActiveNav('announcements')
+  document.getElementById('page-title').textContent = 'ประกาศ'
+  setContent(`<div class="animate-fade max-w-3xl mx-auto">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">📢 ประกาศ</h2>
+        <p class="text-xs text-gray-400 mt-0.5">ประกาศที่แสดงให้ครูทุกคนเห็นหลังล็อกอิน</p>
+      </div>
+      <button id="ann-create-btn"
+        class="px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition flex items-center gap-2">
+        ＋ สร้างประกาศใหม่
+      </button>
+    </div>
+    <div id="ann-list" class="space-y-3">
+      <div class="flex justify-center py-8 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
+  </div>`)
+
+  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const _fmtDate = d => new Date(d).toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'numeric' })
+
+  const _renderList = async () => {
+    const list = document.getElementById('ann-list')
+    if (!list) return
+    let items
+    try { items = await getAllAnnouncements() }
+    catch { list.innerHTML = '<p class="text-red-400 text-sm">โหลดไม่สำเร็จ</p>'; return }
+
+    if (!items.length) {
+      list.innerHTML = `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
+        <p class="text-4xl mb-3">📢</p><p class="font-medium">ยังไม่มีประกาศ</p>
+      </div>`
+      return
+    }
+    list.innerHTML = items.map(a => `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex gap-4 items-start" data-id="${a.id}">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
+              ${a.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">
+              ${a.is_active ? '🟢 แสดงอยู่' : '⚫ ปิดอยู่'}
+            </span>
+            ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-semibold">⭐ ปักหมุด</span>` : ''}
+            <span class="text-xs text-gray-400">${_fmtDate(a.created_at)}</span>
+            ${a.teachers?.full_name ? `<span class="text-xs text-gray-400">· ${_esc(a.teachers.full_name)}</span>` : ''}
+          </div>
+          <h3 class="font-bold text-gray-800 truncate">${_esc(a.title)}</h3>
+          ${a.body ? `<p class="text-sm text-gray-500 mt-1 line-clamp-2">${_esc(a.body)}</p>` : ''}
+        </div>
+        <div class="flex flex-col gap-1.5 flex-shrink-0">
+          <button class="ann-toggle-btn text-xs px-3 py-1.5 rounded-lg border font-medium transition
+            ${a.is_active ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}"
+            data-id="${a.id}" data-active="${a.is_active}">
+            ${a.is_active ? 'ปิด' : 'เปิด'}
+          </button>
+          <button class="ann-edit-btn text-xs px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-medium transition"
+            data-id="${a.id}">แก้ไข</button>
+          <button class="ann-del-btn text-xs px-3 py-1.5 rounded-lg border border-red-100 text-red-400 hover:bg-red-50 font-medium transition"
+            data-id="${a.id}" data-title="${_esc(a.title)}">ลบ</button>
+        </div>
+      </div>`).join('')
+
+    // Toggle
+    list.querySelectorAll('.ann-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.dataset.id)
+        const isActive = btn.dataset.active === 'true'
+        btn.disabled = true
+        try { await updateAnnouncement(id, { isActive: !isActive }); await _renderList() }
+        catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled = false }
+      })
+    })
+    // Edit
+    list.querySelectorAll('.ann-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('[data-id]')
+        const id = Number(btn.dataset.id)
+        const item = items.find(a => a.id === id)
+        if (item) _openAnnModal(item, _renderList)
+      })
+    })
+    // Delete
+    list.querySelectorAll('.ann-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`ลบประกาศ "${btn.dataset.title}" ?`)) return
+        btn.disabled = true
+        try { await deleteAnnouncement(Number(btn.dataset.id)); await _renderList() }
+        catch { showToast('ลบไม่สำเร็จ', 'error'); btn.disabled = false }
+      })
+    })
+  }
+
+  const _openAnnModal = (item, onDone) => {
+    document.getElementById('ann-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'ann-modal'
+    m.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'
+    const isEdit = !!item?.id
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 class="font-bold text-gray-800">${isEdit ? '✏️ แก้ไขประกาศ' : '➕ สร้างประกาศใหม่'}</h3>
+          <button id="ann-modal-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1.5">หัวข้อ *</label>
+            <input id="ann-title" type="text" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              value="${_esc(item?.title ?? '')}" placeholder="หัวข้อประกาศ"/>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1.5">เนื้อหา</label>
+            <textarea id="ann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"
+              placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <label class="text-sm font-medium text-gray-700">แสดงให้ครูเห็น</label>
+              <button type="button" id="ann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
+                onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className='w-14 h-7 rounded-full transition-colors relative shadow-inner '+(this.dataset.on==='true'?'bg-emerald-500':'bg-gray-300');this.querySelector('span').style.transform=this.dataset.on==='true'?'translateX(28px)':'translateX(2px)'"
+                class="w-14 h-7 rounded-full transition-colors relative shadow-inner ${item?.is_active !== false ? 'bg-emerald-500' : 'bg-gray-300'}">
+                <span class="absolute top-1.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                  style="transform:translateX(${item?.is_active !== false ? '28' : '2'}px)"></span>
+              </button>
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="text-sm font-medium text-gray-700">ปักหมุด (ขึ้นก่อน)</label>
+              <input type="checkbox" id="ann-pin" class="w-4 h-4 accent-amber-500" ${(item?.priority ?? 0) > 0 ? 'checked' : ''}/>
+            </div>
+          </div>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+          <button id="ann-modal-cancel" class="px-5 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="ann-modal-save" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">บันทึก</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    const close = () => m.remove()
+    m.querySelector('#ann-modal-close').onclick = close
+    m.querySelector('#ann-modal-cancel').onclick = close
+    m.addEventListener('click', e => { if (e.target === m) close() })
+
+    m.querySelector('#ann-modal-save').addEventListener('click', async () => {
+      const title = m.querySelector('#ann-title').value.trim()
+      if (!title) { showToast('กรุณากรอกหัวข้อ', 'warning'); return }
+      const body = m.querySelector('#ann-body').value.trim() || null
+      const isActive = m.querySelector('#ann-active-toggle').dataset.on === 'true'
+      const priority = m.querySelector('#ann-pin').checked ? 1 : 0
+      const btn = m.querySelector('#ann-modal-save')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority })
+        else        await createAnnouncement({ title, body, isActive, priority })
+        showToast('บันทึกสำเร็จ ✅', 'success')
+        close(); await onDone()
+      } catch(e) {
+        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึก'
+      }
+    })
+  }
+
+  document.getElementById('ann-create-btn')?.addEventListener('click', () => _openAnnModal(null, _renderList))
+  await _renderList()
+}
+
+// ─── Role Permissions ─────────────────────────────────────────────────────────
+
+export async function renderRolePermissions() {
+  setActiveNav('role-permissions')
+  document.getElementById('page-title').textContent = 'สิทธิ์บทบาท'
+
+  const POSITIONS = [
+    { key:'dept_head',         label:'หัวหน้ากลุ่มสาระ' },
+    { key:'registrar_samai',   label:'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
+    { key:'registrar_religion',label:'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
+    { key:'registrar_pvch',    label:'หัวหน้าฝ่ายทะเบียน (ปวช)' },
+    { key:'academic_samai',    label:'หัวหน้าวิชาการ (สามัญ)' },
+    { key:'academic_religion', label:'หัวหน้าวิชาการ (ศาสนา)' },
+    { key:'academic_pvch',     label:'หัวหน้าวิชาการ (ปวช)' },
+  ]
+  const FEATURES = [
+    { key:'announce_create', label:'ประกาศ: สร้าง',       hint:'สร้างประกาศใหม่ได้' },
+    { key:'announce_manage', label:'ประกาศ: แก้ไข/ลบ',    hint:'แก้ไขหรือลบประกาศของตัวเองได้' },
+    { key:'lang_config',     label:'ตั้งค่าคำอธิบายฯ',    hint:'เข้าหน้าตั้งค่าภาษาในคำอธิบายรายวิชา' },
+  ]
+
+  setContent(`<div class="animate-fade">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">🔐 สิทธิ์บทบาท</h2>
+        <p class="text-xs text-gray-400 mt-0.5">กำหนดว่าแต่ละบทบาทสามารถทำอะไรได้บ้างใน Supervisor mode</p>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div id="perm-loading" class="flex justify-center py-8 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
+  </div>`)
+
+  let permMap = {}
+  try { permMap = await getRolePermissions() } catch {}
+
+  const tableHtml = `
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-5 py-3 text-left font-semibold w-48">บทบาท</th>
+            ${FEATURES.map(f => `<th class="px-4 py-3 text-center font-semibold" title="${f.hint}">${f.label}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          ${POSITIONS.map(pos => `
+            <tr class="hover:bg-gray-50 transition">
+              <td class="px-5 py-3.5 font-medium text-gray-700">${pos.label}</td>
+              ${FEATURES.map(feat => {
+                const isOn = permMap[pos.key]?.[feat.key] ?? false
+                return `<td class="px-4 py-3.5 text-center">
+                  <button type="button"
+                    class="perm-toggle w-12 h-6 rounded-full transition-colors relative shadow-inner inline-block
+                      ${isOn ? 'bg-emerald-500' : 'bg-gray-300'}"
+                    data-position="${pos.key}" data-feature="${feat.key}" data-on="${isOn}">
+                    <span class="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                      style="transform:translateX(${isOn ? '26' : '2'}px)"></span>
+                  </button>
+                </td>`
+              }).join('')}
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+      💡 การเปลี่ยนแปลงบันทึกทันที — ครูต้องล็อกอินใหม่เพื่อให้สิทธิ์มีผล
+    </div>`
+
+  const container = document.querySelector('.bg-white.rounded-2xl.border')
+  if (container) container.innerHTML = tableHtml
+
+  document.querySelectorAll('.perm-toggle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pos  = btn.dataset.position
+      const feat = btn.dataset.feature
+      const isOn = btn.dataset.on === 'true'
+      const newVal = !isOn
+      btn.disabled = true
+      try {
+        await saveRolePermission(pos, feat, newVal)
+        btn.dataset.on = String(newVal)
+        btn.className = `perm-toggle w-12 h-6 rounded-full transition-colors relative shadow-inner inline-block ${newVal ? 'bg-emerald-500' : 'bg-gray-300'}`
+        btn.querySelector('span').style.transform = `translateX(${newVal ? '26' : '2'}px)`
+        if (!permMap[pos]) permMap[pos] = {}
+        permMap[pos][feat] = newVal
+        showToast(`อัปเดตสิทธิ์สำเร็จ`, 'success')
+      } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
+      btn.disabled = false
+    })
   })
 }

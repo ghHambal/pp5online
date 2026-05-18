@@ -2216,6 +2216,84 @@ export async function deleteCommentPhrase(id) {
   if (error) throw error
 }
 
+// ─── Role Permissions ─────────────────────────────────────────────────────────
+
+export async function getRolePermissions() {
+  const { data, error } = await supabase.from('role_permissions').select('*').order('position')
+  if (error) throw error
+  // คืนเป็น { position: { feature: allowed } }
+  const map = {}
+  for (const row of data ?? []) {
+    if (!map[row.position]) map[row.position] = {}
+    map[row.position][row.feature] = row.allowed
+  }
+  return map
+}
+
+export async function saveRolePermission(position, feature, allowed) {
+  const { error } = await supabase.from('role_permissions')
+    .upsert({ position, feature, allowed, updated_at: new Date().toISOString() },
+             { onConflict: 'position,feature' })
+  if (error) throw error
+}
+
+// ดึง permissions สำหรับ position เดียว (ใช้ใน teacher side)
+export async function getTeacherPositionPermissions(position) {
+  if (!position) return {}
+  const { data, error } = await supabase.from('role_permissions')
+    .select('feature, allowed').eq('position', position)
+  if (error) return {}
+  return Object.fromEntries((data ?? []).map(r => [r.feature, r.allowed]))
+}
+
+// ─── Announcements ────────────────────────────────────────────────────────────
+
+export async function getAllAnnouncements() {
+  const { data, error } = await supabase.from('announcements')
+    .select('*, teachers(full_name)')
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getActiveAnnouncements() {
+  const { data, error } = await supabase.from('announcements')
+    .select('id, title, body, priority, created_at, teachers(full_name)')
+    .eq('is_active', true)
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null }) {
+  const { data, error } = await supabase.from('announcements')
+    .insert({ title, body, is_active: isActive, priority,
+              created_by_teacher_id: teacherId,
+              updated_at: new Date().toISOString() })
+    .select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateAnnouncement(id, { title, body, isActive, priority }) {
+  const payload = { updated_at: new Date().toISOString() }
+  if (title    !== undefined) payload.title     = title
+  if (body     !== undefined) payload.body      = body
+  if (isActive !== undefined) payload.is_active = isActive
+  if (priority !== undefined) payload.priority  = priority
+  const { data, error } = await supabase.from('announcements')
+    .update(payload).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteAnnouncement(id) {
+  const { error } = await supabase.from('announcements').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function getClassByIdFull(classId) {
   const { data, error } = await supabase
     .from('classes')

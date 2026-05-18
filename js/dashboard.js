@@ -6,7 +6,8 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderHomeroom, renderScoreColConfig, renderRegisteredTeachers,
          renderHolidays, renderPayments, renderLifeSkillAdmin, renderReadingAdmin,
          renderPrayerAdmin, renderAdminProfile, renderUsageStats,
-         renderClassroomsAdmin } from './views.js'
+         renderClassroomsAdmin,
+         renderAnnouncements, renderRolePermissions } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
@@ -678,6 +679,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     'usage-stats':   renderUsageStats,
     'classrooms-admin': renderClassroomsAdmin,
     'course-doc-lang':  () => renderCourseDocLangConfig(null, true),
+    'announcements':    () => renderAnnouncements(),
+    'role-permissions': () => renderRolePermissions(),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {

@@ -10,7 +10,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
          updateLastSeen, logLogin,
          getUnreadNotifications, markNotificationsRead,
-         getClassByIdFull } from './api.js'
+         getClassByIdFull,
+         getTeacherPositionPermissions, getActiveAnnouncements } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -27,6 +28,7 @@ import { renderSupervisorDashboard } from './supervisor.js'
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
 let _isAlsoAdmin   = false
+let _positionPerms = {}   // { feature: boolean } สำหรับ position ของครูคนนี้
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -1855,30 +1857,86 @@ function _exitSupervisorMode() {
   window.dispatchEvent(new CustomEvent('teacher-nav', { detail: { view: 'overview' } }))
 }
 
+// ── ประกาศ banner ────────────────────────────────────────────────────────────
+async function _loadAnnouncementBanners() {
+  try {
+    const items = await getActiveAnnouncements()
+    if (!items.length) return
+    const SEEN_KEY = 'pp5_ann_dismissed'
+    const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'))
+    const unseen = items.filter(a => !seen.has(a.id))
+    if (!unseen.length) return
+
+    const wrap = document.createElement('div')
+    wrap.id = 'ann-banners'
+    wrap.style.cssText = 'position:fixed;top:68px;left:0;right:0;z-index:50;pointer-events:none;'
+
+    const _fmtD = d => new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short'})
+    wrap.innerHTML = unseen.map(a => `
+      <div class="ann-banner pointer-events-auto mx-auto max-w-3xl px-4 mb-2" data-ann-id="${a.id}">
+        <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3 shadow-sm">
+          <span class="text-xl flex-shrink-0">📢</span>
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-amber-900 text-sm">${a.title}</p>
+            ${a.body ? `<p class="text-xs text-amber-700 mt-0.5 line-clamp-2">${a.body}</p>` : ''}
+            <p class="text-[10px] text-amber-500 mt-1">${_fmtD(a.created_at)}${a.teachers?.full_name ? ' · ' + a.teachers.full_name : ''}</p>
+          </div>
+          <button class="ann-dismiss flex-shrink-0 text-amber-400 hover:text-amber-600 text-lg leading-none" data-ann-id="${a.id}">✕</button>
+        </div>
+      </div>`).join('')
+
+    document.body.appendChild(wrap)
+
+    wrap.querySelectorAll('.ann-dismiss').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.annId)
+        seen.add(id)
+        localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]))
+        btn.closest('.ann-banner')?.remove()
+        if (!wrap.querySelector('.ann-banner')) wrap.remove()
+      })
+    })
+  } catch { /* ไม่ block */ }
+}
+
 function _renderSupervisorNav(nav, main, isAdmin = false) {
   if (!nav) return
   const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
     academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา',
     academic_pvch:'หัวหน้าวิชาการปวช' }[_teacher?.position] ?? (isAdmin ? 'แอดมิน' : 'หัวหน้า')
 
-  const showLangConfig = isAdmin || _teacher?.position === 'dept_head'
+  // สิทธิ์จาก DB (dynamic) หรือ hardcoded fallback สำหรับ admin
+  const canLangConfig     = isAdmin || _positionPerms.lang_config     || _teacher?.position === 'dept_head'
+  const canAnnCreate      = isAdmin || _positionPerms.announce_create
+  const canAnnManage      = isAdmin || _positionPerms.announce_manage
+
+  const _navBtn = (id, icon, label) =>
+    `<button id="${id}" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50" style="color:#d1fae5;">${icon} ${label}</button>`
 
   nav.innerHTML = `
     <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;margin-bottom:4px;">📊 ${posLabel}</div>
-    <button id="sv-nav-back" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
-      style="color:#d1fae5;">← กลับโหมดสอน</button>
+    ${_navBtn('sv-nav-back',      '←',  'กลับโหมดสอน')}
     <div style="height:1px;background:#065f46;margin:8px 12px;"></div>
-    <button id="sv-nav-dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
-      style="color:#d1fae5;">📊 Dashboard ติดตาม</button>
-    ${showLangConfig ? `
-    <button id="sv-nav-lang-config" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
-      style="color:#d1fae5;">⚙️ ตั้งค่าคำอธิบายฯ</button>` : ''}`
+    ${_navBtn('sv-nav-dashboard', '📊', 'Dashboard ติดตาม')}
+    ${canLangConfig  ? _navBtn('sv-nav-lang-config', '⚙️', 'ตั้งค่าคำอธิบายฯ') : ''}
+    ${(canAnnCreate || canAnnManage) ? _navBtn('sv-nav-announce', '📢', 'จัดการประกาศ') : ''}`
 
   nav.querySelector('#sv-nav-back').onclick = _exitSupervisorMode
   nav.querySelector('#sv-nav-dashboard').onclick = () => renderSupervisorDashboard(main, _teacher)
   nav.querySelector('#sv-nav-lang-config')?.addEventListener('click', () => {
     renderCourseDocLangConfig(_teacher, isAdmin)
   })
+  nav.querySelector('#sv-nav-announce')?.addEventListener('click', () => {
+    _openSupervisorAnnouncements(main, canAnnManage)
+  })
+}
+
+// หน้าจัดการประกาศใน Supervisor mode (ใช้ render function จาก views.js)
+async function _openSupervisorAnnouncements(main, canManage) {
+  const { renderAnnouncements } = await import('./views.js').catch(() => ({}))
+  if (renderAnnouncements) {
+    renderAnnouncements()
+  }
 }
 
 function _rebindNav(nav, main) {
@@ -2318,6 +2376,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (_teacher?.id) _initDonationFlow(_teacher.id)
   if (_teacher?.id) _checkScheduleLinkPopup()
   if (_teacher?.id) _initNotifications(_teacher.id)
+  // โหลด position permissions (async ไม่ block)
+  if (_teacher?.position) {
+    getTeacherPositionPermissions(_teacher.position)
+      .then(p => { _positionPerms = p })
+      .catch(() => {})
+  }
+  // โหลดและแสดงประกาศ active
+  _loadAnnouncementBanners()
 
   // teacher-nav event (from supervisor dashboard)
   window.addEventListener('teacher-nav', async e => {
