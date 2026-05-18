@@ -808,7 +808,7 @@ function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts
   .t  { position:absolute; white-space:nowrap; }
   .b  { font-weight:700; }
   .title { position:absolute; top:102px; left:0; width:794px; text-align:center; font-size:26px; font-weight:700; }
-  .logo { position:absolute; left:58px; top:83px; width:66px; height:66px; border:0.5px solid #555;
+  .logo { position:absolute; left:58px; top:83px; width:66px; height:66px;
     border-radius:50%; font-size:13px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
   .line { position:absolute; border-bottom:1.2px dotted #111; height:23px; }
   .fill { position:absolute; border-bottom:1.2px dotted #111; height:23px; color:#064ec7;
@@ -825,7 +825,7 @@ function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts
 
   <div class="logo">
     ${rawLogoUrl
-      ? `<img src="${rawLogoUrl}" style="width:64px;height:64px;object-fit:contain;" onerror="this.style.display='none'"/>`
+      ? `<img src="${rawLogoUrl}" style="width:72px;height:72px;object-fit:contain;" onerror="this.style.display='none'"/>`
       : '<span style="font-size:12px;color:#999;">โลโก้</span>'}
   </div>
 
