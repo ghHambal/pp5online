@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>MathEasy2 Code | ถอดรหัสใจ ปลดล็อกคณิต</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --green-dark:#0F5F3A;
+      --green:#16A34A;
+      --green-soft:#DDFBEA;
+      --cream:#FFF7ED;
+      --pink:#F9A8D4;
+      --pink-strong:#EC4899;
+      --gold:#FBBF24;
+      --text:#111827;
+      --muted:#6B7280;
+      --line:#E5E7EB;
+      --danger:#FCA5A5;
+      --white:#FFFFFF;
+      --shadow: 0 32px 90px rgba(7,59,39,.38), 0 8px 24px rgba(15,95,58,.18);
+      --radius: 28px;
+    }
+
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%;margin:0;font-family:'Kanit',system-ui,-apple-system,sans-serif;color:var(--text);font-weight:400;letter-spacing:.03em;}
+    b,strong{letter-spacing:.07em;}
+    h1,h2,h3,h4{letter-spacing:.04em;line-height:1.35;}
+    .app-title,.screen-title,.question,.r-title,.code-big{letter-spacing:.05em;}
+    .option-text b,.r-box h4,.mission-kicker,.badge,.q-count,.unlock,.btn,.school-text b,.progress-label,.mini-note,.quote{letter-spacing:.08em;}
+    .selected-count,.tiny,.hero-tiny,.help-text,.desc,.r-box p,.r-box li,.option-text span{letter-spacing:.04em;}
+    body{
+      min-height:100svh;
+      overflow:hidden;
+      background:
+        radial-gradient(ellipse at 10% 8%, rgba(249,168,212,.55) 0 18%, transparent 38%),
+        radial-gradient(ellipse at 88% 4%, rgba(251,191,36,.38) 0 16%, transparent 36%),
+        radial-gradient(ellipse at 50% 96%, rgba(22,163,74,.22) 0 20%, transparent 50%),
+        linear-gradient(150deg, #052B1C 0%, #0D4F30 35%, #1a6b42 65%, #0a3320 100%);
+    }
+
+    .desktop-shell{height:100%;display:grid;place-items:center;padding:14px;position:relative;isolation:isolate;}
+    .bg-symbols{position:fixed;inset:0;overflow:hidden;z-index:-1;pointer-events:none;}
+    .sym{position:absolute;color:rgba(255,255,255,.26);font-weight:900;animation:floaty linear infinite;filter:blur(.1px)}
+    .sym:nth-child(1){left:8%;top:10%;font-size:44px;animation-duration:12s}
+    .sym:nth-child(2){left:80%;top:18%;font-size:34px;animation-duration:15s;animation-delay:-3s}
+    .sym:nth-child(3){left:13%;top:75%;font-size:36px;animation-duration:13s;animation-delay:-5s}
+    .sym:nth-child(4){left:78%;top:76%;font-size:48px;animation-duration:17s;animation-delay:-8s}
+    .sym:nth-child(5){left:47%;top:7%;font-size:30px;animation-duration:16s;animation-delay:-2s}
+    .sym:nth-child(6){left:49%;top:84%;font-size:42px;animation-duration:14s;animation-delay:-7s}
+    @keyframes floaty{0%{transform:translateY(0) rotate(0deg);opacity:.16}50%{transform:translateY(-28px) rotate(12deg);opacity:.34}100%{transform:translateY(0) rotate(0deg);opacity:.16}}
+
+    .phone{
+      width:min(430px,100vw);
+      height:min(900px,100svh);
+      max-height:100svh;
+      background:rgba(255,255,255,.78);
+      border:1.5px solid rgba(255,255,255,.66);
+      border-radius:36px;
+      box-shadow:var(--shadow), 0 0 0 1px rgba(255,255,255,.14) inset;
+      overflow:hidden;
+      position:relative;
+      backdrop-filter: blur(24px) saturate(1.6);
+    }
+    @media (max-width:520px){
+      .desktop-shell{padding:0;display:block}
+      .phone{width:100vw;height:100svh;max-height:100svh;border-radius:0;border:0;box-shadow:none;}
+    }
+
+    .app{height:100%;display:flex;flex-direction:column;position:relative;}
+    header{
+      padding:16px 18px 14px;
+      background:linear-gradient(180deg, rgba(255,255,255,.97) 0%, rgba(255,255,255,.82) 100%);
+      border-bottom:1px solid rgba(22,163,74,.12);
+      position:relative;
+      z-index:3;
+      box-shadow:0 2px 16px rgba(15,95,58,.06);
+    }
+    .toprow{display:flex;align-items:center;gap:13px;}
+    .logo-wrap{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#062018,var(--green-dark),var(--green));color:#fff;font-weight:900;box-shadow:0 8px 22px rgba(15,95,58,.36),0 0 0 3px rgba(255,255,255,.9),0 0 0 5px rgba(22,163,74,.18);overflow:hidden;flex:0 0 auto;}
+    .logo-wrap img{width:100%;height:100%;object-fit:cover;display:none;}
+    .school-text{min-width:0;}
+    .school-text b{display:block;font-size:15px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#0a3320;}
+    .school-text span{display:block;font-size:12px;color:var(--green);margin-top:2px;font-weight:700;}
+    .progress-area{margin-top:12px;display:flex;align-items:center;gap:10px;}
+    .progress-track{height:10px;border-radius:99px;background:linear-gradient(90deg,#D1FAE5,#E8F3ED);flex:1;overflow:hidden;box-shadow:inset 0 2px 4px rgba(0,0,0,.07)}
+    .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--green) 0%,#10b981 30%,var(--pink-strong) 70%,var(--gold) 100%);background-size:200%;border-radius:99px;transition:width .48s cubic-bezier(.34,1.56,.64,1);animation:shimmer 2.4s linear infinite;}
+    @keyframes shimmer{0%{background-position:200%}100%{background-position:-200%}}
+    .progress-label{font-size:12px;font-weight:900;color:var(--green-dark);min-width:42px;text-align:right;}
+
+    main{flex:1;overflow:hidden;position:relative;}
+    .screen{position:absolute;inset:0;padding:18px 18px 96px;overflow-y:auto;opacity:0;transform:translateX(18px);transition:opacity .28s ease, transform .28s ease;pointer-events:none;scrollbar-width:none;}
+    .screen::-webkit-scrollbar{display:none}
+    .screen.active{opacity:1;transform:translateX(0);pointer-events:auto;}
+    .screen.back{transform:translateX(-18px)}
+
+    .hero{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:14px;padding-bottom:36px;text-align:center;}
+    .hero-card,.card{background:rgba(255,255,255,.9);border:1px solid rgba(255,255,255,.8);box-shadow:0 20px 56px rgba(17,24,39,.13),0 4px 12px rgba(15,95,58,.06);border-radius:var(--radius);padding:22px;position:relative;overflow:hidden;}
+    .hero-card:before,.card:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 10% 0%,rgba(249,168,212,.32),transparent 36%),radial-gradient(ellipse at 96% 8%,rgba(251,191,36,.24),transparent 34%),radial-gradient(ellipse at 50% 100%,rgba(22,163,74,.08),transparent 40%);pointer-events:none;}
+    .hero-card>* , .card>*{position:relative;z-index:1;}
+    .app-title{font-size:40px;line-height:1.02;margin:10px 0 6px;font-weight:1000;letter-spacing:-1px;background:linear-gradient(135deg,#062018,var(--green-dark),#1a7a4a);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .app-subtitle{font-size:22px;font-weight:900;color:#1a3a2a;margin:0 0 10px;}
+    .desc{font-size:15.5px;line-height:1.7;color:#374151;margin:0;}
+    .quote{border-radius:20px;background:linear-gradient(135deg,#ECFDF5 0%,#F0FDF4 50%,#FFF7ED 100%);padding:15px 18px;font-weight:800;color:var(--green-dark);line-height:1.6;border:1.5px solid rgba(15,95,58,.16);box-shadow:0 4px 16px rgba(15,95,58,.07);}
+    .badge{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:linear-gradient(135deg,rgba(22,163,74,.15),rgba(249,168,212,.22));color:var(--green-dark);font-weight:900;font-size:12px;border:1px solid rgba(15,95,58,.14);box-shadow:0 4px 12px rgba(15,95,58,.08);}
+    .badge.gold{background:linear-gradient(135deg,rgba(251,191,36,.28),rgba(249,168,212,.24));border-color:rgba(251,191,36,.3);}
+
+    h1,h2,h3,p{margin-top:0}
+    .mission-kicker{font-size:12px;font-weight:1000;color:var(--pink-strong);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px;display:inline-flex;align-items:center;gap:7px;}
+    .mission-kicker::before{content:'';display:inline-block;width:16px;height:2.5px;border-radius:2px;background:linear-gradient(90deg,var(--pink-strong),var(--gold));}
+    .screen-title{font-size:27px;line-height:1.16;margin:0 0 10px;color:var(--green-dark);font-weight:1000;letter-spacing:-.3px;}
+    .help-text{font-size:15px;line-height:1.6;color:#4B5563;margin-bottom:14px;}
+    .tiny{font-size:12px;color:var(--muted);line-height:1.5;}
+
+    .form-grid{display:grid;gap:12px;margin-top:16px;}
+    label{font-size:13px;font-weight:900;color:#374151;display:block;margin:0 0 6px;}
+    input,select,textarea{width:100%;min-height:52px;border-radius:17px;border:1.5px solid #D1D5DB;background:linear-gradient(180deg,#fff,#FAFAFA);padding:13px 14px;font:inherit;font-size:16px;outline:none;transition:.2s ease;box-shadow:0 2px 8px rgba(17,24,39,.04),inset 0 1px 2px rgba(0,0,0,.03);}
+    textarea{min-height:122px;resize:none;line-height:1.6;}
+    input:focus,select:focus,textarea:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 4px rgba(22,163,74,.12),0 4px 16px rgba(22,163,74,.08);}
+    .invalid{border-color:#EF4444!important;background:#FFF1F2!important;animation:shake .28s ease;}
+    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+
+    .question-card{display:none;}
+    .question-card.active{display:block;animation:fadeIn .22s ease;}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .q-count{display:inline-flex;margin:2px 0 12px;padding:6px 12px;border-radius:999px;background:linear-gradient(135deg,#ECFDF5,#D1FAE5);color:var(--green-dark);font-weight:900;font-size:12px;border:1px solid rgba(22,163,74,.18);box-shadow:0 2px 8px rgba(15,95,58,.08);}
+    .question{font-size:20px;line-height:1.38;font-weight:1000;color:#0a1f14;margin-bottom:14px;}
+    .options{display:grid;gap:10px;}
+    .option,.choice-pill,.goal-chip{border:1.5px solid #E9ECEF;background:rgba(255,255,255,.94);border-radius:20px;padding:13px 14px;display:flex;gap:12px;align-items:flex-start;cursor:pointer;transition:.22s cubic-bezier(.34,1.26,.64,1);box-shadow:0 4px 14px rgba(17,24,39,.05);user-select:none;}
+    .option:hover,.choice-pill:hover,.goal-chip:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(17,24,39,.10);border-color:#C8D8CC;}
+    .option.selected,.choice-pill.selected{border-color:var(--green);background:linear-gradient(145deg,#ECFDF5,#F0FDF4,#FFFFFF);box-shadow:0 0 0 3px rgba(22,163,74,.14),0 12px 30px rgba(15,95,58,.14);}
+    .option.power.selected{border-color:var(--gold);background:linear-gradient(145deg,#FFFBEB,#FFF9E6,#FFFFFF);box-shadow:0 0 0 3px rgba(251,191,36,.18),0 12px 30px rgba(251,191,36,.14);}
+    .option.islam.selected{border-color:#D97706;background:linear-gradient(145deg,#FFFBEB,#F0FDF4,#FFFFFF);box-shadow:0 0 0 3px rgba(217,119,6,.16),0 12px 30px rgba(15,95,58,.12);}
+    .letter{width:30px;height:30px;border-radius:11px;display:grid;place-items:center;font-weight:1000;background:#F0F2F5;color:#555;flex:0 0 auto;transition:.22s ease;}
+    .option.selected .letter,.choice-pill.selected .letter{background:var(--green);color:#fff;box-shadow:0 4px 10px rgba(22,163,74,.3);}
+    .option.power.selected .letter{background:var(--gold);color:#111827;box-shadow:0 4px 10px rgba(251,191,36,.34);}
+    .option.islam.selected .letter{background:#D97706;color:#fff;box-shadow:0 4px 10px rgba(217,119,6,.3);}
+    .option-text b{display:block;font-size:15.5px;line-height:1.35;margin-bottom:2px;}
+    .option-text span{display:block;color:#5A6878;font-size:13px;line-height:1.48;}
+    .check{margin-left:auto;color:var(--green);font-weight:1000;opacity:0;transform:scale(.5);transition:.22s cubic-bezier(.34,1.56,.64,1);}
+    .selected .check{opacity:1;transform:scale(1)}
+
+    .grid-choices{display:grid;gap:10px;}
+    .unlock-preview{margin-top:14px;background:linear-gradient(135deg,#F0FDF4,#ECFDF5);border:1.5px solid rgba(22,163,74,.18);border-radius:20px;padding:14px 16px;display:none;box-shadow:0 4px 16px rgba(15,95,58,.07);}
+    .unlock-preview.show{display:block;animation:fadeIn .2s ease;}
+    .unlock-preview b{display:block;color:var(--green-dark);margin-bottom:8px;font-size:13px;}
+    .unlock-preview ul{margin:0;padding-left:20px;color:#374151;line-height:1.6;font-size:14px;}
+    .selected-count{font-size:13px;color:var(--muted);font-weight:800;margin-bottom:10px;display:flex;justify-content:space-between;gap:8px;}
+
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 13px;}
+    .goal-chip{padding:9px 14px;border-radius:999px;font-size:13px;font-weight:800;color:var(--green-dark);background:linear-gradient(135deg,#ECFDF5,#D1FAE5);border:1.5px solid rgba(22,163,74,.2);box-shadow:0 3px 10px rgba(15,95,58,.07);}
+
+    .nav{position:absolute;left:0;right:0;bottom:0;padding:10px 18px 20px;background:linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,.94) 24%,rgba(255,255,255,.99));display:flex;gap:10px;z-index:5;}
+    button{border:0;font:inherit;cursor:pointer;user-select:none;}
+    .btn{height:54px;border-radius:18px;padding:0 20px;font-weight:900;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.22s cubic-bezier(.34,1.16,.64,1);box-shadow:0 8px 22px rgba(17,24,39,.08);}
+    .btn:active{transform:scale(.97)}
+    .btn-primary{flex:1;color:#fff;background:linear-gradient(135deg,#118C3E 0%,var(--green) 35%,#d1387a 75%,var(--pink-strong) 100%);box-shadow:0 14px 34px rgba(22,163,74,.26),0 0 0 1px rgba(255,255,255,.22) inset;}
+    .btn-primary:hover{box-shadow:0 18px 40px rgba(22,163,74,.32),0 0 0 1px rgba(255,255,255,.22) inset;transform:translateY(-1px);}
+    .btn-primary.pulse{animation:pulse 1.7s infinite;}
+    @keyframes pulse{0%,100%{box-shadow:0 14px 34px rgba(22,163,74,.26),0 0 0 1px rgba(255,255,255,.22) inset}50%{box-shadow:0 20px 46px rgba(236,72,153,.32),0 0 0 8px rgba(249,168,212,.14),0 0 0 1px rgba(255,255,255,.22) inset}}
+    .btn-secondary{min-width:104px;background:rgba(255,255,255,.94);color:#374151;border:1.5px solid #E0E5E2;box-shadow:0 4px 12px rgba(17,24,39,.06);}
+    .btn-secondary:hover{border-color:#C8D8CC;background:#fff;}
+    .btn-ghost{background:rgba(255,255,255,.28);color:#fff;border:1px solid rgba(255,255,255,.22);box-shadow:none;}
+
+    .toast{position:absolute;left:18px;right:18px;bottom:88px;background:linear-gradient(135deg,#0a1f14,#111827);color:#fff;padding:12px 16px;border-radius:18px;font-size:14px;font-weight:800;box-shadow:0 16px 48px rgba(0,0,0,.28),0 0 0 1px rgba(255,255,255,.08) inset;transform:translateY(16px);opacity:0;pointer-events:none;transition:.24s cubic-bezier(.34,1.26,.64,1);z-index:20;line-height:1.48;}
+    .toast.show{transform:translateY(0);opacity:1;}
+
+    .loading{position:absolute;inset:0;display:none;place-items:center;background:rgba(5,40,25,.78);z-index:30;backdrop-filter:blur(12px) saturate(1.4);color:#fff;text-align:center;padding:28px;}
+    .loading.show{display:grid;}
+    .loader{width:72px;height:72px;border-radius:50%;border:6px solid rgba(255,255,255,.16);border-top-color:var(--gold);border-right-color:rgba(251,191,36,.4);animation:spin .8s cubic-bezier(.65,0,.35,1) infinite;margin:0 auto 18px;box-shadow:0 0 28px rgba(251,191,36,.22);}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loading h3{font-size:22px;margin-bottom:8px}.loading p{font-size:15px;color:rgba(255,255,255,.86)}
+
+    .modal{position:absolute;inset:0;z-index:40;background:rgba(7,24,18,.74);display:none;align-items:center;justify-content:center;padding:14px;backdrop-filter:blur(10px);}
+    .modal.show{display:flex;animation:fadeIn .22s ease;}
+    .result-wrap{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;}
+    .result-card{
+      width:min(100%,360px);
+      max-height:calc(100svh - 120px);
+      aspect-ratio:9/16;
+      overflow:auto;
+      border-radius:32px;
+      color:#fff;
+      background:
+        radial-gradient(ellipse at 12% 6%,rgba(249,168,212,.5),transparent 26%),
+        radial-gradient(ellipse at 88% 4%,rgba(251,191,36,.42),transparent 28%),
+        radial-gradient(ellipse at 50% 94%,rgba(22,163,74,.18),transparent 44%),
+        linear-gradient(150deg,#041410 0%,#0a3d22 28%,#115731 58%,#062016 100%);
+      border:1px solid rgba(255,255,255,.22);
+      box-shadow:0 40px 90px rgba(0,0,0,.5),0 0 56px rgba(249,168,212,.18),0 0 0 1px rgba(255,255,255,.06) inset;
+      padding:20px;
+      position:relative;
+      scrollbar-width:none;
+      animation:zoomGlow .36s cubic-bezier(.34,1.26,.64,1);
+    }
+    .result-card::-webkit-scrollbar{display:none}
+    @keyframes zoomGlow{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+    .result-card:before{content:"∑  π  √  x²";position:absolute;right:-12px;top:80px;writing-mode:vertical-rl;font-size:20px;font-weight:1000;letter-spacing:16px;color:rgba(255,255,255,.08);}
+    .r-head{text-align:center;position:relative;z-index:1;margin-bottom:9px;}
+    .r-logo{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;background:#fff;color:var(--green-dark);font-weight:1000;margin:0 auto 8px;box-shadow:0 12px 24px rgba(0,0,0,.2);overflow:hidden;}
+    .r-logo img{width:100%;height:100%;object-fit:cover;display:none;}
+    .unlock{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--gold),#FDE68A);color:#111827;font-size:11px;font-weight:1000;padding:6px 10px;border-radius:999px;margin-bottom:7px;}
+    .r-title{font-size:23px;font-weight:1000;line-height:1.1;margin-bottom:2px;}
+    .r-sub{font-size:13px;color:rgba(255,255,255,.84);font-weight:800;}
+    .r-box{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:18px;padding:11px 13px;margin-top:9px;position:relative;z-index:1;backdrop-filter:blur(4px);}
+    .r-box h4{margin:0 0 7px;font-size:12px;font-weight:900;color:#FDE68A;letter-spacing:.6px;text-transform:uppercase;}
+    .r-box p,.r-box li{font-size:12.2px;line-height:1.45;color:rgba(255,255,255,.9);margin:0;}
+    .r-box ul{margin:0;padding-left:18px;}
+    .student-line{display:grid;grid-template-columns:1fr 1fr;gap:5px 8px;font-size:12px;line-height:1.35;color:rgba(255,255,255,.92)}
+    .code-big{font-size:22px;font-weight:1000;color:#fff;margin-bottom:3px;}
+    .r-footer{text-align:center;font-size:11px;color:rgba(255,255,255,.76);margin-top:11px;line-height:1.4;position:relative;z-index:1;}
+    .result-actions{width:min(100%,380px);display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+    .result-actions .btn{height:46px;border-radius:16px;font-size:13px;}
+    .result-actions .wide{grid-column:1/-1;}
+
+    .confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:45;}
+    .confetti i{position:absolute;width:8px;height:12px;background:var(--gold);top:-16px;animation:fall 1.8s ease-in forwards;}
+    @keyframes fall{to{transform:translateY(100svh) rotate(440deg);opacity:.2}}
+
+    .mini-note{margin-top:14px;padding:13px 15px;border-radius:18px;background:linear-gradient(135deg,#FFF7ED,#FFFBF4);border:1.5px solid rgba(254,215,170,.7);color:#7C2D12;font-size:13px;line-height:1.52;font-weight:800;box-shadow:0 4px 14px rgba(251,146,60,.08);}
+    .footer-space{height:18px;}
+
+    /* ═══ HERO SCREEN REDESIGN ═══ */
+    .screen[data-step="0"]{padding:0;}
+    .hero{
+      min-height:100%;padding:22px 20px 96px;gap:14px;
+      background:
+        radial-gradient(ellipse at 18% 8%, rgba(249,168,212,.45) 0,transparent 38%),
+        radial-gradient(ellipse at 84% 5%, rgba(251,191,36,.36) 0,transparent 34%),
+        radial-gradient(ellipse at 50% 94%, rgba(22,163,74,.28) 0,transparent 46%),
+        linear-gradient(158deg,#031208 0%,#082b17 28%,#0d4928 55%,#05200f 100%);
+      position:relative;overflow:hidden;
+    }
+    .hero-orbs{position:absolute;inset:0;pointer-events:none;z-index:0;}
+    .orb{position:absolute;border-radius:50%;filter:blur(50px);}
+    .orb1{width:220px;height:220px;background:rgba(22,163,74,.28);top:-60px;left:-60px;animation:orbFloat 8s ease-in-out infinite;}
+    .orb2{width:180px;height:180px;background:rgba(249,168,212,.22);top:-40px;right:-50px;animation:orbFloat 11s ease-in-out infinite reverse;}
+    .orb3{width:240px;height:240px;background:rgba(251,191,36,.16);bottom:-80px;left:50%;transform:translateX(-50%);animation:orbFloat 9s ease-in-out infinite 2s;}
+    @keyframes orbFloat{0%,100%{transform:translateY(0) translateX(-50%)}50%{transform:translateY(-24px) translateX(-50%)}}
+    .orb1,.orb2{transform:none;}
+    @keyframes orbFloatA{0%,100%{transform:translateY(0)}50%{transform:translateY(-20px)}}
+    .orb1{animation:orbFloatA 8s ease-in-out infinite;}
+    .orb2{animation:orbFloatA 11s ease-in-out infinite reverse;}
+    .hero>*{position:relative;z-index:1;}
+    .hero-card{
+      background:rgba(255,255,255,.09) !important;
+      border:1px solid rgba(255,255,255,.2) !important;
+      box-shadow:0 28px 64px rgba(0,0,0,.36),0 0 0 1px rgba(255,255,255,.07) inset !important;
+      backdrop-filter:blur(20px) !important;
+      padding:26px 22px !important;
+    }
+    .hero-card:before{
+      background:
+        radial-gradient(ellipse at 8% 0%,rgba(249,168,212,.3),transparent 44%),
+        radial-gradient(ellipse at 96% 6%,rgba(251,191,36,.26),transparent 40%) !important;
+    }
+    .hero-icon{font-size:52px;line-height:1;margin:0 0 10px;filter:drop-shadow(0 0 18px rgba(251,191,36,.6));animation:iconPulse 2.4s ease-in-out infinite;}
+    @keyframes iconPulse{0%,100%{transform:scale(1);filter:drop-shadow(0 0 18px rgba(251,191,36,.6))}50%{transform:scale(1.08);filter:drop-shadow(0 0 28px rgba(251,191,36,.9))}}
+    .hero .app-title{
+      font-size:42px;letter-spacing:1px;margin:4px 0 6px;font-weight:500;
+      background:linear-gradient(135deg,#fff 0%,#d1fae5 40%,#fde68a 80%,#f9a8d4 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      filter:drop-shadow(0 2px 14px rgba(22,163,74,.35));
+    }
+    .hero .app-subtitle{font-size:20px;color:rgba(255,255,255,.9);font-weight:700;margin:0 0 12px;letter-spacing:.2px;}
+    .hero .desc{font-size:14.5px;color:rgba(255,255,255,.72);line-height:1.65;margin-bottom:16px;}
+    .mission-pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin:14px 0 16px;}
+    .mission-pills span{
+      display:inline-flex;align-items:center;gap:5px;
+      padding:7px 12px;border-radius:999px;font-size:12px;font-weight:700;
+      background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);
+      color:rgba(255,255,255,.9);backdrop-filter:blur(8px);
+      box-shadow:0 4px 12px rgba(0,0,0,.14);
+      transition:.2s ease;
+    }
+    .hero .badge.gold{background:linear-gradient(135deg,rgba(251,191,36,.36),rgba(249,168,212,.3));border-color:rgba(251,191,36,.5);color:#FDE68A;box-shadow:0 4px 16px rgba(251,191,36,.2);}
+    .hero .quote{
+      background:rgba(255,255,255,.1) !important;
+      border:1px solid rgba(255,255,255,.18) !important;
+      color:rgba(255,255,255,.92) !important;
+      box-shadow:0 4px 16px rgba(0,0,0,.14) !important;
+      font-size:14.5px;
+    }
+    .hero-tiny{font-size:12px;color:rgba(255,255,255,.52);text-align:center;line-height:1.55;}
+
+    /* Student Preview Card */
+    .student-preview{display:none;margin-top:18px;padding:16px;border-radius:22px;background:linear-gradient(135deg,#ECFDF5,#F0FDF4);border:1.5px solid rgba(22,163,74,.22);box-shadow:0 8px 28px rgba(15,95,58,.1);animation:fadeIn .28s ease;}
+    .student-preview.show{display:flex;align-items:center;gap:14px;}
+    .student-photo{width:72px;height:96px;border-radius:14px;object-fit:cover;object-position:top;flex:0 0 auto;box-shadow:0 8px 20px rgba(15,95,58,.18);border:2px solid rgba(255,255,255,.9);background:#E8F3ED;}
+    .student-photo-placeholder{width:72px;height:96px;border-radius:14px;flex:0 0 auto;background:linear-gradient(135deg,#D1FAE5,#E8F3ED);display:grid;place-items:center;font-size:28px;border:2px solid rgba(255,255,255,.9);}
+    .student-info-auto{flex:1;min-width:0;}
+    .student-info-auto .s-name{font-size:15px;font-weight:800;color:#0a3320;line-height:1.3;margin-bottom:4px;}
+    .student-info-auto .s-class{font-size:13px;font-weight:700;color:var(--green);display:inline-flex;align-items:center;gap:5px;background:rgba(22,163,74,.1);padding:3px 10px;border-radius:999px;}
+    .student-info-auto .s-id{font-size:12px;color:var(--muted);margin-top:5px;}
+    .student-not-found{display:none;margin-top:14px;padding:12px 14px;border-radius:18px;background:#FFF7ED;border:1.5px solid #FED7AA;color:#92400E;font-size:13px;font-weight:800;}
+    .student-not-found.show{display:block;animation:fadeIn .2s ease;}
+    .manual-fields{display:none;margin-top:14px;padding:14px;border-radius:20px;background:rgba(255,255,255,.7);border:1.5px solid #E5E7EB;}
+    .manual-fields.show{display:block;animation:fadeIn .22s ease;}
+
+    /* Result card photo */
+    .r-student-photo{width:54px;height:72px;border-radius:10px;object-fit:cover;object-position:top;border:2px solid rgba(255,255,255,.3);box-shadow:0 6px 16px rgba(0,0,0,.3);flex:0 0 auto;}
+
+    @media (max-width:360px){
+      .screen{padding-left:14px;padding-right:14px}.nav{padding-left:14px;padding-right:14px}.app-title{font-size:34px}.screen-title{font-size:25px}.question{font-size:18px}.result-card{max-height:calc(100svh - 116px);padding:16px}.r-box p,.r-box li{font-size:11.6px}
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-symbols" aria-hidden="true">
+    <span class="sym">∑</span><span class="sym">π</span><span class="sym">√</span><span class="sym">x²</span><span class="sym">%</span><span class="sym">∞</span>
+  </div>
+
+  <div class="desktop-shell">
+    <div class="phone" role="application" aria-label="MathEasy2 Code Web App">
+      <div class="app">
+        <header>
+          <div class="toprow">
+            <div class="logo-wrap"><img id="schoolLogo" alt="โลโก้โรงเรียน"><span>AFS</span></div>
+            <div class="school-text">
+              <b>โรงเรียนมูลนิธิอาซิซสถาน</b>
+              <span>MathEasy2 Code</span>
+            </div>
+          </div>
+          <div class="progress-area">
+            <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+            <div class="progress-label" id="progressLabel">1/8</div>
+          </div>
+        </header>
+
+        <main id="screens">
+          <section class="screen active" data-step="0">
+            <div class="hero">
+              <div class="hero-orbs" aria-hidden="true">
+                <div class="orb orb1"></div>
+                <div class="orb orb2"></div>
+                <div class="orb orb3"></div>
+              </div>
+              <div class="hero-card">
+                <span class="badge gold">🚀 Mission Start</span>
+                <div class="hero-icon">🔐</div>
+                <h1 class="app-title">MathEasy2 Code</h1>
+                <h2 class="app-subtitle">ถอดรหัสใจ ปลดล็อกคณิต</h2>
+                <p class="desc">กิจกรรมค้นหาตัวเองก่อนเริ่มเรียนคณิตศาสตร์พื้นฐาน</p>
+                <div class="mission-pills">
+                  <span>🧠 ถอดรหัสผู้เรียน</span>
+                  <span>🧱 กำแพงของฉัน</span>
+                  <span>⚡ พลังลับ</span>
+                  <span>🌙 อิสลามนำทาง</span>
+                  <span>🎯 เป้าหมาย</span>
+                </div>
+                <div class="quote">"ไม่ต้องเก่งตั้งแต่แรก<br>แค่กล้าเริ่ม และไม่ยอมแพ้เร็วเกินไป"</div>
+              </div>
+              <p class="hero-tiny">ใช้เวลาประมาณ 5–8 นาที · ตอบตามความจริง ไม่มีคำตอบผิด</p>
+            </div>
+          </section>
+
+          <section class="screen" data-step="1">
+            <div class="card">
+              <div class="mission-kicker">Student Info</div>
+              <h2 class="screen-title">ข้อมูลนักเรียน</h2>
+              <p class="help-text">กรอกรหัสนักเรียน แล้วเลื่อนออก ระบบจะค้นหาข้อมูลให้อัตโนมัติ</p>
+              <div><label for="studentId">รหัสนักเรียน</label><input id="studentId" inputmode="numeric" placeholder="เช่น 24001"></div>
+              <div class="student-preview" id="studentPreview">
+                <img class="student-photo" id="previewPhoto" alt="รูปนักเรียน">
+                <div class="student-info-auto">
+                  <div class="s-name" id="previewName"></div>
+                  <div class="s-class" id="previewClass"></div>
+                  <div class="s-id" id="previewId"></div>
+                </div>
+              </div>
+              <div class="student-not-found" id="studentNotFound">ไม่พบรหัสนี้ในระบบ — กรอกข้อมูลด้วยตนเองได้เลย</div>
+              <div class="manual-fields" id="manualFields">
+                <div style="margin-bottom:12px"><label for="manualName">ชื่อ-สกุล</label><input id="manualName" placeholder="กรอกชื่อและนามสกุล"></div>
+                <div><label for="manualClass">ชั้น</label>
+                  <select id="manualClass">
+                    <option value="">เลือกชั้น</option>
+                    <optgroup label="ม.5"><option>ม.5/1</option><option>ม.5/2</option><option>ม.5/3</option><option>ม.5/4</option><option>ม.5/5</option><option>ม.5/6</option><option>ม.5/7</option><option>ม.5/8</option><option>ม.5/9</option><option>ม.5/10</option><option>ม.5/11</option><option>ม.5/12</option></optgroup>
+                    <optgroup label="ม.6"><option>ม.6/1</option><option>ม.6/2</option><option>ม.6/3</option><option>ม.6/4</option><option>ม.6/5</option><option>ม.6/6</option><option>ม.6/7</option><option>ม.6/8</option><option>ม.6/9</option><option>ม.6/10</option><option>ม.6/11</option><option>ม.6/12</option></optgroup>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="screen" data-step="2">
+            <div class="card">
+              <div class="mission-kicker">Mission 1</div>
+              <h2 class="screen-title">ถอดรหัสผู้เรียนของฉัน</h2>
+              <p class="help-text">ตอบคำถาม 4 ข้อ เลือกคำตอบที่ตรงกับตัวเองมากที่สุด ไม่มีคำตอบผิด</p>
+              <div id="mission1"></div>
+            </div>
+          </section>
+
+          <section class="screen" data-step="3">
+            <div class="card">
+              <div class="mission-kicker">Mission 2</div>
+              <h2 class="screen-title">กำแพงของฉัน</h2>
+              <p class="help-text">เลือก 2 ข้อที่เป็นอุปสรรคของตัวเองมากที่สุดในการเรียนคณิตศาสตร์</p>
+              <div class="selected-count"><span>เลือกได้ 2 ข้อเท่านั้น</span><span id="wallCount">0/2</span></div>
+              <div class="grid-choices" id="walls"></div>
+              <div class="unlock-preview" id="unlockPreview"><b>แผนปลดล็อก</b><ul id="unlockList"></ul></div>
+              <div class="mini-note">"กำแพงไม่ได้มีไว้หยุดเรา แต่มีไว้ให้เราหาวิธีข้าม"</div>
+            </div>
+          </section>
+
+          <section class="screen" data-step="4">
+            <div class="card">
+              <div class="mission-kicker">Mission 3</div>
+              <h2 class="screen-title">พลังลับของฉัน</h2>
+              <p class="help-text">เลือกจุดแข็งของตัวเอง 1–2 ข้อ จุดแข็งเล็ก ๆ ก็มีคุณค่า</p>
+              <div class="selected-count"><span>เลือกอย่างน้อย 1 ข้อ สูงสุด 2 ข้อ</span><span id="powerCount">0/2</span></div>
+              <div class="grid-choices" id="powers"></div>
+              <div class="mini-note">"ทุกคนมีพลังบางอย่างอยู่แล้ว แค่ต้องรู้จักใช้มัน"</div>
+            </div>
+          </section>
+
+          <section class="screen" data-step="5">
+            <div class="card">
+              <div class="mission-kicker">Mission 4</div>
+              <h2 class="screen-title">หลักอิสลามนำทาง</h2>
+              <p class="help-text">การเรียนก็เป็นอิบาดะฮ์ได้ ถ้าเราตั้งเจตนาให้ถูกต้อง เลือก 1 หลักที่อยากใช้เป็นหลักประจำใจ</p>
+              <div class="grid-choices" id="islamic"></div>
+              <div class="mini-note">"พยายามให้เต็มที่ แล้วมอบหมายผลลัพธ์ต่ออัลลอฮ์"</div>
+            </div>
+          </section>
+
+          <section class="screen" data-step="6">
+            <div class="card">
+              <div class="mission-kicker">Mission 5</div>
+              <h2 class="screen-title">เป้าหมายเล็ก ๆ ของฉัน</h2>
+              <p class="help-text">เขียนเป้าหมายเล็ก ๆ ที่จะทำจริงในสัปดาห์แรกของการเรียน MathEasy2</p>
+              <div class="chips" id="goalChips"></div>
+              <label for="weeklyGoal">เป้าหมายของฉันคือ...</label>
+              <textarea id="weeklyGoal" placeholder="เช่น ฉันจะทบทวนหลังเรียน 10 นาที"></textarea>
+              <div class="mini-note">"เป้าหมายเล็ก ๆ ที่ทำจริง ดีกว่าเป้าหมายใหญ่ที่ไม่เริ่ม"</div>
+            </div>
+          </section>
+
+          <section class="screen" data-step="7">
+            <div class="card">
+              <span class="badge gold">✅ Mission Complete</span>
+              <h2 class="screen-title" style="margin-top:12px;">พร้อมถอดรหัสแล้ว</h2>
+              <p class="help-text">ระบบจะรวมคำตอบทั้งหมด แล้วสร้างการ์ด MathEasy2 Code ให้คุณแคปหน้าจอหรือบันทึกเป็นรูปภาพ</p>
+              <div class="quote">"เริ่มได้ ฝึกได้ พลาดได้ แต่ห้ามยอมแพ้"</div>
+              <div class="footer-space"></div>
+            </div>
+          </section>
+        </main>
+
+        <div class="nav">
+          <button class="btn btn-secondary" id="backBtn">ย้อนกลับ</button>
+          <button class="btn btn-primary pulse" id="nextBtn">เริ่มถอดรหัส</button>
+        </div>
+
+        <div class="toast" id="toast"></div>
+        <div class="loading" id="loading"><div><div class="loader"></div><h3>กำลังถอดรหัสของคุณ...</h3><p id="loadingText">กำลังรวม EXP ความพยายาม...</p></div></div>
+
+        <div class="modal" id="resultModal" aria-modal="true" role="dialog">
+          <div class="confetti" id="confetti"></div>
+          <div class="result-wrap">
+            <div class="result-card" id="resultCard"></div>
+            <div class="result-actions">
+              <button class="btn btn-secondary" id="editBtn">กลับไปแก้ไข</button>
+              <button class="btn btn-secondary" id="closeBtn">ปิด</button>
+              <button class="btn btn-primary wide" id="saveBtn">บันทึกการ์ดเป็น PNG</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // หากต้องการใช้โลโก้จริง ให้วาง URL หรือ Base64 ของโลโก้ที่นี่ เช่น const LOGO_URL = 'logo.png';
+    const LOGO_URL = 'https://lh3.googleusercontent.com/d/1-KTC56ZLDueNStgQ9h5Y4mvvG518I76r';
+
+    // [ID]: [ชื่อ, ชั้น]  — photo: https://azizstan.net/student_image/{ID}.jpg
+    const STUDENTS = {
+      '24001':['นายมูฮำมัดนาวาวี อะมิแซ','ม.5/1'],'24062':['นายมะห์ดี เจ๊ะเลาะ','ม.5/1'],'24124':['นายบาซิล บางัดสะโระ','ม.5/1'],'24140':['นายมูฮัมหมัดนาอีม มะแอ','ม.5/1'],'24146':['นายอัฟริน ลาเต๊ะ','ม.5/1'],'24173':['นายคัสราฟีย์ สามะ','ม.5/1'],'24210':['นายอาลาวีย์ สลำเหม','ม.5/1'],'24252':['นายซารีฟ อาแว','ม.5/1'],'24324':['นายอาริฟ บินสือนิ','ม.5/1'],'24329':['นายซาวีร สำเร','ม.5/1'],'24330':['นายซูฟัร สำเร','ม.5/1'],'24350':['นายลุอัย นิตีเมาะ','ม.5/1'],'24413':['นายสอฟวัณ ภักดีรัตนางกูร','ม.5/1'],'24486':['นายมุสลิม ยุโสะ','ม.5/1'],'24541':['นายรุซดาน สาแล๊ะหมิน','ม.5/1'],'24556':['นายมูฮัมหมัดอำรีน มะเซ็ง','ม.5/1'],'24563':['นายอารีฟีน เจะแม','ม.5/1'],'24578':['นายบัฎรี มะ','ม.5/1'],'26147':['นายฟิตดุลยา เจ๊ะหะ','ม.5/1'],'26188':['นายทฤษฎี เวาะเซ็ง','ม.5/1'],'26231':['นายมูฮัมหมัดอิมรอน คาเดร์','ม.5/1'],'26441':['นายอะฟันดี อะปิเซ็ง','ม.5/1'],'26683':['นายสิทธิพร พิมพกุล','ม.5/1'],'26782':['นายอนัส เจะหมาด','ม.5/1'],'27158':['นายไอดิลอัฎฮา วาโยะ','ม.5/1'],'27436':['นายนาวาวีย์ สันหมาน','ม.5/1'],
+      '24166':['นายฮัมรีย์ แวเตะ','ม.5/2'],'24212':['นายฮูเซ็น เจ๊ะสะตำ','ม.5/2'],'24289':['นายมูฮัมหมัดนีซัมมุดดีน อามะ','ม.5/2'],'24323':['นายมูฮัมหมัดอาฟิ ดอเลาะ','ม.5/2'],'24333':['นายปรมัตถ์ ราศรีพฤกษ์','ม.5/2'],'24341':['นายอุสมาน แวสาและ','ม.5/2'],'24349':['นายนุรดีน บาเหม','ม.5/2'],'24390':['นายลุกมาน ดอเล๊าะ','ม.5/2'],'24398':['นายอาสมี อาแว','ม.5/2'],'24414':['นายอิมรอน สาเลง','ม.5/2'],'24427':['นายอาดิล เส็นสะนา','ม.5/2'],'24540':['นายซาวิตรี เจ๊ะสารี','ม.5/2'],'24550':['นายนิมูฮัมมัดอาลาวี ยะเอะ','ม.5/2'],'24571':['นายอารอฟัด ดามัน','ม.5/2'],'25263':['นายอาดีลัน อาหวัง','ม.5/2'],'25924':['นายมูฮำหมัดรอมฎอน เจ๊ะเหม','ม.5/2'],'25974':['นายมูฮัมหมัดฟิกรี ยามาดี','ม.5/2'],'26061':['นายรัชชานนท์ เชาว์ช่าง','ม.5/2'],'26354':['นายรอมฎอน แวนาแว','ม.5/2'],'26511':['นายอัลยูฟรีย์ มุสตากีม','ม.5/2'],'26577':['นายอัรฟาน มะเด็ง','ม.5/2'],'26635':['นายเศรษฐิกุล อุเซ็ง','ม.5/2'],'26636':['นายฮัษวาน เจะอุบง','ม.5/2'],'26637':['นายอัมรัน เจ๊ะมาโซ','ม.5/2'],'26666':['นายซูไฮมีน ดออะ','ม.5/2'],'26771':['นายชารีฟ แซมาลี','ม.5/2'],'27527':['นายอับดุลฮากิม อูมา','ม.5/2'],
+      '23998':['น.ส.นัจญ์มีย์ เจะแต','ม.5/3'],'24006':['น.ส.โศรายา จินตารา','ม.5/3'],'24010':['น.ส.อาณีฟซัลวา เหมอุดม','ม.5/3'],'24025':['น.ส.มุสลีมะฮ์ สมาน','ม.5/3'],'24038':['น.ส.นัสมี สอและ','ม.5/3'],'24046':['น.ส.นูรซัมซียะห์ เจะเกาะบะ','ม.5/3'],'24050':['น.ส.นารีตา สาแมแน็ง','ม.5/3'],'24053':['น.ส.สารินี สะมะ','ม.5/3'],'24067':['น.ส.นูรุลนิสา เจ๊ะเหาะ','ม.5/3'],'24071':['น.ส.โซเฟียนี หมะเด็น','ม.5/3'],'24087':['น.ส.ฟาร่า สุหลง','ม.5/3'],'24096':['น.ส.กอนีตะห์ กาเร็ง','ม.5/3'],'24099':['น.ส.บารออะฮ์ หวัง','ม.5/3'],'24105':['น.ส.อิฟตีซาน สานิ','ม.5/3'],'24109':['น.ส.ฮานีฟาร์ รือแม','ม.5/3'],'24113':['น.ส.เจ๊ะนูฟาตีหะฮ์ สะแลแม','ม.5/3'],'24118':['น.ส.รุสณี แมแร','ม.5/3'],'24128':['น.ส.ณัฐกานต์ โมงหนิหมะ','ม.5/3'],'24137':['น.ส.นูรวีย์อาม แวสามะ','ม.5/3'],'24188':['น.ส.อัสมะ สะอะ','ม.5/3'],'24190':['น.ส.นัสริน มามะ','ม.5/3'],'24264':['น.ส.นูร์วูลเลีย สิเดะ','ม.5/3'],'24293':['น.ส.ซูรีนา มะโร๊ะ','ม.5/3'],'24331':['น.ส.นิฟาติน ดาโอ๊ะ','ม.5/3'],'24345':['น.ส.นูรซาร์ฮีรา มะและ','ม.5/3'],'24357':['น.ส.ฟิรดาว ยาลอ','ม.5/3'],'24373':['น.ส.โซเฟีย เจ๊ะเละ','ม.5/3'],'24374':['น.ส.บุสริน ลาเต๊ะ','ม.5/3'],'24375':['น.ส.อัซมี สาเล็ง','ม.5/3'],'24437':['น.ส.ฟาดีละห์ สะอิ','ม.5/3'],'24449':['น.ส.ซัลวานี มะลี','ม.5/3'],'24454':['น.ส.นูรฮายาตี สุหลง','ม.5/3'],'24455':['น.ส.ชลิตา อุเซ็ง','ม.5/3'],'24514':['น.ส.ซาวิตรี มะยิ','ม.5/3'],'25919':['น.ส.ซามีมีย์ ลาดอ','ม.5/3'],'26255':['น.ส.ซูลีฮา แวบือราเฮง','ม.5/3'],'27305':['น.ส.นูรฮัยฟาร์ อุมา','ม.5/3'],
+      '24015':['น.ส.อัสมา หะยีเจะนิ','ม.5/4'],'24133':['น.ส.ซีตีอามีเนาะ โต๊ะเวาะซะ','ม.5/4'],'24185':['น.ส.นูรวานี เปาะมะ','ม.5/4'],'24186':['น.ส.นูรไลลา มอลอ','ม.5/4'],'24192':['น.ส.นูรซอลีฮะห์ สุหลง','ม.5/4'],'24204':['น.ส.รอยฮัน แยนา','ม.5/4'],'24258':['น.ส.ฟาตีฮะห์ ดอเลาะ','ม.5/4'],'24260':['น.ส.นิสา ปูตะ','ม.5/4'],'24267':['น.ส.ฮัฟซาน นิพร่อน','ม.5/4'],'24285':['น.ส.ฟาดีละห์ เจ๊ะลอ','ม.5/4'],'24312':['น.ส.นูรฮาซีกีน ตาเย๊ะ','ม.5/4'],'24327':['น.ส.อัฟนาน แวดาโอะ','ม.5/4'],'24469':['น.ส.ซูไรดา แมเราะ','ม.5/4'],'25290':['น.ส.นาเดีย มะแซ','ม.5/4'],'26034':['น.ส.นัชวา แดวอ','ม.5/4'],'26038':['น.ส.ญาวานี จิสา','ม.5/4'],'26046':['น.ส.รุบนา ดามันยูโซ๊ะ','ม.5/4'],'26120':['น.ส.นุรฮูดา บากา','ม.5/4'],'26124':['น.ส.อัซฮาม บือซา','ม.5/4'],'26196':['น.ส.อัสมะ ดาโต๊ะ','ม.5/4'],'26249':['น.ส.อาดีละห์ สาเม๊าะ','ม.5/4'],'26266':['น.ส.นูรุลตักวา ยีสะอุ','ม.5/4'],'26338':['น.ส.ซัซวานี หมะอะ','ม.5/4'],'26340':['น.ส.อาตีน่า มาลารัตน์','ม.5/4'],'26359':['น.ส.ซุลฟาร์ โดยหมะ','ม.5/4'],'26381':['น.ส.ฟิตรี มะแซ','ม.5/4'],'26404':['น.ส.โซเฟีย ดะแล','ม.5/4'],'26419':['น.ส.อัสนาน สิดิ','ม.5/4'],'26471':['น.ส.ซูฮาดา สาและ','ม.5/4'],'26480':['น.ส.ฟาฏอนียะห์ ยูโซะ','ม.5/4'],'26541':['น.ส.นุสรีน กูนา','ม.5/4'],'26543':['น.ส.ปริศา กามา','ม.5/4'],'26566':['น.ส.นูรฮัยฟา ยะลาหะ','ม.5/4'],'26570':['น.ส.ซุฟเฟียนีย์ โว๊ะโก','ม.5/4'],'26607':['น.ส.นูรอีสซาน ดือราแม','ม.5/4'],'26661':['น.ส.ตัสนีม หวันหนิ','ม.5/4'],'26685':['น.ส.ฮุสนา ตาเยะ','ม.5/4'],'26699':['น.ส.ยูไวนี หะยีมะสัน','ม.5/4'],'26734':['น.ส.ยุสวีนา เจะนิ','ม.5/4'],'26773':['น.ส.แวเสาะ แปเฮาะอีเล','ม.5/4'],'26775':['น.ส.อัยรินทร์ ดุลยดากรณ์','ม.5/4'],'26776':['น.ส.กูฟิรดาวส์ จะแหน','ม.5/4'],'27204':['น.ส.นุรตัซณิม มามะ','ม.5/4'],'27427':['น.ส.ฟาตีเม๊าะ ดอล่าโดย','ม.5/4'],'27459':['น.ส.พิมพ์อัปสร สาโรจน์','ม.5/4'],'27497':['น.ส.อัสมาวาตี วาแม','ม.5/4'],
+      '24004':['น.ส.นาดา โอะจิ','ม.5/5'],'24020':['น.ส.รุสนาดีญา รัญจวน','ม.5/5'],'24036':['น.ส.นิสรีน แปะแนะ','ม.5/5'],'24042':['น.ส.กฤษณี สุหลงกุ','ม.5/5'],'24064':['น.ส.ซุลนูไรนี มะหะจิ','ม.5/5'],'24068':['น.ส.นิลาตีฟะห์ นิเล๊าะ','ม.5/5'],'24076':['น.ส.บิสมิลลา กานิง','ม.5/5'],'24082':['น.ส.นูรอิบติซาม เจ๊ะเลง','ม.5/5'],'24093':['น.ส.อุษวาตี วาหะ','ม.5/5'],'24155':['น.ส.อัฟนาน ดือราซอ','ม.5/5'],'24157':['น.ส.นุรนาอีม สาเมาะ','ม.5/5'],'24158':['น.ส.ซีรีน สะมะแอ','ม.5/5'],'24159':['น.ส.นูรฟาติน กาหลง','ม.5/5'],'24170':['น.ส.ตัสนีม อีซอมูซอ','ม.5/5'],'24174':['น.ส.ซัลวานี อับดุลลาเตะ','ม.5/5'],'24177':['น.ส.วรรณิสา สาและบู','ม.5/5'],'24187':['น.ส.นัจญวา เจะหะ','ม.5/5'],'24205':['น.ส.ซอบารีย๊ะ ปะดอ','ม.5/5'],'24214':['น.ส.นุรอนิษา มะสะ','ม.5/5'],'24220':['น.ส.นิสรีน โตะและ','ม.5/5'],'24222':['น.ส.รูอาร์ สะมะแอ','ม.5/5'],'24223':['น.ส.ซีรินทร์ มะเซ็ง','ม.5/5'],'24224':['น.ส.ซีฟะห์ มะเซ็ง','ม.5/5'],'24256':['น.ส.ซีรินณ์ ยูโซะ','ม.5/5'],'24257':['น.ส.นุรมะห์ มะดีเยาะ','ม.5/5'],'24399':['น.ส.นาฟาฮาต เล๊ะนุ๊','ม.5/5'],'24424':['นายอัรฟา บาโงสะตา','ม.5/5'],'26203':['น.ส.นาวัล นิสนิ','ม.5/5'],'26342':['น.ส.ซอลีฮะห์ สาเมาะ','ม.5/5'],'26484':['นายอิรฟาน สลำ','ม.5/5'],'26503':['น.ส.อามานีย์ ยาบา','ม.5/5'],'26696':['น.ส.อริศรา อัตมาด','ม.5/5'],'26707':['น.ส.ณาอีม หมัดหัด','ม.5/5'],'26724':['น.ส.วันนูรีย์ แวมามุ','ม.5/5'],'26816':['นายอามานรูดดีน มะลา','ม.5/5'],
+      '24019':['น.ส.รอยฮาน สะมะแอ','ม.5/6'],'24044':['น.ส.อารีนา อูมา','ม.5/6'],'24061':['น.ส.ซอฟะ อาแว','ม.5/6'],'24088':['น.ส.นาซูฮา แดวอ','ม.5/6'],'24094':['น.ส.นัซนีม ดือราแม','ม.5/6'],'24121':['น.ส.ซูไรนีย์ วันยี','ม.5/6'],'24135':['น.ส.ซัลวาติห มามะ','ม.5/6'],'24141':['น.ส.อานีฟา จิยีมะ','ม.5/6'],'24164':['นายอาดือนาน สาแต','ม.5/6'],'24233':['น.ส.ซัลมี ฮามะ','ม.5/6'],'24234':['น.ส.ซัลซาบีลา หะนั่ง','ม.5/6'],'24238':['น.ส.นุรมี คอแบ๊ะ','ม.5/6'],'24244':['นายอัฟฟาน เจ๊ะสะตำ','ม.5/6'],'24273':['นายอัชรอฟ อับดุลวาฮับ','ม.5/6'],'24275':['น.ส.นิอาลียา เจะแม','ม.5/6'],'24279':['นายมูฮำหมัดฟุตรอ ดอเลาะกาเดร์','ม.5/6'],'24282':['นายมูฮัมหมัดซาซูวัน คาเร็ง','ม.5/6'],'24300':['น.ส.นุรดีนี สุหลง','ม.5/6'],'24301':['น.ส.นาอีละห์ มะเระ','ม.5/6'],'24307':['นายฮาฟิซ อิจิ','ม.5/6'],'24355':['นายมูฮัมหมัดคอเล็ฎ เจะเละ','ม.5/6'],'24366':['นายอัมมาร์ อับดุลวาฮับ','ม.5/6'],'24451':['น.ส.มาซีเตาะห์ สาแม','ม.5/6'],'24466':['นายอิสมะแอล เจ๊ะมะ','ม.5/6'],'24518':['นายอาหมัดไซฟูล ตาเละ','ม.5/6'],'24539':['นายมุฎริก และแย','ม.5/6'],'24549':['นายกฤษณพงศ์ ไบเตะ','ม.5/6'],'25222':['นายนัศรุลลอฮ หมะอุเส็น','ม.5/6'],'26062':['น.ส.นาดีรา สะดียามู','ม.5/6'],'26171':['น.ส.นาดียา ยาบาหลง','ม.5/6'],'26219':['น.ส.ฮาซาณีย์ เซ็ง','ม.5/6'],'26456':['นายอิลฮาม มาลาศรี','ม.5/6'],'26766':['น.ส.นาวีซา โต๊ะด้วน','ม.5/6'],'27503':['นายมูหมัดวิลดาน ปายอ','ม.5/6'],
+      '24008':['น.ส.ตัสนีม มันปุ','ม.5/7'],'24018':['นายมูฮัมหมัดลุตฟี วาเย็ง','ม.5/7'],'24022':['น.ส.ซูรัยดา บากาประเสริฐ','ม.5/7'],'24039':['น.ส.นูรุลอัยน์ มิเร็ม','ม.5/7'],'24060':['น.ส.นินัจมีย์ แดเบาะ','ม.5/7'],'24070':['น.ส.วาสินี สันบากอ','ม.5/7'],'24074':['น.ส.นูรูฟาเดีย วาเงาะ','ม.5/7'],'24081':['น.ส.ฮุสไนลา สมานสุหลง','ม.5/7'],'24127':['นายอิมรอน แส้เด็น','ม.5/7'],'24144':['น.ส.ฮัยซูม ดามัน','ม.5/7'],'24156':['น.ส.ตัสนีม หะยีสะมาแอ','ม.5/7'],'24167':['น.ส.แวฟาตียะห์ ดือราเซะ','ม.5/7'],'24176':['น.ส.นาดียา แซแม็ง','ม.5/7'],'24181':['น.ส.บัลกิส เจะเย็ง','ม.5/7'],'24196':['น.ส.นูรฟาคีร่า แนปิแน','ม.5/7'],'24235':['น.ส.ฟิรดาว มะแซ','ม.5/7'],'24249':['น.ส.ฟาติน สะแม','ม.5/7'],'24250':['น.ส.นาวัล มีนา','ม.5/7'],'24261':['น.ส.รัตติกานต์ จินะ','ม.5/7'],'24353':['น.ส.ฟาราฮา เดชอรัญ','ม.5/7'],'24376':['น.ส.นูรรัยซะห์ กูจิ','ม.5/7'],'24393':['น.ส.รอยฮาน ตาเยาะ','ม.5/7'],'24425':['น.ส.ไลลา ดาแซ','ม.5/7'],'24443':['น.ส.สีตีมาเรียม มะเซง','ม.5/7'],'24453':['น.ส.สีตีอาอีเส๊าะ สุหลง','ม.5/7'],'24577':['นายอัชรอฟ ยุโซะ','ม.5/7'],'26095':['น.ส.นิฮัซวานี บาเหม','ม.5/7'],'26145':['น.ส.วาฮีดา หมีโดด','ม.5/7'],'26212':['น.ส.ชนันธิดา เขียวสด','ม.5/7'],'26236':['นายมูฮำหมัดดานิช หะมะ','ม.5/7'],'26261':['นายซุบฮาน เจ๊ะเด็ง','ม.5/7'],'26344':['น.ส.สาธิตา ดอแนเล๊าะ','ม.5/7'],'26522':['น.ส.นัตตรีเซีย สองเมือง','ม.5/7'],'26695':['น.ส.ลาตีฟะฮ์ โตะลู','ม.5/7'],'26735':['น.ส.ร็อยมี เส็นบูหงา','ม.5/7'],'26739':['น.ส.ปุณยวีร์ มะหนิ','ม.5/7'],'26795':['นายอันวา กาเซะ','ม.5/7'],'26808':['น.ส.ฮิลมีย์ สะอะ','ม.5/7'],
+      '24045':['นายวาฮิด สมอยุโซ๊ะ','ม.5/8'],'24065':['น.ส.นุรฟาติน มาแยปีแน','ม.5/8'],'24115':['น.ส.ฟิรดาวน์ ลาดอ','ม.5/8'],'24122':['น.ส.กูนาเดียร์ อีแต','ม.5/8'],'24142':['น.ส.ฟาตีเม๊าะ ดอเลาะ','ม.5/8'],'24148':['นายกาดาฟี สาหลำ','ม.5/8'],'24175':['น.ส.ฟิร์ดาว สากา','ม.5/8'],'24229':['น.ส.ซาวิณา เลาะปนสา','ม.5/8'],'24320':['น.ส.นุรอัยนี อิปะมะแอน','ม.5/8'],'24465':['น.ส.อิสฟาร ตาเละ','ม.5/8'],'24516':['น.ส.สเตฟาร์มี หลังเตมมี','ม.5/8'],'24519':['นายสุฮัยมี มะสะ','ม.5/8'],'26599':['น.ส.อาซวาณี อามะ','ม.5/8'],'26606':['น.ส.สูฟียา เจ๊ะอูมา','ม.5/8'],'26657':['น.ส.อิมตีนาน อารง','ม.5/8'],'26749':['น.ส.นุชสรี หมัดสะมัน','ม.5/8'],'26774':['นายอาฮานาฟ ฮาแวปูเตะ','ม.5/8'],'26787':['นายรอมฎอน โสะเบ็ญอาหลี','ม.5/8'],'27350':['น.ส.รัชฎา แซ่จง','ม.5/8'],
+      '23507':['น.ส.นิซุลฟาร์ เปาะแม','ม.5/9'],'23879':['น.ส.นัสรียา เจะเงาะ','ม.5/9'],'23996':['น.ส.ดาเวียร์ บูงอสะนอ','ม.5/9'],'24005':['น.ส.ซูฟียะห์ สามาแอ','ม.5/9'],'24012':['น.ส.ซีตีนูรียะตี ปูชู','ม.5/9'],'24017':['น.ส.นูรฮายาตี แวหามะ','ม.5/9'],'24024':['น.ส.นูรีดา บาตูขาเด็ง','ม.5/9'],'24035':['น.ส.ฮัซวานี ยือรา','ม.5/9'],'24040':['น.ส.ณารีตา มะตอมะ','ม.5/9'],'24079':['น.ส.นาซูฮา วานิ','ม.5/9'],'24080':['น.ส.ดาลีลา สลำยาตี','ม.5/9'],'24091':['น.ส.ชดารัตน์ หลีล่าสัน','ม.5/9'],'24132':['น.ส.สุนิดา ดาหมิ','ม.5/9'],'24163':['น.ส.ตัสลีมะห์ เหล็บ','ม.5/9'],'24193':['น.ส.อัสมี มะเละ','ม.5/9'],'24231':['น.ส.ฟาฏอนียะห์ ปอสา','ม.5/9'],'24243':['น.ส.นูรอัยริณ สะแม','ม.5/9'],'24299':['น.ส.นุรอินตีนา สะมะแอ','ม.5/9'],'24311':['น.ส.ตัศนิม เขียวเล','ม.5/9'],'24328':['น.ส.ดานิช บุญสนิท','ม.5/9'],'24332':['น.ส.อิลญานา สาและ','ม.5/9'],'24418':['น.ส.วีอาม ลาเต๊ะ','ม.5/9'],'24471':['น.ส.มารีญาณี เมาะอะ','ม.5/9'],'24485':['น.ส.กัสมีรีย์ ยุโซะ','ม.5/9'],'24496':['น.ส.ซาฟียะห์ เจะแต','ม.5/9'],'24509':['น.ส.นุรฟาดีลา ดาโอ๊ะมุสอ','ม.5/9'],'24523':['น.ส.นูรูลนีซา มะลี','ม.5/9'],'24555':['น.ส.นาตีเกาะห์ ยะซิง','ม.5/9'],'25311':['น.ส.นาซูฮา ดอเลาะ','ม.5/9'],'26109':['น.ส.ตัซนีม มุสอ','ม.5/9'],'26307':['น.ส.บัณฑิตา หมีนเส็น','ม.5/9'],'26347':['น.ส.นุฟาตีมี หะมิดง','ม.5/9'],'26350':['น.ส.นุสนานี หมัดหยัน','ม.5/9'],'26396':['น.ส.นิฟาระห์ วายีเกา','ม.5/9'],'26442':['น.ส.ฟิรดาวซ์ ลีบอ','ม.5/9'],'26516':['น.ส.ตัสนีม ใจมันดี','ม.5/9'],'26527':['น.ส.วันณีต้า อุสมันบาฮา','ม.5/9'],'26572':['น.ส.มุมีนี มะเย็ง','ม.5/9'],'26578':['น.ส.วาสนา กอรอมอ','ม.5/9'],'26583':['น.ส.รุ่งนภา ดอเล๊าะ','ม.5/9'],'26641':['น.ส.ตัซนีม กาซอ','ม.5/9'],'26713':['น.ส.ซัลวา ยะโก๊ะ','ม.5/9'],'26714':['น.ส.วีอาม มะแซจะแหน','ม.5/9'],'26720':['น.ส.นูรอาซีกีน มามะเร','ม.5/9'],'26745':['น.ส.นุรอาติน ฮะมะ','ม.5/9'],'26772':['น.ส.นัสซูวีย์ ดือเระ','ม.5/9'],'27496':['น.ส.ซาฮาดา มามะ','ม.5/9'],
+      '24011':['น.ส.นูรมี ลือโมะ','ม.5/10'],'24023':['น.ส.นูรุลฮูดา เจะบือเฮง','ม.5/10'],'24047':['น.ส.นิฮาณีฟา ตาเยะ','ม.5/10'],'24069':['น.ส.นุรฟาติน เล็มเส็น','ม.5/10'],'24078':['น.ส.นูรีมาล มะนอสะ','ม.5/10'],'24085':['น.ส.รุลนะฎา เส็นสะนา','ม.5/10'],'24111':['น.ส.นุรไอริน สะแม','ม.5/10'],'24189':['น.ส.ฮานีซะฮ์ หลีกา','ม.5/10'],'24239':['น.ส.ฟารีดา หะยีมามะ','ม.5/10'],'24255':['น.ส.ฟิตรียะห์ ดือราแม','ม.5/10'],'24296':['น.ส.นูรไอนี มะลี','ม.5/10'],'24314':['น.ส.นูรีฮัน ยูโซะ','ม.5/10'],'24358':['น.ส.นูรีน สะแปอิง','ม.5/10'],'24363':['น.ส.รอฟีดะห์ บาฮา','ม.5/10'],'24385':['น.ส.อัสมาอ์ สาและ','ม.5/10'],'24396':['น.ส.การีมะห์ มะเซ็ง','ม.5/10'],'24402':['น.ส.อิบตีซาม บาเหม','ม.5/10'],'24412':['น.ส.นุสเราะห์ มะกูวิง','ม.5/10'],'24419':['น.ส.นูรมี บูดี','ม.5/10'],'24476':['น.ส.นัซมี ดือราแม','ม.5/10'],'24480':['น.ส.ซาฟาเนียร์ สะอะ','ม.5/10'],'24490':['น.ส.ฮุสนา ดาเรง','ม.5/10'],'24503':['น.ส.โนรบัยซูรา สูหลง','ม.5/10'],'24512':['น.ส.บิสมี สาและ','ม.5/10'],'25829':['น.ส.ฮัซวานี มะกาเซ็ม','ม.5/10'],'26015':['น.ส.ดารุณี มะเย๊าะ','ม.5/10'],'26078':['น.ส.เอมิกา ฮามะ','ม.5/10'],'26159':['น.ส.อาวาติฟ สะมะ','ม.5/10'],'26287':['น.ส.มุสลีฮา ตาเยะ','ม.5/10'],'26424':['น.ส.นัสริน หะมะ','ม.5/10'],'26464':['น.ส.นูรตัสนีม มะแอ','ม.5/10'],'26525':['น.ส.ฟะห์มี การิง','ม.5/10'],'26544':['น.ส.อาวาติฟ บาตูขาเด็ง','ม.5/10'],'26562':['น.ส.อิลฮัม อารง','ม.5/10'],'26565':['น.ส.ยุสมี สาเหาะ','ม.5/10'],'26579':['น.ส.นุรอัยมาน ดอเล๊าะ','ม.5/10'],'26674':['น.ส.ตัสนีม สาอะ','ม.5/10'],'26757':['น.ส.สุไรฮา ดอเลาะ','ม.5/10'],'26758':['น.ส.ซอฟียะห์ บระอาซัน','ม.5/10'],'26797':['น.ส.นูฮานียา หาดแก้ว','ม.5/10'],'26801':['น.ส.แวตัสณีม สาเหม๊าะ','ม.5/10'],'27029':['น.ส.ฮาดีบะห์ กาเร็ง','ม.5/10'],'27392':['น.ส.สาฮาดา ลาเตะ','ม.5/10'],
+      '22724':['น.ส.อาณีฟะห์ มานิ','ม.6/0'],'22741':['นายอิรฮัม เหมหลง','ม.6/0'],'22779':['นายมูฮำหมัดอิรฟาน เจ๊ะหลง','ม.6/0'],'22780':['น.ส.ต่วนนูรีฮัน ดอเลาะ','ม.6/0'],'23043':['น.ส.มารีณี สามะ','ม.6/0'],'23051':['น.ส.นูรฟาตีน บือราเฮง','ม.6/0'],'23114':['นายฮาพีซอล หยงสตาร์','ม.6/0'],'23186':['นายริฟฮาน คาเดลอดิง','ม.6/0'],'23214':['น.ส.นูรียา คาร์เดร์','ม.6/0'],'24180':['น.ส.มิสบะ แปะแนะ','ม.6/0'],'24750':['น.ส.ซัซวานี หลังปาปัน','ม.6/0'],
+      '23396':['นายอลีฟ สิริเต๊ะ','ม.6/1'],'23427':['นายมูฮัมหมัดฟิรดาว อาแวกือจิ','ม.6/1'],'23433':['นายมนัส สาและ','ม.6/1'],'23443':['นายอิสกันดาร์ ลาเตะ','ม.6/1'],'23503':['นายอาริฟ เหมอุดม','ม.6/1'],'23517':['นายยะฟัร บิลา','ม.6/1'],'23520':['นายอัซซูวา ยาโงะ','ม.6/1'],'23522':['นายมะซัมรี บาสอ','ม.6/1'],'23538':['นายอภิสิทธิ์ ดือเร๊ะ','ม.6/1'],'23554':['นายนาอิฟ สาฮะ','ม.6/1'],'23576':['นายบะห์รี ดอเล็ง','ม.6/1'],'23600':['นายมูฮัมหมัดฮามีซี เจะแว','ม.6/1'],'23618':['นายอัฟฟาน เซะมิง','ม.6/1'],'23629':['นายอาเดล มาตัดสา','ม.6/1'],'23639':['นายมูฮัมหมัดไฟศอล เฆดา','ม.6/1'],'23665':['นายมูฮำหมัดอิลฮัม โตะวี','ม.6/1'],'23666':['นายแวซารีฟฟุดดีน แวหามะ','ม.6/1'],'23702':['นายซอและห์ มะลี','ม.6/1'],'23871':['นายมูฮำหมัดลุตฟี สือตาปอ','ม.6/1'],'23873':['นายอมีน อาแว','ม.6/1'],'23887':['นายนัสรูน สาแม','ม.6/1'],'23891':['นายอิรฟาน เจะมะ','ม.6/1'],'23916':['นายมูฮำหมัดฮารี เดหมาน','ม.6/1'],'24072':['นายมูฮัมหมัดฟิตรี อาลี','ม.6/1'],'24531':['นายฮีซาม กาแบ','ม.6/1'],'25272':['นายมูฮำหมัดลุตฟี ตานิง','ม.6/1'],'25346':['นายชลธี ยุนุ้ย','ม.6/1'],'25391':['นายมูฮัมหมัด อาแว','ม.6/1'],'25433':['นายเร๊าะหมัด กูบาเล๊าะ','ม.6/1'],'25434':['นายนูรูดีน ใบโสะดำ','ม.6/1'],'25482':['นายฮิฟนี เจ๊ะดอมะ','ม.6/1'],'25591':['นายมูฮัมหมัดรอมฎอน กูวิง','ม.6/1'],'25690':['นายฮานาฟี สาอิ','ม.6/1'],'25912':['นายอัรฮาม เจะแว','ม.6/1'],'25958':['นายธันวา อ่อนเกลี้ยง','ม.6/1'],'25999':['นายอานัส ดอแต','ม.6/1'],'26051':['นายอนุสรณ์ เป๊าะซา','ม.6/1'],
+      '21905':['นายมูฮัมหมัดรูสลัน สาแม','ม.6/2'],'23338':['นายอาลิฟ สาแล๊ะหมิน','ม.6/2'],'23355':['นายมูฮัมหมัดอานาซี หะยีดอเลาะ','ม.6/2'],'23366':['นายลุตฟี ยีกะจิ','ม.6/2'],'23401':['นายนัสรุดดีน ดือราแม','ม.6/2'],'23406':['นายอารอฟัต อาแว','ม.6/2'],'23458':['นายดุลฟาดีน บาฮอ','ม.6/2'],'23470':['นายรอซีน มะโระ','ม.6/2'],'23496':['นายสุไลมาน ยุนุ๊','ม.6/2'],'23563':['นายอัสรัน ฮู่','ม.6/2'],'23578':['นายซัลฟาน เจะมะ','ม.6/2'],'23585':['นายอาดือนัน ยามาดง','ม.6/2'],'23652':['นายอารีฟีน หะยีหะมะ','ม.6/2'],'23701':['นายนิติพล ปากาลาแล','ม.6/2'],'23703':['นายซอลาฮูดิง มีนาดาโอะ','ม.6/2'],'23725':['นายหังตูเวาะห์ ตือราแม','ม.6/2'],'23782':['นายนาวิน ฟักหมิด','ม.6/2'],'23785':['นายอารีฟ มะยิ','ม.6/2'],'23941':['นายมะรูดิง แฉะ','ม.6/2'],'23958':['นายซะอุดี หะยีมิ','ม.6/2'],'25389':['นายวาอิล บาฮะ','ม.6/2'],'25432':['นายซูลกีฟลี บ้านนา','ม.6/2'],'25486':['นายอัมมาน เจะหม๊ะ','ม.6/2'],'25745':['นายอัฟฮัม แหมะ','ม.6/2'],'25798':['นายซุกรอน สาเหาะ','ม.6/2'],'25812':['นายอับดุลบาซีส เระสะอะ','ม.6/2'],'25824':['นายรัฐศาสตร์ หรุ่มวิสัย','ม.6/2'],'25885':['นายอัสรีย์ มุโดะ','ม.6/2'],'26013':['นายรชต ธรรมรัตนพงศ์','ม.6/2'],'26021':['นายดาวุด สามะ','ม.6/2'],'26190':['นายอาดีลัน ดอเลาะ','ม.6/2'],
+      '23354':['น.ส.ฮะวา สาเม๊าะ','ม.6/3'],'23358':['น.ส.เบนาซี ดาระโจะ','ม.6/3'],'23367':['น.ส.ปนิตา กามา','ม.6/3'],'23375':['น.ส.ศิรภัสสร สาหลี','ม.6/3'],'23385':['น.ส.นาเดีย กาเด๊าะ','ม.6/3'],'23387':['น.ส.อัสรินทร์ ลาแม็ง','ม.6/3'],'23388':['น.ส.ซัลวา ปะดอดา','ม.6/3'],'23395':['น.ส.นาอีมะห์ วาโด','ม.6/3'],'23419':['น.ส.มาดีนะห์ หมัดลี','ม.6/3'],'23431':['น.ส.กูมัสนีย์ เลาะวาโย','ม.6/3'],'23451':['น.ส.อาลีซา สาและ','ม.6/3'],'23462':['น.ส.อิบติฮาล สามะ','ม.6/3'],'23518':['น.ส.ฟิตรียา ยีมะมิง','ม.6/3'],'23525':['น.ส.รุจิษยา มัดเลาะ','ม.6/3'],'23535':['น.ส.นูรฮูดาร์ สะอะ','ม.6/3'],'23622':['น.ส.สุไบดะห์ หะมะ','ม.6/3'],'23677':['น.ส.ซอลีฮะ บิลอหวัง','ม.6/3'],'23679':['น.ส.นีสริน มามุ','ม.6/3'],'23686':['น.ส.มูฮันนา หวังยี','ม.6/3'],'23714':['น.ส.ตักวา ดาหวี','ม.6/3'],'23724':['น.ส.ซูไลกา มะมิง','ม.6/3'],'23751':['น.ส.สุนิตา แน','ม.6/3'],'23792':['น.ส.โสรยา มุณี','ม.6/3'],'23804':['น.ส.ซูไรดา เดนหะ','ม.6/3'],'23809':['น.ส.ตอเฮเราะ บินรัตแก้ว','ม.6/3'],'23823':['น.ส.อานิสาอ์ สะลิมิง','ม.6/3'],'23827':['น.ส.นูรูลไฮมา กูนิง','ม.6/3'],'23845':['น.ส.อันดา เจะหะ','ม.6/3'],'23918':['น.ส.ตัสนีญา สูหรง','ม.6/3'],'23989':['น.ส.นัสรินดาร์ หะมะ','ม.6/3'],'25463':['น.ส.ซูรัยยา ดอเล๊าะ','ม.6/3'],'25541':['น.ส.อัลวานี หวังนุรักษ์','ม.6/3'],'25595':['น.ส.นูรีตา สาแม','ม.6/3'],'25613':['น.ส.นาเดีย คนุงกากะ','ม.6/3'],'25797':['น.ส.ซูรียานี สาเระ','ม.6/3'],'25826':['น.ส.นุรนาดีเราะห์ ลาเตะ','ม.6/3'],'25876':['น.ส.ยูรัยฟา หะยีมะแซ','ม.6/3'],'25986':['น.ส.รอฮานี สาเมาะ','ม.6/3'],'26022':['น.ส.นุฟาเดียร์ บูเงาะแงะ','ม.6/3'],'26253':['น.ส.พาตีเม สัยเส้น','ม.6/3'],'26610':['น.ส.นูรียะห์ เจะเละ','ม.6/3'],
+      '23352':['น.ส.อาซียะห์ ขาเดร์','ม.6/4'],'23359':['น.ส.ซาฟีนะห์ อาก๊ะ','ม.6/4'],'23361':['น.ส.นูรนาเซีย สาเมาะ','ม.6/4'],'23363':['น.ส.พาตาฮา เล๊าะมอง','ม.6/4'],'23392':['น.ส.อัลซาเบีย แซ่ลี','ม.6/4'],'23509':['น.ส.ยัสมี บาเหม','ม.6/4'],'23519':['น.ส.รุสมี เจะสนิ','ม.6/4'],'23526':['น.ส.วาณีตา ดอเล๊าะ','ม.6/4'],'23553':['น.ส.อาตีราห์ สันบากอ','ม.6/4'],'23566':['น.ส.หนิรัยยาน เดหนิ','ม.6/4'],'23570':['น.ส.อามาลีนา เจะหมะ','ม.6/4'],'23593':['น.ส.ฝาราฝาตีฮ๊ะ เยาะเส็น','ม.6/4'],'23628':['น.ส.ซัลวา ยามา','ม.6/4'],'23669':['น.ส.อัสนีญา สูหลง','ม.6/4'],'23690':['น.ส.นัซมีย์ ตาสะเมาะ','ม.6/4'],'23710':['น.ส.สุลัยมีย์ มาสามา','ม.6/4'],'23713':['น.ส.ยัสมีน มามุ','ม.6/4'],'23741':['น.ส.ปิรดาวส์ ยีกะเส็ม','ม.6/4'],'23763':['น.ส.ตัสนีม แมะเราะ','ม.6/4'],'23781':['น.ส.สุนิตา เจะโซ๊ะ','ม.6/4'],'23793':['น.ส.นัสรีน หีมงอย','ม.6/4'],'23818':['น.ส.นัชวา อภิบาลแบ','ม.6/4'],'23843':['น.ส.ฟิรดาว สุหลง','ม.6/4'],'23947':['น.ส.ซัลวาตี สาลีมี','ม.6/4'],'23956':['น.ส.นัสริน ยูโซ๊ะ','ม.6/4'],'23983':['น.ส.ฟารีดา สุหลง','ม.6/4'],'24502':['น.ส.นูรอัยนี สูหลง','ม.6/4'],'25072':['น.ส.ไดยาน ยูโซะ','ม.6/4'],'25300':['น.ส.นาดีญา อับดุลเลาะ','ม.6/4'],'25549':['น.ส.นุรไอนี หะยีสะแม','ม.6/4'],'25728':['น.ส.โสฟียา แอสาเมาะ','ม.6/4'],'25794':['น.ส.ซูรัยดา เปาะสา','ม.6/4'],'25796':['น.ส.ซอฟะห์ มะแซ','ม.6/4'],'25815':['น.ส.นูรีต้า อาบูเล็ง','ม.6/4'],'25857':['น.ส.นุรอาดีนี ขาเดร์','ม.6/4'],'25881':['น.ส.นินาวียา โตะโซะ','ม.6/4'],'26025':['น.ส.นูรมา ดือเระ','ม.6/4'],'26549':['น.ส.อัสรอ สิทธิมนต์','ม.6/4'],'26625':['น.ส.ฮันนาน หมัดสู','ม.6/4'],'26676':['น.ส.สุรีนุช ขุนน้อย','ม.6/4'],'26740':['น.ส.ฮุสนา กาเดร์','ม.6/4'],'27307':['น.ส.ซีตีปาตีเม๊าะ หมัดหลี','ม.6/4'],
+      '23339':['น.ส.อามานี วานิ','ม.6/5'],'23341':['นายอัฟฮัม เดเระมะ','ม.6/5'],'23343':['น.ส.เจ๊ะซุนนุรเดาส์ หลีดีใจ','ม.6/5'],'23346':['นายฟาดีล ตาเล๊ะ','ม.6/5'],'23349':['นายวิทยา อาหมัด','ม.6/5'],'23371':['นายอานัส ใจมันดี','ม.6/5'],'23384':['นายวาฟิร อาหวัง','ม.6/5'],'23391':['น.ส.โซเฟีย สมานเมธา','ม.6/5'],'23398':['นายซาบูดีน สิริเต๊ะ','ม.6/5'],'23420':['นายอามีร เจ๊ะโซะ','ม.6/5'],'23428':['น.ส.นัสรีน โต๊ะเส็น','ม.6/5'],'23493':['น.ส.ปิยณัฐ หัดขะเจ','ม.6/5'],'23497':['น.ส.วารีซีน หลีเด่ะ','ม.6/5'],'23528':['น.ส.ฮุสนา จิ','ม.6/5'],'23599':['นายอาลีฟ มูนะ','ม.6/5'],'23687':['นายจักรินทร์ เหมสัน','ม.6/5'],'23694':['นายอัสซีซัน บินเตล็บ','ม.6/5'],'23697':['น.ส.อาตีฟ ดาหวี','ม.6/5'],'23721':['นายซัควาน หะยีอาแว','ม.6/5'],'23722':['นายคอลิส ดอเล๊าะ','ม.6/5'],'23735':['น.ส.มาเรีย อาลี','ม.6/5'],'23778':['น.ส.ฮูดา โต๊ะหัด','ม.6/5'],'23788':['นายฮูซัยฟี เจะเลาะ','ม.6/5'],'23877':['นายนัศรุจน์ ทันยุภัก','ม.6/5'],'23888':['น.ส.นูรฟาร์ติน สะหะ','ม.6/5'],'23934':['น.ส.ไรบีนา กล่อมสม','ม.6/5'],'25535':['น.ส.ณธิดา นริศธราดล','ม.6/5'],'25575':['น.ส.ฟิรดาวส์ สาและ','ม.6/5'],'25598':['นายมูฮำหมัดจัฟรี ตาเยะ','ม.6/5'],'25658':['นายฟิรฮาน หัตถประดิษฐ์','ม.6/5'],'25700':['น.ส.จัสมิน สาเม๊าะ','ม.6/5'],'25703':['น.ส.มุสซีรา ดาอะ','ม.6/5'],'25757':['นายอารีฟ อับดุลลาเตะ','ม.6/5'],'25800':['น.ส.ปิรนันท์ หมัดหมัน','ม.6/5'],
+      '23344':['นายมูฮัมหมัด หะยีสาแม','ม.6/6'],'23347':['น.ส.อามัล อิละละ','ม.6/6'],'23350':['น.ส.โซฟีนา สิเดะ','ม.6/6'],'23378':['น.ส.อาตัสนีม สาและ','ม.6/6'],'23379':['นายนินิสฟูร์ สะแต','ม.6/6'],'23381':['นายอิซรอฟ ตาเยะ','ม.6/6'],'23383':['นายซอบีรีน อาลี','ม.6/6'],'23432':['น.ส.ซอฟาวาตีย์ มะเด็ง','ม.6/6'],'23454':['นายวุฒิชัย ขาเดร์','ม.6/6'],'23488':['น.ส.นูรฮีดายะห์ อาฮา','ม.6/6'],'23500':['น.ส.แอนตีน่า โต๊ะยะ','ม.6/6'],'23501':['น.ส.นัสริน หะยีบากา','ม.6/6'],'23523':['น.ส.รุสนาเดียร์ มูเลง','ม.6/6'],'23536':['น.ส.ฟิรดาวส์ แวดือเร๊ะ','ม.6/6'],'23537':['น.ส.ฟิรฮานส์ แวดือเร๊ะ','ม.6/6'],'23630':['นายอิคลาศ แวสุหลง','ม.6/6'],'23636':['น.ส.นัจญวา ล่าหับ','ม.6/6'],'23739':['น.ส.นัซรินทร์ ดาราแม','ม.6/6'],'23762':['นายซูไฮมี สาอิ','ม.6/6'],'23806':['นายอัมรัน สุหลง','ม.6/6'],'23858':['นายอิกรอม กาเดร์','ม.6/6'],'25707':['นายมูฮัมหมัดอัซมี เจะสะมะ','ม.6/6'],
+      '23368':['น.ส.นาริสา จารู','ม.6/7'],'23390':['น.ส.แวนูรไอนี ยาโงะ','ม.6/7'],'23400':['น.ส.มาดีฮะห์ เต๊ะกาแซ','ม.6/7'],'23407':['น.ส.ราเนีย สาซู','ม.6/7'],'23434':['น.ส.ซูซาน ดาโหะ','ม.6/7'],'23439':['น.ส.นูรฮาฟีซา แวนาแว','ม.6/7'],'23446':['น.ส.นุชวรา สามะ','ม.6/7'],'23448':['น.ส.อิฟฟานี ลือแบเต๊ะ','ม.6/7'],'23455':['น.ส.อัลวานี โต๊ะแต','ม.6/7'],'23478':['นายลุฏฟี สาตำ','ม.6/7'],'23505':['นายยูฟ่า สาเมาะ','ม.6/7'],'23506':['น.ส.นูรอามาล ซู','ม.6/7'],'23524':['น.ส.ฟานิต้าร์ การี','ม.6/7'],'23549':['น.ส.นูรฮัดฟีน่า หัดกาเจ','ม.6/7'],'23564':['นายมูฮัมหมัดซัยฟุดดีน บาโลย','ม.6/7'],'23601':['น.ส.ตัสนีม โตะมิง','ม.6/7'],'23605':['น.ส.มัสสุหรี บุญฤทธิ์','ม.6/7'],'23611':['น.ส.บัลกีส บากา','ม.6/7'],'23681':['น.ส.นูรคานซาร์ อะแว','ม.6/7'],'23707':['น.ส.นัสรินทร์ เจะดือราแม','ม.6/7'],'23759':['นายแวฮาซิร หะยีสะอิ','ม.6/7'],'23867':['น.ส.อิฮซาน แยนา','ม.6/7'],'23937':['น.ส.มาซายา กาซอ','ม.6/7'],'24528':['นายอิมรอน แวฮามะ','ม.6/7'],'24756':['น.ส.นูรอีมาน มะหะมะ','ม.6/7'],'25462':['นายอิลฮาม ดอเลาะ','ม.6/7'],'25722':['น.ส.นุอัยม์ มามะ','ม.6/7'],'25900':['น.ส.ฮัลวา พายุ','ม.6/7'],'25937':['นายฮาฟิส บ้านนบ','ม.6/7'],'26028':['นายอามีน หายีดือแน','ม.6/7'],'26373':['น.ส.บิลกีส หมัดสี','ม.6/7'],'26752':['น.ส.สิริวิภา พาลีเขตต์','ม.6/7'],'26799':['น.ส.นูรดีญานา ฤทธิ์หมุน','ม.6/7'],
+      '23372':['น.ส.นูรัชมีย์ ไชยมิกัน','ม.6/8'],'23380':['น.ส.นัจมีญร์ ดายี','ม.6/8'],'23397':['นายลุถฟีย์ บือราเฮง','ม.6/8'],'23404':['น.ส.อทิตยา หวังสมัน','ม.6/8'],'23411':['น.ส.ซีตีอายู มะดารี','ม.6/8'],'23437':['น.ส.อมัลดา อาแว','ม.6/8'],'23475':['น.ส.นูรซาฮีรา หะยีอาซา','ม.6/8'],'23487':['นายฟัยซอล ตาเฮ','ม.6/8'],'23508':['น.ส.โศรยา สาและ','ม.6/8'],'23513':['น.ส.นูรมา โดซา','ม.6/8'],'23545':['น.ส.อิสตีฟาร์ สะอะ','ม.6/8'],'23580':['น.ส.ฮัสนีม สิดิ','ม.6/8'],'23597':['นายอับดุลมุตตอเล็บ เหมหมัด','ม.6/8'],'23606':['น.ส.อัฟนันท์ สาแม','ม.6/8'],'23656':['นายซาการียา ยอยเหาะ','ม.6/8'],'23671':['น.ส.ยุซลีซา ดาอุแม','ม.6/8'],'23734':['นายรุจฮาน วันอิดริส','ม.6/8'],'23771':['น.ส.นูรฟิสรี เหตุหาก','ม.6/8'],'23948':['น.ส.นูรดาเรีย หัดขะเจ','ม.6/8'],'23974':['นายเจษฎากร อภิพัฒน์พลากร','ม.6/8'],'23986':['น.ส.ตัสนีม เจ๊ะดอมะ','ม.6/8'],'25364':['นายอิดดาริส ตุกังหัน','ม.6/8'],'25536':['น.ส.ซุลวารี มายิ','ม.6/8'],'25682':['น.ส.อันดา เจะโจทย์','ม.6/8'],'25683':['น.ส.นริสรา เป๊าะซา','ม.6/8'],'25698':['น.ส.นูรตัสนิม ลาเต๊ะ','ม.6/8'],'25704':['น.ส.นัดวา หมัดสะแหละ','ม.6/8'],'25714':['น.ส.อัยมี่ ปิระซอ','ม.6/8'],'25772':['น.ส.นรรจวา อาแด','ม.6/8'],'25925':['นายซีรอจญ์ ฮัดญีสิดดิก','ม.6/8'],'25938':['น.ส.ศรุตา ดุงศรีแก้ว','ม.6/8'],'25982':['น.ส.ซารีนา หมัดอาด้ำ','ม.6/8'],'26423':['น.ส.การีมะฮ์ รอยิง','ม.6/8'],
+      '23364':['น.ส.ซาอีดา นิ','ม.6/9'],'23408':['น.ส.ฮุซนี สาเมาะ','ม.6/9'],'23476':['น.ส.นุรซัลวาล ปิรู','ม.6/9'],'23571':['น.ส.อานีตา ยีดือเระ','ม.6/9'],'23604':['น.ส.สุนิสา และบรานิง','ม.6/9'],'23644':['น.ส.ฟาดียะห์ ปาเนาะ','ม.6/9'],'23655':['น.ส.อาอีเซ๊าะห์ บาซา','ม.6/9'],'23662':['น.ส.มาริษา มูนะ','ม.6/9'],'23712':['น.ส.ซารีฮา สือรี','ม.6/9'],'23752':['น.ส.รอฮานี ยงมาเก๊ะ','ม.6/9'],'23795':['น.ส.นุรอัยซะห์ แวโดยี','ม.6/9'],'23801':['น.ส.ซัลวา มะกูวิง','ม.6/9'],'23886':['น.ส.อามีเน๊าะ การีนา','ม.6/9'],'23965':['น.ส.ณัจวาร์ แวเดร์','ม.6/9'],'24776':['น.ส.นุสรา มุนิมะ','ม.6/9'],'25124':['น.ส.นูร์อาฟีตาร์ ยา','ม.6/9'],'25204':['น.ส.นัรมี สะแม','ม.6/9'],'25213':['น.ส.ฮาซียะห์ เด็ง','ม.6/9'],'25335':['น.ส.มารีน่า วานิ','ม.6/9'],'25355':['น.ส.นาเดีย โสะปนแอ','ม.6/9'],'25403':['น.ส.ซูไฮลา สาแม','ม.6/9'],'25467':['น.ส.อารีดา สาแม','ม.6/9'],'25468':['น.ส.ลันตีรา ลาเตะ','ม.6/9'],'25508':['น.ส.นูรฟาเดียร์ ดาหะหลี','ม.6/9'],'25531':['น.ส.ตัสนียะห์ มะ','ม.6/9'],'25534':['น.ส.ซัลวา จิใจ','ม.6/9'],'25622':['น.ส.ซีตีนูรอาลีซา เหล๊าะหมาน','ม.6/9'],'25625':['น.ส.ฟาเดียร์ อาซ่อง','ม.6/9'],'25628':['น.ส.นูรฮาซีละห์ เมาะอะ','ม.6/9'],'25636':['น.ส.ฮัฟณี บาราเฮ็ง','ม.6/9'],'25637':['น.ส.นุรมี ชูมุง','ม.6/9'],'25653':['น.ส.มูนาซีเร๊าะ หลงนิเล๊าะ','ม.6/9'],'25667':['น.ส.นูรฮัลวา มะยีงอ','ม.6/9'],'25689':['น.ส.นูรฟาฏอนี แวหะยี','ม.6/9'],'25723':['น.ส.อัสมะ มีลอ','ม.6/9'],'25795':['น.ส.อามีเน๊าะ สาแลแม','ม.6/9'],'25811':['น.ส.อณิมา หมีนหนุด','ม.6/9'],'25944':['น.ส.กวินตรา รัตนชาญวาณิชย์','ม.6/9'],'25959':['น.ส.รุสนี สะนิ','ม.6/9'],'25988':['น.ส.วริศา หมัดชูโชติ','ม.6/9'],'26003':['น.ส.นูรอาซีกีน บินโหว๊ะ','ม.6/9'],'26031':['น.ส.ฮันนาน บาดง','ม.6/9'],'26736':['น.ส.สุภัสสรา มีมิง','ม.6/9'],'26790':['น.ส.นูรไอณี ดือราซอ','ม.6/9'],
+      '23348':['น.ส.ฟิตรียา โซะ','ม.6/10'],'23418':['น.ส.อาดีละห์ มูสอ','ม.6/10'],'23429':['น.ส.อามานี กะดะแซ','ม.6/10'],'23459':['น.ส.นัสริน โสะติ','ม.6/10'],'23491':['น.ส.นุศริน มามะ','ม.6/10'],'23542':['น.ส.วัลย์โซเฟีย เระสะอะ','ม.6/10'],'23547':['น.ส.นัสริน ดอเลาะ','ม.6/10'],'23555':['น.ส.นิฟัรฮาน ดาโอ๊ะ','ม.6/10'],'23559':['น.ส.ฟารีดา ชายมัน','ม.6/10'],'23561':['น.ส.ซีตีมาซีเตาะห์ คางา','ม.6/10'],'23565':['น.ส.อัสมานี อาลี','ม.6/10'],'23575':['น.ส.ณัจมีย์ อาบู','ม.6/10'],'23582':['น.ส.นูรฮายาตี สาและ','ม.6/10'],'23583':['น.ส.อามาลีนา สาแลหมัน','ม.6/10'],'23596':['น.ส.ตอฮีเราะห์ ยุทธ์พันธุ์','ม.6/10'],'23609':['น.ส.นูรอัยนี มอลอ','ม.6/10'],'23615':['น.ส.นาดียะฮ์ อาแว','ม.6/10'],'23641':['น.ส.ฟิรดาว สือรี','ม.6/10'],'23659':['น.ส.วานีตา ปาตง','ม.6/10'],'23692':['น.ส.นิรฮุดา โตะโยะ','ม.6/10'],'23760':['น.ส.อาริสา สามะ','ม.6/10'],'23766':['น.ส.นูรฟารียา มะเซ็ง','ม.6/10'],'23799':['น.ส.ลาตีฟะห์ วาเตะ','ม.6/10'],'23800':['น.ส.หาฟีเซาะฮ วาเตะ','ม.6/10'],'23803':['น.ส.นูรอูมีรูมาน สาและ','ม.6/10'],'23812':['น.ส.นูรหาวารีย์ แวสนิ','ม.6/10'],'23813':['น.ส.นิเกาศักร นิเงาะ','ม.6/10'],'23820':['น.ส.ยัสมี เจะมะ','ม.6/10'],'23838':['น.ส.ซิสวานี ราชเพชร','ม.6/10'],'23878':['น.ส.นูรรีดา คาร์เดร์','ม.6/10'],'23907':['น.ส.ฆูไรชา หะยีมะนุ','ม.6/10'],'23968':['น.ส.อามีตา สาเล็ง','ม.6/10'],'23970':['น.ส.นุรซาฮีดาร์ บาดง','ม.6/10'],'25356':['น.ส.นัจลาอ์ อิแต','ม.6/10'],'25660':['น.ส.วิตรี ตันหยงสะมะแอ','ม.6/10'],'25668':['น.ส.ตอฮีเราะห์ ละแมะสะ','ม.6/10'],'25806':['น.ส.ฮาบีบะห์ ดอเลาะ','ม.6/10'],'25840':['น.ส.นูรฮาวา อาบูวะ','ม.6/10'],'26004':['น.ส.ฮาบีบะห์ จะบากา','ม.6/10']
+    };
+
+    const state = {
+      studentId:'', fullName:'', className:'', photoUrl:'',
+      mission1Answers:[], learnerCode:'', learnerCodeName:'', learnerDescription:'',
+      selectedWalls:[], unlockPlans:[], selectedPowers:[],
+      selectedIslamicValue:null, weeklyGoal:'', createdAt:null
+    };
+
+    const questions = [
+      {q:'เมื่อเห็นโจทย์คณิตศาสตร์ยาว ๆ ฉันมักจะรู้สึกว่า', opts:{A:'กลัวและอยากข้าม',B:'งง แต่ลองอ่านก่อน',C:'อยากรู้ว่ามันเริ่มจากตรงไหน',D:'อยากถามเพื่อนหรือครู'}},
+      {q:'เวลาทำโจทย์ผิด ฉันมักจะ', opts:{A:'รู้สึกว่าตัวเองไม่เก่ง',B:'ลองดูเฉลยแล้วทำใหม่',C:'หาจุดที่ตัวเองพลาด',D:'ถามคนอื่นว่าเราผิดตรงไหน'}},
+      {q:'ถ้าจะให้ฉันเรียนคณิตดีขึ้น ฉันต้องการ', opts:{A:'กำลังใจ',B:'แบบฝึกเยอะขึ้น',C:'ขั้นตอนที่ชัดเจน',D:'คนช่วยอธิบาย'}},
+      {q:'สิ่งที่ฉันกลัวที่สุดในวิชาคณิตศาสตร์คือ', opts:{A:'กลัวตอบผิด',B:'กลัวทำไม่ทัน',C:'กลัวไม่เข้าใจตั้งแต่ต้น',D:'กลัวถามแล้วเพื่อนหัวเราะ'}}
+    ];
+
+    const learnerMap = {
+      A:{code:'M', name:'Mindset Learner', desc:'คุณเป็นผู้เรียนที่ต้องเริ่มจากการปรับใจ สร้างความมั่นใจ และค่อย ๆ ลดความกลัวต่อคณิตศาสตร์ คุณไม่ได้แพ้คณิตศาสตร์ แค่ต้องเริ่มจากการเปิดใจและฝึกทีละขั้น'},
+      B:{code:'A', name:'Active Learner', desc:'คุณเป็นผู้เรียนที่พัฒนาได้ดีจากการลงมือทำ ยิ่งได้ฝึก ได้ลอง ได้แก้โจทย์ คุณจะยิ่งเห็นพัฒนาการของตัวเองชัดเจน'},
+      C:{code:'T', name:'Tactical Learner', desc:'คุณเป็นผู้เรียนที่ต้องการระบบ ขั้นตอน และตัวอย่างที่ชัดเจน เมื่อรู้ว่าโจทย์ควรเริ่มจากตรงไหน คุณจะไปต่อได้ดีมาก'},
+      D:{code:'H', name:'Help-Seeking Learner', desc:'คุณเป็นผู้เรียนที่เติบโตได้ดีเมื่อกล้าถามและมีทีมสนับสนุน การถามไม่ใช่จุดอ่อน แต่คือวิธีเรียนรู้ที่ฉลาด'}
+    };
+
+    const walls = [
+      {id:'G1', title:'กลัวผิด', plan:'จำไว้ว่าความผิดพลาดคือ EXP ไม่ใช่จุดจบ'},
+      {id:'G2', title:'พื้นฐานไม่แน่น', plan:'เริ่มจากโจทย์ง่ายและค่อย ๆ เพิ่มระดับ'},
+      {id:'G3', title:'ไม่กล้าถาม', plan:'เริ่มจากถามครูหลังคาบหรือพิมพ์ถามแบบส่วนตัว'},
+      {id:'G4', title:'ไม่ทบทวน', plan:'ทบทวนหลังเรียนอย่างน้อย 10 นาที'},
+      {id:'G5', title:'ทำโจทย์น้อย', plan:'เริ่มจากทำโจทย์วันละ 3 ข้อ'},
+      {id:'G6', title:'ท้อเร็ว', plan:'แบ่งเป้าหมายให้เล็กลงและผ่านทีละด่าน'},
+      {id:'G7', title:'คิดว่าตัวเองไม่เก่งเลข', plan:'เปลี่ยนจาก "ฉันไม่เก่ง" เป็น "ฉันยังฝึกไม่พอ"'}
+    ];
+
+    const powers = [
+      'ฉันเป็นคนพยายาม แม้จะช้า','ฉันชอบช่วยเพื่อน','ฉันจำขั้นตอนได้ดี','ฉันกล้าลองทำเมื่อมีตัวอย่าง','ฉันชอบฟังคำอธิบาย','ฉันชอบจดและทำตามระบบ','ฉันอาจไม่เก่ง แต่ฉันไม่อยากยอมแพ้'
+    ];
+
+    const islamicValues = [
+      {title:'นิยัต', desc:'ตั้งเจตนาเรียนเพื่อพัฒนาตัวเอง และใช้ความรู้ให้เกิดประโยชน์'},
+      {title:'อิคลาศ', desc:'เรียนด้วยความจริงใจ ไม่ใช่ทำแค่ให้ครูเห็น'},
+      {title:'ซอบัร', desc:'อดทนเมื่อเจอโจทย์ยาก และไม่ยอมแพ้เร็วเกินไป'},
+      {title:'อิห์ซาน', desc:'ทำงานให้ดีที่สุด แม้ไม่มีใครเห็น'},
+      {title:'อิคติยาร', desc:'ลงมือพยายาม ฝึก ทำโจทย์ และทบทวน'},
+      {title:'ตะวักกุล', desc:'พยายามเต็มที่แล้วมอบหมายผลลัพธ์ต่ออัลลอฮ์'},
+      {title:'มุฮาซาบะฮ์', desc:'ทบทวนตัวเองว่าวันนี้พลาดตรงไหน และจะปรับอย่างไร'},
+      {title:'อะดับ', desc:'มีมารยาท ไม่ล้อเพื่อน ไม่ดูถูกเพื่อนเวลาตอบผิด'}
+    ];
+
+    const goalSamples = ['ทบทวนหลังเรียน 10 นาที','ทำโจทย์วันละ 3 ข้อ','ถามครูเมื่อไม่เข้าใจ','จดสรุปทุกคาบ','ไม่หลับในห้องเรียน','ส่งงานให้ครบ'];
+
+    let step = 0;
+    let qIndex = 0;
+    const screens = [...document.querySelectorAll('.screen')];
+    const progressBar = document.getElementById('progressBar');
+    const progressLabel = document.getElementById('progressLabel');
+    const backBtn = document.getElementById('backBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const toast = document.getElementById('toast');
+
+    function initLogo(){
+      if(!LOGO_URL) return;
+      document.querySelectorAll('.logo-wrap img, .r-logo img').forEach(img=>{ img.src = LOGO_URL; img.style.display='block'; });
+      document.querySelectorAll('.logo-wrap span, .r-logo span').forEach(s=>s.style.display='none');
+    }
+
+    function el(tag, attrs={}, html=''){
+      const node = document.createElement(tag);
+      Object.entries(attrs).forEach(([k,v])=>{
+        if(k==='class') node.className = v;
+        else if(k==='dataset') Object.assign(node.dataset,v);
+        else node.setAttribute(k,v);
+      });
+      node.innerHTML = html;
+      return node;
+    }
+
+    function showToast(msg){
+      toast.textContent = msg; toast.classList.add('show');
+      clearTimeout(showToast.t); showToast.t = setTimeout(()=>toast.classList.remove('show'),2300);
+    }
+
+    function renderMission1(){
+      const wrap = document.getElementById('mission1'); wrap.innerHTML='';
+      questions.forEach((item,i)=>{
+        const card = el('div',{class:'question-card' + (i===qIndex?' active':'')});
+        card.innerHTML = `<span class="q-count">คำถามที่ ${i+1}/4</span><div class="question">${item.q}</div><div class="options"></div>`;
+        const opts = card.querySelector('.options');
+        Object.entries(item.opts).forEach(([letter,text])=>{
+          const selected = state.mission1Answers[i] === letter;
+          const opt = el('div',{class:'option' + (selected?' selected':''), role:'button'}, `<span class="letter">${letter}</span><span class="option-text"><b>${text}</b></span><span class="check">✓</span>`);
+          opt.onclick = () => {state.mission1Answers[i]=letter; showToast('บันทึกคำตอบแล้ว'); if(i<questions.length-1){ qIndex=i+1; renderMission1(); } else { renderMission1(); }};
+          opts.appendChild(opt);
+        });
+        wrap.appendChild(card);
+      });
+    }
+
+    function renderWalls(){
+      const wrap = document.getElementById('walls'); wrap.innerHTML='';
+      walls.forEach((w,idx)=>{
+        const selected = state.selectedWalls.includes(w.title);
+        const opt = el('div',{class:'option' + (selected?' selected':''), role:'button'}, `<span class="letter">${idx+1}</span><span class="option-text"><b>${w.title}</b><span>${w.plan}</span></span><span class="check">✓</span>`);
+        opt.onclick = () => toggleWall(w);
+        wrap.appendChild(opt);
+      });
+      document.getElementById('wallCount').textContent = `${state.selectedWalls.length}/2`;
+      const preview = document.getElementById('unlockPreview');
+      const list = document.getElementById('unlockList'); list.innerHTML='';
+      state.unlockPlans.forEach(plan=>list.appendChild(el('li',{},plan)));
+      preview.classList.toggle('show', state.unlockPlans.length>0);
+    }
+
+    function toggleWall(w){
+      const idx = state.selectedWalls.indexOf(w.title);
+      if(idx>=0){ state.selectedWalls.splice(idx,1); state.unlockPlans = state.selectedWalls.map(t=>walls.find(x=>x.title===t).plan); }
+      else{
+        if(state.selectedWalls.length>=2){ showToast('เลือกได้สูงสุด 2 ข้อ หากต้องการเปลี่ยน ให้แตะข้อที่เลือกไว้เพื่อยกเลิก'); return; }
+        state.selectedWalls.push(w.title); state.unlockPlans.push(w.plan);
+      }
+      renderWalls();
+    }
+
+    function renderPowers(){
+      const wrap = document.getElementById('powers'); wrap.innerHTML='';
+      powers.forEach((p,idx)=>{
+        const selected = state.selectedPowers.includes(p);
+        const opt = el('div',{class:'option power' + (selected?' selected':''), role:'button'}, `<span class="letter">P${idx+1}</span><span class="option-text"><b>${p}</b><span>${selected?'Power Selected':'แตะเพื่อเลือกพลังลับ'}</span></span><span class="check">★</span>`);
+        opt.onclick = () => togglePower(p);
+        wrap.appendChild(opt);
+      });
+      document.getElementById('powerCount').textContent = `${state.selectedPowers.length}/2`;
+    }
+
+    function togglePower(p){
+      const idx = state.selectedPowers.indexOf(p);
+      if(idx>=0) state.selectedPowers.splice(idx,1);
+      else{
+        if(state.selectedPowers.length>=2){ showToast('เลือกพลังลับได้สูงสุด 2 ข้อ'); return; }
+        state.selectedPowers.push(p);
+      }
+      renderPowers();
+    }
+
+    function renderIslamic(){
+      const wrap = document.getElementById('islamic'); wrap.innerHTML='';
+      islamicValues.forEach((v,idx)=>{
+        const selected = state.selectedIslamicValue && state.selectedIslamicValue.title === v.title;
+        const opt = el('div',{class:'option islam' + (selected?' selected':''), role:'button'}, `<span class="letter">${idx+1}</span><span class="option-text"><b>${v.title}</b><span>${v.desc}</span></span><span class="check">✓</span>`);
+        opt.onclick = () => { state.selectedIslamicValue = v; renderIslamic(); showToast('เลือกหลักอิสลามนำทางแล้ว'); };
+        wrap.appendChild(opt);
+      });
+    }
+
+    function renderGoalChips(){
+      const wrap = document.getElementById('goalChips'); wrap.innerHTML='';
+      goalSamples.forEach(g=>{
+        const chip = el('button',{class:'goal-chip', type:'button'},g);
+        chip.onclick = () => { document.getElementById('weeklyGoal').value = `ฉันจะ${g}`; state.weeklyGoal = document.getElementById('weeklyGoal').value; };
+        wrap.appendChild(chip);
+      });
+    }
+
+    function updateNav(){
+      screens.forEach((s,i)=>s.classList.toggle('active',i===step));
+      progressBar.style.width = `${((step+1)/8)*100}%`;
+      progressLabel.textContent = `${step+1}/8`;
+      backBtn.style.display = step===0 ? 'none' : 'inline-flex';
+      const labels = ['เริ่มถอดรหัส','เริ่ม Mission','ถัดไป','ถัดไป','ถัดไป','ถัดไป','ถอดรหัสของฉัน','สร้างการ์ดผลลัพธ์'];
+      nextBtn.textContent = labels[step];
+      nextBtn.classList.toggle('pulse', step===0 || step===7);
+      if(step===2) renderMission1();
+    }
+
+    function lookupStudent(id){
+      const sid = String(id).trim();
+      const preview = document.getElementById('studentPreview');
+      const notFound = document.getElementById('studentNotFound');
+      const manualFields = document.getElementById('manualFields');
+      preview.classList.remove('show');
+      notFound.classList.remove('show');
+      manualFields.classList.remove('show');
+      state.fullName = ''; state.className = ''; state.photoUrl = '';
+      if(!sid) return;
+      const data = STUDENTS[sid];
+      if(!data){
+        notFound.classList.add('show');
+        manualFields.classList.add('show');
+        return;
+      }
+      state.fullName = data[0]; state.className = data[1];
+      state.photoUrl = `https://azizstan.net/student_image/${sid}.jpg`;
+      document.getElementById('previewName').textContent = data[0];
+      document.getElementById('previewClass').textContent = data[1];
+      document.getElementById('previewId').textContent = `รหัส: ${sid}`;
+      const img = document.getElementById('previewPhoto');
+      img.src = state.photoUrl;
+      img.onerror = () => { img.style.display='none'; };
+      img.onload = () => { img.style.display='block'; };
+      preview.classList.add('show');
+    }
+
+    function collectInfo(){
+      state.studentId = document.getElementById('studentId').value.trim();
+      state.weeklyGoal = document.getElementById('weeklyGoal').value.trim();
+      // ถ้า auto-fill ไม่ได้ ใช้ค่าที่กรอกเอง
+      const manualFields = document.getElementById('manualFields');
+      if(manualFields && manualFields.classList.contains('show')){
+        state.fullName = document.getElementById('manualName').value.trim();
+        state.className = document.getElementById('manualClass').value.trim();
+      }
+    }
+
+    function validateStep(){
+      collectInfo();
+      if(step===1){
+        const idInput = document.getElementById('studentId');
+        if(!state.studentId){ idInput.classList.add('invalid'); showToast('กรุณากรอกรหัสนักเรียน'); return false; }
+        const manualFields = document.getElementById('manualFields');
+        if(manualFields && manualFields.classList.contains('show')){
+          const nameEl = document.getElementById('manualName');
+          const classEl = document.getElementById('manualClass');
+          let ok = true;
+          if(!nameEl.value.trim()){ nameEl.classList.add('invalid'); ok=false; }
+          if(!classEl.value.trim()){ classEl.classList.add('invalid'); ok=false; }
+          if(!ok){ showToast('กรุณากรอกชื่อและเลือกชั้นให้ครบ'); return false; }
+        } else if(!state.fullName){
+          showToast('ไม่พบรหัสนักเรียน กรุณาตรวจสอบอีกครั้ง'); return false;
+        }
+        return true;
+      }
+      if(step===2){
+        const missing = questions.findIndex((_,i)=>!state.mission1Answers[i]);
+        if(missing>=0){ qIndex = missing; renderMission1(); showToast(`กรุณาตอบคำถามที่ ${missing+1} ก่อน`); return false; }
+      }
+      if(step===3 && state.selectedWalls.length!==2){ showToast('กรุณาเลือกกำแพงของคุณให้ครบ 2 ข้อ'); return false; }
+      if(step===4 && state.selectedPowers.length<1){ showToast('กรุณาเลือกพลังลับของคุณอย่างน้อย 1 ข้อ'); return false; }
+      if(step===5 && !state.selectedIslamicValue){ showToast('กรุณาเลือกหลักอิสลามที่อยากใช้เป็นหลักประจำใจ'); return false; }
+      if(step===6){
+        const goal = document.getElementById('weeklyGoal');
+        goal.classList.toggle('invalid', goal.value.trim().length < 10);
+        if(goal.value.trim().length < 10){ showToast('ลองเขียนเป้าหมายให้ชัดขึ้นอีกนิด เพื่อให้คุณทำตามได้จริง'); return false; }
+      }
+      return true;
+    }
+
+    function computeLearner(){
+      const count = {A:0,B:0,C:0,D:0};
+      state.mission1Answers.forEach(a=>count[a]++);
+      const max = Math.max(...Object.values(count));
+      const winners = Object.keys(count).filter(k=>count[k]===max);
+      if(winners.length===1){
+        const m = learnerMap[winners[0]];
+        state.learnerCode = m.code;
+        state.learnerCodeName = `${m.code} = ${m.name}`;
+        state.learnerDescription = m.desc;
+      } else {
+        const codes = winners.map(k=>learnerMap[k].code);
+        state.learnerCode = codes.join(' + ');
+        state.learnerCodeName = `${codes.join(' + ')} Learner`;
+        state.learnerDescription = 'คุณมีลักษณะผู้เรียนมากกว่าหนึ่งแบบ นี่คือข้อดี เพราะคุณสามารถพัฒนาตัวเองได้หลายทาง ทั้งการปรับใจ การฝึก การใช้ระบบ และการขอความช่วยเหลืออย่างเหมาะสม';
+      }
+      state.createdAt = new Date().toLocaleString('th-TH');
+    }
+
+    function resultHTML(){
+      const iv = state.selectedIslamicValue || {title:'-',desc:'-'};
+      return `
+        <div class="r-head">
+          <div class="r-logo"><img class="r-logo-img" alt="โลโก้โรงเรียน"><span>AFS</span></div>
+          <div class="unlock">🏆 UNLOCK COMPLETE</div>
+          <div class="r-title">MathEasy2 Code Card</div>
+          <div class="r-sub">ถอดรหัสใจ ปลดล็อกคณิต</div>
+        </div>
+        <div class="r-box"><h4>ข้อมูลนักเรียน</h4><div style="display:flex;gap:10px;align-items:center"><img class="r-student-photo" src="${escapeHTML(state.photoUrl)}" onerror="this.style.display='none'" alt=""><div class="student-line" style="flex:1"><span>รหัส: ${escapeHTML(state.studentId)}</span><span>ชั้น: ${escapeHTML(state.className)}</span><span style="grid-column:1/-1">ชื่อ: ${escapeHTML(state.fullName)}</span><span style="grid-column:1/-1">สร้างเมื่อ: ${escapeHTML(state.createdAt)}</span></div></div></div>
+        <div class="r-box"><h4>รหัสผู้เรียนของฉัน</h4><div class="code-big">${escapeHTML(state.learnerCodeName)}</div><p>${escapeHTML(state.learnerDescription)}</p></div>
+        <div class="r-box"><h4>กำแพงของฉัน</h4><ul>${state.selectedWalls.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul></div>
+        <div class="r-box"><h4>แผนปลดล็อก</h4><ul>${state.unlockPlans.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul></div>
+        <div class="r-box"><h4>พลังลับของฉัน</h4><ul>${state.selectedPowers.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul></div>
+        <div class="r-box"><h4>หลักอิสลามนำทาง</h4><p><b>${escapeHTML(iv.title)}</b><br>${escapeHTML(iv.desc)}</p></div>
+        <div class="r-box"><h4>เป้าหมายสัปดาห์นี้</h4><p>"${escapeHTML(state.weeklyGoal)}"</p></div>
+        <div class="r-footer">เริ่มได้ ฝึกได้ พลาดได้ แต่ห้ามยอมแพ้<br>Welcome to MathEasy2</div>
+      `;
+    }
+
+    function escapeHTML(str){ return String(str||'').replace(/[&<>"]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s])); }
+
+    function showResult(){
+      computeLearner();
+      document.getElementById('resultCard').innerHTML = resultHTML();
+      if(LOGO_URL){
+        document.querySelectorAll('.r-logo img').forEach(img=>{img.src=LOGO_URL; img.style.display='block';});
+        document.querySelectorAll('.r-logo span').forEach(s=>s.style.display='none');
+      }
+      document.getElementById('resultModal').classList.add('show');
+      burstConfetti();
+    }
+
+    function burstConfetti(){
+      const c = document.getElementById('confetti'); c.innerHTML='';
+      const colors = ['#FBBF24','#F9A8D4','#16A34A','#FFFFFF','#60A5FA'];
+      for(let i=0;i<46;i++){
+        const piece = document.createElement('i');
+        piece.style.left = Math.random()*100+'%';
+        piece.style.background = colors[i%colors.length];
+        piece.style.animationDelay = Math.random()*0.5+'s';
+        piece.style.transform = `rotate(${Math.random()*180}deg)`;
+        c.appendChild(piece);
+      }
+      setTimeout(()=>c.innerHTML='',2200);
+    }
+
+    function next(){
+      if(!validateStep()) return;
+      if(step < 7){ step++; updateNav(); return; }
+      const loading = document.getElementById('loading');
+      const loadingText = document.getElementById('loadingText');
+      const lines = ['กำลังรวม EXP ความพยายาม...','Unlocking Your Math Code...','กำลังสร้างการ์ดผลลัพธ์...'];
+      let i=0; loading.classList.add('show'); loadingText.textContent = lines[0];
+      const timer = setInterval(()=>{ i=(i+1)%lines.length; loadingText.textContent=lines[i]; },650);
+      setTimeout(()=>{ clearInterval(timer); loading.classList.remove('show'); showResult(); },1800);
+    }
+
+    function back(){
+      if(step===2 && qIndex>0){ qIndex--; renderMission1(); return; }
+      if(step>0){ step--; updateNav(); }
+    }
+
+    function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight){
+      const words = String(text).split(' ');
+      let line = '', lines=[];
+      words.forEach(word=>{
+        const test = line ? line + ' ' + word : word;
+        if(ctx.measureText(test).width > maxWidth && line){ lines.push(line); line = word; }
+        else line = test;
+      });
+      lines.push(line);
+      lines.forEach(l=>{ ctx.fillText(l,x,y); y+=lineHeight; });
+      return y;
+    }
+
+    function roundRect(ctx,x,y,w,h,r,fill,stroke){
+      ctx.beginPath();
+      ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+      if(fill) ctx.fill(); if(stroke) ctx.stroke();
+    }
+
+    function downloadPNG(){
+      computeLearner();
+      const canvas = document.createElement('canvas');
+      const W=1080,H=1920; canvas.width=W; canvas.height=H;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createLinearGradient(0,0,W,H); g.addColorStop(0,'#062018'); g.addColorStop(.52,'#0F5F3A'); g.addColorStop(1,'#071812'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='rgba(249,168,212,.26)'; ctx.beginPath(); ctx.arc(140,120,240,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(251,191,36,.22)'; ctx.beginPath(); ctx.arc(920,120,220,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.07)'; ctx.font='900 72px system-ui'; ctx.fillText('∑  π  √  x²',560,260);
+
+      ctx.textAlign='center';
+      ctx.fillStyle='#FFFFFF'; ctx.beginPath(); ctx.arc(W/2,116,62,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#0F5F3A'; ctx.font='900 42px system-ui'; ctx.fillText('AFS',W/2,132);
+      ctx.fillStyle='#FBBF24'; roundRect(ctx,W/2-168,198,336,52,26,true,false);
+      ctx.fillStyle='#111827'; ctx.font='900 24px system-ui'; ctx.fillText('UNLOCK COMPLETE',W/2,232);
+      ctx.fillStyle='#fff'; ctx.font='900 58px system-ui'; ctx.fillText('MathEasy2 Code Card',W/2,306);
+      ctx.font='700 32px system-ui'; ctx.fillStyle='rgba(255,255,255,.86)'; ctx.fillText('ถอดรหัสใจ ปลดล็อกคณิต',W/2,354);
+
+      let y=410; const x=70, w=940;
+      function box(title, lines, minH=0){
+        ctx.textAlign='left'; ctx.font='900 30px system-ui';
+        const startY=y; const pad=28; let ty=y+pad+30;
+        ctx.fillStyle='rgba(255,255,255,.13)'; ctx.strokeStyle='rgba(255,255,255,.20)'; ctx.lineWidth=2;
+        roundRect(ctx,x,y,w,Math.max(minH,110+lines.length*38),34,true,true);
+        ctx.fillStyle='#FDE68A'; ctx.fillText(title,x+pad,ty); ty+=44;
+        ctx.fillStyle='rgba(255,255,255,.92)'; ctx.font='500 27px system-ui';
+        lines.forEach(line=>{ ty = wrapCanvasText(ctx,line,x+pad,ty,w-pad*2,36)+10; });
+        const h = Math.max(minH, ty-startY+22);
+        ctx.clearRect(x-3,y-3,w+6,h+6);
+        ctx.fillStyle='rgba(255,255,255,.13)'; ctx.strokeStyle='rgba(255,255,255,.20)';
+        roundRect(ctx,x,y,w,h,34,true,true);
+        ty=y+pad+30; ctx.fillStyle='#FDE68A'; ctx.font='900 30px system-ui'; ctx.fillText(title,x+pad,ty); ty+=44;
+        ctx.fillStyle='rgba(255,255,255,.92)'; ctx.font='500 27px system-ui';
+        lines.forEach(line=>{ ty = wrapCanvasText(ctx,line,x+pad,ty,w-pad*2,36)+10; });
+        y += h+20;
+      }
+      box('ข้อมูลนักเรียน',[`รหัส: ${state.studentId}   ชั้น: ${state.className}`,`ชื่อ: ${state.fullName}`]);
+      box('รหัสผู้เรียนของฉัน',[state.learnerCodeName,state.learnerDescription]);
+      box('กำแพงของฉัน',state.selectedWalls.map((v,i)=>`${i+1}. ${v}`));
+      box('แผนปลดล็อก',state.unlockPlans.map((v,i)=>`${i+1}. ${v}`));
+      box('พลังลับของฉัน',state.selectedPowers.map((v,i)=>`${i+1}. ${v}`));
+      box('หลักอิสลามนำทาง',[`${state.selectedIslamicValue.title}: ${state.selectedIslamicValue.desc}`]);
+      box('เป้าหมายสัปดาห์นี้',[`"${state.weeklyGoal}"`]);
+      ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,.82)'; ctx.font='700 27px system-ui';
+      ctx.fillText('เริ่มได้ ฝึกได้ พลาดได้ แต่ห้ามยอมแพ้',W/2,1810);
+      ctx.font='600 22px system-ui'; ctx.fillText('Welcome to MathEasy2',W/2,1850);
+      const a=document.createElement('a'); a.download=`MathEasy2_Code_${state.studentId || 'card'}.png`; a.href=canvas.toDataURL('image/png'); a.click();
+    }
+
+    document.getElementById('weeklyGoal').addEventListener('input', e=>state.weeklyGoal=e.target.value.trim());
+    const idInput = document.getElementById('studentId');
+    idInput.addEventListener('input', e=>{ e.target.classList.remove('invalid'); state.studentId=e.target.value.trim(); });
+    idInput.addEventListener('blur', e=>{ state.studentId=e.target.value.trim(); lookupStudent(state.studentId); });
+    document.getElementById('manualName').addEventListener('input', e=>e.target.classList.remove('invalid'));
+    document.getElementById('manualClass').addEventListener('change', e=>e.target.classList.remove('invalid'));
+    nextBtn.onclick = next; backBtn.onclick = back;
+    document.getElementById('closeBtn').onclick = ()=>document.getElementById('resultModal').classList.remove('show');
+    document.getElementById('editBtn').onclick = ()=>{document.getElementById('resultModal').classList.remove('show'); step=6; updateNav();};
+    document.getElementById('saveBtn').onclick = downloadPNG;
+
+    initLogo(); renderMission1(); renderWalls(); renderPowers(); renderIslamic(); renderGoalChips(); updateNav();
+  </script>
+</body>
+</html>

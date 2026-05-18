@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s 'https://isupghduywzqbmnjgtip.supabase.co/rest/v1/teachers?select=dept,subject_group&limit=200' -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0')",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s 'https://isupghduywzqbmnjgtip.supabase.co/rest/v1/teachers?select=dept,subject_group&limit=300' -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0')",
+      "Bash(curl -s 'https://isupghduywzqbmnjgtip.supabase.co/rest/v1/teachers?select=full_name,teacher_code,dept,subject_group&limit=300' -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0')",
+      "Bash(curl -s -X PATCH https://isupghduywzqbmnjgtip.supabase.co/rest/v1/teachers?teacher_code=eq.2083 -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Content-Type: application/json' -d '{\"subject_group\":\"AGM\"}')",
+      "Bash(curl -s 'https://isupghduywzqbmnjgtip.supabase.co/rest/v1/teachers?teacher_code=eq.2083&select=full_name,teacher_code,dept,subject_group' -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0')",
+      "Bash(npm run *)",
+      "Bash(node -e ' *)",
+      "mcp__claude_ai_Supabase__list_tables",
+      "Bash(git -C /Users/admin/pp5-online status)",
+      "Bash(git -C /Users/admin/pp5-online diff --stat)",
+      "Bash(git -C /Users/admin/pp5-online diff js/teacher.js js/views.js)",
+      "Bash(git -C /Users/admin/pp5-online add js/teacher.js)",
+      "Bash(git -C /Users/admin/pp5-online commit -m ' *)",
+      "Bash(git -C /Users/admin/pp5-online push origin main)",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "Bash(git -C /Users/admin/pp5-online add js/storage.js js/views.js js/teacher.js)",
+      "Bash(git -C /Users/admin/pp5-online add js/teacher-views.js js/views.js js/storage.js js/teacher.js)",
+      "Bash(git -C /Users/admin/pp5-online add js/api.js js/teacher-views.js js/teacher.js)",
+      "Bash(git -C /Users/admin/pp5-online add js/views.js)",
+      "Bash(git -C /Users/admin/pp5-online add js/teacher-views.js)",
+      "Bash(git -C /Users/admin/pp5-online add js/views.js js/teacher.js)",
+      "Bash(cat /Users/admin/pokkrong-online/README.md)",
+      "Read(//Users/admin/pokkrong-online/**)",
+      "Bash(ls /Users/admin/pokkrong-online/js /Users/admin/pokkrong-online/css /Users/admin/pokkrong-online/supabase 2>/dev/null)",
+      "Read(//Users/admin/pokkrong-online/js/**)"
+    ]
+  }
+}

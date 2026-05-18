@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ5 - แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      min-height: 100%;
+    }
+    body {
+      margin: 0;
+      background: #ececec;
+      color: #000;
+      font-family: "Sarabun", Tahoma, sans-serif;
+      font-size: 10pt;
+      line-height: 1.22;
+    }
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px;
+      background: #111827;
+      box-shadow: 0 2px 8px rgba(0,0,0,.18);
+    }
+    .toolbar button {
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 18px;
+      color: #fff;
+      background: #2563eb;
+      font: 600 14px "Sarabun", sans-serif;
+      cursor: pointer;
+    }
+    .toolbar button.secondary { background: #475569; }
+    .page {
+      position: relative;
+      width: 210mm;
+      height: 297mm;
+      margin: 16px auto;
+      padding: 0;
+      background: #fff;
+      box-shadow: 0 4px 24px rgba(0,0,0,.18);
+      overflow: hidden;
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    .doc-code {
+      position: absolute;
+      top: 24.5mm;
+      right: 31.5mm;
+      font-size: 12pt;
+      font-weight: 400;
+    }
+    .logo {
+      position: absolute;
+      top: 17.6mm;
+      left: 50%;
+      transform: translateX(-50%);
+      display: block;
+      width: 18.5mm;
+      height: 18.5mm;
+      margin: 0;
+      object-fit: contain;
+    }
+    .title {
+      position: absolute;
+      top: 40.1mm;
+      left: 0;
+      width: 100%;
+      margin: 0;
+      text-align: center;
+      font-size: 15.7pt;
+      font-weight: 700;
+      line-height: 1.05;
+    }
+    .level-row {
+      position: absolute;
+      top: 48.9mm;
+      left: 0;
+      width: 100%;
+      margin: 0;
+      font-size: 10.1pt;
+      font-weight: 600;
+    }
+    .level-row .label {
+      position: absolute;
+      top: 0;
+      left: 83mm;
+      width: 36mm;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .checks {
+      position: absolute;
+      top: -.15mm;
+      left: 117.4mm;
+      display: grid;
+      gap: .9mm;
+      font-size: 9.4pt;
+      font-weight: 600;
+    }
+    .check-line {
+      display: flex;
+      align-items: center;
+      gap: 2.3mm;
+      white-space: nowrap;
+    }
+    .box {
+      position: relative;
+      display: inline-block;
+      width: 4.5mm;
+      height: 4.5mm;
+      border: .52mm solid #111;
+      border-radius: .6mm;
+      vertical-align: middle;
+      flex: 0 0 auto;
+    }
+    .box.checked {
+      background: #111;
+    }
+    .box.checked::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: .2mm;
+      width: 1.5mm;
+      height: 2.8mm;
+      border: solid #fff;
+      border-width: 0 .52mm .52mm 0;
+      transform: rotate(45deg);
+    }
+    .school {
+      position: absolute;
+      top: 72mm;
+      left: 0;
+      width: 100%;
+      margin: 0;
+      text-align: center;
+      font-size: 24pt;
+      line-height: 1.15;
+      font-weight: 700;
+    }
+    .school-sub {
+      position: absolute;
+      top: 84.2mm;
+      left: 0;
+      width: 100%;
+      margin: 0;
+      text-align: center;
+      font-size: 20pt;
+      line-height: 1.15;
+      font-weight: 700;
+    }
+    .info {
+      position: absolute;
+      top: 94.6mm;
+      left: 17.7mm;
+      width: 174.7mm;
+      margin: 0;
+      font-size: 10.5pt;
+      font-weight: 600;
+    }
+    .info-row {
+      display: grid;
+      grid-template-columns: max-content 1fr max-content 1fr max-content 1.35fr;
+      align-items: end;
+      gap: 0 4.5mm;
+      margin-bottom: 1.45mm;
+    }
+    .info-row.two {
+      grid-template-columns: max-content 35mm max-content 43mm max-content 30mm;
+    }
+    .info-row.one {
+      grid-template-columns: 32mm 1fr;
+    }
+    .info-line {
+      display: flex;
+      align-items: flex-end;
+      gap: 2.6mm;
+      margin-bottom: 1.45mm;
+      white-space: nowrap;
+    }
+    .info-line .line { flex: 0 0 auto; }
+    .w-xs { width: 17mm; }
+    .w-sm { width: 24mm; }
+    .w-md { width: 33mm; }
+    .w-lg { width: 48mm; }
+    .w-year { width: 35mm; }
+    .w-code { width: 25mm; }
+    .w-xl { width: 138.2mm; }
+    .line {
+      display: inline-block;
+      min-height: 5.2mm;
+      border-bottom: .35mm dotted #777;
+      text-align: center;
+      line-height: 5mm;
+      padding: 0 1.5mm;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    [contenteditable="true"] { outline: 0; }
+    [contenteditable="true"]:focus {
+      background: #fff8cc;
+      box-shadow: inset 0 -2px 0 #eab308;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th, td {
+      border: .32mm solid #111;
+      padding: .8mm 1mm;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 10.5pt;
+      font-weight: 600;
+    }
+    .summary-box {
+      position: absolute;
+      top: 139.9mm;
+      left: 17.7mm;
+      width: 174.7mm;
+      margin: 0;
+      border: .75mm solid #111;
+    }
+    .summary-box table th,
+    .summary-box table td { border-width: 1.5px; }
+    .summary-box table tr:first-child th { border-top: 0; }
+    .summary-box table tr > *:first-child { border-left: 0; }
+    .summary-box table tr > *:last-child { border-right: 0; }
+    .summary-box table tr:last-child td,
+    .summary-box table tr:last-child th { border-bottom: 0; }
+    .grade-table .student-total { width: 18.8mm; }
+    .grade-table .note { width: 39mm; }
+    .grade-table .grade { width: 10.65mm; }
+    .grade-table .small-grade { width: 14.5mm; }
+    .grade-table th, .grade-table td { height: 6.25mm; }
+    .grade-table tr:first-child th { height: 7.1mm; }
+    .summary-title { font-size: 10.2pt; }
+    .eval-spacer { height: 6.35mm; border-left: 0; border-right: 0; }
+    .summary-box .eval-table tr:first-child th { border-top: 1.5px solid #111; }
+    .eval-table th, .eval-table td { height: 9.35mm; }
+    .eval-table .eval-label { width: 46.5mm; line-height: 1.08; }
+    .eval-table .eval-note { width: 39mm; }
+    .approval {
+      position: absolute;
+      top: 208.1mm;
+      left: 17.7mm;
+      width: 174.7mm;
+      height: 72.7mm;
+      margin: 0;
+      border: .75mm solid #111;
+      padding: 3.8mm 5.5mm 3.5mm;
+      font-size: 10.4pt;
+      font-weight: 600;
+    }
+    .approval-title {
+      margin-bottom: 3mm;
+      font-size: 10.6pt;
+      font-weight: 700;
+    }
+    .sig-row {
+      display: grid;
+      grid-template-columns: 13mm 1fr 52mm;
+      align-items: end;
+      gap: 1.4mm;
+      margin-bottom: .55mm;
+    }
+    .sig-line {
+      display: block;
+      border-bottom: .35mm dotted #777;
+      text-align: center;
+      line-height: 5mm;
+      min-height: 5.2mm;
+      font-weight: 700;
+    }
+    .consider {
+      margin-top: 3.2mm;
+      font-weight: 700;
+    }
+    .center-block {
+      margin: 1.8mm auto 0;
+      width: 66%;
+      text-align: center;
+    }
+    .center-sig {
+      display: grid;
+      grid-template-columns: 12mm 1fr;
+      align-items: end;
+      gap: 5px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .role { margin-top: .6mm; }
+    .decision {
+      display: flex;
+      justify-content: center;
+      gap: 12mm;
+      align-items: center;
+      margin-top: 2mm;
+      font-size: 11.5pt;
+    }
+    .decision .box {
+      width: 5.8mm;
+      height: 5.8mm;
+      border-color: #888;
+      border-width: .65mm;
+    }
+    .decision .box.checked { background: #888; }
+    .director { margin-top: 2mm; }
+
+    /* Page 2: มาตรฐานการเรียนรู้และตัวชี้วัด/รายภาค */
+    .page-2 {
+      font-size: 10pt;
+      font-weight: 600;
+    }
+    .p2-logo {
+      position: absolute;
+      top: 17mm;
+      left: 50%;
+      width: 16mm;
+      height: 16mm;
+      transform: translateX(-50%);
+      object-fit: contain;
+    }
+    .p2-title {
+      position: absolute;
+      top: 36.3mm;
+      left: 0;
+      width: 100%;
+      margin: 0;
+      text-align: center;
+      font-size: 11.5pt;
+      font-weight: 600;
+    }
+    .p2-info {
+      position: absolute;
+      top: 43.5mm;
+      left: 27.8mm;
+      width: 154.6mm;
+      font-size: 10.4pt;
+      font-weight: 600;
+    }
+    .p2-line {
+      display: inline-block;
+      min-height: 4.4mm;
+      border-bottom: .3mm dotted #777;
+      text-align: center;
+      line-height: 4.2mm;
+      padding: 0 1mm;
+      white-space: nowrap;
+      vertical-align: bottom;
+    }
+    .p2-r1,
+    .p2-r2,
+    .p2-r3 {
+      display: flex;
+      align-items: flex-end;
+      gap: 1.7mm;
+      white-space: nowrap;
+    }
+    .p2-r2 { justify-content: center; margin-top: .7mm; }
+    .p2-r3 { margin-top: .8mm; }
+    .p2-subject { width: 39mm; }
+    .p2-code { width: 25mm; }
+    .p2-group { width: 37mm; }
+    .p2-level { width: 22mm; }
+    .p2-term { width: 19mm; }
+    .p2-year { width: 25mm; }
+    .p2-time { width: 18mm; }
+    .p2-credit { width: 17mm; }
+    .p2-teacher { width: 136mm; text-align: left; }
+    .p2-standards {
+      position: absolute;
+      top: 56.3mm;
+      left: 27.8mm;
+      width: 154.6mm;
+      border: .45mm solid #111;
+    }
+    .p2-standards th,
+    .p2-standards td {
+      border: .25mm solid #111;
+      padding: 1.4mm 2mm;
+      font-size: 10.6pt;
+      line-height: 1.18;
+      font-weight: 600;
+    }
+    .p2-standards th {
+      height: 7mm;
+      text-align: center;
+    }
+    .p2-standards td {
+      height: 6.55mm;
+      text-align: left;
+    }
+    .p2-standards .std-col {
+      width: 39mm;
+      text-align: center;
+    }
+    .p2-standards .indicator-col { width: 115.6mm; }
+    .p2-standards .tall td { height: 11.2mm; }
+    .p2-footer {
+      position: absolute;
+      left: 27.8mm;
+      top: 240.5mm;
+      width: 154.6mm;
+      font-size: 10.5pt;
+      font-weight: 600;
+    }
+    .p2-footer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 15mm;
+    }
+    .p2-objectives {
+      display: grid;
+      row-gap: 8.1mm;
+      padding-top: 1.5mm;
+    }
+    .p2-traits-title { margin-bottom: 2.8mm; }
+    .p2-traits {
+      display: grid;
+      grid-template-columns: 8mm 33mm 8mm 34mm;
+      column-gap: 2mm;
+      row-gap: 1.3mm;
+      align-items: start;
+    }
+    .p2-sign {
+      position: absolute;
+      left: 27.8mm;
+      top: 279.5mm;
+      width: 154.6mm;
+      display: grid;
+      grid-template-columns: 14mm 1fr 36mm;
+      align-items: end;
+      gap: 2mm;
+      font-size: 10.5pt;
+      font-weight: 600;
+    }
+    .p2-sign-line {
+      display: block;
+      border-bottom: .3mm dotted #777;
+      text-align: center;
+      line-height: 4.6mm;
+      min-height: 4.8mm;
+      font-weight: 600;
+    }
+    @page { size: A4 portrait; margin: 0; }
+    @media print {
+      body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .toolbar { display: none; }
+      .page {
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">พิมพ์ / บันทึก PDF</button>
+    <button type="button" class="secondary" onclick="document.querySelectorAll('[contenteditable=true]')[0]?.focus()">แก้ข้อความในฟอร์ม</button>
+  </div>
+
+  <main class="page">
+    <div class="doc-code">ปพ5</div>
+    <img class="logo" src="public/pp5-form-logo.png" alt="ตราโรงเรียน" />
+
+    <h1 class="title">แบบบันทึกผลการพัฒนาคุณภาพผู้เรียน</h1>
+
+    <section class="level-row">
+      <div class="label">ระดับชั้นมัธยมศึกษา</div>
+      <div class="checks">
+        <div class="check-line"><span class="box"></span><span>ตอนต้น (ม.1-ม.3)</span></div>
+        <div class="check-line"><span class="box checked"></span><span>ตอนปลาย (ม.4-ม.6)</span></div>
+      </div>
+      <div></div>
+    </section>
+
+    <div class="school" contenteditable="true">โรงเรียนมูลนิธิอาซิซสถาน</div>
+    <div class="school-sub" contenteditable="true">อำเภอโคกโพธิ์ จังหวัดปัตตานี</div>
+
+    <section class="info">
+      <div class="info-line">
+        <span>ระดับชั้นมัธยมศึกษา</span><span class="line w-sm" contenteditable="true">5/2</span>
+        <span>ภาคเรียนที่</span><span class="line w-md" contenteditable="true">2</span>
+        <span>ปีการศึกษา</span><span class="line w-year" contenteditable="true">2568</span>
+      </div>
+      <div class="info-line">
+        <span>กลุ่มสาระการเรียนรู้</span><span class="line w-md" contenteditable="true">คณิตศาสตร์</span>
+        <span>รายวิชา</span><span class="line w-lg" contenteditable="true">คณิตศาสตร์พื้นฐาน</span>
+        <span>รหัสวิชา</span><span class="line w-code" contenteditable="true">ค32102</span>
+      </div>
+      <div class="info-line">
+        <span>จำนวน</span><span class="line w-xs" contenteditable="true">2.0</span>
+        <span>หน่วยกิต</span>
+        <span>เวลาเรียน</span><span class="line w-xs" contenteditable="true">4</span>
+        <span>ชั่วโมง/สัปดาห์</span>
+        <span>รวมเวลาเรียน</span><span class="line w-xs" contenteditable="true">80</span>
+        <span>ชั่วโมง/ภาค</span>
+      </div>
+      <div class="info-row one">
+        <span>ครูผู้สอน</span><span class="line w-xl" contenteditable="true">นายฮัมบาลี วาจิ</span>
+      </div>
+      <div class="info-row one">
+        <span>ครูที่ปรึกษาสามัญ</span><span class="line w-xl" contenteditable="true">นายปาดิล เจะเลง</span>
+      </div>
+      <div class="info-row one">
+        <span>ครูที่ปรึกษาศาสนา</span><span class="line w-xl" contenteditable="true">นายตนรอฟิกดี จะโรจนหัง</span>
+      </div>
+    </section>
+
+    <section class="summary-box">
+      <table class="grade-table">
+        <colgroup>
+          <col class="student-total" />
+          <col span="8" class="grade" />
+          <col span="2" class="small-grade" />
+          <col class="note" />
+        </colgroup>
+        <tr>
+          <th rowspan="3">จำนวน<br>นักเรียน<br>ทั้งหมด</th>
+          <th colspan="10">สรุปผลการเรียน</th>
+          <th>หมายเหตุ</th>
+        </tr>
+        <tr>
+          <th colspan="10" class="summary-title">จำนวนนักเรียนที่ได้รับผลการเรียน</th>
+          <td rowspan="2"></td>
+        </tr>
+        <tr>
+          <th>4</th>
+          <th>3.5</th>
+          <th>3</th>
+          <th>2.5</th>
+          <th>2</th>
+          <th>1.5</th>
+          <th>1</th>
+          <th>0</th>
+          <th>ร</th>
+          <th>มส</th>
+        </tr>
+        <tr>
+          <td contenteditable="true">36</td>
+          <td contenteditable="true">4</td>
+          <td contenteditable="true">3</td>
+          <td contenteditable="true">4</td>
+          <td contenteditable="true">10</td>
+          <td contenteditable="true">1</td>
+          <td contenteditable="true">4</td>
+          <td contenteditable="true">2</td>
+          <td contenteditable="true">8</td>
+          <td contenteditable="true">-</td>
+          <td contenteditable="true">-</td>
+          <td></td>
+        </tr>
+        <tr><td colspan="12" class="eval-spacer"></td></tr>
+      </table>
+      <table class="eval-table">
+        <colgroup>
+          <col class="eval-label" />
+          <col />
+          <col />
+          <col />
+          <col />
+          <col class="eval-note" />
+        </colgroup>
+        <tr>
+          <th>สรุปผลการประเมิน</th>
+          <th>ดีเยี่ยม</th>
+          <th>ดี</th>
+          <th>ผ่าน</th>
+          <th>ไม่ผ่าน</th>
+          <th>หมายเหตุ</th>
+        </tr>
+        <tr>
+          <td>การประเมินการอ่าน คิด<br>วิเคราะห์และเขียนสื่อความ</td>
+          <td contenteditable="true">1</td>
+          <td contenteditable="true">4</td>
+          <td contenteditable="true">16</td>
+          <td contenteditable="true">15</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>การประเมินคุณลักษณะ<br>อันพึงประสงค์</td>
+          <td contenteditable="true">7</td>
+          <td contenteditable="true">14</td>
+          <td contenteditable="true">7</td>
+          <td contenteditable="true">8</td>
+          <td></td>
+        </tr>
+      </table>
+    </section>
+
+    <section class="approval">
+      <div class="approval-title">การอนุมัติผลการพัฒนาคุณภาพผู้เรียน</div>
+
+      <div class="sig-row">
+        <span>ลงชื่อ</span>
+        <span class="sig-line" contenteditable="true">นายฮัมบาลี วาจิ</span>
+        <span>ครูผู้สอน</span>
+      </div>
+      <div class="sig-row">
+        <span>ลงชื่อ</span>
+        <span class="sig-line" contenteditable="true">นางมาริยานี แวนาแซ</span>
+        <span>หัวหน้าหมวดวิชา</span>
+      </div>
+      <div class="sig-row">
+        <span>ลงชื่อ</span>
+        <span class="sig-line" contenteditable="true">นางสาวรัชฎาภรณ์ ลายพรหม</span>
+        <span>หัวหน้างานวัดผลและประเมินผล</span>
+      </div>
+
+      <div class="consider">เสนอเพื่อพิจารณา</div>
+
+      <div class="center-block">
+        <div class="center-sig">
+          <span>ลงชื่อ</span>
+          <span class="sig-line" contenteditable="true">นายมุกตาร์ เจ๊ะมูเก็ง</span>
+        </div>
+        <div class="role">หัวหน้าฝ่ายบริหารวิชาการ</div>
+      </div>
+
+      <div class="decision">
+        <span><span class="box checked"></span>&nbsp; อนุมัติ</span>
+        <span><span class="box"></span>&nbsp; ไม่อนุมัติ</span>
+      </div>
+
+      <div class="center-block director">
+        <div class="center-sig">
+          <span>ลงชื่อ</span>
+          <span class="sig-line" contenteditable="true">นายกามาล อับดุลวาฮับ</span>
+        </div>
+        <div class="role">ผู้อำนวยการโรงเรียนมูลนิธิอาซิซสถาน</div>
+      </div>
+    </section>
+  </main>
+
+  <main class="page page-2">
+    <img class="p2-logo" src="public/pp5-form-logo.png" alt="ตราโรงเรียน" />
+    <h2 class="p2-title">มาตรฐานการเรียนรู้และตัวชี้วัด/รายภาค</h2>
+
+    <section class="p2-info">
+      <div class="p2-r1">
+        <span>รายวิชา</span><span class="p2-line p2-subject" contenteditable="true">คณิตศาสตร์พื้นฐาน</span>
+        <span>รหัสวิชา</span><span class="p2-line p2-code" contenteditable="true">ค32102</span>
+        <span>กลุ่มสาระการเรียน</span><span class="p2-line p2-group" contenteditable="true">คณิตศาสตร์</span>
+      </div>
+      <div class="p2-r2">
+        <span>ระดับชั้น ม.</span><span class="p2-line p2-level" contenteditable="true">5/2</span>
+        <span>ภาคเรียนที่</span><span class="p2-line p2-term" contenteditable="true">2</span>
+        <span>ปีการศึกษา</span><span class="p2-line p2-year" contenteditable="true">2568</span>
+        <span>เวลา</span><span class="p2-line p2-time" contenteditable="true"></span>
+        <span>ชั่วโมง จำนวน</span><span class="p2-line p2-credit" contenteditable="true">2.0</span>
+        <span>หน่วยกิต</span>
+      </div>
+      <div class="p2-r3">
+        <span>ครูผู้สอน</span><span class="p2-line p2-teacher" contenteditable="true">นายฮัมบาลี วาจิ</span>
+      </div>
+    </section>
+
+    <table class="p2-standards">
+      <colgroup>
+        <col class="std-col" />
+        <col class="indicator-col" />
+      </colgroup>
+      <tr>
+        <th>มาตรฐานการเรียนรู้</th>
+        <th>ตัวชี้วัด</th>
+      </tr>
+      <tr>
+        <td class="std-col" contenteditable="true">1.) ค1.2 ม.5/2</td>
+        <td contenteditable="true">เข้าใจและนำความรู้เกี่ยวกับลำดับและอนุกรมไปใช้</td>
+      </tr>
+      <tr>
+        <td class="std-col" contenteditable="true">2.) ค1.3 ม.5/1</td>
+        <td contenteditable="true">เข้าใจและใช้ความรู้เกี่ยวกับดอกเบี้ยและมูลค่าของเงินในการแก้ปัญหา</td>
+      </tr>
+      <tr class="tall">
+        <td class="std-col" contenteditable="true">3.) ค3.2 ม.6/1</td>
+        <td contenteditable="true">เข้าใจและใช้ความรู้ทางสถิติในการนำเสนอข้อมูล และแปลความหมายของค่าสถิติเพื่อ<br>ประกอบการตัดสินใจ</td>
+      </tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+      <tr><td></td><td></td></tr>
+    </table>
+
+    <section class="p2-footer">
+      <div class="p2-footer-grid">
+        <div class="p2-objectives">
+          <div>จุดประสงค์วัดผลรายจุดประสงค์ ข้อที่ 1,2,3</div>
+          <div>จุดประสงค์วัดผลกลางภาค ข้อที่ 2</div>
+          <div>จุดประสงค์วัดผลปลายภาค ข้อที่ 3</div>
+        </div>
+        <div>
+          <div class="p2-traits-title">คุณลักษณะอันพึงประสงค์</div>
+          <div class="p2-traits">
+            <span>1</span><span>รักชาติ ศาสน์ กษัตริย์</span><span>6</span><span>มุ่งมั่นในการทำงาน</span>
+            <span>2</span><span>ซื่อสัตย์สุจริต</span><span>7</span><span>รักความเป็นไทย</span>
+            <span>3</span><span>มีวินัย</span><span>8</span><span>มีจิตสาธารณะ</span>
+            <span>4</span><span>ใฝ่เรียนรู้</span><span>9</span><span>ปฏิบัติศาสนกิจอย่าง<br>สม่ำเสมอ</span>
+            <span>5</span><span>อยู่อย่างพอเพียง</span><span></span><span></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="p2-sign">
+      <span>ลงชื่อ</span>
+      <span class="p2-sign-line" contenteditable="true">นางมาริยานี แวนาแซ</span>
+      <span>หัวหน้ากลุ่มสาระฯ</span>
+    </section>
+  </main>
+</body>
+</html>

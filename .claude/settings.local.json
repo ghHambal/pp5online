@@ -5,7 +5,17 @@
       "Bash(python3)",
       "Bash(python3 -c ' *)",
       "Bash(grep -n \"const val = scoreMap\\\\|value=\\\\\"\\\\${val}\\\\\"\" /Users/admin/pp5-online/js/teacher-views.js)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(node --input-type=module)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s 'https://isupghduywzqbmnjgtip.supabase.co/rest/v1/system_config?key=eq.loginLogoUrl&select=value' -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0')",
+      "Bash(sed -n '6850,6855p' /Users/admin/pp5-online/js/teacher-views.js)",
+      "Bash(sed -n '7657,7662p' /Users/admin/pp5-online/js/teacher-views.js)",
+      "Bash(curl -s 'https://isupghduywzqbmnjgtip.supabase.co/rest/v1/departments?select=dept_code,dept_name&order=dept_code' -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0')",
+      "Bash(python3 -m json.tool)"
     ]
   }
 }
