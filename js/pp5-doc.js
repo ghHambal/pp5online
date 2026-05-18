@@ -468,9 +468,14 @@ function _buildPage1(d) {
 
   const dirName    = _esc(cfg[`${prefix}DirectorName`] ?? '')
   const dirSign    = cfg[`${prefix}DirectorSignUrl`] ?? ''
-  const acadName   = _esc(cfg[`${prefix}AcademicHeadName`] ?? '')
-  const acadSign   = cfg[`${prefix}AcademicHeadSignUrl`] ?? ''
   const isReligion   = ['AGM','AGMVOC'].includes(ms.subject_group)
+  // หัวหน้าวิชาการ: ศาสนา → agmAcademicHeadName, สามัญ/ปวช → prefix ปกติ
+  const acadName   = isReligion
+    ? _esc(cfg.agmAcademicHeadName ?? cfg[`${prefix}AcademicHeadName`] ?? '')
+    : _esc(cfg[`${prefix}AcademicHeadName`] ?? '')
+  const acadSign   = isReligion
+    ? (cfg.agmAcademicHeadSignUrl ?? cfg[`${prefix}AcademicHeadSignUrl`] ?? '')
+    : (cfg[`${prefix}AcademicHeadSignUrl`] ?? '')
   // ฝ่ายทะเบียน: ศาสนา → agmRegistrarName, สามัญ/ปวช → prefix ปกติ
   const regName    = isReligion
     ? _esc(cfg.agmRegistrarName ?? cfg[`${prefix}RegistrarName`] ?? '')
