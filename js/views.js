@@ -21,7 +21,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          fillPrayerScoresToReligionClassScores,
          getCurriculumStandards, createCurriculumStandard, updateCurriculumStandard,
          deleteCurriculumStandard, importCurriculumStandards,
-         getUsageStats,
+         getUsageStats, getTeachersWithPositions,
          getClassrooms, createClassroom, updateClassroom, deleteClassroom } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
@@ -1874,7 +1874,7 @@ export async function renderSettings() {
     const [cfg, allDepts, allTeachers] = await Promise.all([
       getSystemConfig(),
       getDepartments().catch(() => []),
-      getTeachers().catch(() => []),
+      getTeachersWithPositions().catch(() => []),
     ])
     // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
     const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HALTH','OCC','VOC',
