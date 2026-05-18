@@ -4244,23 +4244,85 @@ const ATT_STATUS = {
 
 const ATT_CYCLE = [null, 'present', 'absent', 'late', 'excused', 'sick']
 
-function _generateSessions(classData, credit) {
+function _generateSessions(classData, credit, dowPattern = null) {
   const total = Math.round((credit ?? 1) * 2 * 20)
-  // ใช้ทุก day ที่ครูตั้งค่า (day1–day6) เป็น base pattern แล้ว +7 ต่อเนื่อง
   const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
     .map(k => classData[k]).filter(Boolean).map(d => _parseDateOnly(d)).filter(Boolean)
     .sort((a, b) => a - b)
   if (!bases.length) return []
+
   const sessions = []
-  let cycle = 0
+
+  // Sessions 1–6: ใช้ base dates ที่ครูตั้งเอง (รวม manual adjustment ของ week 1)
+  for (const base of bases) {
+    if (sessions.length >= total) break
+    sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateInputValue(base) })
+  }
+  if (sessions.length >= total) return sessions
+
+  const lastBase = bases[bases.length - 1]
+
+  // fallback: ไม่มี DOW pattern → ใช้ +7 แบบเดิม
+  if (!dowPattern || !dowPattern.length) {
+    let cycle = 1
+    while (sessions.length < total) {
+      for (const base of bases) {
+        if (sessions.length >= total) break
+        const d = new Date(base)
+        d.setDate(d.getDate() + cycle * 7)
+        sessions.push({ n: sessions.length + 1, date: d, ds: _dateInputValue(d) })
+      }
+      cycle++
+    }
+    return sessions
+  }
+
+  // DOW-aware: ต่อจาก bases โดยใช้ true weekly pattern
+  // หา Sunday ของสัปดาห์ที่ lastBase อยู่ (สัปดาห์โรงเรียนเริ่มวันอาทิตย์)
+  const lastWeekSun = new Date(lastBase)
+  lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay())
+  lastWeekSun.setHours(0, 0, 0, 0)
+  const lastWeekSunTs = lastWeekSun.getTime()
+  const weekMs = 7 * 24 * 60 * 60 * 1000
+
+  // นับ DOW ที่มีอยู่แล้วใน bases ของสัปดาห์สุดท้าย
+  const usedCounts = {}
+  for (const base of bases) {
+    if (base.getTime() >= lastWeekSunTs && base.getTime() < lastWeekSunTs + weekMs) {
+      const dow = base.getDay()
+      usedCounts[dow] = (usedCounts[dow] || 0) + 1
+    }
+  }
+
+  // นับ DOW ที่ pattern ต้องการต่อสัปดาห์
+  const patternCounts = {}
+  for (const dow of dowPattern) patternCounts[dow] = (patternCounts[dow] || 0) + 1
+
+  // หา slots ที่ยังขาดใน lastWeek → เติมก่อน
+  const remaining = []
+  for (const [d, cnt] of Object.entries(patternCounts)) {
+    const need = cnt - (usedCounts[Number(d)] || 0)
+    for (let i = 0; i < need; i++) remaining.push(Number(d))
+  }
+  remaining.sort((a, b) => a - b)
+
+  for (const dow of remaining) {
+    if (sessions.length >= total) break
+    const d = new Date(lastWeekSun)
+    d.setDate(d.getDate() + dow)
+    sessions.push({ n: sessions.length + 1, date: d, ds: _dateInputValue(d) })
+  }
+
+  // สัปดาห์ถัดๆ ไป: วนด้วย dowPattern เต็มๆ
+  let weekOffset = 1
   while (sessions.length < total) {
-    for (const base of bases) {
+    for (const dow of dowPattern) {
       if (sessions.length >= total) break
-      const d = new Date(base)
-      d.setDate(d.getDate() + cycle * 7)
+      const d = new Date(lastWeekSun)
+      d.setDate(d.getDate() + weekOffset * 7 + dow)
       sessions.push({ n: sessions.length + 1, date: d, ds: _dateInputValue(d) })
     }
-    cycle++
+    weekOffset++
   }
   return sessions
 }
@@ -4275,7 +4337,6 @@ export async function renderAttendanceGrid(teacher, classData) {
   setTitle('เช็คชื่อ')
   const ms      = classData.master_subjects
   const credit  = ms?.credit ?? 1
-  const sessions = _generateSessions(classData, credit)
   setContent(`<div class="flex justify-center py-12 text-gray-400">
     <svg class="animate-spin h-6 w-6 text-emerald-400 mr-3" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -4283,15 +4344,17 @@ export async function renderAttendanceGrid(teacher, classData) {
     </svg> กำลังโหลดข้อมูล...
   </div>`)
   try {
-    const { getSystemConfig: _cfg } = await import('./api.js')
+    const { getSystemConfig: _cfg, getClassSessionDOWs } = await import('./api.js')
     const cfg      = await _cfg().catch(() => ({}))
     const curYear  = cfg.academic_year ?? new Date().getFullYear() + 543
     const curSem   = cfg.semester ?? 1
-    const [students, attRows, holidays] = await Promise.all([
+    const [students, attRows, holidays, dowPattern] = await Promise.all([
       getClassStudents(classData.id),
       getClassAttendanceAll(classData.id),
       getSchoolHolidays(curYear, curSem),
+      getClassSessionDOWs(classData.id).catch(() => []),
     ])
+    const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null)
     const holidaySet = new Set(holidays)
 
     // attendance map: { studentId: { sessionNum: status } }

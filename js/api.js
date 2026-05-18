@@ -1152,6 +1152,19 @@ export async function unlinkClassFromSchedule(classId, scheduleId) {
   if (error) throw error
 }
 
+// ดึง day_of_week ของทุกคาบที่ผูกกับห้องเรียนนี้ (ใช้สร้าง DOW pattern สำหรับ _generateSessions)
+export async function getClassSessionDOWs(classId) {
+  const { data, error } = await supabase
+    .from('class_schedule_links')
+    .select('teacher_schedules(day_of_week)')
+    .eq('class_id', classId)
+  if (error) throw error
+  return (data ?? [])
+    .map(r => r.teacher_schedules?.day_of_week)
+    .filter(d => d !== null && d !== undefined)
+    .sort((a, b) => a - b)
+}
+
 // ─── Teacher Schedules ────────────────────────────────────────────────────────
 export async function getMySchedule(teacherId, academicYear, semester) {
   const { data, error } = await supabase
