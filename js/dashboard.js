@@ -7,7 +7,7 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderHolidays, renderPayments, renderLifeSkillAdmin, renderReadingAdmin,
          renderPrayerAdmin, renderAdminProfile, renderUsageStats,
          renderClassroomsAdmin } from './views.js'
-import { renderScheduleGrid } from './teacher-views.js'
+import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
          getDepartments, createDepartment, updateDepartment, deleteDepartment,
@@ -677,6 +677,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'admin-profile': renderAdminProfile,
     'usage-stats':   renderUsageStats,
     'classrooms-admin': renderClassroomsAdmin,
+    'course-doc-lang':  () => renderCourseDocLangConfig(null, true),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {

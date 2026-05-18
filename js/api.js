@@ -749,6 +749,38 @@ export async function saveCourseDocPage2(subjectId, payload) {
   return data
 }
 
+// ─── Course Doc Lang Settings ─────────────────────────────────────────────────
+
+export async function getCourseDocLangSettings() {
+  const { data, error } = await supabase
+    .from('course_doc_lang_settings')
+    .select('*')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveCourseDocLangSettings(langKey, settings, teacherId) {
+  const { data, error } = await supabase
+    .from('course_doc_lang_settings')
+    .update({ settings, updated_by: teacherId, updated_at: new Date().toISOString() })
+    .eq('lang_key', langKey)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function saveCourseDocLangEditors(langKey, editorTeacherIds) {
+  const { data, error } = await supabase
+    .from('course_doc_lang_settings')
+    .update({ editor_teacher_ids: editorTeacherIds, updated_at: new Date().toISOString() })
+    .eq('lang_key', langKey)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function findCurriculumStandards({ subjectName, subjectCode, gradeLevel, dept, topic }) {
   const filterText = value => String(value ?? '').trim().replace(/[(),]/g, ' ')
   let q = supabase

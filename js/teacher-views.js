@@ -18,6 +18,7 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getReadingScoreColumns, getReadingScores, upsertReadingScore,
          fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
          getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
+         getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
          getTeacherExamRequests, reviewExamRequest, updateExamResult,
          getTeacherPackageAccess,
          getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
@@ -373,9 +374,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         ? `color:${donorTier.color};`
         : 'color:#f59e0b;'
       donorStickerHtml = `
-        <button id="donor-sticker-btn" class="flex flex-col items-center gap-1 cursor-pointer group mb-1 max-w-[120px]" title="คลิกเพื่อดูสิทธิ์พิเศษ">
+        <button id="donor-sticker-btn" class="flex max-w-full sm:max-w-[120px] flex-col items-center gap-1 overflow-hidden cursor-pointer group mb-1" title="คลิกเพื่อดูสิทธิ์พิเศษ">
           ${imgEl}
-          <span class="text-[10px] font-semibold leading-snug text-center" style="${titleColor}">
+          <span class="max-w-full break-words text-[10px] font-semibold leading-snug text-center" style="${titleColor}">
             ${donorTier.note || donorTier.title}
           </span>
           <span class="text-[8px] text-gray-400 group-hover:text-gray-600 transition">ดูสิทธิ์ →</span>
@@ -383,7 +384,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     }
   }
 
-  setContent(`<div class="max-w-4xl mx-auto animate-fade">
+  setContent(`<div class="animate-fade">
 
     <!-- แจ้งเตือนจากหัวหน้า -->
     ${svNotifs.length ? (() => {
@@ -416,7 +417,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     `})() : ''}
 
     <!-- การ์ดโปรไฟล์ครู -->
-    <div class="bg-white rounded-2xl ${cardBorderCls} p-5 mb-5 flex items-center gap-4" style="${cardGlowStyle}">
+    <div class="bg-white rounded-2xl ${cardBorderCls} p-5 mb-5 flex flex-col sm:flex-row sm:items-center gap-4 overflow-hidden" style="${cardGlowStyle}">
       <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-100 flex-shrink-0
                   bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
                   text-white text-3xl font-bold">
@@ -439,7 +440,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             : ''}
         </div>
       </div>
-      <div class="flex-shrink-0 flex flex-col items-end gap-2">
+      <div class="w-full sm:w-auto flex-shrink-0 flex flex-row sm:flex-col items-center sm:items-end justify-between gap-2">
         ${donorStickerHtml}
         <button onclick="window._navTo('profile')"
           class="text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500
@@ -768,7 +769,7 @@ export async function renderMyCourses(teacher) {
       teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
     ])
     const subjects_orig = subjects // keep for compat
-    setContent(`<div class="max-w-5xl mx-auto animate-fade">
+    setContent(`<div class="animate-fade">
       <div class="flex items-center justify-between mb-5">
         <div>
           <h2 class="text-lg font-bold text-gray-800">คอร์สวิชาของฉัน</h2>
@@ -873,11 +874,111 @@ export async function renderMyCourses(teacher) {
 
 }
 
+const COURSE_DOC_LANGS = {
+  th: {
+    key: 'th', dir: 'ltr', aiLang: 'ภาษาไทยที่เป็นทางการ',
+    label: 'ภาษาไทย', title: 'คำอธิบายฯ', close: 'ปิด', save: 'บันทึก', saving: 'กำลังบันทึก...',
+    helpTitle: 'ช่วยเติมข้อมูล', helpSub: 'ระบุบท/เรื่องด้านล่าง แล้วเลือกวิธีเติมข้อมูล',
+    topicLabel: 'บท / เรื่องที่สอน (เพิ่มได้หลายบท)', topicPlaceholder: 'เช่น สถิติ, เลขกำลัง, การอ่านจับใจความ', addTopic: 'เพิ่มบท',
+    btnCurriculum: 'ค้นหลักสูตร', btnCurriculumSub: 'ฐานข้อมูลแกนกลาง', btnCurriculumLoading: 'กำลังค้น...',
+    btnAI: 'ให้ AI ร่าง', btnAISub: 'Gemini + บทที่ระบุ', btnAILoading: 'AI กำลังร่าง...',
+    btnImg: 'อ่านจากรูป', btnImgSub: 'AI อ่านภาพถ่าย', btnImgLoading: 'กำลังอ่าน...',
+    descLabel: 'คำอธิบายรายวิชา / ผลการเรียนรู้ภาพรวม', descPlaceholder: 'พิมพ์ภาษาไทย อาหรับ หรือภาษาอื่นได้ ระบบจะรองรับทิศทางข้อความอัตโนมัติ',
+    dirLabel: 'ทิศทางข้อความ', dirAuto: 'อัตโนมัติ', dirRTL: 'ขวาไปซ้าย (Arabic)', dirLTR: 'ซ้ายไปขวา',
+    signerLabel: 'ผู้ลงนาม', signerPlaceholder: 'หัวหน้ากลุ่มสาระ', signerHint: 'ใช้ตำแหน่งหัวหน้ากลุ่มสาระในเอกสาร',
+    tableTitle: 'มาตรฐาน / ตัวชี้วัด / ผลการเรียนรู้', tableHint: 'เลขแถวที่มีข้อความจะกลายเป็นตัวเลือก "ข้อที่" สำหรับกลางภาคและปลายภาค',
+    tplBasic: 'พื้นฐาน 2 คอลัมน์', tplExtra: 'เพิ่มเติม 1 คอลัมน์', addCol: '+ คอลัมน์', addRow: '+ แถว', rowHeader: 'ข้อ', delRow: 'ลบ',
+    objTitle: 'จุดประสงค์วัดผล', objHint: '(คลิกเพื่อเลือกข้อ)', between: 'ระหว่างภาค ข้อที่', mid: 'กลางภาค ข้อที่', final: 'ปลายภาค ข้อที่',
+    noOpts: 'ยังไม่มีข้อให้เลือก กรุณาพิมพ์ข้อมูลอย่างน้อย 1 แถวในตารางด้านบน', notSelected: 'ยังไม่เลือก',
+    colsBasic: ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'], colsExtra: ['ผลการเรียนรู้'], colNew: n => `คอลัมน์ ${n}`,
+    pickerTitles: { mid: 'เลือกข้อกลางภาค', between: 'เลือกข้อระหว่างภาค', final: 'เลือกข้อปลายภาค' },
+    pickerCancel: 'ยกเลิก', pickerOk: 'ตกลง',
+    confirmOverwrite: 'ค้นหลักสูตรแล้วจะทับข้อมูลที่มีอยู่ ดำเนินการต่อหรือไม่?',
+    confirmAIOverwrite: 'ให้ AI ร่างใหม่ทับข้อมูลที่มีอยู่หรือไม่?',
+    confirmImgOverwrite: 'เติมข้อมูลจากรูปภาพ ทับข้อมูลที่มีอยู่หรือไม่?',
+    confirmColChange: 'เปลี่ยนรูปแบบคอลัมน์หรือไม่? ข้อมูลเดิมจะถูกจัดให้เข้ากับคอลัมน์ใหม่',
+    toastSaved: 'บันทึกคำอธิบายฯ สำเร็จ',
+    toastSearchOk: n => `พบ ${n} รายการในฐานหลักสูตรแกนกลาง - กรุณาตรวจสอบก่อนบันทึก`,
+    toastSearchEmpty: 'ไม่พบข้อมูลในฐานหลักสูตรแกนกลาง - ลองใช้ "ให้ AI ร่าง" แทน',
+    toastAIDone: 'AI ร่างข้อมูลให้แล้ว - กรุณาตรวจสอบความถูกต้องก่อนบันทึก',
+    toastImgDone: 'AI อ่านจากรูปภาพแล้ว - กรุณาตรวจสอบความถูกต้องก่อนบันทึก',
+  },
+  jawi: {
+    key: 'jawi', dir: 'rtl', aiLang: 'bahasa Melayu tulisan Jawi. Semua teks mestilah dalam tulisan Jawi, bukan Rumi.',
+    label: 'يَاوِي', title: 'كتراڠن مات ڤلاجارن', close: 'توتوڤ', save: 'سيمڤن', saving: 'سداڠ سيمڤن...',
+    helpTitle: 'بنتو ايسي ماكلومت', helpSub: 'نياتاكن باب / توڤيك د باوه، لالو ڤيليه چارا ايسي ماكلومت',
+    topicLabel: 'باب / توڤيك ڤنڬاجارن', topicPlaceholder: 'چونتوه: قواعد اللغة، فهم المقروء', addTopic: 'تمبه باب',
+    btnCurriculum: 'چاري كوريكولوم', btnCurriculumSub: 'ڤاڠكالن داتا', btnCurriculumLoading: 'سداڠ چاري...',
+    btnAI: 'AI رنچاڠ', btnAISub: 'Gemini + باب', btnAILoading: 'AI سداڠ رنچاڠ...',
+    btnImg: 'باچا ڬمبر', btnImgSub: 'AI باچا ڬمبر', btnImgLoading: 'سداڠ باچا...',
+    descLabel: 'كتراڠن مات ڤلاجارن / حاصيل ڤمبلاجارن', descPlaceholder: 'تايڤ دالم توليسن ياوي',
+    dirLabel: 'اراه تيكس', dirAuto: 'اوتوماتيك', dirRTL: 'كانن ك كيري', dirLTR: 'كيري ك كانن',
+    signerLabel: 'ڤناندا تاڠن', signerPlaceholder: 'كتوا كومڤولن مات ڤلاجارن', signerHint: 'ڬوناكن جاواتن كتوا كومڤولن دالم دوكومن',
+    tableTitle: 'ڤياوايان / ڤتوك / حاصيل ڤمبلاجارن', tableHint: 'نومبور باريس يڠ برتوليس اكن جادي ڤيليهن',
+    tplBasic: '٢ لاجور اساس', tplExtra: '١ لاجور تمبهن', addCol: '+ لاجور', addRow: '+ باريس', rowHeader: 'بل', delRow: 'ڤادم',
+    objTitle: 'اوبجيكتيف ڤنيلاين', objHint: '(كليك اونتوق ڤيليه)', between: 'سيماس ڤڠڬل', mid: 'ڤرتڠهن ڤڠڬل', final: 'اخير ڤڠڬل',
+    noOpts: 'بيلوم ادا ڤيليهن', notSelected: 'بيلوم ڤيليه',
+    colsBasic: ['ڤياوايان ڤمبلاجارن', 'ڤتوك'], colsExtra: ['حاصيل ڤمبلاجارن'], colNew: n => `لاجور ${n}`,
+    pickerTitles: { mid: 'ڤيليه ڤرتڠهن', between: 'ڤيليه سيماس', final: 'ڤيليه اخير' },
+    pickerCancel: 'بتل', pickerOk: 'اوك',
+  },
+  ar: {
+    key: 'ar', dir: 'rtl', aiLang: 'اللغة العربية الفصحى',
+    label: 'العربية', title: 'وصف المادة الدراسية', close: 'إغلاق', save: 'حفظ', saving: 'جار الحفظ...',
+    helpTitle: 'مساعدة في إدخال البيانات', helpSub: 'حدد الفصل / الموضوع أدناه ثم اختر طريقة الإدخال',
+    topicLabel: 'الفصل / الموضوع', topicPlaceholder: 'مثال: النحو، القراءة، الفقه', addTopic: 'إضافة فصل',
+    btnCurriculum: 'بحث المنهج', btnCurriculumSub: 'قاعدة البيانات', btnCurriculumLoading: 'جار البحث...',
+    btnAI: 'صياغة AI', btnAISub: 'Gemini + الفصل', btnAILoading: 'جار الصياغة...',
+    btnImg: 'قراءة الصورة', btnImgSub: 'AI يقرأ الصورة', btnImgLoading: 'جار القراءة...',
+    descLabel: 'وصف المادة / نتائج التعلم العامة', descPlaceholder: 'اكتب باللغة العربية أو أي لغة أخرى',
+    dirLabel: 'اتجاه النص', dirAuto: 'تلقائي', dirRTL: 'يمين إلى يسار', dirLTR: 'يسار إلى يمين',
+    signerLabel: 'الموقع', signerPlaceholder: 'رئيس القسم', signerHint: 'يستخدم منصب رئيس القسم في الوثيقة',
+    tableTitle: 'المعايير / المؤشرات / نتائج التعلم', tableHint: 'أرقام الصفوف التي تحتوي نصا تصبح اختيارات',
+    tplBasic: 'عمودان أساسيان', tplExtra: 'عمود واحد', addCol: '+ عمود', addRow: '+ صف', rowHeader: 'رقم', delRow: 'حذف',
+    objTitle: 'أهداف التقييم', objHint: '(انقر للاختيار)', between: 'أثناء الفصل', mid: 'منتصف الفصل', final: 'نهاية الفصل',
+    noOpts: 'لا توجد بنود للاختيار', notSelected: 'لم يتم الاختيار',
+    colsBasic: ['معايير التعلم', 'المؤشرات'], colsExtra: ['نتائج التعلم'], colNew: n => `عمود ${n}`,
+    pickerTitles: { mid: 'اختر منتصف الفصل', between: 'اختر أثناء الفصل', final: 'اختر نهاية الفصل' },
+    pickerCancel: 'إلغاء', pickerOk: 'موافق',
+  },
+  rumi: {
+    key: 'rumi', dir: 'ltr', aiLang: 'Bahasa Melayu tulisan Rumi/Latin',
+    label: 'Rumi', title: 'Keterangan Mata Pelajaran', close: 'Tutup', save: 'Simpan', saving: 'Menyimpan...',
+    helpTitle: 'Bantu isi maklumat', helpSub: 'Nyatakan bab / topik di bawah, kemudian pilih cara mengisi',
+    topicLabel: 'Bab / Topik pengajaran', topicPlaceholder: 'Contoh: Tatabahasa, Kefahaman Membaca', addTopic: 'Tambah bab',
+    btnCurriculum: 'Cari kurikulum', btnCurriculumSub: 'Pangkalan data', btnCurriculumLoading: 'Mencari...',
+    btnAI: 'Rangka AI', btnAISub: 'Gemini + bab', btnAILoading: 'AI merangka...',
+    btnImg: 'Baca gambar', btnImgSub: 'AI baca gambar', btnImgLoading: 'Membaca...',
+    descLabel: 'Keterangan mata pelajaran / hasil pembelajaran umum', descPlaceholder: 'Taip dalam Bahasa Melayu atau bahasa lain',
+    dirLabel: 'Arah teks', dirAuto: 'Automatik', dirRTL: 'Kanan ke kiri', dirLTR: 'Kiri ke kanan',
+    signerLabel: 'Penandatangan', signerPlaceholder: 'Ketua kumpulan mata pelajaran', signerHint: 'Gunakan jawatan ketua kumpulan dalam dokumen',
+    tableTitle: 'Piawaian / Petunjuk / Hasil pembelajaran', tableHint: 'Nombor baris yang berisi teks menjadi pilihan item',
+    tplBasic: '2 lajur asas', tplExtra: '1 lajur tambahan', addCol: '+ Lajur', addRow: '+ Baris', rowHeader: 'Item', delRow: 'Padam',
+    objTitle: 'Objektif penilaian', objHint: '(klik untuk pilih)', between: 'Semasa penggal', mid: 'Pertengahan penggal', final: 'Akhir penggal',
+    noOpts: 'Tiada item untuk dipilih', notSelected: 'Belum dipilih',
+    colsBasic: ['Piawaian pembelajaran', 'Petunjuk'], colsExtra: ['Hasil pembelajaran'], colNew: n => `Lajur ${n}`,
+    pickerTitles: { mid: 'Pilih pertengahan', between: 'Pilih semasa', final: 'Pilih akhir' },
+    pickerCancel: 'Batal', pickerOk: 'OK',
+  },
+}
+
+// cache lang settings ใน session เพื่อไม่ต้อง fetch ซ้ำทุกครั้งที่เปิด modal
+let _cachedLangSettings = null
+async function _getLangSettings() {
+  if (_cachedLangSettings) return _cachedLangSettings
+  const rows = await getCourseDocLangSettings().catch(() => [])
+  _cachedLangSettings = Object.fromEntries(rows.map(r => [r.lang_key, r.settings ?? {}]))
+  return _cachedLangSettings
+}
+
 export async function openCourseDocPage2Modal(teacher, course) {
-  const existing = await getCourseDocPage2(course.id).catch(err => {
-    showToast('โหลดคำอธิบายฯ ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-    return null
-  })
+  const [existing, langSettingsMap] = await Promise.all([
+    getCourseDocPage2(course.id).catch(err => {
+      showToast('โหลดคำอธิบายฯ ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      return null
+    }),
+    _getLangSettings(),
+  ])
 
   const normalizeColumns = value => {
     const cols = Array.isArray(value) ? value : ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด']
@@ -904,6 +1005,23 @@ export async function openCourseDocPage2Modal(teacher, course) {
   let signerName   = existing?.signer_name || course.learning_area || ''
   let topicList    = existing?.topic_list?.length ? existing.topic_list : ['']  // หลายบท
   let aiStatusText = ''
+  let lang = 'th'
+  // DB settings override hardcoded defaults (pickerTitles merges separately)
+  const i18n = () => {
+    const base = { ...COURSE_DOC_LANGS.th, ...COURSE_DOC_LANGS[lang] }
+    const dbOverride = langSettingsMap?.[lang] ?? {}
+    const merged = { ...base, ...dbOverride }
+    if (dbOverride.pickerTitles) merged.pickerTitles = { ...base.pickerTitles, ...dbOverride.pickerTitles }
+    return merged
+  }
+  const ensureRTLFont = () => {
+    if (document.getElementById('cd2-rtl-font')) return
+    const link = document.createElement('link')
+    link.id = 'cd2-rtl-font'
+    link.rel = 'stylesheet'
+    link.href = 'https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;600;700&display=swap'
+    document.head.appendChild(link)
+  }
   const [cfg, depts] = await Promise.all([
     getSystemConfig().catch(() => ({})),
     getDepartments().catch(() => []),
@@ -919,7 +1037,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
   document.body.appendChild(modal)
 
   const dirAttr = () => textDir === 'auto' ? 'auto' : textDir
-  const selectedText = items => items.length ? [...items].sort((a, b) => a - b).join(', ') : 'ยังไม่เลือก'
+  const selectedText = items => items.length ? [...items].sort((a, b) => a - b).join(', ') : i18n().notSelected
   const objectiveOptions = () => {
     const max = rows.length
     return Array.from({ length: max }, (_, i) => i + 1)
@@ -927,44 +1045,58 @@ export async function openCourseDocPage2Modal(teacher, course) {
   }
 
   const render = () => {
+    const L = i18n()
     const opts = objectiveOptions()
+    const isRTL = L.dir === 'rtl'
+    if (isRTL) ensureRTLFont()
+    const dir = textDir === 'auto' ? L.dir : textDir
+    const textAlign = dir === 'rtl' ? 'text-right' : 'text-left'
+    const rtlStyle = isRTL ? 'font-family: Noto Naskh Arabic, Traditional Arabic, Arial, sans-serif;' : ''
     modal.innerHTML = `
-      <div class="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+      <div class="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center justify-between gap-3" dir="${dir}" style="${rtlStyle}">
         <div class="min-w-0">
-          <h2 class="text-lg sm:text-xl font-bold text-gray-800">คำอธิบายฯ</h2>
+          <h2 class="text-lg sm:text-xl font-bold text-gray-800">${L.title}</h2>
           <p class="text-xs text-gray-400 truncate">${_htmlEsc(course.subject_name)} · ${_htmlEsc(course.subject_code || '—')} · ใช้ร่วมทุกห้องในคอร์สนี้</p>
         </div>
         <div class="flex items-center gap-2">
-          <button id="cd2-close" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50">ปิด</button>
-          <button id="cd2-save" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">บันทึก</button>
+          <button id="cd2-close" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50">${L.close}</button>
+          <button id="cd2-save" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">${L.save}</button>
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto bg-gray-50">
+      <div class="flex items-center gap-1.5 px-4 sm:px-6 py-2 border-b border-gray-100 bg-gray-50 overflow-x-auto" dir="${dir}" style="${rtlStyle}">
+        <span class="text-[10px] text-gray-400 shrink-0 mr-1">🌐</span>
+        ${Object.values(COURSE_DOC_LANGS).map(l => `
+          <button class="cd2-lang-btn shrink-0 px-3 py-1 rounded-lg text-xs font-semibold transition ${lang === l.key ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}"
+            data-lang="${l.key}">${langSettingsMap?.[l.key]?.label || l.label}</button>
+        `).join('')}
+      </div>
+
+      <div class="flex-1 overflow-y-auto bg-gray-50" dir="${dir}" style="${rtlStyle}">
         <div class="max-w-6xl mx-auto p-4 sm:p-6 space-y-4">
           <div class="bg-white rounded-2xl border border-emerald-100 shadow-sm p-4 sm:p-5">
             <div>
-              <h3 class="font-bold text-gray-800">ช่วยเติมข้อมูล</h3>
-              <p class="text-xs text-gray-400 mt-0.5">ระบุบท/เรื่องด้านล่าง แล้วเลือกวิธีเติมข้อมูล</p>
+              <h3 class="font-bold text-gray-800">${L.helpTitle}</h3>
+              <p class="text-xs text-gray-400 mt-0.5">${L.helpSub}</p>
             </div>
 
             <!-- topic list -->
             <div class="mt-4 space-y-2">
               <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-semibold text-gray-500">บท / เรื่องที่สอน (เพิ่มได้หลายบท)</span>
+                <span class="text-xs font-semibold text-gray-500">${L.topicLabel}</span>
                 <span class="text-xs text-gray-400">${_htmlEsc(course.grade_level || '')} · ${_htmlEsc(deptThai || '')}</span>
               </div>
               <div id="cd2-topic-list" class="space-y-2">
                 ${topicList.map((t, i) => `
                   <div class="flex gap-2 cd2-topic-row">
                     <input class="cd2-topic-input ${INPUT_CLS} flex-1" value="${_htmlEsc(t)}"
-                      placeholder="เช่น สถิติ, เลขกำลัง, การอ่านจับใจความ" dir="${dirAttr()}" data-idx="${i}" />
+                      placeholder="${_htmlEsc(L.topicPlaceholder)}" dir="${dir}" data-idx="${i}" />
                     ${topicList.length > 1 ? `<button type="button" class="cd2-topic-del px-3 rounded-xl border border-red-100 text-red-400 hover:bg-red-50 text-sm" data-idx="${i}">✕</button>` : ''}
                   </div>`).join('')}
               </div>
               <button id="cd2-add-topic" type="button"
                 class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 mt-1">
-                <span class="text-base leading-none">＋</span> เพิ่มบท
+                <span class="text-base leading-none">＋</span> ${L.addTopic}
               </button>
             </div>
 
@@ -973,26 +1105,26 @@ export async function openCourseDocPage2Modal(teacher, course) {
               <div class="flex flex-col items-center gap-1">
                 <button id="cd2-search-curriculum"
                   class="w-full py-2.5 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1">
-                  🔍 ค้นหลักสูตร
+                  🔍 ${L.btnCurriculum}
                 </button>
-                <span class="text-[10px] text-gray-400 text-center">ฐานข้อมูลแกนกลาง</span>
+                <span class="text-[10px] text-gray-400 text-center">${L.btnCurriculumSub}</span>
               </div>
               <div class="flex flex-col items-center gap-1">
                 <button id="cd2-auto-fill"
                   class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1">
-                  ✨ ให้ AI ร่าง
+                  ✨ ${L.btnAI}
                 </button>
-                <span class="text-[10px] text-gray-400 text-center">Gemini + บทที่ระบุ</span>
+                <span class="text-[10px] text-gray-400 text-center">${L.btnAISub}</span>
               </div>
               <div class="flex flex-col items-center gap-1">
                 <label class="cursor-pointer w-full">
                   <span id="cd2-img-btn"
                     class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 flex items-center justify-center gap-1">
-                    📷 อ่านจากรูป
+                    📷 ${L.btnImg}
                   </span>
                   <input type="file" id="cd2-img-input" accept="image/*" class="hidden" />
                 </label>
-                <span class="text-[10px] text-gray-400 text-center">AI อ่านภาพถ่าย</span>
+                <span class="text-[10px] text-gray-400 text-center">${L.btnImgSub}</span>
               </div>
             </div>
 
@@ -1002,24 +1134,24 @@ export async function openCourseDocPage2Modal(teacher, course) {
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
             <div class="grid md:grid-cols-[1fr_220px] gap-4">
               <label class="block">
-                <span class="block text-sm font-semibold text-gray-700 mb-2">คำอธิบายรายวิชา / ผลการเรียนรู้ภาพรวม</span>
-                <textarea id="cd2-description" rows="5" dir="${dirAttr()}"
-                  class="${INPUT_CLS} min-h-[132px] leading-7"
-                  placeholder="พิมพ์ภาษาไทย อาหรับ หรือภาษาอื่นได้ ระบบจะรองรับทิศทางข้อความอัตโนมัติ">${_htmlEsc(description)}</textarea>
+                <span class="block text-sm font-semibold text-gray-700 mb-2">${L.descLabel}</span>
+                <textarea id="cd2-description" rows="5" dir="${dir}"
+                  class="${INPUT_CLS} ${textAlign} min-h-[132px] leading-7"
+                  placeholder="${_htmlEsc(L.descPlaceholder)}">${_htmlEsc(description)}</textarea>
               </label>
               <div class="space-y-3">
                 <label class="block">
-                  <span class="block text-sm font-semibold text-gray-700 mb-2">ทิศทางข้อความ</span>
+                  <span class="block text-sm font-semibold text-gray-700 mb-2">${L.dirLabel}</span>
                   <select id="cd2-dir" class="${SELECT_CLS}">
-                    <option value="auto" ${textDir === 'auto' ? 'selected' : ''}>อัตโนมัติ</option>
-                    <option value="rtl" ${textDir === 'rtl' ? 'selected' : ''}>ขวาไปซ้าย (Arabic)</option>
-                    <option value="ltr" ${textDir === 'ltr' ? 'selected' : ''}>ซ้ายไปขวา</option>
+                    <option value="auto" ${textDir === 'auto' ? 'selected' : ''}>${L.dirAuto}</option>
+                    <option value="rtl" ${textDir === 'rtl' ? 'selected' : ''}>${L.dirRTL}</option>
+                    <option value="ltr" ${textDir === 'ltr' ? 'selected' : ''}>${L.dirLTR}</option>
                   </select>
                 </label>
                 <label class="block">
-                  <span class="block text-sm font-semibold text-gray-700 mb-2">ผู้ลงนาม</span>
-                  <input id="cd2-signer" class="${INPUT_CLS}" value="${_htmlEsc(signerName)}" placeholder="หัวหน้ากลุ่มสาระ" />
-                  <p class="text-xs text-gray-400 mt-1">ใช้ตำแหน่งหัวหน้ากลุ่มสาระในเอกสาร</p>
+                  <span class="block text-sm font-semibold text-gray-700 mb-2">${L.signerLabel}</span>
+                  <input id="cd2-signer" class="${INPUT_CLS} ${textAlign}" value="${_htmlEsc(signerName)}" placeholder="${_htmlEsc(L.signerPlaceholder)}" dir="${dir}" />
+                  <p class="text-xs text-gray-400 mt-1">${L.signerHint}</p>
                 </label>
               </div>
             </div>
@@ -1028,25 +1160,25 @@ export async function openCourseDocPage2Modal(teacher, course) {
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
               <div>
-                <h3 class="font-bold text-gray-800">มาตรฐาน / ตัวชี้วัด / ผลการเรียนรู้</h3>
-                <p class="text-xs text-gray-400 mt-0.5">เลขแถวที่มีข้อความจะกลายเป็นตัวเลือก “ข้อที่” สำหรับกลางภาคและปลายภาค</p>
+                <h3 class="font-bold text-gray-800">${L.tableTitle}</h3>
+                <p class="text-xs text-gray-400 mt-0.5">${L.tableHint}</p>
               </div>
               <div class="flex gap-2">
-                <button id="cd2-template-basic" class="px-3 py-2 rounded-xl border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50">พื้นฐาน 2 คอลัมน์</button>
-                <button id="cd2-template-extra" class="px-3 py-2 rounded-xl border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50">เพิ่มเติม 1 คอลัมน์</button>
-                <button id="cd2-add-col" class="px-3 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-50">+ คอลัมน์</button>
-                <button id="cd2-add-row" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">+ แถว</button>
+                <button id="cd2-template-basic" class="px-3 py-2 rounded-xl border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50">${L.tplBasic}</button>
+                <button id="cd2-template-extra" class="px-3 py-2 rounded-xl border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50">${L.tplExtra}</button>
+                <button id="cd2-add-col" class="px-3 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-50">${L.addCol}</button>
+                <button id="cd2-add-row" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">${L.addRow}</button>
               </div>
             </div>
             <div class="overflow-auto">
-              <table class="w-full min-w-[780px] border-collapse text-sm">
+              <table class="w-full min-w-[780px] border-collapse text-sm" dir="${dir}">
                 <thead>
                   <tr class="bg-gray-50">
-                    <th class="w-14 px-3 py-2 border border-gray-100 text-gray-500">ข้อ</th>
+                    <th class="w-14 px-3 py-2 border border-gray-100 text-gray-500">${L.rowHeader}</th>
                     ${columns.map((c, i) => `
                       <th class="min-w-[240px] px-2 py-2 border border-gray-100">
                         <div class="flex items-center gap-2">
-                          <input data-col="${i}" class="cd2-col ${INPUT_CLS} py-2 font-semibold" value="${_htmlEsc(c)}" dir="${dirAttr()}" />
+                          <input data-col="${i}" class="cd2-col ${INPUT_CLS} ${textAlign} py-2 font-semibold" value="${_htmlEsc(c)}" dir="${dir}" />
                           ${columns.length > 1 ? `<button data-del-col="${i}" class="cd2-del-col text-red-400 hover:text-red-600 px-1" title="ลบคอลัมน์">×</button>` : ''}
                         </div>
                       </th>`).join('')}
@@ -1059,11 +1191,11 @@ export async function openCourseDocPage2Modal(teacher, course) {
                       <td class="px-3 py-2 border border-gray-100 text-center font-semibold text-gray-500">${r + 1}</td>
                       ${columns.map((_, c) => `
                         <td class="p-1 border border-gray-100 align-top">
-                          <textarea data-row="${r}" data-cell="${c}" rows="2" dir="${dirAttr()}"
-                            class="cd2-cell w-full min-h-[58px] resize-y rounded-lg border border-transparent px-3 py-2 text-sm leading-6 focus:border-emerald-300 focus:outline-none">${_htmlEsc(row[c] || '')}</textarea>
+                          <textarea data-row="${r}" data-cell="${c}" rows="2" dir="${dir}"
+                            class="cd2-cell ${textAlign} w-full min-h-[58px] resize-y rounded-lg border border-transparent px-3 py-2 text-sm leading-6 focus:border-emerald-300 focus:outline-none">${_htmlEsc(row[c] || '')}</textarea>
                         </td>`).join('')}
                       <td class="px-2 py-2 border border-gray-100 text-center">
-                        <button data-del-row="${r}" class="cd2-del-row text-xs text-red-400 hover:text-red-600">ลบ</button>
+                        <button data-del-row="${r}" class="cd2-del-row text-xs text-red-400 hover:text-red-600">${L.delRow}</button>
                       </td>
                     </tr>`).join('')}
                 </tbody>
@@ -1072,22 +1204,22 @@ export async function openCourseDocPage2Modal(teacher, course) {
           </div>
 
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
-            <h3 class="font-bold text-gray-800 mb-3">จุดประสงค์วัดผล <span class="text-xs font-normal text-gray-400">(คลิกเพื่อเลือกข้อ)</span></h3>
+            <h3 class="font-bold text-gray-800 mb-3">${L.objTitle} <span class="text-xs font-normal text-gray-400">${L.objHint}</span></h3>
             <div class="grid sm:grid-cols-3 gap-3">
-              <button id="cd2-pick-between" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition">
-                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">ระหว่างภาค ข้อที่</p>
+              <button id="cd2-pick-between" class="${textAlign} rounded-2xl border border-gray-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${L.between}</p>
                 <p class="mt-2 text-base font-bold text-blue-600 leading-snug">${_htmlEsc(selectedText(betweenItems))}</p>
               </button>
-              <button id="cd2-pick-mid" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
-                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">กลางภาค ข้อที่</p>
+              <button id="cd2-pick-mid" class="${textAlign} rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${L.mid}</p>
                 <p class="mt-2 text-base font-bold text-emerald-700 leading-snug">${_htmlEsc(selectedText(midItems))}</p>
               </button>
-              <button id="cd2-pick-final" class="text-left rounded-2xl border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50 transition">
-                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">ปลายภาค ข้อที่</p>
+              <button id="cd2-pick-final" class="${textAlign} rounded-2xl border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50 transition">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${L.final}</p>
                 <p class="mt-2 text-base font-bold text-purple-700 leading-snug">${_htmlEsc(selectedText(finalItems))}</p>
               </button>
             </div>
-            ${opts.length ? '' : `<p class="text-xs text-amber-600 mt-3">ยังไม่มีข้อให้เลือก กรุณาพิมพ์ข้อมูลอย่างน้อย 1 แถวในตารางด้านบน</p>`}
+            ${opts.length ? '' : `<p class="text-xs text-amber-600 mt-3">${L.noOpts}</p>`}
           </div>
         </div>
       </div>`
@@ -1116,7 +1248,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
   const applyGeneratedDoc = result => {
     const nextColumns = Array.isArray(result?.columns) && result.columns.length
       ? result.columns.map(c => String(c ?? '').trim()).filter(Boolean)
-      : ['ผลการเรียนรู้']
+      : i18n().colsExtra
     const nextRows = Array.isArray(result?.rows)
       ? result.rows.map(row => {
           const cells = Array.isArray(row) ? row : Object.values(row ?? {})
@@ -1164,11 +1296,15 @@ export async function openCourseDocPage2Modal(teacher, course) {
   const generateDocWithGemini = async () => {
     const geminiKey = _resolveGeminiKey(cfg, teacher)
     if (!geminiKey) throw new Error('ยังไม่ได้ตั้งค่า Gemini API Key ในหน้าแอดมิน')
+    const L = i18n()
     const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
+    const colNames = isExtra ? L.colsExtra : L.colsBasic
     const tableMode = isExtra
-      ? 'รายวิชาเพิ่มเติมหรือรายวิชาอื่น ให้ใช้คอลัมน์เดียวชื่อ "ผลการเรียนรู้"'
-      : 'รายวิชาพื้นฐาน ให้ใช้ 2 คอลัมน์ชื่อ "มาตรฐานการเรียนรู้" และ "ตัวชี้วัด"'
-    const prompt = `คุณเป็นผู้ช่วยจัดทำเอกสาร ปพ.5 ภาษาไทยอย่างเป็นทางการสำหรับครู
+      ? `single column named "${colNames[0]}"`
+      : `two columns named "${colNames[0]}" and "${colNames[1]}"`
+    const prompt = `You are an assistant helping a teacher prepare a PP5 course-description document.
+IMPORTANT: Write all generated content in ${L.aiLang}. Do not mix languages unless the source course content requires it.
+
 ข้อมูลคอร์ส:
 - ชื่อวิชา: ${course.subject_name || ''}
 - รหัสวิชา: ${course.subject_code || ''}
@@ -1178,11 +1314,10 @@ export async function openCourseDocPage2Modal(teacher, course) {
 - เรื่อง/บทที่สอน: ${topicList.filter(Boolean).join(', ') || 'ไม่ระบุ'}
 
 งาน:
-1. ร่างคำอธิบายรายวิชาสั้น กระชับ เป็นทางการ
+1. ร่างคำอธิบายรายวิชาสั้น กระชับ เป็นทางการ ในภาษาเป้าหมาย
 2. สร้างรายการในตารางตามรูปแบบนี้: ${tableMode}
 3. สร้างประมาณ 5-8 ข้อที่ใช้เป็นตัวเลือกข้อจุดประสงค์วัดผล
 4. เลือกข้อสำหรับกลางภาคและปลายภาคอย่างเหมาะสม
-5. ถ้าเป็นเนื้อหาอาหรับ/อิสลาม ให้รองรับข้อความอาหรับได้ แต่คำอธิบายหลักใช้ภาษาไทย
 
 Return JSON object เท่านั้น:
 {
@@ -1216,16 +1351,16 @@ Return JSON object เท่านั้น:
     const opts = objectiveOptions()
     if (!opts.length) { showToast('กรุณาพิมพ์รายการในตารางก่อน', 'warning'); return }
     document.getElementById('cd2-picker')?.remove()
-    const titles  = { mid:'เลือกข้อกลางภาค', between:'เลือกข้อระหว่างภาค', final:'เลือกข้อปลายภาค' }
+    const L = i18n()
     const accents = { mid:'accent-emerald-600', between:'accent-blue-600', final:'accent-purple-600' }
     const okCls   = { mid:'bg-emerald-600', between:'bg-blue-600', final:'bg-purple-600' }
     const picker = document.createElement('div')
     picker.id = 'cd2-picker'
     picker.className = 'fixed inset-0 z-[180] flex items-center justify-center bg-black/40 p-4'
     picker.innerHTML = `
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" dir="${L.dir}">
         <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="font-bold text-gray-800">${titles[kind]}</h3>
+          <h3 class="font-bold text-gray-800">${L.pickerTitles[kind]}</h3>
           <button id="cd2-picker-close" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
         </div>
         <div class="p-5 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[55vh] overflow-y-auto">
@@ -1236,8 +1371,8 @@ Return JSON object เท่านั้น:
             </label>`).join('')}
         </div>
         <div class="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button id="cd2-picker-cancel" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm">ยกเลิก</button>
-          <button id="cd2-picker-ok" class="px-5 py-2 rounded-xl ${okCls[kind]} text-white text-sm font-semibold">ตกลง</button>
+          <button id="cd2-picker-cancel" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm">${L.pickerCancel}</button>
+          <button id="cd2-picker-ok" class="px-5 py-2 rounded-xl ${okCls[kind]} text-white text-sm font-semibold">${L.pickerOk}</button>
         </div>
       </div>`
     document.body.appendChild(picker)
@@ -1254,6 +1389,15 @@ Return JSON object เท่านั้น:
   }
 
   const wireEvents = () => {
+    const L = i18n()
+    modal.querySelectorAll('.cd2-lang-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        syncFromDom()
+        lang = btn.dataset.lang || 'th'
+        textDir = COURSE_DOC_LANGS[lang]?.dir || 'ltr'
+        render()
+      })
+    })
     modal.querySelector('#cd2-close').addEventListener('click', () => modal.remove())
     modal.querySelector('#cd2-dir').addEventListener('change', e => {
       syncFromDom()
@@ -1264,9 +1408,9 @@ Return JSON object เท่านั้น:
     modal.querySelector('#cd2-search-curriculum').addEventListener('click', async () => {
       syncFromDom()
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
-      if (hasContent && !confirm('ค้นหลักสูตรแล้วจะทับข้อมูลที่มีอยู่ ดำเนินการต่อหรือไม่?')) return
+      if (hasContent && !confirm(L.confirmOverwrite)) return
       const btn = modal.querySelector('#cd2-search-curriculum')
-      btn.disabled = true; btn.innerHTML = '⏳ กำลังค้น...'
+      btn.disabled = true; btn.innerHTML = `⏳ ${L.btnCurriculumLoading}`
       try {
         const records = await findCurriculumStandards({
           subjectName: course.subject_name,
@@ -1277,15 +1421,15 @@ Return JSON object เท่านั้น:
         })
         if (records.length) {
           applyGeneratedDoc(buildDocFromCurriculum(records))
-          aiStatusText = `✅ พบ ${records.length} รายการในฐานหลักสูตรแกนกลาง — กรุณาตรวจสอบก่อนบันทึก`
+          aiStatusText = L.toastSearchOk(records.length)
         } else {
-          aiStatusText = '⚠️ ไม่พบข้อมูลในฐานหลักสูตรแกนกลาง — ลองใช้ "ให้ AI ร่าง" แทน'
+          aiStatusText = L.toastSearchEmpty
         }
         render()
       } catch (err) {
         showToast('ค้นหลักสูตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       } finally {
-        btn.disabled = false; btn.innerHTML = '🔍 ค้นหลักสูตร'
+        btn.disabled = false; btn.innerHTML = `🔍 ${L.btnCurriculum}`
       }
     })
 
@@ -1293,18 +1437,18 @@ Return JSON object เท่านั้น:
     modal.querySelector('#cd2-auto-fill').addEventListener('click', async () => {
       syncFromDom()
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
-      if (hasContent && !confirm('ให้ AI ร่างใหม่ทับข้อมูลที่มีอยู่หรือไม่?')) return
+      if (hasContent && !confirm(L.confirmAIOverwrite)) return
       const btn = modal.querySelector('#cd2-auto-fill')
-      btn.disabled = true; btn.innerHTML = '⏳ AI กำลังร่าง...'
+      btn.disabled = true; btn.innerHTML = `⏳ ${L.btnAILoading}`
       try {
         const generated = await generateDocWithGemini()
         applyGeneratedDoc(generated)
-        aiStatusText = '✨ AI ร่างข้อมูลให้แล้ว — กรุณาตรวจสอบความถูกต้องก่อนบันทึก'
+        aiStatusText = L.toastAIDone
         render()
       } catch (err) {
         showToast('AI ร่างไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       } finally {
-        btn.disabled = false; btn.innerHTML = '✨ ให้ AI ร่าง'
+        btn.disabled = false; btn.innerHTML = `✨ ${L.btnAI}`
       }
     })
     // ── อัปโหลดรูป → Gemini Vision อ่านตาราง ────────────────────────────────
@@ -1314,12 +1458,12 @@ Return JSON object เท่านั้น:
       if (!geminiKey) { showToast('กรุณาตั้งค่า Gemini API Key ในหน้าแอดมิน', 'error'); return }
 
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
-      if (hasContent && !confirm('เติมข้อมูลจากรูปภาพ ทับข้อมูลที่มีอยู่หรือไม่?')) {
+      if (hasContent && !confirm(L.confirmImgOverwrite)) {
         e.target.value = ''; return
       }
 
       const btn = modal.querySelector('#cd2-img-btn')
-      btn.textContent = '⏳ กำลังอ่าน...'
+      btn.textContent = `⏳ ${L.btnImgLoading}`
 
       try {
         // แปลงรูปเป็น base64
@@ -1331,22 +1475,24 @@ Return JSON object เท่านั้น:
         })
 
         const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
+        const colNames = isExtra ? L.colsExtra : L.colsBasic
         const tableMode = isExtra
-          ? 'รายวิชาเพิ่มเติม ใช้คอลัมน์เดียวชื่อ "ผลการเรียนรู้"'
-          : 'รายวิชาพื้นฐาน ใช้ 2 คอลัมน์ชื่อ "มาตรฐานการเรียนรู้" และ "ตัวชี้วัด"'
+          ? `single column named "${colNames[0]}"`
+          : `two columns named "${colNames[0]}" and "${colNames[1]}"`
 
-        const prompt = `คุณเป็นผู้ช่วยครูไทย ดูรูปภาพนี้ซึ่งอาจเป็นหน้าหนังสือ, เอกสารหลักสูตร, หรือตาราง ปพ.5
+        const prompt = `You are a teacher assistant. Read this image, which may be a textbook page, curriculum document, or PP5 table.
+Output language: ${L.aiLang}
 ข้อมูลรายวิชา: "${course.subject_name ?? ''}" รหัส ${course.subject_code ?? ''} ชั้น ${course.grade_level ?? ''} กลุ่มสาระ ${deptThai}
 
 สกัดข้อมูลต่อไปนี้จากรูป:
-1. คำอธิบายรายวิชา / ผลการเรียนรู้ภาพรวม (ถ้ามี)
+1. คำอธิบายรายวิชา / ผลการเรียนรู้ภาพรวม (ถ้ามี) ในภาษาเป้าหมาย
 2. รายการมาตรฐานการเรียนรู้ / ตัวชี้วัด / ผลการเรียนรู้ (${tableMode})
 3. แนะนำข้อที่ควรวัดผลกลางภาคและปลายภาค
 
 ตอบเป็น JSON เท่านั้น (ไม่มีข้อความอื่น):
 {
   "description": "...",
-  "columns": ["มาตรฐานการเรียนรู้", "ตัวชี้วัด"],
+  "columns": ${JSON.stringify(colNames)},
   "rows": [["...", "..."]],
   "midterm_items": [1,2,3],
   "final_items": [4,5,6]
@@ -1374,12 +1520,12 @@ Return JSON object เท่านั้น:
         const jsonStr = match ? (match[1] ?? match[0]) : null
         if (!jsonStr) throw new Error('AI ตอบกลับในรูปแบบที่ไม่ถูกต้อง')
         applyGeneratedDoc(JSON.parse(jsonStr))
-        aiStatusText = 'AI อ่านจากรูปภาพแล้ว — กรุณาตรวจสอบความถูกต้องก่อนบันทึก'
+        aiStatusText = L.toastImgDone
         render()
       } catch (err) {
         showToast('อ่านรูปไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       } finally {
-        btn.textContent = '📷 จากรูป'
+        btn.textContent = `📷 ${L.btnImg}`
         e.target.value = ''
       }
     })
@@ -1387,7 +1533,7 @@ Return JSON object เท่านั้น:
     const applyTemplate = nextColumns => {
       syncFromDom()
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim()))
-      if (hasContent && !confirm('เปลี่ยนรูปแบบคอลัมน์หรือไม่? ข้อมูลเดิมจะถูกจัดให้เข้ากับคอลัมน์ใหม่')) return
+      if (hasContent && !confirm(L.confirmColChange)) return
       const oldRows = rows
       columns = nextColumns
       rows = oldRows.map(row => {
@@ -1398,14 +1544,14 @@ Return JSON object เท่านั้น:
       render()
     }
     modal.querySelector('#cd2-template-basic').addEventListener('click', () => {
-      applyTemplate(['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'])
+      applyTemplate(L.colsBasic)
     })
     modal.querySelector('#cd2-template-extra').addEventListener('click', () => {
-      applyTemplate(['ผลการเรียนรู้'])
+      applyTemplate(L.colsExtra)
     })
     modal.querySelector('#cd2-add-col').addEventListener('click', () => {
       syncFromDom()
-      columns.push(`คอลัมน์ ${columns.length + 1}`)
+      columns.push(L.colNew(columns.length + 1))
       rows = rows.map(row => [...row, ''])
       render()
     })
@@ -1452,11 +1598,11 @@ Return JSON object เท่านั้น:
       const { desc, signer } = syncFromDom()
       const btn = modal.querySelector('#cd2-save')
       btn.disabled = true
-      btn.textContent = 'กำลังบันทึก...'
+      btn.textContent = L.saving
       try {
         await saveCourseDocPage2(course.id, {
           description: desc,
-          table_columns: columns.map((c, i) => c.trim() || `คอลัมน์ ${i + 1}`),
+          table_columns: columns.map((c, i) => c.trim() || L.colNew(i + 1)),
           table_rows: rows.map(row => row.slice(0, columns.length)),
           topic_list: topicList.filter(Boolean),
           midterm_objective_items: midItems,
@@ -1466,12 +1612,12 @@ Return JSON object เท่านั้น:
           text_direction: textDir,
           updated_by: teacher?.id ?? null,
         })
-        showToast('บันทึกคำอธิบายฯ สำเร็จ', 'success')
+        showToast(L.toastSaved, 'success')
         modal.remove()
       } catch (err) {
         showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
         btn.disabled = false
-        btn.textContent = 'บันทึก'
+        btn.textContent = L.save
       }
     })
   }
@@ -2427,7 +2573,7 @@ export async function renderMyClasses(teacher) {
         if (aNext !== Infinity && bNext !== Infinity && aNext !== bNext) return aNext - bNext
         return String(a.masterSubject?.subject_name ?? '').localeCompare(String(b.masterSubject?.subject_name ?? ''), 'th')
       })
-    setContent(`<div class="max-w-5xl mx-auto animate-fade">
+    setContent(`<div class="animate-fade">
       <div class="flex items-center justify-between mb-5">
         <div>
           <h2 class="text-lg font-bold text-gray-800">ห้องเรียนของฉัน</h2>
@@ -2925,7 +3071,7 @@ export async function renderMyClasses(teacher) {
             <div class="mt-2 flex flex-wrap gap-1">${extraBadges(s)}</div>
           </button>`).join('')
 
-        setContent(`<div class="max-w-6xl mx-auto animate-fade">
+        setContent(`<div class="animate-fade">
           <div id="students-back-placeholder" class="hidden"></div>
           <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
@@ -3436,7 +3582,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
         : ''
 
     setContent(`
-    <div class="max-w-5xl mx-auto animate-fade">
+    <div class="animate-fade">
 
       <!-- ── Sticky top bar (mobile-first) ── -->
       <div class="bg-white border-b border-gray-100 shadow-sm -mx-4 px-4 sm:-mx-6 sm:px-6 mb-4 sticky top-0 z-10">
@@ -4884,7 +5030,7 @@ export async function renderAttendance(teacher) {
   window._preSelectClass = null  // clear after use
   const classes = await getMyClasses(teacher?.id ?? null).catch(()=>[])
   const today   = new Date().toISOString().slice(0,10)
-  setContent(`<div class="max-w-5xl mx-auto animate-fade">
+  setContent(`<div class="animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
         <h2 class="text-lg font-bold text-gray-800">เช็คชื่อนักเรียน</h2>
@@ -7676,7 +7822,7 @@ export async function renderRequests(teacher) {
     })
   }
 
-  setContent(`<div class="max-w-2xl mx-auto animate-fade">
+  setContent(`<div class="animate-fade">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-bold text-gray-800">🔔 คำร้องนักเรียน</h2>
       <span class="text-xs text-gray-400">${all.length} รายการ</span>
@@ -8713,4 +8859,281 @@ export async function renderScheduleBuilder(teacher, onComplete) {
   document.getElementById('btn-skip-schedule')?.addEventListener('click', () => {
     if (onComplete) onComplete()
   })
+}
+
+// ─── Course Doc Lang Config ───────────────────────────────────────────────────
+
+// field groups สำหรับ form (key → label แสดงใน UI)
+const _CD_FIELD_GROUPS = [
+  { group: 'ชื่อแท็บภาษา', fields: [
+    ['label','ชื่อแท็บ (แสดงบนปุ่มแท็บทุกจุด)'],
+  ]},
+  { group: 'หัวตาราง',  fields: [
+    ['tableTitle','ชื่อตาราง มาตรฐาน/ตัวชี้วัด'],
+    ['tableHint','คำอธิบายตาราง (hint)'],
+  ]},
+  { group: 'คอลัมน์', fields: [
+    ['colsBasic','คอลัมน์พื้นฐาน (คั่นด้วย | )'],
+    ['colsExtra','คอลัมน์เพิ่มเติม (คั่นด้วย | )'],
+    ['tplBasic','ชื่อปุ่มเทมเพลตพื้นฐาน'],
+    ['tplExtra','ชื่อปุ่มเทมเพลตเพิ่มเติม'],
+    ['rowHeader','หัวคอลัมน์ข้อ/ลำดับ'],
+  ]},
+  { group: 'คำอธิบายรายวิชา', fields: [
+    ['descLabel','Label ช่องคำอธิบายรายวิชา'],
+    ['descPlaceholder','Placeholder คำอธิบายรายวิชา'],
+  ]},
+  { group: 'ผู้ลงนาม', fields: [
+    ['signerLabel','Label ผู้ลงนาม'],
+    ['signerPlaceholder','Placeholder ผู้ลงนาม'],
+    ['signerHint','คำใต้ช่องผู้ลงนาม'],
+  ]},
+  { group: 'จุดประสงค์วัดผล', fields: [
+    ['objTitle','หัวข้อจุดประสงค์'],
+    ['between','ป้ายระหว่างภาค'],
+    ['mid','ป้ายกลางภาค'],
+    ['final','ป้ายปลายภาค'],
+    ['pickerTitleBetween','ชื่อ dialog — ระหว่างภาค'],
+    ['pickerTitleMid','ชื่อ dialog — กลางภาค'],
+    ['pickerTitleFinal','ชื่อ dialog — ปลายภาค'],
+  ]},
+  { group: 'ส่วนช่วยเติมข้อมูล', fields: [
+    ['helpTitle','หัวข้อแผง AI'],
+    ['helpSub','คำอธิบายแผง AI'],
+    ['topicLabel','Label บท/เรื่อง'],
+    ['topicPlaceholder','Placeholder บท/เรื่อง'],
+    ['btnCurriculum','ปุ่มค้นหลักสูตร'],
+    ['btnAI','ปุ่ม AI ร่าง'],
+    ['btnImg','ปุ่มอ่านรูป'],
+  ]},
+  { group: 'ข้อความปุ่ม/Toast', fields: [
+    ['save','ปุ่มบันทึก'],
+    ['close','ปุ่มปิด'],
+    ['addTopic','ปุ่มเพิ่มบท'],
+    ['addCol','ปุ่มเพิ่มคอลัมน์'],
+    ['addRow','ปุ่มเพิ่มแถว'],
+    ['delRow','ปุ่มลบแถว'],
+    ['pickerOk','ปุ่ม OK ใน dialog'],
+    ['pickerCancel','ปุ่มยกเลิก ใน dialog'],
+    ['toastSaved','Toast บันทึกสำเร็จ'],
+    ['toastSearchEmpty','Toast ไม่พบในหลักสูตรแกนกลาง'],
+    ['toastAIDone','Toast AI ร่างสำเร็จ'],
+    ['toastImgDone','Toast อ่านรูปสำเร็จ'],
+    ['noOpts','ข้อความเมื่อยังไม่มีข้อ'],
+    ['notSelected','ข้อความยังไม่เลือก'],
+  ]},
+]
+
+// flatten settings row → form values (arrays → pipe-joined string)
+function _cdlSettingsToForm(settings, defaults) {
+  const merged = { ...defaults, ...settings }
+  const out = {}
+  for (const { fields } of _CD_FIELD_GROUPS) {
+    for (const [key] of fields) {
+      if (key === 'colsBasic') out[key] = (merged.colsBasic ?? []).join(' | ')
+      else if (key === 'colsExtra') out[key] = (merged.colsExtra ?? []).join(' | ')
+      else if (key === 'pickerTitleBetween') out[key] = merged.pickerTitles?.between ?? ''
+      else if (key === 'pickerTitleMid') out[key] = merged.pickerTitles?.mid ?? ''
+      else if (key === 'pickerTitleFinal') out[key] = merged.pickerTitles?.final ?? ''
+      else out[key] = merged[key] ?? ''
+    }
+  }
+  return out
+}
+
+// form values → settings object (pipe-split arrays back)
+function _cdlFormToSettings(formValues) {
+  const out = {}
+  for (const { fields } of _CD_FIELD_GROUPS) {
+    for (const [key] of fields) {
+      const v = String(formValues[key] ?? '').trim()
+      if (key === 'colsBasic') out.colsBasic = v.split('|').map(s => s.trim()).filter(Boolean)
+      else if (key === 'colsExtra') out.colsExtra = v.split('|').map(s => s.trim()).filter(Boolean)
+      else if (key === 'pickerTitleBetween') { out.pickerTitles = out.pickerTitles ?? {}; out.pickerTitles.between = v }
+      else if (key === 'pickerTitleMid') { out.pickerTitles = out.pickerTitles ?? {}; out.pickerTitles.mid = v }
+      else if (key === 'pickerTitleFinal') { out.pickerTitles = out.pickerTitles ?? {}; out.pickerTitles.final = v }
+      else out[key] = v
+    }
+  }
+  return out
+}
+
+export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
+  setActiveNav('course-doc-lang')
+  setTitle('ตั้งค่าคำอธิบายรายวิชา (ต่อภาษา)')
+
+  setContent(`<div class="flex justify-center py-12 text-gray-400">
+    <svg class="animate-spin h-6 w-6 mr-3 text-emerald-400" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg> กำลังโหลด...
+  </div>`)
+
+  const langOrder = ['th', 'jawi', 'ar', 'rumi']
+  const langDefLabels = { th:'ภาษาไทย', jawi:'يَاوِي (Jawi)', ar:'العربية', rumi:'Rumi (Melayu)' }
+  const langDirs   = { th:'ltr', jawi:'rtl', ar:'rtl', rumi:'ltr' }
+
+  const [allSettings, allTeachers] = await Promise.all([
+    getCourseDocLangSettings().catch(() => []),
+    isAdmin ? import('./api.js').then(m => m.getTeachers()).catch(() => []) : Promise.resolve([]),
+  ])
+
+  // map lang_key → row
+  const settingsMap = Object.fromEntries(allSettings.map(r => [r.lang_key, r]))
+
+  // ภาษาที่ teacher นี้แก้ไขได้
+  const editableLangs = isAdmin
+    ? langOrder
+    : langOrder.filter(lk => {
+        const row = settingsMap[lk]
+        return row && teacher?.id && (row.editor_teacher_ids ?? []).includes(teacher.id)
+      })
+
+  if (!editableLangs.length) {
+    setContent(`<div class="max-w-lg mx-auto text-center py-20 text-gray-400">
+      <p class="text-4xl mb-4">🔒</p>
+      <p class="font-medium">ยังไม่มีสิทธิ์แก้ไขภาษาใด</p>
+      <p class="text-xs mt-1">ขอสิทธิ์จากแอดมินเพื่อแก้ไขภาษาที่รับผิดชอบ</p>
+    </div>`)
+    return
+  }
+
+  let activeLang = editableLangs[0]
+
+  // label ที่ใช้แสดงแท็บ — ดึงจาก DB ก่อน fallback hardcoded
+  const _langLabel = (lk) =>
+    settingsMap[lk]?.settings?.label || COURSE_DOC_LANGS[lk]?.label || langDefLabels[lk] || lk
+
+  const _renderPage = () => {
+    const tabsHtml = editableLangs.map(lk => `
+      <button class="cdl-tab px-4 py-2 rounded-xl text-sm font-semibold transition whitespace-nowrap
+        ${lk === activeLang ? 'bg-emerald-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}"
+        data-lang="${lk}" dir="${langDirs[lk]}">${_langLabel(lk)}</button>`).join('')
+
+    const row = settingsMap[activeLang] ?? { settings: {}, editor_teacher_ids: [] }
+    const defaults = COURSE_DOC_LANGS[activeLang] ?? {}
+    const vals = _cdlSettingsToForm(row.settings ?? {}, defaults)
+    const dir = langDirs[activeLang]
+
+    // ค่าภาษาไทย (อ้างอิง) — merge DB override ของ th ด้วย
+    const thRow = settingsMap['th'] ?? {}
+    const thVals = _cdlSettingsToForm(thRow.settings ?? {}, COURSE_DOC_LANGS.th ?? {})
+    const showThRef = activeLang !== 'th'
+
+    const fieldsHtml = _CD_FIELD_GROUPS.map(({ group, fields }) => `
+      <div class="mb-5">
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">${group}</p>
+        ${showThRef ? `
+        <div class="flex items-center gap-3 px-4 py-1.5 bg-gray-50 border border-gray-100 rounded-t-xl">
+          <span class="w-44 flex-shrink-0"></span>
+          <span class="flex-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">ภาษาไทย (อ้างอิง)</span>
+          <span class="flex-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider" dir="${dir}">${_langLabel(activeLang)}</span>
+        </div>` : ''}
+        <div class="bg-white rounded-xl ${showThRef ? 'rounded-tl-none rounded-tr-none' : ''} border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
+          ${fields.map(([key, label]) => `
+          <div class="flex items-start gap-3 px-4 py-3">
+            <label class="w-44 flex-shrink-0 text-xs text-gray-500 pt-1.5 leading-tight">${label}</label>
+            ${showThRef ? `
+            <div class="flex-1 text-sm text-gray-400 bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-100 select-none" dir="ltr">
+              ${_htmlEsc(String(thVals[key] ?? '—'))}
+            </div>` : ''}
+            <input id="cdl-${key}" type="text" dir="${dir}"
+              class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+              value="${_htmlEsc(String(vals[key] ?? ''))}"
+              placeholder="${_htmlEsc(String(defaults[key] ?? ''))}" />
+          </div>`).join('')}
+        </div>
+      </div>`).join('')
+
+    // Admin: แสดงส่วน assign editors สำหรับภาษาที่เลือก
+    const editorIds = row.editor_teacher_ids ?? []
+    const assignHtml = isAdmin ? `
+      <div class="mb-5">
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">ผู้มีสิทธิ์แก้ไขภาษานี้</p>
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p class="text-xs text-gray-400 mb-3">เลือกครูที่จะให้แก้ไข <span dir="${dir}" class="font-semibold text-emerald-700">${_langLabel(activeLang)}</span></p>
+          <div class="max-h-48 overflow-y-auto space-y-1" id="cdl-editors">
+            ${allTeachers.filter(t => t.id !== teacher?.id).map(t => `
+              <label class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer text-sm">
+                <input type="checkbox" class="cdl-editor-cb" value="${t.id}" ${editorIds.includes(t.id) ? 'checked' : ''}/>
+                <span class="font-medium text-gray-800">${_htmlEsc(t.full_name)}</span>
+                <span class="text-xs text-gray-400">${_htmlEsc(t.teacher_code ?? '')} · ${_htmlEsc(t.dept ?? '—')}</span>
+              </label>`).join('')}
+          </div>
+          <button id="cdl-save-editors"
+            class="mt-3 px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition">
+            💾 บันทึกผู้มีสิทธิ์
+          </button>
+        </div>
+      </div>` : ''
+
+    setContent(`<div class="animate-fade">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800">⚙️ ตั้งค่าคำอธิบายรายวิชา (ต่อภาษา)</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ค่าที่ตั้งจะ override ค่าเริ่มต้นในระบบ</p>
+        </div>
+        <button id="cdl-save-settings"
+          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+          💾 บันทึก
+        </button>
+      </div>
+
+      <!-- แท็บภาษา -->
+      <div class="flex gap-2 flex-wrap mb-6">${tabsHtml}</div>
+
+      ${fieldsHtml}
+      ${assignHtml}
+    </div>`)
+
+    // bind tabs
+    document.querySelectorAll('.cdl-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeLang = btn.dataset.lang
+        _renderPage()
+      })
+    })
+
+    // bind save settings
+    document.getElementById('cdl-save-settings')?.addEventListener('click', async () => {
+      const formValues = {}
+      for (const { fields } of _CD_FIELD_GROUPS) {
+        for (const [key] of fields) {
+          formValues[key] = document.getElementById(`cdl-${key}`)?.value ?? ''
+        }
+      }
+      const newSettings = _cdlFormToSettings(formValues)
+      const btn = document.getElementById('cdl-save-settings')
+      btn.disabled = true
+      btn.textContent = 'กำลังบันทึก...'
+      try {
+        const saved = await saveCourseDocLangSettings(activeLang, newSettings, teacher?.id)
+        settingsMap[activeLang] = { ...settingsMap[activeLang], ...saved }
+        showToast(`บันทึกการตั้งค่า ${_langLabel(activeLang)} สำเร็จ`, 'success')
+      } catch (e) {
+        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      }
+      btn.disabled = false
+      btn.innerHTML = '💾 บันทึก'
+    })
+
+    // bind save editors (admin only)
+    document.getElementById('cdl-save-editors')?.addEventListener('click', async () => {
+      const ids = [...document.querySelectorAll('.cdl-editor-cb:checked')].map(cb => Number(cb.value))
+      const btn = document.getElementById('cdl-save-editors')
+      btn.disabled = true
+      btn.textContent = 'กำลังบันทึก...'
+      try {
+        const saved = await saveCourseDocLangEditors(activeLang, ids)
+        settingsMap[activeLang] = { ...settingsMap[activeLang], ...saved }
+        showToast(`อัปเดตผู้มีสิทธิ์ ${_langLabel(activeLang)} สำเร็จ`, 'success')
+      } catch (e) {
+        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      }
+      btn.disabled = false
+      btn.textContent = '💾 บันทึกผู้มีสิทธิ์'
+    })
+  }
+
+  _renderPage()
 }

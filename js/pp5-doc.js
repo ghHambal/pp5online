@@ -2,6 +2,7 @@ import {
   getSystemConfig, getClassStudents, getClassAttendanceAll,
   getScoreColumns, getStudentScores, getCourseDocPage2,
   getHomeroomTeachers, getDepartments, getTeacherById,
+  getCourseDocLangSettings,
 } from './api.js'
 import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
@@ -138,9 +139,20 @@ async function _loadDocData(classId) {
   // ms.dept เก็บ dept_code → ค้นหาด้วย dept_code ก่อน แล้ว fallback dept_name
   const dept = depts.find(d => d.dept_code === ms.dept) ?? depts.find(d => d.dept_name === ms.dept) ?? null
 
-  const courseDoc = ms.id
-    ? await getCourseDocPage2(ms.id).catch(() => null)
-    : null
+  const [courseDoc, langSettingsRows] = await Promise.all([
+    ms.id ? getCourseDocPage2(ms.id).catch(() => null) : Promise.resolve(null),
+    getCourseDocLangSettings().catch(() => []),
+  ])
+
+  // Thai column headers จาก DB settings (หัวหน้าตั้งค่าไว้) — fallback hardcoded
+  const thLangSettings = langSettingsRows.find(r => r.lang_key === 'th')?.settings ?? {}
+  const thColHeaders = Array.isArray(thLangSettings.colsBasic) && thLangSettings.colsBasic.length
+    ? thLangSettings.colsBasic
+    : ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด']
+  const thColsExtra = Array.isArray(thLangSettings.colsExtra) && thLangSettings.colsExtra.length
+    ? thLangSettings.colsExtra
+    : ['ผลการเรียนรู้']
+  const thRowHeader = thLangSettings.rowHeader || 'ข้อ'
 
   const sessions = _generateSessions(cls, credit)
 
@@ -178,7 +190,7 @@ async function _loadDocData(classId) {
   }
 
   const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, sessions, hrSamai, hrReligion, academicYear, semester }
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -366,7 +378,7 @@ function _getCSS() {
     .std-table { width: 100%; border-collapse: collapse; flex: 1; height: 0; }
     .std-table th { font-size: 10pt; padding: 1.5mm 2mm; border: .4mm solid #000; text-align: center; font-weight: 700; }
     .std-table td { border: .4mm solid #000; padding: 0 2mm; vertical-align: top; font-size: 9.5pt; }
-    .std-table td:first-child { width: 32mm; }
+    .std-table:not([style*="table-layout"]) td:first-child { width: 50mm; }
     .std-table td.std-row { height: 7mm; }
     .std-fill-row { height: 100%; }
     .std-fill-row td {
@@ -674,11 +686,21 @@ function _buildPage1(d) {
 // ─── Page 2: มาตรฐานการเรียนรู้และตัวชี้วัด ─────────────────────────────────
 
 function _buildPage2(d) {
-  const { cls, ms, credit, cfg, courseDoc, teacher, deptNameTH, academicYear, semester, prefix } = d
+  const { cls, ms, credit, cfg, courseDoc, thColHeaders, thColsExtra, thRowHeader, teacher, deptNameTH, academicYear, semester, prefix } = d
 
   const logoUrl  = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
-  const cols    = Array.isArray(courseDoc?.table_columns) ? courseDoc.table_columns : ['มาตรฐานการเรียนรู้','ตัวชี้วัด']
   const rawRows = Array.isArray(courseDoc?.table_rows) ? courseDoc.table_rows : []
+  // ทิศทางข้อความของเนื้อหา (ตั้งโดยครู)
+  const contentDir = courseDoc?.text_direction === 'rtl' ? 'rtl'
+                   : courseDoc?.text_direction === 'ltr' ? 'ltr' : 'auto'
+  // ตรวจจำนวนคอลัมน์ที่ครูตั้งไว้ — 1 คอลัมน์ = ผลการเรียนรู้ layout
+  const savedColCount = Array.isArray(courseDoc?.table_columns) ? courseDoc.table_columns.length : 2
+  const isSingleCol   = savedColCount === 1
+  // หัวคอลัมน์ไทย
+  const cols    = isSingleCol
+    ? [thColsExtra[0] ?? 'ผลการเรียนรู้']
+    : (thColHeaders ?? ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'])
+  const rowHeader = thRowHeader ?? 'ข้อ'
   // ไม่ pad แถวว่าง — ใช้ .std-fill-row ยืดเต็มพื้นที่ที่เหลือแทน
   const rows    = rawRows
   const _joinInts = (arr) => Array.isArray(arr) && arr.length ? arr.join(',') : ''
@@ -744,10 +766,31 @@ function _buildPage2(d) {
     </div>
 
     <!-- Standards Table -->
-    <table class="std-table">
+    ${isSingleCol ? `
+    <table class="std-table" style="table-layout:fixed;">
       <thead>
         <tr>
-          <th style="width:32mm;">${_esc(cols[0] ?? 'มาตรฐานการเรียนรู้')}</th>
+          <th style="width:100%;" dir="ltr">${_esc(cols[0])}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row, i) => {
+          const content = _esc(Array.isArray(row) ? row[0] ?? '' : '')
+          const num = i + 1
+          return `<tr><td class="std-row" dir="${contentDir}" style="padding:1.5mm 2.5mm;">
+            <span style="display:inline-flex;gap:5px;align-items:flex-start;width:100%;">
+              <b style="flex-shrink:0;min-width:16px;text-align:center;">${num}.</b>
+              <span style="flex:1;">${content}</span>
+            </span>
+          </td></tr>`
+        }).join('')}
+        <tr class="std-fill-row"><td></td></tr>
+      </tbody>
+    </table>` : `
+    <table class="std-table" dir="${contentDir}">
+      <thead>
+        <tr>
+          <th style="width:50mm;">${_esc(cols[0] ?? 'มาตรฐานการเรียนรู้')}</th>
           <th>${_esc(cols[1] ?? 'ตัวชี้วัด')}</th>
         </tr>
       </thead>
@@ -756,11 +799,9 @@ function _buildPage2(d) {
           <td class="std-row">${_esc(Array.isArray(row) ? row[0] ?? '' : '')}</td>
           <td class="std-row">${_esc(Array.isArray(row) ? row[1] ?? '' : '')}</td>
         </tr>`).join('')}
-        <tr class="std-fill-row">
-          <td></td><td></td>
-        </tr>
+        <tr class="std-fill-row"><td></td><td></td></tr>
       </tbody>
-    </table>
+    </table>`}
 
     <!-- Footer: Objectives + คุณลักษณะ -->
     <div class="p2-footer">

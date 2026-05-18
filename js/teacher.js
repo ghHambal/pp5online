@@ -20,12 +20,13 @@ import {
   renderRequests, renderSchedule, renderProfile, renderClassForm,
   renderLifeSkillScore, renderReadingScore, renderPrayerScore,
   renderProfileSetup, renderScheduleBuilder, openCourseDocPage2Modal,
-  renderClassDetail,
+  renderClassDetail, renderCourseDocLangConfig,
 } from './teacher-views.js'
 import { renderSupervisorDashboard } from './supervisor.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
+let _isAlsoAdmin   = false
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -44,8 +45,9 @@ async function loadTeacherInfo(userId) {
 
   // เช็ค is_also_admin — ถ้าใช่แสดงปุ่มสลับเป็นแอดมิน
   const { data: profileRow } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
+  _isAlsoAdmin = profileRow?.is_also_admin === true
   const nav = document.querySelector('#sidebar nav')
-  if (profileRow?.is_also_admin && nav) {
+  if (_isAlsoAdmin && nav) {
     const switchBtn = document.createElement('a')
     switchBtn.href = 'dashboard.html'
     switchBtn.title = 'สลับไปหน้าแอดมิน'
@@ -1120,12 +1122,13 @@ function _initDonateFloatingBtn(hasPendingDonation = false) {
   const btn = document.createElement('button')
   btn.id = 'donate-float-btn'
   btn.title = hasPendingDonation ? 'รอแอดมินรับทราบการโดเนทของคุณ' : 'สนับสนุนผู้พัฒนา'
-  btn.className = 'fixed bottom-5 right-5 z-[70] w-14 h-14 rounded-full bg-amber-400 hover:bg-amber-500 text-white shadow-xl shadow-amber-300/50 flex items-center justify-center transition-transform hover:scale-110'
+  btn.className = 'fixed z-[40] w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-amber-400 hover:bg-amber-500 text-white shadow-lg shadow-amber-300/40 flex items-center justify-center overflow-hidden transition-transform hover:scale-105'
+  btn.style.cssText = 'position:fixed;right:max(0.75rem, env(safe-area-inset-right));bottom:max(0.75rem, env(safe-area-inset-bottom));top:auto;left:auto;'
   btn.innerHTML = hasPendingDonation
-    ? `<span class="text-2xl">☕</span>`
-    : `<span class="relative flex items-center justify-center w-full h-full">
-        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-40"></span>
-        <span class="relative text-2xl">☕</span>
+    ? `<span class="text-xl sm:text-2xl">☕</span>`
+    : `<span class="relative flex items-center justify-center w-full h-full overflow-hidden rounded-full">
+        <span class="absolute inset-1 rounded-full bg-amber-300/40"></span>
+        <span class="relative text-xl sm:text-2xl">☕</span>
        </span>`
   btn.addEventListener('click', async () => {
     const cfg = await getSystemConfig().catch(() => ({}))
@@ -1833,7 +1836,7 @@ function _enterSupervisorMode() {
   if (!main || _supervisorMode) return
   _supervisorMode = true
   if (nav) _savedNavHTML = nav.innerHTML
-  _renderSupervisorNav(nav, main)
+  _renderSupervisorNav(nav, main, _isAlsoAdmin)
   renderSupervisorDashboard(main, _teacher)
 }
 
@@ -1851,20 +1854,30 @@ function _exitSupervisorMode() {
   window.dispatchEvent(new CustomEvent('teacher-nav', { detail: { view: 'overview' } }))
 }
 
-function _renderSupervisorNav(nav, main) {
+function _renderSupervisorNav(nav, main, isAdmin = false) {
   if (!nav) return
   const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar:'หัวหน้าฝ่ายทะเบียน',
     academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา',
-    academic_pvch:'หัวหน้าวิชาการปวช' }[_teacher?.position] ?? 'หัวหน้า'
+    academic_pvch:'หัวหน้าวิชาการปวช' }[_teacher?.position] ?? (isAdmin ? 'แอดมิน' : 'หัวหน้า')
+
+  const showLangConfig = isAdmin || _teacher?.position === 'dept_head'
+
   nav.innerHTML = `
     <div style="padding:8px 12px;font-size:11px;color:#6ee7b7;font-weight:600;letter-spacing:.5px;margin-bottom:4px;">📊 ${posLabel}</div>
     <button id="sv-nav-back" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
       style="color:#d1fae5;">← กลับโหมดสอน</button>
     <div style="height:1px;background:#065f46;margin:8px 12px;"></div>
     <button id="sv-nav-dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
-      style="color:#d1fae5;">📊 Dashboard ติดตาม</button>`
+      style="color:#d1fae5;">📊 Dashboard ติดตาม</button>
+    ${showLangConfig ? `
+    <button id="sv-nav-lang-config" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full text-left transition hover:bg-emerald-800/50"
+      style="color:#d1fae5;">⚙️ ตั้งค่าคำอธิบายฯ</button>` : ''}`
+
   nav.querySelector('#sv-nav-back').onclick = _exitSupervisorMode
   nav.querySelector('#sv-nav-dashboard').onclick = () => renderSupervisorDashboard(main, _teacher)
+  nav.querySelector('#sv-nav-lang-config')?.addEventListener('click', () => {
+    renderCourseDocLangConfig(_teacher, isAdmin)
+  })
 }
 
 function _rebindNav(nav, main) {
