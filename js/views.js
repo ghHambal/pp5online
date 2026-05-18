@@ -1894,7 +1894,7 @@ export async function renderSettings() {
     }
     const INPUT = 'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200'
 
-    const fld = ({ key, label, type, options, placeholder, hint, rows }) => {
+    const fld = ({ key, label, type, options, placeholder, hint, rows, syncFrom }) => {
       const val  = cfg[key] ?? ''
       const base = `id="cfg-${key}" data-key="${key}"`
       const wrap = (inner, h = '') =>
@@ -1959,7 +1959,16 @@ export async function renderSettings() {
         </div>
         <p class="text-[11px] text-amber-600 mt-1">⚠️ เก็บเป็นความลับ — ห้ามแชร์</p>`, hint)
 
-      // default text
+      // default text (+ sync button จาก position ถ้ามี syncFrom)
+      if (syncFrom) return wrap(`
+        <div class="flex gap-2 items-center">
+          <input type="text" ${base} value="${val ?? ''}" placeholder="${placeholder ?? ''}" class="${INPUT} flex-1" />
+          <button type="button"
+            class="flex-shrink-0 px-3 py-2 rounded-xl border border-indigo-200 text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 font-semibold transition whitespace-nowrap"
+            onclick="window._syncPositionToField('${syncFrom}','${key}',this)">
+            📥 ดึงจากบทบาท
+          </button>
+        </div>`, hint)
       return wrap(`<input type="text" ${base} value="${val ?? ''}" placeholder="${placeholder ?? ''}" class="${INPUT}" />`, hint)
     }
 
@@ -2030,12 +2039,15 @@ export async function renderSettings() {
           { key:`${prefix}LogoBwUrl`,           label:'โลโก้ขาวดำ',      type:'upload' },
           { key:`${prefix}DirectorName`,        label:'ผู้อำนวยการ',      type:'text' },
           { key:`${prefix}DirectorSignUrl`,     label:'ลายเซ็นผู้อำนวยการ', type:'upload' },
-          { key:`${prefix}AcademicHeadName`,    label:'หัวหน้าวิชาการ',  type:'text' },
+          { key:`${prefix}AcademicHeadName`,    label:'หัวหน้าวิชาการ',  type:'text',
+            syncFrom: prefix === 'samai' ? 'academic_samai' : 'academic_pvch' },
           { key:`${prefix}AcademicHeadSignUrl`, label:'ลายเซ็นหัวหน้าวิชาการ', type:'upload' },
-          { key:`${prefix}RegistrarName`,       label: prefix === 'samai' ? 'หัวหน้าฝ่ายทะเบียน (สามัญ)' : 'หัวหน้าฝ่ายทะเบียน', type:'text' },
+          { key:`${prefix}RegistrarName`,       label: prefix === 'samai' ? 'หัวหน้าฝ่ายทะเบียน (สามัญ)' : 'หัวหน้าฝ่ายทะเบียน', type:'text',
+            syncFrom: prefix === 'samai' ? 'registrar_samai' : 'registrar_pvch' },
           { key:`${prefix}RegistrarSignUrl`,    label: prefix === 'samai' ? 'ลายเซ็นหัวหน้าฝ่ายทะเบียน (สามัญ)' : 'ลายเซ็นหัวหน้าฝ่ายทะเบียน', type:'upload' },
           ...(prefix === 'samai' ? [
-            { key:'agmRegistrarName',    label:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', type:'text', hint:'ใช้ในเอกสารรายวิชาศาสนา (AGM)' },
+            { key:'agmRegistrarName',    label:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', type:'text',
+              syncFrom:'registrar_religion', hint:'ใช้ในเอกสารรายวิชาศาสนา (AGM)' },
             { key:'agmRegistrarSignUrl', label:'ลายเซ็นหัวหน้าฝ่ายทะเบียน (ศาสนา)', type:'upload' },
           ] : []),
         ]
@@ -2750,6 +2762,23 @@ export async function renderSettings() {
       btn.addEventListener('click', () => renderTab(btn.dataset.tab))
     )
     renderTab(activeTab)
+
+    // ── ดึงชื่อจากบทบาทครู ──────────────────────────────────────────────────────
+    window._syncPositionToField = async (position, cfgKey, btn) => {
+      const orig = btn.textContent
+      btn.disabled = true; btn.textContent = 'กำลังดึง...'
+      try {
+        const teacher = allTeachers.find(t => t.position === position)
+        if (!teacher) { showToast(`ยังไม่มีครูที่กำหนดบทบาท "${position}"`, 'warning'); return }
+        const input = document.getElementById(`cfg-${cfgKey}`)
+        if (input) {
+          input.value = teacher.full_name
+          input.dispatchEvent(new Event('input'))
+          showToast(`ดึงชื่อ "${teacher.full_name}" สำเร็จ`, 'success')
+        }
+      } catch { showToast('ดึงข้อมูลไม่สำเร็จ', 'error') }
+      finally { btn.disabled = false; btn.textContent = orig }
+    }
 
     // ─── Save button ─────────────────────────────────────────────────────────────
     document.getElementById('cfg-save-btn').addEventListener('click', async () => {
