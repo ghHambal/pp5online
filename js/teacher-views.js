@@ -752,6 +752,172 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   }
 }
 
+// ─── Lesson Plan Approval Document ───────────────────────────────────────────
+
+function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts) {
+  const win = window.open('', '_blank')
+  if (!win) { showToast('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup ก่อน', 'warning'); return }
+  win.document.write('<p style="font-family:sans-serif;padding:24px">กำลังสร้างเอกสาร...</p>')
+
+  const credit      = Number(subject.credit ?? 1)
+  const hrsPerWeek  = credit * 2
+  const totalHrs    = credit * 2 * 20
+  const gradeRaw    = String(subject.grade_level ?? '')
+  const gradeNum    = gradeRaw.replace(/[^0-9]/g, '')  // "ม.5" → "5"
+
+  const isReligion  = ['AGM','AGMVOC'].includes(subject.subject_group ?? '')
+  const gradeLbl    = isReligion ? `อิสลามศึกษาปีที่ ${gradeNum}` : `มัธยมศึกษาปีที่ ${gradeNum}`
+
+  const dept        = depts.find(d => d.dept_code === subject.dept) ?? {}
+  const deptName    = dept.dept_name ?? subject.dept ?? ''
+  const deptHead    = dept.head_name ?? ''
+  const deptHeadSign= dept.head_sign_url ?? ''
+
+  const schoolName  = cfg.samaiSchoolName ?? ''
+  const dirName     = cfg.samaiDirectorName ?? ''
+  const dirSign     = cfg.samaiDirectorSignUrl ?? ''
+  const acadName    = isReligion ? (cfg.agmAcademicHeadName ?? cfg.samaiAcademicHeadName ?? '') : (cfg.samaiAcademicHeadName ?? '')
+  const logoUrl     = cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
+
+  const today       = new Date()
+  const thMonths    = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
+  const dateStr     = `${today.getDate()} ${thMonths[today.getMonth()]} พ.ศ. ${today.getFullYear() + 543}`
+  const acYear      = (cfg.academicYear ?? (today.getFullYear() + 543))
+  const sem         = cfg.semester ?? 1
+
+  const posStr      = teacher?.category === 'ศาสนา' ? 'ครูศาสนา' : 'ครูสามัญ'
+  const roomNames   = classesForSubject.map(c => c.class_name).join(', ')
+
+  const _f = (val) => `<span style="color:#064ec7;">${val ?? ''}</span>`
+  const _sign = (url) => url ? `<img src="${url}" style="max-height:42px;max-width:160px;object-fit:contain;position:absolute;top:-42px;left:50%;transform:translateX(-50%);"/>` : ''
+
+  const html = `<!DOCTYPE html>
+<html lang="th"><head><meta charset="UTF-8"/>
+<title>ใบขออนุญาตใช้แผนการจัดการเรียนรู้</title>
+<style>
+  @page { size:A4; margin:0; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#ddd; }
+  .page{ width:794px; height:1123px; background:#fff; margin:0 auto; position:relative; overflow:hidden;
+    font-family:"TH SarabunPSK","TH Sarabun New","Sarabun",sans-serif; font-size:22px; line-height:1; }
+  @media print{ body{ background:#fff; } .page{ margin:0; } .no-print{ display:none; } }
+  .t{ position:absolute; white-space:nowrap; }
+  .b{ font-weight:700; }
+  .title{ position:absolute; top:102px; left:0; width:794px; text-align:center; font-size:26px; font-weight:700; }
+  .logo{ position:absolute; left:58px; top:83px; width:66px; height:66px; border:1.3px solid #000;
+    border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .line{ position:absolute; border-bottom:1.2px dotted #111; height:23px; }
+  .fill{ position:absolute; border-bottom:1.2px dotted #111; height:23px; color:#064ec7;
+    text-align:center; white-space:nowrap; overflow:hidden; padding:0 4px; }
+  .comment-line{ position:absolute; left:58px; width:677px; border-bottom:2px dotted #111; height:1px; }
+  .check{ position:absolute; width:24px; height:24px; border:3px solid #999; border-radius:3px; }
+  .sig-wrap{ position:relative; }
+  .print-btn{ position:fixed; bottom:24px; right:24px; padding:12px 28px; background:#1d4ed8;
+    color:#fff; border:none; border-radius:10px; font-size:15px; cursor:pointer; font-family:inherit; z-index:999; }
+</style></head><body>
+<button class="print-btn no-print" onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button>
+<div class="page">
+  <div class="logo">${logoUrl ? `<img src="${logoUrl}" style="width:64px;height:64px;object-fit:contain;"/>` : 'โลโก้'}</div>
+  <div class="title">บันทึกข้อความ</div>
+
+  <div class="t b" style="left:58px;top:163px;">ส่วนราชการ</div>
+  <div class="fill" style="left:138px;top:157px;width:597px;">${_f(schoolName)}</div>
+
+  <div class="t b" style="left:58px;top:189px;">ที่</div>
+  <div class="fill" style="left:88px;top:183px;width:253px;">${_f('วช/พิเศษ')}</div>
+  <div class="t b" style="left:354px;top:189px;">วันที่</div>
+  <div class="fill" style="left:394px;top:183px;width:341px;">${_f(dateStr)}</div>
+
+  <div class="t b" style="left:58px;top:215px;">เรื่อง</div>
+  <div class="fill" style="left:95px;top:209px;width:640px;text-align:left;">${_f(`ขออนุญาตใช้แผนการจัดการเรียนรู้ ภาคเรียนที่ ${sem} ปีการศึกษา ${acYear}`)}</div>
+
+  <div class="t" style="left:58px;top:258px;">เรียน</div>
+  <div class="fill" style="left:103px;top:252px;width:280px;text-align:left;">${_f(`ผู้อำนวยการ${schoolName}`)}</div>
+
+  <div class="t" style="left:100px;top:304px;">เนื่องด้วยข้าพเจ้า</div>
+  <div class="fill" style="left:237px;top:298px;width:250px;">${_f(teacher?.full_name ?? '')}</div>
+  <div class="t" style="left:493px;top:304px;">ตำแหน่ง</div>
+  <div class="fill" style="left:553px;top:298px;width:182px;">${_f(posStr)}</div>
+
+  <div class="t" style="left:58px;top:330px;">ปฏิบัติหน้าที่ครูผู้สอนกลุ่มสาระการเรียนรู้</div>
+  <div class="fill" style="left:348px;top:324px;width:387px;">${_f(deptName)}</div>
+
+  <div class="t" style="left:58px;top:356px;">วิชา</div>
+  <div class="fill" style="left:94px;top:350px;width:238px;">${_f(subject.subject_name ?? '')}</div>
+  <div class="t" style="left:354px;top:356px;">รหัส</div>
+  <div class="fill" style="left:393px;top:350px;width:140px;">${_f(subject.subject_code ?? '')}</div>
+  <div class="t" style="left:545px;top:356px;">จำนวน</div>
+  <div class="fill" style="left:603px;top:350px;width:55px;">${_f(credit)}</div>
+  <div class="t" style="left:660px;top:356px;">หน่วยกิต</div>
+
+  <div class="t" style="left:58px;top:382px;">เวลา</div>
+  <div class="fill" style="left:94px;top:376px;width:54px;">${_f(hrsPerWeek)}</div>
+  <div class="t" style="left:150px;top:382px;">ชั่วโมง/สัปดาห์</div>
+  <div class="t" style="left:258px;top:382px;">เวลา</div>
+  <div class="fill" style="left:291px;top:376px;width:66px;">${_f(totalHrs)}</div>
+  <div class="t" style="left:379px;top:382px;">ชั่วโมง/ภาคเรียน</div>
+  <div class="t" style="left:510px;top:382px;">ในระดับชั้น${isReligion ? 'อิสลามศึกษา' : 'มัธยมศึกษา'}ปีที่</div>
+  <div class="fill" style="left:680px;top:376px;width:75px;">${_f(gradeNum)}</div>
+
+  <div class="t" style="left:58px;top:408px;">จำนวนแผนการจัดการเรียนรู้</div>
+  <div class="fill" style="left:237px;top:402px;width:108px;">${_f(totalHrs)}</div>
+  <div class="t" style="left:374px;top:408px;">แผน</div>
+
+  ${roomNames ? `<div class="t" style="left:58px;top:434px;font-size:18px;color:#555;">ห้องเรียน: ${roomNames}</div>` : ''}
+
+  <div class="t" style="left:100px;top:456px;">จึงเรียนมาเพื่อโปรดพิจารณาอนุญาตให้ใช้ประกอบการเรียนการสอนต่อไป</div>
+
+  <!-- ผู้จัดทำ -->
+  <div class="t" style="left:454px;top:500px;">ลงชื่อ</div>
+  <div class="fill sig-wrap" style="left:489px;top:494px;width:246px;">${_sign('')}</div>
+  <div class="t" style="left:478px;top:526px;">(</div>
+  <div class="fill" style="left:497px;top:520px;width:218px;">${_f(teacher?.full_name ?? '')}</div>
+  <div class="t" style="left:716px;top:526px;">)</div>
+  <div class="t" style="left:522px;top:551px;width:172px;text-align:center;">ผู้จัดทำแผนการจัดการเรียนรู้</div>
+
+  <!-- หัวหน้ากลุ่มสาระ -->
+  <div class="t" style="left:454px;top:600px;">ลงชื่อ</div>
+  <div class="fill sig-wrap" style="left:489px;top:594px;width:246px;">${_sign(deptHeadSign)}</div>
+  <div class="t" style="left:478px;top:626px;">(</div>
+  <div class="fill" style="left:497px;top:620px;width:218px;">${_f(deptHead)}</div>
+  <div class="t" style="left:716px;top:626px;">)</div>
+  <div class="t" style="left:391px;top:651px;width:195px;text-align:center;">หัวหน้ากลุ่มสาระการเรียนรู้</div>
+  <div class="fill" style="left:580px;top:645px;width:155px;">${_f(deptName)}</div>
+
+  <div class="t b" style="left:58px;top:690px;">ความคิดเห็น/ข้อเสนอแนะ</div>
+  <div class="comment-line" style="top:732px;"></div>
+
+  <!-- หัวหน้าฝ่ายวิชาการ -->
+  <div class="t" style="left:454px;top:759px;">ลงชื่อ</div>
+  <div class="fill sig-wrap" style="left:489px;top:753px;width:246px;">${_sign(acadName ? cfg[isReligion ? 'agmAcademicHeadSignUrl' : 'samaiAcademicHeadSignUrl'] : '')}</div>
+  <div class="t" style="left:478px;top:785px;">(</div>
+  <div class="fill" style="left:497px;top:779px;width:218px;">${_f(acadName)}</div>
+  <div class="t" style="left:716px;top:785px;">)</div>
+  <div class="t" style="left:510px;top:810px;width:190px;text-align:center;">${isReligion ? 'หัวหน้าฝ่ายวิชาการศาสนา' : 'หัวหน้าฝ่ายวิชาการสามัญ'}</div>
+
+  <div class="t b" style="left:58px;top:844px;">ความคิดเห็น/ข้อเสนอแนะ</div>
+  <div class="comment-line" style="top:885px;"></div>
+
+  <div class="check" style="left:459px;top:910px;"></div>
+  <div class="t" style="left:495px;top:910px;">อนุญาต</div>
+  <div class="check" style="left:459px;top:940px;"></div>
+  <div class="t" style="left:495px;top:940px;">ไม่อนุญาต</div>
+
+  <!-- ผู้อำนวยการ -->
+  <div class="t" style="left:454px;top:997px;">ลงชื่อ</div>
+  <div class="fill sig-wrap" style="left:489px;top:991px;width:246px;">${_sign(dirSign)}</div>
+  <div class="t" style="left:478px;top:1023px;">(</div>
+  <div class="fill" style="left:497px;top:1017px;width:218px;">${_f(dirName)}</div>
+  <div class="t" style="left:716px;top:1023px;">)</div>
+  <div class="t" style="left:493px;top:1048px;width:230px;text-align:center;">ผู้อำนวยการ${schoolName}</div>
+</div>
+</body></html>`
+
+  win.document.open()
+  win.document.write(html)
+  win.document.close()
+}
+
 // ─── View: My Courses ─────────────────────────────────────────────────────────
 
 export async function renderMyCourses(teacher) {
@@ -823,6 +989,10 @@ export async function renderMyCourses(teacher) {
                     class="text-xs text-emerald-700 hover:text-emerald-900 font-medium px-2 py-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50">
                     คำอธิบายฯ
                   </button>
+                  <button class="lesson-plan-btn text-xs text-sky-700 hover:text-sky-900 font-medium px-2 py-1.5 border border-sky-200 rounded-lg hover:bg-sky-50 transition"
+                    data-sid="${s.id}">
+                    📋 ใบขออนุญาต
+                  </button>
                   <button class="pp5-course-btn text-xs text-violet-700 hover:text-violet-900 font-medium px-2 py-1.5 border border-violet-200 rounded-lg hover:bg-violet-50 transition"
                     data-sid="${s.id}">
                     💾 ปพ.5
@@ -854,6 +1024,19 @@ export async function renderMyCourses(teacher) {
     document.querySelectorAll('.ccm-open-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         _openCourseColsModal(parseInt(btn.dataset.sid), btn.dataset.sname, allClasses)
+      })
+    })
+
+    // ผูก event ปุ่มใบขออนุญาตใช้แผน
+    document.querySelectorAll('.lesson-plan-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sid = parseInt(btn.dataset.sid)
+        const subj = subjects.find(s => s.id === sid)
+        if (!subj) return
+        const courseClasses = allClasses.filter(c => c.course_id === sid || c.master_subjects?.id === sid)
+        const { getSystemConfig: _cfg, getDepartments: _depts } = await import('./api.js')
+        const [cfg, depts] = await Promise.all([_cfg().catch(()=>({})), _depts().catch(()=>[])])
+        _openLessonPlanApproval(subj, courseClasses, teacher, cfg, depts)
       })
     })
 
