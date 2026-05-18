@@ -47,8 +47,9 @@ async function loadTeacherInfo(userId) {
   const { data: profileRow } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
   _isAlsoAdmin = profileRow?.is_also_admin === true
   const nav = document.querySelector('#sidebar nav')
-  if (_isAlsoAdmin && nav) {
+  if (_isAlsoAdmin && nav && !document.getElementById('btn-switch-admin')) {
     const switchBtn = document.createElement('a')
+    switchBtn.id = 'btn-switch-admin'
     switchBtn.href = 'dashboard.html'
     switchBtn.title = 'สลับไปหน้าแอดมิน'
     switchBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-emerald-800/50 mt-2 border border-emerald-700/40'

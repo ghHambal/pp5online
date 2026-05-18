@@ -1156,13 +1156,18 @@ export async function unlinkClassFromSchedule(classId, scheduleId) {
 export async function getClassSessionDOWs(classId) {
   const { data, error } = await supabase
     .from('class_schedule_links')
-    .select('teacher_schedules(day_of_week)')
+    .select('teacher_schedules(day_of_week, span_periods)')
     .eq('class_id', classId)
   if (error) throw error
-  return (data ?? [])
-    .map(r => r.teacher_schedules?.day_of_week)
-    .filter(d => d !== null && d !== undefined)
-    .sort((a, b) => a - b)
+  const dows = []
+  for (const r of data ?? []) {
+    const dow  = r.teacher_schedules?.day_of_week
+    const span = r.teacher_schedules?.span_periods ?? 1
+    if (dow !== null && dow !== undefined) {
+      for (let i = 0; i < span; i++) dows.push(dow)
+    }
+  }
+  return dows.sort((a, b) => a - b)
 }
 
 // ─── Teacher Schedules ────────────────────────────────────────────────────────
