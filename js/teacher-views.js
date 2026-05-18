@@ -808,7 +808,7 @@ function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts
   .t  { position:absolute; white-space:nowrap; }
   .b  { font-weight:700; }
   .title { position:absolute; top:102px; left:0; width:794px; text-align:center; font-size:26px; font-weight:700; }
-  .logo { position:absolute; left:58px; top:83px; width:66px; height:66px; border:1.3px solid #000;
+  .logo { position:absolute; left:58px; top:83px; width:66px; height:66px; border:0.5px solid #555;
     border-radius:50%; font-size:13px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
   .line { position:absolute; border-bottom:1.2px dotted #111; height:23px; }
   .fill { position:absolute; border-bottom:1.2px dotted #111; height:23px; color:#064ec7;
@@ -832,10 +832,10 @@ function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts
   <div class="title">บันทึกข้อความ</div>
 
   <div class="t b" style="left:58px;top:163px;">ส่วนราชการ</div>
-  <div class="fill" contenteditable="true" style="left:138px;top:157px;width:597px;">${_htmlEsc(schoolName)}</div>
+  <div class="fill" contenteditable="true" style="left:138px;top:157px;width:597px;text-align:left;">${_htmlEsc(schoolName)}</div>
 
   <div class="t b" style="left:58px;top:189px;">ที่</div>
-  <div class="fill" contenteditable="true" style="left:88px;top:183px;width:253px;text-align:left;font-weight:700;">วช/พิเศษ</div>
+  <div class="fill" contenteditable="true" style="left:88px;top:183px;width:253px;text-align:left;font-weight:700;color:#000;">วช/พิเศษ</div>
   <div class="t b" style="left:354px;top:189px;">วันที่</div>
   <div class="fill" contenteditable="true" style="left:394px;top:183px;width:341px;">${_htmlEsc(dateStr)}</div>
 
