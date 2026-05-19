@@ -259,16 +259,21 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const todayDow    = new Date().getDay()
   const todayEntries = schedule
     .filter(s => s.day_of_week === todayDow && (_linksBySchedule[s.id] ?? []).length > 0)
-    .map(s => ({
-      ...s,
-      linkedClasses: (_linksBySchedule[s.id] ?? []).map(id => _classMap[id]).filter(Boolean),
-      period: _periodMap[s.period_no],
-    }))
+    .map(s => {
+      const lastPeriodNo = (s.period_no ?? 1) + (s.span_periods ?? 1) - 1
+      return {
+        ...s,
+        linkedClasses: (_linksBySchedule[s.id] ?? []).map(id => _classMap[id]).filter(Boolean),
+        period: _periodMap[s.period_no],
+        // end_time จริง = คาบสุดท้ายของ span (รองรับ span_periods > 1)
+        actualEndPeriod: _periodMap[lastPeriodNo] ?? _periodMap[s.period_no],
+      }
+    })
     .sort((a, b) => a.period_no - b.period_no)
 
   // แยก active entry + เรียง: กำลังสอน → upcoming → เสร็จแล้ว
   const _entryStatus = e => {
-    const s = _countdownInfo(e.period?.start_time, e.period?.end_time)
+    const s = _countdownInfo(e.period?.start_time, e.actualEndPeriod?.end_time)
     if (s.label.includes('กำลังสอน')) return 0
     if (s.label.startsWith('เสร็จ')) return 2
     return 1
@@ -481,7 +486,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     ${activeEntry ? (() => {
       const cr0 = activeEntry.linkedClasses[0]?.classroom_id ? _classroomMapGlobal[activeEntry.linkedClasses[0].classroom_id] : null
       const time = activeEntry.period
-        ? `${activeEntry.period.start_time.substring(0,5)}–${activeEntry.period.end_time.substring(0,5)}`
+        ? `${activeEntry.period.start_time.substring(0,5)}–${activeEntry.actualEndPeriod.end_time.substring(0,5)}`
         : `คาบ ${activeEntry.period_no}`
       return `
     <div id="active-class-card" class="mt-4 bg-white rounded-2xl p-5"
@@ -508,7 +513,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>
         <div class="flex-shrink-0 text-right">
           <div id="active-class-countdown" class="text-2xl font-bold text-emerald-600 tabular-nums">
-            ${_activeRemainingDisplay(activeEntry.period?.end_time)}
+            ${_activeRemainingDisplay(activeEntry.actualEndPeriod?.end_time)}
           </div>
           <div class="text-[10px] text-gray-400 mt-0.5">เหลืออีก</div>
         </div>
@@ -542,10 +547,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>` : `
         <div class="space-y-2">
           ${sortedTodayEntries.map((entry, i) => {
-            const cd = _countdownInfo(entry.period?.start_time, entry.period?.end_time)
+            const cd = _countdownInfo(entry.period?.start_time, entry.actualEndPeriod?.end_time)
             const isDone = cd.label.startsWith('เสร็จ')
             const time = entry.period
-              ? `${entry.period.start_time.substring(0,5)}–${entry.period.end_time.substring(0,5)}`
+              ? `${entry.period.start_time.substring(0,5)}–${(entry.actualEndPeriod ?? entry.period).end_time.substring(0,5)}`
               : `คาบ ${entry.period_no}`
             return `
             <div class="flex items-center gap-3 p-3 rounded-xl ${isDone ? 'bg-gray-50 opacity-60' : 'bg-gray-50'} border border-gray-100">
@@ -734,18 +739,18 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       sortedTodayEntries.forEach((entry, i) => {
         const el = document.getElementById(`today-cd-${i}`)
         if (!el) { clearInterval(_todayWidgetTimer); return }
-        const cd = _countdownInfo(entry.period?.start_time, entry.period?.end_time)
+        const cd = _countdownInfo(entry.period?.start_time, entry.actualEndPeriod?.end_time)
         el.textContent = cd.label
         el.className = `text-xs font-medium flex-shrink-0 ${cd.cls}`
       })
       // update active class countdown
       const cdEl = document.getElementById('active-class-countdown')
       if (cdEl && activeEntry) {
-        const cd = _countdownInfo(activeEntry.period?.start_time, activeEntry.period?.end_time)
+        const cd = _countdownInfo(activeEntry.period?.start_time, activeEntry.actualEndPeriod?.end_time)
         if (cd.label.startsWith('เสร็จ')) {
           document.getElementById('active-class-card')?.remove()
         } else {
-          cdEl.textContent = _activeRemainingDisplay(activeEntry.period?.end_time)
+          cdEl.textContent = _activeRemainingDisplay(activeEntry.actualEndPeriod?.end_time)
         }
       }
     }, 30000)
