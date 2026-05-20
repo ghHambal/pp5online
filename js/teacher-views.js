@@ -2426,12 +2426,16 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
 
 // ─── View: Profile Edit ───────────────────────────────────────────────────────
 
-export async function renderProfile(teacher, onRefresh) {
+export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
   setActiveNav('profile')
   setTitle('โปรไฟล์ของฉัน')
 
-  // โหลด departments สำหรับ dropdown กลุ่มสาระ
-  const depts = await getDepartments().catch(()=>[])
+  // โหลด departments + ห้องทั้งหมด
+  const [depts, allSamaiRooms, allReligionRooms] = await Promise.all([
+    getDepartments().catch(()=>[]),
+    getUniqueRooms().catch(()=>[]),
+    getUniqueReligionRooms().catch(()=>[]),
+  ])
 
   // filter ก่อน dedup — เพื่อกัน SOC ของศาสนาไม่ให้ทับ SOC ของสามัญ (dept_code ซ้ำกัน)
   const teacherCat = teacher?.category
@@ -2523,6 +2527,27 @@ export async function renderProfile(teacher, onRefresh) {
             <option value="AGMVOC"  ${teacher?.subject_group==='AGMVOC' ?'selected':''}>ศาสนาปวช (AGMVOC)</option>
           </select>
         </div>
+        <!-- ห้องที่ปรึกษา -->
+        <div class="border-t border-gray-100 pt-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-3">🏠 ห้องที่ปรึกษา</label>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องสามัญ</label>
+              <select id="prof-room-samai" class="${SELECT_CLS}">
+                <option value="">— ไม่ได้เป็นครูที่ปรึกษาสามัญ —</option>
+                ${allSamaiRooms.map(r => `<option value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='สามัญ')?'selected':''}>${r}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องศาสนา</label>
+              <select id="prof-room-religion" class="${SELECT_CLS}">
+                <option value="">— ไม่ได้เป็นครูที่ปรึกษาศาสนา —</option>
+                ${allReligionRooms.map(r => `<option value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='ศาสนา')?'selected':''}>${r}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div class="flex gap-3 pt-2">
           <button type="button" onclick="window._navTo('overview')"
             class="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
@@ -2600,10 +2625,23 @@ export async function renderProfile(teacher, onRefresh) {
       const photoFile = document.getElementById('prof-photo-file').files?.[0]
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
       await updateMyProfile(teacher.id, payload)
+
+      // บันทึกห้องที่ปรึกษา
+      const { upsertHomeroomTeacher, getSystemConfig: _cfg } = await import('./api.js')
+      const cfg = await _cfg().catch(()=>({}))
+      const curYear = parseInt(cfg.academicYear ?? new Date().getFullYear() + 543)
+      const curSem  = parseInt(cfg.semester ?? 1)
+      const roomSamai   = document.getElementById('prof-room-samai').value || null
+      const roomReligion = document.getElementById('prof-room-religion').value || null
+      const saveRoom = async (room, category) => {
+        if (room) {
+          await upsertHomeroomTeacher({ teacher_id: teacher.id, main_room: room, category, academic_year: curYear, semester: curSem })
+        }
+      }
+      await Promise.all([saveRoom(roomSamai, 'สามัญ'), saveRoom(roomReligion, 'ศาสนา')])
+
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
       if (onRefresh) await onRefresh(teacher.profile_id)
-      // re-render ด้วย teacher ใหม่ที่โหลดมาจาก onRefresh
-      // (จะถูก call จาก teacher.js ซึ่งอัปเดต _teacher แล้ว navigate('profile') ใหม่)
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
     } finally {

@@ -118,7 +118,7 @@ const ROUTES = {
   'requests':    () => renderRequests(_teacher),
   'schedule':    () => renderSchedule(_teacher),
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
-  'profile':     () => renderProfile(_teacher, _refreshProfile),
+  'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),
 }
 
