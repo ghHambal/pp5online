@@ -479,7 +479,7 @@ function _getCSS() {
     .att-uline-fill { flex: 1; min-width: 15mm; }
     .att-table  { table-layout: fixed; font-size: 6.5pt; width: 100%; border-collapse: collapse; }
     .att-table th { padding: 1px 2px; font-size: 6.5pt; border: .4mm solid #000; }
-    .att-table td { padding: 0; font-size: 6.5pt; text-align: center; border: .3mm solid #000; height: 5.5mm; }
+    .att-table td { padding: 0; font-size: 6.5pt; text-align: center; border: .3mm solid #000; height: var(--att-row-h, 5.5mm); }
     .att-name  { text-align: left !important; font-size: 7pt; padding-left: 1mm !important; white-space: nowrap; overflow: hidden; }
     .att-code  { font-size: 6.5pt; }
     .att-desc  { font-size: 6pt; font-weight: normal; line-height: 1.3; }
@@ -918,6 +918,9 @@ function _buildAttPage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, cfg, prefix } = d
   const logoUrl = cfg?.[`${prefix}LogoBwUrl`] ?? cfg?.[`${prefix}LogoUrl`] ?? cfg?.samaiLogoBwUrl ?? cfg?.samaiLogoUrl ?? ''
   const ATT_COLS = 40
+  // adaptive row height: available ≈ 281 - 40 (header) = 241mm ÷ (n + 1 แถวเปล่า)
+  const nRows = chunk.length + 1
+  const rowH = Math.max(3.5, Math.min(5.5, Math.floor(241 / nRows * 10) / 10)).toFixed(1)
   // คำนวณให้ 40 คอลัมน์พอดี A4 (content width ~194mm หลังหักขอบ)
   // เลขที่:6 รหัส:13 ชื่อ:36 รวม:10 → เหลือ 129mm / 40 = 3.2mm
   const COL_W = '3.2mm'
@@ -983,7 +986,7 @@ function _buildAttPage(d, chunk, startNo) {
         </div>
       </div>
     </div>
-    <table class="att-table">
+    <table class="att-table" style="--att-row-h:${rowH}mm">
       <colgroup>
         <col style="width:6mm;"/>
         <col style="width:13mm;"/>
