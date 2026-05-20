@@ -6927,11 +6927,12 @@ export async function renderRolePermissions() {
       { key:'menu_prayer',      label:'บันทึกละหมาด' },
     ]},
     { group:'📋 ทะเบียน/บุคลากร', features:[
-      { key:'menu_students',    label:'นักเรียน' },
-      { key:'menu_homeroom',    label:'ครูที่ปรึกษา' },
-      { key:'menu_holidays',    label:'วันหยุด' },
-      { key:'menu_periods',     label:'คาบเรียน' },
-      { key:'menu_classrooms',  label:'ห้องเรียน' },
+      { key:'menu_students',      label:'นักเรียน' },
+      { key:'menu_homeroom',      label:'ครูที่ปรึกษา' },
+      { key:'menu_holidays',      label:'วันหยุด' },
+      { key:'menu_periods',       label:'คาบเรียน' },
+      { key:'menu_classrooms',    label:'ห้องเรียน' },
+      { key:'menu_house_colors',  label:'สีนักเรียน' },
     ]},
   ]
   const ALL_FEATURES = FEATURE_GROUPS.flatMap(g => g.features)

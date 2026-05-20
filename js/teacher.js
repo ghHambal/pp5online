@@ -1919,6 +1919,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_life_skill',  icon:'🌱', label:'ทักษะชีวิต',     fn: async () => { const {renderLifeSkillAdmin} = await import('./views.js'); renderLifeSkillAdmin() }},
   { key:'menu_reading',     icon:'📗', label:'การอ่าน',        fn: async () => { const {renderReadingAdmin}   = await import('./views.js'); renderReadingAdmin() }},
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
+  { key:'menu_house_colors',icon:'🎨', label:'สีนักเรียน',     fn: async () => { const {renderHouseColors}    = await import('./views.js'); renderHouseColors() }},
 ]
 
 function _renderSupervisorNav(nav, main, isAdmin = false) {
@@ -1935,7 +1936,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     ? _SV_MENU_ITEMS
     : _SV_MENU_ITEMS.filter(m => {
         if (m.key === 'lang_config') return _positionPerms.lang_config || (_teacher?.positions ?? [_teacher?.position]).includes('dept_head')
-        // announce_manage → ซ่อนซ้ำ ถ้ามี announce_create แล้ว
+        if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || (_teacher?.positions ?? [_teacher?.position]).includes('house_color_admin')
         if (m.key === 'announce_manage') return false
         return !!_positionPerms[m.key]
       })
