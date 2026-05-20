@@ -452,8 +452,19 @@ function _upsertStudentsToSupabase(records) {
   var url = endpoint.url + '/rest/v1/students?on_conflict=student_code'
   var written = 0
 
-  for (var i = 0; i < records.length; i += 200) {
-    var chunk = records.slice(i, i + 200)
+  // PostgREST PGRST102: ทุก row ใน batch ต้องมี key ชุดเดียวกัน
+  // รวบรวม key ทั้งหมดที่มีในทุก record แล้ว fill null สำหรับที่ขาด
+  var allKeys = {}
+  records.forEach(function(r) { Object.keys(r).forEach(function(k) { allKeys[k] = true }) })
+  var keys = Object.keys(allKeys)
+  var normalized = records.map(function(r) {
+    var row = {}
+    keys.forEach(function(k) { row[k] = r.hasOwnProperty(k) ? r[k] : null })
+    return row
+  })
+
+  for (var i = 0; i < normalized.length; i += 200) {
+    var chunk = normalized.slice(i, i + 200)
     var resp = UrlFetchApp.fetch(url, {
       method: 'post',
       muteHttpExceptions: true,
