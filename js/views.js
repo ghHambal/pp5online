@@ -7112,7 +7112,8 @@ export async function renderHouseColors() {
              ${_colorDot(g.color_hex,'w-2.5 h-2.5')} ${_esc(s.house_color)}
            </span>`
         : `<span class="text-xs text-gray-400">—</span>`
-      return `<tr class="hover:bg-gray-50 transition border-b border-gray-100 last:border-0">
+      const rowBg = g ? `background:${g.color_hex}12` : ''
+      return `<tr class="transition border-b border-gray-100 last:border-0" style="${rowBg}">
         <td class="px-4 py-2.5 text-xs font-mono text-gray-400">${_esc(s.student_code ?? '')}</td>
         <td class="px-4 py-2.5 text-sm font-medium text-gray-800">${_esc(s.full_name)}</td>
         <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(s.main_room ?? '—')}</td>
@@ -7180,6 +7181,12 @@ export async function renderHouseColors() {
             .map(r => `<option value="${_esc(r)}" ${filterRoom === r ? 'selected' : ''}>${_esc(r)}</option>`).join('')}
         </select>
         <span class="text-xs text-gray-400">พบ <b class="text-gray-700">${filteredCount}</b> คน</span>
+        <button id="hc-clear-colors-btn"
+          class="ml-auto px-4 py-2 rounded-xl text-sm font-medium border border-red-200 text-red-500
+                 hover:bg-red-50 transition disabled:opacity-40"
+          ${filteredCount === 0 ? 'disabled' : ''}>
+          🗑️ ล้างสี (${filteredCount})
+        </button>
       </div>
 
       <!-- Table -->
@@ -7303,6 +7310,26 @@ export async function renderHouseColors() {
       filterRoom = e.target.value
       if (filterRoom) filterGrade = (filterRoom.split('/')[0] ?? '')
       _refreshTable()
+    })
+
+    document.getElementById('hc-clear-colors-btn')?.addEventListener('click', async () => {
+      const targets = _filteredStudents()
+      if (!targets.length) return
+      if (!confirm(`ยืนยันล้างสีนักเรียน ${targets.length} คนที่แสดงในตาราง?`)) return
+      const btn = document.getElementById('hc-clear-colors-btn')
+      btn.disabled = true
+      btn.textContent = 'กำลังล้างสี...'
+      try {
+        await assignStudentsHouseColor(targets.map(s => s.id), null)
+        targets.forEach(s => { s.house_color = null })
+        showToast(`ล้างสีสำเร็จ ${targets.length} คน`, 'success')
+        _refreshChips()
+        _refreshTable()
+      } catch {
+        showToast('เกิดข้อผิดพลาด', 'error')
+        btn.disabled = false
+        btn.textContent = `🗑️ ล้างสี (${targets.length})`
+      }
     })
   }
 
