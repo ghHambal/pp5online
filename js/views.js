@@ -7184,11 +7184,11 @@ export async function renderHouseColors() {
         <select id="hc-filter-grade" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
           <option value="">ทุกระดับชั้น</option>
           ${[...new Set(students.map(s => (s.main_room ?? '').split('/')[0]).filter(Boolean))].sort()
-            .map(g => `<option value="${_esc(g)}" ${filterGrade === g ? 'selected' : ''}>ม.${_esc(g)}</option>`).join('')}
+            .map(g => `<option value="${_esc(g)}" ${filterGrade === g ? 'selected' : ''}>${_esc(g)}</option>`).join('')}
         </select>
         <select id="hc-filter-room" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
           <option value="">ทุกห้อง</option>
-          ${[...new Set(students.map(s => s.main_room).filter(Boolean))].sort()
+          ${[...new Set(students.map(s => s.main_room).filter(r => r && (!filterGrade || r.startsWith(filterGrade + '/'))))].sort()
             .map(r => `<option value="${_esc(r)}" ${filterRoom === r ? 'selected' : ''}>${_esc(r)}</option>`).join('')}
         </select>
         <span class="text-xs text-gray-400">พบ <b class="text-gray-700">${filteredCount}</b> คน</span>
@@ -7313,7 +7313,12 @@ export async function renderHouseColors() {
     document.getElementById('hc-filter-grade')?.addEventListener('change', (e) => {
       filterGrade = e.target.value
       filterRoom = ''
-      document.getElementById('hc-filter-room').value = ''
+      // re-render room options ให้เหลือเฉพาะระดับชั้นที่เลือก
+      const roomSel = document.getElementById('hc-filter-room')
+      const filteredRooms = [...new Set(students.map(s => s.main_room)
+        .filter(r => r && (!filterGrade || r.startsWith(filterGrade + '/'))))].sort()
+      roomSel.innerHTML = `<option value="">ทุกห้อง</option>` +
+        filteredRooms.map(r => `<option value="${r}">${r}</option>`).join('')
       _refreshTable()
     })
 
