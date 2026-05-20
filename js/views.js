@@ -7046,8 +7046,9 @@ export async function renderHouseColors() {
 
   const _responsible = () => teachers.find(t => t.position === 'house_color_admin')
 
-  const _colorOpts = (currentColor) => {
-    const opts = groups.map(g =>
+  const _colorOpts = (currentColor, gender) => {
+    const genderGroups = gender ? groups.filter(g => g.gender === gender) : groups
+    const opts = genderGroups.map(g =>
       `<option value="${_esc(g.name)}" ${g.name === currentColor ? 'selected' : ''}>สี${_esc(g.name)}</option>`
     ).join('')
     return `<option value="" ${!currentColor ? 'selected' : ''}>— ไม่มีสี —</option>` + opts
@@ -7132,7 +7133,7 @@ export async function renderHouseColors() {
           <select class="hc-color-sel text-xs border border-gray-200 rounded-lg px-2 py-1.5
                          focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
                   data-sid="${s.id}" data-current="${_esc(s.house_color ?? '')}">
-            ${_colorOpts(s.house_color)}
+            ${_colorOpts(s.house_color, s.gender)}
           </select>
         </td>
       </tr>`
