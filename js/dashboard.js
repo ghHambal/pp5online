@@ -7,7 +7,8 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderHolidays, renderPayments, renderLifeSkillAdmin, renderReadingAdmin,
          renderPrayerAdmin, renderAdminProfile, renderUsageStats,
          renderClassroomsAdmin,
-         renderAnnouncements, renderRolePermissions } from './views.js'
+         renderAnnouncements, renderRolePermissions,
+         renderHouseColors } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
@@ -102,7 +103,7 @@ export async function openTeacherModal(id = null) {
   document.getElementById('modal-login-email').value = ''
   document.getElementById('modal-username').value  = ''
   document.getElementById('modal-image-url').value = ''
-  document.getElementById('modal-position').value  = ''
+  document.querySelectorAll('.modal-pos-chk').forEach(c => { c.checked = false; c.closest('.pos-chip').classList.remove('active') })
   document.getElementById('modal-pos-dept-wrap').style.display = 'none'
   document.getElementById('modal-title').textContent = id ? 'แก้ไขข้อมูลครู' : 'เพิ่มครูใหม่'
 
@@ -119,7 +120,7 @@ export async function openTeacherModal(id = null) {
     try {
       const { data: t } = await (await import('./supabase.js')).supabase
         .from('teachers')
-        .select('id,teacher_code,full_name,category,phone,login_email,username,image_url,position,position_dept_id')
+        .select('id,teacher_code,full_name,category,phone,login_email,username,image_url,position,positions,position_dept_id')
         .eq('id', id).single()
       document.getElementById('modal-id').value        = t.id
       document.getElementById('modal-code').value      = t.teacher_code ?? ''
@@ -129,8 +130,13 @@ export async function openTeacherModal(id = null) {
       document.getElementById('modal-login-email').value = t.login_email ?? ''
       document.getElementById('modal-username').value  = t.username     ?? ''
       document.getElementById('modal-image-url').value = t.image_url    ?? ''
-      document.getElementById('modal-position').value  = t.position     ?? ''
-      if (t.position === 'dept_head') {
+      const activePositions = t.positions?.length ? t.positions : (t.position ? [t.position] : [])
+      document.querySelectorAll('.modal-pos-chk').forEach(c => {
+        const on = activePositions.includes(c.value)
+        c.checked = on
+        c.closest('.pos-chip').classList.toggle('active', on)
+      })
+      if (activePositions.includes('dept_head')) {
         document.getElementById('modal-pos-dept-wrap').style.display = 'block'
         document.getElementById('modal-position-dept').value = t.position_dept_id ?? ''
       }
@@ -160,7 +166,8 @@ async function handleTeacherFormSubmit(e) {
     showToast('ยูเซอร์เนมต้องใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง 3-32 ตัวอักษร', 'warning')
     return
   }
-  const posVal  = document.getElementById('modal-position').value || null
+  const checkedPositions = [...document.querySelectorAll('.modal-pos-chk:checked')].map(c => c.value)
+  const posVal = checkedPositions[0] || null  // primary position (backward compat)
   const payload  = {
     teacher_code:      document.getElementById('modal-code').value.trim()      || null,
     full_name:         document.getElementById('modal-name').value.trim(),
@@ -170,7 +177,8 @@ async function handleTeacherFormSubmit(e) {
     username:          username || null,
     image_url:         document.getElementById('modal-image-url').value.trim() || null,
     position:          posVal,
-    position_dept_id:  posVal === 'dept_head'
+    positions:         checkedPositions,
+    position_dept_id:  checkedPositions.includes('dept_head')
       ? (parseInt(document.getElementById('modal-position-dept').value) || null)
       : null,
   }
@@ -622,6 +630,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 
+  // Position chips toggle
+  document.querySelectorAll('.pos-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const chk = chip.querySelector('.modal-pos-chk')
+      chk.checked = !chk.checked
+      chip.classList.toggle('active', chk.checked)
+      const hasDept = [...document.querySelectorAll('.modal-pos-chk:checked')].some(c => c.value === 'dept_head')
+      document.getElementById('modal-pos-dept-wrap').style.display = hasDept ? 'block' : 'none'
+    })
+  })
+
   // Teacher modal
   document.getElementById('modal-close')?.addEventListener('click', closeTeacherModal)
   document.getElementById('modal-backdrop')?.addEventListener('click', closeTeacherModal)
@@ -681,6 +700,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'course-doc-lang':  () => renderCourseDocLangConfig(null, true),
     'announcements':    () => renderAnnouncements(),
     'role-permissions': () => renderRolePermissions(),
+    'house-colors':     () => renderHouseColors(),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {

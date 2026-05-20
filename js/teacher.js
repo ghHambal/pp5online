@@ -61,13 +61,15 @@ async function loadTeacherInfo(userId) {
   }
 
   // เช็ค position — ถ้ามีบทบาทพิเศษแสดงปุ่มสลับ Dashboard (ป้องกัน duplicate)
-  if (_teacher?.position && nav && !document.getElementById('btn-sv-mode')) {
-    const posLabel = {
+  const _teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
+  if (_teacherPositions.length > 0 && nav && !document.getElementById('btn-sv-mode')) {
+    const POS_LBL = {
       dept_head:'หัวหน้ากลุ่มสาระ',
-      registrar_samai:'หัวหน้าฝ่ายทะเบียน (สามัญ)', registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', registrar_pvch:'หัวหน้าฝ่ายทะเบียน (ปวช)',
-      academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา', academic_pvch:'หัวหน้าวิชาการปวช',
-      house_color_admin:'ผู้รับผิดชอบสีนักเรียน',
-    }[_teacher.position] ?? 'หัวหน้า'
+      registrar_samai:'ทะเบียน (สามัญ)', registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
+      academic_samai:'วิชาการสามัญ', academic_religion:'วิชาการศาสนา', academic_pvch:'วิชาการปวช',
+      house_color_admin:'สีนักเรียน',
+    }
+    const posLabel = _teacherPositions.map(p => POS_LBL[p] ?? p).join(' / ')
     const svBtn = document.createElement('button')
     svBtn.id = 'btn-sv-mode'
     svBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-blue-800/50 mt-2 border border-blue-700/40 w-full text-left'
@@ -1921,16 +1923,18 @@ const _SV_MENU_ITEMS = [
 
 function _renderSupervisorNav(nav, main, isAdmin = false) {
   if (!nav) return
-  const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'ทะเบียน (สามัญ)',
+  const _POS_LBL2 = { dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'ทะเบียน (สามัญ)',
     registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
     academic_samai:'วิชาการ (สามัญ)', academic_religion:'วิชาการ (ศาสนา)',
-    academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน' }[_teacher?.position] ?? (isAdmin ? 'แอดมิน' : 'หัวหน้า')
+    academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน' }
+  const _tPositions2 = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
+  const posLabel = _tPositions2.length ? _tPositions2.map(p => _POS_LBL2[p] ?? p).join(' / ') : (isAdmin ? 'แอดมิน' : 'หัวหน้า')
 
   // รายการ menu ที่แสดง: admin เห็นทั้งหมด, supervisor เห็นตาม _positionPerms
   const allowedItems = isAdmin
     ? _SV_MENU_ITEMS
     : _SV_MENU_ITEMS.filter(m => {
-        if (m.key === 'lang_config') return _positionPerms.lang_config || _teacher?.position === 'dept_head'
+        if (m.key === 'lang_config') return _positionPerms.lang_config || (_teacher?.positions ?? [_teacher?.position]).includes('dept_head')
         // announce_manage → ซ่อนซ้ำ ถ้ามี announce_create แล้ว
         if (m.key === 'announce_manage') return false
         return !!_positionPerms[m.key]
@@ -2391,7 +2395,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (_teacher?.id) _checkScheduleLinkPopup()
   if (_teacher?.id) _initNotifications(_teacher.id)
   // โหลด position permissions (async ไม่ block)
-  if (_teacher?.position) {
+  if (_teacher?.position || _teacher?.positions?.length) {
     getTeacherPositionPermissions(_teacher.position)
       .then(p => { _positionPerms = p })
       .catch(() => {})
