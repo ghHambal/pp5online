@@ -2,7 +2,7 @@ import {
   getSystemConfig, getClassStudents, getClassAttendanceAll,
   getScoreColumns, getStudentScores, getCourseDocPage2,
   getHomeroomTeachers, getDepartments, getTeacherById,
-  getCourseDocLangSettings, getClassSessionDOWs,
+  getCourseDocLangSettings, getClassSessionDOWs, getSchoolHolidays,
 } from './api.js'
 import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
@@ -52,15 +52,21 @@ function _generateSessions(classData, credit, dowPattern = null) {
   const lastBase = bases[bases.length - 1]
 
   if (!dowPattern || !dowPattern.length) {
-    let cycle = 1
+    const weekMs = 7 * 24 * 60 * 60 * 1000
+    const lastWeekSun = new Date(lastBase)
+    lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay())
+    lastWeekSun.setHours(0, 0, 0, 0)
+    const lastWeekTs = lastWeekSun.getTime()
+    const repeatBases = bases.filter(b => b.getTime() >= lastWeekTs && b.getTime() < lastWeekTs + weekMs)
+    let weekOffset = 1
     while (sessions.length < total) {
-      for (const base of bases) {
+      for (const base of repeatBases) {
         if (sessions.length >= total) break
         const d = new Date(base)
-        d.setDate(d.getDate() + cycle * 7)
+        d.setDate(d.getDate() + weekOffset * 7)
         sessions.push({ n: sessions.length + 1, date: d, ds: _dateKey(d) })
       }
-      cycle++
+      weekOffset++
     }
     return sessions
   }
@@ -193,11 +199,13 @@ async function _loadDocData(classId) {
   // ms.dept เก็บ dept_code → ค้นหาด้วย dept_code ก่อน แล้ว fallback dept_name
   const dept = depts.find(d => d.dept_code === ms.dept) ?? depts.find(d => d.dept_name === ms.dept) ?? null
 
-  const [courseDoc, langSettingsRows, sessionDOWs] = await Promise.all([
+  const [courseDoc, langSettingsRows, sessionDOWs, holidayDates] = await Promise.all([
     ms.id ? getCourseDocPage2(ms.id).catch(() => null) : Promise.resolve(null),
     getCourseDocLangSettings().catch(() => []),
     getClassSessionDOWs(cls.id).catch(() => []),
+    getSchoolHolidays(academicYear, semester).catch(() => []),
   ])
+  const holidaySet = new Set(holidayDates)
 
   // Thai column headers จาก DB settings (หัวหน้าตั้งค่าไว้) — fallback hardcoded
   const thLangSettings = langSettingsRows.find(r => r.lang_key === 'th')?.settings ?? {}
@@ -245,7 +253,7 @@ async function _loadDocData(classId) {
   }
 
   const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester }
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -304,7 +312,7 @@ function _getCSS() {
       display: flex; align-items: center; justify-content: center;
     }
     .page-p1 .logo-wrap img {
-      width: 100%; height: 100%; object-fit: contain; display: block;
+      width: 110%; height: 110%; margin: -5%; object-fit: contain; display: block;
     }
     .page-p1 .p1-title {
       position: absolute; top: 40.1mm; left: 0; width: 100%; margin: 0;
@@ -422,7 +430,7 @@ function _getCSS() {
     /* ── Page 2 ── */
     .p2-wrap { width: 210mm; min-height: 297mm; padding: 10mm 14mm 10mm 14mm; page-break-after: always; display: flex; flex-direction: column; }
     .p2-logo-wrap { width: 18mm; height: 18mm; border-radius: 50%; overflow: hidden; background: #fff; margin: 0 auto 2mm; display: flex; align-items: center; justify-content: center; }
-    .p2-logo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .p2-logo-wrap img { width: 110%; height: 110%; margin: -5%; object-fit: contain; display: block; }
     .p2-title { text-align: center; font-size: 13pt; font-weight: 700; margin-bottom: 2mm; }
     .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; display: grid; grid-template-columns: 1fr 1fr; gap: 0 5mm; }
     .p2-hdr-col { display: flex; flex-direction: column; gap: 1.2mm; }
@@ -460,7 +468,7 @@ function _getCSS() {
     /* ── Page 3 attendance ── */
     .att-top   { display: flex; align-items: flex-start; gap: 3mm; margin-bottom: 2mm; }
     .att-logo  { width: 18mm; height: 18mm; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: #fff; display: flex; align-items: center; justify-content: center; }
-    .att-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .att-logo img { width: 110%; height: 110%; margin: -5%; object-fit: contain; }
     .att-info  { flex: 1; font-size: 9pt; }
     .att-title { font-weight: 700; font-size: 10pt; text-align: center; margin-bottom: 1.5mm; }
     .att-hdr-row { display: flex; align-items: baseline; gap: 1.5mm; margin-bottom: 1mm; }
@@ -892,9 +900,9 @@ function _buildPage2(d) {
   </div>`
 }
 
-// ─── Page 3: บันทึกการมาเรียน ─────────────────────────────────────────────────
+// ─── Page 3: บันทึกการไม่มาเรียน ─────────────────────────────────────────────
 
-const ROWS_PER_ATT_PAGE = 35
+const ROWS_PER_ATT_PAGE = 50
 
 function _buildPage3(d) {
   const { cls, ms, credit, cfg, students, attMap, sessions, academicYear, semester, teacher } = d
@@ -952,7 +960,7 @@ function _buildAttPage(d, chunk, startNo) {
         ? `<div class="att-logo"><img src="${_esc(logoUrl)}" alt="โลโก้" /></div>`
         : '<div style="width:18mm;flex-shrink:0;"></div>'}
       <div class="att-info">
-        <div class="att-title">บันทึกการมาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}</div>
+        <div class="att-title">บันทึกการไม่มาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}</div>
         <div class="att-hdr-row">
           <span class="att-label">ปีการศึกษา</span>
           <span class="att-uline">${_esc(String(academicYear))}</span>
@@ -1001,7 +1009,10 @@ function _buildAttPage(d, chunk, startNo) {
         </tr>
         <tr>${colHeaders}</tr>
       </thead>
-      <tbody>${rows.join('')}</tbody>
+      <tbody>
+        ${rows.join('')}
+        <tr><td></td><td></td><td></td>${Array.from({length:ATT_COLS},()=>'<td></td>').join('')}<td></td></tr>
+      </tbody>
     </table>
   </div>`
 }
@@ -1075,7 +1086,7 @@ function _buildScorePage(d, chunk, startNo) {
     </tr>`
   })
 
-  const emptyRow = `<tr><td colspan="${totalCols}"></td></tr>`
+  const emptyRow = `<tr>${Array(totalCols).fill('<td></td>').join('')}</tr>`
 
   const bW = betweenCols.length > 6 ? '5mm' : '5.8mm'
   const fW = finalCols.length   > 5 ? '5mm' : '5.5mm'
@@ -1168,7 +1179,7 @@ function _buildScorePage(d, chunk, startNo) {
 // ─── Page 5: รายละเอียดสัปดาห์/คาบ/วันที่สอน ────────────────────────────────
 
 function _buildPage5(d) {
-  const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions, cfg, prefix } = d
+  const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions, cfg, prefix, holidaySet } = d
 
   const FIXED_ROWS = 40
   const COLS       = 3
@@ -1203,7 +1214,9 @@ function _buildPage5(d) {
       const sep  = ci < COLS - 1 ? GRP_SEP : ''    // เส้นหนาหลังกลุ่ม 1 และ 2
       if (!item) return `<td></td><td></td><td style="${sep}"></td>`
       const wkCell = rs === 0 ? '' : `<td class="wk" rowspan="${rs}">${item.week}</td>`
-      return `${wkCell}<td class="ep">${item.sess.n}</td><td class="dt" style="${sep}">${_fmtDateTH(item.sess.ds)}</td>`
+      const isHol  = holidaySet?.has(item.sess.ds)
+      const dtStyle = sep + (isHol ? 'color:#c00;font-weight:700;' : '')
+      return `${wkCell}<td class="ep">${item.sess.n}</td><td class="dt" style="${dtStyle}">${_fmtDateTH(item.sess.ds)}</td>`
     }).join('')
     return `<tr>${cells}</tr>`
   })
@@ -1219,7 +1232,7 @@ function _buildPage5(d) {
 
   return `
   <div class="page" style="padding:12mm 10mm 8mm;">
-    ${logoUrl ? `<div style="text-align:center;margin-bottom:2mm;"><img src="${_esc(logoUrl)}" style="width:16mm;height:16mm;object-fit:contain;" alt="โลโก้"/></div>` : ''}
+    ${logoUrl ? `<div style="text-align:center;margin-bottom:2mm;"><div style="width:16mm;height:16mm;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;"><img src="${_esc(logoUrl)}" style="width:110%;height:110%;margin:-5%;object-fit:contain;display:block;" alt="โลโก้"/></div></div>` : ''}
     <div style="text-align:center;font-weight:700;font-size:12pt;margin-bottom:3mm;">รายละเอียดสัปดาห์/คาบ/วันที่สอน</div>
     ${row(`<span>รายวิชา</span>${uline('40mm', ms.subject_name??'')}
            <span>&emsp;รหัสวิชา</span>${uline('22mm', ms.subject_code??'')}
@@ -1298,9 +1311,10 @@ function _openViewer(d) {
   document.getElementById('pp5-viewer')?.remove()
 
   const pages = [
+    { label: 'ดูทั้งหมด', fn: null, all: true },
     { label: 'หน้าปก', fn: () => _buildPage1(d) },
     { label: 'มาตรฐาน/ตัวชี้วัด', fn: () => _buildPage2(d) },
-    { label: 'บันทึกการมาเรียน', fn: () => _buildPage3(d) },
+    { label: 'บันทึกการไม่มาเรียน', fn: () => _buildPage3(d) },
     { label: 'คะแนน', fn: () => _buildPage4(d) },
     { label: 'วันที่สอน', fn: () => _buildPage5(d) },
   ]
@@ -1335,16 +1349,21 @@ function _openViewer(d) {
 
   function showPage(i) {
     curIdx = i
-    tabs.forEach((t, ti) => t.style.cssText = btnStyle(ti === i) + t.style.cssText.replace(/background:[^;]+;color:[^;]+;/g,''))
-    // re-apply colors cleanly
     tabs.forEach((t, ti) => {
       if (ti === i) { t.style.background='#2563eb'; t.style.color='#fff' }
       else          { t.style.background='#4b5563'; t.style.color='#d1d5db' }
     })
-    const html = _singlePageDoc(pages[i].fn())
-    // attendance & score pages may be multi-page
-    const isMulti = i === 2 || i === 3
-    iframe.style.height = isMulti ? '900mm' : '297mm'
+    const page = pages[i]
+    let html, iframeH
+    if (page.all) {
+      html = _buildFullDoc(d, '')
+      iframeH = '3000mm'
+    } else {
+      html = _singlePageDoc(page.fn())
+      // attendance & score may be multi-page (index 3, 4 in new list)
+      iframeH = (i === 3 || i === 4) ? '900mm' : '297mm'
+    }
+    iframe.style.height = iframeH
     const doc = iframe.contentDocument
     doc.open(); doc.write(html); doc.close()
   }
@@ -1356,6 +1375,15 @@ function _openViewer(d) {
   viewer.querySelector('#pp5-v-close').addEventListener('click', () => viewer.remove())
 
   viewer.querySelector('#pp5-v-print').addEventListener('click', () => {
+    // ถ้า tab ดูทั้งหมด → print ผ่าน window ใหม่ ไม่ใช้ iframe
+    if (pages[curIdx].all) {
+      const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
+      const win = window.open('', '_blank', 'width=900,height=700')
+      if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
+      win.document.open(); win.document.write(_buildFullDoc(d, title)); win.document.close()
+      setTimeout(() => win.print(), 600)
+      return
+    }
     iframe.contentWindow.focus()
     iframe.contentWindow.print()
   })
