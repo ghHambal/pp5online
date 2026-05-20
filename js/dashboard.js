@@ -103,7 +103,7 @@ export async function openTeacherModal(id = null) {
   document.getElementById('modal-login-email').value = ''
   document.getElementById('modal-username').value  = ''
   document.getElementById('modal-image-url').value = ''
-  document.querySelectorAll('.modal-pos-chk').forEach(c => { c.checked = false; c.closest('.pos-chip').classList.remove('active') })
+  window._clearPositionRows?.()
   document.getElementById('modal-pos-dept-wrap').style.display = 'none'
   document.getElementById('modal-title').textContent = id ? 'แก้ไขข้อมูลครู' : 'เพิ่มครูใหม่'
 
@@ -131,13 +131,8 @@ export async function openTeacherModal(id = null) {
       document.getElementById('modal-username').value  = t.username     ?? ''
       document.getElementById('modal-image-url').value = t.image_url    ?? ''
       const activePositions = t.positions?.length ? t.positions : (t.position ? [t.position] : [])
-      document.querySelectorAll('.modal-pos-chk').forEach(c => {
-        const on = activePositions.includes(c.value)
-        c.checked = on
-        c.closest('.pos-chip').classList.toggle('active', on)
-      })
+      window._setPositionRows?.(activePositions)
       if (activePositions.includes('dept_head')) {
-        document.getElementById('modal-pos-dept-wrap').style.display = 'block'
         document.getElementById('modal-position-dept').value = t.position_dept_id ?? ''
       }
       _updateAvatarPreview(t.image_url, t.full_name)
@@ -166,7 +161,7 @@ async function handleTeacherFormSubmit(e) {
     showToast('ยูเซอร์เนมต้องใช้ a-z, 0-9, จุด, ขีดกลาง หรือขีดล่าง 3-32 ตัวอักษร', 'warning')
     return
   }
-  const checkedPositions = [...document.querySelectorAll('.modal-pos-chk:checked')].map(c => c.value)
+  const checkedPositions = window._getPositionValues?.() ?? []
   const posVal = checkedPositions[0] || null  // primary position (backward compat)
   const payload  = {
     teacher_code:      document.getElementById('modal-code').value.trim()      || null,
@@ -630,16 +625,65 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 
-  // Position chips toggle
-  document.querySelectorAll('.pos-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const chk = chip.querySelector('.modal-pos-chk')
-      chk.checked = !chk.checked
-      chip.classList.toggle('active', chk.checked)
-      const hasDept = [...document.querySelectorAll('.modal-pos-chk:checked')].some(c => c.value === 'dept_head')
-      document.getElementById('modal-pos-dept-wrap').style.display = hasDept ? 'block' : 'none'
+  // Dynamic position rows
+  const POS_OPTIONS = [
+    { value: 'dept_head',          label: 'หัวหน้ากลุ่มสาระ' },
+    { value: 'registrar_samai',    label: 'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
+    { value: 'registrar_religion', label: 'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
+    { value: 'registrar_pvch',     label: 'หัวหน้าฝ่ายทะเบียน (ปวช)' },
+    { value: 'academic_samai',     label: 'หัวหน้าวิชาการสามัญ' },
+    { value: 'academic_religion',  label: 'หัวหน้าวิชาการศาสนา' },
+    { value: 'academic_pvch',      label: 'หัวหน้าวิชาการปวช' },
+    { value: 'house_color_admin',  label: 'ผู้รับผิดชอบสีนักเรียน' },
+  ]
+  const posOptHtml = () =>
+    `<option value="">— ไม่มี —</option>` +
+    POS_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('')
+
+  function _refreshDeptWrap() {
+    const vals = [...document.querySelectorAll('.pos-row-sel')].map(s => s.value)
+    document.getElementById('modal-pos-dept-wrap').style.display =
+      vals.includes('dept_head') ? 'block' : 'none'
+  }
+
+  function _addPositionRow(value = '') {
+    const list = document.getElementById('modal-positions-list')
+    const row = document.createElement('div')
+    row.className = 'pos-row flex items-center gap-2'
+    row.innerHTML = `
+      <select class="pos-row-sel flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+        ${posOptHtml()}
+      </select>
+      <button type="button" class="pos-row-del flex-shrink-0 text-gray-400 hover:text-red-500 text-lg leading-none">✕</button>`
+    row.querySelector('.pos-row-sel').value = value
+    row.querySelector('.pos-row-sel').addEventListener('change', _refreshDeptWrap)
+    row.querySelector('.pos-row-del').addEventListener('click', () => {
+      row.remove()
+      _refreshDeptWrap()
     })
-  })
+    list.appendChild(row)
+    _refreshDeptWrap()
+  }
+
+  window._addPositionRow = _addPositionRow
+  window._clearPositionRows = () => {
+    document.getElementById('modal-positions-list').innerHTML = ''
+    _addPositionRow()
+    _refreshDeptWrap()
+  }
+  window._setPositionRows = (positions) => {
+    document.getElementById('modal-positions-list').innerHTML = ''
+    const vals = positions?.length ? positions : ['']
+    vals.forEach(v => _addPositionRow(v))
+    _refreshDeptWrap()
+  }
+  window._getPositionValues = () =>
+    [...document.querySelectorAll('.pos-row-sel')].map(s => s.value).filter(Boolean)
+
+  document.getElementById('btn-add-position')?.addEventListener('click', () => _addPositionRow())
+
+  // init with one empty row
+  _addPositionRow()
 
   // Teacher modal
   document.getElementById('modal-close')?.addEventListener('click', closeTeacherModal)

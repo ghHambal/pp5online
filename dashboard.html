@@ -336,21 +336,12 @@
         <!-- บทบาทพิเศษ -->
         <div class="grid grid-cols-2 gap-3 pt-1 border-t border-gray-100">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">📊 บทบาทพิเศษ <span class="text-xs text-gray-400 font-normal">(เลือกได้หลายบทบาท)</span></label>
-            <div id="modal-positions-wrap" class="flex flex-wrap gap-2 p-3 border border-gray-300 rounded-xl bg-white min-h-[44px]">
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="dept_head"><input type="checkbox" value="dept_head" class="modal-pos-chk hidden"> หัวหน้ากลุ่มสาระ</label>
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="registrar_samai"><input type="checkbox" value="registrar_samai" class="modal-pos-chk hidden"> หัวหน้าฝ่ายทะเบียน (สามัญ)</label>
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="registrar_religion"><input type="checkbox" value="registrar_religion" class="modal-pos-chk hidden"> หัวหน้าฝ่ายทะเบียน (ศาสนา)</label>
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="registrar_pvch"><input type="checkbox" value="registrar_pvch" class="modal-pos-chk hidden"> หัวหน้าฝ่ายทะเบียน (ปวช)</label>
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="academic_samai"><input type="checkbox" value="academic_samai" class="modal-pos-chk hidden"> หัวหน้าวิชาการสามัญ</label>
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="academic_religion"><input type="checkbox" value="academic_religion" class="modal-pos-chk hidden"> หัวหน้าวิชาการศาสนา</label>
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="academic_pvch"><input type="checkbox" value="academic_pvch" class="modal-pos-chk hidden"> หัวหน้าวิชาการปวช</label>
-              <label class="pos-chip flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer select-none transition" data-val="house_color_admin"><input type="checkbox" value="house_color_admin" class="modal-pos-chk hidden"> ผู้รับผิดชอบสีนักเรียน</label>
-            </div>
-            <style>
-              .pos-chip { border-color:#e5e7eb; color:#6b7280; background:#f9fafb; }
-              .pos-chip.active { border-color:#6366f1; color:#4f46e5; background:#eef2ff; }
-            </style>
+            <label class="block text-sm font-medium text-gray-700 mb-1">📊 บทบาทพิเศษ</label>
+            <div id="modal-positions-list" class="space-y-2"></div>
+            <button type="button" id="btn-add-position"
+              class="mt-2 flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+              ＋ เพิ่มบทบาท
+            </button>
           </div>
           <div id="modal-pos-dept-wrap" style="display:none;">
             <label class="block text-sm font-medium text-gray-700 mb-1">กลุ่มสาระที่รับผิดชอบ</label>
