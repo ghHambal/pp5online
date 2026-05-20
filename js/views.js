@@ -7015,6 +7015,8 @@ export async function renderHouseColors() {
   let groups = [], teachers = [], students = []
   let filterColor = ''   // '' = all
   let filterGender = ''  // '' = all
+  let filterGrade = ''   // '' = all  เช่น '6'
+  let filterRoom = ''    // '' = all  เช่น '6/1'
   let filterQ = ''
 
   const _load = async () => {
@@ -7048,6 +7050,8 @@ export async function renderHouseColors() {
       if (filterColor === '__none__' && s.house_color) return false
       if (filterColor && filterColor !== '__none__' && s.house_color !== filterColor) return false
       if (filterGender && s.gender !== filterGender) return false
+      if (filterRoom && s.main_room !== filterRoom) return false
+      if (filterGrade && (s.main_room ?? '').split('/')[0] !== filterGrade) return false
       if (q && !s.full_name?.toLowerCase().includes(q) &&
                !s.student_code?.toLowerCase().includes(q) &&
                !s.main_room?.toLowerCase().includes(q)) return false
@@ -7158,12 +7162,22 @@ export async function renderHouseColors() {
       <div class="flex flex-wrap gap-3 items-center">
         <input id="hc-search" type="text" placeholder="ค้นหาชื่อ รหัส ห้อง..."
           value="${_esc(filterQ)}"
-          class="flex-1 min-w-[200px] border border-gray-200 rounded-xl px-4 py-2.5 text-sm
+          class="flex-1 min-w-[180px] border border-gray-200 rounded-xl px-4 py-2.5 text-sm
                  focus:outline-none focus:ring-2 focus:ring-indigo-300" />
         <select id="hc-filter-gender" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
           <option value="">ทุกเพศ</option>
           <option value="ชาย" ${filterGender === 'ชาย' ? 'selected' : ''}>👦 ชาย</option>
           <option value="หญิง" ${filterGender === 'หญิง' ? 'selected' : ''}>👧 หญิง</option>
+        </select>
+        <select id="hc-filter-grade" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">ทุกระดับชั้น</option>
+          ${[...new Set(students.map(s => (s.main_room ?? '').split('/')[0]).filter(Boolean))].sort()
+            .map(g => `<option value="${_esc(g)}" ${filterGrade === g ? 'selected' : ''}>ม.${_esc(g)}</option>`).join('')}
+        </select>
+        <select id="hc-filter-room" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">ทุกห้อง</option>
+          ${[...new Set(students.map(s => s.main_room).filter(Boolean))].sort()
+            .map(r => `<option value="${_esc(r)}" ${filterRoom === r ? 'selected' : ''}>${_esc(r)}</option>`).join('')}
         </select>
         <span class="text-xs text-gray-400">พบ <b class="text-gray-700">${filteredCount}</b> คน</span>
       </div>
@@ -7274,6 +7288,20 @@ export async function renderHouseColors() {
 
     document.getElementById('hc-filter-gender')?.addEventListener('change', (e) => {
       filterGender = e.target.value
+      filterRoom = ''
+      _refreshTable()
+    })
+
+    document.getElementById('hc-filter-grade')?.addEventListener('change', (e) => {
+      filterGrade = e.target.value
+      filterRoom = ''
+      document.getElementById('hc-filter-room').value = ''
+      _refreshTable()
+    })
+
+    document.getElementById('hc-filter-room')?.addEventListener('change', (e) => {
+      filterRoom = e.target.value
+      if (filterRoom) filterGrade = (filterRoom.split('/')[0] ?? '')
       _refreshTable()
     })
   }
