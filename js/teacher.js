@@ -66,6 +66,7 @@ async function loadTeacherInfo(userId) {
       dept_head:'หัวหน้ากลุ่มสาระ',
       registrar_samai:'หัวหน้าฝ่ายทะเบียน (สามัญ)', registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', registrar_pvch:'หัวหน้าฝ่ายทะเบียน (ปวช)',
       academic_samai:'หัวหน้าวิชาการสามัญ', academic_religion:'หัวหน้าวิชาการศาสนา', academic_pvch:'หัวหน้าวิชาการปวช',
+      house_color_admin:'ผู้รับผิดชอบสีนักเรียน',
     }[_teacher.position] ?? 'หัวหน้า'
     const svBtn = document.createElement('button')
     svBtn.id = 'btn-sv-mode'
@@ -1923,7 +1924,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
   const posLabel = { dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'ทะเบียน (สามัญ)',
     registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
     academic_samai:'วิชาการ (สามัญ)', academic_religion:'วิชาการ (ศาสนา)',
-    academic_pvch:'วิชาการ (ปวช)' }[_teacher?.position] ?? (isAdmin ? 'แอดมิน' : 'หัวหน้า')
+    academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน' }[_teacher?.position] ?? (isAdmin ? 'แอดมิน' : 'หัวหน้า')
 
   // รายการ menu ที่แสดง: admin เห็นทั้งหมด, supervisor เห็นตาม _positionPerms
   const allowedItems = isAdmin

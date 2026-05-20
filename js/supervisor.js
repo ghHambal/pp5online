@@ -47,6 +47,7 @@ const POS_LABEL = {
   academic_samai:    'หัวหน้าวิชาการสามัญ',
   academic_religion: 'หัวหน้าวิชาการศาสนา',
   academic_pvch:     'หัวหน้าวิชาการปวช',
+  house_color_admin: 'ผู้รับผิดชอบสีนักเรียน',
 }
 
 function _badge(s) {

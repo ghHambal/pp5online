@@ -24,7 +24,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          getUsageStats, getTeachersWithPositions,
          getClassrooms, createClassroom, updateClassroom, deleteClassroom,
          getRolePermissions, saveRolePermission,
-         getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from './api.js'
+         getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
+         getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -7003,4 +7004,280 @@ export async function renderRolePermissions() {
       btn.disabled = false
     })
   })
+}
+
+
+// ─── House Colors ─────────────────────────────────────────────────────────────
+export async function renderHouseColors() {
+  setActiveNav('house-colors')
+  document.getElementById('page-title').textContent = 'จัดการสีนักเรียน'
+
+  let groups = [], teachers = [], students = []
+  let filterColor = ''   // '' = all
+  let filterGender = ''  // '' = all
+  let filterQ = ''
+
+  const _load = async () => {
+    ;[groups, teachers, students] = await Promise.all([
+      getHouseGroups(),
+      getTeachers(),
+      getStudents(),
+    ])
+  }
+
+  const _colorDot = (hex, size = 'w-3.5 h-3.5') =>
+    `<span class="inline-block ${size} rounded-full flex-shrink-0" style="background:${hex}"></span>`
+
+  const _groupByName = (name) => groups.find(g => g.name === name)
+
+  const _countByColor = (name) => students.filter(s => s.house_color === name).length
+  const _countUnassigned = () => students.filter(s => !s.house_color).length
+
+  const _responsible = () => teachers.find(t => t.position === 'house_color_admin')
+
+  const _colorOpts = (currentColor) => {
+    const opts = groups.map(g =>
+      `<option value="${_esc(g.name)}" ${g.name === currentColor ? 'selected' : ''}>สี${_esc(g.name)}</option>`
+    ).join('')
+    return `<option value="" ${!currentColor ? 'selected' : ''}>— ไม่มีสี —</option>` + opts
+  }
+
+  const _filteredStudents = () => {
+    const q = filterQ.toLowerCase()
+    return students.filter(s => {
+      if (filterColor === '__none__' && s.house_color) return false
+      if (filterColor && filterColor !== '__none__' && s.house_color !== filterColor) return false
+      if (filterGender && s.gender !== filterGender) return false
+      if (q && !s.full_name?.toLowerCase().includes(q) &&
+               !s.student_code?.toLowerCase().includes(q) &&
+               !s.main_room?.toLowerCase().includes(q)) return false
+      return true
+    })
+  }
+
+  const _chipClass = (active) =>
+    active
+      ? 'hc-chip px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition cursor-pointer select-none shadow-sm'
+      : 'hc-chip px-3 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer select-none hover:shadow-sm'
+
+  const _renderChips = () => {
+    const maleGroups = groups.filter(g => g.gender === 'ชาย')
+    const femaleGroups = groups.filter(g => g.gender === 'หญิง')
+    const unassigned = _countUnassigned()
+
+    const chip = (g) => {
+      const active = filterColor === g.name
+      const count = _countByColor(g.name)
+      return `<button class="${_chipClass(active)}" data-color="${_esc(g.name)}"
+               style="${active
+                 ? `border-color:${g.color_hex};color:${g.color_hex};background:${g.color_hex}18`
+                 : `border-color:${g.color_hex}55;color:#374151`}">
+        ${_colorDot(g.color_hex)} สี${_esc(g.name)}
+        <span class="ml-1 font-bold" style="color:${g.color_hex}">${count}</span>
+      </button>`
+    }
+
+    const noneActive = filterColor === '__none__'
+    const noneChip = `<button class="${_chipClass(noneActive)}" data-color="__none__"
+               style="${noneActive ? 'border-color:#9ca3af;color:#6b7280;background:#f3f4f6' : 'border-color:#e5e7eb;color:#6b7280'}">
+        <span class="inline-block w-3.5 h-3.5 rounded-full bg-gray-200 flex-shrink-0"></span>
+        ไม่มีสี <span class="ml-1 font-bold text-gray-500">${unassigned}</span>
+      </button>`
+
+    return `
+      <div class="space-y-2">
+        <div class="flex flex-wrap gap-2 items-center">
+          <span class="text-xs font-semibold text-blue-600 mr-1">👦 ชาย</span>
+          ${maleGroups.map(chip).join('')}
+        </div>
+        <div class="flex flex-wrap gap-2 items-center">
+          <span class="text-xs font-semibold text-pink-500 mr-1">👧 หญิง</span>
+          ${femaleGroups.map(chip).join('')}
+          ${noneChip}
+        </div>
+      </div>`
+  }
+
+  const _renderTable = () => {
+    const rows = _filteredStudents()
+    if (!rows.length) return `<tr><td colspan="6" class="text-center py-10 text-gray-400 text-sm">ไม่พบนักเรียน</td></tr>`
+    return rows.map(s => {
+      const g = _groupByName(s.house_color)
+      const badge = g
+        ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style="background:${g.color_hex}">
+             ${_colorDot(g.color_hex,'w-2.5 h-2.5')} ${_esc(s.house_color)}
+           </span>`
+        : `<span class="text-xs text-gray-400">—</span>`
+      return `<tr class="hover:bg-gray-50 transition border-b border-gray-100 last:border-0">
+        <td class="px-4 py-2.5 text-xs font-mono text-gray-400">${_esc(s.student_code ?? '')}</td>
+        <td class="px-4 py-2.5 text-sm font-medium text-gray-800">${_esc(s.full_name)}</td>
+        <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(s.main_room ?? '—')}</td>
+        <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(s.gender ?? '—')}</td>
+        <td class="px-4 py-2.5">${badge}</td>
+        <td class="px-4 py-2.5">
+          <select class="hc-color-sel text-xs border border-gray-200 rounded-lg px-2 py-1.5
+                         focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                  data-sid="${s.id}" data-current="${_esc(s.house_color ?? '')}">
+            ${_colorOpts(s.house_color)}
+          </select>
+        </td>
+      </tr>`
+    }).join('')
+  }
+
+  const _render = () => {
+    const resp = _responsible()
+    const filteredCount = _filteredStudents().length
+
+    setContent(`<div class="space-y-5 animate-fade">
+      <!-- Header -->
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800">🎨 จัดการสีนักเรียน</h2>
+          <p class="text-xs text-gray-400 mt-0.5">
+            ${resp
+              ? `ผู้รับผิดชอบ: <span class="font-medium text-gray-600">${_esc(resp.full_name)}</span>`
+              : `<span class="text-amber-500">⚠️ ยังไม่ระบุผู้รับผิดชอบ — กำหนดในหน้าแก้ไขข้อมูลครู (บทบาทพิเศษ)</span>`}
+          </p>
+        </div>
+        <div class="text-right text-xs text-gray-400">
+          <p>นักเรียนทั้งหมด <span class="font-bold text-gray-700">${students.length}</span> คน</p>
+          <p>ยังไม่ระบุสี <span class="font-bold text-amber-600">${_countUnassigned()}</span> คน</p>
+        </div>
+      </div>
+
+      <!-- Color chips -->
+      <div class="bg-white rounded-2xl border border-gray-200 p-4">
+        ${_renderChips()}
+        ${filterColor
+          ? `<button id="hc-clear-filter" class="mt-3 text-xs text-indigo-600 hover:text-indigo-800 font-medium">✕ ล้างตัวกรอง</button>`
+          : ''}
+      </div>
+
+      <!-- Search + filter bar -->
+      <div class="flex flex-wrap gap-3 items-center">
+        <input id="hc-search" type="text" placeholder="ค้นหาชื่อ รหัส ห้อง..."
+          value="${_esc(filterQ)}"
+          class="flex-1 min-w-[200px] border border-gray-200 rounded-xl px-4 py-2.5 text-sm
+                 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <select id="hc-filter-gender" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">ทุกเพศ</option>
+          <option value="ชาย" ${filterGender === 'ชาย' ? 'selected' : ''}>👦 ชาย</option>
+          <option value="หญิง" ${filterGender === 'หญิง' ? 'selected' : ''}>👧 หญิง</option>
+        </select>
+        <span class="text-xs text-gray-400">พบ <b class="text-gray-700">${filteredCount}</b> คน</span>
+      </div>
+
+      <!-- Table -->
+      <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-500 uppercase border-b border-gray-200">
+            <tr>
+              <th class="px-4 py-3 text-left">รหัส</th>
+              <th class="px-4 py-3 text-left">ชื่อ-สกุล</th>
+              <th class="px-4 py-3 text-left">ห้อง</th>
+              <th class="px-4 py-3 text-left">เพศ</th>
+              <th class="px-4 py-3 text-left">สีปัจจุบัน</th>
+              <th class="px-4 py-3 text-left">เปลี่ยนสี</th>
+            </tr>
+          </thead>
+          <tbody id="hc-tbody">${_renderTable()}</tbody>
+        </table>
+      </div>
+    </div>`)
+
+    _bindEvents()
+  }
+
+  const _refreshTable = () => {
+    const tbody = document.getElementById('hc-tbody')
+    if (tbody) tbody.innerHTML = _renderTable()
+    _bindColorSelects()
+    const cnt = document.querySelector('#hc-tbody')?.closest('.space-y-5')
+      ?.querySelector('.text-xs.text-gray-400 b')
+    // update count span in search bar
+    document.querySelectorAll('.text-xs.text-gray-400').forEach(el => {
+      if (el.textContent.includes('พบ')) el.innerHTML = `พบ <b class="text-gray-700">${_filteredStudents().length}</b> คน`
+    })
+  }
+
+  const _refreshChips = () => {
+    const wrap = document.querySelector('.bg-white.rounded-2xl.border.border-gray-200.p-4')
+    if (wrap) wrap.innerHTML = _renderChips() +
+      (filterColor ? `<button id="hc-clear-filter" class="mt-3 text-xs text-indigo-600 hover:text-indigo-800 font-medium">✕ ล้างตัวกรอง</button>` : '')
+    _bindChips()
+    document.getElementById('hc-clear-filter')?.addEventListener('click', () => {
+      filterColor = ''
+      _refreshChips()
+      _refreshTable()
+    })
+  }
+
+  const _bindChips = () => {
+    document.querySelectorAll('.hc-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = btn.dataset.color
+        filterColor = filterColor === val ? '' : val
+        _refreshChips()
+        _refreshTable()
+      })
+    })
+  }
+
+  const _bindColorSelects = () => {
+    document.querySelectorAll('.hc-color-sel').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const sid = sel.dataset.sid
+        const prev = sel.dataset.current
+        const newColor = sel.value || null
+        sel.disabled = true
+        try {
+          await assignStudentsHouseColor([sid], newColor)
+          const s = students.find(s => s.id === sid)
+          if (s) s.house_color = newColor
+          sel.dataset.current = newColor ?? ''
+          // update badge in same row
+          const row = sel.closest('tr')
+          const badgeCell = row?.children[4]
+          if (badgeCell) {
+            const g = _groupByName(newColor)
+            badgeCell.innerHTML = g
+              ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style="background:${g.color_hex}">
+                   ${_colorDot(g.color_hex,'w-2.5 h-2.5')} ${_esc(newColor)}
+                 </span>`
+              : `<span class="text-xs text-gray-400">—</span>`
+          }
+          _refreshChips()
+        } catch {
+          showToast('บันทึกไม่สำเร็จ', 'error')
+          sel.value = prev ?? ''
+        }
+        sel.disabled = false
+      })
+    })
+  }
+
+  const _bindEvents = () => {
+    _bindChips()
+    _bindColorSelects()
+
+    document.getElementById('hc-clear-filter')?.addEventListener('click', () => {
+      filterColor = ''
+      _refreshChips()
+      _refreshTable()
+    })
+
+    document.getElementById('hc-search')?.addEventListener('input', (e) => {
+      filterQ = e.target.value
+      _refreshTable()
+    })
+
+    document.getElementById('hc-filter-gender')?.addEventListener('change', (e) => {
+      filterGender = e.target.value
+      _refreshTable()
+    })
+  }
+
+  await _load()
+  _render()
 }

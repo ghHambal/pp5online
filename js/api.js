@@ -2294,6 +2294,33 @@ export async function deleteAnnouncement(id) {
   if (error) throw error
 }
 
+// ─── House Groups ─────────────────────────────────────────────────────────────
+export async function getHouseGroups() {
+  const { data, error } = await supabase
+    .from('house_groups')
+    .select('id, name, color_hex, gender, sort_order, teacher_id, teachers(id, full_name, teacher_code)')
+    .order('gender').order('sort_order')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function updateHouseGroupTeacher(id, teacherId) {
+  const { error } = await supabase
+    .from('house_groups')
+    .update({ teacher_id: teacherId || null })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function assignStudentsHouseColor(studentIds, colorName) {
+  const updates = studentIds.map(id =>
+    supabase.from('students').update({ house_color: colorName || null }).eq('id', id)
+  )
+  const results = await Promise.all(updates)
+  const err = results.find(r => r.error)
+  if (err) throw err.error
+}
+
 export async function getClassByIdFull(classId) {
   const { data, error } = await supabase
     .from('classes')
