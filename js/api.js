@@ -2294,6 +2294,13 @@ export async function deleteAnnouncement(id) {
   if (error) throw error
 }
 
+// ─── Auto-enroll ──────────────────────────────────────────────────────────────
+export async function autoEnrollStudentsByRoom() {
+  const { data, error } = await supabase.rpc('auto_enroll_students_by_room')
+  if (error) throw error
+  return data  // { ok: true, enrolled: N }
+}
+
 // ─── House Groups ─────────────────────────────────────────────────────────────
 export async function getHouseGroups() {
   const { data, error } = await supabase

@@ -25,7 +25,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          getClassrooms, createClassroom, updateClassroom, deleteClassroom,
          getRolePermissions, saveRolePermission,
          getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
-         getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor } from './api.js'
+         getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
+         autoEnrollStudentsByRoom } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -4377,6 +4378,14 @@ export function renderImport() {
       const done = await fn(parsedRows, onProgress)
       showToast(`นำเข้าสำเร็จ ${done} รายการ`, 'success')
       bar.style.width = '100%'
+      if (currentType === 'students') {
+        txt.textContent = 'กำลังรีเฟรชรายชื่อในห้องเรียน...'
+        try {
+          const result = await autoEnrollStudentsByRoom()
+          showToast(`รีเฟรชรายชื่อห้องเรียนแล้ว (${result?.enrolled ?? 0} รายการ)`, 'success')
+        } catch { /* ไม่ critical */ }
+        txt.textContent = `นำเข้าสำเร็จ ${done} รายการ — รีเฟรชห้องเรียนแล้ว`
+      }
     } catch (err) {
       showToast('นำเข้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     } finally {

@@ -22,7 +22,8 @@ import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubj
          getTeacherExamRequests, reviewExamRequest, updateExamResult,
          getTeacherPackageAccess,
          getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
-         getClassrooms, assignClassroom } from './api.js'
+         getClassrooms, assignClassroom,
+         autoEnrollStudentsByRoom } from './api.js'
 import { supabase } from './supabase.js'
 
 import { uploadTeacherPhoto } from './storage.js'
@@ -3290,6 +3291,7 @@ export async function renderMyClasses(teacher) {
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
                   </button>
                 </div>
+                <button id="students-sync-enroll" class="px-3 py-2 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700" title="รีเฟรชรายชื่อนักเรียนในห้องนี้ตามข้อมูลล่าสุด">🔄 รีเฟรชรายชื่อ</button>
                 <button id="students-add" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700">＋ เพิ่มนักเรียน</button>
                 <button id="students-roster" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700">🖨️ สร้างใบรายชื่อ</button>
               </div>
@@ -3324,6 +3326,21 @@ export async function renderMyClasses(teacher) {
         const refresh = () => window._openStudentManager(classId)
         // students-back ถูกลบออก (อยู่ใน class detail sticky header แล้ว)
         document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
+        document.getElementById('students-sync-enroll')?.addEventListener('click', async (e) => {
+          const btn = e.currentTarget
+          const orig = btn.textContent
+          btn.disabled = true
+          btn.textContent = 'กำลังรีเฟรช...'
+          try {
+            await autoEnrollStudentsByRoom()
+            showToast('รีเฟรชรายชื่อสำเร็จ', 'success')
+            window._openStudentManager(classId)
+          } catch {
+            showToast('รีเฟรชไม่สำเร็จ', 'error')
+            btn.disabled = false
+            btn.textContent = orig
+          }
+        })
         document.querySelectorAll('.student-view-toggle').forEach(btn => {
           btn.addEventListener('click', () => {
             localStorage.setItem(viewKey, btn.dataset.view)
