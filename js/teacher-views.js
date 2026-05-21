@@ -119,9 +119,17 @@ function formatPhone(digits) {
 }
 
 // ─── setContent helper ────────────────────────────────────────────────────────
+// ใช้ _realMainContent เพื่อป้องกันปัญหา ID swap ใน renderClassDetail
+let _realMainContent = null
+const _getMainContent = () => {
+  if (!_realMainContent || !document.contains(_realMainContent))
+    _realMainContent = document.getElementById('main-content')
+  return _realMainContent
+}
 
 function setContent(html) {
-  document.getElementById('main-content').innerHTML = html
+  const el = _getMainContent()
+  if (el) el.innerHTML = html
 
 }
 
@@ -3947,11 +3955,6 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     // Tab switching
     const tabContent = () => document.getElementById('cd-tab-content')
     window._backToClasses = () => {
-      // Restore ID swap ก่อนออกจาก class detail page
-      const bak = document.getElementById('main-content-bak')
-      const cur = document.getElementById('main-content')
-      if (cur) cur.id = 'cd-tab-content'
-      if (bak) bak.id = 'main-content'
       renderMyClasses(teacher)
     }
     window._openPP5Doc    = (cid) => openPP5Doc(cid)
@@ -3967,17 +3970,6 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       } catch (err) { showToast('ลบไม่สำเร็จ', 'error') }
     }
 
-    // Swap IDs ครั้งเดียวตอนเข้า class detail page
-    // จากนั้น keep active ตลอดเพื่อให้ event handlers ใน tab ยังคง setContent ลง tab
-    const box = tabContent()
-    if (box) {
-      const mainEl = document.getElementById('main-content')
-      if (mainEl && mainEl.id === 'main-content') {
-        mainEl.id = 'main-content-bak'
-        box.id = 'main-content'
-      }
-    }
-
     const loadTab = async (tabId) => {
       document.querySelectorAll('.cd-tab').forEach(t => {
         const isActive = t.dataset.tab === tabId
@@ -3985,7 +3977,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
           ? 'cd-tab active-tab flex-1 py-3 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-500 -mb-px text-center'
           : 'cd-tab flex-1 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition text-center'
       })
-      const currentBox = document.getElementById('main-content') // === box หลัง swap
+      const currentBox = document.getElementById('cd-tab-content')
       if (!currentBox) return
       currentBox.innerHTML = `<div class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-5 w-5 mr-2 text-emerald-400" viewBox="0 0 24 24" fill="none">
