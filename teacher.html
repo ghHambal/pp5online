@@ -195,6 +195,19 @@
       </div>
     </header>
 
+    <!-- Impersonation Banner -->
+    <div id="impersonation-banner" class="hidden flex-shrink-0 bg-red-600 text-white px-5 py-2.5 flex items-center justify-between gap-3 z-30">
+      <div class="flex items-center gap-2 text-sm font-medium">
+        <span class="text-lg">🎭</span>
+        <span>กำลังดูในฐานะ <strong id="impersonation-name"></strong></span>
+        <span class="text-red-200 text-xs hidden sm:inline">— คุณมองเห็นทุกอย่างเหมือนครูคนนี้</span>
+      </div>
+      <button id="impersonation-exit"
+        class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-sm font-semibold transition">
+        ← ออกจากโหมดนี้
+      </button>
+    </div>
+
     <main class="flex-1 overflow-y-auto p-5 sm:p-6">
       <div id="main-content">
         <!-- rendered by teacher-views.js -->

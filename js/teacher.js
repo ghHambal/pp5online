@@ -11,7 +11,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          updateLastSeen, logLogin,
          getUnreadNotifications, markNotificationsRead,
          getClassByIdFull,
-         getTeacherPositionPermissions, getActiveAnnouncements } from './api.js'
+         getTeacherPositionPermissions, getActiveAnnouncements,
+         getTeacherById } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
@@ -2381,6 +2382,43 @@ window._openScheduleLinkModal = async (classId) => {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // ─── Impersonation mode ─────────────────────────────────────────────────────
+  const _impRaw = sessionStorage.getItem('impersonated_teacher')
+  if (_impRaw) {
+    try {
+      const impData = JSON.parse(_impRaw)
+      showPageLoader(true)
+      // โหลด full profile ผ่าน profile_id (ถ้ามี) หรือ getTeacherById
+      _teacher = impData.profile_id
+        ? (await getMyTeacherProfile(impData.profile_id).catch(() => null)) ?? await getTeacherById(impData.id).catch(() => impData)
+        : await getTeacherById(impData.id).catch(() => impData)
+      await applyThemeForRole('teacher', _teacher ?? {})
+      _homeroomRooms = _teacher?.id ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
+      _applyRoleMenus()
+      loadSidebarHeader(_teacher)
+      // แสดง banner
+      const banner  = document.getElementById('impersonation-banner')
+      const nameEl  = document.getElementById('impersonation-name')
+      const exitBtn = document.getElementById('impersonation-exit')
+      if (banner && nameEl) {
+        nameEl.textContent = `${_teacher?.full_name ?? impData.full_name} (${_teacher?.teacher_code ?? impData.teacher_code ?? ''})`
+        banner.classList.remove('hidden')
+        banner.classList.add('flex')
+      }
+      if (exitBtn) {
+        exitBtn.addEventListener('click', () => {
+          sessionStorage.removeItem('impersonated_teacher')
+          window.location.replace('dashboard.html')
+        })
+      }
+      showPageLoader(false)
+      navigate('overview')
+      return
+    } catch (e) {
+      sessionStorage.removeItem('impersonated_teacher')
+    }
+  }
+
   const session = await requireAuth()
   if (!session) return
 

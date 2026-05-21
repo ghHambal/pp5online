@@ -1003,6 +1003,18 @@ export async function renderTeachers() {
 
     renderTeacherTable(all)
 
+    // Impersonation handler
+    window._impersonateTeacher = async (teacherId) => {
+      const t = all.find(x => x.id === teacherId)
+      if (!t) { showToast('ไม่พบข้อมูลครู', 'error'); return }
+      if (!t.profile_id && !confirm(`ครู ${t.full_name} ยังไม่มีบัญชีผู้ใช้\nยังต้องการดูในโหมดนี้ไหม?`)) return
+      sessionStorage.setItem('impersonated_teacher', JSON.stringify({
+        id: t.id, full_name: t.full_name, teacher_code: t.teacher_code,
+        profile_id: t.profile_id ?? null, image_url: t.image_url ?? null,
+      }))
+      window.location.href = 'teacher.html'
+    }
+
     const _filter = () => {
       const q  = document.getElementById('tf-q').value.toLowerCase()
       const dp = document.getElementById('tf-dept').value
@@ -1095,6 +1107,8 @@ export function renderTeacherTable(teachers) {
             <td class="px-4 py-3 text-right whitespace-nowrap">
               <button onclick="window._adminViewSchedule(${t.id},'${_onclickText(t.full_name)}')"
                 class="text-xs text-violet-600 hover:text-violet-800 font-medium mr-3">🗓️ ตาราง</button>
+              <button onclick="window._impersonateTeacher(${t.id})"
+                class="text-xs text-orange-500 hover:text-orange-700 font-medium mr-3">🎭 สวมบทบาท</button>
               <button onclick="openTeacherModal(${t.id})"
                 class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3">แก้ไข</button>
               <button onclick="handleDeleteTeacher(${t.id}, '${t.full_name}')"
