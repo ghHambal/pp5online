@@ -7353,6 +7353,7 @@ export async function renderHouseColors() {
   _render()
 }
 
+
 // ─── Donations Management (Admin) ────────────────────────────────────────────
 
 export async function renderDonations() {
@@ -7361,16 +7362,48 @@ export async function renderDonations() {
 
   const fmtDate = (s) => {
     if (!s) return '—'
-    const d = new Date(s)
-    return d.toLocaleDateString('th-TH', { year: '2-digit', month: 'short', day: 'numeric' })
+    return new Date(s).toLocaleDateString('th-TH', { year: '2-digit', month: 'short', day: 'numeric' })
   }
   const fmtBaht = (n) => Number(n ?? 0).toLocaleString('th-TH')
   const isCash  = (r) => !r.slip_url && String(r.admin_note ?? '').startsWith('[เงินสด]')
 
+  // ── parse tiers (เหมือน teacher portal) ──────────────────────────────────────
+  const _parseTiers = (pcfg) => {
+    const raw = String(pcfg?.donationStickerTiers ?? '').trim()
+    const defs = [
+      [49,  '🌱','ครูผู้จุดประกาย',     '#22C55E'],
+      [99,  '☕','ครูผู้ร่วมฝัน',       '#A855F7'],
+      [149, '🏅','ครูผู้ร่วมสร้าง',     '#F59E0B'],
+      [199, '🐘','ครูผู้ร่วมขับเคลื่อน','#3B82F6'],
+      [249, '👑','ครูผู้ก่อตั้งร่วม',   '#D4A017'],
+    ]
+    const rows = raw
+      ? raw.split('\n').filter(Boolean).map(l => {
+          const [a,s,t,,c] = l.split('|').map(x => x.trim())
+          return { amount: parseInt(a)||0, sticker: s||'🏅', title: t||'', color: c||'' }
+        }).filter(t => t.amount > 0)
+      : defs.map(([a,s,t,c]) => ({ amount:a, sticker:s, title:t, color:c }))
+    return rows.sort((a,b) => a.amount - b.amount).map((t,i) => {
+      const imgUrl = (pcfg?.[`donationStickerImg${i+1}`] ?? '').trim()
+      return (imgUrl && /^https?:\/\//.test(imgUrl)) ? { ...t, sticker: imgUrl } : t
+    })
+  }
+
+  const _tierForAmount = (total, tiers) => {
+    let best = null
+    for (const t of tiers) { if (total >= t.amount) best = t }
+    return best
+  }
+
+  const _stickerEl = (tier, size = 'w-8 h-8') =>
+    tier
+      ? /^https?:\/\//.test(tier.sticker)
+        ? `<img src="${tier.sticker}" class="${size} object-contain" title="${tier.title}" />`
+        : `<span class="text-xl" title="${tier.title}">${tier.sticker}</span>`
+      : ''
+
   setContent(`
   <div class="max-w-4xl mx-auto animate-fade space-y-5">
-
-    <!-- Header -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h2 class="text-lg font-bold text-gray-800">🤝 จัดการผู้สนับสนุน</h2>
@@ -7381,18 +7414,14 @@ export async function renderDonations() {
       </button>
     </div>
 
-    <!-- Summary cards -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="don-stats">
-      ${['—','—','—','—'].map((v,i) => `
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      ${['ยอดรวมอนุมัติ','รออนุมัติ','จำนวนผู้โดเนท','เฉลี่ยต่อคน'].map((lbl,i) => `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
-        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
-          ${['ยอดรวมอนุมัติ','รออนุมัติ','จำนวนผู้โดเนท','เฉลี่ยต่อคน'][i]}
-        </p>
-        <p class="text-xl font-bold text-gray-800 don-stat-val" data-i="${i}">${v}</p>
+        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">${lbl}</p>
+        <p class="text-xl font-bold text-gray-800 don-stat-val" data-i="${i}">—</p>
       </div>`).join('')}
     </div>
 
-    <!-- Search + filters -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
       <input id="don-search" type="search" placeholder="🔍 ค้นหาชื่อ / รหัสครู"
         class="flex-1 min-w-[160px] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
@@ -7414,43 +7443,58 @@ export async function renderDonations() {
       </select>
     </div>
 
-    <!-- Table -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div id="don-table" class="text-center py-12 text-gray-400">
-        <div class="animate-spin text-3xl mb-2">⏳</div>
-        <p class="text-sm">กำลังโหลด...</p>
+        <div class="animate-spin text-3xl mb-2">⏳</div><p class="text-sm">กำลังโหลด...</p>
       </div>
     </div>
-
   </div>`)
 
-  let _all = []
+  let _all = [], _tiers = [], _teacherTotals = {}
 
   const _load = async () => {
-    const { data, error } = await (await import('./supabase.js')).supabase
-      .from('payment_requests')
-      .select('id, package_type, amount, status, slip_url, admin_note, created_at, reviewed_at, teachers(id, full_name, teacher_code, phone)')
-      .eq('package_type', 'donation')
-      .order('created_at', { ascending: false })
-    if (error) { showToast('โหลดข้อมูลไม่สำเร็จ', 'error'); return }
-    _all = data ?? []
-    _updateStats()
-    _render()
+    const { supabase: sb } = await import('./supabase.js')
+    const { getSystemConfig, getPaymentSlipViewUrl } = await import('./api.js')
+    const [cfg, { data }] = await Promise.all([
+      getSystemConfig().catch(() => ({})),
+      sb.from('payment_requests')
+        .select('id, package_type, amount, status, slip_url, admin_note, created_at, reviewed_at, teachers(id, full_name, teacher_code, phone, image_url)')
+        .eq('package_type', 'donation')
+        .order('created_at', { ascending: false })
+    ])
+    _tiers = _parseTiers(cfg)
+    _all   = data ?? []
+
+    // resolve slip URLs ทั้งหมด
+    for (const r of _all) {
+      if (r.slip_url && !isCash(r)) {
+        r._resolvedSlip = await getPaymentSlipViewUrl(r.slip_url).catch(() => r.slip_url)
+      }
+    }
+
+    // คำนวณยอดรวมต่อครู (approved เท่านั้น)
+    _teacherTotals = {}
+    for (const r of _all) {
+      if (r.status !== 'approved') continue
+      const tid = r.teachers?.id
+      if (tid) _teacherTotals[tid] = (_teacherTotals[tid] ?? 0) + (Number(r.amount) || 0)
+    }
+
+    _updateStats(); _render()
   }
 
   const _updateStats = () => {
     const approved = _all.filter(r => r.status === 'approved')
-    const total    = approved.reduce((s, r) => s + (Number(r.amount) || 0), 0)
-    const pending  = _all.filter(r => r.status === 'pending').length
-    const donors   = new Set(approved.map(r => r.teachers?.id)).size
-    const avg      = donors ? Math.round(total / donors) : 0
+    const total  = approved.reduce((s,r) => s + (Number(r.amount)||0), 0)
+    const pending = _all.filter(r => r.status === 'pending').length
+    const donors  = new Set(approved.map(r => r.teachers?.id)).size
+    const avg     = donors ? Math.round(total / donors) : 0
     const vals = [fmtBaht(total) + ' ฿', pending, donors + ' คน', fmtBaht(avg) + ' ฿']
     document.querySelectorAll('.don-stat-val').forEach((el, i) => { el.textContent = vals[i] })
   }
 
   const _render = () => {
-    const box    = document.getElementById('don-table')
-    if (!box) return
+    const box = document.getElementById('don-table'); if (!box) return
     const q      = (document.getElementById('don-search')?.value ?? '').toLowerCase()
     const status = document.getElementById('don-filter-status')?.value ?? 'all'
     const method = document.getElementById('don-filter-method')?.value ?? 'all'
@@ -7464,18 +7508,17 @@ export async function renderDonations() {
       if (method === 'transfer' && isCash(r)) return false
       return true
     })
-
-    if (sort === 'date_asc')    rows.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-    else if (sort === 'amount_desc') rows.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
+    if (sort === 'date_asc')     rows.sort((a,b) => new Date(a.created_at) - new Date(b.created_at))
+    else if (sort === 'amount_desc') rows.sort((a,b) => (b.amount??0) - (a.amount??0))
 
     if (!rows.length) {
       box.innerHTML = `<div class="text-center py-16 text-gray-400"><p class="text-3xl mb-2">📭</p><p class="text-sm">ไม่พบรายการ</p></div>`
       return
     }
 
-    const statusBadge = (s) => ({
-      pending:  `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-semibold">⏳ รอตรวจสอบ</span>`,
-      approved: `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-semibold">✅ อนุมัติแล้ว</span>`,
+    const statusBadge = s => ({
+      pending:  `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-semibold">⏳ รอ</span>`,
+      approved: `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-semibold">✅ อนุมัติ</span>`,
       rejected: `<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-semibold">❌ ปฏิเสธ</span>`,
     }[s] ?? `<span class="text-gray-400 text-xs">${s}</span>`)
 
@@ -7483,14 +7526,15 @@ export async function renderDonations() {
     <table class="w-full text-sm">
       <thead class="bg-gray-50 border-b border-gray-100">
         <tr>
-          <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-8">#</th>
-          <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500">ครู</th>
-          <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500">ยอด</th>
-          <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500">ช่องทาง</th>
-          <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500">สถานะ</th>
-          <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500">วันที่</th>
-          <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500">หมายเหตุ</th>
-          <th class="px-4 py-3 text-xs font-semibold text-gray-500"></th>
+          <th class="text-left px-3 py-3 text-xs font-semibold text-gray-500 w-8">#</th>
+          <th class="text-left px-3 py-3 text-xs font-semibold text-gray-500">ครู</th>
+          <th class="text-center px-3 py-3 text-xs font-semibold text-gray-500">ระดับ</th>
+          <th class="text-right px-3 py-3 text-xs font-semibold text-gray-500">ยอด</th>
+          <th class="text-center px-3 py-3 text-xs font-semibold text-gray-500">ช่องทาง</th>
+          <th class="text-center px-3 py-3 text-xs font-semibold text-gray-500">สถานะ</th>
+          <th class="text-center px-3 py-3 text-xs font-semibold text-gray-500">วันที่</th>
+          <th class="text-left px-3 py-3 text-xs font-semibold text-gray-500">หมายเหตุ</th>
+          <th class="px-3 py-3"></th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-50">
@@ -7498,23 +7542,34 @@ export async function renderDonations() {
           const t    = r.teachers
           const cash = isCash(r)
           const note = String(r.admin_note ?? '').replace(/^\[เงินสด\]\s*/, '')
-          return `<tr class="hover:bg-gray-50 transition" data-id="${r.id}">
-            <td class="px-4 py-3 text-gray-400 text-xs">${idx + 1}</td>
-            <td class="px-4 py-3">
-              <p class="font-semibold text-gray-800">${t?.full_name ?? '—'}</p>
-              <p class="text-xs text-gray-400">${t?.teacher_code ?? ''}</p>
+          const totalForTeacher = _teacherTotals[t?.id] ?? 0
+          const tier = _tierForAmount(totalForTeacher, _tiers)
+          const avatar = t?.image_url
+            ? `<img src="${t.image_url}" class="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-gray-200" />`
+            : `<div class="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-300 to-teal-400 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">${(t?.full_name??'?').charAt(0)}</div>`
+          return `<tr class="hover:bg-gray-50 transition cursor-pointer don-row" data-id="${r.id}" data-tid="${t?.id ?? ''}">
+            <td class="px-3 py-3 text-gray-400 text-xs">${idx+1}</td>
+            <td class="px-3 py-3">
+              <div class="flex items-center gap-2">
+                ${avatar}
+                <div>
+                  <p class="font-semibold text-gray-800 text-sm leading-tight">${t?.full_name ?? '—'}</p>
+                  <p class="text-xs text-gray-400">${t?.teacher_code ?? ''}</p>
+                </div>
+              </div>
             </td>
-            <td class="px-4 py-3 text-right font-bold text-emerald-700">${fmtBaht(r.amount)} ฿</td>
-            <td class="px-4 py-3 text-center">
+            <td class="px-3 py-3 text-center">${_stickerEl(tier)}</td>
+            <td class="px-3 py-3 text-right font-bold text-emerald-700">${fmtBaht(r.amount)} ฿</td>
+            <td class="px-3 py-3 text-center">
               ${cash
                 ? `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[11px] font-medium">💵 เงินสด</span>`
-                : `<button class="don-slip px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[11px] font-medium hover:bg-blue-100 transition" data-url="${r.slip_url ?? ''}">🧾 ดูสลิป</button>`}
+                : `<button class="don-slip px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[11px] font-medium hover:bg-blue-100 transition" data-url="${r._resolvedSlip ?? ''}" data-id="${r.id}">🧾 ดูสลิป</button>`}
             </td>
-            <td class="px-4 py-3 text-center">${statusBadge(r.status)}</td>
-            <td class="px-4 py-3 text-center text-xs text-gray-500">${fmtDate(r.created_at)}</td>
-            <td class="px-4 py-3 text-xs text-gray-500 max-w-[120px] truncate" title="${note}">${note || '—'}</td>
-            <td class="px-4 py-3">
-              <div class="flex gap-1 justify-end">
+            <td class="px-3 py-3 text-center">${statusBadge(r.status)}</td>
+            <td class="px-3 py-3 text-center text-xs text-gray-500 whitespace-nowrap">${fmtDate(r.created_at)}</td>
+            <td class="px-3 py-3 text-xs text-gray-500 max-w-[100px] truncate" title="${note}">${note || '—'}</td>
+            <td class="px-3 py-3">
+              <div class="flex gap-1 justify-end" onclick="event.stopPropagation()">
                 ${r.status === 'pending' ? `
                   <button class="don-approve text-xs px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium" data-id="${r.id}">✅</button>
                   <button class="don-reject  text-xs px-2.5 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 font-medium" data-id="${r.id}">❌</button>
@@ -7527,46 +7582,129 @@ export async function renderDonations() {
       </tbody>
     </table>`
 
+    // row click → teacher summary popup
+    box.querySelectorAll('.don-row').forEach(row => {
+      row.addEventListener('click', () => _openTeacherSummary(row.dataset.tid))
+    })
+
     // slip viewer
     box.querySelectorAll('.don-slip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const url = btn.dataset.url
-        if (!url) return
+      btn.addEventListener('click', async e => {
+        e.stopPropagation()
+        let url = btn.dataset.url
+        if (!url) {
+          // fallback: try to resolve from request id
+          const r = _all.find(x => x.id === Number(btn.dataset.id))
+          if (r?.slip_url) {
+            const { getPaymentSlipViewUrl } = await import('./api.js')
+            url = await getPaymentSlipViewUrl(r.slip_url).catch(() => r.slip_url)
+          }
+        }
+        if (!url) { showToast('ไม่พบสลิป', 'warning'); return }
         const ov = document.createElement('div')
-        ov.className = 'fixed inset-0 z-[500] bg-black/80 flex items-center justify-center p-4 cursor-zoom-out'
+        ov.className = 'fixed inset-0 z-[500] bg-black/85 flex items-center justify-center p-4 cursor-zoom-out'
         ov.innerHTML = `<img src="${url}" class="max-w-full max-h-full rounded-xl shadow-2xl object-contain" />`
         ov.addEventListener('click', () => ov.remove())
         document.body.appendChild(ov)
       })
     })
 
-    // approve
+    // approve / reject / edit
     box.querySelectorAll('.don-approve').forEach(btn => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation()
         const { reviewPaymentRequest } = await import('./api.js')
         await reviewPaymentRequest(Number(btn.dataset.id), 'approved').catch(() => {})
-        showToast('อนุมัติแล้ว ✅', 'success')
-        await _load()
+        showToast('อนุมัติแล้ว ✅', 'success'); await _load()
       })
     })
-
-    // reject
     box.querySelectorAll('.don-reject').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const note = prompt('เหตุผลที่ปฏิเสธ (ถ้ามี):') ?? ''
+      btn.addEventListener('click', async e => {
+        e.stopPropagation()
+        const note = prompt('เหตุผล (ถ้ามี):') ?? ''
         const { reviewPaymentRequest } = await import('./api.js')
         await reviewPaymentRequest(Number(btn.dataset.id), 'rejected', note || null).catch(() => {})
-        showToast('ปฏิเสธแล้ว', 'info')
-        await _load()
+        showToast('ปฏิเสธแล้ว', 'info'); await _load()
       })
     })
-
-    // edit note
     box.querySelectorAll('.don-edit').forEach(btn => {
-      btn.addEventListener('click', () => _openEditModal(Number(btn.dataset.id)))
+      btn.addEventListener('click', e => { e.stopPropagation(); _openEditModal(Number(btn.dataset.id)) })
     })
   }
 
+  // ── Teacher Summary Popup ───────────────────────────────────────────────────
+  const _openTeacherSummary = (tid) => {
+    if (!tid) return
+    const tid_n = Number(tid)
+    const txns  = _all.filter(r => r.teachers?.id === tid_n)
+    if (!txns.length) return
+    const teacher = txns[0].teachers
+    const approved = txns.filter(r => r.status === 'approved')
+    const total  = approved.reduce((s,r) => s + (Number(r.amount)||0), 0)
+    const tier   = _tierForAmount(total, _tiers)
+    const hex    = tier?.color ?? '#10b981'
+    const r_n    = parseInt(hex.slice(1,3),16), g_n = parseInt(hex.slice(3,5),16), b_n = parseInt(hex.slice(5,7),16)
+    const avatar = teacher?.image_url
+      ? `<img src="${teacher.image_url}" class="w-20 h-20 rounded-full object-cover border-4 border-white/60 mx-auto mb-2 shadow-lg" />`
+      : `<div class="w-20 h-20 rounded-full bg-white/30 flex items-center justify-center text-white font-bold text-3xl mx-auto mb-2">${(teacher?.full_name??'?').charAt(0)}</div>`
+
+    const m = document.createElement('div')
+    m.className = 'fixed inset-0 z-[500] bg-black/60 flex items-center justify-center p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <!-- header -->
+        <div class="px-6 py-6 text-center" style="background:linear-gradient(135deg,rgba(${r_n},${g_n},${b_n},0.9),rgba(${r_n},${g_n},${b_n},1))">
+          ${avatar}
+          ${tier ? `<div class="text-3xl mb-1">${/^https?:\/\//.test(tier.sticker) ? `<img src="${tier.sticker}" class="w-12 h-12 object-contain mx-auto"/>` : tier.sticker}</div>` : ''}
+          <p class="text-white font-bold text-base leading-tight">${teacher?.full_name ?? '—'}</p>
+          <p class="text-white/70 text-xs mt-0.5">${teacher?.teacher_code ?? ''}</p>
+          ${tier ? `<span class="mt-2 inline-block px-3 py-1 rounded-full bg-white/20 text-white text-xs font-semibold">${tier.title}</span>` : ''}
+        </div>
+        <!-- stats -->
+        <div class="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
+          <div class="py-4 text-center">
+            <p class="text-xs text-gray-400 mb-1">ยอดรวม</p>
+            <p class="font-bold text-emerald-600">${fmtBaht(total)} ฿</p>
+          </div>
+          <div class="py-4 text-center">
+            <p class="text-xs text-gray-400 mb-1">ครั้งทั้งหมด</p>
+            <p class="font-bold text-gray-700">${txns.length}</p>
+          </div>
+          <div class="py-4 text-center">
+            <p class="text-xs text-gray-400 mb-1">อนุมัติแล้ว</p>
+            <p class="font-bold text-gray-700">${approved.length}</p>
+          </div>
+        </div>
+        <!-- transaction list -->
+        <div class="px-5 py-4 max-h-48 overflow-y-auto space-y-2">
+          <p class="text-xs font-semibold text-gray-500 mb-2">ประวัติการโดเนท</p>
+          ${txns.map(r => {
+            const cash = isCash(r)
+            const note = String(r.admin_note ?? '').replace(/^\[เงินสด\]\s*/, '')
+            const stBadge = { pending:'⏳', approved:'✅', rejected:'❌' }[r.status] ?? ''
+            return `<div class="flex items-center justify-between text-sm">
+              <div class="flex items-center gap-2">
+                <span class="text-gray-400 text-xs">${fmtDate(r.created_at)}</span>
+                <span class="text-[11px] ${cash ? 'text-gray-500' : 'text-blue-500'}">${cash ? '💵' : '🧾'}</span>
+                ${note ? `<span class="text-xs text-gray-400 truncate max-w-[80px]">${note}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="font-semibold text-emerald-700">${fmtBaht(r.amount)} ฿</span>
+                <span>${stBadge}</span>
+              </div>
+            </div>`
+          }).join('')}
+        </div>
+        <div class="px-5 pb-5">
+          <button class="don-sum-close w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ปิด</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.querySelector('.don-sum-close').addEventListener('click', () => m.remove())
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  }
+
+  // ── Add cash modal ──────────────────────────────────────────────────────────
   const _openAddModal = async () => {
     const { getTeachers } = await import('./api.js')
     const teachers = await getTeachers().catch(() => [])
@@ -7607,22 +7745,18 @@ export async function renderDonations() {
       if (!amount) { showToast('กรุณาใส่จำนวนเงิน', 'warning'); return }
       const { createPaymentRequest } = await import('./api.js')
       await createPaymentRequest({
-        teacher_id:   parseInt(tid),
-        package_type: 'donation',
-        amount,
-        status:       'approved',
-        admin_note:   `[เงินสด] ${note}`.trim(),
-        reviewed_at:  new Date().toISOString(),
-      }).catch(e => { showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error'); return })
+        teacher_id: parseInt(tid), package_type: 'donation', amount,
+        status: 'approved', admin_note: `[เงินสด] ${note}`.trim(),
+        reviewed_at: new Date().toISOString(),
+      }).catch(e => { showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error') })
       showToast('บันทึกโดเนทเงินสดแล้ว ✅', 'success')
-      m.remove()
-      await _load()
+      m.remove(); await _load()
     })
   }
 
+  // ── Edit modal ───────────────────────────────────────────────────────────────
   const _openEditModal = (id) => {
-    const r = _all.find(x => x.id === id)
-    if (!r) return
+    const r = _all.find(x => x.id === id); if (!r) return
     const note = String(r.admin_note ?? '').replace(/^\[เงินสด\]\s*/, '')
     const m = document.createElement('div')
     m.className = 'fixed inset-0 z-[500] bg-black/50 flex items-center justify-center p-4'
@@ -7651,24 +7785,16 @@ export async function renderDonations() {
       const note2  = m.querySelector('#don-edit-note').value.trim()
       const prefix = isCash(r) ? '[เงินสด] ' : ''
       const { supabase: sb } = await import('./supabase.js')
-      const { error } = await sb.from('payment_requests')
-        .update({ amount, admin_note: (prefix + note2).trim() || null })
-        .eq('id', id)
+      const { error } = await sb.from('payment_requests').update({ amount, admin_note: (prefix + note2).trim() || null }).eq('id', id)
       if (error) { showToast('แก้ไขไม่สำเร็จ', 'error'); return }
-      showToast('บันทึกแล้ว ✅', 'success')
-      m.remove()
-      await _load()
+      showToast('บันทึกแล้ว ✅', 'success'); m.remove(); await _load()
     })
   }
 
-  // wire up filters + search
-  const wireFilers = () => {
-    document.getElementById('don-search')?.addEventListener('input', _render)
-    document.getElementById('don-filter-status')?.addEventListener('change', _render)
-    document.getElementById('don-filter-method')?.addEventListener('change', _render)
-    document.getElementById('don-filter-sort')?.addEventListener('change', _render)
-    document.getElementById('don-add')?.addEventListener('click', _openAddModal)
-  }
-  wireFilers()
+  document.getElementById('don-search')?.addEventListener('input', _render)
+  document.getElementById('don-filter-status')?.addEventListener('change', _render)
+  document.getElementById('don-filter-method')?.addEventListener('change', _render)
+  document.getElementById('don-filter-sort')?.addEventListener('change', _render)
+  document.getElementById('don-add')?.addEventListener('click', _openAddModal)
   await _load()
 }
