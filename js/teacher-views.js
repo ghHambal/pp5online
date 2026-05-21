@@ -4317,7 +4317,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
 
   const attachScheduleEvents = () => {
     modal.querySelectorAll('.cem-srow').forEach(cell => {
-      cell.addEventListener('click', () => {
+      cell.addEventListener('click', async () => {
         const sid   = parseInt(cell.dataset.sid)
         const state = cell.dataset.state
         const entry = schedule.find(s => s.id === sid)
