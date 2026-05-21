@@ -4057,9 +4057,8 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         <button class="${TAB_STYLE(false)}" data-cem="room">ห้องสอน</button>
       </div>
       <div id="cem-content" class="flex-1 overflow-y-auto px-6 py-4"></div>
-      <div class="flex gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
-        <button id="cem-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-        <button id="cem-save"   class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
+      <div class="px-6 py-4 border-t border-gray-100 flex-shrink-0">
+        <button id="cem-cancel" class="w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ปิด</button>
       </div>
     </div>`
   document.body.appendChild(modal)
@@ -4345,19 +4344,23 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
             </div>`
           document.body.appendChild(cfm)
           cfm.querySelector('.cfm-cancel').addEventListener('click', () => cfm.remove())
-          cfm.querySelector('.cfm-ok').addEventListener('click', () => {
+          cfm.querySelector('.cfm-ok').addEventListener('click', async () => {
             cfm.remove()
-            pendingLinked.add(sid)
+            await linkClassToSchedule(cls.id, sid).catch(() => {})
+            pendingLinked.add(sid); currentLinked.add(sid)
             _refreshCell(cell)
+            showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
           })
         } else if (state === 'selected') {
-          // ยกเลิกการเลือก
-          pendingLinked.delete(sid)
+          await unlinkClassFromSchedule(cls.id, sid).catch(() => {})
+          pendingLinked.delete(sid); currentLinked.delete(sid)
           _refreshCell(cell)
+          showToast('ยกเลิกการเชื่อมแล้ว', 'info')
         } else {
-          // เลือกใหม่
-          pendingLinked.add(sid)
+          await linkClassToSchedule(cls.id, sid).catch(() => {})
+          pendingLinked.add(sid); currentLinked.add(sid)
           _refreshCell(cell)
+          showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
         }
       })
     })
@@ -4522,49 +4525,29 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
       }
       if (crCur?.building) fillRooms(crCur.building)
       buildSel.addEventListener('change', () => fillRooms(buildSel.value))
+      roomSel.addEventListener('change', async () => {
+        const roomId = roomSel.value ? parseInt(roomSel.value) : null
+        await assignClassroom(cls.id, roomId).catch(() => {})
+        showToast('บันทึกห้องสอนแล้ว ✅', 'success')
+      })
     }
+  }
+
+  const _closeModal = async () => {
+    // flush info ถ้ายังมี pending
+    if (_infoDirty || _infoSaving) {
+      clearTimeout(_infoTimer)
+      await _saveInfoNow().catch(() => {})
+    }
+    modal.remove()
+    if (onSaved) onSaved()
   }
 
   showTab(initialTab)
   modal.querySelectorAll('.cem-tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.cem)))
-  modal.querySelector('#cem-close').addEventListener('click', () => modal.remove())
-  modal.querySelector('#cem-cancel').addEventListener('click', () => modal.remove())
-
-  // ── save ──────────────────────────────────────────────────────────────────────
-  modal.querySelector('#cem-save').addEventListener('click', async () => {
-    const btn = modal.querySelector('#cem-save')
-    btn.disabled = true; btn.textContent = '⏳'
-    try {
-      const errors = []
-      // ข้อมูลพื้นฐาน auto-saved แล้ว — flush ถ้ายังมี pending timer
-      if (_infoDirty || _infoSaving) {
-        clearTimeout(_infoTimer)
-        await _saveInfoNow().catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
-      }
-      // 2. ตารางสอน — บันทึก pending changes
-      const toLink   = [...pendingLinked].filter(sid => !currentLinked.has(sid))
-      const toUnlink = [...currentLinked].filter(sid => !pendingLinked.has(sid))
-      for (const sid of toLink)   await linkClassToSchedule(cls.id, sid).catch(e => errors.push(`เชื่อม ${sid}: ${e.message??''}`))
-      for (const sid of toUnlink) await unlinkClassFromSchedule(cls.id, sid).catch(e => errors.push(`ยกเลิก ${sid}: ${e.message??''}`))
-      // sync currentLinked
-      toLink.forEach(sid => currentLinked.add(sid))
-      toUnlink.forEach(sid => currentLinked.delete(sid))
-      // 3. ห้องสอน
-      const roomSel = modal.querySelector('#cem-room')
-      if (roomSel?.value !== undefined) {
-        const roomId = roomSel.value ? parseInt(roomSel.value) : null
-        await assignClassroom(cls.id, roomId).catch(e => errors.push('ห้องสอน: ' + (e.message??'')))
-      }
-      if (errors.length) showToast('บันทึกบางส่วนไม่สำเร็จ', 'warning')
-      else showToast('บันทึกแล้ว ✅', 'success')
-      modal.remove()
-      if (onSaved) onSaved()
-    } catch (e) {
-      showToast('บันทึกไม่สำเร็จ: ' + (e.message??''), 'error')
-      btn.disabled = false; btn.textContent = 'บันทึก'
-    }
-  })
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+  modal.querySelector('#cem-close').addEventListener('click', _closeModal)
+  modal.querySelector('#cem-cancel').addEventListener('click', _closeModal)
+  modal.addEventListener('click', e => { if (e.target === modal) _closeModal() })
 }
 
 // ─── Score Column Management ──────────────────────────────────────────────────
