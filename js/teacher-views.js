@@ -4348,21 +4348,27 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
           cfm.querySelector('.cfm-cancel').addEventListener('click', () => cfm.remove())
           cfm.querySelector('.cfm-ok').addEventListener('click', async () => {
             cfm.remove()
-            await linkClassToSchedule(cls.id, sid).catch(() => {})
+            try {
+              await linkClassToSchedule(cls.id, sid)
+              pendingLinked.add(sid); currentLinked.add(sid)
+              _hasChanges = true; _refreshCell(cell)
+              showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
+            } catch(e) { showToast('เชื่อมไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+          })
+        } else if (state === 'selected') {
+          try {
+            await unlinkClassFromSchedule(cls.id, sid)
+            pendingLinked.delete(sid); currentLinked.delete(sid)
+            _hasChanges = true; _refreshCell(cell)
+            showToast('ยกเลิกการเชื่อมแล้ว', 'info')
+          } catch(e) { showToast('ยกเลิกไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+        } else {
+          try {
+            await linkClassToSchedule(cls.id, sid)
             pendingLinked.add(sid); currentLinked.add(sid)
             _hasChanges = true; _refreshCell(cell)
             showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
-          })
-        } else if (state === 'selected') {
-          await unlinkClassFromSchedule(cls.id, sid).catch(() => {})
-          pendingLinked.delete(sid); currentLinked.delete(sid)
-          _hasChanges = true; _refreshCell(cell)
-          showToast('ยกเลิกการเชื่อมแล้ว', 'info')
-        } else {
-          await linkClassToSchedule(cls.id, sid).catch(() => {})
-          pendingLinked.add(sid); currentLinked.add(sid)
-          _hasChanges = true; _refreshCell(cell)
-          showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
+          } catch(e) { showToast('เชื่อมไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
         }
       })
     })
