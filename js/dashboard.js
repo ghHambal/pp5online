@@ -8,7 +8,7 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderPrayerAdmin, renderAdminProfile, renderUsageStats,
          renderClassroomsAdmin,
          renderAnnouncements, renderRolePermissions,
-         renderHouseColors } from './views.js'
+         renderHouseColors, renderDonations } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
@@ -745,6 +745,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'announcements':    () => renderAnnouncements(),
     'role-permissions': () => renderRolePermissions(),
     'house-colors':     () => renderHouseColors(),
+    'donations':        () => renderDonations(),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {

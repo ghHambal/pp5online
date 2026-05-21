@@ -7352,3 +7352,323 @@ export async function renderHouseColors() {
   await _load()
   _render()
 }
+
+// ─── Donations Management (Admin) ────────────────────────────────────────────
+
+export async function renderDonations() {
+  setActiveNav('donations')
+  document.getElementById('page-title').textContent = 'ผู้สนับสนุน'
+
+  const fmtDate = (s) => {
+    if (!s) return '—'
+    const d = new Date(s)
+    return d.toLocaleDateString('th-TH', { year: '2-digit', month: 'short', day: 'numeric' })
+  }
+  const fmtBaht = (n) => Number(n ?? 0).toLocaleString('th-TH')
+  const isCash  = (r) => !r.slip_url && String(r.admin_note ?? '').startsWith('[เงินสด]')
+
+  setContent(`
+  <div class="max-w-4xl mx-auto animate-fade space-y-5">
+
+    <!-- Header -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-gray-800">🤝 จัดการผู้สนับสนุน</h2>
+        <p class="text-xs text-gray-400 mt-0.5">รายชื่อครูที่โดเนทผ่านระบบและเงินสด</p>
+      </div>
+      <button id="don-add" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">
+        + เพิ่มเงินสด
+      </button>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="don-stats">
+      ${['—','—','—','—'].map((v,i) => `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+          ${['ยอดรวมอนุมัติ','รออนุมัติ','จำนวนผู้โดเนท','เฉลี่ยต่อคน'][i]}
+        </p>
+        <p class="text-xl font-bold text-gray-800 don-stat-val" data-i="${i}">${v}</p>
+      </div>`).join('')}
+    </div>
+
+    <!-- Search + filters -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
+      <input id="don-search" type="search" placeholder="🔍 ค้นหาชื่อ / รหัสครู"
+        class="flex-1 min-w-[160px] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+      <select id="don-filter-status" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
+        <option value="all">สถานะ: ทั้งหมด</option>
+        <option value="pending">รอตรวจสอบ</option>
+        <option value="approved">อนุมัติแล้ว</option>
+        <option value="rejected">ปฏิเสธ</option>
+      </select>
+      <select id="don-filter-method" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
+        <option value="all">ช่องทาง: ทั้งหมด</option>
+        <option value="cash">เงินสด</option>
+        <option value="transfer">โอนเงิน</option>
+      </select>
+      <select id="don-filter-sort" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
+        <option value="date_desc">ล่าสุดก่อน</option>
+        <option value="date_asc">เก่าสุดก่อน</option>
+        <option value="amount_desc">ยอดมากสุด</option>
+      </select>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div id="don-table" class="text-center py-12 text-gray-400">
+        <div class="animate-spin text-3xl mb-2">⏳</div>
+        <p class="text-sm">กำลังโหลด...</p>
+      </div>
+    </div>
+
+  </div>`)
+
+  let _all = []
+
+  const _load = async () => {
+    const { data, error } = await (await import('./supabase.js')).supabase
+      .from('payment_requests')
+      .select('id, package_type, amount, status, slip_url, admin_note, created_at, reviewed_at, teachers(id, full_name, teacher_code, phone)')
+      .eq('package_type', 'donation')
+      .order('created_at', { ascending: false })
+    if (error) { showToast('โหลดข้อมูลไม่สำเร็จ', 'error'); return }
+    _all = data ?? []
+    _updateStats()
+    _render()
+  }
+
+  const _updateStats = () => {
+    const approved = _all.filter(r => r.status === 'approved')
+    const total    = approved.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const pending  = _all.filter(r => r.status === 'pending').length
+    const donors   = new Set(approved.map(r => r.teachers?.id)).size
+    const avg      = donors ? Math.round(total / donors) : 0
+    const vals = [fmtBaht(total) + ' ฿', pending, donors + ' คน', fmtBaht(avg) + ' ฿']
+    document.querySelectorAll('.don-stat-val').forEach((el, i) => { el.textContent = vals[i] })
+  }
+
+  const _render = () => {
+    const box    = document.getElementById('don-table')
+    if (!box) return
+    const q      = (document.getElementById('don-search')?.value ?? '').toLowerCase()
+    const status = document.getElementById('don-filter-status')?.value ?? 'all'
+    const method = document.getElementById('don-filter-method')?.value ?? 'all'
+    const sort   = document.getElementById('don-filter-sort')?.value ?? 'date_desc'
+
+    let rows = _all.filter(r => {
+      const t = r.teachers
+      if (q && !String(t?.full_name ?? '').toLowerCase().includes(q) && !String(t?.teacher_code ?? '').includes(q)) return false
+      if (status !== 'all' && r.status !== status) return false
+      if (method === 'cash' && !isCash(r)) return false
+      if (method === 'transfer' && isCash(r)) return false
+      return true
+    })
+
+    if (sort === 'date_asc')    rows.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    else if (sort === 'amount_desc') rows.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
+
+    if (!rows.length) {
+      box.innerHTML = `<div class="text-center py-16 text-gray-400"><p class="text-3xl mb-2">📭</p><p class="text-sm">ไม่พบรายการ</p></div>`
+      return
+    }
+
+    const statusBadge = (s) => ({
+      pending:  `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-semibold">⏳ รอตรวจสอบ</span>`,
+      approved: `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-semibold">✅ อนุมัติแล้ว</span>`,
+      rejected: `<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-semibold">❌ ปฏิเสธ</span>`,
+    }[s] ?? `<span class="text-gray-400 text-xs">${s}</span>`)
+
+    box.innerHTML = `
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b border-gray-100">
+        <tr>
+          <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-8">#</th>
+          <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500">ครู</th>
+          <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500">ยอด</th>
+          <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500">ช่องทาง</th>
+          <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500">สถานะ</th>
+          <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500">วันที่</th>
+          <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500">หมายเหตุ</th>
+          <th class="px-4 py-3 text-xs font-semibold text-gray-500"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        ${rows.map((r, idx) => {
+          const t    = r.teachers
+          const cash = isCash(r)
+          const note = String(r.admin_note ?? '').replace(/^\[เงินสด\]\s*/, '')
+          return `<tr class="hover:bg-gray-50 transition" data-id="${r.id}">
+            <td class="px-4 py-3 text-gray-400 text-xs">${idx + 1}</td>
+            <td class="px-4 py-3">
+              <p class="font-semibold text-gray-800">${t?.full_name ?? '—'}</p>
+              <p class="text-xs text-gray-400">${t?.teacher_code ?? ''}</p>
+            </td>
+            <td class="px-4 py-3 text-right font-bold text-emerald-700">${fmtBaht(r.amount)} ฿</td>
+            <td class="px-4 py-3 text-center">
+              ${cash
+                ? `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[11px] font-medium">💵 เงินสด</span>`
+                : `<button class="don-slip px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[11px] font-medium hover:bg-blue-100 transition" data-url="${r.slip_url ?? ''}">🧾 ดูสลิป</button>`}
+            </td>
+            <td class="px-4 py-3 text-center">${statusBadge(r.status)}</td>
+            <td class="px-4 py-3 text-center text-xs text-gray-500">${fmtDate(r.created_at)}</td>
+            <td class="px-4 py-3 text-xs text-gray-500 max-w-[120px] truncate" title="${note}">${note || '—'}</td>
+            <td class="px-4 py-3">
+              <div class="flex gap-1 justify-end">
+                ${r.status === 'pending' ? `
+                  <button class="don-approve text-xs px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium" data-id="${r.id}">✅</button>
+                  <button class="don-reject  text-xs px-2.5 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 font-medium" data-id="${r.id}">❌</button>
+                ` : ''}
+                <button class="don-edit text-xs px-2.5 py-1 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 font-medium" data-id="${r.id}">✏️</button>
+              </div>
+            </td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>`
+
+    // slip viewer
+    box.querySelectorAll('.don-slip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.dataset.url
+        if (!url) return
+        const ov = document.createElement('div')
+        ov.className = 'fixed inset-0 z-[500] bg-black/80 flex items-center justify-center p-4 cursor-zoom-out'
+        ov.innerHTML = `<img src="${url}" class="max-w-full max-h-full rounded-xl shadow-2xl object-contain" />`
+        ov.addEventListener('click', () => ov.remove())
+        document.body.appendChild(ov)
+      })
+    })
+
+    // approve
+    box.querySelectorAll('.don-approve').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const { reviewPaymentRequest } = await import('./api.js')
+        await reviewPaymentRequest(Number(btn.dataset.id), 'approved').catch(() => {})
+        showToast('อนุมัติแล้ว ✅', 'success')
+        await _load()
+      })
+    })
+
+    // reject
+    box.querySelectorAll('.don-reject').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const note = prompt('เหตุผลที่ปฏิเสธ (ถ้ามี):') ?? ''
+        const { reviewPaymentRequest } = await import('./api.js')
+        await reviewPaymentRequest(Number(btn.dataset.id), 'rejected', note || null).catch(() => {})
+        showToast('ปฏิเสธแล้ว', 'info')
+        await _load()
+      })
+    })
+
+    // edit note
+    box.querySelectorAll('.don-edit').forEach(btn => {
+      btn.addEventListener('click', () => _openEditModal(Number(btn.dataset.id)))
+    })
+  }
+
+  const _openAddModal = async () => {
+    const { getTeachers } = await import('./api.js')
+    const teachers = await getTeachers().catch(() => [])
+    const m = document.createElement('div')
+    m.className = 'fixed inset-0 z-[500] bg-black/50 flex items-center justify-center p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <h3 class="font-bold text-gray-800">+ เพิ่มโดเนทเงินสด</h3>
+        <div>
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">ครูผู้สนับสนุน</label>
+          <select id="don-add-teacher" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
+            <option value="">— เลือกครู —</option>
+            ${teachers.map(t => `<option value="${t.id}">${t.full_name} (${t.teacher_code})</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนเงิน (บาท)</label>
+          <input id="don-add-amount" type="number" min="1" placeholder="100"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">หมายเหตุ</label>
+          <input id="don-add-note" type="text" placeholder="เช่น รับเงินสด วันที่ 21 พ.ค. 69"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button id="don-add-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="don-add-confirm" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">บันทึก</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.querySelector('#don-add-cancel').addEventListener('click', () => m.remove())
+    m.querySelector('#don-add-confirm').addEventListener('click', async () => {
+      const tid    = m.querySelector('#don-add-teacher').value
+      const amount = Number(m.querySelector('#don-add-amount').value)
+      const note   = m.querySelector('#don-add-note').value.trim()
+      if (!tid)    { showToast('กรุณาเลือกครู', 'warning'); return }
+      if (!amount) { showToast('กรุณาใส่จำนวนเงิน', 'warning'); return }
+      const { createPaymentRequest } = await import('./api.js')
+      await createPaymentRequest({
+        teacher_id:   parseInt(tid),
+        package_type: 'donation',
+        amount,
+        status:       'approved',
+        admin_note:   `[เงินสด] ${note}`.trim(),
+        reviewed_at:  new Date().toISOString(),
+      }).catch(e => { showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error'); return })
+      showToast('บันทึกโดเนทเงินสดแล้ว ✅', 'success')
+      m.remove()
+      await _load()
+    })
+  }
+
+  const _openEditModal = (id) => {
+    const r = _all.find(x => x.id === id)
+    if (!r) return
+    const note = String(r.admin_note ?? '').replace(/^\[เงินสด\]\s*/, '')
+    const m = document.createElement('div')
+    m.className = 'fixed inset-0 z-[500] bg-black/50 flex items-center justify-center p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <h3 class="font-bold text-gray-800">✏️ แก้ไขรายการ</h3>
+        <div>
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">ยอดเงิน (บาท)</label>
+          <input id="don-edit-amount" type="number" value="${r.amount ?? ''}"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">หมายเหตุ</label>
+          <input id="don-edit-note" type="text" value="${note}"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button id="don-edit-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">ยกเลิก</button>
+          <button id="don-edit-save"   class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.querySelector('#don-edit-cancel').addEventListener('click', () => m.remove())
+    m.querySelector('#don-edit-save').addEventListener('click', async () => {
+      const amount = Number(m.querySelector('#don-edit-amount').value)
+      const note2  = m.querySelector('#don-edit-note').value.trim()
+      const prefix = isCash(r) ? '[เงินสด] ' : ''
+      const { supabase: sb } = await import('./supabase.js')
+      const { error } = await sb.from('payment_requests')
+        .update({ amount, admin_note: (prefix + note2).trim() || null })
+        .eq('id', id)
+      if (error) { showToast('แก้ไขไม่สำเร็จ', 'error'); return }
+      showToast('บันทึกแล้ว ✅', 'success')
+      m.remove()
+      await _load()
+    })
+  }
+
+  // wire up filters + search
+  const wireFilers = () => {
+    document.getElementById('don-search')?.addEventListener('input', _render)
+    document.getElementById('don-filter-status')?.addEventListener('change', _render)
+    document.getElementById('don-filter-method')?.addEventListener('change', _render)
+    document.getElementById('don-filter-sort')?.addEventListener('change', _render)
+    document.getElementById('don-add')?.addEventListener('click', _openAddModal)
+  }
+  wireFilers()
+  await _load()
+}
