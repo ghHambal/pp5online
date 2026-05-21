@@ -4064,6 +4064,59 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
     </div>`
   document.body.appendChild(modal)
 
+  // ── auto-save state ──────────────────────────────────────────────────────────
+  let _infoDirty  = false
+  let _infoSaving = false
+  let _infoTimer  = null
+
+  const _setInfoStatus = (state) => {
+    const el = modal.querySelector('#cem-info-status')
+    if (!el) return
+    const map = {
+      dirty:  { cls: 'text-amber-500', text: '● มีการเปลี่ยนแปลง' },
+      saving: { cls: 'text-indigo-500', text: '⏳ กำลังบันทึก...' },
+      saved:  { cls: 'text-emerald-600', text: '✅ บันทึกแล้ว' },
+      error:  { cls: 'text-red-500', text: '⚠️ บันทึกไม่สำเร็จ' },
+    }
+    const s = map[state] ?? map.saved
+    el.className = `text-xs font-medium ${s.cls}`
+    el.textContent = s.text
+    el.classList.remove('hidden')
+  }
+
+  const _saveInfoNow = async () => {
+    if (!modal.querySelector('#cem-classname')) return
+    _infoSaving = true
+    _setInfoStatus('saving')
+    try {
+      await updateClass(cls.id, {
+        class_name:      modal.querySelector('#cem-classname').value.trim() || cls.class_name,
+        skill_group:     modal.querySelector('#cem-skillgroup').value.trim() || null,
+        google_sheet_id: modal.querySelector('#cem-sheetid').value.trim() || null,
+        head_student_id: modal.querySelector('#cem-head').value ? Number(modal.querySelector('#cem-head').value) : null,
+        day1_date:       modal.querySelector('#cem-day1')?.value || null,
+        day2_date:       modal.querySelector('#cem-day2')?.value || null,
+        day3_date:       modal.querySelector('#cem-day3')?.value || null,
+        day4_date:       modal.querySelector('#cem-day4')?.value || null,
+        day5_date:       modal.querySelector('#cem-day5')?.value || null,
+        day6_date:       modal.querySelector('#cem-day6')?.value || null,
+      })
+      _infoDirty = false
+      _setInfoStatus('saved')
+    } catch {
+      _setInfoStatus('error')
+    } finally {
+      _infoSaving = false
+    }
+  }
+
+  const _scheduleInfoSave = (immediate = false) => {
+    _infoDirty = true
+    _setInfoStatus('dirty')
+    clearTimeout(_infoTimer)
+    _infoTimer = setTimeout(_saveInfoNow, immediate ? 0 : 800)
+  }
+
   // ── infoHTML ─────────────────────────────────────────────────────────────────
   const infoHTML = () => {
     const headOpts = classStudents.map(s =>
@@ -4121,6 +4174,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
           </div>`).join('')}
         </div>
       </div>
+      <p id="cem-info-status" class="hidden text-xs font-medium text-emerald-600"></p>
     </div>`
   }
 
@@ -4346,8 +4400,16 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         : `<div class="w-full h-full flex items-center justify-center bg-gradient-to-tr from-emerald-200 to-teal-200 text-emerald-700 font-bold text-lg">${name.charAt(0)}</div>`
       headCard?.classList.remove('hidden')
     }
-    headSel?.addEventListener('change', updateHeadCard)
+    headSel?.addEventListener('change', () => { updateHeadCard(); _scheduleInfoSave(true) })
     if (headSel?.value) updateHeadCard()
+
+    // auto-save on text input (debounced) + date change (immediate)
+    ;['cem-classname','cem-skillgroup','cem-sheetid'].forEach(id => {
+      modal.querySelector(`#${id}`)?.addEventListener('input', () => _scheduleInfoSave())
+    })
+    ;[1,2,3,4,5,6].forEach(n => {
+      modal.querySelector(`#cem-day${n}`)?.addEventListener('change', () => _scheduleInfoSave(true))
+    })
 
     // ── auto-dates button ─────────────────────────────────────────────────────
     modal.querySelector('#cem-auto-dates')?.addEventListener('click', async () => {
@@ -4439,6 +4501,8 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
 
   // ── tab switching ─────────────────────────────────────────────────────────────
   const showTab = (tabId) => {
+    if (_infoSaving) { showToast('กำลังบันทึกข้อมูล รอสักครู่...', 'warning'); return }
+    if (_infoDirty)  { showToast('มีข้อมูลที่ยังไม่ถูกบันทึก กรุณารอระบบบันทึกก่อน', 'warning'); return }
     modal.querySelectorAll('.cem-tab').forEach(t => { t.className = TAB_STYLE(t.dataset.cem === tabId) })
     const box = modal.querySelector('#cem-content')
     if (tabId === 'info') {
@@ -4472,19 +4536,11 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
     btn.disabled = true; btn.textContent = '⏳'
     try {
       const errors = []
-      // 1. ข้อมูลพื้นฐาน (รวม head + dates)
-      await updateClass(cls.id, {
-        class_name:      modal.querySelector('#cem-classname')?.value.trim() || cls.class_name,
-        skill_group:     modal.querySelector('#cem-skillgroup')?.value.trim() || null,
-        google_sheet_id: modal.querySelector('#cem-sheetid')?.value.trim() || null,
-        head_student_id: modal.querySelector('#cem-head')?.value ? Number(modal.querySelector('#cem-head').value) : null,
-        day1_date:       modal.querySelector('#cem-day1')?.value || null,
-        day2_date:       modal.querySelector('#cem-day2')?.value || null,
-        day3_date:       modal.querySelector('#cem-day3')?.value || null,
-        day4_date:       modal.querySelector('#cem-day4')?.value || null,
-        day5_date:       modal.querySelector('#cem-day5')?.value || null,
-        day6_date:       modal.querySelector('#cem-day6')?.value || null,
-      }).catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
+      // ข้อมูลพื้นฐาน auto-saved แล้ว — flush ถ้ายังมี pending timer
+      if (_infoDirty || _infoSaving) {
+        clearTimeout(_infoTimer)
+        await _saveInfoNow().catch(e => errors.push('ข้อมูล: ' + (e.message??'')))
+      }
       // 2. ตารางสอน — บันทึก pending changes
       const toLink   = [...pendingLinked].filter(sid => !currentLinked.has(sid))
       const toUnlink = [...currentLinked].filter(sid => !pendingLinked.has(sid))

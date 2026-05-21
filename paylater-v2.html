@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>PayLater Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    :root { --tc: #10b981; --tcd: #059669; }
+    body { font-family: 'Prompt', sans-serif; background: #f5f3ff; -webkit-tap-highlight-color: transparent; }
+    .hide-scroll::-webkit-scrollbar { display: none; }
+    .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    .swal2-title,.swal2-html-container,.swal2-confirm,.swal2-cancel { font-family: 'Prompt', sans-serif !important; }
+    .app-theme-bg { background: linear-gradient(135deg, var(--tc) 0%, var(--tcd) 100%) !important; }
+    .app-theme-text { color: var(--tc) !important; }
+    .login-bg { background: linear-gradient(160deg, #667eea 0%, #764ba2 100%); min-height: 100dvh; }
+    .ring-circle { transition: stroke-dashoffset 0.9s cubic-bezier(0.4,0,0.2,1); transform: rotate(-90deg); transform-origin: 50% 50%; }
+    .bottom-nav { background: rgba(255,255,255,0.97); backdrop-filter: blur(20px); border-top: 1px solid rgba(0,0,0,0.06); }
+    .nav-btn { display:flex; flex-direction:column; align-items:center; padding:8px 14px; color:#9ca3af; transition:color 0.2s; }
+    .nav-btn.active { color: var(--tc); }
+    .nav-icon-wrap { width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
+    .nav-btn.active .nav-icon-wrap { background: color-mix(in srgb, var(--tc) 12%, transparent); }
+    .nav-lbl { font-size:10px; margin-top:2px; font-weight:500; }
+    .nav-btn.active .nav-lbl { font-weight:700; color:#374151; }
+    .ppill { display:flex; align-items:center; gap:6px; padding:6px 16px; border-radius:2rem; font-size:13px; white-space:nowrap; border:1.5px solid rgba(255,255,255,0.3); color:rgba(255,255,255,0.9); background:rgba(255,255,255,0.12); transition:all 0.2s; cursor:pointer; }
+    .ppill.active { background:white; color:var(--tc); font-weight:700; box-shadow:0 4px 12px rgba(0,0,0,0.15); border-color:transparent; }
+    .card { background:white; border-radius:24px; box-shadow:0 4px 24px rgba(0,0,0,0.07); }
+    .inp { background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:14px 14px 14px 46px; width:100%; font-family:'Prompt',sans-serif; font-size:15px; transition:all 0.2s; color:#1f2937; }
+    .inp:focus { outline:none; border-color:var(--tc); background:white; box-shadow:0 0 0 3px color-mix(in srgb, var(--tc) 12%, transparent); }
+    .inp-plain { background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:12px 14px; width:100%; font-family:'Prompt',sans-serif; font-size:14px; transition:all 0.2s; }
+    .inp-plain:focus { outline:none; border-color:var(--tc); background:white; }
+    .atab { flex:1; padding:10px; border-radius:10px; font-size:13px; font-weight:500; transition:all 0.2s; text-align:center; color:#6b7280; cursor:pointer; }
+    .atab.active { background:white; font-weight:700; color:#111827; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .s-pending { background:#fef3c7; color:#d97706; border:1px solid #fde68a; }
+    .s-ok { background:#d1fae5; color:#059669; border:1px solid #a7f3d0; }
+    .s-none { background:#f3f4f6; color:#9ca3af; border:1px solid #e5e7eb; }
+    #slipModal { opacity:0; pointer-events:none; transition:opacity 0.2s; }
+    #slipModal.show { opacity:1; pointer-events:auto; }
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+    .fu { animation: fadeUp 0.35s ease forwards; }
+    .fu2 { animation: fadeUp 0.35s ease 0.09s both; }
+    #adminUserModal { opacity:0; transition:opacity 0.2s; display:none; }
+    #adminUserModal.show { opacity:1; display:flex !important; }
+    #adminUserModalContent { transform:scale(0.95); transition:transform 0.2s; }
+    #adminUserModal.show #adminUserModalContent { transform:scale(1); }
+  </style>
+</head>
+<body class="text-gray-800">
+<div class="w-full max-w-md mx-auto bg-gray-50 min-h-[100dvh] relative shadow-2xl flex flex-col hide-scroll overflow-y-auto overflow-x-hidden">
+
+  <!-- LOGIN PAGE -->
+  <div id="page-login" class="flex flex-col login-bg min-h-[100dvh]">
+    <div class="flex-1 flex flex-col justify-center items-center p-6">
+      <div class="text-center mb-8 fu">
+        <div class="w-20 h-20 bg-white/20 backdrop-blur rounded-3xl mx-auto mb-5 flex items-center justify-center shadow-lg border border-white/30">
+          <i class="ph ph-wallet text-4xl text-white"></i>
+        </div>
+        <h1 class="text-3xl font-bold text-white tracking-tight">PayLater</h1>
+        <p class="text-white/70 text-sm mt-1">Shopee Tracker</p>
+      </div>
+      <div class="w-full max-w-sm bg-white/95 backdrop-blur-xl rounded-3xl p-6 shadow-2xl fu2">
+        <h2 class="text-xl font-bold text-gray-800 mb-5">เข้าสู่ระบบ</h2>
+        <div class="space-y-3">
+          <div class="relative">
+            <i class="ph ph-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl pointer-events-none"></i>
+            <input type="text" id="login-user" placeholder="Username" class="inp">
+          </div>
+          <div class="relative">
+            <i class="ph ph-lock-key absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl pointer-events-none"></i>
+            <input type="password" id="login-pass" placeholder="Password" class="inp" onkeydown="if(event.key==='Enter')handleLogin()">
+          </div>
+          <button onclick="handleLogin()" id="btnLogin" class="w-full py-4 mt-1 text-white rounded-2xl font-bold text-base transition active:scale-95 app-theme-bg flex items-center justify-center gap-2">
+            <i class="ph ph-sign-in text-lg"></i> เข้าสู่ระบบ
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- USER APP -->
+  <div id="page-user" class="hidden flex-col flex-1 pb-24">
+    <div class="app-theme-bg pt-12 pb-8 px-6 text-white rounded-b-[2.5rem] shadow-lg relative z-20">
+      <div class="flex justify-between items-start">
+        <div>
+          <p class="text-white/70 text-sm font-medium">สวัสดี</p>
+          <h2 id="display-name" class="text-2xl font-bold mt-0.5 line-clamp-1">...</h2>
+        </div>
+        <div class="w-11 h-11 bg-white/20 rounded-full flex items-center justify-center border border-white/30">
+          <i class="ph ph-user-circle text-2xl"></i>
+        </div>
+      </div>
+      <div class="mt-5 -mx-1 px-1 overflow-x-auto hide-scroll pb-1">
+        <div id="product-switcher" class="flex gap-2 w-max"></div>
+      </div>
+    </div>
+
+    <div class="px-4 mt-5 flex-1 space-y-4">
+
+      <!-- HOME VIEW -->
+      <div id="uview-home" class="space-y-4 pb-4">
+        <div id="user-product-image-container" class="hidden w-full h-36 rounded-2xl overflow-hidden relative shadow-md">
+          <img id="user-product-image" src="" class="w-full h-full object-cover">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+            <p id="user-product-image-name" class="text-white font-bold text-base drop-shadow">...</p>
+          </div>
+        </div>
+
+        <!-- Summary Card -->
+        <div class="card p-5 fu">
+          <div class="flex justify-between items-center mb-4">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl app-theme-bg flex items-center justify-center shrink-0">
+                <i class="ph-fill ph-calendar-blank text-white text-lg"></i>
+              </div>
+              <div>
+                <p class="text-[11px] text-gray-400 font-medium">กำหนดชำระ</p>
+                <p id="user-due-date" class="font-bold text-gray-800 text-sm">วันที่ --</p>
+              </div>
+            </div>
+            <div id="days-badge" class="px-3 py-1.5 rounded-xl text-center min-w-[72px] bg-emerald-50">
+              <p id="days-badge-label" class="text-[10px] font-bold uppercase text-emerald-600">เหลือ</p>
+              <p id="user-days-left" class="text-xl font-black text-emerald-600">-- วัน</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-5 py-4 border-y border-gray-100">
+            <div class="relative shrink-0">
+              <svg width="84" height="84" viewBox="0 0 84 84">
+                <circle cx="42" cy="42" r="34" fill="none" stroke="#f3f4f6" stroke-width="7"/>
+                <circle id="progress-ring" cx="42" cy="42" r="34" fill="none" stroke="var(--tc)" stroke-width="7"
+                  stroke-linecap="round" class="ring-circle" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <span id="user-period-paid" class="text-xl font-black text-gray-800 leading-none">0</span>
+                <span class="text-[10px] text-gray-400 leading-tight">/<span id="user-period-total">0</span></span>
+              </div>
+            </div>
+            <div class="flex-1">
+              <p class="text-xs text-gray-400 font-medium">ยอดชำระงวดนี้</p>
+              <p id="user-installment" class="text-3xl font-black text-gray-800 mt-0.5">0 <span class="text-base text-gray-400 font-medium">฿</span></p>
+              <p class="text-[11px] text-gray-400 mt-1">ผ่อนแล้ว <span id="ring-paid-lbl" class="font-bold text-gray-600">0</span>/<span id="ring-total-lbl" class="text-gray-500">0</span> งวด</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mt-4">
+            <div id="total-chip" class="rounded-xl p-3 bg-emerald-50 border border-emerald-100">
+              <p class="text-[11px] font-medium text-emerald-700">ยอดรวมทั้งหมด</p>
+              <p id="user-total" class="font-bold text-gray-700 mt-0.5 text-sm">0 ฿</p>
+            </div>
+            <div class="bg-red-50 border border-red-100 rounded-xl p-3">
+              <p class="text-[11px] font-medium text-red-500">ยอดคงเหลือ</p>
+              <p id="user-balance" class="font-bold text-red-600 mt-0.5 text-sm">0 ฿</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Form -->
+        <div class="card p-5 fu2">
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-8 h-8 rounded-xl app-theme-bg flex items-center justify-center">
+              <i class="ph-fill ph-receipt text-white text-base"></i>
+            </div>
+            <h3 class="font-bold text-gray-800">แจ้งชำระเงิน</h3>
+          </div>
+          <p class="text-xs text-gray-400 mb-4 ml-10">สินค้า: <span id="form-product-name-lbl" class="font-bold text-gray-600">...</span></p>
+          <form id="paymentForm" onsubmit="event.preventDefault(); submitData();" class="space-y-3">
+            <input type="hidden" name="userName" id="hidden-name">
+            <input type="hidden" name="productId" id="hidden-product-id">
+            <input type="hidden" name="productName" id="hidden-product-name">
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 ml-1">จำนวนเงิน (บาท)</label>
+              <div class="relative">
+                <i class="ph ph-money absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl pointer-events-none"></i>
+                <input type="number" name="amount" id="form-amount" required class="inp font-bold text-gray-800">
+              </div>
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-gray-500 ml-1">แนบสลิป</label>
+              <input type="file" name="slipFile" accept="image/*" required class="w-full p-3 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl text-sm transition hover:border-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700">
+            </div>
+            <div id="user-qr-section" class="hidden pt-4 border-t border-gray-100 text-center">
+              <p class="text-xs text-gray-400 mb-3">สแกน QR เพื่อโอนเงิน</p>
+              <div class="inline-block bg-white p-3 rounded-2xl shadow border border-gray-100">
+                <img id="display-qr-code" src="" class="w-40 h-40 object-contain rounded-xl">
+              </div>
+              <p class="text-sm font-bold text-gray-600 mt-3 tracking-widest" id="qr-promptpay-text"></p>
+            </div>
+            <button type="submit" id="submitBtn" class="w-full py-4 mt-1 text-white rounded-2xl font-bold text-base transition active:scale-95 app-theme-bg flex items-center justify-center gap-2 shadow-lg">
+              <i class="ph ph-paper-plane-right text-lg"></i> ส่งสลิปยืนยัน
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- HISTORY VIEW -->
+      <div id="uview-history" class="hidden space-y-4 pb-4">
+        <div class="card p-5">
+          <div class="flex justify-between items-center mb-1">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-xl app-theme-bg flex items-center justify-center">
+                <i class="ph-fill ph-clock-counter-clockwise text-white text-base"></i>
+              </div>
+              <h3 class="font-bold text-gray-800">ประวัติการชำระ</h3>
+            </div>
+            <button onclick="refreshUserHistory()" class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 active:scale-95 transition">
+              <i class="ph ph-arrows-clockwise text-base"></i>
+            </button>
+          </div>
+          <p class="text-xs text-gray-400 mb-4 ml-10">สินค้า: <span id="history-product-name-lbl" class="font-bold text-gray-600">...</span></p>
+          <div id="user-personal-history"></div>
+        </div>
+      </div>
+
+      <!-- SETTINGS VIEW -->
+      <div id="uview-settings" class="hidden space-y-4 pb-4">
+        <div class="card p-5">
+          <div class="flex items-center gap-2 mb-5 pb-4 border-b border-gray-100">
+            <div class="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center">
+              <i class="ph-fill ph-gear text-gray-500 text-base"></i>
+            </div>
+            <h3 class="font-bold text-gray-800">ตั้งค่าบัญชี</h3>
+          </div>
+          <div class="space-y-3">
+            <div class="space-y-1"><label class="text-xs font-medium text-gray-500 ml-1">ชื่อที่แสดง</label><input type="text" id="my-name" class="inp-plain"></div>
+            <div class="space-y-1"><label class="text-xs font-medium text-gray-500 ml-1">รหัสผ่าน</label><input type="text" id="my-pass" class="inp-plain"></div>
+            <button onclick="saveMyProfile()" class="w-full py-3.5 text-white rounded-2xl font-bold app-theme-bg transition active:scale-95 flex justify-center items-center gap-2 mt-1">
+              <i class="ph ph-floppy-disk text-lg"></i> บันทึกข้อมูล
+            </button>
+          </div>
+          <div class="pt-5 mt-5 border-t border-gray-100">
+            <button onclick="confirmLogout()" class="w-full py-3.5 text-red-500 font-bold border border-red-200 bg-red-50 hover:bg-red-100 rounded-2xl transition flex justify-center items-center gap-2">
+              <i class="ph ph-sign-out text-lg"></i> ออกจากระบบ
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Nav -->
+    <div class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bottom-nav pb-safe z-50">
+      <div class="flex justify-around items-center px-2 pt-1 pb-1">
+        <button onclick="switchUserTab('home')" id="utab-home" class="nav-btn active">
+          <div class="nav-icon-wrap"><i class="ph-fill ph-house text-2xl"></i></div>
+          <span class="nav-lbl">หน้าหลัก</span>
+        </button>
+        <button onclick="switchUserTab('history')" id="utab-history" class="nav-btn">
+          <div class="nav-icon-wrap"><i class="ph-fill ph-list-bullets text-2xl"></i></div>
+          <span class="nav-lbl">ประวัติ</span>
+        </button>
+        <button onclick="switchUserTab('settings')" id="utab-settings" class="nav-btn">
+          <div class="nav-icon-wrap"><i class="ph-fill ph-user text-2xl"></i></div>
+          <span class="nav-lbl">ฉัน</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN APP -->
+  <div id="page-admin" class="hidden flex-col flex-1 bg-gray-50 min-h-screen">
+    <div class="app-theme-bg pt-12 pb-6 px-6 text-white shadow-md">
+      <div class="flex justify-between items-center">
+        <div>
+          <p class="text-white/70 text-sm">ระบบจัดการ</p>
+          <h2 class="text-2xl font-bold mt-0.5">Admin Panel</h2>
+        </div>
+        <button onclick="confirmLogout()" class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition border border-white/20">
+          <i class="ph ph-sign-out text-xl"></i>
+        </button>
+      </div>
+    </div>
+    <div class="max-w-4xl mx-auto w-full p-4">
+      <div class="flex gap-1.5 mb-5 bg-gray-200/60 p-1.5 rounded-2xl border border-gray-200">
+        <button onclick="switchAdminTab('users')" id="tab-users" class="atab active">บัญชีลูกค้า</button>
+        <button onclick="switchAdminTab('history')" id="tab-history" class="atab">อนุมัติยอด</button>
+        <button onclick="switchAdminTab('settings')" id="tab-settings" class="atab">ตั้งค่าแอป</button>
+      </div>
+
+      <!-- Admin USERS -->
+      <div id="view-users" class="space-y-4 pb-10">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-gray-800">รายชื่อลูกค้า</h3>
+          <button onclick="showAdminUserForm()" class="app-theme-bg text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition">
+            <i class="ph ph-plus text-base"></i> ลูกค้าใหม่
+          </button>
+        </div>
+        <div id="user-list-container" class="space-y-3"></div>
+
+        <!-- User Form Modal -->
+        <div id="adminUserModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm items-center justify-center p-4 z-[9999]">
+          <div class="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]" id="adminUserModalContent">
+            <div class="p-5 flex justify-between items-center app-theme-bg text-white">
+              <h3 class="font-bold text-lg" id="user-form-title">เพิ่มลูกค้า/สินค้าใหม่</h3>
+              <button onclick="closeAdminUserForm()" class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition text-xl leading-none">&times;</button>
+            </div>
+            <div class="p-5 overflow-y-auto hide-scroll flex-1">
+              <form id="adminUserForm" onsubmit="event.preventDefault(); submitAdminUser();" class="space-y-4">
+                <input type="hidden" name="rowId" id="u-rowId">
+                <input type="hidden" name="oldProductImage" id="u-oldImage">
+                <div class="bg-gray-50 p-4 rounded-2xl space-y-3 border border-gray-100">
+                  <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">ข้อมูลผู้ใช้</p>
+                  <input type="text" id="u-name" name="name" placeholder="ชื่อ-สกุล" required class="inp-plain">
+                  <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="u-user" name="username" placeholder="Username" required class="inp-plain">
+                    <input type="text" id="u-pass" name="password" placeholder="Password" required class="inp-plain">
+                  </div>
+                </div>
+                <div class="bg-blue-50/50 p-4 rounded-2xl space-y-3 border border-blue-100">
+                  <p class="text-xs font-bold text-blue-500 uppercase tracking-wider">สินค้า &amp; การผ่อน</p>
+                  <input type="text" id="u-productName" name="productName" placeholder="ชื่อสินค้า" required class="inp-plain">
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-gray-500 font-medium flex justify-between">
+                      <span>รูปภาพสินค้า</span>
+                      <a id="u-viewOldImage" href="#" target="_blank" class="hidden text-blue-500 text-[10px]">ดูรูปเดิม</a>
+                    </label>
+                    <input type="file" name="productImageFile" accept="image/*" class="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-600">
+                    <p class="text-[10px] text-gray-400">ไม่เลือกไฟล์ = ใช้รูปเดิม</p>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="space-y-0.5"><label class="text-[10px] text-gray-500">ยอดรวม (฿)</label><input type="number" id="u-total" name="totalAmount" value="0" class="inp-plain"></div>
+                    <div class="space-y-0.5"><label class="text-[10px] text-gray-500">ยอดต่องวด (฿)</label><input type="number" id="u-installment" name="installment" value="0" class="inp-plain"></div>
+                    <div class="space-y-0.5"><label class="text-[10px] text-gray-500">จำนวนงวดทั้งหมด</label><input type="number" id="u-totalPeriods" name="totalPeriods" value="0" class="inp-plain"></div>
+                    <div class="space-y-0.5"><label class="text-[10px] text-gray-500">งวดที่จ่ายแล้ว</label><input type="number" id="u-paidPeriods" name="paidPeriods" value="0" class="inp-plain"></div>
+                    <div class="space-y-0.5"><label class="text-[10px] text-gray-500">ค่าอื่นๆ (฿)</label><input type="number" id="u-other" name="otherExp" value="0" class="inp-plain"></div>
+                    <div class="space-y-0.5"><label class="text-[10px] text-gray-500">วันครบกำหนด</label><input type="number" id="u-date" name="dueDate" placeholder="ตามระบบ" class="inp-plain"></div>
+                  </div>
+                </div>
+                <div class="flex gap-3 pt-1">
+                  <button type="button" onclick="closeAdminUserForm()" class="flex-1 py-3.5 bg-gray-100 text-gray-600 rounded-2xl font-bold text-sm">ยกเลิก</button>
+                  <button type="submit" id="btnSaveUser" class="flex-1 py-3.5 text-white rounded-2xl font-bold text-sm app-theme-bg shadow-md">บันทึก</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin HISTORY -->
+      <div id="view-history" class="hidden space-y-4 pb-10">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-gray-800">รายการชำระ</h3>
+          <button onclick="loadDataSilently()" class="text-sm font-bold flex items-center gap-1 px-3 py-1.5 rounded-xl transition active:scale-95 bg-white border border-gray-200 shadow-sm app-theme-text">
+            <i class="ph ph-arrows-clockwise text-base"></i> รีเฟรช
+          </button>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="filterAdminLogs('pending')" id="flt-pending" class="px-4 py-1.5 rounded-full text-sm font-bold text-white app-theme-bg shadow-sm border border-transparent">รอยืนยัน</button>
+          <button onclick="filterAdminLogs('all')" id="flt-all" class="px-4 py-1.5 rounded-full text-sm font-bold bg-white text-gray-500 border border-gray-200 shadow-sm">ทั้งหมด</button>
+        </div>
+        <div id="admin-logs-container" class="space-y-3"></div>
+      </div>
+
+      <!-- Admin SETTINGS -->
+      <div id="view-settings" class="hidden pb-10">
+        <div class="card p-6 space-y-4">
+          <h3 class="font-bold text-gray-800 pb-3 border-b border-gray-100">ตั้งค่าระบบ</h3>
+          <div class="space-y-1"><label class="text-xs font-medium text-gray-500">Folder ID (Google Drive)</label><input type="text" id="set-folder" class="inp-plain mt-1"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1"><label class="text-xs font-medium text-gray-500">Theme Color (Hex)</label><input type="text" id="set-color" class="inp-plain mt-1 uppercase"></div>
+            <div class="space-y-1"><label class="text-xs font-medium text-gray-500">วันตัดยอดรวม</label><input type="number" id="set-date" class="inp-plain mt-1"></div>
+          </div>
+          <div class="space-y-1"><label class="text-xs font-medium text-gray-500">เบอร์พร้อมเพย์</label><input type="text" id="set-promptpay" class="inp-plain mt-1 font-bold tracking-widest"></div>
+          <div class="space-y-1"><label class="text-xs font-medium text-gray-500">Admin Username</label><input type="text" id="set-admin-user" class="inp-plain mt-1"></div>
+          <button onclick="saveAdminSettings()" id="btnSaveSettings" class="w-full py-4 text-white rounded-2xl font-bold app-theme-bg shadow-md transition active:scale-95 mt-2">บันทึกการตั้งค่า</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Slip Modal -->
+<div id="slipModal" class="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-[99999]">
+  <div class="w-full max-w-md flex flex-col items-center">
+    <div class="w-full flex justify-end mb-4">
+      <button onclick="closeSlipModal()" class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition">
+        <i class="ph ph-x text-xl"></i>
+      </button>
+    </div>
+    <img id="slipImage" src="" class="max-w-full max-h-[72vh] object-contain rounded-2xl shadow-2xl">
+    <div class="mt-5">
+      <a id="slipNewTabBtn" href="#" target="_blank" class="px-5 py-2.5 bg-white text-gray-800 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 hover:bg-gray-100 transition">
+        <i class="ph ph-arrow-square-out text-lg"></i> ดูต้นฉบับ
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+  let config={}, currentUserData=null, selectedProductIndex=0, adminLogFilter='pending';
+  window.onload=()=>{ loadDataSilently(); };
+
+  function shadeColor(c,p){
+    let R=parseInt(c.slice(1,3),16),G=parseInt(c.slice(3,5),16),B=parseInt(c.slice(5,7),16);
+    R=Math.min(255,Math.max(0,parseInt(R*(100+p)/100)));
+    G=Math.min(255,Math.max(0,parseInt(G*(100+p)/100)));
+    B=Math.min(255,Math.max(0,parseInt(B*(100+p)/100)));
+    return '#'+R.toString(16).padStart(2,'0')+G.toString(16).padStart(2,'0')+B.toString(16).padStart(2,'0');
+  }
+
+  function loadDataSilently(cb){
+    google.script.run.withSuccessHandler(res=>{
+      config=res; applyTheme();
+      if(!document.getElementById('page-admin').classList.contains('hidden')){ renderAdminUserList(); renderAdminLogs(); }
+      if(currentUserData&&!document.getElementById('page-user').classList.contains('hidden')){
+        const u=config.users[currentUserData.username];
+        if(u){ currentUserData=u; if(selectedProductIndex>=currentUserData.products.length)selectedProductIndex=0; renderProductSwitcher(); renderUserDashboard(); }
+        else confirmLogout(true);
+      }
+      if(cb)cb();
+    }).getAppData();
+  }
+
+  function applyTheme(){
+    const c=config.appColor||'#10b981', d=shadeColor(c,-18);
+    document.documentElement.style.setProperty('--tc',c);
+    document.documentElement.style.setProperty('--tcd',d);
+    document.querySelectorAll('.app-theme-bg').forEach(el=>{ el.style.background=`linear-gradient(135deg,${c} 0%,${d} 100%)`; });
+    document.querySelectorAll('.app-theme-text').forEach(el=>{ el.style.color=c; });
+    let s=document.getElementById('_ts')||document.createElement('style');
+    s.id='_ts';
+    s.innerHTML=`.nav-btn.active{color:${c}!important}.nav-btn.active .nav-icon-wrap{background:${c}1e!important}.ppill.active{color:${c}!important}#progress-ring{stroke:${c}}#days-badge{background:${c}1a!important}#days-badge-label,#user-days-left{color:${c}!important}#total-chip{background:${c}12!important;border-color:${c}30!important}#total-chip p:first-child{color:${c}!important}`;
+    document.head.appendChild(s);
+  }
+
+  function openSlipModal(url){ document.getElementById('slipImage').src=url; document.getElementById('slipNewTabBtn').href=url; document.getElementById('slipModal').classList.add('show'); }
+  function closeSlipModal(){ document.getElementById('slipModal').classList.remove('show'); setTimeout(()=>document.getElementById('slipImage').src='',200); }
+
+  function calculateDaysLeft(d){
+    const m=String(d).match(/\d+/); if(!m)return'--';
+    const due=parseInt(m[0]),now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    let t=new Date(now.getFullYear(),now.getMonth(),due);
+    if(today>t)t=new Date(now.getFullYear(),now.getMonth()+1,due);
+    return Math.ceil((t-today)/86400000);
+  }
+
+  function showPage(id){
+    ['page-login','page-user','page-admin'].forEach(p=>{ document.getElementById(p).classList.add('hidden'); document.getElementById(p).classList.remove('flex'); });
+    document.getElementById(id).classList.remove('hidden'); document.getElementById(id).classList.add('flex'); window.scrollTo(0,0);
+  }
+
+  function confirmLogout(force=false){
+    if(force){doLogout();return;}
+    Swal.fire({title:'ออกจากระบบ?',icon:'question',showCancelButton:true,confirmButtonColor:'#ef4444',cancelButtonColor:'#9ca3af',confirmButtonText:'ออกจากระบบ',cancelButtonText:'ยกเลิก',reverseButtons:true}).then(r=>{ if(r.isConfirmed)doLogout(); });
+  }
+  function doLogout(){ currentUserData=null; document.getElementById('login-user').value=''; document.getElementById('login-pass').value=''; showPage('page-login'); }
+
+  function handleLogin(){
+    const user=document.getElementById('login-user').value.trim(), pass=document.getElementById('login-pass').value.trim();
+    const btn=document.getElementById('btnLogin');
+    if(!user||!pass)return Swal.fire({icon:'warning',title:'เตือน',text:'กรุณากรอกข้อมูลให้ครบ'});
+    btn.innerHTML='<i class="ph ph-spinner text-xl animate-spin"></i> กำลังตรวจสอบ...';
+    if(user===config.adminUser){ setupAdminData(); showPage('page-admin'); switchAdminTab('users'); }
+    else if(config.users&&config.users[user]&&config.users[user].password===pass){
+      currentUserData=config.users[user]; selectedProductIndex=0;
+      document.getElementById('my-name').value=currentUserData.name;
+      document.getElementById('my-pass').value=currentUserData.password;
+      renderProductSwitcher(); renderUserDashboard(); switchUserTab('home'); showPage('page-user');
+    } else Swal.fire({icon:'error',title:'ผิดพลาด',text:'Username/Password ไม่ถูกต้อง',confirmButtonColor:config.appColor||'#10b981'});
+    btn.innerHTML='<i class="ph ph-sign-in text-lg"></i> เข้าสู่ระบบ';
+  }
+
+  function renderProductSwitcher(){
+    const c=document.getElementById('product-switcher');
+    if(!currentUserData.products||!currentUserData.products.length){c.innerHTML='<div class="ppill">ไม่มีสินค้า</div>';return;}
+    if(currentUserData.products.length===1){c.innerHTML=`<div class="ppill active"><i class="ph-fill ph-package"></i>${currentUserData.products[0].productName}</div>`;return;}
+    c.innerHTML=currentUserData.products.map((p,i)=>`<button onclick="selectProduct(${i})" class="ppill ${i===selectedProductIndex?'active':''}">${i===selectedProductIndex?'<i class="ph-fill ph-check-circle"></i>':'<i class="ph ph-package"></i>'}${p.productName}</button>`).join('');
+  }
+
+  function selectProduct(i){ selectedProductIndex=i; renderProductSwitcher(); renderUserDashboard(); if(!document.getElementById('uview-history').classList.contains('hidden'))renderUserPersonalHistory(); }
+
+  function renderUserDashboard(){
+    if(!currentUserData||!currentUserData.products||!currentUserData.products.length)return;
+    document.getElementById('display-name').innerText=currentUserData.name;
+    const prod=currentUserData.products[selectedProductIndex];
+    document.getElementById('hidden-name').value=currentUserData.name;
+    document.getElementById('hidden-product-id').value=prod.rowId;
+    document.getElementById('hidden-product-name').value=prod.productName;
+    document.getElementById('form-product-name-lbl').innerText=prod.productName;
+    const imgC=document.getElementById('user-product-image-container');
+    if(prod.productImage&&prod.productImage.startsWith('http')){ document.getElementById('user-product-image').src=prod.productImage; document.getElementById('user-product-image-name').innerText=prod.productName; imgC.classList.remove('hidden'); }
+    else imgC.classList.add('hidden');
+    const due=prod.dueDate||config.globalDate;
+    document.getElementById('user-due-date').innerText='วันที่ '+due;
+    const days=calculateDaysLeft(due);
+    document.getElementById('user-days-left').innerText=days===0?'วันนี้!':days+' วัน';
+    if(days<=2){ document.getElementById('days-badge').style.background='#fee2e2'; document.getElementById('user-days-left').style.color='#ef4444'; document.getElementById('days-badge-label').style.color='#ef4444'; }
+    const totalP=Number(prod.totalPeriods||0), paidP=Number(prod.paidPeriods||0);
+    document.getElementById('user-period-paid').innerText=paidP;
+    document.getElementById('user-period-total').innerText=totalP;
+    document.getElementById('ring-paid-lbl').innerText=paidP;
+    document.getElementById('ring-total-lbl').innerText=totalP;
+    document.getElementById('progress-ring').style.strokeDashoffset=213.6*(1-(totalP>0?paidP/totalP:0));
+    const total=Number(prod.totalAmount||0), inst=Number(prod.installment||0), other=Number(prod.otherExp||0);
+    const balance=total-(inst*paidP);
+    document.getElementById('user-total').innerText=total.toLocaleString()+' ฿';
+    document.getElementById('user-balance').innerText=(balance<0?0:balance).toLocaleString()+' ฿';
+    const due2=inst+other;
+    document.getElementById('user-installment').innerHTML=due2.toLocaleString()+' <span class="text-base text-gray-400 font-medium">฿</span>';
+    document.getElementById('form-amount').value=due2;
+    const qr=document.getElementById('user-qr-section');
+    if(config.promptpay&&due2>0){ document.getElementById('display-qr-code').src='https://promptpay.io/'+config.promptpay+'/'+due2+'.png'; document.getElementById('qr-promptpay-text').innerText=config.promptpay; qr.classList.remove('hidden'); }
+    else qr.classList.add('hidden');
+  }
+
+  function switchUserTab(tab){
+    ['home','history','settings'].forEach(t=>{ document.getElementById('uview-'+t).classList.add('hidden'); document.getElementById('utab-'+t).classList.remove('active'); });
+    document.getElementById('uview-'+tab).classList.remove('hidden'); document.getElementById('utab-'+tab).classList.add('active');
+    if(tab==='history'){ document.getElementById('history-product-name-lbl').innerText=currentUserData.products[selectedProductIndex].productName; renderUserPersonalHistory(); }
+  }
+
+  function refreshUserHistory(){ Swal.fire({title:'กำลังอัปเดต...',showConfirmButton:false,timer:1000}); loadDataSilently(); }
+
+  function renderUserPersonalHistory(){
+    const container=document.getElementById('user-personal-history');
+    if(!currentUserData||!currentUserData.products.length)return;
+    const prod=currentUserData.products[selectedProductIndex];
+    const tp=parseInt(prod.totalPeriods)||0;
+    const myLogs=config.logs.filter(l=>l.name===currentUserData.name&&l.productRowId===String(prod.rowId));
+    if(tp===0){container.innerHTML='<div class="text-center text-gray-400 py-8 flex flex-col items-center"><i class="ph ph-package text-4xl mb-2"></i><p class="text-sm">ยังไม่ได้ตั้งค่างวด</p></div>';return;}
+    const max=Math.max(tp,myLogs.length);
+    let html='<div class="space-y-2.5">';
+    const color=config.appColor||'#10b981';
+    for(let i=1;i<=max;i++){
+      const log=myLogs[i-1];
+      if(log){
+        const d=(log.date||'').replace(/'/g,''),amt=(log.amount||'').replace(/'/g,''),slip=(log.slip||'').replace(/'/g,'');
+        const pending=log.status.includes('รอตรวจสอบ');
+        const bc=pending?'#f59e0b':color;
+        const badge=pending?'<span class="s-pending text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><i class="ph-fill ph-clock"></i> รอยืนยัน</span>':'<span class="s-ok text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><i class="ph-fill ph-check-circle"></i> ยืนยันแล้ว</span>';
+        html+=`<div class="bg-white rounded-2xl p-3.5 flex justify-between items-center shadow-sm" style="border-left:3px solid ${bc}"><div class="ml-1"><div class="flex items-center gap-2 mb-1"><span class="bg-gray-100 text-gray-500 font-bold text-xs px-2 py-0.5 rounded-lg">งวด ${i}</span><span class="text-xs text-gray-400">${d.split(' ')[0]}</span></div><p class="font-bold text-gray-800">${amt} ฿</p></div><div class="flex flex-col items-end gap-1.5">${badge}<button onclick="openSlipModal('${slip}')" class="text-xs text-blue-500 font-medium">ดูสลิป</button></div></div>`;
+      } else {
+        html+=`<div class="bg-gray-50 rounded-2xl p-3.5 flex justify-between items-center opacity-60 border border-dashed border-gray-200"><div class="ml-1"><span class="bg-white text-gray-400 font-bold text-xs px-2 py-0.5 rounded-lg border border-gray-200">งวด ${i}</span><p class="font-medium text-gray-300 mt-1 text-sm">-</p></div><span class="s-none text-[10px] font-medium px-2 py-1 rounded-full">ยังไม่ชำระ</span></div>`;
+      }
+    }
+    html+='</div>'; container.innerHTML=html;
+  }
+
+  function saveMyProfile(){
+    const name=document.getElementById('my-name').value.trim(), pass=document.getElementById('my-pass').value.trim();
+    if(!name||!pass)return Swal.fire({icon:'warning',title:'เตือน',text:'กรุณากรอกข้อมูลให้ครบ'});
+    Swal.fire({title:'กำลังบันทึก...',showConfirmButton:false});
+    google.script.run.withSuccessHandler(res=>{
+      if(res==='Success'){ currentUserData.name=name; currentUserData.password=pass; document.getElementById('display-name').innerText=name; Swal.fire({icon:'success',title:'อัปเดตสำเร็จ!',timer:1500,showConfirmButton:false}); }
+      else Swal.fire({icon:'error',text:res});
+    }).saveUserPersonal({...currentUserData,name,password:pass});
+  }
+
+  function submitData(){
+    const btn=document.getElementById('submitBtn');
+    btn.disabled=true; btn.innerHTML='<i class="ph ph-spinner text-lg animate-spin"></i> กำลังส่ง...';
+    google.script.run.withSuccessHandler(res=>{
+      if(res==='Success'){ Swal.fire({icon:'success',title:'ส่งสำเร็จ!',text:'รอแอดมินตรวจสอบ',confirmButtonColor:config.appColor||'#10b981'}); document.getElementById('paymentForm').reset(); const p=currentUserData.products[selectedProductIndex]; document.getElementById('form-amount').value=Number(p.installment)+Number(p.otherExp); loadDataSilently(); }
+      else Swal.fire({icon:'error',title:'ผิดพลาด',text:res,confirmButtonColor:'#ef4444'});
+      btn.disabled=false; btn.innerHTML='<i class="ph ph-paper-plane-right text-lg"></i> ส่งสลิปยืนยัน';
+    }).uploadPayment(document.getElementById('paymentForm'));
+  }
+
+  function switchAdminTab(tab){
+    ['users','history','settings'].forEach(t=>{ document.getElementById('view-'+t).classList.add('hidden'); document.getElementById('tab-'+t).classList.remove('active'); });
+    document.getElementById('view-'+tab).classList.remove('hidden'); document.getElementById('tab-'+tab).classList.add('active');
+  }
+
+  function setupAdminData(){
+    document.getElementById('set-folder').value=config.folderId||''; document.getElementById('set-color').value=config.appColor||''; document.getElementById('set-date').value=config.globalDate||''; document.getElementById('set-promptpay').value=config.promptpay||''; document.getElementById('set-admin-user').value=config.adminUser||'';
+    renderAdminUserList(); renderAdminLogs();
+  }
+
+  function saveAdminSettings(){
+    const btn=document.getElementById('btnSaveSettings'); btn.innerText='กำลังบันทึก...'; btn.disabled=true;
+    google.script.run.withSuccessHandler(res=>{
+      if(res==='Success'){ Swal.fire({icon:'success',title:'บันทึกสำเร็จ',timer:1500,showConfirmButton:false}); loadDataSilently(); }
+      else Swal.fire({icon:'error',text:res});
+      btn.innerText='บันทึกการตั้งค่า'; btn.disabled=false;
+    }).saveGlobalSettings({folderId:document.getElementById('set-folder').value,appColor:document.getElementById('set-color').value,globalDate:document.getElementById('set-date').value,promptpay:document.getElementById('set-promptpay').value,adminUser:document.getElementById('set-admin-user').value,adminPass:config.adminPass});
+  }
+
+  function renderAdminUserList(){
+    const c=document.getElementById('user-list-container');
+    if(!config.users||!Object.keys(config.users).length){ c.innerHTML='<div class="text-center p-8 bg-white rounded-2xl shadow-sm text-gray-400"><i class="ph ph-users text-4xl mb-2 block"></i>ยังไม่มีลูกค้า</div>'; return; }
+    const color=config.appColor||'#10b981', dark=shadeColor(color,-18);
+    c.innerHTML=Object.keys(config.users).map(u=>{
+      const user=config.users[u];
+      const prods=user.products.map((p,idx)=>{
+        const bal=p.totalAmount-(p.installment*p.paidPeriods), pct=p.totalPeriods>0?Math.round((p.paidPeriods/p.totalPeriods)*100):0;
+        const img=(p.productImage&&p.productImage.startsWith('http'))?`<img src="${p.productImage}" class="w-10 h-10 rounded-xl object-cover border border-gray-100 shrink-0">`:`<div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-300 shrink-0"><i class="ph ph-image text-xl"></i></div>`;
+        return `<div class="mt-3 pl-3 py-1" style="border-left:2px solid ${color}40"><div class="flex justify-between items-center"><div class="flex items-center gap-2.5">${img}<div><p class="text-sm font-bold text-gray-700">${p.productName}</p><p class="text-[11px] text-gray-400 mt-0.5">${p.paidPeriods}/${p.totalPeriods} งวด · คงเหลือ ${bal<0?0:bal.toLocaleString()} ฿</p><div class="w-24 h-1.5 bg-gray-100 rounded-full mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:linear-gradient(90deg,${color},${dark})"></div></div></div></div><div class="flex gap-1.5 shrink-0"><button onclick='editAdminUserProduct(${JSON.stringify(user)},${idx})' class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2.5 py-1.5 rounded-lg font-medium">แก้ไข</button><button onclick="deleteProduct(${p.rowId},'${p.productName}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-2 py-1.5 rounded-lg"><i class="ph ph-trash"></i></button></div></div></div>`;
+      }).join('');
+      return `<div class="card p-4"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shrink-0" style="background:linear-gradient(135deg,${color},${dark})">${user.name.charAt(0)}</div><div><p class="font-bold text-gray-800">${user.name}</p><p class="text-xs text-gray-400">@${u} · ${user.products.length} สินค้า</p></div></div><button onclick='editAdminUserProduct(${JSON.stringify(user)},0)' class="text-xs px-3 py-1.5 rounded-xl font-bold text-white app-theme-bg">+ สินค้า</button></div>${prods}</div>`;
+    }).join('');
+  }
+
+  function renderAdminLogs(){
+    const c=document.getElementById('admin-logs-container');
+    const logs=adminLogFilter==='pending'?config.logs.filter(l=>l.status.includes('รอตรวจสอบ')):config.logs;
+    if(!logs||!logs.length){ c.innerHTML='<div class="text-center p-8 bg-white rounded-2xl shadow-sm text-gray-400"><i class="ph ph-inbox text-4xl mb-2 block"></i>ไม่มีรายการ</div>'; return; }
+    c.innerHTML=[...logs].reverse().map(log=>{
+      const pending=log.status.includes('รอตรวจสอบ');
+      const d=(log.date||'').replace(/'/g,''), amt=(log.amount||'').replace(/'/g,''), slip=(log.slip||'').replace(/'/g,'');
+      const badge=pending?'<span class="s-pending text-[10px] font-bold px-2 py-0.5 rounded-full">รอยืนยัน</span>':'<span class="s-ok text-[10px] font-bold px-2 py-0.5 rounded-full">ยืนยันแล้ว</span>';
+      return `<div class="card p-4"><div class="flex justify-between items-start"><div><p class="font-bold text-gray-800">${log.name||''}</p><p class="text-sm text-gray-500 mt-0.5">${log.productName||''}</p><p class="text-xs text-gray-400 mt-1">${d.split(' ')[0]}</p></div><div class="text-right"><p class="font-black text-lg text-gray-800">${amt} ฿</p>${badge}</div></div><div class="mt-3 pt-3 border-t border-gray-100 flex gap-2 flex-wrap"><button onclick="openSlipModal('${slip}')" class="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg font-medium flex items-center gap-1"><i class="ph ph-image"></i> ดูสลิป</button>${pending?`<button onclick="approveLog('${log.rowId}')" class="text-xs px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg font-bold flex items-center gap-1"><i class="ph ph-check"></i> อนุมัติ</button><button onclick="rejectLog('${log.rowId}')" class="text-xs px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg flex items-center gap-1"><i class="ph ph-x"></i> ปฏิเสธ</button>`:''}</div></div>`;
+    }).join('');
+  }
+
+  function filterAdminLogs(f){
+    adminLogFilter=f;
+    const color=config.appColor||'#10b981', dark=shadeColor(color,-18);
+    const grad=`linear-gradient(135deg,${color},${dark})`;
+    ['pending','all'].forEach(id=>{
+      const btn=document.getElementById('flt-'+id), active=id===f;
+      btn.style.background=active?grad:'white'; btn.style.color=active?'white':'#6b7280'; btn.style.borderColor=active?'transparent':'#e5e7eb';
+    });
+    renderAdminLogs();
+  }
+
+  function approveLog(rowId){ Swal.fire({title:'อนุมัติรายการนี้?',icon:'question',showCancelButton:true,confirmButtonText:'อนุมัติ',cancelButtonText:'ยกเลิก',confirmButtonColor:config.appColor||'#10b981'}).then(r=>{ if(r.isConfirmed){ Swal.fire({title:'กำลังดำเนินการ...',showConfirmButton:false}); google.script.run.withSuccessHandler(res=>{ if(res==='Success'){Swal.fire({icon:'success',timer:1500,showConfirmButton:false});loadDataSilently();}else Swal.fire({icon:'error',text:res}); }).approvePayment(rowId); } }); }
+  function rejectLog(rowId){ Swal.fire({title:'ปฏิเสธรายการนี้?',icon:'warning',showCancelButton:true,confirmButtonText:'ปฏิเสธ',cancelButtonText:'ยกเลิก',confirmButtonColor:'#ef4444'}).then(r=>{ if(r.isConfirmed){ Swal.fire({title:'กำลังดำเนินการ...',showConfirmButton:false}); google.script.run.withSuccessHandler(res=>{ if(res==='Success'){Swal.fire({icon:'success',timer:1500,showConfirmButton:false});loadDataSilently();}else Swal.fire({icon:'error',text:res}); }).rejectPayment(rowId); } }); }
+
+  function showAdminUserForm(){
+    const m=document.getElementById('adminUserModal');
+    document.getElementById('adminUserForm').reset(); document.getElementById('u-viewOldImage').classList.add('hidden');
+    document.getElementById('u-rowId').value=''; document.getElementById('u-oldImage').value='';
+    document.getElementById('user-form-title').innerText='เพิ่มลูกค้า/สินค้าใหม่';
+    m.style.display='flex'; requestAnimationFrame(()=>m.classList.add('show'));
+  }
+  function closeAdminUserForm(){ const m=document.getElementById('adminUserModal'); m.classList.remove('show'); setTimeout(()=>{ m.style.display='none'; },200); }
+
+  function editAdminUserProduct(userData,productIdx){
+    const prod=userData.products[productIdx];
+    document.getElementById('user-form-title').innerText='แก้ไขข้อมูลสินค้า';
+    document.getElementById('u-rowId').value=prod.rowId; document.getElementById('u-oldImage').value=prod.productImage||'';
+    document.getElementById('u-name').value=userData.name; document.getElementById('u-user').value=userData.username; document.getElementById('u-pass').value=userData.password;
+    document.getElementById('u-productName').value=prod.productName; document.getElementById('u-total').value=prod.totalAmount; document.getElementById('u-installment').value=prod.installment;
+    document.getElementById('u-totalPeriods').value=prod.totalPeriods; document.getElementById('u-paidPeriods').value=prod.paidPeriods; document.getElementById('u-other').value=prod.otherExp||0; document.getElementById('u-date').value=prod.dueDate||'';
+    if(prod.productImage){ const a=document.getElementById('u-viewOldImage'); a.href=prod.productImage; a.classList.remove('hidden'); }
+    const m=document.getElementById('adminUserModal'); m.style.display='flex'; requestAnimationFrame(()=>m.classList.add('show'));
+  }
+
+  function deleteProduct(rowId,name){ Swal.fire({title:`ลบ "${name}"?`,text:'ไม่สามารถกู้คืนได้',icon:'warning',showCancelButton:true,confirmButtonText:'ลบ',cancelButtonText:'ยกเลิก',confirmButtonColor:'#ef4444'}).then(r=>{ if(r.isConfirmed){ Swal.fire({title:'กำลังลบ...',showConfirmButton:false}); google.script.run.withSuccessHandler(res=>{ if(res==='Success'){Swal.fire({icon:'success',timer:1500,showConfirmButton:false});loadDataSilently();}else Swal.fire({icon:'error',text:res}); }).deleteProductRow(rowId); } }); }
+
+  function submitAdminUser(){
+    const btn=document.getElementById('btnSaveUser'); btn.innerText='กำลังบันทึก...'; btn.disabled=true;
+    google.script.run.withSuccessHandler(res=>{
+      if(res==='Success'){ Swal.fire({icon:'success',title:'บันทึกสำเร็จ',timer:1500,showConfirmButton:false}); closeAdminUserForm(); loadDataSilently(); }
+      else Swal.fire({icon:'error',text:res});
+      btn.innerText='บันทึก'; btn.disabled=false;
+    }).saveUser(document.getElementById('adminUserForm'));
+  }
+</script>
+</body>
+</html>
