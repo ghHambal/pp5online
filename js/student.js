@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { getMyStudentProfile, getMyExamRequests } from './student-api.js'
+import { getMyStudentProfile, getMyExamRequests, getHouseColorHex } from './student-api.js'
 import {
   renderStudentOverview,
   renderStudentSubjects,
@@ -31,6 +31,11 @@ async function init() {
   _student = await getMyStudentProfile()
   updateLastSeen('students').catch(() => {})
   logLogin('student').catch(() => {})
+
+  if (_student?.house_color) {
+    const hex = await getHouseColorHex(_student.house_color).catch(() => null)
+    if (hex) await applyThemeForRole('student', { houseColor: hex })
+  }
   if (!_student) {
     document.getElementById('stu-content').innerHTML = `
       <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">
@@ -75,6 +80,29 @@ async function _loadHeader() {
     avatarEl.innerHTML = `<img src="${_student.image_url}" class="w-full h-full object-cover"/>`
   } else {
     avatarEl.textContent = name.charAt(0).toUpperCase()
+  }
+
+  // house color + shirt size badges
+  const houseInfoEl = document.getElementById('stu-house-info')
+  if (houseInfoEl) {
+    const hc = _student?.house_color
+    const sz = _student?.sports_shirt_size
+    if (hc || sz) {
+      houseInfoEl.classList.remove('hidden')
+      const hex = hc ? (await getHouseColorHex(hc).catch(() => null)) : null
+      const colorBadge = hc
+        ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold text-white"
+               style="background:${hex ?? 'var(--theme-primary)'}">
+             <span class="w-1.5 h-1.5 rounded-full bg-white/60 inline-block"></span>สี${hc}
+           </span>`
+        : ''
+      const shirtBadge = sz
+        ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white/70 text-gray-600 border border-gray-200">
+             เสื้อ ${sz}
+           </span>`
+        : ''
+      houseInfoEl.innerHTML = colorBadge + shirtBadge
+    }
   }
 }
 

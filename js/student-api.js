@@ -6,7 +6,7 @@ export async function getMyStudentProfile() {
   if (!session) return null
   const { data, error } = await supabase
     .from('students')
-    .select('id, student_code, full_name, main_room, religion_room, image_url, profile_id')
+    .select('id, student_code, full_name, main_room, religion_room, image_url, profile_id, house_color, sports_shirt_size')
     .eq('profile_id', session.user.id)
     .maybeSingle()
   if (error) throw error
@@ -191,4 +191,16 @@ export async function getMyPrayerRecords(studentId) {
     .order('check_date')
   if (error) throw error
   return data ?? []
+}
+
+// ─── House Color ──────────────────────────────────────────────────────────────
+export async function getHouseColorHex(colorName) {
+  if (!colorName) return null
+  const { data } = await supabase
+    .from('house_groups')
+    .select('color_hex, gender')
+    .eq('name', colorName)
+    .limit(1)
+    .maybeSingle()
+  return data?.color_hex ?? null
 }

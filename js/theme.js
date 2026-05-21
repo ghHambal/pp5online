@@ -64,7 +64,10 @@ export async function getThemeConfig(force = false) {
 export function pickThemeColor(cfg = {}, role = 'app', context = {}) {
   if (role === 'admin') return safeHex(cfg.adminColor, cfg.appColor || DEFAULTS.adminColor)
   if (role === 'teacher') return safeHex(teacherColor(cfg, context), cfg.teacherDefaultColor || DEFAULTS.teacherDefaultColor)
-  if (role === 'student') return safeHex(cfg.studentColor, cfg.appColor || DEFAULTS.studentColor)
+  if (role === 'student') {
+    const houseHex = safeHex(context.houseColor, '')
+    return houseHex || safeHex(cfg.studentColor, cfg.appColor || DEFAULTS.studentColor)
+  }
   if (role === 'login') return safeHex(cfg.loginColor, cfg.appColor || DEFAULTS.loginColor)
   return safeHex(cfg.appColor, DEFAULTS.appColor)
 }
