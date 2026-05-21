@@ -4064,9 +4064,10 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
   document.body.appendChild(modal)
 
   // ── auto-save state ──────────────────────────────────────────────────────────
-  let _infoDirty  = false
-  let _infoSaving = false
-  let _infoTimer  = null
+  let _infoDirty   = false
+  let _infoSaving  = false
+  let _infoTimer   = null
+  let _hasChanges  = false   // true เมื่อมีการบันทึก DB จริง
 
   const _setInfoStatus = (state) => {
     const el = modal.querySelector('#cem-info-status')
@@ -4101,6 +4102,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         day6_date:       modal.querySelector('#cem-day6')?.value || null,
       })
       _infoDirty = false
+      _hasChanges = true
       _setInfoStatus('saved')
     } catch {
       _setInfoStatus('error')
@@ -4348,18 +4350,18 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
             cfm.remove()
             await linkClassToSchedule(cls.id, sid).catch(() => {})
             pendingLinked.add(sid); currentLinked.add(sid)
-            _refreshCell(cell)
+            _hasChanges = true; _refreshCell(cell)
             showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
           })
         } else if (state === 'selected') {
           await unlinkClassFromSchedule(cls.id, sid).catch(() => {})
           pendingLinked.delete(sid); currentLinked.delete(sid)
-          _refreshCell(cell)
+          _hasChanges = true; _refreshCell(cell)
           showToast('ยกเลิกการเชื่อมแล้ว', 'info')
         } else {
           await linkClassToSchedule(cls.id, sid).catch(() => {})
           pendingLinked.add(sid); currentLinked.add(sid)
-          _refreshCell(cell)
+          _hasChanges = true; _refreshCell(cell)
           showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
         }
       })
@@ -4528,6 +4530,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
       roomSel.addEventListener('change', async () => {
         const roomId = roomSel.value ? parseInt(roomSel.value) : null
         await assignClassroom(cls.id, roomId).catch(() => {})
+        _hasChanges = true
         showToast('บันทึกห้องสอนแล้ว ✅', 'success')
       })
     }
@@ -4540,7 +4543,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
       await _saveInfoNow().catch(() => {})
     }
     modal.remove()
-    if (onSaved) onSaved()
+    if (_hasChanges && onSaved) onSaved()
   }
 
   showTab(initialTab)
