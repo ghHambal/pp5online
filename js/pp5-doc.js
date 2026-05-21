@@ -775,10 +775,13 @@ function _buildPage2(d) {
   const rowHeader = thRowHeader ?? 'ข้อ'
   // ไม่ pad แถวว่าง — ใช้ .std-fill-row ยืดเต็มพื้นที่ที่เหลือแทน
   const rows    = rawRows
-  const _joinInts = (arr) => Array.isArray(arr) && arr.length ? arr.join(',') : ''
-  const allObj   = _joinInts(courseDoc?.between_objective_items)
-  const midObj   = _joinInts(courseDoc?.midterm_objective_items)
-  const finalObj = _joinInts(courseDoc?.final_objective_items)
+  const _joinInts = (arr, extra = '') => {
+    const nums = Array.isArray(arr) && arr.length ? arr.join(', ') : ''
+    return [nums, (extra ?? '').trim()].filter(Boolean).join(', ')
+  }
+  const allObj   = _joinInts(courseDoc?.between_objective_items, courseDoc?.between_objective_extra)
+  const midObj   = _joinInts(courseDoc?.midterm_objective_items, courseDoc?.midterm_objective_extra)
+  const finalObj = _joinInts(courseDoc?.final_objective_items,   courseDoc?.final_objective_extra)
   const isReligion = ['AGM','AGMVOC'].includes(ms.subject_group)
 
   const CHAR_L = ['1 รักชาติ ศาสน์ กษัตริย์','2 ซื่อสัตย์สุจริต','3 มีวินัย','4 ใฝ่เรียนรู้','5 อยู่อย่างพอเพียง']

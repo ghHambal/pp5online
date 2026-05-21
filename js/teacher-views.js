@@ -1203,6 +1203,9 @@ export async function openCourseDocPage2Modal(teacher, course) {
   let midItems     = uniqueInts(existing?.midterm_objective_items)
   let betweenItems = uniqueInts(existing?.between_objective_items)
   let finalItems   = uniqueInts(existing?.final_objective_items)
+  let betweenExtra = existing?.between_objective_extra ?? ''
+  let midExtra     = existing?.midterm_objective_extra ?? ''
+  let finalExtra   = existing?.final_objective_extra   ?? ''
   let textDir      = ['auto', 'rtl', 'ltr'].includes(existing?.text_direction) ? existing.text_direction : 'auto'
   let description  = existing?.description || ''
   let signerName   = existing?.signer_name || course.learning_area || ''
@@ -1240,7 +1243,11 @@ export async function openCourseDocPage2Modal(teacher, course) {
   document.body.appendChild(modal)
 
   const dirAttr = () => textDir === 'auto' ? 'auto' : textDir
-  const selectedText = items => items.length ? [...items].sort((a, b) => a - b).join(', ') : i18n().notSelected
+  const selectedText = (items, extra = '') => {
+    const nums = items.length ? [...items].sort((a, b) => a - b).join(', ') : ''
+    const parts = [nums, extra.trim()].filter(Boolean)
+    return parts.length ? parts.join(', ') : i18n().notSelected
+  }
   const objectiveOptions = () => {
     const max = rows.length
     return Array.from({ length: max }, (_, i) => i + 1)
@@ -1411,15 +1418,15 @@ export async function openCourseDocPage2Modal(teacher, course) {
             <div class="grid sm:grid-cols-3 gap-3">
               <button id="cd2-pick-between" class="${textAlign} rounded-2xl border border-gray-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition">
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${L.between}</p>
-                <p class="mt-2 text-base font-bold text-blue-600 leading-snug">${_htmlEsc(selectedText(betweenItems))}</p>
+                <p class="mt-2 text-base font-bold text-blue-600 leading-snug">${_htmlEsc(selectedText(betweenItems, betweenExtra))}</p>
               </button>
               <button id="cd2-pick-mid" class="${textAlign} rounded-2xl border border-gray-200 p-4 hover:border-emerald-300 hover:bg-emerald-50 transition">
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${L.mid}</p>
-                <p class="mt-2 text-base font-bold text-emerald-700 leading-snug">${_htmlEsc(selectedText(midItems))}</p>
+                <p class="mt-2 text-base font-bold text-emerald-700 leading-snug">${_htmlEsc(selectedText(midItems, midExtra))}</p>
               </button>
               <button id="cd2-pick-final" class="${textAlign} rounded-2xl border border-gray-200 p-4 hover:border-purple-300 hover:bg-purple-50 transition">
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${L.final}</p>
-                <p class="mt-2 text-base font-bold text-purple-700 leading-snug">${_htmlEsc(selectedText(finalItems))}</p>
+                <p class="mt-2 text-base font-bold text-purple-700 leading-snug">${_htmlEsc(selectedText(finalItems, finalExtra))}</p>
               </button>
             </div>
             ${opts.length ? '' : `<p class="text-xs text-amber-600 mt-3">${L.noOpts}</p>`}
@@ -1551,12 +1558,19 @@ Return JSON object เท่านั้น:
   const openPicker = kind => {
     syncFromDom()
     const current = kind === 'mid' ? midItems : kind === 'between' ? betweenItems : finalItems
+    const currentExtra = kind === 'mid' ? midExtra : kind === 'between' ? betweenExtra : finalExtra
     const opts = objectiveOptions()
     if (!opts.length) { showToast('กรุณาพิมพ์รายการในตารางก่อน', 'warning'); return }
     document.getElementById('cd2-picker')?.remove()
     const L = i18n()
     const accents = { mid:'accent-emerald-600', between:'accent-blue-600', final:'accent-purple-600' }
-    const okCls   = { mid:'bg-emerald-600', between:'bg-blue-600', final:'bg-purple-600' }
+    const okCls   = { mid:'bg-emerald-600 hover:bg-emerald-700', between:'bg-blue-600 hover:bg-blue-700', final:'bg-purple-600 hover:bg-purple-700' }
+    // preview: ข้อความแรกสุดที่ไม่ว่างของแถวนั้น ตัดที่ 30 ตัวอักษร
+    const rowPreview = n => {
+      const cell = (rows[n - 1] ?? []).find(c => String(c ?? '').trim())
+      const txt = String(cell ?? '').trim()
+      return txt.length > 30 ? txt.slice(0, 30) + '…' : txt
+    }
     const picker = document.createElement('div')
     picker.id = 'cd2-picker'
     picker.className = 'fixed inset-0 z-[180] flex items-center justify-center bg-black/40 p-4'
@@ -1566,14 +1580,21 @@ Return JSON object เท่านั้น:
           <h3 class="font-bold text-gray-800">${L.pickerTitles[kind]}</h3>
           <button id="cd2-picker-close" class="text-gray-400 hover:text-gray-600 text-xl">×</button>
         </div>
-        <div class="p-5 grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[55vh] overflow-y-auto">
+        <div class="p-4 space-y-2 max-h-[45vh] overflow-y-auto">
           ${opts.map(n => `
-            <label class="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" class="cd2-choice ${accents[kind]}" value="${n}" ${current.includes(n) ? 'checked' : ''}>
-              ${n}
+            <label class="flex items-center gap-3 rounded-xl border border-gray-200 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" class="cd2-choice ${accents[kind]} w-4 h-4 flex-shrink-0" value="${n}" ${current.includes(n) ? 'checked' : ''}>
+              <span class="text-sm font-bold text-gray-700 w-5 flex-shrink-0">${n}.</span>
+              <span class="text-xs text-gray-500 leading-snug line-clamp-2">${_htmlEsc(rowPreview(n))}</span>
             </label>`).join('')}
         </div>
-        <div class="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+        <div class="px-4 pt-3 pb-2 border-t border-gray-100">
+          <p class="text-xs font-semibold text-gray-500 mb-1.5">พิมพ์เพิ่มเติม <span class="font-normal text-gray-400">(เช่น 4, 5 หรือข้อความอิสระ)</span></p>
+          <textarea id="cd2-picker-extra" rows="2"
+            class="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
+            placeholder="พิมพ์ข้อที่เพิ่มเติม หรือข้อความอื่น…">${_htmlEsc(currentExtra)}</textarea>
+        </div>
+        <div class="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
           <button id="cd2-picker-cancel" class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm">${L.pickerCancel}</button>
           <button id="cd2-picker-ok" class="px-5 py-2 rounded-xl ${okCls[kind]} text-white text-sm font-semibold">${L.pickerOk}</button>
         </div>
@@ -1584,9 +1605,10 @@ Return JSON object เท่านั้น:
     picker.querySelector('#cd2-picker-cancel').addEventListener('click', close)
     picker.querySelector('#cd2-picker-ok').addEventListener('click', () => {
       const picked = [...picker.querySelectorAll('.cd2-choice:checked')].map(el => Number(el.value))
-      if (kind === 'mid') midItems = picked
-      else if (kind === 'between') betweenItems = picked
-      else finalItems = picked
+      const extra  = picker.querySelector('#cd2-picker-extra').value.trim()
+      if (kind === 'mid')     { midItems = picked;     midExtra = extra }
+      else if (kind === 'between') { betweenItems = picked; betweenExtra = extra }
+      else                   { finalItems = picked;   finalExtra = extra }
       close(); render()
     })
   }
@@ -1811,6 +1833,9 @@ Output language: ${L.aiLang}
           midterm_objective_items: midItems,
           between_objective_items: betweenItems,
           final_objective_items: finalItems,
+          midterm_objective_extra: midExtra,
+          between_objective_extra: betweenExtra,
+          final_objective_extra: finalExtra,
           signer_name: signer.trim() || null,
           text_direction: textDir,
           updated_by: teacher?.id ?? null,
