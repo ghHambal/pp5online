@@ -1845,7 +1845,7 @@ function _enterSupervisorMode() {
   _supervisorMode = true
   if (nav) _savedNavHTML = nav.innerHTML
   _renderSupervisorNav(nav, main, _isAlsoAdmin)
-  renderSupervisorDashboard(main, _teacher)
+  renderSupervisorDashboard(main, _teacher, _isAlsoAdmin)
 }
 
 function _exitSupervisorMode() {
@@ -1953,7 +1953,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     ${allowedItems.map(m => _btn(m.key, m.icon, m.label)).join('')}`
 
   nav.querySelector('[data-sv="back"]').onclick = _exitSupervisorMode
-  nav.querySelector('[data-sv="dashboard"]').onclick = () => renderSupervisorDashboard(main, _teacher)
+  nav.querySelector('[data-sv="dashboard"]').onclick = () => renderSupervisorDashboard(main, _teacher, _isAlsoAdmin)
   allowedItems.forEach(m => {
     nav.querySelector(`[data-sv="${m.key}"]`)?.addEventListener('click', () => m.fn(_teacher, isAdmin))
   })

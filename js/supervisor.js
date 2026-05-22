@@ -6,6 +6,7 @@ import {
   getAttendanceSummaryByClass, getScoreSummaryByClass,
   getClassStudentsAndScores, getClassAttendanceFull,
   assignTeacherToDept,
+  getMySchedule, getPeriods, getSystemConfig,
 } from './api.js'
 
 let _phrases = {}  // cache: { metric: [phrase, ...] }
@@ -104,16 +105,19 @@ let _searchQ = ''
 let _allMetrics = []
 let _selfTeacher = null
 let _depts = []
-let _svContainer = null  // main container reference for back navigation
+let _svContainer = null
+let _isAdminView = false
 
-export async function renderSupervisorDashboard(container, teacher) {
+export async function renderSupervisorDashboard(container, teacher, isAdmin = false) {
   _selfTeacher = teacher
-  _svContainer = container  // store for back navigation
+  _svContainer = container
+  _isAdminView = isAdmin
+  const roleLabel = isAdmin ? 'แอดมิน (ดูทั้งหมด)' : (POS_LABEL[teacher.position] ?? 'หัวหน้า')
   container.innerHTML = `<div id="sv-root" style="padding:20px;max-width:1100px;margin:0 auto;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
       <div>
         <h2 style="font-size:18px;font-weight:700;margin:0;">Dashboard ติดตามความคืบหน้า</h2>
-        <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">${POS_LABEL[teacher.position]??'หัวหน้า'}${teacher.dept?' — '+teacher.dept:''}<span style="color:#9ca3af;"> — ${teacher.full_name}</span></p>
+        <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">${roleLabel}${teacher.dept&&!isAdmin?' — '+teacher.dept:''}<span style="color:#9ca3af;"> — ${teacher.full_name}</span></p>
       </div>
     </div>
     <div id="sv-loading" style="text-align:center;padding:40px;color:#6b7280;">⏳ กำลังโหลดข้อมูล...</div>
@@ -122,7 +126,7 @@ export async function renderSupervisorDashboard(container, teacher) {
 
   try {
     ;[_allMetrics, _depts] = await Promise.all([getSupervisorProgress(), getDepartments()])
-    const metrics = _filterByRole(_allMetrics, teacher)
+    const metrics = isAdmin ? _allMetrics : _filterByRole(_allMetrics, teacher)
     document.getElementById('sv-loading').style.display = 'none'
     _renderDashboard(document.getElementById('sv-dash'), metrics, teacher)
   } catch(e) {
@@ -427,8 +431,14 @@ function _showDetail(m) {
       </div>
 
       <!-- Class cards -->
-      <div style="font-weight:700;font-size:14px;color:#374151;margin-bottom:10px;">
-        📚 รายวิชาที่รับผิดชอบ (${m.classCount} ห้อง)
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:14px;color:#374151;">
+          📚 รายวิชาที่รับผิดชอบ (${m.classCount} ห้อง)
+        </div>
+        <button id="sv-view-schedule"
+          style="padding:5px 14px;background:${m.scheduleCount>0?'#f59e0b':'#e5e7eb'};color:${m.scheduleCount>0?'#fff':'#9ca3af'};border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;font-family:inherit;">
+          🗓 ตารางสอน${m.scheduleCount>0?' ('+m.scheduleCount+' คาบ)':' (ยังไม่มี)'}
+        </button>
       </div>
       <div id="sv-class-list">${classCards}</div>
 
@@ -471,7 +481,7 @@ function _showDetail(m) {
       </div>
     </div>`
 
-  document.getElementById('sv-back').onclick = () => renderSupervisorDashboard(_svContainer, _selfTeacher)
+  document.getElementById('sv-back').onclick = () => renderSupervisorDashboard(_svContainer, _selfTeacher, _isAdminView)
 
   // Profile hover
   const profileArea = document.getElementById('sv-profile-area')
@@ -487,6 +497,23 @@ function _showDetail(m) {
       const cls = m.myClasses.find(c => c.id === parseInt(card.dataset.cid))
       if (cls) _openClassInSupervisor(m, cls)
     })
+  })
+
+  // ปุ่มตารางสอน
+  document.getElementById('sv-view-schedule')?.addEventListener('click', async () => {
+    const btn = document.getElementById('sv-view-schedule')
+    btn.disabled = true; btn.textContent = '⏳ กำลังโหลด...'
+    try {
+      const cfg = await getSystemConfig().catch(() => ({}))
+      const year = parseInt(cfg.academicYear ?? 2568)
+      const sem  = parseInt(cfg.semester ?? 1)
+      const [periods, schedEntries] = await Promise.all([
+        getPeriods().catch(() => []),
+        getMySchedule(m.id, year, sem).catch(() => []),
+      ])
+      btn.disabled = false; btn.innerHTML = `🗓 ตารางสอน${m.scheduleCount>0?' ('+m.scheduleCount+' คาบ)':' (ยังไม่มี)'}`
+      _showSchedulePopup(m, schedEntries, periods)
+    } catch { btn.disabled = false }
   })
 
   // ปพ.5 buttons
@@ -600,6 +627,48 @@ async function _loadPastComments(teacherId) {
       }
     })
   } catch {}
+}
+
+const _DAYS_TH = ['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.']
+function _showSchedulePopup(m, entries, periods) {
+  const overlay = _makeOverlay()
+  const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
+
+  // จัดกลุ่มตามวัน
+  const byDay = {}
+  for (const e of entries) {
+    const d = e.day_of_week
+    if (!byDay[d]) byDay[d] = []
+    byDay[d].push(e)
+  }
+
+  const dayRows = Object.entries(byDay).sort(([a],[b]) => Number(a)-Number(b)).map(([dow, slots]) => {
+    const slotHtml = slots.sort((a,b) => a.period_no - b.period_no).map(s => {
+      const p = periodMap[s.period_no]
+      const timeStr = p ? `${p.start_time?.slice(0,5)}–${p.end_time?.slice(0,5)}` : `คาบ ${s.period_no}`
+      const span = s.span_periods > 1 ? `–${s.period_no + s.span_periods - 1}` : ''
+      return `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:6px 10px;font-size:12px;">
+        <div style="font-weight:600;color:#92400e;">คาบ ${s.period_no}${span}</div>
+        <div style="color:#78350f;font-size:11px;">${timeStr}</div>
+        ${s.subject_name ? `<div style="color:#b45309;font-size:11px;">${s.subject_name}</div>` : ''}
+      </div>`
+    }).join('')
+    return `<div style="margin-bottom:12px;">
+      <div style="font-weight:700;font-size:13px;color:#374151;margin-bottom:6px;">${_DAYS_TH[Number(dow)] ?? dow}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${slotHtml}</div>
+    </div>`
+  }).join('')
+
+  overlay.innerHTML = `<div class="sv-popup" style="width:min(480px,96vw);">
+    <button onclick="this.closest('.sv-overlay').remove()" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
+    <h3 style="font-size:16px;font-weight:700;margin-bottom:4px;">🗓 ตารางสอน</h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:16px;">${m.full_name} · ${entries.length} คาบ/สัปดาห์</p>
+    ${entries.length
+      ? dayRows
+      : `<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;">ยังไม่ได้ตั้งตารางสอน</div>`}
+  </div>`
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove() })
 }
 
 function _showTeacherProfile(m) {
