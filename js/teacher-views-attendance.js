@@ -126,16 +126,22 @@ export async function renderAttendanceGrid(teacher, classData) {
             </tr>
             <!-- Row 2: dates (clickable) -->
             <tr style="position:sticky;top:24px;z-index:30">
-              <th class="${stickyL} bg-gray-50" style="width:32px"></th>
-              <th class="${stickyM} bg-gray-50" style="left:32px;width:72px"></th>
-              <th class="${stickyM} bg-gray-50" style="left:104px;min-width:${nameW}px"></th>
+              <th class="${stickyL} bg-emerald-50/60" style="width:32px"></th>
+              <th class="${stickyM} bg-emerald-50/60" style="left:32px;width:72px"></th>
+              <th class="${stickyM} bg-emerald-50/60 text-left px-2" style="left:104px;min-width:${nameW}px">
+                <span class="text-[10px] text-emerald-600 font-medium">✏️ กดวันที่เพื่อเช็คชื่อ</span>
+              </th>
               ${sessions.map(s => {
                 const isHol = holidaySet.has(s.ds)
-                return `<th class="${thBase} ${isHol?'bg-red-100 text-red-400':'bg-gray-50 text-gray-600 hover:bg-emerald-50 cursor-pointer'}
-
-                  att-date-th" data-open-session="${s.n}" data-date="${s.ds}"
-                  style="width:${colW}px;min-width:${colW}px" title="เช็คชื่อ ${s.ds}">
-                  ${_fmtDate(s.date)}
+                return `<th class="${thBase} p-0 cursor-pointer att-date-th ${isHol
+                  ? 'bg-red-100 hover:bg-red-200'
+                  : 'bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200'}"
+                  data-open-session="${s.n}" data-date="${s.ds}"
+                  style="width:${colW}px;min-width:${colW}px" title="คลิกเพื่อเช็คชื่อ ${s.ds}">
+                  <div class="flex flex-col items-center justify-center py-1 gap-0 ${isHol?'text-red-400':'text-emerald-700'}">
+                    <span class="text-[9px] leading-none">${isHol ? '🔴' : '✏️'}</span>
+                    <span class="text-[11px] font-semibold leading-tight">${_fmtDate(s.date)}</span>
+                  </div>
                 </th>`
               }).join('')}
             </tr>
