@@ -1,48 +1,17 @@
-import { getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubjects,
-         updateMyProfile, getRoomsByGrade, getStudentsByRoom,
-         getStudentsByReligionRoom, getReligionRoomsByGrade,
-         createClass, updateClass, deleteClass, enrollStudents, getSystemConfig,
-         updateSubject, deleteSubject,
-         getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
-         getScoreColumnConfig, saveAttendance, getAttendanceByDate,
-         getClassStudents, getClassRosterStudents, getStudentByCode, addStudentToClass,
-         updateClassStudentActive, getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
-         getPrayerRecords, savePrayerRecords, savePrayerCell,
-         getStudentScores, saveStudentScore,
-         getSheetColumnOptions, detectAssignmentKind, colTypeToThai,
-         getUniqueRooms, getUniqueReligionRooms,
-         getMySchedule, upsertScheduleEntry, deleteScheduleEntry,
-         deleteScheduleByTeacher, getPeriods, getAllPeriods,
-         getTeacherRoomColors, saveTeacherRoomColor,
-         getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
-         getReadingScoreColumns, getReadingScores, upsertReadingScore,
-         fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
-         getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
-         getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
-         getTeacherExamRequests, reviewExamRequest, updateExamResult,
-         getTeacherPackageAccess,
-         getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
-         getClassrooms, assignClassroom,
-         autoEnrollStudentsByRoom } from './api.js'
-import { supabase } from './supabase.js'
-
-import { uploadTeacherPhoto } from './storage.js'
-import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
-
-import { showToast } from './ui.js'
 import {
-  GRADE_OPTS, CREDIT_OPTS, SELECT_CLS, INPUT_CLS,
-  setContent, setTitle, setActiveNav,
-  _htmlEsc, formatPhone,
-  _parseDateOnly, _dateInputValue, _fmtDate, _calcSixPeriodDates,
-  _DAYS_TH_SHORT, _DAYS_TH_FULL,
+  getMySubjects, getMasterSubjects, getMyClasses, getDepartments, getTeachers,
+  getSystemConfig, getMySchedule, getClassScheduleLinks, getPeriods, getClassrooms,
+  getTeacherPackageAccess,
+} from './api.js'
+import { supabase } from './supabase.js'
+import { copySheetTemplate } from './sync.js'
+import { showToast } from './ui.js'
+import { openPP5Doc } from './pp5-doc.js'
+import { renderScoreColumns } from './teacher-score-columns.js'
+import {
+  setContent, setTitle, setActiveNav, _htmlEsc,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
-  _resolveGeminiKey, _transparentEdgeDarkLogo,
 } from './teacher-views-utils.js'
-import { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
-import { openPP5Doc, openPP5CourseModal } from './pp5-doc.js'
-import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
-import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
 
