@@ -7069,7 +7069,7 @@ export async function renderGradesGrid(teacher, classData) {
       return evalFormula(col.formula, vars) ?? 0
     }
 
-    let toggleRound = true, toggleForceGrade = true, toggleKhuna = true, toggleRead = true
+    let toggleRound = true, toggleForceGrade = false, toggleKhuna = true, toggleRead = true
 
     const _calcGradeRow = (sid) => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
@@ -7091,11 +7091,8 @@ export async function renderGradesGrid(teacher, classData) {
     const thBase  = 'border border-gray-200 text-center text-xs'
     const nameW = 160, colW = 76
 
-    const _tBtn = (id, label, on) =>
-      `<button class="grade-toggle text-[11px] px-4 py-2.5 font-medium transition-all border-t-[3px] select-none
-        ${on
-          ? 'border-t-green-500 bg-green-50 text-green-700 shadow-[inset_0_2px_6px_rgba(34,197,94,0.15),0_0_0_1px_rgba(34,197,94,0.2)]'
-          : 'border-t-transparent bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600 border-b border-gray-100'}"
+    const _tBtn = (id, label, on, onCls = 'bg-emerald-500 text-white shadow-sm', offCls = 'bg-gray-100 text-gray-500 hover:bg-gray-200') =>
+      `<button class="grade-toggle text-[11px] px-3 py-1.5 rounded-lg font-semibold transition-all select-none whitespace-nowrap ${on ? onCls : offCls}"
         data-toggle="${id}">${label}</button>`
 
     const _showSheetColPopup = (el, colId) => {
@@ -7311,11 +7308,14 @@ export async function renderGradesGrid(teacher, classData) {
       const bar = document.getElementById('grade-togglebar')
       if (!bar) return
       bar.innerHTML = `
-        ${_tBtn('round','ปัดเลข',toggleRound)}
-        ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade)}
-        ${_tBtn('khuna','คุณลักษณะ',toggleKhuna)}
-        ${_tBtn('read','การอ่าน',toggleRead)}
-        ${bonusCols.length ? _tBtn('bonus','⭐ คะแนนพิเศษ',showBonusCols) : ''}`
+        <div class="flex items-center gap-1.5 px-3 py-2 ml-auto flex-wrap justify-end">
+          ${_tBtn('round','ปัดเลข',toggleRound)}
+          ${_tBtn('khuna','คุณลักษณะ',toggleKhuna)}
+          ${_tBtn('read','การอ่าน',toggleRead)}
+          <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
+          ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade,'bg-rose-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
+          ${_tBtn('bonus','⭐ คะแนนเก็บ/พิเศษ',showBonusCols,'bg-amber-500 text-white shadow-sm','bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100')}
+        </div>`
       bar.querySelectorAll('.grade-toggle').forEach(btn=>{
         btn.addEventListener('click',()=>{
           const t=btn.dataset.toggle
@@ -7755,7 +7755,7 @@ export async function renderGradesGrid(teacher, classData) {
           ⚙️ <span class="hidden sm:inline text-xs">จัดการคอลัมน์</span>
         </button>
       </div>
-      <div id="grade-togglebar" class="flex border-b bg-white flex-shrink-0 overflow-x-auto"></div>
+      <div id="grade-togglebar" class="flex border-b border-gray-100 bg-white flex-shrink-0 overflow-x-auto min-h-[42px]"></div>
       <div class="flex-1 overflow-auto" id="grade-grid-wrap"></div>
     </div>`)
     document.getElementById('btn-manage-cols')?.addEventListener('click', _openManageColsModal)
