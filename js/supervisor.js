@@ -27,6 +27,7 @@ import { openPP5Doc } from './pp5-doc.js'
     .sv-tab-btn{padding:6px 14px;border-radius:20px;border:1px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer;font-family:inherit;}
     .sv-tab-btn.active{background:#1d4ed8;color:#fff;border-color:#1d4ed8;}
     .sv-tab-btn:hover:not(.active){background:#f3f4f6;}
+    @media(min-width:640px){.sv-donuts{grid-template-columns:repeat(4,1fr)!important;}}
     .sv-metric-card{border-radius:12px;padding:14px 16px;cursor:pointer;transition:box-shadow .15s;border:1.5px solid transparent;}
     .sv-metric-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.12);border-color:#6366f1;}
     .sv-row:hover{background:#f9fafb;}
@@ -95,7 +96,7 @@ function _deptName(code) {
 }
 
 // ── sort state ────────────────────────────────────────────────────────────────
-let _sortCol = null   // 'name' | 'dept' | 'profile' | 'dates' | 'att' | 'score'
+let _sortCol = null   // 'name' | 'dept' | 'profile' | 'dates' | 'att' | 'score' | 'schedule'
 let _sortDir = 1      // 1 = asc, -1 = desc
 let _searchQ = ''
 
@@ -131,9 +132,10 @@ export async function renderSupervisorDashboard(container, teacher) {
 
 function _renderDashboard(el, metrics, teacher) {
   const n = metrics.length
-  const pP = n ? Math.round(metrics.filter(m=>m.profileStatus==='ok').length/n*100) : 0
-  const pA = n ? Math.round(metrics.filter(m=>m.attStatus==='ok').length/n*100) : 0
-  const pS = n ? Math.round(metrics.filter(m=>m.scoreStatus==='ok').length/n*100) : 0
+  const pP  = n ? Math.round(metrics.filter(m=>m.profileStatus==='ok').length/n*100) : 0
+  const pA  = n ? Math.round(metrics.filter(m=>m.attStatus==='ok').length/n*100) : 0
+  const pS  = n ? Math.round(metrics.filter(m=>m.scoreStatus==='ok').length/n*100) : 0
+  const pSc = n ? Math.round(metrics.filter(m=>m.scheduleStatus==='ok').length/n*100) : 0
 
   const showTabs = teacher.position !== 'dept_head'
   const deptKeys = [...new Set(metrics.map(_deptKey))].sort()
@@ -141,11 +143,11 @@ function _renderDashboard(el, metrics, teacher) {
   el.style.display = ''
   el.innerHTML = `
     <!-- Donuts -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
-      ${['#6366f1','#0ea5e9','#10b981'].map((c,i)=>`
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;" class="sv-donuts">
+      ${['#6366f1','#f59e0b','#0ea5e9','#10b981'].map((c,i)=>`
         <div style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:16px;display:flex;justify-content:center;">
-          ${_donut([pP,pA,pS][i],c,['โปรไฟล์ครู','เช็คชื่อ (ทันปัจจุบัน)','ลงคะแนน'][i],
-            `${metrics.filter(m=>[m.profileStatus,m.attStatus,m.scoreStatus][i]==='ok').length}/${n} คน`)}
+          ${_donut([pP,pSc,pA,pS][i],c,['โปรไฟล์ครู','ตารางสอน','เช็คชื่อ (ทันปัจจุบัน)','ลงคะแนน'][i],
+            `${metrics.filter(m=>[m.profileStatus,m.scheduleStatus,m.attStatus,m.scoreStatus][i]==='ok').length}/${n} คน`)}
         </div>`).join('')}
     </div>
     <!-- Dept tabs + add member button -->
@@ -264,7 +266,8 @@ function _applyFilter(rows) {
       case 'profile': av = a.profileStatus==='ok'?1:0; bv = b.profileStatus==='ok'?1:0; break
       case 'dates':   av = a.datesOk??0; bv = b.datesOk??0; break
       case 'att':     av = a.daysSinceAtt??999; bv = b.daysSinceAtt??999; break
-      case 'score':   av = a.scorePct??-1; bv = b.scorePct??-1; break
+      case 'score':    av = a.scorePct??-1; bv = b.scorePct??-1; break
+      case 'schedule': av = a.scheduleCount??-1; bv = b.scheduleCount??-1; break
     }
     if (av < bv) return -_sortDir
     if (av > bv) return _sortDir
@@ -290,6 +293,7 @@ function _table(rows) {
       </th>
       ${_thSort('profile','โปรไฟล์')}
       ${_thSort('dates','วันสอน')}
+      ${_thSort('schedule','ตารางสอน')}
       ${_thSort('att','เช็คชื่อ')}
       ${_thSort('score','คะแนน')}
       <th style="padding:10px;"></th>
@@ -315,6 +319,11 @@ function _table(rows) {
         <td style="padding:10px 12px;text-align:center;">${m.isRegistered?_badge(m.profileStatus):'<span style="color:#9ca3af;font-size:12px;">–</span>'}</td>
         <td style="padding:10px 12px;text-align:center;">
           ${m.isRegistered?`<span style="font-size:12px;font-weight:600;color:${m.datesOk===m.classCount&&m.classCount>0?'#059669':'#dc2626'};">${m.datesOk}/${m.classCount}</span>`:'<span style="color:#9ca3af;">–</span>'}</td>
+        <td style="padding:10px 12px;text-align:center;">
+          ${m.isRegistered
+            ? `${_badge(m.scheduleStatus)}<div style="font-size:10px;color:${m.scheduleCount>0?'#059669':'#dc2626'};margin-top:2px;">${m.scheduleCount??0} คาบ</div>`
+            : '<span style="color:#9ca3af;">–</span>'}
+        </td>
         <td style="padding:10px 12px;text-align:center;">
           ${m.isRegistered?`${_badge(m.attStatus)}<div style="font-size:10px;color:${attCol};margin-top:2px;">${attTxt}</div>`:'<span style="color:#9ca3af;">–</span>'}
         </td>
@@ -434,7 +443,7 @@ function _showDetail(m) {
         <div id="sv-comment-ui" style="display:none;margin-top:12px;">
           <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:8px;">เลือกหัวข้อ (เลือกได้หลายข้อ):</div>
           <div id="sv-cat-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
-            ${['general:ทั่วไป','profile:โปรไฟล์','dates:วันสอน','attendance:เช็คชื่อ','scores:คะแนน'].map(s=>{
+            ${['general:ทั่วไป','profile:โปรไฟล์','schedule:ตารางสอน','dates:วันสอน','attendance:เช็คชื่อ','scores:คะแนน'].map(s=>{
               const [val,label] = s.split(':')
               return `<div class="sv-cat-row" data-cat="${val}"
                 style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;">

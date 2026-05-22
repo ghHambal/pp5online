@@ -2011,7 +2011,7 @@ export async function updateTeacherPosition(id, position, positionDeptId) {
 
 // โหลดข้อมูล progress ทั้งหมดสำหรับ supervisor dashboard
 export async function getSupervisorProgress() {
-  const [teacherRes, classRes, attRes, scoreColRes, scoreRes] = await Promise.all([
+  const [teacherRes, classRes, attRes, scoreColRes, scoreRes, schedRes] = await Promise.all([
     supabase.from('teachers')
       .select('id, full_name, category, dept, subject_group, image_url, phone, login_email, position, position_dept_id'),
     supabase.from('classes')
@@ -2023,13 +2023,22 @@ export async function getSupervisorProgress() {
       .select('id, class_id, assignment_name, max_score'),
     supabase.from('student_scores')
       .select('assignment_id'),
+    supabase.from('teacher_schedules')
+      .select('teacher_id'),
   ])
 
-  const teachers  = teacherRes.data  ?? []
-  const classes   = classRes.data    ?? []
-  const attRows   = attRes.data      ?? []
-  const scoreCols = scoreColRes.data ?? []
-  const scoreRows = scoreRes.data    ?? []
+  const teachers   = teacherRes.data  ?? []
+  const classes    = classRes.data    ?? []
+  const attRows    = attRes.data      ?? []
+  const scoreCols  = scoreColRes.data ?? []
+  const scoreRows  = scoreRes.data    ?? []
+  const schedRows  = schedRes.data    ?? []
+
+  // index: teacher_id → จำนวน schedule entries
+  const schedCount = {}
+  for (const s of schedRows) {
+    schedCount[s.teacher_id] = (schedCount[s.teacher_id] ?? 0) + 1
+  }
 
   // index: class_id → teacher_id
   const classTeacher = {}
@@ -2100,6 +2109,12 @@ export async function getSupervisorProgress() {
     const scoreStatus = scorePct === null ? 'na'
       : scorePct >= 80 ? 'ok' : scorePct >= 40 ? 'warn' : 'none'
 
+    // ตารางสอน
+    const scheduleCount = schedCount[t.id] ?? 0
+    const scheduleStatus = n === 0 ? 'na'
+      : scheduleCount >= n ? 'ok'
+      : scheduleCount > 0 ? 'warn' : 'none'
+
     return {
       ...t,
       isRegistered,
@@ -2112,6 +2127,8 @@ export async function getSupervisorProgress() {
       profileStatus,
       scorePct,
       scoreStatus,
+      scheduleCount,
+      scheduleStatus,
       myClasses,
     }
   })
