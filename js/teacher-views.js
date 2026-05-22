@@ -32,7 +32,7 @@ import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { showToast } from './ui.js'
 import { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 import { openPP5Doc, openPP5CourseModal } from './pp5-doc.js'
-import { renderScoreColumns } from './teacher-score-columns.js'
+import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
@@ -7039,8 +7039,15 @@ export async function renderGradesGrid(teacher, classData) {
       return lockedScoreColumnIds.has(id)
     }
 
-    const midCols   = allCols.filter(c => c.assignment_type !== 'final')
-    const finalCols = allCols.filter(c => c.assignment_type === 'final')
+    // แยก column_type
+    const bonusCols   = allCols.filter(c => c.column_type === 'bonus')
+    const derivedCols = allCols.filter(c => c.column_type === 'derived')
+    const regularCols = allCols.filter(c => (c.column_type ?? 'regular') === 'regular')
+    // midCols/finalCols เฉพาะ regular (ไม่นับ bonus/derived ซ้ำ)
+    const midCols   = regularCols.filter(c => c.assignment_type !== 'final' && c.assignment_type !== 'ปลายภาค')
+    const finalCols = regularCols.filter(c => c.assignment_type === 'final' || c.assignment_type === 'ปลายภาค')
+    const bonusWithVars = assignBonusVars(bonusCols)
+    let showBonusCols = false
 
     const scoreMap = {}
     for (const r of scoreRows) {
@@ -7054,13 +7061,23 @@ export async function renderGradesGrid(teacher, classData) {
     const _groupTotal = (sid, cols) => cols.reduce((s,c) => s + (parseFloat(_getScore(sid,c.id)) || 0), 0)
     const _groupMax   = (cols) => cols.reduce((s,c) => s + (parseFloat(c.max_score)||0), 0)
 
+    // derived: คำนวณจาก formula + bonus scores
+    const _calcDerived = (col, sid) => {
+      if (!col.formula) return 0
+      const vars = {}
+      for (const ref of (col.formula_refs ?? [])) vars[ref.var] = parseFloat(_getScore(sid, ref.col_id)) || 0
+      return evalFormula(col.formula, vars) ?? 0
+    }
+
     let toggleRound = true, toggleForceGrade = true, toggleKhuna = true, toggleRead = true
 
     const _calcGradeRow = (sid) => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
+      const drvMax = derivedCols.reduce((s,c) => s + (parseFloat(c.max_score)||0), 0)
       const midRaw = _groupTotal(sid, midCols), finRaw = _groupTotal(sid, finalCols)
-      const allMax = midMax + finMax
-      const allRaw = midRaw + finRaw
+      const drvRaw = derivedCols.reduce((s,c) => s + (_calcDerived(c, sid) || 0), 0)
+      const allMax = midMax + finMax + drvMax
+      const allRaw = midRaw + finRaw + drvRaw
       // รวมตรงๆ — total คือคะแนนดิบรวม, grade คิดจาก allRaw/allMax×100
       const total = toggleRound ? Math.round(allRaw) : Math.round(allRaw * 10) / 10
       const pct   = allMax > 0 ? allRaw / allMax * 100 : 0
@@ -7297,7 +7314,8 @@ export async function renderGradesGrid(teacher, classData) {
         ${_tBtn('round','ปัดเลข',toggleRound)}
         ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade)}
         ${_tBtn('khuna','คุณลักษณะ',toggleKhuna)}
-        ${_tBtn('read','การอ่าน',toggleRead)}`
+        ${_tBtn('read','การอ่าน',toggleRead)}
+        ${bonusCols.length ? _tBtn('bonus','⭐ คะแนนพิเศษ',showBonusCols) : ''}`
       bar.querySelectorAll('.grade-toggle').forEach(btn=>{
         btn.addEventListener('click',()=>{
           const t=btn.dataset.toggle
@@ -7305,6 +7323,7 @@ export async function renderGradesGrid(teacher, classData) {
           if(t==='forceGrade')toggleForceGrade=!toggleForceGrade
           if(t==='khuna')toggleKhuna=!toggleKhuna
           if(t==='read')toggleRead=!toggleRead
+          if(t==='bonus')showBonusCols=!showBonusCols
           _renderToggleBar();_renderGrid()
         })
       })
@@ -7507,7 +7526,9 @@ export async function renderGradesGrid(teacher, classData) {
             📘 กลางภาค${midMax>0?' (เต็ม '+midMax+')':''}</th>
           <th colspan="${finalCols.length+1}" class="${thBase} bg-purple-600 text-white font-semibold py-1.5">
             📙 ปลายภาค${finMax>0?' (เต็ม '+finMax+')':''}</th>
-          <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax||'?'}</div></th>
+          ${derivedCols.length ? `<th colspan="${derivedCols.length}" class="${thBase} bg-indigo-600 text-white font-semibold py-1.5">🧮 อ้างอิงสูตร</th>` : ''}
+          ${showBonusCols && bonusCols.length ? `<th colspan="${bonusCols.length}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนพิเศษ</th>` : ''}
+          <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax+(derivedCols.reduce((s,c)=>s+(parseFloat(c.max_score)||0),0))||'?'}</div></th>
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
           ${toggleForceGrade?`<th class="${thBase} bg-rose-50 text-rose-600 text-xs" style="min-width:50px" rowspan="3">บังคับ<div class="text-[9px] font-normal text-rose-300">เกรด</div></th>`:''}
           ${toggleKhuna?`<th class="${thBase} bg-emerald-50 font-medium text-emerald-700 text-xs" style="min-width:72px" rowspan="3">คุณลักษณะ</th>`:''}
@@ -7526,6 +7547,12 @@ export async function renderGradesGrid(teacher, classData) {
           </th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px">
             <button class="btn-add-col text-purple-500 hover:bg-purple-100 rounded-full w-5 h-5 font-bold text-sm leading-none mx-auto block" data-type="final">＋</button></th>
+          ${derivedCols.map(c=>`<th class="${thBase} bg-indigo-50" style="width:${colW}px;min-width:${colW}px">
+            <span class="text-[10px] text-indigo-400 font-mono block text-center truncate" title="${c.formula??''}">${c.formula??'—'}</span>
+          </th>`).join('')}
+          ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
+            <span class="text-[11px] text-amber-500 block text-center">${c.sheet_column||'—'}</span>
+          </th>`).join('') : ''}
         </tr>
         <tr style="position:sticky;top:48px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
@@ -7540,6 +7567,14 @@ export async function renderGradesGrid(teacher, classData) {
             <span class="col-max text-[10px] select-none ${_isLockedScoreColumn(c) ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-400 cursor-pointer hover:text-purple-500 hover:underline'}"
               data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span></th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px"></th>
+          ${derivedCols.map(c=>`<th class="${thBase} bg-indigo-50" style="width:${colW}px;min-width:${colW}px">
+            <span class="text-[11px] text-indigo-700 font-medium block text-center truncate">${c.assignment_name}</span>
+            <span class="text-[10px] text-indigo-400">/${c.max_score??'?'}</span>
+          </th>`).join('')}
+          ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
+            <span class="text-[11px] text-amber-700 font-medium block text-center truncate">${c.assignment_name}</span>
+            <span class="text-[10px] text-amber-400">${c.max_score ? '/'+c.max_score : '(ไม่จำกัด)'}</span>
+          </th>`).join('') : ''}
         </tr>`
 
       const body = students.map((s,i) => {
@@ -7567,6 +7602,11 @@ export async function renderGradesGrid(teacher, classData) {
               type="number" min="0" max="${c.max_score}" step="0.5" value="${v}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/></td>`}).join('')}
           <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?finRaw.toFixed(1):'—'}</td>
+          ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?Number(dv.toFixed(2)):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
+          ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';return `<td class="border border-amber-100 text-center p-0" style="width:${colW}px;min-width:${colW}px;height:30px">
+            <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
+              type="number" min="0" ${c.max_score?`max="${c.max_score}"`:''}  step="0.5" value="${v}" placeholder="—"
+              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/></td>`}).join('') : ''}
           <td class="border border-amber-100 text-center bg-amber-50 font-bold text-amber-700" id="gtotal-${s.id}" style="min-width:58px">${total>0?total:'—'}</td>
           <td class="border border-purple-100 text-center bg-purple-50 font-bold text-purple-700" id="ggrade-${s.id}" style="min-width:50px">${displayGrade}</td>
           ${toggleForceGrade?`<td class="border border-rose-100 text-center bg-rose-50 p-0" style="min-width:50px;height:30px">
