@@ -3985,6 +3985,11 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
         </svg> กำลังโหลด...
       </div>`
+      // redirect setContent → cd-tab-content ชั่วคราว
+      // เพื่อให้ _openStudentManager / renderAttendanceGrid / renderGradesGrid
+      // เขียนลง tab area แทนที่จะทับ header + tabs ทั้งหน้า
+      const _savedMain = _realMainContent
+      _realMainContent = currentBox
       try {
         if (tabId === 'students') {
           await window._openStudentManager(classId)
@@ -3996,6 +4001,8 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       } catch (err) {
         console.error(err)
         currentBox.innerHTML = `<div class="p-6 text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ</div>`
+      } finally {
+        _realMainContent = _savedMain
       }
       setActiveNav('my-classes')
       setTitle('ห้องเรียน')
