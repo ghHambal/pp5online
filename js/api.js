@@ -577,7 +577,7 @@ export async function savePrayerCell(teacherId, studentId, room, checkDate, stat
 export async function getScoreColumns(classId) {
   const { data, error } = await supabase
     .from('class_score_columns')
-    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs')
+    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs, bonus_formula, bonus_formula_refs')
     .eq('class_id', classId)
     .order('id')
   if (error) throw error

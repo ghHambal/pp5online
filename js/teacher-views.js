@@ -7054,6 +7054,7 @@ export async function renderGradesGrid(teacher, classData) {
     const _saveToggles  = () => localStorage.setItem(_toggleKey, JSON.stringify({ toggleRound, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols }))
 
     let showBonusCols    = _savedToggles.showBonusCols    ?? false
+    let showFormulaLink  = false
 
     const scoreMap = {}
     for (const r of scoreRows) {
@@ -7068,6 +7069,16 @@ export async function renderGradesGrid(teacher, classData) {
     const _hasHistory = (sid, colId) => (scoreMap[sid]?.[colId]?.history?.length ?? 0) > 1
     const _groupTotal = (sid, cols) => cols.reduce((s,c) => s + (parseFloat(_getScore(sid,c.id)) || 0), 0)
     const _groupMax   = (cols) => cols.reduce((s,c) => s + (parseFloat(c.max_score)||0), 0)
+
+    // คำนวณคะแนนจริงของคอลัมน์หลัก รวม bonus_formula (บวกเพิ่ม ไม่เกิน max)
+    const _effectiveScore = (sid, col) => {
+      const raw = parseFloat(_getScore(sid, col.id)) || 0
+      if (!col.bonus_formula) return raw
+      const bvars = Object.fromEntries(bonusWithVars.map(b => [b.var, parseFloat(_getScore(sid, b.id)) || 0]))
+      const bonus = evalFormula(col.bonus_formula, bvars) ?? 0
+      return col.max_score ? Math.min(raw + bonus, col.max_score) : raw + bonus
+    }
+    const _groupTotalEff = (sid, cols) => cols.reduce((s,c) => s + _effectiveScore(sid, c), 0)
 
     // derived: คำนวณจาก formula + bonus scores
     const _calcDerived = (col, sid) => {
@@ -7089,7 +7100,7 @@ export async function renderGradesGrid(teacher, classData) {
     const _calcGradeRow = (sid) => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
       const drvMax = derivedCols.reduce((s,c) => s + (parseFloat(c.max_score)||0), 0)
-      const midRaw = _groupTotal(sid, midCols), finRaw = _groupTotal(sid, finalCols)
+      const midRaw = _groupTotalEff(sid, midCols), finRaw = _groupTotalEff(sid, finalCols)
       const drvRaw = derivedCols.reduce((s,c) => s + (_calcDerived(c, sid) || 0), 0)
       const allMax = midMax + finMax + drvMax
       const allRaw = midRaw + finRaw + drvRaw
@@ -7330,6 +7341,7 @@ export async function renderGradesGrid(teacher, classData) {
           <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
           ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade,'bg-rose-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
           ${_tBtn('bonus','⭐ คะแนนเก็บ/พิเศษ',showBonusCols,'bg-amber-500 text-white shadow-sm','bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100')}
+          ${showBonusCols && bonusCols.length ? _tBtn('formula-link','🔗 เชื่อมสูตร',showFormulaLink,'bg-violet-500 text-white shadow-sm','bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100') : ''}
         </div>`
       bar.querySelectorAll('.grade-toggle').forEach(btn=>{
         btn.addEventListener('click',()=>{
@@ -7340,12 +7352,101 @@ export async function renderGradesGrid(teacher, classData) {
           if(t==='read')toggleRead=!toggleRead
           if(t==='bonus'){
             showBonusCols=!showBonusCols
+            if(!showBonusCols) showFormulaLink=false
             if(showBonusCols && bonusCols.length===0){
               showToast('ยังไม่มีคอลัมน์พิเศษ — กด "จัดการคอลัมน์" เพื่อเพิ่ม','info')
             }
           }
+          if(t==='formula-link') showFormulaLink=!showFormulaLink
           _saveToggles(); _renderToggleBar(); _renderGrid()
         })
+      })
+    }
+
+    const _openFormulaLinkPopup = (col) => {
+      document.getElementById('formula-link-popup')?.remove()
+      const pop = document.createElement('div')
+      pop.id = 'formula-link-popup'
+      pop.className = 'fixed inset-0 z-[650] flex items-center justify-center bg-black/40 p-4'
+      const varHint = bonusWithVars.length
+        ? bonusWithVars.map(b => `<span class="font-mono font-bold text-violet-700">${b.var}</span> = "${b.assignment_name}"`).join('  |  ')
+        : '<span class="text-gray-400">ยังไม่มีคอลัมน์พิเศษ</span>'
+      pop.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+          <div class="bg-gradient-to-br from-violet-500 to-purple-600 px-5 py-4">
+            <h3 class="text-white font-bold text-sm">🔗 เชื่อมสูตรจากคะแนนพิเศษ</h3>
+            <p class="text-violet-100 text-xs mt-0.5">คอลัมน์: <span class="font-semibold">${_htmlEsc(col.assignment_name)}</span> (เต็ม ${col.max_score??'?'})</p>
+            <p class="text-violet-200 text-[10px] mt-1">สูตรจะบวกเพิ่มเข้าคะแนนที่กรอก ไม่เกินคะแนนเต็ม</p>
+          </div>
+          <div class="p-4 space-y-3">
+            <div class="bg-violet-50 rounded-xl p-3 text-xs text-violet-800">
+              <p class="font-semibold mb-1">ตัวแปรที่ใช้ได้:</p>
+              <p id="flp-vars">${varHint}</p>
+              <p class="mt-1 text-violet-500">ฟังก์ชัน: MIN, MAX, IF, ROUND, SUM, AVG, CLAMP</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">สูตร <span class="text-red-400">*</span></label>
+              <div class="flex gap-2">
+                <input id="flp-formula" type="text" value="${_htmlEsc(col.bonus_formula??'')}"
+                  placeholder="เช่น MIN(A,5)  หรือ  A*0.5+B"
+                  class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-violet-400"/>
+                <button id="flp-test" class="px-3 py-2 rounded-xl bg-violet-100 text-violet-700 text-xs font-medium hover:bg-violet-200 whitespace-nowrap">ทดสอบ</button>
+              </div>
+              <p id="flp-result" class="text-xs mt-1 hidden"></p>
+            </div>
+            <div class="flex gap-2">
+              ${col.bonus_formula ? `<button id="flp-clear" class="flex-1 py-2.5 rounded-xl border border-red-200 text-red-500 text-xs hover:bg-red-50 transition">ลบสูตร</button>` : ''}
+              <button id="flp-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 transition">ยกเลิก</button>
+              <button id="flp-save" class="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition">บันทึก</button>
+            </div>
+          </div>
+        </div>`
+      document.body.appendChild(pop)
+
+      pop.querySelector('#flp-cancel').addEventListener('click', () => pop.remove())
+
+      pop.querySelector('#flp-test')?.addEventListener('click', () => {
+        const formula = pop.querySelector('#flp-formula').value.trim()
+        const resultEl = pop.querySelector('#flp-result')
+        if (!formula) { resultEl.classList.add('hidden'); return }
+        const sampleVars = Object.fromEntries(bonusWithVars.map(b => [b.var, 5]))
+        const result = evalFormula(formula, sampleVars)
+        resultEl.classList.remove('hidden')
+        if (result === null) {
+          resultEl.className = 'text-xs mt-1 text-red-500'
+          resultEl.textContent = '⚠️ สูตรไม่ถูกต้อง'
+        } else {
+          resultEl.className = 'text-xs mt-1 text-emerald-600'
+          const eg = bonusWithVars.map(b=>`${b.var}=5`).join(', ')
+          const eff = col.max_score ? Math.min((0 + result), col.max_score) : result
+          resultEl.textContent = `✅ ตัวอย่าง (${eg||'ไม่มี'}) → bonus=${result} → คะแนนจริง MIN(0+${result},${col.max_score??'∞'}) = ${eff}`
+        }
+      })
+
+      pop.querySelector('#flp-clear')?.addEventListener('click', async () => {
+        try {
+          await updateScoreColumn(col.id, { bonus_formula: null, bonus_formula_refs: [] })
+          col.bonus_formula = null; col.bonus_formula_refs = []
+          showToast('ลบสูตรแล้ว ✅', 'success')
+          pop.remove(); _renderToggleBar(); _renderGrid()
+        } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
+      })
+
+      pop.querySelector('#flp-save').addEventListener('click', async () => {
+        const formula = pop.querySelector('#flp-formula').value.trim()
+        if (!formula) { showToast('กรุณากรอกสูตร', 'warning'); return }
+        if (evalFormula(formula, Object.fromEntries(bonusWithVars.map(b=>[b.var,5]))) === null) {
+          showToast('สูตรไม่ถูกต้อง', 'warning'); return
+        }
+        const refs = bonusWithVars.map(b => ({ var: b.var, col_id: b.id }))
+        const btn = pop.querySelector('#flp-save')
+        btn.disabled = true; btn.textContent = '⏳'
+        try {
+          await updateScoreColumn(col.id, { bonus_formula: formula, bonus_formula_refs: refs })
+          col.bonus_formula = formula; col.bonus_formula_refs = refs
+          showToast('บันทึกสูตรแล้ว ✅', 'success')
+          pop.remove(); _renderToggleBar(); _renderGrid()
+        } catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled=false; btn.textContent='บันทึก' }
       })
     }
 
@@ -7369,6 +7470,14 @@ export async function renderGradesGrid(teacher, classData) {
                 data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>`}
         </div>`
       }
+      const bonusColRow = col => `
+        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-100 bg-amber-50/40">
+          <input type="text" class="mcm-bonus-name flex-1 text-xs text-amber-800 bg-transparent border-b border-transparent focus:border-amber-300 focus:outline-none px-0.5 min-w-0"
+            value="${(col.assignment_name||'').replace(/"/g,'&quot;')}" data-bonusid="${col.id}" />
+          <span class="text-[11px] text-amber-400 flex-shrink-0">${col.max_score ? '/'+col.max_score : '∞'}</span>
+          <button class="mcm-bonus-del text-gray-300 hover:text-red-400 text-lg transition-colors px-1 rounded hover:bg-red-50 flex-shrink-0"
+            data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>
+        </div>`
       modal.innerHTML = `<div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[80vh] flex flex-col">
         <div class="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
           <div>
@@ -7405,6 +7514,13 @@ export async function renderGradesGrid(teacher, classData) {
             </div>
             <div class="mcm-col-list space-y-1.5">${finalCols.map(colRow).join('')}</div>
             <button class="mcm-add mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-purple-200 text-purple-500 hover:border-purple-400 hover:bg-purple-50 text-sm transition-colors" data-type="final">＋ เพิ่มคอลัมน์ปลายภาค</button>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-semibold text-amber-600 text-sm">⭐ คะแนนพิเศษ (Bonus) <span class="font-normal text-gray-400">(${bonusCols.length} คอลัมน์)</span></h4>
+            </div>
+            <div id="mcm-bonus-list" class="space-y-1.5">${bonusCols.map(bonusColRow).join('')}</div>
+            <button id="mcm-add-bonus" class="mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-amber-200 text-amber-500 hover:border-amber-400 hover:bg-amber-50 text-sm transition-colors">＋ เพิ่มคอลัมน์พิเศษ</button>
           </div>
         </div>
       </div>`
@@ -7508,6 +7624,95 @@ export async function renderGradesGrid(teacher, classData) {
         })
       }
       _rebindModal()
+
+      // ── Bonus section: rename on blur ──
+      const _bindBonusSection = () => {
+        modal.querySelectorAll('.mcm-bonus-name').forEach(inp => {
+          inp.addEventListener('blur', async () => {
+            const colId = parseInt(inp.dataset.bonusid)
+            const newName = inp.value.trim()
+            if (!newName) return
+            try {
+              await updateScoreColumn(colId, { assignment_name: newName })
+              const bc = bonusCols.find(c => c.id === colId)
+              if (bc) bc.assignment_name = newName
+              _renderGrid()
+            } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
+          })
+          inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur() } })
+        })
+        modal.querySelectorAll('.mcm-bonus-del').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const colId = parseInt(btn.dataset.colid)
+            const col = bonusCols.find(c => c.id === colId)
+            _mcmConfirm(
+              `ลบคอลัมน์พิเศษ <span class="font-semibold">"${col?.assignment_name||'คอลัมน์นี้'}"</span>?<br/><span class="text-xs text-red-500">คะแนนที่บันทึกไว้จะถูกลบด้วย</span>`,
+              async () => {
+                try {
+                  await deleteScoreColumn(colId)
+                  const bi = bonusCols.findIndex(c => c.id === colId)
+                  if (bi !== -1) bonusCols.splice(bi, 1)
+                  showToast('ลบคอลัมน์พิเศษแล้ว ✅', 'success')
+                  _renderGrid()
+                  const listEl = modal.querySelector('#mcm-bonus-list')
+                  if (listEl) { listEl.innerHTML = bonusCols.map(bonusColRow).join(''); _bindBonusSection() }
+                } catch { showToast('ลบไม่สำเร็จ', 'error') }
+              }
+            )
+          })
+        })
+      }
+      _bindBonusSection()
+
+      // ── Add bonus column ──
+      modal.querySelector('#mcm-add-bonus')?.addEventListener('click', () => {
+        document.getElementById('quick-add-bonus-mcm')?.remove()
+        const pop = document.createElement('div')
+        pop.id = 'quick-add-bonus-mcm'
+        pop.className = 'fixed inset-0 z-[700] flex items-center justify-center bg-black/40 p-4'
+        pop.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3">
+            <h3 class="font-bold text-amber-700">⭐ เพิ่มคอลัมน์พิเศษ</h3>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">ชื่อคอลัมน์ <span class="text-red-400">*</span></label>
+              <input id="qbm-name" type="text" placeholder="เช่น ส่งการบ้าน, ความตั้งใจ"
+                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"/>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">คะแนนเต็ม <span class="text-gray-400 font-normal">(ไม่บังคับ)</span></label>
+              <input id="qbm-max" type="number" min="0" placeholder="ไม่จำกัด"
+                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"/>
+            </div>
+            <div class="flex gap-3 pt-1">
+              <button id="qbm-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button id="qbm-save" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold">เพิ่ม</button>
+            </div>
+          </div>`
+        document.body.appendChild(pop)
+        pop.querySelector('#qbm-cancel').addEventListener('click', () => pop.remove())
+        pop.querySelector('#qbm-name').focus()
+        pop.querySelector('#qbm-save').addEventListener('click', async () => {
+          const name = pop.querySelector('#qbm-name').value.trim()
+          const max  = pop.querySelector('#qbm-max').value ? parseFloat(pop.querySelector('#qbm-max').value) : null
+          if (!name) { showToast('กรุณากรอกชื่อคอลัมน์', 'warning'); return }
+          const btn = pop.querySelector('#qbm-save')
+          btn.disabled = true; btn.textContent = '⏳'
+          try {
+            const newCol = await createScoreColumn({ class_id: classData.id, assignment_name: name,
+              assignment_type: 'คะแนนพิเศษ', sheet_column: '', max_score: max, column_type: 'bonus',
+              formula: null, formula_refs: [] })
+            pop.remove()
+            // reload grid + reopen modal
+            modal.remove()
+            renderGradesGrid(teacher, classData)
+            showToast(`เพิ่ม "${name}" แล้ว ✅`, 'success')
+          } catch (err) {
+            showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            btn.disabled = false; btn.textContent = 'เพิ่ม'
+          }
+        })
+      })
+
       modal.querySelectorAll('.mcm-add').forEach(btn=>{
         btn.addEventListener('click',()=>{
           modal.remove()
@@ -7707,6 +7912,7 @@ export async function renderGradesGrid(teacher, classData) {
               <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-blue-600 cursor-pointer hover:bg-blue-100'}"
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
               <button class="btn-mass-score text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+              ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เชื่อมสูตรจากคะแนนพิเศษ'}">🔗</button>` : ''}
             </div>
           </th>`).join('')}
           <th class="${thBase} bg-blue-50" style="width:30px">
@@ -7716,6 +7922,7 @@ export async function renderGradesGrid(teacher, classData) {
               <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-purple-600 cursor-pointer hover:bg-purple-100'}"
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
               <button class="btn-mass-score text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+              ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เชื่อมสูตรจากคะแนนพิเศษ'}">🔗</button>` : ''}
             </div>
           </th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px">
@@ -7750,7 +7957,8 @@ export async function renderGradesGrid(teacher, classData) {
             <span class="text-[10px] text-indigo-400">/${c.max_score??'?'}</span>
           </th>`).join('')}
           ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="text-[11px] text-amber-700 font-medium block text-center truncate">${c.assignment_name}</span>
+            <span class="col-edit text-[11px] px-1 rounded block truncate text-amber-700 cursor-text hover:bg-amber-100"
+              contenteditable="true" data-colid="${c.id}" data-field="assignment_name">${c.assignment_name||'—'}</span>
             <span class="text-[10px] text-amber-400">${c.max_score ? '/'+c.max_score : '(ไม่จำกัด)'}</span>
           </th>`).join('') : ''}
           ${showBonusCols ? `<th class="${thBase} bg-amber-50" style="width:30px"></th>` : ''}
@@ -7968,7 +8176,7 @@ export async function renderGradesGrid(teacher, classData) {
           if (_isLockedScoreColumn(colId)) return
           try{
             await updateScoreColumn(colId,{assignment_name:newName||null})
-            const col=[...midCols,...finalCols].find(c=>c.id===colId)
+            const col=[...midCols,...finalCols,...bonusCols].find(c=>c.id===colId)
             if(col)col.assignment_name=newName
           }catch{showToast('บันทึกไม่สำเร็จ','error')}
         })
@@ -8046,6 +8254,14 @@ export async function renderGradesGrid(teacher, classData) {
             showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
             btn.disabled = false; btn.textContent = 'เพิ่ม'
           }
+        })
+      })
+      // ── Formula link buttons ──
+      wrap.querySelectorAll('.btn-formula-link').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          const colId=parseInt(btn.dataset.colid)
+          const col=[...midCols,...finalCols].find(c=>c.id===colId)
+          if(col) _openFormulaLinkPopup(col)
         })
       })
       // ── Student grade detail ──
