@@ -7047,7 +7047,13 @@ export async function renderGradesGrid(teacher, classData) {
     const midCols   = regularCols.filter(c => c.assignment_type !== 'final' && c.assignment_type !== 'ปลายภาค')
     const finalCols = regularCols.filter(c => c.assignment_type === 'final' || c.assignment_type === 'ปลายภาค')
     const bonusWithVars = assignBonusVars(bonusCols)
-    let showBonusCols = _savedToggles.showBonusCols ?? false
+
+    // ── โหลด/บันทึกสถานะ toggle ต่อครู ────────────────────────────────────────
+    const _toggleKey    = `gradeToggles_${teacher?.id ?? 'guest'}_${classData.id}`
+    const _savedToggles = (() => { try { return JSON.parse(localStorage.getItem(_toggleKey) ?? '{}') } catch { return {} } })()
+    const _saveToggles  = () => localStorage.setItem(_toggleKey, JSON.stringify({ toggleRound, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols }))
+
+    let showBonusCols    = _savedToggles.showBonusCols    ?? false
 
     const scoreMap = {}
     for (const r of scoreRows) {
@@ -7069,15 +7075,10 @@ export async function renderGradesGrid(teacher, classData) {
       return evalFormula(col.formula, vars) ?? 0
     }
 
-    // ── โหลด/บันทึกสถานะ toggle ต่อครู ──────────────────────────────────────────
-    const _toggleKey = `gradeToggles_${teacher?.id ?? 'guest'}_${classData.id}`
-    const _savedToggles = (() => { try { return JSON.parse(localStorage.getItem(_toggleKey) ?? '{}') } catch { return {} } })()
-    const _saveToggles  = () => localStorage.setItem(_toggleKey, JSON.stringify({ toggleRound, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols }))
-
-    let toggleRound     = _savedToggles.toggleRound     ?? true
+    let toggleRound     = _savedToggles.toggleRound      ?? true
     let toggleForceGrade= _savedToggles.toggleForceGrade ?? false
-    let toggleKhuna     = _savedToggles.toggleKhuna     ?? true
-    let toggleRead      = _savedToggles.toggleRead      ?? true
+    let toggleKhuna     = _savedToggles.toggleKhuna      ?? true
+    let toggleRead      = _savedToggles.toggleRead       ?? true
     const _defaultForceGrades = ['0','ร','มส','มผ']
     const forceGradeOptions = sysCfg.forceGradeOptions
       ? String(sysCfg.forceGradeOptions).split(',').map(s=>s.trim()).filter(Boolean)
