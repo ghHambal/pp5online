@@ -33,11 +33,7 @@ export async function renderMyCourses(teacher) {
     ])
     const subjects_orig = subjects // keep for compat
     setContent(`<div class="animate-fade">
-      <div class="flex items-center justify-between mb-5">
-        <div>
-          <h2 class="text-lg font-bold text-gray-800">คอร์สวิชาของฉัน</h2>
-          <p class="text-xs text-gray-400 mt-0.5">รายวิชาที่ลงทะเบียนเปิดสอน</p>
-        </div>
+      <div class="flex justify-end mb-4">
         <button onclick="window._openCourseForm()"
           class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
           <span>＋</span> เปิดคอร์สใหม่

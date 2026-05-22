@@ -174,18 +174,18 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       cardBorderCls = ''   // ใช้ inline style แทน Tailwind
       const s = String(donorTier.sticker ?? '')
       const imgEl = /^https?:\/\//.test(s)
-        ? `<img src="${s}" class="w-16 h-16 object-contain drop-shadow-lg" />`
-        : `<span class="text-5xl leading-none drop-shadow">${s}</span>`
+        ? `<img src="${s}" class="w-24 h-24 object-contain drop-shadow-xl" />`
+        : `<span class="text-7xl leading-none drop-shadow-lg">${s}</span>`
       const titleColor = donorTier.color ? `color:${donorTier.color};` : 'color:#f59e0b;'
       donorStickerHtml = `
         <button id="donor-sticker-btn"
-          class="absolute top-3 right-3 flex flex-col items-center gap-0.5 cursor-pointer group z-10"
+          class="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer group px-2"
           title="คลิกเพื่อดูสิทธิ์พิเศษ">
           ${imgEl}
-          <span class="text-[9px] font-bold leading-snug text-center max-w-[70px] break-words" style="${titleColor}">
+          <span class="text-[10px] font-bold leading-snug text-center max-w-[90px] break-words mt-1" style="${titleColor}">
             ${donorTier.note || donorTier.title}
           </span>
-          <span class="text-[8px] text-gray-400 group-hover:text-gray-600 transition">ดูสิทธิ์ →</span>
+          <span class="text-[9px] text-gray-400 group-hover:text-gray-600 transition">ดูสิทธิ์ →</span>
         </button>`
     }
   }
@@ -223,15 +223,24 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     `})() : ''}
 
     <!-- การ์ดโปรไฟล์ครู -->
-    <div class="relative bg-white rounded-2xl ${cardBorderCls} p-5 mb-5 flex flex-col sm:flex-row sm:items-center gap-4 overflow-hidden" style="${cardGlowStyle}">
-      <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-100 flex-shrink-0
-                  bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
-                  text-white text-3xl font-bold">
-        ${teacher?.image_url
-          ? `<img src="${teacher.image_url}" class="w-full h-full object-cover"/>`
-          : (teacher?.full_name ?? 'ค').charAt(0).toUpperCase()}
+    <div class="bg-white rounded-2xl ${cardBorderCls} px-5 pt-5 pb-5 mb-5 flex items-center gap-5 overflow-hidden" style="${cardGlowStyle}">
+      <!-- รูปโปรไฟล์ + ปุ่มแก้ไข -->
+      <div class="flex flex-col items-center gap-2 flex-shrink-0">
+        <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-100
+                    bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
+                    text-white text-3xl font-bold">
+          ${teacher?.image_url
+            ? `<img src="${teacher.image_url}" class="w-full h-full object-cover"/>`
+            : (teacher?.full_name ?? 'ค').charAt(0).toUpperCase()}
+        </div>
+        <button onclick="window._navTo('profile')"
+          class="text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500
+                 hover:bg-gray-50 hover:text-gray-700 transition whitespace-nowrap">
+          ✏️ แก้ไขโปรไฟล์
+        </button>
       </div>
-      <div class="flex-1 min-w-0 ${donorStickerHtml ? 'pr-20' : ''}">
+      <!-- ข้อมูลครู -->
+      <div class="flex-1 min-w-0">
         <h3 class="font-bold text-gray-800 text-lg truncate">${teacher?.full_name ?? '—'}</h3>
         <p class="text-xs text-gray-400 mt-0.5">รหัสครู ${teacher?.teacher_code ?? '—'} · ${teacher?.category ?? '—'}</p>
         <div class="flex flex-wrap gap-1.5 mt-2">
@@ -246,13 +255,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             : ''}
         </div>
       </div>
-      <div class="flex-shrink-0">
-        <button onclick="window._navTo('profile')"
-          class="text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-500
-                 hover:bg-gray-50 hover:text-gray-700 transition whitespace-nowrap">
-          ✏️ แก้ไขโปรไฟล์
-        </button>
-      </div>
+      <!-- สติกเกอร์ -->
+      ${donorStickerHtml}
     </div>
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[

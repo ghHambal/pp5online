@@ -100,12 +100,7 @@ export async function renderMyClasses(teacher) {
         return String(a.masterSubject?.subject_name ?? '').localeCompare(String(b.masterSubject?.subject_name ?? ''), 'th')
       })
     setContent(`<div class="animate-fade">
-      <div class="flex items-center justify-between mb-5">
-        <div>
-          <h2 class="text-lg font-bold text-gray-800">ห้องเรียนของฉัน</h2>
-          <p class="text-xs text-gray-400 mt-0.5">รายวิชาที่เปิดสอนในภาคเรียนนี้</p>
-        </div>
-      </div>
+      <div class="mb-4"></div>
       ${!classes.length ? `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-16 text-center text-gray-400">
         <p class="text-4xl mb-3">🏫</p>
