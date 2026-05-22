@@ -7351,7 +7351,7 @@ export async function renderGradesGrid(teacher, classData) {
       document.getElementById('manage-cols-modal')?.remove()
       const modal = document.createElement('div')
       modal.id = 'manage-cols-modal'
-      modal.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4'
+      modal.className = 'fixed inset-0 z-[600] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4'
       const colRow = col => {
         const locked = _isLockedScoreColumn(col)
         return `
@@ -7553,7 +7553,7 @@ export async function renderGradesGrid(teacher, classData) {
           <th colspan="${finalCols.length+1}" class="${thBase} bg-purple-600 text-white font-semibold py-1.5">
             📙 ปลายภาค${finMax>0?' (เต็ม '+finMax+')':''}</th>
           ${derivedCols.length ? `<th colspan="${derivedCols.length}" class="${thBase} bg-indigo-600 text-white font-semibold py-1.5">🧮 อ้างอิงสูตร</th>` : ''}
-          ${showBonusCols && bonusCols.length ? `<th colspan="${bonusCols.length}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนพิเศษ</th>` : ''}
+          ${showBonusCols ? `<th colspan="${Math.max(bonusCols.length,1)+1}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนเก็บ/พิเศษ</th>` : ''}
           <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax+(derivedCols.reduce((s,c)=>s+(parseFloat(c.max_score)||0),0))||'?'}</div></th>
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
           ${toggleForceGrade?`<th class="${thBase} bg-rose-50 text-rose-600 text-xs" style="min-width:32px;width:32px" rowspan="3"><div class="text-[9px] font-semibold leading-tight">บัง<br/>คับ</div></th>`:''}
@@ -7579,6 +7579,8 @@ export async function renderGradesGrid(teacher, classData) {
           ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
             <span class="text-[11px] text-amber-500 block text-center">${c.sheet_column||'—'}</span>
           </th>`).join('') : ''}
+          ${showBonusCols ? `<th class="${thBase} bg-amber-50" style="width:30px">
+            <button class="btn-add-bonus text-amber-500 hover:bg-amber-100 rounded-full w-5 h-5 font-bold text-sm leading-none mx-auto block">＋</button></th>` : ''}
         </tr>
         <tr style="position:sticky;top:48px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
@@ -7601,6 +7603,7 @@ export async function renderGradesGrid(teacher, classData) {
             <span class="text-[11px] text-amber-700 font-medium block text-center truncate">${c.assignment_name}</span>
             <span class="text-[10px] text-amber-400">${c.max_score ? '/'+c.max_score : '(ไม่จำกัด)'}</span>
           </th>`).join('') : ''}
+          ${showBonusCols ? `<th class="${thBase} bg-amber-50" style="width:30px"></th>` : ''}
         </tr>`
 
       const body = students.map((s,i) => {
@@ -7633,6 +7636,7 @@ export async function renderGradesGrid(teacher, classData) {
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
               type="number" min="0" ${c.max_score?`max="${c.max_score}"`:''}  step="0.5" value="${v}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/></td>`}).join('') : ''}
+          ${showBonusCols ? `<td class="border border-amber-50 bg-amber-50/30" style="width:30px;height:30px"></td>` : ''}
           <td class="border border-amber-100 text-center bg-amber-50 font-bold text-amber-700" id="gtotal-${s.id}" style="min-width:58px">${total>0?total:'—'}</td>
           <td class="border border-purple-100 text-center bg-purple-50 font-bold text-purple-700" id="ggrade-${s.id}" style="min-width:50px">${displayGrade}</td>
           ${toggleForceGrade?`<td class="border border-rose-100 text-center bg-rose-50 cursor-pointer hover:bg-rose-100 transition force-cell" style="min-width:32px;height:30px" data-sid="${s.id}">
@@ -7793,6 +7797,54 @@ export async function renderGradesGrid(teacher, classData) {
       // ── Add col ──
       wrap.querySelectorAll('.btn-add-col').forEach(btn=>{
         btn.addEventListener('click',()=>_openAddColumnModal(classData,btn.dataset.type,()=>renderGradesGrid(teacher,classData)))
+      })
+      // ── Quick add bonus column ──────────────────────────────────────────────
+      wrap.querySelector('.btn-add-bonus')?.addEventListener('click', () => {
+        document.getElementById('quick-add-bonus')?.remove()
+        const pop = document.createElement('div')
+        pop.id = 'quick-add-bonus'
+        pop.className = 'fixed inset-0 z-[600] flex items-center justify-center bg-black/40 p-4'
+        pop.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3">
+            <h3 class="font-bold text-amber-700">⭐ เพิ่มคอลัมน์พิเศษ</h3>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">ชื่อคอลัมน์ <span class="text-red-400">*</span></label>
+              <input id="qb-name" type="text" placeholder="เช่น ส่งการบ้าน, ความตั้งใจ"
+                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200" />
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">คะแนนเต็ม <span class="text-gray-400 font-normal">(ไม่บังคับ)</span></label>
+              <input id="qb-max" type="number" min="0" placeholder="ไม่จำกัด"
+                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200" />
+            </div>
+            <div class="flex gap-3 pt-1">
+              <button id="qb-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button id="qb-add" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold">เพิ่ม</button>
+            </div>
+          </div>`
+        document.body.appendChild(pop)
+        pop.querySelector('#qb-cancel').addEventListener('click', () => pop.remove())
+        pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
+        const nameEl = pop.querySelector('#qb-name')
+        nameEl.focus()
+        pop.querySelector('#qb-add').addEventListener('click', async () => {
+          const name = nameEl.value.trim()
+          const max  = pop.querySelector('#qb-max').value ? parseFloat(pop.querySelector('#qb-max').value) : null
+          if (!name) { showToast('กรุณากรอกชื่อคอลัมน์', 'warning'); return }
+          const btn = pop.querySelector('#qb-add')
+          btn.disabled = true; btn.textContent = '⏳'
+          try {
+            await createScoreColumn({ class_id: classData.id, assignment_name: name,
+              assignment_type: 'คะแนนพิเศษ', sheet_column: '',
+              max_score: max, column_type: 'bonus', formula: null, formula_refs: [] })
+            showToast(`เพิ่ม "${name}" แล้ว ✅`, 'success')
+            pop.remove()
+            renderGradesGrid(teacher, classData)
+          } catch (err) {
+            showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            btn.disabled = false; btn.textContent = 'เพิ่ม'
+          }
+        })
       })
       // ── Student grade detail ──
       wrap.querySelectorAll('.student-name-cell').forEach(cell=>{
