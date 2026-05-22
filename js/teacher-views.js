@@ -7070,6 +7070,10 @@ export async function renderGradesGrid(teacher, classData) {
     }
 
     let toggleRound = true, toggleForceGrade = false, toggleKhuna = true, toggleRead = true
+    const _defaultForceGrades = ['0','ร','มส','มผ']
+    const forceGradeOptions = sysCfg.forceGradeOptions
+      ? String(sysCfg.forceGradeOptions).split(',').map(s=>s.trim()).filter(Boolean)
+      : _defaultForceGrades
 
     const _calcGradeRow = (sid) => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
@@ -7538,7 +7542,7 @@ export async function renderGradesGrid(teacher, classData) {
           ${showBonusCols && bonusCols.length ? `<th colspan="${bonusCols.length}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนพิเศษ</th>` : ''}
           <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax+(derivedCols.reduce((s,c)=>s+(parseFloat(c.max_score)||0),0))||'?'}</div></th>
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
-          ${toggleForceGrade?`<th class="${thBase} bg-rose-50 text-rose-600 text-xs" style="min-width:50px" rowspan="3">บังคับ<div class="text-[9px] font-normal text-rose-300">เกรด</div></th>`:''}
+          ${toggleForceGrade?`<th class="${thBase} bg-rose-50 text-rose-600 text-xs" style="min-width:32px;width:32px" rowspan="3"><div class="text-[9px] font-semibold leading-tight">บัง<br/>คับ</div></th>`:''}
           <th class="${thBase} bg-emerald-50 font-medium text-emerald-700 text-xs" style="min-width:72px" rowspan="3">คุณลักษณะ${!toggleKhuna?`<div class="text-[9px] font-normal text-emerald-300">ปิดอยู่</div>`:''}</th>
           <th class="${thBase} bg-sky-50 font-medium text-sky-600 text-xs" style="min-width:82px" rowspan="3">การอ่านฯ<div class="text-[9px] font-normal text-sky-400">${toggleRead?'ผลประเมิน':'ปิดอยู่'}</div></th>
         </tr>
@@ -7617,9 +7621,8 @@ export async function renderGradesGrid(teacher, classData) {
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/></td>`}).join('') : ''}
           <td class="border border-amber-100 text-center bg-amber-50 font-bold text-amber-700" id="gtotal-${s.id}" style="min-width:58px">${total>0?total:'—'}</td>
           <td class="border border-purple-100 text-center bg-purple-50 font-bold text-purple-700" id="ggrade-${s.id}" style="min-width:50px">${displayGrade}</td>
-          ${toggleForceGrade?`<td class="border border-rose-100 text-center bg-rose-50 p-0" style="min-width:50px;height:30px">
-            <input class="force-input w-full h-full text-center text-xs bg-transparent focus:bg-rose-100 focus:outline-none text-rose-600 font-bold"
-              type="text" placeholder="—" value="${fg}" data-sid="${s.id}" maxlength="4"/></td>`:''}
+          ${toggleForceGrade?`<td class="border border-rose-100 text-center bg-rose-50 cursor-pointer hover:bg-rose-100 transition force-cell" style="min-width:32px;height:30px" data-sid="${s.id}">
+            <span class="text-xs font-bold ${fg?'text-rose-600':'text-rose-200'}">${fg||'+'}</span></td>`:''}
           <td class="border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${toggleKhuna ? khuna.cls : 'text-gray-300'}" id="gkhuna-${s.id}">${toggleKhuna ? khuna.label : '—'}</td>
           ${_readCell(s.id)}
         </tr>`}).join('')
@@ -7667,15 +7670,54 @@ export async function renderGradesGrid(teacher, classData) {
             if(kEl){kEl.textContent=khuna.label;kEl.className=`border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}`}
           }catch{showToast('บันทึกไม่สำเร็จ','error')}
           finally{document.getElementById('grade-saving')?.classList.add('hidden')}
-        } else if (forceInp) {
-          const sid=parseInt(forceInp.dataset.sid)
-          if(!scoreMap[sid])scoreMap[sid]={}
-          scoreMap[sid]['__force']=forceInp.value.trim()
-          const{grade}=_calcGradeRow(sid)
-          const fg=scoreMap[sid]['__force']
-          const gEl=document.getElementById(`ggrade-${sid}`)
-          if(gEl)gEl.textContent=fg||(grade>0?grade.toFixed(1):'0')
         }
+      })
+
+      // ── Force grade popup (click on force-cell) ──
+      tbl.addEventListener('click', e => {
+        const cell = e.target.closest('.force-cell')
+        if (!cell) return
+        const sid = parseInt(cell.dataset.sid)
+        document.getElementById('force-grade-popup')?.remove()
+        const current = scoreMap[sid]?.['__force'] ?? ''
+        const pop = document.createElement('div')
+        pop.id = 'force-grade-popup'
+        pop.className = 'fixed inset-0 z-[400] flex items-end sm:items-center justify-center p-4'
+        pop.style.background = 'rgba(0,0,0,0.4)'
+        const st = students.find(s=>s.id===sid)
+        pop.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+            <div class="bg-rose-50 px-5 py-3 border-b border-rose-100">
+              <p class="font-bold text-rose-700 text-sm">บังคับเกรด</p>
+              <p class="text-xs text-rose-400">${st?.full_name??''}</p>
+            </div>
+            <div class="p-4">
+              <div class="grid grid-cols-4 gap-2 mb-3">
+                ${forceGradeOptions.map(g=>`
+                  <button class="force-pick py-2.5 rounded-xl text-sm font-bold border transition
+                    ${g===current ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}"
+                    data-grade="${g}">${g}</button>`).join('')}
+                <button class="force-pick py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-400 hover:bg-gray-50 col-span-4"
+                  data-grade="">ล้างค่า (ใช้เกรดปกติ)</button>
+              </div>
+            </div>
+          </div>`
+        document.body.appendChild(pop)
+        pop.addEventListener('click', e2 => {
+          const btn = e2.target.closest('.force-pick')
+          if (!btn && e2.target === pop) { pop.remove(); return }
+          if (!btn) return
+          const grade = btn.dataset.grade
+          if(!scoreMap[sid])scoreMap[sid]={}
+          scoreMap[sid]['__force'] = grade
+          const {grade: calcGrade} = _calcGradeRow(sid)
+          const gEl = document.getElementById(`ggrade-${sid}`)
+          if(gEl) gEl.textContent = grade || (calcGrade>0?calcGrade.toFixed(1):'0')
+          // update cell
+          const span = cell.querySelector('span')
+          if(span){span.textContent=grade||'+';span.className=`text-xs font-bold ${grade?'text-rose-600':'text-rose-200'}`}
+          pop.remove()
+        })
       })
       // ── Keyboard nav: Arrow + Enter + Tab ──
       tbl.addEventListener('keydown',e=>{

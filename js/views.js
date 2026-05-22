@@ -2318,6 +2318,10 @@ export async function renderSettings() {
           { key:'showStudentHouseColor', label:'แสดงคอลัมน์ประจำสี', type:'toggle' },
           { key:'showStudentSportsShirtSize', label:'แสดงคอลัมน์ไซด์เสื้อกีฬาสี', type:'toggle' },
         ]),
+        section('ตัวเลือกบังคับเกรด (คอลัมน์บังคับเกรดในหน้าคะแนน)', [
+          { key:'forceGradeOptions', label:'รายการเกรด (คั่นด้วยจุลภาค)', type:'text',
+            placeholder:'เช่น 0,ร,มส,มผ', description:'ค่าเริ่มต้น: 0,ร,มส,มผ — ครูจะเห็นเป็นตัวเลือกเมื่อกดบังคับเกรดนักเรียน' },
+        ]),
         section('ซิงก์ฐานข้อมูลนักเรียนจาก Google Sheet', [
           { key:'studentSyncSheetId', label:'Google Sheet ID / URL แหล่งข้อมูลนักเรียน', type:'text', placeholder:'วาง ID หรือ URL ของ Google Sheet' },
           { key:'studentSyncTabName', label:'ชื่อแท็บข้อมูลนักเรียน', type:'text', placeholder:'เช่น students หรือ ชื่อนักเรียน' },
