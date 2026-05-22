@@ -10,6 +10,8 @@ import { supabase } from './supabase.js'
 import { uploadTeacherPhoto } from './storage.js'
 import { openPP5CourseModal } from './pp5-doc.js'
 import { showToast } from './ui.js'
+import { _openCourseColsModal } from './teacher-views-grades.js'
+import { _openLessonPlanApproval } from './teacher-views.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
   SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS, _resolveGeminiKey,

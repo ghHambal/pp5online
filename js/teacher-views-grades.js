@@ -2,6 +2,7 @@ import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
   detectAssignmentKind, getSheetColumnOptions,
+  getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
 } from './api.js'
 import { showToast } from './ui.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
@@ -1559,7 +1560,7 @@ async function _openCopyColsPopup(classData, allMyClasses) {
 }
 
 // ─── Course-level Column Modal ────────────────────────────────────────────────
-async function _openCourseColsModal(subjectId, subjectName, allClasses) {
+export async function _openCourseColsModal(subjectId, subjectName, allClasses) {
   const courseClasses = allClasses.filter(c => c.course_id === subjectId)
   if (!courseClasses.length) { showToast('ยังไม่มีห้องเรียนในคอร์สนี้', 'warning'); return }
 

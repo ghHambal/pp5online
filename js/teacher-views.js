@@ -560,7 +560,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
 // ─── Lesson Plan Approval Document ───────────────────────────────────────────
 
-function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts) {
+export function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts) {
   const win = window.open('', '_blank')
   if (!win) { showToast('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup ก่อน', 'warning'); return }
   win.document.write('<p style="font-family:sans-serif;padding:24px">กำลังสร้างเอกสาร...</p>')

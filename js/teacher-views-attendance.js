@@ -11,6 +11,7 @@ import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
+  _generateSessions, _dateInputValue,
 } from './teacher-views-utils.js'
 
 export async function renderAttendanceGrid(teacher, classData) {
