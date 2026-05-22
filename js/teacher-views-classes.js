@@ -657,7 +657,7 @@ export async function renderMyClasses(teacher) {
           try {
             await autoEnrollStudentsByRoom()
             showToast('รีเฟรชรายชื่อสำเร็จ', 'success')
-            window._openStudentManager(classId)
+            window._loadClassTab?.('students') ?? window._openStudentManager(classId)
           } catch {
             showToast('รีเฟรชไม่สำเร็จ', 'error')
             btn.disabled = false
@@ -1222,6 +1222,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       } catch (err) { showToast('ลบไม่สำเร็จ', 'error') }
     }
 
+    window._loadClassTab = async (tabId) => loadTab(tabId)
     const loadTab = async (tabId) => {
       document.querySelectorAll('.cd-tab').forEach(t => {
         const isActive = t.dataset.tab === tabId
