@@ -7531,8 +7531,8 @@ export async function renderGradesGrid(teacher, classData) {
           <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax+(derivedCols.reduce((s,c)=>s+(parseFloat(c.max_score)||0),0))||'?'}</div></th>
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
           ${toggleForceGrade?`<th class="${thBase} bg-rose-50 text-rose-600 text-xs" style="min-width:50px" rowspan="3">บังคับ<div class="text-[9px] font-normal text-rose-300">เกรด</div></th>`:''}
-          ${toggleKhuna?`<th class="${thBase} bg-emerald-50 font-medium text-emerald-700 text-xs" style="min-width:72px" rowspan="3">คุณลักษณะ</th>`:''}
-          ${toggleRead?`<th class="${thBase} bg-sky-50 font-medium text-sky-600 text-xs" style="min-width:82px" rowspan="3">การอ่านฯ<div class="text-[9px] font-normal text-sky-400">ผลประเมิน</div></th>`:''}
+          <th class="${thBase} bg-emerald-50 font-medium text-emerald-700 text-xs" style="min-width:72px" rowspan="3">คุณลักษณะ${!toggleKhuna?`<div class="text-[9px] font-normal text-emerald-300">ปิดอยู่</div>`:''}</th>
+          <th class="${thBase} bg-sky-50 font-medium text-sky-600 text-xs" style="min-width:82px" rowspan="3">การอ่านฯ<div class="text-[9px] font-normal text-sky-400">${toggleRead?'ผลประเมิน':'ปิดอยู่'}</div></th>
         </tr>
         <tr style="position:sticky;top:24px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
@@ -7612,8 +7612,8 @@ export async function renderGradesGrid(teacher, classData) {
           ${toggleForceGrade?`<td class="border border-rose-100 text-center bg-rose-50 p-0" style="min-width:50px;height:30px">
             <input class="force-input w-full h-full text-center text-xs bg-transparent focus:bg-rose-100 focus:outline-none text-rose-600 font-bold"
               type="text" placeholder="—" value="${fg}" data-sid="${s.id}" maxlength="4"/></td>`:''}
-          ${toggleKhuna?`<td class="border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}" id="gkhuna-${s.id}">${khuna.label}</td>`:''}
-          ${toggleRead?(()=>{const re=readingEvalMap[s.id];return re?`<td class="border border-sky-100 text-center bg-sky-50/40 text-[11px] font-semibold ${re.cls}" id="gread-${s.id}">${re.label}</td>`:`<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-${s.id}">—</td>`})():''}
+          <td class="border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${toggleKhuna ? khuna.cls : 'text-gray-300'}" id="gkhuna-${s.id}">${toggleKhuna ? khuna.label : '—'}</td>
+          ${(()=>{if(!toggleRead)return `<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-${s.id}">—</td>`;const re=readingEvalMap[s.id];return re?`<td class="border border-sky-100 text-center bg-sky-50/40 text-[11px] font-semibold ${re.cls}" id="gread-${s.id}">${re.label}</td>`:`<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-${s.id}">—</td>`})()
         </tr>`}).join('')
 
       wrap.innerHTML = `<table class="border-collapse text-xs" style="min-width:max-content">
