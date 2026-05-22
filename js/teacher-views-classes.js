@@ -30,6 +30,7 @@ import {
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _resolveGeminiKey, _transparentEdgeDarkLogo,
+  getMainContentRef, setMainContentRef,
 } from './teacher-views-utils.js'
 
 export async function renderMyClasses(teacher) {
@@ -1239,8 +1240,8 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       // redirect setContent → cd-tab-content ชั่วคราว
       // เพื่อให้ _openStudentManager / renderAttendanceGrid / renderGradesGrid
       // เขียนลง tab area แทนที่จะทับ header + tabs ทั้งหน้า
-      const _savedMain = _realMainContent
-      _realMainContent = currentBox
+      const _savedMain = getMainContentRef()
+      setMainContentRef(currentBox)
       try {
         if (tabId === 'students') {
           await window._openStudentManager(classId)
@@ -1253,7 +1254,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
         console.error(err)
         currentBox.innerHTML = `<div class="p-6 text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ</div>`
       } finally {
-        _realMainContent = _savedMain
+        setMainContentRef(_savedMain)
       }
       setActiveNav('my-classes')
       setTitle('ห้องเรียน')

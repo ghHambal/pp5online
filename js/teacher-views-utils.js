@@ -25,6 +25,9 @@ export function setContent(html) {
   if (el) el.innerHTML = html
 }
 
+export function getMainContentRef() { return _realMainContent }
+export function setMainContentRef(el) { _realMainContent = el }
+
 export function setTitle(t) {
   document.getElementById('page-title').textContent = t
 }

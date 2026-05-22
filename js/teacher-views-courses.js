@@ -1,9 +1,10 @@
 import {
-  getMySubjects, getDepartments, getTeachers, getMasterSubjects,
+  getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubjects,
   updateMyProfile, updateSubject, deleteSubject,
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
   getTeacherPackageAccess, getSystemConfig, getRoomsByGrade,
+  getUniqueRooms, getUniqueReligionRooms,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { uploadTeacherPhoto } from './storage.js'
