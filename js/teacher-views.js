@@ -7512,6 +7512,14 @@ export async function renderGradesGrid(teacher, classData) {
       })
     }
 
+    const _readCell = (sid) => {
+      if (!toggleRead) return '<td class="border border-sky-100 text-center text-gray-300 text-[10px]">—</td>'
+      const re = readingEvalMap[sid]
+      return re
+        ? '<td class="border border-sky-100 text-center bg-sky-50/40 text-[11px] font-semibold ' + re.cls + '" id="gread-' + sid + '">' + re.label + '</td>'
+        : '<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-' + sid + '">—</td>'
+    }
+
     const _renderGrid = () => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
       const wrap = document.getElementById('grade-grid-wrap')
@@ -7613,7 +7621,7 @@ export async function renderGradesGrid(teacher, classData) {
             <input class="force-input w-full h-full text-center text-xs bg-transparent focus:bg-rose-100 focus:outline-none text-rose-600 font-bold"
               type="text" placeholder="—" value="${fg}" data-sid="${s.id}" maxlength="4"/></td>`:''}
           <td class="border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${toggleKhuna ? khuna.cls : 'text-gray-300'}" id="gkhuna-${s.id}">${toggleKhuna ? khuna.label : '—'}</td>
-          ${(()=>{if(!toggleRead)return `<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-${s.id}">—</td>`;const re=readingEvalMap[s.id];return re?`<td class="border border-sky-100 text-center bg-sky-50/40 text-[11px] font-semibold ${re.cls}" id="gread-${s.id}">${re.label}</td>`:`<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-${s.id}">—</td>`})()
+          ${_readCell(s.id)}
         </tr>`}).join('')
 
       wrap.innerHTML = `<table class="border-collapse text-xs" style="min-width:max-content">
