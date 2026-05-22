@@ -287,12 +287,14 @@ function installWeeklyStudentSyncTrigger() {
 }
 
 // ฟังก์ชันหลักสำหรับซิงก์นักเรียน — เรียกได้ทั้งจาก GET, POST, และ trigger
-// ขั้นตอน: อ่านชีท → แปลง header → สร้าง records → upsert students → auto-enroll
+// ขั้นตอน: อ่านชีท → แปลง header → สร้าง records → upsert students (is_active=true)
+//          → ซ่อนนักเรียนที่ไม่อยู่ใน sheet (is_active=false) → บันทึก log → auto-enroll
 function _syncStudentsFromSheet(payload) {
   var cfg = _getStudentSyncConfig(payload || {})
   var sheetId = cfg.sheetId
   var tabName = cfg.tabName
   var headerRow = cfg.headerRow || 1
+  var triggeredBy = payload && payload.triggeredBy === 'auto' ? 'auto' : 'manual'
 
   if (!sheetId) return { ok: false, error: 'Missing student sync Sheet ID' }
 
@@ -321,33 +323,117 @@ function _syncStudentsFromSheet(payload) {
     Object.keys(headerMap).forEach(function(field) {
       var colIndex = headerMap[field]
       var value = row[colIndex]
-      // ถ้าไม่มี URL รูป ให้ดึงจาก formula =IMAGE("...") แทน
       if (field === 'image_url' && !value) value = _extractImageUrlFromFormula(formulas[rowIndex][colIndex])
       value = _cleanCell(value)
-      // รหัสนักเรียนที่เป็นตัวเลข Excel อาจมี .0 ต่อท้าย ให้ตัดออก
       if (field === 'student_code') value = String(value).replace(/\.0$/, '').trim()
       if (value !== '') record[field] = value
     })
-
-    // ข้ามแถวที่ไม่มีรหัสหรือชื่อ
-    if (!record.student_code || !record.full_name) {
-      skipped++
-      return
-    }
+    if (!record.student_code || !record.full_name) { skipped++; return }
+    record.is_active = true
     records.push(record)
   })
 
+  // รหัสนักเรียนทั้งหมดที่อยู่ใน sheet นี้
+  var sheetCodes = {}
+  records.forEach(function(r) { sheetCodes[r.student_code] = true })
+
+  // ดึงนักเรียนที่ active อยู่ในระบบก่อน sync เพื่อเปรียบเทียบ (สำหรับ log เท่านั้น)
+  var beforeActive = _fetchActiveStudents()
+  var beforeCodes = {}
+  beforeActive.forEach(function(s) { beforeCodes[s.student_code] = true })
+
+  // ซ่อนนักเรียนทุกคนก่อน แล้ว upsert จะ re-activate เฉพาะคนที่อยู่ใน sheet
+  // (หลีกเลี่ยงปัญหา URL ยาวเกินเมื่อส่ง student_code=in.(....))
+  _deactivateAllStudents()
+
   var written = _upsertStudentsToSupabase(records)
-  // หลัง upsert เสร็จ ให้ลงทะเบียนนักเรียนเข้าห้องเรียนอัตโนมัติ
+
+  // คำนวณ log: ใหม่ = อยู่ใน sheet แต่ไม่มีใน beforeActive
+  var newStudents = records.filter(function(r) { return !beforeCodes[r.student_code] })
+    .map(function(r) { return { student_code: r.student_code, full_name: r.full_name } })
+
+  // ซ่อน = อยู่ใน beforeActive แต่ไม่อยู่ใน sheet
+  var deactivatedStudents = beforeActive
+    .filter(function(s) { return !sheetCodes[s.student_code] })
+    .map(function(s) { return { student_code: s.student_code, full_name: s.full_name } })
+
+  // บันทึก sync log
+  _insertSyncLog({
+    triggered_by: triggeredBy,
+    read_count: values.length,
+    written_count: written,
+    new_count: newStudents.length,
+    deactivated_count: toDeactivate.length,
+    new_students: newStudents,
+    deactivated_students: deactivatedStudents,
+    sheet_id: sheetId,
+    tab_name: sheet.getName(),
+  })
+
   _autoEnrollStudentsByMainRoom()
+
   return {
     ok: true,
     read: values.length,
     written: written,
     skipped: skipped,
+    newCount: newStudents.length,
+    deactivatedCount: toDeactivate.length,
+    newStudents: newStudents,
+    deactivatedStudents: deactivatedStudents,
     sheetId: sheetId,
     tabName: sheet.getName(),
   }
+}
+
+// ─── ดึงรายชื่อนักเรียนที่ active ทั้งหมดจาก Supabase ───────────────────────
+function _fetchActiveStudents() {
+  var endpoint = _supabaseEndpoint()
+  var url = endpoint.url + '/rest/v1/students?is_active=eq.true&select=student_code,full_name&limit=10000'
+  var resp = UrlFetchApp.fetch(url, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      apikey: endpoint.key,
+      Authorization: 'Bearer ' + endpoint.key,
+    },
+  })
+  if (resp.getResponseCode() !== 200) return []
+  try { return JSON.parse(resp.getContentText()) || [] } catch(e) { return [] }
+}
+
+// ─── ซ่อนนักเรียนทั้งหมดก่อน sync (set is_active = false ทุกคน) ──────────────
+// upsert ขั้นต่อไปจะ re-activate เฉพาะคนที่อยู่ใน sheet
+// ใช้ id=gt.0 แทน student_code=in.(list) เพื่อหลีกเลี่ยง URL ยาวเกิน GAS limit
+function _deactivateAllStudents() {
+  var endpoint = _supabaseEndpoint()
+  UrlFetchApp.fetch(endpoint.url + '/rest/v1/students?id=gt.0', {
+    method: 'patch',
+    muteHttpExceptions: true,
+    contentType: 'application/json',
+    headers: {
+      apikey: endpoint.key,
+      Authorization: 'Bearer ' + endpoint.key,
+      Prefer: 'return=minimal',
+    },
+    payload: JSON.stringify({ is_active: false }),
+  })
+}
+
+// ─── บันทึก sync log เข้า student_sync_logs ──────────────────────────────────
+function _insertSyncLog(data) {
+  var endpoint = _supabaseEndpoint()
+  UrlFetchApp.fetch(endpoint.url + '/rest/v1/student_sync_logs', {
+    method: 'post',
+    muteHttpExceptions: true,
+    contentType: 'application/json',
+    headers: {
+      apikey: endpoint.key,
+      Authorization: 'Bearer ' + endpoint.key,
+      Prefer: 'return=minimal',
+    },
+    payload: JSON.stringify(data),
+  })
 }
 
 // ─── ลงทะเบียนนักเรียนเข้าห้องเรียนอัตโนมัติ ────────────────────────────────

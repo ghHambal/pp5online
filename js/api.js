@@ -96,7 +96,7 @@ export async function getStats() {
     { count: subjects },
   ] = await Promise.all([
     supabase.from('teachers').select('*',       { count: 'exact', head: true }),
-    supabase.from('students').select('*',       { count: 'exact', head: true }),
+    supabase.from('students').select('*',       { count: 'exact', head: true }).eq('is_active', true),
     supabase.from('classes').select('*',        { count: 'exact', head: true }),
     supabase.from('master_subjects').select('*',{ count: 'exact', head: true }),
   ])
@@ -183,7 +183,7 @@ export async function getClasses() {
 export async function getStudents() {
   return _fetchAllStudents(
     'id, student_code, full_name, main_room, religion_room, gender, image_url, house_color, sports_shirt_size',
-    q => q,
+    q => q.eq('is_active', true),
     'student_code'
   )
 }
@@ -658,6 +658,7 @@ export async function getRoomsByGrade(gradePrefix) {
   const { data, error } = await supabase
     .from('students').select('main_room')
     .like('main_room', `${gradePrefix}/%`)
+    .eq('is_active', true)
     .order('main_room')
   if (error) throw error
   return [...new Set((data ?? []).map(s => s.main_room).filter(Boolean))].sort()
@@ -666,7 +667,7 @@ export async function getRoomsByGrade(gradePrefix) {
 export async function getStudentsByRoom(room) {
   return _fetchAllStudents(
     'id, student_code, full_name, main_room, religion_room, gender, image_url, house_color, sports_shirt_size',
-    q => q.eq('main_room', room),
+    q => q.eq('main_room', room).eq('is_active', true),
     'student_code'
   )
 }
@@ -1112,7 +1113,7 @@ export async function getUsageStats() {
   const monthIso  = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const [tTotal, sTotal, tToday, sToday, tMonth, sMonth] = await Promise.all([
     supabase.from('teachers').select('id', { count: 'exact', head: true }),
-    supabase.from('students').select('id', { count: 'exact', head: true }),
+    supabase.from('students').select('id', { count: 'exact', head: true }).eq('is_active', true),
     supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','teacher').gte('logged_at', todayIso),
     supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','student').gte('logged_at', todayIso),
     supabase.from('login_logs').select('id', { count: 'exact', head: true }).eq('user_type','teacher').gte('logged_at', monthIso),
@@ -1395,7 +1396,7 @@ export async function savePrayerCellAdmin(studentId, room, checkDate, status, we
 export async function getPrayerRecordsByRoom(room) {
   // ค้นหาผ่าน student_id ของห้องนั้น — ไม่พึ่ง main_room ซึ่งครูอาจบันทึกต่างกัน
   const { data: students } = await supabase.from('students')
-    .select('id').eq('religion_room', room)
+    .select('id').eq('religion_room', room).eq('is_active', true)
     .range(...STUDENT_QUERY_RANGE)
   if (!students?.length) return []
   const ids = students.map(s => s.id)

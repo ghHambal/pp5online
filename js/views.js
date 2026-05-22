@@ -2347,6 +2347,10 @@ export async function renderSettings() {
             class="mt-3 inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm">
             🔄 ซิงก์นักเรียนตอนนี้
           </button>
+        </div>
+        <div id="student-sync-log-section" class="mt-3 rounded-2xl border border-gray-100 bg-white p-4 hidden">
+          <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">ประวัติการซิงก์ล่าสุด</p>
+          <div id="student-sync-log-content" class="text-sm text-gray-700 space-y-2"></div>
         </div>`,
       ].join('')
 
@@ -2737,6 +2741,46 @@ export async function renderSettings() {
           showToast('ดาวน์โหลดเท็มเพลทแล้ว ✅', 'success')
         })
       }
+      const _renderSyncLog = (log) => {
+        const section = document.getElementById('student-sync-log-section')
+        const content = document.getElementById('student-sync-log-content')
+        if (!section || !content) return
+        const dt = new Date(log.synced_at)
+        const dateStr = dt.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
+        const timeStr = dt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+        const byLabel = log.triggered_by === 'auto' ? '⏱ อัตโนมัติ' : '👆 มือ'
+        const newList = (log.new_students || []).map(s => `<span class="text-green-700">${s.full_name} (${s.student_code})</span>`).join(', ') || '—'
+        const deactList = (log.deactivated_students || []).map(s => `<span class="text-red-500">${s.full_name} (${s.student_code})</span>`).join(', ') || '—'
+        content.innerHTML = `
+          <div class="flex flex-wrap gap-3 text-xs">
+            <span class="bg-gray-100 rounded-lg px-2 py-1">📅 ${dateStr} ${timeStr}</span>
+            <span class="bg-gray-100 rounded-lg px-2 py-1">${byLabel}</span>
+            <span class="bg-gray-100 rounded-lg px-2 py-1">อ่าน ${log.read_count} แถว</span>
+            <span class="bg-gray-100 rounded-lg px-2 py-1">บันทึก ${log.written_count} คน</span>
+          </div>
+          <div class="mt-2 text-xs">
+            <span class="font-semibold text-green-700">ใหม่ ${log.new_count} คน:</span> ${newList}
+          </div>
+          <div class="mt-1 text-xs">
+            <span class="font-semibold text-red-500">ซ่อน ${log.deactivated_count} คน:</span> ${deactList}
+          </div>`
+        section.classList.remove('hidden')
+      }
+
+      const _loadLatestSyncLog = async () => {
+        try {
+          const { data } = await supabase
+            .from('student_sync_logs')
+            .select('*')
+            .order('synced_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (data) _renderSyncLog(data)
+        } catch (_) {}
+      }
+
+      _loadLatestSyncLog()
+
       if (syncStudentsBtn) {
         syncStudentsBtn.addEventListener('click', async () => {
           const sheetId = document.getElementById('cfg-studentSyncSheetId')?.value?.trim() || ''
@@ -2751,7 +2795,9 @@ export async function renderSettings() {
               updateSystemConfig('studentSyncHeaderRow', headerRow),
             ])
             const res = await syncStudentsFromSheetNow({ sourceSheetId: sheetId, tabName, headerRow })
-            showToast(`ซิงก์นักเรียนสำเร็จ: อ่าน ${res.read ?? 0} แถว / บันทึก ${res.written ?? 0} คน ✅`, 'success')
+            const summary = `ซิงก์สำเร็จ: อ่าน ${res.read ?? 0} แถว / บันทึก ${res.written ?? 0} คน / ใหม่ ${res.newCount ?? 0} / ซ่อน ${res.deactivatedCount ?? 0} ✅`
+            showToast(summary, 'success')
+            _loadLatestSyncLog()
           } catch (err) {
             showToast('ซิงก์นักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
           } finally {
