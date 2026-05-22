@@ -7588,7 +7588,8 @@ export async function renderGradesGrid(teacher, classData) {
           if (result) {
             if (!scoreMap[sid]) scoreMap[sid] = {}
             scoreMap[sid][colId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
-            const inp = wrap?.querySelector(`.grade-input[data-sid="${sid}"][data-col="${colId}"]`)
+            const grWrap = document.getElementById('grade-grid-wrap')
+            const inp = grWrap?.querySelector(`.grade-input[data-sid="${sid}"][data-col="${colId}"]`)
             if (inp) inp.value = result.final !== null ? String(result.final) : ''
             inp?.closest('td')?.querySelector('.hist-indicator')?.remove()
             showToast('รีเซ็ตประวัติแล้ว', 'success')
@@ -7644,7 +7645,8 @@ export async function renderGradesGrid(teacher, classData) {
             if (result) {
               if (!scoreMap[s.id]) scoreMap[s.id] = {}
               scoreMap[s.id][colId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
-              const el = wrap?.querySelector(`.grade-input[data-sid="${s.id}"][data-col="${colId}"]`)
+              const grWrap = document.getElementById('grade-grid-wrap')
+              const el = grWrap?.querySelector(`.grade-input[data-sid="${s.id}"][data-col="${colId}"]`)
               if (el) { el.value = result.final !== null ? String(result.final) : ''; el.style.boxShadow = '0 0 0 2px #059669'; setTimeout(() => el.style.boxShadow = '', 700) }
               const cell = el?.closest('td')
               if (result.history.length > 1) {
@@ -7692,7 +7694,7 @@ export async function renderGradesGrid(teacher, classData) {
           <th colspan="${finalCols.length+1}" class="${thBase} bg-purple-600 text-white font-semibold py-1.5">
             📙 ปลายภาค${finMax>0?' (เต็ม '+finMax+')':''}</th>
           ${derivedCols.length ? `<th colspan="${derivedCols.length}" class="${thBase} bg-indigo-600 text-white font-semibold py-1.5">🧮 อ้างอิงสูตร</th>` : ''}
-          ${showBonusCols ? `<th colspan="${Math.max(bonusCols.length,1)+1}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนเก็บ/พิเศษ</th>` : ''}
+          ${showBonusCols ? `<th colspan="${bonusCols.length+1}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนเก็บ/พิเศษ</th>` : ''}
           <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax+(derivedCols.reduce((s,c)=>s+(parseFloat(c.max_score)||0),0))||'?'}</div></th>
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
           ${toggleForceGrade?`<th class="${thBase} bg-rose-50 text-rose-600 text-xs" style="min-width:32px;width:32px" rowspan="3"><div class="text-[9px] font-semibold leading-tight">บัง<br/>คับ</div></th>`:''}
