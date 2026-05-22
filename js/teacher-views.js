@@ -10,6 +10,7 @@ import { openPP5Doc } from './pp5-doc.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc,
+  _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
 } from './teacher-views-utils.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
