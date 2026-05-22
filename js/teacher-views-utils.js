@@ -28,6 +28,14 @@ export function setContent(html) {
 export function getMainContentRef() { return _realMainContent }
 export function setMainContentRef(el) { _realMainContent = el }
 
+export const READING_GRADES = [
+  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50' },
+  { label: 'ดี',       min: 65, cls: 'text-blue-700 bg-blue-50' },
+  { label: 'พอใช้',   min: 50, cls: 'text-yellow-700 bg-yellow-50' },
+  { label: 'ปรับปรุง', min: 0,  cls: 'text-red-600 bg-red-50' },
+]
+export const _readingGrade = (s) => READING_GRADES.find(g => s >= g.min) ?? READING_GRADES[3]
+
 export const ATT_STATUS = {
   present: { label: 'ม', color: 'text-emerald-600 font-bold', bg: 'bg-emerald-50' },
   absent:  { label: 'ข', color: 'text-red-600 font-bold',     bg: 'bg-red-50' },

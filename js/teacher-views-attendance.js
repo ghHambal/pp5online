@@ -13,6 +13,7 @@ import { showToast } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
   _generateSessions, _dateInputValue, ATT_STATUS, ATT_CYCLE,
+  READING_GRADES, _readingGrade,
 } from './teacher-views-utils.js'
 
 export async function renderAttendanceGrid(teacher, classData) {
@@ -1440,13 +1441,6 @@ export async function renderReadingScore(teacher, initialRoom = null) {
 }
 
 // ─── Reading Score Eval Constants ────────────────────────────────────────────
-const READING_GRADES = [
-  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50' },
-  { label: 'ดี',       min: 65, cls: 'text-blue-700 bg-blue-50' },
-  { label: 'พอใช้',   min: 50, cls: 'text-yellow-700 bg-yellow-50' },
-  { label: 'ปรับปรุง', min: 0,  cls: 'text-red-600 bg-red-50' },
-]
-const _readingGrade = (s) => READING_GRADES.find(g => s >= g.min) ?? READING_GRADES[3]
 const _readingEvalBadge = (s) => {
   const g = _readingGrade(s)
   return `<span class="px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${g.cls}">${g.label}</span>`

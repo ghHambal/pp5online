@@ -9,7 +9,7 @@ import {
 import { showToast } from './ui.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import {
-  setContent, setTitle, setActiveNav, _htmlEsc,
+  setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade,
 } from './teacher-views-utils.js'
 
 export function renderGrades() {
