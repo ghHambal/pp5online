@@ -480,7 +480,7 @@ export async function getStudentScores(classId) {
   const colIds = cols.map(c => c.id)
   const { data, error } = await supabase
     .from('student_scores')
-    .select('student_id, assignment_id, original_score, retake_score, final_score')
+    .select('student_id, assignment_id, original_score, retake_score, final_score, score_history')
     .in('assignment_id', colIds)
   if (error) throw error
   // normalize: map assignment_id → score_column_id, original_score → score
@@ -491,22 +491,44 @@ export async function getStudentScores(classId) {
     original_score:  r.original_score,
     retake_score:    r.retake_score,
     final_score:     r.final_score,
+    score_history:   r.score_history ?? [],
   }))
 }
 
-export async function saveStudentScore(classId, studentId, columnId, score) {
-  const val = (score === null || score === '' || isNaN(parseFloat(score)))
-    ? null : parseFloat(score)
-  if (val === null) {
+export async function saveStudentScore(classId, studentId, columnId, score, opts = {}) {
+  // opts.delta: true = score is +/- delta, false/undefined = absolute set
+  // opts.currentHistory: existing history array (for delta mode)
+  const raw = String(score ?? '').trim()
+  if (raw === '' || score === null) {
     await supabase.from('student_scores').delete()
       .eq('student_id', studentId).eq('assignment_id', columnId)
-  } else {
-    const { error } = await supabase.from('student_scores')
-      .upsert({ student_id: studentId, assignment_id: columnId,
-                original_score: val, final_score: val },
-               { onConflict: 'student_id,assignment_id' })
-    if (error) throw error
+    return { final: null, history: [] }
   }
+
+  const isDelta = opts.delta || /^[+-]/.test(raw)
+  const numVal  = parseFloat(raw)
+  if (isNaN(numVal)) return
+
+  let history = Array.isArray(opts.currentHistory) ? [...opts.currentHistory] : []
+  const entry  = { d: numVal, at: new Date().toISOString() }
+
+  if (isDelta && history.length > 0) {
+    history.push(entry)
+  } else {
+    // absolute set — reset history
+    history = [entry]
+  }
+
+  const finalScore = Math.round(history.reduce((s, e) => s + e.d, 0) * 1000) / 1000
+
+  const { error } = await supabase.from('student_scores')
+    .upsert({ student_id: studentId, assignment_id: columnId,
+              original_score: history[0]?.d ?? finalScore,
+              final_score: finalScore,
+              score_history: history },
+             { onConflict: 'student_id,assignment_id' })
+  if (error) throw error
+  return { final: finalScore, history }
 }
 
 // ─── Prayer Records ───────────────────────────────────────────────────────────

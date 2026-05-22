@@ -7061,9 +7061,11 @@ export async function renderGradesGrid(teacher, classData) {
       scoreMap[r.student_id][r.score_column_id] = {
         orig: r.original_score, retake: r.retake_score,
         final: r.final_score ?? r.original_score,
+        history: r.score_history ?? [],
       }
     }
     const _getScore = (sid, colId) => scoreMap[sid]?.[colId]?.final ?? scoreMap[sid]?.[colId]?.orig ?? null
+    const _hasHistory = (sid, colId) => (scoreMap[sid]?.[colId]?.history?.length ?? 0) > 1
     const _groupTotal = (sid, cols) => cols.reduce((s,c) => s + (parseFloat(_getScore(sid,c.id)) || 0), 0)
     const _groupMax   = (cols) => cols.reduce((s,c) => s + (parseFloat(c.max_score)||0), 0)
 
@@ -7538,6 +7540,143 @@ export async function renderGradesGrid(teacher, classData) {
         : '<td class="border border-sky-100 text-center text-gray-300 text-[10px]" id="gread-' + sid + '">—</td>'
     }
 
+    const _fmtDate = iso => { const d=new Date(iso); return `${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` }
+
+    const _showHistoryPopup = (sid, colId, colName, history) => {
+      document.getElementById('score-hist-popup')?.remove()
+      if (!history?.length) return
+      let calc = '', running = 0
+      history.forEach((e, i) => {
+        running += e.d
+        if (i === 0) calc += String(e.d)
+        else calc += (e.d >= 0 ? ` + ${e.d}` : ` − ${Math.abs(e.d)}`)
+      })
+      calc += ` = ${Math.round(running * 1000) / 1000}`
+      const student = students.find(s => s.id === sid)
+      const pop = document.createElement('div')
+      pop.id = 'score-hist-popup'
+      pop.className = 'fixed inset-0 z-[450] flex items-end sm:items-center justify-center p-4'
+      pop.style.background = 'rgba(0,0,0,0.4)'
+      pop.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+          <div class="bg-indigo-50 px-5 py-3 border-b border-indigo-100">
+            <p class="font-bold text-indigo-700 text-sm">ประวัติคะแนน — ${_htmlEsc(colName)}</p>
+            <p class="text-xs text-indigo-400">${_htmlEsc(student?.full_name ?? '')}</p>
+          </div>
+          <div class="p-4">
+            <div class="space-y-1 mb-3 max-h-44 overflow-y-auto">
+              ${history.map(e => `
+                <div class="flex justify-between items-center text-xs py-1 border-b border-gray-50">
+                  <span class="text-gray-400">${_fmtDate(e.at)}</span>
+                  <span class="font-semibold ${e.d >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${e.d >= 0 ? '+' : ''}${e.d}</span>
+                </div>`).join('')}
+            </div>
+            <div class="bg-indigo-50 rounded-xl px-3 py-2 text-xs font-mono text-indigo-700 text-center">${calc}</div>
+          </div>
+          <div class="px-5 pb-4 flex gap-2">
+            <button id="hist-reset" class="flex-1 py-2 rounded-xl border border-rose-200 text-rose-600 text-xs hover:bg-rose-50 transition">รีเซ็ตประวัติ</button>
+            <button id="hist-close" class="flex-1 py-2 rounded-xl border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 transition">ปิด</button>
+          </div>
+        </div>`
+      document.body.appendChild(pop)
+      pop.querySelector('#hist-close').addEventListener('click', () => pop.remove())
+      pop.querySelector('#hist-reset').addEventListener('click', async () => {
+        const current = scoreMap[sid]?.[colId]?.final
+        if (current == null) { pop.remove(); return }
+        try {
+          const result = await saveStudentScore(classData.id, sid, colId, current, {})
+          if (result) {
+            if (!scoreMap[sid]) scoreMap[sid] = {}
+            scoreMap[sid][colId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
+            const inp = wrap?.querySelector(`.grade-input[data-sid="${sid}"][data-col="${colId}"]`)
+            if (inp) inp.value = result.final !== null ? String(result.final) : ''
+            inp?.closest('td')?.querySelector('.hist-indicator')?.remove()
+            showToast('รีเซ็ตประวัติแล้ว', 'success')
+          }
+        } catch { showToast('ไม่สำเร็จ', 'error') }
+        pop.remove()
+      })
+      pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
+    }
+
+    const _showMassScorePopup = (colId, colName, maxScore) => {
+      document.getElementById('mass-score-popup')?.remove()
+      const pop = document.createElement('div')
+      pop.id = 'mass-score-popup'
+      pop.className = 'fixed inset-0 z-[450] flex items-end sm:items-center justify-center p-4'
+      pop.style.background = 'rgba(0,0,0,0.4)'
+      pop.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+          <div class="bg-blue-50 px-5 py-3 border-b border-blue-100">
+            <p class="font-bold text-blue-700 text-sm">ตั้งคะแนนทั้งห้อง</p>
+            <p class="text-xs text-blue-400">${_htmlEsc(colName)}${maxScore ? ' (เต็ม ' + maxScore + ')' : ''}</p>
+          </div>
+          <div class="p-4 space-y-2">
+            <p class="text-xs text-gray-500">ใส่ตัวเลข หรือ +/- สำหรับสะสม</p>
+            <input type="text" id="mass-inp" inputmode="decimal" autocomplete="off"
+              class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-center text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="+5 / 10 / -2"/>
+            <p id="mass-preview" class="text-xs text-center text-gray-400 h-4"></p>
+          </div>
+          <div class="px-5 pb-5 flex gap-2">
+            <button id="mass-cancel" class="flex-1 py-2.5 rounded-2xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition">ยกเลิก</button>
+            <button id="mass-confirm" class="flex-1 py-2.5 rounded-2xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition">ตั้งค่า</button>
+          </div>
+        </div>`
+      document.body.appendChild(pop)
+      const inp = pop.querySelector('#mass-inp')
+      const preview = pop.querySelector('#mass-preview')
+      inp.addEventListener('input', () => {
+        const v = inp.value.trim(); if (!v) { preview.textContent = ''; return }
+        const num = parseFloat(v); if (isNaN(num)) { preview.textContent = ''; return }
+        preview.textContent = /^[+-]/.test(v) ? `บวก/ลบ ${num >= 0 ? '+' : ''}${num} ใน ${students.length} คน` : `ตั้งเป็น ${num} ใน ${students.length} คน`
+      })
+      pop.querySelector('#mass-cancel').addEventListener('click', () => pop.remove())
+      pop.querySelector('#mass-confirm').addEventListener('click', async () => {
+        const v = inp.value.trim(); if (!v) { pop.remove(); return }
+        const btn = pop.querySelector('#mass-confirm')
+        btn.disabled = true; btn.textContent = '⏳'
+        let saved = 0, failed = 0
+        for (const s of students) {
+          const currentHist = scoreMap[s.id]?.[colId]?.history ?? []
+          try {
+            const result = await saveStudentScore(classData.id, s.id, colId, v, { currentHistory: currentHist })
+            if (result) {
+              if (!scoreMap[s.id]) scoreMap[s.id] = {}
+              scoreMap[s.id][colId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
+              const el = wrap?.querySelector(`.grade-input[data-sid="${s.id}"][data-col="${colId}"]`)
+              if (el) { el.value = result.final !== null ? String(result.final) : ''; el.style.boxShadow = '0 0 0 2px #059669'; setTimeout(() => el.style.boxShadow = '', 700) }
+              const cell = el?.closest('td')
+              if (result.history.length > 1) {
+                if (!cell?.querySelector('.hist-indicator')) {
+                  const ind = document.createElement('span')
+                  ind.className = 'hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl'
+                  ind.textContent = 'Δ'; ind.dataset.sid = s.id; ind.dataset.col = colId
+                  cell?.appendChild(ind)
+                }
+              } else { cell?.querySelector('.hist-indicator')?.remove() }
+              saved++
+            }
+          } catch { failed++ }
+        }
+        students.forEach(s => {
+          const { midRaw: mRaw, finRaw: fRaw, total, grade, khuna } = _calcGradeRow(s.id)
+          const fg = scoreMap[s.id]?.['__force'] ?? ''
+          const midEl = document.getElementById(`gmid-${s.id}`), finEl = document.getElementById(`gfin-${s.id}`)
+          if (midEl) midEl.textContent = mRaw > 0 ? mRaw.toFixed(1) : '—'
+          if (finEl) finEl.textContent = fRaw > 0 ? fRaw.toFixed(1) : '—'
+          const tEl = document.getElementById(`gtotal-${s.id}`), gEl = document.getElementById(`ggrade-${s.id}`), kEl = document.getElementById(`gkhuna-${s.id}`)
+          if (tEl) tEl.textContent = total > 0 ? total : '—'
+          if (gEl) gEl.textContent = fg || (grade > 0 ? grade.toFixed(1) : '0')
+          if (kEl) { kEl.textContent = khuna.label; kEl.className = `border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}` }
+        })
+        showToast(`ตั้งคะแนนสำเร็จ ${saved}/${students.length} คน${failed ? ' (ล้มเหลว ' + failed + ')' : ''}`, saved > 0 ? 'success' : 'error')
+        pop.remove()
+      })
+      pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
+      setTimeout(() => inp.focus(), 60)
+    }
+
     const _renderGrid = () => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
       const wrap = document.getElementById('grade-grid-wrap')
@@ -7562,14 +7701,20 @@ export async function renderGradesGrid(teacher, classData) {
         </tr>
         <tr style="position:sticky;top:24px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-sheet-ref font-mono text-[11px] block text-center rounded px-1 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-blue-600 cursor-pointer hover:bg-blue-100'}"
-              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
+            <div class="flex items-center justify-between gap-0.5 px-0.5">
+              <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-blue-600 cursor-pointer hover:bg-blue-100'}"
+                data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
+              <button class="btn-mass-score text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+            </div>
           </th>`).join('')}
           <th class="${thBase} bg-blue-50" style="width:30px">
             <button class="btn-add-col text-blue-500 hover:bg-blue-100 rounded-full w-5 h-5 font-bold text-sm leading-none mx-auto block" data-type="midterm">＋</button></th>
           ${finalCols.map(c=>`<th class="${thBase} bg-purple-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-sheet-ref font-mono text-[11px] block text-center rounded px-1 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-purple-600 cursor-pointer hover:bg-purple-100'}"
-              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
+            <div class="flex items-center justify-between gap-0.5 px-0.5">
+              <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-purple-600 cursor-pointer hover:bg-purple-100'}"
+                data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
+              <button class="btn-mass-score text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+            </div>
           </th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px">
             <button class="btn-add-col text-purple-500 hover:bg-purple-100 rounded-full w-5 h-5 font-bold text-sm leading-none mx-auto block" data-type="final">＋</button></th>
@@ -7577,7 +7722,10 @@ export async function renderGradesGrid(teacher, classData) {
             <span class="text-[10px] text-indigo-400 font-mono block text-center truncate" title="${c.formula??''}">${c.formula??'—'}</span>
           </th>`).join('')}
           ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="text-[11px] text-amber-500 block text-center">${c.sheet_column||'—'}</span>
+            <div class="flex items-center justify-between gap-0.5 px-0.5">
+              <span class="text-[11px] text-amber-500 flex-1 text-center">${c.sheet_column||'—'}</span>
+              <button class="btn-mass-score text-amber-300 hover:text-amber-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+            </div>
           </th>`).join('') : ''}
           ${showBonusCols ? `<th class="${thBase} bg-amber-50" style="width:30px">
             <button class="btn-add-bonus text-amber-500 hover:bg-amber-100 rounded-full w-5 h-5 font-bold text-sm leading-none mx-auto block">＋</button></th>` : ''}
@@ -7619,23 +7767,29 @@ export async function renderGradesGrid(teacher, classData) {
               <span class="text-gray-800 text-xs truncate max-w-[100px]">${s.full_name}</span>
             </div>
           </td>
-          ${midCols.map(c=>{const v=_getScore(s.id,c.id)??'';return `<td class="border border-gray-100 text-center p-0"
+          ${midCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
             style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:rounded'}"
-              type="number" min="0" max="${c.max_score}" step="0.5" value="${v}" placeholder="—"
-              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/></td>`}).join('')}
+              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/>
+            ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
+            </td>`}).join('')}
           <td id="gmid-${s.id}" class="border border-gray-50 bg-blue-50/40 text-center text-[10px] text-blue-600 font-medium" style="width:34px">${midRaw>0?midRaw.toFixed(1):'—'}</td>
-          ${finalCols.map(c=>{const v=_getScore(s.id,c.id)??'';return `<td class="border border-gray-100 text-center p-0"
+          ${finalCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
             style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-purple-50 focus:outline-none focus:ring-1 focus:ring-purple-300 focus:rounded'}"
-              type="number" min="0" max="${c.max_score}" step="0.5" value="${v}" placeholder="—"
-              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/></td>`}).join('')}
+              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/>
+            ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
+            </td>`}).join('')}
           <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?finRaw.toFixed(1):'—'}</td>
           ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?Number(dv.toFixed(2)):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
-          ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';return `<td class="border border-amber-100 text-center p-0" style="width:${colW}px;min-width:${colW}px;height:30px">
+          ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
-              type="number" min="0" ${c.max_score?`max="${c.max_score}"`:''}  step="0.5" value="${v}" placeholder="—"
-              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/></td>`}).join('') : ''}
+              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
+            ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
+            </td>`}).join('') : ''}
           ${showBonusCols ? `<td class="border border-amber-50 bg-amber-50/30" style="width:30px;height:30px"></td>` : ''}
           <td class="border border-amber-100 text-center bg-amber-50 font-bold text-amber-700" id="gtotal-${s.id}" style="min-width:58px">${total>0?total:'—'}</td>
           <td class="border border-purple-100 text-center bg-purple-50 font-bold text-purple-700" id="ggrade-${s.id}" style="min-width:50px">${displayGrade}</td>
@@ -7657,19 +7811,36 @@ export async function renderGradesGrid(teacher, classData) {
           const sid=parseInt(gradeInp.dataset.sid),colId=parseInt(gradeInp.dataset.col),max=parseFloat(gradeInp.dataset.max)
           if (_isLockedScoreColumn(colId)) {
             showToast('คะแนนนี้มาจากระบบกลาง ครูไม่สามารถแก้ไขได้', 'warning')
+            gradeInp.value = scoreMap[sid]?.[colId]?.final ?? ''
             return
           }
           let val=gradeInp.value.trim()
-          if(val!==''&&parseFloat(val)>max){gradeInp.value=max;val=String(max)}
-          if(val!==''&&parseFloat(val)<0){gradeInp.value=0;val='0'}
+          const isDeltaInput = /^[+-]/.test(val)
+          if(!isDeltaInput){
+            if(val!==''&&parseFloat(val)>max){gradeInp.value=max;val=String(max)}
+            if(val!==''&&parseFloat(val)<0){gradeInp.value=0;val='0'}
+          }
+          const currentHist = scoreMap[sid]?.[colId]?.history ?? []
           if(!scoreMap[sid])scoreMap[sid]={}
-          const nv=val===''?null:parseFloat(val)
-          scoreMap[sid][colId]={orig:nv,retake:null,final:nv}
           gradeInp.style.outline='2px solid #6366f1';gradeInp.style.outlineOffset='1px'
           document.getElementById('grade-saving')?.classList.remove('hidden')
           try{
-            await saveStudentScore(classData.id,sid,colId,val===''?null:val)
-            // ✅ green glow on success
+            const result = await saveStudentScore(classData.id,sid,colId,val===''?null:val,{currentHistory:currentHist})
+            if(!result){gradeInp.value=scoreMap[sid][colId]?.final??'';return}
+            const{final,history}=result
+            scoreMap[sid][colId]={orig:history[0]?.d??final,retake:null,final,history}
+            gradeInp.value = final!==null ? String(final) : ''
+            gradeInp.title = ''
+            // update hist indicator
+            const cell=gradeInp.closest('td')
+            if(history.length>1){
+              if(!cell?.querySelector('.hist-indicator')){
+                const ind=document.createElement('span')
+                ind.className='hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none'
+                ind.textContent='Δ';ind.dataset.sid=sid;ind.dataset.col=colId;ind.title='ดูประวัติคะแนน'
+                cell?.appendChild(ind)
+              }
+            }else{cell?.querySelector('.hist-indicator')?.remove()}
             gradeInp.style.outline=''
             gradeInp.style.boxShadow='0 0 0 2px #059669,0 0 10px rgba(5,150,105,.45)'
             gradeInp.style.background='#f0fdf4'
@@ -7688,6 +7859,35 @@ export async function renderGradesGrid(teacher, classData) {
             if(kEl){kEl.textContent=khuna.label;kEl.className=`border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}`}
           }catch{showToast('บันทึกไม่สำเร็จ','error')}
           finally{document.getElementById('grade-saving')?.classList.add('hidden')}
+        }
+      })
+
+      // ── Delta preview on input ──
+      tbl.addEventListener('input', e => {
+        const inp = e.target.closest('.grade-input'); if (!inp) return
+        const v = inp.value.trim()
+        if (!/^[+-]/.test(v)) { inp.title = ''; return }
+        const sid = parseInt(inp.dataset.sid), colId = parseInt(inp.dataset.col)
+        const current = scoreMap[sid]?.[colId]?.final ?? 0
+        const delta = parseFloat(v); if (isNaN(delta)) { inp.title = ''; return }
+        const next = Math.round((current + delta) * 1000) / 1000
+        inp.title = `${current} ${delta >= 0 ? '+' : '−'} ${Math.abs(delta)} = ${next}`
+      })
+
+      // ── Hist indicator + mass score popup ──
+      tbl.addEventListener('click', e => {
+        const histInd = e.target.closest('.hist-indicator')
+        if (histInd) {
+          const sid = parseInt(histInd.dataset.sid), colId = parseInt(histInd.dataset.col)
+          const hist = scoreMap[sid]?.[colId]?.history ?? []
+          const col = [...midCols, ...finalCols, ...bonusCols].find(c => c.id === colId)
+          _showHistoryPopup(sid, colId, col?.assignment_name ?? '', hist)
+          return
+        }
+        const massBtn = e.target.closest('.btn-mass-score')
+        if (massBtn) {
+          _showMassScorePopup(parseInt(massBtn.dataset.colid), massBtn.dataset.colname, massBtn.dataset.max ? parseFloat(massBtn.dataset.max) : null)
+          return
         }
       })
 
