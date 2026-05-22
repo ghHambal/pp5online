@@ -3,15 +3,16 @@ import {
   getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
   getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
   getReadingScoreColumns, getReadingScores, upsertReadingScore,
-  fillLifeSkillScoresForClass,
+  fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
   getPrayerRecords, savePrayerRecords, savePrayerCell,
   getSystemConfig, getClassRosterStudents,
+  getStudentsByRoom, getStudentsByReligionRoom,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
-  _generateSessions, _dateInputValue,
+  _generateSessions, _dateInputValue, ATT_STATUS, ATT_CYCLE,
 } from './teacher-views-utils.js'
 
 export async function renderAttendanceGrid(teacher, classData) {

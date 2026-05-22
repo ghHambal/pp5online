@@ -3,6 +3,8 @@ import {
   getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
   detectAssignmentKind, getSheetColumnOptions,
   getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
+  getReadingScoreColumns, getReadingScores,
+  getTeacherExamRequests, updateExamResult,
 } from './api.js'
 import { showToast } from './ui.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'

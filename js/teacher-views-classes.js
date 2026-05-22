@@ -1815,15 +1815,6 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
 
 // ─── Attendance Grid ──────────────────────────────────────────────────────────
 
-const ATT_STATUS = {
-  present: { label: 'ม', color: 'text-emerald-600 font-bold', bg: 'bg-emerald-50' },
-  absent:  { label: 'ข', color: 'text-red-600 font-bold',     bg: 'bg-red-50' },
-  late:    { label: 'ส', color: 'text-amber-500 font-bold',   bg: 'bg-amber-50' },
-  excused: { label: 'ก', color: 'text-blue-500 font-bold',    bg: 'bg-blue-50' },
-  sick:    { label: 'ป', color: 'text-orange-500 font-bold',  bg: 'bg-orange-50' },
-}
-
-const ATT_CYCLE = [null, 'present', 'absent', 'late', 'excused', 'sick']
 
 
 export { renderAttendanceGrid, renderAttendance, renderLifeSkillScore, renderReadingScore, renderPrayerScore } from './teacher-views-attendance.js'
