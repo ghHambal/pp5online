@@ -183,3 +183,48 @@ export function _resolveGeminiKey(cfg, teacher) {
   const dept = teacher?.dept ?? ''
   return (dept && cfg[`geminiKey_${dept}`]) || cfg.geminiApiKey || ''
 }
+
+export function _transparentEdgeDarkLogo(url) {
+  if (!url) return Promise.resolve('')
+  return new Promise(resolve => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onerror = () => resolve(url)
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
+        ctx.drawImage(img, 0, 0)
+        const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const { data, width, height } = image
+        const seen = new Uint8Array(width * height)
+        const stack = []
+        const isDark = idx => {
+          const off = idx * 4
+          return data[off + 3] > 0 && data[off] < 70 && data[off + 1] < 70 && data[off + 2] < 70
+        }
+        const push = (x, y) => {
+          if (x < 0 || y < 0 || x >= width || y >= height) return
+          const idx = y * width + x
+          if (seen[idx] || !isDark(idx)) return
+          seen[idx] = 1
+          stack.push(idx)
+        }
+        for (let x = 0; x < width; x++) { push(x, 0); push(x, height - 1) }
+        for (let y = 0; y < height; y++) { push(0, y); push(width - 1, y) }
+        while (stack.length) {
+          const idx = stack.pop()
+          const off = idx * 4
+          data[off + 3] = 0
+          const x = idx % width, y = Math.floor(idx / width)
+          push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1)
+        }
+        ctx.putImageData(image, 0, 0)
+        resolve(canvas.toDataURL('image/png'))
+      } catch { resolve(url) }
+    }
+    img.src = url
+  })
+}
