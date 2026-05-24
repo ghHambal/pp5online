@@ -504,16 +504,11 @@ function _showDetail(m) {
     const btn = document.getElementById('sv-view-schedule')
     btn.disabled = true; btn.textContent = '⏳ กำลังโหลด...'
     try {
-      const cfg = await getSystemConfig().catch(() => ({}))
-      const year = parseInt(cfg.academicYear ?? 2568)
-      const sem  = parseInt(cfg.semester ?? 1)
-      const [periods, schedEntries] = await Promise.all([
-        getPeriods().catch(() => []),
-        getMySchedule(m.id, year, sem).catch(() => []),
-      ])
-      btn.disabled = false; btn.innerHTML = `🗓 ตารางสอน${m.scheduleCount>0?' ('+m.scheduleCount+' คาบ)':' (ยังไม่มี)'}`
-      _showSchedulePopup(m, schedEntries, periods)
-    } catch { btn.disabled = false }
+      await _showScheduleOverlay(m)
+    } finally {
+      btn.disabled = false
+      btn.innerHTML = `🗓 ตารางสอน${m.scheduleCount>0?' ('+m.scheduleCount+' คาบ)':' (ยังไม่มี)'}`
+    }
   })
 
   // ปพ.5 buttons
@@ -629,51 +624,71 @@ async function _loadPastComments(teacherId) {
   } catch {}
 }
 
-const _DAYS_TH = ['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.']
-function _showSchedulePopup(m, entries, periods) {
-  const overlay = _makeOverlay()
-  const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
+async function _showScheduleOverlay(m) {
+  document.getElementById('sv-sched-overlay')?.remove()
 
-  // จัดกลุ่มตามวัน
-  const byDay = {}
-  for (const e of entries) {
-    const d = e.day_of_week
-    if (!byDay[d]) byDay[d] = []
-    byDay[d].push(e)
-  }
-
-  const dayRows = Object.entries(byDay).sort(([a],[b]) => Number(a)-Number(b)).map(([dow, slots]) => {
-    const slotHtml = slots.sort((a,b) => a.period_no - b.period_no).map(s => {
-      const p = periodMap[s.period_no]
-      const timeStr = p ? `${p.start_time?.slice(0,5)}–${p.end_time?.slice(0,5)}` : `คาบ ${s.period_no}`
-      const span = s.span_periods > 1 ? `–${s.period_no + s.span_periods - 1}` : ''
-      return `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:6px 10px;font-size:12px;">
-        <div style="font-weight:600;color:#92400e;">คาบ ${s.period_no}${span}</div>
-        <div style="color:#78350f;font-size:11px;">${timeStr}</div>
-        ${s.subject_name ? `<div style="color:#b45309;font-size:11px;">${s.subject_name}</div>` : ''}
-      </div>`
-    }).join('')
-    return `<div style="margin-bottom:12px;">
-      <div style="font-weight:700;font-size:13px;color:#374151;margin-bottom:6px;">${_DAYS_TH[Number(dow)] ?? dow}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">${slotHtml}</div>
+  const overlay = document.createElement('div')
+  overlay.id = 'sv-sched-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:#f9fafb;display:flex;flex-direction:column;overflow:hidden;'
+  overlay.innerHTML = `
+    <div style="background:#fff;border-bottom:1px solid #e5e7eb;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+      <button id="sv-sched-back" style="border:none;background:none;color:#6b7280;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:5px;padding:6px 0;font-family:inherit;font-weight:600;">← กลับ</button>
+      <div style="width:1px;height:20px;background:#e5e7eb;flex-shrink:0;"></div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#111827;">🗓 ตารางสอน — ${m.full_name}</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:1px;">
+          ${m.scheduleCount > 0
+            ? `สอน <strong style="color:#059669;">${m.scheduleCount}</strong> คาบ/สัปดาห์`
+            : 'ยังไม่ได้ตั้งตารางสอน'}
+        </div>
+      </div>
+    </div>
+    <div id="sv-sched-scroll" style="flex:1;overflow-y:auto;">
+      <div id="sv-sched-content"></div>
     </div>`
-  }).join('')
-
-  overlay.innerHTML = `<div class="sv-popup" style="width:min(480px,96vw);">
-    <button onclick="this.closest('.sv-overlay').remove()" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
-    <h3 style="font-size:16px;font-weight:700;margin-bottom:4px;">🗓 ตารางสอน</h3>
-    <p style="font-size:12px;color:#6b7280;margin-bottom:16px;">${m.full_name} · ${entries.length} คาบ/สัปดาห์</p>
-    ${entries.length
-      ? dayRows
-      : `<div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;">ยังไม่ได้ตั้งตารางสอน</div>`}
-  </div>`
   document.body.appendChild(overlay)
-  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove() })
+  overlay.querySelector('#sv-sched-back').addEventListener('click', () => overlay.remove())
+
+  const svContent = document.getElementById('sv-sched-content')
+
+  // ชี้ cache ของ setContent ไปที่ overlay div แทน #main-content เดิม
+  const { renderScheduleGrid } = await import('./teacher-views.js')
+  const { setMainContentRef, getMainContentRef } = await import('./teacher-views-utils.js')
+  const origRef = getMainContentRef()
+  setMainContentRef(svContent)
+
+  try {
+    const cfg  = await getSystemConfig().catch(() => ({}))
+    const year = parseInt(cfg.academicYear ?? 2568)
+    const sem  = parseInt(cfg.semester ?? 1)
+    await renderScheduleGrid({ id: m.id, full_name: m.full_name }, year, sem, cfg)
+
+    // ลบปุ่ม edit ที่ไม่ต้องการ
+    svContent.querySelector('#btn-clear-schedule')?.remove()
+    svContent.querySelector('#btn-upload-schedule')?.remove()
+
+    // ปิด click ทุกช่อง (read-only สำหรับผู้ตรวจ)
+    svContent.style.pointerEvents = 'none'
+  } finally {
+    setMainContentRef(origRef)
+  }
+}
+
+function _deptNameTH(m) {
+  const code = m.dept
+  if (!code) return null
+  // ค้นหาโดยพิจารณา category ด้วย (เช่น SOC มีทั้ง สามัญ และ ศาสนา)
+  const candidates = _depts.filter(d => d.dept_code === code)
+  if (!candidates.length) return code
+  if (candidates.length === 1) return candidates[0].dept_name
+  const match = candidates.find(d => d.category === m.category)
+  return (match ?? candidates[0]).dept_name
 }
 
 function _showTeacherProfile(m) {
   const overlay = _makeOverlay()
   const glow = v => v ? '' : 'box-shadow:0 0 0 2px #ef4444,0 0 8px rgba(239,68,68,.4);border-radius:8px;'
+  const deptTH = _deptNameTH(m)
   overlay.innerHTML = `<div class="sv-popup" style="width:min(480px,96vw);">
     <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
     <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;">👤 โปรไฟล์ครู</h3>
@@ -690,11 +705,10 @@ function _showTeacherProfile(m) {
     <div style="display:grid;gap:10px;">
       ${[
         ['📱 เบอร์โทรศัพท์', m.phone],
-        ['🏫 กลุ่มสาระ', m.dept],
+        ['🏫 กลุ่มสาระ', deptTH],
         ['👤 ประเภท', m.category],
         ['📚 กลุ่มวิชา', m.subject_group],
         ['📧 อีเมลเข้าสู่ระบบ', m.login_email],
-        ['🔑 รหัสครู', m.teacher_code],
       ].map(([label, val]) => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;${glow(val)}background:${val?'#f9fafb':'#fff5f5'};">
           <span style="font-size:13px;color:#374151;">${label}</span>
