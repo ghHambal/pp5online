@@ -35,7 +35,8 @@ function _fmtDateTH(dateStr) {
 function _thYear(y) { return (y ?? 0) + 543 }
 
 function _generateSessions(classData, credit, dowPattern = null) {
-  const total = Math.round((credit ?? 1) * 2 * 20)
+  const periodsPerWeek = (dowPattern && dowPattern.length) ? dowPattern.length : Math.max(1, Math.round(credit ?? 1))
+  const total = periodsPerWeek * 20
   const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
     .map(k => classData[k]).filter(Boolean)
     .map(s => _parseDateOnly(s)).filter(Boolean)
