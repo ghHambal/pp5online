@@ -616,7 +616,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       const lsCols = await getLifeSkillColumns(year, sem, 'สามัญ').catch(() => [])
       if (!lsCols.length) { showToast('ยังไม่มีหัวข้อทักษะชีวิต — แอดมินเพิ่มก่อน', 'warning'); return }
       const existing     = await getScoreColumns(classId)
-      const existingNames = new Set(existing.filter(c => c.assignment_type === 'กลางภาค').map(c => c.assignment_name))
+      const existingNames = new Set(existing.map(c => c.assignment_name))
       let added = 0
       for (const col of lsCols) {
         if (existingNames.has(col.name)) continue

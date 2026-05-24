@@ -423,10 +423,17 @@ export async function renderClassForm(teacher, course, opts = {}) {
       }
 
       // copy score columns จากห้องต้นฉบับ (ถ้า clone)
+      // ข้าม auto-generated columns (ทักษะชีวิต/ศาสนา) เพราะ Grades page จะ generate ให้ใหม่
+      const PRAYER_AUTO_COLS = new Set(['คะแนนมาเรียน', 'คะแนนละหมาด'])
+      const LIFE_SKILL_AUTO_SHEET_COLS = new Set(['EH', 'EI', 'EJ'])
+      const isSrcLifeSkill = (opts.srcSkill ?? '') === 'ชีวิต'
+      const isSrcReligion  = ['AGM', 'AGMVOC'].includes(course.subject_group ?? '')
       let copiedCols = 0
       if (cloneFrom && created?.id) {
         const srcCols = await getScoreColumns(cloneFrom).catch(() => [])
         for (const col of srcCols) {
+          if (isSrcReligion  && PRAYER_AUTO_COLS.has(col.assignment_name)) continue
+          if (isSrcLifeSkill && LIFE_SKILL_AUTO_SHEET_COLS.has(col.sheet_column))  continue
           await createScoreColumn({
             class_id:        created.id,
             assignment_name: col.assignment_name,
@@ -434,8 +441,8 @@ export async function renderClassForm(teacher, course, opts = {}) {
             sheet_column:    col.sheet_column,
             max_score:       col.max_score,
           })
+          copiedCols++
         }
-        copiedCols = srcCols.length
       }
 
       const msg = cloneFrom
