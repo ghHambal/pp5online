@@ -1041,8 +1041,9 @@ function _buildScorePage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
 
   // แบ่ง between และ final โดย filter จาก assignment_type (ไม่ใช้ slice เพื่อป้องกัน column ปลายภาคที่อยู่กลางลำดับทำให้ grouping ผิด)
-  const betweenCols = scoreColumns.filter(c => c.assignment_type !== 'ปลายภาค')
-  const finalCols   = scoreColumns.filter(c => c.assignment_type === 'ปลายภาค')
+  const _isFinal    = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
+  const betweenCols = scoreColumns.filter(c => !_isFinal(c))
+  const finalCols   = scoreColumns.filter(c => _isFinal(c))
 
   // เติม col ว่างให้ครบอย่างน้อย 5 ฝั่ง (ทำให้ตารางมีโครงสร้างสมบูรณ์เสมอ)
   const B_MIN = 5, F_MIN = 5
