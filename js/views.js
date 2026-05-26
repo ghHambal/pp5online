@@ -7442,7 +7442,7 @@ export async function renderHouseColors() {
         sel.disabled = true
         try {
           await assignStudentsHouseColor([sid], newColor)
-          const s = students.find(s => s.id === sid)
+          const s = students.find(s => String(s.id) === String(sid))
           if (s) s.house_color = newColor
           sel.dataset.current = newColor ?? ''
           // อัปเดต badge สีปัจจุบัน
@@ -7456,6 +7456,9 @@ export async function renderHouseColors() {
                  </span>`
               : `<span class="text-xs text-gray-400">—</span>`
           }
+          // อัปเดต row background ตามสีใหม่
+          const gNew = _groupByName(newColor)
+          if (row) row.style.background = gNew ? `${gNew.color_hex}12` : ''
           // green glow feedback
           sel.classList.add('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]')
           setTimeout(() => sel.classList.remove('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]'), 2000)
