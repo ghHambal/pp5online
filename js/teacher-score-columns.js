@@ -250,7 +250,11 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     const lockedNames = isLifeSkill
       ? (await getLifeSkillColumns(year, sem, 'สามัญ').catch(() => [])).slice(0, 3).map(c => c.name)
       : isReligion ? RELIGION_LOCKED_SCORE_COLUMNS : []
-    lockedScoreColumnIds = new Set(cols.filter(c => lockedNames.includes(c.assignment_name)).map(c => c.id))
+    lockedScoreColumnIds = new Set()
+    for (const name of lockedNames) {
+      const matches = cols.filter(c => c.assignment_name === name)
+      if (matches.length > 0) lockedScoreColumnIds.add(matches[0].id)
+    }
     window._scoreColCache = Object.fromEntries(cols.map(c => [c.id, c]))
     checkedIds = new Set()
 
