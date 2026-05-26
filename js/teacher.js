@@ -110,6 +110,7 @@ async function loadTeacherInfo(userId) {
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const ROUTES = {
   'announcements-view': () => renderAnnouncementsView(_teacher),
+  'work-calendar-view': () => import('./views.js').then(({renderWorkCalendarView}) => renderWorkCalendarView()),
   'overview':    () => renderTeacherOverview(_teacher, _homeroomRooms),
   'my-courses':  () => renderMyCourses(_teacher),
   'my-classes':  () => renderMyClasses(_teacher),
@@ -1907,6 +1908,7 @@ async function _loadAnnouncementBanners() {
 // map feature key → { icon, label, renderFn }
 const _SV_MENU_ITEMS = [
   { key:'announce_create',  icon:'📢', label:'จัดการประกาศ',   fn: (t) => { import('./views.js').then(({renderSupervisorAnnouncements}) => renderSupervisorAnnouncements(t)) }},
+  { key:'work_calendar',    icon:'📅', label:'ปฏิทินปฏิบัติงาน', fn: (t) => { import('./views.js').then(({renderWorkCalendar}) => renderWorkCalendar(t)) }},
   { key:'lang_config',      icon:'⚙️', label:'ตั้งค่าคำอธิบายฯ',fn: (t,a) => renderCourseDocLangConfig(t, a) },
   { key:'menu_holidays',    icon:'📅', label:'วันหยุด',        fn: async () => { const {renderHolidays}     = await import('./views.js'); renderHolidays() }},
   { key:'menu_periods',     icon:'🕐', label:'คาบเรียน',       fn: async () => { const {renderPeriods}      = await import('./views.js'); renderPeriods() }},
@@ -1939,6 +1941,8 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
         if (m.key === 'lang_config') return _positionPerms.lang_config || (_teacher?.positions ?? [_teacher?.position]).includes('dept_head')
         if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || (_teacher?.positions ?? [_teacher?.position]).includes('house_color_admin')
         if (m.key === 'announce_manage') return !!_positionPerms.announce_manage
+        if (m.key === 'announce_create') return !!_positionPerms.announce_create
+        if (m.key === 'work_calendar') return true  // ทุก supervisor เข้าถึงได้
         return !!_positionPerms[m.key]
       })
 

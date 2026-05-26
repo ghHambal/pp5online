@@ -7,6 +7,7 @@ import {
   getClassStudentsAndScores, getClassAttendanceFull,
   assignTeacherToDept,
   getMySchedule, getPeriods, getSystemConfig,
+  getWorkCalendarEvents,
 } from './api.js'
 
 let _phrases = {}  // cache: { metric: [phrase, ...] }
@@ -476,6 +477,13 @@ function _showDetail(m) {
               </div>`
             }).join('')}
           </div>
+          <div style="margin-bottom:10px;">
+            <label style="display:block;font-size:12px;color:#374151;font-weight:600;margin-bottom:5px;">📅 อ้างอิงกิจกรรม (ปฏิทินปฏิบัติงาน)</label>
+            <select id="sv-round-select"
+              style="width:100%;border:1.5px solid #e5e7eb;border-radius:10px;padding:7px 10px;font-size:12px;font-family:inherit;color:#374151;background:#f9fafb;">
+              <option value="">— ไม่อ้างอิงกิจกรรม —</option>
+            </select>
+          </div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
               <input id="sv-notify-chk" type="checkbox" checked/>
@@ -529,9 +537,28 @@ function _showDetail(m) {
   })
 
   // Comment UI — vertical multi-select
-  document.getElementById('sv-open-comment-ui').onclick = () => {
+  document.getElementById('sv-open-comment-ui').onclick = async () => {
     document.getElementById('sv-comment-ui').style.display = ''
     document.getElementById('sv-open-comment-ui').style.display = 'none'
+    // โหลด calendar events สำหรับ dropdown
+    const sel = document.getElementById('sv-round-select')
+    if (sel && sel.options.length <= 1) {
+      try {
+        const cfg = await getSystemConfig()
+        const ay = cfg?.academic_year ?? (new Date().getFullYear() + 543)
+        const sm = cfg?.semester ?? 1
+        const evts = await getWorkCalendarEvents(ay, sm)
+        const TYPE_LABEL = { inspection:'🔍', deadline:'⏰', meeting:'📅', other:'📌' }
+        evts.forEach(ev => {
+          const opt = document.createElement('option')
+          opt.value = ev.id
+          const rd = ev.event_type === 'inspection' && ev.round_number ? ` ครั้งที่ ${ev.round_number}` : ''
+          const d = new Date(ev.event_date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+          opt.textContent = `${TYPE_LABEL[ev.event_type]??'📌'}${rd} ${ev.label} (${d})`
+          sel.appendChild(opt)
+        })
+      } catch {}
+    }
   }
   const greenGlow = 'box-shadow:0 0 0 2px #059669,0 0 8px rgba(5,150,105,.3);border-color:#059669;background:#f0fdf4;'
   document.querySelectorAll('.sv-cat-row').forEach(row => {
@@ -579,6 +606,7 @@ function _showDetail(m) {
   })
   document.getElementById('sv-save-comment').onclick = async () => {
     const notify = document.getElementById('sv-notify-chk').checked
+    const roundId = parseInt(document.getElementById('sv-round-select')?.value) || null
     const selected = [...document.querySelectorAll('.sv-cat-row[data-selected="1"]')]
     const toSave = selected.map(row => ({
       cat: row.dataset.cat,
@@ -589,7 +617,7 @@ function _showDetail(m) {
     saveBtn.disabled = true; saveBtn.textContent = '⏳ กำลังบันทึก...'
     try {
       for (const { cat, txt } of toSave) {
-        await addSupervisorCommentWithNotify(_selfTeacher.id, m.id, cat, txt, notify)
+        await addSupervisorCommentWithNotify(_selfTeacher.id, m.id, cat, txt, notify, roundId)
       }
       document.getElementById('sv-comment-ui').style.display = 'none'
       document.getElementById('sv-open-comment-ui').style.display = ''

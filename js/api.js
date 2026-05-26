@@ -2162,7 +2162,7 @@ export async function getSupervisorProgress() {
 export async function getSupervisorComments(teacherId) {
   const { data, error } = await supabase
     .from('supervisor_comments')
-    .select('id, supervisor_id, metric, comment, created_at, teachers!supervisor_id(id, full_name, position)')
+    .select('id, supervisor_id, metric, comment, created_at, round_id, teachers!supervisor_id(id, full_name, position), work_calendar_events(id, label, round_number, event_type, event_date)')
     .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -2244,9 +2244,10 @@ export async function assignTeacherToDept(teacherId, dept) {
 
 // ── supervisor notifications ───────────────────────────────────────────────────
 
-export async function addSupervisorCommentWithNotify(supervisorId, teacherId, metric, comment, notify) {
-  const { error } = await supabase.from('supervisor_comments')
-    .insert({ supervisor_id: supervisorId, teacher_id: teacherId, metric, comment, notify_teacher: notify })
+export async function addSupervisorCommentWithNotify(supervisorId, teacherId, metric, comment, notify, roundId = null) {
+  const row = { supervisor_id: supervisorId, teacher_id: teacherId, metric, comment, notify_teacher: notify }
+  if (roundId) row.round_id = roundId
+  const { error } = await supabase.from('supervisor_comments').insert(row)
   if (error) throw error
 }
 
@@ -2455,6 +2456,76 @@ export async function assignStudentsHouseColor(studentIds, colorName) {
   const results = await Promise.all(updates)
   const err = results.find(r => r.error)
   if (err) throw err.error
+}
+
+// ───── Work Calendar ─────
+
+export async function getWorkCalendarEvents(academicYear, semester) {
+  const { data, error } = await supabase
+    .from('work_calendar_events')
+    .select(`id, event_type, round_number, event_date, label, description, academic_year, semester, created_by_teacher_id,
+      work_calendar_items(id, item_label, sort_order)`)
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+    .order('event_date', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function createWorkCalendarEvent({ eventType, roundNumber, eventDate, label, description, academicYear, semester, createdByTeacherId }) {
+  const { data, error } = await supabase
+    .from('work_calendar_events')
+    .insert({
+      event_type: eventType,
+      round_number: roundNumber || null,
+      event_date: eventDate,
+      label,
+      description: description || null,
+      academic_year: academicYear,
+      semester,
+      created_by_teacher_id: createdByTeacherId,
+    })
+    .select(`id, event_type, round_number, event_date, label, description, academic_year, semester, created_by_teacher_id,
+      work_calendar_items(id, item_label, sort_order)`)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateWorkCalendarEvent(id, { eventType, roundNumber, eventDate, label, description }) {
+  const { data, error } = await supabase
+    .from('work_calendar_events')
+    .update({
+      event_type: eventType,
+      round_number: roundNumber || null,
+      event_date: eventDate,
+      label,
+      description: description || null,
+    })
+    .eq('id', id)
+    .select(`id, event_type, round_number, event_date, label, description, academic_year, semester, created_by_teacher_id,
+      work_calendar_items(id, item_label, sort_order)`)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteWorkCalendarEvent(id) {
+  const { error } = await supabase.from('work_calendar_events').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function replaceWorkCalendarItems(eventId, items) {
+  // items: [{item_label, sort_order}]
+  const { error: delErr } = await supabase.from('work_calendar_items').delete().eq('event_id', eventId)
+  if (delErr) throw delErr
+  if (!items.length) return []
+  const { data, error } = await supabase
+    .from('work_calendar_items')
+    .insert(items.map((it, i) => ({ event_id: eventId, item_label: it, sort_order: i })))
+    .select()
+  if (error) throw error
+  return data
 }
 
 export async function getClassByIdFull(classId) {

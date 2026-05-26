@@ -3205,13 +3205,21 @@ export async function renderAnnouncementsView(teacher) {
       return
     }
 
-    // group by supervisor_id + วัน (TH timezone)
+    // group by round_id (ถ้ามี) หรือ supervisor_id + วัน (TH timezone)
     const grouped = []
     const seen = new Map()
     for (const c of comments) {
-      const key = `${c.supervisor_id}__${_thDate(c.created_at)}`
+      const key = c.round_id
+        ? `round__${c.round_id}__${c.supervisor_id}`
+        : `noround__${c.supervisor_id}__${_thDate(c.created_at)}`
       if (!seen.has(key)) {
-        const g = { key, supervisor: c.teachers, date: c.created_at, items: [] }
+        const g = {
+          key,
+          supervisor: c.teachers,
+          date: c.created_at,
+          roundEvent: c.work_calendar_events ?? null,
+          items: [],
+        }
         seen.set(key, g)
         grouped.push(g)
       }
@@ -3225,20 +3233,35 @@ export async function renderAnnouncementsView(teacher) {
       if (pos === 'dept_head')         return 'bg-emerald-100 text-emerald-700'
       return 'bg-gray-100 text-gray-600'
     }
+    const _gradientFor = pos => {
+      if (!pos) return 'from-gray-300 to-gray-400'
+      if (pos.startsWith('academic'))  return 'from-blue-400 to-indigo-400'
+      if (pos.startsWith('registrar')) return 'from-violet-400 to-purple-400'
+      if (pos === 'dept_head')         return 'from-emerald-400 to-teal-400'
+      return 'from-gray-300 to-gray-400'
+    }
 
     panel.innerHTML = `<div class="space-y-4">` + grouped.map(g => {
       const pos   = g.supervisor?.position
       const name  = g.supervisor?.full_name ?? 'หัวหน้า'
       const role  = ROLE_LABELS[pos] ?? 'ผู้บังคับบัญชา'
+      const ev    = g.roundEvent
+      const roundBadge = ev
+        ? `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-700">
+             ${ev.event_type === 'inspection' && ev.round_number ? `ตรวจครั้งที่ ${ev.round_number}` : ev.label}
+           </span>`
+        : ''
       return `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-        <div class="h-1 bg-gradient-to-r ${_svRoleColor(pos).includes('blue') ? 'from-blue-400 to-indigo-400' : _svRoleColor(pos).includes('violet') ? 'from-violet-400 to-purple-400' : _svRoleColor(pos).includes('emerald') ? 'from-emerald-400 to-teal-400' : 'from-gray-300 to-gray-400'}"></div>
+        <div class="h-1 bg-gradient-to-r ${_gradientFor(pos)}"></div>
         <div class="p-5">
           <div class="flex items-center gap-2 flex-wrap mb-3">
             <span class="px-2.5 py-1 rounded-full text-[11px] font-bold ${_svRoleColor(pos)}">${_esc(role)}</span>
             <span class="text-sm font-semibold text-gray-700">${_esc(name)}</span>
+            ${roundBadge}
             <span class="text-[11px] text-gray-400 ml-auto">${_fmtDate(g.date)}</span>
           </div>
+          ${ev?.label && ev.event_type !== 'inspection' ? `<p class="text-xs text-indigo-600 mb-2 -mt-1">📅 ${_esc(ev.label)}</p>` : ''}
           <div class="space-y-2">
             ${g.items.map(c => `
               <div class="flex items-start gap-2.5">
