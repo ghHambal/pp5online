@@ -2313,7 +2313,7 @@ export async function getTeacherPositionPermissions(position) {
 
 export async function getAllAnnouncements() {
   const { data, error } = await supabase.from('announcements')
-    .select('*, teachers(full_name)')
+    .select('*, teachers(id, full_name)')
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -2322,7 +2322,7 @@ export async function getAllAnnouncements() {
 
 export async function getActiveAnnouncements() {
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, created_at, teachers(full_name)')
+    .select('id, title, body, priority, created_at, creator_role, teachers(id, full_name)')
     .eq('is_active', true)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
@@ -2330,10 +2330,11 @@ export async function getActiveAnnouncements() {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
+              creator_role: creatorRole,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
@@ -2355,6 +2356,16 @@ export async function updateAnnouncement(id, { title, body, isActive, priority }
 export async function deleteAnnouncement(id) {
   const { error } = await supabase.from('announcements').delete().eq('id', id)
   if (error) throw error
+}
+
+export async function getMyAnnouncements(teacherId) {
+  const { data, error } = await supabase.from('announcements')
+    .select('*, teachers(id, full_name)')
+    .eq('created_by_teacher_id', teacherId)
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
 }
 
 // ─── Auto-enroll ──────────────────────────────────────────────────────────────

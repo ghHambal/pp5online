@@ -2994,7 +2994,7 @@ export async function renderAnnouncementsView() {
       <h2 class="text-xl font-bold text-gray-800">📢 ประกาศ</h2>
       <p class="text-xs text-gray-400 mt-0.5">ประกาศจากทางโรงเรียน</p>
     </div>
-    <div id="ann-view-list" class="space-y-4">
+    <div id="ann-view-list" class="space-y-6">
       <div class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-5 w-5 mr-2 text-emerald-400" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -3006,6 +3006,50 @@ export async function renderAnnouncementsView() {
 
   const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   const _fmtDate = d => new Date(d).toLocaleDateString('th-TH',{dateStyle:'long'})
+
+  const ROLE_LABELS = {
+    dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'หัวหน้าฝ่ายทะเบียน (สามัญ)',
+    registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', registrar_pvch:'หัวหน้าฝ่ายทะเบียน (ปวช)',
+    academic_samai:'หัวหน้าฝ่ายวิชาการ (สามัญ)', academic_religion:'หัวหน้าฝ่ายวิชาการ (ศาสนา)',
+    academic_pvch:'หัวหน้าฝ่ายวิชาการ (ปวช)',
+  }
+  const ROLE_COLOR = r => {
+    if (!r) return 'bg-gray-100 text-gray-600'
+    if (r.startsWith('academic'))  return 'bg-blue-100 text-blue-700'
+    if (r.startsWith('registrar')) return 'bg-violet-100 text-violet-700'
+    if (r === 'dept_head')         return 'bg-emerald-100 text-emerald-700'
+    return 'bg-gray-100 text-gray-600'
+  }
+  const GROUPS = [
+    { key:'pinned',    label:'📌 ปักหมุด',         color:'from-amber-400 to-orange-400',   filter: a => a.priority > 0 },
+    { key:'academic',  label:'🎓 ฝ่ายวิชาการ',      color:'from-blue-400 to-indigo-400',    filter: a => a.priority === 0 && (a.creator_role??'').startsWith('academic') },
+    { key:'registrar', label:'📋 ฝ่ายทะเบียน',      color:'from-violet-400 to-purple-400',  filter: a => a.priority === 0 && (a.creator_role??'').startsWith('registrar') },
+    { key:'dept_head', label:'🏫 หัวหน้ากลุ่มสาระ', color:'from-emerald-400 to-teal-400',   filter: a => a.priority === 0 && a.creator_role === 'dept_head' },
+    { key:'admin',     label:'⚙️ ทั่วไป',           color:'from-gray-300 to-gray-400',      filter: a => a.priority === 0 && !a.creator_role },
+  ]
+
+  const _annCard = a => `
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+      <div class="h-1 bg-gradient-to-r ${a.priority > 0 ? 'from-amber-400 to-orange-400' : GROUPS.find(g=>g.filter(a))?.color ?? 'from-gray-300 to-gray-400'}"></div>
+      <div class="p-5">
+        <div class="flex items-start gap-4">
+          <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">
+            ${a.priority > 0 ? '📌' : '📢'}
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-base font-bold text-gray-800 mb-1.5">${_esc(a.title)}</h3>
+            ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mb-3">${_esc(a.body)}</p>` : ''}
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${ROLE_COLOR(a.creator_role)}">
+                ${_esc(ROLE_LABELS[a.creator_role] ?? 'แอดมิน')}
+              </span>
+              ${a.teachers?.full_name ? `<span class="text-[11px] text-gray-500 font-medium">${_esc(a.teachers.full_name)}</span>` : ''}
+              <span class="text-[11px] text-gray-400 ml-auto">${_fmtDate(a.created_at)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`
 
   try {
     const items = await getActiveAnnouncements()
@@ -3020,30 +3064,18 @@ export async function renderAnnouncementsView() {
       return
     }
 
-    list.innerHTML = items.map(a => `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-        ${a.priority > 0
-          ? `<div class="h-1.5 bg-gradient-to-r from-amber-400 to-orange-400"></div>`
-          : `<div class="h-1.5 bg-gradient-to-r from-emerald-400 to-teal-400"></div>`}
-        <div class="p-6">
-          <div class="flex items-start gap-4">
-            <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-2xl flex-shrink-0">
-              ${a.priority > 0 ? '📌' : '📢'}
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-2 flex-wrap">
-                ${a.priority > 0 ? `<span class="px-2.5 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">⭐ ปักหมุด</span>` : ''}
-              </div>
-              <h3 class="text-lg font-bold text-gray-800 mb-2">${_esc(a.title)}</h3>
-              ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">${_esc(a.body)}</p>` : ''}
-              <p class="text-xs text-gray-400 mt-4 flex items-center gap-1.5">
-                <span>🕐</span>
-                <span>${_fmtDate(a.created_at)}</span>
-                ${a.teachers?.full_name ? `<span>·</span><span>📝 ${_esc(a.teachers.full_name)}</span>` : ''}
-              </p>
-            </div>
-          </div>
+    const sections = GROUPS
+      .map(g => ({ ...g, items: items.filter(g.filter) }))
+      .filter(g => g.items.length)
+
+    list.innerHTML = sections.map(g => `
+      <div>
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-sm font-bold text-gray-700">${g.label}</span>
+          <span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-full font-semibold">${g.items.length}</span>
+          <div class="flex-1 h-px bg-gray-100 ml-1"></div>
         </div>
+        <div class="space-y-3">${g.items.map(_annCard).join('')}</div>
       </div>`).join('')
   } catch {
     showToast('โหลดประกาศไม่สำเร็จ', 'error')
