@@ -620,7 +620,7 @@ function _buildPage1(d) {
   `
 
   const _deptSpan = deptNameTH.length > 15
-    ? `<span class="uline w-md" style="font-size:7px;line-height:1.2;">${_esc(deptNameTH)}</span>`
+    ? `<span class="uline w-md" style="white-space:normal;line-height:4.5mm;min-height:9mm;vertical-align:bottom;">${_esc(deptNameTH)}</span>`
     : `<span class="uline w-md">${_esc(deptNameTH)}</span>`
   const infoRow2 = isReligion ? `
     <div class="info-line">
