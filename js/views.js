@@ -7074,7 +7074,7 @@ const _annRoleColor = r => {
   return 'bg-gray-100 text-gray-600'
 }
 
-export async function renderSupervisorAnnouncements(teacher) {
+export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
   const { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAckStats } = await import('./api.js')
   const creatorRole = (teacher?.positions?.length ? teacher.positions[0] : teacher?.position) ?? null
 
@@ -7326,14 +7326,15 @@ export async function renderSupervisorAnnouncements(teacher) {
             <textarea id="sann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
           </div>
-          <!-- ประเภทประกาศ -->
+          <!-- ประเภทประกาศ (admin เท่านั้นที่เปลี่ยนประเภทได้) -->
+          ${isAdmin ? `
           <div>
             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">ประเภทประกาศ</label>
             <div class="flex gap-2">
               <button type="button" data-type="general" class="sann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.ann_type ?? 'general') === 'general' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">📢 ทั่วไป</button>
               <button type="button" data-type="training" class="sann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.ann_type === 'training' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">🎓 อบรม/กิจกรรม</button>
             </div>
-          </div>
+          </div>` : ''}
           <!-- Training fields (แสดงเมื่อเลือก อบรม) -->
           <div id="sann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
             <div class="grid grid-cols-2 gap-3">
@@ -7541,7 +7542,7 @@ export async function renderSupervisorAnnouncements(teacher) {
       const priority    = m.querySelector('#sann-pin').dataset.on === 'true' ? 1 : 0
       const requiresAck = m.querySelector('#sann-ack').dataset.on === 'true'
       const dueDate     = m.querySelector('#sann-due').value || null
-      const annType     = m.querySelector('.sann-type-btn.bg-violet-600') ? 'training' : 'general'
+      const annType     = m.querySelector('.sann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
       const eventDate   = annType === 'training' ? (m.querySelector('#sann-event-date').value || null) : null
       const eventLocation = annType === 'training' ? (m.querySelector('#sann-event-location').value.trim() || null) : null
       const eventPeriods = annType === 'training'

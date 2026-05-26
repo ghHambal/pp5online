@@ -1907,7 +1907,7 @@ async function _loadAnnouncementBanners() {
 
 // map feature key → { icon, label, renderFn }
 const _SV_MENU_ITEMS = [
-  { key:'announce_create',  icon:'📢', label:'จัดการประกาศ',   fn: (t) => { import('./views.js').then(({renderSupervisorAnnouncements}) => renderSupervisorAnnouncements(t)) }},
+  { key:'announce_create',  icon:'📢', label:'จัดการประกาศ',   fn: (t, isAdmin) => { import('./views.js').then(({renderSupervisorAnnouncements}) => renderSupervisorAnnouncements(t, isAdmin)) }},
   { key:'work_calendar',    icon:'📅', label:'ปฏิทินปฏิบัติงาน', fn: (t) => { import('./views.js').then(({renderWorkCalendar}) => renderWorkCalendar(t)) }},
   { key:'lang_config',      icon:'⚙️', label:'ตั้งค่าคำอธิบายฯ',fn: (t,a) => renderCourseDocLangConfig(t, a) },
   { key:'menu_holidays',    icon:'📅', label:'วันหยุด',        fn: async () => { const {renderHolidays}     = await import('./views.js'); renderHolidays() }},
