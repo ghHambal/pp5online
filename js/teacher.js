@@ -109,7 +109,7 @@ async function loadTeacherInfo(userId) {
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 const ROUTES = {
-  'announcements-view': () => renderAnnouncementsView(),
+  'announcements-view': () => renderAnnouncementsView(_teacher),
   'overview':    () => renderTeacherOverview(_teacher, _homeroomRooms),
   'my-courses':  () => renderMyCourses(_teacher),
   'my-classes':  () => renderMyClasses(_teacher),

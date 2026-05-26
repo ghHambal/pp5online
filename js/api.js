@@ -2322,7 +2322,7 @@ export async function getAllAnnouncements() {
 
 export async function getActiveAnnouncements() {
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, created_at, creator_role, teachers(id, full_name)')
+    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, teachers(id, full_name)')
     .eq('is_active', true)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
@@ -2330,23 +2330,27 @@ export async function getActiveAnnouncements() {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
               creator_role: creatorRole,
+              requires_ack: requiresAck,
+              due_date: dueDate || null,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
   return data
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority }) {
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate }) {
   const payload = { updated_at: new Date().toISOString() }
-  if (title    !== undefined) payload.title     = title
-  if (body     !== undefined) payload.body      = body
-  if (isActive !== undefined) payload.is_active = isActive
-  if (priority !== undefined) payload.priority  = priority
+  if (title       !== undefined) payload.title       = title
+  if (body        !== undefined) payload.body        = body
+  if (isActive    !== undefined) payload.is_active   = isActive
+  if (priority    !== undefined) payload.priority    = priority
+  if (requiresAck !== undefined) payload.requires_ack = requiresAck
+  if (dueDate     !== undefined) payload.due_date    = dueDate || null
   const { data, error } = await supabase.from('announcements')
     .update(payload).eq('id', id).select().single()
   if (error) throw error
@@ -2366,6 +2370,48 @@ export async function getMyAnnouncements(teacherId) {
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
+}
+
+export async function getMyAcks(teacherId) {
+  const { data, error } = await supabase.from('announcement_acks')
+    .select('announcement_id, acked_at')
+    .eq('teacher_id', teacherId)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function ackAnnouncement(announcementId, teacherId) {
+  const { error } = await supabase.from('announcement_acks')
+    .insert({ announcement_id: announcementId, teacher_id: teacherId })
+  if (error) throw error
+}
+
+export async function removeAck(announcementId, teacherId) {
+  const { error } = await supabase.from('announcement_acks')
+    .delete()
+    .eq('announcement_id', announcementId)
+    .eq('teacher_id', teacherId)
+  if (error) throw error
+}
+
+export async function getAckStats(announcementId) {
+  const [{ data: acks, error: e1 }, { data: teachers, error: e2 }] = await Promise.all([
+    supabase.from('announcement_acks')
+      .select('teacher_id, acked_at, teachers(id, full_name)')
+      .eq('announcement_id', announcementId),
+    supabase.from('teachers')
+      .select('id, full_name')
+      .eq('is_active', true)
+      .order('full_name'),
+  ])
+  if (e1) throw e1
+  if (e2) throw e2
+  const ackedIds = new Set((acks ?? []).map(a => a.teacher_id))
+  const ackedMap = Object.fromEntries((acks ?? []).map(a => [a.teacher_id, a.acked_at]))
+  return {
+    acked:    (teachers ?? []).filter(t => ackedIds.has(t.id)).map(t => ({ ...t, acked_at: ackedMap[t.id] })),
+    pending:  (teachers ?? []).filter(t => !ackedIds.has(t.id)),
+  }
 }
 
 // ─── Auto-enroll ──────────────────────────────────────────────────────────────

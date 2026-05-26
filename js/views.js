@@ -7094,7 +7094,7 @@ const _annRoleColor = r => {
 }
 
 export async function renderSupervisorAnnouncements(teacher) {
-  const { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } = await import('./api.js')
+  const { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAckStats } = await import('./api.js')
   const creatorRole = (teacher?.positions?.length ? teacher.positions[0] : teacher?.position) ?? null
 
   setActiveNav('announcements')
@@ -7142,6 +7142,15 @@ export async function renderSupervisorAnnouncements(teacher) {
       return
     }
 
+    const _fmtDateShort = d => d ? new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'}) : ''
+    const _dueBadge = due => {
+      if (!due) return ''
+      const diff = Math.ceil((new Date(due) - new Date()) / 86400000)
+      if (diff < 0)  return `<span class="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[11px] font-bold">⛔ หมดเขต ${_fmtDateShort(due)}</span>`
+      if (diff <= 3) return `<span class="px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full text-[11px] font-bold">⚠️ ภายใน ${_fmtDateShort(due)}</span>`
+      return `<span class="px-2 py-0.5 bg-sky-100 text-sky-600 rounded-full text-[11px] font-semibold">📅 ภายใน ${_fmtDateShort(due)}</span>`
+    }
+
     list.innerHTML = items.map(a => `
       <div class="group bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden
         ${a.is_active ? 'border-gray-100' : 'border-dashed border-gray-200 opacity-70'}" data-id="${a.id}">
@@ -7151,7 +7160,7 @@ export async function renderSupervisorAnnouncements(teacher) {
         <div class="p-5 flex gap-4 items-start">
           <div class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xl
             ${a.is_active ? 'bg-indigo-50' : 'bg-gray-100'}">
-            ${a.priority > 0 ? '📌' : a.is_active ? '📢' : '📄'}
+            ${a.priority > 0 ? '📌' : a.requires_ack ? '🔔' : a.is_active ? '📢' : '📄'}
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -7160,12 +7169,15 @@ export async function renderSupervisorAnnouncements(teacher) {
                 ${a.is_active ? '● แสดงอยู่' : '○ ปิดอยู่'}
               </span>
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
+              ${a.requires_ack ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🔔 ต้องรับทราบ</span>` : ''}
+              ${_dueBadge(a.due_date)}
             </div>
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
             ${a.body ? `<p class="text-sm text-gray-500 mt-1.5 line-clamp-2">${_esc(a.body)}</p>` : ''}
             <p class="text-[11px] text-gray-400 mt-2">${_fmtDate(a.created_at)}</p>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            ${a.requires_ack ? `<button class="sann-stat-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-sky-200 text-sky-600 hover:bg-sky-50 transition" data-id="${a.id}" data-title="${_esc(a.title)}">📊 สถิติ</button>` : ''}
             <button class="sann-toggle-btn px-3 py-1.5 rounded-lg text-xs font-semibold border transition
               ${a.is_active ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}"
               data-id="${a.id}" data-active="${a.is_active}">
@@ -7178,6 +7190,80 @@ export async function renderSupervisorAnnouncements(teacher) {
           </div>
         </div>
       </div>`).join('')
+
+    list.querySelectorAll('.sann-stat-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const annId = Number(btn.dataset.id)
+        const annTitle = btn.dataset.title
+        const existing = document.getElementById('sann-stat-modal')
+        if (existing) existing.remove()
+        const sm = document.createElement('div')
+        sm.id = 'sann-stat-modal'
+        sm.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'
+        sm.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 class="font-bold text-gray-800 text-base">📊 สถิติการรับทราบ</h3>
+                <p class="text-xs text-gray-400 mt-0.5 truncate max-w-xs">${_esc(annTitle)}</p>
+              </div>
+              <button id="sann-stat-close" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition">✕</button>
+            </div>
+            <div id="sann-stat-body" class="flex-1 overflow-y-auto p-6">
+              <div class="flex justify-center py-8 text-gray-400">
+                <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg> กำลังโหลด...
+              </div>
+            </div>
+          </div>`
+        document.body.appendChild(sm)
+        sm.querySelector('#sann-stat-close').onclick = () => sm.remove()
+        sm.addEventListener('click', e => { if (e.target === sm) sm.remove() })
+
+        try {
+          const { acked, pending } = await getAckStats(annId)
+          const body = sm.querySelector('#sann-stat-body')
+          const _fmtAckedAt = d => new Date(d).toLocaleString('th-TH',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'})
+          body.innerHTML = `
+            <div class="flex gap-3 mb-5">
+              <div class="flex-1 bg-emerald-50 rounded-xl p-4 text-center">
+                <div class="text-2xl font-bold text-emerald-600">${acked.length}</div>
+                <div class="text-xs text-emerald-700 font-semibold mt-0.5">✅ รับทราบแล้ว</div>
+              </div>
+              <div class="flex-1 bg-orange-50 rounded-xl p-4 text-center">
+                <div class="text-2xl font-bold text-orange-500">${pending.length}</div>
+                <div class="text-xs text-orange-600 font-semibold mt-0.5">⏳ ยังไม่รับทราบ</div>
+              </div>
+            </div>
+            ${acked.length ? `
+              <div class="mb-4">
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">✅ รับทราบแล้ว (${acked.length} คน)</p>
+                <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                  ${acked.map(t => `
+                    <div class="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-2">
+                      <span class="text-sm font-medium text-gray-700">${_esc(t.full_name)}</span>
+                      <span class="text-[11px] text-emerald-600 font-semibold">${_fmtAckedAt(t.acked_at)}</span>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+            ${pending.length ? `
+              <div>
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">⏳ ยังไม่รับทราบ (${pending.length} คน)</p>
+                <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                  ${pending.map(t => `
+                    <div class="flex items-center bg-orange-50 rounded-lg px-3 py-2">
+                      <span class="text-sm font-medium text-gray-700">${_esc(t.full_name)}</span>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+          `
+        } catch {
+          sm.querySelector('#sann-stat-body').innerHTML = '<p class="text-red-400 text-sm text-center py-8">โหลดสถิติไม่สำเร็จ</p>'
+        }
+      })
+    })
 
     list.querySelectorAll('.sann-toggle-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -7240,6 +7326,20 @@ export async function renderSupervisorAnnouncements(teacher) {
               <span class="text-sm font-medium text-gray-700">⭐ ปักหมุด</span>
             </label>
           </div>
+          <div class="border-t border-gray-100 pt-4 space-y-3">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" id="sann-ack" class="w-4 h-4 accent-rose-500 rounded" ${item?.requires_ack ? 'checked' : ''}/>
+              <div>
+                <span class="text-sm font-medium text-gray-700">🔔 ต้องการการรับทราบจากครูทุกคน</span>
+                <p class="text-[11px] text-gray-400 mt-0.5">ครูจะเห็นปุ่ม "กดรับทราบ" และคุณสามารถดูสถิติได้</p>
+              </div>
+            </label>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">📅 วันกำหนด / วันสิ้นสุด <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ)</span></label>
+              <input id="sann-due" type="date" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
+                value="${item?.due_date ?? ''}"/>
+            </div>
+          </div>
         </div>
         <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
           <button id="sann-modal-cancel" class="px-5 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-100 transition font-medium">ยกเลิก</button>
@@ -7254,14 +7354,16 @@ export async function renderSupervisorAnnouncements(teacher) {
     m.querySelector('#sann-modal-save').addEventListener('click', async () => {
       const title = m.querySelector('#sann-title').value.trim()
       if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
-      const body     = m.querySelector('#sann-body').value.trim() || null
-      const isActive = m.querySelector('#sann-active-toggle').dataset.on === 'true'
-      const priority = m.querySelector('#sann-pin').checked ? 1 : 0
+      const body        = m.querySelector('#sann-body').value.trim() || null
+      const isActive    = m.querySelector('#sann-active-toggle').dataset.on === 'true'
+      const priority    = m.querySelector('#sann-pin').checked ? 1 : 0
+      const requiresAck = m.querySelector('#sann-ack').checked
+      const dueDate     = m.querySelector('#sann-due').value || null
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')

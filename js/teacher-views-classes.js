@@ -2984,10 +2984,10 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
 
 // ─── Teacher Announcements View ───────────────────────────────────────────────
 
-export async function renderAnnouncementsView() {
+export async function renderAnnouncementsView(teacher) {
   setActiveNav('announcements-view')
   setTitle('ประกาศ')
-  const { getActiveAnnouncements } = await import('./api.js')
+  const { getActiveAnnouncements, getMyAcks, ackAnnouncement, removeAck } = await import('./api.js')
 
   setContent(`<div class="animate-fade">
     <div class="mb-6">
@@ -3006,6 +3006,7 @@ export async function renderAnnouncementsView() {
 
   const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   const _fmtDate = d => new Date(d).toLocaleDateString('th-TH',{dateStyle:'long'})
+  const _fmtShort = d => d ? new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'}) : ''
 
   const ROLE_LABELS = {
     dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'หัวหน้าฝ่ายทะเบียน (สามัญ)',
@@ -3028,31 +3029,64 @@ export async function renderAnnouncementsView() {
     { key:'admin',     label:'⚙️ ทั่วไป',           color:'from-gray-300 to-gray-400',      filter: a => a.priority === 0 && !a.creator_role },
   ]
 
-  const _annCard = a => `
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+  const _dueBadge = due => {
+    if (!due) return ''
+    const diff = Math.ceil((new Date(due) - new Date()) / 86400000)
+    if (diff < 0)  return `<span class="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[11px] font-bold">⛔ หมดเขต ${_fmtShort(due)}</span>`
+    if (diff <= 3) return `<span class="px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full text-[11px] font-bold">⚠️ ภายใน ${_fmtShort(due)}</span>`
+    return `<span class="px-2 py-0.5 bg-sky-100 text-sky-600 rounded-full text-[11px] font-semibold">📅 ภายใน ${_fmtShort(due)}</span>`
+  }
+
+  const _annCard = (a, ackedAt) => {
+    const needAck = a.requires_ack
+    const isAcked = !!ackedAt
+    const ackedTime = ackedAt ? new Date(ackedAt).toLocaleString('th-TH',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''
+    return `
+    <div class="bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow
+      ${needAck && !isAcked ? 'border-rose-200' : 'border-gray-100'}" data-ann-id="${a.id}">
       <div class="h-1 bg-gradient-to-r ${a.priority > 0 ? 'from-amber-400 to-orange-400' : GROUPS.find(g=>g.filter(a))?.color ?? 'from-gray-300 to-gray-400'}"></div>
       <div class="p-5">
         <div class="flex items-start gap-4">
-          <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">
-            ${a.priority > 0 ? '📌' : '📢'}
+          <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0
+            ${needAck && !isAcked ? 'bg-rose-50' : 'bg-indigo-50'}">
+            ${a.priority > 0 ? '📌' : needAck ? (isAcked ? '✅' : '🔔') : '📢'}
           </div>
           <div class="flex-1 min-w-0">
             <h3 class="text-base font-bold text-gray-800 mb-1.5">${_esc(a.title)}</h3>
             ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mb-3">${_esc(a.body)}</p>` : ''}
-            <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap mb-2">
               <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${ROLE_COLOR(a.creator_role)}">
                 ${_esc(ROLE_LABELS[a.creator_role] ?? 'แอดมิน')}
               </span>
               ${a.teachers?.full_name ? `<span class="text-[11px] text-gray-500 font-medium">${_esc(a.teachers.full_name)}</span>` : ''}
+              ${_dueBadge(a.due_date)}
               <span class="text-[11px] text-gray-400 ml-auto">${_fmtDate(a.created_at)}</span>
             </div>
+            ${needAck ? `
+              <div class="mt-3">
+                ${isAcked
+                  ? `<div class="flex items-center gap-2">
+                      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold border border-emerald-200">
+                        ✅ รับทราบแล้ว · ${ackedTime}
+                      </span>
+                    </div>`
+                  : `<button class="ann-ack-btn px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-sm font-bold transition shadow-sm"
+                      data-id="${a.id}">🔔 กดรับทราบ</button>`
+                }
+              </div>` : ''}
           </div>
         </div>
       </div>
     </div>`
+  }
 
-  try {
-    const items = await getActiveAnnouncements()
+  const _render = async () => {
+    const [items, myAcksRaw] = await Promise.all([
+      getActiveAnnouncements(),
+      teacher?.id ? getMyAcks(teacher.id).catch(() => []) : Promise.resolve([]),
+    ])
+    const acksMap = Object.fromEntries(myAcksRaw.map(a => [a.announcement_id, a.acked_at]))
+
     const list = document.getElementById('ann-view-list')
     if (!list) return
 
@@ -3075,9 +3109,24 @@ export async function renderAnnouncementsView() {
           <span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-full font-semibold">${g.items.length}</span>
           <div class="flex-1 h-px bg-gray-100 ml-1"></div>
         </div>
-        <div class="space-y-3">${g.items.map(_annCard).join('')}</div>
+        <div class="space-y-3">${g.items.map(a => _annCard(a, acksMap[a.id])).join('')}</div>
       </div>`).join('')
-  } catch {
-    showToast('โหลดประกาศไม่สำเร็จ', 'error')
+
+    list.querySelectorAll('.ann-ack-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!teacher?.id) return
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+        try {
+          await ackAnnouncement(Number(btn.dataset.id), teacher.id)
+          await _render()
+        } catch {
+          showToast('บันทึกไม่สำเร็จ', 'error')
+          btn.disabled = false; btn.textContent = '🔔 กดรับทราบ'
+        }
+      })
+    })
   }
+
+  try { await _render() }
+  catch { showToast('โหลดประกาศไม่สำเร็จ', 'error') }
 }
