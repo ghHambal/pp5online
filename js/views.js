@@ -7523,6 +7523,9 @@ export async function renderRolePermissions() {
       { key:'menu_classrooms',    label:'ห้องเรียน' },
       { key:'menu_house_colors',  label:'สีนักเรียน' },
     ]},
+    { group:'🔍 นิเทศ/ติดตาม', features:[
+      { key:'work_calendar',      label:'ปฏิทินปฏิบัติงาน' },
+    ]},
   ]
   const ALL_FEATURES = FEATURE_GROUPS.flatMap(g => g.features)
 

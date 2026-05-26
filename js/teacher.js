@@ -1942,7 +1942,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
         if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || (_teacher?.positions ?? [_teacher?.position]).includes('house_color_admin')
         if (m.key === 'announce_manage') return !!_positionPerms.announce_manage
         if (m.key === 'announce_create') return !!_positionPerms.announce_create
-        if (m.key === 'work_calendar') return true  // ทุก supervisor เข้าถึงได้
+        if (m.key === 'work_calendar') return !!_positionPerms.work_calendar
         return !!_positionPerms[m.key]
       })
 
