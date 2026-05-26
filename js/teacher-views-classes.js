@@ -3171,6 +3171,11 @@ export async function renderAnnouncementsView(teacher) {
         items = items.filter(a => {
           if (a.ann_type !== 'training' || !a.event_periods?.length) return true
           const busy = busyMap[a.id] ?? []
+          if ((a.schedule_filter ?? 'all') === 'any') {
+            // ว่างอย่างน้อย 1 คาบ
+            return a.event_periods.some(p => !busy.includes(p))
+          }
+          // ว่างทุกคาบ (default)
           return !a.event_periods.some(p => busy.includes(p))
         })
       }

@@ -7138,6 +7138,19 @@ export async function renderAnnouncements() {
                 }).join('')}
               </div>
             </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-1.5">🔍 เงื่อนไขการมองเห็น</label>
+              <div class="flex gap-2">
+                <button type="button" data-filter="all" class="ann-filter-btn flex-1 py-2 rounded-xl text-xs font-semibold border transition
+                  ${(item?.schedule_filter ?? 'all') === 'all' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">
+                  ว่างทุกคาบที่ระบุ
+                </button>
+                <button type="button" data-filter="any" class="ann-filter-btn flex-1 py-2 rounded-xl text-xs font-semibold border transition
+                  ${(item?.schedule_filter ?? 'all') === 'any' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">
+                  ว่างอย่างน้อย 1 คาบ
+                </button>
+              </div>
+            </div>
           </div>
           <div class="flex items-center justify-between pt-1 gap-2 flex-wrap">
             <button type="button" id="ann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
@@ -7300,6 +7313,16 @@ export async function renderAnnouncements() {
       })
     })
 
+    m.querySelectorAll('.ann-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        m.querySelectorAll('.ann-filter-btn').forEach(b => {
+          b.className = `ann-filter-btn flex-1 py-2 rounded-xl text-xs font-semibold border transition ${b.dataset.filter === btn.dataset.filter
+            ? 'bg-violet-600 text-white border-violet-600'
+            : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}`
+        })
+      })
+    })
+
     m.querySelector('#ann-modal-save').addEventListener('click', async () => {
       const title = m.querySelector('#ann-title').value.trim()
       if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
@@ -7314,6 +7337,7 @@ export async function renderAnnouncements() {
       const eventPeriods  = annType === 'training'
         ? [...m.querySelectorAll('.ann-period-pill.bg-violet-600')].map(p => parseInt(p.dataset.period))
         : null
+      const scheduleFilter = m.querySelector('.ann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
         if (!eventDate)          { showToast('กรุณาระบุวันที่จัดอบรม','warning'); return }
         if (!eventLocation)      { showToast('กรุณาระบุสถานที่','warning'); return }
@@ -7322,8 +7346,8 @@ export async function renderAnnouncements() {
       const btn = m.querySelector('#ann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
-        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
+        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
@@ -7642,6 +7666,19 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
                 }).join('')}
               </div>
             </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-1.5">🔍 เงื่อนไขการมองเห็น</label>
+              <div class="flex gap-2">
+                <button type="button" data-filter="all" class="sann-filter-btn flex-1 py-2 rounded-xl text-xs font-semibold border transition
+                  ${(item?.schedule_filter ?? 'all') === 'all' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">
+                  ว่างทุกคาบที่ระบุ
+                </button>
+                <button type="button" data-filter="any" class="sann-filter-btn flex-1 py-2 rounded-xl text-xs font-semibold border transition
+                  ${(item?.schedule_filter ?? 'all') === 'any' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">
+                  ว่างอย่างน้อย 1 คาบ
+                </button>
+              </div>
+            </div>
           </div>
           <div class="flex items-center justify-between pt-1 gap-2 flex-wrap">
             <button type="button" id="sann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
@@ -7816,6 +7853,17 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       })
     })
 
+    // schedule filter toggle
+    m.querySelectorAll('.sann-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        m.querySelectorAll('.sann-filter-btn').forEach(b => {
+          b.className = `sann-filter-btn flex-1 py-2 rounded-xl text-xs font-semibold border transition ${b.dataset.filter === btn.dataset.filter
+            ? 'bg-violet-600 text-white border-violet-600'
+            : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}`
+        })
+      })
+    })
+
     m.querySelector('#sann-modal-save').addEventListener('click', async () => {
       const title = m.querySelector('#sann-title').value.trim()
       if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
@@ -7830,6 +7878,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const eventPeriods = annType === 'training'
         ? [...m.querySelectorAll('.sann-period-pill.bg-violet-600')].map(p => parseInt(p.dataset.period))
         : null
+      const scheduleFilter = m.querySelector('.sann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
         if (!eventDate) { showToast('กรุณาระบุวันที่จัดอบรม','warning'); return }
         if (!eventLocation) { showToast('กรุณาระบุสถานที่','warning'); return }
@@ -7838,8 +7887,8 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')

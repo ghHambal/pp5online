@@ -2171,7 +2171,7 @@ export async function getSupervisorComments(teacherId) {
 
 export async function getAllAnnouncementsForTeacher() {
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, teachers(id, full_name)')
+    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, schedule_filter, teachers(id, full_name)')
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -2357,7 +2357,7 @@ export async function getActiveAnnouncements() {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all' }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
@@ -2368,24 +2368,26 @@ export async function createAnnouncement({ title, body, isActive = true, priorit
               event_date: eventDate || null,
               event_periods: eventPeriods || null,
               event_location: eventLocation || null,
+              schedule_filter: scheduleFilter,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
   return data
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation }) {
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter }) {
   const payload = { updated_at: new Date().toISOString() }
-  if (title         !== undefined) payload.title          = title
-  if (body          !== undefined) payload.body           = body
-  if (isActive      !== undefined) payload.is_active      = isActive
-  if (priority      !== undefined) payload.priority       = priority
-  if (requiresAck   !== undefined) payload.requires_ack   = requiresAck
-  if (dueDate       !== undefined) payload.due_date       = dueDate || null
-  if (annType       !== undefined) payload.ann_type       = annType
-  if (eventDate     !== undefined) payload.event_date     = eventDate || null
-  if (eventPeriods  !== undefined) payload.event_periods  = eventPeriods || null
-  if (eventLocation !== undefined) payload.event_location = eventLocation || null
+  if (title           !== undefined) payload.title            = title
+  if (body            !== undefined) payload.body             = body
+  if (isActive        !== undefined) payload.is_active        = isActive
+  if (priority        !== undefined) payload.priority         = priority
+  if (requiresAck     !== undefined) payload.requires_ack     = requiresAck
+  if (dueDate         !== undefined) payload.due_date         = dueDate || null
+  if (annType         !== undefined) payload.ann_type         = annType
+  if (eventDate       !== undefined) payload.event_date       = eventDate || null
+  if (eventPeriods    !== undefined) payload.event_periods    = eventPeriods || null
+  if (eventLocation   !== undefined) payload.event_location   = eventLocation || null
+  if (scheduleFilter  !== undefined) payload.schedule_filter  = scheduleFilter
   const { data, error } = await supabase.from('announcements')
     .update(payload).eq('id', id).select().single()
   if (error) throw error
