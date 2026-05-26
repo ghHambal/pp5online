@@ -6922,12 +6922,13 @@ export async function renderAnnouncements() {
       <div class="group bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden
         ${a.is_active ? 'border-gray-100' : 'border-dashed border-gray-200 opacity-70'}" data-id="${a.id}">
         ${a.priority > 0 ? `<div class="h-1 bg-gradient-to-r from-amber-400 to-orange-400"></div>` :
+          a.ann_type === 'training' ? `<div class="h-1 bg-gradient-to-r from-violet-400 to-purple-400"></div>` :
           a.is_active ? `<div class="h-1 bg-gradient-to-r from-emerald-400 to-teal-400"></div>` :
           `<div class="h-1 bg-gray-200"></div>`}
         <div class="p-5 flex gap-4 items-start">
           <div class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xl
-            ${a.is_active ? 'bg-indigo-50' : 'bg-gray-100'}">
-            ${a.priority > 0 ? '📌' : a.is_active ? '📢' : '📄'}
+            ${a.ann_type === 'training' ? 'bg-violet-50' : a.is_active ? 'bg-indigo-50' : 'bg-gray-100'}">
+            ${a.priority > 0 ? '📌' : a.ann_type === 'training' ? '🎓' : a.is_active ? '📢' : '📄'}
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -6935,10 +6936,16 @@ export async function renderAnnouncements() {
                 ${a.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">
                 ${a.is_active ? '● แสดงอยู่' : '○ ปิดอยู่'}
               </span>
+              ${a.ann_type === 'training' ? `<span class="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[11px] font-bold">🎓 อบรม/กิจกรรม</span>` : ''}
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
             </div>
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
-            ${a.body ? `<p class="text-sm text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">${_esc(a.body)}</p>` : ''}
+            ${a.ann_type === 'training' && a.event_date ? `
+              <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                <span class="px-2 py-1 bg-violet-50 text-violet-700 rounded-lg">📅 ${_fmtDate(a.event_date)}</span>
+                ${a.event_location ? `<span class="px-2 py-1 bg-violet-50 text-violet-700 rounded-lg">📍 ${_esc(a.event_location)}</span>` : ''}
+                ${(a.event_periods?.length) ? `<span class="px-2 py-1 bg-violet-50 text-violet-700 rounded-lg">🕐 คาบ ${a.event_periods.sort((x,y)=>x-y).join(', ')}</span>` : ''}
+              </div>` : a.body ? `<p class="text-sm text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">${_esc(a.body)}</p>` : ''}
             <p class="text-[11px] text-gray-400 mt-2">
               ${_fmtDate(a.created_at)}
               ${a.teachers?.full_name ? ` · 📝 ${_esc(a.teachers.full_name)}` : ' · ⚙️ แอดมิน'}
@@ -6989,12 +6996,12 @@ export async function renderAnnouncements() {
     m.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'
     const isEdit = !!item?.id
     m.innerHTML = `
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h3 class="font-bold text-gray-800 text-base">${isEdit ? '✏️ แก้ไขประกาศ' : '➕ สร้างประกาศใหม่'}</h3>
           <button id="ann-modal-close" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">✕</button>
         </div>
-        <div class="px-6 py-5 space-y-4">
+        <div class="px-6 py-5 space-y-4 overflow-y-auto flex-1">
           <div>
             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">หัวข้อ *</label>
             <input id="ann-title" type="text" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
@@ -7002,26 +7009,89 @@ export async function renderAnnouncements() {
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">เนื้อหา</label>
-            <textarea id="ann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
+            <textarea id="ann-body" rows="4" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
           </div>
-          <div class="flex items-center justify-between pt-1">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <button type="button" id="ann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
-                onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className='w-12 h-6 rounded-full transition-colors relative shadow-inner '+(this.dataset.on==='true'?'bg-emerald-500':'bg-gray-300');this.querySelector('span').style.transform=this.dataset.on==='true'?'translateX(24px)':'translateX(2px)'"
-                class="w-12 h-6 rounded-full transition-colors relative shadow-inner ${item?.is_active !== false ? 'bg-emerald-500' : 'bg-gray-300'}">
-                <span class="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform"
-                  style="transform:translateX(${item?.is_active !== false ? '24' : '2'}px)"></span>
+          <!-- ประเภทประกาศ -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">ประเภทประกาศ</label>
+            <div class="flex gap-2">
+              <button type="button" data-type="general" class="ann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.ann_type ?? 'general') === 'general' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">📢 ทั่วไป</button>
+              <button type="button" data-type="training" class="ann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.ann_type === 'training' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">🎓 อบรม/กิจกรรม</button>
+            </div>
+          </div>
+          <!-- Training fields -->
+          <div id="ann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">📅 วันที่จัดอบรม *</label>
+                <input id="ann-event-date" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  value="${item?.event_date ?? ''}"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">📍 สถานที่ *</label>
+                <input id="ann-event-location" type="text" placeholder="เช่น ห้องประชุม 1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  value="${_esc(item?.event_location ?? '')}"/>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-2">🕐 คาบที่ (เลือกได้หลายคาบ) *</label>
+              <div class="flex flex-wrap gap-2" id="ann-period-pills">
+                ${[1,2,3,4,5,6,7,8,9].map(p => {
+                  const sel = (item?.event_periods ?? []).includes(p)
+                  return `<button type="button" data-period="${p}"
+                    class="ann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition
+                    ${sel ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'}">${p}</button>`
+                }).join('')}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center justify-between pt-1 gap-2 flex-wrap">
+            <button type="button" id="ann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
+              onclick="const on=this.dataset.on==='true';this.dataset.on=on?'false':'true';this.className='px-4 py-2 rounded-xl text-sm font-semibold border transition '+(on?'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100':'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100');this.textContent=on?'○ ปิดอยู่':'● แสดงให้ครูเห็น'"
+              class="px-4 py-2 rounded-xl text-sm font-semibold border transition ${item?.is_active !== false ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
+              ${item?.is_active !== false ? '● แสดงให้ครูเห็น' : '○ ปิดอยู่'}
+            </button>
+            <button type="button" id="ann-pin" data-on="${(item?.priority ?? 0) > 0 ? 'true' : 'false'}"
+              onclick="const on=this.dataset.on==='true';this.dataset.on=on?'false':'true';this.className='px-4 py-2 rounded-xl text-sm font-semibold border transition '+(on?'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100':'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100');this.textContent=on?'☆ ปักหมุด':'⭐ ปักหมุด'"
+              class="px-4 py-2 rounded-xl text-sm font-semibold border transition ${(item?.priority ?? 0) > 0 ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
+              ${(item?.priority ?? 0) > 0 ? '⭐ ปักหมุด' : '☆ ปักหมุด'}
+            </button>
+          </div>
+          <div class="border-t border-gray-100 pt-4">
+            <button type="button" id="ann-cal-ref"
+              class="w-full px-4 py-2.5 rounded-xl text-sm font-semibold border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition text-left flex items-center gap-2 mb-3">
+              📋 <span>อ้างอิงปฏิทินปฏิบัติงาน</span>
+              <span class="text-[11px] font-normal text-indigo-400 ml-auto">auto-fill ข้อมูล</span>
+            </button>
+            <div id="ann-cal-picker" class="hidden mb-3">
+              <select id="ann-cal-event-sel"
+                class="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2">
+                <option value="">— เลือกกิจกรรม —</option>
+              </select>
+              <div id="ann-cal-preview" class="hidden bg-indigo-50 rounded-xl p-3 space-y-1 text-xs text-indigo-800"></div>
+              <button type="button" id="ann-cal-fill" class="hidden mt-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition w-full">
+                ใส่ข้อมูลลงฟอร์ม
               </button>
-              <span class="text-sm font-medium text-gray-700">แสดงให้ครูเห็น</span>
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="ann-pin" class="w-4 h-4 accent-amber-500 rounded" ${(item?.priority ?? 0) > 0 ? 'checked' : ''}/>
-              <span class="text-sm font-medium text-gray-700">⭐ ปักหมุด (ขึ้นก่อน)</span>
-            </label>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <button type="button" id="ann-ack" data-on="${item?.requires_ack ? 'true' : 'false'}"
+                onclick="const on=this.dataset.on==='true';this.dataset.on=on?'false':'true';this.className='w-full px-4 py-2.5 rounded-xl text-sm font-semibold border transition text-left '+(on?'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100':'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100');this.querySelector('span').textContent=on?'🔔 ต้องการการรับทราบจากครูทุกคน':'🔔 ต้องการการรับทราบจากครูทุกคน'"
+                class="w-full px-4 py-2.5 rounded-xl text-sm font-semibold border transition text-left ${item?.requires_ack ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
+                <span>🔔 ต้องการการรับทราบจากครูทุกคน</span>
+                <p class="text-[11px] font-normal mt-0.5 opacity-70">ครูจะเห็นปุ่ม "กดรับทราบ" และคุณสามารถดูสถิติได้</p>
+              </button>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">📅 วันกำหนด / วันสิ้นสุด <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ)</span></label>
+              <input id="ann-due" type="date" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
+                value="${item?.due_date ?? ''}"/>
+            </div>
           </div>
         </div>
-        <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 flex-shrink-0">
           <button id="ann-modal-cancel" class="px-5 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-100 transition font-medium">ยกเลิก</button>
           <button id="ann-modal-save" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition shadow-sm">บันทึก</button>
         </div>
@@ -7031,17 +7101,136 @@ export async function renderAnnouncements() {
     m.querySelector('#ann-modal-close').onclick = close
     m.querySelector('#ann-modal-cancel').onclick = close
     m.addEventListener('click', e => { if (e.target === m) close() })
+
+    // suggestion chips
+    const _TITLE_CHIPS = ['ประชุมครูประจำเดือน','แจ้งกำหนดส่งแบบฟอร์ม','ขอความร่วมมือ','แจ้งกำหนดการสอบ','แจ้งปฏิทินกิจกรรม']
+    const _BODY_CHIPS  = ['ขอให้คุณครูทุกท่านรับทราบและดำเนินการภายในวันที่กำหนด','ขอให้คุณครูกรอกแบบฟอร์มและส่งกลับมาที่ฝ่ายทะเบียน','หากมีข้อสงสัยสามารถติดต่อสอบถามได้ที่ฝ่ายวิชาการ']
+    const _makeHint = (inputEl, chips) => {
+      const wrap = document.createElement('div')
+      wrap.className = 'mt-1.5 hidden'
+      wrap.innerHTML = `<p class="text-[11px] text-gray-400 mb-1.5">ตัวอย่าง:</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${chips.map(c => `<button type="button" class="ann-chip px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[11px] font-medium transition border border-indigo-100" data-val="${c}">${c}</button>`).join('')}
+        </div>`
+      inputEl.parentNode.appendChild(wrap)
+      inputEl.addEventListener('focus', () => wrap.classList.remove('hidden'))
+      inputEl.addEventListener('blur', () => setTimeout(() => wrap.classList.add('hidden'), 150))
+      wrap.querySelectorAll('.ann-chip').forEach(btn => {
+        btn.addEventListener('mousedown', e => e.preventDefault())
+        btn.addEventListener('click', () => {
+          if (!inputEl.value.trim()) inputEl.value = btn.dataset.val
+          else inputEl.value += (inputEl.tagName === 'TEXTAREA' ? '\n' : ' ') + btn.dataset.val
+          inputEl.focus()
+        })
+      })
+    }
+    _makeHint(m.querySelector('#ann-title'), _TITLE_CHIPS)
+    _makeHint(m.querySelector('#ann-body'), _BODY_CHIPS)
+
+    // calendar reference picker
+    let _calEvents = []
+    m.querySelector('#ann-cal-ref').addEventListener('click', async () => {
+      const picker = m.querySelector('#ann-cal-picker')
+      if (!picker.classList.contains('hidden')) { picker.classList.add('hidden'); return }
+      picker.classList.remove('hidden')
+      const sel = m.querySelector('#ann-cal-event-sel')
+      if (sel.options.length <= 1) {
+        try {
+          const { getWorkCalendarEvents, getSchoolConfig } = await import('./api.js')
+          let ay = new Date().getFullYear() + 543, sm = 1
+          try { const c = await getSchoolConfig(); ay = c.academic_year; sm = c.semester } catch {}
+          _calEvents = await getWorkCalendarEvents(ay, sm)
+          const TYPE_LABEL = { inspection:'🔍', deadline:'⏰', meeting:'📅', other:'📌' }
+          _calEvents.forEach(ev => {
+            const opt = document.createElement('option')
+            opt.value = ev.id
+            const rd = ev.event_type === 'inspection' && ev.round_number ? ` ครั้งที่ ${ev.round_number}` : ''
+            const d = new Date(ev.event_date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+            opt.textContent = `${TYPE_LABEL[ev.event_type]??'📌'}${rd} ${ev.label} (${d})`
+            sel.appendChild(opt)
+          })
+        } catch (err) { sel.innerHTML = `<option>โหลดไม่สำเร็จ: ${err.message}</option>` }
+      }
+    })
+    m.querySelector('#ann-cal-event-sel').addEventListener('change', () => {
+      const evId = +m.querySelector('#ann-cal-event-sel').value
+      const ev = _calEvents.find(x => x.id === evId)
+      const preview = m.querySelector('#ann-cal-preview')
+      const fillBtn = m.querySelector('#ann-cal-fill')
+      if (!ev) { preview.classList.add('hidden'); fillBtn.classList.add('hidden'); return }
+      const items = (ev.work_calendar_items || []).sort((a,b) => a.sort_order - b.sort_order)
+      const d = new Date(ev.event_date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+      preview.innerHTML = `<p class="font-semibold">${ev.label}</p>
+        <p class="text-indigo-600">📅 ${d}${ev.event_type==='inspection'&&ev.round_number?` · ครั้งที่ ${ev.round_number}`:''}</p>
+        ${ev.description ? `<p>${ev.description}</p>` : ''}
+        ${items.length ? `<ul class="mt-1 space-y-0.5">${items.map(it=>`<li>☑ ${it.item_label}</li>`).join('')}</ul>` : ''}`
+      preview.classList.remove('hidden'); fillBtn.classList.remove('hidden')
+    })
+    m.querySelector('#ann-cal-fill').addEventListener('click', () => {
+      const evId = +m.querySelector('#ann-cal-event-sel').value
+      const ev = _calEvents.find(x => x.id === evId)
+      if (!ev) return
+      const items = (ev.work_calendar_items || []).sort((a,b) => a.sort_order - b.sort_order)
+      const d = new Date(ev.event_date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+      const rd = ev.event_type === 'inspection' && ev.round_number ? ` ครั้งที่ ${ev.round_number}` : ''
+      m.querySelector('#ann-title').value = ev.label + (rd ? ` (${rd.trim()})` : '')
+      const bodyLines = []
+      if (ev.description) bodyLines.push(ev.description)
+      if (items.length) { bodyLines.push('สิ่งที่ต้องเตรียม:'); items.forEach(it => bodyLines.push(`• ${it.item_label}`)) }
+      bodyLines.push(`กำหนดวันที่: ${d}`)
+      m.querySelector('#ann-body').value = bodyLines.join('\n')
+      if (ev.event_date) m.querySelector('#ann-due').value = ev.event_date
+      m.querySelector('#ann-cal-picker').classList.add('hidden')
+    })
+
+    // type toggle
+    m.querySelectorAll('.ann-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.type
+        m.querySelectorAll('.ann-type-btn').forEach(b => {
+          const isViolet = b.dataset.type === 'training'
+          b.className = `ann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${b.dataset.type === type
+            ? (isViolet ? 'bg-violet-600 text-white border-violet-600' : 'bg-indigo-600 text-white border-indigo-600')
+            : (isViolet ? 'bg-white text-gray-600 border-gray-200 hover:border-violet-300' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300')}`
+        })
+        m.querySelector('#ann-training-fields').classList.toggle('hidden', type !== 'training')
+      })
+    })
+
+    // period pills toggle
+    m.querySelectorAll('.ann-period-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const on = pill.classList.contains('bg-violet-600')
+        pill.className = `ann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition ${on
+          ? 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'
+          : 'bg-violet-600 text-white border-violet-600'}`
+      })
+    })
+
     m.querySelector('#ann-modal-save').addEventListener('click', async () => {
       const title = m.querySelector('#ann-title').value.trim()
       if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
-      const body = m.querySelector('#ann-body').value.trim() || null
-      const isActive = m.querySelector('#ann-active-toggle').dataset.on === 'true'
-      const priority = m.querySelector('#ann-pin').checked ? 1 : 0
+      const body        = m.querySelector('#ann-body').value.trim() || null
+      const isActive    = m.querySelector('#ann-active-toggle').dataset.on === 'true'
+      const priority    = m.querySelector('#ann-pin').dataset.on === 'true' ? 1 : 0
+      const requiresAck = m.querySelector('#ann-ack').dataset.on === 'true'
+      const dueDate     = m.querySelector('#ann-due').value || null
+      const annType     = m.querySelector('.ann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
+      const eventDate   = annType === 'training' ? (m.querySelector('#ann-event-date').value || null) : null
+      const eventLocation = annType === 'training' ? (m.querySelector('#ann-event-location').value.trim() || null) : null
+      const eventPeriods  = annType === 'training'
+        ? [...m.querySelectorAll('.ann-period-pill.bg-violet-600')].map(p => parseInt(p.dataset.period))
+        : null
+      if (annType === 'training') {
+        if (!eventDate)          { showToast('กรุณาระบุวันที่จัดอบรม','warning'); return }
+        if (!eventLocation)      { showToast('กรุณาระบุสถานที่','warning'); return }
+        if (!eventPeriods?.length){ showToast('กรุณาเลือกอย่างน้อย 1 คาบ','warning'); return }
+      }
       const btn = m.querySelector('#ann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority })
-        else        await createAnnouncement({ title, body, isActive, priority })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
+        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
