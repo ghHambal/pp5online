@@ -6928,6 +6928,75 @@ export async function renderClassroomsAdmin() {
 }
 
 
+// ─── Announcement modal helpers (shared by admin + supervisor modals) ─────────
+
+const _annSessionPillsHTML = (pfx, selPeriods = []) =>
+  [1,2,3,4,5,6,7,8,9].map(p => {
+    const sel = selPeriods.includes(p)
+    return `<button type="button" data-period="${p}"
+      class="${pfx}-session-pill w-9 h-9 rounded-full text-xs font-bold border transition
+      ${sel ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'}">${p}</button>`
+  }).join('')
+
+const _annSessionHTML = (pfx, idx, date = '', periods = []) => `
+  <div class="${pfx}-session border border-violet-200 rounded-xl p-3 bg-white">
+    <div class="flex items-center justify-between mb-2">
+      <span class="${pfx}-session-label text-xs font-semibold text-violet-700">วันที่ ${idx + 1}</span>
+      <button type="button" class="${pfx}-session-remove ${idx === 0 ? 'hidden' : ''} text-xs text-red-400 hover:text-red-600 font-medium transition px-1.5 py-0.5 rounded hover:bg-red-50">✕ ลบ</button>
+    </div>
+    <input type="date" class="${pfx}-session-date w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 mb-2" value="${date}"/>
+    <div class="flex flex-wrap gap-1.5 ${pfx}-session-pills">${_annSessionPillsHTML(pfx, periods)}</div>
+  </div>`
+
+function _setupAnnSessions(m, pfx) {
+  const list = m.querySelector(`#${pfx}-sessions-list`)
+
+  const _rebind = () => {
+    list.querySelectorAll(`.${pfx}-session-pill`).forEach(pill => {
+      pill.onclick = null
+      pill.addEventListener('click', () => {
+        const on = pill.classList.contains('bg-violet-600')
+        pill.className = `${pfx}-session-pill w-9 h-9 rounded-full text-xs font-bold border transition ${on
+          ? 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'
+          : 'bg-violet-600 text-white border-violet-600'}`
+      })
+    })
+    list.querySelectorAll(`.${pfx}-session-remove`).forEach(btn => {
+      btn.onclick = null
+      btn.addEventListener('click', () => {
+        btn.closest(`.${pfx}-session`).remove()
+        _updateLabels()
+      })
+    })
+  }
+
+  const _updateLabels = () => {
+    const sessions = [...list.querySelectorAll(`.${pfx}-session`)]
+    sessions.forEach((sess, i) => {
+      sess.querySelector(`.${pfx}-session-label`).textContent = `วันที่ ${i + 1}`
+      sess.querySelector(`.${pfx}-session-remove`).classList.toggle('hidden', sessions.length <= 1)
+    })
+    _rebind()
+  }
+
+  m.querySelector(`#${pfx}-add-session`).addEventListener('click', () => {
+    const idx = list.querySelectorAll(`.${pfx}-session`).length
+    const div = document.createElement('div')
+    div.innerHTML = _annSessionHTML(pfx, idx)
+    list.appendChild(div.firstElementChild)
+    _updateLabels()
+  })
+
+  _rebind()
+}
+
+function _getAnnSessions(m, pfx) {
+  return [...m.querySelectorAll(`.${pfx}-session`)].map(sess => ({
+    date:    sess.querySelector(`.${pfx}-session-date`).value,
+    periods: [...sess.querySelectorAll(`.${pfx}-session-pill.bg-violet-600`)].map(p => parseInt(p.dataset.period)),
+  }))
+}
+
 // ─── Announcements ────────────────────────────────────────────────────────────
 
 export async function renderAnnouncements() {
@@ -7115,28 +7184,20 @@ export async function renderAnnouncements() {
           </div>
           <!-- Training fields -->
           <div id="ann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 mb-1">📅 วันที่จัดอบรม *</label>
-                <input id="ann-event-date" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-                  value="${item?.event_date ?? ''}"/>
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 mb-1">📍 สถานที่ *</label>
-                <input id="ann-event-location" type="text" placeholder="เช่น ห้องประชุม 1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-                  value="${_esc(item?.event_location ?? '')}"/>
-              </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-1">📍 สถานที่ *</label>
+              <input id="ann-event-location" type="text" placeholder="เช่น ห้องประชุม 1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                value="${_esc(item?.event_location ?? '')}"/>
             </div>
             <div>
-              <label class="block text-xs font-semibold text-gray-500 mb-2">🕐 คาบที่ (เลือกได้หลายคาบ) *</label>
-              <div class="flex flex-wrap gap-2" id="ann-period-pills">
-                ${[1,2,3,4,5,6,7,8,9].map(p => {
-                  const sel = (item?.event_periods ?? []).includes(p)
-                  return `<button type="button" data-period="${p}"
-                    class="ann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition
-                    ${sel ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'}">${p}</button>`
-                }).join('')}
+              <label class="block text-xs font-semibold text-gray-500 mb-1.5">📅 วันและคาบ *</label>
+              <div id="ann-sessions-list" class="space-y-2">
+                ${_annSessionHTML('ann', 0, item?.event_date ?? '', item?.event_periods ?? [])}
               </div>
+              ${!isEdit ? `<button type="button" id="ann-add-session"
+                class="w-full mt-2 py-2 border border-dashed border-violet-300 text-violet-600 text-xs font-semibold rounded-xl hover:bg-violet-50 transition">
+                ＋ เพิ่มวันอบรม
+              </button>` : `<div id="ann-add-session" class="hidden"></div>`}
             </div>
             <div>
               <label class="block text-xs font-semibold text-gray-500 mb-1.5">🔍 เงื่อนไขการมองเห็น</label>
@@ -7304,14 +7365,7 @@ export async function renderAnnouncements() {
     })
 
     // period pills toggle
-    m.querySelectorAll('.ann-period-pill').forEach(pill => {
-      pill.addEventListener('click', () => {
-        const on = pill.classList.contains('bg-violet-600')
-        pill.className = `ann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition ${on
-          ? 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'
-          : 'bg-violet-600 text-white border-violet-600'}`
-      })
-    })
+    _setupAnnSessions(m, 'ann')
 
     m.querySelectorAll('.ann-filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -7332,22 +7386,39 @@ export async function renderAnnouncements() {
       const requiresAck = m.querySelector('#ann-ack').dataset.on === 'true'
       const dueDate     = m.querySelector('#ann-due').value || null
       const annType     = m.querySelector('.ann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
-      const eventDate   = annType === 'training' ? (m.querySelector('#ann-event-date').value || null) : null
       const eventLocation = annType === 'training' ? (m.querySelector('#ann-event-location').value.trim() || null) : null
-      const eventPeriods  = annType === 'training'
-        ? [...m.querySelectorAll('.ann-period-pill.bg-violet-600')].map(p => parseInt(p.dataset.period))
-        : null
       const scheduleFilter = m.querySelector('.ann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
-        if (!eventDate)          { showToast('กรุณาระบุวันที่จัดอบรม','warning'); return }
-        if (!eventLocation)      { showToast('กรุณาระบุสถานที่','warning'); return }
-        if (!eventPeriods?.length){ showToast('กรุณาเลือกอย่างน้อย 1 คาบ','warning'); return }
+        if (!eventLocation) { showToast('กรุณาระบุสถานที่','warning'); return }
+        const sessions = _getAnnSessions(m, 'ann')
+        for (const s of sessions) {
+          if (!s.date)           { showToast('กรุณาระบุวันที่ให้ครบทุกช่วง','warning'); return }
+          if (!s.periods.length) { showToast('กรุณาเลือกอย่างน้อย 1 คาบในทุกช่วง','warning'); return }
+        }
+        const btn = m.querySelector('#ann-modal-save')
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+        try {
+          if (isEdit) {
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+          } else if (sessions.length > 1) {
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter })))
+            showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
+          } else {
+            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+            showToast('บันทึกสำเร็จ ✅', 'success')
+          }
+          close(); await onDone()
+        } catch(e) {
+          showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+          btn.disabled = false; btn.textContent = 'บันทึก'
+        }
+        return
       }
       const btn = m.querySelector('#ann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
-        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType })
+        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
@@ -7643,28 +7714,20 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
           </div>` : ''}
           <!-- Training fields (แสดงเมื่อเลือก อบรม) -->
           <div id="sann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 mb-1">📅 วันที่จัดอบรม *</label>
-                <input id="sann-event-date" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-                  value="${item?.event_date ?? ''}"/>
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-gray-500 mb-1">📍 สถานที่ *</label>
-                <input id="sann-event-location" type="text" placeholder="เช่น ห้องประชุม 1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-                  value="${_esc(item?.event_location ?? '')}"/>
-              </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-1">📍 สถานที่ *</label>
+              <input id="sann-event-location" type="text" placeholder="เช่น ห้องประชุม 1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                value="${_esc(item?.event_location ?? '')}"/>
             </div>
             <div>
-              <label class="block text-xs font-semibold text-gray-500 mb-2">🕐 คาบที่ (เลือกได้หลายคาบ) *</label>
-              <div class="flex flex-wrap gap-2" id="sann-period-pills">
-                ${[1,2,3,4,5,6,7,8,9].map(p => {
-                  const sel = (item?.event_periods ?? []).includes(p)
-                  return `<button type="button" data-period="${p}"
-                    class="sann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition
-                    ${sel ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'}">${p}</button>`
-                }).join('')}
+              <label class="block text-xs font-semibold text-gray-500 mb-1.5">📅 วันและคาบ *</label>
+              <div id="sann-sessions-list" class="space-y-2">
+                ${_annSessionHTML('sann', 0, item?.event_date ?? '', item?.event_periods ?? [])}
               </div>
+              ${!isEdit ? `<button type="button" id="sann-add-session"
+                class="w-full mt-2 py-2 border border-dashed border-violet-300 text-violet-600 text-xs font-semibold rounded-xl hover:bg-violet-50 transition">
+                ＋ เพิ่มวันอบรม
+              </button>` : `<div id="sann-add-session" class="hidden"></div>`}
             </div>
             <div>
               <label class="block text-xs font-semibold text-gray-500 mb-1.5">🔍 เงื่อนไขการมองเห็น</label>
@@ -7843,17 +7906,8 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       })
     })
 
-    // period pills toggle
-    m.querySelectorAll('.sann-period-pill').forEach(pill => {
-      pill.addEventListener('click', () => {
-        const on = pill.classList.contains('bg-violet-600')
-        pill.className = `sann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition ${on
-          ? 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'
-          : 'bg-violet-600 text-white border-violet-600'}`
-      })
-    })
+    _setupAnnSessions(m, 'sann')
 
-    // schedule filter toggle
     m.querySelectorAll('.sann-filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         m.querySelectorAll('.sann-filter-btn').forEach(b => {
@@ -7873,22 +7927,40 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const requiresAck = m.querySelector('#sann-ack').dataset.on === 'true'
       const dueDate     = m.querySelector('#sann-due').value || null
       const annType     = m.querySelector('.sann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
-      const eventDate   = annType === 'training' ? (m.querySelector('#sann-event-date').value || null) : null
       const eventLocation = annType === 'training' ? (m.querySelector('#sann-event-location').value.trim() || null) : null
-      const eventPeriods = annType === 'training'
-        ? [...m.querySelectorAll('.sann-period-pill.bg-violet-600')].map(p => parseInt(p.dataset.period))
-        : null
       const scheduleFilter = m.querySelector('.sann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
-        if (!eventDate) { showToast('กรุณาระบุวันที่จัดอบรม','warning'); return }
         if (!eventLocation) { showToast('กรุณาระบุสถานที่','warning'); return }
-        if (!eventPeriods?.length) { showToast('กรุณาเลือกอย่างน้อย 1 คาบ','warning'); return }
+        const sessions = _getAnnSessions(m, 'sann')
+        for (const s of sessions) {
+          if (!s.date)           { showToast('กรุณาระบุวันที่ให้ครบทุกช่วง','warning'); return }
+          if (!s.periods.length) { showToast('กรุณาเลือกอย่างน้อย 1 คาบในทุกช่วง','warning'); return }
+        }
+        const btn = m.querySelector('#sann-modal-save')
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+        try {
+          if (isEdit) {
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+          } else if (sessions.length > 1) {
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter })))
+            showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
+          } else {
+            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+            showToast('บันทึกสำเร็จ ✅', 'success')
+          }
+          close(); await _renderList()
+        } catch(e) {
+          showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+          const btn = m.querySelector('#sann-modal-save')
+          btn.disabled = false; btn.textContent = 'บันทึก'
+        }
+        return
       }
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
