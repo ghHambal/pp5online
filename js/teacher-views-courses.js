@@ -958,6 +958,14 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     sg === 'ACDMVOC' ? 'สามัญปวช' :
     (sg === 'AGM' || sg === 'AGMVOC') ? 'ศาสนา' : null
 
+  const _isVoc     = sg => sg === 'ACDMVOC'
+  const _deptLabel = sg => _isVoc(sg) ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
+  const _headLabel = sg => _isVoc(sg) ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระ'
+  const _deptPH    = sg => _isVoc(sg) ? '— เลือกสาขาวิชา —' : '— เลือกกลุ่มสาระ —'
+  const _headHint  = sg => _isVoc(sg) ? 'เติมอัตโนมัติตามสาขาวิชา — แก้ไขได้' : 'เติมอัตโนมัติตามกลุ่มสาระ — แก้ไขได้'
+
+  const _initSg = editData?.subject_group ?? ''
+
   // filter depts by subject_group (graceful: if no category set, show all)
   const _filterDepts = sg => {
     const cat = _sgToCategory(sg)
@@ -992,10 +1000,10 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
             ${visibleSubgroups.map(s=>`<option value="${s.value}" ${editData?.subject_group===s.value?'selected':''}>${s.label}</option>`).join('')}
           </select>
         </div>
-        <!-- กลุ่มสาระ -->
+        <!-- กลุ่มสาระ / สาขาวิชา -->
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">
-            กลุ่มสาระการเรียนรู้ <span class="text-red-400">*</span>
+          <label id="cf-dept-label" class="block text-sm font-semibold text-gray-700 mb-1">
+            ${_deptLabel(_initSg)} <span class="text-red-400">*</span>
           </label>
           <select id="cf-dept" class="${SELECT_CLS}">
             ${_deptOptions(editData?.subject_group ? _filterDepts(editData.subject_group) : (teacherCat ? uniqueDepts.filter(d=>d.category===teacherCat) : uniqueDepts), editData?.dept??'')}
@@ -1065,9 +1073,9 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
             maxlength="12" class="${INPUT_CLS}" />
           <p class="text-xs text-gray-400 mt-1">เบอร์จะถูกเติมอัตโนมัติเมื่อเลือกครูผู้สอน</p>
         </div>
-        <!-- หัวหน้ากลุ่มสาระ (typeahead) -->
+        <!-- หัวหน้ากลุ่มสาระ / หัวหน้าสาขาวิชา (typeahead) -->
         <div class="bg-gray-50 rounded-xl p-4">
-          <label class="block text-sm font-semibold text-gray-700 mb-1">หัวหน้ากลุ่มสาระ</label>
+          <label id="cf-head-label" class="block text-sm font-semibold text-gray-700 mb-1">${_headLabel(_initSg)}</label>
           <div class="relative">
             <input id="cf-dept-head" type="text" placeholder="พิมพ์เพื่อค้นหา หรือระบบเติมอัตโนมัติ"
               class="${INPUT_CLS} bg-white" autocomplete="off" />
@@ -1075,7 +1083,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
               class="hidden absolute z-20 w-full mt-1 bg-white border border-gray-200
                      rounded-xl shadow-lg overflow-y-auto" style="max-height:180px"></div>
           </div>
-          <p class="text-xs text-gray-400 mt-1">เติมอัตโนมัติตามกลุ่มสาระ — แก้ไขได้</p>
+          <p id="cf-head-hint" class="text-xs text-gray-400 mt-1">${_headHint(_initSg)}</p>
         </div>
         <!-- Buttons -->
         <div class="flex gap-3 pt-2">
@@ -1101,14 +1109,19 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     AGMVOC: 'ศาสนาปวช: อิสระ',
   }
 
-  // 1. กลุ่มวิชา → กรองกลุ่มสาระ + อัปเดต grade options + hint
+  // 1. กลุ่มวิชา → กรองกลุ่มสาระ/สาขาวิชา + อัปเดต labels + grade options + hint
   document.getElementById('cf-subg').addEventListener('change', e => {
     const sg = e.target.value
+    // อัปเดต labels กลุ่มสาระ / สาขาวิชา
+    document.getElementById('cf-dept-label').firstChild.textContent = _deptLabel(sg) + ' '
+    document.getElementById('cf-head-label').textContent = _headLabel(sg)
+    document.getElementById('cf-head-hint').textContent  = _headHint(sg)
     // อัปเดต dept dropdown
     const deptEl = document.getElementById('cf-dept')
     const prevVal = deptEl.value
     deptEl.innerHTML = _deptOptions(_filterDepts(sg))
-    if (prevVal) deptEl.value = prevVal  // คงค่าเดิมถ้ายังอยู่ใน list
+    deptEl.options[0].textContent = _deptPH(sg)
+    if (prevVal) deptEl.value = prevVal
     // อัปเดต grade
     const gradeEl = document.getElementById('cf-grade')
     const opts = GRADE_OPTS[sg] ?? []

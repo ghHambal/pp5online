@@ -624,13 +624,15 @@ function _buildPage1(d) {
   const _deptSpan = deptNameTH.length > 15
     ? `<span class="uline w-md" style="white-space:normal;line-height:4.5mm;min-height:9mm;vertical-align:bottom;">${_esc(deptNameTH)}</span>`
     : `<span class="uline w-md">${_esc(deptNameTH)}</span>`
+  const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
+  const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระฯ'
   const infoRow2 = isReligion ? `
     <div class="info-line">
-      <span>กลุ่มสาระการเรียนรู้</span>${_deptSpan}
+      <span>${_deptFieldLabel}</span>${_deptSpan}
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>` : `
     <div class="info-line">
-      <span>กลุ่มสาระการเรียนรู้</span>${_deptSpan}
+      <span>${_deptFieldLabel}</span>${_deptSpan}
       <span>รายวิชา</span><span class="uline w-lg">${_esc(ms.subject_name??'')}</span>
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>`
@@ -769,6 +771,8 @@ function _buildPage1(d) {
 
 function _buildPage2(d) {
   const { cls, ms, credit, cfg, courseDoc, thColHeaders, thColsExtra, thRowHeader, teacher, deptNameTH, academicYear, semester, prefix } = d
+  const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
+  const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระฯ'
 
   const logoUrl  = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
   const rawRows = Array.isArray(courseDoc?.table_rows) ? courseDoc.table_rows : []
@@ -830,7 +834,7 @@ function _buildPage2(d) {
         <div class="p2-hdr-row">
           <span class="p2-label">รหัสวิชา</span>
           <span class="p2-uline">${_esc(ms.subject_code??'')}</span>
-          <span class="p2-label">กลุ่มสาระการเรียนรู้</span>
+          <span class="p2-label">${_deptFieldLabel}</span>
           <span class="p2-uline p2-uline-fill">${_esc(deptNameTH)}</span>
         </div>
         <div class="p2-hdr-row">
@@ -908,7 +912,7 @@ function _buildPage2(d) {
     <div class="p2-sig">
       ลงชื่อ <span style="display:inline-block;border-bottom:.3mm dashed #555;min-width:60mm;text-align:center;padding:0 2mm;">
         ${d.dept?.head_name ? _esc(d.dept.head_name) : ''}
-      </span> หัวหน้ากลุ่มสาระฯ
+      </span> ${_headFieldLabel}
     </div>
   </div>`
 }
@@ -1196,6 +1200,7 @@ function _buildScorePage(d, chunk, startNo) {
 
 function _buildPage5(d) {
   const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions, cfg, prefix, holidaySet } = d
+  const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
 
   const FIXED_ROWS = 40
   const COLS       = 3
@@ -1252,7 +1257,7 @@ function _buildPage5(d) {
     <div style="text-align:center;font-weight:700;font-size:12pt;margin-bottom:3mm;">รายละเอียดสัปดาห์/คาบ/วันที่สอน</div>
     ${row(`<span>รายวิชา</span>${uline('40mm', ms.subject_name??'')}
            <span>&emsp;รหัสวิชา</span>${uline('22mm', ms.subject_code??'')}
-           <span>&emsp;กลุ่มสาระการเรียนรู้</span>${uline('', deptNameTH, true)}`)}
+           <span>&emsp;${_deptFieldLabel}</span>${uline('', deptNameTH, true)}`)}
     ${row(`<span>ระดับชั้นมัธยมศึกษา</span>${uline('16mm', _shortRoom(cls.class_name))}
            <span>&emsp;ภาคเรียนที่</span>${uline('10mm', semester)}
            <span>&emsp;ปีการศึกษา</span>${uline('18mm', academicYear)}
