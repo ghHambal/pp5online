@@ -7311,25 +7311,27 @@ export async function renderSupervisorAnnouncements(teacher) {
             <textarea id="sann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
           </div>
-          <div class="flex items-center justify-between pt-1">
+          <div class="flex items-center justify-between pt-1 gap-2 flex-wrap">
             <button type="button" id="sann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
               onclick="const on=this.dataset.on==='true';this.dataset.on=on?'false':'true';this.className='px-4 py-2 rounded-xl text-sm font-semibold border transition '+(on?'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100':'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100');this.textContent=on?'○ ปิดอยู่':'● แสดงให้ครูเห็น'"
               class="px-4 py-2 rounded-xl text-sm font-semibold border transition ${item?.is_active !== false ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
               ${item?.is_active !== false ? '● แสดงให้ครูเห็น' : '○ ปิดอยู่'}
             </button>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="sann-pin" class="w-4 h-4 accent-amber-500 rounded" ${(item?.priority ?? 0) > 0 ? 'checked' : ''}/>
-              <span class="text-sm font-medium text-gray-700">⭐ ปักหมุด</span>
-            </label>
+            <button type="button" id="sann-pin" data-on="${(item?.priority ?? 0) > 0 ? 'true' : 'false'}"
+              onclick="const on=this.dataset.on==='true';this.dataset.on=on?'false':'true';this.className='px-4 py-2 rounded-xl text-sm font-semibold border transition '+(on?'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100':'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100');this.textContent=on?'☆ ปักหมุด':'⭐ ปักหมุด'"
+              class="px-4 py-2 rounded-xl text-sm font-semibold border transition ${(item?.priority ?? 0) > 0 ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
+              ${(item?.priority ?? 0) > 0 ? '⭐ ปักหมุด' : '☆ ปักหมุด'}
+            </button>
           </div>
           <div class="border-t border-gray-100 pt-4 space-y-3">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" id="sann-ack" class="w-4 h-4 accent-rose-500 rounded" ${item?.requires_ack ? 'checked' : ''}/>
-              <div>
-                <span class="text-sm font-medium text-gray-700">🔔 ต้องการการรับทราบจากครูทุกคน</span>
-                <p class="text-[11px] text-gray-400 mt-0.5">ครูจะเห็นปุ่ม "กดรับทราบ" และคุณสามารถดูสถิติได้</p>
-              </div>
-            </label>
+            <div>
+              <button type="button" id="sann-ack" data-on="${item?.requires_ack ? 'true' : 'false'}"
+                onclick="const on=this.dataset.on==='true';this.dataset.on=on?'false':'true';this.className='w-full px-4 py-2.5 rounded-xl text-sm font-semibold border transition text-left '+(on?'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100':'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100');this.querySelector('span').textContent=on?'🔔 ต้องการการรับทราบจากครูทุกคน':'🔔 ต้องการการรับทราบจากครูทุกคน'"
+                class="w-full px-4 py-2.5 rounded-xl text-sm font-semibold border transition text-left ${item?.requires_ack ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
+                <span>🔔 ต้องการการรับทราบจากครูทุกคน</span>
+                <p class="text-[11px] font-normal mt-0.5 opacity-70">ครูจะเห็นปุ่ม "กดรับทราบ" และคุณสามารถดูสถิติได้</p>
+              </button>
+            </div>
             <div>
               <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">📅 วันกำหนด / วันสิ้นสุด <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ)</span></label>
               <input id="sann-due" type="date" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
@@ -7352,8 +7354,8 @@ export async function renderSupervisorAnnouncements(teacher) {
       if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
       const body        = m.querySelector('#sann-body').value.trim() || null
       const isActive    = m.querySelector('#sann-active-toggle').dataset.on === 'true'
-      const priority    = m.querySelector('#sann-pin').checked ? 1 : 0
-      const requiresAck = m.querySelector('#sann-ack').checked
+      const priority    = m.querySelector('#sann-pin').dataset.on === 'true' ? 1 : 0
+      const requiresAck = m.querySelector('#sann-ack').dataset.on === 'true'
       const dueDate     = m.querySelector('#sann-due').value || null
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
