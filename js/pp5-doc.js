@@ -198,7 +198,9 @@ async function _loadDocData(classId) {
     : null
 
   // ms.dept เก็บ dept_code → ค้นหาให้ตรง category ก่อน (กัน SOC ซ้ำระหว่างสามัญ/ศาสนา)
-  const _subjectCategory = ['AGM','AGMVOC'].includes(ms.subject_group) ? 'ศาสนา' : 'สามัญ'
+  const _subjectCategory = ['AGM','AGMVOC'].includes(ms.subject_group) ? 'ศาสนา'
+                         : ['ACDMVOC'].includes(ms.subject_group) ? 'สามัญปวช'
+                         : 'สามัญ'
   const dept = depts.find(d => d.dept_code === ms.dept && d.category === _subjectCategory)
             ?? depts.find(d => d.dept_code === ms.dept)
             ?? depts.find(d => d.dept_name === ms.dept)
