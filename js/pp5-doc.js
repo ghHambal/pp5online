@@ -733,7 +733,7 @@ function _buildPage1(d) {
       <div class="sig-row">
         <span>ลงชื่อ</span>
         <span class="sig-line">${deptHeadName}</span>
-        <span>หัวหน้าหมวดวิชา</span>
+        <span>${_headFieldLabel}</span>
       </div>
       <div class="sig-row">
         <span>ลงชื่อ</span>
@@ -1052,6 +1052,7 @@ function _buildPage4(d) {
 
 function _buildScorePage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
+  const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้าหมวดวิชา'
 
   // แบ่ง between และ final โดย filter จาก assignment_type (ไม่ใช้ slice เพื่อป้องกัน column ปลายภาคที่อยู่กลางลำดับทำให้ grouping ผิด)
   const _isFinal    = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
@@ -1186,7 +1187,7 @@ function _buildScorePage(d, chunk, startNo) {
       <div class="score-sig-row">
         <div class="score-sig-lbl">ลงชื่อ</div>
         <div class="score-sig-line">${_esc(d.dept?.head_name??'')}</div>
-        <div class="score-sig-role">หัวหน้าหมวดวิชา</div>
+        <div class="score-sig-role">${_headFieldLabel}</div>
       </div>
       <div class="score-sig-row">
         <div class="score-sig-lbl">ลงชื่อ</div>
