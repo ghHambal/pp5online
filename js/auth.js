@@ -113,6 +113,16 @@ async function resolveLoginEmail(identifier) {
     if (!eErr && emailData) return emailData
   }
 
+  // ตรวจสอบว่ารหัสนี้ถูกรวมบัญชีไปแล้วหรือไม่
+  const { data: redirect } = await supabase
+    .from('teacher_code_redirects')
+    .select('new_code, full_name')
+    .eq('old_code', raw)
+    .maybeSingle()
+  if (redirect) {
+    throw new Error(`รหัสครู ${raw} ถูกรวมบัญชีแล้ว — กรุณาใช้รหัส ${redirect.new_code} แทน (${redirect.full_name})`)
+  }
+
   throw new Error('ไม่พบบัญชีนี้ในระบบ กรุณาตรวจสอบรหัสครู / รหัสนักเรียน หรือเข้าสู่ระบบด้วยอีเมล')
 }
 
@@ -363,7 +373,20 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (code.length >= 2) {
         previewEl?.classList.add('hidden')
         codeMsgEl?.classList.remove('hidden')
-        codeMsgEl.textContent = 'ไม่พบรหัสครูนี้ในระบบ'
+        // ตรวจสอบรหัสที่ถูกรวมบัญชี
+        const { data: redirect } = await supabase
+          .from('teacher_code_redirects')
+          .select('new_code, full_name')
+          .eq('old_code', code.trim())
+          .maybeSingle()
+        if (redirect) {
+          codeMsgEl.textContent = `รหัสครู ${code.trim()} ถูกรวมบัญชีแล้ว — กรุณาใช้รหัส ${redirect.new_code} แทน (${redirect.full_name})`
+          codeMsgEl.classList.add('text-orange-600')
+          codeMsgEl.classList.remove('text-red-500')
+        } else {
+          codeMsgEl.textContent = 'ไม่พบรหัสครูนี้ในระบบ'
+          codeMsgEl.classList.remove('text-orange-600')
+        }
         regTeacherEl.value = ''
       }
     }, 500)
