@@ -619,13 +619,16 @@ function _buildPage1(d) {
     <div class="check-line">${box(isHighSchool)}<span>ตอนปลาย (ม.4-ม.6)</span></div>
   `
 
+  const _deptSpan = deptNameTH.length > 15
+    ? `<span class="uline w-md" style="font-size:7px;line-height:1.2;">${_esc(deptNameTH)}</span>`
+    : `<span class="uline w-md">${_esc(deptNameTH)}</span>`
   const infoRow2 = isReligion ? `
     <div class="info-line">
-      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(deptNameTH)}</span>
+      <span>กลุ่มสาระการเรียนรู้</span>${_deptSpan}
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>` : `
     <div class="info-line">
-      <span>กลุ่มสาระการเรียนรู้</span><span class="uline w-md">${_esc(deptNameTH)}</span>
+      <span>กลุ่มสาระการเรียนรู้</span>${_deptSpan}
       <span>รายวิชา</span><span class="uline w-lg">${_esc(ms.subject_name??'')}</span>
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>`
