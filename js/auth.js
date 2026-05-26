@@ -343,6 +343,29 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('login-form')?.addEventListener('submit', handleLogin)
   document.getElementById('register-form')?.addEventListener('submit', handleRegister)
 
+  // ตรวจ redirect ทันทีที่ออกจากช่องกรอกรหัสครู
+  const loginEmailEl    = document.getElementById('email')
+  const loginHintEl     = document.getElementById('login-redirect-hint')
+  loginEmailEl?.addEventListener('blur', async () => {
+    const val = loginEmailEl.value.trim()
+    if (!val || val.includes('@') || !/^\d+$/.test(val)) {
+      loginHintEl?.classList.add('hidden'); return
+    }
+    const { data: redirect } = await supabase
+      .from('teacher_code_redirects')
+      .select('new_code, full_name')
+      .eq('old_code', val)
+      .maybeSingle()
+    if (redirect && loginHintEl) {
+      loginHintEl.textContent = `รหัสครู ${val} ถูกรวมบัญชีแล้ว — กรุณาใช้รหัส ${redirect.new_code} (${redirect.full_name})`
+      loginHintEl.classList.remove('hidden')
+      loginEmailEl.value = redirect.new_code
+    } else {
+      loginHintEl?.classList.add('hidden')
+    }
+  })
+  loginEmailEl?.addEventListener('input', () => loginHintEl?.classList.add('hidden'))
+
   // Teacher code auto-fill
   const regCodeEl     = document.getElementById('reg-code')
   const regNameEl     = document.getElementById('reg-name')
