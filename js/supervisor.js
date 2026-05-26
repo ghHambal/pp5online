@@ -90,10 +90,19 @@ function _filterByRole(metrics, teacher) {
 
 // ── dept tab key ──────────────────────────────────────────────────────────────
 function _deptKey(m) { return m.dept ?? '—' }
-function _deptName(code) {
+function _deptName(code, metricsCtx) {
   if (!code || code === '—') return '—'
-  const d = _depts.find(x => x.dept_code === code)
-  return d ? `${d.dept_name} (${code})` : code
+  const candidates = _depts.filter(x => x.dept_code === code)
+  if (!candidates.length) return code
+  if (candidates.length === 1) return `${candidates[0].dept_name} (${code})`
+  // หากมีหลาย entry (เช่น SOC ทั้งสามัญและศาสนา) ใช้ category ของครูใน context เป็นตัวตัดสิน
+  if (metricsCtx) {
+    const ctxTeachers = metricsCtx.filter(m => _deptKey(m) === code)
+    const dominantCat = ctxTeachers[0]?.category ?? null
+    const match = candidates.find(d => d.category === dominantCat)
+    if (match) return `${match.dept_name} (${code})`
+  }
+  return `${candidates[0].dept_name} (${code})`
 }
 
 // ── sort state ────────────────────────────────────────────────────────────────
@@ -158,7 +167,7 @@ function _renderDashboard(el, metrics, teacher) {
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
       ${showTabs?`<div style="display:flex;gap:6px;flex-wrap:wrap;" id="sv-tabs">
         <button class="sv-tab-btn active" data-dept="">ทั้งหมด (${n})</button>
-        ${deptKeys.map(d=>`<button class="sv-tab-btn" data-dept="${d}">${_deptName(d)} (${metrics.filter(m=>_deptKey(m)===d).length})</button>`).join('')}
+        ${deptKeys.map(d=>`<button class="sv-tab-btn" data-dept="${d}">${_deptName(d, metrics)} (${metrics.filter(m=>_deptKey(m)===d).length})</button>`).join('')}
       </div>`:'<div></div>'}
       ${teacher.position==='dept_head'?`
         <button id="sv-add-member"
@@ -245,7 +254,7 @@ async function _showAddMemberModal(teacher) {
         const m = _allMetrics.find(x => x.id === parseInt(btn.dataset.tid))
         if (m) m.dept = teacher.dept
         btn.textContent = '✓ เพิ่มแล้ว'; btn.style.background = '#d1fae5'; btn.style.color = '#065f46'
-      } catch(e) { btn.disabled = false; btn.textContent = '+ เพิ่ม'; alert(e.message) }
+      } catch(e) { btn.disabled = false; btn.textContent = '+ เพิ่ม'; _svPopup({ icon:'❌', title:'เพิ่มสมาชิกไม่สำเร็จ', body: e.message ?? '', type:'error' }) }
     }
   })
 }
@@ -575,7 +584,7 @@ function _showDetail(m) {
       cat: row.dataset.cat,
       txt: row.querySelector('textarea').value.trim()
     })).filter(x => x.txt)
-    if (!toSave.length) { alert('กรุณาพิมพ์ความคิดเห็นอย่างน้อย 1 หัวข้อ'); return }
+    if (!toSave.length) { _svPopup({ icon:'⚠️', title:'กรุณากรอกความคิดเห็น', body:'เลือกหัวข้อและพิมพ์ความคิดเห็นอย่างน้อย 1 หัวข้อก่อนบันทึก', type:'warning' }); return }
     const saveBtn = document.getElementById('sv-save-comment')
     saveBtn.disabled = true; saveBtn.textContent = '⏳ กำลังบันทึก...'
     try {
@@ -591,10 +600,42 @@ function _showDetail(m) {
         row.querySelector('textarea').value = ''
       })
       await _loadPastComments(m.id)
-    } catch(e) { alert(e.message) } finally { saveBtn.disabled = false; saveBtn.textContent = 'บันทึกทั้งหมด' }
+      _svPopup({ icon:'✅', title:'บันทึกสำเร็จ', body:`บันทึกความคิดเห็น ${toSave.length} หัวข้อเรียบร้อยแล้ว${notify ? ' · แจ้งเตือนครูแล้ว 🔔' : ''}`, type:'success' })
+    } catch(e) {
+      _svPopup({ icon:'❌', title:'บันทึกไม่สำเร็จ', body: e.message ?? 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', type:'error' })
+    } finally { saveBtn.disabled = false; saveBtn.textContent = 'บันทึกทั้งหมด' }
   }
 
   _loadPastComments(m.id)
+}
+
+function _svPopup({ icon = '✅', title = '', body = '', type = 'success' }) {
+  const existing = document.getElementById('sv-popup-overlay')
+  if (existing) existing.remove()
+  const colors = {
+    success: { bg: '#f0fdf4', border: '#bbf7d0', title: '#15803d', icon: '#22c55e' },
+    error:   { bg: '#fef2f2', border: '#fecaca', title: '#b91c1c', icon: '#ef4444' },
+    warning: { bg: '#fffbeb', border: '#fde68a', title: '#92400e', icon: '#f59e0b' },
+  }
+  const c = colors[type] ?? colors.success
+  const el = document.createElement('div')
+  el.id = 'sv-popup-overlay'
+  el.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);'
+  el.innerHTML = `
+    <div style="background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.25);padding:32px 28px;width:min(360px,90vw);text-align:center;animation:sv-pop-in .2s cubic-bezier(.34,1.56,.64,1);">
+      <style>@keyframes sv-pop-in{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}</style>
+      <div style="width:56px;height:56px;border-radius:50%;background:${c.bg};border:2px solid ${c.border};display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 16px;">${icon}</div>
+      ${title ? `<div style="font-size:16px;font-weight:700;color:${c.title};margin-bottom:8px;">${title}</div>` : ''}
+      ${body  ? `<div style="font-size:13px;color:#6b7280;line-height:1.6;margin-bottom:20px;">${body}</div>` : ''}
+      <button id="sv-popup-ok"
+        style="padding:10px 32px;border:none;border-radius:12px;background:${c.icon};color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">ตกลง</button>
+    </div>`
+  document.body.appendChild(el)
+  const close = () => el.remove()
+  document.getElementById('sv-popup-ok').onclick = close
+  el.addEventListener('click', e => { if (e.target === el) close() })
+  return el
 }
 
 async function _loadPastComments(teacherId) {
@@ -811,7 +852,7 @@ async function _bindMiniComment(container, teacherId, metric) {
       inp.value = ''
       notify.checked = false
       await reload()
-    } catch(e) { alert(e.message) } finally { sendBtn.disabled = false }
+    } catch(e) { _svPopup({ icon:'❌', title:'บันทึกไม่สำเร็จ', body: e.message ?? '', type:'error' }) } finally { sendBtn.disabled = false }
   }
   inp.addEventListener('keydown', e => { if(e.key==='Enter') sendBtn.click() })
   await reload()
