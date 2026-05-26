@@ -1981,6 +1981,63 @@ function _toggleSupervisorMode() {
   else _enterSupervisorMode()
 }
 
+// ─── Quick Class Picker ───────────────────────────────────────────────────────
+async function _showClassQuickPicker(mode) {
+  if (!_teacher) return
+  const { getMyClasses } = await import('./api.js')
+  let classes
+  try { classes = await getMyClasses(_teacher.id) } catch { classes = [] }
+
+  if (!classes.length) {
+    const { showToast } = await import('./ui.js')
+    showToast('ยังไม่มีห้องเรียน', 'warning')
+    return
+  }
+  if (classes.length === 1) { _quickGoToClass(mode, classes[0]); return }
+
+  const title = mode === 'attendance' ? '✅ เลือกห้องเรียน — เช็คชื่อ' : '📝 เลือกห้องเรียน — บันทึกคะแนน'
+  const popup = document.createElement('div')
+  popup.id = 'qcp-overlay'
+  popup.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center'
+  popup.innerHTML = `
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="qcp-backdrop"></div>
+    <div class="relative bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[70vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+        <p class="font-bold text-gray-800 text-sm">${title}</p>
+        <button id="qcp-close" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      </div>
+      <div class="overflow-y-auto p-3 space-y-2">
+        ${classes.map(cls => `
+          <button data-cid="${cls.id}" class="qcp-cls w-full text-left px-4 py-3 rounded-xl hover:bg-emerald-50 active:bg-emerald-100 transition border border-gray-100">
+            <p class="font-semibold text-gray-800 text-sm">${cls.class_name}</p>
+            <p class="text-xs text-gray-400 mt-0.5">${cls.master_subjects?.subject_name ?? ''} · ${cls.students?.length ?? 0} คน</p>
+          </button>`).join('')}
+      </div>
+    </div>`
+  document.body.appendChild(popup)
+
+  const close = () => popup.remove()
+  popup.querySelector('#qcp-backdrop').onclick = close
+  popup.querySelector('#qcp-close').onclick = close
+  popup.querySelectorAll('.qcp-cls').forEach(btn => {
+    btn.onclick = () => {
+      close()
+      const cls = classes.find(c => String(c.id) === btn.dataset.cid)
+      if (cls) _quickGoToClass(mode, cls)
+    }
+  })
+}
+
+async function _quickGoToClass(mode, cls) {
+  if (mode === 'attendance') {
+    const { renderAttendanceGrid } = await import('./teacher-views-attendance.js')
+    renderAttendanceGrid(_teacher, cls)
+  } else {
+    const { renderGradesGrid } = await import('./teacher-views-grades.js')
+    renderGradesGrid(_teacher, cls)
+  }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 // ── Web Notifications ─────────────────────────────────────────────────────────
 
@@ -2508,6 +2565,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault()
       navigate(link.dataset.nav)
     })
+  })
+
+  // Quick class picker buttons
+  document.getElementById('btn-quick-attendance')?.addEventListener('click', e => {
+    e.preventDefault()
+    _showClassQuickPicker('attendance')
+  })
+  document.getElementById('btn-quick-grades')?.addEventListener('click', e => {
+    e.preventDefault()
+    _showClassQuickPicker('grades')
   })
 
   // Mobile sidebar toggle
