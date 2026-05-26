@@ -1745,6 +1745,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
             const el = modal.querySelector(`#cem-day${i+1}`)
             if(el) el.value = _dateInputValue(d)
           })
+          _scheduleInfoSave(true)
           infoEl.textContent = `✅ คำนวณจาก "${g.label}" — ตรวจสอบและแก้ไขได้`
           infoEl.classList.remove('hidden')
         })
