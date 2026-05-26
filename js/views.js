@@ -5,7 +5,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          updateStudent, deleteStudent,
          getHomeroomTeachers, assignHomeroomTeacher, deleteHomeroomTeacher,
          getScoreColumnConfig, upsertScoreColumnConfig,
-         getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount,
+         getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount, mergeTeacherAccounts,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
          getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
          getPaymentSlipViewUrl,
@@ -1194,6 +1194,18 @@ export async function renderRegisteredTeachers() {
 
     const depts = [...new Set(all.map(t => t.dept).filter(Boolean))].sort()
 
+    // ── Detect duplicate teachers (same full_name, different id) ──────────────
+    const _nameMap = {}
+    for (const t of all) {
+      const key = (t.full_name ?? '').trim().toLowerCase()
+      if (!key) continue
+      if (!_nameMap[key]) _nameMap[key] = []
+      _nameMap[key].push(t)
+    }
+    const duplicateGroups = Object.values(_nameMap)
+      .filter(g => g.length > 1)
+      .map(g => g.slice().sort((a, b) => (a.registered_at ?? '') < (b.registered_at ?? '') ? -1 : 1))
+
     setContent(`<div class="max-w-6xl mx-auto animate-fade space-y-5">
       <div>
         <h2 class="text-lg font-bold text-gray-800">บัญชีผู้ใช้ครู</h2>
@@ -1201,10 +1213,12 @@ export async function renderRegisteredTeachers() {
       </div>
 
       <!-- Stats -->
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-4 gap-3">
         ${statCard('all', 'ทั้งหมด', all.length, 'bg-indigo-100 text-indigo-700')}
         ${statCard('registered', 'มีบัญชีแล้ว', registered.length, 'bg-emerald-100 text-emerald-700')}
         ${statCard('unregistered', 'ยังไม่ลงทะเบียน', unregistered.length, 'bg-amber-100 text-amber-700')}
+        ${statCard('duplicates', `บัญชีซ้ำ`, duplicateGroups.length,
+            duplicateGroups.length > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400')}
       </div>
 
       <div id="rt-schedule-stats" class="hidden grid grid-cols-2 gap-3">
@@ -1233,9 +1247,20 @@ export async function renderRegisteredTeachers() {
         </p>
       </div>
 
-      <!-- Table -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div id="reg-teacher-table"></div>
+      <!-- Table (hidden when showing duplicates) -->
+      <div id="rt-main-section">
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div id="reg-teacher-table"></div>
+        </div>
+      </div>
+
+      <!-- Duplicate accounts section -->
+      <div id="rt-duplicates-section" class="hidden space-y-4">
+        <div class="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-700">
+          ⚠️ พบชื่อครูที่ซ้ำกันในระบบ กรุณาตรวจสอบและเลือก <strong>บัญชีที่ต้องการเก็บไว้</strong>
+          ระบบจะย้ายข้อมูลทั้งหมด (คอร์ส, ตารางสอน, ห้องเรียน) ไปยังบัญชีนั้น แล้วลบอีกบัญชีออก
+        </div>
+        <div id="rt-dup-list" class="space-y-4"></div>
       </div>
     </div>`)
 
@@ -1257,7 +1282,94 @@ export async function renderRegisteredTeachers() {
       })
     }
 
+    const _dupClassCount = (t) => classCountByTeacher.get(t.id) ?? 0
+    const _dupSchedCount = (t) => scheduledSet.has(t.id) ? '✓' : '—'
+
+    const renderDuplicates = () => {
+      const list = document.getElementById('rt-dup-list')
+      if (!list) return
+      if (!duplicateGroups.length) {
+        list.innerHTML = `<div class="text-center py-12 text-gray-400">
+          <p class="text-3xl mb-2">✅</p><p>ไม่พบบัญชีซ้ำ</p></div>`
+        return
+      }
+      list.innerHTML = duplicateGroups.map((group, gi) => {
+        const rows = group.map((t, ti) => `
+          <label class="flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition
+            ${ti === 0 ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-emerald-200'}
+            has-[:checked]:border-emerald-400 has-[:checked]:bg-emerald-50">
+            <input type="radio" name="dup-keep-${gi}" value="${t.id}"
+              class="mt-1 accent-emerald-600" ${ti === 0 ? 'checked' : ''} />
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                ${t.image_url ? `<img src="${t.image_url}" class="w-7 h-7 rounded-full object-cover" />` : ''}
+                <span class="font-semibold text-gray-800">${_htmlEsc(t.full_name ?? '—')}</span>
+                <span class="text-xs font-mono text-indigo-500">${t.teacher_code ?? '—'}</span>
+                ${t.profile_id
+                  ? `<span class="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">มีบัญชี ✓</span>`
+                  : `<span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">ยังไม่ลง</span>`}
+              </div>
+              <div class="text-xs text-gray-500 mt-1 flex gap-4 flex-wrap">
+                <span>📚 คอร์ส ${_dupClassCount(t)}</span>
+                <span>🗓️ ตาราง ${_dupSchedCount(t)}</span>
+                ${t.login_email ? `<span>✉️ ${_htmlEsc(t.login_email)}</span>` : ''}
+                ${t.registered_at ? `<span>📅 ${new Date(t.registered_at).toLocaleDateString('th-TH')}</span>` : ''}
+                <span class="text-gray-300">ID: ${t.id}</span>
+              </div>
+            </div>
+          </label>`).join('')
+        const mergeIds = group.map(t => t.id).join(',')
+        return `
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5" data-dup-group="${gi}">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              กลุ่มที่ ${gi + 1} — ${_htmlEsc(group[0].full_name ?? '')}
+              <span class="ml-2 text-red-500">(${group.length} บัญชี)</span>
+            </p>
+            <p class="text-xs text-gray-400 mb-3">เลือก ✅ <strong>บัญชีที่ต้องการเก็บ</strong> (ข้อมูลทั้งหมดจะรวมเข้าบัญชีนี้)</p>
+            <div class="space-y-2">${rows}</div>
+            <button
+              class="mt-4 w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition"
+              onclick="window._mergeDupGroup(${gi},'${mergeIds}')">
+              🔀 รวมบัญชีและลบบัญชีซ้ำ
+            </button>
+          </div>`
+      }).join('')
+    }
+
+    window._mergeDupGroup = async (gi, idsStr) => {
+      const ids = idsStr.split(',').map(Number)
+      const keepId = Number(document.querySelector(`input[name="dup-keep-${gi}"]:checked`)?.value)
+      if (!keepId) { showToast('เลือกบัญชีที่ต้องการเก็บก่อน', 'warning'); return }
+      const mergeIds = ids.filter(id => id !== keepId)
+      if (!mergeIds.length) { showToast('ไม่มีบัญชีซ้ำที่จะลบ', 'info'); return }
+      const keepTeacher = all.find(t => t.id === keepId)
+      if (!confirm(`ยืนยันรวมบัญชี?\n\nเก็บ: ${keepTeacher?.full_name} (ID ${keepId})\nลบ: ID ${mergeIds.join(', ')}\n\nข้อมูลคอร์ส/ตารางสอนจากบัญชีที่ถูกลบจะย้ายมารวมที่บัญชีที่เก็บ`)) return
+      const btn = document.querySelector(`[data-dup-group="${gi}"] button`)
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ กำลังรวม...' }
+      try {
+        for (const mergeId of mergeIds) {
+          await mergeTeacherAccounts(keepId, mergeId)
+        }
+        showToast(`รวมบัญชีสำเร็จ — เหลือ ID ${keepId}`, 'success')
+        renderRegisteredTeachers()
+      } catch (err) {
+        showToast('เกิดข้อผิดพลาด: ' + (err.message ?? ''), 'error')
+        if (btn) { btn.disabled = false; btn.textContent = '🔀 รวมบัญชีและลบบัญชีซ้ำ' }
+      }
+    }
+
     const setAccountTab = (tab) => {
+      const isDup = tab === 'duplicates'
+      document.getElementById('rt-main-section')?.classList.toggle('hidden', isDup)
+      document.getElementById('rt-duplicates-section')?.classList.toggle('hidden', !isDup)
+      document.getElementById('rt-schedule-stats')?.classList.toggle('hidden', true)
+      if (isDup) {
+        activeTab = 'duplicates'
+        scheduleFilter = null
+        updateStatCards()
+        renderDuplicates()
+        return
+      }
       if (tab === 'scheduled' || tab === 'unscheduled') {
         activeTab = 'registered'
         scheduleFilter = tab

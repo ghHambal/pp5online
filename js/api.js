@@ -155,6 +155,11 @@ export async function unlinkTeacherAccount(id) {
   if (error) throw error
 }
 
+export async function mergeTeacherAccounts(keepId, mergeId) {
+  const { error } = await supabase.rpc('merge_teacher_accounts', { keep_id: keepId, merge_id: mergeId })
+  if (error) throw error
+}
+
 // ─── Master Subjects ──────────────────────────────────────────────────────────
 export async function getMasterSubjects() {
   const { data, error } = await supabase
