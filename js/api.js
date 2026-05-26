@@ -2162,8 +2162,17 @@ export async function getSupervisorProgress() {
 export async function getSupervisorComments(teacherId) {
   const { data, error } = await supabase
     .from('supervisor_comments')
-    .select('id, supervisor_id, metric, comment, created_at')
+    .select('id, supervisor_id, metric, comment, created_at, teachers(id, full_name, position)')
     .eq('teacher_id', teacherId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getAllAnnouncementsForTeacher() {
+  const { data, error } = await supabase.from('announcements')
+    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, teachers(id, full_name)')
+    .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []

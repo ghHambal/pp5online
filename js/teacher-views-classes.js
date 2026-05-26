@@ -2987,16 +2987,31 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
 export async function renderAnnouncementsView(teacher) {
   setActiveNav('announcements-view')
   setTitle('ประกาศ')
-  const { getActiveAnnouncements, getMyAcks, ackAnnouncement, removeAck } = await import('./api.js')
+  const { getAllAnnouncementsForTeacher, getMyAcks, ackAnnouncement, getSupervisorComments } = await import('./api.js')
 
-  setContent(`<div class="animate-fade">
-    <div class="mb-6">
-      <h2 class="text-xl font-bold text-gray-800">📢 ประกาศ</h2>
-      <p class="text-xs text-gray-400 mt-0.5">ประกาศจากทางโรงเรียน</p>
+  setContent(`<div class="animate-fade max-w-2xl mx-auto">
+    <!-- Tab bar -->
+    <div class="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-6">
+      <button id="ann-tab-announce" data-tab="announce"
+        class="ann-tab flex-1 py-2 rounded-xl text-sm font-semibold transition bg-white shadow-sm text-gray-800">
+        📢 ประกาศ
+      </button>
+      <button id="ann-tab-comments" data-tab="comments"
+        class="ann-tab flex-1 py-2 rounded-xl text-sm font-semibold transition text-gray-500 hover:text-gray-700">
+        💬 ความคิดเห็น / บันทึก
+      </button>
     </div>
-    <div id="ann-view-list" class="space-y-6">
+    <div id="ann-panel-announce">
       <div class="flex justify-center py-12 text-gray-400">
-        <svg class="animate-spin h-5 w-5 mr-2 text-emerald-400" viewBox="0 0 24 24" fill="none">
+        <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
+    <div id="ann-panel-comments" class="hidden">
+      <div class="flex justify-center py-12 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
         </svg> กำลังโหลด...
@@ -3005,14 +3020,14 @@ export async function renderAnnouncementsView(teacher) {
   </div>`)
 
   const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-  const _fmtDate = d => new Date(d).toLocaleDateString('th-TH',{dateStyle:'long'})
+  const _fmtDate  = d => new Date(d).toLocaleDateString('th-TH',{dateStyle:'long'})
   const _fmtShort = d => d ? new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'}) : ''
+  const _thDate   = d => new Date(new Date(d).getTime() + 7*3600000).toISOString().slice(0,10)
 
   const ROLE_LABELS = {
-    dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'หัวหน้าฝ่ายทะเบียน (สามัญ)',
-    registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', registrar_pvch:'หัวหน้าฝ่ายทะเบียน (ปวช)',
-    academic_samai:'หัวหน้าฝ่ายวิชาการ (สามัญ)', academic_religion:'หัวหน้าฝ่ายวิชาการ (ศาสนา)',
-    academic_pvch:'หัวหน้าฝ่ายวิชาการ (ปวช)',
+    dept_head:'หัวหน้ากลุ่มสาระ',
+    registrar_samai:'หัวหน้าฝ่ายทะเบียน (สามัญ)', registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)', registrar_pvch:'หัวหน้าฝ่ายทะเบียน (ปวช)',
+    academic_samai:'หัวหน้าฝ่ายวิชาการ (สามัญ)',  academic_religion:'หัวหน้าฝ่ายวิชาการ (ศาสนา)',  academic_pvch:'หัวหน้าฝ่ายวิชาการ (ปวช)',
   }
   const ROLE_COLOR = r => {
     if (!r) return 'bg-gray-100 text-gray-600'
@@ -3021,6 +3036,7 @@ export async function renderAnnouncementsView(teacher) {
     if (r === 'dept_head')         return 'bg-emerald-100 text-emerald-700'
     return 'bg-gray-100 text-gray-600'
   }
+  const METRIC_LABEL = { general:'ทั่วไป', profile:'โปรไฟล์', schedule:'ตารางสอน', dates:'วันสอน', attendance:'เช็คชื่อ', scores:'คะแนน' }
   const GROUPS = [
     { key:'pinned',    label:'📌 ปักหมุด',         color:'from-amber-400 to-orange-400',   filter: a => a.priority > 0 },
     { key:'academic',  label:'🎓 ฝ่ายวิชาการ',      color:'from-blue-400 to-indigo-400',    filter: a => a.priority === 0 && (a.creator_role??'').startsWith('academic') },
@@ -3037,39 +3053,57 @@ export async function renderAnnouncementsView(teacher) {
     return `<span class="px-2 py-0.5 bg-sky-100 text-sky-600 rounded-full text-[11px] font-semibold">📅 ภายใน ${_fmtShort(due)}</span>`
   }
 
+  // ─── Tab switching ─────────────────────────────────────────────────────────
+  let _activeTab = 'announce'
+  document.querySelectorAll('.ann-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _activeTab = btn.dataset.tab
+      document.querySelectorAll('.ann-tab').forEach(b => {
+        const on = b.dataset.tab === _activeTab
+        b.className = `ann-tab flex-1 py-2 rounded-xl text-sm font-semibold transition ${on ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`
+      })
+      document.getElementById('ann-panel-announce').classList.toggle('hidden', _activeTab !== 'announce')
+      document.getElementById('ann-panel-comments').classList.toggle('hidden', _activeTab !== 'comments')
+    })
+  })
+
+  // ─── ประกาศ section ────────────────────────────────────────────────────────
   const _annCard = (a, ackedAt) => {
     const needAck = a.requires_ack
     const isAcked = !!ackedAt
     const ackedTime = ackedAt ? new Date(ackedAt).toLocaleString('th-TH',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''
+    const inactive = !a.is_active
     return `
     <div class="bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow
-      ${needAck && !isAcked ? 'border-rose-200' : 'border-gray-100'}" data-ann-id="${a.id}">
-      <div class="h-1 bg-gradient-to-r ${a.priority > 0 ? 'from-amber-400 to-orange-400' : GROUPS.find(g=>g.filter(a))?.color ?? 'from-gray-300 to-gray-400'}"></div>
+      ${needAck && !isAcked && !inactive ? 'border-rose-200' : inactive ? 'border-dashed border-gray-200' : 'border-gray-100'}
+      ${inactive ? 'opacity-60' : ''}" data-ann-id="${a.id}">
+      <div class="h-1 bg-gradient-to-r ${a.priority > 0 ? 'from-amber-400 to-orange-400' : inactive ? 'from-gray-200 to-gray-300' : GROUPS.find(g=>g.filter(a))?.color ?? 'from-gray-300 to-gray-400'}"></div>
       <div class="p-5">
         <div class="flex items-start gap-4">
           <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0
-            ${needAck && !isAcked ? 'bg-rose-50' : 'bg-indigo-50'}">
-            ${a.priority > 0 ? '📌' : needAck ? (isAcked ? '✅' : '🔔') : '📢'}
+            ${needAck && !isAcked && !inactive ? 'bg-rose-50' : inactive ? 'bg-gray-50' : 'bg-indigo-50'}">
+            ${a.priority > 0 ? '📌' : needAck ? (isAcked ? '✅' : '🔔') : inactive ? '📄' : '📢'}
           </div>
           <div class="flex-1 min-w-0">
-            <h3 class="text-base font-bold text-gray-800 mb-1.5">${_esc(a.title)}</h3>
-            ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mb-3">${_esc(a.body)}</p>` : ''}
-            <div class="flex items-center gap-2 flex-wrap mb-2">
+            <div class="flex items-center gap-2 flex-wrap mb-1">
               <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${ROLE_COLOR(a.creator_role)}">
                 ${_esc(ROLE_LABELS[a.creator_role] ?? 'แอดมิน')}
               </span>
               ${a.teachers?.full_name ? `<span class="text-[11px] text-gray-500 font-medium">${_esc(a.teachers.full_name)}</span>` : ''}
+              ${inactive ? `<span class="px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full text-[11px]">ยกเลิกแล้ว</span>` : ''}
+              ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
+              ${needAck ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🔔 ต้องรับทราบ</span>` : ''}
               ${_dueBadge(a.due_date)}
-              <span class="text-[11px] text-gray-400 ml-auto">${_fmtDate(a.created_at)}</span>
             </div>
-            ${needAck ? `
+            <h3 class="text-base font-bold text-gray-800 mb-1.5">${_esc(a.title)}</h3>
+            ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mb-2">${_esc(a.body)}</p>` : ''}
+            <span class="text-[11px] text-gray-400">${_fmtDate(a.created_at)}</span>
+            ${needAck && !inactive ? `
               <div class="mt-3">
                 ${isAcked
-                  ? `<div class="flex items-center gap-2">
-                      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold border border-emerald-200">
-                        ✅ รับทราบแล้ว · ${ackedTime}
-                      </span>
-                    </div>`
+                  ? `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold border border-emerald-200">
+                      ✅ รับทราบแล้ว · ${ackedTime}
+                    </span>`
                   : `<button class="ann-ack-btn px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-sm font-bold transition shadow-sm"
                       data-id="${a.id}">🔔 กดรับทราบ</button>`
                 }
@@ -3080,18 +3114,20 @@ export async function renderAnnouncementsView(teacher) {
     </div>`
   }
 
-  const _render = async () => {
+  const _renderAnnouncements = async () => {
+    const panel = document.getElementById('ann-panel-announce')
+    if (!panel) return
     const [items, myAcksRaw] = await Promise.all([
-      getActiveAnnouncements(),
+      getAllAnnouncementsForTeacher(),
       teacher?.id ? getMyAcks(teacher.id).catch(() => []) : Promise.resolve([]),
     ])
     const acksMap = Object.fromEntries(myAcksRaw.map(a => [a.announcement_id, a.acked_at]))
 
-    const list = document.getElementById('ann-view-list')
-    if (!list) return
+    const active   = items.filter(a => a.is_active)
+    const inactive = items.filter(a => !a.is_active)
 
     if (!items.length) {
-      list.innerHTML = `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center text-gray-400">
+      panel.innerHTML = `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center text-gray-400">
         <div class="text-5xl mb-4">📭</div>
         <p class="font-semibold text-gray-500">ยังไม่มีประกาศในขณะนี้</p>
       </div>`
@@ -3099,26 +3135,44 @@ export async function renderAnnouncementsView(teacher) {
     }
 
     const sections = GROUPS
-      .map(g => ({ ...g, items: items.filter(g.filter) }))
+      .map(g => ({ ...g, items: active.filter(g.filter) }))
       .filter(g => g.items.length)
 
-    list.innerHTML = sections.map(g => `
-      <div>
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-sm font-bold text-gray-700">${g.label}</span>
-          <span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-full font-semibold">${g.items.length}</span>
-          <div class="flex-1 h-px bg-gray-100 ml-1"></div>
-        </div>
-        <div class="space-y-3">${g.items.map(a => _annCard(a, acksMap[a.id])).join('')}</div>
-      </div>`).join('')
+    let html = ''
+    if (sections.length) {
+      html += sections.map(g => `
+        <div class="mb-5">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-sm font-bold text-gray-700">${g.label}</span>
+            <span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-full font-semibold">${g.items.length}</span>
+            <div class="flex-1 h-px bg-gray-100 ml-1"></div>
+          </div>
+          <div class="space-y-3">${g.items.map(a => _annCard(a, acksMap[a.id])).join('')}</div>
+        </div>`).join('')
+    } else {
+      html += `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-400 mb-5">
+        <div class="text-4xl mb-3">📭</div><p class="font-semibold text-gray-500">ยังไม่มีประกาศที่แสดงอยู่ในขณะนี้</p>
+      </div>`
+    }
 
-    list.querySelectorAll('.ann-ack-btn').forEach(btn => {
+    if (inactive.length) {
+      html += `<details class="mt-2">
+        <summary class="cursor-pointer text-xs text-gray-400 font-semibold py-2 px-1 hover:text-gray-600 transition select-none list-none flex items-center gap-1">
+          <span>▸</span> ประวัติประกาศที่ผ่านมา (${inactive.length} รายการ)
+        </summary>
+        <div class="space-y-3 mt-3">${inactive.map(a => _annCard(a, acksMap[a.id])).join('')}</div>
+      </details>`
+    }
+
+    panel.innerHTML = html
+
+    panel.querySelectorAll('.ann-ack-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!teacher?.id) return
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           await ackAnnouncement(Number(btn.dataset.id), teacher.id)
-          await _render()
+          await _renderAnnouncements()
         } catch {
           showToast('บันทึกไม่สำเร็จ', 'error')
           btn.disabled = false; btn.textContent = '🔔 กดรับทราบ'
@@ -3127,6 +3181,70 @@ export async function renderAnnouncementsView(teacher) {
     })
   }
 
-  try { await _render() }
-  catch { showToast('โหลดประกาศไม่สำเร็จ', 'error') }
+  // ─── ความคิดเห็น/บันทึก section ───────────────────────────────────────────
+  const _renderComments = async () => {
+    const panel = document.getElementById('ann-panel-comments')
+    if (!panel) return
+    if (!teacher?.id) { panel.innerHTML = '<p class="text-gray-400 text-sm p-4">ไม่พบข้อมูลครู</p>'; return }
+
+    let comments
+    try { comments = await getSupervisorComments(teacher.id) }
+    catch { panel.innerHTML = '<p class="text-red-400 text-sm p-4">โหลดไม่สำเร็จ</p>'; return }
+
+    if (!comments.length) {
+      panel.innerHTML = `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-16 text-center text-gray-400">
+        <div class="text-5xl mb-4">💬</div>
+        <p class="font-semibold text-gray-500">ยังไม่มีความคิดเห็น / บันทึก</p>
+      </div>`
+      return
+    }
+
+    // group by supervisor_id + วัน (TH timezone)
+    const grouped = []
+    const seen = new Map()
+    for (const c of comments) {
+      const key = `${c.supervisor_id}__${_thDate(c.created_at)}`
+      if (!seen.has(key)) {
+        const g = { key, supervisor: c.teachers, date: c.created_at, items: [] }
+        seen.set(key, g)
+        grouped.push(g)
+      }
+      seen.get(key).items.push(c)
+    }
+
+    const _svRoleColor = pos => {
+      if (!pos) return 'bg-gray-100 text-gray-600'
+      if (pos.startsWith('academic'))  return 'bg-blue-100 text-blue-700'
+      if (pos.startsWith('registrar')) return 'bg-violet-100 text-violet-700'
+      if (pos === 'dept_head')         return 'bg-emerald-100 text-emerald-700'
+      return 'bg-gray-100 text-gray-600'
+    }
+
+    panel.innerHTML = `<div class="space-y-4">` + grouped.map(g => {
+      const pos   = g.supervisor?.position
+      const name  = g.supervisor?.full_name ?? 'หัวหน้า'
+      const role  = ROLE_LABELS[pos] ?? 'ผู้บังคับบัญชา'
+      return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+        <div class="h-1 bg-gradient-to-r ${_svRoleColor(pos).includes('blue') ? 'from-blue-400 to-indigo-400' : _svRoleColor(pos).includes('violet') ? 'from-violet-400 to-purple-400' : _svRoleColor(pos).includes('emerald') ? 'from-emerald-400 to-teal-400' : 'from-gray-300 to-gray-400'}"></div>
+        <div class="p-5">
+          <div class="flex items-center gap-2 flex-wrap mb-3">
+            <span class="px-2.5 py-1 rounded-full text-[11px] font-bold ${_svRoleColor(pos)}">${_esc(role)}</span>
+            <span class="text-sm font-semibold text-gray-700">${_esc(name)}</span>
+            <span class="text-[11px] text-gray-400 ml-auto">${_fmtDate(g.date)}</span>
+          </div>
+          <div class="space-y-2">
+            ${g.items.map(c => `
+              <div class="flex items-start gap-2.5">
+                <span class="flex-shrink-0 px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md text-[11px] font-semibold mt-0.5">${_esc(METRIC_LABEL[c.metric] ?? c.metric)}</span>
+                <p class="text-sm text-gray-700 leading-relaxed">${_esc(c.comment)}</p>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`
+    }).join('') + `</div>`
+  }
+
+  // load both panels in parallel
+  await Promise.all([_renderAnnouncements(), _renderComments()])
 }
