@@ -1998,7 +1998,7 @@ async function _showClassQuickPicker(mode) {
   const title = mode === 'attendance' ? '✅ เลือกห้องเรียน — เช็คชื่อ' : '📝 เลือกห้องเรียน — บันทึกคะแนน'
   const popup = document.createElement('div')
   popup.id = 'qcp-overlay'
-  popup.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center'
+  popup.className = 'fixed inset-0 z-[80] flex items-center justify-center p-4'
   popup.innerHTML = `
     <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="qcp-backdrop"></div>
     <div class="relative bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[70vh] flex flex-col">
