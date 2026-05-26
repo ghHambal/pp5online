@@ -954,8 +954,9 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
 
   // map subject_group → dept category
   const _sgToCategory = sg =>
-    (sg === 'ACDM' || sg === 'ACDMVOC') ? 'สามัญ' :
-    (sg === 'AGM'  || sg === 'AGMVOC')  ? 'ศาสนา' : null
+    sg === 'ACDM'    ? 'สามัญ' :
+    sg === 'ACDMVOC' ? 'สามัญปวช' :
+    (sg === 'AGM' || sg === 'AGMVOC') ? 'ศาสนา' : null
 
   // filter depts by subject_group (graceful: if no category set, show all)
   const _filterDepts = sg => {
