@@ -3067,9 +3067,18 @@ export async function renderAnnouncementsView(teacher) {
   })
 
   // ─── ประกาศ section ────────────────────────────────────────────────────────
-  const _annCard = (a, ackedAt) => {
+  const _DOW_TH = ['','อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์','เสาร์']
+  const _fmtEventDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : ''
+  const RSVP_CFG = {
+    yes:   { label:'✅ สนใจเข้าร่วมแน่นอน', bg:'bg-emerald-600', ring:'ring-emerald-300' },
+    maybe: { label:'🤔 ไม่แน่ใจ',           bg:'bg-amber-500',   ring:'ring-amber-300' },
+    no:    { label:'❌ ไม่สนใจ',             bg:'bg-gray-400',    ring:'ring-gray-300' },
+  }
+
+  const _annCard = (a, ackedAt, myRsvp = null) => {
     const needAck = a.requires_ack
     const isAcked = !!ackedAt
+    const isTraining = a.ann_type === 'training'
     const ackedTime = ackedAt ? new Date(ackedAt).toLocaleString('th-TH',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''
     const inactive = !a.is_active
     return `
@@ -3096,7 +3105,25 @@ export async function renderAnnouncementsView(teacher) {
             </div>
             <h3 class="text-base font-bold text-gray-800 mb-1.5">${_esc(a.title)}</h3>
             ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mb-2">${_esc(a.body)}</p>` : ''}
+            ${isTraining && a.event_date ? `
+              <div class="mt-3 mb-2 bg-violet-50 border border-violet-100 rounded-xl p-3 space-y-1.5">
+                <p class="text-xs font-semibold text-violet-700">🎓 ข้อมูลการอบรม</p>
+                <p class="text-sm text-gray-700">📅 ${_fmtEventDate(a.event_date)}</p>
+                ${a.event_periods?.length ? `<p class="text-sm text-gray-700">🕐 คาบที่ ${a.event_periods.sort((x,y)=>x-y).join(', ')}</p>` : ''}
+                ${a.event_location ? `<p class="text-sm text-gray-700">📍 ${_esc(a.event_location)}</p>` : ''}
+              </div>` : ''}
             <span class="text-[11px] text-gray-400">${_fmtDate(a.created_at)}</span>
+            ${isTraining && !inactive ? `
+              <div class="mt-3">
+                <p class="text-xs font-semibold text-gray-500 mb-2">คุณจะเข้าร่วมไหม?</p>
+                <div class="flex flex-wrap gap-2">
+                  ${Object.entries(RSVP_CFG).map(([k,v]) => `
+                    <button class="ann-rsvp-btn px-3 py-2 rounded-xl text-sm font-semibold transition border-2
+                      ${myRsvp === k ? `${v.bg} text-white ring-2 ${v.ring} border-transparent` : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-gray-300'}"
+                      data-ann-id="${a.id}" data-rsvp="${k}">${v.label}</button>
+                  `).join('')}
+                </div>
+              </div>` : ''}
             ${needAck && !inactive ? `
               <div class="mt-3">
                 ${isAcked
@@ -3116,17 +3143,20 @@ export async function renderAnnouncementsView(teacher) {
   const _renderAnnouncements = async () => {
     const panel = document.getElementById('ann-panel-announce')
     if (!panel) return
-    let items, myAcksRaw
+    let items, myAcksRaw, myRsvpsRaw
     try {
-      ;[items, myAcksRaw] = await Promise.all([
+      const { getMyRsvpsForTeacher } = await import('./api.js')
+      ;[items, myAcksRaw, myRsvpsRaw] = await Promise.all([
         getAllAnnouncementsForTeacher(),
         teacher?.id ? getMyAcks(teacher.id).catch(() => []) : Promise.resolve([]),
+        teacher?.id ? getMyRsvpsForTeacher(teacher.id).catch(() => []) : Promise.resolve([]),
       ])
     } catch {
       panel.innerHTML = '<p class="text-red-400 text-sm p-4">โหลดไม่สำเร็จ</p>'
       return
     }
     const acksMap = Object.fromEntries(myAcksRaw.map(a => [a.announcement_id, a.acked_at]))
+    const rsvpMap = Object.fromEntries((myRsvpsRaw ?? []).map(r => [r.announcement_id, r.response]))
 
     const active   = items.filter(a => a.is_active)
     const inactive = items.filter(a => !a.is_active)
@@ -3152,7 +3182,7 @@ export async function renderAnnouncementsView(teacher) {
             <span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-full font-semibold">${g.items.length}</span>
             <div class="flex-1 h-px bg-gray-100 ml-1"></div>
           </div>
-          <div class="space-y-3">${g.items.map(a => _annCard(a, acksMap[a.id])).join('')}</div>
+          <div class="space-y-3">${g.items.map(a => _annCard(a, acksMap[a.id], rsvpMap[a.id] ?? null)).join('')}</div>
         </div>`).join('')
     } else {
       html += `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-400 mb-5">
@@ -3182,6 +3212,23 @@ export async function renderAnnouncementsView(teacher) {
           showToast('บันทึกไม่สำเร็จ', 'error')
           btn.disabled = false; btn.textContent = '🔔 กดรับทราบ'
         }
+      })
+    })
+
+    panel.querySelectorAll('.ann-rsvp-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!teacher?.id) return
+        const { upsertAnnouncementRsvp } = await import('./api.js')
+        const annId = Number(btn.dataset.annId)
+        const rsvp  = btn.dataset.rsvp
+        const prev  = btn.classList.contains('bg-emerald-600') || btn.classList.contains('bg-amber-500') || btn.classList.contains('bg-gray-400')
+        try {
+          await upsertAnnouncementRsvp(annId, teacher.id, rsvp)
+          const { showToast: toast } = await import('./ui.js')
+          const lbl = { yes:'บันทึก: สนใจเข้าร่วม ✅', maybe:'บันทึก: ไม่แน่ใจ 🤔', no:'บันทึก: ไม่สนใจ ❌' }
+          toast(lbl[rsvp] ?? 'บันทึกแล้ว', 'success')
+          await _renderAnnouncements()
+        } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
       })
     })
   }

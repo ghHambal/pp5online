@@ -7158,6 +7158,7 @@ export async function renderSupervisorAnnouncements(teacher) {
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
             ${a.requires_ack ? `<button class="sann-stat-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-sky-200 text-sky-600 hover:bg-sky-50 transition" data-id="${a.id}" data-title="${_esc(a.title)}">📊 สถิติ</button>` : ''}
+            ${a.ann_type === 'training' ? `<button class="sann-rsvp-list-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-200 text-violet-600 hover:bg-violet-50 transition" data-id="${a.id}" data-title="${_esc(a.title)}">👥 รายชื่อ</button>` : ''}
             <button class="sann-toggle-btn px-3 py-1.5 rounded-lg text-xs font-semibold border transition
               ${a.is_active ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}"
               data-id="${a.id}" data-active="${a.is_active}">
@@ -7245,6 +7246,40 @@ export async function renderSupervisorAnnouncements(teacher) {
       })
     })
 
+    list.querySelectorAll('.sann-rsvp-list-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const { getAnnouncementRsvps } = await import('./api.js')
+        const rsvps = await getAnnouncementRsvps(Number(btn.dataset.id)).catch(() => [])
+        const title = btn.dataset.title
+        const groups = { yes: [], maybe: [], no: [], none: [] }
+        rsvps.forEach(r => (groups[r.response] ?? groups.none).push(r))
+        const _row = r => `<li class="text-sm text-gray-700">${_esc(r.teachers?.full_name ?? '?')} <span class="text-xs text-gray-400">${r.teachers?.dept ?? ''}</span></li>`
+        const _section = (key, icon, label, color) => groups[key].length ? `
+          <div class="mb-3">
+            <p class="text-xs font-bold ${color} mb-1">${icon} ${label} (${groups[key].length})</p>
+            <ul class="space-y-0.5 pl-3">${groups[key].map(_row).join('')}</ul>
+          </div>` : ''
+        const overlay = document.createElement('div')
+        overlay.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+        overlay.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <p class="font-bold text-gray-800 text-sm">👥 รายชื่อผู้ตอบ — ${title}</p>
+              <button class="text-gray-400 hover:text-gray-600 text-xl" id="rsvp-list-close">✕</button>
+            </div>
+            <div class="overflow-y-auto p-5">
+              ${!rsvps.length ? '<p class="text-gray-400 text-sm text-center py-8">ยังไม่มีผู้ตอบ</p>' : ''}
+              ${_section('yes',   '✅', 'เข้าร่วมแน่นอน',  'text-emerald-700')}
+              ${_section('maybe', '🤔', 'ไม่แน่ใจ',         'text-amber-700')}
+              ${_section('no',    '❌', 'ไม่สนใจ',          'text-gray-500')}
+            </div>
+          </div>`
+        document.body.appendChild(overlay)
+        overlay.querySelector('#rsvp-list-close').onclick = () => overlay.remove()
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+      })
+    })
+
     list.querySelectorAll('.sann-toggle-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         btn.disabled = true
@@ -7290,6 +7325,40 @@ export async function renderSupervisorAnnouncements(teacher) {
             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">เนื้อหา</label>
             <textarea id="sann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
+          </div>
+          <!-- ประเภทประกาศ -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">ประเภทประกาศ</label>
+            <div class="flex gap-2">
+              <button type="button" data-type="general" class="sann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.ann_type ?? 'general') === 'general' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">📢 ทั่วไป</button>
+              <button type="button" data-type="training" class="sann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.ann_type === 'training' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">🎓 อบรม/กิจกรรม</button>
+            </div>
+          </div>
+          <!-- Training fields (แสดงเมื่อเลือก อบรม) -->
+          <div id="sann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">📅 วันที่จัดอบรม *</label>
+                <input id="sann-event-date" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  value="${item?.event_date ?? ''}"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">📍 สถานที่ *</label>
+                <input id="sann-event-location" type="text" placeholder="เช่น ห้องประชุม 1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  value="${_esc(item?.event_location ?? '')}"/>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-2">🕐 คาบที่ (เลือกได้หลายคาบ) *</label>
+              <div class="flex flex-wrap gap-2" id="sann-period-pills">
+                ${[1,2,3,4,5,6,7,8,9].map(p => {
+                  const sel = (item?.event_periods ?? []).includes(p)
+                  return `<button type="button" data-period="${p}"
+                    class="sann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition
+                    ${sel ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'}">${p}</button>`
+                }).join('')}
+              </div>
+            </div>
           </div>
           <div class="flex items-center justify-between pt-1 gap-2 flex-wrap">
             <button type="button" id="sann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
@@ -7440,6 +7509,30 @@ export async function renderSupervisorAnnouncements(teacher) {
       m.querySelector('#sann-cal-picker').classList.add('hidden')
     })
 
+    // type toggle
+    m.querySelectorAll('.sann-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.type
+        m.querySelectorAll('.sann-type-btn').forEach(b => {
+          const isViolet = b.dataset.type === 'training'
+          b.className = `sann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${b.dataset.type === type
+            ? (isViolet ? 'bg-violet-600 text-white border-violet-600' : 'bg-indigo-600 text-white border-indigo-600')
+            : (isViolet ? 'bg-white text-gray-600 border-gray-200 hover:border-violet-300' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300')}`
+        })
+        m.querySelector('#sann-training-fields').classList.toggle('hidden', type !== 'training')
+      })
+    })
+
+    // period pills toggle
+    m.querySelectorAll('.sann-period-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const on = pill.classList.contains('bg-violet-600')
+        pill.className = `sann-period-pill w-10 h-10 rounded-full text-sm font-bold border transition ${on
+          ? 'bg-white text-gray-600 border-gray-200 hover:border-violet-400'
+          : 'bg-violet-600 text-white border-violet-600'}`
+      })
+    })
+
     m.querySelector('#sann-modal-save').addEventListener('click', async () => {
       const title = m.querySelector('#sann-title').value.trim()
       if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
@@ -7448,11 +7541,22 @@ export async function renderSupervisorAnnouncements(teacher) {
       const priority    = m.querySelector('#sann-pin').dataset.on === 'true' ? 1 : 0
       const requiresAck = m.querySelector('#sann-ack').dataset.on === 'true'
       const dueDate     = m.querySelector('#sann-due').value || null
+      const annType     = m.querySelector('.sann-type-btn.bg-violet-600') ? 'training' : 'general'
+      const eventDate   = annType === 'training' ? (m.querySelector('#sann-event-date').value || null) : null
+      const eventLocation = annType === 'training' ? (m.querySelector('#sann-event-location').value.trim() || null) : null
+      const eventPeriods = annType === 'training'
+        ? [...m.querySelectorAll('.sann-period-pill.bg-violet-600')].map(p => parseInt(p.dataset.period))
+        : null
+      if (annType === 'training') {
+        if (!eventDate) { showToast('กรุณาระบุวันที่จัดอบรม','warning'); return }
+        if (!eventLocation) { showToast('กรุณาระบุสถานที่','warning'); return }
+        if (!eventPeriods?.length) { showToast('กรุณาเลือกอย่างน้อย 1 คาบ','warning'); return }
+      }
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')

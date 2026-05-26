@@ -2332,7 +2332,7 @@ export async function getAllAnnouncements() {
 
 export async function getActiveAnnouncements() {
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, teachers(id, full_name)')
+    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, teachers(id, full_name)')
     .eq('is_active', true)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
@@ -2340,27 +2340,35 @@ export async function getActiveAnnouncements() {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
               creator_role: creatorRole,
               requires_ack: requiresAck,
               due_date: dueDate || null,
+              ann_type: annType,
+              event_date: eventDate || null,
+              event_periods: eventPeriods || null,
+              event_location: eventLocation || null,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
   return data
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate }) {
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation }) {
   const payload = { updated_at: new Date().toISOString() }
-  if (title       !== undefined) payload.title       = title
-  if (body        !== undefined) payload.body        = body
-  if (isActive    !== undefined) payload.is_active   = isActive
-  if (priority    !== undefined) payload.priority    = priority
-  if (requiresAck !== undefined) payload.requires_ack = requiresAck
-  if (dueDate     !== undefined) payload.due_date    = dueDate || null
+  if (title         !== undefined) payload.title          = title
+  if (body          !== undefined) payload.body           = body
+  if (isActive      !== undefined) payload.is_active      = isActive
+  if (priority      !== undefined) payload.priority       = priority
+  if (requiresAck   !== undefined) payload.requires_ack   = requiresAck
+  if (dueDate       !== undefined) payload.due_date       = dueDate || null
+  if (annType       !== undefined) payload.ann_type       = annType
+  if (eventDate     !== undefined) payload.event_date     = eventDate || null
+  if (eventPeriods  !== undefined) payload.event_periods  = eventPeriods || null
+  if (eventLocation !== undefined) payload.event_location = eventLocation || null
   const { data, error } = await supabase.from('announcements')
     .update(payload).eq('id', id).select().single()
   if (error) throw error
@@ -2539,4 +2547,53 @@ export async function getClassByIdFull(classId) {
     .single()
   if (error) throw error
   return data
+}
+
+// ─── Announcement RSVP ────────────────────────────────────────────────────────
+export async function upsertAnnouncementRsvp(announcementId, teacherId, response) {
+  const { error } = await supabase.from('announcement_rsvp')
+    .upsert({ announcement_id: announcementId, teacher_id: teacherId, response, responded_at: new Date().toISOString() },
+             { onConflict: 'announcement_id,teacher_id' })
+  if (error) throw error
+}
+
+export async function getAnnouncementRsvps(announcementId) {
+  const { data, error } = await supabase.from('announcement_rsvp')
+    .select('teacher_id, response, responded_at, teachers(id, full_name, dept, category)')
+    .eq('announcement_id', announcementId)
+    .order('responded_at')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getMyRsvp(announcementId, teacherId) {
+  const { data } = await supabase.from('announcement_rsvp')
+    .select('response')
+    .eq('announcement_id', announcementId)
+    .eq('teacher_id', teacherId)
+    .maybeSingle()
+  return data?.response ?? null
+}
+
+export async function getAvailableTeachersForEvent(dayOfWeek, periods, academicYear, semester) {
+  const { data: busy } = await supabase.from('teacher_schedules')
+    .select('teacher_id')
+    .eq('day_of_week', dayOfWeek)
+    .in('period_no', periods)
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+  const busyIds = [...new Set((busy ?? []).map(r => r.teacher_id).filter(Boolean))]
+
+  let q = supabase.from('teachers').select('id, full_name, dept, category').eq('is_active', true)
+  if (busyIds.length) q = q.not('id', 'in', `(${busyIds.join(',')})`)
+  const { data, error } = await q.order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getMyRsvpsForTeacher(teacherId) {
+  const { data } = await supabase.from('announcement_rsvp')
+    .select('announcement_id, response')
+    .eq('teacher_id', teacherId)
+  return data ?? []
 }
