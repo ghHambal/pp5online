@@ -2162,7 +2162,7 @@ export async function getSupervisorProgress() {
 export async function getSupervisorComments(teacherId) {
   const { data, error } = await supabase
     .from('supervisor_comments')
-    .select('id, supervisor_id, metric, comment, created_at, teachers(id, full_name, position)')
+    .select('id, supervisor_id, metric, comment, created_at, teachers!supervisor_id(id, full_name, position)')
     .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false })
   if (error) throw error

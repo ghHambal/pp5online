@@ -3117,10 +3117,16 @@ export async function renderAnnouncementsView(teacher) {
   const _renderAnnouncements = async () => {
     const panel = document.getElementById('ann-panel-announce')
     if (!panel) return
-    const [items, myAcksRaw] = await Promise.all([
-      getAllAnnouncementsForTeacher(),
-      teacher?.id ? getMyAcks(teacher.id).catch(() => []) : Promise.resolve([]),
-    ])
+    let items, myAcksRaw
+    try {
+      ;[items, myAcksRaw] = await Promise.all([
+        getAllAnnouncementsForTeacher(),
+        teacher?.id ? getMyAcks(teacher.id).catch(() => []) : Promise.resolve([]),
+      ])
+    } catch {
+      panel.innerHTML = '<p class="text-red-400 text-sm p-4">โหลดไม่สำเร็จ</p>'
+      return
+    }
     const acksMap = Object.fromEntries(myAcksRaw.map(a => [a.announcement_id, a.acked_at]))
 
     const active   = items.filter(a => a.is_active)
