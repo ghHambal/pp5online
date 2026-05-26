@@ -147,6 +147,8 @@ export async function renderOverview() {
         </div>
       </div>
     </div>
+    <!-- Training announcements todo -->
+    <div id="training-todo-shell" class="mt-4"></div>
     <div id="monitor-shell" class="mt-6"></div>
   </div>`)
 
@@ -192,6 +194,58 @@ export async function renderOverview() {
         + (pending.length > 3 ? `<p class="text-xs text-center text-gray-400 pt-2">และอีก ${pending.length-3} รายการ</p>` : '')
       }
     }
+    // ── Training todo widget ────────────────────────────────────────────────────
+    const todoEl = document.getElementById('training-todo-shell')
+    if (todoEl) {
+      try {
+        const { getAllAnnouncements, getAnnouncementRsvps } = await import('./api.js')
+        const allAnns = await getAllAnnouncements()
+        const today = new Date().toISOString().slice(0, 10)
+        const trainings = allAnns.filter(a => a.ann_type === 'training' && a.is_active && a.event_date >= today)
+          .sort((a, b) => a.event_date.localeCompare(b.event_date))
+        if (trainings.length) {
+          const rsvpData = await Promise.all(trainings.map(a => getAnnouncementRsvps(a.id).catch(() => [])))
+          const _fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { weekday:'short', day:'numeric', month:'short' })
+          const _esc2 = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+          todoEl.innerHTML = `
+            <div class="bg-white rounded-2xl border border-violet-100 shadow-sm overflow-hidden">
+              <div class="px-5 py-3.5 border-b border-violet-100 flex items-center justify-between bg-violet-50">
+                <h4 class="font-bold text-violet-800 text-sm flex items-center gap-2">🎓 อบรม/กิจกรรมที่กำลังจะมาถึง <span class="px-2 py-0.5 bg-violet-200 text-violet-800 rounded-full text-xs font-bold">${trainings.length}</span></h4>
+                <button onclick="window._adminNav?.('announcements')" class="text-xs text-violet-600 hover:text-violet-800 font-medium">จัดการ →</button>
+              </div>
+              <div class="divide-y divide-gray-50">
+                ${trainings.map((a, i) => {
+                  const rsvps = rsvpData[i] ?? []
+                  const yes   = rsvps.filter(r => r.response === 'yes').length
+                  const maybe = rsvps.filter(r => r.response === 'maybe').length
+                  const no    = rsvps.filter(r => r.response === 'no').length
+                  const total = rsvps.length
+                  return `
+                  <div class="px-5 py-3.5 flex items-center gap-4">
+                    <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center text-lg">🎓</div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-semibold text-gray-800 truncate">${_esc2(a.title)}</p>
+                      <p class="text-xs text-gray-500 mt-0.5">
+                        📅 ${_fmtD(a.event_date)}
+                        ${a.event_periods?.length ? ` · 🕐 คาบ ${a.event_periods.sort((x,y)=>x-y).join(',')}` : ''}
+                        ${a.event_location ? ` · 📍 ${_esc2(a.event_location)}` : ''}
+                      </p>
+                    </div>
+                    <div class="flex-shrink-0 flex items-center gap-2 text-xs">
+                      ${total ? `
+                        <span class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg font-semibold">✅ ${yes}</span>
+                        <span class="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg font-semibold">🤔 ${maybe}</span>
+                        <span class="px-2 py-1 bg-gray-100 text-gray-500 rounded-lg font-semibold">❌ ${no}</span>
+                      ` : `<span class="text-gray-400">ยังไม่มีผู้ตอบ</span>`}
+                    </div>
+                  </div>`
+                }).join('')}
+              </div>
+            </div>`
+        }
+      } catch {}
+    }
+
     // ── Monitoring section ──────────────────────────────────────────────────────
     const cfg       = await getSystemConfig().catch(()=>({}))
     const monitorEl = document.getElementById('monitor-shell')
@@ -6952,6 +7006,7 @@ export async function renderAnnouncements() {
             </p>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            ${a.ann_type === 'training' ? `<button class="ann-rsvp-list-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-violet-200 text-violet-600 hover:bg-violet-50 transition" data-id="${a.id}" data-title="${_esc(a.title)}">👥 รายชื่อ</button>` : ''}
             <button class="ann-toggle-btn px-3 py-1.5 rounded-lg text-xs font-semibold border transition
               ${a.is_active ? 'border-gray-200 text-gray-500 hover:bg-gray-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}"
               data-id="${a.id}" data-active="${a.is_active}">
@@ -6987,6 +7042,44 @@ export async function renderAnnouncements() {
         catch { showToast('ลบไม่สำเร็จ','error'); btn.disabled = false }
       })
     })
+    list.querySelectorAll('.ann-rsvp-list-btn').forEach(btn => {
+      btn.addEventListener('click', async () => _showRsvpList(Number(btn.dataset.id), btn.dataset.title))
+    })
+  }
+
+  const _showRsvpList = async (annId, title) => {
+    const { getAnnouncementRsvps } = await import('./api.js')
+    const rsvps = await getAnnouncementRsvps(annId).catch(() => [])
+    const groups = { yes: [], maybe: [], no: [] }
+    rsvps.forEach(r => { if (groups[r.response]) groups[r.response].push(r) })
+    const _row = r => `<li class="text-sm text-gray-700">${_esc(r.teachers?.full_name ?? '?')} <span class="text-xs text-gray-400">${r.teachers?.dept ?? ''}</span></li>`
+    const _section = (key, icon, label, color) => groups[key].length ? `
+      <div class="mb-4">
+        <p class="text-xs font-bold ${color} mb-1.5">${icon} ${label} (${groups[key].length} คน)</p>
+        <ul class="space-y-0.5 pl-3">${groups[key].map(_row).join('')}</ul>
+      </div>` : ''
+    const overlay = document.createElement('div')
+    overlay.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div>
+            <p class="font-bold text-gray-800 text-sm">👥 รายชื่อผู้ตอบ</p>
+            <p class="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">${_esc(title)}</p>
+          </div>
+          <button class="text-gray-400 hover:text-gray-600 text-xl flex-shrink-0" id="rsvp-list-close">✕</button>
+        </div>
+        <div class="overflow-y-auto p-5">
+          ${!rsvps.length ? '<p class="text-gray-400 text-sm text-center py-8">ยังไม่มีผู้ตอบ</p>' : ''}
+          ${_section('yes',   '✅', 'สนใจเข้าร่วมแน่นอน', 'text-emerald-700')}
+          ${_section('maybe', '🤔', 'ไม่แน่ใจ',            'text-amber-700')}
+          ${_section('no',    '❌', 'ไม่สนใจ',             'text-gray-500')}
+          ${rsvps.length ? `<p class="text-xs text-gray-400 border-t border-gray-100 pt-3 mt-1">รวมตอบกลับ ${rsvps.length} คน</p>` : ''}
+        </div>
+      </div>`
+    document.body.appendChild(overlay)
+    overlay.querySelector('#rsvp-list-close').onclick = () => overlay.remove()
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
   }
 
   const _openAnnModal = (item, onDone) => {
