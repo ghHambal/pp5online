@@ -8410,6 +8410,7 @@ export async function renderWorkCalendarView() {
     other: 'bg-gray-100 text-gray-600',
   }
   const _fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+  const _fmtDateShort = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
 
   let cfg = { academic_year: new Date().getFullYear() + 543, semester: 1 }
   try { const c = await getSchoolConfig(); cfg = c } catch {}
@@ -8443,7 +8444,7 @@ export async function renderWorkCalendarView() {
           <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${EVENT_TYPE_COLOR[ev.event_type]}">${EVENT_TYPE_LABEL[ev.event_type]}</span>
           ${roundBadge}
           ${isPast?'<span class="text-[11px] text-gray-400">ผ่านมาแล้ว</span>':'<span class="text-[11px] font-semibold text-emerald-600">กำลังจะมาถึง</span>'}
-          <span class="text-xs text-gray-400 ml-auto">${_fmtDate(ev.event_date)}</span>
+          <span class="text-xs text-gray-400 ml-auto">${ev.end_date && ev.end_date !== ev.event_date ? `${_fmtDateShort(ev.event_date)} – ${_fmtDate(ev.end_date)}` : _fmtDate(ev.event_date)}</span>
         </div>
         <p class="font-semibold text-gray-800 text-sm">${_esc(ev.label)}</p>
         ${ev.description ? `<p class="text-xs text-gray-500 mt-0.5">${_esc(ev.description)}</p>` : ''}
@@ -8521,8 +8522,13 @@ export async function renderWorkCalendar(teacher) {
             <input id="wcal-round" type="number" min="1" placeholder="เช่น 1, 2, 3" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
           </div>
           <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">วันที่ <span class="text-rose-500">*</span></label>
-            <input id="wcal-date" type="date" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <label class="block text-xs font-semibold text-gray-500 mb-1">ช่วงวันที่ <span class="text-rose-500">*</span></label>
+            <div class="flex items-center gap-2">
+              <input id="wcal-date" type="date" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              <span class="text-gray-400 text-sm shrink-0">ถึง</span>
+              <input id="wcal-end-date" type="date" placeholder="(ไม่บังคับ)" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            </div>
+            <p class="text-[11px] text-gray-400 mt-1">วันสิ้นสุดไม่บังคับ — ใส่เมื่อกิจกรรมมีช่วงเวลา</p>
           </div>
           <div>
             <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่อกิจกรรม <span class="text-rose-500">*</span></label>
@@ -8567,7 +8573,7 @@ export async function renderWorkCalendar(teacher) {
             <div class="flex flex-wrap items-center gap-1.5 mb-1">
               <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${EVENT_TYPE_COLOR[ev.event_type]}">${EVENT_TYPE_LABEL[ev.event_type]}</span>
               ${roundBadge}
-              <span class="text-xs text-gray-400">${_fmtDate(ev.event_date)}</span>
+              <span class="text-xs text-gray-400">${ev.end_date && ev.end_date !== ev.event_date ? `${_fmtDateShort(ev.event_date)} – ${_fmtDate(ev.end_date)}` : _fmtDate(ev.event_date)}</span>
             </div>
             <p class="font-semibold text-gray-800 text-sm">${_esc(ev.label)}</p>
             ${ev.description ? `<p class="text-xs text-gray-500 mt-0.5">${_esc(ev.description)}</p>` : ''}
@@ -8605,6 +8611,7 @@ export async function renderWorkCalendar(teacher) {
 
     document.getElementById('wcal-round').value = ev?.round_number ?? ''
     document.getElementById('wcal-date').value = ev?.event_date ?? ''
+    document.getElementById('wcal-end-date').value = ev?.end_date ?? ''
     document.getElementById('wcal-label').value = ev?.label ?? ''
     document.getElementById('wcal-desc').value = ev?.description ?? ''
 
@@ -8668,9 +8675,11 @@ export async function renderWorkCalendar(teacher) {
     const type = _getSelectedType()
     const round = parseInt(document.getElementById('wcal-round').value) || null
     const date = document.getElementById('wcal-date').value
+    const endDate = document.getElementById('wcal-end-date').value || null
     const label = document.getElementById('wcal-label').value.trim()
     const desc = document.getElementById('wcal-desc').value.trim()
     if (!date || !label) { alert('กรุณากรอกวันที่และชื่อกิจกรรม'); return }
+    if (endDate && endDate < date) { alert('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น'); return }
 
     const items = [...document.querySelectorAll('#wcal-items-list input')].map(i => i.value.trim()).filter(Boolean)
 
@@ -8680,12 +8689,12 @@ export async function renderWorkCalendar(teacher) {
     try {
       let saved
       if (_editId) {
-        saved = await updateWorkCalendarEvent(_editId, { eventType: type, roundNumber: round, eventDate: date, label, description: desc })
+        saved = await updateWorkCalendarEvent(_editId, { eventType: type, roundNumber: round, eventDate: date, endDate, label, description: desc })
         await replaceWorkCalendarItems(_editId, items)
         saved.work_calendar_items = items.map((item_label, sort_order) => ({ item_label, sort_order }))
         _events = _events.map(x => x.id === _editId ? saved : x)
       } else {
-        saved = await createWorkCalendarEvent({ eventType: type, roundNumber: round, eventDate: date, label, description: desc, academicYear: _ay, semester: _sm, createdByTeacherId: teacher?.id })
+        saved = await createWorkCalendarEvent({ eventType: type, roundNumber: round, eventDate: date, endDate, label, description: desc, academicYear: _ay, semester: _sm, createdByTeacherId: teacher?.id })
         await replaceWorkCalendarItems(saved.id, items)
         saved.work_calendar_items = items.map((item_label, sort_order) => ({ item_label, sort_order }))
         _events.push(saved)

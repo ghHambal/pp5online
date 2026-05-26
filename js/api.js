@@ -2463,7 +2463,7 @@ export async function assignStudentsHouseColor(studentIds, colorName) {
 export async function getWorkCalendarEvents(academicYear, semester) {
   const { data, error } = await supabase
     .from('work_calendar_events')
-    .select(`id, event_type, round_number, event_date, label, description, academic_year, semester, created_by_teacher_id,
+    .select(`id, event_type, round_number, event_date, end_date, label, description, academic_year, semester, created_by_teacher_id,
       work_calendar_items(id, item_label, sort_order)`)
     .eq('academic_year', academicYear)
     .eq('semester', semester)
@@ -2472,38 +2472,40 @@ export async function getWorkCalendarEvents(academicYear, semester) {
   return data
 }
 
-export async function createWorkCalendarEvent({ eventType, roundNumber, eventDate, label, description, academicYear, semester, createdByTeacherId }) {
+export async function createWorkCalendarEvent({ eventType, roundNumber, eventDate, endDate, label, description, academicYear, semester, createdByTeacherId }) {
   const { data, error } = await supabase
     .from('work_calendar_events')
     .insert({
       event_type: eventType,
       round_number: roundNumber || null,
       event_date: eventDate,
+      end_date: endDate || null,
       label,
       description: description || null,
       academic_year: academicYear,
       semester,
       created_by_teacher_id: createdByTeacherId,
     })
-    .select(`id, event_type, round_number, event_date, label, description, academic_year, semester, created_by_teacher_id,
+    .select(`id, event_type, round_number, event_date, end_date, label, description, academic_year, semester, created_by_teacher_id,
       work_calendar_items(id, item_label, sort_order)`)
     .single()
   if (error) throw error
   return data
 }
 
-export async function updateWorkCalendarEvent(id, { eventType, roundNumber, eventDate, label, description }) {
+export async function updateWorkCalendarEvent(id, { eventType, roundNumber, eventDate, endDate, label, description }) {
   const { data, error } = await supabase
     .from('work_calendar_events')
     .update({
       event_type: eventType,
       round_number: roundNumber || null,
       event_date: eventDate,
+      end_date: endDate || null,
       label,
       description: description || null,
     })
     .eq('id', id)
-    .select(`id, event_type, round_number, event_date, label, description, academic_year, semester, created_by_teacher_id,
+    .select(`id, event_type, round_number, event_date, end_date, label, description, academic_year, semester, created_by_teacher_id,
       work_calendar_items(id, item_label, sort_order)`)
     .single()
   if (error) throw error
