@@ -2986,7 +2986,9 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
 export async function renderAnnouncementsView(teacher) {
   setActiveNav('announcements-view')
   setTitle('ประกาศ')
-  const { getAllAnnouncementsForTeacher, getMyAcks, ackAnnouncement, getSupervisorComments } = await import('./api.js')
+  const { getAllAnnouncementsForTeacher, getMyAcks, ackAnnouncement, getSupervisorComments, getSystemConfig, getTeacherBusyPeriodsOnDate } = await import('./api.js')
+  let _schoolCfg = null
+  try { _schoolCfg = await getSystemConfig() } catch {}
 
   setContent(`<div class="animate-fade max-w-2xl mx-auto">
     <!-- Tab bar -->
@@ -3155,6 +3157,25 @@ export async function renderAnnouncementsView(teacher) {
       panel.innerHTML = '<p class="text-red-400 text-sm p-4">โหลดไม่สำเร็จ</p>'
       return
     }
+
+    // filter training announcements — only show if teacher is free in all event_periods
+    if (teacher?.id && _schoolCfg) {
+      const ay  = parseInt(_schoolCfg.academicYear ?? 2568)
+      const sem = parseInt(_schoolCfg.semester ?? 1)
+      const trainingItems = items.filter(a => a.ann_type === 'training' && a.event_date && a.event_periods?.length)
+      if (trainingItems.length) {
+        const busyChecks = await Promise.all(
+          trainingItems.map(a => getTeacherBusyPeriodsOnDate(teacher.id, a.event_date, ay, sem).catch(() => []))
+        )
+        const busyMap = Object.fromEntries(trainingItems.map((a, i) => [a.id, busyChecks[i]]))
+        items = items.filter(a => {
+          if (a.ann_type !== 'training' || !a.event_periods?.length) return true
+          const busy = busyMap[a.id] ?? []
+          return !a.event_periods.some(p => busy.includes(p))
+        })
+      }
+    }
+
     const acksMap = Object.fromEntries(myAcksRaw.map(a => [a.announcement_id, a.acked_at]))
     const rsvpMap = Object.fromEntries((myRsvpsRaw ?? []).map(r => [r.announcement_id, r.response]))
 

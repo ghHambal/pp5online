@@ -2171,11 +2171,28 @@ export async function getSupervisorComments(teacherId) {
 
 export async function getAllAnnouncementsForTeacher() {
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, teachers(id, full_name)')
+    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, teachers(id, full_name)')
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
+}
+
+export async function getTeacherBusyPeriodsOnDate(teacherId, eventDate, academicYear, semester) {
+  // Returns array of period numbers the teacher has class on a given date
+  const dow = new Date(eventDate + 'T00:00:00').getDay() // 0=Sun,1=Mon...6=Sat
+  const { data } = await supabase.from('teacher_schedules')
+    .select('period_no, span_periods')
+    .eq('teacher_id', teacherId)
+    .eq('day_of_week', dow)
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+  if (!data?.length) return []
+  const busy = new Set()
+  data.forEach(r => {
+    for (let p = r.period_no; p < r.period_no + (r.span_periods ?? 1); p++) busy.add(p)
+  })
+  return [...busy]
 }
 
 export async function addSupervisorComment(supervisorId, teacherId, metric, comment) {
