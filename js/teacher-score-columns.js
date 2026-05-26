@@ -1,6 +1,6 @@
 import { getScoreColumns, getSystemConfig, getLifeSkillColumns,
          createScoreColumn, updateScoreColumn, deleteScoreColumn,
-         getMyClasses } from './api.js'
+         updateColumnSortOrders, getMyClasses } from './api.js'
 import { showToast } from './ui.js'
 
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
@@ -267,15 +267,24 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     const totalDerived = derived.reduce((s,c) => s + (Number(c.max_score)||0), 0)
     const grandTotal   = totalRegular + totalDerived
 
-    const renderColRow = (c, extra = '') => {
+    const renderColRow = (c, extra = '', groupItems = []) => {
       const locked = lockedScoreColumnIds.has(c.id)
       const ctype  = c.column_type ?? 'regular'
+      const idx    = groupItems.findIndex(x => x.id === c.id)
+      const canUp  = !locked && idx > 0 && !lockedScoreColumnIds.has(groupItems[idx - 1]?.id)
+      const canDown = !locked && idx >= 0 && idx < groupItems.length - 1
       return `
       <tr class="${locked ? 'bg-emerald-50/35' : 'hover:bg-gray-50'}">
         <td class="px-3 py-2.5 text-center">
           ${locked
             ? `<span class="text-emerald-500 text-xs">🔒</span>`
             : `<input type="checkbox" class="sc-row-cb w-4 h-4 rounded accent-red-500" data-id="${c.id}" />`}
+        </td>
+        <td class="px-3 py-2.5 text-center whitespace-nowrap">
+          <button onclick="window._moveScoreCol(${c.id},'up')" ${canUp ? '' : 'disabled'}
+            class="px-1.5 py-0.5 rounded text-xs ${canUp ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-200 cursor-default'}">▲</button>
+          <button onclick="window._moveScoreCol(${c.id},'down')" ${canDown ? '' : 'disabled'}
+            class="px-1.5 py-0.5 rounded text-xs ${canDown ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-200 cursor-default'}">▼</button>
         </td>
         <td class="px-4 py-2.5 font-medium text-gray-800">
           ${c.assignment_name}
@@ -300,6 +309,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         <thead class="bg-gray-50 text-xs text-gray-400 uppercase">
           <tr>
             <th class="px-3 py-2 text-center w-8">เลือก</th>
+            <th class="px-3 py-2 text-center w-14">เรียง</th>
             <th class="px-4 py-2 text-left">ชื่อ</th>
             ${hasSheet ? `<th class="px-4 py-2 text-center">Sheet Col</th>` : ''}
             <th class="px-4 py-2 text-center">คะแนนเต็ม</th>
@@ -307,7 +317,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
-          ${items.map(c => renderColRow(c, extraFn?.(c) ?? '')).join('')}
+          ${items.map(c => renderColRow(c, extraFn?.(c) ?? '', items)).join('')}
         </tbody>
       </table>`
     }
@@ -528,6 +538,24 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       if (ctype === 'derived' && c.formula) {
         document.getElementById('sc-formula').value = c.formula
       }
+    }
+
+    window._moveScoreCol = async (id, direction) => {
+      const cols = await getScoreColumns(classId)
+      const col  = cols.find(c => c.id === id)
+      if (!col) return
+      // หา group เดียวกัน (assignment_type + column_type)
+      const group = cols.filter(c => c.assignment_type === col.assignment_type && (c.column_type ?? 'regular') === (col.column_type ?? 'regular'))
+      const idx = group.findIndex(c => c.id === id)
+      const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+      if (swapIdx < 0 || swapIdx >= group.length) return
+      if (lockedScoreColumnIds.has(group[swapIdx].id)) return
+      // สลับ sort_order
+      const a = group[idx], b = group[swapIdx]
+      const aOrder = a.sort_order ?? (idx + 1) * 10
+      const bOrder = b.sort_order ?? (swapIdx + 1) * 10
+      await updateColumnSortOrders([{ id: a.id, sort_order: bOrder }, { id: b.id, sort_order: aOrder }])
+      await _reload()
     }
 
     window._deleteScoreCol = (id) => {

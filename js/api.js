@@ -582,11 +582,23 @@ export async function savePrayerCell(teacherId, studentId, room, checkDate, stat
 export async function getScoreColumns(classId) {
   const { data, error } = await supabase
     .from('class_score_columns')
-    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs, bonus_formula, bonus_formula_refs')
+    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs, bonus_formula, bonus_formula_refs, sort_order')
     .eq('class_id', classId)
-    .order('id')
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('id', { ascending: true })
   if (error) throw error
   return data ?? []
+}
+
+export async function updateColumnSortOrders(updates) {
+  // updates = [{ id, sort_order }, ...]
+  for (const u of updates) {
+    const { error } = await supabase
+      .from('class_score_columns')
+      .update({ sort_order: u.sort_order })
+      .eq('id', u.id)
+    if (error) throw error
+  }
 }
 
 export async function createScoreColumn(payload) {
@@ -1710,10 +1722,13 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
   const attColId = await _ensureClassScoreColumn(classId, 'คะแนนมาเรียน', 10, 'EH', 'ระหว่างเรียน')
   const prayerColId = await _ensureClassScoreColumn(classId, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
 
-  const prayerRows = students.map(studentId => {
-    const score = _calcPrayerScoreFromMap(prayerMap[studentId] ?? {}, allDays)
-    return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
-  })
+  const prayerRows = students
+    .map(studentId => {
+      if (!prayerMap[studentId]) return null
+      const score = _calcPrayerScoreFromMap(prayerMap[studentId], allDays)
+      return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
+    })
+    .filter(Boolean)
   const attRows = students
     .map(studentId => {
       const score = _calcAttendanceScore(attendanceMap[studentId] ?? [])
@@ -1792,10 +1807,13 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
     const prayerColId = await _ensureClassScoreColumn(cls.id, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
     ensuredColumns += 2
 
-    const prayerRows = students.map(studentId => {
-      const score = _calcPrayerScoreFromMap(prayerMap[studentId] ?? {}, allDays)
-      return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
-    })
+    const prayerRows = students
+      .map(studentId => {
+        if (!prayerMap[studentId]) return null
+        const score = _calcPrayerScoreFromMap(prayerMap[studentId], allDays)
+        return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
+      })
+      .filter(Boolean)
     const attRows = students
       .map(studentId => {
         const score = _calcAttendanceScore(attendanceMap[`${cls.id}:${studentId}`] ?? [])
