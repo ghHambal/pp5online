@@ -1197,7 +1197,8 @@ export async function renderRegisteredTeachers() {
     // ── Detect duplicate teachers (same full_name, different id) ──────────────
     const _nameMap = {}
     for (const t of all) {
-      const key = (t.full_name ?? '').trim().toLowerCase()
+      // normalize: lowercase + ลบช่องว่างทุกตำแหน่ง เพื่อจับคู่ "นาย ตาร์มิซี" = "นายตาร์มิซี"
+      const key = (t.full_name ?? '').toLowerCase().replace(/\s+/g, '')
       if (!key) continue
       if (!_nameMap[key]) _nameMap[key] = []
       _nameMap[key].push(t)
