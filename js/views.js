@@ -7312,15 +7312,11 @@ export async function renderSupervisorAnnouncements(teacher) {
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
           </div>
           <div class="flex items-center justify-between pt-1">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <button type="button" id="sann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
-                onclick="this.dataset.on=this.dataset.on==='true'?'false':'true';this.className='w-12 h-6 rounded-full transition-colors relative shadow-inner '+(this.dataset.on==='true'?'bg-emerald-500':'bg-gray-300');this.querySelector('span').style.transform=this.dataset.on==='true'?'translateX(24px)':'translateX(2px)'"
-                class="w-12 h-6 rounded-full transition-colors relative shadow-inner ${item?.is_active !== false ? 'bg-emerald-500' : 'bg-gray-300'}">
-                <span class="absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform"
-                  style="transform:translateX(${item?.is_active !== false ? '24' : '2'}px)"></span>
-              </button>
-              <span class="text-sm font-medium text-gray-700">แสดงให้ครูเห็น</span>
-            </label>
+            <button type="button" id="sann-active-toggle" data-on="${item?.is_active !== false ? 'true' : 'false'}"
+              onclick="const on=this.dataset.on==='true';this.dataset.on=on?'false':'true';this.className='px-4 py-2 rounded-xl text-sm font-semibold border transition '+(on?'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100':'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100');this.textContent=on?'○ ปิดอยู่':'● แสดงให้ครูเห็น'"
+              class="px-4 py-2 rounded-xl text-sm font-semibold border transition ${item?.is_active !== false ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
+              ${item?.is_active !== false ? '● แสดงให้ครูเห็น' : '○ ปิดอยู่'}
+            </button>
             <label class="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" id="sann-pin" class="w-4 h-4 accent-amber-500 rounded" ${(item?.priority ?? 0) > 0 ? 'checked' : ''}/>
               <span class="text-sm font-medium text-gray-700">⭐ ปักหมุด</span>
