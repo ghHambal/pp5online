@@ -786,7 +786,6 @@ export async function renderAttendance(teacher) {
   setContent(`<div class="animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">เช็คชื่อนักเรียน</h2>
         <p class="text-xs text-gray-400 mt-0.5">เลือกวิชาและวันที่เพื่อเช็คชื่อ</p>
       </div>
     </div>

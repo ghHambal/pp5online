@@ -621,7 +621,6 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     <div class="flex items-center gap-3 mb-5 flex-wrap">
       <button onclick="window._navTo?.('my-classes') || history.back()" class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
       <div class="flex-1 min-w-0">
-        <h2 class="text-lg font-bold text-gray-800">คอลัมน์คะแนน</h2>
         <p class="text-xs text-gray-400">${className}</p>
       </div>
       ${isLifeSkill ? `<button id="btn-fill-lifeskill" class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 flex-shrink-0">🌱 เติมทักษะชีวิต</button>` : ''}

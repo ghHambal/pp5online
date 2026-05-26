@@ -1883,7 +1883,6 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   setContent(`<div class="max-w-full animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">ตารางสอน</h2>
         <p class="text-xs text-gray-400 mt-0.5">ภาค ${semester} / ${academicYear} — คลิกช่องเพื่อกำหนดวิชา</p>
       </div>
       <div class="flex gap-2">

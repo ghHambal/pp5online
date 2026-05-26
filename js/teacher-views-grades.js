@@ -1991,7 +1991,6 @@ export async function renderRequests(teacher) {
 
   setContent(`<div class="animate-fade">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-bold text-gray-800">🔔 คำร้องนักเรียน</h2>
       <span class="text-xs text-gray-400">${all.length} รายการ</span>
     </div>
     <!-- Filter tabs -->

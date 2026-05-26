@@ -1860,7 +1860,7 @@ function _exitSupervisorMode() {
     // re-bind all nav buttons
     _rebindNav(nav, main)
   }
-  window.dispatchEvent(new CustomEvent('teacher-nav', { detail: { view: 'overview' } }))
+  navigate('overview')
 }
 
 // ── ประกาศ banner ────────────────────────────────────────────────────────────
@@ -1964,6 +1964,10 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
 }
 
 function _rebindNav(nav, main) {
+  // re-bind data-nav links (lost after nav.innerHTML replacement)
+  nav.querySelectorAll(`[data-nav]`).forEach(link => {
+    link.addEventListener(`click`, e => { e.preventDefault(); navigate(link.dataset.nav) })
+  })
   // re-bind supervisor toggle button (by content matching)
   nav.querySelectorAll('button').forEach(b => {
     const txt = b.textContent.trim()
