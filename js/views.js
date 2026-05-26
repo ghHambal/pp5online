@@ -957,7 +957,6 @@ export async function renderTeachers() {
     setContent(`<div class="max-w-6xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">รายชื่อครูผู้สอน</h2>
           <p class="text-xs text-gray-400 mt-0.5">จัดการบัญชีและแผนกของครูในระบบ</p>
         </div>
         <button onclick="openTeacherModal()"
@@ -1209,7 +1208,6 @@ export async function renderRegisteredTeachers() {
 
     setContent(`<div class="max-w-6xl mx-auto animate-fade space-y-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">บัญชีผู้ใช้ครู</h2>
         <p class="text-xs text-gray-400 mt-0.5">ติดตามสถานะการลงทะเบียนของครูและบุคลากร</p>
       </div>
 
@@ -1523,7 +1521,6 @@ export async function renderClasses() {
   setContent(`<div class="max-w-6xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">รายการห้องเรียน</h2>
         <p class="text-xs text-gray-400 mt-0.5">ห้องเรียนที่สร้างโดยครูในระบบ</p>
       </div>
     </div>
@@ -1633,7 +1630,6 @@ export async function renderStudents() {
     setContent(`<div class="max-w-6xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">รายชื่อนักเรียนทั้งหมด</h2>
           <p class="text-xs text-gray-400 mt-0.5">ข้อมูลนักเรียนในระบบทั้งหมด</p>
         </div>
       </div>
@@ -2999,7 +2995,6 @@ export async function renderDepartments() {
   setContent(`<div class="max-w-6xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">กลุ่มสาระทั้งหมด</h2>
         <p class="text-xs text-gray-400 mt-0.5">Admin เพิ่ม/ลบได้ • หัวหน้ากลุ่มสาระแก้ไขรูปและลายเซ็นได้</p>
       </div>
       <button onclick="openDeptModal()"
@@ -3087,7 +3082,6 @@ export async function renderPeriods() {
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">โครงสร้างคาบเรียน</h2>
         <p class="text-xs text-gray-400 mt-0.5">ปรับได้ตามโครงสร้างเวลาของโรงเรียน</p>
       </div>
       <button onclick="openPeriodModal()"
@@ -3506,7 +3500,6 @@ export async function renderSubjects() {
     setContent(`<div class="max-w-6xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">จัดการรายวิชา</h2>
           <p class="text-xs text-gray-400 mt-0.5">Admin และครูเจ้าของรายวิชาสามารถแก้ไขได้</p>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
@@ -3933,7 +3926,6 @@ export async function renderHomeroom() {
   setContent(`<div class="max-w-5xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">ครูที่ปรึกษา</h2>
         <p class="text-xs text-gray-400 mt-0.5">ภาคเรียน ${curSem}/${curYear}</p>
       </div>
     </div>
@@ -4175,7 +4167,6 @@ export async function renderScoreColConfig() {
   setContent(`<div class="max-w-5xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">ตั้งค่าคอลัมน์ใน Google Sheet</h2>
         <p class="text-xs text-gray-400 mt-0.5">คลิกปุ่มคอลัมน์เพื่อเลือก (สีเขียว = อนุญาต)</p>
       </div>
       <button id="scc-save-btn"
@@ -4294,7 +4285,6 @@ async function _renderAdminCoursePicker() {
     <div class="max-w-4xl mx-auto animate-fade">
       <div class="flex items-center gap-3 mb-5">
         <button onclick="renderSubjects()" class="text-sm text-gray-500 hover:text-indigo-600">← กลับ</button>
-        <h2 class="text-lg font-bold text-gray-800">เลือกคอร์สเพื่อลงทะเบียนห้องเรียน</h2>
       </div>
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         ${!subjects.length
@@ -4377,7 +4367,6 @@ export async function renderHolidays() {
 
   setContent(`<div class="max-w-3xl mx-auto animate-fade space-y-5">
     <div>
-      <h2 class="text-lg font-bold text-gray-800">วันหยุดโรงเรียน</h2>
       <p class="text-xs text-gray-400 mt-0.5">ปีการศึกษา ${year} ภาค ${sem} — ระบบจะ highlight วันนี้ในตารางเช็คชื่อ</p>
     </div>
 
@@ -4579,7 +4568,6 @@ export async function renderPayments() {
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">💳 คำขอชำระเงิน</h2>
         <p class="text-xs text-gray-400 mt-0.5">ตรวจสอบสลิปและอนุมัติแพ็กเกจให้ครู</p>
       </div>
       <div class="flex gap-2">
@@ -5000,7 +4988,6 @@ export async function renderLifeSkillAdmin() {
       <!-- Header -->
       <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">🌱 คะแนนทักษะชีวิต</h2>
           <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year}</p>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
@@ -5371,7 +5358,6 @@ export async function renderReadingAdmin() {
     setContent(`<div class="max-w-5xl mx-auto animate-fade">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">📖 คะแนนอ่านคิดวิเคราะห์และเขียน</h2>
           <p class="text-xs text-gray-400 mt-0.5">ภาค ${sem} / ${year}</p>
         </div>
         <div class="flex gap-2" id="rsa-tab-actions"></div>
@@ -5791,7 +5777,6 @@ export async function renderPrayerAdmin() {
   setContent(`<div class="max-w-5xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">🕌 คะแนนละหมาด</h2>
         <p class="text-xs text-gray-400 mt-0.5">บันทึกการมาละหมาดทุกห้อง — Sync รายวันลงชีท Solat</p>
       </div>
       <div id="pr-tab-actions"></div>
@@ -6481,7 +6466,6 @@ export async function renderAdminProfile() {
   const INPUT = 'w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white'
 
   setContent(`<div class="max-w-lg mx-auto animate-fade">
-    <h2 class="text-lg font-bold text-gray-800 mb-5">👤 โปรไฟล์ของฉัน</h2>
 
     <!-- Avatar -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4 flex flex-col items-center">
@@ -6687,7 +6671,6 @@ export async function renderUsageStats() {
   setContent(`<div class="max-w-xl mx-auto animate-fade">
     <div class="mb-5 flex items-center justify-between">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">📊 สถิติการใช้งาน</h2>
         <p class="text-xs text-gray-400 mt-0.5">${monthName}</p>
       </div>
       <button id="stat-refresh" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">🔄 รีเฟรช</button>
@@ -6867,7 +6850,6 @@ export async function renderClassroomsAdmin() {
   setContent(`<div class="max-w-3xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">🚪 ห้องเรียน / แผนผังอาคาร</h2>
         <p class="text-xs text-gray-400 mt-0.5">จัดการหมายเลขห้องสำหรับครูเลือกระบุ</p>
       </div>
       <button id="crm-add-new" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
@@ -6903,7 +6885,6 @@ export async function renderAnnouncements() {
   setContent(`<div class="animate-fade">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h2 class="text-xl font-bold text-gray-800">📢 ประกาศ</h2>
         <p class="text-xs text-gray-400 mt-0.5">ประกาศที่แสดงให้ครูทุกคนเห็นหลังล็อกอิน</p>
       </div>
       <button id="ann-create-btn"
@@ -7105,7 +7086,6 @@ export async function renderSupervisorAnnouncements(teacher) {
   setContent(`<div class="animate-fade max-w-2xl mx-auto">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h2 class="text-xl font-bold text-gray-800">📢 จัดการประกาศ</h2>
         <p class="text-xs mt-0.5">
           <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${_annRoleColor(creatorRole)}">${_annRoleLabel(creatorRole)}</span>
           <span class="text-gray-400 ml-1">· ประกาศที่สร้างจะแสดงให้ครูทุกคนเห็น</span>
@@ -7531,7 +7511,6 @@ export async function renderRolePermissions() {
 
   setContent(`<div class="animate-fade">
     <div class="mb-6">
-      <h2 class="text-xl font-bold text-gray-800">🔐 สิทธิ์บทบาท</h2>
       <p class="text-xs text-gray-400 mt-0.5">กำหนดว่าแต่ละบทบาทสามารถเข้าถึงเมนูใดใน Supervisor mode — บันทึกทันทีเมื่อกด toggle</p>
     </div>
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -7741,7 +7720,6 @@ export async function renderHouseColors() {
       <!-- Header -->
       <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">🎨 จัดการสีนักเรียน</h2>
           <p class="text-xs text-gray-400 mt-0.5">
             ${resp
               ? `ผู้รับผิดชอบ: <span class="font-medium text-gray-600">${_esc(resp.full_name)}</span>`
@@ -8004,7 +7982,6 @@ export async function renderDonations() {
   <div class="max-w-4xl mx-auto animate-fade space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 class="text-lg font-bold text-gray-800">🤝 จัดการผู้สนับสนุน</h2>
         <p class="text-xs text-gray-400 mt-0.5">รายชื่อครูที่โดเนทผ่านระบบและเงินสด</p>
       </div>
       <button id="don-add" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">
@@ -8420,7 +8397,6 @@ export async function renderWorkCalendarView() {
 
   setContent(`<div class="animate-fade max-w-2xl mx-auto">
     <div class="mb-6">
-      <h2 class="text-xl font-bold text-gray-800">📅 ปฏิทินปฏิบัติงาน</h2>
       <p class="text-xs text-gray-400 mt-0.5">ปีการศึกษา ${cfg.academic_year} ภาคเรียนที่ ${cfg.semester}</p>
     </div>
     <div id="wcalv-list" class="space-y-3">
@@ -8492,7 +8468,6 @@ export async function renderWorkCalendar(teacher) {
   setContent(`<div class="animate-fade max-w-2xl mx-auto">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h2 class="text-xl font-bold text-gray-800">📅 ปฏิทินปฏิบัติงาน</h2>
         <p class="text-xs text-gray-400 mt-0.5">ปีการศึกษา ${_ay} ภาคเรียนที่ ${_sm}</p>
       </div>
       <button id="wcal-create-btn"
