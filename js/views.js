@@ -7205,7 +7205,6 @@ export async function renderHouseColors() {
   let filterGrade = ''   // '' = all  เช่น '6'
   let filterRoom = ''    // '' = all  เช่น '6/1'
   let filterQ = ''
-  const pendingChanges = new Map() // sid → newColor|null
 
   const _load = async () => {
     ;[groups, teachers, students] = await Promise.all([
@@ -7434,84 +7433,38 @@ export async function renderHouseColors() {
     })
   }
 
-  const _updateFloatingBtn = () => {
-    let btn = document.getElementById('hc-float-save')
-    if (!btn) {
-      btn = document.createElement('button')
-      btn.id = 'hc-float-save'
-      btn.className = 'fixed bottom-6 right-6 z-[200] flex items-center gap-2 px-5 py-3 rounded-2xl shadow-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm transition-all'
-      btn.addEventListener('click', _saveAllPending)
-      document.body.appendChild(btn)
-    }
-    if (pendingChanges.size === 0) {
-      btn.remove()
-    } else {
-      btn.innerHTML = `💾 บันทึก ${pendingChanges.size} คน`
-    }
-  }
-
-  const _saveAllPending = async () => {
-    if (!pendingChanges.size) return
-    const btn = document.getElementById('hc-float-save')
-    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ กำลังบันทึก...' }
-    try {
-      // จัดกลุ่มตามสีเพื่อ batch save
-      const byColor = new Map()
-      for (const [sid, color] of pendingChanges) {
-        const key = color ?? '__null__'
-        if (!byColor.has(key)) byColor.set(key, [])
-        byColor.get(key).push(sid)
-      }
-      for (const [key, ids] of byColor) {
-        await assignStudentsHouseColor(ids, key === '__null__' ? null : key)
-      }
-      // อัปเดต local state
-      for (const [sid, color] of pendingChanges) {
-        const s = students.find(s => s.id === sid)
-        if (s) s.house_color = color
-        // อัปเดต badge ใน row
-        const sel = document.querySelector(`.hc-color-sel[data-sid="${sid}"]`)
-        if (sel) {
-          sel.dataset.current = color ?? ''
-          sel.classList.remove('border-amber-400', 'bg-amber-50')
-          sel.classList.add('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]')
-          setTimeout(() => sel.classList.remove('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]'), 2000)
+  const _bindColorSelects = () => {
+    document.querySelectorAll('.hc-color-sel').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const sid = sel.dataset.sid
+        const prev = sel.dataset.current
+        const newColor = sel.value || null
+        sel.disabled = true
+        try {
+          await assignStudentsHouseColor([sid], newColor)
+          const s = students.find(s => s.id === sid)
+          if (s) s.house_color = newColor
+          sel.dataset.current = newColor ?? ''
+          // อัปเดต badge สีปัจจุบัน
           const row = sel.closest('tr')
           const badgeCell = row?.children[4]
           if (badgeCell) {
-            const g = _groupByName(color)
+            const g = _groupByName(newColor)
             badgeCell.innerHTML = g
               ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style="background:${g.color_hex}">
-                   ${_colorDot(g.color_hex,'w-2.5 h-2.5')} ${_esc(color)}
+                   ${_colorDot(g.color_hex,'w-2.5 h-2.5')} ${_esc(newColor)}
                  </span>`
               : `<span class="text-xs text-gray-400">—</span>`
           }
+          // green glow feedback
+          sel.classList.add('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]')
+          setTimeout(() => sel.classList.remove('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]'), 2000)
+          _refreshChips()
+        } catch {
+          showToast('บันทึกไม่สำเร็จ', 'error')
+          sel.value = prev ?? ''
         }
-      }
-      pendingChanges.clear()
-      _refreshChips()
-      showToast('บันทึกสำเร็จ ✅', 'success')
-    } catch {
-      showToast('บันทึกไม่สำเร็จ', 'error')
-      if (btn) btn.disabled = false
-    }
-    _updateFloatingBtn()
-  }
-
-  const _bindColorSelects = () => {
-    document.querySelectorAll('.hc-color-sel').forEach(sel => {
-      sel.addEventListener('change', () => {
-        const sid = sel.dataset.sid
-        const newColor = sel.value || null
-        const original = sel.dataset.current || null
-        if (newColor === original) {
-          pendingChanges.delete(sid)
-          sel.classList.remove('border-amber-400', 'bg-amber-50')
-        } else {
-          pendingChanges.set(sid, newColor)
-          sel.classList.add('border-amber-400', 'bg-amber-50')
-        }
-        _updateFloatingBtn()
+        sel.disabled = false
       })
     })
   }
@@ -7578,9 +7531,6 @@ export async function renderHouseColors() {
 
   await _load()
   _render()
-  // ล้าง floating button เมื่อออกจากหน้านี้
-  const _cleanup = () => { document.getElementById('hc-float-save')?.remove(); pendingChanges.clear() }
-  document.querySelectorAll('[data-nav]').forEach(el => el.addEventListener('click', _cleanup, { once: true }))
 }
 
 
