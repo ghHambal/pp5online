@@ -7474,6 +7474,8 @@ export async function renderHouseColors() {
         if (sel) {
           sel.dataset.current = color ?? ''
           sel.classList.remove('border-amber-400', 'bg-amber-50')
+          sel.classList.add('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]')
+          setTimeout(() => sel.classList.remove('border-emerald-400', 'bg-emerald-50', 'shadow-[0_0_0_3px_rgba(52,211,153,0.35)]'), 2000)
           const row = sel.closest('tr')
           const badgeCell = row?.children[4]
           if (badgeCell) {
