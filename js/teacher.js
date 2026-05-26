@@ -1984,9 +1984,20 @@ function _toggleSupervisorMode() {
 // ─── Quick Class Picker ───────────────────────────────────────────────────────
 async function _showClassQuickPicker(mode) {
   if (!_teacher) return
-  const { getMyClasses } = await import('./api.js')
-  let classes
-  try { classes = await getMyClasses(_teacher.id) } catch { classes = [] }
+  const { supabase } = await import('./supabase.js')
+  let classes = []
+  try {
+    const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', _teacher.id)
+    const ids = (subjects.data ?? []).map(s => s.id)
+    if (ids.length) {
+      const { data } = await supabase
+        .from('classes')
+        .select('id, course_id, class_name, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date, master_subjects(id, subject_name, subject_code, credit, grade_level, dept, subject_group, teacher_id), class_students(student_id)')
+        .in('course_id', ids)
+        .order('class_name')
+      classes = data ?? []
+    }
+  } catch { classes = [] }
 
   if (!classes.length) {
     const { showToast } = await import('./ui.js')
@@ -2010,7 +2021,7 @@ async function _showClassQuickPicker(mode) {
         ${classes.map(cls => `
           <button data-cid="${cls.id}" class="qcp-cls w-full text-left px-4 py-3 rounded-xl hover:bg-emerald-50 active:bg-emerald-100 transition border border-gray-100">
             <p class="font-semibold text-gray-800 text-sm">${cls.class_name}</p>
-            <p class="text-xs text-gray-400 mt-0.5">${cls.master_subjects?.subject_name ?? ''} · ${cls.students?.length ?? 0} คน</p>
+            <p class="text-xs text-gray-400 mt-0.5">${cls.master_subjects?.subject_name ?? ''} · ${cls.class_students?.length ?? 0} คน</p>
           </button>`).join('')}
       </div>
     </div>`
