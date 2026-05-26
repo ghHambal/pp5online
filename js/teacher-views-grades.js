@@ -1,5 +1,6 @@
 import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
+  updateColumnSortOrders,
   getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
   detectAssignmentKind, getSheetColumnOptions,
   getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
@@ -614,13 +615,22 @@ export async function renderGradesGrid(teacher, classData) {
       const modal = document.createElement('div')
       modal.id = 'manage-cols-modal'
       modal.className = 'fixed inset-0 z-[600] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4'
-      const colRow = col => {
+      const colRow = (col, group = []) => {
         const locked = _isLockedScoreColumn(col)
+        const idx = group.findIndex(c => c.id === col.id)
+        const canUp   = !locked && idx > 0 && !_isLockedScoreColumn(group[idx - 1])
+        const canDown = !locked && idx >= 0 && idx < group.length - 1
         return `
         <div class="flex items-center gap-2 px-3 py-2 rounded-xl border ${locked ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-100 hover:border-gray-200 bg-gray-50/60'}">
           ${locked
             ? `<span class="w-4 text-emerald-500 text-xs flex-shrink-0">🔒</span>`
             : `<input type="checkbox" class="mcm-cb w-4 h-4 rounded accent-red-500 flex-shrink-0" data-colid="${col.id}" />`}
+          <div class="flex flex-col gap-0.5 flex-shrink-0">
+            <button class="mcm-move text-[10px] leading-none px-1 rounded ${canUp ? 'text-gray-400 hover:bg-gray-200' : 'text-gray-200 cursor-default'}"
+              data-colid="${col.id}" data-dir="up" ${canUp ? '' : 'disabled'}>▲</button>
+            <button class="mcm-move text-[10px] leading-none px-1 rounded ${canDown ? 'text-gray-400 hover:bg-gray-200' : 'text-gray-200 cursor-default'}"
+              data-colid="${col.id}" data-dir="down" ${canDown ? '' : 'disabled'}>▼</button>
+          </div>
           <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name||'—'}</span>
           <span class="text-[11px] text-gray-400">/${col.max_score||0}</span>
           ${locked
@@ -664,14 +674,14 @@ export async function renderGradesGrid(teacher, classData) {
             <div class="flex items-center justify-between mb-2">
               <h4 class="font-semibold text-blue-700 text-sm">📘 กลางภาค <span class="font-normal text-gray-400">(${midCols.length} คอลัมน์)</span></h4>
             </div>
-            <div class="mcm-col-list space-y-1.5">${midCols.map(colRow).join('')}</div>
+            <div class="mcm-col-list space-y-1.5">${midCols.map(c => colRow(c, midCols)).join('')}</div>
             <button class="mcm-add mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-blue-200 text-blue-500 hover:border-blue-400 hover:bg-blue-50 text-sm transition-colors" data-type="midterm">＋ เพิ่มคอลัมน์กลางภาค</button>
           </div>
           <div>
             <div class="flex items-center justify-between mb-2">
               <h4 class="font-semibold text-purple-700 text-sm">📙 ปลายภาค <span class="font-normal text-gray-400">(${finalCols.length} คอลัมน์)</span></h4>
             </div>
-            <div class="mcm-col-list space-y-1.5">${finalCols.map(colRow).join('')}</div>
+            <div class="mcm-col-list space-y-1.5">${finalCols.map(c => colRow(c, finalCols)).join('')}</div>
             <button class="mcm-add mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-purple-200 text-purple-500 hover:border-purple-400 hover:bg-purple-50 text-sm transition-colors" data-type="final">＋ เพิ่มคอลัมน์ปลายภาค</button>
           </div>
           <div>
@@ -708,7 +718,38 @@ export async function renderGradesGrid(teacher, classData) {
         popup.querySelector('#mcm-conf-yes').addEventListener('click', () => { popup.remove(); onConfirm() })
       }
 
+      const _rerenderColLists = () => {
+        modal.querySelectorAll('.mcm-col-list').forEach((el, i) => {
+          const grp = i === 0 ? midCols : finalCols
+          el.innerHTML = grp.map(c => colRow(c, grp)).join('')
+        })
+        _rebindModal()
+      }
+
       const _rebindModal = () => {
+        // rebind move buttons
+        modal.querySelectorAll('.mcm-move').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (btn.disabled) return
+            const colId = parseInt(btn.dataset.colid)
+            const dir   = btn.dataset.dir
+            const grp   = midCols.findIndex(c => c.id === colId) !== -1 ? midCols : finalCols
+            const idx   = grp.findIndex(c => c.id === colId)
+            const swapIdx = dir === 'up' ? idx - 1 : idx + 1
+            if (swapIdx < 0 || swapIdx >= grp.length) return
+            if (_isLockedScoreColumn(grp[swapIdx])) return
+            // สลับใน array (mutate in-place)
+            const a = grp[idx], b = grp[swapIdx]
+            grp[idx] = b; grp[swapIdx] = a
+            // save sort_order
+            const aOrder = a.sort_order ?? (idx + 1) * 10
+            const bOrder = b.sort_order ?? (swapIdx + 1) * 10
+            a.sort_order = bOrder; b.sort_order = aOrder
+            await updateColumnSortOrders([{ id: a.id, sort_order: bOrder }, { id: b.id, sort_order: aOrder }])
+            _renderGrid()
+            _rerenderColLists()
+          })
+        })
         // rebind delete buttons after re-render
         modal.querySelectorAll('.mcm-del').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -732,7 +773,8 @@ export async function renderGradesGrid(teacher, classData) {
                     listArea.querySelector('.space-y-1\\.5')?.remove?.()
                     // re-render mid list
                     modal.querySelectorAll('.mcm-col-list').forEach((el, i) => {
-                      el.innerHTML = (i === 0 ? midCols : finalCols).map(colRow).join('')
+                      const grp = i === 0 ? midCols : finalCols
+                      el.innerHTML = grp.map(c => colRow(c, grp)).join('')
                     })
                     _rebindModal()
                   }
