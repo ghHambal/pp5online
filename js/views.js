@@ -7349,6 +7349,38 @@ export async function renderSupervisorAnnouncements(teacher) {
     m.querySelector('#sann-modal-close').onclick = close
     m.querySelector('#sann-modal-cancel').onclick = close
     m.addEventListener('click', e => { if (e.target === m) close() })
+
+    // hint + suggestion chips
+    const _TITLE_CHIPS = [
+      'ประชุมครูประจำเดือน','แจ้งกำหนดส่งแบบฟอร์ม','ขอความร่วมมือ',
+      'แจ้งกำหนดการสอบ','แจ้งปฏิทินกิจกรรม',
+    ]
+    const _BODY_CHIPS = [
+      'ขอให้คุณครูทุกท่านรับทราบและดำเนินการภายในวันที่กำหนด',
+      'ขอให้คุณครูกรอกแบบฟอร์มและส่งกลับมาที่ฝ่ายทะเบียน',
+      'หากมีข้อสงสัยสามารถติดต่อสอบถามได้ที่ฝ่ายวิชาการ',
+    ]
+    const _makeHint = (inputEl, chips) => {
+      const wrap = document.createElement('div')
+      wrap.className = 'mt-1.5 hidden'
+      wrap.innerHTML = `<p class="text-[11px] text-gray-400 mb-1.5">ตัวอย่าง:</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${chips.map(c => `<button type="button" class="sann-chip px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[11px] font-medium transition border border-indigo-100" data-val="${c}">${c}</button>`).join('')}
+        </div>`
+      inputEl.parentNode.appendChild(wrap)
+      inputEl.addEventListener('focus', () => wrap.classList.remove('hidden'))
+      inputEl.addEventListener('blur', () => setTimeout(() => wrap.classList.add('hidden'), 150))
+      wrap.querySelectorAll('.sann-chip').forEach(btn => {
+        btn.addEventListener('mousedown', e => e.preventDefault())
+        btn.addEventListener('click', () => {
+          if (!inputEl.value.trim()) inputEl.value = btn.dataset.val
+          else inputEl.value += (inputEl.tagName === 'TEXTAREA' ? '\n' : ' ') + btn.dataset.val
+          inputEl.focus()
+        })
+      })
+    }
+    _makeHint(m.querySelector('#sann-title'), _TITLE_CHIPS)
+    _makeHint(m.querySelector('#sann-body'), _BODY_CHIPS)
     m.querySelector('#sann-modal-save').addEventListener('click', async () => {
       const title = m.querySelector('#sann-title').value.trim()
       if (!title) { showToast('กรุณากรอกหัวข้อ','warning'); return }
