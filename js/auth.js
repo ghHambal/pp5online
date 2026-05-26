@@ -120,7 +120,9 @@ async function resolveLoginEmail(identifier) {
     .eq('old_code', raw)
     .maybeSingle()
   if (redirect) {
-    throw new Error(`รหัสครู ${raw} ถูกรวมบัญชีแล้ว — กรุณาใช้รหัส ${redirect.new_code} แทน (${redirect.full_name})`)
+    // แจ้งเตือนแล้ว login ต่อด้วยรหัสจริงโดยอัตโนมัติ
+    showToast(`รหัสครู ${raw} ถูกรวมบัญชีแล้ว — ใช้รหัส ${redirect.new_code} (${redirect.full_name}) แทน`, 'warning')
+    return resolveLoginEmail(redirect.new_code)
   }
 
   throw new Error('ไม่พบบัญชีนี้ในระบบ กรุณาตรวจสอบรหัสครู / รหัสนักเรียน หรือเข้าสู่ระบบด้วยอีเมล')
