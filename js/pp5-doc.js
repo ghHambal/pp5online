@@ -126,6 +126,41 @@ function _generateSessions(classData, credit, dowPattern = null) {
     return sessions
   }
 
+  // No-DOW path: week-aware — จำกัด targetPerWeek คาบต่อสัปดาห์ทั้ง base dates และ continuation
+  if (!effectiveDOW || !effectiveDOW.length) {
+    const weekMs = 7 * 24 * 60 * 60 * 1000
+    // กรอง bases ให้เหลือแค่ targetPerWeek ต่อสัปดาห์
+    const weekCount = {}
+    const weekLimitedBases = bases.filter(b => {
+      const wSun = new Date(b); wSun.setDate(wSun.getDate() - wSun.getDay()); wSun.setHours(0,0,0,0)
+      const key = wSun.getTime()
+      weekCount[key] = (weekCount[key] || 0) + 1
+      return weekCount[key] <= targetPerWeek
+    })
+    const sessions = []
+    for (const base of weekLimitedBases) {
+      if (sessions.length >= total) break
+      sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateKey(base) })
+    }
+    if (sessions.length >= total) return sessions
+    // ต่อเนื่องจาก last week ของ base dates (ใช้ pattern ที่ limit แล้ว)
+    const lastLimitedBase = weekLimitedBases[weekLimitedBases.length - 1]
+    const lastWeekSun = new Date(lastLimitedBase); lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay()); lastWeekSun.setHours(0,0,0,0)
+    const lastWeekTs = lastWeekSun.getTime()
+    const repeatBases = weekLimitedBases.filter(b => b.getTime() >= lastWeekTs && b.getTime() < lastWeekTs + weekMs)
+    let weekOffset = 1
+    while (sessions.length < total) {
+      for (const base of repeatBases) {
+        if (sessions.length >= total) break
+        const d = new Date(base); d.setDate(d.getDate() + weekOffset * 7)
+        sessions.push({ n: sessions.length + 1, date: d, ds: _dateKey(d) })
+      }
+      weekOffset++
+    }
+    return sessions
+  }
+
+  // DOW path: initial base filling (ไม่ต้อง limit per week เพราะ DOW pattern จัดการเอง)
   const sessions = []
   for (const base of bases) {
     if (sessions.length >= total) break
@@ -134,26 +169,6 @@ function _generateSessions(classData, credit, dowPattern = null) {
   if (sessions.length >= total) return sessions
 
   const lastBase = bases[bases.length - 1]
-
-  if (!effectiveDOW || !effectiveDOW.length) {
-    const weekMs = 7 * 24 * 60 * 60 * 1000
-    const lastWeekSun = new Date(lastBase)
-    lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay())
-    lastWeekSun.setHours(0, 0, 0, 0)
-    const lastWeekTs = lastWeekSun.getTime()
-    const repeatBases = bases.filter(b => b.getTime() >= lastWeekTs && b.getTime() < lastWeekTs + weekMs)
-    let weekOffset = 1
-    while (sessions.length < total) {
-      for (const base of repeatBases) {
-        if (sessions.length >= total) break
-        const d = new Date(base)
-        d.setDate(d.getDate() + weekOffset * 7)
-        sessions.push({ n: sessions.length + 1, date: d, ds: _dateKey(d) })
-      }
-      weekOffset++
-    }
-    return sessions
-  }
 
   // DOW-aware continuation (effectiveDOW may include auto-extended days for credit compliance)
   const lastWeekSun = new Date(lastBase)
