@@ -13,6 +13,7 @@ import {
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
   getTeacherExamRequests, reviewExamRequest, updateExamResult,
   getTeacherPackageAccess,
+  getTeacherClassesForLinking,
 } from './api.js'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
@@ -1336,6 +1337,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
     _infoSaving = true
     _setInfoStatus('saving')
     try {
+      const srcVal = modal.querySelector('#cem-source-class')?.value
       await updateClass(cls.id, {
         class_name:      modal.querySelector('#cem-classname').value.trim() || cls.class_name,
         skill_group:     modal.querySelector('#cem-skillgroup').value.trim() || null,
@@ -1347,6 +1349,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         day4_date:       modal.querySelector('#cem-day4')?.value || null,
         day5_date:       modal.querySelector('#cem-day5')?.value || null,
         day6_date:       modal.querySelector('#cem-day6')?.value || null,
+        source_class_id: srcVal ? Number(srcVal) : null,
       })
       _infoDirty = false
       _hasChanges = true
@@ -1422,6 +1425,15 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
           </div>`).join('')}
         </div>
       </div>
+      <!-- ใช้ข้อมูลจากห้องเรียนอื่น -->
+      <div class="border-t border-gray-100 pt-3">
+        <label class="block text-xs font-semibold text-gray-600 mb-1">🔗 ใช้ข้อมูลจากห้องเรียนอื่น</label>
+        <p class="text-xs text-gray-400 mb-2">สำหรับวิชาที่ไม่ได้สอนจริง — ปพ.5 จะดึงการเช็คชื่อและคะแนน (เฉพาะที่กรอกเอง) จากห้องที่เลือก</p>
+        <select id="cem-source-class" class="${INPUT_CLS} text-xs">
+          <option value="">— ไม่ได้ใช้ข้อมูลจากห้องอื่น —</option>
+        </select>
+        <p id="cem-source-info" class="hidden text-xs text-amber-600 mt-1"></p>
+      </div>
       <p id="cem-info-status" class="hidden text-xs font-medium text-emerald-600"></p>
     </div>`
   }
@@ -1430,6 +1442,35 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
   const currentLinked = new Set(linkedIds)
   // pending state — เปลี่ยนได้จากการคลิก, save เมื่อกดปุ่ม
   const pendingLinked = new Set(linkedIds)
+
+  // โหลด source class options (background)
+  if (teacher?.id) {
+    getTeacherClassesForLinking(teacher.id, cls.id).then(classes => {
+      const sel = modal.querySelector('#cem-source-class')
+      if (!sel) return
+      classes.forEach(c => {
+        const ms  = c.master_subjects
+        const lbl = `${ms?.subject_name ?? '?'} (${ms?.subject_code ?? ''}) — ${c.class_name} · ${ms?.credit ?? '?'} หน่วยกิต`
+        const opt = new Option(lbl, c.id, false, Number(c.id) === Number(cls.source_class_id))
+        sel.appendChild(opt)
+      })
+      // แสดง warning ถ้า credit ต่างกัน
+      const _showCreditWarning = (srcId) => {
+        const infoEl = modal.querySelector('#cem-source-info')
+        if (!infoEl) return
+        const src = classes.find(c => Number(c.id) === Number(srcId))
+        if (!src) { infoEl.classList.add('hidden'); return }
+        const srcCredit = src.master_subjects?.credit ?? 1
+        const tgtCredit = cls.master_subjects?.credit ?? 1
+        if (srcCredit !== tgtCredit) {
+          infoEl.textContent = `⚠️ หน่วยกิตต่างกัน (แหล่ง ${srcCredit} / วิชานี้ ${tgtCredit}) — ระบบจะ remap คาบต่อสัปดาห์อัตโนมัติ`
+          infoEl.classList.remove('hidden')
+        } else { infoEl.classList.add('hidden') }
+      }
+      if (cls.source_class_id) _showCreditWarning(cls.source_class_id)
+      sel.addEventListener('change', () => { _showCreditWarning(sel.value); _scheduleInfoSave(true) })
+    }).catch(() => {})
+  }
 
   // linksBySchedule: scheduleId → classId[] (สำหรับตรวจว่าคาบนี้ถูกใช้กับห้องไหน)
   const linksBySchedule = {}
