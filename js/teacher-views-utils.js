@@ -200,12 +200,51 @@ export function _activeRemainingDisplay(endTime) {
 }
 
 export function _generateSessions(classData, credit, dowPattern = null) {
-  const periodsPerWeek = (dowPattern && dowPattern.length) ? dowPattern.length : Math.max(1, Math.round(credit ?? 1))
-  const total = periodsPerWeek * 20
+  // total คาบตามหน่วยกิต (1 credit = 2 คาบ/สัปดาห์ × 20 สัปดาห์)
+  const targetPerWeek = Math.max(1, Math.round((credit ?? 1) * 2))
+  // DOW pattern จาก schedule — cap ไม่เกิน targetPerWeek (ไม่ extend สำหรับหน้าเช็คชื่อ)
+  const periodsPerWeek = (dowPattern && dowPattern.length)
+    ? Math.min(dowPattern.length, targetPerWeek)
+    : targetPerWeek
+  const total = targetPerWeek * 20
   const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
     .map(k => classData[k]).filter(Boolean).map(d => _parseDateOnly(d)).filter(Boolean)
     .sort((a, b) => a - b)
   if (!bases.length) return []
+
+  // No-DOW path: week-aware — จำกัด targetPerWeek ต่อสัปดาห์ทั้ง base dates และ continuation
+  if (!dowPattern || !dowPattern.length) {
+    const weekMs = 7 * 24 * 60 * 60 * 1000
+    const weekCount = {}
+    const weekLimitedBases = bases.filter(b => {
+      const wSun = new Date(b); wSun.setDate(wSun.getDate() - wSun.getDay()); wSun.setHours(0,0,0,0)
+      const key = wSun.getTime()
+      weekCount[key] = (weekCount[key] || 0) + 1
+      return weekCount[key] <= targetPerWeek
+    })
+    const sessions = []
+    for (const base of weekLimitedBases) {
+      if (sessions.length >= total) break
+      sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateInputValue(base) })
+    }
+    if (sessions.length >= total) return sessions
+    const lastLimitedBase = weekLimitedBases[weekLimitedBases.length - 1]
+    const lastWeekSun = new Date(lastLimitedBase); lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay()); lastWeekSun.setHours(0,0,0,0)
+    const lastWeekTs = lastWeekSun.getTime()
+    const repeatBases = weekLimitedBases.filter(b => b.getTime() >= lastWeekTs && b.getTime() < lastWeekTs + weekMs)
+    let cycle = 1
+    while (sessions.length < total) {
+      for (const base of repeatBases) {
+        if (sessions.length >= total) break
+        const d = new Date(base); d.setDate(d.getDate() + cycle * 7)
+        sessions.push({ n: sessions.length + 1, date: d, ds: _dateInputValue(d) })
+      }
+      cycle++
+    }
+    return sessions
+  }
+
+  // DOW path: initial base filling (DOW pattern จัดการ weekly distribution เอง)
   const sessions = []
   for (const base of bases) {
     if (sessions.length >= total) break
@@ -213,19 +252,7 @@ export function _generateSessions(classData, credit, dowPattern = null) {
   }
   if (sessions.length >= total) return sessions
   const lastBase = bases[bases.length - 1]
-  if (!dowPattern || !dowPattern.length) {
-    let cycle = 1
-    while (sessions.length < total) {
-      for (const base of bases) {
-        if (sessions.length >= total) break
-        const d = new Date(base)
-        d.setDate(d.getDate() + cycle * 7)
-        sessions.push({ n: sessions.length + 1, date: d, ds: _dateInputValue(d) })
-      }
-      cycle++
-    }
-    return sessions
-  }
+
   const lastWeekSun = new Date(lastBase)
   lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay())
   lastWeekSun.setHours(0, 0, 0, 0)
@@ -238,8 +265,10 @@ export function _generateSessions(classData, credit, dowPattern = null) {
       usedCounts[dow] = (usedCounts[dow] || 0) + 1
     }
   }
+  // ใช้เฉพาะ periodsPerWeek DOW entries แรก (cap ไม่เกิน credit ที่กำหนด)
+  const cappedDOW = dowPattern.slice(0, periodsPerWeek)
   const patternCounts = {}
-  for (const dow of dowPattern) patternCounts[dow] = (patternCounts[dow] || 0) + 1
+  for (const dow of cappedDOW) patternCounts[dow] = (patternCounts[dow] || 0) + 1
   const remaining = []
   for (const [d, cnt] of Object.entries(patternCounts)) {
     const need = cnt - (usedCounts[Number(d)] || 0)
@@ -254,7 +283,7 @@ export function _generateSessions(classData, credit, dowPattern = null) {
   }
   let weekOffset = 1
   while (sessions.length < total) {
-    for (const dow of dowPattern) {
+    for (const dow of cappedDOW) {
       if (sessions.length >= total) break
       const d = new Date(lastWeekSun)
       d.setDate(d.getDate() + weekOffset * 7 + dow)
