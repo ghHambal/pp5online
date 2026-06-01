@@ -1432,23 +1432,29 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
         <div id="setup-room-samai-wrap">
           <label class="block text-sm font-semibold text-gray-700 mb-1">
             ห้องที่ปรึกษา <span class="font-normal text-gray-400">(สามัญ)</span>
-            <span class="text-xs text-gray-400 ml-1">— เลือกถ้าเป็นครูที่ปรึกษา</span>
+            <span class="text-xs text-gray-400 ml-1">— เลือกได้มากกว่า 1 ห้อง</span>
           </label>
-          <select id="setup-room-samai" class="${SELECT_CLS}">
-            <option value="">— ไม่ได้เป็นครูที่ปรึกษาสามัญ —</option>
-            ${samaiRooms.map(r=>`<option value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='สามัญ')?'selected':''}>${r}</option>`).join('')}
-          </select>
+          <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
+            ${samaiRooms.length ? samaiRooms.map(r=>`
+            <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
+              <input type="checkbox" name="setup-room-samai" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='สามัญ')?'checked':''} class="text-emerald-600 rounded" />
+              <span>${r}</span>
+            </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องสามัญ</p>`}
+          </div>
         </div>
         <!-- ห้องที่ปรึกษาศาสนา -->
         <div id="setup-room-sadsana-wrap">
           <label class="block text-sm font-semibold text-gray-700 mb-1">
             ห้องที่ปรึกษา <span class="font-normal text-gray-400">(ศาสนา)</span>
-            <span class="text-xs text-gray-400 ml-1">— เลือกถ้าเป็นครูที่ปรึกษา</span>
+            <span class="text-xs text-gray-400 ml-1">— เลือกได้มากกว่า 1 ห้อง</span>
           </label>
-          <select id="setup-room-sadsana" class="${SELECT_CLS}">
-            <option value="">— ไม่ได้เป็นครูที่ปรึกษาศาสนา —</option>
-            ${sadsanaRooms.map(r=>`<option value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='ศาสนา')?'selected':''}>${r}</option>`).join('')}
-          </select>
+          <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
+            ${sadsanaRooms.length ? sadsanaRooms.map(r=>`
+            <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
+              <input type="checkbox" name="setup-room-sadsana" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='ศาสนา')?'checked':''} class="text-emerald-600 rounded" />
+              <span>${r}</span>
+            </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องศาสนา</p>`}
+          </div>
         </div>
         <button id="setup-save" type="submit"
           class="btn-primary w-full py-3 rounded-xl text-white text-sm font-semibold">
@@ -1505,26 +1511,20 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
       const subg    = document.getElementById('setup-subg').value || null
       const cat     = document.querySelector('input[name="setup-category"]:checked')?.value || null
       const phone   = document.getElementById('setup-phone').value.trim() || null
-      const roomSamai   = document.getElementById('setup-room-samai').value || null
-      const roomSadsana = document.getElementById('setup-room-sadsana').value || null
+      const roomsSamai   = [...document.querySelectorAll('input[name="setup-room-samai"]:checked')].map(el=>el.value)
+      const roomsSadsana = [...document.querySelectorAll('input[name="setup-room-sadsana"]:checked')].map(el=>el.value)
 
       // อัปเดต teachers
       await updateMyProfile(teacher.id, { dept, subject_group: subg, category: cat, phone })
 
-      // บันทึกห้องที่ปรึกษา
-      const { upsertHomeroomTeacher } = await import('./api.js')
-      if (roomSamai) {
-        await upsertHomeroomTeacher({
-          teacher_id: teacher.id, main_room: roomSamai,
-          category: 'สามัญ', academic_year: curYear, semester: curSem
-        })
+      // sync ห้องที่ปรึกษา (delete ที่ไม่เลือก + upsert ที่เลือก)
+      const { upsertHomeroomTeacher, deleteHomeroomTeacher } = await import('./api.js')
+      const _syncRooms = async (category, selectedRooms) => {
+        const existing = homeroomRooms.filter(h => h.category === category)
+        await Promise.all(existing.filter(h => !selectedRooms.includes(h.main_room)).map(h => deleteHomeroomTeacher(h.id).catch(()=>{})))
+        await Promise.all(selectedRooms.map(room => upsertHomeroomTeacher({ teacher_id: teacher.id, main_room: room, category, academic_year: curYear, semester: curSem })))
       }
-      if (roomSadsana) {
-        await upsertHomeroomTeacher({
-          teacher_id: teacher.id, main_room: roomSadsana,
-          category: 'ศาสนา', academic_year: curYear, semester: curSem
-        })
-      }
+      await Promise.all([_syncRooms('สามัญ', roomsSamai), _syncRooms('ศาสนา', roomsSadsana)])
       showToast('บันทึกโปรไฟล์สำเร็จ ✅', 'success')
       if (onComplete) await onComplete(teacher.profile_id)
     } catch (err) {
@@ -1644,18 +1644,24 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
           <label class="block text-sm font-semibold text-gray-700 mb-3">🏠 ห้องที่ปรึกษา</label>
           <div class="space-y-3">
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องสามัญ</label>
-              <select id="prof-room-samai" class="${SELECT_CLS}">
-                <option value="">— ไม่ได้เป็นครูที่ปรึกษาสามัญ —</option>
-                ${allSamaiRooms.map(r => `<option value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='สามัญ')?'selected':''}>${r}</option>`).join('')}
-              </select>
+              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องสามัญ — เลือกได้มากกว่า 1 ห้อง</label>
+              <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
+                ${allSamaiRooms.length ? allSamaiRooms.map(r=>`
+                <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
+                  <input type="checkbox" name="prof-room-samai" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='สามัญ')?'checked':''} class="text-emerald-600 rounded" />
+                  <span>${r}</span>
+                </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องสามัญ</p>`}
+              </div>
             </div>
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องศาสนา</label>
-              <select id="prof-room-religion" class="${SELECT_CLS}">
-                <option value="">— ไม่ได้เป็นครูที่ปรึกษาศาสนา —</option>
-                ${allReligionRooms.map(r => `<option value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='ศาสนา')?'selected':''}>${r}</option>`).join('')}
-              </select>
+              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องศาสนา — เลือกได้มากกว่า 1 ห้อง</label>
+              <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
+                ${allReligionRooms.length ? allReligionRooms.map(r=>`
+                <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
+                  <input type="checkbox" name="prof-room-religion" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='ศาสนา')?'checked':''} class="text-emerald-600 rounded" />
+                  <span>${r}</span>
+                </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องศาสนา</p>`}
+              </div>
             </div>
           </div>
         </div>
@@ -1738,19 +1744,19 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
       if (photoFile) payload.image_url = await uploadTeacherPhoto(teacher.id, photoFile)
       await updateMyProfile(teacher.id, payload)
 
-      // บันทึกห้องที่ปรึกษา
-      const { upsertHomeroomTeacher, getSystemConfig: _cfg } = await import('./api.js')
+      // sync ห้องที่ปรึกษา (delete ที่ไม่เลือก + upsert ที่เลือก)
+      const { upsertHomeroomTeacher, deleteHomeroomTeacher, getSystemConfig: _cfg } = await import('./api.js')
       const cfg = await _cfg().catch(()=>({}))
       const curYear = parseInt(cfg.academicYear ?? new Date().getFullYear() + 543)
       const curSem  = parseInt(cfg.semester ?? 1)
-      const roomSamai   = document.getElementById('prof-room-samai').value || null
-      const roomReligion = document.getElementById('prof-room-religion').value || null
-      const saveRoom = async (room, category) => {
-        if (room) {
-          await upsertHomeroomTeacher({ teacher_id: teacher.id, main_room: room, category, academic_year: curYear, semester: curSem })
-        }
+      const roomsSamai    = [...document.querySelectorAll('input[name="prof-room-samai"]:checked')].map(el=>el.value)
+      const roomsReligion = [...document.querySelectorAll('input[name="prof-room-religion"]:checked')].map(el=>el.value)
+      const _syncRooms = async (category, selectedRooms) => {
+        const existing = homeroomRooms.filter(h => h.category === category)
+        await Promise.all(existing.filter(h => !selectedRooms.includes(h.main_room)).map(h => deleteHomeroomTeacher(h.id).catch(()=>{})))
+        await Promise.all(selectedRooms.map(room => upsertHomeroomTeacher({ teacher_id: teacher.id, main_room: room, category, academic_year: curYear, semester: curSem })))
       }
-      await Promise.all([saveRoom(roomSamai, 'สามัญ'), saveRoom(roomReligion, 'ศาสนา')])
+      await Promise.all([_syncRooms('สามัญ', roomsSamai), _syncRooms('ศาสนา', roomsReligion)])
 
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
       if (onRefresh) await onRefresh(teacher.profile_id)

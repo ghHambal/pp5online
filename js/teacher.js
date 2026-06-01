@@ -108,6 +108,37 @@ async function loadTeacherInfo(userId) {
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
+
+// แสดง popup ให้ครูที่ปรึกษาหลายห้องเลือกห้องก่อนเข้าหน้า
+function _pickRoom(rooms, onPick) {
+  if (rooms.length === 1) { onPick(rooms[0].main_room); return }
+  const wrap = document.createElement('div')
+  wrap.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4'
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs">
+      <div class="px-5 pt-5 pb-4 border-b border-gray-100">
+        <h3 class="font-bold text-gray-800">🏠 เลือกห้องที่ปรึกษา</h3>
+        <p class="text-xs text-gray-400 mt-1">คุณเป็นที่ปรึกษาหลายห้อง — เลือกห้องที่ต้องการ</p>
+      </div>
+      <div class="px-5 py-4 space-y-2">
+        ${rooms.map(r => `
+        <button data-room="${r.main_room}"
+          class="room-pick-btn w-full text-left px-4 py-3 rounded-xl border border-gray-200
+                 hover:border-emerald-400 hover:bg-emerald-50 text-sm font-medium transition">
+          ${r.main_room}
+        </button>`).join('')}
+      </div>
+      <div class="px-5 pb-5">
+        <button id="room-pick-cancel" class="w-full py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50">ยกเลิก</button>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+  wrap.querySelectorAll('.room-pick-btn').forEach(btn =>
+    btn.addEventListener('click', () => { wrap.remove(); onPick(btn.dataset.room) })
+  )
+  wrap.querySelector('#room-pick-cancel').addEventListener('click', () => wrap.remove())
+}
+
 const ROUTES = {
   'announcements-view': () => renderAnnouncementsView(_teacher),
   'work-calendar-view': () => import('./views.js').then(({renderWorkCalendarView}) => renderWorkCalendarView()),
@@ -115,9 +146,15 @@ const ROUTES = {
   'my-courses':  () => renderMyCourses(_teacher),
   'my-classes':  () => renderMyClasses(_teacher),
   'attendance':       () => renderAttendance(_teacher),
-  'life-skill-score': () => renderLifeSkillScore(_teacher, _homeroomRooms.filter(r=>r.category==='สามัญ')),
+  'life-skill-score': () => {
+    const rooms = _homeroomRooms.filter(r => r.category === 'สามัญ')
+    _pickRoom(rooms, picked => renderLifeSkillScore(_teacher, rooms.filter(r => r.main_room === picked)))
+  },
   'reading-score':    () => { const r = window._pendingReadingRoom; window._pendingReadingRoom = null; renderReadingScore(_teacher, r) },
-  'prayer-score':     () => renderPrayerScore(_teacher, _homeroomRooms.filter(r=>r.category==='ศาสนา')),
+  'prayer-score':     () => {
+    const rooms = _homeroomRooms.filter(r => r.category === 'ศาสนา')
+    _pickRoom(rooms, picked => renderPrayerScore(_teacher, rooms.filter(r => r.main_room === picked)))
+  },
   'grades':      () => renderGrades(),
   'requests':    () => renderRequests(_teacher),
   'schedule':    () => renderSchedule(_teacher),
@@ -126,14 +163,16 @@ const ROUTES = {
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),
 }
 
+let _currentView = 'overview'
 function navigate(view) {
   const fn = ROUTES[view]
-  if (fn) fn()
+  if (fn) { _currentView = view; fn() }
 }
 
 // expose to window for onclick in views
 window._navTo  = navigate
 window._goBack = () => navigate('my-courses')
+window._refreshCurrentView = () => navigate(_currentView)
 
 const _esc = value => String(value ?? '')
   .replace(/&/g, '&amp;')
