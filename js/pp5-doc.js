@@ -35,13 +35,96 @@ function _fmtDateTH(dateStr) {
 function _thYear(y) { return (y ?? 0) + 543 }
 
 function _generateSessions(classData, credit, dowPattern = null) {
-  const periodsPerWeek = (dowPattern && dowPattern.length) ? dowPattern.length : Math.max(1, Math.round(credit ?? 1))
-  const total = periodsPerWeek * 20
+  // Total sessions based on curriculum credit (1 credit = 2 periods/week × 20 weeks)
+  const targetPerWeek = Math.max(1, Math.round((credit ?? 1) * 2))
+  const total = targetPerWeek * 20
+
+  // If schedule has fewer periods than credit requires, auto-extend with extra weekdays.
+  // Constraint: max 2 sessions per day (matches real-world double-period slots).
+  let effectiveDOW = (dowPattern && dowPattern.length) ? [...dowPattern] : null
+  let autoExtended = false
+  if (effectiveDOW && effectiveDOW.length < targetPerWeek) {
+    autoExtended = true
+    const dowCount = {}
+    for (const d of effectiveDOW) dowCount[d] = (dowCount[d] || 0) + 1
+    for (let d = 1; d <= 5 && effectiveDOW.length < targetPerWeek; d++) {
+      if ((dowCount[d] || 0) < 2) {
+        effectiveDOW.push(d)
+        dowCount[d] = (dowCount[d] || 0) + 1
+      }
+    }
+    effectiveDOW.sort((a, b) => a - b)
+  }
+
   const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
     .map(k => classData[k]).filter(Boolean)
     .map(s => _parseDateOnly(s)).filter(Boolean)
     .sort((a, b) => a - b)
   if (!bases.length) return []
+
+  // Auto-extended case: use actual base dates per week + fill extra sessions within
+  // the same calendar week, so the first date matches what the teacher set.
+  if (autoExtended && effectiveDOW) {
+    const weekMs = 7 * 24 * 60 * 60 * 1000
+    const sessions = []
+    let bi = 0
+    let lastWeekSunTs = 0
+
+    // Phase 1: weeks covered by base dates — keep teacher's actual dates + fill extras
+    while (bi < bases.length && sessions.length < total) {
+      const weekSun = new Date(bases[bi])
+      weekSun.setDate(weekSun.getDate() - weekSun.getDay())
+      weekSun.setHours(0, 0, 0, 0)
+      const weekTs = weekSun.getTime()
+      lastWeekSunTs = weekTs
+
+      const weekBases = []
+      while (bi < bases.length && bases[bi].getTime() >= weekTs && bases[bi].getTime() < weekTs + weekMs) {
+        weekBases.push(bases[bi++])
+      }
+
+      // Track DOW usage for this week's base dates (max 2 per day)
+      const usedDOWCount = {}
+      for (const b of weekBases) {
+        const d = b.getDay()
+        usedDOWCount[d] = (usedDOWCount[d] || 0) + 1
+      }
+
+      for (const base of weekBases) {
+        if (sessions.length >= total) break
+        sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateKey(base) })
+      }
+
+      // Fill extra sessions on any weekday not already at max in this week
+      let filled = 0
+      const needed = targetPerWeek - weekBases.length
+      for (let d = 1; d <= 5 && filled < needed && sessions.length < total; d++) {
+        if ((usedDOWCount[d] || 0) < 2) {
+          const extra = new Date(weekSun)
+          extra.setDate(extra.getDate() + d)
+          sessions.push({ n: sessions.length + 1, date: extra, ds: _dateKey(extra) })
+          usedDOWCount[d] = (usedDOWCount[d] || 0) + 1
+          filled++
+        }
+      }
+    }
+
+    // Phase 2: weeks beyond base dates — pure DOW-pattern generation
+    if (sessions.length < total) {
+      const lastWeekSun = new Date(lastWeekSunTs)
+      let weekOffset = 1
+      while (sessions.length < total) {
+        for (const dow of effectiveDOW) {
+          if (sessions.length >= total) break
+          const d = new Date(lastWeekSun)
+          d.setDate(d.getDate() + weekOffset * 7 + dow)
+          sessions.push({ n: sessions.length + 1, date: d, ds: _dateKey(d) })
+        }
+        weekOffset++
+      }
+    }
+    return sessions
+  }
 
   const sessions = []
   for (const base of bases) {
@@ -52,7 +135,7 @@ function _generateSessions(classData, credit, dowPattern = null) {
 
   const lastBase = bases[bases.length - 1]
 
-  if (!dowPattern || !dowPattern.length) {
+  if (!effectiveDOW || !effectiveDOW.length) {
     const weekMs = 7 * 24 * 60 * 60 * 1000
     const lastWeekSun = new Date(lastBase)
     lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay())
@@ -72,7 +155,7 @@ function _generateSessions(classData, credit, dowPattern = null) {
     return sessions
   }
 
-  // DOW-aware continuation
+  // DOW-aware continuation (effectiveDOW may include auto-extended days for credit compliance)
   const lastWeekSun = new Date(lastBase)
   lastWeekSun.setDate(lastWeekSun.getDate() - lastWeekSun.getDay())
   lastWeekSun.setHours(0, 0, 0, 0)
@@ -87,7 +170,7 @@ function _generateSessions(classData, credit, dowPattern = null) {
     }
   }
   const patternCounts = {}
-  for (const dow of dowPattern) patternCounts[dow] = (patternCounts[dow] || 0) + 1
+  for (const dow of effectiveDOW) patternCounts[dow] = (patternCounts[dow] || 0) + 1
 
   const remaining = []
   for (const [d, cnt] of Object.entries(patternCounts)) {
@@ -105,7 +188,7 @@ function _generateSessions(classData, credit, dowPattern = null) {
 
   let weekOffset = 1
   while (sessions.length < total) {
-    for (const dow of dowPattern) {
+    for (const dow of effectiveDOW) {
       if (sessions.length >= total) break
       const d = new Date(lastWeekSun)
       d.setDate(d.getDate() + weekOffset * 7 + dow)
