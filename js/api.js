@@ -57,12 +57,27 @@ export async function getMyClasses(teacherId) {
     .from('classes')
     .select(`
       id, course_id, class_name, skill_group, google_sheet_id, gas_url, head_student_id,
-      classroom_id,
+      classroom_id, source_class_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
       students ( full_name )
     `)
     .in('course_id', ids)
+    .order('class_name')
+  if (error) throw error
+  return data ?? []
+}
+
+// ดึงรายการห้องที่ครูสอน สำหรับเลือก source class (ยกเว้นห้องตัวเอง)
+export async function getTeacherClassesForLinking(teacherId, excludeClassId) {
+  const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
+  const ids = (subjects.data ?? []).map(s => s.id)
+  if (!ids.length) return []
+  const { data, error } = await supabase
+    .from('classes')
+    .select('id, class_name, source_class_id, master_subjects(subject_name, subject_code, credit)')
+    .in('course_id', ids)
+    .neq('id', excludeClassId)
     .order('class_name')
   if (error) throw error
   return data ?? []

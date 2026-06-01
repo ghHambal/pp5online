@@ -1,7 +1,8 @@
 import { getDepartments, getSystemConfig, getRoomsByGrade, getStudentsByRoom,
          getStudentsByReligionRoom, getReligionRoomsByGrade, getMySchedule,
          createClass, updateClass, enrollStudents, getClassStudents,
-         getScoreColumns, createScoreColumn, linkClassToSchedule } from './api.js'
+         getScoreColumns, createScoreColumn, linkClassToSchedule,
+         getTeacherClassesForLinking } from './api.js'
 import { showToast } from './ui.js'
 
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
@@ -538,6 +539,19 @@ export async function renderClassEditForm(teacher, classData) {
             </div>`).join('')}
           </div>
         </div>
+        <!-- ใช้ข้อมูลจากห้องอื่น (source class) -->
+        <div id="ce-source-wrap" class="border-t border-gray-100 pt-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            🔗 ใช้ข้อมูลจากห้องเรียนอื่น
+          </label>
+          <p class="text-xs text-gray-400 mb-2">
+            สำหรับวิชาที่ไม่ได้สอนจริง — ปพ.5 จะดึงการเช็คชื่อและคะแนน (เฉพาะที่ครูกรอกเอง) จากห้องที่เลือก
+          </p>
+          <select id="ce-source-class" class="${SELECT_CLS}">
+            <option value="">— ไม่ได้ใช้ข้อมูลจากห้องอื่น —</option>
+          </select>
+          <p id="ce-source-info" class="hidden text-xs text-amber-600 mt-1"></p>
+        </div>
         <div class="flex gap-3 pt-2">
           <button type="button"
             onclick="window._navTo?.('my-classes') || history.back()"
@@ -552,6 +566,48 @@ export async function renderClassEditForm(teacher, classData) {
       </form>
     </div>
   </div>`)
+  // ─── โหลด source class options ──────────────────────────────────────────
+  if (teacher?.id) {
+    getTeacherClassesForLinking(teacher.id, classData.id).then(classes => {
+      const sel = document.getElementById('ce-source-class')
+      if (!sel) return
+      classes.forEach(c => {
+        const ms  = c.master_subjects
+        const lbl = `${ms?.subject_name ?? '?'} (${ms?.subject_code ?? ''}) — ${c.class_name} · ${ms?.credit ?? '?'} หน่วยกิต`
+        const opt = new Option(lbl, c.id, false, Number(c.id) === Number(classData.source_class_id))
+        sel.appendChild(opt)
+      })
+      // แสดง info ถ้ามี source อยู่แล้ว
+      if (classData.source_class_id) {
+        const src = classes.find(c => Number(c.id) === Number(classData.source_class_id))
+        if (src) _updateSourceInfo(src)
+      }
+    }).catch(() => {})
+  }
+
+  const _updateSourceInfo = (src) => {
+    const el = document.getElementById('ce-source-info')
+    if (!el || !src) return
+    const srcCredit = src.master_subjects?.credit ?? 1
+    const tgtCredit = classData.master_subjects?.credit ?? 1
+    if (srcCredit !== tgtCredit) {
+      el.textContent = `⚠️ หน่วยกิตต่างกัน (แหล่ง ${srcCredit} / วิชานี้ ${tgtCredit}) — ระบบจะ remap คาบต่อสัปดาห์อัตโนมัติ`
+      el.classList.remove('hidden')
+    } else {
+      el.classList.add('hidden')
+    }
+  }
+
+  document.getElementById('ce-source-class')?.addEventListener('change', e => {
+    const sel = e.target
+    const opt = sel.selectedOptions[0]
+    if (!opt?.value) { document.getElementById('ce-source-info')?.classList.add('hidden'); return }
+    getTeacherClassesForLinking(teacher?.id, classData.id).then(classes => {
+      const src = classes.find(c => Number(c.id) === Number(opt.value))
+      if (src) _updateSourceInfo(src)
+    }).catch(() => {})
+  })
+
   // ─── คำนวณวันจากตารางสอน ────────────────────────────────────────────────
   let _pendingEditScheduleEntries = []   // entries ที่ครูเลือกจาก calc → link หลัง updateClass
 
@@ -639,6 +695,7 @@ export async function renderClassEditForm(teacher, classData) {
     const btn = document.getElementById('ce-submit')
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
+      const sourceClassId = document.getElementById('ce-source-class')?.value
       await updateClass(classData.id, {
         google_sheet_id: document.getElementById('ce-sheet').value.trim() || null,
         skill_group:     document.getElementById('ce-skill').value || null,
@@ -649,6 +706,7 @@ export async function renderClassEditForm(teacher, classData) {
         day4_date: document.getElementById('ce-day4').value || null,
         day5_date: document.getElementById('ce-day5').value || null,
         day6_date: document.getElementById('ce-day6').value || null,
+        source_class_id: sourceClassId ? Number(sourceClassId) : null,
       })
 
       // auto-link schedule entries ที่ครูเลือกจากปุ่มคำนวณ (silent — ไม่ block ถ้าพลาด)

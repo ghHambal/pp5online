@@ -254,7 +254,7 @@ async function _loadDocData(classId) {
     .from('classes')
     .select(`
       id, course_id, class_name, skill_group, google_sheet_id,
-      head_student_id,
+      head_student_id, source_class_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
       students ( full_name, student_code )
@@ -267,11 +267,26 @@ async function _loadDocData(classId) {
   const credit = ms.credit ?? 1
   const prefix = _configPrefix(ms.subject_group)
 
+  // ถ้ามี source_class ให้ดึง metadata ของมาด้วยเพื่อรู้ credit (ใช้คำนวณ session remap)
+  let srcCls = null
+  if (cls.source_class_id) {
+    const { data: _src } = await supabase
+      .from('classes')
+      .select('id, master_subjects(credit)')
+      .eq('id', cls.source_class_id)
+      .single()
+    srcCls = _src ?? null
+  }
+  const srcClassId = srcCls ? cls.source_class_id : null
+
+  // auto columns ที่ระบบสร้างอัตโนมัติ — ไม่ดึงจาก source (คำนวณใหม่จาก attendance ของวิชานี้)
+  const AUTO_COL_NAMES = new Set(['คะแนนมาเรียน', 'คะแนนละหมาด'])
+
   const [students, attRows, scoreColumns, scores, depts, homerooms] = await Promise.all([
     getClassStudents(classId),
-    getClassAttendanceAll(classId),
-    getScoreColumns(classId),
-    getStudentScores(classId),
+    getClassAttendanceAll(srcClassId ?? classId),   // ถ้ามี source ดึงจาก source
+    getScoreColumns(srcClassId ?? classId),          // ถ้ามี source ดึงจาก source
+    getStudentScores(srcClassId ?? classId),         // ถ้ามี source ดึงจาก source
     getDepartments(),
     getHomeroomTeachers(academicYear, semester).catch(() => []),
   ])
@@ -310,11 +325,35 @@ async function _loadDocData(classId) {
   const sessions = _generateSessions(cls, credit, sessionDOWs.length ? sessionDOWs : null)
 
   // attendance map: { studentId: { sessionNum: status } }
+  // ถ้ามี source_class ให้ remap session number ต่อสัปดาห์ตาม credit ของแต่ละวิชา
   const attMap = {}
-  for (const r of attRows) {
-    if (!attMap[r.student_id]) attMap[r.student_id] = {}
-    attMap[r.student_id][r.session_number] = r.status
+  if (srcCls) {
+    const tgtPerWeek = Math.max(1, Math.round(credit * 2))
+    const srcCredit  = srcCls.master_subjects?.credit ?? 1
+    const srcPerWeek = Math.max(1, Math.round(srcCredit * 2))
+    // สร้าง attMap จาก source โดย remap: target session n → source session
+    const total = sessions.length
+    for (let n = 1; n <= total; n++) {
+      const weekIdx   = Math.floor((n - 1) / tgtPerWeek)
+      const posInWeek = (n - 1) % tgtPerWeek
+      const srcSession = weekIdx * srcPerWeek + posInWeek + 1
+      for (const r of attRows) {
+        if (r.session_number !== srcSession) continue
+        if (!attMap[r.student_id]) attMap[r.student_id] = {}
+        attMap[r.student_id][n] = r.status
+      }
+    }
+  } else {
+    for (const r of attRows) {
+      if (!attMap[r.student_id]) attMap[r.student_id] = {}
+      attMap[r.student_id][r.session_number] = r.status
+    }
   }
+
+  // score columns: ถ้ามี source ให้ filter เฉพาะที่ครูกรอกเอง (ไม่รวม auto columns)
+  const filteredScoreColumns = srcClassId
+    ? scoreColumns.filter(c => !AUTO_COL_NAMES.has(c.assignment_name))
+    : scoreColumns
 
   // score map: { studentId: { columnId: score } }
   const scoreMap = {}
@@ -343,7 +382,7 @@ async function _loadDocData(classId) {
   }
 
   const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet }
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
