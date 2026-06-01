@@ -1,7 +1,7 @@
 import { getDepartments, getSystemConfig, getRoomsByGrade, getStudentsByRoom,
          getStudentsByReligionRoom, getReligionRoomsByGrade, getMySchedule,
          createClass, updateClass, enrollStudents, getClassStudents,
-         getScoreColumns, createScoreColumn } from './api.js'
+         getScoreColumns, createScoreColumn, linkClassToSchedule } from './api.js'
 import { showToast } from './ui.js'
 
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
@@ -303,6 +303,8 @@ export async function renderClassForm(teacher, course, opts = {}) {
   })
 
   // ─── Auto-calculate dates — Popup เลือกวิชาจากตารางสอน ──────────────────
+  let _pendingScheduleEntries = []   // entries ที่ครูเลือกจาก calc → link หลัง createClass
+
   document.getElementById('btn-auto-dates')?.addEventListener('click', async () => {
     const btn   = document.getElementById('btn-auto-dates')
     const infoEl = document.getElementById('auto-dates-info')
@@ -375,6 +377,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
         if (!key) { alert('กรุณาเลือกวิชาก่อน'); return }
         wrap.remove()
         const entries = groups[key].entries
+        _pendingScheduleEntries = entries   // เก็บไว้ link หลัง createClass
         const dates   = _calcSixPeriodDates(entries, termStart)
         dates.forEach((d, i) => {
           const el = document.getElementById(`cls-day${i+1}`)
@@ -416,6 +419,11 @@ export async function renderClassForm(teacher, course, opts = {}) {
         day6_date: document.getElementById('cls-day6').value || null,
       }
       const created = await createClass(payload, teacher?.id ?? null)
+
+      // auto-link schedule entries ที่ครูเลือกจากปุ่มคำนวณ (silent — ไม่ block ถ้าพลาด)
+      if (created?.id && _pendingScheduleEntries.length) {
+        await Promise.all(_pendingScheduleEntries.map(e => linkClassToSchedule(created.id, e.id).catch(() => {})))
+      }
 
       // enroll all students in the room
       if (_students.length && created?.id) {
@@ -545,6 +553,8 @@ export async function renderClassEditForm(teacher, classData) {
     </div>
   </div>`)
   // ─── คำนวณวันจากตารางสอน ────────────────────────────────────────────────
+  let _pendingEditScheduleEntries = []   // entries ที่ครูเลือกจาก calc → link หลัง updateClass
+
   document.getElementById('ce-btn-auto-dates')?.addEventListener('click', async () => {
     const btn    = document.getElementById('ce-btn-auto-dates')
     const infoEl = document.getElementById('ce-auto-dates-info')
@@ -607,6 +617,7 @@ export async function renderClassEditForm(teacher, classData) {
         const key = popup.querySelector('input[name="ce-dates-subj"]:checked')?.value
         if (!key) { showToast('กรุณาเลือกวิชาก่อน', 'warning'); return }
         popup.remove()
+        _pendingEditScheduleEntries = groups[key].entries   // เก็บไว้ link หลัง updateClass
         const dates = _calcSixPeriodDates(groups[key].entries, termStart)
         dates.forEach((d, i) => {
           const el = document.getElementById(`ce-day${i+1}`)
@@ -639,6 +650,13 @@ export async function renderClassEditForm(teacher, classData) {
         day5_date: document.getElementById('ce-day5').value || null,
         day6_date: document.getElementById('ce-day6').value || null,
       })
+
+      // auto-link schedule entries ที่ครูเลือกจากปุ่มคำนวณ (silent — ไม่ block ถ้าพลาด)
+      if (_pendingEditScheduleEntries.length) {
+        await Promise.all(_pendingEditScheduleEntries.map(e => linkClassToSchedule(classData.id, e.id).catch(() => {})))
+        _pendingEditScheduleEntries = []
+      }
+
       showToast('บันทึกสำเร็จ', 'success')
       if (window._navTo) window._navTo('my-classes')
       else history.back()
