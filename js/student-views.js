@@ -489,7 +489,7 @@ export async function renderStudentOverview(student) {
       const totalWtGrade = graded.reduce((s,r) => s+(r.grade*(r.credit||1)), 0)
       const gpaVal       = parseFloat(gpa)
       return `
-      <div class="flex items-end gap-3 mb-4">
+      <div class="flex items-end justify-end gap-3 mb-4">
         <button id="gpa-val-btn-${tabId}" class="text-5xl font-extrabold ${gpa ? _gradeColor(gpaVal) : 'text-gray-300'} hover:opacity-70 transition">${gpa ?? '—'}</button>
         <div class="mb-1.5">
           <p class="text-base font-semibold ${gpa ? _gradeColor(gpaVal) : 'text-gray-400'}">${gpa ? _gradeLabel(gpaVal) : '—'}</p>
