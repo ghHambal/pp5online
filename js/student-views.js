@@ -581,10 +581,12 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const cls = classes.find(c => c.id === classId)
   if (!cls) { setContent(`<p class="text-center py-10 text-gray-400">ไม่พบรายวิชา</p>`); return }
 
-  const [{ columns, scores }, attendance, requestsAll] = await Promise.all([
+  const { getClassAnnouncements: _getClassAnn } = await import('./api.js').catch(() => ({}))
+  const [{ columns, scores }, attendance, requestsAll, classAnns] = await Promise.all([
     getMyScores(student.id, classId).catch(()=>({ columns:[], scores:[] })),
     getMyAttendance(student.id, classId).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
+    _getClassAnn ? _getClassAnn(classId).catch(()=>[]) : Promise.resolve([]),
   ])
   const requests = requestsAll.filter(r => r.classes?.id === classId)
 
@@ -592,12 +594,14 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const ms = cls.master_subjects
   const teacher = ms?.teachers
 
-  const midCols  = columns.filter(c => c.assignment_type !== 'final')
+  const _getVal = c => parseFloat(scoreMap[c.id]?.final_score ?? scoreMap[c.id]?.original_score ?? 0) || 0
+  const specialCols = columns.filter(c => c.assignment_type === 'คะแนนพิเศษ')
+  const midCols  = columns.filter(c => c.assignment_type !== 'final' && c.assignment_type !== 'คะแนนพิเศษ')
   const finCols  = columns.filter(c => c.assignment_type === 'final')
   const midMax   = midCols.reduce((s,c) => s+(c.max_score||0), 0)
   const finMax   = finCols.reduce((s,c) => s+(c.max_score||0), 0)
-  const midScore = midCols.reduce((s,c) => s+(parseFloat(scoreMap[c.id]?.final_score??scoreMap[c.id]?.original_score??0)||0), 0)
-  const finScore = finCols.reduce((s,c) => s+(parseFloat(scoreMap[c.id]?.final_score??scoreMap[c.id]?.original_score??0)||0), 0)
+  const midScore = midCols.reduce((s,c) => s+_getVal(c), 0) + specialCols.reduce((s,c) => s+_getVal(c), 0)
+  const finScore = finCols.reduce((s,c) => s+_getVal(c), 0)
   const total    = midScore + finScore
   const totalMax = midMax + finMax
   const pct      = totalMax > 0 ? (total / totalMax * 100) : 0
@@ -631,9 +635,9 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       <td class="py-2.5 px-3 text-center text-xs font-bold ${val != null ? 'text-blue-600' : 'text-gray-300'} whitespace-nowrap">
         ${val != null ? val.toFixed(1).replace(/\.0$/, '') : '—'}
       </td>
-      <td class="py-2.5 px-3 text-center text-xs text-gray-400 whitespace-nowrap">/${col.max_score}</td>
+      <td class="py-2.5 px-3 text-center text-xs text-gray-400 whitespace-nowrap">${col.max_score != null ? '/'+col.max_score : '<span class="text-amber-500 text-[10px]">โบนัส</span>'}</td>
       <td class="py-2.5 px-3 text-center text-xs ${val != null ? 'text-gray-500' : 'text-gray-300'} whitespace-nowrap">
-        ${pctCol != null ? pctCol+'%' : '—%'}
+        ${col.max_score != null ? (pctCol != null ? pctCol+'%' : '—%') : ''}
       </td>
     </tr>`
   }
@@ -787,6 +791,36 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         </div>`)
     }
 
+    // ── ประกาศของครูสำหรับห้องเรียนนี้ ──
+    const ANN_TYPE_LABEL = {
+      'general':      { label:'ประกาศ',                    icon:'📢', bg:'bg-gray-50',    border:'border-gray-200' },
+      'learning_doc': { label:'เอกสารประกอบการเรียน',       icon:'📄', bg:'bg-blue-50',    border:'border-blue-200' },
+      'exercise_doc': { label:'เอกสารแบบฝึกเพิ่มเติม',     icon:'📝', bg:'bg-emerald-50', border:'border-emerald-200' },
+      'exam_prep':    { label:'เอกสารแนวข้อสอบ',            icon:'📋', bg:'bg-amber-50',   border:'border-amber-200' },
+    }
+    if (classAnns.length > 0) {
+      classAnns.forEach(a => {
+        const t = ANN_TYPE_LABEL[a.ann_type] ?? ANN_TYPE_LABEL.general
+        items.push(`
+          <div class="rounded-2xl border ${t.border} ${t.bg} p-4">
+            <div class="flex items-start gap-3">
+              <span class="text-xl flex-shrink-0">${t.icon}</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  ${a.priority > 0 ? `<span class="text-[10px] font-bold text-amber-600">📌 ปักหมุด</span>` : ''}
+                  <span class="text-[10px] text-gray-500">${t.label}</span>
+                </div>
+                <p class="text-sm font-semibold text-gray-800">${a.title ?? ''}</p>
+                ${a.body ? `<p class="text-xs text-gray-500 mt-1">${a.body}</p>` : ''}
+                ${a.file_url ? `<a href="${a.file_url}" target="_blank" rel="noopener"
+                  class="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:underline font-medium">
+                  📎 เปิดไฟล์แนบ →</a>` : ''}
+              </div>
+            </div>
+          </div>`)
+      })
+    }
+
     return `
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-bold text-gray-800">✅ ภารกิจ / สิ่งที่ต้องทำ</h2>
@@ -810,6 +844,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         : `<div>
             ${_scoreTable(midCols, midScore, midMax, 'bg-blue-50', '📘 กลางภาค')}
             ${_scoreTable(finCols, finScore, finMax, 'bg-purple-50', '📙 ปลายภาค')}
+            ${specialCols.length ? _scoreTable(specialCols, specialCols.reduce((s,c)=>s+_getVal(c),0), 0, 'bg-amber-50', '⭐ คะแนนพิเศษ/โบนัส') : ''}
           </div>`}
     </div>
     ${attTotal > 0 ? `
