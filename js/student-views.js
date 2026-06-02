@@ -692,8 +692,9 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         <p class="text-[11px] text-gray-400 mt-0.5">${teacher?.full_name ?? '—'} · ${_roomDisplay(cls.class_name)}</p>
       </div>
       <div class="flex-shrink-0 text-right">
-        <p class="text-2xl font-bold text-gray-800">${totalMax > 0 ? total.toFixed(1).replace(/\.0$/,'') : '—'}</p>
+        <p class="text-2xl font-bold text-gray-800">${totalMax > 0 ? (midScore+finScore).toFixed(1).replace(/\.0$/,'') : '—'}</p>
         <p class="text-[10px] text-gray-400">/${totalMax} คะแนน</p>
+        ${specialScore > 0 ? `<p class="text-[10px] text-amber-500 font-medium">+${specialScore.toFixed(1).replace(/\.0$/,'')} โบนัส</p>` : ''}
         ${grade
           ? `<span class="inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${grade.cls}">${grade.label}</span>`
           : ''}
