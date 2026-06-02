@@ -677,7 +677,7 @@ export async function renderStudentOverview(student) {
         if (p.period_no === 6 && periods.find(pp=>pp.period_no===5)) {
           tableRows += `<tr>
             <td colspan="2" class="bg-emerald-50 text-center py-2.5 border-b border-emerald-100">
-              <p class="text-[11px] font-semibold text-emerald-700">🕌 ละหมาดซุฮรี / พักเที่ยง</p>
+              <p class="text-[11px] font-semibold text-emerald-700">🕌 พักเที่ยง / รับประทานอาหาร / ละหมาดซุฮรี</p>
               ${breakTimeStr ? `<p class="text-[10px] text-emerald-500 mt-0.5">${breakTimeStr}</p>` : ''}
             </td></tr>`
         }
@@ -764,7 +764,7 @@ export async function renderStudentOverview(student) {
           const _p5e = p.end_time?.slice(0,5) ?? ''
           const _p6s = periods.find(pp=>pp.period_no===6)?.start_time?.slice(0,5) ?? ''
           tableRows += `<tr><td colspan="${daysInGrid.length+1}" class="bg-emerald-50 text-center py-1.5 border-b border-emerald-100">
-            <p class="text-[9px] font-semibold text-emerald-700">🕌 ละหมาดซุฮรี / พักเที่ยง${_p5e&&_p6s?` ${_p5e}–${_p6s}`:''}</p>
+            <p class="text-[9px] font-semibold text-emerald-700">🕌 พักเที่ยง / รับประทานอาหาร / ละหมาดซุฮรี${_p5e&&_p6s?` ${_p5e}–${_p6s}`:''}</p>
           </td></tr>`
         }
       })
