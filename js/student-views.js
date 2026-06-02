@@ -4,6 +4,7 @@ import {
   getMissedExamCount,
   getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
   getMyLifeSkillScores, getMyReadingScores, getMyPrayerRecords,
+  getStudentDailySchedule, getStudentAllAnnouncements, getStudentGPA,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
@@ -219,9 +220,12 @@ export async function renderStudentOverview(student) {
     </svg>
   </div>`)
 
-  const [classes, requests] = await Promise.all([
+  const [classes, requests, dailySched, allAnns, gpaData] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
+    getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
+    getStudentAllAnnouncements(student.id).catch(()=>[]),
+    getStudentGPA(student.id).catch(()=>({ samai:[], sasana:[] })),
   ])
   const pending = requests.filter(r => r.status === 'pending')
   const recent  = requests.slice(0, 3)
@@ -258,20 +262,128 @@ export async function renderStudentOverview(student) {
     </div>
 
     <!-- Quick actions -->
-    <div class="grid grid-cols-2 gap-3 mb-4">
+    <div class="grid grid-cols-3 gap-2 mb-4">
       <button onclick="window._stuNav('subjects')"
-        class="bg-emerald-600 text-white rounded-xl p-4 text-left hover:bg-emerald-700 transition">
-        <p class="text-xl mb-1">📚</p>
-        <p class="font-semibold text-sm">รายวิชาของฉัน</p>
-        <p class="text-[11px] text-emerald-200 mt-0.5">${classes.length} วิชา</p>
+        class="bg-emerald-600 text-white rounded-xl p-3 text-left hover:bg-emerald-700 transition">
+        <p class="text-lg mb-1">📚</p>
+        <p class="font-semibold text-xs">รายวิชา</p>
+        <p class="text-[10px] text-emerald-200 mt-0.5">${classes.length} วิชา</p>
       </button>
       <button onclick="window._stuNav('scores')"
-        class="bg-indigo-600 text-white rounded-xl p-4 text-left hover:bg-indigo-700 transition">
-        <p class="text-xl mb-1">📊</p>
-        <p class="font-semibold text-sm">คะแนนของฉัน</p>
-        <p class="text-[11px] text-indigo-200 mt-0.5">ทักษะชีวิต / ละหมาด / อ่านฯ</p>
+        class="bg-indigo-600 text-white rounded-xl p-3 text-left hover:bg-indigo-700 transition">
+        <p class="text-lg mb-1">📊</p>
+        <p class="font-semibold text-xs">คะแนน</p>
+        <p class="text-[10px] text-indigo-200 mt-0.5">ทักษะ / ละหมาด</p>
+      </button>
+      <button id="btn-stu-anns"
+        class="bg-amber-500 text-white rounded-xl p-3 text-left hover:bg-amber-600 transition relative">
+        <p class="text-lg mb-1">📢</p>
+        <p class="font-semibold text-xs">ประกาศ</p>
+        <p class="text-[10px] text-amber-100 mt-0.5">${allAnns.length} รายการ</p>
+        ${allAnns.filter(a => a.ann_type==='deadline' && a.deadline_at && new Date(a.deadline_at) > new Date()).length > 0
+          ? `<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-400"></span>` : ''}
       </button>
     </div>
+
+    <!-- รูทีนของวัน -->
+    ${(() => {
+      const _DAYS_TH = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์']
+      const todayName = _DAYS_TH[new Date().getDay()]
+      const now = new Date()
+      const nowSec = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()
+      const _toSec = t => { if(!t) return null; const [h,m] = t.split(':').map(Number); return h*3600+m*60 }
+
+      const periodRows = dailySched.linked.map(({ cls, sched, period }) => {
+        const ms = cls?.master_subjects
+        const startSec = _toSec(period?.start_time)
+        const endSec   = _toSec(period?.end_time)
+        const isNow = startSec != null && endSec != null && nowSec >= startSec && nowSec < endSec
+        const isDone = endSec != null && nowSec >= endSec
+        const statusIcon = isNow ? '🟢' : isDone ? '✅' : '⬜'
+        const timeStr = period ? `${period.start_time?.slice(0,5)}–${period.end_time?.slice(0,5)}` : `คาบ ${sched.period_no}`
+        return `<div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+          <span class="text-base flex-shrink-0">${statusIcon}</span>
+          <div class="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 text-xs font-bold text-emerald-700">${sched.period_no}</div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800 truncate">${ms?.subject_name ?? sched.subject_name ?? '—'}</p>
+            <p class="text-[11px] text-gray-400">${timeStr} · ${cls?.class_name ?? ''}</p>
+          </div>
+          ${isNow ? `<span id="stu-period-countdown" class="text-xs font-bold text-emerald-600 tabular-nums flex-shrink-0">—</span>` : ''}
+        </div>`
+      }).join('')
+
+      const unlinkedRows = dailySched.unlinked.map(cls => {
+        const ms = cls?.master_subjects
+        return `<div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+          <span class="text-base flex-shrink-0">⚠️</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-700 truncate">${ms?.subject_name ?? '—'}</p>
+            <p class="text-[11px] text-red-500 mt-0.5">ครูยังไม่ได้เชื่อมวิชากับตารางสอน — โปรดแจ้งครูทราบ</p>
+          </div>
+        </div>`
+      }).join('')
+
+      const hasAny = periodRows || unlinkedRows
+      return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-50">
+          <h3 class="font-semibold text-gray-700 text-sm">📅 วันนี้ — ${todayName}</h3>
+        </div>
+        <div class="px-4">
+          ${hasAny ? periodRows + unlinkedRows : `<p class="text-xs text-gray-400 text-center py-6">ไม่มีคาบเรียนวันนี้</p>`}
+        </div>
+      </div>`
+    })()}
+
+    <!-- เกรดเฉลี่ย -->
+    ${(() => {
+      const _calcGPA = rows => {
+        if (!rows.length) return null
+        const totalCredit = rows.reduce((s,r) => s+(r.credit||1), 0)
+        const weighted    = rows.reduce((s,r) => s+(r.grade*(r.credit||1)), 0)
+        return totalCredit > 0 ? (weighted/totalCredit).toFixed(2) : null
+      }
+      const _gradeColor = g => g>=3.5?'text-emerald-600':g>=3?'text-blue-600':g>=2?'text-amber-600':'text-red-500'
+      const _gradeLabel = g => g>=3.5?'ดีเยี่ยม':g>=3?'ดี':g>=2?'พอใช้':g>=1?'ผ่าน':'ไม่ผ่าน'
+      const samaiGPA   = _calcGPA(gpaData.samai)
+      const sasanaGPA  = _calcGPA(gpaData.sasana)
+      const _rows = rows => rows.map(r => `
+        <div class="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs text-gray-700 truncate">${r.subjectName}</p>
+          </div>
+          <span class="text-xs font-bold ${_gradeColor(r.grade)}">${r.grade.toFixed(1)}</span>
+          <span class="text-[10px] text-gray-400 w-12 text-right">${r.pct}%</span>
+        </div>`).join('')
+      return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <h3 class="font-semibold text-gray-700 text-sm">🎓 เกรดเฉลี่ยของฉัน</h3>
+          <div class="flex gap-1">
+            <button id="gpa-tab-samai" class="gpa-tab text-xs px-3 py-1 rounded-lg font-medium bg-indigo-600 text-white">สามัญ</button>
+            <button id="gpa-tab-sasana" class="gpa-tab text-xs px-3 py-1 rounded-lg font-medium text-gray-500 hover:bg-gray-100">ศาสนา</button>
+          </div>
+        </div>
+        <div id="gpa-panel-samai" class="px-4 py-3">
+          ${samaiGPA ? `
+          <div class="flex items-end gap-2 mb-3">
+            <span class="text-4xl font-extrabold ${_gradeColor(parseFloat(samaiGPA))}">${samaiGPA}</span>
+            <span class="text-sm text-gray-400 mb-1">/4.0 · ${_gradeLabel(parseFloat(samaiGPA))}</span>
+          </div>
+          <div class="space-y-0">${_rows(gpaData.samai)}</div>` :
+          `<p class="text-xs text-gray-400 text-center py-4">ยังไม่มีข้อมูลคะแนน</p>`}
+        </div>
+        <div id="gpa-panel-sasana" class="hidden px-4 py-3">
+          ${sasanaGPA ? `
+          <div class="flex items-end gap-2 mb-3">
+            <span class="text-4xl font-extrabold ${_gradeColor(parseFloat(sasanaGPA))}">${sasanaGPA}</span>
+            <span class="text-sm text-gray-400 mb-1">/4.0 · ${_gradeLabel(parseFloat(sasanaGPA))}</span>
+          </div>
+          <div class="space-y-0">${_rows(gpaData.sasana)}</div>` :
+          `<p class="text-xs text-gray-400 text-center py-4">ยังไม่มีข้อมูลคะแนน</p>`}
+        </div>
+      </div>`
+    })()}
 
     <!-- Recent requests -->
     ${recent.length > 0 ? `
@@ -301,6 +413,93 @@ export async function renderStudentOverview(student) {
       <p class="text-sm">ยังไม่มีคำร้อง</p>
     </div>`}
   `)
+
+  // ── GPA tab toggle ────────────────────────────────────────────────────────
+  document.getElementById('gpa-tab-samai')?.addEventListener('click', () => {
+    document.getElementById('gpa-panel-samai')?.classList.remove('hidden')
+    document.getElementById('gpa-panel-sasana')?.classList.add('hidden')
+    document.getElementById('gpa-tab-samai').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium bg-indigo-600 text-white'
+    document.getElementById('gpa-tab-sasana').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium text-gray-500 hover:bg-gray-100'
+  })
+  document.getElementById('gpa-tab-sasana')?.addEventListener('click', () => {
+    document.getElementById('gpa-panel-sasana')?.classList.remove('hidden')
+    document.getElementById('gpa-panel-samai')?.classList.add('hidden')
+    document.getElementById('gpa-tab-sasana').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium bg-indigo-600 text-white'
+    document.getElementById('gpa-tab-samai').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium text-gray-500 hover:bg-gray-100'
+  })
+
+  // ── Period countdown (HH:MM:SS) ───────────────────────────────────────────
+  const _activePeriod = dailySched.linked.find(({ period }) => {
+    if (!period?.start_time || !period?.end_time) return false
+    const now = new Date()
+    const nowSec = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()
+    const [sh,sm] = period.start_time.split(':').map(Number)
+    const [eh,em] = period.end_time.split(':').map(Number)
+    return nowSec >= sh*3600+sm*60 && nowSec < eh*3600+em*60
+  })
+  if (_activePeriod) {
+    const _endSec = (() => { const [h,m] = _activePeriod.period.end_time.split(':').map(Number); return h*3600+m*60 })()
+    const _cdInterval = setInterval(() => {
+      const el = document.getElementById('stu-period-countdown')
+      if (!el) { clearInterval(_cdInterval); return }
+      const nowSec = new Date().getHours()*3600 + new Date().getMinutes()*60 + new Date().getSeconds()
+      const rem = Math.max(0, _endSec - nowSec)
+      if (rem === 0) { el.textContent = 'หมดคาบ'; clearInterval(_cdInterval); return }
+      const h = Math.floor(rem/3600), m = Math.floor((rem%3600)/60), s = rem%60
+      el.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    }, 1000)
+  }
+
+  // ── Announcement bottom sheet ─────────────────────────────────────────────
+  const ANN_TYPE_LABEL_S = {
+    'general':      { icon:'📢', label:'ประกาศ',              bg:'bg-gray-50',    border:'border-gray-200' },
+    'deadline':     { icon:'⏰', label:'กำหนดส่งงาน/สอบ',     bg:'bg-red-50',     border:'border-red-200'  },
+    'learning_doc': { icon:'📄', label:'เอกสารประกอบการเรียน', bg:'bg-blue-50',    border:'border-blue-200' },
+    'exercise_doc': { icon:'📝', label:'แบบฝึกเพิ่มเติม',      bg:'bg-emerald-50', border:'border-emerald-200' },
+    'exam_prep':    { icon:'📋', label:'แนวข้อสอบ',            bg:'bg-amber-50',   border:'border-amber-200' },
+  }
+  const _fmtDeadlineS = iso => {
+    if (!iso) return ''
+    const d = new Date(iso), now = new Date()
+    const diffMin = Math.floor((d - now) / 60000)
+    const str = d.toLocaleDateString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
+    if (diffMin < 0) return `<span class="text-red-500 text-xs font-bold">⛔ หมดเวลา · ${str}</span>`
+    if (diffMin < 60) return `<span class="text-red-600 text-xs font-bold">🔴 อีก ${diffMin} น. · ${str}</span>`
+    const diffH = Math.floor(diffMin/60)
+    if (diffH < 24) return `<span class="text-orange-500 text-xs font-semibold">🟠 อีก ${diffH} ชม. ${diffMin%60} น. · ${str}</span>`
+    return `<span class="text-amber-600 text-xs">📅 อีก ${Math.floor(diffH/24)} วัน · ${str}</span>`
+  }
+  document.getElementById('btn-stu-anns')?.addEventListener('click', () => {
+    const sheet = document.createElement('div')
+    sheet.className = 'fixed inset-0 z-[400] flex flex-col justify-end bg-black/40'
+    sheet.innerHTML = `
+    <div class="bg-white rounded-t-3xl max-h-[85vh] flex flex-col animate-slide-up">
+      <div class="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
+        <h3 class="font-bold text-gray-800">📢 ประกาศของฉัน</h3>
+        <button id="stu-ann-close" class="text-gray-400 text-xl">✕</button>
+      </div>
+      <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        ${allAnns.length ? allAnns.map(a => {
+          const t = ANN_TYPE_LABEL_S[a.ann_type] ?? ANN_TYPE_LABEL_S.general
+          const ms = a.cls?.master_subjects
+          return `<div class="rounded-2xl border ${t.border} ${t.bg} p-4">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              ${a.priority > 0 ? `<span class="text-[10px] font-bold text-amber-600">📌</span>` : ''}
+              <span class="text-[10px] text-gray-500">${t.icon} ${t.label}</span>
+              <span class="text-[10px] text-gray-400 ml-auto">${ms?.subject_name ?? ''} · ${a.cls?.class_name ?? ''}</span>
+            </div>
+            <p class="text-sm font-semibold text-gray-800">${a.title ?? ''}</p>
+            ${a.body ? `<p class="text-xs text-gray-500 mt-1">${a.body}</p>` : ''}
+            ${a.ann_type === 'deadline' && a.deadline_at ? `<div class="mt-2">${_fmtDeadlineS(a.deadline_at)}</div>` : ''}
+            ${a.file_url ? `<a href="${a.file_url}" target="_blank" class="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:underline font-medium">📎 เปิดไฟล์ →</a>` : ''}
+          </div>`
+        }).join('') : `<p class="text-center text-gray-400 py-10 text-sm">ยังไม่มีประกาศ</p>`}
+      </div>
+    </div>`
+    document.body.appendChild(sheet)
+    sheet.addEventListener('click', e => { if (e.target === sheet) sheet.remove() })
+    sheet.querySelector('#stu-ann-close').addEventListener('click', () => sheet.remove())
+  })
 }
 
 // ─── My Score Hub ────────────────────────────────────────────────────────────
