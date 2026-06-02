@@ -262,8 +262,8 @@ export async function renderStudentOverview(student) {
       </div>
     </div>
 
-    <!-- Quick actions -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+    <!-- Quick actions — 4 ปุ่มใน grid เดียว: 2×2 บนมือถือ, 4×1 บน tablet -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       <button onclick="window._stuNav('subjects')"
         class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150"
         style="background:linear-gradient(135deg,#059669,#047857)">
@@ -282,8 +282,6 @@ export async function renderStudentOverview(student) {
         <p class="font-bold text-sm text-white relative">คะแนนของฉัน</p>
         <p class="text-[10px] text-indigo-200 mt-0.5 relative">ทักษะ / ละหมาด</p>
       </button>
-    </div>
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       ${(() => {
         const SEEN_KEY = `stu_ann_seen_${student.id}`
         const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'))
