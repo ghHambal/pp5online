@@ -15,7 +15,7 @@ const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setContent(html) {
   document.getElementById('stu-content').innerHTML =
-    `<div class="max-w-lg mx-auto px-4 py-4 pb-6 animate-fade">${html}</div>`
+    `<div class="w-full max-w-2xl mx-auto px-4 sm:px-6 py-4 pb-6 animate-fade">${html}</div>`
 }
 
 function showToast(msg, type = 'info') {
@@ -233,7 +233,7 @@ export async function renderStudentOverview(student) {
 
   setContent(`
     <!-- Profile card -->
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center gap-4">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 mb-4 flex items-center gap-4 sm:gap-6">
       <div class="w-14 h-20 rounded-t-2xl rounded-b-lg overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
                   flex items-center justify-center text-white text-2xl font-bold shadow">
         ${student.image_url
@@ -247,23 +247,23 @@ export async function renderStudentOverview(student) {
     </div>
 
     <!-- Stats row -->
-    <div class="grid grid-cols-3 gap-2 mb-4">
-      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 text-center">
-        <p class="text-xl font-bold text-emerald-600">${classes.length}</p>
-        <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">รายวิชา</p>
+    <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center">
+        <p class="text-xl sm:text-3xl font-bold text-emerald-600">${classes.length}</p>
+        <p class="text-[9px] sm:text-xs text-gray-400 mt-0.5 leading-tight">รายวิชา</p>
       </div>
-      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 text-center">
-        <p class="text-xl font-bold text-amber-600">${pending.length}</p>
-        <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">คำร้อง<br>รอดำเนินการ</p>
+      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center">
+        <p class="text-xl sm:text-3xl font-bold text-amber-600">${pending.length}</p>
+        <p class="text-[9px] sm:text-xs text-gray-400 mt-0.5 leading-tight">คำร้อง<br>รอดำเนินการ</p>
       </div>
-      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 text-center">
-        <p class="text-xl font-bold text-blue-600">${requests.length}</p>
-        <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">คำร้อง<br>ทั้งหมด</p>
+      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center">
+        <p class="text-xl sm:text-3xl font-bold text-blue-600">${requests.length}</p>
+        <p class="text-[9px] sm:text-xs text-gray-400 mt-0.5 leading-tight">คำร้อง<br>ทั้งหมด</p>
       </div>
     </div>
 
     <!-- Quick actions -->
-    <div class="grid grid-cols-2 gap-3 mb-3">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
       <button onclick="window._stuNav('subjects')"
         class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150"
         style="background:linear-gradient(135deg,#059669,#047857)">
@@ -283,7 +283,7 @@ export async function renderStudentOverview(student) {
         <p class="text-[10px] text-indigo-200 mt-0.5 relative">ทักษะ / ละหมาด</p>
       </button>
     </div>
-    <div class="grid grid-cols-2 gap-3 mb-4">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       ${(() => {
         const SEEN_KEY = `stu_ann_seen_${student.id}`
         const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'))
@@ -1168,7 +1168,7 @@ export async function renderStudentSubjects(student) {
           <h3 class="font-bold text-gray-700 text-sm">${title}</h3>
           <span class="ml-1 text-[11px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">${items.length} วิชา</span>
         </div>
-        <div class="${isGrid ? 'grid grid-cols-3 gap-2' : 'space-y-3'}">
+        <div class="${isGrid ? 'grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3' : 'space-y-3 sm:grid sm:grid-cols-2 sm:gap-3'}">
           ${items.map(_renderCard).join('')}
         </div>
       </div>`
