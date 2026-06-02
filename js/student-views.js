@@ -276,14 +276,6 @@ export async function renderStudentOverview(student) {
         <p class="font-semibold text-xs">คะแนนของฉัน</p>
         <p class="text-[10px] text-indigo-200 mt-0.5">ทักษะ / ละหมาด</p>
       </button>
-      <button id="btn-stu-timetable" colspan="2"
-        class="col-span-2 bg-teal-600 text-white rounded-xl p-3 text-left hover:bg-teal-700 transition flex items-center gap-3">
-        <p class="text-lg">📅</p>
-        <div>
-          <p class="font-semibold text-xs">ตารางเรียนของฉัน</p>
-          <p class="text-[10px] text-teal-200 mt-0.5">รายวัน · รายสัปดาห์</p>
-        </div>
-      </button>
     </div>
     <div class="grid grid-cols-2 gap-2 mb-4">
       ${(() => {
@@ -364,8 +356,9 @@ export async function renderStudentOverview(student) {
 
       return `
       <div class="bg-white rounded-2xl border border-gray-200 shadow-md mb-4 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-50">
+        <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <h3 class="font-semibold text-gray-700 text-sm">📅 วันนี้ — ${todayName}</h3>
+          <button id="btn-stu-timetable" class="text-[10px] text-teal-600 font-semibold hover:text-teal-800 transition flex items-center gap-0.5">📋 ตารางเรียน →</button>
         </div>
         ${periodRows ? `
         <div class="px-3 py-1.5 bg-emerald-50 border-b border-emerald-100">
@@ -667,16 +660,28 @@ export async function renderStudentOverview(student) {
       const now = new Date()
       const nowSec = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()
       const _toSec = t => { if(!t) return null; const [h,m]=t.split(':').map(Number); return h*3600+m*60 }
+      const skipPeriods = new Set() // คาบที่ถูก span มาจากคาบก่อนหน้า
       const rows = []
       periods.forEach((p, i) => {
+        if (skipPeriods.has(p.period_no)) return // ข้ามคาบที่ถูก span
         const slot = slotMap[`${dow}-${p.period_no}`]
-        const startSec = _toSec(p.start_time), endSec = _toSec(p.end_time)
+        const span = slot?.span ?? 1
+        // หา end period สำหรับ span
+        const lastPeriod = span > 1 ? (periods.find(pp => pp.period_no === p.period_no + span - 1) ?? p) : p
+        const startSec = _toSec(p.start_time), endSec = _toSec(lastPeriod.end_time)
         const isNow = startSec!=null && endSec!=null && nowSec>=startSec && nowSec<endSec
+        const isDone = endSec!=null && nowSec>=endSec
+        const statusIcon = isNow ? '🟢' : isDone ? '✅' : '⬜'
         const ms = slot?.cls?.master_subjects
+        const timeStr = span > 1
+          ? `${p.start_time?.slice(0,5)}–${lastPeriod.end_time?.slice(0,5)} (คาบ ${p.period_no}–${p.period_no+span-1})`
+          : p.start_time?.slice(0,5)
+        // mark คาบที่ถูก span ให้ข้ามในรอบถัดไป
+        for (let s=1; s<span; s++) skipPeriods.add(p.period_no+s)
         rows.push(`
           <div class="flex items-stretch gap-3 border-b border-gray-100 last:border-0 ${isNow?'bg-emerald-50':''} py-2.5">
             <div class="w-14 flex-shrink-0 text-center">
-              <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}</p>
+              <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}${span>1?`–${p.period_no+span-1}`:''}</p>
               <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)}</p>
             </div>
             <div class="flex-1 min-w-0 flex items-center">
@@ -692,7 +697,8 @@ export async function renderStudentOverview(student) {
             </div>` : ''}
           </div>`)
         // แถวพักเที่ยง/ละหมาดซุฮรี ระหว่างคาบ 5-6
-        if (p.period_no === 5 && periods[i+1]?.period_no === 6) {
+        const lastSpanNo = p.period_no + span - 1
+        if ((lastSpanNo === 5 || p.period_no === 5) && periods.find(pp=>pp.period_no===6)) {
           rows.push(`
           <div class="flex items-center gap-3 py-2 border-b border-gray-100 bg-orange-50">
             <div class="w-14 flex-shrink-0 text-center">
@@ -712,22 +718,33 @@ export async function renderStudentOverview(student) {
       const headerCells = `<th style="width:${colW}" class="py-2 text-[9px] text-gray-400 font-medium text-center border-r border-gray-100">คาบ</th>`
         + daysInGrid.map(d => `<th style="width:${colW}" class="py-2 text-[9px] font-bold text-center border-r border-gray-100 last:border-0 ${d===todayDow?'text-teal-600':'text-gray-600'}">${DAYS_SHORT[d]}</th>`).join('')
 
+      // skipMap: { dow: Set<periodNo> } — คาบที่ถูก rowspan แล้ว
+      const skipMap = {}
+      daysInGrid.forEach(d => { skipMap[d] = new Set() })
+
       let tableRows = ''
       periods.forEach((p, i) => {
+        const now = new Date()
+        const nowSec = now.getHours()*3600+now.getMinutes()*60+now.getSeconds()
+
         const cells = daysInGrid.map(d => {
+          if (skipMap[d].has(p.period_no)) return '' // ถูก rowspan แล้ว ข้าม
           const slot = slotMap[`${d}-${p.period_no}`]
+          const span = slot?.span ?? 1
           const ms = slot?.cls?.master_subjects
           const isAGM = ['AGM','AGMVOC'].includes(ms?.subject_group ?? '')
-          const bg = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
+          const bg  = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
           const txt = slot ? (isAGM ? 'text-amber-700' : 'text-emerald-700') : 'text-gray-200'
-          // ตรวจคาบปัจจุบัน
-          const now = new Date()
-          const nowSec = now.getHours()*3600+now.getMinutes()*60+now.getSeconds()
+          // หา endSec ของช่วงที่ span
+          const lastP = span>1 ? (periods.find(pp=>pp.period_no===p.period_no+span-1)??p) : p
           const [sh,sm]=(p.start_time??'0:0').split(':').map(Number)
-          const [eh,em]=(p.end_time??'0:0').split(':').map(Number)
+          const [eh,em]=(lastP.end_time??'0:0').split(':').map(Number)
           const isNow = d===todayDow && nowSec>=sh*3600+sm*60 && nowSec<eh*3600+em*60
-          return `<td style="width:${colW}" class="border-r border-gray-100 last:border-0 border-b border-gray-50 ${bg} ${isNow?'ring-1 ring-inset ring-emerald-400':''} align-middle">
-            ${slot ? `<div class="px-0.5 py-1 text-center"><p class="${txt} text-[8px] font-semibold leading-tight line-clamp-2">${ms?.subject_name??''}</p></div>`
+          // mark คาบที่ถูก span
+          for (let s=1; s<span; s++) skipMap[d].add(p.period_no+s)
+          return `<td style="width:${colW}" ${span>1?`rowspan="${span}"`:''}
+            class="border-r border-gray-100 last:border-0 border-b border-gray-50 ${bg} ${isNow?'ring-1 ring-inset ring-emerald-400':''} align-middle">
+            ${slot ? `<div class="px-0.5 py-1 text-center"><p class="${txt} text-[8px] font-semibold leading-tight line-clamp-3">${ms?.subject_name??''}</p></div>`
               : `<div class="h-8"></div>`}
           </td>`
         }).join('')
@@ -739,7 +756,7 @@ export async function renderStudentOverview(student) {
           </td>${cells}</tr>`
 
         // แถวพัก ระหว่างคาบ 5-6
-        if (p.period_no === 5 && periods[i+1]?.period_no === 6) {
+        if (p.period_no === 5 && periods.find(pp=>pp.period_no===6)) {
           tableRows += `<tr><td colspan="${daysInGrid.length+1}" class="bg-orange-50 text-center py-1.5">
             <p class="text-[9px] font-semibold text-orange-500">🕐 ละหมาดซุฮรี / พักเที่ยง</p>
           </td></tr>`
