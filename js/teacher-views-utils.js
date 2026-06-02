@@ -193,15 +193,11 @@ export function _activeRemainingDisplay(endTime) {
   if (!endTime) return '—'
   const [eh, em] = endTime.split(':').map(Number)
   const now = new Date()
-  const remSec = Math.ceil(((eh*60+em)*60 - now.getHours()*3600 - now.getMinutes()*60 - now.getSeconds()))
-  if (remSec <= 0) return '0 วิ'
+  const remSec = Math.max(0, (eh*60+em)*60 - now.getHours()*3600 - now.getMinutes()*60 - now.getSeconds())
+  const h = Math.floor(remSec / 3600)
+  const m = Math.floor((remSec % 3600) / 60)
   const s = remSec % 60
-  const totalMins = Math.floor(remSec / 60)
-  if (totalMins === 0) return `${s} วิ`
-  const m = totalMins % 60
-  const h = Math.floor(totalMins / 60)
-  if (h === 0) return `${m} น. ${s} วิ`
-  return `${h} ชม. ${m} น. ${s} วิ`
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
 export function _generateSessions(classData, credit, dowPattern = null) {
