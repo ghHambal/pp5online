@@ -34,7 +34,11 @@ async function init() {
 
   if (_student?.house_color) {
     const hex = await getHouseColorHex(_student.house_color).catch(() => null)
-    if (hex) await applyThemeForRole('student', { houseColor: hex })
+    if (hex) {
+      await applyThemeForRole('student', { houseColor: hex })
+      // ใช้ soft color (88% white) เป็นพื้นหลังทุกหน้า
+      document.body.style.background = `var(--theme-primary-soft)`
+    }
   }
   if (!_student) {
     document.getElementById('stu-content').innerHTML = `
