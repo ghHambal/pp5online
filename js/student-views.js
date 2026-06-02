@@ -233,7 +233,7 @@ export async function renderStudentOverview(student) {
 
   setContent(`
     <!-- Profile card -->
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-4">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center gap-4">
       <div class="w-14 h-20 rounded-t-2xl rounded-b-lg overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
                   flex items-center justify-center text-white text-2xl font-bold shadow">
         ${student.image_url
@@ -248,15 +248,15 @@ export async function renderStudentOverview(student) {
 
     <!-- Stats row -->
     <div class="grid grid-cols-3 gap-2 mb-4">
-      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-2.5 text-center">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 text-center">
         <p class="text-xl font-bold text-emerald-600">${classes.length}</p>
         <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">รายวิชา</p>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-2.5 text-center">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 text-center">
         <p class="text-xl font-bold text-amber-600">${pending.length}</p>
         <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">คำร้อง<br>รอดำเนินการ</p>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-2.5 text-center">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 text-center">
         <p class="text-xl font-bold text-blue-600">${requests.length}</p>
         <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">คำร้อง<br>ทั้งหมด</p>
       </div>
@@ -349,7 +349,7 @@ export async function renderStudentOverview(student) {
       }).join('')
 
       return `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md mb-4 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-50">
           <h3 class="font-semibold text-gray-700 text-sm">📅 วันนี้ — ${todayName}</h3>
         </div>
@@ -370,7 +370,7 @@ export async function renderStudentOverview(student) {
 
     <!-- Recent requests -->
     ${recent.length > 0 ? `
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <h3 class="font-semibold text-gray-700 text-sm">📋 คำร้องล่าสุด</h3>
         <button onclick="window._stuNav('requests')" class="text-xs text-emerald-600 font-medium">ดูทั้งหมด →</button>
@@ -506,15 +506,12 @@ export async function renderStudentOverview(student) {
               <th class="px-2 py-2 font-medium text-center">หน่วย</th>
               <th class="px-2 py-2 font-medium text-center">คะแนน</th>
               <th class="px-2 py-2 font-medium text-center">เกรด</th>
-              <th class="px-2 py-2 font-medium text-center">เกรด×หน่วย</th>
               <th class="px-2 py-2 font-medium text-center">แก้</th>
               <th class="px-2 py-2 font-medium text-center">เปิด</th>
             </tr>
           </thead>
           <tbody>
-            ${rows.map((r, i) => {
-              const wtGrade = r.grade != null ? (r.grade * (r.credit||1)) : null
-              return `
+            ${rows.map((r, i) => `
             <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
               <td class="px-4 py-2.5 text-gray-400">${i+1}</td>
               <td class="px-2 py-2.5 min-w-0">
@@ -524,28 +521,25 @@ export async function renderStudentOverview(student) {
               <td class="px-2 py-2.5 text-center text-gray-600">${r.credit}</td>
               <td class="px-2 py-2.5 text-center font-medium text-gray-700">${r.score != null ? r.score : '—'}</td>
               <td class="px-2 py-2.5 text-center font-bold ${_gradeColor(r.grade)}">${r.grade != null ? r.grade.toFixed(1) : '—'}</td>
-              <td class="px-2 py-2.5 text-center text-gray-500">${wtGrade != null ? wtGrade.toFixed(2) : '—'}</td>
               <td class="px-2 py-2.5 text-center text-gray-400">${r.hasRetake ? '✓' : ''}</td>
               <td class="px-2 py-2.5 text-center">
                 <button class="gpa-pp5-btn px-2.5 py-1 rounded-lg bg-emerald-500 text-white text-[10px] font-bold hover:bg-emerald-600 transition"
                   data-class-id="${r.classId}">→</button>
               </td>
-            </tr>`}).join('')}
+            </tr>`).join('')}
             <!-- แถวรวม -->
             <tr class="border-t border-gray-200 bg-gray-50 font-semibold">
               <td colspan="2" class="px-4 py-2 text-xs text-gray-600 text-right">รวม</td>
               <td class="px-2 py-2 text-center text-gray-700">${totalCredit}</td>
               <td class="px-2 py-2 text-center text-gray-400">—</td>
-              <td class="px-2 py-2 text-center text-gray-400">—</td>
-              <td class="px-2 py-2 text-center text-gray-700">${totalWtGrade.toFixed(2)}</td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
             <!-- แถว GPA -->
             <tr class="border-t-2 border-gray-300 bg-purple-50">
               <td colspan="2" class="px-4 py-2.5 text-xs font-bold text-gray-700 text-right">ผลการเรียนเฉลี่ยรายภาคเรียน</td>
               <td class="px-2 py-2.5 text-center text-xs text-gray-600">${totalCredit}</td>
               <td class="px-2 py-2.5 text-center text-gray-400">—</td>
-              <td colspan="2" class="px-2 py-2.5 text-center text-sm font-extrabold ${_gradeColor(gpa ? gpaVal : null)}">${gpa ?? '—'}</td>
+              <td class="px-2 py-2.5 text-center text-sm font-extrabold ${_gradeColor(gpa ? gpaVal : null)}">${gpa ?? '—'}</td>
               <td colspan="2"></td>
             </tr>
           </tbody>
@@ -648,7 +642,7 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
   const prayerScore = prayerMax ? Math.max(0, Math.round((prayerEarned / prayerMax) * 100) / 10) : 0
 
   const scoreCard = (title, icon, rows, color) => `
-    <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+    <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <h3 class="font-bold text-gray-800 text-sm">${icon} ${title}</h3>
         <span class="text-[11px] text-gray-400">${rows.length} หัวข้อ</span>
@@ -669,7 +663,7 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
     </section>`
 
   const prayerCard = `
-    <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+    <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <div>
           <h3 class="font-bold text-gray-800 text-sm">🕌 คะแนนละหมาด</h3>
@@ -718,7 +712,7 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
     life: scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600'),
     prayer: prayerCard,
     reading: `
-      <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+      <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
         <div class="px-4 py-4 flex items-center justify-between gap-4">
           <div>
             <h3 class="font-bold text-gray-800 text-sm">📝 ผลประเมินการอ่าน</h3>
@@ -832,7 +826,7 @@ export async function renderStudentSubjects(student) {
     const meta = _subjectGroupMeta(cls, themeCfg)
     if (isGrid) {
       return `<button onclick="window._stuOpenClass(${cls.id})"
-        class="min-h-[132px] border border-l-4 rounded-2xl shadow-sm p-2.5 text-left cursor-pointer hover:shadow-md transition overflow-hidden"
+        class="min-h-[132px] border border-l-4 rounded-2xl shadow-md p-2.5 text-left cursor-pointer hover:shadow-md transition overflow-hidden"
         style="background:${meta.bg}; border-color:${meta.border}; border-left-color:${meta.color};">
         <div class="h-full flex flex-col">
           <div class="flex items-start justify-between gap-1">
@@ -857,7 +851,7 @@ export async function renderStudentSubjects(student) {
       </button>`
     }
     return `<div onclick="window._stuOpenClass(${cls.id})"
-      class="border border-l-4 rounded-2xl shadow-sm p-4 cursor-pointer hover:shadow-md transition"
+      class="border border-l-4 rounded-2xl shadow-md p-4 cursor-pointer hover:shadow-md transition"
       style="background:${meta.bg}; border-color:${meta.border}; border-left-color:${meta.color};">
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
@@ -1053,7 +1047,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     const s = STATUS_BADGE[r.status] ?? STATUS_BADGE.pending
     const col = r.class_score_columns
     const when = _daysUntilLabel(r.requested_date)
-    return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+    return `<div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="min-w-0">
           <p class="font-semibold text-gray-800 text-sm truncate">${r.request_type}</p>
@@ -1128,7 +1122,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       const diffLabel = diff === 0 ? '🔴 วันนี้!' : diff === 1 ? '🟡 พรุ่งนี้' : `⏰ อีก ${diff} วัน`
       const dayName = DAY_TH[next.getDay()] ?? ''
       items.push(`
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-3">
           <div class="w-12 h-12 rounded-xl bg-emerald-50 flex flex-col items-center justify-center flex-shrink-0">
             <span class="text-xs text-emerald-600 font-bold">${dayName}</span>
             <span class="text-lg font-extrabold text-emerald-700 leading-tight">${next.getDate()}</span>
@@ -1194,7 +1188,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         <h2 class="font-bold text-gray-800">✅ ภารกิจ / สิ่งที่ต้องทำ</h2>
       </div>
       ${items.length ? `<div class="space-y-3">${items.join('')}</div>` : `
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-300">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-8 text-center text-gray-300">
           <p class="text-4xl mb-2">🎉</p>
           <p class="text-sm font-medium text-gray-500">ไม่มีรายการที่ต้องทำ</p>
           <p class="text-xs mt-1">ถ้าครูประกาศกำหนดสอบหรือแจ้งงานในรายวิชา ระบบจะแสดงพร้อมนับถอยหลังที่นี่</p>
@@ -1206,7 +1200,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       <h2 class="font-bold text-gray-800">📊 สรุปคะแนน</h2>
       ${totalMax > 0 ? `<span class="text-xs text-gray-400">${pct.toFixed(0)}% รวม</span>` : ''}
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
       ${columns.length === 0
         ? `<p class="px-4 py-8 text-center text-xs text-gray-300">ยังไม่มีคะแนน</p>`
         : `<div>
@@ -1216,7 +1210,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
           </div>`}
     </div>
     ${attTotal > 0 ? `
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <h3 class="font-semibold text-gray-700 text-sm">📅 การเข้าเรียน</h3>
         ${attPct !== null ? `<span class="text-xs text-gray-400">${attPresent}/${attTotal} คาบ · ${attPct}%</span>` : ''}
@@ -1241,7 +1235,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     </button>
     <h2 class="font-bold text-gray-800 mb-3">ประวัติคำร้องในรายวิชานี้</h2>
     ${requests.length ? `<div class="space-y-3">${requests.map(_requestCard).join('')}</div>` : `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center text-gray-300">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-8 text-center text-gray-300">
         <p class="text-4xl mb-2">📭</p>
         <p class="text-sm">ยังไม่มีคำร้องในรายวิชานี้</p>
       </div>`}`
@@ -1304,7 +1298,7 @@ export async function renderStudentRequests(student) {
         const s = STATUS_BADGE[r.status] ?? STATUS_BADGE.pending
         const cls = r.classes
         const col = r.class_score_columns
-        return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        return `<div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4">
           <div class="flex items-start justify-between gap-2 mb-2">
             <div class="min-w-0">
               <p class="font-semibold text-gray-800 text-sm truncate">${cls?.master_subjects?.subject_name ?? '—'}</p>
@@ -1412,7 +1406,7 @@ export async function renderExamRequestForm(student, classId) {
       <button onclick="window._stuOpenClassTab(${classId}, 'requests')"
         class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← กลับคำร้อง</button>
 
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-5">
         <h2 class="font-bold text-gray-800 mb-1">📝 ยื่นคำร้อง</h2>
         <p class="text-xs text-gray-400 mb-5">${ms?.subject_name ?? ''} · ${_roomDisplay(cls.class_name)}</p>
 
@@ -1563,7 +1557,7 @@ export async function renderExamRequestForm(student, classId) {
   setContent(`
     <button onclick="window._stuOpenClass(${classId})" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← กลับรายวิชา</button>
 
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-5">
       <h2 class="font-bold text-gray-800 mb-1">📝 ยื่นคำร้อง</h2>
       <p class="text-xs text-gray-400 mb-3">${ms?.subject_name ?? ''} · ${_roomDisplay(cls.class_name)}</p>
       ${missedWarning}
@@ -1819,7 +1813,7 @@ export async function renderStudentProfile(student, onLogout) {
     ].filter(Boolean)
     if (!items.length) return ''
     return `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
         <div class="px-5 py-3 border-b border-gray-50">
           <p class="text-sm font-semibold text-gray-700">📞 ติดต่อผู้ดูแลระบบ</p>
         </div>
@@ -1841,7 +1835,7 @@ export async function renderStudentProfile(student, onLogout) {
 
   setContent(`
     <h2 class="font-bold text-gray-800 mb-4">👤 โปรไฟล์ของฉัน</h2>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4 flex items-center gap-4">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-5 mb-4 flex items-center gap-4">
       <div class="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
                   flex items-center justify-center text-white text-3xl font-bold border-2 border-white shadow">
         ${student.image_url
@@ -1855,7 +1849,7 @@ export async function renderStudentProfile(student, onLogout) {
       </div>
     </div>
 
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-6">
       <div class="px-5 py-3.5 border-b border-gray-50 flex justify-between">
         <span class="text-sm text-gray-500">รหัสนักเรียน</span>
         <span class="text-sm font-medium text-gray-800">${student.student_code}</span>
