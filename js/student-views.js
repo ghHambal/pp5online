@@ -278,14 +278,20 @@ export async function renderStudentOverview(student) {
       </button>
     </div>
     <div class="grid grid-cols-2 gap-2 mb-4">
-      <button id="btn-stu-anns"
-        class="bg-amber-500 text-white rounded-xl p-3 text-left hover:bg-amber-600 transition relative">
-        <p class="text-lg mb-1">📢</p>
-        <p class="font-semibold text-xs">ประกาศของฉัน</p>
-        <p class="text-[10px] text-amber-100 mt-0.5">${allAnns.length} รายการ</p>
-        ${allAnns.filter(a => a.ann_type==='deadline' && a.deadline_at && new Date(a.deadline_at) > new Date()).length > 0
-          ? `<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>` : ''}
-      </button>
+      ${(() => {
+        const SEEN_KEY = `stu_ann_seen_${student.id}`
+        const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'))
+        const unreadCount = allAnns.filter(a => !seen.has(a.id)).length
+        return `<button id="btn-stu-anns"
+          class="bg-amber-500 text-white rounded-xl p-3 text-left hover:bg-amber-600 transition relative">
+          <p class="text-lg mb-1">📢</p>
+          <p class="font-semibold text-xs">ประกาศของฉัน</p>
+          <p class="text-[10px] text-amber-100 mt-0.5">${allAnns.length} รายการ</p>
+          ${unreadCount > 0
+            ? `<span class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow">${unreadCount}</span>`
+            : ''}
+        </button>`
+      })()}
       <button id="btn-stu-gpa"
         class="bg-purple-600 text-white rounded-xl p-3 text-left hover:bg-purple-700 transition">
         <p class="text-lg mb-1">🎓</p>
@@ -454,6 +460,15 @@ export async function renderStudentOverview(student) {
     return `<span class="text-amber-600 text-xs">📅 อีก ${Math.floor(diffH/24)} วัน · ${str}</span>`
   }
   document.getElementById('btn-stu-anns')?.addEventListener('click', () => {
+    // mark ทุกประกาศว่าอ่านแล้ว → badge หาย
+    const SEEN_KEY = `stu_ann_seen_${student.id}`
+    const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'))
+    allAnns.forEach(a => seen.add(a.id))
+    localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]))
+    // ลบ badge ออกทันที
+    const badgeEl = document.querySelector('#btn-stu-anns span.absolute')
+    if (badgeEl) badgeEl.remove()
+
     const annBody = allAnns.length ? `<div class="space-y-3">${allAnns.map(a => {
       const t = ANN_TYPE_LABEL_S[a.ann_type] ?? ANN_TYPE_LABEL_S.general
       const ms = a.cls?.master_subjects
