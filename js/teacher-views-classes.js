@@ -3162,34 +3162,60 @@ export async function renderAnnouncementsView(teacher) {
     if (!panel) return
     panel.innerHTML = `<div class="flex justify-center py-8 text-gray-400"><svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> กำลังโหลด...</div>`
     try {
-      const { getTeacherOwnAnnouncements, getMyClasses: _mc } = await import('./api.js')
-      const [anns, cls] = await Promise.all([
+      const { getTeacherOwnAnnouncements, getMyClasses: _mc, getTeacherPackageAccess } = await import('./api.js')
+      const [anns, cls, access] = await Promise.all([
         getTeacherOwnAnnouncements(teacher.id),
-        _mc(teacher.id).catch(() => [])
+        _mc(teacher.id).catch(() => []),
+        getTeacherPackageAccess(teacher.id).catch(() => ({ hasSemester: false })),
       ])
       _myClasses = cls
-      _renderMyAnnList(anns)
+      _renderMyAnnList(anns, access.hasSemester)
     } catch (err) {
       panel.innerHTML = `<p class="text-sm text-red-500 text-center py-8">โหลดไม่สำเร็จ: ${err.message}</p>`
     }
   }
 
-  const _renderMyAnnList = (anns) => {
+  const FREE_ANN_LIMIT = 3
+
+  const _renderMyAnnList = (anns, hasSemester = false) => {
     const panel = document.getElementById('ann-panel-myann')
     if (!panel) return
+    const canCreate = hasSemester || anns.length < FREE_ANN_LIMIT
+    const limitInfo = !hasSemester
+      ? `<span class="text-xs text-gray-400">${anns.length}/${FREE_ANN_LIMIT} (ฟรี)</span>`
+      : `<span class="text-xs text-emerald-600 font-medium">✨ ไม่จำกัด</span>`
     panel.innerHTML = `
     <div class="space-y-3">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-gray-700">ประกาศของฉัน (${anns.length})</h3>
-        <button id="btn-create-myann" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-xl font-semibold hover:bg-indigo-700 transition">+ สร้างประกาศ</button>
+        <div class="flex items-center gap-2">
+          <h3 class="font-semibold text-gray-700">ประกาศของฉัน (${anns.length})</h3>
+          ${limitInfo}
+        </div>
+        <button id="btn-create-myann"
+          class="px-4 py-2 text-sm rounded-xl font-semibold transition ${canCreate
+            ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+            : 'bg-gray-100 text-gray-400 cursor-not-allowed'}">
+          + สร้างประกาศ
+        </button>
       </div>
+      ${!hasSemester && anns.length >= FREE_ANN_LIMIT ? `
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+        <span class="text-2xl flex-shrink-0">⭐</span>
+        <div>
+          <p class="text-sm font-semibold text-amber-800">ใช้ครบ ${FREE_ANN_LIMIT} ประกาศแล้ว</p>
+          <p class="text-xs text-amber-600 mt-1">อัพเกรดเป็นแพ็กเกจโดเนทเพื่อสร้างประกาศได้ไม่จำกัด</p>
+        </div>
+      </div>` : ''}
       ${anns.length ? anns.map(a => _myAnnCard(a, _myClasses)).join('') : `
       <div class="text-center py-12 text-gray-400">
         <p class="text-3xl mb-2">📢</p>
         <p class="text-sm">ยังไม่มีประกาศ กดปุ่ม "สร้างประกาศ" เพื่อเริ่มต้น</p>
       </div>`}
     </div>`
-    document.getElementById('btn-create-myann')?.addEventListener('click', () => _openMyAnnForm())
+    document.getElementById('btn-create-myann')?.addEventListener('click', () => {
+      if (!canCreate) { showToast(`ใช้ครบ ${FREE_ANN_LIMIT} ประกาศแล้ว — อัพเกรดเพื่อใช้งานไม่จำกัด`, 'warning'); return }
+      _openMyAnnForm()
+    })
   }
 
   const _classSelectHtml = (entryIdx, selectedIds = []) =>
