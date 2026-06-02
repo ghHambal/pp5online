@@ -5,6 +5,7 @@ import {
   getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
   getMyLifeSkillScores, getMyReadingScores, getMyPrayerRecords,
   getStudentDailySchedule, getStudentAllAnnouncements, getStudentGPA,
+  getClassSchedulesByIds,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
@@ -645,9 +646,6 @@ export async function renderStudentSubjects(student) {
     </svg>
   </div>`)
 
-  const { getClassAnnouncements: _unused, ..._ } = {} // no-op
-  const { supabase: _sb } = await import('./supabase.js').catch(()=>({}))
-
   const [classes, themeCfg] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getThemeConfig().catch(()=>({})),
@@ -655,20 +653,9 @@ export async function renderStudentSubjects(student) {
 
   // ดึง schedule links ทั้งหมดในครั้งเดียว
   const _DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
-  let schedByClass = {}  // { classId: [{ day_of_week, period_no, span_periods }] }
-  if (_sb && classes.length) {
-    const classIds = classes.map(c => c.id)
-    const { data: links } = await _sb
-      .from('class_schedule_links')
-      .select('class_id, teacher_schedules(day_of_week, period_no, span_periods)')
-      .in('class_id', classIds)
-    for (const l of links ?? []) {
-      const s = l.teacher_schedules
-      if (!s) continue
-      if (!schedByClass[l.class_id]) schedByClass[l.class_id] = []
-      schedByClass[l.class_id].push(s)
-    }
-  }
+  const schedByClass = classes.length
+    ? await getClassSchedulesByIds(classes.map(c => c.id)).catch(() => ({}))
+    : {}
 
   const _schedChip = (classId) => {
     const slots = schedByClass[classId] ?? []

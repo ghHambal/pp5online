@@ -340,3 +340,21 @@ export async function getStudentGPA(studentId) {
   const sasana = valid.filter(r =>  ['AGM','AGMVOC'].includes(r.group))
   return { samai, sasana }
 }
+
+// ─── Class schedule links (day + period) for subject cards ───────────────────
+export async function getClassSchedulesByIds(classIds) {
+  if (!classIds?.length) return {}
+  const { data, error } = await supabase
+    .from('class_schedule_links')
+    .select('class_id, teacher_schedules(day_of_week, period_no, span_periods)')
+    .in('class_id', classIds)
+  if (error) return {}
+  const result = {}
+  for (const l of data ?? []) {
+    const s = l.teacher_schedules
+    if (!s) continue
+    if (!result[l.class_id]) result[l.class_id] = []
+    result[l.class_id].push(s)
+  }
+  return result
+}
