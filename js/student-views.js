@@ -659,58 +659,59 @@ export async function renderStudentOverview(student) {
     const _renderDay = (dow) => {
       const now = new Date()
       const nowSec = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()
-      const _toSec = t => { if(!t) return null; const [h,m]=t.split(':').map(Number); return h*3600+m*60 }
-      const skipPeriods = new Set() // คาบที่ถูก span มาจากคาบก่อนหน้า
-      const rows = []
+      const skipPeriods = new Set()
+      let tableRows = ''
+
       periods.forEach((p, i) => {
-        if (skipPeriods.has(p.period_no)) return // ข้ามคาบที่ถูก span
+        // แถวพักเที่ยง ก่อนคาบ 6
+        if (p.period_no === 6 && periods.find(pp=>pp.period_no===5)) {
+          tableRows += `<tr>
+            <td colspan="3" class="bg-orange-50 text-center py-2 border-b border-orange-100">
+              <p class="text-[11px] font-semibold text-orange-600">🕐 ละหมาดซุฮรี / พักเที่ยง</p>
+            </td></tr>`
+        }
+
+        if (skipPeriods.has(p.period_no)) return
+
         const slot = slotMap[`${dow}-${p.period_no}`]
         const span = slot?.span ?? 1
-        // หา end period สำหรับ span
-        const lastPeriod = span > 1 ? (periods.find(pp => pp.period_no === p.period_no + span - 1) ?? p) : p
-        const startSec = _toSec(p.start_time), endSec = _toSec(lastPeriod.end_time)
-        const isNow = startSec!=null && endSec!=null && nowSec>=startSec && nowSec<endSec
-        const isDone = endSec!=null && nowSec>=endSec
-        const statusIcon = isNow ? '🟢' : isDone ? '✅' : '⬜'
+        const lastP = span > 1 ? (periods.find(pp => pp.period_no === p.period_no+span-1) ?? p) : p
+        const [sh,sm] = (p.start_time??'0:0').split(':').map(Number)
+        const [eh,em] = (lastP.end_time??'0:0').split(':').map(Number)
+        const startSec = sh*3600+sm*60, endSec = eh*3600+em*60
+        const isNow = nowSec>=startSec && nowSec<endSec
+        const isDone = nowSec>=endSec
         const ms = slot?.cls?.master_subjects
-        const timeStr = span > 1
-          ? `${p.start_time?.slice(0,5)}–${lastPeriod.end_time?.slice(0,5)} (คาบ ${p.period_no}–${p.period_no+span-1})`
-          : p.start_time?.slice(0,5)
-        // mark คาบที่ถูก span ให้ข้ามในรอบถัดไป
+        const isAGM = ['AGM','AGMVOC'].includes(ms?.subject_group??'')
+        const cellCls = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
+        const txtCls  = slot ? (isAGM ? 'text-amber-800' : 'text-emerald-800') : 'text-gray-300'
+
         for (let s=1; s<span; s++) skipPeriods.add(p.period_no+s)
-        rows.push(`
-          <div class="flex items-stretch gap-3 border-b border-gray-100 last:border-0 ${isNow?'bg-emerald-50':''} py-2.5">
-            <div class="w-14 flex-shrink-0 text-center">
-              <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}${span>1?`–${p.period_no+span-1}`:''}</p>
-              <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)}</p>
-            </div>
-            <div class="flex-1 min-w-0 flex items-center">
-              ${slot ? `
-                <div class="flex-1 min-w-0 px-3 py-1.5 rounded-xl border ${_cellColor(ms?.subject_group ?? '')}">
-                  <p class="text-xs font-semibold truncate">${ms?.subject_name ?? '—'}</p>
-                  <p class="text-[10px] opacity-70">${ms?.subject_code ?? ''}</p>
-                </div>` :
-                `<p class="text-xs text-gray-300">—</p>`}
-            </div>
-            ${isNow ? `<div class="flex-shrink-0 flex items-center">
-              <span id="tt-day-cd" class="text-[10px] font-bold text-emerald-600 tabular-nums">—</span>
-            </div>` : ''}
-          </div>`)
-        // แถวพักเที่ยง/ละหมาดซุฮรี ระหว่างคาบ 5-6
-        const lastSpanNo = p.period_no + span - 1
-        if ((lastSpanNo === 5 || p.period_no === 5) && periods.find(pp=>pp.period_no===6)) {
-          rows.push(`
-          <div class="flex items-center gap-3 py-2 border-b border-gray-100 bg-orange-50">
-            <div class="w-14 flex-shrink-0 text-center">
-              <p class="text-[10px] text-orange-400 font-medium">พัก</p>
-            </div>
-            <div class="flex-1 min-w-0">
-              <p class="text-[11px] font-semibold text-orange-600">🕐 ละหมาดซุฮรี / พักเที่ยง</p>
-            </div>
-          </div>`)
-        }
+
+        tableRows += `<tr class="${isNow?'bg-emerald-50':''}">
+          <td class="border-b border-gray-100 border-r border-gray-100 text-center py-2 px-1 bg-gray-50 align-top" ${span>1?`rowspan="${span}"`:''}
+              style="width:56px">
+            <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}${span>1?`–${p.period_no+span-1}`:''}</p>
+            <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)??''}</p>
+            ${span>1?`<p class="text-[9px] text-gray-300">–${lastP.end_time?.slice(0,5)??''}</p>`:''}
+          </td>
+          <td class="border-b border-gray-100 ${cellCls} align-middle p-2" ${span>1?`rowspan="${span}"`:''}
+              style="${isNow?'box-shadow:inset 2px 0 0 #10b981':''}">
+            ${slot ? `
+              <p class="text-sm font-semibold ${txtCls}">${ms?.subject_name??'—'}</p>
+              <p class="text-[10px] ${txtCls} opacity-70">${ms?.subject_code??''}</p>` :
+              `<p class="text-xs text-gray-300 text-center">—</p>`}
+          </td>
+          <td class="border-b border-gray-100 text-center align-middle px-2" style="width:64px" ${span>1?`rowspan="${span}"`:''}>
+            ${isNow ? `<span id="tt-day-cd" class="text-[10px] font-bold text-emerald-600 tabular-nums">—</span>`
+              : isDone ? `<span class="text-[10px] text-gray-300">✓</span>` : ''}
+          </td>
+        </tr>`
       })
-      return rows.join('')
+
+      return `<table class="w-full border-collapse">
+        <tbody>${tableRows}</tbody>
+      </table>`
     }
 
     const _renderWeek = () => {
@@ -787,7 +788,7 @@ export async function renderStudentOverview(student) {
           <button id="tt-next" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-sm">▶</button>
         </div>` : ''}
       </div>
-      ${isWeek ? _renderWeek() : `<div class="space-y-0">${_renderDay(currentDay)}</div>`}
+      ${isWeek ? _renderWeek() : _renderDay(currentDay)}
       ${!slots.length ? '<p class="text-xs text-gray-400 text-center py-8">ยังไม่มีข้อมูลตารางสอน — ครูต้องเชื่อมตารางสอนก่อน</p>' : ''}`
 
       // tab switch
