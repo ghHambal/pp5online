@@ -20,12 +20,12 @@ let _activeScoreTab = 'life'
 // ─── Auth Guard ───────────────────────────────────────────────────────────────
 async function init() {
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) { window.location.replace('index.html'); return }
+  if (!session) { window.location.replace('student-login.html'); return }
 
   const { data: profile } = await supabase
     .from('profiles').select('role').eq('id', session.user.id).single()
 
-  if (profile?.role !== 'student') { window.location.replace('index.html'); return }
+  if (profile?.role !== 'student') { window.location.replace('student-login.html'); return }
   await applyThemeForRole('student')
 
   _student = await getMyStudentProfile()
@@ -212,7 +212,7 @@ function _bindNav() {
 
 async function _handleLogout() {
   await supabase.auth.signOut()
-  window.location.replace('index.html')
+  window.location.replace('student-login.html')
 }
 
 // ─── Global window handlers ───────────────────────────────────────────────────
