@@ -321,25 +321,13 @@ export async function renderStudentOverview(student) {
         </div>`
       }).join('')
 
-      const unlinkedRows = dailySched.unlinked.map(cls => {
-        const ms = cls?.master_subjects
-        return `<div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
-          <span class="text-base flex-shrink-0">⚠️</span>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-gray-700 truncate">${ms?.subject_name ?? '—'}</p>
-            <p class="text-[10px] text-red-500 mt-0.5 leading-tight">ครูยังไม่เชื่อมตารางสอน<br>โปรดแจ้งครูทราบ</p>
-          </div>
-        </div>`
-      }).join('')
-
-      const hasAny = periodRows || unlinkedRows
       return `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-50">
           <h3 class="font-semibold text-gray-700 text-sm">📅 วันนี้ — ${todayName}</h3>
         </div>
         <div class="px-4">
-          ${hasAny ? periodRows + unlinkedRows : `<p class="text-xs text-gray-400 text-center py-6">ไม่มีคาบเรียนวันนี้</p>`}
+          ${periodRows || `<p class="text-xs text-gray-400 text-center py-6">ไม่มีคาบเรียนวันนี้</p>`}
         </div>
       </div>`
     })()}
@@ -657,6 +645,8 @@ export async function renderStudentSubjects(student) {
     ? await getClassSchedulesByIds(classes.map(c => c.id)).catch(() => ({}))
     : {}
 
+  const _isUnlinked = (classId) => !(schedByClass[classId]?.length)
+
   const _schedChip = (classId) => {
     const slots = schedByClass[classId] ?? []
     if (!slots.length) return ''
@@ -724,7 +714,9 @@ export async function renderStudentSubjects(student) {
             <p class="font-bold text-[12px] leading-tight line-clamp-2" style="color:${meta.text};">${ms?.subject_name ?? '—'}</p>
             <p class="text-[10px] text-gray-400 mt-0.5 font-mono truncate">${ms?.subject_code ?? ''}</p>
             <p class="text-[10px] text-gray-500 mt-1 truncate">${_roomDisplay(cls.class_name)}</p>
-            ${_schedChip(cls.id) ? `<p class="text-[9px] text-indigo-500 mt-0.5 font-medium truncate">🕐 ${_schedChip(cls.id)}</p>` : ''}
+            ${_schedChip(cls.id)
+              ? `<p class="text-[9px] text-indigo-500 mt-0.5 font-medium truncate">🕐 ${_schedChip(cls.id)}</p>`
+              : `<p class="text-[9px] text-amber-500 mt-0.5 font-medium">⚠️ ยังไม่มีตารางสอน</p>`}
           </div>
           <div class="mt-auto pt-2 flex items-center gap-1.5 min-w-0">
             ${teacher?.image_url
@@ -750,7 +742,9 @@ export async function renderStudentSubjects(student) {
           <span class="text-[10px] text-gray-400">${ms?.credit ?? '—'} หน่วยกิต</span>
         </div>
       </div>
-      ${_schedChip(cls.id) ? `<p class="text-[11px] text-indigo-500 font-medium mt-2">🕐 ${_schedChip(cls.id)}</p>` : ''}
+      ${_schedChip(cls.id)
+        ? `<p class="text-[11px] text-indigo-500 font-medium mt-2">🕐 ${_schedChip(cls.id)}</p>`
+        : `<p class="text-[11px] text-amber-500 font-medium mt-2">⚠️ ครูยังไม่เชื่อมตารางสอน — โปรดแจ้งครูทราบ</p>`}
       <div class="flex items-center gap-3 mt-2 pt-2 border-t border-white/60">
         <div class="flex items-center gap-1.5">
           ${teacher?.image_url
