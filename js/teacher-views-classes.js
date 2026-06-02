@@ -3038,9 +3038,13 @@ export async function renderAnnouncementsView(teacher) {
         class="ann-tab flex-1 py-2 rounded-xl text-sm font-semibold transition bg-white shadow-sm text-gray-800">
         📢 ประกาศ
       </button>
+      <button id="ann-tab-myann" data-tab="myann"
+        class="ann-tab flex-1 py-2 rounded-xl text-sm font-semibold transition text-gray-500 hover:text-gray-700">
+        ✏️ ประกาศของฉัน
+      </button>
       <button id="ann-tab-comments" data-tab="comments"
         class="ann-tab flex-1 py-2 rounded-xl text-sm font-semibold transition text-gray-500 hover:text-gray-700">
-        💬 ความคิดเห็น / บันทึก
+        💬 บันทึก
       </button>
     </div>
     <div id="ann-panel-announce">
@@ -3051,6 +3055,7 @@ export async function renderAnnouncementsView(teacher) {
         </svg> กำลังโหลด...
       </div>
     </div>
+    <div id="ann-panel-myann" class="hidden"></div>
     <div id="ann-panel-comments" class="hidden">
       <div class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
@@ -3105,9 +3110,201 @@ export async function renderAnnouncementsView(teacher) {
         b.className = `ann-tab flex-1 py-2 rounded-xl text-sm font-semibold transition ${on ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`
       })
       document.getElementById('ann-panel-announce').classList.toggle('hidden', _activeTab !== 'announce')
+      document.getElementById('ann-panel-myann').classList.toggle('hidden', _activeTab !== 'myann')
       document.getElementById('ann-panel-comments').classList.toggle('hidden', _activeTab !== 'comments')
+      if (_activeTab === 'myann' && !_myannLoaded) _loadMyAnn()
     })
   })
+
+  // ─── ประกาศของฉัน (teacher → classroom) ──────────────────────────────────
+  const ANN_TYPES_TEACHER = {
+    'general':      { label: 'ทั่วไป',                    icon: '📢' },
+    'learning_doc': { label: 'เอกสารประกอบการเรียน',       icon: '📄' },
+    'exercise_doc': { label: 'เอกสารแบบฝึกเพิ่มเติม',     icon: '📝' },
+    'exam_prep':    { label: 'เอกสารแนวข้อสอบ',            icon: '📋' },
+  }
+
+  let _myannLoaded = false
+  let _myClasses   = []
+
+  const _myAnnCard = (a, classes) => {
+    const typeInfo = ANN_TYPES_TEACHER[a.ann_type] ?? { label: a.ann_type, icon: '📢' }
+    const targetNames = (a.target_class_ids ?? [])
+      .map(id => classes.find(c => c.id === id)?.class_name ?? `#${id}`)
+      .join(', ')
+    return `
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-2" data-myann-id="${a.id}">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full font-medium">${typeInfo.icon} ${typeInfo.label}</span>
+            ${a.priority > 0 ? `<span class="text-xs px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full font-medium">📌 ปักหมุด</span>` : ''}
+            ${!a.is_active ? `<span class="text-xs px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full">ซ่อน</span>` : ''}
+          </div>
+          <p class="font-semibold text-gray-800">${_esc(a.title)}</p>
+          ${a.body ? `<p class="text-sm text-gray-500 mt-1 line-clamp-2">${_esc(a.body)}</p>` : ''}
+          ${a.file_url ? `<a href="${_esc(a.file_url)}" target="_blank" class="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1">📎 ไฟล์แนบ</a>` : ''}
+          <p class="text-xs text-gray-400 mt-2">ห้อง: ${_esc(targetNames) || '—'}</p>
+        </div>
+        <div class="flex gap-1 flex-shrink-0">
+          <button onclick="window._editMyAnn(${a.id})" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-indigo-600 transition" title="แก้ไข">✏️</button>
+          <button onclick="window._togglePinMyAnn(${a.id},${a.priority})" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-amber-500 transition" title="${a.priority > 0 ? 'เลิกปักหมุด' : 'ปักหมุด'}">📌</button>
+          <button onclick="window._deleteMyAnn(${a.id})" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-red-500 transition" title="ลบ">🗑️</button>
+        </div>
+      </div>
+    </div>`
+  }
+
+  const _loadMyAnn = async () => {
+    _myannLoaded = true
+    const panel = document.getElementById('ann-panel-myann')
+    if (!panel) return
+    panel.innerHTML = `<div class="flex justify-center py-8 text-gray-400"><svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> กำลังโหลด...</div>`
+    try {
+      const { getTeacherOwnAnnouncements, getMyClasses: _mc } = await import('./api.js')
+      const [anns, cls] = await Promise.all([
+        getTeacherOwnAnnouncements(teacher.id),
+        _mc(teacher.id).catch(() => [])
+      ])
+      _myClasses = cls
+      _renderMyAnnList(anns)
+    } catch (err) {
+      panel.innerHTML = `<p class="text-sm text-red-500 text-center py-8">โหลดไม่สำเร็จ: ${err.message}</p>`
+    }
+  }
+
+  const _renderMyAnnList = (anns) => {
+    const panel = document.getElementById('ann-panel-myann')
+    if (!panel) return
+    panel.innerHTML = `
+    <div class="space-y-3">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-gray-700">ประกาศของฉัน (${anns.length})</h3>
+        <button id="btn-create-myann" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-xl font-semibold hover:bg-indigo-700 transition">+ สร้างประกาศ</button>
+      </div>
+      ${anns.length ? anns.map(a => _myAnnCard(a, _myClasses)).join('') : `
+      <div class="text-center py-12 text-gray-400">
+        <p class="text-3xl mb-2">📢</p>
+        <p class="text-sm">ยังไม่มีประกาศ กดปุ่ม "สร้างประกาศ" เพื่อเริ่มต้น</p>
+      </div>`}
+    </div>`
+    document.getElementById('btn-create-myann')?.addEventListener('click', () => _openMyAnnForm())
+  }
+
+  const _openMyAnnForm = (existing = null) => {
+    const classOpts = _myClasses.map(c =>
+      `<label class="flex items-center gap-2 text-sm cursor-pointer hover:text-indigo-700 py-1">
+        <input type="checkbox" name="myann-class" value="${c.id}"
+          ${existing?.target_class_ids?.includes(c.id) ? 'checked' : ''} class="rounded text-indigo-600" />
+        <span>${_esc(c.class_name)} <span class="text-xs text-gray-400">${_esc(c.master_subjects?.subject_name ?? '')}</span></span>
+      </label>`).join('')
+
+    const wrap = document.createElement('div')
+    wrap.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4'
+    wrap.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
+        <h3 class="font-bold text-gray-800">${existing ? '✏️ แก้ไขประกาศ' : '📢 สร้างประกาศใหม่'}</h3>
+        <button id="myann-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">ประเภทประกาศ</label>
+          <select id="myann-type" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+            ${Object.entries(ANN_TYPES_TEACHER).map(([k,v]) =>
+              `<option value="${k}" ${existing?.ann_type === k ? 'selected' : ''}>${v.icon} ${v.label}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">หัวข้อ <span class="text-red-400">*</span></label>
+          <input id="myann-title" type="text" value="${_esc(existing?.title ?? '')}"
+            placeholder="ระบุหัวข้อประกาศ" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">รายละเอียด</label>
+          <textarea id="myann-body" rows="3"
+            placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none">${_esc(existing?.body ?? '')}</textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">ลิงก์ไฟล์ / เอกสาร</label>
+          <input id="myann-file" type="url" value="${_esc(existing?.file_url ?? '')}"
+            placeholder="https://drive.google.com/..." class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-2">ห้องเรียนที่ต้องการประกาศ <span class="text-red-400">*</span></label>
+          <div class="border border-gray-200 rounded-xl p-3 space-y-0.5 max-h-40 overflow-y-auto">
+            ${classOpts || '<p class="text-xs text-gray-400">ยังไม่มีห้องเรียน</p>'}
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="myann-pin" type="checkbox" ${existing?.priority > 0 ? 'checked' : ''} class="rounded text-amber-500" />
+            <span>📌 ปักหมุดประกาศนี้</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="myann-active" type="checkbox" ${!existing || existing?.is_active ? 'checked' : ''} class="rounded text-emerald-500" />
+            <span>เผยแพร่ทันที</span>
+          </label>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-gray-100 flex gap-3 flex-shrink-0">
+        <button id="myann-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button id="myann-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
+      </div>
+    </div>`
+    document.body.appendChild(wrap)
+    wrap.querySelector('#myann-close').addEventListener('click', () => wrap.remove())
+    wrap.querySelector('#myann-cancel').addEventListener('click', () => wrap.remove())
+    wrap.querySelector('#myann-save').addEventListener('click', async () => {
+      const title   = wrap.querySelector('#myann-title').value.trim()
+      const body    = wrap.querySelector('#myann-body').value.trim()
+      const fileUrl = wrap.querySelector('#myann-file').value.trim()
+      const annType = wrap.querySelector('#myann-type').value
+      const pinned  = wrap.querySelector('#myann-pin').checked
+      const active  = wrap.querySelector('#myann-active').checked
+      const classIds = [...wrap.querySelectorAll('input[name="myann-class"]:checked')].map(el => Number(el.value))
+      if (!title) { showToast('กรุณาระบุหัวข้อ', 'warning'); return }
+      if (!classIds.length) { showToast('กรุณาเลือกอย่างน้อย 1 ห้อง', 'warning'); return }
+      const saveBtn = wrap.querySelector('#myann-save')
+      saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
+      try {
+        const { createAnnouncement, updateAnnouncement } = await import('./api.js')
+        if (existing) {
+          await updateAnnouncement(existing.id, { title, body, isActive: active, priority: pinned ? 1 : 0, annType, targetClassIds: classIds, fileUrl })
+        } else {
+          await createAnnouncement({ title, body, isActive: active, priority: pinned ? 1 : 0, teacherId: teacher.id, annType, targetClassIds: classIds, fileUrl })
+        }
+        wrap.remove()
+        showToast('บันทึกประกาศสำเร็จ ✅', 'success')
+        _myannLoaded = false
+        _loadMyAnn()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'
+      }
+    })
+  }
+
+  window._editMyAnn = async (id) => {
+    const { getTeacherOwnAnnouncements } = await import('./api.js')
+    const anns = await getTeacherOwnAnnouncements(teacher.id).catch(() => [])
+    const a = anns.find(x => x.id === id)
+    if (a) _openMyAnnForm(a)
+  }
+  window._togglePinMyAnn = async (id, currentPriority) => {
+    const { updateAnnouncement } = await import('./api.js')
+    await updateAnnouncement(id, { priority: currentPriority > 0 ? 0 : 1 }).catch(() => {})
+    _myannLoaded = false; _loadMyAnn()
+  }
+  window._deleteMyAnn = async (id) => {
+    if (!confirm('ลบประกาศนี้?')) return
+    const { deleteAnnouncement } = await import('./api.js')
+    await deleteAnnouncement(id).catch(() => {})
+    showToast('ลบประกาศแล้ว', 'success')
+    _myannLoaded = false; _loadMyAnn()
+  }
 
   // ─── ประกาศ section ────────────────────────────────────────────────────────
   const _DOW_TH = ['','อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์','เสาร์']

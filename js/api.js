@@ -2372,7 +2372,7 @@ export async function getActiveAnnouncements() {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all' }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
@@ -2384,13 +2384,39 @@ export async function createAnnouncement({ title, body, isActive = true, priorit
               event_periods: eventPeriods || null,
               event_location: eventLocation || null,
               schedule_filter: scheduleFilter,
+              target_class_ids: targetClassIds || null,
+              file_url: fileUrl || null,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
   return data
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter }) {
+// ประกาศที่ครูสร้างเอง (สำหรับห้องเรียน)
+export async function getTeacherOwnAnnouncements(teacherId) {
+  const { data, error } = await supabase.from('announcements')
+    .select('id, title, body, is_active, priority, ann_type, target_class_ids, file_url, created_at, updated_at')
+    .eq('created_by_teacher_id', teacherId)
+    .not('target_class_ids', 'is', null)
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+// ประกาศที่ targeting ห้องเรียนนี้ (สำหรับแสดงในห้อง)
+export async function getClassAnnouncements(classId) {
+  const { data, error } = await supabase.from('announcements')
+    .select('id, title, body, priority, ann_type, file_url, created_at, teachers:created_by_teacher_id(full_name)')
+    .eq('is_active', true)
+    .contains('target_class_ids', [classId])
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl }) {
   const payload = { updated_at: new Date().toISOString() }
   if (title           !== undefined) payload.title            = title
   if (body            !== undefined) payload.body             = body
@@ -2403,6 +2429,8 @@ export async function updateAnnouncement(id, { title, body, isActive, priority, 
   if (eventPeriods    !== undefined) payload.event_periods    = eventPeriods || null
   if (eventLocation   !== undefined) payload.event_location   = eventLocation || null
   if (scheduleFilter  !== undefined) payload.schedule_filter  = scheduleFilter
+  if (targetClassIds  !== undefined) payload.target_class_ids = targetClassIds || null
+  if (fileUrl         !== undefined) payload.file_url         = fileUrl || null
   const { data, error } = await supabase.from('announcements')
     .update(payload).eq('id', id).select().single()
   if (error) throw error
