@@ -489,12 +489,12 @@ export async function renderStudentOverview(student) {
       const totalWtGrade = graded.reduce((s,r) => s+(r.grade*(r.credit||1)), 0)
       const gpaVal       = parseFloat(gpa)
       return `
-      <div class="flex items-end justify-end gap-2 mb-4">
-        <div class="mb-1 text-right">
-          ${gpa ? `<p class="text-xs font-semibold ${_gradeColor(gpaVal)}">${_gradeLabel(gpaVal)}</p>` : ''}
-          <p class="text-xs text-gray-400">/4.0</p>
-        </div>
+      <div class="flex items-end gap-3 mb-4">
         <button id="gpa-val-btn-${tabId}" class="text-5xl font-extrabold ${gpa ? _gradeColor(gpaVal) : 'text-gray-300'} hover:opacity-70 transition">${gpa ?? '—'}</button>
+        <div class="mb-1.5">
+          <p class="text-base font-semibold ${gpa ? _gradeColor(gpaVal) : 'text-gray-400'}">${gpa ? _gradeLabel(gpaVal) : '—'}</p>
+          <p class="text-xs text-gray-400">เต็ม 4.0</p>
+        </div>
       </div>
       ${rows.length ? `
       <div class="overflow-x-auto -mx-4">
@@ -509,7 +509,6 @@ export async function renderStudentOverview(student) {
               <th class="px-2 py-2 font-medium text-center">เกรด×หน่วย</th>
               <th class="px-2 py-2 font-medium text-center">แก้</th>
               <th class="px-2 py-2 font-medium text-center">เปิด</th>
-              <th class="px-4 py-2 font-medium">ผู้สอน</th>
             </tr>
           </thead>
           <tbody>
@@ -531,7 +530,6 @@ export async function renderStudentOverview(student) {
                 <button class="gpa-pp5-btn px-2.5 py-1 rounded-lg bg-emerald-500 text-white text-[10px] font-bold hover:bg-emerald-600 transition"
                   data-class-id="${r.classId}">→</button>
               </td>
-              <td class="px-4 py-2.5 text-gray-500 text-[11px]">${r.teacherName}</td>
             </tr>`}).join('')}
             <!-- แถวรวม -->
             <tr class="border-t border-gray-200 bg-gray-50 font-semibold">
@@ -540,7 +538,7 @@ export async function renderStudentOverview(student) {
               <td class="px-2 py-2 text-center text-gray-400">—</td>
               <td class="px-2 py-2 text-center text-gray-400">—</td>
               <td class="px-2 py-2 text-center text-gray-700">${totalWtGrade.toFixed(2)}</td>
-              <td colspan="3"></td>
+              <td colspan="2"></td>
             </tr>
             <!-- แถว GPA -->
             <tr class="border-t-2 border-gray-300 bg-purple-50">
@@ -548,7 +546,7 @@ export async function renderStudentOverview(student) {
               <td class="px-2 py-2.5 text-center text-xs text-gray-600">${totalCredit}</td>
               <td class="px-2 py-2.5 text-center text-gray-400">—</td>
               <td colspan="2" class="px-2 py-2.5 text-center text-sm font-extrabold ${_gradeColor(gpa ? gpaVal : null)}">${gpa ?? '—'}</td>
-              <td colspan="3"></td>
+              <td colspan="2"></td>
             </tr>
           </tbody>
         </table>
