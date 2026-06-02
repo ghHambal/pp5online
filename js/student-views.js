@@ -263,40 +263,52 @@ export async function renderStudentOverview(student) {
     </div>
 
     <!-- Quick actions -->
-    <div class="grid grid-cols-2 gap-2 mb-3">
+    <div class="grid grid-cols-2 gap-3 mb-3">
       <button onclick="window._stuNav('subjects')"
-        class="bg-emerald-600 text-white rounded-xl p-3 text-left hover:bg-emerald-700 transition">
-        <p class="text-lg mb-1">📚</p>
-        <p class="font-semibold text-xs">รายวิชาของฉัน</p>
-        <p class="text-[10px] text-emerald-200 mt-0.5">${classes.length} วิชา</p>
+        class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150"
+        style="background:linear-gradient(135deg,#059669,#047857)">
+        <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
+        <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
+        <p class="text-xl mb-2 relative">📚</p>
+        <p class="font-bold text-sm text-white relative">รายวิชาของฉัน</p>
+        <p class="text-[10px] text-emerald-200 mt-0.5 relative">${classes.length} วิชา</p>
       </button>
       <button onclick="window._stuNav('scores')"
-        class="bg-indigo-600 text-white rounded-xl p-3 text-left hover:bg-indigo-700 transition">
-        <p class="text-lg mb-1">📊</p>
-        <p class="font-semibold text-xs">คะแนนของฉัน</p>
-        <p class="text-[10px] text-indigo-200 mt-0.5">ทักษะ / ละหมาด</p>
+        class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150"
+        style="background:linear-gradient(135deg,#4f46e5,#4338ca)">
+        <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
+        <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
+        <p class="text-xl mb-2 relative">📊</p>
+        <p class="font-bold text-sm text-white relative">คะแนนของฉัน</p>
+        <p class="text-[10px] text-indigo-200 mt-0.5 relative">ทักษะ / ละหมาด</p>
       </button>
     </div>
-    <div class="grid grid-cols-2 gap-2 mb-4">
+    <div class="grid grid-cols-2 gap-3 mb-4">
       ${(() => {
         const SEEN_KEY = `stu_ann_seen_${student.id}`
         const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'))
         const unreadCount = allAnns.filter(a => !seen.has(a.id)).length
         return `<button id="btn-stu-anns"
-          class="bg-amber-500 text-white rounded-xl p-3 text-left hover:bg-amber-600 transition relative">
-          <p class="text-lg mb-1">📢</p>
-          <p class="font-semibold text-xs">ประกาศของฉัน</p>
-          <p class="text-[10px] text-amber-100 mt-0.5">${allAnns.length} รายการ</p>
+          class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150"
+          style="background:linear-gradient(135deg,#d97706,#b45309)">
+          <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
+          <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
+          <p class="text-xl mb-2 relative">📢</p>
+          <p class="font-bold text-sm text-white relative">ประกาศของฉัน</p>
+          <p class="text-[10px] text-amber-200 mt-0.5 relative">${allAnns.length} รายการ</p>
           ${unreadCount > 0
-            ? `<span class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow">${unreadCount}</span>`
+            ? `<span class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-md">${unreadCount}</span>`
             : ''}
         </button>`
       })()}
       <button id="btn-stu-gpa"
-        class="bg-purple-600 text-white rounded-xl p-3 text-left hover:bg-purple-700 transition">
-        <p class="text-lg mb-1">🎓</p>
-        <p class="font-semibold text-xs">เกรดเฉลี่ย</p>
-        <p class="text-[10px] text-purple-200 mt-0.5">GPA ภาคเรียนนี้</p>
+        class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150"
+        style="background:linear-gradient(135deg,#7c3aed,#6d28d9)">
+        <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
+        <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
+        <p class="text-xl mb-2 relative">🎓</p>
+        <p class="font-bold text-sm text-white relative">เกรดเฉลี่ย</p>
+        <p class="text-[10px] text-purple-200 mt-0.5 relative">GPA ภาคเรียนนี้</p>
       </button>
     </div>
 
