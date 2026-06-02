@@ -241,23 +241,23 @@ export async function renderStudentOverview(student) {
       </div>
       <div class="flex-1 min-w-0">
         <p class="font-bold text-gray-800 text-base truncate">${student.full_name}</p>
-        <p class="text-xs text-gray-400 mt-0.5">รหัส ${student.student_code} · ${_roomDisplay(student.main_room??'—')}</p>
+        <p class="text-xs text-gray-400 mt-0.5 truncate">รหัส ${student.student_code} · ${_roomDisplay(student.main_room??'—')}</p>
       </div>
     </div>
 
     <!-- Stats row -->
-    <div class="grid grid-cols-3 gap-3 mb-4">
-      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-center">
-        <p class="text-2xl font-bold text-emerald-600">${classes.length}</p>
-        <p class="text-[10px] text-gray-400 mt-0.5">รายวิชา</p>
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-2.5 text-center">
+        <p class="text-xl font-bold text-emerald-600">${classes.length}</p>
+        <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">รายวิชา</p>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-center">
-        <p class="text-2xl font-bold text-amber-600">${pending.length}</p>
-        <p class="text-[10px] text-gray-400 mt-0.5">คำร้องรอดำเนินการ</p>
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-2.5 text-center">
+        <p class="text-xl font-bold text-amber-600">${pending.length}</p>
+        <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">คำร้อง<br>รอดำเนินการ</p>
       </div>
-      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-center">
-        <p class="text-2xl font-bold text-blue-600">${requests.length}</p>
-        <p class="text-[10px] text-gray-400 mt-0.5">คำร้องทั้งหมด</p>
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-2.5 text-center">
+        <p class="text-xl font-bold text-blue-600">${requests.length}</p>
+        <p class="text-[9px] text-gray-400 mt-0.5 leading-tight">คำร้อง<br>ทั้งหมด</p>
       </div>
     </div>
 
@@ -326,7 +326,7 @@ export async function renderStudentOverview(student) {
           <span class="text-base flex-shrink-0">⚠️</span>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold text-gray-700 truncate">${ms?.subject_name ?? '—'}</p>
-            <p class="text-[11px] text-red-500 mt-0.5">ครูยังไม่ได้เชื่อมวิชากับตารางสอน — โปรดแจ้งครูทราบ</p>
+            <p class="text-[10px] text-red-500 mt-0.5 leading-tight">ครูยังไม่เชื่อมตารางสอน<br>โปรดแจ้งครูทราบ</p>
           </div>
         </div>`
       }).join('')
