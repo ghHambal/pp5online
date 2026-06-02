@@ -32,9 +32,10 @@ export async function renderAttendanceGrid(teacher, classData) {
     const cfg      = await _cfg().catch(() => ({}))
     const curYear  = cfg.academic_year ?? new Date().getFullYear() + 543
     const curSem   = cfg.semester ?? 1
+    const srcClassId = classData.source_class_id ?? null
     const [students, attRows, holidays, dowPattern] = await Promise.all([
       getClassStudents(classData.id),
-      getClassAttendanceAll(classData.id),
+      getClassAttendanceAll(srcClassId ?? classData.id),   // source ถ้ามี
       getSchoolHolidays(curYear, curSem),
       getClassSessionDOWs(classData.id).catch(() => []),
     ])
@@ -42,10 +43,34 @@ export async function renderAttendanceGrid(teacher, classData) {
     const holidaySet = new Set(holidays)
 
     // attendance map: { studentId: { sessionNum: status } }
+    // ถ้ามี source ให้ remap session number ต่อสัปดาห์ตาม credit ratio
     const attMap = {}
-    for (const r of attRows) {
-      if (!attMap[r.student_id]) attMap[r.student_id] = {}
-      attMap[r.student_id][r.session_number] = r.status
+    if (srcClassId) {
+      const { getMyClasses: _mc } = await import('./api.js')
+      const tgtPerWeek = Math.max(1, Math.round(credit * 2))
+      // ดึง credit ของ source เพื่อคำนวณ srcPerWeek
+      let srcPerWeek = tgtPerWeek
+      try {
+        const allCls = await _mc(null).catch(() => [])
+        const src = allCls.find(c => Number(c.id) === Number(srcClassId))
+        if (src?.master_subjects?.credit) srcPerWeek = Math.max(1, Math.round(src.master_subjects.credit * 2))
+      } catch {}
+      const total = sessions.length
+      for (let n = 1; n <= total; n++) {
+        const weekIdx    = Math.floor((n - 1) / tgtPerWeek)
+        const posInWeek  = (n - 1) % tgtPerWeek
+        const srcSession = weekIdx * srcPerWeek + posInWeek + 1
+        for (const r of attRows) {
+          if (r.session_number !== srcSession) continue
+          if (!attMap[r.student_id]) attMap[r.student_id] = {}
+          attMap[r.student_id][n] = r.status
+        }
+      }
+    } else {
+      for (const r of attRows) {
+        if (!attMap[r.student_id]) attMap[r.student_id] = {}
+        attMap[r.student_id][r.session_number] = r.status
+      }
     }
 
     // ─── Auto-clear attendance on holiday sessions ─────────────────
