@@ -375,3 +375,49 @@ export async function getClassSchedulesByIds(classIds) {
   }
   return result
 }
+
+// ─── Weekly timetable for student ────────────────────────────────────────────
+export async function getStudentWeeklySchedule(studentId) {
+  // ดึง enrolled classes + schedule links + periods ในครั้งเดียว
+  const { data: enrollment } = await supabase
+    .from('class_students')
+    .select(`
+      class_id,
+      classes(id, class_name,
+        master_subjects(subject_name, subject_code, subject_group, credit))
+    `)
+    .eq('student_id', studentId)
+  if (!enrollment?.length) return { slots: [], periods: [] }
+
+  const classIds = enrollment.map(e => e.class_id)
+  const classMap = Object.fromEntries(enrollment.map(e => [e.class_id, e.classes]))
+
+  const [linksRes, periodsRes] = await Promise.all([
+    supabase
+      .from('class_schedule_links')
+      .select('class_id, teacher_schedules(day_of_week, period_no, span_periods)')
+      .in('class_id', classIds),
+    supabase
+      .from('school_periods')
+      .select('period_no, start_time, end_time')
+      .order('period_no'),
+  ])
+
+  const periods = periodsRes.data ?? []
+  const slots = []  // { dow, period_no, span, cls }
+
+  for (const link of linksRes.data ?? []) {
+    const s = link.teacher_schedules
+    if (!s) continue
+    const cls = classMap[link.class_id]
+    if (!cls) continue
+    slots.push({
+      dow:      s.day_of_week,
+      periodNo: s.period_no,
+      span:     s.span_periods ?? 1,
+      cls,
+    })
+  }
+
+  return { slots, periods }
+}

@@ -5,7 +5,7 @@ import {
   getTeacherFullSchedule, getSchoolPeriods, getScoreColumnsForClass,
   getMyLifeSkillScores, getMyReadingScores, getMyPrayerRecords,
   getStudentDailySchedule, getStudentAllAnnouncements, getStudentGPA,
-  getClassSchedulesByIds,
+  getClassSchedulesByIds, getStudentWeeklySchedule,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
@@ -275,6 +275,14 @@ export async function renderStudentOverview(student) {
         <p class="text-lg mb-1">📊</p>
         <p class="font-semibold text-xs">คะแนนของฉัน</p>
         <p class="text-[10px] text-indigo-200 mt-0.5">ทักษะ / ละหมาด</p>
+      </button>
+      <button id="btn-stu-timetable" colspan="2"
+        class="col-span-2 bg-teal-600 text-white rounded-xl p-3 text-left hover:bg-teal-700 transition flex items-center gap-3">
+        <p class="text-lg">📅</p>
+        <div>
+          <p class="font-semibold text-xs">ตารางเรียนของฉัน</p>
+          <p class="text-[10px] text-teal-200 mt-0.5">รายวัน · รายสัปดาห์</p>
+        </div>
       </button>
     </div>
     <div class="grid grid-cols-2 gap-2 mb-4">
@@ -622,6 +630,191 @@ export async function renderStudentOverview(student) {
         tip.addEventListener('click', e => { if (e.target===tip) tip.remove() })
       })
     })
+  })
+
+  // ── Timetable popup ───────────────────────────────────────────────────────
+  document.getElementById('btn-stu-timetable')?.addEventListener('click', async () => {
+    const pop = _openFullPopup('📅 ตารางเรียน', `<div class="flex justify-center py-10 text-gray-300">
+      <svg class="animate-spin h-6 w-6 text-teal-400" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg></div>`)
+
+    const { slots, periods } = await getStudentWeeklySchedule(student.id).catch(() => ({ slots:[], periods:[] }))
+    const content = pop.querySelector('.flex-1.overflow-y-auto')
+    if (!content) return
+
+    // ── constants ──────────────────────────────────────────────────────────
+    const DAYS_FULL  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์']
+    const DAYS_SHORT = ['อา','จ','อ','พ','พฤ','ศ','ส']
+    // วันที่มีในตาราง (เรียงเริ่มจากอาทิตย์=0)
+    const daysInGrid = [0,1,2,3,4,5,6].filter(d => slots.some(s => s.dow === d))
+    const todayDow   = new Date().getDay()
+    let viewMode     = 'day'   // 'day' | 'week'
+    let currentDay   = daysInGrid.includes(todayDow) ? todayDow : (daysInGrid[0] ?? 0)
+
+    // slot lookup: `${dow}-${periodNo}` → slot
+    const slotMap = {}
+    slots.forEach(s => { slotMap[`${s.dow}-${s.periodNo}`] = s })
+
+    // สีตาม subject_group
+    const _cellColor = sg => ['AGM','AGMVOC'].includes(sg)
+      ? 'bg-amber-50 text-amber-800 border-amber-200'
+      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+
+    // ── render ────────────────────────────────────────────────────────────
+    const _renderDay = (dow) => {
+      const now = new Date()
+      const nowSec = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()
+      const _toSec = t => { if(!t) return null; const [h,m]=t.split(':').map(Number); return h*3600+m*60 }
+      const rows = []
+      periods.forEach((p, i) => {
+        const slot = slotMap[`${dow}-${p.period_no}`]
+        const startSec = _toSec(p.start_time), endSec = _toSec(p.end_time)
+        const isNow = startSec!=null && endSec!=null && nowSec>=startSec && nowSec<endSec
+        const ms = slot?.cls?.master_subjects
+        rows.push(`
+          <div class="flex items-stretch gap-3 border-b border-gray-100 last:border-0 ${isNow?'bg-emerald-50':''} py-2.5">
+            <div class="w-14 flex-shrink-0 text-center">
+              <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}</p>
+              <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)}</p>
+            </div>
+            <div class="flex-1 min-w-0 flex items-center">
+              ${slot ? `
+                <div class="flex-1 min-w-0 px-3 py-1.5 rounded-xl border ${_cellColor(ms?.subject_group ?? '')}">
+                  <p class="text-xs font-semibold truncate">${ms?.subject_name ?? '—'}</p>
+                  <p class="text-[10px] opacity-70">${ms?.subject_code ?? ''}</p>
+                </div>` :
+                `<p class="text-xs text-gray-300">—</p>`}
+            </div>
+            ${isNow ? `<div class="flex-shrink-0 flex items-center">
+              <span id="tt-day-cd" class="text-[10px] font-bold text-emerald-600 tabular-nums">—</span>
+            </div>` : ''}
+          </div>`)
+        // แถวพักเที่ยง/ละหมาดซุฮรี ระหว่างคาบ 5-6
+        if (p.period_no === 5 && periods[i+1]?.period_no === 6) {
+          rows.push(`
+          <div class="flex items-center gap-3 py-2 border-b border-gray-100 bg-orange-50">
+            <div class="w-14 flex-shrink-0 text-center">
+              <p class="text-[10px] text-orange-400 font-medium">พัก</p>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-[11px] font-semibold text-orange-600">🕐 ละหมาดซุฮรี / พักเที่ยง</p>
+            </div>
+          </div>`)
+        }
+      })
+      return rows.join('')
+    }
+
+    const _renderWeek = () => {
+      const colW = `${Math.floor(100/(daysInGrid.length+1))}%`
+      const headerCells = `<th style="width:${colW}" class="py-2 text-[9px] text-gray-400 font-medium text-center border-r border-gray-100">คาบ</th>`
+        + daysInGrid.map(d => `<th style="width:${colW}" class="py-2 text-[9px] font-bold text-center border-r border-gray-100 last:border-0 ${d===todayDow?'text-teal-600':'text-gray-600'}">${DAYS_SHORT[d]}</th>`).join('')
+
+      let tableRows = ''
+      periods.forEach((p, i) => {
+        const cells = daysInGrid.map(d => {
+          const slot = slotMap[`${d}-${p.period_no}`]
+          const ms = slot?.cls?.master_subjects
+          const isAGM = ['AGM','AGMVOC'].includes(ms?.subject_group ?? '')
+          const bg = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
+          const txt = slot ? (isAGM ? 'text-amber-700' : 'text-emerald-700') : 'text-gray-200'
+          // ตรวจคาบปัจจุบัน
+          const now = new Date()
+          const nowSec = now.getHours()*3600+now.getMinutes()*60+now.getSeconds()
+          const [sh,sm]=(p.start_time??'0:0').split(':').map(Number)
+          const [eh,em]=(p.end_time??'0:0').split(':').map(Number)
+          const isNow = d===todayDow && nowSec>=sh*3600+sm*60 && nowSec<eh*3600+em*60
+          return `<td style="width:${colW}" class="border-r border-gray-100 last:border-0 border-b border-gray-50 ${bg} ${isNow?'ring-1 ring-inset ring-emerald-400':''} align-middle">
+            ${slot ? `<div class="px-0.5 py-1 text-center"><p class="${txt} text-[8px] font-semibold leading-tight line-clamp-2">${ms?.subject_name??''}</p></div>`
+              : `<div class="h-8"></div>`}
+          </td>`
+        }).join('')
+
+        tableRows += `<tr>
+          <td style="width:${colW}" class="border-r border-gray-100 border-b border-gray-50 text-center py-1 bg-gray-50">
+            <p class="text-[9px] font-bold text-gray-500">${p.period_no}</p>
+            <p class="text-[8px] text-gray-300">${p.start_time?.slice(0,5)??''}</p>
+          </td>${cells}</tr>`
+
+        // แถวพัก ระหว่างคาบ 5-6
+        if (p.period_no === 5 && periods[i+1]?.period_no === 6) {
+          tableRows += `<tr><td colspan="${daysInGrid.length+1}" class="bg-orange-50 text-center py-1.5">
+            <p class="text-[9px] font-semibold text-orange-500">🕐 ละหมาดซุฮรี / พักเที่ยง</p>
+          </td></tr>`
+        }
+      })
+
+      return `<div class="overflow-x-auto -mx-4">
+        <table class="w-full border-collapse" style="min-width:100%">
+          <thead><tr class="border-b-2 border-gray-200">${headerCells}</tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>`
+    }
+
+    const _render = () => {
+      const isWeek = viewMode === 'week'
+      content.innerHTML = `
+      <!-- mode toggle -->
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex gap-1 bg-gray-100 rounded-xl p-1">
+          <button id="tt-btn-day" class="tt-mode-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition ${!isWeek?'bg-white shadow text-teal-600':'text-gray-500'}">รายวัน</button>
+          <button id="tt-btn-week" class="tt-mode-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition ${isWeek?'bg-white shadow text-teal-600':'text-gray-500'}">ทั้งสัปดาห์</button>
+        </div>
+        ${!isWeek ? `
+        <div class="flex items-center gap-2">
+          <button id="tt-prev" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-sm">◀</button>
+          <span class="text-sm font-semibold text-gray-700">${DAYS_FULL[currentDay]}</span>
+          <button id="tt-next" class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-sm">▶</button>
+        </div>` : ''}
+      </div>
+      ${isWeek ? _renderWeek() : `<div class="space-y-0">${_renderDay(currentDay)}</div>`}
+      ${!slots.length ? '<p class="text-xs text-gray-400 text-center py-8">ยังไม่มีข้อมูลตารางสอน — ครูต้องเชื่อมตารางสอนก่อน</p>' : ''}`
+
+      // tab switch
+      content.querySelector('#tt-btn-day')?.addEventListener('click', () => { viewMode='day'; _render() })
+      content.querySelector('#tt-btn-week')?.addEventListener('click', () => { viewMode='week'; _render() })
+      // day nav
+      content.querySelector('#tt-prev')?.addEventListener('click', () => {
+        const i = daysInGrid.indexOf(currentDay)
+        currentDay = daysInGrid[(i-1+daysInGrid.length)%daysInGrid.length]
+        _render()
+      })
+      content.querySelector('#tt-next')?.addEventListener('click', () => {
+        const i = daysInGrid.indexOf(currentDay)
+        currentDay = daysInGrid[(i+1)%daysInGrid.length]
+        _render()
+      })
+      // countdown คาบปัจจุบัน (day view)
+      if (!isWeek) {
+        const cdEl = content.querySelector('#tt-day-cd')
+        if (cdEl) {
+          const activePeriod = periods.find(p => {
+            const s = slotMap[`${currentDay}-${p.period_no}`]
+            if (!s || !p.end_time) return false
+            const now = new Date(), nowSec = now.getHours()*3600+now.getMinutes()*60+now.getSeconds()
+            const [eh,em] = p.end_time.split(':').map(Number)
+            const [sh,sm] = (p.start_time??'0:0').split(':').map(Number)
+            return nowSec >= sh*3600+sm*60 && nowSec < eh*3600+em*60
+          })
+          if (activePeriod) {
+            const [eh,em] = activePeriod.end_time.split(':').map(Number)
+            const _endSec = eh*3600+em*60
+            const _iv = setInterval(() => {
+              const el = content.querySelector('#tt-day-cd')
+              if (!el) { clearInterval(_iv); return }
+              const now = new Date(), rem = Math.max(0, _endSec - now.getHours()*3600 - now.getMinutes()*60 - now.getSeconds())
+              const h=Math.floor(rem/3600), m=Math.floor((rem%3600)/60), s=rem%60
+              el.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+              if (rem===0) clearInterval(_iv)
+            }, 1000)
+          }
+        }
+      }
+    }
+    _render()
   })
 }
 
