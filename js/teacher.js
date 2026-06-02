@@ -25,6 +25,7 @@ import {
   renderClassDetail, renderCourseDocLangConfig,
 } from './teacher-views.js'
 import { renderSupervisorDashboard } from './supervisor.js'
+import { renderTutorial } from './tutorial.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
@@ -158,6 +159,7 @@ const ROUTES = {
   'grades':      () => renderGrades(),
   'requests':    () => renderRequests(_teacher),
   'schedule':    () => renderSchedule(_teacher),
+  'tutorial':    () => renderTutorial(),
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),
@@ -1962,6 +1964,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_reading',     icon:'📗', label:'การอ่าน',        fn: async () => { const {renderReadingAdmin}   = await import('./views.js'); renderReadingAdmin() }},
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
   { key:'menu_house_colors',icon:'🎨', label:'สีนักเรียน',     fn: async () => { const {renderHouseColors}    = await import('./views.js'); renderHouseColors() }},
+  { key:'menu_tutorial',   icon:'📖', label:'คู่มือการใช้งาน', fn: async () => { const {renderTutorialAdmin}  = await import('./tutorial.js'); renderTutorialAdmin() }},
 ]
 
 function _renderSupervisorNav(nav, main, isAdmin = false) {

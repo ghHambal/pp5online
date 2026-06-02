@@ -2665,3 +2665,45 @@ export async function getMyRsvpsForTeacher(teacherId) {
     .eq('teacher_id', teacherId)
   return data ?? []
 }
+
+// ─── Tutorial System ──────────────────────────────────────────────────────────
+export async function getTutorialCategories() {
+  const { data, error } = await supabase.from('tutorial_categories')
+    .select('id, name, icon, sort_order').order('sort_order').order('id')
+  if (error) throw error
+  return data ?? []
+}
+export async function createTutorialCategory(payload) {
+  const { error } = await supabase.from('tutorial_categories').insert(payload)
+  if (error) throw error
+}
+export async function updateTutorialCategory(id, payload) {
+  const { error } = await supabase.from('tutorial_categories').update(payload).eq('id', id)
+  if (error) throw error
+}
+export async function deleteTutorialCategory(id) {
+  const { error } = await supabase.from('tutorial_categories').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getTutorialVideos(categoryId = null) {
+  let q = supabase.from('tutorial_videos')
+    .select('id, category_id, title, description, youtube_url, duration, sort_order, is_active')
+    .order('sort_order').order('id')
+  if (categoryId) q = q.eq('category_id', categoryId)
+  const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+export async function createTutorialVideo(payload) {
+  const { error } = await supabase.from('tutorial_videos').insert(payload)
+  if (error) throw error
+}
+export async function updateTutorialVideo(id, payload) {
+  const { error } = await supabase.from('tutorial_videos').update(payload).eq('id', id)
+  if (error) throw error
+}
+export async function deleteTutorialVideo(id) {
+  const { error } = await supabase.from('tutorial_videos').delete().eq('id', id)
+  if (error) throw error
+}
