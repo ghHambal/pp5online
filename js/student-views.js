@@ -321,14 +321,49 @@ export async function renderStudentOverview(student) {
         </div>`
       }).join('')
 
+      // ── deadline section ─────────────────────────────────────────
+      const upcomingDeadlines = allAnns
+        .filter(a => a.ann_type === 'deadline' && a.deadline_at && new Date(a.deadline_at) > now)
+        .sort((a, b) => new Date(a.deadline_at) - new Date(b.deadline_at))
+        .slice(0, 5)
+
+      const _dlCountdown = iso => {
+        const diff = new Date(iso) - now
+        const mins = Math.floor(diff / 60000)
+        if (mins < 60) return `<span class="text-red-600 font-bold text-[10px]">🔴 อีก ${mins} น.</span>`
+        const h = Math.floor(mins / 60)
+        if (h < 24) return `<span class="text-orange-500 font-semibold text-[10px]">🟠 อีก ${h} ชม. ${mins%60} น.</span>`
+        return `<span class="text-amber-600 text-[10px]">📅 อีก ${Math.floor(h/24)} วัน</span>`
+      }
+
+      const deadlineRows = upcomingDeadlines.map(a => {
+        const ms = a.cls?.master_subjects
+        return `<div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+          <span class="text-base flex-shrink-0">⏰</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800 truncate">${a.title ?? ''}</p>
+            <p class="text-[10px] text-gray-400 truncate">${ms?.subject_name ?? ''} · ${a.cls?.class_name ?? ''}</p>
+          </div>
+          <div class="flex-shrink-0">${_dlCountdown(a.deadline_at)}</div>
+        </div>`
+      }).join('')
+
       return `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-50">
           <h3 class="font-semibold text-gray-700 text-sm">📅 วันนี้ — ${todayName}</h3>
         </div>
-        <div class="px-4">
-          ${periodRows || `<p class="text-xs text-gray-400 text-center py-6">ไม่มีคาบเรียนวันนี้</p>`}
+        ${periodRows ? `
+        <div class="px-3 py-1.5 bg-emerald-50 border-b border-emerald-100">
+          <p class="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">🕐 คาบเรียน</p>
         </div>
+        <div class="px-4">${periodRows}</div>` :
+        `<div class="px-4"><p class="text-xs text-gray-400 text-center py-4">ไม่มีคาบเรียนวันนี้</p></div>`}
+        ${deadlineRows ? `
+        <div class="px-3 py-1.5 bg-amber-50 border-t border-amber-100 border-b border-amber-100">
+          <p class="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">⏰ กำหนดการ</p>
+        </div>
+        <div class="px-4">${deadlineRows}</div>` : ''}
       </div>`
     })()}
 
