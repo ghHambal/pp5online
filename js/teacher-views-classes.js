@@ -3192,23 +3192,49 @@ export async function renderAnnouncementsView(teacher) {
     document.getElementById('btn-create-myann')?.addEventListener('click', () => _openMyAnnForm())
   }
 
-  const _openMyAnnForm = (existing = null) => {
-    const classOpts = _myClasses.map(c =>
-      `<label class="flex items-center gap-2 text-sm cursor-pointer hover:text-indigo-700 py-1">
-        <input type="checkbox" name="myann-class" value="${c.id}"
-          ${existing?.target_class_ids?.includes(c.id) ? 'checked' : ''} class="rounded text-indigo-600" />
-        <span>${_esc(c.class_name)} <span class="text-xs text-gray-400">${_esc(c.master_subjects?.subject_name ?? '')}</span></span>
+  const _classSelectHtml = (entryIdx, selectedIds = []) =>
+    _myClasses.map(c =>
+      `<label class="flex items-center gap-2 text-xs cursor-pointer hover:text-indigo-700 py-0.5">
+        <input type="checkbox" name="myann-cls-${entryIdx}" value="${c.id}"
+          ${selectedIds.includes(c.id) ? 'checked' : ''} class="rounded text-indigo-600 flex-shrink-0" />
+        <span class="truncate">${_esc(c.class_name)}</span>
+        <span class="text-gray-300 truncate">${_esc(c.master_subjects?.subject_name ?? '')}</span>
       </label>`).join('')
 
+  const _entryHtml = (idx, classIds = [], fileUrl = '') => `
+    <div class="myann-entry border border-gray-200 rounded-xl p-3 space-y-2" data-entry="${idx}">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-semibold text-indigo-600">ชุดที่ ${idx + 1}</span>
+        ${idx > 0
+          ? `<button type="button" class="myann-remove-entry text-red-400 hover:text-red-600 text-sm px-2" data-entry="${idx}">✕ ลบ</button>`
+          : ''}
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-gray-600 mb-1">ห้องเรียน <span class="text-red-400">*</span></p>
+        <div class="border border-gray-100 rounded-lg p-2 max-h-28 overflow-y-auto space-y-0.5">
+          ${_classSelectHtml(idx, classIds) || '<p class="text-xs text-gray-400">ยังไม่มีห้องเรียน</p>'}
+        </div>
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-gray-600 mb-1">ลิงก์ไฟล์ (ถ้ามี)</p>
+        <input name="myann-file-${idx}" type="url" value="${_esc(fileUrl)}"
+          placeholder="https://drive.google.com/..."
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+      </div>
+    </div>`
+
+  const _openMyAnnForm = (existing = null) => {
+    let entryCount = 1
     const wrap = document.createElement('div')
     wrap.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4'
     wrap.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col">
       <div class="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
         <h3 class="font-bold text-gray-800">${existing ? '✏️ แก้ไขประกาศ' : '📢 สร้างประกาศใหม่'}</h3>
         <button id="myann-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
       </div>
       <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <!-- ข้อมูลร่วมทุกชุด -->
         <div>
           <label class="block text-xs font-semibold text-gray-600 mb-1">ประเภทประกาศ</label>
           <select id="myann-type" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
@@ -3224,7 +3250,7 @@ export async function renderAnnouncementsView(teacher) {
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-600 mb-1">รายละเอียด</label>
-          <textarea id="myann-body" rows="3"
+          <textarea id="myann-body" rows="2"
             placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
             class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none">${_esc(existing?.body ?? '')}</textarea>
         </div>
@@ -3233,71 +3259,108 @@ export async function renderAnnouncementsView(teacher) {
           <input id="myann-deadline" type="datetime-local"
             value="${existing?.deadline_at ? new Date(existing.deadline_at).toISOString().slice(0,16) : ''}"
             class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-          <p class="text-xs text-gray-400 mt-1">นักเรียนจะเห็นนับถอยหลังถึงเวลานี้</p>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 mb-1">ลิงก์ไฟล์ / เอกสาร</label>
-          <input id="myann-file" type="url" value="${_esc(existing?.file_url ?? '')}"
-            placeholder="https://drive.google.com/..." class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-600 mb-2">ห้องเรียนที่ต้องการประกาศ <span class="text-red-400">*</span></label>
-          <div class="border border-gray-200 rounded-xl p-3 space-y-0.5 max-h-40 overflow-y-auto">
-            ${classOpts || '<p class="text-xs text-gray-400">ยังไม่มีห้องเรียน</p>'}
-          </div>
         </div>
         <div class="flex items-center gap-3">
           <label class="flex items-center gap-2 text-sm cursor-pointer">
             <input id="myann-pin" type="checkbox" ${existing?.priority > 0 ? 'checked' : ''} class="rounded text-amber-500" />
-            <span>📌 ปักหมุดประกาศนี้</span>
+            <span>📌 ปักหมุด</span>
           </label>
           <label class="flex items-center gap-2 text-sm cursor-pointer">
             <input id="myann-active" type="checkbox" ${!existing || existing?.is_active ? 'checked' : ''} class="rounded text-emerald-500" />
             <span>เผยแพร่ทันที</span>
           </label>
         </div>
+        <!-- ชุดห้อง+ไฟล์ -->
+        <div class="border-t border-gray-100 pt-3">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-semibold text-gray-700">📋 ห้องเรียน + ลิงก์ (แต่ละชุดสร้างประกาศแยก)</p>
+            ${!existing ? `<button type="button" id="myann-add-entry"
+              class="flex items-center gap-1 text-xs px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-semibold hover:bg-indigo-100 transition">
+              ＋ เพิ่มชุด
+            </button>` : ''}
+          </div>
+          <div id="myann-entries" class="space-y-3">
+            ${_entryHtml(0, existing?.target_class_ids ?? [], existing?.file_url ?? '')}
+          </div>
+        </div>
       </div>
       <div class="px-6 py-4 border-t border-gray-100 flex gap-3 flex-shrink-0">
         <button id="myann-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-        <button id="myann-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">บันทึก</button>
+        <button id="myann-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
+          ${existing ? 'บันทึก' : 'สร้างประกาศ'}
+        </button>
       </div>
     </div>`
     document.body.appendChild(wrap)
     wrap.querySelector('#myann-close').addEventListener('click', () => wrap.remove())
     wrap.querySelector('#myann-cancel').addEventListener('click', () => wrap.remove())
-    // toggle deadline field เมื่อเปลี่ยน type
+
     wrap.querySelector('#myann-type').addEventListener('change', e => {
-      const isDeadline = e.target.value === 'deadline'
-      wrap.querySelector('#myann-deadline-wrap').classList.toggle('hidden', !isDeadline)
+      wrap.querySelector('#myann-deadline-wrap').classList.toggle('hidden', e.target.value !== 'deadline')
     })
+
+    // เพิ่มชุดใหม่
+    wrap.querySelector('#myann-add-entry')?.addEventListener('click', () => {
+      const container = wrap.querySelector('#myann-entries')
+      const div = document.createElement('div')
+      div.innerHTML = _entryHtml(entryCount)
+      container.appendChild(div.firstElementChild)
+      entryCount++
+      // bind ปุ่มลบของ entry ใหม่
+      _bindRemoveButtons()
+    })
+
+    const _bindRemoveButtons = () => {
+      wrap.querySelectorAll('.myann-remove-entry').forEach(btn => {
+        btn.onclick = () => {
+          const idx = Number(btn.dataset.entry)
+          wrap.querySelector(`.myann-entry[data-entry="${idx}"]`)?.remove()
+        }
+      })
+    }
+    _bindRemoveButtons()
+
     wrap.querySelector('#myann-save').addEventListener('click', async () => {
       const title      = wrap.querySelector('#myann-title').value.trim()
       const body       = wrap.querySelector('#myann-body').value.trim()
-      const fileUrl    = wrap.querySelector('#myann-file').value.trim()
       const annType    = wrap.querySelector('#myann-type').value
       const pinned     = wrap.querySelector('#myann-pin').checked
       const active     = wrap.querySelector('#myann-active').checked
       const deadlineAt = annType === 'deadline' ? (wrap.querySelector('#myann-deadline').value || null) : null
-      const classIds   = [...wrap.querySelectorAll('input[name="myann-class"]:checked')].map(el => Number(el.value))
       if (!title) { showToast('กรุณาระบุหัวข้อ', 'warning'); return }
-      if (!classIds.length) { showToast('กรุณาเลือกอย่างน้อย 1 ห้อง', 'warning'); return }
       if (annType === 'deadline' && !deadlineAt) { showToast('กรุณาระบุวันและเวลา', 'warning'); return }
+
+      // รวบรวมข้อมูลแต่ละ entry
+      const entries = [...wrap.querySelectorAll('.myann-entry')].map(el => {
+        const idx      = Number(el.dataset.entry)
+        const classIds = [...el.querySelectorAll(`input[name="myann-cls-${idx}"]:checked`)].map(e => Number(e.value))
+        const fileUrl  = el.querySelector(`input[name="myann-file-${idx}"]`)?.value.trim() ?? ''
+        return { classIds, fileUrl }
+      }).filter(e => e.classIds.length > 0)
+
+      if (!entries.length) { showToast('กรุณาเลือกอย่างน้อย 1 ห้องในแต่ละชุด', 'warning'); return }
+
       const saveBtn = wrap.querySelector('#myann-save')
       saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
       try {
         const { createAnnouncement, updateAnnouncement } = await import('./api.js')
         if (existing) {
+          const { classIds, fileUrl } = entries[0]
           await updateAnnouncement(existing.id, { title, body, isActive: active, priority: pinned ? 1 : 0, annType, targetClassIds: classIds, fileUrl, deadlineAt })
         } else {
-          await createAnnouncement({ title, body, isActive: active, priority: pinned ? 1 : 0, teacherId: teacher.id, annType, targetClassIds: classIds, fileUrl, deadlineAt })
+          // สร้างทีละ entry
+          await Promise.all(entries.map(({ classIds, fileUrl }) =>
+            createAnnouncement({ title, body, isActive: active, priority: pinned ? 1 : 0, teacherId: teacher.id, annType, targetClassIds: classIds, fileUrl, deadlineAt })
+          ))
         }
         wrap.remove()
-        showToast('บันทึกประกาศสำเร็จ ✅', 'success')
+        const count = existing ? 1 : entries.length
+        showToast(`บันทึก ${count} ประกาศสำเร็จ ✅`, 'success')
         _myannLoaded = false
         _loadMyAnn()
       } catch (err) {
         showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        saveBtn.disabled = false; saveBtn.textContent = 'บันทึก'
+        saveBtn.disabled = false; saveBtn.textContent = existing ? 'บันทึก' : 'สร้างประกาศ'
       }
     })
   }
