@@ -483,14 +483,17 @@ export async function renderStudentOverview(student) {
     const _gradeColor = g => g == null ? 'text-gray-400' : g>=3.5?'text-emerald-600':g>=3?'text-blue-500':g>=2?'text-amber-600':'text-red-500'
     const _gradeLabel = g => g>=3.5?'ดีเยี่ยม':g>=3?'ดี':g>=2?'พอใช้':g>=1?'ผ่าน':'ไม่ผ่าน'
 
-    const _gpaTable = (rows, gpa, label) => {
-      const totalCredit = rows.filter(r=>r.grade!=null).reduce((s,r)=>s+(r.credit||1),0)
+    const _gpaTable = (rows, gpa, label, tabId) => {
+      const graded       = rows.filter(r => r.grade != null)
+      const totalCredit  = graded.reduce((s,r) => s+(r.credit||1), 0)
+      const totalWtGrade = graded.reduce((s,r) => s+(r.grade*(r.credit||1)), 0)
+      const gpaVal       = parseFloat(gpa)
       return `
       <div class="flex items-end gap-2 mb-4">
-        <span class="text-4xl font-extrabold ${gpa ? _gradeColor(parseFloat(gpa)) : 'text-gray-300'}">${gpa ?? '—'}</span>
+        <button id="gpa-val-btn-${tabId}" class="text-4xl font-extrabold ${gpa ? _gradeColor(gpaVal) : 'text-gray-300'} hover:opacity-70 transition">${gpa ?? '—'}</button>
         <div class="mb-1">
           <p class="text-xs text-gray-500">/4.0 ${label}</p>
-          ${gpa ? `<p class="text-xs font-semibold ${_gradeColor(parseFloat(gpa))}">${_gradeLabel(parseFloat(gpa))}</p>` : ''}
+          ${gpa ? `<p class="text-xs font-semibold ${_gradeColor(gpaVal)}">${_gradeLabel(gpaVal)}</p>` : ''}
         </div>
       </div>
       ${rows.length ? `
@@ -503,13 +506,16 @@ export async function renderStudentOverview(student) {
               <th class="px-2 py-2 font-medium text-center">หน่วย</th>
               <th class="px-2 py-2 font-medium text-center">คะแนน</th>
               <th class="px-2 py-2 font-medium text-center">เกรด</th>
+              <th class="px-2 py-2 font-medium text-center">เกรด×หน่วย</th>
               <th class="px-2 py-2 font-medium text-center">แก้</th>
-              <th class="px-2 py-2 font-medium text-center">ปพ.5</th>
+              <th class="px-2 py-2 font-medium text-center">เปิด</th>
               <th class="px-4 py-2 font-medium">ผู้สอน</th>
             </tr>
           </thead>
           <tbody>
-            ${rows.map((r, i) => `
+            ${rows.map((r, i) => {
+              const wtGrade = r.grade != null ? (r.grade * (r.credit||1)) : null
+              return `
             <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
               <td class="px-4 py-2.5 text-gray-400">${i+1}</td>
               <td class="px-2 py-2.5 min-w-0">
@@ -519,17 +525,29 @@ export async function renderStudentOverview(student) {
               <td class="px-2 py-2.5 text-center text-gray-600">${r.credit}</td>
               <td class="px-2 py-2.5 text-center font-medium text-gray-700">${r.score != null ? r.score : '—'}</td>
               <td class="px-2 py-2.5 text-center font-bold ${_gradeColor(r.grade)}">${r.grade != null ? r.grade.toFixed(1) : '—'}</td>
+              <td class="px-2 py-2.5 text-center text-gray-500">${wtGrade != null ? wtGrade.toFixed(2) : '—'}</td>
               <td class="px-2 py-2.5 text-center text-gray-400">${r.hasRetake ? '✓' : ''}</td>
               <td class="px-2 py-2.5 text-center">
-                <button class="gpa-pp5-btn px-2 py-1 rounded-lg bg-emerald-500 text-white text-[10px] font-bold hover:bg-emerald-600 transition"
-                  data-class-id="${r.classId}">ปพ.5</button>
+                <button class="gpa-pp5-btn px-2.5 py-1 rounded-lg bg-emerald-500 text-white text-[10px] font-bold hover:bg-emerald-600 transition"
+                  data-class-id="${r.classId}">→</button>
               </td>
               <td class="px-4 py-2.5 text-gray-500 text-[11px]">${r.teacherName}</td>
-            </tr>`).join('')}
-            <tr class="border-t-2 border-gray-300 bg-gray-50">
-              <td colspan="2" class="px-4 py-2.5 text-xs font-semibold text-gray-600 text-right">ผลการเรียนเฉลี่ยรายภาคเรียน</td>
-              <td class="px-2 py-2.5 text-center text-xs text-gray-500">${totalCredit}</td>
-              <td colspan="2" class="px-2 py-2.5 text-center text-sm font-bold ${_gradeColor(gpa ? parseFloat(gpa) : null)}">${gpa ?? '—'}</td>
+            </tr>`}).join('')}
+            <!-- แถวรวม -->
+            <tr class="border-t border-gray-200 bg-gray-50 font-semibold">
+              <td colspan="2" class="px-4 py-2 text-xs text-gray-600 text-right">รวม</td>
+              <td class="px-2 py-2 text-center text-gray-700">${totalCredit}</td>
+              <td class="px-2 py-2 text-center text-gray-400">—</td>
+              <td class="px-2 py-2 text-center text-gray-400">—</td>
+              <td class="px-2 py-2 text-center text-gray-700">${totalWtGrade.toFixed(2)}</td>
+              <td colspan="3"></td>
+            </tr>
+            <!-- แถว GPA -->
+            <tr class="border-t-2 border-gray-300 bg-purple-50">
+              <td colspan="2" class="px-4 py-2.5 text-xs font-bold text-gray-700 text-right">ผลการเรียนเฉลี่ยรายภาคเรียน</td>
+              <td class="px-2 py-2.5 text-center text-xs text-gray-600">${totalCredit}</td>
+              <td class="px-2 py-2.5 text-center text-gray-400">—</td>
+              <td colspan="2" class="px-2 py-2.5 text-center text-sm font-extrabold ${_gradeColor(gpa ? gpaVal : null)}">${gpa ?? '—'}</td>
               <td colspan="3"></td>
             </tr>
           </tbody>
@@ -544,8 +562,8 @@ export async function renderStudentOverview(student) {
         <button data-tab="samai" class="gpa-pop-tab flex-1 py-2 rounded-xl text-sm font-semibold bg-purple-600 text-white">สามัญ</button>
         <button data-tab="sasana" class="gpa-pop-tab flex-1 py-2 rounded-xl text-sm font-semibold text-gray-500 border border-gray-200">ศาสนา</button>
       </div>
-      <div id="gpa-pop-samai">${_gpaTable(gpaData.samai, samaiGPA, 'กลุ่มสามัญ')}</div>
-      <div id="gpa-pop-sasana" class="hidden">${_gpaTable(gpaData.sasana, sasanaGPA, 'กลุ่มศาสนา')}</div>`
+      <div id="gpa-pop-samai">${_gpaTable(gpaData.samai, samaiGPA, 'กลุ่มสามัญ', 'samai')}</div>
+      <div id="gpa-pop-sasana" class="hidden">${_gpaTable(gpaData.sasana, sasanaGPA, 'กลุ่มศาสนา', 'sasana')}</div>`
     const pop = _openFullPopup('🎓 เกรดเฉลี่ยของฉัน', gpaBody)
     pop.querySelectorAll('.gpa-pop-tab').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -557,12 +575,44 @@ export async function renderStudentOverview(student) {
         })
       })
     })
-    // ปุ่ม ปพ.5 → เปิดรายวิชานั้น
+    // ปุ่ม → เปิดรายวิชา
     pop.querySelectorAll('.gpa-pp5-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const classId = Number(btn.dataset.classId)
         pop.remove()
         window._stuOpenClass?.(classId)
+      })
+    })
+    // กดที่ค่า GPA → popup แสดงสูตรการคำนวณ
+    ;['samai','sasana'].forEach(tabId => {
+      const btn = pop.querySelector(`#gpa-val-btn-${tabId}`)
+      if (!btn) return
+      btn.addEventListener('click', () => {
+        const rows   = tabId === 'samai' ? gpaData.samai : gpaData.sasana
+        const graded = rows.filter(r => r.grade != null)
+        const sumCr  = graded.reduce((s,r) => s+(r.credit||1), 0)
+        const sumWt  = graded.reduce((s,r) => s+(r.grade*(r.credit||1)), 0)
+        const gpaNum = sumCr > 0 ? (sumWt/sumCr).toFixed(2) : '—'
+        const tip = document.createElement('div')
+        tip.className = 'fixed inset-0 z-[500] flex items-center justify-center bg-black/40 p-6'
+        tip.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full text-center">
+          <p class="font-bold text-gray-800 mb-4">สูตรการคำนวณเกรดเฉลี่ย</p>
+          <div class="text-sm text-gray-600 mb-3">
+            <p class="font-mono text-base font-semibold text-purple-700">
+              Σ(เกรด × หน่วยกิต) ÷ Σหน่วยกิต
+            </p>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-4 text-sm font-mono">
+            <p class="text-gray-700">${sumWt.toFixed(2)} ÷ ${sumCr}</p>
+            <p class="text-purple-700 font-bold text-lg mt-1">= ${gpaNum}</p>
+          </div>
+          <p class="text-xs text-gray-400 mt-3">คิดเฉพาะวิชาที่มีผลการเรียน (${graded.length} วิชา)</p>
+          <button id="gpa-tip-close" class="mt-4 w-full py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold">ปิด</button>
+        </div>`
+        document.body.appendChild(tip)
+        tip.querySelector('#gpa-tip-close').addEventListener('click', () => tip.remove())
+        tip.addEventListener('click', e => { if (e.target===tip) tip.remove() })
       })
     })
   })
