@@ -19,6 +19,7 @@ export { renderScoreColumns } from './teacher-score-columns.js'
 // ─── View: Overview ───────────────────────────────────────────────────────────
 
 let _todayWidgetTimer = null
+let _activeSecTimer   = null
 
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
@@ -40,6 +41,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const semester     = parseInt(cfg.semester ?? 1)
 
   if (_todayWidgetTimer) { clearInterval(_todayWidgetTimer); _todayWidgetTimer = null }
+  if (_activeSecTimer)   { clearInterval(_activeSecTimer);   _activeSecTimer   = null }
 
   const [schedule, links, periods, allClassrooms] = await Promise.all([
     teacher ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
@@ -536,10 +538,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
   })
 
-  // countdown อัปเดตทุก 30 วิ
+  // countdown list อัปเดตทุก 30 วิ
   if (todayEntries.length > 0) {
     _todayWidgetTimer = setInterval(() => {
-      // update list countdown labels
       sortedTodayEntries.forEach((entry, i) => {
         const el = document.getElementById(`today-cd-${i}`)
         if (!el) { clearInterval(_todayWidgetTimer); return }
@@ -547,17 +548,22 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         el.textContent = cd.label
         el.className = `text-xs font-medium flex-shrink-0 ${cd.cls}`
       })
-      // update active class countdown
-      const cdEl = document.getElementById('active-class-countdown')
-      if (cdEl && activeEntry) {
-        const cd = _countdownInfo(activeEntry.period?.start_time, activeEntry.actualEndPeriod?.end_time)
-        if (cd.label.startsWith('เสร็จ')) {
-          document.getElementById('active-class-card')?.remove()
-        } else {
-          cdEl.textContent = _activeRemainingDisplay(activeEntry.actualEndPeriod?.end_time)
-        }
-      }
     }, 30000)
+  }
+
+  // active class countdown อัปเดตทุก 1 วินาที (แสดงวินาที)
+  if (activeEntry) {
+    _activeSecTimer = setInterval(() => {
+      const cdEl = document.getElementById('active-class-countdown')
+      if (!cdEl) { clearInterval(_activeSecTimer); return }
+      const cd = _countdownInfo(activeEntry.period?.start_time, activeEntry.actualEndPeriod?.end_time)
+      if (cd.label.startsWith('เสร็จ')) {
+        clearInterval(_activeSecTimer)
+        document.getElementById('active-class-card')?.remove()
+      } else {
+        cdEl.textContent = _activeRemainingDisplay(activeEntry.actualEndPeriod?.end_time)
+      }
+    }, 1000)
   }
 }
 
