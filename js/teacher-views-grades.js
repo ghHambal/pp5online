@@ -56,10 +56,12 @@ export async function renderGradesGrid(teacher, classData) {
     </svg> กำลังโหลด...</div>`)
 
   try {
+    // ถ้า virtual class (มี source_class_id) → ดึง score columns + scores จาก source
+    const scoreClassId = classData.source_class_id ?? classData.id
     const [students, rawCols, rawScoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg, allMyClasses] = await Promise.all([
       getClassStudents(classData.id),
-      getScoreColumns(classData.id),
-      getStudentScores(classData.id),
+      getScoreColumns(scoreClassId),
+      getStudentScores(scoreClassId),
       getSheetColumnOptions(classData.id, 'กลางภาค'),
       getSheetColumnOptions(classData.id, 'ปลายภาค'),
       getSheetColumnOptions(classData.id, 'ระหว่างเรียน'),
