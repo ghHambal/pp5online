@@ -635,13 +635,18 @@ export async function renderStudentOverview(student) {
   window._stuBackFromSubject = () => {
     if (window._stuFromTimetable) {
       window._stuFromTimetable = false
-      document.getElementById('btn-stu-timetable')?.click()
+      if (window._stuOpenTimetablePopup) {
+        window._stuNav('overview')   // กลับ overview ก่อน
+        setTimeout(() => window._stuOpenTimetablePopup(), 300)
+      } else {
+        window._stuNav('overview')
+      }
     } else {
       window._stuNav('subjects')
     }
   }
 
-  document.getElementById('btn-stu-timetable')?.addEventListener('click', async () => {
+  const _openTimetablePopup = async () => {
     const pop = _openFullPopup('📅 ตารางเรียน', `<div class="flex justify-center py-10 text-gray-300">
       <svg class="animate-spin h-6 w-6 text-teal-400" viewBox="0 0 24 24" fill="none">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -864,7 +869,12 @@ export async function renderStudentOverview(student) {
       }
     }
     _render()
-  })
+  }
+
+  // expose เป็น global ให้ _stuBackFromSubject เรียกได้จากทุกหน้า
+  window._stuOpenTimetablePopup = _openTimetablePopup
+
+  document.getElementById('btn-stu-timetable')?.addEventListener('click', _openTimetablePopup)
 }
 
 // ─── My Score Hub ────────────────────────────────────────────────────────────
