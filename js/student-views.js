@@ -367,10 +367,12 @@ export async function renderStudentOverview(student) {
       return `
       <div class="bg-white rounded-2xl border border-gray-200 shadow-md mb-4 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-2">
-          <div class="flex items-center gap-2 min-w-0">
-            <h3 class="font-semibold text-gray-700 text-sm whitespace-nowrap">📅 ${todayName}</h3>
-            <span class="text-xs text-gray-400 whitespace-nowrap">${now.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'})}</span>
-            <span id="stu-live-clock" class="text-xs font-mono font-semibold text-gray-500 tabular-nums"></span>
+          <div class="flex items-center gap-2 min-w-0 flex-wrap">
+            <span class="text-sm font-bold text-gray-700 whitespace-nowrap">📅 ${todayName}</span>
+            <span class="text-xs font-medium text-gray-500 whitespace-nowrap bg-gray-100 px-2 py-0.5 rounded-full">${now.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'})}</span>
+            <span id="stu-live-clock"
+              class="text-sm font-mono font-bold tabular-nums whitespace-nowrap px-2 py-0.5 rounded-lg"
+              style="background:var(--theme-primary-soft,#d1fae5);color:var(--theme-primary,#059669)"></span>
           </div>
           <button id="btn-stu-timetable" class="text-[10px] text-teal-600 font-semibold hover:text-teal-800 transition flex items-center gap-0.5 flex-shrink-0">📋 ตารางเรียน →</button>
         </div>

@@ -20,6 +20,7 @@ export { renderScoreColumns } from './teacher-score-columns.js'
 
 let _todayWidgetTimer = null
 let _activeSecTimer   = null
+let _teacherClockTimer = null
 
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
@@ -40,8 +41,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
 
-  if (_todayWidgetTimer) { clearInterval(_todayWidgetTimer); _todayWidgetTimer = null }
-  if (_activeSecTimer)   { clearInterval(_activeSecTimer);   _activeSecTimer   = null }
+  if (_todayWidgetTimer)  { clearInterval(_todayWidgetTimer);  _todayWidgetTimer  = null }
+  if (_activeSecTimer)    { clearInterval(_activeSecTimer);    _activeSecTimer    = null }
+  if (_teacherClockTimer) { clearInterval(_teacherClockTimer); _teacherClockTimer = null }
 
   const [schedule, links, periods, allClassrooms] = await Promise.all([
     teacher ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
@@ -329,8 +331,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
     <!-- Today's Classes Widget -->
     <div id="today-widget" class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h4 class="font-semibold text-gray-700">📅 วันนี้ — ${_DAYS_TH_FULL[todayDow]}</h4>
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
+          <h4 class="font-bold text-gray-700">📅 ${_DAYS_TH_FULL[todayDow]}</h4>
+          <span class="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">${new Date().toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'})}</span>
+          <span id="teacher-live-clock"
+            class="text-sm font-mono font-bold tabular-nums px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700"></span>
+        </div>
         ${schedule.length === 0
           ? `<span class="text-[11px] text-gray-400">ยังไม่มีตารางสอน</span>`
           : links.length === 0
@@ -564,6 +571,19 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         cdEl.textContent = _activeRemainingDisplay(activeEntry.actualEndPeriod?.end_time)
       }
     }, 1000)
+  }
+
+  // live clock ในหัว widget วันนี้
+  const _tcEl = document.getElementById('teacher-live-clock')
+  if (_tcEl) {
+    const _tick = () => {
+      const t = new Date()
+      const el = document.getElementById('teacher-live-clock')
+      if (!el) { clearInterval(_teacherClockTimer); return }
+      el.textContent = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`
+    }
+    _tick()
+    _teacherClockTimer = setInterval(_tick, 1000)
   }
 }
 
