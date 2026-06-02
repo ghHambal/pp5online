@@ -262,26 +262,34 @@ export async function renderStudentOverview(student) {
     </div>
 
     <!-- Quick actions -->
-    <div class="grid grid-cols-3 gap-2 mb-4">
+    <div class="grid grid-cols-2 gap-2 mb-3">
       <button onclick="window._stuNav('subjects')"
         class="bg-emerald-600 text-white rounded-xl p-3 text-left hover:bg-emerald-700 transition">
         <p class="text-lg mb-1">📚</p>
-        <p class="font-semibold text-xs">รายวิชา</p>
+        <p class="font-semibold text-xs">รายวิชาของฉัน</p>
         <p class="text-[10px] text-emerald-200 mt-0.5">${classes.length} วิชา</p>
       </button>
       <button onclick="window._stuNav('scores')"
         class="bg-indigo-600 text-white rounded-xl p-3 text-left hover:bg-indigo-700 transition">
         <p class="text-lg mb-1">📊</p>
-        <p class="font-semibold text-xs">คะแนน</p>
+        <p class="font-semibold text-xs">คะแนนของฉัน</p>
         <p class="text-[10px] text-indigo-200 mt-0.5">ทักษะ / ละหมาด</p>
       </button>
+    </div>
+    <div class="grid grid-cols-2 gap-2 mb-4">
       <button id="btn-stu-anns"
         class="bg-amber-500 text-white rounded-xl p-3 text-left hover:bg-amber-600 transition relative">
         <p class="text-lg mb-1">📢</p>
-        <p class="font-semibold text-xs">ประกาศ</p>
+        <p class="font-semibold text-xs">ประกาศของฉัน</p>
         <p class="text-[10px] text-amber-100 mt-0.5">${allAnns.length} รายการ</p>
         ${allAnns.filter(a => a.ann_type==='deadline' && a.deadline_at && new Date(a.deadline_at) > new Date()).length > 0
-          ? `<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-400"></span>` : ''}
+          ? `<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>` : ''}
+      </button>
+      <button id="btn-stu-gpa"
+        class="bg-purple-600 text-white rounded-xl p-3 text-left hover:bg-purple-700 transition">
+        <p class="text-lg mb-1">🎓</p>
+        <p class="font-semibold text-xs">เกรดเฉลี่ย</p>
+        <p class="text-[10px] text-purple-200 mt-0.5">GPA ภาคเรียนนี้</p>
       </button>
     </div>
 
@@ -335,55 +343,6 @@ export async function renderStudentOverview(student) {
       </div>`
     })()}
 
-    <!-- เกรดเฉลี่ย -->
-    ${(() => {
-      const _calcGPA = rows => {
-        if (!rows.length) return null
-        const totalCredit = rows.reduce((s,r) => s+(r.credit||1), 0)
-        const weighted    = rows.reduce((s,r) => s+(r.grade*(r.credit||1)), 0)
-        return totalCredit > 0 ? (weighted/totalCredit).toFixed(2) : null
-      }
-      const _gradeColor = g => g>=3.5?'text-emerald-600':g>=3?'text-blue-600':g>=2?'text-amber-600':'text-red-500'
-      const _gradeLabel = g => g>=3.5?'ดีเยี่ยม':g>=3?'ดี':g>=2?'พอใช้':g>=1?'ผ่าน':'ไม่ผ่าน'
-      const samaiGPA   = _calcGPA(gpaData.samai)
-      const sasanaGPA  = _calcGPA(gpaData.sasana)
-      const _rows = rows => rows.map(r => `
-        <div class="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
-          <div class="flex-1 min-w-0">
-            <p class="text-xs text-gray-700 truncate">${r.subjectName}</p>
-          </div>
-          <span class="text-xs font-bold ${_gradeColor(r.grade)}">${r.grade.toFixed(1)}</span>
-          <span class="text-[10px] text-gray-400 w-12 text-right">${r.pct}%</span>
-        </div>`).join('')
-      return `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h3 class="font-semibold text-gray-700 text-sm">🎓 เกรดเฉลี่ยของฉัน</h3>
-          <div class="flex gap-1">
-            <button id="gpa-tab-samai" class="gpa-tab text-xs px-3 py-1 rounded-lg font-medium bg-indigo-600 text-white">สามัญ</button>
-            <button id="gpa-tab-sasana" class="gpa-tab text-xs px-3 py-1 rounded-lg font-medium text-gray-500 hover:bg-gray-100">ศาสนา</button>
-          </div>
-        </div>
-        <div id="gpa-panel-samai" class="px-4 py-3">
-          ${samaiGPA ? `
-          <div class="flex items-end gap-2 mb-3">
-            <span class="text-4xl font-extrabold ${_gradeColor(parseFloat(samaiGPA))}">${samaiGPA}</span>
-            <span class="text-sm text-gray-400 mb-1">/4.0 · ${_gradeLabel(parseFloat(samaiGPA))}</span>
-          </div>
-          <div class="space-y-0">${_rows(gpaData.samai)}</div>` :
-          `<p class="text-xs text-gray-400 text-center py-4">ยังไม่มีข้อมูลคะแนน</p>`}
-        </div>
-        <div id="gpa-panel-sasana" class="hidden px-4 py-3">
-          ${sasanaGPA ? `
-          <div class="flex items-end gap-2 mb-3">
-            <span class="text-4xl font-extrabold ${_gradeColor(parseFloat(sasanaGPA))}">${sasanaGPA}</span>
-            <span class="text-sm text-gray-400 mb-1">/4.0 · ${_gradeLabel(parseFloat(sasanaGPA))}</span>
-          </div>
-          <div class="space-y-0">${_rows(gpaData.sasana)}</div>` :
-          `<p class="text-xs text-gray-400 text-center py-4">ยังไม่มีข้อมูลคะแนน</p>`}
-        </div>
-      </div>`
-    })()}
 
     <!-- Recent requests -->
     ${recent.length > 0 ? `
@@ -414,19 +373,20 @@ export async function renderStudentOverview(student) {
     </div>`}
   `)
 
-  // ── GPA tab toggle ────────────────────────────────────────────────────────
-  document.getElementById('gpa-tab-samai')?.addEventListener('click', () => {
-    document.getElementById('gpa-panel-samai')?.classList.remove('hidden')
-    document.getElementById('gpa-panel-sasana')?.classList.add('hidden')
-    document.getElementById('gpa-tab-samai').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium bg-indigo-600 text-white'
-    document.getElementById('gpa-tab-sasana').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium text-gray-500 hover:bg-gray-100'
-  })
-  document.getElementById('gpa-tab-sasana')?.addEventListener('click', () => {
-    document.getElementById('gpa-panel-sasana')?.classList.remove('hidden')
-    document.getElementById('gpa-panel-samai')?.classList.add('hidden')
-    document.getElementById('gpa-tab-sasana').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium bg-indigo-600 text-white'
-    document.getElementById('gpa-tab-samai').className = 'gpa-tab text-xs px-3 py-1 rounded-lg font-medium text-gray-500 hover:bg-gray-100'
-  })
+  // ── helper: full-screen popup ─────────────────────────────────────────────
+  const _openFullPopup = (titleHtml, bodyHtml) => {
+    const pop = document.createElement('div')
+    pop.className = 'fixed inset-0 z-[400] bg-white flex flex-col'
+    pop.innerHTML = `
+    <div class="flex items-center gap-3 px-4 py-4 border-b border-gray-100 flex-shrink-0">
+      <button id="stu-popup-back" class="text-emerald-600 font-medium text-sm">← กลับ</button>
+      <h3 class="font-bold text-gray-800 flex-1">${titleHtml}</h3>
+    </div>
+    <div class="flex-1 overflow-y-auto px-4 py-4">${bodyHtml}</div>`
+    document.body.appendChild(pop)
+    pop.querySelector('#stu-popup-back').addEventListener('click', () => pop.remove())
+    return pop
+  }
 
   // ── Period countdown (HH:MM:SS) ───────────────────────────────────────────
   const _activePeriod = dailySched.linked.find(({ period }) => {
@@ -470,35 +430,71 @@ export async function renderStudentOverview(student) {
     return `<span class="text-amber-600 text-xs">📅 อีก ${Math.floor(diffH/24)} วัน · ${str}</span>`
   }
   document.getElementById('btn-stu-anns')?.addEventListener('click', () => {
-    const sheet = document.createElement('div')
-    sheet.className = 'fixed inset-0 z-[400] flex flex-col justify-end bg-black/40'
-    sheet.innerHTML = `
-    <div class="bg-white rounded-t-3xl max-h-[85vh] flex flex-col animate-slide-up">
-      <div class="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
-        <h3 class="font-bold text-gray-800">📢 ประกาศของฉัน</h3>
-        <button id="stu-ann-close" class="text-gray-400 text-xl">✕</button>
+    const annBody = allAnns.length ? `<div class="space-y-3">${allAnns.map(a => {
+      const t = ANN_TYPE_LABEL_S[a.ann_type] ?? ANN_TYPE_LABEL_S.general
+      const ms = a.cls?.master_subjects
+      return `<div class="rounded-2xl border ${t.border} ${t.bg} p-4">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          ${a.priority > 0 ? `<span class="text-[10px] font-bold text-amber-600">📌</span>` : ''}
+          <span class="text-[10px] text-gray-500">${t.icon} ${t.label}</span>
+          <span class="text-[10px] text-gray-400 ml-auto">${ms?.subject_name ?? ''} · ${a.cls?.class_name ?? ''}</span>
+        </div>
+        <p class="text-sm font-semibold text-gray-800">${a.title ?? ''}</p>
+        ${a.body ? `<p class="text-xs text-gray-500 mt-1">${a.body}</p>` : ''}
+        ${a.ann_type === 'deadline' && a.deadline_at ? `<div class="mt-2">${_fmtDeadlineS(a.deadline_at)}</div>` : ''}
+        ${a.file_url ? `<a href="${a.file_url}" target="_blank" class="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:underline font-medium">📎 เปิดไฟล์ →</a>` : ''}
+      </div>`
+    }).join('')}</div>` : `<p class="text-center text-gray-400 py-16 text-sm">ยังไม่มีประกาศ</p>`
+    _openFullPopup('📢 ประกาศของฉัน', annBody)
+  })
+
+  document.getElementById('btn-stu-gpa')?.addEventListener('click', () => {
+    const _calcGPA = rows => {
+      if (!rows.length) return null
+      const totalCredit = rows.reduce((s,r) => s+(r.credit||1), 0)
+      const weighted    = rows.reduce((s,r) => s+(r.grade*(r.credit||1)), 0)
+      return totalCredit > 0 ? (weighted/totalCredit).toFixed(2) : null
+    }
+    const _gradeColor = g => g>=3.5?'text-emerald-600':g>=3?'text-blue-600':g>=2?'text-amber-600':'text-red-500'
+    const _gradeLabel = g => g>=3.5?'ดีเยี่ยม':g>=3?'ดี':g>=2?'พอใช้':g>=1?'ผ่าน':'ไม่ผ่าน'
+    const samaiGPA  = _calcGPA(gpaData.samai)
+    const sasanaGPA = _calcGPA(gpaData.sasana)
+    const _rows = rows => rows.length ? rows.map(r => `
+      <div class="flex items-center gap-2 py-2.5 border-b border-gray-100 last:border-0">
+        <div class="flex-1 min-w-0"><p class="text-sm text-gray-700 truncate">${r.subjectName}</p></div>
+        <span class="text-sm font-bold ${_gradeColor(r.grade)} w-8 text-right">${r.grade.toFixed(1)}</span>
+        <span class="text-xs text-gray-400 w-10 text-right">${r.pct}%</span>
+      </div>`).join('') : `<p class="text-xs text-gray-400 text-center py-8">ยังไม่มีข้อมูลคะแนน</p>`
+    const _gpaBlock = (gpa, rows, label) => `
+      <div class="mb-6">
+        <div class="flex items-end gap-2 mb-4">
+          <span class="text-5xl font-extrabold ${gpa ? _gradeColor(parseFloat(gpa)) : 'text-gray-300'}">${gpa ?? '—'}</span>
+          <div class="mb-1">
+            <p class="text-sm text-gray-500">/4.0 ${label}</p>
+            ${gpa ? `<p class="text-xs font-semibold ${_gradeColor(parseFloat(gpa))}">${_gradeLabel(parseFloat(gpa))}</p>` : ''}
+          </div>
+        </div>
+        ${_rows(rows)}
+      </div>`
+    const gpaBody = `
+      <div id="gpa-pop-tabs" class="flex gap-2 mb-5">
+        <button data-tab="samai" class="gpa-pop-tab flex-1 py-2 rounded-xl text-sm font-semibold bg-purple-600 text-white">สามัญ</button>
+        <button data-tab="sasana" class="gpa-pop-tab flex-1 py-2 rounded-xl text-sm font-semibold text-gray-500 border border-gray-200">ศาสนา</button>
       </div>
-      <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        ${allAnns.length ? allAnns.map(a => {
-          const t = ANN_TYPE_LABEL_S[a.ann_type] ?? ANN_TYPE_LABEL_S.general
-          const ms = a.cls?.master_subjects
-          return `<div class="rounded-2xl border ${t.border} ${t.bg} p-4">
-            <div class="flex items-center gap-2 mb-1 flex-wrap">
-              ${a.priority > 0 ? `<span class="text-[10px] font-bold text-amber-600">📌</span>` : ''}
-              <span class="text-[10px] text-gray-500">${t.icon} ${t.label}</span>
-              <span class="text-[10px] text-gray-400 ml-auto">${ms?.subject_name ?? ''} · ${a.cls?.class_name ?? ''}</span>
-            </div>
-            <p class="text-sm font-semibold text-gray-800">${a.title ?? ''}</p>
-            ${a.body ? `<p class="text-xs text-gray-500 mt-1">${a.body}</p>` : ''}
-            ${a.ann_type === 'deadline' && a.deadline_at ? `<div class="mt-2">${_fmtDeadlineS(a.deadline_at)}</div>` : ''}
-            ${a.file_url ? `<a href="${a.file_url}" target="_blank" class="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:underline font-medium">📎 เปิดไฟล์ →</a>` : ''}
-          </div>`
-        }).join('') : `<p class="text-center text-gray-400 py-10 text-sm">ยังไม่มีประกาศ</p>`}
-      </div>
-    </div>`
-    document.body.appendChild(sheet)
-    sheet.addEventListener('click', e => { if (e.target === sheet) sheet.remove() })
-    sheet.querySelector('#stu-ann-close').addEventListener('click', () => sheet.remove())
+      <div id="gpa-pop-samai">${_gpaBlock(samaiGPA, gpaData.samai, 'กลุ่มสามัญ')}</div>
+      <div id="gpa-pop-sasana" class="hidden">${_gpaBlock(sasanaGPA, gpaData.sasana, 'กลุ่มศาสนา')}</div>`
+    const pop = _openFullPopup('🎓 เกรดเฉลี่ยของฉัน', gpaBody)
+    pop.querySelectorAll('.gpa-pop-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = btn.dataset.tab
+        pop.getElementById?.('gpa-pop-samai') // no-op
+        pop.querySelector('#gpa-pop-samai').classList.toggle('hidden', t !== 'samai')
+        pop.querySelector('#gpa-pop-sasana').classList.toggle('hidden', t !== 'sasana')
+        pop.querySelectorAll('.gpa-pop-tab').forEach(b => {
+          b.className = `gpa-pop-tab flex-1 py-2 rounded-xl text-sm font-semibold ${b.dataset.tab===t ? 'bg-purple-600 text-white' : 'text-gray-500 border border-gray-200'}`
+        })
+      })
+    })
   })
 }
 

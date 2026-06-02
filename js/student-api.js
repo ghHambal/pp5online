@@ -225,13 +225,14 @@ export async function getStudentDailySchedule(studentId) {
 
   const todayDow = new Date().getDay() // 0=Sun, 1=Mon, ...
 
-  // หา class ที่มีคาบวันนี้
-  const linkedClassIds = new Set()
+  // แยก class ที่มี link และไม่มี link (ไม่สนใจว่าวันนี้มีคาบไหม)
+  const hasAnyLink = new Set((links ?? []).map(l => l.class_id))
+
+  // หาเฉพาะคาบที่ตรงกับวันนี้
   const scheduleRows = []
   for (const link of links ?? []) {
     const sched = link.teacher_schedules
     if (!sched || sched.day_of_week !== todayDow) continue
-    linkedClassIds.add(link.class_id)
     scheduleRows.push({ classId: link.class_id, cls: classMap[link.class_id], sched })
   }
 
@@ -242,9 +243,9 @@ export async function getStudentDailySchedule(studentId) {
     .order('period_no')
   const periodMap = Object.fromEntries((periods ?? []).map(p => [p.period_no, p]))
 
-  // class ที่ไม่ได้ link ตารางสอน
+  // class ที่ไม่เคย link ตารางสอนเลย (ไม่ใช่แค่ไม่มีคาบวันนี้)
   const unlinked = enrollment
-    .filter(e => !linkedClassIds.has(e.class_id))
+    .filter(e => !hasAnyLink.has(e.class_id))
     .map(e => e.classes)
     .filter(Boolean)
 
