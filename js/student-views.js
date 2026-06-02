@@ -645,10 +645,51 @@ export async function renderStudentSubjects(student) {
     </svg>
   </div>`)
 
+  const { getClassAnnouncements: _unused, ..._ } = {} // no-op
+  const { supabase: _sb } = await import('./supabase.js').catch(()=>({}))
+
   const [classes, themeCfg] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getThemeConfig().catch(()=>({})),
   ])
+
+  // ดึง schedule links ทั้งหมดในครั้งเดียว
+  const _DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
+  let schedByClass = {}  // { classId: [{ day_of_week, period_no, span_periods }] }
+  if (_sb && classes.length) {
+    const classIds = classes.map(c => c.id)
+    const { data: links } = await _sb
+      .from('class_schedule_links')
+      .select('class_id, teacher_schedules(day_of_week, period_no, span_periods)')
+      .in('class_id', classIds)
+    for (const l of links ?? []) {
+      const s = l.teacher_schedules
+      if (!s) continue
+      if (!schedByClass[l.class_id]) schedByClass[l.class_id] = []
+      schedByClass[l.class_id].push(s)
+    }
+  }
+
+  const _schedChip = (classId) => {
+    const slots = schedByClass[classId] ?? []
+    if (!slots.length) return ''
+    // จัดกลุ่มตามวัน
+    const byDay = {}
+    slots.forEach(s => {
+      const d = s.day_of_week
+      if (!byDay[d]) byDay[d] = []
+      const span = s.span_periods ?? 1
+      for (let i = 0; i < span; i++) byDay[d].push((s.period_no ?? 0) + i)
+    })
+    return Object.entries(byDay)
+      .sort(([a],[b]) => Number(a)-Number(b))
+      .map(([d, ps]) => {
+        const periods = [...new Set(ps)].sort((a,b)=>a-b)
+        const pStr = periods.length === 1 ? `คาบ ${periods[0]}`
+          : `คาบ ${periods[0]}–${periods[periods.length-1]}`
+        return `${_DAY_TH[Number(d)] ?? d} ${pStr}`
+      }).join(' · ')
+  }
 
   if (!classes.length) {
     setContent(`<div class="text-center py-16 text-gray-300">
@@ -696,6 +737,7 @@ export async function renderStudentSubjects(student) {
             <p class="font-bold text-[12px] leading-tight line-clamp-2" style="color:${meta.text};">${ms?.subject_name ?? '—'}</p>
             <p class="text-[10px] text-gray-400 mt-0.5 font-mono truncate">${ms?.subject_code ?? ''}</p>
             <p class="text-[10px] text-gray-500 mt-1 truncate">${_roomDisplay(cls.class_name)}</p>
+            ${_schedChip(cls.id) ? `<p class="text-[9px] text-indigo-500 mt-0.5 font-medium truncate">🕐 ${_schedChip(cls.id)}</p>` : ''}
           </div>
           <div class="mt-auto pt-2 flex items-center gap-1.5 min-w-0">
             ${teacher?.image_url
@@ -721,7 +763,8 @@ export async function renderStudentSubjects(student) {
           <span class="text-[10px] text-gray-400">${ms?.credit ?? '—'} หน่วยกิต</span>
         </div>
       </div>
-      <div class="flex items-center gap-3 mt-3 pt-3 border-t border-white/60">
+      ${_schedChip(cls.id) ? `<p class="text-[11px] text-indigo-500 font-medium mt-2">🕐 ${_schedChip(cls.id)}</p>` : ''}
+      <div class="flex items-center gap-3 mt-2 pt-2 border-t border-white/60">
         <div class="flex items-center gap-1.5">
           ${teacher?.image_url
             ? `<img src="${teacher.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
