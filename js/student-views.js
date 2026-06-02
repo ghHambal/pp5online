@@ -666,13 +666,19 @@ export async function renderStudentOverview(student) {
         for(let i=1;i<s.span;i++) spannedBy[s.periodNo+i] = s.periodNo
       })
 
+      // หาเวลาพัก: สิ้นสุดคาบ 5 → เริ่มคาบ 6
+      const p5end = periods.find(pp=>pp.period_no===5)?.end_time?.slice(0,5) ?? ''
+      const p6start = periods.find(pp=>pp.period_no===6)?.start_time?.slice(0,5) ?? ''
+      const breakTimeStr = p5end && p6start ? `${p5end}–${p6start}` : ''
+
       let tableRows = ''
-      periods.forEach((p, i) => {
+      periods.forEach((p) => {
         // แถวพักเที่ยง ก่อนคาบ 6
         if (p.period_no === 6 && periods.find(pp=>pp.period_no===5)) {
           tableRows += `<tr>
-            <td colspan="3" class="bg-orange-50 text-center py-2 border-b border-orange-100">
-              <p class="text-[11px] font-semibold text-orange-600">🕐 ละหมาดซุฮรี / พักเที่ยง</p>
+            <td colspan="2" class="bg-emerald-50 text-center py-2.5 border-b border-emerald-100">
+              <p class="text-[11px] font-semibold text-emerald-700">🕌 ละหมาดซุฮรี / พักเที่ยง</p>
+              ${breakTimeStr ? `<p class="text-[10px] text-emerald-500 mt-0.5">${breakTimeStr}</p>` : ''}
             </td></tr>`
         }
 
@@ -681,37 +687,27 @@ export async function renderStudentOverview(student) {
         const lastP = span>1 ? (periods.find(pp=>pp.period_no===p.period_no+span-1)??p) : p
         const [sh,sm] = (p.start_time??'0:0').split(':').map(Number)
         const [eh,em] = (lastP.end_time??'0:0').split(':').map(Number)
-        const startSec = sh*3600+sm*60, endSec = eh*3600+em*60
-        const isNow = nowSec>=startSec && nowSec<endSec
-        const isDone = nowSec>=endSec
+        const isNow = nowSec>=sh*3600+sm*60 && nowSec<eh*3600+em*60
         const ms = slot?.cls?.master_subjects
         const isAGM = ['AGM','AGMVOC'].includes(ms?.subject_group??'')
-        const cellBg  = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
-        const txtCls  = slot ? (isAGM ? 'text-amber-800' : 'text-emerald-800') : 'text-gray-300'
-        // คาบนี้ถูก span จากคาบก่อนหน้า → แสดงแค่คอลัมน์คาบ ไม่แสดงคอลัมน์วิชา
+        const cellBg = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
+        const txtCls = slot ? (isAGM ? 'text-amber-800' : 'text-emerald-800') : 'text-gray-300'
         const isSpanned = spannedBy[p.period_no] != null
 
         tableRows += `<tr>
-          <!-- คอลัมน์คาบ: ทุกแถวมีเสมอ -->
           <td class="border-b border-gray-100 border-r border-gray-100 text-center py-2 px-1 bg-gray-50 align-middle" style="width:56px">
             <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}</p>
             <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)??''}</p>
           </td>
-          ${isSpanned ? '' /* td ถูก rowspan จากแถวก่อนหน้าแล้ว ไม่ต้องเพิ่ม */ : `
-          <!-- คอลัมน์วิชา: rowspan ถ้าควบ -->
-          <td class="border-b border-gray-100 ${cellBg} align-middle p-2.5"
+          ${isSpanned ? '' : `
+          <td class="border-b border-gray-100 ${cellBg} text-center align-middle p-2.5"
               ${span>1?`rowspan="${span}"`:''}
               style="${isNow?'border-left:3px solid #10b981':''}">
             ${slot ? `
               <p class="text-sm font-semibold ${txtCls}">${ms?.subject_name??'—'}</p>
-              <p class="text-[10px] ${txtCls} opacity-70 mt-0.5">${ms?.subject_code??''}</p>` :
-              `<p class="text-xs text-gray-200 text-center">—</p>`}
-          </td>
-          <!-- คอลัมน์สถานะ: rowspan ถ้าควบ -->
-          <td class="border-b border-gray-100 text-center align-middle px-2" style="width:52px"
-              ${span>1?`rowspan="${span}"`:''}>>
-            ${isNow ? `<span id="tt-day-cd" class="text-[10px] font-bold text-emerald-600 tabular-nums">—</span>`
-              : isDone ? `<span class="text-[10px] text-gray-300">✓</span>` : ''}
+              <p class="text-[10px] ${txtCls} opacity-70 mt-0.5">${ms?.subject_code??''}</p>
+              ${isNow ? `<p id="tt-day-cd" class="text-[10px] font-bold text-emerald-600 tabular-nums mt-1">—</p>` : ''}` :
+              `<span class="text-xs text-gray-200">—</span>`}
           </td>`}
         </tr>`
       })
@@ -765,8 +761,10 @@ export async function renderStudentOverview(student) {
 
         // แถวพัก ระหว่างคาบ 5-6
         if (p.period_no === 5 && periods.find(pp=>pp.period_no===6)) {
-          tableRows += `<tr><td colspan="${daysInGrid.length+1}" class="bg-orange-50 text-center py-1.5">
-            <p class="text-[9px] font-semibold text-orange-500">🕐 ละหมาดซุฮรี / พักเที่ยง</p>
+          const _p5e = p.end_time?.slice(0,5) ?? ''
+          const _p6s = periods.find(pp=>pp.period_no===6)?.start_time?.slice(0,5) ?? ''
+          tableRows += `<tr><td colspan="${daysInGrid.length+1}" class="bg-emerald-50 text-center py-1.5 border-b border-emerald-100">
+            <p class="text-[9px] font-semibold text-emerald-700">🕌 ละหมาดซุฮรี / พักเที่ยง${_p5e&&_p6s?` ${_p5e}–${_p6s}`:''}</p>
           </td></tr>`
         }
       })
