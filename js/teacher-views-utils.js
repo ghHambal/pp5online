@@ -150,7 +150,7 @@ export function _nextPeriodMins(classId, linksByClass, scheduleMap, periodMap) {
     const slotMins = h * 60 + m
     let daysUntil = (slot.day_of_week - dow + 7) % 7
     if (daysUntil === 0 && slotMins <= nowMins) daysUntil = 7
-    min = Math.min(min, daysUntil * 1440 + slotMins)
+    min = Math.min(min, daysUntil * 1440 + slotMins - nowMins)
   }
   return min
 }
