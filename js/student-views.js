@@ -600,11 +600,12 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const finCols  = columns.filter(c => c.assignment_type === 'final')
   const midMax   = midCols.reduce((s,c) => s+(c.max_score||0), 0)
   const finMax   = finCols.reduce((s,c) => s+(c.max_score||0), 0)
-  const midScore = midCols.reduce((s,c) => s+_getVal(c), 0) + specialCols.reduce((s,c) => s+_getVal(c), 0)
-  const finScore = finCols.reduce((s,c) => s+_getVal(c), 0)
-  const total    = midScore + finScore
-  const totalMax = midMax + finMax
-  const pct      = totalMax > 0 ? (total / totalMax * 100) : 0
+  const midScore    = midCols.reduce((s,c) => s+_getVal(c), 0)
+  const finScore    = finCols.reduce((s,c) => s+_getVal(c), 0)
+  const specialScore = specialCols.reduce((s,c) => s+_getVal(c), 0)
+  const total    = midScore + finScore + specialScore  // รวม bonus ใน total ที่แสดง
+  const totalMax = midMax + finMax                     // แต่ % คำนวณจาก mid+final เท่านั้น
+  const pct      = totalMax > 0 ? ((midScore + finScore) / totalMax * 100) : 0
 
   const attTotal   = attendance.length
   const attPresent = attendance.filter(a => a.status === 'present').length
@@ -794,13 +795,30 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     // ── ประกาศของครูสำหรับห้องเรียนนี้ ──
     const ANN_TYPE_LABEL = {
       'general':      { label:'ประกาศ',                    icon:'📢', bg:'bg-gray-50',    border:'border-gray-200' },
+      'deadline':     { label:'กำหนดส่งงาน/สอบ',           icon:'⏰', bg:'bg-red-50',     border:'border-red-200'  },
       'learning_doc': { label:'เอกสารประกอบการเรียน',       icon:'📄', bg:'bg-blue-50',    border:'border-blue-200' },
       'exercise_doc': { label:'เอกสารแบบฝึกเพิ่มเติม',     icon:'📝', bg:'bg-emerald-50', border:'border-emerald-200' },
       'exam_prep':    { label:'เอกสารแนวข้อสอบ',            icon:'📋', bg:'bg-amber-50',   border:'border-amber-200' },
     }
+    const _fmtDeadline = (iso) => {
+      if (!iso) return ''
+      const d = new Date(iso)
+      const now = new Date()
+      const diffMs = d - now
+      const diffMin = Math.floor(diffMs / 60000)
+      const dateStr = d.toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'2-digit', hour:'2-digit', minute:'2-digit' })
+      if (diffMs < 0) return `<span class="text-red-500 font-bold text-xs">⛔ หมดเวลาแล้ว · ${dateStr}</span>`
+      if (diffMin < 60) return `<span class="text-red-600 font-bold text-xs">🔴 อีก ${diffMin} นาที · ${dateStr}</span>`
+      const diffH = Math.floor(diffMin / 60)
+      if (diffH < 24) return `<span class="text-orange-500 font-semibold text-xs">🟠 อีก ${diffH} ชม. ${diffMin%60} น. · ${dateStr}</span>`
+      const diffD = Math.floor(diffH / 24)
+      return `<span class="text-amber-600 font-semibold text-xs">📅 อีก ${diffD} วัน · ${dateStr}</span>`
+    }
     if (classAnns.length > 0) {
-      classAnns.forEach(a => {
+      // ปักหมุดขึ้นก่อน
+      [...classAnns].sort((a,b) => (b.priority||0)-(a.priority||0)).forEach(a => {
         const t = ANN_TYPE_LABEL[a.ann_type] ?? ANN_TYPE_LABEL.general
+        const deadlineHtml = a.ann_type === 'deadline' && a.deadline_at ? _fmtDeadline(a.deadline_at) : ''
         items.push(`
           <div class="rounded-2xl border ${t.border} ${t.bg} p-4">
             <div class="flex items-start gap-3">
@@ -812,6 +830,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
                 </div>
                 <p class="text-sm font-semibold text-gray-800">${a.title ?? ''}</p>
                 ${a.body ? `<p class="text-xs text-gray-500 mt-1">${a.body}</p>` : ''}
+                ${deadlineHtml ? `<div class="mt-2">${deadlineHtml}</div>` : ''}
                 ${a.file_url ? `<a href="${a.file_url}" target="_blank" rel="noopener"
                   class="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:underline font-medium">
                   📎 เปิดไฟล์แนบ →</a>` : ''}

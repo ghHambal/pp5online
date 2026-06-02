@@ -3118,10 +3118,11 @@ export async function renderAnnouncementsView(teacher) {
 
   // ─── ประกาศของฉัน (teacher → classroom) ──────────────────────────────────
   const ANN_TYPES_TEACHER = {
-    'general':      { label: 'ทั่วไป',                    icon: '📢' },
-    'learning_doc': { label: 'เอกสารประกอบการเรียน',       icon: '📄' },
-    'exercise_doc': { label: 'เอกสารแบบฝึกเพิ่มเติม',     icon: '📝' },
-    'exam_prep':    { label: 'เอกสารแนวข้อสอบ',            icon: '📋' },
+    'general':      { label: 'ทั่วไป',                    icon: '📢', hasDeadline: false },
+    'deadline':     { label: 'กำหนดส่งงาน/สอบ',           icon: '⏰', hasDeadline: true  },
+    'learning_doc': { label: 'เอกสารประกอบการเรียน',       icon: '📄', hasDeadline: false },
+    'exercise_doc': { label: 'เอกสารแบบฝึกเพิ่มเติม',     icon: '📝', hasDeadline: false },
+    'exam_prep':    { label: 'เอกสารแนวข้อสอบ',            icon: '📋', hasDeadline: false },
   }
 
   let _myannLoaded = false
@@ -3227,6 +3228,13 @@ export async function renderAnnouncementsView(teacher) {
             placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"
             class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none">${_esc(existing?.body ?? '')}</textarea>
         </div>
+        <div id="myann-deadline-wrap" class="${(existing?.ann_type ?? 'general') === 'deadline' ? '' : 'hidden'}">
+          <label class="block text-xs font-semibold text-gray-600 mb-1">⏰ วันและเวลากำหนดส่ง/สอบ <span class="text-red-400">*</span></label>
+          <input id="myann-deadline" type="datetime-local"
+            value="${existing?.deadline_at ? new Date(existing.deadline_at).toISOString().slice(0,16) : ''}"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+          <p class="text-xs text-gray-400 mt-1">นักเรียนจะเห็นนับถอยหลังถึงเวลานี้</p>
+        </div>
         <div>
           <label class="block text-xs font-semibold text-gray-600 mb-1">ลิงก์ไฟล์ / เอกสาร</label>
           <input id="myann-file" type="url" value="${_esc(existing?.file_url ?? '')}"
@@ -3257,24 +3265,31 @@ export async function renderAnnouncementsView(teacher) {
     document.body.appendChild(wrap)
     wrap.querySelector('#myann-close').addEventListener('click', () => wrap.remove())
     wrap.querySelector('#myann-cancel').addEventListener('click', () => wrap.remove())
+    // toggle deadline field เมื่อเปลี่ยน type
+    wrap.querySelector('#myann-type').addEventListener('change', e => {
+      const isDeadline = e.target.value === 'deadline'
+      wrap.querySelector('#myann-deadline-wrap').classList.toggle('hidden', !isDeadline)
+    })
     wrap.querySelector('#myann-save').addEventListener('click', async () => {
-      const title   = wrap.querySelector('#myann-title').value.trim()
-      const body    = wrap.querySelector('#myann-body').value.trim()
-      const fileUrl = wrap.querySelector('#myann-file').value.trim()
-      const annType = wrap.querySelector('#myann-type').value
-      const pinned  = wrap.querySelector('#myann-pin').checked
-      const active  = wrap.querySelector('#myann-active').checked
-      const classIds = [...wrap.querySelectorAll('input[name="myann-class"]:checked')].map(el => Number(el.value))
+      const title      = wrap.querySelector('#myann-title').value.trim()
+      const body       = wrap.querySelector('#myann-body').value.trim()
+      const fileUrl    = wrap.querySelector('#myann-file').value.trim()
+      const annType    = wrap.querySelector('#myann-type').value
+      const pinned     = wrap.querySelector('#myann-pin').checked
+      const active     = wrap.querySelector('#myann-active').checked
+      const deadlineAt = annType === 'deadline' ? (wrap.querySelector('#myann-deadline').value || null) : null
+      const classIds   = [...wrap.querySelectorAll('input[name="myann-class"]:checked')].map(el => Number(el.value))
       if (!title) { showToast('กรุณาระบุหัวข้อ', 'warning'); return }
       if (!classIds.length) { showToast('กรุณาเลือกอย่างน้อย 1 ห้อง', 'warning'); return }
+      if (annType === 'deadline' && !deadlineAt) { showToast('กรุณาระบุวันและเวลา', 'warning'); return }
       const saveBtn = wrap.querySelector('#myann-save')
       saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
       try {
         const { createAnnouncement, updateAnnouncement } = await import('./api.js')
         if (existing) {
-          await updateAnnouncement(existing.id, { title, body, isActive: active, priority: pinned ? 1 : 0, annType, targetClassIds: classIds, fileUrl })
+          await updateAnnouncement(existing.id, { title, body, isActive: active, priority: pinned ? 1 : 0, annType, targetClassIds: classIds, fileUrl, deadlineAt })
         } else {
-          await createAnnouncement({ title, body, isActive: active, priority: pinned ? 1 : 0, teacherId: teacher.id, annType, targetClassIds: classIds, fileUrl })
+          await createAnnouncement({ title, body, isActive: active, priority: pinned ? 1 : 0, teacherId: teacher.id, annType, targetClassIds: classIds, fileUrl, deadlineAt })
         }
         wrap.remove()
         showToast('บันทึกประกาศสำเร็จ ✅', 'success')
