@@ -303,7 +303,13 @@ export async function getStudentAllAnnouncements(studentId) {
 export async function getStudentGPA(studentId) {
   const { data: enrollment } = await supabase
     .from('class_students')
-    .select('class_id, classes(id, master_subjects(subject_name, credit, subject_group))')
+    .select(`
+      class_id,
+      classes(id, master_subjects(
+        subject_name, subject_code, credit, subject_group,
+        teachers(full_name)
+      ))
+    `)
     .eq('student_id', studentId)
   if (!enrollment?.length) return { samai: [], sasana: [] }
 
@@ -316,23 +322,34 @@ export async function getStudentGPA(studentId) {
       .select('id, assignment_type, max_score')
       .eq('class_id', e.class_id)
       .not('assignment_type', 'eq', 'คะแนนพิเศษ')
-    if (!cols?.length) return null
+    if (!cols?.length) return {
+      classId: cls.id, subjectName: ms.subject_name, subjectCode: ms.subject_code,
+      credit: ms.credit ?? 1, grade: null, score: null, maxScore: null,
+      hasRetake: false, group: ms.subject_group, teacherName: ms.teachers?.full_name ?? '—'
+    }
     const { data: scores } = await supabase
       .from('student_scores')
-      .select('assignment_id, original_score, final_score')
+      .select('assignment_id, original_score, retake_score, final_score')
       .eq('student_id', studentId)
       .in('assignment_id', cols.map(c => c.id))
     const scoreMap = Object.fromEntries((scores ?? []).map(s => [s.assignment_id, s]))
     const maxTotal = cols.reduce((s, c) => s + (c.max_score || 0), 0)
-    if (!maxTotal) return null
     const total = cols.reduce((s, c) => {
       const sc = scoreMap[c.id]
       return s + (parseFloat(sc?.final_score ?? sc?.original_score ?? 0) || 0)
     }, 0)
-    const pct = total / maxTotal * 100
-    const grade = pct >= 80 ? 4 : pct >= 75 ? 3.5 : pct >= 70 ? 3 : pct >= 65 ? 2.5
-      : pct >= 60 ? 2 : pct >= 55 ? 1.5 : pct >= 50 ? 1 : 0
-    return { subjectName: ms.subject_name, credit: ms.credit ?? 1, grade, pct: Math.round(pct), group: ms.subject_group }
+    const hasRetake = (scores ?? []).some(s => s.retake_score != null)
+    const pct   = maxTotal > 0 ? total / maxTotal * 100 : 0
+    const grade = maxTotal > 0
+      ? (pct >= 80 ? 4 : pct >= 75 ? 3.5 : pct >= 70 ? 3 : pct >= 65 ? 2.5
+        : pct >= 60 ? 2 : pct >= 55 ? 1.5 : pct >= 50 ? 1 : 0)
+      : null
+    return {
+      classId: cls.id, subjectName: ms.subject_name, subjectCode: ms.subject_code,
+      credit: ms.credit ?? 1, grade, score: maxTotal > 0 ? Math.round(total) : null,
+      maxScore: maxTotal, hasRetake, pct: Math.round(pct),
+      group: ms.subject_group, teacherName: ms.teachers?.full_name ?? '—'
+    }
   }))
 
   const valid = results.filter(Boolean)
