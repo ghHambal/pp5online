@@ -700,13 +700,14 @@ export async function renderStudentOverview(student) {
             <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)??''}</p>
           </td>
           ${isSpanned ? '' : `
-          <td class="border-b border-gray-100 align-middle p-2"
+          <td class="border-b border-gray-100 p-1.5" style="vertical-align:stretch"
               ${span>1?`rowspan="${span}"`:''}
               ${slot?`onclick="window._stuOpenClass(${slot.cls.id})"`:''}>
             ${slot ? `
               <div class="rounded-xl ${cellBg} border-l-4 ${isAGM?'border-amber-400':'border-emerald-400'}
-                px-3 py-2 shadow-sm hover:shadow-md transition cursor-pointer h-full
-                ${isNow?'ring-2 ring-emerald-400':''}" style="min-height:48px">
+                px-3 py-2 shadow-sm hover:shadow-md transition cursor-pointer
+                ${isNow?'ring-2 ring-emerald-400':''}"
+                style="height:100%;min-height:${span>1?span*52:48}px;display:flex;flex-direction:column;justify-content:center">
                 <p class="text-sm font-semibold ${txtCls} leading-tight">${ms?.subject_name??'—'}</p>
                 <p class="text-[10px] ${txtCls} opacity-60 mt-0.5">${ms?.subject_code??''}</p>
                 ${isNow ? `<p id="tt-day-cd" class="text-[10px] font-bold text-emerald-600 tabular-nums mt-1">—</p>` : ''}
@@ -752,14 +753,14 @@ export async function renderStudentOverview(student) {
           for (let s=1; s<span; s++) skipMap[d].add(p.period_no+s)
           return `<td style="width:${colW};padding:2px" ${span>1?`rowspan="${span}"`:''}
             class="border-r border-gray-100 last:border-0 border-b border-gray-50 align-middle"
-            ${slot?`onclick="window._stuOpenClass(${slot.cls.id})"`:''}>>
+            ${slot?`onclick="window._stuOpenClass(${slot.cls.id})"`:''}>
             ${slot ? `
               <div class="rounded-lg ${bg} border-l-2 ${isAGM?'border-amber-400':'border-emerald-400'}
-                px-1 py-1 shadow-sm hover:shadow transition cursor-pointer h-full text-center"
-                style="min-height:32px">
+                px-1 py-1 shadow-sm hover:shadow transition cursor-pointer text-center"
+                style="min-height:${span>1?span*36:32}px;display:flex;flex-direction:column;justify-content:center">
                 <p class="${txt} text-[8px] font-semibold leading-tight line-clamp-3">${ms?.subject_name??''}</p>
               </div>` :
-              `<div class="h-8"></div>`}
+              `<div style="height:${32}px"></div>`}
           </td>`
         }).join('')
 
