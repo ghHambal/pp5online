@@ -1204,9 +1204,12 @@ function _buildScorePage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้าหมวดวิชา'
 
-  // แบ่ง between และ final โดย filter จาก assignment_type (ไม่ใช้ slice เพื่อป้องกัน column ปลายภาคที่อยู่กลางลำดับทำให้ grouping ผิด)
-  const _isFinal    = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
-  const betweenCols = scoreColumns.filter(c => !_isFinal(c))
+  // แบ่ง between / final / special
+  // คะแนนพิเศษ: ไม่แสดงเป็นคอลัมน์ในตาราง แต่ยังนับรวมใน "รวมคะแนนระหว่างภาค"
+  const _isFinal   = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
+  const _isSpecial = c => c.assignment_type === 'คะแนนพิเศษ'
+  const betweenCols = scoreColumns.filter(c => !_isFinal(c) && !_isSpecial(c))
+  const specialCols = scoreColumns.filter(c => _isSpecial(c))
   const finalCols   = scoreColumns.filter(c => _isFinal(c))
 
   // เติม col ว่างให้ครบอย่างน้อย 5 ฝั่ง (ทำให้ตารางมีโครงสร้างสมบูรณ์เสมอ)
@@ -1236,6 +1239,7 @@ function _buildScorePage(d, chunk, startNo) {
     const bScores = allBetween.map(c => c.id ? (sc[c.id] ?? '') : '')
     const fScores = allFinal.map(c => c.id ? (sc[c.id] ?? '') : '')
     const bSum  = betweenCols.reduce((s,c)=>s+(sc[c.id]??0),0)
+              + specialCols.reduce((s,c)=>s+(sc[c.id]??0),0)  // รวมคะแนนพิเศษเข้าไปด้วย
     const fSum  = finalCols.reduce((s,c)=>s+(sc[c.id]??0),0)
     const total = bSum + fSum
     const bPct  = betweenMax > 0 ? bSum / betweenMax * 100 : 0
