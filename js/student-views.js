@@ -629,7 +629,16 @@ export async function renderStudentOverview(student) {
   // global: ปิด timetable popup แล้วนำทางไปวิชา
   window._stuOpenClassFromTT = (classId) => {
     document.querySelectorAll('.stu-fullpop').forEach(el => el.remove())
+    window._stuFromTimetable = true
     window._stuOpenClass?.(classId)
+  }
+  window._stuBackFromSubject = () => {
+    if (window._stuFromTimetable) {
+      window._stuFromTimetable = false
+      document.getElementById('btn-stu-timetable')?.click()
+    } else {
+      window._stuNav('subjects')
+    }
   }
 
   document.getElementById('btn-stu-timetable')?.addEventListener('click', async () => {
@@ -1495,7 +1504,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       : _todoContent()
 
   setContent(`
-    <button onclick="window._stuNav('subjects')" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← รายวิชาอื่น</button>
+    <button onclick="window._stuBackFromSubject()" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← ${window._stuFromTimetable ? 'ตารางเรียน' : 'รายวิชาอื่น'}</button>
     ${_subjectHeader()}
     ${content}
   `)
