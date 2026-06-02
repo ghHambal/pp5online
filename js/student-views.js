@@ -366,9 +366,13 @@ export async function renderStudentOverview(student) {
 
       return `
       <div class="bg-white rounded-2xl border border-gray-200 shadow-md mb-4 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h3 class="font-semibold text-gray-700 text-sm">📅 วันนี้ — ${todayName}</h3>
-          <button id="btn-stu-timetable" class="text-[10px] text-teal-600 font-semibold hover:text-teal-800 transition flex items-center gap-0.5">📋 ตารางเรียน →</button>
+        <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <h3 class="font-semibold text-gray-700 text-sm whitespace-nowrap">📅 ${todayName}</h3>
+            <span class="text-xs text-gray-400 whitespace-nowrap">${now.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'})}</span>
+            <span id="stu-live-clock" class="text-xs font-mono font-semibold text-gray-500 tabular-nums"></span>
+          </div>
+          <button id="btn-stu-timetable" class="text-[10px] text-teal-600 font-semibold hover:text-teal-800 transition flex items-center gap-0.5 flex-shrink-0">📋 ตารางเรียน →</button>
         </div>
         ${periodRows ? `
         <div class="px-3 py-1.5 bg-emerald-50 border-b border-emerald-100">
@@ -413,6 +417,20 @@ export async function renderStudentOverview(student) {
       <p class="text-sm">ยังไม่มีคำร้อง</p>
     </div>`}
   `)
+
+  // ── live clock ───────────────────────────────────────────────────────────
+  const _clockEl = document.getElementById('stu-live-clock')
+  if (_clockEl) {
+    const _updateClock = () => {
+      const t = new Date()
+      _clockEl.textContent = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`
+    }
+    _updateClock()
+    const _clockIv = setInterval(() => {
+      if (!document.getElementById('stu-live-clock')) { clearInterval(_clockIv); return }
+      _updateClock()
+    }, 1000)
+  }
 
   // ── helper: full-screen popup ─────────────────────────────────────────────
   const _openFullPopup = (titleHtml, bodyHtml) => {
