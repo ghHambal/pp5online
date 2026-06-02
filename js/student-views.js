@@ -407,7 +407,7 @@ export async function renderStudentOverview(student) {
   // ── helper: full-screen popup ─────────────────────────────────────────────
   const _openFullPopup = (titleHtml, bodyHtml) => {
     const pop = document.createElement('div')
-    pop.className = 'fixed inset-0 z-[400] bg-white flex flex-col'
+    pop.className = 'stu-fullpop fixed inset-0 z-[400] bg-white flex flex-col'
     pop.innerHTML = `
     <div class="flex items-center gap-3 px-4 py-4 border-b border-gray-100 flex-shrink-0">
       <button id="stu-popup-back" class="text-emerald-600 font-medium text-sm">← กลับ</button>
@@ -626,6 +626,12 @@ export async function renderStudentOverview(student) {
   })
 
   // ── Timetable popup ───────────────────────────────────────────────────────
+  // global: ปิด timetable popup แล้วนำทางไปวิชา
+  window._stuOpenClassFromTT = (classId) => {
+    document.querySelectorAll('.stu-fullpop').forEach(el => el.remove())
+    window._stuOpenClass?.(classId)
+  }
+
   document.getElementById('btn-stu-timetable')?.addEventListener('click', async () => {
     const pop = _openFullPopup('📅 ตารางเรียน', `<div class="flex justify-center py-10 text-gray-300">
       <svg class="animate-spin h-6 w-6 text-teal-400" viewBox="0 0 24 24" fill="none">
@@ -702,7 +708,7 @@ export async function renderStudentOverview(student) {
           ${isSpanned ? '' : `
           <td class="border-b border-gray-100 p-1.5" style="vertical-align:stretch"
               ${span>1?`rowspan="${span}"`:''}
-              ${slot?`onclick="window._stuOpenClass(${slot.cls.id})"`:''}>
+              ${slot?`onclick="window._stuOpenClassFromTT(${slot.cls.id})"`:''}>
             ${slot ? `
               <div class="rounded-xl ${cellBg} border-l-4 ${isAGM?'border-amber-400':'border-emerald-400'}
                 px-3 py-2 shadow-sm hover:shadow-md transition cursor-pointer
@@ -753,7 +759,7 @@ export async function renderStudentOverview(student) {
           for (let s=1; s<span; s++) skipMap[d].add(p.period_no+s)
           return `<td style="width:${colW};padding:2px" ${span>1?`rowspan="${span}"`:''}
             class="border-r border-gray-100 last:border-0 border-b border-gray-50 align-middle"
-            ${slot?`onclick="window._stuOpenClass(${slot.cls.id})"`:''}>
+            ${slot?`onclick="window._stuOpenClassFromTT(${slot.cls.id})"`:''}>
             ${slot ? `
               <div class="rounded-lg ${bg} border-l-2 ${isAGM?'border-amber-400':'border-emerald-400'}
                 px-1 py-1 shadow-sm hover:shadow transition cursor-pointer text-center"
