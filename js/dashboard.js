@@ -745,6 +745,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'announcements':    () => renderAnnouncements(),
     'work-calendar':    () => renderWorkCalendar(null),
     'role-permissions': () => renderRolePermissions(),
+    'tutorial-admin':   () => import('./tutorial.js').then(({renderTutorialAdmin}) => renderTutorialAdmin()),
     'house-colors':     () => renderHouseColors(),
     'donations':        () => renderDonations(),
   }
