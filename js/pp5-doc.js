@@ -44,6 +44,7 @@ function _generateSessions(classData, credit, dowPattern = null) {
   let effectiveDOW = (dowPattern && dowPattern.length) ? [...dowPattern] : null
   let autoExtended = false
   if (effectiveDOW && effectiveDOW.length < targetPerWeek) {
+    // ตารางสอนมีน้อยกว่า credit — เติมวันใหม่อัตโนมัติ
     autoExtended = true
     const dowCount = {}
     for (const d of effectiveDOW) dowCount[d] = (dowCount[d] || 0) + 1
@@ -54,6 +55,9 @@ function _generateSessions(classData, credit, dowPattern = null) {
       }
     }
     effectiveDOW.sort((a, b) => a - b)
+  } else if (effectiveDOW && effectiveDOW.length > targetPerWeek) {
+    // ตารางสอนมีมากกว่า credit — ตัดให้เหลือแค่ที่ต้องการ
+    effectiveDOW = effectiveDOW.slice(0, targetPerWeek)
   }
 
   const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
@@ -160,11 +164,16 @@ function _generateSessions(classData, credit, dowPattern = null) {
     return sessions
   }
 
-  // DOW path: initial base filling (ไม่ต้อง limit per week เพราะ DOW pattern จัดการเอง)
+  // DOW path: initial base filling — week-limited เหมือนกัน (ป้องกัน base dates เกิน targetPerWeek/สัปดาห์)
+  const _wcDow = {}
   const sessions = []
   for (const base of bases) {
     if (sessions.length >= total) break
-    sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateKey(base) })
+    const wSun = new Date(base); wSun.setDate(wSun.getDate() - wSun.getDay()); wSun.setHours(0,0,0,0)
+    const wk = wSun.getTime()
+    _wcDow[wk] = (_wcDow[wk] || 0) + 1
+    if (_wcDow[wk] <= targetPerWeek)
+      sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateKey(base) })
   }
   if (sessions.length >= total) return sessions
 
@@ -282,17 +291,17 @@ async function _loadDocData(classId) {
   const credit = ms.credit ?? 1
   const prefix = _configPrefix(ms.subject_group)
 
-  // ถ้ามี source_class ให้ดึง metadata ของมาด้วยเพื่อรู้ credit (ใช้คำนวณ session remap)
-  let srcCls = null
-  if (cls.source_class_id) {
+  // source_class_id: ดึง credit ของ source สำหรับ session remap — ถ้าดึงไม่ได้ใช้ credit เดิม
+  const srcClassId = cls.source_class_id ?? null
+  let srcCredit = credit  // fallback = credit ของวิชานี้เอง
+  if (srcClassId) {
     const { data: _src } = await supabase
       .from('classes')
       .select('id, master_subjects(credit)')
-      .eq('id', cls.source_class_id)
+      .eq('id', srcClassId)
       .single()
-    srcCls = _src ?? null
+    if (_src?.master_subjects?.credit) srcCredit = _src.master_subjects.credit
   }
-  const srcClassId = srcCls ? cls.source_class_id : null
 
   // auto columns ที่ระบบสร้างอัตโนมัติ — ไม่ดึงจาก source (คำนวณใหม่จาก attendance ของวิชานี้)
   const AUTO_COL_NAMES = new Set(['คะแนนมาเรียน', 'คะแนนละหมาด'])
@@ -342,15 +351,14 @@ async function _loadDocData(classId) {
   // attendance map: { studentId: { sessionNum: status } }
   // ถ้ามี source_class ให้ remap session number ต่อสัปดาห์ตาม credit ของแต่ละวิชา
   const attMap = {}
-  if (srcCls) {
+  if (srcClassId) {
+    // remap session: target session n → source session (proportional per week)
     const tgtPerWeek = Math.max(1, Math.round(credit * 2))
-    const srcCredit  = srcCls.master_subjects?.credit ?? 1
     const srcPerWeek = Math.max(1, Math.round(srcCredit * 2))
-    // สร้าง attMap จาก source โดย remap: target session n → source session
     const total = sessions.length
     for (let n = 1; n <= total; n++) {
-      const weekIdx   = Math.floor((n - 1) / tgtPerWeek)
-      const posInWeek = (n - 1) % tgtPerWeek
+      const weekIdx    = Math.floor((n - 1) / tgtPerWeek)
+      const posInWeek  = (n - 1) % tgtPerWeek
       const srcSession = weekIdx * srcPerWeek + posInWeek + 1
       for (const r of attRows) {
         if (r.session_number !== srcSession) continue

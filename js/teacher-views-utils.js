@@ -244,11 +244,16 @@ export function _generateSessions(classData, credit, dowPattern = null) {
     return sessions
   }
 
-  // DOW path: initial base filling (DOW pattern จัดการ weekly distribution เอง)
+  // DOW path: initial base filling — week-limited (ป้องกัน base dates เกิน targetPerWeek/สัปดาห์)
+  const _wcDow = {}
   const sessions = []
   for (const base of bases) {
     if (sessions.length >= total) break
-    sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateInputValue(base) })
+    const wSun = new Date(base); wSun.setDate(wSun.getDate() - wSun.getDay()); wSun.setHours(0,0,0,0)
+    const wk = wSun.getTime()
+    _wcDow[wk] = (_wcDow[wk] || 0) + 1
+    if (_wcDow[wk] <= targetPerWeek)
+      sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateInputValue(base) })
   }
   if (sessions.length >= total) return sessions
   const lastBase = bases[bases.length - 1]
