@@ -659,9 +659,14 @@ export async function renderStudentOverview(student) {
     const _renderDay = (dow) => {
       const now = new Date()
       const nowSec = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()
-      const skipPeriods = new Set()
-      let tableRows = ''
+      // สร้าง slotStartMap: periodNo → slot (เฉพาะคาบที่เป็นจุดเริ่มต้น)
+      // และ spannedBy: periodNo → periodNo ของ slot ที่ครอบมัน
+      const spannedBy = {}
+      slots.filter(s=>s.dow===dow && s.span>1).forEach(s=>{
+        for(let i=1;i<s.span;i++) spannedBy[s.periodNo+i] = s.periodNo
+      })
 
+      let tableRows = ''
       periods.forEach((p, i) => {
         // แถวพักเที่ยง ก่อนคาบ 6
         if (p.period_no === 6 && periods.find(pp=>pp.period_no===5)) {
@@ -671,11 +676,9 @@ export async function renderStudentOverview(student) {
             </td></tr>`
         }
 
-        if (skipPeriods.has(p.period_no)) return
-
         const slot = slotMap[`${dow}-${p.period_no}`]
         const span = slot?.span ?? 1
-        const lastP = span > 1 ? (periods.find(pp => pp.period_no === p.period_no+span-1) ?? p) : p
+        const lastP = span>1 ? (periods.find(pp=>pp.period_no===p.period_no+span-1)??p) : p
         const [sh,sm] = (p.start_time??'0:0').split(':').map(Number)
         const [eh,em] = (lastP.end_time??'0:0').split(':').map(Number)
         const startSec = sh*3600+sm*60, endSec = eh*3600+em*60
@@ -683,29 +686,33 @@ export async function renderStudentOverview(student) {
         const isDone = nowSec>=endSec
         const ms = slot?.cls?.master_subjects
         const isAGM = ['AGM','AGMVOC'].includes(ms?.subject_group??'')
-        const cellCls = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
+        const cellBg  = slot ? (isAGM ? 'bg-amber-50' : 'bg-emerald-50') : ''
         const txtCls  = slot ? (isAGM ? 'text-amber-800' : 'text-emerald-800') : 'text-gray-300'
+        // คาบนี้ถูก span จากคาบก่อนหน้า → แสดงแค่คอลัมน์คาบ ไม่แสดงคอลัมน์วิชา
+        const isSpanned = spannedBy[p.period_no] != null
 
-        for (let s=1; s<span; s++) skipPeriods.add(p.period_no+s)
-
-        tableRows += `<tr class="${isNow?'bg-emerald-50':''}">
-          <td class="border-b border-gray-100 border-r border-gray-100 text-center py-2 px-1 bg-gray-50 align-top" ${span>1?`rowspan="${span}"`:''}
-              style="width:56px">
-            <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}${span>1?`–${p.period_no+span-1}`:''}</p>
+        tableRows += `<tr>
+          <!-- คอลัมน์คาบ: ทุกแถวมีเสมอ -->
+          <td class="border-b border-gray-100 border-r border-gray-100 text-center py-2 px-1 bg-gray-50 align-middle" style="width:56px">
+            <p class="text-xs font-bold ${isNow?'text-emerald-600':'text-gray-500'}">คาบ ${p.period_no}</p>
             <p class="text-[10px] text-gray-400">${p.start_time?.slice(0,5)??''}</p>
-            ${span>1?`<p class="text-[9px] text-gray-300">–${lastP.end_time?.slice(0,5)??''}</p>`:''}
           </td>
-          <td class="border-b border-gray-100 ${cellCls} align-middle p-2" ${span>1?`rowspan="${span}"`:''}
-              style="${isNow?'box-shadow:inset 2px 0 0 #10b981':''}">
+          ${isSpanned ? '' /* td ถูก rowspan จากแถวก่อนหน้าแล้ว ไม่ต้องเพิ่ม */ : `
+          <!-- คอลัมน์วิชา: rowspan ถ้าควบ -->
+          <td class="border-b border-gray-100 ${cellBg} align-middle p-2.5"
+              ${span>1?`rowspan="${span}"`:''}
+              style="${isNow?'border-left:3px solid #10b981':''}">
             ${slot ? `
               <p class="text-sm font-semibold ${txtCls}">${ms?.subject_name??'—'}</p>
-              <p class="text-[10px] ${txtCls} opacity-70">${ms?.subject_code??''}</p>` :
-              `<p class="text-xs text-gray-300 text-center">—</p>`}
+              <p class="text-[10px] ${txtCls} opacity-70 mt-0.5">${ms?.subject_code??''}</p>` :
+              `<p class="text-xs text-gray-200 text-center">—</p>`}
           </td>
-          <td class="border-b border-gray-100 text-center align-middle px-2" style="width:64px" ${span>1?`rowspan="${span}"`:''}>
+          <!-- คอลัมน์สถานะ: rowspan ถ้าควบ -->
+          <td class="border-b border-gray-100 text-center align-middle px-2" style="width:52px"
+              ${span>1?`rowspan="${span}"`:''}>>
             ${isNow ? `<span id="tt-day-cd" class="text-[10px] font-bold text-emerald-600 tabular-nums">—</span>`
               : isDone ? `<span class="text-[10px] text-gray-300">✓</span>` : ''}
-          </td>
+          </td>`}
         </tr>`
       })
 
