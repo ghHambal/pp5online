@@ -291,9 +291,14 @@ async function _loadDocData(classId) {
   const credit = ms.credit ?? 1
   const prefix = _configPrefix(ms.subject_group)
 
-  // source_class_id: ดึง credit ของ source สำหรับ session remap — ถ้าดึงไม่ได้ใช้ credit เดิม
-  const srcClassId = cls.source_class_id ?? null
-  let srcCredit = credit  // fallback = credit ของวิชานี้เอง
+  // ดึง source_class_id แยกต่างหาก (หลีกเลี่ยง schema cache ของ PostgREST หลัง migration)
+  let srcClassId = cls.source_class_id ?? null
+  let srcCredit = credit
+  if (!srcClassId) {
+    const { data: _link } = await supabase
+      .from('classes').select('source_class_id').eq('id', classId).single()
+    srcClassId = _link?.source_class_id ?? null
+  }
   if (srcClassId) {
     const { data: _src } = await supabase
       .from('classes')
