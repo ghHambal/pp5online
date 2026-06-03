@@ -18,7 +18,7 @@ import {
 
 export async function renderAttendanceGrid(teacher, classData) {
   setActiveNav('attendance')
-  setTitle('เช็คชื่อ')
+  setTitle('เช็คชื่อ', 'attendance')
   const ms      = classData.master_subjects
   const credit  = ms?.credit ?? 1
   setContent(`<div class="flex justify-center py-12 text-gray-400">
@@ -803,7 +803,7 @@ function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSes
 
 export async function renderAttendance(teacher) {
   setActiveNav('attendance')
-  setTitle('เช็คชื่อ')
+  setTitle('เช็คชื่อ', 'attendance')
   const preClassId = window._preSelectClass ?? null
   window._preSelectClass = null  // clear after use
   const classes = await getMyClasses(teacher?.id ?? null).catch(()=>[])

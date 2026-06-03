@@ -36,7 +36,7 @@ import {
 
 export async function renderMyClasses(teacher) {
   setActiveNav('my-classes')
-  setTitle('ห้องเรียนของฉัน')
+  setTitle('ห้องเรียนของฉัน', 'classes')
   setContent(`<div class="flex justify-center py-12 text-gray-400">
     <svg class="animate-spin h-6 w-6 mr-3 text-emerald-400" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -1859,7 +1859,7 @@ export { renderAttendanceGrid, renderAttendance, renderLifeSkillScore, renderRea
 export { renderGrades, renderGradesGrid, renderRequests } from './teacher-views-grades.js'
 export async function renderSchedule(teacher) {
   setActiveNav('schedule')
-  setTitle('ตารางสอน')
+  setTitle('ตารางสอน', 'schedule')
   const cfg = await getSystemConfig().catch(()=>({}))
   const curYear = parseInt(cfg.academicYear ?? 2568)
   const curSem  = parseInt(cfg.semester ?? 1)
@@ -1869,7 +1869,7 @@ export async function renderSchedule(teacher) {
 // ─── Schedule Grid (ดูและแก้ไขตาราง) ─────────────────────────────────────────
 export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn = null) {
   setActiveNav('schedule')
-  setTitle('ตารางสอน')
+  setTitle('ตารางสอน', 'schedule')
 
   const cfg      = cfgIn ?? await getSystemConfig().catch(()=>({}))
   const hasFri   = cfg.hasFriday === 'true'

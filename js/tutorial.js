@@ -1,12 +1,89 @@
 import {
-  getTutorialCategories, getTutorialVideos,
+  getTutorialCategories, getTutorialVideos, getTutorialByPage,
   createTutorialCategory, updateTutorialCategory, deleteTutorialCategory,
   createTutorialVideo, updateTutorialVideo, deleteTutorialVideo,
 } from './api.js'
 import { setContent } from './teacher-views-utils.js'
 import { showToast } from './ui.js'
 
-// แปลง YouTube URL → embed URL
+// ─── Page keys ────────────────────────────────────────────────────────────────
+export const PAGE_KEYS = [
+  { key: 'registration', label: 'ลงทะเบียน / โปรไฟล์' },
+  { key: 'schedule',     label: 'ตารางสอน' },
+  { key: 'courses',      label: 'คอร์สวิชาของฉัน' },
+  { key: 'classes',      label: 'ห้องเรียนของฉัน' },
+  { key: 'attendance',   label: 'เช็คชื่อ' },
+  { key: 'scores',       label: 'บันทึกคะแนน' },
+  { key: 'pp5',          label: 'ปพ.5 / เอกสาร' },
+  { key: 'announcement', label: 'ประกาศ' },
+]
+
+// ─── Global popup helper (เรียกจากทุกหน้า) ───────────────────────────────────
+export async function openPageTutorial(pageKey) {
+  const videos = await getTutorialByPage(pageKey).catch(() => [])
+  if (!videos.length) {
+    showToast('ยังไม่มีคู่มือสำหรับหน้านี้', 'info')
+    return
+  }
+  // ถ้ามีวิดีโอเดียว → เล่นทันที; ถ้ามีหลาย → แสดง list
+  if (videos.length === 1) {
+    _playVideo(videos[0].youtube_url, videos[0].title)
+    return
+  }
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[600] bg-black/60 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+        <h3 class="font-bold text-gray-800">📖 คู่มือหน้านี้</h3>
+        <button id="tut-list-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      </div>
+      <div class="px-4 py-3 space-y-2 max-h-80 overflow-y-auto">
+        ${videos.map(v => `
+        <button class="tut-play-btn w-full text-left flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition"
+          data-url="${_esc(v.youtube_url)}" data-title="${_esc(v.title)}">
+          <div class="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4 text-red-500 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800 truncate">${_esc(v.title)}</p>
+            ${v.duration ? `<p class="text-xs text-gray-400 mt-0.5">${_esc(v.duration)}</p>` : ''}
+          </div>
+        </button>`).join('')}
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+  modal.querySelector('#tut-list-close').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+  modal.querySelectorAll('.tut-play-btn').forEach(btn => {
+    btn.addEventListener('click', () => { modal.remove(); _playVideo(btn.dataset.url, btn.dataset.title) })
+  })
+}
+
+function _playVideo(youtubeUrl, title) {
+  const embedUrl = _youtubeEmbedUrl(youtubeUrl)
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[700] bg-black/80 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-black rounded-2xl overflow-hidden w-full max-w-2xl shadow-2xl">
+      <div class="flex items-center justify-between px-4 py-3 bg-gray-900">
+        <p class="text-white text-sm font-semibold truncate">${_esc(title)}</p>
+        <button id="vid-close" class="text-gray-400 hover:text-white text-xl ml-3 flex-shrink-0">✕</button>
+      </div>
+      <div style="padding-top:56.25%;position:relative">
+        <iframe src="${_esc(embedUrl)}" class="absolute inset-0 w-full h-full"
+          frameborder="0" allow="autoplay;encrypted-media;fullscreen" allowfullscreen></iframe>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+  modal.querySelector('#vid-close').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+}
+
+// expose globally for onclick attributes
+window._openPageTutorial = openPageTutorial
+
+// ─── แปลง YouTube URL → embed URL ────────────────────────────────────────────
 function _youtubeEmbedUrl(url) {
   const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([A-Za-z0-9_-]{11})/)
   return match ? `https://www.youtube.com/embed/${match[1]}?autoplay=1` : url
@@ -291,6 +368,13 @@ export async function renderTutorialAdmin() {
           <label class="block text-xs font-semibold text-gray-600 mb-1">ความยาว (เช่น 1:45)</label>
           <input id="vid-dur" type="text" value="${_esc(existing?.duration??'')}" placeholder="1:45" class="${INP}" />
         </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">แสดงปุ่มคู่มือในหน้า</label>
+          <select id="vid-pagekey" class="${INP}">
+            <option value="">— ไม่ระบุ (แสดงในคู่มือทั่วไปเท่านั้น) —</option>
+            ${PAGE_KEYS.map(p => `<option value="${p.key}" ${existing?.page_key===p.key?'selected':''}>${p.label}</option>`).join('')}
+          </select>
+        </div>
         <div class="flex items-center gap-2">
           <input id="vid-active" type="checkbox" ${!existing||existing.is_active?'checked':''} class="rounded text-indigo-600" />
           <label class="text-sm text-gray-700">เผยแพร่ (ครูเห็น)</label>
@@ -313,6 +397,7 @@ export async function renderTutorialAdmin() {
         description: wrap.querySelector('#vid-desc').value.trim() || null,
         duration:    wrap.querySelector('#vid-dur').value.trim() || null,
         category_id: catId ? Number(catId) : null,
+        page_key:    wrap.querySelector('#vid-pagekey').value || null,
         is_active:   wrap.querySelector('#vid-active').checked,
       }
       const btn = wrap.querySelector('#vid-save'); btn.disabled=true; btn.textContent='กำลังบันทึก...'

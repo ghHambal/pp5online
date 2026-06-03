@@ -45,8 +45,22 @@ export const ATT_STATUS = {
 }
 export const ATT_CYCLE = [null, 'present', 'absent', 'late', 'excused', 'sick']
 
-export function setTitle(t) {
-  document.getElementById('page-title').textContent = t
+export function setTitle(t, pageKey = null) {
+  const el = document.getElementById('page-title')
+  if (!el) return
+  el.textContent = t
+  // เพิ่มปุ่ม 📖 คู่มือถ้ามี pageKey
+  const old = document.getElementById('page-tutorial-btn')
+  if (old) old.remove()
+  if (pageKey) {
+    const btn = document.createElement('button')
+    btn.id = 'page-tutorial-btn'
+    btn.title = 'เปิดคู่มือหน้านี้'
+    btn.onclick = () => { import('./tutorial.js').then(m => m.openPageTutorial(pageKey)) }
+    btn.className = 'ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition align-middle'
+    btn.innerHTML = '📖 คู่มือ'
+    el.insertAdjacentElement('afterend', btn)
+  }
 }
 
 export function setActiveNav(nav) {
@@ -348,4 +362,14 @@ export function _transparentEdgeDarkLogo(url) {
     }
     img.src = url
   })
+}
+
+// ─── Tutorial button helper ───────────────────────────────────────────────────
+export function _tutBtn(pageKey) {
+  return `<button onclick="import('./tutorial.js').then(m=>m.openPageTutorial('${pageKey}'))"
+    class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600
+           hover:bg-indigo-100 transition text-xs font-semibold flex-shrink-0"
+    title="เปิดคู่มือวิดีโอ">
+    📖 คู่มือ
+  </button>`
 }

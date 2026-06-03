@@ -2688,11 +2688,22 @@ export async function deleteTutorialCategory(id) {
 
 export async function getTutorialVideos(categoryId = null) {
   let q = supabase.from('tutorial_videos')
-    .select('id, category_id, title, description, youtube_url, duration, sort_order, is_active')
+    .select('id, category_id, title, description, youtube_url, duration, sort_order, is_active, page_key')
     .order('sort_order').order('id')
   if (categoryId) q = q.eq('category_id', categoryId)
   const { data, error } = await q
   if (error) throw error
+  return data ?? []
+}
+
+export async function getTutorialByPage(pageKey) {
+  if (!pageKey) return []
+  const { data, error } = await supabase.from('tutorial_videos')
+    .select('id, title, description, youtube_url, duration')
+    .eq('page_key', pageKey)
+    .eq('is_active', true)
+    .order('sort_order').order('id')
+  if (error) return []
   return data ?? []
 }
 export async function createTutorialVideo(payload) {

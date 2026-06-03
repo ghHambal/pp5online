@@ -19,7 +19,7 @@ import {
 
 export async function renderMyCourses(teacher) {
   setActiveNav('my-courses')
-  setTitle('คอร์สวิชาของฉัน')
+  setTitle('คอร์สวิชาของฉัน', 'courses')
   setContent(`<div class="flex justify-center py-12 text-gray-400">
     <svg class="animate-spin h-6 w-6 mr-3 text-emerald-400" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -1340,7 +1340,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
 
 export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete) {
   setActiveNav('setup')
-  setTitle('ตั้งค่าโปรไฟล์')
+  setTitle('ตั้งค่าโปรไฟล์', 'profile')
   const [depts, allRooms, religionRooms, cfg] = await Promise.all([
     getDepartments().catch(()=>[]),
     getUniqueRooms().catch(()=>[]),
@@ -1540,7 +1540,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
 
 export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
   setActiveNav('profile')
-  setTitle('โปรไฟล์ของฉัน')
+  setTitle('โปรไฟล์ของฉัน', 'profile')
 
   // โหลด departments + ห้องทั้งหมด
   const [depts, allSamaiRooms, allReligionRooms] = await Promise.all([

@@ -15,7 +15,7 @@ import {
 
 export function renderGrades() {
   setActiveNav('grades')
-  setTitle('บันทึกคะแนน')
+  setTitle('บันทึกคะแนน', 'scores')
   setContent(`<div class="text-center py-20 text-gray-400">
     <p class="text-5xl mb-4">📝</p>
     <p class="font-medium text-gray-600">เลือกห้องเรียนจากเมนู "ห้องเรียนของฉัน"</p>
@@ -46,7 +46,7 @@ function _gradeToKhuna(grade) {
 export async function renderGradesGrid(teacher, classData) {
   window._currentGradeTeacher = teacher
   setActiveNav('grades')
-  setTitle('บันทึกคะแนน')
+  setTitle('บันทึกคะแนน', 'scores')
   const ms = classData.master_subjects
 
   setContent(`<div class="flex justify-center py-12 text-gray-400">
