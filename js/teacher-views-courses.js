@@ -1340,7 +1340,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
 
 export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete) {
   setActiveNav('setup')
-  setTitle('ตั้งค่าโปรไฟล์', 'profile')
+  setTitle('ตั้งค่าโปรไฟล์', 'registration')
   const [depts, allRooms, religionRooms, cfg] = await Promise.all([
     getDepartments().catch(()=>[]),
     getUniqueRooms().catch(()=>[]),
@@ -1540,7 +1540,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
 
 export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
   setActiveNav('profile')
-  setTitle('โปรไฟล์ของฉัน', 'profile')
+  setTitle('โปรไฟล์ของฉัน', 'registration')
 
   // โหลด departments + ห้องทั้งหมด
   const [depts, allSamaiRooms, allReligionRooms] = await Promise.all([

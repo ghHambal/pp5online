@@ -2683,7 +2683,7 @@ export async function renderScheduleBuilder(teacher, onComplete) {
   const geminiKey= _resolveGeminiKey(cfg, teacher)
 
   setActiveNav('schedule')
-  setTitle('สร้างตารางสอน')
+  setTitle('สร้างตารางสอน', 'schedule')
 
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="text-center mb-8">
@@ -3026,7 +3026,7 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
 
 export async function renderAnnouncementsView(teacher) {
   setActiveNav('announcements-view')
-  setTitle('ประกาศ')
+  setTitle('ประกาศ', 'announcement')
   const { getAllAnnouncementsForTeacher, getMyAcks, ackAnnouncement, getSupervisorComments, getSystemConfig, getTeacherBusyPeriodsOnDate } = await import('./api.js')
   let _schoolCfg = null
   try { _schoolCfg = await getSystemConfig() } catch {}
