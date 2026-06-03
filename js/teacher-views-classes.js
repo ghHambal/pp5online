@@ -530,7 +530,7 @@ export async function renderMyClasses(teacher) {
       const cls = window._classCache?.[classId]
       if (!cls) return
       setActiveNav('my-classes')
-      setTitle('จัดการนักเรียน')
+      setTitle('จัดการนักเรียน', 'class-students')
       setContent(`<div class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-6 w-6 mr-3 text-sky-400" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>

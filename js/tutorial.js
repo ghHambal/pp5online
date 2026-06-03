@@ -8,14 +8,16 @@ import { showToast } from './ui.js'
 
 // ─── Page keys ────────────────────────────────────────────────────────────────
 export const PAGE_KEYS = [
-  { key: 'registration', label: 'ลงทะเบียน / โปรไฟล์' },
-  { key: 'schedule',     label: 'ตารางสอน' },
-  { key: 'courses',      label: 'คอร์สวิชาของฉัน' },
-  { key: 'classes',      label: 'ห้องเรียนของฉัน' },
-  { key: 'attendance',   label: 'เช็คชื่อ' },
-  { key: 'scores',       label: 'บันทึกคะแนน' },
-  { key: 'pp5',          label: 'ปพ.5 / เอกสาร' },
-  { key: 'announcement', label: 'ประกาศ' },
+  { key: 'registration',   label: 'ลงทะเบียนเข้าใช้งาน' },
+  { key: 'profile',        label: 'โปรไฟล์ของฉัน' },
+  { key: 'schedule',       label: 'ตารางสอน' },
+  { key: 'courses',        label: 'คอร์สวิชาของฉัน' },
+  { key: 'classes',        label: 'ห้องเรียนของฉัน' },
+  { key: 'class-students', label: 'จัดการนักเรียนในห้อง' },
+  { key: 'attendance',     label: 'เช็คชื่อ' },
+  { key: 'scores',         label: 'บันทึกคะแนน' },
+  { key: 'pp5',            label: 'ปพ.5 / เอกสาร' },
+  { key: 'announcement',   label: 'ประกาศ' },
 ]
 
 // ─── Global popup helper (เรียกจากทุกหน้า) ───────────────────────────────────
