@@ -128,7 +128,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
     ${cloneFrom ? `<div class="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-5 text-xs text-violet-700">
       📋 ระบบจะคัดลอกช่องคะแนนทั้งหมดจากห้องต้นฉบับให้อัตโนมัติ — นักเรียน วันเรียน และ Google Sheet ตั้งค่าได้ในขั้นตอนนี้
     </div>` : ''}
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7">
       <form id="class-form" novalidate class="space-y-5">
         <!-- Google Sheet ID -->
         <div>
@@ -491,7 +491,7 @@ export async function renderClassEditForm(teacher, classData) {
       </p>
       <p class="text-sm text-emerald-700 mt-0.5">ห้อง: <strong>${classData.class_name}</strong></p>
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7">
       <form id="cls-edit-form" class="space-y-5">
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-1">Google Sheet ID</label>

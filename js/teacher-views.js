@@ -165,7 +165,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   let donorTierIndex = 0   // 1-based
   let donorStickerHtml = ''
   let cardGlowStyle  = ''
-  let cardBorderCls  = 'border border-gray-100 shadow-sm'
+  let cardBorderCls  = 'border border-gray-200 shadow-md'
 
   if (approvedDonation && cfg.quotaMode === 'school_sponsored') {
     const tiers  = _parseTiers()
@@ -269,8 +269,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         { label:'คำร้องรออนุมัติ', value: pendingRequests, icon:'🔔', color: pendingRequests > 0 ? 'text-red-700' : 'text-gray-400', bg:'bg-red-50', nav:'requests' },
       ].map(c=>`
         <div onclick="window._navTo('${c.nav}')"
-          class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer hover:shadow-md hover:border-gray-200 transition">
-          <div class="w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center text-xl">${c.icon}</div>
+          class="relative overflow-hidden rounded-2xl border border-gray-200 shadow-md p-5 flex items-center gap-4 cursor-pointer hover:shadow-lg active:scale-[0.98] transition-all duration-150 bg-white">
+          <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/60 to-transparent opacity-80"></div>
+          <div class="w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center text-xl shadow-sm">${c.icon}</div>
           <div>
             <p class="text-xs text-gray-500">${c.label}</p>
             <p class="text-2xl font-bold ${c.color}">${c.value}</p>
@@ -280,8 +281,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
     <!-- ปุ่มตารางสอน -->
     <div onclick="window._navTo('schedule')"
-      class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4
-             cursor-pointer hover:shadow-md hover:border-indigo-200 hover:bg-indigo-50/30 transition group">
+      class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-4
+             cursor-pointer hover:shadow-lg hover:border-indigo-300 hover:bg-indigo-50/30 transition group">
       <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">🗓️</div>
       <div class="flex-1 min-w-0">
         <p class="font-semibold text-gray-800 text-sm">ตารางสอนของฉัน</p>
@@ -330,7 +331,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     })() : ''}
 
     <!-- Today's Classes Widget -->
-    <div id="today-widget" class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div id="today-widget" class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
       <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div class="flex items-center gap-2 flex-wrap">
           <h4 class="font-bold text-gray-700">📅 ${_DAYS_TH_FULL[todayDow]}</h4>
@@ -388,7 +389,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
 
     <!-- โควตาห้องเรียน -->
-    <div class="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
       <div class="flex items-center justify-between mb-3">
         <h4 class="font-semibold text-gray-700">🎯 โควตาห้องเรียน</h4>
         <span class="text-sm font-bold ${quotaColor}">${quotaLabel}</span>
@@ -434,7 +435,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
     <!-- Homeroom role buttons -->
     ${homeroomRooms.length > 0 ? `
-    <div class="mt-5 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div class="mt-5 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
       <h4 class="font-semibold text-gray-700 mb-3">🏠 ห้องที่ปรึกษาของฉัน</h4>
       <div class="flex flex-wrap gap-3">
         ${homeroomRooms.map(r => `
@@ -473,7 +474,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>`
     })() : ''}
     ${subjects.length > 0 ? `
-    <div class="mt-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div class="mt-6 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
       <h4 class="font-semibold text-gray-700 mb-3">คอร์สวิชาล่าสุด</h4>
       <div class="space-y-2">
         ${subjects.slice(0,5).map(s=>`

@@ -40,12 +40,12 @@ export async function renderMyCourses(teacher) {
         </button>
       </div>
       ${!subjects.length ? `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-16 text-center text-gray-400">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-16 text-center text-gray-400">
         <p class="text-4xl mb-3">📖</p>
         <p class="font-medium">ยังไม่มีคอร์สวิชา</p>
         <p class="text-xs mt-1">กดปุ่ม "เปิดคอร์สใหม่" เพื่อเริ่มต้น</p>
       </div>` : `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
         <table class="w-full text-sm">
           <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
             <tr>
@@ -414,7 +414,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
             ${aiStatusText ? `<p class="text-xs mt-3 ${aiStatusText.startsWith('✅') ? 'text-emerald-600' : 'text-amber-600'}">${_htmlEsc(aiStatusText)}</p>` : ''}
           </div>
 
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-5">
             <div class="grid md:grid-cols-[1fr_220px] gap-4">
               <label class="block">
                 <span class="block text-sm font-semibold text-gray-700 mb-2">${L.descLabel}</span>
@@ -440,7 +440,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
             </div>
           </div>
 
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
             <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h3 class="font-bold text-gray-800">${L.tableTitle}</h3>
@@ -486,7 +486,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
             </div>
           </div>
 
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5">
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-5">
             <h3 class="font-bold text-gray-800 mb-3">${L.objTitle} <span class="text-xs font-normal text-gray-400">${L.objHint}</span></h3>
             <div class="grid sm:grid-cols-3 gap-3">
               <button id="cd2-pick-between" class="${textAlign} rounded-2xl border border-gray-200 p-4 hover:border-blue-300 hover:bg-blue-50 transition">
@@ -988,7 +988,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
         class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
       <h2 class="text-lg font-bold text-gray-800">${editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์สวิชา'}</h2>
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7">
       <form id="course-form" novalidate class="space-y-5">
         <!-- กลุ่มวิชา -->
         <div>
@@ -1373,7 +1373,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
       <h2 class="text-2xl font-bold text-gray-800">ยินดีต้อนรับ!</h2>
       <p class="text-gray-500 text-sm mt-1">กรุณากรอกข้อมูลเพิ่มเติม เพื่อให้ระบบทำงานได้ถูกต้อง</p>
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7 space-y-5">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7 space-y-5">
       ${teacher ? `
       <!-- ข้อมูลจาก teachers table -->
       <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center gap-3">
@@ -1563,7 +1563,7 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
       <button onclick="window._navTo('overview')" class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
       <h2 class="text-lg font-bold text-gray-800">แก้ไขโปรไฟล์</h2>
     </div>
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7">
       <!-- รูปโปรไฟล์ -->
       <div class="flex flex-col items-center mb-6">
         <div id="prof-avatar"
@@ -1680,7 +1680,7 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
     </div>
 
     <!-- เปลี่ยนรหัสผ่าน -->
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-7 mt-4">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7 mt-4">
       <h3 class="font-bold text-gray-800 mb-4">🔒 เปลี่ยนรหัสผ่าน</h3>
       <div class="space-y-3">
         <div>

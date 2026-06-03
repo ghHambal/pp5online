@@ -103,7 +103,7 @@ export async function renderMyClasses(teacher) {
     setContent(`<div class="animate-fade">
       <div class="mb-4"></div>
       ${!classes.length ? `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-16 text-center text-gray-400">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-16 text-center text-gray-400">
         <p class="text-4xl mb-3">🏫</p>
         <p class="font-medium">ยังไม่มีห้องเรียน</p>
         <p class="text-xs mt-1">ไปที่ "คอร์สวิชาของฉัน" แล้วกด "＋ห้อง"</p>
@@ -595,7 +595,7 @@ export async function renderMyClasses(teacher) {
 
         setContent(`<div class="animate-fade">
           <div id="students-back-placeholder" class="hidden"></div>
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
             <div class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p class="text-sm font-semibold text-gray-700">ทั้งหมด ${students.length} คน · กำลังเรียน ${activeCount} คน</p>
@@ -1940,7 +1940,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     </div>
 
     <!-- ตารางสอน -->
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-auto">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-auto">
       <table class="w-full text-xs border-collapse" style="min-width:520px">
         <thead>
           <tr class="bg-gray-50">
@@ -2934,7 +2934,7 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
     const assignHtml = isAdmin ? `
       <div class="mb-5">
         <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">ผู้มีสิทธิ์แก้ไขภาษานี้</p>
-        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+        <div class="bg-white rounded-xl border border-gray-200 shadow-md p-4">
           <p class="text-xs text-gray-400 mb-3">เลือกครูที่จะให้แก้ไข <span dir="${dir}" class="font-semibold text-emerald-700">${_langLabel(activeLang)}</span></p>
           <div class="max-h-48 overflow-y-auto space-y-1" id="cdl-editors">
             ${allTeachers.filter(t => t.id !== teacher?.id).map(t => `
@@ -3134,7 +3134,7 @@ export async function renderAnnouncementsView(teacher) {
       .map(id => classes.find(c => c.id === id)?.class_name ?? `#${id}`)
       .join(', ')
     return `
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-2" data-myann-id="${a.id}">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 space-y-2" data-myann-id="${a.id}">
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap mb-1">
@@ -3666,7 +3666,7 @@ export async function renderAnnouncementsView(teacher) {
            </span>`
         : ''
       return `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden hover:shadow-md transition-shadow">
         <div class="h-1 bg-gradient-to-r ${_gradientFor(pos)}"></div>
         <div class="p-5">
           <div class="flex items-center gap-2 flex-wrap mb-3">

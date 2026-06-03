@@ -399,7 +399,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
       </div>
       <!-- Student table -->
       <div class="px-4 pb-6">
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
           <table class="w-full text-sm">
             <thead class="bg-gray-50 text-xs text-gray-500 sticky top-0">
               <tr>
@@ -478,7 +478,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
             : '0.0'
 
           return `
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4">
               <div class="flex items-center justify-between mb-3">
                 <div>
                   <p class="font-semibold text-gray-800">สัปดาห์ที่ ${wi+1}</p>
@@ -512,7 +512,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
   const renderSession = () => {
     document.getElementById('stats-content').innerHTML = `
       <div class="p-4">
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
           <table class="w-full text-xs">
             <thead class="bg-gray-50 text-gray-500 sticky top-0">
               <tr>
@@ -815,13 +815,13 @@ export async function renderAttendance(teacher) {
       </div>
     </div>
     ${!classes.length ? `
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-16 text-center text-gray-400">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-16 text-center text-gray-400">
       <p class="text-4xl mb-3">✅</p>
       <p class="font-medium">ยังไม่มีห้องเรียน</p>
       <p class="text-xs mt-1">ลงทะเบียนห้องเรียนก่อน</p>
     </div>` : `
     <!-- Selector -->
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-5 mb-5">
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label class="block text-xs font-medium text-gray-600 mb-1">ห้องเรียน / วิชา</label>
@@ -868,14 +868,14 @@ export async function renderAttendance(teacher) {
     const wrap = document.getElementById('att-student-wrap')
     if (!wrap) return
     if (!_students.length) {
-      wrap.innerHTML = `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center text-gray-400">
+      wrap.innerHTML = `<div class="bg-white rounded-2xl border border-gray-200 shadow-md p-10 text-center text-gray-400">
         <p class="text-3xl mb-2">👦</p><p>ไม่พบนักเรียน</p></div>`; return
     }
     const present = Object.values(_statusMap).filter(s=>s==='present').length
     const absent  = Object.values(_statusMap).filter(s=>s==='absent').length
     wrap.innerHTML = `
       <!-- Summary bar -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center justify-between">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center justify-between">
         <div class="flex gap-4 text-sm">
           <span class="text-emerald-600 font-semibold">มา ${present}</span>
           <span class="text-red-500 font-semibold">ขาด ${absent}</span>
@@ -891,7 +891,7 @@ export async function renderAttendance(teacher) {
         </div>
       </div>
       <!-- Student rows -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
         <table class="w-full text-sm">
           <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
             <tr>
@@ -1082,7 +1082,7 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
         💡 ใช้ <b>Tab / →</b> เลื่อนขวา · <b>Enter / ↓</b> เลื่อนลง · <b>↑ ↓ ← →</b> เลื่อนทิศทาง · บันทึกอัตโนมัติเมื่อออกจากช่อง
       </div>
 
-      <div class="overflow-auto rounded-2xl border border-gray-100 shadow-sm bg-white">
+      <div class="overflow-auto rounded-2xl border border-gray-200 shadow-md bg-white">
         <table class="border-collapse text-xs" style="min-width:max-content">
           <thead>
             <tr style="position:sticky;top:0;z-index:20">
@@ -1338,7 +1338,7 @@ export async function renderReadingScore(teacher, initialRoom = null) {
         💡 <b>Tab / →</b> ขวา · <b>Enter / ↓</b> ลง · <b>↑ ↓ ← →</b> เลื่อน · บันทึกอัตโนมัติ
       </div>
 
-      <div class="overflow-auto rounded-2xl border border-gray-100 shadow-sm bg-white">
+      <div class="overflow-auto rounded-2xl border border-gray-200 shadow-md bg-white">
         <table class="border-collapse text-xs" style="min-width:max-content">
           <thead>
             <tr style="position:sticky;top:0;z-index:20">
@@ -1985,7 +1985,7 @@ function _showPrayerStats(teacher, room, students, weeks, prayMap, allDays, year
       </div>
       <p class="px-4 text-xs text-gray-400 -mt-2 mb-2">คลิกที่แถวนักเรียนเพื่อดูสถิติรายบุคคล</p>
       <div class="px-4 pb-6">
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
           <table class="w-full text-sm">
             <thead class="bg-gray-50 text-xs text-gray-500 sticky top-0">
               <tr>
@@ -2039,7 +2039,7 @@ function _showPrayerStats(teacher, room, students, weeks, prayMap, allDays, year
           const pct = totalCells > 0
             ? ((c.pray+c.followed+c.usor) / totalCells * 100).toFixed(0) : '0'
           return `
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4">
               <div class="flex justify-between mb-2">
                 <div>
                   <p class="font-semibold text-gray-800">สัปดาห์ที่ ${w.n}</p>
