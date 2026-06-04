@@ -103,12 +103,19 @@ export async function renderTutorial() {
   setActiveNav('tutorial')
   setTitle('คู่มือการใช้งาน')
 
-  setContent(`<div class="animate-fade max-w-3xl mx-auto">
-    <div class="mb-6">
-      <h2 class="text-xl font-bold text-gray-800">📖 คู่มือการใช้งาน</h2>
-      <p class="text-sm text-gray-400 mt-1">วิดีโอสั้นแนะนำการใช้งานระบบ ปพ.5 ออนไลน์</p>
+  setContent(`<div class="animate-fade">
+    <!-- Hero header -->
+    <div class="relative overflow-hidden rounded-2xl mb-8 px-6 py-8 text-white"
+      style="background:linear-gradient(135deg,#312e81 0%,#4f46e5 60%,#7c3aed 100%)">
+      <div class="absolute inset-0 opacity-10"
+        style="background-image:radial-gradient(circle at 20% 80%,#fff 1px,transparent 1px),radial-gradient(circle at 80% 20%,#fff 1px,transparent 1px);background-size:32px 32px"></div>
+      <div class="relative">
+        <p class="text-indigo-200 text-xs font-semibold uppercase tracking-widest mb-1">ปพ.5 ออนไลน์</p>
+        <h2 class="text-2xl font-extrabold mb-1">📖 คู่มือการใช้งาน</h2>
+        <p class="text-indigo-200 text-sm">วิดีโอสั้นแนะนำการใช้งาน กดเพื่อเล่นได้เลย</p>
+      </div>
     </div>
-    <div id="tutorial-body" class="flex justify-center py-12 text-gray-300">
+    <div id="tutorial-body" class="flex justify-center py-16 text-gray-300">
       <svg class="animate-spin h-6 w-6 text-indigo-400" viewBox="0 0 24 24" fill="none">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
@@ -145,56 +152,66 @@ export async function renderTutorial() {
       return
     }
 
+    const _videoCard = (v) => {
+      const thumb   = _youtubeThumbnail(v.youtube_url)
+      const embedId = (v.youtube_url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([A-Za-z0-9_-]{11})/) || [])[1] ?? ''
+      return `
+      <div class="tutorial-card bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden
+        hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
+        data-embed-id="${embedId}" data-title="${_esc(v.title)}">
+        <!-- thumbnail / player area -->
+        <div class="tutorial-thumb relative bg-gray-950 cursor-pointer" style="padding-top:56.25%">
+          ${thumb ? `<img src="${_esc(thumb)}" class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-80"/>` : ''}
+          <!-- play button overlay -->
+          <div class="absolute inset-0 flex items-center justify-center">
+            <div class="w-14 h-14 rounded-full bg-white/90 shadow-xl flex items-center justify-center
+              group-hover:scale-110 transition-transform duration-200">
+              <svg class="w-6 h-6 text-red-600 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+          </div>
+          ${v.duration ? `<span class="absolute bottom-2 right-2 bg-black/75 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-md font-mono tracking-wide">${_esc(v.duration)}</span>` : ''}
+        </div>
+        <!-- iframe slot (hidden until play) -->
+        <div class="tutorial-player hidden" style="padding-top:56.25%;position:relative;margin-top:-56.25%">
+          <iframe class="absolute inset-0 w-full h-full" frameborder="0"
+            allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen></iframe>
+        </div>
+        <!-- info -->
+        <div class="p-4">
+          <p class="text-sm font-bold text-gray-800 leading-snug">${_esc(v.title)}</p>
+          ${v.description ? `<p class="text-xs text-gray-400 mt-1.5 line-clamp-2 leading-relaxed">${_esc(v.description)}</p>` : ''}
+        </div>
+      </div>`
+    }
+
     body.innerHTML = sections.map(sec => `
-      <div class="mb-8">
-        <h3 class="font-bold text-gray-700 text-base mb-3">${_esc(sec.name)}</h3>
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          ${sec.items.map(v => {
-            const thumb = _youtubeThumbnail(v.youtube_url)
-            return `
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition cursor-pointer tutorial-card"
-              data-url="${_esc(v.youtube_url)}" data-title="${_esc(v.title)}">
-              <div class="relative bg-gray-900" style="padding-top:56.25%">
-                ${thumb ? `<img src="${_esc(thumb)}" class="absolute inset-0 w-full h-full object-cover opacity-90"/>` : ''}
-                <div class="absolute inset-0 flex items-center justify-center">
-                  <div class="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center shadow-lg">
-                    <svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  </div>
-                </div>
-                ${v.duration ? `<span class="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">${_esc(v.duration)}</span>` : ''}
-              </div>
-              <div class="p-3">
-                <p class="text-sm font-semibold text-gray-800 leading-tight">${_esc(v.title)}</p>
-                ${v.description ? `<p class="text-xs text-gray-400 mt-1 line-clamp-2">${_esc(v.description)}</p>` : ''}
-              </div>
-            </div>`
-          }).join('')}
+      <div class="mb-10">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="h-px flex-1 bg-gradient-to-r from-indigo-100 to-transparent"></div>
+          <h3 class="font-bold text-gray-600 text-sm uppercase tracking-wide">${_esc(sec.name)}</h3>
+          <div class="h-px flex-1 bg-gradient-to-l from-indigo-100 to-transparent"></div>
+        </div>
+        <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          ${sec.items.map(_videoCard).join('')}
         </div>
       </div>`).join('')
 
-    // click → embed modal
+    // click thumbnail → embed iframe ใน card (ไม่เปิด modal)
     document.querySelectorAll('.tutorial-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const embedUrl = _youtubeEmbedUrl(card.dataset.url)
-        const title    = card.dataset.title
-        const modal = document.createElement('div')
-        modal.className = 'fixed inset-0 z-[500] bg-black/80 flex items-center justify-center p-4'
-        modal.innerHTML = `
-          <div class="bg-black rounded-2xl overflow-hidden w-full max-w-2xl shadow-2xl">
-            <div class="flex items-center justify-between px-4 py-3 bg-gray-900">
-              <p class="text-white text-sm font-semibold truncate">${_esc(title)}</p>
-              <button id="tt-close" class="text-gray-400 hover:text-white text-xl ml-3 flex-shrink-0">✕</button>
-            </div>
-            <div style="padding-top:56.25%;position:relative">
-              <iframe src="${_esc(embedUrl)}" class="absolute inset-0 w-full h-full"
-                frameborder="0" allow="autoplay;encrypted-media;fullscreen" allowfullscreen></iframe>
-            </div>
-          </div>`
-        document.body.appendChild(modal)
-        modal.querySelector('#tt-close').addEventListener('click', () => modal.remove())
-        modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+      const thumbEl  = card.querySelector('.tutorial-thumb')
+      const playerEl = card.querySelector('.tutorial-player')
+      const iframe   = card.querySelector('iframe')
+      thumbEl?.addEventListener('click', () => {
+        const id = card.dataset.embedId
+        if (!id) return
+        iframe.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`
+        thumbEl.classList.add('hidden')
+        playerEl.classList.remove('hidden')
+        // style match height
+        playerEl.style.paddingTop = '56.25%'
+        playerEl.style.marginTop  = '0'
       })
     })
   } catch (err) {
