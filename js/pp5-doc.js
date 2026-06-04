@@ -44,10 +44,34 @@ function _generateSessions(classData, credit, dowPattern = null) {
   let effectiveDOW = (dowPattern && dowPattern.length) ? [...dowPattern] : null
   let autoExtended = false
   if (effectiveDOW && effectiveDOW.length < targetPerWeek) {
-    // ตารางสอนมีน้อยกว่า credit — เติมวันใหม่อัตโนมัติ
+    // ตารางสอนมีน้อยกว่า credit — ให้ดึงวันเพิ่มจาก base dates แทนการเดาจาก Mon-Fri
+    // เพื่อให้ได้วันที่ครูสอนจริง (เช่น จ+พฤ ไม่ใช่ จ+อ+พ)
     autoExtended = true
     const dowCount = {}
     for (const d of effectiveDOW) dowCount[d] = (dowCount[d] || 0) + 1
+
+    // นับ DOW จาก base dates (ใช้ 2 สัปดาห์แรก) เพื่อหารูปแบบจริง
+    const rawBases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
+      .map(k => classData[k]).filter(Boolean)
+      .map(s => _parseDateOnly(s)).filter(Boolean)
+      .sort((a, b) => a - b)
+    const baseDOWCount = {}
+    rawBases.forEach(b => {
+      const d = b.getDay()
+      baseDOWCount[d] = (baseDOWCount[d] || 0) + 1
+    })
+    // เพิ่ม DOW จาก base dates (เรียงตามความถี่) จนครบ targetPerWeek
+    const sortedBaseDOW = Object.entries(baseDOWCount)
+      .sort(([,a],[,b]) => b - a || Number(a) - Number(b))
+    for (const [dStr] of sortedBaseDOW) {
+      if (effectiveDOW.length >= targetPerWeek) break
+      const d = Number(dStr)
+      while ((dowCount[d] || 0) < Math.min(baseDOWCount[d], 2) && effectiveDOW.length < targetPerWeek) {
+        effectiveDOW.push(d)
+        dowCount[d] = (dowCount[d] || 0) + 1
+      }
+    }
+    // fallback: ถ้ายังไม่ครบ ค่อยเพิ่มจาก Mon-Fri
     for (let d = 1; d <= 5 && effectiveDOW.length < targetPerWeek; d++) {
       if ((dowCount[d] || 0) < 2) {
         effectiveDOW.push(d)
@@ -99,15 +123,24 @@ function _generateSessions(classData, credit, dowPattern = null) {
         sessions.push({ n: sessions.length + 1, date: new Date(base), ds: _dateKey(base) })
       }
 
-      // Fill extra sessions on any weekday not already at max in this week
+      // Fill extra sessions โดยใช้ effectiveDOW (วันที่ครูสอนจริง) ไม่ใช่ Mon-Fri ตามลำดับ
       let filled = 0
       const needed = targetPerWeek - weekBases.length
-      for (let d = 1; d <= 5 && filled < needed && sessions.length < total; d++) {
-        if ((usedDOWCount[d] || 0) < 2) {
+      if (needed > 0) {
+        // หา DOW ที่ยังขาด โดยเทียบกับ effectiveDOW pattern
+        const targetDOWCount = {}
+        effectiveDOW.forEach(d => { targetDOWCount[d] = (targetDOWCount[d] || 0) + 1 })
+        const extraDOWs = []
+        for (const [dStr, cnt] of Object.entries(targetDOWCount).sort()) {
+          const d = Number(dStr)
+          const have = usedDOWCount[d] || 0
+          for (let i = 0; i < cnt - have && extraDOWs.length < needed; i++) extraDOWs.push(d)
+        }
+        for (const d of extraDOWs) {
+          if (sessions.length >= total) break
           const extra = new Date(weekSun)
           extra.setDate(extra.getDate() + d)
           sessions.push({ n: sessions.length + 1, date: extra, ds: _dateKey(extra) })
-          usedDOWCount[d] = (usedDOWCount[d] || 0) + 1
           filled++
         }
       }
