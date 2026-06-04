@@ -1528,9 +1528,12 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         const others = (linksBySchedule[entry.id] ?? []).filter(cid => cid !== cls.id)
         const otherName = others.map(cid => classById[cid]?.class_name ?? `ห้อง ${cid}`).join(', ')
         return `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center
-          bg-gray-100 opacity-50" style="min-height:52px;border-left:3px solid #9ca3af" title="ใช้กับ: ${otherName}">
-          <p class="font-bold text-[11px] leading-tight text-gray-400 break-words w-full">${subj}</p>
-          ${room ? `<p class="text-[10px] text-gray-400 leading-tight w-full">${room}</p>` : ''}
+          bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer"
+          style="min-height:52px;border-left:3px solid #60a5fa"
+          title="คลิกเพื่อเชื่อมร่วมกับ: ${otherName}">
+          <p class="font-bold text-[11px] leading-tight text-blue-600 break-words w-full">${subj}</p>
+          ${room ? `<p class="text-[10px] text-blue-400 leading-tight w-full">${room}</p>` : ''}
+          <p class="text-[9px] text-blue-400 mt-0.5">+เชื่อมร่วม</p>
         </div>`
       }
       return `<div class="w-full h-full flex flex-col justify-center items-center gap-0.5 px-1 py-2 text-center
@@ -1614,7 +1617,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         if (!entry) return
 
         if (state === 'other') {
-          // คาบนี้ถูกใช้กับห้องอื่น — ถามยืนยัน
+          // คาบนี้ถูกใช้กับห้องอื่น — อนุญาตให้ link ร่วมกันได้ (กรณีสอนสองห้องพร้อมกัน)
           const others = (linksBySchedule[sid] ?? []).filter(cid => cid !== cls.id)
           const otherName = others.map(cid => classById[cid]?.class_name ?? `ห้อง ${cid}`).join(', ')
           const p = periodMap[entry.period_no]
@@ -1623,13 +1626,14 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
           cfm.className = 'fixed inset-0 z-[600] flex items-center justify-center bg-black/50 p-4'
           cfm.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-6 text-center">
-              <div class="text-2xl mb-2">⚠️</div>
-              <p class="font-bold text-gray-800 mb-1">คาบนี้ถูกเลือกแล้ว</p>
+              <div class="text-2xl mb-2">🔗</div>
+              <p class="font-bold text-gray-800 mb-1">คาบนี้ใช้กับห้องอื่นอยู่</p>
               <p class="text-sm text-gray-500 mb-1">${DAY_TH[entry.day_of_week]} ${timeStr} · ${_htmlEsc(entry.subject_name ?? '')}</p>
-              <p class="text-xs text-amber-600 mb-4">ปัจจุบันเชื่อมกับ: <b>${otherName}</b><br>ต้องการย้ายมาใช้กับ <b>${_htmlEsc(cls.class_name)}</b> แทนไหม?</p>
+              <p class="text-xs text-gray-500 mb-1">เชื่อมอยู่กับ: <b>${otherName}</b></p>
+              <p class="text-xs text-emerald-600 mb-4">สามารถเชื่อมร่วมกันได้ เช่น กรณีสอนสองห้องพร้อมกัน</p>
               <div class="flex gap-3">
                 <button class="cfm-cancel flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">ยกเลิก</button>
-                <button class="cfm-ok flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-semibold">ย้ายมาที่นี่</button>
+                <button class="cfm-ok flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-semibold">เชื่อมร่วมกัน</button>
               </div>
             </div>`
           document.body.appendChild(cfm)
@@ -1637,10 +1641,10 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
           cfm.querySelector('.cfm-ok').addEventListener('click', async () => {
             cfm.remove()
             try {
-              await linkClassToSchedule(cls.id, sid)
+              await linkClassToSchedule(cls.id, sid)  // link เพิ่ม ไม่ unlink ห้องเดิม
               pendingLinked.add(sid); currentLinked.add(sid)
               _hasChanges = true; _refreshCell(cell)
-              showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
+              showToast(`เชื่อมร่วมกับ ${otherName} แล้ว ✅`, 'success')
             } catch(e) { showToast('เชื่อมไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
           })
         } else if (state === 'selected') {
