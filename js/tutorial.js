@@ -2,6 +2,7 @@ import {
   getTutorialCategories, getTutorialVideos, getTutorialByPage,
   createTutorialCategory, updateTutorialCategory, deleteTutorialCategory,
   createTutorialVideo, updateTutorialVideo, deleteTutorialVideo,
+  incrementTutorialView, incrementTutorialLike,
 } from './api.js'
 import { setContent, setTitle, setActiveNav } from './teacher-views-utils.js'
 import { showToast } from './ui.js'
@@ -130,14 +131,10 @@ export async function renderTutorial() {
     ])
 
     const activeVideos = videos.filter(v => v.is_active)
-
     const uncategorized = activeVideos.filter(v => !v.category_id)
     const sections = [
-      ...cats.map(c => ({
-        name: `${c.icon} ${c.name}`,
-        items: activeVideos.filter(v => v.category_id === c.id),
-      })),
-      ...(uncategorized.length ? [{ name: '📁 อื่นๆ', items: uncategorized }] : []),
+      ...cats.map(c => ({ id: c.id, name: `${c.icon} ${c.name}`, items: activeVideos.filter(v => v.category_id === c.id) })),
+      ...(uncategorized.length ? [{ id: 'other', name: '📁 อื่นๆ', items: uncategorized }] : []),
     ].filter(s => s.items.length)
 
     const body = document.getElementById('tutorial-body')
@@ -145,75 +142,131 @@ export async function renderTutorial() {
 
     if (!sections.length) {
       body.innerHTML = `<div class="text-center py-16 text-gray-400">
-        <p class="text-4xl mb-3">📖</p>
-        <p class="font-medium">ยังไม่มีคู่มือ</p>
+        <p class="text-4xl mb-3">📖</p><p class="font-medium">ยังไม่มีคู่มือ</p>
         <p class="text-xs mt-1">แอดมินสามารถเพิ่มวิดีโอคู่มือได้จากเมนู "คู่มือการใช้งาน" ในหน้าแอดมิน</p>
       </div>`
       return
     }
 
+    // liked videos stored in localStorage
+    const LIKED_KEY = 'tut_liked_v'
+    const likedSet  = new Set(JSON.parse(localStorage.getItem(LIKED_KEY) ?? '[]'))
+
+    const _fmtNum = n => n >= 1000 ? (n/1000).toFixed(1)+'K' : String(n ?? 0)
+
     const _videoCard = (v) => {
       const thumb   = _youtubeThumbnail(v.youtube_url)
       const embedId = (v.youtube_url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([A-Za-z0-9_-]{11})/) || [])[1] ?? ''
+      const liked   = likedSet.has(v.id)
       return `
       <div class="tutorial-card bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden
         hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group"
-        data-embed-id="${embedId}" data-title="${_esc(v.title)}">
-        <!-- thumbnail / player area -->
+        data-vid-id="${v.id}" data-embed-id="${embedId}" data-title="${_esc(v.title)}">
+        <!-- thumbnail / player -->
         <div class="tutorial-thumb relative bg-gray-950 cursor-pointer" style="padding-top:56.25%">
           ${thumb ? `<img src="${_esc(thumb)}" class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-80"/>` : ''}
-          <!-- play button overlay -->
           <div class="absolute inset-0 flex items-center justify-center">
-            <div class="w-14 h-14 rounded-full bg-white/90 shadow-xl flex items-center justify-center
-              group-hover:scale-110 transition-transform duration-200">
-              <svg class="w-6 h-6 text-red-600 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
+            <div class="w-14 h-14 rounded-full bg-white/90 shadow-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+              <svg class="w-6 h-6 text-red-600 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             </div>
           </div>
-          ${v.duration ? `<span class="absolute bottom-2 right-2 bg-black/75 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-md font-mono tracking-wide">${_esc(v.duration)}</span>` : ''}
+          ${v.duration ? `<span class="absolute bottom-2 left-2 bg-black/75 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-md font-mono">${_esc(v.duration)}</span>` : ''}
+          <span class="absolute bottom-2 right-2 bg-black/75 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1">
+            👁 <span class="tut-views">${_fmtNum(v.view_count)}</span>
+          </span>
         </div>
-        <!-- iframe slot (hidden until play) -->
-        <div class="tutorial-player hidden" style="padding-top:56.25%;position:relative;margin-top:-56.25%">
+        <!-- iframe slot -->
+        <div class="tutorial-player hidden" style="padding-top:56.25%;position:relative">
           <iframe class="absolute inset-0 w-full h-full" frameborder="0"
             allow="autoplay;encrypted-media;picture-in-picture;fullscreen" allowfullscreen></iframe>
         </div>
-        <!-- info -->
+        <!-- info + like -->
         <div class="p-4">
-          <p class="text-sm font-bold text-gray-800 leading-snug">${_esc(v.title)}</p>
+          <p class="text-sm font-bold text-gray-800 leading-snug pr-12">${_esc(v.title)}</p>
           ${v.description ? `<p class="text-xs text-gray-400 mt-1.5 line-clamp-2 leading-relaxed">${_esc(v.description)}</p>` : ''}
+          <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+            <span class="text-[11px] text-gray-400 flex items-center gap-1">👁 <span class="tut-views-ft">${_fmtNum(v.view_count)}</span> ครั้ง</span>
+            <button class="tut-like-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150
+              ${liked ? 'bg-red-500 text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500'}"
+              data-liked="${liked}" data-vid-id="${v.id}">
+              ❤️ <span class="tut-likes">${_fmtNum(v.like_count)}</span>
+            </button>
+          </div>
         </div>
       </div>`
     }
 
-    body.innerHTML = sections.map(sec => `
-      <div class="mb-10">
-        <div class="flex items-center gap-3 mb-4">
-          <div class="h-px flex-1 bg-gradient-to-r from-indigo-100 to-transparent"></div>
-          <h3 class="font-bold text-gray-600 text-sm uppercase tracking-wide">${_esc(sec.name)}</h3>
-          <div class="h-px flex-1 bg-gradient-to-l from-indigo-100 to-transparent"></div>
-        </div>
-        <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          ${sec.items.map(_videoCard).join('')}
-        </div>
-      </div>`).join('')
+    // ── tabs ──────────────────────────────────────────────────────────────────
+    let activeTab = sections[0].id
+    const _TAB_ACTIVE = 'tab-tut px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white shadow-sm'
+    const _TAB_IDLE   = 'tab-tut px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition'
 
-    // click thumbnail → embed iframe ใน card (ไม่เปิด modal)
-    document.querySelectorAll('.tutorial-card').forEach(card => {
-      const thumbEl  = card.querySelector('.tutorial-thumb')
-      const playerEl = card.querySelector('.tutorial-player')
-      const iframe   = card.querySelector('iframe')
-      thumbEl?.addEventListener('click', () => {
-        const id = card.dataset.embedId
-        if (!id) return
-        iframe.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`
-        thumbEl.classList.add('hidden')
-        playerEl.classList.remove('hidden')
-        // style match height
-        playerEl.style.paddingTop = '56.25%'
-        playerEl.style.marginTop  = '0'
+    const _renderGrid = () => {
+      const sec = sections.find(s => s.id === activeTab) ?? sections[0]
+      document.getElementById('tut-grid').innerHTML =
+        `<div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">${sec.items.map(_videoCard).join('')}</div>`
+      _bindCards()
+    }
+
+    body.innerHTML = `
+      <!-- tabs -->
+      <div class="flex gap-2 flex-wrap bg-gray-50 rounded-2xl p-2 mb-6 border border-gray-100">
+        ${sections.map(s => `<button class="${s.id === activeTab ? _TAB_ACTIVE : _TAB_IDLE}" data-tab-id="${s.id}">${_esc(s.name)}</button>`).join('')}
+      </div>
+      <div id="tut-grid"></div>`
+
+    _renderGrid()
+
+    body.querySelectorAll('.tab-tut').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeTab = btn.dataset.tabId
+        body.querySelectorAll('.tab-tut').forEach(b => b.className = b.dataset.tabId === activeTab ? _TAB_ACTIVE : _TAB_IDLE)
+        _renderGrid()
       })
     })
+
+    function _bindCards() {
+      // play
+      document.querySelectorAll('.tutorial-card').forEach(card => {
+        const thumbEl  = card.querySelector('.tutorial-thumb')
+        const playerEl = card.querySelector('.tutorial-player')
+        const iframe   = card.querySelector('iframe')
+        thumbEl?.addEventListener('click', () => {
+          const id = card.dataset.embedId; if (!id) return
+          const vidId = Number(card.dataset.vidId)
+          iframe.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`
+          thumbEl.classList.add('hidden')
+          playerEl.classList.remove('hidden')
+          playerEl.style.paddingTop = '56.25%'
+          // increment view
+          incrementTutorialView(vidId)
+          card.querySelectorAll('.tut-views,.tut-views-ft').forEach(el => {
+            const cur = parseInt(el.textContent.replace('K','000')) || 0
+            el.textContent = _fmtNum(cur + 1)
+          })
+        })
+      })
+      // like
+      document.querySelectorAll('.tut-like-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const vidId = Number(btn.dataset.vidId)
+          const isLiked = btn.dataset.liked === 'true'
+          const delta = isLiked ? -1 : 1
+          incrementTutorialLike(vidId, delta)
+          const likeEl = btn.querySelector('.tut-likes')
+          const cur = parseInt(likeEl.textContent.replace('K','000')) || 0
+          likeEl.textContent = _fmtNum(Math.max(0, cur + delta))
+          if (isLiked) {
+            likedSet.delete(vidId); btn.dataset.liked = 'false'
+            btn.className = btn.className.replace('bg-red-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500')
+          } else {
+            likedSet.add(vidId); btn.dataset.liked = 'true'
+            btn.className = btn.className.replace('bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500','bg-red-500 text-white shadow-sm')
+          }
+          localStorage.setItem(LIKED_KEY, JSON.stringify([...likedSet]))
+        })
+      })
+    }
   } catch (err) {
     const body = document.getElementById('tutorial-body')
     if (body) body.innerHTML = `<p class="text-sm text-red-500 text-center py-8">โหลดไม่สำเร็จ: ${err.message}</p>`

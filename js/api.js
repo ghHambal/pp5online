@@ -2688,7 +2688,7 @@ export async function deleteTutorialCategory(id) {
 
 export async function getTutorialVideos(categoryId = null) {
   let q = supabase.from('tutorial_videos')
-    .select('id, category_id, title, description, youtube_url, duration, sort_order, is_active, page_key')
+    .select('id, category_id, title, description, youtube_url, duration, sort_order, is_active, page_key, view_count, like_count')
     .order('sort_order').order('id')
   if (categoryId) q = q.eq('category_id', categoryId)
   const { data, error } = await q
@@ -2717,4 +2717,11 @@ export async function updateTutorialVideo(id, payload) {
 export async function deleteTutorialVideo(id) {
   const { error } = await supabase.from('tutorial_videos').delete().eq('id', id)
   if (error) throw error
+}
+
+export async function incrementTutorialView(videoId) {
+  await supabase.rpc('increment_tutorial_view', { p_id: videoId }).catch(() => {})
+}
+export async function incrementTutorialLike(videoId, delta = 1) {
+  await supabase.rpc('increment_tutorial_like', { p_id: videoId, p_delta: delta }).catch(() => {})
 }
