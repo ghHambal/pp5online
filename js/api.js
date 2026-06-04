@@ -2720,8 +2720,8 @@ export async function deleteTutorialVideo(id) {
 }
 
 export async function incrementTutorialView(videoId) {
-  await supabase.rpc('increment_tutorial_view', { p_id: videoId }).catch(() => {})
+  try { await supabase.rpc('increment_tutorial_view', { p_id: videoId }) } catch {}
 }
 export async function incrementTutorialLike(videoId, delta = 1) {
-  await supabase.rpc('increment_tutorial_like', { p_id: videoId, p_delta: delta }).catch(() => {})
+  try { await supabase.rpc('increment_tutorial_like', { p_id: videoId, p_delta: delta }) } catch {}
 }
