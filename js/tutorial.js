@@ -3,7 +3,7 @@ import {
   createTutorialCategory, updateTutorialCategory, deleteTutorialCategory,
   createTutorialVideo, updateTutorialVideo, deleteTutorialVideo,
 } from './api.js'
-import { setContent } from './teacher-views-utils.js'
+import { setContent, setTitle, setActiveNav } from './teacher-views-utils.js'
 import { showToast } from './ui.js'
 
 // ─── Page keys ────────────────────────────────────────────────────────────────
@@ -100,12 +100,8 @@ function _youtubeThumbnail(url) {
 function _esc(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
 
 export async function renderTutorial() {
-  document.querySelectorAll('[data-nav]').forEach(el => {
-    el.classList.toggle('bg-emerald-900', el.dataset.nav === 'tutorial')
-    el.classList.toggle('text-white',      el.dataset.nav === 'tutorial')
-  })
-  document.getElementById('page-title')?.setAttribute('textContent', 'คู่มือการใช้งาน') ||
-    (document.title = 'คู่มือการใช้งาน')
+  setActiveNav('tutorial')
+  setTitle('คู่มือการใช้งาน')
 
   setContent(`<div class="animate-fade max-w-3xl mx-auto">
     <div class="mb-6">
