@@ -202,7 +202,7 @@ export async function renderTutorial() {
     const _TAB_IDLE   = 'tab-tut px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition'
 
     const _renderGrid = () => {
-      const sec = sections.find(s => s.id === activeTab) ?? sections[0]
+      const sec = sections.find(s => String(s.id) === String(activeTab)) ?? sections[0]
       document.getElementById('tut-grid').innerHTML =
         `<div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">${sec.items.map(_videoCard).join('')}</div>`
       _bindCards()
