@@ -151,6 +151,7 @@ export async function renderGradesGrid(teacher, classData) {
       const result = await fillPrayerScoresForReligionClass(classData.id, {
         semesterStart: sysCfg.semester_start,
         semesterEnd: sysCfg.semester_end,
+        attendanceScoreMode: sysCfg.attendanceScoreMode ?? 'recorded',
       })
       priorityColumnNames = result.columnNames ?? ['คะแนนมาเรียน', 'คะแนนละหมาด']
       scoreRows = await getStudentScores(classData.id)

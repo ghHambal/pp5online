@@ -1588,10 +1588,11 @@ function _calcPrayerScoreFromMap(sMap, allDays) {
   return max > 0 ? Math.min(10, Math.max(0, Math.round((earned / max) * 100) / 10)) : 0
 }
 
-function _calcAttendanceScore(rows) {
+function _calcAttendanceScore(rows, totalSessions) {
   if (!rows.length) return null
   const attended = rows.filter(r => r.status === 'present' || r.status === 'late').length
-  return Math.round((attended / rows.length) * 100) / 10
+  const denom = totalSessions ?? rows.length
+  return Math.round((attended / denom) * 100) / 10
 }
 
 export async function fillLifeSkillScoresForClass(classId, academicYear, semester) {
@@ -1725,14 +1726,18 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
 
   const attendanceRows = await _fetchPaged(
     'attendances',
-    'student_id, status',
+    'student_id, session_number, status',
     q => q.eq('class_id', classId)
   )
   const attendanceMap = {}
+  const _attSessionNums = new Set()
   for (const r of attendanceRows) {
     if (!attendanceMap[r.student_id]) attendanceMap[r.student_id] = []
     attendanceMap[r.student_id].push(r)
+    if (r.session_number != null) _attSessionNums.add(r.session_number)
   }
+  const _attTotalSessions = (options.attendanceScoreMode ?? 'recorded') === 'total'
+    ? (_attSessionNums.size || undefined) : undefined
 
   const attColId = await _ensureClassScoreColumn(classId, 'คะแนนมาเรียน', 10, 'EH', 'ระหว่างเรียน')
   const prayerColId = await _ensureClassScoreColumn(classId, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
@@ -1746,7 +1751,7 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
     .filter(Boolean)
   const attRows = students
     .map(studentId => {
-      const score = _calcAttendanceScore(attendanceMap[studentId] ?? [])
+      const score = _calcAttendanceScore(attendanceMap[studentId] ?? [], _attTotalSessions)
       return score === null ? null : {
         assignment_id: attColId,
         student_id: studentId,
@@ -1800,15 +1805,21 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
   const classIds = religionClasses.map(c => c.id)
   const attendanceRows = await _fetchPaged(
     'attendances',
-    'class_id, student_id, status',
+    'class_id, student_id, session_number, status',
     q => q.in('class_id', classIds)
   )
   const attendanceMap = {}
+  const _classSessions = {}
   for (const r of attendanceRows) {
     const key = `${r.class_id}:${r.student_id}`
     if (!attendanceMap[key]) attendanceMap[key] = []
     attendanceMap[key].push(r)
+    if (r.session_number != null) {
+      if (!_classSessions[r.class_id]) _classSessions[r.class_id] = new Set()
+      _classSessions[r.class_id].add(r.session_number)
+    }
   }
+  const _attScoreMode = options.attendanceScoreMode ?? 'recorded'
 
   let scoreCount = 0
   let classCount = 0
@@ -1829,9 +1840,10 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
         return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
       })
       .filter(Boolean)
+    const _ttl = _attScoreMode === 'total' ? (_classSessions[cls.id]?.size || undefined) : undefined
     const attRows = students
       .map(studentId => {
-        const score = _calcAttendanceScore(attendanceMap[`${cls.id}:${studentId}`] ?? [])
+        const score = _calcAttendanceScore(attendanceMap[`${cls.id}:${studentId}`] ?? [], _ttl)
         return score === null ? null : {
           assignment_id: attColId,
           student_id: studentId,

@@ -2317,6 +2317,14 @@ export async function renderSettings() {
           { key:'semester_start', label:'วันเปิดภาคเรียน', type:'date', hint:'ใช้คำนวณสัปดาห์ปัจจุบันอัตโนมัติในระบบบันทึกละหมาด' },
           { key:'semester_end',   label:'วันปิดภาคเรียน',  type:'date' },
         ]),
+        section('การคำนวณคะแนนมาเรียน (วิชาศาสนา)', [
+          { key:'attendanceScoreMode', label:'ตัวหารของคะแนนมาเรียน', type:'select',
+            options: [
+              { value:'recorded', label:'จำนวนคาบที่บันทึกนักเรียนคนนั้น (ค่าเดิม)' },
+              { value:'total',    label:'จำนวนคาบทั้งหมดในหน้าเช็คชื่อของห้อง' },
+            ],
+            hint:'หลังเปลี่ยนค่า ต้องกดปุ่ม "เติมคะแนน" ใหม่เพื่อให้มีผลกับคะแนนใน ปพ.5' },
+        ]),
       ].join('')
 
       if (tabId === 'contact') return [
@@ -5947,6 +5955,7 @@ export async function renderPrayerAdmin() {
         const result = await fillPrayerScoresToReligionClassScores({
           semesterStart: cfg.semester_start,
           semesterEnd: cfg.semester_end,
+          attendanceScoreMode: cfg.attendanceScoreMode ?? 'recorded',
         })
         showToast(`เติมรายวิชาศาสนา ${result.classes} รายวิชา / ${result.scores} คะแนนแล้ว`, 'success')
       } catch (err) {
