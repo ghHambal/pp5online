@@ -750,7 +750,7 @@ function _renderPrayerMonitor(container, raw, ctx = {}) {
   container.querySelectorAll('.prayer-tab').forEach(btn =>
     btn.addEventListener('click', () => renderTab(btn.dataset.tab))
   )
-  renderTab('record')
+  renderTab('record', checkW)
 }
 
 function _renderLifeSkillMonitor(container, raw, year, sem, ctx = {}) {
