@@ -200,6 +200,10 @@ export async function renderGradesGrid(teacher, classData) {
       const id = typeof colOrId === 'object' ? colOrId?.id : colOrId
       return lockedScoreColumnIds.has(id)
     }
+    const _lockedColTitle = c =>
+      c.assignment_name === 'คะแนนละหมาด'
+        ? 'คะแนนระบบกลาง (แก้ไขไม่ได้)\nคะแนนนี้มาจากการบันทึกของครูที่ปรึกษาศาสนา\nหากคะแนนว่าง = ครูที่ปรึกษาศาสนายังไม่ได้บันทึกในสัปดาห์นั้น'
+        : 'คะแนนระบบกลาง: แก้ไขไม่ได้'
 
     // แยก column_type
     const bonusCols   = allCols.filter(c => c.column_type === 'bonus')
@@ -1145,15 +1149,17 @@ export async function renderGradesGrid(teacher, classData) {
         <tr style="position:sticky;top:48px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
             <span class="col-edit text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-blue-50'}"
-              contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : ''}">${c.assignment_name||'—'}</span>
+              contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? _lockedColTitle(c) : ''}">${c.assignment_name||'—'}</span>
             <span class="col-max text-[10px] select-none ${_isLockedScoreColumn(c) ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-400 cursor-pointer hover:text-blue-500 hover:underline'}"
-              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span></th>`).join('')}
+              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span>
+            ${c.assignment_name === 'คะแนนละหมาด' ? `<span class="block text-[8px] text-teal-500 leading-tight mt-0.5 whitespace-nowrap overflow-hidden" title="คะแนนนี้มาจากการบันทึกของครูที่ปรึกษาศาสนา ถ้าคะแนนว่าง แสดงว่าครูยังไม่ได้บันทึก">📋 ครูที่ปรึกษาศาสนา</span>` : ''}</th>`).join('')}
           <th class="${thBase} bg-blue-50" style="width:30px"></th>
           ${finalCols.map(c=>`<th class="${thBase} bg-purple-50" style="width:${colW}px;min-width:${colW}px">
             <span class="col-edit text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-purple-50'}"
-              contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : ''}">${c.assignment_name||'—'}</span>
+              contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? _lockedColTitle(c) : ''}">${c.assignment_name||'—'}</span>
             <span class="col-max text-[10px] select-none ${_isLockedScoreColumn(c) ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-400 cursor-pointer hover:text-purple-500 hover:underline'}"
-              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span></th>`).join('')}
+              data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span>
+            ${c.assignment_name === 'คะแนนละหมาด' ? `<span class="block text-[8px] text-teal-500 leading-tight mt-0.5 whitespace-nowrap overflow-hidden" title="คะแนนนี้มาจากการบันทึกของครูที่ปรึกษาศาสนา ถ้าคะแนนว่าง แสดงว่าครูยังไม่ได้บันทึก">📋 ครูที่ปรึกษาศาสนา</span>` : ''}</th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px"></th>
           ${derivedCols.map(c=>`<th class="${thBase} bg-indigo-50" style="width:${colW}px;min-width:${colW}px">
             <span class="text-[11px] text-indigo-700 font-medium block text-center truncate">${c.assignment_name}</span>
