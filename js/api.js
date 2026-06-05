@@ -1919,12 +1919,9 @@ export async function getMissedExamCount(studentId) {
 // ─── Monitoring Data ──────────────────────────────────────────────────────────
 
 export async function getPrayerMonitoringData(academicYear, semester) {
-  // ใช้ _fetchAllStudents เพื่อ paginate ครบทุกคน (มากกว่า 1000)
-  const [{ data: records, error }, students, { data: homerooms }] = await Promise.all([
-    supabase.from('prayer_records')
-      .select('student_id, main_room, status, week_number, check_date')
-      .not('week_number', 'is', null)
-      .order('week_number').order('main_room'),
+  const [records, students, { data: homerooms }] = await Promise.all([
+    _fetchPaged('prayer_records', 'student_id, main_room, status, week_number, check_date',
+      q => q.not('week_number', 'is', null).order('week_number').order('main_room')),
     _fetchAllStudents(
       'id, full_name, student_code, religion_room',
       q => q.not('religion_room', 'is', null).neq('religion_room', '')
@@ -1936,7 +1933,6 @@ export async function getPrayerMonitoringData(academicYear, semester) {
       .eq('category', 'ศาสนา')
       .order('main_room'),
   ])
-  if (error) throw error
   return { records: records ?? [], students, homerooms: homerooms ?? [] }
 }
 
