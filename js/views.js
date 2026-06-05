@@ -626,40 +626,102 @@ function _renderPrayerMonitor(container, raw, ctx = {}) {
     </div>`
   }
 
-  // สรุป alert ด้านบน
-  const recordPending = rooms.filter(r => { const t=roomStudents[r].length; return t>0 && (weekRoomRec[r]?.[W-1]?.size??0)<t })
+  // ── Dashboard summary ────────────────────────────────────────────────────────
+  const checkW     = W > 0 ? W - 1 : 0   // สัปดาห์ที่ควรบันทึก (สัปดาห์ก่อนหน้า)
+  const recordPending = rooms.filter(r => { const t=roomStudents[r].length; return t>0 && (weekRoomRec[r]?.[checkW]?.size??0)<t })
+  const recordDone    = rooms.filter(r => { const t=roomStudents[r].length; const d=weekRoomRec[r]?.[checkW]?.size??0; return t>0 && d>=t })
   const followPending = rooms.filter(room => {
     const absentW2 = weekRoomAbsent[room]?.[W-2]
     if (!absentW2?.size) return false
     return [...absentW2].some(sid => {
-      const recs = records.filter(rec => rec.main_room===room && rec.week_number===W-1 && rec.student_id===sid)
+      const recs = records.filter(rec => rec.main_room===room && rec.week_number===checkW && rec.student_id===sid)
       return !recs.some(rec => rec.status==='followed'||rec.status==='avoid')
     })
   })
-  const alertHtml = weeks.length === 0 ? `<div class="mb-3 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">ℹ️ ยังไม่มีข้อมูลการบันทึกละหมาด — แสดงรายชื่อห้องจากฐานข้อมูลครูที่ปรึกษา</div>` :
-    (recordPending.length + followPending.length > 0) ? `
-    <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-      ${recordPending.length > 0 ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
-        <p class="text-xs font-bold text-amber-800 mb-2">📋 บันทึกค้าง — สัปดาห์ที่ ${W-1}</p>
-        <div class="flex flex-wrap gap-1.5">
+
+  const totalRooms   = rooms.filter(r => roomStudents[r]?.length > 0).length
+  const doneCount    = recordDone.length
+  const pendingCount = recordPending.length
+  const totalStudents = rooms.reduce((s,r) => s+(roomStudents[r]?.length??0), 0)
+  const recordedStudents = rooms.reduce((s,r) => s+(weekRoomRec[r]?.[checkW]?.size??0), 0)
+  const donePct = totalRooms > 0 ? Math.round(doneCount/totalRooms*100) : 0
+
+  // SVG donut chart
+  const _donut = (pct, color, size=72) => {
+    const r = 26, cx = 36, cy = 36, circ = 2*Math.PI*r
+    const fill = circ * pct / 100
+    return `<svg width="${size}" height="${size}" viewBox="0 0 72 72">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#f3f4f6" stroke-width="8"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="8"
+        stroke-dasharray="${fill} ${circ}" stroke-dashoffset="${circ/4}" stroke-linecap="round"/>
+      <text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="14" font-weight="700" fill="${color}">${pct}%</text>
+    </svg>`
+  }
+
+  const alertHtml = weeks.length === 0
+    ? `<div class="mb-4 bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">ℹ️ ยังไม่มีข้อมูลการบันทึกละหมาด</div>`
+    : `
+    <!-- Dashboard row -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 text-center">
+        <p class="text-2xl font-extrabold text-gray-800">${totalRooms}</p>
+        <p class="text-[11px] text-gray-400 mt-0.5">ห้องทั้งหมด</p>
+      </div>
+      <div class="bg-emerald-50 rounded-2xl border border-emerald-200 shadow-sm p-4 text-center">
+        <p class="text-2xl font-extrabold text-emerald-600">${doneCount}</p>
+        <p class="text-[11px] text-emerald-500 mt-0.5">บันทึกครบแล้ว</p>
+      </div>
+      <div class="bg-amber-50 rounded-2xl border border-amber-200 shadow-sm p-4 text-center">
+        <p class="text-2xl font-extrabold text-amber-600">${pendingCount}</p>
+        <p class="text-[11px] text-amber-500 mt-0.5">ยังค้างอยู่</p>
+      </div>
+      <div class="bg-indigo-50 rounded-2xl border border-indigo-200 shadow-sm p-4 text-center">
+        <p class="text-2xl font-extrabold text-indigo-600">${recordedStudents}</p>
+        <p class="text-[11px] text-indigo-400 mt-0.5">นักเรียนที่บันทึกแล้ว / ${totalStudents}</p>
+      </div>
+    </div>
+
+    <!-- Donut + pending list -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+      <!-- donut -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-center gap-4">
+        ${_donut(donePct, donePct>=100?'#10b981':donePct>=50?'#f59e0b':'#ef4444')}
+        <div>
+          <p class="text-sm font-bold text-gray-700">สัปดาห์ที่ ${checkW || '—'}</p>
+          <p class="text-xs text-gray-400 mt-0.5">${doneCount} / ${totalRooms} ห้อง บันทึกครบ</p>
+          ${followPending.length>0?`<p class="text-xs text-red-500 mt-1">⚠️ ติดตามค้าง ${followPending.length} ห้อง</p>`:''}
+          ${donePct>=100?`<p class="text-xs text-emerald-600 mt-1 font-semibold">✅ ครบทุกห้องแล้ว!</p>`:''}
+        </div>
+      </div>
+
+      <!-- pending list compact -->
+      ${pendingCount > 0 ? `
+      <div class="bg-amber-50 rounded-2xl border border-amber-200 shadow-sm p-4">
+        <p class="text-xs font-bold text-amber-800 mb-2">📋 ห้องที่ยังไม่กรอก (${pendingCount})</p>
+        <div class="space-y-1 max-h-32 overflow-y-auto pr-1">
           ${recordPending.map(r => {
             const t = roomStudents[r].length
-            const d = weekRoomRec[r]?.[W-1]?.size ?? 0
+            const d = weekRoomRec[r]?.[checkW]?.size ?? 0
+            const pct = Math.round(d/t*100)
             const tn = teacherByRoom[r]
-            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${tn?tn+' / ':''}${r} (${d}/${t})</span>`
+            return `<div class="flex items-center gap-2 text-[11px]">
+              <div class="flex-1 min-w-0">
+                <span class="font-medium text-amber-900 truncate block">${r}</span>
+                ${tn?`<span class="text-amber-600 truncate block">${tn}</span>`:''}
+              </div>
+              <span class="flex-shrink-0 font-bold ${pct===0?'text-red-500':'text-amber-600'}">${d}/${t}</span>
+              <div class="w-10 bg-amber-100 rounded-full h-1.5 flex-shrink-0">
+                <div class="h-1.5 rounded-full ${pct===0?'bg-red-400':'bg-amber-400'}" style="width:${pct}%"></div>
+              </div>
+            </div>`
           }).join('')}
         </div>
-      </div>` : ''}
-      ${followPending.length > 0 ? `<div class="bg-red-50 border border-red-200 rounded-xl p-3">
-        <p class="text-xs font-bold text-red-800 mb-2">⚠️ ติดตามค้าง — ขาดสัปดาห์ที่ ${W-2}</p>
-        <div class="flex flex-wrap gap-1.5">
-          ${followPending.map(r => {
-            const tn = teacherByRoom[r]
-            return `<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">${tn?tn+' / ':''}${r}</span>`
-          }).join('')}
-        </div>
-      </div>` : ''}
-    </div>` : `<div class="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700 font-medium">✅ ไม่มีรายการค้างทั้งบันทึกและติดตาม</div>`
+      </div>` : `<div class="bg-emerald-50 rounded-2xl border border-emerald-200 shadow-sm p-4 flex items-center gap-3">
+        <span class="text-3xl">✅</span>
+        <div><p class="font-bold text-emerald-700 text-sm">บันทึกครบทุกห้องแล้ว</p>
+          <p class="text-xs text-emerald-500 mt-0.5">สัปดาห์ที่ ${checkW || '—'}</p></div>
+      </div>`}
+    </div>`
 
   container.innerHTML = `
     ${alertHtml}
