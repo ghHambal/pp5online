@@ -626,25 +626,10 @@ function _renderPrayerMonitor(container, raw, ctx = {}) {
     </div>`
   }
 
-  // ── Dashboard summary ────────────────────────────────────────────────────────
-  const checkW     = W > 0 ? W - 1 : 0   // สัปดาห์ที่ควรบันทึก (สัปดาห์ก่อนหน้า)
-  const recordPending = rooms.filter(r => { const t=roomStudents[r].length; return t>0 && (weekRoomRec[r]?.[checkW]?.size??0)<t })
-  const recordDone    = rooms.filter(r => { const t=roomStudents[r].length; const d=weekRoomRec[r]?.[checkW]?.size??0; return t>0 && d>=t })
-  const followPending = rooms.filter(room => {
-    const absentW2 = weekRoomAbsent[room]?.[W-2]
-    if (!absentW2?.size) return false
-    return [...absentW2].some(sid => {
-      const recs = records.filter(rec => rec.main_room===room && rec.week_number===checkW && rec.student_id===sid)
-      return !recs.some(rec => rec.status==='followed'||rec.status==='avoid')
-    })
-  })
-
-  const totalRooms   = rooms.filter(r => roomStudents[r]?.length > 0).length
-  const doneCount    = recordDone.length
-  const pendingCount = recordPending.length
+  // ── Dashboard summary (dynamic — updates with week selector) ─────────────────
+  const checkW        = W > 0 ? W - 1 : 0
+  const totalRooms    = rooms.filter(r => roomStudents[r]?.length > 0).length
   const totalStudents = rooms.reduce((s,r) => s+(roomStudents[r]?.length??0), 0)
-  const recordedStudents = rooms.reduce((s,r) => s+(weekRoomRec[r]?.[checkW]?.size??0), 0)
-  const donePct = totalRooms > 0 ? Math.round(doneCount/totalRooms*100) : 0
 
   // SVG donut chart
   const _donut = (pct, color, size=72) => {
@@ -658,60 +643,74 @@ function _renderPrayerMonitor(container, raw, ctx = {}) {
     </svg>`
   }
 
-  const alertHtml = weeks.length === 0
-    ? `<div class="mb-4 bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">ℹ️ ยังไม่มีข้อมูลการบันทึกละหมาด</div>`
-    : `
-    <!-- Dashboard row -->
+  const _renderDashboard = (w) => {
+    const dashEl = container.querySelector('#prayer-dashboard')
+    if (!dashEl) return
+    if (weeks.length === 0) {
+      dashEl.innerHTML = `<div class="mb-4 bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">ℹ️ ยังไม่มีข้อมูลการบันทึกละหมาด</div>`
+      return
+    }
+    if (!w) return
+    const recPending = rooms.filter(r => { const t=roomStudents[r].length; return t>0 && (weekRoomRec[r]?.[w]?.size??0)<t })
+    const recDone    = rooms.filter(r => { const t=roomStudents[r].length; const d=weekRoomRec[r]?.[w]?.size??0; return t>0 && d>=t })
+    const fwPending  = rooms.filter(room => {
+      const absentPrev = weekRoomAbsent[room]?.[w-1]
+      if (!absentPrev?.size) return false
+      return [...absentPrev].some(sid => {
+        const recs = records.filter(rec => rec.main_room===room && rec.week_number===w && rec.student_id===sid)
+        return !recs.some(rec => rec.status==='followed'||rec.status==='avoid')
+      })
+    })
+    const doneC = recDone.length
+    const pendC = recPending.length
+    const recStu = rooms.reduce((s,r) => s+(weekRoomRec[r]?.[w]?.size??0), 0)
+    const pct = totalRooms > 0 ? Math.round(doneC/totalRooms*100) : 0
+    dashEl.innerHTML = `
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 text-center">
         <p class="text-2xl font-extrabold text-gray-800">${totalRooms}</p>
         <p class="text-[11px] text-gray-400 mt-0.5">ห้องทั้งหมด</p>
       </div>
       <div class="bg-emerald-50 rounded-2xl border border-emerald-200 shadow-sm p-4 text-center">
-        <p class="text-2xl font-extrabold text-emerald-600">${doneCount}</p>
+        <p class="text-2xl font-extrabold text-emerald-600">${doneC}</p>
         <p class="text-[11px] text-emerald-500 mt-0.5">บันทึกครบแล้ว</p>
       </div>
       <div class="bg-amber-50 rounded-2xl border border-amber-200 shadow-sm p-4 text-center">
-        <p class="text-2xl font-extrabold text-amber-600">${pendingCount}</p>
+        <p class="text-2xl font-extrabold text-amber-600">${pendC}</p>
         <p class="text-[11px] text-amber-500 mt-0.5">ยังค้างอยู่</p>
       </div>
       <div class="bg-indigo-50 rounded-2xl border border-indigo-200 shadow-sm p-4 text-center">
-        <p class="text-2xl font-extrabold text-indigo-600">${recordedStudents}</p>
+        <p class="text-2xl font-extrabold text-indigo-600">${recStu}</p>
         <p class="text-[11px] text-indigo-400 mt-0.5">นักเรียนที่บันทึกแล้ว / ${totalStudents}</p>
       </div>
     </div>
-
-    <!-- Donut + pending list -->
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-      <!-- donut -->
       <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex items-center gap-4">
-        ${_donut(donePct, donePct>=100?'#10b981':donePct>=50?'#f59e0b':'#ef4444')}
+        ${_donut(pct, pct>=100?'#10b981':pct>=50?'#f59e0b':'#ef4444')}
         <div>
-          <p class="text-sm font-bold text-gray-700">สัปดาห์ที่ ${checkW || '—'}</p>
-          <p class="text-xs text-gray-400 mt-0.5">${doneCount} / ${totalRooms} ห้อง บันทึกครบ</p>
-          ${followPending.length>0?`<p class="text-xs text-red-500 mt-1">⚠️ ติดตามค้าง ${followPending.length} ห้อง</p>`:''}
-          ${donePct>=100?`<p class="text-xs text-emerald-600 mt-1 font-semibold">✅ ครบทุกห้องแล้ว!</p>`:''}
+          <p class="text-sm font-bold text-gray-700">สัปดาห์ที่ ${w}</p>
+          <p class="text-xs text-gray-400 mt-0.5">${doneC} / ${totalRooms} ห้อง บันทึกครบ</p>
+          ${fwPending.length>0?`<p class="text-xs text-red-500 mt-1">⚠️ ติดตามค้าง ${fwPending.length} ห้อง</p>`:''}
+          ${pct>=100?`<p class="text-xs text-emerald-600 mt-1 font-semibold">✅ ครบทุกห้องแล้ว!</p>`:''}
         </div>
       </div>
-
-      <!-- pending list compact -->
-      ${pendingCount > 0 ? `
+      ${pendC > 0 ? `
       <div class="bg-amber-50 rounded-2xl border border-amber-200 shadow-sm p-4">
-        <p class="text-xs font-bold text-amber-800 mb-2">📋 ห้องที่ยังไม่กรอก (${pendingCount})</p>
+        <p class="text-xs font-bold text-amber-800 mb-2">📋 ห้องที่ยังไม่กรอก (${pendC})</p>
         <div class="space-y-1 max-h-32 overflow-y-auto pr-1">
-          ${recordPending.map(r => {
+          ${recPending.map(r => {
             const t = roomStudents[r].length
-            const d = weekRoomRec[r]?.[checkW]?.size ?? 0
-            const pct = Math.round(d/t*100)
+            const d = weekRoomRec[r]?.[w]?.size ?? 0
+            const p2 = Math.round(d/t*100)
             const tn = teacherByRoom[r]
             return `<div class="flex items-center gap-2 text-[11px]">
               <div class="flex-1 min-w-0">
                 <span class="font-medium text-amber-900 truncate block">${r}</span>
                 ${tn?`<span class="text-amber-600 truncate block">${tn}</span>`:''}
               </div>
-              <span class="flex-shrink-0 font-bold ${pct===0?'text-red-500':'text-amber-600'}">${d}/${t}</span>
+              <span class="flex-shrink-0 font-bold ${p2===0?'text-red-500':'text-amber-600'}">${d}/${t}</span>
               <div class="w-10 bg-amber-100 rounded-full h-1.5 flex-shrink-0">
-                <div class="h-1.5 rounded-full ${pct===0?'bg-red-400':'bg-amber-400'}" style="width:${pct}%"></div>
+                <div class="h-1.5 rounded-full ${p2===0?'bg-red-400':'bg-amber-400'}" style="width:${p2}%"></div>
               </div>
             </div>`
           }).join('')}
@@ -719,12 +718,13 @@ function _renderPrayerMonitor(container, raw, ctx = {}) {
       </div>` : `<div class="bg-emerald-50 rounded-2xl border border-emerald-200 shadow-sm p-4 flex items-center gap-3">
         <span class="text-3xl">✅</span>
         <div><p class="font-bold text-emerald-700 text-sm">บันทึกครบทุกห้องแล้ว</p>
-          <p class="text-xs text-emerald-500 mt-0.5">สัปดาห์ที่ ${checkW || '—'}</p></div>
+          <p class="text-xs text-emerald-500 mt-0.5">สัปดาห์ที่ ${w}</p></div>
       </div>`}
     </div>`
+  }
 
   container.innerHTML = `
-    ${alertHtml}
+    <div id="prayer-dashboard"></div>
     <div class="flex gap-0 border-b border-gray-200 mb-4">
       <button class="prayer-tab ${TAB_ACTIVE}" data-tab="record">📋 ความคืบหน้าการบันทึก</button>
       <button class="prayer-tab ${TAB_IDLE}"   data-tab="follow">⚠️ ความคืบหน้าการติดตาม</button>
@@ -737,6 +737,7 @@ function _renderPrayerMonitor(container, raw, ctx = {}) {
   const renderTab = (tab, selWeek) => {
     curTab = tab
     contentEl.innerHTML = tab === 'record' ? _tab1Html(selWeek) : _tab2Html(selWeek)
+    if (tab === 'record') _renderDashboard(selWeek ?? checkW)
     container.querySelectorAll('.prayer-tab').forEach(btn => {
       btn.className = btn.dataset.tab === tab ? `prayer-tab ${TAB_ACTIVE}` : `prayer-tab ${TAB_IDLE}`
     })
