@@ -294,9 +294,12 @@ async function _calcPrayerSummary(year, sem, semStart) {
       weekRoomAbsent[r][w].add(rec.student_id)
     }
   }
-  const weeks = [...allWeeks].sort((a,b)=>a-b)
   // W = สัปดาห์ปัจจุบันจากวันเปิดภาคเรียน (ถ้าตั้งค่าไว้) หรือ max จาก records
-  const W = semStart ? _currentWeek(semStart) : (weeks[weeks.length-1] ?? 0)
+  const W = semStart ? _currentWeek(semStart) : (Math.max(...allWeeks, 0))
+  // สร้าง weeks จาก 1 ถึง W (ไม่ใช่แค่สัปดาห์ที่มีข้อมูล) เพื่อให้เลือกได้ทุกสัปดาห์
+  const weeks = W > 0
+    ? Array.from({ length: W }, (_, i) => i + 1)
+    : [...allWeeks].sort((a,b)=>a-b)
   const rooms = Object.keys(roomStudents)
   const recordPending = rooms.filter(r => {
     const total = roomStudents[r].length
