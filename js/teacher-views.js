@@ -208,7 +208,6 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       style="background:linear-gradient(135deg,#059669,#0d9488);box-shadow:0 6px 20px -6px rgba(5,150,105,.5);">
       <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl flex-shrink-0">📅</div>
       <div class="flex-1 min-w-0">
-        <p class="text-white/80 text-[11px] font-medium">ขณะนี้อยู่ในสัปดาห์ที่</p>
         <p class="text-white text-2xl font-extrabold leading-tight">สัปดาห์ที่ ${curWeek} <span class="text-sm font-medium text-white/80">(${fmt(wkStart)} – ${fmt(wkEnd)})</span></p>
       </div>
       <div class="text-right text-white/80 text-xs flex-shrink-0">ภาคเรียนที่ ${semester}<br/>ปีการศึกษา ${academicYear}</div>
