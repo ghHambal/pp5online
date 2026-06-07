@@ -1,5 +1,5 @@
 import { supabase }            from './supabase.js'
-import { showToast, showPageLoader } from './ui.js'
+import { showToast, showPageLoader, injectFeedbackWidget } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
@@ -2559,6 +2559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   // โหลดและแสดงประกาศ active
   _loadAnnouncementBanners()
+  if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
 
   // teacher-nav event (from supervisor dashboard)
   window.addEventListener('teacher-nav', async e => {

@@ -26,7 +26,8 @@ import { getStats, getTeachers, getClasses, getStudents,
          getRolePermissions, saveRolePermission,
          getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
-         autoEnrollStudentsByRoom } from './api.js'
+         autoEnrollStudentsByRoom,
+         getAllAppFeedback, setFeedbackRead, deleteAppFeedback } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -8954,6 +8955,158 @@ export async function renderDonations() {
   document.getElementById('don-filter-method')?.addEventListener('change', _render)
   document.getElementById('don-filter-sort')?.addEventListener('change', _render)
   document.getElementById('don-add')?.addEventListener('click', _openAddModal)
+  await _load()
+}
+
+// ───── Feedback จากครู/นักเรียน ถึงแอดมิน/ผู้พัฒนา ─────
+export async function renderFeedbackAdmin() {
+  setActiveNav('feedback-admin')
+  document.getElementById('page-title').textContent = 'Feedback ถึงแอดมิน'
+
+  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const fmtDate = (s) => {
+    if (!s) return '—'
+    return new Date(s).toLocaleString('th-TH', { year: '2-digit', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+  const CATEGORY_LABEL = {
+    compliment: '😊 ชื่นชม / ขอบคุณ',
+    suggestion: '💡 ข้อเสนอแนะ',
+    problem:    '🐞 แจ้งปัญหา / ข้อบกพร่อง',
+    other:      '💬 อื่นๆ',
+  }
+
+  setContent(`
+  <div class="max-w-4xl mx-auto animate-fade space-y-5">
+    <div>
+      <p class="text-xs text-gray-400 mt-0.5">ความคิดเห็น/ข้อเสนอแนะ/ปัญหาที่ครูและนักเรียนส่งถึงแอดมินโดยตรง</p>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      ${['ทั้งหมด','ยังไม่อ่าน','จากครู','จากนักเรียน'].map((lbl,i) => `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">${lbl}</p>
+        <p class="text-xl font-bold text-gray-800 fb-stat-val" data-i="${i}">—</p>
+      </div>`).join('')}
+    </div>
+
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
+      <input id="fb-search" type="search" placeholder="🔍 ค้นหาชื่อ / ข้อความ"
+        class="flex-1 min-w-[160px] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+      <select id="fb-filter-role" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
+        <option value="all">ผู้ส่ง: ทั้งหมด</option>
+        <option value="teacher">ครู</option>
+        <option value="student">นักเรียน</option>
+      </select>
+      <select id="fb-filter-cat" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
+        <option value="all">หัวข้อ: ทั้งหมด</option>
+        <option value="compliment">ชื่นชม / ขอบคุณ</option>
+        <option value="suggestion">ข้อเสนอแนะ</option>
+        <option value="problem">แจ้งปัญหา</option>
+        <option value="other">อื่นๆ</option>
+      </select>
+      <select id="fb-filter-read" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
+        <option value="all">สถานะ: ทั้งหมด</option>
+        <option value="unread">ยังไม่อ่าน</option>
+        <option value="read">อ่านแล้ว</option>
+      </select>
+    </div>
+
+    <div id="fb-list" class="space-y-3">
+      <div class="text-center py-12 text-gray-400">
+        <div class="animate-spin text-3xl mb-2">⏳</div><p class="text-sm">กำลังโหลด...</p>
+      </div>
+    </div>
+  </div>`)
+
+  let _all = []
+
+  const _load = async () => {
+    _all = await getAllAppFeedback().catch(() => [])
+    _updateStats(); _render()
+  }
+
+  const _updateStats = () => {
+    const unread  = _all.filter(f => !f.is_read).length
+    const teacher = _all.filter(f => f.sender_role === 'teacher').length
+    const student = _all.filter(f => f.sender_role === 'student').length
+    const vals = [_all.length, unread, teacher, student]
+    document.querySelectorAll('.fb-stat-val').forEach((el, i) => { el.textContent = vals[i] })
+    window._refreshFeedbackBadge?.()
+  }
+
+  const _render = () => {
+    const box  = document.getElementById('fb-list'); if (!box) return
+    const q    = (document.getElementById('fb-search')?.value ?? '').toLowerCase()
+    const role = document.getElementById('fb-filter-role')?.value ?? 'all'
+    const cat  = document.getElementById('fb-filter-cat')?.value ?? 'all'
+    const read = document.getElementById('fb-filter-read')?.value ?? 'all'
+
+    let rows = _all.filter(f => {
+      if (q && !String(f.sender_name ?? '').toLowerCase().includes(q) && !String(f.message ?? '').toLowerCase().includes(q)) return false
+      if (role !== 'all' && f.sender_role !== role) return false
+      if (cat  !== 'all' && f.category !== cat) return false
+      if (read === 'unread' && f.is_read) return false
+      if (read === 'read'   && !f.is_read) return false
+      return true
+    })
+
+    if (!rows.length) {
+      box.innerHTML = `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm text-center py-16 text-gray-400"><p class="text-3xl mb-2">📭</p><p class="text-sm">ไม่พบรายการ</p></div>`
+      return
+    }
+
+    box.innerHTML = rows.map(f => `
+      <div class="bg-white rounded-2xl border ${f.is_read ? 'border-gray-100' : 'border-indigo-200 ring-1 ring-indigo-100'} shadow-sm p-4 fb-card" data-id="${f.id}">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-300 to-purple-400 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">${_esc(f.sender_name ?? '?').charAt(0)}</div>
+            <div class="min-w-0">
+              <p class="font-semibold text-gray-800 text-sm leading-tight truncate">${_esc(f.sender_name || '—')}
+                <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${f.sender_role === 'teacher' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}">${f.sender_role === 'teacher' ? 'ครู' : 'นักเรียน'}</span>
+              </p>
+              <p class="text-[11px] text-gray-400">${fmtDate(f.created_at)}</p>
+            </div>
+          </div>
+          ${!f.is_read ? `<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex-shrink-0">ใหม่</span>` : ''}
+        </div>
+        <p class="mt-2 text-xs font-medium text-gray-500">${CATEGORY_LABEL[f.category] ?? f.category}</p>
+        <p class="mt-1 text-sm text-gray-700 whitespace-pre-wrap">${_esc(f.message)}</p>
+        <div class="mt-3 flex items-center gap-2">
+          <button class="fb-toggle-read px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition" data-id="${f.id}" data-read="${f.is_read}">
+            ${f.is_read ? '↩️ ทำเป็นยังไม่อ่าน' : '✓ ทำเครื่องหมายว่าอ่านแล้ว'}
+          </button>
+          <button class="fb-delete px-3 py-1.5 rounded-xl border border-red-100 text-xs font-medium text-red-500 hover:bg-red-50 transition" data-id="${f.id}">
+            🗑️ ลบ
+          </button>
+        </div>
+      </div>`).join('')
+
+    box.querySelectorAll('.fb-toggle-read').forEach(btn => btn.addEventListener('click', async () => {
+      const id  = parseInt(btn.dataset.id)
+      const cur = btn.dataset.read === 'true'
+      try {
+        await setFeedbackRead(id, !cur)
+      } catch { showToast('บันทึกไม่สำเร็จ', 'error'); return }
+      const item = _all.find(x => x.id === id); if (item) item.is_read = !cur
+      _updateStats(); _render()
+    }))
+
+    box.querySelectorAll('.fb-delete').forEach(btn => btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.id)
+      if (!confirm('ยืนยันลบความคิดเห็นนี้?')) return
+      try {
+        await deleteAppFeedback(id)
+      } catch { showToast('ลบไม่สำเร็จ', 'error'); return }
+      _all = _all.filter(x => x.id !== id)
+      showToast('ลบแล้ว', 'success')
+      _updateStats(); _render()
+    }))
+  }
+
+  document.getElementById('fb-search')?.addEventListener('input', _render)
+  document.getElementById('fb-filter-role')?.addEventListener('change', _render)
+  document.getElementById('fb-filter-cat')?.addEventListener('change', _render)
+  document.getElementById('fb-filter-read')?.addEventListener('change', _render)
   await _load()
 }
 

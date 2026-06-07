@@ -11,6 +11,7 @@ import {
 } from './student-views.js'
 import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
 import { applyThemeForRole } from './theme.js'
+import { injectFeedbackWidget } from './ui.js'
 
 let _student = null
 let _activeClassId = null
@@ -54,6 +55,7 @@ async function init() {
   _bindNav()
   navigate('overview')
   _startStudentPolling()   // polling 30 วิ
+  if (_student?.profile_id) injectFeedbackWidget({ profileId: _student.profile_id, role: 'student', name: _student.full_name })
 }
 
 // ─── Load header info ─────────────────────────────────────────────────────────

@@ -8,13 +8,14 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderPrayerAdmin, renderAdminProfile, renderUsageStats,
          renderClassroomsAdmin,
          renderAnnouncements, renderRolePermissions,
-         renderHouseColors, renderDonations, renderWorkCalendar } from './views.js'
+         renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
          getDepartments, createDepartment, updateDepartment, deleteDepartment,
          getPeriods, upsertPeriod, deletePeriod,
-         getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota } from './api.js'
+         getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
+         getAllAppFeedback } from './api.js'
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
@@ -544,6 +545,27 @@ async function _loadPaymentBadge() {
   } catch { /* ไม่ critical */ }
 }
 
+// ─── Feedback Badge ───────────────────────────────────────────────────────────
+async function _loadFeedbackBadge() {
+  try {
+    const all    = await getAllAppFeedback()
+    const unread = all.filter(f => !f.is_read).length
+    const badge  = document.getElementById('badge-feedback')
+    if (!badge) return
+    if (unread > 0) {
+      badge.textContent = unread > 9 ? '9+' : unread
+      badge.classList.remove('hidden')
+      badge.classList.add('flex')
+    } else {
+      badge.classList.add('hidden')
+      badge.classList.remove('flex')
+    }
+  } catch { /* ไม่ critical */ }
+}
+
+// expose สำหรับ views.js ใช้หลังอ่าน/ลบ feedback
+window._refreshFeedbackBadge = _loadFeedbackBadge
+
 // expose สำหรับ views.js ใช้หลังอนุมัติ
 window._refreshPaymentBadge = _loadPaymentBadge
 
@@ -748,6 +770,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'tutorial-admin':   () => import('./tutorial.js').then(({renderTutorialAdmin}) => renderTutorialAdmin()),
     'house-colors':     () => renderHouseColors(),
     'donations':        () => renderDonations(),
+    'feedback-admin':   () => renderFeedbackAdmin(),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {
@@ -764,6 +787,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // โหลด badge จำนวน pending payments
   _loadPaymentBadge()
   setInterval(_loadPaymentBadge, 60000) // refresh ทุก 1 นาที
+
+  // โหลด badge จำนวน feedback ที่ยังไม่อ่าน
+  _loadFeedbackBadge()
+  setInterval(_loadFeedbackBadge, 60000) // refresh ทุก 1 นาที
 
   showPageLoader(false)
   window._adminNav = (view) => { if (routes[view]) routes[view]() }

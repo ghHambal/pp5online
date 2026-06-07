@@ -262,7 +262,7 @@ export async function getMyHomeroomRooms(teacherId) {
 export async function getClassStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('is_active, students ( id, student_code, full_name, image_url, main_room, religion_room, house_color, sports_shirt_size )')
+    .select('is_active, students ( id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error
@@ -286,6 +286,63 @@ export async function getClassRosterStudents(classId) {
       is_active: r.is_active !== false,
     } : null)
     .filter(Boolean)
+}
+
+// ─── Class Randomizer (สุ่มรายชื่อ / สุ่มจัดกลุ่ม — เฉพาะครูผู้โดเนท) ─────────────
+
+export async function getClassRandomizerState(classId) {
+  const { data, error } = await supabase
+    .from('class_randomizer_state')
+    .select('class_id, mode, picked_student_ids, updated_at')
+    .eq('class_id', classId)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? { class_id: classId, mode: 'none', picked_student_ids: [] }
+}
+
+export async function saveClassRandomizerState(classId, { mode, pickedStudentIds }) {
+  const payload = { class_id: classId, updated_at: new Date().toISOString() }
+  if (mode !== undefined) payload.mode = mode
+  if (pickedStudentIds !== undefined) payload.picked_student_ids = pickedStudentIds
+  const { error } = await supabase
+    .from('class_randomizer_state')
+    .upsert(payload, { onConflict: 'class_id' })
+  if (error) throw error
+}
+
+export async function resetClassRandomizerPicks(classId) {
+  const { error } = await supabase
+    .from('class_randomizer_state')
+    .upsert({ class_id: classId, picked_student_ids: [], updated_at: new Date().toISOString() }, { onConflict: 'class_id' })
+  if (error) throw error
+}
+
+// ─── Feedback ถึงแอดมิน/ผู้พัฒนา (จากครู/นักเรียน) ────────────────────────────
+
+export async function submitAppFeedback({ profileId, senderRole, senderName, category = 'other', message }) {
+  const { error } = await supabase.from('app_feedback')
+    .insert({ profile_id: profileId, sender_role: senderRole, sender_name: senderName, category, message })
+  if (error) throw error
+}
+
+export async function getAllAppFeedback() {
+  const { data, error } = await supabase.from('app_feedback')
+    .select('id, profile_id, sender_role, sender_name, category, message, is_read, created_at')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function setFeedbackRead(id, isRead) {
+  const { error } = await supabase.from('app_feedback')
+    .update({ is_read: isRead })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteAppFeedback(id) {
+  const { error } = await supabase.from('app_feedback').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function getStudentByCode(studentCode) {

@@ -14,6 +14,8 @@ import {
   getTeacherExamRequests, reviewExamRequest, updateExamResult,
   getTeacherPackageAccess,
   getTeacherClassesForLinking,
+  getMyDonationRequests,
+  getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
 } from './api.js'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
@@ -1111,6 +1113,10 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     const scheduleMap = Object.fromEntries(schedule.map(s => [s.id, s]))
     const periodMap   = Object.fromEntries(periods.map(p => [p.period_no, p]))
 
+    // ฟีเจอร์สุ่มรายชื่อ/จัดกลุ่ม — สิทธิ์เฉพาะครูผู้โดเนทอนุมัติแล้วเท่านั้น
+    const donationRequests = (!ctx.supervisorMode && teacher?.id) ? await getMyDonationRequests(teacher.id).catch(() => []) : []
+    const isDonorTeacher = donationRequests.some(r => r.package_type === 'donation' && r.status === 'approved')
+
     const copyTemplate = getCopyTemplateForClass(copyCfg, cls)
     const isReligion   = ['AGM','AGMVOC'].includes(ms.subject_group)
     const sheetBtns    = cls.google_sheet_id
@@ -1155,6 +1161,12 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition flex items-center gap-1.5">
             💾 <span class="hidden xs:inline">ปพ.5</span><span class="xs:hidden">ปพ.5</span>
           </button>
+          ${isDonorTeacher ? `
+          <button onclick="window._openRandomPickerModal(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+            style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
+            🎲 <span>สุ่มรายชื่อ</span>
+          </button>` : ''}
           ${cls.google_sheet_id ? `
           <button onclick="window._openSheetToolsModal(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 transition flex items-center gap-1.5">
@@ -1209,6 +1221,17 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     window._openCombinedEdit2 = (cid) => {
       const c = window._classCache?.[cid]
       if (c) _openCombinedEditModal(teacher, c, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderClassDetail(teacher, cid))
+    }
+    window._openRandomPickerModal = async (cid) => {
+      const c = window._classCache?.[cid]
+      if (!c) return
+      try {
+        const roster = await getClassStudents(cid)
+        if (!roster.length) { showToast('ห้องนี้ยังไม่มีนักเรียน', 'warning'); return }
+        await _openRandomPickerModal(cid, c, roster)
+      } catch (err) {
+        showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ', 'error')
+      }
     }
     window._deleteClass = async (cid, name) => {
       if (!confirm(`ยืนยันลบห้องเรียน "${name}"?`)) return
@@ -1265,6 +1288,322 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     console.error(err)
     showToast('โหลดข้อมูลไม่สำเร็จ', 'error')
   }
+}
+
+// ─── Random Student Picker (สุ่มรายชื่อ / สุ่มจัดกลุ่ม — สิทธิ์เฉพาะครูผู้โดเนทอนุมัติแล้ว) ──
+
+const RP_MODES = [
+  { value: 'none',    label: 'ไม่จำ — สุ่มอิสระทุกครั้ง (มีโอกาสซ้ำ)' },
+  { value: 'session', label: 'จำเฉพาะตอนนี้ — รีเซ็ตอัตโนมัติเมื่อปิดหน้าต่างนี้' },
+  { value: 'cycle',   label: 'จำจนครบทุกคน แล้ววนรอบใหม่อัตโนมัติ' },
+  { value: 'manual',  label: 'จำตลอดไป จนกว่าจะกดรีเซ็ตเอง' },
+]
+
+function _fireConfetti(container) {
+  const colors = ['#f59e0b','#ec4899','#10b981','#6366f1','#ef4444','#06b6d4','#8b5cf6']
+  container.style.position = 'relative'
+  container.style.overflow = 'hidden'
+  for (let i = 0; i < 26; i++) {
+    const piece = document.createElement('div')
+    const color = colors[Math.floor(Math.random() * colors.length)]
+    const left = Math.random() * 100
+    const duration = 1.1 + Math.random() * 0.7
+    const delay = Math.random() * 0.25
+    const rotate = Math.random() * 360
+    piece.style.cssText = `position:absolute;top:-12px;left:${left}%;width:7px;height:13px;background:${color};opacity:0.9;border-radius:2px;transform:rotate(${rotate}deg);pointer-events:none;animation:rp-confetti-fall ${duration}s ${delay}s ease-in forwards;`
+    container.appendChild(piece)
+    setTimeout(() => piece.remove(), (duration + delay) * 1000 + 250)
+  }
+}
+
+async function _openRandomPickerModal(classId, cls, students) {
+  document.getElementById('random-picker-modal')?.remove()
+
+  let dbState
+  try { dbState = await getClassRandomizerState(classId) }
+  catch { dbState = { mode: 'none', picked_student_ids: [] } }
+
+  let currentMode     = dbState.mode || 'none'
+  let persistedPicked = new Set((dbState.picked_student_ids || []).map(Number))
+  let sessionPicked   = new Set()
+  let activeTab       = 'pick'
+  let isSpinning      = false
+
+  const m = document.createElement('div')
+  m.id = 'random-picker-modal'
+  m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50'
+  m.innerHTML = `
+    <style>
+      @keyframes rp-confetti-fall { to { transform: translateY(320px) rotate(540deg); opacity: 0; } }
+      @keyframes rp-pop { 0% { transform: scale(0.7); opacity:0; } 60% { transform: scale(1.08); opacity:1; } 100% { transform: scale(1); opacity:1; } }
+      .rp-pop { animation: rp-pop 0.45s cubic-bezier(.2,1.4,.4,1) both; }
+    </style>
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[94vh] flex flex-col">
+      <div style="background:linear-gradient(135deg,#f59e0b,#ec4899);" class="px-5 py-4 flex items-center justify-between flex-shrink-0">
+        <div class="min-w-0">
+          <h3 class="text-white font-bold text-base">🎲 สุ่มรายชื่อนักเรียน</h3>
+          <p class="text-white/80 text-xs mt-0.5 truncate">${_htmlEsc(cls.class_name || '')} · ทั้งหมด ${students.length} คน</p>
+        </div>
+        <button id="rp-close" class="text-white/90 hover:text-white text-3xl leading-none px-2 flex-shrink-0">&times;</button>
+      </div>
+      <div class="flex border-b border-gray-100 flex-shrink-0">
+        <button class="rp-tab flex-1 py-2.5 text-sm font-semibold transition" data-mode="pick">🎯 สุ่มรายชื่อ</button>
+        <button class="rp-tab flex-1 py-2.5 text-sm font-semibold transition" data-mode="group">👥 สุ่มจัดกลุ่ม</button>
+      </div>
+      <div id="rp-body" class="p-5 overflow-y-auto flex-1"></div>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#rp-close').addEventListener('click', () => m.remove())
+
+  const body = m.querySelector('#rp-body')
+  const tabs = [...m.querySelectorAll('.rp-tab')]
+  const setTab = (tab) => {
+    activeTab = tab
+    tabs.forEach(t => {
+      const on = t.dataset.mode === tab
+      t.className = `rp-tab flex-1 py-2.5 text-sm font-semibold transition ${on ? 'text-white' : 'text-gray-500 hover:text-gray-700'}`
+      t.style.background = on ? 'linear-gradient(135deg,#f59e0b,#ec4899)' : ''
+    })
+    if (tab === 'pick') renderPickTab()
+    else renderGroupTab()
+  }
+  tabs.forEach(t => t.addEventListener('click', () => { if (!isSpinning) setTab(t.dataset.mode) }))
+
+  // ── โหมดการจำ: คืนชุดรายชื่อที่ถูกสุ่มไปแล้ว (ตามโหมดปัจจุบัน) ──
+  const excludedSet = () => {
+    if (currentMode === 'none')    return new Set()
+    if (currentMode === 'session') return sessionPicked
+    return persistedPicked   // cycle, manual
+  }
+  const markPicked = async (studentId) => {
+    if (currentMode === 'none') return
+    if (currentMode === 'session') { sessionPicked.add(studentId); return }
+    persistedPicked.add(studentId)
+    try { await saveClassRandomizerState(classId, { mode: currentMode, pickedStudentIds: [...persistedPicked] }) } catch {}
+  }
+  const doReset = async () => {
+    persistedPicked = new Set()
+    sessionPicked   = new Set()
+    try { await resetClassRandomizerPicks(classId) } catch {}
+    showToast('รีเซ็ตการสุ่มแล้ว', 'success')
+    if (activeTab === 'pick') renderPickTab()
+  }
+  const changeMode = async (newMode) => {
+    if (newMode === currentMode) return
+    currentMode     = newMode
+    persistedPicked = new Set()
+    sessionPicked   = new Set()
+    try { await saveClassRandomizerState(classId, { mode: newMode, pickedStudentIds: [] }) } catch {}
+    renderPickTab()
+  }
+
+  // ════════════════ TAB: สุ่มรายชื่อ ════════════════
+  function renderPickTab() {
+    const excluded   = excludedSet()
+    const remaining  = students.filter(s => !excluded.has(s.id))
+    const pickedCount = students.length - remaining.length
+    body.innerHTML = `
+      <div class="flex items-center gap-2 mb-3">
+        <select id="rp-mode" class="${SELECT_CLS} flex-1 text-xs">
+          ${RP_MODES.map(o => `<option value="${o.value}" ${o.value === currentMode ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+        <button id="rp-reset" class="flex-shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50" title="รีเซ็ตการสุ่ม">🔄 รีเซ็ต</button>
+      </div>
+      ${currentMode !== 'none' ? `<p id="rp-counter" class="text-[11px] text-gray-400 mb-3">สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${remaining.length === 0 ? ' — ครบทุกคนแล้ว!' : ''}</p>` : ''}
+      <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-8 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
+        <p id="rp-hint" class="text-xs text-gray-400 mb-2">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
+        <p id="rp-name" class="text-2xl sm:text-3xl font-extrabold text-gray-700 truncate px-2">—</p>
+        <p id="rp-code" class="text-xs text-gray-400 mt-1 font-mono"></p>
+      </div>
+      <button id="rp-go" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98]"
+        style="background:linear-gradient(135deg,#f59e0b,#ec4899);">🎲 สุ่มเลย!</button>
+    `
+    body.querySelector('#rp-mode').addEventListener('change', e => changeMode(e.target.value))
+    body.querySelector('#rp-reset').addEventListener('click', () => { if (!isSpinning) doReset() })
+    body.querySelector('#rp-go').addEventListener('click', () => spin())
+  }
+
+  function spin() {
+    if (isSpinning) return
+    let pool = students.filter(s => !excludedSet().has(s.id))
+    let willAutoReset = false
+    if (pool.length === 0) {
+      if (currentMode === 'manual') {
+        showToast('สุ่มครบทุกคนแล้ว — กดปุ่ม "รีเซ็ต" เพื่อเริ่มรอบใหม่', 'warning')
+        return
+      }
+      pool = students
+      willAutoReset = (currentMode === 'cycle' || currentMode === 'session')
+    }
+
+    isSpinning = true
+    const goBtn  = body.querySelector('#rp-go')
+    const stage  = body.querySelector('#rp-stage')
+    const nameEl = body.querySelector('#rp-name')
+    const codeEl = body.querySelector('#rp-code')
+    const hintEl = body.querySelector('#rp-hint')
+    goBtn.disabled = true
+    goBtn.textContent = '🎰 กำลังสุ่ม...'
+    hintEl.textContent = 'กำลังสุ่ม...'
+    nameEl.classList.remove('rp-pop')
+    stage.style.borderStyle  = 'dashed'
+    stage.style.borderColor  = '#fbbf24'
+    stage.style.boxShadow    = 'none'
+
+    const target = pool[Math.floor(Math.random() * pool.length)]
+    let step = 0
+    const totalSteps = 26
+    let delay = 55
+    const tick = () => {
+      const s = pool[Math.floor(Math.random() * pool.length)]
+      nameEl.textContent = s.full_name
+      codeEl.textContent = s.student_code ? `เลขที่ ${s.student_code}` : ''
+      step++
+      if (step < totalSteps) {
+        delay = Math.min(delay * 1.13, 420)
+        setTimeout(tick, delay)
+      } else {
+        finish()
+      }
+    }
+    const finish = async () => {
+      nameEl.textContent = target.full_name
+      codeEl.textContent = target.student_code ? `เลขที่ ${target.student_code}` : ''
+      nameEl.classList.add('rp-pop')
+      stage.style.borderStyle = 'solid'
+      stage.style.borderColor = '#10b981'
+      stage.style.boxShadow   = '0 0 0 6px rgba(16,185,129,.12), 0 0 30px rgba(16,185,129,.25)'
+      hintEl.textContent = '🎉 ได้คนนี้แหละ!'
+      _fireConfetti(stage)
+
+      if (willAutoReset) {
+        persistedPicked = new Set()
+        sessionPicked   = new Set()
+        try { await resetClassRandomizerPicks(classId) } catch {}
+      }
+      await markPicked(target.id)
+
+      setTimeout(() => {
+        isSpinning = false
+        goBtn.disabled = false
+        goBtn.textContent = '🎲 สุ่มอีกครั้ง'
+        const excluded = excludedSet()
+        const pickedCount = students.length - students.filter(s => !excluded.has(s.id)).length
+        const counter = body.querySelector('#rp-counter')
+        if (counter) {
+          const remain = students.length - pickedCount
+          counter.textContent = `สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${remain === 0 ? ' — ครบทุกคนแล้ว!' : ''}`
+        }
+      }, 900)
+    }
+    tick()
+  }
+
+  // ════════════════ TAB: สุ่มจัดกลุ่ม ════════════════
+  function renderGroupTab() {
+    const genderValues = new Set(students.map(s => s.gender).filter(Boolean))
+    const showGenderOption = genderValues.size > 1
+
+    body.innerHTML = `
+      <div class="flex items-center gap-2 mb-3">
+        <button class="rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition" data-gmode="count">📦 กำหนดจำนวนกลุ่ม</button>
+        <button class="rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition" data-gmode="size">👤 กำหนดคนต่อกลุ่ม</button>
+      </div>
+      <div class="flex items-center gap-2 mb-3">
+        <input id="rp-gnum" type="number" min="1" max="${students.length}" value="4"
+          class="${INPUT_CLS} w-24 flex-shrink-0 text-center font-bold text-lg" />
+        <span id="rp-gnum-label" class="text-xs text-gray-400">กลุ่ม (จากทั้งหมด ${students.length} คน)</span>
+      </div>
+      ${showGenderOption ? `
+      <label class="flex items-start gap-2.5 mb-4 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50/60 cursor-pointer">
+        <input id="rp-gender-split" type="checkbox" class="mt-0.5 w-4 h-4 rounded accent-pink-500" />
+        <span class="text-xs text-gray-600 leading-relaxed">⚧ <strong>แยกกลุ่มตามเพศ</strong> — แต่ละกลุ่มจะมีนักเรียนเพศเดียวกันเท่านั้น (ไม่ติ๊ก = คละเพศได้ในกลุ่มเดียวกัน)</span>
+      </label>` : ''}
+      <button id="rp-group-go" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98] mb-4"
+        style="background:linear-gradient(135deg,#f59e0b,#ec4899);">🎲 จัดกลุ่มเลย!</button>
+      <div id="rp-groups"></div>
+    `
+    let gmode = 'count'
+    const btns = [...body.querySelectorAll('.rp-gmode-btn')]
+    const setGmode = (mode) => {
+      gmode = mode
+      btns.forEach(b => {
+        const on = b.dataset.gmode === mode
+        b.className = `rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition ${on ? 'border-pink-300 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
+      })
+      const label = body.querySelector('#rp-gnum-label')
+      label.textContent = mode === 'count'
+        ? `กลุ่ม (จากทั้งหมด ${students.length} คน)`
+        : `คน/กลุ่ม (จากทั้งหมด ${students.length} คน)`
+      body.querySelector('#rp-gnum').value = 4
+    }
+    btns.forEach(b => b.addEventListener('click', () => setGmode(b.dataset.gmode)))
+    setGmode('count')
+
+    const shuffle = (arr) => {
+      const a = [...arr]
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]]
+      }
+      return a
+    }
+    const buildGroups = (pool, n) => {
+      const shuffled = shuffle(pool)
+      if (!shuffled.length) return []
+      if (gmode === 'count') {
+        const groupCount = Math.min(n, shuffled.length)
+        const out = Array.from({ length: groupCount }, () => [])
+        shuffled.forEach((s, i) => out[i % groupCount].push(s))
+        return out
+      }
+      const size = Math.min(n, shuffled.length)
+      const out = []
+      for (let i = 0; i < shuffled.length; i += size) out.push(shuffled.slice(i, i + size))
+      return out
+    }
+
+    body.querySelector('#rp-group-go').addEventListener('click', () => {
+      const n = Math.max(1, parseInt(body.querySelector('#rp-gnum').value, 10) || 1)
+      const splitByGender = showGenderOption && body.querySelector('#rp-gender-split')?.checked
+      const colors = ['#f59e0b','#ec4899','#6366f1','#10b981','#06b6d4','#ef4444','#8b5cf6','#f97316']
+
+      let sections
+      if (splitByGender) {
+        sections = [
+          { title: 'ชาย',      icon: '♂', items: students.filter(s => s.gender === 'ชาย') },
+          { title: 'หญิง',     icon: '♀', items: students.filter(s => s.gender === 'หญิง') },
+          { title: 'ไม่ระบุเพศ', icon: '•', items: students.filter(s => s.gender !== 'ชาย' && s.gender !== 'หญิง') },
+        ].filter(sec => sec.items.length).map(sec => ({ ...sec, groups: buildGroups(sec.items, n) }))
+      } else {
+        sections = [{ title: null, icon: null, groups: buildGroups(students, n) }]
+      }
+
+      const out = body.querySelector('#rp-groups')
+      let gi = 0
+      out.innerHTML = sections.map(sec => `
+        ${sec.title ? `<p class="text-xs font-bold text-gray-500 mt-4 mb-2 first:mt-0">${sec.icon} กลุ่ม${sec.title} <span class="font-normal text-gray-400">(${sec.items.length} คน)</span></p>` : ''}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          ${sec.groups.map(g => {
+            const html = `
+            <div class="rp-pop rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style="animation-delay:${gi * 70}ms">
+              <div class="px-3 py-2 text-white text-sm font-bold" style="background:${colors[gi % colors.length]}">
+                กลุ่มที่ ${gi + 1} <span class="font-normal text-white/80 text-xs">(${g.length} คน)</span>
+              </div>
+              <div class="p-3 space-y-1">
+                ${g.map(s => `<p class="text-sm text-gray-700 truncate">· ${_htmlEsc(s.full_name)} <span class="text-gray-400 text-xs font-mono">${_htmlEsc(s.student_code ?? '')}</span></p>`).join('')}
+              </div>
+            </div>`
+            gi++
+            return html
+          }).join('')}
+        </div>
+      `).join('')
+    })
+  }
+
+  setTab('pick')
 }
 
 // ─── Combined Edit Modal (ข้อมูล + ตารางสอน + ห้องสอน) ───────────────────────
