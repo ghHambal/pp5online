@@ -196,6 +196,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     }
   }
 
+  // คลิกการ์ด "กำลังสอนอยู่" → เข้าห้องเรียนนั้นทันที
+  window._goToActiveClass = async (classId) => {
+    if (!classId) return
+    const { renderClassDetail } = await import('./teacher-views-classes.js')
+    renderClassDetail(teacher, classId)
+  }
+
   // แบนเนอร์สัปดาห์ปัจจุบันของภาคเรียน
   const weekBannerHtml = curWeek > 0 ? (() => {
     const wkStart = new Date(cfg.semester_start)
@@ -320,13 +327,16 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       const time = activeEntry.period
         ? `${activeEntry.period.start_time.substring(0,5)}–${activeEntry.actualEndPeriod.end_time.substring(0,5)}`
         : `คาบ ${activeEntry.period_no}`
+      const goToClassId = activeEntry.linkedClasses[0]?.id ?? null
       return `
-    <div id="active-class-card" class="mt-4 bg-white rounded-2xl p-5"
-      style="border:2px solid #059669;box-shadow:0 0 0 4px rgba(5,150,105,.12),0 0 24px rgba(5,150,105,.18);">
+    <div id="active-class-card" class="mt-4 bg-white rounded-2xl p-5 ${goToClassId ? 'cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150' : ''}"
+      style="border:2px solid #059669;box-shadow:0 0 0 4px rgba(5,150,105,.12),0 0 24px rgba(5,150,105,.18);"
+      ${goToClassId ? `onclick="window._goToActiveClass(${goToClassId})"` : ''}>
       <div class="flex items-center gap-2 mb-3">
         <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" style="animation:pulse 1.5s infinite"></span>
         <span class="text-xs font-bold text-emerald-700 tracking-wide">🟢 กำลังสอนอยู่</span>
         <span class="text-[11px] text-gray-400 ml-1">${time}</span>
+        ${goToClassId ? `<span class="text-[11px] text-emerald-500 ml-auto">เข้าห้องเรียน →</span>` : ''}
       </div>
       <div class="flex items-center gap-4">
         <div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-lg font-bold text-emerald-700 flex-shrink-0">
