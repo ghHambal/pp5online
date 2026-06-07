@@ -12,6 +12,7 @@ import {
   setContent, setTitle, setActiveNav, _htmlEsc,
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
+  _currentWeek,
 } from './teacher-views-utils.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
@@ -40,6 +41,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
+  const curWeek      = _currentWeek(cfg.semester_start)
 
   if (_todayWidgetTimer)  { clearInterval(_todayWidgetTimer);  _todayWidgetTimer  = null }
   if (_activeSecTimer)    { clearInterval(_activeSecTimer);    _activeSecTimer    = null }
@@ -194,7 +196,29 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     }
   }
 
+  // แบนเนอร์สัปดาห์ปัจจุบันของภาคเรียน
+  const weekBannerHtml = curWeek > 0 ? (() => {
+    const wkStart = new Date(cfg.semester_start)
+    wkStart.setDate(wkStart.getDate() + (curWeek - 1) * 7)
+    const wkEnd = new Date(wkStart)
+    wkEnd.setDate(wkEnd.getDate() + 6)
+    const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
+    return `
+    <div class="mb-5 rounded-2xl px-5 py-4 flex items-center gap-4"
+      style="background:linear-gradient(135deg,#059669,#0d9488);box-shadow:0 6px 20px -6px rgba(5,150,105,.5);">
+      <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl flex-shrink-0">📅</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-white/80 text-[11px] font-medium">ขณะนี้อยู่ในสัปดาห์ที่</p>
+        <p class="text-white text-2xl font-extrabold leading-tight">สัปดาห์ที่ ${curWeek} <span class="text-sm font-medium text-white/80">(${fmt(wkStart)} – ${fmt(wkEnd)})</span></p>
+      </div>
+      <div class="text-right text-white/80 text-xs flex-shrink-0">ภาคเรียนที่ ${semester}<br/>ปีการศึกษา ${academicYear}</div>
+    </div>
+    `
+  })() : ''
+
   setContent(`<div class="animate-fade">
+
+    ${weekBannerHtml}
 
     <!-- แจ้งเตือนจากหัวหน้า -->
     ${svNotifs.length ? (() => {

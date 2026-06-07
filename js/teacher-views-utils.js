@@ -113,6 +113,16 @@ export function _fmtDate(d) {
   return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}`
 }
 
+// คำนวณสัปดาห์ปัจจุบันของภาคเรียนจากวันเปิดภาคเรียน (เหมือน _currentWeek ใน views.js)
+export function _currentWeek(semesterStart) {
+  if (!semesterStart) return 0
+  const start = new Date(semesterStart)
+  if (isNaN(start)) return 0
+  const diffMs = Date.now() - start.getTime()
+  if (diffMs < 0) return 0
+  return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1
+}
+
 // คำนวณ 6 วันสอนแรกจาก teacher_schedules entries + termStart
 export function _calcSixPeriodDates(entries, termStartStr) {
   const termStart = _parseDateOnly(termStartStr) ?? _parseDateOnly(new Date())
