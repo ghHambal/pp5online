@@ -78,10 +78,11 @@ export function injectFeedbackWidget({ profileId, role, name }) {
   fab.id = 'feedback-fab'
   fab.title = 'ส่งความคิดเห็นถึงแอดมิน/ผู้พัฒนา'
   fab.className = 'fixed z-40 w-11 h-11 sm:w-14 sm:h-14 rounded-full text-white shadow-lg flex items-center justify-center overflow-hidden transition-transform hover:scale-105'
+  // ครู: ซ้อนเหนือปุ่มกาแฟ ☕ (ขวาล่าง, สูง 56px) เว้นช่องว่าง — นักเรียน: เลี่ยงแถบเมนูล่าง (ไม่มีปุ่มกาแฟ)
   const bottomOffset = role === 'student'
     ? 'calc(76px + 12px + env(safe-area-inset-bottom))'
-    : 'max(0.75rem, env(safe-area-inset-bottom))'
-  fab.style.cssText = `position:fixed;left:max(0.75rem, env(safe-area-inset-left));right:auto;top:auto;bottom:${bottomOffset};background:linear-gradient(135deg,#db2777,#9d174d);font-size:1.3rem;`
+    : 'calc(max(0.75rem, env(safe-area-inset-bottom)) + 68px)'
+  fab.style.cssText = `position:fixed;right:max(0.75rem, env(safe-area-inset-right));left:auto;top:auto;bottom:${bottomOffset};background:linear-gradient(135deg,#db2777,#9d174d);font-size:1.3rem;`
   fab.textContent = '💬'
   document.body.appendChild(fab)
 
