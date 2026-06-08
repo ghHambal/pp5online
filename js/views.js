@@ -27,7 +27,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
          autoEnrollStudentsByRoom,
-         getAllAppFeedback, setFeedbackRead, setFeedbackStatusReply, deleteAppFeedback } from './api.js'
+         getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -9107,7 +9107,9 @@ export async function renderFeedbackAdmin() {
           ${!f.is_read ? `<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex-shrink-0">ใหม่</span>` : ''}
         </div>
         <div class="mt-2 flex items-center gap-2 flex-wrap">
-          <p class="text-xs font-medium text-gray-500">${CATEGORY_LABEL[f.category] ?? f.category}</p>
+          <select class="fb-category-sel border border-gray-200 rounded-lg px-2 py-1 text-xs font-medium text-gray-600 bg-white focus:outline-none" data-id="${f.id}" title="แก้ไขหมวดหมู่ (กรณีผู้ส่งเลือกผิด เช่น แจ้งปัญหาแต่เลือกโหมดชื่นชม)">
+            ${Object.entries(CATEGORY_LABEL).map(([val, label]) => `<option value="${val}" ${f.category === val ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
           ${ACTIONABLE_CATS.includes(f.category) ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_BADGE[f.status]?.cls ?? 'bg-gray-100 text-gray-600'}">${STATUS_BADGE[f.status]?.label ?? f.status}</span>` : ''}
         </div>
         <p class="mt-1 text-sm text-gray-700 whitespace-pre-wrap">${_esc(f.message)}</p>
@@ -9144,6 +9146,20 @@ export async function renderFeedbackAdmin() {
       } catch { showToast('บันทึกไม่สำเร็จ', 'error'); return }
       const item = _all.find(x => x.id === id); if (item) item.is_read = !cur
       _updateStats(); _render()
+    }))
+
+    box.querySelectorAll('.fb-category-sel').forEach(sel => sel.addEventListener('change', async () => {
+      const id     = parseInt(sel.dataset.id)
+      const newCat = sel.value
+      const item   = _all.find(x => x.id === id)
+      const oldCat = item?.category
+      sel.disabled = true
+      try {
+        await setFeedbackCategory(id, newCat)
+      } catch { showToast('เปลี่ยนหมวดหมู่ไม่สำเร็จ', 'error'); sel.disabled = false; sel.value = oldCat; return }
+      if (item) item.category = newCat
+      showToast('เปลี่ยนหมวดหมู่แล้ว — ตอนนี้สามารถตอบกลับ/อัปเดตสถานะได้แล้ว', 'success')
+      _render()
     }))
 
     box.querySelectorAll('.fb-delete').forEach(btn => btn.addEventListener('click', async () => {

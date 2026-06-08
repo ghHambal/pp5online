@@ -340,6 +340,13 @@ export async function setFeedbackRead(id, isRead) {
   if (error) throw error
 }
 
+export async function setFeedbackCategory(id, category) {
+  const { error } = await supabase.from('app_feedback')
+    .update({ category })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function setFeedbackStatusReply(id, { status, adminReply }) {
   const { error } = await supabase.from('app_feedback')
     .update({ status, admin_reply: adminReply ?? null, replied_at: new Date().toISOString() })
