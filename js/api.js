@@ -318,8 +318,34 @@ export async function resetClassRandomizerPicks(classId) {
 }
 
 // ─── Feedback ถึงแอดมิน/ผู้พัฒนา (จากครู/นักเรียน) ────────────────────────────
+// จำกัดจำนวนการส่งต่อคนต่อเดือน กันสแปม/ส่งรัวๆ — ครูได้โควต้ามากกว่านักเรียนเล็กน้อย
+const FEEDBACK_MONTHLY_LIMIT = { teacher: 5, student: 3 }
+
+function _startOfThisMonthIso() {
+  const d = new Date()
+  d.setDate(1); d.setHours(0, 0, 0, 0)
+  return d.toISOString()
+}
+
+export async function getMyFeedbackQuota(profileId, senderRole) {
+  const limit = FEEDBACK_MONTHLY_LIMIT[senderRole] ?? FEEDBACK_MONTHLY_LIMIT.student
+  const { count, error } = await supabase.from('app_feedback')
+    .select('id', { count: 'exact', head: true })
+    .eq('profile_id', profileId)
+    .gte('created_at', _startOfThisMonthIso())
+  if (error) throw error
+  return { used: count ?? 0, limit, remaining: Math.max(limit - (count ?? 0), 0) }
+}
 
 export async function submitAppFeedback({ profileId, senderRole, senderName, category = 'other', message }) {
+  const { used, limit } = await getMyFeedbackQuota(profileId, senderRole)
+  if (used >= limit) {
+    const err = new Error(`ส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว (${limit} ครั้ง/เดือน)`)
+    err.code = 'FEEDBACK_LIMIT_REACHED'
+    err.limit = limit
+    throw err
+  }
+
   const { error } = await supabase.from('app_feedback')
     .insert({ profile_id: profileId, sender_role: senderRole, sender_name: senderName, category, message })
   if (error) throw error

@@ -119,6 +119,8 @@ function _openFeedbackModal({ profileId, role, name }) {
             placeholder="พิมพ์ความคิดเห็น ข้อเสนอแนะ หรือแจ้งปัญหาที่นี่..."></textarea>
         </div>
         <p class="text-[11px] text-gray-400">ส่งในนาม: <span class="font-semibold text-gray-600">${_fbEsc(name || '—')}</span> (${role === 'teacher' ? 'ครู' : 'นักเรียน'})</p>
+        <p id="fb-quota-info" class="text-[11px] text-gray-400">กำลังตรวจสอบโควต้า...</p>
+        <div id="fb-limit-notice" class="hidden text-[11px] leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"></div>
         <button id="fb-submit" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition active:scale-[0.98]"
           style="background:linear-gradient(135deg,#db2777,#9d174d);">📨 ส่งความคิดเห็น</button>
       </div>
@@ -137,6 +139,41 @@ function _openFeedbackModal({ profileId, role, name }) {
     })
   }))
 
+  // ตรวจโควต้าการส่งต่อเดือน — แสดงให้เห็นก่อนกดส่ง และล็อกปุ่มถ้าครบโควต้าแล้ว
+  ;(async () => {
+    const quotaEl  = m.querySelector('#fb-quota-info')
+    const noticeEl = m.querySelector('#fb-limit-notice')
+    const submitBtn = m.querySelector('#fb-submit')
+    try {
+      const { getMyFeedbackQuota, getSystemConfig } = await import('./api.js')
+      const { used, limit, remaining } = await getMyFeedbackQuota(profileId, role)
+      if (quotaEl) {
+        quotaEl.textContent = `โควต้าส่งความคิดเห็นเดือนนี้: ใช้ไป ${used}/${limit} ครั้ง (เหลืออีก ${remaining} ครั้ง)`
+        quotaEl.className = `text-[11px] font-medium ${remaining <= 0 ? 'text-rose-500' : remaining === 1 ? 'text-amber-500' : 'text-gray-400'}`
+      }
+      if (remaining <= 0 && submitBtn) {
+        submitBtn.disabled = true
+        submitBtn.classList.add('opacity-50', 'cursor-not-allowed')
+        if (noticeEl) {
+          if (role === 'teacher') {
+            const cfg = await getSystemConfig().catch(() => ({}))
+            const lineHref = cfg.contactLine
+              ? (cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}`)
+              : null
+            noticeEl.innerHTML = lineHref
+              ? `⚠️ คุณส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว หากเรื่องเร่งด่วน <a href="${_fbEsc(lineHref)}" target="_blank" rel="noopener" class="font-semibold underline">คลิกที่นี่เพื่อแจ้งผ่าน LINE</a> แทนได้เลยครับ`
+              : `⚠️ คุณส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว กรุณารอจนถึงเดือนถัดไปนะครับ`
+          } else {
+            noticeEl.textContent = '⚠️ คุณส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว กรุณารอจนถึงเดือนถัดไป หรือแจ้งผ่านครูประจำชั้น/ครูที่ปรึกษาแทนนะครับ'
+          }
+          noticeEl.classList.remove('hidden')
+        }
+      }
+    } catch {
+      if (quotaEl) quotaEl.textContent = ''
+    }
+  })()
+
   m.querySelector('#fb-submit').addEventListener('click', async () => {
     const message = m.querySelector('#fb-message').value.trim()
     if (!message) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'warning'); return }
@@ -149,7 +186,13 @@ function _openFeedbackModal({ profileId, role, name }) {
       m.remove()
     } catch (err) {
       setButtonLoading(btn, false, '📨 ส่งความคิดเห็น')
-      showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
+      if (err?.code === 'FEEDBACK_LIMIT_REACHED') {
+        showToast(`ส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
+        btn.disabled = true
+        btn.classList.add('opacity-50', 'cursor-not-allowed')
+      } else {
+        showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
+      }
     }
   })
 }
