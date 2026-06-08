@@ -5,8 +5,12 @@
 /* ─── Base ──────────────────────────────────────────────────────────────────── */
 * { font-family: 'Sarabun', sans-serif; }
 
-/* ป้องกันการปัดหน้าลงเพื่อรีเฟรช (pull-to-refresh) บนมือถือ — กันข้อมูลที่กำลังกรอกหายโดยไม่ตั้งใจ */
-html, body {
+/* ป้องกันการปัดหน้าลงเพื่อรีเฟรช (pull-to-refresh) บนมือถือ — กันข้อมูลที่กำลังกรอกหายโดยไม่ตั้งใจ
+   ต้องใส่ทั้งที่ html/body และที่ตัว scroll container จริง (<main class="overflow-y-auto">, #stu-content)
+   เพราะ body มี overflow-hidden ไม่ได้เป็นตัวเลื่อนจริง — ตัวเลื่อนจริงอยู่ใน <main> */
+html, body,
+main.overflow-y-auto,
+#stu-content {
   overscroll-behavior-y: contain;
 }
 
