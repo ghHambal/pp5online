@@ -11,7 +11,7 @@
 html, body,
 main.overflow-y-auto,
 #stu-content {
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: none;
 }
 
 :root {
