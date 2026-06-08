@@ -65,6 +65,28 @@
 | 27 | `patch_exam_requests.sql` | เพิ่ม `exam_attended` + `exam_score` ใน exam_requests + RLS ครู | ✅ จำเป็น |
 | 28 | `patch_theme_config.sql` | เติมค่าเริ่มต้น theme colors ใน system_config | 🔵 Optional — ถ้าต้องการสีเริ่มต้น |
 
+### กลุ่ม G — เพิ่มเติมหลังเปิดใช้งาน (พ.ค.–มิ.ย. 2026)
+
+> เรียงตามลำดับวันที่เพิ่มเข้า repo จริง (`git log`) — ไฟล์เหล่านี้ถูกเพิ่มทีหลังและยังไม่เคยอยู่ในตารางลำดับด้านบน
+
+| ลำดับ | ไฟล์ | สิ่งที่ทำ | จำเป็น? |
+|-------|------|-----------|---------|
+| 29 | `patch_admin_profile.sql` | SECURITY DEFINER function ให้แอดมิน upsert ข้อมูลส่วนตัวใน teachers table | ✅ จำเป็นสำหรับแอดมินแก้โปรไฟล์ครู |
+| 30 | `patch_teacher_subject_manage.sql` | RLS policy ให้ครูจัดการ (update/delete) คอร์สวิชาของตัวเองได้ | ✅ จำเป็น |
+| 31 | `patch_storage_public.sql` | เปิด public access bucket `system-assets` และ `teacher-photos` (โลโก้/ลายเซ็น/QR/รูปครู) | ✅ จำเป็นสำหรับโหลดรูปโดยไม่ต้อง auth |
+| 32 | `patch_course_doc_page2_v2.sql` | เพิ่มคอลัมน์ "ระหว่างภาค" และ `topic_list` ใน `course_doc_page2` | ✅ รันต่อจาก patch_course_doc_page2 |
+| 33 | `patch_class_schedule_links.sql` | สร้างตาราง `class_schedule_links` สำหรับฟีเจอร์เชื่อมโยงตารางสอน | ✅ จำเป็น |
+| 34 | `patch_login_logs.sql` | สร้างตาราง `login_logs` เก็บสถิติเข้าใช้งานรายวัน/รายเดือน (อ่านได้แม้ anonymous) | ✅ จำเป็นสำหรับสถิติหน้า login |
+| 35 | `patch_usage_stats.sql` | เพิ่มคอลัมน์ `last_seen_at` ใน teachers/students + RLS ให้แต่ละคนอัปเดตของตัวเองได้ | ✅ จำเป็นสำหรับติดตามการใช้งาน |
+| 36 | `patch_classrooms.sql` | สร้างตาราง `classrooms` (ห้องเรียนในโรงเรียน) + RLS อ่านสาธารณะ | ✅ จำเป็น |
+| 37 | `patch_supervisor_read_policies.sql` | RLS ให้ครูที่มี position (หัวหน้า) อ่าน class_students/attendances/student_scores ได้ทุกห้อง | ✅ จำเป็นสำหรับแดชบอร์ด supervisor |
+| 38 | `patch_class_schedule_links_admin.sql` | Admin bypass policy สำหรับ `class_schedule_links` (จำเป็นตอน admin impersonation) | ✅ จำเป็น |
+| 39 | `patch_course_doc_page2_v3.sql` | เพิ่มคอลัมน์ข้อความจุดประสงค์วัดผลที่ครูพิมพ์เพิ่มเอง ใน `course_doc_page2` | ✅ รันต่อจาก v2 |
+| 40 | `patch_auto_enroll_v2.sql` | อัปเดต RPC `auto_enroll_students_by_room()` — match ทั้ง main_room/religion_room และ re-activate นักเรียนที่กลับมา | ✅ จำเป็น |
+| 41 | `patch_student_sync_log.sql` | เพิ่ม `is_active` ใน students (soft-delete) + ตาราง `student_sync_logs` บันทึกประวัติซิงก์ | ✅ จำเป็น |
+| 42 | `patch_supervisor_schedule_read.sql` | RLS ให้ supervisor/admin อ่านตารางสอนของครูทุกคน (เดิมเห็นแค่ของตัวเอง) | ✅ จำเป็น |
+| 43 | `patch_source_class.sql` | เพิ่ม `source_class_id` ใน classes — เชื่อมห้องเรียน "เสมือน" กับห้องที่สอนจริง สำหรับดึง attendance/scores มาออก ปพ.5 | ✅ จำเป็นสำหรับฟีเจอร์ห้องเสมือน |
+
 ---
 
 ## วิธีรัน
@@ -94,3 +116,4 @@
 | D — Login ครู | ✅ รันแล้ว |
 | E — Student Portal | ✅ รันแล้ว |
 | F — คำร้อง/Theme | ✅ รันแล้ว |
+| G — เพิ่มเติม พ.ค.–มิ.ย. 2026 | ✅ รันแล้ว |
