@@ -9018,13 +9018,10 @@ export async function renderFeedbackAdmin() {
       <p class="text-xs text-gray-400 mt-0.5">ความคิดเห็น/ข้อเสนอแนะ/ปัญหาที่ครูและนักเรียนส่งถึงแอดมินโดยตรง</p>
     </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      ${['ทั้งหมด','ยังไม่อ่าน','จากครู','จากนักเรียน'].map((lbl,i) => `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
-        <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">${lbl}</p>
-        <p class="text-xl font-bold text-gray-800 fb-stat-val" data-i="${i}">—</p>
-      </div>`).join('')}
+    <div id="fb-cat-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="col-span-2 sm:col-span-4 text-center py-4 text-gray-400 text-sm">กำลังโหลด...</div>
     </div>
+    <p class="text-[11px] text-gray-400 -mt-3">💡 คลิกการ์ดหมวดเพื่อกรองรายการตามหมวดนั้น</p>
 
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
       <input id="fb-search" type="search" placeholder="🔍 ค้นหาชื่อ / ข้อความ"
@@ -9063,11 +9060,33 @@ export async function renderFeedbackAdmin() {
   }
 
   const _updateStats = () => {
-    const unread  = _all.filter(f => !f.is_read).length
-    const teacher = _all.filter(f => f.sender_role === 'teacher').length
-    const student = _all.filter(f => f.sender_role === 'student').length
-    const vals = [_all.length, unread, teacher, student]
-    document.querySelectorAll('.fb-stat-val').forEach((el, i) => { el.textContent = vals[i] })
+    const box = document.getElementById('fb-cat-stats')
+    if (box) {
+      box.innerHTML = Object.keys(CATEGORY_LABEL).map(cat => {
+        const items  = _all.filter(f => f.category === cat)
+        const total  = items.length
+        const unread = items.filter(f => !f.is_read).length
+        let sub = `<p class="text-[10px] text-gray-300 mt-0.5">—</p>`
+        if (ACTIONABLE_CATS.includes(cat)) {
+          const resolved = items.filter(f => f.status === 'resolved').length
+          sub = `<p class="text-[10px] font-semibold mt-0.5 ${resolved === total && total > 0 ? 'text-emerald-600' : 'text-amber-600'}">✅ ดำเนินการแล้ว ${resolved}/${total}</p>`
+        } else if (unread) {
+          sub = `<p class="text-[10px] font-semibold text-indigo-500 mt-0.5">🔵 ยังไม่อ่าน ${unread}</p>`
+        }
+        return `
+        <div class="fb-cat-card bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center cursor-pointer hover:border-indigo-200 hover:shadow-md transition" data-cat="${cat}">
+          <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 truncate">${CATEGORY_LABEL[cat]}</p>
+          <p class="text-xl font-bold text-gray-800">${total}</p>
+          ${sub}
+        </div>`
+      }).join('')
+
+      box.querySelectorAll('.fb-cat-card').forEach(card => card.addEventListener('click', () => {
+        const sel = document.getElementById('fb-filter-cat')
+        if (sel) { sel.value = card.dataset.cat; _render() }
+        document.getElementById('fb-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }))
+    }
     window._refreshFeedbackBadge?.()
   }
 
