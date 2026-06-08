@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/main.css?v=202606082100" />
+  <link rel="stylesheet" href="/css/main.css?v=202606082200" />
   <script type="module">
     import { applyThemeForRole } from './js/theme.js'
     applyThemeForRole('student')
@@ -146,6 +146,9 @@
 
   <script type="module">
     import { supabase } from '/js/supabase.js'
+    import { blockPullToRefresh } from '/js/anti-pull-refresh.js'
+
+    blockPullToRefresh()
 
     ;(async () => {
     // ─── Redirect if already logged in ───────────────────────────────────────

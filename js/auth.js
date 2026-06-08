@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js'
 import { showToast, setButtonLoading, showPageLoader } from './ui.js'
+import { blockPullToRefresh } from './anti-pull-refresh.js'
 
 // ─── Check session on page load ───────────────────────────────────────────────
 async function checkSession() {
@@ -339,6 +340,7 @@ function _showRegMsg(text, type) {
 
 // ─── Bind events on DOM ready ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  blockPullToRefresh()
   checkSession()
   document.getElementById('login-form')?.addEventListener('submit', handleLogin)
   document.getElementById('register-form')?.addEventListener('submit', handleRegister)
