@@ -2124,6 +2124,9 @@ export async function renderSettings() {
       getDepartments().catch(() => []),
       getTeachersWithPositions().catch(() => []),
     ])
+    // ค่าเริ่มต้นโควต้า feedback — ให้ dropdown แสดงค่าที่ระบบใช้จริงตอนยังไม่เคยตั้งค่า
+    cfg.feedbackQuotaTeacher = cfg.feedbackQuotaTeacher || '5'
+    cfg.feedbackQuotaStudent = cfg.feedbackQuotaStudent || '3'
     // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
     const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HALTH','OCC','VOC',
                               'ISL','ARB','BM','BML','MLB']
@@ -2335,6 +2338,14 @@ export async function renderSettings() {
           { key:'contactFacebook', label:'Facebook Page URL',  type:'text', placeholder:'https://fb.com/...' },
           { key:'contactEmail',    label:'อีเมลติดต่อ',        type:'text', placeholder:'admin@school.ac.th' },
           { key:'contactOther',    label:'ช่องทางอื่น',        type:'text', placeholder:'แสดงข้อความตรงๆ เช่น Line OA: ชื่อ' },
+        ]),
+        section('โควต้าการส่ง Feedback ถึงแอดมิน (ต่อคน/เดือน)', [
+          { key:'feedbackQuotaTeacher', label:'จำนวนครั้งสูงสุด — ครู', type:'select',
+            options: Array.from({ length: 15 }, (_, i) => String(i + 1)),
+            hint:'ค่าเริ่มต้น 5 ครั้ง/เดือน — เมื่อครบโควต้า ระบบจะแนะนำให้ติดต่อผ่าน LINE OA ด้านบนแทน' },
+          { key:'feedbackQuotaStudent', label:'จำนวนครั้งสูงสุด — นักเรียน', type:'select',
+            options: Array.from({ length: 15 }, (_, i) => String(i + 1)),
+            hint:'ค่าเริ่มต้น 3 ครั้ง/เดือน' },
         ]),
       ].join('')
 

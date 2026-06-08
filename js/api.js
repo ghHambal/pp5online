@@ -318,8 +318,10 @@ export async function resetClassRandomizerPicks(classId) {
 }
 
 // ─── Feedback ถึงแอดมิน/ผู้พัฒนา (จากครู/นักเรียน) ────────────────────────────
-// จำกัดจำนวนการส่งต่อคนต่อเดือน กันสแปม/ส่งรัวๆ — ครูได้โควต้ามากกว่านักเรียนเล็กน้อย
-const FEEDBACK_MONTHLY_LIMIT = { teacher: 5, student: 3 }
+// จำกัดจำนวนการส่งต่อคนต่อเดือน กันสแปม/ส่งรัวๆ — ปรับได้จาก dashboard > ตั้งค่า > ติดต่อ
+// (system_config: feedbackQuotaTeacher / feedbackQuotaStudent), ถ้ายังไม่ตั้งค่าใช้ค่าเริ่มต้นนี้
+const FEEDBACK_MONTHLY_LIMIT_DEFAULT = { teacher: 5, student: 3 }
+const FEEDBACK_QUOTA_CFG_KEY = { teacher: 'feedbackQuotaTeacher', student: 'feedbackQuotaStudent' }
 
 function _startOfThisMonthIso() {
   const d = new Date()
@@ -328,7 +330,12 @@ function _startOfThisMonthIso() {
 }
 
 export async function getMyFeedbackQuota(profileId, senderRole) {
-  const limit = FEEDBACK_MONTHLY_LIMIT[senderRole] ?? FEEDBACK_MONTHLY_LIMIT.student
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const cfgVal = parseInt(cfg[FEEDBACK_QUOTA_CFG_KEY[senderRole] ?? FEEDBACK_QUOTA_CFG_KEY.student], 10)
+  const limit = (Number.isFinite(cfgVal) && cfgVal > 0)
+    ? cfgVal
+    : (FEEDBACK_MONTHLY_LIMIT_DEFAULT[senderRole] ?? FEEDBACK_MONTHLY_LIMIT_DEFAULT.student)
+
   const { count, error } = await supabase.from('app_feedback')
     .select('id', { count: 'exact', head: true })
     .eq('profile_id', profileId)
