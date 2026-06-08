@@ -19,6 +19,8 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
+import { APP_VERSION } from './version.js'
+import { blockPullToRefresh } from './anti-pull-refresh.js'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -641,9 +643,14 @@ window._adminViewSchedule = async (teacherId, teacherName) => {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  blockPullToRefresh()
+
   const session = await requireAuth()
   if (!session) return
   await applyThemeForRole('admin')
+
+  const verEl = document.getElementById('app-version')
+  if (verEl) verEl.textContent = `v${APP_VERSION}`
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 

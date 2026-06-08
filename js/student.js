@@ -12,6 +12,7 @@ import {
 import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
 import { applyThemeForRole } from './theme.js'
 import { injectFeedbackWidget } from './ui.js'
+import { blockPullToRefresh } from './anti-pull-refresh.js'
 
 let _student = null
 let _activeClassId = null
@@ -20,6 +21,8 @@ let _activeScoreTab = 'life'
 
 // ─── Auth Guard ───────────────────────────────────────────────────────────────
 async function init() {
+  blockPullToRefresh()
+
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) { window.location.replace('student-login.html'); return }
 

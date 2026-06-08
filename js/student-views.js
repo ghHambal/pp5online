@@ -9,6 +9,7 @@ import {
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
+import { APP_VERSION } from './version.js'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
@@ -2169,6 +2170,11 @@ export async function renderStudentProfile(student, onLogout) {
              shadow-md shadow-red-200/60 transition flex items-center justify-center gap-2">
       🚪 ออกจากระบบ
     </button>
+
+    <p class="text-center text-[10px] text-gray-300 mt-4 leading-relaxed">
+      พัฒนาโดย <span class="text-gray-400 font-medium">KruHambalWaji</span><br/>
+      ปพ.5 ออนไลน์ © 2026 <span class="text-gray-400">v${APP_VERSION}</span>
+    </p>
   `)
 
   document.getElementById('stu-logout-btn').addEventListener('click', () => {

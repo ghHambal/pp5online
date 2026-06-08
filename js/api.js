@@ -222,7 +222,7 @@ export async function deleteStudent(id) {
 export async function getHomeroomTeachers(academicYear, semester) {
   let q = supabase
     .from('homeroom_teachers')
-    .select('id, main_room, category, academic_year, semester, teacher_id, teachers(full_name, teacher_code)')
+    .select('id, main_room, category, academic_year, semester, teacher_id, teachers(full_name, teacher_code, phone)')
     .order('main_room')
   if (academicYear) q = q.eq('academic_year', academicYear)
   if (semester)     q = q.eq('semester', semester)
@@ -327,7 +327,7 @@ export async function submitAppFeedback({ profileId, senderRole, senderName, cat
 
 export async function getAllAppFeedback() {
   const { data, error } = await supabase.from('app_feedback')
-    .select('id, profile_id, sender_role, sender_name, category, message, is_read, created_at')
+    .select('id, profile_id, sender_role, sender_name, category, message, is_read, status, admin_reply, replied_at, created_at')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
@@ -336,6 +336,13 @@ export async function getAllAppFeedback() {
 export async function setFeedbackRead(id, isRead) {
   const { error } = await supabase.from('app_feedback')
     .update({ is_read: isRead })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function setFeedbackStatusReply(id, { status, adminReply }) {
+  const { error } = await supabase.from('app_feedback')
+    .update({ status, admin_reply: adminReply ?? null, replied_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
 }

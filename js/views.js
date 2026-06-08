@@ -27,7 +27,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
          autoEnrollStudentsByRoom,
-         getAllAppFeedback, setFeedbackRead, deleteAppFeedback } from './api.js'
+         getAllAppFeedback, setFeedbackRead, setFeedbackStatusReply, deleteAppFeedback } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -4057,6 +4057,10 @@ export async function renderHomeroom() {
       <div>
         <p class="text-xs text-gray-400 mt-0.5">ภาคเรียน ${curSem}/${curYear}</p>
       </div>
+      <button id="hr-export-csv"
+        class="text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition">
+        ⬇️ ดาวน์โหลด CSV
+      </button>
     </div>
 
     <div class="flex gap-2 mb-4">
@@ -4244,6 +4248,32 @@ export async function renderHomeroom() {
       activeCategory = btn.dataset.hrTab
       await _renderTable()
     })
+  })
+
+  document.getElementById('hr-export-csv')?.addEventListener('click', async () => {
+    try {
+      const rows = await getHomeroomTeachers(curYear, curSem)
+      const assigned = _assignmentMap(rows)
+      const rooms = activeCategory === 'สามัญ' ? samaiRooms : religionRooms
+      const head = ['ห้อง', 'ชื่อสกุลครูที่ปรึกษา', 'เบอร์ติดต่อ']
+      const body = rooms.map(room => {
+        const r = assigned[room]
+        return [room, r?.teachers?.full_name ?? '', r?.teachers?.phone ?? '']
+      })
+      const csv = '﻿' + [head, ...body]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ครูที่ปรึกษา-${activeCategory}-${curSem}-${curYear}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      showToast('ดาวน์โหลด CSV แล้ว ✅', 'success')
+    } catch (err) { showToast('ดาวน์โหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
   })
 }
 
@@ -8974,6 +9004,13 @@ export async function renderFeedbackAdmin() {
     problem:    '🐞 แจ้งปัญหา / ข้อบกพร่อง',
     other:      '💬 อื่นๆ',
   }
+  const ACTIONABLE_CATS = ['suggestion', 'problem']
+  const STATUS_OPTS = [
+    { value: 'pending',     label: '🕐 รอดำเนินการ',  cls: 'bg-gray-100 text-gray-600' },
+    { value: 'in_progress', label: '🔧 กำลังแก้ไข',   cls: 'bg-amber-100 text-amber-700' },
+    { value: 'resolved',    label: '✅ แก้ไขแล้ว',    cls: 'bg-emerald-100 text-emerald-700' },
+  ]
+  const STATUS_BADGE = Object.fromEntries(STATUS_OPTS.map(s => [s.value, s]))
 
   setContent(`
   <div class="max-w-4xl mx-auto animate-fade space-y-5">
@@ -9069,7 +9106,10 @@ export async function renderFeedbackAdmin() {
           </div>
           ${!f.is_read ? `<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex-shrink-0">ใหม่</span>` : ''}
         </div>
-        <p class="mt-2 text-xs font-medium text-gray-500">${CATEGORY_LABEL[f.category] ?? f.category}</p>
+        <div class="mt-2 flex items-center gap-2 flex-wrap">
+          <p class="text-xs font-medium text-gray-500">${CATEGORY_LABEL[f.category] ?? f.category}</p>
+          ${ACTIONABLE_CATS.includes(f.category) ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_BADGE[f.status]?.cls ?? 'bg-gray-100 text-gray-600'}">${STATUS_BADGE[f.status]?.label ?? f.status}</span>` : ''}
+        </div>
         <p class="mt-1 text-sm text-gray-700 whitespace-pre-wrap">${_esc(f.message)}</p>
         <div class="mt-3 flex items-center gap-2">
           <button class="fb-toggle-read px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition" data-id="${f.id}" data-read="${f.is_read}">
@@ -9079,6 +9119,21 @@ export async function renderFeedbackAdmin() {
             🗑️ ลบ
           </button>
         </div>
+        ${ACTIONABLE_CATS.includes(f.category) ? `
+        <div class="mt-3 pt-3 border-t border-gray-100 space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-semibold text-gray-500 flex-shrink-0">เปลี่ยนสถานะ:</span>
+            <select class="fb-status-sel border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none" data-id="${f.id}">
+              ${STATUS_OPTS.map(s => `<option value="${s.value}" ${f.status === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
+            </select>
+          </div>
+          <textarea class="fb-reply-input w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200" rows="2"
+            placeholder="พิมพ์คำตอบกลับถึงผู้ส่ง (ไม่บังคับ)..." data-id="${f.id}">${_esc(f.admin_reply || '')}</textarea>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] text-gray-400">${f.replied_at ? `ตอบล่าสุด ${fmtDate(f.replied_at)}` : ''}</span>
+            <button class="fb-save-status px-3 py-1.5 rounded-xl text-white text-xs font-semibold transition" style="background:linear-gradient(135deg,#db2777,#9d174d);" data-id="${f.id}">💾 บันทึก</button>
+          </div>
+        </div>` : ''}
       </div>`).join('')
 
     box.querySelectorAll('.fb-toggle-read').forEach(btn => btn.addEventListener('click', async () => {
@@ -9100,6 +9155,21 @@ export async function renderFeedbackAdmin() {
       _all = _all.filter(x => x.id !== id)
       showToast('ลบแล้ว', 'success')
       _updateStats(); _render()
+    }))
+
+    box.querySelectorAll('.fb-save-status').forEach(btn => btn.addEventListener('click', async () => {
+      const id     = parseInt(btn.dataset.id)
+      const card   = btn.closest('.fb-card')
+      const status = card.querySelector('.fb-status-sel')?.value
+      const reply  = card.querySelector('.fb-reply-input')?.value.trim()
+      btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
+      try {
+        await setFeedbackStatusReply(id, { status, adminReply: reply })
+      } catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled = false; btn.textContent = '💾 บันทึก'; return }
+      const item = _all.find(x => x.id === id)
+      if (item) { item.status = status; item.admin_reply = reply || null; item.replied_at = new Date().toISOString() }
+      showToast('บันทึกสถานะ/คำตอบแล้ว', 'success')
+      _render()
     }))
   }
 

@@ -16,6 +16,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
+import { APP_VERSION } from './version.js'
+import { blockPullToRefresh } from './anti-pull-refresh.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -2500,6 +2502,8 @@ window._openScheduleLinkModal = async (classId) => {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  blockPullToRefresh()
+
   // ─── Impersonation mode ─────────────────────────────────────────────────────
   const _impRaw = sessionStorage.getItem('impersonated_teacher')
   if (_impRaw) {
@@ -2539,6 +2543,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const session = await requireAuth()
   if (!session) return
+
+  const verEl = document.getElementById('app-version')
+  if (verEl) verEl.textContent = `v${APP_VERSION}`
 
   await loadTeacherInfo(session.user.id)
   _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/main.css" />
+  <link rel="stylesheet" href="/css/main.css?v=202606081500" />
 </head>
 
 <body class="bg-gray-50 flex flex-col h-screen overflow-hidden">
@@ -34,6 +34,13 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <button id="btn-refresh"
+          onclick="window.location.reload()"
+          title="รีเฟรชหน้านี้"
+          class="w-8 h-8 flex items-center justify-center rounded-full text-gray-400
+                 hover:bg-emerald-50 hover:text-emerald-600 transition text-base">
+          ↺
+        </button>
         <div id="stu-avatar"
           class="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-400
                  flex items-center justify-center font-bold text-sm text-white overflow-hidden cursor-pointer"
@@ -76,6 +83,6 @@
     </div>
   </nav>
 
-  <script type="module" src="/js/student.js"></script>
+  <script type="module" src="/js/student.js?v=202606081500"></script>
 </body>
 </html>
