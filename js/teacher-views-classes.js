@@ -1331,7 +1331,7 @@ async function _openRandomPickerModal(classId, cls, students) {
 
   const m = document.createElement('div')
   m.id = 'random-picker-modal'
-  m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50'
+  m.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50'
   m.innerHTML = `
     <style>
       @keyframes rp-confetti-fall { to { transform: translateY(320px) rotate(540deg); opacity: 0; } }
@@ -1411,8 +1411,11 @@ async function _openRandomPickerModal(classId, cls, students) {
         <button id="rp-reset" class="flex-shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50" title="รีเซ็ตการสุ่ม">🔄 รีเซ็ต</button>
       </div>
       ${currentMode !== 'none' ? `<p id="rp-counter" class="text-[11px] text-gray-400 mb-3">สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${remaining.length === 0 ? ' — ครบทุกคนแล้ว!' : ''}</p>` : ''}
-      <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-8 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
-        <p id="rp-hint" class="text-xs text-gray-400 mb-2">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
+      <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-6 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
+        <p id="rp-hint" class="text-xs text-gray-400 mb-3">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
+        <div id="rp-avatar" class="mx-auto mb-3 w-20 h-20 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center text-3xl text-gray-400" style="display:none!important;">
+          <span id="rp-avatar-fallback" class="text-2xl font-bold text-gray-400">?</span>
+        </div>
         <p id="rp-name" class="text-2xl sm:text-3xl font-extrabold text-gray-700 truncate px-2">—</p>
         <p id="rp-code" class="text-xs text-gray-400 mt-1 font-mono"></p>
       </div>
@@ -1438,11 +1441,13 @@ async function _openRandomPickerModal(classId, cls, students) {
     }
 
     isSpinning = true
-    const goBtn  = body.querySelector('#rp-go')
-    const stage  = body.querySelector('#rp-stage')
-    const nameEl = body.querySelector('#rp-name')
-    const codeEl = body.querySelector('#rp-code')
-    const hintEl = body.querySelector('#rp-hint')
+    const goBtn     = body.querySelector('#rp-go')
+    const stage     = body.querySelector('#rp-stage')
+    const nameEl    = body.querySelector('#rp-name')
+    const codeEl    = body.querySelector('#rp-code')
+    const hintEl    = body.querySelector('#rp-hint')
+    const avatarEl  = body.querySelector('#rp-avatar')
+    const avatarFb  = body.querySelector('#rp-avatar-fallback')
     goBtn.disabled = true
     goBtn.textContent = '🎰 กำลังสุ่ม...'
     hintEl.textContent = 'กำลังสุ่ม...'
@@ -1450,6 +1455,14 @@ async function _openRandomPickerModal(classId, cls, students) {
     stage.style.borderStyle  = 'dashed'
     stage.style.borderColor  = '#fbbf24'
     stage.style.boxShadow    = 'none'
+    avatarEl.style.display   = 'none'
+
+    const _showAvatar = (s) => {
+      avatarEl.style.removeProperty('display')
+      avatarEl.innerHTML = s.image_url
+        ? `<img src="${s.image_url}" class="w-full h-full object-cover" />`
+        : `<span class="text-2xl font-bold text-gray-400">${(s.full_name ?? '?').charAt(0)}</span>`
+    }
 
     const target = pool[Math.floor(Math.random() * pool.length)]
     let step = 0
@@ -1470,6 +1483,7 @@ async function _openRandomPickerModal(classId, cls, students) {
     const finish = async () => {
       nameEl.textContent = target.full_name
       codeEl.textContent = target.student_code ? `เลขที่ ${target.student_code}` : ''
+      _showAvatar(target)
       nameEl.classList.add('rp-pop')
       stage.style.borderStyle = 'solid'
       stage.style.borderColor = '#10b981'
@@ -1591,8 +1605,15 @@ async function _openRandomPickerModal(classId, cls, students) {
               <div class="px-3 py-2 text-white text-sm font-bold" style="background:${colors[gi % colors.length]}">
                 กลุ่มที่ ${gi + 1} <span class="font-normal text-white/80 text-xs">(${g.length} คน)</span>
               </div>
-              <div class="p-3 space-y-1">
-                ${g.map(s => `<p class="text-sm text-gray-700 truncate">· ${_htmlEsc(s.full_name)} <span class="text-gray-400 text-xs font-mono">${_htmlEsc(s.student_code ?? '')}</span></p>`).join('')}
+              <div class="p-3 space-y-1.5">
+                ${g.map(s => `
+                <div class="flex items-center gap-2 min-w-0">
+                  ${s.image_url
+                    ? `<img src="${_htmlEsc(s.image_url)}" class="w-7 h-7 rounded-full object-cover flex-shrink-0" />`
+                    : `<div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold" style="background:${colors[gi % colors.length]}">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
+                  <span class="text-sm text-gray-700 truncate">${_htmlEsc(s.full_name)}</span>
+                  <span class="text-gray-400 text-xs font-mono flex-shrink-0">${_htmlEsc(s.student_code ?? '')}</span>
+                </div>`).join('')}
               </div>
             </div>`
             gi++
