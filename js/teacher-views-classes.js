@@ -792,7 +792,7 @@ export async function renderMyClasses(teacher) {
       const defaultEmail = teacher?.login_email || teacher?.auth_email || ''
       const m = document.createElement('div')
       m.id = 'class-copy-modal'
-      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+      m.className = 'fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40'
       m.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
         <h3 class="font-bold text-gray-800 text-base mb-1">🔗 ทำสำเนาชีทสำหรับรายวิชานี้</h3>
         <p class="text-xs text-gray-400 mb-4">${_htmlEsc(tpl.label || '')} · ${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
@@ -882,7 +882,7 @@ export async function renderMyClasses(teacher) {
       const sheetUrl = _sheetUrl(cls.google_sheet_id)
       const m = document.createElement('div')
       m.id = 'sheet-tools-modal'
-      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+      m.className = 'fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40'
       m.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
         <h3 class="font-bold text-gray-800 text-base mb-1">จัดการ Google Sheet</h3>
         <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.master_subjects?.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
@@ -933,7 +933,7 @@ export async function renderMyClasses(teacher) {
       document.getElementById('sync-modal')?.remove()
       const m = document.createElement('div')
       m.id = 'sync-modal'
-      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40'
+      m.className = 'fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/40'
       m.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
           <h3 class="font-bold text-gray-800 text-base mb-1">🔗 Sync ไปยัง Google Sheet</h3>

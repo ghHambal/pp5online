@@ -9343,7 +9343,7 @@ export async function renderWorkCalendar(teacher) {
   </div>
 
   <!-- Modal สร้าง/แก้ไข event -->
-  <div id="wcal-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div id="wcal-modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="wcal-modal-backdrop"></div>
     <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
       <div class="p-6">

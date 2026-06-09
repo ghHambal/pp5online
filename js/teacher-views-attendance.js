@@ -1784,7 +1784,7 @@ function _openPrayerWeekModal(teacher, students, prayMap, week, room, allDays, t
 
   const modal = document.createElement('div')
   modal.id = 'prayer-week-modal'
-  modal.className = 'fixed inset-0 z-50 flex flex-col bg-white'
+  modal.className = 'fixed inset-0 z-[80] flex flex-col bg-white'
   modal.innerHTML = `
     <div class="flex items-center gap-2 px-4 py-3 border-b bg-emerald-700 text-white flex-shrink-0">
       <button id="pw-close" class="text-white/70 hover:text-white text-xl leading-none">✕</button>

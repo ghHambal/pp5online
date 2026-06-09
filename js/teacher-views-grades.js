@@ -432,7 +432,7 @@ export async function renderGradesGrid(teacher, classData) {
       }
       const modal=document.createElement('div')
       modal.id='sg-detail-modal'
-      modal.className='fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'
+      modal.className='fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
       modal.innerHTML=`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col">
         <div class="flex items-center gap-3 p-4 border-b flex-shrink-0">
           ${s.image_url?`<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover"/>`
@@ -2023,7 +2023,7 @@ export async function renderRequests(teacher) {
     document.getElementById('req-modal')?.remove()
     const m = document.createElement('div')
     m.id = 'req-modal'
-    m.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'
+    m.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4'
     m.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-fade">
         <div class="px-5 py-4 border-b border-gray-100">

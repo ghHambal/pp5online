@@ -410,7 +410,7 @@ window._openReadingScorePicker = (roomsJson) => {
   document.getElementById('rsp-modal')?.remove()
   const modal = document.createElement('div')
   modal.id = 'rsp-modal'
-  modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4'
+  modal.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4'
   modal.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-fade">
       <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
