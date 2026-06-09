@@ -2135,7 +2135,7 @@ export async function renderSettings() {
     cfg.feedbackQuotaTeacher = cfg.feedbackQuotaTeacher || '5'
     cfg.feedbackQuotaStudent = cfg.feedbackQuotaStudent || '3'
     // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
-    const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HALTH','OCC','VOC',
+    const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HEALTH','OCC','VOC',
                               'ISL','ARB','BM','BML','MLB']
     const deptCodes = [...new Set([
       ...KNOWN_DEPT_CODES,
