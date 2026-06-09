@@ -326,7 +326,8 @@ export function _generateSessions(classData, credit, dowPattern = null) {
 
 export function _resolveGeminiKey(cfg, teacher) {
   const dept = teacher?.dept ?? ''
-  return (dept && cfg[`geminiKey_${dept}`]) || cfg.geminiApiKey || ''
+  return (dept && cfg[`geminiKey_${dept}`])
+    || cfg.geminiApiKey || cfg.geminiApiKey2 || cfg.geminiApiKey3 || cfg.geminiApiKey4 || cfg.geminiApiKey5 || ''
 }
 
 export function _transparentEdgeDarkLogo(url) {

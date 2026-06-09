@@ -2697,9 +2697,13 @@ export async function renderSettings() {
         ]),
         section('AI วิเคราะห์ตาราง (Gemini)', [
           { key:'scheduleVisionEnabled', label:'เปิดฟีเจอร์วิเคราะห์รูปตาราง', type:'toggle' },
-          { key:'geminiApiKey',   label:'Gemini API Key (กลาง / fallback)',  type:'password',
-            hint:'ใช้เมื่อกลุ่มสาระไม่มี key ของตัวเอง' },
-          { key:'geminiModel',    label:'Gemini Model',    type:'text', placeholder:'gemini-1.5-flash' },
+          { key:'geminiApiKey',  label:'Fallback Key ลำดับ 1 (หลัก)', type:'password',
+            hint:'ใช้เมื่อกลุ่มสาระไม่มี key ของตัวเอง — ถ้าถูกระงับระบบจะสลับไป Key ลำดับถัดไปอัตโนมัติ' },
+          { key:'geminiApiKey2', label:'Fallback Key ลำดับ 2', type:'password' },
+          { key:'geminiApiKey3', label:'Fallback Key ลำดับ 3', type:'password' },
+          { key:'geminiApiKey4', label:'Fallback Key ลำดับ 4', type:'password' },
+          { key:'geminiApiKey5', label:'Fallback Key ลำดับ 5', type:'password' },
+          { key:'geminiModel',   label:'Gemini Model', type:'text', placeholder:'gemini-2.5-flash' },
         ]),
         section('Gemini API Key แยกต่อกลุ่มสาระ', deptCodes.length
           ? deptCodes.map(code => ({
