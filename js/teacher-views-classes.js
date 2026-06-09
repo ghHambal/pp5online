@@ -1607,9 +1607,9 @@ async function _openRandomPickerModal(classId, cls, students) {
       if (step < 36) { delay = Math.min(delay * 1.10, 520); setTimeout(tick, delay) }
       else {
         activeTile?.classList.remove('rp-active'); targetTile.classList.add('rp-winner')
-        stage.style.borderStyle = 'solid'; stage.style.borderColor = '#10b981'; stage.style.boxShadow = '0 0 0 4px rgba(16,185,129,.15), 0 0 24px rgba(16,185,129,.2)'
         if (hintEl) hintEl.textContent = `🎉 ที่ ${target.seat_no ?? ''} ${target.full_name}`
-        targetTile.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); _fireConfetti(stage); onFinish()
+        targetTile.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        setTimeout(() => { _showWinnerCard(stage, target); onFinish() }, 900)
       }
     }
     tick()
