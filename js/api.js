@@ -392,6 +392,16 @@ export async function deleteAppFeedback(id) {
   if (error) throw error
 }
 
+export async function getMyFeedbackHistory(profileId) {
+  const { data, error } = await supabase.from('app_feedback')
+    .select('id, category, message, is_read, status, admin_reply, replied_at, created_at')
+    .eq('profile_id', profileId)
+    .order('created_at', { ascending: false })
+    .limit(30)
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getStudentByCode(studentCode) {
   const code = String(studentCode ?? '').trim()
   if (!code) return null

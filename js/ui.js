@@ -89,6 +89,17 @@ export function injectFeedbackWidget({ profileId, role, name }) {
   fab.addEventListener('click', () => _openFeedbackModal({ profileId, role, name }))
 }
 
+const _FB_STATUS = {
+  label: (item) => {
+    if (item.admin_reply) return { icon: '💬', text: 'มีการตอบกลับ', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
+    if (item.status === 'resolved')     return { icon: '✅', text: 'แก้ไขแล้ว',     cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
+    if (item.status === 'acknowledged') return { icon: '👍', text: 'รับทราบแล้ว',   cls: 'text-blue-700 bg-blue-50 border-blue-200' }
+    if (item.is_read)                   return { icon: '👀', text: 'อ่านแล้ว',       cls: 'text-indigo-700 bg-indigo-50 border-indigo-200' }
+    return                                     { icon: '⏳', text: 'รอรับเรื่อง',    cls: 'text-gray-500 bg-gray-50 border-gray-200' }
+  },
+}
+const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', other:'💬' }
+
 function _openFeedbackModal({ profileId, role, name }) {
   document.getElementById('feedback-modal')?.remove()
 
@@ -96,14 +107,43 @@ function _openFeedbackModal({ profileId, role, name }) {
   m.id = 'feedback-modal'
   m.className = 'fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50'
   m.innerHTML = `
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-      <div style="background:linear-gradient(135deg,#db2777,#9d174d);" class="px-5 py-4 flex items-center justify-between">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] flex flex-col">
+      <div style="background:linear-gradient(135deg,#db2777,#9d174d);" class="px-5 py-4 flex items-center justify-between flex-shrink-0">
         <div class="min-w-0">
-          <h3 class="text-white font-bold text-base">💬 ส่งความคิดเห็นถึงแอดมิน</h3>
+          <h3 class="text-white font-bold text-base">💬 ความคิดเห็นถึงแอดมิน</h3>
           <p class="text-white/80 text-xs mt-0.5">เสียงของคุณจะถูกส่งตรงถึงผู้ดูแล/ผู้พัฒนาระบบ</p>
         </div>
         <button id="fb-close" class="text-white/90 hover:text-white text-3xl leading-none px-2 flex-shrink-0">&times;</button>
       </div>
+      <div class="flex border-b border-gray-100 flex-shrink-0">
+        <button class="fb-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="send">📨 ส่งใหม่</button>
+        <button class="fb-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="history">📋 ประวัติของฉัน</button>
+      </div>
+      <div id="fb-body" class="overflow-y-auto flex-1"></div>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#fb-close').addEventListener('click', () => m.remove())
+
+  const body   = m.querySelector('#fb-body')
+  const tabs   = [...m.querySelectorAll('.fb-tab')]
+  let activeTab = 'send'
+
+  const setTab = (tab) => {
+    activeTab = tab
+    tabs.forEach(t => {
+      const on = t.dataset.tab === tab
+      t.className = `fb-tab flex-1 py-2.5 text-sm font-semibold transition ${on ? 'text-white' : 'text-gray-500 hover:text-gray-700'}`
+      t.style.background = on ? 'linear-gradient(135deg,#db2777,#9d174d)' : ''
+    })
+    if (tab === 'send') renderSendTab()
+    else renderHistoryTab()
+  }
+  tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)))
+
+  // ── Tab: ส่งใหม่ ────────────────────────────────────────────────────────────
+  function renderSendTab() {
+    body.innerHTML = `
       <div class="p-5 space-y-3">
         <div>
           <p class="text-xs font-semibold text-gray-600 mb-1.5">หัวข้อ</p>
@@ -123,78 +163,105 @@ function _openFeedbackModal({ profileId, role, name }) {
         <div id="fb-limit-notice" class="hidden text-[11px] leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"></div>
         <button id="fb-submit" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition active:scale-[0.98]"
           style="background:linear-gradient(135deg,#db2777,#9d174d);">📨 ส่งความคิดเห็น</button>
-      </div>
-    </div>`
-  document.body.appendChild(m)
-  m.addEventListener('click', e => { if (e.target === m) m.remove() })
-  m.querySelector('#fb-close').addEventListener('click', () => m.remove())
+      </div>`
 
-  let category = FEEDBACK_CATEGORIES[0].value
-  const catBtns = [...m.querySelectorAll('.fb-cat-btn')]
-  catBtns.forEach(b => b.addEventListener('click', () => {
-    category = b.dataset.cat
-    catBtns.forEach(x => {
-      const on = x === b
-      x.className = `fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left ${on ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
-    })
-  }))
+    let category = FEEDBACK_CATEGORIES[0].value
+    const catBtns = [...body.querySelectorAll('.fb-cat-btn')]
+    catBtns.forEach(b => b.addEventListener('click', () => {
+      category = b.dataset.cat
+      catBtns.forEach(x => {
+        const on = x === b
+        x.className = `fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left ${on ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
+      })
+    }))
 
-  // ตรวจโควต้าการส่งต่อเดือน — แสดงให้เห็นก่อนกดส่ง และล็อกปุ่มถ้าครบโควต้าแล้ว
-  ;(async () => {
-    const quotaEl  = m.querySelector('#fb-quota-info')
-    const noticeEl = m.querySelector('#fb-limit-notice')
-    const submitBtn = m.querySelector('#fb-submit')
-    try {
-      const { getMyFeedbackQuota, getSystemConfig } = await import('./api.js')
-      const { used, limit, remaining } = await getMyFeedbackQuota(profileId, role)
-      if (quotaEl) {
-        quotaEl.textContent = `โควต้าส่งความคิดเห็นเดือนนี้: ใช้ไป ${used}/${limit} ครั้ง (เหลืออีก ${remaining} ครั้ง)`
-        quotaEl.className = `text-[11px] font-medium ${remaining <= 0 ? 'text-rose-500' : remaining === 1 ? 'text-amber-500' : 'text-gray-400'}`
-      }
-      if (remaining <= 0 && submitBtn) {
-        submitBtn.disabled = true
-        submitBtn.classList.add('opacity-50', 'cursor-not-allowed')
-        if (noticeEl) {
-          if (role === 'teacher') {
-            const cfg = await getSystemConfig().catch(() => ({}))
-            const lineHref = cfg.contactLine
-              ? (cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}`)
-              : null
-            noticeEl.innerHTML = lineHref
-              ? `⚠️ คุณส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว หากเรื่องเร่งด่วน <a href="${_fbEsc(lineHref)}" target="_blank" rel="noopener" class="font-semibold underline">คลิกที่นี่เพื่อแจ้งผ่าน LINE</a> แทนได้เลยครับ`
-              : `⚠️ คุณส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว กรุณารอจนถึงเดือนถัดไปนะครับ`
-          } else {
-            noticeEl.textContent = '⚠️ คุณส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว กรุณารอจนถึงเดือนถัดไป หรือแจ้งผ่านครูประจำชั้น/ครูที่ปรึกษาแทนนะครับ'
-          }
-          noticeEl.classList.remove('hidden')
+    ;(async () => {
+      const quotaEl   = body.querySelector('#fb-quota-info')
+      const noticeEl  = body.querySelector('#fb-limit-notice')
+      const submitBtn = body.querySelector('#fb-submit')
+      try {
+        const { getMyFeedbackQuota, getSystemConfig } = await import('./api.js')
+        const { used, limit, remaining } = await getMyFeedbackQuota(profileId, role)
+        if (quotaEl) {
+          quotaEl.textContent = `โควต้าเดือนนี้: ใช้ไป ${used}/${limit} ครั้ง (เหลืออีก ${remaining} ครั้ง)`
+          quotaEl.className = `text-[11px] font-medium ${remaining <= 0 ? 'text-rose-500' : remaining === 1 ? 'text-amber-500' : 'text-gray-400'}`
         }
-      }
-    } catch {
-      if (quotaEl) quotaEl.textContent = ''
-    }
-  })()
+        if (remaining <= 0 && submitBtn) {
+          submitBtn.disabled = true; submitBtn.classList.add('opacity-50', 'cursor-not-allowed')
+          if (noticeEl) {
+            if (role === 'teacher') {
+              const cfg = await getSystemConfig().catch(() => ({}))
+              const lineHref = cfg.contactLine ? (cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}`) : null
+              noticeEl.innerHTML = lineHref
+                ? `⚠️ ครบโควต้าเดือนนี้แล้ว หากเรื่องเร่งด่วน <a href="${_fbEsc(lineHref)}" target="_blank" rel="noopener" class="font-semibold underline">แจ้งผ่าน LINE</a> แทนได้เลยครับ`
+                : `⚠️ ครบโควต้าเดือนนี้แล้ว กรุณารอเดือนถัดไปนะครับ`
+            } else {
+              noticeEl.textContent = '⚠️ ครบโควต้าเดือนนี้แล้ว กรุณารอเดือนถัดไป หรือแจ้งผ่านครูประจำชั้น'
+            }
+            noticeEl.classList.remove('hidden')
+          }
+        }
+      } catch { if (quotaEl) quotaEl.textContent = '' }
+    })()
 
-  m.querySelector('#fb-submit').addEventListener('click', async () => {
-    const message = m.querySelector('#fb-message').value.trim()
-    if (!message) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'warning'); return }
-    const btn = m.querySelector('#fb-submit')
-    setButtonLoading(btn, true)
-    try {
-      const { submitAppFeedback } = await import('./api.js')
-      await submitAppFeedback({ profileId, senderRole: role, senderName: name, category, message })
-      showToast('ส่งความคิดเห็นเรียบร้อยแล้ว ขอบคุณครับ 🙏', 'success')
-      m.remove()
-    } catch (err) {
-      setButtonLoading(btn, false, '📨 ส่งความคิดเห็น')
-      if (err?.code === 'FEEDBACK_LIMIT_REACHED') {
-        showToast(`ส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
-        btn.disabled = true
-        btn.classList.add('opacity-50', 'cursor-not-allowed')
-      } else {
-        showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
+    body.querySelector('#fb-submit').addEventListener('click', async () => {
+      const message = body.querySelector('#fb-message').value.trim()
+      if (!message) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'warning'); return }
+      const btn = body.querySelector('#fb-submit')
+      setButtonLoading(btn, true)
+      try {
+        const { submitAppFeedback } = await import('./api.js')
+        await submitAppFeedback({ profileId, senderRole: role, senderName: name, category, message })
+        showToast('ส่งความคิดเห็นเรียบร้อยแล้ว ขอบคุณครับ 🙏', 'success')
+        setTab('history')
+      } catch (err) {
+        setButtonLoading(btn, false, '📨 ส่งความคิดเห็น')
+        if (err?.code === 'FEEDBACK_LIMIT_REACHED') {
+          showToast(`ส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
+          btn.disabled = true; btn.classList.add('opacity-50', 'cursor-not-allowed')
+        } else { showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error') }
       }
+    })
+  }
+
+  // ── Tab: ประวัติ ─────────────────────────────────────────────────────────────
+  async function renderHistoryTab() {
+    body.innerHTML = `<div class="p-5 text-center text-gray-400 text-sm py-10">กำลังโหลด...</div>`
+    try {
+      const { getMyFeedbackHistory } = await import('./api.js')
+      const items = await getMyFeedbackHistory(profileId)
+      if (!items.length) {
+        body.innerHTML = `<div class="p-8 text-center"><div class="text-4xl mb-3">📭</div><p class="text-gray-400 text-sm">ยังไม่มีประวัติการส่งความคิดเห็น</p></div>`
+        return
+      }
+      const _fmtDate = (iso) => {
+        const d = new Date(iso)
+        return d.toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'2-digit' }) + ' ' + d.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' })
+      }
+      body.innerHTML = `<div class="p-3 space-y-2.5">` + items.map(item => {
+        const st  = _FB_STATUS.label(item)
+        const cat = _FB_CAT_ICON[item.category] ?? '💬'
+        return `
+          <div class="rounded-2xl border border-gray-100 bg-gray-50/60 p-3.5 space-y-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="text-xs font-semibold text-gray-600">${cat} ${FEEDBACK_CATEGORIES.find(c => c.value === item.category)?.label?.replace(/^.\s/,'') ?? item.category}</span>
+              <span class="text-[10px] border rounded-full px-2 py-0.5 font-semibold ${st.cls}">${st.icon} ${st.text}</span>
+            </div>
+            <p class="text-sm text-gray-700 leading-relaxed line-clamp-3">${_fbEsc(item.message)}</p>
+            <p class="text-[10px] text-gray-400">${_fmtDate(item.created_at)}</p>
+            ${item.admin_reply ? `
+            <div class="bg-white border border-emerald-100 rounded-xl px-3 py-2 mt-1">
+              <p class="text-[10px] font-semibold text-emerald-700 mb-0.5">💬 แอดมินตอบกลับ</p>
+              <p class="text-xs text-gray-700 leading-relaxed">${_fbEsc(item.admin_reply)}</p>
+            </div>` : ''}
+          </div>`
+      }).join('') + `</div>`
+    } catch {
+      body.innerHTML = `<div class="p-5 text-center text-rose-400 text-sm">โหลดข้อมูลไม่สำเร็จ</div>`
     }
-  })
+  }
+
+  setTab('send')
 }
 
 // ─── Searchable Teacher Select ────────────────────────────────────────────────
