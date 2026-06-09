@@ -1413,7 +1413,7 @@ async function _openRandomPickerModal(classId, cls, students) {
       ${currentMode !== 'none' ? `<p id="rp-counter" class="text-[11px] text-gray-400 mb-3">สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${remaining.length === 0 ? ' — ครบทุกคนแล้ว!' : ''}</p>` : ''}
       <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-6 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
         <p id="rp-hint" class="text-xs text-gray-400 mb-3">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
-        <div id="rp-avatar" class="mx-auto mb-3 w-20 h-20 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center text-3xl text-gray-400" style="display:none!important;">
+        <div id="rp-avatar" class="mx-auto mb-3 w-20 h-20 rounded-full overflow-hidden bg-gray-200 items-center justify-center text-3xl text-gray-400" style="display:none;opacity:0;">
           <span id="rp-avatar-fallback" class="text-2xl font-bold text-gray-400">?</span>
         </div>
         <p id="rp-name" class="text-2xl sm:text-3xl font-extrabold text-gray-700 truncate px-2">—</p>
@@ -1458,6 +1458,7 @@ async function _openRandomPickerModal(classId, cls, students) {
     stage.style.boxShadow    = 'none'
 
     const _showAvatar = (s, spinning = false) => {
+      avatarEl.style.display = 'flex'
       avatarEl.style.transition = spinning ? 'opacity 0.06s ease' : 'opacity 0.3s ease'
       avatarEl.style.opacity = '0'
       setTimeout(() => {
