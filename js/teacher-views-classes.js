@@ -2822,10 +2822,38 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         </div>
         <button id="vision-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
       </div>
-      <div class="overflow-auto flex-1 px-5 py-4 space-y-4">
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+      <div class="overflow-auto flex-1 px-5 py-4 space-y-3">
+
+        <!-- ลิงค์ดูตารางสอนโรงเรียน -->
+        <div class="bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-xs font-semibold text-sky-800">📅 ตารางสอนของโรงเรียน</p>
+            <a href="http://azizstan.ac.th/2026/Teacher/" target="_blank" rel="noopener"
+               class="flex-shrink-0 px-3 py-1.5 bg-sky-600 text-white rounded-lg font-bold text-[11px] hover:bg-sky-700 transition">
+              เปิดตารางสอน ↗
+            </a>
+          </div>
+          <p class="text-xs text-sky-700 leading-relaxed">ระบบมีเครื่องมือช่วยกรอกตารางสอนอัตโนมัติ — เปิดตารางสอนจากระบบโรงเรียน แล้วแคปหน้าจอมาอัปโหลดที่นี่ AI จะเติมข้อมูลให้</p>
+        </div>
+
+        <!-- คำแนะนำแคปหน้าจอ -->
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-1.5">
+          <p class="font-semibold">📸 วิธีแคปหน้าจอให้ถูกต้อง</p>
+          <ul class="space-y-1 leading-relaxed">
+            <li>• ให้เห็น <b>คอลัมน์ซ้ายสุด</b> (คาบ / ช่วงเวลา) ครบทุกคาบ</li>
+            <li>• ให้เห็น <b>แถวบนสุด</b> (วัน อาทิตย์ – ศุกร์) ครบทุกวัน</li>
+            <li>• แคปเฉพาะ<b>ส่วนตาราง</b> ตัดส่วนหัวหน้าเว็บออก</li>
+          </ul>
+          <div class="mt-2 pt-2 border-t border-amber-200">
+            <p class="font-semibold text-amber-900">⚠️ หลัง AI ดึงข้อมูลเสร็จ — ตรวจสอบตารางของแต่ละห้องให้ถูกต้อง แล้ว<u>กดบันทึกทันที</u></p>
+          </div>
+        </div>
+
+        <!-- format hint -->
+        <div class="bg-violet-50 border border-violet-200 rounded-xl p-3 text-xs text-violet-700">
           💡 แต่ละช่องตารางมี 3 บรรทัด: <b>ชื่อวิชา</b> (ตัวหนา) / <b>ชั้น/ห้อง</b> / <b>ชื่อครู</b>
         </div>
+
         <label id="vision-label"
           class="flex flex-col items-center gap-3 border-2 border-dashed border-violet-200
                  rounded-xl py-8 cursor-pointer hover:bg-violet-50 hover:border-violet-400 transition">
