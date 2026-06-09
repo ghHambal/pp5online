@@ -27,7 +27,9 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
          autoEnrollStudentsByRoom,
-         getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback } from './api.js'
+         getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
+         getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
+         updateTeacherPosition } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -8097,13 +8099,14 @@ export async function renderRolePermissions() {
   document.getElementById('page-title').textContent = 'สิทธิ์บทบาท'
 
   const POSITIONS = [
-    { key:'dept_head',          label:'หัวหน้ากลุ่มสาระ' },
-    { key:'registrar_samai',    label:'ทะเบียน (สามัญ)' },
-    { key:'registrar_religion', label:'ทะเบียน (ศาสนา)' },
-    { key:'registrar_pvch',     label:'ทะเบียน (ปวช)' },
-    { key:'academic_samai',     label:'วิชาการ (สามัญ)' },
-    { key:'academic_religion',  label:'วิชาการ (ศาสนา)' },
-    { key:'academic_pvch',      label:'วิชาการ (ปวช)' },
+    { key:'dept_head',            label:'หัวหน้ากลุ่มสาระ' },
+    { key:'religion_group_head',  label:'หัวหน้ากลุ่ม (ศาสนา)' },
+    { key:'registrar_samai',      label:'ทะเบียน (สามัญ)' },
+    { key:'registrar_religion',   label:'ทะเบียน (ศาสนา)' },
+    { key:'registrar_pvch',       label:'ทะเบียน (ปวช)' },
+    { key:'academic_samai',       label:'วิชาการ (สามัญ)' },
+    { key:'academic_religion',    label:'วิชาการ (ศาสนา)' },
+    { key:'academic_pvch',        label:'วิชาการ (ปวช)' },
   ]
   const FEATURE_GROUPS = [
     { group:'📢 ประกาศ', features:[
@@ -8111,14 +8114,15 @@ export async function renderRolePermissions() {
       { key:'announce_manage', label:'แก้ไข/ลบประกาศ' },
     ]},
     { group:'📚 วิชาการ', features:[
-      { key:'lang_config',      label:'ตั้งค่าคำอธิบายฯ' },
-      { key:'menu_curriculum',  label:'หลักสูตรแกนกลาง' },
-      { key:'menu_subjects',    label:'รายวิชา' },
-      { key:'menu_departments', label:'กลุ่มสาระ' },
-      { key:'menu_score_config',label:'คอลัมน์คะแนน' },
-      { key:'menu_life_skill',  label:'คะแนนทักษะชีวิต' },
-      { key:'menu_reading',     label:'คะแนนการอ่าน' },
-      { key:'menu_prayer',      label:'บันทึกละหมาด' },
+      { key:'lang_config',           label:'ตั้งค่าคำอธิบายฯ' },
+      { key:'menu_curriculum',       label:'หลักสูตรแกนกลาง' },
+      { key:'menu_subjects',         label:'รายวิชา' },
+      { key:'menu_departments',      label:'กลุ่มสาระ' },
+      { key:'manage_religion_groups',label:'จัดการกลุ่มวิชาศาสนา' },
+      { key:'menu_score_config',     label:'คอลัมน์คะแนน' },
+      { key:'menu_life_skill',       label:'คะแนนทักษะชีวิต' },
+      { key:'menu_reading',          label:'คะแนนการอ่าน' },
+      { key:'menu_prayer',           label:'บันทึกละหมาด' },
     ]},
     { group:'📋 ทะเบียน/บุคลากร', features:[
       { key:'menu_students',      label:'นักเรียน' },
@@ -9548,4 +9552,200 @@ export async function renderWorkCalendar(teacher) {
     return
   }
   _renderList()
+}
+
+// ─── View: Religion Groups (กลุ่มรายวิชาศาสนา) ──────────────────────────────
+export async function renderReligionGroups() {
+  setActiveNav('religion-groups')
+  document.getElementById('page-title').textContent = 'กลุ่มรายวิชาศาสนา'
+
+  setContent(`<div class="max-w-4xl mx-auto animate-fade">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <p class="text-xs text-gray-400 mt-0.5">จัดกลุ่มครูศาสนา • หัวหน้ากลุ่มจะมี Dashboard ติดตามความคืบหน้า</p>
+      </div>
+      <button id="btn-add-rg"
+        class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+        <span class="text-base">＋</span> เพิ่มกลุ่ม
+      </button>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div id="rg-table-wrap">
+        <div class="flex items-center justify-center py-16 text-gray-400">
+          <svg class="animate-spin h-6 w-6 mr-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg> กำลังโหลด...
+        </div>
+      </div>
+    </div>
+  </div>`)
+
+  let groups = [], allTeachers = []
+  try {
+    ;[groups, allTeachers] = await Promise.all([getReligionGroups(), getTeachers()])
+  } catch { showToast('โหลดข้อมูลไม่สำเร็จ', 'error'); return }
+
+  // กรองเฉพาะครูศาสนา (category หรือ subject_group ที่เกี่ยวข้อง)
+  const religionTeachers = allTeachers.filter(t =>
+    t.category === 'religion' || ['AGM','AGMVOC'].includes(t.subject_group)
+  ).concat(allTeachers.filter(t =>
+    !t.category && !['AGM','AGMVOC','ACDMVOC'].includes(t.subject_group)
+  )).filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
+
+  _renderRGTable(groups)
+
+  document.getElementById('btn-add-rg').onclick = () =>
+    _openRGModal(null, allTeachers, async () => {
+      const gs = await getReligionGroups()
+      _renderRGTable(gs)
+    })
+}
+
+function _renderRGTable(groups) {
+  const wrap = document.getElementById('rg-table-wrap')
+  if (!wrap) return
+
+  if (!groups.length) {
+    wrap.innerHTML = `<div class="text-center py-16 text-gray-400">
+      <p class="text-4xl mb-3">🕌</p>
+      <p class="font-medium">ยังไม่มีกลุ่มในระบบ</p>
+      <p class="text-xs mt-1">กดปุ่ม "เพิ่มกลุ่ม" เพื่อเริ่มต้น</p>
+    </div>`
+    return
+  }
+
+  wrap.innerHTML = `
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+        <tr>
+          <th class="px-5 py-3 text-left">ชื่อกลุ่ม</th>
+          <th class="px-5 py-3 text-left">หัวหน้ากลุ่ม</th>
+          <th class="px-5 py-3 text-right">จัดการ</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50" id="rg-tbody">
+        ${groups.map(g => {
+          const ldr = g.teachers
+          return `<tr class="hover:bg-gray-50 transition" data-gid="${g.id}">
+            <td class="px-5 py-4 font-semibold text-gray-800">🕌 ${_esc(g.name)}</td>
+            <td class="px-5 py-4 text-gray-600">
+              ${ldr
+                ? `<div class="flex items-center gap-2">
+                    ${ldr.image_url
+                      ? `<img src="${ldr.image_url}" class="w-7 h-7 rounded-full object-cover" />`
+                      : `<div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 text-xs font-bold">${_esc(ldr.full_name?.charAt(0) ?? '?')}</div>`}
+                    <div>
+                      <span class="font-medium">${_esc(ldr.full_name)}</span>
+                      ${ldr.teacher_code ? `<span class="block text-xs font-mono text-gray-400">${ldr.teacher_code}</span>` : ''}
+                    </div>
+                  </div>`
+                : '<span class="text-gray-300 text-xs">ยังไม่ระบุ</span>'}
+            </td>
+            <td class="px-5 py-4 text-right">
+              <button class="rg-edit text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-3" data-gid="${g.id}">แก้ไข</button>
+              <button class="rg-del text-xs text-red-400 hover:text-red-600 font-medium" data-gid="${g.id}" data-name="${_esc(g.name)}">ลบ</button>
+            </td>
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>`
+
+  wrap.querySelectorAll('.rg-edit').forEach(btn => {
+    btn.onclick = async () => {
+      const gid = +btn.dataset.gid
+      const gs = await getReligionGroups()
+      const g = gs.find(x => x.id === gid)
+      const all = await getTeachers()
+      _openRGModal(g, all, async () => { _renderRGTable(await getReligionGroups()) })
+    }
+  })
+
+  wrap.querySelectorAll('.rg-del').forEach(btn => {
+    btn.onclick = async () => {
+      const gid = +btn.dataset.gid
+      const name = btn.dataset.name
+      if (!confirm(`ลบกลุ่ม "${name}" ใช่ไหม?\nหัวหน้ากลุ่มจะถูกถอดบทบาทออกด้วย`)) return
+      try {
+        // ถอดบทบาทหัวหน้าก่อน
+        const gs = await getReligionGroups()
+        const g = gs.find(x => x.id === gid)
+        if (g?.leader_id) await updateTeacherPosition(g.leader_id, null, null)
+        await deleteReligionGroup(gid)
+        showToast('ลบกลุ่มแล้ว', 'success')
+        _renderRGTable(await getReligionGroups())
+      } catch (e) { showToast('ลบไม่สำเร็จ: ' + e.message, 'error') }
+    }
+  })
+}
+
+function _openRGModal(group, allTeachers, onSave) {
+  const isEdit = !!group
+  const overlay = document.createElement('div')
+  overlay.className = 'fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 p-4'
+
+  const teacherOptions = allTeachers
+    .sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '', 'th'))
+    .map(t => `<option value="${t.id}" ${group?.leader_id === t.id ? 'selected' : ''}>
+      ${_esc(t.full_name)}${t.teacher_code ? ` (${t.teacher_code})` : ''}
+    </option>`).join('')
+
+  overlay.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div class="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="font-bold text-gray-800">${isEdit ? 'แก้ไขกลุ่ม' : 'เพิ่มกลุ่มใหม่'}</h3>
+        <button class="text-gray-400 hover:text-gray-600 text-xl" id="rg-modal-close">✕</button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อกลุ่ม <span class="text-red-400">*</span></label>
+          <input id="rg-name" type="text" value="${_esc(group?.name ?? '')}" placeholder="เช่น กลุ่มที่ 1, กลุ่มฟิกห์..."
+            class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">หัวหน้ากลุ่ม</label>
+          <select id="rg-leader" class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+            <option value="">— ยังไม่ระบุ —</option>
+            ${teacherOptions}
+          </select>
+          <p class="text-xs text-gray-400 mt-1">ครูที่ถูกเลือกจะได้รับบทบาท "หัวหน้ากลุ่ม" และมี Dashboard ติดตาม</p>
+        </div>
+      </div>
+      <div class="px-6 pb-6 flex gap-3 justify-end">
+        <button id="rg-cancel" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ยกเลิก</button>
+        <button id="rg-save" class="btn-primary px-5 py-2 text-sm text-white rounded-xl">บันทึก</button>
+      </div>
+    </div>`
+
+  document.body.appendChild(overlay)
+  overlay.querySelector('#rg-modal-close').onclick = () => overlay.remove()
+  overlay.querySelector('#rg-cancel').onclick = () => overlay.remove()
+
+  overlay.querySelector('#rg-save').onclick = async () => {
+    const name = overlay.querySelector('#rg-name').value.trim()
+    if (!name) { showToast('กรุณาระบุชื่อกลุ่ม', 'error'); return }
+    const newLeaderId = overlay.querySelector('#rg-leader').value || null
+    const oldLeaderId = group?.leader_id ?? null
+    const saveBtn = overlay.querySelector('#rg-save')
+    saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
+    try {
+      if (isEdit) {
+        await updateReligionGroup(group.id, { name, leader_id: newLeaderId })
+        // ถอดบทบาทหัวหน้าเก่า (ถ้าเปลี่ยน)
+        if (oldLeaderId && oldLeaderId !== +newLeaderId) {
+          await updateTeacherPosition(oldLeaderId, null, null)
+        }
+      } else {
+        await createReligionGroup({ name, leader_id: newLeaderId })
+      }
+      // ตั้งบทบาทหัวหน้าใหม่
+      if (newLeaderId) {
+        const groupId = isEdit ? group.id : (await getReligionGroups()).find(g => g.name === name)?.id
+        if (groupId) await updateTeacherPosition(+newLeaderId, 'religion_group_head', groupId)
+      }
+      showToast(isEdit ? 'บันทึกแล้ว' : 'เพิ่มกลุ่มแล้ว', 'success')
+      overlay.remove()
+      onSave()
+    } catch (e) { showToast('บันทึกไม่สำเร็จ: ' + e.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'บันทึก' }
+  }
 }

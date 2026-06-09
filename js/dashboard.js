@@ -8,7 +8,8 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderPrayerAdmin, renderAdminProfile, renderUsageStats,
          renderClassroomsAdmin,
          renderAnnouncements, renderRolePermissions,
-         renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin } from './views.js'
+         renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin,
+         renderReligionGroups } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
@@ -774,6 +775,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'announcements':    () => renderAnnouncements(),
     'work-calendar':    () => renderWorkCalendar(null),
     'role-permissions': () => renderRolePermissions(),
+    'religion-groups':  renderReligionGroups,
     'tutorial-admin':   () => import('./tutorial.js').then(({renderTutorialAdmin}) => renderTutorialAdmin()),
     'house-colors':     () => renderHouseColors(),
     'donations':        () => renderDonations(),

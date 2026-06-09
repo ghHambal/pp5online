@@ -760,6 +760,31 @@ export async function deleteDepartment(id) {
   if (error) throw error
 }
 
+// ─── Religion Groups (กลุ่มรายวิชาศาสนา) ────────────────────────────────────
+export async function getReligionGroups() {
+  const { data, error } = await supabase
+    .from('religion_groups')
+    .select('id, name, leader_id, created_at, teachers!leader_id(id, full_name, teacher_code, image_url)')
+    .order('name')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createReligionGroup(payload) {
+  const { error } = await supabase.from('religion_groups').insert(payload)
+  if (error) throw error
+}
+
+export async function updateReligionGroup(id, payload) {
+  const { error } = await supabase.from('religion_groups').update(payload).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteReligionGroup(id) {
+  const { error } = await supabase.from('religion_groups').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ─── School Periods ───────────────────────────────────────────────────────────
 export async function getPeriods() {
   const { data, error } = await supabase

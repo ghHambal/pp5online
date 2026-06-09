@@ -43,14 +43,15 @@ import { openPP5Doc } from './pp5-doc.js'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const POS_LABEL = {
-  dept_head:         'หัวหน้ากลุ่มสาระ',
-  registrar_samai:   'หัวหน้าฝ่ายทะเบียน (สามัญ)',
-  registrar_religion:'หัวหน้าฝ่ายทะเบียน (ศาสนา)',
-  registrar_pvch:    'หัวหน้าฝ่ายทะเบียน (ปวช)',
-  academic_samai:    'หัวหน้าวิชาการสามัญ',
-  academic_religion: 'หัวหน้าวิชาการศาสนา',
-  academic_pvch:     'หัวหน้าวิชาการปวช',
-  house_color_admin: 'ผู้รับผิดชอบสีนักเรียน',
+  dept_head:           'หัวหน้ากลุ่มสาระ',
+  religion_group_head: 'หัวหน้ากลุ่ม (ศาสนา)',
+  registrar_samai:     'หัวหน้าฝ่ายทะเบียน (สามัญ)',
+  registrar_religion:  'หัวหน้าฝ่ายทะเบียน (ศาสนา)',
+  registrar_pvch:      'หัวหน้าฝ่ายทะเบียน (ปวช)',
+  academic_samai:      'หัวหน้าวิชาการสามัญ',
+  academic_religion:   'หัวหน้าวิชาการศาสนา',
+  academic_pvch:       'หัวหน้าวิชาการปวช',
+  house_color_admin:   'ผู้รับผิดชอบสีนักเรียน',
 }
 
 function _badge(s) {
@@ -80,6 +81,8 @@ function _filterByRole(metrics, teacher) {
   const p = teacher.position
   if (p === 'dept_head')
     return metrics.filter(m => m.dept === teacher.dept)
+  if (p === 'religion_group_head')
+    return metrics.filter(m => ['AGM','AGMVOC'].includes(m.subject_group))
   if (p === 'academic_samai' || p === 'registrar_samai')
     return metrics.filter(m => !['AGM','AGMVOC','ACDMVOC'].includes(m.subject_group))
   if (p === 'academic_religion' || p === 'registrar_religion')

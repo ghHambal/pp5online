@@ -69,6 +69,7 @@ async function loadTeacherInfo(userId) {
   if (_teacherPositions.length > 0 && nav && !document.getElementById('btn-sv-mode')) {
     const POS_LBL = {
       dept_head:'หัวหน้ากลุ่มสาระ',
+      religion_group_head:'หัวหน้ากลุ่ม (ศาสนา)',
       registrar_samai:'ทะเบียน (สามัญ)', registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
       academic_samai:'วิชาการสามัญ', academic_religion:'วิชาการศาสนา', academic_pvch:'วิชาการปวช',
       house_color_admin:'สีนักเรียน',
@@ -1965,13 +1966,15 @@ const _SV_MENU_ITEMS = [
   { key:'menu_life_skill',  icon:'🌱', label:'ทักษะชีวิต',     fn: async () => { const {renderLifeSkillAdmin} = await import('./views.js'); renderLifeSkillAdmin() }},
   { key:'menu_reading',     icon:'📗', label:'การอ่าน',        fn: async () => { const {renderReadingAdmin}   = await import('./views.js'); renderReadingAdmin() }},
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
-  { key:'menu_house_colors',icon:'🎨', label:'สีนักเรียน',     fn: async () => { const {renderHouseColors}    = await import('./views.js'); renderHouseColors() }},
-  { key:'menu_tutorial',   icon:'📖', label:'คู่มือการใช้งาน', fn: async () => { const {renderTutorialAdmin}  = await import('./tutorial.js'); renderTutorialAdmin() }},
+  { key:'menu_house_colors',       icon:'🎨', label:'สีนักเรียน',          fn: async () => { const {renderHouseColors}     = await import('./views.js'); renderHouseColors() }},
+  { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
+  { key:'menu_tutorial',           icon:'📖', label:'คู่มือการใช้งาน',      fn: async () => { const {renderTutorialAdmin}   = await import('./tutorial.js'); renderTutorialAdmin() }},
 ]
 
 function _renderSupervisorNav(nav, main, isAdmin = false) {
   if (!nav) return
-  const _POS_LBL2 = { dept_head:'หัวหน้ากลุ่มสาระ', registrar_samai:'ทะเบียน (สามัญ)',
+  const _POS_LBL2 = { dept_head:'หัวหน้ากลุ่มสาระ', religion_group_head:'หัวหน้ากลุ่ม (ศาสนา)',
+    registrar_samai:'ทะเบียน (สามัญ)',
     registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
     academic_samai:'วิชาการ (สามัญ)', academic_religion:'วิชาการ (ศาสนา)',
     academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน' }
