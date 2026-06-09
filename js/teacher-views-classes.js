@@ -1228,7 +1228,8 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       try {
         const roster = await getClassStudents(cid)
         if (!roster.length) { showToast('ห้องนี้ยังไม่มีนักเรียน', 'warning'); return }
-        await _openRandomPickerModal(cid, c, roster)
+        const rosterWithSeats = roster.map((s, i) => ({ ...s, seat_no: i + 1 }))
+        await _openRandomPickerModal(cid, c, rosterWithSeats)
       } catch (err) {
         showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ', 'error')
       }
@@ -1413,7 +1414,7 @@ async function _openRandomPickerModal(classId, cls, students) {
       ${currentMode !== 'none' ? `<p id="rp-counter" class="text-[11px] text-gray-400 mb-3">สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${remaining.length === 0 ? ' — ครบทุกคนแล้ว!' : ''}</p>` : ''}
       <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-6 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
         <p id="rp-hint" class="text-xs text-gray-400 mb-3">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
-        <div id="rp-avatar" class="mx-auto mb-3 w-20 h-20 rounded-full overflow-hidden bg-gray-200 items-center justify-center text-3xl text-gray-400" style="display:none;opacity:0;">
+        <div id="rp-avatar" class="mx-auto mb-3 w-28 h-36 rounded-3xl overflow-hidden bg-gray-200 items-center justify-center" style="display:none;opacity:0;box-shadow:0 8px 24px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.10);">
           <span id="rp-avatar-fallback" class="text-2xl font-bold text-gray-400">?</span>
         </div>
         <p id="rp-name" class="text-2xl sm:text-3xl font-extrabold text-gray-700 truncate px-2">—</p>
@@ -1464,7 +1465,7 @@ async function _openRandomPickerModal(classId, cls, students) {
       setTimeout(() => {
         avatarEl.innerHTML = s.image_url
           ? `<img src="${s.image_url}" class="w-full h-full object-cover" />`
-          : `<div class="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-400">${(s.full_name ?? '?').charAt(0)}</div>`
+          : `<div class="w-full h-full flex items-center justify-center text-3xl font-bold text-gray-400">${(s.full_name ?? '?').charAt(0)}</div>`
         avatarEl.style.opacity = '1'
       }, spinning ? 30 : 80)
     }
@@ -1479,7 +1480,7 @@ async function _openRandomPickerModal(classId, cls, students) {
     const tick = () => {
       const s = pool[Math.floor(Math.random() * pool.length)]
       nameEl.textContent = s.full_name
-      codeEl.textContent = s.student_code ? `เลขที่ ${s.student_code}` : ''
+      codeEl.textContent = s.seat_no ? `เลขที่ ${s.seat_no}` : ''
       _showAvatar(s, true)
       step++
       if (step < totalSteps) {
@@ -1617,12 +1618,12 @@ async function _openRandomPickerModal(classId, cls, students) {
               </div>
               <div class="p-3 space-y-1.5">
                 ${g.map(s => `
-                <div class="flex items-center gap-2 min-w-0">
+                <div class="flex items-center gap-2.5 min-w-0">
                   ${s.image_url
-                    ? `<img src="${_htmlEsc(s.image_url)}" class="w-7 h-7 rounded-full object-cover flex-shrink-0" />`
-                    : `<div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold" style="background:${colors[gi % colors.length]}">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
+                    ? `<img src="${_htmlEsc(s.image_url)}" class="w-8 h-11 rounded-xl object-cover flex-shrink-0" style="box-shadow:0 3px 10px rgba(0,0,0,.18);" />`
+                    : `<div class="w-8 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style="background:${colors[gi % colors.length]};box-shadow:0 3px 10px rgba(0,0,0,.18);">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
                   <span class="text-sm text-gray-700 truncate">${_htmlEsc(s.full_name)}</span>
-                  <span class="text-gray-400 text-xs font-mono flex-shrink-0">${_htmlEsc(s.student_code ?? '')}</span>
+                  <span class="text-gray-400 text-xs font-mono flex-shrink-0">${s.seat_no ? `ที่ ${s.seat_no}` : _htmlEsc(s.student_code ?? '')}</span>
                 </div>`).join('')}
               </div>
             </div>`
