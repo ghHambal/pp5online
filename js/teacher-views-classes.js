@@ -181,6 +181,8 @@ export async function renderMyClasses(teacher) {
                   </p>
                 </div>
                 <div class="flex gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <button onclick="event.stopPropagation();window._openClassDashboard(${c.id})"
+                    class="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-white/70 rounded-lg transition text-sm" title="Dashboard ห้องเรียน">📈</button>
                   <button onclick="event.stopPropagation();window._copyClass(${c.id},'${c.class_name?.replace(/'/g,"\\'")||''}')"
                     class="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-white/70 rounded-lg transition text-sm" title="ทำสำเนาห้องเรียน">📋</button>
                   <button onclick="event.stopPropagation();window._openCombinedEdit(${c.id})"
@@ -203,6 +205,12 @@ export async function renderMyClasses(teacher) {
     </div>`)
     window._openPP5Doc     = (classId) => openPP5Doc(classId)
     window._openClassDetail = (classId) => renderClassDetail(teacher, classId, { classes, scheduleMap, linksByClass, periodMap, classrooms, copyCfg })
+    window._openClassDashboard = async (classId) => {
+      const cls = window._classCache?.[classId]
+      if (!cls) return
+      const { openClassDashboard } = await import('./teacher-views-dashboard.js')
+      openClassDashboard(classId, cls, window._pp5DonorTierIndex ?? 0, window._pp5SystemCfg ?? {})
+    }
     window._openCombinedEdit = (classId, tab = 'info') => {
       const cls = window._classCache?.[classId]
       if (cls) _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderMyClasses(teacher), tab)

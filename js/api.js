@@ -2872,3 +2872,32 @@ export async function incrementTutorialView(videoId) {
 export async function incrementTutorialLike(videoId, delta = 1) {
   try { await supabase.rpc('increment_tutorial_like', { p_id: videoId, p_delta: delta }) } catch {}
 }
+
+// ─── Dashboard Analytics ──────────────────────────────────────────────────────
+
+export async function getClassAttendanceSummary(classId) {
+  const { data, error } = await supabase
+    .from('attendances')
+    .select('student_id, status, check_date')
+    .eq('class_id', classId)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getClassScoreSummary(classId) {
+  const { data: cols, error: e1 } = await supabase
+    .from('class_score_columns')
+    .select('id, assignment_name, assignment_type, max_score, sort_order')
+    .eq('class_id', classId)
+    .eq('column_type', 'regular')
+    .order('sort_order')
+  if (e1) throw e1
+  if (!cols?.length) return { columns: [], scores: [] }
+
+  const { data: scores, error: e2 } = await supabase
+    .from('student_scores')
+    .select('student_id, assignment_id, final_score')
+    .in('assignment_id', cols.map(c => c.id))
+  if (e2) throw e2
+  return { columns: cols, scores: scores ?? [] }
+}

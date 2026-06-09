@@ -33,6 +33,8 @@ let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
 let _isAlsoAdmin   = false
 let _positionPerms = {}   // { feature: boolean } สำหรับ position ของครูคนนี้
+window._pp5DonorTierIndex = 0
+window._pp5SystemCfg      = {}
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -1353,12 +1355,15 @@ async function _initDonationFlow(teacherId) {
     const approved = requests.find(r => r.package_type === 'donation' && r.status === 'approved')
     const pending  = requests.some(r  => r.package_type === 'donation' && r.status === 'pending')
 
+    window._pp5SystemCfg = cfg
+
     if (approved) {
       // แสดงการ์ดขอบคุณครั้งแรก
       const seen = localStorage.getItem(`pp5_thankyou_seen_${approved.id}`)
       if (!seen && approved.admin_note) _showThankYouCard(approved)
 
       const tierIndex = _getDonorTierIndex(cfg, tiers, approved.amount ?? 0)
+      window._pp5DonorTierIndex = tierIndex
       if (tierIndex >= maxTier) {
         // tier สูงสุด — แสดงแค่สติกเกอร์ใน sidebar
         _addDonateToSidebar(approved)
@@ -2639,6 +2644,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-quick-grades')?.addEventListener('click', e => {
     e.preventDefault()
     _showClassQuickPicker('grades')
+  })
+
+  document.getElementById('menu-dashboard')?.addEventListener('click', async e => {
+    e.preventDefault()
+    const { openDashboardRoomPicker } = await import('./teacher-views-dashboard.js')
+    openDashboardRoomPicker(_teacher, window._pp5DonorTierIndex ?? 0, window._pp5SystemCfg ?? {})
   })
 
   // Mobile sidebar toggle
