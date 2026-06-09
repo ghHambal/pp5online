@@ -2812,9 +2812,9 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
 
   const wrap = document.createElement('div')
   wrap.id = 'vision-upload'
-  wrap.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
   wrap.innerHTML = `
-    <div class="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[95vh]">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[92vh]">
       <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
         <div class="flex-1">
           <h3 class="font-bold text-gray-800">🤖 วิเคราะห์รูปตารางสอน</h3>
