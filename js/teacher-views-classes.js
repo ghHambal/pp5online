@@ -1329,6 +1329,13 @@ async function _openRandomPickerModal(classId, cls, students) {
   let sessionPicked   = new Set()
   let activeTab       = 'pick'
   let isSpinning      = false
+  let currentEffect   = localStorage.getItem('pp5_rp_effect') || 'classic'
+  const EFFECT_DEFS   = [
+    { key:'classic',     icon:'🎯', label:'คลาสสิก' },
+    { key:'grid',        icon:'🔦', label:'กริด' },
+    { key:'elimination', icon:'💥', label:'ตัดออก' },
+    { key:'slot',        icon:'🎰', label:'สล็อต' },
+  ]
 
   const m = document.createElement('div')
   m.id = 'random-picker-modal'
@@ -1338,6 +1345,16 @@ async function _openRandomPickerModal(classId, cls, students) {
       @keyframes rp-confetti-fall { to { transform: translateY(320px) rotate(540deg); opacity: 0; } }
       @keyframes rp-pop { 0% { transform: scale(0.7); opacity:0; } 60% { transform: scale(1.08); opacity:1; } 100% { transform: scale(1); opacity:1; } }
       .rp-pop { animation: rp-pop 0.45s cubic-bezier(.2,1.4,.4,1) both; }
+      .rp-grid-tile { position:relative; aspect-ratio:3/4; border-radius:10px; overflow:hidden; transition:transform .07s,box-shadow .07s; }
+      .rp-grid-tile.rp-active { transform:scale(1.12); box-shadow:0 0 0 3px #f59e0b,0 0 14px rgba(245,158,11,.6); z-index:2; }
+      .rp-grid-tile.rp-winner { transform:scale(1.18); box-shadow:0 0 0 4px #10b981,0 0 22px rgba(16,185,129,.65); z-index:3; animation:rp-pop .45s cubic-bezier(.2,1.4,.4,1) both; }
+      .rp-elim-tile { position:relative; aspect-ratio:3/4; border-radius:8px; overflow:hidden; transition:opacity .22s,transform .22s; }
+      .rp-elim-tile.rp-eliminated { opacity:.12; transform:scale(.85); }
+      .rp-elim-tile.rp-last { box-shadow:0 0 0 3px #f59e0b,0 0 12px rgba(245,158,11,.5); z-index:1; }
+      .rp-elim-tile.rp-winner { box-shadow:0 0 0 4px #10b981,0 0 20px rgba(16,185,129,.65); animation:rp-pop .45s cubic-bezier(.2,1.4,.4,1) both; z-index:2; }
+      .rp-reel { transition:border-color .3s,box-shadow .3s; }
+      .rp-reel.rp-locked { border-color:#f59e0b!important; box-shadow:0 0 10px rgba(245,158,11,.4)!important; }
+      .rp-reel.rp-winner-reel { border-color:#10b981!important; box-shadow:0 0 20px rgba(16,185,129,.55)!important; }
     </style>
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[94vh] flex flex-col">
       <div style="background:linear-gradient(135deg,#f59e0b,#ec4899);" class="px-5 py-4 flex items-center justify-between flex-shrink-0">
@@ -1401,28 +1418,81 @@ async function _openRandomPickerModal(classId, cls, students) {
 
   // ════════════════ TAB: สุ่มรายชื่อ ════════════════
   function renderPickTab() {
-    const excluded   = excludedSet()
-    const remaining  = students.filter(s => !excluded.has(s.id))
-    const pickedCount = students.length - remaining.length
+    const excluded    = excludedSet()
+    const pool        = students.filter(s => !excluded.has(s.id))
+    const pickedCount = students.length - pool.length
+
+    const _tileHtml = (s, cls) => {
+      const bg = `hsl(${(s.id * 47) % 360},60%,55%)`
+      const inner = s.image_url
+        ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover" />`
+        : `<div class="w-full h-full flex items-center justify-center font-bold text-white text-sm" style="background:${bg}">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`
+      return `<div class="${cls}" data-id="${s.id}">${inner}<div class="absolute bottom-0 left-0 right-0 text-[8px] text-white text-center truncate px-0.5 pb-0.5" style="background:rgba(0,0,0,.45)">ที่ ${s.seat_no ?? ''}</div></div>`
+    }
+
+    const _reelHtml = (id, big = false) => {
+      const w = big ? 104 : 86; const h = big ? 148 : 124
+      return `<div id="rp-reel-${id}" class="rp-reel rounded-2xl border-2 border-gray-200 bg-white" style="width:${w}px;height:${h}px;flex-shrink:0;"><div class="rp-reel-inner flex flex-col items-center justify-center h-full p-2 gap-1" style="transition:opacity .06s ease;"><div class="flex-1 w-full rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center text-gray-300 text-2xl font-bold">?</div><div class="text-[9px] font-bold text-gray-500 truncate w-full text-center leading-none">—</div><div class="text-[8px] text-gray-400 leading-none mt-0.5">·</div></div></div>`
+    }
+
+    const stageHtml = () => {
+      if (currentEffect === 'grid') return `
+        <div id="rp-stage" class="rounded-2xl border-2 border-dashed overflow-hidden mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
+          <p id="rp-hint" class="text-xs text-gray-400 text-center pt-3 pb-1.5">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
+          <div id="rp-grid" class="grid gap-1 px-2 pb-2" style="grid-template-columns:repeat(auto-fill,minmax(54px,1fr))">
+            ${pool.map(s => _tileHtml(s, 'rp-grid-tile')).join('')}
+          </div>
+        </div>`
+      if (currentEffect === 'elimination') return `
+        <div id="rp-stage" class="rounded-2xl border-2 border-dashed overflow-hidden mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
+          <div class="flex items-center justify-between pt-2.5 pb-1 px-3">
+            <p id="rp-hint" class="text-xs text-gray-400">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
+            <span id="rp-elim-counter" class="text-xs font-bold text-gray-500">${pool.length} คน</span>
+          </div>
+          <div id="rp-elim-grid" class="grid gap-1 px-2 pb-2 overflow-y-auto" style="grid-template-columns:repeat(auto-fill,minmax(48px,1fr));max-height:210px;">
+            ${pool.map(s => _tileHtml(s, 'rp-elim-tile')).join('')}
+          </div>
+        </div>`
+      if (currentEffect === 'slot') return `
+        <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-4 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
+          <p id="rp-hint" class="text-xs text-gray-400 mb-4">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
+          <div class="flex justify-center items-center gap-2">
+            ${_reelHtml(0)}
+            <div class="font-bold text-amber-300 text-lg leading-none">✦</div>
+            ${_reelHtml(1, true)}
+            <div class="font-bold text-amber-300 text-lg leading-none">✦</div>
+            ${_reelHtml(2)}
+          </div>
+        </div>`
+      return `
+        <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-6 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
+          <p id="rp-hint" class="text-xs text-gray-400 mb-3">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
+          <div id="rp-avatar" class="mx-auto mb-3 w-28 h-36 rounded-3xl overflow-hidden bg-gray-200 items-center justify-center" style="display:none;opacity:0;box-shadow:0 8px 24px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.10);"></div>
+          <p id="rp-name" class="text-2xl sm:text-3xl font-extrabold text-gray-700 truncate px-2">—</p>
+          <p id="rp-code" class="text-xs text-gray-400 mt-1 font-mono"></p>
+        </div>`
+    }
+
     body.innerHTML = `
+      <div class="flex gap-1.5 mb-3">
+        ${EFFECT_DEFS.map(e => {
+          const on = e.key === currentEffect
+          return `<button class="rp-eff flex-1 py-2 rounded-xl border text-center leading-tight transition ${on ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}" data-eff="${e.key}"><div class="text-base">${e.icon}</div><div class="text-[9px] font-semibold mt-0.5">${e.label}</div></button>`
+        }).join('')}
+      </div>
       <div class="flex items-center gap-2 mb-3">
         <select id="rp-mode" class="${SELECT_CLS} flex-1 text-xs">
           ${RP_MODES.map(o => `<option value="${o.value}" ${o.value === currentMode ? 'selected' : ''}>${o.label}</option>`).join('')}
         </select>
-        <button id="rp-reset" class="flex-shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50" title="รีเซ็ตการสุ่ม">🔄 รีเซ็ต</button>
+        <button id="rp-reset" class="flex-shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50">🔄 รีเซ็ต</button>
       </div>
-      ${currentMode !== 'none' ? `<p id="rp-counter" class="text-[11px] text-gray-400 mb-3">สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${remaining.length === 0 ? ' — ครบทุกคนแล้ว!' : ''}</p>` : ''}
-      <div id="rp-stage" class="rounded-2xl border-2 border-dashed py-6 px-4 text-center mb-4 transition-all" style="border-color:#fde68a;background:rgba(254,243,199,.4);">
-        <p id="rp-hint" class="text-xs text-gray-400 mb-3">กดปุ่มด้านล่างเพื่อเริ่มสุ่ม</p>
-        <div id="rp-avatar" class="mx-auto mb-3 w-28 h-36 rounded-3xl overflow-hidden bg-gray-200 items-center justify-center" style="display:none;opacity:0;box-shadow:0 8px 24px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.10);">
-          <span id="rp-avatar-fallback" class="text-2xl font-bold text-gray-400">?</span>
-        </div>
-        <p id="rp-name" class="text-2xl sm:text-3xl font-extrabold text-gray-700 truncate px-2">—</p>
-        <p id="rp-code" class="text-xs text-gray-400 mt-1 font-mono"></p>
-      </div>
-      <button id="rp-go" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98]"
-        style="background:linear-gradient(135deg,#f59e0b,#ec4899);">🎲 สุ่มเลย!</button>
-    `
+      ${currentMode !== 'none' ? `<p id="rp-counter" class="text-[11px] text-gray-400 mb-3">สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${pool.length === 0 ? ' — ครบทุกคนแล้ว!' : ''}</p>` : ''}
+      ${stageHtml()}
+      <button id="rp-go" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98]" style="background:linear-gradient(135deg,#f59e0b,#ec4899);">🎲 สุ่มเลย!</button>`
+
+    body.querySelectorAll('.rp-eff').forEach(btn => {
+      btn.addEventListener('click', () => { if (isSpinning) return; currentEffect = btn.dataset.eff; localStorage.setItem('pp5_rp_effect', currentEffect); renderPickTab() })
+    })
     body.querySelector('#rp-mode').addEventListener('change', e => changeMode(e.target.value))
     body.querySelector('#rp-reset').addEventListener('click', () => { if (!isSpinning) doReset() })
     body.querySelector('#rp-go').addEventListener('click', () => spin())
@@ -1433,94 +1503,165 @@ async function _openRandomPickerModal(classId, cls, students) {
     let pool = students.filter(s => !excludedSet().has(s.id))
     let willAutoReset = false
     if (pool.length === 0) {
-      if (currentMode === 'manual') {
-        showToast('สุ่มครบทุกคนแล้ว — กดปุ่ม "รีเซ็ต" เพื่อเริ่มรอบใหม่', 'warning')
-        return
-      }
+      if (currentMode === 'manual') { showToast('สุ่มครบทุกคนแล้ว — กดปุ่ม "รีเซ็ต" เพื่อเริ่มรอบใหม่', 'warning'); return }
       pool = students
       willAutoReset = (currentMode === 'cycle' || currentMode === 'session')
     }
-
     isSpinning = true
-    const goBtn     = body.querySelector('#rp-go')
-    const stage     = body.querySelector('#rp-stage')
-    const nameEl    = body.querySelector('#rp-name')
-    const codeEl    = body.querySelector('#rp-code')
-    const hintEl    = body.querySelector('#rp-hint')
-    const avatarEl  = body.querySelector('#rp-avatar')
-    const avatarFb  = body.querySelector('#rp-avatar-fallback')
-    goBtn.disabled = true
-    goBtn.textContent = '🎰 กำลังสุ่ม...'
-    hintEl.textContent = 'กำลังสุ่ม...'
-    nameEl.classList.remove('rp-pop')
-    avatarEl.classList.remove('rp-pop')
-    stage.style.borderStyle  = 'dashed'
-    stage.style.borderColor  = '#fbbf24'
-    stage.style.boxShadow    = 'none'
+    const goBtn = body.querySelector('#rp-go')
+    goBtn.disabled = true; goBtn.textContent = '🎰 กำลังสุ่ม...'
+    const target = pool[Math.floor(Math.random() * pool.length)]
 
-    const _showAvatar = (s, spinning = false) => {
-      avatarEl.style.display = 'flex'
-      avatarEl.style.transition = spinning ? 'opacity 0.06s ease' : 'opacity 0.3s ease'
-      avatarEl.style.opacity = '0'
+    const _onFinish = async () => {
+      if (willAutoReset) { persistedPicked = new Set(); sessionPicked = new Set(); try { await resetClassRandomizerPicks(classId) } catch {} }
+      await markPicked(target.id)
       setTimeout(() => {
-        avatarEl.innerHTML = s.image_url
-          ? `<img src="${s.image_url}" class="w-full h-full object-cover" />`
-          : `<div class="w-full h-full flex items-center justify-center text-3xl font-bold text-gray-400">${(s.full_name ?? '?').charAt(0)}</div>`
+        isSpinning = false
+        const btn = body.querySelector('#rp-go')
+        if (btn) { btn.disabled = false; btn.textContent = '🎲 สุ่มอีกครั้ง' }
+        const excl = excludedSet(); const pc = students.length - students.filter(s => !excl.has(s.id)).length
+        const ctr = body.querySelector('#rp-counter')
+        if (ctr) { const rem = students.length - pc; ctr.textContent = `สุ่มไปแล้ว ${pc} / ${students.length} คน${rem === 0 ? ' — ครบทุกคนแล้ว!' : ''}` }
+      }, 900)
+    }
+
+    if (currentEffect === 'grid')             _spinGrid(pool, target, _onFinish)
+    else if (currentEffect === 'elimination') _spinElim(pool, target, _onFinish)
+    else if (currentEffect === 'slot')        _spinSlot(pool, target, _onFinish)
+    else                                      _spinClassic(pool, target, _onFinish)
+  }
+
+  // ── Effect: Classic ──────────────────────────────────────────────────────────
+  function _spinClassic(pool, target, onFinish) {
+    const stage    = body.querySelector('#rp-stage')
+    const nameEl   = body.querySelector('#rp-name')
+    const codeEl   = body.querySelector('#rp-code')
+    const hintEl   = body.querySelector('#rp-hint')
+    const avatarEl = body.querySelector('#rp-avatar')
+    nameEl.classList.remove('rp-pop'); avatarEl?.classList.remove('rp-pop')
+    stage.style.borderStyle = 'dashed'; stage.style.borderColor = '#fbbf24'; stage.style.boxShadow = 'none'
+    const _showAvatar = (s, spinning = false) => {
+      if (!avatarEl) return
+      avatarEl.style.display = 'flex'; avatarEl.style.transition = spinning ? 'opacity 0.06s ease' : 'opacity 0.3s ease'; avatarEl.style.opacity = '0'
+      setTimeout(() => {
+        avatarEl.innerHTML = s.image_url ? `<img src="${s.image_url}" class="w-full h-full object-cover" />` : `<div class="w-full h-full flex items-center justify-center text-3xl font-bold text-gray-400">${(s.full_name ?? '?').charAt(0)}</div>`
         avatarEl.style.opacity = '1'
       }, spinning ? 30 : 80)
     }
-
-    // แสดงรูปแรกทันทีก่อนสุ่ม
     _showAvatar(pool[Math.floor(Math.random() * pool.length)], true)
-
-    const target = pool[Math.floor(Math.random() * pool.length)]
-    let step = 0
-    const totalSteps = 26
-    let delay = 55
+    let step = 0, delay = 55
     const tick = () => {
       const s = pool[Math.floor(Math.random() * pool.length)]
-      nameEl.textContent = s.full_name
-      codeEl.textContent = s.seat_no ? `เลขที่ ${s.seat_no}` : ''
-      _showAvatar(s, true)
-      step++
-      if (step < totalSteps) {
-        delay = Math.min(delay * 1.13, 420)
-        setTimeout(tick, delay)
-      } else {
-        finish()
+      nameEl.textContent = s.full_name; codeEl.textContent = s.seat_no ? `เลขที่ ${s.seat_no}` : ''; _showAvatar(s, true); step++
+      if (step < 26) { delay = Math.min(delay * 1.13, 420); setTimeout(tick, delay) }
+      else {
+        nameEl.textContent = target.full_name; codeEl.textContent = target.seat_no ? `เลขที่ ${target.seat_no}` : ''; _showAvatar(target, false)
+        avatarEl?.classList.add('rp-pop'); nameEl.classList.add('rp-pop')
+        stage.style.borderStyle = 'solid'; stage.style.borderColor = '#10b981'; stage.style.boxShadow = '0 0 0 6px rgba(16,185,129,.12), 0 0 30px rgba(16,185,129,.25)'
+        if (hintEl) hintEl.textContent = '🎉 ได้คนนี้แหละ!'; _fireConfetti(stage); onFinish()
       }
     }
-    const finish = async () => {
-      nameEl.textContent = target.full_name
-      codeEl.textContent = target.student_code ? `เลขที่ ${target.student_code}` : ''
-      _showAvatar(target, false)
-      avatarEl.classList.add('rp-pop')
-      nameEl.classList.add('rp-pop')
-      stage.style.borderStyle = 'solid'
-      stage.style.borderColor = '#10b981'
-      stage.style.boxShadow   = '0 0 0 6px rgba(16,185,129,.12), 0 0 30px rgba(16,185,129,.25)'
-      hintEl.textContent = '🎉 ได้คนนี้แหละ!'
-      _fireConfetti(stage)
+    tick()
+  }
 
-      if (willAutoReset) {
-        persistedPicked = new Set()
-        sessionPicked   = new Set()
-        try { await resetClassRandomizerPicks(classId) } catch {}
+  // ── Effect: Grid Spotlight ───────────────────────────────────────────────────
+  function _spinGrid(pool, target, onFinish) {
+    const stage  = body.querySelector('#rp-stage')
+    const hintEl = body.querySelector('#rp-hint')
+    const grid   = body.querySelector('#rp-grid')
+    if (!grid) return _spinClassic(pool, target, onFinish)
+    let allTiles   = [...grid.querySelectorAll('.rp-grid-tile')]
+    let targetTile = allTiles.find(t => Number(t.dataset.id) === target.id)
+    if (!targetTile) {
+      const bg = `hsl(${(target.id * 47) % 360},60%,55%)`
+      const ri = Math.floor(Math.random() * allTiles.length)
+      allTiles[ri].dataset.id = target.id
+      allTiles[ri].innerHTML  = (target.image_url ? `<img src="${_htmlEsc(target.image_url)}" class="w-full h-full object-cover" />` : `<div class="w-full h-full flex items-center justify-center font-bold text-white text-sm" style="background:${bg}">${_htmlEsc((target.full_name ?? '?').charAt(0))}</div>`) + `<div class="absolute bottom-0 left-0 right-0 text-[8px] text-white text-center truncate px-0.5 pb-0.5" style="background:rgba(0,0,0,.45)">ที่ ${target.seat_no ?? ''}</div>`
+      targetTile = allTiles[ri]
+    }
+    if (hintEl) hintEl.textContent = 'กำลังสุ่ม...'
+    stage.style.borderColor = '#fbbf24'
+    let activeTile = null, step = 0, delay = 38
+    const tick = () => {
+      activeTile?.classList.remove('rp-active')
+      const next = allTiles[Math.floor(Math.random() * allTiles.length)]; next.classList.add('rp-active'); activeTile = next; step++
+      if (step < 36) { delay = Math.min(delay * 1.10, 520); setTimeout(tick, delay) }
+      else {
+        activeTile?.classList.remove('rp-active'); targetTile.classList.add('rp-winner')
+        stage.style.borderStyle = 'solid'; stage.style.borderColor = '#10b981'; stage.style.boxShadow = '0 0 0 4px rgba(16,185,129,.15), 0 0 24px rgba(16,185,129,.2)'
+        if (hintEl) hintEl.textContent = `🎉 ที่ ${target.seat_no ?? ''} ${target.full_name}`
+        targetTile.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); _fireConfetti(stage); onFinish()
       }
-      await markPicked(target.id)
+    }
+    tick()
+  }
 
+  // ── Effect: Elimination ──────────────────────────────────────────────────────
+  function _spinElim(pool, target, onFinish) {
+    const stage     = body.querySelector('#rp-stage')
+    const hintEl    = body.querySelector('#rp-hint')
+    const grid      = body.querySelector('#rp-elim-grid')
+    const counterEl = body.querySelector('#rp-elim-counter')
+    if (!grid) return _spinClassic(pool, target, onFinish)
+    if (hintEl) hintEl.textContent = 'กำลังตัดออก...'
+    const toElim   = pool.filter(s => s.id !== target.id).sort(() => Math.random() - 0.5)
+    const total    = toElim.length
+    let remaining  = pool.length, i = 0
+    const getDelay = (p) => p < 0.55 ? 50 : p < 0.8 ? 50 + ((p - 0.55) / 0.25) * 260 : 310 + Math.pow((p - 0.8) / 0.2, 2) * 1400
+    const step = () => {
+      if (i >= total) {
+        const win = grid.querySelector(`[data-id="${target.id}"]`)
+        win?.classList.remove('rp-last'); win?.classList.add('rp-winner'); win?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        stage.style.borderStyle = 'solid'; stage.style.borderColor = '#10b981'; stage.style.boxShadow = '0 0 0 4px rgba(16,185,129,.15)'
+        if (hintEl) hintEl.textContent = `🎉 ที่ ${target.seat_no ?? ''} ${target.full_name}`
+        if (counterEl) counterEl.textContent = 'เหลือ 1 คน!'; _fireConfetti(stage); onFinish(); return
+      }
+      const tile = grid.querySelector(`[data-id="${toElim[i].id}"]`)
+      tile?.classList.remove('rp-last'); tile?.classList.add('rp-eliminated')
+      remaining--; if (counterEl) counterEl.textContent = `เหลือ ${remaining} คน`
+      if (remaining <= 4) grid.querySelectorAll('.rp-elim-tile:not(.rp-eliminated)').forEach(t => t.classList.add('rp-last'))
+      i++; setTimeout(step, getDelay(i / (total || 1)))
+    }
+    step()
+  }
+
+  // ── Effect: Slot Machine ─────────────────────────────────────────────────────
+  function _spinSlot(pool, target, onFinish) {
+    const stage   = body.querySelector('#rp-stage')
+    const hintEl  = body.querySelector('#rp-hint')
+    const reelEls = [body.querySelector('#rp-reel-0'), body.querySelector('#rp-reel-1'), body.querySelector('#rp-reel-2')]
+    if (!reelEls[0]) return _spinClassic(pool, target, onFinish)
+    if (hintEl) hintEl.textContent = 'กำลังหมุน...'
+    stage.style.borderColor = '#fbbf24'
+    const reelTargets = [pool[Math.floor(Math.random() * pool.length)], target, pool[Math.floor(Math.random() * pool.length)]]
+    const STOP_STEPS  = [18, 28, 22]
+    const locked      = [false, false, false]
+    const _setReel = (reel, s) => {
+      const inner = reel.querySelector('.rp-reel-inner'); if (!inner) return
+      inner.style.opacity = '0'
       setTimeout(() => {
-        isSpinning = false
-        goBtn.disabled = false
-        goBtn.textContent = '🎲 สุ่มอีกครั้ง'
-        const excluded = excludedSet()
-        const pickedCount = students.length - students.filter(s => !excluded.has(s.id)).length
-        const counter = body.querySelector('#rp-counter')
-        if (counter) {
-          const remain = students.length - pickedCount
-          counter.textContent = `สุ่มไปแล้ว ${pickedCount} / ${students.length} คน${remain === 0 ? ' — ครบทุกคนแล้ว!' : ''}`
-        }
-      }, 900)
+        const bg = `hsl(${(s.id * 47) % 360},60%,55%)`
+        inner.innerHTML = `<div class="flex-1 w-full rounded-xl overflow-hidden">${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover" />` : `<div class="w-full h-full flex items-center justify-center font-bold text-white text-xl" style="background:${bg}">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}</div><div class="text-[9px] font-bold text-gray-600 truncate w-full text-center leading-none mt-1">${_htmlEsc(s.full_name)}</div><div class="text-[8px] text-gray-400 leading-none mt-0.5">${s.seat_no ? `ที่ ${s.seat_no}` : '·'}</div>`
+        inner.style.opacity = '1'
+      }, 30)
+    }
+    let masterStep = 0, delay = 50
+    const tick = () => {
+      masterStep++
+      reelEls.forEach((reel, ri) => {
+        if (locked[ri]) return
+        if (masterStep === STOP_STEPS[ri]) {
+          locked[ri] = true
+          setTimeout(() => {
+            _setReel(reel, reelTargets[ri]); reel.classList.add(ri === 1 ? 'rp-winner-reel' : 'rp-locked')
+            if (ri === 1) {
+              stage.style.borderStyle = 'solid'; stage.style.borderColor = '#10b981'; stage.style.boxShadow = '0 0 0 4px rgba(16,185,129,.12)'
+              if (hintEl) hintEl.textContent = '🎉 ได้คนนี้แหละ!'; _fireConfetti(stage); onFinish()
+            }
+          }, 200)
+        } else { _setReel(reel, pool[Math.floor(Math.random() * pool.length)]) }
+      })
+      if (!locked[1]) { delay = masterStep < 12 ? 50 : Math.min(50 * Math.pow(1.09, masterStep - 12), 450); setTimeout(tick, delay) }
     }
     tick()
   }
