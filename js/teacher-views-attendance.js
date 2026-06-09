@@ -73,20 +73,13 @@ export async function renderAttendanceGrid(teacher, classData) {
       }
     }
 
-    // ─── Auto-clear attendance on holiday sessions ─────────────────
+    // ─── แจ้งเตือน (ไม่ลบ) เมื่อพบข้อมูลในคาบวันหยุด ───────────────
     const holAttRows = attRows.filter(r => {
       const sess = sessions.find(s => s.n === r.session_number)
       return sess && holidaySet.has(sess.ds)
     })
     if (holAttRows.length > 0) {
-      if (confirm(`พบข้อมูลเช็คชื่อ ${holAttRows.length} รายการในวันหยุด\nต้องการล้างออกให้อัตโนมัติไหม?`)) {
-        await Promise.all(holAttRows.map(r =>
-          saveAttendanceCell(classData.id, r.student_id, r.session_number, null, null)
-        ))
-        holAttRows.forEach(r => {
-          if (attMap[r.student_id]) delete attMap[r.student_id][r.session_number]
-        })
-      }
+      showToast(`พบข้อมูลเช็คชื่อ ${holAttRows.length} รายการในคาบที่ตรงกับวันหยุด (แสดงเป็นคอลัมน์สีแดง)`, 'warning')
     }
 
     // ─── Column widths ─────────────────────────────────────────────
