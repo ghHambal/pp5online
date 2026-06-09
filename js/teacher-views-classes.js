@@ -3138,8 +3138,6 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
     btn.disabled = true; btn.textContent = '⏳ กำลังวิเคราะห์...'
     status.textContent = 'กำลังส่งรูปไป Gemini AI...'; status.classList.remove('hidden')
     try {
-      if (!geminiKey) throw new Error('ยังไม่ได้ตั้งค่า Gemini API Key ในหน้าแอดมิน')
-
       const subjList   = subjects.map(s=>`"${s.subject_name}" (id:${s.id})`).join(', ')
       const periodList = periods.map(p=>`คาบ ${p.period_no}: ${p.start_time?.slice(0,5)}-${p.end_time?.slice(0,5)}`).join(', ')
       const prompt = `วิเคราะห์ตารางสอนในภาพนี้อย่างละเอียด
@@ -3165,17 +3163,11 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
 - span_periods: 1,2,3,4 ตามจำนวนช่องที่รวมกัน (merged cells)
 - ช่องว่างไม่ต้องใส่`
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/${cfg.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${geminiKey}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [
-            { text: prompt },
-            { inline_data: { mime_type: imgMimeType, data: imgBase64 } }
-          ]}]})
-        }
-      )
-      const json = await res.json()
-      if (json.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
+      const { data: json, error: fnErr } = await supabase.functions.invoke('gemini-proxy', {
+        body: { keyType: 'schedule', dept: teacher.dept ?? '', prompt, imageBase64: imgBase64, imageMimeType: imgMimeType },
+      })
+      if (fnErr) throw new Error(fnErr.message ?? 'Edge Function error')
+      if (json?.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
 
       const text  = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
       const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\[[\s\S]*?\])/)

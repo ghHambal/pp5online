@@ -14,7 +14,7 @@ import { _openCourseColsModal } from './teacher-views-grades.js'
 import { _openLessonPlanApproval } from './teacher-views.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
-  SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS, _resolveGeminiKey,
+  SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS,
 } from './teacher-views-utils.js'
 
 export async function renderMyCourses(teacher) {
@@ -577,8 +577,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
   }
 
   const generateDocWithGemini = async () => {
-    const geminiKey = _resolveGeminiKey(cfg, teacher)
-    if (!geminiKey) throw new Error('ยังไม่ได้ตั้งค่า Gemini API Key ในหน้าแอดมิน')
+    // key อยู่ใน Edge Function — ไม่ต้องส่ง key จาก browser
     const L = i18n()
     const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
     const colNames = isExtra ? L.colsExtra : L.colsBasic
@@ -611,16 +610,11 @@ Return JSON object เท่านั้น:
   "final_items": [3,4,5]
 }`
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/${cfg.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    )
-    const json = await res.json()
-    if (json.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
+    const { data: json, error: fnErr } = await supabase.functions.invoke('gemini-proxy', {
+      body: { keyType: 'schedule', dept: teacher.dept ?? '', prompt },
+    })
+    if (fnErr) throw new Error(fnErr.message ?? 'Edge Function error')
+    if (json?.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
     const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
     const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/)
     const jsonStr = match ? (match[1] ?? match[0]) : null
@@ -752,8 +746,7 @@ Return JSON object เท่านั้น:
     // ── อัปโหลดรูป → Gemini Vision อ่านตาราง ────────────────────────────────
     modal.querySelector('#cd2-img-input').addEventListener('change', async e => {
       const file = e.target.files?.[0]; if (!file) return
-      const geminiKey = _resolveGeminiKey(cfg, teacher)
-      if (!geminiKey) { showToast('กรุณาตั้งค่า Gemini API Key ในหน้าแอดมิน', 'error'); return }
+      // key อยู่ใน Edge Function
 
       const hasContent = rows.some(row => row.some(cell => String(cell ?? '').trim())) || description.trim()
       if (hasContent && !confirm(L.confirmImgOverwrite)) {
@@ -796,23 +789,11 @@ Output language: ${L.aiLang}
   "final_items": [4,5,6]
 }`
 
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1/models/${cfg.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  { text: prompt },
-                  { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } },
-                ]
-              }]
-            }),
-          }
-        )
-        const json = await res.json()
-        if (json.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
+        const { data: json, error: fnErr } = await supabase.functions.invoke('gemini-proxy', {
+          body: { keyType: 'schedule', dept: teacher.dept ?? '', prompt, imageBase64: base64, imageMimeType: file.type || 'image/jpeg' },
+        })
+        if (fnErr) throw new Error(fnErr.message ?? 'Edge Function error')
+        if (json?.error) throw new Error(`Gemini: ${json.error.message ?? json.error.status}`)
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
         const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/)
         const jsonStr = match ? (match[1] ?? match[0]) : null
