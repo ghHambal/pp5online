@@ -1531,6 +1531,25 @@ async function _openRandomPickerModal(classId, cls, students) {
     else                                      _spinClassic(pool, target, _onFinish)
   }
 
+  // ── Winner card (shared by elimination + slot) ──────────────────────────────
+  function _showWinnerCard(stage, target) {
+    stage.style.transition = 'opacity 0.2s ease'
+    stage.style.opacity    = '0'
+    setTimeout(() => {
+      stage.style.borderStyle = 'solid'
+      stage.style.borderColor = '#10b981'
+      stage.style.boxShadow   = '0 0 0 6px rgba(16,185,129,.12), 0 0 30px rgba(16,185,129,.25)'
+      stage.innerHTML = `<div class="py-5 px-4 text-center">
+        <p class="text-xs text-gray-400 mb-3">🎉 ได้คนนี้แหละ!</p>
+        <div class="mx-auto mb-3 w-28 h-36 rounded-3xl overflow-hidden bg-gray-200 rp-pop" style="box-shadow:0 8px 24px rgba(0,0,0,.18);">${target.image_url ? `<img src="${_htmlEsc(target.image_url)}" class="w-full h-full object-cover" />` : `<div class="w-full h-full flex items-center justify-center text-3xl font-bold text-gray-400">${_htmlEsc((target.full_name ?? '?').charAt(0))}</div>`}</div>
+        <p class="text-2xl sm:text-3xl font-extrabold text-gray-700 truncate px-2 rp-pop">${_htmlEsc(target.full_name)}</p>
+        <p class="text-xs text-gray-400 mt-1 font-mono">${target.seat_no ? `เลขที่ ${target.seat_no}` : ''}</p>
+      </div>`
+      stage.style.opacity = '1'
+      _fireConfetti(stage)
+    }, 220)
+  }
+
   // ── Effect: Classic ──────────────────────────────────────────────────────────
   function _spinClassic(pool, target, onFinish) {
     const stage    = body.querySelector('#rp-stage')
@@ -1612,9 +1631,10 @@ async function _openRandomPickerModal(classId, cls, students) {
       if (i >= total) {
         const win = grid.querySelector(`[data-id="${target.id}"]`)
         win?.classList.remove('rp-last'); win?.classList.add('rp-winner'); win?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-        stage.style.borderStyle = 'solid'; stage.style.borderColor = '#10b981'; stage.style.boxShadow = '0 0 0 4px rgba(16,185,129,.15)'
         if (hintEl) hintEl.textContent = `🎉 ที่ ${target.seat_no ?? ''} ${target.full_name}`
-        if (counterEl) counterEl.textContent = 'เหลือ 1 คน!'; _fireConfetti(stage); onFinish(); return
+        if (counterEl) counterEl.textContent = 'เหลือ 1 คน!'
+        setTimeout(() => { _showWinnerCard(stage, target); onFinish() }, 900)
+        return
       }
       const tile = grid.querySelector(`[data-id="${toElim[i].id}"]`)
       tile?.classList.remove('rp-last'); tile?.classList.add('rp-eliminated')
@@ -1655,8 +1675,8 @@ async function _openRandomPickerModal(classId, cls, students) {
           setTimeout(() => {
             _setReel(reel, reelTargets[ri]); reel.classList.add(ri === 1 ? 'rp-winner-reel' : 'rp-locked')
             if (ri === 1) {
-              stage.style.borderStyle = 'solid'; stage.style.borderColor = '#10b981'; stage.style.boxShadow = '0 0 0 4px rgba(16,185,129,.12)'
-              if (hintEl) hintEl.textContent = '🎉 ได้คนนี้แหละ!'; _fireConfetti(stage); onFinish()
+              if (hintEl) hintEl.textContent = '🎉 ได้คนนี้แหละ!'
+              setTimeout(() => { _showWinnerCard(stage, target); onFinish() }, 900)
             }
           }, 200)
         } else { _setReel(reel, pool[Math.floor(Math.random() * pool.length)]) }
