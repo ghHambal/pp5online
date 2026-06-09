@@ -2152,6 +2152,34 @@ export async function renderSettings() {
     }
     const INPUT = 'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200'
 
+    window._testGeminiKey = async (btn, inputId, statusId) => {
+      const apiKey = document.getElementById(inputId)?.value?.trim()
+      const statusEl = document.getElementById(statusId)
+      if (!apiKey) { statusEl.textContent = '⚠️ ยังไม่ได้ใส่ Key'; statusEl.className = 'text-xs text-amber-500 font-medium'; return }
+      btn.textContent = '⏳'; btn.disabled = true
+      try {
+        const model = document.getElementById('cfg-geminiModel')?.value?.trim() || 'gemini-1.5-flash'
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: 'hi' }] }] }) }
+        )
+        if (res.ok) {
+          statusEl.textContent = '✅ ใช้งานได้'
+          statusEl.className = 'text-xs text-emerald-600 font-semibold'
+        } else {
+          const d = await res.json().catch(() => ({}))
+          const msg = d.error?.message ?? `HTTP ${res.status}`
+          statusEl.textContent = `❌ ${msg.slice(0, 60)}`
+          statusEl.className = 'text-xs text-red-500 font-medium'
+        }
+      } catch (e) {
+        statusEl.textContent = '❌ เชื่อมต่อไม่ได้'
+        statusEl.className = 'text-xs text-red-500 font-medium'
+      }
+      btn.textContent = 'ทดสอบ'; btn.disabled = false
+    }
+
     const fld = ({ key, label, type, options, placeholder, hint, rows, syncFrom }) => {
       const val  = cfg[key] ?? ''
       const base = `id="cfg-${key}" data-key="${key}"`
@@ -2209,13 +2237,24 @@ export async function renderSettings() {
           </button>`, hint)
       }
 
-      if (type === 'password') return wrap(`
-        <div class="flex gap-2">
-          <input type="password" ${base} value="${val}" class="${INPUT} flex-1" placeholder="sk-..." autocomplete="off" />
-          <button type="button" class="px-4 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 font-medium"
-            onclick="const i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'ดู':'ซ่อน'">ดู</button>
-        </div>
-        <p class="text-[11px] text-amber-600 mt-1">⚠️ เก็บเป็นความลับ — ห้ามแชร์</p>`, hint)
+      if (type === 'password') {
+        const isGemini = /^(geminiApiKey|donationGeminiKey\d+|geminiKey_.+)$/.test(key)
+        const toggleJs = `const i=document.getElementById('cfg-${key}');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'ดู':'ซ่อน'`
+        const testBtn = isGemini
+          ? `<button type="button"
+               class="px-3 py-1.5 rounded-xl border border-sky-200 bg-sky-50 text-xs text-sky-700 hover:bg-sky-100 font-medium whitespace-nowrap transition"
+               onclick="window._testGeminiKey(this,'cfg-${key}','cfg-${key}-st')">ทดสอบ</button>
+             <span id="cfg-${key}-st" class="text-xs text-gray-400"></span>`
+          : ''
+        return wrap(`
+          <div class="flex gap-2 flex-wrap items-center">
+            <input type="password" ${base} value="${val}" class="${INPUT} flex-1 min-w-[180px]" placeholder="AIza..." autocomplete="off" />
+            <button type="button" class="px-4 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 font-medium"
+              onclick="${toggleJs}">ดู</button>
+            ${testBtn}
+          </div>
+          <p class="text-[11px] text-amber-600 mt-1">⚠️ เก็บเป็นความลับ — ห้ามแชร์</p>`, hint)
+      }
 
       // default text (+ sync button จาก position ถ้ามี syncFrom)
       if (syncFrom) return wrap(`
