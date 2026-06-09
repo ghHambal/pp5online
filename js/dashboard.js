@@ -657,14 +657,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Dynamic position rows
   const POS_OPTIONS = [
-    { value: 'dept_head',          label: 'หัวหน้ากลุ่มสาระ' },
-    { value: 'registrar_samai',    label: 'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
-    { value: 'registrar_religion', label: 'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
-    { value: 'registrar_pvch',     label: 'หัวหน้าฝ่ายทะเบียน (ปวช)' },
-    { value: 'academic_samai',     label: 'หัวหน้าวิชาการสามัญ' },
-    { value: 'academic_religion',  label: 'หัวหน้าวิชาการศาสนา' },
-    { value: 'academic_pvch',      label: 'หัวหน้าวิชาการปวช' },
-    { value: 'house_color_admin',  label: 'ผู้รับผิดชอบสีนักเรียน' },
+    { value: 'dept_head',            label: 'หัวหน้ากลุ่มสาระ' },
+    { value: 'religion_group_head',  label: 'หัวหน้ากลุ่ม (ศาสนา)' },
+    { value: 'registrar_samai',      label: 'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
+    { value: 'registrar_religion',   label: 'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
+    { value: 'registrar_pvch',       label: 'หัวหน้าฝ่ายทะเบียน (ปวช)' },
+    { value: 'academic_samai',       label: 'หัวหน้าวิชาการสามัญ' },
+    { value: 'academic_religion',    label: 'หัวหน้าวิชาการศาสนา' },
+    { value: 'academic_pvch',        label: 'หัวหน้าวิชาการปวช' },
+    { value: 'house_color_admin',    label: 'ผู้รับผิดชอบสีนักเรียน' },
   ]
   const posOptHtml = () =>
     `<option value="">— ไม่มี —</option>` +
