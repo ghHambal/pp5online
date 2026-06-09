@@ -2891,12 +2891,12 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         </div>
       </div>
       <div class="px-5 pb-5 pt-3 border-t border-gray-100 flex gap-3 flex-shrink-0">
-        <button id="vision-cancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button id="vision-cancel" class="flex-1 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ปิด</button>
         <button id="vision-analyze" class="flex-1 py-3 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50" disabled>
           🔍 วิเคราะห์
         </button>
-        <button id="vision-save" class="hidden flex-1 py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700">
-          ✅ บันทึก
+        <button id="vision-save" class="hidden flex-1 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 font-bold hover:bg-gray-50">
+          ✕ ปิด
         </button>
       </div>
     </div>`
@@ -3212,49 +3212,8 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
 
   // ─── Save ─────────────────────────────────────────────────────────────────
   wrap.querySelector('#vision-save').addEventListener('click', async () => {
-    const btn = wrap.querySelector('#vision-save')
-    btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
-    try {
-      // flatten groups → entries
-      const entries = []
-      for (const g of groups) {
-        const colorHex = g.color_hex ?? resolveScheduleColor({
-          teacherId: teacher?.id,
-          className: g.class_name,
-          subjectName: g.subject_name,
-          fallbackId: g.subject_id,
-        }, roomColorMap).dot
-        if (g.class_name || g.subject_name || g.subject_id) {
-          await saveTeacherRoomColor({
-            teacher_id: teacher.id,
-            room_key: roomColorKey({ className: g.class_name, subjectName: g.subject_name, fallbackId: g.subject_id }),
-            class_name: g.class_name?.trim() || null,
-            color_hex: colorHex,
-          }).catch(err => showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'warning'))
-        }
-        for (const s of g.sessions) {
-          entries.push({
-            teacher_id:   teacher.id,
-            subject_id:   g.subject_id ?? null,
-            subject_name: g.subject_name?.trim() || null,
-            class_name:   g.class_name?.trim()   || null,
-            teacher_name: g.teacher_name?.trim()  || null,
-            day_of_week:  s.day_of_week,
-            period_no:    s.period_no,
-            span_periods: s.span_periods ?? 1,
-            academic_year: academicYear,
-            semester,
-          })
-        }
-      }
-      await Promise.all(entries.map(e => upsertScheduleEntry(e)))
-      wrap.remove()
-      showToast(`บันทึก ${groups.length} กลุ่มวิชา (${entries.length} คาบ) ✅`, 'success')
-      await renderScheduleGrid(teacher, academicYear, semester, cfg)
-    } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      btn.disabled = false; btn.textContent = '✅ บันทึก'
-    }
+    wrap.remove()
+    await renderScheduleGrid(teacher, academicYear, semester, cfg)
   })
 }
 
