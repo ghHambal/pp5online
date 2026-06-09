@@ -87,6 +87,10 @@ export function injectFeedbackWidget({ profileId, role, name }) {
   document.body.appendChild(fab)
 
   fab.addEventListener('click', () => _openFeedbackModal({ profileId, role, name }))
+
+  window._openFeedbackWidget = (prefillMessage) => {
+    _openFeedbackModal({ profileId, role, name, prefillMessage })
+  }
 }
 
 const _FB_STATUS = {
@@ -100,7 +104,7 @@ const _FB_STATUS = {
 }
 const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', other:'💬' }
 
-function _openFeedbackModal({ profileId, role, name }) {
+function _openFeedbackModal({ profileId, role, name, prefillMessage }) {
   document.getElementById('feedback-modal')?.remove()
 
   const m = document.createElement('div')
@@ -165,8 +169,19 @@ function _openFeedbackModal({ profileId, role, name }) {
           style="background:linear-gradient(135deg,#db2777,#9d174d);">📨 ส่งความคิดเห็น</button>
       </div>`
 
-    let category = FEEDBACK_CATEGORIES[0].value
+    // prefill จาก caller (เช่น error จาก Gemini)
+    if (prefillMessage) {
+      const ta = body.querySelector('#fb-message')
+      if (ta) ta.value = prefillMessage
+    }
+
+    let category = prefillMessage ? 'problem' : FEEDBACK_CATEGORIES[0].value
     const catBtns = [...body.querySelectorAll('.fb-cat-btn')]
+    // sync active state ถ้า prefill เป็น problem
+    catBtns.forEach(b => {
+      const on = b.dataset.cat === category
+      b.className = `fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left ${on ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
+    })
     catBtns.forEach(b => b.addEventListener('click', () => {
       category = b.dataset.cat
       catBtns.forEach(x => {

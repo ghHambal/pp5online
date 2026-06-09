@@ -3195,7 +3195,23 @@ Return JSON array เท่านั้น (ไม่มีข้อความ
       status.textContent = `✅ พบ ${groups.length} กลุ่มวิชา ${total} คาบ — ตรวจสอบแล้วกด "บันทึก"`
     } catch (err) {
       console.error('Vision error:', err)
-      status.innerHTML = `<span class="text-red-500">❌ ${err.message ?? 'ไม่ทราบสาเหตุ'}</span><br/><span class="text-gray-400 text-xs">ดู Console เพื่อดูรายละเอียด</span>`
+      const errMsg = err.message ?? 'ไม่ทราบสาเหตุ'
+      status.innerHTML = `
+        <span class="text-red-500 font-medium">❌ ${errMsg}</span>
+        <br/><span class="text-gray-400 text-xs">ปัญหานี้ต้องให้แอดมินแก้ไข</span>`
+      // ปุ่มแจ้งแอดมิน
+      const feedbackBtnId = 'vision-err-feedback'
+      if (!wrap.querySelector(`#${feedbackBtnId}`)) {
+        const fb = document.createElement('button')
+        fb.id = feedbackBtnId
+        fb.className = 'mt-2 w-full py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-semibold hover:bg-rose-100 transition'
+        fb.textContent = '📨 แจ้งปัญหานี้ให้แอดมิน'
+        fb.addEventListener('click', () => {
+          wrap.remove()
+          window._openFeedbackWidget?.(`[ตารางสอน AI] ${errMsg}`)
+        })
+        status.after(fb)
+      }
     } finally {
       btn.disabled = false; btn.textContent = '🔍 วิเคราะห์อีกครั้ง'
     }
