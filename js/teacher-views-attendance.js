@@ -293,7 +293,7 @@ export async function renderAttendanceGrid(teacher, classData) {
 
       // หาคาบอื่นที่วันเดียวกัน
       const sameDateSessions = sessions.filter(s => s.ds === date)
-      _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions)
+      _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet)
     })
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')
@@ -584,7 +584,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
 
 // sameDateSessions = array of all sessions on the same date as sessN
 
-function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions) {
+function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set()) {
   const existing = document.getElementById('att-form-modal')
   if (existing) existing.remove()
   const STATUS_LIST = [
@@ -757,6 +757,11 @@ function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSes
 
   // ─── Save ────────────────────────────────────────────────────────
   modal.querySelector('#att-modal-save').addEventListener('click', async () => {
+    if (holidaySet.has(date)) {
+      showToast('วันหยุดโรงเรียน — ไม่สามารถบันทึกได้', 'warning')
+      modal.remove()
+      return
+    }
     const saveBtn = modal.querySelector('#att-modal-save')
     saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
     const targetSessions = (hasMulti && syncEnabled) ? sameDateSessions.map(s => s.n) : [sessN]
