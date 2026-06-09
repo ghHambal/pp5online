@@ -1452,17 +1452,24 @@ async function _openRandomPickerModal(classId, cls, students) {
     goBtn.textContent = '🎰 กำลังสุ่ม...'
     hintEl.textContent = 'กำลังสุ่ม...'
     nameEl.classList.remove('rp-pop')
+    avatarEl.classList.remove('rp-pop')
     stage.style.borderStyle  = 'dashed'
     stage.style.borderColor  = '#fbbf24'
     stage.style.boxShadow    = 'none'
-    avatarEl.style.display   = 'none'
 
-    const _showAvatar = (s) => {
-      avatarEl.style.removeProperty('display')
-      avatarEl.innerHTML = s.image_url
-        ? `<img src="${s.image_url}" class="w-full h-full object-cover" />`
-        : `<span class="text-2xl font-bold text-gray-400">${(s.full_name ?? '?').charAt(0)}</span>`
+    const _showAvatar = (s, spinning = false) => {
+      avatarEl.style.transition = spinning ? 'opacity 0.06s ease' : 'opacity 0.3s ease'
+      avatarEl.style.opacity = '0'
+      setTimeout(() => {
+        avatarEl.innerHTML = s.image_url
+          ? `<img src="${s.image_url}" class="w-full h-full object-cover" />`
+          : `<div class="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-400">${(s.full_name ?? '?').charAt(0)}</div>`
+        avatarEl.style.opacity = '1'
+      }, spinning ? 30 : 80)
     }
+
+    // แสดงรูปแรกทันทีก่อนสุ่ม
+    _showAvatar(pool[Math.floor(Math.random() * pool.length)], true)
 
     const target = pool[Math.floor(Math.random() * pool.length)]
     let step = 0
@@ -1472,6 +1479,7 @@ async function _openRandomPickerModal(classId, cls, students) {
       const s = pool[Math.floor(Math.random() * pool.length)]
       nameEl.textContent = s.full_name
       codeEl.textContent = s.student_code ? `เลขที่ ${s.student_code}` : ''
+      _showAvatar(s, true)
       step++
       if (step < totalSteps) {
         delay = Math.min(delay * 1.13, 420)
@@ -1483,7 +1491,8 @@ async function _openRandomPickerModal(classId, cls, students) {
     const finish = async () => {
       nameEl.textContent = target.full_name
       codeEl.textContent = target.student_code ? `เลขที่ ${target.student_code}` : ''
-      _showAvatar(target)
+      _showAvatar(target, false)
+      avatarEl.classList.add('rp-pop')
       nameEl.classList.add('rp-pop')
       stage.style.borderStyle = 'solid'
       stage.style.borderColor = '#10b981'
