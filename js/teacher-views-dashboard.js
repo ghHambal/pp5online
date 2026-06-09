@@ -3,16 +3,16 @@ import { getClassStudents, getClassAttendanceSummary, getClassScoreSummary, getM
 const _e = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 const GRADE_BANDS = [
-  { label: 'A',  min: 80, color: '#10b981' },
-  { label: 'B+', min: 75, color: '#34d399' },
-  { label: 'B',  min: 70, color: '#6ee7b7' },
-  { label: 'C+', min: 65, color: '#fbbf24' },
-  { label: 'C',  min: 60, color: '#fb923c' },
-  { label: 'D+', min: 55, color: '#f87171' },
-  { label: 'D',  min: 50, color: '#ef4444' },
-  { label: 'F',  min: 0,  color: '#dc2626' },
+  { label: '4',   min: 80, color: '#10b981' },
+  { label: '3.5', min: 75, color: '#34d399' },
+  { label: '3',   min: 70, color: '#6ee7b7' },
+  { label: '2.5', min: 65, color: '#fbbf24' },
+  { label: '2',   min: 60, color: '#fb923c' },
+  { label: '1.5', min: 55, color: '#f87171' },
+  { label: '1',   min: 50, color: '#ef4444' },
+  { label: '0',   min: 0,  color: '#dc2626' },
 ]
-const _scoreToGrade = pct => GRADE_BANDS.find(b => pct >= b.min)?.label ?? 'F'
+const _scoreToGrade = pct => GRADE_BANDS.find(b => pct >= b.min)?.label ?? '0'
 
 // parse minTier for dashboard from donationSpecialFeatures config
 function _dashboardMinTier(cfg) {
