@@ -196,3 +196,110 @@ function _openFeedbackModal({ profileId, role, name }) {
     }
   })
 }
+
+// ─── Searchable Teacher Select ────────────────────────────────────────────────
+// ใช้แทน <select> ทุกจุดที่เลือกครู — รองรับค้นหาด้วยชื่อหรือรหัสครู
+//
+// การใช้งาน:
+//   const sel = createTeacherSelect({ wrap: el, teachers, value: selectedId })
+//   sel.getValue()   → teacher id (number | null)
+//   sel.setValue(id) → เซตค่า
+export function createTeacherSelect({ wrap, teachers, value = null, placeholder = 'ค้นหาชื่อหรือรหัสครู...' }) {
+  // ── state ──────────────────────────────────────────────────────────────────
+  let _selected = value != null ? teachers.find(t => t.id === +value) ?? null : null
+  let _open = false
+
+  // ── DOM ────────────────────────────────────────────────────────────────────
+  wrap.style.position = 'relative'
+  wrap.innerHTML = `
+    <div class="ts-input flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 cursor-pointer bg-white hover:border-indigo-300 transition" tabindex="0">
+      <span class="ts-display flex-1 text-sm text-gray-400 truncate">${_selected ? _fmtTeacher(_selected) : '— ยังไม่ระบุ —'}</span>
+      <svg class="ts-arrow w-4 h-4 text-gray-400 flex-shrink-0 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="ts-dropdown absolute left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden hidden">
+      <div class="p-2 border-b border-gray-100">
+        <input class="ts-search w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="${placeholder}" autocomplete="off" />
+      </div>
+      <ul class="ts-list max-h-52 overflow-y-auto"></ul>
+    </div>`
+
+  const inputEl   = wrap.querySelector('.ts-input')
+  const dropdown  = wrap.querySelector('.ts-dropdown')
+  const searchEl  = wrap.querySelector('.ts-search')
+  const listEl    = wrap.querySelector('.ts-list')
+  const displayEl = wrap.querySelector('.ts-display')
+  const arrowEl   = wrap.querySelector('.ts-arrow')
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  function _fmtTeacher(t) {
+    return `${t.full_name ?? ''}${t.teacher_code ? ` (${t.teacher_code})` : ''}`
+  }
+
+  function _renderList(q = '') {
+    const lq = q.toLowerCase()
+    const filtered = teachers.filter(t =>
+      !q ||
+      (t.full_name ?? '').toLowerCase().includes(lq) ||
+      String(t.teacher_code ?? '').includes(q)
+    )
+    if (!filtered.length) {
+      listEl.innerHTML = `<li class="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบครู</li>`
+      return
+    }
+    listEl.innerHTML = [
+      `<li data-id="" class="ts-opt px-4 py-2.5 text-sm text-gray-400 cursor-pointer hover:bg-gray-50 border-b border-gray-50">— ยังไม่ระบุ —</li>`,
+      ...filtered.map(t => {
+        const active = _selected?.id === t.id
+        return `<li data-id="${t.id}" class="ts-opt px-4 py-2.5 text-sm cursor-pointer hover:bg-indigo-50 flex items-center gap-2 ${active ? 'bg-indigo-50 font-semibold text-indigo-700' : 'text-gray-700'}">
+          ${t.image_url ? `<img src="${t.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />` : `<div class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${(t.full_name ?? '?').charAt(0)}</div>`}
+          <span class="truncate">${t.full_name ?? ''}${t.teacher_code ? `<span class="ml-1 text-xs text-gray-400 font-mono">${t.teacher_code}</span>` : ''}</span>
+        </li>`
+      })
+    ].join('')
+
+    listEl.querySelectorAll('.ts-opt').forEach(li => {
+      li.addEventListener('mousedown', e => {
+        e.preventDefault()
+        const id = li.dataset.id ? +li.dataset.id : null
+        _selected = id ? (teachers.find(t => t.id === id) ?? null) : null
+        displayEl.textContent = _selected ? _fmtTeacher(_selected) : '— ยังไม่ระบุ —'
+        displayEl.classList.toggle('text-gray-400', !_selected)
+        displayEl.classList.toggle('text-gray-800', !!_selected)
+        _close()
+        wrap.dispatchEvent(new CustomEvent('ts:change', { detail: { id: _selected?.id ?? null } }))
+      })
+    })
+  }
+
+  function _open_() {
+    _open = true
+    dropdown.classList.remove('hidden')
+    arrowEl.style.transform = 'rotate(180deg)'
+    searchEl.value = ''
+    _renderList()
+    setTimeout(() => searchEl.focus(), 50)
+  }
+
+  function _close() {
+    _open = false
+    dropdown.classList.add('hidden')
+    arrowEl.style.transform = ''
+  }
+
+  // ── events ─────────────────────────────────────────────────────────────────
+  inputEl.addEventListener('click', () => _open ? _close() : _open_())
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _open ? _close() : _open_() } })
+  searchEl.addEventListener('input', () => _renderList(searchEl.value.trim()))
+  document.addEventListener('mousedown', e => { if (_open && !wrap.contains(e.target)) _close() }, true)
+
+  // ── public API ─────────────────────────────────────────────────────────────
+  return {
+    getValue: () => _selected?.id ?? null,
+    setValue: (id) => {
+      _selected = id != null ? teachers.find(t => t.id === +id) ?? null : null
+      displayEl.textContent = _selected ? _fmtTeacher(_selected) : '— ยังไม่ระบุ —'
+      displayEl.classList.toggle('text-gray-400', !_selected)
+      displayEl.classList.toggle('text-gray-800', !!_selected)
+    },
+  }
+}

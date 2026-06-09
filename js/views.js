@@ -31,7 +31,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          updateTeacherPosition } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { showToast, showPageLoader } from './ui.js'
+import { showToast, showPageLoader, createTeacherSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
          openDeptModal, handleDeleteDept,
@@ -481,10 +481,8 @@ function _teacherCell(room, teacherByRoom, homeroomMap, ctx) {
       ยังไม่ระบุครูที่ปรึกษา ⊕
     </button>
     <div id="${pickerId}" class="hidden mt-2 flex gap-1 items-center">
-      <select class="hr-sel text-[10px] border border-gray-200 rounded-lg px-2 py-1 bg-white flex-1 focus:outline-none">
-        <option value="">-- เลือกครู --</option>${teacherOpts}
-      </select>
-      <button class="hr-save-btn text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700"
+      <div class="hr-sel-wrap flex-1 min-w-0"></div>
+      <button class="hr-save-btn text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 flex-shrink-0"
         data-room="${room}" data-year="${year}" data-sem="${sem}" data-cat="${category}">บันทึก</button>
     </div>`
 }
@@ -858,6 +856,14 @@ async function _attachHrAssignEvents(container, ctx, onSaved) {
   const { allTeachers, year, sem, category } = ctx ?? {}
   if (!allTeachers?.length) return
 
+  // init searchable teacher select สำหรับแต่ละ picker
+  const _hrSelMap = {}
+  container.querySelectorAll('.hr-sel-wrap').forEach(wrap => {
+    const picker = wrap.closest('[id^="pick-"]')
+    if (!picker) return
+    _hrSelMap[picker.id] = createTeacherSelect({ wrap, teachers: allTeachers, value: null, placeholder: 'ค้นหาชื่อหรือรหัสครู...' })
+  })
+
   // toggle picker เมื่อคลิกปุ่ม "ยังไม่ระบุ"
   container.querySelectorAll('.hr-assign-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -873,8 +879,7 @@ async function _attachHrAssignEvents(container, ctx, onSaved) {
     btn.addEventListener('click', async () => {
       const room = btn.dataset.room
       const pickerId = `pick-${room.replace(/[^a-zA-Z0-9]/g,'_')}`
-      const sel = document.getElementById(pickerId)?.querySelector('.hr-sel')
-      const teacherId = sel?.value
+      const teacherId = _hrSelMap[pickerId]?.getValue()
       if (!teacherId) { showToast('กรุณาเลือกครู','error'); return }
       btn.disabled = true; btn.textContent = '...'
       try {
@@ -8919,10 +8924,7 @@ export async function renderDonations() {
         <h3 class="font-bold text-gray-800">+ เพิ่มโดเนทเงินสด</h3>
         <div>
           <label class="text-xs font-semibold text-gray-600 mb-1 block">ครูผู้สนับสนุน</label>
-          <select id="don-add-teacher" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
-            <option value="">— เลือกครู —</option>
-            ${teachers.map(t => `<option value="${t.id}">${t.full_name} (${t.teacher_code})</option>`).join('')}
-          </select>
+          <div id="don-teacher-wrap"></div>
         </div>
         <div>
           <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนเงิน (บาท)</label>
@@ -8940,9 +8942,13 @@ export async function renderDonations() {
         </div>
       </div>`
     document.body.appendChild(m)
+    const donTeacherSel = createTeacherSelect({
+      wrap: m.querySelector('#don-teacher-wrap'),
+      teachers: [...teachers].sort((a,b) => (a.full_name??'').localeCompare(b.full_name??'','th')),
+    })
     m.querySelector('#don-add-cancel').addEventListener('click', () => m.remove())
     m.querySelector('#don-add-confirm').addEventListener('click', async () => {
-      const tid    = m.querySelector('#don-add-teacher').value
+      const tid    = donTeacherSel.getValue()
       const amount = Number(m.querySelector('#don-add-amount').value)
       const note   = m.querySelector('#don-add-note').value.trim()
       if (!tid)    { showToast('กรุณาเลือกครู', 'warning'); return }
@@ -9684,11 +9690,8 @@ function _openRGModal(group, allTeachers, onSave) {
   const overlay = document.createElement('div')
   overlay.className = 'fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 p-4'
 
-  const teacherOptions = allTeachers
-    .sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '', 'th'))
-    .map(t => `<option value="${t.id}" ${group?.leader_id === t.id ? 'selected' : ''}>
-      ${_esc(t.full_name)}${t.teacher_code ? ` (${t.teacher_code})` : ''}
-    </option>`).join('')
+  const sortedTeachers = [...allTeachers].sort((a, b) =>
+    (a.full_name ?? '').localeCompare(b.full_name ?? '', 'th'))
 
   overlay.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -9704,10 +9707,7 @@ function _openRGModal(group, allTeachers, onSave) {
         </div>
         <div>
           <label class="block text-xs font-medium text-gray-600 mb-1">หัวหน้ากลุ่ม</label>
-          <select id="rg-leader" class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
-            <option value="">— ยังไม่ระบุ —</option>
-            ${teacherOptions}
-          </select>
+          <div id="rg-leader-wrap"></div>
           <p class="text-xs text-gray-400 mt-1">ครูที่ถูกเลือกจะได้รับบทบาท "หัวหน้ากลุ่ม" และมี Dashboard ติดตาม</p>
         </div>
       </div>
@@ -9718,13 +9718,20 @@ function _openRGModal(group, allTeachers, onSave) {
     </div>`
 
   document.body.appendChild(overlay)
+
+  const leaderSel = createTeacherSelect({
+    wrap: overlay.querySelector('#rg-leader-wrap'),
+    teachers: sortedTeachers,
+    value: group?.leader_id ?? null,
+  })
+
   overlay.querySelector('#rg-modal-close').onclick = () => overlay.remove()
   overlay.querySelector('#rg-cancel').onclick = () => overlay.remove()
 
   overlay.querySelector('#rg-save').onclick = async () => {
     const name = overlay.querySelector('#rg-name').value.trim()
     if (!name) { showToast('กรุณาระบุชื่อกลุ่ม', 'error'); return }
-    const newLeaderId = overlay.querySelector('#rg-leader').value || null
+    const newLeaderId = leaderSel.getValue()
     const oldLeaderId = group?.leader_id ?? null
     const saveBtn = overlay.querySelector('#rg-save')
     saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
