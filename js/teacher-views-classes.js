@@ -1561,11 +1561,21 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
       }
       setTimeout(() => {
         isSpinning = false
-        const btn = body.querySelector('#rp-go')
-        if (btn) { btn.disabled = false; btn.textContent = '🎲 สุ่มอีกครั้ง' }
         const excl = excludedSet(); const pc = students.length - students.filter(s => !excl.has(s.id)).length
         const ctr = body.querySelector('#rp-counter')
         if (ctr) { const rem = students.length - pc; ctr.textContent = `สุ่มไปแล้ว ${pc} / ${students.length} คน${rem === 0 ? ' — ครบทุกคนแล้ว!' : ''}` }
+        const btn = body.querySelector('#rp-go')
+        if (!btn) return
+        if (currentEffect === 'classic') {
+          btn.disabled = false; btn.textContent = '🎲 สุ่มอีกครั้ง'
+        } else {
+          // กริด/ตัดออก/สล็อต: stage ถูกแทนที่ด้วยการ์ดผู้ชนะแล้ว สุ่มซ้ำในหน้านี้ไม่ได้
+          // ให้ปุ่มพากลับไปหน้าตารางเริ่มต้นแทน เพื่อสุ่มรอบใหม่ได้
+          btn.disabled = false; btn.textContent = '🔁 สุ่มใหม่'
+          const freshBtn = btn.cloneNode(true)
+          btn.replaceWith(freshBtn)
+          freshBtn.addEventListener('click', () => renderPickTab())
+        }
       }, 900)
     }
 
