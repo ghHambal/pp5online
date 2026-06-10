@@ -2210,7 +2210,7 @@ export async function getTeachersWithPositions() {
 // บทบาทที่เก็บใน positions[] เท่านั้น ห้ามเขียนลงคอลัมน์ position (ติด check constraint)
 const _ARRAY_ONLY_POSITIONS = ['religion_group_head', 'religion_subgroup_head']
 
-export async function updateTeacherPosition(id, position, positionDeptId, removePosition = 'religion_group_head') {
+export async function updateTeacherPosition(id, position, removePosition = 'religion_group_head') {
   // ดึงตำแหน่งและ positions ปัจจุบันเพื่อความปลอดภัยในการอัปเดต multi-position
   const { data: teacher, error: fetchErr } = await supabase
     .from('teachers')
@@ -2249,7 +2249,6 @@ export async function updateTeacherPosition(id, position, positionDeptId, remove
     .update({
       position: primaryPosition || null,
       positions: newPositions,
-      position_dept_id: positionDeptId || null
     })
     .eq('id', id)
   if (error) throw error

@@ -9722,7 +9722,7 @@ function _renderRGTable(groups) {
         // ถอดบทบาทหัวหน้ากลุ่มย่อยก่อน
         const gs = await getReligionGroups()
         const g = gs.find(x => x.id === gid)
-        if (g?.leader_id) await updateTeacherPosition(g.leader_id, null, null, 'religion_subgroup_head')
+        if (g?.leader_id) await updateTeacherPosition(g.leader_id, null, 'religion_subgroup_head')
         await deleteReligionGroup(gid)
         showToast('ลบกลุ่มแล้ว', 'success')
         _renderRGTable(await getReligionGroups())
@@ -9786,15 +9786,14 @@ function _openRGModal(group, allTeachers, onSave) {
         await updateReligionGroup(group.id, { name, leader_id: newLeaderId })
         // ถอดบทบาทหัวหน้ากลุ่มย่อยเก่า (ถ้าเปลี่ยน)
         if (oldLeaderId && oldLeaderId !== +newLeaderId) {
-          await updateTeacherPosition(oldLeaderId, null, null, 'religion_subgroup_head')
+          await updateTeacherPosition(oldLeaderId, null, 'religion_subgroup_head')
         }
       } else {
         await createReligionGroup({ name, leader_id: newLeaderId })
       }
       // ตั้งบทบาทหัวหน้ากลุ่มย่อยใหม่
       if (newLeaderId) {
-        const groupId = isEdit ? group.id : (await getReligionGroups()).find(g => g.name === name)?.id
-        if (groupId) await updateTeacherPosition(+newLeaderId, 'religion_subgroup_head', groupId)
+        await updateTeacherPosition(+newLeaderId, 'religion_subgroup_head')
       }
       showToast(isEdit ? 'บันทึกแล้ว' : 'เพิ่มกลุ่มแล้ว', 'success')
       overlay.remove()
