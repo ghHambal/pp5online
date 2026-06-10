@@ -66,12 +66,20 @@ async function loadTeacherInfo(userId) {
     nav.appendChild(switchBtn)
   }
 
+  _renderTeacherSidebarUI(_teacher)
+}
+
+// แสดงปุ่ม "Dashboard ตามตำแหน่ง" + ข้อมูลครูใน sidebar/header
+// ใช้ทั้งโหมดปกติ (loadTeacherInfo) และโหมด "ดูในฐานะ" (impersonation)
+function _renderTeacherSidebarUI(teacher) {
   // เช็ค position — ถ้ามีบทบาทพิเศษแสดงปุ่มสลับ Dashboard (ป้องกัน duplicate)
-  const _teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
+  const nav = document.querySelector('#sidebar nav')
+  const _teacherPositions = teacher?.positions?.length ? teacher.positions : (teacher?.position ? [teacher.position] : [])
   if (_teacherPositions.length > 0 && nav && !document.getElementById('btn-sv-mode')) {
     const POS_LBL = {
       dept_head:'หัวหน้ากลุ่มสาระ',
       religion_group_head:'หัวหน้ากลุ่ม (ศาสนา)',
+      religion_subgroup_head:'หัวหน้ากลุ่มย่อย (ศาสนา)',
       registrar_samai:'ทะเบียน (สามัญ)', registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
       academic_samai:'วิชาการสามัญ', academic_religion:'วิชาการศาสนา', academic_pvch:'วิชาการปวช',
       house_color_admin:'สีนักเรียน',
@@ -86,9 +94,9 @@ async function loadTeacherInfo(userId) {
     nav.appendChild(svBtn)
   }
 
-  const name   = _teacher?.full_name ?? 'ครูผู้สอน'
-  const code   = _teacher?.teacher_code ? `รหัส ${_teacher.teacher_code}` : ''
-  const imgUrl = _teacher?.image_url ?? ''
+  const name   = teacher?.full_name ?? 'ครูผู้สอน'
+  const code   = teacher?.teacher_code ? `รหัส ${teacher.teacher_code}` : ''
+  const imgUrl = teacher?.image_url ?? ''
 
   // Sidebar mini profile
   const avatarEl = document.getElementById('t-avatar')
@@ -101,7 +109,7 @@ async function loadTeacherInfo(userId) {
   document.getElementById('t-code').textContent = code
 
   // แจ้งเตือนจากหัวหน้า
-  if (_teacher?.id) _loadSupervisorNotifications(_teacher.id)
+  if (teacher?.id) _loadSupervisorNotifications(teacher.id)
 
   // Header
   document.getElementById('user-name').textContent = name
@@ -2503,6 +2511,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const allPositions = _teacher.positions?.length ? _teacher.positions : [_teacher.position]
         _positionPerms = await getTeacherPositionPermissions(allPositions).catch(() => ({}))
       }
+      // แสดงปุ่ม Dashboard ตามตำแหน่ง + ข้อมูลครูใน sidebar/header (เหมือน loadTeacherInfo)
+      _renderTeacherSidebarUI(_teacher)
       // แสดง banner
       const banner  = document.getElementById('impersonation-banner')
       const nameEl  = document.getElementById('impersonation-name')
