@@ -2315,7 +2315,21 @@ export async function getSupervisorProgress() {
   // คำนวณ metric ต่อครู
   const today = new Date()
   const teacherMetrics = teachers.map(t => {
-    const myClasses = classes.filter(c => c.master_subjects?.teacher_id === t.id)
+    const myClasses = classes.filter(c => c.master_subjects?.teacher_id === t.id).map(c => {
+      const cols = colsByClass[c.id] ?? []
+      const scoreFilledCount = cols.filter(id => filledCols.has(id)).length
+      const lastAttDate = attLast[c.id] ? new Date(attLast[c.id]) : null
+      return {
+        ...c,
+        hasDate: classDates[c.id],
+        attChecked: attClasses.has(c.id),
+        lastAtt: attLast[c.id] ?? null,
+        daysSinceAtt: lastAttDate ? Math.floor((today - lastAttDate) / 86400000) : null,
+        scoreColCount: cols.length,
+        scoreFilledCount,
+        scorePct: cols.length ? Math.round(scoreFilledCount / cols.length * 100) : null,
+      }
+    })
     const n = myClasses.length
 
     // ลงทะเบียนแล้วหรือยัง

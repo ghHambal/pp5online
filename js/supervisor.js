@@ -350,6 +350,9 @@ function _thSort(col, label) {
 
 function _table(rows) {
   if (!rows.length) return `<div style="text-align:center;padding:24px;color:#9ca3af;">ไม่พบข้อมูลครู</div>`
+  const cellAttr = (m, pop) => m.isRegistered
+    ? `class="sv-cell" data-tid="${m.id}" data-pop="${pop}" style="padding:10px 12px;text-align:center;cursor:pointer;"`
+    : `style="padding:10px 12px;text-align:center;"`
   return `<table style="width:100%;border-collapse:collapse;">
     <thead><tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">
       <th class="sv-th-sort" data-col="name" style="padding:10px 12px;text-align:left;font-size:13px;cursor:pointer;user-select:none;">
@@ -370,7 +373,7 @@ function _table(rows) {
       const avatar = m.image_url
         ? `<img src="${m.image_url}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
         : `<div style="width:34px;height:34px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">👤</div>`
-      return `<tr class="sv-row" data-tid="${m.id}" style="border-bottom:1px solid #f3f4f6;cursor:pointer;${!m.isRegistered?'background:#fffbeb;':''}">
+      return `<tr class="sv-row" data-tid="${m.id}" style="border-bottom:1px solid #f3f4f6;${!m.isRegistered?'background:#fffbeb;':''}">
         <td style="padding:8px 12px;">
           <div style="display:flex;align-items:center;gap:10px;">
             ${avatar}
@@ -380,23 +383,27 @@ function _table(rows) {
             </div>
           </div>
         </td>
-        <td style="padding:10px 12px;text-align:center;">${m.isRegistered?_badge(m.profileStatus):'<span style="color:#9ca3af;font-size:12px;">–</span>'}</td>
-        <td style="padding:10px 12px;text-align:center;">
+        <td ${cellAttr(m,'profile')}>${m.isRegistered?_badge(m.profileStatus):'<span style="color:#9ca3af;font-size:12px;">–</span>'}</td>
+        <td ${cellAttr(m,'dates')}>
           ${m.isRegistered?`<span style="font-size:12px;font-weight:600;color:${m.datesOk===m.classCount&&m.classCount>0?'#059669':'#dc2626'};">${m.datesOk}/${m.classCount}</span>`:'<span style="color:#9ca3af;">–</span>'}</td>
-        <td style="padding:10px 12px;text-align:center;">
+        <td ${cellAttr(m,'schedule')}>
           ${m.isRegistered
             ? `${_badge(m.scheduleStatus)}<div style="font-size:10px;color:${m.scheduleCount>0?'#059669':'#dc2626'};margin-top:2px;">${m.scheduleCount??0} คาบ</div>`
             : '<span style="color:#9ca3af;">–</span>'}
         </td>
-        <td style="padding:10px 12px;text-align:center;">
+        <td ${cellAttr(m,'att')}>
           ${m.isRegistered?`${_badge(m.attStatus)}<div style="font-size:10px;color:${attCol};margin-top:2px;">${attTxt}</div>`:'<span style="color:#9ca3af;">–</span>'}
         </td>
-        <td style="padding:10px 12px;text-align:center;">
+        <td ${cellAttr(m,'score')}>
           ${m.isRegistered?`<span style="font-weight:700;color:${m.scorePct===null?'#9ca3af':m.scorePct>=80?'#059669':m.scorePct>=40?'#d97706':'#dc2626'};">${m.scorePct!==null?m.scorePct+'%':'–'}</span>`:'<span style="color:#9ca3af;">–</span>'}
         </td>
-        <td style="padding:10px 12px;text-align:center;">
-          <button class="sv-detail-btn" data-tid="${m.id}"
-            style="padding:4px 12px;border:1px solid #d1d5db;border-radius:6px;background:#f9fafb;font-size:12px;cursor:pointer;">ดู →</button>
+        <td style="padding:10px 12px;text-align:center;white-space:nowrap;">
+          <div style="display:flex;gap:6px;justify-content:center;">
+            <button class="sv-comment-btn" data-tid="${m.id}" title="แสดงความคิดเห็น"
+              style="padding:4px 10px;border:1px solid #d1d5db;border-radius:6px;background:#f9fafb;font-size:13px;cursor:pointer;">💬</button>
+            <button class="sv-detail-btn" data-tid="${m.id}"
+              style="padding:4px 12px;border:1px solid #d1d5db;border-radius:6px;background:#f9fafb;font-size:12px;cursor:pointer;">ดู →</button>
+          </div>
         </td>
       </tr>`}).join('')}
     </tbody>
@@ -411,10 +418,18 @@ function _bindTable(root, metrics) {
       if(m) _showDetail(m)
     })
   })
-  root.querySelectorAll('.sv-row').forEach(r=>{
-    r.addEventListener('click',()=>{
-      const m = metrics.find(x=>x.id===parseInt(r.dataset.tid))
-      if(m) _showDetail(m)
+  root.querySelectorAll('.sv-comment-btn').forEach(b=>{
+    b.addEventListener('click',e=>{
+      e.stopPropagation()
+      const m = metrics.find(x=>x.id===parseInt(b.dataset.tid))
+      if(m) _showCommentPopup(m)
+    })
+  })
+  root.querySelectorAll('.sv-cell[data-pop]').forEach(cell=>{
+    cell.addEventListener('click',e=>{
+      e.stopPropagation()
+      const m = metrics.find(x=>x.id===parseInt(cell.dataset.tid))
+      if(m) _toggleCellPopup(cell, m, cell.dataset.pop)
     })
   })
   // sort headers
@@ -427,6 +442,122 @@ function _bindTable(root, metrics) {
       _bindTable(root, metrics)
     })
   })
+}
+
+// ─── Cell summary popup (tap to toggle) ────────────────────────────────────────
+function _toggleCellPopup(anchorEl, m, type) {
+  const existing = document.getElementById('sv-cell-popup')
+  const sameAnchor = existing?.dataset.anchor === `${m.id}-${type}`
+  if (existing) {
+    existing.remove()
+    document.removeEventListener('click', _closeCellPopupOnOutside)
+    if (sameAnchor) return
+  }
+
+  const pop = document.createElement('div')
+  pop.id = 'sv-cell-popup'
+  pop.dataset.anchor = `${m.id}-${type}`
+  pop.style.cssText = 'position:fixed;z-index:9200;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:14px;width:min(280px,90vw);max-height:min(400px,70vh);overflow-y:auto;font-size:12px;line-height:1.6;'
+  pop.innerHTML = _cellPopupContent(m, type)
+  document.body.appendChild(pop)
+
+  const rect = anchorEl.getBoundingClientRect()
+  const popRect = pop.getBoundingClientRect()
+  let left = rect.left + rect.width / 2 - popRect.width / 2
+  left = Math.max(8, Math.min(left, window.innerWidth - popRect.width - 8))
+  let top = rect.bottom + 6
+  if (top + popRect.height > window.innerHeight - 8) top = Math.max(8, rect.top - popRect.height - 6)
+  pop.style.left = `${left}px`
+  pop.style.top = `${top}px`
+
+  pop.querySelector('.sv-pop-action')?.addEventListener('click', () => {
+    pop.remove()
+    document.removeEventListener('click', _closeCellPopupOnOutside)
+    if (type === 'profile') _showTeacherProfile(m)
+    else if (type === 'schedule') _showScheduleOverlay(m)
+    else _showDetail(m)
+  })
+
+  setTimeout(() => document.addEventListener('click', _closeCellPopupOnOutside), 0)
+}
+
+function _closeCellPopupOnOutside(e) {
+  const pop = document.getElementById('sv-cell-popup')
+  if (pop && !pop.contains(e.target)) {
+    pop.remove()
+    document.removeEventListener('click', _closeCellPopupOnOutside)
+  }
+}
+
+function _cellPopupContent(m, type) {
+  const clsLabel = c => `${c.class_name}${c.master_subjects?.subject_code ? ' (' + c.master_subjects.subject_code + ')' : ''}`
+  const actionBtn = label => `<button class="sv-pop-action"
+    style="margin-top:10px;width:100%;padding:6px;border:1px solid #6366f1;border-radius:8px;background:#f5f3ff;color:#6366f1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${label}</button>`
+  const row = (label, val, color) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;">
+    <span style="color:#6b7280;">${label}</span><span style="font-weight:600;color:${color};">${val}</span>
+  </div>`
+
+  if (type === 'profile') {
+    return `<div style="font-weight:700;margin-bottom:6px;">👤 โปรไฟล์</div>
+      ${row('📱 เบอร์โทร', m.phone || '✗ ยังไม่ระบุ', m.phone ? '#059669' : '#dc2626')}
+      ${row('📷 รูปโปรไฟล์', m.image_url ? 'มีแล้ว' : '✗ ยังไม่ระบุ', m.image_url ? '#059669' : '#dc2626')}
+      ${actionBtn('ดูโปรไฟล์เต็ม →')}`
+  }
+
+  if (type === 'dates') {
+    const missing = m.myClasses.filter(c => !c.hasDate)
+    return `<div style="font-weight:700;margin-bottom:6px;">📅 วันสอน — ${m.datesOk}/${m.classCount} ห้อง</div>
+      ${missing.length
+        ? missing.map(c => `<div style="padding:2px 0;color:#dc2626;">✗ ${clsLabel(c)}</div>`).join('')
+        : `<div style="color:#059669;">✓ ครบทุกห้องแล้ว</div>`}
+      ${actionBtn('ดูรายห้อง →')}`
+  }
+
+  if (type === 'schedule') {
+    return `<div style="font-weight:700;margin-bottom:6px;">🗓 ตารางสอน</div>
+      <div>${m.scheduleCount > 0
+        ? `ตั้งตารางสอนแล้ว <strong style="color:#059669;">${m.scheduleCount}</strong> คาบ/สัปดาห์`
+        : `<span style="color:#dc2626;">✗ ยังไม่ได้ตั้งตารางสอน</span>`}</div>
+      ${actionBtn('ดูตารางสอน →')}`
+  }
+
+  if (type === 'att') {
+    const sorted = [...m.myClasses].sort((a, b) => (b.daysSinceAtt ?? 9999) - (a.daysSinceAtt ?? 9999))
+    return `<div style="font-weight:700;margin-bottom:6px;">✅ เช็คชื่อ</div>
+      ${sorted.map(c => {
+        const txt = c.attChecked ? `${c.daysSinceAtt} วันที่แล้ว` : 'ยังไม่บันทึก'
+        const col = !c.attChecked ? '#dc2626' : c.daysSinceAtt <= 7 ? '#059669' : c.daysSinceAtt <= 14 ? '#d97706' : '#dc2626'
+        return row(clsLabel(c), txt, col)
+      }).join('')}
+      ${actionBtn('ดูรายห้อง →')}`
+  }
+
+  if (type === 'score') {
+    const sorted = [...m.myClasses].sort((a, b) => (a.scorePct ?? -1) - (b.scorePct ?? -1))
+    return `<div style="font-weight:700;margin-bottom:6px;">📝 คะแนน — รวม ${m.scorePct !== null ? m.scorePct + '%' : '–'}</div>
+      ${sorted.map(c => {
+        const pct = c.scorePct
+        const col = pct === null ? '#9ca3af' : pct >= 80 ? '#059669' : pct >= 40 ? '#d97706' : '#dc2626'
+        return row(clsLabel(c), pct !== null ? pct + '%' : '–', col)
+      }).join('')}
+      ${actionBtn('ดูรายห้อง →')}`
+  }
+
+  return ''
+}
+
+// ─── Quick comment popup (จากปุ่ม 💬 ในตาราง) ──────────────────────────────────
+function _showCommentPopup(m) {
+  const overlay = _makeOverlay()
+  overlay.innerHTML = `<div class="sv-popup" style="width:min(420px,96vw);">
+    <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
+    <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">💬 ความคิดเห็น — ${m.full_name}</h3>
+    ${_miniCommentHTML('general')}
+  </div>`
+  document.body.appendChild(overlay)
+  overlay.querySelector('#sv-pop-close').onclick = () => overlay.remove()
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+  _bindMiniComment(overlay, m.id, 'general')
 }
 
 // ─── Full-screen teacher detail ───────────────────────────────────────────────
