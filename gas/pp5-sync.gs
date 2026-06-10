@@ -529,6 +529,10 @@ function _buildStudentHeaderMap(headers) {
   return map
 }
 
+// ฟิลด์ที่ผู้รับผิดชอบสามารถกรอกเพิ่มในระบบเองได้ภายหลัง (เช่น สีนักเรียน, ไซด์เสื้อกีฬาสี)
+// ถ้าชีทไม่มีค่าสำหรับนักเรียนคนใด จะไม่เขียนทับค่าที่กรอกไว้ในระบบด้วย null
+var STICKY_STUDENT_FIELDS = ['house_color', 'sports_shirt_size']
+
 // ─── บันทึก records นักเรียนเข้า Supabase students ───────────────────────────
 // ส่งทีละ 200 แถว (ป้องกัน payload ใหญ่เกิน)
 // ใช้ on_conflict=student_code เพื่อ upsert — ถ้ามีรหัสซ้ำให้ merge แทนสร้างใหม่
@@ -539,9 +543,13 @@ function _upsertStudentsToSupabase(records) {
   var written = 0
 
   // PostgREST PGRST102: ทุก row ใน batch ต้องมี key ชุดเดียวกัน
-  // รวบรวม key ทั้งหมดที่มีในทุก record แล้ว fill null สำหรับที่ขาด
+  // รวบรวม key ทั้งหมดที่มีในทุก record (ไม่รวม STICKY_STUDENT_FIELDS) แล้ว fill null สำหรับที่ขาด
   var allKeys = {}
-  records.forEach(function(r) { Object.keys(r).forEach(function(k) { allKeys[k] = true }) })
+  records.forEach(function(r) {
+    Object.keys(r).forEach(function(k) {
+      if (STICKY_STUDENT_FIELDS.indexOf(k) === -1) allKeys[k] = true
+    })
+  })
   var keys = Object.keys(allKeys)
   var normalized = records.map(function(r) {
     var row = {}
@@ -568,7 +576,47 @@ function _upsertStudentsToSupabase(records) {
     }
     written += chunk.length
   }
+
+  _upsertStickyFields(records, url, endpoint)
+
   return written
+}
+
+// อัปเดต STICKY_STUDENT_FIELDS เฉพาะนักเรียนที่ชีทมีค่าจริงเท่านั้น
+// จัดกลุ่มตามชุดฟิลด์ที่มีค่าจริงในแต่ละแถว เพื่อให้แต่ละ batch มี key ชุดเดียวกัน (PGRST102)
+function _upsertStickyFields(records, url, endpoint) {
+  var groups = {}
+  records.forEach(function(r) {
+    var present = STICKY_STUDENT_FIELDS.filter(function(f) { return r.hasOwnProperty(f) })
+    if (!present.length) return
+    var key = present.join(',')
+    if (!groups[key]) groups[key] = []
+    var row = { student_code: r.student_code }
+    present.forEach(function(f) { row[f] = r[f] })
+    groups[key].push(row)
+  })
+
+  Object.keys(groups).forEach(function(key) {
+    var rows = groups[key]
+    for (var i = 0; i < rows.length; i += 200) {
+      var chunk = rows.slice(i, i + 200)
+      var resp = UrlFetchApp.fetch(url, {
+        method: 'post',
+        muteHttpExceptions: true,
+        contentType: 'application/json',
+        headers: {
+          apikey: endpoint.key,
+          Authorization: 'Bearer ' + endpoint.key,
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+        payload: JSON.stringify(chunk),
+      })
+      var code = resp.getResponseCode()
+      if (code < 200 || code >= 300) {
+        Logger.log('อัปเดต ' + key + ' ไม่สำเร็จ: ' + resp.getContentText())
+      }
+    }
+  })
 }
 
 // ─── อ่าน Supabase endpoint จาก Script Properties ────────────────────────────
