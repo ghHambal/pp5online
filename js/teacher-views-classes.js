@@ -1175,12 +1175,11 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition flex items-center gap-1.5">
             💾 <span class="hidden xs:inline">ปพ.5</span><span class="xs:hidden">ปพ.5</span>
           </button>
-          ${isDonorTeacher ? `
           <button onclick="window._openRandomPickerModal(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
             style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
             🎲 <span>สุ่มรายชื่อ</span>
-          </button>` : ''}
+          </button>
           ${cls.google_sheet_id ? `
           <button onclick="window._openSheetToolsModal(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 transition flex items-center gap-1.5">
@@ -1243,7 +1242,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
         const roster = await getClassStudents(cid)
         if (!roster.length) { showToast('ห้องนี้ยังไม่มีนักเรียน', 'warning'); return }
         const rosterWithSeats = roster.map((s, i) => ({ ...s, seat_no: i + 1 }))
-        await _openRandomPickerModal(cid, c, rosterWithSeats)
+        await _openRandomPickerModal(cid, c, rosterWithSeats, isDonorTeacher)
       } catch (err) {
         showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ', 'error')
       }
@@ -1337,8 +1336,22 @@ function _fireConfetti(container) {
   }
 }
 
-async function _openRandomPickerModal(classId, cls, students) {
+async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
   document.getElementById('random-picker-modal')?.remove()
+
+  const showPaywallPopup = () => {
+    m.innerHTML = `
+      <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col p-6 text-center gap-4 relative animate-fade">
+        <button id="rp-paywall-close" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        <div class="text-6xl mt-4">🔒</div>
+        <p class="font-bold text-gray-700 text-lg">สิทธิ์สุ่มทดลองใช้งานครบแล้ว</p>
+        <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">ฟีเจอร์สุ่มรายชื่อและจัดกลุ่มจำกัดการทดลองสุ่มฟรี 1 ครั้งสำหรับผู้ใช้ทั่วไป<br>สนับสนุนระบบเพื่อเปิดใช้งานแบบไม่จำกัด</p>
+        <button id="rp-upgrade" class="mt-2 w-full py-3.5 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+          style="background:linear-gradient(135deg,#f59e0b,#d97706)">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
+      </div>`
+    m.querySelector('#rp-paywall-close').addEventListener('click', () => m.remove())
+    m.querySelector('#rp-upgrade').addEventListener('click', () => { m.remove(); document.getElementById('btn-donate-float')?.click() })
+  }
 
   let dbState
   try { dbState = await getClassRandomizerState(classId) }
@@ -1520,6 +1533,13 @@ async function _openRandomPickerModal(classId, cls, students) {
 
   function spin() {
     if (isSpinning) return
+    if (!isDonorTeacher) {
+      const randomCount = parseInt(localStorage.getItem('pp5_free_random_count') || '0', 10)
+      if (randomCount >= 1) {
+        showPaywallPopup()
+        return
+      }
+    }
     let pool = students.filter(s => !excludedSet().has(s.id))
     let willAutoReset = false
     if (pool.length === 0) {
@@ -1535,6 +1555,10 @@ async function _openRandomPickerModal(classId, cls, students) {
     const _onFinish = async () => {
       if (willAutoReset) { persistedPicked = new Set(); sessionPicked = new Set(); try { await resetClassRandomizerPicks(classId) } catch {} }
       await markPicked(target.id)
+      if (!isDonorTeacher) {
+        const randomCount = parseInt(localStorage.getItem('pp5_free_random_count') || '0', 10)
+        localStorage.setItem('pp5_free_random_count', String(randomCount + 1))
+      }
       setTimeout(() => {
         isSpinning = false
         const btn = body.querySelector('#rp-go')
@@ -1771,6 +1795,14 @@ async function _openRandomPickerModal(classId, cls, students) {
     }
 
     body.querySelector('#rp-group-go').addEventListener('click', () => {
+      if (!isDonorTeacher) {
+        const randomCount = parseInt(localStorage.getItem('pp5_free_random_count') || '0', 10)
+        if (randomCount >= 1) {
+          showPaywallPopup()
+          return
+        }
+        localStorage.setItem('pp5_free_random_count', String(randomCount + 1))
+      }
       const n = Math.max(1, parseInt(body.querySelector('#rp-gnum').value, 10) || 1)
       const splitByGender = showGenderOption && body.querySelector('#rp-gender-split')?.checked
       const colors = ['#f59e0b','#ec4899','#6366f1','#10b981','#06b6d4','#ef4444','#8b5cf6','#f97316']
