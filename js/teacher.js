@@ -2485,6 +2485,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ─── Impersonation mode ─────────────────────────────────────────────────────
   const _impRaw = sessionStorage.getItem('impersonated_teacher')
+  let isImpersonating = false
   if (_impRaw) {
     try {
       const impData = JSON.parse(_impRaw)
@@ -2497,6 +2498,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       _homeroomRooms = _teacher?.id ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
       _applyRoleMenus()
       loadSidebarHeader(_teacher)
+      // โหลด position permissions ก่อน เพื่อให้เมนูหัวหน้า/supervisor แสดงถูกต้องตอน "ดูในฐานะ"
+      if (_teacher?.position || _teacher?.positions?.length) {
+        const allPositions = _teacher.positions?.length ? _teacher.positions : [_teacher.position]
+        _positionPerms = await getTeacherPositionPermissions(allPositions).catch(() => ({}))
+      }
       // แสดง banner
       const banner  = document.getElementById('impersonation-banner')
       const nameEl  = document.getElementById('impersonation-name')
@@ -2512,41 +2518,41 @@ document.addEventListener('DOMContentLoaded', async () => {
           window.location.replace('dashboard.html')
         })
       }
-      showPageLoader(false)
-      navigate('overview')
-      return
+      isImpersonating = true
     } catch (e) {
       sessionStorage.removeItem('impersonated_teacher')
     }
   }
 
-  const session = await requireAuth()
-  if (!session) return
+  if (!isImpersonating) {
+    const session = await requireAuth()
+    if (!session) return
+
+    await loadTeacherInfo(session.user.id)
+    _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
+    _applyRoleMenus()
+    loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
+    _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
+    _startPolling()              // polling 30 วิ
+    updateLastSeen('teachers').catch(() => {})
+    logLogin('teacher').catch(() => {})
+    if (_teacher?.id) _initDonationFlow(_teacher.id)
+    if (_teacher?.id) _checkScheduleLinkPopup()
+    if (_teacher?.id) _initNotifications(_teacher.id)
+    // โหลด position permissions (async ไม่ block)
+    if (_teacher?.position || _teacher?.positions?.length) {
+      const allPositions = _teacher.positions?.length ? _teacher.positions : [_teacher.position]
+      getTeacherPositionPermissions(allPositions)
+        .then(p => { _positionPerms = p })
+        .catch(() => {})
+    }
+    // โหลดและแสดงประกาศ active
+    _loadAnnouncementBanners()
+    if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
+  }
 
   const verEl = document.getElementById('app-version')
   if (verEl) verEl.textContent = `v${APP_VERSION}`
-
-  await loadTeacherInfo(session.user.id)
-  _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
-  _applyRoleMenus()
-  loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
-  _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
-  _startPolling()              // polling 30 วิ
-  updateLastSeen('teachers').catch(() => {})
-  logLogin('teacher').catch(() => {})
-  if (_teacher?.id) _initDonationFlow(_teacher.id)
-  if (_teacher?.id) _checkScheduleLinkPopup()
-  if (_teacher?.id) _initNotifications(_teacher.id)
-  // โหลด position permissions (async ไม่ block)
-  if (_teacher?.position || _teacher?.positions?.length) {
-    const allPositions = _teacher.positions?.length ? _teacher.positions : [_teacher.position]
-    getTeacherPositionPermissions(allPositions)
-      .then(p => { _positionPerms = p })
-      .catch(() => {})
-  }
-  // โหลดและแสดงประกาศ active
-  _loadAnnouncementBanners()
-  if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
 
   // teacher-nav event (from supervisor dashboard)
   window.addEventListener('teacher-nav', async e => {
@@ -2638,6 +2644,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Logout
   document.getElementById('btn-logout')?.addEventListener('click', async () => {
+    if (isImpersonating) {
+      sessionStorage.removeItem('impersonated_teacher')
+      window.location.replace('dashboard.html')
+      return
+    }
     await supabase.auth.signOut()
     showToast('ออกจากระบบแล้ว','info')
     setTimeout(() => window.location.replace('index.html'), 800)
