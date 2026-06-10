@@ -201,7 +201,7 @@ function _renderDashboard(el, metrics, teacher) {
   const activePositions = teacher.positions?.length ? teacher.positions : [teacher.position].filter(Boolean)
   const hasDeptHead = activePositions.includes('dept_head')
   const hasOtherRoles = activePositions.some(p => p !== 'dept_head')
-  const showTabs = !hasDeptHead || hasOtherRoles
+  const showTabs = !activePositions.includes('religion_subgroup_head') && (!hasDeptHead || hasOtherRoles)
   const deptKeys = [...new Set(metrics.map(_deptKey))].sort()
 
   el.style.display = ''
@@ -321,7 +321,7 @@ function _applyFilter(rows) {
       (_deptName(m.dept)??'').toLowerCase().includes(q)
     )
   }
-  if (!_sortCol) return r
+  if (!_sortCol) return [...r].sort((a, b) => _progressScore(a) - _progressScore(b))
   return [...r].sort((a, b) => {
     let av, bv
     switch(_sortCol) {
@@ -337,6 +337,16 @@ function _applyFilter(rows) {
     if (av > bv) return _sortDir
     return 0
   })
+}
+
+// คะแนนความคืบหน้ารวม (ยิ่งน้อย = มีปัญหา/คืบหน้าน้อย → เรียงขึ้นบนสุดเป็นค่าเริ่มต้น)
+function _progressScore(m) {
+  if (!m.isRegistered) return -1
+  const statusVal = { ok: 2, warn: 1, none: 0 }
+  const vals = [m.profileStatus, m.scheduleStatus, m.attStatus, m.scoreStatus]
+    .map(s => statusVal[s])
+    .filter(v => v !== undefined)
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 2
 }
 
 function _thSort(col, label) {
