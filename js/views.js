@@ -29,9 +29,10 @@ import { getStats, getTeachers, getClasses, getStudents,
          autoEnrollStudentsByRoom,
          getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
+         getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { showToast, showPageLoader, createTeacherSelect } from './ui.js'
+import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
          openDeptModal, handleDeleteDept,
@@ -9604,6 +9605,15 @@ export async function renderWorkCalendar(teacher) {
 }
 
 // ─── View: Religion Groups (กลุ่มรายวิชาศาสนา) ──────────────────────────────
+// กรองเฉพาะครูศาสนา (category หรือ subject_group ที่เกี่ยวข้อง)
+function _getReligionTeachers(allTeachers) {
+  return allTeachers.filter(t =>
+    t.category === 'religion' || ['AGM','AGMVOC'].includes(t.subject_group)
+  ).concat(allTeachers.filter(t =>
+    !t.category && !['AGM','AGMVOC','ACDMVOC'].includes(t.subject_group)
+  )).filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
+}
+
 export async function renderReligionGroups() {
   setActiveNav('religion-groups')
   document.getElementById('page-title').textContent = 'กลุ่มรายวิชาศาสนา'
@@ -9611,7 +9621,7 @@ export async function renderReligionGroups() {
   setContent(`<div class="max-w-4xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <p class="text-xs text-gray-400 mt-0.5">จัดกลุ่มครูศาสนา • หัวหน้ากลุ่มจะมี Dashboard ติดตามความคืบหน้า</p>
+        <p class="text-xs text-gray-400 mt-0.5">จัดกลุ่มย่อยครูศาสนา • หัวหน้ากลุ่มย่อยจะเข้ามาเพิ่มสมาชิกในกลุ่มของตัวเอง และมี Dashboard ติดตามความคืบหน้า</p>
       </div>
       <button id="btn-add-rg"
         class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
@@ -9634,13 +9644,6 @@ export async function renderReligionGroups() {
   try {
     ;[groups, allTeachers] = await Promise.all([getReligionGroups(), getTeachers()])
   } catch { showToast('โหลดข้อมูลไม่สำเร็จ', 'error'); return }
-
-  // กรองเฉพาะครูศาสนา (category หรือ subject_group ที่เกี่ยวข้อง)
-  const religionTeachers = allTeachers.filter(t =>
-    t.category === 'religion' || ['AGM','AGMVOC'].includes(t.subject_group)
-  ).concat(allTeachers.filter(t =>
-    !t.category && !['AGM','AGMVOC','ACDMVOC'].includes(t.subject_group)
-  )).filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
 
   _renderRGTable(groups)
 
@@ -9714,12 +9717,12 @@ function _renderRGTable(groups) {
     btn.onclick = async () => {
       const gid = +btn.dataset.gid
       const name = btn.dataset.name
-      if (!confirm(`ลบกลุ่ม "${name}" ใช่ไหม?\nหัวหน้ากลุ่มจะถูกถอดบทบาทออกด้วย`)) return
+      if (!confirm(`ลบกลุ่ม "${name}" ใช่ไหม?\nหัวหน้ากลุ่มย่อยจะถูกถอดบทบาทออกด้วย`)) return
       try {
-        // ถอดบทบาทหัวหน้าก่อน
+        // ถอดบทบาทหัวหน้ากลุ่มย่อยก่อน
         const gs = await getReligionGroups()
         const g = gs.find(x => x.id === gid)
-        if (g?.leader_id) await updateTeacherPosition(g.leader_id, null, null)
+        if (g?.leader_id) await updateTeacherPosition(g.leader_id, null, null, 'religion_subgroup_head')
         await deleteReligionGroup(gid)
         showToast('ลบกลุ่มแล้ว', 'success')
         _renderRGTable(await getReligionGroups())
@@ -9749,9 +9752,9 @@ function _openRGModal(group, allTeachers, onSave) {
             class="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">หัวหน้ากลุ่ม</label>
+          <label class="block text-xs font-medium text-gray-600 mb-1">หัวหน้ากลุ่มย่อย</label>
           <div id="rg-leader-wrap"></div>
-          <p class="text-xs text-gray-400 mt-1">ครูที่ถูกเลือกจะได้รับบทบาท "หัวหน้ากลุ่ม" และมี Dashboard ติดตาม</p>
+          <p class="text-xs text-gray-400 mt-1">ครูที่ถูกเลือกจะได้รับบทบาท "หัวหน้ากลุ่มย่อย" สามารถเข้าไปเพิ่มสมาชิกในกลุ่มของตัวเอง และมี Dashboard ติดตามความคืบหน้าของกลุ่ม</p>
         </div>
       </div>
       <div class="px-6 pb-6 flex gap-3 justify-end">
@@ -9781,21 +9784,177 @@ function _openRGModal(group, allTeachers, onSave) {
     try {
       if (isEdit) {
         await updateReligionGroup(group.id, { name, leader_id: newLeaderId })
-        // ถอดบทบาทหัวหน้าเก่า (ถ้าเปลี่ยน)
+        // ถอดบทบาทหัวหน้ากลุ่มย่อยเก่า (ถ้าเปลี่ยน)
         if (oldLeaderId && oldLeaderId !== +newLeaderId) {
-          await updateTeacherPosition(oldLeaderId, null, null)
+          await updateTeacherPosition(oldLeaderId, null, null, 'religion_subgroup_head')
         }
       } else {
         await createReligionGroup({ name, leader_id: newLeaderId })
       }
-      // ตั้งบทบาทหัวหน้าใหม่
+      // ตั้งบทบาทหัวหน้ากลุ่มย่อยใหม่
       if (newLeaderId) {
         const groupId = isEdit ? group.id : (await getReligionGroups()).find(g => g.name === name)?.id
-        if (groupId) await updateTeacherPosition(+newLeaderId, 'religion_group_head', groupId)
+        if (groupId) await updateTeacherPosition(+newLeaderId, 'religion_subgroup_head', groupId)
       }
       showToast(isEdit ? 'บันทึกแล้ว' : 'เพิ่มกลุ่มแล้ว', 'success')
       overlay.remove()
       onSave()
     } catch (e) { showToast('บันทึกไม่สำเร็จ: ' + e.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'บันทึก' }
   }
+}
+
+// ─── View: My Religion Group (กลุ่มของฉัน — สำหรับหัวหน้ากลุ่มย่อย) ─────────
+export async function renderMyReligionGroup(teacher) {
+  setActiveNav('my-religion-group')
+  document.getElementById('page-title').textContent = 'กลุ่มของฉัน'
+
+  setContent(`<div class="max-w-2xl mx-auto animate-fade">
+    <div id="mrg-content">
+      <div class="flex items-center justify-center py-16 text-gray-400">
+        <svg class="animate-spin h-6 w-6 mr-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
+  </div>`)
+
+  let groups = [], allTeachers = []
+  try {
+    ;[groups, allTeachers] = await Promise.all([getReligionGroups(), getTeachers()])
+  } catch { showToast('โหลดข้อมูลไม่สำเร็จ', 'error'); return }
+
+  const myGroup = groups.find(g => g.leader_id === teacher.id)
+  const wrap = document.getElementById('mrg-content')
+  if (!myGroup) {
+    wrap.innerHTML = `<div class="text-center py-16 text-gray-400">
+      <p class="text-4xl mb-3">🕌</p>
+      <p class="font-medium">ยังไม่ได้รับมอบหมายกลุ่มย่อย</p>
+      <p class="text-xs mt-1">ติดต่อหัวหน้ากลุ่มเพื่อกำหนดกลุ่มของคุณ</p>
+    </div>`
+    return
+  }
+
+  const religionTeachers = _getReligionTeachers(allTeachers)
+  await _renderMyGroupMembers(myGroup, religionTeachers)
+}
+
+async function _renderMyGroupMembers(group, religionTeachers) {
+  const wrap = document.getElementById('mrg-content')
+  let members = []
+  try {
+    members = await getReligionGroupMembers(group.id)
+  } catch { showToast('โหลดสมาชิกไม่สำเร็จ', 'error'); return }
+
+  wrap.innerHTML = `
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h3 class="font-bold text-gray-800 text-lg">🕌 ${_esc(group.name)}</h3>
+        <p class="text-xs text-gray-400 mt-0.5">สมาชิกในกลุ่ม ${members.length} คน</p>
+      </div>
+      <button id="btn-mrg-add" class="btn-primary px-4 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+        <span class="text-base">＋</span> เพิ่มสมาชิก
+      </button>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      ${members.length ? `
+        <ul class="divide-y divide-gray-50">
+          ${members.map(m => { const t = m.teachers; return `
+            <li class="px-5 py-3 flex items-center gap-3">
+              ${t?.image_url
+                ? `<img src="${t.image_url}" class="w-8 h-8 rounded-full object-cover" />`
+                : `<div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 text-xs font-bold">${_esc(t?.full_name?.charAt(0) ?? '?')}</div>`}
+              <div>
+                <span class="font-medium text-gray-800">${_esc(t?.full_name ?? '')}</span>
+                ${t?.teacher_code ? `<span class="block text-xs font-mono text-gray-400">${t.teacher_code}</span>` : ''}
+              </div>
+            </li>`}).join('')}
+        </ul>` : `
+        <div class="text-center py-16 text-gray-400">
+          <p class="text-4xl mb-3">👥</p>
+          <p class="font-medium">ยังไม่มีสมาชิกในกลุ่ม</p>
+          <p class="text-xs mt-1">กดปุ่ม "เพิ่มสมาชิก" เพื่อเริ่มต้น</p>
+        </div>`}
+    </div>`
+
+  document.getElementById('btn-mrg-add').onclick = () =>
+    _openMyGroupMembersModal(group, religionTeachers, members, async () => {
+      await _renderMyGroupMembers(group, religionTeachers)
+    })
+}
+
+function _openMyGroupMembersModal(group, religionTeachers, currentMembers, onSave) {
+  const overlay = document.createElement('div')
+  overlay.className = 'fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 p-4'
+
+  overlay.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div class="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+        <h3 class="font-bold text-gray-800">เพิ่มสมาชิกกลุ่ม "${_esc(group.name)}"</h3>
+        <button class="text-gray-400 hover:text-gray-600 text-xl" id="mrg-modal-close">✕</button>
+      </div>
+      <div class="px-6 py-5 space-y-2 max-h-[60vh] overflow-y-auto">
+        <label class="block text-xs font-medium text-gray-600 mb-1">ค้นหาครูศาสนา (ชื่อหรือรหัสครู)</label>
+        <div id="mrg-member-wrap"></div>
+      </div>
+      <div class="px-6 pb-6 flex gap-3 justify-end">
+        <button id="mrg-cancel" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ยกเลิก</button>
+        <button id="mrg-save" class="btn-primary px-5 py-2 text-sm text-white rounded-xl">บันทึก</button>
+      </div>
+    </div>`
+
+  document.body.appendChild(overlay)
+
+  const memberSel = createTeacherMultiSelect({
+    wrap: overlay.querySelector('#mrg-member-wrap'),
+    teachers: religionTeachers,
+    value: currentMembers.map(m => m.teacher_id),
+  })
+
+  overlay.querySelector('#mrg-modal-close').onclick = () => overlay.remove()
+  overlay.querySelector('#mrg-cancel').onclick = () => overlay.remove()
+
+  overlay.querySelector('#mrg-save').onclick = async () => {
+    const ids = memberSel.getValue()
+    const saveBtn = overlay.querySelector('#mrg-save')
+    saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
+    try {
+      await setReligionGroupMembers(group.id, ids)
+      overlay.remove()
+      await onSave()
+      _showMemberSummaryPopup(group, religionTeachers.filter(t => ids.includes(t.id)))
+    } catch (e) { showToast('บันทึกไม่สำเร็จ: ' + e.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'บันทึก' }
+  }
+}
+
+function _showMemberSummaryPopup(group, members) {
+  const overlay = document.createElement('div')
+  overlay.className = 'fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 p-4'
+
+  overlay.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div class="px-6 pt-6 pb-4 border-b border-gray-100">
+        <h3 class="font-bold text-gray-800">✅ บันทึกสมาชิกกลุ่ม "${_esc(group.name)}" แล้ว</h3>
+        <p class="text-xs text-gray-400 mt-1">รายชื่อสมาชิกทั้งหมด ${members.length} คน — กรุณาตรวจสอบอีกครั้ง</p>
+      </div>
+      <div class="px-6 py-4 max-h-[50vh] overflow-y-auto">
+        ${members.length ? `<ul class="divide-y divide-gray-50">
+          ${members.map(t => `<li class="py-2.5 flex items-center gap-3">
+            ${t.image_url
+              ? `<img src="${t.image_url}" class="w-8 h-8 rounded-full object-cover" />`
+              : `<div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 text-xs font-bold">${_esc(t.full_name?.charAt(0) ?? '?')}</div>`}
+            <div>
+              <span class="font-medium text-gray-800">${_esc(t.full_name ?? '')}</span>
+              ${t.teacher_code ? `<span class="block text-xs font-mono text-gray-400">${t.teacher_code}</span>` : ''}
+            </div>
+          </li>`).join('')}
+        </ul>` : `<p class="text-center text-gray-400 py-8 text-sm">ไม่มีสมาชิกในกลุ่ม</p>`}
+      </div>
+      <div class="px-6 pb-6 flex justify-end">
+        <button id="mrg-summary-close" class="btn-primary px-5 py-2 text-sm text-white rounded-xl">ตกลง</button>
+      </div>
+    </div>`
+
+  document.body.appendChild(overlay)
+  overlay.querySelector('#mrg-summary-close').onclick = () => overlay.remove()
 }

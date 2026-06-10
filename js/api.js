@@ -795,6 +795,27 @@ export async function deleteReligionGroup(id) {
   if (error) throw error
 }
 
+// ─── Religion Group Members (สมาชิกกลุ่มย่อย) ──────────────────────────────
+export async function getReligionGroupMembers(groupId) {
+  const { data, error } = await supabase
+    .from('religion_group_members')
+    .select('id, teacher_id, teachers(id, full_name, teacher_code, image_url)')
+    .eq('group_id', groupId)
+  if (error) throw error
+  return data ?? []
+}
+
+// แทนที่รายชื่อสมาชิกทั้งหมดของกลุ่มด้วยรายการ teacherIds ที่ส่งมา
+export async function setReligionGroupMembers(groupId, teacherIds) {
+  const { error: delErr } = await supabase.from('religion_group_members').delete().eq('group_id', groupId)
+  if (delErr) throw delErr
+  if (teacherIds.length) {
+    const rows = teacherIds.map(teacherId => ({ group_id: groupId, teacher_id: teacherId }))
+    const { error: insErr } = await supabase.from('religion_group_members').insert(rows)
+    if (insErr) throw insErr
+  }
+}
+
 // ─── School Periods ───────────────────────────────────────────────────────────
 export async function getPeriods() {
   const { data, error } = await supabase
@@ -2186,25 +2207,26 @@ export async function getTeachersWithPositions() {
   return data ?? []
 }
 
-export async function updateTeacherPosition(id, position, positionDeptId) {
+// บทบาทที่เก็บใน positions[] เท่านั้น ห้ามเขียนลงคอลัมน์ position (ติด check constraint)
+const _ARRAY_ONLY_POSITIONS = ['religion_group_head', 'religion_subgroup_head']
+
+export async function updateTeacherPosition(id, position, positionDeptId, removePosition = 'religion_group_head') {
   // ดึงตำแหน่งและ positions ปัจจุบันเพื่อความปลอดภัยในการอัปเดต multi-position
   const { data: teacher, error: fetchErr } = await supabase
     .from('teachers')
     .select('position, positions')
     .eq('id', id)
     .single()
-  
+
   if (fetchErr) throw fetchErr
 
   let newPositions = teacher.positions || []
   let primaryPosition = teacher.position
 
   if (position) {
-    if (position === 'religion_group_head') {
-      // สำหรับ religion_group_head ห้ามเขียนลงในคอลัมน์ position (เพราะติด check constraint)
-      // แต่ให้เพิ่มลงใน array positions เท่านั้น
-      if (!newPositions.includes('religion_group_head')) {
-        newPositions.push('religion_group_head')
+    if (_ARRAY_ONLY_POSITIONS.includes(position)) {
+      if (!newPositions.includes(position)) {
+        newPositions.push(position)
       }
     } else {
       // บทบาทอื่น ให้บันทึกเป็นตำแหน่งหลักและเพิ่มใน array
@@ -2214,9 +2236,9 @@ export async function updateTeacherPosition(id, position, positionDeptId) {
       }
     }
   } else {
-    // ลบ 'religion_group_head' ออกถ้าเป็นการถอดบทบาท
-    newPositions = newPositions.filter(p => p !== 'religion_group_head')
-    if (primaryPosition === 'religion_group_head') {
+    // ถอดบทบาท removePosition ออก (ดีฟอลต์ religion_group_head เพื่อ backward compat)
+    newPositions = newPositions.filter(p => p !== removePosition)
+    if (primaryPosition === removePosition) {
       primaryPosition = null
     }
   }

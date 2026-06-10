@@ -166,7 +166,9 @@ async function handleTeacherFormSubmit(e) {
     return
   }
   const checkedPositions = window._getPositionValues?.() ?? []
-  const posVal = checkedPositions[0] || null  // primary position (backward compat)
+  // ตำแหน่งที่เก็บใน positions[] เท่านั้น ห้ามเขียนลงคอลัมน์ position (ติด check constraint)
+  const _ARRAY_ONLY_POSITIONS = ['religion_group_head', 'religion_subgroup_head']
+  const posVal = checkedPositions.find(p => !_ARRAY_ONLY_POSITIONS.includes(p)) || null  // primary position (backward compat)
   const payload  = {
     teacher_code:      document.getElementById('modal-code').value.trim()      || null,
     full_name:         document.getElementById('modal-name').value.trim(),
@@ -659,6 +661,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const POS_OPTIONS = [
     { value: 'dept_head',            label: 'หัวหน้ากลุ่มสาระ' },
     { value: 'religion_group_head',  label: 'หัวหน้ากลุ่ม (ศาสนา)' },
+    { value: 'religion_subgroup_head', label: 'หัวหน้ากลุ่มย่อย (ศาสนา)' },
     { value: 'registrar_samai',      label: 'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
     { value: 'registrar_religion',   label: 'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
     { value: 'registrar_pvch',       label: 'หัวหน้าฝ่ายทะเบียน (ปวช)' },

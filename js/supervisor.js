@@ -8,6 +8,7 @@ import {
   assignTeacherToDept,
   getMySchedule, getPeriods, getSystemConfig,
   getWorkCalendarEvents,
+  getReligionGroups, getReligionGroupMembers,
 } from './api.js'
 
 let _phrases = {}  // cache: { metric: [phrase, ...] }
@@ -45,6 +46,7 @@ import { openPP5Doc } from './pp5-doc.js'
 const POS_LABEL = {
   dept_head:           'หัวหน้ากลุ่มสาระ',
   religion_group_head: 'หัวหน้ากลุ่ม (ศาสนา)',
+  religion_subgroup_head: 'หัวหน้ากลุ่มย่อย (ศาสนา)',
   registrar_samai:     'หัวหน้าฝ่ายทะเบียน (สามัญ)',
   registrar_religion:  'หัวหน้าฝ่ายทะเบียน (ศาสนา)',
   registrar_pvch:      'หัวหน้าฝ่ายทะเบียน (ปวช)',
@@ -77,7 +79,7 @@ function _donut(pct, color, label, sub) {
 }
 
 // ── role filter ───────────────────────────────────────────────────────────────
-function _filterByRole(metrics, teacher) {
+function _filterByRole(metrics, teacher, extra = {}) {
   const positions = teacher.positions?.length ? teacher.positions : [teacher.position].filter(Boolean)
   if (!positions.length) return metrics
 
@@ -92,6 +94,11 @@ function _filterByRole(metrics, teacher) {
     else if (p === 'religion_group_head') {
       hasMatchingRole = true
       filteredMetrics.push(...metrics.filter(m => ['AGM','AGMVOC'].includes(m.subject_group)))
+    }
+    else if (p === 'religion_subgroup_head') {
+      hasMatchingRole = true
+      const memberIds = extra.religionGroupMemberIds ?? []
+      filteredMetrics.push(...metrics.filter(m => memberIds.includes(m.id)))
     }
     else if (p === 'academic_samai' || p === 'registrar_samai') {
       hasMatchingRole = true
@@ -167,7 +174,16 @@ export async function renderSupervisorDashboard(container, teacher, isAdmin = fa
 
   try {
     ;[_allMetrics, _depts] = await Promise.all([getSupervisorProgress(), getDepartments()])
-    const metrics = isAdmin ? _allMetrics : _filterByRole(_allMetrics, teacher)
+    const extra = {}
+    if (!isAdmin && activePositions.includes('religion_subgroup_head')) {
+      try {
+        const groups = await getReligionGroups()
+        const myGroup = groups.find(g => g.leader_id === teacher.id)
+        const members = myGroup ? await getReligionGroupMembers(myGroup.id) : []
+        extra.religionGroupMemberIds = members.map(m => m.teacher_id)
+      } catch { extra.religionGroupMemberIds = [] }
+    }
+    const metrics = isAdmin ? _allMetrics : _filterByRole(_allMetrics, teacher, extra)
     document.getElementById('sv-loading').style.display = 'none'
     _renderDashboard(document.getElementById('sv-dash'), metrics, teacher)
   } catch(e) {

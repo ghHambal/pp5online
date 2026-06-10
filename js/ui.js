@@ -470,3 +470,135 @@ export function createTeacherSelect({ wrap, teachers, value = null, placeholder 
     },
   }
 }
+
+// ─── Searchable Teacher Multi-Select ──────────────────────────────────────────
+// ใช้เลือกครูได้หลายคน — ค้นหาด้วยชื่อหรือรหัสครู คลิกเพื่อเพิ่มลงรายการด้านล่าง
+//
+// การใช้งาน:
+//   const sel = createTeacherMultiSelect({ wrap: el, teachers, value: [1,2,3] })
+//   sel.getValue()    → array ของ teacher id
+//   sel.setValue(ids) → เซตค่า
+export function createTeacherMultiSelect({ wrap, teachers, value = [], placeholder = 'ค้นหาชื่อหรือรหัสครู...' }) {
+  // ── state ──────────────────────────────────────────────────────────────────
+  let _selectedIds = new Set((value ?? []).map(id => +id))
+  let _open = false
+
+  // ── DOM ────────────────────────────────────────────────────────────────────
+  wrap.style.position = 'relative'
+  wrap.innerHTML = `
+    <div class="ts-input flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 cursor-pointer bg-white hover:border-indigo-300 transition" tabindex="0">
+      <span class="ts-display flex-1 text-sm text-gray-400">＋ ค้นหาเพื่อเพิ่มสมาชิก</span>
+      <svg class="ts-arrow w-4 h-4 text-gray-400 flex-shrink-0 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="ts-dropdown absolute left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden hidden">
+      <div class="p-2 border-b border-gray-100">
+        <input class="ts-search w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="${placeholder}" autocomplete="off" />
+      </div>
+      <ul class="ts-list max-h-52 overflow-y-auto"></ul>
+    </div>
+    <ul class="ts-chips mt-2 space-y-1.5"></ul>`
+
+  const inputEl  = wrap.querySelector('.ts-input')
+  const dropdown = wrap.querySelector('.ts-dropdown')
+  const searchEl = wrap.querySelector('.ts-search')
+  const listEl   = wrap.querySelector('.ts-list')
+  const chipsEl  = wrap.querySelector('.ts-chips')
+  const arrowEl  = wrap.querySelector('.ts-arrow')
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  function _fmtTeacher(t) {
+    return `${t.full_name ?? ''}${t.teacher_code ? ` (${t.teacher_code})` : ''}`
+  }
+
+  function _renderChips() {
+    const selected = teachers.filter(t => _selectedIds.has(t.id))
+    if (!selected.length) {
+      chipsEl.innerHTML = `<li class="text-xs text-gray-400 px-1 py-1">ยังไม่มีสมาชิก</li>`
+      return
+    }
+    chipsEl.innerHTML = selected.map(t => `
+      <li data-id="${t.id}" class="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+        ${t.image_url
+          ? `<img src="${t.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />`
+          : `<div class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${(t.full_name ?? '?').charAt(0)}</div>`}
+        <span class="flex-1 text-sm text-gray-700 truncate">${t.full_name ?? ''}${t.teacher_code ? `<span class="ml-1 text-xs text-gray-400 font-mono">${t.teacher_code}</span>` : ''}</span>
+        <button type="button" class="ts-chip-remove text-gray-300 hover:text-red-500 text-lg leading-none">&times;</button>
+      </li>`).join('')
+
+    chipsEl.querySelectorAll('.ts-chip-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = +btn.closest('[data-id]').dataset.id
+        _selectedIds.delete(id)
+        _renderChips()
+        if (_open) _renderList(searchEl.value.trim())
+      })
+    })
+  }
+
+  function _renderList(q = '') {
+    const lq = q.toLowerCase()
+    const filtered = teachers.filter(t =>
+      !_selectedIds.has(t.id) &&
+      (!q ||
+        (t.full_name ?? '').toLowerCase().includes(lq) ||
+        String(t.teacher_code ?? '').includes(q))
+    )
+    if (!filtered.length) {
+      listEl.innerHTML = `<li class="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบครู</li>`
+      return
+    }
+    listEl.innerHTML = filtered.map(t => `
+      <li data-id="${t.id}" class="ts-opt px-4 py-2.5 text-sm cursor-pointer hover:bg-indigo-50 flex items-center gap-2 text-gray-700">
+        ${t.image_url
+          ? `<img src="${t.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />`
+          : `<div class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${(t.full_name ?? '?').charAt(0)}</div>`}
+        <span class="truncate">${t.full_name ?? ''}${t.teacher_code ? `<span class="ml-1 text-xs text-gray-400 font-mono">${t.teacher_code}</span>` : ''}</span>
+      </li>`).join('')
+
+    listEl.querySelectorAll('.ts-opt').forEach(li => {
+      li.addEventListener('mousedown', e => {
+        e.preventDefault()
+        const id = +li.dataset.id
+        _selectedIds.add(id)
+        searchEl.value = ''
+        _renderList()
+        _renderChips()
+        wrap.dispatchEvent(new CustomEvent('ts:change', { detail: { ids: [..._selectedIds] } }))
+        searchEl.focus()
+      })
+    })
+  }
+
+  function _open_() {
+    _open = true
+    dropdown.classList.remove('hidden')
+    arrowEl.style.transform = 'rotate(180deg)'
+    searchEl.value = ''
+    _renderList()
+    setTimeout(() => searchEl.focus(), 50)
+  }
+
+  function _close() {
+    _open = false
+    dropdown.classList.add('hidden')
+    arrowEl.style.transform = ''
+  }
+
+  // ── events ─────────────────────────────────────────────────────────────────
+  inputEl.addEventListener('click', () => _open ? _close() : _open_())
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _open ? _close() : _open_() } })
+  searchEl.addEventListener('input', () => _renderList(searchEl.value.trim()))
+  document.addEventListener('mousedown', e => { if (_open && !wrap.contains(e.target)) _close() }, true)
+
+  _renderChips()
+
+  // ── public API ─────────────────────────────────────────────────────────────
+  return {
+    getValue: () => [..._selectedIds],
+    setValue: (ids) => {
+      _selectedIds = new Set((ids ?? []).map(id => +id))
+      _renderChips()
+      if (_open) _renderList(searchEl.value.trim())
+    },
+  }
+}

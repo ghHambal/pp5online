@@ -1940,12 +1940,14 @@ const _SV_MENU_ITEMS = [
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
   { key:'menu_house_colors',       icon:'🎨', label:'สีนักเรียน',          fn: async () => { const {renderHouseColors}     = await import('./views.js'); renderHouseColors() }},
   { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
+  { key:'manage_my_religion_group', icon:'👥', label:'กลุ่มของฉัน',        fn: async (t) => { const {renderMyReligionGroup} = await import('./views.js'); renderMyReligionGroup(t) }},
   { key:'menu_tutorial',           icon:'📖', label:'คู่มือการใช้งาน',      fn: async () => { const {renderTutorialAdmin}   = await import('./tutorial.js'); renderTutorialAdmin() }},
 ]
 
 function _renderSupervisorNav(nav, main, isAdmin = false) {
   if (!nav) return
   const _POS_LBL2 = { dept_head:'หัวหน้ากลุ่มสาระ', religion_group_head:'หัวหน้ากลุ่ม (ศาสนา)',
+    religion_subgroup_head:'หัวหน้ากลุ่มย่อย (ศาสนา)',
     registrar_samai:'ทะเบียน (สามัญ)',
     registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
     academic_samai:'วิชาการ (สามัญ)', academic_religion:'วิชาการ (ศาสนา)',
@@ -1960,6 +1962,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
         if (m.key === 'lang_config') return _positionPerms.lang_config || _tPositions2.includes('dept_head')
         if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || _tPositions2.includes('house_color_admin')
         if (m.key === 'manage_religion_groups') return _positionPerms.manage_religion_groups || _tPositions2.includes('religion_group_head')
+        if (m.key === 'manage_my_religion_group') return _tPositions2.includes('religion_subgroup_head')
         if (m.key === 'announce_manage') return !!_positionPerms.announce_manage
         if (m.key === 'announce_create') return !!_positionPerms.announce_create
         if (m.key === 'work_calendar') return !!_positionPerms.work_calendar
