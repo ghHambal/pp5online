@@ -78,18 +78,44 @@ function _donut(pct, color, label, sub) {
 
 // ── role filter ───────────────────────────────────────────────────────────────
 function _filterByRole(metrics, teacher) {
-  const p = teacher.position
-  if (p === 'dept_head')
-    return metrics.filter(m => m.dept === teacher.dept)
-  if (p === 'religion_group_head')
-    return metrics.filter(m => ['AGM','AGMVOC'].includes(m.subject_group))
-  if (p === 'academic_samai' || p === 'registrar_samai')
-    return metrics.filter(m => !['AGM','AGMVOC','ACDMVOC'].includes(m.subject_group))
-  if (p === 'academic_religion' || p === 'registrar_religion')
-    return metrics.filter(m => ['AGM','AGMVOC'].includes(m.subject_group))
-  if (p === 'academic_pvch' || p === 'registrar_pvch')
-    return metrics.filter(m => m.subject_group === 'ACDMVOC')
-  return metrics
+  const positions = teacher.positions?.length ? teacher.positions : [teacher.position].filter(Boolean)
+  if (!positions.length) return metrics
+
+  let filteredMetrics = []
+  let hasMatchingRole = false
+
+  for (const p of positions) {
+    if (p === 'dept_head') {
+      hasMatchingRole = true
+      filteredMetrics.push(...metrics.filter(m => m.dept === teacher.dept))
+    }
+    else if (p === 'religion_group_head') {
+      hasMatchingRole = true
+      filteredMetrics.push(...metrics.filter(m => ['AGM','AGMVOC'].includes(m.subject_group)))
+    }
+    else if (p === 'academic_samai' || p === 'registrar_samai') {
+      hasMatchingRole = true
+      filteredMetrics.push(...metrics.filter(m => !['AGM','AGMVOC','ACDMVOC'].includes(m.subject_group)))
+    }
+    else if (p === 'academic_religion' || p === 'registrar_religion') {
+      hasMatchingRole = true
+      filteredMetrics.push(...metrics.filter(m => ['AGM','AGMVOC'].includes(m.subject_group)))
+    }
+    else if (p === 'academic_pvch' || p === 'registrar_pvch') {
+      hasMatchingRole = true
+      filteredMetrics.push(...metrics.filter(m => m.subject_group === 'ACDMVOC'))
+    }
+  }
+
+  if (!hasMatchingRole) return metrics
+
+  // ล้างตัวซ้ำด้วย ID ของครู
+  const seenIds = new Set()
+  return filteredMetrics.filter(m => {
+    if (seenIds.has(m.id)) return false
+    seenIds.add(m.id)
+    return true
+  })
 }
 
 // ── dept tab key ──────────────────────────────────────────────────────────────
@@ -125,7 +151,9 @@ export async function renderSupervisorDashboard(container, teacher, isAdmin = fa
   _selfTeacher = teacher
   _svContainer = container
   _isAdminView = isAdmin
-  const roleLabel = isAdmin ? 'แอดมิน (ดูทั้งหมด)' : (POS_LABEL[teacher.position] ?? 'หัวหน้า')
+  const activePositions = teacher.positions?.length ? teacher.positions : [teacher.position].filter(Boolean)
+  const labels = activePositions.map(p => POS_LABEL[p] ?? 'หัวหน้า').join(', ')
+  const roleLabel = isAdmin ? 'แอดมิน (ดูทั้งหมด)' : (labels || 'หัวหน้า')
   container.innerHTML = `<div id="sv-root" style="padding:20px;max-width:1100px;margin:0 auto;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
       <div>
@@ -154,7 +182,10 @@ function _renderDashboard(el, metrics, teacher) {
   const pS  = n ? Math.round(metrics.filter(m=>m.scoreStatus==='ok').length/n*100) : 0
   const pSc = n ? Math.round(metrics.filter(m=>m.scheduleStatus==='ok').length/n*100) : 0
 
-  const showTabs = teacher.position !== 'dept_head'
+  const activePositions = teacher.positions?.length ? teacher.positions : [teacher.position].filter(Boolean)
+  const hasDeptHead = activePositions.includes('dept_head')
+  const hasOtherRoles = activePositions.some(p => p !== 'dept_head')
+  const showTabs = !hasDeptHead || hasOtherRoles
   const deptKeys = [...new Set(metrics.map(_deptKey))].sort()
 
   el.style.display = ''
@@ -173,7 +204,7 @@ function _renderDashboard(el, metrics, teacher) {
         <button class="sv-tab-btn active" data-dept="">ทั้งหมด (${n})</button>
         ${deptKeys.map(d=>`<button class="sv-tab-btn" data-dept="${d}">${_deptName(d, metrics)} (${metrics.filter(m=>_deptKey(m)===d).length})</button>`).join('')}
       </div>`:'<div></div>'}
-      ${teacher.position==='dept_head'?`
+      ${hasDeptHead?`
         <button id="sv-add-member"
           style="margin-left:auto;padding:6px 14px;border:1.5px dashed #6366f1;border-radius:20px;background:#f5f3ff;color:#6366f1;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">
           + เพิ่มสมาชิกกลุ่ม

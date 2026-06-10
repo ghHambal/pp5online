@@ -2187,9 +2187,33 @@ export async function getTeachersWithPositions() {
 }
 
 export async function updateTeacherPosition(id, position, positionDeptId) {
+  // ดึง positions ปัจจุบันเพื่อความปลอดภัยในการอัปเดต multi-position
+  const { data: teacher, error: fetchErr } = await supabase
+    .from('teachers')
+    .select('positions')
+    .eq('id', id)
+    .single()
+  
+  if (fetchErr) throw fetchErr
+
+  let newPositions = teacher.positions || []
+  if (position) {
+    if (!newPositions.includes(position)) {
+      newPositions.push(position)
+    }
+  } else {
+    // ลบ 'religion_group_head' ออกถ้าเป็นการถอดบทบาท
+    newPositions = newPositions.filter(p => p !== 'religion_group_head')
+  }
+  newPositions = [...new Set(newPositions.filter(Boolean))]
+
   const { error } = await supabase
     .from('teachers')
-    .update({ position: position || null, position_dept_id: positionDeptId || null })
+    .update({
+      position: position || null,
+      positions: newPositions,
+      position_dept_id: positionDeptId || null
+    })
     .eq('id', id)
   if (error) throw error
 }
@@ -2491,13 +2515,22 @@ export async function saveRolePermission(position, feature, allowed) {
   if (error) throw error
 }
 
-// ดึง permissions สำหรับ position เดียว (ใช้ใน teacher side)
-export async function getTeacherPositionPermissions(position) {
-  if (!position) return {}
+// ดึง permissions สำหรับ position เดียวหรือหลาย positions (ใช้ใน teacher side)
+export async function getTeacherPositionPermissions(positionOrPositions) {
+  if (!positionOrPositions) return {}
+  const positions = Array.isArray(positionOrPositions) ? positionOrPositions : [positionOrPositions]
+  const validPositions = positions.filter(Boolean)
+  if (!validPositions.length) return {}
   const { data, error } = await supabase.from('role_permissions')
-    .select('feature, allowed').eq('position', position)
+    .select('feature, allowed').in('position', validPositions)
   if (error) return {}
-  return Object.fromEntries((data ?? []).map(r => [r.feature, r.allowed]))
+  // merge: ถ้า position ไหนอนุญาต ก็ถือว่าได้สิทธิ์
+  const merged = {}
+  for (const r of (data ?? [])) {
+    if (r.allowed) merged[r.feature] = true
+    else if (!(r.feature in merged)) merged[r.feature] = false
+  }
+  return merged
 }
 
 // ─── Announcements ────────────────────────────────────────────────────────────
