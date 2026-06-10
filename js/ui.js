@@ -24,6 +24,91 @@ export function showToast(message, type = 'info') {
   }, 3500)
 }
 
+// ─── Danger Confirmation Modal ────────────────────────────────────────────────
+// ใช้แทน confirm() — แสดง popup ตรงกลางหน้าจอ สื่อถึงอันตราย (ลบข้อมูลถาวร)
+// คืน Promise<boolean>: true = ยืนยัน, false = ยกเลิก
+export function showDangerConfirm({
+  title = 'ยืนยันการลบ',
+  message = '',
+  detail = '',
+  confirmText = 'ลบเลย',
+  cancelText = 'ยกเลิก',
+} = {}) {
+  return new Promise(resolve => {
+    document.getElementById('danger-confirm-modal')?.remove()
+
+    const m = document.createElement('div')
+    m.id = 'danger-confirm-modal'
+    m.className = 'fixed inset-0 z-[300] flex items-center justify-center p-4'
+    m.style.cssText = 'animation:dcm-fade-in .2s ease-out'
+    m.innerHTML = `
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="dcm-overlay"></div>
+      <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden" style="animation:dcm-pop-in .25s cubic-bezier(.34,1.56,.64,1)">
+        <!-- Danger header strip -->
+        <div class="h-1.5 bg-gradient-to-r from-red-500 via-rose-500 to-red-600"></div>
+
+        <div class="px-6 pt-6 pb-5 text-center">
+          <!-- Warning icon with pulse -->
+          <div class="mx-auto mb-4 w-16 h-16 rounded-full bg-red-50 border-2 border-red-100 flex items-center justify-center" style="animation:dcm-pulse 1.5s ease-in-out infinite">
+            <svg class="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+          </div>
+
+          <!-- Title -->
+          <h3 class="text-lg font-bold text-gray-900 mb-2">${title}</h3>
+
+          <!-- Message -->
+          ${message ? `<p class="text-sm text-gray-600 leading-relaxed">${message}</p>` : ''}
+
+          <!-- Detail warning box -->
+          ${detail ? `
+          <div class="mt-3 mx-auto bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-left">
+            <div class="flex gap-2 items-start">
+              <span class="text-red-400 text-sm mt-0.5 flex-shrink-0">⚠️</span>
+              <p class="text-xs text-red-600 leading-relaxed">${detail}</p>
+            </div>
+          </div>` : ''}
+        </div>
+
+        <!-- Buttons -->
+        <div class="px-6 pb-6 grid grid-cols-2 gap-3">
+          <button id="dcm-cancel"
+            class="py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 active:scale-[0.97] transition-all">
+            ${cancelText}
+          </button>
+          <button id="dcm-confirm"
+            class="py-3 rounded-2xl text-sm font-bold text-white shadow-lg active:scale-[0.97] transition-all"
+            style="background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 14px rgba(239,68,68,0.4)">
+            🗑️ ${confirmText}
+          </button>
+        </div>
+      </div>
+
+      <style>
+        @keyframes dcm-fade-in { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes dcm-pop-in { from { opacity: 0; transform: scale(0.9) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+        @keyframes dcm-pulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.05) } }
+      </style>`
+
+    document.body.appendChild(m)
+
+    const cleanup = (result) => {
+      m.style.animation = 'none'
+      m.style.opacity = '0'
+      m.style.transition = 'opacity .15s'
+      setTimeout(() => { m.remove(); resolve(result) }, 150)
+    }
+
+    m.querySelector('#dcm-overlay').addEventListener('click', () => cleanup(false))
+    m.querySelector('#dcm-cancel').addEventListener('click', () => cleanup(false))
+    m.querySelector('#dcm-confirm').addEventListener('click', () => cleanup(true))
+    // ESC key
+    const onKey = e => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); cleanup(false) } }
+    document.addEventListener('keydown', onKey)
+  })
+}
+
 // ─── Button Loading State ─────────────────────────────────────────────────────
 export function setButtonLoading(btn, loading, originalText = '') {
   if (loading) {

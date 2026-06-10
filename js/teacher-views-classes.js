@@ -19,7 +19,7 @@ import {
 } from './api.js'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
-import { showToast } from './ui.js'
+import { showToast, showDangerConfirm } from './ui.js'
 import { openPP5Doc } from './pp5-doc.js'
 import { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
@@ -187,7 +187,7 @@ export async function renderMyClasses(teacher) {
                     class="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-white/70 rounded-lg transition text-sm" title="ทำสำเนาห้องเรียน">📋</button>
                   <button onclick="event.stopPropagation();window._openCombinedEdit(${c.id})"
                     class="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-white/70 rounded-lg transition text-sm" title="แก้ไข">✏️</button>
-                  <button onclick="event.stopPropagation();window._deleteClass(${c.id},'${c.class_name}')"
+                  <button onclick="event.stopPropagation();window._deleteClass(${c.id},'${c.class_name?.replace(/'/g,"\\'") || ''}')"
                     class="p-1.5 text-red-300 hover:text-red-500 hover:bg-white/70 rounded-lg transition text-sm" title="ลบ">🗑️</button>
                 </div>
               </div>
@@ -304,7 +304,13 @@ export async function renderMyClasses(teacher) {
       if (c) renderClassEditForm(teacher, c)
     }
     window._deleteClass = async (classId, name) => {
-      if (!confirm(`ยืนยันลบห้องเรียน "${name}"?\nข้อมูลนักเรียน เช็คชื่อ และคะแนนในห้องนี้จะถูกลบด้วย`)) return
+      const confirmed = await showDangerConfirm({
+        title: `ลบห้องเรียน "${name}"?`,
+        message: 'การลบห้องเรียนจะไม่สามารถย้อนกลับได้',
+        detail: 'ข้อมูลนักเรียน รายชื่อ เช็คชื่อ และคะแนนทั้งหมดในห้องนี้จะถูกลบถาวร',
+        confirmText: 'ลบห้องเรียน',
+      })
+      if (!confirmed) return
       try {
         await deleteClass(classId)
         showToast(`ลบ "${name}" แล้ว`, 'success')
@@ -1189,7 +1195,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             class="cd-action-btn flex-shrink-0 px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-50 transition flex items-center gap-1.5">
             ✏️ <span>แก้ไข</span>
           </button>
-          <button onclick="window._deleteClass(${classId},'${_htmlEsc(cls.class_name??'')}')"
+          <button onclick="event.stopPropagation();window._deleteClass(${classId},'${(cls.class_name??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"
             class="cd-action-btn flex-shrink-0 px-3 py-2 border border-red-100 text-red-400 text-xs font-semibold rounded-xl hover:bg-red-50 transition flex items-center gap-1.5">
             🗑️ <span>ลบ</span>
           </button>
@@ -1243,7 +1249,13 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       }
     }
     window._deleteClass = async (cid, name) => {
-      if (!confirm(`ยืนยันลบห้องเรียน "${name}"?`)) return
+      const confirmed = await showDangerConfirm({
+        title: `ลบห้องเรียน "${name}"?`,
+        message: 'การลบห้องเรียนจะไม่สามารถย้อนกลับได้',
+        detail: 'ข้อมูลนักเรียน รายชื่อ เช็คชื่อ และคะแนนทั้งหมดในห้องนี้จะถูกลบถาวร',
+        confirmText: 'ลบห้องเรียน',
+      })
+      if (!confirmed) return
       try {
         await deleteClass(cid); showToast(`ลบ "${name}" แล้ว`, 'success')
         renderMyClasses(teacher)
