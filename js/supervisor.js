@@ -559,15 +559,15 @@ function _cellPopupContent(m, type) {
 // ─── Quick comment popup (จากปุ่ม 💬 ในตาราง) ──────────────────────────────────
 function _showCommentPopup(m) {
   const overlay = _makeOverlay()
-  overlay.innerHTML = `<div class="sv-popup" style="width:min(420px,96vw);">
+  overlay.innerHTML = `<div class="sv-popup">
     <button id="sv-pop-close" style="position:absolute;top:12px;right:12px;border:none;background:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
     <h3 style="font-size:15px;font-weight:700;margin-bottom:12px;">💬 ความคิดเห็น — ${m.full_name}</h3>
-    ${_miniCommentHTML('general')}
+    ${_commentSectionHTML()}
   </div>`
   document.body.appendChild(overlay)
   overlay.querySelector('#sv-pop-close').onclick = () => overlay.remove()
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
-  _bindMiniComment(overlay, m.id, 'general')
+  _bindCommentSection(m)
 }
 
 // ─── Full-screen teacher detail ───────────────────────────────────────────────
@@ -644,49 +644,7 @@ function _showDetail(m) {
       <div id="sv-class-list">${classCards}</div>
 
       <!-- Comment section -->
-      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-top:16px;">
-        <div style="font-weight:700;font-size:14px;margin-bottom:10px;">💬 ความคิดเห็น / บันทึก</div>
-        <div id="sv-past-comments" style="margin-bottom:12px;max-height:200px;overflow-y:auto;"></div>
-        <button id="sv-open-comment-ui"
-          style="width:100%;padding:10px;border:1.5px dashed #6366f1;border-radius:10px;background:#f5f3ff;color:#6366f1;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
-          + แสดงความคิดเห็น
-        </button>
-        <div id="sv-comment-ui" style="display:none;margin-top:12px;">
-          <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:8px;">เลือกหัวข้อ (เลือกได้หลายข้อ):</div>
-          <div id="sv-cat-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
-            ${['general:ทั่วไป','profile:โปรไฟล์','schedule:ตารางสอน','dates:วันสอน','attendance:เช็คชื่อ','scores:คะแนน'].map(s=>{
-              const [val,label] = s.split(':')
-              return `<div class="sv-cat-row" data-cat="${val}"
-                style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;">
-                <div class="sv-cat-label" style="min-width:80px;font-size:13px;font-weight:600;color:#374151;padding-top:6px;">${label}</div>
-                <div class="sv-cat-right" style="display:none;flex:1;flex-direction:column;gap:6px;">
-                  <div class="sv-phrase-chips" style="display:flex;flex-wrap:wrap;gap:5px;min-height:10px;"></div>
-                  <textarea class="sv-cat-textarea" data-cat="${val}" rows="2" maxlength="500"
-                    placeholder="พิมพ์ความคิดเห็นสำหรับ ${label}..."
-                    style="border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit;resize:none;width:100%;box-sizing:border-box;"></textarea>
-                </div>
-              </div>`
-            }).join('')}
-          </div>
-          <div style="margin-bottom:10px;">
-            <label style="display:block;font-size:12px;color:#374151;font-weight:600;margin-bottom:5px;">📅 อ้างอิงกิจกรรม (ปฏิทินปฏิบัติงาน)</label>
-            <select id="sv-round-select"
-              style="width:100%;border:1.5px solid #e5e7eb;border-radius:10px;padding:7px 10px;font-size:12px;font-family:inherit;color:#374151;background:#f9fafb;">
-              <option value="">— ไม่อ้างอิงกิจกรรม —</option>
-            </select>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
-              <input id="sv-notify-chk" type="checkbox" checked/>
-              🔔 แจ้งเตือนครู
-            </label>
-            <button id="sv-save-comment"
-              style="padding:7px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
-              บันทึกทั้งหมด
-            </button>
-          </div>
-        </div>
-      </div>
+      ${_commentSectionHTML()}
     </div>`
 
   document.getElementById('sv-back').onclick = () => renderSupervisorDashboard(_svContainer, _selfTeacher, _isAdminView)
@@ -727,7 +685,114 @@ function _showDetail(m) {
     })
   })
 
-  // Comment UI — vertical multi-select
+  _bindCommentSection(m)
+}
+
+function _svPopup({ icon = '✅', title = '', body = '', type = 'success' }) {
+  const existing = document.getElementById('sv-popup-overlay')
+  if (existing) existing.remove()
+  const colors = {
+    success: { bg: '#f0fdf4', border: '#bbf7d0', title: '#15803d', icon: '#22c55e' },
+    error:   { bg: '#fef2f2', border: '#fecaca', title: '#b91c1c', icon: '#ef4444' },
+    warning: { bg: '#fffbeb', border: '#fde68a', title: '#92400e', icon: '#f59e0b' },
+  }
+  const c = colors[type] ?? colors.success
+  const el = document.createElement('div')
+  el.id = 'sv-popup-overlay'
+  el.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);'
+  el.innerHTML = `
+    <div style="background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.25);padding:32px 28px;width:min(360px,90vw);text-align:center;animation:sv-pop-in .2s cubic-bezier(.34,1.56,.64,1);">
+      <style>@keyframes sv-pop-in{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}</style>
+      <div style="width:56px;height:56px;border-radius:50%;background:${c.bg};border:2px solid ${c.border};display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 16px;">${icon}</div>
+      ${title ? `<div style="font-size:16px;font-weight:700;color:${c.title};margin-bottom:8px;">${title}</div>` : ''}
+      ${body  ? `<div style="font-size:13px;color:#6b7280;line-height:1.6;margin-bottom:20px;">${body}</div>` : ''}
+      <button id="sv-popup-ok"
+        style="padding:10px 32px;border:none;border-radius:12px;background:${c.icon};color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">ตกลง</button>
+    </div>`
+  document.body.appendChild(el)
+  const close = () => el.remove()
+  document.getElementById('sv-popup-ok').onclick = close
+  el.addEventListener('click', e => { if (e.target === el) close() })
+  return el
+}
+
+async function _loadPastComments(teacherId) {
+  const el = document.getElementById('sv-past-comments')
+  if (!el) return
+  const catLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
+  try {
+    const list = await getSupervisorComments(teacherId)
+    el.innerHTML = list.length ? list.map(c=>`
+      <div style="background:#f9fafb;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12px;display:flex;justify-content:space-between;align-items:start;">
+        <div>
+          <span style="background:#e0e7ff;color:#3730a3;border-radius:6px;padding:1px 6px;font-size:10px;margin-right:6px;">${catLabel[c.metric]??c.metric}</span>
+          ${c.notify_teacher?'<span style="color:#6366f1;font-size:10px;">🔔 </span>':''}
+          <strong>${_selfTeacher?.id===c.supervisor_id?'ฉัน':'หัวหน้า'}</strong>: ${c.comment}
+          <div style="color:#9ca3af;font-size:10px;margin-top:2px;">${new Date(c.created_at).toLocaleString('th')}</div>
+        </div>
+        ${c.supervisor_id===_selfTeacher?.id?`<button data-cid="${c.id}" class="sv-del-c"
+          style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px;flex-shrink:0;">✕</button>`:''}
+      </div>`).join('')
+      : '<div style="color:#9ca3af;font-size:12px;">ยังไม่มีความเห็น</div>'
+    el.querySelectorAll('.sv-del-c').forEach(b => {
+      b.onclick = async () => {
+        await deleteSupervisorComment(parseInt(b.dataset.cid))
+        await _loadPastComments(teacherId)
+      }
+    })
+  } catch {}
+}
+
+// ─── Comment section (ใช้ร่วมกันทั้งหน้ารายละเอียดและป๊อบอัพแสดงความคิดเห็น) ─────
+function _commentSectionHTML() {
+  return `
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-top:16px;">
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px;">💬 ความคิดเห็น / บันทึก</div>
+    <div id="sv-past-comments" style="margin-bottom:12px;max-height:200px;overflow-y:auto;"></div>
+    <button id="sv-open-comment-ui"
+      style="width:100%;padding:10px;border:1.5px dashed #6366f1;border-radius:10px;background:#f5f3ff;color:#6366f1;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+      + แสดงความคิดเห็น
+    </button>
+    <div id="sv-comment-ui" style="display:none;margin-top:12px;">
+      <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:8px;">เลือกหัวข้อ (เลือกได้หลายข้อ):</div>
+      <div id="sv-cat-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+        ${['general:ทั่วไป','profile:โปรไฟล์','schedule:ตารางสอน','dates:วันสอน','attendance:เช็คชื่อ','scores:คะแนน'].map(s=>{
+          const [val,label] = s.split(':')
+          return `<div class="sv-cat-row" data-cat="${val}"
+            style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid #e5e7eb;cursor:pointer;transition:all .15s;">
+            <div class="sv-cat-label" style="min-width:80px;font-size:13px;font-weight:600;color:#374151;padding-top:6px;">${label}</div>
+            <div class="sv-cat-right" style="display:none;flex:1;flex-direction:column;gap:6px;">
+              <div class="sv-phrase-chips" style="display:flex;flex-wrap:wrap;gap:5px;min-height:10px;"></div>
+              <textarea class="sv-cat-textarea" data-cat="${val}" rows="2" maxlength="500"
+                placeholder="พิมพ์ความคิดเห็นสำหรับ ${label}..."
+                style="border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit;resize:none;width:100%;box-sizing:border-box;"></textarea>
+            </div>
+          </div>`
+        }).join('')}
+      </div>
+      <div style="margin-bottom:10px;">
+        <label style="display:block;font-size:12px;color:#374151;font-weight:600;margin-bottom:5px;">📅 อ้างอิงกิจกรรม (ปฏิทินปฏิบัติงาน)</label>
+        <select id="sv-round-select"
+          style="width:100%;border:1.5px solid #e5e7eb;border-radius:10px;padding:7px 10px;font-size:12px;font-family:inherit;color:#374151;background:#f9fafb;">
+          <option value="">— ไม่อ้างอิงกิจกรรม —</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+          <input id="sv-notify-chk" type="checkbox" checked/>
+          🔔 แจ้งเตือนครู
+        </label>
+        <button id="sv-save-comment"
+          style="padding:7px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+          บันทึกทั้งหมด
+        </button>
+      </div>
+    </div>
+  </div>`
+}
+
+function _bindCommentSection(m) {
   document.getElementById('sv-open-comment-ui').onclick = async () => {
     document.getElementById('sv-comment-ui').style.display = ''
     document.getElementById('sv-open-comment-ui').style.display = 'none'
@@ -826,62 +891,6 @@ function _showDetail(m) {
   }
 
   _loadPastComments(m.id)
-}
-
-function _svPopup({ icon = '✅', title = '', body = '', type = 'success' }) {
-  const existing = document.getElementById('sv-popup-overlay')
-  if (existing) existing.remove()
-  const colors = {
-    success: { bg: '#f0fdf4', border: '#bbf7d0', title: '#15803d', icon: '#22c55e' },
-    error:   { bg: '#fef2f2', border: '#fecaca', title: '#b91c1c', icon: '#ef4444' },
-    warning: { bg: '#fffbeb', border: '#fde68a', title: '#92400e', icon: '#f59e0b' },
-  }
-  const c = colors[type] ?? colors.success
-  const el = document.createElement('div')
-  el.id = 'sv-popup-overlay'
-  el.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);'
-  el.innerHTML = `
-    <div style="background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.25);padding:32px 28px;width:min(360px,90vw);text-align:center;animation:sv-pop-in .2s cubic-bezier(.34,1.56,.64,1);">
-      <style>@keyframes sv-pop-in{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}</style>
-      <div style="width:56px;height:56px;border-radius:50%;background:${c.bg};border:2px solid ${c.border};display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 16px;">${icon}</div>
-      ${title ? `<div style="font-size:16px;font-weight:700;color:${c.title};margin-bottom:8px;">${title}</div>` : ''}
-      ${body  ? `<div style="font-size:13px;color:#6b7280;line-height:1.6;margin-bottom:20px;">${body}</div>` : ''}
-      <button id="sv-popup-ok"
-        style="padding:10px 32px;border:none;border-radius:12px;background:${c.icon};color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;"
-        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">ตกลง</button>
-    </div>`
-  document.body.appendChild(el)
-  const close = () => el.remove()
-  document.getElementById('sv-popup-ok').onclick = close
-  el.addEventListener('click', e => { if (e.target === el) close() })
-  return el
-}
-
-async function _loadPastComments(teacherId) {
-  const el = document.getElementById('sv-past-comments')
-  if (!el) return
-  const catLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
-  try {
-    const list = await getSupervisorComments(teacherId)
-    el.innerHTML = list.length ? list.map(c=>`
-      <div style="background:#f9fafb;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12px;display:flex;justify-content:space-between;align-items:start;">
-        <div>
-          <span style="background:#e0e7ff;color:#3730a3;border-radius:6px;padding:1px 6px;font-size:10px;margin-right:6px;">${catLabel[c.metric]??c.metric}</span>
-          ${c.notify_teacher?'<span style="color:#6366f1;font-size:10px;">🔔 </span>':''}
-          <strong>${_selfTeacher?.id===c.supervisor_id?'ฉัน':'หัวหน้า'}</strong>: ${c.comment}
-          <div style="color:#9ca3af;font-size:10px;margin-top:2px;">${new Date(c.created_at).toLocaleString('th')}</div>
-        </div>
-        ${c.supervisor_id===_selfTeacher?.id?`<button data-cid="${c.id}" class="sv-del-c"
-          style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:14px;flex-shrink:0;">✕</button>`:''}
-      </div>`).join('')
-      : '<div style="color:#9ca3af;font-size:12px;">ยังไม่มีความเห็น</div>'
-    el.querySelectorAll('.sv-del-c').forEach(b => {
-      b.onclick = async () => {
-        await deleteSupervisorComment(parseInt(b.dataset.cid))
-        await _loadPastComments(teacherId)
-      }
-    })
-  } catch {}
 }
 
 async function _showScheduleOverlay(m) {
@@ -1008,75 +1017,6 @@ function _openClassInSupervisor(m, cls) {
 
 
 // ── utils ─────────────────────────────────────────────────────────────────────
-// ── mini comment section (ใส่ใน popup ทุกที่) ────────────────────────────────
-function _miniCommentHTML(metric) {
-  const metricLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}[metric]??metric
-  return `
-  <div class="sv-mini-comment" data-metric="${metric}"
-    style="margin-top:14px;border-top:1px solid #e5e7eb;padding-top:12px;">
-    <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:8px;">💬 Comment (${metricLabel})</div>
-    <div class="sv-mini-comment-list" style="max-height:120px;overflow-y:auto;margin-bottom:8px;"></div>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      <input class="sv-mini-comment-input" type="text" placeholder="พิมพ์ความเห็น..." maxlength="200"
-        style="flex:1;min-width:120px;border:1px solid #d1d5db;border-radius:8px;padding:5px 10px;font-size:12px;font-family:inherit;"/>
-      <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;white-space:nowrap;">
-        <input class="sv-mini-notify" type="checkbox"/>🔔แจ้งเตือน
-      </label>
-      <button class="sv-mini-send"
-        style="padding:5px 12px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;">
-        ส่ง
-      </button>
-    </div>
-  </div>`
-}
-
-async function _bindMiniComment(container, teacherId, metric) {
-  const section = container.querySelector(`.sv-mini-comment[data-metric="${metric}"]`)
-  if (!section) return
-
-  async function reload() {
-    const list = section.querySelector('.sv-mini-comment-list')
-    try {
-      const all = await getSupervisorComments(teacherId)
-      const filtered = all.filter(c => c.metric === metric || metric === 'general')
-      list.innerHTML = filtered.length ? filtered.map(c=>`
-        <div style="font-size:11px;padding:4px 8px;background:#f9fafb;border-radius:6px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:start;">
-          <div><strong>${c.supervisor_id===_selfTeacher?.id?(_selfTeacher?.full_name??'หัวหน้า'):'หัวหน้า'}</strong>: ${c.comment}
-            ${c.notify_teacher?'<span style="color:#6366f1;font-size:10px;"> 🔔</span>':''}
-            <div style="color:#9ca3af;font-size:10px;">${new Date(c.created_at).toLocaleString('th')}</div>
-          </div>
-          ${c.supervisor_id===_selfTeacher?.id?`<button data-cid="${c.id}" class="sv-mini-del"
-            style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>`:''}
-        </div>`).join('')
-        : '<div style="color:#9ca3af;font-size:11px;">ยังไม่มีความเห็น</div>'
-      list.querySelectorAll('.sv-mini-del').forEach(b=>{
-        b.onclick = async () => {
-          await deleteSupervisorComment(parseInt(b.dataset.cid))
-          await reload()
-        }
-      })
-    } catch {}
-  }
-
-  const sendBtn = section.querySelector('.sv-mini-send')
-  const inp = section.querySelector('.sv-mini-comment-input')
-  const notify = section.querySelector('.sv-mini-notify')
-
-  sendBtn.onclick = async () => {
-    const txt = inp.value.trim()
-    if (!txt) return
-    sendBtn.disabled = true
-    try {
-      await addSupervisorCommentWithNotify(_selfTeacher.id, teacherId, metric, txt, notify.checked)
-      inp.value = ''
-      notify.checked = false
-      await reload()
-    } catch(e) { _svPopup({ icon:'❌', title:'บันทึกไม่สำเร็จ', body: e.message ?? '', type:'error' }) } finally { sendBtn.disabled = false }
-  }
-  inp.addEventListener('keydown', e => { if(e.key==='Enter') sendBtn.click() })
-  await reload()
-}
-
 function _makeOverlay() {
   const el = document.createElement('div')
   el.className = 'sv-overlay'
