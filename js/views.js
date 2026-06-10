@@ -9608,7 +9608,7 @@ export async function renderWorkCalendar(teacher) {
 // กรองเฉพาะครูศาสนา (category หรือ subject_group ที่เกี่ยวข้อง)
 function _getReligionTeachers(allTeachers) {
   return allTeachers.filter(t =>
-    t.category === 'religion' || ['AGM','AGMVOC'].includes(t.subject_group)
+    t.category === 'ศาสนา' || ['AGM','AGMVOC'].includes(t.subject_group)
   ).concat(allTeachers.filter(t =>
     !t.category && !['AGM','AGMVOC','ACDMVOC'].includes(t.subject_group)
   )).filter((t, i, a) => a.findIndex(x => x.id === t.id) === i)
