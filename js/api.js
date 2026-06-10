@@ -2187,30 +2187,45 @@ export async function getTeachersWithPositions() {
 }
 
 export async function updateTeacherPosition(id, position, positionDeptId) {
-  // ดึง positions ปัจจุบันเพื่อความปลอดภัยในการอัปเดต multi-position
+  // ดึงตำแหน่งและ positions ปัจจุบันเพื่อความปลอดภัยในการอัปเดต multi-position
   const { data: teacher, error: fetchErr } = await supabase
     .from('teachers')
-    .select('positions')
+    .select('position, positions')
     .eq('id', id)
     .single()
   
   if (fetchErr) throw fetchErr
 
   let newPositions = teacher.positions || []
+  let primaryPosition = teacher.position
+
   if (position) {
-    if (!newPositions.includes(position)) {
-      newPositions.push(position)
+    if (position === 'religion_group_head') {
+      // สำหรับ religion_group_head ห้ามเขียนลงในคอลัมน์ position (เพราะติด check constraint)
+      // แต่ให้เพิ่มลงใน array positions เท่านั้น
+      if (!newPositions.includes('religion_group_head')) {
+        newPositions.push('religion_group_head')
+      }
+    } else {
+      // บทบาทอื่น ให้บันทึกเป็นตำแหน่งหลักและเพิ่มใน array
+      primaryPosition = position
+      if (!newPositions.includes(position)) {
+        newPositions.push(position)
+      }
     }
   } else {
     // ลบ 'religion_group_head' ออกถ้าเป็นการถอดบทบาท
     newPositions = newPositions.filter(p => p !== 'religion_group_head')
+    if (primaryPosition === 'religion_group_head') {
+      primaryPosition = null
+    }
   }
   newPositions = [...new Set(newPositions.filter(Boolean))]
 
   const { error } = await supabase
     .from('teachers')
     .update({
-      position: position || null,
+      position: primaryPosition || null,
       positions: newPositions,
       position_dept_id: positionDeptId || null
     })

@@ -1957,9 +1957,9 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
   const allowedItems = isAdmin
     ? _SV_MENU_ITEMS
     : _SV_MENU_ITEMS.filter(m => {
-        if (m.key === 'lang_config') return _positionPerms.lang_config || (_teacher?.positions ?? [_teacher?.position]).includes('dept_head')
-        if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || (_teacher?.positions ?? [_teacher?.position]).includes('house_color_admin')
-        if (m.key === 'manage_religion_groups') return _positionPerms.manage_religion_groups || (_teacher?.positions ?? [_teacher?.position]).includes('religion_group_head')
+        if (m.key === 'lang_config') return _positionPerms.lang_config || _tPositions2.includes('dept_head')
+        if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || _tPositions2.includes('house_color_admin')
+        if (m.key === 'manage_religion_groups') return _positionPerms.manage_religion_groups || _tPositions2.includes('religion_group_head')
         if (m.key === 'announce_manage') return !!_positionPerms.announce_manage
         if (m.key === 'announce_create') return !!_positionPerms.announce_create
         if (m.key === 'work_calendar') return !!_positionPerms.work_calendar
