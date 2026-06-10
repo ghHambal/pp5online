@@ -18,6 +18,7 @@ import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
 import { APP_VERSION } from './version.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
+import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -74,24 +75,19 @@ async function loadTeacherInfo(userId) {
 function _renderTeacherSidebarUI(teacher) {
   // เช็ค position — ถ้ามีบทบาทพิเศษแสดงปุ่มสลับ Dashboard (ป้องกัน duplicate)
   const nav = document.querySelector('#sidebar nav')
-  const _teacherPositions = teacher?.positions?.length ? teacher.positions : (teacher?.position ? [teacher.position] : [])
+  const _teacherPositions = _teacherPositionList(teacher)
   if (_teacherPositions.length > 0 && nav && !document.getElementById('btn-sv-mode')) {
-    const POS_LBL = {
-      dept_head:'หัวหน้ากลุ่มสาระ',
-      religion_group_head:'หัวหน้ากลุ่ม (ศาสนา)',
-      religion_subgroup_head:'หัวหน้ากลุ่มย่อย (ศาสนา)',
-      registrar_samai:'ทะเบียน (สามัญ)', registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
-      academic_samai:'วิชาการสามัญ', academic_religion:'วิชาการศาสนา', academic_pvch:'วิชาการปวช',
-      house_color_admin:'สีนักเรียน',
-    }
-    const posLabel = _teacherPositions.map(p => POS_LBL[p] ?? p).join(' / ')
+    const posLabel = _teacherPositionLabel(teacher)
     const svBtn = document.createElement('button')
     svBtn.id = 'btn-sv-mode'
-    svBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-blue-800/50 mt-2 border border-blue-700/40 w-full text-left'
+    svBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition w-full text-left text-emerald-200 hover:bg-emerald-800 hover:text-white'
     svBtn.style.color = '#93c5fd'
     svBtn.innerHTML = `<span>📊</span><span>Dashboard ${posLabel}</span>`
     svBtn.onclick = _enterSupervisorMode
-    nav.appendChild(svBtn)
+    // วางไว้กลุ่มเดียวกับ "ประกาศ" / "ปฏิทินปฏิบัติงาน" บนสุดของเมนู
+    const calendarLink = nav.querySelector('[data-nav="work-calendar-view"]')
+    if (calendarLink) calendarLink.insertAdjacentElement('afterend', svBtn)
+    else nav.insertBefore(svBtn, nav.firstChild)
   }
 
   const name   = teacher?.full_name ?? 'ครูผู้สอน'
@@ -1872,6 +1868,7 @@ function _enterSupervisorMode() {
   _renderSupervisorNav(nav, main, _isAlsoAdmin)
   renderSupervisorDashboard(main, _teacher, _isAlsoAdmin)
 }
+window._enterSupervisorMode = _enterSupervisorMode
 
 function _exitSupervisorMode() {
   const main = document.getElementById('main-content') ?? document.querySelector('main') ?? document.getElementById('content-area')

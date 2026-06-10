@@ -9884,28 +9884,30 @@ async function _renderMyGroupMembers(group, religionTeachers) {
 
 function _openMyGroupMembersModal(group, religionTeachers, currentMembers, onSave) {
   const overlay = document.createElement('div')
-  overlay.className = 'fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 p-4'
+  overlay.className = 'fixed inset-0 z-[9000] bg-white flex flex-col'
 
   overlay.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-      <div class="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 class="font-bold text-gray-800">เพิ่มสมาชิกกลุ่ม "${_esc(group.name)}"</h3>
-        <button class="text-gray-400 hover:text-gray-600 text-xl" id="mrg-modal-close">✕</button>
-      </div>
-      <div class="px-6 py-5 space-y-2 max-h-[60vh] overflow-y-auto">
-        <label class="block text-xs font-medium text-gray-600 mb-1">ค้นหาครูศาสนา (ชื่อหรือรหัสครู)</label>
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+      <h3 class="font-bold text-gray-800 text-lg">เพิ่มสมาชิกกลุ่ม "${_esc(group.name)}"</h3>
+      <button class="text-gray-400 hover:text-gray-600 text-2xl leading-none" id="mrg-modal-close">✕</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-5 py-4">
+      <div class="max-w-2xl mx-auto">
+        <div id="mrg-chips" class="mb-5"></div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">ค้นหาครูศาสนาเพื่อเพิ่ม (ชื่อหรือรหัสครู)</label>
         <div id="mrg-member-wrap"></div>
       </div>
-      <div class="px-6 pb-6 flex gap-3 justify-end">
-        <button id="mrg-cancel" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ยกเลิก</button>
-        <button id="mrg-save" class="btn-primary px-5 py-2 text-sm text-white rounded-xl">บันทึก</button>
-      </div>
+    </div>
+    <div class="px-5 py-4 border-t border-gray-100 flex gap-3 justify-end flex-shrink-0">
+      <button id="mrg-cancel" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ยกเลิก</button>
+      <button id="mrg-save" class="btn-primary px-5 py-2 text-sm text-white rounded-xl">บันทึก</button>
     </div>`
 
   document.body.appendChild(overlay)
 
   const memberSel = createTeacherMultiSelect({
     wrap: overlay.querySelector('#mrg-member-wrap'),
+    chipsWrap: overlay.querySelector('#mrg-chips'),
     teachers: religionTeachers,
     value: currentMembers.map(m => m.teacher_id),
   })

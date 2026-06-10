@@ -12,7 +12,7 @@ import {
   setContent, setTitle, setActiveNav, _htmlEsc,
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
-  _currentWeek,
+  _currentWeek, _teacherPositionList, _teacherPositionLabel,
 } from './teacher-views-utils.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
@@ -222,7 +222,23 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     `
   })() : ''
 
+  // ปุ่มลัด Dashboard ตามตำแหน่ง (หัวหน้ากลุ่ม/ฝ่ายต่างๆ) — ให้เข้าถึงได้ง่ายจากหน้าภาพรวม
+  const _svPositions = _teacherPositionList(teacher)
+  const svDashboardHtml = _svPositions.length ? `
+    <div onclick="window._enterSupervisorMode && window._enterSupervisorMode()"
+      class="mb-4 bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-4
+             cursor-pointer hover:shadow-lg hover:border-blue-300 hover:bg-blue-50/30 transition group">
+      <div class="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-xl flex-shrink-0">📊</div>
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-gray-800 text-sm">Dashboard ${_teacherPositionLabel(teacher)}</p>
+        <p class="text-xs text-gray-400 mt-0.5">เมนูสำหรับบทบาทเพิ่มเติมของคุณ</p>
+      </div>
+      <span class="text-gray-300 group-hover:text-blue-400 transition text-lg">→</span>
+    </div>` : ''
+
   setContent(`<div class="animate-fade">
+
+    ${svDashboardHtml}
 
     ${weekBannerHtml}
 

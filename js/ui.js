@@ -478,12 +478,13 @@ export function createTeacherSelect({ wrap, teachers, value = null, placeholder 
 //   const sel = createTeacherMultiSelect({ wrap: el, teachers, value: [1,2,3] })
 //   sel.getValue()    → array ของ teacher id
 //   sel.setValue(ids) → เซตค่า
-export function createTeacherMultiSelect({ wrap, teachers, value = [], placeholder = 'ค้นหาชื่อหรือรหัสครู...' }) {
+export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = [], placeholder = 'ค้นหาชื่อหรือรหัสครู...' }) {
   // ── state ──────────────────────────────────────────────────────────────────
   let _selectedIds = new Set((value ?? []).map(id => +id))
   let _open = false
 
   // ── DOM ────────────────────────────────────────────────────────────────────
+  // ถ้ามี chipsWrap แยกต่างหาก (เช่น วางไว้ด้านบนสุดของ popup) จะ render รายชื่อที่เลือกไว้ที่นั่นแทน
   wrap.style.position = 'relative'
   wrap.innerHTML = `
     <div class="ts-input flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 cursor-pointer bg-white hover:border-indigo-300 transition" tabindex="0">
@@ -496,13 +497,13 @@ export function createTeacherMultiSelect({ wrap, teachers, value = [], placehold
       </div>
       <ul class="ts-list max-h-52 overflow-y-auto"></ul>
     </div>
-    <ul class="ts-chips mt-2 space-y-1.5"></ul>`
+    ${chipsWrap ? '' : '<div class="ts-chips mt-2 space-y-1.5"></div>'}`
 
   const inputEl  = wrap.querySelector('.ts-input')
   const dropdown = wrap.querySelector('.ts-dropdown')
   const searchEl = wrap.querySelector('.ts-search')
   const listEl   = wrap.querySelector('.ts-list')
-  const chipsEl  = wrap.querySelector('.ts-chips')
+  const chipsEl  = chipsWrap ?? wrap.querySelector('.ts-chips')
   const arrowEl  = wrap.querySelector('.ts-arrow')
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -512,18 +513,19 @@ export function createTeacherMultiSelect({ wrap, teachers, value = [], placehold
 
   function _renderChips() {
     const selected = teachers.filter(t => _selectedIds.has(t.id))
+    const countLabel = chipsWrap ? `<p class="text-xs font-semibold text-gray-700 mb-2">สมาชิกในกลุ่ม (${selected.length} คน)</p>` : ''
     if (!selected.length) {
-      chipsEl.innerHTML = `<li class="text-xs text-gray-400 px-1 py-1">ยังไม่มีสมาชิก</li>`
+      chipsEl.innerHTML = countLabel + `<p class="text-xs text-gray-400 px-1 py-1">ยังไม่มีสมาชิก</p>`
       return
     }
-    chipsEl.innerHTML = selected.map(t => `
-      <li data-id="${t.id}" class="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+    chipsEl.innerHTML = countLabel + `<div class="space-y-1.5">${selected.map(t => `
+      <div data-id="${t.id}" class="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
         ${t.image_url
           ? `<img src="${t.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />`
           : `<div class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${(t.full_name ?? '?').charAt(0)}</div>`}
         <span class="flex-1 text-sm text-gray-700 truncate">${t.full_name ?? ''}${t.teacher_code ? `<span class="ml-1 text-xs text-gray-400 font-mono">${t.teacher_code}</span>` : ''}</span>
         <button type="button" class="ts-chip-remove text-gray-300 hover:text-red-500 text-lg leading-none">&times;</button>
-      </li>`).join('')
+      </div>`).join('')}</div>`
 
     chipsEl.querySelectorAll('.ts-chip-remove').forEach(btn => {
       btn.addEventListener('click', () => {

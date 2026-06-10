@@ -12,6 +12,20 @@ export const CREDIT_OPTS = [0.5,1.0,1.5,2.0,2.5,3.0]
 export const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
 export const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm'
 
+// ─── ป้ายชื่อบทบาท/ตำแหน่งเพิ่มเติม (สำหรับปุ่ม Dashboard ตามตำแหน่ง) ─────────────
+export const POS_LBL = {
+  dept_head:'หัวหน้ากลุ่มสาระ',
+  religion_group_head:'หัวหน้ากลุ่ม (ศาสนา)',
+  religion_subgroup_head:'หัวหน้ากลุ่มย่อย (ศาสนา)',
+  registrar_samai:'ทะเบียน (สามัญ)', registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
+  academic_samai:'วิชาการสามัญ', academic_religion:'วิชาการศาสนา', academic_pvch:'วิชาการปวช',
+  house_color_admin:'สีนักเรียน',
+}
+export const _teacherPositionList = teacher =>
+  teacher?.positions?.length ? teacher.positions : (teacher?.position ? [teacher.position] : [])
+export const _teacherPositionLabel = teacher =>
+  _teacherPositionList(teacher).map(p => POS_LBL[p] ?? p).join(' / ')
+
 // ─── DOM layout helpers ───────────────────────────────────────────────────────
 let _realMainContent = null
 const _getMainContent = () => {
