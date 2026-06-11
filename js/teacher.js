@@ -2067,6 +2067,8 @@ async function _showClassQuickPicker(mode) {
   })
 }
 
+window._showClassQuickPicker = _showClassQuickPicker
+
 async function _quickGoToClass(mode, cls) {
   if (mode === 'attendance') {
     const { renderAttendanceGrid } = await import('./teacher-views-attendance.js')

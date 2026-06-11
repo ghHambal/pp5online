@@ -1026,7 +1026,7 @@ function _buildPage2(d) {
           <span class="p2-label">ปีการศึกษา</span>
           <span class="p2-uline">${_esc(String(academicYear))}</span>
           <span class="p2-label">เวลา</span>
-          <span class="p2-uline p2-uline-fill"></span>
+          <span class="p2-uline p2-uline-fill">${_esc(String(credit * 2 * 20))}</span>
           <span class="p2-label">ชั่วโมง</span>
         </div>
         <div class="p2-hdr-row">

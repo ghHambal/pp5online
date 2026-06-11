@@ -325,6 +325,28 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>`).join('')}
     </div>
 
+    <!-- งานรายวัน: เช็คชื่อ / บันทึกคะแนน -->
+    <div class="mt-4 grid grid-cols-2 gap-3">
+      <div onclick="window._showClassQuickPicker('attendance')"
+        class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-3
+               cursor-pointer hover:shadow-lg hover:border-emerald-300 hover:bg-emerald-50/30 transition group">
+        <div class="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-xl flex-shrink-0">✅</div>
+        <div class="min-w-0">
+          <p class="font-semibold text-gray-800 text-sm">เช็คชื่อ</p>
+          <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียน</p>
+        </div>
+      </div>
+      <div onclick="window._showClassQuickPicker('grades')"
+        class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-3
+               cursor-pointer hover:shadow-lg hover:border-indigo-300 hover:bg-indigo-50/30 transition group">
+        <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">📝</div>
+        <div class="min-w-0">
+          <p class="font-semibold text-gray-800 text-sm">บันทึกคะแนน</p>
+          <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียน</p>
+        </div>
+      </div>
+    </div>
+
     <!-- ปุ่มตารางสอน -->
     <div onclick="window._navTo('schedule')"
       class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-4
