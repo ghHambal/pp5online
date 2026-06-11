@@ -313,7 +313,7 @@ async function _loadDocData(classId) {
       id, course_id, class_name, skill_group, google_sheet_id,
       head_student_id, source_class_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
+      master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id, learning_area ),
       students ( full_name, student_code )
     `)
     .eq('id', classId)
@@ -443,7 +443,9 @@ async function _loadDocData(classId) {
   }
 
   const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet }
+  // หัวหน้ากลุ่มสาระที่แสดงในเอกสาร: ใช้ค่าที่ครูกำหนดไว้ในรายวิชา (learning_area) ก่อน ถ้าไม่มีค่อย fallback เป็นหัวหน้ากลุ่มสาระของโรงเรียน
+  const deptHeadName = (ms.learning_area && ms.learning_area.trim()) || dept?.head_name || ''
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -712,7 +714,7 @@ function _getCSS() {
 // ─── Page 1: หน้าปก ───────────────────────────────────────────────────────────
 
 function _buildPage1(d) {
-  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, hrSamai, hrReligion, academicYear, semester } = d
+  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester } = d
 
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
@@ -736,7 +738,7 @@ function _buildPage1(d) {
   const regSign    = isReligion
     ? (cfg.agmRegistrarSignUrl ?? cfg[`${prefix}RegistrarSignUrl`] ?? '')
     : (cfg[`${prefix}RegistrarSignUrl`] ?? '')
-  const deptHeadName = _esc(dept?.head_name ?? '')
+  const deptHeadName = _esc(_deptHeadNameRaw)
   const deptHeadSign = dept?.head_sign_url ?? ''
   const className    = cls.class_name ?? ''
 
@@ -953,7 +955,7 @@ function _buildPage1(d) {
 // ─── Page 2: มาตรฐานการเรียนรู้และตัวชี้วัด ─────────────────────────────────
 
 function _buildPage2(d) {
-  const { cls, ms, credit, cfg, courseDoc, thColHeaders, thColsExtra, thRowHeader, teacher, deptNameTH, academicYear, semester, prefix } = d
+  const { cls, ms, credit, cfg, courseDoc, thColHeaders, thColsExtra, thRowHeader, teacher, deptNameTH, deptHeadName, academicYear, semester, prefix } = d
   const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระฯ'
 
@@ -1094,7 +1096,7 @@ function _buildPage2(d) {
     <!-- Signature -->
     <div class="p2-sig">
       ลงชื่อ <span style="display:inline-block;border-bottom:.3mm dashed #555;min-width:60mm;text-align:center;padding:0 2mm;">
-        ${d.dept?.head_name ? _esc(d.dept.head_name) : ''}
+        ${_esc(deptHeadName)}
       </span> ${_headFieldLabel}
     </div>
   </div>`
@@ -1234,7 +1236,7 @@ function _buildPage4(d) {
 }
 
 function _buildScorePage(d, chunk, startNo) {
-  const { cls, ms, teacher, academicYear, semester, scoreColumns, scoreMap } = d
+  const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap } = d
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้าหมวดวิชา'
 
   // แบ่ง between / final / special
@@ -1373,7 +1375,7 @@ function _buildScorePage(d, chunk, startNo) {
       </div>
       <div class="score-sig-row">
         <div class="score-sig-lbl">ลงชื่อ</div>
-        <div class="score-sig-line">${_esc(d.dept?.head_name??'')}</div>
+        <div class="score-sig-line">${_esc(deptHeadName)}</div>
         <div class="score-sig-role">${_headFieldLabel}</div>
       </div>
       <div class="score-sig-row">
