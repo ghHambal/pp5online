@@ -708,7 +708,7 @@ export async function renderGradesGrid(teacher, classData) {
         document.getElementById('mcm-del-confirm')?.remove()
         const popup = document.createElement('div')
         popup.id = 'mcm-del-confirm'
-        popup.className = 'fixed inset-0 z-[300] flex items-center justify-center p-6'
+        popup.className = 'fixed inset-0 z-[700] flex items-center justify-center p-6'
         popup.style.background = 'rgba(0,0,0,0.5)'
         popup.innerHTML = `
           <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
