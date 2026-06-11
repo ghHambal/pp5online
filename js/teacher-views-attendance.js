@@ -9,7 +9,7 @@ import {
   getStudentsByRoom, getStudentsByReligionRoom,
 } from './api.js'
 import { supabase } from './supabase.js'
-import { showToast } from './ui.js'
+import { showToast, showDangerConfirm } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
   _generateSessions, _dateInputValue, ATT_STATUS, ATT_CYCLE,
@@ -73,14 +73,11 @@ export async function renderAttendanceGrid(teacher, classData) {
       }
     }
 
-    // ─── แจ้งเตือน (ไม่ลบ) เมื่อพบข้อมูลในคาบวันหยุด ───────────────
+    // ─── แจ้งเตือน + ปุ่มลบ (เมื่อครูยืนยันเอง) เมื่อพบข้อมูลในคาบวันหยุด ───────
     const holAttRows = attRows.filter(r => {
       const sess = sessions.find(s => s.n === r.session_number)
       return sess && holidaySet.has(sess.ds)
     })
-    if (holAttRows.length > 0) {
-      showToast(`พบข้อมูลเช็คชื่อ ${holAttRows.length} รายการในคาบที่ตรงกับวันหยุด (แสดงเป็นคอลัมน์สีแดง)`, 'warning')
-    }
 
     // ─── Column widths ─────────────────────────────────────────────
     const colW = 38  // px per session column
@@ -113,6 +110,15 @@ export async function renderAttendanceGrid(teacher, classData) {
           </button>
         </div>
       </div>
+      ${holAttRows.length > 0 ? `
+      <!-- Holiday attendance banner -->
+      <div class="flex items-center justify-between gap-3 px-4 py-2 bg-red-50 border-b border-red-100 text-xs text-red-700 flex-shrink-0">
+        <span>⚠️ พบข้อมูลเช็คชื่อ ${holAttRows.length} รายการในคาบที่ตรงกับวันหยุด (คอลัมน์สีแดง)</span>
+        <button id="btn-clear-holiday-att"
+          class="px-3 py-1.5 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition flex-shrink-0">
+          🗑️ ลบข้อมูลนี้
+        </button>
+      </div>` : ''}
       <!-- Saving indicator -->
       <div id="att-saving" class="hidden fixed top-16 right-4 z-50
         bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">
@@ -221,6 +227,23 @@ export async function renderAttendanceGrid(teacher, classData) {
     // Stats button
     document.getElementById('btn-att-stats')?.addEventListener('click', () => {
       _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
+    })
+
+    // ลบข้อมูลเช็คชื่อในคาบที่ตรงกับวันหยุด (ต้องยืนยันก่อน)
+    document.getElementById('btn-clear-holiday-att')?.addEventListener('click', async () => {
+      const dates = [...new Set(holAttRows.map(r => sessions.find(s => s.n === r.session_number)?.ds).filter(Boolean))].sort()
+      const ok = await showDangerConfirm({
+        title: 'ลบข้อมูลเช็คชื่อในวันหยุด',
+        message: `พบข้อมูลเช็คชื่อ ${holAttRows.length} รายการ ในคาบที่ตรงกับวันหยุดโรงเรียน (${dates.join(', ')})`,
+        detail: 'คาบเหล่านี้ถูกล็อกไม่ให้แก้ไข ข้อมูลเก่าที่ค้างอยู่จะถูกลบออกถาวรและไม่สามารถกู้คืนได้',
+        confirmText: 'ลบข้อมูลนี้',
+      })
+      if (!ok) return
+      await Promise.all(holAttRows.map(r =>
+        saveAttendanceCell(classData.id, r.student_id, r.session_number, null, null)
+      ))
+      showToast(`ลบข้อมูลเช็คชื่อในวันหยุดเรียบร้อย ${holAttRows.length} รายการ`, 'success')
+      renderAttendanceGrid(teacher, classData)
     })
 
     // คลิกชื่อนักเรียน → สถิติรายบุคคล
