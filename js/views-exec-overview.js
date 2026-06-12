@@ -1,4 +1,4 @@
-import { getExecClassOverview, getDepartments, getSystemConfig } from './api.js'
+import { getExecClassOverview, getDepartments, getSystemConfig, getTeachers } from './api.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const _esc = value => String(value ?? '')
@@ -31,9 +31,13 @@ const STATUS_BG = {
 const DIM_ICON = { doc: '📋', dates: '📅', att: '✅', score: '📝' }
 const DIM_LABEL = { doc: 'ปก ปพ.5', dates: 'วันที่สอน', att: 'เช็คชื่อ', score: 'บันทึกคะแนน' }
 
-// badge ไอคอนตามมิติ (doc/dates/att/score) + สีพื้นตามสถานะ (green/yellow/red/gray)
+// badge ไอคอน + สีพื้นตามสถานะ (green/yellow/red/gray)
+function _badge(icon, label, status, sizeClass = 'w-8 h-8 text-base') {
+  return `<span class="inline-flex items-center justify-center ${sizeClass} rounded-lg ${STATUS_BG[status]}" title="${label}">${icon}</span>`
+}
+// badge ไอคอนตามมิติ (doc/dates/att/score) ของห้องเรียน
 function _statusBadge(dim, status, sizeClass = 'w-8 h-8 text-base') {
-  return `<span class="inline-flex items-center justify-center ${sizeClass} rounded-lg ${STATUS_BG[status]}" title="${DIM_LABEL[dim]}: ${STATUS_LABEL[status]}">${DIM_ICON[dim]}</span>`
+  return _badge(DIM_ICON[dim], `${DIM_LABEL[dim]}: ${STATUS_LABEL[status]}`, status, sizeClass)
 }
 
 const KPI_INFO = {
@@ -54,6 +58,14 @@ function _matchDept(row, depts) {
   return depts.find(d => d.dept_code === row.dept && d.category === category)
       ?? depts.find(d => d.dept_code === row.dept)
       ?? depts.find(d => d.dept_name === row.dept)
+      ?? null
+}
+
+// จับคู่กลุ่มสาระของ "ครู" (teachers.dept + teachers.category เป็นคนละชุดกับ subject_group ของวิชา)
+function _matchDeptForTeacher(t, depts) {
+  if (!t.dept) return null
+  return depts.find(d => d.dept_code === t.dept && d.category === t.category)
+      ?? depts.find(d => d.dept_code === t.dept)
       ?? null
 }
 
@@ -101,12 +113,6 @@ function _needsAttention(status) {
   return Object.values(status).some(s => s === 'red' || s === 'yellow')
 }
 
-// ห้องที่ "ยังไม่แตะอะไรเลย" — ไม่มีปก, ไม่มีวันสอน, ไม่เคยเช็คชื่อ, ไม่มีคอลัมน์คะแนน
-function _isUntouched(row) {
-  return row.status.doc === 'red' && row.status.dates === 'red'
-    && !row.last_check_date && row.score_col_count === 0
-}
-
 // ─── View: Executive Overview ─────────────────────────────────────────────────
 export async function renderExecOverview() {
   setActive('exec-overview')
@@ -116,12 +122,13 @@ export async function renderExecOverview() {
     <div class="text-center py-16 text-gray-400">กำลังโหลดข้อมูล...</div>
   </div>`)
 
-  let overview, depts, cfg
+  let overview, depts, cfg, allTeachers
   try {
-    [overview, depts, cfg] = await Promise.all([
+    [overview, depts, cfg, allTeachers] = await Promise.all([
       getExecClassOverview(),
       getDepartments(),
       getSystemConfig().catch(() => ({})),
+      getTeachers(),
     ])
   } catch (err) {
     setContent(`<div class="max-w-6xl mx-auto animate-fade">
@@ -157,28 +164,49 @@ export async function renderExecOverview() {
     .map(([key, g]) => ({ key, ...g }))
     .sort((a, b) => a.deptName.localeCompare(b.deptName, 'th'))
 
-  // ครูที่ต้องติดตาม: ยังไม่ลงทะเบียนใช้งาน หรือ ทุกห้องที่สอนยังไม่แตะอะไรเลย
-  const teacherMap = new Map()
+  // สถานะครูผู้สอนทุกคน: ลงทะเบียนใช้งาน → เพิ่มวิชา/ห้องที่สอน → เช็คชื่อเป็นปัจจุบัน
+  const classRowsByTeacher = new Map()
   for (const r of classRows) {
     if (r.teacher_id == null) continue
-    if (!teacherMap.has(r.teacher_id)) {
-      teacherMap.set(r.teacher_id, {
-        teacherId: r.teacher_id, teacherName: r.teacher_name,
-        registered: r.teacher_registered, depts: new Set(), deptKeys: new Set(), rows: [],
-      })
-    }
-    const g = teacherMap.get(r.teacher_id)
-    g.depts.add(r.deptName)
-    g.deptKeys.add(r.deptKey)
-    g.rows.push(r)
+    if (!classRowsByTeacher.has(r.teacher_id)) classRowsByTeacher.set(r.teacher_id, [])
+    classRowsByTeacher.get(r.teacher_id).push(r)
   }
-  const followups = [...teacherMap.values()]
-    .map(g => ({ ...g, reason: !g.registered ? 'unregistered' : (g.rows.every(_isUntouched) ? 'inactive' : null) }))
-    .filter(g => g.reason)
-    .sort((a, b) => {
-      if (a.reason !== b.reason) return a.reason === 'unregistered' ? -1 : 1
-      return (a.teacherName ?? '').localeCompare(b.teacherName ?? '', 'th')
+
+  const teacherStatuses = allTeachers
+    .filter(t => t.staff_type === 'ครู')
+    .map(t => {
+      const rows = classRowsByTeacher.get(t.id) ?? []
+      const registered = t.profile_id != null
+      const classCount = rows.length
+      const attWorst = classCount > 0 ? _worstStatus(rows.map(r => r.status.att)) : 'gray'
+
+      let dept
+      if (rows[0]) {
+        dept = { key: rows[0].deptKey, name: rows[0].deptName }
+      } else {
+        const d = _matchDeptForTeacher(t, depts)
+        dept = d ? { key: `d${d.id}`, name: d.dept_name } : { key: null, name: 'ไม่ระบุกลุ่มสาระ' }
+      }
+
+      let severity
+      if (!registered) severity = 3
+      else if (classCount === 0) severity = 2
+      else if (attWorst === 'red') severity = 1.5
+      else if (attWorst === 'yellow') severity = 1
+      else severity = 0
+
+      return {
+        teacherId: t.id, teacherName: t.full_name,
+        deptKey: dept.key, deptName: dept.name,
+        registered, classCount, attWorst, severity,
+      }
     })
+    .sort((a, b) => b.severity - a.severity || a.teacherName.localeCompare(b.teacherName, 'th'))
+
+  const unregisteredCount = teacherStatuses.filter(t => !t.registered).length
+  const noCourseCount = teacherStatuses.filter(t => t.registered && t.classCount === 0).length
+  const attBehindCount = teacherStatuses.filter(t => t.registered && t.classCount > 0 && (t.attWorst === 'red' || t.attWorst === 'yellow')).length
+  const teacherFollowupCount = teacherStatuses.filter(t => t.severity > 0).length
 
   // KPI รวมทั้งโรง: % ห้องที่ "เขียว" ต่อมิติ (ไม่รวม gray)
   function _kpi(dim) {
@@ -311,29 +339,55 @@ export async function renderExecOverview() {
       </div>`
   }
 
-  // ─── teacher follow-up list ──────────────────────────────────────────────
-  function renderFollowupSection() {
-    let list = followups
-    if (selectedDept) list = list.filter(t => t.deptKeys.has(selectedDept))
+  // ─── teacher status table ────────────────────────────────────────────────
+  function renderTeacherSection() {
+    let list = teacherStatuses
+    if (tableMode === 'attention') list = list.filter(t => t.severity > 0)
+    if (selectedDept) list = list.filter(t => t.deptKey === selectedDept)
     if (searchQuery) list = list.filter(t => (t.teacherName ?? '').toLowerCase().includes(searchQuery))
 
-    if (list.length === 0) {
-      return `<p class="text-sm text-emerald-600 text-center py-6">✅ ไม่มีครูที่ต้องติดตามเป็นพิเศษ${(selectedDept || searchQuery) ? 'ตามเงื่อนไขที่เลือก' : ''}</p>`
-    }
+    const title = tableMode === 'all'
+      ? `ครูผู้สอนทั้งหมด (${list.length}/${teacherStatuses.length} คน)`
+      : `ครูที่ต้องติดตาม (${list.length} คน)`
 
-    return `<div class="divide-y divide-gray-50">
-      ${list.map(t => `
-        <div class="flex items-center justify-between gap-3 px-5 py-2.5 hover:bg-gray-50">
-          <div class="min-w-0">
-            <p class="font-medium text-gray-700 text-sm truncate">${_esc(t.teacherName ?? '-')}</p>
-            <p class="text-xs text-gray-400 truncate">${[...t.depts].map(_esc).join(', ')} · สอน ${t.rows.length} วิชา/ห้อง</p>
-          </div>
-          <span class="text-[11px] px-2.5 py-1 rounded-full font-medium whitespace-nowrap
-            ${t.reason === 'unregistered' ? 'bg-gray-100 text-gray-600' : 'bg-red-50 text-red-600'}">
-            ${t.reason === 'unregistered' ? '🔒 ยังไม่ลงทะเบียนใช้งาน' : '💤 ยังไม่เริ่มดำเนินการ'}
-          </span>
-        </div>`).join('')}
-    </div>`
+    const body = list.length === 0
+      ? `<p class="text-sm text-emerald-600 text-center py-6">✅ ไม่พบครูตามเงื่อนไขที่เลือก</p>`
+      : `<div class="overflow-x-auto max-h-[400px] overflow-y-auto">
+          <table class="w-full text-sm">
+            <thead class="sticky top-0 bg-gray-50 text-gray-500 text-xs">
+              <tr>
+                <th class="px-4 py-2 text-left">ชื่อครู</th>
+                <th class="px-4 py-2 text-left">กลุ่มสาระ</th>
+                <th class="px-4 py-2 text-center">ลงทะเบียน</th>
+                <th class="px-4 py-2 text-center">วิชา/ห้องสอน</th>
+                <th class="px-4 py-2 text-center">เช็คชื่อ</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              ${list.map(t => `
+                <tr class="hover:bg-gray-50">
+                  <td class="px-4 py-2 font-medium text-gray-700">${_esc(t.teacherName)}</td>
+                  <td class="px-4 py-2 text-gray-500">${_esc(t.deptName)}</td>
+                  <td class="px-4 py-2 text-center">${_badge('🔑',
+                    t.registered ? 'ลงทะเบียนใช้งานแล้ว' : 'ยังไม่ลงทะเบียนใช้งาน',
+                    t.registered ? 'green' : 'red', 'w-7 h-7 text-sm')}</td>
+                  <td class="px-4 py-2 text-center">${_badge('📚',
+                    t.classCount > 0 ? `มีวิชา/ห้องที่สอน ${t.classCount} ห้อง` : (t.registered ? 'ยังไม่เพิ่มวิชา/ห้องที่สอน' : 'ยังไม่ลงทะเบียน'),
+                    t.classCount > 0 ? 'green' : (t.registered ? 'red' : 'gray'), 'w-7 h-7 text-sm')}</td>
+                  <td class="px-4 py-2 text-center">${t.classCount > 0
+                    ? _badge('✅', `เช็คชื่อ: ${STATUS_LABEL[t.attWorst]}`, t.attWorst, 'w-7 h-7 text-sm')
+                    : _badge('✅', 'ยังไม่มีวิชา/ห้องที่สอน', 'gray', 'w-7 h-7 text-sm')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+
+    return `
+      <div class="px-5 py-3 border-b border-gray-50 bg-gray-50/50">
+        <h4 class="font-bold text-gray-700">👤 ${title}</h4>
+        <p class="text-[11px] text-gray-400 mt-0.5">ติดตาม 3 ขั้น: ลงทะเบียนใช้งาน → เพิ่มวิชา/ห้องที่สอน → เช็คชื่อเป็นปัจจุบัน</p>
+      </div>
+      ${body}`
   }
 
   // ─── KPI cards ────────────────────────────────────────────────────────────
@@ -384,7 +438,7 @@ export async function renderExecOverview() {
     document.getElementById('exec-dept-cards').innerHTML = renderDeptCards()
     document.getElementById('exec-table-header').innerHTML = renderTableHeader()
     document.getElementById('exec-class-table').innerHTML = renderClassTable()
-    document.getElementById('exec-followup-list').innerHTML = renderFollowupSection()
+    document.getElementById('exec-teacher-section').innerHTML = renderTeacherSection()
     const sel = document.getElementById('exec-dept-select')
     if (sel) sel.value = selectedDept ?? ''
     attachInteractiveHandlers()
@@ -397,12 +451,17 @@ export async function renderExecOverview() {
       <p class="text-gray-500 text-sm mb-3">
         ${academicYear ? `ปีการศึกษา ${_esc(academicYear)}` : ''}${semester ? ` ภาคเรียนที่ ${_esc(semester)}` : ''}${(academicYear || semester) ? ' · ' : ''}ทั้งหมด ${classRows.length} ห้องเรียน
       </p>
-      <p class="text-sm font-medium ${attentionTotal > 0 ? 'text-amber-700' : 'text-emerald-700'} bg-white/70 rounded-xl px-4 py-2.5 inline-block">
+      <p class="text-sm font-medium ${attentionTotal > 0 ? 'text-amber-700' : 'text-emerald-700'} bg-white/70 rounded-xl px-4 py-2.5">
         📌 สรุป: มี <b>${attentionTotal} ห้อง</b> (${attentionPct}%) ที่ต้องติดตามเร่งด่วน
-        ${followups.length > 0
-          ? ` และมีครู <b>${followups.length} คน</b> ที่ต้องติดตามเป็นพิเศษ (ยังไม่ลงทะเบียน/ยังไม่เริ่มดำเนินการ)`
-          : ' · ครูทุกคนเริ่มดำเนินการแล้ว'}
       </p>
+      ${teacherFollowupCount > 0 ? `
+      <p class="text-sm font-medium text-amber-700 bg-white/70 rounded-xl px-4 py-2.5 mt-2">
+        👤 มีครู <b>${teacherFollowupCount} คน</b> ที่ต้องติดตาม
+        ${unregisteredCount > 0 ? ` · ยังไม่ลงทะเบียนใช้งาน <b>${unregisteredCount}</b> คน` : ''}
+        ${noCourseCount > 0 ? ` · ยังไม่เพิ่มวิชา/ห้องที่สอน <b>${noCourseCount}</b> คน` : ''}
+        ${attBehindCount > 0 ? ` · เช็คชื่อไม่เป็นปัจจุบัน <b>${attBehindCount}</b> คน` : ''}
+      </p>` : `
+      <p class="text-sm font-medium text-emerald-700 bg-white/70 rounded-xl px-4 py-2.5 mt-2">✅ ครูทุกคนลงทะเบียน เริ่มงาน และเช็คชื่อเป็นปัจจุบันแล้ว</p>`}
     </div>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -438,12 +497,8 @@ export async function renderExecOverview() {
       <div id="exec-class-table">${renderClassTable()}</div>
     </div>
 
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <div class="px-5 py-3 border-b border-gray-50 bg-gray-50/50">
-        <h4 class="font-bold text-gray-700">👤 ครูที่ต้องติดตาม</h4>
-        <p class="text-[11px] text-gray-400 mt-0.5">ครูที่ยังไม่ลงทะเบียนใช้งานระบบ หรือยังไม่เริ่มดำเนินการใดๆ ในภาคเรียนนี้</p>
-      </div>
-      <div id="exec-followup-list" class="max-h-[400px] overflow-y-auto">${renderFollowupSection()}</div>
+    <div id="exec-teacher-section" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      ${renderTeacherSection()}
     </div>
   </div>`)
 
