@@ -21,8 +21,20 @@ function setContent(html) {
   document.getElementById('main-content').innerHTML = html
 }
 
-const STATUS_EMOJI = { green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪' }
 const STATUS_LABEL = { green: 'ปกติ', yellow: 'เริ่มช้า', red: 'ต้องตามงาน', gray: 'ยังไม่เริ่ม' }
+const STATUS_BG = {
+  green: 'bg-emerald-100 text-emerald-700',
+  yellow: 'bg-amber-100 text-amber-700',
+  red: 'bg-red-100 text-red-600',
+  gray: 'bg-gray-100 text-gray-400',
+}
+const DIM_ICON = { doc: '📋', dates: '📅', att: '✅', score: '📝' }
+const DIM_LABEL = { doc: 'ปก ปพ.5', dates: 'วันที่สอน', att: 'เช็คชื่อ', score: 'บันทึกคะแนน' }
+
+// badge ไอคอนตามมิติ (doc/dates/att/score) + สีพื้นตามสถานะ (green/yellow/red/gray)
+function _statusBadge(dim, status, sizeClass = 'w-8 h-8 text-base') {
+  return `<span class="inline-flex items-center justify-center ${sizeClass} rounded-lg ${STATUS_BG[status]}" title="${DIM_LABEL[dim]}: ${STATUS_LABEL[status]}">${DIM_ICON[dim]}</span>`
+}
 
 const KPI_INFO = {
   doc:   'สัดส่วนห้องเรียนที่กรอกข้อมูลหน้าปกเอกสาร ปพ.5 (มาตรฐานการเรียนรู้/ตัวชี้วัด) เรียบร้อยแล้ว',
@@ -206,11 +218,11 @@ export async function renderExecOverview() {
             <h4 class="font-bold text-gray-700 text-sm">${_esc(g.deptName)}</h4>
             <span class="text-[10px] text-gray-400 whitespace-nowrap">${g.rows.length} ห้อง</span>
           </div>
-          <div class="flex items-center gap-3 text-lg mb-2">
-            <span title="ปก ปพ.5: ${STATUS_LABEL[worst.doc]}">${STATUS_EMOJI[worst.doc]}</span>
-            <span title="วันที่สอน: ${STATUS_LABEL[worst.dates]}">${STATUS_EMOJI[worst.dates]}</span>
-            <span title="เช็คชื่อ: ${STATUS_LABEL[worst.att]}">${STATUS_EMOJI[worst.att]}</span>
-            <span title="บันทึกคะแนน: ${STATUS_LABEL[worst.score]}">${STATUS_EMOJI[worst.score]}</span>
+          <div class="flex items-center gap-2 mb-2">
+            ${_statusBadge('doc', worst.doc)}
+            ${_statusBadge('dates', worst.dates)}
+            ${_statusBadge('att', worst.att)}
+            ${_statusBadge('score', worst.score)}
           </div>
           <p class="text-xs ${attentionCount > 0 ? 'text-amber-600 font-semibold' : 'text-emerald-600'}">
             ${attentionCount > 0 ? `⚠️ ${attentionCount} ห้องต้องตามงาน` : '✅ ปกติทั้งหมด'}
@@ -228,7 +240,12 @@ export async function renderExecOverview() {
     return `
       <div>
         <h4 class="font-bold text-gray-700">📋 ${title}</h4>
-        <p class="text-[11px] text-gray-400 mt-0.5">🟢 ปกติ &nbsp; 🟡 เริ่มล่าช้า &nbsp; 🔴 ต้องตามงาน &nbsp; ⚪ ยังไม่เริ่ม/ไม่มีข้อมูล</p>
+        <p class="text-[11px] text-gray-400 mt-1 flex items-center gap-3 flex-wrap">
+          <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-200"></span>ปกติ</span>
+          <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-amber-100 border border-amber-200"></span>เริ่มล่าช้า</span>
+          <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-red-100 border border-red-200"></span>ต้องตามงาน</span>
+          <span class="inline-flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-gray-100 border border-gray-200"></span>ยังไม่เริ่ม/ไม่มีข้อมูล</span>
+        </p>
       </div>
       <div class="flex items-center gap-2">
         <button id="exec-toggle-scope" type="button"
@@ -284,10 +301,10 @@ export async function renderExecOverview() {
                 </td>
                 <td class="px-4 py-2 text-gray-500">${_esc(r.teacher_name ?? '-')}</td>
                 <td class="px-4 py-2 text-gray-500">${_esc(r.deptName)}</td>
-                <td class="px-4 py-2 text-center text-lg" title="${STATUS_LABEL[r.status.doc]}">${STATUS_EMOJI[r.status.doc]}</td>
-                <td class="px-4 py-2 text-center text-lg" title="${STATUS_LABEL[r.status.att]}">${STATUS_EMOJI[r.status.att]}</td>
-                <td class="px-4 py-2 text-center text-lg" title="${STATUS_LABEL[r.status.score]}">${STATUS_EMOJI[r.status.score]}</td>
-                <td class="px-4 py-2 text-center text-lg" title="${STATUS_LABEL[r.status.dates]}">${STATUS_EMOJI[r.status.dates]}</td>
+                <td class="px-4 py-2 text-center">${_statusBadge('doc', r.status.doc, 'w-7 h-7 text-sm')}</td>
+                <td class="px-4 py-2 text-center">${_statusBadge('att', r.status.att, 'w-7 h-7 text-sm')}</td>
+                <td class="px-4 py-2 text-center">${_statusBadge('score', r.status.score, 'w-7 h-7 text-sm')}</td>
+                <td class="px-4 py-2 text-center">${_statusBadge('dates', r.status.dates, 'w-7 h-7 text-sm')}</td>
               </tr>`).join('')}
           </tbody>
         </table>
