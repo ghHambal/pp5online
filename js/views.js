@@ -1088,10 +1088,16 @@ export async function renderTeachers() {
         <div>
           <p class="text-xs text-gray-400 mt-0.5">จัดการบัญชีและแผนกของครูในระบบ</p>
         </div>
-        <button onclick="openTeacherModal()"
-          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
-          <span>＋</span> เพิ่มครูใหม่
-        </button>
+        <div class="flex items-center gap-2">
+          <button id="teacher-export-csv"
+            class="text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2.5 rounded-xl transition">
+            ⬇️ ดาวน์โหลด CSV
+          </button>
+          <button onclick="openTeacherModal()"
+            class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+            <span>＋</span> เพิ่มครูใหม่
+          </button>
+        </div>
       </div>
 
       <!-- Filter Bar -->
@@ -1130,6 +1136,7 @@ export async function renderTeachers() {
     </div>`)
 
     renderTeacherTable(all)
+    let currentRows = all
 
     // Impersonation handler
     window._impersonateTeacher = async (teacherId) => {
@@ -1157,11 +1164,36 @@ export async function renderTeachers() {
         (!tp || t.staff_type    === tp)
       )
       document.getElementById('tf-count').textContent = rows.length
+      currentRows = rows
       renderTeacherTable(rows)
     }
     ['tf-q','tf-dept','tf-skill','tf-subg','tf-type'].forEach(id => {
       document.getElementById(id)?.addEventListener('input',  _filter)
       document.getElementById(id)?.addEventListener('change', _filter)
+    })
+
+    document.getElementById('teacher-export-csv')?.addEventListener('click', () => {
+      const group = t => {
+        if (['ACDMVOC','AGMVOC'].includes(t.subject_group)) return 'ปวช'
+        if (t.category === 'ศาสนา') return 'ศาสนา'
+        if (t.category === 'สามัญ' || t.subject_group) return 'สามัญ'
+        return '-'
+      }
+      const head = ['ลำดับ', 'รหัสครู', 'ชื่อสกุล', 'กลุ่มครู', 'เบอร์ติดต่อ']
+      const body = currentRows.map((t, i) => [i + 1, t.teacher_code ?? '', t.full_name ?? '', group(t), t.phone ?? ''])
+      const csv = '﻿' + [head, ...body]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'รายชื่อครู-บุคลากร.csv'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      showToast('ดาวน์โหลด CSV แล้ว ✅', 'success')
     })
 
   } catch {

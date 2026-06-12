@@ -770,6 +770,13 @@ export async function deleteDepartment(id) {
   if (error) throw error
 }
 
+// ─── Executive Overview (ภาพรวมผู้บริหาร) ──────────────────────────────────
+export async function getExecClassOverview() {
+  const { data, error } = await supabase.from('exec_class_overview').select('*')
+  if (error) throw error
+  return data ?? []
+}
+
 // ─── Religion Groups (กลุ่มรายวิชาศาสนา) ────────────────────────────────────
 export async function getReligionGroups() {
   const { data, error } = await supabase

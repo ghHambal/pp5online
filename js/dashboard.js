@@ -11,6 +11,7 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin,
          renderReligionGroups } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
+import { renderExecOverview } from './views-exec-overview.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
          getMasterSubjects, createSubject, updateSubject, deleteSubject,
          getDepartments, createDepartment, updateDepartment, deleteDepartment,
@@ -755,6 +756,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const routes = {
     overview:    renderOverview,
+    'exec-overview': renderExecOverview,
     teachers:    renderTeachers,
     classes:     renderClasses,
     students:    renderStudents,
