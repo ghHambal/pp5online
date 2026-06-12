@@ -218,6 +218,17 @@ export async function renderExecOverview() {
   }
   const kpis = { doc: _kpi('doc'), dates: _kpi('dates'), att: _kpi('att'), score: _kpi('score') }
 
+  // KPI funnel ครูผู้สอน: ลงทะเบียน → มีตารางสอน/คอร์ส → เช็คชื่อเป็นปัจจุบัน (แต่ละขั้นนับจากผู้ผ่านขั้นก่อนหน้า)
+  const teacherTotal = teacherStatuses.length
+  const teacherRegisteredCount = teacherStatuses.filter(t => t.registered).length
+  const teacherHasCoursesCount = teacherStatuses.filter(t => t.registered && t.classCount > 0).length
+  const teacherAttOkCount = teacherStatuses.filter(t => t.registered && t.classCount > 0 && t.attWorst === 'green').length
+  const teacherKpis = {
+    registered: { pct: teacherTotal > 0 ? Math.round(teacherRegisteredCount / teacherTotal * 100) : null, num: teacherRegisteredCount, total: teacherTotal },
+    courses: { pct: teacherRegisteredCount > 0 ? Math.round(teacherHasCoursesCount / teacherRegisteredCount * 100) : null, num: teacherHasCoursesCount, total: teacherRegisteredCount },
+    attendance: { pct: teacherHasCoursesCount > 0 ? Math.round(teacherAttOkCount / teacherHasCoursesCount * 100) : null, num: teacherAttOkCount, total: teacherHasCoursesCount },
+  }
+
   const attentionTotal = classRows.filter(r => _needsAttention(r.status)).length
   const attentionPct = classRows.length > 0 ? Math.round((attentionTotal / classRows.length) * 100) : 0
 
@@ -225,6 +236,13 @@ export async function renderExecOverview() {
   let selectedDept = null   // deptKey หรือ null = ทั้งโรงเรียน
   let tableMode = 'attention' // 'attention' = เฉพาะที่ต้องตามงาน, 'all' = ทั้งหมด
   let searchQuery = ''
+  let teacherFilter = null  // null | 'unregistered' | 'no-courses' | 'att-behind' — จากการคลิกการ์ด KPI ครู
+
+  const TEACHER_FILTER_LABEL = {
+    unregistered: '🔑 ครูที่ยังไม่ลงทะเบียนใช้งาน',
+    'no-courses': '📚 ครูที่ลงทะเบียนแล้วแต่ยังไม่เพิ่มวิชา/ห้องที่สอน',
+    'att-behind': '✅ ครูที่มีตารางสอนแล้วแต่เช็คชื่อไม่เป็นปัจจุบัน',
+  }
 
   // ─── dept cards ────────────────────────────────────────────────────────────
   function renderDeptCards() {
@@ -342,13 +360,19 @@ export async function renderExecOverview() {
   // ─── teacher status table ────────────────────────────────────────────────
   function renderTeacherSection() {
     let list = teacherStatuses
-    if (tableMode === 'attention') list = list.filter(t => t.severity > 0)
+    if (teacherFilter === 'unregistered') list = list.filter(t => !t.registered)
+    else if (teacherFilter === 'no-courses') list = list.filter(t => t.registered && t.classCount === 0)
+    else if (teacherFilter === 'att-behind') list = list.filter(t => t.registered && t.classCount > 0 && (t.attWorst === 'red' || t.attWorst === 'yellow'))
+    else if (tableMode === 'attention') list = list.filter(t => t.severity > 0)
+
     if (selectedDept) list = list.filter(t => t.deptKey === selectedDept)
     if (searchQuery) list = list.filter(t => (t.teacherName ?? '').toLowerCase().includes(searchQuery))
 
-    const title = tableMode === 'all'
-      ? `ครูผู้สอนทั้งหมด (${list.length}/${teacherStatuses.length} คน)`
-      : `ครูที่ต้องติดตาม (${list.length} คน)`
+    const title = teacherFilter
+      ? `${TEACHER_FILTER_LABEL[teacherFilter]} (${list.length} คน)`
+      : tableMode === 'all'
+        ? `ครูผู้สอนทั้งหมด (${list.length}/${teacherStatuses.length} คน)`
+        : `ครูที่ต้องติดตาม (${list.length} คน)`
 
     const body = list.length === 0
       ? `<p class="text-sm text-emerald-600 text-center py-6">✅ ไม่พบครูตามเงื่อนไขที่เลือก</p>`
@@ -383,28 +407,61 @@ export async function renderExecOverview() {
         </div>`
 
     return `
-      <div class="px-5 py-3 border-b border-gray-50 bg-gray-50/50">
-        <h4 class="font-bold text-gray-700">👤 ${title}</h4>
-        <p class="text-[11px] text-gray-400 mt-0.5">ติดตาม 3 ขั้น: ลงทะเบียนใช้งาน → เพิ่มวิชา/ห้องที่สอน → เช็คชื่อเป็นปัจจุบัน</p>
+      <div class="px-5 py-3 border-b border-gray-50 bg-gray-50/50 flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h4 class="font-bold text-gray-700">👤 ${title}</h4>
+          <p class="text-[11px] text-gray-400 mt-0.5">ติดตาม 3 ขั้น: ลงทะเบียนใช้งาน → เพิ่มวิชา/ห้องที่สอน → เช็คชื่อเป็นปัจจุบัน</p>
+        </div>
+        ${teacherFilter ? `<button id="exec-teacher-clear-filter" type="button" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2.5 py-1.5 whitespace-nowrap">ล้างตัวกรอง ✕</button>` : ''}
       </div>
       ${body}`
   }
 
   // ─── KPI cards ────────────────────────────────────────────────────────────
-  function renderKpiCard(icon, label, dim) {
-    const k = kpis[dim]
-    const pctColor = k.pct == null ? 'text-gray-400'
-      : k.pct >= 80 ? 'text-emerald-700' : k.pct >= 50 ? 'text-amber-600' : 'text-red-600'
+  function _kpiCard({ icon, label, info, pct, numerator, denominator, unit = 'ห้อง', extraNote = '', filterKey = null, active = false }) {
+    const pctColor = pct == null ? 'text-gray-400'
+      : pct >= 80 ? 'text-emerald-700' : pct >= 50 ? 'text-amber-600' : 'text-red-600'
+    const tag = filterKey ? 'button' : 'div'
+    const typeAttr = filterKey ? ' type="button"' : ''
+    const dataAttr = filterKey ? ` data-teacher-filter="${filterKey}"` : ''
+    const interactiveClasses = filterKey
+      ? ` text-left w-full cursor-pointer transition hover:border-indigo-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-200 ${active ? 'border-indigo-400 ring-2 ring-indigo-100' : ''}`
+      : ''
     return `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5" title="${_esc(KPI_INFO[dim])}">
+      <${tag}${typeAttr}${dataAttr} class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5${interactiveClasses}" title="${_esc(info)}">
         <div class="flex items-center gap-3 mb-2">
           <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-indigo-50">${icon}</div>
           <p class="text-sm font-semibold text-gray-600">${label} <span class="text-gray-300 font-normal">ℹ️</span></p>
         </div>
-        <p class="text-3xl font-extrabold ${pctColor}">${k.pct == null ? '—' : k.pct + '%'}</p>
-        <p class="text-xs text-gray-400 mt-1">${k.total > 0 ? `${k.green}/${k.total} ห้อง` : 'ยังไม่มีห้องที่เริ่มดำเนินการ'}
-          ${k.grayCount > 0 ? `<span class="text-gray-300"> · ยังไม่เริ่ม ${k.grayCount}</span>` : ''}</p>
-      </div>`
+        <p class="text-3xl font-extrabold ${pctColor}">${pct == null ? '—' : pct + '%'}</p>
+        <p class="text-xs text-gray-400 mt-1">${denominator > 0 ? `${numerator}/${denominator} ${unit}` : 'ไม่มีข้อมูล'}${extraNote}</p>
+        ${filterKey ? `<p class="text-[10px] text-indigo-400 mt-1">${active ? '🔽 กำลังดูรายชื่อนี้ — คลิกซ้ำเพื่อยกเลิก' : 'คลิกเพื่อดูรายชื่อ ▸'}</p>` : ''}
+      </${tag}>`
+  }
+
+  function renderKpiCard(icon, label, dim) {
+    const k = kpis[dim]
+    return _kpiCard({
+      icon, label, info: KPI_INFO[dim], pct: k.pct, numerator: k.green, denominator: k.total, unit: 'ห้อง',
+      extraNote: k.grayCount > 0 ? ` <span class="text-gray-300">· ยังไม่เริ่ม ${k.grayCount}</span>` : '',
+    })
+  }
+
+  function renderTeacherKpiCard(icon, label, info, k, extraNote = '', filterKey = null) {
+    return _kpiCard({
+      icon, label, info, pct: k.pct, numerator: k.num, denominator: k.total, unit: 'คน', extraNote,
+      filterKey, active: teacherFilter === filterKey,
+    })
+  }
+
+  function renderTeacherKpiCards() {
+    return `
+      ${renderTeacherKpiCard('🔑', 'ลงทะเบียนใช้งาน', 'สัดส่วนครู/บุคลากรที่ลงทะเบียนใช้งานระบบ ปพ.5 แล้ว (มีข้อมูลกลุ่มสาระ/กลุ่มวิชา)', teacherKpis.registered,
+        unregisteredCount > 0 ? ` <span class="text-gray-300">· ยังไม่ลงทะเบียน ${unregisteredCount}</span>` : '', 'unregistered')}
+      ${renderTeacherKpiCard('📚', 'สร้างตารางสอน/เพิ่มวิชา', 'สัดส่วนครูที่ลงทะเบียนแล้วและได้เพิ่มคอร์สวิชา/ห้องที่สอนแล้ว (จากครูที่ลงทะเบียนแล้ว)', teacherKpis.courses,
+        noCourseCount > 0 ? ` <span class="text-gray-300">· ยังไม่เพิ่มวิชา ${noCourseCount}</span>` : '', 'no-courses')}
+      ${renderTeacherKpiCard('✅', 'เช็คชื่อเป็นปัจจุบัน', 'สัดส่วนครูที่มีตารางสอนแล้วและเช็คชื่อล่าสุดภายใน 7 วัน (จากครูที่มีตารางสอนแล้ว)', teacherKpis.attendance,
+        attBehindCount > 0 ? ` <span class="text-gray-300">· ไม่เป็นปัจจุบัน ${attBehindCount}</span>` : '', 'att-behind')}`
   }
 
   // ─── ผูก event handler ของส่วนที่ re-render ได้ ─────────────────────────────
@@ -432,15 +489,32 @@ export async function renderExecOverview() {
       tableMode = tableMode === 'all' ? 'attention' : 'all'
       refreshInteractive()
     })
+    document.querySelectorAll('[data-teacher-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.teacherFilter
+        teacherFilter = teacherFilter === key ? null : key
+        selectedDept = null
+        searchQuery = ''
+        refreshInteractive()
+        document.getElementById('exec-teacher-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    })
+    document.getElementById('exec-teacher-clear-filter')?.addEventListener('click', () => {
+      teacherFilter = null
+      refreshInteractive()
+    })
   }
 
   function refreshInteractive() {
+    document.getElementById('exec-teacher-kpi').innerHTML = renderTeacherKpiCards()
     document.getElementById('exec-dept-cards').innerHTML = renderDeptCards()
     document.getElementById('exec-table-header').innerHTML = renderTableHeader()
     document.getElementById('exec-class-table').innerHTML = renderClassTable()
     document.getElementById('exec-teacher-section').innerHTML = renderTeacherSection()
     const sel = document.getElementById('exec-dept-select')
     if (sel) sel.value = selectedDept ?? ''
+    const search = document.getElementById('exec-search')
+    if (search) search.value = searchQuery
     attachInteractiveHandlers()
   }
 
@@ -464,6 +538,14 @@ export async function renderExecOverview() {
       <p class="text-sm font-medium text-emerald-700 bg-white/70 rounded-xl px-4 py-2.5 mt-2">✅ ครูทุกคนลงทะเบียน เริ่มงาน และเช็คชื่อเป็นปัจจุบันแล้ว</p>`}
     </div>
 
+    <h4 class="font-semibold text-gray-700 mb-1">👤 ความพร้อมของครู/บุคลากร</h4>
+    <p class="text-xs text-gray-400 mb-3">💡 แต่ละขั้นนับเฉพาะครูที่ผ่านขั้นก่อนหน้าแล้ว: ลงทะเบียน → สร้างตารางสอน/เพิ่มวิชา → เช็คชื่อเป็นปัจจุบัน · คลิกการ์ดเพื่อดูรายชื่อ</p>
+    <div id="exec-teacher-kpi" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      ${renderTeacherKpiCards()}
+    </div>
+
+    <h4 class="font-semibold text-gray-700 mb-1">📚 ภาพรวมห้องเรียนทั้งโรง</h4>
+    <p class="text-xs text-gray-400 mb-3">สัดส่วนห้องเรียนที่ "ปกติ" ในแต่ละมิติ (ไม่รวมห้องที่ยังไม่เริ่มดำเนินการ)</p>
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       ${renderKpiCard('📋', 'ปก ปพ.5', 'doc')}
       ${renderKpiCard('📅', 'วันที่สอน', 'dates')}
