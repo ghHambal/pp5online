@@ -313,16 +313,19 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
     <!-- เวรวันนี้ (ระบบเวร อาซิซสถาน) -->
     ${teacher ? (todayDuty.length > 0 ? `
-    <div class="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+    <div onclick="window._openWenDuty('${teacher.teacher_code}')"
+      class="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:shadow-lg hover:border-amber-300 active:scale-[0.99] transition-all duration-150">
       <div class="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🔔</div>
       <div class="flex-1 min-w-0">
         <p class="font-bold text-amber-800 text-sm mb-1">วันนี้คุณมีเวร ${todayDuty.length} จุด</p>
         <div class="space-y-0.5">
           ${todayDuty.map(p => `<p class="text-xs text-amber-700">📍 ${_htmlEsc(p.name)} <span class="text-amber-500">(${_htmlEsc(p.time)})</span></p>`).join('')}
         </div>
+        <p class="text-[11px] text-amber-400 mt-1.5">แตะเพื่อเปิดระบบเวร →</p>
       </div>
     </div>` : `
-    <div class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
+    <div onclick="window._openWenDuty('${teacher.teacher_code}')"
+      class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg hover:border-gray-300 active:scale-[0.99] transition-all duration-150">
       <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">🛡️</div>
       <p class="text-sm text-gray-400">วันนี้ไม่มีเวร</p>
     </div>`) : ''}

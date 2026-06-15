@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { showToast, setButtonLoading, showPageLoader } from './ui.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
+import { storeSsoPassword } from './wen-sso.js'
 
 // ─── Check session on page load ───────────────────────────────────────────────
 async function checkSession() {
@@ -69,7 +70,10 @@ async function handleLogin(e) {
   setTimeout(() => {
     if (profile?.role === 'admin') window.location.href = 'dashboard.html'
     else if (profile?.role === 'student') window.location.href = 'student.html'
-    else window.location.href = 'teacher.html'
+    else {
+      storeSsoPassword(password)
+      window.location.href = 'teacher.html'
+    }
   }, 800)
 }
 

@@ -19,6 +19,7 @@ import { applyThemeForRole } from './theme.js'
 import { APP_VERSION } from './version.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
+import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -368,6 +369,22 @@ window._showQuotaFromOverview = () => {
     getSystemConfig().catch(()=>({})),
   ]).then(([cls, cfg]) => _showQuotaPopup(cls.length, null, cfg))
     .catch(()  => _showQuotaPopup(0, null, {}))
+}
+
+// เปิดระบบ "เวร" (อาซิซสถาน) แบบป๊อบอัพเต็มหน้าจอ พร้อม SSO ไปยังรหัสครู
+window._openWenDuty = (teacherCode) => {
+  document.getElementById('wen-duty-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'wen-duty-modal'
+  modal.className = 'fixed inset-0 z-[300] bg-white flex flex-col'
+  modal.innerHTML = `
+    <div class="flex items-center justify-between px-4 py-2 bg-amber-600 text-white shadow flex-shrink-0">
+      <span class="font-bold text-sm flex items-center gap-2">🛡️ ระบบเวรประจำวัน</span>
+      <button id="wen-duty-close" class="text-white text-2xl leading-none px-2 hover:opacity-75">×</button>
+    </div>
+    <iframe src="${buildWenSsoUrl(teacherCode)}" class="flex-1 w-full border-0"></iframe>`
+  document.body.appendChild(modal)
+  modal.querySelector('#wen-duty-close').addEventListener('click', () => modal.remove())
 }
 
 window._openLifeSkillScore    = (room) => navigate('life-skill-score')
@@ -2659,6 +2676,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return
     }
     await supabase.auth.signOut()
+    clearSsoPassword()
     showToast('ออกจากระบบแล้ว','info')
     setTimeout(() => window.location.replace('index.html'), 800)
   })
