@@ -14,6 +14,7 @@ import {
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _currentWeek, _teacherPositionList, _teacherPositionLabel,
 } from './teacher-views-utils.js'
+import { getTodayDuty } from './wen-duty.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
 
@@ -29,7 +30,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const { getPendingExamRequestCount } = await import('./api.js')
   const { getMyDonationRequests } = await import('./api.js')
   const { getUnreadNotifications } = await import('./api.js')
-  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests, svNotifs] = await Promise.all([
+  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests, svNotifs, todayDuty] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
@@ -37,6 +38,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     teacher ? getTeacherPackageAccess(teacher.id).catch(()=>({ hasSemester: false, paidRoomCount: 0 })) : Promise.resolve({ hasSemester: false, paidRoomCount: 0 }),
     teacher ? getMyDonationRequests(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
+    teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
   ])
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
@@ -308,6 +310,23 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       <!-- สติกเกอร์ -->
       ${donorStickerHtml}
     </div>
+
+    <!-- เวรวันนี้ (ระบบเวร อาซิซสถาน) -->
+    ${teacher ? (todayDuty.length > 0 ? `
+    <div class="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+      <div class="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🔔</div>
+      <div class="flex-1 min-w-0">
+        <p class="font-bold text-amber-800 text-sm mb-1">วันนี้คุณมีเวร ${todayDuty.length} จุด</p>
+        <div class="space-y-0.5">
+          ${todayDuty.map(p => `<p class="text-xs text-amber-700">📍 ${_htmlEsc(p.name)} <span class="text-amber-500">(${_htmlEsc(p.time)})</span></p>`).join('')}
+        </div>
+      </div>
+    </div>` : `
+    <div class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
+      <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">🛡️</div>
+      <p class="text-sm text-gray-400">วันนี้ไม่มีเวร</p>
+    </div>`) : ''}
+
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
         { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50', nav:'my-courses' },
