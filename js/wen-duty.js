@@ -27,5 +27,8 @@ export async function getTodayDuty(teacherCode) {
 
   return data
     .filter(p => (p.assigned_to ?? []).some(item => _matchesTeacherToday(item, code, today)))
-    .map(p => ({ name: p.name, time: p.time }))
+    .map(p => {
+      const [start_time, end_time] = String(p.time ?? '').split('-').map(s => s.trim())
+      return { name: p.name, time: p.time, start_time, end_time }
+    })
 }

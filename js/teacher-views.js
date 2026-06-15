@@ -12,6 +12,7 @@ import {
   setContent, setTitle, setActiveNav, _htmlEsc,
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
+  _dutyCountdownInfo,
   _currentWeek, _teacherPositionList, _teacherPositionLabel,
 } from './teacher-views-utils.js'
 import { getTodayDuty } from './wen-duty.js'
@@ -23,6 +24,57 @@ export { renderScoreColumns } from './teacher-score-columns.js'
 let _todayWidgetTimer = null
 let _activeSecTimer   = null
 let _teacherClockTimer = null
+let _dutyWidgetTimer  = null
+
+// การ์ด "เวรวันนี้" — ไฮไลต์จุดที่ถึงเวลาแล้ว + นับถอยหลังจุดอื่นๆ
+export function _renderWenDutyCard(todayDuty, teacherCode) {
+  if (!todayDuty.length) {
+    return `
+    <div onclick="window._openWenDuty('${teacherCode}')"
+      class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg hover:border-gray-300 active:scale-[0.99] transition-all duration-150">
+      <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">🛡️</div>
+      <p class="text-sm text-gray-400">วันนี้ไม่มีเวร</p>
+    </div>`
+  }
+
+  const info = todayDuty
+    .map(p => ({ ...p, cd: _dutyCountdownInfo(p.start_time, p.end_time) }))
+    .sort((a, b) => {
+      const order = { active: 0, upcoming: 1, done: 2 }
+      return (order[a.cd.status] - order[b.cd.status]) || (a.start_time ?? '').localeCompare(b.start_time ?? '')
+    })
+  const hasActive = info.some(p => p.cd.status === 'active')
+
+  return `
+  <div onclick="window._openWenDuty('${teacherCode}')"
+    class="mb-4 border rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150
+           ${hasActive ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'bg-amber-50 border-amber-200'}">
+    <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0
+                ${hasActive ? 'bg-red-100 animate-pulse' : 'bg-amber-100'}">${hasActive ? '🚨' : '🔔'}</div>
+    <div class="flex-1 min-w-0">
+      <p class="font-bold text-sm mb-1 ${hasActive ? 'text-red-800' : 'text-amber-800'}">
+        ${hasActive ? '🔴 ถึงเวลาเวรแล้ว!' : `วันนี้คุณมีเวร ${info.length} จุด`}
+      </p>
+      <div class="space-y-1">
+        ${info.map(p => p.cd.status === 'active' ? `
+        <div class="bg-red-100/70 rounded-lg px-2 py-1.5 -mx-2">
+          <p class="text-xs font-semibold text-red-700 truncate">📍 ${_htmlEsc(p.name)}</p>
+          <div class="flex items-center justify-between gap-2 mt-0.5">
+            <span class="text-[11px] text-red-400">${_htmlEsc(p.time)}</span>
+            <span class="text-[11px] font-bold flex-shrink-0 ${p.cd.cls}">${p.cd.label}</span>
+          </div>
+        </div>` : `
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-xs truncate ${p.cd.status === 'done' ? 'text-gray-400 line-through' : 'text-amber-700'}">
+            📍 ${_htmlEsc(p.name)} <span class="${p.cd.status === 'done' ? 'text-gray-300' : 'text-amber-500'}">(${_htmlEsc(p.time)})</span>
+          </p>
+          <span class="text-[11px] font-medium flex-shrink-0 ${p.cd.cls}">${p.cd.label}</span>
+        </div>`).join('')}
+      </div>
+      <p class="text-[11px] mt-1.5 ${hasActive ? 'text-red-400' : 'text-amber-400'}">แตะเพื่อเปิดระบบเวร →</p>
+    </div>
+  </div>`
+}
 
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
@@ -48,6 +100,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   if (_todayWidgetTimer)  { clearInterval(_todayWidgetTimer);  _todayWidgetTimer  = null }
   if (_activeSecTimer)    { clearInterval(_activeSecTimer);    _activeSecTimer    = null }
   if (_teacherClockTimer) { clearInterval(_teacherClockTimer); _teacherClockTimer = null }
+  if (_dutyWidgetTimer)   { clearInterval(_dutyWidgetTimer);   _dutyWidgetTimer   = null }
 
   const [schedule, links, periods, allClassrooms] = await Promise.all([
     teacher ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
@@ -312,23 +365,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
 
     <!-- เวรวันนี้ (ระบบเวร อาซิซสถาน) -->
-    ${teacher ? (todayDuty.length > 0 ? `
-    <div onclick="window._openWenDuty('${teacher.teacher_code}')"
-      class="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:shadow-lg hover:border-amber-300 active:scale-[0.99] transition-all duration-150">
-      <div class="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">🔔</div>
-      <div class="flex-1 min-w-0">
-        <p class="font-bold text-amber-800 text-sm mb-1">วันนี้คุณมีเวร ${todayDuty.length} จุด</p>
-        <div class="space-y-0.5">
-          ${todayDuty.map(p => `<p class="text-xs text-amber-700">📍 ${_htmlEsc(p.name)} <span class="text-amber-500">(${_htmlEsc(p.time)})</span></p>`).join('')}
-        </div>
-        <p class="text-[11px] text-amber-400 mt-1.5">แตะเพื่อเปิดระบบเวร →</p>
-      </div>
-    </div>` : `
-    <div onclick="window._openWenDuty('${teacher.teacher_code}')"
-      class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg hover:border-gray-300 active:scale-[0.99] transition-all duration-150">
-      <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">🛡️</div>
-      <p class="text-sm text-gray-400">วันนี้ไม่มีเวร</p>
-    </div>`) : ''}
+    ${teacher ? `<div id="wen-duty-card">${_renderWenDutyCard(todayDuty, teacher.teacher_code)}</div>` : ''}
 
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
@@ -678,6 +715,15 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     }
     _tick()
     _teacherClockTimer = setInterval(_tick, 1000)
+  }
+
+  // การ์ดเวรวันนี้ — รีเฟรชทุก 30 วิ เพื่ออัปเดตการนับถอยหลัง/ไฮไลต์จุดที่ถึงเวลา
+  if (teacher && todayDuty.length) {
+    _dutyWidgetTimer = setInterval(() => {
+      const el = document.getElementById('wen-duty-card')
+      if (!el) { clearInterval(_dutyWidgetTimer); _dutyWidgetTimer = null; return }
+      el.innerHTML = _renderWenDutyCard(todayDuty, teacher.teacher_code)
+    }, 30000)
   }
 }
 

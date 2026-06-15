@@ -227,6 +227,26 @@ export function _countdownInfo(startTime, endTime) {
   return { label: `อีก ${h} ชม.${m > 0 ? ` ${m} น.` : ''}`, cls: 'text-gray-500' }
 }
 
+// เหมือน _countdownInfo แต่ใช้คำสำหรับ "เวร" (จุดเวรอาซิซสถาน) + status สำหรับเรียงลำดับ/ไฮไลต์
+export function _dutyCountdownInfo(startTime, endTime) {
+  if (!startTime) return { label: '—', cls: 'text-gray-400', status: 'done' }
+  const now = new Date()
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = (endTime ?? '23:59').split(':').map(Number)
+  const startMs = (sh * 60 + sm) * 60000
+  const endMs   = (eh * 60 + em) * 60000
+  const nowMs   = (now.getHours() * 60 + now.getMinutes()) * 60000
+  if (nowMs >= endMs) return { label: 'เสร็จแล้ว', cls: 'text-gray-400', status: 'done' }
+  if (nowMs >= startMs) {
+    const remain = Math.ceil((endMs - nowMs) / 60000)
+    return { label: `⏳ เหลืออีก ${remain} นาที`, cls: 'text-red-600 font-bold', status: 'active' }
+  }
+  const mins = Math.floor((startMs - nowMs) / 60000)
+  if (mins < 60) return { label: `⏰ อีก ${mins} นาที`, cls: mins <= 15 ? 'text-amber-600 font-bold' : 'text-amber-500 font-semibold', status: 'upcoming' }
+  const h = Math.floor(mins / 60), m = mins % 60
+  return { label: `อีก ${h} ชม.${m > 0 ? ` ${m} น.` : ''}`, cls: 'text-gray-500', status: 'upcoming' }
+}
+
 export function _activeRemainingDisplay(endTime) {
   if (!endTime) return '—'
   const [eh, em] = endTime.split(':').map(Number)
