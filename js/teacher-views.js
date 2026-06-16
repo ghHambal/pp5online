@@ -15,7 +15,7 @@ import {
   _dutyCountdownInfo,
   _currentWeek, _teacherPositionList, _teacherPositionLabel,
 } from './teacher-views-utils.js'
-import { getTodayDuty } from './wen-duty.js'
+import { getTodayDuty, getTodayDutyGrade } from './wen-duty.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
 
@@ -27,13 +27,21 @@ let _teacherClockTimer = null
 let _dutyWidgetTimer  = null
 
 // การ์ด "เวรวันนี้" — ไฮไลต์จุดที่ถึงเวลาแล้ว + นับถอยหลังจุดอื่นๆ
-export function _renderWenDutyCard(todayDuty, teacherCode) {
+export function _renderWenDutyCard(todayDuty, teacherCode, gradeInfo = null) {
+  const _gradeColor = g => g === 'A' ? '#059669' : g === 'B' ? '#2563eb' : '#d97706'
+  const _gradeOverlay = (opacity = '0.11') => gradeInfo
+    ? `<div class="absolute inset-y-0 right-0 flex items-center overflow-hidden pointer-events-none select-none pr-1">
+         <span class="font-black leading-none" style="font-size:5.5rem;opacity:${opacity};color:${_gradeColor(gradeInfo.grade)}">${gradeInfo.grade}</span>
+       </div>`
+    : ''
+
   if (!todayDuty.length) {
     return `
     <div onclick="window._openWenDuty('${teacherCode}')"
-      class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg hover:border-gray-300 active:scale-[0.99] transition-all duration-150">
+      class="relative overflow-hidden mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg hover:border-gray-300 active:scale-[0.99] transition-all duration-150">
       <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">🛡️</div>
       <p class="text-sm text-gray-400">วันนี้ไม่มีเวร</p>
+      ${_gradeOverlay('0.13')}
     </div>`
   }
 
@@ -47,7 +55,7 @@ export function _renderWenDutyCard(todayDuty, teacherCode) {
 
   return `
   <div onclick="window._openWenDuty('${teacherCode}')"
-    class="mb-4 border rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150
+    class="relative overflow-hidden mb-4 border rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150
            ${hasActive ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'bg-amber-50 border-amber-200'}">
     <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0
                 ${hasActive ? 'bg-red-100 animate-pulse' : 'bg-amber-100'}">${hasActive ? '🚨' : '🔔'}</div>
@@ -73,6 +81,7 @@ export function _renderWenDutyCard(todayDuty, teacherCode) {
       </div>
       <p class="text-[11px] mt-1.5 ${hasActive ? 'text-red-400' : 'text-amber-400'}">แตะเพื่อเปิดระบบเวร →</p>
     </div>
+    ${_gradeOverlay()}
   </div>`
 }
 
@@ -82,7 +91,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const { getPendingExamRequestCount } = await import('./api.js')
   const { getMyDonationRequests } = await import('./api.js')
   const { getUnreadNotifications } = await import('./api.js')
-  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests, svNotifs, todayDuty] = await Promise.all([
+  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests, svNotifs, todayDuty, dutyGrade] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
@@ -91,6 +100,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     teacher ? getMyDonationRequests(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
+    teacher ? getTodayDutyGrade(teacher.teacher_code).catch(()=>null) : Promise.resolve(null),
   ])
   const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
@@ -365,7 +375,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
 
     <!-- เวรวันนี้ (ระบบเวร อาซิซสถาน) -->
-    ${teacher ? `<div id="wen-duty-card">${_renderWenDutyCard(todayDuty, teacher.teacher_code)}</div>` : ''}
+    ${teacher ? `<div id="wen-duty-card">${_renderWenDutyCard(todayDuty, teacher.teacher_code, dutyGrade)}</div>` : ''}
 
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
@@ -722,7 +732,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     _dutyWidgetTimer = setInterval(() => {
       const el = document.getElementById('wen-duty-card')
       if (!el) { clearInterval(_dutyWidgetTimer); _dutyWidgetTimer = null; return }
-      el.innerHTML = _renderWenDutyCard(todayDuty, teacher.teacher_code)
+      el.innerHTML = _renderWenDutyCard(todayDuty, teacher.teacher_code, dutyGrade)
     }, 30000)
   }
 }
