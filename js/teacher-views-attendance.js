@@ -45,6 +45,7 @@ export async function renderAttendanceGrid(teacher, classData) {
     // attendance map: { studentId: { sessionNum: status } }
     // ถ้ามี source ให้ remap session number ต่อสัปดาห์ตาม credit ratio
     const attMap = {}
+    const nToSrcSession = new Map()  // target n → source session_number (for save remapping)
     if (srcClassId) {
       const { getMyClasses: _mc } = await import('./api.js')
       const tgtPerWeek = Math.max(1, Math.round(credit * 2))
@@ -60,6 +61,7 @@ export async function renderAttendanceGrid(teacher, classData) {
         const weekIdx    = Math.floor((n - 1) / tgtPerWeek)
         const posInWeek  = (n - 1) % tgtPerWeek
         const srcSession = weekIdx * srcPerWeek + posInWeek + 1
+        nToSrcSession.set(n, srcSession)
         for (const r of attRows) {
           if (r.session_number !== srcSession) continue
           if (!attMap[r.student_id]) attMap[r.student_id] = {}
@@ -72,6 +74,9 @@ export async function renderAttendanceGrid(teacher, classData) {
         attMap[r.student_id][r.session_number] = r.status
       }
     }
+    // ห้องที่มี source_class_id: บันทึกไปที่ source เสมอ (เพราะโหลดจาก source)
+    const saveClassId = srcClassId ?? classData.id
+    const saveSessN = (n) => nToSrcSession.get(n) ?? n
 
     // ─── แจ้งเตือน + ปุ่มลบ (เมื่อครูยืนยันเอง) เมื่อพบข้อมูลในคาบวันหยุด ───────
     const holAttRows = attRows.filter(r => {
@@ -281,7 +286,7 @@ export async function renderAttendanceGrid(teacher, classData) {
       const saving = document.getElementById('att-saving')
       saving?.classList.remove('hidden')
       try {
-        await saveAttendanceCell(classData.id, sid, sessN, date, next)
+        await saveAttendanceCell(saveClassId, sid, saveSessN(sessN), date, next)
       } catch (err) {
         showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
       } finally {
@@ -309,7 +314,7 @@ export async function renderAttendanceGrid(teacher, classData) {
 
       // หาคาบอื่นที่วันเดียวกัน
       const sameDateSessions = sessions.filter(s => s.ds === date)
-      _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet)
+      _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet, saveClassId, saveSessN)
     })
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')
@@ -600,7 +605,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
 
 // sameDateSessions = array of all sessions on the same date as sessN
 
-function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set()) {
+function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set(), saveClassId = null, sessionRemap = n => n) {
   const existing = document.getElementById('att-form-modal')
   if (existing) existing.remove()
   const STATUS_LIST = [
@@ -796,8 +801,8 @@ function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSes
         for (const { student, status } of studentStatuses) {
           attMap[student.id] = { ...(attMap[student.id]??{}), [sn]: status }
           allRecords.push({
-            class_id: classData.id, student_id: student.id,
-            session_number: sn, check_date: date, status
+            class_id: saveClassId ?? classData.id, student_id: student.id,
+            session_number: sessionRemap(sn), check_date: date, status
           })
         }
       }
@@ -982,11 +987,17 @@ export async function renderAttendance(teacher) {
       if (!classId || !date) { showToast('กรุณาเลือกห้องและวันที่','warning'); return }
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
+        const cls = classes.find(c => String(c.id) === classId)
+        const clsCredit = cls?.master_subjects?.credit ?? 1
+        const allSess = cls ? _generateSessions(cls, clsCredit, null) : []
+        const dateSess = allSess.filter(s => s.ds === date)
+        const sessionNum = (dateSess[period - 1] ?? dateSess[0] ?? null)?.n ?? null
         const records = _students.map(s => ({
           class_id: Number(classId),
           student_id: s.id,
           check_date: date,
           period_no: period,
+          session_number: sessionNum,
           status: _statusMap[s.id] ?? 'present',
         }))
         await saveAttendance(records)
@@ -1018,8 +1029,17 @@ export async function renderAttendance(teacher) {
         .order('students(student_code)')
       _students = (cs ?? []).map(r => r.students).filter(Boolean)
 
-      // Load existing attendance for this date
-      const existing = await getAttendanceByDate(Number(classId), date)
+      // Load existing attendance for this date (filter by session_number ที่ตรงกับคาบที่เลือก)
+      const allExisting = await getAttendanceByDate(Number(classId), date)
+      const loadCls = classes.find(c => String(c.id) === classId)
+      const loadCredit = loadCls?.master_subjects?.credit ?? 1
+      const loadAllSess = loadCls ? _generateSessions(loadCls, loadCredit, null) : []
+      const loadPeriod = parseInt(document.getElementById('att-period').value) || 1
+      const loadDateSess = loadAllSess.filter(s => s.ds === date)
+      const loadSessNum = (loadDateSess[loadPeriod - 1] ?? loadDateSess[0] ?? null)?.n ?? null
+      const existing = loadSessNum !== null
+        ? allExisting.filter(a => a.session_number === loadSessNum)
+        : allExisting
       _statusMap = {}
       _students.forEach(s => { _statusMap[s.id] = 'present' }) // default all present
       existing.forEach(a => { _statusMap[a.student_id] = a.status })
