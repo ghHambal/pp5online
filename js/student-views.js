@@ -2325,6 +2325,8 @@ export async function renderStudentPrayerScanner(student) {
 
   let inputMode = localStorage.getItem('prayer_scan_input_mode') || 'camera' // 'camera' | 'gun'
   let deviceMode = localStorage.getItem('prayer_scan_device_mode') || 'single' // 'single' | 'dual'
+  let activeLocation = localStorage.getItem('prayer_scan_active_location') || 
+    (student.gender === 'หญิง' ? 'musolla_female_1' : 'musolla_male')
   let isSyncing = false
 
   function renderUI() {
@@ -2371,6 +2373,16 @@ export async function renderStudentPrayerScanner(student) {
               </button>
             </div>
           </div>
+        </div>
+
+        <div class="border-t border-gray-100 pt-3 mb-3">
+          <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">📍 จุดพื้นที่สแกนปัจจุบัน (Active Location)</label>
+          <select id="opt-active-location" class="w-full text-xs font-bold bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <option value="musolla_male" ${activeLocation === 'musolla_male' ? 'selected' : ''}>🕌 มูซอลลาชาย (ม.1 - ม.5 ชาย)</option>
+            <option value="masjid_kuwait" ${activeLocation === 'masjid_kuwait' ? 'selected' : ''}>🕌 มัสยิดคูเวต (ม.6, ปวช. ชาย)</option>
+            <option value="musolla_female_1" ${activeLocation === 'musolla_female_1' ? 'selected' : ''}>🕌 มูซอลลาหญิง 1 (โรงอาหาร)</option>
+            <option value="musolla_female_2" ${activeLocation === 'musolla_female_2' ? 'selected' : ''}>🕌 มูซอลลาหญิง 2 (อาคาร 5)</option>
+          </select>
         </div>
 
         <!-- iPad Monitor Display Link -->
@@ -2473,6 +2485,13 @@ export async function renderStudentPrayerScanner(student) {
     // Button: Manual sync
     document.getElementById('btn-manual-sync').addEventListener('click', () => {
       triggerBackgroundSync()
+    })
+
+    // Option: Active location
+    document.getElementById('opt-active-location').addEventListener('change', (e) => {
+      activeLocation = e.target.value
+      localStorage.setItem('prayer_scan_active_location', activeLocation)
+      showToast('เปลี่ยนจุดสแกนปัจจุบันสำเร็จ', 'info')
     })
 
     // Start systems
@@ -2639,6 +2658,7 @@ export async function renderStudentPrayerScanner(student) {
       check_date: today,
       status: 'pray',
       week_number: weekN,
+      location: activeLocation,
       full_name: student.full_name,
       student_code: student.student_code
     }
@@ -2800,6 +2820,10 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.0': [
+    '📍 เพิ่มระบบเลือกจุดพื้นที่สแกนปัจจุบัน (Active Location) 4 จุดสำหรับการสแกนละหมาด',
+    '🖥️ หน้าจอ Monitor รองรับการกรองข้อมูลแบบ Real-time และประวัติการสแกนตามพื้นที่จริง'
+  ],
   '10.16.1': [
     '⚡ ปรับปรุงกล้องสแกน QR Code ให้รวดเร็วและลื่นไหลขึ้น (เพิ่มเป็น 25 FPS)',
     '🔍 ปรับขนาดกล่องเล็งกล้องให้ใหญ่ขึ้นและยืดหยุ่นตามขนาดหน้าจออัตโนมัติ เล็งง่ายขึ้น'

@@ -16,6 +16,7 @@ const studentName = document.getElementById('student-name')
 const studentCodeRoom = document.getElementById('student-code-room')
 const recentList = document.getElementById('recent-list')
 const roomFilter = document.getElementById('room-filter')
+const locationFilter = document.getElementById('location-filter')
 const connectionStatus = document.getElementById('connection-status')
 const connectionText = document.getElementById('connection-text')
 
@@ -64,7 +65,7 @@ async function init() {
     // 1. Fetch Student Roster to populate cache for instant lookups
     const { data: students, error } = await supabase
       .from('students')
-      .select('id, student_code, full_name, main_room, image_url')
+      .select('id, student_code, full_name, main_room, image_url, gender')
       .eq('is_active', true)
     
     if (error) throw error
@@ -150,7 +151,7 @@ async function fetchTodayRecords(isSilent = false) {
   try {
     const { data, error } = await supabase
       .from('prayer_records')
-      .select('id, student_id, main_room, status, check_date')
+      .select('id, student_id, main_room, status, check_date, location')
       .eq('check_date', todayStr)
       .order('id', { ascending: false })
       .limit(20)
@@ -178,6 +179,35 @@ async function fetchTodayRecords(isSilent = false) {
   }
 }
 
+// ─── Location Checking Helper ────────────────────────────────────────────────
+function isRecordInLocation(record, student, selectedLocation) {
+  if (!selectedLocation) return true
+
+  // If the record has a location saved in the database, check it first
+  if (record.location) {
+    return record.location === selectedLocation
+  }
+
+  // Fallback for legacy/teacher entries or automatic inference
+  const gender = student.gender
+  const room = student.main_room || ''
+  const isMale = gender === 'ชาย'
+  const isFemale = gender === 'หญิง'
+  const isKuwaitGrade = room.startsWith('ม.6') || room.startsWith('ปวช.')
+
+  if (selectedLocation === 'musolla_male') {
+    return isMale && !isKuwaitGrade
+  }
+  if (selectedLocation === 'masjid_kuwait') {
+    return isMale && isKuwaitGrade
+  }
+  if (selectedLocation === 'musolla_female_1' || selectedLocation === 'musolla_female_2') {
+    // Since female students are not sub-grouped in legacy data, we just return true for any female
+    return isFemale
+  }
+  return true
+}
+
 // ─── Process Check-in Event ──────────────────────────────────────────────────
 function handleNewCheckIn(record, updateList = true) {
   // Prevent duplicate rendering if already in list
@@ -198,7 +228,13 @@ function handleNewCheckIn(record, updateList = true) {
     return
   }
 
-  // Apply filters (if specified)
+  // Apply location filter
+  const selectedLocation = locationFilter.value
+  if (!isRecordInLocation(record, student, selectedLocation)) {
+    return
+  }
+
+  // Apply room filter (if specified)
   const selectedFilter = roomFilter.value
   if (selectedFilter) {
     const studentRoom = student.main_room || ''
@@ -264,8 +300,32 @@ function displayStudentCheckIn(student) {
 function renderRecentList() {
   recentList.innerHTML = ''
   
-  // Select top 5 records
-  const displayItems = recentRecords.slice(0, 5)
+  // Filter recent records according to selected room and location
+  const selectedLocation = locationFilter.value
+  const selectedRoomGroup = roomFilter.value
+
+  const filteredItems = recentRecords.filter(rec => {
+    const student = studentCache.get(rec.student_id)
+    if (!student) return false
+
+    // Location check
+    if (!isRecordInLocation(rec, student, selectedLocation)) {
+      return false
+    }
+
+    // Room check
+    if (selectedRoomGroup) {
+      const studentRoom = student.main_room || ''
+      if (!studentRoom.startsWith(selectedRoomGroup)) {
+        return false
+      }
+    }
+
+    return true
+  })
+
+  // Select top 5 records from filtered items
+  const displayItems = filteredItems.slice(0, 5)
 
   if (displayItems.length === 0) {
     recentList.innerHTML = `<div class="col-span-5 text-center text-slate-500 py-3 border border-slate-800/50 rounded-xl bg-slate-900/20 text-xs">ไม่มีรายชื่อสแกนล่าสุด</div>`
@@ -298,6 +358,11 @@ function renderRecentList() {
 
 // Bind room filter event to automatically refresh views
 roomFilter.addEventListener('change', () => {
+  renderRecentList()
+})
+
+// Bind location filter event to automatically refresh views
+locationFilter.addEventListener('change', () => {
   renderRecentList()
 })
 

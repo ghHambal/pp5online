@@ -6,7 +6,7 @@ export async function getMyStudentProfile() {
   if (!session) return null
   const { data, error } = await supabase
     .from('students')
-    .select('id, student_code, full_name, main_room, religion_room, image_url, profile_id, house_color, sports_shirt_size, can_scan_prayer')
+    .select('id, student_code, full_name, main_room, religion_room, gender, image_url, profile_id, house_color, sports_shirt_size, can_scan_prayer')
     .eq('profile_id', session.user.id)
     .maybeSingle()
   if (error) throw error
@@ -186,7 +186,7 @@ export async function getMyReadingScores(studentId, academicYear, semester) {
 
 export async function getMyPrayerRecords(studentId) {
   const { data, error } = await supabase.from('prayer_records')
-    .select('check_date, status, week_number')
+    .select('check_date, status, week_number, location')
     .eq('student_id', studentId)
     .order('check_date')
   if (error) throw error
@@ -461,6 +461,7 @@ export async function saveScannedPrayerRecords(records) {
     check_date: r.check_date,
     status: r.status,
     week_number: r.week_number,
+    location: r.location || null,
     teacher_id: null // บันทึกเป็น NULL สำหรับการสแกนสภานักเรียน
   }))
 
