@@ -2,8 +2,7 @@ import { supabase } from './supabase.js'
 
 // ─── State Management ────────────────────────────────────────────────────────
 let studentCache = new Map() // student_id -> student object
-let recentRecords = []       // array of recent record objects
-let displayTimeout = null
+let recentRecords = []       // array of recent record objects today
 let todayStr = new Date().toISOString().slice(0, 10)
 
 // DOM Elements
@@ -14,7 +13,10 @@ const studentPhoto = document.getElementById('student-photo')
 const studentFallback = document.getElementById('student-fallback')
 const studentName = document.getElementById('student-name')
 const studentCodeRoom = document.getElementById('student-code-room')
-const recentList = document.getElementById('recent-list')
+const studentTime = document.getElementById('student-time')
+const studentLocation = document.getElementById('student-location')
+const historyTableBody = document.getElementById('history-table-body')
+const historyCount = document.getElementById('history-count')
 const roomFilter = document.getElementById('room-filter')
 const locationFilter = document.getElementById('location-filter')
 const connectionStatus = document.getElementById('connection-status')
@@ -30,7 +32,6 @@ function playBeep() {
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     
-    // Play a dual-tone friendly chime for check-in success
     osc.type = 'sine';
     osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
     gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
@@ -38,7 +39,6 @@ function playBeep() {
     osc.start();
     osc.stop(audioCtx.currentTime + 0.15);
 
-    // Play second tone shortly after
     setTimeout(() => {
       const audioCtx2 = new (window.AudioContext || window.webkitAudioContext)();
       const osc2 = audioCtx2.createOscillator();
@@ -77,7 +77,7 @@ async function init() {
     console.log(`Loaded ${studentCache.size} students into cache.`);
     setConnectionState('connected', 'เชื่อมต่อระบบแล้ว');
     
-    // 2. Fetch recent check-ins for today to populate the footer
+    // 2. Fetch recent check-ins for today to populate table
     await fetchTodayRecords()
     
     // 3. Subscribe to Realtime inserts on prayer_records
@@ -94,20 +94,21 @@ async function init() {
 
 // ─── Connection UI States ────────────────────────────────────────────────────
 function setConnectionState(state, text) {
+  if (!connectionText || !connectionStatus) return
   connectionText.textContent = text
   const indicator = connectionStatus.querySelector('span:first-child')
   
   connectionStatus.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs border font-medium transition-all duration-300'
   
   if (state === 'connected') {
-    connectionStatus.classList.add('bg-emerald-950/40', 'border-emerald-800/80', 'text-emerald-400')
-    indicator.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse'
+    connectionStatus.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-700')
+    if (indicator) indicator.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse'
   } else if (state === 'connecting') {
-    connectionStatus.classList.add('bg-amber-950/40', 'border-amber-800/80', 'text-amber-400')
-    indicator.className = 'w-2 h-2 rounded-full bg-amber-500 animate-bounce'
+    connectionStatus.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-700')
+    if (indicator) indicator.className = 'w-2 h-2 rounded-full bg-amber-500 animate-bounce'
   } else {
-    connectionStatus.classList.add('bg-red-950/40', 'border-red-800/80', 'text-red-400')
-    indicator.className = 'w-2 h-2 rounded-full bg-red-500'
+    connectionStatus.classList.add('bg-red-50', 'border-red-200', 'text-red-700')
+    if (indicator) indicator.className = 'w-2 h-2 rounded-full bg-red-500'
   }
 }
 
@@ -151,10 +152,10 @@ async function fetchTodayRecords(isSilent = false) {
   try {
     const { data, error } = await supabase
       .from('prayer_records')
-      .select('id, student_id, main_room, status, check_date, location')
+      .select('id, student_id, main_room, status, check_date, location, created_at')
       .eq('check_date', todayStr)
       .order('id', { ascending: false })
-      .limit(20)
+      .limit(50)
 
     if (error) throw error
 
@@ -202,23 +203,37 @@ function isRecordInLocation(record, student, selectedLocation) {
     return isMale && isKuwaitGrade
   }
   if (selectedLocation === 'musolla_female_1' || selectedLocation === 'musolla_female_2') {
-    // Since female students are not sub-grouped in legacy data, we just return true for any female
     return isFemale
   }
   return true
 }
 
-// ─── Process Check-in Event ──────────────────────────────────────────────────
-function handleNewCheckIn(record, updateList = true) {
-  // Prevent duplicate rendering if already in list
-  if (recentRecords.some(r => r.id === record.id) && updateList) {
-    return
+// ─── Location Formatting Helpers ─────────────────────────────────────────────
+function getLocationLabel(loc) {
+  const mapping = {
+    'musolla_male': 'มูซอลลาชาย',
+    'masjid_kuwait': 'มัสยิดคูเวต',
+    'musolla_female_1': 'มูซอลลาหญิง 1',
+    'musolla_female_2': 'มูซอลลาหญิง 2'
   }
+  return mapping[loc] || 'ไม่ระบุพื้นที่'
+}
 
-  if (updateList) {
-    recentRecords.unshift(record)
-    if (recentRecords.length > 20) recentRecords.pop()
-    renderRecentList()
+function getLocationBadgeClass(loc) {
+  const mapping = {
+    'musolla_male': 'bg-blue-50 text-blue-700 border-blue-200',
+    'masjid_kuwait': 'bg-purple-50 text-purple-700 border-purple-200',
+    'musolla_female_1': 'bg-pink-50 text-pink-700 border-pink-200',
+    'musolla_female_2': 'bg-amber-50 text-amber-700 border-amber-200'
+  }
+  return mapping[loc] || 'bg-slate-100 text-slate-600 border-slate-200'
+}
+
+// ─── Process Check-in Event ──────────────────────────────────────────────────
+function handleNewCheckIn(record, triggerFeedback = true) {
+  // Prevent duplicate rendering if already in list
+  if (recentRecords.some(r => r.id === record.id) && triggerFeedback) {
+    return
   }
 
   // Look up student info from cache
@@ -239,31 +254,33 @@ function handleNewCheckIn(record, updateList = true) {
   if (selectedFilter) {
     const studentRoom = student.main_room || ''
     if (!studentRoom.startsWith(selectedFilter)) {
-      // Doesn't match group filter, skip display
       return
     }
   }
 
-  // Display Student Success Info
-  displayStudentCheckIn(student)
-}
-
-// ─── Display Student Animation & Info ───────────────────────────────────────
-function displayStudentCheckIn(student) {
-  // Reset any running timeout
-  if (displayTimeout) {
-    clearTimeout(displayTimeout)
+  if (triggerFeedback) {
+    recentRecords.unshift(record)
+    if (recentRecords.length > 50) recentRecords.pop()
+    
+    // Play sound and visual alert
+    playBeep()
+    triggerFlashEffect()
   }
 
-  // 1. Play success tone
-  playBeep()
+  renderRecentList()
+}
 
-  // 2. Trigger green flash screen overlay
+// ─── Trigger Green Flash Screen Overlay ──────────────────────────────────────
+function triggerFlashEffect() {
+  if (!flashOverlay) return
   flashOverlay.className = 'absolute inset-0 pointer-events-none z-50'
-  void flashOverlay.offsetWidth // force reflow to restart animation
+  void flashOverlay.offsetWidth // force reflow
   flashOverlay.className = 'absolute inset-0 pointer-events-none z-50 flash-effect'
+}
 
-  // 3. Update active card content
+// ─── Display Student Success Info ───────────────────────────────────────
+function displayStudentCheckIn(student, record) {
+  // Update active card photo
   if (student.image_url) {
     studentPhoto.src = student.image_url
     studentPhoto.classList.remove('hidden')
@@ -274,33 +291,40 @@ function displayStudentCheckIn(student) {
     studentFallback.textContent = (student.full_name || 'น').charAt(0)
   }
 
+  // Update details
   studentName.textContent = student.full_name
   studentCodeRoom.textContent = `รหัส ${student.student_code} · ห้อง ${student.main_room || '—'}`
 
-  // 4. Smooth transition animation to show card
+  // Format Scan Time
+  let timeStr = '—'
+  if (record.created_at) {
+    try {
+      const dateObj = new Date(record.created_at)
+      timeStr = dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' น.'
+    } catch (e) {
+      console.error(e)
+    }
+  } else {
+    timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' น.'
+  }
+  if (studentTime) {
+    studentTime.textContent = timeStr
+  }
+
+  // Location details
+  if (studentLocation) {
+    const locLabel = getLocationLabel(record.location)
+    studentLocation.textContent = locLabel
+    studentLocation.className = `px-3 py-1 rounded-full text-xs font-bold border ${getLocationBadgeClass(record.location)}`
+  }
+
+  // Unhide card and hide standby
   standbyView.classList.add('hidden')
   activeCard.classList.remove('hidden')
-  
-  // Wait minor tick to allow transition
-  setTimeout(() => {
-    activeCard.className = 'w-full max-w-2xl bg-slate-900/90 border-2 border-emerald-500/50 rounded-3xl p-8 glow-card flex flex-col md:flex-row items-center gap-8 shadow-2xl relative overflow-hidden transition-all duration-300 transform scale-100 opacity-100'
-  }, 20)
-
-  // 5. Setup auto-dismiss after 1.5 seconds back to standby
-  displayTimeout = setTimeout(() => {
-    activeCard.className = 'w-full max-w-2xl bg-slate-900/90 border-2 border-emerald-500/50 rounded-3xl p-8 glow-card flex flex-col md:flex-row items-center gap-8 shadow-2xl relative overflow-hidden transition-all duration-300 transform scale-95 opacity-0'
-    setTimeout(() => {
-      activeCard.classList.add('hidden')
-      standbyView.classList.remove('hidden')
-    }, 300)
-  }, 1500)
 }
 
-// ─── Render Footer List ──────────────────────────────────────────────────────
+// ─── Render Screen Layout & History Table ─────────────────────────────────────
 function renderRecentList() {
-  recentList.innerHTML = ''
-  
-  // Filter recent records according to selected room and location
   const selectedLocation = locationFilter.value
   const selectedRoomGroup = roomFilter.value
 
@@ -324,36 +348,99 @@ function renderRecentList() {
     return true
   })
 
-  // Select top 5 records from filtered items
-  const displayItems = filteredItems.slice(0, 5)
+  // Display Total Count
+  if (historyCount) {
+    historyCount.textContent = filteredItems.length
+  }
 
-  if (displayItems.length === 0) {
-    recentList.innerHTML = `<div class="col-span-5 text-center text-slate-500 py-3 border border-slate-800/50 rounded-xl bg-slate-900/20 text-xs">ไม่มีรายชื่อสแกนล่าสุด</div>`
+  if (filteredItems.length === 0) {
+    // Show standby and hide active card
+    standbyView.classList.remove('hidden')
+    activeCard.classList.add('hidden')
+    
+    // Clear history table
+    if (historyTableBody) {
+      historyTableBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center text-slate-400 py-12 text-sm leading-relaxed">
+            กำลังรอข้อมูลการสแกน...
+          </td>
+        </tr>
+      `
+    }
     return
   }
 
-  displayItems.forEach(rec => {
-    const student = studentCache.get(rec.student_id)
-    if (!student) return
+  // 1. Show the latest check-in prominently in the active card
+  const latestRecord = filteredItems[0]
+  const latestStudent = studentCache.get(latestRecord.student_id)
+  if (latestStudent) {
+    displayStudentCheckIn(latestStudent, latestRecord)
+  }
 
-    const item = document.createElement('div')
-    item.className = 'flex items-center gap-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800/80 shadow-md animate-fade'
-    
-    const photoUrl = student.image_url
-    const photoHTML = photoUrl 
-      ? `<img src="${photoUrl}" class="w-8 h-8 rounded-lg object-cover object-top" />`
-      : `<div class="w-8 h-8 rounded-lg bg-emerald-950 text-emerald-400 font-bold text-xs flex items-center justify-center">${student.full_name.charAt(0)}</div>`
+  // 2. Render all previous items in the table below (skip the first one which is in the active card)
+  const historyItems = filteredItems.slice(1)
+  
+  if (historyTableBody) {
+    historyTableBody.innerHTML = ''
+    if (historyItems.length === 0) {
+      historyTableBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center text-slate-400 py-8 text-xs">
+            ไม่มีรายการสแกนก่อนหน้าของวันนี้
+          </td>
+        </tr>
+      `
+    } else {
+      historyItems.forEach((rec, idx) => {
+        const student = studentCache.get(rec.student_id)
+        if (!student) return
 
-    item.innerHTML = `
-      ${photoHTML}
-      <div class="flex-1 min-w-0">
-        <p class="text-xs font-bold text-slate-200 truncate">${student.full_name}</p>
-        <p class="text-[10px] text-slate-400 mt-0.5 font-mono">ห้อง ${student.main_room || '—'}</p>
-      </div>
-      <span class="w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-[10px] font-bold">✓</span>
-    `
-    recentList.appendChild(item)
-  })
+        const row = document.createElement('tr')
+        row.className = 'border-b border-slate-100 hover:bg-slate-50 transition-colors text-sm text-slate-700'
+        
+        let timeStr = '—'
+        if (rec.created_at) {
+          try {
+            const dateObj = new Date(rec.created_at)
+            timeStr = dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          } catch (e) {
+            console.error(e)
+          }
+        } else {
+          timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        }
+
+        const photoHTML = student.image_url
+          ? `<img src="${student.image_url}" class="w-8 h-8 rounded-full object-cover object-top border border-slate-100 shadow-sm" />`
+          : `<div class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs flex items-center justify-center">${student.full_name.charAt(0)}</div>`
+
+        const locationLabel = getLocationLabel(rec.location)
+        const locationBadgeColor = getLocationBadgeClass(rec.location)
+
+        // Calculate sequence number (filteredItems.length - 1 - idx)
+        const seqNum = filteredItems.length - 1 - idx
+
+        row.innerHTML = `
+          <td class="px-4 py-3 text-slate-400 text-xs font-mono font-bold text-center">${seqNum}</td>
+          <td class="px-4 py-3 font-mono font-bold text-slate-500">${timeStr}</td>
+          <td class="px-4 py-3">
+            <div class="flex items-center gap-3">
+              ${photoHTML}
+              <span class="font-bold text-slate-800">${student.full_name}</span>
+            </div>
+          </td>
+          <td class="px-4 py-3 font-bold text-slate-500">ห้อง ${student.main_room || '—'}</td>
+          <td class="px-4 py-3">
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${locationBadgeColor}">
+              ${locationLabel}
+            </span>
+          </td>
+        `
+        historyTableBody.appendChild(row)
+      })
+    }
+  }
 }
 
 // Bind room filter event to automatically refresh views
