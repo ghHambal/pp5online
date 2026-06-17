@@ -11,6 +11,7 @@ export default defineConfig({
         dashboard:     resolve(__dirname, 'dashboard.html'),
         student:       resolve(__dirname, 'student.html'),
         studentLogin:  resolve(__dirname, 'student-login.html'),
+        prayerMonitor: resolve(__dirname, 'prayer-monitor.html'),
       },
     },
     chunkSizeWarningLimit: 600,

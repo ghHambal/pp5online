@@ -1203,7 +1203,7 @@ export async function renderGradesGrid(teacher, classData) {
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('')}
           <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?finRaw.toFixed(1):'—'}</td>
-          ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?Number(dv.toFixed(2)):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
+          ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?Number(dv.toFixed(2)):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium grade-derived-td" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
           ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
               type="text" inputmode="decimal" value="${v}" placeholder="—"
@@ -1498,12 +1498,55 @@ export async function renderGradesGrid(teacher, classData) {
         <button id="btn-manage-cols" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition flex-shrink-0">
           ⚙️ <span class="hidden sm:inline text-xs">จัดการคอลัมน์</span>
         </button>
+        <button id="btn-hide-scores" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition flex-shrink-0">
+          👁 <span class="hidden sm:inline text-xs">ซ่อนคะแนน</span>
+        </button>
       </div>
       <div id="grade-togglebar" class="flex border-b border-gray-100 bg-white flex-shrink-0 overflow-x-auto min-h-[42px]"></div>
       <div class="flex-1 overflow-auto" id="grade-grid-wrap"></div>
     </div>`)
     document.getElementById('btn-manage-cols')?.addEventListener('click', _openManageColsModal)
     document.getElementById('btn-copy-cols')?.addEventListener('click', () => _openCopyColsPopup(classData, allMyClasses))
+
+    // ── Toggle hide scores (ซ่อนค่าคะแนนทั้งหมดเพื่อพิมพ์ปพ.5) ────────────────
+    let _scoresHidden = false
+    let _savedScoreData = null
+    document.getElementById('btn-hide-scores')?.addEventListener('click', function() {
+      _scoresHidden = !_scoresHidden
+      const wrap = document.getElementById('grade-grid-wrap')
+      if (!wrap) return
+
+      if (_scoresHidden) {
+        _savedScoreData = []
+        // ซ่อน input values
+        wrap.querySelectorAll('.grade-input').forEach(inp => {
+          _savedScoreData.push({ el: inp, type: 'input', val: inp.value })
+          inp.value = ''
+        })
+        // ซ่อน summary cells (mid, fin, total, grade, khuna, read, derived)
+        wrap.querySelectorAll('[id^="gmid-"],[id^="gfin-"],[id^="gtotal-"],[id^="ggrade-"],[id^="gkhuna-"],[id^="gread-"],.grade-derived-td').forEach(el => {
+          _savedScoreData.push({ el, type: 'text', val: el.innerHTML })
+          el.innerHTML = '—'
+        })
+        window._pp5HideScores = true
+        this.innerHTML = '👁 <span class="hidden sm:inline text-xs">แสดงคะแนน</span>'
+        this.classList.add('bg-amber-50', 'border-amber-300', 'text-amber-700')
+        this.classList.remove('text-gray-500', 'border-gray-200')
+      } else {
+        window._pp5HideScores = false
+        if (_savedScoreData) {
+          _savedScoreData.forEach(({ el, type, val }) => {
+            if (type === 'input') el.value = val
+            else el.innerHTML = val
+          })
+          _savedScoreData = null
+        }
+        this.innerHTML = '👁 <span class="hidden sm:inline text-xs">ซ่อนคะแนน</span>'
+        this.classList.remove('bg-amber-50', 'border-amber-300', 'text-amber-700')
+        this.classList.add('text-gray-500', 'border-gray-200')
+      }
+    })
+
     _renderToggleBar()
     _renderGrid()
 

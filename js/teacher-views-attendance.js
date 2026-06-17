@@ -1116,6 +1116,10 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
         <select id="ls-room-sel" class="text-xs border border-gray-200 rounded-xl px-3 py-1.5 bg-white ml-2">
           ${samaiRooms.map(r=>`<option value="${r.main_room}" ${r.main_room===room?'selected':''}>${r.main_room}</option>`).join('')}
         </select>` : `<span class="text-sm font-semibold text-emerald-700">${room}</span>`}
+        <button id="ls-toggle-total-btn"
+          class="text-xs px-3 py-1.5 rounded-xl border font-medium transition bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600">
+          ซ่อนคะแนนรวม
+        </button>
         <span class="text-xs text-gray-400 ml-auto">ภาค ${sem} / ${year}</span>
       </div>
 
@@ -1135,7 +1139,7 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
                 <div class="font-semibold leading-tight">${c.name}</div>
                 <div class="text-[10px] font-normal text-emerald-600 mt-0.5">/${c.max_score}</div>
               </th>`).join('')}
-              <th class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:70px">
+              <th id="ls-total-th" class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:70px">
                 รวม<br/><span class="text-[10px] font-normal">/${totalMax}</span>
               </th>
             </tr>
@@ -1181,6 +1185,20 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
 
     // ── Room selector ────────────────────────────────────────────────────────
     document.getElementById('ls-room-sel')?.addEventListener('change', e => _load(e.target.value))
+
+    // ── Toggle total column ──────────────────────────────────────────────────
+    let _lsTotalVisible = true
+    document.getElementById('ls-toggle-total-btn')?.addEventListener('click', function() {
+      _lsTotalVisible = !_lsTotalVisible
+      const display = _lsTotalVisible ? '' : 'none'
+      const th = document.getElementById('ls-total-th')
+      if (th) th.style.display = display
+      document.querySelectorAll('.ls-total').forEach(el => el.style.display = display)
+      this.textContent = _lsTotalVisible ? 'ซ่อนคะแนนรวม' : 'แสดงคะแนนรวม'
+      this.classList.toggle('bg-amber-50', !_lsTotalVisible)
+      this.classList.toggle('border-amber-300', !_lsTotalVisible)
+      this.classList.toggle('text-amber-700', !_lsTotalVisible)
+    })
 
     // ── Spreadsheet keyboard navigation + auto-save ──────────────────────────
     const inputs   = [...document.querySelectorAll('.ls-input')]
@@ -1372,6 +1390,10 @@ export async function renderReadingScore(teacher, initialRoom = null) {
         <select id="rs-room-sel" class="text-xs border border-gray-200 rounded-xl px-3 py-1.5 bg-white ml-2">
           ${rooms.map(r=>`<option value="${r}" ${r===room?'selected':''}>${r}</option>`).join('')}
         </select>` : `<span class="text-sm font-semibold text-indigo-700">${room}</span>`}
+        <button id="rs-toggle-total-btn"
+          class="text-xs px-3 py-1.5 rounded-xl border font-medium transition bg-white border-gray-200 text-gray-500 hover:border-violet-300 hover:text-violet-600">
+          ซ่อนคะแนนรวม
+        </button>
         <span class="text-xs text-gray-400 ml-auto">ภาค ${sem} / ${year}</span>
       </div>
 
@@ -1391,13 +1413,13 @@ export async function renderReadingScore(teacher, initialRoom = null) {
                 <div class="font-semibold leading-tight">${c.name}</div>
                 <div class="text-[10px] font-normal text-indigo-500 mt-0.5">/${c.max_score}</div>
               </th>`).join('')}
-              <th class="${thBase} bg-violet-50 text-violet-700" style="min-width:70px">
+              <th id="rs-total-th" class="${thBase} bg-violet-50 text-violet-700" style="min-width:70px">
                 รวม<br/><span class="text-[10px] font-normal">/${totalMax}</span>
               </th>
-              <th class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:60px">
+              <th id="rs-score100-th" class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:60px">
                 /100
               </th>
-              <th class="${thBase} bg-purple-50 text-purple-700" style="min-width:90px">
+              <th id="rs-label-th" class="${thBase} bg-purple-50 text-purple-700" style="min-width:90px">
                 ผลประเมิน
               </th>
             </tr>
@@ -1449,6 +1471,22 @@ export async function renderReadingScore(teacher, initialRoom = null) {
     </div>`)
 
     document.getElementById('rs-room-sel')?.addEventListener('change', e => _load(e.target.value))
+
+    // ── Toggle total columns ─────────────────────────────────────────────────
+    let _rsTotalVisible = true
+    document.getElementById('rs-toggle-total-btn')?.addEventListener('click', function() {
+      _rsTotalVisible = !_rsTotalVisible
+      const display = _rsTotalVisible ? '' : 'none'
+      ;['rs-total-th','rs-score100-th','rs-label-th'].forEach(id => {
+        const el = document.getElementById(id)
+        if (el) el.style.display = display
+      })
+      document.querySelectorAll('.rs-total,.rs-score100,.rs-label').forEach(el => el.style.display = display)
+      this.textContent = _rsTotalVisible ? 'ซ่อนคะแนนรวม' : 'แสดงคะแนนรวม'
+      this.classList.toggle('bg-amber-50', !_rsTotalVisible)
+      this.classList.toggle('border-amber-300', !_rsTotalVisible)
+      this.classList.toggle('text-amber-700', !_rsTotalVisible)
+    })
 
     // Spreadsheet navigation + auto-save (เหมือน Life Skill ทุกอย่าง)
     const inputs   = [...document.querySelectorAll('.rs-input')]
@@ -1638,6 +1676,10 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
         <div class="flex gap-1 text-xs hidden sm:flex">
           ${Object.entries(PRAYER_ST).map(([,v])=>`<span class="px-1.5 py-1 ${v.bg} ${v.color} rounded">${v.label}=${v.fullLabel.slice(0,3)}</span>`).join('')}
         </div>
+        <button id="prayer-toggle-total-btn"
+          class="text-xs px-3 py-1.5 rounded-xl border font-medium transition bg-white border-gray-200 text-gray-500 hover:border-emerald-300 hover:text-emerald-600">
+          ซ่อนคะแนนรวม
+        </button>
         <button id="btn-prayer-stats" class="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg font-medium hover:bg-indigo-700 transition">📊 สถิติ</button>
       </div>
       <div id="prayer-saving" class="hidden fixed top-16 right-4 z-50 bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">💾 กำลังบันทึก...</div>
@@ -1658,7 +1700,7 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
                   data-week="${w.n}" title="${w.label}">
                   Week${w.n}
                 </th>`).join('')}
-              <th class="${thBase} bg-indigo-50 text-indigo-700 font-semibold" style="min-width:52px">คะแนน<br/>/10</th>
+              <th class="${thBase} bg-indigo-50 text-indigo-700 font-semibold prayer-score-th" style="min-width:52px">คะแนน<br/>/10</th>
             </tr>
             <!-- Row 2: วันที่รายวัน -->
             <tr style="position:sticky;top:24px;z-index:30">
@@ -1670,7 +1712,7 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
                   style="width:${dayW}px;min-width:${dayW}px;font-size:9px">
                   ${DAY_TH[d.date.getDay()]}<br/>${_fmtDate(d.date)}
                 </th>`).join('')).join('')}
-              <th class="${thBase} bg-indigo-50" style="min-width:52px"></th>
+              <th class="${thBase} bg-indigo-50 prayer-score-th" style="min-width:52px"></th>
             </tr>
           </thead>
           <tbody>
@@ -1697,7 +1739,7 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
                     style="width:${dayW}px;min-width:${dayW}px;height:28px">
                     ${cfg?`<span class="${cfg.color} text-xs">${cfg.label}</span>`:''}
                   </td>`}).join('')).join('')}
-                <td class="border border-indigo-100 text-center bg-indigo-50 font-bold ${scCls(score)}"
+                <td class="border border-indigo-100 text-center bg-indigo-50 font-bold ${scCls(score)} prayer-score-cell"
                   id="score-${s.id}" style="min-width:52px;font-size:11px">${score}</td>
               </tr>`
             }).join('')}
@@ -1712,6 +1754,18 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
     document.getElementById('prayer-room-sel')?.addEventListener('change', e => _load(e.target.value))
     document.getElementById('btn-prayer-stats')?.addEventListener('click', () =>
       _showPrayerStats(teacher, room, students, weeks, prayMap, allDays, year, sem))
+
+    // ── Toggle score column ──────────────────────────────────────────────────
+    let _prayerScoreVisible = true
+    document.getElementById('prayer-toggle-total-btn')?.addEventListener('click', function() {
+      _prayerScoreVisible = !_prayerScoreVisible
+      const display = _prayerScoreVisible ? '' : 'none'
+      document.querySelectorAll('.prayer-score-th,.prayer-score-cell').forEach(el => el.style.display = display)
+      this.textContent = _prayerScoreVisible ? 'ซ่อนคะแนนรวม' : 'แสดงคะแนนรวม'
+      this.classList.toggle('bg-amber-50', !_prayerScoreVisible)
+      this.classList.toggle('border-amber-300', !_prayerScoreVisible)
+      this.classList.toggle('text-amber-700', !_prayerScoreVisible)
+    })
 
     // คลิกชื่อนักเรียน → สถิติรายบุคคล
     gWrap.addEventListener('click', e => {

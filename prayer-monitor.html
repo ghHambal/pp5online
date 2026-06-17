@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ.5 ออนไลน์ — จอแสดงผลการเช็คชื่อละหมาด</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css?v=202606082700" />
+  <style>
+    body {
+      font-family: 'Sarabun', sans-serif;
+    }
+    @keyframes flashGreen {
+      0% { background-color: rgba(16, 185, 129, 0.9); }
+      100% { background-color: rgba(16, 185, 129, 0); }
+    }
+    .flash-effect {
+      animation: flashGreen 0.6s ease-out forwards;
+    }
+    .glow-card {
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen overflow-hidden flex flex-col relative select-none">
+
+  <!-- Effect Overlay for Green Flash -->
+  <div id="flash-overlay" class="absolute inset-0 pointer-events-none z-50 transition-colors duration-200"></div>
+
+  <!-- Header Section -->
+  <header class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800/80 px-6 py-4 flex items-center justify-between z-10 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="text-3xl">🕌</span>
+      <div>
+        <h1 class="text-lg font-bold tracking-wide text-emerald-400">ระบบแสดงผลการละหมาด (Real-time Display)</h1>
+        <p class="text-xs text-slate-400 mt-0.5">หันหน้าจอไอแพดให้นักเรียนเห็นเพื่อยืนยันการบันทึกสำเร็จ</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-3">
+      <select id="room-filter" class="bg-slate-800 border border-slate-700 text-slate-100 text-sm font-semibold rounded-xl px-4 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+        <option value="">ห้องเรียนทั้งหมด</option>
+        <option value="ม.1">กลุ่ม ม.1</option>
+        <option value="ม.2">กลุ่ม ม.2</option>
+        <option value="ม.3">กลุ่ม ม.3</option>
+        <option value="ม.4">กลุ่ม ม.4</option>
+        <option value="ม.5">กลุ่ม ม.5</option>
+        <option value="ม.6">กลุ่ม ม.6</option>
+        <option value="ปวช.">กลุ่ม ปวช.</option>
+      </select>
+      
+      <div id="connection-status" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 text-xs border border-slate-700 font-medium">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="connection-text">เชื่อมต่อระบบแล้ว</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Display Card Area -->
+  <main class="flex-1 flex flex-col items-center justify-center p-6 relative">
+    
+    <!-- Standby View -->
+    <div id="standby-view" class="text-center max-w-md animate-fade">
+      <div class="w-32 h-32 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-6 border border-slate-800 shadow-inner">
+        <span class="text-5xl animate-bounce">📱</span>
+      </div>
+      <h2 class="text-2xl font-bold text-slate-300">เตรียมพร้อมรับข้อมูลสแกน</h2>
+      <p class="text-sm text-slate-400 mt-2">เมื่อนักเรียนได้รับการเช็คชื่อที่เครื่องสภานักเรียน ข้อมูลจะมาปรากฏที่นี่ทันที</p>
+    </div>
+
+    <!-- Active Check-In Success Card (Hidden by default) -->
+    <div id="active-card" class="hidden w-full max-w-2xl bg-slate-900/90 border-2 border-emerald-500/50 rounded-3xl p-8 glow-card flex flex-col md:flex-row items-center gap-8 shadow-2xl relative overflow-hidden transition-all duration-300 transform scale-95 opacity-0">
+      
+      <!-- Decorative green glow -->
+      <div class="absolute -right-32 -top-32 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Student Photo -->
+      <div class="w-44 h-60 rounded-2xl overflow-hidden bg-slate-800 border-4 border-slate-700/50 shadow-lg flex-shrink-0 flex items-center justify-center text-5xl font-bold text-slate-400">
+        <img id="student-photo" src="" alt="Student Photo" class="w-full h-full object-cover object-top hidden" />
+        <span id="student-fallback">น</span>
+      </div>
+
+      <!-- Student Detail -->
+      <div class="flex-1 text-center md:text-left">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 text-xs font-bold mb-4 uppercase tracking-wider">
+          <span>✓ CHECKED IN SUCCESS</span>
+        </div>
+        
+        <h2 id="student-name" class="text-3xl md:text-4xl font-extrabold text-white leading-tight">สมชาย เรียนดี</h2>
+        <p id="student-code-room" class="text-lg text-slate-300 mt-2 font-mono">รหัส 12345 · ห้อง ม.4/1</p>
+        
+        <!-- Large Checkmark Icon -->
+        <div class="mt-6 flex items-center justify-center md:justify-start gap-3 text-emerald-400">
+          <div class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white text-lg font-bold shadow-md">✓</div>
+          <span class="text-lg font-bold tracking-wide text-emerald-400">เช็คชื่อละหมาดเรียบร้อย</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer List: Recent 5 students -->
+  <footer class="bg-slate-900/40 border-t border-slate-900 px-6 py-4 flex-shrink-0 z-10">
+    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">รายชื่อเช็คอินล่าสุด (5 คนล่าสุด)</p>
+    <div id="recent-list" class="grid grid-cols-1 sm:grid-cols-5 gap-3">
+      <!-- Placeholder items -->
+      <div class="text-center text-slate-500 py-2 border border-slate-800/50 rounded-xl bg-slate-900/20 text-xs">ไม่มีรายชื่อสแกนล่าสุด</div>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/prayer-monitor.js"></script>
+</body>
+</html>

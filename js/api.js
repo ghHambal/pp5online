@@ -669,7 +669,7 @@ export async function saveStudentScore(classId, studentId, columnId, score, opts
 export async function getPrayerRecords(teacherId, room, startDate, endDate) {
   let q = supabase.from('prayer_records')
     .select('student_id, check_date, status')
-    .eq('teacher_id', teacherId)
+    // ดึงข้อมูลทั้งหมดประจำห้องเรียนนั้น (รวมถึงที่ถูกสแกนบันทึกโดยสภานักเรียนซึ่งไม่มี teacher_id)
     .eq('main_room', room)
   if (startDate) q = q.gte('check_date', startDate)
   if (endDate)   q = q.lte('check_date', endDate)

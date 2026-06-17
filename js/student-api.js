@@ -421,3 +421,50 @@ export async function getStudentWeeklySchedule(studentId) {
 
   return { slots, periods }
 }
+
+// ─── Scanner Roster & Sync ──────────────────────────────────────────────────
+export async function getScannerRoster() {
+  let all = []
+  let page = 0
+  const PAGE_SIZE = 1000
+  while (true) {
+    const { data, error } = await supabase
+      .from('students')
+      .select('id, student_code, full_name, main_room, image_url')
+      .eq('is_active', true)
+      .order('student_code')
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+    if (error) throw error
+    if (!data?.length) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+    page++
+  }
+  return all
+}
+
+export async function saveScannedPrayerRecords(records) {
+  if (!records.length) return
+  // ลบข้อมูลเดิมของวันและนักเรียนนั้น ๆ ก่อนเพื่อเลี่ยงปัญหาข้อมูลซ้ำซ้อน
+  for (const r of records) {
+    const { error: delError } = await supabase
+      .from('prayer_records')
+      .delete()
+      .eq('student_id', r.student_id)
+      .eq('check_date', r.check_date)
+    if (delError) throw delError
+  }
+  
+  const payloads = records.map(r => ({
+    student_id: r.student_id,
+    main_room: r.main_room,
+    check_date: r.check_date,
+    status: r.status,
+    week_number: r.week_number,
+    teacher_id: null // บันทึกเป็น NULL สำหรับการสแกนสภานักเรียน
+  }))
+
+  const { error } = await supabase.from('prayer_records').insert(payloads)
+  if (error) throw error
+}
+

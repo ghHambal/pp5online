@@ -8,6 +8,8 @@ import {
   renderStudentRequests,
   renderExamRequestForm,
   renderStudentProfile,
+  renderStudentPrayerScanner,
+  checkAndShowChangelog,
 } from './student-views.js'
 import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
 import { applyThemeForRole } from './theme.js'
@@ -57,6 +59,12 @@ async function init() {
   await _loadHeader()
   _bindNav()
   navigate('overview')
+  
+  // Show changelog popup if version has changed
+  if (_student?.id) {
+    checkAndShowChangelog(_student.id)
+  }
+
   _startStudentPolling()   // polling 30 วิ
   if (_student?.profile_id) injectFeedbackWidget({ profileId: _student.profile_id, role: 'student', name: _student.full_name })
 }
@@ -122,6 +130,7 @@ const ROUTES = {
   scores:   () => renderStudentMyScores(_student, _activeScoreTab),
   requests: () => renderStudentRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
+  prayer_scanner: () => renderStudentPrayerScanner(_student),
 }
 
 function _navButtonHTML(view, icon, label, mode = 'main') {
@@ -180,6 +189,18 @@ function _setBottomNavActive(activeView) {
 }
 
 function navigate(view) {
+  // Cleanup active scanner if navigating away from prayer_scanner
+  if (window._activePrayerScannerState) {
+    try {
+      if (window._activePrayerScannerState.html5Qrcode) {
+        window._activePrayerScannerState.html5Qrcode.stop().catch(() => {})
+      }
+    } catch (e) {}
+    if (window._activePrayerScannerState.focusInterval) clearInterval(window._activePrayerScannerState.focusInterval)
+    if (window._activePrayerScannerState.syncInterval) clearInterval(window._activePrayerScannerState.syncInterval)
+    window._activePrayerScannerState = null
+  }
+
   _activeClassId = null
   _activeSubjectTab = 'todo'
   if (view === 'scores') {

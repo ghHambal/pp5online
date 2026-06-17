@@ -1913,33 +1913,43 @@ async function _loadAnnouncementBanners() {
 
     const wrap = document.createElement('div')
     wrap.id = 'ann-banners'
-    wrap.style.cssText = 'position:fixed;top:68px;left:0;right:0;z-index:50;pointer-events:none;'
+    wrap.style.cssText = 'position:fixed;top:68px;left:0;right:0;z-index:200;'
 
     const _fmtD = d => new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short'})
+
+    // expose helpers บน window เพื่อให้ onclick inline เรียกได้
+    window._annDismiss = (id) => {
+      seen.add(id)
+      localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]))
+      document.querySelector(`.ann-banner[data-ann-id="${id}"]`)?.remove()
+      if (!wrap.querySelector('.ann-banner')) wrap.remove()
+    }
+    window._annOpen = () => {
+      wrap.remove()
+      window._navTo?.('announcements-view')
+    }
+
     wrap.innerHTML = unseen.map(a => `
-      <div class="ann-banner pointer-events-auto mx-auto max-w-3xl px-4 mb-2" data-ann-id="${a.id}">
-        <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3 shadow-sm">
+      <div class="ann-banner mx-auto max-w-3xl px-4 mb-2" data-ann-id="${a.id}">
+        <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3 shadow-md">
           <span class="text-xl flex-shrink-0">📢</span>
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-amber-900 text-sm">${a.title}</p>
             ${a.body ? `<p class="text-xs text-amber-700 mt-0.5 line-clamp-2">${a.body}</p>` : ''}
-            <p class="text-[10px] text-amber-500 mt-1">${_fmtD(a.created_at)}${a.teachers?.full_name ? ' · ' + a.teachers.full_name : ''}</p>
+            <div class="flex items-center gap-2 mt-1.5">
+              <span class="text-[10px] text-amber-400">${_fmtD(a.created_at)}</span>
+              <button onclick="window._annOpen()"
+                class="text-[11px] font-semibold text-white bg-amber-500 hover:bg-amber-600 active:bg-amber-700 px-2.5 py-0.5 rounded-full transition">
+                อ่านเพิ่มเติม →
+              </button>
+            </div>
           </div>
-          <button class="ann-dismiss flex-shrink-0 text-amber-400 hover:text-amber-600 text-lg leading-none" data-ann-id="${a.id}">✕</button>
+          <button onclick="window._annDismiss(${a.id})"
+            class="flex-shrink-0 text-amber-400 hover:text-amber-600 text-lg leading-none">✕</button>
         </div>
       </div>`).join('')
 
     document.body.appendChild(wrap)
-
-    wrap.querySelectorAll('.ann-dismiss').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = Number(btn.dataset.annId)
-        seen.add(id)
-        localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]))
-        btn.closest('.ann-banner')?.remove()
-        if (!wrap.querySelector('.ann-banner')) wrap.remove()
-      })
-    })
   } catch { /* ไม่ block */ }
 }
 

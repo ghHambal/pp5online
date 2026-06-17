@@ -757,6 +757,8 @@ function _buildPage1(d) {
   const totalHrsPerWeek = credit * 2
   const totalHrs        = credit * 2 * 20
 
+  const _hideScores = !!window._pp5HideScores
+
   // compute grade distribution
   const maxTotal = scoreColumns.reduce((s, c) => s + (c.max_score ?? 0), 0)
   const gradeCounts = { 4:0, '3.5':0, 3:0, '2.5':0, 2:0, '1.5':0, 1:0, 0:0 }
@@ -765,7 +767,7 @@ function _buildPage1(d) {
   const readCol  = scoreColumns.find(c => (c.assignment_name ?? '').includes('อ่าน'))
   const charCol  = scoreColumns.find(c => (c.assignment_name ?? '').includes('คุณลักษณะ') || (c.assignment_name ?? '').includes('จิตพิสัย'))
 
-  for (const st of students) {
+  if (!_hideScores) for (const st of students) {
     const stScores = scoreMap[st.id] ?? {}
     const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
     if (maxTotal > 0) {
@@ -1268,8 +1270,25 @@ function _buildScorePage(d, chunk, startNo) {
   const nDataRows = chunk.length + 1  // +1 แถวว่าง
   const rowH = Math.max(3.8, Math.min(5.8, Math.floor(160 / nDataRows * 10) / 10)).toFixed(1)
 
+  const _hideScores = !!window._pp5HideScores
+
   // คำนวณคะแนน
   const rows = chunk.map((st, idx) => {
+    if (_hideScores) {
+      return `<tr>
+        <td>${startNo + idx}</td>
+        <td>${_esc(st.student_code??'')}</td>
+        <td class="gs-name" style="border-right:2.0px solid #000;">${_esc(st.full_name??'')}</td>
+        ${allBetween.map(()=>'<td></td>').join('')}
+        <td></td>
+        ${allFinal.map(()=>'<td></td>').join('')}
+        <td></td>
+        <td style="border-right:2.0px solid #000;"></td>
+        <td></td>
+        <td style="border-right:2.0px solid #000;"></td>
+        <td></td>
+      </tr>`
+    }
     const sc    = scoreMap[st.id] ?? {}
     const bScores = allBetween.map(c => c.id ? (sc[c.id] ?? '') : '')
     const fScores = allFinal.map(c => c.id ? (sc[c.id] ?? '') : '')

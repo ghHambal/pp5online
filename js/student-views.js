@@ -6,6 +6,7 @@ import {
   getMyLifeSkillScores, getMyReadingScores, getMyPrayerRecords,
   getStudentDailySchedule, getStudentAllAnnouncements, getStudentGPA,
   getClassSchedulesByIds, getStudentWeeklySchedule,
+  getScannerRoster, saveScannedPrayerRecords,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
@@ -246,6 +247,20 @@ export async function renderStudentOverview(student) {
         <p class="text-xs text-gray-400 mt-0.5 truncate">รหัส ${student.student_code} · ${_roomDisplay(student.main_room??'—')}</p>
       </div>
     </div>
+
+    <!-- Scanner Access Banner -->
+    ${student.can_scan_prayer ? `
+    <div class="relative overflow-hidden bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl border border-emerald-500/20 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4">
+      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🕌</div>
+      <div class="min-w-0 z-10">
+        <h4 class="font-bold text-sm sm:text-base">🕌 ระบบเช็คชื่อละหมาด (สภานักเรียน)</h4>
+        <p class="text-xs text-emerald-100 mt-1">คุณได้รับสิทธิ์ให้ทำหน้าที่สแกนเนอร์ บันทึกเวลาละหมาด</p>
+      </div>
+      <button onclick="window._stuNav('prayer_scanner')" class="relative z-10 px-4 py-2 bg-white text-emerald-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-emerald-50 active:scale-95 transition-all shadow flex-shrink-0">
+        เข้าสู่ระบบสแกน →
+      </button>
+    </div>
+    ` : ''}
 
     <!-- Stats row -->
     <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
@@ -2204,3 +2219,642 @@ export async function renderStudentProfile(student, onLogout) {
     modal.querySelector('#stu-logout-confirm-btn').addEventListener('click', onLogout)
   })
 }
+
+// ─── Scanner Dynamic Library Loader ──────────────────────────────────────────
+async function loadHtml5Qrcode() {
+  if (window.Html5Qrcode) return window.Html5Qrcode
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+    s.onload = () => resolve(window.Html5Qrcode)
+    s.onerror = (err) => reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต'))
+    document.head.appendChild(s)
+  })
+}
+
+// ─── Scanner Sound Beep Generator (Web Audio API) ──────────────────────────
+function playBeep(type = 'success') {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
+    
+    osc.connect(gain)
+    gain.connect(audioCtx.destination)
+    
+    if (type === 'success') {
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime)
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12)
+      osc.start()
+      osc.stop(audioCtx.currentTime + 0.12)
+    } else {
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime)
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3)
+      osc.start()
+      osc.stop(audioCtx.currentTime + 0.3)
+    }
+  } catch (e) {
+    console.error('Audio beep failed', e)
+  }
+}
+
+// ─── Calculate Active Week Number ──────────────────────────────────────────
+function getWeekNumber(dateStr, cfg) {
+  const weeks = _generatePrayerWeeks(cfg?.semester_start, [])
+  const found = weeks.find(w => w.days.some(d => d.ds === dateStr))
+  return found ? found.n : 1
+}
+
+// ─── Student Prayer Check-in Scanner Screen ──────────────────────────────────
+export async function renderStudentPrayerScanner(student) {
+  if (!student.can_scan_prayer) {
+    setContent(`
+      <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">
+        <p class="text-4xl mb-3">⚠️</p>
+        <p class="font-medium text-gray-600">ขออภัย คุณไม่มีสิทธิ์เข้าใช้งานระบบสแกนนี้</p>
+        <p class="text-xs mt-1">ติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์ใช้งาน</p>
+      </div>`)
+    return
+  }
+
+  // Hide the standard bottom navigation menu to prevent accidental navigation and maximize camera area
+  const navEl = document.querySelector('nav.safe-area-bottom')
+  if (navEl) navEl.classList.add('hidden')
+
+  setContent(`<div class="flex justify-center py-10 text-gray-300">
+    <svg class="animate-spin h-6 w-6 text-emerald-500" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>`)
+
+  // Fetch configs and roster
+  const [systemConfig, roster] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    getScannerRoster().catch(() => [])
+  ])
+
+  // Setup active scanner cleanups
+  if (window._activePrayerScannerState) {
+    try {
+      if (window._activePrayerScannerState.html5Qrcode) {
+        window._activePrayerScannerState.html5Qrcode.stop().catch(() => {})
+      }
+    } catch (e) {}
+    if (window._activePrayerScannerState.focusInterval) clearInterval(window._activePrayerScannerState.focusInterval)
+    if (window._activePrayerScannerState.syncInterval) clearInterval(window._activePrayerScannerState.syncInterval)
+  }
+
+  window._activePrayerScannerState = {
+    html5Qrcode: null,
+    focusInterval: null,
+    syncInterval: null
+  }
+
+  // Setup memory of synced IDs for today
+  if (!window._syncedStudentIdsToday) window._syncedStudentIdsToday = new Set()
+
+  let inputMode = localStorage.getItem('prayer_scan_input_mode') || 'camera' // 'camera' | 'gun'
+  let deviceMode = localStorage.getItem('prayer_scan_device_mode') || 'single' // 'single' | 'dual'
+  let isSyncing = false
+
+  function renderUI() {
+    const today = _localDateValue(new Date())
+    const weekN = getWeekNumber(today, systemConfig)
+    
+    const html = `
+      <!-- Flash green screen overlay -->
+      <div id="scanner-flash" class="fixed inset-0 pointer-events-none z-50 bg-emerald-500 opacity-0 transition-opacity duration-150 hidden"></div>
+
+      <!-- Header with back button -->
+      <div class="flex items-center gap-3 mb-5">
+        <button id="scanner-btn-back" class="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50 active:scale-95 transition-all shadow-sm">
+          ← กลับ
+        </button>
+        <div class="min-w-0">
+          <h2 class="font-extrabold text-gray-800 text-lg leading-tight">🕌 บันทึกเวลากิจกรรมละหมาด (สภานักเรียน)</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ผู้สแกน: ${student.full_name} · สัปดาห์ที่ ${weekN}</p>
+        </div>
+      </div>
+
+      <!-- Settings panel -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">ช่องทางสแกน</label>
+            <div class="flex rounded-xl bg-gray-100 p-0.5 border border-gray-200/50">
+              <button id="opt-input-camera" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${inputMode === 'camera' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}">
+                📷 ใช้กล้อง
+              </button>
+              <button id="opt-input-gun" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${inputMode === 'gun' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}">
+                🔌 ปืนยิงสแกน
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">โหมดจอแสดงผล</label>
+            <div class="flex rounded-xl bg-gray-100 p-0.5 border border-gray-200/50">
+              <button id="opt-device-single" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${deviceMode === 'single' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}">
+                📱 เครื่องเดียว
+              </button>
+              <button id="opt-device-dual" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${deviceMode === 'dual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}">
+                📡 แยกสองเครื่อง
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- iPad Monitor Display Link -->
+        <div id="dual-monitor-link-area" class="mt-3.5 pt-3.5 border-t border-gray-100 flex items-center justify-between gap-3 ${deviceMode === 'dual' ? '' : 'hidden'}">
+          <div class="min-w-0">
+            <h4 class="font-bold text-xs text-gray-700">📡 เปิดหน้าจอแสดงผลจอแยก</h4>
+            <p class="text-[10px] text-gray-400 mt-0.5">เปิดลิงก์นี้บน iPad เครื่องที่ 2 เพื่อยืนยันตัวตนให้นักเรียนเห็น</p>
+          </div>
+          <button id="btn-open-monitor" class="px-3 py-1.5 bg-emerald-500 text-white font-bold text-xs rounded-lg hover:bg-emerald-600 shadow transition-all flex-shrink-0 active:scale-95">
+            เปิดหน้าจอแยก ↗
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Sync status panel -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span id="sync-indicator" class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <h4 id="sync-title" class="font-bold text-xs text-gray-700">ซิงก์สำเร็จทั้งหมดแล้ว</h4>
+          </div>
+          <p id="sync-desc" class="text-[10px] text-gray-400 mt-0.5">พร้อมบันทึกประวัติละหมาด</p>
+        </div>
+        <button id="btn-manual-sync" class="px-3 py-1.5 bg-gray-100 text-gray-700 font-bold text-xs rounded-lg hover:bg-gray-200 transition-all flex-shrink-0 active:scale-95">
+          ซิงก์ตอนนี้
+        </button>
+      </div>
+
+      <!-- Scanners Area -->
+      <div id="scanner-view-camera" class="relative overflow-hidden bg-slate-950 rounded-3xl h-64 border border-slate-800 shadow-inner flex flex-col items-center justify-center p-4 mb-4 ${inputMode === 'camera' ? '' : 'hidden'}">
+        <div id="camera-reader" class="w-full h-full rounded-2xl overflow-hidden"></div>
+      </div>
+
+      <div id="scanner-view-gun" class="border border-dashed border-gray-300 bg-white rounded-3xl py-12 px-6 text-center shadow-sm mb-4 transition-all relative ${inputMode === 'gun' ? '' : 'hidden'}">
+        <input id="scanner-gun-input" type="text" inputmode="none" class="absolute opacity-0 pointer-events-none" autocomplete="off" />
+        <div class="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+          <span class="text-3xl animate-pulse">🔌</span>
+        </div>
+        <h3 class="font-bold text-sm text-gray-800">เชื่อมต่อเครื่องสแกน (Scanner Gun) เรียบร้อย</h3>
+        <p class="text-xs text-gray-400 mt-1">นำปืนยิงสแกนเนอร์บาร์โค้ดสแกนที่ QR Code ของนักเรียนได้ทันที</p>
+        <span class="inline-block mt-4 px-3 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full border border-emerald-100">ระบบรักษาโฟกัสอัตโนมัติค้างไว้</span>
+      </div>
+
+      <!-- Active Check-In Popup Overlay -->
+      <div id="scanner-feedback-container" class="hidden my-4 relative z-30 transition-all duration-300"></div>
+
+      <!-- Roster Lookup Status -->
+      <div id="roster-status" class="px-4 py-2 bg-gray-100 rounded-xl text-center text-[10px] text-gray-400 mb-4 border border-gray-200/50">
+        บัญชีรายชื่อสภานักเรียน: โหลดแล้ว ${roster.length} คน
+      </div>
+
+      <!-- Today's Local Scans List -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <h3 class="font-bold text-gray-700 text-xs uppercase tracking-wider">ประวัติการสแกนในเครื่องวันนี้</h3>
+          <span id="scan-count-badge" class="px-2 py-0.5 bg-emerald-50 border border-emerald-100 rounded-full text-emerald-700 text-[10px] font-bold">0 คน</span>
+        </div>
+        <div id="scan-list" class="divide-y divide-gray-50 max-h-60 overflow-y-auto">
+          <div class="text-center py-6 text-xs text-gray-400">ยังไม่มีประวัติสแกนวันนี้</div>
+        </div>
+      </div>
+    `
+    const contentContainer = document.getElementById('stu-content')
+    if (contentContainer) {
+      contentContainer.innerHTML = `<div class="w-full max-w-2xl mx-auto px-4 sm:px-6 py-4 pb-6 animate-fade">${html}</div>`
+    }
+
+    // Bind Back Button
+    document.getElementById('scanner-btn-back').addEventListener('click', () => {
+      stopCamera()
+      if (window._activePrayerScannerState) {
+        if (window._activePrayerScannerState.focusInterval) clearInterval(window._activePrayerScannerState.focusInterval)
+        if (window._activePrayerScannerState.syncInterval) clearInterval(window._activePrayerScannerState.syncInterval)
+      }
+      if (navEl) navEl.classList.remove('hidden')
+      window._stuNav('overview')
+    })
+
+    // Option: Input mode
+    document.getElementById('opt-input-camera').addEventListener('click', () => {
+      setInputMode('camera')
+    })
+    document.getElementById('opt-input-gun').addEventListener('click', () => {
+      setInputMode('gun')
+    })
+
+    // Option: Device mode
+    document.getElementById('opt-device-single').addEventListener('click', () => {
+      setDeviceMode('single')
+    })
+    document.getElementById('opt-device-dual').addEventListener('click', () => {
+      setDeviceMode('dual')
+    })
+
+    // Link: Display Screen
+    document.getElementById('btn-open-monitor').addEventListener('click', () => {
+      window.open('/pp5online/prayer-monitor.html', '_blank')
+    })
+
+    // Button: Manual sync
+    document.getElementById('btn-manual-sync').addEventListener('click', () => {
+      triggerBackgroundSync()
+    })
+
+    // Start systems
+    updateQueueUI()
+    if (inputMode === 'camera') {
+      startCamera()
+    } else {
+      startScannerGun()
+    }
+  }
+
+  function setInputMode(mode) {
+    if (mode === inputMode) return
+    inputMode = mode
+    localStorage.setItem('prayer_scan_input_mode', mode)
+    
+    if (mode === 'camera') {
+      stopScannerGun()
+      document.getElementById('scanner-view-gun').classList.add('hidden')
+      document.getElementById('scanner-view-camera').classList.remove('hidden')
+      startCamera()
+    } else {
+      stopCamera()
+      document.getElementById('scanner-view-camera').classList.add('hidden')
+      document.getElementById('scanner-view-gun').classList.remove('hidden')
+      startScannerGun()
+    }
+    
+    // Update Option active classes
+    document.getElementById('opt-input-camera').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'camera' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
+    document.getElementById('opt-input-gun').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'gun' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
+  }
+
+  function setDeviceMode(mode) {
+    if (mode === deviceMode) return
+    deviceMode = mode
+    localStorage.setItem('prayer_scan_device_mode', mode)
+
+    const linkArea = document.getElementById('dual-monitor-link-area')
+    if (mode === 'dual') {
+      linkArea.classList.remove('hidden')
+    } else {
+      linkArea.classList.add('hidden')
+    }
+
+    // Update Option active classes
+    document.getElementById('opt-device-single').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'single' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
+    document.getElementById('opt-device-dual').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'dual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
+  }
+
+  // ─── Camera Handler ────────────────────────────────────────────────────────
+  async function startCamera() {
+    try {
+      const Html5Qrcode = await loadHtml5Qrcode()
+      const html5Qrcode = new Html5Qrcode("camera-reader")
+      window._activePrayerScannerState.html5Qrcode = html5Qrcode
+
+      let lastScannedCode = null
+      let lastScannedTime = 0
+
+      const config = { fps: 10, qrbox: { width: 220, height: 220 } }
+      await html5Qrcode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          if (decodedText === lastScannedCode && Date.now() - lastScannedTime < 1800) {
+            return // skip repeat scanned text
+          }
+          lastScannedCode = decodedText
+          lastScannedTime = Date.now()
+          processCheckIn(decodedText)
+        },
+        () => {
+          // silent camera failures/no QR found
+        }
+      )
+    } catch (err) {
+      console.error('Camera open failed:', err)
+      showToast('ไม่สามารถเปิดใช้งานกล้องได้: ' + (err.message || 'ไม่มีสิทธิ์เข้าถึง'), 'error')
+    }
+  }
+
+  function stopCamera() {
+    if (window._activePrayerScannerState && window._activePrayerScannerState.html5Qrcode) {
+      window._activePrayerScannerState.html5Qrcode.stop().catch(() => {})
+      window._activePrayerScannerState.html5Qrcode = null
+    }
+  }
+
+  // ─── Scanner Gun Wedge Handler ─────────────────────────────────────────────
+  function startScannerGun() {
+    const gunInput = document.getElementById('scanner-gun-input')
+    if (!gunInput) return
+
+    // Keep wedge input auto-focused continuously
+    gunInput.focus()
+    const focusInterval = setInterval(() => {
+      if (document.activeElement !== gunInput && document.getElementById('scanner-gun-input')) {
+        gunInput.focus()
+      }
+    }, 1000)
+    window._activePrayerScannerState.focusInterval = focusInterval
+
+    gunInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const code = gunInput.value.trim()
+        gunInput.value = ''
+        if (code) {
+          processCheckIn(code)
+        }
+      }
+    })
+  }
+
+  function stopScannerGun() {
+    if (window._activePrayerScannerState && window._activePrayerScannerState.focusInterval) {
+      clearInterval(window._activePrayerScannerState.focusInterval)
+      window._activePrayerScannerState.focusInterval = null
+    }
+  }
+
+  // ─── Main Check-in Handler ──────────────────────────────────────────────────
+  async function processCheckIn(studentCode) {
+    if (!studentCode) return
+
+    // Roster Lookup (instant offline lookup)
+    const student = roster.find(s => s.student_code === studentCode)
+    if (!student) {
+      playBeep('error')
+      showScanFeedback(null, studentCode, 'ไม่พบข้อมูลนักเรียนรหัสนี้')
+      return
+    }
+
+    const today = _localDateValue(new Date())
+
+    // Prevent Double Checks in same session/queue
+    const queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
+    const isAlreadyQueued = queue.some(r => r.student_id === student.id && r.check_date === today)
+    if (isAlreadyQueued) {
+      playBeep('error')
+      showScanFeedback(student, studentCode, 'เช็คชื่อซ้ำ! มีชื่อในคิวรอส่งขึ้นเซิร์ฟเวอร์แล้ว')
+      return
+    }
+
+    if (window._syncedStudentIdsToday.has(student.id)) {
+      playBeep('error')
+      showScanFeedback(student, studentCode, 'เช็คชื่อซ้ำ! บันทึกข้อมูลวันนี้ไปแล้ว')
+      return
+    }
+
+    const weekN = getWeekNumber(today, systemConfig)
+    const newRecord = {
+      student_id: student.id,
+      main_room: student.main_room,
+      check_date: today,
+      status: 'pray',
+      week_number: weekN,
+      full_name: student.full_name,
+      student_code: student.student_code
+    }
+
+    // Append queue
+    queue.push(newRecord)
+    localStorage.setItem('prayer_scan_queue', JSON.stringify(queue))
+    
+    // Save locally synced cache
+    window._syncedStudentIdsToday.add(student.id)
+
+    // Feedbacks
+    playBeep('success')
+    triggerScreenFlash()
+    showScanFeedback(student, studentCode, 'บันทึกสำเร็จลงเครื่องแล้ว', true)
+    
+    updateQueueUI()
+
+    // Trigger sync in background
+    triggerBackgroundSync()
+  }
+
+  // ─── Feedback Panel Layouts ────────────────────────────────────────────────
+  function showScanFeedback(student, code, message, isSuccess = false) {
+    const container = document.getElementById('scanner-feedback-container')
+    if (!container) return
+
+    if (window._feedbackTimeout) clearTimeout(window._feedbackTimeout)
+
+    if (isSuccess && student) {
+      const photoHTML = student.image_url
+        ? `<img src="${student.image_url}" class="w-16 h-20 object-cover object-top rounded-xl border border-gray-200" />`
+        : `<div class="w-16 h-20 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 font-bold text-2xl flex items-center justify-center">${student.full_name.charAt(0)}</div>`
+
+      container.innerHTML = `
+        <div class="bg-white/95 border border-emerald-200 rounded-2xl p-3 shadow-lg flex items-center gap-3 animate-slide-up">
+          ${photoHTML}
+          <div class="flex-1 min-w-0">
+            <span class="inline-block px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold">บันทึกผ่านสำเร็จ</span>
+            <h4 class="font-extrabold text-gray-800 text-sm mt-1 truncate">${student.full_name}</h4>
+            <p class="text-xs text-gray-500 truncate">รหัส ${student.student_code} · ห้อง ${_roomDisplay(student.main_room)}</p>
+            <p class="text-[10px] text-gray-400 mt-1.5 font-mono">${message}</p>
+          </div>
+          <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-base shadow">✓</div>
+        </div>`
+    } else {
+      const name = student ? student.full_name : 'ไม่พบข้อมูล'
+      const detail = student ? `รหัส ${student.student_code} · ห้อง ${_roomDisplay(student.main_room)}` : `สแกนพบ: ${code}`
+      container.innerHTML = `
+        <div class="bg-white/95 border border-red-200 rounded-2xl p-3 shadow-lg flex items-center gap-3 animate-slide-up">
+          <div class="w-16 h-20 rounded-xl bg-red-50 border border-red-100 text-red-500 font-bold text-2xl flex items-center justify-center">❌</div>
+          <div class="flex-1 min-w-0">
+            <span class="inline-block px-2 py-0.5 rounded-full bg-red-50 border border-red-100 text-red-700 text-[10px] font-bold">เกิดข้อผิดพลาด</span>
+            <h4 class="font-bold text-gray-800 text-sm mt-1 truncate">${name}</h4>
+            <p class="text-xs text-gray-500 truncate">${detail}</p>
+            <p class="text-xs font-bold text-red-600 mt-1.5">${message}</p>
+          </div>
+        </div>`
+    }
+
+    container.classList.remove('hidden')
+
+    window._feedbackTimeout = setTimeout(() => {
+      container.innerHTML = ''
+      container.classList.add('hidden')
+    }, 1500)
+  }
+
+  function triggerScreenFlash() {
+    const flash = document.getElementById('scanner-flash')
+    if (!flash) return
+    flash.classList.remove('hidden', 'opacity-0')
+    flash.classList.add('opacity-40')
+    setTimeout(() => {
+      flash.classList.remove('opacity-40')
+      flash.classList.add('opacity-0')
+      setTimeout(() => flash.classList.add('hidden'), 150)
+    }, 120)
+  }
+
+  // ─── Queue Sync Handling ───────────────────────────────────────────────────
+  function updateQueueUI(syncing = false) {
+    const queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
+    
+    // UI badge
+    const badge = document.getElementById('scan-count-badge')
+    if (badge) {
+      badge.textContent = `${queue.length} คน`
+    }
+
+    const indicator = document.getElementById('sync-indicator')
+    const title = document.getElementById('sync-title')
+    const desc = document.getElementById('sync-desc')
+
+    if (!indicator || !title || !desc) return
+
+    if (syncing) {
+      indicator.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse'
+      title.textContent = 'กำลังซิงก์ประวัติเวลากิจกรรม...'
+      desc.textContent = `กำลังส่งข้อมูล ${queue.length} คนขึ้นเซิร์ฟเวอร์`
+    } else if (queue.length > 0) {
+      indicator.className = 'w-2.5 h-2.5 rounded-full bg-amber-500'
+      title.textContent = `ค้างส่ง ${queue.length} รายการ (ออฟไลน์)`
+      desc.textContent = 'ข้อมูลจัดเก็บในระบบออฟไลน์ชั่วคราว รอการเชื่อมต่ออินเทอร์เน็ต'
+    } else {
+      indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500'
+      title.textContent = 'ซิงก์ข้อมูลทั้งหมดเรียบร้อยแล้ว'
+      desc.textContent = 'พร้อมบันทึกประวัติละหมาด'
+    }
+
+    // Render list preview
+    const scanList = document.getElementById('scan-list')
+    if (scanList) {
+      if (queue.length === 0) {
+        scanList.innerHTML = `<div class="text-center py-6 text-xs text-gray-400">ยังไม่มีประวัติสแกนวันนี้</div>`
+      } else {
+        scanList.innerHTML = queue.map((r, i) => `
+          <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+            <span class="text-gray-400 font-mono">${i + 1}</span>
+            <div class="flex-1 min-w-0">
+              <p class="font-bold text-gray-800 truncate">${r.full_name}</p>
+              <p class="text-[10px] text-gray-400 truncate">รหัส ${r.student_code} · ห้อง ${_roomDisplay(r.main_room)}</p>
+            </div>
+            <span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">ออฟไลน์</span>
+          </div>
+        `).reverse().join('')
+      }
+    }
+  }
+
+  async function triggerBackgroundSync() {
+    if (isSyncing) return
+    const queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
+    if (!queue.length) return
+
+    isSyncing = true
+    updateQueueUI(true)
+
+    try {
+      await saveScannedPrayerRecords(queue)
+      localStorage.setItem('prayer_scan_queue', JSON.stringify([]))
+      showToast('ซิงก์บันทึกสแกนละหมาดสำเร็จ', 'success')
+    } catch (err) {
+      console.warn('Sync failed, offline backup kept:', err)
+    } finally {
+      isSyncing = false
+      updateQueueUI()
+    }
+  }
+
+  // Setup periodic sync retry every 8 seconds in background
+  const syncInterval = setInterval(() => {
+    triggerBackgroundSync()
+  }, 8000)
+  window._activePrayerScannerState.syncInterval = syncInterval
+
+  renderUI()
+}
+
+// ─── Version Changelogs List ────────────────────────────────────────────────
+const CHANGELOGS = {
+  '10.16.0': [
+    '🕌 เพิ่มระบบเช็คชื่อละหมาดด้วย QR Code และเครื่องสแกนบาร์โค้ด',
+    '🔌 รองรับปืนยิงสแกนเนอร์พร้อมโหมดล็อคโฟกัสอัตโนมัติ',
+    '📡 รองรับโหมดแยกหน้าจอ iPad ตัวที่ 2 แสดงการเช็คชื่อแบบ Real-time',
+    '📴 ระบบ Offline Queue บันทึกข้อมูลลงเครื่องทันทีกรณีเน็ตหลุด และซิงก์ออฟไลน์พื้นหลังแบบกลุ่ม',
+    '🔊 เสียงแจ้งเตือนและระบบกะพริบสีเขียว (Green Flash) ยืนยันความสำเร็จ'
+  ],
+  '10.15.0': [
+    '📊 ปรับปรุงหน้าจอเกรดเฉลี่ยของฉัน (GPA)',
+    '📚 เพิ่มระบบฟิลเตอร์ค้นหารายวิชาและคะแนนสะสม',
+    '📢 ระบบแจ้งเตือนประกาศสำคัญและวันส่งงาน'
+  ]
+}
+
+// ─── Check and Show Changelog Pop-up ───────────────────────────────────────
+export function checkAndShowChangelog(studentId) {
+  const currentVersion = APP_VERSION
+  const lastVersion = localStorage.getItem(`last_seen_version_${studentId}`)
+  
+  if (lastVersion !== currentVersion) {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6'
+    
+    let changelogHTML = ''
+    const versions = Object.keys(CHANGELOGS).sort().reverse()
+    
+    versions.forEach(v => {
+      if (!lastVersion || v > lastVersion || v === currentVersion) {
+        changelogHTML += `
+          <div class="mb-4 last:mb-0">
+            <h4 class="font-bold text-emerald-600 text-xs tracking-wider uppercase mb-1.5">เวอร์ชัน v${v}</h4>
+            <ul class="text-xs space-y-1.5 list-none pl-0">
+              ${CHANGELOGS[v].map(item => `<li class="flex items-start gap-2 text-gray-700 font-semibold"><span class="text-emerald-500">✦</span><span>${item}</span></li>`).join('')}
+            </ul>
+          </div>`
+      }
+    })
+    
+    modal.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-fade">
+        <div class="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-4 border border-emerald-100 text-2xl shadow-sm">
+          ✨
+        </div>
+        <h3 class="font-extrabold text-gray-800 text-base mb-1">ยินดีต้อนรับสู่เวอร์ชันใหม่!</h3>
+        <p class="text-xs text-gray-400 mb-4 font-medium">เราได้อัปเดตระบบและปรับปรุงการใช้งานสำหรับคุณ</p>
+        
+        <div class="bg-gray-50 border border-gray-100 rounded-2xl p-4 mb-5 max-h-60 overflow-y-auto text-left">
+          ${changelogHTML || '<p class="text-xs text-gray-400 text-center">ไม่มีการเปลี่ยนแปลงล่าสุด</p>'}
+        </div>
+        
+        <button id="btn-changelog-close" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl text-xs font-bold shadow-md shadow-emerald-200/60 transition active:scale-95">
+          รับทราบและเริ่มใช้งาน
+        </button>
+      </div>`
+      
+    document.body.appendChild(modal)
+    
+    const closeBtn = modal.querySelector('#btn-changelog-close')
+    const dismissModal = () => {
+      modal.remove()
+      localStorage.setItem(`last_seen_version_${studentId}`, currentVersion)
+    }
+    
+    closeBtn.addEventListener('click', dismissModal)
+    modal.addEventListener('click', e => {
+      if (e.target === modal) dismissModal()
+    })
+  }
+}
+
+

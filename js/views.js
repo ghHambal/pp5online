@@ -6039,6 +6039,10 @@ export async function renderPrayerAdmin() {
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
         📊 คะแนน
       </button>
+      <button id="pr-tab-scanners" data-tab="scanners"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
+        🔑 มอบสิทธิ์สแกนเนอร์
+      </button>
       <button id="pr-tab-config" data-tab="config"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
         ⚙️ ตั้งค่า
@@ -6618,6 +6622,192 @@ export async function renderPrayerAdmin() {
 
   }
 
+  // ─── Tab: มอบสิทธิ์สแกนเนอร์ ──────────────────────────────────────────
+  const _showScanners = () => {
+    document.getElementById('pr-tab-actions').innerHTML = ''
+    document.getElementById('pr-tab-content').innerHTML = `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="text-sm font-semibold text-gray-700">🔑 มอบสิทธิ์เครื่องสแกนเนอร์ (แกนนำสภานักเรียน)</span>
+        </div>
+        <div class="px-5 py-4 space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">ระบุรหัสนักเรียน (กรอกหลายรหัสพร้อมกันได้ คั่นด้วยเว้นวรรคหรือลูกน้ำ)</label>
+            <div class="flex gap-2">
+              <input type="text" id="pr-scanner-search-input" placeholder="เช่น 24275 23739"
+                class="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              <button id="btn-search-scanner-students" class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">ค้นหารายชื่อ</button>
+            </div>
+          </div>
+          <div id="scanner-preview-container" class="hidden border border-indigo-50 bg-indigo-50/20 rounded-xl p-4">
+            <p class="text-xs font-semibold text-indigo-700 mb-2">ตรวจสอบรายชื่อนักเรียนที่ต้องการมอบสิทธิ์:</p>
+            <div id="scanner-preview-cards" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3"></div>
+            <button id="btn-confirm-scanner-grant" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition">
+              ✓ ยืนยันและมอบสิทธิ์สแกนเนอร์
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+          <span class="text-sm font-semibold text-gray-700">📋 รายชื่อสภานักเรียนที่ได้รับสิทธิ์ปัจจุบัน</span>
+          <span id="scanner-count-badge" class="text-xs text-gray-400">0 คน</span>
+        </div>
+        <div id="scanners-list-wrap">
+          <div class="p-8 text-center text-gray-400">กำลังโหลด...</div>
+        </div>
+      </div>
+    `
+
+    let _foundStudents = []
+
+    const _loadScannersList = async () => {
+      const listWrap = document.getElementById('scanners-list-wrap')
+      if (!listWrap) return
+      try {
+        const { data: scanners, error } = await supabase
+          .from('students')
+          .select('id, student_code, full_name, main_room, image_url')
+          .eq('can_scan_prayer', true)
+          .order('student_code')
+        if (error) throw error
+
+        document.getElementById('scanner-count-badge').textContent = `${scanners.length} คน`
+
+        if (!scanners.length) {
+          listWrap.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm">ยังไม่มีนักเรียนได้รับสิทธิ์สแกนเนอร์</div>`
+          return
+        }
+
+        listWrap.innerHTML = `
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 border-b border-gray-100 text-gray-500">
+              <tr>
+                <th class="px-4 py-3 text-left">#</th>
+                <th class="px-2 py-3 text-left">รหัส</th>
+                <th class="px-3 py-3 text-left">ชื่อ-นามสกุล</th>
+                <th class="px-3 py-3 text-left">ห้องเรียน</th>
+                <th class="px-4 py-3 text-right">การจัดการ</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              ${scanners.map((s, idx) => `
+                <tr class="hover:bg-gray-50 transition">
+                  <td class="px-4 py-2 text-gray-400">${idx + 1}</td>
+                  <td class="px-2 py-2 font-mono text-gray-700">${s.student_code}</td>
+                  <td class="px-3 py-2">
+                    <div class="flex items-center gap-2">
+                      ${s.image_url 
+                        ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
+                        : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
+                      }
+                      <span class="font-medium text-gray-800">${s.full_name}</span>
+                    </div>
+                  </td>
+                  <td class="px-3 py-2 text-gray-500">${s.main_room || '—'}</td>
+                  <td class="px-4 py-2 text-right">
+                    <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
+                      data-id="${s.id}" data-name="${s.full_name}">
+                      ถอนสิทธิ์
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `
+
+        // ผูกอีเวนต์ปุ่มถอนสิทธิ์
+        listWrap.querySelectorAll('.btn-revoke-scanner').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const sid = +btn.dataset.id
+            const name = btn.dataset.name
+            if (!confirm(`ถอนสิทธิ์สแกนเนอร์ของ "${name}" หรือไม่?`)) return
+            try {
+              const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
+              if (error) throw error
+              showToast(`ถอนสิทธิ์ "${name}" สำเร็จ`, 'success')
+              _loadScannersList()
+            } catch(err) {
+              showToast('ทำรายการไม่สำเร็จ: ' + err.message, 'error')
+            }
+          })
+        })
+
+      } catch(err) {
+        listWrap.innerHTML = `<div class="p-8 text-center text-red-400 text-sm">โหลดรายการล้มเหลว: ${err.message}</div>`
+      }
+    }
+
+    // กดค้นหา
+    document.getElementById('btn-search-scanner-students').addEventListener('click', async () => {
+      const input = document.getElementById('pr-scanner-search-input').value.trim()
+      if (!input) { showToast('กรุณากรอกรหัสนักเรียน', 'warning'); return }
+      
+      const codes = input.split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
+      if (!codes.length) return
+
+      try {
+        const { data, error } = await supabase
+          .from('students')
+          .select('id, student_code, full_name, main_room, image_url')
+          .in('student_code', codes)
+        if (error) throw error
+
+        _foundStudents = data ?? []
+        const previewContainer = document.getElementById('scanner-preview-container')
+        const previewCards = document.getElementById('scanner-preview-cards')
+
+        if (!_foundStudents.length) {
+          previewContainer.classList.add('hidden')
+          showToast('ไม่พบรหัสนักเรียนที่ระบุ', 'warning')
+          return
+        }
+
+        previewContainer.classList.remove('hidden')
+        previewCards.innerHTML = _foundStudents.map(s => `
+          <div class="bg-white rounded-xl border border-indigo-100 p-3 flex items-center gap-3">
+            ${s.image_url 
+              ? `<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
+              : `<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">👤</div>`
+            }
+            <div class="min-w-0">
+              <p class="font-bold text-gray-800 text-xs truncate">${s.full_name}</p>
+              <p class="text-[10px] text-gray-400">รหัส ${s.student_code} · ห้อง ${s.main_room || '—'}</p>
+            </div>
+          </div>
+        `).join('')
+
+      } catch(err) {
+        showToast('ค้นหาล้มเหลว: ' + err.message, 'error')
+      }
+    })
+
+    // กดยืนยันมอบสิทธิ์
+    document.getElementById('btn-confirm-scanner-grant').addEventListener('click', async () => {
+      if (!_foundStudents.length) return
+      const ids = _foundStudents.map(s => s.id)
+      const btn = document.getElementById('btn-confirm-scanner-grant')
+      btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
+      try {
+        const { error } = await supabase.from('students').update({ can_scan_prayer: true }).in('id', ids)
+        if (error) throw error
+        showToast(`มอบสิทธิ์สำเร็จ ${_foundStudents.length} คน`, 'success')
+        document.getElementById('pr-scanner-search-input').value = ''
+        document.getElementById('scanner-preview-container').classList.add('hidden')
+        _foundStudents = []
+        _loadScannersList()
+      } catch(err) {
+        showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error')
+      } finally {
+        btn.disabled = false; btn.textContent = '✓ ยืนยันและมอบสิทธิ์สแกนเนอร์'
+      }
+    })
+
+    _loadScannersList()
+  }
+
   // ─── Tab switcher ──────────────────────────────────────────────────────────
   const _switchTab = (tab) => {
     document.querySelectorAll('[data-tab]').forEach(b => {
@@ -6625,9 +6815,12 @@ export async function renderPrayerAdmin() {
         ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
         : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
     })
-    if (tab==='scores') _showScores(); else _showConfig()
+    if (tab==='scores') _showScores();
+    else if (tab==='scanners') _showScanners();
+    else _showConfig()
   }
   document.getElementById('pr-tab-scores').addEventListener('click', ()=>_switchTab('scores'))
+  document.getElementById('pr-tab-scanners').addEventListener('click', ()=>_switchTab('scanners'))
   document.getElementById('pr-tab-config').addEventListener('click', ()=>_switchTab('config'))
   _switchTab('scores')
 }
