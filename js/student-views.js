@@ -2320,8 +2320,14 @@ export async function renderStudentPrayerScanner(student) {
     syncInterval: null
   }
 
-  // Setup memory of synced IDs for today
+  // Setup memory of synced IDs for today and prefill from device history
   if (!window._syncedStudentIdsToday) window._syncedStudentIdsToday = new Set()
+
+  const todayVal = _localDateValue(new Date())
+  let deviceHistory = JSON.parse(localStorage.getItem('prayer_scan_history_today') || '[]')
+  deviceHistory = deviceHistory.filter(r => r.check_date === todayVal)
+  localStorage.setItem('prayer_scan_history_today', JSON.stringify(deviceHistory))
+  deviceHistory.forEach(r => window._syncedStudentIdsToday.add(r.student_id))
 
   let inputMode = localStorage.getItem('prayer_scan_input_mode') || 'camera' // 'camera' | 'gun'
   let deviceMode = localStorage.getItem('prayer_scan_device_mode') || 'single' // 'single' | 'dual'
@@ -2666,6 +2672,20 @@ export async function renderStudentPrayerScanner(student) {
     // Append queue
     queue.push(newRecord)
     localStorage.setItem('prayer_scan_queue', JSON.stringify(queue))
+
+    // Add to device history
+    let deviceHistory = JSON.parse(localStorage.getItem('prayer_scan_history_today') || '[]')
+    deviceHistory = deviceHistory.filter(r => r.check_date === today)
+    if (!deviceHistory.some(r => r.student_id === student.id)) {
+      deviceHistory.unshift({
+        student_id: student.id,
+        full_name: student.full_name,
+        student_code: student.student_code,
+        main_room: student.main_room,
+        check_date: today
+      })
+      localStorage.setItem('prayer_scan_history_today', JSON.stringify(deviceHistory))
+    }
     
     // Save locally synced cache
     window._syncedStudentIdsToday.add(student.id)
@@ -2742,11 +2762,14 @@ export async function renderStudentPrayerScanner(student) {
   // ─── Queue Sync Handling ───────────────────────────────────────────────────
   function updateQueueUI(syncing = false) {
     const queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
-    
+    let deviceHistory = JSON.parse(localStorage.getItem('prayer_scan_history_today') || '[]')
+    const today = _localDateValue(new Date())
+    deviceHistory = deviceHistory.filter(r => r.check_date === today)
+
     // UI badge
     const badge = document.getElementById('scan-count-badge')
     if (badge) {
-      badge.textContent = `${queue.length} คน`
+      badge.textContent = `${deviceHistory.length} คน`
     }
 
     const indicator = document.getElementById('sync-indicator')
@@ -2769,22 +2792,29 @@ export async function renderStudentPrayerScanner(student) {
       desc.textContent = 'พร้อมบันทึกประวัติละหมาด'
     }
 
-    // Render list preview
+    // Render list preview using deviceHistory
     const scanList = document.getElementById('scan-list')
     if (scanList) {
-      if (queue.length === 0) {
+      if (deviceHistory.length === 0) {
         scanList.innerHTML = `<div class="text-center py-6 text-xs text-gray-400">ยังไม่มีประวัติสแกนวันนี้</div>`
       } else {
-        scanList.innerHTML = queue.map((r, i) => `
-          <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
-            <span class="text-gray-400 font-mono">${i + 1}</span>
-            <div class="flex-1 min-w-0">
-              <p class="font-bold text-gray-800 truncate">${r.full_name}</p>
-              <p class="text-[10px] text-gray-400 truncate">รหัส ${r.student_code} · ห้อง ${_roomDisplay(r.main_room)}</p>
+        scanList.innerHTML = deviceHistory.map((r, i) => {
+          const isOffline = queue.some(q => q.student_id === r.student_id)
+          const badgeHTML = isOffline
+            ? `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100 animate-pulse">ออฟไลน์</span>`
+            : `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">✓ สำเร็จ</span>`
+
+          return `
+            <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+              <span class="text-gray-400 font-mono">${deviceHistory.length - i}</span>
+              <div class="flex-1 min-w-0">
+                <p class="font-bold text-gray-800 truncate">${r.full_name}</p>
+                <p class="text-[10px] text-gray-400 truncate">รหัส ${r.student_code} · ห้อง ${_roomDisplay(r.main_room)}</p>
+              </div>
+              ${badgeHTML}
             </div>
-            <span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">ออฟไลน์</span>
-          </div>
-        `).reverse().join('')
+          `
+        }).join('')
       }
     }
   }
@@ -2820,6 +2850,11 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.2': [
+    '⚡ เพิ่มความเสถียรและความรวดเร็วในโหมดแยกหน้าจอ iPad (ดึงข้อมูลถี่ขึ้นทุก 1.5 วินาที พร้อมส่งเสียง/กะพริบไล่เลียงกัน)',
+    '📝 ปรับปรุงประวัติด้านล่างของหน้าจอเครื่องสแกน (มือถือ) ให้แสดงประวัติการสแกนของวันนี้ค้างไว้ถาวร (พร้อมสถานะสำเร็จ/ออฟไลน์)',
+    '📡 เพิ่มสคริปต์ SQL ช่วยเปิดระบบ Realtime Replication ในฐานข้อมูลเพื่อการซิงก์ที่รวดเร็วแบบทันใจ'
+  ],
   '10.17.1': [
     '🎨 ปรับปรุงหน้าจอ Monitor แยกเป็นโหมดสว่าง (Light Theme) สวยงาม อ่านง่ายขึ้น',
     '🖥️ ออกแบบ Layout จอ Monitor ใหม่ แสดงข้อมูลคนสแกนล่าสุดแบบเด่นชัดค้างไว้ และแสดงประวัติก่อนหน้าในตารางด้านขวา'

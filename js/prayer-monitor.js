@@ -151,7 +151,7 @@ function startPollingLoop() {
     } catch (err) {
       console.warn('Silent polling failed:', err)
     }
-  }, 4000)
+  }, 1500)
 }
 
 // ─── Fetch and Sync Records ──────────────────────────────────────────────────
@@ -172,15 +172,23 @@ async function fetchTodayRecords(isSilent = false) {
     const currentMaxId = recentRecords.length > 0 ? Math.max(...recentRecords.map(r => r.id)) : 0
     const newRecords = data.filter(r => r.id > currentMaxId).reverse() // oldest to newest of the new batch
 
-    // Update internal lists
-    recentRecords = data
-    renderRecentList()
-
-    // If silent check found new records, trigger check-in display sequential loop
-    if (isSilent && newRecords.length > 0) {
-      newRecords.forEach(r => {
-        handleNewCheckIn(r, false) // display scan
+    if (newRecords.length > 0) {
+      // Process new records sequentially with visual/sound feedback
+      newRecords.forEach((r, index) => {
+        setTimeout(() => {
+          handleNewCheckIn(r, true)
+        }, index * 600)
       })
+      
+      // Final full sync to guarantee state matches database exactly
+      setTimeout(() => {
+        recentRecords = data
+        renderRecentList()
+      }, newRecords.length * 600)
+    } else {
+      // Just update and render in place if no new records
+      recentRecords = data
+      renderRecentList()
     }
   } catch (err) {
     if (!isSilent) throw err
