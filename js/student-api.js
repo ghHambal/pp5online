@@ -6,7 +6,7 @@ export async function getMyStudentProfile() {
   if (!session) return null
   const { data, error } = await supabase
     .from('students')
-    .select('id, student_code, full_name, main_room, religion_room, image_url, profile_id, house_color, sports_shirt_size')
+    .select('id, student_code, full_name, main_room, religion_room, image_url, profile_id, house_color, sports_shirt_size, can_scan_prayer')
     .eq('profile_id', session.user.id)
     .maybeSingle()
   if (error) throw error

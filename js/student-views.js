@@ -2807,11 +2807,11 @@ const CHANGELOGS = {
 }
 
 // ─── Check and Show Changelog Pop-up ───────────────────────────────────────
-export function checkAndShowChangelog(studentId) {
+export function checkAndShowChangelog(studentId, forceShow = false) {
   const currentVersion = APP_VERSION
   const lastVersion = localStorage.getItem(`last_seen_version_${studentId}`)
   
-  if (lastVersion !== currentVersion) {
+  if (forceShow || lastVersion !== currentVersion) {
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6'
     
@@ -2819,7 +2819,7 @@ export function checkAndShowChangelog(studentId) {
     const versions = Object.keys(CHANGELOGS).sort().reverse()
     
     versions.forEach(v => {
-      if (!lastVersion || v > lastVersion || v === currentVersion) {
+      if (forceShow || !lastVersion || v > lastVersion || v === currentVersion) {
         changelogHTML += `
           <div class="mb-4 last:mb-0">
             <h4 class="font-bold text-emerald-600 text-xs tracking-wider uppercase mb-1.5">เวอร์ชัน v${v}</h4>
