@@ -3,7 +3,14 @@ import { supabase } from './supabase.js'
 // ─── State Management ────────────────────────────────────────────────────────
 let studentCache = new Map() // student_id -> student object
 let recentRecords = []       // array of recent record objects today
-let todayStr = new Date().toISOString().slice(0, 10)
+
+function getLocalDateString(d = new Date()) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+let todayStr = getLocalDateString()
 
 // DOM Elements
 const flashOverlay = document.getElementById('flash-overlay')
