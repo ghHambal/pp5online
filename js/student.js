@@ -59,11 +59,6 @@ async function init() {
   await _loadHeader()
   _bindNav()
   navigate('overview')
-  
-  // Show changelog popup if version has changed
-  if (_student?.id) {
-    checkAndShowChangelog(_student.id)
-  }
 
   _startStudentPolling()   // polling 30 วิ
   if (_student?.profile_id) injectFeedbackWidget({ profileId: _student.profile_id, role: 'student', name: _student.full_name })

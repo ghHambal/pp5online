@@ -2188,7 +2188,7 @@ export async function renderStudentProfile(student, onLogout) {
 
     <p class="text-center text-[10px] text-gray-300 mt-4 leading-relaxed">
       พัฒนาโดย <span class="text-gray-400 font-medium">KruHambalWaji</span><br/>
-      ปพ.5 ออนไลน์ © 2026 <span class="text-gray-400">v${APP_VERSION}</span>
+      ปพ.5 ออนไลน์ © 2026 <span id="btn-show-changelog-trigger" class="text-gray-400 hover:text-emerald-500 hover:underline cursor-pointer transition font-medium">v${APP_VERSION}</span>
     </p>
   `)
 
@@ -2217,6 +2217,11 @@ export async function renderStudentProfile(student, onLogout) {
     modal.querySelector('#stu-logout-cancel').addEventListener('click', () => modal.remove())
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
     modal.querySelector('#stu-logout-confirm-btn').addEventListener('click', onLogout)
+  })
+
+  // Bind version label click to open changelog modal
+  document.getElementById('btn-show-changelog-trigger')?.addEventListener('click', () => {
+    checkAndShowChangelog(student.id, true)
   })
 }
 
