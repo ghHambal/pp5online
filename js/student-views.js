@@ -2533,7 +2533,15 @@ export async function renderStudentPrayerScanner(student) {
       let lastScannedCode = null
       let lastScannedTime = 0
 
-      const config = { fps: 10, qrbox: { width: 220, height: 220 } }
+      const config = { 
+        fps: 25, 
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
+          const qrboxSize = Math.floor(minEdge * 0.75) // 75% of minimum edge
+          return { width: qrboxSize, height: qrboxSize }
+        },
+        aspectRatio: 1.0
+      }
       await html5Qrcode.start(
         { facingMode: "environment" },
         config,
