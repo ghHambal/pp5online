@@ -254,8 +254,28 @@ export async function openClassDashboard(classId, cls, tierIndex = 0, cfg = {}) 
   m.id = 'class-dashboard-modal'
   m.className = 'fixed inset-0 z-[90] flex flex-col bg-gray-50'
 
-  // ── Tier gate ───────────────────────────────────────────────────────────────
-  if (tierIndex < minTier) {
+  // ── Tier gate & Trial check ──────────────────────────────────────────────────
+  const systemDashboardLimit = cfg.freeDashboardLimit
+  let freeLimit = 0
+  if (systemDashboardLimit !== undefined && systemDashboardLimit !== '') {
+    const parsedVal = parseInt(systemDashboardLimit, 10)
+    if (Number.isFinite(parsedVal)) {
+      freeLimit = parsedVal
+    }
+  }
+
+  const teacherId = cls?.master_subjects?.teacher_id || 0
+  let isAllowedByTrial = false
+  let trialQuota = null
+  if (tierIndex < minTier && freeLimit > 0 && teacherId) {
+    trialQuota = _checkWeeklyDashboardQuota(teacherId, freeLimit)
+    if (trialQuota.allowed) {
+      isAllowedByTrial = true
+      _incrementWeeklyDashboardQuota(teacherId, trialQuota.weekMonday)
+    }
+  }
+
+  if (tierIndex < minTier && !isAllowedByTrial) {
     m.innerHTML = `
       <div class="flex items-center gap-3 px-5 py-4 bg-white border-b border-gray-100 shadow-sm flex-shrink-0">
         <button id="dash-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">←</button>
@@ -283,6 +303,7 @@ export async function openClassDashboard(classId, cls, tierIndex = 0, cfg = {}) 
       <div class="flex-1 min-w-0">
         <h2 class="font-bold text-gray-800 truncate">📈 ${_e(subjectName)}</h2>
         <p class="text-xs text-gray-400">ห้อง <strong class="text-gray-600">${_e(className)}</strong> · ${_e(subjectCode)}</p>
+        ${trialQuota ? `<span class="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">✨ ทดลองใช้งานฟรีสัปดาห์นี้ (ครั้งที่ ${trialQuota.count + 1}/${freeLimit})</span>` : ''}
       </div>
     </div>
     <div class="flex bg-white border-b border-gray-200 flex-shrink-0">
@@ -537,4 +558,45 @@ export async function openClassDashboard(classId, cls, tierIndex = 0, cfg = {}) 
   }
 
   setTab('attendance')
+}
+
+// ─── Classroom Dashboard Trial Helpers ────────────────────────────────────────
+function _checkWeeklyDashboardQuota(teacherId, freeLimit) {
+  if (freeLimit <= 0) return { allowed: false, count: 0 }
+
+  // Monday of the current week
+  const d = new Date()
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  const mondayStr = new Date(d.setDate(diff)).toISOString().slice(0, 10)
+
+  const key = `pp5_free_dash_week_${teacherId}`
+  let data = { weekMonday: mondayStr, count: 0 }
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.weekMonday === mondayStr) {
+        data = parsed
+      }
+    }
+  } catch (e) {}
+
+  return { allowed: data.count < freeLimit, count: data.count, weekMonday: mondayStr }
+}
+
+function _incrementWeeklyDashboardQuota(teacherId, weekMonday) {
+  const key = `pp5_free_dash_week_${teacherId}`
+  let count = 0
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.weekMonday === weekMonday) {
+        count = parsed.count
+      }
+    }
+  } catch (e) {}
+
+  localStorage.setItem(key, JSON.stringify({ weekMonday, count: count + 1 }))
 }

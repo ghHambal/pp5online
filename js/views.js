@@ -2167,6 +2167,9 @@ export async function renderSettings() {
     // ค่าเริ่มต้นโควต้า feedback — ให้ dropdown แสดงค่าที่ระบบใช้จริงตอนยังไม่เคยตั้งค่า
     cfg.feedbackQuotaTeacher = cfg.feedbackQuotaTeacher || '5'
     cfg.feedbackQuotaStudent = cfg.feedbackQuotaStudent || '3'
+    cfg.freeAttendanceScanLimit = cfg.freeAttendanceScanLimit || '2'
+    cfg.freeRandomPickerLimit = cfg.freeRandomPickerLimit || '1'
+    cfg.freeDashboardLimit = cfg.freeDashboardLimit || '0'
     // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
     const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HEALTH','OCC','VOC',
                               'ISL','ARB','BM','BML','MLB']
@@ -2488,6 +2491,14 @@ export async function renderSettings() {
                 ],
                 hint:'เลือกพฤติกรรมของระบบเมื่อครูใช้งานครบโควตาฟรี' },
               { key:'freeClassQuota', label:'โควตาห้องฟรี (ห้อง)', type:'text', placeholder:'3' },
+            ]),
+            section('โควตาทดลองใช้งานฟรี (สำหรับครูทั่วไป)', [
+              { key:'freeAttendanceScanLimit', label:'สแกน QR เช็คชื่อรายคาบ (ครั้ง/สัปดาห์)', type:'text', placeholder:'2',
+                hint:'จำนวนครั้งต่อสัปดาห์ที่ครูทั่วไปสามารถใช้กล้องสแกน QR Code เช็คชื่อได้ (ค่าเริ่มต้นคือ 2)' },
+              { key:'freeRandomPickerLimit', label:'สุ่มรายชื่อนักเรียน (ครั้งตลอดชีพ)', type:'text', placeholder:'1',
+                hint:'จำนวนครั้งทั้งหมดที่ครูทั่วไปสามารถทดลองสุ่มรายชื่อได้ (ค่าเริ่มต้นคือ 1)' },
+              { key:'freeDashboardLimit', label:'เข้าดูแดชบอร์ดห้องเรียน (ครั้ง/สัปดาห์)', type:'text', placeholder:'0',
+                hint:'จำนวนครั้งต่อสัปดาห์ที่ครูทั่วไปสามารถเข้าดูหน้า Dashboard ได้ (ใส่ 0 หรือเว้นว่างเพื่อไม่ให้ดูฟรีเลย)' },
             ]),
           ].join(''),
 

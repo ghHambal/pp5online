@@ -795,7 +795,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
           <button id="pw-close-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
           <div class="text-6xl mt-4">🔒</div>
           <p class="font-bold text-gray-800 text-lg">สิทธิ์การสแกนทดลองใช้งานเต็มแล้ว</p>
-          <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">ฟีเจอร์สแกน QR เพื่อเช็คชื่อคาบเรียนจำกัดทดลองฟรี 2 ครั้งต่อสัปดาห์สำหรับผู้ใช้งานทั่วไป<br><br>ร่วมสนับสนุนระบบเพื่อเปิดใช้งานแบบไม่จำกัดครับ</p>
+          <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">ฟีเจอร์สแกน QR เพื่อเช็คชื่อคาบเรียนจำกัดทดลองฟรี ${quota.limit} ครั้งต่อสัปดาห์สำหรับผู้ใช้งานทั่วไป<br><br>ร่วมสนับสนุนระบบเพื่อเปิดใช้งานแบบไม่จำกัดครับ</p>
           <button id="pw-donate-btn" class="mt-2 w-full py-3.5 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition bg-gradient-to-r from-amber-500 to-orange-500">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
         </div>`
       document.body.appendChild(paywall)
@@ -2679,7 +2679,16 @@ function _showStudentPrayerDetail(stat, weeks, prayMap, allDays, scCls) {
 
 // ─── Daily Attendance QR Scanner Helpers ─────────────────────────────────────
 function _checkWeeklyScanQuota(teacherId, isSupported) {
-  if (isSupported) return { allowed: true, count: 0 }
+  const systemLimitVal = window._pp5SystemCfg?.freeAttendanceScanLimit
+  let limit = 2
+  if (systemLimitVal !== undefined && systemLimitVal !== '') {
+    const parsedVal = parseInt(systemLimitVal, 10)
+    if (Number.isFinite(parsedVal)) {
+      limit = parsedVal
+    }
+  }
+
+  if (isSupported) return { allowed: true, count: 0, limit }
   
   // Monday of the current week
   const d = new Date()
@@ -2699,7 +2708,7 @@ function _checkWeeklyScanQuota(teacherId, isSupported) {
     }
   } catch (e) {}
   
-  return { allowed: data.count < 2, count: data.count, weekMonday: mondayStr }
+  return { allowed: data.count < limit, count: data.count, weekMonday: mondayStr, limit }
 }
 
 function _incrementWeeklyScanQuota(teacherId, weekMonday) {

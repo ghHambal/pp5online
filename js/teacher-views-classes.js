@@ -1361,6 +1361,15 @@ function _fireConfetti(container) {
 }
 
 async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
+  const systemLimitVal = window._pp5SystemCfg?.freeRandomPickerLimit
+  let limit = 1
+  if (systemLimitVal !== undefined && systemLimitVal !== '') {
+    const parsedVal = parseInt(systemLimitVal, 10)
+    if (Number.isFinite(parsedVal)) {
+      limit = parsedVal
+    }
+  }
+
   document.getElementById('random-picker-modal')?.remove()
 
   const showPaywallPopup = () => {
@@ -1369,7 +1378,7 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
         <button id="rp-paywall-close" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         <div class="text-6xl mt-4">🔒</div>
         <p class="font-bold text-gray-700 text-lg">สิทธิ์สุ่มทดลองใช้งานครบแล้ว</p>
-        <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">ฟีเจอร์สุ่มรายชื่อและจัดกลุ่มจำกัดการทดลองสุ่มฟรี 1 ครั้งสำหรับผู้ใช้ทั่วไป<br>สนับสนุนระบบเพื่อเปิดใช้งานแบบไม่จำกัด</p>
+        <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">ฟีเจอร์สุ่มรายชื่อและจัดกลุ่มจำกัดการทดลองสุ่มฟรี ${limit} ครั้งสำหรับผู้ใช้ทั่วไป<br>สนับสนุนระบบเพื่อเปิดใช้งานแบบไม่จำกัด</p>
         <button id="rp-upgrade" class="mt-2 w-full py-3.5 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
           style="background:linear-gradient(135deg,#f59e0b,#d97706)">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
       </div>`
@@ -1559,7 +1568,7 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
     if (isSpinning) return
     if (!isDonorTeacher) {
       const randomCount = parseInt(localStorage.getItem('pp5_free_random_count') || '0', 10)
-      if (randomCount >= 1) {
+      if (randomCount >= limit) {
         showPaywallPopup()
         return
       }
@@ -1831,7 +1840,7 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
     body.querySelector('#rp-group-go').addEventListener('click', () => {
       if (!isDonorTeacher) {
         const randomCount = parseInt(localStorage.getItem('pp5_free_random_count') || '0', 10)
-        if (randomCount >= 1) {
+        if (randomCount >= limit) {
           showPaywallPopup()
           return
         }
