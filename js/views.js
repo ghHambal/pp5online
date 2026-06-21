@@ -2649,6 +2649,8 @@ export async function renderSettings() {
         section('QR Code นักเรียน (เช็คชื่อละหมาด)', [
           { key:'studentQrDailyLimit', label:'จำกัดจำนวนครั้งที่สร้างต่อวัน', type:'text',
             placeholder:'เช่น 3', description:'ระบุจำนวนครั้งสูงสุดที่อนุญาตให้นักเรียนกดสร้าง QR Code ต่อวัน (ค่าเริ่มต้นคือ 3 ครั้ง)' },
+          { key:'studentQrExpirySeconds', label:'อายุการใช้งานของ QR Code (วินาที)', type:'text',
+            placeholder:'เช่น 60', description:'ระบุเวลาหมดอายุของ QR Code หน่วยเป็นวินาที (ค่าเริ่มต้นคือ 60 วินาที)' },
         ]),
         section('ตัวเลือกบังคับเกรด (คอลัมน์บังคับเกรดในหน้าคะแนน)', [
           { key:'forceGradeOptions', label:'รายการเกรด (คั่นด้วยจุลภาค)', type:'text',

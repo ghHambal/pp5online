@@ -2229,6 +2229,7 @@ export async function renderStudentProfile(student, onLogout) {
   // Bind click event to generate dynamic expiring QR Code
   document.getElementById('btn-show-my-qr').addEventListener('click', async () => {
     const dailyLimit = parseInt(cfg.studentQrDailyLimit || '3', 10)
+    const expirySeconds = parseInt(cfg.studentQrExpirySeconds || '60', 10)
     const storageKey = `qr_generation_logs_${student.id}`
     const todayStr = _localDateValue(new Date())
     let log = JSON.parse(localStorage.getItem(storageKey) || 'null')
@@ -2267,7 +2268,7 @@ export async function renderStudentProfile(student, onLogout) {
           <div class="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden mb-2.5">
             <div id="qr-timer-bar" class="bg-emerald-500 h-full w-full transition-all duration-1000 ease-linear"></div>
           </div>
-          <p class="text-xs font-semibold text-gray-500">QR Code จะหมดอายุและปิดตัวลงใน <span id="qr-timer-sec" class="text-emerald-600 font-bold text-sm">60</span> วินาที</p>
+          <p class="text-xs font-semibold text-gray-500">QR Code จะหมดอายุและปิดตัวลงใน <span id="qr-timer-sec" class="text-emerald-600 font-bold text-sm">${expirySeconds}</span> วินาที</p>
           <p class="text-[10px] text-gray-400 mt-1">(สิทธิ์การสร้างวันนี้เหลือ: ${dailyLimit - log.count} / ${dailyLimit} ครั้ง)</p>
         </div>
 
@@ -2299,14 +2300,14 @@ export async function renderStudentProfile(student, onLogout) {
     }
 
     // Start countdown
-    let secondsLeft = 60
+    let secondsLeft = expirySeconds
     const timerBar = modal.querySelector('#qr-timer-bar')
     const timerSec = modal.querySelector('#qr-timer-sec')
     
     const timer = setInterval(() => {
       secondsLeft -= 1
       if (timerSec) timerSec.textContent = secondsLeft
-      if (timerBar) timerBar.style.width = `${(secondsLeft / 60) * 100}%`
+      if (timerBar) timerBar.style.width = `${(secondsLeft / expirySeconds) * 100}%`
       
       if (secondsLeft <= 0) {
         clearInterval(timer)
@@ -2765,9 +2766,10 @@ export async function renderStudentPrayerScanner(student) {
         const qrTime = parseInt(timestampStr, 10)
         const nowTime = Math.floor(Date.now() / 1000)
         const timeDiff = nowTime - qrTime
-        console.log(`[Scanner] Dynamic QR parsed - Code: ${actualCode}, QR Time: ${qrTime}, Now: ${nowTime}, Diff: ${timeDiff}s`)
+        const expiryLimit = parseInt(systemConfig.studentQrExpirySeconds || '60', 10)
+        console.log(`[Scanner] Dynamic QR parsed - Code: ${actualCode}, QR Time: ${qrTime}, Now: ${nowTime}, Diff: ${timeDiff}s, Allowed Expiry: ${expiryLimit}s`)
 
-        if (isNaN(qrTime) || timeDiff > 60 || timeDiff < -60) {
+        if (isNaN(qrTime) || timeDiff > expiryLimit || timeDiff < -expiryLimit) {
           isQrCodeExpired = true
           studentCode = actualCode.trim()
         } else {
@@ -2787,8 +2789,9 @@ export async function renderStudentPrayerScanner(student) {
 
     if (isQrCodeExpired) {
       console.warn('[Scanner] QR Code has expired')
+      const expiryLimit = parseInt(systemConfig.studentQrExpirySeconds || '60', 10)
       playBeep('error')
-      showScanFeedback(student, studentCode, 'QR Code นี้หมดอายุแล้ว (เกิน 1 นาที)')
+      showScanFeedback(student, studentCode, `QR Code นี้หมดอายุแล้ว (เกิน ${expiryLimit} วินาที)`)
       return
     }
 
