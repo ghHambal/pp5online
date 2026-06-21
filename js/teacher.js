@@ -164,7 +164,11 @@ const ROUTES = {
   'reading-score':    () => { const r = window._pendingReadingRoom; window._pendingReadingRoom = null; renderReadingScore(_teacher, r) },
   'prayer-score':     () => {
     const rooms = _homeroomRooms.filter(r => r.category === 'ศาสนา')
-    _pickRoom(rooms, picked => renderPrayerScore(_teacher, rooms.filter(r => r.main_room === picked)))
+    if (rooms.length === 0) {
+      renderPrayerScore(_teacher, [])
+    } else {
+      _pickRoom(rooms, picked => renderPrayerScore(_teacher, rooms.filter(r => r.main_room === picked)))
+    }
   },
   'grades':      () => renderGrades(),
   'requests':    () => renderRequests(_teacher),
@@ -460,10 +464,35 @@ function _startPolling() {
   })
 }
 
-function _applyRoleMenus() {
+async function _applyRoleMenus() {
   const hasLifeSkill = _homeroomRooms.some(r => r.category === 'สามัญ')
-  const hasPrayer    = _homeroomRooms.some(r => r.category === 'ศาสนา')
   const hasReading   = _teacher?.dept === 'THAI'
+
+  let hasPrayer = _homeroomRooms.some(r => r.category === 'ศาสนา')
+  if (!hasPrayer && _teacher) {
+    try {
+      const [cfg, profileRes] = await Promise.all([
+        getSystemConfig().catch(() => ({})),
+        supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle()
+      ])
+      const teacherCodes = (cfg.prayerScannerTeachers || '')
+        .split(/[\s,]+/)
+        .map(c => c.trim())
+        .filter(Boolean)
+      const profile = profileRes?.data ?? null
+
+      const isAllowedScanner = teacherCodes.includes(_teacher.teacher_code) ||
+                               _teacher.staff_type === 'แอดมิน' ||
+                               _teacher.position === 'admin' ||
+                               profile?.role === 'admin'
+      if (isAllowedScanner) {
+        hasPrayer = true
+      }
+    } catch (e) {
+      console.error('Error checking teacher scanner permission in sidebar:', e)
+    }
+  }
+
   const toggle = (id, show) => {
     const el = document.getElementById(id)
     if (!el) return
@@ -480,7 +509,7 @@ async function _refreshProfile(userId) {
   _teacher = await getMyTeacherProfile(userId)
   _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
   await loadTeacherInfo(userId)
-  _applyRoleMenus()
+  await _applyRoleMenus()
   navigate('profile')   // re-render ฟอร์มด้วย _teacher ที่อัปเดตแล้ว
 }
 
@@ -489,7 +518,7 @@ async function _onSetupComplete(userId) {
   _teacher       = await getMyTeacherProfile(userId)
   _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
   await loadTeacherInfo(userId)
-  _applyRoleMenus()
+  await _applyRoleMenus()
   navigate('schedule-builder')
 }
 
@@ -2530,7 +2559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         : await getTeacherById(impData.id).catch(() => impData)
       await applyThemeForRole('teacher', _teacher ?? {})
       _homeroomRooms = _teacher?.id ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
-      _applyRoleMenus()
+      await _applyRoleMenus()
       loadSidebarHeader(_teacher)
       // โหลด position permissions ก่อน เพื่อให้เมนูหัวหน้า/supervisor แสดงถูกต้องตอน "ดูในฐานะ"
       if (_teacher?.position || _teacher?.positions?.length) {
@@ -2566,7 +2595,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadTeacherInfo(session.user.id)
     _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
-    _applyRoleMenus()
+    await _applyRoleMenus()
     loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
     _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
     _startPolling()              // polling 30 วิ

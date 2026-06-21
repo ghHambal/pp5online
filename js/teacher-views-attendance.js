@@ -1607,7 +1607,43 @@ function _calcPrayerScore(prayerDayMap, allDays) {
 export async function renderPrayerScore(teacher, homeroomRooms) {
   setActiveNav('prayer-score')
   setTitle('บันทึกคะแนนละหมาด')
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const teacherCodes = (cfg.prayerScannerTeachers || '')
+    .split(/[\s,]+/)
+    .map(c => c.trim())
+    .filter(Boolean)
+  
+  let isAllowedScanner = false
+  if (teacher) {
+    let profile = null
+    try {
+      const { data } = await supabase.from('profiles').select('role').eq('id', teacher.profile_id).maybeSingle()
+      profile = data
+    } catch (e) {}
+    isAllowedScanner = teacherCodes.includes(teacher.teacher_code) ||
+                       teacher.staff_type === 'แอดมิน' ||
+                       teacher.position === 'admin' ||
+                       profile?.role === 'admin'
+  }
+
   if (!homeroomRooms.length) {
+    if (isAllowedScanner) {
+      setContent(`<div class="max-w-xl mx-auto text-center py-20 text-gray-400">
+        <p class="text-5xl mb-4">🕌</p>
+        <p class="font-medium text-gray-700">ไม่มีห้องที่ปรึกษา (ศาสนา) ที่รับผิดชอบ</p>
+        <p class="text-sm text-gray-400 mt-2 mb-6">แต่คุณได้รับสิทธิ์ในการสแกนบันทึกเวลาละหมาดของนักเรียน</p>
+        <button id="btn-open-scanner-direct" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex items-center gap-2 mx-auto">
+          📷 เปิดกล้องสแกน
+        </button>
+      </div>`)
+      document.getElementById('btn-open-scanner-direct')?.addEventListener('click', async () => {
+        const { renderStudentPrayerScanner } = await import('./student-views.js')
+        renderStudentPrayerScanner(teacher)
+      })
+      return
+    }
+
     setContent(`<div class="max-w-xl mx-auto text-center py-20 text-gray-400">
       <p class="text-5xl mb-4">🕌</p>
       <p class="font-medium">ไม่มีห้องที่ปรึกษา (ศาสนา) ที่รับผิดชอบ</p>
@@ -1681,6 +1717,11 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
           ซ่อนคะแนนรวม
         </button>
         <button id="btn-prayer-stats" class="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg font-medium hover:bg-indigo-700 transition">📊 สถิติ</button>
+        ${isAllowedScanner ? `
+        <button id="btn-prayer-scanner" class="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg font-bold hover:bg-emerald-700 transition flex items-center gap-1 shadow-sm">
+          📷 สแกนละหมาด
+        </button>
+        ` : ''}
       </div>
       <div id="prayer-saving" class="hidden fixed top-16 right-4 z-50 bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">💾 กำลังบันทึก...</div>
       <!-- Grid -->
@@ -1754,6 +1795,13 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
     document.getElementById('prayer-room-sel')?.addEventListener('change', e => _load(e.target.value))
     document.getElementById('btn-prayer-stats')?.addEventListener('click', () =>
       _showPrayerStats(teacher, room, students, weeks, prayMap, allDays, year, sem))
+    
+    if (isAllowedScanner) {
+      document.getElementById('btn-prayer-scanner')?.addEventListener('click', async () => {
+        const { renderStudentPrayerScanner } = await import('./student-views.js')
+        renderStudentPrayerScanner(teacher)
+      })
+    }
 
     // ── Toggle score column ──────────────────────────────────────────────────
     let _prayerScoreVisible = true
