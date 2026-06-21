@@ -2672,39 +2672,21 @@ export async function renderStudentPrayerScanner(student) {
         aspectRatio: 1.0
       }
 
-      const onScanSuccess = (decodedText) => {
-        if (decodedText === lastScannedCode && Date.now() - lastScannedTime < 1800) {
-          return // skip repeat scanned text
+      await html5Qrcode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          if (decodedText === lastScannedCode && Date.now() - lastScannedTime < 1800) {
+            return // skip repeat scanned text
+          }
+          lastScannedCode = decodedText
+          lastScannedTime = Date.now()
+          processCheckIn(decodedText)
+        },
+        () => {
+          // silent camera failures/no QR found
         }
-        lastScannedCode = decodedText
-        lastScannedTime = Date.now()
-        processCheckIn(decodedText)
-      }
-
-      const onScanFailure = () => {
-        // silent camera failures/no QR found
-      }
-
-      try {
-        // Try starting with advanced focus constraint for autofocus
-        await html5Qrcode.start(
-          { 
-            facingMode: "environment",
-            advanced: [{ focusMode: "continuous" }]
-          },
-          config,
-          onScanSuccess,
-          onScanFailure
-        )
-      } catch (err) {
-        console.warn('[Scanner] Failed to start camera with continuous focus, falling back to standard settings:', err)
-        await html5Qrcode.start(
-          { facingMode: "environment" },
-          config,
-          onScanSuccess,
-          onScanFailure
-        )
-      }
+      )
     } catch (err) {
       console.error('Camera open failed:', err)
       showToast('ไม่สามารถเปิดใช้งานกล้องได้: ' + (err.message || 'ไม่มีสิทธิ์เข้าถึง'), 'error')
