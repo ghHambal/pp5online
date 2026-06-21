@@ -2524,7 +2524,35 @@ export async function renderStudentPrayerScanner(student) {
       <!-- Scanners Area -->
       <div id="scanner-view-camera" class="relative overflow-hidden bg-slate-950 rounded-3xl w-full max-w-sm mx-auto aspect-square border border-slate-800 shadow-inner flex flex-col items-center justify-center p-0 mb-4 ${inputMode === 'camera' ? '' : 'hidden'}">
         <div id="camera-reader" class="w-full h-full rounded-2xl overflow-hidden"></div>
+        
+        <!-- Custom Square Viewfinder Overlay -->
+        <div class="absolute inset-0 pointer-events-none z-10 flex items-center justify-center overflow-hidden">
+          <!-- Dark semi-transparent background -->
+          <div class="absolute inset-0 bg-black/35"></div>
+          <!-- Viewfinder Frame -->
+          <div class="relative w-56 h-56 rounded-3xl border-2 border-white/20 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] flex items-center justify-center overflow-hidden">
+            <!-- Neon Corner Brackets -->
+            <div class="absolute top-0 left-0 w-6 h-6 border-t-[3.5px] border-l-[3.5px] border-emerald-400 rounded-tl-md"></div>
+            <div class="absolute top-0 right-0 w-6 h-6 border-t-[3.5px] border-r-[3.5px] border-emerald-400 rounded-tr-md"></div>
+            <div class="absolute bottom-0 left-0 w-6 h-6 border-b-[3.5px] border-l-[3.5px] border-emerald-400 rounded-bl-md"></div>
+            <div class="absolute bottom-0 right-0 w-6 h-6 border-b-[3.5px] border-r-[3.5px] border-emerald-400 rounded-br-md"></div>
+            <!-- Laser Sweeper Line -->
+            <div class="w-full h-[2.5px] bg-emerald-400 opacity-90 absolute top-0 shadow-[0_0_8px_rgba(52,211,153,0.85)] animate-laser-move"></div>
+          </div>
+        </div>
       </div>
+
+      <style>
+        @keyframes laser-sweep {
+          0% { top: 0%; opacity: 0.3; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { top: 100%; opacity: 0.3; }
+        }
+        .animate-laser-move {
+          animation: laser-sweep 2.8s infinite ease-in-out;
+        }
+      </style>
 
       <div id="scanner-view-gun" class="border border-dashed border-gray-300 bg-white rounded-3xl py-12 px-6 text-center shadow-sm mb-4 transition-all relative ${inputMode === 'gun' ? '' : 'hidden'}">
         <input id="scanner-gun-input" type="text" inputmode="none" class="absolute opacity-0 pointer-events-none" autocomplete="off" />
@@ -2664,11 +2692,6 @@ export async function renderStudentPrayerScanner(student) {
 
       const config = { 
         fps: 25, 
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-          const qrboxSize = Math.floor(minEdge * 0.70) // 70% of minimum edge
-          return { width: qrboxSize, height: qrboxSize }
-        },
         aspectRatio: 1.0
       }
 
