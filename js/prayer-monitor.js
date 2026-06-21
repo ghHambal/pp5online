@@ -123,14 +123,19 @@ function setConnectionState(state, text) {
 function setupRealtimeSubscription() {
   const channel = supabase.channel('prayer-realtime-monitor')
     .on('postgres_changes', {
-      event: 'INSERT',
+      event: '*',
       schema: 'public',
       table: 'prayer_records'
     }, (payload) => {
-      const record = payload.new
-      // Double check it's for today
-      if (record.check_date === todayStr) {
-        handleNewCheckIn(record)
+      if (payload.eventType === 'INSERT') {
+        const record = payload.new
+        // Double check it's for today
+        if (record.check_date === todayStr) {
+          handleNewCheckIn(record)
+        }
+      } else if (payload.eventType === 'DELETE' || payload.eventType === 'UPDATE') {
+        // Trigger silent fetch to sync state immediately when a record is deleted or updated
+        fetchTodayRecords(true)
       }
     })
 
@@ -166,7 +171,11 @@ async function fetchTodayRecords(isSilent = false) {
 
     if (error) throw error
 
-    if (!data || data.length === 0) return
+    if (!data || data.length === 0) {
+      recentRecords = []
+      renderRecentList()
+      return
+    }
 
     // Find any records that we haven't processed yet
     const currentMaxId = recentRecords.length > 0 ? Math.max(...recentRecords.map(r => r.id)) : 0
