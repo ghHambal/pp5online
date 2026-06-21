@@ -2380,6 +2380,7 @@ function getWeekNumber(dateStr, cfg) {
 
 // ─── Student Prayer Check-in Scanner Screen ──────────────────────────────────
 export async function renderStudentPrayerScanner(student) {
+  window._lastSuccessFeedbackHTML = ''
   if (!student.can_scan_prayer) {
     setContent(`
       <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">
@@ -2888,8 +2889,15 @@ export async function renderStudentPrayerScanner(student) {
             <p class="text-xs text-gray-500 truncate">รหัส ${student.student_code} · ห้อง ${_roomDisplay(student.main_room)}</p>
             <p class="text-[10px] text-gray-400 mt-1.5 font-mono">${message}</p>
           </div>
-          <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-base shadow">✓</div>
+          <button id="btn-undo-scan" data-sid="${student.id}" data-name="${student.full_name}" class="px-2.5 py-2.5 rounded-xl bg-red-50 text-red-600 border border-red-100 hover:bg-red-500 hover:text-white transition-all text-xs font-bold active:scale-95 flex-shrink-0 flex items-center gap-0.5">
+            ✕ ยกเลิก
+          </button>
         </div>`
+
+      // Store HTML to revert back to if an error scan happens
+      window._lastSuccessFeedbackHTML = container.innerHTML
+      bindUndoButtonListener(container)
+
     } else {
       const name = student ? student.full_name : 'ไม่พบข้อมูล'
       const detail = student ? `รหัส ${student.student_code} · ห้อง ${_roomDisplay(student.main_room)}` : `สแกนพบ: ${code}`
@@ -2903,14 +2911,77 @@ export async function renderStudentPrayerScanner(student) {
             <p class="text-xs font-bold text-red-600 mt-1.5">${message}</p>
           </div>
         </div>`
+
+      container.classList.remove('hidden')
+
+      // Auto-revert to last success card or hide after 3.5 seconds
+      window._feedbackTimeout = setTimeout(() => {
+        if (window._lastSuccessFeedbackHTML) {
+          container.innerHTML = window._lastSuccessFeedbackHTML
+          bindUndoButtonListener(container)
+        } else {
+          container.innerHTML = ''
+          container.classList.add('hidden')
+        }
+      }, 3500)
+      return
     }
 
     container.classList.remove('hidden')
+  }
 
-    window._feedbackTimeout = setTimeout(() => {
+  function bindUndoButtonListener(container) {
+    const btn = container.querySelector('#btn-undo-scan')
+    if (!btn) return
+    btn.addEventListener('click', () => {
+      const sid = parseInt(btn.dataset.sid, 10)
+      const name = btn.dataset.name
+      undoScan(sid, name)
+    })
+  }
+
+  async function undoScan(studentId, fullName) {
+    const today = _localDateValue(new Date())
+
+    // 1. Remove from local queue
+    let queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
+    queue = queue.filter(r => !(r.student_id === studentId && r.check_date === today))
+    localStorage.setItem('prayer_scan_queue', JSON.stringify(queue))
+
+    // 2. Remove from local history
+    let deviceHistory = JSON.parse(localStorage.getItem('prayer_scan_history_today') || '[]')
+    deviceHistory = deviceHistory.filter(r => !(r.student_id === studentId && r.check_date === today))
+    localStorage.setItem('prayer_scan_history_today', JSON.stringify(deviceHistory))
+
+    // 3. Remove from local synced cache
+    window._syncedStudentIdsToday.delete(studentId)
+
+    // 4. Reset the last success feedback HTML
+    window._lastSuccessFeedbackHTML = ''
+    const container = document.getElementById('scanner-feedback-container')
+    if (container) {
       container.innerHTML = ''
       container.classList.add('hidden')
-    }, 1500)
+    }
+
+    // 5. Update UI list and badge counts
+    updateQueueUI()
+
+    // 6. Delete from Supabase server
+    showToast(`กำลังยกเลิกรายการของ ${fullName}...`, 'info')
+    try {
+      const { error } = await supabase
+        .from('prayer_records')
+        .delete()
+        .eq('student_id', studentId)
+        .eq('check_date', today)
+        .is('teacher_id', null)
+      if (error) throw error
+      showToast(`ยกเลิกบันทึกของ ${fullName} สำเร็จ ✕`, 'success')
+    } catch (err) {
+      console.warn('Failed to delete from server (offline?):', err)
+      showToast(`ยกเลิกในเครื่องสำเร็จ (จะปรับปรุงบนเซิร์ฟเวอร์เมื่อออนไลน์)`, 'warning')
+    }
   }
 
   function triggerScreenFlash() {
