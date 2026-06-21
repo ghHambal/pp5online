@@ -11,6 +11,7 @@ import {
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
 import { APP_VERSION } from './version.js'
+import QRCode from 'qrcode'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
@@ -2180,6 +2181,12 @@ export async function renderStudentProfile(student, onLogout) {
 
     ${_contactLinks()}
 
+    <button id="btn-show-my-qr"
+      class="w-full mb-4 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm
+             shadow-md shadow-emerald-200/60 transition flex items-center justify-center gap-2">
+      🎫 แสดง QR Code ของฉัน
+    </button>
+
     <button id="stu-logout-btn"
       class="w-full py-3.5 rounded-2xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold text-sm
              shadow-md shadow-red-200/60 transition flex items-center justify-center gap-2">
@@ -2217,6 +2224,102 @@ export async function renderStudentProfile(student, onLogout) {
     modal.querySelector('#stu-logout-cancel').addEventListener('click', () => modal.remove())
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
     modal.querySelector('#stu-logout-confirm-btn').addEventListener('click', onLogout)
+  })
+
+  // Bind click event to generate dynamic expiring QR Code
+  document.getElementById('btn-show-my-qr').addEventListener('click', async () => {
+    const dailyLimit = parseInt(cfg.studentQrDailyLimit || '3', 10)
+    const storageKey = `qr_generation_logs_${student.id}`
+    const todayStr = _localDateValue(new Date())
+    let log = JSON.parse(localStorage.getItem(storageKey) || 'null')
+    
+    if (!log || log.date !== todayStr) {
+      log = { date: todayStr, count: 0 }
+    }
+    
+    if (log.count >= dailyLimit) {
+      showToast(`คุณสร้าง QR Code ครบโควต้า ${dailyLimit} ครั้งของวันนี้แล้ว ⚠️`, 'warning')
+      return
+    }
+
+    // Increment count and save to localStorage
+    log.count += 1
+    localStorage.setItem(storageKey, JSON.stringify(log))
+
+    // Create full-screen modal
+    document.getElementById('student-qr-modal')?.remove()
+    const modal = document.createElement('div')
+    modal.id = 'student-qr-modal'
+    modal.className = 'fixed inset-0 z-[300] bg-white flex flex-col items-center justify-center p-6 animate-fade'
+    modal.innerHTML = `
+      <div class="text-center w-full max-w-sm">
+        <div class="mb-5">
+          <h3 class="text-2xl font-bold text-gray-800">🎫 QR Code ของฉัน</h3>
+          <p class="text-sm font-semibold text-emerald-600 mt-1">${student.full_name}</p>
+          <p class="text-xs text-gray-400 mt-0.5">รหัส: ${student.student_code} · ห้อง: ${_roomDisplay(student.main_room)}</p>
+        </div>
+        
+        <div class="relative w-64 h-64 mx-auto mb-6 bg-gray-50 border border-gray-100 rounded-3xl flex items-center justify-center shadow-inner">
+          <canvas id="student-qr-canvas" class="w-56 h-56 object-contain"></canvas>
+        </div>
+
+        <div class="mb-8 px-4">
+          <div class="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden mb-2.5">
+            <div id="qr-timer-bar" class="bg-emerald-500 h-full w-full transition-all duration-1000 ease-linear"></div>
+          </div>
+          <p class="text-xs font-semibold text-gray-500">QR Code จะหมดอายุและปิดตัวลงใน <span id="qr-timer-sec" class="text-emerald-600 font-bold text-sm">60</span> วินาที</p>
+          <p class="text-[10px] text-gray-400 mt-1">(สิทธิ์การสร้างวันนี้เหลือ: ${dailyLimit - log.count} / ${dailyLimit} ครั้ง)</p>
+        </div>
+
+        <button id="btn-close-qr" class="w-full py-3.5 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 active:scale-95 transition-all shadow-sm">
+          ✕ ปิดหน้าจอ
+        </button>
+      </div>`
+    document.body.appendChild(modal)
+
+    // Draw QR Code
+    const canvas = modal.querySelector('#student-qr-canvas')
+    const now = Math.floor(Date.now() / 1000)
+    const payload = `SQ:${student.student_code}:${now}`
+    
+    try {
+      await QRCode.toCanvas(canvas, payload, {
+        width: 220,
+        margin: 1.5,
+        color: {
+          dark: '#111827',
+          light: '#FFFFFF'
+        }
+      })
+    } catch (err) {
+      console.error('Failed to draw QR Code:', err)
+      showToast('สร้าง QR Code ไม่สำเร็จ', 'error')
+      modal.remove()
+      return
+    }
+
+    // Start countdown
+    let secondsLeft = 60
+    const timerBar = modal.querySelector('#qr-timer-bar')
+    const timerSec = modal.querySelector('#qr-timer-sec')
+    
+    const timer = setInterval(() => {
+      secondsLeft -= 1
+      if (timerSec) timerSec.textContent = secondsLeft
+      if (timerBar) timerBar.style.width = `${(secondsLeft / 60) * 100}%`
+      
+      if (secondsLeft <= 0) {
+        clearInterval(timer)
+        modal.remove()
+        showToast('QR Code หมดอายุและปิดตัวลงแล้ว ⏱', 'info')
+      }
+    }, 1000)
+
+    // Bind Close Button
+    modal.querySelector('#btn-close-qr').addEventListener('click', () => {
+      clearInterval(timer)
+      modal.remove()
+    })
   })
 
   // Bind version label click to open changelog modal
@@ -2629,11 +2732,47 @@ export async function renderStudentPrayerScanner(student) {
   }
 
   // ─── Main Check-in Handler ──────────────────────────────────────────────────
-  async function processCheckIn(studentCode) {
-    if (!studentCode) return
+  async function processCheckIn(studentRawCode) {
+    console.log('[Scanner] Raw scanned text:', studentRawCode)
+    if (!studentRawCode) return
+
+    let studentCode = String(studentRawCode).trim()
+    let isQrCodeExpired = false
+
+    if (studentCode.startsWith('SQ:')) {
+      const parts = studentCode.split(':')
+      if (parts.length === 3) {
+        const [, actualCode, timestampStr] = parts
+        const qrTime = parseInt(timestampStr, 10)
+        const nowTime = Math.floor(Date.now() / 1000)
+        const timeDiff = nowTime - qrTime
+        console.log(`[Scanner] Dynamic QR parsed - Code: ${actualCode}, QR Time: ${qrTime}, Now: ${nowTime}, Diff: ${timeDiff}s`)
+
+        if (isNaN(qrTime) || timeDiff > 60 || timeDiff < -60) {
+          isQrCodeExpired = true
+          studentCode = actualCode.trim()
+        } else {
+          studentCode = actualCode.trim()
+        }
+      } else {
+        console.warn('[Scanner] Invalid SQ payload parts count:', parts.length)
+        playBeep('error')
+        showScanFeedback(null, studentRawCode, 'รูปแบบ QR Code ไม่ถูกต้อง')
+        return
+      }
+    }
 
     // Roster Lookup (instant offline lookup)
-    const student = roster.find(s => s.student_code === studentCode)
+    const student = roster.find(s => String(s.student_code).trim() === studentCode)
+    console.log('[Scanner] Lookup result for code:', studentCode, student ? student.full_name : 'not found')
+
+    if (isQrCodeExpired) {
+      console.warn('[Scanner] QR Code has expired')
+      playBeep('error')
+      showScanFeedback(student, studentCode, 'QR Code นี้หมดอายุแล้ว (เกิน 1 นาที)')
+      return
+    }
+
     if (!student) {
       playBeep('error')
       showScanFeedback(null, studentCode, 'ไม่พบข้อมูลนักเรียนรหัสนี้')

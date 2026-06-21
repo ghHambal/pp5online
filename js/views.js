@@ -2646,6 +2646,10 @@ export async function renderSettings() {
           { key:'showStudentHouseColor', label:'แสดงคอลัมน์ประจำสี', type:'toggle' },
           { key:'showStudentSportsShirtSize', label:'แสดงคอลัมน์ไซด์เสื้อกีฬาสี', type:'toggle' },
         ]),
+        section('QR Code นักเรียน (เช็คชื่อละหมาด)', [
+          { key:'studentQrDailyLimit', label:'จำกัดจำนวนครั้งที่สร้างต่อวัน', type:'text',
+            placeholder:'เช่น 3', description:'ระบุจำนวนครั้งสูงสุดที่อนุญาตให้นักเรียนกดสร้าง QR Code ต่อวัน (ค่าเริ่มต้นคือ 3 ครั้ง)' },
+        ]),
         section('ตัวเลือกบังคับเกรด (คอลัมน์บังคับเกรดในหน้าคะแนน)', [
           { key:'forceGradeOptions', label:'รายการเกรด (คั่นด้วยจุลภาค)', type:'text',
             placeholder:'เช่น 0,ร,มส,มผ', description:'ค่าเริ่มต้น: 0,ร,มส,มผ — ครูจะเห็นเป็นตัวเลือกเมื่อกดบังคับเกรดนักเรียน' },
