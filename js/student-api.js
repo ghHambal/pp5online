@@ -445,13 +445,14 @@ export async function getScannerRoster() {
 
 export async function saveScannedPrayerRecords(records) {
   if (!records.length) return
-  // ลบข้อมูลเดิมของวันและนักเรียนนั้น ๆ ก่อนเพื่อเลี่ยงปัญหาข้อมูลซ้ำซ้อน
+  // ลบเฉพาะ record ที่ scanner เคยบันทึก (teacher_id IS NULL) — ไม่ลบ record ของครู
   for (const r of records) {
     const { error: delError } = await supabase
       .from('prayer_records')
       .delete()
       .eq('student_id', r.student_id)
       .eq('check_date', r.check_date)
+      .is('teacher_id', null)
     if (delError) throw delError
   }
   

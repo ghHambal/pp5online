@@ -1942,8 +1942,17 @@ function _openPrayerWeekModal(teacher, students, prayMap, week, room, allDays, t
     setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = '' }, 700)
   }
 
-  // Helper: อัปเดต UI + grid + save realtime (ไม่ toast, ใช้ขอบเรืองแสง)
+  // ── ตัวนับ error สำหรับสรุปตอนปิด ──
+  let _batchSaveTotal = 0
+  let _batchFailTotal = 0
+
+  // Helper: อัปเดต UI + grid + save realtime (rollback ถ้า fail)
   const _saveCell = async (sid, ds, st) => {
+    // เก็บค่าเดิมไว้สำหรับ rollback
+    const prevStatus = localMap[sid]?.[ds] ?? null
+    const prevPrayStatus = prayMap[sid]?.[ds] ?? null
+
+    // Optimistic update
     localMap[sid][ds] = st
     prayMap[sid] = { ...(prayMap[sid]??{}), [ds]: st }
     const modalBtn = modal.querySelector(`.pw-cell[data-pw-sid="${sid}"][data-ds="${ds}"]`)
@@ -1965,16 +1974,40 @@ function _openPrayerWeekModal(teacher, students, prayMap, week, room, allDays, t
       _glow(gridCell, true)
     } catch (err) {
       console.error('prayer save:', err)
+      // ── Rollback optimistic update ──
+      localMap[sid][ds] = prevStatus
+      if (!prayMap[sid]) prayMap[sid] = {}
+      if (prevPrayStatus === null) { delete prayMap[sid][ds] } else { prayMap[sid][ds] = prevPrayStatus }
+      // Rollback UI
+      if (modalBtn) {
+        modalBtn.className = `pw-cell w-10 h-8 rounded-lg border text-sm font-bold transition hover:opacity-80 ${_cellClass(prevStatus)}`
+        modalBtn.textContent = _cellText(prevStatus)
+      }
+      if (gridCell) {
+        const prevCfg = prevStatus ? PRAYER_ST[prevStatus] : null
+        Object.values(PRAYER_ST).forEach(v => gridCell.classList.remove(v.bg))
+        if (prevCfg) gridCell.classList.add(prevCfg.bg)
+        gridCell.innerHTML = prevCfg ? `<span class="${prevCfg.color} text-xs">${prevCfg.label}</span>` : ''
+      }
+      updateScore(sid)
       _glow(modalBtn, false)
       _glow(gridCell, false)
+      throw err  // rethrow เพื่อให้ _saveBatch นับ failed ได้
     }
   }
 
-  // Batch: รันพร้อมกัน, สรุป error ครั้งเดียว
+  // Batch: แบ่ง chunk ทีละ 10, ป้องกัน connection pool เต็ม
   const _saveBatch = async (pairs) => {
-    const results = await Promise.allSettled(pairs.map(([sid,ds,st]) => _saveCell(sid,ds,st)))
-    const failed = results.filter(r => r.status === 'rejected').length
-    if (failed > 0) showToast(`บันทึกไม่สำเร็จ ${failed} รายการ`, 'error')
+    const CHUNK_SIZE = 10
+    let failed = 0
+    _batchSaveTotal += pairs.length
+    for (let i = 0; i < pairs.length; i += CHUNK_SIZE) {
+      const chunk = pairs.slice(i, i + CHUNK_SIZE)
+      const results = await Promise.allSettled(chunk.map(([sid,ds,st]) => _saveCell(sid,ds,st)))
+      failed += results.filter(r => r.status === 'rejected').length
+    }
+    _batchFailTotal += failed
+    if (failed > 0) showToast(`บันทึกไม่สำเร็จ ${failed}/${pairs.length} รายการ — กรุณาลองใหม่`, 'error')
   }
 
   // Cell click → picker → realtime save
@@ -2011,18 +2044,17 @@ function _openPrayerWeekModal(teacher, students, prayMap, week, room, allDays, t
   })
 
   // Close + cleanup
-  modal.querySelector('#pw-close').addEventListener('click', () => { modal.remove() })
-  modal.addEventListener('click', e => { if (e.target === modal) { modal.remove() } })
-
-  // Close
-  modal.querySelector('#pw-close').addEventListener('click', () => modal.remove())
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
-
-  // ปุ่ม "บันทึก" ตอนนี้เป็นปุ่มปิด (realtime save แล้ว)
-  modal.querySelector('#pw-save').addEventListener('click', () => {
+  const _closeModal = () => {
     modal.remove()
-    showToast(`สัปดาห์ที่ ${week.n} บันทึก realtime แล้ว ✅`, 'success')
-  })
+    if (_batchSaveTotal > 0 && _batchFailTotal > 0) {
+      showToast(`สัปดาห์ที่ ${week.n}: สำเร็จ ${_batchSaveTotal - _batchFailTotal} / ไม่สำเร็จ ${_batchFailTotal} รายการ ⚠️`, 'warning')
+    } else if (_batchSaveTotal > 0) {
+      showToast(`สัปดาห์ที่ ${week.n} บันทึกเรียบร้อย ✅`, 'success')
+    }
+  }
+  modal.querySelector('#pw-close').addEventListener('click', _closeModal)
+  modal.querySelector('#pw-save').addEventListener('click', _closeModal)
+  modal.addEventListener('click', e => { if (e.target === modal) _closeModal() })
 }
 
 // ─── Prayer Statistics ────────────────────────────────────────────────────────
