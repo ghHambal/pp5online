@@ -4,7 +4,7 @@ import {
   getRoomsByGrade, getStudentsByRoom, getStudentsByReligionRoom, getReligionRoomsByGrade,
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   getClassStudents, getClassRosterStudents, getStudentByCode,
-  addStudentToClass, updateClassStudentActive,
+  addStudentToClass, updateClassStudentActive, removeStudentFromClass,
   getUniqueRooms, getUniqueReligionRooms,
   getMySchedule, upsertScheduleEntry, deleteScheduleEntry, deleteScheduleByTeacher,
   getPeriods, getAllPeriods, getTeacherRoomColors, saveTeacherRoomColor,
@@ -690,30 +690,54 @@ export async function renderMyClasses(teacher) {
             const modal = document.createElement('div')
             modal.id = 'student-status-confirm'
             modal.className = 'fixed inset-0 z-[95] bg-white flex flex-col'
-            modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
-              <div class="w-full max-w-md text-center">
-                <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl ${nextActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">
-                  ${nextActive ? '✓' : '−'}
+
+            if (nextActive) {
+              modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
+                <div class="w-full max-w-md text-center">
+                  <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl bg-emerald-100 text-emerald-700">
+                    ✓
+                  </div>
+                  <h3 class="text-2xl font-bold text-gray-800">เปิดสถานะกำลังเรียน?</h3>
+                  <p class="mt-3 text-gray-500">${_htmlEsc(studentName)}</p>
+                  <p class="mt-2 text-sm text-gray-400">นักเรียนจะกลับมาอยู่ในเช็คชื่อ/ใบรายชื่อของรายวิชานี้</p>
+                  <div class="mt-8 grid grid-cols-2 gap-3">
+                    <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
+                    <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-emerald-600 hover:bg-emerald-700">ยืนยัน</button>
+                  </div>
                 </div>
-                <h3 class="text-2xl font-bold text-gray-800">${nextActive ? 'เปิดสถานะกำลังเรียน?' : 'ปิดสถานะกำลังเรียน?'}</h3>
-                <p class="mt-3 text-gray-500">${_htmlEsc(studentName)}</p>
-                <p class="mt-2 text-sm text-gray-400">${nextActive ? 'นักเรียนจะกลับมาอยู่ในเช็คชื่อ/ใบรายชื่อของรายวิชานี้' : 'นักเรียนจะไม่ถูกนำไปเช็คชื่อหรือใบรายชื่อของรายวิชานี้'}</p>
-                <div class="mt-8 grid grid-cols-2 gap-3">
-                  <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
-                  <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold ${nextActive ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-700 hover:bg-gray-800'}">ยืนยัน</button>
+              </div>`
+            } else {
+              modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
+                <div class="w-full max-w-md text-center">
+                  <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl bg-red-50 text-red-500 border border-red-100 shadow-sm">
+                    🗑️
+                  </div>
+                  <h3 class="text-2xl font-bold text-gray-900">ลบนักเรียนออกจากห้องเรียนนี้?</h3>
+                  <p class="mt-3 text-gray-800 font-semibold text-lg">${_htmlEsc(studentName)}</p>
+                  <p class="mt-2 text-sm text-gray-400">คุณครูกำลังจะลบรายชื่อนักเรียนออกจากรายวิชานี้โดยสมบูรณ์<br/>และนักเรียนจะไม่กลับมาที่ห้องนี้อีกเมื่อระบบซิงก์รายสัปดาห์</p>
+                  <div class="mt-8 grid grid-cols-2 gap-3">
+                    <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
+                    <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-red-600 hover:bg-red-700">ยืนยันการลบ</button>
+                  </div>
                 </div>
-              </div>
-            </div>`
+              </div>`
+            }
+
             document.body.appendChild(modal)
             modal.querySelector('#student-status-cancel').addEventListener('click', () => modal.remove())
             modal.querySelector('#student-status-ok').addEventListener('click', async () => {
               try {
-                await updateClassStudentActive(el.dataset.enrollmentId, nextActive)
-                showToast('อัปเดตสถานะนักเรียนแล้ว', 'success')
+                if (nextActive) {
+                  await updateClassStudentActive(el.dataset.enrollmentId, true)
+                  showToast('เปิดสถานะกำลังเรียนแล้ว', 'success')
+                } else {
+                  await removeStudentFromClass(el.dataset.enrollmentId)
+                  showToast('ลบนักเรียนออกจากห้องเรียนนี้แล้ว', 'success')
+                }
                 modal.remove()
                 refresh()
               } catch (err) {
-                showToast('อัปเดตสถานะไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+                showToast('ดำเนินการไม่สำเร็จ: ' + (err.message ?? ''), 'error')
               }
             })
           })

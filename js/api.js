@@ -429,6 +429,14 @@ export async function updateClassStudentActive(enrollmentId, isActive) {
   if (error) throw error
 }
 
+export async function removeStudentFromClass(enrollmentId) {
+  const { error } = await supabase
+    .from('class_students')
+    .delete()
+    .eq('id', enrollmentId)
+  if (error) throw error
+}
+
 export async function saveAttendance(records) {
   const { error } = await supabase
     .from('attendances')
