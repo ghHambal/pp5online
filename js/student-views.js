@@ -2408,7 +2408,11 @@ export async function renderStudentPrayerScanner(student) {
       .map(c => c.trim())
       .filter(Boolean)
     
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', student.profile_id).maybeSingle().catch(() => ({}))
+    let profile = null
+    try {
+      const res = await supabase.from('profiles').select('role').eq('id', student.profile_id).maybeSingle()
+      profile = res?.data ?? null
+    } catch (e) {}
     
     hasPermission = teacherCodes.includes(student.teacher_code) ||
                     student.staff_type === 'แอดมิน' ||

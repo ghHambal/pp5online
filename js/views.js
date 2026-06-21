@@ -6058,7 +6058,7 @@ export async function renderPrayerAdmin(teacher) {
 
   let isAllowedScanner = false
   if (activeTeacher) {
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', activeTeacher.profile_id).maybeSingle().catch(() => ({}))
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', activeTeacher.profile_id).maybeSingle()
     isAllowedScanner = teacherCodes.includes(activeTeacher.teacher_code) ||
                        activeTeacher.staff_type === 'แอดมิน' ||
                        activeTeacher.position === 'admin' ||
