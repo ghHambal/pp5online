@@ -2521,7 +2521,7 @@ export async function renderStudentPrayerScanner(student) {
       </div>
 
       <!-- Scanners Area -->
-      <div id="scanner-view-camera" class="relative overflow-hidden bg-slate-950 rounded-3xl h-64 border border-slate-800 shadow-inner flex flex-col items-center justify-center p-4 mb-4 ${inputMode === 'camera' ? '' : 'hidden'}">
+      <div id="scanner-view-camera" class="relative overflow-hidden bg-slate-950 rounded-3xl w-full max-w-sm mx-auto aspect-square border border-slate-800 shadow-inner flex flex-col items-center justify-center p-0 mb-4 ${inputMode === 'camera' ? '' : 'hidden'}">
         <div id="camera-reader" class="w-full h-full rounded-2xl overflow-hidden"></div>
       </div>
 
@@ -2665,26 +2665,45 @@ export async function renderStudentPrayerScanner(student) {
         fps: 25, 
         qrbox: (viewfinderWidth, viewfinderHeight) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-          const qrboxSize = Math.floor(minEdge * 0.75) // 75% of minimum edge
+          const qrboxSize = Math.floor(minEdge * 0.70) // 70% of minimum edge
           return { width: qrboxSize, height: qrboxSize }
         },
         aspectRatio: 1.0
       }
-      await html5Qrcode.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText) => {
-          if (decodedText === lastScannedCode && Date.now() - lastScannedTime < 1800) {
-            return // skip repeat scanned text
-          }
-          lastScannedCode = decodedText
-          lastScannedTime = Date.now()
-          processCheckIn(decodedText)
-        },
-        () => {
-          // silent camera failures/no QR found
+
+      const onScanSuccess = (decodedText) => {
+        if (decodedText === lastScannedCode && Date.now() - lastScannedTime < 1800) {
+          return // skip repeat scanned text
         }
-      )
+        lastScannedCode = decodedText
+        lastScannedTime = Date.now()
+        processCheckIn(decodedText)
+      }
+
+      const onScanFailure = () => {
+        // silent camera failures/no QR found
+      }
+
+      try {
+        // Try starting with advanced focus constraint for autofocus
+        await html5Qrcode.start(
+          { 
+            facingMode: "environment",
+            advanced: [{ focusMode: "continuous" }]
+          },
+          config,
+          onScanSuccess,
+          onScanFailure
+        )
+      } catch (err) {
+        console.warn('[Scanner] Failed to start camera with continuous focus, falling back to standard settings:', err)
+        await html5Qrcode.start(
+          { facingMode: "environment" },
+          config,
+          onScanSuccess,
+          onScanFailure
+        )
+      }
     } catch (err) {
       console.error('Camera open failed:', err)
       showToast('ไม่สามารถเปิดใช้งานกล้องได้: ' + (err.message || 'ไม่มีสิทธิ์เข้าถึง'), 'error')
