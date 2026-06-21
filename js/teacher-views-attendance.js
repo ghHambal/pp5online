@@ -314,7 +314,7 @@ export async function renderAttendanceGrid(teacher, classData) {
 
       // หาคาบอื่นที่วันเดียวกัน
       const sameDateSessions = sessions.filter(s => s.ds === date)
-      _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet, saveClassId, saveSessN)
+      _openAttFormModal(teacher, classData, students, attMap, sessN, date, sameDateSessions, holidaySet, saveClassId, saveSessN)
     })
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')
@@ -605,7 +605,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
 
 // sameDateSessions = array of all sessions on the same date as sessN
 
-function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set(), saveClassId = null, sessionRemap = n => n) {
+function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set(), saveClassId = null, sessionRemap = n => n) {
   const existing = document.getElementById('att-form-modal')
   if (existing) existing.remove()
   const STATUS_LIST = [
@@ -629,6 +629,12 @@ function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSes
           <p class="text-xs text-gray-400">${date} · ${classData.class_name}</p>
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
+          <button id="btn-att-scan-qr"
+            class="text-xs px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg
+                   font-medium flex items-center gap-1 hover:bg-indigo-700 transition"
+            title="สแกน QR Code ของนักเรียนเพื่อเช็คชื่อ">
+            📷 สแกน QR
+          </button>
           ${hasMulti ? `
           <!-- Toggle ทุกคาบ (ปุ่มสี) -->
           <button id="att-sync-btn"
@@ -770,6 +776,217 @@ function _openAttFormModal(classData, students, attMap, sessN, date, sameDateSes
 
           : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`
     })
+  })
+
+  // ─── QR Code Scanner ──────────────────────────────────────────────
+  modal.querySelector('#btn-att-scan-qr')?.addEventListener('click', async () => {
+    const isSupported = (window._pp5DonorTierIndex > 0)
+    
+    // Check quota
+    const quota = _checkWeeklyScanQuota(teacher?.id, isSupported)
+    if (!quota.allowed) {
+      // Paywall popup
+      document.getElementById('att-scan-paywall')?.remove()
+      const paywall = document.createElement('div')
+      paywall.id = 'att-scan-paywall'
+      paywall.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60'
+      paywall.innerHTML = `
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl flex flex-col p-6 text-center gap-4 relative animate-fade">
+          <button id="pw-close-btn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <div class="text-6xl mt-4">🔒</div>
+          <p class="font-bold text-gray-800 text-lg">สิทธิ์การสแกนทดลองใช้งานเต็มแล้ว</p>
+          <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">ฟีเจอร์สแกน QR เพื่อเช็คชื่อคาบเรียนจำกัดทดลองฟรี 2 ครั้งต่อสัปดาห์สำหรับผู้ใช้งานทั่วไป<br><br>ร่วมสนับสนุนระบบเพื่อเปิดใช้งานแบบไม่จำกัดครับ</p>
+          <button id="pw-donate-btn" class="mt-2 w-full py-3.5 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition bg-gradient-to-r from-amber-500 to-orange-500">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
+        </div>`
+      document.body.appendChild(paywall)
+      paywall.querySelector('#pw-close-btn').addEventListener('click', () => paywall.remove())
+      paywall.querySelector('#pw-donate-btn').addEventListener('click', () => {
+        paywall.remove()
+        document.getElementById('btn-donate-float')?.click()
+      })
+      return
+    }
+
+    // Open scanner overlay
+    document.getElementById('att-scanner-overlay')?.remove()
+    const overlay = document.createElement('div')
+    overlay.id = 'att-scanner-overlay'
+    overlay.className = 'fixed inset-0 z-[95] flex flex-col bg-slate-950 items-center justify-center p-4'
+    overlay.innerHTML = `
+      <style>
+        @keyframes laser-sweep {
+          0% { top: 0%; opacity: 0.3; }
+          50% { opacity: 0.9; }
+          100% { top: 100%; opacity: 0.3; }
+        }
+        .animate-laser-move {
+          position: absolute;
+          animation: laser-sweep 2.2s infinite ease-in-out;
+        }
+        .scan-flash-success {
+          animation: flash-green 0.6s ease-out;
+        }
+        .scan-flash-error {
+          animation: flash-red 0.6s ease-out;
+        }
+        @keyframes flash-green {
+          0% { box-shadow: inset 0 0 0 0px #10b981; }
+          50% { box-shadow: inset 0 0 0 12px #10b981; }
+          100% { box-shadow: inset 0 0 0 0px #10b981; }
+        }
+        @keyframes flash-red {
+          0% { box-shadow: inset 0 0 0 0px #ef4444; }
+          50% { box-shadow: inset 0 0 0 12px #ef4444; }
+          100% { box-shadow: inset 0 0 0 0px #ef4444; }
+        }
+      </style>
+      <div class="relative w-full max-w-sm flex flex-col text-white">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h4 class="font-bold text-sm">📷 กล้องสแกนเช็คชื่อ</h4>
+            <p class="text-xs text-slate-400">เล็งกล้องไปที่ QR Code ของนักเรียน</p>
+          </div>
+          <button id="btn-close-att-scanner" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold">✕</button>
+        </div>
+
+        <!-- Camera Area -->
+        <div id="att-scanner-container" class="relative overflow-hidden bg-slate-900 rounded-3xl w-full aspect-square border border-slate-800 shadow-inner flex flex-col items-center justify-center p-0 mb-4">
+          <div id="att-camera-reader" class="w-full h-full rounded-2xl overflow-hidden"></div>
+          
+          <!-- Viewfinder -->
+          <div class="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+            <div class="absolute inset-0 bg-black/30"></div>
+            <div class="relative w-48 h-48 rounded-2xl border border-white/20 shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]">
+              <!-- Corners -->
+              <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-emerald-400 rounded-tl"></div>
+              <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-emerald-400 rounded-tr"></div>
+              <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-emerald-400 rounded-bl"></div>
+              <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-emerald-400 rounded-br"></div>
+              <!-- Laser sweeper -->
+              <div class="w-full h-0.5 bg-emerald-400 animate-laser-move"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info & Success feeds -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[110px] flex flex-col justify-between">
+          <div id="scan-feedback-text" class="text-xs text-slate-400 text-center py-2">ยังไม่มีประวัติสแกนในรอบนี้</div>
+          <div id="scan-recent-list" class="space-y-1.5 hidden">
+            <!-- 3 last checked-in student badges -->
+          </div>
+        </div>
+      </div>`
+    document.body.appendChild(overlay)
+
+    let html5Qrcode = null
+    const recentScannedList = []
+
+    const stopScanner = async () => {
+      if (html5Qrcode) {
+        await html5Qrcode.stop().catch(() => {})
+      }
+      overlay.remove()
+    }
+
+    overlay.querySelector('#btn-close-att-scanner').addEventListener('click', stopScanner)
+
+    try {
+      const Html5Qrcode = await _loadHtml5Qrcode()
+      html5Qrcode = new Html5Qrcode("att-camera-reader")
+
+      let lastCode = null
+      let lastTime = 0
+      let incremented = false
+
+      const processScan = (decodedText) => {
+        const container = overlay.querySelector('#att-scanner-container')
+        const feedbackText = overlay.querySelector('#scan-feedback-text')
+        const recentList = overlay.querySelector('#scan-recent-list')
+
+        const triggerFlash = (success) => {
+          const cls = success ? 'scan-flash-success' : 'scan-flash-error'
+          container.classList.add(cls)
+          setTimeout(() => container.classList.remove(cls), 600)
+        }
+
+        try {
+          let studentCode = decodedText
+          if (decodedText.startsWith('SQ:')) {
+            const [_, code, timestampStr] = decodedText.split(':')
+            const qrTime = parseInt(timestampStr, 10)
+            const nowTime = Math.floor(Date.now() / 1000)
+            const diff = nowTime - qrTime
+            if (diff > 60 || diff < -60) {
+              throw new Error('QR Code หมดอายุแล้ว')
+            }
+            studentCode = code
+          }
+
+          const targetStudent = students.find(s => s.student_code === studentCode)
+          if (!targetStudent) {
+            throw new Error(`ไม่พบนักเรียนรหัส ${studentCode} ในคลาสนี้`)
+          }
+
+          // Programmatically click "มา" status button in the background modal
+          const presentBtn = modal.querySelector(`.att-modal-status[data-modal-sid="${targetStudent.id}"][data-status="present"]`)
+          if (presentBtn) {
+            const isAlreadyPresent = presentBtn.classList.contains('bg-emerald-500')
+            if (!isAlreadyPresent) {
+              presentBtn.click()
+            }
+          }
+
+          _playScanBeep('success')
+          triggerFlash(true)
+
+          // Increment weekly scans count once upon first successful scan (if not supported)
+          if (!isSupported && !incremented) {
+            _incrementWeeklyScanQuota(teacher?.id, quota.weekMonday)
+            incremented = true
+          }
+
+          // Add to recent list
+          if (!recentScannedList.some(x => x.id === targetStudent.id)) {
+            recentScannedList.unshift(targetStudent)
+            if (recentScannedList.length > 3) recentScannedList.pop()
+          }
+
+          feedbackText.classList.add('hidden')
+          recentList.classList.remove('hidden')
+          recentList.innerHTML = recentScannedList.map(s => `
+            <div class="flex items-center justify-between text-xs py-1 border-b border-slate-800 last:border-b-0 animate-fade">
+              <span class="font-bold text-slate-200 truncate">${s.full_name}</span>
+              <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[10px]">✓ มา</span>
+            </div>
+          `).join('')
+
+        } catch (e) {
+          _playScanBeep('error')
+          triggerFlash(false)
+          showToast(e.message, 'error')
+        }
+      }
+
+      await html5Qrcode.start(
+        { facingMode: "environment" },
+        { fps: 25, aspectRatio: 1.0 },
+        (decodedText) => {
+          if (decodedText === lastCode && Date.now() - lastTime < 2000) {
+            return
+          }
+          lastCode = decodedText
+          lastTime = Date.now()
+          processScan(decodedText)
+        },
+        () => {}
+      )
+
+    } catch (err) {
+      console.error('Attendance QR scanner initialization failed:', err)
+      showToast('ไม่สามารถเริ่มใช้งานกล้องได้: ' + err.message, 'error')
+      overlay.remove()
+    }
   })
 
   // ─── Close ───────────────────────────────────────────────────────
@@ -2404,5 +2621,82 @@ function _showStudentPrayerDetail(stat, weeks, prayMap, allDays, scCls) {
     </div>`
   document.body.appendChild(modal)
   modal.querySelector('#std-close').addEventListener('click', () => modal.remove())
+}
+
+// ─── Daily Attendance QR Scanner Helpers ─────────────────────────────────────
+function _checkWeeklyScanQuota(teacherId, isSupported) {
+  if (isSupported) return { allowed: true, count: 0 }
+  
+  // Monday of the current week
+  const d = new Date()
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  const mondayStr = new Date(d.setDate(diff)).toISOString().slice(0, 10)
+  
+  const key = `pp5_att_scans_week_${teacherId}`
+  let data = { weekMonday: mondayStr, count: 0 }
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.weekMonday === mondayStr) {
+        data = parsed
+      }
+    }
+  } catch (e) {}
+  
+  return { allowed: data.count < 2, count: data.count, weekMonday: mondayStr }
+}
+
+function _incrementWeeklyScanQuota(teacherId, weekMonday) {
+  const key = `pp5_att_scans_week_${teacherId}`
+  let count = 0
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.weekMonday === weekMonday) {
+        count = parsed.count
+      }
+    }
+  } catch (e) {}
+  
+  localStorage.setItem(key, JSON.stringify({ weekMonday, count: count + 1 }))
+}
+
+function _playScanBeep(type = 'success') {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
+    osc.connect(gain)
+    gain.connect(audioCtx.destination)
+    if (type === 'success') {
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime)
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12)
+      osc.start()
+      osc.stop(audioCtx.currentTime + 0.12)
+    } else {
+      osc.type = 'sawtooth'
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime)
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3)
+      osc.start()
+      osc.stop(audioCtx.currentTime + 0.3)
+    }
+  } catch (e) {}
+}
+
+async function _loadHtml5Qrcode() {
+  if (window.Html5Qrcode) return window.Html5Qrcode
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+    s.onload = () => resolve(window.Html5Qrcode)
+    s.onerror = (err) => reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ'))
+    document.head.appendChild(s)
+  })
 }
 
