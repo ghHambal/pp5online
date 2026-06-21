@@ -869,11 +869,18 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
           </div>
         </div>
 
-        <!-- Info & Success feeds -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[110px] flex flex-col justify-between">
-          <div id="scan-feedback-text" class="text-xs text-slate-400 text-center py-2">ยังไม่มีประวัติสแกนในรอบนี้</div>
-          <div id="scan-recent-list" class="space-y-1.5 hidden">
-            <!-- 3 last checked-in student badges -->
+        <!-- Feedback Panel (Dynamic) -->
+        <div id="scan-feedback-panel" class="mb-4 min-h-[100px]">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center text-xs text-slate-400">
+            ยังไม่มีข้อมูลสแกนในคาบเรียนนี้
+          </div>
+        </div>
+
+        <!-- Recent History List (Compact) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3">
+          <p class="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wider">ประวัติการสแกนล่าสุด (สูงสุด 3 คน)</p>
+          <div id="scan-history-list" class="space-y-1.5 text-xs">
+            <p class="text-slate-500 text-center py-1">ยังไม่มีประวัติ</p>
           </div>
         </div>
       </div>`
@@ -886,6 +893,21 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       if (html5Qrcode) {
         await html5Qrcode.stop().catch(() => {})
       }
+
+      // เมื่อสแกนครบแล้วหากนักเรียนคนใดที่ไม่ได้รับการสแกนจะกลายเป็นขาดทันที
+      students.forEach(s => {
+        const wasScanned = recentScannedList.some(x => x.id === s.id)
+        if (!wasScanned) {
+          const absentBtn = modal.querySelector(`.att-modal-status[data-modal-sid="${s.id}"][data-status="absent"]`)
+          if (absentBtn) {
+            const isAlreadyAbsent = absentBtn.classList.contains('bg-red-500')
+            if (!isAlreadyAbsent) {
+              absentBtn.click()
+            }
+          }
+        }
+      })
+
       overlay.remove()
     }
 
@@ -901,14 +923,16 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
 
       const processScan = (decodedText) => {
         const container = overlay.querySelector('#att-scanner-container')
-        const feedbackText = overlay.querySelector('#scan-feedback-text')
-        const recentList = overlay.querySelector('#scan-recent-list')
+        const feedbackPanel = overlay.querySelector('#scan-feedback-panel')
+        const historyList = overlay.querySelector('#scan-history-list')
 
         const triggerFlash = (success) => {
           const cls = success ? 'scan-flash-success' : 'scan-flash-error'
           container.classList.add(cls)
           setTimeout(() => container.classList.remove(cls), 600)
         }
+
+        let targetStudent = null
 
         try {
           let studentCode = decodedText
@@ -923,9 +947,15 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
             studentCode = code
           }
 
-          const targetStudent = students.find(s => s.student_code === studentCode)
+          targetStudent = students.find(s => s.student_code === studentCode)
           if (!targetStudent) {
-            throw new Error(`ไม่พบนักเรียนรหัส ${studentCode} ในคลาสนี้`)
+            throw new Error(`ไม่พบรายชื่อในคลาสเรียนนี้`)
+          }
+
+          // ป้องกันการสแกนซ้ำในรอบนี้
+          const isAlreadyScanned = recentScannedList.some(x => x.id === targetStudent.id)
+          if (isAlreadyScanned) {
+            throw new Error('เช็คชื่อซ้ำ! นักเรียนคนนี้ได้รับการสแกนไปแล้ว')
           }
 
           // Programmatically click "มา" status button in the background modal
@@ -946,25 +976,49 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
             incremented = true
           }
 
-          // Add to recent list
-          if (!recentScannedList.some(x => x.id === targetStudent.id)) {
-            recentScannedList.unshift(targetStudent)
-            if (recentScannedList.length > 3) recentScannedList.pop()
-          }
+          // Add to recent list (keep all in memory for duplicate checks)
+          recentScannedList.unshift(targetStudent)
 
-          feedbackText.classList.add('hidden')
-          recentList.classList.remove('hidden')
-          recentList.innerHTML = recentScannedList.map(s => `
-            <div class="flex items-center justify-between text-xs py-1 border-b border-slate-800 last:border-b-0 animate-fade">
-              <span class="font-bold text-slate-200 truncate">${s.full_name}</span>
-              <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[10px]">✓ มา</span>
+          // Show success card (same structure as prayer scan)
+          const photoHTML = targetStudent.image_url
+            ? `<img src="${targetStudent.image_url}" class="w-12 h-16 object-cover object-top rounded-xl border border-slate-700" />`
+            : `<div class="w-12 h-16 rounded-xl bg-emerald-950 border border-emerald-800 text-emerald-400 font-bold text-lg flex items-center justify-center">${targetStudent.full_name.charAt(0)}</div>`
+
+          feedbackPanel.innerHTML = `
+            <div class="bg-emerald-950/40 border border-emerald-800/80 rounded-2xl p-3 shadow-lg flex items-center gap-3 animate-fade">
+              ${photoHTML}
+              <div class="flex-1 min-w-0 text-left">
+                <span class="inline-block px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">✓ สแกนสำเร็จ</span>
+                <h4 class="font-extrabold text-slate-200 text-sm mt-1 truncate">${targetStudent.full_name}</h4>
+                <p class="text-xs text-slate-400 truncate">รหัส ${targetStudent.student_code}</p>
+              </div>
+            </div>`
+
+          // Update history list (first 3)
+          historyList.innerHTML = recentScannedList.slice(0, 3).map(s => `
+            <div class="flex items-center justify-between text-xs py-1.5 border-b border-slate-800/60 last:border-b-0">
+              <span class="font-medium text-slate-300 truncate">${s.full_name}</span>
+              <span class="text-emerald-400 font-bold text-[10px]">มา</span>
             </div>
           `).join('')
 
         } catch (e) {
           _playScanBeep('error')
           triggerFlash(false)
-          showToast(e.message, 'error')
+
+          // Show error card
+          const name = targetStudent ? targetStudent.full_name : 'ไม่พบข้อมูล'
+          const detail = targetStudent ? `รหัส ${targetStudent.student_code}` : `ข้อมูลดิบ: ${decodedText}`
+          feedbackPanel.innerHTML = `
+            <div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 shadow-lg flex items-center gap-3 animate-fade">
+              <div class="w-12 h-16 rounded-xl bg-red-950/80 border border-red-900 text-red-400 font-bold text-xl flex items-center justify-center">❌</div>
+              <div class="flex-1 min-w-0 text-left">
+                <span class="inline-block px-2 py-0.5 rounded-full bg-red-500/20 text-red-450 text-[10px] font-bold">เกิดข้อผิดพลาด</span>
+                <h4 class="font-bold text-slate-200 text-sm mt-1 truncate">${name}</h4>
+                <p class="text-xs text-slate-400 truncate">${detail}</p>
+                <p class="text-xs font-bold text-red-500 mt-1">${e.message}</p>
+              </div>
+            </div>`
         }
       }
 
