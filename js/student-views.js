@@ -17,8 +17,10 @@ const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setContent(html) {
-  document.getElementById('stu-content').innerHTML =
-    `<div class="w-full max-w-2xl mx-auto px-4 sm:px-6 py-4 pb-6 animate-fade">${html}</div>`
+  const container = document.getElementById('stu-content') || document.getElementById('main-content')
+  if (container) {
+    container.innerHTML = `<div class="w-full max-w-2xl mx-auto px-4 sm:px-6 py-4 pb-6 animate-fade">${html}</div>`
+  }
 }
 
 function showToast(msg, type = 'info') {
@@ -2381,7 +2383,40 @@ function getWeekNumber(dateStr, cfg) {
 // ─── Student Prayer Check-in Scanner Screen ──────────────────────────────────
 export async function renderStudentPrayerScanner(student) {
   window._lastSuccessFeedbackHTML = ''
-  if (!student.can_scan_prayer) {
+
+  // Show loader first while fetching config
+  setContent(`<div class="flex justify-center py-10 text-gray-300">
+    <svg class="animate-spin h-6 w-6 text-emerald-500" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>`)
+
+  // Fetch configs and roster
+  const [systemConfig, roster] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    getScannerRoster().catch(() => [])
+  ])
+
+  // Check permission for student or teacher
+  let hasPermission = false
+  if (student.student_code) {
+    hasPermission = !!student.can_scan_prayer
+  } else if (student.teacher_code) {
+    const teacherCodes = (systemConfig.prayerScannerTeachers || '')
+      .split(/[\s,]+/)
+      .map(c => c.trim())
+      .filter(Boolean)
+    
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', student.profile_id).maybeSingle().catch(() => ({}))
+    
+    hasPermission = teacherCodes.includes(student.teacher_code) ||
+                    student.staff_type === 'แอดมิน' ||
+                    student.position === 'admin' ||
+                    profile?.role === 'admin'
+  }
+
+  if (!hasPermission) {
     setContent(`
       <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">
         <p class="text-4xl mb-3">⚠️</p>
@@ -2395,18 +2430,11 @@ export async function renderStudentPrayerScanner(student) {
   const navEl = document.querySelector('nav.safe-area-bottom')
   if (navEl) navEl.classList.add('hidden')
 
-  setContent(`<div class="flex justify-center py-10 text-gray-300">
-    <svg class="animate-spin h-6 w-6 text-emerald-500" viewBox="0 0 24 24" fill="none">
-      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-    </svg>
-  </div>`)
-
-  // Fetch configs and roster
-  const [systemConfig, roster] = await Promise.all([
-    getSystemConfig().catch(() => ({})),
-    getScannerRoster().catch(() => [])
-  ])
+  // Hide sidebar and adjust margins on teacher layout
+  const sidebar = document.getElementById('sidebar')
+  const mainWrapper = document.querySelector('.md\\:ml-64') || document.querySelector('body > div.md\\:ml-64')
+  if (sidebar) sidebar.classList.add('hidden')
+  if (mainWrapper) mainWrapper.classList.remove('md:ml-64')
 
   // Setup active scanner cleanups
   if (window._activePrayerScannerState) {
@@ -2584,7 +2612,7 @@ export async function renderStudentPrayerScanner(student) {
         </div>
       </div>
     `
-    const contentContainer = document.getElementById('stu-content')
+    const contentContainer = document.getElementById('stu-content') || document.getElementById('main-content')
     if (contentContainer) {
       contentContainer.innerHTML = `<div class="w-full max-w-2xl mx-auto px-4 sm:px-6 py-4 pb-6 animate-fade">${html}</div>`
     }
@@ -2597,7 +2625,19 @@ export async function renderStudentPrayerScanner(student) {
         if (window._activePrayerScannerState.syncInterval) clearInterval(window._activePrayerScannerState.syncInterval)
       }
       if (navEl) navEl.classList.remove('hidden')
-      window._stuNav('overview')
+
+      const sidebar = document.getElementById('sidebar')
+      const mainWrapper = document.querySelector('.md\\:ml-64') || document.querySelector('body > div.md\\:ml-64')
+      if (sidebar) sidebar.classList.remove('hidden')
+      if (mainWrapper) mainWrapper.classList.add('md:ml-64')
+
+      if (student.teacher_code) {
+        import('./views.js').then(({ renderPrayerAdmin }) => {
+          renderPrayerAdmin(student)
+        })
+      } else {
+        window._stuNav('overview')
+      }
     })
 
     // Option: Input mode

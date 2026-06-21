@@ -6021,9 +6021,28 @@ function _fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}` }
 
 // ─── Admin: ละหมาด ───────────────────────────────────────────────────────────
 
-export async function renderPrayerAdmin() {
+export async function renderPrayerAdmin(teacher) {
   setActiveNav('prayer-admin')
   document.getElementById('page-title').textContent = 'คะแนนละหมาด'
+
+  // Fetch teacher details dynamically if not passed
+  let activeTeacher = teacher
+  if (!activeTeacher) {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const userId = sessionData?.session?.user?.id ?? null
+      if (userId) {
+        const { data } = await supabase
+          .from('teachers')
+          .select('*')
+          .eq('profile_id', userId)
+          .maybeSingle()
+        activeTeacher = data ?? null
+      }
+    } catch (e) {
+      console.error('Failed to load teacher session:', e)
+    }
+  }
 
   // โหลดแค่ config + รายชื่อห้อง (เร็ว) — records โหลดทีหลังตอนเลือกห้อง
   const [cfg, allReligionRooms] = await Promise.all([
@@ -6031,6 +6050,20 @@ export async function renderPrayerAdmin() {
     getUniqueReligionRooms().catch(() => []),
   ])
   const rooms = allReligionRooms
+
+  const teacherCodes = (cfg.prayerScannerTeachers || '')
+    .split(/[\s,]+/)
+    .map(c => c.trim())
+    .filter(Boolean)
+
+  let isAllowedScanner = false
+  if (activeTeacher) {
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', activeTeacher.profile_id).maybeSingle().catch(() => ({}))
+    isAllowedScanner = teacherCodes.includes(activeTeacher.teacher_code) ||
+                       activeTeacher.staff_type === 'แอดมิน' ||
+                       activeTeacher.position === 'admin' ||
+                       profile?.role === 'admin'
+  }
 
   // ─── Shell (tabs) ─────────────────────────────────────────────────────────
   setContent(`<div class="max-w-5xl mx-auto animate-fade">
@@ -6040,7 +6073,7 @@ export async function renderPrayerAdmin() {
       </div>
       <div id="pr-tab-actions"></div>
     </div>
-    <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
+    <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
       <button id="pr-tab-scores" data-tab="scores"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
         📊 คะแนน
@@ -6053,6 +6086,12 @@ export async function renderPrayerAdmin() {
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
         ⚙️ ตั้งค่า
       </button>
+      ${isAllowedScanner ? `
+      <button id="pr-tab-scanner-cam" data-tab="scanner-cam"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 font-bold">
+        📷 เปิดกล้องสแกน
+      </button>
+      ` : ''}
     </div>
     <div id="pr-tab-content"></div>
   </div>`)
@@ -6634,19 +6673,19 @@ export async function renderPrayerAdmin() {
     document.getElementById('pr-tab-content').innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
-          <span class="text-sm font-semibold text-gray-700">🔑 มอบสิทธิ์เครื่องสแกนเนอร์ (แกนนำสภานักเรียน)</span>
+          <span class="text-sm font-semibold text-gray-700">🔑 มอบสิทธิ์เครื่องสแกนเนอร์ (แกนนำสภานักเรียน / คุณครู)</span>
         </div>
         <div class="px-5 py-4 space-y-4">
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">ระบุรหัสนักเรียน (กรอกหลายรหัสพร้อมกันได้ คั่นด้วยเว้นวรรคหรือลูกน้ำ)</label>
+            <label class="block text-xs font-medium text-gray-500 mb-1">ระบุรหัสนักเรียนหรือรหัสคุณครู (กรอกหลายรหัสพร้อมกันได้ คั่นด้วยเว้นวรรคหรือลูกน้ำ)</label>
             <div class="flex gap-2">
-              <input type="text" id="pr-scanner-search-input" placeholder="เช่น 24275 23739"
+              <input type="text" id="pr-scanner-search-input" placeholder="เช่น 24275 (นักเรียน) หรือ 1114 (ครู)"
                 class="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
               <button id="btn-search-scanner-students" class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">ค้นหารายชื่อ</button>
             </div>
           </div>
           <div id="scanner-preview-container" class="hidden border border-indigo-50 bg-indigo-50/20 rounded-xl p-4">
-            <p class="text-xs font-semibold text-indigo-700 mb-2">ตรวจสอบรายชื่อนักเรียนที่ต้องการมอบสิทธิ์:</p>
+            <p class="text-xs font-semibold text-indigo-700 mb-2">ตรวจสอบรายชื่อที่ต้องการมอบสิทธิ์:</p>
             <div id="scanner-preview-cards" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3"></div>
             <button id="btn-confirm-scanner-grant" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition">
               ✓ ยืนยันและมอบสิทธิ์สแกนเนอร์
@@ -6657,7 +6696,7 @@ export async function renderPrayerAdmin() {
 
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
-          <span class="text-sm font-semibold text-gray-700">📋 รายชื่อสภานักเรียนที่ได้รับสิทธิ์ปัจจุบัน</span>
+          <span class="text-sm font-semibold text-gray-700">📋 รายชื่อผู้สแกนเนอร์ที่ได้รับสิทธิ์ปัจจุบัน</span>
           <span id="scanner-count-badge" class="text-xs text-gray-400">0 คน</span>
         </div>
         <div id="scanners-list-wrap">
@@ -6666,23 +6705,43 @@ export async function renderPrayerAdmin() {
       </div>
     `
 
-    let _foundStudents = []
+    let _foundScanners = []
 
     const _loadScannersList = async () => {
       const listWrap = document.getElementById('scanners-list-wrap')
       if (!listWrap) return
       try {
-        const { data: scanners, error } = await supabase
+        // 1. ดึงข้อมูลนักเรียนที่มีสิทธิ์
+        const { data: students, error: stuErr } = await supabase
           .from('students')
           .select('id, student_code, full_name, main_room, image_url')
           .eq('can_scan_prayer', true)
           .order('student_code')
-        if (error) throw error
+        if (stuErr) throw stuErr
 
-        document.getElementById('scanner-count-badge').textContent = `${scanners.length} คน`
+        // 2. ดึงข้อมูลครูที่มีสิทธิ์จาก config
+        const currentConfig = await getSystemConfig().catch(() => ({}))
+        const teacherCodes = (currentConfig.prayerScannerTeachers || '')
+          .split(/[\s,]+/)
+          .map(c => c.trim())
+          .filter(Boolean)
 
-        if (!scanners.length) {
-          listWrap.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm">ยังไม่มีนักเรียนได้รับสิทธิ์สแกนเนอร์</div>`
+        let permittedTeachers = []
+        if (teacherCodes.length > 0) {
+          const { data: teachers, error: teachErr } = await supabase
+            .from('teachers')
+            .select('id, teacher_code, full_name, dept, image_url')
+            .in('teacher_code', teacherCodes)
+            .order('teacher_code')
+          if (teachErr) throw teachErr
+          permittedTeachers = teachers ?? []
+        }
+
+        const totalScannersCount = students.length + permittedTeachers.length
+        document.getElementById('scanner-count-badge').textContent = `${totalScannersCount} คน`
+
+        if (totalScannersCount === 0) {
+          listWrap.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm">ยังไม่มีนักเรียนหรือครูได้รับสิทธิ์สแกนเนอร์</div>`
           return
         }
 
@@ -6690,36 +6749,60 @@ export async function renderPrayerAdmin() {
           <table class="w-full text-xs">
             <thead class="bg-gray-50 border-b border-gray-100 text-gray-500">
               <tr>
-                <th class="px-4 py-3 text-left">#</th>
+                <th class="px-4 py-3 text-left">ประเภท</th>
                 <th class="px-2 py-3 text-left">รหัส</th>
                 <th class="px-3 py-3 text-left">ชื่อ-นามสกุล</th>
-                <th class="px-3 py-3 text-left">ห้องเรียน</th>
+                <th class="px-3 py-3 text-left">ห้องเรียน / กลุ่มสาระ</th>
                 <th class="px-4 py-3 text-right">การจัดการ</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
-              ${scanners.map((s, idx) => `
-                <tr class="hover:bg-gray-50 transition">
-                  <td class="px-4 py-2 text-gray-400">${idx + 1}</td>
-                  <td class="px-2 py-2 font-mono text-gray-700">${s.student_code}</td>
-                  <td class="px-3 py-2">
-                    <div class="flex items-center gap-2">
-                      ${s.image_url 
-                        ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
-                        : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
-                      }
-                      <span class="font-medium text-gray-800">${s.full_name}</span>
-                    </div>
-                  </td>
-                  <td class="px-3 py-2 text-gray-500">${s.main_room || '—'}</td>
-                  <td class="px-4 py-2 text-right">
-                    <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
-                      data-id="${s.id}" data-name="${s.full_name}">
-                      ถอนสิทธิ์
-                    </button>
-                  </td>
-                </tr>
-              `).join('')}
+              ${[
+                ...students.map(s => `
+                  <tr class="hover:bg-gray-50 transition">
+                    <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">นักเรียน</span></td>
+                    <td class="px-2 py-2 font-mono text-gray-700">${s.student_code}</td>
+                    <td class="px-3 py-2">
+                      <div class="flex items-center gap-2">
+                        ${s.image_url 
+                          ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
+                          : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
+                        }
+                        <span class="font-medium text-gray-800">${s.full_name}</span>
+                      </div>
+                    </td>
+                    <td class="px-3 py-2 text-gray-500">ห้อง ${s.main_room || '—'}</td>
+                    <td class="px-4 py-2 text-right">
+                      <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
+                        data-id="${s.id}" data-name="${s.full_name}" data-type="student">
+                        ถอนสิทธิ์
+                      </button>
+                    </td>
+                  </tr>
+                `),
+                ...permittedTeachers.map(t => `
+                  <tr class="hover:bg-gray-50 transition">
+                    <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">คุณครู</span></td>
+                    <td class="px-2 py-2 font-mono text-gray-700">${t.teacher_code}</td>
+                    <td class="px-3 py-2">
+                      <div class="flex items-center gap-2">
+                        ${t.image_url 
+                          ? `<img src="${t.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
+                          : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
+                        }
+                        <span class="font-medium text-gray-800">${t.full_name}</span>
+                      </div>
+                    </td>
+                    <td class="px-3 py-2 text-gray-500">กลุ่มสาระ ${t.dept || '—'}</td>
+                    <td class="px-4 py-2 text-right">
+                      <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
+                        data-code="${t.teacher_code}" data-name="${t.full_name}" data-type="teacher">
+                        ถอนสิทธิ์
+                      </button>
+                    </td>
+                  </tr>
+                `)
+              ].join('')}
             </tbody>
           </table>
         `
@@ -6727,12 +6810,25 @@ export async function renderPrayerAdmin() {
         // ผูกอีเวนต์ปุ่มถอนสิทธิ์
         listWrap.querySelectorAll('.btn-revoke-scanner').forEach(btn => {
           btn.addEventListener('click', async () => {
-            const sid = +btn.dataset.id
+            const type = btn.dataset.type
             const name = btn.dataset.name
             if (!confirm(`ถอนสิทธิ์สแกนเนอร์ของ "${name}" หรือไม่?`)) return
             try {
-              const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
-              if (error) throw error
+              if (type === 'student') {
+                const sid = +btn.dataset.id
+                const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
+                if (error) throw error
+              } else {
+                const code = btn.dataset.code
+                const currentConfig = await getSystemConfig().catch(() => ({}))
+                const updatedTeachers = (currentConfig.prayerScannerTeachers || '')
+                  .split(/[\s,]+/)
+                  .map(c => c.trim())
+                  .filter(Boolean)
+                  .filter(c => c !== code)
+
+                await updateSystemConfig('prayerScannerTeachers', updatedTeachers.join(','))
+              }
               showToast(`ถอนสิทธิ์ "${name}" สำเร็จ`, 'success')
               _loadScannersList()
             } catch(err) {
@@ -6749,38 +6845,50 @@ export async function renderPrayerAdmin() {
     // กดค้นหา
     document.getElementById('btn-search-scanner-students').addEventListener('click', async () => {
       const input = document.getElementById('pr-scanner-search-input').value.trim()
-      if (!input) { showToast('กรุณากรอกรหัสนักเรียน', 'warning'); return }
+      if (!input) { showToast('กรุณากรอกรหัสนักเรียนหรือรหัสครู', 'warning'); return }
       
       const codes = input.split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
       if (!codes.length) return
 
       try {
-        const { data, error } = await supabase
-          .from('students')
-          .select('id, student_code, full_name, main_room, image_url')
-          .in('student_code', codes)
-        if (error) throw error
+        const [stuRes, teachRes] = await Promise.all([
+          supabase.from('students').select('id, student_code, full_name, main_room, image_url').in('student_code', codes),
+          supabase.from('teachers').select('id, teacher_code, full_name, dept, image_url').in('teacher_code', codes)
+        ])
 
-        _foundStudents = data ?? []
+        if (stuRes.error) throw stuRes.error
+        if (teachRes.error) throw teachRes.error
+
+        const studentsData = stuRes.data ?? []
+        const teachersData = teachRes.data ?? []
+
+        _foundScanners = [
+          ...studentsData.map(s => ({ ...s, code: s.student_code, type: 'student', display_info: `รหัส ${s.student_code} · ห้อง ${s.main_room || '—'}` })),
+          ...teachersData.map(t => ({ ...t, code: t.teacher_code, type: 'teacher', display_info: `รหัสครู ${t.teacher_code} · กลุ่มสาระ ${t.dept || '—'}` }))
+        ]
+
         const previewContainer = document.getElementById('scanner-preview-container')
         const previewCards = document.getElementById('scanner-preview-cards')
 
-        if (!_foundStudents.length) {
+        if (!_foundScanners.length) {
           previewContainer.classList.add('hidden')
-          showToast('ไม่พบรหัสนักเรียนที่ระบุ', 'warning')
+          showToast('ไม่พบรหัสนักเรียนหรือรหัสครูที่ระบุ', 'warning')
           return
         }
 
         previewContainer.classList.remove('hidden')
-        previewCards.innerHTML = _foundStudents.map(s => `
+        previewCards.innerHTML = _foundScanners.map(s => `
           <div class="bg-white rounded-xl border border-indigo-100 p-3 flex items-center gap-3">
             ${s.image_url 
               ? `<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
-              : `<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">👤</div>`
+              : `<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">${s.type === 'teacher' ? '👨‍🏫' : '👤'}</div>`
             }
             <div class="min-w-0">
-              <p class="font-bold text-gray-800 text-xs truncate">${s.full_name}</p>
-              <p class="text-[10px] text-gray-400">รหัส ${s.student_code} · ห้อง ${s.main_room || '—'}</p>
+              <p class="font-bold text-gray-800 text-xs truncate">
+                ${s.full_name}
+                ${s.type === 'teacher' ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">คุณครู</span>` : ''}
+              </p>
+              <p class="text-[10px] text-gray-400">${s.display_info}</p>
             </div>
           </div>
         `).join('')
@@ -6792,17 +6900,40 @@ export async function renderPrayerAdmin() {
 
     // กดยืนยันมอบสิทธิ์
     document.getElementById('btn-confirm-scanner-grant').addEventListener('click', async () => {
-      if (!_foundStudents.length) return
-      const ids = _foundStudents.map(s => s.id)
+      if (!_foundScanners.length) return
       const btn = document.getElementById('btn-confirm-scanner-grant')
       btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
       try {
-        const { error } = await supabase.from('students').update({ can_scan_prayer: true }).in('id', ids)
-        if (error) throw error
-        showToast(`มอบสิทธิ์สำเร็จ ${_foundStudents.length} คน`, 'success')
+        const studentIds = _foundScanners.filter(s => s.type === 'student').map(s => s.id)
+        const teacherCodes = _foundScanners.filter(s => s.type === 'teacher').map(s => s.code)
+
+        // 1. อัปเดต students
+        if (studentIds.length > 0) {
+          const { error } = await supabase.from('students').update({ can_scan_prayer: true }).in('id', studentIds)
+          if (error) throw error
+        }
+
+        // 2. อัปเดต teachers ใน config
+        if (teacherCodes.length > 0) {
+          const currentConfig = await getSystemConfig().catch(() => ({}))
+          let existingTeachers = (currentConfig.prayerScannerTeachers || '')
+            .split(/[\s,]+/)
+            .map(c => c.trim())
+            .filter(Boolean)
+
+          teacherCodes.forEach(code => {
+            if (!existingTeachers.includes(code)) {
+              existingTeachers.push(code)
+            }
+          })
+
+          await updateSystemConfig('prayerScannerTeachers', existingTeachers.join(','))
+        }
+
+        showToast(`มอบสิทธิ์สำเร็จ ${_foundScanners.length} คน`, 'success')
         document.getElementById('pr-scanner-search-input').value = ''
         document.getElementById('scanner-preview-container').classList.add('hidden')
-        _foundStudents = []
+        _foundScanners = []
         _loadScannersList()
       } catch(err) {
         showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error')
@@ -6828,6 +6959,12 @@ export async function renderPrayerAdmin() {
   document.getElementById('pr-tab-scores').addEventListener('click', ()=>_switchTab('scores'))
   document.getElementById('pr-tab-scanners').addEventListener('click', ()=>_switchTab('scanners'))
   document.getElementById('pr-tab-config').addEventListener('click', ()=>_switchTab('config'))
+  if (isAllowedScanner) {
+    document.getElementById('pr-tab-scanner-cam')?.addEventListener('click', async () => {
+      const { renderStudentPrayerScanner } = await import('./student-views.js')
+      renderStudentPrayerScanner(activeTeacher)
+    })
+  }
   _switchTab('scores')
 }
 
