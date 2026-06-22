@@ -11,7 +11,7 @@ import {
   getActiveLeavePermissionsForClass, getClassLeaveHistory,
 } from './api.js'
 import { supabase } from './supabase.js'
-import { showToast, showDangerConfirm } from './ui.js'
+import { showToast, showDangerConfirm, showSuccessModal } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
   _generateSessions, _dateInputValue, ATT_STATUS, ATT_CYCLE,
@@ -270,6 +270,7 @@ export async function renderAttendanceGrid(teacher, classData) {
 
     // คลิกชื่อนักเรียน → สถิติรายบุคคล
     wrap.addEventListener('click', e => {
+      if (e.target.closest('.btn-request-leave') || e.target.closest('.leave-badge')) return
       const td = e.target.closest('.student-name-cell')
       if (!td) return
       const sid = parseInt(td.closest('[data-sid]')?.dataset.sid)
@@ -685,9 +686,13 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, stud
     
     try {
       await createLeavePermission(studentId, classData.id, teacher.id, reasonText, durationVal)
-      showToast(`อนุมัติใบอนุญาตให้ ${studentName} เรียบร้อย`, 'success')
       modal.remove()
       onSave()
+      showSuccessModal({
+        title: 'อนุมัติใบอนุญาตสำเร็จ 🟢',
+        message: `ได้ออกใบอนุญาตออกนอกห้องเรียนให้แก่ <strong>${_htmlEsc(studentName)}</strong> เป็นเวลา <strong>${durationVal} นาที</strong> เรียบร้อยแล้ว`,
+        confirmText: 'ตกลง'
+      })
     } catch (err) {
       showToast('การขออนุญาตล้มเหลว: ' + (err.message ?? ''), 'error')
     }

@@ -8,7 +8,7 @@ export function showToast(message, type = 'info') {
   }
 
   const toast = document.createElement('div')
-  toast.className = `fixed top-5 right-5 z-50 px-5 py-3 rounded-xl text-white shadow-lg text-sm
+  toast.className = `fixed top-5 right-5 z-[99999] px-5 py-3 rounded-xl text-white shadow-lg text-sm
                      flex items-center gap-2 transition-all duration-300 translate-x-full
                      ${colors[type] ?? colors.info}`
 
@@ -22,6 +22,54 @@ export function showToast(message, type = 'info') {
     toast.classList.add('translate-x-full', 'opacity-0')
     toast.addEventListener('transitionend', () => toast.remove())
   }, 3500)
+}
+
+// ─── Success Notification Modal ──────────────────────────────────────────────
+// แสดง popup ตรงกลางหน้าจอด้านหน้าสุดเพื่อแจ้งความสำเร็จ
+export function showSuccessModal({
+  title = 'ดำเนินการสำเร็จ',
+  message = '',
+  confirmText = 'ตกลง',
+} = {}) {
+  return new Promise(resolve => {
+    document.getElementById('success-modal')?.remove()
+
+    const m = document.createElement('div')
+    m.id = 'success-modal'
+    m.className = 'fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm'
+    m.style.cssText = 'animation:sm-fade-in .2s ease-out'
+    m.innerHTML = `
+      <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden" style="animation:sm-pop-in .25s cubic-bezier(.34,1.56,.64,1)">
+        <div class="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600"></div>
+        <div class="px-6 pt-6 pb-5 text-center">
+          <div class="mx-auto mb-4 w-16 h-16 rounded-full bg-emerald-50 border-2 border-emerald-100 flex items-center justify-center text-3xl">
+            🟢
+          </div>
+          <h3 class="text-base font-extrabold text-emerald-700 mb-2">${title}</h3>
+          ${message ? `<p class="text-xs text-gray-500 leading-relaxed">${message}</p>` : ''}
+        </div>
+        <div class="px-6 pb-6">
+          <button id="sm-confirm" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-md transition-all active:scale-[0.98]">
+            ${confirmText}
+          </button>
+        </div>
+      </div>
+      <style>
+        @keyframes sm-fade-in { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes sm-pop-in { from { opacity: 0; transform: scale(0.9) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+      </style>
+    `
+    document.body.appendChild(m)
+
+    const cleanup = () => {
+      m.remove()
+      resolve(true)
+    }
+
+    m.querySelector('#sm-confirm').addEventListener('click', cleanup)
+    const onKey = e => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); cleanup() } }
+    document.addEventListener('keydown', onKey)
+  })
 }
 
 // ─── Danger Confirmation Modal ────────────────────────────────────────────────
