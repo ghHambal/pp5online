@@ -3124,17 +3124,23 @@ export async function getActiveLeavePermission(studentCodeOrId) {
     .select('*, students(id, student_code, full_name, image_url), teachers(id, full_name)')
     .eq('status', 'active')
   
-  if (typeof studentCodeOrId === 'number' || !isNaN(studentCodeOrId)) {
-    query = query.eq('student_id', parseInt(studentCodeOrId))
-  } else {
-    const { data: stdData, error: stdErr } = await supabase
-      .from('students')
-      .select('id')
-      .eq('student_code', studentCodeOrId)
-      .maybeSingle()
-    if (stdErr) throw stdErr
-    if (!stdData) return null
+  // ค้นหารหัสประจำตัวนักเรียน (student_code) ก่อนเป็นอันดับแรก
+  const { data: stdData, error: stdErr } = await supabase
+    .from('students')
+    .select('id')
+    .eq('student_code', String(studentCodeOrId))
+    .maybeSingle()
+  if (stdErr) throw stdErr
+
+  if (stdData) {
     query = query.eq('student_id', stdData.id)
+  } else {
+    // หากไม่พบ ให้สำรองหาด้วยรหัสคีย์หลัก (student_id) ในกรณีที่เป็นตัวเลข
+    if (typeof studentCodeOrId === 'number' || !isNaN(studentCodeOrId)) {
+      query = query.eq('student_id', parseInt(studentCodeOrId))
+    } else {
+      return null
+    }
   }
 
   const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle()
