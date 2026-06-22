@@ -4,7 +4,7 @@ import {
   getRoomsByGrade, getStudentsByRoom, getStudentsByReligionRoom, getReligionRoomsByGrade,
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   getClassStudents, getClassRosterStudents, getStudentByCode,
-  addStudentToClass, updateClassStudentActive,
+  addStudentToClass, updateClassStudentActive, removeStudentFromClass,
   getUniqueRooms, getUniqueReligionRooms,
   getMySchedule, upsertScheduleEntry, deleteScheduleEntry, deleteScheduleByTeacher,
   getPeriods, getAllPeriods, getTeacherRoomColors, saveTeacherRoomColor,
@@ -712,12 +712,12 @@ export async function renderMyClasses(teacher) {
                   <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl bg-red-50 text-red-500 border border-red-100 shadow-sm">
                     🗑️
                   </div>
-                  <h3 class="text-2xl font-bold text-gray-900">ปิดสถานะกำลังเรียน?</h3>
+                  <h3 class="text-2xl font-bold text-gray-900">ลบนักเรียนออกจากห้องเรียนนี้?</h3>
                   <p class="mt-3 text-gray-800 font-semibold text-lg">${_htmlEsc(studentName)}</p>
-                  <p class="mt-2 text-sm text-gray-400">นักเรียนจะไม่ถูกนำไปเช็กชื่อหรือแสดงในใบรายชื่อของรายวิชานี้<br/>และสถานะนี้จะไม่ถูกเขียนทับจากการซิงก์รายสัปดาห์</p>
+                  <p class="mt-2 text-sm text-gray-400">นักเรียนจะถูกลบออกจากรายวิชานี้ และระบบซิงก์หรือปุ่มรีเฟรชจะไม่เพิ่มกลับมาอีก<br/>หากต้องการนำกลับ สามารถใช้ปุ่ม “เพิ่มนักเรียน” ได้ภายหลัง</p>
                   <div class="mt-8 grid grid-cols-2 gap-3">
                     <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
-                    <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-red-600 hover:bg-red-700">ยืนยันการปิดสถานะ</button>
+                    <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-red-600 hover:bg-red-700">ยืนยันการลบ</button>
                   </div>
                 </div>
               </div>`
@@ -731,8 +731,8 @@ export async function renderMyClasses(teacher) {
                   await updateClassStudentActive(el.dataset.enrollmentId, true)
                   showToast('เปิดสถานะกำลังเรียนแล้ว', 'success')
                 } else {
-                  await updateClassStudentActive(el.dataset.enrollmentId, false)
-                  showToast('ปิดสถานะกำลังเรียนแล้ว', 'success')
+                  await removeStudentFromClass(el.dataset.enrollmentId)
+                  showToast('ลบนักเรียนออกจากห้องเรียนนี้แล้ว', 'success')
                 }
                 modal.remove()
                 refresh()

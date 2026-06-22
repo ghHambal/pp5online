@@ -415,9 +415,10 @@ export async function getStudentByCode(studentCode) {
 }
 
 export async function addStudentToClass(classId, studentId) {
-  const { error } = await supabase
-    .from('class_students')
-    .upsert({ class_id: classId, student_id: studentId, is_active: true }, { onConflict: 'class_id,student_id' })
+  const { error } = await supabase.rpc('restore_student_to_class', {
+    p_class_id: classId,
+    p_student_id: studentId,
+  })
   if (error) throw error
 }
 
@@ -430,10 +431,9 @@ export async function updateClassStudentActive(enrollmentId, isActive) {
 }
 
 export async function removeStudentFromClass(enrollmentId) {
-  const { error } = await supabase
-    .from('class_students')
-    .delete()
-    .eq('id', enrollmentId)
+  const { error } = await supabase.rpc('exclude_student_from_class', {
+    p_enrollment_id: enrollmentId,
+  })
   if (error) throw error
 }
 
