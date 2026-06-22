@@ -4652,8 +4652,15 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         let showCode = localStorage.getItem('qr_print_show_code') !== 'false'
         let showSeat = localStorage.getItem('qr_print_show_seat') !== 'false'
         let showRoom = localStorage.getItem('qr_print_show_room') !== 'false'
+        let filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
 
         const _renderPreviewPanel = () => {
+          // กรองรายชื่อตามเพศที่เลือก
+          const displayedStudents = students.filter(s => {
+            if (filterGender === 'all') return true
+            return s.gender === filterGender
+          })
+
           previewSec.innerHTML = `
             <!-- บล็อกตั้งค่าจัดพิมพ์ -->
             <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -4677,6 +4684,14 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
               <div class="flex flex-wrap gap-3 items-center shrink-0">
                 <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500 font-semibold">เลือกเพศ:</span>
+                  <select id="select-print-gender" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
+                    <option value="all" ${filterGender === 'all' ? 'selected' : ''}>ทั้งหมด</option>
+                    <option value="ชาย" ${filterGender === 'ชาย' ? 'selected' : ''}>ชาย 👦</option>
+                    <option value="หญิง" ${filterGender === 'หญิง' ? 'selected' : ''}>หญิง 👧</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-2">
                   <span class="text-xs text-gray-500 font-semibold">จำนวนคอลัมน์:</span>
                   <select id="select-print-cols" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
                     <option value="3" ${cols === 3 ? 'selected' : ''}>3 คอลัมน์</option>
@@ -4685,7 +4700,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
                     <option value="6" ${cols === 6 ? 'selected' : ''}>6 คอลัมน์</option>
                   </select>
                 </div>
-                <button id="btn-trigger-print" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5">
+                <button id="btn-trigger-print" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5" ${displayedStudents.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
                   🖨️ สั่งพิมพ์ (Print)
                 </button>
               </div>
@@ -4702,9 +4717,11 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
             <!-- พื้นที่ Live Preview -->
             <div>
-              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">พรีวิวการจัดวาง (${students.length} คน)</p>
-              <div id="qr-live-grid" class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr));">
-                ${students.map(student => `
+              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">พรีวิวการจัดวาง (${displayedStudents.length} คน)</p>
+              <div id="qr-live-grid" class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="${displayedStudents.length === 0 ? '' : `grid-template-columns: repeat(${cols}, minmax(0, 1fr));`}">
+                ${displayedStudents.length === 0 ? `
+                  <div class="col-span-full py-12 text-center text-xs text-gray-400 font-semibold bg-white border border-gray-100 rounded-2xl">ไม่มีนักเรียนเพศที่เลือกในห้องเรียนนี้</div>
+                ` : displayedStudents.map(student => `
                   <div class="bg-white border border-gray-100 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow-sm">
                     <div class="w-full aspect-square flex items-center justify-center bg-gray-50/50 rounded-xl overflow-hidden mb-2 p-1">
                       <canvas id="live-canvas-${student.id}" class="w-full h-full max-w-full max-h-full object-contain"></canvas>
@@ -4724,7 +4741,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           `
 
           // วาดภาพ QR Codes ใน Live Preview
-          students.forEach(student => {
+          displayedStudents.forEach(student => {
             const canvas = document.getElementById(`live-canvas-${student.id}`)
             if (canvas) {
               QRCode.toCanvas(canvas, student.student_code || '', {
@@ -4756,6 +4773,11 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             localStorage.setItem('qr_print_show_room', showRoom)
             _renderPreviewPanel()
           })
+          document.getElementById('select-print-gender').addEventListener('change', (e) => {
+            filterGender = e.target.value
+            localStorage.setItem('qr_print_filter_gender', filterGender)
+            _renderPreviewPanel()
+          })
           document.getElementById('select-print-cols').addEventListener('change', (e) => {
             cols = parseInt(e.target.value)
             localStorage.setItem('qr_print_cols', cols)
@@ -4763,101 +4785,103 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           })
 
           // ดำเนินการสั่งพิมพ์
-          document.getElementById('btn-trigger-print').addEventListener('click', async () => {
-            // ฉีดพ่น Style สั่งพิมพ์ชั่วคราว
-            let styleEl = document.getElementById('qr-print-media-styles')
-            if (!styleEl) {
-              styleEl = document.createElement('style')
-              styleEl.id = 'qr-print-media-styles'
-              document.head.appendChild(styleEl)
-            }
-            styleEl.textContent = `
-              @media print {
-                body > * {
-                  display: none !important;
-                }
-                #print-qr-area {
-                  display: block !important;
-                  position: absolute;
-                  left: 0;
-                  top: 0;
-                  width: 100% !important;
-                  padding: 0 !important;
-                  margin: 0 !important;
-                  background: white !important;
-                }
-                #print-qr-area * {
-                  display: initial;
-                  visibility: visible;
-                }
-                .print-grid {
-                  display: grid !important;
-                  grid-template-columns: repeat(${cols}, minmax(0, 1fr)) !important;
-                  gap: 12px !important;
-                  width: 100% !important;
-                }
-                .qr-print-card {
-                  border: 1px solid #9ca3af !important;
-                  border-radius: 8px !important;
-                  padding: 10px !important;
-                  page-break-inside: avoid !important;
-                  break-inside: avoid !important;
-                  display: flex !important;
-                  flex-direction: column !important;
-                  align-items: center !important;
-                  justify-content: space-between !important;
-                  background: white !important;
-                }
-                .qr-print-card canvas {
-                  width: 100% !important;
-                  height: auto !important;
-                }
+          if (displayedStudents.length > 0) {
+            document.getElementById('btn-trigger-print').addEventListener('click', async () => {
+              // ฉีดพ่น Style สั่งพิมพ์ชั่วคราว
+              let styleEl = document.getElementById('qr-print-media-styles')
+              if (!styleEl) {
+                styleEl = document.createElement('style')
+                styleEl.id = 'qr-print-media-styles'
+                document.head.appendChild(styleEl)
               }
-            `
+              styleEl.textContent = `
+                @media print {
+                  body > * {
+                    display: none !important;
+                  }
+                  #print-qr-area {
+                    display: block !important;
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    width: 100% !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    background: white !important;
+                  }
+                  #print-qr-area * {
+                    display: initial;
+                    visibility: visible;
+                  }
+                  .print-grid {
+                    display: grid !important;
+                    grid-template-columns: repeat(${cols}, minmax(0, 1fr)) !important;
+                    gap: 12px !important;
+                    width: 100% !important;
+                  }
+                  .qr-print-card {
+                    border: 1px solid #9ca3af !important;
+                    border-radius: 8px !important;
+                    padding: 10px !important;
+                    page-break-inside: avoid !important;
+                    break-inside: avoid !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    align-items: center !important;
+                    justify-content: space-between !important;
+                    background: white !important;
+                  }
+                  .qr-print-card canvas {
+                    width: 100% !important;
+                    height: auto !important;
+                  }
+                }
+              `
 
-            // สร้างพื้นที่พิมพ์ชั่วคราว
-            const printArea = document.createElement('div')
-            printArea.id = 'print-qr-area'
-            printArea.className = 'hidden'
-            document.body.appendChild(printArea)
+              // สร้างพื้นที่พิมพ์ชั่วคราว
+              const printArea = document.createElement('div')
+              printArea.id = 'print-qr-area'
+              printArea.className = 'hidden'
+              document.body.appendChild(printArea)
 
-            printArea.innerHTML = `
-              <div class="print-grid">
-                ${students.map(student => `
-                  <div class="qr-print-card">
-                    <div style="width: 100%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 6px;">
-                      <canvas id="print-canvas-${student.id}" style="width: 100%; max-width: 100%; height: auto;"></canvas>
-                    </div>
-                    <div style="width: 100%; text-align: left; font-family: Sarabun, sans-serif; font-size: 11px;">
-                      <p style="font-weight: bold; color: black; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${_htmlEsc(student.full_name)}</p>
-                      ${showCode ? `<p style="color: #4b5563; margin: 2px 0 0 0; font-size: 9px;">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
-                      <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 9px; color: #4b5563;">
-                        ${showRoom ? `<span>ห้อง: ${_htmlEsc(className)}</span>` : ''}
-                        ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
+              printArea.innerHTML = `
+                <div class="print-grid">
+                  ${displayedStudents.map(student => `
+                    <div class="qr-print-card">
+                      <div style="width: 100%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 6px;">
+                        <canvas id="print-canvas-${student.id}" style="width: 100%; max-width: 100%; height: auto;"></canvas>
+                      </div>
+                      <div style="width: 100%; text-align: left; font-family: Sarabun, sans-serif; font-size: 11px;">
+                        <p style="font-weight: bold; color: black; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${_htmlEsc(student.full_name)}</p>
+                        ${showCode ? `<p style="color: #4b5563; margin: 2px 0 0 0; font-size: 9px;">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
+                        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 9px; color: #4b5563;">
+                          ${showRoom ? `<span>ห้อง: ${_htmlEsc(className)}</span>` : ''}
+                          ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                `).join('')}
-              </div>
-            `
+                  `).join('')}
+                </div>
+              `
 
-            // วาดภาพ QR ใน Print Area
-            for (const student of students) {
-              const canvas = document.getElementById(`print-canvas-${student.id}`)
-              if (canvas) {
-                await QRCode.toCanvas(canvas, student.student_code || '', {
-                  width: 250,
-                  margin: 1,
-                  color: { dark: '#000000', light: '#ffffff' }
-                })
+              // วาดภาพ QR ใน Print Area
+              for (const student of displayedStudents) {
+                const canvas = document.getElementById(`print-canvas-${student.id}`)
+                if (canvas) {
+                  await QRCode.toCanvas(canvas, student.student_code || '', {
+                    width: 250,
+                    margin: 1,
+                    color: { dark: '#000000', light: '#ffffff' }
+                  })
+                }
               }
-            }
 
-            // เรียกพิมพ์
-            window.print()
-            // ทำลายพื้นที่พิมพ์ชั่วคราว
-            printArea.remove()
-          })
+              // เรียกพิมพ์
+              window.print()
+              // ทำลายพื้นที่พิมพ์ชั่วคราว
+              printArea.remove()
+            })
+          }
         }
 
         _renderPreviewPanel()
