@@ -33,14 +33,26 @@ export async function renderAttendanceGrid(teacher, classData) {
     const curYear  = cfg.academic_year ?? new Date().getFullYear() + 543
     const curSem   = cfg.semester ?? 1
     const srcClassId = classData.source_class_id ?? null
-    const [students, attRows, holidays, dowPattern] = await Promise.all([
+    const [students, attRows, holidays, dowPattern, activeLeaves, classLeaves] = await Promise.all([
       getClassStudents(classData.id),
       getClassAttendanceAll(srcClassId ?? classData.id),   // source ถ้ามี
       getSchoolHolidays(curYear, curSem),
       getClassSessionDOWs(classData.id).catch(() => []),
+      getActiveLeavePermissionsForClass(classData.id).catch(() => []),
+      getClassLeaveHistory(classData.id).catch(() => []),
     ])
     const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null)
     const holidaySet = new Set(holidays)
+
+    const activeLeaveMap = {}
+    activeLeaves.forEach(l => {
+      activeLeaveMap[l.student_id] = l
+    })
+
+    const hasLeftMap = {}
+    classLeaves.forEach(l => {
+      hasLeftMap[l.student_id] = true
+    })
 
     // attendance map: { studentId: { sessionNum: status } }
     // ถ้ามี source ให้ remap session number ต่อสัปดาห์ตาม credit ratio
