@@ -1294,8 +1294,36 @@ export async function renderFlashcardPlay(teacher, deck, classId = null) {
                 saveBtn.style.opacity = '0.5'
               }
               try {
-                await saveStudentScore(classId, student.id, parseInt(columnId), score)
-                showToast(`บันทึกคะแนนให้ ${student.full_name} เรียบร้อยแล้ว`, 'success')
+                // Fetch current score history for delta mode
+                let currentHistory = []
+                const { data: scoreRec } = await supabase
+                  .from('student_scores')
+                  .select('score_history')
+                  .eq('student_id', student.id)
+                  .eq('assignment_id', parseInt(columnId))
+                  .maybeSingle()
+                if (scoreRec && Array.isArray(scoreRec.score_history)) {
+                  currentHistory = scoreRec.score_history
+                }
+
+                const currentTotal = currentHistory.reduce((s, e) => s + e.d, 0)
+                const newTotal = currentTotal + score
+
+                const selectedCol = classScoreColumns.find(c => c.id == columnId)
+                const maxScore = selectedCol ? selectedCol.max_score : 100
+                if (newTotal > maxScore) {
+                  showToast(`คะแนนรวมใหม่ (${newTotal}) จะเกินคะแนนเต็มสูงสุด (${maxScore})`, 'error')
+                  return
+                }
+
+                // Save score as delta
+                const res = await saveStudentScore(classId, student.id, parseInt(columnId), score, {
+                  delta: true,
+                  currentHistory: currentHistory
+                })
+                
+                const finalScore = res?.final ?? newTotal
+                showToast(`บันทึกคะแนนให้ ${student.full_name} เรียบร้อยแล้ว (คะแนนรวมใหม่: ${finalScore}/${maxScore})`, 'success')
                 pickedContainer.classList.add('hidden')
                 pickedContainer.innerHTML = ''
               } catch (err) {
@@ -1319,11 +1347,28 @@ export async function renderFlashcardPlay(teacher, deck, classId = null) {
               }
               const selectedCol = classScoreColumns.find(c => c.id == columnId)
               const maxScore = selectedCol ? selectedCol.max_score : 100
-              const input = prompt(`ระบุคะแนนที่ต้องการบันทึกให้ ${student.full_name} (คะแนนเต็ม ${maxScore} คะแนน):`, '1')
+
+              // Load current score to show in the prompt
+              let currentTotal = 0
+              try {
+                const { data: scoreRec } = await supabase
+                  .from('student_scores')
+                  .select('score_history')
+                  .eq('student_id', student.id)
+                  .eq('assignment_id', parseInt(columnId))
+                  .maybeSingle()
+                if (scoreRec && Array.isArray(scoreRec.score_history)) {
+                  currentTotal = scoreRec.score_history.reduce((s, e) => s + e.d, 0)
+                }
+              } catch (err) {
+                console.warn(err)
+              }
+
+              const input = prompt(`คะแนนปัจจุบันของ ${student.full_name} คือ ${currentTotal}/${maxScore}\nระบุคะแนนที่ต้องการบวกเพิ่ม (เช่น 1.5, 2, -1):`, '1')
               if (input === null) return
               const scoreVal = parseFloat(input)
-              if (isNaN(scoreVal) || scoreVal < 0 || scoreVal > maxScore) {
-                showToast(`คะแนนไม่ถูกต้อง ต้องอยู่ระหว่าง 0 ถึง ${maxScore}`, 'error')
+              if (isNaN(scoreVal)) {
+                showToast(`กรุณากรอกตัวเลขคะแนนที่ถูกต้อง`, 'error')
                 return
               }
               await saveScore(scoreVal)
