@@ -3115,3 +3115,113 @@ export async function deleteFlashcardImage(publicUrl) {
     console.warn('deleteFlashcardImage error:', e)
   }
 }
+
+// ─── Leave Permissions System (ระบบขออนุญาตออกนอกห้องเรียน) ─────────────────
+
+export async function getActiveLeavePermission(studentCodeOrId) {
+  let query = supabase
+    .from('student_leave_permissions')
+    .select('*, students(id, student_code, full_name, image_url), teachers(id, full_name)')
+    .eq('status', 'active')
+  
+  if (typeof studentCodeOrId === 'number' || !isNaN(studentCodeOrId)) {
+    query = query.eq('student_id', parseInt(studentCodeOrId))
+  } else {
+    const { data: stdData, error: stdErr } = await supabase
+      .from('students')
+      .select('id')
+      .eq('student_code', studentCodeOrId)
+      .maybeSingle()
+    if (stdErr) throw stdErr
+    if (!stdData) return null
+    query = query.eq('student_id', stdData.id)
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function getOutStudentsCount(classId) {
+  const { count, error } = await supabase
+    .from('student_leave_permissions')
+    .select('*', { count: 'exact', head: true })
+    .eq('class_id', classId)
+    .eq('status', 'active')
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function hasStudentLeftAlready(studentId, classId) {
+  const { count, error } = await supabase
+    .from('student_leave_permissions')
+    .select('*', { count: 'exact', head: true })
+    .eq('student_id', studentId)
+    .eq('class_id', classId)
+  if (error) throw error
+  return (count ?? 0) > 0
+}
+
+export async function createLeavePermission(studentId, classId, teacherId, reason, durationMinutes) {
+  const alreadyLeft = await hasStudentLeftAlready(studentId, classId)
+  if (alreadyLeft) {
+    throw new Error('นักเรียนคนนี้เคยได้รับอนุมัติออกนอกห้องในคาบนี้ไปแล้ว')
+  }
+
+  const activeOutCount = await getOutStudentsCount(classId)
+  if (activeOutCount >= 3) {
+    throw new Error('ไม่อนุญาตให้ออกเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบ 3 คนแล้ว')
+  }
+
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .insert({
+      student_id: studentId,
+      class_id: classId,
+      teacher_id: teacherId,
+      reason: reason,
+      allowed_duration: durationMinutes,
+      status: 'active'
+    })
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data
+}
+
+export async function closeLeavePermission(permissionId, status = 'returned') {
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .update({
+      returned_at: new Date().toISOString(),
+      status: status
+    })
+    .eq('id', permissionId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getClassLeaveHistory(classId) {
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .select('*, students(id, student_code, full_name)')
+    .eq('class_id', classId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function getActiveLeavePermissionsForClass(classId) {
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .select('*, students(id, student_code, full_name, image_url)')
+    .eq('class_id', classId)
+    .eq('status', 'active')
+  if (error) throw error
+  return data || []
+}
+

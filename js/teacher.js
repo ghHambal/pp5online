@@ -180,6 +180,9 @@ const ROUTES = {
     window._pendingQRClassId = null
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
+  'student-leave-scanner': () => {
+    import('./teacher-views-leave-scanner.js').then(m => m.renderStudentLeaveScanner(_teacher))
+  },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),
@@ -187,6 +190,9 @@ const ROUTES = {
 
 let _currentView = 'overview'
 function navigate(view) {
+  if (typeof window._cleanupLeaveScanner === 'function') {
+    try { window._cleanupLeaveScanner() } catch (e) {}
+  }
   const fn = ROUTES[view]
   if (fn) { _currentView = view; fn() }
 }

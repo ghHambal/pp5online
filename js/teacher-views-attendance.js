@@ -201,7 +201,10 @@ export async function renderAttendanceGrid(teacher, classData) {
                       ? `<img src="${s.image_url}" class="w-8 h-8 object-cover rounded border flex-shrink-0" />`
                       : `<div class="w-8 h-8 rounded border bg-gray-100 flex items-center justify-center flex-shrink-0 text-sm">👤</div>`
                     }
-                    <span class="text-gray-800 text-xs truncate max-w-[105px]">${s.full_name}</span>
+                    <div class="flex flex-col min-w-0">
+                      <span class="text-gray-800 text-xs truncate max-w-[105px] font-semibold">${s.full_name}</span>
+                      ${_renderStudentRosterLeavePart(s, activeLeaveMap, hasLeftMap)}
+                    </div>
                   </div>
                 </td>
                 ${sessions.map(sess => {
@@ -316,10 +319,325 @@ export async function renderAttendanceGrid(teacher, classData) {
       const sameDateSessions = sessions.filter(s => s.ds === date)
       _openAttFormModal(teacher, classData, students, attMap, sessN, date, sameDateSessions, holidaySet, saveClassId, saveSessN)
     })
+
+    // ─── Leave pass Event listeners & Timer ─────────────────────────
+    if (window._leaveTimerInterval) {
+      clearInterval(window._leaveTimerInterval)
+      window._leaveTimerInterval = null
+    }
+
+    window._overdueQueue = window._overdueQueue || []
+    window._isProcessingOverdue = false
+    window._notifiedOverdueLeaves = window._notifiedOverdueLeaves || new Set()
+
+    const updateTimers = () => {
+      const timers = document.querySelectorAll('.leave-timer')
+      if (timers.length === 0) return
+      
+      const now = new Date()
+      timers.forEach(async el => {
+        const badge = el.closest('.leave-badge')
+        if (!badge) return
+        
+        const startStr = badge.dataset.start
+        const durationMin = parseInt(badge.dataset.duration)
+        const leaveId = badge.dataset.leaveId
+        const studentName = badge.dataset.name
+        
+        const startDate = new Date(startStr)
+        const expiryDate = new Date(startDate.getTime() + durationMin * 60 * 1000)
+        
+        const diffMs = expiryDate.getTime() - now.getTime()
+        const isOverdue = diffMs < 0
+        const absDiff = Math.abs(diffMs)
+        
+        const mins = Math.floor(absDiff / (60 * 1000))
+        const secs = Math.floor((absDiff % (60 * 1000)) / 1000)
+        const timeText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+        
+        if (isOverdue) {
+          el.innerHTML = `-${timeText}`
+          if (!badge.classList.contains('bg-red-100')) {
+            badge.classList.remove('bg-amber-100', 'text-amber-700')
+            badge.classList.add('bg-red-100', 'text-red-700', 'animate-pulse')
+            const spanLabel = badge.querySelector('span')
+            if (spanLabel) spanLabel.textContent = 'เลยเวลา'
+            
+            if (!window._notifiedOverdueLeaves.has(leaveId)) {
+              window._notifiedOverdueLeaves.add(leaveId)
+              window._overdueQueue.push({
+                leaveId,
+                studentName,
+                classId: classData.id,
+                teacherId: teacher.id
+              })
+              _processNextOverdueModal()
+            }
+          }
+        } else {
+          el.innerHTML = timeText
+        }
+      })
+    }
+
+    const _processNextOverdueModal = async () => {
+      if (window._isProcessingOverdue || window._overdueQueue.length === 0) return
+      window._isProcessingOverdue = true
+      
+      const item = window._overdueQueue.shift()
+      
+      const existing = document.getElementById('overdue-check-modal')
+      if (existing) existing.remove()
+      
+      const modal = document.createElement('div')
+      modal.id = 'overdue-check-modal'
+      modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 animate-fade'
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4">
+          <div class="text-4xl text-amber-500 animate-bounce">🚪⌛</div>
+          <h3 class="text-lg font-bold text-gray-800">นักเรียนหมดเวลาขออนุญาตแล้ว</h3>
+          <p class="text-sm text-gray-500 leading-relaxed">
+            นักเรียน <strong class="text-gray-800">${_htmlEsc(item.studentName)}</strong> ครบกำหนดเวลาขออนุญาตออกจากห้องแล้ว เดินทางกลับเข้าห้องเรียนแล้วหรือยัง?
+          </p>
+          <div class="grid grid-cols-2 gap-3 pt-2">
+            <button id="btn-overdue-yes" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition-all">
+              ✅ กลับเข้าห้องแล้ว
+            </button>
+            <button id="btn-overdue-no" class="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-bold text-xs transition-all">
+              ❌ ยังไม่กลับเข้าห้อง
+            </button>
+          </div>
+        </div>
+      `
+      document.body.appendChild(modal)
+      
+      modal.querySelector('#btn-overdue-yes').addEventListener('click', async () => {
+        try {
+          await closeLeavePermission(item.leaveId, 'returned')
+          showToast(`บันทึกการกลับห้องของ ${item.studentName} เรียบร้อย`, 'success')
+          modal.remove()
+          window._isProcessingOverdue = false
+          renderAttendanceGrid(teacher, classData)
+          _processNextOverdueModal()
+        } catch (err) {
+          showToast('บันทึกผิดพลาด: ' + (err.message ?? ''), 'error')
+          window._isProcessingOverdue = false
+        }
+      })
+      
+      modal.querySelector('#btn-overdue-no').addEventListener('click', async () => {
+        try {
+          await closeLeavePermission(item.leaveId, 'overdue')
+          showToast(`บันทึกประวัติการเลยเวลาของ ${item.studentName} แล้ว`, 'info')
+          modal.remove()
+          window._isProcessingOverdue = false
+          renderAttendanceGrid(teacher, classData)
+          _processNextOverdueModal()
+        } catch (err) {
+          showToast('บันทึกผิดพลาด: ' + (err.message ?? ''), 'error')
+          window._isProcessingOverdue = false
+        }
+      })
+    }
+
+    window._leaveTimerInterval = setInterval(updateTimers, 1000)
+    setTimeout(updateTimers, 100)
+
+    // คลิกปุ่มขออนุญาตออกนอกห้อง
+    wrap.addEventListener('click', async e => {
+      const btn = e.target.closest('.btn-request-leave')
+      if (!btn) return
+      
+      const sid = parseInt(btn.dataset.sid)
+      const name = btn.dataset.name
+      
+      // จำกัดการออกห้องพร้อมกันได้ไม่เกิน 3 คน
+      const activeOutCount = Object.keys(activeLeaveMap).length
+      if (activeOutCount >= 3) {
+        showToast('ไม่อนุญาตให้ออกนอกห้องเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบโควต้า 3 คนแล้ว', 'warning')
+        return
+      }
+      
+      _openLeaveRequestModal(teacher, classData, sid, name, activeLeaveMap, () => renderAttendanceGrid(teacher, classData))
+    })
+
+    // คลิกป้ายเพื่อส่งกลับห้อง
+    wrap.addEventListener('click', async e => {
+      const badge = e.target.closest('.leave-badge')
+      if (!badge) return
+      
+      const leaveId = badge.dataset.leaveId
+      const name = badge.dataset.name
+      const reason = badge.dataset.reason
+      
+      const confirmed = await showDangerConfirm({
+        title: `นักเรียนกลับเข้าห้องเรียน?`,
+        message: `ยืนยันว่านักเรียน "${name}" (ออกนอกห้องด้วยเหตุผล: ${reason}) กลับเข้าห้องเรียนเรียบร้อยแล้ว`,
+        confirmText: 'กลับเข้าห้องแล้ว',
+      })
+      if (!confirmed) return
+      
+      try {
+        await closeLeavePermission(leaveId, 'returned')
+        showToast(`บันทึกการกลับห้องของ ${name} เรียบร้อย`, 'success')
+        renderAttendanceGrid(teacher, classData)
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
+
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')
   }
 
+}
+
+// ─── Helpers for Leave Permission System ──────────────────────────────────────
+
+function _renderStudentRosterLeavePart(student, activeLeaveMap, hasLeftMap) {
+  const leave = activeLeaveMap[student.id]
+  const hasLeft = hasLeftMap[student.id]
+  
+  if (leave) {
+    return `
+      <div class="mt-0.5 flex items-center">
+        <span class="leave-badge cursor-pointer inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${leave.status === 'overdue' ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-amber-100 text-amber-700'}"
+          data-leave-id="${leave.id}" data-sid="${student.id}" data-name="${_htmlEsc(student.full_name)}" data-reason="${_htmlEsc(leave.reason)}" data-start="${leave.created_at}" data-duration="${leave.allowed_duration}" title="ขออนุญาตออกนอกห้อง: ${leave.reason} (คลิกเพื่อบันทึกกลับห้อง)">
+          🚪 <span>${leave.status === 'overdue' ? 'เลยเวลา' : 'ออกห้อง'}</span> <span class="leave-timer font-mono text-[9px]">--:--</span>
+        </span>
+      </div>
+    `
+  } else if (hasLeft) {
+    return `
+      <div class="mt-0.5 flex items-center">
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-100 cursor-not-allowed select-none" title="นักเรียนใช้สิทธิ์ออกนอกห้องครบ 1 ครั้งแล้วในคาบนี้">
+          ✓ ออกแล้ว (ครบสิทธิ์)
+        </span>
+      </div>
+    `
+  } else {
+    return `
+      <div class="mt-0.5 flex items-center">
+        <button type="button" class="btn-request-leave text-[9px] text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded px-1 py-0.5 bg-gray-50 hover:bg-indigo-50 transition font-medium"
+          data-sid="${student.id}" data-name="${_htmlEsc(student.full_name)}">
+          🚪 ขอออกห้อง
+        </button>
+      </div>
+    `
+  }
+}
+
+function _openLeaveRequestModal(teacher, classData, studentId, studentName, activeLeaveMap, onSave) {
+  const existing = document.getElementById('leave-request-modal')
+  if (existing) existing.remove()
+  
+  const REASONS = ['🚽 ไปห้องน้ำ', '💊 ไปห้องพยาบาล', '🏢 ไปฝ่ายปกครอง/ธุรการ', '✏️ อื่นๆ']
+  const DURATIONS = [5, 10, 15, 30]
+  
+  let selectedReason = REASONS[0]
+  let selectedDuration = 10
+  
+  const modal = document.createElement('div')
+  modal.id = 'leave-request-modal'
+  modal.className = 'fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-fade">
+      <div class="flex items-center justify-between border-b pb-3">
+        <h3 class="font-bold text-gray-800 text-sm">🚪 ขออนุญาตออกนอกห้องเรียน</h3>
+        <button id="btn-leave-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+      </div>
+      <div>
+        <p class="text-xs text-gray-400">นักเรียนผู้ขออนุญาต</p>
+        <p class="font-bold text-gray-800 text-sm mt-0.5">${_htmlEsc(studentName)}</p>
+      </div>
+      
+      <!-- เหตุผล -->
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">1. เหตุผลของการขออนุญาต</label>
+        <div class="grid grid-cols-2 gap-2">
+          ${REASONS.map((r, i) => `
+            <button class="btn-reason text-xs font-semibold px-3 py-2 border rounded-xl transition text-center
+              ${i === 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}"
+              data-reason="${r}">${r}
+            </button>
+          `).join('')}
+        </div>
+        <input type="text" id="input-custom-reason" class="hidden w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500" placeholder="กรุณาระบุเหตุผลการขออนุญาต..." />
+      </div>
+      
+      <!-- เวลาที่อนุญาต -->
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">2. ระยะเวลาที่อนุญาต</label>
+        <div class="grid grid-cols-4 gap-2">
+          ${DURATIONS.map((d, i) => `
+            <button class="btn-duration text-xs font-semibold px-2 py-2 border rounded-xl transition text-center
+              ${d === 10 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}"
+              data-duration="${d}">${d} นาที
+            </button>
+          `).join('')}
+        </div>
+      </div>
+      
+      <button id="btn-leave-submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition-all">
+        🚪 อนุมัติให้ออกนอกห้อง
+      </button>
+    </div>
+  `
+  document.body.appendChild(modal)
+  
+  // จัดการตัวเลือกเหตุผล
+  const customReasonInput = modal.querySelector('#input-custom-reason')
+  modal.querySelectorAll('.btn-reason').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.btn-reason').forEach(b => {
+        b.className = 'btn-reason text-xs font-semibold px-3 py-2 border rounded-xl bg-white text-gray-600 border-gray-200 hover:border-gray-400 text-center'
+      })
+      btn.className = 'btn-reason text-xs font-semibold px-3 py-2 border rounded-xl bg-indigo-600 text-white border-indigo-600 text-center'
+      selectedReason = btn.dataset.reason
+      
+      if (selectedReason === '✏️ อื่นๆ') {
+        customReasonInput.classList.remove('hidden')
+        customReasonInput.focus()
+      } else {
+        customReasonInput.classList.add('hidden')
+      }
+    })
+  })
+  
+  // จัดการตัวเลือกเวลา
+  modal.querySelectorAll('.btn-duration').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.btn-duration').forEach(b => {
+        b.className = 'btn-duration text-xs font-semibold px-2 py-2 border rounded-xl bg-white text-gray-600 border-gray-200 hover:border-gray-400 text-center'
+      })
+      btn.className = 'btn-duration text-xs font-semibold px-2 py-2 border rounded-xl bg-indigo-600 text-white border-indigo-600 text-center'
+      selectedDuration = parseInt(btn.dataset.duration)
+    })
+  })
+  
+  // ปิด modal
+  modal.querySelector('#btn-leave-close').addEventListener('click', () => modal.remove())
+  
+  // ยืนยันขอใบอนุญาต
+  modal.querySelector('#btn-leave-submit').addEventListener('click', async () => {
+    let reasonText = selectedReason
+    if (selectedReason === '✏️ อื่นๆ') {
+      reasonText = customReasonInput.value.trim()
+      if (!reasonText) {
+        showToast('กรุณาระบุเหตุผลในการขออนุญาต', 'warning')
+        return
+      }
+    }
+    
+    try {
+      await createLeavePermission(studentId, classData.id, teacher.id, reasonText, selectedDuration)
+      showToast(`อนุมัติใบอนุญาตให้ ${studentName} เรียบร้อย`, 'success')
+      modal.remove()
+      onSave()
+    } catch (err) {
+      showToast('การขออนุญาตล้มเหลว: ' + (err.message ?? ''), 'error')
+    }
+  })
 }
 
 // ─── Attendance Statistics ────────────────────────────────────────────────────
