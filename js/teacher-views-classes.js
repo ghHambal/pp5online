@@ -18,6 +18,7 @@ import {
   getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
   getFlashcardDecks,
 } from './api.js'
+import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm } from './ui.js'
@@ -630,6 +631,7 @@ export async function renderMyClasses(teacher) {
                 <button id="students-sync-enroll" class="px-3 py-2 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700" title="รีเฟรชรายชื่อนักเรียนในห้องนี้ตามข้อมูลล่าสุด">🔄 รีเฟรชรายชื่อ</button>
                 <button id="students-add" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700">＋ เพิ่มนักเรียน</button>
                 <button id="students-roster" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700">🖨️ สร้างใบรายชื่อ</button>
+                <button id="students-print-qr" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">🖨️ พิมพ์ QR Code</button>
               </div>
             </div>
             ${!students.length ? `
@@ -662,6 +664,10 @@ export async function renderMyClasses(teacher) {
         const refresh = () => window._openStudentManager(classId)
         // students-back ถูกลบออก (อยู่ใน class detail sticky header แล้ว)
         document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
+        document.getElementById('students-print-qr')?.addEventListener('click', () => {
+          window._pendingQRClassId = classId
+          window._navTo('student-qr-print')
+        })
         document.getElementById('students-sync-enroll')?.addEventListener('click', async (e) => {
           const btn = e.currentTarget
           const orig = btn.textContent
@@ -4421,4 +4427,432 @@ export async function renderAnnouncementsView(teacher) {
 
   // load both panels in parallel
   await Promise.all([_renderAnnouncements(), _renderComments()])
+}
+
+export async function renderStudentQRPrint(teacher, classId = null) {
+  setActiveNav('student-qr-print')
+  setTitle('พิมพ์ QR Code นักเรียน')
+  setContent(`
+    <div class="flex justify-center py-12 text-gray-400">
+      <svg class="animate-spin h-6 w-6 text-indigo-400 mr-3" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg> กำลังโหลดข้อมูลห้องเรียนทั้งหมด...
+    </div>
+  `)
+
+  try {
+    // โหลดข้อมูลห้องเรียนทั้งหมดในระบบเพื่อนำมากรอง
+    const { data: allClassRows, error } = await supabase
+      .from('classes')
+      .select(`
+        id, class_name,
+        master_subjects ( id, grade_level, subject_group )
+      `)
+      .order('class_name')
+
+    if (error) throw error
+
+    const classes = allClassRows || []
+
+    const getCategory = (c) => {
+      const grp = c.master_subjects?.subject_group || ''
+      if (['AGM'].includes(grp)) return 'ศาสนา'
+      if (['ACDMVOC', 'AGMVOC'].includes(grp)) return 'ปวช'
+      return 'สามัญ'
+    }
+
+    // มาตรฐานกลุ่มชั้น
+    const standardLevels = {
+      'สามัญ': ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6'],
+      'ศาสนา': ['PR 1', 'อก.1', 'อก.2', 'อก.3', 'อป.1', 'อป.2', 'อป.3'],
+      'ปวช': ['ปวช.1', 'ปวช.2', 'ปวช.3', 'อก.ปวช.1', 'อก.ปวช.2', 'อก.ปวช.3']
+    }
+
+    // สกัดเลเวลจริงจาก DB ผสมกับมาตรฐาน
+    const getLevelsForCategory = (cat) => {
+      const dbLevels = [...new Set(classes
+        .filter(c => getCategory(c) === cat)
+        .map(c => c.master_subjects?.grade_level)
+        .filter(Boolean)
+      )]
+      const std = standardLevels[cat] || []
+      // รวม เลียงลำดับ
+      return [...new Set([...std, ...dbLevels])].sort((a,b) => a.localeCompare(b, 'th'))
+    }
+
+    let selectedCategory = 'สามัญ'
+    let selectedLevel = ''
+    let selectedClassId = ''
+
+    if (classId) {
+      const cls = classes.find(c => c.id == classId)
+      if (cls) {
+        selectedCategory = getCategory(cls)
+        selectedLevel = cls.master_subjects?.grade_level || ''
+        selectedClassId = cls.id
+      }
+    }
+
+    // หน้าเว็บหลัก
+    const _renderPageStructure = () => {
+      const catOptsHtml = ['สามัญ', 'ศาสนา', 'ปวช'].map(cat => `
+        <option value="${cat}" ${cat === selectedCategory ? 'selected' : ''}>${cat}</option>
+      `).join('')
+
+      setContent(`
+        <div class="max-w-4xl mx-auto space-y-6">
+          <div class="mb-4">
+            <h3 class="text-lg font-bold text-gray-800">🖨️ พิมพ์การ์ด QR Code นักเรียน</h3>
+            <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียนและตั้งค่าเพื่อจัดเรียงการ์ด QR Code บนหน้ากระดาษ A4 สำหรับสั่งพิมพ์</p>
+          </div>
+
+          <!-- ตัวกรองห้องเรียน -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-white border border-gray-200 rounded-3xl p-5 shadow-sm">
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">1. เลือกระบบหลักสูตร</label>
+              <select id="qr-filter-category" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
+                ${catOptsHtml}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">2. เลือกระดับชั้น</label>
+              <select id="qr-filter-level" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
+                <!-- เติมแบบไดนามิก -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">3. เลือกห้องเรียน</label>
+              <select id="qr-filter-class" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
+                <option value="">-- เลือกห้องเรียน --</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- พื้นที่แสดงผลพรีวิวและการตั้งค่าจัดพิมพ์ -->
+          <div id="qr-preview-section" class="hidden space-y-6">
+            <!-- จัดการด้วย _renderPreviewPanel -->
+          </div>
+        </div>
+      `)
+
+      // ผูก Event ตัวกรอง
+      const catSelect = document.getElementById('qr-filter-category')
+      const levelSelect = document.getElementById('qr-filter-level')
+      const classSelect = document.getElementById('qr-filter-class')
+
+      const syncLevels = () => {
+        selectedCategory = catSelect.value
+        const levels = getLevelsForCategory(selectedCategory)
+        levelSelect.innerHTML = `
+          <option value="">-- เลือกระดับชั้น --</option>
+          ${levels.map(l => `<option value="${l}" ${l === selectedLevel ? 'selected' : ''}>${l}</option>`).join('')}
+        `
+        syncClasses()
+      }
+
+      const syncClasses = () => {
+        selectedLevel = levelSelect.value
+        const filteredClasses = classes.filter(c => {
+          const matchCat = getCategory(c) === selectedCategory
+          const matchLevel = selectedLevel ? (c.master_subjects?.grade_level === selectedLevel) : true
+          return matchCat && matchLevel
+        })
+
+        classSelect.innerHTML = `
+          <option value="">-- เลือกห้องเรียน (${filteredClasses.length} ห้อง) --</option>
+          ${filteredClasses.map(c => `
+            <option value="${c.id}" ${c.id == selectedClassId ? 'selected' : ''}>${_htmlEsc(c.class_name)}</option>
+          `).join('')}
+        `
+        
+        const newClassId = classSelect.value
+        if (newClassId) {
+          selectedClassId = newClassId
+          _loadRosterAndDraw()
+        } else {
+          document.getElementById('qr-preview-section').classList.add('hidden')
+        }
+      }
+
+      catSelect.addEventListener('change', () => {
+        selectedLevel = ''
+        selectedClassId = ''
+        syncLevels()
+      })
+      levelSelect.addEventListener('change', () => {
+        selectedClassId = ''
+        syncClasses()
+      })
+      classSelect.addEventListener('change', () => {
+        selectedClassId = classSelect.value
+        if (selectedClassId) {
+          _loadRosterAndDraw()
+        } else {
+          document.getElementById('qr-preview-section').classList.add('hidden')
+        }
+      })
+
+      // โหลดค่าเริ่มต้น
+      syncLevels()
+    }
+
+    // โหลดรายชื่อนักเรียนและวาดพรีวิว
+    const _loadRosterAndDraw = async () => {
+      const previewSec = document.getElementById('qr-preview-section')
+      if (!previewSec) return
+      previewSec.classList.remove('hidden')
+      previewSec.innerHTML = `
+        <div class="flex justify-center py-12 text-gray-400 bg-white border border-gray-200 rounded-3xl p-6 shadow-sm">
+          <svg class="animate-spin h-6 w-6 text-indigo-400 mr-3" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg> กำลังโหลดรายชื่อนักเรียนในห้องเรียน...
+        </div>
+      `
+
+      try {
+        const cls = classes.find(c => c.id == selectedClassId)
+        const className = cls ? cls.class_name : 'ทั่วไป'
+        const rawStudents = await getClassRosterStudents(selectedClassId)
+        // เรียงลำดับนักเรียน
+        const students = (rawStudents ?? [])
+          .filter(s => s.is_active !== false)
+          .map((s, i) => ({ ...s, seat_no: i + 1 }))
+
+        if (students.length === 0) {
+          previewSec.innerHTML = `
+            <div class="bg-white border border-gray-200 rounded-3xl p-8 text-center shadow-sm">
+              <p class="text-4xl mb-2">👥</p>
+              <p class="text-sm font-semibold text-gray-500">ไม่มีนักเรียนที่เปิดใช้งานในห้องเรียนนี้</p>
+            </div>
+          `
+          return
+        }
+
+        // สถานะการตั้งค่าการพิมพ์
+        let cols = parseInt(localStorage.getItem('qr_print_cols') || '4')
+        let showCode = localStorage.getItem('qr_print_show_code') !== 'false'
+        let showSeat = localStorage.getItem('qr_print_show_seat') !== 'false'
+        let showRoom = localStorage.getItem('qr_print_show_room') !== 'false'
+
+        const _renderPreviewPanel = () => {
+          previewSec.innerHTML = `
+            <!-- บล็อกตั้งค่าจัดพิมพ์ -->
+            <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div class="space-y-2">
+                <h4 class="font-bold text-gray-800 text-sm">🎛️ ตั้งค่ากระดาษสั่งพิมพ์ (A4)</h4>
+                <div class="flex flex-wrap gap-4 items-center text-xs text-gray-600">
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="show-seat" ${showSeat ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
+                    แสดงเลขที่
+                  </label>
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="show-code" ${showCode ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
+                    แสดงเลขประจำตัว
+                  </label>
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="show-room" ${showRoom ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
+                    แสดงห้องเรียน
+                  </label>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-3 items-center shrink-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500 font-semibold">จำนวนคอลัมน์:</span>
+                  <select id="select-print-cols" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
+                    <option value="3" ${cols === 3 ? 'selected' : ''}>3 คอลัมน์</option>
+                    <option value="4" ${cols === 4 ? 'selected' : ''}>4 คอลัมน์</option>
+                    <option value="5" ${cols === 5 ? 'selected' : ''}>5 คอลัมน์</option>
+                    <option value="6" ${cols === 6 ? 'selected' : ''}>6 คอลัมน์</option>
+                  </select>
+                </div>
+                <button id="btn-trigger-print" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5">
+                  🖨️ สั่งพิมพ์ (Print)
+                </button>
+              </div>
+            </div>
+
+            <!-- ข้อแนะนำก่อนพิมพ์ -->
+            <div class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-800 leading-relaxed flex items-start gap-2">
+              <span class="text-base">💡</span>
+              <div>
+                <p class="font-bold">แนะนำการพิมพ์:</p>
+                <p class="opacity-90">ระบบใช้ QR Code แบบคงที่ (รหัสนักเรียนโดยตรง) ซึ่งครูสามารถสั่งพิมพ์ค้างไว้ได้ถาวร ในหน้าต่างพรีวิวการสั่งพิมพ์ของเบราว์เซอร์ แนะนำให้เลือกเช็คบ็อกซ์ <strong>"Background graphics" (กราฟิกพื้นหลัง)</strong> และปิดตัวเลือก <strong>"Headers and footers"</strong> เพื่อให้กระดาษ A4 สวยงามสมบูรณ์ที่สุดครับ</p>
+              </div>
+            </div>
+
+            <!-- พื้นที่ Live Preview -->
+            <div>
+              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">พรีวิวการจัดวาง (${students.length} คน)</p>
+              <div id="qr-live-grid" class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr));">
+                ${students.map(student => `
+                  <div class="bg-white border border-gray-100 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow-sm">
+                    <div class="w-full aspect-square flex items-center justify-center bg-gray-50/50 rounded-xl overflow-hidden mb-2 p-1">
+                      <canvas id="live-canvas-${student.id}" class="w-full h-full max-w-full max-h-full object-contain"></canvas>
+                    </div>
+                    <div class="text-left w-full min-w-0 font-sans">
+                      <p class="text-[11px] font-bold text-gray-800 truncate">${_htmlEsc(student.full_name)}</p>
+                      ${showCode ? `<p class="text-[9px] text-gray-400 mt-0.5">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
+                      <div class="flex items-center justify-between mt-1 text-[9px] text-gray-400">
+                        ${showRoom ? `<span>ห้อง: ${_htmlEsc(className)}</span>` : ''}
+                        ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `
+
+          // วาดภาพ QR Codes ใน Live Preview
+          students.forEach(student => {
+            const canvas = document.getElementById(`live-canvas-${student.id}`)
+            if (canvas) {
+              QRCode.toCanvas(canvas, student.student_code || '', {
+                width: 160,
+                margin: 1.5,
+                color: {
+                  dark: '#111827',
+                  light: '#FFFFFF'
+                }
+              }, err => {
+                if (err) console.error('Failed to generate live preview QR code:', err)
+              })
+            }
+          })
+
+          // ผูก Event ตั้งค่าพรีวิว
+          document.getElementById('show-seat').addEventListener('change', (e) => {
+            showSeat = e.target.checked
+            localStorage.setItem('qr_print_show_seat', showSeat)
+            _renderPreviewPanel()
+          })
+          document.getElementById('show-code').addEventListener('change', (e) => {
+            showCode = e.target.checked
+            localStorage.setItem('qr_print_show_code', showCode)
+            _renderPreviewPanel()
+          })
+          document.getElementById('show-room').addEventListener('change', (e) => {
+            showRoom = e.target.checked
+            localStorage.setItem('qr_print_show_room', showRoom)
+            _renderPreviewPanel()
+          })
+          document.getElementById('select-print-cols').addEventListener('change', (e) => {
+            cols = parseInt(e.target.value)
+            localStorage.setItem('qr_print_cols', cols)
+            _renderPreviewPanel()
+          })
+
+          // ดำเนินการสั่งพิมพ์
+          document.getElementById('btn-trigger-print').addEventListener('click', async () => {
+            // ฉีดพ่น Style สั่งพิมพ์ชั่วคราว
+            let styleEl = document.getElementById('qr-print-media-styles')
+            if (!styleEl) {
+              styleEl = document.createElement('style')
+              styleEl.id = 'qr-print-media-styles'
+              document.head.appendChild(styleEl)
+            }
+            styleEl.textContent = `
+              @media print {
+                body > * {
+                  display: none !important;
+                }
+                #print-qr-area {
+                  display: block !important;
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100% !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  background: white !important;
+                }
+                #print-qr-area * {
+                  display: initial;
+                  visibility: visible;
+                }
+                .print-grid {
+                  display: grid !important;
+                  grid-template-columns: repeat(${cols}, minmax(0, 1fr)) !important;
+                  gap: 12px !important;
+                  width: 100% !important;
+                }
+                .qr-print-card {
+                  border: 1px solid #9ca3af !important;
+                  border-radius: 8px !important;
+                  padding: 10px !important;
+                  page-break-inside: avoid !important;
+                  break-inside: avoid !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  align-items: center !important;
+                  justify-content: space-between !important;
+                  background: white !important;
+                }
+                .qr-print-card canvas {
+                  width: 100% !important;
+                  height: auto !important;
+                }
+              }
+            `
+
+            // สร้างพื้นที่พิมพ์ชั่วคราว
+            const printArea = document.createElement('div')
+            printArea.id = 'print-qr-area'
+            printArea.className = 'hidden'
+            document.body.appendChild(printArea)
+
+            printArea.innerHTML = `
+              <div class="print-grid">
+                ${students.map(student => `
+                  <div class="qr-print-card">
+                    <div style="width: 100%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 6px;">
+                      <canvas id="print-canvas-${student.id}" style="width: 100%; max-width: 100%; height: auto;"></canvas>
+                    </div>
+                    <div style="width: 100%; text-align: left; font-family: Sarabun, sans-serif; font-size: 11px;">
+                      <p style="font-weight: bold; color: black; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${_htmlEsc(student.full_name)}</p>
+                      ${showCode ? `<p style="color: #4b5563; margin: 2px 0 0 0; font-size: 9px;">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
+                      <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 9px; color: #4b5563;">
+                        ${showRoom ? `<span>ห้อง: ${_htmlEsc(className)}</span>` : ''}
+                        ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `
+
+            // วาดภาพ QR ใน Print Area
+            for (const student of students) {
+              const canvas = document.getElementById(`print-canvas-${student.id}`)
+              if (canvas) {
+                await QRCode.toCanvas(canvas, student.student_code || '', {
+                  width: 250,
+                  margin: 1,
+                  color: { dark: '#000000', light: '#ffffff' }
+                })
+              }
+            }
+
+            // เรียกพิมพ์
+            window.print()
+            // ทำลายพื้นที่พิมพ์ชั่วคราว
+            printArea.remove()
+          })
+        }
+
+        _renderPreviewPanel()
+      } catch (err) {
+        console.error(err)
+        previewSec.innerHTML = `<div class="p-6 text-red-400 text-sm text-center">เกิดข้อผิดพลาดในการโหลดรายชื่อนักเรียน</div>`
+      }
+    }
+
+    _renderPageStructure()
+  } catch (err) {
+    console.error(err)
+    showToast('โหลดข้อมูลล้มเหลว: ' + (err.message ?? ''), 'error')
+  }
 }

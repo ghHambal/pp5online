@@ -175,6 +175,11 @@ const ROUTES = {
   'schedule':    () => renderSchedule(_teacher),
   'tutorial':    () => renderTutorial(),
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
+  'student-qr-print': () => {
+    const classId = window._pendingQRClassId || null
+    window._pendingQRClassId = null
+    import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
+  },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),
