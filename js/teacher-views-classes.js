@@ -1103,7 +1103,18 @@ export async function renderMyClasses(teacher) {
         }
       })
     }
-  } catch { showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ', 'error') }
+  } catch (err) {
+    console.error('[renderMyClasses] โหลดข้อมูลห้องเรียนไม่สำเร็จ', err)
+    const detail = _htmlEsc(err?.message || 'ไม่ทราบสาเหตุ')
+    setContent(`<div class="max-w-xl mx-auto mt-10 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+      <p class="text-3xl mb-3">⚠️</p>
+      <h3 class="font-bold text-red-700">โหลดข้อมูลห้องเรียนไม่สำเร็จ</h3>
+      <p class="mt-2 text-sm text-red-600 break-words">${detail}</p>
+      <button id="retry-my-classes" class="mt-5 px-5 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700">ลองใหม่</button>
+    </div>`)
+    document.getElementById('retry-my-classes')?.addEventListener('click', () => renderMyClasses(teacher))
+    showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ: ' + (err?.message || ''), 'error')
+  }
 
 }
 
