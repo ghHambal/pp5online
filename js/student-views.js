@@ -3131,6 +3131,10 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.28': [
+    '🖼️ เพิ่มการแสดงรูปนักเรียนและตัวเลือกพิมพ์เวลาได้อิสระใน Modal ขอออกนอกห้อง',
+    '📷 ปรับปรุงระบบสแกนเนอร์ตรวจสอบใบอนุญาตให้มีหน้าตา/ Viewfinder และอนิเมชั่นเลเซอร์เหมือนระบบสแกนละหมาด พร้อมบังคับใช้งานกล้องหลัง'
+  ],
   '10.17.27': [
     '🔧 แก้ไข ReferenceError: getActiveLeavePermissionsForClass is not defined ในหน้าเช็คชื่อ'
   ],

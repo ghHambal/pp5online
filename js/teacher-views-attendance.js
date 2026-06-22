@@ -464,6 +464,7 @@ export async function renderAttendanceGrid(teacher, classData) {
       
       const sid = parseInt(btn.dataset.sid)
       const name = btn.dataset.name
+      const img = btn.dataset.img || ''
       
       // จำกัดการออกห้องพร้อมกันได้ไม่เกิน 3 คน
       const activeOutCount = Object.keys(activeLeaveMap).length
@@ -472,7 +473,7 @@ export async function renderAttendanceGrid(teacher, classData) {
         return
       }
       
-      _openLeaveRequestModal(teacher, classData, sid, name, activeLeaveMap, () => renderAttendanceGrid(teacher, classData))
+      _openLeaveRequestModal(teacher, classData, sid, name, img, activeLeaveMap, () => renderAttendanceGrid(teacher, classData))
     })
 
     // คลิกป้ายเพื่อส่งกลับห้อง
@@ -533,7 +534,7 @@ function _renderStudentRosterLeavePart(student, activeLeaveMap, hasLeftMap) {
     return `
       <div class="mt-0.5 flex items-center">
         <button type="button" class="btn-request-leave text-[9px] text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded px-1 py-0.5 bg-gray-50 hover:bg-indigo-50 transition font-medium"
-          data-sid="${student.id}" data-name="${_htmlEsc(student.full_name)}">
+          data-sid="${student.id}" data-name="${_htmlEsc(student.full_name)}" data-img="${student.image_url || ''}">
           🚪 ขอออกห้อง
         </button>
       </div>
@@ -541,7 +542,7 @@ function _renderStudentRosterLeavePart(student, activeLeaveMap, hasLeftMap) {
   }
 }
 
-function _openLeaveRequestModal(teacher, classData, studentId, studentName, activeLeaveMap, onSave) {
+function _openLeaveRequestModal(teacher, classData, studentId, studentName, studentImg, activeLeaveMap, onSave) {
   const existing = document.getElementById('leave-request-modal')
   if (existing) existing.remove()
   
@@ -560,9 +561,19 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, acti
         <h3 class="font-bold text-gray-800 text-sm">🚪 ขออนุญาตออกนอกห้องเรียน</h3>
         <button id="btn-leave-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
       </div>
-      <div>
-        <p class="text-xs text-gray-400">นักเรียนผู้ขออนุญาต</p>
-        <p class="font-bold text-gray-800 text-sm mt-0.5">${_htmlEsc(studentName)}</p>
+      
+      <!-- ข้อมูลและรูปนักเรียน -->
+      <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-100">
+        <div class="w-12 h-16 rounded-xl overflow-hidden bg-gray-150 border border-gray-250 flex-shrink-0">
+          ${studentImg 
+            ? `<img src="${_htmlEsc(studentImg)}" class="w-full h-full object-cover" />` 
+            : `<div class="w-full h-full flex items-center justify-center text-xl font-bold text-gray-400 bg-gray-200">👤</div>`
+          }
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">นักเรียนผู้ขออนุญาต</p>
+          <h4 class="font-extrabold text-gray-800 text-sm truncate mt-0.5">${_htmlEsc(studentName)}</h4>
+        </div>
       </div>
       
       <!-- เหตุผล -->
@@ -582,13 +593,20 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, acti
       <!-- เวลาที่อนุญาต -->
       <div class="space-y-2">
         <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">2. ระยะเวลาที่อนุญาต</label>
-        <div class="grid grid-cols-4 gap-2">
-          ${DURATIONS.map((d, i) => `
-            <button class="btn-duration text-xs font-semibold px-2 py-2 border rounded-xl transition text-center
+        <div class="grid grid-cols-5 gap-1.5">
+          ${DURATIONS.map((d) => `
+            <button class="btn-duration text-[11px] font-semibold py-2 border rounded-xl transition text-center
               ${d === 10 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}"
-              data-duration="${d}">${d} นาที
+              data-duration="${d}">${d} น.
             </button>
           `).join('')}
+          <button class="btn-duration text-[11px] font-semibold py-2 border rounded-xl transition text-center bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+            data-duration="custom">ระบุเอง...
+          </button>
+        </div>
+        <div id="div-custom-duration" class="hidden flex items-center gap-2 mt-2">
+          <input type="number" id="input-custom-duration" min="1" max="180" class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500" placeholder="ระบุนาที (เช่น 20)..." />
+          <span class="text-xs text-gray-500 font-medium">นาที</span>
         </div>
       </div>
       
@@ -619,13 +637,24 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, acti
   })
   
   // จัดการตัวเลือกเวลา
+  const customDurationDiv = modal.querySelector('#div-custom-duration')
+  const customDurationInput = modal.querySelector('#input-custom-duration')
+  
   modal.querySelectorAll('.btn-duration').forEach(btn => {
     btn.addEventListener('click', () => {
       modal.querySelectorAll('.btn-duration').forEach(b => {
-        b.className = 'btn-duration text-xs font-semibold px-2 py-2 border rounded-xl bg-white text-gray-600 border-gray-200 hover:border-gray-400 text-center'
+        b.className = 'btn-duration text-[11px] font-semibold py-2 border rounded-xl bg-white text-gray-600 border-gray-200 hover:border-gray-400 text-center'
       })
-      btn.className = 'btn-duration text-xs font-semibold px-2 py-2 border rounded-xl bg-indigo-600 text-white border-indigo-600 text-center'
-      selectedDuration = parseInt(btn.dataset.duration)
+      btn.className = 'btn-duration text-[11px] font-semibold py-2 border rounded-xl bg-indigo-600 text-white border-indigo-600 text-center'
+      
+      const durValue = btn.dataset.duration
+      if (durValue === 'custom') {
+        customDurationDiv.classList.remove('hidden')
+        customDurationInput.focus()
+      } else {
+        customDurationDiv.classList.add('hidden')
+        selectedDuration = parseInt(durValue)
+      }
     })
   })
   
@@ -643,8 +672,19 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, acti
       }
     }
     
+    let durationVal = selectedDuration
+    const activeDurationBtn = modal.querySelector('.btn-duration.bg-indigo-600')
+    if (activeDurationBtn && activeDurationBtn.dataset.duration === 'custom') {
+      const customMin = parseInt(customDurationInput.value.trim())
+      if (isNaN(customMin) || customMin <= 0) {
+        showToast('กรุณาระบุระยะเวลากรอกเป็นจำนวนนาทีที่ถูกต้อง (มากกว่า 0)', 'warning')
+        return
+      }
+      durationVal = customMin
+    }
+    
     try {
-      await createLeavePermission(studentId, classData.id, teacher.id, reasonText, selectedDuration)
+      await createLeavePermission(studentId, classData.id, teacher.id, reasonText, durationVal)
       showToast(`อนุมัติใบอนุญาตให้ ${studentName} เรียบร้อย`, 'success')
       modal.remove()
       onSave()

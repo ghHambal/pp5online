@@ -62,7 +62,6 @@ export async function renderStudentLeaveScanner(teacher) {
         <div class="flex items-center justify-between">
           <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">📷 กล้องอ่าน QR Code</label>
           <div class="flex items-center gap-2">
-            <select id="leave-camera-select" class="hidden border border-gray-300 rounded-xl px-2 py-1 text-xs bg-white focus:outline-none focus:border-indigo-500"></select>
             <button id="btn-toggle-scanner" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-all">
               เริ่มใช้งานกล้อง
             </button>
@@ -70,12 +69,41 @@ export async function renderStudentLeaveScanner(teacher) {
         </div>
 
         <!-- กล่องแสดงภาพกล้อง -->
-        <div class="relative aspect-[4/3] bg-gray-900 rounded-2xl overflow-hidden border border-gray-100 flex items-center justify-center">
-          <div id="leave-camera-reader" class="w-full h-full"></div>
-          <div id="scanner-overlay" class="absolute inset-0 border-2 border-dashed border-indigo-400/40 rounded-2xl pointer-events-none flex items-center justify-center">
+        <div class="relative aspect-square bg-slate-950 rounded-3xl overflow-hidden border border-slate-800 max-w-sm mx-auto flex items-center justify-center shadow-inner">
+          <div id="leave-camera-reader" class="w-full h-full rounded-2xl overflow-hidden"></div>
+          
+          <!-- Custom Square Viewfinder Overlay -->
+          <div id="scanner-viewfinder" class="hidden absolute inset-0 pointer-events-none z-10 flex items-center justify-center overflow-hidden">
+            <!-- Dark semi-transparent background -->
+            <div class="absolute inset-0 bg-black/35"></div>
+            <!-- Viewfinder Frame -->
+            <div class="relative w-48 h-48 rounded-3xl border-2 border-white/20 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.4)] flex items-center justify-center overflow-hidden">
+              <!-- Neon Corner Brackets -->
+              <div class="absolute top-0 left-0 w-5 h-5 border-t-[3px] border-l-[3px] border-indigo-400 rounded-tl-md"></div>
+              <div class="absolute top-0 right-0 w-5 h-5 border-t-[3px] border-r-[3px] border-indigo-400 rounded-tr-md"></div>
+              <div class="absolute bottom-0 left-0 w-5 h-5 border-b-[3px] border-l-[3px] border-indigo-400 rounded-bl-md"></div>
+              <div class="absolute bottom-0 right-0 w-5 h-5 border-b-[3px] border-r-[3px] border-indigo-400 rounded-br-md"></div>
+              <!-- Laser Sweeper Line -->
+              <div class="w-full h-[2px] bg-indigo-400 opacity-90 absolute top-0 shadow-[0_0_8px_rgba(129,140,248,0.85)] animate-laser-move"></div>
+            </div>
+          </div>
+
+          <div id="scanner-overlay" class="absolute inset-0 pointer-events-none flex items-center justify-center">
             <p id="scanner-placeholder-text" class="text-xs text-gray-400 text-center px-6">กดปุ่ม "เริ่มใช้งานกล้อง" หรือป้อนรหัสประจำตัวด้านล่างเพื่อตรวจสอบ</p>
           </div>
         </div>
+
+        <style>
+          @keyframes laser-sweep {
+            0% { top: 0%; opacity: 0.3; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0.3; }
+          }
+          .animate-laser-move {
+            animation: laser-sweep 2.8s infinite ease-in-out;
+          }
+        </style>
 
         <!-- ค้นหาแบบแมนนวล (ป้อนรหัส) -->
         <div class="pt-2 border-t border-gray-100 flex gap-2">
@@ -97,7 +125,6 @@ export async function renderStudentLeaveScanner(teacher) {
   const searchInput = document.getElementById('input-search-student-code')
   const searchBtn = document.getElementById('btn-search-leave-code')
   const toggleScannerBtn = document.getElementById('btn-toggle-scanner')
-  const cameraSelect = document.getElementById('leave-camera-select')
   const placeholderText = document.getElementById('scanner-placeholder-text')
 
   searchBtn.addEventListener('click', () => {
@@ -132,28 +159,13 @@ export async function renderStudentLeaveScanner(teacher) {
       const Html5Qrcode = await loadHtml5QrcodeLib()
       html5QrcodeScanner = new Html5Qrcode('leave-camera-reader')
       
-      const devices = await Html5Qrcode.getCameras().catch(() => [])
-      if (devices.length === 0) {
-        showToast('ไม่พบกล้องในอุปกรณ์นี้', 'error')
-        placeholderText.textContent = 'ไม่พบกล้องในอุปกรณ์นี้'
-        return
-      }
-
-      cameraSelect.innerHTML = devices.map(d => `<option value="${d.id}">${d.label || 'กล้อง'}</option>`).join('')
-      if (devices.length > 1) {
-        cameraSelect.classList.remove('hidden')
-      }
-
-      const activeCameraId = devices[0].id
+      const viewfinder = document.getElementById('scanner-viewfinder')
       
       await html5QrcodeScanner.start(
-        activeCameraId,
+        { facingMode: "environment" },
         {
-          fps: 10,
-          qrbox: (width, height) => {
-            const size = Math.min(width, height) * 0.7
-            return { width: size, height: size }
-          }
+          fps: 25,
+          aspectRatio: 1.0
         },
         (decodedText) => {
           // สแกนสำเร็จ
@@ -166,6 +178,7 @@ export async function renderStudentLeaveScanner(teacher) {
       toggleScannerBtn.textContent = '⚙️ ปิดกล้อง'
       toggleScannerBtn.className = 'px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs shadow-md transition-all'
       placeholderText.classList.add('hidden')
+      if (viewfinder) viewfinder.classList.remove('hidden')
     } catch (err) {
       console.error(err)
       showToast('ไม่สามารถเปิดใช้งานกล้องได้: ' + (err.message ?? ''), 'error')
@@ -181,7 +194,8 @@ export async function renderStudentLeaveScanner(teacher) {
         toggleScannerBtn.className = 'px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-all'
         placeholderText.textContent = 'กล้องถูกปิดใช้งานแล้ว'
         placeholderText.classList.remove('hidden')
-        cameraSelect.classList.add('hidden')
+        const viewfinder = document.getElementById('scanner-viewfinder')
+        if (viewfinder) viewfinder.classList.add('hidden')
         html5QrcodeScanner = null
       }).catch(err => {
         console.warn('Stop scanner error:', err)
