@@ -2999,3 +2999,119 @@ export async function getClassScoreSummary(classId) {
   if (e2) throw e2
   return { columns: cols, scores: scores ?? [] }
 }
+
+// ─── Flashcards CRUD ──────────────────────────────────────────────────────────
+
+export async function getFlashcardDecks(teacherId) {
+  if (!teacherId) return []
+  const { data, error } = await supabase
+    .from('flashcard_decks')
+    .select('id, title, description, created_at, updated_at')
+    .eq('teacher_id', teacherId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createFlashcardDeck(payload) {
+  const { data, error } = await supabase
+    .from('flashcard_decks')
+    .insert(payload)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateFlashcardDeck(id, payload) {
+  const { data, error } = await supabase
+    .from('flashcard_decks')
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteFlashcardDeck(id) {
+  const { error } = await supabase
+    .from('flashcard_decks')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function getFlashcards(deckId) {
+  if (!deckId) return []
+  const { data, error } = await supabase
+    .from('flashcards')
+    .select('id, deck_id, front_text, back_text, front_image_url, back_image_url, sort_order')
+    .eq('deck_id', deckId)
+    .order('sort_order')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveFlashcards(deckId, cards) {
+  const { error: delErr } = await supabase
+    .from('flashcards')
+    .delete()
+    .eq('deck_id', deckId)
+  if (delErr) throw delErr
+
+  if (!cards || !cards.length) return []
+
+  const payload = cards.map((c, i) => ({
+    deck_id: deckId,
+    front_text: c.front_text.trim(),
+    back_text: c.back_text.trim(),
+    front_image_url: c.front_image_url || null,
+    back_image_url:  c.back_image_url  || null,
+    sort_order: i,
+  }))
+
+  const { data, error: insErr } = await supabase
+    .from('flashcards')
+    .insert(payload)
+    .select()
+  if (insErr) throw insErr
+  return data ?? []
+}
+
+// ─── Flashcard Image Storage ──────────────────────────────────────────────────
+
+/**
+ * Upload an image blob/file to the flashcard-images bucket.
+ * @param {number} teacherId - The numeric teacher ID for path scoping.
+ * @param {Blob}   blob      - The compressed image blob.
+ * @param {string} side      - 'front' or 'back'
+ * @returns {string} publicUrl
+ */
+export async function uploadFlashcardImage(teacherId, blob, side = 'front') {
+  const ext  = blob.type === 'image/webp' ? 'webp' : 'jpg'
+  const path = `teacher_${teacherId}/${Date.now()}_${side}.${ext}`
+  const { error } = await supabase.storage
+    .from('flashcard-images')
+    .upload(path, blob, { upsert: true, contentType: blob.type })
+  if (error) throw error
+  const { data } = supabase.storage.from('flashcard-images').getPublicUrl(path)
+  return data.publicUrl
+}
+
+/**
+ * Delete a flashcard image from storage given its full public URL.
+ * @param {string} publicUrl
+ */
+export async function deleteFlashcardImage(publicUrl) {
+  if (!publicUrl) return
+  try {
+    const marker = '/storage/v1/object/public/flashcard-images/'
+    const url = new URL(publicUrl)
+    if (!url.pathname.includes(marker)) return
+    const path = decodeURIComponent(url.pathname.split(marker)[1])
+    await supabase.storage.from('flashcard-images').remove([path])
+  } catch (e) {
+    console.warn('deleteFlashcardImage error:', e)
+  }
+}

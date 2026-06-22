@@ -174,6 +174,7 @@ const ROUTES = {
   'requests':    () => renderRequests(_teacher),
   'schedule':    () => renderSchedule(_teacher),
   'tutorial':    () => renderTutorial(),
+  'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),

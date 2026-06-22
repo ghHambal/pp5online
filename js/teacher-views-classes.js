@@ -16,6 +16,7 @@ import {
   getTeacherClassesForLinking,
   getMyDonationRequests,
   getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
+  getFlashcardDecks,
 } from './api.js'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
@@ -1215,6 +1216,10 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
             🎲 <span>สุ่มรายชื่อ</span>
           </button>
+          <button onclick="window._openClassFlashcardsModal(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-700 transition flex items-center gap-1.5">
+            🃏 <span>บัตรคำศัพท์</span>
+          </button>
           ${cls.google_sheet_id ? `
           <button onclick="window._openSheetToolsModal(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 transition flex items-center gap-1.5">
@@ -1280,6 +1285,16 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
         await _openRandomPickerModal(cid, c, rosterWithSeats, isDonorTeacher)
       } catch (err) {
         showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ', 'error')
+      }
+    }
+    window._openClassFlashcardsModal = async (cid) => {
+      const c = window._classCache?.[cid]
+      if (!c) return
+      try {
+        const decks = await getFlashcardDecks(teacher.id)
+        _openClassFlashcardsSelectionModal(teacher, cid, decks)
+      } catch (err) {
+        showToast('โหลดชุดบัตรคำไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       }
     }
     window._deleteClass = async (cid, name) => {
@@ -1369,6 +1384,73 @@ function _fireConfetti(container) {
     container.appendChild(piece)
     setTimeout(() => piece.remove(), (duration + delay) * 1000 + 250)
   }
+}
+
+function _openClassFlashcardsSelectionModal(teacher, classId, decks) {
+  document.getElementById('class-flashcards-modal')?.remove()
+
+  const modal = document.createElement('div')
+  modal.id = 'class-flashcards-modal'
+  modal.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4'
+  
+  let decksHtml = ''
+  if (!decks || decks.length === 0) {
+    decksHtml = `
+      <div class="text-center py-8 text-gray-500">
+        <p class="text-4xl mb-2">🃏</p>
+        <p class="text-sm font-medium">คุณครูยังไม่มีชุดบัตรคำศัพท์เลยครับ</p>
+        <p class="text-xs text-gray-400 mt-1">สามารถสร้างชุดบัตรคำศัพท์ใหม่ได้ที่เมนู "บัตรคำศัพท์" ในเมนูหลัก</p>
+      </div>
+    `
+  } else {
+    decksHtml = `
+      <div class="grid gap-3 max-h-[60vh] overflow-y-auto pr-1 w-full">
+        ${decks.map(deck => `
+          <button class="select-deck-btn w-full text-left p-4 rounded-2xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition flex items-center justify-between gap-3 group"
+            data-deck-id="${deck.id}">
+            <div>
+              <p class="font-bold text-gray-800 text-sm group-hover:text-indigo-700 transition">${_htmlEsc(deck.title)}</p>
+              ${deck.description ? `<p class="text-xs text-gray-400 mt-0.5 line-clamp-1">${_htmlEsc(deck.description)}</p>` : ''}
+            </div>
+            <span class="text-xs text-indigo-600 font-semibold shrink-0 group-hover:translate-x-1 transition duration-200">เล่นเลย →</span>
+          </button>
+        `).join('')}
+      </div>
+    `
+  }
+
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col p-6 relative animate-fade">
+      <button id="cf-modal-close" class="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition text-lg">✕</button>
+      
+      <div class="mb-4">
+        <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">🃏 เลือกชุดบัตรคำศัพท์</h3>
+        <p class="text-xs text-gray-400 mt-0.5">เลือกชุดบัตรคำศัพท์ที่คุณครูต้องการนำมาจัดกิจกรรมในห้องเรียนนี้</p>
+      </div>
+
+      ${decksHtml}
+    </div>
+  `
+
+  document.body.appendChild(modal)
+
+  // Bind close
+  modal.querySelector('#cf-modal-close').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+
+  // Bind selection
+  modal.querySelectorAll('.select-deck-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const deckId = btn.dataset.deckId
+      const deck = decks.find(d => d.id === deckId)
+      if (deck) {
+        modal.remove()
+        import('./teacher-views-flashcards.js').then(m => {
+          m.renderFlashcardPlay(teacher, deck, classId)
+        })
+      }
+    })
+  })
 }
 
 async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
