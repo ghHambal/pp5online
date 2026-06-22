@@ -7,6 +7,8 @@ import {
   getPrayerRecords, savePrayerRecords, savePrayerCell,
   getSystemConfig, getClassRosterStudents,
   getStudentsByRoom, getStudentsByReligionRoom,
+  createLeavePermission, closeLeavePermission,
+  getActiveLeavePermissionsForClass, getClassLeaveHistory,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm } from './ui.js'

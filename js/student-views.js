@@ -3131,6 +3131,9 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.27': [
+    '🔧 แก้ไข ReferenceError: getActiveLeavePermissionsForClass is not defined ในหน้าเช็คชื่อ'
+  ],
   '10.17.26': [
     '📷 เพิ่มปุ่มทางลัดด่วนบน Header เพื่อเข้าใช้กล้องสแกนตรวจสอบใบอนุญาตออกนอกห้องเรียนได้ทันใจ'
   ],
