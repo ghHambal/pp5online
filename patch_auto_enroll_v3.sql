@@ -1,6 +1,7 @@
 -- patch_auto_enroll_v3.sql
 -- อัปเดต RPC auto_enroll_students_by_room ให้:
 -- 1. ใช้ ON CONFLICT DO NOTHING เพื่อไม่ให้การซิงก์ดึงนักเรียนที่ครูกด "ไม่เรียน" (is_active = false) กลับมาเป็น "กำลังเรียน"
+-- 2. ไม่กระจาย students.is_active=false ไปยัง class_students ทุกห้องโดยอัตโนมัติ
 -- รัน 1 ครั้งใน Supabase SQL Editor
 
 CREATE OR REPLACE FUNCTION public.auto_enroll_students_by_room()
@@ -27,15 +28,9 @@ BEGIN
 
   GET DIAGNOSTICS enrolled_count = ROW_COUNT;
 
-  -- ซ่อนนักเรียนใน class_students ที่ students.is_active = false (กรณีนักเรียนลาออก/ปิดใช้งานจากระบบส่วนกลาง)
-  UPDATE class_students cs
-  SET is_active = false
-  FROM students s
-  WHERE cs.student_id = s.id
-    AND s.is_active = false
-    AND cs.is_active = true;
-
-  GET DIAGNOSTICS deactivated_count = ROW_COUNT;
+  -- ห้ามปิด class_students ตามสถานะส่วนกลางแบบอัตโนมัติ
+  -- เพราะ sync ที่อ่านชีตผิดเพียงครั้งเดียวอาจกระทบทุกห้อง
+  deactivated_count := 0;
 
   RETURN json_build_object(
     'ok',          true,

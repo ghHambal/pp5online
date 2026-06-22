@@ -287,8 +287,9 @@ function installWeeklyStudentSyncTrigger() {
 }
 
 // ฟังก์ชันหลักสำหรับซิงก์นักเรียน — เรียกได้ทั้งจาก GET, POST, และ trigger
-// ขั้นตอน: อ่านชีท → แปลง header → สร้าง records → upsert students (is_active=true)
-//          → ซ่อนนักเรียนที่ไม่อยู่ใน sheet (is_active=false) → บันทึก log → auto-enroll
+// ขั้นตอน: อ่านชีท → ตรวจความถูกต้อง → upsert students (is_active=true)
+//          → บันทึก log → auto-enroll
+// ใช้แนวทาง conservative: ห้ามปิดนักเรียนทั้งหมดก่อน upsert
 function _syncStudentsFromSheet(payload) {
   var cfg = _getStudentSyncConfig(payload || {})
   var sheetId = cfg.sheetId
@@ -318,6 +319,10 @@ function _syncStudentsFromSheet(payload) {
   var records = []
   var skipped = 0
 
+  if (headerMap.student_code === undefined || headerMap.full_name === undefined) {
+    throw new Error('หัวตารางไม่ถูกต้อง: ต้องมีคอลัมน์รหัสนักเรียนและชื่อนักเรียน')
+  }
+
   values.forEach(function(row, rowIndex) {
     var record = {}
     Object.keys(headerMap).forEach(function(field) {
@@ -333,6 +338,21 @@ function _syncStudentsFromSheet(payload) {
     records.push(record)
   })
 
+  var validRatio = values.length ? records.length / values.length : 0
+  var numericCodeCount = records.filter(function(r) {
+    return /^\d{4,10}$/.test(String(r.student_code || ''))
+  }).length
+  var numericCodeRatio = records.length ? numericCodeCount / records.length : 0
+
+  // ป้องกันการเลือกชีต/แท็บผิด เช่น ชีตตั้งค่าห้องที่มีหลายพันแถวแต่แปลงเป็นนักเรียนได้เพียงไม่กี่คน
+  if (!records.length || validRatio < 0.5 || numericCodeRatio < 0.9) {
+    throw new Error(
+      'ยกเลิกการซิงก์: ข้อมูลไม่เหมือนฐานนักเรียน ' +
+      '(อ่าน ' + values.length + ' แถว, ใช้ได้ ' + records.length +
+      ', รหัสตัวเลข ' + numericCodeCount + ') กรุณาตรวจ Sheet ID, ชื่อแท็บ และหัวตาราง'
+    )
+  }
+
   // รหัสนักเรียนทั้งหมดที่อยู่ใน sheet นี้
   var sheetCodes = {}
   records.forEach(function(r) { sheetCodes[r.student_code] = true })
@@ -342,17 +362,14 @@ function _syncStudentsFromSheet(payload) {
   var beforeCodes = {}
   beforeActive.forEach(function(s) { beforeCodes[s.student_code] = true })
 
-  // ซ่อนนักเรียนทุกคนก่อน แล้ว upsert จะ re-activate เฉพาะคนที่อยู่ใน sheet
-  // (หลีกเลี่ยงปัญหา URL ยาวเกินเมื่อส่ง student_code=in.(....))
-  _deactivateAllStudents()
-
+  // เปิด/อัปเดตเฉพาะคนที่พบในชีท ไม่ทำ mass-deactivate คนที่ไม่พบ
   var written = _upsertStudentsToSupabase(records)
 
   // คำนวณ log: ใหม่ = อยู่ใน sheet แต่ไม่มีใน beforeActive
   var newStudents = records.filter(function(r) { return !beforeCodes[r.student_code] })
     .map(function(r) { return { student_code: r.student_code, full_name: r.full_name } })
 
-  // ซ่อน = อยู่ใน beforeActive แต่ไม่อยู่ใน sheet
+  // รายการที่ไม่พบในชีทมีไว้ตรวจสอบเท่านั้น ไม่เปลี่ยนสถานะอัตโนมัติ
   var deactivatedStudents = beforeActive
     .filter(function(s) { return !sheetCodes[s.student_code] })
     .map(function(s) { return { student_code: s.student_code, full_name: s.full_name } })
@@ -363,7 +380,7 @@ function _syncStudentsFromSheet(payload) {
     read_count: values.length,
     written_count: written,
     new_count: newStudents.length,
-    deactivated_count: deactivatedStudents.length,
+    deactivated_count: 0,
     new_students: newStudents,
     deactivated_students: deactivatedStudents,
     sheet_id: sheetId,
@@ -378,7 +395,7 @@ function _syncStudentsFromSheet(payload) {
     written: written,
     skipped: skipped,
     newCount: newStudents.length,
-    deactivatedCount: deactivatedStudents.length,
+    deactivatedCount: 0,
     newStudents: newStudents,
     deactivatedStudents: deactivatedStudents,
     sheetId: sheetId,
@@ -400,24 +417,6 @@ function _fetchActiveStudents() {
   })
   if (resp.getResponseCode() !== 200) return []
   try { return JSON.parse(resp.getContentText()) || [] } catch(e) { return [] }
-}
-
-// ─── ซ่อนนักเรียนทั้งหมดก่อน sync (set is_active = false ทุกคน) ──────────────
-// upsert ขั้นต่อไปจะ re-activate เฉพาะคนที่อยู่ใน sheet
-// ใช้ id=gt.0 แทน student_code=in.(list) เพื่อหลีกเลี่ยง URL ยาวเกิน GAS limit
-function _deactivateAllStudents() {
-  var endpoint = _supabaseEndpoint()
-  UrlFetchApp.fetch(endpoint.url + '/rest/v1/students?id=gt.0', {
-    method: 'patch',
-    muteHttpExceptions: true,
-    contentType: 'application/json',
-    headers: {
-      apikey: endpoint.key,
-      Authorization: 'Bearer ' + endpoint.key,
-      Prefer: 'return=minimal',
-    },
-    payload: JSON.stringify({ is_active: false }),
-  })
 }
 
 // ─── บันทึก sync log เข้า student_sync_logs ──────────────────────────────────
