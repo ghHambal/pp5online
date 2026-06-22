@@ -213,6 +213,13 @@
         <h1 id="page-title" class="text-lg font-bold text-gray-800">ภาพรวม</h1>
       </div>
       <div class="flex items-center gap-3">
+        <button id="btn-quick-leave-scanner"
+          onclick="window._navTo && window._navTo('student-leave-scanner')"
+          title="เปิดกล้องสแกนตรวจสอบใบอนุญาต"
+          class="w-8 h-8 flex items-center justify-center rounded-full text-gray-400
+                 hover:bg-emerald-50 hover:text-emerald-600 transition text-base">
+          📷
+        </button>
         <button id="btn-refresh"
           onclick="window._refreshCurrentView && window._refreshCurrentView()"
           title="รีเฟรชหน้านี้"
