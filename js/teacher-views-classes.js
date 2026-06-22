@@ -4559,9 +4559,26 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           return matchCat && matchLevel
         })
 
+        // กรองชื่อห้องเรียนไม่ให้ซ้ำกัน (ป้องกันชื่อห้องซ้ำจากรายวิชาที่ต่างกัน)
+        const uniqueClasses = []
+        const seenNames = new Set()
+        for (const c of filteredClasses) {
+          const name = c.class_name || ''
+          if (!seenNames.has(name)) {
+            // เพื่อให้แน่ใจว่าถ้ามี selectedClassId ตรงกับห้องใดห้องหนึ่งในกลุ่มนี้ เราจะเลือกอันนั้น
+            const matchedSelected = filteredClasses.find(x => x.class_name === name && x.id == selectedClassId)
+            if (matchedSelected) {
+              uniqueClasses.push(matchedSelected)
+            } else {
+              uniqueClasses.push(c)
+            }
+            seenNames.add(name)
+          }
+        }
+
         classSelect.innerHTML = `
-          <option value="">-- เลือกห้องเรียน (${filteredClasses.length} ห้อง) --</option>
-          ${filteredClasses.map(c => `
+          <option value="">-- เลือกห้องเรียน (${uniqueClasses.length} ห้อง) --</option>
+          ${uniqueClasses.map(c => `
             <option value="${c.id}" ${c.id == selectedClassId ? 'selected' : ''}>${_htmlEsc(c.class_name)}</option>
           `).join('')}
         `
