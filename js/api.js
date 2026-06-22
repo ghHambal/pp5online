@@ -60,7 +60,7 @@ export async function getMyClasses(teacherId) {
       classroom_id, source_class_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
-      students ( full_name )
+      students:students!fk_head_student ( full_name )
     `)
     .in('course_id', ids)
     .order('class_name')
@@ -2159,7 +2159,7 @@ export async function getClassForDoc(classId) {
       id, course_id, class_name, skill_group, head_student_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id, phone ),
-      students ( full_name, student_code )
+      students:students!fk_head_student ( full_name, student_code )
     `)
     .eq('id', classId)
     .single()

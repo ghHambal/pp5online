@@ -314,7 +314,7 @@ async function _loadDocData(classId) {
       head_student_id, source_class_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id, learning_area ),
-      students ( full_name, student_code )
+      students:students!fk_head_student ( full_name, student_code )
     `)
     .eq('id', classId)
     .single()
