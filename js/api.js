@@ -675,10 +675,16 @@ export async function saveStudentScore(classId, studentId, columnId, score, opts
 
 // ─── Prayer Records ───────────────────────────────────────────────────────────
 export async function getPrayerRecords(teacherId, room, startDate, endDate) {
+  // ค้นหาผ่าน student_id ของห้องศาสนานั้น เพื่อไม่ให้เกิดปัญหา main_room (ซึ่งเครื่องสแกนเก็บเป็นห้องสามัญ) ไม่ตรงกับห้องศาสนา (เช่น อป.1/1)
+  const { data: students } = await supabase.from('students')
+    .select('id').eq('religion_room', room).eq('is_active', true)
+    .range(...STUDENT_QUERY_RANGE)
+  if (!students?.length) return []
+  const ids = students.map(s => s.id)
+
   let q = supabase.from('prayer_records')
     .select('student_id, check_date, status')
-    // ดึงข้อมูลทั้งหมดประจำห้องเรียนนั้น (รวมถึงที่ถูกสแกนบันทึกโดยสภานักเรียนซึ่งไม่มี teacher_id)
-    .eq('main_room', room)
+    .in('student_id', ids)
   if (startDate) q = q.gte('check_date', startDate)
   if (endDate)   q = q.lte('check_date', endDate)
   const { data, error } = await q
