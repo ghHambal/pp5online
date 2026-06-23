@@ -184,6 +184,15 @@ function _fmtDateTH(d) {
   return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()+543}`
 }
 
+function _isPrayerTimeWindow() {
+  const now = new Date()
+  const hours = now.getHours()
+  const minutes = now.getMinutes()
+  const timeVal = hours * 60 + minutes
+  // 12:20 to 12:50 (740 to 770 mins)
+  return timeVal >= 740 && timeVal <= 770
+}
+
 function _localDateValue(d) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -252,7 +261,7 @@ export async function renderStudentOverview(student) {
     </div>
 
     <!-- Scanner Access Banner -->
-    ${student.can_scan_prayer ? `
+    ${student.can_scan_prayer && _isPrayerTimeWindow() ? `
     <div class="relative overflow-hidden bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl border border-emerald-500/20 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4">
       <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🕌</div>
       <div class="min-w-0 z-10">
@@ -2430,6 +2439,29 @@ export async function renderStudentPrayerScanner(student) {
     return
   }
 
+  const isOperatorTeacher = !!student.teacher_code
+  if (!isOperatorTeacher && !_isPrayerTimeWindow()) {
+    setContent(`
+      <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">
+        <div class="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-100 text-3xl">
+          🕌
+        </div>
+        <h3 class="font-extrabold text-gray-800 text-base mb-1">นอกช่วงเวลาบันทึกกิจกรรมละหมาด</h3>
+        <p class="text-xs text-gray-500 leading-relaxed">
+          ระบบสแกนเปิดให้บันทึกเวลาเฉพาะช่วงเวลา <b>12:20 น. ถึง 12:50 น.</b> เท่านั้น<br>
+          (ยกเว้นคุณครูที่สามารถเข้าใช้งานได้ตลอดเวลา)
+        </p>
+        <button id="scanner-btn-back-restricted" class="mt-6 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl active:scale-95 transition-all shadow-sm">
+          ← กลับหน้าหลัก
+        </button>
+      </div>`)
+
+    document.getElementById('scanner-btn-back-restricted')?.addEventListener('click', () => {
+      window._stuNav('overview')
+    })
+    return
+  }
+
   // Hide the standard bottom navigation menu to prevent accidental navigation and maximize camera area
   const navEl = document.querySelector('nav.safe-area-bottom')
   if (navEl) navEl.classList.add('hidden')
@@ -2806,6 +2838,12 @@ export async function renderStudentPrayerScanner(student) {
     console.log('[Scanner] Raw scanned text:', studentRawCode)
     if (!studentRawCode) return
 
+    if (!isOperatorTeacher && !_isPrayerTimeWindow()) {
+      playBeep('error')
+      showScanFeedback(null, studentRawCode, 'ไม่อยู่ในช่วงเวลาบันทึกกิจกรรมละหมาด (12:20 - 12:50 น.)')
+      return
+    }
+
     let studentCode = String(studentRawCode).trim()
     let isQrCodeExpired = false
 
@@ -3131,6 +3169,10 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.31': [
+    '🕌 จำกัดช่วงเวลาระบบสแกนบันทึกการละหมาด (สภานักเรียน) เฉพาะ 12:20 - 12:50 น. (ยกเว้นครูเข้าได้ตลอดเวลา)',
+    '🚫 ซ่อนแบนเนอร์เข้าใช้งานสำหรับนักเรียนแกนนำนอกช่วงเวลา และแจ้งเตือนบล็อกหากมีการสแกนนอกช่วงเวลาดังกล่าว'
+  ],
   '10.17.30': [
     '🔔 เพิ่ม Modal แจ้งเตือนอนุมัติใบอนุญาตออกนอกห้องสำเร็จไว้หน้าสุดกลางจอครู (z-index สูงสุด)',
     '🛡️ บล็อกการเด้งเปิดหน้าต่างประวัติ/สถิตินักเรียนทับซ้อนเมื่อคลิกอนุมัติออกห้องหรือคลิกป้ายจับเวลา'
