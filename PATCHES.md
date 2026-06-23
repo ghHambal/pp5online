@@ -87,6 +87,7 @@
 | 42 | `patch_supervisor_schedule_read.sql` | RLS ให้ supervisor/admin อ่านตารางสอนของครูทุกคน (เดิมเห็นแค่ของตัวเอง) | ✅ จำเป็น |
 | 43 | `patch_source_class.sql` | เพิ่ม `source_class_id` ใน classes — เชื่อมห้องเรียน "เสมือน" กับห้องที่สอนจริง สำหรับดึง attendance/scores มาออก ปพ.5 | ✅ จำเป็นสำหรับฟีเจอร์ห้องเสมือน |
 | 44 | `patch_auto_enroll_v3.sql` | ป้องกันการดึงนักเรียนที่ครูกด "ไม่เรียน" (is_active = false) กลับมาเป็น "กำลังเรียน" ระหว่างซิงก์ | ✅ รันต่อจาก patch_auto_enroll_v2 |
+| 45 | `patch_prayer_rls_room_access.sql` | แก้ไข RLS SELECT ให้ครูที่ปรึกษาเห็นคะแนนละหมาดที่สภานักเรียนสแกน (ผ่านรหัส student_id) | ✅ จำเป็นสำหรับดูคะแนนสแกน |
 
 ---
 
