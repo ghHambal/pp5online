@@ -2403,6 +2403,17 @@ export async function renderSettings() {
           { key:'semester_start', label:'วันเปิดภาคเรียน', type:'date', hint:'ใช้คำนวณสัปดาห์ปัจจุบันอัตโนมัติในระบบบันทึกละหมาด' },
           { key:'semester_end',   label:'วันปิดภาคเรียน',  type:'date' },
         ]),
+        section('ช่วงเวลาเปิดระบบสแกนละหมาด (นักเรียน)', [
+          { key:'prayerScanStartTime', label:'เวลาเริ่มสแกน', type:'text', placeholder:'12:20',
+            hint:'ใช้รูปแบบ 24 ชั่วโมง เช่น 12:20' },
+          { key:'prayerScanEndTime', label:'เวลาปิดสแกนสำหรับนักเรียนแกนนำทั่วไป', type:'text', placeholder:'12:50',
+            hint:'ค่าเริ่มต้นของระบบคือ 12:50' },
+          { key:'prayerScanExtendedEndTime', label:'เวลาปิดสแกนสำหรับประธาน/รองประธาน', type:'text', placeholder:'13:05',
+            hint:'ใช้สำหรับกลุ่มที่ต้องสแกนสภานักเรียนหลังละหมาดเสร็จ' },
+          { key:'prayerExtendedScannerStudents', label:'รหัสนักเรียนสิทธิ์ขยายเวลา', type:'textarea', rows:2,
+            placeholder:'เช่น 23427, 23433, 23520',
+            hint:'ใส่รหัสประธาน/รองประธาน ทั้งหญิงและชาย คั่นด้วยเว้นวรรคหรือลูกน้ำ นักเรียนเหล่านี้ต้องได้รับสิทธิ์สแกนเนอร์ด้วย' },
+        ]),
         section('การคำนวณคะแนนมาเรียน (วิชาศาสนา)', [
           { key:'attendanceScoreMode', label:'ตัวหารของคะแนนมาเรียน', type:'select',
             options: [
@@ -6657,6 +6668,42 @@ export async function renderPrayerAdmin(teacher) {
         </div>
       </div>`
 
+      + `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-4">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="text-sm font-semibold text-gray-700">⏱️ ช่วงเวลาเปิดระบบสแกนละหมาด</span>
+        </div>
+        <div class="px-5 py-4 space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">เวลาเริ่มสแกน</label>
+              <input type="text" id="pr-scan-start" value="${cfg.prayerScanStartTime??'12:20'}" placeholder="12:20"
+                class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">ปิดสำหรับแกนนำทั่วไป</label>
+              <input type="text" id="pr-scan-end" value="${cfg.prayerScanEndTime??'12:50'}" placeholder="12:50"
+                class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">ปิดสำหรับประธาน/รองประธาน</label>
+              <input type="text" id="pr-scan-ext-end" value="${cfg.prayerScanExtendedEndTime??'13:05'}" placeholder="13:05"
+                class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">รหัสนักเรียนสิทธิ์ขยายเวลา</label>
+            <textarea id="pr-extended-scanners" rows="2" placeholder="เช่น 23427, 23433, 23520"
+              class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none">${cfg.prayerExtendedScannerStudents??''}</textarea>
+            <p class="text-xs text-gray-400 mt-1">ใช้สำหรับประธาน/รองประธาน ทั้งหญิงและชาย คั่นด้วยเว้นวรรคหรือลูกน้ำ และต้องได้รับสิทธิ์สแกนเนอร์ในแท็บมอบสิทธิ์ด้วย</p>
+          </div>
+          <button id="pr-save-time-cfg"
+            class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
+            บันทึกช่วงเวลาสแกน
+          </button>
+        </div>
+      </div>`
+
     document.getElementById('pr-save-cfg').addEventListener('click', async () => {
       const btn   = document.getElementById('pr-save-cfg')
       const sid   = document.getElementById('pr-sheet-id').value.trim()
@@ -6674,6 +6721,40 @@ export async function renderPrayerAdmin(teacher) {
         setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึกการตั้งค่า'; btn.style.background='' }, 1800)
         showToast('บันทึก Sheet config ละหมาดแล้ว', 'success')
       } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึกการตั้งค่า' }
+    })
+
+    document.getElementById('pr-save-time-cfg').addEventListener('click', async () => {
+      const btn = document.getElementById('pr-save-time-cfg')
+      const start = document.getElementById('pr-scan-start').value.trim() || '12:20'
+      const end = document.getElementById('pr-scan-end').value.trim() || '12:50'
+      const extEnd = document.getElementById('pr-scan-ext-end').value.trim() || '13:05'
+      const extCodes = document.getElementById('pr-extended-scanners').value.trim()
+      const timeOk = [start, end, extEnd].every(v => /^\d{1,2}:\d{2}$/.test(v))
+      if (!timeOk) {
+        showToast('กรุณากรอกเวลาเป็นรูปแบบ HH:MM เช่น 12:20', 'warning')
+        return
+      }
+      btn.disabled = true
+      btn.textContent = '⏳ กำลังบันทึก...'
+      try {
+        await Promise.all([
+          updateSystemConfig('prayerScanStartTime', start),
+          updateSystemConfig('prayerScanEndTime', end),
+          updateSystemConfig('prayerScanExtendedEndTime', extEnd),
+          updateSystemConfig('prayerExtendedScannerStudents', extCodes),
+        ])
+        cfg.prayerScanStartTime = start
+        cfg.prayerScanEndTime = end
+        cfg.prayerScanExtendedEndTime = extEnd
+        cfg.prayerExtendedScannerStudents = extCodes
+        showToast('บันทึกช่วงเวลาสแกนละหมาดแล้ว', 'success')
+        btn.textContent = '✅ บันทึกแล้ว'
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกช่วงเวลาสแกน' }, 1600)
+      } catch(err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+        btn.textContent = 'บันทึกช่วงเวลาสแกน'
+      }
     })
 
   }
@@ -6736,6 +6817,10 @@ export async function renderPrayerAdmin(teacher) {
           .split(/[\s,]+/)
           .map(c => c.trim())
           .filter(Boolean)
+        const extendedStudentCodes = new Set((currentConfig.prayerExtendedScannerStudents || '')
+          .split(/[\s,]+/)
+          .map(c => c.trim())
+          .filter(Boolean))
 
         let permittedTeachers = []
         if (teacherCodes.length > 0) {
@@ -6771,7 +6856,10 @@ export async function renderPrayerAdmin(teacher) {
               ${[
                 ...students.map(s => `
                   <tr class="hover:bg-gray-50 transition">
-                    <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">นักเรียน</span></td>
+                    <td class="px-4 py-2">
+                      <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">นักเรียน</span>
+                      ${extendedStudentCodes.has(String(s.student_code)) ? '<span class="ml-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">ขยายเวลา</span>' : ''}
+                    </td>
                     <td class="px-2 py-2 font-mono text-gray-700">${s.student_code}</td>
                     <td class="px-3 py-2">
                       <div class="flex items-center gap-2">

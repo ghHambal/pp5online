@@ -184,13 +184,71 @@ function _fmtDateTH(d) {
   return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()+543}`
 }
 
-function _isPrayerTimeWindow() {
+const DEFAULT_PRAYER_SCAN_START = '12:20'
+const DEFAULT_PRAYER_SCAN_END = '12:50'
+const DEFAULT_PRAYER_SCAN_EXTENDED_END = '13:05'
+const PRAYER_SCAN_WARNING_SECONDS = 60
+
+function _timeToMinutes(value, fallback) {
+  const text = String(value || fallback || '').trim()
+  const match = text.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return _timeToMinutes(fallback, DEFAULT_PRAYER_SCAN_START)
+  const hours = Math.max(0, Math.min(23, parseInt(match[1], 10)))
+  const minutes = Math.max(0, Math.min(59, parseInt(match[2], 10)))
+  return hours * 60 + minutes
+}
+
+function _minutesToTime(value) {
+  const minutes = ((value % 1440) + 1440) % 1440
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+function _scannerCodeList(value) {
+  return String(value || '')
+    .split(/[\s,]+/)
+    .map(c => c.trim())
+    .filter(Boolean)
+}
+
+function _isExtendedPrayerScanner(user, cfg = {}) {
+  if (!user?.student_code) return false
+  return _scannerCodeList(cfg.prayerExtendedScannerStudents).includes(String(user.student_code).trim())
+}
+
+function _prayerScanWindow(cfg = {}, extended = false) {
+  const start = _timeToMinutes(cfg.prayerScanStartTime, DEFAULT_PRAYER_SCAN_START)
+  const normalEnd = _timeToMinutes(cfg.prayerScanEndTime, DEFAULT_PRAYER_SCAN_END)
+  const extendedEnd = _timeToMinutes(cfg.prayerScanExtendedEndTime, DEFAULT_PRAYER_SCAN_EXTENDED_END)
+  const end = extended ? extendedEnd : normalEnd
+  return { start, end, startLabel: _minutesToTime(start), endLabel: _minutesToTime(end) }
+}
+
+function _isPrayerTimeWindow(cfg = {}, extended = false) {
   const now = new Date()
   const hours = now.getHours()
   const minutes = now.getMinutes()
   const timeVal = hours * 60 + minutes
-  // 12:20 to 12:50 (740 to 770 mins)
-  return timeVal >= 740 && timeVal <= 770
+  const { start, end } = _prayerScanWindow(cfg, extended)
+  if (end < start) return timeVal >= start || timeVal <= end
+  return timeVal >= start && timeVal <= end
+}
+
+function _prayerScanRemainingSeconds(cfg = {}, extended = false) {
+  const now = new Date()
+  const current = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+  const { start, end } = _prayerScanWindow(cfg, extended)
+  const startSec = start * 60
+  let endSec = end * 60
+  let curSec = current
+  if (end < start && curSec < startSec) curSec += 86400
+  if (end < start) endSec += 86400
+  return Math.max(0, endSec - curSec)
+}
+
+function _fmtRemaining(seconds) {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
 function _localDateValue(d) {
@@ -246,15 +304,17 @@ export async function renderStudentOverview(student) {
     </svg>
   </div>`)
 
-  const [classes, requests, dailySched, allAnns, gpaData] = await Promise.all([
+  const [classes, requests, dailySched, allAnns, gpaData, cfg] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
     getStudentAllAnnouncements(student.id).catch(()=>[]),
     getStudentGPA(student.id).catch(()=>({ samai:[], sasana:[] })),
+    getSystemConfig().catch(()=>({})),
   ])
   const pending = requests.filter(r => r.status === 'pending')
   const recent  = requests.slice(0, 3)
+  const hasExtendedScanWindow = _isExtendedPrayerScanner(student, cfg)
 
   setContent(`
     <!-- Profile card -->
@@ -272,7 +332,7 @@ export async function renderStudentOverview(student) {
     </div>
 
     <!-- Scanner Access Banner -->
-    ${student.can_scan_prayer && _isPrayerTimeWindow() ? `
+    ${student.can_scan_prayer && _isPrayerTimeWindow(cfg, hasExtendedScanWindow) ? `
     <div class="relative overflow-hidden bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl border border-emerald-500/20 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4">
       <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🕌</div>
       <div class="min-w-0 z-10">
@@ -2453,7 +2513,9 @@ export async function renderStudentPrayerScanner(student) {
   }
 
   const isOperatorTeacher = !!student.teacher_code
-  if (!isOperatorTeacher && !_isPrayerTimeWindow()) {
+  const hasExtendedScanWindow = !isOperatorTeacher && _isExtendedPrayerScanner(student, systemConfig)
+  const scanWindow = _prayerScanWindow(systemConfig, hasExtendedScanWindow)
+  if (!isOperatorTeacher && !_isPrayerTimeWindow(systemConfig, hasExtendedScanWindow)) {
     setContent(`
       <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">
         <div class="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-100 text-3xl">
@@ -2461,7 +2523,7 @@ export async function renderStudentPrayerScanner(student) {
         </div>
         <h3 class="font-extrabold text-gray-800 text-base mb-1">นอกช่วงเวลาบันทึกกิจกรรมละหมาด</h3>
         <p class="text-xs text-gray-500 leading-relaxed">
-          ระบบสแกนเปิดให้บันทึกเวลาเฉพาะช่วงเวลา <b>12:20 น. ถึง 12:50 น.</b> เท่านั้น<br>
+          ระบบสแกนเปิดให้บันทึกเวลาเฉพาะช่วงเวลา <b>${scanWindow.startLabel} น. ถึง ${scanWindow.endLabel} น.</b> เท่านั้น<br>
           (ยกเว้นคุณครูที่สามารถเข้าใช้งานได้ตลอดเวลา)
         </p>
         <button id="scanner-btn-back-restricted" class="mt-6 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl active:scale-95 transition-all shadow-sm">
@@ -2494,12 +2556,14 @@ export async function renderStudentPrayerScanner(student) {
     } catch (e) {}
     if (window._activePrayerScannerState.focusInterval) clearInterval(window._activePrayerScannerState.focusInterval)
     if (window._activePrayerScannerState.syncInterval) clearInterval(window._activePrayerScannerState.syncInterval)
+    if (window._activePrayerScannerState.countdownInterval) clearInterval(window._activePrayerScannerState.countdownInterval)
   }
 
   window._activePrayerScannerState = {
     html5Qrcode: null,
     focusInterval: null,
-    syncInterval: null
+    syncInterval: null,
+    countdownInterval: null
   }
 
   // Setup memory of synced IDs for today and prefill from device history
@@ -2524,6 +2588,7 @@ export async function renderStudentPrayerScanner(student) {
     const html = `
       <!-- Flash green screen overlay -->
       <div id="scanner-flash" class="fixed inset-0 pointer-events-none z-50 bg-emerald-500 opacity-0 transition-opacity duration-150 hidden"></div>
+      <div id="scanner-time-warning-border" class="hidden fixed inset-0 pointer-events-none z-[60] border-4 border-red-500 rounded-[2rem] animate-pulse"></div>
 
       <!-- Header with back button -->
       <div class="flex items-center gap-3 mb-5">
@@ -2533,6 +2598,17 @@ export async function renderStudentPrayerScanner(student) {
         <div class="min-w-0">
           <h2 class="font-extrabold text-gray-800 text-lg leading-tight">🕌 บันทึกเวลากิจกรรมละหมาด (สภานักเรียน)</h2>
           <p class="text-xs text-gray-400 mt-0.5">ผู้สแกน: ${student.full_name} · สัปดาห์ที่ ${weekN}</p>
+        </div>
+      </div>
+
+      <div id="scanner-countdown-panel" class="${isOperatorTeacher ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-emerald-50 border-emerald-100 text-emerald-800'} rounded-2xl border px-4 py-3 mb-4 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold uppercase tracking-wider opacity-70">${isOperatorTeacher ? 'สิทธิ์คุณครู' : (hasExtendedScanWindow ? 'สิทธิ์ประธาน/รองประธาน' : 'สิทธิ์นักเรียนแกนนำ')}</p>
+          <p id="scanner-window-label" class="text-xs font-semibold mt-0.5">${isOperatorTeacher ? 'คุณครูเข้าใช้งานได้ตลอดเวลา' : `ช่วงสแกน ${scanWindow.startLabel} - ${scanWindow.endLabel} น.`}</p>
+        </div>
+        <div class="text-right flex-shrink-0">
+          <p class="text-[10px] font-bold opacity-70">เวลาคงเหลือ</p>
+          <p id="scanner-countdown" class="font-mono text-2xl font-extrabold leading-none">${isOperatorTeacher ? '∞' : '--:--'}</p>
         </div>
       </div>
 
@@ -2672,6 +2748,7 @@ export async function renderStudentPrayerScanner(student) {
       if (window._activePrayerScannerState) {
         if (window._activePrayerScannerState.focusInterval) clearInterval(window._activePrayerScannerState.focusInterval)
         if (window._activePrayerScannerState.syncInterval) clearInterval(window._activePrayerScannerState.syncInterval)
+        if (window._activePrayerScannerState.countdownInterval) clearInterval(window._activePrayerScannerState.countdownInterval)
       }
       if (navEl) navEl.classList.remove('hidden')
 
@@ -2724,6 +2801,7 @@ export async function renderStudentPrayerScanner(student) {
 
     // Start systems
     updateQueueUI()
+    startCountdown()
     if (inputMode === 'camera') {
       startCamera()
     } else {
@@ -2768,6 +2846,34 @@ export async function renderStudentPrayerScanner(student) {
     // Update Option active classes
     document.getElementById('opt-device-single').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'single' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
     document.getElementById('opt-device-dual').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'dual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
+  }
+
+  function startCountdown() {
+    if (isOperatorTeacher) return
+    const countdownEl = document.getElementById('scanner-countdown')
+    const panelEl = document.getElementById('scanner-countdown-panel')
+    const borderEl = document.getElementById('scanner-time-warning-border')
+    if (!countdownEl || !panelEl || !borderEl) return
+
+    const tick = () => {
+      const remaining = _prayerScanRemainingSeconds(systemConfig, hasExtendedScanWindow)
+      countdownEl.textContent = _fmtRemaining(remaining)
+      const warning = remaining <= PRAYER_SCAN_WARNING_SECONDS
+      panelEl.classList.toggle('bg-red-50', warning)
+      panelEl.classList.toggle('border-red-200', warning)
+      panelEl.classList.toggle('text-red-700', warning)
+      panelEl.classList.toggle('bg-emerald-50', !warning)
+      panelEl.classList.toggle('border-emerald-100', !warning)
+      panelEl.classList.toggle('text-emerald-800', !warning)
+      borderEl.classList.toggle('hidden', !warning)
+      if (remaining <= 0) {
+        stopCamera()
+        stopScannerGun()
+      }
+    }
+
+    tick()
+    window._activePrayerScannerState.countdownInterval = setInterval(tick, 1000)
   }
 
   // ─── Camera Handler ────────────────────────────────────────────────────────
@@ -2851,9 +2957,9 @@ export async function renderStudentPrayerScanner(student) {
     console.log('[Scanner] Raw scanned text:', studentRawCode)
     if (!studentRawCode) return
 
-    if (!isOperatorTeacher && !_isPrayerTimeWindow()) {
+    if (!isOperatorTeacher && !_isPrayerTimeWindow(systemConfig, hasExtendedScanWindow)) {
       playBeep('error')
-      showScanFeedback(null, studentRawCode, 'ไม่อยู่ในช่วงเวลาบันทึกกิจกรรมละหมาด (12:20 - 12:50 น.)')
+      showScanFeedback(null, studentRawCode, `ไม่อยู่ในช่วงเวลาบันทึกกิจกรรมละหมาด (${scanWindow.startLabel} - ${scanWindow.endLabel} น.)`)
       return
     }
 
@@ -3144,9 +3250,20 @@ export async function renderStudentPrayerScanner(student) {
                 <p class="text-[10px] text-gray-400 truncate">รหัส ${r.student_code} · ห้อง ${_roomDisplay(r.main_room)}</p>
               </div>
               ${badgeHTML}
+              <button class="btn-cancel-scan-row px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-100 hover:bg-red-500 hover:text-white transition text-[10px] font-bold"
+                data-sid="${r.student_id}" data-name="${r.full_name}">
+                ยกเลิก
+              </button>
             </div>
           `
         }).join('')
+        scanList.querySelectorAll('.btn-cancel-scan-row').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const sid = parseInt(btn.dataset.sid, 10)
+            const name = btn.dataset.name || 'นักเรียน'
+            undoScan(sid, name)
+          })
+        })
       }
     }
   }
@@ -3182,6 +3299,10 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.36': [
+    '⏱️ เพิ่มการตั้งค่าช่วงเวลาเปิดระบบสแกนละหมาดจากหน้าแอดมิน พร้อมสิทธิ์ขยายเวลาสำหรับประธาน/รองประธานถึงเวลาที่กำหนด',
+    '🔴 เพิ่มเวลานับถอยหลังในหน้าสแกน พร้อมขอบแจ้งเตือนสีแดงเมื่อใกล้หมดเวลา และให้ยกเลิกรายการที่สแกนแล้วได้จากทุกแถวในประวัติ'
+  ],
   '10.17.35': [
     '🕌 แก้ไขการโหลดคะแนนละหมาดฝั่งครูที่ปรึกษาศาสนาและแอดมินให้ดึงข้อมูลแบบแบ่งหน้า ป้องกันข้อมูลสัปดาห์ใหม่หายเมื่อประวัติละหมาดเกิน 1,000 แถว'
   ],
