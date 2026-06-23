@@ -194,11 +194,22 @@ function _isPrayerTimeWindow() {
 }
 
 function _localDateValue(d) {
-  const y = d.getFullYear()
+  let y = d.getFullYear()
+  
+  // ป้องกันปัญหานาฬิกา/ปฏิทินในเครื่องผู้ใช้งานคลาดเคลื่อน (เช่น เป็นปี พ.ศ. หรือกรณีปี 2826)
+  // ดึงปีการศึกษาจาก systemConfig มาคำนวณหาปี ค.ศ. คริสต์ศักราชที่ถูกต้อง
+  const academicYearBE = window._pp5SystemCfg?.academicYear || window._pp5SystemCfg?.academic_year || 2569
+  const currentGregorianYear = parseInt(academicYearBE) - 543
+  
+  if (y > 2030 || y < 2024) {
+    y = currentGregorianYear
+  }
+  
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
 
 function _generatePrayerWeeks(startValue, records = []) {
   const firstRecord = records.map(r => r.check_date).filter(Boolean).sort()[0]
@@ -2406,6 +2417,8 @@ export async function renderStudentPrayerScanner(student) {
     getSystemConfig().catch(() => ({})),
     getScannerRoster().catch(() => [])
   ])
+  window._pp5SystemCfg = systemConfig
+
 
   // Check permission for student or teacher
   let hasPermission = false
@@ -3169,6 +3182,9 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.34': [
+    '📅 ป้องกันปัญหานาฬิกา/ปีปฏิทินของเครื่องสแกนคลาดเคลื่อน (เช่น ปี พ.ศ. 2826 หรือ 2569) โดยบังคับควบคุมแปลงปีเป็น ค.ศ. คริสต์ศักราชของระบบจริงอัตโนมัติ'
+  ],
   '10.17.33': [
     '🕌 แก้ไขการดึงข้อมูลคะแนนละหมาดในฝั่งครูที่ปรึกษา ให้ดึงจากรหัสนักเรียนโดยตรง ป้องกันปัญหารหัสนักเรียนและรหัสห้องสามัญ/ศาสนาไม่ตรงกันส่งผลให้ช่องสแกนว่าง'
   ],
