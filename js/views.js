@@ -2403,17 +2403,6 @@ export async function renderSettings() {
           { key:'semester_start', label:'วันเปิดภาคเรียน', type:'date', hint:'ใช้คำนวณสัปดาห์ปัจจุบันอัตโนมัติในระบบบันทึกละหมาด' },
           { key:'semester_end',   label:'วันปิดภาคเรียน',  type:'date' },
         ]),
-        section('ช่วงเวลาเปิดระบบสแกนละหมาด (นักเรียน)', [
-          { key:'prayerScanStartTime', label:'เวลาเริ่มสแกน', type:'text', placeholder:'12:20',
-            hint:'ใช้รูปแบบ 24 ชั่วโมง เช่น 12:20' },
-          { key:'prayerScanEndTime', label:'เวลาปิดสแกนสำหรับนักเรียนแกนนำทั่วไป', type:'text', placeholder:'12:50',
-            hint:'ค่าเริ่มต้นของระบบคือ 12:50' },
-          { key:'prayerScanExtendedEndTime', label:'เวลาปิดสแกนสำหรับประธาน/รองประธาน', type:'text', placeholder:'13:05',
-            hint:'ใช้สำหรับกลุ่มที่ต้องสแกนสภานักเรียนหลังละหมาดเสร็จ' },
-          { key:'prayerExtendedScannerStudents', label:'รหัสนักเรียนสิทธิ์ขยายเวลา', type:'textarea', rows:2,
-            placeholder:'เช่น 23427, 23433, 23520',
-            hint:'ใส่รหัสประธาน/รองประธาน ทั้งหญิงและชาย คั่นด้วยเว้นวรรคหรือลูกน้ำ นักเรียนเหล่านี้ต้องได้รับสิทธิ์สแกนเนอร์ด้วย' },
-        ]),
         section('การคำนวณคะแนนมาเรียน (วิชาศาสนา)', [
           { key:'attendanceScoreMode', label:'ตัวหารของคะแนนมาเรียน', type:'select',
             options: [
@@ -6668,8 +6657,32 @@ export async function renderPrayerAdmin(teacher) {
         </div>
       </div>`
 
-      + `
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-4">
+    document.getElementById('pr-save-cfg').addEventListener('click', async () => {
+      const btn   = document.getElementById('pr-save-cfg')
+      const sid   = document.getElementById('pr-sheet-id').value.trim()
+      const tab   = document.getElementById('pr-sheet-tab').value.trim() || 'Solat'
+      const range = document.getElementById('pr-stu-range').value.trim() || 'A3:A3000'
+      btn.disabled=true; btn.textContent='⏳ กำลังบันทึก...'
+      try {
+        await Promise.all([
+          updateSystemConfig('prayerSheetId', sid),
+          updateSystemConfig('prayerSheetTab', tab),
+          updateSystemConfig('prayerStudentRange', range),
+        ])
+        cfg.prayerSheetId=sid; cfg.prayerSheetTab=tab; cfg.prayerStudentRange=range
+        btn.textContent='✅ บันทึกแล้ว'; btn.style.background='#16a34a'
+        setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึกการตั้งค่า'; btn.style.background='' }, 1800)
+        showToast('บันทึก Sheet config ละหมาดแล้ว', 'success')
+      } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึกการตั้งค่า' }
+    })
+
+  }
+
+  // ─── Tab: มอบสิทธิ์สแกนเนอร์ ──────────────────────────────────────────
+  const _showScanners = () => {
+    document.getElementById('pr-tab-actions').innerHTML = ''
+    document.getElementById('pr-tab-content').innerHTML = `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
         <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
           <span class="text-sm font-semibold text-gray-700">⏱️ ช่วงเวลาเปิดระบบสแกนละหมาด</span>
         </div>
@@ -6691,78 +6704,13 @@ export async function renderPrayerAdmin(teacher) {
                 class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">รหัสนักเรียนสิทธิ์ขยายเวลา</label>
-            <textarea id="pr-extended-scanners" rows="2" placeholder="เช่น 23427, 23433, 23520"
-              class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none">${cfg.prayerExtendedScannerStudents??''}</textarea>
-            <p class="text-xs text-gray-400 mt-1">ใช้สำหรับประธาน/รองประธาน ทั้งหญิงและชาย คั่นด้วยเว้นวรรคหรือลูกน้ำ และต้องได้รับสิทธิ์สแกนเนอร์ในแท็บมอบสิทธิ์ด้วย</p>
-          </div>
-          <button id="pr-save-time-cfg"
+          <button id="pr-save-scanner-time-cfg"
             class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
             บันทึกช่วงเวลาสแกน
           </button>
         </div>
-      </div>`
+      </div>
 
-    document.getElementById('pr-save-cfg').addEventListener('click', async () => {
-      const btn   = document.getElementById('pr-save-cfg')
-      const sid   = document.getElementById('pr-sheet-id').value.trim()
-      const tab   = document.getElementById('pr-sheet-tab').value.trim() || 'Solat'
-      const range = document.getElementById('pr-stu-range').value.trim() || 'A3:A3000'
-      btn.disabled=true; btn.textContent='⏳ กำลังบันทึก...'
-      try {
-        await Promise.all([
-          updateSystemConfig('prayerSheetId', sid),
-          updateSystemConfig('prayerSheetTab', tab),
-          updateSystemConfig('prayerStudentRange', range),
-        ])
-        cfg.prayerSheetId=sid; cfg.prayerSheetTab=tab; cfg.prayerStudentRange=range
-        btn.textContent='✅ บันทึกแล้ว'; btn.style.background='#16a34a'
-        setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึกการตั้งค่า'; btn.style.background='' }, 1800)
-        showToast('บันทึก Sheet config ละหมาดแล้ว', 'success')
-      } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึกการตั้งค่า' }
-    })
-
-    document.getElementById('pr-save-time-cfg').addEventListener('click', async () => {
-      const btn = document.getElementById('pr-save-time-cfg')
-      const start = document.getElementById('pr-scan-start').value.trim() || '12:20'
-      const end = document.getElementById('pr-scan-end').value.trim() || '12:50'
-      const extEnd = document.getElementById('pr-scan-ext-end').value.trim() || '13:05'
-      const extCodes = document.getElementById('pr-extended-scanners').value.trim()
-      const timeOk = [start, end, extEnd].every(v => /^\d{1,2}:\d{2}$/.test(v))
-      if (!timeOk) {
-        showToast('กรุณากรอกเวลาเป็นรูปแบบ HH:MM เช่น 12:20', 'warning')
-        return
-      }
-      btn.disabled = true
-      btn.textContent = '⏳ กำลังบันทึก...'
-      try {
-        await Promise.all([
-          updateSystemConfig('prayerScanStartTime', start),
-          updateSystemConfig('prayerScanEndTime', end),
-          updateSystemConfig('prayerScanExtendedEndTime', extEnd),
-          updateSystemConfig('prayerExtendedScannerStudents', extCodes),
-        ])
-        cfg.prayerScanStartTime = start
-        cfg.prayerScanEndTime = end
-        cfg.prayerScanExtendedEndTime = extEnd
-        cfg.prayerExtendedScannerStudents = extCodes
-        showToast('บันทึกช่วงเวลาสแกนละหมาดแล้ว', 'success')
-        btn.textContent = '✅ บันทึกแล้ว'
-        setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกช่วงเวลาสแกน' }, 1600)
-      } catch(err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        btn.disabled = false
-        btn.textContent = 'บันทึกช่วงเวลาสแกน'
-      }
-    })
-
-  }
-
-  // ─── Tab: มอบสิทธิ์สแกนเนอร์ ──────────────────────────────────────────
-  const _showScanners = () => {
-    document.getElementById('pr-tab-actions').innerHTML = ''
-    document.getElementById('pr-tab-content').innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
           <span class="text-sm font-semibold text-gray-700">🔑 มอบสิทธิ์เครื่องสแกนเนอร์ (แกนนำสภานักเรียน / คุณครู)</span>
@@ -6799,6 +6747,53 @@ export async function renderPrayerAdmin(teacher) {
 
     let _foundScanners = []
 
+    const _scannerCodeList = (value) => (value || '')
+      .split(/[\s,]+/)
+      .map(c => c.trim())
+      .filter(Boolean)
+
+    const _saveExtendedScannerCode = async (code, enabled) => {
+      const currentConfig = await getSystemConfig().catch(() => ({}))
+      const codes = new Set(_scannerCodeList(currentConfig.prayerExtendedScannerStudents))
+      if (enabled) codes.add(String(code))
+      else codes.delete(String(code))
+      const nextCodes = Array.from(codes).join(',')
+      await updateSystemConfig('prayerExtendedScannerStudents', nextCodes)
+      cfg.prayerExtendedScannerStudents = nextCodes
+      return nextCodes
+    }
+
+    document.getElementById('pr-save-scanner-time-cfg').addEventListener('click', async () => {
+      const btn = document.getElementById('pr-save-scanner-time-cfg')
+      const start = document.getElementById('pr-scan-start').value.trim() || '12:20'
+      const end = document.getElementById('pr-scan-end').value.trim() || '12:50'
+      const extEnd = document.getElementById('pr-scan-ext-end').value.trim() || '13:05'
+      const timeOk = [start, end, extEnd].every(v => /^\d{1,2}:\d{2}$/.test(v))
+      if (!timeOk) {
+        showToast('กรุณากรอกเวลาเป็นรูปแบบ HH:MM เช่น 12:20', 'warning')
+        return
+      }
+      btn.disabled = true
+      btn.textContent = '⏳ กำลังบันทึก...'
+      try {
+        await Promise.all([
+          updateSystemConfig('prayerScanStartTime', start),
+          updateSystemConfig('prayerScanEndTime', end),
+          updateSystemConfig('prayerScanExtendedEndTime', extEnd),
+        ])
+        cfg.prayerScanStartTime = start
+        cfg.prayerScanEndTime = end
+        cfg.prayerScanExtendedEndTime = extEnd
+        showToast('บันทึกช่วงเวลาสแกนละหมาดแล้ว', 'success')
+        btn.textContent = '✅ บันทึกแล้ว'
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกช่วงเวลาสแกน' }, 1600)
+      } catch(err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+        btn.textContent = 'บันทึกช่วงเวลาสแกน'
+      }
+    })
+
     const _loadScannersList = async () => {
       const listWrap = document.getElementById('scanners-list-wrap')
       if (!listWrap) return
@@ -6813,14 +6808,9 @@ export async function renderPrayerAdmin(teacher) {
 
         // 2. ดึงข้อมูลครูที่มีสิทธิ์จาก config
         const currentConfig = await getSystemConfig().catch(() => ({}))
-        const teacherCodes = (currentConfig.prayerScannerTeachers || '')
-          .split(/[\s,]+/)
-          .map(c => c.trim())
-          .filter(Boolean)
-        const extendedStudentCodes = new Set((currentConfig.prayerExtendedScannerStudents || '')
-          .split(/[\s,]+/)
-          .map(c => c.trim())
-          .filter(Boolean))
+        const studentsList = students ?? []
+        const teacherCodes = _scannerCodeList(currentConfig.prayerScannerTeachers)
+        const extendedStudentCodes = new Set(_scannerCodeList(currentConfig.prayerExtendedScannerStudents))
 
         let permittedTeachers = []
         if (teacherCodes.length > 0) {
@@ -6833,7 +6823,7 @@ export async function renderPrayerAdmin(teacher) {
           permittedTeachers = teachers ?? []
         }
 
-        const totalScannersCount = students.length + permittedTeachers.length
+        const totalScannersCount = studentsList.length + permittedTeachers.length
         document.getElementById('scanner-count-badge').textContent = `${totalScannersCount} คน`
 
         if (totalScannersCount === 0) {
@@ -6849,16 +6839,18 @@ export async function renderPrayerAdmin(teacher) {
                 <th class="px-2 py-3 text-left">รหัส</th>
                 <th class="px-3 py-3 text-left">ชื่อ-นามสกุล</th>
                 <th class="px-3 py-3 text-left">ห้องเรียน / กลุ่มสาระ</th>
+                <th class="px-3 py-3 text-left">ประเภทสิทธิ์</th>
                 <th class="px-4 py-3 text-right">การจัดการ</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
               ${[
-                ...students.map(s => `
+                ...studentsList.map(s => {
+                  const isExtended = extendedStudentCodes.has(String(s.student_code))
+                  return `
                   <tr class="hover:bg-gray-50 transition">
                     <td class="px-4 py-2">
                       <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">นักเรียน</span>
-                      ${extendedStudentCodes.has(String(s.student_code)) ? '<span class="ml-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">ขยายเวลา</span>' : ''}
                     </td>
                     <td class="px-2 py-2 font-mono text-gray-700">${s.student_code}</td>
                     <td class="px-3 py-2">
@@ -6871,14 +6863,20 @@ export async function renderPrayerAdmin(teacher) {
                       </div>
                     </td>
                     <td class="px-3 py-2 text-gray-500">ห้อง ${s.main_room || '—'}</td>
+                    <td class="px-3 py-2">
+                      <button class="btn-toggle-extended-scanner inline-flex items-center justify-center min-w-[92px] px-2.5 py-1 rounded-lg transition text-[10px] font-bold border ${isExtended ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}"
+                        data-code="${s.student_code}" data-name="${s.full_name}" data-extended="${isExtended ? '1' : '0'}">
+                        ${isExtended ? 'ขยายเวลา' : 'ทั่วไป'}
+                      </button>
+                    </td>
                     <td class="px-4 py-2 text-right">
                       <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
-                        data-id="${s.id}" data-name="${s.full_name}" data-type="student">
+                        data-id="${s.id}" data-code="${s.student_code}" data-name="${s.full_name}" data-type="student">
                         ถอนสิทธิ์
                       </button>
                     </td>
                   </tr>
-                `),
+                `}),
                 ...permittedTeachers.map(t => `
                   <tr class="hover:bg-gray-50 transition">
                     <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">คุณครู</span></td>
@@ -6893,6 +6891,9 @@ export async function renderPrayerAdmin(teacher) {
                       </div>
                     </td>
                     <td class="px-3 py-2 text-gray-500">กลุ่มสาระ ${t.dept || '—'}</td>
+                    <td class="px-3 py-2">
+                      <span class="inline-flex items-center justify-center min-w-[92px] px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100">คุณครู</span>
+                    </td>
                     <td class="px-4 py-2 text-right">
                       <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
                         data-code="${t.teacher_code}" data-name="${t.full_name}" data-type="teacher">
@@ -6906,6 +6907,25 @@ export async function renderPrayerAdmin(teacher) {
           </table>
         `
 
+        listWrap.querySelectorAll('.btn-toggle-extended-scanner').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const code = btn.dataset.code
+            const name = btn.dataset.name
+            const nextExtended = btn.dataset.extended !== '1'
+            btn.disabled = true
+            btn.textContent = 'กำลังบันทึก...'
+            try {
+              await _saveExtendedScannerCode(code, nextExtended)
+              showToast(`ปรับสิทธิ์ "${name}" เป็น${nextExtended ? 'ขยายเวลา' : 'ทั่วไป'}แล้ว`, 'success')
+              _loadScannersList()
+            } catch(err) {
+              showToast('ปรับสิทธิ์ไม่สำเร็จ: ' + err.message, 'error')
+              btn.disabled = false
+              btn.textContent = btn.dataset.extended === '1' ? 'ขยายเวลา' : 'ทั่วไป'
+            }
+          })
+        })
+
         // ผูกอีเวนต์ปุ่มถอนสิทธิ์
         listWrap.querySelectorAll('.btn-revoke-scanner').forEach(btn => {
           btn.addEventListener('click', async () => {
@@ -6915,15 +6935,14 @@ export async function renderPrayerAdmin(teacher) {
             try {
               if (type === 'student') {
                 const sid = +btn.dataset.id
+                const code = btn.dataset.code
                 const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
                 if (error) throw error
+                await _saveExtendedScannerCode(code, false)
               } else {
                 const code = btn.dataset.code
                 const currentConfig = await getSystemConfig().catch(() => ({}))
-                const updatedTeachers = (currentConfig.prayerScannerTeachers || '')
-                  .split(/[\s,]+/)
-                  .map(c => c.trim())
-                  .filter(Boolean)
+                const updatedTeachers = _scannerCodeList(currentConfig.prayerScannerTeachers)
                   .filter(c => c !== code)
 
                 await updateSystemConfig('prayerScannerTeachers', updatedTeachers.join(','))
@@ -7015,10 +7034,7 @@ export async function renderPrayerAdmin(teacher) {
         // 2. อัปเดต teachers ใน config
         if (teacherCodes.length > 0) {
           const currentConfig = await getSystemConfig().catch(() => ({}))
-          let existingTeachers = (currentConfig.prayerScannerTeachers || '')
-            .split(/[\s,]+/)
-            .map(c => c.trim())
-            .filter(Boolean)
+          let existingTeachers = _scannerCodeList(currentConfig.prayerScannerTeachers)
 
           teacherCodes.forEach(code => {
             if (!existingTeachers.includes(code)) {
