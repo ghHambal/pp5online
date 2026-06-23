@@ -682,14 +682,16 @@ export async function getPrayerRecords(teacherId, room, startDate, endDate) {
   if (!students?.length) return []
   const ids = students.map(s => s.id)
 
-  let q = supabase.from('prayer_records')
-    .select('student_id, check_date, status')
-    .in('student_id', ids)
-  if (startDate) q = q.gte('check_date', startDate)
-  if (endDate)   q = q.lte('check_date', endDate)
-  const { data, error } = await q
-  if (error) throw error
-  return data ?? []
+  return _fetchPaged(
+    'prayer_records',
+    'student_id, check_date, status',
+    paged => {
+      paged = paged.in('student_id', ids)
+      if (startDate) paged = paged.gte('check_date', startDate)
+      if (endDate)   paged = paged.lte('check_date', endDate)
+      return paged.order('check_date')
+    }
+  )
 }
 
 export async function savePrayerRecords(records) {
@@ -1606,19 +1608,23 @@ export async function savePrayerCellAdmin(studentId, room, checkDate, status, we
   if (error) throw error
 }
 
-export async function getPrayerRecordsByRoom(room) {
+export async function getPrayerRecordsByRoom(room, startDate = null, endDate = null) {
   // ค้นหาผ่าน student_id ของห้องนั้น — ไม่พึ่ง main_room ซึ่งครูอาจบันทึกต่างกัน
   const { data: students } = await supabase.from('students')
     .select('id').eq('religion_room', room).eq('is_active', true)
     .range(...STUDENT_QUERY_RANGE)
   if (!students?.length) return []
   const ids = students.map(s => s.id)
-  const { data, error } = await supabase.from('prayer_records')
-    .select('student_id, check_date, status')
-    .in('student_id', ids)
-    .order('check_date')
-  if (error) throw error
-  return data ?? []
+  return _fetchPaged(
+    'prayer_records',
+    'student_id, check_date, status',
+    q => {
+      q = q.in('student_id', ids)
+      if (startDate) q = q.gte('check_date', startDate)
+      if (endDate)   q = q.lte('check_date', endDate)
+      return q.order('check_date')
+    }
+  )
 }
 
 export async function getAllLifeSkillScores(academicYear, semester) {
@@ -1650,10 +1656,11 @@ export async function getAllReadingScores(academicYear, semester) {
 }
 
 export async function getAllPrayerRecords() {
-  const { data, error } = await supabase.from('prayer_records')
-    .select('student_id, check_date, status')
-    .order('check_date')
-  if (error) throw error
+  const data = await _fetchPaged(
+    'prayer_records',
+    'student_id, check_date, status',
+    q => q.order('check_date')
+  )
   const stuMap = await _fetchStudentsById([...new Set((data ?? []).map(r => r.student_id))])
   return (data ?? []).map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
 }
@@ -3236,4 +3243,3 @@ export async function getActiveLeavePermissionsForClass(classId) {
   if (error) throw error
   return data || []
 }
-

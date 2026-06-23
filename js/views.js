@@ -6356,7 +6356,7 @@ export async function renderPrayerAdmin(teacher) {
         // โหลด students + records พร้อมกัน (เร็วกว่า 2×)
         const [students, records] = await Promise.all([
           getStudentsByReligionRoom(room),
-          getPrayerRecordsByRoom(room),
+          getPrayerRecordsByRoom(room, semStart, semEnd),
         ])
         _stuList = students
 
