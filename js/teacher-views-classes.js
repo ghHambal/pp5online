@@ -4447,6 +4447,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       .from('classes')
       .select(`id, class_name, master_subjects ( id, grade_level, subject_group )`)
       .order('class_name')
+      .limit(10000)  // ป้องกัน Supabase default 1000-row limit
 
     if (error) throw error
 
@@ -4462,17 +4463,29 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
     // ─── สกัด grade_level + category จาก class_name โดยตรง (fallback) ────────
     const extractGradeFromName = (name) => {
-      // ตัวอย่าง: "ม.1/1", "ปวช.2/3", "PR 1/1"
+      // ตัวอย่าง: "ม.1/1", "ปวช.2/3", "PR 1/1", "PR 1/5 Fatanah"
       const m = name.match(/^(ม\.\d+|ปวช\.\d+|PR\s*\d+|อก\.\d+|อป\.\d+)/i)
-      return m ? m[1].replace(/\s+/g, ' ').trim() : null
+      if (!m) return null
+      // normalize: "PR1" → "PR 1"
+      return m[1].replace(/^(PR)\s*(\d+)$/i, 'PR $2').trim()
+    }
+
+    // master_subjects อาจเป็น array (PostgREST reverse FK) หรือ object (forward FK)
+    const getMasterSubject = (c) => {
+      const ms = c._meta?.master_subjects ?? c.master_subjects
+      if (!ms) return null
+      if (Array.isArray(ms)) return ms.length > 0 ? ms[0] : null
+      return ms
     }
 
     const getGradeLevel = (c) => {
-      return c.master_subjects?.grade_level || extractGradeFromName(c.class_name || '') || 'อื่น ๆ'
+      const ms = getMasterSubject(c)
+      return ms?.grade_level || extractGradeFromName(c.class_name || '') || 'อื่น ๆ'
     }
 
     const getCategory = (c) => {
-      const grp = c.master_subjects?.subject_group || ''
+      const ms = getMasterSubject(c)
+      const grp = ms?.subject_group || ''
       const name = c.class_name || ''
       if (['AGM'].includes(grp) || /^(PR|อก\.|อป\.)/.test(name)) return 'ศาสนา'
       if (['ACDMVOC', 'AGMVOC'].includes(grp) || /^ปวช\./.test(name)) return 'ปวช'
@@ -4593,7 +4606,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         classSelect.innerHTML = `
           <option value="">-- เลือกห้องเรียน (${filteredClasses.length} ห้อง) --</option>
           ${filteredClasses.map(c => `
-            <option value="${c.id}" ${c.id == selectedClassId ? 'selected' : ''}>${_htmlEsc(c.class_name)}</option>
+            <option value="${_htmlEsc(c.class_name)}" ${c.class_name === selectedClassId ? 'selected' : ''}>${_htmlEsc(c.class_name)}</option>
           `).join('')}
         `
 
@@ -4649,11 +4662,20 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       `
 
       try {
-        const cls = uniqueClasses.find(c => c.id == selectedClassId)
-        const className = cls ? cls.class_name : 'ทั่วไป'
-        const rawStudents = await getClassRosterStudents(selectedClassId)
+        const cls = uniqueClasses.find(c => c.class_name === selectedClassId || c.id == selectedClassId)
+        const className = cls ? cls.class_name : selectedClassId
+
+        // โหลดนักเรียนโดยตรงจาก students.main_room (ไม่พึ่ง class_id / class_students)
+        const { data: rawStudents, error: stuErr } = await supabase
+          .from('students')
+          .select('id, student_code, full_name, image_url, main_room, religion_room, gender, house_color')
+          .eq('main_room', className)
+          .eq('is_active', true)
+          .order('student_code')
+          .limit(500)
+        if (stuErr) throw stuErr
+
         const students = (rawStudents ?? [])
-          .filter(s => s.is_active !== false)
           .map((s, i) => ({ ...s, seat_no: i + 1 }))
 
         if (students.length === 0) {
@@ -4825,12 +4847,18 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         const roomDataList = []
         for (let i = 0; i < classesInLevel.length; i++) {
           const cls = classesInLevel[i]
-          document.getElementById('qr-level-progress')?.textContent && (
-            document.getElementById('qr-level-progress').textContent = `กำลังโหลด ${i + 1} / ${classesInLevel.length} ห้อง — ${cls.class_name}`
-          )
-          const rawStudents = await getClassRosterStudents(cls.id)
-          let students = (rawStudents ?? [])
-            .filter(s => s.is_active !== false)
+          const progressEl = document.getElementById('qr-level-progress')
+          if (progressEl) progressEl.textContent = `กำลังโหลด ${i + 1} / ${classesInLevel.length} ห้อง — ${cls.class_name}`
+
+          // โหลดนักเรียนโดยตรงจาก students.main_room
+          const { data: rawStu } = await supabase
+            .from('students')
+            .select('id, student_code, full_name, image_url, main_room, gender')
+            .eq('main_room', cls.class_name)
+            .eq('is_active', true)
+            .order('student_code')
+            .limit(500)
+          let students = (rawStu ?? [])
             .filter(s => filterGender === 'all' || s.gender === filterGender)
             .map((s, idx) => ({ ...s, seat_no: idx + 1 }))
           if (students.length > 0) {
@@ -4897,14 +4925,17 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             padding: 0 !important; margin: 0 !important;
             background: white !important;
           }
-          #print-qr-area * { display: initial; visibility: visible; }
+          /* ไม่ override display แบบ เป็น initial เพราะจะทำให้ div เป็น inline และ page-break ไม่ทำงาน */
+          #print-qr-area * { visibility: visible; }
           .print-room-block {
-            page-break-before: always;
-            break-before: page;
+            display: block !important;   /* จำเป็นมากเพื่อให้ page-break ทำงาน */
+            page-break-before: always !important;
+            break-before: page !important;
+            page-break-inside: avoid;
           }
           .print-room-block:first-child {
-            page-break-before: auto;
-            break-before: auto;
+            page-break-before: auto !important;
+            break-before: auto !important;
           }
           .print-room-header {
             font-family: Sarabun, sans-serif;
