@@ -240,7 +240,8 @@
           onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full');document.getElementById('sidebar-overlay').classList.toggle('hidden')">☰</button>
         <h1 id="page-title" class="text-lg font-bold text-gray-800">ภาพรวมระบบ</h1>
       </div>
-      <div class="flex items-center gap-3">
+      <div id="header-right" class="flex items-center gap-3">
+        <div id="header-switch-slot"></div>
         <button id="btn-refresh"
           onclick="window.location.reload()"
           title="รีเฟรชหน้านี้"

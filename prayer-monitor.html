@@ -116,6 +116,14 @@
               เช็คชื่อเรียบร้อย
             </span>
           </div>
+          <!-- Cancel button for latest scan -->
+          <div class="mt-5">
+            <button id="btn-cancel-latest"
+              class="flex items-center gap-1.5 mx-auto px-4 py-2 rounded-xl text-xs font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:border-red-300 transition active:scale-95"
+              title="ยกเลิกการสแกนของนักเรียนคนนี้">
+              🗑️ ยกเลิกการสแกน
+            </button>
+          </div>
         </div>
       </div>
 
@@ -145,11 +153,12 @@
               <th class="px-4 py-2 pb-3">ชื่อ-นามสกุล</th>
               <th class="px-4 py-2 pb-3 w-28">ห้องเรียน</th>
               <th class="px-4 py-2 pb-3 w-36">จุดสแกน</th>
+              <th class="px-4 py-2 pb-3 w-20 text-center">ยกเลิก</th>
             </tr>
           </thead>
           <tbody id="history-table-body">
             <tr>
-              <td colspan="5" class="text-center text-slate-400 py-12 text-sm leading-relaxed">
+              <td colspan="6" class="text-center text-slate-400 py-12 text-sm leading-relaxed">
                 กำลังรอข้อมูลการสแกน...
               </td>
             </tr>

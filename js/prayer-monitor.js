@@ -286,6 +286,26 @@ function triggerFlashEffect() {
   flashOverlay.className = 'absolute inset-0 pointer-events-none z-50 flash-effect'
 }
 
+// ─── Cancel / Delete a scan record ────────────────────────────────────────────
+async function cancelRecord(recordId) {
+  if (!confirm('ยืนยันยกเลิกการสแกนของนักเรียนคนนี้ใช่มั้ย?')) return
+  try {
+    const { error } = await supabase
+      .from('prayer_records')
+      .delete()
+      .eq('id', recordId)
+    if (error) {
+      alert('เกิดข้อผิดพลาด: ' + error.message)
+      return
+    }
+    // Remove from local cache immediately for instant UI update
+    recentRecords = recentRecords.filter(r => r.id !== recordId)
+    renderRecentList()
+  } catch (err) {
+    console.error('cancelRecord error:', err)
+  }
+}
+
 // ─── Display Student Success Info ───────────────────────────────────────
 function displayStudentCheckIn(student, record) {
   // Update active card photo
@@ -329,6 +349,15 @@ function displayStudentCheckIn(student, record) {
   // Unhide card and hide standby
   standbyView.classList.add('hidden')
   activeCard.classList.remove('hidden')
+
+  // Wire up the cancel button for latest scan
+  const cancelLatestBtn = document.getElementById('btn-cancel-latest')
+  if (cancelLatestBtn) {
+    // Remove old handler to avoid stacking
+    const newBtn = cancelLatestBtn.cloneNode(true)
+    cancelLatestBtn.parentNode.replaceChild(newBtn, cancelLatestBtn)
+    newBtn.addEventListener('click', () => cancelRecord(record.id))
+  }
 }
 
 // ─── Render Screen Layout & History Table ─────────────────────────────────────
@@ -370,7 +399,7 @@ function renderRecentList() {
     if (historyTableBody) {
       historyTableBody.innerHTML = `
         <tr>
-          <td colspan="5" class="text-center text-slate-400 py-12 text-sm leading-relaxed">
+          <td colspan="6" class="text-center text-slate-400 py-12 text-sm leading-relaxed">
             กำลังรอข้อมูลการสแกน...
           </td>
         </tr>
@@ -394,7 +423,7 @@ function renderRecentList() {
     if (historyItems.length === 0) {
       historyTableBody.innerHTML = `
         <tr>
-          <td colspan="5" class="text-center text-slate-400 py-8 text-xs">
+          <td colspan="6" class="text-center text-slate-400 py-8 text-xs">
             ไม่มีรายการสแกนก่อนหน้าของวันนี้
           </td>
         </tr>
@@ -444,7 +473,20 @@ function renderRecentList() {
               ${locationLabel}
             </span>
           </td>
+          <td class="px-4 py-3 text-center">
+            <button
+              class="w-7 h-7 flex items-center justify-center mx-auto rounded-lg text-sm bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 transition active:scale-90"
+              title="ยกเลิกการสแกนของ ${student.full_name}"
+              data-record-id="${rec.id}">
+              🗑️
+            </button>
+          </td>
         `
+        // Bind cancel button
+        row.querySelector('[data-record-id]')?.addEventListener('click', (e) => {
+          const id = parseInt(e.currentTarget.getAttribute('data-record-id'), 10)
+          cancelRecord(id)
+        })
         historyTableBody.appendChild(row)
       })
     }

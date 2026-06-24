@@ -75,19 +75,21 @@ async function loadUserProfile(userId) {
 
 // ─── Switch to teacher view (สำหรับ user ที่มีทั้งสองบทบาท) ──────────────────
 async function _addSwitchToTeacherBtn(userId) {
-  if (document.getElementById('btn-switch-teacher')) return  // ป้องกัน duplicate
+  const slot = document.getElementById('header-switch-slot')
+  if (!slot) return
+  // Clear any existing button in the slot (ป้องกัน duplicate กรณีเรียกซ้ำ)
+  slot.innerHTML = ''
   const { data: profile } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
   if (!profile?.is_also_admin) return
-  const headerRight = document.querySelector('header .flex.items-center.gap-3:last-child')
-  if (!headerRight) return
   const btn = document.createElement('a')
   btn.id = 'btn-switch-teacher'
   btn.href = 'teacher.html'
   btn.title = 'สลับไปหน้าครู'
   btn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 shadow-sm border border-indigo-200/50 mr-1'
   btn.innerHTML = `<span>👨‍🏫</span><span>สลับเป็นครู</span>`
-  headerRight.insertBefore(btn, headerRight.firstChild)
+  slot.appendChild(btn)
 }
+
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 async function handleLogout() {
