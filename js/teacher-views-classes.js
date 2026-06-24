@@ -4442,24 +4442,45 @@ export async function renderStudentQRPrint(teacher, classId = null) {
   `)
 
   try {
-    // ─── โหลดทุกห้องเรียนในระบบ (ไม่กรองตามครู / master_subjects) ───────────
-    const { data: allClassRows, error } = await supabase
+    // ─── ดึงรายชื่อห้องจาก students.main_room (ฐานข้อมูลนักเรียนทั้งโรง) ─────
+    // เหมือนหน้า "จัดการนักเรียน" ในแอดมิน → ครอบคลุมทุกห้องที่มีนักเรียนจริง
+    const { data: studentRoomRows, error: srErr } = await supabase
+      .from('students')
+      .select('main_room')
+      .eq('is_active', true)
+      .not('main_room', 'is', null)
+      .limit(20000)
+
+    if (srErr) throw srErr
+
+    // ดึง classes เพื่อใช้เป็น metadata (grade_level, subject_group) เท่านั้น
+    const { data: allClassRows } = await supabase
       .from('classes')
-      .select(`id, class_name, master_subjects ( id, grade_level, subject_group )`)
+      .select('id, class_name, master_subjects ( id, grade_level, subject_group )')
       .order('class_name')
-      .limit(10000)  // ป้องกัน Supabase default 1000-row limit
+      .limit(10000)
 
-    if (error) throw error
-
-    const classes = allClassRows || []
-
-    // ─── จัดกลุ่ม unique class_name → เลือก row แรกที่ตรงกัน ────────────────
-    const uniqueClassMap = new Map()
-    for (const c of classes) {
+    // สร้าง metadata lookup จาก classes
+    const classMetaByName = new Map()
+    for (const c of allClassRows || []) {
       const name = c.class_name || ''
-      if (!uniqueClassMap.has(name)) uniqueClassMap.set(name, c)
+      if (name && !classMetaByName.has(name)) classMetaByName.set(name, c)
     }
-    const uniqueClasses = [...uniqueClassMap.values()]
+
+    // unique rooms จาก students (source of truth)
+    const uniqueRoomNames = [...new Set(
+      (studentRoomRows || []).map(r => r.main_room).filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b, 'th'))
+
+    // สร้าง virtual class objects
+    const uniqueClasses = uniqueRoomNames.map(roomName => {
+      const meta = classMetaByName.get(roomName)
+      return {
+        id: meta?.id || null,
+        class_name: roomName,
+        _meta: meta || null,
+      }
+    })
 
     // ─── สกัด grade_level + category จาก class_name โดยตรง (fallback) ────────
     const extractGradeFromName = (name) => {
