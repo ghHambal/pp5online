@@ -2297,18 +2297,19 @@ export async function updateTeacherPosition(id, position, removePosition = 'reli
 export async function getSupervisorProgress() {
   const [teacherRes, classRes, attRes, scoreColRes, scoreRes, schedRes] = await Promise.all([
     supabase.from('teachers')
-      .select('id, full_name, category, dept, subject_group, image_url, phone, login_email, position, position_dept_id'),
+      .select('id, full_name, category, dept, subject_group, image_url, phone, login_email, position, position_dept_id')
+      .limit(10000),
     supabase.from('classes')
-      .select('id, class_name, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date, master_subjects!inner(id, teacher_id, subject_name, subject_code, subject_group, credit)'),
-    supabase.from('attendances')
-      .select('class_id, check_date')
-      .order('check_date', { ascending: false }),
+      .select('id, class_name, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date, master_subjects!inner(id, teacher_id, subject_name, subject_code, subject_group, credit)')
+      .limit(10000),
+    supabase.rpc('get_latest_class_attendances'),
     supabase.from('class_score_columns')
-      .select('id, class_id, assignment_name, max_score'),
-    supabase.from('student_scores')
-      .select('assignment_id'),
+      .select('id, class_id, assignment_name, max_score')
+      .limit(10000),
+    supabase.rpc('get_filled_assignment_ids'),
     supabase.from('teacher_schedules')
-      .select('teacher_id'),
+      .select('teacher_id')
+      .limit(10000),
   ])
 
   const teachers   = teacherRes.data  ?? []
@@ -2337,8 +2338,10 @@ export async function getSupervisorProgress() {
   const attLast = {}
   const attClasses = new Set()
   for (const a of attRows) {
-    if (!attLast[a.class_id]) attLast[a.class_id] = a.check_date
-    attClasses.add(a.class_id)
+    if (a.last_check_date) {
+      attLast[a.class_id] = a.last_check_date
+      attClasses.add(a.class_id)
+    }
   }
 
   // filled score column ids
