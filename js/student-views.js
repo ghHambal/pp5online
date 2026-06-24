@@ -215,6 +215,34 @@ function _isExtendedPrayerScanner(user, cfg = {}) {
   return _scannerCodeList(cfg.prayerExtendedScannerStudents).includes(String(user.student_code).trim())
 }
 
+function _hasScannerPermissionForToday(student, cfg = {}) {
+  if (!student?.student_code || !student.can_scan_prayer) return false
+
+  const studentCode = String(student.student_code).trim()
+  const sunList = _scannerCodeList(cfg.prayerScannerSun)
+  const monList = _scannerCodeList(cfg.prayerScannerMon)
+  const tueList = _scannerCodeList(cfg.prayerScannerTue)
+  const wedList = _scannerCodeList(cfg.prayerScannerWed)
+  const thuList = _scannerCodeList(cfg.prayerScannerThu)
+
+  const isAssignedToAnyDay = sunList.includes(studentCode) ||
+                             monList.includes(studentCode) ||
+                             tueList.includes(studentCode) ||
+                             wedList.includes(studentCode) ||
+                             thuList.includes(studentCode)
+
+  if (!isAssignedToAnyDay) return true
+
+  const todayIndex = new Date().getDay()
+  if (todayIndex === 0 && sunList.includes(studentCode)) return true
+  if (todayIndex === 1 && monList.includes(studentCode)) return true
+  if (todayIndex === 2 && tueList.includes(studentCode)) return true
+  if (todayIndex === 3 && wedList.includes(studentCode)) return true
+  if (todayIndex === 4 && thuList.includes(studentCode)) return true
+
+  return false
+}
+
 function _prayerScanWindow(cfg = {}, extended = false) {
   const start = _timeToMinutes(cfg.prayerScanStartTime, DEFAULT_PRAYER_SCAN_START)
   const normalEnd = _timeToMinutes(cfg.prayerScanEndTime, DEFAULT_PRAYER_SCAN_END)
@@ -332,7 +360,7 @@ export async function renderStudentOverview(student) {
     </div>
 
     <!-- Scanner Access Banner -->
-    ${student.can_scan_prayer && _isPrayerTimeWindow(cfg, hasExtendedScanWindow) ? `
+    ${_hasScannerPermissionForToday(student, cfg) && _isPrayerTimeWindow(cfg, hasExtendedScanWindow) ? `
     <div class="relative overflow-hidden bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl border border-emerald-500/20 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4">
       <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🕌</div>
       <div class="min-w-0 z-10">
@@ -2483,7 +2511,7 @@ export async function renderStudentPrayerScanner(student) {
   // Check permission for student or teacher
   let hasPermission = false
   if (student.student_code) {
-    hasPermission = !!student.can_scan_prayer
+    hasPermission = _hasScannerPermissionForToday(student, systemConfig)
   } else if (student.teacher_code) {
     const teacherCodes = (systemConfig.prayerScannerTeachers || '')
       .split(/[\s,]+/)
@@ -2579,6 +2607,7 @@ export async function renderStudentPrayerScanner(student) {
   let deviceMode = localStorage.getItem('prayer_scan_device_mode') || 'single' // 'single' | 'dual'
   let activeLocation = localStorage.getItem('prayer_scan_active_location') || 
     (student.gender === 'หญิง' ? 'musolla_female_1' : 'musolla_male')
+  let recordStatus = localStorage.getItem('prayer_scan_record_status') || 'pray'
   let isSyncing = false
 
   function renderUI() {
@@ -2648,6 +2677,20 @@ export async function renderStudentPrayerScanner(student) {
             <option value="musolla_female_2" ${activeLocation === 'musolla_female_2' ? 'selected' : ''}>🕌 มูซอลลาหญิง 2 (อาคาร 5)</option>
           </select>
         </div>
+
+        ${(student.gender === 'หญิง' || !!student.teacher_code) ? `
+        <div class="border-t border-gray-100 pt-3 mb-3">
+          <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">📝 สถานะบันทึกเมื่อสแกน (Record Status)</label>
+          <div class="flex rounded-xl bg-gray-100 p-0.5 border border-gray-200/50">
+            <button id="opt-status-pray" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${recordStatus === 'pray' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}">
+              🟢 ละหมาดปกติ
+            </button>
+            <button id="opt-status-usor" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${recordStatus === 'usor' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}">
+              🟣 บันทึกอูโซร
+            </button>
+          </div>
+        </div>
+        ` : ''}
 
         <!-- iPad Monitor Display Link -->
         <div id="dual-monitor-link-area" class="mt-3.5 pt-3.5 border-t border-gray-100 flex items-center justify-between gap-3 ${deviceMode === 'dual' ? '' : 'hidden'}">
@@ -2799,6 +2842,16 @@ export async function renderStudentPrayerScanner(student) {
       showToast('เปลี่ยนจุดสแกนปัจจุบันสำเร็จ', 'info')
     })
 
+    // Option: Record status (only if female student or teacher)
+    if (student.gender === 'หญิง' || !!student.teacher_code) {
+      document.getElementById('opt-status-pray').addEventListener('click', () => {
+        setRecordStatus('pray')
+      })
+      document.getElementById('opt-status-usor').addEventListener('click', () => {
+        setRecordStatus('usor')
+      })
+    }
+
     // Start systems
     updateQueueUI()
     startCountdown()
@@ -2846,6 +2899,20 @@ export async function renderStudentPrayerScanner(student) {
     // Update Option active classes
     document.getElementById('opt-device-single').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'single' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
     document.getElementById('opt-device-dual').className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'dual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'}`
+  }
+
+  function setRecordStatus(mode) {
+    if (mode === recordStatus) return
+    recordStatus = mode
+    localStorage.setItem('prayer_scan_record_status', mode)
+
+    const btnPray = document.getElementById('opt-status-pray')
+    const btnUsor = document.getElementById('opt-status-usor')
+    if (btnPray && btnUsor) {
+      btnPray.className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'pray' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`
+      btnUsor.className = `flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${mode === 'usor' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`
+    }
+    showToast(`เปลี่ยนโหมดบันทึกเป็น: ${mode === 'pray' ? 'ละหมาดปกติ' : 'อูโซร'}`, 'info')
   }
 
   function startCountdown() {
@@ -3026,11 +3093,18 @@ export async function renderStudentPrayerScanner(student) {
     }
 
     const weekN = getWeekNumber(today, systemConfig)
+    let finalStatus = recordStatus
+    let statusWarning = ''
+    if (finalStatus === 'usor' && student.gender === 'ชาย') {
+      finalStatus = 'pray'
+      statusWarning = ' (เปลี่ยนเป็นละหมาดเนื่องจากเป็นนักเรียนชาย)'
+    }
+
     const newRecord = {
       student_id: student.id,
       main_room: student.main_room,
       check_date: today,
-      status: 'pray',
+      status: finalStatus,
       week_number: weekN,
       location: activeLocation,
       full_name: student.full_name,
@@ -3050,7 +3124,8 @@ export async function renderStudentPrayerScanner(student) {
         full_name: student.full_name,
         student_code: student.student_code,
         main_room: student.main_room,
-        check_date: today
+        check_date: today,
+        status: finalStatus
       })
       localStorage.setItem('prayer_scan_history_today', JSON.stringify(deviceHistory))
     }
@@ -3061,7 +3136,7 @@ export async function renderStudentPrayerScanner(student) {
     // Feedbacks
     playBeep('success')
     triggerScreenFlash()
-    showScanFeedback(student, studentCode, 'บันทึกสำเร็จลงเครื่องแล้ว', true)
+    showScanFeedback(student, studentCode, `บันทึกสำเร็จลงเครื่องแล้ว${statusWarning}`, true, finalStatus)
     
     updateQueueUI()
 
@@ -3070,22 +3145,27 @@ export async function renderStudentPrayerScanner(student) {
   }
 
   // ─── Feedback Panel Layouts ────────────────────────────────────────────────
-  function showScanFeedback(student, code, message, isSuccess = false) {
+  function showScanFeedback(student, code, message, isSuccess = false, status = 'pray') {
     const container = document.getElementById('scanner-feedback-container')
     if (!container) return
 
     if (window._feedbackTimeout) clearTimeout(window._feedbackTimeout)
 
     if (isSuccess && student) {
+      const isUsor = status === 'usor'
       const photoHTML = student.image_url
         ? `<img src="${student.image_url}" class="w-16 h-20 object-cover object-top rounded-xl border border-gray-200" />`
-        : `<div class="w-16 h-20 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 font-bold text-2xl flex items-center justify-center">${student.full_name.charAt(0)}</div>`
+        : `<div class="w-16 h-20 rounded-xl ${isUsor ? 'bg-purple-50 border-purple-100 text-purple-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600'} font-bold text-2xl flex items-center justify-center">${student.full_name.charAt(0)}</div>`
+
+      const badgeHTML = isUsor
+        ? `<span class="inline-block px-2 py-0.5 rounded-full bg-purple-50 border border-purple-100 text-purple-700 text-[10px] font-bold">บันทึกอูโซรสำเร็จ</span>`
+        : `<span class="inline-block px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold">บันทึกผ่านสำเร็จ</span>`
 
       container.innerHTML = `
-        <div class="bg-white/95 border border-emerald-200 rounded-2xl p-3 shadow-lg flex items-center gap-3 animate-slide-up">
+        <div class="bg-white/95 border ${isUsor ? 'border-purple-200' : 'border-emerald-200'} rounded-2xl p-3 shadow-lg flex items-center gap-3 animate-slide-up">
           ${photoHTML}
           <div class="flex-1 min-w-0">
-            <span class="inline-block px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold">บันทึกผ่านสำเร็จ</span>
+            ${badgeHTML}
             <h4 class="font-extrabold text-gray-800 text-sm mt-1 truncate">${student.full_name}</h4>
             <p class="text-xs text-gray-500 truncate">รหัส ${student.student_code} · ห้อง ${_roomDisplay(student.main_room)}</p>
             <p class="text-[10px] text-gray-400 mt-1.5 font-mono">${message}</p>
@@ -3238,9 +3318,12 @@ export async function renderStudentPrayerScanner(student) {
       } else {
         scanList.innerHTML = deviceHistory.map((r, i) => {
           const isOffline = queue.some(q => q.student_id === r.student_id)
+          const isUsor = r.status === 'usor'
           const badgeHTML = isOffline
             ? `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100 animate-pulse">ออฟไลน์</span>`
-            : `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">✓ สำเร็จ</span>`
+            : (isUsor
+                ? `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-100">อูโซร 🟣</span>`
+                : `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">✓ สำเร็จ</span>`)
 
           return `
             <div class="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
@@ -3299,6 +3382,10 @@ export async function renderStudentPrayerScanner(student) {
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.38': [
+    '🔑 เพิ่มตัวเลือกสลับโหมดบันทึก "อูโซร 🟣" เฉพาะนักเรียนหญิงและคุณครู พร้อมระบบป้องกันห้ามบันทึกอูโซรสำหรับนักเรียนชาย',
+    '📅 เพิ่มการกำหนดวันเวรรับผิดชอบรายบุคคล (อาทิตย์ – พฤหัสบดี) ในระบบแอดมิน เพื่อจำกัดสิทธิ์แกนนำตามวันจริง'
+  ],
   '10.17.37': [
     '🔑 ย้ายการตั้งค่าช่วงเวลาสแกนละหมาดไปไว้ในแท็บมอบสิทธิ์สแกนเนอร์ และเพิ่มปุ่มกำหนดสิทธิ์รายนักเรียนเป็นทั่วไป/ขยายเวลา'
   ],

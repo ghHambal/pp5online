@@ -6840,6 +6840,7 @@ export async function renderPrayerAdmin(teacher) {
                 <th class="px-3 py-3 text-left">ชื่อ-นามสกุล</th>
                 <th class="px-3 py-3 text-left">ห้องเรียน / กลุ่มสาระ</th>
                 <th class="px-3 py-3 text-left">ประเภทสิทธิ์</th>
+                <th class="px-3 py-3 text-left">วันรับผิดชอบ</th>
                 <th class="px-4 py-3 text-right">การจัดการ</th>
               </tr>
             </thead>
@@ -6847,6 +6848,23 @@ export async function renderPrayerAdmin(teacher) {
               ${[
                 ...studentsList.map(s => {
                   const isExtended = extendedStudentCodes.has(String(s.student_code))
+                  const days = [
+                    { key: 'Sun', label: 'อา' },
+                    { key: 'Mon', label: 'จ' },
+                    { key: 'Tue', label: 'อ' },
+                    { key: 'Wed', label: 'พ' },
+                    { key: 'Thu', label: 'พฤ' }
+                  ]
+                  const dayButtonsHTML = days.map(d => {
+                    const isAssigned = _scannerCodeList(currentConfig[`prayerScanner${d.key}`]).includes(String(s.student_code).trim())
+                    return `
+                      <button class="btn-toggle-day-scanner w-6 h-6 rounded-full text-[9px] font-extrabold transition-all border ${isAssigned ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'}"
+                        data-code="${s.student_code}" data-day="${d.key}" data-name="${s.full_name}" title="เวรวัน${d.key === 'Sun' ? 'อาทิตย์' : d.key === 'Mon' ? 'จันทร์' : d.key === 'Tue' ? 'อังคาร' : d.key === 'Wed' ? 'พุธ' : 'พฤหัสบดี'}">
+                        ${d.label}
+                      </button>
+                    `
+                  }).join(' ')
+
                   return `
                   <tr class="hover:bg-gray-50 transition">
                     <td class="px-4 py-2">
@@ -6864,10 +6882,15 @@ export async function renderPrayerAdmin(teacher) {
                     </td>
                     <td class="px-3 py-2 text-gray-500">ห้อง ${s.main_room || '—'}</td>
                     <td class="px-3 py-2">
-                      <button class="btn-toggle-extended-scanner inline-flex items-center justify-center min-w-[92px] px-2.5 py-1 rounded-lg transition text-[10px] font-bold border ${isExtended ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}"
+                      <button class="btn-toggle-extended-scanner inline-flex items-center justify-center min-w-[70px] px-2 py-1 rounded-lg transition text-[10px] font-bold border ${isExtended ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}"
                         data-code="${s.student_code}" data-name="${s.full_name}" data-extended="${isExtended ? '1' : '0'}">
                         ${isExtended ? 'ขยายเวลา' : 'ทั่วไป'}
                       </button>
+                    </td>
+                    <td class="px-3 py-2">
+                      <div class="flex gap-1 items-center">
+                        ${dayButtonsHTML}
+                      </div>
                     </td>
                     <td class="px-4 py-2 text-right">
                       <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
@@ -6892,8 +6915,9 @@ export async function renderPrayerAdmin(teacher) {
                     </td>
                     <td class="px-3 py-2 text-gray-500">กลุ่มสาระ ${t.dept || '—'}</td>
                     <td class="px-3 py-2">
-                      <span class="inline-flex items-center justify-center min-w-[92px] px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100">คุณครู</span>
+                      <span class="inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100">คุณครู</span>
                     </td>
+                    <td class="px-3 py-2 text-gray-400">—</td>
                     <td class="px-4 py-2 text-right">
                       <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
                         data-code="${t.teacher_code}" data-name="${t.full_name}" data-type="teacher">
@@ -6926,6 +6950,33 @@ export async function renderPrayerAdmin(teacher) {
           })
         })
 
+        // ผูกอีเวนต์ปุ่มเลือกวันรับผิดชอบ
+        listWrap.querySelectorAll('.btn-toggle-day-scanner').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const code = btn.dataset.code
+            const day = btn.dataset.day
+            const name = btn.dataset.name
+            btn.disabled = true
+            try {
+              const currentConfig = await getSystemConfig().catch(() => ({}))
+              const dayKey = `prayerScanner${day}`
+              let codes = _scannerCodeList(currentConfig[dayKey])
+              if (codes.includes(code)) {
+                codes = codes.filter(c => c !== code)
+              } else {
+                codes.push(code)
+              }
+              await updateSystemConfig(dayKey, codes.join(','))
+              const dayNames = { Sun: 'อาทิตย์', Mon: 'จันทร์', Tue: 'อังคาร', Wed: 'พุธ', Thu: 'พฤหัสบดี' }
+              showToast(`ปรับสิทธิ์เวรวัน${dayNames[day]} ของ "${name}" สำเร็จ`, 'success')
+              _loadScannersList()
+            } catch(err) {
+              showToast('ปรับสิทธิ์เวรล้มเหลว: ' + err.message, 'error')
+              btn.disabled = false
+            }
+          })
+        })
+
         // ผูกอีเวนต์ปุ่มถอนสิทธิ์
         listWrap.querySelectorAll('.btn-revoke-scanner').forEach(btn => {
           btn.addEventListener('click', async () => {
@@ -6939,6 +6990,14 @@ export async function renderPrayerAdmin(teacher) {
                 const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
                 if (error) throw error
                 await _saveExtendedScannerCode(code, false)
+
+                // ล้างรหัสในกลุ่มรายวันด้วย
+                const currentConfig = await getSystemConfig().catch(() => ({}))
+                for (const d of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu']) {
+                  const dayKey = `prayerScanner${d}`
+                  const updatedCodes = _scannerCodeList(currentConfig[dayKey]).filter(c => c !== code)
+                  await updateSystemConfig(dayKey, updatedCodes.join(','))
+                }
               } else {
                 const code = btn.dataset.code
                 const currentConfig = await getSystemConfig().catch(() => ({}))

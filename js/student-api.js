@@ -430,7 +430,7 @@ export async function getScannerRoster() {
   while (true) {
     const { data, error } = await supabase
       .from('students')
-      .select('id, student_code, full_name, main_room, image_url')
+      .select('id, student_code, full_name, main_room, image_url, gender')
       .eq('is_active', true)
       .order('student_code')
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
