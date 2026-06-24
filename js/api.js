@@ -115,11 +115,21 @@ export async function getStats() {
     supabase.from('classes').select('*',        { count: 'exact', head: true }),
     supabase.from('master_subjects').select('*',{ count: 'exact', head: true }),
   ])
+
+  let prayer = 0
+  try {
+    const { count } = await supabase.from('prayer_records').select('*', { count: 'exact', head: true })
+    prayer = count ?? 0
+  } catch (e) {
+    console.error('Error fetching prayer records count:', e)
+  }
+
   return {
     teachers: teachers ?? 0,
     students: students ?? 0,
     classes:  classes  ?? 0,
     subjects: subjects ?? 0,
+    prayer,
   }
 }
 

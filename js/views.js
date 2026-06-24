@@ -101,19 +101,19 @@ export async function renderOverview() {
     </div>
 
     <!-- สถิติหลัก -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4" id="stat-grid">
-      ${['teachers','students','classes','subjects'].map(k => `
-        <button type="button" onclick="window._adminNav?.('${k === 'classes' ? 'classrooms-admin' : k}')"
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4" id="stat-grid">
+      ${['teachers','students','classes','subjects','prayer'].map(k => `
+        <button type="button" onclick="window._adminNav?.('${k === 'classes' ? 'classrooms-admin' : k === 'prayer' ? 'prayer-admin' : k}')"
           class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 text-left
                  hover:border-indigo-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-200 transition">
           <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl
-            ${k==='teachers'?'bg-indigo-100':k==='students'?'bg-purple-100':k==='classes'?'bg-blue-100':'bg-green-100'}">
-            ${{teachers:'👩‍🏫',students:'👦',classes:'🏫',subjects:'📚'}[k]}
+            ${k==='teachers'?'bg-indigo-100':k==='students'?'bg-purple-100':k==='classes'?'bg-blue-100':k==='subjects'?'bg-green-100':'bg-rose-100'}">
+            ${{teachers:'👩‍🏫',students:'👦',classes:'🏫',subjects:'📚',prayer:'🕌'}[k]}
           </div>
           <div>
-            <p class="text-xs text-gray-500">${{teachers:'ครูผู้สอน',students:'นักเรียน',classes:'ห้องเรียน',subjects:'รายวิชา'}[k]}</p>
+            <p class="text-xs text-gray-500">${{teachers:'ครูผู้สอน',students:'นักเรียน',classes:'ห้องเรียน',subjects:'รายวิชา',prayer:'คะแนนละหมาด'}[k]}</p>
             <p id="stat-${k}" class="text-2xl font-bold
-              ${k==='teachers'?'text-indigo-700':k==='students'?'text-purple-700':k==='classes'?'text-blue-700':'text-green-700'}">—</p>
+              ${k==='teachers'?'text-indigo-700':k==='students'?'text-purple-700':k==='classes'?'text-blue-700':k==='subjects'?'text-green-700':'text-rose-700'}">—</p>
           </div>
         </button>`).join('')}
     </div>
@@ -6664,6 +6664,12 @@ export async function renderPrayerAdmin(teacher) {
                 class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
               อัปเดตอัตโนมัติ (Live)
             </label>
+          </div>
+          <div class="pt-2 border-t border-gray-50 flex flex-col gap-2">
+            <a href="prayer-monitor.html" target="_blank"
+              class="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-all border border-indigo-200/50 text-center shadow-sm">
+              🖥️ เปิดหน้าจอมอนิเตอร์แบบเรียลไทม์ (แยกหน้าจอ)
+            </a>
           </div>
         </div>
 

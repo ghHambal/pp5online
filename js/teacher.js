@@ -56,16 +56,15 @@ async function loadTeacherInfo(userId) {
   // เช็ค is_also_admin — ถ้าใช่แสดงปุ่มสลับเป็นแอดมิน
   const { data: profileRow } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
   _isAlsoAdmin = profileRow?.is_also_admin === true
-  const nav = document.querySelector('#sidebar nav')
-  if (_isAlsoAdmin && nav && !document.getElementById('btn-switch-admin')) {
+  const headerRight = document.querySelector('header .flex.items-center.gap-3:last-child')
+  if (_isAlsoAdmin && headerRight && !document.getElementById('btn-switch-admin')) {
     const switchBtn = document.createElement('a')
     switchBtn.id = 'btn-switch-admin'
     switchBtn.href = 'dashboard.html'
     switchBtn.title = 'สลับไปหน้าแอดมิน'
-    switchBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition opacity-70 hover:opacity-100 hover:bg-emerald-800/50 mt-2 border border-emerald-700/40'
-    switchBtn.style.color = '#6ee7b7'
+    switchBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 shadow-sm border border-emerald-200/50 mr-1'
     switchBtn.innerHTML = `<span>⚙️</span><span>สลับเป็นแอดมิน</span>`
-    nav.appendChild(switchBtn)
+    headerRight.insertBefore(switchBtn, headerRight.firstChild)
   }
 
   _renderTeacherSidebarUI(_teacher)
