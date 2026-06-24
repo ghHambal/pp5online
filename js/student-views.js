@@ -3103,7 +3103,7 @@ export async function renderStudentPrayerScanner(student) {
 
     const scannerName = operatorUser.teacher_code
       ? `${operatorUser.full_name} (ครู)`
-      : `${operatorUser.full_name} (สภานักเรียน)`
+      : `${operatorUser.full_name} (รหัส ${operatorUser.student_code || '—'})`
 
     const newRecord = {
       student_id: student.id,
