@@ -2,6 +2,7 @@ import {
   getMyClasses, getMySubjects, getDepartments,
   createClass, updateClass, deleteClass, enrollStudents, getSystemConfig,
   getRoomsByGrade, getStudentsByRoom, getStudentsByReligionRoom, getReligionRoomsByGrade,
+  getStudents,
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   getClassStudents, getClassRosterStudents, getStudentByCode,
   addStudentToClass, updateClassStudentActive, removeStudentFromClass,
@@ -4442,16 +4443,8 @@ export async function renderStudentQRPrint(teacher, classId = null) {
   `)
 
   try {
-    // ─── ดึงรายชื่อห้องจาก students.main_room (ฐานข้อมูลนักเรียนทั้งโรง) ─────
-    // เหมือนหน้า "จัดการนักเรียน" ในแอดมิน → ครอบคลุมทุกห้องที่มีนักเรียนจริง
-    const { data: studentRoomRows, error: srErr } = await supabase
-      .from('students')
-      .select('main_room')
-      .eq('is_active', true)
-      .not('main_room', 'is', null)
-      .limit(20000)
-
-    if (srErr) throw srErr
+    // ─── โหลดนักเรียนทั้งหมดของโรงเรียน (บายพาส limit 1000) ─────────────────
+    const allStudents = await getStudents()
 
     // ดึง classes เพื่อใช้เป็น metadata (grade_level, subject_group) เท่านั้น
     const { data: allClassRows } = await supabase
@@ -4467,23 +4460,24 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       if (name && !classMetaByName.has(name)) classMetaByName.set(name, c)
     }
 
-    // unique rooms จาก students (source of truth)
-    const uniqueRoomNames = [...new Set(
-      (studentRoomRows || []).map(r => r.main_room).filter(Boolean)
-    )].sort((a, b) => a.localeCompare(b, 'th'))
+    // ─── ฟังก์ชันแยกห้องเรียนตามหมวดหมู่ ────────────────────────────────────────
+    const getRoomsForCategory = (category) => {
+      const isReligion = category === 'ศาสนา'
+      const roomNames = [...new Set(
+        allStudents
+          .map(s => isReligion ? s.religion_room : s.main_room)
+          .filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b, 'th'))
 
-    console.log('DEBUG QR: studentRoomRows size:', studentRoomRows?.length)
-    console.log('DEBUG QR: uniqueRoomNames:', uniqueRoomNames)
-
-    // สร้าง virtual class objects
-    const uniqueClasses = uniqueRoomNames.map(roomName => {
-      const meta = classMetaByName.get(roomName)
-      return {
-        id: meta?.id || null,
-        class_name: roomName,
-        _meta: meta || null,
-      }
-    })
+      return roomNames.map(roomName => {
+        const meta = classMetaByName.get(roomName)
+        return {
+          id: meta?.id || null,
+          class_name: roomName,
+          _meta: meta || null,
+        }
+      })
+    }
 
     // ─── สกัด grade_level + category จาก class_name โดยตรง (fallback) ────────
     const extractGradeFromName = (name) => {
@@ -4511,8 +4505,8 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       const ms = getMasterSubject(c)
       const grp = ms?.subject_group || ''
       const name = c.class_name || ''
-      if (['AGM'].includes(grp) || /^(PR|อก\.|อป\.)/.test(name)) return 'ศาสนา'
-      if (['ACDMVOC', 'AGMVOC'].includes(grp) || /^ปวช\./.test(name)) return 'ปวช'
+      if (['AGM'].includes(grp) || /^(PR|อก\.|อป\.)/i.test(name)) return 'ศาสนา'
+      if (['ACDMVOC', 'AGMVOC'].includes(grp) || /^ปวช\./i.test(name)) return 'ปวช'
       return 'สามัญ'
     }
 
@@ -4524,8 +4518,8 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     }
 
     const getLevelsForCategory = (cat) => {
-      const dbLevels = [...new Set(uniqueClasses
-        .filter(c => getCategory(c) === cat)
+      const catClasses = getRoomsForCategory(cat)
+      const dbLevels = [...new Set(catClasses
         .map(c => getGradeLevel(c))
         .filter(Boolean)
       )]
@@ -4621,10 +4615,9 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
       const syncClasses = () => {
         selectedLevel = levelSelect.value
-        const filteredClasses = uniqueClasses.filter(c => {
-          const matchCat   = getCategory(c) === selectedCategory
-          const matchLevel = selectedLevel ? (getGradeLevel(c) === selectedLevel) : true
-          return matchCat && matchLevel
+        const currentClasses = getRoomsForCategory(selectedCategory)
+        const filteredClasses = currentClasses.filter(c => {
+          return selectedLevel ? (getGradeLevel(c) === selectedLevel) : true
         }).sort((a, b) => (a.class_name || '').localeCompare(b.class_name || '', 'th'))
 
         classSelect.innerHTML = `
@@ -4676,30 +4669,13 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       const previewSec = document.getElementById('qr-preview-section')
       if (!previewSec) return
       previewSec.classList.remove('hidden')
-      previewSec.innerHTML = `
-        <div class="flex justify-center py-12 text-gray-400 bg-white border border-gray-200 rounded-3xl p-6 shadow-sm">
-          <svg class="animate-spin h-6 w-6 text-indigo-400 mr-3" viewBox="0 0 24 24" fill="none">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-          </svg> กำลังโหลดรายชื่อนักเรียนในห้องเรียน...
-        </div>
-      `
 
       try {
-        const cls = uniqueClasses.find(c => c.class_name === selectedClassId || c.id == selectedClassId)
-        const className = cls ? cls.class_name : selectedClassId
-
-        // โหลดนักเรียนโดยตรงจาก students.main_room (ไม่พึ่ง class_id / class_students)
-        const { data: rawStudents, error: stuErr } = await supabase
-          .from('students')
-          .select('id, student_code, full_name, image_url, main_room, religion_room, gender, house_color')
-          .eq('main_room', className)
-          .eq('is_active', true)
-          .order('student_code')
-          .limit(500)
-        if (stuErr) throw stuErr
-
-        const students = (rawStudents ?? [])
+        const isReligion = selectedCategory === 'ศาสนา'
+        const className = selectedClassId
+        const students = allStudents
+          .filter(s => (isReligion ? s.religion_room : s.main_room) === selectedClassId)
+          .sort((a, b) => (a.student_code || '').localeCompare(b.student_code || ''))
           .map((s, i) => ({ ...s, seat_no: i + 1 }))
 
         if (students.length === 0) {
@@ -4847,8 +4823,9 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       const showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
       const filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
 
-      const classesInLevel = uniqueClasses
-        .filter(c => getCategory(c) === selectedCategory && getGradeLevel(c) === selectedLevel)
+      const currentClasses = getRoomsForCategory(selectedCategory)
+      const classesInLevel = currentClasses
+        .filter(c => getGradeLevel(c) === selectedLevel)
         .sort((a, b) => (a.class_name || '').localeCompare(b.class_name || '', 'th'))
 
       if (classesInLevel.length === 0) return
@@ -4861,31 +4838,28 @@ export async function renderStudentQRPrint(teacher, classId = null) {
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
             </svg>
-            <p class="text-sm font-bold text-gray-700">กำลังโหลดรายชื่อนักเรียนทุกห้องในระดับ ${_htmlEsc(selectedLevel)}...</p>
-            <p class="text-xs text-gray-400" id="qr-level-progress">กำลังโหลด 0 / ${classesInLevel.length} ห้อง</p>
+            <p class="text-sm font-bold text-gray-700">กำลังจัดเตรียมรายชื่อนักเรียนทุกห้องในระดับ ${_htmlEsc(selectedLevel)}...</p>
+            <p class="text-xs text-gray-400" id="qr-level-progress">กำลังจัดเตรียม 0 / ${classesInLevel.length} ห้อง</p>
           </div>
         </div>
       `
 
       try {
         const roomDataList = []
+        const isReligion = selectedCategory === 'ศาสนา'
+
         for (let i = 0; i < classesInLevel.length; i++) {
           const cls = classesInLevel[i]
           const progressEl = document.getElementById('qr-level-progress')
-          if (progressEl) progressEl.textContent = `กำลังโหลด ${i + 1} / ${classesInLevel.length} ห้อง — ${cls.class_name}`
+          if (progressEl) progressEl.textContent = `กำลังจัดเตรียม ${i + 1} / ${classesInLevel.length} ห้อง — ${cls.class_name}`
 
-          // โหลดนักเรียนโดยตรงจาก students.main_room
-          const { data: rawStu } = await supabase
-            .from('students')
-            .select('id, student_code, full_name, image_url, main_room, gender')
-            .eq('main_room', cls.class_name)
-            .eq('is_active', true)
-            .order('student_code')
-            .limit(500)
-          console.log(`DEBUG QR _printWholeLevel room "${cls.class_name}" -> fetched students count:`, rawStu?.length, 'data:', rawStu)
-          let students = (rawStu ?? [])
+          // คัดกรองข้อมูลนักเรียนฝั่ง Client-Side 100%
+          const students = allStudents
+            .filter(s => (isReligion ? s.religion_room : s.main_room) === cls.class_name)
             .filter(s => filterGender === 'all' || s.gender === filterGender)
+            .sort((a, b) => (a.student_code || '').localeCompare(b.student_code || ''))
             .map((s, idx) => ({ ...s, seat_no: idx + 1 }))
+
           if (students.length > 0) {
             roomDataList.push({ className: cls.class_name, students })
           }
