@@ -166,6 +166,7 @@ async function fetchTodayRecords(isSilent = false) {
       .from('prayer_records')
       .select('id, student_id, main_room, status, check_date, location, created_at')
       .eq('check_date', todayStr)
+      .not('location', 'is', null) // โชว์เฉพาะข้อมูลที่สแกนเท่านั้น (มีพิกัดจุดสแกน)
       .order('id', { ascending: false })
       .limit(50)
 
@@ -207,29 +208,7 @@ async function fetchTodayRecords(isSilent = false) {
 // ─── Location Checking Helper ────────────────────────────────────────────────
 function isRecordInLocation(record, student, selectedLocation) {
   if (!selectedLocation) return true
-
-  // If the record has a location saved in the database, check it first
-  if (record.location) {
-    return record.location === selectedLocation
-  }
-
-  // Fallback for legacy/teacher entries or automatic inference
-  const gender = student.gender
-  const room = student.main_room || ''
-  const isMale = gender === 'ชาย'
-  const isFemale = gender === 'หญิง'
-  const isKuwaitGrade = room.startsWith('ม.6') || room.startsWith('ปวช.')
-
-  if (selectedLocation === 'musolla_male') {
-    return isMale && !isKuwaitGrade
-  }
-  if (selectedLocation === 'masjid_kuwait') {
-    return isMale && isKuwaitGrade
-  }
-  if (selectedLocation === 'musolla_female_1' || selectedLocation === 'musolla_female_2') {
-    return isFemale
-  }
-  return true
+  return record.location === selectedLocation
 }
 
 // ─── Location Formatting Helpers ─────────────────────────────────────────────
@@ -255,6 +234,11 @@ function getLocationBadgeClass(loc) {
 
 // ─── Process Check-in Event ──────────────────────────────────────────────────
 function handleNewCheckIn(record, triggerFeedback = true) {
+  // กรองเฉพาะข้อมูลที่สแกนเท่านั้น (ต้องมีข้อมูล location)
+  if (!record.location) {
+    return
+  }
+
   // Prevent duplicate rendering if already in list
   if (recentRecords.some(r => r.id === record.id) && triggerFeedback) {
     return

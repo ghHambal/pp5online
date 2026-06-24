@@ -6765,6 +6765,7 @@ export async function renderPrayerAdmin(teacher) {
           .from('prayer_records')
           .select('id, student_id, main_room, status, location, scanned_by, created_at, students(id, full_name, student_code, image_url), teachers(id, full_name)')
           .eq('check_date', dateVal)
+          .not('location', 'is', null) // โชว์เฉพาะข้อมูลที่สแกนเท่านั้น (มีพิกัดจุดสแกน)
           .order('created_at', { ascending: false })
 
         if (error) throw error
