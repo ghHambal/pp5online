@@ -787,6 +787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'house-colors':     () => renderHouseColors(),
     'donations':        () => renderDonations(),
     'feedback-admin':   () => renderFeedbackAdmin(),
+    'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {

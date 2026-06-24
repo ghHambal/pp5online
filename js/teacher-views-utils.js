@@ -78,11 +78,20 @@ export function setTitle(t, pageKey = null) {
 }
 
 export function setActiveNav(nav) {
+  const isAdmin = document.getElementById('sidebar')?.classList.contains('bg-indigo-900') || window.location.pathname.includes('dashboard')
   document.querySelectorAll('[data-nav]').forEach(el => {
     const active = el.dataset.nav === nav
-    el.classList.toggle('bg-emerald-800', active)
-    el.classList.toggle('text-white', active)
-    el.classList.toggle('text-emerald-200', !active)
+    if (isAdmin) {
+      el.classList.toggle('bg-indigo-800', active)
+      el.classList.toggle('text-white', active)
+      el.classList.toggle('text-indigo-200', !active)
+      el.classList.remove('bg-emerald-800', 'text-emerald-200')
+    } else {
+      el.classList.toggle('bg-emerald-800', active)
+      el.classList.toggle('text-white', active)
+      el.classList.toggle('text-emerald-200', !active)
+      el.classList.remove('bg-indigo-800', 'text-indigo-200')
+    }
   })
 }
 
