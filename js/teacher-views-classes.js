@@ -4472,6 +4472,9 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       (studentRoomRows || []).map(r => r.main_room).filter(Boolean)
     )].sort((a, b) => a.localeCompare(b, 'th'))
 
+    console.log('DEBUG QR: studentRoomRows size:', studentRoomRows?.length)
+    console.log('DEBUG QR: uniqueRoomNames:', uniqueRoomNames)
+
     // สร้าง virtual class objects
     const uniqueClasses = uniqueRoomNames.map(roomName => {
       const meta = classMetaByName.get(roomName)
@@ -4879,6 +4882,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             .eq('is_active', true)
             .order('student_code')
             .limit(500)
+          console.log(`DEBUG QR _printWholeLevel room "${cls.class_name}" -> fetched students count:`, rawStu?.length, 'data:', rawStu)
           let students = (rawStu ?? [])
             .filter(s => filterGender === 'all' || s.gender === filterGender)
             .map((s, idx) => ({ ...s, seat_no: idx + 1 }))
