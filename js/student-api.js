@@ -463,7 +463,8 @@ export async function saveScannedPrayerRecords(records) {
     status: r.status,
     week_number: r.week_number,
     location: r.location || null,
-    teacher_id: null // บันทึกเป็น NULL สำหรับการสแกนสภานักเรียน
+    teacher_id: null, // บันทึกเป็น NULL สำหรับการสแกนสภานักเรียน
+    scanned_by: r.scanned_by || null
   }))
 
   const { error } = await supabase.from('prayer_records').insert(payloads)

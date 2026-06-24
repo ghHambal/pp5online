@@ -6035,6 +6035,7 @@ function _fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}` }
 export async function renderPrayerAdmin(teacher) {
   setActiveNav('prayer-admin')
   document.getElementById('page-title').textContent = 'คะแนนละหมาด'
+  let historyInterval = null
 
   // Fetch teacher details dynamically if not passed
   let activeTeacher = teacher
@@ -6088,6 +6089,10 @@ export async function renderPrayerAdmin(teacher) {
       <button id="pr-tab-scores" data-tab="scores"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
         📊 คะแนน
+      </button>
+      <button id="pr-tab-history" data-tab="history"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
+        🖥️ มอนิเตอร์สแกนล่าสุด
       </button>
       <button id="pr-tab-scanners" data-tab="scanners"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
@@ -6240,7 +6245,7 @@ export async function renderPrayerAdmin(teacher) {
       // 4. Save to DB + glow feedback
       try {
         const weekN = weeks.find(w => w.days.some(d => d.ds === ds))?.n ?? null
-        await savePrayerCellAdmin(sid, room, ds, st, weekN)
+        await savePrayerCellAdmin(sid, room, ds, st, weekN, 'แอดมิน')
         _glow(gridCell, true)
         _glow(modalCell, true)
       } catch(err) {
@@ -6610,6 +6615,310 @@ export async function renderPrayerAdmin(teacher) {
     }
   }
 
+  // ─── Tab: มอนิเตอร์สแกนล่าสุด ────────────────────────────────────────────────
+  const _showHistory = () => {
+    document.getElementById('pr-tab-actions').innerHTML = ''
+
+    if (historyInterval) {
+      clearInterval(historyInterval)
+      historyInterval = null
+    }
+
+    const todayVal = new Date().toLocaleDateString('sv') // 'YYYY-MM-DD'
+
+    document.getElementById('pr-tab-content').innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <!-- Filters panel -->
+        <div class="md:col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
+          <h3 class="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+            🔍 คัดกรองข้อมูล
+          </h3>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">เลือกวันที่สแกน</label>
+            <input type="date" id="hist-date-input" value="${todayVal}"
+              class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">จุดละหมาด</label>
+            <select id="hist-loc-filter"
+              class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              <option value="">ทุกจุดละหมาด</option>
+              <option value="musolla_male">มูซอลลาชาย (ม.1 - ม.5 ชาย)</option>
+              <option value="masjid_kuwait">มัสยิดคูเวต (ม.6, ปวช. ชาย)</option>
+              <option value="musolla_female_1">มูซอลลาหญิง 1 (โรงอาหาร)</option>
+              <option value="musolla_female_2">มูซอลลาหญิง 2 (อาคาร 5)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">ค้นหา (ชื่อ / รหัส / ผู้บันทึก)</label>
+            <input type="text" id="hist-search-input" placeholder="พิมพ์เพื่อค้นหา..."
+              class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div class="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between">
+            <button id="btn-hist-refresh"
+              class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-sm">
+              🔄 รีเฟรชข้อมูล
+            </button>
+            <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+              <input type="checkbox" id="hist-live-toggle" checked
+                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+              อัปเดตอัตโนมัติ (Live)
+            </label>
+          </div>
+        </div>
+
+        <!-- Dashboard / Summary stats -->
+        <div class="md:col-span-2 flex flex-col gap-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-center">
+              <p id="stat-hist-total" class="text-2xl font-extrabold text-indigo-700">0</p>
+              <p class="text-[10px] text-indigo-500 font-semibold mt-0.5">สแกนทั้งหมด</p>
+            </div>
+            <div class="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-center">
+              <p id="stat-hist-pray" class="text-2xl font-extrabold text-emerald-600">0</p>
+              <p class="text-[10px] text-emerald-500 font-semibold mt-0.5">🟢 ละหมาด</p>
+            </div>
+            <div class="bg-purple-50/50 border border-purple-100 rounded-2xl p-4 text-center">
+              <p id="stat-hist-usor" class="text-2xl font-extrabold text-purple-700">0</p>
+              <p class="text-[10px] text-purple-500 font-semibold mt-0.5">🟣 อูโซร</p>
+            </div>
+            <div class="bg-amber-50/50 border border-amber-100 rounded-2xl p-4 text-center">
+              <p id="stat-hist-other" class="text-2xl font-extrabold text-amber-700">0</p>
+              <p class="text-[10px] text-amber-500 font-semibold mt-0.5">อื่นๆ (ขาด/ละเว้น)</p>
+            </div>
+          </div>
+
+          <!-- Active Operators Panel -->
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex-1 min-h-[90px]">
+            <p class="text-xs font-bold text-gray-500 mb-2">👥 ผู้ปฏิบัติงานบันทึก/สแกนวันนี้ (Active Operators)</p>
+            <div id="hist-operators-wrap" class="flex flex-wrap gap-2">
+              <span class="text-xs text-gray-400">ยังไม่มีประวัติสแกนของวันนี้</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scans List Table -->
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col min-h-[300px]">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">📋 รายการเช็คชื่อละหมาด</h3>
+          <span id="hist-table-count" class="text-xs text-gray-400">0 รายการ</span>
+        </div>
+        <div class="overflow-x-auto flex-1">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead class="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th class="px-4 py-3 text-center text-gray-500 font-semibold w-12">ลำดับ</th>
+                <th class="px-4 py-3 text-gray-500 font-semibold w-24">เวลา</th>
+                <th class="px-4 py-3 text-gray-500 font-semibold">รายชื่อนักเรียน</th>
+                <th class="px-4 py-3 text-gray-500 font-semibold w-24">ห้องเรียน</th>
+                <th class="px-4 py-3 text-gray-500 font-semibold w-32">จุดสแกน</th>
+                <th class="px-4 py-3 text-gray-500 font-semibold w-40">ผู้บันทึกสแกน (ผู้ปฏิบัติงาน)</th>
+                <th class="px-4 py-3 text-gray-500 font-semibold w-28 text-center">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody id="hist-table-body" class="divide-y divide-gray-50">
+              <tr>
+                <td colspan="7" class="text-center py-12 text-gray-400">กำลังโหลดข้อมูล...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `
+
+    let recordsData = []
+
+    const _locLabel = (loc) => {
+      const mapping = {
+        'musolla_male': 'มูซอลลาชาย',
+        'masjid_kuwait': 'มัสยิดคูเวต',
+        'musolla_female_1': 'มูซอลลาหญิง 1',
+        'musolla_female_2': 'มูซอลลาหญิง 2'
+      }
+      return mapping[loc] || 'ไม่ระบุพื้นที่'
+    }
+
+    const _locBadgeClass = (loc) => {
+      const mapping = {
+        'musolla_male': 'bg-blue-50 text-blue-700 border-blue-100',
+        'masjid_kuwait': 'bg-purple-50 text-purple-700 border-purple-100',
+        'musolla_female_1': 'bg-pink-50 text-pink-700 border-pink-100',
+        'musolla_female_2': 'bg-amber-50 text-amber-700 border-amber-100'
+      }
+      return mapping[loc] || 'bg-gray-50 text-gray-500 border-gray-100'
+    }
+
+    const _fetchHistory = async () => {
+      const tableBody = document.getElementById('hist-table-body')
+      if (!tableBody) {
+        if (historyInterval) {
+          clearInterval(historyInterval)
+          historyInterval = null
+        }
+        return
+      }
+
+      const dateVal = document.getElementById('hist-date-input')?.value || todayVal
+      try {
+        const { data, error } = await supabase
+          .from('prayer_records')
+          .select('id, student_id, main_room, status, location, scanned_by, created_at, students(id, full_name, student_code, image_url), teachers(id, full_name)')
+          .eq('check_date', dateVal)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+        recordsData = data ?? []
+        _renderHistory()
+      } catch(err) {
+        console.error('Fetch history failed:', err)
+        const body = document.getElementById('hist-table-body')
+        if (body) {
+          body.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message}</td></tr>`
+        }
+      }
+    }
+
+    const _renderHistory = () => {
+      const locVal = document.getElementById('hist-loc-filter')?.value || ''
+      const searchVal = (document.getElementById('hist-search-input')?.value || '').trim().toLowerCase()
+
+      const filtered = recordsData.filter(rec => {
+        if (locVal && rec.location !== locVal) return false
+        if (searchVal) {
+          const studentName = (rec.students?.full_name || '').toLowerCase()
+          const studentCode = (rec.students?.student_code || '').toLowerCase()
+          const studentRoom = (rec.main_room || '').toLowerCase()
+          const scannedByStr = (rec.scanned_by || rec.teachers?.full_name || 'บันทึกมือ (เดิม)').toLowerCase()
+          return studentName.includes(searchVal) ||
+                 studentCode.includes(searchVal) ||
+                 studentRoom.includes(searchVal) ||
+                 scannedByStr.includes(searchVal)
+        }
+        return true
+      })
+
+      const total = filtered.length
+      const pray = filtered.filter(r => r.status === 'pray').length
+      const usor = filtered.filter(r => r.status === 'usor').length
+      const other = total - pray - usor
+
+      const tEl = document.getElementById('stat-hist-total')
+      const pEl = document.getElementById('stat-hist-pray')
+      const uEl = document.getElementById('stat-hist-usor')
+      const oEl = document.getElementById('stat-hist-other')
+      if (tEl) tEl.textContent = total
+      if (pEl) pEl.textContent = pray
+      if (uEl) uEl.textContent = usor
+      if (oEl) oEl.textContent = other
+
+      const opsSet = new Set()
+      recordsData.forEach(r => {
+        const opName = r.scanned_by || r.teachers?.full_name
+        if (opName) opsSet.add(opName)
+      })
+
+      const opsWrap = document.getElementById('hist-operators-wrap')
+      if (opsWrap) {
+        if (opsSet.size === 0) {
+          opsWrap.innerHTML = `<span class="text-xs text-gray-400">ยังไม่มีผู้ทำการเช็คชื่อในวันที่เลือก</span>`
+        } else {
+          opsWrap.innerHTML = Array.from(opsSet).map(op => {
+            const isTch = op.includes('(ครู)') || op.includes('ครู')
+            const bgCl = isTch ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+            return `<span class="px-2.5 py-1 rounded-lg text-xs font-semibold ${bgCl}">${op}</span>`
+          }).join('')
+        }
+      }
+
+      const countEl = document.getElementById('hist-table-count')
+      if (countEl) countEl.textContent = `${filtered.length} รายการ`
+
+      const body = document.getElementById('hist-table-body')
+      if (!body) return
+
+      if (filtered.length === 0) {
+        body.innerHTML = `<tr><td colspan="7" class="text-center py-12 text-gray-400">ไม่พบประวัติการสแกนที่ตรงกับเงื่อนไข</td></tr>`
+        return
+      }
+
+      body.innerHTML = filtered.map((rec, idx) => {
+        const timeStr = rec.created_at
+          ? new Date(rec.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          : '—'
+
+        const student = rec.students
+        const photoHTML = student?.image_url
+          ? `<img src="${student.image_url}" class="w-8 h-8 rounded-full object-cover border border-gray-100 shadow-sm flex-shrink-0" />`
+          : `<div class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 font-bold text-xs flex items-center justify-center flex-shrink-0">${(student?.full_name || '?').charAt(0)}</div>`
+
+        const studentLabel = student
+          ? `<div class="flex items-center gap-2.5">
+              ${photoHTML}
+              <div>
+                <p class="font-bold text-gray-800 leading-none">${student.full_name}</p>
+                <p class="text-[10px] text-gray-400 mt-1">รหัส ${student.student_code}</p>
+              </div>
+            </div>`
+          : `<span class="text-gray-400">ไม่พบชื่อ (รหัส ${rec.student_id})</span>`
+
+        const statusBadge = {
+          'pray': '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 ละหมาด</span>',
+          'usor': '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">🟣 อูโซร</span>',
+          'absent': '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">🔴 ขาด</span>',
+          'followed': '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">✅ ติดตามแล้ว</span>',
+          'avoid': '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">🟡 ละเว้น</span>'
+        }[rec.status] || `<span class="text-gray-400">${rec.status || '—'}</span>`
+
+        const operator = rec.scanned_by || rec.teachers?.full_name || 'บันทึกมือ (เดิม)'
+
+        return `
+          <tr class="hover:bg-gray-50/50 transition-colors">
+            <td class="px-4 py-3 text-center text-gray-400 font-mono">${filtered.length - idx}</td>
+            <td class="px-4 py-3 font-mono font-medium text-gray-500">${timeStr}</td>
+            <td class="px-4 py-3">${studentLabel}</td>
+            <td class="px-4 py-3 font-bold text-gray-500">ห้อง ${rec.main_room || '—'}</td>
+            <td class="px-4 py-3">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${_locBadgeClass(rec.location)}">
+                ${_locLabel(rec.location)}
+              </span>
+            </td>
+            <td class="px-4 py-3">
+              <span class="font-medium text-gray-700">${operator}</span>
+            </td>
+            <td class="px-4 py-3 text-center">${statusBadge}</td>
+          </tr>
+        `
+      }).join('')
+    }
+
+    const _setupAutoRefresh = () => {
+      if (historyInterval) {
+        clearInterval(historyInterval)
+        historyInterval = null
+      }
+      const liveToggle = document.getElementById('hist-live-toggle')
+      if (liveToggle && liveToggle.checked) {
+        historyInterval = setInterval(_fetchHistory, 4000)
+      }
+    }
+
+    setTimeout(() => {
+      document.getElementById('btn-hist-refresh')?.addEventListener('click', _fetchHistory)
+      document.getElementById('hist-date-input')?.addEventListener('change', _fetchHistory)
+      document.getElementById('hist-loc-filter')?.addEventListener('change', _renderHistory)
+
+      const searchIn = document.getElementById('hist-search-input')
+      if (searchIn) searchIn.addEventListener('input', _renderHistory)
+
+      const liveTog = document.getElementById('hist-live-toggle')
+      if (liveTog) liveTog.addEventListener('change', _setupAutoRefresh)
+
+      _fetchHistory()
+      _setupAutoRefresh()
+    }, 50)
+  }
+
   // ─── Tab: ตั้งค่า ──────────────────────────────────────────────────────────
   const _showConfig = () => {
     document.getElementById('pr-tab-actions').innerHTML = ''
@@ -6873,7 +7182,7 @@ export async function renderPrayerAdmin(teacher) {
                     <td class="px-2 py-2 font-mono text-gray-700">${s.student_code}</td>
                     <td class="px-3 py-2">
                       <div class="flex items-center gap-2">
-                        ${s.image_url 
+                        ${s.image_url
                           ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
                           : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
                         }
@@ -6906,7 +7215,7 @@ export async function renderPrayerAdmin(teacher) {
                     <td class="px-2 py-2 font-mono text-gray-700">${t.teacher_code}</td>
                     <td class="px-3 py-2">
                       <div class="flex items-center gap-2">
-                        ${t.image_url 
+                        ${t.image_url
                           ? `<img src="${t.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
                           : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
                         }
@@ -7023,7 +7332,7 @@ export async function renderPrayerAdmin(teacher) {
     document.getElementById('btn-search-scanner-students').addEventListener('click', async () => {
       const input = document.getElementById('pr-scanner-search-input').value.trim()
       if (!input) { showToast('กรุณากรอกรหัสนักเรียนหรือรหัสครู', 'warning'); return }
-      
+
       const codes = input.split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
       if (!codes.length) return
 
@@ -7056,7 +7365,7 @@ export async function renderPrayerAdmin(teacher) {
         previewContainer.classList.remove('hidden')
         previewCards.innerHTML = _foundScanners.map(s => `
           <div class="bg-white rounded-xl border border-indigo-100 p-3 flex items-center gap-3">
-            ${s.image_url 
+            ${s.image_url
               ? `<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
               : `<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">${s.type === 'teacher' ? '👨‍🏫' : '👤'}</div>`
             }
@@ -7121,16 +7430,23 @@ export async function renderPrayerAdmin(teacher) {
 
   // ─── Tab switcher ──────────────────────────────────────────────────────────
   const _switchTab = (tab) => {
+    if (historyInterval) {
+      clearInterval(historyInterval)
+      historyInterval = null
+    }
+
     document.querySelectorAll('[data-tab]').forEach(b => {
       b.className = b.dataset.tab===tab
         ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
         : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
     })
     if (tab==='scores') _showScores();
+    else if (tab==='history') _showHistory();
     else if (tab==='scanners') _showScanners();
     else _showConfig()
   }
   document.getElementById('pr-tab-scores').addEventListener('click', ()=>_switchTab('scores'))
+  document.getElementById('pr-tab-history')?.addEventListener('click', ()=>_switchTab('history'))
   document.getElementById('pr-tab-scanners').addEventListener('click', ()=>_switchTab('scanners'))
   document.getElementById('pr-tab-config').addEventListener('click', ()=>_switchTab('config'))
   if (isAllowedScanner) {

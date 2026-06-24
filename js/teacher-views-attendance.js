@@ -2503,7 +2503,7 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
         cell.innerHTML = cfg ? `<span class="${cfg.color} text-xs">${cfg.label}</span>` : ''
         _updateScore(sid)
         // ขอบเรืองแสง + save realtime
-        savePrayerCell(teacher.id, sid, room, ds, status, dayObj?.weekN ?? null)
+        savePrayerCell(teacher.id, sid, room, ds, status, dayObj?.weekN ?? null, teacher.full_name || 'คุณครู')
           .then(() => {
             cell.style.outline = '2px solid #059669'; cell.style.outlineOffset = '1px'
             setTimeout(() => { cell.style.outline = ''; cell.style.outlineOffset = '' }, 700)
@@ -2665,7 +2665,7 @@ function _openPrayerWeekModal(teacher, students, prayMap, week, room, allDays, t
     }
     updateScore(sid)
     try {
-      await savePrayerCell(teacher.id, sid, room, ds, st, week.n)
+      await savePrayerCell(teacher.id, sid, room, ds, st, week.n, teacher.full_name || 'คุณครู')
       _glow(modalBtn, true)
       _glow(gridCell, true)
     } catch (err) {

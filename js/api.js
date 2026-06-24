@@ -707,7 +707,7 @@ export async function savePrayerRecords(records) {
   if (error) throw error
 }
 
-export async function savePrayerCell(teacherId, studentId, room, checkDate, status, weekNumber = null) {
+export async function savePrayerCell(teacherId, studentId, room, checkDate, status, weekNumber = null, scannedBy = null) {
   // ลบก่อนเสมอ (ไม่ต้องพึ่ง unique constraint)
   const { error: deleteError } = await supabase.from('prayer_records').delete()
     .eq('teacher_id', teacherId).eq('student_id', studentId)
@@ -716,7 +716,7 @@ export async function savePrayerCell(teacherId, studentId, room, checkDate, stat
 
   if (status) {
     const payload = { teacher_id: teacherId, student_id: studentId, main_room: room,
-                      check_date: checkDate, status }
+                      check_date: checkDate, status, scanned_by: scannedBy }
     if (weekNumber !== null) payload.week_number = weekNumber
     const { error } = await supabase.from('prayer_records').insert(payload)
     if (error) throw error
@@ -1596,7 +1596,7 @@ async function _fetchStudentsById(ids) {
   return Object.fromEntries((data ?? []).map(s => [s.id, s]))
 }
 
-export async function savePrayerCellAdmin(studentId, room, checkDate, status, weekNumber = null) {
+export async function savePrayerCellAdmin(studentId, room, checkDate, status, weekNumber = null, scannedBy = null) {
   // ใช้ RPC SECURITY DEFINER — bypass RLS ทั้งหมด
   const { error } = await supabase.rpc('save_prayer_admin', {
     p_student_id:  studentId,
@@ -1604,6 +1604,7 @@ export async function savePrayerCellAdmin(studentId, room, checkDate, status, we
     p_date:        checkDate,
     p_status:      status ?? null,
     p_week_number: weekNumber,
+    p_scanned_by:  scannedBy,
   })
   if (error) throw error
 }

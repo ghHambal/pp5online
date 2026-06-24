@@ -2490,6 +2490,7 @@ function getWeekNumber(dateStr, cfg) {
 
 // ─── Student Prayer Check-in Scanner Screen ──────────────────────────────────
 export async function renderStudentPrayerScanner(student) {
+  const operatorUser = student
   window._lastSuccessFeedbackHTML = ''
 
   // Show loader first while fetching config
@@ -3100,6 +3101,10 @@ export async function renderStudentPrayerScanner(student) {
       statusWarning = ' (เปลี่ยนเป็นละหมาดเนื่องจากเป็นนักเรียนชาย)'
     }
 
+    const scannerName = operatorUser.teacher_code
+      ? `${operatorUser.full_name} (ครู)`
+      : `${operatorUser.full_name} (สภานักเรียน)`
+
     const newRecord = {
       student_id: student.id,
       main_room: student.main_room,
@@ -3108,7 +3113,8 @@ export async function renderStudentPrayerScanner(student) {
       week_number: weekN,
       location: activeLocation,
       full_name: student.full_name,
-      student_code: student.student_code
+      student_code: student.student_code,
+      scanned_by: scannerName
     }
 
     // Append queue
