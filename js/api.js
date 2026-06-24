@@ -2295,13 +2295,34 @@ export async function updateTeacherPosition(id, position, removePosition = 'reli
 
 // โหลดข้อมูล progress ทั้งหมดสำหรับ supervisor dashboard
 export async function getSupervisorProgress() {
+  // ─── Step 1: โหลด master_subjects ทั้งหมด (teacher → subjects) ─────────────
+  const { data: msData } = await supabase
+    .from('master_subjects')
+    .select('id, teacher_id, subject_name, subject_code, subject_group, credit, grade_level')
+    .limit(10000)
+
+  const allMs = msData ?? []
+  // index: ms.id → master_subject object
+  const msById = {}
+  for (const ms of allMs) msById[ms.id] = ms
+
+  const msIds = allMs.map(ms => ms.id)
+
+  // ─── Step 2: โหลด classes ด้วย course_id (เหมือน getMyClasses) ────────────
+  const classQuery = msIds.length > 0
+    ? supabase
+        .from('classes')
+        .select('id, class_name, course_id, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date')
+        .in('course_id', msIds)
+        .order('class_name')
+        .limit(10000)
+    : Promise.resolve({ data: [] })
+
   const [teacherRes, classRes, attRes, scoreColRes, scoreRes, schedRes] = await Promise.all([
     supabase.from('teachers')
       .select('id, full_name, category, dept, subject_group, image_url, phone, login_email, position, position_dept_id')
       .limit(10000),
-    supabase.from('classes')
-      .select('id, class_name, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date, master_subjects!inner(id, teacher_id, subject_name, subject_code, subject_group, credit)')
-      .limit(10000),
+    classQuery,
     supabase.rpc('get_latest_class_attendances'),
     supabase.from('class_score_columns')
       .select('id, class_id, assignment_name, max_score')
@@ -2313,7 +2334,11 @@ export async function getSupervisorProgress() {
   ])
 
   const teachers   = teacherRes.data  ?? []
-  const classes    = classRes.data    ?? []
+  // แนบ master_subjects กลับเข้า class แต่ละ row โดยใช้ course_id
+  const classes    = (classRes.data ?? []).map(c => ({
+    ...c,
+    master_subjects: msById[c.course_id] || null
+  }))
   const attRows    = attRes.data      ?? []
   const scoreCols  = scoreColRes.data ?? []
   const scoreRows  = scoreRes.data    ?? []
