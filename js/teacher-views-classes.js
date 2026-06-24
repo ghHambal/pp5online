@@ -4442,23 +4442,40 @@ export async function renderStudentQRPrint(teacher, classId = null) {
   `)
 
   try {
-    // โหลดข้อมูลห้องเรียนทั้งหมดในระบบเพื่อนำมากรอง
+    // ─── โหลดทุกห้องเรียนในระบบ (ไม่กรองตามครู / master_subjects) ───────────
     const { data: allClassRows, error } = await supabase
       .from('classes')
-      .select(`
-        id, class_name,
-        master_subjects ( id, grade_level, subject_group )
-      `)
+      .select(`id, class_name, master_subjects ( id, grade_level, subject_group )`)
       .order('class_name')
 
     if (error) throw error
 
     const classes = allClassRows || []
 
+    // ─── จัดกลุ่ม unique class_name → เลือก row แรกที่ตรงกัน ────────────────
+    const uniqueClassMap = new Map()
+    for (const c of classes) {
+      const name = c.class_name || ''
+      if (!uniqueClassMap.has(name)) uniqueClassMap.set(name, c)
+    }
+    const uniqueClasses = [...uniqueClassMap.values()]
+
+    // ─── สกัด grade_level + category จาก class_name โดยตรง (fallback) ────────
+    const extractGradeFromName = (name) => {
+      // ตัวอย่าง: "ม.1/1", "ปวช.2/3", "PR 1/1"
+      const m = name.match(/^(ม\.\d+|ปวช\.\d+|PR\s*\d+|อก\.\d+|อป\.\d+)/i)
+      return m ? m[1].replace(/\s+/g, ' ').trim() : null
+    }
+
+    const getGradeLevel = (c) => {
+      return c.master_subjects?.grade_level || extractGradeFromName(c.class_name || '') || 'อื่น ๆ'
+    }
+
     const getCategory = (c) => {
       const grp = c.master_subjects?.subject_group || ''
-      if (['AGM'].includes(grp)) return 'ศาสนา'
-      if (['ACDMVOC', 'AGMVOC'].includes(grp)) return 'ปวช'
+      const name = c.class_name || ''
+      if (['AGM'].includes(grp) || /^(PR|อก\.|อป\.)/.test(name)) return 'ศาสนา'
+      if (['ACDMVOC', 'AGMVOC'].includes(grp) || /^ปวช\./.test(name)) return 'ปวช'
       return 'สามัญ'
     }
 
@@ -4469,16 +4486,14 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       'ปวช': ['ปวช.1', 'ปวช.2', 'ปวช.3', 'อก.ปวช.1', 'อก.ปวช.2', 'อก.ปวช.3']
     }
 
-    // สกัดเลเวลจริงจาก DB ผสมกับมาตรฐาน
     const getLevelsForCategory = (cat) => {
-      const dbLevels = [...new Set(classes
+      const dbLevels = [...new Set(uniqueClasses
         .filter(c => getCategory(c) === cat)
-        .map(c => c.master_subjects?.grade_level)
+        .map(c => getGradeLevel(c))
         .filter(Boolean)
       )]
       const std = standardLevels[cat] || []
-      // รวม เลียงลำดับ
-      return [...new Set([...std, ...dbLevels])].sort((a,b) => a.localeCompare(b, 'th'))
+      return [...new Set([...std, ...dbLevels])].sort((a, b) => a.localeCompare(b, 'th'))
     }
 
     let selectedCategory = 'สามัญ'
@@ -4486,60 +4501,76 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     let selectedClassId = ''
 
     if (classId) {
-      const cls = classes.find(c => c.id == classId)
+      const cls = uniqueClasses.find(c => c.id == classId)
       if (cls) {
         selectedCategory = getCategory(cls)
-        selectedLevel = cls.master_subjects?.grade_level || ''
+        selectedLevel = getGradeLevel(cls)
         selectedClassId = cls.id
       }
     }
 
-    // หน้าเว็บหลัก
+    // ─── หน้าเว็บหลัก ──────────────────────────────────────────────────────────
     const _renderPageStructure = () => {
       const catOptsHtml = ['สามัญ', 'ศาสนา', 'ปวช'].map(cat => `
         <option value="${cat}" ${cat === selectedCategory ? 'selected' : ''}>${cat}</option>
       `).join('')
 
       setContent(`
-        <div class="max-w-4xl mx-auto space-y-6">
+        <div class="max-w-5xl mx-auto space-y-6">
           <div class="mb-4">
             <h3 class="text-lg font-bold text-gray-800">🖨️ พิมพ์การ์ด QR Code นักเรียน</h3>
-            <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียนและตั้งค่าเพื่อจัดเรียงการ์ด QR Code บนหน้ากระดาษ A4 สำหรับสั่งพิมพ์</p>
+            <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียนเพื่อพิมพ์เป็นห้องเดียว หรือเลือกระดับชั้นแล้วกด "พิมพ์ทั้งระดับชั้น" เพื่อสร้างไฟล์แต่ละห้องแยกหน้าสำหรับร้านพิมพ์</p>
           </div>
 
           <!-- ตัวกรองห้องเรียน -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-white border border-gray-200 rounded-3xl p-5 shadow-sm">
-            <div>
-              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">1. เลือกระบบหลักสูตร</label>
-              <select id="qr-filter-category" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
-                ${catOptsHtml}
-              </select>
+          <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">1. ระบบหลักสูตร</label>
+                <select id="qr-filter-category" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
+                  ${catOptsHtml}
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">2. ระดับชั้น</label>
+                <select id="qr-filter-level" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
+                  <!-- เติมแบบไดนามิก -->
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">3. ห้องเรียน (หรือพิมพ์ทั้งชั้น)</label>
+                <select id="qr-filter-class" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
+                  <option value="">-- เลือกห้องเรียน --</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">2. เลือกระดับชั้น</label>
-              <select id="qr-filter-level" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
-                <!-- เติมแบบไดนามิก -->
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">3. เลือกห้องเรียน</label>
-              <select id="qr-filter-class" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition">
-                <option value="">-- เลือกห้องเรียน --</option>
-              </select>
+
+            <!-- ปุ่มพิมพ์ทั้งระดับชั้น -->
+            <div class="pt-2 border-t border-gray-100 flex items-center justify-between flex-wrap gap-3">
+              <div class="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                <span>📚</span>
+                <span id="qr-level-info">เลือกระดับชั้นเพื่อดูตัวเลือกพิมพ์ทั้งชั้น</span>
+              </div>
+              <button id="btn-print-whole-level"
+                class="hidden px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5">
+                📚 พิมพ์ทั้งระดับชั้น (แยกหน้าต่อห้อง)
+              </button>
             </div>
           </div>
 
-          <!-- พื้นที่แสดงผลพรีวิวและการตั้งค่าจัดพิมพ์ -->
+          <!-- พื้นที่แสดงผลพรีวิว -->
           <div id="qr-preview-section" class="hidden space-y-6">
             <!-- จัดการด้วย _renderPreviewPanel -->
           </div>
         </div>
       `)
 
-      // ผูก Event ตัวกรอง
-      const catSelect = document.getElementById('qr-filter-category')
+      // ผูก Event
+      const catSelect   = document.getElementById('qr-filter-category')
       const levelSelect = document.getElementById('qr-filter-level')
       const classSelect = document.getElementById('qr-filter-class')
+      const levelInfoEl = document.getElementById('qr-level-info')
+      const btnWholeLevel = document.getElementById('btn-print-whole-level')
 
       const syncLevels = () => {
         selectedCategory = catSelect.value
@@ -4553,36 +4584,30 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
       const syncClasses = () => {
         selectedLevel = levelSelect.value
-        const filteredClasses = classes.filter(c => {
-          const matchCat = getCategory(c) === selectedCategory
-          const matchLevel = selectedLevel ? (c.master_subjects?.grade_level === selectedLevel) : true
+        const filteredClasses = uniqueClasses.filter(c => {
+          const matchCat   = getCategory(c) === selectedCategory
+          const matchLevel = selectedLevel ? (getGradeLevel(c) === selectedLevel) : true
           return matchCat && matchLevel
-        })
-
-        // กรองชื่อห้องเรียนไม่ให้ซ้ำกัน (ป้องกันชื่อห้องซ้ำจากรายวิชาที่ต่างกัน)
-        const uniqueClasses = []
-        const seenNames = new Set()
-        for (const c of filteredClasses) {
-          const name = c.class_name || ''
-          if (!seenNames.has(name)) {
-            // เพื่อให้แน่ใจว่าถ้ามี selectedClassId ตรงกับห้องใดห้องหนึ่งในกลุ่มนี้ เราจะเลือกอันนั้น
-            const matchedSelected = filteredClasses.find(x => x.class_name === name && x.id == selectedClassId)
-            if (matchedSelected) {
-              uniqueClasses.push(matchedSelected)
-            } else {
-              uniqueClasses.push(c)
-            }
-            seenNames.add(name)
-          }
-        }
+        }).sort((a, b) => (a.class_name || '').localeCompare(b.class_name || '', 'th'))
 
         classSelect.innerHTML = `
-          <option value="">-- เลือกห้องเรียน (${uniqueClasses.length} ห้อง) --</option>
-          ${uniqueClasses.map(c => `
+          <option value="">-- เลือกห้องเรียน (${filteredClasses.length} ห้อง) --</option>
+          ${filteredClasses.map(c => `
             <option value="${c.id}" ${c.id == selectedClassId ? 'selected' : ''}>${_htmlEsc(c.class_name)}</option>
           `).join('')}
         `
-        
+
+        // อัปเดตข้อความระดับชั้น
+        if (selectedLevel && filteredClasses.length > 0) {
+          levelInfoEl.textContent = `ระดับ ${selectedLevel} มีทั้งหมด ${filteredClasses.length} ห้อง`
+          btnWholeLevel.textContent = `📚 พิมพ์ทั้งระดับ ${selectedLevel} (${filteredClasses.length} ห้อง แยกหน้า)`
+          btnWholeLevel.classList.remove('hidden')
+        } else {
+          levelInfoEl.textContent = 'เลือกระดับชั้นเพื่อดูตัวเลือกพิมพ์ทั้งชั้น'
+          btnWholeLevel.classList.add('hidden')
+        }
+
+        // ถ้ามี selectedClassId อยู่ในรายการ ให้โหลดทันที
         const newClassId = classSelect.value
         if (newClassId) {
           selectedClassId = newClassId
@@ -4592,15 +4617,8 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         }
       }
 
-      catSelect.addEventListener('change', () => {
-        selectedLevel = ''
-        selectedClassId = ''
-        syncLevels()
-      })
-      levelSelect.addEventListener('change', () => {
-        selectedClassId = ''
-        syncClasses()
-      })
+      catSelect.addEventListener('change', () => { selectedLevel = ''; selectedClassId = ''; syncLevels() })
+      levelSelect.addEventListener('change', () => { selectedClassId = ''; syncClasses() })
       classSelect.addEventListener('change', () => {
         selectedClassId = classSelect.value
         if (selectedClassId) {
@@ -4610,11 +4628,13 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         }
       })
 
-      // โหลดค่าเริ่มต้น
+      // พิมพ์ทั้งระดับชั้น
+      btnWholeLevel.addEventListener('click', () => _printWholeLevel())
+
       syncLevels()
     }
 
-    // โหลดรายชื่อนักเรียนและวาดพรีวิว
+    // ─── โหลดรายชื่อนักเรียน 1 ห้อง และวาดพรีวิว ──────────────────────────────
     const _loadRosterAndDraw = async () => {
       const previewSec = document.getElementById('qr-preview-section')
       if (!previewSec) return
@@ -4629,10 +4649,9 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       `
 
       try {
-        const cls = classes.find(c => c.id == selectedClassId)
+        const cls = uniqueClasses.find(c => c.id == selectedClassId)
         const className = cls ? cls.class_name : 'ทั่วไป'
         const rawStudents = await getClassRosterStudents(selectedClassId)
-        // เรียงลำดับนักเรียน
         const students = (rawStudents ?? [])
           .filter(s => s.is_active !== false)
           .map((s, i) => ({ ...s, seat_no: i + 1 }))
@@ -4647,15 +4666,13 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           return
         }
 
-        // สถานะการตั้งค่าการพิมพ์
-        let cols = parseInt(localStorage.getItem('qr_print_cols') || '4')
-        let showCode = localStorage.getItem('qr_print_show_code') !== 'false'
-        let showSeat = localStorage.getItem('qr_print_show_seat') !== 'false'
-        let showRoom = localStorage.getItem('qr_print_show_room') !== 'false'
+        let cols        = parseInt(localStorage.getItem('qr_print_cols') || '4')
+        let showCode    = localStorage.getItem('qr_print_show_code') !== 'false'
+        let showSeat    = localStorage.getItem('qr_print_show_seat') !== 'false'
+        let showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
         let filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
 
         const _renderPreviewPanel = () => {
-          // กรองรายชื่อตามเพศที่เลือก
           const displayedStudents = students.filter(s => {
             if (filterGender === 'all') return true
             return s.gender === filterGender
@@ -4665,7 +4682,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             <!-- บล็อกตั้งค่าจัดพิมพ์ -->
             <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div class="space-y-2">
-                <h4 class="font-bold text-gray-800 text-sm">🎛️ ตั้งค่ากระดาษสั่งพิมพ์ (A4)</h4>
+                <h4 class="font-bold text-gray-800 text-sm">🎛️ ตั้งค่ากระดาษสั่งพิมพ์</h4>
                 <div class="flex flex-wrap gap-4 items-center text-xs text-gray-600">
                   <label class="flex items-center gap-1.5 cursor-pointer">
                     <input type="checkbox" id="show-seat" ${showSeat ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
@@ -4710,14 +4727,14 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             <div class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-800 leading-relaxed flex items-start gap-2">
               <span class="text-base">💡</span>
               <div>
-                <p class="font-bold">แนะนำการพิมพ์:</p>
-                <p class="opacity-90">ระบบใช้ QR Code แบบคงที่ (รหัสนักเรียนโดยตรง) ซึ่งครูสามารถสั่งพิมพ์ค้างไว้ได้ถาวร ในหน้าต่างพรีวิวการสั่งพิมพ์ของเบราว์เซอร์ แนะนำให้เลือกเช็คบ็อกซ์ <strong>"Background graphics" (กราฟิกพื้นหลัง)</strong> และปิดตัวเลือก <strong>"Headers and footers"</strong> เพื่อให้กระดาษ A4 สวยงามสมบูรณ์ที่สุดครับ</p>
+                <p class="font-bold">แนะนำการพิมพ์ (บันทึกเป็น PDF / สั่งพิมพ์สติกเกอร์):</p>
+                <p class="opacity-90">ในหน้าต่างพรีวิวพิมพ์ของเบราว์เซอร์ ให้เปิด <strong>"Background graphics"</strong> และปิด <strong>"Headers and footers"</strong> และเลือก <strong>Paper size: A4</strong> เพื่อให้ได้ผลดีที่สุด แต่ละห้องเรียนจะอยู่บนหน้ากระดาษของตัวเองอัตโนมัติ</p>
               </div>
             </div>
 
-            <!-- พื้นที่ Live Preview -->
+            <!-- Live Preview -->
             <div>
-              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">พรีวิวการจัดวาง (${displayedStudents.length} คน)</p>
+              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">พรีวิวการจัดวาง — ${_htmlEsc(className)} (${displayedStudents.length} คน)</p>
               <div id="qr-live-grid" class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="${displayedStudents.length === 0 ? '' : `grid-template-columns: repeat(${cols}, minmax(0, 1fr));`}">
                 ${displayedStudents.length === 0 ? `
                   <div class="col-span-full py-12 text-center text-xs text-gray-400 font-semibold bg-white border border-gray-100 rounded-2xl">ไม่มีนักเรียนเพศที่เลือกในห้องเรียนนี้</div>
@@ -4740,146 +4757,27 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             </div>
           `
 
-          // วาดภาพ QR Codes ใน Live Preview
+          // วาด QR Codes ใน Live Preview
           displayedStudents.forEach(student => {
             const canvas = document.getElementById(`live-canvas-${student.id}`)
             if (canvas) {
               QRCode.toCanvas(canvas, student.student_code || '', {
-                width: 160,
-                margin: 1.5,
-                color: {
-                  dark: '#111827',
-                  light: '#FFFFFF'
-                }
-              }, err => {
-                if (err) console.error('Failed to generate live preview QR code:', err)
-              })
+                width: 160, margin: 1.5,
+                color: { dark: '#111827', light: '#FFFFFF' }
+              }, err => { if (err) console.error('Live QR error:', err) })
             }
           })
 
-          // ผูก Event ตั้งค่าพรีวิว
-          document.getElementById('show-seat').addEventListener('change', (e) => {
-            showSeat = e.target.checked
-            localStorage.setItem('qr_print_show_seat', showSeat)
-            _renderPreviewPanel()
-          })
-          document.getElementById('show-code').addEventListener('change', (e) => {
-            showCode = e.target.checked
-            localStorage.setItem('qr_print_show_code', showCode)
-            _renderPreviewPanel()
-          })
-          document.getElementById('show-room').addEventListener('change', (e) => {
-            showRoom = e.target.checked
-            localStorage.setItem('qr_print_show_room', showRoom)
-            _renderPreviewPanel()
-          })
-          document.getElementById('select-print-gender').addEventListener('change', (e) => {
-            filterGender = e.target.value
-            localStorage.setItem('qr_print_filter_gender', filterGender)
-            _renderPreviewPanel()
-          })
-          document.getElementById('select-print-cols').addEventListener('change', (e) => {
-            cols = parseInt(e.target.value)
-            localStorage.setItem('qr_print_cols', cols)
-            _renderPreviewPanel()
-          })
+          // ผูก Events
+          document.getElementById('show-seat').addEventListener('change', (e) => { showSeat = e.target.checked; localStorage.setItem('qr_print_show_seat', showSeat); _renderPreviewPanel() })
+          document.getElementById('show-code').addEventListener('change', (e) => { showCode = e.target.checked; localStorage.setItem('qr_print_show_code', showCode); _renderPreviewPanel() })
+          document.getElementById('show-room').addEventListener('change', (e) => { showRoom = e.target.checked; localStorage.setItem('qr_print_show_room', showRoom); _renderPreviewPanel() })
+          document.getElementById('select-print-gender').addEventListener('change', (e) => { filterGender = e.target.value; localStorage.setItem('qr_print_filter_gender', filterGender); _renderPreviewPanel() })
+          document.getElementById('select-print-cols').addEventListener('change', (e) => { cols = parseInt(e.target.value); localStorage.setItem('qr_print_cols', cols); _renderPreviewPanel() })
 
-          // ดำเนินการสั่งพิมพ์
           if (displayedStudents.length > 0) {
             document.getElementById('btn-trigger-print').addEventListener('click', async () => {
-              // ฉีดพ่น Style สั่งพิมพ์ชั่วคราว
-              let styleEl = document.getElementById('qr-print-media-styles')
-              if (!styleEl) {
-                styleEl = document.createElement('style')
-                styleEl.id = 'qr-print-media-styles'
-                document.head.appendChild(styleEl)
-              }
-              styleEl.textContent = `
-                @media print {
-                  body > * {
-                    display: none !important;
-                  }
-                  #print-qr-area {
-                    display: block !important;
-                    position: absolute;
-                    left: 0;
-                    top: 0;
-                    width: 100% !important;
-                    padding: 0 !important;
-                    margin: 0 !important;
-                    background: white !important;
-                  }
-                  #print-qr-area * {
-                    display: initial;
-                    visibility: visible;
-                  }
-                  .print-grid {
-                    display: grid !important;
-                    grid-template-columns: repeat(${cols}, minmax(0, 1fr)) !important;
-                    gap: 12px !important;
-                    width: 100% !important;
-                  }
-                  .qr-print-card {
-                    border: 1px solid #9ca3af !important;
-                    border-radius: 8px !important;
-                    padding: 10px !important;
-                    page-break-inside: avoid !important;
-                    break-inside: avoid !important;
-                    display: flex !important;
-                    flex-direction: column !important;
-                    align-items: center !important;
-                    justify-content: space-between !important;
-                    background: white !important;
-                  }
-                  .qr-print-card canvas {
-                    width: 100% !important;
-                    height: auto !important;
-                  }
-                }
-              `
-
-              // สร้างพื้นที่พิมพ์ชั่วคราว
-              const printArea = document.createElement('div')
-              printArea.id = 'print-qr-area'
-              printArea.className = 'hidden'
-              document.body.appendChild(printArea)
-
-              printArea.innerHTML = `
-                <div class="print-grid">
-                  ${displayedStudents.map(student => `
-                    <div class="qr-print-card">
-                      <div style="width: 100%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 6px;">
-                        <canvas id="print-canvas-${student.id}" style="width: 100%; max-width: 100%; height: auto;"></canvas>
-                      </div>
-                      <div style="width: 100%; text-align: left; font-family: Sarabun, sans-serif; font-size: 11px;">
-                        <p style="font-weight: bold; color: black; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${_htmlEsc(student.full_name)}</p>
-                        ${showCode ? `<p style="color: #4b5563; margin: 2px 0 0 0; font-size: 9px;">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
-                        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 9px; color: #4b5563;">
-                          ${showRoom ? `<span>ห้อง: ${_htmlEsc(className)}</span>` : ''}
-                          ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
-                        </div>
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              `
-
-              // วาดภาพ QR ใน Print Area
-              for (const student of displayedStudents) {
-                const canvas = document.getElementById(`print-canvas-${student.id}`)
-                if (canvas) {
-                  await QRCode.toCanvas(canvas, student.student_code || '', {
-                    width: 250,
-                    margin: 1,
-                    color: { dark: '#000000', light: '#ffffff' }
-                  })
-                }
-              }
-
-              // เรียกพิมพ์
-              window.print()
-              // ทำลายพื้นที่พิมพ์ชั่วคราว
-              printArea.remove()
+              await _executePrint([{ className, students: displayedStudents }], cols, showCode, showSeat, showRoom)
             })
           }
         }
@@ -4891,9 +4789,210 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       }
     }
 
+    // ─── พิมพ์ทั้งระดับชั้น ─────────────────────────────────────────────────────
+    const _printWholeLevel = async () => {
+      const levelSelect = document.getElementById('qr-filter-level')
+      const previewSec  = document.getElementById('qr-preview-section')
+      if (!selectedLevel || !previewSec) return
+
+      const cols        = parseInt(localStorage.getItem('qr_print_cols') || '4')
+      const showCode    = localStorage.getItem('qr_print_show_code') !== 'false'
+      const showSeat    = localStorage.getItem('qr_print_show_seat') !== 'false'
+      const showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
+      const filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
+
+      const classesInLevel = uniqueClasses
+        .filter(c => getCategory(c) === selectedCategory && getGradeLevel(c) === selectedLevel)
+        .sort((a, b) => (a.class_name || '').localeCompare(b.class_name || '', 'th'))
+
+      if (classesInLevel.length === 0) return
+
+      previewSec.classList.remove('hidden')
+      previewSec.innerHTML = `
+        <div class="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm">
+          <div class="flex flex-col items-center gap-4">
+            <svg class="animate-spin h-8 w-8 text-emerald-500" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            <p class="text-sm font-bold text-gray-700">กำลังโหลดรายชื่อนักเรียนทุกห้องในระดับ ${_htmlEsc(selectedLevel)}...</p>
+            <p class="text-xs text-gray-400" id="qr-level-progress">กำลังโหลด 0 / ${classesInLevel.length} ห้อง</p>
+          </div>
+        </div>
+      `
+
+      try {
+        const roomDataList = []
+        for (let i = 0; i < classesInLevel.length; i++) {
+          const cls = classesInLevel[i]
+          document.getElementById('qr-level-progress')?.textContent && (
+            document.getElementById('qr-level-progress').textContent = `กำลังโหลด ${i + 1} / ${classesInLevel.length} ห้อง — ${cls.class_name}`
+          )
+          const rawStudents = await getClassRosterStudents(cls.id)
+          let students = (rawStudents ?? [])
+            .filter(s => s.is_active !== false)
+            .filter(s => filterGender === 'all' || s.gender === filterGender)
+            .map((s, idx) => ({ ...s, seat_no: idx + 1 }))
+          if (students.length > 0) {
+            roomDataList.push({ className: cls.class_name, students })
+          }
+        }
+
+        if (roomDataList.length === 0) {
+          previewSec.innerHTML = `<div class="bg-white border border-gray-200 rounded-3xl p-8 text-center text-gray-400 text-sm">ไม่พบนักเรียนในระดับชั้นนี้</div>`
+          return
+        }
+
+        // แสดงพรีวิวสรุปก่อนพิมพ์
+        const totalStudents = roomDataList.reduce((s, r) => s + r.students.length, 0)
+        previewSec.innerHTML = `
+          <div class="bg-white border border-emerald-200 rounded-3xl p-6 shadow-sm space-y-4">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h4 class="font-bold text-gray-800 text-base">📚 พร้อมพิมพ์ทั้งระดับ ${_htmlEsc(selectedLevel)}</h4>
+                <p class="text-sm text-gray-500 mt-1">${roomDataList.length} ห้อง · ${totalStudents} คน · แต่ละห้องจะแยกหน้ากระดาษ</p>
+              </div>
+              <button id="btn-confirm-whole-level-print" class="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2">
+                🖨️ พิมพ์ / บันทึก PDF ทั้ง ${_htmlEsc(selectedLevel)}
+              </button>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              ${roomDataList.map(r => `
+                <div class="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-center">
+                  <p class="text-sm font-bold text-gray-800">${_htmlEsc(r.className)}</p>
+                  <p class="text-xs text-gray-500 mt-0.5">${r.students.length} คน</p>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `
+
+        document.getElementById('btn-confirm-whole-level-print').addEventListener('click', async () => {
+          await _executePrint(roomDataList, cols, showCode, showSeat, showRoom)
+        })
+      } catch (err) {
+        console.error(err)
+        previewSec.innerHTML = `<div class="p-6 text-red-400 text-sm text-center">เกิดข้อผิดพลาด: ${err.message}</div>`
+      }
+    }
+
+    // ─── ฟังก์ชันสร้าง Print Area และเรียก window.print() ─────────────────────
+    // rooms = [{ className, students }]
+    const _executePrint = async (rooms, cols, showCode, showSeat, showRoom) => {
+      // ฉีด @media print style
+      let styleEl = document.getElementById('qr-print-media-styles')
+      if (!styleEl) {
+        styleEl = document.createElement('style')
+        styleEl.id = 'qr-print-media-styles'
+        document.head.appendChild(styleEl)
+      }
+      styleEl.textContent = `
+        @media print {
+          body > * { display: none !important; }
+          #print-qr-area {
+            display: block !important;
+            position: absolute;
+            left: 0; top: 0;
+            width: 100% !important;
+            padding: 0 !important; margin: 0 !important;
+            background: white !important;
+          }
+          #print-qr-area * { display: initial; visibility: visible; }
+          .print-room-block {
+            page-break-before: always;
+            break-before: page;
+          }
+          .print-room-block:first-child {
+            page-break-before: auto;
+            break-before: auto;
+          }
+          .print-room-header {
+            font-family: Sarabun, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            color: #1f2937;
+            padding: 0 0 8px 0;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+            display: flex !important;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .print-grid {
+            display: grid !important;
+            grid-template-columns: repeat(${cols}, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+            width: 100% !important;
+          }
+          .qr-print-card {
+            border: 1px solid #9ca3af !important;
+            border-radius: 8px !important;
+            padding: 8px !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            background: white !important;
+          }
+          .qr-print-card canvas { width: 100% !important; height: auto !important; }
+        }
+      `
+
+      // สร้างพื้นที่พิมพ์
+      const printArea = document.createElement('div')
+      printArea.id = 'print-qr-area'
+      printArea.className = 'hidden'
+      document.body.appendChild(printArea)
+
+      printArea.innerHTML = rooms.map((room, roomIdx) => `
+        <div class="print-room-block" style="padding: ${roomIdx === 0 ? '0' : '0'}; margin: 0;">
+          <div class="print-room-header">
+            <span>📋 ห้องเรียน: ${_htmlEsc(room.className)}</span>
+            <span style="font-size: 11px; font-weight: normal; color: #6b7280;">${room.students.length} คน</span>
+          </div>
+          <div class="print-grid">
+            ${room.students.map(student => `
+              <div class="qr-print-card">
+                <div style="width: 100%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px;">
+                  <canvas id="print-canvas-${student.id}-r${roomIdx}" style="width: 100%; max-width: 100%; height: auto;"></canvas>
+                </div>
+                <div style="width: 100%; text-align: left; font-family: Sarabun, sans-serif; font-size: 11px;">
+                  <p style="font-weight: bold; color: black; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${_htmlEsc(student.full_name)}</p>
+                  ${showCode ? `<p style="color: #4b5563; margin: 2px 0 0 0; font-size: 9px;">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
+                  <div style="display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: #4b5563;">
+                    ${showRoom ? `<span>ห้อง: ${_htmlEsc(room.className)}</span>` : ''}
+                    ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')
+
+      // วาด QR Codes
+      for (let roomIdx = 0; roomIdx < rooms.length; roomIdx++) {
+        for (const student of rooms[roomIdx].students) {
+          const canvas = document.getElementById(`print-canvas-${student.id}-r${roomIdx}`)
+          if (canvas) {
+            await QRCode.toCanvas(canvas, student.student_code || '', {
+              width: 250, margin: 1,
+              color: { dark: '#000000', light: '#ffffff' }
+            })
+          }
+        }
+      }
+
+      window.print()
+      printArea.remove()
+    }
+
     _renderPageStructure()
   } catch (err) {
     console.error(err)
     showToast('โหลดข้อมูลล้มเหลว: ' + (err.message ?? ''), 'error')
   }
 }
+
