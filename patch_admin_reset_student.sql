@@ -34,7 +34,6 @@ BEGIN
   IF p_new_email IS NOT NULL AND TRIM(p_new_email) <> '' THEN
     UPDATE auth.users
     SET email = TRIM(p_new_email),
-        normalized_email = LOWER(TRIM(p_new_email)),
         email_confirmed_at = COALESCE(email_confirmed_at, now())
     WHERE id = v_profile_id;
   END IF;
@@ -88,9 +87,7 @@ BEGIN
   -- อัปเดตอีเมลจำลองของนักเรียนคนนี้ให้เป็นอีเมลจริง เพื่อให้ระบบจัดส่งอีเมลรีเซ็ตออกไปได้
   UPDATE auth.users
   SET email = TRIM(p_new_email),
-      normalized_email = LOWER(TRIM(p_new_email)),
-      email_confirmed_at = COALESCE(email_confirmed_at, now()),
-      email_change_confirm_status = 0
+      email_confirmed_at = COALESCE(email_confirmed_at, now())
   WHERE id = v_profile_id;
 
   RETURN TRUE;
