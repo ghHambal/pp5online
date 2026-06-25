@@ -4530,9 +4530,29 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     let selectedCategory = 'สามัญ'
     let selectedLevel = ''
     let selectedClassId = ''
+    let currentViewMode = null
+
+    // ─── โหลดและจัดการค่าตั้งค่าพิมพ์จัดพิมพ์ ──────────────────────────────────────
+    let cols        = parseInt(localStorage.getItem('qr_print_cols') || '4')
+    let showCode    = localStorage.getItem('qr_print_show_code') !== 'false'
+    let showSeat    = localStorage.getItem('qr_print_show_seat') !== 'false'
+    let showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
+    let filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
+
+    const refreshPreview = () => {
+      if (currentViewMode === 'class' && selectedClassId) {
+        _loadRosterAndDraw()
+      } else if (currentViewMode === 'level' && selectedLevel) {
+        _printWholeLevel()
+      } else {
+        const previewSec = document.getElementById('qr-preview-section')
+        if (previewSec) previewSec.classList.add('hidden')
+      }
+    }
 
     if (classId) {
-      const cls = uniqueClasses.find(c => c.id == classId)
+      // ค้นหา class เพื่อตั้งค่าเริ่มต้นในกรณีกดมาจากหน้าอื่น
+      const cls = allClassRows?.find(c => c.id == classId)
       if (cls) {
         selectedCategory = getCategory(cls)
         selectedLevel = getGradeLevel(cls)
@@ -4589,6 +4609,47 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             </div>
           </div>
 
+          <!-- แผงตั้งค่าจัดพิมพ์ (Persistent Settings Card) -->
+          <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="space-y-2">
+              <h4 class="font-bold text-gray-800 text-sm">🎛️ ตั้งค่ากระดาษสั่งพิมพ์</h4>
+              <div class="flex flex-wrap gap-4 items-center text-xs text-gray-600">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="show-seat" ${showSeat ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
+                  แสดงเลขที่
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="show-code" ${showCode ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
+                  แสดงเลขประจำตัว
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" id="show-room" ${showRoom ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
+                  แสดงห้องเรียน
+                </label>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-3 items-center shrink-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-500 font-semibold">เลือกเพศ:</span>
+                <select id="select-print-gender" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
+                  <option value="all" ${filterGender === 'all' ? 'selected' : ''}>ทั้งหมด</option>
+                  <option value="ชาย" ${filterGender === 'ชาย' ? 'selected' : ''}>ชาย 👦</option>
+                  <option value="หญิง" ${filterGender === 'หญิง' ? 'selected' : ''}>หญิง 👧</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-500 font-semibold">จำนวนคอลัมน์:</span>
+                <select id="select-print-cols" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
+                  <option value="3" ${cols === 3 ? 'selected' : ''}>3 คอลัมน์</option>
+                  <option value="4" ${cols === 4 ? 'selected' : ''}>4 คอลัมน์</option>
+                  <option value="5" ${cols === 5 ? 'selected' : ''}>5 คอลัมน์</option>
+                  <option value="6" ${cols === 6 ? 'selected' : ''}>6 คอลัมน์</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <!-- พื้นที่แสดงผลพรีวิว -->
           <div id="qr-preview-section" class="hidden space-y-6">
             <!-- จัดการด้วย _renderPreviewPanel -->
@@ -4602,6 +4663,33 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       const classSelect = document.getElementById('qr-filter-class')
       const levelInfoEl = document.getElementById('qr-level-info')
       const btnWholeLevel = document.getElementById('btn-print-whole-level')
+
+      // Bind Settings Card Events
+      document.getElementById('show-seat').addEventListener('change', (e) => {
+        showSeat = e.target.checked
+        localStorage.setItem('qr_print_show_seat', showSeat)
+        refreshPreview()
+      })
+      document.getElementById('show-code').addEventListener('change', (e) => {
+        showCode = e.target.checked
+        localStorage.setItem('qr_print_show_code', showCode)
+        refreshPreview()
+      })
+      document.getElementById('show-room').addEventListener('change', (e) => {
+        showRoom = e.target.checked
+        localStorage.setItem('qr_print_show_room', showRoom)
+        refreshPreview()
+      })
+      document.getElementById('select-print-gender').addEventListener('change', (e) => {
+        filterGender = e.target.value
+        localStorage.setItem('qr_print_filter_gender', filterGender)
+        refreshPreview()
+      })
+      document.getElementById('select-print-cols').addEventListener('change', (e) => {
+        cols = parseInt(e.target.value)
+        localStorage.setItem('qr_print_cols', cols)
+        refreshPreview()
+      })
 
       const syncLevels = () => {
         selectedCategory = catSelect.value
@@ -4641,31 +4729,48 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         const newClassId = classSelect.value
         if (newClassId) {
           selectedClassId = newClassId
+          currentViewMode = 'class'
           _loadRosterAndDraw()
         } else {
+          currentViewMode = null
           document.getElementById('qr-preview-section').classList.add('hidden')
         }
       }
 
-      catSelect.addEventListener('change', () => { selectedLevel = ''; selectedClassId = ''; syncLevels() })
-      levelSelect.addEventListener('change', () => { selectedClassId = ''; syncClasses() })
+      catSelect.addEventListener('change', () => {
+        selectedLevel = ''
+        selectedClassId = ''
+        currentViewMode = null
+        syncLevels()
+      })
+      levelSelect.addEventListener('change', () => {
+        selectedClassId = ''
+        currentViewMode = null
+        syncClasses()
+      })
       classSelect.addEventListener('change', () => {
         selectedClassId = classSelect.value
         if (selectedClassId) {
+          currentViewMode = 'class'
           _loadRosterAndDraw()
         } else {
+          currentViewMode = null
           document.getElementById('qr-preview-section').classList.add('hidden')
         }
       })
 
       // พิมพ์ทั้งระดับชั้น
-      btnWholeLevel.addEventListener('click', () => _printWholeLevel())
+      btnWholeLevel.addEventListener('click', () => {
+        currentViewMode = 'level'
+        _printWholeLevel()
+      })
 
       syncLevels()
     }
 
     // ─── โหลดรายชื่อนักเรียน 1 ห้อง และวาดพรีวิว ──────────────────────────────
     const _loadRosterAndDraw = async () => {
+      currentViewMode = 'class'
       const previewSec = document.getElementById('qr-preview-section')
       if (!previewSec) return
       previewSec.classList.remove('hidden')
@@ -4688,123 +4793,67 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           return
         }
 
-        let cols        = parseInt(localStorage.getItem('qr_print_cols') || '4')
-        let showCode    = localStorage.getItem('qr_print_show_code') !== 'false'
-        let showSeat    = localStorage.getItem('qr_print_show_seat') !== 'false'
-        let showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
-        let filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
+        const displayedStudents = students.filter(s => {
+          if (filterGender === 'all') return true
+          return s.gender === filterGender
+        })
 
-        const _renderPreviewPanel = () => {
-          const displayedStudents = students.filter(s => {
-            if (filterGender === 'all') return true
-            return s.gender === filterGender
-          })
-
-          previewSec.innerHTML = `
-            <!-- บล็อกตั้งค่าจัดพิมพ์ -->
-            <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div class="space-y-2">
-                <h4 class="font-bold text-gray-800 text-sm">🎛️ ตั้งค่ากระดาษสั่งพิมพ์</h4>
-                <div class="flex flex-wrap gap-4 items-center text-xs text-gray-600">
-                  <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" id="show-seat" ${showSeat ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
-                    แสดงเลขที่
-                  </label>
-                  <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" id="show-code" ${showCode ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
-                    แสดงเลขประจำตัว
-                  </label>
-                  <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" id="show-room" ${showRoom ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
-                    แสดงห้องเรียน
-                  </label>
-                </div>
-              </div>
-
-              <div class="flex flex-wrap gap-3 items-center shrink-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-gray-500 font-semibold">เลือกเพศ:</span>
-                  <select id="select-print-gender" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
-                    <option value="all" ${filterGender === 'all' ? 'selected' : ''}>ทั้งหมด</option>
-                    <option value="ชาย" ${filterGender === 'ชาย' ? 'selected' : ''}>ชาย 👦</option>
-                    <option value="หญิง" ${filterGender === 'หญิง' ? 'selected' : ''}>หญิง 👧</option>
-                  </select>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-gray-500 font-semibold">จำนวนคอลัมน์:</span>
-                  <select id="select-print-cols" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
-                    <option value="3" ${cols === 3 ? 'selected' : ''}>3 คอลัมน์</option>
-                    <option value="4" ${cols === 4 ? 'selected' : ''}>4 คอลัมน์</option>
-                    <option value="5" ${cols === 5 ? 'selected' : ''}>5 คอลัมน์</option>
-                    <option value="6" ${cols === 6 ? 'selected' : ''}>6 คอลัมน์</option>
-                  </select>
-                </div>
-                <button id="btn-trigger-print" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5" ${displayedStudents.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-                  🖨️ สั่งพิมพ์ (Print)
-                </button>
-              </div>
-            </div>
-
-            <!-- ข้อแนะนำก่อนพิมพ์ -->
-            <div class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-800 leading-relaxed flex items-start gap-2">
-              <span class="text-base">💡</span>
-              <div>
-                <p class="font-bold">แนะนำการพิมพ์ (บันทึกเป็น PDF / สั่งพิมพ์สติกเกอร์):</p>
-                <p class="opacity-90">ในหน้าต่างพรีวิวพิมพ์ของเบราว์เซอร์ ให้เปิด <strong>"Background graphics"</strong> และปิด <strong>"Headers and footers"</strong> และเลือก <strong>Paper size: A4</strong> เพื่อให้ได้ผลดีที่สุด แต่ละห้องเรียนจะอยู่บนหน้ากระดาษของตัวเองอัตโนมัติ</p>
-              </div>
-            </div>
-
-            <!-- Live Preview -->
+        previewSec.innerHTML = `
+          <!-- ข้อแนะนำก่อนพิมพ์ -->
+          <div class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-800 leading-relaxed flex items-start gap-2">
+            <span class="text-base">💡</span>
             <div>
-              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">พรีวิวการจัดวาง — ${_htmlEsc(className)} (${displayedStudents.length} คน)</p>
-              <div id="qr-live-grid" class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="${displayedStudents.length === 0 ? '' : `grid-template-columns: repeat(${cols}, minmax(0, 1fr));`}">
-                ${displayedStudents.length === 0 ? `
-                  <div class="col-span-full py-12 text-center text-xs text-gray-400 font-semibold bg-white border border-gray-100 rounded-2xl">ไม่มีนักเรียนเพศที่เลือกในห้องเรียนนี้</div>
-                ` : displayedStudents.map(student => `
-                  <div class="bg-white border border-gray-100 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow-sm">
-                    <div class="w-full aspect-square flex items-center justify-center bg-gray-50/50 rounded-xl overflow-hidden mb-2 p-1">
-                      <canvas id="live-canvas-${student.id}" class="w-full h-full max-w-full max-h-full object-contain"></canvas>
-                    </div>
-                    <div class="text-left w-full min-w-0 font-sans">
-                      <p class="text-[11px] font-bold text-gray-800 truncate">${_htmlEsc(student.full_name)}</p>
-                      ${showCode ? `<p class="text-[9px] text-gray-400 mt-0.5">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
-                      <div class="flex items-center justify-between mt-1 text-[9px] text-gray-400">
-                        ${showRoom ? `<span>ห้อง: ${_htmlEsc(className)}</span>` : ''}
-                        ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
-                      </div>
+              <p class="font-bold">แนะนำการพิมพ์ (บันทึกเป็น PDF / สั่งพิมพ์สติกเกอร์):</p>
+              <p class="opacity-90">ในหน้าต่างพรีวิวพิมพ์ของเบราว์เซอร์ ให้เปิด <strong>"Background graphics"</strong> และปิด <strong>"Headers and footers"</strong> และเลือก <strong>Paper size: A4</strong> เพื่อให้ได้ผลดีที่สุด แต่ละห้องเรียนจะอยู่บนหน้ากระดาษของตัวเองอัตโนมัติ</p>
+            </div>
+          </div>
+
+          <!-- Live Preview -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">พรีวิวการจัดวาง — ${_htmlEsc(className)} (${displayedStudents.length} คน)</p>
+              <button id="btn-trigger-print" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5" ${displayedStudents.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+                🖨️ สั่งพิมพ์ห้องนี้ (Print)
+              </button>
+            </div>
+            <div id="qr-live-grid" class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="${displayedStudents.length === 0 ? '' : `grid-template-columns: repeat(${cols}, minmax(0, 1fr));`}">
+              ${displayedStudents.length === 0 ? `
+                <div class="col-span-full py-12 text-center text-xs text-gray-400 font-semibold bg-white border border-gray-100 rounded-2xl">ไม่มีนักเรียนเพศที่เลือกในห้องเรียนนี้</div>
+              ` : displayedStudents.map(student => `
+                <div class="bg-white border border-gray-100 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow-sm">
+                  <div class="w-full aspect-square flex items-center justify-center bg-gray-50/50 rounded-xl overflow-hidden mb-2 p-1">
+                    <canvas id="live-canvas-${student.id}" class="w-full h-full max-w-full max-h-full object-contain"></canvas>
+                  </div>
+                  <div class="text-left w-full min-w-0 font-sans">
+                    <p class="text-[11px] font-bold text-gray-800 truncate">${_htmlEsc(student.full_name)}</p>
+                    ${showCode ? `<p class="text-[9px] text-gray-400 mt-0.5">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
+                    <div class="flex items-center justify-between mt-1 text-[9px] text-gray-400">
+                      ${showRoom ? `<span>ห้อง: ${_htmlEsc(className)}</span>` : ''}
+                      ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
                     </div>
                   </div>
-                `).join('')}
-              </div>
+                </div>
+              `).join('')}
             </div>
-          `
+          </div>
+        `
 
-          // วาด QR Codes ใน Live Preview
-          displayedStudents.forEach(student => {
-            const canvas = document.getElementById(`live-canvas-${student.id}`)
-            if (canvas) {
-              QRCode.toCanvas(canvas, student.student_code || '', {
-                width: 160, margin: 1.5,
-                color: { dark: '#111827', light: '#FFFFFF' }
-              }, err => { if (err) console.error('Live QR error:', err) })
-            }
-          })
-
-          // ผูก Events
-          document.getElementById('show-seat').addEventListener('change', (e) => { showSeat = e.target.checked; localStorage.setItem('qr_print_show_seat', showSeat); _renderPreviewPanel() })
-          document.getElementById('show-code').addEventListener('change', (e) => { showCode = e.target.checked; localStorage.setItem('qr_print_show_code', showCode); _renderPreviewPanel() })
-          document.getElementById('show-room').addEventListener('change', (e) => { showRoom = e.target.checked; localStorage.setItem('qr_print_show_room', showRoom); _renderPreviewPanel() })
-          document.getElementById('select-print-gender').addEventListener('change', (e) => { filterGender = e.target.value; localStorage.setItem('qr_print_filter_gender', filterGender); _renderPreviewPanel() })
-          document.getElementById('select-print-cols').addEventListener('change', (e) => { cols = parseInt(e.target.value); localStorage.setItem('qr_print_cols', cols); _renderPreviewPanel() })
-
-          if (displayedStudents.length > 0) {
-            document.getElementById('btn-trigger-print').addEventListener('click', async () => {
-              await _executePrint([{ className, students: displayedStudents }], cols, showCode, showSeat, showRoom)
-            })
+        // วาด QR Codes ใน Live Preview
+        displayedStudents.forEach(student => {
+          const canvas = document.getElementById(`live-canvas-${student.id}`)
+          if (canvas) {
+            QRCode.toCanvas(canvas, student.student_code || '', {
+              width: 160, margin: 1.5,
+              color: { dark: '#111827', light: '#FFFFFF' }
+            }, err => { if (err) console.error('Live QR error:', err) })
           }
-        }
+        })
 
-        _renderPreviewPanel()
+        if (displayedStudents.length > 0) {
+          document.getElementById('btn-trigger-print').addEventListener('click', async () => {
+            await _executePrint([{ className, students: displayedStudents }], cols, showCode, showSeat, showRoom)
+          })
+        }
       } catch (err) {
         console.error(err)
         previewSec.innerHTML = `<div class="p-6 text-red-400 text-sm text-center">เกิดข้อผิดพลาดในการโหลดรายชื่อนักเรียน</div>`
@@ -4813,15 +4862,10 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
     // ─── พิมพ์ทั้งระดับชั้น ─────────────────────────────────────────────────────
     const _printWholeLevel = async () => {
+      currentViewMode = 'level'
       const levelSelect = document.getElementById('qr-filter-level')
       const previewSec  = document.getElementById('qr-preview-section')
       if (!selectedLevel || !previewSec) return
-
-      const cols        = parseInt(localStorage.getItem('qr_print_cols') || '4')
-      const showCode    = localStorage.getItem('qr_print_show_code') !== 'false'
-      const showSeat    = localStorage.getItem('qr_print_show_seat') !== 'false'
-      const showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
-      const filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
 
       const currentClasses = getRoomsForCategory(selectedCategory)
       const classesInLevel = currentClasses
