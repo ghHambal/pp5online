@@ -7,6 +7,7 @@ import {
   getStudentDailySchedule, getStudentAllAnnouncements, getStudentGPA,
   getClassSchedulesByIds, getStudentWeeklySchedule,
   getScannerRoster, saveScannedPrayerRecords,
+  getStudentClassroomRole,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
@@ -332,17 +333,22 @@ export async function renderStudentOverview(student) {
     </svg>
   </div>`)
 
-  const [classes, requests, dailySched, allAnns, gpaData, cfg] = await Promise.all([
+  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
     getStudentAllAnnouncements(student.id).catch(()=>[]),
     getStudentGPA(student.id).catch(()=>({ samai:[], sasana:[] })),
     getSystemConfig().catch(()=>({})),
+    getStudentClassroomRole(student.main_room).catch(()=>null),
   ])
   const pending = requests.filter(r => r.status === 'pending')
   const recent  = requests.slice(0, 3)
   const hasExtendedScanWindow = _isExtendedPrayerScanner(student, cfg)
+
+  const isHead = classroomRole && Number(classroomRole.head_student_id) === Number(student.id)
+  const isVice = classroomRole && Number(classroomRole.vice_head_student_id) === Number(student.id)
+  const certUrl = isHead ? classroomRole.head_cert_url : (isVice ? classroomRole.vice_head_cert_url : null)
 
   setContent(`
     <!-- Profile card -->
@@ -354,10 +360,36 @@ export async function renderStudentOverview(student) {
           : (student.full_name??'น').charAt(0)}
       </div>
       <div class="flex-1 min-w-0">
-        <p class="font-bold text-gray-800 text-base truncate">${student.full_name}</p>
+        <div class="flex items-center gap-2 flex-wrap">
+          <p class="font-bold text-gray-800 text-base truncate">${student.full_name}</p>
+          ${isHead ? `
+            <span class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+              👑 หัวหน้าห้อง
+            </span>
+          ` : ''}
+          ${isVice ? `
+            <span class="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+              🥈 รองหัวหน้าห้อง
+            </span>
+          ` : ''}
+        </div>
         <p class="text-xs text-gray-400 mt-0.5 truncate">รหัส ${student.student_code} · ${_roomDisplay(student.main_room??'—')}</p>
       </div>
     </div>
+
+    <!-- Certificate Banner -->
+    ${certUrl ? `
+    <a href="${certUrl}" target="_blank" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
+      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🎓</div>
+      <div class="min-w-0 z-10">
+        <h4 class="font-bold text-xs sm:text-sm">🎓 เกียรติบัตรแต่งตั้งประจำห้องเรียน</h4>
+        <p class="text-[10px] text-amber-50 mt-0.5">คุณได้รับเกียรติบัตรแต่งตั้งเป็น${isHead ? 'หัวหน้าห้อง' : 'รองหัวหน้าห้อง'}ประจำชั้นปีการศึกษานี้</p>
+      </div>
+      <span class="relative z-10 px-3 py-1.5 bg-white text-amber-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
+        📄 เปิดดูเกียรติบัตร
+      </span>
+    </a>
+    ` : ''}
 
     <!-- Scanner Access Banner -->
     ${_hasScannerPermissionForToday(student, cfg) && _isPrayerTimeWindow(cfg, hasExtendedScanWindow) ? `

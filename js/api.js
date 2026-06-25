@@ -200,13 +200,27 @@ export async function getClasses() {
   const { data, error } = await supabase
     .from('classes')
     .select(`
-      id, class_name, skill_group, google_sheet_id, gas_url, head_student_id,
+      id, class_name, skill_group, google_sheet_id, gas_url, head_student_id, vice_head_student_id,
+      head_cert_url, vice_head_cert_url,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit, teacher_id )
     `)
     .order('class_name')
   if (error) throw error
   return data ?? []
+}
+
+export async function updateClassroomLeaders(classId, headStudentId, viceHeadStudentId, headCertUrl, viceHeadCertUrl) {
+  const { error } = await supabase
+    .from('classes')
+    .update({
+      head_student_id: headStudentId || null,
+      vice_head_student_id: viceHeadStudentId || null,
+      head_cert_url: headCertUrl || null,
+      vice_head_cert_url: viceHeadCertUrl || null
+    })
+    .eq('id', classId)
+  if (error) throw error
 }
 
 // ─── Students ─────────────────────────────────────────────────────────────────

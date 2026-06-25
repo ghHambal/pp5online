@@ -9,7 +9,7 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderClassroomsAdmin,
          renderAnnouncements, renderRolePermissions,
          renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin,
-         renderReligionGroups } from './views.js'
+         renderReligionGroups, renderClassroomLeaders } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { renderExecOverview } from './views-exec-overview.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
@@ -788,6 +788,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'donations':        () => renderDonations(),
     'feedback-admin':   () => renderFeedbackAdmin(),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
+    'classroom-leaders': () => renderClassroomLeaders(),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {

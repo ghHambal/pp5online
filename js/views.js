@@ -30,7 +30,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
-         updateTeacherPosition } from './api.js'
+         updateTeacherPosition, updateClassroomLeaders, getStudentByCode } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -38,7 +38,7 @@ import { openTeacherModal, handleDeleteTeacher,
          openDeptModal, handleDeleteDept,
          openPeriodModal, handleDeletePeriod } from './dashboard.js'
 import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './import.js'
-import { uploadSystemAsset, uploadStickerPng } from './storage.js'
+import { uploadSystemAsset, uploadStickerPng, compressImage } from './storage.js'
 import { applyThemeForRole } from './theme.js'
 import { supabase } from './supabase.js'
 import {
@@ -11189,3 +11189,851 @@ function _showMemberSummaryPopup(group, members) {
   document.body.appendChild(overlay)
   overlay.querySelector('#mrg-summary-close').onclick = () => overlay.remove()
 }
+
+export async function renderClassroomLeaders() {
+  setActiveNav('classroom-leaders')
+  document.getElementById('page-title').textContent = 'จัดการหัวหน้าและรองหัวหน้าห้อง'
+
+  setContent(`
+    <div class="flex justify-center py-12 text-gray-400">
+      <div class="animate-spin text-3xl mb-2">⏳</div><p class="text-sm">กำลังโหลดข้อมูลห้องเรียน...</p>
+    </div>
+  `)
+
+  let classes = [], students = []
+  let activeTab = 'manage' // 'manage' | 'print'
+  let selectedCategory = 'สามัญ'
+  let selectedLevel = ''
+  let selectedRoom = ''
+  let searchQ = ''
+
+  const extractGradeFromName = (name) => {
+    if (!name) return null
+    const m = name.match(/^(ม\.\d+|ปวช\.\d+|PR\s*\d+|อก\.\d+|อป\.\d+)/i)
+    if (!m) return null
+    return m[1].replace(/^(PR)\s*(\d+)$/i, 'PR $2').trim()
+  }
+
+  const getCategoryFromRoomName = (name) => {
+    if (!name) return 'สามัญ'
+    if (/^(PR|อก\.|อป\.)/i.test(name)) return 'ศาสนา'
+    if (/^ปวช\./i.test(name)) return 'ปวช'
+    return 'สามัญ'
+  }
+
+  const standardLevels = {
+    'สามัญ': ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6'],
+    'ศาสนา': ['PR 1', 'อก.1', 'อก.2', 'อก.3', 'อป.1', 'อป.2', 'อป.3'],
+    'ปวช': ['ปวช.1', 'ปวช.2', 'ปวช.3', 'อก.ปวช.1', 'อก.ปวช.2', 'อก.ปวช.3']
+  }
+
+  const getRoomsForCategory = (cat) => {
+    return classes
+      .map(c => c.class_name)
+      .filter(name => name && getCategoryFromRoomName(name) === cat)
+      .sort((a, b) => a.localeCompare(b, 'th'))
+  }
+
+  const getLevelsForCategory = (cat) => {
+    const rooms = getRoomsForCategory(cat)
+    const dbLevels = [...new Set(rooms.map(r => extractGradeFromName(r)).filter(Boolean))]
+    const std = standardLevels[cat] || []
+    return [...new Set([...std, ...dbLevels])].sort((a, b) => a.localeCompare(b, 'th'))
+  }
+
+  const _load = async () => {
+    [classes, students] = await Promise.all([
+      getClasses(),
+      getStudents()
+    ])
+  }
+
+  const _studentById = (id) => students.find(s => s.id === id)
+
+  // ─── Print logic ───────────────────────────────────────────────────────────
+  const _executePrint = () => {
+    let styleEl = document.getElementById('hc-print-roster-styles')
+    if (!styleEl) {
+      styleEl = document.createElement('style')
+      styleEl.id = 'hc-print-roster-styles'
+      document.head.appendChild(styleEl)
+    }
+    styleEl.textContent = `
+      @media print {
+        body > * { display: none !important; }
+        #hc-print-roster-area {
+          display: block !important;
+          position: absolute;
+          left: 0; top: 0;
+          width: 100% !important;
+          padding: 0 !important; margin: 0 !important;
+          background: white !important;
+          color: black !important;
+          font-family: Sarabun, sans-serif !important;
+        }
+        #hc-print-roster-area * { visibility: visible; }
+        .roster-page-block {
+          display: block !important;
+          page-break-before: always !important;
+          break-before: page !important;
+          page-break-inside: avoid;
+        }
+        .roster-page-block:first-child {
+          page-break-before: auto !important;
+          break-before: auto !important;
+        }
+        .roster-title {
+          font-size: 18px;
+          font-weight: bold;
+          text-align: center;
+          margin-bottom: 15px;
+        }
+        .roster-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 30px;
+        }
+        .roster-table th, .roster-table td {
+          border: 1px solid #000000 !important;
+          padding: 8px 10px !important;
+          vertical-align: middle;
+        }
+        .roster-table th {
+          background-color: #f3f4f6 !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+          font-size: 12px;
+          font-weight: bold;
+        }
+        .roster-table td {
+          font-size: 12px;
+        }
+        .stu-info-wrap {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .stu-img {
+          width: 40px;
+          height: 52px;
+          border-radius: 6px;
+          border: 1px solid #ccc;
+          object-fit: cover;
+        }
+        .stu-img-placeholder {
+          width: 40px;
+          height: 52px;
+          border-radius: 6px;
+          border: 1px solid #ccc;
+          background: #f3f4f6;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          color: #9ca3af;
+        }
+      }
+    `
+
+    const printArea = document.createElement('div')
+    printArea.id = 'hc-print-roster-area'
+    printArea.className = 'hidden'
+    document.body.appendChild(printArea)
+
+    // filter classes to print
+    const targets = classes.filter(c => {
+      const cat = getCategoryFromRoomName(c.class_name)
+      if (cat !== selectedCategory) return false
+      if (selectedLevel) {
+        const lvl = extractGradeFromName(c.class_name)
+        if (lvl !== selectedLevel) return false
+      }
+      if (selectedRoom && c.class_name !== selectedRoom) return false
+      return true
+    }).sort((a, b) => a.class_name.localeCompare(b.class_name, 'th'))
+
+    let titleText = `ใบรายชื่อหัวหน้าและรองหัวหน้าห้องเรียน`
+    if (selectedLevel) titleText += ` ระดับชั้น ${selectedLevel}`
+    if (selectedRoom) titleText += ` ห้อง ${selectedRoom}`
+
+    const rowsHtml = targets.map((c, idx) => {
+      const head = _studentById(c.head_student_id)
+      const vice = _studentById(c.vice_head_student_id)
+
+      const headImg = head?.image_url
+        ? `<img src="${head.image_url}" class="stu-img" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+           <div class="stu-img-placeholder" style="display:none;">👤</div>`
+        : `<div class="stu-img-placeholder">👤</div>`
+
+      const viceImg = vice?.image_url
+        ? `<img src="${vice.image_url}" class="stu-img" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+           <div class="stu-img-placeholder" style="display:none;">👤</div>`
+        : `<div class="stu-img-placeholder">👤</div>`
+
+      const headName = head ? `<b>${_esc(head.full_name)}</b><br><span style="font-size:10px;color:#6b7280;">รหัส: ${head.student_code}</span>` : '<span style="color:#9ca3af;">— ยังไม่ระบุ —</span>'
+      const viceName = vice ? `<b>${_esc(vice.full_name)}</b><br><span style="font-size:10px;color:#6b7280;">รหัส: ${vice.student_code}</span>` : '<span style="color:#9ca3af;">— ยังไม่ระบุ —</span>'
+
+      const headCert = c.head_cert_url ? `<span style="color:#059669;font-weight:bold;">มีเกียรติบัตรแล้ว</span>` : '<span style="color:#9ca3af;">ยังไม่มี</span>'
+      const viceCert = c.vice_head_cert_url ? `<span style="color:#059669;font-weight:bold;">มีเกียรติบัตรแล้ว</span>` : '<span style="color:#9ca3af;">ยังไม่มี</span>'
+
+      return `
+        <tr>
+          <td style="text-align: center; width: 45px;">${idx + 1}</td>
+          <td style="font-weight: bold; width: 90px; text-align: center;">ห้อง ${_esc(c.class_name)}</td>
+          <td>
+            <div class="stu-info-wrap">
+              ${headImg}
+              <div>${headName}</div>
+            </div>
+          </td>
+          <td style="text-align: center; width: 120px;">${headCert}</td>
+          <td>
+            <div class="stu-info-wrap">
+              ${viceImg}
+              <div>${viceName}</div>
+            </div>
+          </td>
+          <td style="text-align: center; width: 120px;">${viceCert}</td>
+        </tr>
+      `
+    }).join('')
+
+    printArea.innerHTML = `
+      <div class="roster-page-block">
+        <div class="roster-title">${titleText}</div>
+        <table class="roster-table">
+          <thead>
+            <tr>
+              <th style="width: 45px;">ลำดับ</th>
+              <th style="width: 90px;">ห้องเรียน</th>
+              <th>หัวหน้าห้อง</th>
+              <th style="width: 120px;">เกียรติบัตรหัวหน้า</th>
+              <th>รองหัวหน้าห้อง</th>
+              <th style="width: 120px;">เกียรติบัตรรอง</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || `<tr><td colspan="6" style="text-align:center;padding:20px;color:#9ca3af;">ไม่พบข้อมูลห้องเรียน</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    `
+
+    window.print()
+    printArea.remove()
+  }
+
+  // ─── Rendering parts ───────────────────────────────────────────────────────
+  const _renderHeaderTabs = () => {
+    return `
+      <div class="flex border-b border-gray-200">
+        <button id="tab-manage" class="px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+          activeTab === 'manage' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+        }">
+          👑 จัดการหัวหน้า/รองหัวหน้า
+        </button>
+        <button id="tab-print" class="px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+          activeTab === 'print' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+        }">
+          🖨️ ตารางภาพรวมและสั่งพิมพ์
+        </button>
+      </div>
+    `
+  }
+
+  const _renderCards = () => {
+    const q = searchQ.trim().toLowerCase()
+    const filtered = classes.filter(c => {
+      const cat = getCategoryFromRoomName(c.class_name)
+      if (cat !== selectedCategory) return false
+      if (q && !c.class_name.toLowerCase().includes(q)) return false
+      return true
+    }).sort((a, b) => a.class_name.localeCompare(b.class_name, 'th'))
+
+    if (filtered.length === 0) {
+      return `<div class="col-span-full text-center py-12 text-gray-400 bg-white border border-gray-200 rounded-2xl">ไม่พบห้องเรียนที่ตรงกับตัวกรอง/ค้นหา</div>`
+    }
+
+    return filtered.map(c => {
+      const head = _studentById(c.head_student_id)
+      const vice = _studentById(c.vice_head_student_id)
+
+      const headImg = head?.image_url
+        ? `<img src="${head.image_url}" class="w-10 h-14 object-cover rounded border border-gray-200 shadow-sm" />`
+        : `<div class="w-10 h-14 bg-gray-50 rounded border border-gray-100 flex items-center justify-center text-gray-400 text-lg">👤</div>`
+
+      const viceImg = vice?.image_url
+        ? `<img src="${vice.image_url}" class="w-10 h-14 object-cover rounded border border-gray-200 shadow-sm" />`
+        : `<div class="w-10 h-14 bg-gray-50 rounded border border-gray-100 flex items-center justify-center text-gray-400 text-lg">👤</div>`
+
+      return `
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow transition p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between border-b border-gray-50 pb-2 mb-3">
+              <span class="text-base font-bold text-gray-800">ห้อง ${_esc(c.class_name)}</span>
+              <span class="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded-full uppercase">${selectedCategory}</span>
+            </div>
+            
+            <div class="space-y-3">
+              <!-- Head -->
+              <div class="flex items-center gap-3">
+                ${headImg}
+                <div class="min-w-0">
+                  <span class="text-[10px] text-amber-600 font-bold block">👑 หัวหน้าห้อง</span>
+                  <span class="text-sm font-semibold text-gray-800 truncate block">${head ? _esc(head.full_name) : '— ยังไม่ระบุ —'}</span>
+                  ${head ? `<span class="text-xs text-gray-400 font-mono">รหัส: ${head.student_code}</span>` : ''}
+                </div>
+              </div>
+              
+              <!-- Vice -->
+              <div class="flex items-center gap-3">
+                ${viceImg}
+                <div class="min-w-0">
+                  <span class="text-[10px] text-slate-500 font-bold block">🥈 รองหัวหน้าห้อง</span>
+                  <span class="text-sm font-semibold text-gray-800 truncate block">${vice ? _esc(vice.full_name) : '— ยังไม่ระบุ —'}</span>
+                  ${vice ? `<span class="text-xs text-gray-400 font-mono">รหัส: ${vice.student_code}</span>` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between text-xs text-gray-500 flex-wrap gap-2">
+            <div>
+              <p>เกียรติบัตรหัวหน้า: ${c.head_cert_url ? '🟢 มีแล้ว' : '🔴 ไม่มี'}</p>
+              <p>เกียรติบัตรรอง: ${c.vice_head_cert_url ? '🟢 มีแล้ว' : '🔴 ไม่มี'}</p>
+            </div>
+            <button class="btn-edit-leaders px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl font-bold transition flex items-center gap-1" data-id="${c.id}">
+              ✏️ แก้ไข
+            </button>
+          </div>
+        </div>
+      `
+    }).join('')
+  }
+
+  const _renderTable = () => {
+    const targets = classes.filter(c => {
+      const cat = getCategoryFromRoomName(c.class_name)
+      if (cat !== selectedCategory) return false
+      if (selectedLevel) {
+        const lvl = extractGradeFromName(c.class_name)
+        if (lvl !== selectedLevel) return false
+      }
+      if (selectedRoom && c.class_name !== selectedRoom) return false
+      return true
+    }).sort((a, b) => a.class_name.localeCompare(b.class_name, 'th'))
+
+    if (targets.length === 0) {
+      return `<tr><td colspan="6" class="text-center py-10 text-gray-400 text-sm">ไม่พบข้อมูลห้องเรียน</td></tr>`
+    }
+
+    return targets.map((c, idx) => {
+      const head = _studentById(c.head_student_id)
+      const vice = _studentById(c.vice_head_student_id)
+
+      const headImg = head?.image_url
+        ? `<img src="${head.image_url}" class="w-8 h-8 rounded-full object-cover border" />`
+        : `<div class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border text-gray-400 text-xs">👤</div>`
+
+      const viceImg = vice?.image_url
+        ? `<img src="${vice.image_url}" class="w-8 h-8 rounded-full object-cover border" />`
+        : `<div class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border text-gray-400 text-xs">👤</div>`
+
+      return `
+        <tr class="hover:bg-gray-50/50 transition border-b border-gray-100 last:border-0">
+          <td class="px-4 py-3 text-center text-gray-400 font-mono">${idx + 1}</td>
+          <td class="px-4 py-3 font-bold text-gray-800 text-center">ห้อง ${_esc(c.class_name)}</td>
+          <td class="px-4 py-3">
+            <div class="flex items-center gap-2">
+              ${headImg}
+              <div>
+                <p class="font-semibold text-gray-800 text-xs">${head ? _esc(head.full_name) : '— ยังไม่ระบุ —'}</p>
+                ${head ? `<p class="text-[10px] text-gray-400 font-mono">รหัส ${head.student_code}</p>` : ''}
+              </div>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-center text-xs">
+            ${c.head_cert_url
+              ? `<a href="${c.head_cert_url}" target="_blank" class="text-emerald-600 hover:text-emerald-800 font-bold">📄 ดูเกียรติบัตร</a>`
+              : `<span class="text-gray-400">ยังไม่มี</span>`}
+          </td>
+          <td class="px-4 py-3">
+            <div class="flex items-center gap-2">
+              ${viceImg}
+              <div>
+                <p class="font-semibold text-gray-800 text-xs">${vice ? _esc(vice.full_name) : '— ยังไม่ระบุ —'}</p>
+                ${vice ? `<p class="text-[10px] text-gray-400 font-mono">รหัส ${vice.student_code}</p>` : ''}
+              </div>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-center text-xs">
+            ${c.vice_head_cert_url
+              ? `<a href="${c.vice_head_cert_url}" target="_blank" class="text-emerald-600 hover:text-emerald-800 font-bold">📄 ดูเกียรติบัตร</a>`
+              : `<span class="text-gray-400">ยังไม่มี</span>`}
+          </td>
+        </tr>
+      `
+    }).join('')
+  }
+
+  const _renderMain = () => {
+    const totalCount = classes.filter(c => {
+      const cat = getCategoryFromRoomName(c.class_name)
+      if (cat !== selectedCategory) return false
+      if (selectedLevel) {
+        const lvl = extractGradeFromName(c.class_name)
+        if (lvl !== selectedLevel) return false
+      }
+      if (selectedRoom && c.class_name !== selectedRoom) return false
+      return true
+    }).length
+
+    if (activeTab === 'manage') {
+      setContent(`
+        <div class="space-y-5 animate-fade">
+          ${_renderHeaderTabs()}
+
+          <!-- Filter & Search Panel -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-4 flex flex-wrap gap-3 items-center justify-between">
+            <div class="flex items-center gap-2 flex-wrap">
+              <select id="hc-filter-category" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[120px]">
+                <option value="สามัญ" ${selectedCategory === 'สามัญ' ? 'selected' : ''}>สามัญ</option>
+                <option value="ศาสนา" ${selectedCategory === 'ศาสนา' ? 'selected' : ''}>ศาสนา</option>
+                <option value="ปวช" ${selectedCategory === 'ปวช' ? 'selected' : ''}>ปวช</option>
+              </select>
+              <input id="hc-search-classes" type="text" placeholder="ค้นหาห้องเรียน..." value="${_esc(searchQ)}"
+                class="border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[180px]" />
+            </div>
+            <span class="text-xs text-gray-400">แสดงทั้งหมด <b class="text-gray-700 font-bold">${totalCount}</b> ห้อง</span>
+          </div>
+
+          <!-- Cards Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="hc-cards-grid">
+            ${_renderCards()}
+          </div>
+        </div>
+      `)
+    } else {
+      setContent(`
+        <div class="space-y-5 animate-fade">
+          ${_renderHeaderTabs()}
+
+          <!-- Printing filters (Aligned with QR screen) -->
+          <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">1. ระบบหลักสูตร</label>
+                <select id="pr-filter-category" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="สามัญ" ${selectedCategory === 'สามัญ' ? 'selected' : ''}>สามัญ</option>
+                  <option value="ศาสนา" ${selectedCategory === 'ศาสนา' ? 'selected' : ''}>ศาสนา</option>
+                  <option value="ปวช" ${selectedCategory === 'ปวช' ? 'selected' : ''}>ปวช</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">2. ระดับชั้น</label>
+                <select id="pr-filter-level" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <!-- เติมแบบไดนามิก -->
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">3. ห้องเรียน</label>
+                <select id="pr-filter-class" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="">-- ทั้งระดับชั้น --</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="pt-2 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
+              <span class="text-xs text-gray-400">พบข้อมูลหัวหน้า/รองหัวหน้าทั้งหมด <b class="text-gray-700">${totalCount}</b> ห้อง</span>
+              <button id="btn-print-leaders-roster"
+                class="px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                ${totalCount === 0 ? 'disabled' : ''}>
+                🖨️ พิมพ์ใบรายชื่อ (${totalCount})
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary Table -->
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 font-semibold uppercase">
+                  <tr>
+                    <th class="px-4 py-3 text-center w-12">ลำดับ</th>
+                    <th class="px-4 py-3 text-center w-24">ห้องเรียน</th>
+                    <th class="px-4 py-3">หัวหน้าห้อง</th>
+                    <th class="px-4 py-3 text-center w-32">เกียรติบัตรหัวหน้า</th>
+                    <th class="px-4 py-3">รองหัวหน้าห้อง</th>
+                    <th class="px-4 py-3 text-center w-32">เกียรติบัตรรอง</th>
+                  </tr>
+                </thead>
+                <tbody id="pr-table-body" class="divide-y divide-gray-100">
+                  ${_renderTable()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `)
+
+      _syncPrintLevels()
+    }
+
+    _bindMainEvents()
+  }
+
+  const _syncPrintLevels = () => {
+    const levelSelect = document.getElementById('pr-filter-level')
+    if (!levelSelect) return
+    const levels = getLevelsForCategory(selectedCategory)
+    levelSelect.innerHTML = `
+      <option value="">-- ทุกระดับชั้น --</option>
+      ${levels.map(l => `<option value="${l}" ${l === selectedLevel ? 'selected' : ''}>${l}</option>`).join('')}
+    `
+    _syncPrintClasses()
+  }
+
+  const _syncPrintClasses = () => {
+    const classSelect = document.getElementById('pr-filter-class')
+    if (!classSelect) return
+    const rooms = getRoomsForCategory(selectedCategory)
+    const filtered = rooms.filter(r => {
+      if (!selectedLevel) return true
+      return extractGradeFromName(r) === selectedLevel
+    })
+
+    classSelect.innerHTML = `
+      <option value="">-- ทั้งระดับชั้น (${filtered.length} ห้อง) --</option>
+      ${filtered.map(r => `<option value="${r}" ${r === selectedRoom ? 'selected' : ''}>ห้อง ${r}</option>`).join('')}
+    `
+  }
+
+  const _bindMainEvents = () => {
+    document.getElementById('tab-manage')?.addEventListener('click', () => {
+      activeTab = 'manage'
+      _renderMain()
+    })
+    document.getElementById('tab-print')?.addEventListener('click', () => {
+      activeTab = 'print'
+      _renderMain()
+    })
+
+    // Management Events
+    document.getElementById('hc-filter-category')?.addEventListener('change', (e) => {
+      selectedCategory = e.target.value
+      _renderMain()
+    })
+    document.getElementById('hc-search-classes')?.addEventListener('input', (e) => {
+      searchQ = e.target.value
+      const grid = document.getElementById('hc-cards-grid')
+      if (grid) grid.innerHTML = _renderCards()
+      _bindEditButtons()
+    })
+    _bindEditButtons()
+
+    // Printing Events
+    document.getElementById('pr-filter-category')?.addEventListener('change', (e) => {
+      selectedCategory = e.target.value
+      selectedLevel = ''
+      selectedRoom = ''
+      _syncPrintLevels()
+      _refreshPrintTable()
+    })
+    document.getElementById('pr-filter-level')?.addEventListener('change', (e) => {
+      selectedLevel = e.target.value
+      selectedRoom = ''
+      _syncPrintClasses()
+      _refreshPrintTable()
+    })
+    document.getElementById('pr-filter-class')?.addEventListener('change', (e) => {
+      selectedRoom = e.target.value
+      _refreshPrintTable()
+    })
+    document.getElementById('btn-print-leaders-roster')?.addEventListener('click', _executePrint)
+  }
+
+  const _refreshPrintTable = () => {
+    const body = document.getElementById('pr-table-body')
+    if (body) body.innerHTML = _renderTable()
+    
+    // update print count on button
+    const totalCount = classes.filter(c => {
+      const cat = getCategoryFromRoomName(c.class_name)
+      if (cat !== selectedCategory) return false
+      if (selectedLevel) {
+        const lvl = extractGradeFromName(c.class_name)
+        if (lvl !== selectedLevel) return false
+      }
+      if (selectedRoom && c.class_name !== selectedRoom) return false
+      return true
+    }).length
+    
+    const printBtn = document.getElementById('btn-print-leaders-roster')
+    if (printBtn) {
+      printBtn.disabled = totalCount === 0
+      printBtn.textContent = `🖨️ พิมพ์ใบรายชื่อ (${totalCount})`
+    }
+  }
+
+  const _bindEditButtons = () => {
+    document.querySelectorAll('.btn-edit-leaders').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = +btn.dataset.id
+        const cls = classes.find(c => c.id === id)
+        if (cls) _openEditModal(cls)
+      })
+    })
+  }
+
+  // ─── Modal Edit Function ──────────────────────────────────────────────────
+  const _openEditModal = (cls) => {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[8000] flex items-center justify-center bg-black/60 p-4 animate-fade'
+    
+    let head = _studentById(cls.head_student_id)
+    let vice = _studentById(cls.vice_head_student_id)
+
+    modal.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <!-- Header -->
+        <div class="px-6 py-4 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between shrink-0">
+          <div>
+            <h3 class="font-bold text-gray-800 text-base">✏️ แก้ไขหัวหน้าและรองหัวหน้าห้อง</h3>
+            <p class="text-xs text-indigo-600 font-semibold mt-0.5">ห้องเรียน ${cls.class_name}</p>
+          </div>
+          <button id="ld-modal-close" class="text-gray-400 hover:text-gray-600 text-xl font-bold p-1">✕</button>
+        </div>
+        
+        <!-- Form Body -->
+        <div class="px-6 py-5 overflow-y-auto space-y-6 flex-1 text-sm">
+          
+          <!-- SECTION 1: Head Student -->
+          <div class="bg-slate-50/50 border border-slate-200/60 rounded-2xl p-4 space-y-3">
+            <h4 class="font-bold text-gray-800 text-xs uppercase tracking-wider text-amber-600 flex items-center gap-1">👑 1. หัวหน้าห้อง (Head Student)</h4>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-1">รหัสนักเรียน 5 หลัก</label>
+              <input type="text" id="ld-head-code-in" placeholder="กรอกรหัส 5 หลักเพื่อค้นหา..." maxlength="5" value="${head?.student_code ?? ''}"
+                class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200" />
+            </div>
+            
+            <!-- Head Student Preview Card -->
+            <div id="ld-head-card" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 min-h-[64px]">
+              ${head ? `
+                ${head.image_url ? `<img src="${head.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`}
+                <div>
+                  <p class="font-bold text-gray-800">${_esc(head.full_name)}</p>
+                  <p class="text-xs text-gray-400 font-mono mt-0.5">รหัส ${head.student_code} · ห้อง ${head.main_room || '—'}</p>
+                </div>
+              ` : `<span class="text-xs text-gray-400 italic">ป้อนรหัส 5 หลักเพื่อตรวจสอบนักเรียน</span>`}
+            </div>
+            
+            <!-- Head Certificate -->
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-gray-500">ลิงก์เกียรติบัตร (รูปภาพ หรือ PDF)</label>
+              <div class="flex gap-2">
+                <input type="text" id="ld-head-cert-in" placeholder="https://..." value="${cls.head_cert_url ?? ''}"
+                  class="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                <label class="px-3 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-semibold text-xs hover:bg-indigo-100 transition cursor-pointer flex items-center shrink-0">
+                  📁 อัปโหลด
+                  <input type="file" id="ld-head-cert-file" class="hidden" accept="image/*,application/pdf" />
+                </label>
+              </div>
+            </div>
+          </div>
+          
+          <!-- SECTION 2: Vice Head Student -->
+          <div class="bg-slate-50/50 border border-slate-200/60 rounded-2xl p-4 space-y-3">
+            <h4 class="font-bold text-gray-800 text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1">🥈 2. รองหัวหน้าห้อง (Vice Head Student)</h4>
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-1">รหัสนักเรียน 5 หลัก</label>
+              <input type="text" id="ld-vice-code-in" placeholder="กรอกรหัส 5 หลักเพื่อค้นหา..." maxlength="5" value="${vice?.student_code ?? ''}"
+                class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
+            
+            <!-- Vice Student Preview Card -->
+            <div id="ld-vice-card" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 min-h-[64px]">
+              ${vice ? `
+                ${vice.image_url ? `<img src="${vice.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`}
+                <div>
+                  <p class="font-bold text-gray-800">${_esc(vice.full_name)}</p>
+                  <p class="text-xs text-gray-400 font-mono mt-0.5">รหัส ${vice.student_code} · ห้อง ${vice.main_room || '—'}</p>
+                </div>
+              ` : `<span class="text-xs text-gray-400 italic">ป้อนรหัส 5 หลักเพื่อตรวจสอบนักเรียน</span>`}
+            </div>
+            
+            <!-- Vice Certificate -->
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-gray-500">ลิงก์เกียรติบัตร (รูปภาพ หรือ PDF)</label>
+              <div class="flex gap-2">
+                <input type="text" id="ld-vice-cert-in" placeholder="https://..." value="${cls.vice_head_cert_url ?? ''}"
+                  class="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                <label class="px-3 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-semibold text-xs hover:bg-indigo-100 transition cursor-pointer flex items-center shrink-0">
+                  📁 อัปโหลด
+                  <input type="file" id="ld-vice-cert-file" class="hidden" accept="image/*,application/pdf" />
+                </label>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+        
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end shrink-0">
+          <button id="ld-btn-cancel" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">ยกเลิก</button>
+          <button id="ld-btn-save" class="btn-primary px-5 py-2 text-sm text-white rounded-xl bg-indigo-600 hover:bg-indigo-700 transition">บันทึกข้อมูล</button>
+        </div>
+      </div>
+    `
+
+    document.body.appendChild(modal)
+
+    let tempHeadId = cls.head_student_id
+    let tempViceId = cls.vice_head_student_id
+
+    const _setHeadCardLoading = () => {
+      document.getElementById('ld-head-card').innerHTML = `<div class="animate-spin text-lg text-indigo-500">⏳</div> <span class="text-xs text-gray-400">กำลังตรวจสอบรหัส...</span>`
+    }
+    const _setViceCardLoading = () => {
+      document.getElementById('ld-vice-card').innerHTML = `<div class="animate-spin text-lg text-indigo-500">⏳</div> <span class="text-xs text-gray-400">กำลังตรวจสอบรหัส...</span>`
+    }
+
+    const _setHeadCardContent = (s) => {
+      const card = document.getElementById('ld-head-card')
+      if (s) {
+        tempHeadId = s.id
+        const img = s.image_url ? `<img src="${s.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`
+        card.innerHTML = `
+          ${img}
+          <div>
+            <p class="font-bold text-gray-800">${_esc(s.full_name)}</p>
+            <p class="text-xs text-gray-400 font-mono mt-0.5">รหัส ${s.student_code} · ห้อง ${s.main_room || '—'}</p>
+          </div>
+        `
+      } else {
+        tempHeadId = null
+        card.innerHTML = `<span class="text-xs text-amber-500 font-semibold">⚠️ ไม่พบข้อมูลนักเรียน หรือป้อนรหัสไม่ถูกต้อง</span>`
+      }
+    }
+
+    const _setViceCardContent = (s) => {
+      const card = document.getElementById('ld-vice-card')
+      if (s) {
+        tempViceId = s.id
+        const img = s.image_url ? `<img src="${s.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`
+        card.innerHTML = `
+          ${img}
+          <div>
+            <p class="font-bold text-gray-800">${_esc(s.full_name)}</p>
+            <p class="text-xs text-gray-400 font-mono mt-0.5">รหัส ${s.student_code} · ห้อง ${s.main_room || '—'}</p>
+          </div>
+        `
+      } else {
+        tempViceId = null
+        card.innerHTML = `<span class="text-xs text-amber-500 font-semibold">⚠️ ไม่พบข้อมูลนักเรียน หรือป้อนรหัสไม่ถูกต้อง</span>`
+      }
+    }
+
+    // Input code events
+    document.getElementById('ld-head-code-in').addEventListener('input', async (e) => {
+      const code = e.target.value.trim()
+      if (code.length === 5) {
+        _setHeadCardLoading()
+        const stu = await getStudentByCode(code).catch(() => null)
+        _setHeadCardContent(stu)
+      } else if (code.length === 0) {
+        tempHeadId = null
+        document.getElementById('ld-head-card').innerHTML = `<span class="text-xs text-gray-400 italic">ป้อนรหัส 5 หลักเพื่อตรวจสอบนักเรียน</span>`
+      }
+    })
+
+    document.getElementById('ld-vice-code-in').addEventListener('input', async (e) => {
+      const code = e.target.value.trim()
+      if (code.length === 5) {
+        _setViceCardLoading()
+        const stu = await getStudentByCode(code).catch(() => null)
+        _setViceCardContent(stu)
+      } else if (code.length === 0) {
+        tempViceId = null
+        document.getElementById('ld-vice-card').innerHTML = `<span class="text-xs text-gray-400 italic">ป้อนรหัส 5 หลักเพื่อตรวจสอบนักเรียน</span>`
+      }
+    })
+
+    // Upload events
+    const _handleUpload = async (fileInput, textUrlInput) => {
+      const file = fileInput.files[0]
+      if (!file) return
+      
+      textUrlInput.disabled = true
+      textUrlInput.value = 'กำลังอัปโหลดไฟล์...'
+      
+      try {
+        const ext = file.name.split('.').pop()
+        const path = `certificates/${cls.id}/${fileInput.id}-${Date.now()}.${ext}`
+        
+        let blob = file
+        // Compress if image
+        if (file.type.startsWith('image/')) {
+          blob = await compressImage(file, { maxWidth: 1600, quality: 0.88 })
+        }
+        
+        const { error } = await supabase.storage
+          .from('system-assets')
+          .upload(path, blob, { upsert: true, contentType: file.type })
+        if (error) throw error
+        
+        const { data } = supabase.storage.from('system-assets').getPublicUrl(path)
+        textUrlInput.value = data.publicUrl
+      } catch (err) {
+        showToast('อัปโหลดล้มเหลว: ' + err.message, 'error')
+        textUrlInput.value = ''
+      } finally {
+        textUrlInput.disabled = false
+      }
+    }
+
+    document.getElementById('ld-head-cert-file').addEventListener('change', () => {
+      _handleUpload(document.getElementById('ld-head-cert-file'), document.getElementById('ld-head-cert-in'))
+    })
+    document.getElementById('ld-vice-cert-file').addEventListener('change', () => {
+      _handleUpload(document.getElementById('ld-vice-cert-file'), document.getElementById('ld-vice-cert-in'))
+    })
+
+    // Cancel / Close
+    const _close = () => modal.remove()
+    document.getElementById('ld-modal-close').onclick = _close
+    document.getElementById('ld-btn-cancel').onclick = _close
+
+    // Save
+    document.getElementById('ld-btn-save').onclick = async () => {
+      const btn = document.getElementById('ld-btn-save')
+      btn.disabled = true
+      btn.textContent = 'กำลังบันทึก...'
+      
+      const headCert = document.getElementById('ld-head-cert-in').value.trim()
+      const viceCert = document.getElementById('ld-vice-cert-in').value.trim()
+
+      try {
+        await updateClassroomLeaders(cls.id, tempHeadId, tempViceId, headCert, viceCert)
+        
+        // update local state
+        cls.head_student_id = tempHeadId
+        cls.vice_head_student_id = tempViceId
+        cls.head_cert_url = headCert
+        cls.vice_head_cert_url = viceCert
+
+        showToast('บันทึกข้อมูลเรียบร้อยแล้ว', 'success')
+        _close()
+        _renderMain()
+      } catch (err) {
+        showToast('เกิดข้อผิดพลาด: ' + err.message, 'error')
+        btn.disabled = false
+        btn.textContent = 'บันทึกข้อมูล'
+      }
+    }
+  }
+
+  // Load and render
+  await _load()
+  _renderMain()
+}
+

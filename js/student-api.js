@@ -471,3 +471,15 @@ export async function saveScannedPrayerRecords(records) {
   if (error) throw error
 }
 
+export async function getStudentClassroomRole(mainRoom) {
+  if (!mainRoom) return null
+  const { data, error } = await supabase
+    .from('classes')
+    .select('id, class_name, head_student_id, vice_head_student_id, head_cert_url, vice_head_cert_url')
+    .eq('class_name', mainRoom)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+
