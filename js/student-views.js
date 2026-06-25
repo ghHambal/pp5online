@@ -2292,18 +2292,36 @@ export async function renderStudentProfile(student, onLogout) {
 
   setContent(`
     <h2 class="font-bold text-gray-800 mb-4">👤 โปรไฟล์ของฉัน</h2>
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-5 mb-4 flex items-center gap-4">
-      <div class="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
-                  flex items-center justify-center text-white text-3xl font-bold border-2 border-white shadow">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center gap-4 relative overflow-hidden">
+      <!-- Specular vertical frame with 3D shadow and sheen -->
+      <div class="relative w-[72px] h-[96px] rounded-2xl overflow-hidden flex-shrink-0 bg-gradient-to-b from-gray-100 to-gray-200 border-2 border-white shadow-[0_8px_16px_rgba(0,0,0,0.12),inset_0_1px_2px_rgba(255,255,255,0.7)] flex items-center justify-center">
+        <!-- Glass sheen overlay for 3D look -->
+        <div class="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/35 pointer-events-none z-10"></div>
+        <div class="absolute inset-0 border border-black/5 rounded-2xl pointer-events-none z-20"></div>
+        
         ${student.image_url
-          ? `<img src="${student.image_url}" class="w-full h-full object-cover"/>`
-          : (student.full_name??'น').charAt(0)}
+          ? `<img src="${student.image_url}" class="w-full h-full object-cover relative z-0"/>`
+          : `<span class="text-white text-3xl font-bold bg-gradient-to-tr from-emerald-400 to-teal-400 w-full h-full flex items-center justify-center select-none relative z-0">
+               ${(student.full_name??'น').charAt(0)}
+             </span>`
+        }
       </div>
-      <div>
-        <p class="font-bold text-gray-800 text-lg">${student.full_name}</p>
-        <p class="text-sm text-gray-400 mt-0.5">รหัส ${student.student_code}</p>
-        <p class="text-sm text-gray-500 mt-0.5">ห้อง ${student.main_room ?? '—'}</p>
+      <div class="flex-1 min-w-0">
+        <p class="font-bold text-gray-800 text-base leading-snug truncate">${student.full_name}</p>
+        <p class="text-xs text-gray-400 mt-1">รหัส ${student.student_code}</p>
+        <p class="text-xs text-gray-500 mt-0.5">ห้อง ${student.main_room ?? '—'}</p>
       </div>
+      <!-- QR Code trigger icon inside card -->
+      <button id="btn-show-my-qr" 
+        class="w-12 h-12 rounded-2xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-600 flex items-center justify-center shadow-sm border border-emerald-100/50 transition-all flex-shrink-0"
+        title="แสดง QR Code ของฉัน">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M3 3h6v6H3V3zm2 2v2h2V5H5z"/>
+          <path d="M15 3h6v6h-6V3zm2 2v2h2V5h-2z"/>
+          <path d="M3 15h6v6H3v-6zm2 2v2h2v-2H5z"/>
+          <path d="M10 3h2v2h-2V3zm0 4h2v2h-2V7zm3 0h2v2h-2V7zm0-4h2v2h-2V3zm5 8h2v2h-2v-2zm-3 2h2v2h-2v-2zm3 3h2v2h-2v-2zm-3 3h2v2h-2v-2zm-3-3h2v2h-2v-2zm-3 3h2v2h-2v-2zm6-3h2v2h-2v-2zm3-3h2v2h-2v-2z"/>
+        </svg>
+      </button>
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-6">
@@ -2345,12 +2363,6 @@ export async function renderStudentProfile(student, onLogout) {
         <div id="stu-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
       </div>
     </div>
-
-    <button id="btn-show-my-qr"
-      class="w-full mb-4 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm
-             shadow-md shadow-emerald-200/60 transition flex items-center justify-center gap-2">
-      🎫 แสดง QR Code ของฉัน
-    </button>
 
     <button id="stu-logout-btn"
       class="w-full py-3.5 rounded-2xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold text-sm
