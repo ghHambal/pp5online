@@ -1872,9 +1872,8 @@ export async function renderStudents() {
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
                 ${s.image_url
-                  ? `<img src="${s.image_url}" class="w-8 h-8 rounded-full object-cover flex-shrink-0" />`
-                  : `<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-400 to-pink-400
-                                text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                  ? `<img src="${s.image_url}" class="student-avatar-premium" />`
+                  : `<div class="student-avatar-premium-placeholder text-white bg-gradient-to-tr from-purple-400 to-pink-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
                        ${(s.full_name??'?').charAt(0)}</div>`}
                 <span class="font-semibold text-gray-800 text-sm">${s.full_name??'—'}</span>
               </div>
@@ -11650,12 +11649,12 @@ export async function renderClassroomLeaders() {
       const vice = _studentById(c.vice_head_student_id)
 
       const headImg = head?.image_url
-        ? `<img src="${head.image_url}" class="w-10 h-14 object-cover rounded border border-gray-200 shadow-sm" />`
-        : `<div class="w-10 h-14 bg-gray-50 rounded border border-gray-100 flex items-center justify-center text-gray-400 text-lg">👤</div>`
+        ? `<img src="${head.image_url}" class="w-10 h-14 object-cover rounded border border-gray-200 shadow-sm student-avatar-premium" />`
+        : `<div class="w-10 h-14 bg-gray-50 rounded border border-gray-100 flex items-center justify-center text-gray-400 text-lg student-avatar-premium-placeholder">👤</div>`
 
       const viceImg = vice?.image_url
-        ? `<img src="${vice.image_url}" class="w-10 h-14 object-cover rounded border border-gray-200 shadow-sm" />`
-        : `<div class="w-10 h-14 bg-gray-50 rounded border border-gray-100 flex items-center justify-center text-gray-400 text-lg">👤</div>`
+        ? `<img src="${vice.image_url}" class="w-10 h-14 object-cover rounded border border-gray-200 shadow-sm student-avatar-premium" />`
+        : `<div class="w-10 h-14 bg-gray-50 rounded border border-gray-100 flex items-center justify-center text-gray-400 text-lg student-avatar-premium-placeholder">👤</div>`
 
       return `
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow transition p-5 flex flex-col justify-between">
@@ -11723,12 +11722,12 @@ export async function renderClassroomLeaders() {
       const vice = _studentById(c.vice_head_student_id)
 
       const headImg = head?.image_url
-        ? `<img src="${head.image_url}" class="w-8 h-8 rounded-full object-cover border" />`
-        : `<div class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border text-gray-400 text-xs">👤</div>`
+        ? `<img src="${head.image_url}" class="student-avatar-premium" />`
+        : `<div class="student-avatar-premium-placeholder text-gray-400 text-xs">👤</div>`
 
       const viceImg = vice?.image_url
-        ? `<img src="${vice.image_url}" class="w-8 h-8 rounded-full object-cover border" />`
-        : `<div class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center border text-gray-400 text-xs">👤</div>`
+        ? `<img src="${vice.image_url}" class="student-avatar-premium" />`
+        : `<div class="student-avatar-premium-placeholder text-gray-400 text-xs">👤</div>`
 
       return `
         <tr class="hover:bg-gray-50/50 transition border-b border-gray-100 last:border-0">
@@ -12081,7 +12080,7 @@ export async function renderClassroomLeaders() {
             <!-- Head Student Preview Card -->
             <div id="ld-head-card" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 min-h-[64px]">
               ${head ? `
-                ${head.image_url ? `<img src="${head.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`}
+                ${head.image_url ? `<img src="${head.image_url}" class="w-10 h-14 object-cover rounded student-avatar-premium" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400 student-avatar-premium-placeholder">👤</div>`}
                 <div>
                   <p class="font-bold text-gray-800">${_esc(head.full_name)}</p>
                   <p class="text-xs text-gray-400 font-mono mt-0.5">รหัส ${head.student_code} · ห้อง ${head.main_room || '—'}</p>
@@ -12115,7 +12114,7 @@ export async function renderClassroomLeaders() {
             <!-- Vice Student Preview Card -->
             <div id="ld-vice-card" class="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 min-h-[64px]">
               ${vice ? `
-                ${vice.image_url ? `<img src="${vice.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`}
+                ${vice.image_url ? `<img src="${vice.image_url}" class="w-10 h-14 object-cover rounded student-avatar-premium" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400 student-avatar-premium-placeholder">👤</div>`}
                 <div>
                   <p class="font-bold text-gray-800">${_esc(vice.full_name)}</p>
                   <p class="text-xs text-gray-400 font-mono mt-0.5">รหัส ${vice.student_code} · ห้อง ${vice.main_room || '—'}</p>
@@ -12172,7 +12171,7 @@ export async function renderClassroomLeaders() {
       const card = document.getElementById('ld-head-card')
       if (s) {
         tempHeadId = s.id
-        const img = s.image_url ? `<img src="${s.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`
+        const img = s.image_url ? `<img src="${s.image_url}" class="w-10 h-14 object-cover rounded student-avatar-premium" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400 student-avatar-premium-placeholder">👤</div>`
         card.innerHTML = `
           ${img}
           <div>
@@ -12190,7 +12189,7 @@ export async function renderClassroomLeaders() {
       const card = document.getElementById('ld-vice-card')
       if (s) {
         tempViceId = s.id
-        const img = s.image_url ? `<img src="${s.image_url}" class="w-10 h-14 object-cover rounded" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400">👤</div>`
+        const img = s.image_url ? `<img src="${s.image_url}" class="w-10 h-14 object-cover rounded student-avatar-premium" />` : `<div class="w-10 h-14 bg-gray-50 rounded flex items-center justify-center text-gray-400 student-avatar-premium-placeholder">👤</div>`
         card.innerHTML = `
           ${img}
           <div>

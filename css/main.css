@@ -137,3 +137,42 @@ main.overflow-y-auto,
 .border-emerald-400 {
   border-color: var(--theme-primary-ring) !important;
 }
+
+/* ─── Premium Student Photo Framework ────────────────────────────────────────── */
+/* Targets all student photos fetched from supabase storage and any with student-avatar class */
+img[src*="student-photos"],
+.student-avatar,
+.stu-img {
+  aspect-ratio: 3 / 4 !important;
+  width: 32px;
+  height: 42px;
+  object-fit: cover !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(15, 23, 42, 0.15) !important;
+  /* เงาด้านนอกช่วยเพิ่มมิติ และเงาด้านใน (inset) เลียนแบบแสงตกกระทบขอบบน */
+  box-shadow: 
+    0 3px 6px rgba(15, 23, 42, 0.15), 
+    0 1px 3px rgba(15, 23, 42, 0.1), 
+    inset 0 1px 0px rgba(255, 255, 255, 0.45) !important;
+  background-color: #f1f5f9 !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+}
+
+/* For student placeholders */
+.student-avatar-placeholder,
+.stu-img-placeholder {
+  aspect-ratio: 3 / 4 !important;
+  width: 32px;
+  height: 42px;
+  border-radius: 8px !important;
+  border: 1px dashed rgba(15, 23, 42, 0.2) !important;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9) !important;
+  color: #94a3b8 !important;
+  font-weight: bold !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
