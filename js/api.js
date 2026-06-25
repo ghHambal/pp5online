@@ -511,12 +511,7 @@ export async function saveAttendanceCell(classId, studentId, sessionNumber, chec
 }
 
 export async function getClassAttendanceAll(classId) {
-  const { data, error } = await supabase
-    .from('attendances')
-    .select('student_id, session_number, status')
-    .eq('class_id', classId)
-  if (error) throw error
-  return data ?? []
+  return _fetchPaged('attendances', 'student_id, session_number, status', q => q.eq('class_id', classId))
 }
 
 export async function getAttendanceByDate(classId, date) {
@@ -2234,13 +2229,7 @@ export async function getClassForDoc(classId) {
 }
 
 export async function getClassAttendanceAllFull(classId) {
-  const { data, error } = await supabase
-    .from('attendances')
-    .select('student_id, session_number, check_date, status')
-    .eq('class_id', classId)
-    .order('session_number')
-  if (error) throw error
-  return data ?? []
+  return _fetchPaged('attendances', 'student_id, session_number, check_date, status', q => q.eq('class_id', classId).order('session_number'))
 }
 
 export async function getReadingScoresForClass(studentIds, academicYear, semester) {
