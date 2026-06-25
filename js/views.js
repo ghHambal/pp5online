@@ -6734,6 +6734,7 @@ export async function renderPrayerAdmin(teacher) {
     `
 
     let recordsData = []
+    let selectedOperator = ''
 
     const _locLabel = (loc) => {
       const mapping = {
@@ -6792,6 +6793,10 @@ export async function renderPrayerAdmin(teacher) {
 
       const filtered = recordsData.filter(rec => {
         if (locVal && rec.location !== locVal) return false
+        if (selectedOperator) {
+          const opName = rec.scanned_by || rec.teachers?.full_name || 'บันทึกมือ (เดิม)'
+          if (opName !== selectedOperator) return false
+        }
         if (searchVal) {
           const studentName = (rec.students?.full_name || '').toLowerCase()
           const studentCode = (rec.students?.student_code || '').toLowerCase()
@@ -6831,10 +6836,25 @@ export async function renderPrayerAdmin(teacher) {
           opsWrap.innerHTML = `<span class="text-xs text-gray-400">ยังไม่มีผู้ทำการเช็คชื่อในวันที่เลือก</span>`
         } else {
           opsWrap.innerHTML = Array.from(opsSet).map(op => {
+            const isActive = selectedOperator === op
             const isTch = op.includes('(ครู)') || op.includes('ครู')
-            const bgCl = isTch ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-            return `<span class="px-2.5 py-1 rounded-lg text-xs font-semibold ${bgCl}">${op}</span>`
+            const bgCl = isTch
+              ? (isActive
+                  ? 'bg-indigo-100 text-indigo-900 border-2 border-indigo-500 font-bold shadow-sm'
+                  : 'bg-indigo-50/70 text-indigo-700 border border-indigo-100 hover:bg-indigo-100/60 cursor-pointer')
+              : (isActive
+                  ? 'bg-emerald-100 text-emerald-950 border-2 border-emerald-500 font-bold shadow-sm'
+                  : 'bg-emerald-50/70 text-emerald-700 border border-emerald-100 hover:bg-emerald-100/60 cursor-pointer')
+            return `<span class="op-filter-chip px-2.5 py-1 rounded-lg text-xs font-semibold select-none transition-all duration-150 active:scale-95 cursor-pointer ${bgCl}" data-op="${op}">${isActive ? '✓ ' : ''}${op}</span>`
           }).join('')
+
+          opsWrap.querySelectorAll('.op-filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+              const op = chip.dataset.op
+              selectedOperator = selectedOperator === op ? '' : op
+              _renderHistory()
+            })
+          })
         }
       }
 
@@ -6912,7 +6932,10 @@ export async function renderPrayerAdmin(teacher) {
 
     setTimeout(() => {
       document.getElementById('btn-hist-refresh')?.addEventListener('click', _fetchHistory)
-      document.getElementById('hist-date-input')?.addEventListener('change', _fetchHistory)
+      document.getElementById('hist-date-input')?.addEventListener('change', () => {
+        selectedOperator = ''
+        _fetchHistory()
+      })
       document.getElementById('hist-loc-filter')?.addEventListener('change', _renderHistory)
 
       const searchIn = document.getElementById('hist-search-input')
