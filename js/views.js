@@ -30,7 +30,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
-         updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle } from './api.js'
+         updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -11886,30 +11886,10 @@ export async function renderClassroomLeaders() {
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 z-[8000] flex items-center justify-center bg-black/60 p-4 animate-fade'
     
-    const _buildListHTML = (q = '') => {
-      const query = q.trim().toLowerCase()
-      const filtered = classes.filter(c => !query || c.class_name.toLowerCase().includes(query))
-      if (filtered.length === 0) {
-        return `<div class="text-center py-8 text-gray-400 text-sm">ไม่พบห้องเรียน</div>`
-      }
-      return filtered.map(c => `
-        <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-          <div>
-            <span class="font-bold text-gray-800 text-sm">ห้อง ${_esc(c.class_name)}</span>
-            <span class="block text-[10px] text-gray-400">
-              ${c.head_student_id || c.vice_head_student_id ? '🟢 มีข้อมูลผู้นำ' : '⚪ ยังไม่มีข้อมูล'}
-            </span>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" class="csm-toggle sr-only peer" data-room="${_esc(c.class_name)}" ${c.show_cert ? 'checked' : ''}>
-            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-          </label>
-        </div>
-      `).join('')
-    }
+    const isAnyEnabled = classes.some(c => c.show_cert)
 
     modal.innerHTML = `
-      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]">
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
         <!-- Header -->
         <div class="px-6 py-4 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between shrink-0">
           <div>
@@ -11919,15 +11899,16 @@ export async function renderClassroomLeaders() {
           <button id="csm-modal-close" class="text-gray-400 hover:text-gray-600 text-xl font-bold p-1">✕</button>
         </div>
         
-        <!-- Search bar -->
-        <div class="px-6 pt-4 shrink-0">
-          <input type="text" id="csm-search-input" placeholder="ค้นหาห้องเรียน..." 
-            class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-        </div>
-
-        <!-- Scrollable List -->
-        <div class="px-6 py-4 overflow-y-auto flex-1 divide-y divide-gray-50" id="csm-list-container">
-          ${_buildListHTML()}
+        <!-- Toggle Content -->
+        <div class="px-6 py-8 flex flex-col items-center justify-center gap-4">
+          <div class="text-center">
+            <span class="block font-bold text-gray-800 text-base" id="csm-status-text">...</span>
+            <span class="block text-xs text-gray-400 mt-1">สวิตช์ควบคุมการแสดงเกียรติบัตรสำหรับทุกห้องเรียนทั้งโรงเรียน</span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer scale-125 my-2">
+            <input type="checkbox" id="csm-global-toggle" class="sr-only peer" ${isAnyEnabled ? 'checked' : ''}>
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+          </label>
         </div>
         
         <!-- Footer -->
@@ -11939,36 +11920,34 @@ export async function renderClassroomLeaders() {
     
     document.body.appendChild(modal)
 
-    const listContainer = modal.querySelector('#csm-list-container')
-    const searchInput = modal.querySelector('#csm-search-input')
+    const toggleInput = modal.querySelector('#csm-global-toggle')
+    const statusText = modal.querySelector('#csm-status-text')
 
-    const _bindToggles = () => {
-      listContainer.querySelectorAll('.csm-toggle').forEach(chk => {
-        chk.addEventListener('change', async () => {
-          const roomName = chk.dataset.room
-          const showCert = chk.checked
-          chk.disabled = true
-          try {
-            await updateClassroomCertToggle(roomName, showCert)
-            const target = classes.find(c => c.class_name === roomName)
-            if (target) target.show_cert = showCert
-            showToast(`อัปเดตห้อง ${roomName} เรียบร้อยแล้ว`, 'success')
-          } catch (err) {
-            showToast('บันทึกผิดพลาด: ' + err.message, 'error')
-            chk.checked = !showCert
-          } finally {
-            chk.disabled = false
-          }
-        })
-      })
+    const updateStatusText = (checked) => {
+      statusText.textContent = checked ? '🟢 แสดงเกียรติบัตร (ทั้งโรงเรียน)' : '🔴 ซ่อนเกียรติบัตร (ทั้งโรงเรียน)'
     }
 
-    searchInput.addEventListener('input', (e) => {
-      listContainer.innerHTML = _buildListHTML(e.target.value)
-      _bindToggles()
-    })
+    updateStatusText(isAnyEnabled)
 
-    _bindToggles()
+    toggleInput.addEventListener('change', async () => {
+      const showCert = toggleInput.checked
+      toggleInput.disabled = true
+      statusText.textContent = 'กำลังบันทึก...'
+      try {
+        await updateAllClassroomCertsToggle(showCert)
+        classes.forEach(c => {
+          c.show_cert = showCert
+        })
+        updateStatusText(showCert)
+        showToast(showCert ? 'เปิดแสดงเกียรติบัตรทั้งโรงเรียนแล้ว' : 'ปิดการแสดงเกียรติบัตรทั้งโรงเรียนแล้ว', 'success')
+      } catch (err) {
+        showToast('บันทึกผิดพลาด: ' + err.message, 'error')
+        toggleInput.checked = !showCert
+        updateStatusText(!showCert)
+      } finally {
+        toggleInput.disabled = false
+      }
+    })
 
     const _close = () => modal.remove()
     modal.querySelector('#csm-modal-close').onclick = _close

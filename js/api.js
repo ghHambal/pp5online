@@ -243,6 +243,14 @@ export async function updateClassroomCertToggle(className, showCert) {
   if (error) throw error
 }
 
+export async function updateAllClassroomCertsToggle(showCert) {
+  const { error } = await supabase
+    .from('classroom_leaders')
+    .update({ show_cert: showCert })
+    .neq('class_name', '')
+  if (error) throw error
+}
+
 // ─── Students ─────────────────────────────────────────────────────────────────
 export async function getStudents() {
   return _fetchAllStudents(
