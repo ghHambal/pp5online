@@ -6310,8 +6310,8 @@ export async function renderPrayerAdmin(teacher) {
                 <td class="${stM} px-2" style="left:96px;min-width:${nameW}px">
                   <div class="flex items-center gap-1.5 py-0.5">
                     ${s.image_url
-                      ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0"/>`
-                      : `<div class="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0 text-xs">👤</div>`}
+                      ? `<img src="${s.image_url}" class="student-avatar-premium w-6 h-8" />`
+                      : `<div class="student-avatar-premium-placeholder w-6 h-8 text-[10px]">👤</div>`}
                     <span class="text-gray-800 text-xs truncate max-w-[110px]">${s.full_name??'—'}</span>
                   </div>
                 </td>
@@ -6558,8 +6558,8 @@ export async function renderPrayerAdmin(teacher) {
                   <td class="px-3 py-2">
                     <div class="flex items-center gap-2">
                       ${s.image_url
-                        ? `<img src="${s.image_url}" class="w-8 h-8 rounded-full object-cover flex-shrink-0"/>`
-                        : `<div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">👤</div>`}
+                        ? `<img src="${s.image_url}" class="student-avatar-premium" />`
+                        : `<div class="student-avatar-premium-placeholder text-xs">👤</div>`}
                       <span class="text-gray-800 truncate max-w-[120px]">${s.full_name??'—'}</span>
                     </div>
                   </td>
@@ -6875,8 +6875,8 @@ export async function renderPrayerAdmin(teacher) {
 
         const student = rec.students
         const photoHTML = student?.image_url
-          ? `<img src="${student.image_url}" class="w-8 h-8 rounded-full object-cover border border-gray-100 shadow-sm flex-shrink-0" />`
-          : `<div class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 font-bold text-xs flex items-center justify-center flex-shrink-0">${(student?.full_name || '?').charAt(0)}</div>`
+          ? `<img src="${student.image_url}" class="student-avatar-premium" />`
+          : `<div class="student-avatar-premium-placeholder text-indigo-600 bg-indigo-50 flex items-center justify-center font-bold text-xs flex-shrink-0">${(student?.full_name || '?').charAt(0)}</div>`
 
         const studentLabel = student
           ? `<div class="flex items-center gap-2.5">
@@ -7212,8 +7212,8 @@ export async function renderPrayerAdmin(teacher) {
                     <td class="px-3 py-2">
                       <div class="flex items-center gap-2">
                         ${s.image_url
-                          ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
-                          : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
+                          ? `<img src="${s.image_url}" class="student-avatar-premium w-6 h-8" />`
+                          : `<div class="student-avatar-premium-placeholder w-6 h-8 text-[10px]">👤</div>`
                         }
                         <span class="font-medium text-gray-800">${s.full_name}</span>
                       </div>
@@ -7394,9 +7394,13 @@ export async function renderPrayerAdmin(teacher) {
         previewContainer.classList.remove('hidden')
         previewCards.innerHTML = _foundScanners.map(s => `
           <div class="bg-white rounded-xl border border-indigo-100 p-3 flex items-center gap-3">
-            ${s.image_url
-              ? `<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
-              : `<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">${s.type === 'teacher' ? '👨‍🏫' : '👤'}</div>`
+            ${s.type === 'student'
+              ? (s.image_url
+                  ? `<img src="${s.image_url}" class="student-avatar-premium w-10 h-14" />`
+                  : `<div class="student-avatar-premium-placeholder w-10 h-14 bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs flex-shrink-0">👤</div>`)
+              : (s.image_url
+                  ? `<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
+                  : `<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">👨‍🏫</div>`)
             }
             <div class="min-w-0">
               <p class="font-bold text-gray-800 text-xs truncate">

@@ -142,6 +142,7 @@ main.overflow-y-auto,
 /* Targets all student photos fetched from supabase storage and any with student-avatar class */
 img[src*="student-photos"],
 .student-avatar,
+.student-avatar-premium,
 .stu-img {
   aspect-ratio: 3 / 4 !important;
   width: 32px;
@@ -161,6 +162,7 @@ img[src*="student-photos"],
 
 /* For student placeholders */
 .student-avatar-placeholder,
+.student-avatar-premium-placeholder,
 .stu-img-placeholder {
   aspect-ratio: 3 / 4 !important;
   width: 32px;
@@ -174,5 +176,12 @@ img[src*="student-photos"],
   align-items: center !important;
   justify-content: center !important;
   flex-shrink: 0 !important;
+}
+
+/* Ensure the student photo in the standalone prayer monitor is not shrunk */
+#student-photo {
+  width: 100% !important;
+  height: 100% !important;
+  aspect-ratio: auto !important;
 }
 
