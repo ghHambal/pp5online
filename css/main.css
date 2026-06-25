@@ -172,9 +172,9 @@ img[src*="student-photos"],
   background: linear-gradient(135deg, #f8fafc, #f1f5f9) !important;
   color: #94a3b8 !important;
   font-weight: bold !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0 !important;
 }
 
