@@ -1,3 +1,5 @@
+import { APP_VERSION } from './version.js'
+
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
   const colors = {
@@ -650,5 +652,94 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
       _renderChips()
       if (_open) _renderList(searchEl.value.trim())
     },
+  }
+}
+
+// ─── Version Changelogs List ────────────────────────────────────────────────
+const CHANGELOGS = {
+  '10.17.70': [
+    '🔑 เพิ่มระบบกู้คืนและรีเซ็ทรหัสผ่านสำหรับนักเรียน ผ่านการกรอกข้อมูลยืนยันตัวตน และอีเมลจริงสำหรับรับลิงก์กู้คืน',
+    '🔒 เพิ่มเมนูเปลี่ยนรหัสผ่านในหน้ารายละเอียดโปรไฟล์ของนักเรียน เพื่อความสะดวกและปลอดภัยโดยไม่ต้องล็อกเอาต์',
+    '🎨 ปรับปรุงดีไซน์การ์ดข้อมูลและรูปภาพนักเรียน: ออกแบบกรอบรูปสี่เหลี่ยมแนวตั้งขอบมนที่มีแสงเงาสะท้อนแบบ 3D และย้ายปุ่ม QR Code เข้าไปอยู่ในช่องการ์ดให้กระชับสวยงามยิ่งขึ้น'
+  ],
+  '10.17.65': [
+    '👑 ปรับปรุงระบบจัดการผู้นำห้องเรียน แยกตารางข้อมูล ป้องกันการบันทึกห้องซ้ำ',
+    '🔑 เพิ่มตำแหน่ง "ผู้ดูแลหัวหน้า/รองหัวหน้า" (classroom_leaders_admin) พร้อมข้ามข้อจำกัดฐานข้อมูล',
+    '📄 เพิ่มหน้า Preview แบบ A4 ก่อนพิมพ์ใบรายชื่อ พร้อมคอลัมน์หมายเหตุแทนการแสดงเกียรติบัตร',
+    '⚙️ ปรับปรุงระบบเปิด-ปิดแสดงเกียรติบัตร เป็นสวิตช์เดียวเพื่อปิดหรือแสดงผลทั้งโรงเรียนพร้อมกัน',
+    '🎨 เพิ่มระบบพรีวิวรูปเล่มเต็มหน้าจอก่อนพิมพ์สีนักเรียน และเพิ่มรูปถ่ายนักเรียนในตารางจัดการสีนักเรียน',
+    '🎨 ปรับตารางพิมพ์รายชื่อสีนักเรียน: นำวงกลมสีออก และปล่อยคอลัมน์ไซส์เสื้อให้ว่างหากไม่มีข้อมูล',
+    '📸 ปรับปรุงดีไซน์รูปถ่ายนักเรียนทุกจุดในระบบ: ให้เป็นสี่เหลี่ยมแนวตั้ง ขอบมน พร้อมเอฟเฟกต์มิติเงาและแสงขอบตกกระทบ',
+    '🔒 แก้ไขบั๊กการดึงข้อมูลการเช็คชื่อห้องเรียน (getClassAttendanceAll): ปรับปรุงให้ดึงข้อมูลแบบแบ่งหน้าเพื่อรองรับการเช็คชื่อรายคาบรวมเกิน 1,000 แถว ป้องกันไม่ให้ประวัติการเช็คชื่อรายคาบสูญหาย'
+  ],
+  '10.17.38': [
+    '🔑 เพิ่มตัวเลือกสลับโหมดบันทึก "อูโซร 🟣" เฉพาะนักเรียนหญิงและคุณครู พร้อมระบบป้องกันห้ามบันทึกอูโซรสำหรับนักเรียนชาย',
+    '📅 เพิ่มการกำหนดวันเวรรับผิดชอบรายบุคคล (อาทิตย์ – พฤหัสบดี) ในระบบแอดมิน เพื่อจำกัดสิทธิ์แกนนำตามวันจริง'
+  ],
+  '10.17.37': [
+    '🔑 ย้ายการตั้งค่าช่วงเวลาสแกนละหมาดไปไว้ในแท็บมอบสิทธิ์สแกนเนอร์ และเพิ่มปุ่มกำหนดสิทธิ์รายนักเรียนเป็นทั่วไป/ขยายเวลา'
+  ],
+  '10.17.36': [
+    '⏱️ เพิ่มการตั้งค่าช่วงเวลาเปิดระบบสแกนละหมาดจากหน้าแอดมิน พร้อมสิทธิ์ขยายเวลาสำหรับประธาน/รองประธานถึงเวลาที่กำหนด',
+    '🔴 เพิ่มเวลานับถอยหลังในหน้าสแกน พร้อมขอบแจ้งเตือนสีแดงเมื่อใกล้หมดเวลา และให้ยกเลิกรายการที่สแกนแล้วได้จากทุกแถวในประวัติ'
+  ]
+}
+
+// ─── Check and Show Changelog Pop-up for Admin/Teacher ─────────────────────
+export function checkAndShowChangelog(userId, forceShow = false) {
+  const currentVersion = APP_VERSION
+  const lastVersion = localStorage.getItem(`last_seen_version_adm_${userId}`)
+  
+  if (forceShow || lastVersion !== currentVersion) {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6'
+    
+    let changelogHTML = ''
+    const versions = Object.keys(CHANGELOGS).sort().reverse()
+    
+    versions.forEach(v => {
+      if (forceShow || !lastVersion || v > lastVersion || v === currentVersion) {
+        changelogHTML += `
+          <div class="mb-4 last:mb-0">
+            <h4 class="font-bold text-indigo-600 text-xs tracking-wider uppercase mb-1.5">เวอร์ชัน v${v}</h4>
+            <ul class="text-xs space-y-1.5 list-none pl-0">
+              ${CHANGELOGS[v].map(item => `<li class="flex items-start gap-2 text-gray-700 font-semibold"><span class="text-indigo-500">✦</span><span>${item}</span></li>`).join('')}
+            </ul>
+          </div>`
+      }
+    })
+    
+    modal.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-fade" style="animation: ui-pop-in .25s ease-out">
+        <div class="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center mb-4 border border-indigo-100 text-2xl shadow-sm">
+          ✨
+        </div>
+        <h3 class="font-extrabold text-gray-800 text-base mb-1">มีอะไรใหม่ในเวอร์ชันนี้!</h3>
+        <p class="text-xs text-gray-400 mb-4 font-medium">รายการปรับปรุงและฟีเจอร์ใหม่สำหรับผู้ดูแลระบบและคุณครู</p>
+        
+        <div class="bg-gray-50 border border-gray-100 rounded-2xl p-4 mb-5 max-h-60 overflow-y-auto text-left">
+          ${changelogHTML || '<p class="text-xs text-gray-400 text-center">ไม่มีการเปลี่ยนแปลงล่าสุด</p>'}
+        </div>
+        
+        <button id="btn-changelog-close" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-200/60 transition active:scale-95">
+          รับทราบและเริ่มใช้งาน
+        </button>
+      </div>
+      <style>
+        @keyframes ui-pop-in { from { opacity: 0; transform: scale(0.9) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+      </style>`
+      
+    document.body.appendChild(modal)
+    
+    const closeBtn = modal.querySelector('#btn-changelog-close')
+    const dismissModal = () => {
+      modal.remove()
+      localStorage.setItem(`last_seen_version_adm_${userId}`, currentVersion)
+    }
+    
+    closeBtn.addEventListener('click', dismissModal)
+    modal.addEventListener('click', e => {
+      if (e.target === modal) dismissModal()
+    })
   }
 }

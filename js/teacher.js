@@ -1,5 +1,5 @@
 import { supabase }            from './supabase.js'
-import { showToast, showPageLoader, injectFeedbackWidget } from './ui.js'
+import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
@@ -2630,7 +2630,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const verEl = document.getElementById('app-version')
-  if (verEl) verEl.textContent = `v${APP_VERSION}`
+  if (verEl) {
+    verEl.textContent = `v${APP_VERSION}`
+    verEl.classList.add('cursor-pointer', 'hover:underline')
+    const userId = _teacher?.profile_id || (await supabase.auth.getSession()).data.session?.user?.id
+    if (userId) {
+      verEl.addEventListener('click', () => checkAndShowChangelog(userId, true))
+    }
+  }
+
+  if (!isImpersonating && _teacher?.profile_id) {
+    checkAndShowChangelog(_teacher.profile_id)
+  }
 
   // teacher-nav event (from supervisor dashboard)
   window.addEventListener('teacher-nav', async e => {

@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { showToast, showPageLoader, setButtonLoading } from './ui.js'
+import { showToast, showPageLoader, setButtonLoading, checkAndShowChangelog } from './ui.js'
 import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTeacherTable,
          renderSettings, renderImport, renderSubjects, renderSubjectTable, renderCurriculum,
          renderDepartments, renderDeptTable, renderPeriods,
@@ -655,7 +655,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   await applyThemeForRole('admin')
 
   const verEl = document.getElementById('app-version')
-  if (verEl) verEl.textContent = `v${APP_VERSION}`
+  if (verEl) {
+    verEl.textContent = `v${APP_VERSION}`
+    verEl.classList.add('cursor-pointer', 'hover:underline')
+    verEl.addEventListener('click', () => checkAndShowChangelog(session.user.id, true))
+  }
+
+  if (session?.user?.id) {
+    checkAndShowChangelog(session.user.id)
+  }
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 
