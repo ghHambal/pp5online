@@ -9159,6 +9159,182 @@ export async function renderHouseColors() {
   const _countByColor = (name) => students.filter(s => s.house_color === name).length
   const _countUnassigned = () => students.filter(s => !s.house_color).length
 
+  const _executeRosterPrint = (list) => {
+    let styleEl = document.getElementById('hc-print-roster-styles')
+    if (!styleEl) {
+      styleEl = document.createElement('style')
+      styleEl.id = 'hc-print-roster-styles'
+      document.head.appendChild(styleEl)
+    }
+    styleEl.textContent = `
+      @media print {
+        body > * { display: none !important; }
+        #hc-print-roster-area {
+          display: block !important;
+          position: absolute;
+          left: 0; top: 0;
+          width: 100% !important;
+          padding: 0 !important; margin: 0 !important;
+          background: white !important;
+          color: black !important;
+          font-family: Sarabun, sans-serif !important;
+        }
+        #hc-print-roster-area * { visibility: visible; }
+        .roster-title {
+          font-size: 18px;
+          font-weight: bold;
+          text-align: center;
+          margin-bottom: 15px;
+        }
+        .roster-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        .roster-table th, .roster-table td {
+          border: 1px solid #000000 !important;
+          padding: 6px 8px !important;
+          vertical-align: middle;
+        }
+        .roster-table th {
+          background-color: #f3f4f6 !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+          font-size: 12px;
+          font-weight: bold;
+        }
+        .roster-table td {
+          font-size: 12px;
+        }
+        .stu-info-wrap {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .stu-img {
+          width: 40px;
+          height: 52px;
+          border-radius: 6px;
+          border: 1px solid #ccc;
+          object-fit: cover;
+        }
+        .stu-img-placeholder {
+          width: 40px;
+          height: 52px;
+          border-radius: 6px;
+          border: 1px solid #ccc;
+          background: #f3f4f6;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          color: #9ca3af;
+        }
+        .stu-details {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .stu-name {
+          font-size: 12px;
+          font-weight: bold;
+        }
+        .stu-meta {
+          font-size: 10px;
+          color: #4b5563;
+        }
+        .color-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-weight: 600;
+        }
+        .color-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          border: 1px solid #000;
+        }
+      }
+    `
+
+    const printArea = document.createElement('div')
+    printArea.id = 'hc-print-roster-area'
+    printArea.className = 'hidden'
+    document.body.appendChild(printArea)
+
+    let filterDesc = 'ใบรายชื่อนักเรียน'
+    if (filterColor) {
+      if (filterColor === '__none__') {
+        filterDesc += ' (ไม่มีสี)'
+      } else {
+        filterDesc += ` กลุ่มสี${filterColor}`
+      }
+    }
+    if (filterGrade) {
+      filterDesc += ` ระดับชั้น ${filterGrade}`
+    }
+    if (filterRoom) {
+      filterDesc += ` ห้อง ${filterRoom}`
+    }
+    if (filterGender) {
+      filterDesc += ` (${filterGender})`
+    }
+
+    const rowsHtml = list.map((s, idx) => {
+      const colorGroup = _groupByName(s.house_color)
+      const colorHtml = colorGroup 
+        ? `<span class="color-badge" style="color: ${colorGroup.color_hex}">
+             <span class="color-dot" style="background: ${colorGroup.color_hex}"></span>
+             สี${s.house_color}
+           </span>`
+        : '<span style="color: #9ca3af;">— ไม่มีสี —</span>'
+
+      const imgHtml = s.image_url 
+        ? `<img src="${s.image_url}" class="stu-img" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+           <div class="stu-img-placeholder" style="display:none;">👤</div>`
+        : `<div class="stu-img-placeholder">👤</div>`
+
+      return `
+        <tr>
+          <td style="text-align: center; width: 45px;">${idx + 1}</td>
+          <td>
+            <div class="stu-info-wrap">
+              ${imgHtml}
+              <div class="stu-details">
+                <div class="stu-name">${_esc(s.full_name)}</div>
+                <div class="stu-meta">รหัส: ${_esc(s.student_code || '—')} | สามัญ: ${_esc(s.main_room || '—')} | ศาสนา: ${_esc(s.religion_room || '—')}</div>
+              </div>
+            </div>
+          </td>
+          <td style="width: 110px; text-align: center;">${colorHtml}</td>
+          <td style="width: 80px; text-align: center; font-weight: bold;">${_esc(s.sports_shirt_size || '—')}</td>
+          <td style="width: 120px;"></td>
+        </tr>
+      `
+    }).join('')
+
+    printArea.innerHTML = `
+      <div class="roster-title">${_esc(filterDesc)}</div>
+      <table class="roster-table">
+        <thead>
+          <tr>
+            <th style="width: 45px;">เลขที่</th>
+            <th>ข้อมูลนักเรียน</th>
+            <th style="width: 110px;">สีนักเรียน</th>
+            <th style="width: 80px;">ไซส์เสื้อ</th>
+            <th style="width: 120px;">หมายเหตุ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    `
+
+    window.print()
+    printArea.remove()
+  }
+
   const _responsible = () => teachers.find(t => t.position === 'house_color_admin')
 
   const _colorOpts = (currentColor, gender) => {
@@ -9305,9 +9481,15 @@ export async function renderHouseColors() {
             .map(r => `<option value="${_esc(r)}" ${filterRoom === r ? 'selected' : ''}>${_esc(r)}</option>`).join('')}
         </select>
         <span class="text-xs text-gray-400">พบ <b class="text-gray-700">${filteredCount}</b> คน</span>
+        <button id="hc-print-roster-btn"
+          class="ml-auto px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white
+                 transition flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          ${filteredCount === 0 ? 'disabled' : ''}>
+          🖨️ พิมพ์ใบรายชื่อ (${filteredCount})
+        </button>
         <button id="hc-clear-colors-btn"
-          class="ml-auto px-4 py-2 rounded-xl text-sm font-medium border border-red-200 text-red-500
-                 hover:bg-red-50 transition disabled:opacity-40"
+          class="px-4 py-2 rounded-xl text-sm font-medium border border-red-200 text-red-500
+                 hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
           ${filteredCount === 0 ? 'disabled' : ''}>
           🗑️ ล้างสี (${filteredCount})
         </button>
@@ -9338,12 +9520,25 @@ export async function renderHouseColors() {
     const tbody = document.getElementById('hc-tbody')
     if (tbody) tbody.innerHTML = _renderTable()
     _bindColorSelects()
-    const cnt = document.querySelector('#hc-tbody')?.closest('.space-y-5')
-      ?.querySelector('.text-xs.text-gray-400 b')
+    
+    const count = _filteredStudents().length
+    
     // update count span in search bar
     document.querySelectorAll('.text-xs.text-gray-400').forEach(el => {
-      if (el.textContent.includes('พบ')) el.innerHTML = `พบ <b class="text-gray-700">${_filteredStudents().length}</b> คน`
+      if (el.textContent.includes('พบ')) el.innerHTML = `พบ <b class="text-gray-700">${count}</b> คน`
     })
+
+    // update print & clear button state
+    const printBtn = document.getElementById('hc-print-roster-btn')
+    if (printBtn) {
+      printBtn.disabled = count === 0
+      printBtn.textContent = `🖨️ พิมพ์ใบรายชื่อ (${count})`
+    }
+    const clearBtn = document.getElementById('hc-clear-colors-btn')
+    if (clearBtn) {
+      clearBtn.disabled = count === 0
+      clearBtn.textContent = `🗑️ ล้างสี (${count})`
+    }
   }
 
   const _refreshChips = () => {
@@ -9445,6 +9640,13 @@ export async function renderHouseColors() {
       filterRoom = e.target.value
       if (filterRoom) filterGrade = (filterRoom.split('/')[0] ?? '')
       _refreshTable()
+    })
+
+    document.getElementById('hc-print-roster-btn')?.addEventListener('click', () => {
+      const targets = _filteredStudents()
+      if (targets.length > 0) {
+        _executeRosterPrint(targets)
+      }
     })
 
     document.getElementById('hc-clear-colors-btn')?.addEventListener('click', async () => {
