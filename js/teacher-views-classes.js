@@ -4537,7 +4537,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     let showCode    = localStorage.getItem('qr_print_show_code') !== 'false'
     let showSeat    = localStorage.getItem('qr_print_show_seat') !== 'false'
     let showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
-    let filterGender = localStorage.getItem('qr_print_filter_gender') || 'all'
+    let filterGender = 'all'
 
     const refreshPreview = () => {
       if (currentViewMode === 'class' && selectedClassId) {
@@ -4682,7 +4682,6 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       })
       document.getElementById('select-print-gender').addEventListener('change', (e) => {
         filterGender = e.target.value
-        localStorage.setItem('qr_print_filter_gender', filterGender)
         refreshPreview()
       })
       document.getElementById('select-print-cols').addEventListener('change', (e) => {
