@@ -5,6 +5,12 @@ import { storeSsoPassword } from './wen-sso.js'
 
 // ─── Check session on page load ───────────────────────────────────────────────
 async function checkSession() {
+  const isRecovery = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')
+  if (isRecovery) {
+    showPageLoader(false)
+    return
+  }
+
   showPageLoader(true)
   const { data: { session } } = await supabase.auth.getSession()
 

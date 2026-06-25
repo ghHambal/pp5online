@@ -12,6 +12,7 @@ import {
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
 import { APP_VERSION } from './version.js'
+import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
@@ -2323,6 +2324,28 @@ export async function renderStudentProfile(student, onLogout) {
 
     ${_contactLinks()}
 
+    <!-- เปลี่ยนรหัสผ่าน -->
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-5 mb-4">
+      <h3 class="font-bold text-gray-700 mb-3 text-sm flex items-center gap-1.5">🔒 เปลี่ยนรหัสผ่าน</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)</label>
+          <input id="stu-new-pw" type="password" placeholder="รหัสผ่านใหม่"
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">ยืนยันรหัสผ่านใหม่</label>
+          <input id="stu-new-pw-confirm" type="password" placeholder="พิมพ์ยืนยันอีกครั้ง"
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
+        </div>
+        <button id="btn-stu-save-pw"
+          class="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold text-sm transition">
+          บันทึกรหัสผ่านใหม่
+        </button>
+        <div id="stu-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
+      </div>
+    </div>
+
     <button id="btn-show-my-qr"
       class="w-full mb-4 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm
              shadow-md shadow-emerald-200/60 transition flex items-center justify-center gap-2">
@@ -2340,6 +2363,44 @@ export async function renderStudentProfile(student, onLogout) {
       ปพ.5 ออนไลน์ © 2026 <span id="btn-show-changelog-trigger" class="text-gray-400 hover:text-emerald-500 hover:underline cursor-pointer transition font-medium">v${APP_VERSION}</span>
     </p>
   `)
+
+  // Bind change password event
+  document.getElementById('btn-stu-save-pw')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-stu-save-pw')
+    const pw  = document.getElementById('stu-new-pw').value
+    const pw2 = document.getElementById('stu-new-pw-confirm').value
+    const msgEl = document.getElementById('stu-pw-msg')
+
+    const _showMsg = (text, isError) => {
+      msgEl.className = `text-xs text-center py-2.5 rounded-xl ${isError ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`
+      msgEl.textContent = text
+      msgEl.classList.remove('hidden')
+    }
+
+    if (!pw || pw.length < 6) {
+      _showMsg('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', true)
+      return
+    }
+    if (pw !== pw2) {
+      _showMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน', true)
+      return
+    }
+
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    msgEl.classList.add('hidden')
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw })
+      if (error) throw error
+      _showMsg('เปลี่ยนรหัสผ่านสำเร็จแล้ว ✅', false)
+      document.getElementById('stu-new-pw').value = ''
+      document.getElementById('stu-new-pw-confirm').value = ''
+    } catch (err) {
+      _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
+    } finally {
+      btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
+    }
+  })
 
   document.getElementById('stu-logout-btn').addEventListener('click', () => {
     document.getElementById('stu-logout-confirm')?.remove()

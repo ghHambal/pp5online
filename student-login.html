@@ -218,7 +218,8 @@
     ;(async () => {
     // ─── Redirect if already logged in ───────────────────────────────────────
     const { data: { session } } = await supabase.auth.getSession()
-    if (session) {
+    const isRecovery = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')
+    if (session && !isRecovery) {
       const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
       if (p?.role === 'student') { window.location.replace('student.html'); }
     }
