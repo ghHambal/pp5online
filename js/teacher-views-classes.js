@@ -754,69 +754,109 @@ export async function renderMyClasses(teacher) {
           document.getElementById('add-student-modal')?.remove()
           const modal = document.createElement('div')
           modal.id = 'add-student-modal'
-          modal.className = 'fixed inset-0 z-[90] bg-white flex flex-col'
-          modal.innerHTML = `<div class="p-5 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h3 class="text-xl font-bold text-gray-800">เพิ่มนักเรียนเข้ารายวิชา</h3>
-              <p class="text-xs text-gray-400 mt-1">${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+          modal.className = 'fixed inset-0 z-[90] bg-white flex flex-col animate-fade'
+          modal.innerHTML = `
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div>
+                <h3 class="text-xl font-bold text-gray-800">เพิ่มนักเรียนเข้ารายวิชา (หลายคน)</h3>
+                <p class="text-xs text-gray-500 mt-1">${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+              </div>
+              <button id="add-student-close" class="px-5 py-2.5 bg-sky-600 text-white rounded-xl text-sm font-semibold hover:bg-sky-700 shadow transition">เสร็จสิ้น</button>
             </div>
-            <button id="add-student-close" class="text-3xl text-gray-400 hover:text-gray-600">×</button>
-          </div>
-          <div class="flex-1 overflow-auto p-5 max-w-2xl w-full mx-auto">
-            <label class="block text-sm font-semibold text-gray-700 mb-2">รหัสนักเรียน</label>
-            <input id="add-student-code" class="${INPUT_CLS} text-lg font-mono" placeholder="เช่น 26826" autocomplete="off" autofocus />
-            <div id="add-student-result" class="mt-5"></div>
-          </div>`
+            <div class="flex-1 overflow-auto p-5 max-w-2xl w-full mx-auto space-y-6">
+              <div class="bg-gray-50 border border-gray-200 rounded-3xl p-6">
+                <label class="block text-sm font-bold text-gray-700 mb-2">ยิงบาร์โค้ด หรือกรอกรหัสนักเรียนเพื่อเพิ่มทันที</label>
+                <div class="flex gap-2">
+                  <input id="add-student-code" class="${INPUT_CLS} text-lg font-mono flex-1 bg-white" placeholder="กรอกรหัสแล้วกด Enter" autocomplete="off" autofocus />
+                  <button id="add-student-search-btn" class="px-5 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 shadow-sm transition">เพิ่ม</button>
+                </div>
+                <div id="add-student-status" class="mt-3 text-sm"></div>
+              </div>
+              
+              <!-- รายชื่อนักเรียนที่เพิ่งเพิ่มเข้ามา -->
+              <div class="border-t border-gray-100 pt-4">
+                <h4 class="text-sm font-bold text-gray-700 mb-3">นักเรียนที่เพิ่มสำเร็จในรอบนี้ (<span id="added-count">0</span> คน)</h4>
+                <div id="added-students-list" class="space-y-2">
+                  <p class="text-xs text-gray-400 italic">ยังไม่มีการเพิ่มในรอบนี้</p>
+                </div>
+              </div>
+            </div>`
           document.body.appendChild(modal)
-          const result = modal.querySelector('#add-student-result')
-          let found = null
-          let timer = null
-          const renderResult = (html) => { result.innerHTML = html }
-          const lookup = async () => {
-            const code = modal.querySelector('#add-student-code').value.trim()
-            found = null
-            if (!code) { renderResult(''); return }
-            renderResult('<p class="text-sm text-gray-400">กำลังค้นหา...</p>')
+
+          const inputEl = modal.querySelector('#add-student-code')
+          const searchBtn = modal.querySelector('#add-student-search-btn')
+          const statusEl = modal.querySelector('#add-student-status')
+          const listEl = modal.querySelector('#added-students-list')
+          const countEl = modal.querySelector('#added-count')
+
+          let _newlyAdded = []
+
+          function _renderAddedList() {
+            countEl.textContent = _newlyAdded.length
+            if (!_newlyAdded.length) {
+              listEl.innerHTML = `<p class="text-xs text-gray-400 italic">ยังไม่มีการเพิ่มในรอบนี้</p>`
+              return
+            }
+            listEl.innerHTML = _newlyAdded.map((s, index) => `
+              <div class="flex items-center gap-3 p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl animate-fade">
+                <span class="text-xs font-bold text-emerald-600 bg-emerald-100 w-5 h-5 flex items-center justify-center rounded-full">${_newlyAdded.length - index}</span>
+                <div class="flex-1">
+                  <p class="text-sm font-bold text-gray-800">${_htmlEsc(s.full_name)}</p>
+                  <p class="text-xs font-mono text-gray-500">${_htmlEsc(s.student_code)} · ${_htmlEsc(displayRoom(s))}</p>
+                </div>
+                <span class="text-xs text-emerald-600 font-bold">✓ เพิ่มแล้ว</span>
+              </div>
+            `).join('')
+          }
+
+          const doAddStudent = async () => {
+            const code = inputEl.value.trim()
+            if (!code) return
+            
+            statusEl.innerHTML = '<span class="text-gray-400">กำลังค้นหาและเพิ่ม...</span>'
+            inputEl.disabled = true
+            searchBtn.disabled = true
+            
             try {
               const s = await getStudentByCode(code)
               if (!s) {
-                renderResult('<div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">ไม่พบนักเรียนรหัสนี้</div>')
+                statusEl.innerHTML = '<span class="text-red-500 font-medium">⚠️ ไม่พบนักเรียนรหัสนี้</span>'
                 return
               }
-              found = s
-              renderResult(`<div class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm flex items-center gap-4">
-                ${avatar(s, 'w-16 h-24')}
-                <div class="flex-1 min-w-0">
-                  <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name)}</p>
-                  <p class="text-sm font-mono text-sky-700">${_htmlEsc(s.student_code)}</p>
-                  <p class="text-xs text-gray-400">${_htmlEsc(displayRoom(s))}</p>
-                  <div class="mt-1 flex flex-wrap gap-1">${extraBadges(s)}</div>
-                </div>
-                <button id="add-student-confirm" class="px-4 py-2 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700">เพิ่ม</button>
-              </div>`)
-              modal.querySelector('#add-student-confirm')?.addEventListener('click', async () => {
-                try {
-                  await addStudentToClass(classId, found.id)
-                  showToast('เพิ่มนักเรียนแล้ว', 'success')
-                  modal.remove()
-                  refresh()
-                } catch (err) {
-                  showToast('เพิ่มนักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-                }
-              })
+              
+              // ลองเพิ่มนักเรียนเข้ารายวิชา
+              await addStudentToClass(classId, s.id)
+              
+              // เพิ่มสำเร็จ!
+              _newlyAdded.unshift(s) // ใส่ตัวใหม่ไว้ด้านบน
+              _renderAddedList()
+              statusEl.innerHTML = `<span class="text-emerald-600 font-medium">✓ เพิ่ม ${_htmlEsc(s.full_name)} สำเร็จ!</span>`
+              
+              // เคลียร์ค่า
+              inputEl.value = ''
             } catch (err) {
-              renderResult(`<div class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">${_htmlEsc(err.message ?? 'ค้นหาไม่สำเร็จ')}</div>`)
+              statusEl.innerHTML = `<span class="text-red-500 font-medium">⚠️ ${err.message || 'เกิดข้อผิดพลาด'}</span>`
+            } finally {
+              inputEl.disabled = false
+              searchBtn.disabled = false
+              inputEl.focus()
             }
           }
-          modal.querySelector('#add-student-close').addEventListener('click', () => modal.remove())
-          modal.querySelector('#add-student-code').addEventListener('input', () => {
-            clearTimeout(timer)
-            timer = setTimeout(lookup, 350)
+
+          modal.querySelector('#add-student-close').addEventListener('click', () => {
+            modal.remove()
+            refresh()
           })
-          modal.querySelector('#add-student-code').addEventListener('keydown', e => {
-            if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); lookup() }
+
+          searchBtn.addEventListener('click', doAddStudent)
+          inputEl.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              doAddStudent()
+            }
           })
-          setTimeout(() => modal.querySelector('#add-student-code')?.focus(), 50)
+
+          setTimeout(() => inputEl.focus(), 50)
         })
       } catch (err) {
         showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
