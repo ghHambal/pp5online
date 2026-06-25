@@ -9447,7 +9447,6 @@ export async function renderHouseColors() {
         const colorGroup = _groupByName(s.house_color)
         const colorHtml = colorGroup 
           ? `<span class="color-badge" style="color: ${colorGroup.color_hex}">
-               <span class="color-dot" style="background: ${colorGroup.color_hex}"></span>
                สี${s.house_color}
              </span>`
           : '<span style="color: #9ca3af;">— ไม่มีสี —</span>'
@@ -9470,7 +9469,7 @@ export async function renderHouseColors() {
               </div>
             </td>
             <td style="width: 110px; text-align: center;">${colorHtml}</td>
-            <td style="width: 80px; text-align: center; font-weight: bold;">${_esc(s.sports_shirt_size || '—')}</td>
+            <td style="width: 80px; text-align: center; font-weight: bold;">${_esc(s.sports_shirt_size || '')}</td>
             <td style="width: 120px;"></td>
           </tr>
         `
