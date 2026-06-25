@@ -169,7 +169,7 @@ async function handleTeacherFormSubmit(e) {
   }
   const checkedPositions = window._getPositionValues?.() ?? []
   // ตำแหน่งที่เก็บใน positions[] เท่านั้น ห้ามเขียนลงคอลัมน์ position (ติด check constraint)
-  const _ARRAY_ONLY_POSITIONS = ['religion_group_head', 'religion_subgroup_head']
+  const _ARRAY_ONLY_POSITIONS = ['religion_group_head', 'religion_subgroup_head', 'classroom_leaders_admin']
   const posVal = checkedPositions.find(p => !_ARRAY_ONLY_POSITIONS.includes(p)) || null  // primary position (backward compat)
   const payload  = {
     teacher_code:      document.getElementById('modal-code').value.trim()      || null,
