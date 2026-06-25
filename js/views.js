@@ -9137,11 +9137,49 @@ export async function renderHouseColors() {
   document.getElementById('page-title').textContent = 'จัดการสีนักเรียน'
 
   let groups = [], teachers = [], students = []
+  let selectedCategory = 'สามัญ'
+  let selectedLevel = ''
+  let selectedRoom = ''
   let filterColor = ''   // '' = all
   let filterGender = ''  // '' = all
-  let filterGrade = ''   // '' = all  เช่น '6'
-  let filterRoom = ''    // '' = all  เช่น '6/1'
   let filterQ = ''
+
+  const extractGradeFromName = (name) => {
+    if (!name) return null
+    const m = name.match(/^(ม\.\d+|ปวช\.\d+|PR\s*\d+|อก\.\d+|อป\.\d+)/i)
+    if (!m) return null
+    return m[1].replace(/^(PR)\s*(\d+)$/i, 'PR $2').trim()
+  }
+
+  const getCategoryFromRoomName = (name) => {
+    if (!name) return 'สามัญ'
+    if (/^(PR|อก\.|อป\.)/i.test(name)) return 'ศาสนา'
+    if (/^ปวช\./i.test(name)) return 'ปวช'
+    return 'สามัญ'
+  }
+
+  const standardLevels = {
+    'สามัญ': ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.5', 'ม.6'],
+    'ศาสนา': ['PR 1', 'อก.1', 'อก.2', 'อก.3', 'อป.1', 'อป.2', 'อป.3'],
+    'ปวช': ['ปวช.1', 'ปวช.2', 'ปวช.3', 'อก.ปวช.1', 'อก.ปวช.2', 'อก.ปวช.3']
+  }
+
+  const getRoomsForCategory = (cat) => {
+    const isReligion = cat === 'ศาสนา'
+    return [...new Set(
+      students
+        .map(s => isReligion ? s.religion_room : s.main_room)
+        .filter(Boolean)
+    )].filter(name => getCategoryFromRoomName(name) === cat)
+     .sort((a, b) => a.localeCompare(b, 'th'))
+  }
+
+  const getLevelsForCategory = (cat) => {
+    const rooms = getRoomsForCategory(cat)
+    const dbLevels = [...new Set(rooms.map(r => extractGradeFromName(r)).filter(Boolean))]
+    const std = standardLevels[cat] || []
+    return [...new Set([...std, ...dbLevels])].sort((a, b) => a.localeCompare(b, 'th'))
+  }
 
   const _load = async () => {
     ;[groups, teachers, students] = await Promise.all([
@@ -9180,6 +9218,16 @@ export async function renderHouseColors() {
           font-family: Sarabun, sans-serif !important;
         }
         #hc-print-roster-area * { visibility: visible; }
+        .roster-page-block {
+          display: block !important;
+          page-break-before: always !important;
+          break-before: page !important;
+          page-break-inside: avoid;
+        }
+        .roster-page-block:first-child {
+          page-break-before: auto !important;
+          break-before: auto !important;
+        }
         .roster-title {
           font-size: 18px;
           font-weight: bold;
@@ -9189,6 +9237,7 @@ export async function renderHouseColors() {
         .roster-table {
           width: 100%;
           border-collapse: collapse;
+          margin-bottom: 30px;
         }
         .roster-table th, .roster-table td {
           border: 1px solid #000000 !important;
@@ -9262,74 +9311,97 @@ export async function renderHouseColors() {
     printArea.className = 'hidden'
     document.body.appendChild(printArea)
 
-    let filterDesc = 'ใบรายชื่อนักเรียน'
-    if (filterColor) {
-      if (filterColor === '__none__') {
-        filterDesc += ' (ไม่มีสี)'
-      } else {
-        filterDesc += ` กลุ่มสี${filterColor}`
+    const isReligion = selectedCategory === 'ศาสนา'
+
+    // Group students by room name
+    const roomsMap = new Map()
+    list.forEach(s => {
+      const roomName = (isReligion ? s.religion_room : s.main_room) || 'ไม่มีห้องเรียน'
+      if (!roomsMap.has(roomName)) {
+        roomsMap.set(roomName, [])
       }
-    }
-    if (filterGrade) {
-      filterDesc += ` ระดับชั้น ${filterGrade}`
-    }
-    if (filterRoom) {
-      filterDesc += ` ห้อง ${filterRoom}`
-    }
-    if (filterGender) {
-      filterDesc += ` (${filterGender})`
-    }
+      roomsMap.get(roomName).push(s)
+    })
 
-    const rowsHtml = list.map((s, idx) => {
-      const colorGroup = _groupByName(s.house_color)
-      const colorHtml = colorGroup 
-        ? `<span class="color-badge" style="color: ${colorGroup.color_hex}">
-             <span class="color-dot" style="background: ${colorGroup.color_hex}"></span>
-             สี${s.house_color}
-           </span>`
-        : '<span style="color: #9ca3af;">— ไม่มีสี —</span>'
+    // Sort room names alphabetically (Th locale)
+    const sortedRoomNames = Array.from(roomsMap.keys()).sort((a, b) => a.localeCompare(b, 'th'))
 
-      const imgHtml = s.image_url 
-        ? `<img src="${s.image_url}" class="stu-img" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-           <div class="stu-img-placeholder" style="display:none;">👤</div>`
-        : `<div class="stu-img-placeholder">👤</div>`
+    let blocksHtml = ''
 
-      return `
-        <tr>
-          <td style="text-align: center; width: 45px;">${idx + 1}</td>
-          <td>
-            <div class="stu-info-wrap">
-              ${imgHtml}
-              <div class="stu-details">
-                <div class="stu-name">${_esc(s.full_name)}</div>
-                <div class="stu-meta">รหัส: ${_esc(s.student_code || '—')} | สามัญ: ${_esc(s.main_room || '—')} | ศาสนา: ${_esc(s.religion_room || '—')}</div>
-              </div>
-            </div>
-          </td>
-          <td style="width: 110px; text-align: center;">${colorHtml}</td>
-          <td style="width: 80px; text-align: center; font-weight: bold;">${_esc(s.sports_shirt_size || '—')}</td>
-          <td style="width: 120px;"></td>
-        </tr>
-      `
-    }).join('')
+    sortedRoomNames.forEach((roomName, blockIdx) => {
+      const roomStudents = roomsMap.get(roomName)
+      
+      // Sort students in the room by code
+      const sortedStudents = roomStudents.sort((a, b) => (a.student_code || '').localeCompare(b.student_code || ''))
 
-    printArea.innerHTML = `
-      <div class="roster-title">${_esc(filterDesc)}</div>
-      <table class="roster-table">
-        <thead>
+      let filterDesc = 'ใบรายชื่อนักเรียน'
+      if (filterColor) {
+        if (filterColor === '__none__') {
+          filterDesc += ' (ไม่มีสี)'
+        } else {
+          filterDesc += ` กลุ่มสี${filterColor}`
+        }
+      }
+      filterDesc += ` ห้อง ${roomName}`
+      if (filterGender) {
+        filterDesc += ` (${filterGender})`
+      }
+
+      const rowsHtml = sortedStudents.map((s, idx) => {
+        const colorGroup = _groupByName(s.house_color)
+        const colorHtml = colorGroup 
+          ? `<span class="color-badge" style="color: ${colorGroup.color_hex}">
+               <span class="color-dot" style="background: ${colorGroup.color_hex}"></span>
+               สี${s.house_color}
+             </span>`
+          : '<span style="color: #9ca3af;">— ไม่มีสี —</span>'
+
+        const imgHtml = s.image_url 
+          ? `<img src="${s.image_url}" class="stu-img" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+             <div class="stu-img-placeholder" style="display:none;">👤</div>`
+          : `<div class="stu-img-placeholder">👤</div>`
+
+        return `
           <tr>
-            <th style="width: 45px;">เลขที่</th>
-            <th>ข้อมูลนักเรียน</th>
-            <th style="width: 110px;">สีนักเรียน</th>
-            <th style="width: 80px;">ไซส์เสื้อ</th>
-            <th style="width: 120px;">หมายเหตุ</th>
+            <td style="text-align: center; width: 45px;">${idx + 1}</td>
+            <td>
+              <div class="stu-info-wrap">
+                ${imgHtml}
+                <div class="stu-details">
+                  <div class="stu-name">${_esc(s.full_name)}</div>
+                  <div class="stu-meta">รหัส: ${_esc(s.student_code || '—')} | สามัญ: ${_esc(s.main_room || '—')} | ศาสนา: ${_esc(s.religion_room || '—')}</div>
+                </div>
+              </div>
+            </td>
+            <td style="width: 110px; text-align: center;">${colorHtml}</td>
+            <td style="width: 80px; text-align: center; font-weight: bold;">${_esc(s.sports_shirt_size || '—')}</td>
+            <td style="width: 120px;"></td>
           </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml}
-        </tbody>
-      </table>
-    `
+        `
+      }).join('')
+
+      blocksHtml += `
+        <div class="roster-page-block">
+          <div class="roster-title">${_esc(filterDesc)}</div>
+          <table class="roster-table">
+            <thead>
+              <tr>
+                <th style="width: 45px;">เลขที่</th>
+                <th>ข้อมูลนักเรียน</th>
+                <th style="width: 110px;">สีนักเรียน</th>
+                <th style="width: 80px;">ไซส์เสื้อ</th>
+                <th style="width: 120px;">หมายเหตุ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `
+    })
+
+    printArea.innerHTML = blocksHtml
 
     window.print()
     printArea.remove()
@@ -9347,15 +9419,41 @@ export async function renderHouseColors() {
 
   const _filteredStudents = () => {
     const q = filterQ.toLowerCase()
+    const isReligion = selectedCategory === 'ศาสนา'
+
     return students.filter(s => {
+      // 1. Filter by curriculum category and current room selection
+      const studentRoom = isReligion ? s.religion_room : s.main_room
+      
+      // If the student doesn't have a room in this category, filter them out
+      if (!studentRoom) return false
+      
+      // If we filtered by a specific room
+      if (selectedRoom && studentRoom !== selectedRoom) return false
+      
+      // If we filtered by grade level but not specific room
+      if (selectedLevel && !selectedRoom) {
+        const grade = extractGradeFromName(studentRoom)
+        if (grade !== selectedLevel) return false
+      }
+      
+      // If we haven't selected grade level nor specific room, but the room must match selectedCategory
+      if (!selectedLevel && !selectedRoom) {
+        if (getCategoryFromRoomName(studentRoom) !== selectedCategory) return false
+      }
+
+      // 2. Filter by color
       if (filterColor === '__none__' && s.house_color) return false
       if (filterColor && filterColor !== '__none__' && s.house_color !== filterColor) return false
+
+      // 3. Filter by gender
       if (filterGender && s.gender !== filterGender) return false
-      if (filterRoom && s.main_room !== filterRoom) return false
-      if (filterGrade && (s.main_room ?? '').split('/')[0] !== filterGrade) return false
+
+      // 4. Search query
       if (q && !s.full_name?.toLowerCase().includes(q) &&
                !s.student_code?.toLowerCase().includes(q) &&
-               !s.main_room?.toLowerCase().includes(q)) return false
+               !studentRoom.toLowerCase().includes(q)) return false
+
       return true
     })
   }
@@ -9406,6 +9504,7 @@ export async function renderHouseColors() {
   const _renderTable = () => {
     const rows = _filteredStudents()
     if (!rows.length) return `<tr><td colspan="6" class="text-center py-10 text-gray-400 text-sm">ไม่พบนักเรียน</td></tr>`
+    const isReligion = selectedCategory === 'ศาสนา'
     return rows.map(s => {
       const g = _groupByName(s.house_color)
       const badge = g
@@ -9414,10 +9513,11 @@ export async function renderHouseColors() {
            </span>`
         : `<span class="text-xs text-gray-400">—</span>`
       const rowBg = g ? `background:${g.color_hex}12` : ''
+      const studentRoom = isReligion ? s.religion_room : s.main_room
       return `<tr class="transition border-b border-gray-100 last:border-0" style="${rowBg}">
         <td class="px-4 py-2.5 text-xs font-mono text-gray-400">${_esc(s.student_code ?? '')}</td>
         <td class="px-4 py-2.5 text-sm font-medium text-gray-800">${_esc(s.full_name)}</td>
-        <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(s.main_room ?? '—')}</td>
+        <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(studentRoom ?? '—')}</td>
         <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(s.gender ?? '—')}</td>
         <td class="px-4 py-2.5">${badge}</td>
         <td class="px-4 py-2.5">
@@ -9465,20 +9565,21 @@ export async function renderHouseColors() {
           value="${_esc(filterQ)}"
           class="flex-1 min-w-[180px] border border-gray-200 rounded-xl px-4 py-2.5 text-sm
                  focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <select id="hc-filter-category" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="สามัญ" ${selectedCategory === 'สามัญ' ? 'selected' : ''}>สามัญ</option>
+          <option value="ศาสนา" ${selectedCategory === 'ศาสนา' ? 'selected' : ''}>ศาสนา</option>
+          <option value="ปวช" ${selectedCategory === 'ปวช' ? 'selected' : ''}>ปวช</option>
+        </select>
+        <select id="hc-filter-level" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <!-- เติมแบบไดนามิก -->
+        </select>
+        <select id="hc-filter-class" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">-- เลือกห้องเรียน --</option>
+        </select>
         <select id="hc-filter-gender" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
           <option value="">ทุกเพศ</option>
           <option value="ชาย" ${filterGender === 'ชาย' ? 'selected' : ''}>👦 ชาย</option>
           <option value="หญิง" ${filterGender === 'หญิง' ? 'selected' : ''}>👧 หญิง</option>
-        </select>
-        <select id="hc-filter-grade" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
-          <option value="">ทุกระดับชั้น</option>
-          ${[...new Set(students.map(s => (s.main_room ?? '').split('/')[0]).filter(Boolean))].sort()
-            .map(g => `<option value="${_esc(g)}" ${filterGrade === g ? 'selected' : ''}>${_esc(g)}</option>`).join('')}
-        </select>
-        <select id="hc-filter-room" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
-          <option value="">ทุกห้อง</option>
-          ${[...new Set(students.map(s => s.main_room).filter(r => r && (!filterGrade || r.startsWith(filterGrade + '/'))))].sort()
-            .map(r => `<option value="${_esc(r)}" ${filterRoom === r ? 'selected' : ''}>${_esc(r)}</option>`).join('')}
         </select>
         <span class="text-xs text-gray-400">พบ <b class="text-gray-700">${filteredCount}</b> คน</span>
         <button id="hc-print-roster-btn"
