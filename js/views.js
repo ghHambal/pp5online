@@ -1923,17 +1923,39 @@ export async function renderStudents() {
       } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
     }
 
-    window._editStudent = (id) => {
+    window._editStudent = async (id) => {
       const s = studentCache[id]; if (!s) return
-      _openStudentModal(s, async (payload) => {
+      let currentEmail = ''
+      try {
+        const { data, error } = await supabase.rpc('lookup_student_by_code', { p_student_code: s.student_code })
+        if (!error && data && data[0]) {
+          currentEmail = data[0].login_email || ''
+        }
+      } catch (e) {
+        console.error(e)
+      }
+
+      _openStudentModal(s, currentEmail, async (payload, authPayload) => {
+        // Save basic profile
         await updateStudent(id, payload)
+        
+        // Save email/password if modified
+        if (authPayload && (authPayload.email || authPayload.password)) {
+          const { error } = await supabase.rpc('admin_update_student_auth', {
+            p_student_id: id,
+            p_new_email: authPayload.email || null,
+            p_new_password: authPayload.password || null
+          })
+          if (error) throw error
+        }
+
         Object.assign(s, payload)
         studentCache[id] = s
         _filter()
       })
     }
 
-    function _openStudentModal(s, onSave) {
+    function _openStudentModal(s, currentEmail, onSave) {
       document.getElementById('stu-modal')?.remove()
       const m = document.createElement('div')
       m.id = 'stu-modal'
@@ -1984,6 +2006,26 @@ export async function renderStudents() {
                   <input id="sf-shirt-size" type="text" value="${s.sports_shirt_size??''}" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
                 </div>
               </div>
+              
+              <!-- Auth Accounts Section -->
+              <div class="border-t border-gray-100 my-4 pt-3">
+                <p class="text-xs font-bold text-indigo-600 mb-2 flex items-center gap-1">🔒 บัญชีผู้ใช้งานนักเรียน</p>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">อีเมลเข้าใช้งาน (แก้ไขกู้คืน)</label>
+                    <input id="sf-auth-email" type="email" value="${s.profile_id ? currentEmail : `stu${s.student_code}@student.pp5.local`}" 
+                      ${!s.profile_id ? 'disabled' : ''} 
+                      class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full bg-gray-50 text-gray-600 disabled:opacity-60" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">รหัสผ่านใหม่ (ระบุเมื่อต้องการเปลี่ยน)</label>
+                    <input id="sf-auth-pw" type="password" placeholder="${s.profile_id ? 'ตั้งรหัสผ่านใหม่ (อย่างน้อย 6 ตัว)' : 'เปิดใช้งานบนอุปกรณ์นักเรียนก่อน'}" 
+                      ${!s.profile_id ? 'disabled' : ''} 
+                      class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full disabled:bg-gray-50 disabled:text-gray-400" />
+                  </div>
+                </div>
+              </div>
+
               <div class="flex gap-3 pt-2">
                 <button type="button" id="stu-cancel"
                   class="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
@@ -2015,7 +2057,12 @@ export async function renderStudents() {
             house_color:   m.querySelector('#sf-house-color').value.trim() || null,
             sports_shirt_size: m.querySelector('#sf-shirt-size').value.trim() || null,
           }
-          await onSave(payload)
+          const authPayload = s.profile_id ? {
+            email: m.querySelector('#sf-auth-email').value.trim() || null,
+            password: m.querySelector('#sf-auth-pw').value.trim() || null,
+          } : null
+
+          await onSave(payload, authPayload)
           showToast('บันทึกสำเร็จ', 'success')
           m.remove()
         } catch (err) {

@@ -544,4 +544,102 @@ document.addEventListener('DOMContentLoaded', () => {
       input.type = 'password'; icon.textContent = '👁️'
     }
   })
+
+  // ─── Forgot Password / Reset Password logic ───
+  const show = (id) => document.getElementById(id)?.classList.remove('hidden')
+  const hide = (id) => document.getElementById(id)?.classList.add('hidden')
+  
+  function showMsg(elId, text, type) {
+    const el = document.getElementById(elId)
+    if (!el) return
+    el.className = `text-xs text-center py-2 rounded-lg ${
+      type === 'error' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'
+    }`
+    el.textContent = text
+    el.classList.remove('hidden')
+  }
+
+  document.getElementById('btn-forgot-pw')?.addEventListener('click', () => {
+    show('modal-forgot-pw')
+    hide('forgot-pw-msg')
+  })
+
+  document.getElementById('forgot-pw-close')?.addEventListener('click', () => hide('modal-forgot-pw'))
+
+  document.getElementById('forgot-pw-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const btn = document.getElementById('btn-submit-forgot')
+    const email = document.getElementById('forgot-email').value.trim()
+
+    btn.disabled = true; btn.textContent = 'กำลังส่งคำขอ...'
+    hide('forgot-pw-msg')
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname
+      })
+      if (error) throw error
+
+      showMsg('forgot-pw-msg', 'ส่งลิงก์ตั้งรหัสผ่านใหม่ไปยังอีเมลของคุณสำเร็จแล้ว กรุณาเช็คกล่องข้อความ!', 'success')
+      setTimeout(() => hide('modal-forgot-pw'), 4000)
+
+    } catch (err) {
+      showMsg('forgot-pw-msg', err.message || 'ขอลิงก์รีเซ็ตไม่สำเร็จ', 'error')
+    } finally {
+      btn.disabled = false; btn.textContent = 'ขอลิงก์รีเซ็ตรหัสผ่าน'
+    }
+  })
+
+  // ดักจับเหตุการณ์ PASSWORD_RECOVERY
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      show('modal-reset-pw')
+      hide('reset-pw-msg')
+    }
+  })
+
+  document.getElementById('reset-pw-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const btn = document.getElementById('btn-submit-reset')
+    const pw = document.getElementById('reset-pw-new').value
+    const pw2 = document.getElementById('reset-pw-confirm').value
+
+    if (pw.length < 6) {
+      showMsg('reset-pw-msg', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error'); return
+    }
+    if (pw !== pw2) {
+      showMsg('reset-pw-msg', 'รหัสผ่านทั้งสองช่องไม่ตรงกัน', 'error'); return
+    }
+
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    hide('reset-pw-msg')
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw })
+      if (error) throw error
+
+      showMsg('reset-pw-msg', 'เปลี่ยนรหัสผ่านสำเร็จแล้ว! กำลังเข้าสู่ระบบ...', 'success')
+
+      // เช็คบทบาทเพื่อเปลี่ยนหน้าแดชบอร์ดตามสิทธิ์
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+
+        setTimeout(() => {
+          if (profile?.role === 'admin') window.location.href = 'dashboard.html'
+          else window.location.href = 'teacher.html'
+        }, 1500)
+      } else {
+        setTimeout(() => { window.location.href = 'index.html' }, 1500)
+      }
+
+    } catch (err) {
+      showMsg('reset-pw-msg', err.message || 'บันทึกรหัสผ่านไม่สำเร็จ', 'error')
+      btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
+    }
+  })
 })

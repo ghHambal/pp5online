@@ -85,6 +85,10 @@
             </button>
           </div>
         </div>
+        <!-- Forgot password -->
+        <div class="text-right -mt-2">
+          <button id="btn-forgot-pw" type="button" class="text-xs text-indigo-500 hover:text-indigo-700">ลืมรหัสผ่าน?</button>
+        </div>
         <div id="login-msg" class="hidden text-sm text-center py-2.5 rounded-xl"></div>
         <button id="btn-login"
           class="btn-primary w-full text-white font-semibold py-3 rounded-xl text-sm">
@@ -142,6 +146,67 @@
     </p>
     <p data-dev-credit class="text-center text-[11px] text-gray-400 mt-4">พัฒนาโดย KruHambalWaji</p>
     <p id="login-stats" class="text-center text-[10px] text-gray-300 mt-1"></p>
+  </div>
+
+  <!-- Modal: ลืมรหัสผ่าน (Forgot Password) -->
+  <div id="modal-forgot-pw" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade">
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-5 relative">
+      <h3 class="font-bold text-gray-800 text-base mb-4 flex items-center gap-1.5">🔑 ยืนยันข้อมูลนักเรียนเพื่อรีเซ็ต</h3>
+      <button id="forgot-pw-close" class="absolute right-4 top-4 text-gray-400 hover:text-gray-600 text-lg">✕</button>
+      
+      <form id="forgot-pw-form" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">รหัสนักเรียน</label>
+          <input id="forgot-code" type="text" placeholder="กรอกรหัสนักเรียน" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่อ-นามสกุลจริง</label>
+          <input id="forgot-name" type="text" placeholder="เช่น เด็กชาย สมชาย เรียนดี" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ห้องเรียนประจำ</label>
+          <input id="forgot-room" type="text" placeholder="เช่น ม.4/1" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">อีเมลจริงสำหรับรับลิงก์รีเซ็ต</label>
+          <input id="forgot-email" type="email" placeholder="เช่น name@gmail.com" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div id="forgot-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
+        <button id="btn-submit-forgot" type="submit"
+          class="btn-primary w-full text-white font-semibold py-2.5 rounded-xl text-sm transition">
+          ขอลิงก์รีเซ็ตรหัสผ่าน
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: ตั้งรหัสผ่านใหม่ (Reset Password) -->
+  <div id="modal-reset-pw" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 animate-fade">
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-5 relative">
+      <h3 class="font-bold text-gray-800 text-base mb-4 flex items-center gap-1.5">🔒 ตั้งรหัสผ่านใหม่</h3>
+      
+      <form id="reset-pw-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)</label>
+          <input id="reset-pw-new" type="password" placeholder="พิมพ์รหัสผ่านใหม่" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ยืนยันรหัสผ่านใหม่อีกครั้ง</label>
+          <input id="reset-pw-confirm" type="password" placeholder="พิมพ์ซ้ำอีกครั้ง" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div id="reset-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
+        <button id="btn-submit-reset" type="submit"
+          class="btn-primary w-full text-white font-semibold py-2.5 rounded-xl text-sm transition">
+          บันทึกรหัสผ่านใหม่
+        </button>
+      </form>
+    </div>
   </div>
 
   <script type="module">
@@ -350,6 +415,92 @@
           : 'เกิดข้อผิดพลาด: ' + (err.message ?? '')
         showMsg('reg-msg', msg, 'error')
         btn.disabled = false; btn.textContent = 'สร้างบัญชีและเข้าสู่ระบบ'
+      }
+    })
+
+    // ─── Forgot Password / Recovery Events ────────────────────────────────────
+    document.getElementById('btn-forgot-pw')?.addEventListener('click', () => {
+      show('modal-forgot-pw')
+      document.getElementById('forgot-code').value = document.getElementById('inp-code').value
+      hide('forgot-pw-msg')
+    })
+
+    document.getElementById('forgot-pw-close')?.addEventListener('click', () => hide('modal-forgot-pw'))
+
+    document.getElementById('forgot-pw-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const btn = document.getElementById('btn-submit-forgot')
+      const code = document.getElementById('forgot-code').value.trim()
+      const name = document.getElementById('forgot-name').value.trim()
+      const room = document.getElementById('forgot-room').value.trim()
+      const email = document.getElementById('forgot-email').value.trim()
+
+      btn.disabled = true; btn.textContent = 'กำลังส่งคำขอ...'
+      hide('forgot-pw-msg')
+
+      try {
+        // 1. เรียก RPC เพื่อยืนยันตัวตนและผูกอีเมลจริงในระบบหลังบ้าน
+        const { data: verified, error: verifyErr } = await supabase.rpc('student_request_password_reset', {
+          p_student_code: code,
+          p_full_name: name,
+          p_main_room: room,
+          p_new_email: email
+        })
+
+        if (verifyErr) throw verifyErr
+        if (!verified) throw new Error('ยืนยันตัวตนไม่สำเร็จ กรุณาตรวจสอบข้อมูลอีกครั้ง')
+
+        // 2. เรียก Supabase Auth ส่งลิงก์รีเซ็ต
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + window.location.pathname
+        })
+
+        if (resetErr) throw resetErr
+
+        showMsg('forgot-pw-msg', 'ส่งลิงก์ตั้งรหัสผ่านใหม่สำเร็จแล้ว กรุณาเช็คกล่องข้อความ!', 'success')
+        setTimeout(() => hide('modal-forgot-pw'), 4000)
+
+      } catch(err) {
+        showMsg('forgot-pw-msg', err.message || 'รีเซ็ตรหัสผ่านไม่สำเร็จ', 'error')
+      } finally {
+        btn.disabled = false; btn.textContent = 'ขอลิงก์รีเซ็ตรหัสผ่าน'
+      }
+    })
+
+    // ─── Catch Recovery Redirect & Listeners ──────────────────────────────────
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        show('modal-reset-pw')
+        hide('reset-pw-msg')
+      }
+    })
+
+    document.getElementById('reset-pw-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const btn = document.getElementById('btn-submit-reset')
+      const pw = document.getElementById('reset-pw-new').value
+      const pw2 = document.getElementById('reset-pw-confirm').value
+
+      if (pw.length < 6) {
+        showMsg('reset-pw-msg', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error'); return
+      }
+      if (pw !== pw2) {
+        showMsg('reset-pw-msg', 'รหัสผ่านทั้งสองช่องไม่ตรงกัน', 'error'); return
+      }
+
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      hide('reset-pw-msg')
+
+      try {
+        const { error } = await supabase.auth.updateUser({ password: pw })
+        if (error) throw error
+
+        showMsg('reset-pw-msg', 'เปลี่ยนรหัสผ่านสำเร็จแล้ว! กำลังเข้าสู่ระบบ...', 'success')
+        setTimeout(() => { window.location.href = 'student.html' }, 1500)
+
+      } catch(err) {
+        showMsg('reset-pw-msg', err.message || 'บันทึกรหัสผ่านใหม่ไม่สำเร็จ', 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
       }
     })
 
