@@ -9230,110 +9230,181 @@ export async function renderHouseColors() {
       document.head.appendChild(styleEl)
     }
     styleEl.textContent = `
+      @media screen {
+        #hc-print-roster-area {
+          position: fixed !important;
+          inset: 0 !important;
+          z-index: 9000 !important;
+          background-color: rgba(15, 23, 42, 0.85) !important;
+          backdrop-filter: blur(4px) !important;
+          overflow-y: auto !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          padding: 32px 16px !important;
+        }
+        .preview-sheet-wrap {
+          background: white !important;
+          color: black !important;
+          width: 100% !important;
+          max-width: 800px !important;
+          padding: 40px !important;
+          border-radius: 16px !important;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+          margin-top: 60px !important;
+          font-family: Sarabun, sans-serif !important;
+        }
+        .preview-controls {
+          position: fixed !important;
+          top: 16px !important;
+          display: flex !important;
+          gap: 12px !important;
+          z-index: 9001 !important;
+          background: rgba(255, 255, 255, 0.1) !important;
+          backdrop-filter: blur(8px) !important;
+          padding: 8px 16px !important;
+          border-radius: 16px !important;
+          border: 1px solid rgba(255, 255, 255, 0.1) !important;
+          box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1) !important;
+        }
+        .preview-btn-print {
+          background: #4f46e5 !important;
+          color: white !important;
+          font-weight: bold !important;
+          font-size: 14px !important;
+          padding: 8px 16px !important;
+          border-radius: 12px !important;
+          transition: all 0.2s !important;
+          cursor: pointer !important;
+        }
+        .preview-btn-print:hover {
+          background: #4338ca !important;
+        }
+        .preview-btn-close {
+          background: #ef4444 !important;
+          color: white !important;
+          font-weight: bold !important;
+          font-size: 14px !important;
+          padding: 8px 16px !important;
+          border-radius: 12px !important;
+          transition: all 0.2s !important;
+          cursor: pointer !important;
+        }
+        .preview-btn-close:hover {
+          background: #dc2626 !important;
+        }
+      }
       @media print {
         body > * { display: none !important; }
         #hc-print-roster-area {
           display: block !important;
-          position: absolute;
-          left: 0; top: 0;
+          position: absolute !important;
+          left: 0 !important; top: 0 !important;
           width: 100% !important;
           padding: 0 !important; margin: 0 !important;
           background: white !important;
           color: black !important;
           font-family: Sarabun, sans-serif !important;
         }
-        #hc-print-roster-area * { visibility: visible; }
-        .roster-page-block {
-          display: block !important;
-          page-break-before: always !important;
-          break-before: page !important;
-          page-break-inside: avoid;
+        #hc-print-roster-area * { visibility: visible !important; }
+        .preview-controls { display: none !important; }
+        .preview-sheet-wrap {
+          padding: 0 !important;
+          margin: 0 !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          max-width: 100% !important;
         }
-        .roster-page-block:first-child {
-          page-break-before: auto !important;
-          break-before: auto !important;
-        }
-        .roster-title {
-          font-size: 18px;
-          font-weight: bold;
-          text-align: center;
-          margin-bottom: 15px;
-        }
-        .roster-table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 30px;
-        }
-        .roster-table th, .roster-table td {
-          border: 1px solid #000000 !important;
-          padding: 6px 8px !important;
-          vertical-align: middle;
-        }
-        .roster-table th {
-          background-color: #f3f4f6 !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-          font-size: 12px;
-          font-weight: bold;
-        }
-        .roster-table td {
-          font-size: 12px;
-        }
-        .stu-info-wrap {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .stu-img {
-          width: 40px;
-          height: 52px;
-          border-radius: 6px;
-          border: 1px solid #ccc;
-          object-fit: cover;
-        }
-        .stu-img-placeholder {
-          width: 40px;
-          height: 52px;
-          border-radius: 6px;
-          border: 1px solid #ccc;
-          background: #f3f4f6;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          color: #9ca3af;
-        }
-        .stu-details {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-        .stu-name {
-          font-size: 12px;
-          font-weight: bold;
-        }
-        .stu-meta {
-          font-size: 10px;
-          color: #4b5563;
-        }
-        .color-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          font-weight: 600;
-        }
-        .color-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          border: 1px solid #000;
-        }
+      }
+      .roster-page-block {
+        display: block !important;
+        page-break-before: always !important;
+        break-before: page !important;
+        page-break-inside: avoid;
+      }
+      .roster-page-block:first-child {
+        page-break-before: auto !important;
+        break-before: auto !important;
+      }
+      .roster-title {
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 15px;
+      }
+      .roster-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 30px;
+      }
+      .roster-table th, .roster-table td {
+        border: 1px solid #000000 !important;
+        padding: 8px 10px !important;
+        vertical-align: middle;
+      }
+      .roster-table th {
+        background-color: #f3f4f6 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        font-size: 12px;
+        font-weight: bold;
+      }
+      .roster-table td {
+        font-size: 12px;
+      }
+      .stu-info-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .stu-img {
+        width: 40px;
+        height: 52px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        object-fit: cover;
+      }
+      .stu-img-placeholder {
+        width: 40px;
+        height: 52px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        background: #f3f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: #9ca3af;
+      }
+      .stu-details {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .stu-name {
+        font-size: 12px;
+        font-weight: bold;
+      }
+      .stu-meta {
+        font-size: 10px;
+        color: #4b5563;
+      }
+      .color-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-weight: 600;
+      }
+      .color-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1px solid #000;
       }
     `
 
     const printArea = document.createElement('div')
     printArea.id = 'hc-print-roster-area'
-    printArea.className = 'hidden'
     document.body.appendChild(printArea)
 
     const isReligion = selectedCategory === 'ศาสนา'
@@ -9426,10 +9497,23 @@ export async function renderHouseColors() {
       `
     })
 
-    printArea.innerHTML = blocksHtml
+    printArea.innerHTML = `
+      <div class="preview-controls">
+        <button class="preview-btn-print" id="hc-btn-confirm-print">🖨️ สั่งพิมพ์ / บันทึก PDF</button>
+        <button class="preview-btn-close" id="hc-btn-close-preview">✕ ปิดหน้าต่าง</button>
+      </div>
+      <div class="preview-sheet-wrap">
+        ${blocksHtml}
+      </div>
+    `
 
-    window.print()
-    printArea.remove()
+    printArea.querySelector('#hc-btn-confirm-print').onclick = () => {
+      window.print()
+    }
+
+    printArea.querySelector('#hc-btn-close-preview').onclick = () => {
+      printArea.remove()
+    }
   }
 
   const _responsible = () => teachers.find(t => t.position === 'house_color_admin')
@@ -9539,9 +9623,19 @@ export async function renderHouseColors() {
         : `<span class="text-xs text-gray-400">—</span>`
       const rowBg = g ? `background:${g.color_hex}12` : ''
       const studentRoom = isReligion ? s.religion_room : s.main_room
+      const imgHtml = s.image_url 
+        ? `<img src="${s.image_url}" class="w-8 h-10 rounded object-cover border border-gray-200" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+           <div class="w-8 h-10 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-xs text-gray-400 font-bold" style="display:none;">👤</div>`
+        : `<div class="w-8 h-10 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-xs text-gray-400 font-bold">👤</div>`
+
       return `<tr class="transition border-b border-gray-100 last:border-0" style="${rowBg}">
         <td class="px-4 py-2.5 text-xs font-mono text-gray-400">${_esc(s.student_code ?? '')}</td>
-        <td class="px-4 py-2.5 text-sm font-medium text-gray-800">${_esc(s.full_name)}</td>
+        <td class="px-4 py-2.5 text-sm font-medium text-gray-800">
+          <div class="flex items-center gap-3">
+            ${imgHtml}
+            <div>${_esc(s.full_name)}</div>
+          </div>
+        </td>
         <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(studentRoom ?? '—')}</td>
         <td class="px-4 py-2.5 text-xs text-gray-500">${_esc(s.gender ?? '—')}</td>
         <td class="px-4 py-2.5">${badge}</td>
