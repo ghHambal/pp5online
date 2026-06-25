@@ -9704,6 +9704,42 @@ export async function renderHouseColors() {
     })
   }
 
+  const syncLevels = () => {
+    const catSelect = document.getElementById('hc-filter-category')
+    const levelSelect = document.getElementById('hc-filter-level')
+    if (!catSelect || !levelSelect) return
+
+    selectedCategory = catSelect.value
+    const levels = getLevelsForCategory(selectedCategory)
+    levelSelect.innerHTML = `
+      <option value="">-- เลือกระดับชั้น --</option>
+      ${levels.map(l => `<option value="${l}" ${l === selectedLevel ? 'selected' : ''}>${l}</option>`).join('')}
+    `
+    syncClasses()
+  }
+
+  const syncClasses = () => {
+    const levelSelect = document.getElementById('hc-filter-level')
+    const classSelect = document.getElementById('hc-filter-class')
+    if (!levelSelect || !classSelect) return
+
+    selectedLevel = levelSelect.value
+    const rooms = getRoomsForCategory(selectedCategory)
+    
+    // Filter rooms by the selected grade level
+    const filteredRooms = rooms.filter(r => {
+      if (!selectedLevel) return true
+      return extractGradeFromName(r) === selectedLevel
+    })
+
+    classSelect.innerHTML = `
+      <option value="">-- เลือกห้องเรียน (${filteredRooms.length} ห้อง) --</option>
+      ${filteredRooms.map(r => `
+        <option value="${r}" ${r === selectedRoom ? 'selected' : ''}>${r}</option>
+      `).join('')}
+    `
+  }
+
   const _bindEvents = () => {
     _bindChips()
     _bindColorSelects()
@@ -9721,25 +9757,26 @@ export async function renderHouseColors() {
 
     document.getElementById('hc-filter-gender')?.addEventListener('change', (e) => {
       filterGender = e.target.value
-      filterRoom = ''
       _refreshTable()
     })
 
-    document.getElementById('hc-filter-grade')?.addEventListener('change', (e) => {
-      filterGrade = e.target.value
-      filterRoom = ''
-      // re-render room options ให้เหลือเฉพาะระดับชั้นที่เลือก
-      const roomSel = document.getElementById('hc-filter-room')
-      const filteredRooms = [...new Set(students.map(s => s.main_room)
-        .filter(r => r && (!filterGrade || r.startsWith(filterGrade + '/'))))].sort()
-      roomSel.innerHTML = `<option value="">ทุกห้อง</option>` +
-        filteredRooms.map(r => `<option value="${r}">${r}</option>`).join('')
+    document.getElementById('hc-filter-category')?.addEventListener('change', (e) => {
+      selectedCategory = e.target.value
+      selectedLevel = ''
+      selectedRoom = ''
+      syncLevels()
       _refreshTable()
     })
 
-    document.getElementById('hc-filter-room')?.addEventListener('change', (e) => {
-      filterRoom = e.target.value
-      if (filterRoom) filterGrade = (filterRoom.split('/')[0] ?? '')
+    document.getElementById('hc-filter-level')?.addEventListener('change', (e) => {
+      selectedLevel = e.target.value
+      selectedRoom = ''
+      syncClasses()
+      _refreshTable()
+    })
+
+    document.getElementById('hc-filter-class')?.addEventListener('change', (e) => {
+      selectedRoom = e.target.value
       _refreshTable()
     })
 
@@ -9769,6 +9806,8 @@ export async function renderHouseColors() {
         btn.textContent = `🗑️ ล้างสี (${targets.length})`
       }
     })
+
+    syncLevels()
   }
 
   await _load()
