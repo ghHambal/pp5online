@@ -671,6 +671,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     { value: 'academic_religion',    label: 'หัวหน้าวิชาการศาสนา' },
     { value: 'academic_pvch',        label: 'หัวหน้าวิชาการปวช' },
     { value: 'house_color_admin',    label: 'ผู้รับผิดชอบสีนักเรียน' },
+    { value: 'classroom_leaders_admin', label: 'ผู้ดูแลหัวหน้า/รองหัวหน้า' },
   ]
   const posOptHtml = () =>
     `<option value="">— ไม่มี —</option>` +

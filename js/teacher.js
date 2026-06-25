@@ -2013,6 +2013,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_house_colors',       icon:'🎨', label:'สีนักเรียน',          fn: async () => { const {renderHouseColors}     = await import('./views.js'); renderHouseColors() }},
   { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
   { key:'manage_my_religion_group', icon:'👥', label:'กลุ่มของฉัน',        fn: async (t) => { const {renderMyReligionGroup} = await import('./views.js'); renderMyReligionGroup(t) }},
+  { key:'menu_classroom_leaders',  icon:'👑', label:'หัวหน้า/รองหัวหน้าห้อง',  fn: async () => { const {renderClassroomLeaders} = await import('./views.js'); renderClassroomLeaders() }},
   { key:'menu_tutorial',           icon:'📖', label:'คู่มือการใช้งาน',      fn: async () => { const {renderTutorialAdmin}   = await import('./tutorial.js'); renderTutorialAdmin() }},
 ]
 
@@ -2023,7 +2024,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     registrar_samai:'ทะเบียน (สามัญ)',
     registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
     academic_samai:'วิชาการ (สามัญ)', academic_religion:'วิชาการ (ศาสนา)',
-    academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน' }
+    academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน', classroom_leaders_admin:'ผู้ดูแลหัวหน้า/รองหัวหน้า' }
   const _tPositions2 = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   const posLabel = _tPositions2.length ? _tPositions2.map(p => _POS_LBL2[p] ?? p).join(' / ') : (isAdmin ? 'แอดมิน' : 'หัวหน้า')
 
@@ -2033,6 +2034,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     : _SV_MENU_ITEMS.filter(m => {
         if (m.key === 'lang_config') return _positionPerms.lang_config || _tPositions2.includes('dept_head')
         if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || _tPositions2.includes('house_color_admin')
+        if (m.key === 'menu_classroom_leaders') return _positionPerms.menu_classroom_leaders || _tPositions2.includes('classroom_leaders_admin')
         if (m.key === 'manage_religion_groups') return _positionPerms.manage_religion_groups || _tPositions2.includes('religion_group_head')
         if (m.key === 'manage_my_religion_group') return _tPositions2.includes('religion_subgroup_head')
         if (m.key === 'announce_manage') return !!_positionPerms.announce_manage

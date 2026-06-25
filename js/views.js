@@ -30,7 +30,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
-         updateTeacherPosition, updateClassroomLeaders, getStudentByCode } from './api.js'
+         updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle } from './api.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -9044,6 +9044,7 @@ export async function renderRolePermissions() {
     { key:'academic_samai',       label:'วิชาการ (สามัญ)' },
     { key:'academic_religion',    label:'วิชาการ (ศาสนา)' },
     { key:'academic_pvch',        label:'วิชาการ (ปวช)' },
+    { key:'classroom_leaders_admin', label:'ผู้ดูแลหัวหน้า/รองหัวหน้า' },
   ]
   const FEATURE_GROUPS = [
     { group:'📢 ประกาศ', features:[
@@ -9068,6 +9069,7 @@ export async function renderRolePermissions() {
       { key:'menu_periods',       label:'คาบเรียน' },
       { key:'menu_classrooms',    label:'ห้องเรียน' },
       { key:'menu_house_colors',  label:'สีนักเรียน' },
+      { key:'menu_classroom_leaders', label:'จัดการหัวหน้า/รองหัวหน้า' },
     ]},
     { group:'🔍 นิเทศ/ติดตาม', features:[
       { key:'work_calendar',      label:'ปฏิทินปฏิบัติงาน' },
@@ -11242,10 +11244,29 @@ export async function renderClassroomLeaders() {
   }
 
   const _load = async () => {
-    [classes, students] = await Promise.all([
+    const [rawClasses, rawStudents, rawLeaders] = await Promise.all([
       getClasses(),
-      getStudents()
+      getStudents(),
+      getClassroomLeaders()
     ])
+    students = rawStudents
+    
+    // Deduplicate class names from rawClasses to identify distinct rooms
+    const uniqueClassNames = [...new Set(rawClasses.map(c => c.class_name).filter(Boolean))]
+    
+    // Build classroom leaders mapping (1:1 with unique room names)
+    classes = uniqueClassNames.map(className => {
+      const leader = rawLeaders.find(l => l.class_name === className)
+      return leader || {
+        class_name: className,
+        head_student_id: null,
+        vice_head_student_id: null,
+        head_cert_url: null,
+        vice_head_cert_url: null,
+        show_cert: true,
+        notes: null
+      }
+    })
   }
 
   const _studentById = (id) => students.find(s => s.id === id)
@@ -11259,85 +11280,156 @@ export async function renderClassroomLeaders() {
       document.head.appendChild(styleEl)
     }
     styleEl.textContent = `
+      @media screen {
+        #hc-print-roster-area {
+          position: fixed !important;
+          inset: 0 !important;
+          z-index: 9000 !important;
+          background-color: rgba(15, 23, 42, 0.85) !important;
+          backdrop-filter: blur(4px) !important;
+          overflow-y: auto !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          padding: 32px 16px !important;
+        }
+        .preview-sheet-wrap {
+          background: white !important;
+          color: black !important;
+          width: 100% !important;
+          max-width: 800px !important;
+          padding: 40px !important;
+          border-radius: 16px !important;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+          margin-top: 60px !important;
+          font-family: Sarabun, sans-serif !important;
+        }
+        .preview-controls {
+          position: fixed !important;
+          top: 16px !important;
+          display: flex !important;
+          gap: 12px !important;
+          z-index: 9001 !important;
+          background: rgba(255, 255, 255, 0.1) !important;
+          backdrop-filter: blur(8px) !important;
+          padding: 8px 16px !important;
+          border-radius: 16px !important;
+          border: 1px solid rgba(255, 255, 255, 0.1) !important;
+          box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1) !important;
+        }
+        .preview-btn-print {
+          background: #4f46e5 !important;
+          color: white !important;
+          font-weight: bold !important;
+          font-size: 14px !important;
+          padding: 8px 16px !important;
+          border-radius: 12px !important;
+          transition: all 0.2s !important;
+          cursor: pointer !important;
+        }
+        .preview-btn-print:hover {
+          background: #4338ca !important;
+        }
+        .preview-btn-close {
+          background: #ef4444 !important;
+          color: white !important;
+          font-weight: bold !important;
+          font-size: 14px !important;
+          padding: 8px 16px !important;
+          border-radius: 12px !important;
+          transition: all 0.2s !important;
+          cursor: pointer !important;
+        }
+        .preview-btn-close:hover {
+          background: #dc2626 !important;
+        }
+      }
       @media print {
         body > * { display: none !important; }
         #hc-print-roster-area {
           display: block !important;
-          position: absolute;
-          left: 0; top: 0;
+          position: absolute !important;
+          left: 0 !important; top: 0 !important;
           width: 100% !important;
           padding: 0 !important; margin: 0 !important;
           background: white !important;
           color: black !important;
           font-family: Sarabun, sans-serif !important;
         }
-        #hc-print-roster-area * { visibility: visible; }
-        .roster-page-block {
-          display: block !important;
-          page-break-before: always !important;
-          break-before: page !important;
-          page-break-inside: avoid;
+        #hc-print-roster-area * { visibility: visible !important; }
+        .preview-controls { display: none !important; }
+        .preview-sheet-wrap {
+          padding: 0 !important;
+          margin: 0 !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          max-width: 100% !important;
         }
-        .roster-page-block:first-child {
-          page-break-before: auto !important;
-          break-before: auto !important;
-        }
-        .roster-title {
-          font-size: 18px;
-          font-weight: bold;
-          text-align: center;
-          margin-bottom: 15px;
-        }
-        .roster-table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 30px;
-        }
-        .roster-table th, .roster-table td {
-          border: 1px solid #000000 !important;
-          padding: 8px 10px !important;
-          vertical-align: middle;
-        }
-        .roster-table th {
-          background-color: #f3f4f6 !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-          font-size: 12px;
-          font-weight: bold;
-        }
-        .roster-table td {
-          font-size: 12px;
-        }
-        .stu-info-wrap {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .stu-img {
-          width: 40px;
-          height: 52px;
-          border-radius: 6px;
-          border: 1px solid #ccc;
-          object-fit: cover;
-        }
-        .stu-img-placeholder {
-          width: 40px;
-          height: 52px;
-          border-radius: 6px;
-          border: 1px solid #ccc;
-          background: #f3f4f6;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          color: #9ca3af;
-        }
+      }
+      .roster-page-block {
+        display: block !important;
+        page-break-before: always !important;
+        break-before: page !important;
+        page-break-inside: avoid;
+      }
+      .roster-page-block:first-child {
+        page-break-before: auto !important;
+        break-before: auto !important;
+      }
+      .roster-title {
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 15px;
+      }
+      .roster-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 30px;
+      }
+      .roster-table th, .roster-table td {
+        border: 1px solid #000000 !important;
+        padding: 8px 10px !important;
+        vertical-align: middle;
+      }
+      .roster-table th {
+        background-color: #f3f4f6 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        font-size: 12px;
+        font-weight: bold;
+      }
+      .roster-table td {
+        font-size: 12px;
+      }
+      .stu-info-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .stu-img {
+        width: 40px;
+        height: 52px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        object-fit: cover;
+      }
+      .stu-img-placeholder {
+        width: 40px;
+        height: 52px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        background: #f3f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: #9ca3af;
       }
     `
 
     const printArea = document.createElement('div')
     printArea.id = 'hc-print-roster-area'
-    printArea.className = 'hidden'
     document.body.appendChild(printArea)
 
     // filter classes to print
@@ -11373,9 +11465,6 @@ export async function renderClassroomLeaders() {
       const headName = head ? `<b>${_esc(head.full_name)}</b><br><span style="font-size:10px;color:#6b7280;">รหัส: ${head.student_code}</span>` : '<span style="color:#9ca3af;">— ยังไม่ระบุ —</span>'
       const viceName = vice ? `<b>${_esc(vice.full_name)}</b><br><span style="font-size:10px;color:#6b7280;">รหัส: ${vice.student_code}</span>` : '<span style="color:#9ca3af;">— ยังไม่ระบุ —</span>'
 
-      const headCert = c.head_cert_url ? `<span style="color:#059669;font-weight:bold;">มีเกียรติบัตรแล้ว</span>` : '<span style="color:#9ca3af;">ยังไม่มี</span>'
-      const viceCert = c.vice_head_cert_url ? `<span style="color:#059669;font-weight:bold;">มีเกียรติบัตรแล้ว</span>` : '<span style="color:#9ca3af;">ยังไม่มี</span>'
-
       return `
         <tr>
           <td style="text-align: center; width: 45px;">${idx + 1}</td>
@@ -11386,41 +11475,50 @@ export async function renderClassroomLeaders() {
               <div>${headName}</div>
             </div>
           </td>
-          <td style="text-align: center; width: 120px;">${headCert}</td>
           <td>
             <div class="stu-info-wrap">
               ${viceImg}
               <div>${viceName}</div>
             </div>
           </td>
-          <td style="text-align: center; width: 120px;">${viceCert}</td>
+          <td style="font-size: 11px; color: #374151;">${_esc(c.notes ?? '')}</td>
         </tr>
       `
     }).join('')
 
     printArea.innerHTML = `
-      <div class="roster-page-block">
-        <div class="roster-title">${titleText}</div>
-        <table class="roster-table">
-          <thead>
-            <tr>
-              <th style="width: 45px;">ลำดับ</th>
-              <th style="width: 90px;">ห้องเรียน</th>
-              <th>หัวหน้าห้อง</th>
-              <th style="width: 120px;">เกียรติบัตรหัวหน้า</th>
-              <th>รองหัวหน้าห้อง</th>
-              <th style="width: 120px;">เกียรติบัตรรอง</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml || `<tr><td colspan="6" style="text-align:center;padding:20px;color:#9ca3af;">ไม่พบข้อมูลห้องเรียน</td></tr>`}
-          </tbody>
-        </table>
+      <div class="preview-controls">
+        <button class="preview-btn-print" id="pr-btn-confirm-print">🖨️ สั่งพิมพ์ / บันทึก PDF</button>
+        <button class="preview-btn-close" id="pr-btn-close-preview">✕ ปิดหน้าต่าง</button>
+      </div>
+      <div class="preview-sheet-wrap">
+        <div class="roster-page-block">
+          <div class="roster-title">${titleText}</div>
+          <table class="roster-table">
+            <thead>
+              <tr>
+                <th style="width: 45px;">ลำดับ</th>
+                <th style="width: 90px;">ห้องเรียน</th>
+                <th>หัวหน้าห้อง</th>
+                <th>รองหัวหน้าห้อง</th>
+                <th style="width: 150px;">หมายเหตุ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml || `<tr><td colspan="5" style="text-align:center;padding:20px;color:#9ca3af;">ไม่พบข้อมูลห้องเรียน</td></tr>`}
+            </tbody>
+          </table>
+        </div>
       </div>
     `
 
-    window.print()
-    printArea.remove()
+    printArea.querySelector('#pr-btn-confirm-print').onclick = () => {
+      window.print()
+    }
+
+    printArea.querySelector('#pr-btn-close-preview').onclick = () => {
+      printArea.remove()
+    }
   }
 
   // ─── Rendering parts ───────────────────────────────────────────────────────
@@ -11502,7 +11600,7 @@ export async function renderClassroomLeaders() {
               <p>เกียรติบัตรหัวหน้า: ${c.head_cert_url ? '🟢 มีแล้ว' : '🔴 ไม่มี'}</p>
               <p>เกียรติบัตรรอง: ${c.vice_head_cert_url ? '🟢 มีแล้ว' : '🔴 ไม่มี'}</p>
             </div>
-            <button class="btn-edit-leaders px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl font-bold transition flex items-center gap-1" data-id="${c.id}">
+            <button class="btn-edit-leaders px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl font-bold transition flex items-center gap-1" data-room="${_esc(c.class_name)}">
               ✏️ แก้ไข
             </button>
           </div>
@@ -11524,7 +11622,7 @@ export async function renderClassroomLeaders() {
     }).sort((a, b) => a.class_name.localeCompare(b.class_name, 'th'))
 
     if (targets.length === 0) {
-      return `<tr><td colspan="6" class="text-center py-10 text-gray-400 text-sm">ไม่พบข้อมูลห้องเรียน</td></tr>`
+      return `<tr><td colspan="5" class="text-center py-10 text-gray-400 text-sm">ไม่พบข้อมูลห้องเรียน</td></tr>`
     }
 
     return targets.map((c, idx) => {
@@ -11552,11 +11650,6 @@ export async function renderClassroomLeaders() {
               </div>
             </div>
           </td>
-          <td class="px-4 py-3 text-center text-xs">
-            ${c.head_cert_url
-              ? `<a href="${c.head_cert_url}" target="_blank" class="text-emerald-600 hover:text-emerald-800 font-bold">📄 ดูเกียรติบัตร</a>`
-              : `<span class="text-gray-400">ยังไม่มี</span>`}
-          </td>
           <td class="px-4 py-3">
             <div class="flex items-center gap-2">
               ${viceImg}
@@ -11566,10 +11659,8 @@ export async function renderClassroomLeaders() {
               </div>
             </div>
           </td>
-          <td class="px-4 py-3 text-center text-xs">
-            ${c.vice_head_cert_url
-              ? `<a href="${c.vice_head_cert_url}" target="_blank" class="text-emerald-600 hover:text-emerald-800 font-bold">📄 ดูเกียรติบัตร</a>`
-              : `<span class="text-gray-400">ยังไม่มี</span>`}
+          <td class="px-4 py-3 text-gray-600 text-xs max-w-[180px] truncate">
+            ${_esc(c.notes ?? '')}
           </td>
         </tr>
       `
@@ -11645,11 +11736,17 @@ export async function renderClassroomLeaders() {
             
             <div class="pt-2 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
               <span class="text-xs text-gray-400">พบข้อมูลหัวหน้า/รองหัวหน้าทั้งหมด <b class="text-gray-700">${totalCount}</b> ห้อง</span>
-              <button id="btn-print-leaders-roster"
-                class="px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                ${totalCount === 0 ? 'disabled' : ''}>
-                🖨️ พิมพ์ใบรายชื่อ (${totalCount})
-              </button>
+              <div class="flex gap-2">
+                <button id="btn-cert-settings"
+                  class="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5 border border-slate-200 shadow-sm">
+                  ⚙️ ตั้งค่าแสดงเกียรติบัตร
+                </button>
+                <button id="btn-print-leaders-roster"
+                  class="px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  ${totalCount === 0 ? 'disabled' : ''}>
+                  🖨️ พิมพ์ใบรายชื่อ (${totalCount})
+                </button>
+              </div>
             </div>
           </div>
 
@@ -11662,9 +11759,8 @@ export async function renderClassroomLeaders() {
                     <th class="px-4 py-3 text-center w-12">ลำดับ</th>
                     <th class="px-4 py-3 text-center w-24">ห้องเรียน</th>
                     <th class="px-4 py-3">หัวหน้าห้อง</th>
-                    <th class="px-4 py-3 text-center w-32">เกียรติบัตรหัวหน้า</th>
                     <th class="px-4 py-3">รองหัวหน้าห้อง</th>
-                    <th class="px-4 py-3 text-center w-32">เกียรติบัตรรอง</th>
+                    <th class="px-4 py-3 w-40">หมายเหตุ</th>
                   </tr>
                 </thead>
                 <tbody id="pr-table-body" class="divide-y divide-gray-100">
@@ -11750,6 +11846,7 @@ export async function renderClassroomLeaders() {
       _refreshPrintTable()
     })
     document.getElementById('btn-print-leaders-roster')?.addEventListener('click', _executePrint)
+    document.getElementById('btn-cert-settings')?.addEventListener('click', _openCertSettingsModal)
   }
 
   const _refreshPrintTable = () => {
@@ -11778,11 +11875,104 @@ export async function renderClassroomLeaders() {
   const _bindEditButtons = () => {
     document.querySelectorAll('.btn-edit-leaders').forEach(btn => {
       btn.addEventListener('click', () => {
-        const id = +btn.dataset.id
-        const cls = classes.find(c => c.id === id)
+        const roomName = btn.dataset.room
+        const cls = classes.find(c => c.class_name === roomName)
         if (cls) _openEditModal(cls)
       })
     })
+  }
+
+  const _openCertSettingsModal = () => {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[8000] flex items-center justify-center bg-black/60 p-4 animate-fade'
+    
+    const _buildListHTML = (q = '') => {
+      const query = q.trim().toLowerCase()
+      const filtered = classes.filter(c => !query || c.class_name.toLowerCase().includes(query))
+      if (filtered.length === 0) {
+        return `<div class="text-center py-8 text-gray-400 text-sm">ไม่พบห้องเรียน</div>`
+      }
+      return filtered.map(c => `
+        <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+          <div>
+            <span class="font-bold text-gray-800 text-sm">ห้อง ${_esc(c.class_name)}</span>
+            <span class="block text-[10px] text-gray-400">
+              ${c.head_student_id || c.vice_head_student_id ? '🟢 มีข้อมูลผู้นำ' : '⚪ ยังไม่มีข้อมูล'}
+            </span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" class="csm-toggle sr-only peer" data-room="${_esc(c.class_name)}" ${c.show_cert ? 'checked' : ''}>
+            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+          </label>
+        </div>
+      `).join('')
+    }
+
+    modal.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]">
+        <!-- Header -->
+        <div class="px-6 py-4 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between shrink-0">
+          <div>
+            <h3 class="font-bold text-gray-800 text-base">⚙️ ตั้งค่าการแสดงผลเกียรติบัตร</h3>
+            <p class="text-xs text-indigo-600 font-semibold mt-0.5">เปิด-ปิดการแสดงบนหน้าพอร์ทัลของนักเรียน</p>
+          </div>
+          <button id="csm-modal-close" class="text-gray-400 hover:text-gray-600 text-xl font-bold p-1">✕</button>
+        </div>
+        
+        <!-- Search bar -->
+        <div class="px-6 pt-4 shrink-0">
+          <input type="text" id="csm-search-input" placeholder="ค้นหาห้องเรียน..." 
+            class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        </div>
+
+        <!-- Scrollable List -->
+        <div class="px-6 py-4 overflow-y-auto flex-1 divide-y divide-gray-50" id="csm-list-container">
+          ${_buildListHTML()}
+        </div>
+        
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-100 flex justify-end shrink-0">
+          <button id="csm-btn-close" class="btn-primary px-5 py-2 text-sm text-white rounded-xl bg-indigo-600 hover:bg-indigo-700 transition">เสร็จสิ้น</button>
+        </div>
+      </div>
+    `
+    
+    document.body.appendChild(modal)
+
+    const listContainer = modal.querySelector('#csm-list-container')
+    const searchInput = modal.querySelector('#csm-search-input')
+
+    const _bindToggles = () => {
+      listContainer.querySelectorAll('.csm-toggle').forEach(chk => {
+        chk.addEventListener('change', async () => {
+          const roomName = chk.dataset.room
+          const showCert = chk.checked
+          chk.disabled = true
+          try {
+            await updateClassroomCertToggle(roomName, showCert)
+            const target = classes.find(c => c.class_name === roomName)
+            if (target) target.show_cert = showCert
+            showToast(`อัปเดตห้อง ${roomName} เรียบร้อยแล้ว`, 'success')
+          } catch (err) {
+            showToast('บันทึกผิดพลาด: ' + err.message, 'error')
+            chk.checked = !showCert
+          } finally {
+            chk.disabled = false
+          }
+        })
+      })
+    }
+
+    searchInput.addEventListener('input', (e) => {
+      listContainer.innerHTML = _buildListHTML(e.target.value)
+      _bindToggles()
+    })
+
+    _bindToggles()
+
+    const _close = () => modal.remove()
+    modal.querySelector('#csm-modal-close').onclick = _close
+    modal.querySelector('#csm-btn-close').onclick = _close
   }
 
   // ─── Modal Edit Function ──────────────────────────────────────────────────
@@ -11872,6 +12062,15 @@ export async function renderClassroomLeaders() {
                   <input type="file" id="ld-vice-cert-file" class="hidden" accept="image/*,application/pdf" />
                 </label>
               </div>
+            </div>
+          </div>
+          
+          <!-- SECTION 3: Notes -->
+          <div class="bg-slate-50/50 border border-slate-200/60 rounded-2xl p-4 space-y-3">
+            <h4 class="font-bold text-gray-800 text-xs uppercase tracking-wider text-teal-600 flex items-center gap-1">📝 3. หมายเหตุ (Remarks)</h4>
+            <div>
+              <textarea id="ld-notes-in" placeholder="ระบุหมายเหตุสำหรับห้องเรียนนี้..." rows="2"
+                class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">${cls.notes ?? ''}</textarea>
             </div>
           </div>
           
@@ -12011,15 +12210,17 @@ export async function renderClassroomLeaders() {
       
       const headCert = document.getElementById('ld-head-cert-in').value.trim()
       const viceCert = document.getElementById('ld-vice-cert-in').value.trim()
+      const notes = document.getElementById('ld-notes-in').value.trim()
 
       try {
-        await updateClassroomLeaders(cls.id, tempHeadId, tempViceId, headCert, viceCert)
+        await updateClassroomLeaders(cls.class_name, tempHeadId, tempViceId, headCert, viceCert, notes)
         
         // update local state
         cls.head_student_id = tempHeadId
         cls.vice_head_student_id = tempViceId
         cls.head_cert_url = headCert
         cls.vice_head_cert_url = viceCert
+        cls.notes = notes
 
         showToast('บันทึกข้อมูลเรียบร้อยแล้ว', 'success')
         _close()

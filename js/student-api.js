@@ -474,11 +474,15 @@ export async function saveScannedPrayerRecords(records) {
 export async function getStudentClassroomRole(mainRoom) {
   if (!mainRoom) return null
   const { data, error } = await supabase
-    .from('classes')
-    .select('id, class_name, head_student_id, vice_head_student_id, head_cert_url, vice_head_cert_url')
+    .from('classroom_leaders')
+    .select('class_name, head_student_id, vice_head_student_id, head_cert_url, vice_head_cert_url, show_cert')
     .eq('class_name', mainRoom)
     .maybeSingle()
   if (error) throw error
+  if (data && data.show_cert === false) {
+    data.head_cert_url = null
+    data.vice_head_cert_url = null
+  }
   return data
 }
 

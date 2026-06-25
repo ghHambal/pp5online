@@ -210,16 +210,36 @@ export async function getClasses() {
   return data ?? []
 }
 
-export async function updateClassroomLeaders(classId, headStudentId, viceHeadStudentId, headCertUrl, viceHeadCertUrl) {
+export async function getClassroomLeaders() {
+  const { data, error } = await supabase
+    .from('classroom_leaders')
+    .select('*')
+    .order('class_name')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function updateClassroomLeaders(className, headStudentId, viceHeadStudentId, headCertUrl, viceHeadCertUrl, notes) {
   const { error } = await supabase
-    .from('classes')
-    .update({
+    .from('classroom_leaders')
+    .upsert({
+      class_name: className,
       head_student_id: headStudentId || null,
       vice_head_student_id: viceHeadStudentId || null,
       head_cert_url: headCertUrl || null,
-      vice_head_cert_url: viceHeadCertUrl || null
+      vice_head_cert_url: viceHeadCertUrl || null,
+      notes: notes || null
     })
-    .eq('id', classId)
+  if (error) throw error
+}
+
+export async function updateClassroomCertToggle(className, showCert) {
+  const { error } = await supabase
+    .from('classroom_leaders')
+    .upsert({
+      class_name: className,
+      show_cert: showCert
+    })
   if (error) throw error
 }
 
