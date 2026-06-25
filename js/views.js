@@ -3985,8 +3985,8 @@ export async function renderSubjects() {
     // action ปุ่มมุมขวาบน
     window._subAction = async () => {
       if (currentTab === 'course') {
-        renderCourseForm(null, async (payload) => {
-          await createSubject(payload)
+        renderCourseForm(null, async (payload, coTeacherIds = []) => {
+          await createSubject(payload, coTeacherIds)
           await renderSubjects()
         })
       } else if (currentTab === 'class') {

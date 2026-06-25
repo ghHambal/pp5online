@@ -4,7 +4,7 @@ import {
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
   getTeacherPackageAccess, getSystemConfig, getRoomsByGrade,
-  getUniqueRooms, getUniqueReligionRooms,
+  getUniqueRooms, getUniqueReligionRooms, getSubjectCoTeachers,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { uploadTeacherPhoto } from './storage.js'
@@ -913,10 +913,12 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
   setActiveNav('my-courses')
   setTitle(editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์ส')
 
-  const [depts, teachers] = await Promise.all([
+  const [depts, teachers, coTeachers] = await Promise.all([
     getDepartments().catch(()=>[]),
     getTeachers().catch(()=>[]),
+    editData ? getSubjectCoTeachers(editData.id).catch(()=>[]) : Promise.resolve([]),
   ])
+  let _selectedCoTeachers = coTeachers ?? []
 
   // unique dept rows — deduplicate by id (ไม่ใช้ dept_code เพราะ SOC มี 2 แถว: สังคมฯ + อิญติมาอียะห์)
   const uniqueDepts = [...new Map(depts.map(d=>[d.id,d])).values()]
@@ -1012,7 +1014,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
               ${CREDIT_OPTS.map(c=>`<option value="${c}">${c}</option>`).join('')}
             </select>
           </div>
-          <div>
+          <div id="cf-grade-single-wrapper">
             <label class="block text-sm font-semibold text-gray-700 mb-1">
               ชั้นปี <span class="text-red-400">*</span>
             </label>
@@ -1021,6 +1023,29 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
             </select>
           </div>
         </div>
+
+        <!-- โหมดสอนร่วม & คละระดับชั้น -->
+        <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between">
+          <div>
+            <h4 class="text-sm font-bold text-indigo-900">โหมดสอนร่วม & คละระดับชั้น (Co-teaching & Multi-grade)</h4>
+            <p class="text-xs text-indigo-700 mt-0.5">เปิดเพื่อเลือกคละหลายระดับชั้น หรือกำหนดผู้ร่วมสอนวิชานี้</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="cf-toggle-coteach" class="sr-only peer">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+          </label>
+        </div>
+
+        <!-- ชั้นปีแบบคละระดับชั้น (แสดงเมื่อเปิดโหมด) -->
+        <div id="cf-grade-multi-container" class="hidden bg-gray-50 border border-gray-100 rounded-2xl p-4 space-y-2">
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            เลือกระดับชั้นเรียน (คละระดับชั้นได้) <span class="text-red-400">*</span>
+          </label>
+          <div id="cf-grade-checkboxes" class="grid grid-cols-3 gap-2">
+            <!-- เรนเดอร์ Checkbox อัตโนมัติทาง JS -->
+          </div>
+        </div>
+
         <!-- ครูผู้สอน -->
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-2">ครูผู้สอน</label>
@@ -1054,6 +1079,33 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
             maxlength="12" class="${INPUT_CLS}" />
           <p class="text-xs text-gray-400 mt-1">เบอร์จะถูกเติมอัตโนมัติเมื่อเลือกครูผู้สอน</p>
         </div>
+
+        <!-- ครูผู้สอนร่วม (Co-teachers) -->
+        <div id="cf-coteach-section" class="hidden border border-indigo-100 bg-indigo-50/30 rounded-2xl p-5 space-y-4">
+          <div>
+            <label class="block text-sm font-semibold text-indigo-900 mb-1">ครูผู้ร่วมสอน</label>
+            <p class="text-xs text-indigo-700">ระบุรหัสครู หรือค้นหาชื่อเพื่อเพิ่มผู้ร่วมสอนร่วมจัดการห้องเรียน</p>
+          </div>
+          <div class="flex gap-2">
+            <div class="w-1/3">
+              <p class="text-xs text-gray-400 mb-1">รหัสครูผู้ร่วมสอน</p>
+              <input id="cf-coteach-code" type="text" placeholder="เช่น 102"
+                class="${INPUT_CLS} bg-white" autocomplete="off" />
+            </div>
+            <div class="flex-1 relative">
+              <p class="text-xs text-gray-400 mb-1">ชื่อ-สกุลครูผู้ร่วมสอน</p>
+              <input id="cf-coteach-search" type="text" placeholder="พิมพ์เพื่อค้นหาครูผู้ร่วมสอน..."
+                class="${INPUT_CLS} bg-white" autocomplete="off" />
+              <div id="cf-coteach-dropdown"
+                class="hidden absolute z-20 w-full mt-1 bg-white border border-gray-200
+                       rounded-xl shadow-lg overflow-y-auto" style="max-height:200px"></div>
+            </div>
+          </div>
+          <div id="cf-coteach-selected-list" class="flex flex-wrap gap-2 pt-1">
+            <!-- เรนเดอร์ป้ายชื่อครูผู้ร่วมสอน (Tags) ที่นี่ -->
+          </div>
+        </div>
+
         <!-- หัวหน้ากลุ่มสาระ / หัวหน้าสาขาวิชา (typeahead) -->
         <div class="bg-gray-50 rounded-xl p-4">
           <label id="cf-head-label" class="block text-sm font-semibold text-gray-700 mb-1">${_headLabel(_initSg)}</label>
@@ -1083,6 +1135,119 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
 
   // ─── Bind logic ──────────────────────────────────────────────────────────
 
+  // 0. Helpers สำหรับโหมดสอนร่วม & คละชั้น
+  const _isMultiGradeOrCoTaught = editData && (
+    (editData.grade_level && editData.grade_level.includes(',')) ||
+    (_selectedCoTeachers.length > 0)
+  )
+
+  function _renderCoTeachersTags() {
+    const listEl = document.getElementById('cf-coteach-selected-list')
+    if (!listEl) return
+    listEl.innerHTML = _selectedCoTeachers.map(t => `
+      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-semibold text-indigo-700 shadow-sm animate-fade">
+        <span>${t.full_name} (${t.teacher_code || '—'})</span>
+        <button type="button" class="text-indigo-400 hover:text-red-500 font-bold transition ml-0.5 remove-coteacher-btn" data-id="${t.id}">✕</button>
+      </span>
+    `).join('')
+
+    listEl.querySelectorAll('.remove-coteacher-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.id)
+        _selectedCoTeachers = _selectedCoTeachers.filter(t => t.id !== id)
+        _renderCoTeachersTags()
+      })
+    })
+  }
+
+  function _showCoTeachingExplanationModal(onConfirm, onCancel) {
+    document.getElementById('coteach-explain-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'coteach-explain-modal'
+    m.className = 'fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade'
+    m.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-7 border border-indigo-50">
+        <div class="text-center mb-6">
+          <div class="text-5xl mb-4">👥</div>
+          <h3 class="font-bold text-gray-800 text-lg mb-2">โหมดสอนร่วม & คละระดับชั้น</h3>
+          <p class="text-sm text-gray-600 leading-relaxed">
+            เมื่อเปิดใช้งานโหมดนี้ ท่านจะสามารถเลือก **คละระดับชั้นได้หลายระดับชั้น** ในคอร์สเดียว และสามารถระบุ **ครูผู้ร่วมสอน** เพื่อร่วมจัดการห้องเรียน (กรอกคะแนน เช็คชื่อ บันทึก ปพ.5) ได้พร้อมกัน
+          </p>
+          <div class="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-2xl text-left text-xs text-amber-800 flex gap-2">
+            <span class="text-base leading-none">⚠️</span>
+            <span>หากต้องการปิดโหมดนี้ภายหลัง ข้อมูลระดับชั้นจะเหลือเพียงระดับชั้นเดียว และรายชื่อผู้ร่วมสอนจะถูกล้างออกทั้งหมด</span>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button id="cf-explain-cancel"
+            class="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
+            ยกเลิก
+          </button>
+          <button id="cf-explain-confirm"
+            class="flex-1 py-3 rounded-2xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-md transition">
+            ยืนยันเปิดโหมด
+          </button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.querySelector('#cf-explain-cancel').addEventListener('click', () => {
+      m.remove()
+      onCancel()
+    })
+    m.querySelector('#cf-explain-confirm').addEventListener('click', () => {
+      m.remove()
+      onConfirm()
+    })
+  }
+
+  function _showCoTeachingTurnOffConfirm(onConfirm, onCancel) {
+    document.getElementById('coteach-confirm-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'coteach-confirm-modal'
+    m.className = 'fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade'
+    m.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 border border-red-50 text-center">
+        <div class="text-4xl mb-3">⚠️</div>
+        <h3 class="font-bold text-gray-800 text-base mb-1">ปิดโหมดสอนร่วม & คละชั้น?</h3>
+        <p class="text-xs text-gray-500 mb-5 leading-relaxed">
+          หากปิดโหมดนี้ ข้อมูลครูผู้ร่วมสอนและระดับชั้นคละจะถูกรีเซ็ตกลับเป็นปกติ คุณต้องการดำเนินการต่อใช่หรือไม่?
+        </p>
+        <div class="flex gap-3">
+          <button id="cf-off-cancel"
+            class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
+            ยกเลิก
+          </button>
+          <button id="cf-off-confirm"
+            class="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition">
+            ยืนยันปิดโหมด
+          </button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.querySelector('#cf-off-cancel').addEventListener('click', () => {
+      m.remove()
+      onCancel()
+    })
+    m.querySelector('#cf-off-confirm').addEventListener('click', () => {
+      m.remove()
+      onConfirm()
+    })
+  }
+
+  function _renderGradeCheckboxes(sg, checkedStr = '') {
+    const list = GRADE_OPTS[sg] ?? []
+    const container = document.getElementById('cf-grade-checkboxes')
+    if (!container) return
+    const checkedList = checkedStr ? checkedStr.split(',').map(s => s.trim()) : []
+    
+    container.innerHTML = list.map(g => `
+      <label class="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-xl cursor-pointer hover:bg-indigo-50/50 transition">
+        <input type="checkbox" class="cf-grade-cb w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" value="${g}" ${checkedList.includes(g) ? 'checked' : ''} />
+        <span class="text-sm font-medium text-gray-700">${g}</span>
+      </label>
+    `).join('')
+  }
+
   const HINTS = {
     ACDM: 'มัธยม: แนะนำรูปแบบ ค32110 (ตัวอักษร+เลข 5 หลัก)',
     AGM: 'ศาสนา: อิสระ เช่น ฮ21101',
@@ -1111,6 +1276,9 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
          ...opts.map(g=>`<option value="${g}">${g}</option>`)].join('')
       : '<option value="">— เลือกกลุ่มวิชาก่อน —</option>'
     document.getElementById('cf-code-hint').textContent = HINTS[sg] ?? ''
+    
+    // อัปเดต checkboxes คละระดับชั้นด้วย
+    _renderGradeCheckboxes(sg)
   })
 
   // 2. กลุ่มสาระ → auto-fill หัวหน้าหมวด (เฉพาะถ้ายังไม่ได้พิมพ์เอง)
@@ -1225,6 +1393,111 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
   nameEl.onblur = () => setTimeout(()=>dropEl.classList.add('hidden'),150)
   clearBtn.addEventListener('click', ()=>_pickTeacher(null))
 
+  // Bind co-teaching toggle & sections
+  const toggleEl = document.getElementById('cf-toggle-coteach')
+  const singleGradeWrapper = document.getElementById('cf-grade-single-wrapper')
+  const multiGradeContainer = document.getElementById('cf-grade-multi-container')
+  const coteachSection = document.getElementById('cf-coteach-section')
+
+  toggleEl.addEventListener('change', e => {
+    const isChecked = e.target.checked
+    if (isChecked) {
+      toggleEl.checked = false
+      _showCoTeachingExplanationModal(
+        // Confirm
+        () => {
+          toggleEl.checked = true
+          singleGradeWrapper.classList.add('hidden')
+          multiGradeContainer.classList.remove('hidden')
+          coteachSection.classList.remove('hidden')
+          
+          const sg = document.getElementById('cf-subg').value
+          _renderGradeCheckboxes(sg)
+          _renderCoTeachersTags()
+        },
+        // Cancel
+        () => {
+          toggleEl.checked = false
+        }
+      )
+    } else {
+      _showCoTeachingTurnOffConfirm(
+        // Confirm
+        () => {
+          toggleEl.checked = false
+          singleGradeWrapper.classList.remove('hidden')
+          multiGradeContainer.classList.add('hidden')
+          coteachSection.classList.add('hidden')
+          _selectedCoTeachers = []
+        },
+        // Cancel
+        () => {
+          toggleEl.checked = true
+        }
+      )
+    }
+  })
+
+  // Co-teacher search input binding
+  const coCodeEl   = document.getElementById('cf-coteach-code')
+  const coNameEl   = document.getElementById('cf-coteach-search')
+  const coDropEl   = document.getElementById('cf-coteach-dropdown')
+
+  function _pickCoTeacher(t) {
+    if (!t) return
+    if (_selectedCoTeachers.some(x => x.id === t.id)) {
+      showToast('ครูท่านนี้ถูกเลือกเป็นผู้ร่วมสอนแล้ว', 'warning')
+      coCodeEl.value = ''; coNameEl.value = ''
+      return
+    }
+    const mainTid = Number(idEl.value)
+    if (t.id === mainTid) {
+      showToast('ไม่สามารถเลือกครูผู้สอนหลักเป็นครูผู้ร่วมสอนได้', 'warning')
+      coCodeEl.value = ''; coNameEl.value = ''
+      return
+    }
+
+    _selectedCoTeachers.push(t)
+    _renderCoTeachersTags()
+    coCodeEl.value = ''; coNameEl.value = ''
+    coDropEl.classList.add('hidden')
+  }
+
+  function _renderCoDrop(list) {
+    coDropEl.innerHTML = !list.length
+      ? `<p class="px-4 py-3 text-sm text-gray-400">ไม่พบ</p>`
+      : list.map(t=>`
+          <div class="px-4 py-2.5 text-sm cursor-pointer hover:bg-emerald-50 transition
+                      border-b border-gray-50 last:border-0 co-t-opt" data-id="${t.id}">
+            <span class="font-mono text-xs text-gray-400 mr-2">${t.teacher_code??''}</span>
+            <span class="font-medium">${t.full_name}</span>
+          </div>`).join('')
+    coDropEl.querySelectorAll('.co-t-opt').forEach(el =>
+      el.addEventListener('mousedown', e => {
+        e.preventDefault()
+        _pickCoTeacher(teachers.find(x=>String(x.id)===el.dataset.id))
+      })
+    )
+    coDropEl.classList.remove('hidden')
+  }
+
+  coCodeEl.oninput = () => {
+    const q = coCodeEl.value.trim().toLowerCase()
+    if (!q) return
+    const exact = teachers.find(t=>(t.teacher_code??'').toLowerCase()===q)
+    if (exact) _pickCoTeacher(exact)
+    else {
+      const f = teachers.filter(t=>(t.teacher_code??'').toLowerCase().startsWith(q))
+      if (f.length) _renderCoDrop(f)
+    }
+  }
+  coNameEl.onfocus = () => _renderCoDrop(teachers)
+  coNameEl.oninput = () => {
+    const q = coNameEl.value.toLowerCase()
+    _renderCoDrop(q ? teachers.filter(t=>t.full_name.toLowerCase().includes(q)||(t.teacher_code??'').toLowerCase().includes(q)) : teachers)
+  }
+  coNameEl.onblur = () => setTimeout(()=>coDropEl.classList.add('hidden'),150)
+
   // 5. Phone formatting
   phoneEl.addEventListener('input', e => { e.target.value = formatPhone(e.target.value) })
 
@@ -1271,6 +1544,18 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
         if (me) _pickTeacher(me)
       }
     }
+
+    // เปิดโหมดร่วมสอน/คละระดับชั้นตามข้อมูลเดิมที่มี
+    if (_isMultiGradeOrCoTaught) {
+      toggleEl.checked = true
+      singleGradeWrapper.classList.add('hidden')
+      multiGradeContainer.classList.remove('hidden')
+      coteachSection.classList.remove('hidden')
+      
+      const sg = editData.subject_group
+      _renderGradeCheckboxes(sg, editData.grade_level)
+      _renderCoTeachersTags()
+    }
   }
 
   // 7. Form submit
@@ -1282,7 +1567,18 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     const name   = document.getElementById('cf-name').value.trim()
     const code   = document.getElementById('cf-code').value.trim()
     const credit = parseFloat(document.getElementById('cf-credit').value) || null
-    const grade  = document.getElementById('cf-grade').value
+    
+    let grade = ''
+    if (toggleEl.checked) {
+      const checkedBoxes = Array.from(document.querySelectorAll('.cf-grade-cb:checked'))
+      if (!checkedBoxes.length) {
+        showToast('กรุณาเลือกอย่างน้อยหนึ่งระดับชั้นเรียน', 'warning'); return
+      }
+      grade = checkedBoxes.map(cb => cb.value).join(', ')
+    } else {
+      grade = document.getElementById('cf-grade').value
+    }
+    
     const tid    = idEl.value
     const phone  = phoneEl.value.trim()
     const head   = headEl.value.trim()
@@ -1292,6 +1588,8 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
       const resolvedTeacherId = tid ? Number(tid) : (teacher?.id ?? null)
+      const coTeacherIds = toggleEl.checked ? _selectedCoTeachers.map(t => t.id) : []
+      
       await onSave({
         subject_group: subg,
         dept:          dept || null,
@@ -1301,7 +1599,8 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
         grade_level:   grade,
         teacher_id:    resolvedTeacherId,
         learning_area: head || null,
-      })
+      }, coTeacherIds)
+      
       // บันทึก phone ลง teachers table ถ้ากรอก (เฉพาะกรณีเป็นครูคนเดียวกัน)
       if (phone && resolvedTeacherId && resolvedTeacherId === teacher?.id) {
         await updateMyProfile(teacher.id, { phone }).catch(()=>{})

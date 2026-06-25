@@ -47,10 +47,8 @@ export async function getMyTeacherProfile(profileId) {
 
 export async function getMyClasses(teacherId) {
   // ดึงคอร์สก่อน แล้วหา classes ที่ผูกกับคอร์สเหล่านั้น
-  const subjects = teacherId
-    ? await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
-    : await supabase.from('master_subjects').select('id')
-  const ids = (subjects.data ?? []).map(s => s.id)
+  const subjects = await getMySubjects(teacherId)
+  const ids = (subjects ?? []).map(s => s.id)
   if (!ids.length) return []
 
   const { data, error } = await supabase
@@ -70,8 +68,8 @@ export async function getMyClasses(teacherId) {
 
 // ดึงรายการห้องที่ครูสอน สำหรับเลือก source class (ยกเว้นห้องตัวเอง)
 export async function getTeacherClassesForLinking(teacherId, excludeClassId) {
-  const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
-  const ids = (subjects.data ?? []).map(s => s.id)
+  const subjects = await getMySubjects(teacherId)
+  const ids = (subjects ?? []).map(s => s.id)
   if (!ids.length) return []
   const { data, error } = await supabase
     .from('classes')
@@ -92,14 +90,41 @@ export async function getClassStudentCount(classId) {
 }
 
 export async function getMySubjects(teacherId) {
-  let q = supabase
+  if (!teacherId) {
+    const { data, error } = await supabase
+      .from('master_subjects')
+      .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id')
+      .order('subject_name')
+    if (error) throw error
+    return data ?? []
+  }
+
+  // 1. owned subjects
+  const ownPromise = supabase
     .from('master_subjects')
     .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id')
-    .order('subject_name')
-  if (teacherId) q = q.eq('teacher_id', teacherId)
-  const { data, error } = await q
-  if (error) throw error
-  return data ?? []
+    .eq('teacher_id', teacherId)
+
+  // 2. co-taught subjects
+  const coPromise = supabase
+    .from('subject_co_teachers')
+    .select('subject_id, master_subjects(id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id)')
+    .eq('teacher_id', teacherId)
+
+  const [ownRes, coRes] = await Promise.all([ownPromise, coPromise])
+  if (ownRes.error) throw ownRes.error
+  if (coRes.error) throw coRes.error
+
+  const ownList = ownRes.data ?? []
+  const coList = (coRes.data ?? []).map(x => x.master_subjects).filter(Boolean)
+
+  const map = new Map()
+  for (const s of ownList) map.set(s.id, s)
+  for (const s of coList) map.set(s.id, s)
+
+  const merged = Array.from(map.values())
+  merged.sort((a, b) => (a.subject_name || '').localeCompare(b.subject_name || '', 'th'))
+  return merged
 }
 
 // ─── Overview Stats ───────────────────────────────────────────────────────────
@@ -991,15 +1016,47 @@ export async function enrollStudents(classId, studentIds) {
 }
 
 // ─── Master Subjects CRUD ─────────────────────────────────────────────────────
-export async function createSubject(payload) {
-  const { error } = await supabase.from('master_subjects').insert(payload)
+export async function createSubject(payload, coTeacherIds = []) {
+  const { data, error } = await supabase
+    .from('master_subjects')
+    .insert(payload)
+    .select('id')
+    .single()
   if (error) throw error
+
+  if (data && coTeacherIds.length > 0) {
+    const rows = coTeacherIds.map(tid => ({ subject_id: data.id, teacher_id: tid }))
+    const { error: coErr } = await supabase.from('subject_co_teachers').insert(rows)
+    if (coErr) throw coErr
+  }
+  return data
 }
 
-export async function updateSubject(id, payload) {
+export async function updateSubject(id, payload, coTeacherIds = []) {
   const { error } = await supabase
     .from('master_subjects').update(payload).eq('id', id)
   if (error) throw error
+
+  const { error: delErr } = await supabase
+    .from('subject_co_teachers')
+    .delete()
+    .eq('subject_id', id)
+  if (delErr) throw delErr
+
+  if (coTeacherIds.length > 0) {
+    const rows = coTeacherIds.map(tid => ({ subject_id: id, teacher_id: tid }))
+    const { error: insErr } = await supabase.from('subject_co_teachers').insert(rows)
+    if (insErr) throw insErr
+  }
+}
+
+export async function getSubjectCoTeachers(subjectId) {
+  const { data, error } = await supabase
+    .from('subject_co_teachers')
+    .select('teacher_id, teachers(id, full_name, teacher_code)')
+    .eq('subject_id', subjectId)
+  if (error) throw error
+  return (data ?? []).map(x => x.teachers).filter(Boolean)
 }
 
 export async function deleteSubject(id) {
@@ -1407,8 +1464,8 @@ export async function getPublicLoginStats(userType) {
 
 export async function getClassScheduleLinks(teacherId) {
   if (!teacherId) return []
-  const { data: subjData } = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
-  const subjectIds = (subjData ?? []).map(s => s.id)
+  const subjects = await getMySubjects(teacherId)
+  const subjectIds = (subjects ?? []).map(s => s.id)
   if (!subjectIds.length) return []
   const { data: clsData } = await supabase.from('classes').select('id').in('course_id', subjectIds)
   const classIds = (clsData ?? []).map(c => c.id)
@@ -2099,8 +2156,8 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
 // ─── Exam Requests (Teacher) ──────────────────────────────────────────────────
 
 export async function getTeacherExamRequests(teacherId) {
-  const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
-  const subjectIds = (subjects.data ?? []).map(s => s.id)
+  const subjects = await getMySubjects(teacherId)
+  const subjectIds = (subjects ?? []).map(s => s.id)
   if (!subjectIds.length) return []
   const { data: classRows } = await supabase.from('classes').select('id').in('course_id', subjectIds)
   const cids = (classRows ?? []).map(c => c.id)
@@ -2142,8 +2199,8 @@ export async function updateExamResult(id, { exam_attended, exam_score, studentI
 }
 
 export async function getPendingExamRequestCount(teacherId) {
-  const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', teacherId)
-  const subjectIds = (subjects.data ?? []).map(s => s.id)
+  const subjects = await getMySubjects(teacherId)
+  const subjectIds = (subjects ?? []).map(s => s.id)
   if (!subjectIds.length) return 0
   const { data: classRows } = await supabase.from('classes').select('id').in('course_id', subjectIds)
   const cids = (classRows ?? []).map(c => c.id)

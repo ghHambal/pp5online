@@ -534,8 +534,8 @@ async function _onSetupComplete(userId) {
 }
 
 window._openCourseForm = () => {
-  renderCourseForm(_teacher, async (payload) => {
-    await createSubject(payload)
+  renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
+    await createSubject(payload, coTeacherIds)
   })
 }
 
@@ -545,8 +545,8 @@ window._editCourse = async (id) => {
     : await getMasterSubjects().catch(()=>[])
   const editData = subjects.find(s => s.id === id)
   if (!editData) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
-  renderCourseForm(_teacher, async (payload) => {
-    await updateSubject(id, payload)
+  renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
+    await updateSubject(id, payload, coTeacherIds)
   }, editData)
 }
 
