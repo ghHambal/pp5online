@@ -29,8 +29,38 @@ export async function getMyEnrolledClasses(studentId) {
       )
     `)
     .eq('student_id', studentId)
-  if (error) throw error
-  return (data ?? []).map(r => r.classes).filter(Boolean)
+  if (!error) {
+    const classes = (data ?? []).map(r => r.classes).filter(Boolean)
+    if (classes.length) return classes
+  }
+
+  // Fallback for the student portal: if a deep PostgREST embed fails or returns
+  // null nested rows, keep the page useful by loading the class rows directly.
+  const { data: enrollments, error: enrollErr } = await supabase
+    .from('class_students')
+    .select('class_id')
+    .eq('student_id', studentId)
+  if (enrollErr) throw (error ?? enrollErr)
+
+  const classIds = [...new Set((enrollments ?? []).map(r => r.class_id).filter(Boolean))]
+  if (!classIds.length) {
+    if (error) throw error
+    return []
+  }
+
+  const { data: classes, error: classErr } = await supabase
+    .from('classes')
+    .select(`
+      id, class_name, skill_group, google_sheet_id,
+      day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
+      master_subjects (
+        id, subject_code, subject_name, dept, grade_level, credit, teacher_id, subject_group,
+        teachers ( id, full_name, phone, image_url, category )
+      )
+    `)
+    .in('id', classIds)
+  if (classErr) throw (error ?? classErr)
+  return classes ?? []
 }
 
 // ─── Scores ───────────────────────────────────────────────────────────────────
@@ -485,5 +515,4 @@ export async function getStudentClassroomRole(mainRoom) {
   }
   return data
 }
-
 
