@@ -15,6 +15,12 @@ export async function getMyStudentProfile() {
 
 // ─── Enrolled Classes ─────────────────────────────────────────────────────────
 export async function getMyEnrolledClasses(studentId) {
+  const { data: rpcClasses, error: rpcErr } = await supabase
+    .rpc('get_student_enrolled_classes', { p_student_id: studentId })
+  if (!rpcErr && Array.isArray(rpcClasses) && rpcClasses.length) {
+    return rpcClasses
+  }
+
   const { data, error } = await supabase
     .from('class_students')
     .select(`
@@ -515,4 +521,3 @@ export async function getStudentClassroomRole(mainRoom) {
   }
   return data
 }
-
