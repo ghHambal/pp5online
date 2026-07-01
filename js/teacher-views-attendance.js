@@ -2217,6 +2217,277 @@ const PRAYER_CYCLE = [null, 'pray', 'absent', 'usor', 'followed', 'avoid']
 
 const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 
+const _prayerLocationLabel = (loc) => ({
+  musolla_male: 'มูซอลลาชาย',
+  masjid_kuwait: 'มัสยิดคูเวต',
+  musolla_female_1: 'มูซอลลาหญิง 1',
+  musolla_female_2: 'มูซอลลาหญิง 2',
+})[loc] || 'ไม่ระบุจุด'
+
+const _prayerLocationBadgeClass = (loc) => ({
+  musolla_male: 'bg-blue-50 text-blue-700 border-blue-100',
+  masjid_kuwait: 'bg-purple-50 text-purple-700 border-purple-100',
+  musolla_female_1: 'bg-pink-50 text-pink-700 border-pink-100',
+  musolla_female_2: 'bg-amber-50 text-amber-700 border-amber-100',
+})[loc] || 'bg-gray-50 text-gray-500 border-gray-100'
+
+function _localDateValue(d = new Date()) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function _timeLabel(value) {
+  if (!value) return '—'
+  try {
+    return new Date(value).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch {
+    return '—'
+  }
+}
+
+export async function renderPrayerRoomMonitor(teacher, homeroomRooms = [], preferredRoom = null) {
+  setActiveNav('prayer-score')
+  setTitle('ติดตามผลสแกนละหมาด')
+
+  if (window._cleanupPrayerRoomMonitor) {
+    try { window._cleanupPrayerRoomMonitor() } catch (e) {}
+  }
+
+  const religionRooms = homeroomRooms.filter(r => r.category === 'ศาสนา')
+  if (!teacher?.id || !religionRooms.length) {
+    setContent(`<div class="max-w-xl mx-auto text-center py-20 text-gray-400">
+      <p class="text-5xl mb-4">🕌</p>
+      <p class="font-medium text-gray-700">หน้านี้เปิดเฉพาะครูที่ปรึกษาชั้นศาสนา</p>
+      <p class="text-xs mt-1">ไม่พบห้องที่ปรึกษาศาสนาที่ผูกกับบัญชีครูของคุณ</p>
+    </div>`)
+    return
+  }
+
+  const rooms = religionRooms.map(r => r.main_room).filter(Boolean)
+  let currentRoom = rooms.includes(preferredRoom) ? preferredRoom : rooms[0]
+  let monitorTimer = null
+  let isLoading = false
+  let lastSeenRecordId = 0
+
+  window._cleanupPrayerRoomMonitor = () => {
+    if (monitorTimer) clearInterval(monitorTimer)
+    monitorTimer = null
+  }
+
+  const renderShell = () => {
+    setContent(`
+      <div class="animate-fade space-y-4">
+        <div class="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 flex flex-col md:flex-row md:items-center gap-3">
+          <button id="prm-back" class="self-start px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-500 hover:bg-gray-50">
+            ← กลับ
+          </button>
+          <div class="flex-1 min-w-0">
+            <h2 class="font-extrabold text-gray-800 text-base">🕌 Monitor การสแกนละหมาด</h2>
+            <p class="text-xs text-gray-400 mt-0.5">เฉพาะนักเรียนชั้นศาสนาในความรับผิดชอบของคุณ</p>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2">
+            ${rooms.length > 1 ? `
+            <select id="prm-room-select" class="text-xs border border-gray-200 rounded-xl px-3 py-2 bg-white font-bold text-emerald-800">
+              ${rooms.map(r => `<option value="${_htmlEsc(r)}" ${r === currentRoom ? 'selected' : ''}>${_htmlEsc(r)}</option>`).join('')}
+            </select>` : `<span class="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-xs font-extrabold">${_htmlEsc(currentRoom)}</span>`}
+            <button id="prm-refresh" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 active:scale-95 transition">
+              รีเฟรช
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+            <p class="text-[10px] font-bold text-gray-400 uppercase">นักเรียนทั้งหมด</p>
+            <p id="prm-total" class="text-2xl font-extrabold text-gray-800 mt-1">—</p>
+          </div>
+          <div class="bg-white border border-emerald-100 rounded-2xl p-4 shadow-sm">
+            <p class="text-[10px] font-bold text-emerald-500 uppercase">สแกนแล้ว</p>
+            <p id="prm-done" class="text-2xl font-extrabold text-emerald-700 mt-1">—</p>
+          </div>
+          <div class="bg-white border border-purple-100 rounded-2xl p-4 shadow-sm">
+            <p class="text-[10px] font-bold text-purple-500 uppercase">อูโซร</p>
+            <p id="prm-usor" class="text-2xl font-extrabold text-purple-700 mt-1">—</p>
+          </div>
+          <div class="bg-white border border-amber-100 rounded-2xl p-4 shadow-sm">
+            <p class="text-[10px] font-bold text-amber-500 uppercase">ยังไม่สแกน</p>
+            <p id="prm-pending" class="text-2xl font-extrabold text-amber-700 mt-1">—</p>
+          </div>
+        </div>
+
+        <div class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 class="font-bold text-gray-800 text-sm">รายการนักเรียนห้อง ${_htmlEsc(currentRoom)}</h3>
+              <p id="prm-updated" class="text-[11px] text-gray-400 mt-0.5">กำลังโหลดข้อมูล...</p>
+            </div>
+            <input id="prm-search" type="text" placeholder="ค้นหาชื่อหรือรหัส"
+              class="w-full sm:w-56 text-xs border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[720px] text-xs">
+              <thead class="bg-gray-50 border-b border-gray-100 text-gray-500">
+                <tr>
+                  <th class="px-4 py-3 text-center w-12">#</th>
+                  <th class="px-4 py-3 text-left">นักเรียน</th>
+                  <th class="px-4 py-3 text-center w-28">ห้องสามัญ</th>
+                  <th class="px-4 py-3 text-center w-32">สถานะวันนี้</th>
+                  <th class="px-4 py-3 text-center w-28">เวลา</th>
+                  <th class="px-4 py-3 text-center w-36">จุดสแกน</th>
+                  <th class="px-4 py-3 text-left w-44">ผู้สแกน</th>
+                </tr>
+              </thead>
+              <tbody id="prm-table-body" class="divide-y divide-gray-50">
+                <tr><td colspan="7" class="py-12 text-center text-gray-400">กำลังโหลดข้อมูล...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `)
+
+    document.getElementById('prm-back')?.addEventListener('click', () => window._navTo?.('overview'))
+    document.getElementById('prm-refresh')?.addEventListener('click', () => loadRoom(currentRoom, { manual: true }))
+    document.getElementById('prm-room-select')?.addEventListener('change', e => {
+      currentRoom = e.target.value
+      renderShell()
+      loadRoom(currentRoom, { manual: true })
+    })
+    document.getElementById('prm-search')?.addEventListener('input', () => renderRows(window._prmStudents || [], window._prmRecords || []))
+  }
+
+  const fetchRoomData = async (room) => {
+    const today = _localDateValue()
+    const { data: students, error: studentError } = await supabase
+      .from('students')
+      .select('id, student_code, full_name, main_room, religion_room, image_url')
+      .eq('religion_room', room)
+      .eq('is_active', true)
+      .order('student_code', { ascending: true })
+    if (studentError) throw studentError
+
+    const ids = (students || []).map(s => s.id)
+    if (!ids.length) return { students: [], records: [] }
+
+    const { data: records, error: recordError } = await supabase
+      .from('prayer_records')
+      .select('id, student_id, status, check_date, location, input_method, scanned_by, scanner_name, same_room_flag, created_at')
+      .eq('check_date', today)
+      .in('student_id', ids)
+      .not('location', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(300)
+    if (recordError) throw recordError
+
+    return { students: students || [], records: records || [] }
+  }
+
+  const latestRecordMap = (records) => {
+    const map = new Map()
+    records.forEach(r => {
+      if (!map.has(r.student_id)) map.set(r.student_id, r)
+    })
+    return map
+  }
+
+  const renderRows = (students, records) => {
+    const body = document.getElementById('prm-table-body')
+    if (!body) return
+    const q = (document.getElementById('prm-search')?.value || '').trim().toLowerCase()
+    const recMap = latestRecordMap(records)
+    const filtered = students.filter(s =>
+      !q || [s.full_name, s.student_code, s.main_room, s.religion_room].some(v => String(v || '').toLowerCase().includes(q))
+    )
+
+    if (!filtered.length) {
+      body.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-gray-400">ไม่พบข้อมูลนักเรียน</td></tr>`
+      return
+    }
+
+    body.innerHTML = filtered.map((s, idx) => {
+      const rec = recMap.get(s.id)
+      const st = rec ? (PRAYER_ST[rec.status] || PRAYER_ST.pray) : null
+      const statusBadge = rec
+        ? `<span class="inline-flex px-2.5 py-1 rounded-full ${st.bg} ${st.color}">${st.fullLabel}</span>`
+        : `<span class="inline-flex px-2.5 py-1 rounded-full bg-gray-50 text-gray-400 font-bold border border-gray-100">ยังไม่สแกน</span>`
+      const methodBadge = rec?.input_method === 'manual'
+        ? `<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-bold">กรอกรหัส</span>`
+        : ''
+      const sameRoomBadge = rec?.same_room_flag
+        ? `<span class="inline-flex mt-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">ห้องเดียวกัน</span>`
+        : ''
+      return `
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-3 text-center text-gray-400 font-mono">${idx + 1}</td>
+          <td class="px-4 py-3">
+            <div class="flex items-center gap-3">
+              ${s.image_url
+                ? `<img src="${_htmlEsc(s.image_url)}" class="w-9 h-9 rounded-full object-cover object-top border border-gray-100" />`
+                : `<div class="w-9 h-9 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').charAt(0))}</div>`}
+              <div class="min-w-0">
+                <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name || '—')}</p>
+                <p class="text-[11px] text-gray-400 font-mono">รหัส ${_htmlEsc(s.student_code || '—')}</p>
+              </div>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-center text-gray-500 font-bold">${_htmlEsc(s.main_room || '—')}</td>
+          <td class="px-4 py-3 text-center">${statusBadge}<div class="flex flex-wrap justify-center gap-1">${methodBadge}${sameRoomBadge}</div></td>
+          <td class="px-4 py-3 text-center font-mono text-gray-600">${_timeLabel(rec?.created_at)}</td>
+          <td class="px-4 py-3 text-center">
+            ${rec?.location ? `<span class="px-2.5 py-1 rounded-full border text-[11px] font-bold ${_prayerLocationBadgeClass(rec.location)}">${_htmlEsc(_prayerLocationLabel(rec.location))}</span>` : `<span class="text-gray-300">—</span>`}
+          </td>
+          <td class="px-4 py-3 text-gray-500">${_htmlEsc(rec?.scanner_name || rec?.scanned_by || '—')}</td>
+        </tr>
+      `
+    }).join('')
+  }
+
+  const renderStats = (students, records) => {
+    const recMap = latestRecordMap(records)
+    const done = recMap.size
+    const usor = [...recMap.values()].filter(r => r.status === 'usor').length
+    const pending = Math.max(0, students.length - done)
+    document.getElementById('prm-total')?.replaceChildren(document.createTextNode(String(students.length)))
+    document.getElementById('prm-done')?.replaceChildren(document.createTextNode(String(done)))
+    document.getElementById('prm-usor')?.replaceChildren(document.createTextNode(String(usor)))
+    document.getElementById('prm-pending')?.replaceChildren(document.createTextNode(String(pending)))
+    const updated = document.getElementById('prm-updated')
+    if (updated) updated.textContent = `อัปเดตล่าสุด ${new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} น.`
+  }
+
+  async function loadRoom(room, { manual = false } = {}) {
+    if (isLoading) return
+    isLoading = true
+    try {
+      const { students, records } = await fetchRoomData(room)
+      window._prmStudents = students
+      window._prmRecords = records
+      const newest = records[0]?.id || 0
+      if (!manual && lastSeenRecordId && newest > lastSeenRecordId) {
+        showToast('มีรายการสแกนละหมาดใหม่', 'info')
+      }
+      lastSeenRecordId = Math.max(lastSeenRecordId, newest)
+      renderStats(students, records)
+      renderRows(students, records)
+    } catch (err) {
+      console.error('Prayer room monitor failed:', err)
+      showToast('โหลดข้อมูล Monitor ไม่สำเร็จ: ' + (err.message || ''), 'error')
+      const body = document.getElementById('prm-table-body')
+      if (body) body.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-red-400">โหลดข้อมูลไม่สำเร็จ</td></tr>`
+    } finally {
+      isLoading = false
+    }
+  }
+
+  renderShell()
+  await loadRoom(currentRoom, { manual: true })
+  monitorTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') loadRoom(currentRoom)
+  }, 5000)
+}
+
 function _generateWeeks(startDate, endDate, startDay = 0) {
   // startDay: 0=อาทิตย์ (default), 1=จันทร์
   const weeks = []
@@ -2365,6 +2636,9 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
           ซ่อนคะแนนรวม
         </button>
         <button id="btn-prayer-stats" class="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg font-medium hover:bg-indigo-700 transition">📊 สถิติ</button>
+        <button id="btn-prayer-room-monitor" class="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 text-xs rounded-lg font-bold hover:bg-amber-100 transition">
+          👁️ Monitor
+        </button>
         ${isAllowedScanner ? `
         <button id="btn-prayer-scanner" class="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg font-bold hover:bg-emerald-700 transition flex items-center gap-1 shadow-sm">
           📷 สแกนละหมาด
@@ -2443,6 +2717,9 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
     document.getElementById('prayer-room-sel')?.addEventListener('change', e => _load(e.target.value))
     document.getElementById('btn-prayer-stats')?.addEventListener('click', () =>
       _showPrayerStats(teacher, room, students, weeks, prayMap, allDays, year, sem))
+    document.getElementById('btn-prayer-room-monitor')?.addEventListener('click', () => {
+      window._openReligionPrayerMonitor?.(room)
+    })
     
     if (isAllowedScanner) {
       document.getElementById('btn-prayer-scanner')?.addEventListener('click', async () => {
@@ -3139,4 +3416,3 @@ async function _loadHtml5Qrcode() {
     document.head.appendChild(s)
   })
 }
-

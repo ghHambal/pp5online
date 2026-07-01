@@ -592,6 +592,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             <button onclick="window._openReligionScore('${r.main_room}')"
               class="w-full text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 text-left">
               📊 บันทึกคะแนนศาสนา
+            </button>
+            <button onclick="window._openReligionPrayerMonitor('${r.main_room}')"
+              class="w-full text-xs bg-white border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50 text-left">
+              👁️ Monitor สแกนละหมาด
             </button>`}
           </div>
         </div>`).join('')}
@@ -921,5 +925,5 @@ export function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg
 
 export { renderMyCourses, renderCourseForm, renderProfileSetup, renderProfile, openCourseDocPage2Modal } from './teacher-views-courses.js'
 export { renderMyClasses, renderClassDetail, renderSchedule, renderScheduleGrid, renderScheduleBuilder, renderCourseDocLangConfig, renderAnnouncementsView } from './teacher-views-classes.js'
-export { renderAttendanceGrid, renderAttendance, renderLifeSkillScore, renderReadingScore, renderPrayerScore } from './teacher-views-attendance.js'
+export { renderAttendanceGrid, renderAttendance, renderLifeSkillScore, renderReadingScore, renderPrayerScore, renderPrayerRoomMonitor } from './teacher-views-attendance.js'
 export { renderGrades, renderGradesGrid, renderRequests } from './teacher-views-grades.js'

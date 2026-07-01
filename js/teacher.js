@@ -25,6 +25,7 @@ import {
   renderMyClasses, renderAttendance, renderGrades,
   renderRequests, renderSchedule, renderProfile, renderClassForm,
   renderLifeSkillScore, renderReadingScore, renderPrayerScore,
+  renderPrayerRoomMonitor,
   renderProfileSetup, renderScheduleBuilder, openCourseDocPage2Modal,
   renderClassDetail, renderCourseDocLangConfig,
 } from './teacher-views.js'
@@ -169,6 +170,20 @@ const ROUTES = {
       _pickRoom(rooms, picked => renderPrayerScore(_teacher, rooms.filter(r => r.main_room === picked)))
     }
   },
+  'prayer-monitor':   () => {
+    const rooms = _homeroomRooms.filter(r => r.category === 'ศาสนา')
+    const preferredRoom = window._pendingPrayerMonitorRoom || null
+    window._pendingPrayerMonitorRoom = null
+    if (rooms.length === 0) {
+      renderPrayerRoomMonitor(_teacher, [])
+    } else if (preferredRoom && rooms.some(r => r.main_room === preferredRoom)) {
+      renderPrayerRoomMonitor(_teacher, rooms, preferredRoom)
+    } else if (rooms.length === 1) {
+      renderPrayerRoomMonitor(_teacher, rooms, rooms[0].main_room)
+    } else {
+      _pickRoom(rooms, picked => renderPrayerRoomMonitor(_teacher, rooms, picked))
+    }
+  },
   'grades':      () => renderGrades(),
   'requests':    () => renderRequests(_teacher),
   'schedule':    () => renderSchedule(_teacher),
@@ -191,6 +206,9 @@ let _currentView = 'overview'
 function navigate(view) {
   if (typeof window._cleanupLeaveScanner === 'function') {
     try { window._cleanupLeaveScanner() } catch (e) {}
+  }
+  if (typeof window._cleanupPrayerRoomMonitor === 'function') {
+    try { window._cleanupPrayerRoomMonitor() } catch (e) {}
   }
   const fn = ROUTES[view]
   if (fn) { _currentView = view; fn() }
@@ -404,6 +422,10 @@ window._openWenDuty = (teacherCode) => {
 
 window._openLifeSkillScore    = (room) => navigate('life-skill-score')
 window._openReligionScore     = (room) => navigate('prayer-score')
+window._openReligionPrayerMonitor = (room) => {
+  window._pendingPrayerMonitorRoom = room || null
+  navigate('prayer-monitor')
+}
 window._openReadingScore      = ()     => { window._pendingReadingRoom = null; navigate('reading-score') }
 window._openReadingScoreRoom  = (room) => { window._pendingReadingRoom = room; navigate('reading-score') }
 

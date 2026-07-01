@@ -89,6 +89,7 @@
 | 44 | `patch_auto_enroll_v3.sql` | ป้องกันการดึงนักเรียนที่ครูกด "ไม่เรียน" (is_active = false) กลับมาเป็น "กำลังเรียน" ระหว่างซิงก์ | ✅ รันต่อจาก patch_auto_enroll_v2 |
 | 45 | `patch_prayer_rls_room_access.sql` | แก้ไข RLS SELECT ให้ครูที่ปรึกษาเห็นคะแนนละหมาดที่สภานักเรียนสแกน (ผ่านรหัส student_id) | ✅ จำเป็นสำหรับดูคะแนนสแกน |
 | 46 | `patch_prayer_scanner_safety.sql` | เพิ่ม metadata และค่า config สำหรับกันสแกนห้องเดียวกัน + จำกัดกรอกรหัสต่อเดือน | ✅ จำเป็นสำหรับฟีเจอร์ความปลอดภัย scanner |
+| 47 | `patch_prayer_homeroom_category_rls.sql` | ปรับ RLS ให้ครูที่ปรึกษาดูคะแนนละหมาดตามประเภทห้องชัดเจน: ศาสนา→religion_room, สามัญ→main_room | ✅ แนะนำสำหรับ Monitor ครูที่ปรึกษาศาสนา |
 
 ---
 
