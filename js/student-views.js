@@ -2726,6 +2726,7 @@ export async function renderStudentPrayerScanner(student) {
     (student.gender === 'หญิง' ? 'musolla_female_1' : 'musolla_male')
   let recordStatus = localStorage.getItem('prayer_scan_record_status') || 'pray'
   let isSyncing = false
+  let scannerSystemsStarted = false
 
   function renderUI() {
     const today = _localDateValue(new Date())
@@ -2735,6 +2736,51 @@ export async function renderStudentPrayerScanner(student) {
       <!-- Flash green screen overlay -->
       <div id="scanner-flash" class="fixed inset-0 pointer-events-none z-50 bg-emerald-500 opacity-0 transition-opacity duration-150 hidden"></div>
       <div id="scanner-time-warning-border" class="hidden fixed inset-0 pointer-events-none z-[60] border-4 border-red-500 rounded-[2rem] animate-pulse"></div>
+
+      ${!isOperatorTeacher ? `
+      <div id="scanner-amanah-modal" class="fixed inset-0 z-[90] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center px-4 py-6">
+        <div class="w-full max-w-3xl max-h-[92vh] overflow-hidden bg-white rounded-3xl shadow-2xl border border-emerald-100 flex flex-col">
+          <div class="flex-1 overflow-y-auto bg-emerald-950/5">
+            <img id="scanner-amanah-poster" src="/prayer-scanner-amanah.png" alt="นาซีฮัทถึงนักเรียนแกนนำผู้รับผิดชอบการสแกนละหมาด"
+              class="w-full h-auto block"
+              onerror="this.classList.add('hidden');document.getElementById('scanner-amanah-fallback')?.classList.remove('hidden')" />
+            <div id="scanner-amanah-fallback" class="hidden p-5 space-y-4">
+              <div class="bg-emerald-900 text-white px-5 py-4 text-center rounded-2xl">
+                <p class="text-[11px] font-bold tracking-[0.18em] uppercase text-emerald-100">นาซีฮัท</p>
+                <h3 class="text-lg font-extrabold leading-snug mt-1">ถึงนักเรียนแกนนำผู้รับผิดชอบการสแกนละหมาด</h3>
+              </div>
+              <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+                <p class="text-sm font-extrabold text-emerald-900 leading-relaxed">
+                  หน้าที่นี้คืออะมานะห์ที่ได้รับความไว้วางใจจากเพื่อน ครู และที่สำคัญคือความรับผิดชอบต่ออัลลอฮ์
+                </p>
+                <p class="text-xs text-emerald-700 leading-relaxed mt-2">
+                  ทุกการสแกนควรสะท้อนความจริง ผู้ที่มาละหมาดจริงควรได้รับสิทธิ์ของเขา และผู้ที่ไม่ได้มาละหมาดไม่ควรถูกบันทึกแทน
+                </p>
+              </div>
+              <div class="space-y-2.5 text-sm text-gray-700">
+                <div class="flex gap-3">
+                  <span class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-extrabold flex-shrink-0">1</span>
+                  <p class="leading-relaxed"><b>สแกนเฉพาะผู้ที่อยู่ต่อหน้า</b> และมาละหมาดจริงเท่านั้น</p>
+                </div>
+                <div class="flex gap-3">
+                  <span class="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-extrabold flex-shrink-0">2</span>
+                  <p class="leading-relaxed"><b>ห้ามฝากสแกน สแกนแทน หรือบันทึกข้อมูลเท็จ</b> เพราะเป็นการทำลายความไว้วางใจ</p>
+                </div>
+                <div class="flex gap-3">
+                  <span class="w-7 h-7 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-extrabold flex-shrink-0">3</span>
+                  <p class="leading-relaxed">ระบบมีการบันทึกเวลา จุดสแกน ผู้สแกน วิธีบันทึก และตรวจสอบย้อนหลังได้</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="p-4 bg-white border-t border-emerald-100">
+            <button id="btn-ack-scanner-amanah" class="w-full py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-extrabold shadow-lg shadow-emerald-200/60 active:scale-95 transition">
+              ข้าพเจ้าอ่านและรับทราบแล้ว
+            </button>
+          </div>
+        </div>
+      </div>
+      ` : ''}
 
       <!-- Header with back button -->
       <div class="flex items-center gap-3 mb-5">
@@ -3004,13 +3050,27 @@ export async function renderStudentPrayerScanner(student) {
       })
     }
 
-    // Start systems
+    const startScannerSystems = () => {
+      if (scannerSystemsStarted) return
+      scannerSystemsStarted = true
+      updateQueueUI()
+      startCountdown()
+      if (inputMode === 'camera') {
+        startCamera()
+      } else {
+        startScannerGun()
+      }
+    }
+
     updateQueueUI()
-    startCountdown()
-    if (inputMode === 'camera') {
-      startCamera()
+    const amanahModal = document.getElementById('scanner-amanah-modal')
+    if (amanahModal) {
+      document.getElementById('btn-ack-scanner-amanah')?.addEventListener('click', () => {
+        amanahModal.remove()
+        startScannerSystems()
+      })
     } else {
-      startScannerGun()
+      startScannerSystems()
     }
   }
 
