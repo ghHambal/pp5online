@@ -57,6 +57,19 @@ const PRAYER_SCORE = {
   followed: { label: '-', score: 1, cls: 'bg-blue-50 text-blue-600 border-blue-100', title: 'ติดตามแล้ว' },
   avoid: { label: 'N', score: -1, cls: 'bg-orange-50 text-orange-600 border-orange-100', title: 'หลีกเลี่ยง' },
 }
+const PRAYER_SCAN_LOCATIONS = [
+  { id: 'musolla_male', label: 'มูซอลลาชาย', detail: 'ม.1 - ม.5 ชาย', icon: '🕌', genders: ['ชาย'] },
+  { id: 'masjid_kuwait', label: 'มัสยิดคูเวต', detail: 'ม.6, ปวช. ชาย', icon: '🕌', genders: ['ชาย'] },
+  { id: 'musolla_female_1', label: 'มูซอลลาหญิง 1', detail: 'โรงอาหาร', icon: '🕌', genders: ['หญิง'] },
+  { id: 'musolla_female_2', label: 'มูซอลลาหญิง 2', detail: 'อาคาร 5', icon: '🕌', genders: ['หญิง'] },
+]
+
+function _prayerScannerLocationChoices(scanner) {
+  if (scanner?.teacher_code) return PRAYER_SCAN_LOCATIONS
+  const gender = String(scanner?.gender || '').trim()
+  const choices = PRAYER_SCAN_LOCATIONS.filter(loc => loc.genders.includes(gender))
+  return choices.length ? choices : PRAYER_SCAN_LOCATIONS
+}
 
 const READING_EVAL_GRADES = [
   { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
@@ -2722,8 +2735,11 @@ export async function renderStudentPrayerScanner(student) {
 
   let inputMode = localStorage.getItem('prayer_scan_input_mode') || 'camera' // 'camera' | 'gun'
   let deviceMode = localStorage.getItem('prayer_scan_device_mode') || 'single' // 'single' | 'dual'
-  let activeLocation = localStorage.getItem('prayer_scan_active_location') || 
-    (student.gender === 'หญิง' ? 'musolla_female_1' : 'musolla_male')
+  const locationChoices = _prayerScannerLocationChoices(student)
+  const savedActiveLocation = localStorage.getItem('prayer_scan_active_location')
+  let activeLocation = locationChoices.some(loc => loc.id === savedActiveLocation)
+    ? savedActiveLocation
+    : (locationChoices[0]?.id || 'musolla_male')
   let recordStatus = localStorage.getItem('prayer_scan_record_status') || 'pray'
   let isSyncing = false
   let scannerSystemsStarted = false
@@ -2732,6 +2748,22 @@ export async function renderStudentPrayerScanner(student) {
   function renderUI() {
     const today = _localDateValue(new Date())
     const weekN = getWeekNumber(today, systemConfig)
+    const locationOptionsHtml = locationChoices.map(loc => `
+      <option value="${loc.id}" ${activeLocation === loc.id ? 'selected' : ''}>${loc.icon} ${loc.label}${loc.detail ? ` (${loc.detail})` : ''}</option>
+    `).join('')
+    const locationChoiceCardsHtml = locationChoices.map(loc => `
+      <button type="button" data-location="${loc.id}"
+        class="scanner-location-choice w-full text-left px-4 py-3 rounded-2xl border transition active:scale-[0.99] border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
+        <div class="flex items-center gap-3">
+          <span class="w-10 h-10 rounded-xl bg-emerald-100 text-xl flex items-center justify-center flex-shrink-0">${loc.icon}</span>
+          <span class="min-w-0">
+            <span class="block text-sm font-extrabold">${loc.label}</span>
+            <span class="block text-xs text-gray-500 mt-0.5">${loc.detail || 'จุดสแกนละหมาด'}</span>
+          </span>
+          <span class="scanner-location-check ml-auto w-6 h-6 rounded-full border flex items-center justify-center text-xs font-extrabold border-gray-200 bg-white text-transparent">✓</span>
+        </div>
+      </button>
+    `).join('')
     
     const html = `
       <!-- Flash green screen overlay -->
@@ -2777,6 +2809,30 @@ export async function renderStudentPrayerScanner(student) {
           <div class="p-4 bg-white border-t border-emerald-100">
             <button id="btn-ack-scanner-amanah" class="w-full py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-extrabold shadow-lg shadow-emerald-200/60 active:scale-95 transition">
               ข้าพเจ้าอ่านและรับทราบแล้ว
+            </button>
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
+      ${!isOperatorTeacher ? `
+      <div id="scanner-location-modal" class="hidden fixed inset-0 z-[90] bg-slate-950/70 backdrop-blur-sm items-center justify-center px-4 py-6">
+        <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-emerald-100 overflow-hidden">
+          <div class="bg-emerald-900 text-white px-5 py-4 text-center">
+            <p class="text-[11px] font-bold tracking-[0.18em] uppercase text-emerald-100">เลือกจุดสแกน</p>
+            <h3 class="text-lg font-extrabold leading-snug mt-1">กรุณายืนยันจุดที่กำลังปฏิบัติหน้าที่</h3>
+          </div>
+          <div class="p-4 space-y-3">
+            <p class="text-xs text-gray-500 leading-relaxed text-center">
+              ระบบจะบันทึกจุดนี้ไปพร้อมกับทุกการสแกนในรอบนี้ กรุณาเลือกให้ตรงกับสถานที่จริงก่อนเปิดกล้อง
+            </p>
+            <div id="scanner-location-choice-list" class="space-y-2">
+              ${locationChoiceCardsHtml}
+            </div>
+          </div>
+          <div class="p-4 bg-gray-50 border-t border-gray-100">
+            <button id="btn-confirm-scanner-location" disabled class="w-full py-3 rounded-2xl bg-gray-300 text-white text-sm font-extrabold shadow-sm cursor-not-allowed transition">
+              ยืนยันจุดสแกนและเปิดระบบ
             </button>
           </div>
         </div>
@@ -2835,10 +2891,7 @@ export async function renderStudentPrayerScanner(student) {
         <div class="border-t border-gray-100 pt-3 mb-3">
           <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">📍 จุดพื้นที่สแกนปัจจุบัน (Active Location)</label>
           <select id="opt-active-location" class="w-full text-xs font-bold bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-            <option value="musolla_male" ${activeLocation === 'musolla_male' ? 'selected' : ''}>🕌 มูซอลลาชาย (ม.1 - ม.5 ชาย)</option>
-            <option value="masjid_kuwait" ${activeLocation === 'masjid_kuwait' ? 'selected' : ''}>🕌 มัสยิดคูเวต (ม.6, ปวช. ชาย)</option>
-            <option value="musolla_female_1" ${activeLocation === 'musolla_female_1' ? 'selected' : ''}>🕌 มูซอลลาหญิง 1 (โรงอาหาร)</option>
-            <option value="musolla_female_2" ${activeLocation === 'musolla_female_2' ? 'selected' : ''}>🕌 มูซอลลาหญิง 2 (อาคาร 5)</option>
+            ${locationOptionsHtml}
           </select>
         </div>
 
@@ -3034,11 +3087,47 @@ export async function renderStudentPrayerScanner(student) {
       }
     })
 
-    // Option: Active location
-    document.getElementById('opt-active-location').addEventListener('change', (e) => {
-      activeLocation = e.target.value
+    const locationSelect = document.getElementById('opt-active-location')
+    let modalSelectedLocation = ''
+    const setLocationConfirmEnabled = (enabled) => {
+      const btn = document.getElementById('btn-confirm-scanner-location')
+      if (!btn) return
+      btn.disabled = !enabled
+      btn.className = enabled
+        ? 'w-full py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-extrabold shadow-lg shadow-emerald-200/60 active:scale-95 transition'
+        : 'w-full py-3 rounded-2xl bg-gray-300 text-white text-sm font-extrabold shadow-sm cursor-not-allowed transition'
+    }
+    const updateLocationChoiceUI = (selectedLocation = activeLocation) => {
+      document.querySelectorAll('.scanner-location-choice').forEach(btn => {
+        const selected = btn.dataset.location === selectedLocation
+        btn.className = `scanner-location-choice w-full text-left px-4 py-3 rounded-2xl border transition active:scale-[0.99] ${selected ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`
+        const check = btn.querySelector('.scanner-location-check')
+        if (check) {
+          check.className = `scanner-location-check ml-auto w-6 h-6 rounded-full border flex items-center justify-center text-xs font-extrabold ${selected ? 'border-emerald-500 bg-emerald-600 text-white' : 'border-gray-200 bg-white text-transparent'}`
+        }
+      })
+    }
+    const setActiveLocationValue = (value, { toast = false } = {}) => {
+      if (!locationChoices.some(loc => loc.id === value)) return
+      activeLocation = value
       localStorage.setItem('prayer_scan_active_location', activeLocation)
-      showToast('เปลี่ยนจุดสแกนปัจจุบันสำเร็จ', 'info')
+      if (locationSelect) locationSelect.value = activeLocation
+      updateLocationChoiceUI()
+      if (toast) showToast('เปลี่ยนจุดสแกนปัจจุบันสำเร็จ', 'info')
+    }
+
+    // Option: Active location
+    locationSelect?.addEventListener('change', (e) => {
+      setActiveLocationValue(e.target.value, { toast: true })
+    })
+
+    document.querySelectorAll('.scanner-location-choice').forEach(btn => {
+      btn.addEventListener('click', () => {
+        modalSelectedLocation = btn.dataset.location || ''
+        setActiveLocationValue(modalSelectedLocation)
+        updateLocationChoiceUI(modalSelectedLocation)
+        setLocationConfirmEnabled(!!modalSelectedLocation)
+      })
     })
 
     // Option: Record status (only if female student or teacher)
@@ -3063,15 +3152,38 @@ export async function renderStudentPrayerScanner(student) {
       }
     }
 
+    const openLocationModal = () => {
+      const locationModal = document.getElementById('scanner-location-modal')
+      if (!locationModal) {
+        startScannerSystems()
+        return
+      }
+      modalSelectedLocation = ''
+      updateLocationChoiceUI('')
+      setLocationConfirmEnabled(false)
+      locationModal.classList.remove('hidden')
+      locationModal.classList.add('flex')
+    }
+
+    document.getElementById('btn-confirm-scanner-location')?.addEventListener('click', () => {
+      if (!modalSelectedLocation) {
+        showToast('กรุณาเลือกจุดสแกนก่อนเปิดระบบ', 'warning')
+        return
+      }
+      localStorage.setItem('prayer_scan_active_location', activeLocation)
+      document.getElementById('scanner-location-modal')?.remove()
+      startScannerSystems()
+    })
+
     updateQueueUI()
     const amanahModal = document.getElementById('scanner-amanah-modal')
     if (amanahModal) {
       document.getElementById('btn-ack-scanner-amanah')?.addEventListener('click', () => {
         amanahModal.remove()
-        startScannerSystems()
+        openLocationModal()
       })
     } else {
-      startScannerSystems()
+      openLocationModal()
     }
   }
 
