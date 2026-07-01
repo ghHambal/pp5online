@@ -164,7 +164,7 @@ async function fetchTodayRecords(isSilent = false) {
   try {
     const { data, error } = await supabase
       .from('prayer_records')
-      .select('id, student_id, main_room, status, check_date, location, created_at')
+      .select('id, student_id, main_room, status, check_date, location, input_method, same_room_flag, created_at')
       .eq('check_date', todayStr)
       .not('location', 'is', null) // โชว์เฉพาะข้อมูลที่สแกนเท่านั้น (มีพิกัดจุดสแกน)
       .order('id', { ascending: false })
@@ -294,6 +294,7 @@ async function cancelRecord(recordId) {
       .from('prayer_records')
       .delete()
       .eq('id', recordId)
+      .is('teacher_id', null)
     if (error) {
       alert('เกิดข้อผิดพลาด: ' + error.message)
       return
@@ -321,7 +322,9 @@ function displayStudentCheckIn(student, record) {
 
   // Update details
   studentName.textContent = student.full_name
-  studentCodeRoom.textContent = `รหัส ${student.student_code} · ห้อง ${student.main_room || '—'}`
+  const methodLabel = record.input_method === 'manual' ? ' · กรอกรหัส' : ''
+  const sameRoomLabel = record.same_room_flag ? ' · ห้องเดียวกัน' : ''
+  studentCodeRoom.textContent = `รหัส ${student.student_code} · ห้อง ${student.main_room || '—'}${methodLabel}${sameRoomLabel}`
 
   // Format Scan Time
   let timeStr = '—'
@@ -454,6 +457,12 @@ function renderRecentList() {
 
         const locationLabel = getLocationLabel(rec.location)
         const locationBadgeColor = getLocationBadgeClass(rec.location)
+        const methodBadge = rec.input_method === 'manual'
+          ? `<span class="inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-700 border border-slate-200">กรอกรหัส</span>`
+          : ''
+        const sameRoomBadge = rec.same_room_flag
+          ? `<span class="inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">ห้องเดียวกัน</span>`
+          : ''
 
         // Calculate sequence number (filteredItems.length - 1 - idx)
         const seqNum = filteredItems.length - 1 - idx
@@ -472,6 +481,7 @@ function renderRecentList() {
             <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${locationBadgeColor}">
               ${locationLabel}
             </span>
+            <div class="flex flex-wrap gap-1">${methodBadge}${sameRoomBadge}</div>
           </td>
           <td class="px-4 py-3 text-center">
             <button

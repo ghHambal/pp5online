@@ -479,6 +479,17 @@ export async function getScannerRoster() {
   return all
 }
 
+export async function getMonthlyManualPrayerEntryCount(studentId, dateStr) {
+  if (!studentId || !dateStr) return 0
+  const { data, error } = await supabase
+    .rpc('count_manual_prayer_entries', {
+      p_student_id: studentId,
+      p_date: dateStr,
+    })
+  if (error) throw error
+  return Number(data ?? 0)
+}
+
 export async function saveScannedPrayerRecords(records) {
   if (!records.length) return
   // ลบเฉพาะ record ที่ scanner เคยบันทึก (teacher_id IS NULL) — ไม่ลบ record ของครู
@@ -500,7 +511,13 @@ export async function saveScannedPrayerRecords(records) {
     week_number: r.week_number,
     location: r.location || null,
     teacher_id: null, // บันทึกเป็น NULL สำหรับการสแกนสภานักเรียน
-    scanned_by: r.scanned_by || null
+    scanned_by: r.scanned_by || null,
+    input_method: r.input_method || 'qr',
+    scanner_code: r.scanner_code || null,
+    scanner_name: r.scanner_name || null,
+    scanner_room: r.scanner_room || null,
+    scanner_gender: r.scanner_gender || null,
+    same_room_flag: !!r.same_room_flag
   }))
 
   const { error } = await supabase.from('prayer_records').insert(payloads)

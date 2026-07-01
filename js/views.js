@@ -6816,7 +6816,7 @@ export async function renderPrayerAdmin(teacher) {
       try {
         const { data, error } = await supabase
           .from('prayer_records')
-          .select('id, student_id, main_room, status, location, scanned_by, created_at, students(id, full_name, student_code, image_url), teachers(id, full_name)')
+          .select('id, student_id, main_room, status, location, scanned_by, input_method, scanner_room, same_room_flag, created_at, students(id, full_name, student_code, image_url), teachers(id, full_name)')
           .eq('check_date', dateVal)
           .not('location', 'is', null) // โชว์เฉพาะข้อมูลที่สแกนเท่านั้น (มีพิกัดจุดสแกน)
           .order('created_at', { ascending: false })
@@ -6848,10 +6848,12 @@ export async function renderPrayerAdmin(teacher) {
           const studentCode = (rec.students?.student_code || '').toLowerCase()
           const studentRoom = (rec.main_room || '').toLowerCase()
           const scannedByStr = (rec.scanned_by || rec.teachers?.full_name || 'บันทึกมือ (เดิม)').toLowerCase()
+          const inputMethodStr = rec.input_method === 'manual' ? 'กรอกรหัส manual' : 'qr'
           return studentName.includes(searchVal) ||
                  studentCode.includes(searchVal) ||
                  studentRoom.includes(searchVal) ||
-                 scannedByStr.includes(searchVal)
+                 scannedByStr.includes(searchVal) ||
+                 inputMethodStr.includes(searchVal)
         }
         return true
       })
@@ -6944,6 +6946,12 @@ export async function renderPrayerAdmin(teacher) {
         }[rec.status] || `<span class="text-gray-400">${rec.status || '—'}</span>`
 
         const operator = rec.scanned_by || rec.teachers?.full_name || 'บันทึกมือ (เดิม)'
+        const methodBadge = rec.input_method === 'manual'
+          ? `<span class="inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-700 border border-slate-200">กรอกรหัส</span>`
+          : ''
+        const sameRoomBadge = rec.same_room_flag
+          ? `<span class="inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">ห้องเดียวกัน</span>`
+          : ''
 
         return `
           <tr class="hover:bg-gray-50/50 transition-colors">
@@ -6958,6 +6966,7 @@ export async function renderPrayerAdmin(teacher) {
             </td>
             <td class="px-4 py-3">
               <span class="font-medium text-gray-700">${operator}</span>
+              <div class="flex flex-wrap gap-1">${methodBadge}${sameRoomBadge}</div>
             </td>
             <td class="px-4 py-3 text-center">${statusBadge}</td>
           </tr>
@@ -6993,6 +7002,11 @@ export async function renderPrayerAdmin(teacher) {
       _fetchHistory()
       _setupAutoRefresh()
     }, 50)
+  }
+
+  const _prConfigFlag = (value, fallback = false) => {
+    if (value === undefined || value === null || value === '') return fallback
+    return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
   }
 
   // ─── Tab: ตั้งค่า ──────────────────────────────────────────────────────────
@@ -7040,6 +7054,42 @@ export async function renderPrayerAdmin(teacher) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-4">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="text-sm font-semibold text-gray-700">🛡️ ความปลอดภัยระบบสแกน</span>
+        </div>
+        <div class="px-5 py-4 space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3 cursor-pointer">
+              <input id="pr-guard-male" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                ${_prConfigFlag(cfg.prayerSameRoomGuardMaleEnabled, true) ? 'checked' : ''} />
+              <span>
+                <span class="block text-sm font-bold text-gray-700">กันนักเรียนชายห้องเดียวกัน</span>
+                <span class="block text-xs text-gray-400 mt-0.5">ถ้าเปิดไว้ แกนนำนักเรียนจะบันทึกเพื่อนห้องเดียวกันไม่ได้</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3 cursor-pointer">
+              <input id="pr-guard-female" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                ${_prConfigFlag(cfg.prayerSameRoomGuardFemaleEnabled, false) ? 'checked' : ''} />
+              <span>
+                <span class="block text-sm font-bold text-gray-700">กันนักเรียนหญิงห้องเดียวกัน</span>
+                <span class="block text-xs text-gray-400 mt-0.5">ปิดไว้ได้เมื่อจุดสแกนมีแกนนำน้อยหรือมีห้องเดียวเป็นหลัก</span>
+              </span>
+            </label>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">จำนวนครั้งที่อนุญาตให้กรอกรหัสแทน QR Code ต่อเดือน/นักเรียน</label>
+            <input type="number" min="0" max="31" id="pr-manual-monthly-limit" value="${Number.isFinite(parseInt(cfg.prayerManualEntryMonthlyLimit ?? '2', 10)) ? parseInt(cfg.prayerManualEntryMonthlyLimit ?? '2', 10) : 2}"
+              class="w-32 text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <p class="text-xs text-gray-400 mt-1">ตั้งเป็น 0 เพื่อปิดการบันทึกด้วยการกรอกรหัส</p>
+          </div>
+          <button id="pr-save-scanner-safety"
+            class="w-full py-2.5 rounded-xl bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700 transition">
+            บันทึกความปลอดภัยระบบสแกน
+          </button>
+        </div>
       </div>`
 
     document.getElementById('pr-save-cfg').addEventListener('click', async () => {
@@ -7059,6 +7109,33 @@ export async function renderPrayerAdmin(teacher) {
         setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึกการตั้งค่า'; btn.style.background='' }, 1800)
         showToast('บันทึก Sheet config ละหมาดแล้ว', 'success')
       } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึกการตั้งค่า' }
+    })
+
+    document.getElementById('pr-save-scanner-safety').addEventListener('click', async () => {
+      const btn = document.getElementById('pr-save-scanner-safety')
+      const maleEnabled = document.getElementById('pr-guard-male')?.checked ? 'true' : 'false'
+      const femaleEnabled = document.getElementById('pr-guard-female')?.checked ? 'true' : 'false'
+      const limitRaw = parseInt(document.getElementById('pr-manual-monthly-limit')?.value || '2', 10)
+      const manualLimit = String(Math.max(0, Math.min(31, Number.isFinite(limitRaw) ? limitRaw : 2)))
+      btn.disabled = true
+      btn.textContent = '⏳ กำลังบันทึก...'
+      try {
+        await Promise.all([
+          updateSystemConfig('prayerSameRoomGuardMaleEnabled', maleEnabled),
+          updateSystemConfig('prayerSameRoomGuardFemaleEnabled', femaleEnabled),
+          updateSystemConfig('prayerManualEntryMonthlyLimit', manualLimit),
+        ])
+        cfg.prayerSameRoomGuardMaleEnabled = maleEnabled
+        cfg.prayerSameRoomGuardFemaleEnabled = femaleEnabled
+        cfg.prayerManualEntryMonthlyLimit = manualLimit
+        showToast('บันทึกความปลอดภัยระบบสแกนแล้ว', 'success')
+        btn.textContent = '✅ บันทึกแล้ว'
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกความปลอดภัยระบบสแกน' }, 1600)
+      } catch(err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+        btn.textContent = 'บันทึกความปลอดภัยระบบสแกน'
+      }
     })
 
   }
@@ -12359,4 +12436,3 @@ export async function renderClassroomLeaders() {
   await _load()
   _renderMain()
 }
-

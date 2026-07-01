@@ -7,6 +7,7 @@ import {
   getStudentDailySchedule, getStudentAllAnnouncements, getStudentGPA,
   getClassSchedulesByIds, getStudentWeeklySchedule,
   getScannerRoster, saveScannedPrayerRecords,
+  getMonthlyManualPrayerEntryCount,
   getStudentClassroomRole,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
@@ -210,6 +211,21 @@ function _scannerCodeList(value) {
     .split(/[\s,]+/)
     .map(c => c.trim())
     .filter(Boolean)
+}
+
+function _configFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase())
+}
+
+function _sameRoomGuardEnabledForGender(gender, cfg = {}) {
+  return String(gender || '').trim() === 'หญิง'
+    ? _configFlag(cfg.prayerSameRoomGuardFemaleEnabled, false)
+    : _configFlag(cfg.prayerSameRoomGuardMaleEnabled, true)
+}
+
+function _sameRoomValue(value) {
+  return String(value || '').replace(/\s+/g, '').trim()
 }
 
 function _isExtendedPrayerScanner(user, cfg = {}) {
@@ -2862,6 +2878,21 @@ export async function renderStudentPrayerScanner(student) {
         <span class="inline-block mt-4 px-3 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full border border-emerald-100">ระบบรักษาโฟกัสอัตโนมัติค้างไว้</span>
       </div>
 
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4">
+        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">กรอกรหัสแทน QR Code</label>
+        <div class="flex gap-2">
+          <input id="scanner-manual-code-input" type="text" inputmode="numeric" autocomplete="off" placeholder="รหัสนักเรียน"
+            class="flex-1 min-w-0 text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+          <button id="btn-submit-manual-scan" class="px-4 py-2.5 rounded-xl bg-slate-800 text-white text-xs font-bold hover:bg-slate-700 transition active:scale-95 flex-shrink-0">
+            บันทึก
+          </button>
+        </div>
+        <p class="text-[10px] text-gray-400 mt-1.5">ใช้เฉพาะกรณีสแกนไม่ติดหรือ QR Code หาย จำกัด ${(() => {
+          const n = parseInt(systemConfig.prayerManualEntryMonthlyLimit ?? '2', 10)
+          return Number.isFinite(n) ? Math.max(0, n) : 2
+        })()} ครั้ง/เดือน/คน</p>
+      </div>
+
       <!-- Active Check-In Popup Overlay -->
       <div id="scanner-feedback-container" class="hidden my-4 relative z-30 transition-all duration-300"></div>
 
@@ -2934,6 +2965,26 @@ export async function renderStudentPrayerScanner(student) {
     // Button: Manual sync
     document.getElementById('btn-manual-sync').addEventListener('click', () => {
       triggerBackgroundSync()
+    })
+
+    const manualInput = document.getElementById('scanner-manual-code-input')
+    const manualBtn = document.getElementById('btn-submit-manual-scan')
+    const submitManualCode = () => {
+      const code = manualInput?.value.trim()
+      if (!code) {
+        showToast('กรุณากรอกรหัสนักเรียน', 'warning')
+        manualInput?.focus()
+        return
+      }
+      manualInput.value = ''
+      processCheckIn(code, { inputMethod: 'manual' })
+    }
+    manualBtn?.addEventListener('click', submitManualCode)
+    manualInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        submitManualCode()
+      }
     })
 
     // Option: Active location
@@ -3095,7 +3146,8 @@ export async function renderStudentPrayerScanner(student) {
     // Keep wedge input auto-focused continuously
     gunInput.focus()
     const focusInterval = setInterval(() => {
-      if (document.activeElement !== gunInput && document.getElementById('scanner-gun-input')) {
+      const manualInput = document.getElementById('scanner-manual-code-input')
+      if (document.activeElement !== gunInput && document.activeElement !== manualInput && document.getElementById('scanner-gun-input')) {
         gunInput.focus()
       }
     }, 1000)
@@ -3121,9 +3173,10 @@ export async function renderStudentPrayerScanner(student) {
   }
 
   // ─── Main Check-in Handler ──────────────────────────────────────────────────
-  async function processCheckIn(studentRawCode) {
+  async function processCheckIn(studentRawCode, options = {}) {
     console.log('[Scanner] Raw scanned text:', studentRawCode)
     if (!studentRawCode) return
+    const inputMethod = options.inputMethod === 'manual' ? 'manual' : 'qr'
 
     if (!isOperatorTeacher && !_isPrayerTimeWindow(systemConfig, hasExtendedScanWindow)) {
       playBeep('error')
@@ -3177,6 +3230,14 @@ export async function renderStudentPrayerScanner(student) {
     }
 
     const today = _localDateValue(new Date())
+    const operatorRoom = _sameRoomValue(operatorUser.main_room)
+    const targetRoom = _sameRoomValue(student.main_room)
+    const sameRoomFlag = !!operatorRoom && !!targetRoom && operatorRoom === targetRoom
+    if (!isOperatorTeacher && sameRoomFlag && _sameRoomGuardEnabledForGender(student.gender, systemConfig)) {
+      playBeep('error')
+      showScanFeedback(student, studentCode, 'ระบบป้องกันการบันทึกนักเรียนห้องเดียวกับผู้สแกนกำลังเปิดอยู่')
+      return
+    }
 
     // Prevent Double Checks in same session/queue
     const queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
@@ -3191,6 +3252,33 @@ export async function renderStudentPrayerScanner(student) {
       playBeep('error')
       showScanFeedback(student, studentCode, 'เช็คชื่อซ้ำ! บันทึกข้อมูลวันนี้ไปแล้ว')
       return
+    }
+
+    if (inputMethod === 'manual') {
+      const limitRaw = parseInt(systemConfig.prayerManualEntryMonthlyLimit ?? '2', 10)
+      const limit = Number.isFinite(limitRaw) ? Math.max(0, limitRaw) : 2
+      if (limit === 0) {
+        playBeep('error')
+        showScanFeedback(student, studentCode, 'ระบบปิดการบันทึกด้วยการกรอกรหัสอยู่')
+        return
+      }
+      const queuedManualCount = queue.filter(r => {
+        if (r.student_id !== student.id || r.input_method !== 'manual' || !r.check_date) return false
+        return String(r.check_date).slice(0, 7) === today.slice(0, 7)
+      }).length
+      try {
+        const usedCount = await getMonthlyManualPrayerEntryCount(student.id, today)
+        if (usedCount + queuedManualCount >= limit) {
+          playBeep('error')
+          showScanFeedback(student, studentCode, `ใช้สิทธิ์กรอกรหัสครบ ${limit} ครั้งในเดือนนี้แล้ว`)
+          return
+        }
+      } catch (err) {
+        console.warn('Manual prayer count check failed:', err)
+        playBeep('error')
+        showScanFeedback(student, studentCode, 'ตรวจสอบจำนวนครั้งกรอกรหัสไม่สำเร็จ กรุณาเช็กว่าได้รัน patch_prayer_scanner_safety.sql แล้ว')
+        return
+      }
     }
 
     const weekN = getWeekNumber(today, systemConfig)
@@ -3214,7 +3302,13 @@ export async function renderStudentPrayerScanner(student) {
       location: activeLocation,
       full_name: student.full_name,
       student_code: student.student_code,
-      scanned_by: scannerName
+      scanned_by: scannerName,
+      input_method: inputMethod,
+      scanner_code: operatorUser.teacher_code || operatorUser.student_code || null,
+      scanner_name: operatorUser.full_name || null,
+      scanner_room: operatorUser.main_room || null,
+      scanner_gender: operatorUser.gender || null,
+      same_room_flag: sameRoomFlag
     }
 
     // Append queue
@@ -3231,7 +3325,9 @@ export async function renderStudentPrayerScanner(student) {
         student_code: student.student_code,
         main_room: student.main_room,
         check_date: today,
-        status: finalStatus
+        status: finalStatus,
+        input_method: inputMethod,
+        same_room_flag: sameRoomFlag
       })
       localStorage.setItem('prayer_scan_history_today', JSON.stringify(deviceHistory))
     }
@@ -3242,7 +3338,8 @@ export async function renderStudentPrayerScanner(student) {
     // Feedbacks
     playBeep('success')
     triggerScreenFlash()
-    showScanFeedback(student, studentCode, `บันทึกสำเร็จลงเครื่องแล้ว${statusWarning}`, true, finalStatus)
+    const methodLabel = inputMethod === 'manual' ? ' (กรอกรหัส)' : ''
+    showScanFeedback(student, studentCode, `บันทึกสำเร็จลงเครื่องแล้ว${methodLabel}${statusWarning}`, true, finalStatus)
     
     updateQueueUI()
 
@@ -3425,6 +3522,12 @@ export async function renderStudentPrayerScanner(student) {
         scanList.innerHTML = deviceHistory.map((r, i) => {
           const isOffline = queue.some(q => q.student_id === r.student_id)
           const isUsor = r.status === 'usor'
+          const methodBadgeHTML = r.input_method === 'manual'
+            ? `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 text-[10px] font-bold border border-slate-200">กรอกรหัส</span>`
+            : ''
+          const sameRoomBadgeHTML = r.same_room_flag
+            ? `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">ห้องเดียวกัน</span>`
+            : ''
           const badgeHTML = isOffline
             ? `<span class="flex-shrink-0 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100 animate-pulse">ออฟไลน์</span>`
             : (isUsor
@@ -3438,6 +3541,8 @@ export async function renderStudentPrayerScanner(student) {
                 <p class="font-bold text-gray-800 truncate">${r.full_name}</p>
                 <p class="text-[10px] text-gray-400 truncate">รหัส ${r.student_code} · ห้อง ${_roomDisplay(r.main_room)}</p>
               </div>
+              ${methodBadgeHTML}
+              ${sameRoomBadgeHTML}
               ${badgeHTML}
               <button class="btn-cancel-scan-row px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-100 hover:bg-red-500 hover:text-white transition text-[10px] font-bold"
                 data-sid="${r.student_id}" data-name="${r.full_name}">
@@ -3485,4 +3590,3 @@ export async function renderStudentPrayerScanner(student) {
 
   renderUI()
 }
-
