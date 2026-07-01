@@ -2727,6 +2727,7 @@ export async function renderStudentPrayerScanner(student) {
   let recordStatus = localStorage.getItem('prayer_scan_record_status') || 'pray'
   let isSyncing = false
   let scannerSystemsStarted = false
+  const scannerAmanahPosterUrl = `${import.meta.env.BASE_URL || '/'}prayer-scanner-amanah.png`
 
   function renderUI() {
     const today = _localDateValue(new Date())
@@ -2741,7 +2742,7 @@ export async function renderStudentPrayerScanner(student) {
       <div id="scanner-amanah-modal" class="fixed inset-0 z-[90] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center px-4 py-6">
         <div class="w-full max-w-3xl max-h-[92vh] overflow-hidden bg-white rounded-3xl shadow-2xl border border-emerald-100 flex flex-col">
           <div class="flex-1 overflow-y-auto bg-emerald-950/5">
-            <img id="scanner-amanah-poster" src="/prayer-scanner-amanah.png" alt="นาซีฮัทถึงนักเรียนแกนนำผู้รับผิดชอบการสแกนละหมาด"
+            <img id="scanner-amanah-poster" src="${scannerAmanahPosterUrl}" alt="นาซีฮัทถึงนักเรียนแกนนำผู้รับผิดชอบการสแกนละหมาด"
               class="w-full h-auto block"
               onerror="this.classList.add('hidden');document.getElementById('scanner-amanah-fallback')?.classList.remove('hidden')" />
             <div id="scanner-amanah-fallback" class="hidden p-5 space-y-4">
