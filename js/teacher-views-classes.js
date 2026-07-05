@@ -4578,9 +4578,14 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     let showSeat    = localStorage.getItem('qr_print_show_seat') !== 'false'
     let showRoom    = localStorage.getItem('qr_print_show_room') !== 'false'
     let filterGender = 'all'
+    let individualRepeat = parseInt(localStorage.getItem('qr_print_individual_repeat') || '4')
+    if (!Number.isFinite(individualRepeat) || individualRepeat < 1) individualRepeat = 4
+    let selectedIndividualStudentId = ''
 
     const refreshPreview = () => {
-      if (currentViewMode === 'class' && selectedClassId) {
+      if (currentViewMode === 'individual' && selectedIndividualStudentId) {
+        _drawIndividualPreview()
+      } else if (currentViewMode === 'class' && selectedClassId) {
         _loadRosterAndDraw()
       } else if (currentViewMode === 'level' && selectedLevel) {
         _printWholeLevel()
@@ -4611,6 +4616,32 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           <div class="mb-4">
             <h3 class="text-lg font-bold text-gray-800">🖨️ พิมพ์การ์ด QR Code นักเรียน</h3>
             <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียนเพื่อพิมพ์เป็นห้องเดียว หรือเลือกระดับชั้นแล้วกด "พิมพ์ทั้งระดับชั้น" เพื่อสร้างไฟล์แต่ละห้องแยกหน้าสำหรับร้านพิมพ์</p>
+          </div>
+
+          <!-- พิมพ์รายบุคคล -->
+          <div class="bg-white border border-indigo-100 rounded-3xl p-5 shadow-sm space-y-4">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h4 class="font-bold text-gray-800 text-sm">👤 พิมพ์ / บันทึก QR รายบุคคล</h4>
+                <p class="text-xs text-gray-400 mt-0.5">ใช้กรณีนักเรียนทำหาย ค้นหานักเรียนแล้วพิมพ์ซ้ำได้หลายใบในหน้าเดียว</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-500 font-semibold">จำนวนซ้ำ:</span>
+                <input id="qr-individual-repeat" type="number" min="1" max="40" value="${individualRepeat}"
+                  class="w-20 border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500" />
+                <span class="text-xs text-gray-400">ใบ</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+              <input id="qr-individual-search" type="search"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition"
+                placeholder="ค้นหาด้วยรหัสนักเรียน ชื่อ-สกุล หรือห้องเรียน..." />
+              <button id="qr-individual-clear" type="button"
+                class="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs transition">
+                ล้าง
+              </button>
+            </div>
+            <div id="qr-individual-results" class="hidden border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100"></div>
           </div>
 
           <!-- ตัวกรองห้องเรียน -->
@@ -4703,8 +4734,27 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       const classSelect = document.getElementById('qr-filter-class')
       const levelInfoEl = document.getElementById('qr-level-info')
       const btnWholeLevel = document.getElementById('btn-print-whole-level')
+      const individualSearch = document.getElementById('qr-individual-search')
+      const individualResults = document.getElementById('qr-individual-results')
+      const individualRepeatInput = document.getElementById('qr-individual-repeat')
+      const individualClearBtn = document.getElementById('qr-individual-clear')
 
       // Bind Settings Card Events
+      individualSearch.addEventListener('input', () => _renderIndividualResults(individualSearch.value.trim()))
+      individualClearBtn.addEventListener('click', () => {
+        selectedIndividualStudentId = ''
+        currentViewMode = null
+        individualSearch.value = ''
+        individualResults.classList.add('hidden')
+        document.getElementById('qr-preview-section')?.classList.add('hidden')
+      })
+      individualRepeatInput.addEventListener('change', () => {
+        const nextRepeat = Math.max(1, Math.min(40, parseInt(individualRepeatInput.value) || 4))
+        individualRepeat = nextRepeat
+        individualRepeatInput.value = String(nextRepeat)
+        localStorage.setItem('qr_print_individual_repeat', String(individualRepeat))
+        refreshPreview()
+      })
       document.getElementById('show-seat').addEventListener('change', (e) => {
         showSeat = e.target.checked
         localStorage.setItem('qr_print_show_seat', showSeat)
@@ -4805,6 +4855,180 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       })
 
       syncLevels()
+    }
+
+    const _roomForIndividualStudent = (student) => {
+      if (!student) return 'ไม่ระบุห้อง'
+      if (selectedCategory === 'ศาสนา') return student.religion_room || student.main_room || 'ไม่ระบุห้อง'
+      return student.main_room || student.religion_room || 'ไม่ระบุห้อง'
+    }
+
+    const _seatNoForIndividualStudent = (student) => {
+      const roomName = _roomForIndividualStudent(student)
+      const isReligion = selectedCategory === 'ศาสนา'
+      const roster = allStudents
+        .filter(s => (isReligion ? s.religion_room : s.main_room) === roomName)
+        .sort((a, b) => (a.student_code || '').localeCompare(b.student_code || ''))
+      const idx = roster.findIndex(s => String(s.id) === String(student.id))
+      return idx >= 0 ? idx + 1 : ''
+    }
+
+    const _findIndividualStudent = () => {
+      if (!selectedIndividualStudentId) return null
+      return allStudents.find(s => String(s.id) === String(selectedIndividualStudentId)) || null
+    }
+
+    const _individualSearchText = (student) => [
+      student.student_code,
+      student.full_name,
+      student.main_room,
+      student.religion_room
+    ].filter(Boolean).join(' ').toLowerCase()
+
+    const _renderIndividualResults = (query) => {
+      const resultEl = document.getElementById('qr-individual-results')
+      if (!resultEl) return
+      const q = query.toLowerCase()
+      if (!q) {
+        resultEl.classList.add('hidden')
+        resultEl.innerHTML = ''
+        return
+      }
+
+      const matches = allStudents
+        .filter(student => _individualSearchText(student).includes(q))
+        .sort((a, b) => (a.student_code || '').localeCompare(b.student_code || ''))
+        .slice(0, 20)
+
+      resultEl.classList.remove('hidden')
+      if (!matches.length) {
+        resultEl.innerHTML = `<div class="px-4 py-4 text-center text-xs text-gray-400 bg-gray-50">ไม่พบนักเรียนที่ตรงกับคำค้นหา</div>`
+        return
+      }
+
+      resultEl.innerHTML = matches.map(student => {
+        const roomName = student.main_room || student.religion_room || 'ไม่ระบุห้อง'
+        return `
+          <button type="button" data-student-id="${student.id}"
+            class="qr-individual-pick w-full px-4 py-3 text-left bg-white hover:bg-indigo-50 transition flex items-center justify-between gap-3">
+            <span class="min-w-0">
+              <span class="block text-sm font-bold text-gray-800 truncate">${_htmlEsc(student.full_name || 'ไม่ระบุชื่อ')}</span>
+              <span class="block text-xs text-gray-400 font-mono truncate">${_htmlEsc(student.student_code || '-')} · ${_htmlEsc(roomName)}</span>
+            </span>
+            <span class="text-xs font-bold text-indigo-600 flex-shrink-0">เลือก</span>
+          </button>
+        `
+      }).join('')
+
+      resultEl.querySelectorAll('.qr-individual-pick').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedIndividualStudentId = btn.dataset.studentId || ''
+          currentViewMode = 'individual'
+          resultEl.classList.add('hidden')
+          const student = _findIndividualStudent()
+          const searchEl = document.getElementById('qr-individual-search')
+          if (searchEl && student) searchEl.value = `${student.student_code || ''} ${student.full_name || ''}`.trim()
+          _drawIndividualPreview()
+        })
+      })
+    }
+
+    const _downloadIndividualQR = async (student) => {
+      const dataUrl = await QRCode.toDataURL(student.student_code || '', {
+        width: 1000,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+      const link = document.createElement('a')
+      const safeCode = String(student.student_code || student.id || 'student').replace(/[^\w-]+/g, '_')
+      link.href = dataUrl
+      link.download = `qr-${safeCode}.png`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    }
+
+    const _drawIndividualPreview = async () => {
+      const previewSec = document.getElementById('qr-preview-section')
+      const student = _findIndividualStudent()
+      if (!previewSec || !student) return
+      currentViewMode = 'individual'
+      previewSec.classList.remove('hidden')
+
+      const roomName = _roomForIndividualStudent(student)
+      const seatNo = _seatNoForIndividualStudent(student)
+      const repeatStudents = Array.from({ length: individualRepeat }, (_, idx) => ({
+        ...student,
+        seat_no: seatNo,
+        _print_copy: idx + 1
+      }))
+
+      previewSec.innerHTML = `
+        <div class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-800 leading-relaxed flex items-start gap-2">
+          <span class="text-base">💡</span>
+          <div>
+            <p class="font-bold">พิมพ์รายบุคคลสำหรับกรณี QR Code หาย</p>
+            <p class="opacity-90">ค่าเริ่มต้นวางซ้ำ ${individualRepeat} ใบในหน้าเดียว สามารถเพิ่ม/ลดจำนวนซ้ำด้านบน แล้วกดพิมพ์หรือบันทึกเป็น PDF ได้ทันที</p>
+          </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-4">
+          <div class="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">รายบุคคล</p>
+              <h4 class="font-extrabold text-gray-800 text-base mt-1">${_htmlEsc(student.full_name || 'ไม่ระบุชื่อ')}</h4>
+              <p class="text-xs text-gray-400 font-mono mt-0.5">${_htmlEsc(student.student_code || '-')} · ${_htmlEsc(roomName)}${seatNo ? ` · เลขที่ ${seatNo}` : ''}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="btn-print-individual-qr" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">
+                🖨️ พิมพ์ / บันทึก PDF (${individualRepeat} ใบ)
+              </button>
+              <button id="btn-download-individual-qr" class="px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-950 text-white font-bold text-xs shadow-md transition">
+                ⬇️ ดาวน์โหลด PNG
+              </button>
+            </div>
+          </div>
+          <div class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr));">
+            ${repeatStudents.map((copy, idx) => `
+              <div class="bg-white border border-gray-100 rounded-2xl p-3 flex flex-col items-center justify-between text-center shadow-sm">
+                <div class="w-full aspect-square flex items-center justify-center bg-gray-50/50 rounded-xl overflow-hidden mb-2 p-1">
+                  <canvas id="individual-copy-canvas-${idx}" class="w-full h-full max-w-full max-h-full object-contain"></canvas>
+                </div>
+                <div class="text-left w-full min-w-0 font-sans">
+                  <p class="text-[11px] font-bold text-gray-800 truncate">${_htmlEsc(copy.full_name)}</p>
+                  ${showCode ? `<p class="text-[9px] text-gray-400 mt-0.5">รหัส: ${_htmlEsc(copy.student_code || '-')}</p>` : ''}
+                  <div class="flex items-center justify-between mt-1 text-[9px] text-gray-400">
+                    ${showRoom ? `<span>ห้อง: ${_htmlEsc(roomName)}</span>` : ''}
+                    ${showSeat && seatNo ? `<span>เลขที่: ${seatNo}</span>` : ''}
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `
+
+      repeatStudents.forEach((copy, idx) => {
+        const canvas = document.getElementById(`individual-copy-canvas-${idx}`)
+        if (canvas) {
+          QRCode.toCanvas(canvas, copy.student_code || '', {
+            width: 160,
+            margin: 1.5,
+            color: { dark: '#111827', light: '#FFFFFF' }
+          }, err => { if (err) console.error('Individual QR error:', err) })
+        }
+      })
+
+      document.getElementById('btn-print-individual-qr')?.addEventListener('click', async () => {
+        await _executePrint([{
+          className: roomName,
+          countLabel: `${individualRepeat} ใบ`,
+          students: repeatStudents
+        }], cols, showCode, showSeat, showRoom)
+      })
+      document.getElementById('btn-download-individual-qr')?.addEventListener('click', async () => {
+        await _downloadIndividualQR(student)
+      })
     }
 
     // ─── โหลดรายชื่อนักเรียน 1 ห้อง และวาดพรีวิว ──────────────────────────────
@@ -5063,13 +5287,13 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         <div class="print-room-block" style="padding: ${roomIdx === 0 ? '0' : '0'}; margin: 0;">
           <div class="print-room-header">
             <span>📋 ห้องเรียน: ${_htmlEsc(room.className)}</span>
-            <span style="font-size: 11px; font-weight: normal; color: #6b7280;">${room.students.length} คน</span>
+            <span style="font-size: 11px; font-weight: normal; color: #6b7280;">${_htmlEsc(room.countLabel || `${room.students.length} คน`)}</span>
           </div>
           <div class="print-grid">
-            ${room.students.map(student => `
+            ${room.students.map((student, studentIdx) => `
               <div class="qr-print-card">
                 <div style="width: 100%; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 5px;">
-                  <canvas id="print-canvas-${student.id}-r${roomIdx}" style="width: 100%; max-width: 100%; height: auto;"></canvas>
+                  <canvas id="print-canvas-${student.id}-${studentIdx}-r${roomIdx}" style="width: 100%; max-width: 100%; height: auto;"></canvas>
                 </div>
                 <div style="width: 100%; text-align: left; font-family: Sarabun, sans-serif; font-size: 11px;">
                   <p style="font-weight: bold; color: black; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${_htmlEsc(student.full_name)}</p>
@@ -5087,8 +5311,9 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
       // วาด QR Codes
       for (let roomIdx = 0; roomIdx < rooms.length; roomIdx++) {
-        for (const student of rooms[roomIdx].students) {
-          const canvas = document.getElementById(`print-canvas-${student.id}-r${roomIdx}`)
+        for (let studentIdx = 0; studentIdx < rooms[roomIdx].students.length; studentIdx++) {
+          const student = rooms[roomIdx].students[studentIdx]
+          const canvas = document.getElementById(`print-canvas-${student.id}-${studentIdx}-r${roomIdx}`)
           if (canvas) {
             await QRCode.toCanvas(canvas, student.student_code || '', {
               width: 250, margin: 1,
@@ -5108,4 +5333,3 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     showToast('โหลดข้อมูลล้มเหลว: ' + (err.message ?? ''), 'error')
   }
 }
-
