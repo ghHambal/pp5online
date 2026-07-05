@@ -3258,6 +3258,65 @@ export async function deleteFlashcardImage(publicUrl) {
 
 // ─── Leave Permissions System (ระบบขออนุญาตออกนอกห้องเรียน) ─────────────────
 
+const DEFAULT_LEAVE_MAX_ACTIVE = 3
+const LEAVE_MAX_ACTIVE_BY_CLASS_KEY = 'leaveMaxActiveByClass'
+const LEAVE_DEFAULT_MAX_ACTIVE_KEY = 'leaveDefaultMaxActive'
+
+function _currentWeekRange(now = new Date()) {
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  const day = start.getDay()
+  const diffToMonday = (day + 6) % 7
+  start.setDate(start.getDate() - diffToMonday)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 7)
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+function _parseLeaveMaxMap(raw) {
+  try {
+    const parsed = JSON.parse(raw || '{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function _normalizeLeaveMaxActive(value, fallback = DEFAULT_LEAVE_MAX_ACTIVE) {
+  const n = parseInt(value, 10)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(1, Math.min(30, n))
+}
+
+export async function getLeaveMaxActiveForClass(classId) {
+  try {
+    const { data, error } = await supabase
+      .from('class_leave_settings')
+      .select('max_active')
+      .eq('class_id', classId)
+      .maybeSingle()
+    if (!error && data?.max_active) return _normalizeLeaveMaxActive(data.max_active)
+  } catch {}
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const defaultMax = _normalizeLeaveMaxActive(cfg[LEAVE_DEFAULT_MAX_ACTIVE_KEY], DEFAULT_LEAVE_MAX_ACTIVE)
+  const byClass = _parseLeaveMaxMap(cfg[LEAVE_MAX_ACTIVE_BY_CLASS_KEY])
+  return _normalizeLeaveMaxActive(byClass[String(classId)], defaultMax)
+}
+
+export async function updateLeaveMaxActiveForClass(classId, maxActive) {
+  const nextMax = _normalizeLeaveMaxActive(maxActive)
+  const { error } = await supabase
+    .from('class_leave_settings')
+    .upsert({
+      class_id: classId,
+      max_active: nextMax,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'class_id' })
+  if (error) throw error
+  return nextMax
+}
+
 export async function getActiveLeavePermission(studentCodeOrId) {
   let query = supabase
     .from('student_leave_permissions')
@@ -3299,24 +3358,28 @@ export async function getOutStudentsCount(classId) {
 }
 
 export async function hasStudentLeftAlready(studentId, classId) {
+  const { start, end } = _currentWeekRange()
   const { count, error } = await supabase
     .from('student_leave_permissions')
     .select('*', { count: 'exact', head: true })
     .eq('student_id', studentId)
     .eq('class_id', classId)
+    .gte('created_at', start)
+    .lt('created_at', end)
   if (error) throw error
   return (count ?? 0) > 0
 }
 
-export async function createLeavePermission(studentId, classId, teacherId, reason, durationMinutes) {
+export async function createLeavePermission(studentId, classId, teacherId, reason, durationMinutes, maxActive = null) {
   const alreadyLeft = await hasStudentLeftAlready(studentId, classId)
   if (alreadyLeft) {
-    throw new Error('นักเรียนคนนี้เคยได้รับอนุมัติออกนอกห้องในคาบนี้ไปแล้ว')
+    throw new Error('นักเรียนคนนี้เคยได้รับอนุมัติออกนอกห้องในสัปดาห์นี้ไปแล้ว')
   }
 
+  const limit = maxActive === null ? await getLeaveMaxActiveForClass(classId) : _normalizeLeaveMaxActive(maxActive)
   const activeOutCount = await getOutStudentsCount(classId)
-  if (activeOutCount >= 3) {
-    throw new Error('ไม่อนุญาตให้ออกเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบ 3 คนแล้ว')
+  if (activeOutCount >= limit) {
+    throw new Error(`ไม่อนุญาตให้ออกเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบ ${limit} คนแล้ว`)
   }
 
   const { data, error } = await supabase
@@ -3351,12 +3414,17 @@ export async function closeLeavePermission(permissionId, status = 'returned') {
   return data
 }
 
-export async function getClassLeaveHistory(classId) {
-  const { data, error } = await supabase
+export async function getClassLeaveHistory(classId, options = {}) {
+  let query = supabase
     .from('student_leave_permissions')
     .select('*, students(id, student_code, full_name)')
     .eq('class_id', classId)
     .order('created_at', { ascending: false })
+  if (options.week === 'current') {
+    const { start, end } = _currentWeekRange()
+    query = query.gte('created_at', start).lt('created_at', end)
+  }
+  const { data, error } = await query
   if (error) throw error
   return data || []
 }
@@ -3369,4 +3437,41 @@ export async function getActiveLeavePermissionsForClass(classId) {
     .eq('status', 'active')
   if (error) throw error
   return data || []
+}
+
+export async function getLeavePermissionDashboard(limit = 80) {
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+  const { start: weekStart } = _currentWeekRange()
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .select(`
+      id, student_id, class_id, teacher_id, reason, allowed_duration, created_at, returned_at, status,
+      students(id, student_code, full_name, image_url, main_room),
+      teachers(id, full_name),
+      classes(id, class_name, master_subjects(subject_name))
+    `)
+    .gte('created_at', weekStart)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+
+  const rows = data || []
+  const todayIso = todayStart.toISOString()
+  const now = new Date()
+  const isActiveOverdue = (r) => {
+    if (r.status !== 'active') return false
+    const start = new Date(r.created_at)
+    const end = new Date(start.getTime() + Number(r.allowed_duration || 0) * 60 * 1000)
+    return end.getTime() < now.getTime()
+  }
+  return {
+    rows,
+    summary: {
+      active: rows.filter(r => r.status === 'active').length,
+      overdue: rows.filter(r => r.status === 'overdue' || isActiveOverdue(r)).length,
+      returnedToday: rows.filter(r => r.status === 'returned' && (r.returned_at || '') >= todayIso).length,
+      totalWeek: rows.length
+    }
+  }
 }

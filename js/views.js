@@ -31,6 +31,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
+import { renderLeaveMonitorWidget } from './leave-monitor.js'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -153,6 +154,7 @@ export async function renderOverview() {
     </div>
     <!-- Training announcements todo -->
     <div id="training-todo-shell" class="mt-4"></div>
+    <div id="leave-monitor-shell" class="mt-4"></div>
     <div id="monitor-shell" class="mt-6"></div>
   </div>`)
 
@@ -248,6 +250,15 @@ export async function renderOverview() {
             </div>`
         }
       } catch {}
+    }
+
+    const leaveMonitorEl = document.getElementById('leave-monitor-shell')
+    if (leaveMonitorEl) {
+      await renderLeaveMonitorWidget(leaveMonitorEl, {
+        title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
+        subtitle: 'ข้อมูลสัปดาห์ปัจจุบัน สำหรับแอดมินและผู้บริหาร',
+        limit: 80
+      })
     }
 
     // ── Monitoring section ──────────────────────────────────────────────────────

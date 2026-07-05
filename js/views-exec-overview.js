@@ -1,4 +1,4 @@
-import { getExecClassOverview, getDepartments, getSystemConfig, getTeachers } from './api.js'
+import { getExecClassOverview, getDepartments, getSystemConfig, getTeachers, getLeavePermissionDashboard } from './api.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const _esc = value => String(value ?? '')
@@ -122,13 +122,14 @@ export async function renderExecOverview() {
     <div class="text-center py-16 text-gray-400">กำลังโหลดข้อมูล...</div>
   </div>`)
 
-  let overview, depts, cfg, allTeachers
+  let overview, depts, cfg, allTeachers, leaveDashboard
   try {
-    [overview, depts, cfg, allTeachers] = await Promise.all([
+    [overview, depts, cfg, allTeachers, leaveDashboard] = await Promise.all([
       getExecClassOverview(),
       getDepartments(),
       getSystemConfig().catch(() => ({})),
       getTeachers(),
+      getLeavePermissionDashboard(60).catch(() => null),
     ])
   } catch (err) {
     setContent(`<div class="max-w-6xl mx-auto animate-fade">
@@ -231,6 +232,64 @@ export async function renderExecOverview() {
 
   const attentionTotal = classRows.filter(r => _needsAttention(r.status)).length
   const attentionPct = classRows.length > 0 ? Math.round((attentionTotal / classRows.length) * 100) : 0
+
+  function renderLeaveMonitor() {
+    if (!leaveDashboard) return ''
+    const rows = leaveDashboard.rows || []
+    const summary = leaveDashboard.summary || { active: 0, overdue: 0, returnedToday: 0, totalWeek: 0 }
+    const now = new Date()
+    const _remainingText = (r) => {
+      if (r.status !== 'active') return r.status === 'returned' ? 'กลับแล้ว' : 'เลยเวลา'
+      const start = new Date(r.created_at)
+      const end = new Date(start.getTime() + Number(r.allowed_duration || 0) * 60 * 1000)
+      const diffMs = end.getTime() - now.getTime()
+      const mins = Math.ceil(Math.abs(diffMs) / 60000)
+      return diffMs < 0 ? `เลย ${mins} นาที` : `เหลือ ${mins} นาที`
+    }
+    const activeRows = rows.filter(r => r.status === 'active').slice(0, 8)
+    return `
+      <div class="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden mb-6">
+        <div class="px-5 py-3.5 border-b border-amber-100 bg-amber-50 flex items-center justify-between gap-3">
+          <div>
+            <h4 class="font-bold text-amber-900 text-sm">🚪 สถานะใบอนุญาตออกนอกห้อง</h4>
+            <p class="text-xs text-amber-700/70 mt-0.5">ข้อมูลสัปดาห์ปัจจุบัน</p>
+          </div>
+          <span class="text-xs text-amber-700 font-bold">รวม ${summary.totalWeek} ครั้ง</span>
+        </div>
+        <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div class="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+            <p class="text-[10px] font-bold text-amber-700/70">กำลังอยู่นอกห้อง</p>
+            <p class="text-xl font-extrabold text-amber-700">${summary.active}</p>
+          </div>
+          <div class="rounded-xl bg-red-50 border border-red-100 px-3 py-2">
+            <p class="text-[10px] font-bold text-red-700/70">เลยเวลา</p>
+            <p class="text-xl font-extrabold text-red-700">${summary.overdue}</p>
+          </div>
+          <div class="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
+            <p class="text-[10px] font-bold text-emerald-700/70">กลับแล้ววันนี้</p>
+            <p class="text-xl font-extrabold text-emerald-700">${summary.returnedToday}</p>
+          </div>
+          <div class="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2">
+            <p class="text-[10px] font-bold text-indigo-700/70">สัปดาห์นี้</p>
+            <p class="text-xl font-extrabold text-indigo-700">${summary.totalWeek}</p>
+          </div>
+        </div>
+        ${activeRows.length ? `
+          <div class="border-t border-gray-50 divide-y divide-gray-50">
+            ${activeRows.map(r => `
+              <div class="px-5 py-3 flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-sm font-bold text-gray-800 truncate">${_esc(r.students?.full_name || '—')}</p>
+                  <p class="text-xs text-gray-400 truncate">${_esc(r.classes?.class_name || r.students?.main_room || '—')} · ${_esc(r.reason || '—')} · ${_esc(r.teachers?.full_name || '—')}</p>
+                </div>
+                <span class="flex-shrink-0 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-xs font-bold border border-amber-100">${_remainingText(r)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div class="border-t border-gray-50 px-5 py-5 text-center text-sm text-gray-400">ตอนนี้ไม่มีนักเรียนอยู่นอกห้อง</div>`}
+      </div>
+    `
+  }
 
   // ─── สถานะตัวกรอง ────────────────────────────────────────────────────────────
   let selectedDept = null   // deptKey หรือ null = ทั้งโรงเรียน
@@ -543,6 +602,8 @@ export async function renderExecOverview() {
     <div id="exec-teacher-kpi" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
       ${renderTeacherKpiCards()}
     </div>
+
+    ${renderLeaveMonitor()}
 
     <h4 class="font-semibold text-gray-700 mb-1">📚 ภาพรวมห้องเรียนทั้งโรง</h4>
     <p class="text-xs text-gray-400 mb-3">สัดส่วนห้องเรียนที่ "ปกติ" ในแต่ละมิติ (ไม่รวมห้องที่ยังไม่เริ่มดำเนินการ)</p>

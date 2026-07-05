@@ -1,4 +1,5 @@
 import { getActiveLeavePermission, closeLeavePermission } from './api.js'
+import { renderLeaveMonitorWidget } from './leave-monitor.js'
 import { showToast, showDangerConfirm } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 
@@ -51,14 +52,26 @@ export async function renderStudentLeaveScanner(teacher) {
   cleanupLeaveScanner()
   
   setContent(`
-    <div class="max-w-xl mx-auto space-y-6 animate-fade pb-12">
+    <div class="max-w-6xl mx-auto space-y-6 animate-fade pb-12">
       <div class="mb-4">
         <h3 class="text-lg font-bold text-gray-800">📋 ตรวจสอบใบอนุญาตออกนอกห้อง</h3>
         <p class="text-xs text-gray-400 mt-0.5">ใช้กล้องสแกน QR Code บนบัตรนักเรียนเพื่อเช็คสถานะการขอออกนอกห้องเรียนและความถูกต้องของเวลา</p>
       </div>
 
-      <!-- สแกนเนอร์กล้อง & ค้นหาด้วยรหัส -->
-      <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-4">
+      <div class="inline-flex flex-wrap gap-1.5 rounded-2xl bg-gray-100 p-1 border border-gray-200">
+        <button id="leave-view-scan-tab" type="button"
+          class="px-4 py-2 rounded-xl bg-white text-indigo-700 shadow-sm text-xs font-bold transition">
+          📷 สแกนใบอนุญาต
+        </button>
+        <button id="leave-view-monitor-tab" type="button"
+          class="px-4 py-2 rounded-xl text-gray-500 hover:text-gray-700 text-xs font-bold transition">
+          📊 ติดตามข้อมูล
+        </button>
+      </div>
+
+      <div id="leave-scanner-panel" class="max-w-xl mx-auto space-y-6">
+        <!-- สแกนเนอร์กล้อง & ค้นหาด้วยรหัส -->
+        <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-4">
         <div class="flex items-center justify-between">
           <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">📷 กล้องอ่าน QR Code</label>
           <div class="flex items-center gap-2">
@@ -118,6 +131,11 @@ export async function renderStudentLeaveScanner(teacher) {
       <div id="leave-scan-result" class="hidden">
         <!-- จัดการแสดงผลด้วย _renderScanResult -->
       </div>
+      </div>
+
+      <div id="leave-monitor-panel" class="hidden">
+        <div id="leave-monitor-widget"></div>
+      </div>
     </div>
   `)
 
@@ -126,6 +144,12 @@ export async function renderStudentLeaveScanner(teacher) {
   const searchBtn = document.getElementById('btn-search-leave-code')
   const toggleScannerBtn = document.getElementById('btn-toggle-scanner')
   const placeholderText = document.getElementById('scanner-placeholder-text')
+  const scanTab = document.getElementById('leave-view-scan-tab')
+  const monitorTab = document.getElementById('leave-view-monitor-tab')
+  const scannerPanel = document.getElementById('leave-scanner-panel')
+  const monitorPanel = document.getElementById('leave-monitor-panel')
+  const monitorWidget = document.getElementById('leave-monitor-widget')
+  let monitorLoaded = false
 
   searchBtn.addEventListener('click', () => {
     const code = searchInput.value.trim()
@@ -144,6 +168,31 @@ export async function renderStudentLeaveScanner(teacher) {
   })
 
   let isScanning = false
+  const setMode = async (mode) => {
+    const isMonitor = mode === 'monitor'
+    scanTab.className = isMonitor
+      ? 'px-4 py-2 rounded-xl text-gray-500 hover:text-gray-700 text-xs font-bold transition'
+      : 'px-4 py-2 rounded-xl bg-white text-indigo-700 shadow-sm text-xs font-bold transition'
+    monitorTab.className = isMonitor
+      ? 'px-4 py-2 rounded-xl bg-white text-indigo-700 shadow-sm text-xs font-bold transition'
+      : 'px-4 py-2 rounded-xl text-gray-500 hover:text-gray-700 text-xs font-bold transition'
+    scannerPanel.classList.toggle('hidden', isMonitor)
+    monitorPanel.classList.toggle('hidden', !isMonitor)
+    if (isMonitor) {
+      if (isScanning) stopScanner()
+      if (!monitorLoaded) {
+        monitorLoaded = true
+        await renderLeaveMonitorWidget(monitorWidget, {
+          title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
+          subtitle: 'ข้อมูลสัปดาห์ปัจจุบัน สำหรับหน้าตรวจสอบใบอนุญาต',
+          limit: 80
+        })
+      }
+    }
+  }
+  scanTab.addEventListener('click', () => setMode('scan'))
+  monitorTab.addEventListener('click', () => setMode('monitor'))
+
   toggleScannerBtn.addEventListener('click', async () => {
     if (isScanning) {
       stopScanner()

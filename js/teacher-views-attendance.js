@@ -9,6 +9,7 @@ import {
   getStudentsByRoom, getStudentsByReligionRoom,
   createLeavePermission, closeLeavePermission,
   getActiveLeavePermissionsForClass, getClassLeaveHistory,
+  getLeaveMaxActiveForClass, updateLeaveMaxActiveForClass,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm, showSuccessModal } from './ui.js'
@@ -41,8 +42,9 @@ export async function renderAttendanceGrid(teacher, classData) {
       getSchoolHolidays(curYear, curSem),
       getClassSessionDOWs(classData.id).catch(() => []),
       getActiveLeavePermissionsForClass(classData.id).catch(() => []),
-      getClassLeaveHistory(classData.id).catch(() => []),
+      getClassLeaveHistory(classData.id, { week: 'current' }).catch(() => []),
     ])
+    let leaveMaxActive = await getLeaveMaxActiveForClass(classData.id).catch(() => 3)
     const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null)
     const holidaySet = new Set(holidays)
 
@@ -126,6 +128,11 @@ export async function renderAttendanceGrid(teacher, classData) {
             class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-medium
                    hover:bg-indigo-700 transition flex items-center gap-1">
             📊 <span class="hidden sm:inline">สถิติ</span>
+          </button>
+          <button id="btn-leave-quota"
+            class="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-lg font-semibold
+                   hover:bg-amber-100 transition flex items-center gap-1">
+            🚪 <span class="hidden sm:inline">โควต้า</span> <span id="leave-quota-label">${Object.keys(activeLeaveMap).length}/${leaveMaxActive}</span>
           </button>
         </div>
       </div>
@@ -249,6 +256,14 @@ export async function renderAttendanceGrid(teacher, classData) {
     // Stats button
     document.getElementById('btn-att-stats')?.addEventListener('click', () => {
       _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
+    })
+
+    document.getElementById('btn-leave-quota')?.addEventListener('click', () => {
+      _openLeaveQuotaModal(classData, leaveMaxActive, async (nextMax) => {
+        leaveMaxActive = nextMax
+        const label = document.getElementById('leave-quota-label')
+        if (label) label.textContent = `${Object.keys(activeLeaveMap).length}/${leaveMaxActive}`
+      })
     })
 
     // ลบข้อมูลเช็คชื่อในคาบที่ตรงกับวันหยุด (ต้องยืนยันก่อน)
@@ -467,14 +482,14 @@ export async function renderAttendanceGrid(teacher, classData) {
       const name = btn.dataset.name
       const img = btn.dataset.img || ''
       
-      // จำกัดการออกห้องพร้อมกันได้ไม่เกิน 3 คน
+      // จำกัดการออกห้องพร้อมกันตามโควต้าของห้องเรียนนี้
       const activeOutCount = Object.keys(activeLeaveMap).length
-      if (activeOutCount >= 3) {
-        showToast('ไม่อนุญาตให้ออกนอกห้องเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบโควต้า 3 คนแล้ว', 'warning')
+      if (activeOutCount >= leaveMaxActive) {
+        showToast(`ไม่อนุญาตให้ออกนอกห้องเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบโควต้า ${leaveMaxActive} คนแล้ว`, 'warning')
         return
       }
       
-      _openLeaveRequestModal(teacher, classData, sid, name, img, activeLeaveMap, () => renderAttendanceGrid(teacher, classData))
+      _openLeaveRequestModal(teacher, classData, sid, name, img, activeLeaveMap, leaveMaxActive, () => renderAttendanceGrid(teacher, classData))
     })
 
     // คลิกป้ายเพื่อส่งกลับห้อง
@@ -543,7 +558,66 @@ function _renderStudentRosterLeavePart(student, activeLeaveMap, hasLeftMap) {
   }
 }
 
-function _openLeaveRequestModal(teacher, classData, studentId, studentName, studentImg, activeLeaveMap, onSave) {
+function _openLeaveQuotaModal(classData, currentMax, onSave) {
+  document.getElementById('leave-quota-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'leave-quota-modal'
+  modal.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-fade">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">🚪 ตั้งค่าโควต้าออกนอกห้อง</h3>
+          <p class="text-[11px] text-gray-400 mt-0.5">${_htmlEsc(classData.class_name || 'ห้องเรียนนี้')}</p>
+        </div>
+        <button id="btn-leave-quota-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">จำนวนนักเรียนที่อนุญาตให้อยู่นอกห้องพร้อมกัน</label>
+        <div class="flex items-center gap-2">
+          <input type="number" id="input-leave-quota" min="1" max="30" value="${currentMax}"
+            class="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-indigo-500" />
+          <span class="text-xs text-gray-500 font-medium">คน</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-2">
+        ${[1, 2, 3, 5].map(n => `
+          <button type="button" class="btn-leave-quota-preset px-3 py-2 rounded-xl border text-xs font-bold ${n === currentMax ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}"
+            data-value="${n}">${n} คน</button>
+        `).join('')}
+      </div>
+      <button id="btn-save-leave-quota" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition-all">
+        บันทึกโควต้า
+      </button>
+    </div>
+  `
+  document.body.appendChild(modal)
+
+  const input = modal.querySelector('#input-leave-quota')
+  modal.querySelector('#btn-leave-quota-close')?.addEventListener('click', () => modal.remove())
+  modal.querySelectorAll('.btn-leave-quota-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      input.value = btn.dataset.value
+    })
+  })
+  modal.querySelector('#btn-save-leave-quota')?.addEventListener('click', async () => {
+    const nextMax = parseInt(input.value, 10)
+    if (!Number.isFinite(nextMax) || nextMax < 1 || nextMax > 30) {
+      showToast('กรุณาระบุโควต้าระหว่าง 1-30 คน', 'warning')
+      return
+    }
+    try {
+      await updateLeaveMaxActiveForClass(classData.id, nextMax)
+      showToast(`บันทึกโควต้าออกนอกห้องเป็น ${nextMax} คนแล้ว`, 'success')
+      modal.remove()
+      onSave?.(nextMax)
+    } catch (err) {
+      showToast('บันทึกโควต้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  })
+}
+
+function _openLeaveRequestModal(teacher, classData, studentId, studentName, studentImg, activeLeaveMap, leaveMaxActive, onSave) {
   const existing = document.getElementById('leave-request-modal')
   if (existing) existing.remove()
   
@@ -561,6 +635,10 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, stud
       <div class="flex items-center justify-between border-b pb-3">
         <h3 class="font-bold text-gray-800 text-sm">🚪 ขออนุญาตออกนอกห้องเรียน</h3>
         <button id="btn-leave-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+      </div>
+      <div class="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-center justify-between gap-3">
+        <span class="font-semibold">โควต้านอกห้องตอนนี้</span>
+        <span class="font-extrabold">${Object.keys(activeLeaveMap).length}/${leaveMaxActive} คน</span>
       </div>
       
       <!-- ข้อมูลและรูปนักเรียน -->
@@ -685,7 +763,7 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, stud
     }
     
     try {
-      await createLeavePermission(studentId, classData.id, teacher.id, reasonText, durationVal)
+      await createLeavePermission(studentId, classData.id, teacher.id, reasonText, durationVal, leaveMaxActive)
       modal.remove()
       onSave()
       showSuccessModal({

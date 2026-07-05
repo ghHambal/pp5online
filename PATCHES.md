@@ -90,6 +90,7 @@
 | 45 | `patch_prayer_rls_room_access.sql` | แก้ไข RLS SELECT ให้ครูที่ปรึกษาเห็นคะแนนละหมาดที่สภานักเรียนสแกน (ผ่านรหัส student_id) | ✅ จำเป็นสำหรับดูคะแนนสแกน |
 | 46 | `patch_prayer_scanner_safety.sql` | เพิ่ม metadata และค่า config สำหรับกันสแกนห้องเดียวกัน + จำกัดกรอกรหัสต่อเดือน | ✅ จำเป็นสำหรับฟีเจอร์ความปลอดภัย scanner |
 | 47 | `patch_prayer_homeroom_category_rls.sql` | ปรับ RLS ให้ครูที่ปรึกษาดูคะแนนละหมาดตามประเภทห้องชัดเจน: ศาสนา→religion_room, สามัญ→main_room | ✅ แนะนำสำหรับ Monitor ครูที่ปรึกษาศาสนา |
+| 48 | `patch_student_leave_settings.sql` | เพิ่มตารางตั้งค่าโควต้าออกนอกห้องต่อห้องเรียน + index สำหรับ dashboard ติดตามใบอนุญาต | ✅ จำเป็นสำหรับให้ครูตั้งโควต้าเอง |
 
 ---
 
