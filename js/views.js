@@ -7208,11 +7208,37 @@ export async function renderPrayerAdmin(teacher) {
     `
 
     let _foundScanners = []
+    let _scannerFilterState = {
+      audience: 'all',
+      type: '',
+      gender: '',
+      room: '',
+      permission: '',
+      day: '',
+      q: ''
+    }
+
+    const _scannerDays = [
+      { key: 'Sun', label: 'อา', full: 'อาทิตย์' },
+      { key: 'Mon', label: 'จ', full: 'จันทร์' },
+      { key: 'Tue', label: 'อ', full: 'อังคาร' },
+      { key: 'Wed', label: 'พ', full: 'พุธ' },
+      { key: 'Thu', label: 'พฤ', full: 'พฤหัสบดี' }
+    ]
 
     const _scannerCodeList = (value) => (value || '')
       .split(/[\s,]+/)
       .map(c => c.trim())
       .filter(Boolean)
+
+    const _scannerGenderKey = (gender) => String(gender || '').trim()
+
+    const _scannerAudienceLabel = (audience) => ({
+      all: 'ทั้งหมด',
+      male: 'ชาย',
+      female: 'หญิง',
+      teacher: 'ครู'
+    }[audience] || 'ทั้งหมด')
 
     const _saveExtendedScannerCode = async (code, enabled) => {
       const currentConfig = await getSystemConfig().catch(() => ({}))
@@ -7263,7 +7289,7 @@ export async function renderPrayerAdmin(teacher) {
         // 1. ดึงข้อมูลนักเรียนที่มีสิทธิ์
         const { data: students, error: stuErr } = await supabase
           .from('students')
-          .select('id, student_code, full_name, main_room, image_url')
+          .select('id, student_code, full_name, main_room, gender, image_url')
           .eq('can_scan_prayer', true)
           .order('student_code')
         if (stuErr) throw stuErr
@@ -7293,188 +7319,420 @@ export async function renderPrayerAdmin(teacher) {
           return
         }
 
+        const dayCodeSets = Object.fromEntries(_scannerDays.map(d => [
+          d.key,
+          new Set(_scannerCodeList(currentConfig[`prayerScanner${d.key}`]))
+        ]))
+        const studentRows = studentsList.map(s => {
+          const code = String(s.student_code || '').trim()
+          const assignedDays = _scannerDays.filter(d => dayCodeSets[d.key]?.has(code)).map(d => d.key)
+          const isExtended = extendedStudentCodes.has(code)
+          return {
+            ...s,
+            type: 'student',
+            code,
+            name: s.full_name || '',
+            roomInfo: s.main_room || '',
+            gender: _scannerGenderKey(s.gender),
+            permission: isExtended ? 'extended' : 'normal',
+            permissionLabel: isExtended ? 'ขยายเวลา' : 'ทั่วไป',
+            assignedDays,
+            searchText: [code, s.full_name, s.main_room, s.gender, isExtended ? 'ขยายเวลา' : 'ทั่วไป'].join(' ').toLowerCase()
+          }
+        })
+        const teacherRows = permittedTeachers.map(t => ({
+          ...t,
+          type: 'teacher',
+          code: String(t.teacher_code || '').trim(),
+          name: t.full_name || '',
+          roomInfo: t.dept || '',
+          gender: '',
+          permission: 'teacher',
+          permissionLabel: 'คุณครู',
+          assignedDays: [],
+          searchText: [t.teacher_code, t.full_name, t.dept, 'ครู คุณครู'].join(' ').toLowerCase()
+        }))
+        const allRows = [...studentRows, ...teacherRows]
+        const roomOptions = _opts(allRows.map(s => s.roomInfo))
+        const maleCount = studentRows.filter(s => s.gender === 'ชาย').length
+        const femaleCount = studentRows.filter(s => s.gender === 'หญิง').length
+        const extendedCount = studentRows.filter(s => s.permission === 'extended').length
+        const unassignedCount = studentRows.filter(s => s.assignedDays.length === 0).length
+
+        const _metric = (label, value, tone = 'indigo') => {
+          const tones = {
+            indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+            emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+            rose: 'bg-rose-50 text-rose-700 border-rose-100',
+            amber: 'bg-amber-50 text-amber-700 border-amber-100',
+            slate: 'bg-slate-50 text-slate-700 border-slate-100'
+          }
+          return `
+            <div class="rounded-xl border ${tones[tone] || tones.indigo} px-3 py-2">
+              <p class="text-[10px] font-bold opacity-70">${label}</p>
+              <p class="text-lg font-extrabold leading-tight">${value}</p>
+            </div>
+          `
+        }
+
         listWrap.innerHTML = `
-          <table class="w-full text-xs">
-            <thead class="bg-gray-50 border-b border-gray-100 text-gray-500">
-              <tr>
-                <th class="px-4 py-3 text-left">ประเภท</th>
-                <th class="px-2 py-3 text-left">รหัส</th>
-                <th class="px-3 py-3 text-left">ชื่อ-นามสกุล</th>
-                <th class="px-3 py-3 text-left">ห้องเรียน / กลุ่มสาระ</th>
-                <th class="px-3 py-3 text-left">ประเภทสิทธิ์</th>
-                <th class="px-3 py-3 text-left">วันรับผิดชอบ</th>
-                <th class="px-4 py-3 text-right">การจัดการ</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              ${[
-                ...studentsList.map(s => {
-                  const isExtended = extendedStudentCodes.has(String(s.student_code))
-                  const days = [
-                    { key: 'Sun', label: 'อา' },
-                    { key: 'Mon', label: 'จ' },
-                    { key: 'Tue', label: 'อ' },
-                    { key: 'Wed', label: 'พ' },
-                    { key: 'Thu', label: 'พฤ' }
-                  ]
-                  const dayButtonsHTML = days.map(d => {
-                    const isAssigned = _scannerCodeList(currentConfig[`prayerScanner${d.key}`]).includes(String(s.student_code).trim())
+          <div class="p-4 border-b border-gray-50 space-y-4">
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+              ${_metric('ทั้งหมด', totalScannersCount, 'indigo')}
+              ${_metric('ชาย', maleCount, 'emerald')}
+              ${_metric('หญิง', femaleCount, 'rose')}
+              ${_metric('ครู', permittedTeachers.length, 'slate')}
+              ${_metric('ขยายเวลา', extendedCount, 'amber')}
+              ${_metric('ยังไม่มีเวร', unassignedCount, unassignedCount ? 'rose' : 'slate')}
+            </div>
+
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div class="inline-flex flex-wrap gap-1.5 rounded-2xl bg-gray-50 p-1 border border-gray-100">
+                ${[
+                  ['all', `ทั้งหมด ${totalScannersCount}`],
+                  ['male', `ชาย ${maleCount}`],
+                  ['female', `หญิง ${femaleCount}`],
+                  ['teacher', `ครู ${permittedTeachers.length}`]
+                ].map(([key, label]) => `
+                  <button type="button" data-scanner-audience="${key}"
+                    class="scanner-audience-tab px-3 py-1.5 rounded-xl text-xs font-bold transition">
+                    ${label}
+                  </button>
+                `).join('')}
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="btn-filter-unassigned-scanner"
+                  class="px-3 py-2 rounded-xl border border-rose-100 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition">
+                  ยังไม่กำหนดวันเวร
+                </button>
+                <button type="button" id="btn-reset-scanner-filters"
+                  class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-500 text-xs font-bold hover:bg-gray-50 transition">
+                  ล้างตัวกรอง
+                </button>
+                <span class="text-xs text-gray-400">แสดง <span id="scanner-filtered-count" class="font-bold text-indigo-600">0</span> คน · <span id="scanner-active-audience-label">${_scannerAudienceLabel(_scannerFilterState.audience)}</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div id="scanner-table-wrap" class="overflow-x-auto"></div>
+        `
+
+        const _applyScannerFilters = () => {
+          const state = _scannerFilterState
+          const q = state.q.trim().toLowerCase()
+          return allRows.filter(row => {
+            if (state.audience === 'male' && !(row.type === 'student' && row.gender === 'ชาย')) return false
+            if (state.audience === 'female' && !(row.type === 'student' && row.gender === 'หญิง')) return false
+            if (state.audience === 'teacher' && row.type !== 'teacher') return false
+            if (state.type && row.type !== state.type) return false
+            if (state.gender && row.gender !== state.gender) return false
+            if (state.room && row.roomInfo !== state.room) return false
+            if (state.permission && row.permission !== state.permission) return false
+            if (state.day === 'none' && !(row.type === 'student' && row.assignedDays.length === 0)) return false
+            if (state.day && state.day !== 'none' && !row.assignedDays.includes(state.day)) return false
+            if (q && !row.searchText.includes(q)) return false
+            return true
+          })
+        }
+
+        const _syncScannerFilterControls = () => {
+          listWrap.querySelectorAll('.scanner-audience-tab').forEach(btn => {
+            const active = btn.dataset.scannerAudience === _scannerFilterState.audience
+            btn.className = active
+              ? 'scanner-audience-tab px-3 py-1.5 rounded-xl text-xs font-bold transition bg-white text-indigo-700 shadow-sm'
+              : 'scanner-audience-tab px-3 py-1.5 rounded-xl text-xs font-bold transition text-gray-500 hover:text-gray-700'
+          })
+          const filteredCountEl = document.getElementById('scanner-filtered-count')
+          if (filteredCountEl) filteredCountEl.textContent = _applyScannerFilters().length
+          const audienceLabelEl = document.getElementById('scanner-active-audience-label')
+          if (audienceLabelEl) audienceLabelEl.textContent = _scannerAudienceLabel(_scannerFilterState.audience)
+        }
+
+        const _renderScannersTable = () => {
+          _syncScannerFilterControls()
+          const rows = _applyScannerFilters()
+          const tableWrap = document.getElementById('scanner-table-wrap')
+          const filteredCountEl = document.getElementById('scanner-filtered-count')
+          if (filteredCountEl) filteredCountEl.textContent = rows.length
+          document.getElementById('scanner-count-badge').textContent = rows.length === totalScannersCount
+            ? `${totalScannersCount} คน`
+            : `${rows.length}/${totalScannersCount} คน`
+          const activeFilterId = document.activeElement?.id?.startsWith('scanner-filter-')
+            ? document.activeElement.id
+            : ''
+          const activeSelectionStart = activeFilterId === 'scanner-filter-q'
+            ? document.activeElement.selectionStart
+            : null
+
+          tableWrap.innerHTML = `
+            <table class="w-full text-xs min-w-[980px]">
+              <thead class="bg-gray-50 border-b border-gray-100 text-gray-500">
+                <tr>
+                  <th class="px-4 py-3 text-left align-top">
+                    <span class="block mb-1">ประเภท</span>
+                    <select id="scanner-filter-type" class="w-28 border border-gray-200 rounded-lg px-2 py-1 bg-white text-[11px] focus:outline-none">
+                      <option value="">ทั้งหมด</option>
+                      <option value="student" ${_scannerFilterState.type === 'student' ? 'selected' : ''}>นักเรียน</option>
+                      <option value="teacher" ${_scannerFilterState.type === 'teacher' ? 'selected' : ''}>ครู</option>
+                    </select>
+                  </th>
+                  <th class="px-2 py-3 text-left align-top">
+                    <span class="block mb-1">รหัส/ค้นหา</span>
+                    <input id="scanner-filter-q" value="${_esc(_scannerFilterState.q)}" placeholder="รหัส ชื่อ ห้อง"
+                      class="w-36 border border-gray-200 rounded-lg px-2 py-1 bg-white text-[11px] focus:outline-none" />
+                  </th>
+                  <th class="px-3 py-3 text-left align-top">ชื่อ-นามสกุล</th>
+                  <th class="px-3 py-3 text-left align-top">
+                    <span class="block mb-1">ห้องเรียน / กลุ่มสาระ</span>
+                    <select id="scanner-filter-room" class="w-36 border border-gray-200 rounded-lg px-2 py-1 bg-white text-[11px] focus:outline-none">
+                      <option value="">ทั้งหมด</option>
+                      ${roomOptions.map(room => `<option value="${_esc(room)}" ${_scannerFilterState.room === room ? 'selected' : ''}>${_esc(room)}</option>`).join('')}
+                    </select>
+                  </th>
+                  <th class="px-3 py-3 text-left align-top">
+                    <span class="block mb-1">เพศ</span>
+                    <select id="scanner-filter-gender" class="w-24 border border-gray-200 rounded-lg px-2 py-1 bg-white text-[11px] focus:outline-none">
+                      <option value="">ทั้งหมด</option>
+                      <option value="ชาย" ${_scannerFilterState.gender === 'ชาย' ? 'selected' : ''}>ชาย</option>
+                      <option value="หญิง" ${_scannerFilterState.gender === 'หญิง' ? 'selected' : ''}>หญิง</option>
+                    </select>
+                  </th>
+                  <th class="px-3 py-3 text-left align-top">
+                    <span class="block mb-1">ประเภทสิทธิ์</span>
+                    <select id="scanner-filter-permission" class="w-28 border border-gray-200 rounded-lg px-2 py-1 bg-white text-[11px] focus:outline-none">
+                      <option value="">ทั้งหมด</option>
+                      <option value="normal" ${_scannerFilterState.permission === 'normal' ? 'selected' : ''}>ทั่วไป</option>
+                      <option value="extended" ${_scannerFilterState.permission === 'extended' ? 'selected' : ''}>ขยายเวลา</option>
+                      <option value="teacher" ${_scannerFilterState.permission === 'teacher' ? 'selected' : ''}>ครู</option>
+                    </select>
+                  </th>
+                  <th class="px-3 py-3 text-left align-top">
+                    <span class="block mb-1">วันรับผิดชอบ</span>
+                    <select id="scanner-filter-day" class="w-28 border border-gray-200 rounded-lg px-2 py-1 bg-white text-[11px] focus:outline-none">
+                      <option value="">ทั้งหมด</option>
+                      ${_scannerDays.map(d => `<option value="${d.key}" ${_scannerFilterState.day === d.key ? 'selected' : ''}>${d.full}</option>`).join('')}
+                      <option value="none" ${_scannerFilterState.day === 'none' ? 'selected' : ''}>ยังไม่กำหนด</option>
+                    </select>
+                  </th>
+                  <th class="px-4 py-3 text-right align-top">การจัดการ</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">
+                ${rows.length ? rows.map(row => {
+                  if (row.type === 'teacher') {
+                    return `
+                      <tr class="hover:bg-gray-50 transition">
+                        <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">คุณครู</span></td>
+                        <td class="px-2 py-2 font-mono text-gray-700">${_esc(row.code)}</td>
+                        <td class="px-3 py-2">
+                          <div class="flex items-center gap-2">
+                            ${row.image_url
+                              ? `<img src="${_esc(row.image_url)}" class="w-6 h-6 rounded-full object-cover"/>`
+                              : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
+                            }
+                            <span class="font-medium text-gray-800">${_esc(row.name)}</span>
+                          </div>
+                        </td>
+                        <td class="px-3 py-2 text-gray-500">กลุ่มสาระ ${_esc(row.roomInfo || '—')}</td>
+                        <td class="px-3 py-2 text-gray-300">—</td>
+                        <td class="px-3 py-2">
+                          <span class="inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100">คุณครู</span>
+                        </td>
+                        <td class="px-3 py-2 text-gray-400">—</td>
+                        <td class="px-4 py-2 text-right">
+                          <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
+                            data-code="${_esc(row.code)}" data-name="${_esc(row.name)}" data-type="teacher">
+                            ถอนสิทธิ์
+                          </button>
+                        </td>
+                      </tr>
+                    `
+                  }
+
+                  const dayButtonsHTML = _scannerDays.map(d => {
+                    const isAssigned = row.assignedDays.includes(d.key)
                     return `
                       <button class="btn-toggle-day-scanner w-6 h-6 rounded-full text-[9px] font-extrabold transition-all border ${isAssigned ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'}"
-                        data-code="${s.student_code}" data-day="${d.key}" data-name="${s.full_name}" title="เวรวัน${d.key === 'Sun' ? 'อาทิตย์' : d.key === 'Mon' ? 'จันทร์' : d.key === 'Tue' ? 'อังคาร' : d.key === 'Wed' ? 'พุธ' : 'พฤหัสบดี'}">
+                        data-code="${_esc(row.code)}" data-day="${d.key}" data-name="${_esc(row.name)}" title="เวรวัน${d.full}">
                         ${d.label}
                       </button>
                     `
                   }).join(' ')
 
                   return `
-                  <tr class="hover:bg-gray-50 transition">
-                    <td class="px-4 py-2">
-                      <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">นักเรียน</span>
-                    </td>
-                    <td class="px-2 py-2 font-mono text-gray-700">${s.student_code}</td>
-                    <td class="px-3 py-2">
-                      <div class="flex items-center gap-2">
-                        ${s.image_url
-                          ? `<img src="${s.image_url}" class="student-avatar-premium w-6 h-8" />`
-                          : `<div class="student-avatar-premium-placeholder w-6 h-8 text-[10px]">👤</div>`
-                        }
-                        <span class="font-medium text-gray-800">${s.full_name}</span>
-                      </div>
-                    </td>
-                    <td class="px-3 py-2 text-gray-500">ห้อง ${s.main_room || '—'}</td>
-                    <td class="px-3 py-2">
-                      <button class="btn-toggle-extended-scanner inline-flex items-center justify-center min-w-[70px] px-2 py-1 rounded-lg transition text-[10px] font-bold border ${isExtended ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}"
-                        data-code="${s.student_code}" data-name="${s.full_name}" data-extended="${isExtended ? '1' : '0'}">
-                        ${isExtended ? 'ขยายเวลา' : 'ทั่วไป'}
-                      </button>
-                    </td>
-                    <td class="px-3 py-2">
-                      <div class="flex gap-1 items-center">
-                        ${dayButtonsHTML}
-                      </div>
-                    </td>
-                    <td class="px-4 py-2 text-right">
-                      <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
-                        data-id="${s.id}" data-code="${s.student_code}" data-name="${s.full_name}" data-type="student">
-                        ถอนสิทธิ์
-                      </button>
-                    </td>
+                    <tr class="hover:bg-gray-50 transition">
+                      <td class="px-4 py-2">
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">นักเรียน</span>
+                      </td>
+                      <td class="px-2 py-2 font-mono text-gray-700">${_esc(row.code)}</td>
+                      <td class="px-3 py-2">
+                        <div class="flex items-center gap-2">
+                          ${row.image_url
+                            ? `<img src="${_esc(row.image_url)}" class="student-avatar-premium w-6 h-8" />`
+                            : `<div class="student-avatar-premium-placeholder w-6 h-8 text-[10px]">👤</div>`
+                          }
+                          <span class="font-medium text-gray-800">${_esc(row.name)}</span>
+                        </div>
+                      </td>
+                      <td class="px-3 py-2 text-gray-500">ห้อง ${_esc(row.roomInfo || '—')}</td>
+                      <td class="px-3 py-2">
+                        <span class="px-2 py-0.5 rounded-full ${row.gender === 'หญิง' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-sky-50 text-sky-700 border-sky-100'} text-[10px] font-bold border">${_esc(row.gender || '—')}</span>
+                      </td>
+                      <td class="px-3 py-2">
+                        <button class="btn-toggle-extended-scanner inline-flex items-center justify-center min-w-[70px] px-2 py-1 rounded-lg transition text-[10px] font-bold border ${row.permission === 'extended' ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}"
+                          data-code="${_esc(row.code)}" data-name="${_esc(row.name)}" data-extended="${row.permission === 'extended' ? '1' : '0'}">
+                          ${row.permission === 'extended' ? 'ขยายเวลา' : 'ทั่วไป'}
+                        </button>
+                      </td>
+                      <td class="px-3 py-2">
+                        <div class="flex gap-1 items-center">
+                          ${dayButtonsHTML}
+                          ${row.assignedDays.length === 0 ? `<span class="ml-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-bold">ยังไม่มีเวร</span>` : ''}
+                        </div>
+                      </td>
+                      <td class="px-4 py-2 text-right">
+                        <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
+                          data-id="${row.id}" data-code="${_esc(row.code)}" data-name="${_esc(row.name)}" data-type="student">
+                          ถอนสิทธิ์
+                        </button>
+                      </td>
+                    </tr>
+                  `
+                }).join('') : `
+                  <tr>
+                    <td colspan="8" class="px-4 py-10 text-center text-gray-400 text-sm">ไม่พบรายชื่อที่ตรงกับตัวกรอง</td>
                   </tr>
-                `}),
-                ...permittedTeachers.map(t => `
-                  <tr class="hover:bg-gray-50 transition">
-                    <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">คุณครู</span></td>
-                    <td class="px-2 py-2 font-mono text-gray-700">${t.teacher_code}</td>
-                    <td class="px-3 py-2">
-                      <div class="flex items-center gap-2">
-                        ${t.image_url
-                          ? `<img src="${t.image_url}" class="w-6 h-6 rounded-full object-cover"/>`
-                          : `<div class="w-6 h-6 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-600">👤</div>`
-                        }
-                        <span class="font-medium text-gray-800">${t.full_name}</span>
-                      </div>
-                    </td>
-                    <td class="px-3 py-2 text-gray-500">กลุ่มสาระ ${t.dept || '—'}</td>
-                    <td class="px-3 py-2">
-                      <span class="inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100">คุณครู</span>
-                    </td>
-                    <td class="px-3 py-2 text-gray-400">—</td>
-                    <td class="px-4 py-2 text-right">
-                      <button class="btn-revoke-scanner px-2.5 py-1 text-red-600 hover:text-white hover:bg-red-500 rounded-lg transition text-[10px] font-semibold border border-red-200"
-                        data-code="${t.teacher_code}" data-name="${t.full_name}" data-type="teacher">
-                        ถอนสิทธิ์
-                      </button>
-                    </td>
-                  </tr>
-                `)
-              ].join('')}
-            </tbody>
-          </table>
-        `
+                `}
+              </tbody>
+            </table>
+          `
 
-        listWrap.querySelectorAll('.btn-toggle-extended-scanner').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const code = btn.dataset.code
-            const name = btn.dataset.name
-            const nextExtended = btn.dataset.extended !== '1'
-            btn.disabled = true
-            btn.textContent = 'กำลังบันทึก...'
-            try {
-              await _saveExtendedScannerCode(code, nextExtended)
-              showToast(`ปรับสิทธิ์ "${name}" เป็น${nextExtended ? 'ขยายเวลา' : 'ทั่วไป'}แล้ว`, 'success')
-              _loadScannersList()
-            } catch(err) {
-              showToast('ปรับสิทธิ์ไม่สำเร็จ: ' + err.message, 'error')
-              btn.disabled = false
-              btn.textContent = btn.dataset.extended === '1' ? 'ขยายเวลา' : 'ทั่วไป'
-            }
+          ;['scanner-filter-type', 'scanner-filter-room', 'scanner-filter-gender', 'scanner-filter-permission', 'scanner-filter-day'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', e => {
+              const key = id.replace('scanner-filter-', '')
+              _scannerFilterState[key] = e.target.value
+              _renderScannersTable()
+            })
           })
-        })
+          document.getElementById('scanner-filter-q')?.addEventListener('input', e => {
+            _scannerFilterState.q = e.target.value
+            _renderScannersTable()
+          })
+          if (activeFilterId) {
+            const activeFilterEl = document.getElementById(activeFilterId)
+            activeFilterEl?.focus()
+            if (activeFilterId === 'scanner-filter-q' && activeSelectionStart !== null) {
+              activeFilterEl?.setSelectionRange(activeSelectionStart, activeSelectionStart)
+            }
+          }
 
-        // ผูกอีเวนต์ปุ่มเลือกวันรับผิดชอบ
-        listWrap.querySelectorAll('.btn-toggle-day-scanner').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const code = btn.dataset.code
-            const day = btn.dataset.day
-            const name = btn.dataset.name
-            btn.disabled = true
-            try {
-              const currentConfig = await getSystemConfig().catch(() => ({}))
-              const dayKey = `prayerScanner${day}`
-              let codes = _scannerCodeList(currentConfig[dayKey])
-              if (codes.includes(code)) {
-                codes = codes.filter(c => c !== code)
-              } else {
-                codes.push(code)
+          listWrap.querySelectorAll('.btn-toggle-extended-scanner').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const code = btn.dataset.code
+              const name = btn.dataset.name
+              const nextExtended = btn.dataset.extended !== '1'
+              btn.disabled = true
+              btn.textContent = 'กำลังบันทึก...'
+              try {
+                await _saveExtendedScannerCode(code, nextExtended)
+                showToast(`ปรับสิทธิ์ "${name}" เป็น${nextExtended ? 'ขยายเวลา' : 'ทั่วไป'}แล้ว`, 'success')
+                _loadScannersList()
+              } catch(err) {
+                showToast('ปรับสิทธิ์ไม่สำเร็จ: ' + err.message, 'error')
+                btn.disabled = false
+                btn.textContent = btn.dataset.extended === '1' ? 'ขยายเวลา' : 'ทั่วไป'
               }
-              await updateSystemConfig(dayKey, codes.join(','))
-              const dayNames = { Sun: 'อาทิตย์', Mon: 'จันทร์', Tue: 'อังคาร', Wed: 'พุธ', Thu: 'พฤหัสบดี' }
-              showToast(`ปรับสิทธิ์เวรวัน${dayNames[day]} ของ "${name}" สำเร็จ`, 'success')
-              _loadScannersList()
-            } catch(err) {
-              showToast('ปรับสิทธิ์เวรล้มเหลว: ' + err.message, 'error')
-              btn.disabled = false
-            }
+            })
           })
-        })
 
-        // ผูกอีเวนต์ปุ่มถอนสิทธิ์
-        listWrap.querySelectorAll('.btn-revoke-scanner').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const type = btn.dataset.type
-            const name = btn.dataset.name
-            if (!confirm(`ถอนสิทธิ์สแกนเนอร์ของ "${name}" หรือไม่?`)) return
-            try {
-              if (type === 'student') {
-                const sid = +btn.dataset.id
-                const code = btn.dataset.code
-                const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
-                if (error) throw error
-                await _saveExtendedScannerCode(code, false)
-
-                // ล้างรหัสในกลุ่มรายวันด้วย
+          // ผูกอีเวนต์ปุ่มเลือกวันรับผิดชอบ
+          listWrap.querySelectorAll('.btn-toggle-day-scanner').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const code = btn.dataset.code
+              const day = btn.dataset.day
+              const name = btn.dataset.name
+              btn.disabled = true
+              try {
                 const currentConfig = await getSystemConfig().catch(() => ({}))
-                for (const d of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu']) {
-                  const dayKey = `prayerScanner${d}`
-                  const updatedCodes = _scannerCodeList(currentConfig[dayKey]).filter(c => c !== code)
-                  await updateSystemConfig(dayKey, updatedCodes.join(','))
+                const dayKey = `prayerScanner${day}`
+                let codes = _scannerCodeList(currentConfig[dayKey])
+                if (codes.includes(code)) {
+                  codes = codes.filter(c => c !== code)
+                } else {
+                  codes.push(code)
                 }
-              } else {
-                const code = btn.dataset.code
-                const currentConfig = await getSystemConfig().catch(() => ({}))
-                const updatedTeachers = _scannerCodeList(currentConfig.prayerScannerTeachers)
-                  .filter(c => c !== code)
-
-                await updateSystemConfig('prayerScannerTeachers', updatedTeachers.join(','))
+                await updateSystemConfig(dayKey, codes.join(','))
+                const dayName = _scannerDays.find(d => d.key === day)?.full || day
+                showToast(`ปรับสิทธิ์เวรวัน${dayName} ของ "${name}" สำเร็จ`, 'success')
+                _loadScannersList()
+              } catch(err) {
+                showToast('ปรับสิทธิ์เวรล้มเหลว: ' + err.message, 'error')
+                btn.disabled = false
               }
-              showToast(`ถอนสิทธิ์ "${name}" สำเร็จ`, 'success')
-              _loadScannersList()
-            } catch(err) {
-              showToast('ทำรายการไม่สำเร็จ: ' + err.message, 'error')
+            })
+          })
+
+          // ผูกอีเวนต์ปุ่มถอนสิทธิ์
+          listWrap.querySelectorAll('.btn-revoke-scanner').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const type = btn.dataset.type
+              const name = btn.dataset.name
+              if (!confirm(`ถอนสิทธิ์สแกนเนอร์ของ "${name}" หรือไม่?`)) return
+              try {
+                if (type === 'student') {
+                  const sid = +btn.dataset.id
+                  const code = btn.dataset.code
+                  const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
+                  if (error) throw error
+                  await _saveExtendedScannerCode(code, false)
+
+                  // ล้างรหัสในกลุ่มรายวันด้วย
+                  const currentConfig = await getSystemConfig().catch(() => ({}))
+                  for (const d of _scannerDays) {
+                    const dayKey = `prayerScanner${d.key}`
+                    const updatedCodes = _scannerCodeList(currentConfig[dayKey]).filter(c => c !== code)
+                    await updateSystemConfig(dayKey, updatedCodes.join(','))
+                  }
+                } else {
+                  const code = btn.dataset.code
+                  const currentConfig = await getSystemConfig().catch(() => ({}))
+                  const updatedTeachers = _scannerCodeList(currentConfig.prayerScannerTeachers)
+                    .filter(c => c !== code)
+
+                  await updateSystemConfig('prayerScannerTeachers', updatedTeachers.join(','))
+                }
+                showToast(`ถอนสิทธิ์ "${name}" สำเร็จ`, 'success')
+                _loadScannersList()
+              } catch(err) {
+                showToast('ทำรายการไม่สำเร็จ: ' + err.message, 'error')
+              }
+            })
+          })
+        }
+
+        listWrap.querySelectorAll('[data-scanner-audience]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            _scannerFilterState.audience = btn.dataset.scannerAudience
+            _scannerFilterState.type = ''
+            _scannerFilterState.gender = ''
+            if (_scannerFilterState.audience === 'teacher') {
+              _scannerFilterState.day = ''
+              _scannerFilterState.permission = ''
             }
+            _renderScannersTable()
           })
         })
+        document.getElementById('btn-filter-unassigned-scanner')?.addEventListener('click', () => {
+          _scannerFilterState.day = 'none'
+          _scannerFilterState.type = 'student'
+          _renderScannersTable()
+        })
+        document.getElementById('btn-reset-scanner-filters')?.addEventListener('click', () => {
+          _scannerFilterState = { audience: 'all', type: '', gender: '', room: '', permission: '', day: '', q: '' }
+          _renderScannersTable()
+        })
+
+        _renderScannersTable()
 
       } catch(err) {
         listWrap.innerHTML = `<div class="p-8 text-center text-red-400 text-sm">โหลดรายการล้มเหลว: ${err.message}</div>`
@@ -7491,7 +7749,7 @@ export async function renderPrayerAdmin(teacher) {
 
       try {
         const [stuRes, teachRes] = await Promise.all([
-          supabase.from('students').select('id, student_code, full_name, main_room, image_url').in('student_code', codes),
+          supabase.from('students').select('id, student_code, full_name, main_room, gender, image_url').in('student_code', codes),
           supabase.from('teachers').select('id, teacher_code, full_name, dept, image_url').in('teacher_code', codes)
         ])
 
@@ -7502,7 +7760,7 @@ export async function renderPrayerAdmin(teacher) {
         const teachersData = teachRes.data ?? []
 
         _foundScanners = [
-          ...studentsData.map(s => ({ ...s, code: s.student_code, type: 'student', display_info: `รหัส ${s.student_code} · ห้อง ${s.main_room || '—'}` })),
+          ...studentsData.map(s => ({ ...s, code: s.student_code, type: 'student', display_info: `รหัส ${s.student_code} · ห้อง ${s.main_room || '—'} · ${s.gender || 'ไม่ระบุเพศ'}` })),
           ...teachersData.map(t => ({ ...t, code: t.teacher_code, type: 'teacher', display_info: `รหัสครู ${t.teacher_code} · กลุ่มสาระ ${t.dept || '—'}` }))
         ]
 
