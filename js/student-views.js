@@ -71,6 +71,35 @@ function _prayerScannerLocationChoices(scanner) {
   return choices.length ? choices : PRAYER_SCAN_LOCATIONS
 }
 
+function _studentMainRoomLevel(student) {
+  const room = String(student?.main_room || '').replace(/\s+/g, '').trim()
+  if (!room) return { grade: null, isVoc: false }
+  const gradeMatch = room.match(/^ม\.?([1-6])/)
+  return {
+    grade: gradeMatch ? parseInt(gradeMatch[1], 10) : null,
+    isVoc: room.startsWith('ปวช')
+  }
+}
+
+function _malePrayerLocationError(student, locationId) {
+  if (String(student?.gender || '').trim() !== 'ชาย') return ''
+
+  const { grade, isVoc } = _studentMainRoomLevel(student)
+  const isJuniorMaleLocation = locationId === 'musolla_male'
+  const isSeniorMaleLocation = locationId === 'masjid_kuwait'
+  if (!isJuniorMaleLocation && !isSeniorMaleLocation) return ''
+
+  if (isSeniorMaleLocation && !(grade === 6 || isVoc)) {
+    return 'นักเรียนชาย ม.1 - ม.5 ต้องสแกนที่มูซอลลาชาย ไม่สามารถบันทึกที่มัสยิดคูเวตได้'
+  }
+
+  if (isJuniorMaleLocation && !(grade >= 1 && grade <= 5)) {
+    return 'นักเรียนชาย ม.6 และ ปวช. ต้องสแกนที่มัสยิดคูเวต ไม่สามารถบันทึกที่มูซอลลาชายได้'
+  }
+
+  return ''
+}
+
 const READING_EVAL_GRADES = [
   { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
   { label: 'ดี', min: 65, cls: 'text-blue-700 bg-blue-50 border-blue-100' },
@@ -3399,6 +3428,13 @@ export async function renderStudentPrayerScanner(student) {
     if (!student) {
       playBeep('error')
       showScanFeedback(null, studentCode, 'ไม่พบข้อมูลนักเรียนรหัสนี้')
+      return
+    }
+
+    const locationError = _malePrayerLocationError(student, activeLocation)
+    if (locationError) {
+      playBeep('error')
+      showScanFeedback(student, studentCode, locationError)
       return
     }
 
