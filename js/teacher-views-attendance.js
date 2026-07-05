@@ -12,6 +12,7 @@ import {
   getLeaveMaxActiveForClass, updateLeaveMaxActiveForClass,
 } from './api.js'
 import { supabase } from './supabase.js'
+import { formatLeaveCountdown } from './leave-time.js'
 import { showToast, showDangerConfirm, showSuccessModal } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
@@ -374,19 +375,11 @@ export async function renderAttendanceGrid(teacher, classData) {
         const leaveId = badge.dataset.leaveId
         const studentName = badge.dataset.name
         
-        const startDate = new Date(startStr)
-        const expiryDate = new Date(startDate.getTime() + durationMin * 60 * 1000)
-        
-        const diffMs = expiryDate.getTime() - now.getTime()
-        const isOverdue = diffMs < 0
-        const absDiff = Math.abs(diffMs)
-        
-        const mins = Math.floor(absDiff / (60 * 1000))
-        const secs = Math.floor((absDiff % (60 * 1000)) / 1000)
-        const timeText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+        const countdown = formatLeaveCountdown(startStr, durationMin, now)
+        const isOverdue = countdown.isOverdue
         
         if (isOverdue) {
-          el.innerHTML = `-${timeText}`
+          el.innerHTML = countdown.timerText
           if (!badge.classList.contains('bg-red-100')) {
             badge.classList.remove('bg-amber-100', 'text-amber-700')
             badge.classList.add('bg-red-100', 'text-red-700', 'animate-pulse')
@@ -404,8 +397,11 @@ export async function renderAttendanceGrid(teacher, classData) {
               _processNextOverdueModal()
             }
           }
+          if (countdown.isBeyondLimit) {
+            badge.classList.remove('animate-pulse')
+          }
         } else {
-          el.innerHTML = timeText
+          el.innerHTML = countdown.timerText
         }
       })
     }

@@ -1,4 +1,5 @@
 import { getExecClassOverview, getDepartments, getSystemConfig, getTeachers, getLeavePermissionDashboard } from './api.js'
+import { formatLeaveCountdown } from './leave-time.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const _esc = value => String(value ?? '')
@@ -240,14 +241,7 @@ export async function renderExecOverview() {
     const now = new Date()
     const _remainingText = (r) => {
       if (r.status !== 'active') return r.status === 'returned' ? 'กลับแล้ว' : 'เลยเวลา'
-      const start = new Date(r.created_at)
-      const end = new Date(start.getTime() + Number(r.allowed_duration || 0) * 60 * 1000)
-      const diffMs = end.getTime() - now.getTime()
-      const totalSeconds = Math.ceil(Math.abs(diffMs) / 1000)
-      const mins = Math.floor(totalSeconds / 60)
-      const secs = totalSeconds % 60
-      const timeText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-      return diffMs < 0 ? `เลย ${timeText}` : `เหลือ ${timeText}`
+      return formatLeaveCountdown(r.created_at, r.allowed_duration, now).text
     }
     const activeRows = rows.filter(r => r.status === 'active').slice(0, 8)
     return `

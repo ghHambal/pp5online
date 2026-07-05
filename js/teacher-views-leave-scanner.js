@@ -1,5 +1,6 @@
 import { getActiveLeavePermission, closeLeavePermission, getTeacherLeaveMonitorScope } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js'
+import { formatLeaveCountdown } from './leave-time.js'
 import { showToast, showDangerConfirm } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 
@@ -309,25 +310,19 @@ async function processLeaveCheck(studentCode) {
     // อัปเดตการแสดงผลใบอนุญาต
     const start = new Date(leave.created_at)
     const allowedMin = leave.allowed_duration
-    const expiry = new Date(start.getTime() + allowedMin * 60 * 1000)
     
     // เคลียร์ Timer เก่าก่อนเริ่มใหม่
     if (scannerTimerInterval) clearInterval(scannerTimerInterval)
 
     const renderCard = () => {
       const now = new Date()
-      const diffMs = expiry.getTime() - now.getTime()
-      const isOverdue = diffMs < 0
-      const absDiff = Math.abs(diffMs)
-      
-      const mins = Math.floor(absDiff / (60 * 1000))
-      const secs = Math.floor((absDiff % (60 * 1000)) / 1000)
-      const timeText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-      
+      const countdown = formatLeaveCountdown(leave.created_at, allowedMin, now)
+      const isOverdue = countdown.isOverdue
       const statusTitle = isOverdue ? '🔴 เกินเวลาอนุญาต' : '🟢 อยู่ในเวลาอนุญาต'
       const statusColorCls = isOverdue ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-      const timerCls = isOverdue ? 'text-red-600 animate-pulse' : 'text-emerald-600'
-      const labelText = isOverdue ? 'เลยเวลา:' : 'เวลาที่เหลือ:'
+      const timerCls = isOverdue
+        ? `text-red-600 ${countdown.isBeyondLimit ? '' : 'animate-pulse'}`
+        : 'text-emerald-600'
 
       resultDiv.innerHTML = `
         <div class="border rounded-3xl p-6 shadow-sm space-y-5 bg-white border-gray-200 animate-fade">
@@ -338,8 +333,8 @@ async function processLeaveCheck(studentCode) {
               ${statusTitle}
             </span>
             <div class="text-right">
-              <span class="text-xs text-gray-400 block">${labelText}</span>
-              <span class="text-2xl font-black font-mono ${timerCls}">${isOverdue ? '-' : ''}${timeText}</span>
+              <span class="text-xs text-gray-400 block">${countdown.label}</span>
+              <span class="text-2xl font-black font-mono ${timerCls}">${countdown.timerText}</span>
             </div>
           </div>
 
@@ -413,6 +408,11 @@ async function processLeaveCheck(studentCode) {
             showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
           }
         })
+      }
+
+      if (countdown.isBeyondLimit && scannerTimerInterval) {
+        clearInterval(scannerTimerInterval)
+        scannerTimerInterval = null
       }
     }
 

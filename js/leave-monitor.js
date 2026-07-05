@@ -1,4 +1,5 @@
 import { getLeavePermissionDashboard } from './api.js'
+import { formatLeaveCountdown } from './leave-time.js'
 
 const _esc = value => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -22,14 +23,7 @@ function _statusKey(row, now = new Date()) {
 
 function _remainingText(row, now = new Date()) {
   if (row.status !== 'active') return row.status === 'returned' ? 'กลับแล้ว' : 'เลยเวลา'
-  const start = new Date(row.created_at)
-  const end = new Date(start.getTime() + Number(row.allowed_duration || 0) * 60 * 1000)
-  const diffMs = end.getTime() - now.getTime()
-  const totalSeconds = Math.ceil(Math.abs(diffMs) / 1000)
-  const mins = Math.floor(totalSeconds / 60)
-  const secs = totalSeconds % 60
-  const timeText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-  return diffMs < 0 ? `เลย ${timeText}` : `เหลือ ${timeText}`
+  return formatLeaveCountdown(row.created_at, row.allowed_duration, now).text
 }
 
 function _statusBadge(row, now = new Date()) {
@@ -57,6 +51,13 @@ function _scopeMatchesRow(row, scope) {
     row.students?.main_room
   ].map(_normScopeText).filter(Boolean)
   return rowRooms.some(room => roomNames.has(room))
+}
+
+function _timeTextClass(row, now = new Date()) {
+  const key = _statusKey(row, now)
+  if (key === 'active') return 'text-amber-700'
+  if (key === 'overdue') return 'text-red-600'
+  return 'text-gray-400'
 }
 
 function _studentCell(row) {
@@ -183,7 +184,7 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
                       <td class="px-4 py-2 text-gray-600">${_esc(row.reason || '—')}</td>
                       <td class="px-4 py-2 text-gray-600">
                         <div>${new Date(row.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · ${Number(row.allowed_duration || 0)} นาที</div>
-                        <div class="font-semibold ${row.status === 'active' ? 'text-amber-700' : 'text-gray-400'}">${_remainingText(row, now)}</div>
+                        <div class="font-semibold ${_timeTextClass(row, now)}">${_remainingText(row, now)}</div>
                       </td>
                     </tr>
                   `).join('')}
