@@ -741,7 +741,11 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, stud
   modal.querySelector('#btn-leave-close').addEventListener('click', () => modal.remove())
   
   // ยืนยันขอใบอนุญาต
-  modal.querySelector('#btn-leave-submit').addEventListener('click', async () => {
+  const submitBtn = modal.querySelector('#btn-leave-submit')
+  const submitLabel = submitBtn.textContent
+  submitBtn.addEventListener('click', async () => {
+    if (submitBtn.disabled) return
+
     let reasonText = selectedReason
     if (selectedReason === '✏️ อื่นๆ') {
       reasonText = customReasonInput.value.trim()
@@ -763,6 +767,9 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, stud
     }
     
     try {
+      submitBtn.disabled = true
+      submitBtn.textContent = 'กำลังบันทึก...'
+      submitBtn.classList.add('opacity-70', 'cursor-not-allowed')
       await createLeavePermission(studentId, classData.id, teacher.id, reasonText, durationVal, leaveMaxActive)
       modal.remove()
       onSave()
@@ -773,6 +780,9 @@ function _openLeaveRequestModal(teacher, classData, studentId, studentName, stud
       })
     } catch (err) {
       showToast('การขออนุญาตล้มเหลว: ' + (err.message ?? ''), 'error')
+      submitBtn.disabled = false
+      submitBtn.textContent = submitLabel
+      submitBtn.classList.remove('opacity-70', 'cursor-not-allowed')
     }
   })
 }

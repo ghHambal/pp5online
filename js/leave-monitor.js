@@ -25,8 +25,11 @@ function _remainingText(row, now = new Date()) {
   const start = new Date(row.created_at)
   const end = new Date(start.getTime() + Number(row.allowed_duration || 0) * 60 * 1000)
   const diffMs = end.getTime() - now.getTime()
-  const mins = Math.ceil(Math.abs(diffMs) / 60000)
-  return diffMs < 0 ? `เลย ${mins} นาที` : `เหลือ ${mins} นาที`
+  const totalSeconds = Math.ceil(Math.abs(diffMs) / 1000)
+  const mins = Math.floor(totalSeconds / 60)
+  const secs = totalSeconds % 60
+  const timeText = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  return diffMs < 0 ? `เลย ${timeText}` : `เหลือ ${timeText}`
 }
 
 function _statusBadge(row, now = new Date()) {
@@ -74,6 +77,11 @@ function _teacherCell(row) {
 
 export async function renderLeaveMonitorWidget(container, options = {}) {
   if (!container) return
+  if (container._leaveMonitorTimer) {
+    clearInterval(container._leaveMonitorTimer)
+    container._leaveMonitorTimer = null
+  }
+
   const title = options.title || '🚪 ติดตามใบอนุญาตออกนอกห้อง'
   const subtitle = options.subtitle || 'ข้อมูลสัปดาห์ปัจจุบัน'
   const limit = options.limit || 80
@@ -86,21 +94,28 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
   `
 
   try {
-    const { rows, summary } = await getLeavePermissionDashboard(limit)
-    const now = new Date()
+    const { rows } = await getLeavePermissionDashboard(limit)
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
     const returnedTodayRows = rows.filter(r => r.status === 'returned' && (r.returned_at || '') >= todayStart.toISOString())
-    const getFilteredRows = () => {
+    const getFilteredRows = (now) => {
       if (filter === 'active') return rows.filter(r => _statusKey(r, now) === 'active')
       if (filter === 'overdue') return rows.filter(r => _statusKey(r, now) === 'overdue')
       if (filter === 'returnedToday') return returnedTodayRows
       return rows
     }
+    const getLiveSummary = (now) => ({
+      active: rows.filter(r => _statusKey(r, now) === 'active').length,
+      overdue: rows.filter(r => _statusKey(r, now) === 'overdue').length,
+      returnedToday: returnedTodayRows.length,
+      totalWeek: rows.length
+    })
     const cardBase = 'leave-monitor-filter rounded-xl border px-3 py-2 text-left transition hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-200'
 
     const render = () => {
-      const filtered = getFilteredRows()
+      const now = new Date()
+      const filtered = getFilteredRows(now)
+      const summary = getLiveSummary(now)
       container.innerHTML = `
         <div class="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
           <div class="px-5 py-3.5 border-b border-amber-100 bg-amber-50 flex items-center justify-between gap-3">
@@ -168,6 +183,14 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
     }
 
     render()
+    container._leaveMonitorTimer = setInterval(() => {
+      if (!document.body.contains(container)) {
+        clearInterval(container._leaveMonitorTimer)
+        container._leaveMonitorTimer = null
+        return
+      }
+      render()
+    }, 1000)
   } catch (err) {
     container.innerHTML = `
       <div class="bg-white rounded-2xl border border-red-100 p-5 text-sm text-red-500">

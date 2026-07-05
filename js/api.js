@@ -3429,6 +3429,17 @@ export async function getClassLeaveHistory(classId, options = {}) {
   return data || []
 }
 
+function _dedupeActiveLeaveRows(rows) {
+  const seenActive = new Set()
+  return rows.filter(row => {
+    if (row.status !== 'active') return true
+    const key = `${row.class_id}:${row.student_id}`
+    if (seenActive.has(key)) return false
+    seenActive.add(key)
+    return true
+  })
+}
+
 export async function getActiveLeavePermissionsForClass(classId) {
   const { data, error } = await supabase
     .from('student_leave_permissions')
@@ -3456,7 +3467,7 @@ export async function getLeavePermissionDashboard(limit = 80) {
     .limit(limit)
   if (error) throw error
 
-  const rows = data || []
+  const rows = _dedupeActiveLeaveRows(data || [])
   const todayIso = todayStart.toISOString()
   const now = new Date()
   const isActiveOverdue = (r) => {
