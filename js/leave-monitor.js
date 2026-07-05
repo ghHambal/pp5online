@@ -43,6 +43,22 @@ function _statusBadge(row, now = new Date()) {
   return '<span class="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100">กลับแล้ว</span>'
 }
 
+function _normScopeText(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function _scopeMatchesRow(row, scope) {
+  if (!scope || scope.mode === 'all') return true
+  const classIds = new Set((scope.classIds || []).map(id => String(id)))
+  const roomNames = new Set((scope.roomNames || []).map(_normScopeText).filter(Boolean))
+  if (classIds.has(String(row.class_id))) return true
+  const rowRooms = [
+    row.classes?.class_name,
+    row.students?.main_room
+  ].map(_normScopeText).filter(Boolean)
+  return rowRooms.some(room => roomNames.has(room))
+}
+
 function _studentCell(row) {
   const img = row.students?.image_url
   const name = row.students?.full_name || '—'
@@ -85,6 +101,7 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
   const title = options.title || '🚪 ติดตามใบอนุญาตออกนอกห้อง'
   const subtitle = options.subtitle || 'ข้อมูลสัปดาห์ปัจจุบัน'
   const limit = options.limit || 80
+  const scope = options.scope || null
   let filter = options.initialFilter || 'all'
 
   container.innerHTML = `
@@ -94,7 +111,8 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
   `
 
   try {
-    const { rows } = await getLeavePermissionDashboard(limit)
+    const { rows: rawRows } = await getLeavePermissionDashboard(limit)
+    const rows = (rawRows || []).filter(row => _scopeMatchesRow(row, scope))
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
     const returnedTodayRows = rows.filter(r => r.status === 'returned' && (r.returned_at || '') >= todayStart.toISOString())
@@ -122,6 +140,7 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
             <div>
               <h4 class="font-bold text-amber-900 text-sm">${_esc(title)}</h4>
               <p class="text-xs text-amber-700/70 mt-0.5">${_esc(subtitle)}</p>
+              ${scope?.label ? `<p class="text-[11px] text-amber-800/70 mt-1">${_esc(scope.label)}</p>` : ''}
             </div>
             <span class="text-xs text-amber-700 font-bold">แสดง ${filtered.length}/${rows.length} รายการ</span>
           </div>

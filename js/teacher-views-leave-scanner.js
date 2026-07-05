@@ -1,4 +1,4 @@
-import { getActiveLeavePermission, closeLeavePermission } from './api.js'
+import { getActiveLeavePermission, closeLeavePermission, getTeacherLeaveMonitorScope } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js'
 import { showToast, showDangerConfirm } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
@@ -149,7 +149,6 @@ export async function renderStudentLeaveScanner(teacher) {
   const scannerPanel = document.getElementById('leave-scanner-panel')
   const monitorPanel = document.getElementById('leave-monitor-panel')
   const monitorWidget = document.getElementById('leave-monitor-widget')
-  let monitorLoaded = false
 
   searchBtn.addEventListener('click', () => {
     const code = searchInput.value.trim()
@@ -180,14 +179,20 @@ export async function renderStudentLeaveScanner(teacher) {
     monitorPanel.classList.toggle('hidden', !isMonitor)
     if (isMonitor) {
       if (isScanning) stopScanner()
-      if (!monitorLoaded) {
-        monitorLoaded = true
-        await renderLeaveMonitorWidget(monitorWidget, {
-          title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
-          subtitle: 'ข้อมูลสัปดาห์ปัจจุบัน สำหรับหน้าตรวจสอบใบอนุญาต',
-          limit: 80
-        })
-      }
+      const scope = await getTeacherLeaveMonitorScope(teacher).catch(err => ({
+        mode: 'scoped',
+        classIds: [],
+        roomNames: [],
+        label: `โหลดขอบเขตคาบเรียนไม่สำเร็จ: ${err.message || err}`
+      }))
+      await renderLeaveMonitorWidget(monitorWidget, {
+        title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
+        subtitle: scope.mode === 'all'
+          ? 'ข้อมูลสัปดาห์ปัจจุบัน สำหรับหน้าตรวจสอบใบอนุญาต'
+          : 'เฉพาะนักเรียนในคาบปัจจุบันหรือคาบถัดไปของครู',
+        limit: scope.mode === 'all' ? 80 : 200,
+        scope
+      })
     }
   }
   scanTab.addEventListener('click', () => setMode('scan'))

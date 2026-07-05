@@ -3347,6 +3347,114 @@ export async function getActiveLeavePermission(studentCodeOrId) {
   return data
 }
 
+function _leaveTimeToSeconds(timeValue) {
+  const [h = 0, m = 0, s = 0] = String(timeValue || '00:00:00').split(':').map(Number)
+  return (h * 3600) + (m * 60) + s
+}
+
+function _leaveTeacherHasAllScope(teacher, profile = null) {
+  const positions = Array.isArray(teacher?.positions)
+    ? teacher.positions
+    : (teacher?.position ? [teacher.position] : [])
+  return profile?.role === 'admin' ||
+         profile?.is_also_admin ||
+         teacher?.staff_type === 'แอดมิน' ||
+         teacher?.position === 'admin' ||
+         positions.includes('admin')
+}
+
+export async function getTeacherLeaveMonitorScope(teacher) {
+  if (!teacher?.id) {
+    return {
+      mode: 'scoped',
+      classIds: [],
+      roomNames: [],
+      label: 'ไม่พบข้อมูลครูผู้ใช้งาน'
+    }
+  }
+
+  let profile = null
+  if (teacher.profile_id) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('role, is_also_admin')
+      .eq('id', teacher.profile_id)
+      .maybeSingle()
+    profile = data
+  }
+
+  if (_leaveTeacherHasAllScope(teacher, profile)) {
+    return {
+      mode: 'all',
+      classIds: null,
+      roomNames: null,
+      label: 'แสดงข้อมูลทั้งหมดตามสิทธิ์แอดมิน/ผู้ดูแล'
+    }
+  }
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const academicYear = parseInt(cfg.academicYear ?? 2568)
+  const semester = parseInt(cfg.semester ?? 1)
+  const [schedule, links, periods, classes] = await Promise.all([
+    getMySchedule(teacher.id, academicYear, semester).catch(() => []),
+    getClassScheduleLinks(teacher.id).catch(() => []),
+    getPeriods().catch(() => []),
+    getMyClasses(teacher.id).catch(() => [])
+  ])
+
+  const now = new Date()
+  const todayDow = now.getDay()
+  const nowSeconds = (now.getHours() * 3600) + (now.getMinutes() * 60) + now.getSeconds()
+  const linksBySchedule = {}
+  links.forEach(link => {
+    if (!linksBySchedule[link.teacher_schedule_id]) linksBySchedule[link.teacher_schedule_id] = []
+    linksBySchedule[link.teacher_schedule_id].push(link.class_id)
+  })
+  const classMap = Object.fromEntries((classes || []).map(cls => [cls.id, cls]))
+  const periodMap = Object.fromEntries((periods || []).map(period => [period.period_no, period]))
+  const todayEntries = (schedule || [])
+    .filter(entry => entry.day_of_week === todayDow && (linksBySchedule[entry.id] || []).length)
+    .map(entry => {
+      const span = entry.span_periods || 1
+      const startPeriod = periodMap[entry.period_no]
+      const endPeriod = periodMap[(entry.period_no || 0) + span - 1] || startPeriod
+      const startSeconds = _leaveTimeToSeconds(startPeriod?.start_time)
+      const endSeconds = _leaveTimeToSeconds(endPeriod?.end_time)
+      const linkedClasses = (linksBySchedule[entry.id] || [])
+        .map(classId => classMap[classId])
+        .filter(Boolean)
+      return { ...entry, startSeconds, endSeconds, linkedClasses }
+    })
+    .filter(entry => entry.linkedClasses.length && entry.startSeconds < entry.endSeconds)
+    .sort((a, b) => a.startSeconds - b.startSeconds)
+
+  const currentEntries = todayEntries.filter(entry => nowSeconds >= entry.startSeconds && nowSeconds < entry.endSeconds)
+  const nextStart = todayEntries.find(entry => entry.startSeconds > nowSeconds)?.startSeconds ?? null
+  const nextEntries = nextStart === null ? [] : todayEntries.filter(entry => entry.startSeconds === nextStart)
+  const scopedEntries = [
+    ...currentEntries.map(entry => ({ ...entry, scopeType: 'current' })),
+    ...nextEntries.map(entry => ({ ...entry, scopeType: 'next' }))
+  ]
+
+  const classIds = [...new Set(scopedEntries.flatMap(entry => entry.linkedClasses.map(cls => cls.id)).filter(Boolean))]
+  const roomNames = [...new Set(scopedEntries.flatMap(entry => entry.linkedClasses.map(cls => cls.class_name)).filter(Boolean))]
+  const entryLabels = scopedEntries.map(entry => {
+    const typeLabel = entry.scopeType === 'current' ? 'คาบปัจจุบัน' : 'คาบถัดไป'
+    const span = (entry.span_periods || 1) > 1 ? `-${entry.period_no + entry.span_periods - 1}` : ''
+    const rooms = entry.linkedClasses.map(cls => cls.class_name).filter(Boolean).join(', ')
+    return `${typeLabel} คาบ ${entry.period_no}${span}${rooms ? `: ${rooms}` : ''}`
+  })
+
+  return {
+    mode: 'scoped',
+    classIds,
+    roomNames,
+    label: entryLabels.length
+      ? `แสดงเฉพาะ ${entryLabels.join(' / ')}`
+      : 'ยังไม่มีคาบปัจจุบันหรือคาบถัดไปที่ผูกกับห้องเรียนของครูคนนี้'
+  }
+}
+
 export async function getOutStudentsCount(classId) {
   const { count, error } = await supabase
     .from('student_leave_permissions')
