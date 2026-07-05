@@ -1,11 +1,12 @@
 import { getActiveLeavePermission, closeLeavePermission, getTeacherLeaveMonitorScope } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js'
 import { formatLeaveCountdown } from './leave-time.js'
-import { showToast, showDangerConfirm } from './ui.js'
+import { showToast } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 
 let html5QrcodeScanner = null
 let scannerTimerInterval = null
+let isProcessingLeaveCheck = false
 
 // ฟังก์ชันสังเคราะห์เสียงแจ้งเตือนความสำเร็จ (Success sound)
 function playSuccessBeep() {
@@ -43,6 +44,226 @@ function playFailureBeep() {
   } catch (e) {
     console.warn('Play audio failed:', e)
   }
+}
+
+function pauseLeaveScannerForModal() {
+  try {
+    if (html5QrcodeScanner?.pause) html5QrcodeScanner.pause(true)
+  } catch (err) {
+    console.warn('Pause scanner error:', err)
+  }
+}
+
+function resumeLeaveScannerAfterModal() {
+  try {
+    if (html5QrcodeScanner?.resume) html5QrcodeScanner.resume()
+  } catch (err) {
+    console.warn('Resume scanner error:', err)
+  }
+}
+
+function closeLeaveScanModal({ resume = true } = {}) {
+  const modal = document.getElementById('leave-scan-modal')
+  if (modal) modal.remove()
+  if (scannerTimerInterval) {
+    clearInterval(scannerTimerInterval)
+    scannerTimerInterval = null
+  }
+  isProcessingLeaveCheck = false
+  if (resume) resumeLeaveScannerAfterModal()
+}
+
+function renderLeaveScanModal(contentHtml, { tone = 'indigo', maxWidth = 'max-w-md' } = {}) {
+  document.getElementById('leave-scan-modal')?.remove()
+  const toneClass = {
+    indigo: 'border-indigo-100',
+    emerald: 'border-emerald-100',
+    red: 'border-red-100',
+    amber: 'border-amber-100'
+  }[tone] || 'border-gray-100'
+  const modal = document.createElement('div')
+  modal.id = 'leave-scan-modal'
+  modal.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/65 p-4 animate-fade'
+  modal.innerHTML = `
+    <div class="w-full ${maxWidth} max-h-[92vh] overflow-y-auto rounded-3xl bg-white border ${toneClass} shadow-2xl">
+      ${contentHtml}
+    </div>
+  `
+  document.body.appendChild(modal)
+  return modal
+}
+
+function renderLeaveScanLoadingModal(studentCode) {
+  renderLeaveScanModal(`
+    <div class="p-6 text-center space-y-4">
+      <div class="mx-auto w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center">
+        <svg class="animate-spin h-6 w-6 text-indigo-500" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+      </div>
+      <div>
+        <h4 class="font-extrabold text-gray-800 text-lg">กำลังตรวจสอบใบอนุญาต</h4>
+        <p class="text-xs text-gray-400 mt-1">รหัสนักเรียน <span class="font-mono font-bold text-gray-600">${_htmlEsc(studentCode)}</span></p>
+      </div>
+    </div>
+  `)
+}
+
+function renderLeaveScanNotFoundModal(studentCode) {
+  const modal = renderLeaveScanModal(`
+    <div class="p-6 text-center space-y-5">
+      <div class="mx-auto w-16 h-16 rounded-3xl bg-red-50 flex items-center justify-center text-4xl">🔴</div>
+      <div class="space-y-1">
+        <h4 class="font-extrabold text-red-700 text-lg">ไม่พบใบอนุญาตออกนอกห้องเรียน</h4>
+        <p class="text-xs text-red-500 leading-relaxed">
+          นักเรียนรหัส <strong class="font-mono text-sm">${_htmlEsc(studentCode)}</strong> ยังไม่ได้รับการอนุมัติ หรือเดินทางกลับเข้าห้องเรียนแล้ว
+        </p>
+      </div>
+      <button id="btn-leave-scan-next" type="button" class="w-full py-3 rounded-2xl bg-gray-900 hover:bg-gray-950 text-white text-xs font-bold shadow-md transition">
+        สแกนใหม่
+      </button>
+    </div>
+  `, { tone: 'red' })
+  modal.querySelector('#btn-leave-scan-next')?.addEventListener('click', () => closeLeaveScanModal())
+}
+
+function renderLeaveScanErrorModal(message) {
+  const modal = renderLeaveScanModal(`
+    <div class="p-6 text-center space-y-5">
+      <div class="mx-auto w-16 h-16 rounded-3xl bg-red-50 flex items-center justify-center text-4xl">⚠️</div>
+      <div class="space-y-1">
+        <h4 class="font-extrabold text-red-700 text-lg">ตรวจสอบไม่สำเร็จ</h4>
+        <p class="text-xs text-red-500 leading-relaxed">${_htmlEsc(message || 'เกิดข้อผิดพลาดในการดึงข้อมูลใบอนุญาต')}</p>
+      </div>
+      <button id="btn-leave-scan-next" type="button" class="w-full py-3 rounded-2xl bg-gray-900 hover:bg-gray-950 text-white text-xs font-bold shadow-md transition">
+        สแกนใหม่
+      </button>
+    </div>
+  `, { tone: 'red' })
+  modal.querySelector('#btn-leave-scan-next')?.addEventListener('click', () => closeLeaveScanModal())
+}
+
+function renderLeaveScanSuccessReturnedModal(leave) {
+  const modal = renderLeaveScanModal(`
+    <div class="p-6 text-center space-y-5">
+      <div class="mx-auto w-16 h-16 rounded-3xl bg-emerald-50 flex items-center justify-center text-4xl">🟢</div>
+      <div class="space-y-1">
+        <h4 class="font-extrabold text-emerald-700 text-lg">บันทึกส่งกลับห้องเรียบร้อย</h4>
+        <p class="text-xs text-emerald-600 leading-relaxed">
+          ${_htmlEsc(leave.students?.full_name || 'นักเรียน')} ได้กลับเข้าห้องเรียนแล้ว พร้อมสแกนคนถัดไป
+        </p>
+      </div>
+      <button id="btn-leave-scan-next" type="button" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition">
+        สแกนคนถัดไป
+      </button>
+    </div>
+  `, { tone: 'emerald' })
+  modal.querySelector('#btn-leave-scan-next')?.addEventListener('click', () => closeLeaveScanModal())
+}
+
+function renderLeaveScanPermitModal(leave) {
+  const start = new Date(leave.created_at)
+  const allowedMin = leave.allowed_duration
+
+  if (scannerTimerInterval) clearInterval(scannerTimerInterval)
+
+  const renderCard = () => {
+    const countdown = formatLeaveCountdown(leave.created_at, allowedMin, new Date())
+    const isOverdue = countdown.isOverdue
+    const statusTitle = isOverdue ? '🔴 เกินเวลาอนุญาต' : '🟢 อยู่ในเวลาอนุญาต'
+    const statusColorCls = isOverdue ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+    const timerCls = isOverdue
+      ? `text-red-600 ${countdown.isBeyondLimit ? '' : 'animate-pulse'}`
+      : 'text-emerald-600'
+
+    const modal = renderLeaveScanModal(`
+      <div class="p-5 sm:p-6 space-y-5">
+        <div class="flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
+          <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${statusColorCls}">
+            ${statusTitle}
+          </span>
+          <div class="text-right">
+            <span class="text-xs text-gray-400 block">${countdown.label}</span>
+            <span class="text-3xl font-black font-mono ${timerCls}">${countdown.timerText}</span>
+          </div>
+        </div>
+
+        <div class="flex gap-4">
+          <div class="w-20 h-24 rounded-2xl overflow-hidden bg-gray-100 border border-gray-100 flex-shrink-0 shadow-sm">
+            ${leave.students?.image_url
+              ? `<img src="${_htmlEsc(leave.students.image_url)}" class="w-full h-full object-cover" />`
+              : `<div class="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-400">👤</div>`
+            }
+          </div>
+          <div class="min-w-0 flex-1 space-y-1">
+            <p class="text-xs text-gray-400">ข้อมูลนักเรียน</p>
+            <h4 class="font-extrabold text-gray-800 text-base truncate">${_htmlEsc(leave.students?.full_name || 'ไม่ระบุชื่อ')}</h4>
+            <p class="text-xs text-gray-500 font-mono">${_htmlEsc(leave.students?.student_code || '-')}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 bg-gray-50 rounded-2xl p-4 text-xs">
+          <div class="space-y-0.5">
+            <span class="text-gray-400 block">ครูผู้อนุมัติ</span>
+            <span class="font-bold text-gray-700 block truncate">${_htmlEsc(leave.teachers?.full_name || 'ไม่ระบุ')}</span>
+          </div>
+          <div class="space-y-0.5">
+            <span class="text-gray-400 block">เหตุผล</span>
+            <span class="font-bold text-gray-700 block truncate" title="${_htmlEsc(leave.reason)}">${_htmlEsc(leave.reason)}</span>
+          </div>
+          <div class="space-y-0.5">
+            <span class="text-gray-400 block">เริ่มออก</span>
+            <span class="font-bold text-gray-700 block">${start.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+          </div>
+          <div class="space-y-0.5">
+            <span class="text-gray-400 block">ระยะเวลา</span>
+            <span class="font-bold text-gray-700 block">${allowedMin} นาที</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button id="btn-inspector-return" type="button" class="py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">
+            ✅ บันทึกกลับเข้าห้อง
+          </button>
+          <button id="btn-leave-scan-next" type="button" class="py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs transition">
+            สแกนคนถัดไป
+          </button>
+        </div>
+      </div>
+    `, { tone: isOverdue ? 'red' : 'emerald' })
+
+    modal.querySelector('#btn-leave-scan-next')?.addEventListener('click', () => closeLeaveScanModal())
+    modal.querySelector('#btn-inspector-return')?.addEventListener('click', async e => {
+      const btn = e.currentTarget
+      if (btn.disabled) return
+      btn.disabled = true
+      btn.textContent = 'กำลังบันทึก...'
+      btn.classList.add('opacity-70', 'cursor-not-allowed')
+      try {
+        if (scannerTimerInterval) {
+          clearInterval(scannerTimerInterval)
+          scannerTimerInterval = null
+        }
+        await closeLeavePermission(leave.id, 'returned')
+        showToast('บันทึกการส่งกลับเข้าห้องเรียบร้อย', 'success')
+        renderLeaveScanSuccessReturnedModal(leave)
+      } catch (err) {
+        btn.disabled = false
+        btn.textContent = '✅ บันทึกกลับเข้าห้อง'
+        btn.classList.remove('opacity-70', 'cursor-not-allowed')
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
+
+    if (countdown.isBeyondLimit && scannerTimerInterval) {
+      clearInterval(scannerTimerInterval)
+      scannerTimerInterval = null
+    }
+  }
+
+  renderCard()
+  scannerTimerInterval = setInterval(renderCard, 1000)
 }
 
 export async function renderStudentLeaveScanner(teacher) {
@@ -275,16 +496,13 @@ async function loadHtml5QrcodeLib() {
 async function processLeaveCheck(studentCode) {
   const resultDiv = document.getElementById('leave-scan-result')
   if (!resultDiv) return
-  
-  resultDiv.classList.remove('hidden')
-  resultDiv.innerHTML = `
-    <div class="flex justify-center py-6 text-gray-400 bg-white border border-gray-200 rounded-3xl p-6 shadow-sm">
-      <svg class="animate-spin h-5 w-5 text-indigo-400 mr-2" viewBox="0 0 24 24" fill="none">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-      </svg> กำลังตรวจสอบใบอนุญาต...
-    </div>
-  `
+  if (isProcessingLeaveCheck) return
+
+  isProcessingLeaveCheck = true
+  pauseLeaveScannerForModal()
+  resultDiv.classList.add('hidden')
+  resultDiv.innerHTML = ''
+  renderLeaveScanLoadingModal(studentCode)
 
   try {
     const leave = await getActiveLeavePermission(studentCode)
@@ -292,142 +510,26 @@ async function processLeaveCheck(studentCode) {
     // ถ้าไม่พบประวัติใบอนุญาตที่กำลังทำงานอยู่
     if (!leave) {
       playFailureBeep()
-      resultDiv.innerHTML = `
-        <div class="bg-red-50 border border-red-200 rounded-3xl p-6 shadow-sm text-center space-y-4 animate-fade">
-          <div class="text-5xl">🔴</div>
-          <div class="space-y-1">
-            <h4 class="font-extrabold text-red-700 text-lg">ไม่พบใบอนุญาตออกนอกห้องเรียน</h4>
-            <p class="text-xs text-red-500">นักเรียนรหัส <strong class="font-mono text-sm">${_htmlEsc(studentCode)}</strong> ยังไม่ได้รับการอนุมัติ หรือ เดินทางกลับเข้าห้องเรียนแล้ว</p>
-          </div>
-        </div>
-      `
+      renderLeaveScanNotFoundModal(studentCode)
       return
     }
 
     // สังเคราะห์เสียงความสำเร็จ
     playSuccessBeep()
-    
-    // อัปเดตการแสดงผลใบอนุญาต
-    const start = new Date(leave.created_at)
-    const allowedMin = leave.allowed_duration
-    
-    // เคลียร์ Timer เก่าก่อนเริ่มใหม่
-    if (scannerTimerInterval) clearInterval(scannerTimerInterval)
-
-    const renderCard = () => {
-      const now = new Date()
-      const countdown = formatLeaveCountdown(leave.created_at, allowedMin, now)
-      const isOverdue = countdown.isOverdue
-      const statusTitle = isOverdue ? '🔴 เกินเวลาอนุญาต' : '🟢 อยู่ในเวลาอนุญาต'
-      const statusColorCls = isOverdue ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-      const timerCls = isOverdue
-        ? `text-red-600 ${countdown.isBeyondLimit ? '' : 'animate-pulse'}`
-        : 'text-emerald-600'
-
-      resultDiv.innerHTML = `
-        <div class="border rounded-3xl p-6 shadow-sm space-y-5 bg-white border-gray-200 animate-fade">
-          
-          <!-- แถบสถานะใบอนุญาตและเลขนับถอยหลังเป็นวินาที -->
-          <div class="flex items-center justify-between border-b pb-4">
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${statusColorCls}">
-              ${statusTitle}
-            </span>
-            <div class="text-right">
-              <span class="text-xs text-gray-400 block">${countdown.label}</span>
-              <span class="text-2xl font-black font-mono ${timerCls}">${countdown.timerText}</span>
-            </div>
-          </div>
-
-          <!-- ข้อมูลนักเรียน -->
-          <div class="flex gap-4">
-            <div class="w-16 h-20 rounded-2xl overflow-hidden bg-gray-100 border border-gray-100 flex-shrink-0">
-              ${leave.students?.image_url 
-                ? `<img src="${_htmlEsc(leave.students.image_url)}" class="w-full h-full object-cover" />` 
-                : `<div class="w-full h-full flex items-center justify-center text-xl font-bold text-gray-400">👤</div>`
-              }
-            </div>
-            <div class="min-w-0 flex-1 space-y-1">
-              <p class="text-xs text-gray-400">ชื่อนักเรียน</p>
-              <h4 class="font-extrabold text-gray-800 text-sm truncate">${_htmlEsc(leave.students?.full_name || 'ไม่ระบุชื่อ')}</h4>
-              <p class="text-xs text-gray-500 font-mono">รหัสประจำตัว: ${_htmlEsc(leave.students?.student_code || '-')}</p>
-            </div>
-          </div>
-
-          <!-- รายละเอียดการอนุญาต -->
-          <div class="grid grid-cols-2 gap-4 bg-gray-50 rounded-2xl p-4 text-xs">
-            <div class="space-y-0.5">
-              <span class="text-gray-400 block">ครูผู้อนุมัติ</span>
-              <span class="font-bold text-gray-700 block truncate">${_htmlEsc(leave.teachers?.full_name || 'ไม่ระบุ')}</span>
-            </div>
-            <div class="space-y-0.5">
-              <span class="text-gray-400 block">เหตุผลการขอ</span>
-              <span class="font-bold text-gray-700 block truncate" title="${_htmlEsc(leave.reason)}">${_htmlEsc(leave.reason)}</span>
-            </div>
-            <div class="space-y-0.5">
-              <span class="text-gray-400 block">เวลาที่เริ่มออก</span>
-              <span class="font-bold text-gray-700 block">${start.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
-            </div>
-            <div class="space-y-0.5">
-              <span class="text-gray-400 block">ระยะเวลาที่อนุญาต</span>
-              <span class="font-bold text-gray-700 block">${allowedMin} นาที</span>
-            </div>
-          </div>
-
-          <!-- ปุ่มส่งนักเรียนกลับเข้าห้อง -->
-          <button id="btn-inspector-return" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-1.5">
-            ✅ บันทึกส่งกลับเข้าห้องเรียน
-          </button>
-        </div>
-      `
-
-      // ผูก Event ปุ่มส่งกลับห้อง
-      const returnBtn = document.getElementById('btn-inspector-return')
-      if (returnBtn) {
-        returnBtn.addEventListener('click', async () => {
-          const confirmed = await showDangerConfirm({
-            title: 'ส่งนักเรียนกลับเข้าห้อง?',
-            message: `ยืนยันว่านักเรียน "${leave.students?.full_name}" เดินทางกลับถึงห้องเรียนเพื่อเข้าเรียนต่อตามปกติแล้ว`,
-            confirmText: 'ส่งนักเรียนกลับเข้าห้อง',
-          })
-          if (!confirmed) return
-          
-          try {
-            if (scannerTimerInterval) clearInterval(scannerTimerInterval)
-            await closeLeavePermission(leave.id, 'returned')
-            showToast('บันทึกการส่งกลับเข้าห้องเรียบร้อย', 'success')
-            resultDiv.innerHTML = `
-              <div class="bg-emerald-50 border border-emerald-200 rounded-3xl p-6 shadow-sm text-center space-y-4 animate-fade">
-                <div class="text-5xl">🟢</div>
-                <div class="space-y-1">
-                  <h4 class="font-extrabold text-emerald-700 text-lg">บันทึกส่งกลับห้องเรียบร้อย</h4>
-                  <p class="text-xs text-emerald-600">นักเรียนได้กลับเข้าห้องเรียนเรียบร้อยแล้วพร้อมเริ่มสแกนคนถัดไป</p>
-                </div>
-              </div>
-            `
-          } catch (err) {
-            showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-          }
-        })
-      }
-
-      if (countdown.isBeyondLimit && scannerTimerInterval) {
-        clearInterval(scannerTimerInterval)
-        scannerTimerInterval = null
-      }
-    }
-
-    // วนลูปวาดการ์ดเวลานับถอยหลังทุก 1 วินาที
-    renderCard()
-    scannerTimerInterval = setInterval(renderCard, 1000)
+    renderLeaveScanPermitModal(leave)
 
   } catch (err) {
     console.error(err)
-    resultDiv.innerHTML = `<div class="p-6 text-red-500 text-sm text-center bg-white border border-gray-200 rounded-3xl">เกิดข้อผิดพลาดในการดึงข้อมูลใบอนุญาต</div>`
+    playFailureBeep()
+    renderLeaveScanErrorModal(err.message || 'เกิดข้อผิดพลาดในการดึงข้อมูลใบอนุญาต')
   }
 }
 
 // ล้างการทำงานกล้องและเวลาเมื่อครูเปลี่ยนหน้าจอ
 export function cleanupLeaveScanner() {
+  document.getElementById('leave-scan-modal')?.remove()
+  isProcessingLeaveCheck = false
+
   if (scannerTimerInterval) {
     clearInterval(scannerTimerInterval)
     scannerTimerInterval = null
