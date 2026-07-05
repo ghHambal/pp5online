@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js'
+import { APP_VERSION } from './version.js?v=10.17.88'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
