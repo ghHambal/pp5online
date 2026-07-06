@@ -129,6 +129,12 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
       returnedToday: returnedTodayRows.length,
       totalWeek: rows.length
     })
+    const rowMatchesFilter = (row, now) => {
+      if (filter === 'active') return _statusKey(row, now) === 'active'
+      if (filter === 'overdue') return _statusKey(row, now) === 'overdue'
+      if (filter === 'returnedToday') return returnedTodayRows.some(r => String(r.id) === String(row.id))
+      return true
+    }
     const cardBase = 'leave-monitor-filter rounded-xl border px-3 py-2 text-left transition hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-200'
 
     const render = () => {
@@ -143,28 +149,28 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
               <p class="text-xs text-amber-700/70 mt-0.5">${_esc(subtitle)}</p>
               ${scope?.label ? `<p class="text-[11px] text-amber-800/70 mt-1">${_esc(scope.label)}</p>` : ''}
             </div>
-            <span class="text-xs text-amber-700 font-bold">แสดง ${filtered.length}/${rows.length} รายการ</span>
+            <span data-leave-show-count class="text-xs text-amber-700 font-bold">แสดง ${filtered.length}/${rows.length} รายการ</span>
           </div>
           <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-2 border-b border-gray-50">
             <button type="button" data-filter="active" class="${cardBase} ${filter === 'active' ? 'bg-amber-100 border-amber-300' : 'bg-amber-50 border-amber-100'}">
               <p class="text-[10px] font-bold text-amber-700/70">กำลังอยู่นอกห้อง</p>
-              <p class="text-xl font-extrabold text-amber-700">${summary.active}</p>
+              <p data-leave-summary="active" class="text-xl font-extrabold text-amber-700">${summary.active}</p>
             </button>
             <button type="button" data-filter="overdue" class="${cardBase} ${filter === 'overdue' ? 'bg-red-100 border-red-300' : 'bg-red-50 border-red-100'}">
               <p class="text-[10px] font-bold text-red-700/70">เลยเวลา</p>
-              <p class="text-xl font-extrabold text-red-700">${summary.overdue}</p>
+              <p data-leave-summary="overdue" class="text-xl font-extrabold text-red-700">${summary.overdue}</p>
             </button>
             <button type="button" data-filter="returnedToday" class="${cardBase} ${filter === 'returnedToday' ? 'bg-emerald-100 border-emerald-300' : 'bg-emerald-50 border-emerald-100'}">
               <p class="text-[10px] font-bold text-emerald-700/70">กลับแล้ววันนี้</p>
-              <p class="text-xl font-extrabold text-emerald-700">${summary.returnedToday}</p>
+              <p data-leave-summary="returnedToday" class="text-xl font-extrabold text-emerald-700">${summary.returnedToday}</p>
             </button>
             <button type="button" data-filter="all" class="${cardBase} ${filter === 'all' ? 'bg-indigo-100 border-indigo-300' : 'bg-indigo-50 border-indigo-100'}">
               <p class="text-[10px] font-bold text-indigo-700/70">รวมสัปดาห์นี้</p>
-              <p class="text-xl font-extrabold text-indigo-700">${summary.totalWeek}</p>
+              <p data-leave-summary="totalWeek" class="text-xl font-extrabold text-indigo-700">${summary.totalWeek}</p>
             </button>
           </div>
           <div class="overflow-x-auto">
-            ${filtered.length ? `
+            ${rows.length ? `
               <table class="w-full text-xs min-w-[920px]">
                 <thead class="bg-gray-50 text-gray-500 border-b border-gray-100">
                   <tr>
@@ -176,20 +182,21 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                  ${filtered.map(row => `
-                    <tr class="hover:bg-gray-50">
-                      <td class="px-4 py-2">${_statusBadge(row, now)}</td>
+                  ${rows.map(row => `
+                    <tr data-leave-row data-leave-id="${_esc(row.id)}" class="hover:bg-gray-50 ${rowMatchesFilter(row, now) ? '' : 'hidden'}">
+                      <td data-leave-status class="px-4 py-2">${_statusBadge(row, now)}</td>
                       <td class="px-4 py-2">${_studentCell(row)}</td>
                       <td class="px-4 py-2">${_teacherCell(row)}</td>
                       <td class="px-4 py-2 text-gray-600">${_esc(row.reason || '—')}</td>
                       <td class="px-4 py-2 text-gray-600">
                         <div>${new Date(row.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · ${Number(row.allowed_duration || 0)} นาที</div>
-                        <div class="font-semibold ${_timeTextClass(row, now)}">${_remainingText(row, now)}</div>
+                        <div data-leave-time class="font-semibold ${_timeTextClass(row, now)}">${_remainingText(row, now)}</div>
                       </td>
                     </tr>
                   `).join('')}
                 </tbody>
               </table>
+              <div data-leave-empty class="px-5 py-8 text-center text-sm text-gray-400 ${filtered.length ? 'hidden' : ''}">ไม่พบข้อมูลตามตัวกรองนี้</div>
             ` : `<div class="px-5 py-8 text-center text-sm text-gray-400">ไม่พบข้อมูลตามตัวกรองนี้</div>`}
           </div>
         </div>
@@ -202,6 +209,34 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
       })
     }
 
+    const updateLiveFields = () => {
+      const now = new Date()
+      const summary = getLiveSummary(now)
+      const visibleCount = rows.filter(row => rowMatchesFilter(row, now)).length
+      const showCount = container.querySelector('[data-leave-show-count]')
+      if (showCount) showCount.textContent = `แสดง ${visibleCount}/${rows.length} รายการ`
+      Object.entries(summary).forEach(([key, value]) => {
+        const el = container.querySelector(`[data-leave-summary="${key}"]`)
+        if (el) el.textContent = value
+      })
+
+      rows.forEach(row => {
+        const rowEl = container.querySelector(`[data-leave-id="${String(row.id).replace(/"/g, '\\"')}"]`)
+        if (!rowEl) return
+        rowEl.classList.toggle('hidden', !rowMatchesFilter(row, now))
+        const statusEl = rowEl.querySelector('[data-leave-status]')
+        if (statusEl) statusEl.innerHTML = _statusBadge(row, now)
+        const timeEl = rowEl.querySelector('[data-leave-time]')
+        if (timeEl) {
+          timeEl.textContent = _remainingText(row, now)
+          timeEl.className = `font-semibold ${_timeTextClass(row, now)}`
+        }
+      })
+
+      const emptyEl = container.querySelector('[data-leave-empty]')
+      if (emptyEl) emptyEl.classList.toggle('hidden', visibleCount > 0)
+    }
+
     render()
     container._leaveMonitorTimer = setInterval(() => {
       if (!document.body.contains(container)) {
@@ -209,7 +244,7 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
         container._leaveMonitorTimer = null
         return
       }
-      render()
+      updateLiveFields()
     }, 1000)
   } catch (err) {
     container.innerHTML = `

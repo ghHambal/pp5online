@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.88'
+import { APP_VERSION } from './version.js?v=10.17.89'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.89': [
+    '🚪 แก้อาการหน้าติดตามและป๊อบอัพใบอนุญาตออกนอกห้องกระพริบ โดยให้นับถอยหลังอัปเดตเฉพาะตัวเลขแทนการสร้างหน้าจอใหม่ทุกวินาที'
+  ],
   '10.17.88': [
     '🕌 เพิ่มตัวกันสแกนผิดพื้นที่สำหรับนักเรียนชาย ม.1-ม.5 ต้องสแกนที่มูซอลลาชาย และ ม.6/ปวช. ต้องสแกนที่มัสยิดคูเวต'
   ],

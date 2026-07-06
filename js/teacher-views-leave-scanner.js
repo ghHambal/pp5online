@@ -1,5 +1,5 @@
 import { getActiveLeavePermission, closeLeavePermission, getTeacherLeaveMonitorScope } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.89'
 import { formatLeaveCountdown } from './leave-time.js'
 import { showToast } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
@@ -168,102 +168,122 @@ function renderLeaveScanPermitModal(leave) {
 
   if (scannerTimerInterval) clearInterval(scannerTimerInterval)
 
-  const renderCard = () => {
+  const countdownState = () => {
     const countdown = formatLeaveCountdown(leave.created_at, allowedMin, new Date())
     const isOverdue = countdown.isOverdue
-    const statusTitle = isOverdue ? '🔴 เกินเวลาอนุญาต' : '🟢 อยู่ในเวลาอนุญาต'
-    const statusColorCls = isOverdue ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-    const timerCls = isOverdue
-      ? `text-red-600 ${countdown.isBeyondLimit ? '' : 'animate-pulse'}`
-      : 'text-emerald-600'
+    return {
+      countdown,
+      statusTitle: isOverdue ? '🔴 เกินเวลาอนุญาต' : '🟢 อยู่ในเวลาอนุญาต',
+      statusColorCls: isOverdue ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700',
+      timerCls: isOverdue
+        ? `text-red-600 ${countdown.isBeyondLimit ? '' : 'animate-pulse'}`
+        : 'text-emerald-600',
+      tone: isOverdue ? 'red' : 'emerald'
+    }
+  }
 
-    const modal = renderLeaveScanModal(`
-      <div class="p-5 sm:p-6 space-y-5">
-        <div class="flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
-          <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${statusColorCls}">
-            ${statusTitle}
-          </span>
-          <div class="text-right">
-            <span class="text-xs text-gray-400 block">${countdown.label}</span>
-            <span class="text-3xl font-black font-mono ${timerCls}">${countdown.timerText}</span>
-          </div>
-        </div>
-
-        <div class="flex gap-4">
-          <div class="w-20 h-24 rounded-2xl overflow-hidden bg-gray-100 border border-gray-100 flex-shrink-0 shadow-sm">
-            ${leave.students?.image_url
-              ? `<img src="${_htmlEsc(leave.students.image_url)}" class="w-full h-full object-cover" />`
-              : `<div class="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-400">👤</div>`
-            }
-          </div>
-          <div class="min-w-0 flex-1 space-y-1">
-            <p class="text-xs text-gray-400">ข้อมูลนักเรียน</p>
-            <h4 class="font-extrabold text-gray-800 text-base truncate">${_htmlEsc(leave.students?.full_name || 'ไม่ระบุชื่อ')}</h4>
-            <p class="text-xs text-gray-500 font-mono">${_htmlEsc(leave.students?.student_code || '-')}</p>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3 bg-gray-50 rounded-2xl p-4 text-xs">
-          <div class="space-y-0.5">
-            <span class="text-gray-400 block">ครูผู้อนุมัติ</span>
-            <span class="font-bold text-gray-700 block truncate">${_htmlEsc(leave.teachers?.full_name || 'ไม่ระบุ')}</span>
-          </div>
-          <div class="space-y-0.5">
-            <span class="text-gray-400 block">เหตุผล</span>
-            <span class="font-bold text-gray-700 block truncate" title="${_htmlEsc(leave.reason)}">${_htmlEsc(leave.reason)}</span>
-          </div>
-          <div class="space-y-0.5">
-            <span class="text-gray-400 block">เริ่มออก</span>
-            <span class="font-bold text-gray-700 block">${start.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
-          </div>
-          <div class="space-y-0.5">
-            <span class="text-gray-400 block">ระยะเวลา</span>
-            <span class="font-bold text-gray-700 block">${allowedMin} นาที</span>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button id="btn-inspector-return" type="button" class="py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">
-            ✅ บันทึกกลับเข้าห้อง
-          </button>
-          <button id="btn-leave-scan-next" type="button" class="py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs transition">
-            สแกนคนถัดไป
-          </button>
+  const initial = countdownState()
+  const modal = renderLeaveScanModal(`
+    <div class="p-5 sm:p-6 space-y-5">
+      <div class="flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
+        <span id="leave-scan-status-badge" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${initial.statusColorCls}">
+          ${initial.statusTitle}
+        </span>
+        <div class="text-right">
+          <span id="leave-scan-timer-label" class="text-xs text-gray-400 block">${initial.countdown.label}</span>
+          <span id="leave-scan-timer-text" class="text-3xl font-black font-mono ${initial.timerCls}">${initial.countdown.timerText}</span>
         </div>
       </div>
-    `, { tone: isOverdue ? 'red' : 'emerald' })
 
-    modal.querySelector('#btn-leave-scan-next')?.addEventListener('click', () => closeLeaveScanModal())
-    modal.querySelector('#btn-inspector-return')?.addEventListener('click', async e => {
-      const btn = e.currentTarget
-      if (btn.disabled) return
-      btn.disabled = true
-      btn.textContent = 'กำลังบันทึก...'
-      btn.classList.add('opacity-70', 'cursor-not-allowed')
-      try {
-        if (scannerTimerInterval) {
-          clearInterval(scannerTimerInterval)
-          scannerTimerInterval = null
-        }
-        await closeLeavePermission(leave.id, 'returned')
-        showToast('บันทึกการส่งกลับเข้าห้องเรียบร้อย', 'success')
-        renderLeaveScanSuccessReturnedModal(leave)
-      } catch (err) {
-        btn.disabled = false
-        btn.textContent = '✅ บันทึกกลับเข้าห้อง'
-        btn.classList.remove('opacity-70', 'cursor-not-allowed')
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      }
-    })
+      <div class="flex gap-4">
+        <div class="w-20 h-24 rounded-2xl overflow-hidden bg-gray-100 border border-gray-100 flex-shrink-0 shadow-sm">
+          ${leave.students?.image_url
+            ? `<img src="${_htmlEsc(leave.students.image_url)}" class="w-full h-full object-cover" />`
+            : `<div class="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-400">👤</div>`
+          }
+        </div>
+        <div class="min-w-0 flex-1 space-y-1">
+          <p class="text-xs text-gray-400">ข้อมูลนักเรียน</p>
+          <h4 class="font-extrabold text-gray-800 text-base truncate">${_htmlEsc(leave.students?.full_name || 'ไม่ระบุชื่อ')}</h4>
+          <p class="text-xs text-gray-500 font-mono">${_htmlEsc(leave.students?.student_code || '-')}</p>
+        </div>
+      </div>
 
-    if (countdown.isBeyondLimit && scannerTimerInterval) {
+      <div class="grid grid-cols-2 gap-3 bg-gray-50 rounded-2xl p-4 text-xs">
+        <div class="space-y-0.5">
+          <span class="text-gray-400 block">ครูผู้อนุมัติ</span>
+          <span class="font-bold text-gray-700 block truncate">${_htmlEsc(leave.teachers?.full_name || 'ไม่ระบุ')}</span>
+        </div>
+        <div class="space-y-0.5">
+          <span class="text-gray-400 block">เหตุผล</span>
+          <span class="font-bold text-gray-700 block truncate" title="${_htmlEsc(leave.reason)}">${_htmlEsc(leave.reason)}</span>
+        </div>
+        <div class="space-y-0.5">
+          <span class="text-gray-400 block">เริ่มออก</span>
+          <span class="font-bold text-gray-700 block">${start.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>
+        </div>
+        <div class="space-y-0.5">
+          <span class="text-gray-400 block">ระยะเวลา</span>
+          <span class="font-bold text-gray-700 block">${allowedMin} นาที</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button id="btn-inspector-return" type="button" class="py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">
+          ✅ บันทึกกลับเข้าห้อง
+        </button>
+        <button id="btn-leave-scan-next" type="button" class="py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs transition">
+          สแกนคนถัดไป
+        </button>
+      </div>
+    </div>
+  `, { tone: initial.tone })
+
+  const updateTimer = () => {
+    const state = countdownState()
+    const badge = modal.querySelector('#leave-scan-status-badge')
+    const label = modal.querySelector('#leave-scan-timer-label')
+    const timer = modal.querySelector('#leave-scan-timer-text')
+    if (badge) {
+      badge.className = `inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${state.statusColorCls}`
+      badge.textContent = state.statusTitle
+    }
+    if (label) label.textContent = state.countdown.label
+    if (timer) {
+      timer.className = `text-3xl font-black font-mono ${state.timerCls}`
+      timer.textContent = state.countdown.timerText
+    }
+    if (state.countdown.isBeyondLimit && scannerTimerInterval) {
       clearInterval(scannerTimerInterval)
       scannerTimerInterval = null
     }
   }
 
-  renderCard()
-  scannerTimerInterval = setInterval(renderCard, 1000)
+  modal.querySelector('#btn-leave-scan-next')?.addEventListener('click', () => closeLeaveScanModal())
+  modal.querySelector('#btn-inspector-return')?.addEventListener('click', async e => {
+    const btn = e.currentTarget
+    if (btn.disabled) return
+    btn.disabled = true
+    btn.textContent = 'กำลังบันทึก...'
+    btn.classList.add('opacity-70', 'cursor-not-allowed')
+    try {
+      if (scannerTimerInterval) {
+        clearInterval(scannerTimerInterval)
+        scannerTimerInterval = null
+      }
+      await closeLeavePermission(leave.id, 'returned')
+      showToast('บันทึกการส่งกลับเข้าห้องเรียบร้อย', 'success')
+      renderLeaveScanSuccessReturnedModal(leave)
+    } catch (err) {
+      btn.disabled = false
+      btn.textContent = '✅ บันทึกกลับเข้าห้อง'
+      btn.classList.remove('opacity-70', 'cursor-not-allowed')
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  })
+
+  updateTimer()
+  scannerTimerInterval = setInterval(updateTimer, 1000)
 }
 
 export async function renderStudentLeaveScanner(teacher) {
