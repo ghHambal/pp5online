@@ -31,7 +31,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.93'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.94'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -257,7 +257,7 @@ export async function renderOverview() {
       await renderLeaveMonitorWidget(leaveMonitorEl, {
         title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
         subtitle: 'ข้อมูลรายวัน สำหรับแอดมินและผู้บริหาร',
-        externalUrl: 'leave-monitor.html'
+        externalUrl: 'public-monitor.html'
       })
     }
 
@@ -6723,6 +6723,10 @@ export async function renderPrayerAdmin(teacher) {
             </label>
           </div>
           <div class="pt-2 border-t border-gray-50 flex flex-col gap-2">
+            <a href="public-monitor.html" target="_blank"
+              class="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-all border border-slate-900 text-center shadow-sm">
+              📡 เปิดศูนย์ติดตามรวม (จอเดียว)
+            </a>
             <a href="prayer-monitor.html" target="_blank"
               class="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-all border border-indigo-200/50 text-center shadow-sm">
               🖥️ เปิดหน้าจอมอนิเตอร์แบบเรียลไทม์ (แยกหน้าจอ)

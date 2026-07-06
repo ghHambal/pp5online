@@ -13,6 +13,7 @@ export default defineConfig({
         studentLogin:  resolve(__dirname, 'student-login.html'),
         prayerMonitor: resolve(__dirname, 'prayer-monitor.html'),
         leaveMonitor:  resolve(__dirname, 'leave-monitor.html'),
+        publicMonitor: resolve(__dirname, 'public-monitor.html'),
       },
     },
     chunkSizeWarningLimit: 600,

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.93'
+import { APP_VERSION } from './version.js?v=10.17.94'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.94': [
+    '📡 เพิ่มศูนย์ติดตามสาธารณะ URL เดียว รวมจอการละหมาดและการออกนอกห้องเรียน พร้อมโหมดรวม/แยกหน้าจอ'
+  ],
   '10.17.93': [
     '🖥️ เพิ่ม URL แยกสำหรับจอติดตามการออกนอกห้องเรียน เปิดดูแบบไม่ต้องล็อกอินและใช้ขึ้นจอทีวีได้'
   ],
