@@ -31,7 +31,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.92'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.93'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -256,7 +256,8 @@ export async function renderOverview() {
     if (leaveMonitorEl) {
       await renderLeaveMonitorWidget(leaveMonitorEl, {
         title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
-        subtitle: 'ข้อมูลรายวัน สำหรับแอดมินและผู้บริหาร'
+        subtitle: 'ข้อมูลรายวัน สำหรับแอดมินและผู้บริหาร',
+        externalUrl: 'leave-monitor.html'
       })
     }
 

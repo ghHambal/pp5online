@@ -267,6 +267,10 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
     clearInterval(container._leaveMonitorTimer)
     container._leaveMonitorTimer = null
   }
+  if (container._leaveMonitorRefreshTimer) {
+    clearInterval(container._leaveMonitorRefreshTimer)
+    container._leaveMonitorRefreshTimer = null
+  }
 
   const title = options.title || '🚪 ติดตามใบอนุญาตออกนอกห้อง'
   const subtitle = options.subtitle || 'ข้อมูลรายวัน'
@@ -276,6 +280,10 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
   const trendStartDate = _addDays(selectedDate, -analyticsDays + 1)
   const teacherId = options.teacherId || null
   const scope = options.scope || null
+  const readOnly = Boolean(options.readOnly)
+  const publicMode = Boolean(options.publicMode)
+  const externalUrl = options.externalUrl || ''
+  const refreshMs = Math.max(0, parseInt(options.refreshMs, 10) || 0)
   let filter = options.initialFilter || 'all'
   let viewMode = options.initialView || 'list'
 
@@ -287,8 +295,8 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
 
   try {
     const [{ rows: rawRows }, { rows: rawTrendRows }] = await Promise.all([
-      getLeavePermissionDashboard({ date: selectedDate, limit, teacherId }),
-      getLeavePermissionDashboard({ startDate: trendStartDate, endDate: selectedDate, teacherId })
+      getLeavePermissionDashboard({ date: selectedDate, limit, teacherId, publicMode }),
+      getLeavePermissionDashboard({ startDate: trendStartDate, endDate: selectedDate, teacherId, publicMode })
     ])
     const rows = (rawRows || []).filter(row => _scopeMatchesRow(row, scope))
     const trendRows = (rawTrendRows || []).filter(row => _scopeMatchesRow(row, scope))
@@ -316,6 +324,7 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
 
     const renderActionCell = (row) => {
       const status = _statusKey(row)
+      if (readOnly) return '<span class="text-[10px] text-gray-400 font-bold">ดูอย่างเดียว</span>'
       if (status === 'returned') return '<span class="text-[10px] text-emerald-600 font-bold">ปิดรายการแล้ว</span>'
       if (row.status === 'overdue') return '<span class="text-[10px] text-red-500 font-bold">บันทึกไม่กลับแล้ว</span>'
       return `
@@ -399,6 +408,12 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
               ${scope?.label ? `<p class="text-[11px] text-amber-800/70 mt-1">${_esc(scope.label)}</p>` : ''}
             </div>
             <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+              ${externalUrl ? `
+                <a href="${_esc(externalUrl)}" target="_blank"
+                  class="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition">
+                  เปิดจอแยก
+                </a>
+              ` : ''}
               <input type="date" data-leave-date value="${_esc(selectedDate)}"
                 class="text-xs font-bold text-amber-800 bg-white border border-amber-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-200" />
               <select data-leave-range
@@ -451,7 +466,7 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
                     <th class="px-4 py-3 text-left">ครูผู้สอน</th>
                     <th class="px-4 py-3 text-left">เหตุผล</th>
                     <th class="px-4 py-3 text-left">เวลา</th>
-                    <th class="px-4 py-3 text-left">จัดการ</th>
+                    ${readOnly ? '' : '<th class="px-4 py-3 text-left">จัดการ</th>'}
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
@@ -465,7 +480,7 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
                         <div>${new Date(row.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · ${Number(row.allowed_duration || 0)} นาที</div>
                         <div data-leave-time class="font-semibold ${_timeTextClass(row, now)}">${_remainingText(row, now)}</div>
                       </td>
-                      <td class="px-4 py-2">${renderActionCell(row)}</td>
+                      ${readOnly ? '' : `<td class="px-4 py-2">${renderActionCell(row)}</td>`}
                     </tr>
                   `).join('')}
                 </tbody>
@@ -497,27 +512,29 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
         const nextDays = parseInt(e.target.value, 10) || analyticsDays
         renderLeaveMonitorWidget(container, { ...options, date: selectedDate, initialFilter: filter, initialView: viewMode, analyticsDays: nextDays })
       })
-      container.querySelectorAll('[data-leave-action]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const id = btn.dataset.leaveActionId
-          const status = btn.dataset.leaveAction
-          const row = rows.find(item => String(item.id) === String(id))
-          const studentName = row?.students?.full_name || 'นักเรียน'
-          const message = status === 'returned'
-            ? `ยืนยันบันทึกว่า "${studentName}" กลับเข้าห้องแล้ว?`
-            : `ยืนยันบันทึกว่า "${studentName}" ไม่กลับเข้าห้อง? ระบบจะเก็บเป็นประวัติการเกินเวลา`
-          if (!window.confirm(message)) return
-          btn.disabled = true
-          try {
-            await closeLeavePermission(id, status)
-            showToast(status === 'returned' ? 'บันทึกกลับเข้าห้องแล้ว' : 'บันทึกประวัติไม่กลับเข้าห้องแล้ว', 'success')
-            renderLeaveMonitorWidget(container, { ...options, date: selectedDate, initialFilter: filter, initialView: viewMode, analyticsDays })
-          } catch (err) {
-            btn.disabled = false
-            showToast(`บันทึกไม่สำเร็จ: ${err.message || err}`, 'error')
-          }
+      if (!readOnly) {
+        container.querySelectorAll('[data-leave-action]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const id = btn.dataset.leaveActionId
+            const status = btn.dataset.leaveAction
+            const row = rows.find(item => String(item.id) === String(id))
+            const studentName = row?.students?.full_name || 'นักเรียน'
+            const message = status === 'returned'
+              ? `ยืนยันบันทึกว่า "${studentName}" กลับเข้าห้องแล้ว?`
+              : `ยืนยันบันทึกว่า "${studentName}" ไม่กลับเข้าห้อง? ระบบจะเก็บเป็นประวัติการเกินเวลา`
+            if (!window.confirm(message)) return
+            btn.disabled = true
+            try {
+              await closeLeavePermission(id, status)
+              showToast(status === 'returned' ? 'บันทึกกลับเข้าห้องแล้ว' : 'บันทึกประวัติไม่กลับเข้าห้องแล้ว', 'success')
+              renderLeaveMonitorWidget(container, { ...options, date: selectedDate, initialFilter: filter, initialView: viewMode, analyticsDays })
+            } catch (err) {
+              btn.disabled = false
+              showToast(`บันทึกไม่สำเร็จ: ${err.message || err}`, 'error')
+            }
+          })
         })
-      })
+      }
     }
 
     const updateLiveFields = () => {
@@ -549,10 +566,24 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
     }
 
     render()
+    if (refreshMs > 0) {
+      container._leaveMonitorRefreshTimer = setInterval(() => {
+        if (!document.body.contains(container)) {
+          clearInterval(container._leaveMonitorRefreshTimer)
+          container._leaveMonitorRefreshTimer = null
+          return
+        }
+        renderLeaveMonitorWidget(container, { ...options, date: selectedDate, initialFilter: filter, initialView: viewMode, analyticsDays })
+      }, refreshMs)
+    }
     container._leaveMonitorTimer = setInterval(() => {
       if (!document.body.contains(container)) {
         clearInterval(container._leaveMonitorTimer)
         container._leaveMonitorTimer = null
+        if (container._leaveMonitorRefreshTimer) {
+          clearInterval(container._leaveMonitorRefreshTimer)
+          container._leaveMonitorRefreshTimer = null
+        }
         return
       }
       updateLiveFields()

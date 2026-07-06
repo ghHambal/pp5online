@@ -1,5 +1,5 @@
 import { getActiveLeavePermission, closeLeavePermission } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.92'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.93'
 import { formatLeaveCountdown } from './leave-time.js'
 import { showToast } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
@@ -425,7 +425,8 @@ export async function renderStudentLeaveScanner(teacher) {
         title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
         subtitle: 'รายการที่ฉันเป็นผู้อนุญาต พร้อมแดชบอร์ดแนวโน้ม',
         teacherId: teacher.id,
-        analyticsDays: 14
+        analyticsDays: 14,
+        externalUrl: 'leave-monitor.html'
       })
     }
   }

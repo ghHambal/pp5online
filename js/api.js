@@ -3599,14 +3599,54 @@ export async function getLeavePermissionDashboard(options = {}) {
         : _currentWeekRange()
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
-  const returnStart = dayMode ? rangeStart : todayStart.toISOString()
-  const returnEnd = dayMode ? rangeEnd : null
+  const returnStart = (dayMode || rangeMode) ? rangeStart : todayStart.toISOString()
+  const returnEnd = (dayMode || rangeMode) ? rangeEnd : null
   const selectColumns = `
     id, student_id, class_id, teacher_id, reason, allowed_duration, created_at, returned_at, status,
     students(id, student_code, full_name, image_url, main_room),
     teachers(id, full_name),
     classes(id, class_name, master_subjects(subject_name))
   `
+
+  if (opts.publicMode) {
+    const { data, error } = await supabase.rpc('get_public_leave_monitor_rows', {
+      p_start_at: rangeStart,
+      p_end_at: rangeEnd,
+      p_teacher_id: opts.teacherId ? Number(opts.teacherId) : null,
+      p_limit: limit
+    })
+    if (error) throw error
+    const rows = (data || []).map(row => ({
+      id: row.id,
+      student_id: row.student_id,
+      class_id: row.class_id,
+      teacher_id: row.teacher_id,
+      reason: row.reason,
+      allowed_duration: row.allowed_duration,
+      created_at: row.created_at,
+      returned_at: row.returned_at,
+      status: row.status,
+      students: {
+        id: row.student_id,
+        student_code: row.student_code,
+        full_name: row.student_full_name,
+        image_url: row.student_image_url,
+        main_room: row.student_main_room
+      },
+      teachers: {
+        id: row.teacher_id,
+        full_name: row.teacher_full_name
+      },
+      classes: {
+        id: row.class_id,
+        class_name: row.class_name,
+        master_subjects: {
+          subject_name: row.subject_name
+        }
+      }
+    }))
+    return _buildLeavePermissionDashboardResult(rows, returnStart, returnEnd, dayMode || rangeMode)
+  }
 
   const configure = q => {
     q = q
@@ -3625,6 +3665,10 @@ export async function getLeavePermissionDashboard(options = {}) {
     : await _fetchPaged('student_leave_permissions', selectColumns, configure)
 
   const rows = _dedupeActiveLeaveRows(data || [])
+  return _buildLeavePermissionDashboardResult(rows, returnStart, returnEnd, dayMode || rangeMode)
+}
+
+function _buildLeavePermissionDashboardResult(rows, returnStart, returnEnd, boundedReturnRange = false) {
   const now = new Date()
   const isActiveOverdue = (r) => {
     if (r.status !== 'active') return false
@@ -3641,7 +3685,7 @@ export async function getLeavePermissionDashboard(options = {}) {
         if (r.status !== 'returned') return false
         const returnedAt = r.returned_at || ''
         if (returnedAt < returnStart) return false
-        return (dayMode || rangeMode) && returnEnd ? returnedAt < returnEnd : true
+        return boundedReturnRange && returnEnd ? returnedAt < returnEnd : true
       }).length,
       totalWeek: rows.length
     }

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.92'
+import { APP_VERSION } from './version.js?v=10.17.93'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.93': [
+    '🖥️ เพิ่ม URL แยกสำหรับจอติดตามการออกนอกห้องเรียน เปิดดูแบบไม่ต้องล็อกอินและใช้ขึ้นจอทีวีได้'
+  ],
   '10.17.92': [
     '📊 เพิ่มแดชบอร์ดแนวโน้มการออกนอกห้อง พร้อมกราฟรายวัน ช่วงเวลา เหตุผล ห้องที่ออกบ่อย นักเรียนที่ควรติดตาม และปุ่มบันทึกกลับ/ไม่กลับในหน้าติดตาม'
   ],

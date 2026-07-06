@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ.5 ออนไลน์ — จอติดตามการออกนอกห้อง</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css?v=202607061605" />
+  <style>
+    body { font-family: 'Sarabun', sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <main class="min-h-screen flex flex-col">
+    <header class="bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-4 flex items-center justify-between gap-4 sticky top-0 z-20">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-3xl">🚪</span>
+        <div class="min-w-0">
+          <h1 class="text-lg sm:text-xl font-extrabold text-amber-800 truncate">จอติดตามการออกนอกห้องเรียน</h1>
+          <p class="text-xs text-slate-500 mt-0.5">สำหรับผู้บริหาร ครูฝ่ายปกครอง และการเปิดแสดงผลบนจอทีวี</p>
+        </div>
+      </div>
+      <div id="leave-monitor-clock" class="text-right font-mono text-sm font-bold text-slate-500 whitespace-nowrap">--:--:--</div>
+    </header>
+
+    <section class="flex-1 p-4 sm:p-6">
+      <div id="public-leave-monitor" class="max-w-7xl mx-auto"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/js/leave-monitor-page.js?v=202607061605"></script>
+</body>
+</html>
