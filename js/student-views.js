@@ -12,7 +12,7 @@ import {
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
-import { APP_VERSION } from './version.js?v=10.17.94'
+import { APP_VERSION } from './version.js?v=10.17.95'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 
