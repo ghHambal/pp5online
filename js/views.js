@@ -31,7 +31,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.89'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.90'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -6792,6 +6792,8 @@ export async function renderPrayerAdmin(teacher) {
 
     let recordsData = []
     let selectedOperator = ''
+    let isFetchingHistory = false
+    const HISTORY_PAGE_SIZE = 1000
 
     const _locLabel = (loc) => {
       const mapping = {
@@ -6813,6 +6815,24 @@ export async function renderPrayerAdmin(teacher) {
       return mapping[loc] || 'bg-gray-50 text-gray-500 border-gray-100'
     }
 
+    const _fetchHistoryRows = async (dateVal) => {
+      const rows = []
+      for (let from = 0; ; from += HISTORY_PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from('prayer_records')
+          .select('id, student_id, main_room, status, location, scanned_by, input_method, scanner_room, same_room_flag, created_at, students(id, full_name, student_code, image_url), teachers(id, full_name)')
+          .eq('check_date', dateVal)
+          .not('location', 'is', null)
+          .order('created_at', { ascending: false })
+          .range(from, from + HISTORY_PAGE_SIZE - 1)
+
+        if (error) throw error
+        rows.push(...(data ?? []))
+        if (!data || data.length < HISTORY_PAGE_SIZE) break
+      }
+      return rows
+    }
+
     const _fetchHistory = async () => {
       const tableBody = document.getElementById('hist-table-body')
       if (!tableBody) {
@@ -6824,16 +6844,10 @@ export async function renderPrayerAdmin(teacher) {
       }
 
       const dateVal = document.getElementById('hist-date-input')?.value || todayVal
+      if (isFetchingHistory) return
+      isFetchingHistory = true
       try {
-        const { data, error } = await supabase
-          .from('prayer_records')
-          .select('id, student_id, main_room, status, location, scanned_by, input_method, scanner_room, same_room_flag, created_at, students(id, full_name, student_code, image_url), teachers(id, full_name)')
-          .eq('check_date', dateVal)
-          .not('location', 'is', null) // โชว์เฉพาะข้อมูลที่สแกนเท่านั้น (มีพิกัดจุดสแกน)
-          .order('created_at', { ascending: false })
-
-        if (error) throw error
-        recordsData = data ?? []
+        recordsData = await _fetchHistoryRows(dateVal)
         _renderHistory()
       } catch(err) {
         console.error('Fetch history failed:', err)
@@ -6841,6 +6855,8 @@ export async function renderPrayerAdmin(teacher) {
         if (body) {
           body.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-500">เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message}</td></tr>`
         }
+      } finally {
+        isFetchingHistory = false
       }
     }
 

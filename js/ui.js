@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.89'
+import { APP_VERSION } from './version.js?v=10.17.90'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.90': [
+    '🕌 แก้มอนิเตอร์สแกนละหมาดล่าสุดในแอดมินให้ดึงประวัติแบบแบ่งหน้า จึงไม่หยุดที่ 1000 รายการต่อวัน'
+  ],
   '10.17.89': [
     '🚪 แก้อาการหน้าติดตามและป๊อบอัพใบอนุญาตออกนอกห้องกระพริบ โดยให้นับถอยหลังอัปเดตเฉพาะตัวเลขแทนการสร้างหน้าจอใหม่ทุกวินาที'
   ],
