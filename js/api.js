@@ -3558,25 +3558,51 @@ export async function getActiveLeavePermissionsForClass(classId) {
   return data || []
 }
 
-export async function getLeavePermissionDashboard(limit = 80) {
+function _leaveDayRange(dateStr) {
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const start = m
+    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0)
+    : new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 1)
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+export async function getLeavePermissionDashboard(options = {}) {
+  const opts = typeof options === 'number' ? { limit: options } : (options || {})
+  const limit = Number.isFinite(parseInt(opts.limit, 10)) ? Math.max(1, parseInt(opts.limit, 10)) : null
+  const dayMode = Boolean(opts.date)
+  const { start: rangeStart, end: rangeEnd } = dayMode
+    ? _leaveDayRange(opts.date)
+    : _currentWeekRange()
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
-  const { start: weekStart } = _currentWeekRange()
-  const { data, error } = await supabase
-    .from('student_leave_permissions')
-    .select(`
-      id, student_id, class_id, teacher_id, reason, allowed_duration, created_at, returned_at, status,
-      students(id, student_code, full_name, image_url, main_room),
-      teachers(id, full_name),
-      classes(id, class_name, master_subjects(subject_name))
-    `)
-    .gte('created_at', weekStart)
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (error) throw error
+  const returnStart = dayMode ? rangeStart : todayStart.toISOString()
+  const returnEnd = dayMode ? rangeEnd : null
+  const selectColumns = `
+    id, student_id, class_id, teacher_id, reason, allowed_duration, created_at, returned_at, status,
+    students(id, student_code, full_name, image_url, main_room),
+    teachers(id, full_name),
+    classes(id, class_name, master_subjects(subject_name))
+  `
+
+  const configure = q => {
+    q = q
+      .gte('created_at', rangeStart)
+      .lt('created_at', rangeEnd)
+      .order('created_at', { ascending: false })
+    return limit ? q.limit(limit) : q
+  }
+  const data = limit
+    ? (await (async () => {
+        const { data, error } = await configure(supabase.from('student_leave_permissions').select(selectColumns))
+        if (error) throw error
+        return data || []
+      })())
+    : await _fetchPaged('student_leave_permissions', selectColumns, configure)
 
   const rows = _dedupeActiveLeaveRows(data || [])
-  const todayIso = todayStart.toISOString()
   const now = new Date()
   const isActiveOverdue = (r) => {
     if (r.status !== 'active') return false
@@ -3589,7 +3615,12 @@ export async function getLeavePermissionDashboard(limit = 80) {
     summary: {
       active: rows.filter(r => r.status === 'active').length,
       overdue: rows.filter(r => r.status === 'overdue' || isActiveOverdue(r)).length,
-      returnedToday: rows.filter(r => r.status === 'returned' && (r.returned_at || '') >= todayIso).length,
+      returnedToday: rows.filter(r => {
+        if (r.status !== 'returned') return false
+        const returnedAt = r.returned_at || ''
+        if (returnedAt < returnStart) return false
+        return returnEnd ? returnedAt < returnEnd : true
+      }).length,
       totalWeek: rows.length
     }
   }

@@ -41,6 +41,12 @@ function _normScopeText(value) {
   return String(value || '').trim().toLowerCase()
 }
 
+function _todayInputValue() {
+  const d = new Date()
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 10)
+}
+
 function _scopeMatchesRow(row, scope) {
   if (!scope || scope.mode === 'all') return true
   const classIds = new Set((scope.classIds || []).map(id => String(id)))
@@ -100,8 +106,9 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
   }
 
   const title = options.title || '🚪 ติดตามใบอนุญาตออกนอกห้อง'
-  const subtitle = options.subtitle || 'ข้อมูลสัปดาห์ปัจจุบัน'
-  const limit = options.limit || 80
+  const subtitle = options.subtitle || 'ข้อมูลรายวัน'
+  const selectedDate = options.date || _todayInputValue()
+  const limit = options.limit ?? null
   const scope = options.scope || null
   let filter = options.initialFilter || 'all'
 
@@ -112,27 +119,25 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
   `
 
   try {
-    const { rows: rawRows } = await getLeavePermissionDashboard(limit)
+    const { rows: rawRows } = await getLeavePermissionDashboard({ date: selectedDate, limit })
     const rows = (rawRows || []).filter(row => _scopeMatchesRow(row, scope))
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const returnedTodayRows = rows.filter(r => r.status === 'returned' && (r.returned_at || '') >= todayStart.toISOString())
+    const returnedRows = rows.filter(r => r.status === 'returned')
     const getFilteredRows = (now) => {
       if (filter === 'active') return rows.filter(r => _statusKey(r, now) === 'active')
       if (filter === 'overdue') return rows.filter(r => _statusKey(r, now) === 'overdue')
-      if (filter === 'returnedToday') return returnedTodayRows
+      if (filter === 'returnedToday') return returnedRows
       return rows
     }
     const getLiveSummary = (now) => ({
       active: rows.filter(r => _statusKey(r, now) === 'active').length,
       overdue: rows.filter(r => _statusKey(r, now) === 'overdue').length,
-      returnedToday: returnedTodayRows.length,
+      returnedToday: returnedRows.length,
       totalWeek: rows.length
     })
     const rowMatchesFilter = (row, now) => {
       if (filter === 'active') return _statusKey(row, now) === 'active'
       if (filter === 'overdue') return _statusKey(row, now) === 'overdue'
-      if (filter === 'returnedToday') return returnedTodayRows.some(r => String(r.id) === String(row.id))
+      if (filter === 'returnedToday') return returnedRows.some(r => String(r.id) === String(row.id))
       return true
     }
     const cardBase = 'leave-monitor-filter rounded-xl border px-3 py-2 text-left transition hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-200'
@@ -149,7 +154,11 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
               <p class="text-xs text-amber-700/70 mt-0.5">${_esc(subtitle)}</p>
               ${scope?.label ? `<p class="text-[11px] text-amber-800/70 mt-1">${_esc(scope.label)}</p>` : ''}
             </div>
-            <span data-leave-show-count class="text-xs text-amber-700 font-bold">แสดง ${filtered.length}/${rows.length} รายการ</span>
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+              <input type="date" data-leave-date value="${_esc(selectedDate)}"
+                class="text-xs font-bold text-amber-800 bg-white border border-amber-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-200" />
+              <span data-leave-show-count class="text-xs text-amber-700 font-bold whitespace-nowrap">แสดง ${filtered.length}/${rows.length} รายการ</span>
+            </div>
           </div>
           <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-2 border-b border-gray-50">
             <button type="button" data-filter="active" class="${cardBase} ${filter === 'active' ? 'bg-amber-100 border-amber-300' : 'bg-amber-50 border-amber-100'}">
@@ -161,11 +170,11 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
               <p data-leave-summary="overdue" class="text-xl font-extrabold text-red-700">${summary.overdue}</p>
             </button>
             <button type="button" data-filter="returnedToday" class="${cardBase} ${filter === 'returnedToday' ? 'bg-emerald-100 border-emerald-300' : 'bg-emerald-50 border-emerald-100'}">
-              <p class="text-[10px] font-bold text-emerald-700/70">กลับแล้ววันนี้</p>
+              <p class="text-[10px] font-bold text-emerald-700/70">กลับแล้ว</p>
               <p data-leave-summary="returnedToday" class="text-xl font-extrabold text-emerald-700">${summary.returnedToday}</p>
             </button>
             <button type="button" data-filter="all" class="${cardBase} ${filter === 'all' ? 'bg-indigo-100 border-indigo-300' : 'bg-indigo-50 border-indigo-100'}">
-              <p class="text-[10px] font-bold text-indigo-700/70">รวมสัปดาห์นี้</p>
+              <p class="text-[10px] font-bold text-indigo-700/70">รวมวันที่เลือก</p>
               <p data-leave-summary="totalWeek" class="text-xl font-extrabold text-indigo-700">${summary.totalWeek}</p>
             </button>
           </div>
@@ -206,6 +215,10 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
           filter = btn.dataset.filter || 'all'
           render()
         })
+      })
+      container.querySelector('[data-leave-date]')?.addEventListener('change', e => {
+        const nextDate = e.target.value || _todayInputValue()
+        renderLeaveMonitorWidget(container, { ...options, date: nextDate, initialFilter: filter })
       })
     }
 
