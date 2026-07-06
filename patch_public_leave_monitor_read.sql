@@ -1,6 +1,7 @@
 -- patch_public_leave_monitor_read.sql
 -- Allow leave-monitor.html to read only the columns needed by the public TV display.
 -- This avoids granting anon broad SELECT access to students/teachers/classes tables.
+-- The function clamps public requests to a 31-day window and 5000 rows per call.
 
 CREATE OR REPLACE FUNCTION public.get_public_leave_monitor_rows(
   p_start_at timestamptz,
@@ -53,10 +54,10 @@ AS $$
   LEFT JOIN public.classes c ON c.id = lp.class_id
   LEFT JOIN public.master_subjects ms ON ms.id = c.course_id
   WHERE lp.created_at >= p_start_at
-    AND lp.created_at < p_end_at
+    AND lp.created_at < LEAST(p_end_at, p_start_at + INTERVAL '31 days')
     AND (p_teacher_id IS NULL OR lp.teacher_id = p_teacher_id)
   ORDER BY lp.created_at DESC
-  LIMIT COALESCE(p_limit, 5000);
+  LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 5000), 5000));
 $$;
 
 REVOKE ALL ON FUNCTION public.get_public_leave_monitor_rows(timestamptz, timestamptz, int, int) FROM PUBLIC;
