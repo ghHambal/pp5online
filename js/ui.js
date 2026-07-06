@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.91'
+import { APP_VERSION } from './version.js?v=10.17.92'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.92': [
+    '📊 เพิ่มแดชบอร์ดแนวโน้มการออกนอกห้อง พร้อมกราฟรายวัน ช่วงเวลา เหตุผล ห้องที่ออกบ่อย นักเรียนที่ควรติดตาม และปุ่มบันทึกกลับ/ไม่กลับในหน้าติดตาม'
+  ],
   '10.17.91': [
     '🚪 แก้หน้าติดตามใบอนุญาตออกนอกห้องไม่ให้ค้างที่ 80 รายการ และเพิ่มตัวเลือกดูข้อมูลรายวัน'
   ],

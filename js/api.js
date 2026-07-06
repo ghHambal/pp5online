@@ -3569,13 +3569,34 @@ function _leaveDayRange(dateStr) {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
+function _leaveDaysRange(days = 14) {
+  const n = Math.max(1, Math.min(90, parseInt(days, 10) || 14))
+  const end = new Date()
+  end.setHours(0, 0, 0, 0)
+  end.setDate(end.getDate() + 1)
+  const start = new Date(end)
+  start.setDate(end.getDate() - n)
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
+function _leaveCustomRange(startDate, endDate) {
+  const startRange = _leaveDayRange(startDate)
+  const endRange = _leaveDayRange(endDate || startDate)
+  return { start: startRange.start, end: endRange.end }
+}
+
 export async function getLeavePermissionDashboard(options = {}) {
   const opts = typeof options === 'number' ? { limit: options } : (options || {})
   const limit = Number.isFinite(parseInt(opts.limit, 10)) ? Math.max(1, parseInt(opts.limit, 10)) : null
   const dayMode = Boolean(opts.date)
+  const rangeMode = Boolean(opts.days || opts.startDate || opts.endDate)
   const { start: rangeStart, end: rangeEnd } = dayMode
     ? _leaveDayRange(opts.date)
-    : _currentWeekRange()
+    : opts.startDate || opts.endDate
+      ? _leaveCustomRange(opts.startDate, opts.endDate)
+      : opts.days
+        ? _leaveDaysRange(opts.days)
+        : _currentWeekRange()
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
   const returnStart = dayMode ? rangeStart : todayStart.toISOString()
@@ -3592,6 +3613,7 @@ export async function getLeavePermissionDashboard(options = {}) {
       .gte('created_at', rangeStart)
       .lt('created_at', rangeEnd)
       .order('created_at', { ascending: false })
+    if (opts.teacherId) q = q.eq('teacher_id', opts.teacherId)
     return limit ? q.limit(limit) : q
   }
   const data = limit
@@ -3619,7 +3641,7 @@ export async function getLeavePermissionDashboard(options = {}) {
         if (r.status !== 'returned') return false
         const returnedAt = r.returned_at || ''
         if (returnedAt < returnStart) return false
-        return returnEnd ? returnedAt < returnEnd : true
+        return (dayMode || rangeMode) && returnEnd ? returnedAt < returnEnd : true
       }).length,
       totalWeek: rows.length
     }

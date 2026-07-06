@@ -1,5 +1,5 @@
-import { getActiveLeavePermission, closeLeavePermission, getTeacherLeaveMonitorScope } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.91'
+import { getActiveLeavePermission, closeLeavePermission } from './api.js'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.92'
 import { formatLeaveCountdown } from './leave-time.js'
 import { showToast } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
@@ -421,18 +421,11 @@ export async function renderStudentLeaveScanner(teacher) {
     monitorPanel.classList.toggle('hidden', !isMonitor)
     if (isMonitor) {
       if (isScanning) stopScanner()
-      const scope = await getTeacherLeaveMonitorScope(teacher).catch(err => ({
-        mode: 'scoped',
-        classIds: [],
-        roomNames: [],
-        label: `โหลดขอบเขตคาบเรียนไม่สำเร็จ: ${err.message || err}`
-      }))
       await renderLeaveMonitorWidget(monitorWidget, {
         title: '🚪 ติดตามใบอนุญาตออกนอกห้อง',
-        subtitle: scope.mode === 'all'
-          ? 'ข้อมูลรายวัน สำหรับหน้าตรวจสอบใบอนุญาต'
-          : 'ข้อมูลรายวัน เฉพาะนักเรียนในคาบปัจจุบันหรือคาบถัดไปของครู',
-        scope
+        subtitle: 'รายการที่ฉันเป็นผู้อนุญาต พร้อมแดชบอร์ดแนวโน้ม',
+        teacherId: teacher.id,
+        analyticsDays: 14
       })
     }
   }
