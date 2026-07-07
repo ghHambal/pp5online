@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.99'
+import { APP_VERSION } from './version.js?v=10.18.0'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.0': [
+    '🎨 ใส่สีพื้นทั้งการ์ดในเมนูสแกน แยกโทนสีตามงานเช็คชื่อ ละหมาด และใบอนุญาต พร้อมเงาสีให้ดูมีมิติมากขึ้น'
+  ],
   '10.17.99': [
     '📷 ปรับปุ่มกล้องด้านบนให้เป็นไอคอนล้วน พร้อมเพิ่มสี แสง และเงาให้ปุ่มสแกนดูมีมิติและกดง่ายขึ้น'
   ],
