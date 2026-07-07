@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.17.97'
+import { APP_VERSION } from './version.js?v=10.17.98'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -195,7 +195,7 @@ const ROUTES = {
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.17.97').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.17.98').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
@@ -2170,12 +2170,12 @@ async function _quickGoToClass(mode, cls) {
   }
 }
 
-const TEACHER_SCAN_LOCATIONS = [
-  { id: 'musolla_male', label: 'มูซอลลาชาย', detail: 'ม.1 - ม.5 ชาย', icon: '🕌' },
-  { id: 'masjid_kuwait', label: 'มัสยิดคูเวต', detail: 'ม.6, ปวช. ชาย', icon: '🕌' },
-  { id: 'musolla_female_1', label: 'มูซอลลาหญิง 1', detail: 'โรงอาหาร', icon: '🕌' },
-  { id: 'musolla_female_2', label: 'มูซอลลาหญิง 2', detail: 'อาคาร 5', icon: '🕌' },
-]
+const CAMERA_ICON_SVG = `
+  <svg aria-hidden="true" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 4.5 13 3H8L6.5 4.5H4A2.5 2.5 0 0 0 1.5 7v10A2.5 2.5 0 0 0 4 19.5h16A2.5 2.5 0 0 0 22.5 17V7A2.5 2.5 0 0 0 20 4.5h-5.5Z"/>
+    <circle cx="12" cy="12" r="4"/>
+  </svg>
+`
 
 function _teacherHasPrayerScannerPermission(cfg, profileRole = null) {
   if (!_teacher) return false
@@ -2200,7 +2200,10 @@ async function _openTeacherScanLauncher() {
     <div class="bg-white w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
       <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
-          <h3 class="font-extrabold text-gray-800 text-base">📷 ศูนย์สแกนครู</h3>
+          <h3 class="font-extrabold text-gray-800 text-base flex items-center gap-2">
+            <span class="w-8 h-8 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">${CAMERA_ICON_SVG}</span>
+            <span>ศูนย์สแกนครู</span>
+          </h3>
           <p class="text-xs text-gray-400 mt-0.5">เปิดกล้องสำหรับงานประจำวันจากจุดเดียว</p>
         </div>
         <button id="scan-launcher-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
@@ -2233,51 +2236,42 @@ async function _openTeacherScanLauncher() {
     })(),
   ])
   const canPrayerScan = _teacherHasPrayerScannerPermission(cfg, profileRes?.data?.role ?? null)
-  const savedLocation = localStorage.getItem('prayer_scan_active_location')
-  const activeLocation = TEACHER_SCAN_LOCATIONS.some(loc => loc.id === savedLocation)
-    ? savedLocation
-    : TEACHER_SCAN_LOCATIONS[0].id
-
-  const cardCls = 'w-full text-left rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 transition p-4 flex gap-3 items-start'
+  const cardCls = 'w-full text-left rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 active:scale-[0.99] transition p-4 flex gap-3 items-start'
   body.innerHTML = `
     <div class="space-y-3">
       <button id="scan-launcher-attendance" type="button" class="${cardCls}">
-        <span class="w-11 h-11 rounded-2xl bg-emerald-50 text-2xl flex items-center justify-center flex-shrink-0">✅</span>
+        <span class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
           <span class="block font-extrabold text-gray-800 text-sm">สแกน QR เช็คชื่อ</span>
           <span class="block text-xs text-gray-400 mt-1">เลือกห้องและคาบ ระบบจะโหลดข้อมูลเดิม แล้วเปิดกล้องสแกน</span>
         </span>
       </button>
 
+      ${canPrayerScan ? `
+      <button id="scan-launcher-prayer-open" type="button" class="${cardCls}">
+        <span class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
+        <span class="min-w-0">
+          <span class="block font-extrabold text-gray-800 text-sm">สแกนละหมาด</span>
+          <span class="block text-xs text-gray-400 mt-1">เปิดระบบสแกน แล้วเลือกจุด/บริเวณในหน้าถัดไป</span>
+        </span>
+      </button>
+      ` : `
       <div class="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
         <div class="flex gap-3 items-start">
-          <span class="w-11 h-11 rounded-2xl bg-amber-50 text-2xl flex items-center justify-center flex-shrink-0">🕌</span>
+          <span class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
           <span class="min-w-0 flex-1">
             <span class="block font-extrabold text-gray-800 text-sm">สแกนละหมาด</span>
-            <span class="block text-xs text-gray-400 mt-1">${canPrayerScan ? 'เลือกจุด/บริเวณก่อนเปิดกล้องสแกนละหมาด' : 'ต้องได้รับสิทธิ์สแกนจากแอดมินก่อนใช้งาน'}</span>
+            <span class="block text-xs text-gray-400 mt-1">ต้องได้รับสิทธิ์สแกนจากแอดมินก่อนใช้งาน</span>
           </span>
         </div>
-        ${canPrayerScan ? `
-          <div>
-            <label class="block text-xs font-bold text-gray-500 mb-1.5">จุด/บริเวณที่จะสแกน</label>
-            <select id="scan-launcher-prayer-location" class="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:border-emerald-500">
-              ${TEACHER_SCAN_LOCATIONS.map(loc => `
-                <option value="${loc.id}" ${activeLocation === loc.id ? 'selected' : ''}>${loc.icon} ${loc.label}${loc.detail ? ` (${loc.detail})` : ''}</option>
-              `).join('')}
-            </select>
-          </div>
-          <button id="scan-launcher-prayer-open" type="button" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold shadow-md transition">
-            เปิดกล้องสแกนละหมาด
-          </button>
-        ` : `
-          <button id="scan-launcher-prayer-request" type="button" class="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold shadow-md transition">
-            ขอสิทธิ์สแกนละหมาด
-          </button>
-        `}
+        <button id="scan-launcher-prayer-request" type="button" class="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold shadow-md transition active:scale-[0.99]">
+          ขอสิทธิ์สแกนละหมาด
+        </button>
       </div>
+      `}
 
       <button id="scan-launcher-leave" type="button" class="${cardCls}">
-        <span class="w-11 h-11 rounded-2xl bg-indigo-50 text-2xl flex items-center justify-center flex-shrink-0">📋</span>
+        <span class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
           <span class="block font-extrabold text-gray-800 text-sm">ตรวจใบอนุญาตออกนอกห้อง</span>
           <span class="block text-xs text-gray-400 mt-1">เปิดหน้าเดิมสำหรับสแกน QR ตรวจสถานะใบอนุญาต</span>
@@ -2296,8 +2290,6 @@ async function _openTeacherScanLauncher() {
     navigate('student-leave-scanner')
   })
   body.querySelector('#scan-launcher-prayer-open')?.addEventListener('click', async () => {
-    const loc = body.querySelector('#scan-launcher-prayer-location')?.value || TEACHER_SCAN_LOCATIONS[0].id
-    localStorage.setItem('prayer_scan_active_location', loc)
     close()
     const { renderStudentPrayerScanner } = await import('./student-views.js')
     renderStudentPrayerScanner(_teacher)

@@ -1,5 +1,5 @@
 import { getActiveLeavePermission, closeLeavePermission } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.97'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.98'
 import { formatLeaveCountdown } from './leave-time.js'
 import { showToast } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
@@ -7,6 +7,13 @@ import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-ut
 let html5QrcodeScanner = null
 let scannerTimerInterval = null
 let isProcessingLeaveCheck = false
+
+const CAMERA_ICON_SM = `
+  <svg aria-hidden="true" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 4.5 13 3H8L6.5 4.5H4A2.5 2.5 0 0 0 1.5 7v10A2.5 2.5 0 0 0 4 19.5h16A2.5 2.5 0 0 0 22.5 17V7A2.5 2.5 0 0 0 20 4.5h-5.5Z"/>
+    <circle cx="12" cy="12" r="4"/>
+  </svg>
+`
 
 // ฟังก์ชันสังเคราะห์เสียงแจ้งเตือนความสำเร็จ (Success sound)
 function playSuccessBeep() {
@@ -302,8 +309,9 @@ export async function renderStudentLeaveScanner(teacher) {
 
       <div class="inline-flex flex-wrap gap-1.5 rounded-2xl bg-gray-100 p-1 border border-gray-200">
         <button id="leave-view-scan-tab" type="button"
-          class="px-4 py-2 rounded-xl bg-white text-indigo-700 shadow-sm text-xs font-bold transition">
-          📷 สแกนใบอนุญาต
+          class="px-4 py-2 rounded-xl bg-white text-indigo-700 shadow-sm text-xs font-bold transition flex items-center gap-1.5">
+          ${CAMERA_ICON_SM}
+          <span>สแกนใบอนุญาต</span>
         </button>
         <button id="leave-view-monitor-tab" type="button"
           class="px-4 py-2 rounded-xl text-gray-500 hover:text-gray-700 text-xs font-bold transition">
@@ -315,10 +323,14 @@ export async function renderStudentLeaveScanner(teacher) {
         <!-- สแกนเนอร์กล้อง & ค้นหาด้วยรหัส -->
         <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-4">
         <div class="flex items-center justify-between">
-          <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">📷 กล้องอ่าน QR Code</label>
+          <label class="flex items-center gap-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider">
+            ${CAMERA_ICON_SM}
+            <span>กล้องอ่าน QR Code</span>
+          </label>
           <div class="flex items-center gap-2">
-            <button id="btn-toggle-scanner" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-all">
-              เริ่มใช้งานกล้อง
+            <button id="btn-toggle-scanner" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5">
+              ${CAMERA_ICON_SM}
+              <span>เปิดกล้อง</span>
             </button>
           </div>
         </div>
@@ -344,7 +356,7 @@ export async function renderStudentLeaveScanner(teacher) {
           </div>
 
           <div id="scanner-overlay" class="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <p id="scanner-placeholder-text" class="text-xs text-gray-400 text-center px-6">กดปุ่ม "เริ่มใช้งานกล้อง" หรือป้อนรหัสประจำตัวด้านล่างเพื่อตรวจสอบ</p>
+            <p id="scanner-placeholder-text" class="text-xs text-gray-400 text-center px-6">กดปุ่ม "เปิดกล้อง" หรือป้อนรหัสประจำตัวด้านล่างเพื่อตรวจสอบ</p>
           </div>
         </div>
 
@@ -464,8 +476,8 @@ export async function renderStudentLeaveScanner(teacher) {
       )
 
       isScanning = true
-      toggleScannerBtn.textContent = '⚙️ ปิดกล้อง'
-      toggleScannerBtn.className = 'px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs shadow-md transition-all'
+      toggleScannerBtn.innerHTML = `${CAMERA_ICON_SM}<span>ปิดกล้อง</span>`
+      toggleScannerBtn.className = 'px-3.5 py-2 bg-red-500 hover:bg-red-600 active:scale-[0.98] text-white rounded-2xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5'
       placeholderText.classList.add('hidden')
       if (viewfinder) viewfinder.classList.remove('hidden')
     } catch (err) {
@@ -479,8 +491,8 @@ export async function renderStudentLeaveScanner(teacher) {
     if (html5QrcodeScanner) {
       html5QrcodeScanner.stop().then(() => {
         isScanning = false
-        toggleScannerBtn.textContent = 'เริ่มใช้งานกล้อง'
-        toggleScannerBtn.className = 'px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-all'
+        toggleScannerBtn.innerHTML = `${CAMERA_ICON_SM}<span>เปิดกล้อง</span>`
+        toggleScannerBtn.className = 'px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white rounded-2xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5'
         placeholderText.textContent = 'กล้องถูกปิดใช้งานแล้ว'
         placeholderText.classList.remove('hidden')
         const viewfinder = document.getElementById('scanner-viewfinder')

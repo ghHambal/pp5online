@@ -21,6 +21,20 @@ import {
   READING_GRADES, _readingGrade,
 } from './teacher-views-utils.js'
 
+const CAMERA_ICON_SM = `
+  <svg aria-hidden="true" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 4.5 13 3H8L6.5 4.5H4A2.5 2.5 0 0 0 1.5 7v10A2.5 2.5 0 0 0 4 19.5h16A2.5 2.5 0 0 0 22.5 17V7A2.5 2.5 0 0 0 20 4.5h-5.5Z"/>
+    <circle cx="12" cy="12" r="4"/>
+  </svg>
+`
+
+const CAMERA_ICON_MD = `
+  <svg aria-hidden="true" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 4.5 13 3H8L6.5 4.5H4A2.5 2.5 0 0 0 1.5 7v10A2.5 2.5 0 0 0 4 19.5h16A2.5 2.5 0 0 0 22.5 17V7A2.5 2.5 0 0 0 20 4.5h-5.5Z"/>
+    <circle cx="12" cy="12" r="4"/>
+  </svg>
+`
+
 export async function renderAttendanceGrid(teacher, classData) {
   setActiveNav('attendance')
   setTitle('เช็คชื่อ', 'attendance')
@@ -1128,7 +1142,10 @@ export async function openAttendanceScanSetup(teacher) {
     <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
       <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
-          <h3 class="font-extrabold text-gray-800 text-base">📷 สแกน QR เช็คชื่อ</h3>
+          <h3 class="font-extrabold text-gray-800 text-base flex items-center gap-2">
+            <span class="w-8 h-8 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">${CAMERA_ICON_MD}</span>
+            <span>สแกน QR เช็คชื่อ</span>
+          </h3>
           <p class="text-xs text-gray-400 mt-0.5">เลือกห้องและคาบ แล้วระบบจะเปิดฟอร์มเช็คชื่อเดิมพร้อมกล้องสแกน</p>
         </div>
         <button id="att-scan-setup-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
@@ -1171,8 +1188,9 @@ export async function openAttendanceScanSetup(teacher) {
           </select>
         </div>
         <div id="att-scan-session-hint" class="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2"></div>
-        <button id="att-scan-start" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold shadow-md transition">
-          เปิดฟอร์มและเริ่มสแกน
+        <button id="att-scan-start" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-sm font-extrabold shadow-md transition flex items-center justify-center gap-2">
+          ${CAMERA_ICON_SM}
+          <span>เปิดฟอร์มและเริ่มสแกน</span>
         </button>
       </div>
     `
@@ -1218,7 +1236,7 @@ export async function openAttendanceScanSetup(teacher) {
       }
       const btn = body.querySelector('#att-scan-start')
       btn.disabled = true
-      btn.textContent = 'กำลังเปิดฟอร์ม...'
+        btn.textContent = 'กำลังเปิดฟอร์ม...'
       try {
         close()
         await _openAttendanceModalForSession(teacher, cls, sessN, { autoOpenScanner: true })
@@ -1226,7 +1244,7 @@ export async function openAttendanceScanSetup(teacher) {
         showToast(err.message || 'เปิดสแกนเช็คชื่อไม่สำเร็จ', 'error')
       } finally {
         btn.disabled = false
-        btn.textContent = 'เปิดฟอร์มและเริ่มสแกน'
+        btn.innerHTML = `${CAMERA_ICON_SM}<span>เปิดฟอร์มและเริ่มสแกน</span>`
       }
     })
   } catch (err) {
@@ -1259,10 +1277,11 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
           <button id="btn-att-scan-qr"
-            class="text-xs px-2.5 py-1.5 bg-indigo-600 text-white rounded-lg
-                   font-medium flex items-center gap-1 hover:bg-indigo-700 transition"
+            class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-xl
+                   font-bold flex items-center gap-1.5 hover:bg-slate-800 active:scale-[0.98] transition shadow-sm"
             title="สแกน QR Code ของนักเรียนเพื่อเช็คชื่อ">
-            📷 สแกน QR
+            ${CAMERA_ICON_SM}
+            <span>สแกน QR</span>
           </button>
           ${hasMulti ? `
           <!-- Toggle ทุกคาบ (ปุ่มสี) -->
@@ -1476,7 +1495,10 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
         <!-- Header -->
         <div class="flex items-center justify-between mb-4">
           <div>
-            <h4 class="font-bold text-sm">📷 กล้องสแกนเช็คชื่อ</h4>
+            <h4 class="font-bold text-sm flex items-center gap-2">
+              ${CAMERA_ICON_MD}
+              <span>กล้องสแกนเช็คชื่อ</span>
+            </h4>
             <p class="text-xs text-slate-400">เล็งกล้องไปที่ QR Code ของนักเรียน</p>
           </div>
           <button id="btn-close-att-scanner" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center font-bold">✕</button>
@@ -1673,7 +1695,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
 
     } catch (err) {
       console.error('Attendance QR scanner initialization failed:', err)
-      showToast('ไม่สามารถเริ่มใช้งานกล้องได้: ' + err.message, 'error')
+      showToast('ไม่สามารถเปิดกล้องได้: ' + err.message, 'error')
       overlay.remove()
     }
   })
@@ -2814,8 +2836,9 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
         <p class="text-5xl mb-4">🕌</p>
         <p class="font-medium text-gray-700">ไม่มีห้องที่ปรึกษา (ศาสนา) ที่รับผิดชอบ</p>
         <p class="text-sm text-gray-400 mt-2 mb-6">แต่คุณได้รับสิทธิ์ในการสแกนบันทึกเวลาละหมาดของนักเรียน</p>
-        <button id="btn-open-scanner-direct" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex items-center gap-2 mx-auto">
-          📷 เปิดกล้องสแกน
+        <button id="btn-open-scanner-direct" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold rounded-2xl shadow-lg transition flex items-center gap-2 mx-auto">
+          ${CAMERA_ICON_MD}
+          <span>เปิดกล้องสแกน</span>
         </button>
       </div>`)
       document.getElementById('btn-open-scanner-direct')?.addEventListener('click', async () => {
@@ -2902,8 +2925,9 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
           👁️ Monitor
         </button>
         ${isAllowedScanner ? `
-        <button id="btn-prayer-scanner" class="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg font-bold hover:bg-emerald-700 transition flex items-center gap-1 shadow-sm">
-          📷 สแกนละหมาด
+        <button id="btn-prayer-scanner" class="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-xl font-bold hover:bg-emerald-700 active:scale-[0.98] transition flex items-center gap-1.5 shadow-sm">
+          ${CAMERA_ICON_SM}
+          <span>สแกนละหมาด</span>
         </button>
         ` : ''}
       </div>

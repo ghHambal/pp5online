@@ -21,7 +21,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.17.97'
+import { APP_VERSION } from './version.js?v=10.17.98'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
