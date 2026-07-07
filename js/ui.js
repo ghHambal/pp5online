@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.3'
+import { APP_VERSION } from './version.js?v=10.18.4'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.4': [
+    '✨ เปลี่ยนไอคอนเมนูเลือกงานสแกนเป็นอิโมจิแยกตามงาน: เช็คชื่อ ละหมาด และใบอนุญาตออกนอกห้อง'
+  ],
   '10.18.3': [
     '🎨 ปรับเมนูเลือกงานสแกนให้แต่ละปุ่มใช้สีสดแยกกันชัดเจน โดยปุ่มสแกนละหมาดใช้สีเขียว'
   ],
