@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.18.0'
+import { APP_VERSION } from './version.js?v=10.18.1'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -195,7 +195,7 @@ const ROUTES = {
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.18.0').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.18.1').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
@@ -2197,9 +2197,9 @@ async function _openTeacherScanLauncher() {
 
   const modal = document.createElement('div')
   modal.id = 'teacher-scan-launcher'
-  modal.className = 'fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/50 p-4'
+  modal.className = 'fixed inset-0 z-[180] flex items-center justify-center bg-black/50 p-4'
   modal.innerHTML = `
-    <div class="bg-white w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+    <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
       <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
           <h3 class="font-extrabold text-gray-800 text-base flex items-center gap-2">
@@ -2238,10 +2238,10 @@ async function _openTeacherScanLauncher() {
     })(),
   ])
   const canPrayerScan = _teacherHasPrayerScannerPermission(cfg, profileRes?.data?.role ?? null)
-  const cardBaseCls = 'group w-full text-left rounded-3xl border p-4 flex gap-3 items-start hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition shadow-[0_12px_28px_rgba(15,23,42,0.08)]'
-  const attendanceCardCls = `${cardBaseCls} border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 hover:shadow-[0_18px_38px_rgba(16,185,129,0.20)]`
-  const prayerCardCls = `${cardBaseCls} border-amber-200/80 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 hover:shadow-[0_18px_38px_rgba(217,119,6,0.18)]`
-  const leaveCardCls = `${cardBaseCls} border-indigo-200/80 bg-gradient-to-br from-indigo-50 via-violet-50 to-sky-50 hover:shadow-[0_18px_38px_rgba(79,70,229,0.18)]`
+  const cardBaseCls = 'group w-full text-left rounded-3xl border p-4 flex gap-3 items-start hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition shadow-[0_14px_30px_rgba(15,23,42,0.10)]'
+  const attendanceCardCls = `${cardBaseCls} border-emerald-300 bg-gradient-to-br from-emerald-100 via-teal-100 to-cyan-200 hover:shadow-[0_20px_42px_rgba(16,185,129,0.28)]`
+  const prayerCardCls = `${cardBaseCls} border-amber-300 bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-200 hover:shadow-[0_20px_42px_rgba(217,119,6,0.26)]`
+  const leaveCardCls = `${cardBaseCls} border-indigo-300 bg-gradient-to-br from-indigo-100 via-violet-100 to-sky-200 hover:shadow-[0_20px_42px_rgba(79,70,229,0.26)]`
   body.innerHTML = `
     <div class="space-y-3">
       <button id="scan-launcher-attendance" type="button" class="${attendanceCardCls}">
@@ -2261,7 +2261,7 @@ async function _openTeacherScanLauncher() {
         </span>
       </button>
       ` : `
-      <div class="rounded-3xl border border-amber-200/80 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 p-4 space-y-3 shadow-[0_12px_28px_rgba(217,119,6,0.10)]">
+      <div class="rounded-3xl border border-amber-300 bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-200 p-4 space-y-3 shadow-[0_14px_30px_rgba(217,119,6,0.16)]">
         <div class="flex gap-3 items-start">
           <span class="${SCAN_CARD_ICON_CLASS} text-amber-700">${CAMERA_ICON_SVG}</span>
           <span class="min-w-0 flex-1">
