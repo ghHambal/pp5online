@@ -2224,7 +2224,13 @@ async function _openTeacherScanLauncher() {
   const body = modal.querySelector('#scan-launcher-body')
   const [cfg, profileRes] = await Promise.all([
     getSystemConfig().catch(() => ({})),
-    supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle().catch(() => ({ data: null })),
+    (async () => {
+      try {
+        return await supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle()
+      } catch {
+        return { data: null }
+      }
+    })(),
   ])
   const canPrayerScan = _teacherHasPrayerScannerPermission(cfg, profileRes?.data?.role ?? null)
   const savedLocation = localStorage.getItem('prayer_scan_active_location')
