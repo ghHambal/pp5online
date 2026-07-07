@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.17.98'
+import { APP_VERSION } from './version.js?v=10.17.99'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -195,7 +195,7 @@ const ROUTES = {
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.17.98').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.17.99').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
@@ -2177,6 +2177,8 @@ const CAMERA_ICON_SVG = `
   </svg>
 `
 
+const SCAN_CARD_ICON_CLASS = 'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-[0_10px_20px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.55)] ring-1 ring-white/60'
+
 function _teacherHasPrayerScannerPermission(cfg, profileRole = null) {
   if (!_teacher) return false
   const teacherCodes = (cfg.prayerScannerTeachers || '')
@@ -2201,8 +2203,8 @@ async function _openTeacherScanLauncher() {
       <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
           <h3 class="font-extrabold text-gray-800 text-base flex items-center gap-2">
-            <span class="w-8 h-8 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">${CAMERA_ICON_SVG}</span>
-            <span>ศูนย์สแกนครู</span>
+            <span class="w-9 h-9 rounded-2xl text-white bg-gradient-to-br from-emerald-400 via-emerald-600 to-teal-700 flex items-center justify-center shadow-[0_10px_24px_rgba(5,150,105,0.30),inset_0_1px_0_rgba(255,255,255,0.35)]">${CAMERA_ICON_SVG}</span>
+            <span>เลือกงานสแกน</span>
           </h3>
           <p class="text-xs text-gray-400 mt-0.5">เปิดกล้องสำหรับงานประจำวันจากจุดเดียว</p>
         </div>
@@ -2236,11 +2238,11 @@ async function _openTeacherScanLauncher() {
     })(),
   ])
   const canPrayerScan = _teacherHasPrayerScannerPermission(cfg, profileRes?.data?.role ?? null)
-  const cardCls = 'w-full text-left rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 active:scale-[0.99] transition p-4 flex gap-3 items-start'
+  const cardCls = 'group w-full text-left rounded-3xl border border-white/80 bg-gradient-to-br from-white via-white to-slate-50 hover:-translate-y-0.5 hover:shadow-[0_18px_35px_rgba(15,23,42,0.10)] active:translate-y-0 active:scale-[0.99] transition p-4 flex gap-3 items-start shadow-[0_8px_24px_rgba(15,23,42,0.06)]'
   body.innerHTML = `
     <div class="space-y-3">
       <button id="scan-launcher-attendance" type="button" class="${cardCls}">
-        <span class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
+        <span class="${SCAN_CARD_ICON_CLASS} text-emerald-700 bg-gradient-to-br from-emerald-50 via-white to-emerald-100 group-hover:shadow-[0_14px_26px_rgba(16,185,129,0.22),inset_0_1px_0_rgba(255,255,255,0.70)]">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
           <span class="block font-extrabold text-gray-800 text-sm">สแกน QR เช็คชื่อ</span>
           <span class="block text-xs text-gray-400 mt-1">เลือกห้องและคาบ ระบบจะโหลดข้อมูลเดิม แล้วเปิดกล้องสแกน</span>
@@ -2249,7 +2251,7 @@ async function _openTeacherScanLauncher() {
 
       ${canPrayerScan ? `
       <button id="scan-launcher-prayer-open" type="button" class="${cardCls}">
-        <span class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
+        <span class="${SCAN_CARD_ICON_CLASS} text-amber-700 bg-gradient-to-br from-amber-50 via-white to-orange-100 group-hover:shadow-[0_14px_26px_rgba(217,119,6,0.22),inset_0_1px_0_rgba(255,255,255,0.70)]">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
           <span class="block font-extrabold text-gray-800 text-sm">สแกนละหมาด</span>
           <span class="block text-xs text-gray-400 mt-1">เปิดระบบสแกน แล้วเลือกจุด/บริเวณในหน้าถัดไป</span>
@@ -2258,7 +2260,7 @@ async function _openTeacherScanLauncher() {
       ` : `
       <div class="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
         <div class="flex gap-3 items-start">
-          <span class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
+          <span class="${SCAN_CARD_ICON_CLASS} text-amber-700 bg-gradient-to-br from-amber-50 via-white to-orange-100">${CAMERA_ICON_SVG}</span>
           <span class="min-w-0 flex-1">
             <span class="block font-extrabold text-gray-800 text-sm">สแกนละหมาด</span>
             <span class="block text-xs text-gray-400 mt-1">ต้องได้รับสิทธิ์สแกนจากแอดมินก่อนใช้งาน</span>
@@ -2271,7 +2273,7 @@ async function _openTeacherScanLauncher() {
       `}
 
       <button id="scan-launcher-leave" type="button" class="${cardCls}">
-        <span class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center flex-shrink-0">${CAMERA_ICON_SVG}</span>
+        <span class="${SCAN_CARD_ICON_CLASS} text-indigo-700 bg-gradient-to-br from-indigo-50 via-white to-violet-100 group-hover:shadow-[0_14px_26px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,0.70)]">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
           <span class="block font-extrabold text-gray-800 text-sm">ตรวจใบอนุญาตออกนอกห้อง</span>
           <span class="block text-xs text-gray-400 mt-1">เปิดหน้าเดิมสำหรับสแกน QR ตรวจสถานะใบอนุญาต</span>

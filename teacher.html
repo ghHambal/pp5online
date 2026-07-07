@@ -214,14 +214,17 @@
       </div>
       <div class="flex items-center gap-3">
         <button id="btn-quick-leave-scanner"
-          title="เปิดศูนย์สแกนครู"
-          class="h-10 px-3 flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-white
-                 hover:bg-emerald-700 active:scale-[0.98] transition shadow-sm text-xs font-bold">
-          <svg aria-hidden="true" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          title="เปิดเมนูสแกน"
+          class="relative w-11 h-11 flex items-center justify-center rounded-2xl text-white
+                 bg-gradient-to-br from-emerald-400 via-emerald-600 to-teal-700
+                 shadow-[0_10px_24px_rgba(5,150,105,0.36),inset_0_1px_0_rgba(255,255,255,0.35)]
+                 ring-1 ring-white/40 hover:shadow-[0_14px_30px_rgba(5,150,105,0.46),inset_0_1px_0_rgba(255,255,255,0.45)]
+                 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.96] transition">
+          <span class="absolute top-1 left-1.5 w-4 h-4 rounded-full bg-white/25 blur-[2px]"></span>
+          <svg aria-hidden="true" class="relative w-5 h-5 drop-shadow-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14.5 4.5 13 3H8L6.5 4.5H4A2.5 2.5 0 0 0 1.5 7v10A2.5 2.5 0 0 0 4 19.5h16A2.5 2.5 0 0 0 22.5 17V7A2.5 2.5 0 0 0 20 4.5h-5.5Z"/>
             <circle cx="12" cy="12" r="4"/>
           </svg>
-          <span class="hidden sm:inline">สแกน</span>
         </button>
         <button id="btn-refresh"
           onclick="window._refreshCurrentView && window._refreshCurrentView()"
@@ -263,7 +266,7 @@
   </div>
 
   <!-- Scripts -->
-  <script type="module" src="js/teacher.js?v=202607071706"></script>
+  <script type="module" src="js/teacher.js?v=202607071714"></script>
 
 </body>
 </html>
