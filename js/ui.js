@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.95'
+import { APP_VERSION } from './version.js?v=10.17.96'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.96': [
+    '🖨️ ปรับหน้าพิมพ์ QR Code รายบุคคลให้กรอกรหัสนักเรียนหลายคนพร้อมกันได้ พร้อมตรวจรหัสที่ไม่พบและไม่แสดงหัวชั้นเรียนบนกระดาษพิมพ์รายบุคคล'
+  ],
   '10.17.95': [
     '📊 เพิ่มแดชบอร์ดแนวโน้มละหมาดในศูนย์ติดตามสาธารณะ แสดงยอดผู้ละหมาด แนวโน้มรายวัน จุดละหมาด และการทำหน้าที่ของแกนนำ'
   ],

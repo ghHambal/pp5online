@@ -4580,10 +4580,11 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     let filterGender = 'all'
     let individualRepeat = parseInt(localStorage.getItem('qr_print_individual_repeat') || '4')
     if (!Number.isFinite(individualRepeat) || individualRepeat < 1) individualRepeat = 4
-    let selectedIndividualStudentId = ''
+    let selectedIndividualStudentIds = []
+    let lastIndividualMissingCodes = []
 
     const refreshPreview = () => {
-      if (currentViewMode === 'individual' && selectedIndividualStudentId) {
+      if (currentViewMode === 'individual' && selectedIndividualStudentIds.length > 0) {
         _drawIndividualPreview()
       } else if (currentViewMode === 'class' && selectedClassId) {
         _loadRosterAndDraw()
@@ -4623,7 +4624,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h4 class="font-bold text-gray-800 text-sm">👤 พิมพ์ / บันทึก QR รายบุคคล</h4>
-                <p class="text-xs text-gray-400 mt-0.5">ใช้กรณีนักเรียนทำหาย ค้นหานักเรียนแล้วพิมพ์ซ้ำได้หลายใบในหน้าเดียว</p>
+                <p class="text-xs text-gray-400 mt-0.5">ใช้กรณีนักเรียนทำหาย ค้นหาทีละคนหรือกรอกรหัสหลายคน แล้วพิมพ์รวมในหน้าเดียว</p>
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-xs text-gray-500 font-semibold">จำนวนซ้ำ:</span>
@@ -4638,10 +4639,24 @@ export async function renderStudentQRPrint(teacher, classId = null) {
                 placeholder="ค้นหาด้วยรหัสนักเรียน ชื่อ-สกุล หรือห้องเรียน..." />
               <button id="qr-individual-clear" type="button"
                 class="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs transition">
-                ล้าง
+                ล้างทั้งหมด
               </button>
             </div>
             <div id="qr-individual-results" class="hidden border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100"></div>
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">กรอกรหัสหลายคน</label>
+              <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+                <textarea id="qr-individual-code-bulk" rows="3"
+                  class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:border-indigo-500 transition resize-y font-mono"
+                  placeholder="เช่น 23001 23005 23018&#10;หรือ 23020, 23021"></textarea>
+                <button id="qr-individual-add-codes" type="button"
+                  class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition self-stretch">
+                  เพิ่มจากรหัส
+                </button>
+              </div>
+              <p class="text-[11px] text-gray-400">คั่นรหัสด้วยเว้นวรรค ลูกน้ำ หรือขึ้นบรรทัดใหม่ ระบบจะตัดรหัสซ้ำให้อัตโนมัติ</p>
+            </div>
+            <div id="qr-individual-selected" class="hidden border border-indigo-100 rounded-2xl overflow-hidden"></div>
           </div>
 
           <!-- ตัวกรองห้องเรียน -->
@@ -4738,21 +4753,53 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       const individualResults = document.getElementById('qr-individual-results')
       const individualRepeatInput = document.getElementById('qr-individual-repeat')
       const individualClearBtn = document.getElementById('qr-individual-clear')
+      const individualCodeBulk = document.getElementById('qr-individual-code-bulk')
+      const individualAddCodesBtn = document.getElementById('qr-individual-add-codes')
 
       // Bind Settings Card Events
       individualSearch.addEventListener('input', () => _renderIndividualResults(individualSearch.value.trim()))
       individualClearBtn.addEventListener('click', () => {
-        selectedIndividualStudentId = ''
+        selectedIndividualStudentIds = []
+        lastIndividualMissingCodes = []
         currentViewMode = null
         individualSearch.value = ''
+        individualCodeBulk.value = ''
         individualResults.classList.add('hidden')
+        _renderIndividualSelected()
         document.getElementById('qr-preview-section')?.classList.add('hidden')
+      })
+      individualAddCodesBtn.addEventListener('click', () => {
+        const codes = _parseIndividualCodes(individualCodeBulk.value)
+        if (!codes.length) {
+          showToast('กรุณากรอกรหัสนักเรียนอย่างน้อย 1 รหัส', 'warning')
+          return
+        }
+
+        const byCode = new Map(allStudents.map(s => [String(s.student_code || '').trim(), s]))
+        const matchedStudents = []
+        const missingCodes = []
+        for (const code of codes) {
+          const student = byCode.get(code)
+          if (student) matchedStudents.push(student)
+          else missingCodes.push(code)
+        }
+
+        lastIndividualMissingCodes = missingCodes
+        if (matchedStudents.length > 0) {
+          _addIndividualStudents(matchedStudents)
+          individualCodeBulk.value = missingCodes.join('\n')
+          showToast(`เพิ่มรายชื่อสำหรับพิมพ์ ${matchedStudents.length} คน`, 'success')
+        } else {
+          _renderIndividualSelected()
+          showToast('ไม่พบรหัสนักเรียนที่ระบุ', 'warning')
+        }
       })
       individualRepeatInput.addEventListener('change', () => {
         const nextRepeat = Math.max(1, Math.min(40, parseInt(individualRepeatInput.value) || 4))
         individualRepeat = nextRepeat
         individualRepeatInput.value = String(nextRepeat)
         localStorage.setItem('qr_print_individual_repeat', String(individualRepeat))
+        _renderIndividualSelected()
         refreshPreview()
       })
       document.getElementById('show-seat').addEventListener('change', (e) => {
@@ -4873,9 +4920,107 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       return idx >= 0 ? idx + 1 : ''
     }
 
-    const _findIndividualStudent = () => {
-      if (!selectedIndividualStudentId) return null
-      return allStudents.find(s => String(s.id) === String(selectedIndividualStudentId)) || null
+    const _getSelectedIndividualStudents = () => {
+      const byId = new Map(allStudents.map(s => [String(s.id), s]))
+      return selectedIndividualStudentIds.map(id => byId.get(String(id))).filter(Boolean)
+    }
+
+    const _parseIndividualCodes = (raw) => {
+      const seen = new Set()
+      return String(raw || '')
+        .split(/[\s,，;；|]+/)
+        .map(code => code.trim())
+        .filter(Boolean)
+        .filter(code => {
+          if (seen.has(code)) return false
+          seen.add(code)
+          return true
+        })
+    }
+
+    const _addIndividualStudents = (students) => {
+      const nextIds = [...selectedIndividualStudentIds]
+      const seen = new Set(nextIds.map(String))
+      for (const student of students) {
+        const id = String(student.id)
+        if (!seen.has(id)) {
+          seen.add(id)
+          nextIds.push(id)
+        }
+      }
+      selectedIndividualStudentIds = nextIds
+      currentViewMode = selectedIndividualStudentIds.length > 0 ? 'individual' : null
+      _renderIndividualSelected()
+      if (selectedIndividualStudentIds.length > 0) _drawIndividualPreview()
+    }
+
+    const _renderIndividualSelected = () => {
+      const selectedEl = document.getElementById('qr-individual-selected')
+      if (!selectedEl) return
+      const selectedStudents = _getSelectedIndividualStudents()
+
+      if (selectedStudents.length === 0 && lastIndividualMissingCodes.length === 0) {
+        selectedEl.classList.add('hidden')
+        selectedEl.innerHTML = ''
+        return
+      }
+
+      const totalCards = selectedStudents.length * individualRepeat
+      selectedEl.classList.remove('hidden')
+      selectedEl.innerHTML = `
+        ${selectedStudents.length > 0 ? `
+          <div class="bg-indigo-50 px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-bold text-indigo-900">รายการที่เลือก ${selectedStudents.length} คน</p>
+              <p class="text-[11px] text-indigo-700 mt-0.5">พิมพ์รวม ${totalCards} ใบ เมื่อใช้จำนวนซ้ำ ${individualRepeat} ใบ/คน</p>
+            </div>
+            <button type="button" id="qr-individual-clear-selected"
+              class="px-3 py-1.5 rounded-lg bg-white border border-indigo-100 text-indigo-700 hover:bg-indigo-100 text-xs font-bold">
+              ล้างรายชื่อ
+            </button>
+          </div>
+          <div class="divide-y divide-indigo-50 bg-white">
+            ${selectedStudents.map(student => {
+              const roomName = student.main_room || student.religion_room || 'ไม่ระบุห้อง'
+              return `
+                <div class="px-4 py-3 flex items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-sm font-bold text-gray-800 truncate">${_htmlEsc(student.full_name || 'ไม่ระบุชื่อ')}</p>
+                    <p class="text-xs text-gray-400 font-mono truncate">${_htmlEsc(student.student_code || '-')} · ${_htmlEsc(roomName)}</p>
+                  </div>
+                  <button type="button" data-remove-id="${student.id}"
+                    class="qr-individual-remove px-3 py-1.5 rounded-lg bg-gray-50 hover:bg-red-50 text-gray-500 hover:text-red-600 text-xs font-bold">
+                    ลบ
+                  </button>
+                </div>
+              `
+            }).join('')}
+          </div>
+        ` : ''}
+        ${lastIndividualMissingCodes.length > 0 ? `
+          <div class="bg-amber-50 border-t border-amber-100 px-4 py-3">
+            <p class="text-xs font-bold text-amber-800">ไม่พบรหัส ${lastIndividualMissingCodes.length} รายการ</p>
+            <p class="text-[11px] text-amber-700 font-mono mt-1 break-words">${_htmlEsc(lastIndividualMissingCodes.join(', '))}</p>
+          </div>
+        ` : ''}
+      `
+
+      selectedEl.querySelector('#qr-individual-clear-selected')?.addEventListener('click', () => {
+        selectedIndividualStudentIds = []
+        lastIndividualMissingCodes = []
+        currentViewMode = null
+        _renderIndividualSelected()
+        document.getElementById('qr-preview-section')?.classList.add('hidden')
+      })
+      selectedEl.querySelectorAll('.qr-individual-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedIndividualStudentIds = selectedIndividualStudentIds.filter(id => String(id) !== String(btn.dataset.removeId))
+          currentViewMode = selectedIndividualStudentIds.length > 0 ? 'individual' : null
+          _renderIndividualSelected()
+          if (selectedIndividualStudentIds.length > 0) _drawIndividualPreview()
+          else document.getElementById('qr-preview-section')?.classList.add('hidden')
+        })
+      })
     }
 
     const _individualSearchText = (student) => [
@@ -4915,20 +5060,22 @@ export async function renderStudentQRPrint(teacher, classId = null) {
               <span class="block text-sm font-bold text-gray-800 truncate">${_htmlEsc(student.full_name || 'ไม่ระบุชื่อ')}</span>
               <span class="block text-xs text-gray-400 font-mono truncate">${_htmlEsc(student.student_code || '-')} · ${_htmlEsc(roomName)}</span>
             </span>
-            <span class="text-xs font-bold text-indigo-600 flex-shrink-0">เลือก</span>
+            <span class="text-xs font-bold text-indigo-600 flex-shrink-0">${selectedIndividualStudentIds.includes(String(student.id)) ? 'เพิ่มแล้ว' : 'เพิ่ม'}</span>
           </button>
         `
       }).join('')
 
       resultEl.querySelectorAll('.qr-individual-pick').forEach(btn => {
         btn.addEventListener('click', () => {
-          selectedIndividualStudentId = btn.dataset.studentId || ''
-          currentViewMode = 'individual'
-          resultEl.classList.add('hidden')
-          const student = _findIndividualStudent()
+          const studentId = btn.dataset.studentId || ''
+          const student = allStudents.find(s => String(s.id) === String(studentId))
           const searchEl = document.getElementById('qr-individual-search')
-          if (searchEl && student) searchEl.value = `${student.student_code || ''} ${student.full_name || ''}`.trim()
-          _drawIndividualPreview()
+          if (student) {
+            lastIndividualMissingCodes = []
+            _addIndividualStudents([student])
+          }
+          resultEl.classList.add('hidden')
+          if (searchEl) searchEl.value = ''
         })
       })
     }
@@ -4950,25 +5097,30 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
     const _drawIndividualPreview = async () => {
       const previewSec = document.getElementById('qr-preview-section')
-      const student = _findIndividualStudent()
-      if (!previewSec || !student) return
+      const selectedStudents = _getSelectedIndividualStudents()
+      if (!previewSec || selectedStudents.length === 0) return
       currentViewMode = 'individual'
       previewSec.classList.remove('hidden')
 
-      const roomName = _roomForIndividualStudent(student)
-      const seatNo = _seatNoForIndividualStudent(student)
-      const repeatStudents = Array.from({ length: individualRepeat }, (_, idx) => ({
-        ...student,
-        seat_no: seatNo,
-        _print_copy: idx + 1
-      }))
+      const repeatStudents = selectedStudents.flatMap(student => {
+        const roomName = _roomForIndividualStudent(student)
+        const seatNo = _seatNoForIndividualStudent(student)
+        return Array.from({ length: individualRepeat }, (_, idx) => ({
+          ...student,
+          seat_no: seatNo,
+          _roomName: roomName,
+          _print_copy: idx + 1
+        }))
+      })
+      const firstStudent = selectedStudents[0]
+      const totalCards = repeatStudents.length
 
       previewSec.innerHTML = `
         <div class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-800 leading-relaxed flex items-start gap-2">
           <span class="text-base">💡</span>
           <div>
             <p class="font-bold">พิมพ์รายบุคคลสำหรับกรณี QR Code หาย</p>
-            <p class="opacity-90">ค่าเริ่มต้นวางซ้ำ ${individualRepeat} ใบในหน้าเดียว สามารถเพิ่ม/ลดจำนวนซ้ำด้านบน แล้วกดพิมพ์หรือบันทึกเป็น PDF ได้ทันที</p>
+            <p class="opacity-90">เลือกไว้ ${selectedStudents.length} คน วางซ้ำ ${individualRepeat} ใบ/คน รวม ${totalCards} ใบ และตอนพิมพ์จะไม่ใส่หัวกระดาษชื่อชั้นเรียน</p>
           </div>
         </div>
 
@@ -4976,16 +5128,18 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">รายบุคคล</p>
-              <h4 class="font-extrabold text-gray-800 text-base mt-1">${_htmlEsc(student.full_name || 'ไม่ระบุชื่อ')}</h4>
-              <p class="text-xs text-gray-400 font-mono mt-0.5">${_htmlEsc(student.student_code || '-')} · ${_htmlEsc(roomName)}${seatNo ? ` · เลขที่ ${seatNo}` : ''}</p>
+              <h4 class="font-extrabold text-gray-800 text-base mt-1">${selectedStudents.length === 1 ? _htmlEsc(firstStudent.full_name || 'ไม่ระบุชื่อ') : `พร้อมพิมพ์ ${selectedStudents.length} คน`}</h4>
+              <p class="text-xs text-gray-400 font-mono mt-0.5">${selectedStudents.length === 1 ? _htmlEsc(firstStudent.student_code || '-') : `รวม ${totalCards} ใบ`}</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button id="btn-print-individual-qr" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">
-                🖨️ พิมพ์ / บันทึก PDF (${individualRepeat} ใบ)
+                🖨️ พิมพ์ / บันทึก PDF (${totalCards} ใบ)
               </button>
-              <button id="btn-download-individual-qr" class="px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-950 text-white font-bold text-xs shadow-md transition">
-                ⬇️ ดาวน์โหลด PNG
-              </button>
+              ${selectedStudents.length === 1 ? `
+                <button id="btn-download-individual-qr" class="px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-950 text-white font-bold text-xs shadow-md transition">
+                  ⬇️ ดาวน์โหลด PNG
+                </button>
+              ` : ''}
             </div>
           </div>
           <div class="grid gap-3 p-4 border border-dashed border-gray-200 bg-gray-50/50 rounded-3xl" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr));">
@@ -4998,8 +5152,8 @@ export async function renderStudentQRPrint(teacher, classId = null) {
                   <p class="text-[11px] font-bold text-gray-800 truncate">${_htmlEsc(copy.full_name)}</p>
                   ${showCode ? `<p class="text-[9px] text-gray-400 mt-0.5">รหัส: ${_htmlEsc(copy.student_code || '-')}</p>` : ''}
                   <div class="flex items-center justify-between mt-1 text-[9px] text-gray-400">
-                    ${showRoom ? `<span>ห้อง: ${_htmlEsc(roomName)}</span>` : ''}
-                    ${showSeat && seatNo ? `<span>เลขที่: ${seatNo}</span>` : ''}
+                    ${showRoom ? `<span>ห้อง: ${_htmlEsc(copy._roomName)}</span>` : ''}
+                    ${showSeat && copy.seat_no ? `<span>เลขที่: ${copy.seat_no}</span>` : ''}
                   </div>
                 </div>
               </div>
@@ -5021,13 +5175,14 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
       document.getElementById('btn-print-individual-qr')?.addEventListener('click', async () => {
         await _executePrint([{
-          className: roomName,
-          countLabel: `${individualRepeat} ใบ`,
-          students: repeatStudents
+          className: 'รายบุคคล',
+          countLabel: `${selectedStudents.length} คน · ${totalCards} ใบ`,
+          students: repeatStudents,
+          hideHeader: true
         }], cols, showCode, showSeat, showRoom)
       })
       document.getElementById('btn-download-individual-qr')?.addEventListener('click', async () => {
-        await _downloadIndividualQR(student)
+        await _downloadIndividualQR(firstStudent)
       })
     }
 
@@ -5211,7 +5366,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     }
 
     // ─── ฟังก์ชันสร้าง Print Area และเรียก window.print() ─────────────────────
-    // rooms = [{ className, students }]
+    // rooms = [{ className, students, countLabel?, hideHeader? }]
     const _executePrint = async (rooms, cols, showCode, showSeat, showRoom) => {
       // ฉีด @media print style
       let styleEl = document.getElementById('qr-print-media-styles')
@@ -5285,10 +5440,12 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
       printArea.innerHTML = rooms.map((room, roomIdx) => `
         <div class="print-room-block" style="padding: ${roomIdx === 0 ? '0' : '0'}; margin: 0;">
-          <div class="print-room-header">
-            <span>📋 ห้องเรียน: ${_htmlEsc(room.className)}</span>
-            <span style="font-size: 11px; font-weight: normal; color: #6b7280;">${_htmlEsc(room.countLabel || `${room.students.length} คน`)}</span>
-          </div>
+          ${room.hideHeader ? '' : `
+            <div class="print-room-header">
+              <span>📋 ห้องเรียน: ${_htmlEsc(room.className)}</span>
+              <span style="font-size: 11px; font-weight: normal; color: #6b7280;">${_htmlEsc(room.countLabel || `${room.students.length} คน`)}</span>
+            </div>
+          `}
           <div class="print-grid">
             ${room.students.map((student, studentIdx) => `
               <div class="qr-print-card">
@@ -5299,7 +5456,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
                   <p style="font-weight: bold; color: black; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${_htmlEsc(student.full_name)}</p>
                   ${showCode ? `<p style="color: #4b5563; margin: 2px 0 0 0; font-size: 9px;">รหัส: ${_htmlEsc(student.student_code || '-')}</p>` : ''}
                   <div style="display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: #4b5563;">
-                    ${showRoom ? `<span>ห้อง: ${_htmlEsc(room.className)}</span>` : ''}
+                    ${showRoom ? `<span>ห้อง: ${_htmlEsc(student._roomName || room.className)}</span>` : ''}
                     ${showSeat ? `<span>เลขที่: ${student.seat_no}</span>` : ''}
                   </div>
                 </div>

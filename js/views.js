@@ -31,7 +31,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.95'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.17.96'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
