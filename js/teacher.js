@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.18.2'
+import { APP_VERSION } from './version.js?v=10.18.3'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -195,7 +195,7 @@ const ROUTES = {
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.18.2').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.18.3').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
@@ -2177,7 +2177,7 @@ const CAMERA_ICON_SVG = `
   </svg>
 `
 
-const SCAN_CARD_ICON_CLASS = 'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 bg-white/80 shadow-[0_10px_20px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.72)] ring-1 ring-white/70'
+const SCAN_CARD_ICON_CLASS = 'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 bg-white/20 shadow-[0_10px_20px_rgba(15,23,42,0.14),inset_0_1px_0_rgba(255,255,255,0.28)] ring-1 ring-white/30'
 
 function _teacherHasPrayerScannerPermission(cfg, profileRole = null) {
   if (!_teacher) return false
@@ -2238,46 +2238,65 @@ async function _openTeacherScanLauncher() {
     })(),
   ])
   const canPrayerScan = _teacherHasPrayerScannerPermission(cfg, profileRes?.data?.role ?? null)
-  const cardBaseCls = 'group w-full text-left rounded-3xl border p-4 flex gap-3 items-start hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition shadow-[0_14px_30px_rgba(15,23,42,0.10)]'
-  const scanCardCls = `${cardBaseCls} border-emerald-300 bg-gradient-to-br from-emerald-100 via-teal-100 to-cyan-200 hover:shadow-[0_20px_42px_rgba(16,185,129,0.28)]`
+  const cardBaseCls = 'group w-full text-left rounded-3xl border p-4 flex gap-3 items-start hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition shadow-[0_14px_30px_rgba(15,23,42,0.12)]'
+  const scanCard = {
+    attendance: {
+      card: `${cardBaseCls} border-sky-700 bg-sky-600 hover:bg-sky-700 hover:shadow-[0_20px_42px_rgba(2,132,199,0.30)]`,
+      icon: `${SCAN_CARD_ICON_CLASS} text-white group-hover:shadow-[0_14px_26px_rgba(2,132,199,0.28),inset_0_1px_0_rgba(255,255,255,0.36)]`,
+      title: 'text-white',
+      sub: 'text-sky-50/85',
+    },
+    prayer: {
+      card: `${cardBaseCls} border-emerald-700 bg-emerald-600 hover:bg-emerald-700 hover:shadow-[0_20px_42px_rgba(16,185,129,0.30)]`,
+      icon: `${SCAN_CARD_ICON_CLASS} text-white group-hover:shadow-[0_14px_26px_rgba(16,185,129,0.28),inset_0_1px_0_rgba(255,255,255,0.36)]`,
+      title: 'text-white',
+      sub: 'text-emerald-50/85',
+    },
+    leave: {
+      card: `${cardBaseCls} border-orange-700 bg-orange-500 hover:bg-orange-600 hover:shadow-[0_20px_42px_rgba(249,115,22,0.30)]`,
+      icon: `${SCAN_CARD_ICON_CLASS} text-white group-hover:shadow-[0_14px_26px_rgba(249,115,22,0.28),inset_0_1px_0_rgba(255,255,255,0.36)]`,
+      title: 'text-white',
+      sub: 'text-orange-50/90',
+    },
+  }
   body.innerHTML = `
     <div class="space-y-3">
-      <button id="scan-launcher-attendance" type="button" class="${scanCardCls}">
-        <span class="${SCAN_CARD_ICON_CLASS} text-emerald-700 group-hover:shadow-[0_14px_26px_rgba(16,185,129,0.22),inset_0_1px_0_rgba(255,255,255,0.76)]">${CAMERA_ICON_SVG}</span>
+      <button id="scan-launcher-attendance" type="button" class="${scanCard.attendance.card}">
+        <span class="${scanCard.attendance.icon}">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
-          <span class="block font-extrabold text-emerald-950 text-sm">สแกน QR เช็คชื่อ</span>
-          <span class="block text-xs text-emerald-800/65 mt-1">เลือกห้องและคาบ ระบบจะโหลดข้อมูลเดิม แล้วเปิดกล้องสแกน</span>
+          <span class="block font-extrabold ${scanCard.attendance.title} text-sm">สแกน QR เช็คชื่อ</span>
+          <span class="block text-xs ${scanCard.attendance.sub} mt-1">เลือกห้องและคาบ ระบบจะโหลดข้อมูลเดิม แล้วเปิดกล้องสแกน</span>
         </span>
       </button>
 
       ${canPrayerScan ? `
-      <button id="scan-launcher-prayer-open" type="button" class="${scanCardCls}">
-        <span class="${SCAN_CARD_ICON_CLASS} text-emerald-700 group-hover:shadow-[0_14px_26px_rgba(16,185,129,0.22),inset_0_1px_0_rgba(255,255,255,0.76)]">${CAMERA_ICON_SVG}</span>
+      <button id="scan-launcher-prayer-open" type="button" class="${scanCard.prayer.card}">
+        <span class="${scanCard.prayer.icon}">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
-          <span class="block font-extrabold text-emerald-950 text-sm">สแกนละหมาด</span>
-          <span class="block text-xs text-emerald-800/65 mt-1">เปิดระบบสแกน แล้วเลือกจุด/บริเวณในหน้าถัดไป</span>
+          <span class="block font-extrabold ${scanCard.prayer.title} text-sm">สแกนละหมาด</span>
+          <span class="block text-xs ${scanCard.prayer.sub} mt-1">เปิดระบบสแกน แล้วเลือกจุด/บริเวณในหน้าถัดไป</span>
         </span>
       </button>
       ` : `
-      <div class="rounded-3xl border border-emerald-300 bg-gradient-to-br from-emerald-100 via-teal-100 to-cyan-200 p-4 space-y-3 shadow-[0_14px_30px_rgba(16,185,129,0.16)]">
+      <div class="rounded-3xl border border-emerald-700 bg-emerald-600 p-4 space-y-3 shadow-[0_14px_30px_rgba(16,185,129,0.22)]">
         <div class="flex gap-3 items-start">
-          <span class="${SCAN_CARD_ICON_CLASS} text-emerald-700">${CAMERA_ICON_SVG}</span>
+          <span class="${SCAN_CARD_ICON_CLASS} text-white">${CAMERA_ICON_SVG}</span>
           <span class="min-w-0 flex-1">
-            <span class="block font-extrabold text-emerald-950 text-sm">สแกนละหมาด</span>
-            <span class="block text-xs text-emerald-800/65 mt-1">ต้องได้รับสิทธิ์สแกนจากแอดมินก่อนใช้งาน</span>
+            <span class="block font-extrabold text-white text-sm">สแกนละหมาด</span>
+            <span class="block text-xs text-emerald-50/85 mt-1">ต้องได้รับสิทธิ์สแกนจากแอดมินก่อนใช้งาน</span>
           </span>
         </div>
-        <button id="scan-launcher-prayer-request" type="button" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold shadow-md transition active:scale-[0.99]">
+        <button id="scan-launcher-prayer-request" type="button" class="w-full py-3 rounded-2xl bg-white hover:bg-emerald-50 text-emerald-700 text-sm font-extrabold shadow-md transition active:scale-[0.99]">
           ขอสิทธิ์สแกนละหมาด
         </button>
       </div>
       `}
 
-      <button id="scan-launcher-leave" type="button" class="${scanCardCls}">
-        <span class="${SCAN_CARD_ICON_CLASS} text-emerald-700 group-hover:shadow-[0_14px_26px_rgba(16,185,129,0.22),inset_0_1px_0_rgba(255,255,255,0.76)]">${CAMERA_ICON_SVG}</span>
+      <button id="scan-launcher-leave" type="button" class="${scanCard.leave.card}">
+        <span class="${scanCard.leave.icon}">${CAMERA_ICON_SVG}</span>
         <span class="min-w-0">
-          <span class="block font-extrabold text-emerald-950 text-sm">ตรวจใบอนุญาตออกนอกห้อง</span>
-          <span class="block text-xs text-emerald-800/65 mt-1">เปิดหน้าเดิมสำหรับสแกน QR ตรวจสถานะใบอนุญาต</span>
+          <span class="block font-extrabold ${scanCard.leave.title} text-sm">ตรวจใบอนุญาตออกนอกห้อง</span>
+          <span class="block text-xs ${scanCard.leave.sub} mt-1">เปิดหน้าเดิมสำหรับสแกน QR ตรวจสถานะใบอนุญาต</span>
         </span>
       </button>
     </div>

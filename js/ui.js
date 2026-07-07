@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.2'
+import { APP_VERSION } from './version.js?v=10.18.3'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.3': [
+    '🎨 ปรับเมนูเลือกงานสแกนให้แต่ละปุ่มใช้สีสดแยกกันชัดเจน โดยปุ่มสแกนละหมาดใช้สีเขียว'
+  ],
   '10.18.2': [
     '✅ ปรับเมนูสแกนให้ใช้โทนเขียวเดียวกันทุกการ์ด และปรับหน้าสแกนเช็คชื่อให้แสดงรายชื่อนักเรียนที่สแกนแล้วทั้งหมดพร้อมปุ่มยกเลิก'
   ],
