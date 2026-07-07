@@ -1491,7 +1491,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
           100% { box-shadow: inset 0 0 0 0px #ef4444; }
         }
       </style>
-      <div class="relative w-full max-w-sm flex flex-col text-white">
+      <div class="relative w-full max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto flex flex-col text-white">
         <!-- Header -->
         <div class="flex items-center justify-between mb-4">
           <div>
@@ -1530,10 +1530,13 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
           </div>
         </div>
 
-        <!-- Recent History List (Compact) -->
+        <!-- Scanned Students List -->
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3">
-          <p class="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wider">ประวัติการสแกนล่าสุด (สูงสุด 3 คน)</p>
-          <div id="scan-history-list" class="space-y-1.5 text-xs">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">นักเรียนที่สแกนแล้ว (มาเรียน)</p>
+            <span id="scan-history-count" class="text-[10px] font-bold text-emerald-400">0 คน</span>
+          </div>
+          <div id="scan-history-list" class="space-y-1.5 text-xs max-h-56 overflow-y-auto pr-1">
             <p class="text-slate-500 text-center py-1">ยังไม่มีประวัติ</p>
           </div>
         </div>
@@ -1542,6 +1545,75 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
 
     let html5Qrcode = null
     const recentScannedList = []
+    const previousScanState = new Map()
+
+    const getStudentRowState = (studentId) => {
+      const row = modal.querySelector(`[data-modal-sid="${studentId}"]`)
+      const touchedEl = row?.querySelector('[data-att-touched]')
+      const activeBtn = Array.from(row?.querySelectorAll('.att-modal-status') ?? [])
+        .find(b => !b.className.includes('bg-white'))
+      return {
+        touched: touchedEl?.dataset.attTouched === '1',
+        status: activeBtn?.dataset.status ?? null,
+      }
+    }
+
+    const applyStudentRowState = (studentId, state) => {
+      const row = modal.querySelector(`[data-modal-sid="${studentId}"]`)
+      const touchedEl = row?.querySelector('[data-att-touched]')
+      if (touchedEl) touchedEl.dataset.attTouched = state?.touched ? '1' : '0'
+      row?.querySelectorAll('.att-modal-status').forEach(btn => {
+        const cfg = STATUS_LIST.find(s => s.key === btn.dataset.status)
+        btn.className = `att-modal-status text-xs px-1.5 py-1 rounded-lg border transition font-medium
+          ${state?.status && btn.dataset.status === state.status
+            ? cfg?.color ?? btn.dataset.color
+            : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`
+      })
+    }
+
+    const renderScannedAttendanceList = () => {
+      const historyList = overlay.querySelector('#scan-history-list')
+      const countEl = overlay.querySelector('#scan-history-count')
+      if (countEl) countEl.textContent = `${recentScannedList.length} คน`
+      if (!historyList) return
+      if (!recentScannedList.length) {
+        historyList.innerHTML = `<p class="text-slate-500 text-center py-1">ยังไม่มีประวัติ</p>`
+        return
+      }
+      historyList.innerHTML = recentScannedList.map((s, idx) => `
+        <div class="flex items-center gap-2 text-xs py-1.5 border-b border-slate-800/60 last:border-b-0">
+          <span class="w-6 text-center text-slate-500 font-mono flex-shrink-0">${recentScannedList.length - idx}</span>
+          <span class="font-medium text-slate-200 truncate flex-1 min-w-0">${_htmlEsc(s.full_name)}</span>
+          <span class="text-emerald-400 font-bold text-[10px] flex-shrink-0">มา</span>
+          <button type="button"
+            class="btn-att-cancel-scan-row px-2 py-1 rounded-lg bg-red-950/50 text-red-300 border border-red-800/70 hover:bg-red-500 hover:text-white transition text-[10px] font-bold flex-shrink-0"
+            data-sid="${s.id}">
+            ยกเลิก
+          </button>
+        </div>
+      `).join('')
+    }
+
+    overlay.querySelector('#scan-history-list')?.addEventListener('click', e => {
+      const btn = e.target.closest('.btn-att-cancel-scan-row')
+      if (!btn) return
+      const sid = Number(btn.dataset.sid)
+      const idx = recentScannedList.findIndex(s => Number(s.id) === sid)
+      if (idx === -1) return
+      const [student] = recentScannedList.splice(idx, 1)
+      applyStudentRowState(sid, previousScanState.get(sid))
+      previousScanState.delete(sid)
+      renderScannedAttendanceList()
+
+      const feedbackPanel = overlay.querySelector('#scan-feedback-panel')
+      if (feedbackPanel) {
+        feedbackPanel.innerHTML = `
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center text-xs text-slate-400 animate-fade">
+            ยกเลิกการสแกนของ <span class="font-bold text-slate-200">${_htmlEsc(student.full_name)}</span> แล้ว
+          </div>`
+      }
+      showToast(`ยกเลิกการสแกนของ ${student.full_name} แล้ว`, 'success')
+    })
 
     const stopScanner = async () => {
       if (html5Qrcode) {
@@ -1581,7 +1653,6 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       const processScan = (decodedText) => {
         const container = overlay.querySelector('#att-scanner-container')
         const feedbackPanel = overlay.querySelector('#scan-feedback-panel')
-        const historyList = overlay.querySelector('#scan-history-list')
 
         const triggerFlash = (success) => {
           const cls = success ? 'scan-flash-success' : 'scan-flash-error'
@@ -1613,6 +1684,10 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
           const isAlreadyScanned = recentScannedList.some(x => x.id === targetStudent.id)
           if (isAlreadyScanned) {
             throw new Error('เช็คชื่อซ้ำ! นักเรียนคนนี้ได้รับการสแกนไปแล้ว')
+          }
+
+          if (!previousScanState.has(targetStudent.id)) {
+            previousScanState.set(targetStudent.id, getStudentRowState(targetStudent.id))
           }
 
           // Programmatically click "มา" status button in the background modal
@@ -1651,13 +1726,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
               </div>
             </div>`
 
-          // Update history list (first 3)
-          historyList.innerHTML = recentScannedList.slice(0, 3).map(s => `
-            <div class="flex items-center justify-between text-xs py-1.5 border-b border-slate-800/60 last:border-b-0">
-              <span class="font-medium text-slate-300 truncate">${s.full_name}</span>
-              <span class="text-emerald-400 font-bold text-[10px]">มา</span>
-            </div>
-          `).join('')
+          renderScannedAttendanceList()
 
         } catch (e) {
           _playScanBeep('error')
