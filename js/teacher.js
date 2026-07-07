@@ -12,11 +12,11 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getUnreadNotifications, markNotificationsRead,
          getClassByIdFull,
          getTeacherPositionPermissions, getActiveAnnouncements,
-         getTeacherById } from './api.js'
+         getTeacherById, submitAppFeedback } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.17.96'
+import { APP_VERSION } from './version.js?v=10.17.97'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -195,7 +195,7 @@ const ROUTES = {
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.17.96').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.17.97').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
@@ -2170,6 +2170,167 @@ async function _quickGoToClass(mode, cls) {
   }
 }
 
+const TEACHER_SCAN_LOCATIONS = [
+  { id: 'musolla_male', label: 'มูซอลลาชาย', detail: 'ม.1 - ม.5 ชาย', icon: '🕌' },
+  { id: 'masjid_kuwait', label: 'มัสยิดคูเวต', detail: 'ม.6, ปวช. ชาย', icon: '🕌' },
+  { id: 'musolla_female_1', label: 'มูซอลลาหญิง 1', detail: 'โรงอาหาร', icon: '🕌' },
+  { id: 'musolla_female_2', label: 'มูซอลลาหญิง 2', detail: 'อาคาร 5', icon: '🕌' },
+]
+
+function _teacherHasPrayerScannerPermission(cfg, profileRole = null) {
+  if (!_teacher) return false
+  const teacherCodes = (cfg.prayerScannerTeachers || '')
+    .split(/[\s,]+/)
+    .map(c => c.trim())
+    .filter(Boolean)
+  return teacherCodes.includes(_teacher.teacher_code) ||
+    _teacher.staff_type === 'แอดมิน' ||
+    _teacher.position === 'admin' ||
+    profileRole === 'admin'
+}
+
+async function _openTeacherScanLauncher() {
+  if (!_teacher) return
+  document.getElementById('teacher-scan-launcher')?.remove()
+
+  const modal = document.createElement('div')
+  modal.id = 'teacher-scan-launcher'
+  modal.className = 'fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-extrabold text-gray-800 text-base">📷 ศูนย์สแกนครู</h3>
+          <p class="text-xs text-gray-400 mt-0.5">เปิดกล้องสำหรับงานประจำวันจากจุดเดียว</p>
+        </div>
+        <button id="scan-launcher-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="scan-launcher-body" class="p-5 overflow-y-auto">
+        <div class="flex items-center justify-center py-10 text-gray-400 text-sm">
+          <svg class="animate-spin h-5 w-5 text-emerald-400 mr-2" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          กำลังตรวจสอบสิทธิ์...
+        </div>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+  const close = () => modal.remove()
+  modal.addEventListener('click', e => { if (e.target === modal) close() })
+  modal.querySelector('#scan-launcher-close')?.addEventListener('click', close)
+
+  const body = modal.querySelector('#scan-launcher-body')
+  const [cfg, profileRes] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle().catch(() => ({ data: null })),
+  ])
+  const canPrayerScan = _teacherHasPrayerScannerPermission(cfg, profileRes?.data?.role ?? null)
+  const savedLocation = localStorage.getItem('prayer_scan_active_location')
+  const activeLocation = TEACHER_SCAN_LOCATIONS.some(loc => loc.id === savedLocation)
+    ? savedLocation
+    : TEACHER_SCAN_LOCATIONS[0].id
+
+  const cardCls = 'w-full text-left rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 transition p-4 flex gap-3 items-start'
+  body.innerHTML = `
+    <div class="space-y-3">
+      <button id="scan-launcher-attendance" type="button" class="${cardCls}">
+        <span class="w-11 h-11 rounded-2xl bg-emerald-50 text-2xl flex items-center justify-center flex-shrink-0">✅</span>
+        <span class="min-w-0">
+          <span class="block font-extrabold text-gray-800 text-sm">สแกน QR เช็คชื่อ</span>
+          <span class="block text-xs text-gray-400 mt-1">เลือกห้องและคาบ ระบบจะโหลดข้อมูลเดิม แล้วเปิดกล้องสแกน</span>
+        </span>
+      </button>
+
+      <div class="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+        <div class="flex gap-3 items-start">
+          <span class="w-11 h-11 rounded-2xl bg-amber-50 text-2xl flex items-center justify-center flex-shrink-0">🕌</span>
+          <span class="min-w-0 flex-1">
+            <span class="block font-extrabold text-gray-800 text-sm">สแกนละหมาด</span>
+            <span class="block text-xs text-gray-400 mt-1">${canPrayerScan ? 'เลือกจุด/บริเวณก่อนเปิดกล้องสแกนละหมาด' : 'ต้องได้รับสิทธิ์สแกนจากแอดมินก่อนใช้งาน'}</span>
+          </span>
+        </div>
+        ${canPrayerScan ? `
+          <div>
+            <label class="block text-xs font-bold text-gray-500 mb-1.5">จุด/บริเวณที่จะสแกน</label>
+            <select id="scan-launcher-prayer-location" class="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:border-emerald-500">
+              ${TEACHER_SCAN_LOCATIONS.map(loc => `
+                <option value="${loc.id}" ${activeLocation === loc.id ? 'selected' : ''}>${loc.icon} ${loc.label}${loc.detail ? ` (${loc.detail})` : ''}</option>
+              `).join('')}
+            </select>
+          </div>
+          <button id="scan-launcher-prayer-open" type="button" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold shadow-md transition">
+            เปิดกล้องสแกนละหมาด
+          </button>
+        ` : `
+          <button id="scan-launcher-prayer-request" type="button" class="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold shadow-md transition">
+            ขอสิทธิ์สแกนละหมาด
+          </button>
+        `}
+      </div>
+
+      <button id="scan-launcher-leave" type="button" class="${cardCls}">
+        <span class="w-11 h-11 rounded-2xl bg-indigo-50 text-2xl flex items-center justify-center flex-shrink-0">📋</span>
+        <span class="min-w-0">
+          <span class="block font-extrabold text-gray-800 text-sm">ตรวจใบอนุญาตออกนอกห้อง</span>
+          <span class="block text-xs text-gray-400 mt-1">เปิดหน้าเดิมสำหรับสแกน QR ตรวจสถานะใบอนุญาต</span>
+        </span>
+      </button>
+    </div>
+  `
+
+  body.querySelector('#scan-launcher-attendance')?.addEventListener('click', async () => {
+    close()
+    const { openAttendanceScanSetup } = await import('./teacher-views-attendance.js')
+    openAttendanceScanSetup(_teacher)
+  })
+  body.querySelector('#scan-launcher-leave')?.addEventListener('click', () => {
+    close()
+    navigate('student-leave-scanner')
+  })
+  body.querySelector('#scan-launcher-prayer-open')?.addEventListener('click', async () => {
+    const loc = body.querySelector('#scan-launcher-prayer-location')?.value || TEACHER_SCAN_LOCATIONS[0].id
+    localStorage.setItem('prayer_scan_active_location', loc)
+    close()
+    const { renderStudentPrayerScanner } = await import('./student-views.js')
+    renderStudentPrayerScanner(_teacher)
+  })
+  body.querySelector('#scan-launcher-prayer-request')?.addEventListener('click', async () => {
+    const btn = body.querySelector('#scan-launcher-prayer-request')
+    btn.disabled = true
+    btn.textContent = 'กำลังส่งคำขอ...'
+    const message = [
+      'ขอสิทธิ์สแกนละหมาด',
+      `ชื่อครู: ${_teacher.full_name || '-'}`,
+      `รหัสครู: ${_teacher.teacher_code || '-'}`,
+      `กลุ่มสาระ: ${_teacher.dept || '-'}`,
+      '',
+      'ต้องการใช้งานปุ่มกล้องกลางเพื่อสแกนละหมาด'
+    ].join('\n')
+    try {
+      await submitAppFeedback({
+        profileId: _teacher.profile_id,
+        senderRole: 'teacher',
+        senderName: _teacher.full_name || _teacher.teacher_code || 'คุณครู',
+        category: 'suggestion',
+        message,
+      })
+      showToast('ส่งคำขอสิทธิ์สแกนละหมาดถึงแอดมินแล้ว', 'success')
+      close()
+    } catch (err) {
+      btn.disabled = false
+      btn.textContent = 'ขอสิทธิ์สแกนละหมาด'
+      showToast(err?.code === 'FEEDBACK_LIMIT_REACHED'
+        ? `ส่งความคิดเห็นครบโควต้าเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`
+        : 'ส่งคำขอไม่สำเร็จ กรุณาลองใหม่',
+        err?.code === 'FEEDBACK_LIMIT_REACHED' ? 'warning' : 'error')
+    }
+  })
+}
+
+window._openTeacherScanLauncher = _openTeacherScanLauncher
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 // ── Web Notifications ─────────────────────────────────────────────────────────
 
@@ -2733,6 +2894,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-quick-grades')?.addEventListener('click', e => {
     e.preventDefault()
     _showClassQuickPicker('grades')
+  })
+  document.getElementById('btn-quick-leave-scanner')?.addEventListener('click', e => {
+    e.preventDefault()
+    _openTeacherScanLauncher()
   })
 
   document.getElementById('menu-dashboard')?.addEventListener('click', async e => {

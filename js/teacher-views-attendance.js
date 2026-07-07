@@ -10,6 +10,7 @@ import {
   createLeavePermission, closeLeavePermission,
   getActiveLeavePermissionsForClass, getClassLeaveHistory,
   getLeaveMaxActiveForClass, updateLeaveMaxActiveForClass,
+  getMyClasses, getClassSessionDOWs,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { formatLeaveCountdown } from './leave-time.js'
@@ -1066,7 +1067,174 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
 
 // sameDateSessions = array of all sessions on the same date as sessN
 
-function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set(), saveClassId = null, sessionRemap = n => n) {
+async function _openAttendanceModalForSession(teacher, classData, sessN, options = {}) {
+  const ms = classData.master_subjects
+  const credit = ms?.credit ?? 1
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const curYear = cfg.academic_year ?? new Date().getFullYear() + 543
+  const curSem = cfg.semester ?? 1
+  const srcClassId = classData.source_class_id ?? null
+  const [students, attRows, holidays, dowPattern] = await Promise.all([
+    getClassStudents(classData.id),
+    getClassAttendanceAll(srcClassId ?? classData.id),
+    getSchoolHolidays(curYear, curSem),
+    getClassSessionDOWs(classData.id).catch(() => []),
+  ])
+  const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null)
+  const holidaySet = new Set(holidays)
+  const attMap = {}
+  const nToSrcSession = new Map()
+  if (srcClassId) {
+    const tgtPerWeek = Math.max(1, Math.round(credit * 2))
+    let srcPerWeek = tgtPerWeek
+    try {
+      const allCls = await getMyClasses(teacher?.id ?? null).catch(() => [])
+      const src = allCls.find(c => Number(c.id) === Number(srcClassId))
+      if (src?.master_subjects?.credit) srcPerWeek = Math.max(1, Math.round(src.master_subjects.credit * 2))
+    } catch {}
+    const total = sessions.length
+    for (let n = 1; n <= total; n++) {
+      const weekIdx = Math.floor((n - 1) / tgtPerWeek)
+      const posInWeek = (n - 1) % tgtPerWeek
+      const srcSession = weekIdx * srcPerWeek + posInWeek + 1
+      nToSrcSession.set(n, srcSession)
+      for (const r of attRows) {
+        if (r.session_number !== srcSession) continue
+        if (!attMap[r.student_id]) attMap[r.student_id] = {}
+        attMap[r.student_id][n] = r.status
+      }
+    }
+  } else {
+    for (const r of attRows) {
+      if (!attMap[r.student_id]) attMap[r.student_id] = {}
+      attMap[r.student_id][r.session_number] = r.status
+    }
+  }
+  const session = sessions.find(s => Number(s.n) === Number(sessN))
+  if (!session) throw new Error('ไม่พบคาบเรียนที่เลือก')
+  if (holidaySet.has(session.ds)) throw new Error('คาบนี้ตรงกับวันหยุดโรงเรียน')
+  const sameDateSessions = sessions.filter(s => s.ds === session.ds)
+  const saveClassId = srcClassId ?? classData.id
+  const saveSessN = (n) => nToSrcSession.get(n) ?? n
+  _openAttFormModal(teacher, classData, students, attMap, session.n, session.ds, sameDateSessions, holidaySet, saveClassId, saveSessN, options)
+}
+
+export async function openAttendanceScanSetup(teacher) {
+  document.getElementById('att-scan-setup-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'att-scan-setup-modal'
+  modal.className = 'fixed inset-0 z-[190] flex items-end sm:items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-extrabold text-gray-800 text-base">📷 สแกน QR เช็คชื่อ</h3>
+          <p class="text-xs text-gray-400 mt-0.5">เลือกห้องและคาบ แล้วระบบจะเปิดฟอร์มเช็คชื่อเดิมพร้อมกล้องสแกน</p>
+        </div>
+        <button id="att-scan-setup-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="att-scan-setup-body" class="p-5">
+        <div class="flex items-center justify-center py-10 text-gray-400 text-sm">
+          <svg class="animate-spin h-5 w-5 text-emerald-400 mr-2" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          กำลังโหลดห้องเรียน...
+        </div>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+  const close = () => modal.remove()
+  modal.addEventListener('click', e => { if (e.target === modal) close() })
+  modal.querySelector('#att-scan-setup-close')?.addEventListener('click', close)
+
+  const body = modal.querySelector('#att-scan-setup-body')
+  try {
+    const classes = await getMyClasses(teacher?.id ?? null).catch(() => [])
+    if (!classes.length) {
+      body.innerHTML = `<div class="py-10 text-center text-gray-400 text-sm">ยังไม่มีห้องเรียนสำหรับเช็คชื่อ</div>`
+      return
+    }
+    body.innerHTML = `
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1.5">ห้องเรียน / วิชา</label>
+          <select id="att-scan-class" class="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:border-emerald-500">
+            ${classes.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name)} — ${_htmlEsc(c.master_subjects?.subject_name ?? '—')}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-500 mb-1.5">คาบที่จะเช็ค</label>
+          <select id="att-scan-session" class="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm bg-white focus:outline-none focus:border-emerald-500">
+            <option value="">กำลังโหลดคาบ...</option>
+          </select>
+        </div>
+        <div id="att-scan-session-hint" class="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2"></div>
+        <button id="att-scan-start" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold shadow-md transition">
+          เปิดฟอร์มและเริ่มสแกน
+        </button>
+      </div>
+    `
+
+    const classSelect = body.querySelector('#att-scan-class')
+    const sessionSelect = body.querySelector('#att-scan-session')
+    const hint = body.querySelector('#att-scan-session-hint')
+    let sessions = []
+
+    const renderSessions = async () => {
+      const cls = classes.find(c => String(c.id) === String(classSelect.value))
+      sessionSelect.innerHTML = `<option value="">กำลังโหลดคาบ...</option>`
+      hint.textContent = ''
+      if (!cls) return
+      const dowPattern = await getClassSessionDOWs(cls.id).catch(() => [])
+      const credit = cls.master_subjects?.credit ?? 1
+      sessions = _generateSessions(cls, credit, dowPattern.length ? dowPattern : null)
+      const today = _dateInputValue(new Date())
+      const defaultSession = sessions.find(s => s.ds === today) || sessions.find(s => s.ds > today) || sessions[0]
+      sessionSelect.innerHTML = sessions.map(s => `
+        <option value="${s.n}" ${defaultSession?.n === s.n ? 'selected' : ''}>
+          คาบที่ ${s.n} · ${_fmtDate(s.date)}${s.ds === today ? ' · วันนี้' : ''}
+        </option>
+      `).join('')
+      hint.textContent = defaultSession
+        ? `ระบบจะโหลดข้อมูลเช็คชื่อเดิมของคาบที่ ${defaultSession.n} ก่อนเปิดกล้อง`
+        : 'ไม่พบคาบเรียนสำหรับห้องนี้'
+    }
+
+    classSelect.addEventListener('change', renderSessions)
+    sessionSelect.addEventListener('change', () => {
+      const s = sessions.find(x => String(x.n) === String(sessionSelect.value))
+      hint.textContent = s ? `ระบบจะโหลดข้อมูลเช็คชื่อเดิมของคาบที่ ${s.n} ก่อนเปิดกล้อง` : ''
+    })
+    await renderSessions()
+
+    body.querySelector('#att-scan-start')?.addEventListener('click', async () => {
+      const cls = classes.find(c => String(c.id) === String(classSelect.value))
+      const sessN = parseInt(sessionSelect.value, 10)
+      if (!cls || !sessN) {
+        showToast('กรุณาเลือกห้องและคาบที่จะเช็ค', 'warning')
+        return
+      }
+      const btn = body.querySelector('#att-scan-start')
+      btn.disabled = true
+      btn.textContent = 'กำลังเปิดฟอร์ม...'
+      try {
+        close()
+        await _openAttendanceModalForSession(teacher, cls, sessN, { autoOpenScanner: true })
+      } catch (err) {
+        showToast(err.message || 'เปิดสแกนเช็คชื่อไม่สำเร็จ', 'error')
+      } finally {
+        btn.disabled = false
+        btn.textContent = 'เปิดฟอร์มและเริ่มสแกน'
+      }
+    })
+  } catch (err) {
+    body.innerHTML = `<div class="py-10 text-center text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_htmlEsc(err.message || '')}</div>`
+  }
+}
+
+function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set(), saveClassId = null, sessionRemap = n => n, options = {}) {
   const existing = document.getElementById('att-form-modal')
   if (existing) existing.remove()
   const STATUS_LIST = [
@@ -1130,14 +1298,15 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       <!-- Student list -->
       <div class="overflow-y-auto flex-1 px-4 py-2 space-y-1">
         ${students.map((s, i) => {
-          const cur = attMap[s.id]?.[sessN] ?? 'present'
+          const savedStatus = attMap[s.id]?.[sessN] ?? null
+          const cur = savedStatus ?? 'present'
           return `<div class="flex items-center gap-1.5 py-1.5 border-b border-gray-50" data-modal-sid="${s.id}">
             <span class="text-gray-400 text-xs w-5 text-right flex-shrink-0">${i+1}</span>
             ${s.image_url
               ? `<img src="${s.image_url}" class="w-7 h-7 rounded object-cover flex-shrink-0" />`
               : `<div class="w-7 h-7 rounded bg-gray-100 flex items-center justify-center text-xs flex-shrink-0">👤</div>`}
             <span class="flex-1 text-sm text-gray-800 truncate min-w-0">${s.full_name}</span>
-            <div class="flex gap-0.5 flex-shrink-0">
+            <div class="flex gap-0.5 flex-shrink-0" data-att-touched="${savedStatus ? '1' : '0'}">
               ${STATUS_LIST.map(sc => `
                 <button class="att-modal-status text-xs px-1.5 py-1 rounded-lg border transition font-medium
                   ${cur === sc.key ? sc.color : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}"
@@ -1205,6 +1374,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       // ตั้งสถานะทุกคน
       students.forEach(s => {
         const row = modal.querySelector(`[data-modal-sid="${s.id}"]`)
+        row?.querySelector('[data-att-touched]')?.setAttribute('data-att-touched', '1')
         row?.querySelectorAll('.att-modal-status').forEach(b => {
           b.className = `att-modal-status text-xs px-1.5 py-1 rounded-lg border transition font-medium
 
@@ -1228,6 +1398,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
     const sid    = btn.dataset.modalSid
     const status = btn.dataset.status
     const row    = modal.querySelector(`[data-modal-sid="${sid}"]`)
+    row?.querySelector('[data-att-touched]')?.setAttribute('data-att-touched', '1')
     row?.querySelectorAll('.att-modal-status').forEach(b => {
       b.className = `att-modal-status text-xs px-1.5 py-1 rounded-lg border transition font-medium
 
@@ -1355,10 +1526,13 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
         await html5Qrcode.stop().catch(() => {})
       }
 
-      // เมื่อสแกนครบแล้วหากนักเรียนคนใดที่ไม่ได้รับการสแกนจะกลายเป็นขาดทันที
+      // เมื่อสแกนครบแล้ว ให้ตั้ง "ขาด" เฉพาะคนที่ยังไม่มีข้อมูล/ยังไม่ถูกแตะในฟอร์มนี้
+      // ข้อมูลเดิมหรือคนที่สแกนไปแล้วจะไม่ถูกทับเมื่อเปิดกล้องซ้ำ
       students.forEach(s => {
-        const wasScanned = recentScannedList.some(x => x.id === s.id)
-        if (!wasScanned) {
+        const row = modal.querySelector(`[data-modal-sid="${s.id}"]`)
+        const touchedEl = row?.querySelector('[data-att-touched]')
+        const wasTouched = touchedEl?.dataset.attTouched === '1'
+        if (!wasTouched) {
           const absentBtn = modal.querySelector(`.att-modal-status[data-modal-sid="${s.id}"][data-status="absent"]`)
           if (absentBtn) {
             const isAlreadyAbsent = absentBtn.classList.contains('bg-red-500')
@@ -1507,6 +1681,10 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
   // ─── Close ───────────────────────────────────────────────────────
   modal.querySelector('#att-modal-close').addEventListener('click', () => modal.remove())
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+
+  if (options.autoOpenScanner) {
+    setTimeout(() => modal.querySelector('#btn-att-scan-qr')?.click(), 150)
+  }
 
   // ─── Save ────────────────────────────────────────────────────────
   modal.querySelector('#att-modal-save').addEventListener('click', async () => {

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.17.96'
+import { APP_VERSION } from './version.js?v=10.17.97'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.17.97': [
+    '📷 เพิ่มศูนย์สแกนครูจากปุ่มกล้องกลาง เลือกสแกนเช็คชื่อ ละหมาด หรือใบอนุญาตออกนอกห้อง พร้อมโหลดข้อมูลเช็คชื่อเดิมก่อนสแกนและส่งคำขอสิทธิ์สแกนละหมาดถึงแอดมินได้'
+  ],
   '10.17.96': [
     '🖨️ ปรับหน้าพิมพ์ QR Code รายบุคคลให้กรอกรหัสนักเรียนหลายคนพร้อมกันได้ พร้อมตรวจรหัสที่ไม่พบและไม่แสดงหัวชั้นเรียนบนกระดาษพิมพ์รายบุคคล'
   ],
