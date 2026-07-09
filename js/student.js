@@ -19,6 +19,23 @@ let _student = null
 let _activeClassId = null
 let _activeSubjectTab = 'todo'
 let _activeScoreTab = 'life'
+let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
+
+async function _loadSportsVisibility() {
+  try {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'sports_visibility')
+      .maybeSingle()
+    if (!error && data?.value) {
+      _sportsVisibility = { ..._sportsVisibility, ...data.value }
+    }
+  } catch {
+    // ถ้าโมดูลกีฬาสียังไม่ได้ลง SQL patch ให้ใช้ค่าเปิดตามเดิม
+  }
+  return _sportsVisibility
+}
 
 // ─── Auth Guard ───────────────────────────────────────────────────────────────
 async function init() {
@@ -34,6 +51,7 @@ async function init() {
   await applyThemeForRole('student')
 
   _student = await getMyStudentProfile()
+  await _loadSportsVisibility()
   updateLastSeen('students').catch(() => {})
   logLogin('student').catch(() => {})
 
@@ -122,6 +140,7 @@ const ROUTES = {
   overview: () => renderStudentOverview(_student),
   subjects: () => renderStudentSubjects(_student),
   scores:   () => renderStudentMyScores(_student, _activeScoreTab),
+  sports:   () => { window.location.href = 'azizgames.html' },
   requests: () => renderStudentRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
   prayer_scanner: () => renderStudentPrayerScanner(_student),
@@ -137,12 +156,16 @@ function _navButtonHTML(view, icon, label, mode = 'main') {
 function _renderMainNav(activeView = 'overview') {
   const nav = document.getElementById('stu-bottom-nav')
   if (!nav) return
-  nav.innerHTML = [
+  const items = [
     _navButtonHTML('overview', '🏠', 'ภาพรวม'),
     _navButtonHTML('subjects', '📚', 'รายวิชา'),
     _navButtonHTML('scores', '📊', 'คะแนน'),
-    _navButtonHTML('profile', '👤', 'โปรไฟล์'),
-  ].join('')
+  ]
+  if (_sportsVisibility.enabled !== false && _sportsVisibility.student_menu !== false) {
+    items.push(_navButtonHTML('sports', '🏆', 'กีฬาสี'))
+  }
+  items.push(_navButtonHTML('profile', '👤', 'โปรไฟล์'))
+  nav.innerHTML = items.join('')
   _bindNav()
   _setBottomNavActive(activeView)
 }

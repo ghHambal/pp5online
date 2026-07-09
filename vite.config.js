@@ -15,6 +15,8 @@ export default defineConfig({
         prayerDashboard: resolve(__dirname, 'prayer-dashboard.html'),
         leaveMonitor:  resolve(__dirname, 'leave-monitor.html'),
         publicMonitor: resolve(__dirname, 'public-monitor.html'),
+        sports:        resolve(__dirname, 'sports.html'),
+        azizgames:     resolve(__dirname, 'azizgames.html'),
       },
     },
     chunkSizeWarningLimit: 600,

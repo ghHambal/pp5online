@@ -31,7 +31,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.4'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.9'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
@@ -9464,6 +9464,7 @@ export async function renderRolePermissions() {
     { key:'academic_samai',       label:'วิชาการ (สามัญ)' },
     { key:'academic_religion',    label:'วิชาการ (ศาสนา)' },
     { key:'academic_pvch',        label:'วิชาการ (ปวช)' },
+    { key:'house_color_admin',    label:'ผู้ดูแลสีนักเรียน/กีฬาสี' },
     { key:'classroom_leaders_admin', label:'ผู้ดูแลหัวหน้า/รองหัวหน้า' },
   ]
   const FEATURE_GROUPS = [
@@ -9489,6 +9490,7 @@ export async function renderRolePermissions() {
       { key:'menu_periods',       label:'คาบเรียน' },
       { key:'menu_classrooms',    label:'ห้องเรียน' },
       { key:'menu_house_colors',  label:'สีนักเรียน' },
+      { key:'menu_sports_admin',  label:'ระบบกีฬาสี' },
       { key:'menu_classroom_leaders', label:'จัดการหัวหน้า/รองหัวหน้า' },
     ]},
     { group:'🔍 นิเทศ/ติดตาม', features:[

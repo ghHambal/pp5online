@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="/pp5online/manifest.json" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="AZIZGAMES" />
+  <link rel="apple-touch-icon" href="/pp5online/vite.svg" />
+  <title>AZIZGAMES — ระบบกีฬาสี</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css?v=202607081800" />
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-100">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <div>
+        <p class="text-[11px] font-bold text-indigo-500 uppercase tracking-wider">PP5 Online Module</p>
+        <h1 id="page-title" class="text-lg font-bold text-gray-900">ระบบกีฬาสี</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="dashboard.html" class="px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50">กลับแดชบอร์ด</a>
+        <button id="sports-page-refresh" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">รีเฟรช</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="px-4 py-5 sm:px-6">
+    <div id="sports-root"></div>
+  </main>
+
+  <script type="module">
+    import { supabase } from './js/supabase.js'
+    import { renderSportsAdmin } from './js/sports.js?v=10.18.9'
+
+    async function initSportsPage() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        window.location.replace('index.html')
+        return
+      }
+      await renderSportsAdmin()
+      document.getElementById('sports-page-refresh')?.addEventListener('click', () => renderSportsAdmin())
+    }
+
+    initSportsPage()
+  </script>
+</body>
+</html>

@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.18.4'
+import { APP_VERSION } from './version.js?v=10.18.9'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -36,8 +36,25 @@ let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
 let _isAlsoAdmin   = false
 let _positionPerms = {}   // { feature: boolean } สำหรับ position ของครูคนนี้
+let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
 window._pp5DonorTierIndex = 0
 window._pp5SystemCfg      = {}
+
+async function _loadSportsVisibility() {
+  try {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'sports_visibility')
+      .maybeSingle()
+    if (!error && data?.value) {
+      _sportsVisibility = { ..._sportsVisibility, ...data.value }
+    }
+  } catch {
+    // ถ้าโมดูลกีฬาสียังไม่ได้ลง SQL patch ให้ใช้ค่าเปิดตามเดิม
+  }
+  return _sportsVisibility
+}
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -68,6 +85,7 @@ async function loadTeacherInfo(userId) {
     headerRight.insertBefore(switchBtn, headerRight.firstChild)
   }
 
+  await _loadSportsVisibility()
   _renderTeacherSidebarUI(_teacher)
 }
 
@@ -90,6 +108,7 @@ function _renderTeacherSidebarUI(teacher) {
     if (calendarLink) calendarLink.insertAdjacentElement('afterend', svBtn)
     else nav.insertBefore(svBtn, nav.firstChild)
   }
+  _applySportsShortcutVisibility()
 
   const name   = teacher?.full_name ?? 'ครูผู้สอน'
   const code   = teacher?.teacher_code ? `รหัส ${teacher.teacher_code}` : ''
@@ -116,6 +135,13 @@ function _renderTeacherSidebarUI(teacher) {
   } else {
     headerAvatar.textContent = name.charAt(0).toUpperCase()
   }
+}
+
+function _applySportsShortcutVisibility() {
+  const link = document.getElementById('menu-sports-shortcut')
+  if (!link) return
+  const canSeeSports = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false
+  link.classList.toggle('hidden', !canSeeSports)
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -189,13 +215,14 @@ const ROUTES = {
   'schedule':    () => renderSchedule(_teacher),
   'tutorial':    () => renderTutorial(),
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
+  'sports':      () => { window.location.href = 'azizgames.html' },
   'student-qr-print': () => {
     const classId = window._pendingQRClassId || null
     window._pendingQRClassId = null
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.18.4').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.18.9').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
@@ -1938,12 +1965,13 @@ async function _showNotifPopup(teacherId) {
 let _supervisorMode = false
 let _savedNavHTML  = null
 
-function _enterSupervisorMode() {
+async function _enterSupervisorMode() {
   const main = document.getElementById('main-content') ?? document.querySelector('main') ?? document.getElementById('content-area')
   const nav  = document.querySelector('#sidebar nav')
   if (!main || _supervisorMode) return
   _supervisorMode = true
   if (nav) _savedNavHTML = nav.innerHTML
+  await _loadSportsVisibility()
   _renderSupervisorNav(nav, main, _isAlsoAdmin)
   renderSupervisorDashboard(main, _teacher, _isAlsoAdmin)
 }
@@ -2033,6 +2061,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_reading',     icon:'📗', label:'การอ่าน',        fn: async () => { const {renderReadingAdmin}   = await import('./views.js'); renderReadingAdmin() }},
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
   { key:'menu_house_colors',       icon:'🎨', label:'สีนักเรียน',          fn: async () => { const {renderHouseColors}     = await import('./views.js'); renderHouseColors() }},
+  { key:'menu_sports_admin',       icon:'🏆', label:'ระบบกีฬาสี',          fn: async () => { localStorage.setItem('aziz_sports_admin_allowed', 'true'); window.location.href = 'azizgames.html' }},
   { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
   { key:'manage_my_religion_group', icon:'👥', label:'กลุ่มของฉัน',        fn: async (t) => { const {renderMyReligionGroup} = await import('./views.js'); renderMyReligionGroup(t) }},
   { key:'menu_classroom_leaders',  icon:'👑', label:'หัวหน้า/รองหัวหน้าห้อง',  fn: async () => { const {renderClassroomLeaders} = await import('./views.js'); renderClassroomLeaders() }},
@@ -2049,6 +2078,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน', classroom_leaders_admin:'ผู้ดูแลหัวหน้า/รองหัวหน้า' }
   const _tPositions2 = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   const posLabel = _tPositions2.length ? _tPositions2.map(p => _POS_LBL2[p] ?? p).join(' / ') : (isAdmin ? 'แอดมิน' : 'หัวหน้า')
+  const sportsVisibleForTeacher = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false
 
   // รายการ menu ที่แสดง: admin เห็นทั้งหมด, supervisor เห็นตาม _positionPerms
   const allowedItems = isAdmin
@@ -2056,6 +2086,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     : _SV_MENU_ITEMS.filter(m => {
         if (m.key === 'lang_config') return _positionPerms.lang_config || _tPositions2.includes('dept_head')
         if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || _tPositions2.includes('house_color_admin')
+        if (m.key === 'menu_sports_admin') return sportsVisibleForTeacher && (_positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin'))
         if (m.key === 'menu_classroom_leaders') return _positionPerms.menu_classroom_leaders || _tPositions2.includes('classroom_leaders_admin')
         if (m.key === 'manage_religion_groups') return _positionPerms.manage_religion_groups || _tPositions2.includes('religion_group_head')
         if (m.key === 'manage_my_religion_group') return _tPositions2.includes('religion_subgroup_head')
