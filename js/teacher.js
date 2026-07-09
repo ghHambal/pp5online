@@ -16,10 +16,11 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.18.9'
+import { APP_VERSION } from './version.js?v=10.18.10'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
+import { openAzizGamesModal } from './azizgames-modal.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -215,14 +216,14 @@ const ROUTES = {
   'schedule':    () => renderSchedule(_teacher),
   'tutorial':    () => renderTutorial(),
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
-  'sports':      () => { window.location.href = 'azizgames.html' },
+  'sports':      () => openAzizGamesModal(),
   'student-qr-print': () => {
     const classId = window._pendingQRClassId || null
     window._pendingQRClassId = null
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.18.9').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.18.10').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
@@ -2061,7 +2062,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_reading',     icon:'📗', label:'การอ่าน',        fn: async () => { const {renderReadingAdmin}   = await import('./views.js'); renderReadingAdmin() }},
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
   { key:'menu_house_colors',       icon:'🎨', label:'สีนักเรียน',          fn: async () => { const {renderHouseColors}     = await import('./views.js'); renderHouseColors() }},
-  { key:'menu_sports_admin',       icon:'🏆', label:'ระบบกีฬาสี',          fn: async () => { localStorage.setItem('aziz_sports_admin_allowed', 'true'); window.location.href = 'azizgames.html' }},
+  { key:'menu_sports_admin',       icon:'🏆', label:'ระบบกีฬาสี',          fn: async () => openAzizGamesModal({ manage: true }) },
   { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
   { key:'manage_my_religion_group', icon:'👥', label:'กลุ่มของฉัน',        fn: async (t) => { const {renderMyReligionGroup} = await import('./views.js'); renderMyReligionGroup(t) }},
   { key:'menu_classroom_leaders',  icon:'👑', label:'หัวหน้า/รองหัวหน้าห้อง',  fn: async () => { const {renderClassroomLeaders} = await import('./views.js'); renderClassroomLeaders() }},

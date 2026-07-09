@@ -21,8 +21,9 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.18.9'
+import { APP_VERSION } from './version.js?v=10.18.10'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
+import { openAzizGamesModal } from './azizgames-modal.js'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -794,7 +795,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'religion-groups':  renderReligionGroups,
     'tutorial-admin':   () => import('./tutorial.js').then(({renderTutorialAdmin}) => renderTutorialAdmin()),
     'house-colors':     () => renderHouseColors(),
-    'sports-admin':     () => { window.location.href = 'azizgames.html' },
+    'sports-admin':     () => openAzizGamesModal({ admin: true }),
     'donations':        () => renderDonations(),
     'feedback-admin':   () => renderFeedbackAdmin(),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),

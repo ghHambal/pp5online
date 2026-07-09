@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.9'
+import { APP_VERSION } from './version.js?v=10.18.10'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.10': [
+    '🏆 ปรับการเปิด AZIZGAMES ให้เป็นป๊อปอัปเต็มจอในระบบ ปพ5 พร้อมปุ่มแชร์ลิงก์และปุ่มเปิดในบราวเซอร์/แท็บใหม่แบบไม่รบกวนสายตา'
+  ],
   '10.18.9': [
     '🏆 ปรับ AZIZGAMES ให้ครูทั่วไปมีทางลัดเข้าระบบกีฬาสีจากหน้า ปพ5, เพิ่มพรีวิวก่อนนำเข้า CSV, และเพิ่มสวิตช์เปิด/ปิดการมองเห็นสำหรับครู นักเรียน และผู้เข้าชมทั่วไป'
   ],
