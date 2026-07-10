@@ -8,7 +8,7 @@ import {
 const STORAGE_KEY = 'pp5_exam_docs_draft_v1'
 const LOGO_LEFT = 'https://lh3.googleusercontent.com/d/13-Alij9nU0nZmRzDB4i1XuFlpWyetLoT'
 const LOGO_RIGHT = 'https://lh3.googleusercontent.com/d/1DFnJL175-B-Y7YOW0Hezo8qLtVtESrZj'
-const SIGN_ROWS_PER_COLUMN = 25
+const SIGN_ROWS_PER_COLUMN = 27
 const SIGN_ROWS_PER_PAGE = SIGN_ROWS_PER_COLUMN * 2
 
 const TH_MONTHS = [
@@ -238,7 +238,7 @@ const _envelopeTime = (value, labels) => {
 }
 
 const _blankRows = (count) => Array.from({ length: count }, () =>
-  `<tr><td></td><td></td><td></td><td></td></tr>`
+  `<tr><td style="height:30px;"></td><td></td><td></td><td></td></tr>`
 ).join('')
 
 const _studentRows = (students, startNo, labels, emptyText = labels.loading, minRows = 0) => {
@@ -283,7 +283,7 @@ const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => 
               </tr>
             </thead>
             <tbody>
-              ${_studentRows(left, startNo, labels, labels.loading, SIGN_ROWS_PER_COLUMN)}
+              ${_studentRows(left, startNo, labels)}
             </tbody>
           </table>
         </div>
@@ -299,7 +299,7 @@ const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => 
               </tr>
             </thead>
             <tbody>
-              ${_studentRows(right, rightStartNo, labels, ' ', SIGN_ROWS_PER_COLUMN)}
+              ${_studentRows(right, rightStartNo, labels, ' ')}
             </tbody>
           </table>
         </div>
@@ -390,15 +390,12 @@ const _buildPrintHtml = (mode = 'all') => {
 
       #exam-doc-print-area {
         --exam-font: ${labels.font};
-        --portrait-w: 210mm;
-        --portrait-h: 297mm;
-        --landscape-w: 297mm;
-        --landscape-h: 210mm;
         width: auto;
         margin: 0 auto;
       }
-      #exam-doc-print-area.envelope-only { width: var(--landscape-w); }
-      #exam-doc-print-area.portrait-only { width: var(--portrait-w); }
+
+      #exam-doc-print-area.envelope-only { width: 297mm; }
+      #exam-doc-print-area.portrait-only { width: 210mm; }
 
       .exam-doc-paper {
         font-family: var(--exam-font), 'Sarabun', sans-serif;
@@ -406,29 +403,32 @@ const _buildPrintHtml = (mode = 'all') => {
         background: #fff;
         color: #111;
         box-sizing: border-box;
-        width: var(--portrait-w);
-        height: var(--portrait-h);
-        min-height: var(--portrait-h);
+        width: 210mm;
+        height: 297mm;
         margin: 0 auto 16px;
-        padding: 7mm 6mm 6mm;
+        padding: 10mm;
         box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
         position: relative;
         overflow: hidden;
-        display: flex;
-        flex-direction: column;
       }
-      .exam-doc-paper.rtl { direction: rtl; text-align: right; }
-      
+
+      .exam-doc-paper.rtl {
+        direction: rtl;
+        text-align: right;
+      }
+
       .exam-doc-paper.landscape {
-        width: var(--landscape-w);
-        height: var(--landscape-h);
-        min-height: var(--landscape-h);
-        padding: 32mm 16mm 21mm;
+        page: landscape;
+        width: 297mm;
+        height: 210mm;
+        padding: 19mm 15mm 11mm 17mm;
+        overflow: visible;
         display: flex;
         flex-direction: column;
-        justify-content: flex-start;
-        align-items: stretch;
+        justify-content: center;
+        align-items: center;
         text-align: center;
+        flex-wrap: wrap;
       }
 
       .header {
@@ -436,66 +436,72 @@ const _buildPrintHtml = (mode = 'all') => {
         justify-content: space-between;
         align-items: center;
         text-align: center;
-        margin-bottom: 2.5mm;
-        flex-shrink: 0;
+        margin-bottom: 10px;
       }
 
       .header img {
-        width: 16mm;
+        width: 60px;
       }
 
       .header h2 {
-        font-size: 15pt;
+        font-size: 17pt;
         font-weight: 700;
         margin: 0;
       }
 
       .infoG {
-        flex-shrink: 0;
-        font-size: 10.5pt;
-        line-height: 1.12;
+        font-size: 11pt;
       }
 
       .infoG div {
-        margin-bottom: 1mm;
+        margin-bottom: 6px;
       }
 
       .info1,
       .info2,
       .info3,
       .info4,
-      .info5 {
+      .info5,
+      .infoNP1,
+      .infoNP2,
+      .infoNP3,
+      .infoNP4,
+      .infoNP5 {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 2mm;
+        gap: 10px;
+      }
+
+      .infoNP1,
+      .infoNP2,
+      .infoNP3,
+      .infoNP4,
+      .infoNP5 {
+        margin-top: 50px;
       }
 
       .textColor {
         color: rgb(0, 33, 166);
         font-weight: bold;
         border-bottom: 2px dotted black;
-        padding: 0 2mm .4mm;
-        flex: 1 1 auto;
-        text-align: center;
+        padding-bottom: 2px;
+        flex-grow: 1;
       }
 
       table {
         width: 100%;
-        height: auto;
         border-collapse: collapse;
-        table-layout: fixed;
-        margin: 0;
+        margin-bottom: 10px;
       }
 
       th,
       td {
         border: 1px solid black;
-        padding: .9mm .8mm;
+        padding: 3px;
         text-align: center;
-        font-size: 9.2pt;
-        line-height: 1.05;
-        vertical-align: middle;
+        font-size: 11pt;
+        line-height: 1.08;
       }
 
       .nm {
@@ -505,155 +511,61 @@ const _buildPrintHtml = (mode = 'all') => {
       .column-container {
         display: flex;
         justify-content: space-between;
-        align-items: stretch;
-        gap: 3mm;
-        flex: 1 1 auto;
-        min-height: 0;
-        margin-top: 3mm !important;
       }
 
       .column {
-        width: auto;
-        flex: 1 1 0;
-        min-width: 0;
-        display: flex;
-      }
-
-      .column table {
-        height: 100%;
-      }
-
-      .column th:nth-child(1),
-      .column td:nth-child(1) {
-        width: 7.5mm;
-      }
-
-      .column th:nth-child(2),
-      .column td:nth-child(2) {
-        width: 16mm;
-      }
-
-      .column th:nth-child(4),
-      .column td:nth-child(4) {
-        width: 16mm;
+        width: 49%;
       }
 
       .examiner-signature {
-        margin-top: 1.6mm;
+        margin-top: 20px;
         display: flex;
         justify-content: space-between;
       }
 
-      .signature {
-        flex-shrink: 0;
-        display: flex;
-        align-items: flex-start;
-        gap: 5mm;
-        margin-top: 3mm;
-        font-size: 10pt;
-      }
-
-      .signature > div:first-child {
-        margin-top: 0 !important;
-        white-space: nowrap;
-      }
-
-      .signature > div:last-child {
-        flex: 1 1 auto;
-        margin-left: 0 !important;
-      }
-
-      .exam-doc-paper:not(.sign-list):not(.landscape) table {
-        flex: 1 1 auto;
-        margin-top: 4mm !important;
-        height: 100%;
-      }
-
-      .exam-doc-paper:not(.sign-list):not(.landscape) th:nth-child(1),
-      .exam-doc-paper:not(.sign-list):not(.landscape) td:nth-child(1) {
-        width: 10mm;
-      }
-
-      .exam-doc-paper:not(.sign-list):not(.landscape) th:nth-child(2),
-      .exam-doc-paper:not(.sign-list):not(.landscape) td:nth-child(2) {
-        width: 22mm;
-      }
-
-      .exam-doc-paper:not(.sign-list):not(.landscape) th:nth-child(4),
-      .exam-doc-paper:not(.sign-list):not(.landscape) td:nth-child(4) {
-        width: 23mm;
-      }
-
       .exam-doc-paper.landscape .headerL {
-        font-size: 38pt;
+        font-size: 40pt;
         font-weight: bold;
         line-height: 1;
-        margin-bottom: 18mm;
-        text-align: center;
-        width: 100%;
+        margin-bottom: 1px;
       }
 
       .exam-doc-paper.landscape .infoNP {
-        display: flex;
-        flex-direction: column;
-        gap: 12mm;
-        font-size: 28pt;
-        line-height: 1.05;
-        width: 100%;
-        align-items: stretch;
-      }
-
-      .exam-doc-envelope-row {
-        display: grid;
-        align-items: end;
-        width: 100%;
-        gap: 4mm;
-        white-space: nowrap;
-      }
-
-      .exam-doc-envelope-row.subject-row {
-        grid-template-columns: auto minmax(74mm, 1.05fr) auto minmax(56mm, .75fr);
-      }
-
-      .exam-doc-envelope-row.date-row {
-        grid-template-columns: auto minmax(34mm, .45fr) auto minmax(58mm, .75fr) auto minmax(52mm, .65fr);
-      }
-
-      .exam-doc-envelope-row.time-row {
-        grid-template-columns: auto minmax(82mm, 1fr) auto minmax(82mm, 1fr);
-      }
-
-      .exam-doc-envelope-row.count-row {
-        grid-template-columns: auto minmax(40mm, .55fr) auto minmax(18mm, .25fr) auto auto minmax(18mm, .25fr) auto;
-        gap: 3.5mm;
-      }
-
-      .exam-doc-envelope-row.teacher-row {
-        grid-template-columns: auto minmax(0, 1fr);
-      }
-
-      .exam-doc-paper.landscape .textColor {
-        display: inline-flex;
-        align-items: flex-end;
-        justify-content: center;
-        flex: initial;
-        min-width: 0;
-        min-height: 10mm;
-        padding: 0 3mm .6mm;
+        font-size: 32pt;
         line-height: 1;
-        white-space: nowrap;
+        width: 100%;
+        align-items: center;
+        gap: 15px;
       }
 
-      .exam-doc-envelope-row.teacher-row .textColor {
-        font-size: 30pt;
+      .exam-doc-paper.landscape .infoNP div {
+        justify-content: center;
+        gap: 5px;
+        margin-bottom: 5px;
       }
 
       @media print {
+        @page {
+          size: A4 portrait;
+          margin: 0;
+        }
+
+        @page landscape {
+          size: A4 landscape;
+          margin: 0;
+        }
+
         body * { visibility: hidden !important; }
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
-        #exam-doc-print-area { position: absolute; left: 0; top: 0; width: auto; margin: 0; padding: 0; }
+        #exam-doc-print-area {
+          position: static;
+          width: auto;
+          margin: 0;
+          padding: 0;
+        }
 
-        html, body {
+        html,
+        body {
           width: auto;
           height: auto;
           margin: 0 !important;
@@ -669,8 +581,11 @@ const _buildPrintHtml = (mode = 'all') => {
           page-break-after: always;
         }
 
+        .landscape,
         .exam-doc-paper.landscape {
           page: landscape;
+          break-before: page;
+          page-break-before: always;
         }
 
         .exam-doc-paper:last-child {
@@ -736,22 +651,22 @@ const _buildPrintHtml = (mode = 'all') => {
     ${includeEnvelope ? `
     <div class="exam-doc-paper ${dirClass} landscape ${includePortrait ? 'exam-doc-page-break' : ''}">
       <div class="headerL">
-        ${_htmlEsc(labels.envelopeTitle)}
+        <a>${_htmlEsc(labels.envelopeTitle)}</a>
       </div>
       <div class="infoNP">
-        <div class="exam-doc-envelope-row subject-row">
+        <div class="infoNP1">
           ${_htmlEsc(labels.envelopeSubject)} <span class="textColor">${_htmlEsc(data.subjectName)}</span> ${_htmlEsc(labels.subjectCode)} <span class="textColor">${_htmlEsc(data.subjectCode)}</span>
         </div>
-        <div class="exam-doc-envelope-row date-row">
+        <div class="infoNP2">
           ${_htmlEsc(labels.envelopeDate)} <span class="textColor">${_htmlEsc(parts.day)}</span> ${_htmlEsc(labels.envelopeMonth)} <span class="textColor">${_htmlEsc(parts.month)}</span> ${_htmlEsc(labels.envelopeYear)} <span class="textColor">${_htmlEsc(parts.year)}</span>
         </div>
-        <div class="exam-doc-envelope-row time-row">
+        <div class="infoNP3">
           ${_htmlEsc(labels.envelopeTime)} <span class="textColor">${_htmlEsc(_envelopeTime(form.startTime, labels))}</span> ${_htmlEsc(labels.envelopeTo)} <span class="textColor">${_htmlEsc(_envelopeTime(form.endTime, labels))}</span>
         </div>
-        <div class="exam-doc-envelope-row count-row">
+        <div class="infoNP4">
           ${_htmlEsc(labels.envelopeClass)} <span class="textColor">${_htmlEsc(data.className)}</span> ${_htmlEsc(labels.envelopeStudents)} <span class="textColor">${total}</span> ${_htmlEsc(labels.studentUnit)} ${_htmlEsc(labels.examAmount)} <span class="textColor">${_htmlEsc(examAmount)}</span> ${_htmlEsc(labels.examUnit)}
         </div>
-        <div class="exam-doc-envelope-row teacher-row">
+        <div class="infoNP5">
           ${_htmlEsc(labels.envelopeTeacher)} <span class="textColor">${_htmlEsc(data.teacherName)}</span>
         </div>
       </div>

@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.18.22'
+import { APP_VERSION } from './version.js?v=10.18.23'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -216,7 +216,7 @@ const ROUTES = {
   'schedule':    () => renderSchedule(_teacher),
   'tutorial':    () => renderTutorial(),
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
-  'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.18.22').then(m => m.renderExamDocuments(_teacher)),
+  'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.18.23').then(m => m.renderExamDocuments(_teacher)),
   'sports':      () => openAzizGamesModal(),
   'student-qr-print': () => {
     const classId = window._pendingQRClassId || null
@@ -224,7 +224,7 @@ const ROUTES = {
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
   'student-leave-scanner': () => {
-    import('./teacher-views-leave-scanner.js?v=10.18.22').then(m => m.renderStudentLeaveScanner(_teacher))
+    import('./teacher-views-leave-scanner.js?v=10.18.23').then(m => m.renderStudentLeaveScanner(_teacher))
   },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
