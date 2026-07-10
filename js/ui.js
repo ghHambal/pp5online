@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.11'
+import { APP_VERSION } from './version.js?v=10.18.12'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.12': [
+    '🖨️ ปรับรูปแบบพิมพ์เอกสารช่วงสอบให้เต็มหน้า A4 มากขึ้น และเปิดหน้าพิมพ์แบบแยกเพื่อให้ PDF ไม่ถูกย่อจากหน้า teacher'
+  ],
   '10.18.11': [
     '📄 เพิ่มเมนูเอกสารช่วงสอบสำหรับครู: สร้างใบลงชื่อเข้าสอบ ใบปะหน้าข้อสอบ ใบแจ้งขาดสอบ และใบปะหน้าซองข้อสอบ พร้อมโหมดไทย อาหรับ และยาวี'
   ],
