@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.24'
+import { APP_VERSION } from './version.js?v=10.18.25'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.25': [
+    '🧾 เพิ่มปุ่มเอกสารสอบในหน้าห้องเรียน และปรับช่องครูคุมสอบให้ค้นหาด้วยรหัสหรือชื่อครูจากรายชื่อในระบบ'
+  ],
   '10.18.24': [
     '🧾 ปรับใบปะหน้าซองข้อสอบให้แยกเลขห้องกับชื่อห้องยาวเป็นสองบรรทัด เพื่อไม่ให้แถวจำนวนข้อสอบตกบรรทัด'
   ],

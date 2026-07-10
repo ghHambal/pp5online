@@ -1,4 +1,4 @@
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.24'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 
 function todayInputValue() {
   const d = new Date()

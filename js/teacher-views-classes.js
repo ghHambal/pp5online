@@ -39,6 +39,20 @@ import {
   getMainContentRef, setMainContentRef, _generateSessions,
 } from './teacher-views-utils.js'
 
+const EXAM_DOC_PENDING_CLASS_KEY = 'pp5_exam_docs_pending_class_id'
+
+function _openExamDocsForClass(classId) {
+  window._pendingExamDocClassId = String(classId)
+  try {
+    sessionStorage.setItem(EXAM_DOC_PENDING_CLASS_KEY, String(classId))
+  } catch {}
+  if (typeof window._navTo === 'function') {
+    window._navTo('exam-docs')
+    return
+  }
+  showToast('ไม่พบเมนูเอกสารช่วงสอบ กรุณาเปิดจากหน้าเมนครู', 'warning')
+}
+
 export async function renderMyClasses(teacher) {
   setActiveNav('my-classes')
   setTitle('ห้องเรียนของฉัน', 'classes')
@@ -186,6 +200,8 @@ export async function renderMyClasses(teacher) {
                 <div class="flex gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
                   <button onclick="event.stopPropagation();window._openClassDashboard(${c.id})"
                     class="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-white/70 rounded-lg transition text-sm" title="Dashboard ห้องเรียน">📈</button>
+                  <button onclick="event.stopPropagation();window._openExamDocsForClass(${c.id})"
+                    class="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-white/70 rounded-lg transition text-sm" title="เอกสารสอบ">🧾</button>
                   <button onclick="event.stopPropagation();window._copyClass(${c.id},'${c.class_name?.replace(/'/g,"\\'")||''}')"
                     class="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-white/70 rounded-lg transition text-sm" title="ทำสำเนาห้องเรียน">📋</button>
                   <button onclick="event.stopPropagation();window._openCombinedEdit(${c.id})"
@@ -207,6 +223,7 @@ export async function renderMyClasses(teacher) {
       </div>`}
     </div>`)
     window._openPP5Doc     = (classId) => openPP5Doc(classId)
+    window._openExamDocsForClass = (classId) => _openExamDocsForClass(classId)
     window._openClassDetail = (classId) => renderClassDetail(teacher, classId, { classes, scheduleMap, linksByClass, periodMap, classrooms, copyCfg })
     window._openClassDashboard = async (classId) => {
       const cls = window._classCache?.[classId]
@@ -1258,6 +1275,10 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition flex items-center gap-1.5">
             💾 <span class="hidden xs:inline">ปพ.5</span><span class="xs:hidden">ปพ.5</span>
           </button>
+          <button onclick="window._openExamDocsForClass(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 transition flex items-center gap-1.5">
+            🧾 <span>เอกสารสอบ</span>
+          </button>
           <button onclick="window._openRandomPickerModal(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
             style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
@@ -1318,6 +1339,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       renderMyClasses(teacher)
     }
     window._openPP5Doc    = (cid) => openPP5Doc(cid)
+    window._openExamDocsForClass = (cid) => _openExamDocsForClass(cid)
     window._openCombinedEdit2 = (cid) => {
       const c = window._classCache?.[cid]
       if (c) _openCombinedEditModal(teacher, c, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderClassDetail(teacher, cid))

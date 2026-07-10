@@ -1,4 +1,4 @@
-import { getClassStudents, getMyClasses, getSystemConfig } from './api.js'
+import { getClassStudents, getMyClasses, getSystemConfig, getTeachers } from './api.js'
 import { showToast } from './ui.js'
 import {
   INPUT_CLS, SELECT_CLS,
@@ -6,6 +6,7 @@ import {
 } from './teacher-views-utils.js'
 
 const STORAGE_KEY = 'pp5_exam_docs_draft_v1'
+const PENDING_CLASS_KEY = 'pp5_exam_docs_pending_class_id'
 const LOGO_LEFT = 'https://lh3.googleusercontent.com/d/13-Alij9nU0nZmRzDB4i1XuFlpWyetLoT'
 const LOGO_RIGHT = 'https://lh3.googleusercontent.com/d/1DFnJL175-B-Y7YOW0Hezo8qLtVtESrZj'
 const SIGN_ROWS_PER_COLUMN = 27
@@ -179,11 +180,14 @@ const EXAM_TYPE_OPTIONS = ['กลางภาค', 'ปรับคะแนน
 let _state = {
   teacher: null,
   classes: [],
+  teachers: [],
   students: [],
   selectedClass: null,
   form: { ...DEFAULT_FORM },
   loadingStudents: false,
 }
+
+let _teacherAutocompleteCleanups = []
 
 const _dateInputToday = () => {
   const d = new Date()
@@ -200,6 +204,17 @@ const _loadDraft = () => {
 
 const _saveDraft = () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(_state.form))
+}
+
+const _consumePendingClassId = () => {
+  let stored = ''
+  try {
+    stored = sessionStorage.getItem(PENDING_CLASS_KEY) || ''
+    sessionStorage.removeItem(PENDING_CLASS_KEY)
+  } catch {}
+  const pending = window._pendingExamDocClassId || stored
+  window._pendingExamDocClassId = null
+  return pending ? String(pending) : ''
 }
 
 const _classSubject = cls => {
@@ -245,6 +260,13 @@ const _envelopeClassParts = value => {
   const [room, ...rest] = raw.split(/\s+/)
   return { room, name: rest.join(' ').trim() }
 }
+
+const _teacherSearchText = teacher => [
+  teacher?.teacher_code,
+  teacher?.full_name,
+  teacher?.dept,
+  teacher?.category,
+].filter(Boolean).join(' ').toLowerCase()
 
 const _blankRows = (count) => Array.from({ length: count }, () =>
   `<tr><td style="height:30px;"></td><td></td><td></td><td></td></tr>`
@@ -761,6 +783,108 @@ const _selectedClassMeta = () => {
   return `${ms.subject_code || '-'} · ${ms.subject_name || '-'} · ${cls.class_name || '-'}`
 }
 
+function _cleanupTeacherAutocompletes() {
+  _teacherAutocompleteCleanups.forEach(fn => {
+    try { fn() } catch {}
+  })
+  _teacherAutocompleteCleanups = []
+}
+
+function _bindTeacherAutocomplete(inputId, formKey) {
+  const input = document.getElementById(inputId)
+  const list = document.getElementById(`${inputId}-list`)
+  if (!input || !list) return
+
+  const teachers = _state.teachers || []
+
+  const close = () => {
+    list.classList.add('hidden')
+  }
+
+  const selectTeacher = teacher => {
+    input.value = teacher.full_name || ''
+    _state.form[formKey] = input.value
+    _saveDraft()
+    _updatePreviewOnly()
+    close()
+  }
+
+  const renderList = () => {
+    const q = input.value.trim()
+    const lq = q.toLowerCase()
+    const matches = teachers
+      .filter(t => !q || _teacherSearchText(t).includes(lq))
+      .slice(0, 10)
+
+    if (!teachers.length) {
+      list.innerHTML = `<div class="px-3 py-2 text-xs text-gray-400 text-center">ไม่พบรายชื่อครูในระบบ</div>`
+      return
+    }
+    if (!matches.length) {
+      list.innerHTML = `<div class="px-3 py-2 text-xs text-gray-400 text-center">ไม่พบครูที่ตรงกัน</div>`
+      return
+    }
+
+    list.innerHTML = matches.map(t => `
+      <button type="button" data-id="${t.id}"
+        class="exam-teacher-option w-full px-3 py-2 text-left hover:bg-emerald-50 transition flex items-center gap-2">
+        ${t.image_url
+          ? `<img src="${t.image_url}" class="w-7 h-7 rounded-full object-cover flex-shrink-0" alt="">`
+          : `<span class="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center text-xs font-bold flex-shrink-0">${_htmlEsc((t.full_name || '?').charAt(0))}</span>`}
+        <span class="min-w-0">
+          <span class="block text-sm font-semibold text-gray-700 truncate">${_htmlEsc(t.full_name || '—')}</span>
+          <span class="block text-[11px] text-gray-400 truncate">${_htmlEsc(t.teacher_code || '—')}${t.dept ? ` · ${_htmlEsc(t.dept)}` : ''}</span>
+        </span>
+      </button>
+    `).join('')
+
+    list.querySelectorAll('.exam-teacher-option').forEach(btn => {
+      btn.addEventListener('mousedown', e => {
+        e.preventDefault()
+        const teacher = teachers.find(t => String(t.id) === String(btn.dataset.id))
+        if (teacher) selectTeacher(teacher)
+      })
+    })
+  }
+
+  const open = () => {
+    renderList()
+    list.classList.remove('hidden')
+  }
+
+  const onInput = () => {
+    _state.form[formKey] = input.value
+    _saveDraft()
+    _updatePreviewOnly()
+    open()
+  }
+  const onFocus = () => open()
+  const onKeydown = e => {
+    if (e.key === 'Escape') close()
+    if (e.key === 'Enter') {
+      const first = list.querySelector('.exam-teacher-option')
+      if (first && !list.classList.contains('hidden')) {
+        e.preventDefault()
+        first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      }
+    }
+  }
+  const onDocMouseDown = e => {
+    if (!input.contains(e.target) && !list.contains(e.target)) close()
+  }
+
+  input.addEventListener('input', onInput)
+  input.addEventListener('focus', onFocus)
+  input.addEventListener('keydown', onKeydown)
+  document.addEventListener('mousedown', onDocMouseDown, true)
+  _teacherAutocompleteCleanups.push(() => {
+    input.removeEventListener('input', onInput)
+    input.removeEventListener('focus', onFocus)
+    input.removeEventListener('keydown', onKeydown)
+    document.removeEventListener('mousedown', onDocMouseDown, true)
+  })
+}
+
 function _renderShell() {
   const f = _state.form
   const classOptions = _state.classes.map(c => {
@@ -774,6 +898,8 @@ function _renderShell() {
       <style>
         .exam-doc-control-card { border-radius: 16px; border: 1px solid #e5e7eb; background: #fff; box-shadow: 0 8px 22px rgba(15, 23, 42, .06); }
         .exam-doc-preview-wrap { overflow-x: auto; padding: 14px; border-radius: 16px; background: #f8fafc; border: 1px solid #e5e7eb; }
+        .exam-teacher-autocomplete { position: relative; }
+        .exam-teacher-results { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); max-height: 240px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; box-shadow: 0 18px 32px rgba(15, 23, 42, .14); }
         @media print { .exam-doc-screen-only { display: none !important; } }
       </style>
       <section class="exam-doc-screen-only exam-doc-control-card p-5">
@@ -852,14 +978,16 @@ function _renderShell() {
             <span class="block text-xs font-bold text-gray-500 mb-1">กลุ่ม / แผนก</span>
             <input id="exam-class-part" class="${INPUT_CLS}" value="${_htmlEsc(f.classPart)}" placeholder="เช่น AEP 1 / PR 2">
           </label>
-          <label class="lg:col-span-4 block">
+          <div class="lg:col-span-4 block exam-teacher-autocomplete">
             <span class="block text-xs font-bold text-gray-500 mb-1">ครูคุมสอบ 1</span>
-            <input id="exam-invigilator-1" class="${INPUT_CLS}" value="${_htmlEsc(f.invigilator1)}">
-          </label>
-          <label class="lg:col-span-4 block">
+            <input id="exam-invigilator-1" class="${INPUT_CLS}" value="${_htmlEsc(f.invigilator1)}" autocomplete="off" placeholder="รหัสหรือชื่อครู">
+            <div id="exam-invigilator-1-list" class="exam-teacher-results hidden"></div>
+          </div>
+          <div class="lg:col-span-4 block exam-teacher-autocomplete">
             <span class="block text-xs font-bold text-gray-500 mb-1">ครูคุมสอบ 2</span>
-            <input id="exam-invigilator-2" class="${INPUT_CLS}" value="${_htmlEsc(f.invigilator2)}">
-          </label>
+            <input id="exam-invigilator-2" class="${INPUT_CLS}" value="${_htmlEsc(f.invigilator2)}" autocomplete="off" placeholder="รหัสหรือชื่อครู">
+            <div id="exam-invigilator-2-list" class="exam-teacher-results hidden"></div>
+          </div>
         </div>
 
         <div class="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
@@ -931,6 +1059,7 @@ function _ensureClassSelectedBeforePrint() {
 }
 
 function _bind() {
+  _cleanupTeacherAutocompletes()
   const redrawFields = [
     'exam-lang', 'exam-type', 'exam-semester', 'exam-year', 'exam-date',
     'exam-start', 'exam-end', 'exam-amount', 'exam-room', 'exam-period-part',
@@ -964,6 +1093,9 @@ function _bind() {
   document.getElementById('exam-doc-print')?.addEventListener('click', () => {
     if (_ensureClassSelectedBeforePrint()) _openExamPrintWindow()
   })
+
+  _bindTeacherAutocomplete('exam-invigilator-1', 'invigilator1')
+  _bindTeacherAutocomplete('exam-invigilator-2', 'invigilator2')
 }
 
 export async function renderExamDocuments(teacher) {
@@ -977,29 +1109,37 @@ export async function renderExamDocuments(teacher) {
   </div>`)
 
   try {
-    const [classes, cfg] = await Promise.all([
+    const [classes, cfg, teachers] = await Promise.all([
       getMyClasses(teacher?.id ?? null),
       getSystemConfig().catch(() => ({})),
+      getTeachers().catch(() => []),
     ])
     const draft = _loadDraft()
+    const pendingClassId = _consumePendingClassId()
+    const form = {
+      ...DEFAULT_FORM,
+      semester: String(cfg.semester || DEFAULT_FORM.semester || ''),
+      academicYear: String(cfg.academicYear || DEFAULT_FORM.academicYear || ''),
+      examDate: _dateInputToday(),
+      invigilator1: teacher?.full_name || '',
+      ...draft,
+    }
+    if (pendingClassId && classes.some(c => String(c.id) === String(pendingClassId))) {
+      form.classId = String(pendingClassId)
+    }
     _state = {
       teacher,
       classes,
+      teachers,
       students: [],
       selectedClass: null,
       loadingStudents: false,
-      form: {
-        ...DEFAULT_FORM,
-        semester: String(cfg.semester || DEFAULT_FORM.semester || ''),
-        academicYear: String(cfg.academicYear || DEFAULT_FORM.academicYear || ''),
-        examDate: _dateInputToday(),
-        invigilator1: teacher?.full_name || '',
-        ...draft,
-      },
+      form,
     }
     if (!EXAM_TYPE_OPTIONS.includes(_state.form.examType)) {
       _state.form.examType = DEFAULT_FORM.examType
     }
+    if (pendingClassId) _saveDraft()
     _state.selectedClass = _state.classes.find(c => String(c.id) === String(_state.form.classId)) || null
     await _loadStudentsForSelectedClass()
     _renderShell()
