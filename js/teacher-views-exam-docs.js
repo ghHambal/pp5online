@@ -237,6 +237,15 @@ const _envelopeTime = (value, labels) => {
   return labels.key === 'th' ? `${value} น.` : value
 }
 
+const _envelopeClassParts = value => {
+  const raw = String(value || '').trim()
+  if (!raw) return { room: '', name: '' }
+  const match = raw.match(/^ม\.?\s*([0-9]+\/[0-9]+)\s*(.*)$/i)
+  if (match) return { room: match[1], name: match[2].trim() }
+  const [room, ...rest] = raw.split(/\s+/)
+  return { room, name: rest.join(' ').trim() }
+}
+
 const _blankRows = (count) => Array.from({ length: count }, () =>
   `<tr><td style="height:30px;"></td><td></td><td></td><td></td></tr>`
 ).join('')
@@ -373,6 +382,7 @@ const _buildPrintHtml = (mode = 'all') => {
   const defaultPageSize = mode === 'envelope' ? 'A4 landscape' : 'A4 portrait'
   const areaClass = mode === 'envelope' ? ' envelope-only' : (mode === 'portrait' ? ' portrait-only' : '')
   const examAmount = form.examAmount || String(total)
+  const classParts = _envelopeClassParts(data.className)
 
   return `
     <style id="exam-doc-print-style">
@@ -544,6 +554,50 @@ const _buildPrintHtml = (mode = 'all') => {
         margin-bottom: 5px;
       }
 
+      .exam-doc-paper.landscape .infoNP4 {
+        flex-wrap: nowrap;
+        gap: 7px;
+        font-size: 30pt;
+        white-space: nowrap;
+      }
+
+      .exam-doc-paper.landscape .exam-envelope-class {
+        flex-grow: 0;
+        flex-basis: 50mm;
+        max-width: 50mm;
+        min-height: 18mm;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        padding-bottom: 1px;
+      }
+
+      .exam-envelope-class-room {
+        display: block;
+        font-size: 32pt;
+        font-weight: 700;
+        line-height: .9;
+      }
+
+      .exam-envelope-class-name {
+        display: block;
+        max-width: 100%;
+        margin-top: 2px;
+        font-size: 17pt;
+        font-weight: 700;
+        line-height: .95;
+        white-space: nowrap;
+      }
+
+      .exam-doc-paper.landscape .infoNP4 .textColor:not(.exam-envelope-class) {
+        flex-grow: 0;
+        min-width: 16mm;
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
       @media print {
         @page {
           size: A4 portrait;
@@ -664,7 +718,7 @@ const _buildPrintHtml = (mode = 'all') => {
           ${_htmlEsc(labels.envelopeTime)} <span class="textColor">${_htmlEsc(_envelopeTime(form.startTime, labels))}</span> ${_htmlEsc(labels.envelopeTo)} <span class="textColor">${_htmlEsc(_envelopeTime(form.endTime, labels))}</span>
         </div>
         <div class="infoNP4">
-          ${_htmlEsc(labels.envelopeClass)} <span class="textColor">${_htmlEsc(data.className)}</span> ${_htmlEsc(labels.envelopeStudents)} <span class="textColor">${total}</span> ${_htmlEsc(labels.studentUnit)} ${_htmlEsc(labels.examAmount)} <span class="textColor">${_htmlEsc(examAmount)}</span> ${_htmlEsc(labels.examUnit)}
+          ${_htmlEsc(labels.envelopeClass)} <span class="textColor exam-envelope-class"><span class="exam-envelope-class-room">${_htmlEsc(classParts.room)}</span>${classParts.name ? `<span class="exam-envelope-class-name">${_htmlEsc(classParts.name)}</span>` : ''}</span> ${_htmlEsc(labels.envelopeStudents)} <span class="textColor">${total}</span> ${_htmlEsc(labels.studentUnit)} ${_htmlEsc(labels.examAmount)} <span class="textColor">${_htmlEsc(examAmount)}</span> ${_htmlEsc(labels.examUnit)}
         </div>
         <div class="infoNP5">
           ${_htmlEsc(labels.envelopeTeacher)} <span class="textColor">${_htmlEsc(data.teacherName)}</span>
