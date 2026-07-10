@@ -232,32 +232,20 @@ const _timeRange = form => {
   return start || end || ''
 }
 
-const _line = (label, value, wide = false) => `
-  <span class="exam-doc-field ${wide ? 'wide' : ''}">
-    <span class="exam-doc-label">${_htmlEsc(label)}:</span>
-    <span class="exam-doc-value">${_htmlEsc(value || ' ')}</span>
-  </span>`
-
-const _envelopePair = (label, value, size = '') => `
-  <span class="exam-doc-envelope-pair ${size}">
-    <span class="exam-doc-envelope-label">${_htmlEsc(label)}</span>
-    <span class="exam-doc-envelope-value">${_htmlEsc(value || ' ')}</span>
-  </span>`
-
 const _envelopeTime = (value, labels) => {
   if (!value) return ''
   return labels.key === 'th' ? `${value} น.` : value
 }
 
-const _blankRows = (count, cols = 4) => Array.from({ length: count }, () =>
-  `<tr>${Array.from({ length: cols }, (_, i) => `<td class="${i === 0 ? 'exam-doc-row-height' : ''}"></td>`).join('')}</tr>`
+const _blankRows = (count) => Array.from({ length: count }, () =>
+  `<tr><td style="height:30px;"></td><td></td><td></td><td></td></tr>`
 ).join('')
 
 const _studentRows = (students, startNo, labels, emptyText = labels.loading) => (students || []).map((s, idx) => `
   <tr>
     <td>${startNo + idx}</td>
     <td>${_htmlEsc(s.student_code || '')}</td>
-    <td class="name-cell">${_htmlEsc(s.full_name || '')}</td>
+    <td class="nm">${_htmlEsc(s.full_name || '')}</td>
     <td></td>
   </tr>
 `).join('') || `<tr><td colspan="4" class="empty-students">${_htmlEsc(emptyText)}</td></tr>`
@@ -273,17 +261,37 @@ const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => 
     <div class="exam-doc-paper ${dirClass} sign-list ${pageIndex > 0 ? 'exam-doc-page-break' : ''}">
       ${_header(labels.signListTitle)}
       ${_infoBlock(labels, data, form)}
-      <div class="exam-doc-columns">
-        <div>
-          <table class="exam-doc-table">
-            <thead><tr><th>#</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
-            <tbody>${_studentRows(left, startNo, labels)}</tbody>
+      
+      <div class="column-container" style="margin-top: 15px;">
+        <div class="column">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>${_htmlEsc(labels.studentCode)}</th>
+                <th>${_htmlEsc(labels.studentName)}</th>
+                <th style="width:80px;">${_htmlEsc(labels.signature)}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${_studentRows(left, startNo, labels)}
+            </tbody>
           </table>
         </div>
-        <div>
-          <table class="exam-doc-table">
-            <thead><tr><th>#</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
-            <tbody>${_studentRows(right, rightStartNo, labels, ' ')}</tbody>
+
+        <div class="column">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>${_htmlEsc(labels.studentCode)}</th>
+                <th>${_htmlEsc(labels.studentName)}</th>
+                <th style="width:80px;">${_htmlEsc(labels.signature)}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${_studentRows(right, rightStartNo, labels, ' ')}
+            </tbody>
           </table>
         </div>
       </div>
@@ -291,67 +299,48 @@ const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => 
     </div>`
 }
 
-const _signature = (labels, form, withNames = false) => `
-  <div class="exam-doc-signature">
-    <div class="exam-doc-signature-label">${_htmlEsc(labels.examiner)}</div>
-    <div class="exam-doc-signature-lines">
-      <div>1. <span>${withNames ? _htmlEsc(form.invigilator1 || '') : '...........................................................................................'}</span></div>
-      <div>2. <span>${withNames ? _htmlEsc(form.invigilator2 || '') : '...........................................................................................'}</span></div>
+const _signature = (labels, form) => `
+  <div class="signature">
+    <div style="margin-top: 20px;">${_htmlEsc(labels.examiner)}</div>
+    <div style="margin-left: 40px;">
+      <div class="examiner-signature">
+        <div>1. ...........................................................................................</div>
+      </div>
+      <div class="examiner-signature">
+        <div>2. ...........................................................................................</div>
+      </div>
     </div>
   </div>`
 
 const _header = title => `
-  <div class="exam-doc-header">
+  <div class="header">
     <img src="${LOGO_LEFT}" alt="">
     <h2>${_htmlEsc(title)}</h2>
     <img src="${LOGO_RIGHT}" alt="">
   </div>`
 
 const _infoBlock = (labels, data, form) => `
-  <div class="exam-doc-info">
-    <div>
-      ${_line(labels.examType, form.examType)}
-      ${_line(labels.term, form.semester)}
-      ${_line(labels.year, form.academicYear)}
+  <div class="infoG">
+    <div class="info1">
+      ${_htmlEsc(labels.examType)}: <span class="textColor">${_htmlEsc(form.examType || '')}</span>
+      ${_htmlEsc(labels.term)}: <span class="textColor">${_htmlEsc(form.semester || '')}</span>
+      ${_htmlEsc(labels.year)}: <span class="textColor">${_htmlEsc(form.academicYear || '')}</span>
     </div>
-    <div>
-      ${_line(labels.subject, data.subjectName, true)}
-      ${_line(labels.subjectCode, data.subjectCode)}
+    <div class="info2">
+      ${_htmlEsc(labels.subject)}: <span class="textColor">${_htmlEsc(data.subjectName || '')}</span>
+      ${_htmlEsc(labels.subjectCode)}: <span class="textColor">${_htmlEsc(data.subjectCode || '')}</span>
     </div>
-    <div>
-      ${_line(labels.examDate, _thaiFullDate(form.examDate), true)}
-      ${_line(labels.examTime, _timeRange(form))}
-      ${form.periodPart ? _line(labels.periodPart, form.periodPart) : ''}
+    <div class="info3">
+      ${_htmlEsc(labels.examDate)}: <span class="textColor">${_htmlEsc(_thaiFullDate(form.examDate))}</span>
+      ${_htmlEsc(labels.examTime)}: <span class="textColor">${_htmlEsc(_timeRange(form))}</span>
     </div>
-    <div>
-      ${_line(labels.teacher, data.teacherName, true)}
+    <div class="info4">
+      ${_htmlEsc(labels.teacher)}: <span class="textColor">${_htmlEsc(data.teacherName || '')}</span>
     </div>
-    <div>
-      ${_line(labels.classLevel, data.className)}
-      ${form.classPart ? _line(labels.groupPart, form.classPart, true) : ''}
-      ${form.examRoom ? _line(labels.examRoom, form.examRoom) : ''}
+    <div class="info5">
+      ${_htmlEsc(labels.classLevel)}: <span class="textColor">${_htmlEsc(data.className || '')}</span>
     </div>
   </div>`
-
-const _summaryCounts = (labels, total) => `
-  <div class="exam-doc-counts">
-    <div>${_htmlEsc(labels.totalStudents)} <span>${total}</span> ${_htmlEsc(labels.studentUnit)}</div>
-    <div>${_htmlEsc(labels.presentStudents)} <span>&nbsp;</span> ${_htmlEsc(labels.studentUnit)}</div>
-    <div>${_htmlEsc(labels.absentStudents)} <span>&nbsp;</span> ${_htmlEsc(labels.studentUnit)}</div>
-  </div>`
-
-const _absentTable = labels => `
-  <table class="exam-doc-table exam-doc-absent-table">
-    <thead>
-      <tr>
-        <th>${_htmlEsc(labels.no)}</th>
-        <th>${_htmlEsc(labels.studentCode)}</th>
-        <th>${_htmlEsc(labels.absentName)}</th>
-        <th>${_htmlEsc(labels.note)}</th>
-      </tr>
-    </thead>
-    <tbody>${_blankRows(15)}</tbody>
-  </table>`
 
 const _buildPrintHtml = (mode = 'all') => {
   const form = _state.form
@@ -379,118 +368,205 @@ const _buildPrintHtml = (mode = 'all') => {
   return `
     <style id="exam-doc-print-style">
       @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Amiri:wght@400;700&display=swap');
-      @page { size: A4 portrait; margin: 8mm 10mm; }
-      @page exam-doc-landscape { size: A4 landscape; margin: 8mm 10mm; }
+      
+      @page {
+        size: A4 portrait;
+        margin: 10mm;
+      }
+
+      @page landscape {
+        size: A4 landscape;
+        margin: 15mm;
+      }
+
       #exam-doc-print-area { --exam-font: ${labels.font}; }
       #exam-doc-print-area.envelope-only { width: 297mm; }
       #exam-doc-print-area.portrait-only { width: 210mm; }
+
       .exam-doc-paper {
-        width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 8mm 10mm; box-sizing: border-box;
-        background: #fff; color: #111; font-family: var(--exam-font); font-size: 11.4pt; box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
+        font-family: var(--exam-font), 'Sarabun', sans-serif;
+        font-size: 11pt;
+        background: #fff;
+        color: #111;
+        box-sizing: border-box;
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto 16px;
+        padding: 10mm;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
+        position: relative;
       }
       .exam-doc-paper.rtl { direction: rtl; text-align: right; }
+      
       .exam-doc-paper.landscape {
-        width: 297mm; min-height: 210mm; padding: 0; overflow: visible;
-        display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+        width: 297mm;
+        min-height: 210mm;
+        padding: 15mm;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        flex-wrap: wrap;
       }
-      .exam-doc-envelope-sheet {
-        width: 100%; height: 100%; padding: 18mm 12mm 14mm; box-sizing: border-box;
-        display: flex; flex-direction: column; justify-content: flex-start; align-items: center; text-align: center;
-      }
-      .exam-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: center; margin-bottom: 7px; }
-      .exam-doc-header img { width: 58px; height: 58px; object-fit: contain; }
-      .exam-doc-header h2 { flex: 1; margin: 0; font-size: 17pt; font-weight: 700; line-height: 1.22; }
-      .exam-doc-info { display: grid; gap: 4px; margin-bottom: 8px; border-bottom: 2px dotted #111; padding-bottom: 10px; }
-      .exam-doc-info > div { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
-      .exam-doc-field { display: inline-flex; align-items: baseline; gap: 6px; min-width: 120px; flex: 1 1 150px; }
-      .exam-doc-field.wide { flex-basis: 280px; }
-      .exam-doc-label { white-space: nowrap; }
-      .exam-doc-value { flex: 1; min-height: 18px; color: #0021a6; font-weight: 700; border-bottom: 2px dotted #111; padding: 0 8px 1px; }
-      .exam-doc-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 8px; }
-      .exam-doc-table { width: 100%; border-collapse: collapse; margin: 8px 0; table-layout: fixed; }
-      .exam-doc-table th, .exam-doc-table td { border: 1px solid #111; padding: 2.5px 4px; text-align: center; vertical-align: middle; font-size: 10.6pt; line-height: 1.24; }
-      .exam-doc-table th:nth-child(1), .exam-doc-table td:nth-child(1) { width: 31px; }
-      .exam-doc-table th:nth-child(2), .exam-doc-table td:nth-child(2) { width: 68px; }
-      .exam-doc-table th:nth-child(4), .exam-doc-table td:nth-child(4) { width: 62px; }
-      .exam-doc-table .name-cell { text-align: left; }
-      .exam-doc-paper.rtl .exam-doc-table .name-cell { text-align: right; }
-      .empty-students { color: #6b7280; height: 80px; }
-      .exam-doc-paper.sign-list .exam-doc-table td { height: auto; }
-      .exam-doc-row-height { height: 8.5mm; }
-      .exam-doc-signature { margin-top: 15px; display: block; text-align: left; }
-      .exam-doc-paper.rtl .exam-doc-signature { text-align: right; }
-      .exam-doc-signature-label { font-weight: bold; margin-bottom: 6px; }
-      .exam-doc-signature-lines { display: grid; gap: 8px; padding-left: 20px; }
-      .exam-doc-paper.rtl .exam-doc-signature-lines { padding-left: 0; padding-right: 20px; }
-      .exam-doc-counts { margin: 8px 0 8px auto; width: min(90mm, 100%); display: grid; gap: 7px; text-align: right; }
-      .exam-doc-counts span { display: inline-block; min-width: 34mm; color: #0021a6; font-weight: 700; border-bottom: 2px dotted #111; text-align: center; padding: 0 8px 1px; }
-      .exam-doc-envelope-title { font-size: 38pt; font-weight: 700; margin: 4mm 0 14mm; line-height: 1.1; }
-      .exam-doc-envelope-info { width: 100%; display: grid; gap: 7mm; font-size: 26pt; line-height: 1.16; }
-      .exam-doc-envelope-row { display: flex; align-items: baseline; justify-content: center; gap: 7mm; flex-wrap: nowrap; width: 100%; }
-      .exam-doc-envelope-row.compact { gap: 4mm; font-size: 24pt; }
-      .exam-doc-envelope-with-unit { display: inline-flex; align-items: baseline; gap: 3mm; white-space: nowrap; }
-      .exam-doc-envelope-pair { display: inline-flex; align-items: baseline; gap: 4mm; white-space: nowrap; }
-      .exam-doc-envelope-label { color: #111; font-weight: 400; }
-      .exam-doc-envelope-value {
-        display: inline-block; min-width: 30mm; color: #0021a6; font-weight: 700;
-        border-bottom: 2px dotted #111; text-align: center; padding: 0 6mm 1mm;
-      }
-      .exam-doc-envelope-pair.subject .exam-doc-envelope-value { min-width: 78mm; }
-      .exam-doc-envelope-pair.code .exam-doc-envelope-value { min-width: 42mm; }
-      .exam-doc-envelope-pair.day .exam-doc-envelope-value { min-width: 26mm; }
-      .exam-doc-envelope-pair.month .exam-doc-envelope-value { min-width: 48mm; }
-      .exam-doc-envelope-pair.year .exam-doc-envelope-value { min-width: 44mm; }
-      .exam-doc-envelope-pair.time .exam-doc-envelope-value { min-width: 58mm; }
-      .exam-doc-envelope-pair.class-name .exam-doc-envelope-value { min-width: 38mm; }
-      .exam-doc-envelope-pair.count .exam-doc-envelope-value { min-width: 22mm; }
-      .exam-doc-envelope-pair.teacher-name .exam-doc-envelope-value { min-width: 142mm; }
-      .exam-doc-envelope-row.compact .exam-doc-envelope-value { padding-left: 4mm; padding-right: 4mm; }
-      .exam-doc-envelope-row.compact .exam-doc-envelope-pair.class-name .exam-doc-envelope-value { min-width: 34mm; }
-      .exam-doc-envelope-row.compact .exam-doc-envelope-pair.count .exam-doc-envelope-value { min-width: 18mm; }
-      .exam-doc-page-break { break-before: page; page-break-before: always; }
 
-      .exam-doc-absent-table th:nth-child(1), .exam-doc-absent-table td:nth-child(1) { width: 50px !important; }
-      .exam-doc-absent-table th:nth-child(2), .exam-doc-absent-table td:nth-child(2) { width: 110px !important; }
-      .exam-doc-absent-table th:nth-child(4), .exam-doc-absent-table td:nth-child(4) { width: 140px !important; }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        text-align: center;
+        margin-bottom: 10px;
+      }
+
+      .header img {
+        width: 80px;
+      }
+
+      .header h2 {
+        font-size: 17pt;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .infoG div {
+        margin-bottom: 6px;
+      }
+
+      .info1,
+      .info2,
+      .info3,
+      .info4,
+      .info5 {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .infoNP1,
+      .infoNP2,
+      .infoNP3,
+      .infoNP4,
+      .infoNP5 {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 50px;
+      }
+
+      .textColor {
+        color: rgb(0, 33, 166);
+        font-weight: bold;
+        border-bottom: 2px dotted black;
+        padding-bottom: 2px;
+        flex-grow: 1;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
+      }
+
+      th,
+      td {
+        border: 1px solid black;
+        padding: 3px;
+        text-align: center;
+      }
+
+      .nm {
+        text-align: left;
+      }
+
+      .column-container {
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .column {
+        width: 49%;
+      }
+
+      .examiner-signature {
+        margin-top: 20px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .exam-doc-paper.landscape .headerL {
+        font-size: 40pt;
+        font-weight: bold;
+        margin-bottom: 1px;
+      }
+
+      .exam-doc-paper.landscape .infoNP {
+        font-size: 32pt;
+        width: 100%;
+        align-items: center;
+        gap: 15px;
+      }
+
+      .exam-doc-paper.landscape .infoNP div {
+        justify-content: center;
+        gap: 5px;
+        margin-bottom: 5px;
+      }
 
       @media print {
-        html, body { width: 100%; height: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible; }
         body * { visibility: hidden !important; }
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
-        #exam-doc-print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff; }
+        #exam-doc-print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
+
+        html, body {
+          width: 210mm;
+          height: 297mm;
+          overflow: visible;
+          font-size: 11pt;
+          background: #fff !important;
+        }
+
         .exam-doc-paper {
-          width: 100% !important;
-          height: auto !important;
-          min-height: 0 !important;
+          width: 210mm !important;
+          height: 297mm !important;
+          min-height: 297mm !important;
           margin: 0 !important;
           padding: 0 !important;
           box-shadow: none !important;
           break-after: page;
           page-break-after: always;
           overflow: visible !important;
-          box-sizing: border-box;
         }
+
         .exam-doc-paper.landscape {
-          page: exam-doc-landscape;
-          width: 100% !important;
-          height: auto !important;
-          min-height: 0 !important;
+          page: landscape;
+          width: 297mm !important;
+          height: 210mm !important;
+          min-height: 210mm !important;
           margin: 0 !important;
           padding: 0 !important;
-          box-shadow: none !important;
-          break-after: page;
-          page-break-after: always;
-          overflow: visible !important;
-          box-sizing: border-box;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: center !important;
+          align-items: center !important;
+          text-align: center !important;
+          flex-wrap: wrap !important;
         }
-        .exam-doc-envelope-sheet {
-          width: 100% !important;
-          height: 100% !important;
-          padding: 10mm 2mm 0 !important;
-          box-sizing: border-box;
+
+        table,
+        th,
+        td {
+          font-size: 11pt;
         }
-        .exam-doc-page-break { break-before: auto; page-break-before: auto; }
-        .exam-doc-paper:last-child { break-after: auto; page-break-after: auto; }
+
+        .header img {
+          width: 60px;
+        }
+
+        .infoG {
+          font-size: 11pt;
+        }
       }
     </style>
     <div id="exam-doc-print-area" class="${areaClass.trim()}">
@@ -500,45 +576,73 @@ const _buildPrintHtml = (mode = 'all') => {
     <div class="exam-doc-paper ${dirClass} exam-doc-page-break">
       ${_header(labels.examCoverTitle)}
       ${_infoBlock(labels, data, form)}
-      ${_summaryCounts(labels, total, form.examAmount)}
-      ${_absentTable(labels)}
+      <div style="text-align: right; margin-top: 10px; margin-bottom: 10px; margin-right: 70px;">
+        <div>
+          ${_htmlEsc(labels.totalStudents)} <span class="textColor" style="border-bottom:2px dotted; padding:0 40px;">${total}</span> ${_htmlEsc(labels.studentUnit)}
+        </div>
+        <div style="margin-top: 10px;">
+          ${_htmlEsc(labels.presentStudents)} <span style="border-bottom:2px dotted; padding:0 40px;">&nbsp;</span> ${_htmlEsc(labels.studentUnit)}
+        </div>
+        <div style="margin-top: 10px;">
+          ${_htmlEsc(labels.absentStudents)} <span style="border-bottom:2px dotted; padding:0 40px;">&nbsp;</span> ${_htmlEsc(labels.studentUnit)}
+        </div>
+      </div>
+      <table style="margin-top: 10px;">
+        <thead>
+          <tr>
+            <th>${_htmlEsc(labels.no)}</th>
+            <th>${_htmlEsc(labels.studentCode)}</th>
+            <th>${_htmlEsc(labels.absentName)}</th>
+            <th>${_htmlEsc(labels.note)}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${_blankRows(15)}
+        </tbody>
+      </table>
       ${_signature(labels, form)}
     </div>
 
     <div class="exam-doc-paper ${dirClass} exam-doc-page-break">
       ${_header(labels.absentTitle)}
       ${_infoBlock(labels, data, form)}
-      ${_absentTable(labels)}
+      <table style="margin-top: 10px;">
+        <thead>
+          <tr>
+            <th>${_htmlEsc(labels.no)}</th>
+            <th>${_htmlEsc(labels.studentCode)}</th>
+            <th>${_htmlEsc(labels.absentName)}</th>
+            <th>${_htmlEsc(labels.note)}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${_blankRows(15)}
+        </tbody>
+      </table>
       ${_signature(labels, form)}
     </div>
     ` : ''}
 
     ${includeEnvelope ? `
     <div class="exam-doc-paper ${dirClass} landscape ${includePortrait ? 'exam-doc-page-break' : ''}">
-      <div class="exam-doc-envelope-sheet">
-        <div class="exam-doc-envelope-title">${_htmlEsc(labels.envelopeTitle)}</div>
-        <div class="exam-doc-envelope-info">
-          <div class="exam-doc-envelope-row">
-            ${_envelopePair(labels.envelopeSubject, data.subjectName, 'subject')}
-            ${_envelopePair(labels.subjectCode, data.subjectCode, 'code')}
-          </div>
-          <div class="exam-doc-envelope-row">
-            ${_envelopePair(labels.envelopeDate, parts.day, 'day')}
-            ${_envelopePair(labels.envelopeMonth, parts.month, 'month')}
-            ${_envelopePair(labels.envelopeYear, parts.year, 'year')}
-          </div>
-          <div class="exam-doc-envelope-row">
-            ${_envelopePair(labels.envelopeTime, _envelopeTime(form.startTime, labels), 'time')}
-            ${_envelopePair(labels.envelopeTo, _envelopeTime(form.endTime, labels), 'time')}
-          </div>
-          <div class="exam-doc-envelope-row compact">
-            ${_envelopePair(labels.envelopeClass, data.className, 'class-name')}
-            <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.envelopeStudents, String(total), 'count')}<span>${_htmlEsc(labels.studentUnit)}</span></span>
-            <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.examAmount, examAmount, 'count')}<span>${_htmlEsc(labels.examUnit)}</span></span>
-          </div>
-          <div class="exam-doc-envelope-row">
-            ${_envelopePair(labels.envelopeTeacher, data.teacherName, 'teacher-name')}
-          </div>
+      <div class="headerL">
+        <a>${_htmlEsc(labels.envelopeTitle)}</a>
+      </div>
+      <div class="infoNP">
+        <div class="infoNP1">
+          ${_htmlEsc(labels.envelopeSubject)} <span class="textColor">${_htmlEsc(data.subjectName)}</span> ${_htmlEsc(labels.subjectCode)} <span class="textColor">${_htmlEsc(data.subjectCode)}</span>
+        </div>
+        <div class="infoNP2">
+          ${_htmlEsc(labels.envelopeDate)} <span class="textColor">${_htmlEsc(parts.day)}</span> ${_htmlEsc(labels.envelopeMonth)} <span class="textColor">${_htmlEsc(parts.month)}</span> ${_htmlEsc(labels.envelopeYear)} <span class="textColor">${_htmlEsc(parts.year)}</span>
+        </div>
+        <div class="infoNP3">
+          ${_htmlEsc(labels.envelopeTime)} <span class="textColor">${_htmlEsc(_envelopeTime(form.startTime, labels))}</span> ${_htmlEsc(labels.envelopeTo)} <span class="textColor">${_htmlEsc(_envelopeTime(form.endTime, labels))}</span>
+        </div>
+        <div class="infoNP4">
+          ${_htmlEsc(labels.envelopeClass)} <span class="textColor">${_htmlEsc(data.className)}</span> ${_htmlEsc(labels.envelopeStudents)} <span class="textColor">${total}</span> ${_htmlEsc(labels.studentUnit)} ${_htmlEsc(labels.examAmount)} <span class="textColor">${_htmlEsc(examAmount)}</span> ${_htmlEsc(labels.examUnit)}
+        </div>
+        <div class="infoNP5">
+          ${_htmlEsc(labels.envelopeTeacher)} <span class="textColor">${_htmlEsc(data.teacherName)}</span>
         </div>
       </div>
     </div>
