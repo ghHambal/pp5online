@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.10'
+import { APP_VERSION } from './version.js?v=10.18.11'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.11': [
+    '📄 เพิ่มเมนูเอกสารช่วงสอบสำหรับครู: สร้างใบลงชื่อเข้าสอบ ใบปะหน้าข้อสอบ ใบแจ้งขาดสอบ และใบปะหน้าซองข้อสอบ พร้อมโหมดไทย อาหรับ และยาวี'
+  ],
   '10.18.10': [
     '🏆 ปรับการเปิด AZIZGAMES ให้เป็นป๊อปอัปเต็มจอในระบบ ปพ5 พร้อมปุ่มแชร์ลิงก์และปุ่มเปิดในบราวเซอร์/แท็บใหม่แบบไม่รบกวนสายตา'
   ],
