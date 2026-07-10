@@ -350,16 +350,20 @@ const _buildPrintHtml = (mode = 'all') => {
     <style id="exam-doc-print-style">
       @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Amiri:wght@400;700&display=swap');
       #exam-doc-print-area { --exam-font: ${labels.font}; }
-      #exam-doc-print-area.envelope-only { width: 297mm; }
+      #exam-doc-print-area.envelope-only { width: 210mm; }
       #exam-doc-print-area.portrait-only { width: 210mm; }
       .exam-doc-paper {
-        width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 7mm 9mm; box-sizing: border-box;
+        width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 5mm 7mm; box-sizing: border-box;
         background: #fff; color: #111; font-family: var(--exam-font); font-size: 11.4pt; box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
       }
       .exam-doc-paper.rtl { direction: rtl; text-align: right; }
       .exam-doc-paper.landscape {
-        width: 297mm; min-height: 210mm; padding: 24mm 18mm 16mm;
+        width: 210mm; min-height: 297mm; padding: 0; position: relative; overflow: hidden; display: block;
+      }
+      .exam-doc-envelope-sheet {
+        width: 297mm; height: 210mm; padding: 24mm 18mm 16mm; box-sizing: border-box;
         display: flex; flex-direction: column; justify-content: flex-start; align-items: center; text-align: center;
+        transform: rotate(90deg) translateY(-210mm); transform-origin: top left;
       }
       .exam-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: center; margin-bottom: 7px; }
       .exam-doc-header img { width: 58px; height: 58px; object-fit: contain; }
@@ -379,8 +383,8 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-table .name-cell { text-align: left; }
       .exam-doc-paper.rtl .exam-doc-table .name-cell { text-align: right; }
       .empty-students { color: #6b7280; height: 80px; }
-      .exam-doc-paper.sign-list .exam-doc-table td { height: 5.2mm; }
-      .exam-doc-row-height { height: 8mm; }
+      .exam-doc-paper.sign-list .exam-doc-table td { height: 6.2mm; }
+      .exam-doc-row-height { height: 10.5mm; }
       .exam-doc-signature { margin-top: 12px; display: flex; justify-content: flex-start; gap: 28px; align-items: flex-start; }
       .exam-doc-paper.rtl .exam-doc-signature { justify-content: flex-end; }
       .exam-doc-signature-lines { display: grid; gap: 10px; min-width: 310px; }
@@ -409,13 +413,13 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-page-break { break-before: page; page-break-before: always; }
       @media print {
         @page { size: ${defaultPageSize}; margin: 0; }
-        @page exam-doc-envelope-page { size: A4 landscape; margin: 0; }
         html, body { width: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; }
         body * { visibility: hidden !important; }
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
         #exam-doc-print-area { position: absolute; left: 0; top: 0; width: auto; background: #fff; }
-        .exam-doc-paper { width: 210mm; min-height: 297mm; margin: 0; padding: 7mm 9mm; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
-        .exam-doc-paper.landscape { page: exam-doc-envelope-page; width: 297mm; height: 210mm; min-height: 210mm; padding: 24mm 18mm 16mm; }
+        .exam-doc-paper { width: 210mm; min-height: 297mm; margin: 0; padding: 5mm 7mm; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
+        .exam-doc-paper.landscape { width: 210mm; height: 297mm; min-height: 297mm; padding: 0; }
+        .exam-doc-envelope-sheet { width: 297mm; height: 210mm; padding: 24mm 18mm 16mm; }
         .exam-doc-paper:last-child { break-after: auto; page-break-after: auto; }
       }
     </style>
@@ -459,28 +463,30 @@ const _buildPrintHtml = (mode = 'all') => {
 
     ${includeEnvelope ? `
     <div class="exam-doc-paper ${dirClass} landscape ${includePortrait ? 'exam-doc-page-break' : ''}">
-      <div class="exam-doc-envelope-title">${_htmlEsc(labels.envelopeTitle)}</div>
-      <div class="exam-doc-envelope-info">
-        <div class="exam-doc-envelope-row">
-          ${_envelopePair(labels.envelopeSubject, data.subjectName, 'subject')}
-          ${_envelopePair(labels.subjectCode, data.subjectCode, 'code')}
-        </div>
-        <div class="exam-doc-envelope-row">
-          ${_envelopePair(labels.envelopeDate, parts.day, 'day')}
-          ${_envelopePair(labels.envelopeMonth, parts.month, 'month')}
-          ${_envelopePair(labels.envelopeYear, parts.year, 'year')}
-        </div>
-        <div class="exam-doc-envelope-row">
-          ${_envelopePair(labels.envelopeTime, _envelopeTime(form.startTime, labels), 'time')}
-          ${_envelopePair(labels.envelopeTo, _envelopeTime(form.endTime, labels), 'time')}
-        </div>
-        <div class="exam-doc-envelope-row">
-          ${_envelopePair(labels.envelopeClass, data.className, 'class-name')}
-          <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.envelopeStudents, String(total), 'count')}<span>${_htmlEsc(labels.studentUnit)}</span></span>
-          <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.examAmount, examAmount, 'count')}<span>${_htmlEsc(labels.examUnit)}</span></span>
-        </div>
-        <div class="exam-doc-envelope-row">
-          ${_envelopePair(labels.envelopeTeacher, data.teacherName, 'teacher-name')}
+      <div class="exam-doc-envelope-sheet">
+        <div class="exam-doc-envelope-title">${_htmlEsc(labels.envelopeTitle)}</div>
+        <div class="exam-doc-envelope-info">
+          <div class="exam-doc-envelope-row">
+            ${_envelopePair(labels.envelopeSubject, data.subjectName, 'subject')}
+            ${_envelopePair(labels.subjectCode, data.subjectCode, 'code')}
+          </div>
+          <div class="exam-doc-envelope-row">
+            ${_envelopePair(labels.envelopeDate, parts.day, 'day')}
+            ${_envelopePair(labels.envelopeMonth, parts.month, 'month')}
+            ${_envelopePair(labels.envelopeYear, parts.year, 'year')}
+          </div>
+          <div class="exam-doc-envelope-row">
+            ${_envelopePair(labels.envelopeTime, _envelopeTime(form.startTime, labels), 'time')}
+            ${_envelopePair(labels.envelopeTo, _envelopeTime(form.endTime, labels), 'time')}
+          </div>
+          <div class="exam-doc-envelope-row">
+            ${_envelopePair(labels.envelopeClass, data.className, 'class-name')}
+            <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.envelopeStudents, String(total), 'count')}<span>${_htmlEsc(labels.studentUnit)}</span></span>
+            <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.examAmount, examAmount, 'count')}<span>${_htmlEsc(labels.examUnit)}</span></span>
+          </div>
+          <div class="exam-doc-envelope-row">
+            ${_envelopePair(labels.envelopeTeacher, data.teacherName, 'teacher-name')}
+          </div>
         </div>
       </div>
     </div>
