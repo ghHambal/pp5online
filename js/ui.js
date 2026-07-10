@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.14'
+import { APP_VERSION } from './version.js?v=10.18.15'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.15': [
+    '🧾 ปรับเอกสารช่วงสอบให้พิมพ์รวม 4 หน้าอีกครั้ง และปรับใบปะหน้าซองข้อสอบเป็น A4 แนวนอนตามแบบ'
+  ],
   '10.18.14': [
     '🧾 แก้รายการเวอร์ชันให้เรียงตามเลขเวอร์ชันจริง และแยกพิมพ์เอกสารช่วงสอบเป็นหน้า 1-3 แนวตั้งกับใบปะหน้าซองแนวนอน'
   ],

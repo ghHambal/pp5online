@@ -236,6 +236,17 @@ const _line = (label, value, wide = false) => `
     <span class="exam-doc-value">${_htmlEsc(value || ' ')}</span>
   </span>`
 
+const _envelopePair = (label, value, size = '') => `
+  <span class="exam-doc-envelope-pair ${size}">
+    <span class="exam-doc-envelope-label">${_htmlEsc(label)}</span>
+    <span class="exam-doc-envelope-value">${_htmlEsc(value || ' ')}</span>
+  </span>`
+
+const _envelopeTime = (value, labels) => {
+  if (!value) return ''
+  return labels.key === 'th' ? `${value} น.` : value
+}
+
 const _blankRows = (count, cols = 4) => Array.from({ length: count }, () =>
   `<tr>${Array.from({ length: cols }, (_, i) => `<td class="${i === 0 ? 'exam-doc-row-height' : ''}"></td>`).join('')}</tr>`
 ).join('')
@@ -331,8 +342,9 @@ const _buildPrintHtml = (mode = 'all') => {
   const dirClass = labels.dir === 'rtl' ? 'rtl' : 'ltr'
   const includePortrait = mode === 'all' || mode === 'portrait'
   const includeEnvelope = mode === 'all' || mode === 'envelope'
-  const pageSize = mode === 'envelope' ? 'A4 landscape' : 'A4 portrait'
+  const defaultPageSize = mode === 'envelope' ? 'A4 landscape' : 'A4 portrait'
   const areaClass = mode === 'envelope' ? ' envelope-only' : (mode === 'portrait' ? ' portrait-only' : '')
+  const examAmount = form.examAmount || String(total)
 
   return `
     <style id="exam-doc-print-style">
@@ -345,7 +357,10 @@ const _buildPrintHtml = (mode = 'all') => {
         background: #fff; color: #111; font-family: var(--exam-font); font-size: 11.4pt; box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
       }
       .exam-doc-paper.rtl { direction: rtl; text-align: right; }
-      .exam-doc-paper.landscape { width: 297mm; min-height: 210mm; padding: 13mm 16mm; display: flex; flex-direction: column; justify-content: center; align-items: stretch; text-align: center; }
+      .exam-doc-paper.landscape {
+        width: 297mm; min-height: 210mm; padding: 24mm 18mm 16mm;
+        display: flex; flex-direction: column; justify-content: flex-start; align-items: center; text-align: center;
+      }
       .exam-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: center; margin-bottom: 7px; }
       .exam-doc-header img { width: 58px; height: 58px; object-fit: contain; }
       .exam-doc-header h2 { flex: 1; margin: 0; font-size: 17pt; font-weight: 700; line-height: 1.22; }
@@ -372,19 +387,35 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-counts { margin: 8px 0 8px auto; width: min(90mm, 100%); display: grid; gap: 7px; text-align: right; }
       .exam-doc-paper.rtl .exam-doc-counts { margin-left: 0; margin-right: auto; }
       .exam-doc-counts span { display: inline-block; min-width: 34mm; color: #0021a6; font-weight: 700; border-bottom: 2px dotted #111; text-align: center; padding: 0 8px 1px; }
-      .exam-doc-envelope-title { font-size: 42pt; font-weight: 700; margin-bottom: 11mm; line-height: 1.1; }
-      .exam-doc-envelope-info { display: grid; gap: 6mm; font-size: 27pt; line-height: 1.22; }
-      .exam-doc-envelope-info .exam-doc-field { width: 100%; justify-content: center; }
-      .exam-doc-envelope-info .exam-doc-value { min-width: 52mm; flex: 0 1 auto; }
+      .exam-doc-envelope-title { font-size: 39pt; font-weight: 700; margin: 7mm 0 15mm; line-height: 1.1; }
+      .exam-doc-envelope-info { width: 100%; display: grid; gap: 9mm; font-size: 27pt; line-height: 1.16; }
+      .exam-doc-envelope-row { display: flex; align-items: baseline; justify-content: center; gap: 9mm; flex-wrap: nowrap; }
+      .exam-doc-envelope-with-unit { display: inline-flex; align-items: baseline; gap: 3mm; white-space: nowrap; }
+      .exam-doc-envelope-pair { display: inline-flex; align-items: baseline; gap: 4mm; white-space: nowrap; }
+      .exam-doc-envelope-label { color: #111; font-weight: 400; }
+      .exam-doc-envelope-value {
+        display: inline-block; min-width: 30mm; color: #0021a6; font-weight: 700;
+        border-bottom: 2px dotted #111; text-align: center; padding: 0 6mm 1mm;
+      }
+      .exam-doc-envelope-pair.subject .exam-doc-envelope-value { min-width: 88mm; }
+      .exam-doc-envelope-pair.code .exam-doc-envelope-value { min-width: 54mm; }
+      .exam-doc-envelope-pair.day .exam-doc-envelope-value { min-width: 31mm; }
+      .exam-doc-envelope-pair.month .exam-doc-envelope-value { min-width: 55mm; }
+      .exam-doc-envelope-pair.year .exam-doc-envelope-value { min-width: 56mm; }
+      .exam-doc-envelope-pair.time .exam-doc-envelope-value { min-width: 70mm; }
+      .exam-doc-envelope-pair.class-name .exam-doc-envelope-value { min-width: 42mm; }
+      .exam-doc-envelope-pair.count .exam-doc-envelope-value { min-width: 27mm; }
+      .exam-doc-envelope-pair.teacher-name .exam-doc-envelope-value { min-width: 165mm; }
       .exam-doc-page-break { break-before: page; page-break-before: always; }
       @media print {
-        @page { size: ${pageSize}; margin: 0; }
+        @page { size: ${defaultPageSize}; margin: 0; }
+        @page exam-doc-envelope-page { size: A4 landscape; margin: 0; }
         html, body { width: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; }
         body * { visibility: hidden !important; }
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
         #exam-doc-print-area { position: absolute; left: 0; top: 0; width: auto; background: #fff; }
         .exam-doc-paper { width: 210mm; min-height: 297mm; margin: 0; padding: 7mm 9mm; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
-        .exam-doc-paper.landscape { width: 297mm; min-height: 210mm; padding: 13mm 16mm; }
+        .exam-doc-paper.landscape { page: exam-doc-envelope-page; width: 297mm; height: 210mm; min-height: 210mm; padding: 24mm 18mm 16mm; }
         .exam-doc-paper:last-child { break-after: auto; page-break-after: auto; }
       }
     </style>
@@ -430,41 +461,43 @@ const _buildPrintHtml = (mode = 'all') => {
     <div class="exam-doc-paper ${dirClass} landscape ${includePortrait ? 'exam-doc-page-break' : ''}">
       <div class="exam-doc-envelope-title">${_htmlEsc(labels.envelopeTitle)}</div>
       <div class="exam-doc-envelope-info">
-        <div>${_line(labels.envelopeSubject, data.subjectName, true)} ${_line(labels.subjectCode, data.subjectCode)}</div>
-        <div>
-          ${_line(labels.envelopeDate, parts.day)}
-          ${_line(labels.envelopeMonth, parts.month)}
-          ${_line(labels.envelopeYear, parts.year)}
+        <div class="exam-doc-envelope-row">
+          ${_envelopePair(labels.envelopeSubject, data.subjectName, 'subject')}
+          ${_envelopePair(labels.subjectCode, data.subjectCode, 'code')}
         </div>
-        <div>${_line(labels.envelopeTime, form.startTime)} ${_line(labels.envelopeTo, form.endTime)}</div>
-        ${form.periodPart ? `<div>${_line(labels.periodPart, form.periodPart)}</div>` : ''}
-        <div>
-          ${_line(labels.envelopeClass, data.className)}
-          ${form.classPart ? _line(labels.groupPart, form.classPart, true) : ''}
-          ${form.examRoom ? _line(labels.examRoom, form.examRoom) : ''}
+        <div class="exam-doc-envelope-row">
+          ${_envelopePair(labels.envelopeDate, parts.day, 'day')}
+          ${_envelopePair(labels.envelopeMonth, parts.month, 'month')}
+          ${_envelopePair(labels.envelopeYear, parts.year, 'year')}
         </div>
-        <div>
-          ${_line(labels.envelopeStudents, String(total))}
-          ${_line(labels.examAmount, form.examAmount || String(total))}
+        <div class="exam-doc-envelope-row">
+          ${_envelopePair(labels.envelopeTime, _envelopeTime(form.startTime, labels), 'time')}
+          ${_envelopePair(labels.envelopeTo, _envelopeTime(form.endTime, labels), 'time')}
         </div>
-        <div>${_line(labels.envelopeTeacher, data.teacherName, true)}</div>
+        <div class="exam-doc-envelope-row">
+          ${_envelopePair(labels.envelopeClass, data.className, 'class-name')}
+          <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.envelopeStudents, String(total), 'count')}<span>${_htmlEsc(labels.studentUnit)}</span></span>
+          <span class="exam-doc-envelope-with-unit">${_envelopePair(labels.examAmount, examAmount, 'count')}<span>${_htmlEsc(labels.examUnit)}</span></span>
+        </div>
+        <div class="exam-doc-envelope-row">
+          ${_envelopePair(labels.envelopeTeacher, data.teacherName, 'teacher-name')}
+        </div>
       </div>
     </div>
     ` : ''}
     </div>`
 }
 
-const _openExamPrintWindow = (mode = 'portrait') => {
-  const title = mode === 'envelope' ? 'ใบปะหน้าซองข้อสอบ' : 'เอกสารช่วงสอบ'
+const _openExamPrintWindow = () => {
   const html = `<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title}</title>
+  <title>เอกสารช่วงสอบ</title>
 </head>
 <body style="margin:0;background:#fff;">
-  ${_buildPrintHtml(mode)}
+  ${_buildPrintHtml('all')}
   <script>
     window.addEventListener('load', () => setTimeout(() => window.print(), 150));
   </script>
@@ -510,8 +543,7 @@ function _renderShell() {
           </div>
           <div class="flex gap-2 flex-wrap">
             <button id="exam-doc-refresh" class="px-4 py-2 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">รีเฟรชรายชื่อ</button>
-            <button id="exam-doc-print-portrait" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 shadow-sm transition">พิมพ์หน้า 1-3</button>
-            <button id="exam-doc-print-envelope" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 shadow-sm transition">พิมพ์ใบซองแนวนอน</button>
+            <button id="exam-doc-print" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 shadow-sm transition">พิมพ์ / บันทึก PDF</button>
           </div>
         </div>
 
@@ -688,12 +720,8 @@ function _bind() {
     showToast('รีเฟรชรายชื่อแล้ว', 'success')
   })
 
-  document.getElementById('exam-doc-print-portrait')?.addEventListener('click', () => {
-    if (_ensureClassSelectedBeforePrint()) _openExamPrintWindow('portrait')
-  })
-
-  document.getElementById('exam-doc-print-envelope')?.addEventListener('click', () => {
-    if (_ensureClassSelectedBeforePrint()) _openExamPrintWindow('envelope')
+  document.getElementById('exam-doc-print')?.addEventListener('click', () => {
+    if (_ensureClassSelectedBeforePrint()) _openExamPrintWindow()
   })
 }
 
