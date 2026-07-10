@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.17'
+import { APP_VERSION } from './version.js?v=10.18.18'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.18': [
+    '🧾 ปรับ CSS พิมพ์เอกสารช่วงสอบตามตัวอย่างตั้งต้น: หน้า 1-3 ไม่ล้นหน้า และใบปะหน้าซองข้อสอบใช้หน้า A4 แนวนอนจริง'
+  ],
   '10.18.17': [
     '🧾 ปรับใบลงชื่อนักเรียนเข้าสอบเป็นรายชื่อฝั่งละ 25 คน และจัดใบปะหน้าซองข้อสอบให้อยู่กึ่งกลางกระดาษมากขึ้น'
   ],

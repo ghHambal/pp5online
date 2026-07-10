@@ -380,20 +380,20 @@ const _buildPrintHtml = (mode = 'all') => {
     <style id="exam-doc-print-style">
       @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Amiri:wght@400;700&display=swap');
       #exam-doc-print-area { --exam-font: ${labels.font}; }
-      #exam-doc-print-area.envelope-only { width: 210mm; }
+      #exam-doc-print-area.envelope-only { width: 297mm; }
       #exam-doc-print-area.portrait-only { width: 210mm; }
       .exam-doc-paper {
-        width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 5mm 7mm; box-sizing: border-box;
+        width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 8mm 10mm; box-sizing: border-box;
         background: #fff; color: #111; font-family: var(--exam-font); font-size: 11.4pt; box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
       }
       .exam-doc-paper.rtl { direction: rtl; text-align: right; }
       .exam-doc-paper.landscape {
-        width: 210mm; min-height: 297mm; padding: 0; position: relative; overflow: hidden; display: grid; place-items: center;
+        width: 297mm; min-height: 210mm; padding: 0; overflow: visible;
+        display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
       }
       .exam-doc-envelope-sheet {
-        width: 297mm; height: 210mm; padding: 24mm 18mm 16mm; box-sizing: border-box;
+        width: 100%; height: 100%; padding: 18mm 12mm 14mm; box-sizing: border-box;
         display: flex; flex-direction: column; justify-content: flex-start; align-items: center; text-align: center;
-        transform: rotate(90deg);
       }
       .exam-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: center; margin-bottom: 7px; }
       .exam-doc-header img { width: 58px; height: 58px; object-fit: contain; }
@@ -413,17 +413,17 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-table .name-cell { text-align: left; }
       .exam-doc-paper.rtl .exam-doc-table .name-cell { text-align: right; }
       .empty-students { color: #6b7280; height: 80px; }
-      .exam-doc-paper.sign-list .exam-doc-table td { height: 6.5mm; }
-      .exam-doc-row-height { height: 10.5mm; }
-      .exam-doc-signature { margin-top: 12px; display: flex; justify-content: flex-start; gap: 28px; align-items: flex-start; }
+      .exam-doc-paper.sign-list .exam-doc-table td { height: auto; }
+      .exam-doc-row-height { height: 8mm; }
+      .exam-doc-signature { margin-top: 10px; display: flex; justify-content: flex-start; gap: 28px; align-items: flex-start; }
       .exam-doc-paper.rtl .exam-doc-signature { justify-content: flex-end; }
       .exam-doc-signature-lines { display: grid; gap: 10px; min-width: 310px; }
       .exam-doc-counts { margin: 8px 0 8px auto; width: min(90mm, 100%); display: grid; gap: 7px; text-align: right; }
       .exam-doc-paper.rtl .exam-doc-counts { margin-left: 0; margin-right: auto; }
       .exam-doc-counts span { display: inline-block; min-width: 34mm; color: #0021a6; font-weight: 700; border-bottom: 2px dotted #111; text-align: center; padding: 0 8px 1px; }
-      .exam-doc-envelope-title { font-size: 39pt; font-weight: 700; margin: 7mm 0 15mm; line-height: 1.1; }
-      .exam-doc-envelope-info { width: 100%; display: grid; gap: 9mm; font-size: 27pt; line-height: 1.16; }
-      .exam-doc-envelope-row { display: flex; align-items: baseline; justify-content: center; gap: 9mm; flex-wrap: nowrap; width: 100%; }
+      .exam-doc-envelope-title { font-size: 40pt; font-weight: 700; margin: 4mm 0 15mm; line-height: 1.1; }
+      .exam-doc-envelope-info { width: 100%; display: grid; gap: 8mm; font-size: 30pt; line-height: 1.16; }
+      .exam-doc-envelope-row { display: flex; align-items: baseline; justify-content: center; gap: 8mm; flex-wrap: nowrap; width: 100%; }
       .exam-doc-envelope-with-unit { display: inline-flex; align-items: baseline; gap: 3mm; white-space: nowrap; }
       .exam-doc-envelope-pair { display: inline-flex; align-items: baseline; gap: 4mm; white-space: nowrap; }
       .exam-doc-envelope-label { color: #111; font-weight: 400; }
@@ -442,14 +442,31 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-envelope-pair.teacher-name .exam-doc-envelope-value { min-width: 165mm; }
       .exam-doc-page-break { break-before: page; page-break-before: always; }
       @media print {
-        @page { size: ${defaultPageSize}; margin: 0; }
-        html, body { width: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+        @page { size: ${defaultPageSize}; margin: 10mm; }
+        @page exam-doc-landscape { size: A4 landscape; margin: 12mm; }
+        html, body { width: auto; height: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible; font-size: 11pt; }
         body * { visibility: hidden !important; }
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
-        #exam-doc-print-area { position: absolute; left: 0; top: 0; width: auto; background: #fff; }
-        .exam-doc-paper { width: 210mm; min-height: 297mm; margin: 0; padding: 5mm 7mm; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
-        .exam-doc-paper.landscape { width: 210mm; height: 297mm; min-height: 297mm; padding: 0; display: grid; place-items: center; }
-        .exam-doc-envelope-sheet { width: 297mm; height: 210mm; padding: 24mm 18mm 16mm; }
+        #exam-doc-print-area { position: static; width: auto; background: #fff; }
+        .exam-doc-paper { width: auto; min-height: auto; height: auto; margin: 0; padding: 0; box-shadow: none; break-after: page; page-break-after: always; overflow: visible; }
+        .exam-doc-page-break { break-before: auto; page-break-before: auto; }
+        .exam-doc-header { margin-bottom: 6px; }
+        .exam-doc-header img { width: 60px; height: 60px; }
+        .exam-doc-info { gap: 3px; margin-bottom: 6px; }
+        .exam-doc-info > div { gap: 6px 10px; }
+        .exam-doc-columns { gap: 8px; margin-top: 7px; }
+        .exam-doc-table { margin: 6px 0 8px; }
+        .exam-doc-table th, .exam-doc-table td { font-size: 11pt; line-height: 1.12; padding: 2px 3px; }
+        .exam-doc-paper.sign-list .exam-doc-table td { height: auto; }
+        .exam-doc-signature { margin-top: 6px; }
+        .exam-doc-signature-lines { gap: 7px; }
+        .exam-doc-paper.landscape {
+          page: exam-doc-landscape; width: auto; height: 186mm; min-height: 0; padding: 0; overflow: visible;
+          display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+        }
+        .exam-doc-envelope-sheet { width: 100%; height: 100%; padding: 7mm 0 0; }
+        .exam-doc-envelope-title { font-size: 40pt; margin: 0 0 15mm; }
+        .exam-doc-envelope-info { gap: 8mm; font-size: 30pt; }
         .exam-doc-paper:last-child { break-after: auto; page-break-after: auto; }
       }
     </style>
