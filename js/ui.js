@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.18.13'
+import { APP_VERSION } from './version.js?v=10.18.14'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.18.14': [
+    '🧾 แก้รายการเวอร์ชันให้เรียงตามเลขเวอร์ชันจริง และแยกพิมพ์เอกสารช่วงสอบเป็นหน้า 1-3 แนวตั้งกับใบปะหน้าซองแนวนอน'
+  ],
   '10.18.13': [
     '📋 ปรับประเภทการสอบในเอกสารช่วงสอบเป็นตัวเลือกมาตรฐาน: กลางภาค, ปรับคะแนนกลางภาค และปลายภาค'
   ],
@@ -801,6 +804,16 @@ const CHANGELOGS = {
   ]
 }
 
+function compareVersions(a, b) {
+  const pa = String(a || '').split('.').map(n => parseInt(n, 10) || 0)
+  const pb = String(b || '').split('.').map(n => parseInt(n, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0)
+    if (diff) return diff
+  }
+  return 0
+}
+
 // ─── Check and Show Changelog Pop-up for Admin/Teacher ─────────────────────
 export function checkAndShowChangelog(userId, forceShow = false) {
   const currentVersion = APP_VERSION
@@ -811,10 +824,10 @@ export function checkAndShowChangelog(userId, forceShow = false) {
     modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6'
     
     let changelogHTML = ''
-    const versions = Object.keys(CHANGELOGS).sort().reverse()
+    const versions = Object.keys(CHANGELOGS).sort((a, b) => compareVersions(b, a))
     
     versions.forEach(v => {
-      if (forceShow || !lastVersion || v > lastVersion || v === currentVersion) {
+      if (forceShow || !lastVersion || compareVersions(v, lastVersion) > 0 || v === currentVersion) {
         changelogHTML += `
           <div class="mb-4 last:mb-0">
             <h4 class="font-bold text-indigo-600 text-xs tracking-wider uppercase mb-1.5">เวอร์ชัน v${v}</h4>

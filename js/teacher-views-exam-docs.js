@@ -312,7 +312,7 @@ const _absentTable = labels => `
     <tbody>${_blankRows(15)}</tbody>
   </table>`
 
-const _buildPrintHtml = () => {
+const _buildPrintHtml = (mode = 'all') => {
   const form = _state.form
   const labels = LANGS[form.lang] || LANGS.th
   const cls = _state.selectedClass || {}
@@ -329,14 +329,20 @@ const _buildPrintHtml = () => {
   const left = students.slice(0, 27)
   const right = students.slice(27, 54)
   const dirClass = labels.dir === 'rtl' ? 'rtl' : 'ltr'
+  const includePortrait = mode === 'all' || mode === 'portrait'
+  const includeEnvelope = mode === 'all' || mode === 'envelope'
+  const pageSize = mode === 'envelope' ? 'A4 landscape' : 'A4 portrait'
+  const areaClass = mode === 'envelope' ? ' envelope-only' : (mode === 'portrait' ? ' portrait-only' : '')
 
   return `
     <style id="exam-doc-print-style">
       @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Amiri:wght@400;700&display=swap');
       #exam-doc-print-area { --exam-font: ${labels.font}; }
+      #exam-doc-print-area.envelope-only { width: 297mm; }
+      #exam-doc-print-area.portrait-only { width: 210mm; }
       .exam-doc-paper {
-        width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 9mm 10mm; box-sizing: border-box;
-        background: #fff; color: #111; font-family: var(--exam-font); font-size: 11pt; box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
+        width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 7mm 9mm; box-sizing: border-box;
+        background: #fff; color: #111; font-family: var(--exam-font); font-size: 11.4pt; box-shadow: 0 12px 30px rgba(15, 23, 42, .12);
       }
       .exam-doc-paper.rtl { direction: rtl; text-align: right; }
       .exam-doc-paper.landscape { width: 297mm; min-height: 210mm; padding: 13mm 16mm; display: flex; flex-direction: column; justify-content: center; align-items: stretch; text-align: center; }
@@ -351,14 +357,15 @@ const _buildPrintHtml = () => {
       .exam-doc-value { flex: 1; min-height: 18px; color: #0021a6; font-weight: 700; border-bottom: 2px dotted #111; padding: 0 8px 1px; }
       .exam-doc-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 8px; }
       .exam-doc-table { width: 100%; border-collapse: collapse; margin: 8px 0; table-layout: fixed; }
-      .exam-doc-table th, .exam-doc-table td { border: 1px solid #111; padding: 2px 4px; text-align: center; vertical-align: middle; font-size: 10.2pt; line-height: 1.22; }
+      .exam-doc-table th, .exam-doc-table td { border: 1px solid #111; padding: 2.5px 4px; text-align: center; vertical-align: middle; font-size: 10.6pt; line-height: 1.24; }
       .exam-doc-table th:nth-child(1), .exam-doc-table td:nth-child(1) { width: 31px; }
       .exam-doc-table th:nth-child(2), .exam-doc-table td:nth-child(2) { width: 68px; }
       .exam-doc-table th:nth-child(4), .exam-doc-table td:nth-child(4) { width: 62px; }
       .exam-doc-table .name-cell { text-align: left; }
       .exam-doc-paper.rtl .exam-doc-table .name-cell { text-align: right; }
       .empty-students { color: #6b7280; height: 80px; }
-      .exam-doc-row-height { height: 30px; }
+      .exam-doc-paper.sign-list .exam-doc-table td { height: 5.2mm; }
+      .exam-doc-row-height { height: 8mm; }
       .exam-doc-signature { margin-top: 12px; display: flex; justify-content: flex-start; gap: 28px; align-items: flex-start; }
       .exam-doc-paper.rtl .exam-doc-signature { justify-content: flex-end; }
       .exam-doc-signature-lines { display: grid; gap: 10px; min-width: 310px; }
@@ -371,18 +378,19 @@ const _buildPrintHtml = () => {
       .exam-doc-envelope-info .exam-doc-value { min-width: 52mm; flex: 0 1 auto; }
       .exam-doc-page-break { break-before: page; page-break-before: always; }
       @media print {
-        @page { size: A4 portrait; margin: 0; }
-        @page exam-doc-landscape { size: A4 landscape; margin: 0; }
+        @page { size: ${pageSize}; margin: 0; }
         html, body { width: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; }
         body * { visibility: hidden !important; }
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
         #exam-doc-print-area { position: absolute; left: 0; top: 0; width: auto; background: #fff; }
-        .exam-doc-paper { width: 210mm; min-height: 297mm; margin: 0; padding: 9mm 10mm; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
-        .exam-doc-paper.landscape { page: exam-doc-landscape; width: 297mm; min-height: 210mm; padding: 13mm 16mm; }
+        .exam-doc-paper { width: 210mm; min-height: 297mm; margin: 0; padding: 7mm 9mm; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
+        .exam-doc-paper.landscape { width: 297mm; min-height: 210mm; padding: 13mm 16mm; }
         .exam-doc-paper:last-child { break-after: auto; page-break-after: auto; }
       }
     </style>
-    <div class="exam-doc-paper ${dirClass}">
+    <div id="exam-doc-print-area" class="${areaClass.trim()}">
+    ${includePortrait ? `
+    <div class="exam-doc-paper ${dirClass} sign-list">
       ${_header(labels.signListTitle)}
       ${_infoBlock(labels, data, form)}
       <div class="exam-doc-columns">
@@ -416,8 +424,10 @@ const _buildPrintHtml = () => {
       ${_absentTable(labels)}
       ${_signature(labels, form)}
     </div>
+    ` : ''}
 
-    <div class="exam-doc-paper ${dirClass} landscape exam-doc-page-break">
+    ${includeEnvelope ? `
+    <div class="exam-doc-paper ${dirClass} landscape ${includePortrait ? 'exam-doc-page-break' : ''}">
       <div class="exam-doc-envelope-title">${_htmlEsc(labels.envelopeTitle)}</div>
       <div class="exam-doc-envelope-info">
         <div>${_line(labels.envelopeSubject, data.subjectName, true)} ${_line(labels.subjectCode, data.subjectCode)}</div>
@@ -439,19 +449,22 @@ const _buildPrintHtml = () => {
         </div>
         <div>${_line(labels.envelopeTeacher, data.teacherName, true)}</div>
       </div>
+    </div>
+    ` : ''}
     </div>`
 }
 
-const _openExamPrintWindow = () => {
+const _openExamPrintWindow = (mode = 'portrait') => {
+  const title = mode === 'envelope' ? 'ใบปะหน้าซองข้อสอบ' : 'เอกสารช่วงสอบ'
   const html = `<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>เอกสารช่วงสอบ</title>
+  <title>${title}</title>
 </head>
 <body style="margin:0;background:#fff;">
-  <div id="exam-doc-print-area">${_buildPrintHtml()}</div>
+  ${_buildPrintHtml(mode)}
   <script>
     window.addEventListener('load', () => setTimeout(() => window.print(), 150));
   </script>
@@ -497,7 +510,8 @@ function _renderShell() {
           </div>
           <div class="flex gap-2 flex-wrap">
             <button id="exam-doc-refresh" class="px-4 py-2 rounded-xl border border-gray-200 bg-white text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">รีเฟรชรายชื่อ</button>
-            <button id="exam-doc-print" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 shadow-sm transition">พิมพ์ / บันทึก PDF</button>
+            <button id="exam-doc-print-portrait" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 shadow-sm transition">พิมพ์หน้า 1-3</button>
+            <button id="exam-doc-print-envelope" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 shadow-sm transition">พิมพ์ใบซองแนวนอน</button>
           </div>
         </div>
 
@@ -583,7 +597,7 @@ function _renderShell() {
       </section>
 
       <section class="exam-doc-preview-wrap">
-        <div id="exam-doc-print-area">${_buildPrintHtml()}</div>
+        <div id="exam-doc-preview-area">${_buildPrintHtml()}</div>
       </section>
     </div>`)
 
@@ -629,8 +643,18 @@ function _readForm() {
 }
 
 function _updatePreviewOnly() {
-  const area = document.getElementById('exam-doc-print-area')
+  const area = document.getElementById('exam-doc-preview-area')
   if (area) area.innerHTML = _buildPrintHtml()
+}
+
+function _ensureClassSelectedBeforePrint() {
+  _readForm()
+  _updatePreviewOnly()
+  if (!_state.form.classId) {
+    showToast('กรุณาเลือกห้องเรียนก่อนพิมพ์', 'warning')
+    return false
+  }
+  return true
 }
 
 function _bind() {
@@ -664,14 +688,12 @@ function _bind() {
     showToast('รีเฟรชรายชื่อแล้ว', 'success')
   })
 
-  document.getElementById('exam-doc-print')?.addEventListener('click', () => {
-    _readForm()
-    _updatePreviewOnly()
-    if (!_state.form.classId) {
-      showToast('กรุณาเลือกห้องเรียนก่อนพิมพ์', 'warning')
-      return
-    }
-    _openExamPrintWindow()
+  document.getElementById('exam-doc-print-portrait')?.addEventListener('click', () => {
+    if (_ensureClassSelectedBeforePrint()) _openExamPrintWindow('portrait')
+  })
+
+  document.getElementById('exam-doc-print-envelope')?.addEventListener('click', () => {
+    if (_ensureClassSelectedBeforePrint()) _openExamPrintWindow('envelope')
   })
 }
 
