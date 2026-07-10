@@ -1,5 +1,5 @@
 import { getActiveLeavePermission, closeLeavePermission } from './api.js'
-import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.12'
+import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.13'
 import { formatLeaveCountdown } from './leave-time.js'
 import { showToast } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'

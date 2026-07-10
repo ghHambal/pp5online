@@ -172,6 +172,8 @@ const DEFAULT_FORM = {
   invigilator2: '',
 }
 
+const EXAM_TYPE_OPTIONS = ['กลางภาค', 'ปรับคะแนนกลางภาค', 'ปลายภาค']
+
 let _state = {
   teacher: null,
   classes: [],
@@ -515,7 +517,11 @@ function _renderShell() {
           </label>
           <label class="lg:col-span-2 block">
             <span class="block text-xs font-bold text-gray-500 mb-1">ประเภทสอบ</span>
-            <input id="exam-type" class="${INPUT_CLS}" value="${_htmlEsc(f.examType)}" placeholder="กลางภาค / ปลายภาค">
+            <select id="exam-type" class="${SELECT_CLS}">
+              ${EXAM_TYPE_OPTIONS.map(type => `
+                <option value="${_htmlEsc(type)}" ${f.examType === type ? 'selected' : ''}>${_htmlEsc(type)}</option>
+              `).join('')}
+            </select>
           </label>
           <div class="lg:col-span-2 grid grid-cols-2 gap-2">
             <label class="block">
@@ -699,6 +705,9 @@ export async function renderExamDocuments(teacher) {
         invigilator1: teacher?.full_name || '',
         ...draft,
       },
+    }
+    if (!EXAM_TYPE_OPTIONS.includes(_state.form.examType)) {
+      _state.form.examType = DEFAULT_FORM.examType
     }
     _state.selectedClass = _state.classes.find(c => String(c.id) === String(_state.form.classId)) || null
     await _loadStudentsForSelectedClass()
