@@ -8,6 +8,8 @@ import {
 const STORAGE_KEY = 'pp5_exam_docs_draft_v1'
 const LOGO_LEFT = 'https://lh3.googleusercontent.com/d/13-Alij9nU0nZmRzDB4i1XuFlpWyetLoT'
 const LOGO_RIGHT = 'https://lh3.googleusercontent.com/d/1DFnJL175-B-Y7YOW0Hezo8qLtVtESrZj'
+const SIGN_ROWS_PER_COLUMN = 25
+const SIGN_ROWS_PER_PAGE = SIGN_ROWS_PER_COLUMN * 2
 
 const TH_MONTHS = [
   'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -251,14 +253,43 @@ const _blankRows = (count, cols = 4) => Array.from({ length: count }, () =>
   `<tr>${Array.from({ length: cols }, (_, i) => `<td class="${i === 0 ? 'exam-doc-row-height' : ''}"></td>`).join('')}</tr>`
 ).join('')
 
-const _studentRows = (students, startNo, labels) => (students || []).map((s, idx) => `
+const _studentRows = (students, startNo, labels, emptyText = labels.loading) => (students || []).map((s, idx) => `
   <tr>
     <td>${startNo + idx}</td>
     <td>${_htmlEsc(s.student_code || '')}</td>
     <td class="name-cell">${_htmlEsc(s.full_name || '')}</td>
     <td></td>
   </tr>
-`).join('') || `<tr><td colspan="4" class="empty-students">${_htmlEsc(labels.loading)}</td></tr>`
+`).join('') || `<tr><td colspan="4" class="empty-students">${_htmlEsc(emptyText)}</td></tr>`
+
+const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => {
+  const pageStudents = students.slice(pageIndex * SIGN_ROWS_PER_PAGE, (pageIndex + 1) * SIGN_ROWS_PER_PAGE)
+  const left = pageStudents.slice(0, SIGN_ROWS_PER_COLUMN)
+  const right = pageStudents.slice(SIGN_ROWS_PER_COLUMN, SIGN_ROWS_PER_PAGE)
+  const startNo = pageIndex * SIGN_ROWS_PER_PAGE + 1
+  const rightStartNo = startNo + SIGN_ROWS_PER_COLUMN
+
+  return `
+    <div class="exam-doc-paper ${dirClass} sign-list ${pageIndex > 0 ? 'exam-doc-page-break' : ''}">
+      ${_header(labels.signListTitle)}
+      ${_infoBlock(labels, data, form)}
+      <div class="exam-doc-columns">
+        <div>
+          <table class="exam-doc-table">
+            <thead><tr><th>${_htmlEsc(labels.no)}</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
+            <tbody>${_studentRows(left, startNo, labels)}</tbody>
+          </table>
+        </div>
+        <div>
+          <table class="exam-doc-table">
+            <thead><tr><th>${_htmlEsc(labels.no)}</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
+            <tbody>${_studentRows(right, rightStartNo, labels, ' ')}</tbody>
+          </table>
+        </div>
+      </div>
+      ${_signature(labels, form)}
+    </div>`
+}
 
 const _signature = (labels, form, withNames = false) => `
   <div class="exam-doc-signature">
@@ -337,8 +368,7 @@ const _buildPrintHtml = (mode = 'all') => {
     subjectCode: ms.subject_code || '',
     teacherName: _state.teacher?.full_name || '',
   }
-  const left = students.slice(0, 27)
-  const right = students.slice(27, 54)
+  const signPageCount = Math.max(1, Math.ceil(students.length / SIGN_ROWS_PER_PAGE))
   const dirClass = labels.dir === 'rtl' ? 'rtl' : 'ltr'
   const includePortrait = mode === 'all' || mode === 'portrait'
   const includeEnvelope = mode === 'all' || mode === 'envelope'
@@ -358,12 +388,12 @@ const _buildPrintHtml = (mode = 'all') => {
       }
       .exam-doc-paper.rtl { direction: rtl; text-align: right; }
       .exam-doc-paper.landscape {
-        width: 210mm; min-height: 297mm; padding: 0; position: relative; overflow: hidden; display: block;
+        width: 210mm; min-height: 297mm; padding: 0; position: relative; overflow: hidden; display: grid; place-items: center;
       }
       .exam-doc-envelope-sheet {
         width: 297mm; height: 210mm; padding: 24mm 18mm 16mm; box-sizing: border-box;
         display: flex; flex-direction: column; justify-content: flex-start; align-items: center; text-align: center;
-        transform: rotate(90deg) translateY(-210mm); transform-origin: top left;
+        transform: rotate(90deg);
       }
       .exam-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: center; margin-bottom: 7px; }
       .exam-doc-header img { width: 58px; height: 58px; object-fit: contain; }
@@ -383,7 +413,7 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-table .name-cell { text-align: left; }
       .exam-doc-paper.rtl .exam-doc-table .name-cell { text-align: right; }
       .empty-students { color: #6b7280; height: 80px; }
-      .exam-doc-paper.sign-list .exam-doc-table td { height: 6.2mm; }
+      .exam-doc-paper.sign-list .exam-doc-table td { height: 6.5mm; }
       .exam-doc-row-height { height: 10.5mm; }
       .exam-doc-signature { margin-top: 12px; display: flex; justify-content: flex-start; gap: 28px; align-items: flex-start; }
       .exam-doc-paper.rtl .exam-doc-signature { justify-content: flex-end; }
@@ -393,7 +423,7 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-counts span { display: inline-block; min-width: 34mm; color: #0021a6; font-weight: 700; border-bottom: 2px dotted #111; text-align: center; padding: 0 8px 1px; }
       .exam-doc-envelope-title { font-size: 39pt; font-weight: 700; margin: 7mm 0 15mm; line-height: 1.1; }
       .exam-doc-envelope-info { width: 100%; display: grid; gap: 9mm; font-size: 27pt; line-height: 1.16; }
-      .exam-doc-envelope-row { display: flex; align-items: baseline; justify-content: center; gap: 9mm; flex-wrap: nowrap; }
+      .exam-doc-envelope-row { display: flex; align-items: baseline; justify-content: center; gap: 9mm; flex-wrap: nowrap; width: 100%; }
       .exam-doc-envelope-with-unit { display: inline-flex; align-items: baseline; gap: 3mm; white-space: nowrap; }
       .exam-doc-envelope-pair { display: inline-flex; align-items: baseline; gap: 4mm; white-space: nowrap; }
       .exam-doc-envelope-label { color: #111; font-weight: 400; }
@@ -418,32 +448,14 @@ const _buildPrintHtml = (mode = 'all') => {
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
         #exam-doc-print-area { position: absolute; left: 0; top: 0; width: auto; background: #fff; }
         .exam-doc-paper { width: 210mm; min-height: 297mm; margin: 0; padding: 5mm 7mm; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
-        .exam-doc-paper.landscape { width: 210mm; height: 297mm; min-height: 297mm; padding: 0; }
+        .exam-doc-paper.landscape { width: 210mm; height: 297mm; min-height: 297mm; padding: 0; display: grid; place-items: center; }
         .exam-doc-envelope-sheet { width: 297mm; height: 210mm; padding: 24mm 18mm 16mm; }
         .exam-doc-paper:last-child { break-after: auto; page-break-after: auto; }
       }
     </style>
     <div id="exam-doc-print-area" class="${areaClass.trim()}">
     ${includePortrait ? `
-    <div class="exam-doc-paper ${dirClass} sign-list">
-      ${_header(labels.signListTitle)}
-      ${_infoBlock(labels, data, form)}
-      <div class="exam-doc-columns">
-        <div>
-          <table class="exam-doc-table">
-            <thead><tr><th>${_htmlEsc(labels.no)}</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
-            <tbody>${_studentRows(left, 1, labels)}</tbody>
-          </table>
-        </div>
-        <div>
-          <table class="exam-doc-table">
-            <thead><tr><th>${_htmlEsc(labels.no)}</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
-            <tbody>${_studentRows(right, 28, labels)}</tbody>
-          </table>
-        </div>
-      </div>
-      ${_signature(labels, form)}
-    </div>
+    ${Array.from({ length: signPageCount }, (_, idx) => _studentSignPage(students, idx, labels, data, form, dirClass)).join('')}
 
     <div class="exam-doc-paper ${dirClass} exam-doc-page-break">
       ${_header(labels.examCoverTitle)}
