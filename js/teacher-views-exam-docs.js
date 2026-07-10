@@ -8,7 +8,7 @@ import {
 const STORAGE_KEY = 'pp5_exam_docs_draft_v1'
 const LOGO_LEFT = 'https://lh3.googleusercontent.com/d/13-Alij9nU0nZmRzDB4i1XuFlpWyetLoT'
 const LOGO_RIGHT = 'https://lh3.googleusercontent.com/d/1DFnJL175-B-Y7YOW0Hezo8qLtVtESrZj'
-const SIGN_ROWS_PER_COLUMN = 25
+const SIGN_ROWS_PER_COLUMN = 27
 const SIGN_ROWS_PER_PAGE = SIGN_ROWS_PER_COLUMN * 2
 
 const TH_MONTHS = [
@@ -53,7 +53,7 @@ const LANGS = {
     envelopeSubject: 'ข้อสอบวิชา',
     envelopeDate: 'สอบวันที่',
     envelopeMonth: 'เดือน',
-    envelopeYear: 'พ.ศ.',
+    envelopeYear: 'พ.ศ',
     envelopeTime: 'สอบเวลา',
     envelopeTo: 'ถึง',
     envelopeClass: 'ชั้น',
@@ -234,7 +234,7 @@ const _timeRange = form => {
 
 const _line = (label, value, wide = false) => `
   <span class="exam-doc-field ${wide ? 'wide' : ''}">
-    <span class="exam-doc-label">${_htmlEsc(label)}</span>
+    <span class="exam-doc-label">${_htmlEsc(label)}:</span>
     <span class="exam-doc-value">${_htmlEsc(value || ' ')}</span>
   </span>`
 
@@ -276,13 +276,13 @@ const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => 
       <div class="exam-doc-columns">
         <div>
           <table class="exam-doc-table">
-            <thead><tr><th>${_htmlEsc(labels.no)}</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
+            <thead><tr><th>#</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
             <tbody>${_studentRows(left, startNo, labels)}</tbody>
           </table>
         </div>
         <div>
           <table class="exam-doc-table">
-            <thead><tr><th>${_htmlEsc(labels.no)}</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
+            <thead><tr><th>#</th><th>${_htmlEsc(labels.studentCode)}</th><th>${_htmlEsc(labels.studentName)}</th><th>${_htmlEsc(labels.signature)}</th></tr></thead>
             <tbody>${_studentRows(right, rightStartNo, labels, ' ')}</tbody>
           </table>
         </div>
@@ -293,7 +293,7 @@ const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => 
 
 const _signature = (labels, form, withNames = false) => `
   <div class="exam-doc-signature">
-    <div>${_htmlEsc(labels.examiner)}</div>
+    <div class="exam-doc-signature-label">${_htmlEsc(labels.examiner)}</div>
     <div class="exam-doc-signature-lines">
       <div>1. <span>${withNames ? _htmlEsc(form.invigilator1 || '') : '...........................................................................................'}</span></div>
       <div>2. <span>${withNames ? _htmlEsc(form.invigilator2 || '') : '...........................................................................................'}</span></div>
@@ -333,16 +333,15 @@ const _infoBlock = (labels, data, form) => `
     </div>
   </div>`
 
-const _summaryCounts = (labels, total, examAmount) => `
+const _summaryCounts = (labels, total) => `
   <div class="exam-doc-counts">
     <div>${_htmlEsc(labels.totalStudents)} <span>${total}</span> ${_htmlEsc(labels.studentUnit)}</div>
-    <div>${_htmlEsc(labels.presentStudents)} <span></span> ${_htmlEsc(labels.studentUnit)}</div>
-    <div>${_htmlEsc(labels.absentStudents)} <span></span> ${_htmlEsc(labels.studentUnit)}</div>
-    ${examAmount ? `<div>${_htmlEsc(labels.examAmount)} <span>${_htmlEsc(examAmount)}</span> ${_htmlEsc(labels.examUnit)}</div>` : ''}
+    <div>${_htmlEsc(labels.presentStudents)} <span>&nbsp;</span> ${_htmlEsc(labels.studentUnit)}</div>
+    <div>${_htmlEsc(labels.absentStudents)} <span>&nbsp;</span> ${_htmlEsc(labels.studentUnit)}</div>
   </div>`
 
 const _absentTable = labels => `
-  <table class="exam-doc-table">
+  <table class="exam-doc-table exam-doc-absent-table">
     <thead>
       <tr>
         <th>${_htmlEsc(labels.no)}</th>
@@ -362,11 +361,12 @@ const _buildPrintHtml = (mode = 'all') => {
   const students = _sortStudents(_state.students)
   const total = students.length
   const parts = _datePartsTH(form.examDate)
+  const phoneSuffix = _state.teacher?.phone ? ` (${_state.teacher.phone})` : ''
   const data = {
     className: cls.class_name || '',
     subjectName: ms.subject_name || '',
     subjectCode: ms.subject_code || '',
-    teacherName: _state.teacher?.full_name || '',
+    teacherName: (_state.teacher?.full_name || '') + phoneSuffix,
   }
   const signPageCount = Math.max(1, Math.ceil(students.length / SIGN_ROWS_PER_PAGE))
   const dirClass = labels.dir === 'rtl' ? 'rtl' : 'ltr'
@@ -379,6 +379,8 @@ const _buildPrintHtml = (mode = 'all') => {
   return `
     <style id="exam-doc-print-style">
       @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Amiri:wght@400;700&display=swap');
+      @page { size: A4 portrait; margin: 8mm 10mm; }
+      @page exam-doc-landscape { size: A4 landscape; margin: 8mm 10mm; }
       #exam-doc-print-area { --exam-font: ${labels.font}; }
       #exam-doc-print-area.envelope-only { width: 297mm; }
       #exam-doc-print-area.portrait-only { width: 210mm; }
@@ -398,7 +400,7 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: center; margin-bottom: 7px; }
       .exam-doc-header img { width: 58px; height: 58px; object-fit: contain; }
       .exam-doc-header h2 { flex: 1; margin: 0; font-size: 17pt; font-weight: 700; line-height: 1.22; }
-      .exam-doc-info { display: grid; gap: 4px; margin-bottom: 8px; }
+      .exam-doc-info { display: grid; gap: 4px; margin-bottom: 8px; border-bottom: 2px dotted #111; padding-bottom: 10px; }
       .exam-doc-info > div { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
       .exam-doc-field { display: inline-flex; align-items: baseline; gap: 6px; min-width: 120px; flex: 1 1 150px; }
       .exam-doc-field.wide { flex-basis: 280px; }
@@ -414,12 +416,13 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-paper.rtl .exam-doc-table .name-cell { text-align: right; }
       .empty-students { color: #6b7280; height: 80px; }
       .exam-doc-paper.sign-list .exam-doc-table td { height: auto; }
-      .exam-doc-row-height { height: 8mm; }
-      .exam-doc-signature { margin-top: 10px; display: flex; justify-content: flex-start; gap: 28px; align-items: flex-start; }
-      .exam-doc-paper.rtl .exam-doc-signature { justify-content: flex-end; }
-      .exam-doc-signature-lines { display: grid; gap: 10px; min-width: 310px; }
+      .exam-doc-row-height { height: 8.5mm; }
+      .exam-doc-signature { margin-top: 15px; display: block; text-align: left; }
+      .exam-doc-paper.rtl .exam-doc-signature { text-align: right; }
+      .exam-doc-signature-label { font-weight: bold; margin-bottom: 6px; }
+      .exam-doc-signature-lines { display: grid; gap: 8px; padding-left: 20px; }
+      .exam-doc-paper.rtl .exam-doc-signature-lines { padding-left: 0; padding-right: 20px; }
       .exam-doc-counts { margin: 8px 0 8px auto; width: min(90mm, 100%); display: grid; gap: 7px; text-align: right; }
-      .exam-doc-paper.rtl .exam-doc-counts { margin-left: 0; margin-right: auto; }
       .exam-doc-counts span { display: inline-block; min-width: 34mm; color: #0021a6; font-weight: 700; border-bottom: 2px dotted #111; text-align: center; padding: 0 8px 1px; }
       .exam-doc-envelope-title { font-size: 38pt; font-weight: 700; margin: 4mm 0 14mm; line-height: 1.1; }
       .exam-doc-envelope-info { width: 100%; display: grid; gap: 7mm; font-size: 26pt; line-height: 1.16; }
@@ -445,45 +448,48 @@ const _buildPrintHtml = (mode = 'all') => {
       .exam-doc-envelope-row.compact .exam-doc-envelope-pair.class-name .exam-doc-envelope-value { min-width: 34mm; }
       .exam-doc-envelope-row.compact .exam-doc-envelope-pair.count .exam-doc-envelope-value { min-width: 18mm; }
       .exam-doc-page-break { break-before: page; page-break-before: always; }
+
+      .exam-doc-absent-table th:nth-child(1), .exam-doc-absent-table td:nth-child(1) { width: 50px !important; }
+      .exam-doc-absent-table th:nth-child(2), .exam-doc-absent-table td:nth-child(2) { width: 110px !important; }
+      .exam-doc-absent-table th:nth-child(4), .exam-doc-absent-table td:nth-child(4) { width: 140px !important; }
+
       @media print {
-        @page { size: ${defaultPageSize}; margin: 5mm; }
-        @page exam-doc-landscape { size: A4 landscape; margin: 5mm; }
-        html, body { width: auto; height: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible; font-size: 11pt; }
+        html, body { width: 100%; height: auto; min-width: 0; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible; }
         body * { visibility: hidden !important; }
         #exam-doc-print-area, #exam-doc-print-area * { visibility: visible !important; }
-        #exam-doc-print-area { position: static; width: auto; background: #fff; }
-        .exam-doc-paper { width: 200mm; min-height: 0; height: 287mm; margin: 0; padding: 0; box-shadow: none; break-after: page; page-break-after: always; overflow: hidden; }
-        .exam-doc-page-break { break-before: auto; page-break-before: auto; }
-        .exam-doc-header { margin-bottom: 6px; }
-        .exam-doc-header img { width: 60px; height: 60px; }
-        .exam-doc-header h2 { font-size: 18pt; }
-        .exam-doc-info { gap: 3px; margin-bottom: 6px; }
-        .exam-doc-info > div { gap: 6px 10px; }
-        .exam-doc-field { min-width: 110px; }
-        .exam-doc-field.wide { flex-basis: 260px; }
-        .exam-doc-columns { gap: 6px; margin-top: 7px; }
-        .exam-doc-columns > div { min-width: 0; }
-        .exam-doc-table { margin: 6px 0 8px; }
-        .exam-doc-table th, .exam-doc-table td { font-size: 11pt; line-height: 1.12; padding: 2px 3px; }
-        .exam-doc-table th:nth-child(1), .exam-doc-table td:nth-child(1) { width: 28px; }
-        .exam-doc-table th:nth-child(2), .exam-doc-table td:nth-child(2) { width: 62px; }
-        .exam-doc-table th:nth-child(4), .exam-doc-table td:nth-child(4) { width: 56px; }
-        .exam-doc-paper.sign-list { display: flex; flex-direction: column; }
-        .exam-doc-paper.sign-list .exam-doc-columns { flex: 1 1 auto; min-height: 0; align-items: stretch; }
-        .exam-doc-paper.sign-list .exam-doc-columns > div { display: flex; min-height: 0; }
-        .exam-doc-paper.sign-list .exam-doc-table { height: 100%; margin: 6px 0 6px; }
-        .exam-doc-paper.sign-list .exam-doc-table td { height: auto; }
-        .exam-doc-paper.sign-list .exam-doc-signature { flex: 0 0 auto; }
-        .exam-doc-row-height { height: 11mm; }
-        .exam-doc-signature { margin-top: 6px; }
-        .exam-doc-signature-lines { gap: 7px; }
-        .exam-doc-paper.landscape {
-          page: exam-doc-landscape; width: 287mm; height: 200mm; min-height: 0; padding: 0; overflow: hidden;
-          display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+        #exam-doc-print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff; }
+        .exam-doc-paper {
+          width: 100% !important;
+          height: auto !important;
+          min-height: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          break-after: page;
+          page-break-after: always;
+          overflow: visible !important;
+          box-sizing: border-box;
         }
-        .exam-doc-envelope-sheet { width: 100%; height: 100%; padding: 17mm 0 0; }
-        .exam-doc-envelope-title { font-size: 38pt; margin: 0 0 14mm; }
-        .exam-doc-envelope-info { gap: 7mm; font-size: 26pt; }
+        .exam-doc-paper.landscape {
+          page: exam-doc-landscape;
+          width: 100% !important;
+          height: auto !important;
+          min-height: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          break-after: page;
+          page-break-after: always;
+          overflow: visible !important;
+          box-sizing: border-box;
+        }
+        .exam-doc-envelope-sheet {
+          width: 100% !important;
+          height: 100% !important;
+          padding: 10mm 2mm 0 !important;
+          box-sizing: border-box;
+        }
+        .exam-doc-page-break { break-before: auto; page-break-before: auto; }
         .exam-doc-paper:last-child { break-after: auto; page-break-after: auto; }
       }
     </style>
