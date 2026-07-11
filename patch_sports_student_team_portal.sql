@@ -1,4 +1,5 @@
 -- PP5 Online: student sports portal, shirt-size approval, and team workspace.
+-- Re-runnable patch: safe to run again after older versions of this file.
 -- Run AFTER patch_sports_module.sql in Supabase SQL Editor.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -166,6 +167,20 @@ ALTER TABLE public.sports_team_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sports_team_announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sports_team_identity_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sports_audit_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "sports_portal_settings_read" ON public.sports_portal_settings;
+DROP POLICY IF EXISTS "sports_portal_settings_admin" ON public.sports_portal_settings;
+DROP POLICY IF EXISTS "shirt_self_read" ON public.sports_shirt_requests;
+DROP POLICY IF EXISTS "team_membership_read" ON public.sports_team_memberships;
+DROP POLICY IF EXISTS "team_membership_admin" ON public.sports_team_memberships;
+DROP POLICY IF EXISTS "team_membership_lead_staff_insert" ON public.sports_team_memberships;
+DROP POLICY IF EXISTS "team_membership_lead_staff_update" ON public.sports_team_memberships;
+DROP POLICY IF EXISTS "team_tasks_scope" ON public.sports_team_tasks;
+DROP POLICY IF EXISTS "team_ann_scope" ON public.sports_team_announcements;
+DROP POLICY IF EXISTS "identity_scope_read" ON public.sports_team_identity_requests;
+DROP POLICY IF EXISTS "identity_scope_insert" ON public.sports_team_identity_requests;
+DROP POLICY IF EXISTS "identity_scope_update" ON public.sports_team_identity_requests;
+DROP POLICY IF EXISTS "audit_admin_read" ON public.sports_audit_log;
 
 CREATE POLICY "sports_portal_settings_read" ON public.sports_portal_settings FOR SELECT TO authenticated USING(true);
 CREATE POLICY "sports_portal_settings_admin" ON public.sports_portal_settings FOR ALL TO authenticated USING(public.is_sports_admin()) WITH CHECK(public.is_sports_admin());
