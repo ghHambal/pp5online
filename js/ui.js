@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.19.1'
+import { APP_VERSION } from './version.js?v=10.19.2'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,10 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.19.2': [
+    '👤 เพิ่มรูปนักเรียนในหน้าติดตามและยืนยันไซซ์เสื้อของครูที่ปรึกษา',
+    '👕 เพิ่มทางเข้า “ตั้งค่าและสรุปเสื้อกีฬาสี” ในแผงผู้ดูแลระบบและผู้รับผิดชอบกีฬาสี'
+  ],
   '10.19.1': [
     '🛠️ แก้หน้าครูโหลดค้างหลังเพิ่มเมนูกีฬาสี โดยตรวจตำแหน่งผู้รับผิดชอบจากข้อมูลครูที่พร้อมใช้งานแล้ว'
   ],
