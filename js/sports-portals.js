@@ -96,43 +96,59 @@ async function renderTeamMembershipAdmin(root,event,colors=[]) {
   try {
     const [{data:memberships,error},{data:teachers},{data:students}] = await Promise.all([
       supabase.from('sports_team_memberships').select('*,team_colors(name,hex_color),teachers(full_name,teacher_code),students(full_name,student_code,main_room)').eq('event_id',event.id).eq('is_active',true).order('created_at',{ascending:false}),
-      supabase.from('teachers').select('id,teacher_code,full_name,profile_id').not('profile_id','is',null).order('full_name'),
-      supabase.from('students').select('id,student_code,full_name,main_room,profile_id,is_active').not('profile_id','is',null).eq('is_active',true).order('student_code'),
+      supabase.from('teachers').select('id,teacher_code,full_name,dept,image_url,profile_id').not('profile_id','is',null).order('full_name'),
+      supabase.from('students').select('id,student_code,full_name,main_room,profile_id,is_active,image_url').not('profile_id','is',null).eq('is_active',true).order('student_code'),
     ])
     if(error)throw error
     const staffStudents=(students||[]).filter(isStaffGrade)
+    let foundTeamMembers=[]
     slot.innerHTML=`<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h2 class="font-bold">🛡️ มอบหมายผู้ดูแลประจำสี</h2><p class="text-xs text-gray-500 mt-1">กำหนดครูประจำสีและนักเรียนสต๊าฟที่จะเข้า “จัดการสีของฉัน” ได้</p></div><span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">ใช้งานอยู่ ${memberships?.length||0} คน</span></div>
       <div class="grid lg:grid-cols-5 gap-3 mb-4">
         <select id="team-member-color" class="border rounded-xl px-3 py-2 text-sm">${colors.map(c=>`<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
-        <select id="team-member-person" class="border rounded-xl px-3 py-2 text-sm lg:col-span-2">
-          <option value="">เลือกครูหรือนักเรียนสต๊าฟ</option>
-          <optgroup label="ครู">
-            ${(teachers||[]).map(t=>`<option value="teacher:${t.id}:${esc(t.profile_id)}">${esc(t.full_name)}${t.teacher_code?` (${esc(t.teacher_code)})`:''}</option>`).join('')}
-          </optgroup>
-          <optgroup label="นักเรียนสต๊าฟ ม.5-ม.6 / ปวช.3">
-            ${staffStudents.map(s=>`<option value="student:${s.id}:${esc(s.profile_id)}">${esc(s.student_code)} ${esc(s.full_name)} · ${esc(s.main_room)}</option>`).join('')}
-          </optgroup>
-        </select>
+        <input id="team-member-code-input" class="border rounded-xl px-3 py-2 text-sm lg:col-span-2" placeholder="กรอกรหัสครู/รหัสนักเรียน เช่น 1087, 608001">
         <select id="team-member-role" class="border rounded-xl px-3 py-2 text-sm">
           <option value="lead_teacher">หัวหน้าครูประจำสี</option>
           <option value="teacher">ครูประจำสี</option>
           <option value="staff_lead">หัวหน้านักเรียนสต๊าฟสี</option>
           <option value="staff">นักเรียนสต๊าฟสี</option>
         </select>
-        <button id="team-member-add" class="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm">มอบหมาย</button>
+        <button id="team-member-search" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm">ค้นหารายชื่อ</button>
       </div>
       <div class="flex flex-wrap gap-2 mb-4">${Object.entries(permLabels).map(([k,v])=>permissionButton(k,v,true)).join('')}</div>
+      <div id="team-member-preview" class="hidden border border-indigo-100 bg-indigo-50/40 rounded-2xl p-4 mb-4">
+        <p class="text-xs font-bold text-indigo-700 mb-2">ตรวจสอบรายชื่อที่ต้องการมอบหมาย:</p>
+        <div id="team-member-preview-cards" class="grid md:grid-cols-2 gap-3 mb-3"></div>
+        <button id="team-member-add" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">ยืนยันและมอบหมายสิทธิ์ประจำสี</button>
+      </div>
       <div class="overflow-x-auto border rounded-2xl"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">ผู้ได้รับสิทธิ์</th><th>สี</th><th>บทบาท</th><th>สิทธิ์</th><th></th></tr></thead><tbody>${(memberships||[]).map(m=>{const person=m.teachers?.full_name?`${m.teachers.full_name}${m.teachers.teacher_code?` (${m.teachers.teacher_code})`:''}`:`${m.students?.student_code||''} ${m.students?.full_name||''} ${m.students?.main_room?`· ${m.students.main_room}`:''}`;const perms=Object.entries(m.permissions||{}).filter(([,v])=>v).map(([k])=>permLabels[k]||k).join(', ')||'ไม่มีสิทธิ์ย่อย';return `<tr class="border-t"><td class="p-3 font-medium">${esc(person||'ไม่พบชื่อ')}</td><td class="p-3"><span class="font-bold" style="color:${esc(m.team_colors?.hex_color||'#334155')}">สี${esc(m.team_colors?.name||'—')}</span></td><td class="p-3">${esc(roleLabels[m.role]||m.role)}</td><td class="p-3 text-xs text-gray-500">${esc(perms)}</td><td class="p-3 text-right"><button data-team-member-remove="${esc(m.id)}" class="px-3 py-1.5 rounded-lg border text-red-600 text-xs">ปิดสิทธิ์</button></td></tr>`}).join('')||'<tr><td colspan="5" class="p-6 text-center text-gray-400">ยังไม่มีผู้ได้รับสิทธิ์ประจำสี</td></tr>'}</tbody></table></div>`
+    const parseCodes=value=>String(value||'').split(/[\s,]+/).map(x=>x.trim()).filter(Boolean)
+    const renderPreview=()=>{
+      const wrap=slot.querySelector('#team-member-preview'), cards=slot.querySelector('#team-member-preview-cards')
+      if(!foundTeamMembers.length){wrap?.classList.add('hidden');return}
+      wrap?.classList.remove('hidden')
+      cards.innerHTML=foundTeamMembers.map(p=>`<div class="bg-white rounded-xl border border-indigo-100 p-3 flex items-center gap-3">${p.image_url?`<img src="${esc(p.image_url)}" class="${p.kind==='student'?'w-10 h-14':'w-10 h-10 rounded-full'} object-cover flex-shrink-0">`:`<div class="${p.kind==='student'?'w-10 h-14':'w-10 h-10 rounded-full'} bg-indigo-50 text-indigo-600 grid place-items-center font-bold flex-shrink-0">${p.kind==='teacher'?'ครู':'นร'}</div>`}<div class="min-w-0"><p class="font-bold text-gray-800 text-xs truncate">${esc(p.full_name)} <span class="ml-1 px-1.5 py-0.5 rounded ${p.kind==='teacher'?'bg-amber-100 text-amber-800':'bg-emerald-100 text-emerald-800'} text-[9px] font-bold">${p.kind==='teacher'?'คุณครู':'นักเรียนสต๊าฟ'}</span></p><p class="text-[10px] text-gray-400">${esc(p.detail)}</p></div></div>`).join('')
+    }
+    slot.querySelector('#team-member-search')?.addEventListener('click',()=>{
+      const codes=parseCodes(slot.querySelector('#team-member-code-input')?.value)
+      if(!codes.length)return toast('กรุณากรอกรหัสครูหรือรหัสนักเรียน','error')
+      const codeSet=new Set(codes.map(String))
+      const foundTeachers=(teachers||[]).filter(t=>codeSet.has(String(t.teacher_code))).map(t=>({...t,kind:'teacher',code:t.teacher_code,detail:`รหัสครู ${t.teacher_code} · กลุ่มสาระ ${t.dept||'—'}`}))
+      const foundStudents=staffStudents.filter(s=>codeSet.has(String(s.student_code))).map(s=>({...s,kind:'student',code:s.student_code,detail:`รหัส ${s.student_code} · ห้อง ${s.main_room||'—'}`}))
+      foundTeamMembers=[...foundTeachers,...foundStudents]
+      if(!foundTeamMembers.length)return toast('ไม่พบรหัสครูหรือนักเรียนสต๊าฟ ม.5-ม.6 / ปวช.3 ที่มีบัญชีผู้ใช้','error')
+      renderPreview()
+    })
+    slot.querySelector('#team-member-code-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();slot.querySelector('#team-member-search')?.click()}})
     slot.querySelector('#team-member-add')?.addEventListener('click',async()=>{
-      const person=slot.querySelector('#team-member-person')?.value||'', [kind,id,profileId]=person.split(':'), role=slot.querySelector('#team-member-role')?.value, teamColorId=slot.querySelector('#team-member-color')?.value
-      if(!teamColorId||!profileId)return toast('กรุณาเลือกสีและผู้ได้รับสิทธิ์','error')
-      if(kind==='student'&&!['staff_lead','staff'].includes(role))return toast('นักเรียนสต๊าฟเลือกได้เฉพาะบทบาทนักเรียน','error')
-      if(kind==='teacher'&&!['lead_teacher','teacher'].includes(role))return toast('ครูเลือกได้เฉพาะบทบาทครูประจำสี','error')
+      const role=slot.querySelector('#team-member-role')?.value, teamColorId=slot.querySelector('#team-member-color')?.value
+      if(!teamColorId||!foundTeamMembers.length)return toast('กรุณาเลือกสีและค้นหารายชื่อก่อน','error')
+      if(foundTeamMembers.some(p=>p.kind==='student')&&!['staff_lead','staff'].includes(role))return toast('บทบาทนี้ใช้กับครูเท่านั้น หากจะมอบหมายให้นักเรียนให้เลือกบทบาทนักเรียนสต๊าฟ','error')
+      if(foundTeamMembers.some(p=>p.kind==='teacher')&&!['lead_teacher','teacher'].includes(role))return toast('บทบาทนี้ใช้กับนักเรียนเท่านั้น หากจะมอบหมายให้ครูให้เลือกบทบาทครูประจำสี','error')
       const permissions={};slot.querySelectorAll('[data-team-perm]').forEach(x=>permissions[x.dataset.teamPerm]=x.dataset.enabled==='true')
-      const payload={event_id:event.id,team_color_id:teamColorId,profile_id:profileId,teacher_id:kind==='teacher'?Number(id):null,student_id:kind==='student'?Number(id):null,role,permissions,is_active:true,ends_at:null}
+      const payload=foundTeamMembers.map(p=>({event_id:event.id,team_color_id:teamColorId,profile_id:p.profile_id,teacher_id:p.kind==='teacher'?Number(p.id):null,student_id:p.kind==='student'?Number(p.id):null,role,permissions,is_active:true,ends_at:null}))
       const {error}=await supabase.from('sports_team_memberships').upsert(payload,{onConflict:'event_id,team_color_id,profile_id'})
       if(error)return toast(error.message,'error')
-      toast('มอบหมายสิทธิ์ประจำสีแล้ว'); renderTeamMembershipAdmin(root,event,colors)
+      toast(`มอบหมายสิทธิ์ประจำสีแล้ว ${payload.length} คน`); renderTeamMembershipAdmin(root,event,colors)
     })
     slot.querySelectorAll('[data-team-member-remove]').forEach(b=>b.addEventListener('click',async()=>{const {error}=await supabase.from('sports_team_memberships').update({is_active:false,ends_at:new Date().toISOString()}).eq('id',b.dataset.teamMemberRemove);if(error)return toast(error.message,'error');toast('ปิดสิทธิ์แล้ว');renderTeamMembershipAdmin(root,event,colors)}))
     slot.querySelectorAll('[data-team-perm]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';b.className=`px-3 py-2 rounded-xl text-xs font-bold border ${next?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-slate-50 text-slate-500 border-slate-200'}`;const label=(b.textContent.split(':').pop()||'').trim();b.textContent=`${next?'อนุญาต':'ไม่อนุญาต'}: ${label}`}))
