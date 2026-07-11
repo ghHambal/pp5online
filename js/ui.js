@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.19.5'
+import { APP_VERSION } from './version.js?v=10.19.6'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,10 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.19.6': [
+    '🧭 เปลี่ยนการตั้งค่าเปิด/ปิดในส่วนกีฬาสีจาก checkbox เป็นการ์ดสถานะพร้อมปุ่มเปิดใช้งาน/ปิดใช้งาน',
+    '🛡️ เปลี่ยนสิทธิ์ย่อยผู้ดูแลสีจาก checkbox เป็นปุ่มอนุญาต/ไม่อนุญาต เพื่อให้สถานะอ่านง่ายและลดการกดผิด'
+  ],
   '10.19.5': [
     '👕 เชื่อมค่า “เปิดรับจำนงไซซ์” ในหน้าสรุปยอดเสื้อกีฬาสีให้ตรงกับปุ่ม “แจ้งไซส์เสื้อ” ในหน้าตั้งค่าหลักของ AZIZGAMES',
     '🔁 บันทึกจากฝั่ง AZIZGAMES หรือฝั่ง ปพ.5 แล้วสถานะเปิดรับไซซ์เสื้อจะซิงก์เป็นค่าเดียวกัน'

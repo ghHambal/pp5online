@@ -699,25 +699,22 @@ const installSportsSync = () => {
   };
 };
 
-const makeToggle = (name, label, help, checked) => `
-  <label class="aziz-public-toggle">
-    <input type="checkbox" data-public-button="${name}" ${checked ? 'checked' : ''}>
-    <span>
+const makeActionCard = (attr, name, label, help, enabled) => `
+  <div class="aziz-public-action-card ${enabled ? 'is-on' : 'is-off'}" ${attr}="${name}" data-enabled="${enabled ? 'true' : 'false'}">
+    <div>
       <strong>${label}</strong>
       <small>${help}</small>
-    </span>
-  </label>
+      <em>${enabled ? 'เปิดใช้งานอยู่' : 'ปิดใช้งานอยู่'}</em>
+    </div>
+    <button type="button" data-action-toggle>${enabled ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</button>
+  </div>
 `;
 
-const makeVisibilityToggle = (name, label, help, checked) => `
-  <label class="aziz-public-toggle">
-    <input type="checkbox" data-sports-visibility="${name}" ${checked ? 'checked' : ''}>
-    <span>
-      <strong>${label}</strong>
-      <small>${help}</small>
-    </span>
-  </label>
-`;
+const makeToggle = (name, label, help, checked) =>
+  makeActionCard('data-public-button', name, label, help, checked);
+
+const makeVisibilityToggle = (name, label, help, checked) =>
+  makeActionCard('data-sports-visibility', name, label, help, checked);
 
 const canManageSports = () =>
   localStorage.getItem('aziz_is_logged_in') === 'true' ||
@@ -763,31 +760,61 @@ const injectPanel = () => {
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 10px;
       }
-      .aziz-public-toggle {
+      .aziz-public-action-card {
         display: flex;
+        justify-content: space-between;
         gap: 10px;
-        align-items: flex-start;
+        align-items: center;
         padding: 12px;
         border: 1px solid rgba(51,65,85,.9);
         border-radius: 12px;
         background: rgba(2,6,23,.48);
         color: #e2e8f0;
-        cursor: pointer;
       }
-      .aziz-public-toggle input {
-        margin-top: 3px;
-        accent-color: #db2777;
+      .aziz-public-action-card.is-on {
+        border-color: rgba(16,185,129,.42);
+        background: rgba(6,78,59,.18);
       }
-      .aziz-public-toggle strong {
+      .aziz-public-action-card.is-off {
+        border-color: rgba(148,163,184,.28);
+      }
+      .aziz-public-action-card strong {
         display: block;
         font-size: 12px;
       }
-      .aziz-public-toggle small {
+      .aziz-public-action-card small {
         display: block;
         margin-top: 2px;
         color: #94a3b8;
         font-size: 11px;
         line-height: 1.35;
+      }
+      .aziz-public-action-card em {
+        display: inline-block;
+        margin-top: 7px;
+        color: #facc15;
+        font-size: 10px;
+        font-style: normal;
+        font-weight: 800;
+      }
+      .aziz-public-action-card.is-on em {
+        color: #86efac;
+      }
+      .aziz-public-action-card button {
+        flex: 0 0 auto;
+        border: 1px solid rgba(236,72,153,.48);
+        border-radius: 10px;
+        padding: 7px 10px;
+        color: #fce7f3;
+        font-size: 11px;
+        font-weight: 800;
+        background: rgba(219,39,119,.16);
+        cursor: pointer;
+      }
+      .aziz-public-action-card.is-on button {
+        border-color: rgba(248,113,113,.48);
+        background: rgba(127,29,29,.18);
+        color: #fecaca;
       }
       .aziz-public-save {
         margin-top: 12px;
@@ -842,12 +869,12 @@ const injectPanel = () => {
 
   panel.querySelector('.aziz-public-save')?.addEventListener('click', async () => {
     const nextValue = { ...DEFAULT_BUTTONS };
-    panel.querySelectorAll('[data-public-button]').forEach((input) => {
-      nextValue[input.dataset.publicButton] = input.checked;
+    panel.querySelectorAll('[data-public-button]').forEach((card) => {
+      nextValue[card.dataset.publicButton] = card.dataset.enabled === 'true';
     });
     const nextVisibility = { ...DEFAULT_VISIBILITY };
-    panel.querySelectorAll('[data-sports-visibility]').forEach((input) => {
-      nextVisibility[input.dataset.sportsVisibility] = input.checked;
+    panel.querySelectorAll('[data-sports-visibility]').forEach((card) => {
+      nextVisibility[card.dataset.sportsVisibility] = card.dataset.enabled === 'true';
     });
     const status = panel.querySelector('.aziz-public-status');
     status.textContent = 'กำลังบันทึก...';
@@ -863,6 +890,17 @@ const injectPanel = () => {
       status.textContent = 'บันทึกในเครื่องแล้ว แต่ยัง sync ไปฐานข้อมูลไม่ได้ ต้องตรวจ RLS settings';
     }
     setTimeout(() => window.location.reload(), 900);
+  });
+  panel.querySelectorAll('[data-action-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const card = button.closest('[data-enabled]');
+      const next = card.dataset.enabled !== 'true';
+      card.dataset.enabled = next ? 'true' : 'false';
+      card.classList.toggle('is-on', next);
+      card.classList.toggle('is-off', !next);
+      card.querySelector('em').textContent = next ? 'เปิดใช้งานอยู่' : 'ปิดใช้งานอยู่';
+      button.textContent = next ? 'ปิดใช้งาน' : 'เปิดใช้งาน';
+    });
   });
 };
 
