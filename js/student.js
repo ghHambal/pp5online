@@ -14,7 +14,7 @@ import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
 import { applyThemeForRole } from './theme.js'
 import { injectFeedbackWidget } from './ui.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
-import { openAzizGamesModal } from './azizgames-modal.js'
+import { renderStudentSportsHome } from './sports-portals.js'
 
 let _student = null
 let _activeClassId = null
@@ -141,7 +141,7 @@ const ROUTES = {
   overview: () => renderStudentOverview(_student),
   subjects: () => renderStudentSubjects(_student),
   scores:   () => renderStudentMyScores(_student, _activeScoreTab),
-  sports:   () => openAzizGamesModal(),
+  sports:   () => renderStudentSportsHome(_student),
   requests: () => renderStudentRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
   prayer_scanner: () => renderStudentPrayerScanner(_student),

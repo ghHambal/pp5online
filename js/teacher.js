@@ -21,6 +21,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
+import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace } from './sports-portals.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -218,6 +219,9 @@ const ROUTES = {
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
   'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.18.25').then(m => m.renderExamDocuments(_teacher)),
   'sports':      () => openAzizGamesModal(),
+  'advisor-students': () => renderAdvisorStudents(_teacher, _homeroomRooms),
+  'shirt-summary': () => renderShirtSummary(),
+  'my-team-workspace': () => openMyTeamWorkspace(),
   'student-qr-print': () => {
     const classId = window._pendingQRClassId || null
     window._pendingQRClassId = null
@@ -564,6 +568,13 @@ async function _applyRoleMenus() {
   toggle('menu-life-skill', hasLifeSkill)
   toggle('menu-reading',    hasReading)
   toggle('menu-prayer',     hasPrayer)
+  toggle('menu-advisor-students', hasLifeSkill)
+  try {
+    const { data: memberships } = await supabase.from('sports_team_memberships').select('id').eq('profile_id', _teacher?.profile_id).eq('is_active', true).limit(1)
+    toggle('menu-my-team', (memberships || []).length > 0)
+  } catch { toggle('menu-my-team', false) }
+  const isSportsManager = _positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
+  toggle('menu-shirt-summary', !!isSportsManager)
 }
 
 // refresh profile หลัง save
