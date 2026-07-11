@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.19.0'
+import { APP_VERSION } from './version.js?v=10.19.1'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.19.1': [
+    '🛠️ แก้หน้าครูโหลดค้างหลังเพิ่มเมนูกีฬาสี โดยตรวจตำแหน่งผู้รับผิดชอบจากข้อมูลครูที่พร้อมใช้งานแล้ว'
+  ],
   '10.19.0': [
     '🏆 เพิ่มหน้า “กีฬาสีของฉัน” สำหรับนักเรียน พร้อมข้อมูลสี โลโก้ ไซซ์เสื้อ รายการแข่งขัน ผลงาน และทางเข้า AZIZGAMES แบบเต็ม',
     '👕 เพิ่มขั้นตอนจำนงไซซ์เสื้อ การยืนยันโดยครูที่ปรึกษา และหน้าสรุปยอดสี × ไซซ์สำหรับผู้รับผิดชอบ',

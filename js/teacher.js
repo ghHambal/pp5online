@@ -573,7 +573,8 @@ async function _applyRoleMenus() {
     const { data: memberships } = await supabase.from('sports_team_memberships').select('id').eq('profile_id', _teacher?.profile_id).eq('is_active', true).limit(1)
     toggle('menu-my-team', (memberships || []).length > 0)
   } catch { toggle('menu-my-team', false) }
-  const isSportsManager = _positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
+  const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
+  const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   toggle('menu-shirt-summary', !!isSportsManager)
 }
 
