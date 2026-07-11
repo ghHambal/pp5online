@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.18.25'
+import { APP_VERSION } from './version.js?v=10.19.3'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -251,6 +251,7 @@ function navigate(view) {
 window._navTo  = navigate
 window._goBack = () => navigate('my-courses')
 window._refreshCurrentView = () => navigate(_currentView)
+window.addEventListener('pp5:open-sports-shirt-summary', () => navigate('shirt-summary'))
 
 const _esc = value => String(value ?? '')
   .replace(/&/g, '&amp;')

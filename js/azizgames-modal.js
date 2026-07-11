@@ -44,12 +44,19 @@ export function openAzizGamesModal({ admin = false, manage = false } = {}) {
   const modal = document.createElement('div')
   modal.id = 'azizgames-modal'
   modal.className = 'fixed inset-0 z-[320] bg-slate-950 flex flex-col'
+  const canManageSports = admin || manage
   modal.innerHTML = `
     <div class="h-12 flex items-center gap-2 px-3 sm:px-4 border-b border-slate-800 bg-slate-950 text-slate-100 shadow-lg">
       <div class="min-w-0 flex-1">
         <div class="text-sm font-extrabold truncate">🏆 AZIZGAMES กีฬาสีออนไลน์</div>
         <div class="text-[10px] text-slate-400 truncate">เปิดในหน้าต่างเต็มจอของระบบ ปพ5</div>
       </div>
+      ${canManageSports ? `
+      <button type="button" data-azizgames-shirt-summary
+        class="h-8 inline-flex items-center justify-center gap-1 rounded-lg border border-pink-500/50 bg-pink-600/15 px-2.5 text-[11px] font-bold text-pink-100 hover:bg-pink-600/30 hover:text-white transition"
+        title="ตั้งค่าและสรุปเสื้อกีฬาสี">
+        <span>👕</span><span class="hidden sm:inline">ตั้งค่า/สรุปเสื้อ</span>
+      </button>` : ''}
       <span data-azizgames-share-status class="hidden sm:inline text-[10px] text-emerald-300 min-w-[72px] text-right"></span>
       <button type="button" data-azizgames-share
         class="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition"
@@ -82,6 +89,10 @@ export function openAzizGamesModal({ admin = false, manage = false } = {}) {
   document.addEventListener('keydown', onKeydown)
   document.body.appendChild(modal)
   modal.querySelector('[data-azizgames-close]')?.addEventListener('click', close)
+  modal.querySelector('[data-azizgames-shirt-summary]')?.addEventListener('click', () => {
+    close()
+    window.dispatchEvent(new CustomEvent('pp5:open-sports-shirt-summary'))
+  })
   modal.querySelector('[data-azizgames-share]')?.addEventListener('click', () => {
     shareAzizGames(url, modal.querySelector('[data-azizgames-share-status]'))
   })
