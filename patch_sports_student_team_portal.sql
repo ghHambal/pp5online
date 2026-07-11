@@ -98,6 +98,14 @@ CREATE OR REPLACE FUNCTION public.is_sports_admin() RETURNS BOOLEAN LANGUAGE sql
 CREATE OR REPLACE FUNCTION public.is_team_member(p_team UUID, p_permission TEXT DEFAULT NULL) RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
  SELECT public.is_sports_admin() OR EXISTS(SELECT 1 FROM sports_team_memberships m WHERE m.profile_id=auth.uid() AND m.team_color_id=p_team AND m.is_active AND (m.ends_at IS NULL OR m.ends_at>now()) AND (p_permission IS NULL OR COALESCE((m.permissions->>p_permission)::boolean,false))); $$;
 
+CREATE OR REPLACE FUNCTION public.can_manage_sports_team_staff(p_team UUID) RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
+ SELECT public.is_sports_admin()
+ OR EXISTS(SELECT 1 FROM sports_team_memberships m WHERE m.profile_id=auth.uid() AND m.team_color_id=p_team AND m.role='lead_teacher' AND m.is_active AND (m.ends_at IS NULL OR m.ends_at>now())); $$;
+
+CREATE OR REPLACE FUNCTION public.can_assign_sports_team_staff(p_team UUID, p_student INTEGER) RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
+ SELECT public.can_manage_sports_team_staff(p_team)
+ AND EXISTS(SELECT 1 FROM students s LEFT JOIN team_colors c ON c.id=p_team WHERE s.id=p_student AND s.is_active IS TRUE AND (s.team_color_id=p_team OR s.house_color=c.name)); $$;
+
 CREATE OR REPLACE FUNCTION public.can_view_sports_shirt_summary() RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $$
  SELECT public.is_sports_admin()
  OR EXISTS(SELECT 1 FROM sports_team_memberships WHERE profile_id=auth.uid() AND is_active AND COALESCE((permissions->>'shirt_summary')::boolean,false))
@@ -164,6 +172,8 @@ CREATE POLICY "sports_portal_settings_admin" ON public.sports_portal_settings FO
 CREATE POLICY "shirt_self_read" ON public.sports_shirt_requests FOR SELECT TO authenticated USING(student_id IN(SELECT id FROM students WHERE profile_id=auth.uid()) OR public.can_view_sports_shirt_summary() OR student_id IN(SELECT s.id FROM students s JOIN teachers t ON t.profile_id=auth.uid() JOIN homeroom_teachers h ON h.teacher_id=t.id AND h.category='สามัญ' AND h.main_room=s.main_room));
 CREATE POLICY "team_membership_read" ON public.sports_team_memberships FOR SELECT TO authenticated USING(profile_id=auth.uid() OR public.is_sports_admin() OR public.is_team_member(team_color_id));
 CREATE POLICY "team_membership_admin" ON public.sports_team_memberships FOR ALL TO authenticated USING(public.is_sports_admin()) WITH CHECK(public.is_sports_admin());
+CREATE POLICY "team_membership_lead_staff_insert" ON public.sports_team_memberships FOR INSERT TO authenticated WITH CHECK(public.can_assign_sports_team_staff(team_color_id,student_id) AND role IN ('staff_lead','staff') AND student_id IS NOT NULL AND teacher_id IS NULL);
+CREATE POLICY "team_membership_lead_staff_update" ON public.sports_team_memberships FOR UPDATE TO authenticated USING(public.can_assign_sports_team_staff(team_color_id,student_id) AND role IN ('staff_lead','staff') AND student_id IS NOT NULL AND teacher_id IS NULL) WITH CHECK(public.can_assign_sports_team_staff(team_color_id,student_id) AND role IN ('staff_lead','staff') AND student_id IS NOT NULL AND teacher_id IS NULL);
 CREATE POLICY "team_tasks_scope" ON public.sports_team_tasks FOR ALL TO authenticated USING(public.is_team_member(team_color_id,'tasks')) WITH CHECK(public.is_team_member(team_color_id,'tasks'));
 CREATE POLICY "team_ann_scope" ON public.sports_team_announcements FOR ALL TO authenticated USING(public.is_team_member(team_color_id,'announcements')) WITH CHECK(public.is_team_member(team_color_id,'announcements'));
 CREATE POLICY "identity_scope_read" ON public.sports_team_identity_requests FOR SELECT TO authenticated USING(public.is_team_member(team_color_id) OR public.is_sports_admin());
@@ -174,7 +184,7 @@ CREATE POLICY "audit_admin_read" ON public.sports_audit_log FOR SELECT TO authen
 GRANT SELECT ON public.sports_portal_settings,public.sports_shirt_requests,public.sports_team_memberships,public.sports_team_tasks,public.sports_team_announcements,public.sports_team_identity_requests TO authenticated;
 GRANT INSERT,UPDATE,DELETE ON public.sports_portal_settings,public.sports_team_memberships TO authenticated;
 GRANT INSERT,UPDATE,DELETE ON public.sports_team_tasks,public.sports_team_announcements,public.sports_team_identity_requests TO authenticated;
-GRANT EXECUTE ON FUNCTION public.request_my_sports_shirt_size(UUID,TEXT),public.advisor_confirm_sports_shirt(UUID,INTEGER,TEXT,TEXT),public.review_team_identity(UUID,TEXT,TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.request_my_sports_shirt_size(UUID,TEXT),public.advisor_confirm_sports_shirt(UUID,INTEGER,TEXT,TEXT),public.review_team_identity(UUID,TEXT,TEXT),public.can_manage_sports_team_staff(UUID),public.can_assign_sports_team_staff(UUID,INTEGER) TO authenticated;
 
 INSERT INTO public.sports_portal_settings(event_id)
 SELECT id FROM public.events WHERE status='active' ORDER BY academic_year DESC LIMIT 1 ON CONFLICT(event_id) DO NOTHING;

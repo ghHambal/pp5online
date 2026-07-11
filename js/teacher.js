@@ -16,7 +16,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.19.7'
+import { APP_VERSION } from './version.js?v=10.19.8'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
@@ -570,13 +570,16 @@ async function _applyRoleMenus() {
   toggle('menu-reading',    hasReading)
   toggle('menu-prayer',     hasPrayer)
   toggle('menu-advisor-students', hasLifeSkill)
+  let sportsMemberships = []
   try {
-    const { data: memberships } = await supabase.from('sports_team_memberships').select('id').eq('profile_id', _teacher?.profile_id).eq('is_active', true).limit(1)
-    toggle('menu-my-team', (memberships || []).length > 0)
+    const { data: memberships } = await supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true)
+    sportsMemberships = memberships || []
+    toggle('menu-my-team', sportsMemberships.length > 0)
   } catch { toggle('menu-my-team', false) }
   const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
-  toggle('menu-shirt-summary', !!isSportsManager)
+  const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
+  toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
 }
 
 // refresh profile หลัง save
