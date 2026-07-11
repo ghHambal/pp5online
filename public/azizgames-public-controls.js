@@ -15,6 +15,7 @@ const DEFAULT_VISIBILITY = {
   public_page: true,
 };
 const DEFAULT_EVENT_ID = '00000000-0000-0000-0000-000000000001';
+let sportsPortalEventId = DEFAULT_EVENT_ID;
 const SPORT_CSV_HEADERS = [
   'sp_id',
   'sport_name',
@@ -74,16 +75,30 @@ const restHeaders = (useSession = false) => {
 
 const loadPublicButtons = async () => {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/settings?key=in.(public_buttons,sports_visibility)&select=key,value`,
-      { headers: restHeaders(false) },
-    );
-    if (!res.ok) return;
-    const rows = await res.json();
+    const [settingsRes, portalRes] = await Promise.all([
+      fetch(
+        `${SUPABASE_URL}/rest/v1/settings?key=in.(public_buttons,sports_visibility)&select=key,value`,
+        { headers: restHeaders(false) },
+      ),
+      fetch(
+        `${SUPABASE_URL}/rest/v1/sports_portal_settings?select=event_id,shirt_request_enabled&limit=1`,
+        { headers: restHeaders(false) },
+      ),
+    ]);
+    if (!settingsRes.ok) return;
+    const rows = await settingsRes.json();
     rows?.forEach((row) => {
       if (row.key === 'public_buttons' && row.value) writeButtons(row.value);
       if (row.key === 'sports_visibility' && row.value) writeVisibility(row.value);
     });
+    if (portalRes.ok) {
+      const portalRows = await portalRes.json();
+      const portal = portalRows?.[0];
+      if (portal?.event_id) sportsPortalEventId = portal.event_id;
+      if (typeof portal?.shirt_request_enabled === 'boolean') {
+        writeButtons({ ...readButtons(), athlete_size: portal.shirt_request_enabled });
+      }
+    }
   } catch (error) {
     console.warn('Unable to load AZIZGAMES public settings', error);
   }
@@ -123,6 +138,28 @@ const saveSportsVisibility = async (value) => {
   };
 
   const res = await fetch(`${SUPABASE_URL}/rest/v1/settings?on_conflict=key`, {
+    method: 'POST',
+    headers: {
+      ...restHeaders(true),
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `Supabase responded with ${res.status}`);
+  }
+};
+
+const saveSportsPortalShirtRequest = async (enabled) => {
+  const payload = {
+    event_id: sportsPortalEventId || DEFAULT_EVENT_ID,
+    shirt_request_enabled: Boolean(enabled),
+    updated_at: new Date().toISOString(),
+  };
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/sports_portal_settings?on_conflict=event_id`, {
     method: 'POST',
     headers: {
       ...restHeaders(true),
@@ -815,7 +852,11 @@ const injectPanel = () => {
     const status = panel.querySelector('.aziz-public-status');
     status.textContent = 'กำลังบันทึก...';
     try {
-      await Promise.all([savePublicButtons(nextValue), saveSportsVisibility(nextVisibility)]);
+      await Promise.all([
+        savePublicButtons(nextValue),
+        saveSportsVisibility(nextVisibility),
+        saveSportsPortalShirtRequest(nextValue.athlete_size),
+      ]);
       status.textContent = 'บันทึกสำเร็จ กำลังรีเฟรชหน้าเพื่อใช้ค่าล่าสุด';
     } catch (error) {
       console.warn('Unable to sync AZIZGAMES public settings', error);
