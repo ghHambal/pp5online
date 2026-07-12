@@ -3262,6 +3262,10 @@ const DEFAULT_LEAVE_MAX_ACTIVE = 3
 const LEAVE_MAX_ACTIVE_BY_CLASS_KEY = 'leaveMaxActiveByClass'
 const LEAVE_DEFAULT_MAX_ACTIVE_KEY = 'leaveDefaultMaxActive'
 
+const DEFAULT_LEAVE_MAX_PER_STUDENT_WEEK = 2
+const LEAVE_MAX_PER_STUDENT_WEEK_BY_CLASS_KEY = 'leaveMaxPerStudentWeekByClass'
+const LEAVE_DEFAULT_MAX_PER_STUDENT_WEEK_KEY = 'leaveDefaultMaxPerStudentWeek'
+
 function _currentWeekRange(now = new Date()) {
   const start = new Date(now)
   start.setHours(0, 0, 0, 0)
@@ -3288,6 +3292,12 @@ function _normalizeLeaveMaxActive(value, fallback = DEFAULT_LEAVE_MAX_ACTIVE) {
   return Math.max(1, Math.min(30, n))
 }
 
+function _normalizeLeaveMaxPerStudentWeek(value, fallback = DEFAULT_LEAVE_MAX_PER_STUDENT_WEEK) {
+  const n = parseInt(value, 10)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(1, Math.min(14, n))
+}
+
 export async function getLeaveMaxActiveForClass(classId) {
   try {
     const { data, error } = await supabase
@@ -3311,6 +3321,35 @@ export async function updateLeaveMaxActiveForClass(classId, maxActive) {
     .upsert({
       class_id: classId,
       max_active: nextMax,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'class_id' })
+  if (error) throw error
+  return nextMax
+}
+
+export async function getLeaveMaxPerStudentWeekForClass(classId) {
+  try {
+    const { data, error } = await supabase
+      .from('class_leave_settings')
+      .select('max_per_student_week')
+      .eq('class_id', classId)
+      .maybeSingle()
+    if (!error && data?.max_per_student_week) return _normalizeLeaveMaxPerStudentWeek(data.max_per_student_week)
+  } catch {}
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const defaultMax = _normalizeLeaveMaxPerStudentWeek(cfg[LEAVE_DEFAULT_MAX_PER_STUDENT_WEEK_KEY], DEFAULT_LEAVE_MAX_PER_STUDENT_WEEK)
+  const byClass = _parseLeaveMaxMap(cfg[LEAVE_MAX_PER_STUDENT_WEEK_BY_CLASS_KEY])
+  return _normalizeLeaveMaxPerStudentWeek(byClass[String(classId)], defaultMax)
+}
+
+export async function updateLeaveMaxPerStudentWeekForClass(classId, maxPerWeek) {
+  const nextMax = _normalizeLeaveMaxPerStudentWeek(maxPerWeek)
+  const { error } = await supabase
+    .from('class_leave_settings')
+    .upsert({
+      class_id: classId,
+      max_per_student_week: nextMax,
       updated_at: new Date().toISOString()
     }, { onConflict: 'class_id' })
   if (error) throw error
@@ -3465,7 +3504,7 @@ export async function getOutStudentsCount(classId) {
   return count ?? 0
 }
 
-export async function hasStudentLeftAlready(studentId, classId) {
+export async function getStudentLeaveCountThisWeek(studentId, classId) {
   const { start, end } = _currentWeekRange()
   const { count, error } = await supabase
     .from('student_leave_permissions')
@@ -3475,13 +3514,14 @@ export async function hasStudentLeftAlready(studentId, classId) {
     .gte('created_at', start)
     .lt('created_at', end)
   if (error) throw error
-  return (count ?? 0) > 0
+  return count ?? 0
 }
 
 export async function createLeavePermission(studentId, classId, teacherId, reason, durationMinutes, maxActive = null) {
-  const alreadyLeft = await hasStudentLeftAlready(studentId, classId)
-  if (alreadyLeft) {
-    throw new Error('นักเรียนคนนี้เคยได้รับอนุมัติออกนอกห้องในสัปดาห์นี้ไปแล้ว')
+  const weeklyLimit = await getLeaveMaxPerStudentWeekForClass(classId)
+  const weeklyCount = await getStudentLeaveCountThisWeek(studentId, classId)
+  if (weeklyCount >= weeklyLimit) {
+    throw new Error(`นักเรียนคนนี้ขอออกนอกห้องครบ ${weeklyLimit} ครั้งในสัปดาห์นี้แล้ว`)
   }
 
   const limit = maxActive === null ? await getLeaveMaxActiveForClass(classId) : _normalizeLeaveMaxActive(maxActive)

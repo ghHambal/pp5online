@@ -10,6 +10,7 @@ import {
   createLeavePermission, closeLeavePermission,
   getActiveLeavePermissionsForClass, getClassLeaveHistory,
   getLeaveMaxActiveForClass, updateLeaveMaxActiveForClass,
+  getLeaveMaxPerStudentWeekForClass, updateLeaveMaxPerStudentWeekForClass,
   getMyClasses, getClassSessionDOWs,
 } from './api.js'
 import { supabase } from './supabase.js'
@@ -61,6 +62,7 @@ export async function renderAttendanceGrid(teacher, classData) {
       getClassLeaveHistory(classData.id, { week: 'current' }).catch(() => []),
     ])
     let leaveMaxActive = await getLeaveMaxActiveForClass(classData.id).catch(() => 3)
+    let leaveMaxPerWeek = await getLeaveMaxPerStudentWeekForClass(classData.id).catch(() => 2)
     const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null)
     const holidaySet = new Set(holidays)
 
@@ -275,8 +277,9 @@ export async function renderAttendanceGrid(teacher, classData) {
     })
 
     document.getElementById('btn-leave-quota')?.addEventListener('click', () => {
-      _openLeaveQuotaModal(classData, leaveMaxActive, async (nextMax) => {
+      _openLeaveQuotaModal(classData, leaveMaxActive, leaveMaxPerWeek, async (nextMax, nextMaxPerWeek) => {
         leaveMaxActive = nextMax
+        leaveMaxPerWeek = nextMaxPerWeek
         const label = document.getElementById('leave-quota-label')
         if (label) label.textContent = `${Object.keys(activeLeaveMap).length}/${leaveMaxActive}`
       })
@@ -569,7 +572,7 @@ function _renderStudentRosterLeavePart(student, activeLeaveMap, hasLeftMap) {
   }
 }
 
-function _openLeaveQuotaModal(classData, currentMax, onSave) {
+function _openLeaveQuotaModal(classData, currentMax, currentMaxPerWeek, onSave) {
   document.getElementById('leave-quota-modal')?.remove()
   const modal = document.createElement('div')
   modal.id = 'leave-quota-modal'
@@ -590,12 +593,26 @@ function _openLeaveQuotaModal(classData, currentMax, onSave) {
             class="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-indigo-500" />
           <span class="text-xs text-gray-500 font-medium">คน</span>
         </div>
+        <div class="grid grid-cols-4 gap-2">
+          ${[1, 2, 3, 5].map(n => `
+            <button type="button" class="btn-leave-quota-preset px-3 py-2 rounded-xl border text-xs font-bold ${n === currentMax ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}"
+              data-value="${n}">${n} คน</button>
+          `).join('')}
+        </div>
       </div>
-      <div class="grid grid-cols-4 gap-2">
-        ${[1, 2, 3, 5].map(n => `
-          <button type="button" class="btn-leave-quota-preset px-3 py-2 rounded-xl border text-xs font-bold ${n === currentMax ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}"
-            data-value="${n}">${n} คน</button>
-        `).join('')}
+      <div class="space-y-2 border-t pt-3">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">จำนวนครั้งสูงสุดต่อสัปดาห์ (ต่อนักเรียน 1 คน)</label>
+        <div class="flex items-center gap-2">
+          <input type="number" id="input-leave-quota-per-week" min="1" max="14" value="${currentMaxPerWeek}"
+            class="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-indigo-500" />
+          <span class="text-xs text-gray-500 font-medium">ครั้ง/สัปดาห์</span>
+        </div>
+        <div class="grid grid-cols-4 gap-2">
+          ${[1, 2, 3, 5].map(n => `
+            <button type="button" class="btn-leave-quota-week-preset px-3 py-2 rounded-xl border text-xs font-bold ${n === currentMaxPerWeek ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}"
+              data-value="${n}">${n} ครั้ง</button>
+          `).join('')}
+        </div>
       </div>
       <button id="btn-save-leave-quota" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition-all">
         บันทึกโควต้า
@@ -605,23 +622,37 @@ function _openLeaveQuotaModal(classData, currentMax, onSave) {
   document.body.appendChild(modal)
 
   const input = modal.querySelector('#input-leave-quota')
+  const inputPerWeek = modal.querySelector('#input-leave-quota-per-week')
   modal.querySelector('#btn-leave-quota-close')?.addEventListener('click', () => modal.remove())
   modal.querySelectorAll('.btn-leave-quota-preset').forEach(btn => {
     btn.addEventListener('click', () => {
       input.value = btn.dataset.value
     })
   })
+  modal.querySelectorAll('.btn-leave-quota-week-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      inputPerWeek.value = btn.dataset.value
+    })
+  })
   modal.querySelector('#btn-save-leave-quota')?.addEventListener('click', async () => {
     const nextMax = parseInt(input.value, 10)
     if (!Number.isFinite(nextMax) || nextMax < 1 || nextMax > 30) {
-      showToast('กรุณาระบุโควต้าระหว่าง 1-30 คน', 'warning')
+      showToast('กรุณาระบุโควต้าคนออกพร้อมกันระหว่าง 1-30 คน', 'warning')
+      return
+    }
+    const nextMaxPerWeek = parseInt(inputPerWeek.value, 10)
+    if (!Number.isFinite(nextMaxPerWeek) || nextMaxPerWeek < 1 || nextMaxPerWeek > 14) {
+      showToast('กรุณาระบุจำนวนครั้งต่อสัปดาห์ระหว่าง 1-14 ครั้ง', 'warning')
       return
     }
     try {
-      await updateLeaveMaxActiveForClass(classData.id, nextMax)
-      showToast(`บันทึกโควต้าออกนอกห้องเป็น ${nextMax} คนแล้ว`, 'success')
+      await Promise.all([
+        updateLeaveMaxActiveForClass(classData.id, nextMax),
+        updateLeaveMaxPerStudentWeekForClass(classData.id, nextMaxPerWeek),
+      ])
+      showToast(`บันทึกโควต้าออกนอกห้องเป็น ${nextMax} คน / ${nextMaxPerWeek} ครั้งต่อสัปดาห์แล้ว`, 'success')
       modal.remove()
-      onSave?.(nextMax)
+      onSave?.(nextMax, nextMaxPerWeek)
     } catch (err) {
       showToast('บันทึกโควต้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     }
