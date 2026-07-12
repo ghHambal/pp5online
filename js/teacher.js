@@ -584,6 +584,12 @@ async function _applyRoleMenus() {
   const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
+  let isShirtVoteManager = false
+  try {
+    const { data: voteManagerRow } = await supabase.from('sports_shirt_vote_managers').select('id').eq('profile_id', _teacher?.profile_id).maybeSingle()
+    isShirtVoteManager = !!voteManagerRow
+  } catch { isShirtVoteManager = false }
+  toggle('menu-shirt-vote-dashboard', !!(isSportsManager || isShirtVoteManager))
 }
 
 // refresh profile หลัง save
