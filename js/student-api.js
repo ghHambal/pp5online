@@ -538,3 +538,28 @@ export async function getStudentClassroomRole(mainRoom) {
   }
   return data
 }
+
+// ─── Leave Permission (Student view) ──────────────────────────────────────────
+export async function getMyActiveLeavePermission(studentId) {
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .select('*, classes(class_name, master_subjects(subject_name)), teachers(full_name)')
+    .eq('student_id', studentId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function getMyLeaveHistory(studentId, limit = 50) {
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .select('*, classes(class_name, master_subjects(subject_name)), teachers(full_name)')
+    .eq('student_id', studentId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data || []
+}

@@ -9,14 +9,23 @@ import {
   getScannerRoster, saveScannedPrayerRecords,
   getMonthlyManualPrayerEntryCount,
   getStudentClassroomRole,
+  getMyActiveLeavePermission, getMyLeaveHistory,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
+import { formatLeaveCountdown } from './leave-time.js'
 import { APP_VERSION } from './version.js?v=10.18.25'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
+
+const _esc = value => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function setContent(html) {
@@ -2369,17 +2378,24 @@ export async function renderStudentProfile(student, onLogout) {
         <p class="text-xs text-gray-400 mt-1">รหัส ${student.student_code}</p>
         <p class="text-xs text-gray-500 mt-0.5">ห้อง ${student.main_room ?? '—'}</p>
       </div>
-      <!-- QR Code trigger icon inside card -->
-      <button id="btn-show-my-qr" 
-        class="w-12 h-12 rounded-2xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-600 flex items-center justify-center shadow-sm border border-emerald-100/50 transition-all flex-shrink-0"
-        title="แสดง QR Code ของฉัน">
-        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M3 3h6v6H3V3zm2 2v2h2V5H5z"/>
-          <path d="M15 3h6v6h-6V3zm2 2v2h2V5h-2z"/>
-          <path d="M3 15h6v6H3v-6zm2 2v2h2v-2H5z"/>
-          <path d="M10 3h2v2h-2V3zm0 4h2v2h-2V7zm3 0h2v2h-2V7zm0-4h2v2h-2V3zm5 8h2v2h-2v-2zm-3 2h2v2h-2v-2zm3 3h2v2h-2v-2zm-3 3h2v2h-2v-2zm-3-3h2v2h-2v-2zm-3 3h2v2h-2v-2zm6-3h2v2h-2v-2zm3-3h2v2h-2v-2z"/>
-        </svg>
-      </button>
+      <!-- QR Code + Leave Permission trigger icons inside card -->
+      <div class="flex flex-col gap-2 flex-shrink-0">
+        <button id="btn-show-my-qr"
+          class="w-12 h-12 rounded-2xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-600 flex items-center justify-center shadow-sm border border-emerald-100/50 transition-all"
+          title="แสดง QR Code ของฉัน">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3 3h6v6H3V3zm2 2v2h2V5H5z"/>
+            <path d="M15 3h6v6h-6V3zm2 2v2h2V5h-2z"/>
+            <path d="M3 15h6v6H3v-6zm2 2v2h2v-2H5z"/>
+            <path d="M10 3h2v2h-2V3zm0 4h2v2h-2V7zm3 0h2v2h-2V7zm0-4h2v2h-2V3zm5 8h2v2h-2v-2zm-3 2h2v2h-2v-2zm3 3h2v2h-2v-2zm-3 3h2v2h-2v-2zm-3-3h2v2h-2v-2zm-3 3h2v2h-2v-2zm6-3h2v2h-2v-2zm3-3h2v2h-2v-2z"/>
+          </svg>
+        </button>
+        <button id="btn-show-my-leave"
+          class="w-12 h-12 rounded-2xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-600 flex items-center justify-center shadow-sm border border-amber-100/50 transition-all text-xl"
+          title="ใบอนุญาตออกนอกห้อง">
+          🚪
+        </button>
+      </div>
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-6">
@@ -2499,6 +2515,11 @@ export async function renderStudentProfile(student, onLogout) {
     modal.querySelector('#stu-logout-confirm-btn').addEventListener('click', onLogout)
   })
 
+  // Bind click event to open leave-permission status/history modal
+  document.getElementById('btn-show-my-leave').addEventListener('click', () => {
+    _openMyLeaveModal(student)
+  })
+
   // Bind click event to generate dynamic expiring QR Code
   document.getElementById('btn-show-my-qr').addEventListener('click', async () => {
     const dailyLimit = parseInt(cfg.studentQrDailyLimit || '3', 10)
@@ -2595,6 +2616,109 @@ export async function renderStudentProfile(student, onLogout) {
       modal.remove()
     })
   })
+}
+
+// ─── Leave Permission Status/History Modal ────────────────────────────────────
+function _openMyLeaveModal(student) {
+  document.getElementById('student-leave-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'student-leave-modal'
+  modal.className = 'fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <h3 class="font-bold text-gray-800 text-base">🚪 ใบอนุญาตออกนอกห้อง</h3>
+        <button id="btn-leave-modal-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+      </div>
+      <div id="student-leave-body" class="px-5 py-4 space-y-4 overflow-y-auto flex-1">
+        <div class="text-center text-sm text-gray-400 py-8">กำลังโหลดข้อมูล...</div>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+
+  const closeModal = () => {
+    if (modal._leaveTimer) clearInterval(modal._leaveTimer)
+    modal.remove()
+  }
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
+  modal.querySelector('#btn-leave-modal-close').addEventListener('click', closeModal)
+
+  _loadMyLeaveModalData(student, modal)
+}
+
+async function _loadMyLeaveModalData(student, modal) {
+  const body = modal.querySelector('#student-leave-body')
+  try {
+    const [active, history] = await Promise.all([
+      getMyActiveLeavePermission(student.id),
+      getMyLeaveHistory(student.id),
+    ])
+
+    const warningBanner = `
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+        ⚠️ <strong>ข้อควรระวัง:</strong> เมื่อได้รับอนุญาตออกนอกห้องแล้ว นักเรียนต้อง<strong>กลับเข้าห้องให้ทันเวลาที่กำหนดทุกครั้ง</strong>
+        หากไม่กลับเข้าห้อง หรือกลับไม่ทันเวลา สะสมครบ <strong>3 ครั้ง</strong> จะถูก<strong>ระงับสิทธิ์การขออนุญาตออกนอกห้อง</strong>
+        และระบบจะ<strong>หักคะแนนความประพฤติ</strong>ในระบบดูแลนักเรียน
+      </div>
+    `
+
+    let activeHtml = ''
+    if (active) {
+      const subjectName = active.classes?.master_subjects?.subject_name || active.classes?.class_name || '—'
+      activeHtml = `
+        <div id="student-leave-active-card" class="rounded-2xl border ${active.status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'} p-4">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-bold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">🚪 กำลังออกนอกห้องอยู่</span>
+            <span id="student-leave-active-timer" class="font-mono text-sm font-extrabold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">--:--</span>
+          </div>
+          <p class="text-xs ${active.status === 'overdue' ? 'text-red-800' : 'text-amber-800'}">${_esc(subjectName)} · เหตุผล: ${_esc(active.reason)}</p>
+          <p class="text-[11px] ${active.status === 'overdue' ? 'text-red-600' : 'text-amber-600'} mt-1">ครูผู้อนุญาต: ${_esc(active.teachers?.full_name || '—')}</p>
+        </div>
+      `
+    }
+
+    const historyRows = history.length
+      ? history.map(h => {
+          const subjectName = h.classes?.master_subjects?.subject_name || h.classes?.class_name || '—'
+          const statusLabel = h.status === 'active' ? '🚪 กำลังออก' : h.status === 'overdue' ? '⛔ เลยเวลา' : '✅ กลับแล้ว'
+          const statusColor = h.status === 'active' ? 'text-amber-600' : h.status === 'overdue' ? 'text-red-600' : 'text-emerald-600'
+          const dateStr = new Date(h.created_at).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+          return `
+            <div class="px-3 py-2.5 border-b border-gray-50 last:border-0">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-gray-700">${_esc(subjectName)}</span>
+                <span class="text-[10px] font-bold ${statusColor}">${statusLabel}</span>
+              </div>
+              <p class="text-[11px] text-gray-400 mt-0.5">${dateStr} · ${_esc(h.reason)} · ${h.allowed_duration} นาที</p>
+            </div>
+          `
+        }).join('')
+      : `<p class="text-xs text-gray-400 text-center py-6">ยังไม่มีประวัติการขอออกนอกห้อง</p>`
+
+    body.innerHTML = `
+      ${activeHtml}
+      ${warningBanner}
+      <div>
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">ประวัติการขอออกนอกห้อง</p>
+        <div class="rounded-2xl border border-gray-100 overflow-hidden">
+          ${historyRows}
+        </div>
+      </div>
+    `
+
+    if (active) {
+      const timerEl = body.querySelector('#student-leave-active-timer')
+      const updateTimer = () => {
+        const c = formatLeaveCountdown(active.created_at, active.allowed_duration)
+        if (timerEl) timerEl.textContent = c.timerText
+      }
+      updateTimer()
+      modal._leaveTimer = setInterval(updateTimer, 1000)
+    }
+  } catch (err) {
+    body.innerHTML = `<p class="text-xs text-red-500 text-center py-6">โหลดข้อมูลไม่สำเร็จ: ${_esc(err.message ?? '')}</p>`
+  }
 }
 
 // ─── Scanner Dynamic Library Loader ──────────────────────────────────────────
