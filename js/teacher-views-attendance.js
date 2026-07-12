@@ -276,13 +276,17 @@ export async function renderAttendanceGrid(teacher, classData) {
       _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
     })
 
-    document.getElementById('btn-leave-quota')?.addEventListener('click', () => {
-      _openLeaveQuotaModal(classData, leaveMaxActive, leaveMaxPerWeek, async (nextMax, nextMaxPerWeek) => {
-        leaveMaxActive = nextMax
-        leaveMaxPerWeek = nextMaxPerWeek
-        const label = document.getElementById('leave-quota-label')
-        if (label) label.textContent = `${Object.keys(activeLeaveMap).length}/${leaveMaxActive}`
+    const openLeaveQuotaModal = () => {
+      _openLeaveQuotaModal(classData, leaveMaxActive, leaveMaxPerWeek, () => {
+        renderAttendanceGrid(teacher, classData)
       })
+    }
+
+    document.getElementById('btn-leave-quota')?.addEventListener('click', openLeaveQuotaModal)
+
+    // คลิกป้าย "ครบสิทธิ์" ของนักเรียนเพื่อเปิดโมดัลปรับโควต้า
+    wrap.addEventListener('click', e => {
+      if (e.target.closest('.btn-leave-quota-badge')) openLeaveQuotaModal()
     })
 
     // ลบข้อมูลเช็คชื่อในคาบที่ตรงกับวันหยุด (ต้องยืนยันก่อน)
@@ -556,18 +560,19 @@ function _renderStudentRosterLeavePart(student, activeLeaveMap, leaveCountMap, l
   } else if (hasLeft) {
     return `
       <div class="mt-0.5 flex items-center">
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-100 cursor-not-allowed select-none" title="นักเรียนใช้สิทธิ์ออกนอกห้องครบ ${leaveMaxPerWeek} ครั้งแล้วในสัปดาห์นี้">
+        <button type="button" class="btn-leave-quota-badge inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-100 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition cursor-pointer" title="นักเรียนใช้สิทธิ์ออกนอกห้องครบ ${leaveMaxPerWeek} ครั้งแล้วในสัปดาห์นี้ (คลิกเพื่อปรับโควต้า)">
           ✓ ออกแล้ว (${leaveCount}/${leaveMaxPerWeek})
-        </span>
+        </button>
       </div>
     `
   } else {
     return `
-      <div class="mt-0.5 flex items-center">
+      <div class="mt-0.5 flex items-center gap-1">
         <button type="button" class="btn-request-leave text-[9px] text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 rounded px-1 py-0.5 bg-gray-50 hover:bg-indigo-50 transition font-medium"
           data-sid="${student.id}" data-name="${_htmlEsc(student.full_name)}" data-img="${student.image_url || ''}">
           🚪 ขอออกห้อง
         </button>
+        <span class="text-[9px] text-gray-400 font-mono" title="ใช้สิทธิ์ออกนอกห้องไปแล้ว ${leaveCount} จาก ${leaveMaxPerWeek} ครั้งในสัปดาห์นี้">${leaveCount}/${leaveMaxPerWeek}</span>
       </div>
     `
   }
