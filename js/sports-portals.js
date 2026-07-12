@@ -73,12 +73,50 @@ function open3dShirtViewer(url) {
   m.querySelector('#btn-shirt-3d-close').onclick=()=>m.remove()
 }
 
+function openImageLightbox(url) {
+  document.getElementById('shirt-image-lightbox')?.remove()
+  const m=document.createElement('div'); m.id='shirt-image-lightbox'; m.className='fixed inset-0 z-[330] bg-black/90 flex items-center justify-center p-6 animate-fade'
+  m.innerHTML=`<button id="btn-shirt-lightbox-close" class="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg">✕</button><img src="${esc(url)}" class="max-w-full max-h-full object-contain rounded-2xl">`
+  document.body.appendChild(m)
+  m.querySelector('#btn-shirt-lightbox-close').onclick=()=>m.remove()
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove() })
+}
+
+function openConfirmVoteModal(design,cfg,onConfirm) {
+  document.getElementById('shirt-vote-confirm-modal')?.remove()
+  const closesText=cfg?.shirt_vote_closes_at
+    ? new Date(cfg.shirt_vote_closes_at).toLocaleString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})
+    : null
+  const m=document.createElement('div'); m.id='shirt-vote-confirm-modal'; m.className='fixed inset-0 z-[340] bg-black/50 flex items-center justify-center p-6 animate-fade'
+  m.innerHTML=`
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+      <div class="text-3xl mb-2">🗳️</div>
+      <h3 class="font-bold text-gray-800 text-base mb-1">ยืนยันการโหวต</h3>
+      <p class="text-sm text-gray-600 mb-3">คุณต้องการโหวต <strong class="text-indigo-600">${esc(design.name||`แบบที่ ${design.design_no}`)}</strong> ใช่หรือไม่?</p>
+      <p class="text-[11px] text-gray-400 mb-5">${closesText?`เปลี่ยนใจได้จนถึง ${closesText}`:'สามารถเปลี่ยนแปลงการโหวตได้จนกว่าระบบจะปิดรับ'}</p>
+      <div class="flex gap-3">
+        <button id="btn-shirt-vote-cancel" class="flex-1 py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-semibold text-sm hover:bg-gray-50">ยกเลิก</button>
+        <button id="btn-shirt-vote-confirm" class="flex-1 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md">ยืนยัน</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(m)
+  m.querySelector('#btn-shirt-vote-cancel').onclick=()=>m.remove()
+  m.querySelector('#btn-shirt-vote-confirm').onclick=async()=>{
+    const btn=m.querySelector('#btn-shirt-vote-confirm')
+    btn.disabled=true; btn.textContent='กำลังบันทึก...'
+    await onConfirm()
+    m.remove()
+  }
+}
+
 async function openShirtVoteModal(student,event,cfg) {
   document.getElementById('shirt-vote-modal')?.remove()
   const wrap=document.createElement('div'); wrap.id='shirt-vote-modal'; wrap.className='fixed inset-0 z-[300] bg-white flex flex-col animate-fade'
-  wrap.innerHTML=`<div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0"><h3 class="text-lg font-bold text-gray-800">🗳️ โหวตแบบเสื้อกีฬาสี</h3><button id="btn-shirt-vote-close" class="w-9 h-9 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 flex items-center justify-center text-lg">✕</button></div><div id="shirt-vote-body" class="flex-1 overflow-y-auto px-5 py-4"><div class="text-center text-sm text-gray-400 py-8">กำลังโหลดข้อมูล...</div></div>`
+  wrap.innerHTML=`<div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0"><h3 class="text-lg font-bold text-gray-800">🗳️ โหวตแบบเสื้อกีฬาสี</h3><button id="btn-shirt-vote-close" class="w-9 h-9 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 flex items-center justify-center text-lg">✕</button></div><div id="shirt-vote-tabs" class="flex border-b border-gray-100 flex-shrink-0 overflow-x-auto"></div><div id="shirt-vote-body" class="flex-1 overflow-y-auto flex flex-col items-center px-5 py-6"><div class="text-center text-sm text-gray-400 py-8">กำลังโหลดข้อมูล...</div></div>`
   document.body.appendChild(wrap)
   wrap.querySelector('#btn-shirt-vote-close').onclick=()=>wrap.remove()
+  const tabsEl=wrap.querySelector('#shirt-vote-tabs')
   const body=wrap.querySelector('#shirt-vote-body')
   try {
     const [{data:designs,error},{data:myVote}] = await Promise.all([
@@ -89,40 +127,54 @@ async function openShirtVoteModal(student,event,cfg) {
     ;(designs||[]).forEach(d=>{ d.sports_shirt_design_colors=(d.sports_shirt_design_colors||[]).sort((a,b)=>a.display_order-b.display_order) })
     const open=cfg?.shirt_vote_enabled && (!cfg.shirt_vote_opens_at || new Date(cfg.shirt_vote_opens_at)<=new Date()) && (!cfg.shirt_vote_closes_at || new Date(cfg.shirt_vote_closes_at)>=new Date())
     let selectedDesignId=myVote?.design_id||null
+    let activeIdx=Math.max(0,(designs||[]).findIndex(d=>d.id===selectedDesignId))
     const activeColorByDesign={}
     ;(designs||[]).forEach(d=>{ const colors=d.sports_shirt_design_colors||[]; activeColorByDesign[d.id]=colors.find(c=>c.image_url)?.id||colors[0]?.id||null })
-    const render=()=>{
+
+    if(!(designs||[]).length){
+      body.innerHTML='<p class="text-sm text-gray-400 text-center py-8">ยังไม่มีแบบเสื้อของเพศคุณ</p>'
+      return
+    }
+
+    const renderTabs=()=>{
+      tabsEl.innerHTML=(designs||[]).map((d,i)=>`<button data-shirt-tab="${i}" class="flex-shrink-0 px-5 py-3 text-sm font-bold border-b-2 transition ${i===activeIdx?'text-indigo-600 border-indigo-600':'text-gray-400 border-transparent hover:text-gray-600'}">${esc(d.name||`แบบที่ ${d.design_no}`)}${selectedDesignId===d.id?' ✓':''}</button>`).join('')
+      tabsEl.querySelectorAll('[data-shirt-tab]').forEach(b=>b.addEventListener('click',()=>{ activeIdx=parseInt(b.dataset.shirtTab,10); renderTabs(); renderBody() }))
+    }
+
+    const renderBody=()=>{
+      const d=(designs||[])[activeIdx]
+      const colors=d.sports_shirt_design_colors||[]
+      const activeColor=colors.find(c=>c.id===activeColorByDesign[d.id])
       body.innerHTML=`
-        ${!open?'<div class="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500 mb-4 text-center">ขณะนี้ยังไม่เปิดโหวต หรือปิดโหวตแล้ว</div>':''}
-        <div class="grid grid-cols-2 gap-3">
-          ${(designs||[]).map(d=>{
-            const colors=d.sports_shirt_design_colors||[]
-            const activeColor=colors.find(c=>c.id===activeColorByDesign[d.id])
-            return `
-            <div class="rounded-2xl border ${selectedDesignId===d.id?'border-indigo-400 ring-2 ring-indigo-100':'border-gray-200'} p-3">
-              ${activeColor?.image_url?`<img src="${esc(activeColor.image_url)}" class="w-full h-28 object-contain bg-gray-50 rounded-xl border mb-2">`:'<div class="w-full h-28 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-3xl mb-2">👕</div>'}
-              <p class="text-xs font-bold text-gray-700 text-center mb-2">${esc(d.name||`แบบที่ ${d.design_no}`)}</p>
-              ${colors.length?`<div class="flex justify-center gap-1.5 mb-2">${colors.map(c=>`<button data-shirt-color-btn="${c.id}" data-shirt-color-design="${d.id}" class="w-6 h-6 rounded-full border-2 ${activeColorByDesign[d.id]===c.id?'border-indigo-500':'border-gray-200'}" style="background:${_colorSwatchHex(c.color_name)}" title="สี${esc(c.color_name)}"></button>`).join('')}</div>`:''}
-              ${d.html_url?`<button data-shirt-3d="${esc(d.html_url)}" class="w-full py-1.5 mb-1.5 rounded-lg border text-[10px] font-bold text-violet-600 border-violet-200 hover:bg-violet-50">🧊 ดูแบบ 3 มิติ</button>`:''}
-              <button data-shirt-vote="${d.id}" ${open?'':'disabled'} class="w-full py-2 rounded-xl text-xs font-bold ${selectedDesignId===d.id?'bg-indigo-600 text-white':'bg-gray-100 text-gray-600 hover:bg-indigo-50'} ${open?'':'opacity-50 cursor-not-allowed'}">${selectedDesignId===d.id?'✓ โหวตแบบนี้แล้ว':'โหวตแบบนี้'}</button>
-            </div>
-          `}).join('')}
+        ${!open?'<div class="w-full max-w-sm rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500 mb-4 text-center">ขณะนี้ยังไม่เปิดโหวต หรือปิดโหวตแล้ว</div>':''}
+        <div class="w-full max-w-sm">
+          <div class="relative">
+            ${activeColor?.image_url?`<img src="${esc(activeColor.image_url)}" class="w-full aspect-square object-contain bg-gray-50 rounded-3xl border">`:'<div class="w-full aspect-square bg-gray-50 rounded-3xl border grid place-items-center text-gray-300 text-6xl">👕</div>'}
+            ${activeColor?.image_url?`<button data-shirt-expand class="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/90 shadow border flex items-center justify-center text-gray-600 hover:text-indigo-600" title="ขยายดูเต็มจอ">⤢</button>`:''}
+          </div>
+          <p class="text-base font-bold text-gray-800 text-center mt-4">${esc(d.name||`แบบที่ ${d.design_no}`)}</p>
+          ${colors.length?`<div class="flex justify-center gap-2 mt-3">${colors.map(c=>`<button data-shirt-color-btn="${c.id}" class="w-8 h-8 rounded-full border-2 ${activeColorByDesign[d.id]===c.id?'border-indigo-500 scale-110':'border-gray-200'} transition" style="background:${_colorSwatchHex(c.color_name)}" title="สี${esc(c.color_name)}"></button>`).join('')}</div>`:''}
+          ${d.html_url?`<button data-shirt-3d="${esc(d.html_url)}" class="w-full mt-4 py-2 rounded-xl border text-xs font-bold text-violet-600 border-violet-200 hover:bg-violet-50">🧊 ดูแบบ 3 มิติ</button>`:''}
+          <button data-shirt-vote ${open?'':'disabled'} class="w-full mt-3 py-3 rounded-2xl text-sm font-bold transition ${selectedDesignId===d.id?'bg-indigo-600 text-white':'bg-gray-100 text-gray-600 hover:bg-indigo-50'} ${open?'':'opacity-50 cursor-not-allowed'}">${selectedDesignId===d.id?'✓ โหวตแบบนี้แล้ว':'เลือกโหวตแบบนี้'}</button>
         </div>
       `
-      body.querySelectorAll('[data-shirt-color-btn]').forEach(b=>b.onclick=()=>{ activeColorByDesign[b.dataset.shirtColorDesign]=b.dataset.shirtColorBtn; render() })
-      body.querySelectorAll('[data-shirt-3d]').forEach(b=>b.onclick=()=>open3dShirtViewer(b.dataset.shirt3d))
-      body.querySelectorAll('[data-shirt-vote]').forEach(b=>b.onclick=async()=>{
-        if(!open)return
-        const designId=b.dataset.shirtVote
-        b.disabled=true
-        const {error}=await supabase.rpc('cast_my_shirt_vote',{p_event:event.id,p_design:designId})
-        if(error){toast(error.message,'error');b.disabled=false;return}
-        selectedDesignId=designId
-        toast('บันทึกโหวตแล้ว')
-        render()
+      body.querySelector('[data-shirt-expand]')?.addEventListener('click',()=>openImageLightbox(activeColor.image_url))
+      body.querySelectorAll('[data-shirt-color-btn]').forEach(b=>b.addEventListener('click',()=>{ activeColorByDesign[d.id]=b.dataset.shirtColorBtn; renderBody() }))
+      body.querySelector('[data-shirt-3d]')?.addEventListener('click',e=>open3dShirtViewer(e.currentTarget.dataset.shirt3d))
+      body.querySelector('[data-shirt-vote]')?.addEventListener('click',()=>{
+        if(!open||selectedDesignId===d.id)return
+        openConfirmVoteModal(d,cfg,async()=>{
+          const {error}=await supabase.rpc('cast_my_shirt_vote',{p_event:event.id,p_design:d.id})
+          if(error){toast(error.message,'error');return}
+          selectedDesignId=d.id
+          toast('บันทึกโหวตแล้ว')
+          renderTabs(); renderBody()
+        })
       })
     }
-    render()
+
+    renderTabs()
+    renderBody()
   } catch(e) { console.error(e); body.innerHTML='<p class="text-xs text-red-500 text-center py-8">โหลดข้อมูลไม่สำเร็จ</p>' }
 }
 
@@ -370,16 +422,21 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
     const topCount=Math.max(0,...(designs||[]).map(d=>tally[d.id]||0))
     const ranked=[...(designs||[])].sort((a,b)=>(tally[b.id]||0)-(tally[a.id]||0))
     const rankBadge=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`
+    const colorPointer={}
     const rowsHtml=ranked.map((d,i)=>{
       const count=tally[d.id]||0
       const pct=total?Math.round(count/total*100):0
       const withImages=(d.sports_shirt_design_colors||[]).filter(c=>c.image_url)
-      const pick=withImages.length?withImages[Math.floor(Math.random()*withImages.length)]:null
+      colorPointer[d.id]=withImages.length?Math.floor(Math.random()*withImages.length):0
+      const pick=withImages[colorPointer[d.id]]||null
       const isTop=count>0&&count===topCount
       return `
         <div class="flex items-center gap-4 p-3 rounded-2xl ${isTop?'bg-indigo-50/60':''}">
           <span class="w-8 text-center text-sm font-bold text-gray-400 flex-shrink-0">${rankBadge(i)}</span>
-          ${pick?.image_url?`<img src="${esc(pick.image_url)}" class="w-14 h-14 object-contain bg-gray-50 rounded-xl border flex-shrink-0">`:'<div class="w-14 h-14 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-xl flex-shrink-0">👕</div>'}
+          <div class="relative flex-shrink-0">
+            ${pick?.image_url?`<img data-shirt-dash-img="${d.id}" src="${esc(pick.image_url)}" class="w-14 h-14 object-contain bg-gray-50 rounded-xl border">`:'<div class="w-14 h-14 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-xl">👕</div>'}
+            ${withImages.length>1?`<button data-shirt-dash-swap="${d.id}" class="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-white border shadow flex items-center justify-center text-[11px]" title="สลับสี">🔄</button>`:''}
+          </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs font-bold text-gray-700 truncate mb-1">${esc(d.name||`แบบที่ ${d.design_no}`)}</p>
             <div class="flex items-center gap-3">
@@ -401,6 +458,15 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
       </div>
     </div>`
     el.querySelectorAll('[data-vote-dash-gender]').forEach(b=>b.addEventListener('click',()=>renderShirtVoteDashboard(b.dataset.voteDashGender)))
+    el.querySelectorAll('[data-shirt-dash-swap]').forEach(b=>b.addEventListener('click',()=>{
+      const id=b.dataset.shirtDashSwap
+      const d=(designs||[]).find(x=>x.id===id)
+      const withImages=(d?.sports_shirt_design_colors||[]).filter(c=>c.image_url)
+      if(!withImages.length)return
+      colorPointer[id]=((colorPointer[id]||0)+1)%withImages.length
+      const img=el.querySelector(`[data-shirt-dash-img="${id}"]`)
+      if(img) img.src=withImages[colorPointer[id]].image_url
+    }))
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
