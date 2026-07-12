@@ -17,6 +17,7 @@ export default defineConfig({
         publicMonitor: resolve(__dirname, 'public-monitor.html'),
         sports:        resolve(__dirname, 'sports.html'),
         azizgames:     resolve(__dirname, 'azizgames.html'),
+        shirtVotePublic: resolve(__dirname, 'shirt-vote-public.html'),
       },
     },
     chunkSizeWarningLimit: 600,

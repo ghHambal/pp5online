@@ -2,17 +2,17 @@ import { supabase } from './supabase.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { uploadShirtDesignColorImage, uploadShirtDesignHtml } from './storage.js'
 
-const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+export const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 const main = () => document.getElementById('stu-content') || document.getElementById('main-content')
 const DEFAULT_EVENT = '00000000-0000-0000-0000-000000000001'
 const badge = s => ({pending:'รอยืนยัน',confirmed:'ยืนยันแล้ว',advisor_updated:'ครูเลือก/แก้ไขแทน'}[s] || 'ยังไม่จำนง')
 const statusClass = s => s === 'confirmed' || s === 'advisor_updated' ? 'bg-emerald-100 text-emerald-700' : s === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
-const toast = (msg,type='success') => { const e=document.createElement('div');e.className=`fixed top-4 left-1/2 -translate-x-1/2 z-[999] px-4 py-3 rounded-xl text-white text-sm shadow-xl ${type==='error'?'bg-red-600':'bg-emerald-600'}`;e.textContent=msg;document.body.appendChild(e);setTimeout(()=>e.remove(),3000) }
+export const toast = (msg,type='success') => { const e=document.createElement('div');e.className=`fixed top-4 left-1/2 -translate-x-1/2 z-[999] px-4 py-3 rounded-xl text-white text-sm shadow-xl ${type==='error'?'bg-red-600':'bg-emerald-600'}`;e.textContent=msg;document.body.appendChild(e);setTimeout(()=>e.remove(),3000) }
 const missing = () => `<div class="max-w-xl mx-auto mt-10 p-6 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800"><h3 class="font-bold">ยังไม่ได้ติดตั้งส่วนขยายระบบกีฬาสี</h3><p class="text-sm mt-2">ให้แอดมินรันไฟล์ <code>patch_sports_student_team_portal.sql</code> ใน Supabase SQL Editor</p></div>`
 const actionCard = (key,title,help,enabled) => `<div class="rounded-2xl border p-4 ${enabled?'bg-emerald-50 border-emerald-200':'bg-slate-50 border-slate-200'}"><div class="flex items-start justify-between gap-3"><div><h3 class="font-bold text-sm text-slate-800">${esc(title)}</h3><p class="text-xs text-slate-500 mt-1">${esc(help)}</p><span class="inline-block mt-3 px-2 py-1 rounded-full text-[11px] font-bold ${enabled?'bg-emerald-100 text-emerald-700':'bg-slate-200 text-slate-600'}">${enabled?'เปิดใช้งานอยู่':'ปิดใช้งานอยู่'}</span></div><button type="button" data-cfg="${esc(key)}" data-enabled="${enabled?'true':'false'}" class="px-3 py-2 rounded-xl text-xs font-bold ${enabled?'bg-red-50 text-red-700 border border-red-200':'bg-emerald-600 text-white'}">${enabled?'ปิดใช้งาน':'เปิดใช้งาน'}</button></div></div>`
 const permissionButton = (key,label,enabled=true) => `<button type="button" data-team-perm="${esc(key)}" data-enabled="${enabled?'true':'false'}" class="px-3 py-2 rounded-xl text-xs font-bold border ${enabled?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-slate-50 text-slate-500 border-slate-200'}">${enabled?'อนุญาต':'ไม่อนุญาต'}: ${esc(label)}</button>`
 const SHIRT_COLOR_HEX = {'แดง':'#dc2626','น้ำเงิน':'#2563eb','เขียว':'#16a34a','น้ำตาล':'#92400e','ส้ม':'#f97316','ฟ้า':'#0ea5e9','ม่วง':'#9333ea','เทา':'#6b7280'}
-const _colorSwatchHex = name => SHIRT_COLOR_HEX[name] || '#94a3b8'
+export const _colorSwatchHex = name => SHIRT_COLOR_HEX[name] || '#94a3b8'
 
 async function syncAzizPublicShirtButton(enabled) {
   const { data } = await supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle()
@@ -89,7 +89,7 @@ export async function renderStudentSportsHome(student) {
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
-function open3dShirtViewer(url) {
+export function open3dShirtViewer(url) {
   document.getElementById('shirt-3d-modal')?.remove()
   const m=document.createElement('div'); m.id='shirt-3d-modal'; m.className='fixed inset-0 z-[320] bg-black/80 flex flex-col'
   m.innerHTML=`<div class="flex justify-end p-3 flex-shrink-0"><button id="btn-shirt-3d-close" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center">✕</button></div><iframe src="${esc(url)}" sandbox="allow-scripts allow-same-origin" class="flex-1 w-full bg-white"></iframe>`
@@ -97,7 +97,7 @@ function open3dShirtViewer(url) {
   m.querySelector('#btn-shirt-3d-close').onclick=()=>m.remove()
 }
 
-function openImageLightbox(url) {
+export function openImageLightbox(url) {
   document.getElementById('shirt-image-lightbox')?.remove()
   const m=document.createElement('div'); m.id='shirt-image-lightbox'; m.className='fixed inset-0 z-[330] bg-black/90 flex items-center justify-center p-6 animate-fade'
   m.innerHTML=`<button id="btn-shirt-lightbox-close" class="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg">✕</button><img src="${esc(url)}" class="max-w-full max-h-full object-contain rounded-2xl">`
@@ -106,7 +106,7 @@ function openImageLightbox(url) {
   m.addEventListener('click',e=>{ if(e.target===m) m.remove() })
 }
 
-function openConfirmVoteModal(design,cfg,onConfirm) {
+export function openConfirmVoteModal(design,cfg,onConfirm) {
   document.getElementById('shirt-vote-confirm-modal')?.remove()
   const closesText=cfg?.shirt_vote_closes_at
     ? new Date(cfg.shirt_vote_closes_at).toLocaleString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})
@@ -353,6 +353,16 @@ export async function renderShirtVoteSettings(gender='ชาย') {
         <button id="vote-window-save" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">บันทึกช่วงเวลาโหวต (ใช้ร่วมกันทั้งชาย-หญิง)</button>
       </div>
       <div class="bg-white border rounded-2xl p-5">
+        <h3 class="font-bold mb-3">🌐 โหมดโหวตสาธารณะ (ไม่ต้องล็อกอิน)</h3>
+        <p class="text-xs text-gray-500 mb-3">เปิดหน้าแยกให้นักเรียนกรอกรหัสนักเรียนเข้าโหวตได้โดยไม่ต้องล็อกอิน ปพ.5 — เหมาะกับจุดโหวตหน้างาน (kiosk) เข้าที่ <code>shirt-vote-public.html</code></p>
+        <div class="mb-3">${actionCard('shirt_vote_public_enabled','เปิดโหมดโหวตไม่ล็อกอิน','นักเรียนกรอกรหัสนักเรียนแล้วเข้าโหวตได้ทันที',!!cfg?.shirt_vote_public_enabled)}</div>
+        <div class="grid md:grid-cols-2 gap-3 mb-3">
+          <div><label class="block text-xs font-bold text-gray-500 mb-1">ลิงก์คลิปคู่มือการเริ่มใช้งาน</label><input id="vote-public-tutorial-url" value="${esc(cfg?.shirt_vote_tutorial_url||'')}" placeholder="https://youtube.com/..." class="border rounded-xl px-3 py-2 text-sm w-full"></div>
+          <div><label class="block text-xs font-bold text-gray-500 mb-1">ลิงก์คลิปแนะนำ ปพ.5</label><input id="vote-public-intro-url" value="${esc(cfg?.shirt_vote_intro_url||'')}" placeholder="https://youtube.com/..." class="border rounded-xl px-3 py-2 text-sm w-full"></div>
+        </div>
+        <button id="vote-public-save" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">บันทึกโหมดโหวตสาธารณะ</button>
+      </div>
+      <div class="bg-white border rounded-2xl p-5">
         <div class="flex gap-2 mb-4">
           <button data-vote-gender="ชาย" class="px-4 py-2 rounded-xl text-sm font-bold border ${gender==='ชาย'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👦 ชาย</button>
           <button data-vote-gender="หญิง" class="px-4 py-2 rounded-xl text-sm font-bold border ${gender==='หญิง'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👧 หญิง</button>
@@ -377,6 +387,23 @@ export async function renderShirtVoteSettings(gender='ชาย') {
       const {error}=await supabase.from('sports_portal_settings').update({shirt_vote_opens_at:opensVal?new Date(opensVal).toISOString():null,shirt_vote_closes_at:closesVal?new Date(closesVal).toISOString():null,updated_at:new Date().toISOString()}).eq('event_id',event.id)
       if(error)return toast(error.message,'error')
       toast('บันทึกช่วงเวลาโหวตแล้ว'); renderShirtVoteSettings(gender)
+    })
+    el.querySelectorAll('[data-cfg="shirt_vote_public_enabled"]').forEach(b=>b.addEventListener('click',()=>{
+      const next=b.dataset.enabled!=='true'
+      b.dataset.enabled=next?'true':'false'
+      b.textContent=next?'ปิดใช้งาน':'เปิดใช้งาน'
+    }))
+    el.querySelector('#vote-public-save')?.addEventListener('click',async()=>{
+      const enabledBtn=el.querySelector('[data-cfg="shirt_vote_public_enabled"]')
+      const payload={
+        shirt_vote_public_enabled: enabledBtn?.dataset.enabled==='true',
+        shirt_vote_tutorial_url: el.querySelector('#vote-public-tutorial-url')?.value?.trim()||null,
+        shirt_vote_intro_url: el.querySelector('#vote-public-intro-url')?.value?.trim()||null,
+        updated_at: new Date().toISOString(),
+      }
+      const {error}=await supabase.from('sports_portal_settings').update(payload).eq('event_id',event.id)
+      if(error)return toast(error.message,'error')
+      toast('บันทึกโหมดโหวตสาธารณะแล้ว'); renderShirtVoteSettings(gender)
     })
     el.querySelectorAll('[data-design-save]').forEach(b=>b.addEventListener('click',async()=>{
       const designId=b.dataset.designSave
