@@ -68,8 +68,9 @@ export async function uploadDeptAsset(deptCode, type, file) {
 }
 
 // รูปพื้นหลังดีไซน์เสื้อกีฬาสี แยกตามสีบ้าน (PNG) — upload ตรงโดยไม่ผ่าน canvas เพื่อรักษา transparency
-export async function uploadShirtDesignColorImage(designId, colorName, file) {
-  return uploadFile('shirt-designs', `${designId}/${encodeURIComponent(colorName)}.png`, file, 'image/png')
+// ใช้ colorId (UUID) แทนชื่อสีภาษาไทยในพาธ เพราะ Supabase Storage ปฏิเสธ object key ที่มีตัวอักษรนอก ASCII
+export async function uploadShirtDesignColorImage(designId, colorId, file) {
+  return uploadFile('shirt-designs', `${designId}/${colorId}.png`, file, 'image/png')
 }
 
 // ไฟล์ HTML แสดงดีไซน์เสื้อแบบ 3 มิติ (ออปชัน)

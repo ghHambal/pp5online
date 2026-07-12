@@ -257,7 +257,7 @@ export async function renderShirtVoteSettings(gender='ชาย') {
         <div class="grid grid-cols-2 gap-2 pt-1">
           ${(d.sports_shirt_design_colors||[]).map(c=>`
             <div class="border rounded-xl p-2">
-              ${c.image_url?`<img src="${esc(c.image_url)}" class="w-full h-20 object-contain bg-gray-50 rounded-lg border mb-1">`:'<div class="w-full h-20 bg-gray-50 rounded-lg border grid place-items-center text-gray-300 text-xl mb-1">👕</div>'}
+              <div data-color-preview="${c.id}">${c.image_url?`<img src="${esc(c.image_url)}" class="w-full h-20 object-contain bg-gray-50 rounded-lg border mb-1">`:'<div class="w-full h-20 bg-gray-50 rounded-lg border grid place-items-center text-gray-300 text-xl mb-1">👕</div>'}</div>
               <p class="text-[10px] font-bold text-gray-600 text-center mb-1">สี${esc(c.color_name)}</p>
               <input data-color-image="${c.id}" data-color-design="${d.id}" type="file" accept="image/png,image/jpeg,image/webp" class="w-full text-[10px]">
             </div>
@@ -291,6 +291,11 @@ export async function renderShirtVoteSettings(gender='ชาย') {
       </div>
     </div>`
     el.querySelectorAll('[data-vote-gender]').forEach(b=>b.addEventListener('click',()=>renderShirtVoteSettings(b.dataset.voteGender)))
+    el.querySelectorAll('[data-color-image]').forEach(input=>input.addEventListener('change',()=>{
+      const file=input.files?.[0]; if(!file)return
+      const preview=el.querySelector(`[data-color-preview="${input.dataset.colorImage}"]`)
+      if(preview) preview.innerHTML=`<img src="${URL.createObjectURL(file)}" class="w-full h-20 object-contain bg-gray-50 rounded-lg border mb-1">`
+    }))
     el.querySelector('#vote-window-save')?.addEventListener('click',async()=>{
       const opensVal=el.querySelector('#vote-opens-at')?.value, closesVal=el.querySelector('#vote-closes-at')?.value
       const {error}=await supabase.from('sports_portal_settings').update({shirt_vote_opens_at:opensVal?new Date(opensVal).toISOString():null,shirt_vote_closes_at:closesVal?new Date(closesVal).toISOString():null,updated_at:new Date().toISOString()}).eq('event_id',event.id)
@@ -307,13 +312,11 @@ export async function renderShirtVoteSettings(gender='ชาย') {
         if(htmlFile) patch.html_url=await uploadShirtDesignHtml(designId,htmlFile)
         const {error}=await supabase.from('sports_shirt_designs').update(patch).eq('id',designId)
         if(error)throw error
-        const design=(designs||[]).find(d=>d.id===designId)
         const colorInputs=el.querySelectorAll(`[data-color-design="${designId}"]`)
         for(const input of colorInputs) {
           const file=input.files?.[0]; if(!file) continue
           const colorId=input.dataset.colorImage
-          const colorName=(design?.sports_shirt_design_colors||[]).find(c=>c.id===colorId)?.color_name
-          const url=await uploadShirtDesignColorImage(designId,colorName,file)
+          const url=await uploadShirtDesignColorImage(designId,colorId,file)
           const {error:cErr}=await supabase.from('sports_shirt_design_colors').update({image_url:url,updated_at:new Date().toISOString()}).eq('id',colorId)
           if(cErr)throw cErr
         }
@@ -356,7 +359,7 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
     const {data:myVoteManager}=await supabase.from('sports_shirt_vote_managers').select('id').eq('event_id',event.id).eq('profile_id',user.id).maybeSingle()
     if(!isAdmin&&!myVoteManager){el.innerHTML='<div class="max-w-lg mx-auto mt-16 p-6 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-center">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</div>';return}
     const [{data:designs,error},{data:allVotes}] = await Promise.all([
-      supabase.from('sports_shirt_designs').select('*').eq('event_id',event.id).eq('gender',gender).order('design_no'),
+      supabase.from('sports_shirt_designs').select('*,sports_shirt_design_colors(*)').eq('event_id',event.id).eq('gender',gender).order('design_no'),
       supabase.from('sports_shirt_votes').select('design_id').eq('event_id',event.id),
     ])
     if(error)throw error
@@ -364,19 +367,37 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
     const tally={}
     ;(allVotes||[]).forEach(v=>{ if(designIds.has(v.design_id)) tally[v.design_id]=(tally[v.design_id]||0)+1 })
     const total=Object.values(tally).reduce((a,b)=>a+b,0)
-    const barsHtml=(designs||[]).map(d=>{
+    const topCount=Math.max(0,...(designs||[]).map(d=>tally[d.id]||0))
+    const ranked=[...(designs||[])].sort((a,b)=>(tally[b.id]||0)-(tally[a.id]||0))
+    const rankBadge=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`
+    const rowsHtml=ranked.map((d,i)=>{
       const count=tally[d.id]||0
       const pct=total?Math.round(count/total*100):0
-      return `<div class="flex items-center gap-3"><span class="w-20 text-xs font-bold flex-shrink-0">แบบที่ ${d.design_no}</span><div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden"><div class="bg-indigo-500 h-full" style="width:${pct}%"></div></div><span class="w-24 text-xs text-right flex-shrink-0">${count} คน (${pct}%)</span></div>`
+      const withImages=(d.sports_shirt_design_colors||[]).filter(c=>c.image_url)
+      const pick=withImages.length?withImages[Math.floor(Math.random()*withImages.length)]:null
+      const isTop=count>0&&count===topCount
+      return `
+        <div class="flex items-center gap-4 p-3 rounded-2xl ${isTop?'bg-indigo-50/60':''}">
+          <span class="w-8 text-center text-sm font-bold text-gray-400 flex-shrink-0">${rankBadge(i)}</span>
+          ${pick?.image_url?`<img src="${esc(pick.image_url)}" class="w-14 h-14 object-contain bg-gray-50 rounded-xl border flex-shrink-0">`:'<div class="w-14 h-14 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-xl flex-shrink-0">👕</div>'}
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-bold text-gray-700 truncate mb-1">${esc(d.name||`แบบที่ ${d.design_no}`)}</p>
+            <div class="flex items-center gap-3">
+              <div class="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden"><div class="bg-indigo-500 h-full rounded-full transition-all" style="width:${pct}%"></div></div>
+              <span class="w-24 text-xs text-right text-gray-500 flex-shrink-0">${count} คน (${pct}%)</span>
+            </div>
+          </div>
+        </div>
+      `
     }).join('')
-    el.innerHTML=`<div class="max-w-4xl mx-auto space-y-5">
+    el.innerHTML=`<div class="max-w-3xl mx-auto space-y-5">
       <div class="flex items-center justify-between"><h1 class="text-2xl font-bold">📊 ผลโหวตแบบเสื้อกีฬาสี</h1><span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">โหวตแล้ว ${total} คน</span></div>
       <div class="bg-white border rounded-2xl p-5">
         <div class="flex gap-2 mb-4">
           <button data-vote-dash-gender="ชาย" class="px-4 py-2 rounded-xl text-sm font-bold border ${gender==='ชาย'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👦 ชาย</button>
           <button data-vote-dash-gender="หญิง" class="px-4 py-2 rounded-xl text-sm font-bold border ${gender==='หญิง'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👧 หญิง</button>
         </div>
-        <div class="space-y-2.5">${barsHtml || '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีแบบเสื้อของเพศนี้</p>'}</div>
+        <div class="divide-y divide-gray-50">${rowsHtml || '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีแบบเสื้อของเพศนี้</p>'}</div>
       </div>
     </div>`
     el.querySelectorAll('[data-vote-dash-gender]').forEach(b=>b.addEventListener('click',()=>renderShirtVoteDashboard(b.dataset.voteDashGender)))
