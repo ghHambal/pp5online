@@ -71,9 +71,9 @@ export async function renderAttendanceGrid(teacher, classData) {
       activeLeaveMap[l.student_id] = l
     })
 
-    const hasLeftMap = {}
+    const leaveCountMap = {}
     classLeaves.forEach(l => {
-      hasLeftMap[l.student_id] = true
+      leaveCountMap[l.student_id] = (leaveCountMap[l.student_id] || 0) + 1
     })
 
     // attendance map: { studentId: { sessionNum: status } }
@@ -242,7 +242,7 @@ export async function renderAttendanceGrid(teacher, classData) {
                     }
                     <div class="flex flex-col min-w-0">
                       <span class="text-gray-800 text-xs truncate max-w-[105px] font-semibold">${s.full_name}</span>
-                      ${_renderStudentRosterLeavePart(s, activeLeaveMap, hasLeftMap)}
+                      ${_renderStudentRosterLeavePart(s, activeLeaveMap, leaveCountMap, leaveMaxPerWeek)}
                     </div>
                   </div>
                 </td>
@@ -539,10 +539,11 @@ export async function renderAttendanceGrid(teacher, classData) {
 
 // ─── Helpers for Leave Permission System ──────────────────────────────────────
 
-function _renderStudentRosterLeavePart(student, activeLeaveMap, hasLeftMap) {
+function _renderStudentRosterLeavePart(student, activeLeaveMap, leaveCountMap, leaveMaxPerWeek) {
   const leave = activeLeaveMap[student.id]
-  const hasLeft = hasLeftMap[student.id]
-  
+  const leaveCount = leaveCountMap[student.id] || 0
+  const hasLeft = leaveCount >= leaveMaxPerWeek
+
   if (leave) {
     return `
       <div class="mt-0.5 flex items-center">
@@ -555,8 +556,8 @@ function _renderStudentRosterLeavePart(student, activeLeaveMap, hasLeftMap) {
   } else if (hasLeft) {
     return `
       <div class="mt-0.5 flex items-center">
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-100 cursor-not-allowed select-none" title="นักเรียนใช้สิทธิ์ออกนอกห้องครบ 1 ครั้งแล้วในคาบนี้">
-          ✓ ออกแล้ว (ครบสิทธิ์)
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400 border border-gray-100 cursor-not-allowed select-none" title="นักเรียนใช้สิทธิ์ออกนอกห้องครบ ${leaveMaxPerWeek} ครั้งแล้วในสัปดาห์นี้">
+          ✓ ออกแล้ว (${leaveCount}/${leaveMaxPerWeek})
         </span>
       </div>
     `
