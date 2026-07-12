@@ -66,3 +66,13 @@ export async function uploadDeptAsset(deptCode, type, file) {
   const blob = await compressImage(file, { maxWidth: 600, quality: 0.85 })
   return uploadFile('system-assets', `dept/${deptCode}/${type}.jpg`, blob)
 }
+
+// รูปพื้นหลังดีไซน์เสื้อกีฬาสี (PNG) — upload ตรงโดยไม่ผ่าน canvas เพื่อรักษา transparency
+export async function uploadShirtDesignImage(designId, file) {
+  return uploadFile('shirt-designs', `${designId}.png`, file, 'image/png')
+}
+
+// ไฟล์ HTML แสดงดีไซน์เสื้อแบบ 3 มิติ (ออปชัน)
+export async function uploadShirtDesignHtml(designId, file) {
+  return uploadFile('shirt-designs', `${designId}.html`, file, 'text/html')
+}

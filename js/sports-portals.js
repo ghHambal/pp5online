@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
+import { uploadShirtDesignImage, uploadShirtDesignHtml } from './storage.js'
 
 const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 const main = () => document.getElementById('stu-content') || document.getElementById('main-content')
@@ -34,11 +35,12 @@ export async function renderStudentSportsHome(student) {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดข้อมูลกีฬาสีของฉัน...</div>'
   try {
     const {event,cfg}=await context()
-    const [{data:color},{data:req},{data:regs},{data:awards}] = await Promise.all([
+    const [{data:color},{data:req},{data:regs},{data:awards},{data:myVote}] = await Promise.all([
       supabase.from('team_colors').select('*').eq('id',student.team_color_id || '').maybeSingle(),
       supabase.from('sports_shirt_requests').select('*').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
       supabase.from('registrations').select('id,jersey_number,sports(name,venue)').eq('event_id',event.id).eq('student_id',student.id),
       supabase.from('outstanding_athletes').select('id,note,awarded_at,sports(name)').eq('event_id',event.id).eq('student_id',student.id),
+      supabase.from('sports_shirt_votes').select('design_id,sports_shirt_designs(design_no,name)').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
     ])
     const c=color || {name:student.house_color,hex_color:'#64748b',logo_url:null}
     const sizes=cfg?.allowed_sizes || ['S','M','L','XL','2XL','3XL']
@@ -49,15 +51,69 @@ export async function renderStudentSportsHome(student) {
       </section>
       <div class="grid md:grid-cols-2 gap-4">
         <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between"><h2 class="font-bold">👕 ไซซ์เสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs ${statusClass(req?.status)}">${badge(req?.status)}</span></div><p class="text-3xl font-black mt-3">${esc(req?.confirmed_size || req?.requested_size || student.sports_shirt_size || '—')}</p><p class="text-xs text-gray-500 mt-1">${req?.confirmed_size?'ไซซ์ที่ครูที่ปรึกษายืนยัน':'ไซซ์ที่จำนง'}</p>${open && !req?.confirmed_size?`<div class="flex gap-2 mt-4"><select id="stu-shirt-size" class="flex-1 border rounded-xl px-3 py-2">${sizes.map(x=>`<option ${req?.requested_size===x?'selected':''}>${esc(x)}</option>`).join('')}</select><button id="stu-shirt-save" class="px-4 rounded-xl bg-indigo-600 text-white font-semibold">บันทึก</button></div>`:`<p class="text-xs mt-4 text-gray-400">${open?'ข้อมูลได้รับการยืนยันแล้ว':'ขณะนี้ยังไม่เปิดรับจำนงไซซ์เสื้อ'}</p>`}</section>
-        <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold">🗳️ แบบเสื้อที่โหวต</h2><div class="mt-6 text-center text-gray-400"><div class="text-4xl">👕</div><p class="text-sm mt-2">ข้อมูลการโหวตจะแสดงจาก AZIZGAMES</p></div></section>
+        <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold">🗳️ โหวตแบบเสื้อกีฬาสี</h2><p class="text-sm mt-3 ${myVote?'text-emerald-600 font-bold':'text-gray-400'}">${myVote?`✓ คุณโหวต ${esc(myVote.sports_shirt_designs?.name||`แบบที่ ${myVote.sports_shirt_designs?.design_no}`)} แล้ว`:'ยังไม่ได้โหวต'}</p><button id="open-shirt-vote" class="w-full mt-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">🗳️ เปิดหน้าโหวต</button></section>
       </div>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">⚽ รายการแข่งขันของฉัน</h2>${regs?.length?`<div class="space-y-2">${regs.map(r=>`<div class="p-3 bg-gray-50 rounded-xl flex justify-between"><div><b>${esc(r.sports?.name)}</b><p class="text-xs text-gray-500">${esc(r.sports?.venue||'ยังไม่ระบุสถานที่')}</p></div><span class="text-xs text-indigo-600">${r.jersey_number?`หมายเลข ${esc(r.jersey_number)}`:'ลงทะเบียนแล้ว'}</span></div>`).join('')}</div>`:'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีรายการที่สต๊าฟลงทะเบียนให้</p>'}</section>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">🏅 ผลงานและเกียรติบัตร</h2>${awards?.length?awards.map(a=>`<div class="p-3 rounded-xl bg-amber-50"><b>${esc(a.sports?.name||'รางวัลนักกีฬาดีเด่น')}</b><p class="text-sm">${esc(a.note)}</p></div>`).join(''):'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีเกียรติบัตรหรือรางวัล</p>'}</section>
       <button id="open-full-sports" class="w-full py-4 rounded-2xl bg-slate-900 text-white font-bold text-base">🏆 เปิดระบบกีฬาสีแบบเต็ม</button>
     </div>`
     el.querySelector('#open-full-sports')?.addEventListener('click',()=>openAzizGamesModal())
+    el.querySelector('#open-shirt-vote')?.addEventListener('click',()=>openShirtVoteModal(student,event,cfg))
     el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');renderStudentSportsHome(student)})
   } catch(e) { console.error(e); el.innerHTML=missing() }
+}
+
+function open3dShirtViewer(url) {
+  document.getElementById('shirt-3d-modal')?.remove()
+  const m=document.createElement('div'); m.id='shirt-3d-modal'; m.className='fixed inset-0 z-[320] bg-black/80 flex flex-col'
+  m.innerHTML=`<div class="flex justify-end p-3 flex-shrink-0"><button id="btn-shirt-3d-close" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center">✕</button></div><iframe src="${esc(url)}" sandbox="allow-scripts allow-same-origin" class="flex-1 w-full bg-white"></iframe>`
+  document.body.appendChild(m)
+  m.querySelector('#btn-shirt-3d-close').onclick=()=>m.remove()
+}
+
+async function openShirtVoteModal(student,event,cfg) {
+  document.getElementById('shirt-vote-modal')?.remove()
+  const wrap=document.createElement('div'); wrap.id='shirt-vote-modal'; wrap.className='fixed inset-0 z-[300] bg-white flex flex-col animate-fade'
+  wrap.innerHTML=`<div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0"><h3 class="text-lg font-bold text-gray-800">🗳️ โหวตแบบเสื้อกีฬาสี</h3><button id="btn-shirt-vote-close" class="w-9 h-9 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 flex items-center justify-center text-lg">✕</button></div><div id="shirt-vote-body" class="flex-1 overflow-y-auto px-5 py-4"><div class="text-center text-sm text-gray-400 py-8">กำลังโหลดข้อมูล...</div></div>`
+  document.body.appendChild(wrap)
+  wrap.querySelector('#btn-shirt-vote-close').onclick=()=>wrap.remove()
+  const body=wrap.querySelector('#shirt-vote-body')
+  try {
+    const [{data:designs,error},{data:myVote}] = await Promise.all([
+      supabase.from('sports_shirt_designs').select('*').eq('event_id',event.id).order('design_no'),
+      supabase.from('sports_shirt_votes').select('design_id').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
+    ])
+    if(error)throw error
+    const open=cfg?.shirt_vote_enabled && (!cfg.shirt_vote_opens_at || new Date(cfg.shirt_vote_opens_at)<=new Date()) && (!cfg.shirt_vote_closes_at || new Date(cfg.shirt_vote_closes_at)>=new Date())
+    let selectedDesignId=myVote?.design_id||null
+    const render=()=>{
+      body.innerHTML=`
+        ${!open?'<div class="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500 mb-4 text-center">ขณะนี้ยังไม่เปิดโหวต หรือปิดโหวตแล้ว</div>':''}
+        <div class="grid grid-cols-2 gap-3">
+          ${(designs||[]).map(d=>`
+            <div class="rounded-2xl border ${selectedDesignId===d.id?'border-indigo-400 ring-2 ring-indigo-100':'border-gray-200'} p-3">
+              ${d.image_url?`<img src="${esc(d.image_url)}" class="w-full h-28 object-contain bg-gray-50 rounded-xl border mb-2">`:'<div class="w-full h-28 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-3xl mb-2">👕</div>'}
+              <p class="text-xs font-bold text-gray-700 text-center mb-2">${esc(d.name||`แบบที่ ${d.design_no}`)}</p>
+              ${d.html_url?`<button data-shirt-3d="${esc(d.html_url)}" class="w-full py-1.5 mb-1.5 rounded-lg border text-[10px] font-bold text-violet-600 border-violet-200 hover:bg-violet-50">🧊 ดูแบบ 3 มิติ</button>`:''}
+              <button data-shirt-vote="${d.id}" ${open?'':'disabled'} class="w-full py-2 rounded-xl text-xs font-bold ${selectedDesignId===d.id?'bg-indigo-600 text-white':'bg-gray-100 text-gray-600 hover:bg-indigo-50'} ${open?'':'opacity-50 cursor-not-allowed'}">${selectedDesignId===d.id?'✓ โหวตแบบนี้แล้ว':'โหวตแบบนี้'}</button>
+            </div>
+          `).join('')}
+        </div>
+      `
+      body.querySelectorAll('[data-shirt-3d]').forEach(b=>b.onclick=()=>open3dShirtViewer(b.dataset.shirt3d))
+      body.querySelectorAll('[data-shirt-vote]').forEach(b=>b.onclick=async()=>{
+        if(!open)return
+        const designId=b.dataset.shirtVote
+        b.disabled=true
+        const {error}=await supabase.rpc('cast_my_shirt_vote',{p_event:event.id,p_design:designId})
+        if(error){toast(error.message,'error');b.disabled=false;return}
+        selectedDesignId=designId
+        toast('บันทึกโหวตแล้ว')
+        render()
+      })
+    }
+    render()
+  } catch(e) { console.error(e); body.innerHTML='<p class="text-xs text-red-500 text-center py-8">โหลดข้อมูลไม่สำเร็จ</p>' }
 }
 
 export async function renderAdvisorStudents(teacher,rooms=[]) {
@@ -79,14 +135,17 @@ export async function renderShirtSummary() {
     const {data:{user}}=await supabase.auth.getUser(); const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',user.id).maybeSingle(); const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true
     const {data:myTeamMemberships}=await supabase.from('sports_team_memberships').select('team_color_id,role,permissions').eq('event_id',event.id).eq('profile_id',user.id).eq('is_active',true)
     const canManageTeamStaff=isAdmin||(myTeamMemberships||[]).some(m=>m.role==='lead_teacher')
+    const {data:myVoteManager}=await supabase.from('sports_shirt_vote_managers').select('id').eq('event_id',event.id).eq('profile_id',user.id).maybeSingle()
+    const isVoteManager=isAdmin||!!myVoteManager
     const [{data:colors},{data:reqs,error},{data:approvals}]=await Promise.all([supabase.from('team_colors').select('id,name,hex_color').eq('event_id',event.id).order('display_order'),supabase.from('sports_shirt_requests').select('status,requested_size,confirmed_size,students(full_name,student_code,main_room,house_color)').eq('event_id',event.id),isAdmin?supabase.from('sports_team_identity_requests').select('*,team_colors(name,logo_url)').eq('event_id',event.id).eq('status','pending_admin'):Promise.resolve({data:[]})]);if(error)throw error
     const sizes=cfg?.allowed_sizes||['S','M','L','XL','2XL','3XL']; const confirmed=(reqs||[]).filter(r=>['confirmed','advisor_updated'].includes(r.status));
-    el.innerHTML=`<div class="max-w-7xl mx-auto space-y-5"><div class="flex justify-between"><div><h1 class="text-2xl font-bold">📊 สรุปยอดเสื้อกีฬาสี</h1><p class="text-sm text-gray-500">ยอดผลิตนับเฉพาะรายการที่ครูยืนยันแล้ว</p></div><button id="shirt-export" class="px-4 py-2 bg-emerald-600 text-white rounded-xl">ส่งออก CSV</button></div>${isAdmin?`<section class="bg-white border border-indigo-100 rounded-2xl p-4"><div class="flex items-center justify-between gap-3 mb-3"><div><h2 class="font-bold">⚙️ การเปิดใช้งาน</h2><p class="text-xs text-gray-500 mt-1">กดปุ่มในแต่ละการ์ดเพื่อเปลี่ยนสถานะ แล้วบันทึก</p></div><button id="cfg-save" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">บันทึกการตั้งค่า</button></div><div class="grid md:grid-cols-3 gap-3">${actionCard('shirt_request_enabled','รับจำนงไซซ์เสื้อ','นักเรียนจะเห็นปุ่มส่งไซซ์ และรอครูที่ปรึกษายืนยัน',!!cfg?.shirt_request_enabled)}${actionCard('shirt_summary_enabled','หน้าสรุปยอดเสื้อ','ผู้รับผิดชอบสามารถดูยอดสีและไซซ์เสื้อได้',!!cfg?.shirt_summary_enabled)}${actionCard('team_workspace_enabled','จัดการสีของฉัน','ครูประจำสีและสต๊าฟเข้าหน้าจัดการสีได้',!!cfg?.team_workspace_enabled)}</div></section>`:''}<div class="grid grid-cols-3 gap-3"><div class="bg-white border rounded-2xl p-4"><p class="text-xs text-gray-500">ส่งข้อมูล</p><b class="text-2xl">${reqs?.length||0}</b></div><div class="bg-amber-50 rounded-2xl p-4"><p class="text-xs text-amber-700">รอยืนยัน</p><b class="text-2xl">${(reqs||[]).filter(x=>x.status==='pending').length}</b></div><div class="bg-emerald-50 rounded-2xl p-4"><p class="text-xs text-emerald-700">ยืนยันแล้ว</p><b class="text-2xl">${confirmed.length}</b></div></div><div class="bg-white border rounded-2xl overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">สี</th>${sizes.map(s=>`<th>${esc(s)}</th>`).join('')}<th>รวม</th></tr></thead><tbody>${(colors||[]).map(c=>{const rr=confirmed.filter(r=>r.students?.house_color===c.name);return `<tr class="border-t"><td class="p-3 font-bold" style="color:${c.hex_color}">สี${esc(c.name)}</td>${sizes.map(s=>`<td class="text-center">${rr.filter(r=>r.confirmed_size===s).length}</td>`).join('')}<td class="text-center font-bold">${rr.length}</td></tr>`}).join('')}</tbody></table></div>${canManageTeamStaff?`<section id="sports-team-membership-admin" class="bg-white border rounded-2xl p-5"><div class="py-8 text-center text-gray-400">กำลังโหลดหน้ามอบหมายผู้ดูแลสี...</div></section>`:''}${isAdmin?`<section class="bg-white border rounded-2xl p-5"><h2 class="font-bold mb-3">🎨 คิวอนุมัติอัตลักษณ์ขั้นสุดท้าย</h2>${approvals?.map(a=>`<div class="p-3 bg-gray-50 rounded-xl flex items-center gap-3 mb-2">${a.proposed_logo_url?`<img src="${esc(a.proposed_logo_url)}" class="w-12 h-12 rounded-full object-cover">`:''}<div class="flex-1"><b>ทีมสี${esc(a.team_colors?.name)}</b><p class="text-xs text-gray-500">${esc(a.proposed_name||a.proposed_motto||'เปลี่ยนโลโก้/อัตลักษณ์')}</p></div><button data-review="${a.id}" data-decision="reject" class="px-3 py-1.5 border rounded-lg text-red-600">ปฏิเสธ</button><button data-review="${a.id}" data-decision="approve" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg">อนุมัติ</button></div>`).join('')||'<p class="text-sm text-gray-400">ไม่มีคำขอรออนุมัติ</p>'}</section>`:''}</div>`
+    el.innerHTML=`<div class="max-w-7xl mx-auto space-y-5"><div class="flex justify-between"><div><h1 class="text-2xl font-bold">📊 สรุปยอดเสื้อกีฬาสี</h1><p class="text-sm text-gray-500">ยอดผลิตนับเฉพาะรายการที่ครูยืนยันแล้ว</p></div><button id="shirt-export" class="px-4 py-2 bg-emerald-600 text-white rounded-xl">ส่งออก CSV</button></div>${isAdmin?`<section class="bg-white border border-indigo-100 rounded-2xl p-4"><div class="flex items-center justify-between gap-3 mb-3"><div><h2 class="font-bold">⚙️ การเปิดใช้งาน</h2><p class="text-xs text-gray-500 mt-1">กดปุ่มในแต่ละการ์ดเพื่อเปลี่ยนสถานะ แล้วบันทึก</p></div><button id="cfg-save" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">บันทึกการตั้งค่า</button></div><div class="grid md:grid-cols-4 gap-3">${actionCard('shirt_request_enabled','รับจำนงไซซ์เสื้อ','นักเรียนจะเห็นปุ่มส่งไซซ์ และรอครูที่ปรึกษายืนยัน',!!cfg?.shirt_request_enabled)}${actionCard('shirt_summary_enabled','หน้าสรุปยอดเสื้อ','ผู้รับผิดชอบสามารถดูยอดสีและไซซ์เสื้อได้',!!cfg?.shirt_summary_enabled)}${actionCard('team_workspace_enabled','จัดการสีของฉัน','ครูประจำสีและสต๊าฟเข้าหน้าจัดการสีได้',!!cfg?.team_workspace_enabled)}${actionCard('shirt_vote_enabled','โหวตแบบเสื้อกีฬาสี','นักเรียนเปิดหน้าโหวตดีไซน์เสื้อได้',!!cfg?.shirt_vote_enabled)}</div></section>`:''}<div class="grid grid-cols-3 gap-3"><div class="bg-white border rounded-2xl p-4"><p class="text-xs text-gray-500">ส่งข้อมูล</p><b class="text-2xl">${reqs?.length||0}</b></div><div class="bg-amber-50 rounded-2xl p-4"><p class="text-xs text-amber-700">รอยืนยัน</p><b class="text-2xl">${(reqs||[]).filter(x=>x.status==='pending').length}</b></div><div class="bg-emerald-50 rounded-2xl p-4"><p class="text-xs text-emerald-700">ยืนยันแล้ว</p><b class="text-2xl">${confirmed.length}</b></div></div><div class="bg-white border rounded-2xl overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">สี</th>${sizes.map(s=>`<th>${esc(s)}</th>`).join('')}<th>รวม</th></tr></thead><tbody>${(colors||[]).map(c=>{const rr=confirmed.filter(r=>r.students?.house_color===c.name);return `<tr class="border-t"><td class="p-3 font-bold" style="color:${c.hex_color}">สี${esc(c.name)}</td>${sizes.map(s=>`<td class="text-center">${rr.filter(r=>r.confirmed_size===s).length}</td>`).join('')}<td class="text-center font-bold">${rr.length}</td></tr>`}).join('')}</tbody></table></div>${canManageTeamStaff?`<section id="sports-team-membership-admin" class="bg-white border rounded-2xl p-5"><div class="py-8 text-center text-gray-400">กำลังโหลดหน้ามอบหมายผู้ดูแลสี...</div></section>`:''}${isVoteManager?`<section id="sports-shirt-vote-admin" class="bg-white border rounded-2xl p-5"><div class="py-8 text-center text-gray-400">กำลังโหลดหน้าโหวตแบบเสื้อ...</div></section>`:''}${isAdmin?`<section class="bg-white border rounded-2xl p-5"><h2 class="font-bold mb-3">🎨 คิวอนุมัติอัตลักษณ์ขั้นสุดท้าย</h2>${approvals?.map(a=>`<div class="p-3 bg-gray-50 rounded-xl flex items-center gap-3 mb-2">${a.proposed_logo_url?`<img src="${esc(a.proposed_logo_url)}" class="w-12 h-12 rounded-full object-cover">`:''}<div class="flex-1"><b>ทีมสี${esc(a.team_colors?.name)}</b><p class="text-xs text-gray-500">${esc(a.proposed_name||a.proposed_motto||'เปลี่ยนโลโก้/อัตลักษณ์')}</p></div><button data-review="${a.id}" data-decision="reject" class="px-3 py-1.5 border rounded-lg text-red-600">ปฏิเสธ</button><button data-review="${a.id}" data-decision="approve" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg">อนุมัติ</button></div>`).join('')||'<p class="text-sm text-gray-400">ไม่มีคำขอรออนุมัติ</p>'}</section>`:''}</div>`
     el.querySelector('#shirt-export').onclick=()=>{const rows=['รหัส,ชื่อ,ห้อง,สี,ไซซ์,สถานะ',...confirmed.map(r=>[r.students?.student_code,r.students?.full_name,r.students?.main_room,r.students?.house_color,r.confirmed_size,r.status].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download='sports-shirt-summary.csv';a.click();URL.revokeObjectURL(a.href)}
     el.querySelectorAll('[data-cfg]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),[b.dataset.cfg]:next};b.textContent=next?'ปิดใช้งาน':'เปิดใช้งาน';toast(`เปลี่ยนสถานะแล้ว กดบันทึกเพื่อยืนยัน`)}))
-    el.querySelector('#cfg-save')?.addEventListener('click',async()=>{const payload={shirt_request_enabled:!!cfg?.shirt_request_enabled,shirt_summary_enabled:!!cfg?.shirt_summary_enabled,team_workspace_enabled:!!cfg?.team_workspace_enabled,...(renderShirtSummary.pendingCfg||{})};const {error}=await supabase.from('sports_portal_settings').update({...payload,updated_at:new Date().toISOString()}).eq('event_id',event.id);if(error)return toast(error.message,'error');try{await syncAzizPublicShirtButton(payload.shirt_request_enabled)}catch(e){console.warn('Unable to sync AZIZGAMES shirt button',e)}renderShirtSummary.pendingCfg={};toast('บันทึกการเปิดใช้งานแล้ว');renderShirtSummary()})
+    el.querySelector('#cfg-save')?.addEventListener('click',async()=>{const payload={shirt_request_enabled:!!cfg?.shirt_request_enabled,shirt_summary_enabled:!!cfg?.shirt_summary_enabled,team_workspace_enabled:!!cfg?.team_workspace_enabled,shirt_vote_enabled:!!cfg?.shirt_vote_enabled,...(renderShirtSummary.pendingCfg||{})};const {error}=await supabase.from('sports_portal_settings').update({...payload,updated_at:new Date().toISOString()}).eq('event_id',event.id);if(error)return toast(error.message,'error');try{await syncAzizPublicShirtButton(payload.shirt_request_enabled)}catch(e){console.warn('Unable to sync AZIZGAMES shirt button',e)}renderShirtSummary.pendingCfg={};toast('บันทึกการเปิดใช้งานแล้ว');renderShirtSummary()})
     el.querySelectorAll('[data-review]').forEach(b=>b.onclick=async()=>{const {error}=await supabase.rpc('review_team_identity',{p_request:b.dataset.review,p_decision:b.dataset.decision,p_comment:null});if(error)return toast(error.message,'error');toast('บันทึกผลตรวจสอบแล้ว');renderShirtSummary()})
     if(canManageTeamStaff) renderTeamMembershipAdmin(el,event,colors||[],{isAdmin,myTeamMemberships:myTeamMemberships||[]})
+    if(isVoteManager) renderShirtVoteAdmin(el,event,cfg,{isAdmin})
   }catch(e){console.error(e);el.innerHTML=missing()}
 }
 
@@ -163,6 +222,120 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
     slot.querySelectorAll('[data-team-member-remove]').forEach(b=>b.addEventListener('click',async()=>{const {error}=await supabase.from('sports_team_memberships').update({is_active:false,ends_at:new Date().toISOString()}).eq('id',b.dataset.teamMemberRemove);if(error)return toast(error.message,'error');toast('ปิดสิทธิ์แล้ว');renderTeamMembershipAdmin(root,event,colors,access)}))
     slot.querySelectorAll('[data-team-perm]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';b.className=`px-3 py-2 rounded-xl text-xs font-bold border ${next?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-slate-50 text-slate-500 border-slate-200'}`;const label=(b.textContent.split(':').pop()||'').trim();b.textContent=`${next?'อนุญาต':'ไม่อนุญาต'}: ${label}`}))
   } catch(e) { console.error(e); slot.innerHTML='<div class="p-5 rounded-2xl bg-red-50 text-red-700 text-sm">โหลดหน้ามอบหมายผู้ดูแลสีไม่สำเร็จ</div>' }
+}
+
+async function renderShirtVoteAdmin(root,event,cfg,access={isAdmin:false}) {
+  const slot=root.querySelector('#sports-shirt-vote-admin'); if(!slot)return
+  let activeGenderTab='all'
+  try {
+    const [{data:designs,error},{data:votes},{data:managers},{data:teachers}] = await Promise.all([
+      supabase.from('sports_shirt_designs').select('*').eq('event_id',event.id).order('design_no'),
+      supabase.from('sports_shirt_votes').select('design_id,students(gender)').eq('event_id',event.id),
+      supabase.from('sports_shirt_vote_managers').select('*,teachers(full_name,teacher_code)').eq('event_id',event.id),
+      access.isAdmin?supabase.from('teachers').select('id,teacher_code,full_name,dept,profile_id').not('profile_id','is',null).order('full_name'):Promise.resolve({data:[]}),
+    ])
+    if(error)throw error
+    const tally={}
+    ;(votes||[]).forEach(v=>{
+      const g=v.students?.gender==='ชาย'?'male':v.students?.gender==='หญิง'?'female':'other'
+      tally[v.design_id]=tally[v.design_id]||{male:0,female:0,other:0}
+      tally[v.design_id][g]++
+    })
+    const genderTabs=[['male','👦 ชาย'],['female','👧 หญิง'],['all','👥 รวม']]
+    let foundManagers=[]
+    const toDatetimeLocal=iso=>iso?new Date(iso).toISOString().slice(0,16):''
+    const settingsHtml=access.isAdmin?`
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <div><label class="block text-xs font-bold text-gray-500 mb-1">เปิดโหวตตั้งแต่</label><input id="vote-opens-at" type="datetime-local" value="${toDatetimeLocal(cfg?.shirt_vote_opens_at)}" class="border rounded-xl px-3 py-2 text-sm w-full"></div>
+        <div><label class="block text-xs font-bold text-gray-500 mb-1">ปิดโหวตเมื่อ</label><input id="vote-closes-at" type="datetime-local" value="${toDatetimeLocal(cfg?.shirt_vote_closes_at)}" class="border rounded-xl px-3 py-2 text-sm w-full"></div>
+      </div>
+      <button id="vote-window-save" class="mb-5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">บันทึกช่วงเวลาโหวต</button>
+    `:''
+    const designCardsHtml=(designs||[]).map(d=>`
+      <div class="border rounded-2xl p-4 space-y-2">
+        <div class="flex items-center justify-between"><b>แบบที่ ${d.design_no}</b>${d.html_url?'<span class="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">มี 3 มิติ</span>':''}</div>
+        ${d.image_url?`<img src="${esc(d.image_url)}" class="w-full h-32 object-contain bg-gray-50 rounded-xl border">`:'<div class="w-full h-32 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-3xl">👕</div>'}
+        ${access.isAdmin?`
+          <input data-design-name="${d.id}" value="${esc(d.name||'')}" placeholder="ชื่อแบบ" class="w-full border rounded-lg px-2 py-1.5 text-xs">
+          <label class="block text-[10px] text-gray-400">รูป PNG พื้นหลัง</label>
+          <input data-design-image="${d.id}" type="file" accept="image/png,image/jpeg,image/webp" class="w-full text-xs">
+          <label class="block text-[10px] text-gray-400">ไฟล์ HTML 3 มิติ (ออปชัน)</label>
+          <input data-design-html="${d.id}" type="file" accept="text/html,.html" class="w-full text-xs">
+          <button data-design-save="${d.id}" class="w-full py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold mt-1">บันทึกแบบที่ ${d.design_no}</button>
+        `:`<p class="text-xs text-gray-500 text-center">${esc(d.name||'')}</p>`}
+      </div>
+    `).join('')
+    const managerRowsHtml=(managers||[]).map(m=>`<tr class="border-t"><td class="p-3">${esc(m.teachers?.full_name||'ไม่พบชื่อ')}${m.teachers?.teacher_code?` (${esc(m.teachers.teacher_code)})`:''}</td><td class="p-3 text-right"><button data-vote-manager-remove="${m.id}" class="px-3 py-1.5 rounded-lg border text-red-600 text-xs">ปิดสิทธิ์</button></td></tr>`).join('')||'<tr><td colspan="2" class="p-6 text-center text-gray-400">ยังไม่มีครูที่ได้รับสิทธิ์เพิ่ม</td></tr>'
+    const resultsBarsHtml=()=>(designs||[]).map(d=>{
+      const t=tally[d.id]||{male:0,female:0,other:0}
+      const count=activeGenderTab==='all'?(t.male+t.female+t.other):(t[activeGenderTab]||0)
+      const totalAll=activeGenderTab==='all'
+        ?(designs||[]).reduce((s,dd)=>{const tt=tally[dd.id]||{male:0,female:0,other:0};return s+tt.male+tt.female+tt.other},0)
+        :(designs||[]).reduce((s,dd)=>s+((tally[dd.id]||{})[activeGenderTab]||0),0)
+      const pct=totalAll?Math.round(count/totalAll*100):0
+      return `<div class="flex items-center gap-3"><span class="w-20 text-xs font-bold flex-shrink-0">แบบที่ ${d.design_no}</span><div class="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden"><div class="bg-indigo-500 h-full" style="width:${pct}%"></div></div><span class="w-24 text-xs text-right flex-shrink-0">${count} คน (${pct}%)</span></div>`
+    }).join('')
+    slot.innerHTML=`
+      <div class="flex items-center justify-between mb-4"><h2 class="font-bold">🗳️ โหวตแบบเสื้อกีฬาสี</h2><span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">โหวตแล้ว ${votes?.length||0} คน</span></div>
+      ${settingsHtml}
+      <div class="grid md:grid-cols-4 gap-3 mb-5">${designCardsHtml}</div>
+      <div class="mb-2 flex gap-2">${genderTabs.map(([k,label])=>`<button data-vote-gender-tab="${k}" class="px-3 py-1.5 rounded-xl text-xs font-bold border ${k===activeGenderTab?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">${label}</button>`).join('')}</div>
+      <div id="vote-results-bars" class="space-y-2.5 mb-6">${resultsBarsHtml()}</div>
+      ${access.isAdmin?`<h3 class="font-bold mb-3">👤 มอบสิทธิ์ครูดูแดชบอร์ดนี้เพิ่ม</h3>
+      <div class="flex gap-2 mb-3"><input id="vote-manager-code-input" class="flex-1 border rounded-xl px-3 py-2 text-sm" placeholder="กรอกรหัสครู เช่น 1087, 1092"><button id="vote-manager-search" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">ค้นหา</button></div>
+      <div id="vote-manager-preview" class="hidden border border-indigo-100 bg-indigo-50/40 rounded-2xl p-4 mb-4"><div id="vote-manager-preview-cards" class="grid md:grid-cols-2 gap-3 mb-3"></div><button id="vote-manager-add" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">ยืนยันมอบสิทธิ์</button></div>
+      <div class="overflow-x-auto border rounded-2xl"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">ครู</th><th></th></tr></thead><tbody>${managerRowsHtml}</tbody></table></div>`:''}
+    `
+    slot.querySelectorAll('[data-vote-gender-tab]').forEach(b=>b.addEventListener('click',()=>{
+      activeGenderTab=b.dataset.voteGenderTab
+      slot.querySelectorAll('[data-vote-gender-tab]').forEach(x=>x.className=`px-3 py-1.5 rounded-xl text-xs font-bold border ${x.dataset.voteGenderTab===activeGenderTab?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}`)
+      slot.querySelector('#vote-results-bars').innerHTML=resultsBarsHtml()
+    }))
+    slot.querySelector('#vote-window-save')?.addEventListener('click',async()=>{
+      const opensVal=slot.querySelector('#vote-opens-at')?.value, closesVal=slot.querySelector('#vote-closes-at')?.value
+      const {error}=await supabase.from('sports_portal_settings').update({shirt_vote_opens_at:opensVal?new Date(opensVal).toISOString():null,shirt_vote_closes_at:closesVal?new Date(closesVal).toISOString():null,updated_at:new Date().toISOString()}).eq('event_id',event.id)
+      if(error)return toast(error.message,'error')
+      toast('บันทึกช่วงเวลาโหวตแล้ว'); renderShirtSummary()
+    })
+    slot.querySelectorAll('[data-design-save]').forEach(b=>b.addEventListener('click',async()=>{
+      const designId=b.dataset.designSave
+      const name=slot.querySelector(`[data-design-name="${designId}"]`)?.value?.trim()||null
+      const imageFile=slot.querySelector(`[data-design-image="${designId}"]`)?.files?.[0]
+      const htmlFile=slot.querySelector(`[data-design-html="${designId}"]`)?.files?.[0]
+      b.disabled=true; b.textContent='กำลังบันทึก...'
+      try {
+        const patch={name,updated_at:new Date().toISOString()}
+        if(imageFile) patch.image_url=await uploadShirtDesignImage(designId,imageFile)
+        if(htmlFile) patch.html_url=await uploadShirtDesignHtml(designId,htmlFile)
+        const {error}=await supabase.from('sports_shirt_designs').update(patch).eq('id',designId)
+        if(error)throw error
+        toast('บันทึกแบบเสื้อแล้ว'); renderShirtSummary()
+      } catch(e) { toast(e.message,'error'); b.disabled=false; b.textContent=`บันทึกแบบที่ ${designs.find(d=>d.id===designId)?.design_no||''}` }
+    }))
+    slot.querySelector('#vote-manager-search')?.addEventListener('click',()=>{
+      const codes=String(slot.querySelector('#vote-manager-code-input')?.value||'').split(/[\s,]+/).map(x=>x.trim()).filter(Boolean)
+      if(!codes.length)return toast('กรุณากรอกรหัสครู','error')
+      const codeSet=new Set(codes.map(String))
+      foundManagers=(teachers||[]).filter(t=>codeSet.has(String(t.teacher_code)))
+      if(!foundManagers.length)return toast('ไม่พบรหัสครูที่ตรงกัน','error')
+      const wrap=slot.querySelector('#vote-manager-preview'), cards=slot.querySelector('#vote-manager-preview-cards')
+      wrap.classList.remove('hidden')
+      cards.innerHTML=foundManagers.map(t=>`<div class="bg-white rounded-xl border border-indigo-100 p-3"><p class="font-bold text-gray-800 text-xs">${esc(t.full_name)}</p><p class="text-[10px] text-gray-400">รหัสครู ${esc(t.teacher_code)} · กลุ่มสาระ ${esc(t.dept||'—')}</p></div>`).join('')
+    })
+    slot.querySelector('#vote-manager-code-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();slot.querySelector('#vote-manager-search')?.click()}})
+    slot.querySelector('#vote-manager-add')?.addEventListener('click',async()=>{
+      if(!foundManagers.length)return toast('กรุณาค้นหารายชื่อก่อน','error')
+      const payload=foundManagers.map(t=>({event_id:event.id,teacher_id:t.id,profile_id:t.profile_id,granted_by:null}))
+      const {error}=await supabase.from('sports_shirt_vote_managers').upsert(payload,{onConflict:'event_id,teacher_id'})
+      if(error)return toast(error.message,'error')
+      toast(`มอบสิทธิ์แล้ว ${payload.length} คน`); renderShirtSummary()
+    })
+    slot.querySelectorAll('[data-vote-manager-remove]').forEach(b=>b.addEventListener('click',async()=>{
+      const {error}=await supabase.from('sports_shirt_vote_managers').delete().eq('id',b.dataset.voteManagerRemove)
+      if(error)return toast(error.message,'error')
+      toast('ปิดสิทธิ์แล้ว'); renderShirtSummary()
+    }))
+  } catch(e) { console.error(e); slot.innerHTML='<div class="p-5 rounded-2xl bg-red-50 text-red-700 text-sm">โหลดหน้าโหวตแบบเสื้อไม่สำเร็จ</div>' }
 }
 
 export async function openMyTeamWorkspace() {
