@@ -67,9 +67,9 @@ export async function uploadDeptAsset(deptCode, type, file) {
   return uploadFile('system-assets', `dept/${deptCode}/${type}.jpg`, blob)
 }
 
-// รูปพื้นหลังดีไซน์เสื้อกีฬาสี (PNG) — upload ตรงโดยไม่ผ่าน canvas เพื่อรักษา transparency
-export async function uploadShirtDesignImage(designId, file) {
-  return uploadFile('shirt-designs', `${designId}.png`, file, 'image/png')
+// รูปพื้นหลังดีไซน์เสื้อกีฬาสี แยกตามสีบ้าน (PNG) — upload ตรงโดยไม่ผ่าน canvas เพื่อรักษา transparency
+export async function uploadShirtDesignColorImage(designId, colorName, file) {
+  return uploadFile('shirt-designs', `${designId}/${encodeURIComponent(colorName)}.png`, file, 'image/png')
 }
 
 // ไฟล์ HTML แสดงดีไซน์เสื้อแบบ 3 มิติ (ออปชัน)

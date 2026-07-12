@@ -56,6 +56,17 @@ export function openAzizGamesModal({ admin = false, manage = false } = {}) {
         class="h-8 inline-flex items-center justify-center gap-1 rounded-lg border border-pink-500/50 bg-pink-600/15 px-2.5 text-[11px] font-bold text-pink-100 hover:bg-pink-600/30 hover:text-white transition"
         title="ตั้งค่าและสรุปเสื้อกีฬาสี">
         <span>👕</span><span class="hidden sm:inline">ตั้งค่า/สรุปเสื้อ</span>
+      </button>
+      <button type="button" data-azizgames-shirt-vote-settings
+        class="h-8 inline-flex items-center justify-center gap-1 rounded-lg border border-indigo-500/50 bg-indigo-600/15 px-2.5 text-[11px] font-bold text-indigo-100 hover:bg-indigo-600/30 hover:text-white transition"
+        title="ตั้งค่าโหวตแบบเสื้อกีฬาสี">
+        <span>🗳️</span><span class="hidden sm:inline">ตั้งค่าโหวตเสื้อ</span>
+      </button>` : ''}
+      ${canManageSports ? `
+      <button type="button" data-azizgames-shirt-vote-dashboard
+        class="h-8 inline-flex items-center justify-center gap-1 rounded-lg border border-violet-500/50 bg-violet-600/15 px-2.5 text-[11px] font-bold text-violet-100 hover:bg-violet-600/30 hover:text-white transition"
+        title="ดูผลโหวตแบบเสื้อกีฬาสี">
+        <span>📊</span><span class="hidden sm:inline">ผลโหวตเสื้อ</span>
       </button>` : ''}
       <span data-azizgames-share-status class="hidden sm:inline text-[10px] text-emerald-300 min-w-[72px] text-right"></span>
       <button type="button" data-azizgames-share
@@ -92,6 +103,14 @@ export function openAzizGamesModal({ admin = false, manage = false } = {}) {
   modal.querySelector('[data-azizgames-shirt-summary]')?.addEventListener('click', () => {
     close()
     window.dispatchEvent(new CustomEvent('pp5:open-sports-shirt-summary'))
+  })
+  modal.querySelector('[data-azizgames-shirt-vote-settings]')?.addEventListener('click', () => {
+    close()
+    window.dispatchEvent(new CustomEvent('pp5:open-shirt-vote-settings'))
+  })
+  modal.querySelector('[data-azizgames-shirt-vote-dashboard]')?.addEventListener('click', () => {
+    close()
+    window.dispatchEvent(new CustomEvent('pp5:open-shirt-vote-dashboard'))
   })
   modal.querySelector('[data-azizgames-share]')?.addEventListener('click', () => {
     shareAzizGames(url, modal.querySelector('[data-azizgames-share-status]'))

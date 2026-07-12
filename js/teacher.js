@@ -21,7 +21,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
-import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace } from './sports-portals.js'
+import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -221,6 +221,8 @@ const ROUTES = {
   'sports':      () => openAzizGamesModal(),
   'advisor-students': () => renderAdvisorStudents(_teacher, _homeroomRooms),
   'shirt-summary': () => renderShirtSummary(),
+  'shirt-vote-settings': () => renderShirtVoteSettings(),
+  'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
   'my-team-workspace': () => openMyTeamWorkspace(),
   'student-qr-print': () => {
     const classId = window._pendingQRClassId || null
@@ -252,6 +254,8 @@ window._navTo  = navigate
 window._goBack = () => navigate('my-courses')
 window._refreshCurrentView = () => navigate(_currentView)
 window.addEventListener('pp5:open-sports-shirt-summary', () => navigate('shirt-summary'))
+window.addEventListener('pp5:open-shirt-vote-settings', () => navigate('shirt-vote-settings'))
+window.addEventListener('pp5:open-shirt-vote-dashboard', () => navigate('shirt-vote-dashboard'))
 
 const _esc = value => String(value ?? '')
   .replace(/&/g, '&amp;')

@@ -24,7 +24,7 @@ import { applyThemeForRole } from './theme.js'
 import { APP_VERSION } from './version.js?v=10.19.10'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
-import { renderShirtSummary } from './sports-portals.js'
+import { renderShirtSummary, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -798,6 +798,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     'house-colors':     () => renderHouseColors(),
     'sports-admin':     () => openAzizGamesModal({ admin: true }),
     'sports-shirt-summary': () => renderShirtSummary(),
+    'shirt-vote-settings': () => renderShirtVoteSettings(),
+    'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
     'donations':        () => renderDonations(),
     'feedback-admin':   () => renderFeedbackAdmin(),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
@@ -826,5 +828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   showPageLoader(false)
   window._adminNav = (view) => { if (routes[view]) routes[view]() }
   window.addEventListener('pp5:open-sports-shirt-summary', () => routes['sports-shirt-summary']())
+  window.addEventListener('pp5:open-shirt-vote-settings', () => routes['shirt-vote-settings']())
+  window.addEventListener('pp5:open-shirt-vote-dashboard', () => routes['shirt-vote-dashboard']())
   await renderOverview()
 })
