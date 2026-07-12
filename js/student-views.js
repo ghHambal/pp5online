@@ -2618,21 +2618,29 @@ export async function renderStudentProfile(student, onLogout) {
   })
 }
 
-// ─── Leave Permission Status/History Modal ────────────────────────────────────
+// ─── Leave Permission Status/History Modal (full-screen, 2 tabs) ──────────────
+const LEAVE_TIER_STYLES = {
+  safe:    { border: 'border-emerald-400', badgeBg: 'bg-emerald-50', badgeText: 'text-emerald-700', label: '🟢 ปกติ' },
+  warning: { border: 'border-amber-400',   badgeBg: 'bg-amber-50',   badgeText: 'text-amber-700',   label: '🟠 เสี่ยง' },
+  danger:  { border: 'border-red-500',     badgeBg: 'bg-red-50',     badgeText: 'text-red-700',     label: '🔴 โดนตัดสิทธิ์' },
+}
+
 function _openMyLeaveModal(student) {
   document.getElementById('student-leave-modal')?.remove()
   const modal = document.createElement('div')
   modal.id = 'student-leave-modal'
-  modal.className = 'fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade'
+  modal.className = 'fixed inset-0 z-[300] bg-white flex flex-col animate-fade border-8 border-transparent transition-colors'
   modal.innerHTML = `
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden">
-      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-        <h3 class="font-bold text-gray-800 text-base">🚪 ใบอนุญาตออกนอกห้อง</h3>
-        <button id="btn-leave-modal-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
-      </div>
-      <div id="student-leave-body" class="px-5 py-4 space-y-4 overflow-y-auto flex-1">
-        <div class="text-center text-sm text-gray-400 py-8">กำลังโหลดข้อมูล...</div>
-      </div>
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+      <h3 class="text-lg font-bold text-gray-800">🚪 ใบอนุญาตออกนอกห้อง</h3>
+      <button id="btn-leave-modal-close" class="w-9 h-9 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 flex items-center justify-center text-lg transition">✕</button>
+    </div>
+    <div class="flex border-b border-gray-100 flex-shrink-0">
+      <button type="button" data-leave-tab="permit" class="leave-tab-btn flex-1 py-3 text-sm font-bold border-b-2 transition">📋 ใบอนุญาต</button>
+      <button type="button" data-leave-tab="history" class="leave-tab-btn flex-1 py-3 text-sm font-bold border-b-2 transition">🕘 ประวัติ</button>
+    </div>
+    <div id="student-leave-body" class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div class="text-center text-sm text-gray-400 py-8">กำลังโหลดข้อมูล...</div>
     </div>
   `
   document.body.appendChild(modal)
@@ -2641,81 +2649,126 @@ function _openMyLeaveModal(student) {
     if (modal._leaveTimer) clearInterval(modal._leaveTimer)
     modal.remove()
   }
-  modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
   modal.querySelector('#btn-leave-modal-close').addEventListener('click', closeModal)
 
   _loadMyLeaveModalData(student, modal)
 }
 
+function _renderLeaveTabButtons(modal, activeTab) {
+  modal.querySelectorAll('.leave-tab-btn').forEach(btn => {
+    const isActive = btn.dataset.leaveTab === activeTab
+    btn.className = `leave-tab-btn flex-1 py-3 text-sm font-bold border-b-2 transition ${
+      isActive ? 'text-indigo-600 border-indigo-600' : 'text-gray-400 border-transparent hover:text-gray-600'
+    }`
+  })
+}
+
 async function _loadMyLeaveModalData(student, modal) {
   const body = modal.querySelector('#student-leave-body')
+  let activeTab = 'permit'
+
   try {
     const [active, history] = await Promise.all([
       getMyActiveLeavePermission(student.id),
       getMyLeaveHistory(student.id),
     ])
 
-    const warningBanner = `
-      <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
-        ⚠️ <strong>ข้อควรระวัง:</strong> เมื่อได้รับอนุญาตออกนอกห้องแล้ว นักเรียนต้อง<strong>กลับเข้าห้องให้ทันเวลาที่กำหนดทุกครั้ง</strong>
-        หากไม่กลับเข้าห้อง หรือกลับไม่ทันเวลา สะสมครบ <strong>3 ครั้ง</strong> จะถูก<strong>ระงับสิทธิ์การขออนุญาตออกนอกห้อง</strong>
-        และระบบจะ<strong>หักคะแนนความประพฤติ</strong>ในระบบดูแลนักเรียน
-      </div>
-    `
+    const violationCount = history.filter(h => h.status === 'overdue').length
+    const tierKey = violationCount >= 3 ? 'danger' : violationCount >= 1 ? 'warning' : 'safe'
+    const tier = LEAVE_TIER_STYLES[tierKey]
 
-    let activeHtml = ''
-    if (active) {
-      const subjectName = active.classes?.master_subjects?.subject_name || active.classes?.class_name || '—'
-      activeHtml = `
-        <div id="student-leave-active-card" class="rounded-2xl border ${active.status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'} p-4">
-          <div class="flex items-center justify-between mb-1">
-            <span class="text-xs font-bold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">🚪 กำลังออกนอกห้องอยู่</span>
-            <span id="student-leave-active-timer" class="font-mono text-sm font-extrabold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">--:--</span>
+    const renderPermitTab = () => {
+      let activeHtml = ''
+      if (active) {
+        const subjectName = active.classes?.master_subjects?.subject_name || active.classes?.class_name || '—'
+        activeHtml = `
+          <div id="student-leave-active-card" class="rounded-2xl border ${active.status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'} p-4">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">🚪 กำลังออกนอกห้องอยู่</span>
+              <span id="student-leave-active-timer" class="font-mono text-sm font-extrabold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">--:--</span>
+            </div>
+            <p class="text-xs ${active.status === 'overdue' ? 'text-red-800' : 'text-amber-800'}">${_esc(subjectName)} · เหตุผล: ${_esc(active.reason)}</p>
+            <p class="text-[11px] ${active.status === 'overdue' ? 'text-red-600' : 'text-amber-600'} mt-1">ครูผู้อนุญาต: ${_esc(active.teachers?.full_name || '—')}</p>
           </div>
-          <p class="text-xs ${active.status === 'overdue' ? 'text-red-800' : 'text-amber-800'}">${_esc(subjectName)} · เหตุผล: ${_esc(active.reason)}</p>
-          <p class="text-[11px] ${active.status === 'overdue' ? 'text-red-600' : 'text-amber-600'} mt-1">ครูผู้อนุญาต: ${_esc(active.teachers?.full_name || '—')}</p>
+        `
+      }
+
+      return `
+        <div class="rounded-2xl ${tier.badgeBg} border ${tier.border} px-4 py-3 flex items-center justify-between">
+          <div>
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">สถานะปัจจุบัน</p>
+            <p class="text-sm font-extrabold ${tier.badgeText} mt-0.5">${tier.label}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">เลยเวลา/ไม่กลับ</p>
+            <p class="text-sm font-extrabold ${tier.badgeText} mt-0.5">${violationCount}/3 ครั้ง</p>
+          </div>
+        </div>
+        ${activeHtml}
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 leading-relaxed">
+          ⚠️ <strong>ข้อควรระวัง:</strong> เมื่อได้รับอนุญาตออกนอกห้องแล้ว นักเรียนต้อง<strong>กลับเข้าห้องให้ทันเวลาที่กำหนดทุกครั้ง</strong>
+          หากไม่กลับเข้าห้อง หรือกลับไม่ทันเวลา สะสมครบ <strong>3 ครั้ง</strong> จะถูก<strong>ระงับสิทธิ์การขออนุญาตออกนอกห้อง</strong>
+          และระบบจะ<strong>หักคะแนนความประพฤติ</strong>ในระบบดูแลนักเรียน
         </div>
       `
     }
 
-    const historyRows = history.length
-      ? history.map(h => {
-          const subjectName = h.classes?.master_subjects?.subject_name || h.classes?.class_name || '—'
-          const statusLabel = h.status === 'active' ? '🚪 กำลังออก' : h.status === 'overdue' ? '⛔ เลยเวลา' : '✅ กลับแล้ว'
-          const statusColor = h.status === 'active' ? 'text-amber-600' : h.status === 'overdue' ? 'text-red-600' : 'text-emerald-600'
-          const dateStr = new Date(h.created_at).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
-          return `
-            <div class="px-3 py-2.5 border-b border-gray-50 last:border-0">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-gray-700">${_esc(subjectName)}</span>
-                <span class="text-[10px] font-bold ${statusColor}">${statusLabel}</span>
+    const renderHistoryTab = () => {
+      const historyRows = history.length
+        ? history.map(h => {
+            const subjectName = h.classes?.master_subjects?.subject_name || h.classes?.class_name || '—'
+            const statusLabel = h.status === 'active' ? '🚪 กำลังออก' : h.status === 'overdue' ? '⛔ เลยเวลา' : '✅ กลับแล้ว'
+            const statusColor = h.status === 'active' ? 'text-amber-600' : h.status === 'overdue' ? 'text-red-600' : 'text-emerald-600'
+            const dateStr = new Date(h.created_at).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+            return `
+              <div class="px-3 py-2.5 border-b border-gray-50 last:border-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-gray-700">${_esc(subjectName)}</span>
+                  <span class="text-[10px] font-bold ${statusColor}">${statusLabel}</span>
+                </div>
+                <p class="text-[11px] text-gray-400 mt-0.5">${dateStr} · ${_esc(h.reason)} · ${h.allowed_duration} นาที</p>
               </div>
-              <p class="text-[11px] text-gray-400 mt-0.5">${dateStr} · ${_esc(h.reason)} · ${h.allowed_duration} นาที</p>
-            </div>
-          `
-        }).join('')
-      : `<p class="text-xs text-gray-400 text-center py-6">ยังไม่มีประวัติการขอออกนอกห้อง</p>`
+            `
+          }).join('')
+        : `<p class="text-xs text-gray-400 text-center py-6">ยังไม่มีประวัติการขอออกนอกห้อง</p>`
 
-    body.innerHTML = `
-      ${activeHtml}
-      ${warningBanner}
-      <div>
-        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">ประวัติการขอออกนอกห้อง</p>
-        <div class="rounded-2xl border border-gray-100 overflow-hidden">
-          ${historyRows}
+      return `
+        <div>
+          <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">ประวัติการขอออกนอกห้องทั้งหมด</p>
+          <div class="rounded-2xl border border-gray-100 overflow-hidden">
+            ${historyRows}
+          </div>
         </div>
-      </div>
-    `
-
-    if (active) {
-      const timerEl = body.querySelector('#student-leave-active-timer')
-      const updateTimer = () => {
-        const c = formatLeaveCountdown(active.created_at, active.allowed_duration)
-        if (timerEl) timerEl.textContent = c.timerText
-      }
-      updateTimer()
-      modal._leaveTimer = setInterval(updateTimer, 1000)
+      `
     }
+
+    const render = () => {
+      body.innerHTML = activeTab === 'permit' ? renderPermitTab() : renderHistoryTab()
+      _renderLeaveTabButtons(modal, activeTab)
+      modal.className = `fixed inset-0 z-[300] bg-white flex flex-col animate-fade border-8 transition-colors ${
+        activeTab === 'permit' ? tier.border : 'border-transparent'
+      }`
+
+      if (activeTab === 'permit' && active) {
+        const timerEl = body.querySelector('#student-leave-active-timer')
+        const updateTimer = () => {
+          const c = formatLeaveCountdown(active.created_at, active.allowed_duration)
+          if (timerEl) timerEl.textContent = c.timerText
+        }
+        updateTimer()
+        modal._leaveTimer = setInterval(updateTimer, 1000)
+      }
+    }
+
+    modal.querySelectorAll('.leave-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (modal._leaveTimer) clearInterval(modal._leaveTimer)
+        activeTab = btn.dataset.leaveTab
+        render()
+      })
+    })
+
+    render()
   } catch (err) {
     body.innerHTML = `<p class="text-xs text-red-500 text-center py-6">โหลดข้อมูลไม่สำเร็จ: ${_esc(err.message ?? '')}</p>`
   }
