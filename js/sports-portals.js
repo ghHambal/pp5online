@@ -42,9 +42,11 @@ export async function renderStudentSportsHome(student) {
       supabase.from('sports_shirt_requests').select('*').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
       supabase.from('registrations').select('id,jersey_number,sports(name,venue)').eq('event_id',event.id).eq('student_id',student.id),
       supabase.from('outstanding_athletes').select('id,note,awarded_at,sports(name)').eq('event_id',event.id).eq('student_id',student.id),
-      supabase.from('sports_shirt_votes').select('design_id,sports_shirt_designs(design_no,name)').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
+      supabase.from('sports_shirt_votes').select('design_id,sports_shirt_designs(design_no,name,sports_shirt_design_colors(*))').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
     ])
     const c=color || {name:student.house_color,hex_color:'#64748b',logo_url:null}
+    const myVoteColors=(myVote?.sports_shirt_designs?.sports_shirt_design_colors||[]).filter(x=>x.image_url)
+    let myVoteColorPtr=Math.max(0,myVoteColors.findIndex(x=>x.color_name===student.house_color))
     const sizes=cfg?.allowed_sizes || ['S','M','L','XL','2XL','3XL']
     const open=cfg?.shirt_request_enabled && (!cfg.shirt_request_opens_at || new Date(cfg.shirt_request_opens_at)<=new Date()) && (!cfg.shirt_request_closes_at || new Date(cfg.shirt_request_closes_at)>=new Date())
     el.innerHTML=`<div class="max-w-5xl mx-auto space-y-5 pb-28">
@@ -53,7 +55,19 @@ export async function renderStudentSportsHome(student) {
       </section>
       <div class="grid md:grid-cols-2 gap-4">
         <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between"><h2 class="font-bold">👕 ไซซ์เสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs ${statusClass(req?.status)}">${badge(req?.status)}</span></div><p class="text-3xl font-black mt-3">${esc(req?.confirmed_size || req?.requested_size || student.sports_shirt_size || '—')}</p><p class="text-xs text-gray-500 mt-1">${req?.confirmed_size?'ไซซ์ที่ครูที่ปรึกษายืนยัน':'ไซซ์ที่จำนง'}</p>${open && !req?.confirmed_size?`<div class="flex gap-2 mt-4"><select id="stu-shirt-size" class="flex-1 border rounded-xl px-3 py-2">${sizes.map(x=>`<option ${req?.requested_size===x?'selected':''}>${esc(x)}</option>`).join('')}</select><button id="stu-shirt-save" class="px-4 rounded-xl bg-indigo-600 text-white font-semibold">บันทึก</button></div>`:`<p class="text-xs mt-4 text-gray-400">${open?'ข้อมูลได้รับการยืนยันแล้ว':'ขณะนี้ยังไม่เปิดรับจำนงไซซ์เสื้อ'}</p>`}</section>
-        <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold">🗳️ โหวตแบบเสื้อกีฬาสี</h2><p class="text-sm mt-3 ${myVote?'text-emerald-600 font-bold':'text-gray-400'}">${myVote?`✓ คุณโหวต ${esc(myVote.sports_shirt_designs?.name||`แบบที่ ${myVote.sports_shirt_designs?.design_no}`)} แล้ว`:'ยังไม่ได้โหวต'}</p><button id="open-shirt-vote" class="w-full mt-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">🗳️ เปิดหน้าโหวต</button></section>
+        <section class="bg-white rounded-2xl border p-5">
+          <h2 class="font-bold">🗳️ โหวตแบบเสื้อกีฬาสี</h2>
+          ${myVote?`
+            <div class="flex items-center gap-3 mt-3">
+              <div class="relative flex-shrink-0">
+                ${myVoteColors.length?`<img id="my-vote-thumb" src="${esc(myVoteColors[myVoteColorPtr]?.image_url)}" class="w-16 h-16 object-contain bg-gray-50 rounded-xl border">`:'<div class="w-16 h-16 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-2xl">👕</div>'}
+                ${myVoteColors.length>1?`<button id="my-vote-swap" class="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-white border shadow flex items-center justify-center text-[11px]" title="สลับสี">🔄</button>`:''}
+              </div>
+              <p class="text-sm text-emerald-600 font-bold">✓ คุณโหวต ${esc(myVote.sports_shirt_designs?.name||`แบบที่ ${myVote.sports_shirt_designs?.design_no}`)} แล้ว</p>
+            </div>
+          `:'<p class="text-sm mt-3 text-gray-400">ยังไม่ได้โหวต</p>'}
+          <button id="open-shirt-vote" class="w-full mt-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">🗳️ เปิดหน้าโหวต</button>
+        </section>
       </div>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">⚽ รายการแข่งขันของฉัน</h2>${regs?.length?`<div class="space-y-2">${regs.map(r=>`<div class="p-3 bg-gray-50 rounded-xl flex justify-between"><div><b>${esc(r.sports?.name)}</b><p class="text-xs text-gray-500">${esc(r.sports?.venue||'ยังไม่ระบุสถานที่')}</p></div><span class="text-xs text-indigo-600">${r.jersey_number?`หมายเลข ${esc(r.jersey_number)}`:'ลงทะเบียนแล้ว'}</span></div>`).join('')}</div>`:'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีรายการที่สต๊าฟลงทะเบียนให้</p>'}</section>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">🏅 ผลงานและเกียรติบัตร</h2>${awards?.length?awards.map(a=>`<div class="p-3 rounded-xl bg-amber-50"><b>${esc(a.sports?.name||'รางวัลนักกีฬาดีเด่น')}</b><p class="text-sm">${esc(a.note)}</p></div>`).join(''):'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีเกียรติบัตรหรือรางวัล</p>'}</section>
@@ -61,6 +75,11 @@ export async function renderStudentSportsHome(student) {
     </div>`
     el.querySelector('#open-full-sports')?.addEventListener('click',()=>openAzizGamesModal())
     el.querySelector('#open-shirt-vote')?.addEventListener('click',()=>openShirtVoteModal(student,event,cfg))
+    el.querySelector('#my-vote-swap')?.addEventListener('click',()=>{
+      myVoteColorPtr=(myVoteColorPtr+1)%myVoteColors.length
+      const img=el.querySelector('#my-vote-thumb')
+      if(img) img.src=myVoteColors[myVoteColorPtr].image_url
+    })
     el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');renderStudentSportsHome(student)})
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
