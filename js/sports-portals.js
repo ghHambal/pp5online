@@ -58,12 +58,13 @@ export async function renderStudentSportsHome(student) {
         <section class="bg-white rounded-2xl border p-5">
           <h2 class="font-bold">🗳️ โหวตแบบเสื้อกีฬาสี</h2>
           ${myVote?`
-            <div class="flex items-center gap-3 mt-3">
-              <div class="relative flex-shrink-0">
-                ${myVoteColors.length?`<img id="my-vote-thumb" src="${esc(myVoteColors[myVoteColorPtr]?.image_url)}" class="w-16 h-16 object-contain bg-gray-50 rounded-xl border">`:'<div class="w-16 h-16 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-2xl">👕</div>'}
-                ${myVoteColors.length>1?`<button id="my-vote-swap" class="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-white border shadow flex items-center justify-center text-[11px]" title="สลับสี">🔄</button>`:''}
+            <div class="flex flex-col items-center mt-3">
+              <div class="relative">
+                ${myVoteColors.length?`<img id="my-vote-thumb" src="${esc(myVoteColors[myVoteColorPtr]?.image_url)}" class="w-40 h-40 object-contain bg-gray-50 rounded-2xl border">`:'<div class="w-40 h-40 bg-gray-50 rounded-2xl border grid place-items-center text-gray-300 text-4xl">👕</div>'}
+                ${myVoteColors.length?`<button id="my-vote-expand" class="absolute top-2 right-2 w-9 h-9 rounded-full bg-white/90 shadow border flex items-center justify-center text-gray-600 hover:text-indigo-600" title="ขยายดูเต็มจอ">⤢</button>`:''}
               </div>
-              <p class="text-sm text-emerald-600 font-bold">✓ คุณโหวต ${esc(myVote.sports_shirt_designs?.name||`แบบที่ ${myVote.sports_shirt_designs?.design_no}`)} แล้ว</p>
+              ${myVoteColors.length>1?`<div class="flex gap-2 mt-3">${myVoteColors.map((cl,i)=>`<button data-my-vote-color="${i}" class="w-7 h-7 rounded-full border-2 ${i===myVoteColorPtr?'border-indigo-500 scale-110':'border-gray-200'} transition" style="background:${_colorSwatchHex(cl.color_name)}" title="สี${esc(cl.color_name)}"></button>`).join('')}</div>`:''}
+              <p class="text-sm text-emerald-600 font-bold text-center mt-3">✓ คุณโหวต ${esc(myVote.sports_shirt_designs?.name||`แบบที่ ${myVote.sports_shirt_designs?.design_no}`)} แล้ว</p>
             </div>
           `:'<p class="text-sm mt-3 text-gray-400">ยังไม่ได้โหวต</p>'}
           <button id="open-shirt-vote" class="w-full mt-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">🗳️ เปิดหน้าโหวต</button>
@@ -75,11 +76,15 @@ export async function renderStudentSportsHome(student) {
     </div>`
     el.querySelector('#open-full-sports')?.addEventListener('click',()=>openAzizGamesModal())
     el.querySelector('#open-shirt-vote')?.addEventListener('click',()=>openShirtVoteModal(student,event,cfg))
-    el.querySelector('#my-vote-swap')?.addEventListener('click',()=>{
-      myVoteColorPtr=(myVoteColorPtr+1)%myVoteColors.length
+    el.querySelector('#my-vote-expand')?.addEventListener('click',()=>openImageLightbox(myVoteColors[myVoteColorPtr]?.image_url))
+    el.querySelectorAll('[data-my-vote-color]').forEach(b=>b.addEventListener('click',()=>{
+      myVoteColorPtr=parseInt(b.dataset.myVoteColor,10)
       const img=el.querySelector('#my-vote-thumb')
       if(img) img.src=myVoteColors[myVoteColorPtr].image_url
-    })
+      el.querySelectorAll('[data-my-vote-color]').forEach((btn,i)=>{
+        btn.className=`w-7 h-7 rounded-full border-2 ${i===myVoteColorPtr?'border-indigo-500 scale-110':'border-gray-200'} transition`
+      })
+    }))
     el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');renderStudentSportsHome(student)})
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
