@@ -2682,13 +2682,13 @@ async function _loadMyLeaveModalData(student, modal) {
       if (active) {
         const subjectName = active.classes?.master_subjects?.subject_name || active.classes?.class_name || '—'
         activeHtml = `
-          <div id="student-leave-active-card" class="rounded-2xl border ${active.status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'} p-4">
+          <div id="student-leave-active-card" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 transition-colors">
             <div class="flex items-center justify-between mb-1">
-              <span class="text-xs font-bold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">🚪 กำลังออกนอกห้องอยู่</span>
-              <span id="student-leave-active-timer" class="font-mono text-sm font-extrabold ${active.status === 'overdue' ? 'text-red-700' : 'text-amber-700'}">--:--</span>
+              <span id="student-leave-active-label" class="text-xs font-bold text-amber-700">🚪 กำลังออกนอกห้องอยู่</span>
+              <span id="student-leave-active-timer" class="font-mono text-sm font-extrabold text-amber-700">--:--</span>
             </div>
-            <p class="text-xs ${active.status === 'overdue' ? 'text-red-800' : 'text-amber-800'}">${_esc(subjectName)} · เหตุผล: ${_esc(active.reason)}</p>
-            <p class="text-[11px] ${active.status === 'overdue' ? 'text-red-600' : 'text-amber-600'} mt-1">ครูผู้อนุญาต: ${_esc(active.teachers?.full_name || '—')}</p>
+            <p id="student-leave-active-detail" class="text-xs text-amber-800">${_esc(subjectName)} · เหตุผล: ${_esc(active.reason)}</p>
+            <p id="student-leave-active-teacher" class="text-[11px] text-amber-600 mt-1">ครูผู้อนุญาต: ${_esc(active.teachers?.full_name || '—')}</p>
           </div>
         `
       }
@@ -2750,10 +2750,26 @@ async function _loadMyLeaveModalData(student, modal) {
       }`
 
       if (activeTab === 'permit' && active) {
+        const card = body.querySelector('#student-leave-active-card')
+        const label = body.querySelector('#student-leave-active-label')
         const timerEl = body.querySelector('#student-leave-active-timer')
+        const detailEl = body.querySelector('#student-leave-active-detail')
+        const teacherEl = body.querySelector('#student-leave-active-teacher')
         const updateTimer = () => {
           const c = formatLeaveCountdown(active.created_at, active.allowed_duration)
           if (timerEl) timerEl.textContent = c.timerText
+
+          if (c.isOverdue && card && !card.classList.contains('bg-red-50')) {
+            card.classList.remove('border-amber-200', 'bg-amber-50')
+            card.classList.add('border-red-200', 'bg-red-50', 'animate-pulse')
+            if (label) { label.textContent = '⛔ เลยเวลา'; label.classList.replace('text-amber-700', 'text-red-700') }
+            if (timerEl) timerEl.classList.replace('text-amber-700', 'text-red-700')
+            if (detailEl) detailEl.classList.replace('text-amber-800', 'text-red-800')
+            if (teacherEl) teacherEl.classList.replace('text-amber-600', 'text-red-600')
+          }
+          if (c.isBeyondLimit && card) {
+            card.classList.remove('animate-pulse')
+          }
         }
         updateTimer()
         modal._leaveTimer = setInterval(updateTimer, 1000)
