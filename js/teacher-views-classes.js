@@ -1132,9 +1132,10 @@ export async function renderMyClasses(teacher) {
         try {
           if (doAtt) {
             prog.textContent = '✅ Sync เช็คชื่อ...'
-            const credit   = cls.master_subjects?.credit ?? 1
-            const clsDOW   = await getClassSessionDOWs(cls.id).catch(() => [])
-            const sessions = _generateSessions(cls, credit, clsDOW.length ? clsDOW : null)
+            const credit     = cls.master_subjects?.credit ?? 1
+            const isACDMVOC  = cls.master_subjects?.subject_group === 'ACDMVOC'
+            const clsDOW     = isACDMVOC ? await getClassSessionDOWs(cls.id).catch(() => []) : []
+            const sessions   = _generateSessions(cls, credit, clsDOW.length ? clsDOW : null, isACDMVOC)
             const [students, attRows] = await Promise.all([
               getClassStudents(classId),
               getClassAttendanceAll(classId),

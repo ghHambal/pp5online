@@ -268,10 +268,11 @@ export function _activeRemainingDisplay(endTime) {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
-export function _generateSessions(classData, credit, dowPattern = null) {
-  // จำนวนคาบ/สัปดาห์ยึดตามตารางสอนจริงเป็นหลัก (สามัญ 1 หน่วยกิต = 2 คาบ/สัปดาห์ แต่ ปวช./วิชาทฤษฎี-ปฏิบัติผสม
-  // อัตราไม่เท่ากัน เช่น 3 หน่วยกิตอาจมีแค่ 4 คาบ/สัปดาห์) — ใช้สูตรหน่วยกิต×2 เฉพาะตอนยังไม่มีตารางสอน
-  const targetPerWeek = (dowPattern && dowPattern.length)
+export function _generateSessions(classData, credit, dowPattern = null, useScheduleCount = false) {
+  // ค่าเริ่มต้น: คำนวณจากหน่วยกิต (สามัญ 1 หน่วยกิต = 2 คาบ/สัปดาห์ × 20 สัปดาห์)
+  // เฉพาะสามัญปวช. (useScheduleCount=true) ยึดจำนวนคาบจริงจากตารางสอนแทน เพราะอัตราหน่วยกิตของ ปวช.
+  // ไม่เท่าสามัญ (เช่น 3 หน่วยกิตอาจมีแค่ 4 คาบ/สัปดาห์จริง)
+  const targetPerWeek = (useScheduleCount && dowPattern && dowPattern.length)
     ? dowPattern.length
     : Math.max(1, Math.round((credit ?? 1) * 2))
   const periodsPerWeek = targetPerWeek

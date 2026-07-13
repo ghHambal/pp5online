@@ -63,7 +63,8 @@ export async function renderAttendanceGrid(teacher, classData) {
     ])
     let leaveMaxActive = await getLeaveMaxActiveForClass(classData.id).catch(() => 3)
     let leaveMaxPerWeek = await getLeaveMaxPerStudentWeekForClass(classData.id).catch(() => 2)
-    const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null)
+    const isACDMVOC = ms?.subject_group === 'ACDMVOC'
+    const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null, isACDMVOC)
     const holidaySet = new Set(holidays)
 
     const activeLeaveMap = {}
@@ -82,11 +83,11 @@ export async function renderAttendanceGrid(teacher, classData) {
     const nToSrcSession = new Map()  // target n → source session_number (for save remapping)
     if (srcClassId) {
       const { getMyClasses: _mc } = await import('./api.js')
-      // ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอนเป็นหลัก (ไม่ใช่หน่วยกิต×2 เสมอไป — ปวช./วิชาผสมอัตราไม่เท่าสามัญ)
-      const tgtPerWeek = dowPattern.length ? dowPattern.length : Math.max(1, Math.round(credit * 2))
+      // เฉพาะสามัญปวช. ที่ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอน (อัตราหน่วยกิตไม่เท่าสามัญ) — วิชาอื่นใช้หน่วยกิต×2 เหมือนเดิม
+      const tgtPerWeek = (isACDMVOC && dowPattern.length) ? dowPattern.length : Math.max(1, Math.round(credit * 2))
       let srcPerWeek = tgtPerWeek
       try {
-        const srcDOW = await getClassSessionDOWs(srcClassId).catch(() => [])
+        const srcDOW = isACDMVOC ? await getClassSessionDOWs(srcClassId).catch(() => []) : []
         if (srcDOW.length) {
           srcPerWeek = srcDOW.length
         } else {
@@ -1136,16 +1137,17 @@ async function _openAttendanceModalForSession(teacher, classData, sessN, options
     getSchoolHolidays(curYear, curSem),
     getClassSessionDOWs(classData.id).catch(() => []),
   ])
-  const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null)
+  const isACDMVOC = ms?.subject_group === 'ACDMVOC'
+  const sessions = _generateSessions(classData, credit, dowPattern.length ? dowPattern : null, isACDMVOC)
   const holidaySet = new Set(holidays)
   const attMap = {}
   const nToSrcSession = new Map()
   if (srcClassId) {
-    // ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอนเป็นหลัก (ไม่ใช่หน่วยกิต×2 เสมอไป — ปวช./วิชาผสมอัตราไม่เท่าสามัญ)
-    const tgtPerWeek = dowPattern.length ? dowPattern.length : Math.max(1, Math.round(credit * 2))
+    // เฉพาะสามัญปวช. ที่ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอน (อัตราหน่วยกิตไม่เท่าสามัญ) — วิชาอื่นใช้หน่วยกิต×2 เหมือนเดิม
+    const tgtPerWeek = (isACDMVOC && dowPattern.length) ? dowPattern.length : Math.max(1, Math.round(credit * 2))
     let srcPerWeek = tgtPerWeek
     try {
-      const srcDOW = await getClassSessionDOWs(srcClassId).catch(() => [])
+      const srcDOW = isACDMVOC ? await getClassSessionDOWs(srcClassId).catch(() => []) : []
       if (srcDOW.length) {
         srcPerWeek = srcDOW.length
       } else {
@@ -1255,7 +1257,8 @@ export async function openAttendanceScanSetup(teacher) {
       if (!cls) return
       const dowPattern = await getClassSessionDOWs(cls.id).catch(() => [])
       const credit = cls.master_subjects?.credit ?? 1
-      sessions = _generateSessions(cls, credit, dowPattern.length ? dowPattern : null)
+      const isACDMVOC = cls.master_subjects?.subject_group === 'ACDMVOC'
+      sessions = _generateSessions(cls, credit, dowPattern.length ? dowPattern : null, isACDMVOC)
       const today = _dateInputValue(new Date())
       const defaultSession = sessions.find(s => s.ds === today) || sessions.find(s => s.ds > today) || sessions[0]
       sessionSelect.innerHTML = sessions.map(s => `
@@ -2038,8 +2041,9 @@ export async function renderAttendance(teacher) {
       try {
         const cls = classes.find(c => String(c.id) === classId)
         const clsCredit = cls?.master_subjects?.credit ?? 1
-        const clsDOW = cls ? await getClassSessionDOWs(cls.id).catch(() => []) : []
-        const allSess = cls ? _generateSessions(cls, clsCredit, clsDOW.length ? clsDOW : null) : []
+        const clsIsACDMVOC = cls?.master_subjects?.subject_group === 'ACDMVOC'
+        const clsDOW = clsIsACDMVOC ? await getClassSessionDOWs(cls.id).catch(() => []) : []
+        const allSess = cls ? _generateSessions(cls, clsCredit, clsDOW.length ? clsDOW : null, clsIsACDMVOC) : []
         const dateSess = allSess.filter(s => s.ds === date)
         const sessionNum = (dateSess[period - 1] ?? dateSess[0] ?? null)?.n ?? null
         const records = _students.map(s => ({
@@ -2083,8 +2087,9 @@ export async function renderAttendance(teacher) {
       const allExisting = await getAttendanceByDate(Number(classId), date)
       const loadCls = classes.find(c => String(c.id) === classId)
       const loadCredit = loadCls?.master_subjects?.credit ?? 1
-      const loadDOW = loadCls ? await getClassSessionDOWs(loadCls.id).catch(() => []) : []
-      const loadAllSess = loadCls ? _generateSessions(loadCls, loadCredit, loadDOW.length ? loadDOW : null) : []
+      const loadIsACDMVOC = loadCls?.master_subjects?.subject_group === 'ACDMVOC'
+      const loadDOW = loadIsACDMVOC ? await getClassSessionDOWs(loadCls.id).catch(() => []) : []
+      const loadAllSess = loadCls ? _generateSessions(loadCls, loadCredit, loadDOW.length ? loadDOW : null, loadIsACDMVOC) : []
       const loadPeriod = parseInt(document.getElementById('att-period').value) || 1
       const loadDateSess = loadAllSess.filter(s => s.ds === date)
       const loadSessNum = (loadDateSess[loadPeriod - 1] ?? loadDateSess[0] ?? null)?.n ?? null

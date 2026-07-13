@@ -34,11 +34,11 @@ function _fmtDateTH(dateStr) {
 
 function _thYear(y) { return (y ?? 0) + 543 }
 
-function _generateSessions(classData, credit, dowPattern = null) {
-  // จำนวนคาบ/สัปดาห์ยึดตามตารางสอนจริงเป็นหลัก (ห้ามผูกกับหน่วยกิตตรงๆ เพราะสามัญ 1 หน่วยกิต = 2 คาบ/สัปดาห์
-  // แต่ ปวช./วิชาทฤษฎี-ปฏิบัติผสม อัตราไม่เท่ากัน เช่น 3 หน่วยกิตอาจมีแค่ 4 คาบ/สัปดาห์)
-  // ใช้สูตรหน่วยกิต×2 เฉพาะตอนยังไม่มีตารางสอนเป็นค่าประมาณเริ่มต้นเท่านั้น
-  const targetPerWeek = (dowPattern && dowPattern.length)
+function _generateSessions(classData, credit, dowPattern = null, useScheduleCount = false) {
+  // ค่าเริ่มต้น: คำนวณจากหน่วยกิต (1 หน่วยกิต = 2 คาบ/สัปดาห์ × 20 สัปดาห์ ตามเกณฑ์สามัญ)
+  // เฉพาะสามัญปวช. (useScheduleCount=true) ยึดจำนวนคาบจริงจากตารางสอนแทน เพราะอัตราหน่วยกิตของ ปวช.
+  // ไม่เท่าสามัญ (เช่น 3 หน่วยกิตอาจมีแค่ 4 คาบ/สัปดาห์จริง)
+  const targetPerWeek = (useScheduleCount && dowPattern && dowPattern.length)
     ? dowPattern.length
     : Math.max(1, Math.round((credit ?? 1) * 2))
   const total = targetPerWeek * 20
@@ -391,7 +391,8 @@ async function _loadDocData(classId) {
     : ['ผลการเรียนรู้']
   const thRowHeader = thLangSettings.rowHeader || 'ข้อ'
 
-  const sessions = _generateSessions(cls, credit, sessionDOWs.length ? sessionDOWs : null)
+  const isACDMVOC = ms.subject_group === 'ACDMVOC'
+  const sessions = _generateSessions(cls, credit, sessionDOWs.length ? sessionDOWs : null, isACDMVOC)
 
   // attendance map: { studentId: { sessionNum: status } }
   // ถ้ามี source_class ให้ remap session number ต่อสัปดาห์ตาม credit ของแต่ละวิชา
@@ -399,8 +400,8 @@ async function _loadDocData(classId) {
   if (srcClassId) {
     // remap session: target session n → source session (proportional per week)
     // ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอนของแต่ละห้องเป็นหลัก (ไม่ใช่หน่วยกิต×2 เสมอไป)
-    const tgtPerWeek = sessionDOWs.length ? sessionDOWs.length : Math.max(1, Math.round(credit * 2))
-    const srcPerWeek = srcSessionDOWs.length ? srcSessionDOWs.length : Math.max(1, Math.round(srcCredit * 2))
+    const tgtPerWeek = (isACDMVOC && sessionDOWs.length) ? sessionDOWs.length : Math.max(1, Math.round(credit * 2))
+    const srcPerWeek = (isACDMVOC && srcSessionDOWs.length) ? srcSessionDOWs.length : Math.max(1, Math.round(srcCredit * 2))
     const total = sessions.length
     for (let n = 1; n <= total; n++) {
       const weekIdx    = Math.floor((n - 1) / tgtPerWeek)
