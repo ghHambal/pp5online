@@ -3,6 +3,7 @@ import {
   getScoreColumns, getStudentScores, getCourseDocPage2,
   getHomeroomTeachers, getDepartments, getTeacherById,
   getCourseDocLangSettings, getClassSessionDOWs, getSchoolHolidays,
+  getLifeSkillColumns, getLifeSkillScores,
 } from './api.js'
 import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
@@ -454,7 +455,24 @@ async function _loadDocData(classId) {
   const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
   // หัวหน้ากลุ่มสาระที่แสดงในเอกสาร: ใช้ค่าที่ครูกำหนดไว้ในรายวิชา (learning_area) ก่อน ถ้าไม่มีค่อย fallback เป็นหัวหน้ากลุ่มสาระของโรงเรียน
   const deptHeadName = (ms.learning_area && ms.learning_area.trim()) || dept?.head_name || ''
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet }
+
+  // สามัญปวช. (ACDMVOC): "คะแนนคุณธรรม" ในเอกสาร ปพ.5 คือคะแนน "ความสะอาด" จากระบบทักษะชีวิต
+  // (คนละที่กับคอลัมน์คะแนนของวิชานี้เอง — ผูกกับนักเรียนรายคน ไม่ใช่รายวิชา)
+  let moralScores = {}, moralMax = 0, moralColName = ''
+  if (ms.subject_group === 'ACDMVOC') {
+    try {
+      const lsCols = await getLifeSkillColumns(academicYear, semester, 'สามัญ')
+      const cleanCol = lsCols.find(c => (c.name ?? '').includes('ความสะอาด'))
+      if (cleanCol) {
+        moralMax = cleanCol.max_score ?? 0
+        moralColName = cleanCol.name
+        const lsScores = await getLifeSkillScores([cleanCol.id])
+        moralScores = Object.fromEntries(lsScores.map(s => [s.student_id, s.score]))
+      }
+    } catch {}
+  }
+
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -1612,7 +1630,7 @@ function _buildPage5(d) {
 const VOC_SPECIAL_KEYS = ['ข.ร.', 'ข.ส.', 'ม.ส.', 'ข.ป.']
 
 function _buildPage1VOC(d) {
-  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions } = d
+  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions, moralScores, moralMax } = d
 
   const schoolName = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const logoUrl = cfg[`${prefix}LogoUrl`] ?? cfg[`${prefix}LogoBwUrl`] ?? cfg.samaiLogoUrl ?? cfg.samaiLogoBwUrl ?? ''
@@ -1629,7 +1647,8 @@ function _buildPage1VOC(d) {
 
   const _hideScores = !!window._pp5HideScores
 
-  const maxTotal = scoreColumns.reduce((s, c) => s + (c.max_score ?? 0), 0)
+  // คุณธรรม = คะแนนความสะอาดจากระบบทักษะชีวิต (คนละที่กับ scoreColumns ของวิชานี้เอง)
+  const maxTotal = scoreColumns.reduce((s, c) => s + (c.max_score ?? 0), 0) + (moralMax || 0)
   const gradeCounts = { 4:0, '3.5':0, 3:0, '2.5':0, 2:0, '1.5':0, 1:0, 0:0 }
   const specialCounts = { 'ข.ร.':0, 'ข.ส.':0, 'ม.ส.':0, 'ข.ป.':0 }
   let passCount = 0, failCount = 0, examCount = 0
@@ -1640,7 +1659,7 @@ function _buildPage1VOC(d) {
     const hasScore = scoreColumns.some(c => stScores[c.id] != null)
     if (hasScore) examCount++
     if (maxTotal > 0) {
-      const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
+      const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0) + (Number(moralScores?.[st.id]) || 0)
       const pct = (total / maxTotal) * 100
       const g   = _calcGrade(pct)
       const key = String(g)
@@ -1850,36 +1869,32 @@ function _buildPage2VOC(d) {
 
 const ROWS_PER_EVAL_PAGE_VOC = 34
 
-// หน้าคะแนน ACDMVOC ยึดคอลัมน์คะแนนจริงตาม assignment_type แบบเดียวกับระบบบันทึกคะแนน
-// (กลางภาค/ปลายภาค — ดู _buildScorePage เดิม) ไม่ hardcode "จุดประสงค์ 1-8" เพราะแต่ละวิชาตั้งจำนวน/คะแนนเต็มต่างกันได้
+// หน้าคะแนน ACDMVOC: แสดงคอลัมน์คะแนนจริงของวิชาทั้งหมด (ชื่อ+คะแนนเต็มตามที่ครูตั้งไว้จริง) เรียงต่อกัน
+// โดยไม่สนใจว่าเป็นกลางภาคหรือปลายภาค — "คะแนนคุณธรรม" ไม่ได้มาจากคอลัมน์ของวิชานี้ แต่ดึงจากคะแนน
+// "ความสะอาด" ในระบบทักษะชีวิต (ดู moralScores/moralMax ที่ _loadDocData ดึงมาให้แล้ว)
 function _buildScorePageVOC(d, chunk, startNo) {
-  const { cls, teacher, deptHeadName, scoreColumns, scoreMap } = d
-  const _isFinal    = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
+  const { cls, teacher, deptHeadName, scoreColumns, scoreMap, moralScores, moralMax, moralColName } = d
   const _isSpecial  = c => c.assignment_type === 'คะแนนพิเศษ'
-  const midCols     = scoreColumns.filter(c => !_isFinal(c) && !_isSpecial(c))
+  const objCols     = scoreColumns.filter(c => !_isSpecial(c))
   const specialCols = scoreColumns.filter(c => _isSpecial(c))
-  const finalCols   = scoreColumns.filter(c => _isFinal(c))
-  const midMax      = midCols.reduce((s,c) => s + (c.max_score ?? 0), 0)
-  const finalMax    = finalCols.reduce((s,c) => s + (c.max_score ?? 0), 0)
+  const objMax      = objCols.reduce((s,c) => s + (c.max_score ?? 0), 0)
+  const denom       = objMax + (moralMax || 0)
   const _hideScores = !!window._pp5HideScores
 
   const rows = chunk.map((st, idx) => {
     if (_hideScores) {
       return `<tr>
         <td class="voc-center">${startNo+idx}</td><td class="voc-c-id"></td><td class="voc-c-name"></td>
-        ${Array(midCols.length).fill('<td></td>').join('')}<td></td>
-        ${Array(finalCols.length).fill('<td></td>').join('')}<td></td>
-        <td></td><td></td><td></td>
+        ${Array(objCols.length).fill('<td></td>').join('')}<td></td>
+        <td></td><td></td><td></td><td></td>
       </tr>`
     }
     const sc = scoreMap[st.id] ?? {}
-    const midScores   = midCols.map(c => sc[c.id] ?? '')
-    const finalScores = finalCols.map(c => sc[c.id] ?? '')
-    const midSum   = midCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
+    const objScores = objCols.map(c => sc[c.id] ?? '')
+    const objSum    = objCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
               + specialCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
-    const finalSum = finalCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
-    const total = midSum + finalSum
-    const denom = midMax + finalMax
+    const moralScore = moralScores?.[st.id] ?? ''
+    const total = objSum + (Number(moralScore) || 0)
     const grade = (st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result))
       ? st.special_result
       : _calcGrade(denom ? (total / denom) * 100 : 0)
@@ -1887,16 +1902,15 @@ function _buildScorePageVOC(d, chunk, startNo) {
       <td class="voc-center">${startNo+idx}</td>
       <td class="voc-c-id voc-center">${_esc(st.student_code??'')}</td>
       <td class="voc-c-name">${_esc(st.full_name??'')}</td>
-      ${midScores.map(v=>`<td class="voc-center">${v}</td>`).join('')}
-      <td class="voc-center voc-bold">${midSum||''}</td>
-      ${finalScores.map(v=>`<td class="voc-center">${v}</td>`).join('')}
-      <td class="voc-center voc-bold">${finalSum||''}</td>
+      ${objScores.map(v=>`<td class="voc-center">${v}</td>`).join('')}
+      <td class="voc-center voc-bold">${objSum||''}</td>
+      <td class="voc-center">${moralScore}</td>
       <td class="voc-center voc-bold">${total||''}</td>
       <td class="voc-center voc-bold">${grade}</td>
       <td></td>
     </tr>`
   })
-  const blankCols = midCols.length + 1 + finalCols.length + 1 + 3
+  const blankCols = objCols.length + 1 + 4
   const blankRow = `<tr><td class="voc-center"></td><td></td><td></td>${Array(blankCols).fill('<td></td>').join('')}</tr>`
   const padded = rows.concat(Array(Math.max(0, ROWS_PER_EVAL_PAGE_VOC - rows.length)).fill(blankRow))
 
@@ -1910,22 +1924,19 @@ function _buildScorePageVOC(d, chunk, startNo) {
             <th rowspan="3" class="voc-c-no"><div class="voc-vtext">เลขที่</div></th>
             <th rowspan="3" class="voc-c-id">เลข<br>ประจำตัว</th>
             <th rowspan="3" class="voc-c-name">ชื่อ - สกุล</th>
-            <th colspan="${midCols.length + 1}">กลางภาค (เต็ม ${midMax})</th>
-            <th colspan="${finalCols.length + 1}">ปลายภาค (เต็ม ${finalMax})</th>
+            <th colspan="${objCols.length + 1}">คะแนนเก็บ (เต็ม ${objMax})</th>
+            <th rowspan="2" class="voc-c-moral"><div class="voc-vtext">คะแนนคุณธรรม${moralColName ? ` (${_esc(moralColName)})` : ''}</div></th>
             <th rowspan="2" class="voc-c-total"><div class="voc-vtext">รวม</div></th>
             <th rowspan="3" class="voc-c-grade"><div class="voc-vtext">ระดับผลการเรียน</div></th>
             <th rowspan="3" class="voc-c-note"><div class="voc-vtext">หมายเหตุ/การสอบแก้ตัว</div></th>
           </tr>
           <tr class="voc-h-vertical">
-            ${midCols.map(c => `<th class="voc-c-obj"><div class="voc-vtext">${_esc(c.assignment_name??'')}</div></th>`).join('')}
-            <th class="voc-c-sum80"><div class="voc-vtext">รวมกลางภาค</div></th>
-            ${finalCols.map(c => `<th class="voc-c-obj"><div class="voc-vtext">${_esc(c.assignment_name??'')}</div></th>`).join('')}
-            <th class="voc-c-sum80"><div class="voc-vtext">รวมปลายภาค</div></th>
+            ${objCols.map(c => `<th class="voc-c-obj"><div class="voc-vtext">${_esc(c.assignment_name??'')}</div></th>`).join('')}
+            <th class="voc-c-sum80"><div class="voc-vtext">รวมคะแนนเก็บ</div></th>
           </tr>
           <tr class="voc-h-score">
-            ${midCols.map(c => `<th>${c.max_score??''}</th>`).join('')}<th>${midMax||''}</th>
-            ${finalCols.map(c => `<th>${c.max_score??''}</th>`).join('')}<th>${finalMax||''}</th>
-            <th>${(midMax+finalMax)||''}</th>
+            ${objCols.map(c => `<th>${c.max_score??''}</th>`).join('')}<th>${objMax||''}</th>
+            <th>${moralMax||''}</th><th>${denom||''}</th>
           </tr>
         </thead>
         <tbody>${padded.join('')}</tbody>
