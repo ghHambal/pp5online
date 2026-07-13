@@ -724,6 +724,7 @@ function _buildPage1(d) {
 
   const dirName    = _esc(cfg[`${prefix}DirectorName`] ?? '')
   const dirSign    = cfg[`${prefix}DirectorSignUrl`] ?? ''
+  const dirTitle   = _esc(cfg[`${prefix}DirectorTitle`] || 'ผู้อำนวยการ')
   const isReligion   = ['AGM','AGMVOC'].includes(ms.subject_group)
   // หัวหน้าวิชาการ: ศาสนา → agmAcademicHeadName, สามัญ/ปวช → prefix ปกติ
   const acadName   = isReligion
@@ -732,6 +733,7 @@ function _buildPage1(d) {
   const acadSign   = isReligion
     ? (cfg.agmAcademicHeadSignUrl ?? cfg[`${prefix}AcademicHeadSignUrl`] ?? '')
     : (cfg[`${prefix}AcademicHeadSignUrl`] ?? '')
+  const acadTitle  = _esc((isReligion ? cfg.agmAcademicHeadTitle : cfg[`${prefix}AcademicHeadTitle`]) || 'หัวหน้าฝ่ายบริหารวิชาการ')
   // ฝ่ายทะเบียน: ศาสนา → agmRegistrarName, สามัญ/ปวช → prefix ปกติ
   const regName    = isReligion
     ? _esc(cfg.agmRegistrarName ?? cfg[`${prefix}RegistrarName`] ?? '')
@@ -739,6 +741,7 @@ function _buildPage1(d) {
   const regSign    = isReligion
     ? (cfg.agmRegistrarSignUrl ?? cfg[`${prefix}RegistrarSignUrl`] ?? '')
     : (cfg[`${prefix}RegistrarSignUrl`] ?? '')
+  const regTitle   = _esc((isReligion ? cfg.agmRegistrarTitle : cfg[`${prefix}RegistrarTitle`]) || 'หัวหน้างานวัดผลและประเมินผล')
   const deptHeadName = _esc(_deptHeadNameRaw)
   const deptHeadSign = dept?.head_sign_url ?? ''
   const className    = cls.class_name ?? ''
@@ -926,7 +929,7 @@ function _buildPage1(d) {
       <div class="sig-row">
         <span>ลงชื่อ</span>
         <span class="sig-line">${regName}</span>
-        <span>หัวหน้างานวัดผลและประเมินผล</span>
+        <span>${regTitle}</span>
       </div>
 
       <div class="consider">เสนอเพื่อพิจารณา</div>
@@ -936,7 +939,7 @@ function _buildPage1(d) {
           <span>ลงชื่อ</span>
           <span class="sig-line">${acadName}</span>
         </div>
-        <div class="p1-role">หัวหน้าฝ่ายบริหารวิชาการ</div>
+        <div class="p1-role">${acadTitle}</div>
       </div>
 
       <div class="decision">
@@ -949,7 +952,7 @@ function _buildPage1(d) {
           <span>ลงชื่อ</span>
           <span class="sig-line">${dirName}</span>
         </div>
-        <div class="p1-role">ผู้อำนวยการ${schoolName}</div>
+        <div class="p1-role">${dirTitle}</div>
       </div>
     </section>
   </div>`
@@ -1401,7 +1404,7 @@ function _buildScorePage(d, chunk, startNo) {
       <div class="score-sig-row">
         <div class="score-sig-lbl">ลงชื่อ</div>
         <div class="score-sig-line">${_esc(['AGM','AGMVOC'].includes(d.ms?.subject_group) ? (d.cfg.agmRegistrarName ?? d.cfg[`${d.prefix}RegistrarName`] ?? '') : (d.cfg[`${d.prefix}RegistrarName`] ?? ''))}</div>
-        <div class="score-sig-role">หัวหน้างานวัดผลและประเมินผล</div>
+        <div class="score-sig-role">${_esc((['AGM','AGMVOC'].includes(d.ms?.subject_group) ? (d.cfg.agmRegistrarTitle ?? d.cfg[`${d.prefix}RegistrarTitle`]) : d.cfg[`${d.prefix}RegistrarTitle`]) || 'หัวหน้างานวัดผลและประเมินผล')}</div>
       </div>
     </div>
   </div>`
@@ -1411,6 +1414,7 @@ function _buildScorePage(d, chunk, startNo) {
 function _buildPage5(d) {
   const { cls, ms, credit, teacher, deptNameTH, academicYear, semester, sessions, cfg, prefix, holidaySet } = d
   const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
+  const _levelLbl = ['AGM','AGMVOC'].includes(ms.subject_group) ? 'ระดับชั้นอิสลามศึกษา' : 'ระดับชั้นมัธยมศึกษา'
 
   const FIXED_ROWS = 40
   const COLS       = 3
@@ -1468,7 +1472,7 @@ function _buildPage5(d) {
     ${row(`<span>รายวิชา</span>${uline('40mm', ms.subject_name??'')}
            <span>&emsp;รหัสวิชา</span>${uline('22mm', ms.subject_code??'')}
            <span>&emsp;${_deptFieldLabel}</span>${uline('', deptNameTH, true)}`)}
-    ${row(`<span>ระดับชั้นมัธยมศึกษา</span>${uline('16mm', _shortRoom(cls.class_name))}
+    ${row(`<span>${_levelLbl}</span>${uline('16mm', _shortRoom(cls.class_name))}
            <span>&emsp;ภาคเรียนที่</span>${uline('10mm', semester)}
            <span>&emsp;ปีการศึกษา</span>${uline('18mm', academicYear)}
            <span>&emsp;เวลา</span>${uline('12mm')}
@@ -1598,10 +1602,11 @@ function _openViewer(d) {
   function setEditMode(on) {
     editMode = on && editAllowed && curIdx != null && !pages[curIdx].all
     if (editBtn) {
+      const onAllTab = curIdx != null && pages[curIdx].all
       editBtn.style.background = editMode ? '#16a34a' : '#f59e0b'
       editBtn.textContent = editMode ? '✅ เสร็จแล้ว' : '✏️ แก้ไขข้อความ'
-      editBtn.disabled = curIdx != null && pages[curIdx].all
-      editBtn.style.opacity = editBtn.disabled ? '0.5' : '1'
+      editBtn.title = onAllTab ? 'กดเพื่อไปหน้าปกแล้วเริ่มแก้ไข (แท็บ "ดูทั้งหมด" แก้ไขตรงๆ ไม่ได้)' : ''
+      editBtn.style.opacity = onAllTab ? '0.7' : '1'
     }
     if (editHint) editHint.style.display = editMode ? 'inline' : 'none'
     try {
@@ -1643,7 +1648,11 @@ function _openViewer(d) {
 
   viewer.querySelector('#pp5-v-close').addEventListener('click', () => viewer.remove())
 
-  editBtn?.addEventListener('click', () => setEditMode(!editMode))
+  editBtn?.addEventListener('click', () => {
+    // ถ้าอยู่แท็บ "ดูทั้งหมด" (แก้ไขไม่ได้ เพราะรวมหลายหน้าไว้ใน iframe เดียว) ให้สลับไปหน้าปกก่อนแล้วค่อยเข้าโหมดแก้ไข
+    if (pages[curIdx]?.all) { showPage(1); setEditMode(true); return }
+    setEditMode(!editMode)
+  })
 
   viewer.querySelector('#pp5-v-print').addEventListener('click', () => {
     captureCurrentEdits()
