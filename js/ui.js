@@ -89,7 +89,7 @@ export function showDangerConfirm({
 
     const m = document.createElement('div')
     m.id = 'danger-confirm-modal'
-    m.className = 'fixed inset-0 z-[300] flex items-center justify-center p-4'
+    m.className = 'fixed inset-0 z-[99999] flex items-center justify-center p-4'
     m.style.cssText = 'animation:dcm-fade-in .2s ease-out'
     m.innerHTML = `
       <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="dcm-overlay"></div>
