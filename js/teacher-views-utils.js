@@ -269,12 +269,12 @@ export function _activeRemainingDisplay(endTime) {
 }
 
 export function _generateSessions(classData, credit, dowPattern = null) {
-  // total คาบตามหน่วยกิต (1 credit = 2 คาบ/สัปดาห์ × 20 สัปดาห์)
-  const targetPerWeek = Math.max(1, Math.round((credit ?? 1) * 2))
-  // DOW pattern จาก schedule — cap ไม่เกิน targetPerWeek (ไม่ extend สำหรับหน้าเช็คชื่อ)
-  const periodsPerWeek = (dowPattern && dowPattern.length)
-    ? Math.min(dowPattern.length, targetPerWeek)
-    : targetPerWeek
+  // จำนวนคาบ/สัปดาห์ยึดตามตารางสอนจริงเป็นหลัก (สามัญ 1 หน่วยกิต = 2 คาบ/สัปดาห์ แต่ ปวช./วิชาทฤษฎี-ปฏิบัติผสม
+  // อัตราไม่เท่ากัน เช่น 3 หน่วยกิตอาจมีแค่ 4 คาบ/สัปดาห์) — ใช้สูตรหน่วยกิต×2 เฉพาะตอนยังไม่มีตารางสอน
+  const targetPerWeek = (dowPattern && dowPattern.length)
+    ? dowPattern.length
+    : Math.max(1, Math.round((credit ?? 1) * 2))
+  const periodsPerWeek = targetPerWeek
   const total = targetPerWeek * 20
   const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
     .map(k => classData[k]).filter(Boolean).map(d => _parseDateOnly(d)).filter(Boolean)

@@ -82,13 +82,18 @@ export async function renderAttendanceGrid(teacher, classData) {
     const nToSrcSession = new Map()  // target n → source session_number (for save remapping)
     if (srcClassId) {
       const { getMyClasses: _mc } = await import('./api.js')
-      const tgtPerWeek = Math.max(1, Math.round(credit * 2))
-      // ดึง credit ของ source เพื่อคำนวณ srcPerWeek
+      // ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอนเป็นหลัก (ไม่ใช่หน่วยกิต×2 เสมอไป — ปวช./วิชาผสมอัตราไม่เท่าสามัญ)
+      const tgtPerWeek = dowPattern.length ? dowPattern.length : Math.max(1, Math.round(credit * 2))
       let srcPerWeek = tgtPerWeek
       try {
-        const allCls = await _mc(null).catch(() => [])
-        const src = allCls.find(c => Number(c.id) === Number(srcClassId))
-        if (src?.master_subjects?.credit) srcPerWeek = Math.max(1, Math.round(src.master_subjects.credit * 2))
+        const srcDOW = await getClassSessionDOWs(srcClassId).catch(() => [])
+        if (srcDOW.length) {
+          srcPerWeek = srcDOW.length
+        } else {
+          const allCls = await _mc(null).catch(() => [])
+          const src = allCls.find(c => Number(c.id) === Number(srcClassId))
+          if (src?.master_subjects?.credit) srcPerWeek = Math.max(1, Math.round(src.master_subjects.credit * 2))
+        }
       } catch {}
       const total = sessions.length
       for (let n = 1; n <= total; n++) {
@@ -1136,12 +1141,18 @@ async function _openAttendanceModalForSession(teacher, classData, sessN, options
   const attMap = {}
   const nToSrcSession = new Map()
   if (srcClassId) {
-    const tgtPerWeek = Math.max(1, Math.round(credit * 2))
+    // ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอนเป็นหลัก (ไม่ใช่หน่วยกิต×2 เสมอไป — ปวช./วิชาผสมอัตราไม่เท่าสามัญ)
+    const tgtPerWeek = dowPattern.length ? dowPattern.length : Math.max(1, Math.round(credit * 2))
     let srcPerWeek = tgtPerWeek
     try {
-      const allCls = await getMyClasses(teacher?.id ?? null).catch(() => [])
-      const src = allCls.find(c => Number(c.id) === Number(srcClassId))
-      if (src?.master_subjects?.credit) srcPerWeek = Math.max(1, Math.round(src.master_subjects.credit * 2))
+      const srcDOW = await getClassSessionDOWs(srcClassId).catch(() => [])
+      if (srcDOW.length) {
+        srcPerWeek = srcDOW.length
+      } else {
+        const allCls = await getMyClasses(teacher?.id ?? null).catch(() => [])
+        const src = allCls.find(c => Number(c.id) === Number(srcClassId))
+        if (src?.master_subjects?.credit) srcPerWeek = Math.max(1, Math.round(src.master_subjects.credit * 2))
+      }
     } catch {}
     const total = sessions.length
     for (let n = 1; n <= total; n++) {
@@ -2027,7 +2038,8 @@ export async function renderAttendance(teacher) {
       try {
         const cls = classes.find(c => String(c.id) === classId)
         const clsCredit = cls?.master_subjects?.credit ?? 1
-        const allSess = cls ? _generateSessions(cls, clsCredit, null) : []
+        const clsDOW = cls ? await getClassSessionDOWs(cls.id).catch(() => []) : []
+        const allSess = cls ? _generateSessions(cls, clsCredit, clsDOW.length ? clsDOW : null) : []
         const dateSess = allSess.filter(s => s.ds === date)
         const sessionNum = (dateSess[period - 1] ?? dateSess[0] ?? null)?.n ?? null
         const records = _students.map(s => ({
@@ -2071,7 +2083,8 @@ export async function renderAttendance(teacher) {
       const allExisting = await getAttendanceByDate(Number(classId), date)
       const loadCls = classes.find(c => String(c.id) === classId)
       const loadCredit = loadCls?.master_subjects?.credit ?? 1
-      const loadAllSess = loadCls ? _generateSessions(loadCls, loadCredit, null) : []
+      const loadDOW = loadCls ? await getClassSessionDOWs(loadCls.id).catch(() => []) : []
+      const loadAllSess = loadCls ? _generateSessions(loadCls, loadCredit, loadDOW.length ? loadDOW : null) : []
       const loadPeriod = parseInt(document.getElementById('att-period').value) || 1
       const loadDateSess = loadAllSess.filter(s => s.ds === date)
       const loadSessNum = (loadDateSess[loadPeriod - 1] ?? loadDateSess[0] ?? null)?.n ?? null

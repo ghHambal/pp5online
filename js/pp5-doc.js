@@ -35,8 +35,12 @@ function _fmtDateTH(dateStr) {
 function _thYear(y) { return (y ?? 0) + 543 }
 
 function _generateSessions(classData, credit, dowPattern = null) {
-  // Total sessions based on curriculum credit (1 credit = 2 periods/week × 20 weeks)
-  const targetPerWeek = Math.max(1, Math.round((credit ?? 1) * 2))
+  // จำนวนคาบ/สัปดาห์ยึดตามตารางสอนจริงเป็นหลัก (ห้ามผูกกับหน่วยกิตตรงๆ เพราะสามัญ 1 หน่วยกิต = 2 คาบ/สัปดาห์
+  // แต่ ปวช./วิชาทฤษฎี-ปฏิบัติผสม อัตราไม่เท่ากัน เช่น 3 หน่วยกิตอาจมีแค่ 4 คาบ/สัปดาห์)
+  // ใช้สูตรหน่วยกิต×2 เฉพาะตอนยังไม่มีตารางสอนเป็นค่าประมาณเริ่มต้นเท่านั้น
+  const targetPerWeek = (dowPattern && dowPattern.length)
+    ? dowPattern.length
+    : Math.max(1, Math.round((credit ?? 1) * 2))
   const total = targetPerWeek * 20
 
   // If schedule has fewer periods than credit requires, auto-extend with extra weekdays.
@@ -333,6 +337,7 @@ async function _loadDocData(classId) {
       .from('classes').select('source_class_id').eq('id', classId).single()
     srcClassId = _link?.source_class_id ?? null
   }
+  let srcSessionDOWs = []
   if (srcClassId) {
     const { data: _src } = await supabase
       .from('classes')
@@ -340,6 +345,7 @@ async function _loadDocData(classId) {
       .eq('id', srcClassId)
       .single()
     if (_src?.master_subjects?.credit) srcCredit = _src.master_subjects.credit
+    srcSessionDOWs = await getClassSessionDOWs(srcClassId).catch(() => [])
   }
 
   // auto columns ที่ระบบสร้างอัตโนมัติ — ไม่ดึงจาก source (คำนวณใหม่จาก attendance ของวิชานี้)
@@ -392,8 +398,9 @@ async function _loadDocData(classId) {
   const attMap = {}
   if (srcClassId) {
     // remap session: target session n → source session (proportional per week)
-    const tgtPerWeek = Math.max(1, Math.round(credit * 2))
-    const srcPerWeek = Math.max(1, Math.round(srcCredit * 2))
+    // ยึดจำนวนคาบ/สัปดาห์จริงจากตารางสอนของแต่ละห้องเป็นหลัก (ไม่ใช่หน่วยกิต×2 เสมอไป)
+    const tgtPerWeek = sessionDOWs.length ? sessionDOWs.length : Math.max(1, Math.round(credit * 2))
+    const srcPerWeek = srcSessionDOWs.length ? srcSessionDOWs.length : Math.max(1, Math.round(srcCredit * 2))
     const total = sessions.length
     for (let n = 1; n <= total; n++) {
       const weekIdx    = Math.floor((n - 1) / tgtPerWeek)
@@ -715,7 +722,7 @@ function _getCSS() {
 // ─── Page 1: หน้าปก ───────────────────────────────────────────────────────────
 
 function _buildPage1(d) {
-  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester } = d
+  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions } = d
 
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
@@ -758,8 +765,9 @@ function _buildPage1(d) {
       : className.startsWith('อป') ? 'อป' : '')
     : ''
 
-  const totalHrsPerWeek = credit * 2
-  const totalHrs        = credit * 2 * 20
+  // ยึดจำนวนคาบ/สัปดาห์จริงจาก sessions ที่ generate ไว้แล้ว (มาจากตารางสอนจริง ไม่ใช่หน่วยกิต×2 เสมอไป)
+  const totalHrsPerWeek = sessions?.length ? Math.round(sessions.length / 20) : credit * 2
+  const totalHrs         = sessions?.length ?? credit * 2 * 20
 
   const _hideScores = !!window._pp5HideScores
 
@@ -961,7 +969,8 @@ function _buildPage1(d) {
 // ─── Page 2: มาตรฐานการเรียนรู้และตัวชี้วัด ─────────────────────────────────
 
 function _buildPage2(d) {
-  const { cls, ms, credit, cfg, courseDoc, thColHeaders, thColsExtra, thRowHeader, teacher, deptNameTH, deptHeadName, academicYear, semester, prefix } = d
+  const { cls, ms, credit, cfg, courseDoc, thColHeaders, thColsExtra, thRowHeader, teacher, deptNameTH, deptHeadName, academicYear, semester, prefix, sessions } = d
+  const totalHrs = sessions?.length ?? credit * 2 * 20
   const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระฯ'
 
@@ -1034,7 +1043,7 @@ function _buildPage2(d) {
           <span class="p2-label">ปีการศึกษา</span>
           <span class="p2-uline">${_esc(String(academicYear))}</span>
           <span class="p2-label">เวลา</span>
-          <span class="p2-uline p2-uline-fill">${_esc(String(credit * 2 * 20))}</span>
+          <span class="p2-uline p2-uline-fill">${_esc(String(totalHrs))}</span>
           <span class="p2-label">ชั่วโมง</span>
         </div>
         <div class="p2-hdr-row">
@@ -1418,7 +1427,8 @@ function _buildPage5(d) {
 
   const FIXED_ROWS = 40
   const COLS       = 3
-  const perWeek    = Math.max(1, Math.round(credit * 2))
+  // ยึดจำนวนคาบ/สัปดาห์จริงจาก sessions (มาจากตารางสอนจริง) ให้ตรงกับตอน generate ใน _generateSessions
+  const perWeek    = sessions?.length ? Math.round(sessions.length / 20) : Math.max(1, Math.round(credit * 2))
   const logoUrl    = cfg?.[`${prefix}LogoBwUrl`] ?? cfg?.[`${prefix}LogoUrl`] ?? cfg?.samaiLogoBwUrl ?? cfg?.samaiLogoUrl ?? ''
 
   // แจกคาบลงแต่ละกลุ่ม: col0=คาบ1-40, col1=คาบ41-80, col2=คาบ81-120

@@ -18,7 +18,7 @@ import {
   getMyDonationRequests,
   getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
   saveClassGroups, clearClassGroups,
-  getFlashcardDecks,
+  getFlashcardDecks, getClassSessionDOWs,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -1133,7 +1133,8 @@ export async function renderMyClasses(teacher) {
           if (doAtt) {
             prog.textContent = '✅ Sync เช็คชื่อ...'
             const credit   = cls.master_subjects?.credit ?? 1
-            const sessions = _generateSessions(cls, credit)
+            const clsDOW   = await getClassSessionDOWs(cls.id).catch(() => [])
+            const sessions = _generateSessions(cls, credit, clsDOW.length ? clsDOW : null)
             const [students, attRows] = await Promise.all([
               getClassStudents(classId),
               getClassAttendanceAll(classId),
