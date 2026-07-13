@@ -717,6 +717,35 @@ function _getCSS() {
     .date-table .wk { width:12mm; }
     .date-table .ep { width:11mm; }
     .date-table .dt { width:20mm; }
+
+    /* ── ACDMVOC (สามัญปวช.) — เทมเพลตแยก, ใช้ normal flow ไม่ absolute-position ── */
+    .voc-page1 { text-align: center; }
+    .voc-logo-wrap { width: 20mm; height: 20mm; margin: 0 auto 2mm; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .voc-logo-wrap img { width: 110%; height: 110%; margin: -5%; object-fit: contain; display: block; }
+    .voc-doc-code { position: absolute; top: 12mm; right: 12mm; font-size: 11pt; }
+    .voc-title { font-size: 13pt; font-weight: 700; margin-bottom: 1mm; }
+    .voc-subtitle { font-size: 11pt; font-weight: 600; margin-bottom: .5mm; }
+    .voc-info-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1.5mm; text-align: left; font-size: 10pt; font-weight: 600; margin-top: 2.5mm; }
+    .voc-uline { display: inline-block; min-width: 20mm; border-bottom: .3mm dotted #000; text-align: center; padding: 0 1mm; }
+    .voc-uline.w-sm { min-width: 14mm; }
+    .voc-uline.w-xs { min-width: 12mm; }
+    .voc-uline.w-lg { min-width: 55mm; }
+    .voc-uline.w-fill { flex: 1; min-width: 60mm; }
+    .voc-two-col { display: flex; gap: 4mm; margin-top: 4mm; align-items: flex-start; }
+    .voc-two-col table { font-size: 9pt; }
+    .voc-two-col table td, .voc-two-col table th { padding: 1.2mm 1.5mm; }
+    .voc-stats-table { text-align: left; }
+    .voc-stats-table td:last-child { text-align: center; width: 14mm; }
+    .voc-note { text-align: left; font-size: 9.5pt; font-weight: 600; margin-top: 4mm; }
+    .voc-sig-row { display: grid; grid-template-columns: 14mm 1fr 55mm; align-items: end; gap: 1.5mm; text-align: left; font-size: 10pt; font-weight: 600; margin-top: 5mm; }
+    .voc-sig-row.voc-sig-center { grid-template-columns: 14mm 1fr; justify-content: center; width: 70mm; margin: 5mm auto 0; }
+    .voc-sig-line { display: block; border-bottom: .3mm dotted #000; text-align: center; min-height: 5mm; }
+    .voc-role-center { text-align: center; font-size: 10pt; font-weight: 600; }
+    .voc-approve-row { display: flex; justify-content: center; align-items: center; gap: 4mm; margin-top: 5mm; font-size: 10.5pt; font-weight: 600; }
+    .voc-checkbox { display: inline-block; width: 4.5mm; height: 4.5mm; border: .5mm solid #000; vertical-align: middle; }
+    .voc-page4-title { font-size: 11pt; font-weight: 700; text-align: center; margin-bottom: 3mm; }
+    .voc-page4-sub { font-size: 9.5pt; text-align: center; margin-bottom: 3mm; }
+    .voc-obj-table td, .voc-obj-table th, .voc-sched-table td, .voc-sched-table th { height: 6mm; font-size: 9pt; }
   `
 }
 
@@ -1511,6 +1540,307 @@ function _buildPage5(d) {
   </div>`
 }
 
+// ─── ACDMVOC (สามัญปวช.) — เทมเพลตแยกต่างหาก ───────────────────────────────────
+// โครงสร้างเอกสารต่างจากสามัญ/ศาสนาทั้งชุด (4 หน้า, ผู้ลงนามคนละชุด, มีสถิติ ข.ร./ข.ส./ม.ส./ข.ป.)
+// จึงแยก page-builder เป็นชุดของตัวเอง ไม่ปนกับ _buildPage1-5 ด้านบน — ดู [[pp5_config_identity_split]]
+
+const VOC_SPECIAL_KEYS = ['ข.ร.', 'ข.ส.', 'ม.ส.', 'ข.ป.']
+
+function _buildPage1VOC(d) {
+  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions } = d
+
+  const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
+  const logoUrl = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
+
+  const dirName  = _esc(cfg[`${prefix}DirectorName`] ?? '')
+  const dirTitle = _esc(cfg[`${prefix}DirectorTitle`] || 'ผู้อำนวยการ')
+  const regName  = _esc(cfg[`${prefix}RegistrarName`] ?? '')
+  const regTitle = _esc(cfg[`${prefix}RegistrarTitle`] || 'ผู้ช่วยผู้อำนวยการฝ่ายทะเบียนวัดผลและประเมินผล')
+  const deptHeadName = _esc(_deptHeadNameRaw)
+  const _headFieldLabel = 'หัวหน้าแผนกวิชา'
+
+  const totalHrsPerWeek = sessions?.length ? Math.round(sessions.length / 20) : credit * 2
+  const totalHrs         = sessions?.length ?? credit * 2 * 20
+
+  const _hideScores = !!window._pp5HideScores
+
+  const maxTotal = scoreColumns.reduce((s, c) => s + (c.max_score ?? 0), 0)
+  const gradeCounts = { 4:0, '3.5':0, 3:0, '2.5':0, 2:0, '1.5':0, 1:0, 0:0 }
+  const specialCounts = { 'ข.ร.':0, 'ข.ส.':0, 'ม.ส.':0, 'ข.ป.':0 }
+  let passCount = 0, failCount = 0, examCount = 0
+
+  if (!_hideScores) for (const st of students) {
+    if (st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result)) { specialCounts[st.special_result]++; continue }
+    const stScores = scoreMap[st.id] ?? {}
+    const hasScore = scoreColumns.some(c => stScores[c.id] != null)
+    if (hasScore) examCount++
+    if (maxTotal > 0) {
+      const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
+      const pct = (total / maxTotal) * 100
+      const g   = _calcGrade(pct)
+      const key = String(g)
+      if (key in gradeCounts) gradeCounts[key]++
+      if (hasScore) { if (g > 0) passCount++; else failCount++ }
+    }
+  }
+
+  const gradeRows = [
+    [4,'80-100'], ['3.5','75-79'], [3,'70-74'], ['2.5','65-69'],
+    [2,'60-64'], ['1.5','55-59'], [1,'50-54'], [0,'0-49'],
+  ].map(([g, range]) => `<tr><td>${g}</td><td>${range}</td><td>${gradeCounts[String(g)] || ''}</td></tr>`).join('')
+
+  const statRow = (label, val) => `<tr><td>${label}</td><td>${val || '-'}</td></tr>`
+  const statsTable = `
+    <table class="voc-stats-table">
+      <tr><th colspan="2">สถิติ</th></tr>
+      ${statRow('จำนวนนักเรียนเข้าเรียน', students.length)}
+      ${statRow('จำนวนนักเรียนเข้าสอบ', examCount)}
+      ${statRow('จำนวนนักเรียนไม่มีสิทธ์สอบ ( ข.ร. )', specialCounts['ข.ร.'])}
+      ${statRow('จำนวนนักเรียนขาดสอบ ( ข.ส. )', specialCounts['ข.ส.'])}
+      ${statRow('จำนวนนักเรียนไม่สมบูรณ์ ( ม.ส. )', specialCounts['ม.ส.'])}
+      ${statRow('จำนวนนักเรียนขาดการปฏิบัติงาน ( ข.ป. )', specialCounts['ข.ป.'])}
+      ${statRow('จำนวนนักเรียนผ่าน ( ผ )', passCount)}
+      ${statRow('จำนวนนักเรียนไม่ผ่าน ( ม.ผ. )', failCount)}
+    </table>`
+
+  return `
+  <div class="page voc-page1">
+    <div class="voc-doc-code">ปพ5</div>
+    ${logoUrl ? `<div class="voc-logo-wrap"><img src="${_esc(logoUrl)}" alt="ตราวิทยาลัย" /></div>` : ''}
+    <div class="voc-title">${schoolName}</div>
+    <div class="voc-subtitle">แบบบันทึกเวลาเรียนและประเมินผลการเรียน</div>
+    <div class="voc-subtitle">หลักสูตรประกาศนียบัตรวิชาชีพ (ปวช.)</div>
+
+    <div class="voc-info-line">
+      <span>ชั้น</span><span class="voc-uline">${_esc(_shortRoom(cls.class_name))}</span>
+      <span>ภาคเรียนที่</span><span class="voc-uline w-sm">${semester}</span>
+      <span>ปีการศึกษา</span><span class="voc-uline w-sm">${academicYear}</span>
+      <span>แผนกวิชา</span><span class="voc-uline">${_esc(deptNameTH)}</span>
+    </div>
+    <div class="voc-info-line">
+      <span>รายวิชา</span><span class="voc-uline w-lg">${_esc(ms.subject_name??'')}</span>
+      <span>รหัสวิชา</span><span class="voc-uline">${_esc(ms.subject_code??'')}</span>
+    </div>
+    <div class="voc-info-line">
+      <span>${credit}</span><span>หน่วยกิจ</span>
+      <span>เวลาเรียน</span><span class="voc-uline w-xs">${totalHrsPerWeek}</span><span>ชั่วโมง/สัปดาห์</span>
+      <span>รวมเวลาเรียน</span><span class="voc-uline w-xs">${totalHrs}</span><span>ชั่วโมง/ภาค</span>
+    </div>
+    <div class="voc-info-line"><span>ครูผู้สอน</span><span class="voc-uline w-fill">${_esc(teacher?.full_name??'')}</span></div>
+    <div class="voc-info-line"><span>ครูที่ปรึกษาสามัญ</span><span class="voc-uline w-fill">${_esc(hrSamai?.teachers?.full_name??'')}</span></div>
+    <div class="voc-info-line"><span>ครูที่ปรึกษาศาสนา</span><span class="voc-uline w-fill">${_esc(hrReligion?.teachers?.full_name??'')}</span></div>
+
+    <div class="voc-two-col">
+      <table>
+        <tr><th>ระดับผลการเรียน</th><th>ช่วงคะแนน</th><th>จำนวนนักเรียน (คน)</th></tr>
+        ${gradeRows}
+      </table>
+      ${statsTable}
+    </div>
+
+    <p class="voc-note">พิจารณาผลการให้ระดับคะแนนเห็นว่าเหมาะสมและถูกต้องแล้ว</p>
+
+    <div class="voc-sig-row"><span>ลงชื่อ</span><span class="voc-sig-line">${_esc(teacher?.full_name??'')}</span><span>ครูผู้สอน</span></div>
+    <div class="voc-sig-row"><span>ลงชื่อ</span><span class="voc-sig-line">${deptHeadName}</span><span>${_headFieldLabel}</span></div>
+    <div class="voc-sig-row"><span>ลงชื่อ</span><span class="voc-sig-line">${regName}</span><span>${regTitle}</span></div>
+
+    <div class="voc-approve-row">
+      <span>อนุมัติผลการเรียน</span>
+      <span class="voc-checkbox"></span>&nbsp;อนุมัติ
+      <span class="voc-checkbox"></span>&nbsp;ไม่อนุมัติ
+    </div>
+    <div class="voc-sig-row voc-sig-center"><span>ลงชื่อ</span><span class="voc-sig-line">${dirName}</span></div>
+    <p class="voc-role-center">${dirTitle}</p>
+    <p class="voc-role-center">${schoolName}</p>
+  </div>`
+}
+
+function _buildPage2VOC(d) {
+  // รวม "บันทึกการไม่มาเรียน" (_buildPage3) + "วันที่สอน" (_buildPage5) ไว้ใต้แท็บเดียวกัน
+  return _buildPage3(d) + _buildPage5(d)
+}
+
+function _buildScorePageVOC(d, chunk, startNo) {
+  const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap } = d
+  const _headFieldLabel = 'หัวหน้าแผนกวิชา'
+
+  const _isFinal   = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
+  const _isSpecial = c => c.assignment_type === 'คะแนนพิเศษ'
+  const betweenCols = scoreColumns.filter(c => !_isFinal(c) && !_isSpecial(c))
+  const specialCols = scoreColumns.filter(c => _isSpecial(c))
+  const finalCols   = scoreColumns.filter(c => _isFinal(c))
+
+  const B_MIN = 5, F_MIN = 5
+  const ECOL  = { id: null, assignment_name: '', max_score: '' }
+  const allBetween = [...betweenCols, ...Array(Math.max(0, B_MIN - betweenCols.length)).fill(ECOL)]
+  const allFinal   = [...finalCols,   ...Array(Math.max(0, F_MIN - finalCols.length)).fill(ECOL)]
+
+  const betweenMax = betweenCols.reduce((s,c)=>s+(c.max_score??0),0)
+  const finalMax   = finalCols.reduce((s,c)=>s+(c.max_score??0),0)
+
+  const leftSpan  = allBetween.length + 1
+  const rightSpan = allFinal.length + 2
+  const allSpan   = leftSpan + rightSpan
+  const RES_COLS = 3
+  const totalCols = 3 + allSpan + RES_COLS
+
+  const nDataRows = chunk.length + 1
+  const rowH = Math.max(3.8, Math.min(5.8, Math.floor(160 / nDataRows * 10) / 10)).toFixed(1)
+
+  const _hideScores = !!window._pp5HideScores
+
+  const rows = chunk.map((st, idx) => {
+    if (_hideScores) {
+      return `<tr>
+        <td>${startNo + idx}</td>
+        <td>${_esc(st.student_code??'')}</td>
+        <td class="gs-name" style="border-right:2.0px solid #000;">${_esc(st.full_name??'')}</td>
+        ${allBetween.map(()=>'<td></td>').join('')}
+        <td></td>
+        ${allFinal.map(()=>'<td></td>').join('')}
+        <td></td>
+        <td style="border-right:2.0px solid #000;"></td>
+        <td></td>
+        <td style="border-right:2.0px solid #000;"></td>
+        <td></td>
+      </tr>`
+    }
+    const sc    = scoreMap[st.id] ?? {}
+    const bScores = allBetween.map(c => c.id ? (sc[c.id] ?? '') : '')
+    const fScores = allFinal.map(c => c.id ? (sc[c.id] ?? '') : '')
+    const bSum  = betweenCols.reduce((s,c)=>s+(sc[c.id]??0),0)
+              + specialCols.reduce((s,c)=>s+(sc[c.id]??0),0)
+    const fSum  = finalCols.reduce((s,c)=>s+(sc[c.id]??0),0)
+    const total = bSum + fSum
+    // สถานะพิเศษ (ข.ร./ข.ส./ม.ส./ข.ป.) แทนที่ตัวเลขเกรดถ้าตั้งไว้
+    const grade = (st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result))
+      ? st.special_result
+      : _calcGrade(total)
+
+    return `<tr>
+      <td>${startNo + idx}</td>
+      <td>${_esc(st.student_code??'')}</td>
+      <td class="gs-name" style="border-right:2.0px solid #000;">${_esc(st.full_name??'')}</td>
+      ${bScores.map(v=>`<td>${v}</td>`).join('')}
+      <td style="font-weight:700;">${bSum||''}</td>
+      ${fScores.map(v=>`<td>${v}</td>`).join('')}
+      <td style="font-weight:700;">${fSum||''}</td>
+      <td style="font-weight:700;border-right:2.0px solid #000;">${total||''}</td>
+      <td></td>
+      <td style="border-right:2.0px solid #000;"></td>
+      <td style="font-weight:700;">${grade}</td>
+    </tr>`
+  })
+
+  const emptyRow = `<tr>${Array(totalCols).fill('<td></td>').join('')}</tr>`
+
+  const bW = betweenCols.length > 6 ? '5mm' : '5.8mm'
+  const fW = finalCols.length   > 5 ? '5mm' : '5.5mm'
+
+  return `
+  <div class="score-wrap">
+    <div class="score-top-info">
+      <div class="sc-field"><span class="sc-lbl">รายวิชา</span><span class="sc-val">${_esc(ms.subject_name??'')}</span></div>
+      <div class="sc-field"><span class="sc-lbl">รหัสวิชา</span><span class="sc-val">${_esc(ms.subject_code??'')}</span></div>
+      <div class="sc-field"><span class="sc-lbl">ชั้น</span><span class="sc-val">${_esc(_shortRoom(cls.class_name))}</span></div>
+      <div class="sc-field"><span class="sc-lbl">ภาคเรียนที่</span><span class="sc-val">${_esc(String(semester))}</span></div>
+      <div class="sc-field"><span class="sc-lbl">ปีการศึกษา</span><span class="sc-val">${_esc(String(academicYear))}</span></div>
+    </div>
+    <table class="grade-sheet" style="--row-h:${rowH}mm">
+      <colgroup>
+        <col style="width:5mm;"/>
+        <col style="width:12mm;"/>
+        <col style="width:45mm;"/>
+        ${allBetween.map(()=>`<col style="width:${bW};"/>`).join('')}
+        <col style="width:7mm;"/>
+        ${allFinal.map(()=>`<col style="width:${fW};"/>`).join('')}
+        <col style="width:7mm;"/>
+        <col style="width:8mm;"/>
+        <col style="width:8.5mm;"/>
+        <col style="width:8.5mm;"/>
+        <col style="width:8.5mm;"/>
+      </colgroup>
+      <thead>
+        <tr>
+          <th colspan="3" style="border-right:2.5px solid #000;">ผู้เรียน</th>
+          <th colspan="${allSpan}" style="border-right:2.0px solid #000;">วัดผลระหว่างภาค / ปลายภาค</th>
+          <th rowspan="5" class="v"><span style="font-size:7px;">ประเมินการอ่านคิดวิเคราะห์และเขียน</span></th>
+          <th rowspan="5" class="v" style="border-right:2.0px solid #000;"><span style="font-size:7px;">ประเมินคุณลักษณะอันพึงประสงค์</span></th>
+          <th rowspan="5" class="v"><span>ระดับผลการเรียน</span></th>
+        </tr>
+        <tr>
+          <th rowspan="4" class="v"><span>เลขที่</span></th>
+          <th rowspan="4" class="v"><span>เลขประจำตัว</span></th>
+          <th rowspan="4" style="border-right:2.0px solid #000;">ชื่อ - สกุล</th>
+          <th colspan="${allSpan}" style="font-size:7px;padding:1px;border-right:2.0px solid #000;">อัตราส่วนคะแนนระหว่างเรียน:วัดผลระหว่างภาค/ปลายภาค = ${betweenMax} / ${finalMax}</th>
+        </tr>
+        <tr>
+          <th colspan="${allBetween.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนระหว่างเรียน/กลางภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนนระหว่างภาค</span></th>
+          <th colspan="${allFinal.length}" style="font-size:7px;padding:1px;line-height:1.1;">ผลการเรียนปลายภาค<br/><span style="font-size:6px;">จุดประสงค์ที่ / คะแนนเต็ม</span></th>
+          <th rowspan="2" class="v"><span>รวมคะแนนปลายภาค</span></th>
+          <th rowspan="2" class="v" style="border-right:2.0px solid #000;"><span>รวมคะแนน 100</span></th>
+        </tr>
+        <tr>
+          ${allBetween.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.assignment_name??'')}</span></th>`).join('')}
+          ${allFinal.map(c=>`<th class="v" style="overflow:visible;"><span>${_esc(c.assignment_name??'')}</span></th>`).join('')}
+        </tr>
+        <tr>
+          ${allBetween.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
+          <th class="score-full">${betweenMax||''}</th>
+          ${allFinal.map(c=>`<th class="score-full">${c.max_score??''}</th>`).join('')}
+          <th class="score-full">${finalMax||''}</th>
+          <th class="score-full" style="border-right:2.0px solid #000;">${(betweenMax||finalMax) ? betweenMax + finalMax : ''}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.join('')}
+        ${emptyRow}
+      </tbody>
+    </table>
+    <div class="score-sig">
+      <div class="score-sig-row">
+        <div class="score-sig-lbl">ลงชื่อ</div>
+        <div class="score-sig-line">${_esc(teacher?.full_name??'')}</div>
+        <div class="score-sig-role">ครูผู้สอน</div>
+      </div>
+      <div class="score-sig-row">
+        <div class="score-sig-lbl">ลงชื่อ</div>
+        <div class="score-sig-line">${_esc(deptHeadName)}</div>
+        <div class="score-sig-role">${_headFieldLabel}</div>
+      </div>
+    </div>
+  </div>`
+}
+
+function _buildPage3VOC(d) {
+  const { students } = d
+  const pages = []
+  for (let si = 0; si < students.length; si += ROWS_PER_SCORE_PAGE) {
+    pages.push(_buildScorePageVOC(d, students.slice(si, si + ROWS_PER_SCORE_PAGE), si + 1))
+  }
+  return pages.join('')
+}
+
+function _buildPage4VOC(d) {
+  const { ms, teacher } = d
+  return `
+  <div class="page">
+    <div class="voc-page4-title">จุดประสงค์การเรียนรู้และสมรรถนะรายวิชา ${_esc(ms.subject_name??'')}</div>
+    <div class="voc-page4-sub">รหัสวิชา ${_esc(ms.subject_code??'')}</div>
+    <table class="voc-obj-table">
+      <tr><th>จุดประสงค์การเรียนรู้</th><th>สมรรถนะรายวิชา</th></tr>
+      ${Array.from({length:10},()=>`<tr><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}
+    </table>
+    <div class="voc-page4-title" style="margin-top:6mm;">กำหนดการสอน</div>
+    <table class="voc-sched-table">
+      <tr><th style="width:20mm;">สัปดาห์</th><th>เนื้อหาที่สอน</th><th style="width:30mm;">หมายเหตุ</th></tr>
+      ${Array.from({length:18},()=>`<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}
+    </table>
+    <div class="voc-sig-row" style="margin-top:6mm;"><span>ลงชื่อ</span><span class="voc-sig-line">${_esc(teacher?.full_name??'')}</span><span>ครูผู้สอนประจำวิชา</span></div>
+  </div>`
+}
+
 // ─── Full Document Builder ────────────────────────────────────────────────────
 
 function _buildFullDoc(d, title, pagesHTML = null) {
@@ -1553,7 +1883,14 @@ body{background:#fff;margin:0;}
 function _openViewer(d) {
   document.getElementById('pp5-viewer')?.remove()
 
-  const pages = [
+  const isACDMVOC = d.ms?.subject_group === 'ACDMVOC'
+  const pages = isACDMVOC ? [
+    { label: 'ดูทั้งหมด', fn: null, all: true },
+    { label: 'หน้าปก', fn: () => _buildPage1VOC(d) },
+    { label: 'ไม่มาเรียน/วันที่สอน', fn: () => _buildPage2VOC(d) },
+    { label: 'คะแนน', fn: () => _buildPage3VOC(d) },
+    { label: 'จุดประสงค์/กำหนดการสอน', fn: () => _buildPage4VOC(d) },
+  ] : [
     { label: 'ดูทั้งหมด', fn: null, all: true },
     { label: 'หน้าปก', fn: () => _buildPage1(d) },
     { label: 'มาตรฐาน/ตัวชี้วัด', fn: () => _buildPage2(d) },
@@ -1561,6 +1898,7 @@ function _openViewer(d) {
     { label: 'คะแนน', fn: () => _buildPage4(d) },
     { label: 'วันที่สอน', fn: () => _buildPage5(d) },
   ]
+  const pageIdxRange = pages.slice(1).map((_, i) => i + 1)
 
   const editAllowed = !!d.cfg?.pp5PreviewEditEnabled
   const pageOverrides = {} // { [pageIndex]: overridden body innerHTML } — session-only, ไม่บันทึกลงระบบ
@@ -1640,12 +1978,13 @@ function _openViewer(d) {
     const page = pages[i]
     let html, iframeH
     if (page.all) {
-      html = _buildFullDoc(d, '', [1,2,3,4,5].map(getPageHTML))
+      html = _buildFullDoc(d, '', pageIdxRange.map(getPageHTML))
       iframeH = '3000mm'
     } else {
       html = _singlePageDoc(getPageHTML(i))
-      // attendance & score may be multi-page (index 3, 4 in new list)
-      iframeH = (i === 3 || i === 4) ? '900mm' : '297mm'
+      // หน้าที่อาจมีหลายหน้าจริง (บันทึกไม่มาเรียน/คะแนน) ต้องใช้ iframe สูงกว่าปกติ
+      const tallIdx = isACDMVOC ? [2, 3] : [3, 4]
+      iframeH = tallIdx.includes(i) ? '900mm' : '297mm'
     }
     iframe.style.height = iframeH
     const doc = iframe.contentDocument
@@ -1672,7 +2011,7 @@ function _openViewer(d) {
       const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
       const win = window.open('', '_blank', 'width=900,height=700')
       if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
-      win.document.open(); win.document.write(_buildFullDoc(d, title, [1,2,3,4,5].map(getPageHTML))); win.document.close()
+      win.document.open(); win.document.write(_buildFullDoc(d, title, pageIdxRange.map(getPageHTML))); win.document.close()
       setTimeout(() => win.print(), 600)
       return
     }
@@ -1683,7 +2022,7 @@ function _openViewer(d) {
   viewer.querySelector('#pp5-v-printall').addEventListener('click', () => {
     captureCurrentEdits()
     const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
-    const html  = _buildFullDoc(d, title, [1,2,3,4,5].map(getPageHTML))
+    const html  = _buildFullDoc(d, title, pageIdxRange.map(getPageHTML))
     const win   = window.open('', '_blank', 'width=900,height=700')
     if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
     win.document.open(); win.document.write(html); win.document.close()

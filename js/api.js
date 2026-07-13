@@ -339,20 +339,20 @@ export async function getMyHomeroomRooms(teacherId) {
 export async function getClassStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('is_active, students ( id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
+    .select('is_active, special_result, students ( id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error
   return (data ?? [])
     .filter(r => r.is_active !== false)
-    .map(r => r.students)
+    .map(r => r.students ? { ...r.students, special_result: r.special_result ?? null } : null)
     .filter(Boolean)
 }
 
 export async function getClassRosterStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('id, is_active, students ( id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
+    .select('id, is_active, special_result, students ( id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error
@@ -361,8 +361,17 @@ export async function getClassRosterStudents(classId) {
       ...r.students,
       enrollment_id: r.id,
       is_active: r.is_active !== false,
+      special_result: r.special_result ?? null,
     } : null)
     .filter(Boolean)
+}
+
+export async function updateClassStudentSpecialResult(enrollmentId, value) {
+  const { error } = await supabase
+    .from('class_students')
+    .update({ special_result: value || null })
+    .eq('id', enrollmentId)
+  if (error) throw error
 }
 
 // ─── Class Randomizer (สุ่มรายชื่อ / สุ่มจัดกลุ่ม — เฉพาะครูผู้โดเนท) ─────────────

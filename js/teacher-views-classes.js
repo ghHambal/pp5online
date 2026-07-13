@@ -18,7 +18,7 @@ import {
   getMyDonationRequests,
   getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
   saveClassGroups, clearClassGroups,
-  getFlashcardDecks, getClassSessionDOWs,
+  getFlashcardDecks, getClassSessionDOWs, updateClassStudentSpecialResult,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -584,8 +584,16 @@ export async function renderMyClasses(teacher) {
         const activeCount = students.filter(s => s.is_active).length
         const ms = cls.master_subjects ?? {}
         const isReligionCourse = ['AGM', 'AGMVOC'].includes(ms.subject_group)
+        const isACDMVOC = ms.subject_group === 'ACDMVOC'
         const showHouseColor = cfg.showStudentHouseColor !== 'false'
         const showShirtSize = cfg.showStudentSportsShirtSize !== 'false'
+        const SPECIAL_RESULT_OPTS = ['ข.ร.','ข.ส.','ม.ส.','ข.ป.']
+        const specialResultSelect = s => `
+          <select data-special-enrollment="${s.enrollment_id}" onclick="event.stopPropagation()"
+            class="border border-gray-200 rounded-lg px-1.5 py-1 text-xs bg-white text-gray-600">
+            <option value="" ${!s.special_result ? 'selected' : ''}>ปกติ</option>
+            ${SPECIAL_RESULT_OPTS.map(v => `<option value="${v}" ${s.special_result === v ? 'selected' : ''}>${v}</option>`).join('')}
+          </select>`
         const displayRoom = s => isReligionCourse
           ? (s.main_room || s.religion_room || '—')
           : (s.religion_room || s.main_room || '—')
@@ -608,6 +616,7 @@ export async function renderMyClasses(teacher) {
             </td>
             ${showHouseColor ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.house_color || '—')}</td>` : ''}
             ${showShirtSize ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.sports_shirt_size || '—')}</td>` : ''}
+            ${isACDMVOC ? `<td class="px-3 py-2 text-center">${specialResultSelect(s)}</td>` : ''}
             <td class="px-3 py-2 text-center">
               <span class="inline-flex px-3 py-1 rounded-full text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
                 ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
@@ -671,6 +680,7 @@ export async function renderMyClasses(teacher) {
                       <th class="px-3 py-2 text-left">นักเรียน</th>
                       ${showHouseColor ? `<th class="px-3 py-2 text-center w-24">ประจำสี</th>` : ''}
                       ${showShirtSize ? `<th class="px-3 py-2 text-center w-28">ไซด์เสื้อ</th>` : ''}
+                      ${isACDMVOC ? `<th class="px-3 py-2 text-center w-24">สถานะพิเศษ</th>` : ''}
                       <th class="px-3 py-2 text-center w-28">สถานะ</th>
                     </tr>
                   </thead>
@@ -682,6 +692,14 @@ export async function renderMyClasses(teacher) {
 
         const refresh = () => window._openStudentManager(classId)
         // students-back ถูกลบออก (อยู่ใน class detail sticky header แล้ว)
+        document.querySelectorAll('[data-special-enrollment]').forEach(sel => {
+          sel.addEventListener('change', async () => {
+            try {
+              await updateClassStudentSpecialResult(sel.dataset.specialEnrollment, sel.value)
+              showToast('บันทึกสถานะพิเศษแล้ว', 'success')
+            } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+          })
+        })
         document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
         document.getElementById('students-print-qr')?.addEventListener('click', () => {
           window._pendingQRClassId = classId
