@@ -17,6 +17,7 @@ import {
   getTeacherClassesForLinking,
   getMyDonationRequests,
   getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
+  saveClassGroups, clearClassGroups,
   getFlashcardDecks,
 } from './api.js'
 import QRCode from 'qrcode'
@@ -1555,6 +1556,10 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
   let currentMode     = dbState.mode || 'none'
   let persistedPicked = new Set((dbState.picked_student_ids || []).map(Number))
   let sessionPicked   = new Set()
+  const studentsById  = new Map(students.map(s => [s.id, s]))
+  let currentGroups   = Array.isArray(dbState.groups)
+    ? dbState.groups.map(g => ({ no: g.no, items: (g.student_ids || []).map(id => studentsById.get(id)).filter(Boolean) }))
+    : null
   let activeTab       = 'pick'
   let isSpinning      = false
   let currentEffect   = localStorage.getItem('pp5_rp_effect') || 'classic'
@@ -1936,7 +1941,90 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
   }
 
   // ════════════════ TAB: สุ่มจัดกลุ่ม ════════════════
-  function renderGroupTab() {
+  const GROUP_COLORS = ['#f59e0b','#ec4899','#6366f1','#10b981','#06b6d4','#ef4444','#8b5cf6','#f97316']
+
+  const persistGroups = () => {
+    const payload = currentGroups.map(g => ({ no: g.no, student_ids: g.items.map(s => s.id) }))
+    saveClassGroups(classId, payload).catch(() => {})
+  }
+
+  const moveStudent = (studentId, targetNo) => {
+    const sid = Number(studentId)
+    let moved = null
+    currentGroups.forEach(g => {
+      const idx = g.items.findIndex(s => s.id === sid)
+      if (idx !== -1) moved = g.items.splice(idx, 1)[0]
+    })
+    if (!moved) moved = studentsById.get(sid)
+    if (!moved) return
+    if (targetNo) {
+      const target = currentGroups.find(g => g.no === targetNo)
+      if (target) target.items.push(moved)
+    }
+    renderGroupsResult()
+    persistGroups()
+  }
+
+  function renderGroupsResult() {
+    const assignedIds = new Set(currentGroups.flatMap(g => g.items.map(s => s.id)))
+    const unassigned = students.filter(s => !assignedIds.has(s.id))
+
+    const moveSelect = (s, currentNo) => `
+      <select data-move="${s.id}" class="text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 bg-white text-gray-500 flex-shrink-0">
+        <option value="0" ${currentNo === 0 ? 'selected' : ''}>— ยังไม่จัดกลุ่ม —</option>
+        ${currentGroups.map(g => `<option value="${g.no}" ${g.no === currentNo ? 'selected' : ''}>กลุ่มที่ ${g.no}</option>`).join('')}
+      </select>`
+
+    const studentRow = (s, currentNo, color) => `
+      <div class="flex items-center gap-2.5 min-w-0 py-1">
+        ${s.image_url
+          ? `<img src="${_htmlEsc(s.image_url)}" class="w-8 h-11 rounded-xl object-cover flex-shrink-0" style="box-shadow:0 3px 10px rgba(0,0,0,.18);" />`
+          : `<div class="w-8 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style="background:${color};box-shadow:0 3px 10px rgba(0,0,0,.18);">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
+        <span class="text-sm text-gray-700 truncate flex-1">${_htmlEsc(s.full_name)}</span>
+        ${moveSelect(s, currentNo)}
+      </div>`
+
+    body.innerHTML = `
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <p class="text-xs text-gray-400">💾 บันทึกอัตโนมัติทุกการเปลี่ยนแปลง</p>
+        <button id="rp-group-regen" class="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 flex-shrink-0">🎲 จัดกลุ่มใหม่</button>
+      </div>
+      ${unassigned.length ? `
+      <div class="mt-3 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+        <p class="text-xs font-bold text-amber-700 mb-2">ยังไม่ได้จัดกลุ่ม (${unassigned.length} คน)</p>
+        <div class="space-y-1">${unassigned.map(s => studentRow(s, 0, '#94a3b8')).join('')}</div>
+      </div>` : ''}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+        ${currentGroups.map((g, gi) => `
+          <div class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="px-3 py-2 text-white text-sm font-bold" style="background:${GROUP_COLORS[gi % GROUP_COLORS.length]}">
+              กลุ่มที่ ${g.no} <span class="font-normal text-white/80 text-xs">(${g.items.length} คน)</span>
+            </div>
+            <div class="p-3 space-y-1.5">
+              ${g.items.length ? g.items.map(s => studentRow(s, g.no, GROUP_COLORS[gi % GROUP_COLORS.length])).join('') : `<p class="text-xs text-gray-400 text-center py-2">ว่าง</p>`}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `
+
+    body.querySelector('#rp-group-regen').addEventListener('click', async () => {
+      const confirmed = await showDangerConfirm({
+        title: 'จัดกลุ่มใหม่?',
+        message: 'การจัดกลุ่มปัจจุบันจะถูกล้างทั้งหมด แล้วเริ่มสุ่มใหม่',
+        confirmText: 'จัดกลุ่มใหม่',
+      })
+      if (!confirmed) return
+      currentGroups = null
+      clearClassGroups(classId).catch(() => {})
+      renderGroupSetupForm()
+    })
+    body.querySelectorAll('[data-move]').forEach(sel => {
+      sel.addEventListener('change', () => moveStudent(sel.dataset.move, Number(sel.value)))
+    })
+  }
+
+  function renderGroupSetupForm() {
     const genderValues = new Set(students.map(s => s.gender).filter(Boolean))
     const showGenderOption = genderValues.size > 1
 
@@ -1957,7 +2045,6 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
       </label>` : ''}
       <button id="rp-group-go" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98] mb-4"
         style="background:linear-gradient(135deg,#f59e0b,#ec4899);">🎲 จัดกลุ่มเลย!</button>
-      <div id="rp-groups"></div>
     `
     let gmode = 'count'
     const btns = [...body.querySelectorAll('.rp-gmode-btn')]
@@ -2010,47 +2097,28 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
       }
       const n = Math.max(1, parseInt(body.querySelector('#rp-gnum').value, 10) || 1)
       const splitByGender = showGenderOption && body.querySelector('#rp-gender-split')?.checked
-      const colors = ['#f59e0b','#ec4899','#6366f1','#10b981','#06b6d4','#ef4444','#8b5cf6','#f97316']
 
-      let sections
+      let pools
       if (splitByGender) {
-        sections = [
-          { title: 'ชาย',      icon: '♂', items: students.filter(s => s.gender === 'ชาย') },
-          { title: 'หญิง',     icon: '♀', items: students.filter(s => s.gender === 'หญิง') },
-          { title: 'ไม่ระบุเพศ', icon: '•', items: students.filter(s => s.gender !== 'ชาย' && s.gender !== 'หญิง') },
-        ].filter(sec => sec.items.length).map(sec => ({ ...sec, groups: buildGroups(sec.items, n) }))
+        pools = [
+          students.filter(s => s.gender === 'ชาย'),
+          students.filter(s => s.gender === 'หญิง'),
+          students.filter(s => s.gender !== 'ชาย' && s.gender !== 'หญิง'),
+        ].filter(p => p.length)
       } else {
-        sections = [{ title: null, icon: null, groups: buildGroups(students, n) }]
+        pools = [students]
       }
 
-      const out = body.querySelector('#rp-groups')
-      let gi = 0
-      out.innerHTML = sections.map(sec => `
-        ${sec.title ? `<p class="text-xs font-bold text-gray-500 mt-4 mb-2 first:mt-0">${sec.icon} กลุ่ม${sec.title} <span class="font-normal text-gray-400">(${sec.items.length} คน)</span></p>` : ''}
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          ${sec.groups.map(g => {
-            const html = `
-            <div class="rp-pop rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style="animation-delay:${gi * 70}ms">
-              <div class="px-3 py-2 text-white text-sm font-bold" style="background:${colors[gi % colors.length]}">
-                กลุ่มที่ ${gi + 1} <span class="font-normal text-white/80 text-xs">(${g.length} คน)</span>
-              </div>
-              <div class="p-3 space-y-1.5">
-                ${g.map(s => `
-                <div class="flex items-center gap-2.5 min-w-0">
-                  ${s.image_url
-                    ? `<img src="${_htmlEsc(s.image_url)}" class="w-8 h-11 rounded-xl object-cover flex-shrink-0" style="box-shadow:0 3px 10px rgba(0,0,0,.18);" />`
-                    : `<div class="w-8 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style="background:${colors[gi % colors.length]};box-shadow:0 3px 10px rgba(0,0,0,.18);">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
-                  <span class="text-sm text-gray-700 truncate">${_htmlEsc(s.full_name)}</span>
-                  <span class="text-gray-400 text-xs font-mono flex-shrink-0">${s.seat_no ? `ที่ ${s.seat_no}` : _htmlEsc(s.student_code ?? '')}</span>
-                </div>`).join('')}
-              </div>
-            </div>`
-            gi++
-            return html
-          }).join('')}
-        </div>
-      `).join('')
+      let no = 1
+      currentGroups = pools.flatMap(pool => buildGroups(pool, n).map(items => ({ no: no++, items })))
+      renderGroupsResult()
+      persistGroups()
     })
+  }
+
+  function renderGroupTab() {
+    if (currentGroups) renderGroupsResult()
+    else renderGroupSetupForm()
   }
 
   setTab('pick')

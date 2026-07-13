@@ -370,11 +370,25 @@ export async function getClassRosterStudents(classId) {
 export async function getClassRandomizerState(classId) {
   const { data, error } = await supabase
     .from('class_randomizer_state')
-    .select('class_id, mode, picked_student_ids, updated_at')
+    .select('class_id, mode, picked_student_ids, groups, updated_at')
     .eq('class_id', classId)
     .maybeSingle()
   if (error) throw error
-  return data ?? { class_id: classId, mode: 'none', picked_student_ids: [] }
+  return data ?? { class_id: classId, mode: 'none', picked_student_ids: [], groups: null }
+}
+
+export async function saveClassGroups(classId, groups) {
+  const { error } = await supabase
+    .from('class_randomizer_state')
+    .upsert({ class_id: classId, groups, updated_at: new Date().toISOString() }, { onConflict: 'class_id' })
+  if (error) throw error
+}
+
+export async function clearClassGroups(classId) {
+  const { error } = await supabase
+    .from('class_randomizer_state')
+    .upsert({ class_id: classId, groups: null, updated_at: new Date().toISOString() }, { onConflict: 'class_id' })
+  if (error) throw error
 }
 
 export async function saveClassRandomizerState(classId, { mode, pickedStudentIds }) {
