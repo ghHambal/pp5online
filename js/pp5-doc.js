@@ -257,7 +257,8 @@ function _generateSessions(classData, credit, dowPattern = null) {
 }
 
 function _configPrefix(subjectGroup) {
-  return ['ACDMVOC','AGMVOC'].includes(subjectGroup) ? 'porwor' : 'samai'
+  // สามัญปวช. (ACDMVOC) แยก identity ของตัวเอง — ศาสนาปวช. (AGMVOC) ใช้ร่วมกับศาสนามัธยม (samai + agm override)
+  return subjectGroup === 'ACDMVOC' ? 'porwor' : 'samai'
 }
 
 // ตัดชื่อห้องเหลือแค่ระดับชั้น เช่น "ม.5/6 Ash-Shafi'i" → "ม.5/6"
@@ -1497,7 +1498,8 @@ function _buildPage5(d) {
 
 // ─── Full Document Builder ────────────────────────────────────────────────────
 
-function _buildFullDoc(d, title) {
+function _buildFullDoc(d, title, pagesHTML = null) {
+  const parts = pagesHTML ?? [_buildPage1(d), _buildPage2(d), _buildPage3(d), _buildPage4(d), _buildPage5(d)]
   return `<!DOCTYPE html>
 <html lang="th">
 <head>
@@ -1506,11 +1508,7 @@ function _buildFullDoc(d, title) {
   <style>${_getCSS()}</style>
 </head>
 <body>
-  ${_buildPage1(d)}
-  ${_buildPage2(d)}
-  ${_buildPage3(d)}
-  ${_buildPage4(d)}
-  ${_buildPage5(d)}
+  ${parts.join('\n')}
   <div style="text-align:center;margin:10mm;font-size:9pt;color:#666;">
     <button onclick="window.print()" style="padding:8px 24px;font-size:11pt;font-family:Sarabun,sans-serif;
       background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;">
@@ -1549,6 +1547,9 @@ function _openViewer(d) {
     { label: 'วันที่สอน', fn: () => _buildPage5(d) },
   ]
 
+  const editAllowed = !!d.cfg?.pp5PreviewEditEnabled
+  const pageOverrides = {} // { [pageIndex]: overridden body innerHTML } — session-only, ไม่บันทึกลงระบบ
+
   const viewer = document.createElement('div')
   viewer.id = 'pp5-viewer'
   viewer.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:#374151;'
@@ -1562,10 +1563,12 @@ function _openViewer(d) {
       <button id="pp5-v-close" style="${btnStyle(false)}background:#dc2626;color:#fff;">✕ ปิด</button>
       <button id="pp5-v-print" style="${btnStyle(false)}background:#059669;color:#fff;">🖨️ พิมพ์หน้านี้</button>
       <button id="pp5-v-printall" style="${btnStyle(false)}background:#7c3aed;color:#fff;">🖨️ พิมพ์ทั้งหมด</button>
+      ${editAllowed ? `<button id="pp5-v-edit" style="${btnStyle(false)}background:#f59e0b;color:#fff;">✏️ แก้ไขข้อความ</button>` : ''}
       <div style="width:1px;height:24px;background:#374151;flex-shrink:0;margin:0 2px;"></div>
       ${pages.map((p, i) => `
         <button class="pp5-vtab" data-i="${i}" style="${btnStyle(i===0)}">${p.label}</button>
       `).join('')}
+      ${editAllowed ? `<span id="pp5-v-edit-hint" style="display:none;color:#fbbf24;font-size:12px;margin-left:8px;white-space:nowrap;">กำลังแก้ไข — คลิกข้อความในหน้าเพื่อพิมพ์ทับได้เลย (ไม่กระทบข้อมูลจริงในระบบ)</span>` : ''}
     </div>
     <div style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px;">
       <iframe id="pp5-iframe" style="border:none;box-shadow:0 4px 32px rgba(0,0,0,.5);background:#fff;width:210mm;height:297mm;" scrolling="no"></iframe>
@@ -1575,9 +1578,44 @@ function _openViewer(d) {
 
   const iframe   = viewer.querySelector('#pp5-iframe')
   const tabs     = [...viewer.querySelectorAll('.pp5-vtab')]
-  let curIdx     = 0
+  const editBtn  = viewer.querySelector('#pp5-v-edit')
+  const editHint = viewer.querySelector('#pp5-v-edit-hint')
+  let curIdx     = null
+  let editMode   = false
+
+  function getPageHTML(i) {
+    return pageOverrides[i] ?? pages[i].fn()
+  }
+
+  function captureCurrentEdits() {
+    if (curIdx == null || pages[curIdx].all) return
+    try {
+      const body = iframe.contentDocument?.body
+      if (body) pageOverrides[curIdx] = body.innerHTML
+    } catch {}
+  }
+
+  function setEditMode(on) {
+    editMode = on && editAllowed && curIdx != null && !pages[curIdx].all
+    if (editBtn) {
+      editBtn.style.background = editMode ? '#16a34a' : '#f59e0b'
+      editBtn.textContent = editMode ? '✅ เสร็จแล้ว' : '✏️ แก้ไขข้อความ'
+      editBtn.disabled = curIdx != null && pages[curIdx].all
+      editBtn.style.opacity = editBtn.disabled ? '0.5' : '1'
+    }
+    if (editHint) editHint.style.display = editMode ? 'inline' : 'none'
+    try {
+      const body = iframe.contentDocument?.body
+      if (body) {
+        body.contentEditable = editMode ? 'true' : 'false'
+        body.style.outline = editMode ? '2px dashed #f59e0b' : 'none'
+        body.style.outlineOffset = editMode ? '-2px' : '0'
+      }
+    } catch {}
+  }
 
   function showPage(i) {
+    captureCurrentEdits()
     curIdx = i
     tabs.forEach((t, ti) => {
       if (ti === i) { t.style.background='#2563eb'; t.style.color='#fff' }
@@ -1586,16 +1624,17 @@ function _openViewer(d) {
     const page = pages[i]
     let html, iframeH
     if (page.all) {
-      html = _buildFullDoc(d, '')
+      html = _buildFullDoc(d, '', [1,2,3,4,5].map(getPageHTML))
       iframeH = '3000mm'
     } else {
-      html = _singlePageDoc(page.fn())
+      html = _singlePageDoc(getPageHTML(i))
       // attendance & score may be multi-page (index 3, 4 in new list)
       iframeH = (i === 3 || i === 4) ? '900mm' : '297mm'
     }
     iframe.style.height = iframeH
     const doc = iframe.contentDocument
     doc.open(); doc.write(html); doc.close()
+    setEditMode(false)
   }
 
   showPage(0)
@@ -1604,13 +1643,16 @@ function _openViewer(d) {
 
   viewer.querySelector('#pp5-v-close').addEventListener('click', () => viewer.remove())
 
+  editBtn?.addEventListener('click', () => setEditMode(!editMode))
+
   viewer.querySelector('#pp5-v-print').addEventListener('click', () => {
+    captureCurrentEdits()
     // ถ้า tab ดูทั้งหมด → print ผ่าน window ใหม่ ไม่ใช้ iframe
     if (pages[curIdx].all) {
       const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
       const win = window.open('', '_blank', 'width=900,height=700')
       if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
-      win.document.open(); win.document.write(_buildFullDoc(d, title)); win.document.close()
+      win.document.open(); win.document.write(_buildFullDoc(d, title, [1,2,3,4,5].map(getPageHTML))); win.document.close()
       setTimeout(() => win.print(), 600)
       return
     }
@@ -1619,8 +1661,9 @@ function _openViewer(d) {
   })
 
   viewer.querySelector('#pp5-v-printall').addEventListener('click', () => {
+    captureCurrentEdits()
     const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
-    const html  = _buildFullDoc(d, title)
+    const html  = _buildFullDoc(d, title, [1,2,3,4,5].map(getPageHTML))
     const win   = window.open('', '_blank', 'width=900,height=700')
     if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
     win.document.open(); win.document.write(html); win.document.close()

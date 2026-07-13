@@ -2785,15 +2785,20 @@ export async function renderSettings() {
           </div>`
       }
 
-      if (tabId === 'template') return `
-        <p class="text-xs text-gray-400 mb-5">ใส่ Google Drive File ID ของไฟล์ต้นแบบ ปพ.5 แต่ละประเภท</p>
+      if (tabId === 'template') return [
+        section('', [
+          { key:'pp5PreviewEditEnabled', label:'ให้ครูแก้ไขข้อความในหน้าพรีวิว ปพ.5 ได้', type:'toggle',
+            hint:'เปิดแล้วครูจะมีปุ่ม "✏️ แก้ไขข้อความ" ในหน้าพรีวิวเอกสาร แก้ได้เฉพาะตอนดู/พิมพ์ครั้งนี้ ไม่มีผลกับข้อมูลจริงในระบบ' },
+        ]),
+        `<p class="text-xs text-gray-400 mb-5">ใส่ Google Drive File ID ของไฟล์ต้นแบบ ปพ.5 แต่ละประเภท</p>
         ${COPY_TEMPLATE_CONFIG.map(t => fld({
           key: t.key,
           label: `${t.category} — ${t.label}`,
           type: 'text',
           placeholder: t.defaultId,
           hint: `default: ${t.defaultId}`,
-        })).join('')}`
+        })).join('')}`,
+      ].join('')
 
       if (tabId === 'phrases') return _renderPhrasesPanel()
 
