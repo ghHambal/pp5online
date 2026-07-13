@@ -781,16 +781,16 @@ function _getCSS() {
     .voc-attendance .voc-h-main { height: 18mm; }
     .voc-attendance .voc-h-sub { height: 7mm; }
     .voc-attendance .voc-h-num { height: 6mm; }
-    .voc-attendance tbody td { height: 4.55mm; }
+    .voc-attendance tbody td { height: var(--att-row-h, 4.55mm); }
     .voc-attendance .voc-student-no { width: 4.3mm; text-align: center; }
-    .voc-attendance .voc-student-id { width: 18mm; text-align: center; }
-    .voc-attendance .voc-student-name { width: 40mm; padding-left: 1mm; }
-    .voc-attendance .voc-att { width: 3.05mm; text-align: center; }
-    .voc-attendance .voc-att-total { width: 6mm; text-align: center; }
-    .voc-attendance .voc-score { width: 11mm; text-align: center; }
-    .voc-attendance .voc-sched-week { width: 7mm; text-align: center; }
-    .voc-attendance .voc-sched-period { width: 7mm; text-align: center; }
-    .voc-attendance .voc-sched-date { width: 13mm; text-align: center; }
+    .voc-attendance .voc-student-id { width: 16mm; text-align: center; }
+    .voc-attendance .voc-student-name { width: 36mm; padding-left: 1mm; }
+    .voc-attendance .voc-att { width: 2.7mm; text-align: center; }
+    .voc-attendance .voc-att-total { width: 5mm; text-align: center; }
+    .voc-attendance .voc-score { width: 10mm; text-align: center; }
+    .voc-attendance .voc-sched-week { width: 8mm; text-align: center; }
+    .voc-attendance .voc-sched-period { width: 8mm; text-align: center; }
+    .voc-attendance .voc-sched-date { width: 19mm; text-align: center; }
     .voc-attendance .voc-instruction { padding: .6mm 1mm; line-height: 1.1; }
     .voc-attendance .voc-blue { color: #005bbb; font-weight: 700; }
     .voc-attendance .voc-red { color: #d00; font-weight: 700; }
@@ -1738,7 +1738,6 @@ function _buildPage1VOC(d) {
   </section>`
 }
 
-const ROWS_PER_ATT_PAGE_VOC = 40
 const SCHED_COLS_VOC = 2
 
 // ตาราง "สัปดาห์ที่/คาบ/วันที่สอน" จับคู่ 2 คอลัมน์ตามไฟล์อ้างอิงจริง — คำนวณ rowspan สัปดาห์แบบเดียวกับ _buildPage5
@@ -1762,14 +1761,20 @@ function _buildAttScheduleGrid(sessions, perWeek) {
   return { N, colData, colRS }
 }
 
-function _buildAttPageVOC(d, chunk, startNo, schedGrid, rowOffset) {
+// พื้นที่แถวข้อมูลที่เหลือใน 1 หน้า A4 หลังหักขอบกระดาษ+หัวข้อ+หัวตาราง 3 แถว (โดยประมาณ, mm)
+const ATT_AVAIL_H_VOC = 233
+
+function _buildAttPageVOC(d, students, schedGrid, totalRows) {
   const { holidaySet } = d
   const CHANCES = 20
   const { colData, colRS } = schedGrid
-  const totalRows = Math.max(ROWS_PER_ATT_PAGE_VOC, colData[0]?.length ?? 0) - rowOffset
 
-  const rows = Array.from({ length: Math.min(ROWS_PER_ATT_PAGE_VOC, Math.max(0, totalRows)) }, (_, ri) => {
-    const st = chunk[ri]
+  // บีบความสูงแถว (และฟอนต์ตาม) ให้พอดี 1 หน้าเสมอ ไม่ว่าจำนวนนักเรียน/คาบจะเยอะแค่ไหน
+  const rowH   = Math.max(1.6, Math.min(4.55, ATT_AVAIL_H_VOC / Math.max(1, totalRows)))
+  const fontPx = rowH < 2.4 ? 6 : rowH < 3.2 ? 7 : rowH < 4 ? 8 : 9.5
+
+  const rows = Array.from({ length: totalRows }, (_, ri) => {
+    const st = students[ri]
     let studentCells
     if (st) {
       const stAtt = d.attMap[st.id] ?? {}
@@ -1786,22 +1791,23 @@ function _buildAttPageVOC(d, chunk, startNo, schedGrid, rowOffset) {
         return `<td style="color:${color};font-weight:700;">${entry.n}</td>`
       })
       studentCells = `
-        <td class="voc-student-no voc-center">${startNo + ri}</td>
+        <td class="voc-student-no voc-center">${ri + 1}</td>
         <td class="voc-student-id voc-center">${_esc(st.student_code??'')}</td>
         <td class="voc-student-name">${_esc(st.full_name??'')}</td>
         ${cells.join('')}
-        <td class="voc-att-total voc-center voc-bold">${total || ''}</td>`
+        <td class="voc-att-total voc-center voc-bold">${total || ''}</td>
+        <td class="voc-score voc-center"></td>`
     } else {
       studentCells = `
         <td class="voc-student-no"></td><td class="voc-student-id"></td><td class="voc-student-name"></td>
         ${Array.from({length: CHANCES}, () => '<td></td>').join('')}
-        <td class="voc-att-total"></td>`
+        <td class="voc-att-total"></td>
+        <td class="voc-score"></td>`
     }
 
-    const gi = rowOffset + ri
     const schedCells = Array.from({ length: SCHED_COLS_VOC }, (_, ci) => {
-      const item = colData[ci][gi]
-      const rs   = colRS[ci][gi]
+      const item = colData[ci][ri]
+      const rs   = colRS[ci][ri]
       if (!item) return `<td class="voc-sched-week"></td><td class="voc-sched-period"></td><td class="voc-sched-date"></td>`
       const wkCell = rs === 0 ? '' : `<td class="voc-sched-week voc-center" rowspan="${rs}">${item.week}</td>`
       const isHol = holidaySet?.has(item.sess.ds)
@@ -1817,7 +1823,13 @@ function _buildAttPageVOC(d, chunk, startNo, schedGrid, rowOffset) {
   <section class="voc-page">
     <div class="voc-page-inner voc-p2">
       <div class="voc-p2-title">แบบบันทึกการไม่มาเรียน</div>
-      <table class="voc-attendance">
+      <table class="voc-attendance" style="--att-row-h:${rowH.toFixed(2)}mm;font-size:${fontPx}px">
+        <colgroup>
+          <col style="width:4.3mm"><col style="width:16mm"><col style="width:36mm">
+          ${Array.from({length: CHANCES}, () => '<col style="width:2.7mm">').join('')}
+          <col style="width:5mm"><col style="width:10mm">
+          ${Array.from({length: SCHED_COLS_VOC}, () => '<col style="width:8mm"><col style="width:8mm"><col style="width:19mm">').join('')}
+        </colgroup>
         <thead>
           <tr class="voc-h-main">
             <th rowspan="3" class="voc-student-no"><div class="voc-vtext">เลขที่</div></th>
@@ -1854,17 +1866,12 @@ function _buildAttPageVOC(d, chunk, startNo, schedGrid, rowOffset) {
 
 function _buildPage2VOC(d) {
   // รวม "บันทึกการไม่มาเรียน" (ครั้งที่ 1-20) + "สัปดาห์ที่/คาบ/วันที่สอน" ไว้ในตารางเดียวกัน ตามไฟล์อ้างอิงจริง
+  // บังคับให้อยู่ในหน้าเดียวเสมอ (บีบความสูงแถว/ฟอนต์ลงแทนการขึ้นหน้าใหม่) ไม่ว่านักเรียน/จำนวนคาบจะเยอะแค่ไหน
   const { students, sessions } = d
   const perWeek = sessions?.length ? Math.round(sessions.length / 20) : 1
   const schedGrid = _buildAttScheduleGrid(sessions, perWeek)
-  const totalRows = Math.max(ROWS_PER_ATT_PAGE_VOC, schedGrid.N)
-
-  const pages = []
-  for (let ro = 0; ro < totalRows; ro += ROWS_PER_ATT_PAGE_VOC) {
-    const si = ro // เลขที่นักเรียนกับแถวตารางเดินคู่กัน (1 แถว = 1 คน)
-    pages.push(_buildAttPageVOC(d, students.slice(si, si + ROWS_PER_ATT_PAGE_VOC), si + 1, schedGrid, ro))
-  }
-  return pages.join('')
+  const totalRows = Math.max(students.length, schedGrid.N, 1)
+  return _buildAttPageVOC(d, students, schedGrid, totalRows)
 }
 
 const ROWS_PER_EVAL_PAGE_VOC = 34
