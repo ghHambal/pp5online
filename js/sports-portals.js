@@ -202,17 +202,106 @@ async function openShirtVoteModal(student,event,cfg) {
   } catch(e) { console.error(e); body.innerHTML='<p class="text-xs text-red-500 text-center py-8">โหลดข้อมูลไม่สำเร็จ</p>' }
 }
 
-export async function renderAdvisorStudents(teacher,rooms=[]) {
+export async function renderAdvisorStudents(teacher,rooms=[],tab='size') {
   const el=main(); const samai=rooms.filter(r=>r.category==='สามัญ'); el.innerHTML='<div class="py-16 text-center">กำลังโหลด...</div>'
   if(!samai.length){el.innerHTML='<div class="text-center py-16 text-gray-500">หน้านี้สำหรับครูที่ปรึกษาสามัญหรือ ปวช. สามัญ</div>';return}
+  const roomNames=samai.map(r=>r.main_room)
+  el.innerHTML=`<div class="max-w-6xl mx-auto space-y-4">
+    <div><h1 class="text-2xl font-bold">👥 นักเรียนที่ปรึกษา</h1><p class="text-sm text-gray-500">ห้อง ${roomNames.map(esc).join(', ')}</p></div>
+    <div class="flex gap-2">
+      <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
+      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>
+    </div>
+    <div id="advisor-tab-body"></div>
+  </div>`
+  el.querySelectorAll('[data-advisor-tab]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,b.dataset.advisorTab)))
+  const body=el.querySelector('#advisor-tab-body')
+  if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
+  else await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
+}
+
+async function _renderAdvisorSizeTab(body,teacher,rooms,roomNames) {
+  body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลด...</div>'
   try {
-    const {event,cfg}=await context(); const roomNames=samai.map(r=>r.main_room)
+    const {event,cfg}=await context()
     const {data:students,error}=await supabase.from('students').select('id,student_code,full_name,main_room,house_color,image_url,photo_url,sports_shirt_size,sports_shirt_requests(*)').in('main_room',roomNames).eq('is_active',true).order('main_room').order('student_code'); if(error)throw error
     const sizes=cfg?.allowed_sizes||['S','M','L','XL','2XL','3XL']; let filter='all'
-    const draw=()=>{const rows=(students||[]).filter(s=>{const r=(s.sports_shirt_requests||[]).find(x=>x.event_id===event.id);return filter==='all'||(filter==='none'?!r:r?.status===filter)});el.querySelector('#advisor-rows').innerHTML=rows.map(s=>{const r=(s.sports_shirt_requests||[]).find(x=>x.event_id===event.id),photo=s.image_url||s.photo_url;return `<tr class="border-t"><td class="p-3"><div class="flex items-center gap-3">${photo?`<img src="${esc(photo)}" alt="" class="w-11 h-11 rounded-full object-cover border border-gray-200 bg-gray-100 flex-shrink-0" loading="lazy">`:`<div class="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center font-bold flex-shrink-0">${esc((s.full_name||'?').charAt(0))}</div>`}<div><b>${esc(s.full_name)}</b><p class="text-xs text-gray-500">${esc(s.student_code)} · ${esc(s.main_room)} · สี${esc(s.house_color||'—')}</p></div></div></td><td class="p-3">${esc(r?.requested_size||'—')}</td><td class="p-3"><select data-size="${s.id}" class="border rounded-lg px-2 py-1">${sizes.map(x=>`<option ${x===(r?.confirmed_size||r?.requested_size)?'selected':''}>${esc(x)}</option>`).join('')}</select></td><td class="p-3"><span class="text-xs ${statusClass(r?.status)} px-2 py-1 rounded-full">${badge(r?.status)}</span></td><td class="p-3"><button data-confirm="${s.id}" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs">ยืนยัน</button></td></tr>`}).join('')||'<tr><td colspan="5" class="p-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>';el.querySelectorAll('[data-confirm]').forEach(b=>b.onclick=async()=>{const id=Number(b.dataset.confirm),size=el.querySelector(`[data-size="${id}"]`).value;const {error}=await supabase.rpc('advisor_confirm_sports_shirt',{p_event:event.id,p_student:id,p_size:size,p_note:null});if(error)return toast(error.message,'error');toast('ยืนยันไซซ์แล้ว');renderAdvisorStudents(teacher,rooms)})}
-    el.innerHTML=`<div class="max-w-6xl mx-auto"><div class="flex flex-wrap justify-between gap-3 mb-5"><div><h1 class="text-2xl font-bold">👥 นักเรียนที่ปรึกษา</h1><p class="text-sm text-gray-500">ติดตามและยืนยันไซซ์เสื้อ ห้อง ${roomNames.map(esc).join(', ')}</p></div><select id="advisor-filter" class="border rounded-xl px-3"><option value="all">ทุกสถานะ</option><option value="none">ยังไม่จำนง</option><option value="pending">รอยืนยัน</option><option value="confirmed">ยืนยันแล้ว</option><option value="advisor_updated">ครูเลือกแทน</option></select></div><div class="bg-white rounded-2xl border overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">นักเรียน</th><th>จำนง</th><th>ไซซ์ยืนยัน</th><th>สถานะ</th><th></th></tr></thead><tbody id="advisor-rows"></tbody></table></div></div>`
-    el.querySelector('#advisor-filter').onchange=e=>{filter=e.target.value;draw()};draw()
-  } catch(e){console.error(e);el.innerHTML=missing()}
+    const draw=()=>{const rows=(students||[]).filter(s=>{const r=(s.sports_shirt_requests||[]).find(x=>x.event_id===event.id);return filter==='all'||(filter==='none'?!r:r?.status===filter)});body.querySelector('#advisor-rows').innerHTML=rows.map(s=>{const r=(s.sports_shirt_requests||[]).find(x=>x.event_id===event.id),photo=s.image_url||s.photo_url;return `<tr class="border-t"><td class="p-3"><div class="flex items-center gap-3">${photo?`<img src="${esc(photo)}" alt="" class="w-11 h-11 rounded-full object-cover border border-gray-200 bg-gray-100 flex-shrink-0" loading="lazy">`:`<div class="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center font-bold flex-shrink-0">${esc((s.full_name||'?').charAt(0))}</div>`}<div><b>${esc(s.full_name)}</b><p class="text-xs text-gray-500">${esc(s.student_code)} · ${esc(s.main_room)} · สี${esc(s.house_color||'—')}</p></div></div></td><td class="p-3">${esc(r?.requested_size||'—')}</td><td class="p-3"><select data-size="${s.id}" class="border rounded-lg px-2 py-1">${sizes.map(x=>`<option ${x===(r?.confirmed_size||r?.requested_size)?'selected':''}>${esc(x)}</option>`).join('')}</select></td><td class="p-3"><span class="text-xs ${statusClass(r?.status)} px-2 py-1 rounded-full">${badge(r?.status)}</span></td><td class="p-3"><button data-confirm="${s.id}" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs">ยืนยัน</button></td></tr>`}).join('')||'<tr><td colspan="5" class="p-8 text-center text-gray-400">ไม่พบข้อมูล</td></tr>';body.querySelectorAll('[data-confirm]').forEach(b=>b.onclick=async()=>{const id=Number(b.dataset.confirm),size=body.querySelector(`[data-size="${id}"]`).value;const {error}=await supabase.rpc('advisor_confirm_sports_shirt',{p_event:event.id,p_student:id,p_size:size,p_note:null});if(error)return toast(error.message,'error');toast('ยืนยันไซซ์แล้ว');renderAdvisorStudents(teacher,rooms,'size')})}
+    body.innerHTML=`<div class="flex flex-wrap justify-between gap-3 mb-3"><p class="text-sm text-gray-500">ติดตามและยืนยันไซซ์เสื้อ</p><select id="advisor-filter" class="border rounded-xl px-3"><option value="all">ทุกสถานะ</option><option value="none">ยังไม่จำนง</option><option value="pending">รอยืนยัน</option><option value="confirmed">ยืนยันแล้ว</option><option value="advisor_updated">ครูเลือกแทน</option></select></div><div class="bg-white rounded-2xl border overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">นักเรียน</th><th>จำนง</th><th>ไซซ์ยืนยัน</th><th>สถานะ</th><th></th></tr></thead><tbody id="advisor-rows"></tbody></table></div>`
+    body.querySelector('#advisor-filter').onchange=e=>{filter=e.target.value;draw()};draw()
+  } catch(e){console.error(e);body.innerHTML=missing()}
+}
+
+async function _renderAdvisorVoteTab(body,teacher,rooms,roomNames) {
+  body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลด...</div>'
+  try {
+    const {event,cfg}=await context()
+    const [{data:students,error},{data:votes},{data:designs}]=await Promise.all([
+      supabase.from('students').select('id,student_code,full_name,main_room,gender,image_url,photo_url').in('main_room',roomNames).eq('is_active',true).order('main_room').order('student_code'),
+      supabase.from('sports_shirt_votes').select('student_id,design_id').eq('event_id',event.id),
+      supabase.from('sports_shirt_designs').select('*,sports_shirt_design_colors(*)').eq('event_id',event.id).order('design_no'),
+    ])
+    if(error)throw error
+    ;(designs||[]).forEach(d=>{ d.sports_shirt_design_colors=(d.sports_shirt_design_colors||[]).sort((a,b)=>a.display_order-b.display_order) })
+    const designById={}; (designs||[]).forEach(d=>designById[d.id]=d)
+    const voteByStudent={}; (votes||[]).forEach(v=>{voteByStudent[v.student_id]=v.design_id})
+    const open=cfg?.shirt_vote_enabled && (!cfg.shirt_vote_opens_at||new Date(cfg.shirt_vote_opens_at)<=new Date()) && (!cfg.shirt_vote_closes_at||new Date(cfg.shirt_vote_closes_at)>=new Date())
+
+    const rowsHtml=(students||[]).map(s=>{
+      const photo=s.image_url||s.photo_url
+      const votedDesign=designById[voteByStudent[s.id]]
+      return `<div class="flex items-center gap-3 p-3 border-t first:border-t-0">
+        ${photo?`<img src="${esc(photo)}" alt="" class="w-11 h-11 rounded-full object-cover border border-gray-200 bg-gray-100 flex-shrink-0" loading="lazy">`:`<div class="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center font-bold flex-shrink-0">${esc((s.full_name||'?').charAt(0))}</div>`}
+        <div class="flex-1 min-w-0"><b class="text-sm">${esc(s.full_name)}</b><p class="text-xs text-gray-500">${esc(s.student_code)} · ${esc(s.main_room)}</p></div>
+        <span class="text-xs px-2 py-1 rounded-full flex-shrink-0 ${votedDesign?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${votedDesign?`✓ ${esc(votedDesign.name||`แบบที่ ${votedDesign.design_no}`)}`:'ยังไม่โหวต'}</span>
+        <button data-advisor-vote-open="${s.id}" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold flex-shrink-0">${votedDesign?'เปลี่ยน':'โหวตแทน'}</button>
+      </div>`
+    }).join('')||'<p class="p-8 text-center text-gray-400">ไม่พบนักเรียน</p>'
+
+    body.innerHTML=`
+      ${!open?'<div class="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-500 mb-3 text-center">ขณะนี้ยังไม่เปิดโหวต หรือปิดโหวตแล้ว</div>':''}
+      <div class="bg-white rounded-2xl border overflow-hidden">${rowsHtml}</div>
+    `
+    body.querySelectorAll('[data-advisor-vote-open]').forEach(b=>b.addEventListener('click',()=>{
+      const sid=parseInt(b.dataset.advisorVoteOpen,10)
+      const s=(students||[]).find(x=>x.id===sid)
+      if(!s)return
+      const genderDesigns=(designs||[]).filter(d=>d.gender===s.gender)
+      _openAdvisorVoteModal(s, genderDesigns, open, async(designId)=>{
+        const {error}=await supabase.rpc('advisor_cast_shirt_vote_for_student',{p_event:event.id,p_student:sid,p_design:designId})
+        if(error){toast(error.message,'error');return}
+        toast(`บันทึกโหวตแทน ${s.full_name} แล้ว`)
+        renderAdvisorStudents(teacher,rooms,'vote')
+      })
+    }))
+  } catch(e){console.error(e);body.innerHTML=missing()}
+}
+
+function _openAdvisorVoteModal(student,designs,open,onPick) {
+  document.getElementById('advisor-vote-modal')?.remove()
+  const m=document.createElement('div'); m.id='advisor-vote-modal'; m.className='fixed inset-0 z-[340] bg-black/50 flex items-center justify-center p-4'
+  m.innerHTML=`
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto p-5">
+      <div class="flex items-center justify-between mb-4"><h3 class="font-bold text-gray-800 text-sm">โหวตแทน ${esc(student.full_name)}</h3><button id="btn-advisor-vote-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button></div>
+      ${designs.length?`<div class="grid grid-cols-2 gap-3">${designs.map(d=>{
+        const colors=d.sports_shirt_design_colors||[]
+        const pick=colors.find(c=>c.image_url)
+        return `<button data-advisor-pick-design="${d.id}" ${open?'':'disabled'} class="border rounded-2xl p-2 text-left hover:border-indigo-400 transition ${open?'':'opacity-50 cursor-not-allowed'}">
+          ${pick?.image_url?`<img src="${esc(pick.image_url)}" class="w-full h-24 object-contain bg-gray-50 rounded-xl border mb-1">`:'<div class="w-full h-24 bg-gray-50 rounded-xl border grid place-items-center text-gray-300 text-2xl mb-1">👕</div>'}
+          <p class="text-xs font-bold text-gray-700 text-center">${esc(d.name||`แบบที่ ${d.design_no}`)}</p>
+        </button>`
+      }).join('')}</div>`:'<p class="text-xs text-gray-400 text-center py-6">ยังไม่มีแบบเสื้อของเพศนักเรียนคนนี้</p>'}
+    </div>
+  `
+  document.body.appendChild(m)
+  m.querySelector('#btn-advisor-vote-close').onclick=()=>m.remove()
+  m.addEventListener('click',e=>{if(e.target===m)m.remove()})
+  m.querySelectorAll('[data-advisor-pick-design]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!open)return
+    m.querySelectorAll('[data-advisor-pick-design]').forEach(x=>x.disabled=true)
+    await onPick(b.dataset.advisorPickDesign)
+    m.remove()
+  }))
 }
 
 export async function renderShirtSummary() {
