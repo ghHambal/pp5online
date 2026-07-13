@@ -764,15 +764,15 @@ function _getCSS() {
     .voc-attendance .voc-h-sub { height: 7mm; }
     .voc-attendance .voc-h-num { height: 6mm; }
     .voc-attendance tbody td { height: 4.55mm; }
-    .voc-attendance .voc-student-no { width: 5mm; text-align: center; }
-    .voc-attendance .voc-student-id { width: 21mm; text-align: center; }
-    .voc-attendance .voc-student-name { width: 47mm; padding-left: 1mm; }
-    .voc-attendance .voc-att { width: 3.55mm; text-align: center; }
-    .voc-attendance .voc-att-total { width: 7mm; text-align: center; }
-    .voc-attendance .voc-score { width: 13mm; text-align: center; }
-    .voc-attendance .voc-sched-week { width: 8.2mm; text-align: center; }
-    .voc-attendance .voc-sched-period { width: 8.2mm; text-align: center; }
-    .voc-attendance .voc-sched-date { width: 15mm; text-align: center; }
+    .voc-attendance .voc-student-no { width: 4.3mm; text-align: center; }
+    .voc-attendance .voc-student-id { width: 18mm; text-align: center; }
+    .voc-attendance .voc-student-name { width: 40mm; padding-left: 1mm; }
+    .voc-attendance .voc-att { width: 3.05mm; text-align: center; }
+    .voc-attendance .voc-att-total { width: 6mm; text-align: center; }
+    .voc-attendance .voc-score { width: 11mm; text-align: center; }
+    .voc-attendance .voc-sched-week { width: 7mm; text-align: center; }
+    .voc-attendance .voc-sched-period { width: 7mm; text-align: center; }
+    .voc-attendance .voc-sched-date { width: 13mm; text-align: center; }
     .voc-attendance .voc-instruction { padding: .6mm 1mm; line-height: 1.1; }
     .voc-attendance .voc-blue { color: #005bbb; font-weight: 700; }
     .voc-attendance .voc-red { color: #d00; font-weight: 700; }
@@ -1720,47 +1720,84 @@ function _buildPage1VOC(d) {
 }
 
 const ROWS_PER_ATT_PAGE_VOC = 40
+const SCHED_COLS_VOC = 2
 
-function _buildAttPageVOC(d, chunk, startNo) {
-  const { cls } = d
-  const CHANCES = 20
-
-  const rows = chunk.map((st, idx) => {
-    const stAtt = d.attMap[st.id] ?? {}
-    const absent = []
-    for (const [sessNum, status] of Object.entries(stAtt)) {
-      if (status !== 'present') absent.push({ n: parseInt(sessNum), status })
-    }
-    absent.sort((a, b) => a.n - b.n)
-    const total = absent.length
-    const cells = Array.from({ length: CHANCES }, (_, ci) => {
-      const entry = absent[ci]
-      if (!entry) return '<td></td>'
-      const color = entry.status === 'absent' ? '#d00' : entry.status === 'leave' ? '#005bbb' : '#e67e00'
-      return `<td style="color:${color};font-weight:700;">${entry.n}</td>`
+// ตาราง "สัปดาห์ที่/คาบ/วันที่สอน" จับคู่ 2 คอลัมน์ตามไฟล์อ้างอิงจริง — คำนวณ rowspan สัปดาห์แบบเดียวกับ _buildPage5
+function _buildAttScheduleGrid(sessions, perWeek) {
+  const N = Math.ceil((sessions?.length || 0) / SCHED_COLS_VOC)
+  const colData = Array.from({length: SCHED_COLS_VOC}, (_, ci) =>
+    Array.from({length: N}, (_, ri) => {
+      const sess = sessions[ci * N + ri]
+      return sess ? { sess, week: Math.ceil(sess.n / perWeek) } : null
     })
-    return `<tr>
-      <td class="voc-student-no voc-center">${startNo + idx}</td>
-      <td class="voc-student-id voc-center">${_esc(st.student_code??'')}</td>
-      <td class="voc-student-name">${_esc(st.full_name??'')}</td>
-      ${cells.join('')}
-      <td class="voc-att-total voc-center voc-bold">${total || ''}</td>
-    </tr>`
+  )
+  const colRS = colData.map(col =>
+    col.map((item, ri) => {
+      if (!item) return null
+      if (ri > 0 && col[ri - 1]?.week === item.week) return 0
+      let span = 1
+      for (let r = ri + 1; r < N && col[r]?.week === item.week; r++) span++
+      return span
+    })
+  )
+  return { N, colData, colRS }
+}
+
+function _buildAttPageVOC(d, chunk, startNo, schedGrid, rowOffset) {
+  const { holidaySet } = d
+  const CHANCES = 20
+  const { colData, colRS } = schedGrid
+  const totalRows = Math.max(ROWS_PER_ATT_PAGE_VOC, colData[0]?.length ?? 0) - rowOffset
+
+  const rows = Array.from({ length: Math.min(ROWS_PER_ATT_PAGE_VOC, Math.max(0, totalRows)) }, (_, ri) => {
+    const st = chunk[ri]
+    let studentCells
+    if (st) {
+      const stAtt = d.attMap[st.id] ?? {}
+      const absent = []
+      for (const [sessNum, status] of Object.entries(stAtt)) {
+        if (status !== 'present') absent.push({ n: parseInt(sessNum), status })
+      }
+      absent.sort((a, b) => a.n - b.n)
+      const total = absent.length
+      const cells = Array.from({ length: CHANCES }, (_, ci) => {
+        const entry = absent[ci]
+        if (!entry) return '<td></td>'
+        const color = entry.status === 'absent' ? '#d00' : entry.status === 'leave' ? '#005bbb' : '#e67e00'
+        return `<td style="color:${color};font-weight:700;">${entry.n}</td>`
+      })
+      studentCells = `
+        <td class="voc-student-no voc-center">${startNo + ri}</td>
+        <td class="voc-student-id voc-center">${_esc(st.student_code??'')}</td>
+        <td class="voc-student-name">${_esc(st.full_name??'')}</td>
+        ${cells.join('')}
+        <td class="voc-att-total voc-center voc-bold">${total || ''}</td>`
+    } else {
+      studentCells = `
+        <td class="voc-student-no"></td><td class="voc-student-id"></td><td class="voc-student-name"></td>
+        ${Array.from({length: CHANCES}, () => '<td></td>').join('')}
+        <td class="voc-att-total"></td>`
+    }
+
+    const gi = rowOffset + ri
+    const schedCells = Array.from({ length: SCHED_COLS_VOC }, (_, ci) => {
+      const item = colData[ci][gi]
+      const rs   = colRS[ci][gi]
+      if (!item) return `<td class="voc-sched-week"></td><td class="voc-sched-period"></td><td class="voc-sched-date"></td>`
+      const wkCell = rs === 0 ? '' : `<td class="voc-sched-week voc-center" rowspan="${rs}">${item.week}</td>`
+      const isHol = holidaySet?.has(item.sess.ds)
+      return `${wkCell}<td class="voc-sched-period voc-center">${item.sess.n}</td><td class="voc-sched-date voc-center" style="${isHol ? 'color:#c00;font-weight:700;' : ''}">${_fmtDateTH(item.sess.ds)}</td>`
+    }).join('')
+
+    return `<tr>${studentCells}${schedCells}</tr>`
   })
-  // เติมแถวว่างให้ครบ ROWS_PER_ATT_PAGE_VOC เหมือนแบบฟอร์มกระดาษต้นฉบับ
-  const blankRow = `<tr>
-    <td class="voc-student-no"></td><td class="voc-student-id"></td><td class="voc-student-name"></td>
-    ${Array.from({length: CHANCES}, () => '<td></td>').join('')}
-    <td class="voc-att-total"></td>
-  </tr>`
-  const padded = rows.concat(Array(Math.max(0, ROWS_PER_ATT_PAGE_VOC - rows.length)).fill(blankRow))
 
   const chanceHeaders = Array.from({ length: CHANCES }, (_, i) => `<th class="voc-att">${i+1}</th>`).join('')
 
   return `
   <section class="voc-page">
     <div class="voc-page-inner voc-p2">
-      <div class="voc-p2-title">แบบบันทึกการไม่มาเรียนของนักเรียนชั้น ${_esc(_shortRoom(cls.class_name))}</div>
+      <div class="voc-p2-title">แบบบันทึกการไม่มาเรียน</div>
       <table class="voc-attendance">
         <thead>
           <tr class="voc-h-main">
@@ -1773,12 +1810,23 @@ function _buildAttPageVOC(d, chunk, startNo) {
               นักเรียนที่ลากิจใช้ตัวเลข<span class="voc-blue">สีน้ำเงิน</span> และนักเรียนที่ป่วยใช้ตัวเลขสีส้ม
             </th>
             <th rowspan="2" class="voc-score">สรุปคะแนน<br>มาเรียน</th>
+            <th colspan="${SCHED_COLS_VOC * 3}">สัปดาห์ที่/คาบ/วันที่สอน</th>
           </tr>
-          <tr class="voc-h-sub"><th colspan="${CHANCES}">บันทึกการไม่มาเรียน</th></tr>
-          <tr class="voc-h-num">${chanceHeaders}</tr>
+          <tr class="voc-h-sub">
+            <th colspan="${CHANCES}">บันทึกการไม่มาเรียน</th>
+            ${Array.from({length: SCHED_COLS_VOC}, () => `<th colspan="3"></th>`).join('')}
+          </tr>
+          <tr class="voc-h-num">
+            ${chanceHeaders}
+            <th class="voc-score">10</th>
+            ${Array.from({length: SCHED_COLS_VOC}, () => `
+              <th class="voc-sched-week"><div class="voc-vtext">สัปดาห์ที่</div></th>
+              <th class="voc-sched-period"><div class="voc-vtext">คาบ</div></th>
+              <th class="voc-sched-date"><div class="voc-vtext">ว/ด/ป</div></th>`).join('')}
+          </tr>
         </thead>
         <tbody>
-          ${padded.join('')}
+          ${rows.join('')}
         </tbody>
       </table>
     </div>
@@ -1786,41 +1834,52 @@ function _buildAttPageVOC(d, chunk, startNo) {
 }
 
 function _buildPage2VOC(d) {
-  // รวม "บันทึกการไม่มาเรียน" (โครงตามไฟล์อ้างอิงจริง — ครั้งที่ 1-20) + "วันที่สอน"
-  // (reuse _buildPage5 เดิม เพราะรองรับจำนวนคาบ/สัปดาห์เท่าไหร่ก็ได้ ต่างจากตารางในไฟล์อ้างอิงที่จำกัดแค่ 40 ช่อง)
-  const { students } = d
+  // รวม "บันทึกการไม่มาเรียน" (ครั้งที่ 1-20) + "สัปดาห์ที่/คาบ/วันที่สอน" ไว้ในตารางเดียวกัน ตามไฟล์อ้างอิงจริง
+  const { students, sessions } = d
+  const perWeek = sessions?.length ? Math.round(sessions.length / 20) : 1
+  const schedGrid = _buildAttScheduleGrid(sessions, perWeek)
+  const totalRows = Math.max(ROWS_PER_ATT_PAGE_VOC, schedGrid.N)
+
   const pages = []
-  for (let si = 0; si < students.length; si += ROWS_PER_ATT_PAGE_VOC) {
-    pages.push(_buildAttPageVOC(d, students.slice(si, si + ROWS_PER_ATT_PAGE_VOC), si + 1))
+  for (let ro = 0; ro < totalRows; ro += ROWS_PER_ATT_PAGE_VOC) {
+    const si = ro // เลขที่นักเรียนกับแถวตารางเดินคู่กัน (1 แถว = 1 คน)
+    pages.push(_buildAttPageVOC(d, students.slice(si, si + ROWS_PER_ATT_PAGE_VOC), si + 1, schedGrid, ro))
   }
-  return pages.join('') + _buildPage5(d)
+  return pages.join('')
 }
 
 const ROWS_PER_EVAL_PAGE_VOC = 34
-const OBJ_SLOTS_VOC = 8
 
+// หน้าคะแนน ACDMVOC ยึดคอลัมน์คะแนนจริงตาม assignment_type แบบเดียวกับระบบบันทึกคะแนน
+// (กลางภาค/ปลายภาค — ดู _buildScorePage เดิม) ไม่ hardcode "จุดประสงค์ 1-8" เพราะแต่ละวิชาตั้งจำนวน/คะแนนเต็มต่างกันได้
 function _buildScorePageVOC(d, chunk, startNo) {
-  const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap } = d
-  const objCols  = scoreColumns.slice(0, OBJ_SLOTS_VOC)
-  const moralCol = scoreColumns.find(c => (c.assignment_name ?? '').includes('คุณธรรม') || (c.assignment_name ?? '').includes('จิตพิสัย'))
-  const objMax   = objCols.reduce((s,c) => s + (c.max_score ?? 0), 0)
-  const moralMax = moralCol?.max_score ?? 0
+  const { cls, teacher, deptHeadName, scoreColumns, scoreMap } = d
+  const _isFinal    = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
+  const _isSpecial  = c => c.assignment_type === 'คะแนนพิเศษ'
+  const midCols     = scoreColumns.filter(c => !_isFinal(c) && !_isSpecial(c))
+  const specialCols = scoreColumns.filter(c => _isSpecial(c))
+  const finalCols   = scoreColumns.filter(c => _isFinal(c))
+  const midMax      = midCols.reduce((s,c) => s + (c.max_score ?? 0), 0)
+  const finalMax    = finalCols.reduce((s,c) => s + (c.max_score ?? 0), 0)
   const _hideScores = !!window._pp5HideScores
 
   const rows = chunk.map((st, idx) => {
     if (_hideScores) {
       return `<tr>
         <td class="voc-center">${startNo+idx}</td><td class="voc-c-id"></td><td class="voc-c-name"></td>
-        ${Array(OBJ_SLOTS_VOC).fill('<td></td>').join('')}
-        <td></td><td></td><td></td><td></td><td></td>
+        ${Array(midCols.length).fill('<td></td>').join('')}<td></td>
+        ${Array(finalCols.length).fill('<td></td>').join('')}<td></td>
+        <td></td><td></td><td></td>
       </tr>`
     }
     const sc = scoreMap[st.id] ?? {}
-    const objScores = objCols.map(c => sc[c.id] ?? '')
-    const objSum    = objCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
-    const moralScore = moralCol ? (sc[moralCol.id] ?? '') : ''
-    const total = objSum + (Number(moralScore) || 0)
-    const denom = objMax + moralMax
+    const midScores   = midCols.map(c => sc[c.id] ?? '')
+    const finalScores = finalCols.map(c => sc[c.id] ?? '')
+    const midSum   = midCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
+              + specialCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
+    const finalSum = finalCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
+    const total = midSum + finalSum
+    const denom = midMax + finalMax
     const grade = (st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result))
       ? st.special_result
       : _calcGrade(denom ? (total / denom) * 100 : 0)
@@ -1828,16 +1887,17 @@ function _buildScorePageVOC(d, chunk, startNo) {
       <td class="voc-center">${startNo+idx}</td>
       <td class="voc-c-id voc-center">${_esc(st.student_code??'')}</td>
       <td class="voc-c-name">${_esc(st.full_name??'')}</td>
-      ${objScores.map(v=>`<td class="voc-center">${v}</td>`).join('')}
-      ${Array(OBJ_SLOTS_VOC - objCols.length).fill('<td></td>').join('')}
-      <td class="voc-center voc-bold">${objSum||''}</td>
-      <td class="voc-center">${moralScore}</td>
+      ${midScores.map(v=>`<td class="voc-center">${v}</td>`).join('')}
+      <td class="voc-center voc-bold">${midSum||''}</td>
+      ${finalScores.map(v=>`<td class="voc-center">${v}</td>`).join('')}
+      <td class="voc-center voc-bold">${finalSum||''}</td>
       <td class="voc-center voc-bold">${total||''}</td>
       <td class="voc-center voc-bold">${grade}</td>
       <td></td>
     </tr>`
   })
-  const blankRow = `<tr><td class="voc-center"></td><td></td><td></td>${Array(OBJ_SLOTS_VOC).fill('<td></td>').join('')}<td></td><td></td><td></td><td></td><td></td></tr>`
+  const blankCols = midCols.length + 1 + finalCols.length + 1 + 3
+  const blankRow = `<tr><td class="voc-center"></td><td></td><td></td>${Array(blankCols).fill('<td></td>').join('')}</tr>`
   const padded = rows.concat(Array(Math.max(0, ROWS_PER_EVAL_PAGE_VOC - rows.length)).fill(blankRow))
 
   return `
@@ -1850,19 +1910,22 @@ function _buildScorePageVOC(d, chunk, startNo) {
             <th rowspan="3" class="voc-c-no"><div class="voc-vtext">เลขที่</div></th>
             <th rowspan="3" class="voc-c-id">เลข<br>ประจำตัว</th>
             <th rowspan="3" class="voc-c-name">ชื่อ - สกุล</th>
-            <th colspan="${OBJ_SLOTS_VOC}">คะแนนประเมินตาม<br>สภาพจริงตลอดภาคเรียน</th>
-            <th rowspan="2" class="voc-c-sum80"><div class="voc-vtext">รวมคะแนนประเมินตามสภาพจริงตลอดภาคเรียน</div></th>
-            <th rowspan="2" class="voc-c-moral"><div class="voc-vtext">คะแนนคุณธรรม</div></th>
+            <th colspan="${midCols.length + 1}">กลางภาค (เต็ม ${midMax})</th>
+            <th colspan="${finalCols.length + 1}">ปลายภาค (เต็ม ${finalMax})</th>
             <th rowspan="2" class="voc-c-total"><div class="voc-vtext">รวม</div></th>
             <th rowspan="3" class="voc-c-grade"><div class="voc-vtext">ระดับผลการเรียน</div></th>
             <th rowspan="3" class="voc-c-note"><div class="voc-vtext">หมายเหตุ/การสอบแก้ตัว</div></th>
           </tr>
           <tr class="voc-h-vertical">
-            ${Array.from({length:OBJ_SLOTS_VOC}, (_,i) => `<th class="voc-c-obj"><div class="voc-vtext">${_esc(objCols[i]?.assignment_name || `จุดประสงค์ที่ ${i+1}`)}</div></th>`).join('')}
+            ${midCols.map(c => `<th class="voc-c-obj"><div class="voc-vtext">${_esc(c.assignment_name??'')}</div></th>`).join('')}
+            <th class="voc-c-sum80"><div class="voc-vtext">รวมกลางภาค</div></th>
+            ${finalCols.map(c => `<th class="voc-c-obj"><div class="voc-vtext">${_esc(c.assignment_name??'')}</div></th>`).join('')}
+            <th class="voc-c-sum80"><div class="voc-vtext">รวมปลายภาค</div></th>
           </tr>
           <tr class="voc-h-score">
-            ${Array.from({length:OBJ_SLOTS_VOC}, (_,i) => `<th>${objCols[i]?.max_score ?? ''}</th>`).join('')}
-            <th>${objMax||''}</th><th>${moralMax||''}</th><th>${(objMax+moralMax)||''}</th>
+            ${midCols.map(c => `<th>${c.max_score??''}</th>`).join('')}<th>${midMax||''}</th>
+            ${finalCols.map(c => `<th>${c.max_score??''}</th>`).join('')}<th>${finalMax||''}</th>
+            <th>${(midMax+finalMax)||''}</th>
           </tr>
         </thead>
         <tbody>${padded.join('')}</tbody>
