@@ -2015,7 +2015,15 @@ function _buildPage3VOC(d) {
 }
 
 function _buildPage4VOC(d) {
-  const { ms, teacher } = d
+  const { ms, teacher, courseDoc } = d
+
+  // ครูกรอกในหน้า "ตั้งค่าคำอธิบายรายวิชา" (subject_group === 'ACDMVOC') — ถ้ายังไม่กรอก
+  // เติมแถวว่างขั้นต่ำไว้ก่อนเหมือนฟอร์มกระดาษเดิม (10 แถว/23 แถว) ไม่จำกัดเพดานบน
+  const objRows = Array.isArray(courseDoc?.voc_objectives) ? courseDoc.voc_objectives : []
+  const schedRows = Array.isArray(courseDoc?.voc_schedule) ? courseDoc.voc_schedule : []
+  const objPadded = objRows.concat(Array.from({ length: Math.max(0, 10 - objRows.length) }, () => ({ objective: '', competency: '' })))
+  const schedPadded = schedRows.concat(Array.from({ length: Math.max(0, 23 - schedRows.length) }, () => ({ week: '', content: '', note: '' })))
+
   return `
   <section class="voc-page">
     <div class="voc-page-inner voc-p4">
@@ -2023,13 +2031,13 @@ function _buildPage4VOC(d) {
       <div class="voc-course-code">รหัสวิชา ${_esc(ms.subject_code??'')}</div>
       <table class="voc-objective-table">
         <thead><tr><th>จุดประสงค์การเรียนรู้</th><th>สมรรถนะรายวิชา</th></tr></thead>
-        <tbody>${Array.from({length:10},()=>`<tr><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</tbody>
+        <tbody>${objPadded.map(r => `<tr><td>${_esc(r.objective) || '&nbsp;'}</td><td>${_esc(r.competency) || '&nbsp;'}</td></tr>`).join('')}</tbody>
       </table>
       <div class="voc-schedule-title">กำหนดการสอน</div>
       <table class="voc-schedule-table">
         <colgroup><col style="width:13%"><col style="width:69%"><col style="width:18%"></colgroup>
         <thead><tr><th>สัปดาห์ที่</th><th>เนื้อหาที่สอน</th><th>หมายเหตุ</th></tr></thead>
-        <tbody>${Array.from({length:23},()=>`<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</tbody>
+        <tbody>${schedPadded.map(r => `<tr><td>${_esc(r.week) || '&nbsp;'}</td><td>${_esc(r.content) || '&nbsp;'}</td><td>${_esc(r.note) || '&nbsp;'}</td></tr>`).join('')}</tbody>
       </table>
       <div class="voc-sign-bottom">ลงชื่อ <span class="voc-sig-line"></span> ครูผู้สอนประจำวิชา<br><br>( ${_esc(teacher?.full_name??'')} )</div>
     </div>

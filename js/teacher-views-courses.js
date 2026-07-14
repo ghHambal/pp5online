@@ -271,6 +271,16 @@ export async function openCourseDocPage2Modal(teacher, course) {
   const uniqueInts = value => [...new Set((Array.isArray(value) ? value : [])
     .map(n => parseInt(n, 10)).filter(n => Number.isFinite(n) && n > 0))]
 
+  // สามัญปวช. (ACDMVOC): เอกสารหน้า 4 ต้องการ "จุดประสงค์การเรียนรู้/สมรรถนะรายวิชา" + "กำหนดการสอน"
+  // ซึ่งเป็นโครงตารางคนละแบบกับ table_columns/table_rows เดิม (ใช้กับหน้า 2 ของสามัญเท่านั้น)
+  const isVOC = course.subject_group === 'ACDMVOC'
+  const normalizeVocRows = (value, fields, minCount) => {
+    const arr = Array.isArray(value) ? value : []
+    const fixed = arr.map(row => Object.fromEntries(fields.map(f => [f, String(row?.[f] ?? '')])))
+    while (fixed.length < minCount) fixed.push(Object.fromEntries(fields.map(f => [f, ''])))
+    return fixed
+  }
+
   let columns = normalizeColumns(existing?.table_columns)
   let rows = normalizeRows(existing?.table_rows, columns.length)
   let midItems     = uniqueInts(existing?.midterm_objective_items)
@@ -283,6 +293,8 @@ export async function openCourseDocPage2Modal(teacher, course) {
   let description  = existing?.description || ''
   let signerName   = existing?.signer_name || course.learning_area || ''
   let topicList    = existing?.topic_list?.length ? existing.topic_list : ['']  // หลายบท
+  let vocObjectives = normalizeVocRows(existing?.voc_objectives, ['objective', 'competency'], 10)
+  let vocSchedule    = normalizeVocRows(existing?.voc_schedule, ['week', 'content', 'note'], 20)
   let aiStatusText = ''
   let lang = 'th'
   // DB settings override hardcoded defaults (pickerTitles merges separately)
@@ -440,6 +452,88 @@ export async function openCourseDocPage2Modal(teacher, course) {
             </div>
           </div>
 
+          ${isVOC ? `
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-5">
+            <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div>
+                <h3 class="font-bold text-gray-800">จุดประสงค์การเรียนรู้และสมรรถนะรายวิชา</h3>
+                <p class="text-xs text-gray-400 mt-0.5">แสดงในเอกสาร ปพ.5 หน้า 4</p>
+              </div>
+              <button id="cd2-voc-obj-add-row" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">+ เพิ่มแถว</button>
+            </div>
+            <div class="overflow-auto">
+              <table class="w-full min-w-[560px] border-collapse text-sm">
+                <thead>
+                  <tr class="bg-gray-50">
+                    <th class="w-10 px-2 py-2 border border-gray-100 text-gray-500">#</th>
+                    <th class="px-2 py-2 border border-gray-100">จุดประสงค์การเรียนรู้</th>
+                    <th class="px-2 py-2 border border-gray-100">สมรรถนะรายวิชา</th>
+                    <th class="w-14 px-2 py-2 border border-gray-100"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${vocObjectives.map((row, r) => `
+                    <tr>
+                      <td class="px-2 py-2 border border-gray-100 text-center text-gray-500">${r + 1}</td>
+                      <td class="p-1 border border-gray-100 align-top">
+                        <textarea data-voc-obj-row="${r}" data-voc-obj-field="objective" rows="2"
+                          class="cd2-voc-obj-cell w-full resize-y rounded-lg border border-transparent px-3 py-2 text-sm leading-6 focus:border-emerald-300 focus:outline-none">${_htmlEsc(row.objective)}</textarea>
+                      </td>
+                      <td class="p-1 border border-gray-100 align-top">
+                        <textarea data-voc-obj-row="${r}" data-voc-obj-field="competency" rows="2"
+                          class="cd2-voc-obj-cell w-full resize-y rounded-lg border border-transparent px-3 py-2 text-sm leading-6 focus:border-emerald-300 focus:outline-none">${_htmlEsc(row.competency)}</textarea>
+                      </td>
+                      <td class="px-2 py-2 border border-gray-100 text-center">
+                        <button data-voc-obj-del-row="${r}" class="cd2-voc-obj-del-row text-xs text-red-400 hover:text-red-600">ลบ</button>
+                      </td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-5">
+            <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div>
+                <h3 class="font-bold text-gray-800">กำหนดการสอน</h3>
+                <p class="text-xs text-gray-400 mt-0.5">แสดงในเอกสาร ปพ.5 หน้า 4</p>
+              </div>
+              <button id="cd2-voc-sch-add-row" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">+ เพิ่มแถว</button>
+            </div>
+            <div class="overflow-auto">
+              <table class="w-full min-w-[560px] border-collapse text-sm">
+                <thead>
+                  <tr class="bg-gray-50">
+                    <th class="w-20 px-2 py-2 border border-gray-100">สัปดาห์ที่</th>
+                    <th class="px-2 py-2 border border-gray-100">เนื้อหาที่สอน</th>
+                    <th class="w-40 px-2 py-2 border border-gray-100">หมายเหตุ</th>
+                    <th class="w-14 px-2 py-2 border border-gray-100"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${vocSchedule.map((row, r) => `
+                    <tr>
+                      <td class="p-1 border border-gray-100">
+                        <input data-voc-sch-row="${r}" data-voc-sch-field="week"
+                          class="cd2-voc-sch-cell w-full rounded-lg border border-transparent px-2 py-2 text-sm text-center focus:border-emerald-300 focus:outline-none" value="${_htmlEsc(row.week)}" />
+                      </td>
+                      <td class="p-1 border border-gray-100">
+                        <textarea data-voc-sch-row="${r}" data-voc-sch-field="content" rows="1"
+                          class="cd2-voc-sch-cell w-full resize-y rounded-lg border border-transparent px-3 py-2 text-sm leading-6 focus:border-emerald-300 focus:outline-none">${_htmlEsc(row.content)}</textarea>
+                      </td>
+                      <td class="p-1 border border-gray-100">
+                        <input data-voc-sch-row="${r}" data-voc-sch-field="note"
+                          class="cd2-voc-sch-cell w-full rounded-lg border border-transparent px-2 py-2 text-sm focus:border-emerald-300 focus:outline-none" value="${_htmlEsc(row.note)}" />
+                      </td>
+                      <td class="px-2 py-2 border border-gray-100 text-center">
+                        <button data-voc-sch-del-row="${r}" class="cd2-voc-sch-del-row text-xs text-red-400 hover:text-red-600">ลบ</button>
+                      </td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          ` : `
           <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
             <div class="px-4 sm:px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
               <div>
@@ -504,6 +598,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
             </div>
             ${opts.length ? '' : `<p class="text-xs text-amber-600 mt-3">${L.noOpts}</p>`}
           </div>
+          `}
         </div>
       </div>`
 
@@ -524,6 +619,18 @@ export async function openCourseDocPage2Modal(teacher, course) {
       const c = Number(input.dataset.cell)
       if (!rows[r]) rows[r] = Array.from({ length: columns.length }, () => '')
       rows[r][c] = input.value
+    })
+    modal.querySelectorAll('.cd2-voc-obj-cell').forEach(input => {
+      const r = Number(input.dataset.vocObjRow)
+      const f = input.dataset.vocObjField
+      if (!vocObjectives[r]) vocObjectives[r] = { objective: '', competency: '' }
+      vocObjectives[r][f] = input.value
+    })
+    modal.querySelectorAll('.cd2-voc-sch-cell').forEach(input => {
+      const r = Number(input.dataset.vocSchRow)
+      const f = input.dataset.vocSchField
+      if (!vocSchedule[r]) vocSchedule[r] = { week: '', content: '', note: '' }
+      vocSchedule[r][f] = input.value
     })
     return { desc: description, signer: signerName }
   }
@@ -822,19 +929,19 @@ Output language: ${L.aiLang}
       if (!rows.length) rows = Array.from({ length: 12 }, () => Array.from({ length: columns.length }, () => ''))
       render()
     }
-    modal.querySelector('#cd2-template-basic').addEventListener('click', () => {
+    modal.querySelector('#cd2-template-basic')?.addEventListener('click', () => {
       applyTemplate(L.colsBasic)
     })
-    modal.querySelector('#cd2-template-extra').addEventListener('click', () => {
+    modal.querySelector('#cd2-template-extra')?.addEventListener('click', () => {
       applyTemplate(L.colsExtra)
     })
-    modal.querySelector('#cd2-add-col').addEventListener('click', () => {
+    modal.querySelector('#cd2-add-col')?.addEventListener('click', () => {
       syncFromDom()
       columns.push(L.colNew(columns.length + 1))
       rows = rows.map(row => [...row, ''])
       render()
     })
-    modal.querySelector('#cd2-add-row').addEventListener('click', () => {
+    modal.querySelector('#cd2-add-row')?.addEventListener('click', () => {
       syncFromDom()
       rows.push(Array.from({ length: columns.length }, () => ''))
       render()
@@ -854,9 +961,31 @@ Output language: ${L.aiLang}
       midItems = adj(midItems); betweenItems = adj(betweenItems); finalItems = adj(finalItems)
       render()
     }))
-    modal.querySelector('#cd2-pick-mid').addEventListener('click',     () => openPicker('mid'))
-    modal.querySelector('#cd2-pick-between').addEventListener('click', () => openPicker('between'))
-    modal.querySelector('#cd2-pick-final').addEventListener('click',   () => openPicker('final'))
+    modal.querySelector('#cd2-pick-mid')?.addEventListener('click',     () => openPicker('mid'))
+    modal.querySelector('#cd2-pick-between')?.addEventListener('click', () => openPicker('between'))
+    modal.querySelector('#cd2-pick-final')?.addEventListener('click',   () => openPicker('final'))
+
+    // ── สามัญปวช.: จุดประสงค์/สมรรถนะ + กำหนดการสอน เพิ่ม/ลบแถว ─────────────────
+    modal.querySelector('#cd2-voc-obj-add-row')?.addEventListener('click', () => {
+      syncFromDom()
+      vocObjectives.push({ objective: '', competency: '' })
+      render()
+    })
+    modal.querySelectorAll('.cd2-voc-obj-del-row').forEach(btn => btn.addEventListener('click', () => {
+      syncFromDom()
+      vocObjectives.splice(Number(btn.dataset.vocObjDelRow), 1)
+      render()
+    }))
+    modal.querySelector('#cd2-voc-sch-add-row')?.addEventListener('click', () => {
+      syncFromDom()
+      vocSchedule.push({ week: String(vocSchedule.length + 1), content: '', note: '' })
+      render()
+    })
+    modal.querySelectorAll('.cd2-voc-sch-del-row').forEach(btn => btn.addEventListener('click', () => {
+      syncFromDom()
+      vocSchedule.splice(Number(btn.dataset.vocSchDelRow), 1)
+      render()
+    }))
 
     // ── topic เพิ่ม/ลบ ─────────────────────────────────────────────────────
     modal.querySelector('#cd2-add-topic').addEventListener('click', () => {
@@ -890,6 +1019,8 @@ Output language: ${L.aiLang}
           midterm_objective_extra: midExtra,
           between_objective_extra: betweenExtra,
           final_objective_extra: finalExtra,
+          voc_objectives: vocObjectives,
+          voc_schedule: vocSchedule,
           signer_name: signer.trim() || null,
           text_direction: textDir,
           updated_by: teacher?.id ?? null,
