@@ -799,19 +799,20 @@ function _getCSS() {
     .voc-p3-title { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 3mm; }
     .voc-eval { font-size: 10.5px; }
     .voc-eval th { font-weight: 400; line-height: 1.25; text-align: center; }
-    .voc-eval .voc-h-top { height: 7mm; }
-    .voc-eval .voc-h-vertical { height: 9mm; }
-    .voc-eval .voc-h-score { height: 4.5mm; }
+    .voc-eval .voc-h-top { height: 10mm; }
+    .voc-eval .voc-h-vertical { height: 14mm; }
+    .voc-eval .voc-h-score { height: 5mm; }
+    .voc-eval .voc-vtext { line-height: 1.35; }
     .voc-eval tbody td { height: 4.8mm; }
-    .voc-eval .voc-c-no { width: 6.5mm; text-align: center; }
-    .voc-eval .voc-c-id { width: 26mm; text-align: center; }
-    .voc-eval .voc-c-name { width: 58mm; padding-left: 1mm; }
-    .voc-eval .voc-c-obj { width: 9.2mm; text-align: center; word-break: break-word; }
-    .voc-eval .voc-c-sum80 { width: 12.5mm; text-align: center; }
-    .voc-eval .voc-c-moral { width: 12.5mm; text-align: center; }
-    .voc-eval .voc-c-total { width: 12.5mm; text-align: center; }
-    .voc-eval .voc-c-grade { width: 14mm; text-align: center; }
-    .voc-eval .voc-c-note { width: 14mm; text-align: center; }
+    .voc-eval .voc-c-no { width: 5mm; text-align: center; }
+    .voc-eval .voc-c-id { width: 19.5mm; text-align: center; }
+    .voc-eval .voc-c-name { width: 43.5mm; padding-left: 1mm; }
+    .voc-eval .voc-c-obj { width: 7mm; text-align: center; word-break: break-word; }
+    .voc-eval .voc-c-sum80 { width: 9.5mm; text-align: center; }
+    .voc-eval .voc-c-moral { width: 9.5mm; text-align: center; }
+    .voc-eval .voc-c-total { width: 9.5mm; text-align: center; }
+    .voc-eval .voc-c-grade { width: 12.5mm; text-align: center; }
+    .voc-eval .voc-c-note { width: 12.5mm; text-align: center; }
     .voc-p3 .voc-footer-sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 18mm; margin: 7mm 18mm 0; font-size: 13px; }
     .voc-p3 .voc-footer-sigs > div { text-align: center; white-space: nowrap; }
     .voc-p3 .voc-footer-sigs .voc-sig-line { min-width: 38mm !important; }
@@ -1872,6 +1873,17 @@ function _buildPage2VOC(d) {
 
 const ROWS_PER_EVAL_PAGE_VOC = 34
 
+// ตัดชื่อหัวคอลัมน์แนวตั้ง (voc-vtext) ที่ยาวเกินไปให้ขึ้นบรรทัดใหม่ตรงช่องว่างใกล้กึ่งกลาง กันคอลัมน์ต้องสูงมากเกินไป
+function _vsplit(s, max = 8) {
+  const text = _esc(s ?? '')
+  if (text.length <= max) return text
+  const mid = Math.ceil(text.length / 2)
+  let idx = text.lastIndexOf(' ', mid)
+  if (idx <= 0) idx = text.indexOf(' ', mid)
+  if (idx <= 0) return text
+  return `${text.slice(0, idx)}<br>${text.slice(idx + 1)}`
+}
+
 // หน้าคะแนน ACDMVOC: แสดงคอลัมน์คะแนนจริงของวิชาทั้งหมด (ชื่อ+คะแนนเต็มตามที่ครูตั้งไว้จริง) เรียงต่อกัน
 // โดยไม่สนใจว่าเป็นกลางภาคหรือปลายภาค — "คะแนนคุณธรรม" ไม่ได้มาจากคอลัมน์ของวิชานี้ แต่ดึงจากคะแนน
 // "ความสะอาด" ในระบบทักษะชีวิต (ดู moralScores/moralMax ที่ _loadDocData ดึงมาให้แล้ว)
@@ -1923,25 +1935,25 @@ function _buildScorePageVOC(d, chunk, startNo) {
       <div class="voc-p3-title">แบบประเมินผลการเรียน</div>
       <table class="voc-eval">
         <colgroup>
-          <col style="width:6.5mm"><col style="width:26mm"><col style="width:58mm">
-          ${objCols.map(() => '<col style="width:9.2mm">').join('')}
-          <col style="width:12.5mm"><col style="width:12.5mm"><col style="width:12.5mm">
-          <col style="width:14mm"><col style="width:14mm">
+          <col style="width:5mm"><col style="width:19.5mm"><col style="width:43.5mm">
+          ${objCols.map(() => '<col style="width:7mm">').join('')}
+          <col style="width:9.5mm"><col style="width:9.5mm"><col style="width:9.5mm">
+          <col style="width:12.5mm"><col style="width:12.5mm">
         </colgroup>
         <thead>
           <tr class="voc-h-top">
-            <th rowspan="3" class="voc-c-no">เลขที่</th>
+            <th rowspan="3" class="voc-c-no"><div class="voc-vtext">เลขที่</div></th>
             <th rowspan="3" class="voc-c-id">เลข<br>ประจำตัว</th>
             <th rowspan="3" class="voc-c-name">ชื่อ - สกุล</th>
             <th colspan="${objCols.length + 1}">คะแนนเก็บ (เต็ม ${objMax})</th>
-            <th rowspan="2" class="voc-c-moral">คะแนนคุณธรรม${moralColName ? `<br>(${_esc(moralColName)})` : ''}</th>
-            <th rowspan="2" class="voc-c-total">รวม</th>
-            <th rowspan="3" class="voc-c-grade">ระดับ<br>ผลการเรียน</th>
-            <th rowspan="3" class="voc-c-note">หมายเหตุ/<br>การสอบแก้ตัว</th>
+            <th rowspan="2" class="voc-c-moral"><div class="voc-vtext">คะแนนคุณธรรม${moralColName ? `<br>(${_esc(moralColName)})` : ''}</div></th>
+            <th rowspan="2" class="voc-c-total"><div class="voc-vtext">รวม</div></th>
+            <th rowspan="3" class="voc-c-grade"><div class="voc-vtext">ระดับผล<br>การเรียน</div></th>
+            <th rowspan="3" class="voc-c-note"><div class="voc-vtext">หมายเหตุ/<br>การสอบแก้ตัว</div></th>
           </tr>
           <tr class="voc-h-vertical">
-            ${objCols.map(c => `<th class="voc-c-obj">${_esc(c.assignment_name??'')}</th>`).join('')}
-            <th class="voc-c-sum80">รวม<br>คะแนนเก็บ</th>
+            ${objCols.map(c => `<th class="voc-c-obj"><div class="voc-vtext">${_vsplit(c.assignment_name??'')}</div></th>`).join('')}
+            <th class="voc-c-sum80"><div class="voc-vtext">รวม<br>คะแนนเก็บ</div></th>
           </tr>
           <tr class="voc-h-score">
             ${objCols.map(c => `<th>${c.max_score??''}</th>`).join('')}<th>${objMax||''}</th>
