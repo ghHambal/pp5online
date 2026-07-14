@@ -764,14 +764,14 @@ function _getCSS() {
     .voc-p1 .voc-grade-table th { height: 10mm; font-weight: 400; }
     .voc-p1 .voc-grade-table td { height: 7.5mm; text-align: center; }
     .voc-p1 .voc-grade-table td.voc-remark { text-align: left; padding-left: 2mm; }
-    .voc-p1 .voc-consider { margin: 2.2mm 0 7mm; font-weight: 700; font-size: 15px; }
-    .voc-p1 .voc-sign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm 18mm; margin: 0 5mm; font-size: 14px; }
-    .voc-p1 .voc-sign-block { text-align: center; min-height: 20mm; white-space: nowrap; font-size: 13px; }
+    .voc-p1 .voc-consider { margin: 2mm 0 5mm; font-weight: 700; font-size: 15px; }
+    .voc-p1 .voc-sign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7mm 18mm; margin: 0 5mm; font-size: 14px; }
+    .voc-p1 .voc-sign-block { text-align: center; min-height: 17mm; white-space: nowrap; font-size: 13px; }
     .voc-p1 .voc-sign-block .voc-sig-line { min-width: 38mm !important; }
     .voc-p1 .voc-sign-wide .voc-sig-line { min-width: 45mm !important; }
     .voc-p1 .voc-sign-wide { grid-column: 1 / -1; margin: 0 auto; width: 78%; }
-    .voc-p1 .voc-approve { margin-top: 7mm; text-align: center; font-size: 14.5px; }
-    .voc-p1 .voc-director { margin-top: 8mm; text-align: center; font-size: 14px; }
+    .voc-p1 .voc-approve { margin-top: 5mm; text-align: center; font-size: 14.5px; }
+    .voc-p1 .voc-director { margin-top: 6mm; text-align: center; font-size: 14px; }
 
     /* Page 2 — บันทึกการไม่มาเรียน */
     .voc-p2 { padding: 15mm 6mm 10mm; }
@@ -843,7 +843,7 @@ function _buildPage1(d) {
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
   // ใช้โลโก้ขาวดำสำหรับเอกสาร
-  const logoUrl = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
+  const logoUrl = cfg[`${prefix}LogoBwUrl`] || cfg[`${prefix}LogoUrl`] || cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || ''
 
   const dirName    = _esc(cfg[`${prefix}DirectorName`] ?? '')
   const dirSign    = cfg[`${prefix}DirectorSignUrl`] ?? ''
@@ -1090,7 +1090,7 @@ function _buildPage2(d) {
   const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระฯ'
 
-  const logoUrl  = cfg[`${prefix}LogoBwUrl`] ?? cfg[`${prefix}LogoUrl`] ?? cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
+  const logoUrl  = cfg[`${prefix}LogoBwUrl`] || cfg[`${prefix}LogoUrl`] || cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || ''
   const rawRows = Array.isArray(courseDoc?.table_rows) ? courseDoc.table_rows : []
   // ทิศทางข้อความของเนื้อหา (ตั้งโดยครู)
   const contentDir = courseDoc?.text_direction === 'rtl' ? 'rtl'
@@ -1249,7 +1249,7 @@ function _buildPage3(d) {
 
 function _buildAttPage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, cfg, prefix } = d
-  const logoUrl = cfg?.[`${prefix}LogoBwUrl`] ?? cfg?.[`${prefix}LogoUrl`] ?? cfg?.samaiLogoBwUrl ?? cfg?.samaiLogoUrl ?? ''
+  const logoUrl = cfg?.[`${prefix}LogoBwUrl`] || cfg?.[`${prefix}LogoUrl`] || cfg?.samaiLogoBwUrl || cfg?.samaiLogoUrl || ''
   const ATT_COLS = 40
   // adaptive row height: available ≈ 281 - 40 (header) = 241mm ÷ (n + 1 แถวเปล่า)
   const nRows = chunk.length + 1
@@ -1545,7 +1545,7 @@ function _buildPage5(d) {
   const COLS       = 3
   // ยึดจำนวนคาบ/สัปดาห์จริงจาก sessions (มาจากตารางสอนจริง) ให้ตรงกับตอน generate ใน _generateSessions
   const perWeek    = sessions?.length ? Math.round(sessions.length / 20) : Math.max(1, Math.round(credit * 2))
-  const logoUrl    = cfg?.[`${prefix}LogoBwUrl`] ?? cfg?.[`${prefix}LogoUrl`] ?? cfg?.samaiLogoBwUrl ?? cfg?.samaiLogoUrl ?? ''
+  const logoUrl    = cfg?.[`${prefix}LogoBwUrl`] || cfg?.[`${prefix}LogoUrl`] || cfg?.samaiLogoBwUrl || cfg?.samaiLogoUrl || ''
 
   // แจกคาบลงแต่ละกลุ่ม: col0=คาบ1-40, col1=คาบ41-80, col2=คาบ81-120
   const colData = Array.from({length: COLS}, (_, ci) =>
@@ -1636,7 +1636,7 @@ function _buildPage1VOC(d) {
   const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions, moralScores, moralMax } = d
 
   const schoolName = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
-  const logoUrl = cfg[`${prefix}LogoUrl`] ?? cfg[`${prefix}LogoBwUrl`] ?? cfg.samaiLogoUrl ?? cfg.samaiLogoBwUrl ?? ''
+  const logoUrl = cfg[`${prefix}LogoUrl`] || cfg[`${prefix}LogoBwUrl`] || cfg.samaiLogoUrl || cfg.samaiLogoBwUrl || ''
 
   const dirName  = _esc(cfg[`${prefix}DirectorName`] ?? '')
   const dirTitle = _esc(cfg[`${prefix}DirectorTitle`] || 'ผู้อำนวยการ')
@@ -1906,7 +1906,7 @@ function _buildPage2VOC(d) {
   </section>`
 }
 
-const ROWS_PER_EVAL_PAGE_VOC = 34
+const ROWS_PER_EVAL_PAGE_VOC = 31
 
 // ตัดชื่อหัวคอลัมน์แนวตั้ง (voc-vtext) ที่ยาวเกินไปให้ขึ้นบรรทัดใหม่ตรงช่องว่างใกล้กึ่งกลาง กันคอลัมน์ต้องสูงมากเกินไป
 function _vsplit(s, max = 8) {
@@ -2014,34 +2014,72 @@ function _buildPage3VOC(d) {
   return pages.join('')
 }
 
+// ประเมินความสูงจริง (มม.) ของแถวกำหนดการสอน 1 แถวจากความยาวข้อความ (ตัดขึ้นบรรทัดใหม่ตามความกว้างคอลัมน์จริง)
+// กันข้อความยาวที่ครูพิมพ์เป็นประโยคเต็ม ดันความสูงตารางเกินจนถูก .voc-page{overflow:hidden} ตัดหายเงียบๆ
+const _SCHED_CHARS_PER_LINE = 46
+const _SCHED_LINE_H = 5.3
+const _SCHED_BASE_ROW_H = 5.45
+function _estSchedRowH(r) {
+  const lines = Math.max(1, Math.ceil((r.content ?? '').length / _SCHED_CHARS_PER_LINE))
+  return Math.max(_SCHED_BASE_ROW_H, lines * _SCHED_LINE_H)
+}
+
 function _buildPage4VOC(d) {
   const { ms, teacher, courseDoc } = d
 
   // ครูกรอกในหน้า "ตั้งค่าคำอธิบายรายวิชา" (subject_group === 'ACDMVOC') — ถ้ายังไม่กรอก
-  // เติมแถวว่างขั้นต่ำไว้ก่อนเหมือนฟอร์มกระดาษเดิม (10 แถว/23 แถว) ไม่จำกัดเพดานบน
+  // เติมแถวว่างขั้นต่ำไว้ก่อนเหมือนฟอร์มกระดาษเดิม (10 แถว/20 แถว)
   const objRows = Array.isArray(courseDoc?.voc_objectives) ? courseDoc.voc_objectives : []
   const schedRows = Array.isArray(courseDoc?.voc_schedule) ? courseDoc.voc_schedule : []
   const objPadded = objRows.concat(Array.from({ length: Math.max(0, 10 - objRows.length) }, () => ({ objective: '', competency: '' })))
-  const schedPadded = schedRows.concat(Array.from({ length: Math.max(0, 23 - schedRows.length) }, () => ({ week: '', content: '', note: '' })))
+  const schedPadded = schedRows.concat(Array.from({ length: Math.max(0, 20 - schedRows.length) }, () => ({ week: '', content: '', note: '' })))
 
-  return `
-  <section class="voc-page">
-    <div class="voc-page-inner voc-p4">
+  // งบพื้นที่ (มม.) ของหน้า 4 หลังหักขอบกระดาษ/หัวเรื่อง/ลงชื่อท้ายหน้า — ใช้ประเมินว่าตารางกำหนดการสอน
+  // ต้องแบ่งขึ้นหน้าต่อหรือไม่ (แทนที่จะยัดทุกแถวในหน้าเดียวแล้วเสี่ยงถูกตัดหาย)
+  const PAGE_H = 297, PAD_V = 30, TITLES_H = 10, SCHED_TITLE_H = 9.5, SIGN_H = 10
+  const OBJ_HEADER_H = 8, OBJ_ROW_H = 7, SCHED_HEADER_H = 7
+  const objTableH = OBJ_HEADER_H + objPadded.length * OBJ_ROW_H
+  const firstPageBudget = PAGE_H - PAD_V - TITLES_H - SCHED_TITLE_H - SIGN_H - objTableH - SCHED_HEADER_H
+  const contPageBudget  = PAGE_H - PAD_V - SCHED_TITLE_H - SCHED_HEADER_H
+
+  const schedPages = []
+  let cur = [], curH = 0, budget = firstPageBudget
+  for (const r of schedPadded) {
+    const h = _estSchedRowH(r)
+    if (cur.length && curH + h > budget) {
+      schedPages.push(cur)
+      cur = []; curH = 0; budget = contPageBudget
+    }
+    cur.push(r); curH += h
+  }
+  schedPages.push(cur)
+
+  const objTableHTML = `
       <div class="voc-course-title">จุดประสงค์การเรียนรู้และสมรรถนะรายวิชา ${_esc(ms.subject_name??'')}</div>
       <div class="voc-course-code">รหัสวิชา ${_esc(ms.subject_code??'')}</div>
       <table class="voc-objective-table">
         <thead><tr><th>จุดประสงค์การเรียนรู้</th><th>สมรรถนะรายวิชา</th></tr></thead>
         <tbody>${objPadded.map(r => `<tr><td>${_esc(r.objective) || '&nbsp;'}</td><td>${_esc(r.competency) || '&nbsp;'}</td></tr>`).join('')}</tbody>
-      </table>
-      <div class="voc-schedule-title">กำหนดการสอน</div>
+      </table>`
+
+  const schedTableHTML = (rows, isFirst) => `
+      <div class="voc-schedule-title">กำหนดการสอน${isFirst ? '' : ' (ต่อ)'}</div>
       <table class="voc-schedule-table">
         <colgroup><col style="width:13%"><col style="width:69%"><col style="width:18%"></colgroup>
         <thead><tr><th>สัปดาห์ที่</th><th>เนื้อหาที่สอน</th><th>หมายเหตุ</th></tr></thead>
-        <tbody>${schedPadded.map(r => `<tr><td>${_esc(r.week) || '&nbsp;'}</td><td>${_esc(r.content) || '&nbsp;'}</td><td>${_esc(r.note) || '&nbsp;'}</td></tr>`).join('')}</tbody>
-      </table>
-      <div class="voc-sign-bottom">ลงชื่อ <span class="voc-sig-line"></span> ครูผู้สอนประจำวิชา<br><br>( ${_esc(teacher?.full_name??'')} )</div>
+        <tbody>${rows.map(r => `<tr><td>${_esc(r.week) || '&nbsp;'}</td><td>${_esc(r.content) || '&nbsp;'}</td><td>${_esc(r.note) || '&nbsp;'}</td></tr>`).join('')}</tbody>
+      </table>`
+
+  const signHTML = `<div class="voc-sign-bottom">ลงชื่อ <span class="voc-sig-line"></span> ครูผู้สอนประจำวิชา<br><br>( ${_esc(teacher?.full_name??'')} )</div>`
+
+  return schedPages.map((rows, i) => `
+  <section class="voc-page">
+    <div class="voc-page-inner voc-p4">
+      ${i === 0 ? objTableHTML : ''}
+      ${schedTableHTML(rows, i === 0)}
+      ${i === schedPages.length - 1 ? signHTML : ''}
     </div>
-  </section>`
+  </section>`).join('')
 }
 
 // ─── Full Document Builder ────────────────────────────────────────────────────
@@ -2057,7 +2095,7 @@ function _buildFullDoc(d, title, pagesHTML = null) {
 </head>
 <body>
   ${parts.join('\n')}
-  <div style="text-align:center;margin:10mm;font-size:9pt;color:#666;">
+  <div class="no-print" style="text-align:center;margin:10mm;font-size:9pt;color:#666;">
     <button onclick="window.print()" style="padding:8px 24px;font-size:11pt;font-family:Sarabun,sans-serif;
       background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;">
       🖨️ พิมพ์ / บันทึก PDF
