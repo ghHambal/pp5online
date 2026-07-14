@@ -747,7 +747,7 @@ function _getCSS() {
     .voc-line-fill { display: inline-block; min-width: 34mm; height: 1em; border-bottom: .3mm dotted #333; vertical-align: baseline; }
     .voc-line-fill.voc-short { min-width: 16mm; } .voc-line-fill.voc-medium { min-width: 26mm; }
     .voc-line-fill.voc-long { min-width: 75mm; } .voc-line-fill.voc-xlong { min-width: 120mm; }
-    .voc-vtext { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; text-align: center; }
+    .voc-vtext { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; text-align: center; display: inline-block; }
     .voc-sig-line { display: inline-block; border-bottom: .3mm dotted #222; min-width: 55mm; height: 1em; }
     .voc-check-box { display: inline-block; width: 5mm; height: 5mm; border: .5mm solid #777; border-radius: .5mm; vertical-align: -1mm; margin: 0 1.5mm 0 4mm; }
 
@@ -783,13 +783,13 @@ function _getCSS() {
     .voc-attendance .voc-h-num { height: 6mm; }
     .voc-attendance tbody td { height: var(--att-row-h, 4.55mm); }
     .voc-attendance .voc-student-no { width: 4.3mm; text-align: center; }
-    .voc-attendance .voc-student-id { width: 16mm; text-align: center; }
-    .voc-attendance .voc-student-name { width: 36mm; padding-left: 1mm; }
+    .voc-attendance .voc-student-id { width: 19mm; text-align: center; }
+    .voc-attendance .voc-student-name { width: 48mm; padding-left: 1mm; }
     .voc-attendance .voc-att { width: 2.7mm; text-align: center; }
     .voc-attendance .voc-score { width: 10mm; text-align: center; }
-    .voc-attendance .voc-sched-week { width: 8mm; text-align: center; }
-    .voc-attendance .voc-sched-period { width: 8mm; text-align: center; }
-    .voc-attendance .voc-sched-date { width: 19mm; text-align: center; }
+    .voc-attendance .voc-sched-week { width: 6mm; text-align: center; }
+    .voc-attendance .voc-sched-period { width: 6.5mm; text-align: center; }
+    .voc-attendance .voc-sched-date { width: 15mm; text-align: center; }
     .voc-attendance .voc-instruction { padding: .6mm 1mm; line-height: 1.1; text-align: left; }
     .voc-attendance .voc-blue { color: #005bbb; font-weight: 700; }
     .voc-attendance .voc-red { color: #d00; font-weight: 700; }
@@ -1823,10 +1823,10 @@ function _buildAttPageVOC(d, students, schedGrid, totalRows) {
       <div class="voc-p2-title">แบบบันทึกการไม่มาเรียน</div>
       <table class="voc-attendance" style="--att-row-h:${rowH.toFixed(2)}mm;font-size:${fontPx}px">
         <colgroup>
-          <col style="width:4.3mm"><col style="width:16mm"><col style="width:36mm">
+          <col style="width:4.3mm"><col style="width:19mm"><col style="width:48mm">
           ${Array.from({length: CHANCES}, () => '<col style="width:2.7mm">').join('')}
           <col style="width:10mm">
-          ${Array.from({length: SCHED_COLS_VOC}, () => '<col style="width:8mm"><col style="width:8mm"><col style="width:19mm">').join('')}
+          ${Array.from({length: SCHED_COLS_VOC}, () => '<col style="width:6mm"><col style="width:6.5mm"><col style="width:15mm">').join('')}
         </colgroup>
         <thead>
           <tr class="voc-h-main">
