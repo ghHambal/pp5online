@@ -786,7 +786,6 @@ function _getCSS() {
     .voc-attendance .voc-student-id { width: 16mm; text-align: center; }
     .voc-attendance .voc-student-name { width: 36mm; padding-left: 1mm; }
     .voc-attendance .voc-att { width: 2.7mm; text-align: center; }
-    .voc-attendance .voc-att-total { width: 5mm; text-align: center; }
     .voc-attendance .voc-score { width: 10mm; text-align: center; }
     .voc-attendance .voc-sched-week { width: 8mm; text-align: center; }
     .voc-attendance .voc-sched-period { width: 8mm; text-align: center; }
@@ -1783,7 +1782,6 @@ function _buildAttPageVOC(d, students, schedGrid, totalRows) {
         if (status !== 'present') absent.push({ n: parseInt(sessNum), status })
       }
       absent.sort((a, b) => a.n - b.n)
-      const total = absent.length
       const cells = Array.from({ length: CHANCES }, (_, ci) => {
         const entry = absent[ci]
         if (!entry) return '<td></td>'
@@ -1795,13 +1793,11 @@ function _buildAttPageVOC(d, students, schedGrid, totalRows) {
         <td class="voc-student-id voc-center">${_esc(st.student_code??'')}</td>
         <td class="voc-student-name">${_esc(st.full_name??'')}</td>
         ${cells.join('')}
-        <td class="voc-att-total voc-center voc-bold">${total || ''}</td>
-        <td class="voc-score voc-center"></td>`
+        <td class="voc-score voc-center">-</td>`
     } else {
       studentCells = `
         <td class="voc-student-no"></td><td class="voc-student-id"></td><td class="voc-student-name"></td>
         ${Array.from({length: CHANCES}, () => '<td></td>').join('')}
-        <td class="voc-att-total"></td>
         <td class="voc-score"></td>`
     }
 
@@ -1827,7 +1823,7 @@ function _buildAttPageVOC(d, students, schedGrid, totalRows) {
         <colgroup>
           <col style="width:4.3mm"><col style="width:16mm"><col style="width:36mm">
           ${Array.from({length: CHANCES}, () => '<col style="width:2.7mm">').join('')}
-          <col style="width:5mm"><col style="width:10mm">
+          <col style="width:10mm">
           ${Array.from({length: SCHED_COLS_VOC}, () => '<col style="width:8mm"><col style="width:8mm"><col style="width:19mm">').join('')}
         </colgroup>
         <thead>
