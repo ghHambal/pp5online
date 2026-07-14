@@ -782,17 +782,19 @@ function _getCSS() {
     .voc-attendance .voc-h-sub { height: 7mm; }
     .voc-attendance .voc-h-num { height: 6mm; }
     .voc-attendance tbody td { height: var(--att-row-h, 4.55mm); }
-    .voc-attendance .voc-student-no { width: 4.3mm; text-align: center; }
-    .voc-attendance .voc-student-id { width: 19mm; text-align: center; }
-    .voc-attendance .voc-student-name { width: 48mm; padding-left: 1mm; }
-    .voc-attendance .voc-att { width: 2.7mm; text-align: center; }
-    .voc-attendance .voc-score { width: 10mm; text-align: center; }
-    .voc-attendance .voc-sched-week { width: 6mm; text-align: center; }
-    .voc-attendance .voc-sched-period { width: 6.5mm; text-align: center; }
-    .voc-attendance .voc-sched-date { width: 15mm; text-align: center; }
+    .voc-attendance .voc-student-no { text-align: center; }
+    .voc-attendance .voc-student-id { text-align: center; }
+    .voc-attendance .voc-student-name { padding-left: 1mm; }
+    .voc-attendance .voc-att { text-align: center; }
+    .voc-attendance .voc-score { text-align: center; }
+    .voc-attendance .voc-sched-week { text-align: center; }
+    .voc-attendance .voc-sched-period { text-align: center; }
+    .voc-attendance .voc-sched-date { text-align: center; }
     .voc-attendance .voc-instruction { padding: .6mm 1mm; line-height: 1.1; text-align: left; }
     .voc-attendance .voc-blue { color: #005bbb; font-weight: 700; }
     .voc-attendance .voc-red { color: #d00; font-weight: 700; }
+    .voc-att-flex { display: flex; align-items: flex-start; }
+    .voc-att-flex table.voc-attendance { width: auto; }
     .voc-attendance .voc-orange { color: #e67e00; font-weight: 700; }
 
     /* Page 3 — แบบประเมินผลการเรียน */
@@ -1765,44 +1767,90 @@ function _buildAttScheduleGrid(sessions, perWeek) {
 // พื้นที่แถวข้อมูลที่เหลือใน 1 หน้า A4 หลังหักขอบกระดาษ+หัวข้อ+หัวตาราง 3 แถว (โดยประมาณ, mm)
 const ATT_AVAIL_H_VOC = 233
 
-function _buildAttPageVOC(d, students, schedGrid, totalRows) {
-  const { holidaySet } = d
+// ความกว้างคอลัมน์ "ชื่อ - สกุล" ปรับตามชื่อที่ยาวที่สุดในห้อง (mm) แทนค่าตายตัว
+function _nameColWidth(students) {
+  const maxLen = Math.max(6, ...(students ?? []).map(s => (s.full_name ?? '').length))
+  return Math.min(50, Math.max(30, maxLen * 2.3))
+}
+
+// ตารางฝั่งรายชื่อ+บันทึกไม่มาเรียน — แถวเท่ากับจำนวนนักเรียนจริง (+เผื่อว่างไว้เล็กน้อย)
+// ไม่ผูกกับจำนวนแถวของตารางวันที่สอน จึงขยายฟอนต์/ความสูงแถวได้มากขึ้นเมื่อมีนักเรียนน้อย
+function _buildStudentListTable(d, students, nameWidth) {
   const CHANCES = 20
-  const { colData, colRS } = schedGrid
+  const rows = Math.max(students.length + 3, 15)
+  const rowH = Math.max(3, Math.min(7, ATT_AVAIL_H_VOC / rows))
+  const fontPx = rowH < 3.6 ? 7.5 : rowH < 4.4 ? 8.5 : rowH < 5.4 ? 9.5 : rowH < 6.2 ? 10.5 : 11.5
 
-  // บีบความสูงแถว (และฟอนต์ตาม) ให้พอดี 1 หน้าเสมอ ไม่ว่าจำนวนนักเรียน/คาบจะเยอะแค่ไหน
-  const rowH   = Math.max(1.6, Math.min(4.55, ATT_AVAIL_H_VOC / Math.max(1, totalRows)))
-  const fontPx = rowH < 2.4 ? 6 : rowH < 3.2 ? 7 : rowH < 4 ? 8 : 9.5
-
-  const rows = Array.from({ length: totalRows }, (_, ri) => {
+  const trs = Array.from({ length: rows }, (_, ri) => {
     const st = students[ri]
-    let studentCells
-    if (st) {
-      const stAtt = d.attMap[st.id] ?? {}
-      const absent = []
-      for (const [sessNum, status] of Object.entries(stAtt)) {
-        if (status !== 'present') absent.push({ n: parseInt(sessNum), status })
-      }
-      absent.sort((a, b) => a.n - b.n)
-      const cells = Array.from({ length: CHANCES }, (_, ci) => {
-        const entry = absent[ci]
-        if (!entry) return '<td></td>'
-        const color = entry.status === 'absent' ? '#d00' : entry.status === 'leave' ? '#005bbb' : '#e67e00'
-        return `<td style="color:${color};font-weight:700;">${entry.n}</td>`
-      })
-      studentCells = `
-        <td class="voc-student-no voc-center">${ri + 1}</td>
-        <td class="voc-student-id voc-center">${_esc(st.student_code??'')}</td>
-        <td class="voc-student-name">${_esc(st.full_name??'')}</td>
-        ${cells.join('')}
-        <td class="voc-score voc-center">-</td>`
-    } else {
-      studentCells = `
+    if (!st) {
+      return `<tr>
         <td class="voc-student-no"></td><td class="voc-student-id"></td><td class="voc-student-name"></td>
         ${Array.from({length: CHANCES}, () => '<td></td>').join('')}
-        <td class="voc-score"></td>`
+        <td class="voc-score"></td>
+      </tr>`
     }
+    const stAtt = d.attMap[st.id] ?? {}
+    const absent = []
+    for (const [sessNum, status] of Object.entries(stAtt)) {
+      if (status !== 'present') absent.push({ n: parseInt(sessNum), status })
+    }
+    absent.sort((a, b) => a.n - b.n)
+    const cells = Array.from({ length: CHANCES }, (_, ci) => {
+      const entry = absent[ci]
+      if (!entry) return '<td></td>'
+      const color = entry.status === 'absent' ? '#d00' : entry.status === 'leave' ? '#005bbb' : '#e67e00'
+      return `<td style="color:${color};font-weight:700;">${entry.n}</td>`
+    })
+    return `<tr>
+      <td class="voc-student-no voc-center">${ri + 1}</td>
+      <td class="voc-student-id voc-center">${_esc(st.student_code??'')}</td>
+      <td class="voc-student-name">${_esc(st.full_name??'')}</td>
+      ${cells.join('')}
+      <td class="voc-score voc-center">-</td>
+    </tr>`
+  })
 
+  const chanceHeaders = Array.from({ length: CHANCES }, (_, i) => `<th class="voc-att">${i+1}</th>`).join('')
+
+  return `
+  <table class="voc-attendance voc-student-list" style="--att-row-h:${rowH.toFixed(2)}mm;font-size:${fontPx}px">
+    <colgroup>
+      <col style="width:4.3mm"><col style="width:19mm"><col style="width:${nameWidth}mm">
+      ${Array.from({length: CHANCES}, () => '<col style="width:2.7mm">').join('')}
+      <col style="width:10mm">
+    </colgroup>
+    <thead>
+      <tr class="voc-h-main">
+        <th rowspan="3" class="voc-student-no"><div class="voc-vtext">เลขที่</div></th>
+        <th rowspan="3" class="voc-student-id">เลข<br>ประจำตัว</th>
+        <th rowspan="3" class="voc-student-name">ชื่อ - สกุล</th>
+        <th colspan="${CHANCES}" class="voc-instruction">
+          บันทึกคาบที่สอนนักเรียนที่ไม่มาเรียนในช่องครั้งที่ไม่มาเรียน<br>
+          ตั้งแต่ครั้งที่ 1 และต่อไปตามลำดับ เช่น นักเรียนที่ขาดเช็คด้วยสี<span class="voc-red">แดง</span>
+          นักเรียนที่ลากิจใช้ตัวเลข<span class="voc-blue">สีน้ำเงิน</span> และนักเรียนที่ป่วยใช้ตัวเลข<span class="voc-orange">สีส้ม</span>
+        </th>
+        <th rowspan="2" class="voc-score">สรุปคะแนน<br>มาเรียน</th>
+      </tr>
+      <tr class="voc-h-sub">
+        <th colspan="${CHANCES}">บันทึกการไม่มาเรียน</th>
+      </tr>
+      <tr class="voc-h-num">
+        ${chanceHeaders}
+        <th class="voc-score">10</th>
+      </tr>
+    </thead>
+    <tbody>${trs.join('')}</tbody>
+  </table>`
+}
+
+// ตารางฝั่งสัปดาห์ที่/คาบ/วันที่สอน — แถวตามจำนวนคาบจริง ไม่ผูกกับจำนวนนักเรียน
+function _buildScheduleTable(schedGrid, holidaySet) {
+  const { N, colData, colRS } = schedGrid
+  const rowH = Math.max(1.6, Math.min(4.55, ATT_AVAIL_H_VOC / Math.max(1, N)))
+  const fontPx = rowH < 2.4 ? 6 : rowH < 3.2 ? 7 : rowH < 4 ? 8 : 9.5
+
+  const trs = Array.from({ length: N }, (_, ri) => {
     const schedCells = Array.from({ length: SCHED_COLS_VOC }, (_, ci) => {
       const item = colData[ci][ri]
       const rs   = colRS[ci][ri]
@@ -1811,65 +1859,51 @@ function _buildAttPageVOC(d, students, schedGrid, totalRows) {
       const isHol = holidaySet?.has(item.sess.ds)
       return `${wkCell}<td class="voc-sched-period voc-center">${item.sess.n}</td><td class="voc-sched-date voc-center" style="${isHol ? 'color:#c00;font-weight:700;' : ''}">${_fmtDateTH(item.sess.ds)}</td>`
     }).join('')
-
-    return `<tr>${studentCells}${schedCells}</tr>`
+    return `<tr>${schedCells}</tr>`
   })
 
-  const chanceHeaders = Array.from({ length: CHANCES }, (_, i) => `<th class="voc-att">${i+1}</th>`).join('')
+  return `
+  <table class="voc-attendance voc-schedule-list" style="--att-row-h:${rowH.toFixed(2)}mm;font-size:${fontPx}px">
+    <colgroup>
+      ${Array.from({length: SCHED_COLS_VOC}, () => '<col style="width:6mm"><col style="width:6.5mm"><col style="width:15mm">').join('')}
+    </colgroup>
+    <thead>
+      <tr class="voc-h-main">
+        <th colspan="${SCHED_COLS_VOC * 3}">สัปดาห์ที่/คาบ/วันที่สอน</th>
+      </tr>
+      <tr class="voc-h-sub">
+        ${Array.from({length: SCHED_COLS_VOC}, () => `<th colspan="3"></th>`).join('')}
+      </tr>
+      <tr class="voc-h-num">
+        ${Array.from({length: SCHED_COLS_VOC}, () => `
+          <th class="voc-sched-week"><div class="voc-vtext">สัปดาห์ที่</div></th>
+          <th class="voc-sched-period"><div class="voc-vtext">คาบ</div></th>
+          <th class="voc-sched-date"><div class="voc-vtext">ว/ด/ป</div></th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>${trs.join('')}</tbody>
+  </table>`
+}
+
+function _buildPage2VOC(d) {
+  // แยกตารางรายชื่อ+บันทึกไม่มาเรียน กับตารางวันที่สอน ออกจากกัน (เดิมรวมเป็นตารางเดียวแบบแถวต่อแถว
+  // ทำให้ต้องบีบฟอนต์รายชื่อให้เล็กเท่าตารางวันที่สอนที่มักมีแถวเยอะกว่ามาก) วางเคียงกันด้วย flex แทน
+  // เพื่อให้แต่ละฝั่งคำนวณความสูงแถว/ฟอนต์ของตัวเองได้อิสระ — ยังคงบังคับให้อยู่หน้าเดียวเสมอทั้งคู่
+  const { students, sessions } = d
+  const perWeek = sessions?.length ? Math.round(sessions.length / 20) : 1
+  const schedGrid = _buildAttScheduleGrid(sessions, perWeek)
+  const nameWidth = _nameColWidth(students)
 
   return `
   <section class="voc-page">
     <div class="voc-page-inner voc-p2">
       <div class="voc-p2-title">แบบบันทึกการไม่มาเรียน</div>
-      <table class="voc-attendance" style="--att-row-h:${rowH.toFixed(2)}mm;font-size:${fontPx}px">
-        <colgroup>
-          <col style="width:4.3mm"><col style="width:19mm"><col style="width:48mm">
-          ${Array.from({length: CHANCES}, () => '<col style="width:2.7mm">').join('')}
-          <col style="width:10mm">
-          ${Array.from({length: SCHED_COLS_VOC}, () => '<col style="width:6mm"><col style="width:6.5mm"><col style="width:15mm">').join('')}
-        </colgroup>
-        <thead>
-          <tr class="voc-h-main">
-            <th rowspan="3" class="voc-student-no"><div class="voc-vtext">เลขที่</div></th>
-            <th rowspan="3" class="voc-student-id">เลข<br>ประจำตัว</th>
-            <th rowspan="3" class="voc-student-name">ชื่อ - สกุล</th>
-            <th colspan="${CHANCES}" class="voc-instruction">
-              บันทึกคาบที่สอนนักเรียนที่ไม่มาเรียนในช่องครั้งที่ไม่มาเรียน<br>
-              ตั้งแต่ครั้งที่ 1 และต่อไปตามลำดับ เช่น นักเรียนที่ขาดเช็คด้วยสี<span class="voc-red">แดง</span>
-              นักเรียนที่ลากิจใช้ตัวเลข<span class="voc-blue">สีน้ำเงิน</span> และนักเรียนที่ป่วยใช้ตัวเลข<span class="voc-orange">สีส้ม</span>
-            </th>
-            <th rowspan="2" class="voc-score">สรุปคะแนน<br>มาเรียน</th>
-            <th colspan="${SCHED_COLS_VOC * 3}">สัปดาห์ที่/คาบ/วันที่สอน</th>
-          </tr>
-          <tr class="voc-h-sub">
-            <th colspan="${CHANCES}">บันทึกการไม่มาเรียน</th>
-            ${Array.from({length: SCHED_COLS_VOC}, () => `<th colspan="3"></th>`).join('')}
-          </tr>
-          <tr class="voc-h-num">
-            ${chanceHeaders}
-            <th class="voc-score">10</th>
-            ${Array.from({length: SCHED_COLS_VOC}, () => `
-              <th class="voc-sched-week"><div class="voc-vtext">สัปดาห์ที่</div></th>
-              <th class="voc-sched-period"><div class="voc-vtext">คาบ</div></th>
-              <th class="voc-sched-date"><div class="voc-vtext">ว/ด/ป</div></th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.join('')}
-        </tbody>
-      </table>
+      <div class="voc-att-flex">
+        ${_buildStudentListTable(d, students, nameWidth)}
+        ${_buildScheduleTable(schedGrid, d.holidaySet)}
+      </div>
     </div>
   </section>`
-}
-
-function _buildPage2VOC(d) {
-  // รวม "บันทึกการไม่มาเรียน" (ครั้งที่ 1-20) + "สัปดาห์ที่/คาบ/วันที่สอน" ไว้ในตารางเดียวกัน ตามไฟล์อ้างอิงจริง
-  // บังคับให้อยู่ในหน้าเดียวเสมอ (บีบความสูงแถว/ฟอนต์ลงแทนการขึ้นหน้าใหม่) ไม่ว่านักเรียน/จำนวนคาบจะเยอะแค่ไหน
-  const { students, sessions } = d
-  const perWeek = sessions?.length ? Math.round(sessions.length / 20) : 1
-  const schedGrid = _buildAttScheduleGrid(sessions, perWeek)
-  const totalRows = Math.max(students.length, schedGrid.N, 1)
-  return _buildAttPageVOC(d, students, schedGrid, totalRows)
 }
 
 const ROWS_PER_EVAL_PAGE_VOC = 34
