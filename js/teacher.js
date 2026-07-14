@@ -586,8 +586,10 @@ async function _applyRoleMenus() {
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
   let isShirtVoteManager = false
   try {
-    const { data: voteManagerRow } = await supabase.from('sports_shirt_vote_managers').select('id').eq('profile_id', _teacher?.profile_id).maybeSingle()
-    isShirtVoteManager = !!voteManagerRow
+    const { data: activeEvent } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
+    const eventId = activeEvent?.id || '00000000-0000-0000-0000-000000000001'
+    const { data: canView } = await supabase.rpc('can_view_shirt_vote_dashboard', { p_event: eventId })
+    isShirtVoteManager = !!canView
   } catch { isShirtVoteManager = false }
   toggle('menu-shirt-vote-dashboard', !!(isSportsManager || isShirtVoteManager))
 }

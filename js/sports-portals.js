@@ -548,8 +548,8 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
     const {data:{user}}=await supabase.auth.getUser()
     const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',user.id).maybeSingle()
     const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true
-    const {data:myVoteManager}=await supabase.from('sports_shirt_vote_managers').select('id').eq('event_id',event.id).eq('profile_id',user.id).maybeSingle()
-    if(!isAdmin&&!myVoteManager){el.innerHTML='<div class="max-w-lg mx-auto mt-16 p-6 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-center">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</div>';return}
+    const {data:canView}=await supabase.rpc('can_view_shirt_vote_dashboard',{p_event:event.id})
+    if(!isAdmin&&!canView){el.innerHTML='<div class="max-w-lg mx-auto mt-16 p-6 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-center">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</div>';return}
     const [{data:designs,error},{data:allVotes}] = await Promise.all([
       supabase.from('sports_shirt_designs').select('*,sports_shirt_design_colors(*)').eq('event_id',event.id).eq('gender',gender).order('design_no'),
       supabase.from('sports_shirt_votes').select('design_id').eq('event_id',event.id),
