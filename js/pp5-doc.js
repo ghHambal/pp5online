@@ -753,8 +753,8 @@ function _getCSS() {
 
     /* Page 1 */
     .voc-p1 { padding: 14mm 18mm 10mm; font-size: 16px; }
-    .voc-p1 .voc-logo-frame { display: flex; align-items: center; justify-content: center; width: 18mm; height: 18mm; border: .25mm solid #111; border-radius: 50%; margin: 0 auto 1.5mm; overflow: hidden; }
-    .voc-p1 .voc-logo { display: block; width: 17mm; height: 17mm; object-fit: contain; }
+    .voc-p1 .voc-logo-frame { display: flex; align-items: center; justify-content: center; width: 16mm; height: 16mm; border: .25mm solid #111; border-radius: 50%; margin: 0 auto 1.5mm; overflow: hidden; }
+    .voc-p1 .voc-logo { display: block; width: 15mm; height: 15mm; object-fit: contain; }
     .voc-p1 .voc-title1 { font-size: 21px; font-weight: 700; text-align: center; margin: 0 0 3mm; }
     .voc-p1 .voc-title2 { font-size: 20px; font-weight: 700; text-align: center; margin: 0 0 3mm; }
     .voc-p1 .voc-title3 { font-size: 19px; font-weight: 700; text-align: center; margin: 0 0 5mm; }
