@@ -790,9 +790,10 @@ function _getCSS() {
     .voc-attendance .voc-sched-week { width: 8mm; text-align: center; }
     .voc-attendance .voc-sched-period { width: 8mm; text-align: center; }
     .voc-attendance .voc-sched-date { width: 19mm; text-align: center; }
-    .voc-attendance .voc-instruction { padding: .6mm 1mm; line-height: 1.1; }
+    .voc-attendance .voc-instruction { padding: .6mm 1mm; line-height: 1.1; text-align: left; }
     .voc-attendance .voc-blue { color: #005bbb; font-weight: 700; }
     .voc-attendance .voc-red { color: #d00; font-weight: 700; }
+    .voc-attendance .voc-orange { color: #e67e00; font-weight: 700; }
 
     /* Page 3 — แบบประเมินผลการเรียน */
     .voc-p3 { padding: 14mm 6mm 10mm; }
@@ -1835,7 +1836,7 @@ function _buildAttPageVOC(d, students, schedGrid, totalRows) {
             <th colspan="${CHANCES}" class="voc-instruction">
               บันทึกคาบที่สอนนักเรียนที่ไม่มาเรียนในช่องครั้งที่ไม่มาเรียน<br>
               ตั้งแต่ครั้งที่ 1 และต่อไปตามลำดับ เช่น นักเรียนที่ขาดเช็คด้วยสี<span class="voc-red">แดง</span>
-              นักเรียนที่ลากิจใช้ตัวเลข<span class="voc-blue">สีน้ำเงิน</span> และนักเรียนที่ป่วยใช้ตัวเลขสีส้ม
+              นักเรียนที่ลากิจใช้ตัวเลข<span class="voc-blue">สีน้ำเงิน</span> และนักเรียนที่ป่วยใช้ตัวเลข<span class="voc-orange">สีส้ม</span>
             </th>
             <th rowspan="2" class="voc-score">สรุปคะแนน<br>มาเรียน</th>
             <th colspan="${SCHED_COLS_VOC * 3}">สัปดาห์ที่/คาบ/วันที่สอน</th>
