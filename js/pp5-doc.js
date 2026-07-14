@@ -798,15 +798,15 @@ function _getCSS() {
     .voc-p3 { padding: 14mm 6mm 10mm; }
     .voc-p3-title { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 3mm; }
     .voc-eval { font-size: 10.5px; }
-    .voc-eval th { font-weight: 400; }
-    .voc-eval .voc-h-top { height: 14mm; }
-    .voc-eval .voc-h-vertical { height: 25mm; }
-    .voc-eval .voc-h-score { height: 6mm; }
+    .voc-eval th { font-weight: 400; line-height: 1.25; text-align: center; }
+    .voc-eval .voc-h-top { height: 7mm; }
+    .voc-eval .voc-h-vertical { height: 9mm; }
+    .voc-eval .voc-h-score { height: 4.5mm; }
     .voc-eval tbody td { height: 4.8mm; }
     .voc-eval .voc-c-no { width: 6.5mm; text-align: center; }
     .voc-eval .voc-c-id { width: 26mm; text-align: center; }
     .voc-eval .voc-c-name { width: 58mm; padding-left: 1mm; }
-    .voc-eval .voc-c-obj { width: 9.2mm; text-align: center; }
+    .voc-eval .voc-c-obj { width: 9.2mm; text-align: center; word-break: break-word; }
     .voc-eval .voc-c-sum80 { width: 12.5mm; text-align: center; }
     .voc-eval .voc-c-moral { width: 12.5mm; text-align: center; }
     .voc-eval .voc-c-total { width: 12.5mm; text-align: center; }
@@ -1922,20 +1922,26 @@ function _buildScorePageVOC(d, chunk, startNo) {
     <div class="voc-page-inner voc-p3">
       <div class="voc-p3-title">แบบประเมินผลการเรียน</div>
       <table class="voc-eval">
+        <colgroup>
+          <col style="width:6.5mm"><col style="width:26mm"><col style="width:58mm">
+          ${objCols.map(() => '<col style="width:9.2mm">').join('')}
+          <col style="width:12.5mm"><col style="width:12.5mm"><col style="width:12.5mm">
+          <col style="width:14mm"><col style="width:14mm">
+        </colgroup>
         <thead>
           <tr class="voc-h-top">
-            <th rowspan="3" class="voc-c-no"><div class="voc-vtext">เลขที่</div></th>
+            <th rowspan="3" class="voc-c-no">เลขที่</th>
             <th rowspan="3" class="voc-c-id">เลข<br>ประจำตัว</th>
             <th rowspan="3" class="voc-c-name">ชื่อ - สกุล</th>
             <th colspan="${objCols.length + 1}">คะแนนเก็บ (เต็ม ${objMax})</th>
-            <th rowspan="2" class="voc-c-moral"><div class="voc-vtext">คะแนนคุณธรรม${moralColName ? ` (${_esc(moralColName)})` : ''}</div></th>
-            <th rowspan="2" class="voc-c-total"><div class="voc-vtext">รวม</div></th>
-            <th rowspan="3" class="voc-c-grade"><div class="voc-vtext">ระดับผลการเรียน</div></th>
-            <th rowspan="3" class="voc-c-note"><div class="voc-vtext">หมายเหตุ/การสอบแก้ตัว</div></th>
+            <th rowspan="2" class="voc-c-moral">คะแนนคุณธรรม${moralColName ? `<br>(${_esc(moralColName)})` : ''}</th>
+            <th rowspan="2" class="voc-c-total">รวม</th>
+            <th rowspan="3" class="voc-c-grade">ระดับ<br>ผลการเรียน</th>
+            <th rowspan="3" class="voc-c-note">หมายเหตุ/<br>การสอบแก้ตัว</th>
           </tr>
           <tr class="voc-h-vertical">
-            ${objCols.map(c => `<th class="voc-c-obj"><div class="voc-vtext">${_esc(c.assignment_name??'')}</div></th>`).join('')}
-            <th class="voc-c-sum80"><div class="voc-vtext">รวมคะแนนเก็บ</div></th>
+            ${objCols.map(c => `<th class="voc-c-obj">${_esc(c.assignment_name??'')}</th>`).join('')}
+            <th class="voc-c-sum80">รวม<br>คะแนนเก็บ</th>
           </tr>
           <tr class="voc-h-score">
             ${objCols.map(c => `<th>${c.max_score??''}</th>`).join('')}<th>${objMax||''}</th>
