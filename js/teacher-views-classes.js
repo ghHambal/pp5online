@@ -4697,11 +4697,13 @@ async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts
       .qr-print-card canvas { width: 100% !important; height: auto !important; }
       .receipt-grid {
         display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 12px !important;
+        grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+        gap: 10px !important;
         width: 100% !important;
       }
       .qr-receipt-slip {
+        display: flex !important;
+        align-items: stretch !important;
         border: 1px solid #9ca3af !important;
         border-radius: 8px !important;
         padding: 10px !important;
@@ -4710,19 +4712,14 @@ async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts
         background: white !important;
         font-family: Sarabun, sans-serif !important;
       }
-      .receipt-cut-line {
-        text-align: center;
-        font-size: 9px;
-        color: #9ca3af;
-        margin: 6px 0;
-        border-top: 1px dashed #9ca3af;
-        position: relative;
+      .receipt-half {
+        flex: 1 1 50%;
+        min-width: 0;
       }
-      .receipt-cut-line span {
-        background: white;
-        padding: 0 6px;
-        position: relative;
-        top: -7px;
+      .receipt-cut-line-v {
+        width: 0;
+        border-left: 1px dashed #9ca3af;
+        margin: 0 10px;
       }
     }
   `
@@ -4764,9 +4761,9 @@ async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts
       <div class="receipt-grid">
         ${receipts.map(r => `
           <div class="qr-receipt-slip">
-            ${_qrReceiptHalfHtml(r, qrReissueFee, '🏫 ส่วนที่ 1 — ต้นขั้ว (โรงเรียนเก็บ)')}
-            <div class="receipt-cut-line"><span>✂️ ตัดตามรอยประ</span></div>
-            ${_qrReceiptHalfHtml(r, qrReissueFee, '🎓 ส่วนที่ 2 — มอบให้นักเรียน')}
+            ${_qrReceiptHalfHtml(r, qrReissueFee, '🏫 ต้นขั้ว (โรงเรียนเก็บ)')}
+            <div class="receipt-cut-line-v"></div>
+            ${_qrReceiptHalfHtml(r, qrReissueFee, '🎓 มอบให้นักเรียน')}
           </div>
         `).join('')}
       </div>
