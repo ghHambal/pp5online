@@ -803,7 +803,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     'donations':        () => renderDonations(),
     'feedback-admin':   () => renderFeedbackAdmin(),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
-    'qr-reissue-history': () => import('./teacher-views-classes.js').then(m => m.renderQrReissueHistory()),
     'classroom-leaders': () => renderClassroomLeaders(),
   }
 
