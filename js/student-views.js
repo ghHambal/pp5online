@@ -2804,21 +2804,24 @@ async function loadHtml5Qrcode() {
 
 // ─── Scanner Sound Player (เสียงพูดแทน beep: สแกนผ่าน=ALHAMDULILLAH, ไม่ผ่าน=ASTAHKFIRULLAH, สแกนซ้ำ=MASYAALLAH) ──
 // ดังเท่ากันทุกกรณี (เสียงดังสุด) เพราะสแกนในที่มีนักเรียนหมู่มาก เสียงรบกวนเยอะ
+// เลือกเสียงชาย/หญิงตาม gender ของนักเรียนที่สแกน (ไม่ทราบเพศ/ไม่พบนักเรียน = ใช้เสียงชายเป็นค่าเริ่มต้น)
 const SCAN_SOUND_FILES = {
-  success: 'prayer-scan-success.wav',
-  error: 'prayer-scan-error.wav',
-  duplicate: 'prayer-scan-duplicate.wav'
+  success: { male: 'prayer-scan-success.wav', female: 'prayer-scan-success-female.wav' },
+  error: { male: 'prayer-scan-error.wav', female: 'prayer-scan-error-female.wav' },
+  duplicate: { male: 'prayer-scan-duplicate.wav', female: 'prayer-scan-duplicate-female.wav' }
 }
 const _scanSoundCache = {}
 
-function playBeep(type = 'success') {
+function playBeep(type = 'success', gender = null) {
   try {
     const key = SCAN_SOUND_FILES[type] ? type : 'error'
-    let audio = _scanSoundCache[key]
+    const voice = gender === 'หญิง' ? 'female' : 'male'
+    const cacheKey = `${key}_${voice}`
+    let audio = _scanSoundCache[cacheKey]
     if (!audio) {
       const baseUrl = import.meta.env.BASE_URL || '/'
-      audio = new Audio(`${baseUrl}sounds/${SCAN_SOUND_FILES[key]}`)
-      _scanSoundCache[key] = audio
+      audio = new Audio(`${baseUrl}sounds/${SCAN_SOUND_FILES[key][voice]}`)
+      _scanSoundCache[cacheKey] = audio
     }
     audio.currentTime = 0
     audio.volume = 1.0
@@ -3609,7 +3612,7 @@ export async function renderStudentPrayerScanner(student) {
     if (isQrCodeExpired) {
       console.warn('[Scanner] QR Code has expired')
       const expiryLimit = parseInt(systemConfig.studentQrExpirySeconds || '60', 10)
-      playBeep('error')
+      playBeep('error', student?.gender)
       showScanFeedback(student, studentCode, `QR Code นี้หมดอายุแล้ว (เกิน ${expiryLimit} วินาที)`)
       return
     }
@@ -3622,7 +3625,7 @@ export async function renderStudentPrayerScanner(student) {
 
     const locationError = _malePrayerLocationError(student, activeLocation)
     if (locationError) {
-      playBeep('error')
+      playBeep('error', student.gender)
       showScanFeedback(student, studentCode, locationError)
       return
     }
@@ -3632,7 +3635,7 @@ export async function renderStudentPrayerScanner(student) {
     const targetRoom = _sameRoomValue(student.main_room)
     const sameRoomFlag = !!operatorRoom && !!targetRoom && operatorRoom === targetRoom
     if (!isOperatorTeacher && sameRoomFlag && _sameRoomGuardEnabledForGender(student.gender, systemConfig)) {
-      playBeep('error')
+      playBeep('error', student.gender)
       showScanFeedback(student, studentCode, 'ระบบป้องกันการบันทึกนักเรียนห้องเดียวกับผู้สแกนกำลังเปิดอยู่')
       return
     }
@@ -3641,13 +3644,13 @@ export async function renderStudentPrayerScanner(student) {
     const queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
     const isAlreadyQueued = queue.some(r => r.student_id === student.id && r.check_date === today)
     if (isAlreadyQueued) {
-      playBeep('duplicate')
+      playBeep('duplicate', student.gender)
       showScanFeedback(student, studentCode, 'เช็คชื่อซ้ำ! มีชื่อในคิวรอส่งขึ้นเซิร์ฟเวอร์แล้ว')
       return
     }
 
     if (window._syncedStudentIdsToday.has(student.id)) {
-      playBeep('duplicate')
+      playBeep('duplicate', student.gender)
       showScanFeedback(student, studentCode, 'เช็คชื่อซ้ำ! บันทึกข้อมูลวันนี้ไปแล้ว')
       return
     }
@@ -3656,7 +3659,7 @@ export async function renderStudentPrayerScanner(student) {
       const limitRaw = parseInt(systemConfig.prayerManualEntryMonthlyLimit ?? '2', 10)
       const limit = Number.isFinite(limitRaw) ? Math.max(0, limitRaw) : 2
       if (limit === 0) {
-        playBeep('error')
+        playBeep('error', student.gender)
         showScanFeedback(student, studentCode, 'ระบบปิดการบันทึกด้วยการกรอกรหัสอยู่')
         return
       }
@@ -3667,13 +3670,13 @@ export async function renderStudentPrayerScanner(student) {
       try {
         const usedCount = await getMonthlyManualPrayerEntryCount(student.id, today)
         if (usedCount + queuedManualCount >= limit) {
-          playBeep('error')
+          playBeep('error', student.gender)
           showScanFeedback(student, studentCode, `ใช้สิทธิ์กรอกรหัสครบ ${limit} ครั้งในเดือนนี้แล้ว`)
           return
         }
       } catch (err) {
         console.warn('Manual prayer count check failed:', err)
-        playBeep('error')
+        playBeep('error', student.gender)
         showScanFeedback(student, studentCode, 'ตรวจสอบจำนวนครั้งกรอกรหัสไม่สำเร็จ กรุณาเช็กว่าได้รัน patch_prayer_scanner_safety.sql แล้ว')
         return
       }
@@ -3734,7 +3737,7 @@ export async function renderStudentPrayerScanner(student) {
     window._syncedStudentIdsToday.add(student.id)
 
     // Feedbacks
-    playBeep('success')
+    playBeep('success', student.gender)
     triggerScreenFlash()
     const methodLabel = inputMethod === 'manual' ? ' (กรอกรหัส)' : ''
     showScanFeedback(student, studentCode, `บันทึกสำเร็จลงเครื่องแล้ว${methodLabel}${statusWarning}`, true, finalStatus)

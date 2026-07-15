@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.21.53': [
+    '🔊 เสียงสแกนละหมาด (ALHAMDULILLAH/ASTAHKFIRULLAH/MASYAALLAH) เลือกเสียงชาย/หญิงอัตโนมัติตามเพศของนักเรียนที่สแกน'
+  ],
   '10.21.52': [
     '📋 เติมบันทึกการเปลี่ยนแปลงที่ตกหล่นของเวอร์ชัน 10.21.50-51 (ครูทุกคนออกใบอนุญาตออกห้องแทนได้ + เปลี่ยนเสียงสแกนละหมาดเป็นเสียงพูด)'
   ],
