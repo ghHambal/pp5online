@@ -1,4 +1,4 @@
-import { getActiveLeavePermission, closeLeavePermission } from './api.js'
+import { getActiveLeavePermission, closeLeavePermission, getStudentByCode, getTeacherByCode, createLeavePermissionByAnyTeacher } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { formatLeaveCountdown } from './leave-time.js'
 import { showToast } from './ui.js'
@@ -117,22 +117,212 @@ function renderLeaveScanLoadingModal(studentCode) {
   `)
 }
 
-function renderLeaveScanNotFoundModal(studentCode) {
+async function renderLeaveScanNotFoundModal(studentCode) {
+  let student = null
+  try {
+    student = await getStudentByCode(studentCode)
+  } catch (err) {
+    console.warn('getStudentByCode error:', err)
+  }
+
   const modal = renderLeaveScanModal(`
     <div class="p-6 text-center space-y-5">
       <div class="mx-auto w-16 h-16 rounded-3xl bg-red-50 flex items-center justify-center text-4xl">🔴</div>
       <div class="space-y-1">
         <h4 class="font-extrabold text-red-700 text-lg">ไม่พบใบอนุญาตออกนอกห้องเรียน</h4>
         <p class="text-xs text-red-500 leading-relaxed">
-          นักเรียนรหัส <strong class="font-mono text-sm">${_htmlEsc(studentCode)}</strong> ยังไม่ได้รับการอนุมัติ หรือเดินทางกลับเข้าห้องเรียนแล้ว
+          ${student
+            ? `<strong>${_htmlEsc(student.full_name)}</strong> (<span class="font-mono">${_htmlEsc(studentCode)}</span>) ยังไม่ได้รับการอนุมัติ หรือเดินทางกลับเข้าห้องเรียนแล้ว`
+            : `นักเรียนรหัส <strong class="font-mono text-sm">${_htmlEsc(studentCode)}</strong> ยังไม่ได้รับการอนุมัติ หรือเดินทางกลับเข้าห้องเรียนแล้ว`
+          }
         </p>
       </div>
+      ${student ? `
+        <button id="btn-leave-scan-issue-new" type="button" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md transition">
+          🚪 ออกใบอนุญาตใหม่ให้นักเรียนคนนี้
+        </button>
+      ` : ''}
       <button id="btn-leave-scan-next" type="button" class="w-full py-3 rounded-2xl bg-gray-900 hover:bg-gray-950 text-white text-xs font-bold shadow-md transition">
         สแกนใหม่
       </button>
     </div>
   `, { tone: 'red' })
   modal.querySelector('#btn-leave-scan-next')?.addEventListener('click', () => closeLeaveScanModal())
+  modal.querySelector('#btn-leave-scan-issue-new')?.addEventListener('click', () => {
+    closeLeaveScanModal({ resume: false })
+    renderIssueLeaveByAnyTeacherModal(student)
+  })
+}
+
+function renderIssueLeaveByAnyTeacherModal(student) {
+  const REASONS = ['🚽 ไปห้องน้ำ', '💊 ไปห้องพยาบาล', '🏢 ไปฝ่ายปกครอง/ธุรการ', '✏️ อื่นๆ']
+  const DURATIONS = [5, 10, 15, 30]
+  let selectedReason = REASONS[0]
+  let selectedDuration = 10
+
+  const modal = renderLeaveScanModal(`
+    <div class="p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+        <h3 class="font-bold text-gray-800 text-sm">🚪 ออกใบอนุญาตออกนอกห้องเรียน</h3>
+        <button id="btn-issue-leave-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+      </div>
+      <div class="rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-700 leading-relaxed">
+        ใช้สำหรับกรณีนักเรียนมาขอออกห้องกับครูท่านอื่นที่ไม่ใช่ครูผู้สอนคาบนี้ (เช่น ครูเวร) — จะไม่นับรวมในโควต้าจำนวนคนออกพร้อมกันของห้องเรียนใด แต่จะนับรวมในโควต้ารายสัปดาห์ของนักเรียนตามปกติ
+      </div>
+
+      <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-100">
+        <div class="w-12 h-16 rounded-xl overflow-hidden bg-gray-150 border border-gray-250 flex-shrink-0">
+          ${student.image_url
+            ? `<img src="${_htmlEsc(student.image_url)}" class="w-full h-full object-cover" />`
+            : `<div class="w-full h-full flex items-center justify-center text-xl font-bold text-gray-400 bg-gray-200">👤</div>`
+          }
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">นักเรียนผู้ขออนุญาต</p>
+          <h4 class="font-extrabold text-gray-800 text-sm truncate mt-0.5">${_htmlEsc(student.full_name)}</h4>
+          <p class="text-[11px] text-gray-400 font-mono">${_htmlEsc(student.student_code)}</p>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">1. เหตุผลของการขออนุญาต</label>
+        <div class="grid grid-cols-2 gap-2">
+          ${REASONS.map((r, i) => `
+            <button class="btn-issue-reason text-xs font-semibold px-3 py-2 border rounded-xl transition text-center
+              ${i === 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}"
+              data-reason="${r}">${r}
+            </button>
+          `).join('')}
+        </div>
+        <input type="text" id="input-issue-custom-reason" class="hidden w-full border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500" placeholder="กรุณาระบุเหตุผลการขออนุญาต..." />
+      </div>
+
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">2. ระยะเวลาที่อนุญาต</label>
+        <div class="grid grid-cols-5 gap-1.5">
+          ${DURATIONS.map((d) => `
+            <button class="btn-issue-duration text-[11px] font-semibold py-2 border rounded-xl transition text-center
+              ${d === 10 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}"
+              data-duration="${d}">${d} น.
+            </button>
+          `).join('')}
+          <button class="btn-issue-duration text-[11px] font-semibold py-2 border rounded-xl transition text-center bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+            data-duration="custom">ระบุเอง...
+          </button>
+        </div>
+        <div id="div-issue-custom-duration" class="hidden flex items-center gap-2 mt-2">
+          <input type="number" id="input-issue-custom-duration" min="1" max="180" class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500" placeholder="ระบุนาที (เช่น 20)..." />
+          <span class="text-xs text-gray-500 font-medium">นาที</span>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">3. รหัสครูผู้ออกใบอนุญาต</label>
+        <input type="text" id="input-issuer-teacher-code" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-indigo-500" placeholder="กรอกรหัสครู 4 หลักของท่าน..." />
+        <p class="text-[10px] text-gray-400">ใช้ยืนยันตัวตนครูผู้ออกใบอนุญาตจริง (ไม่จำเป็นต้องเป็นครูผู้สอนคาบนี้)</p>
+      </div>
+
+      <button id="btn-issue-leave-submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition-all">
+        🚪 อนุมัติให้ออกนอกห้อง
+      </button>
+    </div>
+  `, { tone: 'indigo', maxWidth: 'max-w-sm' })
+
+  const customReasonInput = modal.querySelector('#input-issue-custom-reason')
+  modal.querySelectorAll('.btn-issue-reason').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.btn-issue-reason').forEach(b => {
+        b.className = 'btn-issue-reason text-xs font-semibold px-3 py-2 border rounded-xl bg-white text-gray-600 border-gray-200 hover:border-gray-400 text-center'
+      })
+      btn.className = 'btn-issue-reason text-xs font-semibold px-3 py-2 border rounded-xl bg-indigo-600 text-white border-indigo-600 text-center'
+      selectedReason = btn.dataset.reason
+      if (selectedReason === '✏️ อื่นๆ') {
+        customReasonInput.classList.remove('hidden')
+        customReasonInput.focus()
+      } else {
+        customReasonInput.classList.add('hidden')
+      }
+    })
+  })
+
+  const customDurationDiv = modal.querySelector('#div-issue-custom-duration')
+  const customDurationInput = modal.querySelector('#input-issue-custom-duration')
+  modal.querySelectorAll('.btn-issue-duration').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.btn-issue-duration').forEach(b => {
+        b.className = 'btn-issue-duration text-[11px] font-semibold py-2 border rounded-xl bg-white text-gray-600 border-gray-200 hover:border-gray-400 text-center'
+      })
+      btn.className = 'btn-issue-duration text-[11px] font-semibold py-2 border rounded-xl bg-indigo-600 text-white border-indigo-600 text-center'
+      const durValue = btn.dataset.duration
+      if (durValue === 'custom') {
+        customDurationDiv.classList.remove('hidden')
+        customDurationInput.focus()
+      } else {
+        customDurationDiv.classList.add('hidden')
+        selectedDuration = parseInt(durValue)
+      }
+    })
+  })
+
+  modal.querySelector('#btn-issue-leave-close').addEventListener('click', () => closeLeaveScanModal())
+
+  const submitBtn = modal.querySelector('#btn-issue-leave-submit')
+  submitBtn.addEventListener('click', async () => {
+    if (submitBtn.disabled) return
+
+    let reasonText = selectedReason
+    if (selectedReason === '✏️ อื่นๆ') {
+      reasonText = customReasonInput.value.trim()
+      if (!reasonText) {
+        showToast('กรุณาระบุเหตุผลในการขออนุญาต', 'warning')
+        return
+      }
+    }
+
+    let durationVal = selectedDuration
+    const activeDurationBtn = modal.querySelector('.btn-issue-duration.bg-indigo-600')
+    if (activeDurationBtn && activeDurationBtn.dataset.duration === 'custom') {
+      const customMin = parseInt(customDurationInput.value.trim())
+      if (isNaN(customMin) || customMin <= 0) {
+        showToast('กรุณาระบุระยะเวลากรอกเป็นจำนวนนาทีที่ถูกต้อง (มากกว่า 0)', 'warning')
+        return
+      }
+      durationVal = customMin
+    }
+
+    const teacherCode = modal.querySelector('#input-issuer-teacher-code').value.trim()
+    if (!teacherCode) {
+      showToast('กรุณากรอกรหัสครูผู้ออกใบอนุญาต', 'warning')
+      return
+    }
+
+    try {
+      submitBtn.disabled = true
+      submitBtn.textContent = 'กำลังตรวจสอบรหัสครู...'
+      submitBtn.classList.add('opacity-70', 'cursor-not-allowed')
+
+      const issuingTeacher = await getTeacherByCode(teacherCode)
+      if (!issuingTeacher) {
+        showToast('ไม่พบรหัสครูนี้ในระบบ กรุณาตรวจสอบอีกครั้ง', 'error')
+        submitBtn.disabled = false
+        submitBtn.textContent = '🚪 อนุมัติให้ออกนอกห้อง'
+        submitBtn.classList.remove('opacity-70', 'cursor-not-allowed')
+        return
+      }
+
+      submitBtn.textContent = 'กำลังบันทึก...'
+      await createLeavePermissionByAnyTeacher(student.id, issuingTeacher.id, reasonText, durationVal)
+      playSuccessBeep()
+      showToast(`ออกใบอนุญาตให้ ${student.full_name} เรียบร้อย โดย ${issuingTeacher.full_name}`, 'success')
+      processLeaveCheck(student.student_code)
+    } catch (err) {
+      playFailureBeep()
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      submitBtn.disabled = false
+      submitBtn.textContent = '🚪 อนุมัติให้ออกนอกห้อง'
+      submitBtn.classList.remove('opacity-70', 'cursor-not-allowed')
+    }
+  })
 }
 
 function renderLeaveScanErrorModal(message) {
@@ -535,7 +725,7 @@ async function processLeaveCheck(studentCode) {
     // ถ้าไม่พบประวัติใบอนุญาตที่กำลังทำงานอยู่
     if (!leave) {
       playFailureBeep()
-      renderLeaveScanNotFoundModal(studentCode)
+      await renderLeaveScanNotFoundModal(studentCode)
       return
     }
 

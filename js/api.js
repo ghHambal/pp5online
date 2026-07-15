@@ -3540,6 +3540,58 @@ export async function getStudentLeaveCountThisWeek(studentId, classId) {
   return count ?? 0
 }
 
+export async function getTeacherByCode(teacherCode) {
+  const code = String(teacherCode ?? '').trim()
+  if (!code) return null
+  const { data, error } = await supabase
+    .from('teachers')
+    .select('id, full_name, teacher_code, image_url')
+    .eq('teacher_code', code)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
+}
+
+export async function getStudentLeaveCountThisWeekAllClasses(studentId) {
+  const { start, end } = _currentWeekRange()
+  const { count, error } = await supabase
+    .from('student_leave_permissions')
+    .select('*', { count: 'exact', head: true })
+    .eq('student_id', studentId)
+    .gte('created_at', start)
+    .lt('created_at', end)
+  if (error) throw error
+  return count ?? 0
+}
+
+// ออกใบอนุญาตโดยครูที่ไม่ใช่ครูผู้สอนประจำคาบ (เช่น ครูเวร หรือครูท่านอื่นที่นักเรียนไปขอ)
+// ไม่ผูกกับห้องเรียน/คาบใด ๆ จึงไม่นับรวมในโควต้าจำนวนคนออกพร้อมกันของห้องเรียน (leaveMaxActive)
+// แต่ยังคงนับรวมในโควต้ารายสัปดาห์ของนักเรียนคนนั้น (ทุกคาบ/ทุกครูรวมกัน)
+export async function createLeavePermissionByAnyTeacher(studentId, issuingTeacherId, reason, durationMinutes) {
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const weeklyLimit = _normalizeLeaveMaxPerStudentWeek(cfg[LEAVE_DEFAULT_MAX_PER_STUDENT_WEEK_KEY], DEFAULT_LEAVE_MAX_PER_STUDENT_WEEK)
+  const weeklyCount = await getStudentLeaveCountThisWeekAllClasses(studentId)
+  if (weeklyCount >= weeklyLimit) {
+    throw new Error(`นักเรียนคนนี้ขอออกนอกห้องครบ ${weeklyLimit} ครั้งในสัปดาห์นี้แล้ว`)
+  }
+
+  const { data, error } = await supabase
+    .from('student_leave_permissions')
+    .insert({
+      student_id: studentId,
+      class_id: null,
+      teacher_id: issuingTeacherId,
+      reason: reason,
+      allowed_duration: durationMinutes,
+      status: 'active'
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 export async function createLeavePermission(studentId, classId, teacherId, reason, durationMinutes, maxActive = null) {
   const weeklyLimit = await getLeaveMaxPerStudentWeekForClass(classId)
   const weeklyCount = await getStudentLeaveCountThisWeek(studentId, classId)
