@@ -2802,33 +2802,33 @@ async function loadHtml5Qrcode() {
   })
 }
 
-// ─── Scanner Sound Beep Generator (Web Audio API) ──────────────────────────
+// ─── Scanner Sound Player (เสียงพูดแทน beep: สแกนผ่าน=ALHAMDULILLAH, ไม่ผ่าน=ASTAHKFIRULLAH, สแกนซ้ำ=MASYAALLAH ดังๆ) ──
+const SCAN_SOUND_FILES = {
+  success: 'prayer-scan-success.wav',
+  error: 'prayer-scan-error.wav',
+  duplicate: 'prayer-scan-duplicate.wav'
+}
+const SCAN_SOUND_VOLUME = {
+  success: 0.85,
+  error: 0.85,
+  duplicate: 1.0
+}
+const _scanSoundCache = {}
+
 function playBeep(type = 'success') {
   try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-    const osc = audioCtx.createOscillator()
-    const gain = audioCtx.createGain()
-    
-    osc.connect(gain)
-    gain.connect(audioCtx.destination)
-    
-    if (type === 'success') {
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime)
-      gain.gain.setValueAtTime(0.08, audioCtx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12)
-      osc.start()
-      osc.stop(audioCtx.currentTime + 0.12)
-    } else {
-      osc.type = 'sawtooth'
-      osc.frequency.setValueAtTime(150, audioCtx.currentTime)
-      gain.gain.setValueAtTime(0.12, audioCtx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3)
-      osc.start()
-      osc.stop(audioCtx.currentTime + 0.3)
+    const key = SCAN_SOUND_FILES[type] ? type : 'error'
+    let audio = _scanSoundCache[key]
+    if (!audio) {
+      const baseUrl = import.meta.env.BASE_URL || '/'
+      audio = new Audio(`${baseUrl}sounds/${SCAN_SOUND_FILES[key]}`)
+      _scanSoundCache[key] = audio
     }
+    audio.currentTime = 0
+    audio.volume = SCAN_SOUND_VOLUME[key]
+    audio.play().catch(e => console.warn('Play scan sound failed:', e))
   } catch (e) {
-    console.error('Audio beep failed', e)
+    console.error('Play scan sound failed', e)
   }
 }
 
@@ -3645,13 +3645,13 @@ export async function renderStudentPrayerScanner(student) {
     const queue = JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]')
     const isAlreadyQueued = queue.some(r => r.student_id === student.id && r.check_date === today)
     if (isAlreadyQueued) {
-      playBeep('error')
+      playBeep('duplicate')
       showScanFeedback(student, studentCode, 'เช็คชื่อซ้ำ! มีชื่อในคิวรอส่งขึ้นเซิร์ฟเวอร์แล้ว')
       return
     }
 
     if (window._syncedStudentIdsToday.has(student.id)) {
-      playBeep('error')
+      playBeep('duplicate')
       showScanFeedback(student, studentCode, 'เช็คชื่อซ้ำ! บันทึกข้อมูลวันนี้ไปแล้ว')
       return
     }
