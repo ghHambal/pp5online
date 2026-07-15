@@ -229,6 +229,7 @@ const ROUTES = {
     window._pendingQRClassId = null
     import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
   },
+  'qr-reissue-history': () => import('./teacher-views-classes.js').then(m => m.renderQrReissueHistory()),
   'student-leave-scanner': () => {
     import('./teacher-views-leave-scanner.js?v=10.18.25').then(m => m.renderStudentLeaveScanner(_teacher))
   },
