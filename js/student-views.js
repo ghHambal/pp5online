@@ -2802,16 +2802,12 @@ async function loadHtml5Qrcode() {
   })
 }
 
-// ─── Scanner Sound Player (เสียงพูดแทน beep: สแกนผ่าน=ALHAMDULILLAH, ไม่ผ่าน=ASTAHKFIRULLAH, สแกนซ้ำ=MASYAALLAH ดังๆ) ──
+// ─── Scanner Sound Player (เสียงพูดแทน beep: สแกนผ่าน=ALHAMDULILLAH, ไม่ผ่าน=ASTAHKFIRULLAH, สแกนซ้ำ=MASYAALLAH) ──
+// ดังเท่ากันทุกกรณี (เสียงดังสุด) เพราะสแกนในที่มีนักเรียนหมู่มาก เสียงรบกวนเยอะ
 const SCAN_SOUND_FILES = {
   success: 'prayer-scan-success.wav',
   error: 'prayer-scan-error.wav',
   duplicate: 'prayer-scan-duplicate.wav'
-}
-const SCAN_SOUND_VOLUME = {
-  success: 0.85,
-  error: 0.85,
-  duplicate: 1.0
 }
 const _scanSoundCache = {}
 
@@ -2825,7 +2821,7 @@ function playBeep(type = 'success') {
       _scanSoundCache[key] = audio
     }
     audio.currentTime = 0
-    audio.volume = SCAN_SOUND_VOLUME[key]
+    audio.volume = 1.0
     audio.play().catch(e => console.warn('Play scan sound failed:', e))
   } catch (e) {
     console.error('Play scan sound failed', e)
