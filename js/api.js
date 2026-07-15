@@ -3754,3 +3754,26 @@ function _buildLeavePermissionDashboardResult(rows, returnStart, returnEnd, boun
     }
   }
 }
+
+// ─── QR REISSUE LOGS (ออก QR Code ใหม่กรณีทำหาย/ชำรุด) ─────────────────────
+export async function logQrReissue({ studentId, teacherId, reason, note = null }) {
+  const { data, error } = await supabase
+    .from('qr_reissue_logs')
+    .insert({ student_id: studentId, teacher_id: teacherId, reason, note })
+    .select('*, students(student_code, full_name, main_room), teachers(full_name)')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function getQrReissueLogs(options = {}) {
+  let query = supabase
+    .from('qr_reissue_logs')
+    .select('*, students(student_code, full_name, main_room), teachers(full_name)')
+    .order('created_at', { ascending: false })
+  if (options.studentId) query = query.eq('student_id', options.studentId)
+  if (options.limit) query = query.limit(options.limit)
+  const { data, error } = await query
+  if (error) throw error
+  return data
+}

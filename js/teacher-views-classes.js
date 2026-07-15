@@ -19,6 +19,7 @@ import {
   getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
   saveClassGroups, clearClassGroups,
   getFlashcardDecks, getClassSessionDOWs, updateClassStudentSpecialResult,
+  logQrReissue, getQrReissueLogs,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -4692,6 +4693,34 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     if (!Number.isFinite(individualRepeat) || individualRepeat < 1) individualRepeat = 4
     let selectedIndividualStudentIds = []
     let lastIndividualMissingCodes = []
+    let reissueReason = 'ทำหาย'
+
+    // ─── ประวัติการออก QR รายบุคคลล่าสุด (สถิติทำหาย/ชำรุด) ──────────────────
+    const _refreshReissueHistory = async () => {
+      const historyEl = document.getElementById('qr-reissue-history')
+      if (!historyEl) return
+      try {
+        const logs = await getQrReissueLogs({ limit: 8 })
+        historyEl.innerHTML = !logs.length ? `
+          <p class="text-xs text-gray-400 text-center py-3">ยังไม่มีประวัติการออก QR ใหม่</p>
+        ` : `
+          <div class="divide-y divide-gray-100">
+            ${logs.map(log => `
+              <div class="flex items-center justify-between gap-3 py-2 text-xs">
+                <div class="min-w-0">
+                  <p class="font-bold text-gray-700 truncate">${_htmlEsc(log.students?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(log.students?.student_code || '-')})</span></p>
+                  <p class="text-gray-400 mt-0.5">เลขที่ QR-${String(log.receipt_no).padStart(6, '0')} · ${_htmlEsc(log.reason)} · ออกโดย ${_htmlEsc(log.teachers?.full_name || '-')}</p>
+                </div>
+                <span class="shrink-0 text-gray-400">${new Date(log.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+              </div>
+            `).join('')}
+          </div>
+        `
+      } catch (err) {
+        console.error('Failed to load QR reissue history:', err)
+        historyEl.innerHTML = `<p class="text-xs text-red-400 text-center py-3">โหลดประวัติไม่สำเร็จ</p>`
+      }
+    }
 
     const refreshPreview = () => {
       if (currentViewMode === 'individual' && selectedIndividualStudentIds.length > 0) {
@@ -4736,8 +4765,14 @@ export async function renderStudentQRPrint(teacher, classId = null) {
                 <h4 class="font-bold text-gray-800 text-sm">👤 พิมพ์ / บันทึก QR รายบุคคล</h4>
                 <p class="text-xs text-gray-400 mt-0.5">ใช้กรณีนักเรียนทำหาย ค้นหาทีละคนหรือกรอกรหัสหลายคน แล้วพิมพ์รวมในหน้าเดียว</p>
               </div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-500 font-semibold">จำนวนซ้ำ:</span>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs text-gray-500 font-semibold">เหตุผล:</span>
+                <select id="qr-reissue-reason" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
+                  <option value="ทำหาย" ${reissueReason === 'ทำหาย' ? 'selected' : ''}>ทำหาย</option>
+                  <option value="ชำรุด" ${reissueReason === 'ชำรุด' ? 'selected' : ''}>ชำรุด</option>
+                  <option value="อื่นๆ" ${reissueReason === 'อื่นๆ' ? 'selected' : ''}>อื่นๆ</option>
+                </select>
+                <span class="text-xs text-gray-500 font-semibold ml-2">จำนวนซ้ำ:</span>
                 <input id="qr-individual-repeat" type="number" min="1" max="40" value="${individualRepeat}"
                   class="w-20 border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500" />
                 <span class="text-xs text-gray-400">ใบ</span>
@@ -4767,6 +4802,12 @@ export async function renderStudentQRPrint(teacher, classId = null) {
               <p class="text-[11px] text-gray-400">คั่นรหัสด้วยเว้นวรรค ลูกน้ำ หรือขึ้นบรรทัดใหม่ ระบบจะตัดรหัสซ้ำให้อัตโนมัติ</p>
             </div>
             <div id="qr-individual-selected" class="hidden border border-indigo-100 rounded-2xl overflow-hidden"></div>
+            <div class="pt-3 border-t border-gray-100">
+              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">🧾 ประวัติการออก QR ใหม่ล่าสุด</p>
+              <div id="qr-reissue-history" class="bg-gray-50/50 rounded-2xl px-3">
+                <p class="text-xs text-gray-400 text-center py-3">กำลังโหลด...</p>
+              </div>
+            </div>
           </div>
 
           <!-- ตัวกรองห้องเรียน -->
@@ -4865,6 +4906,12 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       const individualClearBtn = document.getElementById('qr-individual-clear')
       const individualCodeBulk = document.getElementById('qr-individual-code-bulk')
       const individualAddCodesBtn = document.getElementById('qr-individual-add-codes')
+      const reissueReasonSelect = document.getElementById('qr-reissue-reason')
+
+      reissueReasonSelect.addEventListener('change', () => {
+        reissueReason = reissueReasonSelect.value
+      })
+      _refreshReissueHistory()
 
       // Bind Settings Card Events
       individualSearch.addEventListener('input', () => _renderIndividualResults(individualSearch.value.trim()))
@@ -5284,12 +5331,30 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       })
 
       document.getElementById('btn-print-individual-qr')?.addEventListener('click', async () => {
+        const printBtn = document.getElementById('btn-print-individual-qr')
+        printBtn.disabled = true
+        printBtn.textContent = 'กำลังบันทึก...'
+        let receipts = []
+        try {
+          receipts = await Promise.all(selectedStudents.map(student =>
+            logQrReissue({ studentId: student.id, teacherId: teacher?.id, reason: reissueReason })
+          ))
+        } catch (err) {
+          console.error('Failed to log QR reissue:', err)
+          showToast('บันทึกสถิติการออก QR ใหม่ไม่สำเร็จ: ' + (err.message ?? ''), 'warning')
+        }
+        printBtn.disabled = false
+        printBtn.textContent = `🖨️ พิมพ์ / บันทึก PDF (${totalCards} ใบ)`
+
         await _executePrint([{
           className: 'รายบุคคล',
           countLabel: `${selectedStudents.length} คน · ${totalCards} ใบ`,
           students: repeatStudents,
           hideHeader: true
-        }], cols, showCode, showSeat, showRoom)
+        }], cols, showCode, showSeat, showRoom, receipts)
+
+        if (receipts.length > 0) showToast(`บันทึกสถิติออก QR ใหม่ ${receipts.length} คนแล้ว (${reissueReason})`, 'success')
+        _refreshReissueHistory()
       })
       document.getElementById('btn-download-individual-qr')?.addEventListener('click', async () => {
         await _downloadIndividualQR(firstStudent)
@@ -5477,7 +5542,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
 
     // ─── ฟังก์ชันสร้าง Print Area และเรียก window.print() ─────────────────────
     // rooms = [{ className, students, countLabel?, hideHeader? }]
-    const _executePrint = async (rooms, cols, showCode, showSeat, showRoom) => {
+    const _executePrint = async (rooms, cols, showCode, showSeat, showRoom, receipts = []) => {
       // ฉีด @media print style
       let styleEl = document.getElementById('qr-print-media-styles')
       if (!styleEl) {
@@ -5539,6 +5604,21 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             background: white !important;
           }
           .qr-print-card canvas { width: 100% !important; height: auto !important; }
+          .receipt-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 12px !important;
+            width: 100% !important;
+          }
+          .qr-receipt-slip {
+            border: 1px dashed #6b7280 !important;
+            border-radius: 8px !important;
+            padding: 12px !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            background: white !important;
+            font-family: Sarabun, sans-serif !important;
+          }
         }
       `
 
@@ -5574,7 +5654,35 @@ export async function renderStudentQRPrint(teacher, classId = null) {
             `).join('')}
           </div>
         </div>
-      `).join('')
+      `).join('') + (receipts.length === 0 ? '' : `
+        <div class="print-room-block">
+          <div class="print-room-header">
+            <span>🧾 ใบรับ QR Code นักเรียน (ออกใหม่)</span>
+            <span style="font-size: 11px; font-weight: normal; color: #6b7280;">${receipts.length} ใบ</span>
+          </div>
+          <div class="receipt-grid">
+            ${receipts.map(r => `
+              <div class="qr-receipt-slip">
+                <div style="text-align: center; font-weight: bold; font-size: 12px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; margin-bottom: 8px;">
+                  🧾 ใบรับ QR Code นักเรียน (ออกใหม่)
+                </div>
+                <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+                  <tr><td style="padding: 2px 0; color: #6b7280;">เลขที่ใบเสร็จ:</td><td style="text-align: right; font-weight: bold;">QR-${String(r.receipt_no).padStart(6, '0')}</td></tr>
+                  <tr><td style="padding: 2px 0; color: #6b7280;">วันที่:</td><td style="text-align: right;">${new Date(r.created_at).toLocaleDateString('th-TH', { dateStyle: 'long' })}</td></tr>
+                  <tr><td style="padding: 2px 0; color: #6b7280;">ชื่อ-สกุล:</td><td style="text-align: right;">${_htmlEsc(r.students?.full_name || '-')}</td></tr>
+                  <tr><td style="padding: 2px 0; color: #6b7280;">รหัสนักเรียน:</td><td style="text-align: right;">${_htmlEsc(r.students?.student_code || '-')}</td></tr>
+                  <tr><td style="padding: 2px 0; color: #6b7280;">ห้อง:</td><td style="text-align: right;">${_htmlEsc(r.students?.main_room || '-')}</td></tr>
+                  <tr><td style="padding: 2px 0; color: #6b7280;">เหตุผล:</td><td style="text-align: right; font-weight: bold;">${_htmlEsc(r.reason)}</td></tr>
+                  <tr><td style="padding: 2px 0; color: #6b7280;">ออกให้โดย:</td><td style="text-align: right;">${_htmlEsc(r.teachers?.full_name || '-')}</td></tr>
+                </table>
+                <div style="margin-top: 10px; border-top: 1px dashed #d1d5db; padding-top: 8px; font-size: 10px; color: #6b7280;">
+                  ผู้รับ: ..................................... (ลงชื่อ)
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `)
 
       // วาด QR Codes
       for (let roomIdx = 0; roomIdx < rooms.length; roomIdx++) {
