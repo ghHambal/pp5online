@@ -3769,11 +3769,22 @@ export async function logQrReissue({ studentId, teacherId, reason, note = null }
 export async function getQrReissueLogs(options = {}) {
   let query = supabase
     .from('qr_reissue_logs')
-    .select('*, students(student_code, full_name, main_room), teachers(full_name)')
+    .select('*, students(id, student_code, full_name, main_room), teachers(full_name)')
     .order('created_at', { ascending: false })
   if (options.studentId) query = query.eq('student_id', options.studentId)
   if (options.limit) query = query.limit(options.limit)
   const { data, error } = await query
+  if (error) throw error
+  return data
+}
+
+export async function updateQrReissueLog(id, { reason, note = null }) {
+  const { data, error } = await supabase
+    .from('qr_reissue_logs')
+    .update({ reason, note })
+    .eq('id', id)
+    .select('*, students(id, student_code, full_name, main_room), teachers(full_name)')
+    .single()
   if (error) throw error
   return data
 }

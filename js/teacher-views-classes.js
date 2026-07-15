@@ -19,7 +19,7 @@ import {
   getClassRandomizerState, saveClassRandomizerState, resetClassRandomizerPicks,
   saveClassGroups, clearClassGroups,
   getFlashcardDecks, getClassSessionDOWs, updateClassStudentSpecialResult,
-  logQrReissue, getQrReissueLogs,
+  logQrReissue, getQrReissueLogs, updateQrReissueLog,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -4581,6 +4581,33 @@ export async function renderAnnouncementsView(teacher) {
   await Promise.all([_renderAnnouncements(), _renderComments()])
 }
 
+// ป๊อบอัพถามหลังพิมพ์ QR เสร็จ ว่าต้องการพิมพ์ใบเสร็จรับ QR ต่อหรือไม่
+function _promptPrintReceipt(count) {
+  return new Promise(resolve => {
+    document.getElementById('qr-receipt-prompt-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'qr-receipt-prompt-modal'
+    m.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40'
+    m.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center">
+        <div class="px-6 pt-7 pb-5">
+          <div class="mx-auto mb-3 w-14 h-14 rounded-full bg-amber-50 border-2 border-amber-100 flex items-center justify-center text-2xl">🧾</div>
+          <h3 class="text-base font-bold text-gray-900 mb-1.5">พิมพ์ QR Code เรียบร้อยแล้ว</h3>
+          <p class="text-sm text-gray-500 leading-relaxed">ต้องการพิมพ์ใบเสร็จรับ QR Code ต่อเลยหรือไม่? (${count} ใบ)</p>
+        </div>
+        <div class="px-6 pb-6 grid grid-cols-2 gap-3">
+          <button id="qr-receipt-prompt-no" class="py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 active:scale-[0.97] transition-all">ไม่ต้อง</button>
+          <button id="qr-receipt-prompt-yes" class="py-3 rounded-2xl text-sm font-bold text-white shadow-lg bg-indigo-600 hover:bg-indigo-700 active:scale-[0.97] transition-all">🧾 พิมพ์ใบเสร็จ</button>
+        </div>
+      </div>
+    `
+    document.body.appendChild(m)
+    const close = (result) => { m.remove(); resolve(result) }
+    m.querySelector('#qr-receipt-prompt-yes').addEventListener('click', () => close(true))
+    m.querySelector('#qr-receipt-prompt-no').addEventListener('click', () => close(false))
+  })
+}
+
 export async function renderStudentQRPrint(teacher, classId = null) {
   setActiveNav('student-qr-print')
   setTitle('พิมพ์ QR Code นักเรียน')
@@ -4596,6 +4623,8 @@ export async function renderStudentQRPrint(teacher, classId = null) {
   try {
     // ─── โหลดนักเรียนทั้งหมดของโรงเรียน (บายพาส limit 1000) ─────────────────
     const allStudents = await getStudents()
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const qrReissueFee = cfg.qrReissueFee?.trim?.() || '10'
 
     // ดึง classes เพื่อใช้เป็น metadata (grade_level, subject_group) เท่านั้น
     const { data: allClassRows } = await supabase
@@ -4695,31 +4724,135 @@ export async function renderStudentQRPrint(teacher, classId = null) {
     let lastIndividualMissingCodes = []
     let reissueReason = 'ทำหาย'
 
-    // ─── ประวัติการออก QR รายบุคคลล่าสุด (สถิติทำหาย/ชำรุด) ──────────────────
-    const _refreshReissueHistory = async () => {
+    // ─── ประวัตินักเรียนที่มาติดต่อออก QR Code ใหม่ (สถิติทำหาย/ชำรุด) ─────────
+    let reissueHistoryLogs = []
+    let reissueHistorySearch = ''
+    let editingReissueLogId = null
+    let editingReissueDraft = { reason: 'ทำหาย', note: '' }
+
+    const _loadReissueHistory = async () => {
       const historyEl = document.getElementById('qr-reissue-history')
       if (!historyEl) return
+      historyEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>`
       try {
-        const logs = await getQrReissueLogs({ limit: 8 })
-        historyEl.innerHTML = !logs.length ? `
-          <p class="text-xs text-gray-400 text-center py-3">ยังไม่มีประวัติการออก QR ใหม่</p>
-        ` : `
-          <div class="divide-y divide-gray-100">
-            ${logs.map(log => `
-              <div class="flex items-center justify-between gap-3 py-2 text-xs">
-                <div class="min-w-0">
-                  <p class="font-bold text-gray-700 truncate">${_htmlEsc(log.students?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(log.students?.student_code || '-')})</span></p>
-                  <p class="text-gray-400 mt-0.5">เลขที่ QR-${String(log.receipt_no).padStart(6, '0')} · ${_htmlEsc(log.reason)} · ออกโดย ${_htmlEsc(log.teachers?.full_name || '-')}</p>
-                </div>
-                <span class="shrink-0 text-gray-400">${new Date(log.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
-              </div>
-            `).join('')}
-          </div>
-        `
+        reissueHistoryLogs = await getQrReissueLogs({ limit: 300 })
+        _renderReissueHistoryList()
       } catch (err) {
         console.error('Failed to load QR reissue history:', err)
-        historyEl.innerHTML = `<p class="text-xs text-red-400 text-center py-3">โหลดประวัติไม่สำเร็จ</p>`
+        historyEl.innerHTML = `<p class="text-xs text-red-400 text-center py-6">โหลดประวัติไม่สำเร็จ</p>`
       }
+    }
+
+    const _renderReissueHistoryList = () => {
+      const historyEl = document.getElementById('qr-reissue-history')
+      if (!historyEl) return
+      const q = reissueHistorySearch.trim().toLowerCase()
+      const filtered = !q ? reissueHistoryLogs : reissueHistoryLogs.filter(log => {
+        const s = log.students || {}
+        return String(s.full_name || '').toLowerCase().includes(q) ||
+          String(s.student_code || '').toLowerCase().includes(q) ||
+          String(s.main_room || '').toLowerCase().includes(q)
+      })
+
+      historyEl.innerHTML = !filtered.length ? `
+        <p class="text-xs text-gray-400 text-center py-6">${reissueHistoryLogs.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีประวัติการออก QR ใหม่'}</p>
+      ` : `
+        <div class="divide-y divide-gray-100">
+          ${filtered.map(log => log.id === editingReissueLogId ? `
+            <div class="py-3 space-y-2">
+              <p class="font-bold text-gray-700 text-xs">${_htmlEsc(log.students?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(log.students?.student_code || '-')})</span></p>
+              <div class="flex flex-wrap gap-2 items-center">
+                <select id="reissue-edit-reason" class="border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500">
+                  <option value="ทำหาย" ${editingReissueDraft.reason === 'ทำหาย' ? 'selected' : ''}>ทำหาย</option>
+                  <option value="ชำรุด" ${editingReissueDraft.reason === 'ชำรุด' ? 'selected' : ''}>ชำรุด</option>
+                  <option value="อื่นๆ" ${editingReissueDraft.reason === 'อื่นๆ' ? 'selected' : ''}>อื่นๆ</option>
+                </select>
+                <input id="reissue-edit-note" type="text" placeholder="หมายเหตุ (ถ้ามี)" value="${_htmlEsc(editingReissueDraft.note || '')}"
+                  class="flex-1 min-w-[140px] border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-indigo-500" />
+                <button type="button" data-action="save-edit" data-log-id="${log.id}" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs">บันทึก</button>
+                <button type="button" data-action="cancel-edit" class="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-xs">ยกเลิก</button>
+              </div>
+            </div>
+          ` : `
+            <div class="flex items-center justify-between gap-3 py-2.5 text-xs flex-wrap">
+              <div class="min-w-0">
+                <p class="font-bold text-gray-700 truncate">${_htmlEsc(log.students?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(log.students?.student_code || '-')})</span></p>
+                <p class="text-gray-400 mt-0.5">เลขที่ QR-${String(log.receipt_no).padStart(6, '0')} · ${_htmlEsc(log.reason)}${log.note ? ` (${_htmlEsc(log.note)})` : ''} · ห้อง ${_htmlEsc(log.students?.main_room || '-')} · ออกโดย ${_htmlEsc(log.teachers?.full_name || '-')} · ${new Date(log.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</p>
+              </div>
+              <div class="flex gap-1.5 shrink-0">
+                <button type="button" data-action="reprint-qr" data-log-id="${log.id}" title="ออก QR Code" class="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px]">🖨️ QR</button>
+                <button type="button" data-action="reprint-receipt" data-log-id="${log.id}" title="ออกใบเสร็จ" class="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px]">🧾 ใบเสร็จ</button>
+                <button type="button" data-action="edit" data-log-id="${log.id}" title="แก้ไข" class="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-[11px]">✏️ แก้ไข</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `
+    }
+
+    const _reprintQrForLog = async (log) => {
+      const s = log.students
+      if (!s?.id) { showToast('ไม่พบข้อมูลนักเรียนสำหรับรายการนี้', 'warning'); return }
+      await _executePrint([{
+        className: 'รายบุคคล',
+        countLabel: '1 ใบ',
+        students: [{ id: s.id, full_name: s.full_name, student_code: s.student_code, seat_no: null, _roomName: s.main_room }],
+        hideHeader: true
+      }], cols, showCode, showSeat, showRoom, [])
+    }
+
+    const _reprintReceiptForLog = async (log) => {
+      await _executePrint([], cols, showCode, showSeat, showRoom, [log])
+    }
+
+    const _saveEditReissueLog = async (logId) => {
+      try {
+        const updated = await updateQrReissueLog(logId, { reason: editingReissueDraft.reason, note: editingReissueDraft.note?.trim() || null })
+        reissueHistoryLogs = reissueHistoryLogs.map(l => l.id === logId ? updated : l)
+        editingReissueLogId = null
+        _renderReissueHistoryList()
+        showToast('บันทึกการแก้ไขแล้ว', 'success')
+      } catch (err) {
+        console.error('Failed to update QR reissue log:', err)
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    }
+
+    // ผูก Event ของพาเนลประวัติ (delegate บน container คงที่ ไม่ผูกซ้ำเวลา re-render list)
+    const _bindReissueHistoryEvents = () => {
+      const historyEl = document.getElementById('qr-reissue-history')
+      const searchEl = document.getElementById('qr-reissue-search')
+      if (!historyEl || historyEl.dataset.bound) return
+      historyEl.dataset.bound = '1'
+
+      historyEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]')
+        if (!btn) return
+        const logId = btn.dataset.logId
+        const log = reissueHistoryLogs.find(l => l.id === logId)
+        if (btn.dataset.action === 'reprint-qr' && log) _reprintQrForLog(log)
+        else if (btn.dataset.action === 'reprint-receipt' && log) _reprintReceiptForLog(log)
+        else if (btn.dataset.action === 'edit' && log) {
+          editingReissueLogId = logId
+          editingReissueDraft = { reason: log.reason, note: log.note || '' }
+          _renderReissueHistoryList()
+        } else if (btn.dataset.action === 'cancel-edit') {
+          editingReissueLogId = null
+          _renderReissueHistoryList()
+        } else if (btn.dataset.action === 'save-edit' && logId) {
+          _saveEditReissueLog(logId)
+        }
+      })
+      historyEl.addEventListener('change', (e) => {
+        if (e.target.id === 'reissue-edit-reason') editingReissueDraft.reason = e.target.value
+      })
+      historyEl.addEventListener('input', (e) => {
+        if (e.target.id === 'reissue-edit-note') editingReissueDraft.note = e.target.value
+      })
+      searchEl?.addEventListener('input', (e) => {
+        reissueHistorySearch = e.target.value
+        _renderReissueHistoryList()
+      })
     }
 
     const refreshPreview = () => {
@@ -4802,11 +4935,21 @@ export async function renderStudentQRPrint(teacher, classId = null) {
               <p class="text-[11px] text-gray-400">คั่นรหัสด้วยเว้นวรรค ลูกน้ำ หรือขึ้นบรรทัดใหม่ ระบบจะตัดรหัสซ้ำให้อัตโนมัติ</p>
             </div>
             <div id="qr-individual-selected" class="hidden border border-indigo-100 rounded-2xl overflow-hidden"></div>
-            <div class="pt-3 border-t border-gray-100">
-              <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">🧾 ประวัติการออก QR ใหม่ล่าสุด</p>
-              <div id="qr-reissue-history" class="bg-gray-50/50 rounded-2xl px-3">
-                <p class="text-xs text-gray-400 text-center py-3">กำลังโหลด...</p>
+          </div>
+
+          <!-- ประวัตินักเรียนที่มาติดต่อออก QR Code ใหม่ -->
+          <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-3">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h4 class="font-bold text-gray-800 text-sm">🧾 ประวัตินักเรียนที่มาติดต่อออก QR Code ใหม่</h4>
+                <p class="text-xs text-gray-400 mt-0.5">ค้นหา ออก QR ซ้ำ ออกใบเสร็จซ้ำ หรือแก้ไขเหตุผลของแต่ละรายการได้</p>
               </div>
+              <input id="qr-reissue-search" type="search"
+                class="w-full sm:w-56 border border-gray-300 rounded-xl px-4 py-2 text-xs bg-white focus:outline-none focus:border-indigo-500 transition"
+                placeholder="ค้นหาชื่อ รหัส หรือห้อง..." />
+            </div>
+            <div id="qr-reissue-history" class="bg-gray-50/50 rounded-2xl px-3 max-h-96 overflow-y-auto">
+              <p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>
             </div>
           </div>
 
@@ -4911,7 +5054,8 @@ export async function renderStudentQRPrint(teacher, classId = null) {
       reissueReasonSelect.addEventListener('change', () => {
         reissueReason = reissueReasonSelect.value
       })
-      _refreshReissueHistory()
+      _bindReissueHistoryEvents()
+      _loadReissueHistory()
 
       // Bind Settings Card Events
       individualSearch.addEventListener('input', () => _renderIndividualResults(individualSearch.value.trim()))
@@ -5351,10 +5495,14 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           countLabel: `${selectedStudents.length} คน · ${totalCards} ใบ`,
           students: repeatStudents,
           hideHeader: true
-        }], cols, showCode, showSeat, showRoom, receipts)
+        }], cols, showCode, showSeat, showRoom, [])
 
-        if (receipts.length > 0) showToast(`บันทึกสถิติออก QR ใหม่ ${receipts.length} คนแล้ว (${reissueReason})`, 'success')
-        _refreshReissueHistory()
+        if (receipts.length > 0) {
+          showToast(`บันทึกสถิติออก QR ใหม่ ${receipts.length} คนแล้ว (${reissueReason})`, 'success')
+          const wantsReceipt = await _promptPrintReceipt(receipts.length)
+          if (wantsReceipt) await _executePrint([], cols, showCode, showSeat, showRoom, receipts)
+        }
+        _loadReissueHistory()
       })
       document.getElementById('btn-download-individual-qr')?.addEventListener('click', async () => {
         await _downloadIndividualQR(firstStudent)
@@ -5656,10 +5804,6 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         </div>
       `).join('') + (receipts.length === 0 ? '' : `
         <div class="print-room-block">
-          <div class="print-room-header">
-            <span>🧾 ใบรับ QR Code นักเรียน (ออกใหม่)</span>
-            <span style="font-size: 11px; font-weight: normal; color: #6b7280;">${receipts.length} ใบ</span>
-          </div>
           <div class="receipt-grid">
             ${receipts.map(r => `
               <div class="qr-receipt-slip">
@@ -5673,10 +5817,12 @@ export async function renderStudentQRPrint(teacher, classId = null) {
                   <tr><td style="padding: 2px 0; color: #6b7280;">รหัสนักเรียน:</td><td style="text-align: right;">${_htmlEsc(r.students?.student_code || '-')}</td></tr>
                   <tr><td style="padding: 2px 0; color: #6b7280;">ห้อง:</td><td style="text-align: right;">${_htmlEsc(r.students?.main_room || '-')}</td></tr>
                   <tr><td style="padding: 2px 0; color: #6b7280;">เหตุผล:</td><td style="text-align: right; font-weight: bold;">${_htmlEsc(r.reason)}</td></tr>
+                  <tr><td style="padding: 2px 0; color: #6b7280;">ค่าธรรมเนียม:</td><td style="text-align: right; font-weight: bold;">${_htmlEsc(qrReissueFee)} บาท</td></tr>
                   <tr><td style="padding: 2px 0; color: #6b7280;">ออกให้โดย:</td><td style="text-align: right;">${_htmlEsc(r.teachers?.full_name || '-')}</td></tr>
                 </table>
-                <div style="margin-top: 10px; border-top: 1px dashed #d1d5db; padding-top: 8px; font-size: 10px; color: #6b7280;">
-                  ผู้รับ: ..................................... (ลงชื่อ)
+                <div style="margin-top: 10px; border-top: 1px dashed #d1d5db; padding-top: 8px; font-size: 10px; color: #6b7280; display: flex; justify-content: space-between; gap: 8px;">
+                  <span>ผู้รับ: .......................... (ลงชื่อ)</span>
+                  <span>ผู้ออกให้: .......................... (ลงชื่อ)</span>
                 </div>
               </div>
             `).join('')}

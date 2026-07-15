@@ -2728,6 +2728,10 @@ export async function renderSettings() {
           { key:'studentQrExpirySeconds', label:'อายุการใช้งานของ QR Code (วินาที)', type:'text',
             placeholder:'เช่น 60', description:'ระบุเวลาหมดอายุของ QR Code หน่วยเป็นวินาที (ค่าเริ่มต้นคือ 60 วินาที)' },
         ]),
+        section('ค่าธรรมเนียมออก QR Code ใหม่ (กรณีทำหาย/ชำรุด)', [
+          { key:'qrReissueFee', label:'ค่าธรรมเนียมออกใหม่ (บาท)', type:'text',
+            placeholder:'เช่น 10', description:'จำนวนเงินที่แสดงในใบเสร็จตอนครูออก QR Code ใหม่ให้นักเรียน (ค่าเริ่มต้นคือ 10 บาท)' },
+        ]),
         section('ตัวเลือกบังคับเกรด (คอลัมน์บังคับเกรดในหน้าคะแนน)', [
           { key:'forceGradeOptions', label:'รายการเกรด (คั่นด้วยจุลภาค)', type:'text',
             placeholder:'เช่น 0,ร,มส,มผ', description:'ค่าเริ่มต้น: 0,ร,มส,มผ — ครูจะเห็นเป็นตัวเลือกเมื่อกดบังคับเกรดนักเรียน' },
