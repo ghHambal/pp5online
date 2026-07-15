@@ -3759,7 +3759,7 @@ function _buildLeavePermissionDashboardResult(rows, returnStart, returnEnd, boun
 export async function logQrReissue({ studentId, teacherId, reason, note = null }) {
   const { data, error } = await supabase
     .from('qr_reissue_logs')
-    .insert({ student_id: studentId, teacher_id: teacherId, reason, note })
+    .insert({ student_id: studentId, teacher_id: teacherId ?? null, reason, note })
     .select('*, students(student_code, full_name, main_room), teachers(full_name)')
     .single()
   if (error) throw error
@@ -3776,6 +3776,11 @@ export async function getQrReissueLogs(options = {}) {
   const { data, error } = await query
   if (error) throw error
   return data
+}
+
+export async function deleteQrReissueLog(id) {
+  const { error } = await supabase.from('qr_reissue_logs').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function updateQrReissueLog(id, { reason, note = null }) {

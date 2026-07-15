@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.qr_reissue_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   receipt_no SERIAL,
   student_id INT NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
-  teacher_id INT NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  teacher_id INT REFERENCES public.teachers(id) ON DELETE CASCADE, -- NULL ได้ กรณีออกจากหน้า Admin Dashboard ที่ไม่ได้ผูกกับครูคนใดคนหนึ่ง
   reason TEXT NOT NULL CHECK (reason IN ('ทำหาย', 'ชำรุด', 'อื่นๆ')),
   note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
