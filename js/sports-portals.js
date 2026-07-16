@@ -14,6 +14,20 @@ const permissionButton = (key,label,enabled=true) => `<button type="button" data
 const SHIRT_COLOR_HEX = {'แดง':'#dc2626','น้ำเงิน':'#2563eb','เขียว':'#16a34a','น้ำตาล':'#92400e','ส้ม':'#f97316','ฟ้า':'#0ea5e9','ม่วง':'#9333ea','เทา':'#6b7280'}
 export const _colorSwatchHex = name => SHIRT_COLOR_HEX[name] || '#94a3b8'
 
+// PostgREST จำกัดผลลัพธ์ต่อ request ไว้ที่ 1000 แถวโดยดีฟอลต์ — ตารางโหวตเสื้อของ
+// โรงเรียนใหญ่มีแถวเกิน 1000 ได้ง่าย ต้องวนดึงทีละหน้าไม่ให้ยอดโหวต/สถานะโหวตตกหล่น
+async function _fetchAllRows(table, build, pageSize = 1000) {
+  let all = [], from = 0
+  while (true) {
+    const { data, error } = await build(supabase.from(table)).range(from, from + pageSize - 1)
+    if (error) throw error
+    all = all.concat(data || [])
+    if (!data || data.length < pageSize) break
+    from += pageSize
+  }
+  return all
+}
+
 async function syncAzizPublicShirtButton(enabled) {
   const { data } = await supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle()
   const current = data?.value && typeof data.value === 'object' ? data.value : {}
@@ -236,9 +250,9 @@ async function _renderAdvisorVoteTab(body,teacher,rooms,roomNames) {
   body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลด...</div>'
   try {
     const {event,cfg}=await context()
-    const [{data:students,error},{data:votes},{data:designs}]=await Promise.all([
+    const [{data:students,error},votes,{data:designs}]=await Promise.all([
       supabase.from('students').select('id,student_code,full_name,main_room,gender,image_url,photo_url').in('main_room',roomNames).eq('is_active',true).order('main_room').order('student_code'),
-      supabase.from('sports_shirt_votes').select('student_id,design_id').eq('event_id',event.id),
+      _fetchAllRows('sports_shirt_votes', q => q.select('student_id,design_id').eq('event_id',event.id)),
       supabase.from('sports_shirt_designs').select('*,sports_shirt_design_colors(*)').eq('event_id',event.id).order('design_no'),
     ])
     if(error)throw error
@@ -550,9 +564,9 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
     const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true
     const {data:canView}=await supabase.rpc('can_view_shirt_vote_dashboard',{p_event:event.id})
     if(!isAdmin&&!canView){el.innerHTML='<div class="max-w-lg mx-auto mt-16 p-6 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-center">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</div>';return}
-    const [{data:designs,error},{data:allVotes}] = await Promise.all([
+    const [{data:designs,error},allVotes] = await Promise.all([
       supabase.from('sports_shirt_designs').select('*,sports_shirt_design_colors(*)').eq('event_id',event.id).eq('gender',gender).order('design_no'),
-      supabase.from('sports_shirt_votes').select('design_id').eq('event_id',event.id),
+      _fetchAllRows('sports_shirt_votes', q => q.select('design_id').eq('event_id',event.id)),
     ])
     if(error)throw error
     const designIds=new Set((designs||[]).map(d=>d.id))
