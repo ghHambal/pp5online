@@ -1578,26 +1578,58 @@ const PG_LANGS = {
   'ms-jawi': 'ภาษามลายูปัตตานี อักษรยาวี (Jawi)',
 }
 
-function _buildTeachingPrompt({ subjectName, subjectCode, gradeLevel, className, studentCount, avgPct, topic, format, langKey, langLabel }) {
-  const lines = [
-    'คุณคือผู้ช่วยครูไทย ช่วยออกแบบแผนการจัดการเรียนรู้รายคาบ',
-    'ตามหลักสูตรแกนกลางการศึกษาขั้นพื้นฐาน พ.ศ. 2551 (ฉบับปรับปรุง พ.ศ. 2560)',
+const PG_MEDIA_ITEMS = [
+  { key: 'worksheet', text: 'ใบงาน/ใบกิจกรรม',            instruction: 'ออกแบบใบงาน/ใบกิจกรรมที่พิมพ์แจกนักเรียนได้จริง มีคำสั่งชัดเจนและเว้นที่ว่างให้กรอกคำตอบ' },
+  { key: 'slides',    text: 'โครงร่างสไลด์นำเสนอ',         instruction: 'ออกแบบโครงร่างสไลด์นำเสนอเป็นรายสไลด์ (สไลด์ที่ 1 ... สไลด์ที่ N ...) พร้อมเนื้อหาสั้นกระชับต่อสไลด์' },
+  { key: 'questions', text: 'คำถามกระตุ้นความคิด/อภิปราย', instruction: 'สร้างชุดคำถามกระตุ้นความคิดอย่างน้อย 5 ข้อ เรียงลำดับจากง่ายไปยาก' },
+  { key: 'rubric',    text: 'เกณฑ์ให้คะแนน (Rubric)',      instruction: 'ออกแบบเกณฑ์การให้คะแนน (Rubric) แบบ 4 ระดับคุณภาพ พร้อมคำอธิบายแต่ละระดับ' },
+  { key: 'game',      text: 'เกม/กิจกรรมเสริมท้ายคาบ',     instruction: 'ออกแบบเกมหรือกิจกรรมสั้นๆ ท้ายคาบเพื่อทบทวนเนื้อหา ใช้เวลาไม่เกิน 10 นาที' },
+]
+
+const PG_FORMAT_MEDIA_DEFAULTS = {
+  'บรรยาย':            [],
+  'กิจกรรมกลุ่ม':       ['worksheet', 'rubric', 'game'],
+  'โครงงานเป็นฐาน':     ['worksheet', 'rubric', 'questions'],
+  'สืบเสาะหาความรู้':   ['questions', 'worksheet'],
+  other:               [],
+}
+
+function _buildTeachingPrompt({
+  subjectName, subjectCode, gradeLevel, className, studentCount, avgPct,
+  topic, format, periods, minutesPerPeriod, isReligionSubj, mediaItems, langKey, langLabel,
+}) {
+  const totalMinutes = periods * minutesPerPeriod
+  const durationText = periods > 1
+    ? `${periods} คาบต่อเนื่อง (คาบละ ${minutesPerPeriod} นาที รวม ${totalMinutes} นาที)`
+    : `1 คาบ (${minutesPerPeriod} นาที)`
+
+  const lines = isReligionSubj
+    ? [
+        'คุณคือผู้ช่วยครูอิสลามศึกษาไทย ช่วยออกแบบแผนการจัดการเรียนรู้รายคาบ',
+        'ตามหลักสูตรอิสลามศึกษา พุทธศักราช 2551',
+      ]
+    : [
+        'คุณคือผู้ช่วยครูไทย ช่วยออกแบบแผนการจัดการเรียนรู้รายคาบ',
+        'ตามหลักสูตรแกนกลางการศึกษาขั้นพื้นฐาน พ.ศ. 2551 (ฉบับปรับปรุง พ.ศ. 2560)',
+      ]
+  lines.push(
     '',
     'บริบทวิชา:',
     `- วิชา: ${subjectName} (รหัส ${subjectCode})`,
     `- ระดับชั้น: ${gradeLevel}   ห้อง: ${className}`,
     `- จำนวนนักเรียน: ${studentCount} คน`,
-  ]
+  )
   if (avgPct != null) lines.push(`- คะแนนเฉลี่ยสะสมของห้องนี้ในขณะนี้: ${avgPct}% (ใช้พิจารณาความยาก-ง่ายของกิจกรรม)`)
   lines.push(
     '',
     `หัวข้อที่จะสอนคาบนี้: ${topic}`,
     `รูปแบบการสอนที่ต้องการ: ${format}`,
+    `ระยะเวลา: ${durationText}`,
     '',
     'กรุณาออกแบบแผนการจัดการเรียนรู้ที่ประกอบด้วย:',
     '1. จุดประสงค์การเรียนรู้ (ด้านความรู้ K / ทักษะ P / เจตคติ A)',
     '2. สาระสำคัญ (Key Concept)',
-    '3. กิจกรรมการเรียนรู้ แบ่งเป็น 3 ขั้น พร้อมระบุเวลาแต่ละขั้นตอนชัดเจน (รวม 50 นาที):',
+    `3. กิจกรรมการเรียนรู้ แบ่งเป็น 3 ขั้น พร้อมระบุเวลาแต่ละขั้นตอนชัดเจน (รวม ${totalMinutes} นาที)${periods > 1 ? ' — หากมีมากกว่า 1 คาบ กรุณาแบ่งกิจกรรมเป็นรายคาบให้ชัดเจน (คาบที่ 1: ..., คาบที่ 2: ...)' : ''}:`,
     '   - นำเข้าสู่บทเรียน',
     '   - กิจกรรมหลัก',
     '   - สรุป/wrap-up',
@@ -1605,18 +1637,22 @@ function _buildTeachingPrompt({ subjectName, subjectCode, gradeLevel, className,
     '5. วิธีการวัดและประเมินผลในคาบ',
     '6. งาน/การบ้าน (ถ้ามี)',
     '7. หมายเหตุสำหรับครู — สิ่งที่ต้องเตรียมหรือระวังเป็นพิเศษ',
-    '',
-    `กรุณาตอบเป็น${langLabel}ทั้งหมด`,
   )
+  if (mediaItems?.length) {
+    lines.push('', 'สื่อ/เอกสารประกอบที่ต้องการให้ช่วยออกแบบเพิ่มเติม (นอกเหนือจากแผนการสอน):')
+    mediaItems.forEach((m, i) => lines.push(`${i + 1}. ${m.text}: ${m.instruction}`))
+  }
+  lines.push('', `กรุณาตอบเป็น${langLabel}ทั้งหมด`)
   if (langKey === 'ms-jawi') lines.push('(เขียนด้วยอักขระยาวี Jawi เท่านั้น ห้ามใช้อักษรรูมี)')
   return lines.join('\n')
 }
 
 async function _promptGenModal(teacher, classId, cls, cfg) {
   document.getElementById('prompt-gen-modal')?.remove()
-  const ms        = cls?.master_subjects ?? {}
-  const tierIndex = window._pp5DonorTierIndex ?? 0
-  const minTier   = _promptGenMinTier(cfg)
+  const ms             = cls?.master_subjects ?? {}
+  const tierIndex       = window._pp5DonorTierIndex ?? 0
+  const minTier         = _promptGenMinTier(cfg)
+  const isReligionSubj  = ['AGM','AGMVOC'].includes(ms.subject_group)
 
   const modal = document.createElement('div')
   modal.id = 'prompt-gen-modal'
@@ -1690,6 +1726,26 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
           </select>
           <input id="pg-format-other" class="${INPUT_CLS} mt-2 hidden" placeholder="พิมพ์รูปแบบที่ต้องการ" />
         </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">จำนวนคาบ</label>
+            <input id="pg-periods" type="number" min="1" max="10" value="1" class="${INPUT_CLS}" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">นาทีต่อคาบ</label>
+            <input id="pg-minutes" type="number" min="10" max="180" value="50" class="${INPUT_CLS}" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">สื่อ/เอกสารประกอบที่ต้องการให้ AI ช่วยออกแบบเพิ่มเติม (เลือกได้หลายรายการ)</label>
+          <div id="pg-media" class="space-y-1.5">
+            ${PG_MEDIA_ITEMS.map(m => `
+              <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" class="pg-media-cb rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" value="${m.key}" />
+                ${_htmlEsc(m.text)}
+              </label>`).join('')}
+          </div>
+        </div>
         <div>
           <label class="block text-xs font-semibold text-gray-600 mb-1.5">ภาษาที่ต้องการให้ AI ตอบ</label>
           <select id="pg-lang" class="${SELECT_CLS}">
@@ -1703,8 +1759,17 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
 
     const formatSel    = body.querySelector('#pg-format')
     const formatOther  = body.querySelector('#pg-format-other')
+    const mediaChecks  = () => [...body.querySelectorAll('.pg-media-cb')]
+
+    const applyMediaDefaults = () => {
+      const defaults = PG_FORMAT_MEDIA_DEFAULTS[formatSel.value] ?? []
+      mediaChecks().forEach(cb => { cb.checked = defaults.includes(cb.value) })
+    }
+    applyMediaDefaults()
+
     formatSel.addEventListener('change', () => {
       formatOther.classList.toggle('hidden', formatSel.value !== 'other')
+      applyMediaDefaults()
     })
 
     body.querySelector('#pg-generate').addEventListener('click', () => {
@@ -1713,13 +1778,19 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
       const formatVal = formatSel.value === 'other'
         ? (formatOther.value.trim() || 'ไม่ระบุ')
         : (PG_FORMATS.find(f => f.value === formatSel.value)?.label ?? formatSel.value)
+
+      const periods = Math.max(1, parseInt(body.querySelector('#pg-periods').value, 10) || 1)
+      const minutesPerPeriod = Math.max(1, parseInt(body.querySelector('#pg-minutes').value, 10) || 50)
+      const mediaItems = mediaChecks().filter(cb => cb.checked).map(cb => PG_MEDIA_ITEMS.find(m => m.key === cb.value)).filter(Boolean)
+
       const langKey   = body.querySelector('#pg-lang').value
       const langLabel = PG_LANGS[langKey]
 
       const promptText = _buildTeachingPrompt({
         subjectName: ms.subject_name ?? '—', subjectCode: ms.subject_code ?? '—',
         gradeLevel: ms.grade_level ?? '—', className: cls.class_name ?? '—',
-        studentCount, avgPct, topic, format: formatVal, langKey, langLabel,
+        studentCount, avgPct, topic, format: formatVal, periods, minutesPerPeriod,
+        isReligionSubj, mediaItems, langKey, langLabel,
       })
       renderResult(promptText)
     })
