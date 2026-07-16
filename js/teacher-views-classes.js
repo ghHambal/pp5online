@@ -1731,17 +1731,27 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
   const minTier         = _promptGenMinTier(cfg)
   const isReligionSubj  = ['AGM','AGMVOC'].includes(ms.subject_group)
 
+  const freeLimitRaw = cfg?.freePromptAiLimit
+  let freeLimit = 1
+  if (freeLimitRaw !== undefined && freeLimitRaw !== '') {
+    const parsedVal = parseInt(freeLimitRaw, 10)
+    if (Number.isFinite(parsedVal)) freeLimit = parsedVal
+  }
+  const trialCount     = parseInt(localStorage.getItem('pp5_free_promptai_count') || '0', 10)
+  const isTrialAvailable = freeLimit > 0 && trialCount < freeLimit
+  const usingTrial      = tierIndex < minTier
+
   const modal = document.createElement('div')
   modal.id = 'prompt-gen-modal'
   modal.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4'
 
-  if (tierIndex < minTier) {
+  if (usingTrial && !isTrialAvailable) {
     modal.innerHTML = `
       <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl flex flex-col p-6 text-center gap-4 relative animate-fade">
         <button id="pg-close" class="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition text-lg">✕</button>
         <div class="text-6xl mt-4">🔒</div>
         <p class="font-bold text-gray-800 text-lg">ฟีเจอร์สำหรับผู้สนับสนุนระดับ ${minTier}+</p>
-        <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">✍️ ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว<br>เปิดให้ใช้งานเมื่อสนับสนุนโครงการถึงระดับที่กำหนด</p>
+        <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">✍️ ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว<br>ทดลองใช้ฟรีครบ ${freeLimit} ครั้งแล้ว<br>สนับสนุนโครงการเพื่อใช้งานต่อแบบไม่จำกัด</p>
         <button id="pg-upgrade" class="mt-2 px-6 py-3 rounded-2xl text-white font-bold text-sm shadow-lg" style="background:linear-gradient(135deg,#f59e0b,#d97706)">⭐ ดูรายละเอียดระดับ</button>
       </div>`
     document.body.appendChild(modal)
@@ -1757,6 +1767,7 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
         <div class="flex-1 min-w-0">
           <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">✍️ สร้าง Prompt สำหรับ AI</h3>
           <p class="text-xs text-gray-400 mt-0.5">นำ Prompt ที่ได้ไปวางใน ChatGPT / Gemini / Claude ของคุณครูเองได้เลย</p>
+          ${usingTrial ? `<span class="inline-block mt-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">✨ ทดลองใช้งานฟรี (ครั้งที่ ${trialCount + 1}/${freeLimit})</span>` : ''}
         </div>
         <button id="pg-close" class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition text-lg">✕</button>
       </div>
@@ -1870,6 +1881,7 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
         studentCount, avgPct, topic, format: formatVal, periods, minutesPerPeriod,
         isReligionSubj, mediaItems, langKey, langLabel,
       })
+      if (usingTrial) localStorage.setItem('pp5_free_promptai_count', String(trialCount + 1))
       renderResult(promptText, topic)
     })
   }
