@@ -77,3 +77,10 @@ export async function uploadShirtDesignColorImage(designId, colorId, file) {
 export async function uploadShirtDesignHtml(designId, file) {
   return uploadFile('shirt-designs', `${designId}.html`, file, 'text/html')
 }
+
+// รูปแนบประกาศ (เช่น อินโฟกราฟิก) → บีบ max 1600px คุณภาพสูงเพราะเป็นภาพนำเสนอ
+export async function uploadAnnouncementImage(file) {
+  const blob = await compressImage(file, { maxWidth: 1600, quality: 0.88 })
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return uploadFile('system-assets', `announcements/${key}.jpg`, blob)
+}

@@ -4715,6 +4715,7 @@ export async function renderAnnouncementsView(teacher) {
             </div>
             <h3 class="text-base font-bold text-gray-800 mb-1.5">${_esc(a.title)}</h3>
             ${a.body ? `<p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap mb-2">${_esc(a.body)}</p>` : ''}
+            ${a.file_url ? `<img src="${_esc(a.file_url)}" class="w-full rounded-xl border border-gray-100 mb-2 cursor-pointer" onclick="window.open('${_esc(a.file_url)}','_blank')" />` : ''}
             ${isTraining && a.event_date ? `
               <div class="mt-3 mb-2 bg-violet-50 border border-violet-100 rounded-xl p-3 space-y-1.5">
                 <p class="text-xs font-semibold text-violet-700">🎓 ข้อมูลการอบรม</p>

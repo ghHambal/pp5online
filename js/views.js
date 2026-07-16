@@ -39,7 +39,7 @@ import { openTeacherModal, handleDeleteTeacher,
          openDeptModal, handleDeleteDept,
          openPeriodModal, handleDeletePeriod } from './dashboard.js'
 import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './import.js'
-import { uploadSystemAsset, uploadStickerPng, compressImage } from './storage.js'
+import { uploadSystemAsset, uploadStickerPng, compressImage, uploadAnnouncementImage } from './storage.js'
 import { applyThemeForRole } from './theme.js'
 import { supabase } from './supabase.js'
 import {
@@ -8670,6 +8670,15 @@ export async function renderAnnouncements() {
             <textarea id="ann-body" rows="4" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
           </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">รูปภาพแนบ <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ)</span></label>
+            <div id="ann-image-preview" class="${item?.file_url ? '' : 'hidden'} mb-2 relative inline-block">
+              <img id="ann-image-preview-img" src="${_esc(item?.file_url ?? '')}" class="max-h-40 rounded-xl border border-gray-200 object-contain" />
+              <button type="button" id="ann-image-remove" class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center shadow hover:bg-red-600 transition">✕</button>
+            </div>
+            <input id="ann-image-file" type="file" accept="image/*" class="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-indigo-50 file:text-indigo-700 file:text-xs file:font-semibold hover:file:bg-indigo-100 file:cursor-pointer" />
+            <p id="ann-image-status" class="text-[11px] text-gray-400 mt-1"></p>
+          </div>
           <!-- ประเภทประกาศ -->
           <div>
             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">ประเภทประกาศ</label>
@@ -8790,6 +8799,31 @@ export async function renderAnnouncements() {
     _makeHint(m.querySelector('#ann-title'), _TITLE_CHIPS)
     _makeHint(m.querySelector('#ann-body'), _BODY_CHIPS)
 
+    // รูปภาพแนบ — อัปโหลดทันทีตอนเลือกไฟล์
+    let annFileUrl = item?.file_url ?? null
+    const annImgStatus  = m.querySelector('#ann-image-status')
+    const annImgPreview = m.querySelector('#ann-image-preview')
+    const annImgTag     = m.querySelector('#ann-image-preview-img')
+    m.querySelector('#ann-image-file').addEventListener('change', async e => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      annImgStatus.textContent = 'กำลังอัปโหลด...'
+      try {
+        annFileUrl = await uploadAnnouncementImage(file)
+        annImgTag.src = annFileUrl
+        annImgPreview.classList.remove('hidden')
+        annImgStatus.textContent = 'อัปโหลดสำเร็จ ✅'
+      } catch (err) {
+        annImgStatus.textContent = 'อัปโหลดไม่สำเร็จ: ' + (err.message ?? '')
+      }
+      e.target.value = ''
+    })
+    m.querySelector('#ann-image-remove').addEventListener('click', () => {
+      annFileUrl = null
+      annImgPreview.classList.add('hidden')
+      annImgStatus.textContent = ''
+    })
+
     // calendar reference picker
     let _calEvents = []
     m.querySelector('#ann-cal-ref').addEventListener('click', async () => {
@@ -8895,12 +8929,12 @@ export async function renderAnnouncements() {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: annFileUrl })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await onDone()
@@ -8913,8 +8947,8 @@ export async function renderAnnouncements() {
       const btn = m.querySelector('#ann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType })
-        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl })
+        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')

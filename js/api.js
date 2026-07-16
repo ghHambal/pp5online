@@ -2586,7 +2586,7 @@ export async function getSupervisorComments(teacherId) {
 export async function getAllAnnouncementsForTeacher() {
   // เฉพาะประกาศจากแอดมิน/ผู้บริหาร (target_class_ids = null คือไม่ใช่ประกาศห้องเรียนของครู)
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, schedule_filter, teachers(id, full_name)')
+    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, schedule_filter, file_url, teachers(id, full_name)')
     .is('target_class_ids', null)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
