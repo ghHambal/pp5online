@@ -1,5 +1,4 @@
 // js/teacher-views-quiz-banks.js
-import { getTeacherPackageAccess } from './api.js'
 import {
   getQuizBanks, createQuizBank, updateQuizBank, deleteQuizBank,
   getQuizQuestions, createQuizQuestion, bulkImportQuizQuestions, updateQuizQuestion, deleteQuizQuestion
@@ -31,9 +30,13 @@ export async function renderQuizBanks(teacher) {
   setTitle('ระบบแบบทดสอบออนไลน์ (Quiz)')
   setContent(`<div class="flex justify-center py-12 text-gray-400">กำลังโหลดข้อมูล...</div>`)
 
-  const packageAccess = await getTeacherPackageAccess(teacher.id).catch(() => ({ hasSemester: false }))
+  // Gate strictly on donor tier — NOT hasSemester (packageAccess), which also
+  // turns true for the free zero-amount "school sponsored" grant and for any
+  // approved donation regardless of amount (even below tier 2). Verified
+  // against production data: 181 teachers hold an approved school_sponsored
+  // request at amount=0, which would otherwise bypass this gate entirely.
   const donorTier = window._pp5DonorTierIndex ?? 0
-  const isPremium = donorTier >= 2 || packageAccess.hasSemester
+  const isPremium = donorTier >= 2
   if (!isPremium) { _lockedScreen(2); return }
 
   const banks = await getQuizBanks(teacher.id)
