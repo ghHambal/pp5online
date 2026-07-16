@@ -16,6 +16,7 @@ export default defineConfig({
         leaveMonitor:  resolve(__dirname, 'leave-monitor.html'),
         publicMonitor: resolve(__dirname, 'public-monitor.html'),
         sports:        resolve(__dirname, 'sports.html'),
+        quizExam:      resolve(__dirname, 'quiz-exam.html'),
         azizgames:     resolve(__dirname, 'azizgames.html'),
         shirtVotePublic: resolve(__dirname, 'shirt-vote-public.html'),
       },
