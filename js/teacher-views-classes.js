@@ -20,6 +20,7 @@ import {
   saveClassGroups, clearClassGroups,
   getFlashcardDecks, getClassSessionDOWs, updateClassStudentSpecialResult,
   logQrReissue, getQrReissueLogs, updateQrReissueLog, deleteQrReissueLog,
+  getClassScoreSummary,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -1310,6 +1311,10 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-700 transition flex items-center gap-1.5">
             🃏 <span>บัตรคำศัพท์</span>
           </button>
+          <button onclick="window._openPromptGenModal(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-cyan-600 text-white text-xs font-semibold rounded-xl hover:bg-cyan-700 transition flex items-center gap-1.5">
+            ✍️ <span>Prompt AI</span>
+          </button>
           ${cls.google_sheet_id ? `
           <button onclick="window._openSheetToolsModal(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 transition flex items-center gap-1.5">
@@ -1387,6 +1392,11 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       } catch (err) {
         showToast('โหลดชุดบัตรคำไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       }
+    }
+    window._openPromptGenModal = async (cid) => {
+      const c = window._classCache?.[cid]
+      if (!c) return
+      await _promptGenModal(teacher, cid, c, window._pp5SystemCfg ?? {})
     }
     window._deleteClass = async (cid, name) => {
       const confirmed = await showDangerConfirm({
@@ -1542,6 +1552,199 @@ function _openClassFlashcardsSelectionModal(teacher, classId, decks) {
       }
     })
   })
+}
+
+// ─── Prompt Generator (✍️ ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว) ──
+
+function _promptGenMinTier(cfg) {
+  return String(cfg?.donationSpecialFeatures ?? '').split('\n')
+    .map(line => { const p = line.split('|'); return { text: p[1] ?? '', minTier: parseInt(p[2]) || 1 } })
+    .find(f => f.text.includes('Prompt'))?.minTier ?? 1
+}
+
+const PG_FORMATS = [
+  { value: 'บรรยาย',              label: 'บรรยาย (Lecture)' },
+  { value: 'กิจกรรมกลุ่ม',         label: 'กิจกรรมกลุ่ม (Group Activity)' },
+  { value: 'โครงงานเป็นฐาน',       label: 'โครงงานเป็นฐาน (Project-based)' },
+  { value: 'สืบเสาะหาความรู้',     label: 'สืบเสาะหาความรู้ (Inquiry-based)' },
+  { value: 'other',               label: 'อื่นๆ (พิมพ์เอง)' },
+]
+
+const PG_LANGS = {
+  th:        'ภาษาไทย',
+  en:        'ภาษาอังกฤษ (English)',
+  ar:        'ภาษาอาหรับ (العربية)',
+  'ms-rumi': 'ภาษามลายู อักษรรูมี (Bahasa Melayu, Rumi)',
+  'ms-jawi': 'ภาษามลายูปัตตานี อักษรยาวี (Jawi)',
+}
+
+function _buildTeachingPrompt({ subjectName, subjectCode, gradeLevel, className, studentCount, avgPct, topic, format, langKey, langLabel }) {
+  const lines = [
+    'คุณคือผู้ช่วยครูไทย ช่วยออกแบบแผนการจัดการเรียนรู้รายคาบ',
+    'ตามหลักสูตรแกนกลางการศึกษาขั้นพื้นฐาน พ.ศ. 2551 (ฉบับปรับปรุง พ.ศ. 2560)',
+    '',
+    'บริบทวิชา:',
+    `- วิชา: ${subjectName} (รหัส ${subjectCode})`,
+    `- ระดับชั้น: ${gradeLevel}   ห้อง: ${className}`,
+    `- จำนวนนักเรียน: ${studentCount} คน`,
+  ]
+  if (avgPct != null) lines.push(`- คะแนนเฉลี่ยสะสมของห้องนี้ในขณะนี้: ${avgPct}% (ใช้พิจารณาความยาก-ง่ายของกิจกรรม)`)
+  lines.push(
+    '',
+    `หัวข้อที่จะสอนคาบนี้: ${topic}`,
+    `รูปแบบการสอนที่ต้องการ: ${format}`,
+    '',
+    'กรุณาออกแบบแผนการจัดการเรียนรู้ที่ประกอบด้วย:',
+    '1. จุดประสงค์การเรียนรู้ (ด้านความรู้ K / ทักษะ P / เจตคติ A)',
+    '2. สาระสำคัญ (Key Concept)',
+    '3. กิจกรรมการเรียนรู้ แบ่งเป็น 3 ขั้น พร้อมระบุเวลาแต่ละขั้นตอนชัดเจน (รวม 50 นาที):',
+    '   - นำเข้าสู่บทเรียน',
+    '   - กิจกรรมหลัก',
+    '   - สรุป/wrap-up',
+    '4. สื่อ/อุปกรณ์ที่ต้องใช้',
+    '5. วิธีการวัดและประเมินผลในคาบ',
+    '6. งาน/การบ้าน (ถ้ามี)',
+    '7. หมายเหตุสำหรับครู — สิ่งที่ต้องเตรียมหรือระวังเป็นพิเศษ',
+    '',
+    `กรุณาตอบเป็น${langLabel}ทั้งหมด`,
+  )
+  if (langKey === 'ms-jawi') lines.push('(เขียนด้วยอักขระยาวี Jawi เท่านั้น ห้ามใช้อักษรรูมี)')
+  return lines.join('\n')
+}
+
+async function _promptGenModal(teacher, classId, cls, cfg) {
+  document.getElementById('prompt-gen-modal')?.remove()
+  const ms        = cls?.master_subjects ?? {}
+  const tierIndex = window._pp5DonorTierIndex ?? 0
+  const minTier   = _promptGenMinTier(cfg)
+
+  const modal = document.createElement('div')
+  modal.id = 'prompt-gen-modal'
+  modal.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4'
+
+  if (tierIndex < minTier) {
+    modal.innerHTML = `
+      <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl flex flex-col p-6 text-center gap-4 relative animate-fade">
+        <button id="pg-close" class="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition text-lg">✕</button>
+        <div class="text-6xl mt-4">🔒</div>
+        <p class="font-bold text-gray-800 text-lg">ฟีเจอร์สำหรับผู้สนับสนุนระดับ ${minTier}+</p>
+        <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">✍️ ระบบสร้าง Prompt เฉพาะครั้งสอนสำหรับใช้กับ AI ส่วนตัว<br>เปิดให้ใช้งานเมื่อสนับสนุนโครงการถึงระดับที่กำหนด</p>
+        <button id="pg-upgrade" class="mt-2 px-6 py-3 rounded-2xl text-white font-bold text-sm shadow-lg" style="background:linear-gradient(135deg,#f59e0b,#d97706)">⭐ ดูรายละเอียดระดับ</button>
+      </div>`
+    document.body.appendChild(modal)
+    modal.querySelector('#pg-close').addEventListener('click', () => modal.remove())
+    modal.querySelector('#pg-upgrade').addEventListener('click', () => { modal.remove(); document.getElementById('btn-donate-float')?.click() })
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+    return
+  }
+
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh] relative animate-fade">
+      <div class="flex items-center gap-3 px-6 pt-6 pb-3 flex-shrink-0">
+        <div class="flex-1 min-w-0">
+          <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">✍️ สร้าง Prompt สำหรับ AI</h3>
+          <p class="text-xs text-gray-400 mt-0.5">นำ Prompt ที่ได้ไปวางใน ChatGPT / Gemini / Claude ของคุณครูเองได้เลย</p>
+        </div>
+        <button id="pg-close" class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition text-lg">✕</button>
+      </div>
+      <div class="px-6 pb-6 overflow-y-auto" id="pg-body">
+        <div class="flex justify-center py-10 text-gray-400 text-sm">กำลังโหลดข้อมูลห้องเรียน...</div>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+  modal.querySelector('#pg-close').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+
+  const body = modal.querySelector('#pg-body')
+
+  let studentCount = 0, avgPct = null
+  try {
+    const [roster, scoreData] = await Promise.all([
+      getClassStudents(classId).catch(() => []),
+      getClassScoreSummary(classId).catch(() => ({ columns: [], scores: [] })),
+    ])
+    studentCount = roster.length
+    const totalMax = (scoreData.columns ?? []).reduce((s, c) => s + (c.max_score ?? 0), 0)
+    if (totalMax > 0 && studentCount > 0) {
+      const totalGot = (scoreData.scores ?? []).reduce((s, r) => s + (r.final_score ?? 0), 0)
+      avgPct = Math.round((totalGot / studentCount) / totalMax * 100)
+    }
+  } catch {}
+
+  const renderForm = () => {
+    body.innerHTML = `
+      <div class="bg-gray-50 rounded-2xl p-4 mb-4 text-xs text-gray-600 space-y-1">
+        <p><strong class="text-gray-800">${_htmlEsc(ms.subject_name ?? '—')}</strong> (${_htmlEsc(ms.subject_code ?? '—')})</p>
+        <p>ระดับชั้น ${_htmlEsc(ms.grade_level ?? '—')} · ห้อง ${_htmlEsc(cls.class_name ?? '—')} · นักเรียน ${studentCount} คน</p>
+        ${avgPct != null ? `<p>คะแนนเฉลี่ยสะสมปัจจุบัน: <strong class="text-emerald-600">${avgPct}%</strong></p>` : ''}
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">หัวข้อที่จะสอนคาบนี้ <span class="text-red-400">*</span></label>
+          <textarea id="pg-topic" rows="2" class="${INPUT_CLS} resize-none" placeholder="เช่น สมการกำลังสอง, การสังเคราะห์แสง"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">รูปแบบการสอนที่ต้องการ</label>
+          <select id="pg-format" class="${SELECT_CLS}">
+            ${PG_FORMATS.map(f => `<option value="${f.value}">${_htmlEsc(f.label)}</option>`).join('')}
+          </select>
+          <input id="pg-format-other" class="${INPUT_CLS} mt-2 hidden" placeholder="พิมพ์รูปแบบที่ต้องการ" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5">ภาษาที่ต้องการให้ AI ตอบ</label>
+          <select id="pg-lang" class="${SELECT_CLS}">
+            ${Object.entries(PG_LANGS).map(([k, v]) => `<option value="${k}">${_htmlEsc(v)}</option>`).join('')}
+          </select>
+        </div>
+        <button id="pg-generate" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg transition">
+          ✨ สร้าง Prompt
+        </button>
+      </div>`
+
+    const formatSel    = body.querySelector('#pg-format')
+    const formatOther  = body.querySelector('#pg-format-other')
+    formatSel.addEventListener('change', () => {
+      formatOther.classList.toggle('hidden', formatSel.value !== 'other')
+    })
+
+    body.querySelector('#pg-generate').addEventListener('click', () => {
+      const topic = body.querySelector('#pg-topic').value.trim()
+      if (!topic) { showToast('กรุณาระบุหัวข้อที่จะสอนก่อนครับ', 'warning'); return }
+      const formatVal = formatSel.value === 'other'
+        ? (formatOther.value.trim() || 'ไม่ระบุ')
+        : (PG_FORMATS.find(f => f.value === formatSel.value)?.label ?? formatSel.value)
+      const langKey   = body.querySelector('#pg-lang').value
+      const langLabel = PG_LANGS[langKey]
+
+      const promptText = _buildTeachingPrompt({
+        subjectName: ms.subject_name ?? '—', subjectCode: ms.subject_code ?? '—',
+        gradeLevel: ms.grade_level ?? '—', className: cls.class_name ?? '—',
+        studentCount, avgPct, topic, format: formatVal, langKey, langLabel,
+      })
+      renderResult(promptText)
+    })
+  }
+
+  const renderResult = (promptText) => {
+    body.innerHTML = `
+      <p class="text-xs text-gray-500 mb-2">คัดลอกข้อความด้านล่างไปวางใน ChatGPT / Gemini / Claude ของคุณครูได้เลยครับ</p>
+      <textarea id="pg-output" readonly rows="14" class="w-full text-xs font-mono border border-gray-200 rounded-2xl p-3 bg-gray-50 text-gray-700 resize-none">${_htmlEsc(promptText)}</textarea>
+      <div class="flex gap-2 mt-3">
+        <button id="pg-copy" class="flex-1 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg transition">📋 คัดลอก Prompt</button>
+        <button id="pg-back" class="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-semibold transition">← แก้ไข</button>
+      </div>`
+    body.querySelector('#pg-copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(promptText)
+        showToast('คัดลอก Prompt แล้วครับ', 'success')
+      } catch {
+        showToast('คัดลอกไม่สำเร็จ กรุณาเลือกข้อความแล้วคัดลอกเองครับ', 'error')
+      }
+    })
+    body.querySelector('#pg-back').addEventListener('click', renderForm)
+  }
+
+  renderForm()
 }
 
 async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
