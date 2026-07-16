@@ -47,6 +47,24 @@ export async function openQuizAnalytics(quiz) {
   }))
   const maxHistCount = Math.max(1, ...histCounts.map(h => h.count))
 
+  // ── Leaderboard ── best finished score per student, ranked (ties share a rank)
+  const bestByStudent = {}
+  attempts.forEach(a => {
+    if (a.score_pct == null) return
+    if (bestByStudent[a.student_id] == null || a.score_pct > bestByStudent[a.student_id]) {
+      bestByStudent[a.student_id] = a.score_pct
+    }
+  })
+  const sortedScores = Object.entries(bestByStudent)
+    .map(([studentId, pct]) => ({ student: studentById[studentId], pct }))
+    .sort((a, b) => b.pct - a.pct)
+  let lastPct = null, lastRank = 0
+  const leaderboard = sortedScores.map((row, i) => {
+    if (row.pct !== lastPct) { lastRank = i + 1; lastPct = row.pct }
+    return { ...row, rank: lastRank }
+  })
+  const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' }
+
   // ── Item analysis ── (precompute a Set per attempt so membership checks are O(1), not O(num_questions))
   const questionSetByAttempt = attempts.map(a => Array.isArray(a.question_order) ? new Set(a.question_order) : new Set())
   const itemStats = questions.map(q => {
@@ -105,6 +123,20 @@ export async function openQuizAnalytics(quiz) {
           `).join('')}
         </div>
       </div>
+
+      ${leaderboard.length > 0 ? `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <h3 class="font-bold text-gray-700 text-sm mb-3">🏆 อันดับคะแนน</h3>
+        <div class="space-y-1.5">
+          ${leaderboard.map(row => `
+            <div class="flex items-center gap-3 py-1.5 ${row.rank <= 3 ? 'bg-amber-50/50 -mx-2 px-2 rounded-lg' : ''}">
+              <span class="w-7 text-center text-sm font-bold ${row.rank <= 3 ? '' : 'text-gray-400'} flex-shrink-0">${MEDALS[row.rank] ?? row.rank}</span>
+              <span class="text-sm text-gray-700 flex-1 truncate">${_htmlEsc(row.student?.full_name ?? 'ไม่ทราบชื่อ')}</span>
+              <span class="text-sm font-bold text-gray-800 flex-shrink-0">${row.pct.toFixed(1)}%</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : ''}
 
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
         <h3 class="font-bold text-gray-700 text-sm mb-3">วิเคราะห์รายข้อ</h3>

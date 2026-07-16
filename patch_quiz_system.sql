@@ -634,6 +634,40 @@ BEGIN
 END;
 $$;
 
+-- get_my_quiz_rank: privacy-safe leaderboard rank for a student. Returns only
+-- the calling student's own rank + total participants + best score — never
+-- other students' names/scores (RLS already blocks direct cross-student
+-- reads; this RPC is the one sanctioned aggregate view for ranking).
+-- Ranking uses each student's BEST finished score (not attempt_scoring_mode)
+-- since "leaderboard best result" is a distinct, simpler concept from
+-- "recorded grade".
+CREATE OR REPLACE FUNCTION public.get_my_quiz_rank(p_attempt_id UUID)
+RETURNS TABLE(my_rank INTEGER, total_participants INTEGER, my_best_pct NUMERIC)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_student_id INTEGER;
+  v_quiz_id UUID;
+BEGIN
+  SELECT id INTO v_student_id FROM public.students WHERE profile_id = auth.uid();
+  SELECT quiz_id INTO v_quiz_id FROM public.quiz_attempts WHERE id = p_attempt_id AND student_id = v_student_id;
+  IF v_quiz_id IS NULL THEN RAISE EXCEPTION 'not your attempt'; END IF;
+
+  RETURN QUERY
+  WITH best_per_student AS (
+    SELECT student_id, MAX(score_pct) AS best_pct
+    FROM public.quiz_attempts
+    WHERE quiz_id = v_quiz_id AND status IN ('submitted','terminated_violation') AND score_pct IS NOT NULL
+    GROUP BY student_id
+  ), me AS (
+    SELECT best_pct FROM best_per_student WHERE student_id = v_student_id
+  )
+  SELECT
+    (SELECT count(*)::int + 1 FROM best_per_student, me WHERE best_per_student.best_pct > me.best_pct),
+    (SELECT count(*)::int FROM best_per_student),
+    (SELECT best_pct FROM me);
+END;
+$$;
+
 -- ─────────────────────────── 5. GRANTS ─────────────────────────────────
 -- Supabase grants EXECUTE directly to anon/authenticated via default
 -- privileges (not merely via PUBLIC), so PUBLIC alone must not be relied
@@ -664,6 +698,9 @@ GRANT EXECUTE ON FUNCTION public.teacher_unlock_quiz_attempt(UUID, TEXT) TO auth
 
 REVOKE ALL ON FUNCTION public.teacher_close_quiz_and_finalize(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.teacher_close_quiz_and_finalize(UUID) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.get_my_quiz_rank(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_quiz_rank(UUID) TO authenticated;
 
 -- Trigger function: never meant to be called directly via RPC at all.
 REVOKE ALL ON FUNCTION public.prevent_quiz_attempt_tamper() FROM PUBLIC, anon, authenticated;

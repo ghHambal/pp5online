@@ -1,9 +1,10 @@
 // js/quiz-exam.js — standalone exam-taking runtime, loaded from quiz-exam.html
 import {
   getQuizAttempt, rpcGetAttemptQuestions, rpcSubmitAttempt,
-  rpcRecordViolation, rpcClaimSession, rpcHeartbeat
+  rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank
 } from './quiz-api.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
+import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { showToast, showDangerConfirm, setButtonLoading } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
 
@@ -340,6 +341,11 @@ async function _renderResultScreen(root) {
   const reviewPolicy = quiz?.review_policy ?? 'total_only'
   const scorePct = fresh.score_pct ?? 0
 
+  const rank = await rpcGetMyRank(_attempt.id).catch(() => null)
+  const rankHtml = (rank && rank.total_participants > 1)
+    ? `<p class="text-sm text-indigo-100 mt-2">🏆 อันดับที่ ${rank.my_rank} จาก ${rank.total_participants} คน</p>`
+    : ''
+
   let detailHtml = ''
   if (reviewPolicy !== 'total_only') {
     const questions = await rpcGetAttemptQuestions(_attempt.id).catch(() => [])
@@ -376,9 +382,13 @@ async function _renderResultScreen(root) {
       <div class="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-3xl p-8 text-center text-white shadow-lg">
         <p class="text-sm text-indigo-100 mb-1">ส่งคำตอบเรียบร้อยแล้ว</p>
         <p class="text-5xl font-extrabold">${scorePct.toFixed(1)}%</p>
+        ${rankHtml}
       </div>
       ${detailHtml}
     </div>
   `
   if (reviewPolicy !== 'total_only') loadKaTeX().then(() => renderMathIn(root)).catch(() => {})
+
+  const confettiTier = scorePct >= 80 ? 'high' : scorePct >= 50 ? 'mid' : null
+  if (confettiTier) loadConfetti().then(() => fireConfetti(confettiTier)).catch(() => {})
 }

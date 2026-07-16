@@ -189,6 +189,14 @@ export async function rpcUnlockAttempt(attemptId, mode) {
   return data
 }
 
+// Privacy-safe: returns only the caller's own rank/total/best score, never
+// other students' identities or scores.
+export async function rpcGetMyRank(attemptId) {
+  const { data, error } = await supabase.rpc('get_my_quiz_rank', { p_attempt_id: attemptId })
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
 // ─── Autosave (student, in_progress attempts only) ─────────────────────────
 // Goes through the RPC (not a direct table UPDATE) so the session-token check
 // and server-side deadline backstop in quiz_attempt_heartbeat() always run.
