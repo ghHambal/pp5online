@@ -9233,6 +9233,15 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
             <textarea id="sann-body" rows="5" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition resize-none"
               placeholder="รายละเอียดประกาศ (ไม่บังคับ)">${_esc(item?.body ?? '')}</textarea>
           </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">รูปภาพแนบ <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ)</span></label>
+            <div id="sann-image-preview" class="${item?.file_url ? '' : 'hidden'} mb-2 relative inline-block">
+              <img id="sann-image-preview-img" src="${_esc(item?.file_url ?? '')}" class="max-h-40 rounded-xl border border-gray-200 object-contain" />
+              <button type="button" id="sann-image-remove" class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center shadow hover:bg-red-600 transition">✕</button>
+            </div>
+            <input id="sann-image-file" type="file" accept="image/*" class="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-indigo-50 file:text-indigo-700 file:text-xs file:font-semibold hover:file:bg-indigo-100 file:cursor-pointer" />
+            <p id="sann-image-status" class="text-[11px] text-gray-400 mt-1"></p>
+          </div>
           <!-- ประเภทประกาศ (admin เท่านั้นที่เปลี่ยนประเภทได้) -->
           ${isAdmin ? `
           <div>
@@ -9361,6 +9370,31 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
     _makeHint(m.querySelector('#sann-title'), _TITLE_CHIPS)
     _makeHint(m.querySelector('#sann-body'), _BODY_CHIPS)
 
+    // รูปภาพแนบ — อัปโหลดทันทีตอนเลือกไฟล์
+    let sannFileUrl = item?.file_url ?? null
+    const sannImgStatus  = m.querySelector('#sann-image-status')
+    const sannImgPreview = m.querySelector('#sann-image-preview')
+    const sannImgTag     = m.querySelector('#sann-image-preview-img')
+    m.querySelector('#sann-image-file').addEventListener('change', async e => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      sannImgStatus.textContent = 'กำลังอัปโหลด...'
+      try {
+        sannFileUrl = await uploadAnnouncementImage(file)
+        sannImgTag.src = sannFileUrl
+        sannImgPreview.classList.remove('hidden')
+        sannImgStatus.textContent = 'อัปโหลดสำเร็จ ✅'
+      } catch (err) {
+        sannImgStatus.textContent = 'อัปโหลดไม่สำเร็จ: ' + (err.message ?? '')
+      }
+      e.target.value = ''
+    })
+    m.querySelector('#sann-image-remove').addEventListener('click', () => {
+      sannFileUrl = null
+      sannImgPreview.classList.add('hidden')
+      sannImgStatus.textContent = ''
+    })
+
     // ── Calendar reference picker ──
     let _calEvents = []
     m.querySelector('#sann-cal-ref').addEventListener('click', async () => {
@@ -9470,12 +9504,12 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter })
+            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await _renderList()
@@ -9489,8 +9523,8 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl })
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
