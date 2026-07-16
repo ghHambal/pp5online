@@ -1639,12 +1639,79 @@ function _buildTeachingPrompt({
     '7. หมายเหตุสำหรับครู — สิ่งที่ต้องเตรียมหรือระวังเป็นพิเศษ',
   )
   if (mediaItems?.length) {
-    lines.push('', 'สื่อ/เอกสารประกอบที่ต้องการให้ช่วยออกแบบเพิ่มเติม (นอกเหนือจากแผนการสอน):')
+    lines.push(
+      '',
+      'สื่อ/เอกสารประกอบที่ต้องการให้ช่วยออกแบบเพิ่มเติม (นอกเหนือจากแผนการสอน):',
+      'สำหรับแต่ละรายการด้านล่างนี้ กรุณาเขียนเนื้อหาที่พร้อมใช้งานจริงแยกเป็นคนละกล่องโค้ด (code block) ต่อ 1 รายการ ไม่ปนกับส่วนอื่น เพื่อให้คัดลอกไปพิมพ์/แจกนักเรียนได้ทันที:',
+    )
     mediaItems.forEach((m, i) => lines.push(`${i + 1}. ${m.text}: ${m.instruction}`))
   }
   lines.push('', `กรุณาตอบเป็น${langLabel}ทั้งหมด`)
   if (langKey === 'ms-jawi') lines.push('(เขียนด้วยอักขระยาวี Jawi เท่านั้น ห้ามใช้อักษรรูมี)')
   return lines.join('\n')
+}
+
+// ── ดาวน์โหลดคำตอบจาก AI เป็นไฟล์ Word (.doc) เพื่อให้ครูแก้ไขต่อได้ ──
+function _pgInlineMdToHtml(s) {
+  return _htmlEsc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+}
+
+function _pgMarkdownToWordHtml(text) {
+  const lines = String(text ?? '').split('\n')
+  let html = '', inCode = false, codeBuf = [], listType = null
+  const closeList = () => { if (listType) { html += `</${listType}>`; listType = null } }
+
+  for (const raw of lines) {
+    const line = raw.replace(/\r$/, '')
+    if (line.trim().startsWith('```')) {
+      if (inCode) { html += `<pre>${_htmlEsc(codeBuf.join('\n'))}</pre>`; codeBuf = []; inCode = false }
+      else { closeList(); inCode = true }
+      continue
+    }
+    if (inCode) { codeBuf.push(line); continue }
+
+    const h = line.match(/^(#{1,3})\s+(.*)$/)
+    if (h) { closeList(); const lvl = h[1].length; html += `<h${lvl}>${_pgInlineMdToHtml(h[2])}</h${lvl}>`; continue }
+
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/)
+    if (bullet) {
+      if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul' }
+      html += `<li>${_pgInlineMdToHtml(bullet[1])}</li>`
+      continue
+    }
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/)
+    if (numbered) {
+      if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol' }
+      html += `<li>${_pgInlineMdToHtml(numbered[1])}</li>`
+      continue
+    }
+    closeList()
+    html += line.trim() ? `<p>${_pgInlineMdToHtml(line)}</p>` : '<p>&nbsp;</p>'
+  }
+  closeList()
+  if (inCode && codeBuf.length) html += `<pre>${_htmlEsc(codeBuf.join('\n'))}</pre>`
+  return html
+}
+
+function _pgSafeFileSlug(s) {
+  return String(s ?? '').replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 60) || 'เอกสาร'
+}
+
+function _pgDownloadAsWord(text, filename) {
+  const bodyHtml = _pgMarkdownToWordHtml(text)
+  const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head><meta charset='utf-8'><title>แผนการจัดการเรียนรู้</title>
+    <style>
+      body{font-family:'TH Sarabun New','Angsana New',Tahoma,sans-serif;font-size:16pt;line-height:1.6;}
+      h1{font-size:22pt;} h2{font-size:19pt;} h3{font-size:17pt;}
+      pre{font-family:'Courier New',monospace;font-size:12pt;background:#f5f5f5;padding:10px;border:1px solid #ccc;white-space:pre-wrap;}
+    </style></head><body>${bodyHtml}</body></html>`
+  const blob = new Blob(['﻿', html], { type: 'application/msword' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename
+  document.body.appendChild(a); a.click(); a.remove()
+  URL.revokeObjectURL(url)
 }
 
 async function _promptGenModal(teacher, classId, cls, cfg) {
@@ -1792,17 +1859,23 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
         studentCount, avgPct, topic, format: formatVal, periods, minutesPerPeriod,
         isReligionSubj, mediaItems, langKey, langLabel,
       })
-      renderResult(promptText)
+      renderResult(promptText, topic)
     })
   }
 
-  const renderResult = (promptText) => {
+  const renderResult = (promptText, topic) => {
     body.innerHTML = `
       <p class="text-xs text-gray-500 mb-2">คัดลอกข้อความด้านล่างไปวางใน ChatGPT / Gemini / Claude ของคุณครูได้เลยครับ</p>
       <textarea id="pg-output" readonly rows="14" class="w-full text-xs font-mono border border-gray-200 rounded-2xl p-3 bg-gray-50 text-gray-700 resize-none">${_htmlEsc(promptText)}</textarea>
       <div class="flex gap-2 mt-3">
         <button id="pg-copy" class="flex-1 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg transition">📋 คัดลอก Prompt</button>
         <button id="pg-back" class="px-4 py-3 rounded-2xl border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-semibold transition">← แก้ไข</button>
+      </div>
+      <div class="mt-5 pt-4 border-t border-gray-100">
+        <p class="text-xs font-semibold text-gray-700 mb-1">📄 ขั้นตอนถัดไป (ถ้าต้องการ): ดาวน์โหลดเป็นไฟล์ Word</p>
+        <p class="text-xs text-gray-400 mb-2">พอ AI ตอบกลับมาแล้ว วางคำตอบทั้งหมดที่ได้ลงในช่องนี้ แล้วกดดาวน์โหลด — จะได้ไฟล์ Word (.doc) ที่เปิดแก้ไขต่อได้เลย</p>
+        <textarea id="pg-ai-response" rows="8" class="${INPUT_CLS} resize-y font-mono text-xs" placeholder="วางคำตอบจาก ChatGPT / Gemini / Claude ที่นี่..."></textarea>
+        <button id="pg-download-word" class="w-full mt-2 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg transition">📄 ดาวน์โหลดเป็นไฟล์ Word (.doc)</button>
       </div>`
     body.querySelector('#pg-copy').addEventListener('click', async () => {
       try {
@@ -1813,6 +1886,13 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
       }
     })
     body.querySelector('#pg-back').addEventListener('click', renderForm)
+    body.querySelector('#pg-download-word').addEventListener('click', () => {
+      const aiResponse = body.querySelector('#pg-ai-response').value.trim()
+      if (!aiResponse) { showToast('กรุณาวางคำตอบจาก AI ก่อนดาวน์โหลดครับ', 'warning'); return }
+      const filename = `แผนการสอน_${_pgSafeFileSlug(ms.subject_code)}_${_pgSafeFileSlug(topic)}.doc`
+      _pgDownloadAsWord(aiResponse, filename)
+      showToast('ดาวน์โหลดไฟล์ Word แล้วครับ', 'success')
+    })
   }
 
   renderForm()
