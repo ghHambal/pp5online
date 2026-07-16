@@ -8,6 +8,7 @@ import { parseCSV } from './import.js'
 import { showToast, showDangerConfirm, setButtonLoading } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
+import { supabase } from './supabase.js'
 
 const CSV_HEADERS = ['คำถาม', 'ตัวเลือก1', 'ตัวเลือก2', 'ตัวเลือก3', 'ตัวเลือก4', 'ตัวเลือก5', 'ตัวเลือกที่ถูก', 'คำอธิบายเฉลย', 'ระดับความยาก', 'หมวดหมู่']
 
@@ -160,6 +161,7 @@ export async function _renderBankQuestions(teacher, bank) {
             <input type="file" id="csv-file-input" accept=".csv" class="sr-only" />
           </label>
           <button id="btn-add-question" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm">＋ เพิ่มคำถาม</button>
+          <button id="btn-ai-generate" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm">✨ AI ช่วยคิดข้อสอบ</button>
           <button id="btn-go-quizzes" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm">🎯 แบบทดสอบจากคลังนี้</button>
         </div>
       </div>
@@ -253,6 +255,8 @@ export async function _renderBankQuestions(teacher, bank) {
   })
 
   document.getElementById('btn-add-question').addEventListener('click', () => _renderQuestionForm(teacher, bank))
+
+  document.getElementById('btn-ai-generate').addEventListener('click', () => _renderAIGenerator(teacher, bank))
 
   document.getElementById('btn-go-quizzes').addEventListener('click', async () => {
     const { renderBankQuizzes } = await import('./teacher-views-quiz-config.js')
@@ -368,6 +372,255 @@ function _renderQuestionForm(teacher, bank) {
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       setButtonLoading(e.target, false, 'บันทึก')
+    }
+  })
+}
+
+// ─── AI Question Generator (Gemini) ─────────────────────────────────────────
+// Every AI-drafted question must be reviewed and explicitly confirmed by the
+// teacher (checkbox) before it can be saved — this mirrors the same
+// choice-reindex safety already applied to the manual form and CSV import,
+// since a draft question here goes through the exact same editable UI a
+// teacher could put a wrong answer into.
+function _normalizeAIQuestion(raw) {
+  const choices = Array.isArray(raw?.choices) ? raw.choices.map(c => String(c ?? '').trim()).filter(Boolean) : []
+  let correctIndex = Number.isInteger(raw?.correct_choice_index) ? raw.correct_choice_index : 0
+  if (correctIndex < 0 || correctIndex >= choices.length) correctIndex = 0
+  return {
+    question_text: String(raw?.question_text ?? '').trim(),
+    choices: choices.length >= 2 ? choices : ['', ''],
+    correct_choice_index: correctIndex,
+    explanation: String(raw?.explanation ?? '').trim(),
+    difficulty: ['ง่าย', 'ปานกลาง', 'ยาก'].includes(raw?.difficulty) ? raw.difficulty : null,
+    confirmed: false,
+  }
+}
+
+function _validateDraftQuestion(d) {
+  if (!d.question_text.trim()) return { ok: false, error: 'กรุณากรอกคำถามก่อนยืนยัน' }
+  const kept = d.choices.map((v, ci) => ({ v: v.trim(), ci })).filter(x => x.v)
+  if (kept.length < 2) return { ok: false, error: 'ต้องมีตัวเลือกที่มีข้อความอย่างน้อย 2 ข้อ' }
+  const correctIndex = kept.findIndex(x => x.ci === d.correct_choice_index)
+  if (correctIndex < 0) return { ok: false, error: 'ตัวเลือกที่ถูกต้องต้องมีข้อความ กรุณาเลือกใหม่' }
+  return { ok: true }
+}
+
+function _renderAIGenerator(teacher, bank) {
+  let drafts = []
+
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[95] bg-black/40 flex items-center justify-center p-4 overflow-y-auto'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl my-8">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-gray-800 text-lg">✨ AI ช่วยคิดข้อสอบ</h3>
+        <button id="ai-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+      </div>
+      <p class="text-xs text-gray-400 mb-4">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบและกดยืนยันความถูกต้องทีละข้อก่อนบันทึกเข้าคลังจริง</strong></p>
+
+      <div class="bg-purple-50 border border-purple-100 rounded-2xl p-4 space-y-3 mb-4">
+        <div>
+          <label class="text-xs font-semibold text-gray-600 mb-1 block">หัวข้อ/เนื้อหาที่ต้องการให้ออกข้อสอบ</label>
+          <input id="ai-topic" class="${INPUT_CLS}" placeholder="เช่น สมการเชิงเส้นตัวแปรเดียว, การสังเคราะห์แสง, หลักธรรมอริยสัจ 4" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อที่ต้องการ</label>
+            <input id="ai-count" type="number" min="1" max="20" value="5" class="${INPUT_CLS}" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">ระดับความยาก</label>
+            <select id="ai-difficulty" class="${SELECT_CLS}">
+              <option value="">— ผสมกันไป —</option>
+              <option value="ง่าย">ง่าย</option>
+              <option value="ปานกลาง">ปานกลาง</option>
+              <option value="ยาก">ยาก</option>
+            </select>
+          </div>
+        </div>
+        <button id="btn-ai-run" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างข้อสอบด้วย AI</button>
+      </div>
+
+      <div id="ai-draft-list" class="space-y-3"></div>
+
+      <div class="flex gap-2 mt-4">
+        <button id="ai-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">ปิด</button>
+        <button id="ai-save" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm hidden">บันทึกข้อที่ยืนยันแล้ว (0)</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+  modal.querySelector('#ai-close').addEventListener('click', () => modal.remove())
+  modal.querySelector('#ai-cancel').addEventListener('click', () => modal.remove())
+
+  const listEl = modal.querySelector('#ai-draft-list')
+  const saveBtn = modal.querySelector('#ai-save')
+
+  function _updateSaveButton() {
+    const confirmedCount = drafts.filter(d => d.confirmed).length
+    saveBtn.textContent = `บันทึกข้อที่ยืนยันแล้ว (${confirmedCount})`
+    saveBtn.classList.toggle('hidden', drafts.length === 0)
+  }
+
+  function _renderDrafts() {
+    listEl.innerHTML = drafts.map((d, i) => `
+      <div class="bg-white border ${d.confirmed ? 'border-emerald-300' : 'border-gray-200'} rounded-2xl p-4 space-y-2">
+        <div class="flex items-center justify-between">
+          <p class="text-xs text-gray-400">ข้อร่างที่ ${i + 1}${d.difficulty ? ` · ${_htmlEsc(d.difficulty)}` : ''}</p>
+          <button class="d-delete text-xs text-red-400 hover:text-red-600" data-idx="${i}">🗑️ ลบข้อนี้</button>
+        </div>
+        <textarea class="d-qtext ${INPUT_CLS}" rows="2" data-idx="${i}">${_htmlEsc(d.question_text)}</textarea>
+        <div class="space-y-1.5">
+          ${d.choices.map((c, ci) => `
+            <div class="flex items-center gap-2">
+              <input type="radio" name="d-correct-${i}" value="${ci}" ${ci === d.correct_choice_index ? 'checked' : ''} class="d-correct-radio flex-shrink-0" data-idx="${i}" data-ci="${ci}" />
+              <input class="d-choice ${INPUT_CLS}" value="${_htmlEsc(c)}" data-idx="${i}" data-ci="${ci}" />
+            </div>
+          `).join('')}
+        </div>
+        <textarea class="d-explanation ${INPUT_CLS}" rows="1" placeholder="คำอธิบายเฉลย (ไม่บังคับ)" data-idx="${i}">${_htmlEsc(d.explanation)}</textarea>
+        <label class="flex items-center gap-2 text-xs font-semibold ${d.confirmed ? 'text-emerald-700' : 'text-gray-500'}">
+          <input type="checkbox" class="d-confirm" data-idx="${i}" ${d.confirmed ? 'checked' : ''} /> ✅ ตรวจสอบแล้ว ถูกต้อง พร้อมบันทึก
+        </label>
+      </div>
+    `).join('')
+
+    loadKaTeX().then(() => renderMathIn(listEl)).catch(() => {})
+
+    listEl.querySelectorAll('.d-qtext').forEach(el => el.addEventListener('input', () => {
+      drafts[+el.dataset.idx].question_text = el.value
+    }))
+    listEl.querySelectorAll('.d-choice').forEach(el => el.addEventListener('input', () => {
+      drafts[+el.dataset.idx].choices[+el.dataset.ci] = el.value
+    }))
+    listEl.querySelectorAll('.d-correct-radio').forEach(el => el.addEventListener('change', () => {
+      drafts[+el.dataset.idx].correct_choice_index = +el.dataset.ci
+    }))
+    listEl.querySelectorAll('.d-explanation').forEach(el => el.addEventListener('input', () => {
+      drafts[+el.dataset.idx].explanation = el.value
+    }))
+    listEl.querySelectorAll('.d-delete').forEach(el => el.addEventListener('click', () => {
+      drafts.splice(+el.dataset.idx, 1)
+      _renderDrafts()
+      _updateSaveButton()
+    }))
+    listEl.querySelectorAll('.d-confirm').forEach(el => el.addEventListener('change', () => {
+      const idx = +el.dataset.idx
+      if (el.checked) {
+        const check = _validateDraftQuestion(drafts[idx])
+        if (!check.ok) {
+          el.checked = false
+          showToast(check.error, 'warning')
+          return
+        }
+      }
+      drafts[idx].confirmed = el.checked
+      _renderDrafts()
+      _updateSaveButton()
+    }))
+
+    _updateSaveButton()
+  }
+
+  modal.querySelector('#btn-ai-run').addEventListener('click', async (e) => {
+    const topic = modal.querySelector('#ai-topic').value.trim()
+    const count = parseInt(modal.querySelector('#ai-count').value, 10) || 5
+    const difficulty = modal.querySelector('#ai-difficulty').value
+
+    if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
+
+    setButtonLoading(e.target, true)
+    try {
+      const prompt = [
+        `Generate a JSON array of exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
+        difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
+        'Reply with a JSON Array ONLY. No markdown, no text outside JSON.',
+        '',
+        'Each object must have:',
+        '1. "question_text" — the question, in Thai',
+        '2. "choices" — array of 4 plausible answer strings (exactly one correct)',
+        '3. "correct_choice_index" — 0-based index into choices of the correct answer',
+        '4. "explanation" — short Thai explanation of why that answer is correct',
+        '5. "difficulty" — one of "ง่าย", "ปานกลาง", "ยาก"',
+        '',
+        'Math/Science: use LaTeX in $ signs e.g. $x^2$, $\\\\frac{a}{b}$',
+        '',
+        'Example: [{"question_text":"...","choices":["...","...","...","..."],"correct_choice_index":0,"explanation":"...","difficulty":"ปานกลาง"}]'
+      ].join('\n')
+
+      const { data: json, error: fnErr } = await supabase.functions.invoke('gemini-proxy', {
+        body: { prompt, maxTokens: 4000 }
+      })
+      if (fnErr || !json) throw new Error(fnErr?.message ?? 'AI Response is empty')
+
+      let text = ''
+      if (json.candidates?.[0]?.content?.parts) {
+        text = json.candidates[0].content.parts[0].text ?? ''
+      } else if (json.text) {
+        text = json.text
+      }
+
+      text = text.trim()
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(json)?/, '').replace(/```$/, '').trim()
+      }
+
+      let generated
+      try {
+        generated = JSON.parse(text)
+      } catch (e2) {
+        const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
+        if (!match) throw new Error('AI ตอบกลับในรูปแบบที่ไม่ใช่ JSON อาร์เรย์')
+        generated = JSON.parse(match[0])
+      }
+      if (!Array.isArray(generated)) throw new Error('AI Response is not a JSON Array')
+
+      drafts.push(...generated.map(_normalizeAIQuestion))
+      _renderDrafts()
+      showToast(`AI ร่างข้อสอบมาแล้ว ${generated.length} ข้อ — กรุณาตรวจสอบและยืนยันทีละข้อ`, 'success')
+    } catch (err) {
+      showToast('AI ไม่สามารถร่างข้อสอบได้: ' + (err.message ?? ''), 'error')
+    } finally {
+      setButtonLoading(e.target, false, 'สร้างข้อสอบด้วย AI')
+    }
+  })
+
+  saveBtn.addEventListener('click', async () => {
+    const toSave = []
+    const stillPending = []
+    drafts.forEach(d => {
+      if (!d.confirmed) { stillPending.push(d); return }
+      const kept = d.choices.map((v, ci) => ({ v: v.trim(), ci })).filter(x => x.v)
+      const choices = kept.map(x => x.v)
+      const correctIndex = kept.findIndex(x => x.ci === d.correct_choice_index)
+      if (!d.question_text.trim() || choices.length < 2 || correctIndex < 0) { stillPending.push(d); return }
+      toSave.push({
+        question_text: d.question_text.trim(),
+        choices,
+        correct_choice_index: correctIndex,
+        explanation: d.explanation.trim() || null,
+        difficulty: d.difficulty,
+        category: null,
+      })
+    })
+
+    if (toSave.length === 0) { showToast('ยังไม่มีข้อที่ยืนยันแล้วพร้อมบันทึก', 'warning'); return }
+
+    setButtonLoading(saveBtn, true)
+    try {
+      await bulkImportQuizQuestions(bank.id, toSave)
+      showToast(`บันทึก ${toSave.length} ข้อเข้าคลังเรียบร้อย`, 'success')
+      drafts = stillPending
+      _renderDrafts()
+      if (drafts.length === 0) {
+        modal.remove()
+        _renderBankQuestions(teacher, bank)
+      }
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally {
+      setButtonLoading(saveBtn, false)
+      _updateSaveButton()
     }
   })
 }
