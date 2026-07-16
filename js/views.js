@@ -24,7 +24,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getUsageStats, getTeachersWithPositions,
          getClassrooms, createClassroom, updateClassroom, deleteClassroom,
          getRolePermissions, saveRolePermission,
-         getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
+         getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAnnouncementCommentsBulk,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
          autoEnrollStudentsByRoom,
          getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
@@ -8537,6 +8537,12 @@ export async function renderAnnouncements() {
       return
     }
 
+    const commentCountByAnnId = {}
+    try {
+      const allComments = await getAnnouncementCommentsBulk(items.map(a => a.id))
+      allComments.forEach(c => { commentCountByAnnId[c.announcement_id] = (commentCountByAnnId[c.announcement_id] ?? 0) + 1 })
+    } catch {}
+
     list.innerHTML = items.map(a => `
       <div class="group bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden
         ${a.is_active ? 'border-gray-100' : 'border-dashed border-gray-200 opacity-70'}" data-id="${a.id}">
@@ -8568,6 +8574,11 @@ export async function renderAnnouncements() {
             <p class="text-[11px] text-gray-400 mt-2">
               ${_fmtDate(a.created_at)}
               ${a.teachers?.full_name ? ` · 📝 ${_esc(a.teachers.full_name)}` : ' · ⚙️ แอดมิน'}
+            </p>
+            <p class="text-[11px] text-gray-400 mt-1 flex items-center gap-3">
+              <span>❤️ ${a.like_count ?? 0} ถูกใจ</span>
+              <span>💬 ${commentCountByAnnId[a.id] ?? 0} ความคิดเห็น</span>
+              <span>👁️ ${a.view_count ?? 0} เข้าดู</span>
             </p>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -8982,7 +8993,7 @@ const _annRoleColor = r => {
 }
 
 export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
-  const { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAckStats } = await import('./api.js')
+  const { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAckStats, getAnnouncementCommentsBulk } = await import('./api.js')
   const creatorRole = (teacher?.positions?.length ? teacher.positions[0] : teacher?.position) ?? null
 
   setActiveNav('announcements')
@@ -9038,6 +9049,12 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       return `<span class="px-2 py-0.5 bg-sky-100 text-sky-600 rounded-full text-[11px] font-semibold">📅 ภายใน ${_fmtDateShort(due)}</span>`
     }
 
+    const commentCountByAnnId = {}
+    try {
+      const allComments = await getAnnouncementCommentsBulk(items.map(a => a.id))
+      allComments.forEach(c => { commentCountByAnnId[c.announcement_id] = (commentCountByAnnId[c.announcement_id] ?? 0) + 1 })
+    } catch {}
+
     list.innerHTML = items.map(a => `
       <div class="group bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden
         ${a.is_active ? 'border-gray-100' : 'border-dashed border-gray-200 opacity-70'}" data-id="${a.id}">
@@ -9062,6 +9079,11 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
             ${a.body ? `<p class="text-sm text-gray-500 mt-1.5 line-clamp-2">${_esc(a.body)}</p>` : ''}
             <p class="text-[11px] text-gray-400 mt-2">${_fmtDate(a.created_at)}</p>
+            <p class="text-[11px] text-gray-400 mt-1 flex items-center gap-3">
+              <span>❤️ ${a.like_count ?? 0} ถูกใจ</span>
+              <span>💬 ${commentCountByAnnId[a.id] ?? 0} ความคิดเห็น</span>
+              <span>👁️ ${a.view_count ?? 0} เข้าดู</span>
+            </p>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
             ${a.requires_ack ? `<button class="sann-stat-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-sky-200 text-sky-600 hover:bg-sky-50 transition" data-id="${a.id}" data-title="${_esc(a.title)}">📊 สถิติ</button>` : ''}
