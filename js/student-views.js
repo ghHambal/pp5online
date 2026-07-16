@@ -13,6 +13,7 @@ import {
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
+import { getQuizzesForStudentClass, rpcStartAttempt } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { APP_VERSION } from './version.js?v=10.18.25'
 import { supabase } from './supabase.js'
@@ -1448,11 +1449,12 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   if (!cls) { setContent(`<p class="text-center py-10 text-gray-400">ไม่พบรายวิชา</p>`); return }
 
   const { getClassAnnouncements: _getClassAnn } = await import('./api.js').catch(() => ({}))
-  const [{ columns, scores }, attendance, requestsAll, classAnns] = await Promise.all([
+  const [{ columns, scores }, attendance, requestsAll, classAnns, quizzes] = await Promise.all([
     getMyScores(student.id, classId).catch(()=>({ columns:[], scores:[] })),
     getMyAttendance(student.id, classId).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     _getClassAnn ? _getClassAnn(classId).catch(()=>[]) : Promise.resolve([]),
+    getQuizzesForStudentClass(classId, student.id).catch(()=>[]),
   ])
   const requests = requestsAll.filter(r => r.classes?.id === classId)
 
@@ -1631,6 +1633,47 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       })
     }
 
+    // ── แบบทดสอบออนไลน์ (Quiz) ──
+    quizzes.forEach(q => {
+      const bestScore = q.attempts
+        .filter(a => a.status === 'submitted' || a.status === 'terminated_violation')
+        .reduce((max, a) => Math.max(max, a.score_pct ?? 0), null)
+      const lockedAttempt = q.attempts.length && q.attempts[q.attempts.length - 1].status === 'terminated_violation'
+        ? q.attempts[q.attempts.length - 1] : null
+      const inProgressAttempt = q.attempts.find(a => a.status === 'in_progress')
+      const finishedCount = q.attempts.filter(a => a.status === 'submitted' || a.status === 'terminated_violation').length
+
+      let statusChip = ''
+      let actionBtn = ''
+      if (q.status === 'announced') {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รอครูเริ่ม</span>`
+      } else if (q.status === 'started' && lockedAttempt) {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">🔒 ถูกล็อก — ติดต่อครูผู้สอน</span>`
+      } else if (q.status === 'started' && inProgressAttempt) {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">กำลังทำอยู่</span>`
+        actionBtn = `<button onclick="window._stuStartQuiz('${q.id}')" class="mt-2 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">ทำต่อ →</button>`
+      } else if (q.status === 'started' && finishedCount >= q.max_attempts) {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">ทำครบจำนวนครั้งแล้ว</span>`
+      } else if (q.status === 'started') {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">เปิดสอบอยู่</span>`
+        actionBtn = `<button onclick="window._stuStartQuiz('${q.id}')" class="mt-2 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">เข้าสอบ →</button>`
+      } else if (q.status === 'closed') {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">ปิดสอบแล้ว</span>`
+      }
+
+      items.push(`
+        <div class="bg-white rounded-2xl border border-indigo-100 shadow-sm p-4 flex items-start gap-3">
+          <span class="text-2xl flex-shrink-0">📝</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800">${_esc(q.title)}</p>
+            <p class="text-xs text-gray-400 mt-0.5">${q.num_questions} ข้อ${q.time_limit_minutes ? ` · ${q.time_limit_minutes} นาที` : ''} · ทำได้ ${finishedCount}/${q.max_attempts} ครั้ง</p>
+            ${bestScore != null ? `<p class="text-xs text-indigo-600 font-bold mt-0.5">คะแนนล่าสุด: ${bestScore.toFixed(1)}%</p>` : ''}
+            <div class="mt-1">${statusChip}</div>
+            ${actionBtn}
+          </div>
+        </div>`)
+    })
+
     // ── วันเรียนถัดไป (countdown) ──
     const sessionDates = [cls.day1_date, cls.day2_date, cls.day3_date,
                           cls.day4_date, cls.day5_date, cls.day6_date].filter(Boolean)
@@ -1783,6 +1826,15 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       showToast('ยกเลิกคำร้องแล้ว', 'success')
       window._stuOpenClassTab(targetClassId, 'requests')
     } catch (err) { showToast('ยกเลิกไม่สำเร็จ: '+(err.message??''), 'error') }
+  }
+
+  window._stuStartQuiz = async (quizId) => {
+    try {
+      const attempt = await rpcStartAttempt(quizId)
+      window.location.href = `quiz-exam.html?attempt=${attempt.id}`
+    } catch (err) {
+      showToast('เข้าสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
   }
 }
 

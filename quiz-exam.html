@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="/pp5online/manifest.json" />
+  <meta name="theme-color" content="#4f46e5" />
+  <title>กำลังสอบ — ปพ.5 ออนไลน์</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css?v=202607081800" />
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-100">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <div>
+        <p class="text-[11px] font-bold text-indigo-500 uppercase tracking-wider">PP5 Online</p>
+        <h1 class="text-lg font-bold text-gray-900">แบบทดสอบออนไลน์</h1>
+      </div>
+    </div>
+  </header>
+
+  <main class="px-4 py-5 sm:px-6">
+    <div id="quiz-root"></div>
+  </main>
+
+  <script type="module">
+    import { supabase } from './js/supabase.js'
+    import { initQuizExam } from './js/quiz-exam.js?v=10.21.63'
+
+    async function boot() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { window.location.replace('student-login.html'); return }
+
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
+      if (profile?.role !== 'student') { window.location.replace('student-login.html'); return }
+
+      const attemptId = new URLSearchParams(window.location.search).get('attempt')
+      if (!attemptId) {
+        document.getElementById('quiz-root').innerHTML =
+          '<p class="text-center py-20 text-gray-400">ไม่พบแบบทดสอบที่ต้องการเข้าถึง</p>'
+        return
+      }
+      await initQuizExam(attemptId)
+    }
+
+    boot()
+  </script>
+</body>
+</html>
