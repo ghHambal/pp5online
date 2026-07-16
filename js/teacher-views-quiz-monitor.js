@@ -16,6 +16,18 @@ const STATUS_LABEL = {
   terminated_violation: { label: '🔒 ถูกล็อก', cls: 'bg-red-100 text-red-700' },
 }
 
+// Vertical rounded portrait frame with a drop shadow + inset light/vignette
+// for depth, mirroring the w-9/h-12/rounded-xl avatar convention already
+// used in teacher-views-dashboard.js, plus an added glossy highlight.
+function _avatarHtml(s) {
+  const initial = _htmlEsc((s?.full_name ?? '?').charAt(0))
+  const frame = 'relative w-9 h-12 rounded-xl overflow-hidden flex-shrink-0 shadow-md ring-1 ring-black/5'
+  const sheen = `<div class="absolute inset-0 rounded-xl pointer-events-none" style="box-shadow: inset 0 1px 2px rgba(255,255,255,0.55), inset 0 -10px 14px rgba(0,0,0,0.18)"></div>`
+  return s?.image_url
+    ? `<div class="${frame}"><img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover" />${sheen}</div>`
+    : `<div class="${frame} bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-400">${initial}${sheen}</div>`
+}
+
 export async function openQuizMonitor(quiz) {
   _teardown() // release any previous quiz's channel/poll before opening a new one
   document.getElementById('quiz-monitor-modal')?.remove()
@@ -109,6 +121,7 @@ async function _refresh(quiz, students) {
           const st = a ? (STATUS_LABEL[a.status] ?? STATUS_LABEL.in_progress) : { label: 'ยังไม่เข้าสอบ', cls: 'bg-gray-100 text-gray-400' }
           return `
           <div class="flex items-center gap-3 p-3">
+            ${_avatarHtml(s)}
             <div class="flex-1 min-w-0">
               <p class="text-sm font-semibold text-gray-800 truncate">${_htmlEsc(s.full_name)}</p>
               <p class="text-xs text-gray-400">${_htmlEsc(s.student_code)}${a ? ` · ตอบแล้ว ${answered}/${total} ข้อ (${pct}%)` : ''}${a?.score_pct != null ? ` · คะแนน ${a.score_pct.toFixed(1)}%` : ''}</p>

@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.21.72': [
+    '🖼️ ระบบแบบทดสอบออนไลน์ (Quiz): แดชบอร์ดดูสดระหว่างสอบ แสดงรูปนักเรียนในกรอบมนแนวตั้ง มีเงาและแสงกระทบให้มีมิติ ต่อคนแล้ว'
+  ],
   '10.21.71': [
     '🛠️ ระบบแบบทดสอบออนไลน์ (Quiz): แก้บั๊กหน้าทำข้อสอบ (quiz-exam.html) ขึ้น 404 บน GitHub Pages — ลืมลงทะเบียนเป็น build entry point ใน vite.config.js ทำให้ตอน deploy ไม่ถูกรวมเข้า dist/ นักเรียนกดเข้าสอบไม่ได้เลย'
   ],
