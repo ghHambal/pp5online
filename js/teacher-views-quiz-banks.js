@@ -425,8 +425,8 @@ function _renderAIGenerator(teacher, bank) {
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อที่ต้องการ</label>
-            <input id="ai-count" type="number" min="1" max="20" value="5" class="${INPUT_CLS}" />
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อที่ต้องการ (สูงสุด 25 ข้อ/ครั้ง)</label>
+            <input id="ai-count" type="number" min="1" max="25" value="5" class="${INPUT_CLS}" />
           </div>
           <div>
             <label class="text-xs font-semibold text-gray-600 mb-1 block">ระดับความยาก</label>
@@ -524,10 +524,13 @@ function _renderAIGenerator(teacher, bank) {
 
   modal.querySelector('#btn-ai-run').addEventListener('click', async (e) => {
     const topic = modal.querySelector('#ai-topic').value.trim()
-    const count = parseInt(modal.querySelector('#ai-count').value, 10) || 5
+    const rawCount = parseInt(modal.querySelector('#ai-count').value, 10) || 5
+    const count = Math.min(25, Math.max(1, rawCount)) // clamp: the <input max> is only a UI hint, not enforced
+    modal.querySelector('#ai-count').value = count
     const difficulty = modal.querySelector('#ai-difficulty').value
 
     if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
+    if (rawCount > 25) showToast('จำนวนข้อเกินเพดานที่รองรับต่อครั้ง ปรับให้เป็น 25 ข้อแล้ว', 'warning')
 
     setButtonLoading(e.target, true)
     try {
@@ -548,8 +551,13 @@ function _renderAIGenerator(teacher, bank) {
         'Example: [{"question_text":"...","choices":["...","...","...","..."],"correct_choice_index":0,"explanation":"...","difficulty":"ปานกลาง"}]'
       ].join('\n')
 
+      // Thai text tokenizes heavier than English, and each question carries a
+      // question+4 choices+explanation — budget generously per question
+      // instead of a flat cap, or large counts get silently truncated mid-JSON.
+      const maxTokens = Math.min(8000, 600 + count * 300)
+
       const { data: json, error: fnErr } = await supabase.functions.invoke('gemini-proxy', {
-        body: { prompt, maxTokens: 4000 }
+        body: { prompt, maxTokens }
       })
       if (fnErr || !json) throw new Error(fnErr?.message ?? 'AI Response is empty')
 
@@ -570,8 +578,12 @@ function _renderAIGenerator(teacher, bank) {
         generated = JSON.parse(text)
       } catch (e2) {
         const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
-        if (!match) throw new Error('AI ตอบกลับในรูปแบบที่ไม่ใช่ JSON อาร์เรย์')
-        generated = JSON.parse(match[0])
+        if (!match) throw new Error('AI ตอบกลับในรูปแบบที่ไม่ใช่ JSON อาร์เรย์ — มักเกิดจากขอจำนวนข้อมากเกินไปในครั้งเดียวจนคำตอบถูกตัดกลางคัน ลองลดจำนวนข้อแล้วลองใหม่')
+        try {
+          generated = JSON.parse(match[0])
+        } catch (e3) {
+          throw new Error('AI ตอบกลับมาไม่ครบ (คำตอบถูกตัดกลางคัน) — ลองลดจำนวนข้อแล้วลองใหม่')
+        }
       }
       if (!Array.isArray(generated)) throw new Error('AI Response is not a JSON Array')
 
