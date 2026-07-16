@@ -25,6 +25,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getClassrooms, createClassroom, updateClassroom, deleteClassroom,
          getRolePermissions, saveRolePermission,
          getAllAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAnnouncementCommentsBulk,
+         getAnnouncementComments, deleteAnnouncementComment,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
          autoEnrollStudentsByRoom,
          getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
@@ -8577,7 +8578,7 @@ export async function renderAnnouncements() {
             </p>
             <p class="text-[11px] text-gray-400 mt-1 flex items-center gap-3">
               <span>❤️ ${a.like_count ?? 0} ถูกใจ</span>
-              <span>💬 ${commentCountByAnnId[a.id] ?? 0} ความคิดเห็น</span>
+              <button class="ann-comments-view-btn text-gray-400 hover:text-indigo-600 hover:underline transition" data-id="${a.id}" data-title="${_esc(a.title)}">💬 ${commentCountByAnnId[a.id] ?? 0} ความคิดเห็น</button>
               <span>👁️ ${a.view_count ?? 0} เข้าดู</span>
             </p>
           </div>
@@ -8620,6 +8621,53 @@ export async function renderAnnouncements() {
     })
     list.querySelectorAll('.ann-rsvp-list-btn').forEach(btn => {
       btn.addEventListener('click', async () => _showRsvpList(Number(btn.dataset.id), btn.dataset.title))
+    })
+    list.querySelectorAll('.ann-comments-view-btn').forEach(btn => {
+      btn.addEventListener('click', async () => _showCommentsList(Number(btn.dataset.id), btn.dataset.title, _renderList))
+    })
+  }
+
+  const _showCommentsList = async (annId, title, onChange) => {
+    const comments = await getAnnouncementComments(annId).catch(() => [])
+    const _fmtDateTime = d => new Date(d).toLocaleString('th-TH',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'})
+    const overlay = document.createElement('div')
+    overlay.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <div>
+            <p class="font-bold text-gray-800 text-sm">💬 ความคิดเห็น</p>
+            <p class="text-xs text-gray-400 mt-0.5 truncate max-w-[260px]">${_esc(title)}</p>
+          </div>
+          <button class="text-gray-400 hover:text-gray-600 text-xl flex-shrink-0" id="comments-list-close">✕</button>
+        </div>
+        <div class="overflow-y-auto p-5 space-y-3" id="comments-list-body">
+          ${!comments.length ? '<p class="text-gray-400 text-sm text-center py-8">ยังไม่มีความคิดเห็น</p>' : comments.map(c => `
+            <div class="flex items-start gap-2" data-comment-id="${c.id}">
+              <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${_esc((c.teachers?.full_name ?? '?').charAt(0))}</div>
+              <div class="flex-1 min-w-0 bg-gray-50 rounded-xl px-3 py-2">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs font-semibold text-gray-700">${_esc(c.teachers?.full_name ?? 'ครู')}</p>
+                  <button class="comment-del-btn text-gray-300 hover:text-red-500 text-xs flex-shrink-0" data-id="${c.id}" title="ลบความคิดเห็น">🗑</button>
+                </div>
+                <p class="text-sm text-gray-600 whitespace-pre-wrap break-words mt-0.5">${_esc(c.comment_text)}</p>
+                <p class="text-[10px] text-gray-400 mt-1">${_fmtDateTime(c.created_at)}</p>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`
+    document.body.appendChild(overlay)
+    overlay.querySelector('#comments-list-close').onclick = () => overlay.remove()
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+    overlay.querySelectorAll('.comment-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('ลบความคิดเห็นนี้?')) return
+        try {
+          await deleteAnnouncementComment(Number(btn.dataset.id))
+          overlay.querySelector(`[data-comment-id="${btn.dataset.id}"]`)?.remove()
+          await onChange?.()
+        } catch (e) { showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+      })
     })
   }
 
@@ -8993,7 +9041,8 @@ const _annRoleColor = r => {
 }
 
 export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
-  const { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAckStats, getAnnouncementCommentsBulk } = await import('./api.js')
+  const { getMyAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, getAckStats, getAnnouncementCommentsBulk,
+          getAnnouncementComments, deleteAnnouncementComment } = await import('./api.js')
   const creatorRole = (teacher?.positions?.length ? teacher.positions[0] : teacher?.position) ?? null
 
   setActiveNav('announcements')
@@ -9081,7 +9130,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
             <p class="text-[11px] text-gray-400 mt-2">${_fmtDate(a.created_at)}</p>
             <p class="text-[11px] text-gray-400 mt-1 flex items-center gap-3">
               <span>❤️ ${a.like_count ?? 0} ถูกใจ</span>
-              <span>💬 ${commentCountByAnnId[a.id] ?? 0} ความคิดเห็น</span>
+              <button class="ann-comments-view-btn text-gray-400 hover:text-indigo-600 hover:underline transition" data-id="${a.id}" data-title="${_esc(a.title)}">💬 ${commentCountByAnnId[a.id] ?? 0} ความคิดเห็น</button>
               <span>👁️ ${a.view_count ?? 0} เข้าดู</span>
             </p>
           </div>
@@ -9206,6 +9255,54 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
         document.body.appendChild(overlay)
         overlay.querySelector('#rsvp-list-close').onclick = () => overlay.remove()
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+      })
+    })
+
+    list.querySelectorAll('.ann-comments-view-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const annId = Number(btn.dataset.id)
+        const title = btn.dataset.title
+        const comments = await getAnnouncementComments(annId).catch(() => [])
+        const _fmtDateTime = d => new Date(d).toLocaleString('th-TH',{day:'numeric',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'})
+        const overlay = document.createElement('div')
+        overlay.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+        overlay.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <p class="font-bold text-gray-800 text-sm">💬 ความคิดเห็น</p>
+                <p class="text-xs text-gray-400 mt-0.5 truncate max-w-[260px]">${_esc(title)}</p>
+              </div>
+              <button class="text-gray-400 hover:text-gray-600 text-xl flex-shrink-0" id="comments-list-close">✕</button>
+            </div>
+            <div class="overflow-y-auto p-5 space-y-3">
+              ${!comments.length ? '<p class="text-gray-400 text-sm text-center py-8">ยังไม่มีความคิดเห็น</p>' : comments.map(c => `
+                <div class="flex items-start gap-2" data-comment-id="${c.id}">
+                  <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${_esc((c.teachers?.full_name ?? '?').charAt(0))}</div>
+                  <div class="flex-1 min-w-0 bg-gray-50 rounded-xl px-3 py-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="text-xs font-semibold text-gray-700">${_esc(c.teachers?.full_name ?? 'ครู')}</p>
+                      <button class="comment-del-btn text-gray-300 hover:text-red-500 text-xs flex-shrink-0" data-id="${c.id}" title="ลบความคิดเห็น">🗑</button>
+                    </div>
+                    <p class="text-sm text-gray-600 whitespace-pre-wrap break-words mt-0.5">${_esc(c.comment_text)}</p>
+                    <p class="text-[10px] text-gray-400 mt-1">${_fmtDateTime(c.created_at)}</p>
+                  </div>
+                </div>`).join('')}
+            </div>
+          </div>`
+        document.body.appendChild(overlay)
+        overlay.querySelector('#comments-list-close').onclick = () => overlay.remove()
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+        overlay.querySelectorAll('.comment-del-btn').forEach(delBtn => {
+          delBtn.addEventListener('click', async () => {
+            if (!confirm('ลบความคิดเห็นนี้?')) return
+            try {
+              await deleteAnnouncementComment(Number(delBtn.dataset.id))
+              overlay.querySelector(`[data-comment-id="${delBtn.dataset.id}"]`)?.remove()
+              await _renderList()
+            } catch (e) { showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+          })
+        })
       })
     })
 
