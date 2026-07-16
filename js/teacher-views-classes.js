@@ -4293,7 +4293,8 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
 export async function renderAnnouncementsView(teacher) {
   setActiveNav('announcements-view')
   setTitle('ประกาศ', 'announcement')
-  const { getAllAnnouncementsForTeacher, getMyAcks, ackAnnouncement, getSupervisorComments, getSystemConfig, getTeacherBusyPeriodsOnDate } = await import('./api.js')
+  const { getAllAnnouncementsForTeacher, getMyAcks, ackAnnouncement, getSupervisorComments, getSystemConfig, getTeacherBusyPeriodsOnDate,
+          incrementAnnouncementView, incrementAnnouncementLike, getAnnouncementCommentsBulk, addAnnouncementComment, deleteAnnouncementComment } = await import('./api.js')
   let _schoolCfg = null
   try { _schoolCfg = await getSystemConfig() } catch {}
 
@@ -4685,7 +4686,7 @@ export async function renderAnnouncementsView(teacher) {
     no:    { label:'❌ ไม่สนใจ',             bg:'bg-gray-400',    ring:'ring-gray-300' },
   }
 
-  const _annCard = (a, ackedAt, myRsvp = null) => {
+  const _annCard = (a, ackedAt, myRsvp = null, liked = false, commentCount = 0) => {
     const needAck = a.requires_ack
     const isAcked = !!ackedAt
     const isTraining = a.ann_type === 'training'
@@ -4745,6 +4746,22 @@ export async function renderAnnouncementsView(teacher) {
                       data-id="${a.id}">🔔 กดรับทราบ</button>`
                 }
               </div>` : ''}
+            <div class="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2">
+              <button class="ann-like-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${liked ? 'bg-rose-50 text-rose-600' : 'bg-gray-50 text-gray-500 hover:bg-rose-50 hover:text-rose-500'}" data-id="${a.id}">
+                <span class="ann-like-icon">${liked ? '❤️' : '🤍'}</span><span class="ann-like-count">${a.like_count ?? 0}</span>
+              </button>
+              <button class="ann-comment-toggle-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-50 hover:bg-indigo-50 hover:text-indigo-600 transition" data-id="${a.id}">
+                💬<span class="ann-comment-count">${commentCount}</span>
+              </button>
+              <span class="text-[11px] text-gray-400 ml-auto">👁️ เข้าดูแล้ว ${a.view_count ?? 0} คน</span>
+            </div>
+            <div class="ann-comment-section hidden mt-3 pt-3 border-t border-gray-50" data-id="${a.id}">
+              <div class="ann-comment-list space-y-2 mb-2 text-sm text-gray-400">กำลังโหลด...</div>
+              <div class="flex gap-2">
+                <input type="text" class="ann-comment-input flex-1 border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="แสดงความคิดเห็น..." data-id="${a.id}" maxlength="500" />
+                <button class="ann-comment-send-btn px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition flex-shrink-0" data-id="${a.id}">ส่ง</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -4793,6 +4810,28 @@ export async function renderAnnouncementsView(teacher) {
     const acksMap = Object.fromEntries(myAcksRaw.map(a => [a.announcement_id, a.acked_at]))
     const rsvpMap = Object.fromEntries((myRsvpsRaw ?? []).map(r => [r.announcement_id, r.response]))
 
+    const commentsByAnnId = {}
+    try {
+      const allComments = await getAnnouncementCommentsBulk(items.map(a => a.id))
+      allComments.forEach(c => {
+        (commentsByAnnId[c.announcement_id] ??= []).push(c)
+      })
+    } catch {}
+
+    const likedKey  = `pp5_ann_liked_${teacher?.id ?? 'anon'}`
+    const viewedKey = `pp5_ann_viewed_${teacher?.id ?? 'anon'}`
+    let likedIds, viewedIds
+    try { likedIds  = new Set(JSON.parse(localStorage.getItem(likedKey)  || '[]')) } catch { likedIds  = new Set() }
+    try { viewedIds = new Set(JSON.parse(localStorage.getItem(viewedKey) || '[]')) } catch { viewedIds = new Set() }
+
+    // นับยอดเข้าดู — ครั้งแรกที่ครูเห็นประกาศนี้เท่านั้น (กันนับซ้ำทุกครั้งที่เปิดแท็บ)
+    const unseenIds = items.map(a => a.id).filter(id => !viewedIds.has(id))
+    if (unseenIds.length && teacher?.id) {
+      unseenIds.forEach(id => { viewedIds.add(id); incrementAnnouncementView(id) })
+      try { localStorage.setItem(viewedKey, JSON.stringify([...viewedIds])) } catch {}
+      unseenIds.forEach(id => { const a = items.find(x => x.id === id); if (a) a.view_count = (a.view_count ?? 0) + 1 })
+    }
+
     const active   = items.filter(a => a.is_active)
     const inactive = items.filter(a => !a.is_active)
 
@@ -4817,7 +4856,7 @@ export async function renderAnnouncementsView(teacher) {
             <span class="px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] rounded-full font-semibold">${g.items.length}</span>
             <div class="flex-1 h-px bg-gray-100 ml-1"></div>
           </div>
-          <div class="space-y-3">${g.items.map(a => _annCard(a, acksMap[a.id], rsvpMap[a.id] ?? null)).join('')}</div>
+          <div class="space-y-3">${g.items.map(a => _annCard(a, acksMap[a.id], rsvpMap[a.id] ?? null, likedIds.has(a.id), (commentsByAnnId[a.id]||[]).length)).join('')}</div>
         </div>`).join('')
     } else {
       html += `<div class="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-400 mb-5">
@@ -4830,7 +4869,7 @@ export async function renderAnnouncementsView(teacher) {
         <summary class="cursor-pointer text-xs text-gray-400 font-semibold py-2 px-1 hover:text-gray-600 transition select-none list-none flex items-center gap-1">
           <span>▸</span> ประวัติประกาศที่ผ่านมา (${inactive.length} รายการ)
         </summary>
-        <div class="space-y-3 mt-3">${inactive.map(a => _annCard(a, acksMap[a.id])).join('')}</div>
+        <div class="space-y-3 mt-3">${inactive.map(a => _annCard(a, acksMap[a.id], null, likedIds.has(a.id), (commentsByAnnId[a.id]||[]).length)).join('')}</div>
       </details>`
     }
 
@@ -4865,6 +4904,76 @@ export async function renderAnnouncementsView(teacher) {
           await _renderAnnouncements()
         } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
       })
+    })
+
+    // ── ถูกใจ ──
+    panel.querySelectorAll('.ann-like-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!teacher?.id) return
+        const id = Number(btn.dataset.id)
+        const isLiked = likedIds.has(id)
+        const delta = isLiked ? -1 : 1
+        incrementAnnouncementLike(id, delta)
+        if (isLiked) likedIds.delete(id); else likedIds.add(id)
+        try { localStorage.setItem(likedKey, JSON.stringify([...likedIds])) } catch {}
+        const countEl = btn.querySelector('.ann-like-count')
+        const iconEl  = btn.querySelector('.ann-like-icon')
+        countEl.textContent = Math.max(0, (parseInt(countEl.textContent, 10) || 0) + delta)
+        iconEl.textContent  = isLiked ? '🤍' : '❤️'
+        btn.className = `ann-like-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${isLiked ? 'bg-gray-50 text-gray-500 hover:bg-rose-50 hover:text-rose-500' : 'bg-rose-50 text-rose-600'}`
+      })
+    })
+
+    // ── ความคิดเห็นใต้ประกาศ ──
+    const _renderCommentList = (listEl, annId) => {
+      const list = commentsByAnnId[annId] ?? []
+      listEl.innerHTML = list.length
+        ? list.map(c => `
+          <div class="flex items-start gap-2">
+            <div class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">${_esc((c.teachers?.full_name ?? '?').charAt(0))}</div>
+            <div class="flex-1 min-w-0 bg-gray-50 rounded-xl px-3 py-1.5">
+              <p class="text-[11px] font-semibold text-gray-700">${_esc(c.teachers?.full_name ?? 'ครู')}</p>
+              <p class="text-xs text-gray-600 whitespace-pre-wrap break-words">${_esc(c.comment_text)}</p>
+            </div>
+          </div>`).join('')
+        : '<p class="text-xs text-gray-400">ยังไม่มีความคิดเห็น เป็นคนแรกได้เลย!</p>'
+    }
+
+    panel.querySelectorAll('.ann-comment-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.id)
+        const card = panel.querySelector(`.ann-comment-section[data-id="${id}"]`)
+        if (!card) return
+        const willShow = card.classList.contains('hidden')
+        card.classList.toggle('hidden')
+        if (willShow) _renderCommentList(card.querySelector('.ann-comment-list'), id)
+      })
+    })
+
+    panel.querySelectorAll('.ann-comment-send-btn').forEach(btn => {
+      const send = async () => {
+        if (!teacher?.id) return
+        const id = Number(btn.dataset.id)
+        const input = panel.querySelector(`.ann-comment-input[data-id="${id}"]`)
+        const text = input.value.trim()
+        if (!text) return
+        btn.disabled = true
+        try {
+          const saved = await addAnnouncementComment(id, teacher.id, text)
+          ;(commentsByAnnId[id] ??= []).push(saved)
+          input.value = ''
+          const card = panel.querySelector(`.ann-comment-section[data-id="${id}"]`)
+          _renderCommentList(card.querySelector('.ann-comment-list'), id)
+          const countEl = panel.querySelector(`.ann-comment-toggle-btn[data-id="${id}"] .ann-comment-count`)
+          if (countEl) countEl.textContent = commentsByAnnId[id].length
+        } catch (err) {
+          showToast('ส่งความคิดเห็นไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        }
+        btn.disabled = false
+      }
+      btn.addEventListener('click', send)
+      const input = panel.querySelector(`.ann-comment-input[data-id="${btn.dataset.id}"]`)
+      input?.addEventListener('keydown', e => { if (e.key === 'Enter') send() })
     })
   }
 

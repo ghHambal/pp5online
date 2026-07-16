@@ -2586,7 +2586,7 @@ export async function getSupervisorComments(teacherId) {
 export async function getAllAnnouncementsForTeacher() {
   // เฉพาะประกาศจากแอดมิน/ผู้บริหาร (target_class_ids = null คือไม่ใช่ประกาศห้องเรียนของครู)
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, schedule_filter, file_url, teachers(id, full_name)')
+    .select('id, title, body, priority, is_active, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, schedule_filter, file_url, like_count, view_count, teachers(id, full_name)')
     .is('target_class_ids', null)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
@@ -2885,6 +2885,41 @@ export async function removeAck(announcementId, teacherId) {
     .delete()
     .eq('announcement_id', announcementId)
     .eq('teacher_id', teacherId)
+  if (error) throw error
+}
+
+export async function incrementAnnouncementView(id) {
+  try { await supabase.rpc('increment_announcement_view', { p_id: id }) } catch {}
+}
+export async function incrementAnnouncementLike(id, delta = 1) {
+  try { await supabase.rpc('increment_announcement_like', { p_id: id, p_delta: delta }) } catch {}
+}
+export async function getAnnouncementComments(announcementId) {
+  const { data, error } = await supabase.from('announcement_comments')
+    .select('id, comment_text, created_at, teacher_id, teachers(full_name)')
+    .eq('announcement_id', announcementId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+export async function getAnnouncementCommentsBulk(announcementIds) {
+  if (!announcementIds?.length) return []
+  const { data, error } = await supabase.from('announcement_comments')
+    .select('id, announcement_id, comment_text, created_at, teacher_id, teachers(full_name)')
+    .in('announcement_id', announcementIds)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+export async function addAnnouncementComment(announcementId, teacherId, commentText) {
+  const { data, error } = await supabase.from('announcement_comments')
+    .insert({ announcement_id: announcementId, teacher_id: teacherId, comment_text: commentText })
+    .select('id, comment_text, created_at, teacher_id, teachers(full_name)').single()
+  if (error) throw error
+  return data
+}
+export async function deleteAnnouncementComment(id) {
+  const { error } = await supabase.from('announcement_comments').delete().eq('id', id)
   if (error) throw error
 }
 
