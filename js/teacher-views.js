@@ -172,6 +172,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   // ─── Donation sticker + tier glow ─────────────────────────────────────────
   const approvedDonation = donationRequests.find(r => r.package_type === 'donation' && r.status === 'approved')
+  // tier คำนวณจากยอดสะสมของทุกรายการที่อนุมัติแล้ว ไม่ใช่แค่รายการล่าสุด — เพื่อรองรับการโดเนทซ้ำเพื่ออัปเกรดระดับ
+  const totalApprovedDonation = donationRequests
+    .filter(r => r.package_type === 'donation' && r.status === 'approved')
+    .reduce((sum, r) => sum + (r.amount ?? 0), 0)
   const _toInt = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d }
   const _parseTiers = () => {
     const raw = String(cfg.donationStickerTiers ?? '').trim()
@@ -236,7 +240,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   if (approvedDonation && cfg.quotaMode === 'school_sponsored') {
     const tiers  = _parseTiers()
-    const amount = approvedDonation.amount ?? 0
+    const amount = totalApprovedDonation
     donorTier    = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
     donorTierIndex = donorTier ? tiers.indexOf(donorTier) + 1 : 0
 

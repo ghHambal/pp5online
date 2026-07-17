@@ -925,17 +925,31 @@ function _showSchoolSponsoredPopup(count, course, cfg = {}) {
 async function _showDonateModal(course, cfg = {}) {
   document.getElementById('donate-modal')?.remove()
 
-  // ── ป้องกันซ้ำ: เช็ค existing pending/approved ──────────────────────────────
+  const minAmount  = _toPositiveInt(cfg.donationMinAmount, 49)
+  const stepAmount = _toPositiveInt(cfg.donationAmountStep, 50)
+  const stickerTiers  = _parseDonationStickers(cfg, minAmount, stepAmount)
+
+  // ── เช็คสถานะโดเนทเดิม: pending บล็อกเสมอ, approved แล้วเปิดเป็นโหมด "อัปเกรดระดับ" แทนการบล็อก ──
+  let totalApproved = 0
+  let isUpgrade = false
+  let nextTierAmount = null
   if (_teacher?.id) {
     try {
       const existing = await getMyDonationRequests(_teacher.id)
-      const hasApproved = existing.some(r => r.package_type === 'donation' && r.status === 'approved')
-      const hasPending  = existing.some(r => r.package_type === 'donation' && r.status === 'pending')
-      if (hasApproved) {
-        showToast('คุณครูเป็นผู้สนับสนุนอยู่แล้วครับ 🙏', 'success'); return
-      }
+      const hasPending = existing.some(r => r.package_type === 'donation' && r.status === 'pending')
       if (hasPending) {
         showToast('คุณครูส่งหลักฐานรอการอนุมัติอยู่แล้วครับ — กรุณารอแอดมินตรวจสอบก่อนนะครับ', 'warning'); return
+      }
+      totalApproved = existing
+        .filter(r => r.package_type === 'donation' && r.status === 'approved')
+        .reduce((sum, r) => sum + (r.amount ?? 0), 0)
+      if (totalApproved > 0) {
+        const maxTierAmount = stickerTiers[stickerTiers.length - 1]?.amount ?? Infinity
+        if (totalApproved >= maxTierAmount) {
+          showToast('คุณครูสนับสนุนระดับสูงสุดแล้วครับ ขอบคุณมากๆ นะครับ 🙏👑', 'success'); return
+        }
+        isUpgrade = true
+        nextTierAmount = stickerTiers.find(t => t.amount > totalApproved)?.amount ?? null
       }
     } catch { /* ไม่ block ถ้า check ไม่ได้ */ }
   }
@@ -945,12 +959,10 @@ async function _showDonateModal(course, cfg = {}) {
   wrap.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
 
   const promptpay  = cfg.paymentPromptpay ?? ''
-  const minAmount  = _toPositiveInt(cfg.donationMinAmount, 49)
-  const stepAmount = _toPositiveInt(cfg.donationAmountStep, 50)
   const quickCount = Math.min(_toPositiveInt(cfg.donationQuickCount, 4), 8)
-  const quickAmounts  = Array.from({ length: quickCount }, (_, i) => minAmount + (i * stepAmount))
+  const startAmount = isUpgrade ? Math.max(minAmount, (nextTierAmount ?? minAmount) - totalApproved) : minAmount
+  const quickAmounts  = Array.from({ length: quickCount }, (_, i) => startAmount + (i * stepAmount))
   const allFeatures   = _parseDonationFeatures(cfg)
-  const stickerTiers  = _parseDonationStickers(cfg, minAmount, stepAmount)
   const firstTier     = stickerTiers[0]
 
   // render feature list ตาม tier index (1-based)
@@ -970,14 +982,15 @@ async function _showDonateModal(course, cfg = {}) {
       <div class="px-5 pt-4 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
         <button id="donate-back" class="text-gray-400 hover:text-gray-600 text-xl leading-none">←</button>
         <div class="flex-1">
-          <h3 class="font-bold text-gray-800">☕ สนับสนุนผู้พัฒนา</h3>
-          <p class="text-xs text-gray-400">ขอบคุณมากเลยครับ 🙏</p>
+          <h3 class="font-bold text-gray-800">${isUpgrade ? '⭐ อัปเกรดระดับผู้สนับสนุน' : '☕ สนับสนุนผู้พัฒนา'}</h3>
+          <p class="text-xs text-gray-400">${isUpgrade ? 'สนับสนุนเพิ่มเพื่ออัปเกรดระดับครับ 🙏' : 'ขอบคุณมากเลยครับ 🙏'}</p>
         </div>
       </div>
       <div class="px-5 py-4 space-y-4 overflow-auto flex-1">
         <p class="text-sm text-gray-600 text-center leading-relaxed">
-          สนับสนุนขั้นต่ำ ${minAmount} บาท เพื่อรับสิทธิ์ผู้สนับสนุน<br/>
-          <span class="text-xs text-gray-400">ระบบหลักใช้งานได้ไม่จำกัดอยู่แล้ว สิทธิ์นี้เป็นฟีเจอร์พิเศษเพิ่มเติมครับ</span>
+          ${isUpgrade
+            ? `คุณครูสนับสนุนสะสมแล้ว ${totalApproved} บาท${nextTierAmount ? ` — อีก ${Math.max(0, nextTierAmount - totalApproved)} บาทจะครบ ${nextTierAmount} บาทสำหรับระดับถัดไป` : ''}<br/><span class="text-xs text-gray-400">ยอดที่สนับสนุนเพิ่มจะถูกรวมกับยอดเดิมโดยอัตโนมัติครับ</span>`
+            : `สนับสนุนขั้นต่ำ ${minAmount} บาท เพื่อรับสิทธิ์ผู้สนับสนุน<br/><span class="text-xs text-gray-400">ระบบหลักใช้งานได้ไม่จำกัดอยู่แล้ว สิทธิ์นี้เป็นฟีเจอร์พิเศษเพิ่มเติมครับ</span>`}
         </p>
         <!-- Feature list: อัปเดตตาม amount -->
         <div class="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
@@ -993,7 +1006,7 @@ async function _showDonateModal(course, cfg = {}) {
         <!-- Amount input -->
         <div class="flex items-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 focus-within:border-amber-400 transition">
           <span class="text-2xl font-bold text-amber-500">฿</span>
-          <input id="donate-amount" type="number" min="${minAmount}" step="${stepAmount}" value="${minAmount}" placeholder="${minAmount}"
+          <input id="donate-amount" type="number" min="${minAmount}" step="${stepAmount}" value="${startAmount}" placeholder="${startAmount}"
             class="flex-1 bg-transparent text-3xl font-extrabold text-amber-700 outline-none w-full" />
         </div>
         <div class="grid grid-cols-4 gap-2">
@@ -1462,6 +1475,10 @@ async function _initDonationFlow(teacherId) {
 
     const approved = requests.find(r => r.package_type === 'donation' && r.status === 'approved')
     const pending  = requests.some(r  => r.package_type === 'donation' && r.status === 'pending')
+    // tier คำนวณจากยอดสะสมของทุกรายการที่อนุมัติแล้ว ไม่ใช่แค่รายการล่าสุด — เพื่อรองรับการโดเนทซ้ำเพื่ออัปเกรดระดับ
+    const totalApproved = requests
+      .filter(r => r.package_type === 'donation' && r.status === 'approved')
+      .reduce((sum, r) => sum + (r.amount ?? 0), 0)
 
     window._pp5SystemCfg = cfg
 
@@ -1470,7 +1487,7 @@ async function _initDonationFlow(teacherId) {
       const seen = localStorage.getItem(`pp5_thankyou_seen_${approved.id}`)
       if (!seen && approved.admin_note) _showThankYouCard(approved)
 
-      const tierIndex = _getDonorTierIndex(cfg, tiers, approved.amount ?? 0)
+      const tierIndex = _getDonorTierIndex(cfg, tiers, totalApproved)
       window._pp5DonorTierIndex = tierIndex
       if (tierIndex >= maxTier) {
         // tier สูงสุด — แสดงแค่สติกเกอร์ใน sidebar
