@@ -408,6 +408,50 @@ function _validateDraftQuestion(d) {
   return { ok: true }
 }
 
+// Shared by both the in-app Gemini call and the copy-prompt-elsewhere path,
+// so the two produce identically-shaped output the same draft-review UI can parse.
+function _buildAIPrompt({ topic, count, choicesCount, difficulty }) {
+  return [
+    `Generate a JSON array of exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
+    difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
+    'Reply with a JSON Array ONLY. No markdown, no text outside JSON.',
+    '',
+    'Each object must have:',
+    '1. "question_text" — the question, in Thai',
+    `2. "choices" — array of exactly ${choicesCount} plausible answer strings (exactly one correct)`,
+    '3. "correct_choice_index" — 0-based index into choices of the correct answer',
+    '4. "explanation" — short Thai explanation of why that answer is correct',
+    '5. "difficulty" — one of "ง่าย", "ปานกลาง", "ยาก"',
+    '',
+    'Math/Science: use LaTeX in $ signs e.g. $x^2$, $\\frac{a}{b}$',
+    '',
+    `Example: [{"question_text":"...","choices":[${Array(choicesCount).fill('"..."').join(',')}],"correct_choice_index":0,"explanation":"...","difficulty":"ปานกลาง"}]`
+  ].join('\n')
+}
+
+// Shared JSON extraction: strips markdown fences, parses, falls back to a
+// regex scan for an embedded array if the model added stray text around it.
+function _parseAIJsonArray(rawText) {
+  let text = (rawText ?? '').trim()
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(json)?/, '').replace(/```$/, '').trim()
+  }
+  let generated
+  try {
+    generated = JSON.parse(text)
+  } catch (e2) {
+    const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
+    if (!match) throw new Error('ไม่พบ JSON อาร์เรย์ในคำตอบ — ตรวจสอบว่าคัดลอกคำตอบของ AI มาครบถ้วน (มักเกิดจากขอจำนวนข้อมากเกินไปจนคำตอบถูกตัดกลางคัน)')
+    try {
+      generated = JSON.parse(match[0])
+    } catch (e3) {
+      throw new Error('คำตอบไม่ครบ (JSON ถูกตัดกลางคัน) — ลองลดจำนวนข้อแล้วขอใหม่')
+    }
+  }
+  if (!Array.isArray(generated)) throw new Error('คำตอบไม่ใช่ JSON อาร์เรย์')
+  return generated
+}
+
 function _renderAIGenerator(teacher, bank) {
   let drafts = []
 
@@ -419,17 +463,26 @@ function _renderAIGenerator(teacher, bank) {
         <h3 class="font-bold text-gray-800 text-lg">✨ AI ช่วยคิดข้อสอบ</h3>
         <button id="ai-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
       </div>
-      <p class="text-xs text-gray-400 mb-4">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบและกดยืนยันความถูกต้องทีละข้อก่อนบันทึกเข้าคลังจริง</strong></p>
+      <p class="text-xs text-gray-400 mb-4">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบและกดยืนยันความถูกต้องทีละข้อก่อนบันทึกเข้าคลังจริงเสมอ</strong> (ไม่ว่าจะสร้างด้วยวิธีไหนก็ตาม)</p>
+
+      <div class="flex gap-2 mb-3">
+        <button id="ai-mode-inapp" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">🤖 ให้ AI ในระบบสร้างให้เลย</button>
+        <button id="ai-mode-copy" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-gray-200 text-gray-500">📋 คัดลอกคำสั่งไปใช้ AI อื่น</button>
+      </div>
 
       <div class="bg-purple-50 border border-purple-100 rounded-2xl p-4 space-y-3 mb-4">
         <div>
           <label class="text-xs font-semibold text-gray-600 mb-1 block">หัวข้อ/เนื้อหาที่ต้องการให้ออกข้อสอบ</label>
           <input id="ai-topic" class="${INPUT_CLS}" placeholder="เช่น สมการเชิงเส้นตัวแปรเดียว, การสังเคราะห์แสง, หลักธรรมอริยสัจ 4" />
         </div>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-3 gap-3">
           <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อที่ต้องการ (สูงสุด 25 ข้อ/ครั้ง)</label>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ (สูงสุด 25/ครั้ง)</label>
             <input id="ai-count" type="number" min="1" max="25" value="5" class="${INPUT_CLS}" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">ตัวเลือกต่อข้อ</label>
+            <input id="ai-choices-count" type="number" min="2" max="6" value="4" class="${INPUT_CLS}" />
           </div>
           <div>
             <label class="text-xs font-semibold text-gray-600 mb-1 block">ระดับความยาก</label>
@@ -441,7 +494,22 @@ function _renderAIGenerator(teacher, bank) {
             </select>
           </div>
         </div>
+
         <button id="btn-ai-run" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างข้อสอบด้วย AI</button>
+
+        <div id="ai-copy-panel" class="hidden space-y-3 pt-1">
+          <button id="btn-ai-build-prompt" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างคำสั่ง (Prompt)</button>
+          <div id="ai-prompt-wrap" class="hidden space-y-2">
+            <label class="text-xs font-semibold text-gray-600 block">คัดลอกคำสั่งนี้ไปวางใน ChatGPT, Gemini หรือ AI อื่นที่ต้องการ</label>
+            <textarea id="ai-prompt-text" class="${INPUT_CLS} font-mono text-xs" rows="6" readonly></textarea>
+            <button id="btn-ai-copy-prompt" class="w-full py-2 rounded-xl border border-purple-300 text-purple-700 hover:bg-purple-100 font-bold text-xs">📋 คัดลอกคำสั่ง</button>
+          </div>
+          <div class="pt-2 border-t border-purple-100">
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">วางคำตอบที่ได้จาก AI ที่นี่</label>
+            <textarea id="ai-paste-response" class="${INPUT_CLS} font-mono text-xs" rows="6" placeholder='วางคำตอบทั้งหมดที่ AI ตอบกลับมา (ต้องเป็น JSON array ตามคำสั่งที่ให้ไป)'></textarea>
+            <button id="btn-ai-parse-response" class="w-full mt-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">แปลงคำตอบเป็นคำถามร่าง</button>
+          </div>
+        </div>
       </div>
 
       <div id="ai-draft-list" class="space-y-3"></div>
@@ -458,6 +526,73 @@ function _renderAIGenerator(teacher, bank) {
 
   const listEl = modal.querySelector('#ai-draft-list')
   const saveBtn = modal.querySelector('#ai-save')
+  const runBtn = modal.querySelector('#btn-ai-run')
+  const copyPanel = modal.querySelector('#ai-copy-panel')
+  const modeInappBtn = modal.querySelector('#ai-mode-inapp')
+  const modeCopyBtn = modal.querySelector('#ai-mode-copy')
+
+  const setMode = (mode) => {
+    const isInapp = mode === 'inapp'
+    runBtn.classList.toggle('hidden', !isInapp)
+    copyPanel.classList.toggle('hidden', isInapp)
+    modeInappBtn.classList.toggle('border-purple-600', isInapp)
+    modeInappBtn.classList.toggle('bg-purple-600', isInapp)
+    modeInappBtn.classList.toggle('text-white', isInapp)
+    modeInappBtn.classList.toggle('border-gray-200', !isInapp)
+    modeInappBtn.classList.toggle('text-gray-500', !isInapp)
+    modeCopyBtn.classList.toggle('border-purple-600', !isInapp)
+    modeCopyBtn.classList.toggle('bg-purple-600', !isInapp)
+    modeCopyBtn.classList.toggle('text-white', !isInapp)
+    modeCopyBtn.classList.toggle('border-gray-200', isInapp)
+    modeCopyBtn.classList.toggle('text-gray-500', isInapp)
+  }
+  modeInappBtn.addEventListener('click', () => setMode('inapp'))
+  modeCopyBtn.addEventListener('click', () => setMode('copy'))
+
+  const _readGenParams = () => {
+    const topic = modal.querySelector('#ai-topic').value.trim()
+    const rawCount = parseInt(modal.querySelector('#ai-count').value, 10) || 5
+    const count = Math.min(25, Math.max(1, rawCount)) // clamp: the <input max> is only a UI hint, not enforced
+    modal.querySelector('#ai-count').value = count
+    const rawChoicesCount = parseInt(modal.querySelector('#ai-choices-count').value, 10) || 4
+    const choicesCount = Math.min(6, Math.max(2, rawChoicesCount))
+    modal.querySelector('#ai-choices-count').value = choicesCount
+    const difficulty = modal.querySelector('#ai-difficulty').value
+    return { topic, count, rawCount, choicesCount, difficulty }
+  }
+
+  modal.querySelector('#btn-ai-build-prompt').addEventListener('click', () => {
+    const { topic, count, choicesCount, difficulty } = _readGenParams()
+    if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
+    const prompt = _buildAIPrompt({ topic, count, choicesCount, difficulty })
+    modal.querySelector('#ai-prompt-text').value = prompt
+    modal.querySelector('#ai-prompt-wrap').classList.remove('hidden')
+  })
+
+  modal.querySelector('#btn-ai-copy-prompt').addEventListener('click', async (e) => {
+    const promptEl = modal.querySelector('#ai-prompt-text')
+    try {
+      await navigator.clipboard.writeText(promptEl.value)
+      showToast('คัดลอกคำสั่งแล้ว — ไปวางใน AI ที่ต้องการได้เลย', 'success')
+    } catch (err) {
+      promptEl.select() // clipboard API blocked — select the text so the teacher can copy manually (Ctrl/Cmd+C)
+      showToast('คัดลอกอัตโนมัติไม่ได้ — เลือกข้อความให้แล้ว กด Ctrl/Cmd+C เพื่อคัดลอกเอง', 'warning')
+    }
+  })
+
+  modal.querySelector('#btn-ai-parse-response').addEventListener('click', (e) => {
+    const raw = modal.querySelector('#ai-paste-response').value
+    if (!raw.trim()) { showToast('กรุณาวางคำตอบจาก AI ก่อน', 'warning'); return }
+    try {
+      const generated = _parseAIJsonArray(raw)
+      drafts.push(...generated.map(_normalizeAIQuestion))
+      _renderDrafts()
+      modal.querySelector('#ai-paste-response').value = ''
+      showToast(`แปลงคำตอบสำเร็จ ${generated.length} ข้อ — กรุณาตรวจสอบและยืนยันทีละข้อ`, 'success')
+    } catch (err) {
+      showToast('แปลงคำตอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  })
 
   function _updateSaveButton() {
     const confirmedCount = drafts.filter(d => d.confirmed).length
@@ -526,37 +661,18 @@ function _renderAIGenerator(teacher, bank) {
   }
 
   modal.querySelector('#btn-ai-run').addEventListener('click', async (e) => {
-    const topic = modal.querySelector('#ai-topic').value.trim()
-    const rawCount = parseInt(modal.querySelector('#ai-count').value, 10) || 5
-    const count = Math.min(25, Math.max(1, rawCount)) // clamp: the <input max> is only a UI hint, not enforced
-    modal.querySelector('#ai-count').value = count
-    const difficulty = modal.querySelector('#ai-difficulty').value
+    const { topic, count, rawCount, choicesCount, difficulty } = _readGenParams()
 
     if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
     if (rawCount > 25) showToast('จำนวนข้อเกินเพดานที่รองรับต่อครั้ง ปรับให้เป็น 25 ข้อแล้ว', 'warning')
 
     setButtonLoading(e.target, true)
     try {
-      const prompt = [
-        `Generate a JSON array of exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
-        difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
-        'Reply with a JSON Array ONLY. No markdown, no text outside JSON.',
-        '',
-        'Each object must have:',
-        '1. "question_text" — the question, in Thai',
-        '2. "choices" — array of 4 plausible answer strings (exactly one correct)',
-        '3. "correct_choice_index" — 0-based index into choices of the correct answer',
-        '4. "explanation" — short Thai explanation of why that answer is correct',
-        '5. "difficulty" — one of "ง่าย", "ปานกลาง", "ยาก"',
-        '',
-        'Math/Science: use LaTeX in $ signs e.g. $x^2$, $\\\\frac{a}{b}$',
-        '',
-        'Example: [{"question_text":"...","choices":["...","...","...","..."],"correct_choice_index":0,"explanation":"...","difficulty":"ปานกลาง"}]'
-      ].join('\n')
+      const prompt = _buildAIPrompt({ topic, count, choicesCount, difficulty })
 
       // Thai text tokenizes heavier than English, and each question carries a
-      // question+4 choices+explanation — budget generously per question
-      // instead of a flat cap, or large counts get silently truncated mid-JSON.
+      // question+choices+explanation — budget generously per question instead
+      // of a flat cap, or large counts get silently truncated mid-JSON.
       const maxTokens = Math.min(8000, 600 + count * 300)
 
       const { data: json, error: fnErr } = await supabase.functions.invoke('gemini-proxy', {
@@ -571,24 +687,7 @@ function _renderAIGenerator(teacher, bank) {
         text = json.text
       }
 
-      text = text.trim()
-      if (text.startsWith('```')) {
-        text = text.replace(/^```(json)?/, '').replace(/```$/, '').trim()
-      }
-
-      let generated
-      try {
-        generated = JSON.parse(text)
-      } catch (e2) {
-        const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
-        if (!match) throw new Error('AI ตอบกลับในรูปแบบที่ไม่ใช่ JSON อาร์เรย์ — มักเกิดจากขอจำนวนข้อมากเกินไปในครั้งเดียวจนคำตอบถูกตัดกลางคัน ลองลดจำนวนข้อแล้วลองใหม่')
-        try {
-          generated = JSON.parse(match[0])
-        } catch (e3) {
-          throw new Error('AI ตอบกลับมาไม่ครบ (คำตอบถูกตัดกลางคัน) — ลองลดจำนวนข้อแล้วลองใหม่')
-        }
-      }
-      if (!Array.isArray(generated)) throw new Error('AI Response is not a JSON Array')
+      const generated = _parseAIJsonArray(text)
 
       drafts.push(...generated.map(_normalizeAIQuestion))
       _renderDrafts()
