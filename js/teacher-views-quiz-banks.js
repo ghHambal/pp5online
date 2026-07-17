@@ -221,24 +221,7 @@ export async function _renderBankQuestions(teacher, bank) {
     reader.onload = async evt => {
       try {
         const rows = parseCSV(evt.target.result)
-        const mapped = rows.map(r => {
-          const rawChoices = [r['ตัวเลือก1'], r['ตัวเลือก2'], r['ตัวเลือก3'], r['ตัวเลือก4'], r['ตัวเลือก5']]
-            .map(c => (c ?? '').trim())
-          const correctRawIdx = parseInt(r['ตัวเลือกที่ถูก'], 10) - 1
-          // filter(Boolean) shifts indices — recompute correct_choice_index against the
-          // post-filter position instead of assuming it still matches the raw CSV column.
-          const kept = rawChoices.map((v, i) => ({ v, i })).filter(x => x.v)
-          const choices = kept.map(x => x.v)
-          const correct_choice_index = kept.findIndex(x => x.i === correctRawIdx)
-          return {
-            question_text: (r['คำถาม'] ?? '').trim(),
-            choices,
-            correct_choice_index,
-            explanation: (r['คำอธิบายเฉลย'] ?? '').trim() || null,
-            difficulty: (r['ระดับความยาก'] ?? '').trim() || null,
-            category: (r['หมวดหมู่'] ?? '').trim() || null,
-          }
-        }).filter(r => r.question_text && r.choices.length >= 2 &&
+        const mapped = rows.map(_mapCsvRowToQuestion).filter(r => r.question_text && r.choices.length >= 2 &&
           Number.isInteger(r.correct_choice_index) && r.correct_choice_index >= 0 && r.correct_choice_index < r.choices.length)
 
         if (mapped.length === 0) {
@@ -408,8 +391,36 @@ function _validateDraftQuestion(d) {
   return { ok: true }
 }
 
-// Shared by both the in-app Gemini call and the copy-prompt-elsewhere path,
-// so the two produce identically-shaped output the same draft-review UI can parse.
+// Used by both the CSV-file-upload import and the paste-from-external-AI CSV
+// path, so the reindex-safety fix (blank choice slots shifting the correct
+// index) only has to live in one place.
+function _mapCsvRowToQuestion(r) {
+  const rawChoices = [r['ตัวเลือก1'], r['ตัวเลือก2'], r['ตัวเลือก3'], r['ตัวเลือก4'], r['ตัวเลือก5']]
+    .map(c => (c ?? '').trim())
+  const correctRawIdx = parseInt(r['ตัวเลือกที่ถูก'], 10) - 1
+  const kept = rawChoices.map((v, i) => ({ v, i })).filter(x => x.v)
+  const choices = kept.map(x => x.v)
+  const correct_choice_index = kept.findIndex(x => x.i === correctRawIdx)
+  return {
+    question_text: (r['คำถาม'] ?? '').trim(),
+    choices,
+    correct_choice_index,
+    explanation: (r['คำอธิบายเฉลย'] ?? '').trim() || null,
+    difficulty: (r['ระดับความยาก'] ?? '').trim() || null,
+    category: (r['หมวดหมู่'] ?? '').trim() || null,
+  }
+}
+
+function _stripCodeFence(text) {
+  let t = (text ?? '').trim()
+  if (t.startsWith('```')) {
+    t = t.replace(/^```[a-zA-Z]*\n?/, '').replace(/```\s*$/, '').trim()
+  }
+  return t
+}
+
+// In-app Gemini call: always JSON, never wrapped in markdown (our own
+// edge function parses raw text directly, no copy-paste step involved).
 function _buildAIPrompt({ topic, count, choicesCount, difficulty }) {
   return [
     `Generate a JSON array of exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
@@ -429,13 +440,52 @@ function _buildAIPrompt({ topic, count, choicesCount, difficulty }) {
   ].join('\n')
 }
 
+// Copy-to-external-AI mode: no count cap (an external chatbot has no token
+// budget tied to our own edge function), and explicitly asks for the whole
+// answer inside a SINGLE fenced code block — most chat UIs (ChatGPT, Gemini,
+// Claude) render a one-click "copy" button on a fenced block, so the teacher
+// never has to manually select text.
+function _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format }) {
+  const shared = [
+    `Generate exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
+    difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
+    'Math/Science: use LaTeX in $ signs e.g. $x^2$, $\\frac{a}{b}$',
+  ]
+
+  if (format === 'csv') {
+    const header = [CSV_HEADERS[0], ...CSV_HEADERS.slice(1, 1 + choicesCount), ...CSV_HEADERS.slice(6)].join(',')
+    return [
+      ...shared,
+      '',
+      `Reply with CSV data (comma-separated) using EXACTLY this header row first: ${header}`,
+      `Fill all ${choicesCount} choice columns per row with plausible answers (exactly one correct).`,
+      '"ตัวเลือกที่ถูก" column = the 1-based column number of the correct choice (e.g. 2 means the 2nd choice column).',
+      'Quote any field that itself contains a comma with double quotes.',
+      '',
+      'Wrap the ENTIRE csv output (header row + all data rows, nothing else) in a single fenced code block using ```csv and ``` — no text before or after that block.'
+    ].join('\n')
+  }
+
+  return [
+    ...shared,
+    '',
+    'Reply as a JSON array. Each object must have:',
+    '1. "question_text" — the question, in Thai',
+    `2. "choices" — array of exactly ${choicesCount} plausible answer strings (exactly one correct)`,
+    '3. "correct_choice_index" — 0-based index into choices of the correct answer',
+    '4. "explanation" — short Thai explanation of why that answer is correct',
+    '5. "difficulty" — one of "ง่าย", "ปานกลาง", "ยาก"',
+    '',
+    `Example: [{"question_text":"...","choices":[${Array(choicesCount).fill('"..."').join(',')}],"correct_choice_index":0,"explanation":"...","difficulty":"ปานกลาง"}]`,
+    '',
+    'Wrap the ENTIRE answer (the whole JSON array, nothing else) in a single fenced code block using ```json and ``` — no text before or after that block.'
+  ].join('\n')
+}
+
 // Shared JSON extraction: strips markdown fences, parses, falls back to a
 // regex scan for an embedded array if the model added stray text around it.
 function _parseAIJsonArray(rawText) {
-  let text = (rawText ?? '').trim()
-  if (text.startsWith('```')) {
-    text = text.replace(/^```(json)?/, '').replace(/```$/, '').trim()
-  }
+  const text = _stripCodeFence(rawText)
   let generated
   try {
     generated = JSON.parse(text)
@@ -450,6 +500,21 @@ function _parseAIJsonArray(rawText) {
   }
   if (!Array.isArray(generated)) throw new Error('คำตอบไม่ใช่ JSON อาร์เรย์')
   return generated
+}
+
+// Auto-detects whether the pasted text is JSON or CSV (after stripping any
+// code fence) — so the teacher doesn't have to tell us which format they
+// asked the external AI for.
+function _parseExternalAIResponse(rawText) {
+  const text = _stripCodeFence(rawText)
+  if (text.trim().startsWith('[')) return _parseAIJsonArray(text)
+
+  const rows = parseCSV(text)
+  if (!rows.length) throw new Error('ไม่พบข้อมูลที่แปลงได้ — ตรวจสอบว่าคัดลอกคำตอบของ AI มาครบถ้วน (ทั้งแถวหัวตารางและข้อมูล)')
+  const mapped = rows.map(_mapCsvRowToQuestion).filter(r => r.question_text && r.choices.length >= 2 &&
+    Number.isInteger(r.correct_choice_index) && r.correct_choice_index >= 0 && r.correct_choice_index < r.choices.length)
+  if (!mapped.length) throw new Error('แปลง CSV ไม่ได้ — ตรวจสอบว่าหัวตารางตรงกับที่คำสั่งกำหนด และคอลัมน์ "ตัวเลือกที่ถูก" ชี้ไปที่ตัวเลือกที่มีข้อความจริง')
+  return mapped
 }
 
 function _renderAIGenerator(teacher, bank) {
@@ -477,12 +542,12 @@ function _renderAIGenerator(teacher, bank) {
         </div>
         <div class="grid grid-cols-3 gap-3">
           <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ (สูงสุด 25/ครั้ง)</label>
-            <input id="ai-count" type="number" min="1" max="25" value="5" class="${INPUT_CLS}" />
+            <label id="ai-count-label" class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ (สูงสุด 25/ครั้ง)</label>
+            <input id="ai-count" type="number" min="1" value="5" class="${INPUT_CLS}" />
           </div>
           <div>
             <label class="text-xs font-semibold text-gray-600 mb-1 block">ตัวเลือกต่อข้อ</label>
-            <input id="ai-choices-count" type="number" min="2" max="6" value="4" class="${INPUT_CLS}" />
+            <input id="ai-choices-count" type="number" min="2" max="5" value="4" class="${INPUT_CLS}" />
           </div>
           <div>
             <label class="text-xs font-semibold text-gray-600 mb-1 block">ระดับความยาก</label>
@@ -498,6 +563,13 @@ function _renderAIGenerator(teacher, bank) {
         <button id="btn-ai-run" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างข้อสอบด้วย AI</button>
 
         <div id="ai-copy-panel" class="hidden space-y-3 pt-1">
+          <div>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">รูปแบบคำตอบที่จะขอจาก AI</label>
+            <div class="flex gap-2">
+              <button id="ai-format-json" class="ai-format-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">JSON</button>
+              <button id="ai-format-csv" class="ai-format-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-gray-200 text-gray-500">CSV</button>
+            </div>
+          </div>
           <button id="btn-ai-build-prompt" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างคำสั่ง (Prompt)</button>
           <div id="ai-prompt-wrap" class="hidden space-y-2">
             <label class="text-xs font-semibold text-gray-600 block">คัดลอกคำสั่งนี้ไปวางใน ChatGPT, Gemini หรือ AI อื่นที่ต้องการ</label>
@@ -505,8 +577,8 @@ function _renderAIGenerator(teacher, bank) {
             <button id="btn-ai-copy-prompt" class="w-full py-2 rounded-xl border border-purple-300 text-purple-700 hover:bg-purple-100 font-bold text-xs">📋 คัดลอกคำสั่ง</button>
           </div>
           <div class="pt-2 border-t border-purple-100">
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">วางคำตอบที่ได้จาก AI ที่นี่</label>
-            <textarea id="ai-paste-response" class="${INPUT_CLS} font-mono text-xs" rows="6" placeholder='วางคำตอบทั้งหมดที่ AI ตอบกลับมา (ต้องเป็น JSON array ตามคำสั่งที่ให้ไป)'></textarea>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">วางคำตอบที่ได้จาก AI ที่นี่ (JSON หรือ CSV ก็ได้ ระบบจะตรวจให้เอง)</label>
+            <textarea id="ai-paste-response" class="${INPUT_CLS} font-mono text-xs" rows="6" placeholder="วางคำตอบทั้งหมดที่ AI ตอบกลับมา"></textarea>
             <button id="btn-ai-parse-response" class="w-full mt-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">แปลงคำตอบเป็นคำถามร่าง</button>
           </div>
         </div>
@@ -530,8 +602,15 @@ function _renderAIGenerator(teacher, bank) {
   const copyPanel = modal.querySelector('#ai-copy-panel')
   const modeInappBtn = modal.querySelector('#ai-mode-inapp')
   const modeCopyBtn = modal.querySelector('#ai-mode-copy')
+  const countLabel = modal.querySelector('#ai-count-label')
+  const formatJsonBtn = modal.querySelector('#ai-format-json')
+  const formatCsvBtn = modal.querySelector('#ai-format-csv')
+
+  let currentMode = 'inapp' // 'inapp' | 'copy' — controls whether the 25-question cap (our own edge function's token budget) applies
+  let responseFormat = 'json' // 'json' | 'csv' — only relevant in 'copy' mode
 
   const setMode = (mode) => {
+    currentMode = mode
     const isInapp = mode === 'inapp'
     runBtn.classList.toggle('hidden', !isInapp)
     copyPanel.classList.toggle('hidden', isInapp)
@@ -545,17 +624,39 @@ function _renderAIGenerator(teacher, bank) {
     modeCopyBtn.classList.toggle('text-white', !isInapp)
     modeCopyBtn.classList.toggle('border-gray-200', isInapp)
     modeCopyBtn.classList.toggle('text-gray-500', isInapp)
+    countLabel.textContent = isInapp ? 'จำนวนข้อ (สูงสุด 25/ครั้ง)' : 'จำนวนข้อ (ไม่จำกัด — สร้างที่ AI ภายนอก)'
   }
   modeInappBtn.addEventListener('click', () => setMode('inapp'))
   modeCopyBtn.addEventListener('click', () => setMode('copy'))
 
+  const setFormat = (format) => {
+    responseFormat = format
+    const isJson = format === 'json'
+    formatJsonBtn.classList.toggle('border-purple-600', isJson)
+    formatJsonBtn.classList.toggle('bg-purple-600', isJson)
+    formatJsonBtn.classList.toggle('text-white', isJson)
+    formatJsonBtn.classList.toggle('border-gray-200', !isJson)
+    formatJsonBtn.classList.toggle('text-gray-500', !isJson)
+    formatCsvBtn.classList.toggle('border-purple-600', !isJson)
+    formatCsvBtn.classList.toggle('bg-purple-600', !isJson)
+    formatCsvBtn.classList.toggle('text-white', !isJson)
+    formatCsvBtn.classList.toggle('border-gray-200', isJson)
+    formatCsvBtn.classList.toggle('text-gray-500', isJson)
+    modal.querySelector('#ai-prompt-wrap').classList.add('hidden') // stale prompt no longer matches the newly picked format
+  }
+  formatJsonBtn.addEventListener('click', () => setFormat('json'))
+  formatCsvBtn.addEventListener('click', () => setFormat('csv'))
+
   const _readGenParams = () => {
     const topic = modal.querySelector('#ai-topic').value.trim()
     const rawCount = parseInt(modal.querySelector('#ai-count').value, 10) || 5
-    const count = Math.min(25, Math.max(1, rawCount)) // clamp: the <input max> is only a UI hint, not enforced
+    // 25-cap only applies to the in-app call (our gemini-proxy edge function's
+    // token budget) — an external AI the teacher copies the prompt to has no
+    // such constraint, so let them ask for as many as they want there.
+    const count = currentMode === 'inapp' ? Math.min(25, Math.max(1, rawCount)) : Math.max(1, rawCount)
     modal.querySelector('#ai-count').value = count
     const rawChoicesCount = parseInt(modal.querySelector('#ai-choices-count').value, 10) || 4
-    const choicesCount = Math.min(6, Math.max(2, rawChoicesCount))
+    const choicesCount = Math.min(5, Math.max(2, rawChoicesCount))
     modal.querySelector('#ai-choices-count').value = choicesCount
     const difficulty = modal.querySelector('#ai-difficulty').value
     return { topic, count, rawCount, choicesCount, difficulty }
@@ -564,7 +665,7 @@ function _renderAIGenerator(teacher, bank) {
   modal.querySelector('#btn-ai-build-prompt').addEventListener('click', () => {
     const { topic, count, choicesCount, difficulty } = _readGenParams()
     if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
-    const prompt = _buildAIPrompt({ topic, count, choicesCount, difficulty })
+    const prompt = _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format: responseFormat })
     modal.querySelector('#ai-prompt-text').value = prompt
     modal.querySelector('#ai-prompt-wrap').classList.remove('hidden')
   })
@@ -584,7 +685,7 @@ function _renderAIGenerator(teacher, bank) {
     const raw = modal.querySelector('#ai-paste-response').value
     if (!raw.trim()) { showToast('กรุณาวางคำตอบจาก AI ก่อน', 'warning'); return }
     try {
-      const generated = _parseAIJsonArray(raw)
+      const generated = _parseExternalAIResponse(raw)
       drafts.push(...generated.map(_normalizeAIQuestion))
       _renderDrafts()
       modal.querySelector('#ai-paste-response').value = ''
