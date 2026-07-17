@@ -2025,15 +2025,24 @@ export async function renderStudents() {
                 <div class="space-y-3">
                   <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">อีเมลเข้าใช้งาน (แก้ไขกู้คืน)</label>
-                    <input id="sf-auth-email" type="email" value="${s.profile_id ? currentEmail : `stu${s.student_code}@student.pp5.local`}" 
-                      ${!s.profile_id ? 'disabled' : ''} 
-                      class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full bg-gray-50 text-gray-600 disabled:opacity-60" />
+                    <input id="sf-auth-email" type="email" value="${s.profile_id ? currentEmail : `stu${s.student_code}@student.pp5.local`}"
+                      class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full bg-gray-50 text-gray-600" />
                   </div>
                   <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">รหัสผ่านใหม่ (ระบุเมื่อต้องการเปลี่ยน)</label>
-                    <input id="sf-auth-pw" type="password" placeholder="${s.profile_id ? 'ตั้งรหัสผ่านใหม่ (อย่างน้อย 6 ตัว)' : 'เปิดใช้งานบนอุปกรณ์นักเรียนก่อน'}" 
-                      ${!s.profile_id ? 'disabled' : ''} 
-                      class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full disabled:bg-gray-50 disabled:text-gray-400" />
+                    <label class="block text-xs font-medium text-gray-500 mb-1">${s.profile_id ? 'ตั้งรหัสผ่านใหม่ (ระบุเมื่อต้องการเปลี่ยน)' : 'ตั้งรหัสผ่านเริ่มต้น (จะเปิดบัญชีให้อัตโนมัติ)'}</label>
+                    <div class="flex gap-2">
+                      <input id="sf-auth-pw" type="text" placeholder="อย่างน้อย 6 ตัวอักษร"
+                        class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm w-full" />
+                      <button type="button" id="sf-auth-pw-fill" title="ใช้รหัสนักเรียนเป็นรหัสผ่าน"
+                        class="flex-shrink-0 px-3 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-semibold hover:bg-indigo-50 transition whitespace-nowrap">
+                        🔄 = รหัสนักเรียน
+                      </button>
+                    </div>
+                    <p class="text-[11px] text-gray-400 mt-1">
+                      ${s.profile_id
+                        ? 'กรอกแล้วกดบันทึก จะเปลี่ยนรหัสผ่านทันที นักเรียนใช้ชุดใหม่นี้เข้าระบบครั้งถัดไปได้เลย'
+                        : 'นักเรียนคนนี้ยังไม่เคยเปิดบัญชี — ระบุรหัสผ่านแล้วกดบันทึก ระบบจะสร้างบัญชีให้อัตโนมัติ ไม่ต้องรอนักเรียนเปิดเอง'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2055,6 +2064,9 @@ export async function renderStudents() {
       m.querySelector('#stu-close').addEventListener('click', ()=>m.remove())
       m.querySelector('#stu-cancel').addEventListener('click', ()=>m.remove())
       m.addEventListener('click', e=>{ if(e.target===m) m.remove() })
+      m.querySelector('#sf-auth-pw-fill').addEventListener('click', () => {
+        m.querySelector('#sf-auth-pw').value = m.querySelector('#sf-code').value.trim()
+      })
       m.querySelector('#stu-form').addEventListener('submit', async e => {
         e.preventDefault()
         const btn = m.querySelector('#stu-save')
@@ -2069,10 +2081,14 @@ export async function renderStudents() {
             house_color:   m.querySelector('#sf-house-color').value.trim() || null,
             sports_shirt_size: m.querySelector('#sf-shirt-size').value.trim() || null,
           }
-          const authPayload = s.profile_id ? {
-            email: m.querySelector('#sf-auth-email').value.trim() || null,
-            password: m.querySelector('#sf-auth-pw').value.trim() || null,
-          } : null
+          const emailVal = m.querySelector('#sf-auth-email').value.trim() || null
+          const pwVal    = m.querySelector('#sf-auth-pw').value.trim() || null
+          if (!s.profile_id && !pwVal) {
+            showToast('กรุณาระบุรหัสผ่านเริ่มต้นสำหรับนักเรียนที่ยังไม่เคยเปิดบัญชีก่อนบันทึกครับ', 'warning')
+            btn.disabled = false; btn.textContent = 'บันทึก'
+            return
+          }
+          const authPayload = (emailVal || pwVal) ? { email: emailVal, password: pwVal } : null
 
           await onSave(payload, authPayload)
           showToast('บันทึกสำเร็จ', 'success')
