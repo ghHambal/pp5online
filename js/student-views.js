@@ -2855,6 +2855,30 @@ async function loadHtml5Qrcode() {
   })
 }
 
+// ─── Google Sign-In (เลือกบัญชีที่ล็อกอินอยู่ในเครื่อง แทนการพิมพ์อีเมลเอง) ──────
+const GOOGLE_CLIENT_ID = '311508971789-1uqrf0e36knhlp2epsdfk34e12820ef8.apps.googleusercontent.com'
+let _googleScriptPromise = null
+function _loadGoogleScript() {
+  if (_googleScriptPromise) return _googleScriptPromise
+  _googleScriptPromise = new Promise((resolve, reject) => {
+    if (window.google?.accounts?.id) { resolve(); return }
+    const s = document.createElement('script')
+    s.src = 'https://accounts.google.com/gsi/client'
+    s.async = true
+    s.defer = true
+    s.onload = () => resolve()
+    s.onerror = () => reject(new Error('โหลดสคริปต์ Google ไม่สำเร็จ'))
+    document.head.appendChild(s)
+  })
+  return _googleScriptPromise
+}
+function _decodeGoogleEmail(idToken) {
+  try {
+    const payload = JSON.parse(atob(idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return payload.email_verified ? payload.email : null
+  } catch { return null }
+}
+
 // ─── เชื่อมอีเมลส่วนตัว (สำหรับกู้คืนรหัสผ่านในอนาคต) — เด้งทุกครั้งหลัง login จนกว่าจะเชื่อม ──
 export function openEmailLinkPrompt() {
   document.getElementById('stu-email-link-modal')?.remove()
@@ -2867,6 +2891,13 @@ export function openEmailLinkPrompt() {
         <div class="text-4xl mb-2">📧</div>
         <h3 class="font-bold text-gray-800 text-base">เชื่อมอีเมลส่วนตัวของคุณ</h3>
         <p class="text-xs text-gray-400 mt-1 leading-relaxed">เผื่อไว้กรณีลืมรหัสผ่านในอนาคต ระบบจะส่งลิงก์กู้คืนให้ทางอีเมลนี้ได้ทันที ไม่ต้องรอครูช่วยตั้งรหัสผ่านให้</p>
+      </div>
+      <div id="sel-google-btn" class="flex justify-center mb-1"></div>
+      <p id="sel-google-status" class="hidden text-[11px] text-gray-300 text-center mb-2"></p>
+      <div class="flex items-center gap-2 my-3">
+        <div class="flex-1 h-px bg-gray-200"></div>
+        <span class="text-[10px] text-gray-300">หรือพิมพ์เอง</span>
+        <div class="flex-1 h-px bg-gray-200"></div>
       </div>
       <div class="space-y-3">
         <div>
@@ -2898,6 +2929,36 @@ export function openEmailLinkPrompt() {
     el.classList.remove('hidden')
   }
 
+  const _saveEmail = async (email, btn, restoreLabel) => {
+    if (btn) { btn.disabled = true }
+    try {
+      await updateStudentEmail(email)
+      _showMsg(`เชื่อมอีเมล ${email} สำเร็จแล้ว ✅`, false)
+      setTimeout(() => modal.remove(), 1200)
+    } catch (err) {
+      _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
+      if (btn) { btn.disabled = false; if (restoreLabel) btn.textContent = restoreLabel }
+    }
+  }
+
+  // ปุ่ม Google — เลือกบัญชีที่ล็อกอินอยู่ในเครื่องได้เลย ไม่ต้องพิมพ์
+  _loadGoogleScript().then(() => {
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: resp => {
+        const email = _decodeGoogleEmail(resp.credential)
+        if (!email) { _showMsg('ไม่พบอีเมลที่ยืนยันแล้วจากบัญชี Google นี้', true); return }
+        _saveEmail(email, null)
+      },
+    })
+    window.google.accounts.id.renderButton(modal.querySelector('#sel-google-btn'), {
+      type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', width: 300,
+    })
+  }).catch(() => {
+    modal.querySelector('#sel-google-status').textContent = 'ไม่สามารถโหลดปุ่ม Google ได้ในขณะนี้ — พิมพ์อีเมลด้านล่างแทนได้เลยครับ'
+    modal.querySelector('#sel-google-status').classList.remove('hidden')
+  })
+
   modal.querySelector('#sel-later').addEventListener('click', () => modal.remove())
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
   modal.querySelector('#sel-save').addEventListener('click', async () => {
@@ -2910,15 +2971,8 @@ export function openEmailLinkPrompt() {
     if (email !== email2) {
       _showMsg('อีเมลทั้งสองช่องไม่ตรงกัน', true); return
     }
-    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-    try {
-      await updateStudentEmail(email)
-      _showMsg('เชื่อมอีเมลสำเร็จแล้ว ✅', false)
-      setTimeout(() => modal.remove(), 1200)
-    } catch (err) {
-      _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
-      btn.disabled = false; btn.textContent = 'เชื่อมอีเมล'
-    }
+    btn.textContent = 'กำลังบันทึก...'
+    await _saveEmail(email, btn, 'เชื่อมอีเมล')
   })
 }
 
