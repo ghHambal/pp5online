@@ -30,6 +30,10 @@ let _eliminatedChoices = {}
 let _unlockedForEdit = new Set()
 let _answerCorrectness = {}
 let _priorAttempts = [] // this student's other finished attempts on the same quiz (attempt_number > 1 only)
+let _currentStreak = 0
+let _avgPerQuestionSec = null // time_limit_minutes*60 / num_questions — pacing guide only, never force-advances
+let _perQBarStart = null
+let _perQTimerInterval = null
 
 const BONUS_META = {
   fifty_fifty:   { icon: '✂️', label: '50/50' },
@@ -83,6 +87,8 @@ export async function initQuizExam(attemptId) {
   _eliminatedChoices = _attempt.eliminated_choices ?? {}
   _unlockedForEdit = new Set(_attempt.unlocked_for_edit ?? [])
   _answerCorrectness = _attempt.answer_correctness ?? {}
+  _currentStreak = _attempt.current_streak ?? 0
+  _avgPerQuestionSec = quiz?.time_limit_minutes ? Math.floor(quiz.time_limit_minutes * 60 / _questions.length) : null
 
   _priorAttempts = _attempt.attempt_number > 1
     ? await getMyQuizAttemptHistory(_attempt.quiz_id, _attempt.student_id).catch(() => [])
@@ -157,13 +163,20 @@ function _renderExamUI(root) {
   const quiz = _attempt.quizzes
   root.innerHTML = `
     <div class="max-w-3xl mx-auto space-y-4">
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between">
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between gap-3">
         <div class="min-w-0">
           <h2 class="font-bold text-gray-800 truncate">${_htmlEsc(quiz?.title ?? '')}</h2>
           <p class="text-xs text-gray-400">${_questions.length} ข้อ</p>
         </div>
+        ${_bonusMode ? `<div id="quiz-streak-badge" class="flex-shrink-0"></div>` : ''}
         <div id="quiz-timer" class="text-2xl font-mono font-bold text-indigo-600 flex-shrink-0"></div>
       </div>
+
+      ${_avgPerQuestionSec ? `
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2">
+        <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden"><div id="quiz-perq-bar" class="h-full bg-indigo-400" style="width:100%"></div></div>
+        <p class="text-[10px] text-gray-400 mt-1">⏱ เฉลี่ยข้อละ ~${_avgPerQuestionSec} วิ (แค่แนวทางจับเวลา ไม่ตัดคะแนน)</p>
+      </div>` : ''}
 
       ${_bonusMode ? `<div class="flex gap-2 overflow-x-auto pb-1" id="quiz-bonus-toolbar"></div>` : ''}
 
@@ -184,7 +197,37 @@ function _renderExamUI(root) {
   _renderNav()
   _renderQuestion()
   _updateNavButtons()
-  if (_bonusMode) _renderBonusToolbar()
+  if (_bonusMode) { _renderBonusToolbar(); _renderStreakBadge() }
+  if (_avgPerQuestionSec) _startPerQuestionBar()
+}
+
+// ป้ายสตรีค — เห็นตลอดว่าตอบถูกต่อเนื่องกี่ข้อแล้ว (ไม่ใช่แค่ตอนเพิ่งตอบ) เด้ง
+// สเกลสั้นๆ ทุกครั้งที่ตัวเลขเปลี่ยน ให้รู้สึกว่า "กำลังไปได้สวย"
+function _renderStreakBadge() {
+  const el = document.getElementById('quiz-streak-badge')
+  if (!el) return
+  if (_currentStreak >= 2) {
+    el.innerHTML = `<span class="quiz-streak-pop inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-600 font-bold text-sm">🔥 ต่อเนื่อง ${_currentStreak} ข้อ</span>`
+  } else {
+    el.innerHTML = ''
+  }
+}
+
+// นับถอยหลังต่อข้อ (เฉลี่ยจากเวลารวม) — เป็นแค่แนวทางจับจังหวะให้นักเรียนไม่มัว
+// อยู่ข้อเดียวนานเกินไป ไม่บังคับเลื่อนข้อและไม่ตัดคะแนนเมื่อหมดเวลานี้ รีเซ็ตใหม่
+// ทุกครั้งที่เปลี่ยนข้อ (เรียกจาก _goTo)
+function _startPerQuestionBar() {
+  if (!_avgPerQuestionSec) return
+  _perQBarStart = Date.now()
+  if (_perQTimerInterval) return // interval เดียวพอ วิ่งอ่าน _perQBarStart ใหม่ทุกครั้งเอง
+  _perQTimerInterval = setInterval(() => {
+    const bar = document.getElementById('quiz-perq-bar')
+    if (!bar) { clearInterval(_perQTimerInterval); _perQTimerInterval = null; return }
+    const elapsed = (Date.now() - _perQBarStart) / 1000
+    const pct = Math.max(0, 100 - (elapsed / _avgPerQuestionSec) * 100)
+    bar.style.width = `${pct}%`
+    bar.className = `h-full ${pct <= 0 ? 'bg-red-400' : pct <= 30 ? 'bg-amber-400' : 'bg-indigo-400'}`
+  }, 500)
 }
 
 // ในโหมดล็อกคำตอบ (ตอบทีละข้อแบบเดินหน้าอย่างเดียว) ปุ่ม "ส่งคำตอบ" จะโผล่
@@ -215,6 +258,7 @@ function _goTo(idx) {
   _renderQuestion()
   _renderNav()
   _updateNavButtons()
+  if (_avgPerQuestionSec) _startPerQuestionBar()
 }
 
 function _renderQuestion() {
@@ -288,7 +332,9 @@ async function _submitAnswerToServer(q, pos) {
     if (_bonusMode) {
       _answerCorrectness[q.question_id] = result.is_correct
       if (result.bonus_inventory) _bonusInventory = result.bonus_inventory
-      _flashAnswerEffect(result.is_correct)
+      _currentStreak = result.current_streak ?? _currentStreak
+      _flashAnswerEffect(result.is_correct, _currentStreak)
+      _renderStreakBadge()
       _renderBonusToolbar()
       if (result.bonus_awarded?.length) _showBonusPopup(result.bonus_awarded)
     }
@@ -297,7 +343,7 @@ async function _submitAnswerToServer(q, pos) {
     // ตอบผิด (รู้ผลทันทีเฉพาะโหมดคอมโบ/โบนัส) → เลื่อนไปข้อถัดไปให้อัตโนมัติ
     // หลังจากปล่อยให้เห็นเอฟเฟกต์สีแดงก่อนสักครู่ ไม่ต้องกดเองข้อไหนที่ตอบผิด
     if (_bonusMode && result.is_correct === false && _currentIdx < _questions.length - 1) {
-      setTimeout(() => { if (_answers[q.question_id] === chosenOriginal) _goTo(_currentIdx + 1) }, 1100)
+      setTimeout(() => { if (_answers[q.question_id] === chosenOriginal) _goTo(_currentIdx + 1) }, 1400)
     }
   } catch (err) {
     _answers[q.question_id] = prevAnswer
@@ -311,19 +357,38 @@ function _ensureQuizEffectStyles() {
   if (_quizEffectStylesInjected) return
   _quizEffectStylesInjected = true
   const style = document.createElement('style')
-  style.textContent = `@keyframes qzShake { 10%,90%{transform:translateX(-2px)} 20%,80%{transform:translateX(4px)} 30%,50%,70%{transform:translateX(-8px)} 40%,60%{transform:translateX(8px)} }`
+  style.textContent = `
+    @keyframes qzShake { 10%,90%{transform:translateX(-2px)} 20%,80%{transform:translateX(4px)} 30%,50%,70%{transform:translateX(-8px)} 40%,60%{transform:translateX(8px)} }
+    @keyframes qzPop { 0%{transform:scale(1)} 40%{transform:scale(1.25)} 100%{transform:scale(1)} }
+    .quiz-streak-pop { animation: qzPop .4s ease-out; }
+  `
   document.head.appendChild(style)
 }
 
-function _flashAnswerEffect(isCorrect) {
+// ข้อความให้กำลังใจตอนตอบผิด — สุ่มหมุนเวียนกันไม่ให้จำเจ
+const _CALM_DOWN_MESSAGES = [
+  'ไม่เป็นไรนะ ตั้งสติแล้วค่อยๆ ทำข้อต่อไป 💪',
+  'พลาดนิดหน่อยไม่เป็นไร หายใจลึกๆ แล้วลุยข้อถัดไป 🌤️',
+  'ใจเย็นๆ อ่านโจทย์ข้อต่อไปให้ครบก่อนเลือกนะ 🙂',
+]
+
+function _flashAnswerEffect(isCorrect, streak = 0) {
   _ensureQuizEffectStyles()
   const el = document.createElement('div')
   el.className = 'fixed inset-0 z-[97] flex items-center justify-center pointer-events-none'
   el.innerHTML = isCorrect
-    ? `<div class="text-8xl animate-bounce" style="filter:drop-shadow(0 4px 12px rgba(16,185,129,.5))">✅</div>`
-    : `<div class="text-8xl" style="animation:qzShake .5s;filter:drop-shadow(0 4px 12px rgba(239,68,68,.5))">❌</div>`
+    ? `<div class="flex flex-col items-center gap-2">
+        <div class="text-8xl animate-bounce" style="filter:drop-shadow(0 4px 12px rgba(16,185,129,.5))">✅</div>
+        ${streak >= 2 ? `<div class="px-4 py-1.5 rounded-full bg-orange-500 text-white font-bold text-sm shadow-lg">🔥 ต่อเนื่อง ${streak} ข้อ!</div>` : ''}
+      </div>`
+    : `<div class="flex flex-col items-center gap-2">
+        <div class="text-8xl" style="animation:qzShake .5s;filter:drop-shadow(0 4px 12px rgba(239,68,68,.5))">❌</div>
+        <div class="px-4 py-1.5 rounded-full bg-white border border-red-200 text-red-500 font-semibold text-xs shadow-lg max-w-xs text-center">
+          ${_CALM_DOWN_MESSAGES[Math.floor(Math.random() * _CALM_DOWN_MESSAGES.length)]}
+        </div>
+      </div>`
   document.body.appendChild(el)
-  setTimeout(() => el.remove(), 800)
+  setTimeout(() => el.remove(), isCorrect ? 800 : 1300)
 }
 
 function _renderBonusToolbar() {
@@ -594,6 +659,8 @@ async function _submitAttempt() {
 function _teardown() {
   clearInterval(_timerInterval)
   clearInterval(_autosaveInterval)
+  clearInterval(_perQTimerInterval)
+  _perQTimerInterval = null
   clearTimeout(_autosaveDebounce)
   _detachAntiCheat()
 }
