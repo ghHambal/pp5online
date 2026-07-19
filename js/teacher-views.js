@@ -1,7 +1,7 @@
 import {
   getMySubjects, getMasterSubjects, getMyClasses, getDepartments, getTeachers,
   getSystemConfig, getMySchedule, getClassScheduleLinks, getPeriods, getClassrooms,
-  getTeacherPackageAccess,
+  getTeacherPackageAccess, getWorkCalendarEvents,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { copySheetTemplate } from './sync.js'
@@ -25,6 +25,82 @@ let _todayWidgetTimer = null
 let _activeSecTimer   = null
 let _teacherClockTimer = null
 let _dutyWidgetTimer  = null
+let _workCalWidgetTimer = null
+
+// ── ป้ายชื่อ/สีประเภทกิจกรรมปฏิทินปฏิบัติงาน (มิเรอร์จาก renderWorkCalendarView ใน views.js) ──
+const WCAL_TYPE_LABEL = { inspection: '🔍 รอบตรวจ', deadline: '⏰ กำหนดส่ง', meeting: '📅 ประชุม', other: '📌 อื่นๆ' }
+const WCAL_TYPE_COLOR = {
+  inspection: 'bg-indigo-100 text-indigo-700',
+  deadline: 'bg-rose-100 text-rose-700',
+  meeting: 'bg-amber-100 text-amber-700',
+  other: 'bg-gray-100 text-gray-600',
+}
+
+// event_date/end_date เป็น DATE ล้วนไม่มีเวลา — นับถอยหลังไปยังเที่ยงคืนของ event_date
+function _workCalCountdown(ev) {
+  const now = new Date()
+  const target = new Date(ev.event_date + 'T00:00:00')
+  const endTarget = new Date((ev.end_date || ev.event_date) + 'T23:59:59')
+  if (now >= target && now <= endTarget) return { status: 'ongoing' }
+  const diffSec = Math.max(0, Math.floor((target - now) / 1000))
+  const days = Math.floor(diffSec / 86400)
+  const rem = diffSec % 86400
+  const hh = Math.floor(rem / 3600), mm = Math.floor((rem % 3600) / 60), ss = rem % 60
+  const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+  const urgency = diffSec <= 86400 ? 'red' : diffSec <= 3 * 86400 ? 'amber' : 'normal'
+  return { status: 'upcoming', days, clock, urgency }
+}
+
+// การ์ด "กิจกรรมใกล้ถึง" จากปฏิทินปฏิบัติงาน — นับถอยหลังวัน+วินาทีสด ไล่สีตามความเร่งด่วน
+// (>3 วัน = ปกติ, 1-3 วัน = เหลือง, <24 ชม. = แดง เหมือนสไตล์การ์ดเวรตอนถึงเวลาแล้ว)
+export function _renderWorkCalendarUpcoming(events) {
+  const _esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const _fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+  const today = new Date().toISOString().slice(0, 10)
+
+  const upcoming = (events ?? [])
+    .filter(ev => (ev.end_date || ev.event_date) >= today)
+    .map(ev => ({ ev, cd: _workCalCountdown(ev) }))
+    .filter(({ cd }) => cd.status === 'ongoing' || cd.days <= 14)
+    .sort((a, b) => a.ev.event_date.localeCompare(b.ev.event_date))
+    .slice(0, 5)
+
+  if (!upcoming.length) {
+    return `
+    <div class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
+      <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">📅</div>
+      <p class="text-sm text-gray-400">ไม่มีกิจกรรมใกล้ถึงใน 14 วันนี้</p>
+    </div>`
+  }
+
+  return `
+  <div class="mb-4 space-y-2">
+    ${upcoming.map(({ ev, cd }) => {
+      const isRed = cd.status === 'ongoing' || cd.urgency === 'red'
+      const isAmber = cd.urgency === 'amber'
+      const cardCls = isRed ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : isAmber ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'
+      const iconCls = isRed ? 'bg-red-100 animate-pulse' : isAmber ? 'bg-amber-100' : 'bg-gray-100'
+      return `
+      <div onclick="window._navTo('work-calendar-view')"
+        class="border rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150 ${cardCls}">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${iconCls}">${isRed ? '🚨' : '📅'}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1.5 mb-0.5">
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${WCAL_TYPE_COLOR[ev.event_type]}">${WCAL_TYPE_LABEL[ev.event_type]}</span>
+            <span class="text-[11px] text-gray-400">${_fmtDate(ev.event_date)}</span>
+          </div>
+          <p class="font-semibold text-sm truncate ${isRed ? 'text-red-800' : 'text-gray-800'}">${_esc(ev.label)}</p>
+        </div>
+        <div class="text-right flex-shrink-0">
+          ${cd.status === 'ongoing'
+            ? `<p class="text-xs font-bold text-red-600">🔴 วันนี้</p>`
+            : `<p class="text-xs font-bold ${isRed ? 'text-red-600' : isAmber ? 'text-amber-600' : 'text-gray-500'}">อีก ${cd.days} วัน</p>
+               <p class="text-[11px] font-mono ${isRed ? 'text-red-400' : 'text-gray-400'}">${cd.clock}</p>`}
+        </div>
+      </div>`
+    }).join('')}
+  </div>`
+}
 
 // การ์ด "เวรวันนี้" — ไฮไลต์จุดที่ถึงเวลาแล้ว + นับถอยหลังจุดอื่นๆ
 export function _renderWenDutyCard(todayDuty, teacherCode, gradeInfo = null) {
@@ -111,12 +187,14 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   if (_activeSecTimer)    { clearInterval(_activeSecTimer);    _activeSecTimer    = null }
   if (_teacherClockTimer) { clearInterval(_teacherClockTimer); _teacherClockTimer = null }
   if (_dutyWidgetTimer)   { clearInterval(_dutyWidgetTimer);   _dutyWidgetTimer   = null }
+  if (_workCalWidgetTimer){ clearInterval(_workCalWidgetTimer);_workCalWidgetTimer= null }
 
-  const [schedule, links, periods, allClassrooms] = await Promise.all([
+  const [schedule, links, periods, allClassrooms, workCalEvents] = await Promise.all([
     teacher ? getMySchedule(teacher.id, academicYear, semester).catch(() => []) : Promise.resolve([]),
     teacher ? getClassScheduleLinks(teacher.id).catch(() => []) : Promise.resolve([]),
     getPeriods().catch(() => []),
     getClassrooms().catch(() => []),
+    teacher ? getWorkCalendarEvents(academicYear, semester).catch(() => []) : Promise.resolve([]),
   ])
   window._classroomMapGlobal = Object.fromEntries(allClassrooms.map(r => [r.id, r]))
   const _classroomMapGlobal = window._classroomMapGlobal
@@ -380,6 +458,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
     <!-- เวรวันนี้ (ระบบเวร อาซิซสถาน) -->
     ${teacher ? `<div id="wen-duty-card">${_renderWenDutyCard(todayDuty, teacher.teacher_code, dutyGrade)}</div>` : ''}
+
+    <!-- กิจกรรมใกล้ถึงจากปฏิทินปฏิบัติงาน (นับถอยหลังวัน/วินาที) -->
+    ${teacher ? `<div id="wcal-upcoming-card">${_renderWorkCalendarUpcoming(workCalEvents)}</div>` : ''}
 
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
@@ -742,6 +823,15 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       if (!el) { clearInterval(_dutyWidgetTimer); _dutyWidgetTimer = null; return }
       el.innerHTML = _renderWenDutyCard(todayDuty, teacher.teacher_code, dutyGrade)
     }, 30000)
+  }
+
+  // การ์ดกิจกรรมใกล้ถึง — รีเฟรชทุก 1 วิ เพื่อนับถอยหลังวินาทีแบบสด
+  if (teacher && workCalEvents.length) {
+    _workCalWidgetTimer = setInterval(() => {
+      const el = document.getElementById('wcal-upcoming-card')
+      if (!el) { clearInterval(_workCalWidgetTimer); _workCalWidgetTimer = null; return }
+      el.innerHTML = _renderWorkCalendarUpcoming(workCalEvents)
+    }, 1000)
   }
 }
 
