@@ -89,7 +89,11 @@ CREATE TABLE IF NOT EXISTS public.quiz_attempt_violations (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   attempt_id       UUID NOT NULL REFERENCES public.quiz_attempts(id) ON DELETE CASCADE,
   violation_number SMALLINT NOT NULL,
-  violation_type   TEXT NOT NULL CHECK (violation_type IN ('visibility_change','fullscreen_exit')),
+  -- 'focus_lost' (added later): catches iPad Split View / Slide Over, where
+  -- the page stays visually visible (visibility_change never fires) and iOS
+  -- Safari has never reliably supported the whole-document Fullscreen API —
+  -- window blur + a periodic document.hasFocus() backstop catch this instead.
+  violation_type   TEXT NOT NULL CHECK (violation_type IN ('visibility_change','fullscreen_exit','focus_lost')),
   occurred_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   client_meta      JSONB
 );

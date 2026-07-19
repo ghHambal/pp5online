@@ -199,6 +199,13 @@ function _scheduleAutosave() {
 
 async function _doHeartbeat() {
   if (!_attempt || _attempt.status !== 'in_progress' || !_sessionToken) return
+
+  // Backstop for the blur event: if a 'blur' somehow doesn't fire (edge
+  // cases vary across browsers/OSes), this periodic check still catches a
+  // window that lost OS-level focus, e.g. iPad Split View / Slide Over.
+  if (!document.hasFocus()) await _reportViolation('focus_lost')
+  if (!_attempt || _attempt.status !== 'in_progress') return // just got terminated by the check above
+
   const remaining = Math.max(0, Math.round((_deadlineMs - Date.now()) / 1000))
   try {
     const expired = await rpcHeartbeat(_attempt.id, _sessionToken, _answers, remaining)
@@ -235,11 +242,16 @@ function _updateTimerDisplay(remainingOverride) {
 function _attachAntiCheat() {
   document.addEventListener('visibilitychange', _onVisibilityChange)
   document.addEventListener('fullscreenchange', _onFullscreenChange)
+  // 'blur' catches what visibility/fullscreen miss on iPad Split View / Slide
+  // Over: the page stays visually visible (not hidden) while the OS moves
+  // keyboard/touch focus to the other split-screen app.
+  window.addEventListener('blur', _onWindowBlur)
 }
 
 function _detachAntiCheat() {
   document.removeEventListener('visibilitychange', _onVisibilityChange)
   document.removeEventListener('fullscreenchange', _onFullscreenChange)
+  window.removeEventListener('blur', _onWindowBlur)
   if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
 }
 
@@ -251,8 +263,19 @@ function _onFullscreenChange() {
   if (!document.fullscreenElement && _attempt?.status === 'in_progress') _reportViolation('fullscreen_exit')
 }
 
+function _onWindowBlur() {
+  _reportViolation('focus_lost')
+}
+
+let _lastViolationReportAt = 0
 async function _reportViolation(type) {
   if (!_attempt || _attempt.status !== 'in_progress') return
+  // Debounce: the blur event and the hasFocus() heartbeat backstop can both
+  // fire for the same real incident within moments of each other — without
+  // this, one genuine focus-loss could get double-counted as two strikes.
+  const now = Date.now()
+  if (now - _lastViolationReportAt < 3000) return
+  _lastViolationReportAt = now
   try {
     const result = await rpcRecordViolation(_attempt.id, type)
     if (result.terminated) {
