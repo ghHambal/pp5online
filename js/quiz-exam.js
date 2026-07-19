@@ -1,7 +1,8 @@
 // js/quiz-exam.js — standalone exam-taking runtime, loaded from quiz-exam.html
 import {
   getQuizAttempt, rpcGetAttemptQuestions, rpcSubmitAttempt,
-  rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank
+  rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank,
+  rpcSubmitQuizAnswer, rpcUseQuizBonus
 } from './quiz-api.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
@@ -18,6 +19,23 @@ let _timerInterval = null
 let _autosaveInterval = null
 let _autosaveDebounce = null
 let _submitting = false
+
+// quiz.lock_on_answer (no going back once chosen) / quiz.instant_feedback_bonus
+// (also shows correct/wrong immediately + drives the combo-streak bonus
+// mini-game). instant_feedback_bonus always implies lock_on_answer server-side.
+let _lockMode = false
+let _bonusMode = false
+let _bonusInventory = {}
+let _eliminatedChoices = {}
+let _unlockedForEdit = new Set()
+let _answerCorrectness = {}
+
+const BONUS_META = {
+  fifty_fifty:   { icon: '✂️', label: '50/50' },
+  fix_wrong:     { icon: '🛠️', label: 'แก้ข้อผิด' },
+  extra_time:    { icon: '⏱️', label: '+30 วิ' },
+  reveal_answer: { icon: '🔑', label: 'เปิดเฉลย' },
+}
 
 export async function initQuizExam(attemptId) {
   const root = document.getElementById('quiz-root')
@@ -56,6 +74,14 @@ export async function initQuizExam(attemptId) {
   _answers = { ..._attempt.answers }
   _currentIdx = 0
   _deadlineMs = Date.now() + Math.max(0, (_attempt.time_remaining_sec ?? 0)) * 1000
+
+  const quiz = _attempt.quizzes
+  _lockMode = !!(quiz?.lock_on_answer || quiz?.instant_feedback_bonus)
+  _bonusMode = !!quiz?.instant_feedback_bonus
+  _bonusInventory = _attempt.bonus_inventory ?? {}
+  _eliminatedChoices = _attempt.eliminated_choices ?? {}
+  _unlockedForEdit = new Set(_attempt.unlocked_for_edit ?? [])
+  _answerCorrectness = _attempt.answer_correctness ?? {}
 
   _renderStartGate(root)
 }
@@ -122,6 +148,8 @@ function _renderExamUI(root) {
         <div id="quiz-timer" class="text-2xl font-mono font-bold text-indigo-600 flex-shrink-0"></div>
       </div>
 
+      ${_bonusMode ? `<div class="flex gap-2 overflow-x-auto pb-1" id="quiz-bonus-toolbar"></div>` : ''}
+
       <div class="flex flex-wrap gap-1.5" id="quiz-nav"></div>
 
       <div id="quiz-question-area" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"></div>
@@ -138,6 +166,7 @@ function _renderExamUI(root) {
   document.getElementById('btn-submit').addEventListener('click', _confirmSubmit)
   _renderNav()
   _renderQuestion()
+  if (_bonusMode) _renderBonusToolbar()
 }
 
 function _renderNav() {
@@ -165,17 +194,31 @@ function _renderQuestion() {
   if (!area) return
   const q = _questions[_currentIdx]
   const selectedOriginal = _answers[q.question_id]
+  const locked = _lockMode && selectedOriginal !== undefined && !_unlockedForEdit.has(q.question_id)
+  const elimSet = new Set(_eliminatedChoices[q.question_id] ?? [])
+  const correctness = _bonusMode ? _answerCorrectness[q.question_id] : undefined // true/false/undefined
 
   area.innerHTML = `
     <p class="text-xs text-gray-400 mb-2">ข้อ ${_currentIdx + 1} จาก ${_questions.length}</p>
     <p class="font-semibold text-gray-800 mb-4">${_htmlEsc(q.question_text)}</p>
+    ${correctness === true ? `<p class="text-xs font-bold text-emerald-600 mb-3">✓ ตอบถูก</p>`
+      : correctness === false ? `<p class="text-xs font-bold text-red-600 mb-3">✗ ตอบผิด</p>` : ''}
     <div class="space-y-2">
       ${q.choices.map((c, pos) => {
         const originalIdx = q.choice_perm ? q.choice_perm[pos] : pos
         const isSelected = selectedOriginal === originalIdx
+        const isEliminated = elimSet.has(originalIdx)
+        const disabled = locked || isEliminated
+        const cls = isEliminated
+          ? 'border-gray-100 opacity-30 line-through cursor-not-allowed'
+          : isSelected && correctness === true ? 'border-emerald-400 bg-emerald-50'
+          : isSelected && correctness === false ? 'border-red-400 bg-red-50'
+          : isSelected ? 'border-indigo-400 bg-indigo-50'
+          : locked ? 'border-gray-100 opacity-50 cursor-not-allowed'
+          : 'border-gray-200 hover:bg-gray-50 cursor-pointer'
         return `
-        <label class="flex items-center gap-3 p-3 rounded-xl border cursor-pointer ${isSelected ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'}">
-          <input type="radio" name="quiz-choice" class="quiz-choice-input flex-shrink-0" data-pos="${pos}" ${isSelected ? 'checked' : ''} />
+        <label class="flex items-center gap-3 p-3 rounded-xl border ${cls}">
+          <input type="radio" name="quiz-choice" class="quiz-choice-input flex-shrink-0" data-pos="${pos}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
           <span class="text-sm">${_htmlEsc(c)}</span>
         </label>`
       }).join('')}
@@ -185,11 +228,172 @@ function _renderQuestion() {
 
   area.querySelectorAll('.quiz-choice-input').forEach(inp => inp.addEventListener('change', () => {
     const pos = parseInt(inp.dataset.pos, 10)
-    _answers[q.question_id] = q.choice_perm ? q.choice_perm[pos] : pos
+    if (_lockMode) {
+      _submitAnswerToServer(q, pos)
+    } else {
+      _answers[q.question_id] = q.choice_perm ? q.choice_perm[pos] : pos
+      _renderQuestion()
+      _renderNav()
+      _scheduleAutosave()
+    }
+  }))
+}
+
+// Persists one answer immediately via a dedicated RPC (instead of the batch
+// heartbeat) so the server can enforce "no going back" and, in bonus mode,
+// compute correctness + advance the combo streak — all without this client
+// ever learning the answer key for any OTHER question.
+async function _submitAnswerToServer(q, pos) {
+  const chosenOriginal = q.choice_perm ? q.choice_perm[pos] : pos
+  const prevAnswer = _answers[q.question_id]
+  _answers[q.question_id] = chosenOriginal
+  _renderQuestion() // optimistic lock while the request is in flight
+  _renderNav()
+  try {
+    const result = await rpcSubmitQuizAnswer(_attempt.id, _sessionToken, q.question_id, chosenOriginal)
+    if (!result?.accepted) {
+      _answers[q.question_id] = prevAnswer
+      showToast('บันทึกคำตอบไม่สำเร็จ ลองอีกครั้ง', 'warning')
+      _renderQuestion(); _renderNav()
+      return
+    }
+    if (_bonusMode) {
+      _answerCorrectness[q.question_id] = result.is_correct
+      if (result.bonus_inventory) _bonusInventory = result.bonus_inventory
+      _flashAnswerEffect(result.is_correct)
+      _renderBonusToolbar()
+      if (result.bonus_awarded?.length) _showBonusPopup(result.bonus_awarded)
+    }
+    _renderQuestion(); _renderNav()
+  } catch (err) {
+    _answers[q.question_id] = prevAnswer
+    showToast('บันทึกคำตอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    _renderQuestion(); _renderNav()
+  }
+}
+
+let _quizEffectStylesInjected = false
+function _ensureQuizEffectStyles() {
+  if (_quizEffectStylesInjected) return
+  _quizEffectStylesInjected = true
+  const style = document.createElement('style')
+  style.textContent = `@keyframes qzShake { 10%,90%{transform:translateX(-2px)} 20%,80%{transform:translateX(4px)} 30%,50%,70%{transform:translateX(-8px)} 40%,60%{transform:translateX(8px)} }`
+  document.head.appendChild(style)
+}
+
+function _flashAnswerEffect(isCorrect) {
+  _ensureQuizEffectStyles()
+  const el = document.createElement('div')
+  el.className = 'fixed inset-0 z-[97] flex items-center justify-center pointer-events-none'
+  el.innerHTML = isCorrect
+    ? `<div class="text-8xl animate-bounce" style="filter:drop-shadow(0 4px 12px rgba(16,185,129,.5))">✅</div>`
+    : `<div class="text-8xl" style="animation:qzShake .5s;filter:drop-shadow(0 4px 12px rgba(239,68,68,.5))">❌</div>`
+  document.body.appendChild(el)
+  setTimeout(() => el.remove(), 800)
+}
+
+function _renderBonusToolbar() {
+  const el = document.getElementById('quiz-bonus-toolbar')
+  if (!el) return
+  el.innerHTML = Object.entries(BONUS_META).map(([key, meta]) => {
+    const count = _bonusInventory[key] ?? 0
+    const ready = count > 0
+    return `
+    <button class="bonus-btn relative flex flex-col items-center justify-center w-14 h-14 rounded-2xl border text-xs font-bold flex-shrink-0 ${ready ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-[0_0_0_2px_rgba(245,158,11,0.25)] animate-pulse' : 'bg-gray-50 border-gray-200 text-gray-300'}"
+      data-bonus="${key}" ${ready ? '' : 'disabled'}>
+      <span class="text-lg leading-none">${meta.icon}</span>
+      <span class="text-[9px] leading-tight">${meta.label}</span>
+      ${count > 1 ? `<span class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center">${count}</span>` : ''}
+    </button>`
+  }).join('')
+  el.querySelectorAll('.bonus-btn').forEach(btn => btn.addEventListener('click', () => _onBonusClick(btn.dataset.bonus)))
+}
+
+function _showBonusPopup(awarded) {
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[99] bg-black/50 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl overflow-hidden max-w-sm shadow-2xl text-center">
+      <div class="h-2 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500"></div>
+      <div class="p-6">
+        <div class="mx-auto mb-4 w-16 h-16 rounded-full bg-amber-50 border-2 border-amber-100 flex items-center justify-center text-3xl animate-bounce">🎉</div>
+        <p class="font-bold text-amber-600 text-lg mb-2">ตอบถูกติดต่อกัน! ได้รับโบนัส</p>
+        <div class="flex justify-center gap-4 mb-4">
+          ${awarded.map(k => `<div class="flex flex-col items-center gap-1"><span class="text-3xl">${BONUS_META[k].icon}</span><span class="text-xs font-bold text-gray-600">${BONUS_META[k].label}</span></div>`).join('')}
+        </div>
+        <button id="bonus-popup-ack" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg" style="background:linear-gradient(135deg,#f59e0b,#d97706)">เยี่ยมมาก!</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+  modal.querySelector('#bonus-popup-ack').addEventListener('click', () => modal.remove())
+  loadConfetti().then(() => fireConfetti('mid')).catch(() => {})
+}
+
+function _onBonusClick(bonusType) {
+  if (bonusType === 'extra_time') { _useBonus('extra_time', null); return }
+  if (bonusType === 'fifty_fifty' || bonusType === 'reveal_answer') {
+    const q = _questions[_currentIdx]
+    if (_answers[q.question_id] !== undefined) {
+      showToast('ใช้ได้เฉพาะข้อที่ยังไม่ได้ตอบ — ไปที่ข้อนั้นก่อนแล้วค่อยใช้โบนัส', 'warning')
+      return
+    }
+    _useBonus(bonusType, q.question_id)
+    return
+  }
+  if (bonusType === 'fix_wrong') _openFixWrongPicker()
+}
+
+function _openFixWrongPicker() {
+  const wrongIdxs = _questions.map((_, i) => i).filter(i => _answerCorrectness[_questions[i].question_id] === false)
+  if (!wrongIdxs.length) { showToast('ยังไม่มีข้อที่ตอบผิดให้แก้ไข', 'warning'); return }
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[98] bg-black/40 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl p-5 w-full max-w-xs shadow-2xl">
+      <p class="font-bold text-gray-800 text-sm mb-3">เลือกข้อที่จะแก้ไข</p>
+      <div class="flex flex-wrap gap-2 mb-4">
+        ${wrongIdxs.map(i => `<button class="fix-pick w-10 h-10 rounded-xl bg-red-50 border border-red-200 text-red-600 font-bold text-xs" data-idx="${i}">${i + 1}</button>`).join('')}
+      </div>
+      <button id="fix-cancel" class="w-full py-2 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold">ยกเลิก</button>
+    </div>
+  `
+  document.body.appendChild(modal)
+  modal.querySelector('#fix-cancel').addEventListener('click', () => modal.remove())
+  modal.querySelectorAll('.fix-pick').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = parseInt(btn.dataset.idx, 10)
+    modal.remove()
+    await _useBonus('fix_wrong', _questions[idx].question_id)
+    _goTo(idx)
+  }))
+}
+
+async function _useBonus(bonusType, questionId) {
+  try {
+    const result = await rpcUseQuizBonus(_attempt.id, _sessionToken, bonusType, questionId)
+    if (!result?.ok) { showToast(result?.message ?? 'ใช้โบนัสไม่สำเร็จ', 'warning'); return }
+    _bonusInventory = result.bonus_inventory ?? _bonusInventory
+    if (bonusType === 'fifty_fifty' && result.eliminated_indices) {
+      _eliminatedChoices[questionId] = result.eliminated_indices
+    }
+    if (bonusType === 'fix_wrong') {
+      _unlockedForEdit.add(questionId)
+    }
+    if (bonusType === 'extra_time' && result.new_time_remaining_sec != null) {
+      _deadlineMs += 30000
+      _updateTimerDisplay()
+    }
+    if (bonusType === 'reveal_answer' && result.revealed_index != null) {
+      _answers[questionId] = result.revealed_index
+      _answerCorrectness[questionId] = true
+    }
+    _renderBonusToolbar()
     _renderQuestion()
     _renderNav()
-    _scheduleAutosave()
-  }))
+    showToast('ใช้โบนัสสำเร็จ', 'success')
+  } catch (err) {
+    showToast('ใช้โบนัสไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+  }
 }
 
 function _scheduleAutosave() {
@@ -208,7 +412,10 @@ async function _doHeartbeat() {
 
   const remaining = Math.max(0, Math.round((_deadlineMs - Date.now()) / 1000))
   try {
-    const expired = await rpcHeartbeat(_attempt.id, _sessionToken, _answers, remaining)
+    // In lock/bonus mode, answers are already persisted authoritatively by
+    // submit_quiz_answer() per question — passing null here means "leave
+    // answers unchanged", so this call only syncs the countdown.
+    const expired = await rpcHeartbeat(_attempt.id, _sessionToken, _lockMode ? null : _answers, remaining)
     if (expired) {
       _teardown()
       _attempt.status = 'submitted'

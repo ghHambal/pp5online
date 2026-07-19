@@ -165,6 +165,15 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
             <input type="checkbox" id="qz-shuffle-c" ${quiz ? (quiz.shuffle_choices ? 'checked' : '') : 'checked'} /> สลับลำดับตัวเลือก
           </label>
         </div>
+        <div class="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 space-y-2">
+          <label class="flex items-center gap-2 text-xs font-semibold text-gray-700">
+            <input type="checkbox" id="qz-lock-answer" ${quiz?.lock_on_answer ? 'checked' : ''} /> ล็อกคำตอบทันทีที่เลือก (ห้ามย้อนกลับแก้ไขข้อที่ตอบแล้ว)
+          </label>
+          <label class="flex items-center gap-2 text-xs font-semibold text-gray-700">
+            <input type="checkbox" id="qz-instant-bonus" ${quiz?.instant_feedback_bonus ? 'checked' : ''} /> เปิดเอฟเฟกต์ถูก/ผิดทันที + ระบบคอมโบ/โบนัส
+          </label>
+          <p class="text-[11px] text-gray-400 leading-relaxed pl-6">ตอบถูกติดกัน 3 ข้อ ปลดล็อกโบนัส (50/50, แก้ข้อที่เคยผิด, ต่อเวลา) — ครบ 6 ข้อ ได้โบนัสเปิดเฉลยเพิ่ม<br>เปิดตัวเลือกนี้จะล็อกคำตอบทันทีให้อัตโนมัติด้วย (ไม่งั้นเห็นเฉลยแล้วย้อนไปแก้ได้ ระบบจะไม่มีความหมาย)</p>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs font-semibold text-gray-500 mb-1 block">จำนวนครั้งที่ทำได้</label>
@@ -226,6 +235,19 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
   classSelect.addEventListener('change', loadScoreColumns)
   if (classSelect.value) await loadScoreColumns()
 
+  const lockAnswerBox = modal.querySelector('#qz-lock-answer')
+  const instantBonusBox = modal.querySelector('#qz-instant-bonus')
+  // Instant feedback/bonus requires each answer to be locked the moment it's
+  // chosen (otherwise a student sees the correct/wrong flash then just
+  // switches to the right choice, making the whole effect meaningless) —
+  // so checking this box forces + disables the lock checkbox.
+  const syncLockDependency = () => {
+    if (instantBonusBox.checked) { lockAnswerBox.checked = true; lockAnswerBox.disabled = true }
+    else { lockAnswerBox.disabled = false }
+  }
+  instantBonusBox.addEventListener('change', syncLockDependency)
+  syncLockDependency()
+
   modal.querySelector('#qz-cancel').addEventListener('click', () => modal.remove())
   modal.querySelector('#qz-save').addEventListener('click', async (e) => {
     const title = modal.querySelector('#qz-title').value.trim()
@@ -247,6 +269,8 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
       num_questions: numQuestions,
       shuffle_questions: modal.querySelector('#qz-shuffle-q').checked,
       shuffle_choices: modal.querySelector('#qz-shuffle-c').checked,
+      lock_on_answer: modal.querySelector('#qz-instant-bonus').checked || modal.querySelector('#qz-lock-answer').checked,
+      instant_feedback_bonus: modal.querySelector('#qz-instant-bonus').checked,
       max_attempts: parseInt(modal.querySelector('#qz-attempts').value, 10) || 1,
       attempt_scoring_mode: modal.querySelector('#qz-scoring').value,
       time_limit_minutes: parseInt(modal.querySelector('#qz-time').value, 10) || null,

@@ -1,6 +1,6 @@
 // js/teacher-views-quiz-monitor.js
 import { getClassStudents } from './api.js'
-import { getQuizAttemptsForMonitor, rpcUnlockAttempt } from './quiz-api.js'
+import { getQuizAttemptsForMonitor, rpcUnlockAttempt, getQuizQuestions } from './quiz-api.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
@@ -48,13 +48,20 @@ export async function openQuizMonitor(quiz) {
   m.querySelector('#qm-close').addEventListener('click', () => { _teardown(); m.remove() })
 
   const students = await getClassStudents(quiz.class_id).catch(() => [])
-  await _refresh(quiz, students)
+  // Per-question live tally only makes sense once answers are locked in
+  // one-at-a-time (answer_correctness is only ever populated by
+  // submit_quiz_answer(), which quizzes only call in lock_on_answer /
+  // instant_feedback_bonus mode) — skip the extra fetch otherwise.
+  const questionsById = (quiz.lock_on_answer || quiz.instant_feedback_bonus)
+    ? Object.fromEntries((await getQuizQuestions(quiz.bank_id).catch(() => [])).map(q => [q.id, q]))
+    : {}
+  await _refresh(quiz, students, questionsById)
 
   const debouncedRefresh = () => {
     const now = Date.now()
     if (now - _lastRefreshAt < REFRESH_MIN_INTERVAL_MS) return
     _lastRefreshAt = now
-    _refresh(quiz, students).catch(() => {})
+    _refresh(quiz, students, questionsById).catch(() => {})
   }
 
   _channel = supabase.channel(`quiz-monitor-${quiz.id}`)
@@ -75,7 +82,7 @@ export async function openQuizMonitor(quiz) {
     }
   })
 
-  _pollInterval = setInterval(() => _refresh(quiz, students).catch(() => {}), 3000)
+  _pollInterval = setInterval(() => _refresh(quiz, students, questionsById).catch(() => {}), 3000)
 }
 
 function _teardown() {
@@ -83,7 +90,7 @@ function _teardown() {
   if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null }
 }
 
-async function _refresh(quiz, students) {
+async function _refresh(quiz, students, questionsById = {}) {
   const body = document.getElementById('qm-body')
   if (!body) { _teardown(); return }
 
@@ -94,6 +101,8 @@ async function _refresh(quiz, students) {
   const entered = new Set(attempts.map(a => a.student_id)).size
   const finishedScores = attempts.filter(a => a.score_pct != null).map(a => a.score_pct)
   const avgScore = finishedScores.length ? (finishedScores.reduce((s, v) => s + v, 0) / finishedScores.length) : null
+
+  const questionTallyHtml = _renderQuestionTally(attempts, questionsById)
 
   body.innerHTML = `
     <div class="max-w-3xl mx-auto space-y-4">
@@ -111,6 +120,8 @@ async function _refresh(quiz, students) {
           <p class="text-xs text-gray-400 mt-0.5">คะแนนเฉลี่ยล่าสุด</p>
         </div>
       </div>
+
+      ${questionTallyHtml}
 
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50">
         ${students.map(s => {
@@ -135,10 +146,53 @@ async function _refresh(quiz, students) {
   `
 
   body.querySelectorAll('.btn-unlock').forEach(btn =>
-    btn.addEventListener('click', () => _openUnlockChoice(btn.dataset.attempt, quiz, students)))
+    btn.addEventListener('click', () => _openUnlockChoice(btn.dataset.attempt, quiz, students, questionsById)))
 }
 
-function _openUnlockChoice(attemptId, quiz, students) {
+// Compact live tally per question — only meaningful once answers lock in
+// one at a time (see the questionsById fetch guard in openQuizMonitor).
+// Aggregated across all attempts (in_progress + finished) so the teacher
+// sees which questions are tripping the class up WHILE the exam is still
+// running, not just after everyone submits.
+function _renderQuestionTally(attempts, questionsById) {
+  if (!Object.keys(questionsById).length) return ''
+  const tally = {} // question_id -> { correct, wrong }
+  attempts.forEach(a => {
+    Object.entries(a.answer_correctness ?? {}).forEach(([qid, isCorrect]) => {
+      if (!tally[qid]) tally[qid] = { correct: 0, wrong: 0 }
+      tally[qid][isCorrect ? 'correct' : 'wrong']++
+    })
+  })
+  const qids = Object.keys(tally).sort((a, b) =>
+    (questionsById[a]?.sort_order ?? 0) - (questionsById[b]?.sort_order ?? 0))
+  if (!qids.length) return ''
+
+  return `
+  <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+    <p class="text-xs font-bold text-gray-500 mb-3">📊 สถิติสดรายข้อ</p>
+    <div class="space-y-2">
+      ${qids.map(qid => {
+        const { correct, wrong } = tally[qid]
+        const total = correct + wrong
+        const pct = total > 0 ? Math.round(correct / total * 100) : 0
+        const q = questionsById[qid]
+        const barCls = pct >= 70 ? 'bg-emerald-500' : pct >= 40 ? 'bg-amber-500' : 'bg-red-500'
+        return `
+        <div>
+          <div class="flex items-center justify-between text-xs mb-1">
+            <span class="text-gray-600 truncate flex-1 mr-2">${_htmlEsc(q?.question_text ?? qid)}</span>
+            <span class="text-gray-400 flex-shrink-0">✓${correct} ✗${wrong} (${pct}%)</span>
+          </div>
+          <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+            <div class="h-full ${barCls}" style="width:${pct}%"></div>
+          </div>
+        </div>`
+      }).join('')}
+    </div>
+  </div>`
+}
+
+function _openUnlockChoice(attemptId, quiz, students, questionsById) {
   const m = document.createElement('div')
   m.className = 'fixed inset-0 z-[99] bg-black/40 flex items-center justify-center p-4'
   m.innerHTML = `
@@ -161,7 +215,7 @@ function _openUnlockChoice(attemptId, quiz, students) {
     try {
       await rpcUnlockAttempt(attemptId, mode)
       showToast(mode === 'resume' ? 'ปลดล็อก — ทำต่อจากจุดเดิมแล้ว' : 'ปลดล็อก — เริ่มชุดใหม่แล้ว', 'success')
-      await _refresh(quiz, students)
+      await _refresh(quiz, students, questionsById)
     } catch (err) {
       showToast('ปลดล็อกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     }

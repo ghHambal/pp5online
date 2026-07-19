@@ -189,6 +189,27 @@ export async function rpcUnlockAttempt(attemptId, mode) {
   return data
 }
 
+// ─── Instant feedback + streak bonus (quiz.lock_on_answer / instant_feedback_bonus) ─
+// Only ever called when the quiz opted into one of those two modes — legacy
+// quizzes keep using rpcHeartbeat() for answers exactly as before.
+export async function rpcSubmitQuizAnswer(attemptId, sessionToken, questionId, chosenIndex) {
+  const { data, error } = await supabase.rpc('submit_quiz_answer', {
+    p_attempt_id: attemptId, p_session_token: sessionToken,
+    p_question_id: questionId, p_chosen_index: chosenIndex,
+  })
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
+export async function rpcUseQuizBonus(attemptId, sessionToken, bonusType, questionId = null) {
+  const { data, error } = await supabase.rpc('use_quiz_bonus', {
+    p_attempt_id: attemptId, p_session_token: sessionToken,
+    p_bonus_type: bonusType, p_question_id: questionId,
+  })
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
 // Privacy-safe: returns only the caller's own rank/total/best score, never
 // other students' identities or scores.
 export async function rpcGetMyRank(attemptId) {
@@ -215,7 +236,7 @@ export async function rpcHeartbeat(attemptId, sessionToken, answers, timeRemaini
 export async function getQuizAttemptsForMonitor(quizId) {
   const { data, error } = await supabase
     .from('quiz_attempts')
-    .select('id, student_id, attempt_number, status, score_pct, violation_count, question_order, answers, started_at, submitted_at, terminated_at')
+    .select('id, student_id, attempt_number, status, score_pct, violation_count, question_order, answers, answer_correctness, started_at, submitted_at, terminated_at')
     .eq('quiz_id', quizId)
     .order('started_at', { ascending: true })
   if (error) throw error

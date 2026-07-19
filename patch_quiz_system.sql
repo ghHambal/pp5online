@@ -714,3 +714,277 @@ GRANT EXECUTE ON FUNCTION public.get_my_quiz_rank(UUID) TO authenticated;
 
 -- Trigger function: never meant to be called directly via RPC at all.
 REVOKE ALL ON FUNCTION public.prevent_quiz_attempt_tamper() FROM PUBLIC, anon, authenticated;
+-- =====================================================================
+-- Instant-feedback + streak-bonus system (added later)
+-- Per-question submission, correct/wrong flash effect, "ห้ามย้อนกลับแก้"
+-- lock mode, and a combo-streak bonus mini-game — all opt-in per quiz
+-- (default false so every existing quiz keeps behaving exactly as before).
+-- =====================================================================
+
+-- ─── 6. NEW COLUMNS ─────────────────────────────────────────────────────
+
+ALTER TABLE public.quizzes
+  ADD COLUMN IF NOT EXISTS lock_on_answer         BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS instant_feedback_bonus BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE public.quiz_attempts
+  ADD COLUMN IF NOT EXISTS current_streak     SMALLINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS bonus_inventory    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS eliminated_choices JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS unlocked_for_edit  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS answer_correctness JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- ─── 7. TAMPER-GUARD TRIGGER — extend protected column list ────────────
+-- Replaces the Phase-1 version: adds the 5 new columns above to the
+-- protected list so they can only change via the trusted RPCs below,
+-- never a raw client UPDATE (RLS already blocks direct student writes
+-- entirely, this is defense-in-depth for admin/service-role paths too).
+
+CREATE OR REPLACE FUNCTION public.prevent_quiz_attempt_tamper()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF current_setting('app.quiz_trusted_op', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF public.get_user_role() = 'admin' THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.status                       IS DISTINCT FROM OLD.status
+  OR NEW.score_pct                     IS DISTINCT FROM OLD.score_pct
+  OR NEW.violation_count               IS DISTINCT FROM OLD.violation_count
+  OR NEW.submitted_at                  IS DISTINCT FROM OLD.submitted_at
+  OR NEW.terminated_at                 IS DISTINCT FROM OLD.terminated_at
+  OR NEW.unlocked_by_teacher_id        IS DISTINCT FROM OLD.unlocked_by_teacher_id
+  OR NEW.unlocked_at                   IS DISTINCT FROM OLD.unlocked_at
+  OR NEW.unlock_mode                   IS DISTINCT FROM OLD.unlock_mode
+  OR NEW.question_order                IS DISTINCT FROM OLD.question_order
+  OR NEW.choice_order                  IS DISTINCT FROM OLD.choice_order
+  OR NEW.attempt_number                IS DISTINCT FROM OLD.attempt_number
+  OR NEW.quiz_id                       IS DISTINCT FROM OLD.quiz_id
+  OR NEW.student_id                    IS DISTINCT FROM OLD.student_id
+  OR NEW.active_session_token          IS DISTINCT FROM OLD.active_session_token
+  OR NEW.active_session_heartbeat_at   IS DISTINCT FROM OLD.active_session_heartbeat_at
+  OR NEW.deadline_at                   IS DISTINCT FROM OLD.deadline_at
+  OR NEW.current_streak                IS DISTINCT FROM OLD.current_streak
+  OR NEW.bonus_inventory               IS DISTINCT FROM OLD.bonus_inventory
+  OR NEW.eliminated_choices            IS DISTINCT FROM OLD.eliminated_choices
+  OR NEW.unlocked_for_edit             IS DISTINCT FROM OLD.unlocked_for_edit
+  OR NEW.answer_correctness            IS DISTINCT FROM OLD.answer_correctness
+  THEN
+    RAISE EXCEPTION 'Direct modification of protected quiz_attempts columns is not allowed';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- ─── 8. submit_quiz_answer ──────────────────────────────────────────────
+-- The per-question answer path used ONLY when quiz.lock_on_answer OR
+-- quiz.instant_feedback_bonus is true (legacy quizzes keep using the old
+-- batch quiz_attempt_heartbeat() flow untouched). Enforces "no going back"
+-- server-side (RLS already blocks any raw client write, so this is the
+-- only real enforcement point), and — only in instant_feedback_bonus mode
+-- — computes correctness + advances the combo streak + rolls bonus
+-- rewards, all without ever exposing the answer key for any OTHER
+-- question in the attempt.
+CREATE OR REPLACE FUNCTION public.submit_quiz_answer(
+  p_attempt_id UUID, p_session_token UUID, p_question_id UUID, p_chosen_index SMALLINT
+) RETURNS TABLE(
+  accepted BOOLEAN, is_correct BOOLEAN, current_streak SMALLINT,
+  bonus_awarded TEXT[], bonus_inventory JSONB
+) LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_student_id  INTEGER;
+  v_attempt     public.quiz_attempts%ROWTYPE;
+  v_quiz        public.quizzes%ROWTYPE;
+  v_correct_idx SMALLINT;
+  v_is_correct  BOOLEAN;
+  v_new_streak  SMALLINT;
+  v_inventory   JSONB;
+  v_awarded     TEXT[] := '{}';
+  v_regular     TEXT;
+BEGIN
+  SELECT id INTO v_student_id FROM public.students WHERE profile_id = auth.uid();
+  SELECT * INTO v_attempt FROM public.quiz_attempts WHERE id = p_attempt_id FOR UPDATE;
+  IF NOT FOUND OR v_attempt.student_id <> v_student_id THEN RAISE EXCEPTION 'not your attempt'; END IF;
+  IF v_attempt.status <> 'in_progress' THEN
+    RETURN QUERY SELECT false, NULL::boolean, v_attempt.current_streak, v_awarded, v_attempt.bonus_inventory; RETURN;
+  END IF;
+  IF v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN
+    RAISE EXCEPTION 'session_superseded';
+  END IF;
+  IF v_attempt.deadline_at IS NOT NULL AND now() > v_attempt.deadline_at THEN
+    PERFORM public._finalize_quiz_attempt(p_attempt_id, 'submitted');
+    RETURN QUERY SELECT false, NULL::boolean, v_attempt.current_streak, v_awarded, v_attempt.bonus_inventory; RETURN;
+  END IF;
+
+  SELECT * INTO v_quiz FROM public.quizzes WHERE id = v_attempt.quiz_id;
+  IF NOT (v_quiz.lock_on_answer OR v_quiz.instant_feedback_bonus) THEN
+    RAISE EXCEPTION 'this quiz does not use per-answer submission';
+  END IF;
+  IF NOT (v_attempt.question_order @> to_jsonb(p_question_id::text)) THEN
+    RAISE EXCEPTION 'question not in this attempt';
+  END IF;
+  IF (v_attempt.answers ? p_question_id::text) AND NOT (v_attempt.unlocked_for_edit @> to_jsonb(p_question_id::text)) THEN
+    RAISE EXCEPTION 'answer already locked';
+  END IF;
+
+  SELECT correct_choice_index INTO v_correct_idx FROM public.quiz_questions WHERE id = p_question_id;
+  v_is_correct := (p_chosen_index = v_correct_idx);
+  v_inventory := v_attempt.bonus_inventory;
+
+  IF v_quiz.instant_feedback_bonus THEN
+    v_new_streak := CASE WHEN v_is_correct THEN v_attempt.current_streak + 1 ELSE 0 END;
+    IF v_is_correct AND v_new_streak % 3 = 0 THEN
+      v_regular := (ARRAY['fifty_fifty','fix_wrong','extra_time'])[floor(random() * 3 + 1)];
+      v_inventory := jsonb_set(v_inventory, ARRAY[v_regular], to_jsonb(COALESCE((v_inventory->>v_regular)::int, 0) + 1));
+      v_awarded := v_awarded || v_regular;
+    END IF;
+    IF v_is_correct AND v_new_streak % 6 = 0 THEN
+      v_inventory := jsonb_set(v_inventory, ARRAY['reveal_answer'], to_jsonb(COALESCE((v_inventory->>'reveal_answer')::int, 0) + 1));
+      v_awarded := v_awarded || 'reveal_answer';
+    END IF;
+  ELSE
+    v_new_streak := v_attempt.current_streak; -- lock-only mode: streak concept unused
+  END IF;
+
+  PERFORM set_config('app.quiz_trusted_op', 'on', true);
+  UPDATE public.quiz_attempts SET
+    answers = answers || jsonb_build_object(p_question_id::text, p_chosen_index),
+    answer_correctness = answer_correctness || jsonb_build_object(p_question_id::text, v_is_correct),
+    unlocked_for_edit = COALESCE((SELECT jsonb_agg(x) FROM jsonb_array_elements(v_attempt.unlocked_for_edit) x
+                                    WHERE x <> to_jsonb(p_question_id::text)), '[]'::jsonb),
+    current_streak = v_new_streak,
+    bonus_inventory = v_inventory
+  WHERE id = p_attempt_id;
+
+  RETURN QUERY SELECT true, (CASE WHEN v_quiz.instant_feedback_bonus THEN v_is_correct ELSE NULL END), v_new_streak, v_awarded, v_inventory;
+END;
+$$;
+
+-- ─── 9. use_quiz_bonus ──────────────────────────────────────────────────
+-- Activates one charge of a combo bonus. Every branch re-validates
+-- eligibility server-side (never trusts what the client claims about a
+-- question's prior correctness) before decrementing the inventory.
+CREATE OR REPLACE FUNCTION public.use_quiz_bonus(
+  p_attempt_id UUID, p_session_token UUID, p_bonus_type TEXT, p_question_id UUID DEFAULT NULL
+) RETURNS TABLE(
+  ok BOOLEAN, message TEXT, bonus_inventory JSONB,
+  eliminated_indices SMALLINT[], new_time_remaining_sec INTEGER, revealed_index SMALLINT
+) LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_student_id  INTEGER;
+  v_attempt     public.quiz_attempts%ROWTYPE;
+  v_quiz        public.quizzes%ROWTYPE;
+  v_have        INTEGER;
+  v_choices     JSONB;
+  v_correct_idx SMALLINT;
+  v_wrong_idx   SMALLINT[];
+  v_elim        SMALLINT[];
+  v_inventory   JSONB;
+BEGIN
+  IF p_bonus_type NOT IN ('fifty_fifty','fix_wrong','extra_time','reveal_answer') THEN
+    RAISE EXCEPTION 'invalid bonus type';
+  END IF;
+
+  SELECT id INTO v_student_id FROM public.students WHERE profile_id = auth.uid();
+  SELECT * INTO v_attempt FROM public.quiz_attempts WHERE id = p_attempt_id FOR UPDATE;
+  IF NOT FOUND OR v_attempt.student_id <> v_student_id THEN RAISE EXCEPTION 'not your attempt'; END IF;
+  IF v_attempt.status <> 'in_progress' THEN
+    RETURN QUERY SELECT false, 'attempt is not in progress', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+  END IF;
+  IF v_attempt.active_session_token IS DISTINCT FROM p_session_token THEN RAISE EXCEPTION 'session_superseded'; END IF;
+  IF v_attempt.deadline_at IS NOT NULL AND now() > v_attempt.deadline_at THEN
+    PERFORM public._finalize_quiz_attempt(p_attempt_id, 'submitted');
+    RETURN QUERY SELECT false, 'time is up', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+  END IF;
+
+  SELECT * INTO v_quiz FROM public.quizzes WHERE id = v_attempt.quiz_id;
+  IF NOT v_quiz.instant_feedback_bonus THEN RAISE EXCEPTION 'this quiz has no bonus system'; END IF;
+
+  v_have := COALESCE((v_attempt.bonus_inventory ->> p_bonus_type)::int, 0);
+  IF v_have < 1 THEN
+    RETURN QUERY SELECT false, 'no charge available', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+  END IF;
+
+  IF p_bonus_type = 'fifty_fifty' THEN
+    IF p_question_id IS NULL OR NOT (v_attempt.question_order @> to_jsonb(p_question_id::text)) THEN
+      RAISE EXCEPTION 'invalid question';
+    END IF;
+    IF v_attempt.answers ? p_question_id::text THEN
+      RETURN QUERY SELECT false, 'ข้อนี้ตอบไปแล้ว', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+    END IF;
+    IF v_attempt.eliminated_choices ? p_question_id::text THEN
+      RETURN QUERY SELECT false, 'ใช้ 50/50 กับข้อนี้ไปแล้ว', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+    END IF;
+    SELECT choices, correct_choice_index INTO v_choices, v_correct_idx FROM public.quiz_questions WHERE id = p_question_id;
+    IF jsonb_array_length(v_choices) < 3 THEN
+      RETURN QUERY SELECT false, 'ข้อนี้มีตัวเลือกน้อยเกินไปสำหรับ 50/50', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+    END IF;
+    SELECT array_agg(x ORDER BY random()) INTO v_wrong_idx
+      FROM generate_series(0, jsonb_array_length(v_choices) - 1) x WHERE x <> v_correct_idx;
+    v_elim := v_wrong_idx[1:LEAST(2, array_length(v_wrong_idx,1) - 1)];
+    v_inventory := jsonb_set(v_attempt.bonus_inventory, ARRAY[p_bonus_type], to_jsonb(v_have - 1));
+    PERFORM set_config('app.quiz_trusted_op', 'on', true);
+    UPDATE public.quiz_attempts SET
+      bonus_inventory = v_inventory,
+      eliminated_choices = eliminated_choices || jsonb_build_object(p_question_id::text, to_jsonb(v_elim))
+    WHERE id = p_attempt_id;
+    RETURN QUERY SELECT true, 'ok', v_inventory, v_elim, NULL::int, NULL::smallint; RETURN;
+
+  ELSIF p_bonus_type = 'fix_wrong' THEN
+    IF p_question_id IS NULL OR (v_attempt.answer_correctness ->> p_question_id::text) IS DISTINCT FROM 'false' THEN
+      RETURN QUERY SELECT false, 'ใช้ได้เฉพาะข้อที่เคยตอบผิดแล้วเท่านั้น', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+    END IF;
+    v_inventory := jsonb_set(v_attempt.bonus_inventory, ARRAY[p_bonus_type], to_jsonb(v_have - 1));
+    PERFORM set_config('app.quiz_trusted_op', 'on', true);
+    UPDATE public.quiz_attempts SET
+      bonus_inventory = v_inventory,
+      unlocked_for_edit = unlocked_for_edit || to_jsonb(p_question_id::text)
+    WHERE id = p_attempt_id;
+    RETURN QUERY SELECT true, 'ok', v_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+
+  ELSIF p_bonus_type = 'extra_time' THEN
+    IF v_quiz.time_limit_minutes IS NULL THEN
+      RETURN QUERY SELECT false, 'แบบทดสอบนี้ไม่จำกัดเวลา', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+    END IF;
+    v_inventory := jsonb_set(v_attempt.bonus_inventory, ARRAY[p_bonus_type], to_jsonb(v_have - 1));
+    PERFORM set_config('app.quiz_trusted_op', 'on', true);
+    UPDATE public.quiz_attempts SET
+      bonus_inventory = v_inventory,
+      time_remaining_sec = COALESCE(time_remaining_sec, 0) + 30,
+      deadline_at = COALESCE(deadline_at, now()) + interval '30 seconds'
+    WHERE id = p_attempt_id
+    RETURNING time_remaining_sec INTO new_time_remaining_sec;
+    RETURN QUERY SELECT true, 'ok', v_inventory, NULL::smallint[], new_time_remaining_sec, NULL::smallint;
+    RETURN;
+
+  ELSE -- reveal_answer
+    IF p_question_id IS NULL OR NOT (v_attempt.question_order @> to_jsonb(p_question_id::text)) THEN
+      RAISE EXCEPTION 'invalid question';
+    END IF;
+    IF v_attempt.answers ? p_question_id::text THEN
+      RETURN QUERY SELECT false, 'ข้อนี้ตอบไปแล้ว', v_attempt.bonus_inventory, NULL::smallint[], NULL::int, NULL::smallint; RETURN;
+    END IF;
+    SELECT correct_choice_index INTO v_correct_idx FROM public.quiz_questions WHERE id = p_question_id;
+    v_inventory := jsonb_set(v_attempt.bonus_inventory, ARRAY[p_bonus_type], to_jsonb(v_have - 1));
+    PERFORM set_config('app.quiz_trusted_op', 'on', true);
+    UPDATE public.quiz_attempts SET
+      bonus_inventory = v_inventory,
+      answers = answers || jsonb_build_object(p_question_id::text, v_correct_idx),
+      answer_correctness = answer_correctness || jsonb_build_object(p_question_id::text, true)
+      -- current_streak intentionally untouched: a revealed answer is a
+      -- "gimme", not a real correct answer, so it must not itself feed a
+      -- new streak milestone (that would create an infinite bonus loop:
+      -- reveal -> +1 streak -> new bonus -> reveal -> ...)
+    WHERE id = p_attempt_id;
+    RETURN QUERY SELECT true, 'ok', v_inventory, NULL::smallint[], NULL::int, v_correct_idx; RETURN;
+  END IF;
+END;
+$$;
+
+-- ─── 10. GRANTS ─────────────────────────────────────────────────────────
+REVOKE ALL ON FUNCTION public.submit_quiz_answer(UUID, UUID, UUID, SMALLINT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.submit_quiz_answer(UUID, UUID, UUID, SMALLINT) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.use_quiz_bonus(UUID, UUID, TEXT, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.use_quiz_bonus(UUID, UUID, TEXT, UUID) TO authenticated;
