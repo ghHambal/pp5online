@@ -578,10 +578,12 @@ async function _applyRoleMenus() {
     el.classList.toggle('hidden', !show)
     el.classList.toggle('flex', show)
   }
+  const hasAdvisorRoom = _homeroomRooms.length > 0
+
   toggle('menu-life-skill', hasLifeSkill)
   toggle('menu-reading',    hasReading)
   toggle('menu-prayer',     hasPrayer)
-  toggle('menu-advisor-students', hasLifeSkill)
+  toggle('menu-advisor-students', hasAdvisorRoom)
   let sportsMemberships = []
   try {
     const { data: memberships } = await supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true)

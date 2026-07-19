@@ -216,22 +216,152 @@ async function openShirtVoteModal(student,event,cfg) {
   } catch(e) { console.error(e); body.innerHTML='<p class="text-xs text-red-500 text-center py-8">โหลดข้อมูลไม่สำเร็จ</p>' }
 }
 
-export async function renderAdvisorStudents(teacher,rooms=[],tab='size') {
-  const el=main(); const samai=rooms.filter(r=>r.category==='สามัญ'); el.innerHTML='<div class="py-16 text-center">กำลังโหลด...</div>'
-  if(!samai.length){el.innerHTML='<div class="text-center py-16 text-gray-500">หน้านี้สำหรับครูที่ปรึกษาสามัญหรือ ปวช. สามัญ</div>';return}
-  const roomNames=samai.map(r=>r.main_room)
+export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category=null) {
+  const el=main(); el.innerHTML='<div class="py-16 text-center">กำลังโหลด...</div>'
+  const samai=rooms.filter(r=>r.category==='สามัญ')
+  const religion=rooms.filter(r=>r.category==='ศาสนา')
+  if(!samai.length && !religion.length){el.innerHTML='<div class="text-center py-16 text-gray-500">หน้านี้สำหรับครูที่ปรึกษาเท่านั้น</div>';return}
+  const cat = category || (samai.length ? 'สามัญ' : 'ศาสนา')
+  const activeRooms = cat==='ศาสนา' ? religion : samai
+  const roomNames=activeRooms.map(r=>r.main_room)
+  const hasBoth = samai.length && religion.length
   el.innerHTML=`<div class="max-w-6xl mx-auto space-y-4">
-    <div><h1 class="text-2xl font-bold">👥 นักเรียนที่ปรึกษา</h1><p class="text-sm text-gray-500">ห้อง ${roomNames.map(esc).join(', ')}</p></div>
-    <div class="flex gap-2">
+    <div>
+      <h1 class="text-2xl font-bold">👥 นักเรียนที่ปรึกษา${cat==='ศาสนา'?' (ศาสนา)':hasBoth?' (สามัญ)':''}</h1>
+      <p class="text-sm text-gray-500">ห้อง ${roomNames.map(esc).join(', ')}</p>
+    </div>
+    ${hasBoth?`<div class="flex gap-2">
+      <button data-advisor-cat="สามัญ" class="px-4 py-2 rounded-xl text-sm font-bold border ${cat==='สามัญ'?'bg-gray-800 text-white border-gray-800':'bg-white text-gray-500 border-gray-200'}">สามัญ</button>
+      <button data-advisor-cat="ศาสนา" class="px-4 py-2 rounded-xl text-sm font-bold border ${cat==='ศาสนา'?'bg-gray-800 text-white border-gray-800':'bg-white text-gray-500 border-gray-200'}">ศาสนา</button>
+    </div>`:''}
+    <div class="flex gap-2 flex-wrap">
+      <button data-advisor-tab="list" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='list'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👥 รายชื่อ</button>
+      ${cat==='สามัญ'?`
       <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
-      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>
+      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>`:''}
     </div>
     <div id="advisor-tab-body"></div>
   </div>`
-  el.querySelectorAll('[data-advisor-tab]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,b.dataset.advisorTab)))
+  el.querySelectorAll('[data-advisor-tab]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,b.dataset.advisorTab,cat)))
+  el.querySelectorAll('[data-advisor-cat]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,'list',b.dataset.advisorCat)))
   const body=el.querySelector('#advisor-tab-body')
   if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
-  else await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
+  else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
+  else await _renderAdvisorListTab(body,teacher,rooms,roomNames,cat)
+}
+
+async function _renderAdvisorListTab(body,teacher,rooms,roomNames,category) {
+  body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลด...</div>'
+  try {
+    const { advisorResetStudentPassword, advisorRemoveStudentFromRoom } = await import('./api.js')
+    const roomField = category==='ศาสนา' ? 'religion_room' : 'main_room'
+    const { data: students, error } = await supabase.from('students')
+      .select('id,student_code,full_name,main_room,religion_room,image_url,photo_url,profile_id')
+      .in(roomField, roomNames).eq('is_active', true).order(roomField).order('student_code')
+    if (error) throw error
+
+    const shortcuts = category==='ศาสนา'
+      ? [
+          { icon:'🕌', label:'บันทึกคะแนนละหมาด', fn:'_openReligionScore' },
+          { icon:'📖', label:'บันทึกคะแนนการอ่าน', fn:'_openReadingScore' },
+        ]
+      : [
+          { icon:'🌱', label:'บันทึกคะแนนทักษะชีวิต', fn:'_openLifeSkillScore' },
+          { icon:'📖', label:'บันทึกคะแนนการอ่าน', fn:'_openReadingScore' },
+        ]
+
+    body.innerHTML = `
+      <div class="flex flex-wrap gap-2 mb-3">
+        ${shortcuts.map(s=>`<button data-shortcut="${s.fn}" class="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition flex items-center gap-1.5">${s.icon} ${s.label}</button>`).join('')}
+      </div>
+      <div class="bg-white rounded-2xl border overflow-hidden divide-y">
+        ${(students||[]).map(s=>{
+          const photo=s.image_url||s.photo_url
+          return `<div class="flex items-center gap-3 p-3" data-student-row="${s.id}">
+            ${photo?`<img src="${esc(photo)}" alt="" class="w-11 h-11 rounded-full object-cover border border-gray-200 bg-gray-100 flex-shrink-0" loading="lazy">`:`<div class="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center font-bold flex-shrink-0">${esc((s.full_name||'?').charAt(0))}</div>`}
+            <div class="flex-1 min-w-0">
+              <b class="text-sm">${esc(s.full_name)}</b>
+              <p class="text-xs text-gray-500">${esc(s.student_code)} · ${esc(category==='ศาสนา'?s.religion_room:s.main_room)}${s.profile_id?'':' · <span class="text-amber-500">ยังไม่เปิดบัญชี</span>'}</p>
+            </div>
+            <button data-advisor-reset="${s.id}" class="px-3 py-1.5 border border-indigo-200 text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-50 transition flex-shrink-0">🔒 รีเซ็ตรหัสผ่าน</button>
+            <button data-advisor-remove="${s.id}" data-name="${esc(s.full_name)}" class="px-3 py-1.5 border border-red-100 text-red-500 rounded-lg text-xs font-semibold hover:bg-red-50 transition flex-shrink-0">🗑️ ลบออกจากห้อง</button>
+          </div>`
+        }).join('') || '<p class="p-8 text-center text-gray-400">ไม่พบนักเรียนในห้องนี้</p>'}
+      </div>`
+
+    body.querySelectorAll('[data-shortcut]').forEach(b=>b.addEventListener('click',()=>{
+      const fn = window[b.dataset.shortcut]
+      if (typeof fn === 'function') fn(roomNames[0])
+    }))
+
+    body.querySelectorAll('[data-advisor-reset]').forEach(b=>b.addEventListener('click',()=>{
+      const id = Number(b.dataset.advisorReset)
+      _openAdvisorResetPasswordModal(id, async (newPw) => {
+        await advisorResetStudentPassword(id, newPw)
+      })
+    }))
+
+    body.querySelectorAll('[data-advisor-remove]').forEach(b=>b.addEventListener('click',async()=>{
+      if (!confirm(`ลบ "${b.dataset.name}" ออกจากห้องนี้?\n(ประวัติเช็คชื่อ/คะแนนเดิมจะยังอยู่ครบ แค่ไม่แสดงในห้องนี้อีก)`)) return
+      try {
+        await advisorRemoveStudentFromRoom(Number(b.dataset.advisorRemove), category)
+        toast('ลบออกจากห้องแล้ว')
+        renderAdvisorStudents(teacher, rooms, 'list', category)
+      } catch(e) { toast(e.message ?? 'ลบไม่สำเร็จ', 'error') }
+    }))
+  } catch(e) { console.error(e); body.innerHTML = missing() }
+}
+
+function _openAdvisorResetPasswordModal(studentId, onConfirm) {
+  document.getElementById('advisor-reset-pw-modal')?.remove()
+  const m = document.createElement('div')
+  m.id = 'advisor-reset-pw-modal'
+  m.className = 'fixed inset-0 z-[340] bg-black/50 flex items-center justify-center p-4'
+  m.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6">
+      <h3 class="font-bold text-gray-800 text-sm mb-3">🔒 ตั้งรหัสผ่านใหม่</h3>
+      <div class="flex gap-2 mb-2">
+        <input id="advisor-pw-input" type="text" placeholder="อย่างน้อย 6 ตัวอักษร"
+          class="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        <button id="advisor-pw-fill" title="ใช้รหัสนักเรียนเป็นรหัสผ่าน"
+          class="flex-shrink-0 px-3 py-2.5 rounded-xl border border-indigo-200 text-indigo-600 text-xs font-semibold hover:bg-indigo-50 transition">🔄</button>
+      </div>
+      <p id="advisor-pw-msg" class="hidden text-xs text-center py-2 rounded-xl mb-2"></p>
+      <div class="flex gap-2">
+        <button id="advisor-pw-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button id="advisor-pw-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition">บันทึก</button>
+      </div>
+    </div>`
+  document.body.appendChild(m)
+  m.querySelector('#advisor-pw-cancel').addEventListener('click', () => m.remove())
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#advisor-pw-fill').addEventListener('click', () => {
+    const row = document.querySelector(`[data-student-row="${studentId}"] p`)
+    const code = row?.textContent?.split('·')[0]?.trim()
+    if (code) m.querySelector('#advisor-pw-input').value = code
+  })
+  m.querySelector('#advisor-pw-save').addEventListener('click', async () => {
+    const btn = m.querySelector('#advisor-pw-save')
+    const pw = m.querySelector('#advisor-pw-input').value.trim()
+    const msgEl = m.querySelector('#advisor-pw-msg')
+    if (!pw || pw.length < 6) {
+      msgEl.className = 'text-xs text-center py-2 rounded-xl mb-2 bg-red-50 text-red-600'
+      msgEl.textContent = 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'
+      msgEl.classList.remove('hidden')
+      return
+    }
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      await onConfirm(pw)
+      toast('ตั้งรหัสผ่านใหม่แล้ว')
+      m.remove()
+    } catch (e) {
+      msgEl.className = 'text-xs text-center py-2 rounded-xl mb-2 bg-red-50 text-red-600'
+      msgEl.textContent = 'ไม่สำเร็จ: ' + (e.message ?? '')
+      msgEl.classList.remove('hidden')
+      btn.disabled = false; btn.textContent = 'บันทึก'
+    }
+  })
 }
 
 async function _renderAdvisorSizeTab(body,teacher,rooms,roomNames) {

@@ -336,6 +336,22 @@ export async function getMyHomeroomRooms(teacherId) {
   return data ?? []
 }
 
+// ครูที่ปรึกษารีเซ็ตรหัสผ่านนักเรียนในห้องของตัวเอง (ใช้ RPC เดียวกับแอดมิน — RPC เช็คสิทธิ์เองว่าเป็นที่ปรึกษาห้องนั้นจริง)
+export async function advisorResetStudentPassword(studentId, newPassword) {
+  const { error } = await supabase.rpc('admin_update_student_auth', {
+    p_student_id: studentId, p_new_email: null, p_new_password: newPassword,
+  })
+  if (error) throw error
+}
+
+// ครูที่ปรึกษาถอดนักเรียนออกจากห้อง (แค่ null main_room/religion_room ตาม category — ไม่ลบนักเรียน)
+export async function advisorRemoveStudentFromRoom(studentId, category) {
+  const { error } = await supabase.rpc('advisor_remove_student_from_room', {
+    p_student_id: studentId, p_category: category,
+  })
+  if (error) throw error
+}
+
 export async function getClassStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
