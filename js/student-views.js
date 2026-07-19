@@ -416,6 +416,21 @@ export async function renderStudentOverview(student) {
   const recent  = requests.slice(0, 3)
   const hasExtendedScanWindow = _isExtendedPrayerScanner(student, cfg)
 
+  // แบบทดสอบที่ "เข้าได้เดี๋ยวนี้" — ปรากฏเฉพาะตอนที่ครูกดเริ่มสอบแล้ว (status
+  // 'started') และหายไปเองทันทีที่ครูกดปิดสอบ (status 'closed') โดยไม่ต้องใช้
+  // timer ฝั่ง client เลย เพราะ "ถึงเวลา/เลยเวลา" ในที่นี้คือสถานะที่ครูตั้งเอง
+  // ไม่ใช่ช่วงเวลานาฬิกา (เหมือนกับที่การ์ดในแท็บ "ต้องทำ" ของแต่ละวิชาใช้อยู่แล้ว)
+  const quizzesByClass = await Promise.all(
+    classes.map(c => getQuizzesForStudentClass(c.id, student.id).catch(() => []))
+  )
+  const liveQuizzes = classes.flatMap((c, i) => (quizzesByClass[i] ?? []).map(q => ({ ...q, _class: c })))
+    .filter(q => {
+      if (q.status !== 'started') return false
+      const finishedCount = q.attempts.filter(a => a.status === 'submitted' || a.status === 'terminated_violation').length
+      const lockedAttempt = q.attempts.length && q.attempts[q.attempts.length - 1].status === 'terminated_violation'
+      return !lockedAttempt && finishedCount < q.max_attempts
+    })
+
   const isHead = classroomRole && Number(classroomRole.head_student_id) === Number(student.id)
   const isVice = classroomRole && Number(classroomRole.vice_head_student_id) === Number(student.id)
   const certUrl = isHead ? classroomRole.head_cert_url : (isVice ? classroomRole.vice_head_cert_url : null)
@@ -474,6 +489,23 @@ export async function renderStudentOverview(student) {
       </button>
     </div>
     ` : ''}
+
+    <!-- แบบทดสอบที่เปิดสอบอยู่ตอนนี้ (ครูกดเริ่มแล้ว) -->
+    ${liveQuizzes.map(q => {
+      const inProgress = q.attempts.some(a => a.status === 'in_progress')
+      return `
+      <div class="relative overflow-hidden rounded-2xl border shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4"
+        style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-color:rgba(99,102,241,.3)">
+        <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">📝</div>
+        <div class="min-w-0 z-10">
+          <h4 class="font-bold text-sm sm:text-base">📝 ${inProgress ? 'กำลังทำแบบทดสอบอยู่' : 'มีแบบทดสอบเปิดสอบอยู่ตอนนี้'}</h4>
+          <p class="text-xs text-indigo-100 mt-1 truncate">${_esc(q.title)} · ${_esc(q._class?.master_subjects?.subject_name ?? '')}</p>
+        </div>
+        <button onclick="window._stuStartQuiz('${q.id}')" class="relative z-10 px-4 py-2 bg-white text-indigo-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-indigo-50 active:scale-95 transition-all shadow flex-shrink-0">
+          ${inProgress ? 'ทำต่อ →' : 'เข้าสอบ →'}
+        </button>
+      </div>`
+    }).join('')}
 
     <!-- Stats row -->
     <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
@@ -1134,6 +1166,18 @@ export async function renderStudentOverview(student) {
   window._stuOpenTimetablePopup = _openTimetablePopup
 
   document.getElementById('btn-stu-timetable')?.addEventListener('click', _openTimetablePopup)
+
+  // เดินเข้าสอบจากการ์ด "เปิดสอบอยู่ตอนนี้" ด้านบน — ตัวเดียวกับที่ใช้ในแท็บ
+  // "ต้องทำ" ของหน้ารายวิชา แต่ต้องผูกซ้ำที่นี่เพราะ window._stuStartQuiz ถูก
+  // (re)assign เฉพาะตอน renderStudentSubjectDetail ทำงานเท่านั้น
+  window._stuStartQuiz = async (quizId) => {
+    try {
+      const attempt = await rpcStartAttempt(quizId)
+      window.location.href = `quiz-exam.html?attempt=${attempt.id}`
+    } catch (err) {
+      showToast('เข้าสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  }
 }
 
 // ─── My Score Hub ────────────────────────────────────────────────────────────
