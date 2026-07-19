@@ -139,6 +139,23 @@ export async function getQuizzesForStudentClass(classId, studentId) {
   }))
 }
 
+// History of this student's OTHER finished attempts on the same quiz — used
+// to show "ประวัติคะแนนครั้งก่อนหน้า" before starting attempt #2+, and the
+// full "สรุปคะแนนทุกครั้ง" panel once all allowed attempts are used up.
+// Plain select (not an RPC): RLS's quiz_attempts_student_select_own already
+// restricts this to the caller's own rows regardless of the student_id filter.
+export async function getMyQuizAttemptHistory(quizId, studentId) {
+  const { data, error } = await supabase
+    .from('quiz_attempts')
+    .select('id, attempt_number, status, score_pct, submitted_at, terminated_at')
+    .eq('quiz_id', quizId)
+    .eq('student_id', studentId)
+    .in('status', ['submitted', 'terminated_violation'])
+    .order('attempt_number', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getQuizAttempt(attemptId) {
   const { data, error } = await supabase
     .from('quiz_attempts')

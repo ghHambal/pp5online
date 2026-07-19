@@ -2,7 +2,7 @@
 import {
   getQuizAttempt, rpcGetAttemptQuestions, rpcSubmitAttempt,
   rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank,
-  rpcSubmitQuizAnswer, rpcUseQuizBonus
+  rpcSubmitQuizAnswer, rpcUseQuizBonus, getMyQuizAttemptHistory
 } from './quiz-api.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
@@ -29,6 +29,7 @@ let _bonusInventory = {}
 let _eliminatedChoices = {}
 let _unlockedForEdit = new Set()
 let _answerCorrectness = {}
+let _priorAttempts = [] // this student's other finished attempts on the same quiz (attempt_number > 1 only)
 
 const BONUS_META = {
   fifty_fifty:   { icon: '✂️', label: '50/50' },
@@ -83,6 +84,10 @@ export async function initQuizExam(attemptId) {
   _unlockedForEdit = new Set(_attempt.unlocked_for_edit ?? [])
   _answerCorrectness = _attempt.answer_correctness ?? {}
 
+  _priorAttempts = _attempt.attempt_number > 1
+    ? await getMyQuizAttemptHistory(_attempt.quiz_id, _attempt.student_id).catch(() => [])
+    : []
+
   _renderStartGate(root)
 }
 
@@ -118,11 +123,23 @@ function _renderLockedScreen(root) {
 // awaits with no direct click behind it.
 function _renderStartGate(root) {
   const quiz = _attempt.quizzes
+  const historyHtml = _priorAttempts.length ? `
+    <div class="bg-gray-50 border border-gray-200 rounded-2xl p-4 text-left">
+      <p class="text-xs font-bold text-gray-500 mb-2">ประวัติคะแนนครั้งก่อนหน้า</p>
+      <div class="space-y-1.5">
+        ${_priorAttempts.map(a => `
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-500">ครั้งที่ ${a.attempt_number}${a.status === 'terminated_violation' ? ' (ถูกล็อก)' : ''}</span>
+            <span class="font-bold text-gray-700">${a.score_pct != null ? a.score_pct.toFixed(1) + '%' : '—'}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''
   root.innerHTML = `
     <div class="max-w-md mx-auto text-center py-16 space-y-4">
       <div class="text-6xl">📝</div>
       <p class="font-bold text-gray-800 text-lg">${_htmlEsc(quiz?.title ?? '')}</p>
-      <p class="text-sm text-gray-500">${_questions.length} ข้อ${quiz?.time_limit_minutes ? ` · เวลา ${quiz.time_limit_minutes} นาที` : ''}</p>
+      <p class="text-sm text-gray-500">${_questions.length} ข้อ${quiz?.time_limit_minutes ? ` · เวลา ${quiz.time_limit_minutes} นาที` : ''}${quiz?.max_attempts > 1 ? ` · ครั้งที่ ${_attempt.attempt_number}/${quiz.max_attempts}` : ''}</p>
+      ${historyHtml}
       <button id="btn-start-exam" class="px-8 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg">เริ่มทำข้อสอบ (เต็มจอ)</button>
       <p class="text-xs text-gray-400">เวลาจะเริ่มนับถอยหลังทันทีที่กดเริ่ม</p>
     </div>
@@ -166,7 +183,17 @@ function _renderExamUI(root) {
   document.getElementById('btn-submit').addEventListener('click', _confirmSubmit)
   _renderNav()
   _renderQuestion()
+  _updateNavButtons()
   if (_bonusMode) _renderBonusToolbar()
+}
+
+// ในโหมดล็อกคำตอบ (ตอบทีละข้อแบบเดินหน้าอย่างเดียว) ปุ่ม "ส่งคำตอบ" จะโผล่
+// เฉพาะข้อสุดท้ายเท่านั้น — โหมดปกติ (นักเรียนย้อนไปมาแก้คำตอบได้อิสระ) ยังคง
+// เห็นปุ่มส่งได้ทุกข้อเหมือนเดิม เผื่อต้องการส่งก่อนครบทุกข้อ
+function _updateNavButtons() {
+  const submitBtn = document.getElementById('btn-submit')
+  if (!submitBtn || !_lockMode) return
+  submitBtn.classList.toggle('hidden', _currentIdx !== _questions.length - 1)
 }
 
 function _renderNav() {
@@ -187,6 +214,7 @@ function _goTo(idx) {
   _currentIdx = idx
   _renderQuestion()
   _renderNav()
+  _updateNavButtons()
 }
 
 function _renderQuestion() {
@@ -264,7 +292,13 @@ async function _submitAnswerToServer(q, pos) {
       _renderBonusToolbar()
       if (result.bonus_awarded?.length) _showBonusPopup(result.bonus_awarded)
     }
-    _renderQuestion(); _renderNav()
+    _renderQuestion(); _renderNav(); _updateNavButtons()
+
+    // ตอบผิด (รู้ผลทันทีเฉพาะโหมดคอมโบ/โบนัส) → เลื่อนไปข้อถัดไปให้อัตโนมัติ
+    // หลังจากปล่อยให้เห็นเอฟเฟกต์สีแดงก่อนสักครู่ ไม่ต้องกดเองข้อไหนที่ตอบผิด
+    if (_bonusMode && result.is_correct === false && _currentIdx < _questions.length - 1) {
+      setTimeout(() => { if (_answers[q.question_id] === chosenOriginal) _goTo(_currentIdx + 1) }, 1100)
+    }
   } catch (err) {
     _answers[q.question_id] = prevAnswer
     showToast('บันทึกคำตอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -582,6 +616,32 @@ async function _renderResultScreen(root) {
     ? `<p class="text-sm text-indigo-100 mt-2">🏆 อันดับที่ ${rank.my_rank} จาก ${rank.total_participants} คน</p>`
     : ''
 
+  // สรุปคะแนนทุกครั้ง — เฉพาะตอนที่สอบได้หลายครั้งและใช้ครบโควตาแล้ว (รวมครั้งนี้ด้วย)
+  let allAttemptsHtml = ''
+  if (quiz?.max_attempts > 1) {
+    const allAttempts = await getMyQuizAttemptHistory(fresh.quiz_id, fresh.student_id).catch(() => [])
+    if (allAttempts.length >= quiz.max_attempts) {
+      const mode = quiz.attempt_scoring_mode ?? 'last'
+      const finalAttemptNo = mode === 'highest'
+        ? allAttempts.reduce((best, a) => (a.score_pct ?? 0) > (best?.score_pct ?? -1) ? a : best, null)?.attempt_number
+        : mode === 'first' ? allAttempts[0]?.attempt_number
+        : allAttempts[allAttempts.length - 1]?.attempt_number
+      const modeLabel = { first: 'ครั้งแรก', last: 'ครั้งล่าสุด', highest: 'คะแนนสูงสุด' }[mode] ?? mode
+      allAttemptsHtml = `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <p class="text-xs font-bold text-gray-500 mb-3">สรุปคะแนนทุกครั้ง (ทำครบ ${allAttempts.length}/${quiz.max_attempts} ครั้งแล้ว)</p>
+        <div class="space-y-1.5">
+          ${allAttempts.map(a => `
+            <div class="flex items-center justify-between text-sm ${a.attempt_number === finalAttemptNo ? 'font-bold text-indigo-700' : 'text-gray-500'}">
+              <span>ครั้งที่ ${a.attempt_number}${a.status === 'terminated_violation' ? ' (ถูกล็อก)' : ''}${a.attempt_number === finalAttemptNo ? ' ⭐' : ''}</span>
+              <span>${a.score_pct != null ? a.score_pct.toFixed(1) + '%' : '—'}</span>
+            </div>`).join('')}
+        </div>
+        <p class="text-[11px] text-gray-400 mt-3">⭐ = คะแนนที่ใช้บันทึกจริง (ตามที่ครูตั้งไว้: ${modeLabel})</p>
+      </div>`
+    }
+  }
+
   let detailHtml = ''
   if (reviewPolicy !== 'total_only') {
     const questions = await rpcGetAttemptQuestions(_attempt.id).catch(() => [])
@@ -620,9 +680,12 @@ async function _renderResultScreen(root) {
         <p class="text-5xl font-extrabold">${scorePct.toFixed(1)}%</p>
         ${rankHtml}
       </div>
+      ${allAttemptsHtml}
       ${detailHtml}
+      <button id="btn-back-overview" class="w-full py-3 rounded-2xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50">← กลับหน้าภาพรวม</button>
     </div>
   `
+  document.getElementById('btn-back-overview').addEventListener('click', () => { window.location.href = 'student.html' })
   if (reviewPolicy !== 'total_only') loadKaTeX().then(() => renderMathIn(root)).catch(() => {})
 
   const confettiTier = scorePct >= 80 ? 'high' : scorePct >= 50 ? 'mid' : null
