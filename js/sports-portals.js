@@ -260,15 +260,13 @@ async function _renderAdvisorListTab(body,teacher,rooms,roomNames,category) {
       .in(roomField, roomNames).eq('is_active', true).order(roomField).order('student_code')
     if (error) throw error
 
+    // บันทึกคะแนนการอ่าน เป็นของครูที่สอนวิชาภาษาไทยเท่านั้น (ไม่เกี่ยวกับหมวดที่ปรึกษา) ไม่ใช่ทุกคนเห็น
     const shortcuts = category==='ศาสนา'
-      ? [
-          { icon:'🕌', label:'บันทึกคะแนนละหมาด', fn:'_openReligionScore' },
-          { icon:'📖', label:'บันทึกคะแนนการอ่าน', fn:'_openReadingScore' },
-        ]
-      : [
-          { icon:'🌱', label:'บันทึกคะแนนทักษะชีวิต', fn:'_openLifeSkillScore' },
-          { icon:'📖', label:'บันทึกคะแนนการอ่าน', fn:'_openReadingScore' },
-        ]
+      ? [{ icon:'🕌', label:'บันทึกคะแนนละหมาด', fn:'_openReligionScore' }]
+      : [{ icon:'🌱', label:'บันทึกคะแนนทักษะชีวิต', fn:'_openLifeSkillScore' }]
+    if (teacher?.dept === 'THAI') {
+      shortcuts.push({ icon:'📖', label:'บันทึกคะแนนการอ่าน', fn:'_openReadingScore' })
+    }
 
     body.innerHTML = `
       <div class="flex flex-wrap gap-2 mb-3">
