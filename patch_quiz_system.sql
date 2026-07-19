@@ -270,10 +270,16 @@ BEGIN
 
     v_converted := round(coalesce(v_effective_pct, 0) / 100 * coalesce(v_quiz.score_max, 100), 2);
 
+    -- Keep whichever score is HIGHER if this column already holds one (manual
+    -- entry, another activity reusing the column, or an earlier quiz run) —
+    -- matches the existing "สอบปรับ" (retake) convention elsewhere in the app,
+    -- which always keeps the max of original/retake score.
     INSERT INTO public.student_scores (assignment_id, student_id, original_score, final_score)
     VALUES (v_quiz.score_column_id, v_attempt.student_id, v_converted, v_converted)
     ON CONFLICT (assignment_id, student_id)
-    DO UPDATE SET original_score = EXCLUDED.original_score, final_score = EXCLUDED.final_score;
+    DO UPDATE SET
+      original_score = GREATEST(COALESCE(public.student_scores.original_score, 0), EXCLUDED.original_score),
+      final_score = GREATEST(COALESCE(public.student_scores.final_score, 0), EXCLUDED.final_score);
   END IF;
 END;
 $$;

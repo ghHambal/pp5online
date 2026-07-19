@@ -294,13 +294,19 @@ function _showViolationWarning(count) {
   document.getElementById('quiz-violation-modal')?.remove()
   const modal = document.createElement('div')
   modal.id = 'quiz-violation-modal'
-  modal.className = 'fixed inset-0 z-[99] bg-black/50 flex items-center justify-center p-4'
+  modal.className = 'fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4'
   modal.innerHTML = `
-    <div class="bg-white rounded-3xl p-6 max-w-sm text-center shadow-2xl">
-      <div class="text-5xl mb-3">⚠️</div>
-      <p class="font-bold text-gray-800 mb-2">ตรวจพบว่าออกนอกหน้าสอบ (ครั้งที่ ${count}/2)</p>
-      <p class="text-sm text-gray-500 mb-5">หากออกนอกหน้าสอบอีกครั้ง ระบบจะส่งคำตอบให้อัตโนมัติและล็อกไม่ให้ทำต่อ</p>
-      <button id="quiz-violation-ack" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">รับทราบ</button>
+    <div class="bg-white rounded-3xl overflow-hidden max-w-sm shadow-2xl text-center">
+      <div class="h-2 bg-gradient-to-r from-red-500 via-rose-500 to-red-600"></div>
+      <div class="p-6">
+        <div class="mx-auto mb-4 w-16 h-16 rounded-full bg-red-50 border-2 border-red-100 flex items-center justify-center animate-pulse">
+          <span class="text-3xl">⚠️</span>
+        </div>
+        <p class="font-bold text-red-600 text-lg mb-2">ตรวจพบว่าออกนอกหน้าสอบ! (ครั้งที่ ${count}/2)</p>
+        <p class="text-sm text-gray-600 mb-5">หากออกนอกหน้าสอบอีกครั้ง ระบบจะ<strong class="text-red-600">ส่งคำตอบอัตโนมัติและล็อกไม่ให้ทำต่อ</strong></p>
+        <button id="quiz-violation-ack" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg"
+          style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 14px rgba(239,68,68,0.4)">รับทราบ</button>
+      </div>
     </div>
   `
   document.body.appendChild(modal)
