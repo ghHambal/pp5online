@@ -51,9 +51,20 @@ function _workCalCountdown(ev) {
   return { status: 'upcoming', days, clock, urgency }
 }
 
+// สัปดาห์ที่ N ของภาคเรียนสำหรับวันที่ใดๆ (สูตรเดียวกับ _currentWeek แต่รับวันที่เป้าหมายแทน "วันนี้")
+function _weekNumberForDate(semesterStart, dateStr) {
+  if (!semesterStart) return 0
+  const start = new Date(semesterStart)
+  const target = new Date(dateStr + 'T00:00:00')
+  if (isNaN(start) || isNaN(target)) return 0
+  const diffMs = target.getTime() - start.getTime()
+  if (diffMs < 0) return 0
+  return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1
+}
+
 // การ์ด "กิจกรรมใกล้ถึง" จากปฏิทินปฏิบัติงาน — นับถอยหลังวัน+วินาทีสด ไล่สีตามความเร่งด่วน
 // (>3 วัน = ปกติ, 1-3 วัน = เหลือง, <24 ชม. = แดง เหมือนสไตล์การ์ดเวรตอนถึงเวลาแล้ว)
-export function _renderWorkCalendarUpcoming(events) {
+export function _renderWorkCalendarUpcoming(events, semesterStart) {
   const _esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const _fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
   const today = new Date().toISOString().slice(0, 10)
@@ -80,6 +91,7 @@ export function _renderWorkCalendarUpcoming(events) {
       const isAmber = cd.urgency === 'amber'
       const cardCls = isRed ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : isAmber ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'
       const iconCls = isRed ? 'bg-red-100 animate-pulse' : isAmber ? 'bg-amber-100' : 'bg-gray-100'
+      const wk = _weekNumberForDate(semesterStart, ev.event_date)
       return `
       <div onclick="window._navTo('work-calendar-view')"
         class="border rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150 ${cardCls}">
@@ -88,6 +100,7 @@ export function _renderWorkCalendarUpcoming(events) {
           <div class="flex items-center gap-1.5 mb-0.5">
             <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${WCAL_TYPE_COLOR[ev.event_type]}">${WCAL_TYPE_LABEL[ev.event_type]}</span>
             <span class="text-[11px] text-gray-400">${_fmtDate(ev.event_date)}</span>
+            ${wk > 0 ? `<span class="text-[11px] text-gray-400">· สัปดาห์ที่ ${wk}</span>` : ''}
           </div>
           <p class="font-semibold text-sm truncate ${isRed ? 'text-red-800' : 'text-gray-800'}">${_esc(ev.label)}</p>
         </div>
@@ -460,7 +473,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     ${teacher ? `<div id="wen-duty-card">${_renderWenDutyCard(todayDuty, teacher.teacher_code, dutyGrade)}</div>` : ''}
 
     <!-- กิจกรรมใกล้ถึงจากปฏิทินปฏิบัติงาน (นับถอยหลังวัน/วินาที) -->
-    ${teacher ? `<div id="wcal-upcoming-card">${_renderWorkCalendarUpcoming(workCalEvents)}</div>` : ''}
+    ${teacher ? `<div id="wcal-upcoming-card">${_renderWorkCalendarUpcoming(workCalEvents, cfg.semester_start)}</div>` : ''}
 
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
       ${[
@@ -830,7 +843,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     _workCalWidgetTimer = setInterval(() => {
       const el = document.getElementById('wcal-upcoming-card')
       if (!el) { clearInterval(_workCalWidgetTimer); _workCalWidgetTimer = null; return }
-      el.innerHTML = _renderWorkCalendarUpcoming(workCalEvents)
+      el.innerHTML = _renderWorkCalendarUpcoming(workCalEvents, cfg.semester_start)
     }, 1000)
   }
 }
