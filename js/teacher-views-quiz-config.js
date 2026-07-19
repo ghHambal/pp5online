@@ -1,8 +1,9 @@
 // js/teacher-views-quiz-config.js
-import { getMyClasses, getScoreColumns } from './api.js'
-import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, deleteQuiz } from './quiz-api.js'
+import { getMyClasses, getScoreColumns, getSystemConfig } from './api.js'
+import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
 import { showToast, showDangerConfirm, setButtonLoading } from './ui.js'
 import { setContent, setTitle, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
+import { loadKaTeX, renderMathIn } from './katex-loader.js'
 
 const STATUS_LABEL = {
   draft: { label: 'ร่าง', cls: 'bg-gray-100 text-gray-600' },
@@ -19,19 +20,43 @@ export async function renderBankQuizzes(teacher, bank) {
   setTitle(`แบบทดสอบจากคลัง: ${bank.name}`)
   setContent(`<div class="flex justify-center py-12 text-gray-400">กำลังโหลดข้อมูล...</div>`)
 
-  const [quizzes, classes, questions] = await Promise.all([
+  const [quizzes, classes, questions, cfg, startedCount] = await Promise.all([
     getQuizzesForBank(bank.id),
     getMyClasses(teacher.id),
     getQuizQuestions(bank.id),
+    getSystemConfig().catch(() => ({})),
+    getTeacherStartedQuizCount(teacher.id).catch(() => 0),
   ])
+
+  // สร้างคลัง/คำถาม/ตั้งค่าแบบทดสอบไม่จำกัดสำหรับทุกคน — แต่การ "เริ่มสอบ" จริง
+  // ให้นักเรียนทำ ครูทั่วไป (ยังไม่โดเนทถึงระดับ 2) ใช้ได้แค่ตามโควตาฟรีที่แอดมิน
+  // ตั้งไว้ (นับจากจำนวนครั้งที่เคยกด "เริ่มสอบ" มาแล้วทั้งหมด ไม่ใช่ localStorage
+  // แบบฟีเจอร์ทดลองอื่นๆ ในระบบ เพราะเกตนี้ป้องกันการใช้งานจริงกับนักเรียน ต้องผูก
+  // กับบัญชีจริงเสมอ) — ทดลองทำเองผ่านปุ่ม "ทดลองทำข้อสอบ" ทำได้ไม่จำกัดเสมอ
+  const donorTier = window._pp5DonorTierIndex ?? 0
+  const isDonor = donorTier >= 2
+  const freeStartLimit = parseInt(cfg.quizFreeStartLimit ?? 2, 10)
+  const canStartFree = isDonor || startedCount < freeStartLimit
 
   const classNameById = Object.fromEntries(classes.map(c => [
     c.id, `${c.master_subjects?.subject_name ?? ''} (${c.class_name ?? '—'})`
   ]))
 
+  const quotaBannerHtml = isDonor ? '' : `
+    <div class="rounded-2xl p-3.5 flex items-center gap-3 ${canStartFree ? 'bg-indigo-50 border border-indigo-100' : 'bg-amber-50 border border-amber-200'}">
+      <span class="text-xl flex-shrink-0">${canStartFree ? '🎁' : '⭐'}</span>
+      <p class="text-xs ${canStartFree ? 'text-indigo-700' : 'text-amber-800'} leading-relaxed">
+        ${canStartFree
+          ? `โควตาทดลอง "เริ่มสอบจริง" ฟรี: ใช้ไปแล้ว ${startedCount}/${freeStartLimit} ครั้ง — สร้างคลัง/ตั้งค่า/ทดลองทำเองได้ไม่จำกัดเสมอ`
+          : `ใช้โควตาทดลอง "เริ่มสอบจริง" ฟรีครบ ${freeStartLimit} ครั้งแล้ว — โดเนทระดับ 2 ขึ้นไปเพื่อเริ่มสอบให้นักเรียนทำได้ไม่จำกัด (ยังทดลองทำเองและตั้งค่าต่อได้ตามปกติ)`}
+      </p>
+    </div>`
+
   setContent(`
     <div class="space-y-4">
       <button id="btn-back-questions" class="text-sm text-gray-500 hover:text-gray-700">← กลับไปหน้าคำถามในคลัง</button>
+
+      ${quotaBannerHtml}
 
       <div class="flex items-center justify-between">
         <h3 class="font-bold text-gray-700 text-sm">แบบทดสอบที่สร้างจากคลังนี้ (${quizzes.length} รายการ)</h3>
@@ -56,10 +81,11 @@ export async function renderBankQuizzes(teacher, bank) {
                 <p class="text-xs text-gray-400">${_htmlEsc(classNameById[q.class_id] ?? 'ห้องที่ถูกลบ')} · ${q.num_questions} ข้อ · ${q.time_limit_minutes ?? '—'} นาที · ทำได้ ${q.max_attempts} ครั้ง (นับ${SCORING_LABEL[q.attempt_scoring_mode]})</p>
               </div>
               <div class="flex flex-col gap-1.5 flex-shrink-0">
-                ${q.status === 'announced' ? `<button class="btn-start-quiz px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold" data-id="${q.id}">▶️ เริ่มสอบ</button>` : ''}
+                ${q.status === 'announced' ? `<button class="btn-start-quiz px-3 py-1.5 rounded-lg ${canStartFree ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-300'} text-white text-xs font-bold" data-id="${q.id}">▶️ เริ่มสอบ</button>` : ''}
                 ${q.status === 'started' ? `<button class="btn-close-quiz px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold" data-id="${q.id}">⏹️ ปิดสอบ</button>` : ''}
                 ${q.status === 'started' ? `<button class="btn-monitor-quiz px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold" data-id="${q.id}">🔴 ดูสด</button>` : ''}
                 ${(q.status === 'started' || q.status === 'closed') ? `<button class="btn-analytics-quiz px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold" data-id="${q.id}">📊 สถิติ</button>` : ''}
+                <button class="btn-preview-quiz px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 text-xs font-semibold" data-id="${q.id}">🧪 ทดลองทำข้อสอบ</button>
                 <button class="btn-edit-quiz px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-semibold" data-id="${q.id}">✏️ แก้ไข</button>
                 <button class="btn-delete-quiz px-3 py-1.5 rounded-lg border border-red-100 text-red-500 hover:bg-red-50 text-xs font-semibold" data-id="${q.id}">🗑️ ลบ</button>
               </div>
@@ -81,8 +107,12 @@ export async function renderBankQuizzes(teacher, bank) {
   document.querySelectorAll('.btn-edit-quiz').forEach(btn =>
     btn.addEventListener('click', () => _renderQuizForm(teacher, bank, classes, questions.length, quizzes.find(q => q.id === btn.dataset.id))))
 
+  document.querySelectorAll('.btn-preview-quiz').forEach(btn =>
+    btn.addEventListener('click', () => _renderQuizPreview(quizzes.find(q => q.id === btn.dataset.id), questions)))
+
   document.querySelectorAll('.btn-start-quiz').forEach(btn =>
     btn.addEventListener('click', async () => {
+      if (!canStartFree) { _showQuizStartPaywall(freeStartLimit); return }
       const ok = await showDangerConfirm({
         title: 'เริ่มสอบเลยหรือไม่?',
         message: 'นักเรียนในห้องจะเริ่มเข้าทำแบบทดสอบได้ทันที',
@@ -296,4 +326,121 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
       setButtonLoading(e.target, false, 'บันทึก')
     }
   })
+}
+
+function _showQuizStartPaywall(freeStartLimit) {
+  const m = document.createElement('div')
+  m.className = 'fixed inset-0 z-[95] bg-black/40 flex items-center justify-center p-4'
+  m.innerHTML = `
+    <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center">
+      <div class="text-5xl mb-3">⭐</div>
+      <h3 class="font-bold text-gray-800 text-lg mb-2">ใช้โควตาทดลองฟรีครบแล้ว</h3>
+      <p class="text-sm text-gray-500 leading-relaxed mb-5">คุณเริ่มสอบจริงให้นักเรียนทำไปแล้ว ${freeStartLimit} ครั้ง (ครบโควตาทดลองฟรี) โดเนทระดับ 2 ขึ้นไปเพื่อเริ่มสอบได้ไม่จำกัด — สร้างคลัง/ตั้งค่า/ทดลองทำเองยังทำได้ตามปกติ</p>
+      <div class="space-y-2">
+        <button id="paywall-donate" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg" style="background:linear-gradient(135deg,#f59e0b,#d97706)">⭐ ดูรายละเอียดการสนับสนุน</button>
+        <button id="paywall-cancel" class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm">ปิด</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(m)
+  m.querySelector('#paywall-cancel').addEventListener('click', () => m.remove())
+  m.querySelector('#paywall-donate').addEventListener('click', () => {
+    m.remove()
+    document.getElementById('btn-donate-float')?.click()
+  })
+}
+
+// "ทดลองทำข้อสอบ" — ให้ครูลองทำแบบทดสอบของตัวเองเหมือนนักเรียน แต่ทำงานล้วน
+// ฝั่ง client ล้วนๆ ไม่มีการเขียนลง quiz_attempts เลย (ครูไม่มีแถวใน students
+// ให้ผูกอยู่แล้ว) จึงไม่นับเป็นการสอบจริง ไม่กระทบโควตา/สถิติ/คะแนนนักเรียนใดๆ
+// เห็นเฉลยได้ทันทีเพราะเป็นเจ้าของคำถามเองอยู่แล้ว ไม่ใช่การรั่วไหลของเฉลย
+function _renderQuizPreview(quiz, allQuestions) {
+  if (!quiz) return
+  const picked = allQuestions.slice(0, quiz.num_questions)
+  if (!picked.length) { showToast('คลังนี้ยังไม่มีคำถาม', 'warning'); return }
+
+  let idx = 0
+  const answers = {}
+
+  const m = document.createElement('div')
+  m.className = 'fixed inset-0 z-[95] bg-white flex flex-col'
+  document.body.appendChild(m)
+
+  const renderQuestion = () => {
+    const q = picked[idx]
+    const selected = answers[q.id]
+    m.innerHTML = `
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100 shadow-sm flex-shrink-0">
+        <button id="qp-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">←</button>
+        <div class="flex-1 min-w-0">
+          <h2 class="font-bold text-gray-800 text-sm truncate">🧪 ทดลองทำ: ${_htmlEsc(quiz.title)}</h2>
+          <p class="text-xs text-amber-600">โหมดทดลอง — ไม่นับเป็นการสอบจริง ไม่มีผลต่อโควตาหรือคะแนนนักเรียน</p>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5">
+        <div class="max-w-2xl mx-auto">
+          <p class="text-xs text-gray-400 mb-2">ข้อ ${idx + 1} จาก ${picked.length}</p>
+          <p class="font-semibold text-gray-800 mb-4">${_htmlEsc(q.question_text)}</p>
+          <div class="space-y-2" id="qp-choices">
+            ${q.choices.map((c, i) => {
+              const isSelected = selected === i
+              const isCorrect = i === q.correct_choice_index
+              let cls = 'border-gray-200 hover:bg-gray-50 cursor-pointer'
+              if (selected != null) {
+                if (isCorrect) cls = 'border-emerald-400 bg-emerald-50'
+                else if (isSelected) cls = 'border-red-400 bg-red-50'
+                else cls = 'border-gray-100 opacity-60'
+              }
+              return `
+              <label class="flex items-center gap-3 p-3 rounded-xl border ${cls}">
+                <input type="radio" name="qp-choice" class="qp-choice-input flex-shrink-0" data-i="${i}" ${isSelected ? 'checked' : ''} ${selected != null ? 'disabled' : ''} />
+                <span class="text-sm">${_htmlEsc(c)}</span>
+              </label>`
+            }).join('')}
+          </div>
+          ${selected != null && q.explanation ? `<p class="text-xs text-gray-500 mt-3 italic">💡 ${_htmlEsc(q.explanation)}</p>` : ''}
+          <div class="flex justify-between gap-2 mt-6">
+            <button id="qp-prev" class="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm" ${idx === 0 ? 'disabled' : ''}>← ก่อนหน้า</button>
+            ${idx === picked.length - 1
+              ? `<button id="qp-finish" class="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-sm">ดูผลทดลอง</button>`
+              : `<button id="qp-next" class="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">ถัดไป →</button>`}
+          </div>
+        </div>
+      </div>
+    `
+    loadKaTeX().then(() => renderMathIn(m)).catch(() => {})
+    m.querySelector('#qp-close').addEventListener('click', () => m.remove())
+    m.querySelectorAll('.qp-choice-input').forEach(inp => inp.addEventListener('change', () => {
+      answers[q.id] = parseInt(inp.dataset.i, 10)
+      renderQuestion()
+    }))
+    m.querySelector('#qp-prev')?.addEventListener('click', () => { idx--; renderQuestion() })
+    m.querySelector('#qp-next')?.addEventListener('click', () => { idx++; renderQuestion() })
+    m.querySelector('#qp-finish')?.addEventListener('click', renderResult)
+  }
+
+  const renderResult = () => {
+    const correct = picked.filter(q => answers[q.id] === q.correct_choice_index).length
+    const pct = picked.length > 0 ? (correct / picked.length * 100) : 0
+    m.innerHTML = `
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-100 shadow-sm flex-shrink-0">
+        <button id="qp-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">←</button>
+        <h2 class="font-bold text-gray-800 text-sm">ผลการทดลองทำ</h2>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5">
+        <div class="max-w-md mx-auto text-center space-y-4">
+          <div class="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-3xl p-8 text-white shadow-lg">
+            <p class="text-sm text-indigo-100 mb-1">ถูก ${correct}/${picked.length} ข้อ</p>
+            <p class="text-5xl font-extrabold">${pct.toFixed(1)}%</p>
+          </div>
+          <p class="text-xs text-amber-600">นี่คือการทดลองทำเท่านั้น ไม่นับเป็นการสอบจริง ไม่มีผลต่อโควตาหรือคะแนนนักเรียนใดๆ</p>
+          <button id="qp-done" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">เสร็จสิ้น</button>
+        </div>
+      </div>
+    `
+    m.querySelector('#qp-close').addEventListener('click', () => m.remove())
+    m.querySelector('#qp-done').addEventListener('click', () => m.remove())
+  }
+
+  renderQuestion()
 }

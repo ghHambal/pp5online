@@ -11,34 +11,15 @@ import { supabase } from './supabase.js'
 
 const CSV_HEADERS = ['คำถาม', 'ตัวเลือก1', 'ตัวเลือก2', 'ตัวเลือก3', 'ตัวเลือก4', 'ตัวเลือก5', 'ตัวเลือกที่ถูก', 'คำอธิบายเฉลย', 'ระดับความยาก', 'หมวดหมู่']
 
-function _lockedScreen(minTier) {
-  setContent(`
-    <div class="flex flex-col items-center justify-center text-center gap-4 py-20">
-      <div class="text-6xl">🔒</div>
-      <p class="font-bold text-gray-700 text-lg">ฟีเจอร์สำหรับผู้สนับสนุนระดับ ${minTier}+</p>
-      <p class="text-sm text-gray-500 leading-relaxed max-w-xs">ระบบแบบทดสอบออนไลน์ (คลังข้อสอบ + สุ่มข้อ + anti-cheat + สถิติ)<br>เปิดให้ใช้งานเมื่อสนับสนุนโครงการถึงระดับที่กำหนด</p>
-      <button id="quiz-upgrade" class="mt-2 px-6 py-3 rounded-2xl text-white font-bold text-sm shadow-lg"
-        style="background:linear-gradient(135deg,#f59e0b,#d97706)">⭐ ดูรายละเอียดระดับ</button>
-    </div>
-  `)
-  document.getElementById('quiz-upgrade')?.addEventListener('click', () => document.getElementById('btn-donate-float')?.click())
-}
-
 export async function renderQuizBanks(teacher) {
   if (!teacher) return
   setActiveNav('quiz-system')
   setTitle('ระบบแบบทดสอบออนไลน์ (Quiz)')
   setContent(`<div class="flex justify-center py-12 text-gray-400">กำลังโหลดข้อมูล...</div>`)
 
-  // Gate strictly on donor tier — NOT hasSemester (packageAccess), which also
-  // turns true for the free zero-amount "school sponsored" grant and for any
-  // approved donation regardless of amount (even below tier 2). Verified
-  // against production data: 181 teachers hold an approved school_sponsored
-  // request at amount=0, which would otherwise bypass this gate entirely.
-  const donorTier = window._pp5DonorTierIndex ?? 0
-  const isPremium = donorTier >= 2
-  if (!isPremium) { _lockedScreen(2); return }
-
+  // สร้างคลังข้อสอบ/คำถาม/ตั้งค่าแบบทดสอบ ไม่จำกัดสำหรับครูทุกคนแล้ว (ไม่ gate
+  // ด้วย donor tier ที่นี่อีกต่อไป) — ที่ยัง gate ครูทั่วไปคือขั้น "เริ่มสอบจริง"
+  // ให้นักเรียนทำเท่านั้น ดู renderBankQuizzes ใน teacher-views-quiz-config.js
   const banks = await getQuizBanks(teacher.id)
 
   setContent(`

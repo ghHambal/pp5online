@@ -115,6 +115,26 @@ export async function deleteQuiz(id) {
   if (error) throw error
 }
 
+// Lifetime count of quizzes this teacher has actually STARTED (pressed "เริ่ม
+// สอบ" — started_at set), across every bank they own — used to gate the
+// free-trial quota for non-donor teachers. Counted live from the DB (not a
+// localStorage counter like the other free-trial features in this app) since
+// this gate protects a real student-facing action, not just a convenience
+// feature, and must not be bypassable by clearing browser storage.
+export async function getTeacherStartedQuizCount(teacherId) {
+  const { data: banks, error: bErr } = await supabase.from('quiz_banks').select('id').eq('teacher_id', teacherId)
+  if (bErr) throw bErr
+  const bankIds = (banks ?? []).map(b => b.id)
+  if (!bankIds.length) return 0
+  const { count, error } = await supabase
+    .from('quizzes')
+    .select('id', { count: 'exact', head: true })
+    .in('bank_id', bankIds)
+    .not('started_at', 'is', null)
+  if (error) throw error
+  return count ?? 0
+}
+
 // ─── Student-facing quiz list ───────────────────────────────────────────────
 export async function getQuizzesForStudentClass(classId, studentId) {
   const { data: quizzes, error } = await supabase
