@@ -13,6 +13,12 @@ export async function getMyStudentProfile() {
   return data
 }
 
+// ผูกอีเมลส่วนตัวของตัวเอง (สำหรับกู้คืนรหัสผ่านในอนาคต) — อัปเดตทันที ไม่ต้องกดยืนยันจากอีเมล
+export async function updateStudentEmail(newEmail) {
+  const { error } = await supabase.rpc('student_update_own_email', { p_new_email: newEmail })
+  if (error) throw error
+}
+
 // ─── Enrolled Classes ─────────────────────────────────────────────────────────
 export async function getMyEnrolledClasses(studentId) {
   const { data: rpcClasses, error: rpcErr } = await supabase

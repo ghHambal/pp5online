@@ -9,6 +9,7 @@ import {
   renderExamRequestForm,
   renderStudentProfile,
   renderStudentPrayerScanner,
+  openEmailLinkPrompt,
 } from './student-views.js'
 import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
 import { applyThemeForRole } from './theme.js'
@@ -80,6 +81,11 @@ async function init() {
 
   _startStudentPolling()   // polling 30 วิ
   if (_student?.profile_id) injectFeedbackWidget({ profileId: _student.profile_id, role: 'student', name: _student.full_name })
+
+  // เด้งขอเชื่อมอีเมลส่วนตัวทุกครั้งหลัง login จนกว่าจะเชื่อม (ยังเป็นอีเมลปลอมเริ่มต้นอยู่)
+  if (session.user.email?.endsWith('@student.pp5.local')) {
+    openEmailLinkPrompt()
+  }
 }
 
 // ─── Load header info ─────────────────────────────────────────────────────────

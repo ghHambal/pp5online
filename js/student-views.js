@@ -10,6 +10,7 @@ import {
   getMonthlyManualPrayerEntryCount,
   getStudentClassroomRole,
   getMyActiveLeavePermission, getMyLeaveHistory,
+  updateStudentEmail,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
@@ -2540,7 +2541,7 @@ export async function renderStudentProfile(student, onLogout) {
     }
   })
 
-  document.getElementById('stu-logout-btn').addEventListener('click', () => {
+  document.getElementById('stu-logout-btn')?.addEventListener('click', () => {
     document.getElementById('stu-logout-confirm')?.remove()
     const modal = document.createElement('div')
     modal.id = 'stu-logout-confirm'
@@ -2851,6 +2852,73 @@ async function loadHtml5Qrcode() {
     s.onload = () => resolve(window.Html5Qrcode)
     s.onerror = (err) => reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต'))
     document.head.appendChild(s)
+  })
+}
+
+// ─── เชื่อมอีเมลส่วนตัว (สำหรับกู้คืนรหัสผ่านในอนาคต) — เด้งทุกครั้งหลัง login จนกว่าจะเชื่อม ──
+export function openEmailLinkPrompt() {
+  document.getElementById('stu-email-link-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'stu-email-link-modal'
+  modal.className = 'fixed inset-0 z-[210] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6">
+      <div class="text-center mb-4">
+        <div class="text-4xl mb-2">📧</div>
+        <h3 class="font-bold text-gray-800 text-base">เชื่อมอีเมลส่วนตัวของคุณ</h3>
+        <p class="text-xs text-gray-400 mt-1 leading-relaxed">เผื่อไว้กรณีลืมรหัสผ่านในอนาคต ระบบจะส่งลิงก์กู้คืนให้ทางอีเมลนี้ได้ทันที ไม่ต้องรอครูช่วยตั้งรหัสผ่านให้</p>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">อีเมลของคุณ</label>
+          <input id="sel-email" type="email" placeholder="example@gmail.com" autocomplete="email" inputmode="email"
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1">พิมพ์อีเมลอีกครั้งเพื่อยืนยัน</label>
+          <input id="sel-email-confirm" type="email" placeholder="พิมพ์ซ้ำอีกครั้ง" autocomplete="off" inputmode="email"
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
+        </div>
+        <button id="sel-save"
+          class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-sm transition">
+          เชื่อมอีเมล
+        </button>
+        <button id="sel-later" class="w-full py-2 text-xs text-gray-400 hover:text-gray-600 transition">
+          ไว้ทีหลัง
+        </button>
+        <div id="sel-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+
+  const _showMsg = (text, isError) => {
+    const el = modal.querySelector('#sel-msg')
+    el.className = `text-xs text-center py-2.5 rounded-xl ${isError ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`
+    el.textContent = text
+    el.classList.remove('hidden')
+  }
+
+  modal.querySelector('#sel-later').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+  modal.querySelector('#sel-save').addEventListener('click', async () => {
+    const btn    = modal.querySelector('#sel-save')
+    const email  = modal.querySelector('#sel-email').value.trim()
+    const email2 = modal.querySelector('#sel-email-confirm').value.trim()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      _showMsg('กรุณากรอกอีเมลให้ถูกต้อง', true); return
+    }
+    if (email !== email2) {
+      _showMsg('อีเมลทั้งสองช่องไม่ตรงกัน', true); return
+    }
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      await updateStudentEmail(email)
+      _showMsg('เชื่อมอีเมลสำเร็จแล้ว ✅', false)
+      setTimeout(() => modal.remove(), 1200)
+    } catch (err) {
+      _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
+      btn.disabled = false; btn.textContent = 'เชื่อมอีเมล'
+    }
   })
 }
 
