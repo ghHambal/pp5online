@@ -180,7 +180,14 @@ function _pickRoom(rooms, onPick) {
 
 const ROUTES = {
   'announcements-view': () => renderAnnouncementsView(_teacher),
-  'work-calendar-view': () => import('./views.js').then(({renderWorkCalendarView}) => renderWorkCalendarView()),
+  // Teachers with the 'work_calendar' position permission granted (via the
+  // admin Roles/Permissions page) get the full create/edit/delete view from
+  // this same familiar sidebar link — previously this always opened the
+  // read-only view regardless of that permission, so the granted position
+  // (e.g. หัวหน้าฝ่ายทะเบียนสามัญ) could see the page but never actually edit it.
+  'work-calendar-view': () => import('./views.js').then(({ renderWorkCalendarView, renderWorkCalendar }) =>
+    _positionPerms.work_calendar ? renderWorkCalendar(_teacher) : renderWorkCalendarView()
+  ),
   'overview':    () => renderTeacherOverview(_teacher, _homeroomRooms),
   'my-courses':  () => renderMyCourses(_teacher),
   'my-classes':  () => renderMyClasses(_teacher),
