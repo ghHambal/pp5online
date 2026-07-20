@@ -2369,18 +2369,21 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
     const unassigned = students.filter(s => !assignedIds.has(s.id))
 
     const moveSelect = (s, currentNo) => `
-      <select data-move="${s.id}" class="text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 bg-white text-gray-500 flex-shrink-0">
+      <select data-move="${s.id}" class="w-full text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 bg-white text-gray-500">
         <option value="0" ${currentNo === 0 ? 'selected' : ''}>— ยังไม่จัดกลุ่ม —</option>
         ${currentGroups.map(g => `<option value="${g.no}" ${g.no === currentNo ? 'selected' : ''}>กลุ่มที่ ${g.no}</option>`).join('')}
       </select>`
 
+    // ชื่อกับปุ่มย้ายกลุ่มแยกคนละบรรทัด กันชื่อโดนบีบจนเหลือแค่ "น..." เวลาการ์ดแคบ (เช่นบนมือถือ)
     const studentRow = (s, currentNo, color) => `
-      <div class="flex items-center gap-2.5 min-w-0 py-1">
-        ${s.image_url
-          ? `<img src="${_htmlEsc(s.image_url)}" class="w-8 h-11 rounded-xl object-cover flex-shrink-0" style="box-shadow:0 3px 10px rgba(0,0,0,.18);" />`
-          : `<div class="w-8 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style="background:${color};box-shadow:0 3px 10px rgba(0,0,0,.18);">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
-        <span class="text-sm text-gray-700 truncate flex-1">${_htmlEsc(s.full_name)}</span>
-        ${moveSelect(s, currentNo)}
+      <div class="py-1.5">
+        <div class="flex items-center gap-2.5 min-w-0">
+          ${s.image_url
+            ? `<img src="${_htmlEsc(s.image_url)}" class="w-8 h-11 rounded-xl object-cover flex-shrink-0" style="box-shadow:0 3px 10px rgba(0,0,0,.18);" />`
+            : `<div class="w-8 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style="background:${color};box-shadow:0 3px 10px rgba(0,0,0,.18);">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
+          <span class="text-sm text-gray-700 truncate flex-1 min-w-0">${_htmlEsc(s.full_name)}</span>
+        </div>
+        <div class="mt-1 pl-[calc(2rem+0.625rem)]">${moveSelect(s, currentNo)}</div>
       </div>`
 
     body.innerHTML = `
