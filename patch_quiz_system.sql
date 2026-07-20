@@ -988,3 +988,12 @@ GRANT EXECUTE ON FUNCTION public.submit_quiz_answer(UUID, UUID, UUID, SMALLINT) 
 
 REVOKE ALL ON FUNCTION public.use_quiz_bonus(UUID, UUID, TEXT, UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.use_quiz_bonus(UUID, UUID, TEXT, UUID) TO authenticated;
+
+-- ─── 11. deterrent_notice_enabled (added later) ─────────────────────────
+-- Purely a display flag — no camera/eye-tracking capability exists. When
+-- true, quiz-exam.js shows an honest warning (real tab-switch/fullscreen
+-- detection already exists) plus a teacher-editable honesty reminder, and a
+-- persistent red border during the exam. See conversation for why the
+-- wording must stay factually accurate — no false surveillance claims.
+ALTER TABLE public.quizzes
+  ADD COLUMN IF NOT EXISTS deterrent_notice_enabled BOOLEAN NOT NULL DEFAULT false;

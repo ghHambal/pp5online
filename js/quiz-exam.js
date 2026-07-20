@@ -127,6 +127,17 @@ function _renderLockedScreen(root) {
 // carry the previous page's gesture over), so requestFullscreen() here is not
 // silently rejected the way it would be if fired automatically after several
 // awaits with no direct click behind it.
+// ข้อความจริงทุกคำ — อิงจากระบบตรวจจับการออกนอกหน้าสอบที่มีอยู่จริง (ไม่ได้
+// อ้างว่ามีกล้อง/ตรวจจับสายตา) ท่อนนาซีฮัตเป็นแบบร่างเบื้องต้น ครูปรับถ้อยคำ
+// ให้เหมาะสมตามบริบทศาสนา/โรงเรียนได้เองในหน้าตั้งค่า (ยังไม่มี UI แก้ข้อความ
+// ตรงนี้ — ถ้าต้องการแก้ ให้บอกแล้วจะเพิ่มช่องให้แก้ไขได้)
+const DETERRENT_NOTICE_HTML = `
+  <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-4 text-left space-y-2">
+    <p class="text-sm font-bold text-red-700">🔴 ห้ามมองจอที่สองหรือเปิดหนังสือ/เอกสารช่วยระหว่างทำข้อสอบโดยเด็ดขาด</p>
+    <p class="text-xs text-red-600">ระบบตรวจสอบการออกนอกหน้าสอบตลอดเวลา และครูสามารถติดตามพฤติกรรมการทำข้อสอบของนักเรียนได้</p>
+    <p class="text-xs text-gray-600 pt-1 border-t border-red-100">☝️ นาซีฮัต: ความซื่อสัตย์ (อามานะฮ์) เป็นคุณลักษณะสำคัญยิ่งในอิสลาม อัลลอฮฺทรงเห็นทุกการกระทำของเราไม่ว่าจะอยู่ที่ใด จงทำข้อสอบนี้ด้วยความบริสุทธิ์ใจ เพื่อความจำเริญทั้งในดุนยาและอาคิเราะฮ์</p>
+  </div>`
+
 function _renderStartGate(root) {
   const quiz = _attempt.quizzes
   const historyHtml = _priorAttempts.length ? `
@@ -145,6 +156,7 @@ function _renderStartGate(root) {
       <div class="text-6xl">📝</div>
       <p class="font-bold text-gray-800 text-lg">${_htmlEsc(quiz?.title ?? '')}</p>
       <p class="text-sm text-gray-500">${_questions.length} ข้อ${quiz?.time_limit_minutes ? ` · เวลา ${quiz.time_limit_minutes} นาที` : ''}${quiz?.max_attempts > 1 ? ` · ครั้งที่ ${_attempt.attempt_number}/${quiz.max_attempts}` : ''}</p>
+      ${quiz?.deterrent_notice_enabled ? DETERRENT_NOTICE_HTML : ''}
       ${historyHtml}
       <button id="btn-start-exam" class="px-8 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg">เริ่มทำข้อสอบ (เต็มจอ)</button>
       <p class="text-xs text-gray-400">เวลาจะเริ่มนับถอยหลังทันทีที่กดเริ่ม</p>
@@ -162,6 +174,11 @@ function _renderStartGate(root) {
 function _renderExamUI(root) {
   const quiz = _attempt.quizzes
   root.innerHTML = `
+    ${quiz?.deterrent_notice_enabled ? `
+    <div class="fixed inset-0 pointer-events-none z-[80]" style="box-shadow: inset 0 0 0 4px rgba(239,68,68,.55)"></div>
+    <div class="fixed top-3 right-3 z-[81] px-2.5 py-1 rounded-full bg-red-600 text-white text-[10px] font-bold shadow-lg flex items-center gap-1">
+      <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span> กำลังตรวจสอบ
+    </div>` : ''}
     <div class="max-w-3xl mx-auto space-y-4">
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between gap-3">
         <div class="min-w-0">

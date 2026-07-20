@@ -204,6 +204,12 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
           </label>
           <p class="text-[11px] text-gray-400 leading-relaxed pl-6">ตอบถูกติดกัน 3 ข้อ ปลดล็อกโบนัส (50/50, แก้ข้อที่เคยผิด, ต่อเวลา) — ครบ 6 ข้อ ได้โบนัสเปิดเฉลยเพิ่ม<br>เปิดตัวเลือกนี้จะล็อกคำตอบทันทีให้อัตโนมัติด้วย (ไม่งั้นเห็นเฉลยแล้วย้อนไปแก้ได้ ระบบจะไม่มีความหมาย)</p>
         </div>
+        <div class="bg-red-50/60 border border-red-100 rounded-xl p-3 space-y-2">
+          <label class="flex items-center gap-2 text-xs font-semibold text-gray-700">
+            <input type="checkbox" id="qz-deterrent" ${quiz?.deterrent_notice_enabled ? 'checked' : ''} /> แสดงป้ายเตือน + ข้อความนาซีฮัตก่อนเริ่มสอบ
+          </label>
+          <p class="text-[11px] text-gray-400 leading-relaxed pl-6">แสดงข้อความห้ามมองจอที่สอง/หนังสือ พร้อมขอบแดงระหว่างทำข้อสอบ (ข้อความจริงทุกคำ อิงจากระบบตรวจจับการออกนอกหน้าสอบที่มีอยู่แล้ว ไม่ได้อ้างว่ามีกล้อง/ตรวจจับสายตา)</p>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs font-semibold text-gray-500 mb-1 block">จำนวนครั้งที่ทำได้</label>
@@ -301,6 +307,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
       shuffle_choices: modal.querySelector('#qz-shuffle-c').checked,
       lock_on_answer: modal.querySelector('#qz-instant-bonus').checked || modal.querySelector('#qz-lock-answer').checked,
       instant_feedback_bonus: modal.querySelector('#qz-instant-bonus').checked,
+      deterrent_notice_enabled: modal.querySelector('#qz-deterrent').checked,
       max_attempts: parseInt(modal.querySelector('#qz-attempts').value, 10) || 1,
       attempt_scoring_mode: modal.querySelector('#qz-scoring').value,
       time_limit_minutes: parseInt(modal.querySelector('#qz-time').value, 10) || null,
