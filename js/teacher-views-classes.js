@@ -2369,44 +2369,62 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
     const unassigned = students.filter(s => !assignedIds.has(s.id))
 
     const moveSelect = (s, currentNo) => `
-      <select data-move="${s.id}" class="w-full text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 bg-white text-gray-500">
-        <option value="0" ${currentNo === 0 ? 'selected' : ''}>— ยังไม่จัดกลุ่ม —</option>
-        ${currentGroups.map(g => `<option value="${g.no}" ${g.no === currentNo ? 'selected' : ''}>กลุ่มที่ ${g.no}</option>`).join('')}
-      </select>`
+      <div class="relative">
+        <select data-move="${s.id}" class="w-full appearance-none text-xs font-medium border border-gray-200 rounded-xl pl-3 pr-7 py-1.5 bg-gray-50 text-gray-600 hover:border-gray-300 focus:border-indigo-400 focus:bg-white outline-none transition cursor-pointer">
+          <option value="0" ${currentNo === 0 ? 'selected' : ''}>ยังไม่จัดกลุ่ม</option>
+          ${currentGroups.map(g => `<option value="${g.no}" ${g.no === currentNo ? 'selected' : ''}>ย้ายไปกลุ่มที่ ${g.no}</option>`).join('')}
+        </select>
+        <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]">▾</span>
+      </div>`
 
     // ชื่อกับปุ่มย้ายกลุ่มแยกคนละบรรทัด กันชื่อโดนบีบจนเหลือแค่ "น..." เวลาการ์ดแคบ (เช่นบนมือถือ)
     const studentRow = (s, currentNo, color) => `
-      <div class="py-1.5">
+      <div class="py-1.5 px-1.5 -mx-1.5 rounded-xl hover:bg-gray-50 transition-colors">
         <div class="flex items-center gap-2.5 min-w-0">
           ${s.image_url
-            ? `<img src="${_htmlEsc(s.image_url)}" class="w-8 h-11 rounded-xl object-cover flex-shrink-0" style="box-shadow:0 3px 10px rgba(0,0,0,.18);" />`
-            : `<div class="w-8 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style="background:${color};box-shadow:0 3px 10px rgba(0,0,0,.18);">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
-          <span class="text-sm text-gray-700 truncate flex-1 min-w-0">${_htmlEsc(s.full_name)}</span>
+            ? `<img src="${_htmlEsc(s.image_url)}" class="w-8 h-11 rounded-xl object-cover flex-shrink-0" style="box-shadow:0 2px 8px rgba(0,0,0,.15),0 0 0 2px #fff;" />`
+            : `<div class="w-8 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold" style="background:linear-gradient(160deg,${color},${color}cc);box-shadow:0 2px 8px rgba(0,0,0,.15),0 0 0 2px #fff;">${_htmlEsc((s.full_name ?? '?').charAt(0))}</div>`}
+          <span class="text-sm font-medium text-gray-700 truncate flex-1 min-w-0">${_htmlEsc(s.full_name)}</span>
         </div>
-        <div class="mt-1 pl-[calc(2rem+0.625rem)]">${moveSelect(s, currentNo)}</div>
+        <div class="mt-1.5 pl-[calc(2rem+0.625rem)]">${moveSelect(s, currentNo)}</div>
       </div>`
 
     body.innerHTML = `
-      <div class="flex items-center justify-between gap-2 mb-1">
-        <p class="text-xs text-gray-400">💾 บันทึกอัตโนมัติทุกการเปลี่ยนแปลง</p>
-        <button id="rp-group-regen" class="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 flex-shrink-0">🎲 จัดกลุ่มใหม่</button>
+      <div class="flex items-center justify-between gap-2 mb-1 px-0.5">
+        <p class="text-xs text-gray-400 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>บันทึกอัตโนมัติทุกการเปลี่ยนแปลง
+        </p>
+        <button id="rp-group-regen" class="px-3.5 py-1.5 rounded-full border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition flex-shrink-0">🎲 จัดกลุ่มใหม่</button>
       </div>
       ${unassigned.length ? `
-      <div class="mt-3 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
-        <p class="text-xs font-bold text-amber-700 mb-2">ยังไม่ได้จัดกลุ่ม (${unassigned.length} คน)</p>
-        <div class="space-y-1">${unassigned.map(s => studentRow(s, 0, '#94a3b8')).join('')}</div>
+      <div class="mt-3 rounded-2xl border border-amber-200/70 p-3.5" style="background:linear-gradient(135deg,#fffbeb,#fff7ed);">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="w-5 h-5 rounded-full bg-amber-400 text-white flex items-center justify-center text-[10px] flex-shrink-0">!</span>
+          <p class="text-xs font-bold text-amber-700">ยังไม่ได้จัดกลุ่ม (${unassigned.length} คน)</p>
+        </div>
+        <div>${unassigned.map(s => studentRow(s, 0, '#94a3b8')).join('')}</div>
       </div>` : ''}
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-        ${currentGroups.map((g, gi) => `
-          <div class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div class="px-3 py-2 text-white text-sm font-bold" style="background:${GROUP_COLORS[gi % GROUP_COLORS.length]}">
-              กลุ่มที่ ${g.no} <span class="font-normal text-white/80 text-xs">(${g.items.length} คน)</span>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-3">
+        ${currentGroups.map((g, gi) => {
+          const color = GROUP_COLORS[gi % GROUP_COLORS.length]
+          return `
+          <div class="rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden bg-white">
+            <div class="px-3.5 py-2.5 text-white flex items-center justify-between" style="background:linear-gradient(135deg,${color},${color}dd);">
+              <span class="text-sm font-bold flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full bg-white/25 flex items-center justify-center text-xs font-extrabold flex-shrink-0">${g.no}</span>
+                กลุ่มที่ ${g.no}
+              </span>
+              <span class="text-[11px] font-semibold bg-white/20 px-2 py-0.5 rounded-full flex-shrink-0">${g.items.length} คน</span>
             </div>
-            <div class="p-3 space-y-1.5">
-              ${g.items.length ? g.items.map(s => studentRow(s, g.no, GROUP_COLORS[gi % GROUP_COLORS.length])).join('') : `<p class="text-xs text-gray-400 text-center py-2">ว่าง</p>`}
+            <div class="p-2.5 divide-y divide-gray-50">
+              ${g.items.length ? g.items.map(s => studentRow(s, g.no, color)).join('') : `
+                <div class="flex flex-col items-center justify-center py-6 text-gray-300">
+                  <span class="text-2xl mb-1">🪄</span>
+                  <span class="text-xs">ยังไม่มีใครในกลุ่มนี้</span>
+                </div>`}
             </div>
-          </div>
-        `).join('')}
+          </div>`
+        }).join('')}
       </div>
     `
 
