@@ -65,6 +65,7 @@ let S = {
   filterTeam: '',
   filterTime: '',
   statsLevel: 'MS',
+  teamStatusLevel: 'MS',
   adminSection: 'general',
   newTeamName: '',
   newTeamLevel: 'MS',
@@ -129,15 +130,9 @@ async function loadAll() {
   S.matches = { MS: msMatches || [], HS: hsMatches || [] }
   S.awards = awards || []
 
-  if (isAdmin || student) {
-    const myTeamIds = student ? S.teams.filter(t => t.captain_student_id === student.id).map(t => t.id) : []
-    let q = SB.from('azfutsal_payments').select('*').order('created_at', { ascending: false })
-    if (!isAdmin) q = q.in('team_id', myTeamIds.length ? myTeamIds : ['00000000-0000-0000-0000-000000000000'])
-    const { data: payments } = await q
-    S.payments = payments || []
-  } else {
-    S.payments = []
-  }
+  // สถานะการชำระเงินเปิดอ่านสาธารณะ (ไม่มีข้อมูลอ่อนไหว) เพื่อให้แท็บ "สถานะทีม" ใช้ได้โดยไม่ต้อง login
+  const { data: payments } = await SB.from('azfutsal_payments').select('*').order('created_at', { ascending: false })
+  S.payments = payments || []
 
   S.loading = false
 }
@@ -265,6 +260,7 @@ function draw() {
   <div style="max-width:440px;margin:0 auto;min-height:100vh;background:#fff;position:relative;box-shadow:0 0 40px rgba(0,0,0,.06);color:#111827">
     ${header()}
     <main style="padding:16px 20px 100px">
+      ${s.tab === 'teamStatus' ? teamStatusView() : ''}
       ${s.tab === 'schedule' ? scheduleView() : ''}
       ${s.tab === 'teams' ? statsView() : ''}
       ${s.tab === 'summary' ? summaryView() : ''}
@@ -327,6 +323,7 @@ function bottomNav() {
   return `
   <nav style="position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #ececec">
     <div style="max-width:440px;margin:0 auto;display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
+      ${item('teamStatus', 'สถานะทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>')}
       ${item('teams', 'สถิติทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>')}
       ${item('schedule', 'ตาราง', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>')}
       ${item('summary', 'สรุปผล', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>')}
@@ -405,6 +402,62 @@ function matchCard(r) {
     ${cardsBits.length ? `<div style="display:flex;gap:10px;margin-top:8px;font-size:11px;color:#6b7280">${esc(cardsBits.join(' · '))}</div>` : ''}
     ${S.identity.isAdmin ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="margin-top:8px;width:100%;padding:7px;border-radius:9px;border:1px solid ${t.border};background:#fff;color:${t.accent};font-weight:700;font-size:12px;cursor:pointer">แก้ไขผล/เวลา</button>` : ''}
   </div>`
+}
+
+// ---------------- team status ----------------
+function teamStatusRow(team) {
+  const t = T[team.level]
+  const roster = S.players.filter(p => p.team_id === team.id)
+  const payment = S.payments.find(p => p.team_id === team.id)
+  const maxRoster = Number(cfg('MAX_ROSTER', 12))
+  const payStatus = payment ? payment.status : 'unpaid'
+  const payMap = {
+    verified: ['ยืนยันแล้ว', '#16a34a', '#dcfce7'],
+    pending: ['รอตรวจสอบ', '#f59e0b', '#fef3c7'],
+    rejected: ['ถูกปฏิเสธ', '#dc2626', '#fee2e2'],
+    unpaid: ['ยังไม่ชำระ', '#6b7280', '#f3f4f6'],
+  }
+  const [label, color, bg] = payMap[payStatus]
+  return `
+  <div style="border:1px solid ${t.border};background:${t.soft};border-radius:12px;padding:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:6px;min-width:0">
+        <span style="font-size:13.5px;font-weight:700;overflow-wrap:break-word">${esc(team.name)}</span>
+        ${team.is_reserve ? reserveBadge() : ''}
+      </div>
+      <span style="flex-shrink:0;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:${bg};color:${color};white-space:nowrap">${label}</span>
+    </div>
+    <div style="font-size:11.5px;color:#6b7280">หัวหน้าทีม: ${team.captain?.full_name ? esc(team.captain.full_name) : '-'} · นักกีฬา ${roster.length}/${maxRoster} คน</div>
+  </div>`
+}
+
+function teamStatusView() {
+  const level = S.teamStatusLevel
+  const rows = S.teams.filter(t => t.level === level)
+  const verifiedCount = rows.filter(t => S.payments.find(p => p.team_id === t.id)?.status === 'verified').length
+  const reserveCount = rows.filter(t => t.is_reserve).length
+  const pendingCount = rows.filter(t => S.payments.find(p => p.team_id === t.id)?.status === 'pending').length
+  const rank = t => {
+    const status = S.payments.find(p => p.team_id === t.id)?.status || 'unpaid'
+    if (t.is_reserve) return 2
+    if (status === 'verified') return 0
+    return 1
+  }
+  const sorted = [...rows].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'th'))
+  return `
+  <section>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:800">สถานะทีม</h2>
+    <p style="margin:0 0 14px;font-size:12px;color:#6b7280">ภาพรวมการลงทะเบียนและการชำระเงินของทุกทีม</p>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      ${['MS', 'HS'].map(v => `<button data-act="setTeamStatusLevel" data-v="${v}" style="font-size:12.5px;padding:7px 14px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}
+    </div>
+    <div style="font-size:11.5px;color:#6b7280;margin-bottom:14px">
+      ${verifiedCount}/${rows.length} ทีมยืนยันแล้ว${pendingCount ? ` · ${pendingCount} ทีมรอตรวจสอบ` : ''}${reserveCount ? ` · ${reserveCount} ทีมสำรอง` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${sorted.length ? sorted.map(teamStatusRow).join('') : `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ยังไม่มีทีมลงทะเบียนในระดับนี้</div>`}
+    </div>
+  </section>`
 }
 
 // ---------------- team stats ----------------
@@ -1139,6 +1192,7 @@ function bindEvents() {
     if (act === 'tab') { S.tab = btn.dataset.tab; draw(); return }
     if (act === 'setLevel') { S.filterLevel = btn.dataset.v; draw(); return }
     if (act === 'setStats') { S.statsLevel = btn.dataset.v; draw(); return }
+    if (act === 'setTeamStatusLevel') { S.teamStatusLevel = btn.dataset.v; draw(); return }
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.certModalOpen = false; S.certFullscreen = false; draw(); return }
