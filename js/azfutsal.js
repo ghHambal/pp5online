@@ -610,12 +610,11 @@ function createTeamView(adminMode) {
       </label>
       ${adminMode ? `
       <div style="border-top:1px solid #e5e7eb;padding-top:10px">
-        <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">หัวหน้าทีม (ค้นหาด้วยรหัสนักเรียน)</div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <input id="cap-code" value="${esc(S.capLookupCode)}" placeholder="รหัสนักเรียน" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:13px"/>
-          <button data-act="lookupCaptain" style="font-size:12px;padding:8px 12px;border-radius:9px;border:none;background:#374151;color:#fff;font-weight:700;cursor:pointer">ค้นหา</button>
+        <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">หัวหน้าทีม (พิมพ์ชื่อหรือรหัสนักเรียน)</div>
+        <div style="position:relative;margin-bottom:8px">
+          <input id="cap-code" value="${esc(S.capLookupCode)}" autocomplete="off" placeholder="ชื่อหรือรหัสนักเรียน" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:13px"/>
+          <div id="cap-search-results" style="position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:10;display:none;box-shadow:0 6px 16px rgba(0,0,0,.08)"></div>
         </div>
-        ${lr === 'notfound' ? `<div style="font-size:12px;color:#dc2626;margin-bottom:8px">ไม่พบรหัสนักเรียนนี้</div>` : ''}
         ${lr && typeof lr === 'object' ? `
           <div style="display:flex;align-items:center;gap:10px;background:#f9fafb;border-radius:10px;padding:8px">
             ${photoTag(lr.image_url || lr.photo_url)}
@@ -682,11 +681,10 @@ function manageTeamView(team, isAdminView) {
 
       ${editable && roster.length < maxRoster ? `
       <div style="border-top:1px solid rgba(0,0,0,.08);padding-top:10px">
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <input id="roster-code" value="${esc(S.rosterLookupCode)}" placeholder="รหัสนักเรียน" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:13px"/>
-          <button data-act="lookupStudent" style="font-size:12px;padding:8px 12px;border-radius:9px;border:none;background:#374151;color:#fff;font-weight:700;cursor:pointer">ค้นหา</button>
+        <div style="position:relative;margin-bottom:8px">
+          <input id="roster-code" value="${esc(S.rosterLookupCode)}" autocomplete="off" placeholder="พิมพ์ชื่อหรือรหัสนักเรียน" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:13px"/>
+          <div id="roster-search-results" style="position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:10;display:none;box-shadow:0 6px 16px rgba(0,0,0,.08)"></div>
         </div>
-        ${lr === 'notfound' ? `<div style="font-size:12px;color:#dc2626;margin-bottom:8px">ไม่พบรหัสนักเรียนนี้</div>` : ''}
         ${lr === 'duplicate' ? `<div style="font-size:12px;color:#dc2626;margin-bottom:8px">นักเรียนคนนี้ลงทะเบียนทีมอื่นไปแล้ว</div>` : ''}
         ${lr && typeof lr === 'object' ? `
           <div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:8px;margin-bottom:8px">
@@ -913,14 +911,16 @@ async function loadStaffList() {
     const st = (students || []).find(x => x.profile_id === r.profile_id)
     const isStandalone = r.profile_id === STANDALONE_ADMIN_PROFILE_ID
     const name = t ? t.full_name : (st ? st.full_name : (isStandalone ? `${cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa')} (แอดมินสำรอง)` : '(ไม่พบผู้ใช้)'))
-    return { id: r.id, name, role: t ? 'ครู' : (st ? 'นักเรียน' : (isStandalone ? 'บัญชีสำรอง' : '-')) }
+    const isSelf = r.profile_id === S.identity.profile?.id
+    return { id: r.id, name, role: t ? 'ครู' : (st ? 'นักเรียน' : (isStandalone ? 'บัญชีสำรอง' : '-')), isSelf }
   })
   const el = document.getElementById('az-staff-list')
   if (!el) return
+  const onlyOneLeft = S.staffList.length <= 1
   el.innerHTML = S.staffList.length ? S.staffList.map(s => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6">
-      <div><div style="font-size:13px;font-weight:700">${esc(s.name)}</div><div style="font-size:11px;color:#6b7280">${s.role}</div></div>
-      <button data-act="removeStaff" data-id="${s.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
+      <div><div style="font-size:13px;font-weight:700">${esc(s.name)}${s.isSelf ? ' <span style="color:#9ca3af;font-weight:600">(คุณ)</span>' : ''}</div><div style="font-size:11px;color:#6b7280">${s.role}</div></div>
+      ${onlyOneLeft ? `<span style="font-size:10.5px;color:#9ca3af" title="ต้องมีแอดมินอย่างน้อย 1 คนเสมอ">ลบไม่ได้ (คนสุดท้าย)</span>` : `<button data-act="removeStaff" data-id="${s.id}" data-self="${s.isSelf ? '1' : '0'}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>`}
     </div>`).join('') : `<div style="font-size:12px;color:#9ca3af">ยังไม่มีผู้ดูแลระบบ</div>`
 }
 
@@ -1014,13 +1014,13 @@ async function handleCreateTeam(adminMode) {
   azToast('สร้างทีมแล้ว เพิ่มรายชื่อนักกีฬาต่อได้เลย')
 }
 
-async function handleLookupCaptain() {
-  const code = gid('cap-code').value.trim()
-  S.capLookupCode = code
-  if (!code) { S.capLookupResult = null; draw(); return }
-  const { data, error } = await SB.from('students').select('id, full_name, student_code, image_url, photo_url').eq('student_code', code).maybeSingle()
-  S.capLookupResult = (error || !data) ? 'notfound' : data
-  draw()
+async function searchStudentCandidates(q) {
+  if (!q || q.trim().length < 2) return []
+  const like = `%${q.trim()}%`
+  const { data } = await SB.from('students').select('id, full_name, student_code, image_url, photo_url')
+    .or(`full_name.ilike.${like},student_code.ilike.${like}`)
+    .limit(8)
+  return data || []
 }
 
 async function handleAdminLogin() {
@@ -1045,18 +1045,6 @@ async function handleSetRole(teamId, studentId, role) {
   azToast(role === 'captain' ? 'ตั้งหัวหน้าทีมแล้ว' : 'ตั้งรองหัวหน้าทีมแล้ว')
 }
 
-async function handleLookupStudent() {
-  const code = gid('roster-code').value.trim()
-  S.rosterLookupCode = code
-  if (!code) { S.rosterLookupResult = null; draw(); return }
-  const alreadyIn = S.players.find(p => p.students?.student_code === code)
-  if (alreadyIn) { S.rosterLookupResult = 'duplicate'; draw(); return }
-  const { data, error } = await SB.from('students').select('id, full_name, student_code, image_url, photo_url').eq('student_code', code).maybeSingle()
-  if (error || !data) { S.rosterLookupResult = 'notfound'; draw(); return }
-  S.rosterLookupResult = data
-  S.rosterJersey = ''
-  draw()
-}
 
 async function handleAddRosterAthlete(teamId) {
   const lr = S.rosterLookupResult
@@ -1177,13 +1165,11 @@ function bindEvents() {
       draw(); return
     }
     if (act === 'createTeam') { await handleCreateTeam(btn.dataset.admin === '1'); return }
-    if (act === 'lookupCaptain') { await handleLookupCaptain(); return }
     if (act === 'setCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'captain'); return }
     if (act === 'setViceCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'vice_captain'); return }
     if (act === 'adminNewTeam') { S.adminCreatingTeam = true; S.adminManageTeamId = null; draw(); return }
     if (act === 'adminBackToList') { S.adminCreatingTeam = false; S.adminManageTeamId = null; draw(); return }
     if (act === 'adminOpenTeam') { S.adminManageTeamId = btn.dataset.id; draw(); return }
-    if (act === 'lookupStudent') { await handleLookupStudent(); return }
     if (act === 'addRosterAthlete') { await handleAddRosterAthlete(btn.dataset.team); return }
     if (act === 'uploadPayment') { await handleUploadPayment(btn.dataset.team, btn.dataset.method); return }
     if (act === 'reviewPayment') { await handleReviewPayment(btn.dataset.id, btn.dataset.status); return }
@@ -1288,15 +1274,21 @@ function bindEvents() {
       await refresh(); return
     }
     if (act === 'removeStaff') {
-      if (!confirm('ถอนสิทธิ์แอดมินคนนี้?')) return
+      if ((S.staffList || []).length <= 1) { azToast('ต้องมีแอดมินอย่างน้อย 1 คนเสมอ ลบคนสุดท้ายไม่ได้'); return }
+      const msg = btn.dataset.self === '1'
+        ? 'นี่คือบัญชีที่คุณกำลังใช้อยู่ ถ้าถอนสิทธิ์ตัวเองจะออกจากหน้าแอดมินทันที ยืนยันหรือไม่?'
+        : 'ถอนสิทธิ์แอดมินคนนี้?'
+      if (!confirm(msg)) return
       const { error } = await SB.from('azfutsal_admins').delete().eq('id', btn.dataset.id)
       if (error) { azToast('ถอนสิทธิ์ไม่สำเร็จ: ' + error.message); return }
+      if (btn.dataset.self === '1') { await refresh(); S.tab = 'schedule'; draw(); return }
       await loadStaffList(); return
     }
   })
 
   ROOT.addEventListener('change', async e => {
     const el = e.target
+    if (el.id === 'new-team-level') { S.newTeamLevel = el.value; return }
     if (el.dataset.act === 'setAward') {
       const { error } = await SB.from('azfutsal_awards').upsert({ level: el.dataset.level, award_type: el.dataset.type, student_id: el.value || null }, { onConflict: 'level,award_type' })
       if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
@@ -1312,6 +1304,9 @@ function bindEvents() {
   ROOT.addEventListener('input', async e => {
     if (e.target.id === 'az-filterTeam') { S.filterTeam = e.target.value; updateScheduleList() }
     if (e.target.id === 'az-filterTime') { S.filterTime = e.target.value; updateScheduleList() }
+    // เก็บค่าฟอร์มไว้ใน state เสมอ กัน draw() รอบใหม่ (เช่นตอนเลือกผลค้นหา) ล้างข้อความที่พิมพ์ไว้
+    if (e.target.id === 'new-team-name') S.newTeamName = e.target.value
+    if (e.target.id === 'roster-jersey') S.rosterJersey = e.target.value
     if (e.target.id === 'staff-search') {
       const q = e.target.value
       const box = gid('staff-search-results')
@@ -1325,6 +1320,40 @@ function bindEvents() {
         gid('staff-search').value = ''; box.style.display = 'none'
         await loadStaffList()
         azToast(`มอบสิทธิ์แอดมินให้ ${row.dataset.name} แล้ว`)
+      }))
+    }
+    if (e.target.id === 'cap-code') {
+      const q = e.target.value
+      S.capLookupCode = q
+      const box = gid('cap-search-results')
+      if (!q || q.trim().length < 2) { box.style.display = 'none'; return }
+      const results = await searchStudentCandidates(q)
+      box.innerHTML = results.length ? results.map(s => `<div data-id="${s.id}" style="padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid #f3f4f6" class="az-cap-cand"><b>${esc(s.full_name)}</b> <span style="color:#9ca3af">${esc(s.student_code)}</span></div>`).join('') : `<div style="padding:8px 10px;font-size:12px;color:#9ca3af">ไม่พบ</div>`
+      box.style.display = 'block'
+      box.querySelectorAll('.az-cap-cand').forEach(row => row.addEventListener('click', () => {
+        const picked = results.find(s => String(s.id) === row.dataset.id)
+        S.capLookupResult = picked
+        S.capLookupCode = picked.full_name
+        box.style.display = 'none'
+        draw()
+      }))
+    }
+    if (e.target.id === 'roster-code') {
+      const q = e.target.value
+      S.rosterLookupCode = q
+      const box = gid('roster-search-results')
+      if (!q || q.trim().length < 2) { box.style.display = 'none'; return }
+      const results = await searchStudentCandidates(q)
+      box.innerHTML = results.length ? results.map(s => `<div data-id="${s.id}" style="padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid #f3f4f6" class="az-roster-cand"><b>${esc(s.full_name)}</b> <span style="color:#9ca3af">${esc(s.student_code)}</span></div>`).join('') : `<div style="padding:8px 10px;font-size:12px;color:#9ca3af">ไม่พบ</div>`
+      box.style.display = 'block'
+      box.querySelectorAll('.az-roster-cand').forEach(row => row.addEventListener('click', () => {
+        const picked = results.find(s => String(s.id) === row.dataset.id)
+        const alreadyIn = S.players.find(p => p.student_id === picked.id)
+        S.rosterLookupResult = alreadyIn ? 'duplicate' : picked
+        S.rosterJersey = ''
+        S.rosterLookupCode = picked.full_name
+        box.style.display = 'none'
+        draw()
       }))
     }
   })
