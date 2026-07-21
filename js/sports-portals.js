@@ -759,8 +759,10 @@ export async function openMyTeamWorkspace() {
     const safe=async p=>{const {data,error}=await p;if(error){console.warn(error);return []}return data||[]}
     const perms=m.permissions||{}, isLead=m.role==='lead_teacher', canMembers=perms.members!==false, canReg=perms.registrations!==false, canTasks=perms.tasks!==false, canAnn=perms.announcements!==false, canShirt=perms.shirt_summary!==false
     const theme=localStorage.getItem('sports_team_theme')||'dark'; wrap.dataset.theme=theme
-    const [{event,cfg},{data:pub},{data:spEvent}] = await Promise.all([context(),supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle(),supabase.from('sports_events').select('*').eq('status','active').order('academic_year',{ascending:false}).limit(1).maybeSingle()])
+    const [{event,cfg},{data:pub},{data:spEvent},{data:headerRows}] = await Promise.all([context(),supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle(),supabase.from('sports_events').select('*').eq('status','active').order('academic_year',{ascending:false}).limit(1).maybeSingle(),supabase.from('settings').select('key,value').in('key',['school_name','school_name_2'])])
     const publicButtons=pub?.value&&typeof pub.value==='object'?pub.value:{}
+    const headerMap=Object.fromEntries((headerRows||[]).map(r=>[r.key,r.value]))
+    const docHeader={academicYear:event?.academic_year||'2569',schoolName:headerMap.school_name||'โรงเรียนมูลนิธิอาซิซสถานร่วมกับวิทยาลัยเทคโนโลยีอาซิซสถานพณิชยการ',schoolName2:headerMap.school_name_2||''}
     const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions] = await Promise.all([
       safe(supabase.from('students').select('id,student_code,full_name,main_room,house_color,sports_shirt_size,image_url,photo_url').eq('is_active',true).or(`team_color_id.eq.${c.id},house_color.eq.${c.name}`).order('main_room').order('student_code')),
       safe(supabase.from('sports_team_tasks').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
@@ -807,7 +809,7 @@ export async function openMyTeamWorkspace() {
       .team-tab-active{background:#db2777;color:white;border-color:#db2777}
       #team-tab-body{height:calc(100vh - 180px);overflow:auto}
     </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover">`:''}<div><b>จัดการทีมสี${esc(c.name)}</b><p class="text-xs muted">${esc(roleLabel(m.role))} · เห็นเฉพาะข้อมูลสีตัวเอง</p></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main>`
-    const data={m,c,event,cfg,publicButtons,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead,theme}
+    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead,theme}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     wrap.querySelector('[data-close]').onclick=()=>wrap.remove();wrap.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
     wrap.querySelectorAll('[data-team-tab]').forEach(b=>b.onclick=()=>{tabState.active=b.dataset.teamTab;wrap.querySelectorAll('[data-team-tab]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.teamTab===tabState.active));drawTab()})
@@ -821,7 +823,7 @@ const roleLabel = role => ({lead_teacher:'พ่อสี/แม่สี (ห�
 const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bold ${on?'bg-emerald-500/15 text-emerald-300':'bg-slate-500/15 text-slate-400'}">${on?'เปิดให้ใช้':'ไม่เปิดให้ใช้'} · ${esc(label)}</div>`
 const memberCard = s => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-10 h-10 rounded-full object-cover">`:''}<div><b class="text-sm">${esc(s.full_name)}</b><p class="text-xs muted">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div></div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') body.innerHTML=`<div class="space-y-5"><section class="rounded-3xl p-6 text-white overflow-hidden" style="background:linear-gradient(135deg,${esc(c.hex_color)},#111827)"><div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-4 text-center"><div><b class="text-3xl">${membersList.length}</b><p class="text-xs">สมาชิก</p></div><div><b class="text-3xl">${regs.length}</b><p class="text-xs">นักกีฬา</p></div><div><b class="text-3xl">${pendingTasks}</b><p class="text-xs">งานค้าง</p></div><div><b class="text-3xl">${doneMatches}/${matches.length}</b><p class="text-xs">แข่งแล้ว</p></div><div><b class="text-3xl">#${scoreRank}</b><p class="text-xs">อันดับคะแนน</p></div><div><b class="text-3xl">#${medalRank}</b><p class="text-xs">อันดับเหรียญ</p></div></div></section><section class="${card}"><h2 class="font-bold mb-3">🧭 สิทธิ์และเมนูของบทบาทนี้</h2><div class="grid md:grid-cols-5 gap-2">${permPill('สมาชิก',canMembers)}${permPill('ลงทะเบียนนักกีฬา',canReg)}${permPill('ประกาศ',canAnn)}${permPill('งานของสี',canTasks)}${permPill('สรุปเสื้อเฉพาะสี',canShirt)}</div></section></div>`
   else if(tab==='members') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">👥 รายชื่อสมาชิกในสี</h2><p class="text-xs muted">รายชื่อนักเรียนสี${esc(c.name)} ทั้งหมด</p></div>${publicButtons.athlete_print!==false?`<button data-print-members class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖨️ พิมพ์/บันทึกใบรายชื่อสมาชิก</button>`:''}</div><div class="grid md:grid-cols-2 lg:grid-cols-3 gap-2">${membersList.map(s=>memberCard(s)).join('')||'<p class="text-sm muted">ยังไม่มีสมาชิก</p>'}</div></section>`
@@ -834,7 +836,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
   body.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
   body.querySelector('#identity-new')?.addEventListener('click',()=>identityForm(wrap,m,c))
-  body.querySelector('[data-print-members]')?.addEventListener('click',()=>printTeamList(`ใบรายชื่อสมาชิกสี${c.name}`,c,membersList.map(s=>({name:s.full_name,code:s.student_code,room:s.main_room,detail:`เสื้อ ${s.sports_shirt_size||'—'}`})),{mode:'table'}))
+  body.querySelector('[data-print-members]')?.addEventListener('click',()=>printColorRoster(c.name,membersList,docHeader))
   body.querySelector('[data-print-athletes]')?.addEventListener('click',()=>openAthletePrintDialog(wrap,c,regs,competitions))
   if(tab==='permissions'&&isLead) renderTeamMembershipAdmin(wrap,event,[c],{isAdmin:false,myTeamMemberships:[m]})
 }
@@ -865,6 +867,40 @@ function openAthletePrintDialog(wrap,c,regs,competitions){
   modal.querySelector('[data-close-print]').onclick=()=>modal.remove()
   modal.querySelectorAll('[data-ath-format]').forEach(b=>b.onclick=()=>{format=b.dataset.athFormat;modal.querySelectorAll('[data-ath-format]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.athFormat===format))})
   modal.querySelector('[data-ath-print-confirm]').onclick=()=>{const comp=modal.querySelector('#ath-print-comp').value;const rows=regs.filter(r=>comp==='all'||String(r.competition_id)===String(comp)).map(r=>({name:r.students?.full_name,code:r.students?.student_code,room:r.students?.main_room,detail:r.sports_competitions?.name||'—',extra:r.jersey_number?`เบอร์ ${r.jersey_number}`:'',photo:r.students?.image_url}));const label=comp==='all'?'ทุกประเภทกีฬา':(comps.find(x=>String(x.id)===String(comp))?.name||'รายการกีฬา');modal.remove();printTeamList(`บัญชีนักกีฬาสี${c.name} · ${label}`,c,rows,{mode:format})}
+}
+// รูปแบบเดียวกับใบรายชื่อสมาชิกสีที่พิมพ์จากระบบกีฬาสีหลัก (AZIZGAMES handlePrintMemberList) —
+// ต้องอัปเดตคู่กันทุกครั้งถ้าแก้ฝั่ง AZIZGAMES (src/pages/Registrations.jsx)
+function printColorRoster(color,members,{academicYear,schoolName,schoolName2}){
+  if(!members.length){toast(`ยังไม่มีข้อมูลนักเรียนในคณะสี${color}`,'error');return}
+  const order=str=>{const m=String(str||'').match(/ม\.(\d+)\/(\d+)/);if(m)return[parseInt(m[1]),parseInt(m[2])];if(String(str||'').startsWith('ปวช.'))return[parseInt(str.split('.')[1])+6,1];return[10,10]}
+  const sorted=[...members].sort((a,b)=>{const[aM,am]=order(a.main_room);const[bM,bm]=order(b.main_room);return aM===bM?am-bm:aM-bM})
+  const levels={}
+  sorted.forEach(s=>{const room=s.main_room||'ไม่ระบุ';const level=room.startsWith('ปวช.')?'ปวช.':room.split('/')[0];(levels[level]=levels[level]||[]).push(s)})
+  const genTable=(rows,level)=>`<div class="page"><div class="header-section"><div class="logo-container"><img src="https://lh3.googleusercontent.com/d/1JDduqJInp2BjORgZhhUgv80fXtMs3JzV"><img src="https://lh3.googleusercontent.com/d/1lXMVnPf8rIl5SBzqZeSCEtbpf6U7idWa"><img src="https://lh3.googleusercontent.com/d/1JPmgiu_pgACGYTymHsLqROm1GrzZSklP"></div><h2 class="h1"><strong>รายชื่อสมาชิกสี${esc(color)} ชั้น ${esc(level)} กิจกรรมกีฬาสีภายใน ปีการศึกษา ${esc(academicYear)}</strong></h2><h2 class="h2"><strong>${esc(schoolName)}${schoolName2?`<br>${esc(schoolName2)}`:''}</strong></h2></div><table class="table-responsive"><thead><tr><th class="no-column">#</th><th class="code-column">รหัส</th><th class="name-column">ชื่อ - สกุล</th><th class="cls-column">ชั้น</th><th class="sn-column">ไซส์เสื้อ</th>${Array(6).fill('<th class="wide-column"></th>').join('')}</tr></thead><tbody>${rows.map((s,i)=>`<tr><td class="no-column" style="text-align:center;">${i+1}</td><td class="code-column" style="text-align:center;">${esc(s.student_code)}</td><td class="name-column">${esc(s.full_name)}</td><td class="cls-column" style="text-align:center;">${esc(s.main_room)}</td><td class="sn-column" style="text-align:center; font-weight:bold;">${esc(s.sports_shirt_size||'-')}</td>${Array(6).fill('<td class="wide-column"></td>').join('')}</tr>`).join('')}</tbody></table><div style="page-break-after: always;"></div></div>`
+  const levelKeys=Object.keys(levels)
+  let body=levelKeys.filter(l=>l!=='ปวช.').map(l=>genTable(levels[l],l)).join('')
+  if(levels['ปวช.']) body+=genTable(levels['ปวช.'],'ปวช.')
+  const html=`<html><head><title>รายชื่อสมาชิกสี${esc(color)}</title><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"><style>
+    body{font-family:'Sarabun',sans-serif;text-align:center;margin:0;padding:0}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    th,td{border:1px solid black;padding:4px;font-size:14px;height:32px;vertical-align:middle}
+    th{background-color:#f2f2f2;text-align:center;margin-top:10px}
+    .table-responsive{width:100%;border-collapse:collapse}
+    .logo-container{display:flex;justify-content:center;align-items:center;margin-bottom:10px}
+    .logo-container img{margin-top:10px;height:60px}
+    .h1{margin-top:10px;margin-bottom:5px;font-size:16px}
+    .h2{margin-top:5px;margin-bottom:10px;font-size:14px}
+    .no-column{width:4%}
+    .code-column{width:11%}
+    .name-column{width:34%;text-align:left}
+    .cls-column{width:18%}
+    .sn-column{width:9%}
+    .wide-column{width:4%}
+    @media print{body{width:210mm;height:297mm}thead{display:table-header-group}tr{page-break-inside:avoid}}
+  </style></head><body>${body}</body></html>`
+  const w=window.open('','_blank')
+  w.document.write(html);w.document.close();w.focus()
+  setTimeout(()=>w.print(),500)
 }
 function printTeamList(title,c,rows,{mode='table'}={}){
   const cards=rows.map((r,i)=>`<div class="print-card"><div class="print-photo">${r.photo?`<img src="${esc(r.photo)}">`:i+1}</div><div><b>${esc(r.name)}</b><p>${esc(r.code)} · ${esc(r.room)}</p><p>${esc(r.detail)} ${esc(r.extra||'')}</p></div></div>`).join('')
