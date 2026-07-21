@@ -3,6 +3,13 @@ import { showToast, setButtonLoading, showPageLoader } from './ui.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { storeSsoPassword } from './wen-sso.js'
 
+// อนุญาตเฉพาะชื่อไฟล์ .html ธรรมดาในโดเมนเดียวกัน กัน open-redirect
+function getSafeNextUrl() {
+  const next = new URLSearchParams(window.location.search).get('next')
+  if (next && /^[a-zA-Z0-9_-]+\.html$/.test(next)) return next
+  return null
+}
+
 // ─── Check session on page load ───────────────────────────────────────────────
 async function checkSession() {
   const isRecovery = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')
@@ -15,6 +22,8 @@ async function checkSession() {
   const { data: { session } } = await supabase.auth.getSession()
 
   if (session) {
+    const nextUrl = getSafeNextUrl()
+    if (nextUrl) { window.location.href = nextUrl; return }
     // เช็ค role ก่อน redirect — ครูไปหน้าครู, แอดมินไปหน้าแอดมิน
     const { data: profile } = await supabase
       .from('profiles')
@@ -74,6 +83,8 @@ async function handleLogin(e) {
     .single()
 
   setTimeout(() => {
+    const nextUrl = getSafeNextUrl()
+    if (nextUrl) { window.location.href = nextUrl; return }
     if (profile?.role === 'admin') window.location.href = 'dashboard.html'
     else if (profile?.role === 'student') window.location.href = 'student.html'
     else {

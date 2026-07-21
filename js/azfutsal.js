@@ -117,7 +117,7 @@ async function loadAll() {
 
   const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }] = await Promise.all([
     SB.from('azfutsal_config').select('key, value'),
-    SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
+    SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, is_reserve, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
     SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, goals, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
     SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
@@ -227,7 +227,7 @@ function azToast(msg) {
 }
 
 function goToLogin() {
-  const url = new URL('index.html', window.location.href).href
+  const url = new URL('index.html?next=azfutsal.html', window.location.href).href
   try {
     if (window.self !== window.top) { window.top.location.href = url; return }
   } catch { /* cross-origin top access blocked, fall through */ }
@@ -237,6 +237,10 @@ function goToLogin() {
 function levelBadge(level) {
   const t = T[level]
   return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:${t.base};color:#fff">${t.label}</span>`
+}
+
+function reserveBadge() {
+  return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#b45309">ทีมสำรอง</span>`
 }
 
 // ---------------- render: shell ----------------
@@ -579,11 +583,16 @@ function adminTeamPickerView() {
     <p style="margin:0 0 16px;font-size:12.5px;color:#6b7280">เลือกทีมเพื่อจัดการนักกีฬา/หัวหน้า-รองหัวหน้าทีม/การชำระเงิน</p>
     ${['MS', 'HS'].map(level => {
       const rows = S.teams.filter(t => t.level === level)
+      const quota = Number(cfg(level === 'MS' ? 'MAX_TEAMS_MS' : 'MAX_TEAMS_HS', '') || 0)
+      const verifiedCount = S.payments.filter(p => p.status === 'verified' && S.teams.find(t2 => t2.id === p.team_id)?.level === level).length
       return `<div style="margin-bottom:14px">
-        <div style="font-weight:700;font-size:12.5px;color:${T[level].accent};margin-bottom:6px">${T[level].label}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="font-weight:700;font-size:12.5px;color:${T[level].accent}">${T[level].label}</div>
+          ${quota > 0 ? `<span style="font-size:11px;color:#6b7280">${verifiedCount}/${quota} ทีมยืนยันแล้ว</span>` : ''}
+        </div>
         ${rows.length ? rows.map(t => `
           <button data-act="adminOpenTeam" data-id="${t.id}" style="display:block;width:100%;text-align:left;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:6px;background:#fff;cursor:pointer">
-            <div style="font-size:13px;font-weight:700">${esc(t.name)}</div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(t.name)}</span>${t.is_reserve ? reserveBadge() : ''}</div>
             <div style="font-size:11px;color:#6b7280">${S.players.filter(p => p.team_id === t.id).length} คน${t.team_code ? ' · ' + esc(t.team_code) : ''}</div>
           </button>`).join('') : `<div style="font-size:12px;color:#9ca3af">ยังไม่มีทีม</div>`}
       </div>`
@@ -654,9 +663,11 @@ function manageTeamView(team, isAdminView) {
       ${isAdminView ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : ''}
       <div style="display:flex;align-items:center;gap:8px">
         ${levelBadge(team.level)}
+        ${team.is_reserve ? reserveBadge() : ''}
         <h2 style="margin:0;font-size:17px;font-weight:800">${esc(team.name)}</h2>
       </div>
       ${team.team_code ? `<div style="margin-top:6px;font-size:12px;color:${t.accent};font-weight:700">รหัสประจำทีม: ${esc(team.team_code)}</div>` : ''}
+      ${team.is_reserve ? `<div style="margin-top:4px;font-size:11.5px;color:#b45309">ทีมของคุณอยู่ในสถานะทีมสำรอง (สมัครและชำระเงินเรียบร้อยแล้ว แต่เกินโควตาทีมหลักของรุ่นนี้)</div>` : ''}
     </div>
 
     ${!editable ? `<div style="font-size:12px;color:#dc2626;background:#fee2e2;border-radius:10px;padding:8px 10px">หมดเวลาแก้ไขรายชื่อนักกีฬาแล้ว (ปิดแก้ไขเมื่อ ${esc(deadline)})</div>` : ''}
@@ -840,9 +851,11 @@ function adminTeams() {
   const level = S.adminTeamLevel || 'MS'
   const rows = S.teams.filter(t => t.level === level)
   const seeded = S.matches[level].length >= BRACKET[level].length
+  const quota = Number(cfg(level === 'MS' ? 'MAX_TEAMS_MS' : 'MAX_TEAMS_HS', '') || 0)
+  const verifiedCount = S.payments.filter(p => p.status === 'verified' && S.teams.find(t2 => t2.id === p.team_id)?.level === level).length
   return box(`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="font-weight:700;font-size:14px">จัดการทีม</div>
+      <div style="font-weight:700;font-size:14px">จัดการทีม${quota > 0 ? ` <span style="font-weight:600;font-size:11.5px;color:#6b7280">(${verifiedCount}/${quota} ทีมยืนยันแล้ว)</span>` : ''}</div>
       <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminTeamLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
     </div>
     ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่</button>`}
@@ -1094,8 +1107,18 @@ async function handleReviewPayment(id, status) {
   if (status === 'verified') {
     const payment = S.payments.find(p => p.id === id)
     const team = payment ? S.teams.find(t => t.id === payment.team_id) : null
-    if (team && !team.team_code) {
-      await SB.from('azfutsal_teams').update({ team_code: genTeamCode(team.level) }).eq('id', team.id)
+    if (team) {
+      const updates = {}
+      if (!team.team_code) updates.team_code = genTeamCode(team.level)
+      const quota = Number(cfg(team.level === 'MS' ? 'MAX_TEAMS_MS' : 'MAX_TEAMS_HS', '') || 0)
+      if (quota > 0) {
+        const verifiedCount = S.payments.filter(p =>
+          p.status === 'verified' && p.team_id !== team.id &&
+          S.teams.find(t2 => t2.id === p.team_id)?.level === team.level
+        ).length
+        updates.is_reserve = verifiedCount >= quota
+      }
+      if (Object.keys(updates).length) await SB.from('azfutsal_teams').update(updates).eq('id', team.id)
     }
   }
   await refresh()
@@ -1230,6 +1253,8 @@ function bindEvents() {
         { key: 'MAX_ROSTER', value: gid('reg-maxroster').value },
         { key: 'RATE_YELLOW', value: gid('reg-ratey').value },
         { key: 'RATE_RED', value: gid('reg-rater').value },
+        { key: 'MAX_TEAMS_MS', value: gid('reg-quota-ms').value || '' },
+        { key: 'MAX_TEAMS_HS', value: gid('reg-quota-hs').value || '' },
         { key: 'REGISTER_EDIT_DEADLINE', value: gid('reg-deadline').value || '' },
       ])
       await refresh(); azToast('บันทึกการตั้งค่าแล้ว'); return
@@ -1371,7 +1396,7 @@ function teamAdminRow(t) {
   return `
   <div style="border:1px solid #f3f4f6;border-radius:10px;padding:8px 10px">
     <div style="display:flex;align-items:center;justify-content:space-between">
-      <span style="font-size:13px;font-weight:700">${esc(t.name)}</span>
+      <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(t.name)}</span>${t.is_reserve ? reserveBadge() : ''}</div>
       <div style="display:flex;gap:8px;align-items:center">
         <button data-act="adminOpenTeamFromList" data-id="${t.id}" style="border:none;background:none;color:#db2777;font-size:11.5px;cursor:pointer;font-weight:600">จัดการ</button>
         <button data-act="removeTeam" data-id="${t.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
@@ -1414,7 +1439,7 @@ function adminPayments() {
         return `
         <div style="border:1px solid #f3f4f6;border-radius:10px;padding:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-size:13px;font-weight:700">${esc(team?.name || '')}</span>
+            <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(team?.name || '')}</span>${team?.is_reserve ? reserveBadge() : ''}</div>
             ${statusPill(p.status)}
           </div>
           <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">${p.method === 'transfer' ? 'โอนเงิน' : 'เงินสด'} · ${money(p.amount)} บาท</div>
@@ -1486,6 +1511,11 @@ function adminOps() {
           <label style="font-size:11.5px;color:#6b7280;flex:1">หักค่าประกัน/ใบเหลือง<input id="reg-ratey" type="number" min="0" value="${esc(cfg('RATE_YELLOW', 30))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
           <label style="font-size:11.5px;color:#6b7280;flex:1">หักค่าประกัน/ใบแดง<input id="reg-rater" type="number" min="0" value="${esc(cfg('RATE_RED', 50))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         </div>
+        <div style="display:flex;gap:8px">
+          <label style="font-size:11.5px;color:#6b7280;flex:1">โควตาทีม ม.ต้น (เว้นว่าง=ไม่จำกัด)<input id="reg-quota-ms" type="number" min="0" value="${esc(cfg('MAX_TEAMS_MS', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
+          <label style="font-size:11.5px;color:#6b7280;flex:1">โควตาทีม ม.ปลาย (เว้นว่าง=ไม่จำกัด)<input id="reg-quota-hs" type="number" min="0" value="${esc(cfg('MAX_TEAMS_HS', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
+        </div>
+        <div style="font-size:10.5px;color:#9ca3af;margin-top:-4px">ทีมที่ยืนยันเกินโควตาจะถูกติดป้าย "ทีมสำรอง" อัตโนมัติ (ยังลงทะเบียน/ชำระเงินได้ตามปกติ ไม่ปิดรับสมัคร)</div>
         <label style="font-size:11.5px;color:#6b7280">ปิดแก้ไขรายชื่อนักกีฬาเมื่อ (เว้นว่าง = ไม่จำกัด)
           <input id="reg-deadline" type="datetime-local" value="${esc(cfg('REGISTER_EDIT_DEADLINE', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
         </label>
