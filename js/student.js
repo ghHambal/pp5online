@@ -16,12 +16,24 @@ import { applyThemeForRole } from './theme.js'
 import { injectFeedbackWidget } from './ui.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { renderStudentSportsHome } from './sports-portals.js'
+import { openAzfutsalModal } from './azfutsal-modal.js'
 
 let _student = null
 let _activeClassId = null
 let _activeSubjectTab = 'todo'
 let _activeScoreTab = 'life'
 let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
+let _futsalRegistered = false
+
+async function _loadFutsalVisibility() {
+  if (!_student?.id) return
+  try {
+    const { data } = await supabase.from('azfutsal_players').select('id').eq('student_id', _student.id).maybeSingle()
+    _futsalRegistered = !!data
+  } catch {
+    _futsalRegistered = false
+  }
+}
 
 async function _loadSportsVisibility() {
   try {
@@ -54,6 +66,7 @@ async function init() {
 
   _student = await getMyStudentProfile()
   await _loadSportsVisibility()
+  await _loadFutsalVisibility()
   updateLastSeen('students').catch(() => {})
   logLogin('student').catch(() => {})
 
@@ -171,6 +184,9 @@ function _renderMainNav(activeView = 'overview') {
   if (_sportsVisibility.enabled !== false && _sportsVisibility.student_menu !== false) {
     items.push(_navButtonHTML('sports', '🏆', 'กีฬาสี'))
   }
+  if (_futsalRegistered) {
+    items.push(_navButtonHTML('futsal', '⚽', 'ฟุตซอล'))
+  }
   items.push(_navButtonHTML('profile', '👤', 'โปรไฟล์'))
   nav.innerHTML = items.join('')
   _bindNav()
@@ -224,6 +240,8 @@ function navigate(view) {
     if (window._activePrayerScannerState.syncInterval) clearInterval(window._activePrayerScannerState.syncInterval)
     window._activePrayerScannerState = null
   }
+
+  if (view === 'futsal') { openAzfutsalModal(); return }
 
   _activeClassId = null
   _activeSubjectTab = 'todo'
