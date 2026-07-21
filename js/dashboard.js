@@ -24,6 +24,7 @@ import { applyThemeForRole } from './theme.js'
 import { APP_VERSION } from './version.js?v=10.19.10'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
+import { openAzfutsalModal } from './azfutsal-modal.js'
 import { renderShirtSummary, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
@@ -797,6 +798,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'tutorial-admin':   () => import('./tutorial.js').then(({renderTutorialAdmin}) => renderTutorialAdmin()),
     'house-colors':     () => renderHouseColors(),
     'sports-admin':     () => openAzizGamesModal({ admin: true }),
+    'azfutsal':         () => openAzfutsalModal(),
     'sports-shirt-summary': () => renderShirtSummary(),
     'shirt-vote-settings': () => renderShirtVoteSettings(),
     'shirt-vote-dashboard': () => renderShirtVoteDashboard(),

@@ -21,6 +21,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
+import { openAzfutsalModal } from './azfutsal-modal.js'
 import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
@@ -2119,7 +2120,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
   { key:'menu_house_colors',       icon:'🎨', label:'สีนักเรียน',          fn: async () => { const {renderHouseColors}     = await import('./views.js'); renderHouseColors() }},
   { key:'menu_sports_admin',       icon:'🏆', label:'ระบบกีฬาสี',          fn: async () => openAzizGamesModal({ admin: true }) },
-  { key:'menu_azfutsal',           icon:'⚽', label:'AZFUTSALCUP2025',     fn: async () => window.open('azfutsal.html', '_blank') },
+  { key:'menu_azfutsal',           icon:'⚽', label:'AZFUTSALCUP2025',     fn: async () => openAzfutsalModal() },
   { key:'menu_sports_shirt_settings', icon:'👕', label:'ตั้งค่าและสรุปเสื้อกีฬาสี', fn: async () => renderShirtSummary() },
   { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
   { key:'manage_my_religion_group', icon:'👥', label:'กลุ่มของฉัน',        fn: async (t) => { const {renderMyReligionGroup} = await import('./views.js'); renderMyReligionGroup(t) }},

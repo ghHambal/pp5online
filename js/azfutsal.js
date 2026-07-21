@@ -66,6 +66,10 @@ let S = {
   rosterLookupCode: '',
   rosterLookupResult: null, // student row or 'notfound' | null
   rosterJersey: '',
+  adminManageTeamId: null,
+  adminCreatingTeam: false,
+  capLookupCode: '',
+  capLookupResult: null, // student row or 'notfound' | null
   certModalOpen: false,
   certInput: '',
   certResult: null,
@@ -105,7 +109,7 @@ async function loadAll() {
 
   const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }] = await Promise.all([
     SB.from('azfutsal_config').select('key, value'),
-    SB.from('azfutsal_teams').select('id, level, name, captain_student_id, payment_method, created_at'),
+    SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
     SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, goals, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
     SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
@@ -530,16 +534,49 @@ function photoTag(url) {
 function myTeamView() {
   const s = S
   if (!s.identity.session) return backMsg('กรุณาเข้าสู่ระบบ pp5 ก่อน')
+  if (s.identity.isAdmin) {
+    if (s.adminManageTeamId) {
+      const team = s.teams.find(t => t.id === s.adminManageTeamId)
+      if (team) return manageTeamView(team, true)
+      s.adminManageTeamId = null
+    }
+    if (s.adminCreatingTeam) return createTeamView(true)
+    return adminTeamPickerView()
+  }
   if (!s.identity.student) return backMsg('หน้านี้สำหรับนักเรียน (หัวหน้าทีม/ตัวแทนทีม) เท่านั้น')
   const myTeam = s.teams.find(t => t.captain_student_id === s.identity.student.id)
-  return myTeam ? manageTeamView(myTeam) : createTeamView()
+  return myTeam ? manageTeamView(myTeam, false) : createTeamView(false)
 }
 
-function createTeamView() {
+function adminTeamPickerView() {
   return `
   <section>
-    <h2 style="margin:0 0 4px;font-size:17px;font-weight:800">ลงทะเบียนทีม</h2>
-    <p style="margin:0 0 16px;font-size:12.5px;color:#6b7280">กรอกชื่อทีม เลือกระดับ แล้วค่อยเพิ่มรายชื่อนักกีฬาในขั้นถัดไป</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">
+      <h2 style="margin:0;font-size:17px;font-weight:800">จัดการทีม (แอดมิน)</h2>
+      <button data-act="adminNewTeam" style="font-size:12px;padding:8px 12px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">+ สร้างทีมใหม่</button>
+    </div>
+    <p style="margin:0 0 16px;font-size:12.5px;color:#6b7280">เลือกทีมเพื่อจัดการนักกีฬา/หัวหน้า-รองหัวหน้าทีม/การชำระเงิน</p>
+    ${['MS', 'HS'].map(level => {
+      const rows = S.teams.filter(t => t.level === level)
+      return `<div style="margin-bottom:14px">
+        <div style="font-weight:700;font-size:12.5px;color:${T[level].accent};margin-bottom:6px">${T[level].label}</div>
+        ${rows.length ? rows.map(t => `
+          <button data-act="adminOpenTeam" data-id="${t.id}" style="display:block;width:100%;text-align:left;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:6px;background:#fff;cursor:pointer">
+            <div style="font-size:13px;font-weight:700">${esc(t.name)}</div>
+            <div style="font-size:11px;color:#6b7280">${S.players.filter(p => p.team_id === t.id).length} คน${t.team_code ? ' · ' + esc(t.team_code) : ''}</div>
+          </button>`).join('') : `<div style="font-size:12px;color:#9ca3af">ยังไม่มีทีม</div>`}
+      </div>`
+    }).join('')}
+  </section>`
+}
+
+function createTeamView(adminMode) {
+  const lr = S.capLookupResult
+  return `
+  <section>
+    ${adminMode ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : ''}
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:800">ลงทะเบียนทีม${adminMode ? ' (แอดมิน)' : ''}</h2>
+    <p style="margin:0 0 16px;font-size:12.5px;color:#6b7280">กรอกชื่อทีม เลือกระดับ${adminMode ? ' ค้นหาหัวหน้าทีม' : ''} แล้วค่อยเพิ่มรายชื่อนักกีฬาในขั้นถัดไป</p>
     <div style="display:flex;flex-direction:column;gap:10px">
       <label style="font-size:11.5px;color:#6b7280">ชื่อทีม
         <input id="new-team-name" value="${esc(S.newTeamName)}" placeholder="ชื่อทีม" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:10px;font-size:14px"/>
@@ -550,23 +587,51 @@ function createTeamView() {
           <option value="HS" ${S.newTeamLevel === 'HS' ? 'selected' : ''}>ม.ปลาย</option>
         </select>
       </label>
-      <button data-act="createTeam" style="margin-top:6px;padding:12px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">สร้างทีม</button>
+      ${adminMode ? `
+      <div style="border-top:1px solid #e5e7eb;padding-top:10px">
+        <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">หัวหน้าทีม (ค้นหาด้วยรหัสนักเรียน)</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input id="cap-code" value="${esc(S.capLookupCode)}" placeholder="รหัสนักเรียน" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:13px"/>
+          <button data-act="lookupCaptain" style="font-size:12px;padding:8px 12px;border-radius:9px;border:none;background:#374151;color:#fff;font-weight:700;cursor:pointer">ค้นหา</button>
+        </div>
+        ${lr === 'notfound' ? `<div style="font-size:12px;color:#dc2626;margin-bottom:8px">ไม่พบรหัสนักเรียนนี้</div>` : ''}
+        ${lr && typeof lr === 'object' ? `
+          <div style="display:flex;align-items:center;gap:10px;background:#f9fafb;border-radius:10px;padding:8px">
+            ${photoTag(lr.image_url || lr.photo_url)}
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">${esc(lr.full_name)}</div><div style="font-size:11px;color:#6b7280">${esc(lr.student_code)}</div></div>
+          </div>` : ''}
+      </div>` : ''}
+      <button data-act="createTeam" data-admin="${adminMode ? '1' : '0'}" style="margin-top:6px;padding:12px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">สร้างทีม</button>
     </div>
   </section>`
 }
 
-function manageTeamView(team) {
+function manageTeamView(team, isAdminView) {
   const t = T[team.level]
   const roster = S.players.filter(p => p.team_id === team.id)
   const payment = S.payments.find(p => p.team_id === team.id)
   const maxRoster = Number(cfg('MAX_ROSTER', 12))
   const deadline = cfg('REGISTER_EDIT_DEADLINE', '')
-  const editable = !deadline || new Date() < new Date(deadline)
+  const editable = isAdminView || !deadline || new Date() < new Date(deadline)
   const lr = S.rosterLookupResult
+
+  const roleTag = (p) => {
+    if (team.captain_student_id === p.student_id) return ` <span style="color:${t.accent};font-weight:700">(หัวหน้าทีม)</span>`
+    if (team.vice_captain_student_id === p.student_id) return ` <span style="color:#6b7280;font-weight:700">(รองหัวหน้าทีม)</span>`
+    return ''
+  }
+  const roleButtons = (p) => {
+    if (!editable) return ''
+    const bits = []
+    if (team.captain_student_id !== p.student_id) bits.push(`<button data-act="setCaptain" data-team="${team.id}" data-student="${p.student_id}" style="border:none;background:none;color:${t.accent};font-size:10.5px;cursor:pointer;font-weight:600">ตั้งหัวหน้า</button>`)
+    if (team.vice_captain_student_id !== p.student_id) bits.push(`<button data-act="setViceCaptain" data-team="${team.id}" data-student="${p.student_id}" style="border:none;background:none;color:#6b7280;font-size:10.5px;cursor:pointer;font-weight:600">ตั้งรองหัวหน้า</button>`)
+    return bits.join(' · ')
+  }
 
   return `
   <section style="display:flex;flex-direction:column;gap:14px">
     <div>
+      ${isAdminView ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : ''}
       <div style="display:flex;align-items:center;gap:8px">
         ${levelBadge(team.level)}
         <h2 style="margin:0;font-size:17px;font-weight:800">${esc(team.name)}</h2>
@@ -586,8 +651,9 @@ function manageTeamView(team) {
           <div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:8px">
             ${photoTag(p.students?.image_url || p.students?.photo_url)}
             <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}</div>
+              <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${roleTag(p)}</div>
               <div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')}${p.jersey_number ? ` · เบอร์ ${p.jersey_number}` : ''}</div>
+              ${roleButtons(p) ? `<div style="margin-top:2px">${roleButtons(p)}</div>` : ''}
             </div>
             ${editable ? `<button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">ลบ</button>` : ''}
           </div>`).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬา</div>`}
@@ -721,10 +787,7 @@ function adminTeams() {
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:340px;overflow-y:auto">
       ${rows.length ? rows.map(t => teamAdminRow(t)).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีทีมในระดับนี้</div>`}
     </div>
-    <div style="display:flex;gap:6px">
-      <input id="team-new-name" placeholder="ชื่อทีมใหม่" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:12.5px"/>
-      <button data-act="addTeam" data-level="${level}" style="font-size:12px;padding:8px 12px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">เพิ่มทีม</button>
-    </div>
+    <button data-act="adminNewTeamFromList" style="width:100%;padding:9px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">+ ลงทะเบียนทีมใหม่ (ระบุหัวหน้าทีม)</button>
   `)
 }
 
@@ -865,15 +928,41 @@ async function handleRandomDraw(level) {
   azToast('สุ่มจับคู่รอบแรกแล้ว')
 }
 
-async function handleCreateTeam() {
+async function handleCreateTeam(adminMode) {
   const name = gid('new-team-name').value.trim()
   const level = gid('new-team-level').value
   if (!name) { azToast('กรุณากรอกชื่อทีม'); return }
-  const { error } = await SB.from('azfutsal_teams').insert({ name, level, captain_student_id: S.identity.student.id })
+  let captainId
+  if (adminMode) {
+    const lr = S.capLookupResult
+    if (!lr || typeof lr !== 'object') { azToast('กรุณาค้นหาและเลือกหัวหน้าทีมก่อน'); return }
+    captainId = lr.id
+  } else {
+    captainId = S.identity.student.id
+  }
+  const { data, error } = await SB.from('azfutsal_teams').insert({ name, level, captain_student_id: captainId }).select('id').single()
   if (error) { azToast('สร้างทีมไม่สำเร็จ: ' + error.message); return }
-  S.newTeamName = ''
+  S.newTeamName = ''; S.capLookupCode = ''; S.capLookupResult = null
+  if (adminMode) { S.adminCreatingTeam = false; S.adminManageTeamId = data.id }
   await refresh()
   azToast('สร้างทีมแล้ว เพิ่มรายชื่อนักกีฬาต่อได้เลย')
+}
+
+async function handleLookupCaptain() {
+  const code = gid('cap-code').value.trim()
+  S.capLookupCode = code
+  if (!code) { S.capLookupResult = null; draw(); return }
+  const { data, error } = await SB.from('students').select('id, full_name, student_code, image_url, photo_url').eq('student_code', code).maybeSingle()
+  S.capLookupResult = (error || !data) ? 'notfound' : data
+  draw()
+}
+
+async function handleSetRole(teamId, studentId, role) {
+  const field = role === 'captain' ? 'captain_student_id' : 'vice_captain_student_id'
+  const { error } = await SB.from('azfutsal_teams').update({ [field]: studentId }).eq('id', teamId)
+  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+  await refresh()
+  azToast(role === 'captain' ? 'ตั้งหัวหน้าทีมแล้ว' : 'ตั้งรองหัวหน้าทีมแล้ว')
 }
 
 async function handleLookupStudent() {
@@ -998,7 +1087,13 @@ function bindEvents() {
       S.certResult = { name: st.full_name, team: team.name, level, award }
       draw(); return
     }
-    if (act === 'createTeam') { await handleCreateTeam(); return }
+    if (act === 'createTeam') { await handleCreateTeam(btn.dataset.admin === '1'); return }
+    if (act === 'lookupCaptain') { await handleLookupCaptain(); return }
+    if (act === 'setCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'captain'); return }
+    if (act === 'setViceCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'vice_captain'); return }
+    if (act === 'adminNewTeam') { S.adminCreatingTeam = true; S.adminManageTeamId = null; draw(); return }
+    if (act === 'adminBackToList') { S.adminCreatingTeam = false; S.adminManageTeamId = null; draw(); return }
+    if (act === 'adminOpenTeam') { S.adminManageTeamId = btn.dataset.id; draw(); return }
     if (act === 'lookupStudent') { await handleLookupStudent(); return }
     if (act === 'addRosterAthlete') { await handleAddRosterAthlete(btn.dataset.team); return }
     if (act === 'uploadPayment') { await handleUploadPayment(btn.dataset.team, btn.dataset.method); return }
@@ -1063,12 +1158,11 @@ function bindEvents() {
       if (error) { azToast('จัดเวลาไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('จัดเวลาอัตโนมัติเรียบร้อย'); return
     }
-    if (act === 'addTeam') {
-      const name = gid('team-new-name').value.trim()
-      if (!name) return
-      const { error } = await SB.from('azfutsal_teams').insert({ level: btn.dataset.level, name })
-      if (error) { azToast('เพิ่มทีมไม่สำเร็จ: ' + error.message); return }
-      await refresh(); azToast('เพิ่มทีมแล้ว'); return
+    if (act === 'adminNewTeamFromList' || act === 'adminOpenTeamFromList') {
+      S.tab = 'myteam'
+      if (act === 'adminNewTeamFromList') { S.adminCreatingTeam = true; S.adminManageTeamId = null }
+      else { S.adminManageTeamId = btn.dataset.id; S.adminCreatingTeam = false }
+      draw(); return
     }
     if (act === 'removeTeam') {
       if (!confirm('ลบทีมนี้? ข้อมูลนักกีฬาและการชำระเงินของทีมจะถูกลบด้วย')) return
@@ -1139,14 +1233,16 @@ function updateScheduleList() {
 }
 
 function teamAdminRow(t) {
-  const captain = S.players.find(p => p.student_id === t.captain_student_id)
   return `
   <div style="border:1px solid #f3f4f6;border-radius:10px;padding:8px 10px">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <span style="font-size:13px;font-weight:700">${esc(t.name)}</span>
-      <button data-act="removeTeam" data-id="${t.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button data-act="adminOpenTeamFromList" data-id="${t.id}" style="border:none;background:none;color:#db2777;font-size:11.5px;cursor:pointer;font-weight:600">จัดการ</button>
+        <button data-act="removeTeam" data-id="${t.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
+      </div>
     </div>
-    <div style="font-size:11px;color:#6b7280;margin-top:2px">หัวหน้าทีม: ${captain ? esc(captain.students?.full_name) : '-'}</div>
+    <div style="font-size:11px;color:#6b7280;margin-top:2px">หัวหน้าทีม: ${t.captain?.full_name ? esc(t.captain.full_name) : '-'}${t.vice_captain?.full_name ? ' · รอง: ' + esc(t.vice_captain.full_name) : ''}</div>
     <div style="display:flex;gap:6px;margin-top:6px">
       ${['transfer', 'cash'].map(m => `<button data-act="setPayMethod" data-id="${t.id}" data-m="${m}" style="font-size:11px;padding:5px 10px;border-radius:8px;border:1px solid ${t.payment_method === m ? '#db2777' : '#e5e7eb'};background:${t.payment_method === m ? '#fdf2f8' : '#fff'};color:${t.payment_method === m ? '#db2777' : '#6b7280'};font-weight:600;cursor:pointer">${m === 'transfer' ? 'โอนเงิน' : 'เงินสด'}</button>`).join('')}
     </div>
