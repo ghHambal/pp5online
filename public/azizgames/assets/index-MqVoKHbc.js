@@ -92,7 +92,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
               border: 1px solid black;
               padding: 4px;
               font-size: 14px;
-              height: 18px;
+              height: 32px;
+              vertical-align: middle;
             }
             th {
               background-color: #f2f2f2;
@@ -123,12 +124,12 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
               margin-bottom: 10px;
               font-size: 14px;
             }
-            .no-column { width: 5%; }
-            .code-column { width: 15%; }
-            .name-column { width: 35%; text-align: left; }
-            .cls-column { width: 10%; }
-            .sn-column { width: 10%; }
-            .wide-column { width: 4.16%; }
+            .no-column { width: 4%; }
+            .code-column { width: 11%; }
+            .name-column { width: 34%; text-align: left; }
+            .cls-column { width: 18%; }
+            .sn-column { width: 9%; }
+            .wide-column { width: 4%; }
             @media print {
               body {
                 width: 210mm;
@@ -289,7 +290,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
               border: 1px solid black;
               padding: 4px;
               font-size: 14px;
-              height: 18px;
+              height: 32px;
+              vertical-align: middle;
             }
             th {
               background-color: #f2f2f2;
@@ -368,12 +370,12 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
               margin-bottom: 10px;
               font-size: 13px;
             }
-            .no-column { width: 5%; }
-            .code-column { width: 12%; }
-            .name-column { width: 33%; text-align: left; }
-            .cls-column { width: 10%; }
-            .sn-column { width: 10%; }
-            .wide-column { width: 5%; }
+            .no-column { width: 4%; }
+            .code-column { width: 11%; }
+            .name-column { width: 34%; text-align: left; }
+            .cls-column { width: 18%; }
+            .sn-column { width: 9%; }
+            .wide-column { width: 4%; }
             .signature-container {
               margin-top: 30px;
               display: flex;
