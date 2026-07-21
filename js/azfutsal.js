@@ -339,6 +339,10 @@ function scheduleView() {
       <span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${rows.length} นัด</span>
     </div>
     <p style="margin:0 0 14px;font-size:12px;color:#6b7280">${esc(cfg('INFO_VENUE', ''))}</p>
+    ${cfg('REGISTRATION_OPEN', '0') === '1' ? `
+    <button data-act="account" style="width:100%;margin-bottom:14px;padding:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+      📝 ลงทะเบียนทีม (สมัครเข้าร่วมการแข่งขัน)
+    </button>` : ''}
     <div style="display:flex;gap:6px;margin-bottom:10px">
       ${['ALL', 'MS', 'HS'].map(v => `<button data-act="setLevel" data-v="${v}" style="font-size:12.5px;padding:7px 14px;border-radius:9px;border:1px solid ${S.filterLevel === v ? '#db2777' : '#e5e7eb'};background:${S.filterLevel === v ? '#db2777' : '#fff'};color:${S.filterLevel === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${v === 'ALL' ? 'ทั้งหมด' : T[v].label}</button>`).join('')}
     </div>
@@ -747,7 +751,15 @@ function adminView() {
 function box(inner) { return `<div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px">${inner}</div>` }
 
 function adminGeneral() {
+  const regOpen = cfg('REGISTRATION_OPEN', '0') === '1'
   return box(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div>
+        <div style="font-weight:700;font-size:14px">เปิดรับสมัครทีม</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px">เมื่อเปิด ปุ่ม "ลงทะเบียนทีม" จะแสดงในหน้าตารางให้นักเรียนทั่วไปสมัครเองได้</div>
+      </div>
+      <button data-act="toggleRegistration" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${regOpen ? '#dcfce7' : '#f3f4f6'};color:${regOpen ? '#16a34a' : '#6b7280'}">${regOpen ? 'เปิดอยู่' : 'ปิดอยู่'}</button>
+    </div>
     <div style="font-weight:700;font-size:14px;margin-bottom:10px">ตั้งค่าทั่วไป</div>
     <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:10px">ชื่อกิจกรรม
       <input id="cfg-eventName" value="${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
@@ -1102,6 +1114,11 @@ function bindEvents() {
     if (act === 'toggleCert') {
       const cur = cfg('CERT_ENABLED', '1') === '1'
       await SB.from('azfutsal_config').upsert({ key: 'CERT_ENABLED', value: cur ? '0' : '1' })
+      await refresh(); return
+    }
+    if (act === 'toggleRegistration') {
+      const cur = cfg('REGISTRATION_OPEN', '0') === '1'
+      await SB.from('azfutsal_config').upsert({ key: 'REGISTRATION_OPEN', value: cur ? '0' : '1' })
       await refresh(); return
     }
     if (act === 'uploadCertTemplate') {
