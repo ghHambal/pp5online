@@ -6,6 +6,7 @@ const T = {
 // บัญชี Supabase Auth ตายตัวสำหรับ login แอดมินแบบยูสเซอร์เนม/รหัสผ่านโดยเฉพาะ (ไม่ผูกกับบัญชีครู/นักเรียนจริง)
 // รหัสผ่านตรวจสอบฝั่งเซิร์ฟเวอร์โดย Supabase Auth เอง ไม่มีการเก็บ/เทียบรหัสผ่านฝั่ง client
 const STANDALONE_ADMIN_EMAIL = 'azfutsal.standalone.admin@pp5online.internal'
+const STANDALONE_ADMIN_PROFILE_ID = '8112d7c9-ab32-4e63-9026-ab2367401d4c'
 
 // M1-M6 first round (12 teams). M7-M9 recovery from losers. M10/M11 from W1-4.
 // M12/M13 = W5/W6 + recovery pick (REC_1/REC_2, stored directly once chosen).
@@ -910,7 +911,9 @@ async function loadStaffList() {
   S.staffList = (rows || []).map(r => {
     const t = (teachers || []).find(x => x.profile_id === r.profile_id)
     const st = (students || []).find(x => x.profile_id === r.profile_id)
-    return { id: r.id, name: t ? t.full_name : (st ? st.full_name : '(ไม่พบผู้ใช้)'), role: t ? 'ครู' : (st ? 'นักเรียน' : '-') }
+    const isStandalone = r.profile_id === STANDALONE_ADMIN_PROFILE_ID
+    const name = t ? t.full_name : (st ? st.full_name : (isStandalone ? `${cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa')} (แอดมินสำรอง)` : '(ไม่พบผู้ใช้)'))
+    return { id: r.id, name, role: t ? 'ครู' : (st ? 'นักเรียน' : (isStandalone ? 'บัญชีสำรอง' : '-')) }
   })
   const el = document.getElementById('az-staff-list')
   if (!el) return
@@ -925,8 +928,8 @@ async function searchStaffCandidates(q) {
   if (!q || q.trim().length < 2) return []
   const like = `%${q.trim()}%`
   const [{ data: teachers }, { data: students }] = await Promise.all([
-    SB.from('teachers').select('profile_id, full_name, teacher_code').ilike('full_name', like).not('profile_id', 'is', null).limit(8),
-    SB.from('students').select('profile_id, full_name, student_code').ilike('full_name', like).not('profile_id', 'is', null).limit(8),
+    SB.from('teachers').select('profile_id, full_name, teacher_code').or(`full_name.ilike.${like},teacher_code.ilike.${like}`).not('profile_id', 'is', null).limit(8),
+    SB.from('students').select('profile_id, full_name, student_code').or(`full_name.ilike.${like},student_code.ilike.${like}`).not('profile_id', 'is', null).limit(8),
   ])
   return [
     ...(teachers || []).map(t => ({ profile_id: t.profile_id, name: t.full_name, sub: `ครู · ${t.teacher_code || ''}` })),
