@@ -1,3 +1,5 @@
+import { promptpayQRDataURL } from './promptpay.js'
+
 const T = {
   MS: { label: 'ม.ต้น', accent: '#db2777', base: '#ec4899', soft: '#fdf2f8', border: '#f9d4e6' },
   HS: { label: 'ม.ปลาย', accent: '#16a34a', base: '#22c55e', soft: '#f0fdf4', border: '#bbf0cf' },
@@ -79,6 +81,9 @@ let S = {
   adminLoginOpen: false,
   adminLoginUsername: '',
   adminLoginError: '',
+  confirmRegOpen: false,
+  confirmRegTeamId: null,
+  confirmRegQR: null,
   certModalOpen: false,
   certInput: '',
   certResult: null,
@@ -271,6 +276,7 @@ function draw() {
     ${s.certModalOpen ? certModal() : ''}
     ${s.editMatch ? matchEditorModal() : ''}
     ${s.adminLoginOpen ? adminLoginModal() : ''}
+    ${s.confirmRegOpen ? confirmRegistrationModal() : ''}
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
 }
@@ -763,10 +769,17 @@ function manageTeamView(team, isAdminView) {
 
     <div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px">
       <div style="font-weight:700;font-size:13.5px;margin-bottom:8px">ค่าประกันทีม (${money(cfg('DEPOSIT_AMOUNT', 500))} บาท)</div>
-      ${!team.payment_method ? `<div style="font-size:12.5px;color:#9ca3af">แอดมินยังไม่ตั้งค่าวิธีชำระเงินให้ทีมนี้ กรุณารอ</div>` : `
-        <div style="font-size:12.5px;color:#6b7280;margin-bottom:8px">วิธีชำระ: <b>${team.payment_method === 'transfer' ? 'โอนเงิน' : 'เงินสด'}</b></div>
-        ${payment ? statusPill(payment.status) : `<div style="font-size:12px;color:#9ca3af;margin-bottom:8px">ยังไม่ได้ชำระ — จ่ายตอนนี้หรือกลับมาจ่ายทีหลังก็ได้</div>`}
-        ${paymentUploadForm(team, payment)}
+      ${payment ? `
+        ${statusPill(payment.status)}
+        ${payment.status === 'pending' ? `<div style="font-size:12px;color:#9ca3af">ส่งหลักฐานแล้ว รอแอดมินตรวจสอบ</div>` : ''}
+        ${payment.status === 'rejected' ? `
+          <div style="font-size:11.5px;color:#dc2626;margin-bottom:8px">เหตุผล: ${esc(payment.admin_note || '-')}  กรุณายืนยันการลงทะเบียนและแนบหลักฐานใหม่</div>
+          <button data-act="openConfirmReg" data-team="${team.id}" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">ยืนยันการลงทะเบียนอีกครั้ง</button>
+        ` : ''}
+      ` : roster.length ? `
+        <button data-act="openConfirmReg" data-team="${team.id}" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">✅ ยืนยันการลงทะเบียนสมัครเข้าร่วมแข่งขัน</button>
+      ` : `
+        <div style="font-size:12px;color:#9ca3af">เพิ่มนักกีฬาอย่างน้อย 1 คนก่อนยืนยันการลงทะเบียน</div>
       `}
     </div>
   </section>`
@@ -776,19 +789,6 @@ function statusPill(status) {
   const map = { pending: ['รอตรวจสอบ', '#f59e0b', '#fef3c7'], verified: ['ยืนยันแล้ว', '#16a34a', '#dcfce7'], rejected: ['ถูกปฏิเสธ', '#dc2626', '#fee2e2'] }
   const [label, color, bg] = map[status] || ['-', '#6b7280', '#f3f4f6']
   return `<span style="display:inline-block;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:${bg};color:${color};margin-bottom:8px">${label}</span>`
-}
-
-function paymentUploadForm(team, payment) {
-  if (payment && payment.status !== 'rejected') return payment.status === 'verified' ? '' : `<div style="font-size:12px;color:#9ca3af">ส่งหลักฐานแล้ว รอแอดมินตรวจสอบ</div>`
-  const isTransfer = team.payment_method === 'transfer'
-  return `
-    <div style="margin-top:8px">
-      ${payment?.status === 'rejected' ? `<div style="font-size:11.5px;color:#dc2626;margin-bottom:6px">ถูกปฏิเสธ: ${esc(payment.admin_note || '-')}  กรุณาส่งใหม่</div>` : ''}
-      ${isTransfer
-        ? `<input type="file" accept="image/*" id="pay-slip-file" style="font-size:12px;margin-bottom:8px"/>`
-        : `<div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">ชำระเงินสดกับแอดมิน แล้วถ่ายรูปใบเสร็จที่ได้รับแนบที่นี่</div><input type="file" accept="image/*" id="pay-slip-file" style="font-size:12px;margin-bottom:8px"/>`}
-      <button data-act="uploadPayment" data-team="${team.id}" data-method="${team.payment_method}" style="width:100%;padding:9px;border-radius:9px;border:none;background:${T[team.level].base};color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">ส่งหลักฐานการชำระเงิน</button>
-    </div>`
 }
 
 function simpleModal(title, body) {
@@ -818,6 +818,54 @@ function adminLoginModal() {
         ${S.adminLoginError ? `<div style="font-size:12px;color:#dc2626">${esc(S.adminLoginError)}</div>` : ''}
         <button data-act="submitAdminLogin" style="margin-top:4px;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">ลงชื่อเข้าใช้</button>
         <button data-act="goToPp5Login" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:600;font-size:12.5px;cursor:pointer">หรือเข้าสู่ระบบด้วยบัญชี ปพ.5</button>
+      </div>
+    </div>
+  </div>`
+}
+
+function confirmRegistrationModal() {
+  const team = S.teams.find(t => t.id === S.confirmRegTeamId)
+  if (!team) return ''
+  const t = T[team.level]
+  const roster = S.players.filter(p => p.team_id === team.id)
+  const deposit = money(cfg('DEPOSIT_AMOUNT', 500))
+  const promptpayNumber = cfg('PROMPTPAY_NUMBER', '0825424340')
+  return `
+  <div style="position:fixed;inset:0;z-index:70;background:#fff;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #ececec;flex-shrink:0">
+      <h3 style="margin:0;font-size:15px;font-weight:800">ยืนยันการลงทะเบียน</h3>
+      <button data-act="closeConfirmReg" style="border:none;background:none;color:#9ca3af;font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px;overflow-y:auto;flex:1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        ${levelBadge(team.level)}
+        <h2 style="margin:0;font-size:17px;font-weight:800">${esc(team.name)}</h2>
+      </div>
+      <p style="margin:2px 0 16px;font-size:12px;color:#6b7280">ตรวจสอบรายชื่อนักกีฬาให้ถูกต้องก่อนชำระค่าประกันทีม</p>
+
+      <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px;margin-bottom:16px">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:10px">รายชื่อนักกีฬา (${roster.length} คน)</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${roster.map(p => `
+            <div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:8px">
+              ${photoTag(p.students?.image_url || p.students?.photo_url)}
+              <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}</div><div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')}</div></div>
+              <div style="font-size:12.5px;font-weight:700;color:${t.accent};flex-shrink:0">เบอร์ ${p.jersey_number ?? '-'}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div style="border:1px solid #e5e7eb;border-radius:14px;padding:16px;text-align:center;margin-bottom:16px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">ชำระค่าประกันทีม ${deposit} บาท</div>
+        <div style="font-size:11.5px;color:#6b7280;margin-bottom:12px">โอนผ่านพร้อมเพย์เบอร์ ${esc(promptpayNumber)}</div>
+        ${S.confirmRegQR ? `<img src="${S.confirmRegQR}" style="width:220px;height:220px;margin:0 auto 8px;display:block"/>` : `<div style="width:220px;height:220px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">กำลังสร้าง QR...</div>`}
+        <div style="font-size:11px;color:#9ca3af">สแกนเพื่อโอนเงิน แล้วแนบสลิปด้านล่าง</div>
+      </div>
+
+      <div style="border:1px solid #e5e7eb;border-radius:14px;padding:16px">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:8px">แนบหลักฐานการโอนเงิน</div>
+        <input type="file" accept="image/*" id="pay-slip-file" style="font-size:12px;margin-bottom:10px"/>
+        <button data-act="uploadPayment" data-team="${team.id}" data-method="transfer" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">ยืนยันการลงทะเบียนและส่งหลักฐาน</button>
       </div>
     </div>
   </div>`
@@ -892,6 +940,9 @@ function adminGeneral() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">ค่าประกันทีม (บาท)<input id="reg-deposit" type="number" min="0" value="${esc(cfg('DEPOSIT_AMOUNT', 500))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">นักกีฬาสูงสุด/ทีม<input id="reg-maxroster" type="number" min="1" value="${esc(cfg('MAX_ROSTER', 12))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
+      <label style="font-size:11.5px;color:#6b7280">เบอร์พร้อมเพย์รับค่าประกันทีม
+        <input id="reg-promptpay" value="${esc(cfg('PROMPTPAY_NUMBER', '0825424340'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
+      </label>
       <div style="display:flex;gap:8px">
         <label style="font-size:11.5px;color:#6b7280;flex:1">หักค่าประกัน/ใบเหลือง<input id="reg-ratey" type="number" min="0" value="${esc(cfg('RATE_YELLOW', 30))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">หักค่าประกัน/ใบแดง<input id="reg-rater" type="number" min="0" value="${esc(cfg('RATE_RED', 50))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
@@ -1161,8 +1212,22 @@ async function handleUploadPayment(teamId, method) {
     ? await SB.from('azfutsal_payments').update(payload).eq('id', existing.id)
     : await SB.from('azfutsal_payments').insert(payload)
   if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+  S.confirmRegOpen = false; S.confirmRegQR = null
   await refresh()
-  azToast('ส่งหลักฐานการชำระเงินแล้ว')
+  azToast('ยืนยันการลงทะเบียนสำเร็จ ส่งหลักฐานแล้ว')
+}
+
+async function handleOpenConfirmReg(teamId) {
+  S.confirmRegTeamId = teamId
+  S.confirmRegOpen = true
+  S.confirmRegQR = null
+  draw()
+  try {
+    S.confirmRegQR = await promptpayQRDataURL(cfg('PROMPTPAY_NUMBER', '0825424340'), Number(cfg('DEPOSIT_AMOUNT', 500)))
+  } catch {
+    S.confirmRegQR = null
+  }
+  draw()
 }
 
 function genTeamCode(level) {
@@ -1270,6 +1335,8 @@ function bindEvents() {
     if (act === 'adminOpenTeam') { S.adminManageTeamId = btn.dataset.id; draw(); return }
     if (act === 'addRosterAthlete') { await handleAddRosterAthlete(btn.dataset.team); return }
     if (act === 'uploadPayment') { await handleUploadPayment(btn.dataset.team, btn.dataset.method); return }
+    if (act === 'openConfirmReg') { await handleOpenConfirmReg(btn.dataset.team); return }
+    if (act === 'closeConfirmReg') { S.confirmRegOpen = false; S.confirmRegQR = null; draw(); return }
     if (act === 'reviewPayment') { await handleReviewPayment(btn.dataset.id, btn.dataset.status); return }
     if (act === 'viewProof') { await handleViewProof(btn.dataset.path); return }
     if (act === 'toggleCert') {
@@ -1326,6 +1393,7 @@ function bindEvents() {
       await SB.from('azfutsal_config').upsert([
         { key: 'DEPOSIT_AMOUNT', value: gid('reg-deposit').value },
         { key: 'MAX_ROSTER', value: gid('reg-maxroster').value },
+        { key: 'PROMPTPAY_NUMBER', value: gid('reg-promptpay').value.trim() },
         { key: 'RATE_YELLOW', value: gid('reg-ratey').value },
         { key: 'RATE_RED', value: gid('reg-rater').value },
         { key: 'MAX_TEAMS_MS', value: gid('reg-quota-ms').value || '' },
@@ -1361,11 +1429,6 @@ function bindEvents() {
       const { error } = await SB.from('azfutsal_teams').delete().eq('id', btn.dataset.id)
       if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('ลบทีมแล้ว'); return
-    }
-    if (act === 'setPayMethod') {
-      const { error } = await SB.from('azfutsal_teams').update({ payment_method: btn.dataset.m }).eq('id', btn.dataset.id)
-      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
-      await refresh(); return
     }
     if (act === 'removePlayer') {
       if (!confirm('ลบนักกีฬาคนนี้ออกจากทีม?')) return
@@ -1478,9 +1541,6 @@ function teamAdminRow(t) {
       </div>
     </div>
     <div style="font-size:11px;color:#6b7280;margin-top:2px">หัวหน้าทีม: ${t.captain?.full_name ? esc(t.captain.full_name) : '-'}${t.vice_captain?.full_name ? ' · รอง: ' + esc(t.vice_captain.full_name) : ''}</div>
-    <div style="display:flex;gap:6px;margin-top:6px">
-      ${['transfer', 'cash'].map(m => `<button data-act="setPayMethod" data-id="${t.id}" data-m="${m}" style="font-size:11px;padding:5px 10px;border-radius:8px;border:1px solid ${t.payment_method === m ? '#db2777' : '#e5e7eb'};background:${t.payment_method === m ? '#fdf2f8' : '#fff'};color:${t.payment_method === m ? '#db2777' : '#6b7280'};font-weight:600;cursor:pointer">${m === 'transfer' ? 'โอนเงิน' : 'เงินสด'}</button>`).join('')}
-    </div>
   </div>`
 }
 
