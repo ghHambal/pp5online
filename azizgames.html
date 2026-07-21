@@ -8,14 +8,14 @@
     <script>
       (() => {
         const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/';
-        const version = '20260721d-azizgames-loader';
+        const version = '20260721e-azizgames-loader';
         const stylesheet = document.createElement('link');
         stylesheet.rel = 'stylesheet';
         stylesheet.crossOrigin = 'anonymous';
         stylesheet.href = `${base}azizgames/assets/index-CnfmBpTj.css?v=${version}`;
         document.head.appendChild(stylesheet);
 
-        ['azizgames/assets/index-DsJqMJJQ.js', 'azizgames-public-controls.js'].forEach((src) => {
+        ['azizgames/assets/index-DGjPtJGM.js', 'azizgames-public-controls.js'].forEach((src) => {
           const script = document.createElement('script');
           script.type = 'module';
           script.crossOrigin = 'anonymous';
