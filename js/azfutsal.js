@@ -3,6 +3,10 @@ const T = {
   HS: { label: 'ม.ปลาย', accent: '#16a34a', base: '#22c55e', soft: '#f0fdf4', border: '#bbf0cf' },
 }
 
+// บัญชี Supabase Auth ตายตัวสำหรับ login แอดมินแบบยูสเซอร์เนม/รหัสผ่านโดยเฉพาะ (ไม่ผูกกับบัญชีครู/นักเรียนจริง)
+// รหัสผ่านตรวจสอบฝั่งเซิร์ฟเวอร์โดย Supabase Auth เอง ไม่มีการเก็บ/เทียบรหัสผ่านฝั่ง client
+const STANDALONE_ADMIN_EMAIL = 'azfutsal.standalone.admin@pp5online.internal'
+
 // M1-M6 first round (12 teams). M7-M9 recovery from losers. M10/M11 from W1-4.
 // M12/M13 = W5/W6 + recovery pick (REC_1/REC_2, stored directly once chosen).
 // M14/M15 semis, M16 third place, M17 final.
@@ -70,6 +74,9 @@ let S = {
   adminCreatingTeam: false,
   capLookupCode: '',
   capLookupResult: null, // student row or 'notfound' | null
+  adminLoginOpen: false,
+  adminLoginUsername: '',
+  adminLoginError: '',
   certModalOpen: false,
   certInput: '',
   certResult: null,
@@ -218,6 +225,14 @@ function azToast(msg) {
   el._t = setTimeout(() => { el.style.display = 'none' }, 1800)
 }
 
+function goToLogin() {
+  const url = new URL('index.html', window.location.href).href
+  try {
+    if (window.self !== window.top) { window.top.location.href = url; return }
+  } catch { /* cross-origin top access blocked, fall through */ }
+  window.location.href = url
+}
+
 function levelBadge(level) {
   const t = T[level]
   return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:${t.base};color:#fff">${t.label}</span>`
@@ -254,6 +269,7 @@ function draw() {
     ${bottomNav()}
     ${s.certModalOpen ? certModal() : ''}
     ${s.editMatch ? matchEditorModal() : ''}
+    ${s.adminLoginOpen ? adminLoginModal() : ''}
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
 }
@@ -725,6 +741,25 @@ function simpleModal(title, body) {
   </div>`
 }
 
+function adminLoginModal() {
+  return `
+  <div style="position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;width:100%;max-width:340px;border-radius:16px;padding:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0;font-size:15px;font-weight:800">เข้าสู่ระบบแอดมิน</h3>
+        <button data-act="closeAdminLogin" style="border:none;background:none;color:#9ca3af;font-size:16px;cursor:pointer">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <input id="admin-login-username" value="${esc(S.adminLoginUsername)}" placeholder="ยูสเซอร์เนม" autocomplete="username" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;font-size:13.5px"/>
+        <input id="admin-login-password" type="password" placeholder="รหัสผ่าน" autocomplete="current-password" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;font-size:13.5px"/>
+        ${S.adminLoginError ? `<div style="font-size:12px;color:#dc2626">${esc(S.adminLoginError)}</div>` : ''}
+        <button data-act="submitAdminLogin" style="margin-top:4px;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">ลงชื่อเข้าใช้</button>
+        <button data-act="goToPp5Login" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:600;font-size:12.5px;cursor:pointer">หรือเข้าสู่ระบบด้วยบัญชี ปพ.5</button>
+      </div>
+    </div>
+  </div>`
+}
+
 // ---------------- admin ----------------
 const ADMIN_SECTIONS = [
   ['general', 'ทั่วไป'], ['staff', 'สิทธิ์'], ['teams', 'ทีม'],
@@ -752,7 +787,23 @@ function box(inner) { return `<div style="border:1px solid #e5e7eb;border-radius
 
 function adminGeneral() {
   const regOpen = cfg('REGISTRATION_OPEN', '0') === '1'
+  const isStandaloneSession = S.identity.session?.user?.email === STANDALONE_ADMIN_EMAIL
   return box(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:12px;color:#6b7280">เข้าสู่ระบบอยู่ในฐานะ: <b>${isStandaloneSession ? esc(cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa')) + ' (แอดมินสำรอง)' : (S.identity.teacher?.full_name ? esc(S.identity.teacher.full_name) : 'ครู/แอดมิน ปพ.5')}</b></div>
+      <button data-act="adminSignOut" style="font-size:11px;padding:6px 12px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:600;cursor:pointer;white-space:nowrap">ออกจากระบบ</button>
+    </div>
+    ${isStandaloneSession ? `
+    <div style="border-top:1px solid #e5e7eb;padding-top:10px;margin-bottom:10px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">แก้ไขบัญชีแอดมินสำรอง</div>
+      <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:8px">ยูสเซอร์เนม
+        <input id="admin-acct-username" value="${esc(cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:13px"/>
+      </label>
+      <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:8px">รหัสผ่านใหม่ (เว้นว่างถ้าไม่เปลี่ยน)
+        <input id="admin-acct-password" type="password" placeholder="รหัสผ่านใหม่" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:13px"/>
+      </label>
+      <button data-act="saveAdminAccount" style="width:100%;padding:9px;border-radius:9px;border:none;background:#374151;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">บันทึกบัญชีแอดมินสำรอง</button>
+    </div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div>
         <div style="font-weight:700;font-size:14px">เปิดรับสมัครทีม</div>
@@ -969,6 +1020,20 @@ async function handleLookupCaptain() {
   draw()
 }
 
+async function handleAdminLogin() {
+  const username = gid('admin-login-username').value.trim()
+  const password = gid('admin-login-password').value
+  if (!username || !password) { S.adminLoginError = 'กรอกยูสเซอร์เนมและรหัสผ่าน'; draw(); return }
+  if (username !== cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa')) { S.adminLoginError = 'ยูสเซอร์เนมหรือรหัสผ่านไม่ถูกต้อง'; draw(); return }
+  const { error } = await SB.auth.signInWithPassword({ email: STANDALONE_ADMIN_EMAIL, password })
+  if (error) { S.adminLoginError = 'ยูสเซอร์เนมหรือรหัสผ่านไม่ถูกต้อง'; draw(); return }
+  S.adminLoginOpen = false
+  await refresh()
+  S.tab = 'admin'
+  draw()
+  azToast('เข้าสู่ระบบแอดมินแล้ว')
+}
+
 async function handleSetRole(teamId, studentId, role) {
   const field = role === 'captain' ? 'captain_student_id' : 'vice_captain_student_id'
   const { error } = await SB.from('azfutsal_teams').update({ [field]: studentId }).eq('id', teamId)
@@ -1064,13 +1129,22 @@ function bindEvents() {
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.certModalOpen = false; S.certFullscreen = false; draw(); return }
     if (act === 'account') {
-      if (!S.identity.session) { azToast('กรุณาเข้าสู่ระบบ pp5 ก่อน'); return }
+      if (!S.identity.session) { goToLogin(); return }
       if (!S.identity.student) { azToast('หน้านี้สำหรับนักเรียน (หัวหน้าทีม/ตัวแทนทีม) เท่านั้น'); return }
       S.tab = 'myteam'; draw(); return
     }
     if (act === 'admin-gear') {
-      if (!S.identity.isAdmin) { azToast(S.identity.session ? 'คุณไม่มีสิทธิ์แอดมิน' : 'กรุณาเข้าสู่ระบบ pp5 ก่อน'); return }
-      S.tab = 'admin'; draw(); return
+      if (S.identity.isAdmin) { S.tab = 'admin'; draw(); return }
+      S.adminLoginOpen = true; S.adminLoginError = ''; S.adminLoginUsername = ''; draw(); return
+    }
+    if (act === 'closeAdminLogin') { S.adminLoginOpen = false; draw(); return }
+    if (act === 'goToPp5Login') { goToLogin(); return }
+    if (act === 'submitAdminLogin') { await handleAdminLogin(); return }
+    if (act === 'adminSignOut') {
+      await SB.auth.signOut()
+      S.tab = 'schedule'
+      await refresh()
+      azToast('ออกจากระบบแล้ว'); return
     }
     if (act === 'editMatch') { S.editMatch = { level: btn.dataset.level, code: btn.dataset.code }; draw(); return }
     if (act === 'saveMatch') { await handleSaveMatch(btn.dataset.level, btn.dataset.code); return }
@@ -1148,6 +1222,18 @@ function bindEvents() {
         { key: 'INFO_VENUE', value: gid('cfg-venue').value },
       ])
       await refresh(); azToast('บันทึกแล้ว'); return
+    }
+    if (act === 'saveAdminAccount') {
+      const username = gid('admin-acct-username').value.trim()
+      const newPassword = gid('admin-acct-password').value
+      if (!username) { azToast('กรอกยูสเซอร์เนม'); return }
+      if (newPassword && newPassword.length < 6) { azToast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'); return }
+      await SB.from('azfutsal_config').upsert({ key: 'ADMIN_LOGIN_USERNAME', value: username })
+      if (newPassword) {
+        const { error } = await SB.auth.updateUser({ password: newPassword })
+        if (error) { azToast('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + error.message); return }
+      }
+      await refresh(); azToast('บันทึกบัญชีแอดมินสำรองแล้ว'); return
     }
     if (act === 'saveRegSettings') {
       await SB.from('azfutsal_config').upsert([
