@@ -215,13 +215,21 @@
 
     blockPullToRefresh()
 
+    // อนุญาตเฉพาะชื่อไฟล์ .html ธรรมดาในโดเมนเดียวกัน กัน open-redirect
+    function getSafeNextUrl() {
+      const next = new URLSearchParams(window.location.search).get('next')
+      if (next && /^[a-zA-Z0-9_-]+\.html$/.test(next)) return next
+      return null
+    }
+    const _nextUrl = getSafeNextUrl()
+
     ;(async () => {
     // ─── Redirect if already logged in ───────────────────────────────────────
     const { data: { session } } = await supabase.auth.getSession()
     const isRecovery = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')
     if (session && !isRecovery) {
       const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
-      if (p?.role === 'student') { window.location.replace('student.html'); }
+      if (p?.role === 'student') { window.location.replace(_nextUrl || 'student.html'); }
     }
 
     // ─── Load school name ─────────────────────────────────────────────────────
@@ -368,7 +376,7 @@
         btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; return
       }
       showMsg('login-msg', 'เข้าสู่ระบบสำเร็จ ✅', 'success')
-      setTimeout(() => { window.location.href = 'student.html' }, 500)
+      setTimeout(() => { window.location.href = _nextUrl || 'student.html' }, 500)
     })
 
     document.getElementById('inp-password').addEventListener('keydown', e => {
@@ -408,7 +416,7 @@
         if (!linked) throw new Error('ผูกบัญชีไม่สำเร็จ กรุณาติดต่อผู้ดูแลระบบ')
 
         showMsg('reg-msg', 'สร้างบัญชีสำเร็จ 🎉 กำลังเข้าสู่ระบบ...', 'success')
-        setTimeout(() => { window.location.href = 'student.html' }, 800)
+        setTimeout(() => { window.location.href = _nextUrl || 'student.html' }, 800)
 
       } catch (err) {
         const msg = err.message?.includes('already registered')
