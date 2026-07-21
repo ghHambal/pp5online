@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+  <link rel="manifest" href="/pp5online/manifest.json" />
+  <meta name="theme-color" content="#ec4899" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="AZFUTSALCUP" />
+  <link rel="apple-touch-icon" href="/pp5online/vite.svg" />
+  <title>AZFUTSALCUP2025</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body{margin:0;background:#f7f5f3;font-family:'Noto Sans Thai',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    input,select,button,textarea{font-family:inherit}
+    ::selection{background:#fbcfe8}
+    @keyframes azToastIn{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translate(-50%,0)}}
+  </style>
+</head>
+<body>
+  <div id="azfutsal-root"></div>
+
+  <script type="module">
+    import { supabase } from './js/supabase.js'
+    import { renderAzfutsal } from './js/azfutsal.js?v=1'
+
+    async function init() {
+      await renderAzfutsal(document.getElementById('azfutsal-root'), supabase)
+    }
+    init()
+  </script>
+</body>
+</html>

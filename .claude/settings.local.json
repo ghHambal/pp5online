@@ -15,7 +15,21 @@
       "Bash(sed -n '6850,6855p' /Users/admin/pp5-online/js/teacher-views.js)",
       "Bash(sed -n '7657,7662p' /Users/admin/pp5-online/js/teacher-views.js)",
       "Bash(curl -s 'https://isupghduywzqbmnjgtip.supabase.co/rest/v1/departments?select=dept_code,dept_name&order=dept_code' -H 'apikey: sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0' -H 'Authorization: Bearer sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0')",
-      "Bash(python3 -m json.tool)"
+      "Bash(python3 -m json.tool)",
+      "Bash(node --input-type=module --check)",
+      "Bash(git commit -m ' *)",
+      "Bash(sort -t'[' -k2 -n -u)",
+      "Bash(grep -n \"return { cls, ms, credit, prefix\" js/pp5-doc.js)",
+      "Bash(chromium-cli --help)",
+      "Bash(npx -y playwright --version)",
+      "Bash(node -e \"require.resolve\\('playwright'\\)\")",
+      "Bash(timeout 15 bash -c 'until curl -sf http://localhost:5174/pp5online/ >/dev/null; do sleep 1; done')",
+      "Bash(curl -sf http://localhost:5174/pp5online/)",
+      "Bash(node /private/tmp/claude-501/-Users-admin-pp5-online/5b6a7d7b-c306-4311-88ea-18ddd164e8b7/scratchpad/pp5_voc_shot.mjs)",
+      "Bash(node /Users/admin/pp5-online/_pp5voc_shot.mjs)",
+      "Bash(sort -t: -k1,1)",
+      "Bash(grep -n \"sc-content\\\\|_addScoreCol\\\\|_addBonusCol\\\\|window._acdmvocTemplate\\\\|setContent\\(\\\\`\" js/teacher-score-columns.js)",
+      "Bash(grep -n \"async function _loadDocData\\\\|const academicYear = parseInt\\\\|return { cls, ms, credit, prefix\" js/pp5-doc.js)"
     ]
   }
 }

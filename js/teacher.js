@@ -2119,6 +2119,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_prayer',      icon:'🕌', label:'ละหมาด',         fn: async () => { const {renderPrayerAdmin}    = await import('./views.js'); renderPrayerAdmin() }},
   { key:'menu_house_colors',       icon:'🎨', label:'สีนักเรียน',          fn: async () => { const {renderHouseColors}     = await import('./views.js'); renderHouseColors() }},
   { key:'menu_sports_admin',       icon:'🏆', label:'ระบบกีฬาสี',          fn: async () => openAzizGamesModal({ admin: true }) },
+  { key:'menu_azfutsal',           icon:'⚽', label:'AZFUTSALCUP2025',     fn: async () => window.open('azfutsal.html', '_blank') },
   { key:'menu_sports_shirt_settings', icon:'👕', label:'ตั้งค่าและสรุปเสื้อกีฬาสี', fn: async () => renderShirtSummary() },
   { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
   { key:'manage_my_religion_group', icon:'👥', label:'กลุ่มของฉัน',        fn: async (t) => { const {renderMyReligionGroup} = await import('./views.js'); renderMyReligionGroup(t) }},
@@ -2146,6 +2147,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
         if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || _tPositions2.includes('house_color_admin')
         if (m.key === 'menu_sports_admin') return sportsVisibleForTeacher && (_positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin'))
         if (m.key === 'menu_sports_shirt_settings') return _positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin')
+        if (m.key === 'menu_azfutsal') return true
         if (m.key === 'menu_classroom_leaders') return _positionPerms.menu_classroom_leaders || _tPositions2.includes('classroom_leaders_admin')
         if (m.key === 'manage_religion_groups') return _positionPerms.manage_religion_groups || _tPositions2.includes('religion_group_head')
         if (m.key === 'manage_my_religion_group') return _tPositions2.includes('religion_subgroup_head')
