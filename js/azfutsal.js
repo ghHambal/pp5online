@@ -1437,12 +1437,12 @@ function handleShakePool() {
   draw()
   const pool = document.getElementById('live-draw-pool')
   if (pool) Array.from(pool.querySelectorAll('div[id^="ball-"]')).forEach(b => {
-    b.style.transition = 'top .38s cubic-bezier(.4,0,.2,1), left .38s cubic-bezier(.4,0,.2,1)'
+    b.style.transition = 'top .22s cubic-bezier(.4,0,.2,1), left .22s cubic-bezier(.4,0,.2,1)'
   })
   stopLiveDrawShake()
   startRollingSound()
   shakeBallsOnce()
-  liveDrawShakeTimer = setInterval(shakeBallsOnce, 420) // เขย่าต่อเนื่องไม่หยุด จนกว่าจะกด "จับทีมถัดไป"
+  liveDrawShakeTimer = setInterval(shakeBallsOnce, 250) // เขย่าต่อเนื่องไม่หยุด จนกว่าจะกด "จับทีมถัดไป" (เร็วขึ้นตามที่ขอ)
 }
 
 async function handleDrawNext() {
