@@ -102,6 +102,7 @@ let S = {
   confirmRegTeamId: null,
   confirmRegQR: null,
   paymentUploading: false,
+  teamCreating: false,
   viewProofOpen: false,
   viewProofUrl: null,
   liveDraw: null, // { level, order:[teamId...] (สับแล้ว), slotSeq:[{code,side}], pickIndex, filled:{`${code}_${side}`:teamId}, phase:'idle'|'spinning' }
@@ -791,7 +792,7 @@ function createTeamView(adminMode) {
             <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">${esc(lr.full_name)}</div><div style="font-size:11px;color:#6b7280">${esc(lr.student_code)}</div></div>
           </div>` : ''}
       </div>` : ''}
-      <button data-act="createTeam" data-admin="${adminMode ? '1' : '0'}" style="margin-top:6px;padding:12px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">สร้างทีม</button>
+      <button data-act="createTeam" data-admin="${adminMode ? '1' : '0'}" ${S.teamCreating ? 'disabled' : ''} style="margin-top:6px;padding:12px;border:none;border-radius:10px;background:${S.teamCreating ? '#f3b6d1' : '#db2777'};color:#fff;font-weight:700;font-size:14px;cursor:${S.teamCreating ? 'default' : 'pointer'}">${S.teamCreating ? 'กำลังสร้าง...' : 'สร้างทีม'}</button>
     </div>
   </section>`
 }
@@ -1487,6 +1488,7 @@ async function handleRandomDraw(level) {
 }
 
 async function handleCreateTeam(adminMode) {
+  if (S.teamCreating) return // กันกดซ้ำรัวๆ ระหว่างกำลังสร้าง (สาเหตุที่เคยทำให้เกิดทีมซ้ำ 4 แถว)
   const name = gid('new-team-name').value.trim()
   const level = gid('new-team-level').value
   if (!name) { azToast('กรุณากรอกชื่อทีม'); return }
@@ -1498,8 +1500,15 @@ async function handleCreateTeam(adminMode) {
   } else {
     captainId = S.identity.student.id
   }
+  S.teamCreating = true
+  draw()
   const { data, error } = await SB.from('azfutsal_teams').insert({ name, level, captain_student_id: captainId }).select('id').single()
-  if (error) { azToast('สร้างทีมไม่สำเร็จ: ' + error.message); return }
+  S.teamCreating = false
+  if (error) {
+    azToast(error.code === '23505' ? 'นักเรียนคนนี้เป็นหัวหน้าทีมอยู่แล้ว สร้างทีมซ้ำไม่ได้' : 'สร้างทีมไม่สำเร็จ: ' + error.message)
+    draw()
+    return
+  }
   S.newTeamName = ''; S.capLookupCode = ''; S.capLookupResult = null
   if (adminMode) { S.adminCreatingTeam = false; S.adminManageTeamId = data.id }
   await refresh()
