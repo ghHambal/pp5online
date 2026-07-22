@@ -1,5 +1,6 @@
 import { promptpayQRDataURL } from './promptpay.js'
 import { uploadAzfutsalPlayerPhoto } from './storage.js'
+import { loadConfetti, fireConfetti } from './confetti-loader.js'
 
 const T = {
   MS: { label: 'ม.ต้น', accent: '#db2777', base: '#ec4899', soft: '#fdf2f8', border: '#f9d4e6' },
@@ -103,6 +104,7 @@ let S = {
   paymentUploading: false,
   viewProofOpen: false,
   viewProofUrl: null,
+  liveDraw: null, // { level, order:[teamId...] (สับแล้ว), slotSeq:[{code,side}], pickIndex, filled:{`${code}_${side}`:teamId}, phase:'idle'|'spinning' }
   certModalOpen: false,
   certInput: '',
   certResult: null,
@@ -145,7 +147,7 @@ async function loadAll() {
 
   const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }, { data: matchEvents }] = await Promise.all([
     SB.from('azfutsal_config').select('key, value'),
-    SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, is_reserve, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
+    SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, is_reserve, is_organizer, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
     SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, photo_url, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
     SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
@@ -295,6 +297,10 @@ function reserveBadge() {
   return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#b45309">ทีมสำรอง</span>`
 }
 
+function organizerBadge() {
+  return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:#e0e7ff;color:#4338ca">ทีมผู้จัด</span>`
+}
+
 // ---------------- render: shell ----------------
 export async function renderAzfutsal(root, supabaseClient) {
   ROOT = root
@@ -330,6 +336,7 @@ function draw() {
     ${s.adminLoginOpen ? adminLoginModal() : ''}
     ${s.confirmRegOpen ? confirmRegistrationModal() : ''}
     ${s.viewProofOpen ? viewProofModal() : ''}
+    ${s.liveDraw ? liveDrawView() : ''}
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
 }
@@ -493,7 +500,7 @@ function teamStatusRow(team) {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
       <div style="display:flex;align-items:center;gap:6px;min-width:0">
         <span style="font-size:13.5px;font-weight:700;overflow-wrap:break-word">${esc(team.name)}</span>
-        ${team.is_reserve ? reserveBadge() : ''}
+        ${team.is_reserve ? reserveBadge() : ''}${team.is_organizer ? organizerBadge() : ''}
       </div>
       <span style="flex-shrink:0;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:${bg};color:${color};white-space:nowrap">${label}</span>
     </div>
@@ -746,7 +753,7 @@ function adminTeamPickerView() {
         </div>
         ${rows.length ? rows.map(t => `
           <button data-act="adminOpenTeam" data-id="${t.id}" style="display:block;width:100%;text-align:left;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:6px;background:#fff;cursor:pointer">
-            <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(t.name)}</span>${t.is_reserve ? reserveBadge() : ''}</div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(t.name)}</span>${t.is_reserve ? reserveBadge() : ''}${t.is_organizer ? organizerBadge() : ''}</div>
             <div style="font-size:11px;color:#6b7280">${S.players.filter(p => p.team_id === t.id).length} คน${t.team_code ? ' · ' + esc(t.team_code) : ''}</div>
           </button>`).join('') : `<div style="font-size:12px;color:#9ca3af">ยังไม่มีทีม</div>`}
       </div>`
@@ -817,7 +824,7 @@ function manageTeamView(team, isAdminView) {
       ${isAdminView ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : ''}
       <div style="display:flex;align-items:center;gap:8px">
         ${levelBadge(team.level)}
-        ${team.is_reserve ? reserveBadge() : ''}
+        ${team.is_reserve ? reserveBadge() : ''}${team.is_organizer ? organizerBadge() : ''}
         <h2 style="margin:0;font-size:17px;font-weight:800">${esc(team.name)}</h2>
       </div>
       ${team.team_code ? `<div style="margin-top:6px;font-size:12px;color:${t.accent};font-weight:700">รหัสประจำทีม: ${esc(team.team_code)}</div>` : ''}
@@ -1111,7 +1118,8 @@ function adminTeams() {
       <div style="font-weight:700;font-size:14px">จัดการทีม${quota > 0 ? ` <span style="font-weight:600;font-size:11.5px;color:#6b7280">(${verifiedCount}/${quota} ทีมยืนยันแล้ว)</span>` : ''}</div>
       <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminTeamLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
     </div>
-    ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่</button>`}
+    ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="width:100%;margin-bottom:6px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่ (ทันที ไม่มีแอนิเมชัน)</button>`}
+    ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="width:100%;margin-bottom:10px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด (สำหรับไลฟ์)</button>` : ''}
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:340px;overflow-y:auto">
       ${rows.length ? rows.map(t => teamAdminRow(t)).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีทีมในระดับนี้</div>`}
     </div>
@@ -1132,6 +1140,128 @@ function pickableSlots(level, code) {
   else if (def.refB === 'REC_1' || def.refB === 'REC_2') slots.b = { pool: poolFrom(RECOVER_SOURCES[level] || []), value: m?.team_b_id || '' }
   else if (def.refB === 'WC_1' || def.refB === 'WC_2') slots.b = { pool: poolFrom(WILDCARD_SOURCES[level] || []), value: m?.team_b_id || '' }
   return slots
+}
+
+// ---------------- live draw (จับสลากสด) ----------------
+function cryptoShuffle(arr) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const buf = new Uint32Array(1)
+    crypto.getRandomValues(buf)
+    const j = buf[0] % (i + 1)
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+function liveDrawSlotSeq(level) {
+  const firstCodes = BRACKET[level].filter(b => !b.refA).map(b => b.code)
+  return firstCodes.flatMap(code => [{ code, side: 'a' }, { code, side: 'b' }])
+}
+
+function liveDrawView() {
+  const ld = S.liveDraw
+  const level = ld.level
+  const t = T[level]
+  if (!ld.started) {
+    const teams = S.teams.filter(tm => tm.level === level)
+    const slotSeq = liveDrawSlotSeq(level)
+    const mismatch = teams.length > slotSeq.length
+    return `
+    <div style="position:fixed;inset:0;z-index:80;background:#0b0f1a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
+      <button data-act="closeLiveDraw" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
+      <div style="font-size:20px;font-weight:800;margin-bottom:8px">🎬 จับสลากสด · ${t.label}</div>
+      <div style="font-size:13px;color:#9ca3af;margin-bottom:4px">ทีมในโหล ${teams.length} ทีม · ช่องรอบแรกทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
+      ${mismatch
+        ? `<div style="margin-top:14px;padding:12px 16px;border-radius:10px;background:#7f1d1d;color:#fecaca;font-size:12.5px;max-width:320px">จำนวนทีม (${teams.length}) มากกว่าจำนวนช่องรอบแรก (${slotSeq.length}) กรุณาตรวจสอบทีมก่อนเริ่มจับสลาก</div>`
+        : `<button data-act="startLiveDraw" style="margin-top:18px;padding:14px 32px;border-radius:999px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:15px;cursor:pointer">เริ่มจับสลาก</button>
+           <div style="margin-top:10px;font-size:11px;color:#6b7280">สุ่มลำดับทั้งหมดทันทีด้วย crypto RNG แล้วเปิดเผยทีละทีมสดๆ ให้ทุกคนเห็น</div>`}
+    </div>`
+  }
+  const slotSeq = ld.slotSeq
+  const codes = [...new Set(slotSeq.map(s => s.code))]
+  const remaining = ld.order.length - ld.pickIndex
+  const isDone = ld.pickIndex >= slotSeq.length || ld.pickIndex >= ld.order.length
+  return `
+  <div style="position:fixed;inset:0;z-index:80;background:#0b0f1a;color:#fff;display:flex;flex-direction:column;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
+      <div style="font-weight:800;font-size:15px">🎬 จับสลากสด · ${t.label}</div>
+      <button data-act="closeLiveDraw" style="border:none;background:rgba(255,255,255,.1);color:#fff;width:32px;height:32px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
+    </div>
+    <div style="padding:16px 18px;text-align:center;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
+      <div style="font-size:11.5px;color:#9ca3af;margin-bottom:4px">เหลือในโหล</div>
+      <div style="font-size:32px;font-weight:800">${remaining}</div>
+      <div id="live-draw-spin-name" style="margin-top:10px;font-size:22px;font-weight:800;min-height:30px;color:${t.base}">${isDone ? '🎉 จับสลากครบทุกคู่แล้ว' : (ld.phase === 'spinning' ? '' : 'พร้อมจับทีมถัดไป')}</div>
+      <button data-act="drawNext" ${ld.phase === 'spinning' || isDone ? 'disabled' : ''} style="margin-top:12px;padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'spinning' || isDone ? '#374151' : 'linear-gradient(135deg,#4338ca,#6366f1)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'spinning' || isDone ? 'default' : 'pointer'}">${ld.phase === 'spinning' ? 'กำลังจับ...' : (isDone ? 'เสร็จสิ้น' : 'จับทีมถัดไป')}</button>
+    </div>
+    <div style="flex:1;padding:16px 18px;display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:10px;align-content:start">
+      ${codes.map(code => {
+        const aId = ld.filled[`${code}_a`], bId = ld.filled[`${code}_b`]
+        const teamLabel = id => {
+          if (!id) return '<span style="color:#4b5563">?</span>'
+          const tm = S.teams.find(x => x.id === id)
+          return esc(tm?.name || '') + (tm?.is_organizer ? ' <span style="color:#a5b4fc;font-size:10px">(ผู้จัด)</span>' : '')
+        }
+        return `
+        <div style="border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;background:rgba(255,255,255,.04)">
+          <div style="font-size:10.5px;color:#9ca3af;font-weight:700;margin-bottom:6px">${code}</div>
+          <div style="font-size:12.5px;font-weight:700;min-height:18px;overflow-wrap:break-word">${teamLabel(aId)}</div>
+          <div style="font-size:10px;color:#6b7280;margin:2px 0">พบ</div>
+          <div style="font-size:12.5px;font-weight:700;min-height:18px;overflow-wrap:break-word">${teamLabel(bId)}</div>
+        </div>`
+      }).join('')}
+    </div>
+  </div>`
+}
+
+async function handleStartLiveDraw() {
+  const ld = S.liveDraw
+  if (!ld) return
+  const teams = S.teams.filter(tm => tm.level === ld.level).map(tm => tm.id)
+  const slotSeq = liveDrawSlotSeq(ld.level)
+  S.liveDraw = { level: ld.level, started: true, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle' }
+  await loadConfetti()
+  draw()
+}
+
+async function handleDrawNext() {
+  const ld = S.liveDraw
+  if (!ld || !ld.started || ld.phase === 'spinning') return
+  if (ld.pickIndex >= ld.slotSeq.length) return
+  if (ld.pickIndex >= ld.order.length) { azToast('ทีมในโหลหมดแล้ว ช่องที่เหลือเป็นบาย'); return }
+  const teamId = ld.order[ld.pickIndex]
+  const slot = ld.slotSeq[ld.pickIndex]
+  ld.phase = 'spinning'
+  draw()
+  const spinPool = ld.order.slice(ld.pickIndex)
+  await new Promise(resolve => {
+    let ticks = 0
+    const totalTicks = 20
+    const tick = () => {
+      const spinEl = document.getElementById('live-draw-spin-name')
+      if (!spinEl) { resolve(); return }
+      ticks++
+      if (ticks >= totalTicks) { spinEl.textContent = teamName(teamId); resolve(); return }
+      spinEl.textContent = teamName(spinPool[Math.floor(Math.random() * spinPool.length)])
+      setTimeout(tick, 60 + (ticks / totalTicks) * 220)
+    }
+    tick()
+  })
+  ld.filled[`${slot.code}_${slot.side}`] = teamId
+  ld.pickIndex++
+  ld.phase = 'landed'
+  fireConfetti('high')
+  const aId = ld.filled[`${slot.code}_a`], bId = ld.filled[`${slot.code}_b`]
+  if (aId && bId) {
+    await SB.from('azfutsal_matches').upsert(
+      { level: ld.level, match_code: slot.code, round: 'รอบแรก', team_a_id: aId, team_b_id: bId },
+      { onConflict: 'level,match_code' }
+    )
+    await refresh()
+  } else {
+    draw()
+  }
+  setTimeout(() => { if (S.liveDraw) { S.liveDraw.phase = 'idle'; draw() } }, 900)
 }
 
 function eventListRow(level, code, teamId, side, type, label, color, bg) {
@@ -1670,6 +1800,15 @@ function bindEvents() {
       if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('ลบทีมแล้ว'); return
     }
+    if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false }; draw(); return }
+    if (act === 'closeLiveDraw') { S.liveDraw = null; draw(); return }
+    if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
+    if (act === 'drawNext') { await handleDrawNext(); return }
+    if (act === 'toggleOrganizer') {
+      const { error } = await SB.from('azfutsal_teams').update({ is_organizer: btn.dataset.v === '1' }).eq('id', btn.dataset.id)
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); return
+    }
     if (act === 'removePlayer') {
       if (!confirm('ลบนักกีฬาคนนี้ออกจากทีม?')) return
       const { error } = await SB.from('azfutsal_players').delete().eq('id', btn.dataset.id)
@@ -1778,13 +1917,14 @@ function teamAdminRow(t) {
   return `
   <div style="border:1px solid #f3f4f6;border-radius:10px;padding:8px 10px">
     <div style="display:flex;align-items:center;justify-content:space-between">
-      <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(t.name)}</span>${t.is_reserve ? reserveBadge() : ''}</div>
+      <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(t.name)}</span>${t.is_reserve ? reserveBadge() : ''}${t.is_organizer ? organizerBadge() : ''}</div>
       <div style="display:flex;gap:8px;align-items:center">
         <button data-act="adminOpenTeamFromList" data-id="${t.id}" style="border:none;background:none;color:#db2777;font-size:11.5px;cursor:pointer;font-weight:600">จัดการ</button>
         <button data-act="removeTeam" data-id="${t.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
       </div>
     </div>
     <div style="font-size:11px;color:#6b7280;margin-top:2px">หัวหน้าทีม: ${t.captain?.full_name ? esc(t.captain.full_name) : '-'}${t.vice_captain?.full_name ? ' · รอง: ' + esc(t.vice_captain.full_name) : ''}</div>
+    <button data-act="toggleOrganizer" data-id="${t.id}" data-v="${t.is_organizer ? '0' : '1'}" style="margin-top:4px;border:none;background:none;color:#4338ca;font-size:10.5px;cursor:pointer;font-weight:600">${t.is_organizer ? 'ยกเลิกทีมผู้จัด' : 'ตั้งเป็นทีมผู้จัด'}</button>
   </div>`
 }
 
@@ -1817,7 +1957,7 @@ function adminPayments() {
         return `
         <div style="border:1px solid #f3f4f6;border-radius:10px;padding:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(team?.name || '')}</span>${team?.is_reserve ? reserveBadge() : ''}</div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">${esc(team?.name || '')}</span>${team?.is_reserve ? reserveBadge() : ''}${team?.is_organizer ? organizerBadge() : ''}</div>
             ${statusPill(p.status)}
           </div>
           <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">${p.method === 'transfer' ? 'โอนเงิน' : 'เงินสด'} · ${money(p.amount)} บาท</div>
