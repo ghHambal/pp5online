@@ -1236,7 +1236,8 @@ function liveDrawView() {
       ${stageBar}
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
         <button data-act="closeLiveDraw" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
-        <div style="font-size:20px;font-weight:800;margin-bottom:8px">🎬 จับสลากสด · ${t.label}</div>
+        <div style="font-size:30px;font-weight:800;margin-bottom:2px">🎬 จับสลากสด</div>
+        <div style="font-size:19px;font-weight:700;color:${t.base};margin-bottom:8px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))} · ${t.label}</div>
         <div style="font-size:13px;color:#9ca3af;margin-bottom:16px">ทีมในโหล ${teams.length} ทีม · ช่องรอบแรกทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
         <div style="display:flex;gap:8px;background:rgba(255,255,255,.06);padding:5px;border-radius:12px">
           <button data-act="setLiveDrawMode" data-v="1" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${testMode ? '#f59e0b' : 'transparent'};color:${testMode ? '#111827' : '#9ca3af'}">🧪 โหมดทดสอบ (ไม่บันทึก)</button>
@@ -1265,8 +1266,11 @@ function liveDrawView() {
     ${stageBar}
     ${ld.testMode ? `<div style="background:#f59e0b;color:#111827;text-align:center;padding:6px;font-weight:800;font-size:12px;flex-shrink:0">🧪 โหมดทดสอบ — ไม่มีการบันทึกผลลงระบบจริง</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
-      <div style="font-weight:800;font-size:15px">🎬 จับสลากสด · ${t.label}</div>
-      <button data-act="closeLiveDraw" style="border:none;background:rgba(255,255,255,.1);color:#fff;width:32px;height:32px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
+      <div>
+        <div style="font-weight:800;font-size:20px">🎬 จับสลากสด · ${t.label}</div>
+        <div style="font-size:12.5px;color:#9ca3af;margin-top:2px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))}</div>
+      </div>
+      <button data-act="closeLiveDraw" style="flex-shrink:0;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
     </div>
     <div style="padding:12px 18px;text-align:center;flex-shrink:0">
       <div style="font-size:11.5px;color:#9ca3af;margin-bottom:2px">เหลือในโหล</div>
@@ -1322,27 +1326,65 @@ function getAudioCtx() {
   if (liveDrawAudioCtx.state === 'suspended') liveDrawAudioCtx.resume().catch(() => {})
   return liveDrawAudioCtx
 }
-// เสียงลูกบอลกระทบกันตอนเขย่า — noise burst สั้นๆ ผ่าน bandpass ให้ฟังดูเหมือนของแข็งชนกัน สุ่มความถี่ทุกครั้งกันฟังซ้ำจำเจ
-function playKnockSound() {
+// เสียงลูกบอลกลิ้งในโถพลาสติกต่อเนื่อง — noise buffer วนซ้ำผ่าน bandpass ที่ถูกมอดูเลตความถี่/ความดังด้วย LFO
+// สองตัวให้ฟังดูเหมือนลูกบอลหลายลูกกลิ้งกระทบผนังโถไม่สม่ำเสมอ ไม่ใช่เสียงคลิกสั้นๆ ซ้ำๆ แบบเดิม
+let liveDrawRollNodes = null
+function startRollingSound() {
   const ctx = getAudioCtx()
   if (!ctx) return
-  const now = ctx.currentTime
-  const dur = 0.045
-  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate)
+  stopRollingSound()
+  const bufDur = 2
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * bufDur), ctx.sampleRate)
   const data = buffer.getChannelData(0)
-  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length)
-  const noise = ctx.createBufferSource()
-  noise.buffer = buffer
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.loop = true
+
   const filter = ctx.createBiquadFilter()
   filter.type = 'bandpass'
-  filter.frequency.value = 700 + Math.random() * 600
-  filter.Q.value = 2.5
-  const gain = ctx.createGain()
-  gain.gain.setValueAtTime(0.22, now)
-  gain.gain.exponentialRampToValueAtTime(0.001, now + dur)
-  noise.connect(filter).connect(gain).connect(ctx.destination)
-  noise.start(now)
-  noise.stop(now + dur + 0.01)
+  filter.frequency.value = 420
+  filter.Q.value = 1.1
+
+  const masterGain = ctx.createGain()
+  masterGain.gain.value = 0.001
+  masterGain.gain.linearRampToValueAtTime(0.13, ctx.currentTime + 0.25)
+
+  // LFO มอดูเลตความถี่ filter ให้เสียงกลิ้งฟังดูไม่สม่ำเสมอเหมือนลูกบอลจริง
+  const freqLfo = ctx.createOscillator()
+  freqLfo.frequency.value = 2.8
+  const freqLfoGain = ctx.createGain()
+  freqLfoGain.gain.value = 200
+  freqLfo.connect(freqLfoGain).connect(filter.frequency)
+
+  // LFO อีกตัวมอดูเลตความดังเบาๆ ให้มีจังหวะกระเพื่อมเหมือนลูกบอลกระจุกตัวไม่เท่ากัน
+  const ampLfo = ctx.createOscillator()
+  ampLfo.frequency.value = 5.3
+  const ampLfoGain = ctx.createGain()
+  ampLfoGain.gain.value = 0.045
+  ampLfo.connect(ampLfoGain).connect(masterGain.gain)
+
+  source.connect(filter).connect(masterGain).connect(ctx.destination)
+  const now = ctx.currentTime
+  source.start(now)
+  freqLfo.start(now)
+  ampLfo.start(now)
+  liveDrawRollNodes = { source, freqLfo, ampLfo, masterGain }
+}
+function stopRollingSound() {
+  if (!liveDrawRollNodes) return
+  const ctx = getAudioCtx()
+  const now = ctx ? ctx.currentTime : 0
+  const nodes = liveDrawRollNodes
+  liveDrawRollNodes = null
+  try {
+    nodes.masterGain.gain.cancelScheduledValues(now)
+    nodes.masterGain.gain.setValueAtTime(nodes.masterGain.gain.value, now)
+    nodes.masterGain.gain.linearRampToValueAtTime(0.0001, now + 0.18)
+    nodes.source.stop(now + 0.2)
+    nodes.freqLfo.stop(now + 0.2)
+    nodes.ampLfo.stop(now + 0.2)
+  } catch { /* node อาจถูก stop ไปแล้ว ไม่ต้องทำอะไรต่อ */ }
 }
 // เสียงแคปซูลแตกเปิดตอนเผยชื่อทีม — เสียง pop (โทนไล่ลง) ผสมเสียงกรอบแบบ noise สั้นๆ
 function playCrackSound() {
@@ -1387,7 +1429,6 @@ function shakeBallsOnce() {
     b.style.top = (14 + Math.random() * 58) + '%'
     b.style.left = (10 + Math.random() * 72) + '%'
   })
-  playKnockSound()
 }
 function handleShakePool() {
   const ld = S.liveDraw
@@ -1399,6 +1440,7 @@ function handleShakePool() {
     b.style.transition = 'top .38s cubic-bezier(.4,0,.2,1), left .38s cubic-bezier(.4,0,.2,1)'
   })
   stopLiveDrawShake()
+  startRollingSound()
   shakeBallsOnce()
   liveDrawShakeTimer = setInterval(shakeBallsOnce, 420) // เขย่าต่อเนื่องไม่หยุด จนกว่าจะกด "จับทีมถัดไป"
 }
@@ -1412,6 +1454,7 @@ async function handleDrawNext() {
   const slot = ld.slotSeq[ld.pickIndex]
   ld.phase = 'spinning'
   stopLiveDrawShake() // หยุดเขย่าทันทีที่กดจับ ลูกบอลจะค้างอยู่ ณ ตำแหน่งล่าสุด
+  stopRollingSound()
   draw()
   const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -2058,7 +2101,7 @@ function bindEvents() {
     if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false, testMode: true, orderStrategy: 'bypair' }; draw(); return }
     if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
     if (act === 'setLiveDrawOrder') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.orderStrategy = btn.dataset.v; draw() } return }
-    if (act === 'closeLiveDraw') { stopLiveDrawShake(); S.liveDraw = null; draw(); return }
+    if (act === 'closeLiveDraw') { stopLiveDrawShake(); stopRollingSound(); S.liveDraw = null; draw(); return }
     if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
     if (act === 'shakePool') { await handleShakePool(); return }
     if (act === 'drawNext') { await handleDrawNext(); return }
