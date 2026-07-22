@@ -2147,6 +2147,11 @@ function bindEvents() {
     if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
     if (act === 'shakePool') { await handleShakePool(); return }
     if (act === 'drawNext') { await handleDrawNext(); return }
+    if (act === 'useTopScorer') {
+      const { error } = await SB.from('azfutsal_awards').upsert({ level: btn.dataset.level, award_type: 'top_scorer', student_id: btn.dataset.student }, { onConflict: 'level,award_type' })
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); azToast('ตั้งดาวซัลโวจากผู้นำอัตโนมัติแล้ว'); return
+    }
     if (act === 'clearAward') {
       const { error } = await SB.from('azfutsal_awards').upsert({ level: btn.dataset.level, award_type: btn.dataset.type, student_id: null }, { onConflict: 'level,award_type' })
       if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
@@ -2416,6 +2421,25 @@ function adminOps() {
     const players = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
     const currentPlayer = currentId ? players.find(p => String(p.student_id) === String(currentId)) : null
     const currentName = currentPlayer ? currentPlayer.students?.full_name || '' : ''
+    // ดาวซัลโว: คำนวณผู้นำจากประตูที่บันทึกไว้จริงในระบบ (matchEvents) แนะนำให้กดใช้ได้เลย
+    // MVP/GK ยอดเยี่ยม: ไม่มีสถิติในระบบให้อ้างอิงเชิงภาวะวิสัย (ไม่มีข้อมูล save/คะแนนภาพรวม) จึงยังต้องเลือกเองเสมอ
+    let hint = ''
+    if (type === 'top_scorer') {
+      const scorers = computeTopScorers(level)
+      if (scorers.length) {
+        const topGoals = scorers[0].goals
+        const leaders = scorers.filter(s => s.goals === topGoals)
+        if (leaders.length === 1) {
+          const already = String(currentId) === String(leaders[0].studentId)
+          hint = `<div style="margin-top:4px;font-size:10.5px;color:#6b7280;display:flex;align-items:center;justify-content:space-between;gap:6px">
+            <span>📊 ผู้นำ: ${esc(leaders[0].name)} (${leaders[0].goals} ประตู)</span>
+            ${already ? `<span style="color:#16a34a;font-weight:700;flex-shrink:0">✓ เลือกแล้ว</span>` : `<button data-act="useTopScorer" data-level="${level}" data-student="${leaders[0].studentId}" style="border:none;background:none;color:#db2777;font-weight:700;cursor:pointer;font-size:10.5px;flex-shrink:0">ใช้คนนี้</button>`}
+          </div>`
+        } else {
+          hint = `<div style="margin-top:4px;font-size:10.5px;color:#6b7280">📊 เสมอกัน ${leaders.length} คนที่ ${topGoals} ประตู — เลือกเองด้านบน</div>`
+        }
+      }
+    }
     return `<label style="font-size:11.5px;color:#6b7280;flex:1">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span>${label}</span>
@@ -2425,6 +2449,7 @@ function adminOps() {
         <input class="az-award-search" data-level="${level}" data-type="${type}" value="${esc(currentName)}" autocomplete="off" placeholder="พิมพ์เลขเสื้อ/รหัส/ชื่อนักกีฬา..." style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12px"/>
         <div id="award-results-${level}-${type}" style="position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:20;display:none;box-shadow:0 6px 16px rgba(0,0,0,.08)"></div>
       </div>
+      ${hint}
     </label>`
   }
   return `
