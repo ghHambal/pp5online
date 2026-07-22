@@ -1189,18 +1189,19 @@ function liveDrawSlotSeq(level, strategy) {
   return firstCodes.flatMap(code => [{ code, side: 'a' }, { code, side: 'b' }])
 }
 
-const BALL_COLORS = ['#ec4899', '#6366f1', '#22c55e', '#f59e0b', '#a855f7', '#f43f5e', '#06b6d4', '#84cc16']
 function hashSeed(str) {
   let h = 0
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0
   return h
 }
+// ลูกบอลทุกลูกหน้าตาเหมือนกันหมด (สีเดียวกันตามธีมระดับชั้น) ตำแหน่งเริ่มต้นยังสุ่มต่อทีมเหมือนเดิม
 function ballStyleFor(id) {
   const seed = hashSeed(id)
+  const color = T[S.liveDraw?.level || 'MS'].base
   return {
     top: 16 + (seed % 54),
     left: 12 + ((seed >>> 8) % 68),
-    color: BALL_COLORS[seed % BALL_COLORS.length],
+    color,
   }
 }
 function liveDrawBallHtml(id) {
@@ -1364,27 +1365,29 @@ async function handleDrawNext() {
   }
   const targetRect = targetBall ? targetBall.getBoundingClientRect() : null
 
-  // ลูกบอลลอยออกจากโถ ขยายใหญ่มากลางจอ แล้ว "แตกแคปซูล" แยกซ้าย-ขวา เผยชื่อทีมบนกระดาษสีขาว
+  // ลูกบอลลอยออกจากโถ ขยายใหญ่มากลางจอ แล้ว "แตกแคปซูล" แยกซ้าย-ขวา เผยชื่อทีมบนกระดาษสีขาว (ตัวใหญ่เด่นชัด ให้คนที่เพิ่งเข้ามาดูไลฟ์เข้าใจทันที)
   const s = ballStyleFor(teamId)
+  const slotLabel = `${slot.code} · ทีม ${slot.side.toUpperCase()}`
   const center = document.getElementById('live-draw-center')
   if (center) {
     center.innerHTML = `
-      <div style="position:relative;width:220px;height:220px">
-        <div id="capsule-paper" style="position:absolute;inset:16px;border-radius:18px;background:#fff;box-shadow:0 24px 60px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;transform:scale(.85);transition:opacity .35s ease, transform .35s ease;z-index:1">
-          <div id="live-draw-reveal-name" style="color:#111827;font-weight:800;font-size:21px;text-align:center;line-height:1.35"></div>
+      <div style="position:relative;width:300px;height:300px">
+        <div id="capsule-paper" style="position:absolute;inset:18px;border-radius:22px;background:#fff;box-shadow:0 24px 60px rgba(0,0,0,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;opacity:0;transform:scale(.85);transition:opacity .35s ease, transform .35s ease;z-index:1">
+          <div style="color:#9ca3af;font-weight:700;font-size:12.5px;margin-bottom:6px">${esc(slotLabel)}</div>
+          <div id="live-draw-reveal-name" style="color:#111827;font-weight:800;font-size:30px;text-align:center;line-height:1.3"></div>
         </div>
-        <div id="capsule-half-l" style="position:absolute;top:0;left:0;width:50%;height:100%;overflow:hidden;border-radius:110px 0 0 110px;transition:transform .5s cubic-bezier(.5,0,.2,1);z-index:2">
-          <div style="width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});box-shadow:0 24px 60px rgba(0,0,0,.5)"></div>
+        <div id="capsule-half-l" style="position:absolute;top:0;left:0;width:50%;height:100%;overflow:hidden;border-radius:150px 0 0 150px;transition:transform .5s cubic-bezier(.5,0,.2,1);z-index:2">
+          <div style="width:300px;height:300px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});box-shadow:0 24px 60px rgba(0,0,0,.5)"></div>
         </div>
-        <div id="capsule-half-r" style="position:absolute;top:0;right:0;width:50%;height:100%;overflow:hidden;border-radius:0 110px 110px 0;transition:transform .5s cubic-bezier(.5,0,.2,1);z-index:2">
-          <div style="width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});margin-left:-110px;box-shadow:0 24px 60px rgba(0,0,0,.5)"></div>
+        <div id="capsule-half-r" style="position:absolute;top:0;right:0;width:50%;height:100%;overflow:hidden;border-radius:0 150px 150px 0;transition:transform .5s cubic-bezier(.5,0,.2,1);z-index:2">
+          <div style="width:300px;height:300px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});margin-left:-150px;box-shadow:0 24px 60px rgba(0,0,0,.5)"></div>
         </div>
       </div>`
     if (targetRect) {
       const dx = targetRect.left + targetRect.width / 2 - window.innerWidth / 2
       const dy = targetRect.top + targetRect.height / 2 - window.innerHeight / 2
       center.style.transition = 'none'
-      center.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.2)`
+      center.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.15)`
       center.style.opacity = '1'
       void center.offsetWidth // บังคับ reflow ให้จุดเริ่มต้นมีผลจริง ก่อนเปลี่ยนเป็น transition
     }
@@ -1399,8 +1402,8 @@ async function handleDrawNext() {
   const halfL = document.getElementById('capsule-half-l')
   const halfR = document.getElementById('capsule-half-r')
   const paper = document.getElementById('capsule-paper')
-  if (halfL) halfL.style.transform = 'translateX(-85px)'
-  if (halfR) halfR.style.transform = 'translateX(85px)'
+  if (halfL) halfL.style.transform = 'translateX(-115px)'
+  if (halfR) halfR.style.transform = 'translateX(115px)'
   if (paper) { paper.style.opacity = '1'; paper.style.transform = 'scale(1)' }
   fireConfetti('high')
 
