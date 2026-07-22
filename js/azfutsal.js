@@ -1131,6 +1131,9 @@ function adminGeneral() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">หักค่าประกัน/ใบเหลือง<input id="reg-ratey" type="number" min="0" value="${esc(cfg('RATE_YELLOW', 30))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">หักค่าประกัน/ใบแดง<input id="reg-rater" type="number" min="0" value="${esc(cfg('RATE_RED', 50))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
+      <label style="font-size:11.5px;color:#6b7280">ค่าดำเนินการกิจกรรม/ทีม (บาท — หักจากค่าประกันก่อนคำนวณเงินคืน)
+        <input id="reg-opfee" type="number" min="0" value="${esc(cfg('OPERATION_FEE', 100))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
+      </label>
       <div style="display:flex;gap:8px">
         <label style="font-size:11.5px;color:#6b7280;flex:1">โควตาทีม ม.ต้น (เว้นว่าง=ไม่จำกัด)<input id="reg-quota-ms" type="number" min="0" value="${esc(cfg('MAX_TEAMS_MS', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">โควตาทีม ม.ปลาย (เว้นว่าง=ไม่จำกัด)<input id="reg-quota-hs" type="number" min="0" value="${esc(cfg('MAX_TEAMS_HS', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
@@ -2096,6 +2099,7 @@ function bindEvents() {
         { key: 'PROMPTPAY_NUMBER', value: gid('reg-promptpay').value.trim() },
         { key: 'RATE_YELLOW', value: gid('reg-ratey').value },
         { key: 'RATE_RED', value: gid('reg-rater').value },
+        { key: 'OPERATION_FEE', value: gid('reg-opfee').value },
         { key: 'MAX_TEAMS_MS', value: gid('reg-quota-ms').value || '' },
         { key: 'MAX_TEAMS_HS', value: gid('reg-quota-hs').value || '' },
         { key: 'REGISTER_EDIT_DEADLINE', value: gid('reg-deadline').value || '' },
@@ -2379,10 +2383,10 @@ function adminCertificates() {
 function adminOps() {
   const dep = level => {
     const stats = computeTeamStats(level)
-    const deposit = Number(cfg('DEPOSIT_AMOUNT', 500)), rateY = Number(cfg('RATE_YELLOW', 30)), rateR = Number(cfg('RATE_RED', 50))
+    const deposit = Number(cfg('DEPOSIT_AMOUNT', 500)), rateY = Number(cfg('RATE_YELLOW', 30)), rateR = Number(cfg('RATE_RED', 50)), opFee = Number(cfg('OPERATION_FEE', 100))
     return S.teams.filter(t => t.level === level).map(t => {
       const st = stats.find(s => s.id === t.id) || { y: 0, r: 0 }
-      const refund = Math.max(deposit - st.y * rateY - st.r * rateR, 0)
+      const refund = Math.max(deposit - opFee - st.y * rateY - st.r * rateR, 0)
       return { team: t.name, refund }
     })
   }
@@ -2411,7 +2415,7 @@ function adminOps() {
     `)}
     ${box(`
       <div style="font-weight:700;font-size:14px;margin-bottom:4px">สรุปเงินประกัน (Deposit)</div>
-      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">เริ่มต้น ${money(cfg('DEPOSIT_AMOUNT', 500))} บาท · หักใบเหลือง ${money(cfg('RATE_YELLOW', 30))} / ใบแดง ${money(cfg('RATE_RED', 50))}</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">เริ่มต้น ${money(cfg('DEPOSIT_AMOUNT', 500))} บาท − ค่าดำเนินการ ${money(cfg('OPERATION_FEE', 100))} บาท − หักใบเหลือง ${money(cfg('RATE_YELLOW', 30))} / ใบแดง ${money(cfg('RATE_RED', 50))}</div>
       ${['MS', 'HS'].map(level => `
         <div style="margin-bottom:10px">
           <div style="font-weight:700;font-size:12.5px;color:${T[level].accent};margin-bottom:6px">${T[level].label}</div>
