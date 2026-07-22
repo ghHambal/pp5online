@@ -82,6 +82,7 @@ let S = {
   filterTime: '',
   statsLevel: 'MS',
   teamStatusLevel: 'MS',
+  teamStatusExpanded: null,
   adminSection: 'general',
   newTeamName: '',
   newTeamLevel: 'MS',
@@ -494,7 +495,12 @@ function teamStatusRow(team) {
       </div>
       <span style="flex-shrink:0;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:${bg};color:${color};white-space:nowrap">${label}</span>
     </div>
-    <div style="font-size:11.5px;color:#6b7280">หัวหน้าทีม: ${team.captain?.full_name ? esc(team.captain.full_name) : '-'} · นักกีฬา ${roster.length}/${maxRoster} คน</div>
+    <div style="font-size:11.5px;color:#6b7280;margin-bottom:${roster.length ? '8px' : '0'}">หัวหน้าทีม: ${team.captain?.full_name ? esc(team.captain.full_name) : '-'} · นักกีฬา ${roster.length}/${maxRoster} คน</div>
+    ${roster.length ? `<button data-act="toggleTeamRoster" data-id="${team.id}" style="font-size:11px;font-weight:700;color:${t.accent};background:none;border:none;padding:0;cursor:pointer">${S.teamStatusExpanded === team.id ? '▲ ซ่อนรายชื่อทีม' : '▼ ดูรายชื่อทีม'}</button>` : ''}
+    ${S.teamStatusExpanded === team.id ? `
+    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;margin-top:10px">
+      ${[...roster].sort((a, b) => (a.jersey_number ?? 999) - (b.jersey_number ?? 999)).map(p => rosterPhotoCard(p)).join('')}
+    </div>` : ''}
   </div>`
 }
 
@@ -674,6 +680,27 @@ function photoTag(url) {
   return url
     ? `<img src="${esc(url)}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0"/>`
     : `<div style="width:34px;height:34px;border-radius:50%;background:#e5e7eb;flex-shrink:0"></div>`
+}
+
+// การ์ดรูปนักกีฬาแบบมีมิติ (เงา+แสงตกกระทบ) สำหรับรายชื่อทีมสาธารณะ
+function rosterPhotoCard(p) {
+  const url = p.students?.image_url || p.students?.photo_url
+  const initial = esc((p.students?.full_name || '?').replace(/^[ดญ]\.[ชญ]\./, '').trim().charAt(0))
+  const fallbackStyle = 'width:100%;height:100%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:22px;font-weight:800'
+  const photo = url
+    ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'${initial}',style:'${fallbackStyle}'}))"/>`
+    : `<div style="${fallbackStyle}">${initial}</div>`
+  return `
+  <div style="background:#fff;border-radius:16px;box-shadow:0 3px 10px rgba(0,0,0,.1);overflow:hidden">
+    <div style="position:relative;margin:8px 8px 0;aspect-ratio:1;border-radius:12px;overflow:hidden;box-shadow:0 5px 14px rgba(0,0,0,.22)">
+      ${photo}
+      <div style="position:absolute;inset:0;background:linear-gradient(135deg, rgba(255,255,255,.4) 0%, rgba(255,255,255,0) 45%, rgba(0,0,0,0) 70%, rgba(0,0,0,.08) 100%);pointer-events:none"></div>
+      ${p.jersey_number !== null && p.jersey_number !== undefined ? `<div style="position:absolute;bottom:4px;right:4px;background:rgba(17,24,39,.75);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px">#${esc(p.jersey_number)}</div>` : ''}
+    </div>
+    <div style="padding:6px 8px 9px;text-align:center">
+      <div style="font-size:11.5px;font-weight:700;line-height:1.3;overflow-wrap:break-word">${esc(p.students?.full_name || '')}</div>
+    </div>
+  </div>`
 }
 
 function myTeamView() {
@@ -1452,6 +1479,7 @@ function bindEvents() {
     if (act === 'setLevel') { S.filterLevel = btn.dataset.v; draw(); return }
     if (act === 'setStats') { S.statsLevel = btn.dataset.v; draw(); return }
     if (act === 'setTeamStatusLevel') { S.teamStatusLevel = btn.dataset.v; draw(); return }
+    if (act === 'toggleTeamRoster') { S.teamStatusExpanded = S.teamStatusExpanded === btn.dataset.id ? null : btn.dataset.id; draw(); return }
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
     if (act === 'adminGroup') { const g = ADMIN_GROUPS.find(g => g.id === btn.dataset.v); if (g) S.adminSection = g.sections[0][0]; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
