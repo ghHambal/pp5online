@@ -169,7 +169,10 @@ export async function _renderBankQuestions(teacher, bank) {
                   `).join('')}
                 </ul>
               </div>
-              <button class="btn-delete-q px-2 py-1 rounded-lg border border-red-100 text-red-500 hover:bg-red-50 text-xs" data-id="${q.id}">🗑️</button>
+              <div class="flex flex-col gap-1.5 flex-shrink-0">
+                <button class="btn-edit-q px-2 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs" data-id="${q.id}">✏️</button>
+                <button class="btn-delete-q px-2 py-1 rounded-lg border border-red-100 text-red-500 hover:bg-red-50 text-xs" data-id="${q.id}">🗑️</button>
+              </div>
             </div>
           </div>
         `).join('')}
@@ -223,6 +226,9 @@ export async function _renderBankQuestions(teacher, bank) {
 
   document.getElementById('btn-add-question').addEventListener('click', () => _renderQuestionForm(teacher, bank))
 
+  document.querySelectorAll('.btn-edit-q').forEach(btn =>
+    btn.addEventListener('click', () => _renderQuestionForm(teacher, bank, questions.find(q => q.id === btn.dataset.id))))
+
   document.getElementById('btn-ai-generate').addEventListener('click', () => _renderAIGenerator(teacher, bank))
 
   document.getElementById('btn-go-quizzes').addEventListener('click', async () => {
@@ -240,26 +246,32 @@ export async function _renderBankQuestions(teacher, bank) {
     }))
 }
 
-function _renderQuestionForm(teacher, bank) {
+function _renderQuestionForm(teacher, bank, question = null) {
+  // Always render at least 4 slots (matches the create-flow default), but
+  // widen to however many choices the question already has (up to the
+  // schema's max of 5) — otherwise editing an AI/CSV-imported question with
+  // 5 choices would silently drop the 5th one on save.
+  const slotCount = Math.min(5, Math.max(4, question?.choices?.length ?? 0))
+
   const modal = document.createElement('div')
   modal.className = 'fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4 overflow-y-auto'
   modal.innerHTML = `
     <div class="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl my-8">
-      <h3 class="font-bold text-gray-800 text-lg mb-4">เพิ่มคำถามใหม่</h3>
+      <h3 class="font-bold text-gray-800 text-lg mb-4">${question ? 'แก้ไขคำถาม' : 'เพิ่มคำถามใหม่'}</h3>
       <div class="space-y-3">
         <div>
           <label class="text-xs font-semibold text-gray-500 mb-1 block">คำถาม</label>
-          <textarea id="q-text" class="${INPUT_CLS}" rows="2"></textarea>
+          <textarea id="q-text" class="${INPUT_CLS}" rows="2">${_htmlEsc(question?.question_text ?? '')}</textarea>
           <p class="text-xs text-gray-400 mt-1">รองรับสมการคณิตศาสตร์ด้วย LaTeX เช่น <code>$x^2+2x+1=0$</code></p>
           <div id="q-preview" class="hidden mt-2 p-3 rounded-xl bg-gray-50 border border-gray-100 text-sm"></div>
         </div>
         <div>
           <label class="text-xs font-semibold text-gray-500 mb-1 block">ตัวเลือก (เลือกข้อที่ถูกต้องด้วยปุ่มวิทยุด้านซ้าย)</label>
           <div class="space-y-2" id="q-choices">
-            ${[0, 1, 2, 3].map(i => `
+            ${Array.from({ length: slotCount }, (_, i) => `
               <div class="flex items-center gap-2">
-                <input type="radio" name="q-correct" value="${i}" ${i === 0 ? 'checked' : ''} class="flex-shrink-0" />
-                <input class="${INPUT_CLS} q-choice-input" placeholder="ตัวเลือกที่ ${i + 1}" />
+                <input type="radio" name="q-correct" value="${i}" ${i === (question?.correct_choice_index ?? 0) ? 'checked' : ''} class="flex-shrink-0" />
+                <input class="${INPUT_CLS} q-choice-input" placeholder="ตัวเลือกที่ ${i + 1}" value="${_htmlEsc(question?.choices?.[i] ?? '')}" />
               </div>
             `).join('')}
           </div>
@@ -268,20 +280,20 @@ function _renderQuestionForm(teacher, bank) {
           <div>
             <label class="text-xs font-semibold text-gray-500 mb-1 block">ระดับความยาก</label>
             <select id="q-difficulty" class="${SELECT_CLS}">
-              <option value="">— ไม่ระบุ —</option>
-              <option value="ง่าย">ง่าย</option>
-              <option value="ปานกลาง">ปานกลาง</option>
-              <option value="ยาก">ยาก</option>
+              <option value="" ${!question?.difficulty ? 'selected' : ''}>— ไม่ระบุ —</option>
+              <option value="ง่าย" ${question?.difficulty === 'ง่าย' ? 'selected' : ''}>ง่าย</option>
+              <option value="ปานกลาง" ${question?.difficulty === 'ปานกลาง' ? 'selected' : ''}>ปานกลาง</option>
+              <option value="ยาก" ${question?.difficulty === 'ยาก' ? 'selected' : ''}>ยาก</option>
             </select>
           </div>
           <div>
             <label class="text-xs font-semibold text-gray-500 mb-1 block">หมวดหมู่</label>
-            <input id="q-category" class="${INPUT_CLS}" placeholder="ไม่บังคับ" />
+            <input id="q-category" class="${INPUT_CLS}" placeholder="ไม่บังคับ" value="${_htmlEsc(question?.category ?? '')}" />
           </div>
         </div>
         <div>
           <label class="text-xs font-semibold text-gray-500 mb-1 block">คำอธิบายเฉลย (ไม่บังคับ)</label>
-          <textarea id="q-explanation" class="${INPUT_CLS}" rows="2"></textarea>
+          <textarea id="q-explanation" class="${INPUT_CLS}" rows="2">${_htmlEsc(question?.explanation ?? '')}</textarea>
         </div>
       </div>
       <div class="flex gap-2 mt-5">
@@ -324,16 +336,21 @@ function _renderQuestionForm(teacher, bank) {
 
     setButtonLoading(e.target, true)
     try {
-      await createQuizQuestion({
-        bank_id: bank.id,
+      const payload = {
         question_text: questionText,
         choices,
         correct_choice_index: correctIndex,
         explanation: modal.querySelector('#q-explanation').value.trim() || null,
         difficulty: modal.querySelector('#q-difficulty').value || null,
         category: modal.querySelector('#q-category').value.trim() || null,
-      })
-      showToast('เพิ่มคำถามแล้ว', 'success')
+      }
+      if (question) {
+        await updateQuizQuestion(question.id, payload)
+        showToast('แก้ไขคำถามแล้ว', 'success')
+      } else {
+        await createQuizQuestion({ ...payload, bank_id: bank.id })
+        showToast('เพิ่มคำถามแล้ว', 'success')
+      }
       modal.remove()
       _renderBankQuestions(teacher, bank)
     } catch (err) {
@@ -501,76 +518,83 @@ function _parseExternalAIResponse(rawText) {
 function _renderAIGenerator(teacher, bank) {
   let drafts = []
 
+  // เต็มหน้าจอ (ไม่ใช่ป๊อบอัพแคบตรงกลาง) — ตอนตรวจสอบ+ยืนยันทีละข้อ ถ้าสร้างมา
+  // หลายข้อ (สูงสุด 25 ครั้งในระบบ ไม่จำกัดถ้าคัดลอกไปใช้ AI ภายนอก) พื้นที่แคบ
+  // ทำให้เลื่อนดูลำบาก จึงใช้ pattern เดียวกับหน้า "ทดลองทำข้อสอบ" ของครู —
+  // หัวข้อ/ปุ่มปิดค้างด้านบน เนื้อหาเลื่อนตรงกลาง ปุ่มบันทึกค้างด้านล่างเสมอ
   const modal = document.createElement('div')
-  modal.className = 'fixed inset-0 z-[95] bg-black/40 flex items-center justify-center p-4 overflow-y-auto'
+  modal.className = 'fixed inset-0 z-[95] bg-white flex flex-col'
   modal.innerHTML = `
-    <div class="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl my-8">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-bold text-gray-800 text-lg">✨ AI ช่วยคิดข้อสอบ</h3>
-        <button id="ai-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
-      </div>
-      <p class="text-xs text-gray-400 mb-4">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบและกดยืนยันความถูกต้องทีละข้อก่อนบันทึกเข้าคลังจริงเสมอ</strong> (ไม่ว่าจะสร้างด้วยวิธีไหนก็ตาม)</p>
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 shadow-sm flex-shrink-0">
+      <h3 class="font-bold text-gray-800 text-lg">✨ AI ช่วยคิดข้อสอบ</h3>
+      <button id="ai-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+    </div>
 
-      <div class="flex gap-2 mb-3">
-        <button id="ai-mode-inapp" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">🤖 ให้ AI ในระบบสร้างให้เลย</button>
-        <button id="ai-mode-copy" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-gray-200 text-gray-500">📋 คัดลอกคำสั่งไปใช้ AI อื่น</button>
-      </div>
+    <div class="flex-1 overflow-y-auto p-5">
+      <div class="max-w-3xl mx-auto space-y-4">
+        <p class="text-xs text-gray-400">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบและกดยืนยันความถูกต้องทีละข้อก่อนบันทึกเข้าคลังจริงเสมอ</strong> (ไม่ว่าจะสร้างด้วยวิธีไหนก็ตาม)</p>
 
-      <div class="bg-purple-50 border border-purple-100 rounded-2xl p-4 space-y-3 mb-4">
-        <div>
-          <label class="text-xs font-semibold text-gray-600 mb-1 block">หัวข้อ/เนื้อหาที่ต้องการให้ออกข้อสอบ</label>
-          <input id="ai-topic" class="${INPUT_CLS}" placeholder="เช่น สมการเชิงเส้นตัวแปรเดียว, การสังเคราะห์แสง, หลักธรรมอริยสัจ 4" />
-        </div>
-        <div class="grid grid-cols-3 gap-3">
-          <div>
-            <label id="ai-count-label" class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ (สูงสุด 25/ครั้ง)</label>
-            <input id="ai-count" type="number" min="1" value="5" class="${INPUT_CLS}" />
-          </div>
-          <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">ตัวเลือกต่อข้อ</label>
-            <input id="ai-choices-count" type="number" min="2" max="5" value="4" class="${INPUT_CLS}" />
-          </div>
-          <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">ระดับความยาก</label>
-            <select id="ai-difficulty" class="${SELECT_CLS}">
-              <option value="">— ผสมกันไป —</option>
-              <option value="ง่าย">ง่าย</option>
-              <option value="ปานกลาง">ปานกลาง</option>
-              <option value="ยาก">ยาก</option>
-            </select>
-          </div>
+        <div class="flex gap-2">
+          <button id="ai-mode-inapp" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">🤖 ให้ AI ในระบบสร้างให้เลย</button>
+          <button id="ai-mode-copy" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-gray-200 text-gray-500">📋 คัดลอกคำสั่งไปใช้ AI อื่น</button>
         </div>
 
-        <button id="btn-ai-run" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างข้อสอบด้วย AI</button>
-
-        <div id="ai-copy-panel" class="hidden space-y-3 pt-1">
+        <div class="bg-purple-50 border border-purple-100 rounded-2xl p-4 space-y-3">
           <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">รูปแบบคำตอบที่จะขอจาก AI</label>
-            <div class="flex gap-2">
-              <button id="ai-format-json" class="ai-format-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">JSON</button>
-              <button id="ai-format-csv" class="ai-format-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-gray-200 text-gray-500">CSV</button>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">หัวข้อ/เนื้อหาที่ต้องการให้ออกข้อสอบ</label>
+            <input id="ai-topic" class="${INPUT_CLS}" placeholder="เช่น สมการเชิงเส้นตัวแปรเดียว, การสังเคราะห์แสง, หลักธรรมอริยสัจ 4" />
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label id="ai-count-label" class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ (สูงสุด 25/ครั้ง)</label>
+              <input id="ai-count" type="number" min="1" value="5" class="${INPUT_CLS}" />
+            </div>
+            <div>
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">ตัวเลือกต่อข้อ</label>
+              <input id="ai-choices-count" type="number" min="2" max="5" value="4" class="${INPUT_CLS}" />
+            </div>
+            <div>
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">ระดับความยาก</label>
+              <select id="ai-difficulty" class="${SELECT_CLS}">
+                <option value="">— ผสมกันไป —</option>
+                <option value="ง่าย">ง่าย</option>
+                <option value="ปานกลาง">ปานกลาง</option>
+                <option value="ยาก">ยาก</option>
+              </select>
             </div>
           </div>
-          <button id="btn-ai-build-prompt" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างคำสั่ง (Prompt)</button>
-          <div id="ai-prompt-wrap" class="hidden space-y-2">
-            <label class="text-xs font-semibold text-gray-600 block">คัดลอกคำสั่งนี้ไปวางใน ChatGPT, Gemini หรือ AI อื่นที่ต้องการ</label>
-            <textarea id="ai-prompt-text" class="${INPUT_CLS} font-mono text-xs" rows="6" readonly></textarea>
-            <button id="btn-ai-copy-prompt" class="w-full py-2 rounded-xl border border-purple-300 text-purple-700 hover:bg-purple-100 font-bold text-xs">📋 คัดลอกคำสั่ง</button>
-          </div>
-          <div class="pt-2 border-t border-purple-100">
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">วางคำตอบที่ได้จาก AI ที่นี่ (JSON หรือ CSV ก็ได้ ระบบจะตรวจให้เอง)</label>
-            <textarea id="ai-paste-response" class="${INPUT_CLS} font-mono text-xs" rows="6" placeholder="วางคำตอบทั้งหมดที่ AI ตอบกลับมา"></textarea>
-            <button id="btn-ai-parse-response" class="w-full mt-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">แปลงคำตอบเป็นคำถามร่าง</button>
+
+          <button id="btn-ai-run" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างข้อสอบด้วย AI</button>
+
+          <div id="ai-copy-panel" class="hidden space-y-3 pt-1">
+            <div>
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">รูปแบบคำตอบที่จะขอจาก AI</label>
+              <div class="flex gap-2">
+                <button id="ai-format-json" class="ai-format-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">JSON</button>
+                <button id="ai-format-csv" class="ai-format-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-gray-200 text-gray-500">CSV</button>
+              </div>
+            </div>
+            <button id="btn-ai-build-prompt" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างคำสั่ง (Prompt)</button>
+            <div id="ai-prompt-wrap" class="hidden space-y-2">
+              <label class="text-xs font-semibold text-gray-600 block">คัดลอกคำสั่งนี้ไปวางใน ChatGPT, Gemini หรือ AI อื่นที่ต้องการ</label>
+              <textarea id="ai-prompt-text" class="${INPUT_CLS} font-mono text-xs" rows="6" readonly></textarea>
+              <button id="btn-ai-copy-prompt" class="w-full py-2 rounded-xl border border-purple-300 text-purple-700 hover:bg-purple-100 font-bold text-xs">📋 คัดลอกคำสั่ง</button>
+            </div>
+            <div class="pt-2 border-t border-purple-100">
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">วางคำตอบที่ได้จาก AI ที่นี่ (JSON หรือ CSV ก็ได้ ระบบจะตรวจให้เอง)</label>
+              <textarea id="ai-paste-response" class="${INPUT_CLS} font-mono text-xs" rows="6" placeholder="วางคำตอบทั้งหมดที่ AI ตอบกลับมา"></textarea>
+              <button id="btn-ai-parse-response" class="w-full mt-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">แปลงคำตอบเป็นคำถามร่าง</button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div id="ai-draft-list" class="space-y-3"></div>
-
-      <div class="flex gap-2 mt-4">
-        <button id="ai-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">ปิด</button>
-        <button id="ai-save" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm hidden">บันทึกข้อที่ยืนยันแล้ว (0)</button>
+        <div id="ai-draft-list" class="space-y-3"></div>
       </div>
+    </div>
+
+    <div class="flex gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0 bg-white">
+      <button id="ai-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">ปิด</button>
+      <button id="ai-save" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm hidden">บันทึกข้อที่ยืนยันแล้ว (0)</button>
     </div>
   `
   document.body.appendChild(modal)
