@@ -28,6 +28,18 @@ async function _fetchAllRows(table, build, pageSize = 1000) {
   return all
 }
 
+// ครูตำแหน่ง house_color_admin ("ผู้รับผิดชอบสีนักเรียน/หัวหน้างานกีฬาสี") ใน pp5-online เอง
+// ให้ถือเป็นแอดมินเฉพาะหน้ากีฬาสีนี้ด้วย โดยไม่ต้องพึ่ง profiles.is_also_admin — เพราะ flag นั้น
+// เปิดสิทธิ์เข้า Admin Dashboard ทั้งระบบ ปพ.5 ไปด้วย เกินขอบเขตที่ต้องการ (มอบหมายพ่อสี/แม่สี
+// เฉพาะในหน้ากีฬาสีเท่านั้น)
+async function _hasHouseColorAdminPosition(userId) {
+  if (!userId) return false
+  const { data } = await supabase.from('teachers').select('positions,position,staff_type').eq('profile_id', userId).maybeSingle()
+  if (!data) return false
+  const positions = data.positions?.length ? data.positions : (data.position ? [data.position] : [])
+  return positions.includes('house_color_admin') || data.staff_type === 'แอดมิน'
+}
+
 async function syncAzizPublicShirtButton(enabled) {
   const { data } = await supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle()
   const current = data?.value && typeof data.value === 'object' ? data.value : {}
@@ -449,7 +461,7 @@ function _openAdvisorVoteModal(student,designs,open,onPick) {
 export async function renderShirtSummary() {
   const el=main(); el.innerHTML='<div class="py-16 text-center">กำลังสรุปยอด...</div>'
   try { const {event,cfg}=await context();if(cfg?.shirt_summary_enabled===false){el.innerHTML='<div class="text-center py-16">แอดมินปิดหน้าสรุปยอดไว้</div>';return}
-    const {data:{user}}=await supabase.auth.getUser(); const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',user.id).maybeSingle(); const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true
+    const {data:{user}}=await supabase.auth.getUser(); const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',user.id).maybeSingle(); const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true||await _hasHouseColorAdminPosition(user.id)
     const {data:myTeamMemberships}=await supabase.from('sports_team_memberships').select('team_color_id,role,permissions').eq('event_id',event.id).eq('profile_id',user.id).eq('is_active',true)
     const canManageTeamStaff=isAdmin||(myTeamMemberships||[]).some(m=>m.role==='lead_teacher')
     const [{data:colors},reqs,{data:approvals}]=await Promise.all([supabase.from('team_colors').select('id,name,hex_color').eq('event_id',event.id).order('display_order'),_fetchAllRows('sports_shirt_requests', q=>q.select('status,requested_size,confirmed_size,students(full_name,student_code,main_room,house_color)').eq('event_id',event.id)),isAdmin?supabase.from('sports_team_identity_requests').select('*,team_colors(name,logo_url)').eq('event_id',event.id).eq('status','pending_admin'):Promise.resolve({data:[]})])
