@@ -1155,54 +1155,99 @@ function cryptoShuffle(arr) {
   return a
 }
 
-function liveDrawSlotSeq(level) {
+// strategy: 'bypair' = จับให้ครบคู่ทีละคู่ (M1a,M1b,M2a,M2b,...) | 'byside' = จับทีมแรกของทุกคู่ก่อน (M1a..M6a แล้วค่อย M1b..M6b)
+function liveDrawSlotSeq(level, strategy) {
   const firstCodes = BRACKET[level].filter(b => !b.refA).map(b => b.code)
+  if (strategy === 'byside') {
+    return [...firstCodes.map(code => ({ code, side: 'a' })), ...firstCodes.map(code => ({ code, side: 'b' }))]
+  }
   return firstCodes.flatMap(code => [{ code, side: 'a' }, { code, side: 'b' }])
+}
+
+const BALL_COLORS = ['#ec4899', '#6366f1', '#22c55e', '#f59e0b', '#a855f7', '#f43f5e', '#06b6d4', '#84cc16']
+function hashSeed(str) {
+  let h = 0
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0
+  return h
+}
+function ballStyleFor(id) {
+  const seed = hashSeed(id)
+  return {
+    top: 8 + (seed % 68),
+    left: 6 + ((seed >>> 8) % 84),
+    delay: (seed % 30) / 10,
+    dur: 2.4 + (seed % 20) / 10,
+    color: BALL_COLORS[seed % BALL_COLORS.length],
+  }
+}
+function liveDrawBallHtml(id) {
+  const s = ballStyleFor(id)
+  const label = esc((teamName(id) || '?').slice(0, 2))
+  return `
+  <div id="ball-${id}" style="position:absolute;top:${s.top}%;left:${s.left}%;width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff2, ${s.color});box-shadow:0 4px 10px rgba(0,0,0,.4), inset 0 -4px 8px rgba(0,0,0,.25), inset 0 3px 6px rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);animation:ballFloat ${s.dur}s ease-in-out ${s.delay}s infinite;flex-shrink:0">${label}</div>`
 }
 
 function liveDrawView() {
   const ld = S.liveDraw
   const level = ld.level
   const t = T[level]
+  const stageBar = `<div style="height:4px;flex-shrink:0;background:linear-gradient(90deg,#f59e0b,#ec4899,#6366f1,#22c55e,#f59e0b);background-size:200% 100%;animation:stageBarSweep 4s linear infinite"></div>`
+  const stageBg = `radial-gradient(ellipse 900px 500px at 50% -8%, rgba(99,102,241,.28), transparent 60%), radial-gradient(ellipse 700px 420px at 50% 112%, rgba(219,39,119,.18), transparent 60%), #0b0f1a`
   if (!ld.started) {
     const teams = S.teams.filter(tm => tm.level === level)
-    const slotSeq = liveDrawSlotSeq(level)
+    const orderStrategy = ld.orderStrategy || 'bypair'
+    const slotSeq = liveDrawSlotSeq(level, orderStrategy)
     const mismatch = teams.length > slotSeq.length
     const testMode = ld.testMode !== false // ค่าเริ่มต้นคือโหมดทดสอบ ปลอดภัยไว้ก่อน
     return `
-    <div style="position:fixed;inset:0;z-index:80;background:#0b0f1a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
-      <button data-act="closeLiveDraw" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
-      <div style="font-size:20px;font-weight:800;margin-bottom:8px">🎬 จับสลากสด · ${t.label}</div>
-      <div style="font-size:13px;color:#9ca3af;margin-bottom:16px">ทีมในโหล ${teams.length} ทีม · ช่องรอบแรกทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
-      <div style="display:flex;gap:8px;background:rgba(255,255,255,.06);padding:5px;border-radius:12px">
-        <button data-act="setLiveDrawMode" data-v="1" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${testMode ? '#f59e0b' : 'transparent'};color:${testMode ? '#111827' : '#9ca3af'}">🧪 โหมดทดสอบ (ไม่บันทึก)</button>
-        <button data-act="setLiveDrawMode" data-v="0" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${!testMode ? '#dc2626' : 'transparent'};color:${!testMode ? '#fff' : '#9ca3af'}">🔴 จับจริง (บันทึกผล)</button>
+    <div style="position:fixed;inset:0;z-index:80;background:${stageBg};color:#fff;display:flex;flex-direction:column">
+      ${stageBar}
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
+        <button data-act="closeLiveDraw" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
+        <div style="font-size:20px;font-weight:800;margin-bottom:8px">🎬 จับสลากสด · ${t.label}</div>
+        <div style="font-size:13px;color:#9ca3af;margin-bottom:16px">ทีมในโหล ${teams.length} ทีม · ช่องรอบแรกทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
+        <div style="display:flex;gap:8px;background:rgba(255,255,255,.06);padding:5px;border-radius:12px">
+          <button data-act="setLiveDrawMode" data-v="1" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${testMode ? '#f59e0b' : 'transparent'};color:${testMode ? '#111827' : '#9ca3af'}">🧪 โหมดทดสอบ (ไม่บันทึก)</button>
+          <button data-act="setLiveDrawMode" data-v="0" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${!testMode ? '#dc2626' : 'transparent'};color:${!testMode ? '#fff' : '#9ca3af'}">🔴 จับจริง (บันทึกผล)</button>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:${testMode ? '#fbbf24' : '#f87171'}">${testMode ? 'ซ้อมได้อิสระด้วยรายชื่อทีมจริง จะไม่มีการเขียนอะไรลงฐานข้อมูลเลย' : 'ผลจะถูกบันทึกลงระบบจริงทันทีที่จับครบแต่ละคู่ ใช้ตอนไลฟ์จริงเท่านั้น'}</div>
+        <div style="margin-top:16px;font-size:11px;color:#9ca3af">ลำดับการจับ</div>
+        <div style="display:flex;gap:8px;background:rgba(255,255,255,.06);padding:5px;border-radius:12px;margin-top:6px">
+          <button data-act="setLiveDrawOrder" data-v="bypair" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${orderStrategy === 'bypair' ? '#6366f1' : 'transparent'};color:${orderStrategy === 'bypair' ? '#fff' : '#9ca3af'}">จับให้ครบคู่ทีละคู่</button>
+          <button data-act="setLiveDrawOrder" data-v="byside" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${orderStrategy === 'byside' ? '#6366f1' : 'transparent'};color:${orderStrategy === 'byside' ? '#fff' : '#9ca3af'}">จับทีมแรกของทุกคู่ก่อน</button>
+        </div>
+        ${mismatch
+          ? `<div style="margin-top:14px;padding:12px 16px;border-radius:10px;background:#7f1d1d;color:#fecaca;font-size:12.5px;max-width:320px">จำนวนทีม (${teams.length}) มากกว่าจำนวนช่องรอบแรก (${slotSeq.length}) กรุณาตรวจสอบทีมก่อนเริ่มจับสลาก</div>`
+          : `<button data-act="startLiveDraw" style="margin-top:18px;padding:14px 32px;border-radius:999px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:15px;cursor:pointer">เริ่มจับสลาก</button>
+             <div style="margin-top:10px;font-size:11px;color:#6b7280">สุ่มลำดับทั้งหมดทันทีด้วย crypto RNG แล้วเปิดเผยทีละทีมสดๆ ให้ทุกคนเห็น</div>`}
       </div>
-      <div style="margin-top:8px;font-size:11px;color:${testMode ? '#fbbf24' : '#f87171'}">${testMode ? 'ซ้อมได้อิสระด้วยรายชื่อทีมจริง จะไม่มีการเขียนอะไรลงฐานข้อมูลเลย' : 'ผลจะถูกบันทึกลงระบบจริงทันทีที่จับครบแต่ละคู่ ใช้ตอนไลฟ์จริงเท่านั้น'}</div>
-      ${mismatch
-        ? `<div style="margin-top:14px;padding:12px 16px;border-radius:10px;background:#7f1d1d;color:#fecaca;font-size:12.5px;max-width:320px">จำนวนทีม (${teams.length}) มากกว่าจำนวนช่องรอบแรก (${slotSeq.length}) กรุณาตรวจสอบทีมก่อนเริ่มจับสลาก</div>`
-        : `<button data-act="startLiveDraw" style="margin-top:18px;padding:14px 32px;border-radius:999px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:15px;cursor:pointer">เริ่มจับสลาก</button>
-           <div style="margin-top:10px;font-size:11px;color:#6b7280">สุ่มลำดับทั้งหมดทันทีด้วย crypto RNG แล้วเปิดเผยทีละทีมสดๆ ให้ทุกคนเห็น</div>`}
     </div>`
   }
   const slotSeq = ld.slotSeq
   const codes = [...new Set(slotSeq.map(s => s.code))]
   const remaining = ld.order.length - ld.pickIndex
   const isDone = ld.pickIndex >= slotSeq.length || ld.pickIndex >= ld.order.length
+  const remainingTeamIds = ld.order.slice(ld.pickIndex)
   return `
-  <div style="position:fixed;inset:0;z-index:80;background:#0b0f1a;color:#fff;display:flex;flex-direction:column;overflow-y:auto">
+  <div style="position:fixed;inset:0;z-index:80;background:${stageBg};color:#fff;display:flex;flex-direction:column;overflow-y:auto">
+    ${stageBar}
     ${ld.testMode ? `<div style="background:#f59e0b;color:#111827;text-align:center;padding:6px;font-weight:800;font-size:12px;flex-shrink:0">🧪 โหมดทดสอบ — ไม่มีการบันทึกผลลงระบบจริง</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
       <div style="font-weight:800;font-size:15px">🎬 จับสลากสด · ${t.label}</div>
       <button data-act="closeLiveDraw" style="border:none;background:rgba(255,255,255,.1);color:#fff;width:32px;height:32px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
     </div>
-    <div style="padding:16px 18px;text-align:center;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
-      <div style="font-size:11.5px;color:#9ca3af;margin-bottom:4px">เหลือในโหล</div>
-      <div style="font-size:32px;font-weight:800">${remaining}</div>
-      <div id="live-draw-spin-name" style="margin-top:10px;font-size:22px;font-weight:800;min-height:30px;color:${t.base}">${isDone ? '🎉 จับสลากครบทุกคู่แล้ว' : (ld.phase === 'spinning' ? '' : 'พร้อมจับทีมถัดไป')}</div>
-      <button data-act="drawNext" ${ld.phase === 'spinning' || isDone ? 'disabled' : ''} style="margin-top:12px;padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'spinning' || isDone ? '#374151' : 'linear-gradient(135deg,#4338ca,#6366f1)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'spinning' || isDone ? 'default' : 'pointer'}">${ld.phase === 'spinning' ? 'กำลังจับ...' : (isDone ? 'เสร็จสิ้น' : 'จับทีมถัดไป')}</button>
+    <div style="padding:12px 18px;text-align:center;flex-shrink:0">
+      <div style="font-size:11.5px;color:#9ca3af;margin-bottom:2px">เหลือในโหล</div>
+      <div style="font-size:28px;font-weight:800">${remaining}</div>
     </div>
-    <div style="flex:1;padding:16px 18px;display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:10px;align-content:start">
+    <div id="live-draw-pool" style="position:relative;height:200px;margin:0 18px 12px;border-radius:16px;background:radial-gradient(ellipse at 50% 40%, rgba(99,102,241,.14), rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);overflow:hidden;flex-shrink:0">
+      ${remainingTeamIds.map(id => liveDrawBallHtml(id)).join('')}
+    </div>
+    <div style="text-align:center;padding-bottom:14px;flex-shrink:0">
+      <button data-act="drawNext" ${ld.phase === 'spinning' || isDone ? 'disabled' : ''} style="padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'spinning' || isDone ? '#374151' : 'linear-gradient(135deg,#4338ca,#6366f1)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'spinning' || isDone ? 'default' : 'pointer'}">${isDone ? '🎉 จับสลากครบทุกคู่แล้ว' : (ld.phase === 'spinning' ? 'กำลังจับ...' : 'จับทีมถัดไป')}</button>
+    </div>
+    <div id="live-draw-center" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);opacity:0;z-index:90;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:14px"></div>
+    <div style="flex:1;padding:0 18px 18px;display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:10px;align-content:start">
       ${codes.map(code => {
         const aId = ld.filled[`${code}_a`], bId = ld.filled[`${code}_b`]
         const teamLabel = id => {
@@ -1226,9 +1271,10 @@ async function handleStartLiveDraw() {
   const ld = S.liveDraw
   if (!ld) return
   const teams = S.teams.filter(tm => tm.level === ld.level).map(tm => tm.id)
-  const slotSeq = liveDrawSlotSeq(ld.level)
+  const orderStrategy = ld.orderStrategy || 'bypair'
+  const slotSeq = liveDrawSlotSeq(ld.level, orderStrategy)
   const testMode = ld.testMode !== false
-  S.liveDraw = { level: ld.level, started: true, testMode, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle' }
+  S.liveDraw = { level: ld.level, started: true, testMode, orderStrategy, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle' }
   await loadConfetti()
   draw()
 }
@@ -1242,24 +1288,46 @@ async function handleDrawNext() {
   const slot = ld.slotSeq[ld.pickIndex]
   ld.phase = 'spinning'
   draw()
-  const spinPool = ld.order.slice(ld.pickIndex)
-  await new Promise(resolve => {
-    let ticks = 0
-    const totalTicks = 20
-    const tick = () => {
-      const spinEl = document.getElementById('live-draw-spin-name')
-      if (!spinEl) { resolve(); return }
-      ticks++
-      if (ticks >= totalTicks) { spinEl.textContent = teamName(teamId); resolve(); return }
-      spinEl.textContent = teamName(spinPool[Math.floor(Math.random() * spinPool.length)])
-      setTimeout(tick, 60 + (ticks / totalTicks) * 220)
-    }
-    tick()
-  })
+  const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+  // ช่วงลุ้น: พูลลูกบอลเรืองแสงขึ้น แล้วลูกที่จะได้เริ่มเด่นขึ้นมา
+  const pool = document.getElementById('live-draw-pool')
+  if (pool) pool.style.filter = 'brightness(1.2) saturate(1.15)'
+  await sleep(700)
+  const targetBall = document.getElementById(`ball-${teamId}`)
+  if (targetBall) {
+    targetBall.style.transition = 'box-shadow .3s, transform .3s'
+    targetBall.style.boxShadow = '0 0 0 5px rgba(255,255,255,.7), 0 6px 16px rgba(0,0,0,.5)'
+    targetBall.style.transform = 'scale(1.25)'
+  }
+  await sleep(500)
+
+  // ลูกบอลลอยมากลางจอแล้วเปิดเผยชื่อ
+  const s = ballStyleFor(teamId)
+  const center = document.getElementById('live-draw-center')
+  if (center) {
+    center.innerHTML = `
+      <div style="width:150px;height:150px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});box-shadow:0 20px 50px rgba(0,0,0,.55), inset 0 -10px 20px rgba(0,0,0,.2), inset 0 8px 18px rgba(255,255,255,.45)"></div>
+      <div id="live-draw-reveal-name" style="opacity:0;font-size:24px;font-weight:800;text-align:center;max-width:320px;transition:opacity .4s;text-shadow:0 2px 8px rgba(0,0,0,.6)"></div>`
+    center.style.transition = 'transform .6s cubic-bezier(.34,1.56,.64,1), opacity .3s'
+    center.style.transform = 'translate(-50%,-50%) scale(1)'
+    center.style.opacity = '1'
+  }
+  await sleep(650)
+  const nameEl = document.getElementById('live-draw-reveal-name')
+  if (nameEl) { nameEl.textContent = teamName(teamId); nameEl.style.opacity = '1' }
+  fireConfetti('high')
+
   ld.filled[`${slot.code}_${slot.side}`] = teamId
   ld.pickIndex++
-  ld.phase = 'landed'
-  fireConfetti('high')
+
+  await sleep(2400) // ค้างไว้ให้เห็นชัดๆ 2-3 วิ
+
+  if (center) { center.style.transform = 'translate(-50%,-50%) scale(0)'; center.style.opacity = '0' }
+  if (pool) pool.style.filter = ''
+  await sleep(350)
+
+  ld.phase = 'idle'
   const aId = ld.filled[`${slot.code}_a`], bId = ld.filled[`${slot.code}_b`]
   if (aId && bId && !ld.testMode) {
     await SB.from('azfutsal_matches').upsert(
@@ -1270,7 +1338,6 @@ async function handleDrawNext() {
   } else {
     draw()
   }
-  setTimeout(() => { if (S.liveDraw) { S.liveDraw.phase = 'idle'; draw() } }, 900)
 }
 
 function eventListRow(level, code, teamId, side, type, label, color, bg) {
@@ -1817,8 +1884,9 @@ function bindEvents() {
       if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('ลบทีมแล้ว'); return
     }
-    if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false, testMode: true }; draw(); return }
+    if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false, testMode: true, orderStrategy: 'bypair' }; draw(); return }
     if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
+    if (act === 'setLiveDrawOrder') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.orderStrategy = btn.dataset.v; draw() } return }
     if (act === 'closeLiveDraw') { S.liveDraw = null; draw(); return }
     if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
     if (act === 'drawNext') { await handleDrawNext(); return }
