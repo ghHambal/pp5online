@@ -227,7 +227,16 @@ const ROUTES = {
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
   'quiz-system': () => import('./teacher-views-quiz-banks.js').then(m => m.renderQuizBanks(_teacher)),
   'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.18.25').then(m => m.renderExamDocuments(_teacher)),
-  'sports':      () => openAzizGamesModal(),
+  'sports':      () => {
+    // ครูตำแหน่ง house_color_admin (หรือได้รับสิทธิ์ menu_sports_admin/เป็นแอดมิน) ที่กด
+    // ทางลัด "ระบบกีฬาสี" จากเมนูปกตินี้ ต้องเข้าเป็นแอดมิน AZIZGAMES ทันทีเหมือนกับที่เข้าทาง
+    // เมนู Supervisor mode — เดิม path นี้เปิดแบบผู้เข้าชมทั่วไปเสมอไม่ว่าตำแหน่งจะเป็นอะไร
+    const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
+    const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
+    openAzizGamesModal(isSportsManager
+      ? { admin: true, teacherName: _teacher?.full_name, teacherCode: _teacher?.teacher_code }
+      : {})
+  },
   'advisor-students': () => renderAdvisorStudents(_teacher, _homeroomRooms),
   'shirt-summary': () => renderShirtSummary(),
   'shirt-vote-settings': () => renderShirtVoteSettings(),
