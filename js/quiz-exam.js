@@ -8,6 +8,7 @@ import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { showToast, showDangerConfirm, setButtonLoading } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
+import { blockPullToRefresh } from './anti-pull-refresh.js'
 
 let _attempt = null
 let _questions = []
@@ -43,6 +44,20 @@ const BONUS_META = {
 }
 
 export async function initQuizExam(attemptId) {
+  // quiz-exam.html is a standalone page (unlike student.html/teacher.html)
+  // and was missing this — a swipe-down gesture near the top of the page
+  // triggered the browser's native pull-to-refresh, reloading the whole
+  // exam mid-attempt and firing a spurious focus_lost violation at the same
+  // instant. Every other page in the app already calls this.
+  blockPullToRefresh()
+  // Kick off the KaTeX load now (in parallel with everything below) so it's
+  // very likely already cached by the time the student reaches question 1 —
+  // _renderQuestion() renders synchronously once window.renderMathInElement
+  // exists, avoiding a layout shift right as a math question first appears
+  // (a raw "$...$" flash reflowing into typeset math could shift a tap
+  // target under a student's finger mid-click).
+  loadKaTeX().catch(() => {})
+
   const root = document.getElementById('quiz-root')
   root.innerHTML = _loadingHtml()
 
@@ -95,6 +110,15 @@ export async function initQuizExam(attemptId) {
     : []
 
   _renderStartGate(root)
+}
+
+// Renders synchronously when KaTeX is already cached (the common case, since
+// initQuizExam() kicks off loadKaTeX() well before the first question is
+// shown) to avoid a visible flash from raw "$...$" to typeset math — that
+// flash can shift a tap target under a student's finger mid-click.
+function _renderMath(el) {
+  if (window.renderMathInElement) renderMathIn(el)
+  else loadKaTeX().then(() => renderMathIn(el)).catch(() => {})
 }
 
 function _loadingHtml() {
@@ -313,7 +337,7 @@ function _renderQuestion() {
       }).join('')}
     </div>
   `
-  loadKaTeX().then(() => renderMathIn(area)).catch(() => {})
+  _renderMath(area)
 
   area.querySelectorAll('.quiz-choice-input').forEach(inp => inp.addEventListener('change', () => {
     const pos = parseInt(inp.dataset.pos, 10)
@@ -770,7 +794,7 @@ async function _renderResultScreen(root) {
     </div>
   `
   document.getElementById('btn-back-overview').addEventListener('click', () => { window.location.href = 'student.html' })
-  if (reviewPolicy !== 'total_only') loadKaTeX().then(() => renderMathIn(root)).catch(() => {})
+  if (reviewPolicy !== 'total_only') _renderMath(root)
 
   const confettiTier = scorePct >= 80 ? 'high' : scorePct >= 50 ? 'mid' : null
   if (confettiTier) loadConfetti().then(() => fireConfetti(confettiTier)).catch(() => {})
