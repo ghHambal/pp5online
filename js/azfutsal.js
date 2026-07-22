@@ -103,6 +103,8 @@ let S = {
   confirmRegQR: null,
   paymentUploading: false,
   teamCreating: false,
+  rejectPaymentId: null,
+  rejectReasonText: '',
   viewProofOpen: false,
   viewProofUrl: null,
   liveDraw: null, // { level, order:[teamId...] (สับแล้ว), slotSeq:[{code,side}], pickIndex, filled:{`${code}_${side}`:teamId}, phase:'idle'|'spinning' }
@@ -337,6 +339,7 @@ function draw() {
     ${s.adminLoginOpen ? adminLoginModal() : ''}
     ${s.confirmRegOpen ? confirmRegistrationModal() : ''}
     ${s.viewProofOpen ? viewProofModal() : ''}
+    ${s.rejectPaymentId ? rejectReasonModal() : ''}
     ${s.liveDraw ? liveDrawView() : ''}
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
@@ -911,6 +914,27 @@ function simpleModal(title, body) {
       ${body}
     </div>
   </div>`
+}
+
+const REJECT_REASON_TEMPLATES = [
+  'หลักฐานไม่ชัดเจน อ่านยอดเงิน/เวลาโอนไม่ออก กรุณาถ่ายใหม่ให้ชัด',
+  'ยอดเงินที่โอนไม่ตรงกับค่าประกันทีม',
+  'ไฟล์ที่แนบไม่ใช่สลิปการโอนเงิน',
+  'แนบหลักฐานผิดทีม กรุณาตรวจสอบและอัปโหลดใหม่',
+  'ชื่อบัญชีผู้โอนไม่ตรงกับที่แจ้งไว้ กรุณาแนบหลักฐานเพิ่มเติม',
+]
+
+function rejectReasonModal() {
+  const payment = S.payments.find(p => p.id === S.rejectPaymentId)
+  const team = payment ? S.teams.find(t => t.id === payment.team_id) : null
+  return simpleModal(`ปฏิเสธการชำระเงิน${team ? ' · ' + team.name : ''}`, `
+    <div style="font-size:11.5px;color:#6b7280;margin-bottom:8px">เลือกข้อความตัวอย่าง (แก้ไขได้) หรือพิมพ์เหตุผลเอง — หัวหน้าทีมจะเห็นข้อความนี้ทันที</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      ${REJECT_REASON_TEMPLATES.map(txt => `<button data-act="pickRejectTemplate" data-text="${esc(txt)}" style="font-size:11px;padding:6px 10px;border-radius:999px;border:1px solid #e5e7eb;background:#f9fafb;color:#374151;cursor:pointer;text-align:left">${esc(txt)}</button>`).join('')}
+    </div>
+    <textarea id="reject-reason-text" rows="3" placeholder="เหตุผลที่ปฏิเสธ" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:10px;padding:9px 10px;font-size:13px;font-family:inherit;resize:vertical">${esc(S.rejectReasonText)}</textarea>
+    <button data-act="confirmReject" ${S.rejectReasonText.trim() ? '' : 'disabled'} style="margin-top:10px;width:100%;padding:11px;border:none;border-radius:10px;background:${S.rejectReasonText.trim() ? '#dc2626' : '#f3b6b6'};color:#fff;font-weight:800;font-size:14px;cursor:${S.rejectReasonText.trim() ? 'pointer' : 'default'}">ยืนยันการปฏิเสธ</button>
+  `)
 }
 
 function viewProofModal() {
@@ -1677,11 +1701,22 @@ function genTeamCode(level) {
   return `${prefix}-${rand}`
 }
 
-async function handleReviewPayment(id, status) {
-  let admin_note = null
-  if (status === 'rejected') admin_note = window.prompt('เหตุผลที่ปฏิเสธ (จะแจ้งให้หัวหน้าทีมเห็น):', '') || ''
+async function handleConfirmReject() {
+  const id = S.rejectPaymentId
+  const reason = S.rejectReasonText.trim()
+  if (!id || !reason) return
   const { error } = await SB.from('azfutsal_payments').update({
-    status, admin_note, reviewed_by: S.identity.profile.id, reviewed_at: new Date().toISOString(),
+    status: 'rejected', admin_note: reason, reviewed_by: S.identity.profile.id, reviewed_at: new Date().toISOString(),
+  }).eq('id', id)
+  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+  S.rejectPaymentId = null; S.rejectReasonText = ''
+  await refresh()
+  azToast('ปฏิเสธการชำระเงินแล้ว')
+}
+
+async function handleReviewPayment(id, status) {
+  const { error } = await SB.from('azfutsal_payments').update({
+    status, admin_note: null, reviewed_by: S.identity.profile.id, reviewed_at: new Date().toISOString(),
   }).eq('id', id)
   if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
   if (status === 'verified') {
@@ -1702,7 +1737,7 @@ async function handleReviewPayment(id, status) {
     }
   }
   await refresh()
-  azToast(status === 'verified' ? 'ยืนยันการชำระเงินแล้ว' : 'ปฏิเสธการชำระเงินแล้ว')
+  azToast('ยืนยันการชำระเงินแล้ว')
 }
 
 async function handleViewProof(path) {
@@ -1728,7 +1763,7 @@ function bindEvents() {
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
     if (act === 'adminGroup') { const g = ADMIN_GROUPS.find(g => g.id === btn.dataset.v); if (g) S.adminSection = g.sections[0][0]; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
-    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; draw(); return }
+    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; draw(); return }
     if (act === 'account') {
       if (!S.identity.session) { goToLogin(); return }
       if (!S.identity.student) { azToast('หน้านี้สำหรับนักเรียน (หัวหน้าทีม/ตัวแทนทีม) เท่านั้น'); return }
@@ -1789,6 +1824,9 @@ function bindEvents() {
     if (act === 'openConfirmReg') { await handleOpenConfirmReg(btn.dataset.team); return }
     if (act === 'closeConfirmReg') { S.confirmRegOpen = false; S.confirmRegQR = null; draw(); return }
     if (act === 'reviewPayment') { await handleReviewPayment(btn.dataset.id, btn.dataset.status); return }
+    if (act === 'openRejectModal') { S.rejectPaymentId = btn.dataset.id; S.rejectReasonText = ''; draw(); return }
+    if (act === 'pickRejectTemplate') { S.rejectReasonText = btn.dataset.text; draw(); return }
+    if (act === 'confirmReject') { await handleConfirmReject(); return }
     if (act === 'viewProof') { await handleViewProof(btn.dataset.path); return }
     if (act === 'closeViewProof') { S.viewProofOpen = false; S.viewProofUrl = null; draw(); return }
     if (act === 'toggleCert') {
@@ -1939,6 +1977,16 @@ function bindEvents() {
       const listEl = gid('event-picker-list')
       if (listEl) listEl.innerHTML = eventPickerPlayerList()
     }
+    if (e.target.id === 'reject-reason-text') {
+      S.rejectReasonText = e.target.value
+      const btn = document.querySelector('[data-act="confirmReject"]')
+      if (btn) {
+        const hasText = !!S.rejectReasonText.trim()
+        btn.disabled = !hasText
+        btn.style.background = hasText ? '#dc2626' : '#f3b6b6'
+        btn.style.cursor = hasText ? 'pointer' : 'default'
+      }
+    }
     if (e.target.id === 'staff-search') {
       const q = e.target.value
       const box = gid('staff-search-results')
@@ -2051,7 +2099,7 @@ function adminPayments() {
           ${p.status === 'pending' ? `
           <div style="display:flex;gap:6px;margin-top:4px">
             <button data-act="reviewPayment" data-id="${p.id}" data-status="verified" style="flex:1;padding:7px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-weight:700;font-size:12px;cursor:pointer">ยืนยัน</button>
-            <button data-act="reviewPayment" data-id="${p.id}" data-status="rejected" style="flex:1;padding:7px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-weight:700;font-size:12px;cursor:pointer">ปฏิเสธ</button>
+            <button data-act="openRejectModal" data-id="${p.id}" style="flex:1;padding:7px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-weight:700;font-size:12px;cursor:pointer">ปฏิเสธ</button>
           </div>` : ''}
         </div>`
       }).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีรายการชำระเงิน</div>`}
