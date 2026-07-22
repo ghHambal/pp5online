@@ -116,6 +116,7 @@ let S = {
   eventPicker: null, // { team: 'a'|'b', type: 'goal'|'yellow'|'red' }
   eventPickerFilter: '',
   adminTeamLevel: 'MS',
+  adminPaymentsLevel: 'MS',
   staffList: null,
 
   identity: { session: null, profile: null, isAdmin: false, student: null, teacher: null },
@@ -1795,6 +1796,7 @@ function bindEvents() {
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
     if (act === 'adminGroup') { const g = ADMIN_GROUPS.find(g => g.id === btn.dataset.v); if (g) S.adminSection = g.sections[0][0]; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
+    if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; draw(); return }
     if (act === 'account') {
       if (!S.identity.session) { goToLogin(); return }
@@ -2114,9 +2116,14 @@ function adminAthletes() {
 }
 
 function adminPayments() {
-  const rows = S.payments
+  const level = S.adminPaymentsLevel || 'MS'
+  const rows = S.payments.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
+  const pendingCount = rows.filter(p => p.status === 'pending').length
   return box(`
-    <div style="font-weight:700;font-size:14px;margin-bottom:10px">ตรวจสอบการชำระเงินประกัน</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-weight:700;font-size:14px">ตรวจสอบการชำระเงินประกัน${pendingCount ? ` <span style="font-weight:600;font-size:11.5px;color:#f59e0b">(${pendingCount} รอตรวจสอบ)</span>` : ''}</div>
+      <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminPaymentsLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
+    </div>
     <div style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto">
       ${rows.length ? rows.map(p => {
         const team = S.teams.find(t => t.id === p.team_id)
