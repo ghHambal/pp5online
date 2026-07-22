@@ -100,6 +100,7 @@ let S = {
   confirmRegOpen: false,
   confirmRegTeamId: null,
   confirmRegQR: null,
+  paymentUploading: false,
   viewProofOpen: false,
   viewProofUrl: null,
   certModalOpen: false,
@@ -974,8 +975,8 @@ function confirmRegistrationModal() {
 
       <div style="border:1px solid #e5e7eb;border-radius:14px;padding:16px">
         <div style="font-weight:700;font-size:13.5px;margin-bottom:8px">แนบหลักฐานการโอนเงิน</div>
-        <input type="file" accept="image/*" id="pay-slip-file" style="font-size:12px;margin-bottom:10px"/>
-        <button data-act="uploadPayment" data-team="${team.id}" data-method="transfer" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">ยืนยันการลงทะเบียนและส่งหลักฐาน</button>
+        <input type="file" accept="image/*" id="pay-slip-file" style="font-size:12px;margin-bottom:10px" ${S.paymentUploading ? 'disabled' : ''}/>
+        <button data-act="uploadPayment" data-team="${team.id}" data-method="transfer" ${S.paymentUploading ? 'disabled' : ''} style="width:100%;padding:12px;border-radius:10px;border:none;background:${S.paymentUploading ? '#f3b6d1' : 'linear-gradient(135deg,#ec4899,#db2777)'};color:#fff;font-weight:800;font-size:14px;cursor:${S.paymentUploading ? 'default' : 'pointer'}">${S.paymentUploading ? 'กำลังส่ง...' : 'ยืนยันการลงทะเบียนและส่งหลักฐาน'}</button>
       </div>
     </div>
   </div>`
@@ -1419,11 +1420,14 @@ async function handleAddRosterAthlete(teamId) {
 }
 
 async function handleUploadPayment(teamId, method) {
+  if (S.paymentUploading) return // กันกดซ้ำรัวๆ ระหว่างกำลังอัปโหลด (สาเหตุที่ทำให้เกิดแถวซ้ำ 3-6 ใบ)
   const file = gid('pay-slip-file')?.files?.[0]
   if (!file) { azToast('กรุณาเลือกไฟล์รูปภาพ'); return }
+  S.paymentUploading = true
+  draw()
   const path = `${teamId}/${method}_${Date.now()}_${file.name}`
   const { error: upErr } = await SB.storage.from('azfutsal-payments').upload(path, file, { upsert: true })
-  if (upErr) { azToast('อัปโหลดไม่สำเร็จ: ' + upErr.message); return }
+  if (upErr) { azToast('อัปโหลดไม่สำเร็จ: ' + upErr.message); S.paymentUploading = false; draw(); return }
   const existing = S.payments.find(p => p.team_id === teamId)
   const payload = {
     team_id: teamId, method, amount: Number(cfg('DEPOSIT_AMOUNT', 500)), status: 'pending', admin_note: null,
@@ -1431,10 +1435,10 @@ async function handleUploadPayment(teamId, method) {
     receipt_photo_url: method === 'cash' ? path : null,
     receipt_no: method === 'cash' ? (existing?.receipt_no || `RCP-${Date.now()}`) : null,
   }
-  const { error } = existing
-    ? await SB.from('azfutsal_payments').update(payload).eq('id', existing.id)
-    : await SB.from('azfutsal_payments').insert(payload)
-  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+  // upsert บน team_id (unique constraint ที่ฐานข้อมูล) กันแถวซ้ำแม้เปิดหลายแท็บ/กดพร้อมกันหลายอุปกรณ์
+  const { error } = await SB.from('azfutsal_payments').upsert(payload, { onConflict: 'team_id' })
+  S.paymentUploading = false
+  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); draw(); return }
   S.confirmRegOpen = false; S.confirmRegQR = null
   await refresh()
   azToast('ยืนยันการลงทะเบียนสำเร็จ ส่งหลักฐานแล้ว')
