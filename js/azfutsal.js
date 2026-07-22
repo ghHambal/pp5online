@@ -1313,6 +1313,69 @@ async function handleStartLiveDraw() {
   draw()
 }
 
+// ---------------- live draw sound (สังเคราะห์ด้วย Web Audio ล้วน ไม่ต้องโหลดไฟล์เสียง) ----------------
+let liveDrawAudioCtx = null
+function getAudioCtx() {
+  if (!liveDrawAudioCtx) {
+    try { liveDrawAudioCtx = new (window.AudioContext || window.webkitAudioContext)() } catch { return null }
+  }
+  if (liveDrawAudioCtx.state === 'suspended') liveDrawAudioCtx.resume().catch(() => {})
+  return liveDrawAudioCtx
+}
+// เสียงลูกบอลกระทบกันตอนเขย่า — noise burst สั้นๆ ผ่าน bandpass ให้ฟังดูเหมือนของแข็งชนกัน สุ่มความถี่ทุกครั้งกันฟังซ้ำจำเจ
+function playKnockSound() {
+  const ctx = getAudioCtx()
+  if (!ctx) return
+  const now = ctx.currentTime
+  const dur = 0.045
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length)
+  const noise = ctx.createBufferSource()
+  noise.buffer = buffer
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'bandpass'
+  filter.frequency.value = 700 + Math.random() * 600
+  filter.Q.value = 2.5
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.22, now)
+  gain.gain.exponentialRampToValueAtTime(0.001, now + dur)
+  noise.connect(filter).connect(gain).connect(ctx.destination)
+  noise.start(now)
+  noise.stop(now + dur + 0.01)
+}
+// เสียงแคปซูลแตกเปิดตอนเผยชื่อทีม — เสียง pop (โทนไล่ลง) ผสมเสียงกรอบแบบ noise สั้นๆ
+function playCrackSound() {
+  const ctx = getAudioCtx()
+  if (!ctx) return
+  const now = ctx.currentTime
+  const osc = ctx.createOscillator()
+  osc.type = 'triangle'
+  osc.frequency.setValueAtTime(520, now)
+  osc.frequency.exponentialRampToValueAtTime(110, now + 0.13)
+  const oscGain = ctx.createGain()
+  oscGain.gain.setValueAtTime(0.3, now)
+  oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16)
+  osc.connect(oscGain).connect(ctx.destination)
+  osc.start(now)
+  osc.stop(now + 0.17)
+  const dur = 0.09
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2)
+  const noise = ctx.createBufferSource()
+  noise.buffer = buffer
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'highpass'
+  filter.frequency.value = 2200
+  const noiseGain = ctx.createGain()
+  noiseGain.gain.setValueAtTime(0.22, now)
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + dur)
+  noise.connect(filter).connect(noiseGain).connect(ctx.destination)
+  noise.start(now)
+  noise.stop(now + dur + 0.01)
+}
+
 let liveDrawShakeTimer = null
 function stopLiveDrawShake() {
   if (liveDrawShakeTimer) { clearInterval(liveDrawShakeTimer); liveDrawShakeTimer = null }
@@ -1324,6 +1387,7 @@ function shakeBallsOnce() {
     b.style.top = (14 + Math.random() * 58) + '%'
     b.style.left = (10 + Math.random() * 72) + '%'
   })
+  playKnockSound()
 }
 function handleShakePool() {
   const ld = S.liveDraw
@@ -1405,6 +1469,7 @@ async function handleDrawNext() {
   if (halfL) halfL.style.transform = 'translateX(-115px)'
   if (halfR) halfR.style.transform = 'translateX(115px)'
   if (paper) { paper.style.opacity = '1'; paper.style.transform = 'scale(1)' }
+  playCrackSound()
   fireConfetti('high')
 
   ld.filled[`${slot.code}_${slot.side}`] = teamId
