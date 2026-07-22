@@ -1197,8 +1197,8 @@ function hashSeed(str) {
 function ballStyleFor(id) {
   const seed = hashSeed(id)
   return {
-    top: 8 + (seed % 68),
-    left: 6 + ((seed >>> 8) % 84),
+    top: 16 + (seed % 54),
+    left: 12 + ((seed >>> 8) % 68),
     delay: (seed % 30) / 10,
     dur: 2.4 + (seed % 20) / 10,
     color: BALL_COLORS[seed % BALL_COLORS.length],
@@ -1209,6 +1209,14 @@ function liveDrawBallHtml(id) {
   const label = esc((teamName(id) || '?').slice(0, 2))
   return `
   <div id="ball-${id}" style="position:absolute;top:${s.top}%;left:${s.left}%;width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff2, ${s.color});box-shadow:0 4px 10px rgba(0,0,0,.4), inset 0 -4px 8px rgba(0,0,0,.25), inset 0 3px 6px rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);animation:ballFloat ${s.dur}s ease-in-out ${s.delay}s infinite;flex-shrink:0">${label}</div>`
+}
+function liveDrawJarHtml(remainingTeamIds) {
+  return `
+  <div id="live-draw-pool" style="position:relative;height:220px;margin:0 34px 12px;border-radius:50% 50% 36px 36px / 100px 100px 30px 30px;background:linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 35%, rgba(255,255,255,.10) 100%), radial-gradient(ellipse at 50% 12%, rgba(255,255,255,.28), transparent 55%), rgba(99,102,241,.08);border:2px solid rgba(255,255,255,.3);box-shadow:inset 0 -26px 46px rgba(0,0,0,.4), inset 0 14px 26px rgba(255,255,255,.16), 0 14px 34px rgba(0,0,0,.45);overflow:hidden;flex-shrink:0">
+    <div style="position:absolute;top:0;left:9%;width:12%;height:100%;background:linear-gradient(105deg, transparent 30%, rgba(255,255,255,.22) 50%, transparent 70%);pointer-events:none"></div>
+    <div style="position:absolute;top:0;left:68%;width:7%;height:100%;background:linear-gradient(105deg, transparent 30%, rgba(255,255,255,.14) 50%, transparent 70%);pointer-events:none"></div>
+    ${remainingTeamIds.map(id => liveDrawBallHtml(id)).join('')}
+  </div>`
 }
 
 function liveDrawView() {
@@ -1264,9 +1272,7 @@ function liveDrawView() {
       <div style="font-size:11.5px;color:#9ca3af;margin-bottom:2px">เหลือในโหล</div>
       <div style="font-size:28px;font-weight:800">${remaining}</div>
     </div>
-    <div id="live-draw-pool" style="position:relative;height:200px;margin:0 18px 12px;border-radius:16px;background:radial-gradient(ellipse at 50% 40%, rgba(99,102,241,.14), rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);overflow:hidden;flex-shrink:0">
-      ${remainingTeamIds.map(id => liveDrawBallHtml(id)).join('')}
-    </div>
+    ${liveDrawJarHtml(remainingTeamIds)}
     <div style="text-align:center;padding-bottom:14px;flex-shrink:0">
       <button data-act="drawNext" ${ld.phase === 'spinning' || isDone ? 'disabled' : ''} style="padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'spinning' || isDone ? '#374151' : 'linear-gradient(135deg,#4338ca,#6366f1)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'spinning' || isDone ? 'default' : 'pointer'}">${isDone ? '🎉 จับสลากครบทุกคู่แล้ว' : (ld.phase === 'spinning' ? 'กำลังจับ...' : 'จับทีมถัดไป')}</button>
     </div>
@@ -1314,39 +1320,65 @@ async function handleDrawNext() {
   draw()
   const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-  // ช่วงลุ้น: พูลลูกบอลเรืองแสงขึ้น แล้วลูกที่จะได้เริ่มเด่นขึ้นมา
+  // ช่วงลุ้น: พูลลูกบอลเรืองแสงขึ้น แล้วลูกที่จะได้เริ่มเด่นขึ้นมา (ใช้แค่ box-shadow ห้ามแตะ transform เด็ดขาด
+  // เพราะ transform ถูกควบคุมโดย animation:ballFloat อยู่แล้ว ถ้าเซ็ต transform ทับจะไปชนกับ animation ทำให้ลูกบอลดูค้าง/หยุดลอย)
   const pool = document.getElementById('live-draw-pool')
   if (pool) pool.style.filter = 'brightness(1.2) saturate(1.15)'
   await sleep(700)
   const targetBall = document.getElementById(`ball-${teamId}`)
+  const targetRect = targetBall ? targetBall.getBoundingClientRect() : null
   if (targetBall) {
-    targetBall.style.transition = 'box-shadow .3s, transform .3s'
-    targetBall.style.boxShadow = '0 0 0 5px rgba(255,255,255,.7), 0 6px 16px rgba(0,0,0,.5)'
-    targetBall.style.transform = 'scale(1.25)'
+    targetBall.style.transition = 'box-shadow .3s'
+    targetBall.style.boxShadow = '0 0 0 6px rgba(255,255,255,.85), 0 0 26px 8px rgba(255,255,255,.55), 0 6px 16px rgba(0,0,0,.5)'
   }
   await sleep(500)
 
-  // ลูกบอลลอยมากลางจอแล้วเปิดเผยชื่อ
+  // ลูกบอลลอยออกจากโถ ขยายใหญ่มากลางจอ แล้ว "แตกแคปซูล" แยกซ้าย-ขวา เผยชื่อทีมบนกระดาษสีขาว
   const s = ballStyleFor(teamId)
   const center = document.getElementById('live-draw-center')
   if (center) {
     center.innerHTML = `
-      <div style="width:150px;height:150px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});box-shadow:0 20px 50px rgba(0,0,0,.55), inset 0 -10px 20px rgba(0,0,0,.2), inset 0 8px 18px rgba(255,255,255,.45)"></div>
-      <div id="live-draw-reveal-name" style="opacity:0;font-size:24px;font-weight:800;text-align:center;max-width:320px;transition:opacity .4s;text-shadow:0 2px 8px rgba(0,0,0,.6)"></div>`
+      <div style="position:relative;width:220px;height:220px">
+        <div id="capsule-paper" style="position:absolute;inset:16px;border-radius:18px;background:#fff;box-shadow:0 24px 60px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;transform:scale(.85);transition:opacity .35s ease, transform .35s ease;z-index:1">
+          <div id="live-draw-reveal-name" style="color:#111827;font-weight:800;font-size:21px;text-align:center;line-height:1.35"></div>
+        </div>
+        <div id="capsule-half-l" style="position:absolute;top:0;left:0;width:50%;height:100%;overflow:hidden;border-radius:110px 0 0 110px;transition:transform .5s cubic-bezier(.5,0,.2,1);z-index:2">
+          <div style="width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});box-shadow:0 24px 60px rgba(0,0,0,.5)"></div>
+        </div>
+        <div id="capsule-half-r" style="position:absolute;top:0;right:0;width:50%;height:100%;overflow:hidden;border-radius:0 110px 110px 0;transition:transform .5s cubic-bezier(.5,0,.2,1);z-index:2">
+          <div style="width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff, ${s.color});margin-left:-110px;box-shadow:0 24px 60px rgba(0,0,0,.5)"></div>
+        </div>
+      </div>`
+    if (targetRect) {
+      const dx = targetRect.left + targetRect.width / 2 - window.innerWidth / 2
+      const dy = targetRect.top + targetRect.height / 2 - window.innerHeight / 2
+      center.style.transition = 'none'
+      center.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.2)`
+      center.style.opacity = '1'
+      void center.offsetWidth // บังคับ reflow ให้จุดเริ่มต้นมีผลจริง ก่อนเปลี่ยนเป็น transition
+    }
     center.style.transition = 'transform .6s cubic-bezier(.34,1.56,.64,1), opacity .3s'
     center.style.transform = 'translate(-50%,-50%) scale(1)'
     center.style.opacity = '1'
   }
-  await sleep(650)
+  await sleep(600)
+
   const nameEl = document.getElementById('live-draw-reveal-name')
-  if (nameEl) { nameEl.textContent = teamName(teamId); nameEl.style.opacity = '1' }
+  if (nameEl) nameEl.textContent = teamName(teamId)
+  const halfL = document.getElementById('capsule-half-l')
+  const halfR = document.getElementById('capsule-half-r')
+  const paper = document.getElementById('capsule-paper')
+  if (halfL) halfL.style.transform = 'translateX(-85px)'
+  if (halfR) halfR.style.transform = 'translateX(85px)'
+  if (paper) { paper.style.opacity = '1'; paper.style.transform = 'scale(1)' }
   fireConfetti('high')
 
   ld.filled[`${slot.code}_${slot.side}`] = teamId
   ld.pickIndex++
 
-  await sleep(2400) // ค้างไว้ให้เห็นชัดๆ 2-3 วิ
+  await sleep(2200) // ค้างไว้ให้เห็นชัดๆ 2-3 วิ
 
+  if (targetBall) targetBall.style.boxShadow = ''
   if (center) { center.style.transform = 'translate(-50%,-50%) scale(0)'; center.style.opacity = '0' }
   if (pool) pool.style.filter = ''
   await sleep(350)
