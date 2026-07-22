@@ -1200,8 +1200,6 @@ function ballStyleFor(id) {
   return {
     top: 16 + (seed % 54),
     left: 12 + ((seed >>> 8) % 68),
-    delay: (seed % 30) / 10,
-    dur: 2.4 + (seed % 20) / 10,
     color: BALL_COLORS[seed % BALL_COLORS.length],
   }
 }
@@ -1209,7 +1207,7 @@ function liveDrawBallHtml(id) {
   const s = ballStyleFor(id)
   const label = esc((teamName(id) || '?').slice(0, 2))
   return `
-  <div id="ball-${id}" style="position:absolute;top:${s.top}%;left:${s.left}%;width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff2, ${s.color});box-shadow:0 4px 10px rgba(0,0,0,.4), inset 0 -4px 8px rgba(0,0,0,.25), inset 0 3px 6px rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);animation:ballFloat ${s.dur}s ease-in-out ${s.delay}s infinite;flex-shrink:0">${label}</div>`
+  <div id="ball-${id}" style="position:absolute;top:${s.top}%;left:${s.left}%;width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #fff2, ${s.color});box-shadow:0 4px 10px rgba(0,0,0,.4), inset 0 -4px 8px rgba(0,0,0,.25), inset 0 3px 6px rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);flex-shrink:0">${label}</div>`
 }
 function liveDrawJarHtml(remainingTeamIds) {
   return `
@@ -1278,7 +1276,7 @@ function liveDrawView() {
       ${isDone
         ? `<button disabled style="padding:12px 28px;border-radius:999px;border:none;background:#374151;color:#fff;font-weight:800;font-size:14px;cursor:default">🎉 จับสลากครบทุกคู่แล้ว</button>`
         : !ld.shaken
-          ? `<button data-act="shakePool" ${ld.phase === 'shaking' ? 'disabled' : ''} style="padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'shaking' ? '#374151' : 'linear-gradient(135deg,#f59e0b,#f97316)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'shaking' ? 'default' : 'pointer'}">${ld.phase === 'shaking' ? '🎲 กำลังเขย่า...' : '🎲 เขย่าลูกบอล'}</button>`
+          ? `<button data-act="shakePool" style="padding:12px 28px;border-radius:999px;border:none;background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;font-weight:800;font-size:14px;cursor:pointer">🎲 เขย่าลูกบอล</button>`
           : `<button data-act="drawNext" ${ld.phase === 'spinning' ? 'disabled' : ''} style="padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'spinning' ? '#374151' : 'linear-gradient(135deg,#4338ca,#6366f1)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'spinning' ? 'default' : 'pointer'}">${ld.phase === 'spinning' ? 'กำลังจับ...' : 'จับทีมถัดไป'}</button>`}
     </div>
     <div id="live-draw-center" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);opacity:0;z-index:90;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:14px"></div>
@@ -1314,50 +1312,57 @@ async function handleStartLiveDraw() {
   draw()
 }
 
-async function handleShakePool() {
-  const ld = S.liveDraw
-  if (!ld || !ld.started || ld.phase !== 'idle' || ld.shaken) return
-  ld.phase = 'shaking'
-  draw()
-  const sleep = ms => new Promise(r => setTimeout(r, ms))
+let liveDrawShakeTimer = null
+function stopLiveDrawShake() {
+  if (liveDrawShakeTimer) { clearInterval(liveDrawShakeTimer); liveDrawShakeTimer = null }
+}
+function shakeBallsOnce() {
   const pool = document.getElementById('live-draw-pool')
-  const balls = pool ? Array.from(pool.querySelectorAll('div[id^="ball-"]')) : []
-  balls.forEach(b => { b.style.transition = 'top .17s cubic-bezier(.4,0,.2,1), left .17s cubic-bezier(.4,0,.2,1)' })
-  for (let i = 0; i < 8; i++) {
-    balls.forEach(b => {
-      b.style.top = (14 + Math.random() * 58) + '%'
-      b.style.left = (10 + Math.random() * 72) + '%'
-    })
-    await sleep(180)
-  }
-  ld.phase = 'idle'
-  ld.shaken = true
+  if (!pool) { stopLiveDrawShake(); return }
+  Array.from(pool.querySelectorAll('div[id^="ball-"]')).forEach(b => {
+    b.style.top = (14 + Math.random() * 58) + '%'
+    b.style.left = (10 + Math.random() * 72) + '%'
+  })
+}
+function handleShakePool() {
+  const ld = S.liveDraw
+  if (!ld || !ld.started || ld.shaken) return
+  ld.shaken = true // เปลี่ยนเป็นปุ่ม "จับทีมถัดไป" ทันที ไม่ต้องรอ
   draw()
+  const pool = document.getElementById('live-draw-pool')
+  if (pool) Array.from(pool.querySelectorAll('div[id^="ball-"]')).forEach(b => {
+    b.style.transition = 'top .38s cubic-bezier(.4,0,.2,1), left .38s cubic-bezier(.4,0,.2,1)'
+  })
+  stopLiveDrawShake()
+  shakeBallsOnce()
+  liveDrawShakeTimer = setInterval(shakeBallsOnce, 420) // เขย่าต่อเนื่องไม่หยุด จนกว่าจะกด "จับทีมถัดไป"
 }
 
 async function handleDrawNext() {
   const ld = S.liveDraw
-  if (!ld || !ld.started || ld.phase === 'spinning') return
+  if (!ld || !ld.started || ld.phase === 'spinning' || !ld.shaken) return
   if (ld.pickIndex >= ld.slotSeq.length) return
   if (ld.pickIndex >= ld.order.length) { azToast('ทีมในโหลหมดแล้ว ช่องที่เหลือเป็นบาย'); return }
   const teamId = ld.order[ld.pickIndex]
   const slot = ld.slotSeq[ld.pickIndex]
   ld.phase = 'spinning'
+  stopLiveDrawShake() // หยุดเขย่าทันทีที่กดจับ ลูกบอลจะค้างอยู่ ณ ตำแหน่งล่าสุด
   draw()
   const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-  // ช่วงลุ้น: พูลลูกบอลเรืองแสงขึ้น แล้วลูกที่จะได้เริ่มเด่นขึ้นมา (ใช้แค่ box-shadow ห้ามแตะ transform เด็ดขาด
-  // เพราะ transform ถูกควบคุมโดย animation:ballFloat อยู่แล้ว ถ้าเซ็ต transform ทับจะไปชนกับ animation ทำให้ลูกบอลดูค้าง/หยุดลอย)
   const pool = document.getElementById('live-draw-pool')
-  if (pool) pool.style.filter = 'brightness(1.2) saturate(1.15)'
-  await sleep(700)
+  if (pool) pool.style.filter = 'brightness(1.15)'
+  // ลูกที่จับได้สั่นอยู่กับที่ (ตำแหน่งปัจจุบันจริง ไม่ใช่ตำแหน่งตั้งต้น) ก่อนลอยออกจากโถ
   const targetBall = document.getElementById(`ball-${teamId}`)
-  const targetRect = targetBall ? targetBall.getBoundingClientRect() : null
   if (targetBall) {
-    targetBall.style.transition = 'box-shadow .3s'
+    targetBall.style.transition = 'transform .1s ease, box-shadow .2s'
     targetBall.style.boxShadow = '0 0 0 6px rgba(255,255,255,.85), 0 0 26px 8px rgba(255,255,255,.55), 0 6px 16px rgba(0,0,0,.5)'
+    for (const [jx, jy] of [[4, -3], [-5, 3], [4, 4], [-4, -4], [3, -2], [0, 0]]) {
+      targetBall.style.transform = `translate(${jx}px, ${jy}px)`
+      await sleep(65)
+    }
   }
-  await sleep(500)
+  const targetRect = targetBall ? targetBall.getBoundingClientRect() : null
 
   // ลูกบอลลอยออกจากโถ ขยายใหญ่มากลางจอ แล้ว "แตกแคปซูล" แยกซ้าย-ขวา เผยชื่อทีมบนกระดาษสีขาว
   const s = ballStyleFor(teamId)
@@ -1404,7 +1409,7 @@ async function handleDrawNext() {
 
   await sleep(2200) // ค้างไว้ให้เห็นชัดๆ 2-3 วิ
 
-  if (targetBall) targetBall.style.boxShadow = ''
+  if (targetBall) { targetBall.style.boxShadow = ''; targetBall.style.transform = '' }
   if (center) { center.style.transform = 'translate(-50%,-50%) scale(0)'; center.style.opacity = '0' }
   if (pool) pool.style.filter = ''
   await sleep(350)
@@ -1985,7 +1990,7 @@ function bindEvents() {
     if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false, testMode: true, orderStrategy: 'bypair' }; draw(); return }
     if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
     if (act === 'setLiveDrawOrder') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.orderStrategy = btn.dataset.v; draw() } return }
-    if (act === 'closeLiveDraw') { S.liveDraw = null; draw(); return }
+    if (act === 'closeLiveDraw') { stopLiveDrawShake(); S.liveDraw = null; draw(); return }
     if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
     if (act === 'shakePool') { await handleShakePool(); return }
     if (act === 'drawNext') { await handleDrawNext(); return }
