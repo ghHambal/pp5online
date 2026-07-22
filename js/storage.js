@@ -78,6 +78,12 @@ export async function uploadShirtDesignHtml(designId, file) {
   return uploadFile('shirt-designs', `${designId}.html`, file, 'text/html')
 }
 
+// รูปนักกีฬาฟุตซอลที่หัวหน้าทีมถ่ายเอง → บีบ max 480px (thumbnail การ์ดรายชื่อทีม), quality 0.80
+export async function uploadAzfutsalPlayerPhoto(teamId, playerId, file) {
+  const blob = await compressImage(file, { maxWidth: 480, quality: 0.80 })
+  return uploadFile('azfutsal-assets', `players/${teamId}/${playerId}.jpg`, blob)
+}
+
 // รูปแนบประกาศ (เช่น อินโฟกราฟิก) → บีบ max 1600px คุณภาพสูงเพราะเป็นภาพนำเสนอ
 export async function uploadAnnouncementImage(file) {
   const blob = await compressImage(file, { maxWidth: 1600, quality: 0.88 })

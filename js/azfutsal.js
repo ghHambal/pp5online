@@ -1,4 +1,5 @@
 import { promptpayQRDataURL } from './promptpay.js'
+import { uploadAzfutsalPlayerPhoto } from './storage.js'
 
 const T = {
   MS: { label: 'ม.ต้น', accent: '#db2777', base: '#ec4899', soft: '#fdf2f8', border: '#f9d4e6' },
@@ -144,7 +145,7 @@ async function loadAll() {
   const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }, { data: matchEvents }] = await Promise.all([
     SB.from('azfutsal_config').select('key, value'),
     SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, is_reserve, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
-    SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
+    SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, photo_url, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
     SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
@@ -676,6 +677,11 @@ function backMsg(msg) {
   return `<section><div style="text-align:center;padding:60px 20px;color:#6b7280;font-size:13.5px">${esc(msg)}</div></section>`
 }
 
+// รูปที่หัวหน้าทีมอัปโหลดเอง (photo_url) มาก่อนรูปประจำตัวจากฐานข้อมูลกลางของโรงเรียนเสมอ
+function playerPhotoUrl(p) {
+  return p.photo_url || p.students?.image_url || p.students?.photo_url
+}
+
 function photoTag(url) {
   return url
     ? `<img src="${esc(url)}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0"/>`
@@ -684,7 +690,7 @@ function photoTag(url) {
 
 // การ์ดรูปนักกีฬาแบบมีมิติ (เงา+แสงตกกระทบ) สำหรับรายชื่อทีมสาธารณะ
 function rosterPhotoCard(p) {
-  const url = p.students?.image_url || p.students?.photo_url
+  const url = playerPhotoUrl(p)
   const initial = esc((p.students?.full_name || '?').replace(/^[ดญ]\.[ชญ]\./, '').trim().charAt(0))
   const fallbackStyle = 'width:100%;height:100%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:22px;font-weight:800'
   const photo = url
@@ -827,7 +833,13 @@ function manageTeamView(team, isAdminView) {
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:${editable && roster.length < maxRoster ? '12px' : '0'}">
         ${roster.length ? roster.map(p => `
           <div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:8px">
-            ${photoTag(p.students?.image_url || p.students?.photo_url)}
+            <div style="position:relative;flex-shrink:0">
+              ${photoTag(playerPhotoUrl(p))}
+              ${editable ? `<label style="position:absolute;bottom:-3px;right:-3px;width:17px;height:17px;border-radius:50%;background:${t.base};display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.35)">
+                <input type="file" accept="image/*" data-act="uploadPlayerPhoto" data-id="${p.id}" style="display:none"/>
+                <span style="color:#fff;font-size:9px;line-height:1">📷</span>
+              </label>` : ''}
+            </div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${roleTag(p)}</div>
               <div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')}${p.jersey_number ? ` · เบอร์ ${p.jersey_number}` : ''}</div>
@@ -946,7 +958,7 @@ function confirmRegistrationModal() {
         <div style="display:flex;flex-direction:column;gap:8px">
           ${roster.map(p => `
             <div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:8px">
-              ${photoTag(p.students?.image_url || p.students?.photo_url)}
+              ${photoTag(playerPhotoUrl(p))}
               <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}</div><div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')}</div></div>
               <div style="font-size:12.5px;font-weight:700;color:${t.accent};flex-shrink:0">เบอร์ ${p.jersey_number ?? '-'}</div>
             </div>`).join('')}
@@ -1149,7 +1161,7 @@ function eventPickerPlayerList() {
   const filtered = filter ? roster.filter(p => String(p.jersey_number ?? '').includes(filter) || (p.students?.full_name || '').toLowerCase().includes(filter)) : roster
   return filtered.length ? filtered.map(p => `
     <button data-act="pickEventPlayer" data-player="${p.id}" style="display:flex;align-items:center;gap:8px;padding:6px;border:none;background:#fff;border-radius:9px;cursor:pointer;text-align:left;width:100%">
-      ${photoTag(p.students?.image_url || p.students?.photo_url)}
+      ${photoTag(playerPhotoUrl(p))}
       <div style="min-width:0;font-size:12.5px;font-weight:700">#${p.jersey_number ?? '-'} ${esc(p.students?.full_name || '')}</div>
     </button>`).join('') : `<div style="font-size:11.5px;color:#9ca3af;padding:6px 0">ไม่พบผู้เล่น</div>`
 }
@@ -1304,6 +1316,21 @@ async function handleRemoveMatchEvent(id) {
   const { error } = await SB.from('azfutsal_match_events').delete().eq('id', id)
   if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
   await refresh()
+}
+
+async function handleUploadPlayerPhoto(playerId, file) {
+  const player = S.players.find(p => p.id === playerId)
+  if (!player) return
+  azToast('กำลังอัปโหลดรูป...')
+  try {
+    const url = await uploadAzfutsalPlayerPhoto(player.team_id, playerId, file)
+    const { error } = await SB.from('azfutsal_players').update({ photo_url: url }).eq('id', playerId)
+    if (error) { azToast('บันทึกรูปไม่สำเร็จ: ' + error.message); return }
+    await refresh()
+    azToast('อัปโหลดรูปสำเร็จ')
+  } catch (e) {
+    azToast('อัปโหลดรูปไม่สำเร็จ: ' + (e?.message || ''))
+  }
 }
 
 async function handleSeedMatches(level) {
@@ -1665,6 +1692,10 @@ function bindEvents() {
       const { error } = await SB.from('azfutsal_awards').upsert({ level: el.dataset.level, award_type: el.dataset.type, student_id: el.value || null }, { onConflict: 'level,award_type' })
       if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('บันทึกรางวัลแล้ว'); return
+    }
+    if (el.dataset.act === 'uploadPlayerPhoto' && el.files?.[0]) {
+      await handleUploadPlayerPhoto(el.dataset.id, el.files[0])
+      return
     }
   })
 
