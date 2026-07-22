@@ -25,12 +25,16 @@ const shareAzizGames = async (url, statusEl) => {
   }
 }
 
-export function openAzizGamesModal({ admin = false, manage = false } = {}) {
+export function openAzizGamesModal({ admin = false, manage = false, teacherName = '', teacherCode = '' } = {}) {
   document.getElementById('azizgames-modal')?.remove()
 
   if (admin) {
     localStorage.setItem('aziz_is_logged_in', 'true')
     localStorage.setItem('aziz_sports_admin_allowed', 'true')
+    localStorage.setItem('aziz_current_user', JSON.stringify({
+      username: teacherCode || 'admin',
+      displayName: teacherName || 'ผู้ดูแลระบบ',
+    }))
   } else {
     localStorage.removeItem('aziz_is_logged_in')
     if (manage) localStorage.setItem('aziz_sports_admin_allowed', 'true')
