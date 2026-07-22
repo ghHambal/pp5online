@@ -5,6 +5,20 @@ const T = {
   HS: { label: 'ม.ปลาย', accent: '#16a34a', base: '#22c55e', soft: '#f0fdf4', border: '#bbf0cf' },
 }
 
+// สีธีมของแต่ละระดับชั้นตั้งค่าได้จากแอดมิน (cfg COLOR_MS / COLOR_HS) — mix() ไล่เฉดจากสีหลักที่เลือก
+function mix(hex, target, amt) {
+  const h = hex.replace('#', '')
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16)
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(c => Math.round(c + (target - c) * amt))
+  return '#' + rgb.map(c => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join('')
+}
+function applyThemeColors() {
+  const ms = /^#[0-9a-fA-F]{6}$/.test(cfg('COLOR_MS', '')) ? cfg('COLOR_MS') : '#ec4899'
+  const hs = /^#[0-9a-fA-F]{6}$/.test(cfg('COLOR_HS', '')) ? cfg('COLOR_HS') : '#22c55e'
+  T.MS.base = ms; T.MS.accent = mix(ms, 0, 0.15); T.MS.soft = mix(ms, 255, 0.94); T.MS.border = mix(ms, 255, 0.78)
+  T.HS.base = hs; T.HS.accent = mix(hs, 0, 0.15); T.HS.soft = mix(hs, 255, 0.94); T.HS.border = mix(hs, 255, 0.78)
+}
+
 // บัญชี Supabase Auth ตายตัวสำหรับ login แอดมินแบบยูสเซอร์เนม/รหัสผ่านโดยเฉพาะ (ไม่ผูกกับบัญชีครู/นักเรียนจริง)
 // รหัสผ่านตรวจสอบฝั่งเซิร์ฟเวอร์โดย Supabase Auth เอง ไม่มีการเก็บ/เทียบรหัสผ่านฝั่ง client
 const STANDALONE_ADMIN_EMAIL = 'azfutsal.standalone.admin@pp5online.internal'
@@ -84,6 +98,8 @@ let S = {
   confirmRegOpen: false,
   confirmRegTeamId: null,
   confirmRegQR: null,
+  viewProofOpen: false,
+  viewProofUrl: null,
   certModalOpen: false,
   certInput: '',
   certResult: null,
@@ -130,6 +146,7 @@ async function loadAll() {
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
   ])
   S.config = Object.fromEntries((config || []).map(r => [r.key, r.value]))
+  applyThemeColors()
   S.teams = teams || []
   S.players = players || []
   S.matches = { MS: msMatches || [], HS: hsMatches || [] }
@@ -277,6 +294,7 @@ function draw() {
     ${s.editMatch ? matchEditorModal() : ''}
     ${s.adminLoginOpen ? adminLoginModal() : ''}
     ${s.confirmRegOpen ? confirmRegistrationModal() : ''}
+    ${s.viewProofOpen ? viewProofModal() : ''}
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
 }
@@ -311,10 +329,11 @@ function bottomNav() {
       ${icon}<span style="font-size:10.5px;font-weight:${s.tab === tab ? 800 : 600}">${label}</span>
     </button>`
   if (s.tab === 'admin' && s.identity.isAdmin) {
+    const activeGroup = groupOfSection(s.adminSection).id
     return `
     <nav style="position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #ececec">
-      <div style="max-width:440px;margin:0 auto;display:flex;overflow-x:auto;padding:8px 4px calc(8px + env(safe-area-inset-bottom))">
-        ${ADMIN_SECTIONS.map(([id, label]) => `<button data-act="adminSec" data-v="${id}" style="flex:1;min-width:64px;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 2px;cursor:pointer;color:${s.adminSection === id ? '#db2777' : '#9ca3af'}"><span style="font-size:10px;font-weight:${s.adminSection === id ? 800 : 600};white-space:nowrap">${label}</span></button>`).join('')}
+      <div style="max-width:440px;margin:0 auto;display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
+        ${ADMIN_GROUPS.map(g => `<button data-act="adminGroup" data-v="${g.id}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 2px;cursor:pointer;color:${activeGroup === g.id ? '#db2777' : '#9ca3af'}"><span style="font-size:19px;line-height:1">${g.icon}</span><span style="font-size:10px;font-weight:${activeGroup === g.id ? 800 : 600}">${g.label}</span></button>`).join('')}
       </div>
     </nav>`
   }
@@ -804,6 +823,16 @@ function simpleModal(title, body) {
   </div>`
 }
 
+function viewProofModal() {
+  return `
+  <div style="position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px">
+    <button data-act="closeViewProof" style="position:absolute;top:16px;right:16px;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer">✕</button>
+    ${S.viewProofUrl
+      ? `<img src="${esc(S.viewProofUrl)}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:10px"/>`
+      : `<div style="color:#fff;font-size:13px">กำลังโหลด...</div>`}
+  </div>`
+}
+
 function adminLoginModal() {
   return `
   <div style="position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px">
@@ -872,18 +901,27 @@ function confirmRegistrationModal() {
 }
 
 // ---------------- admin ----------------
-const ADMIN_SECTIONS = [
-  ['general', 'ทั่วไป'], ['staff', 'สิทธิ์'], ['teams', 'ทีม'],
-  ['athletes', 'นักกีฬา'], ['payments', 'ชำระเงิน'], ['certificates', 'เกียรติบัตร'], ['ops', 'เวลา/รางวัล'],
+const ADMIN_GROUPS = [
+  { id: 'settings', icon: '⚙️', label: 'ตั้งค่า', sections: [['general', 'ทั่วไป'], ['staff', 'สิทธิ์']] },
+  { id: 'roster', icon: '👥', label: 'ทีม/นักกีฬา', sections: [['teams', 'ทีม'], ['athletes', 'นักกีฬา']] },
+  { id: 'finance', icon: '💰', label: 'การเงิน', sections: [['payments', 'ชำระเงิน']] },
+  { id: 'tourney', icon: '🏆', label: 'แข่งขัน', sections: [['ops', 'เวลา/รางวัล'], ['certificates', 'เกียรติบัตร']] },
 ]
+function groupOfSection(id) { return ADMIN_GROUPS.find(g => g.sections.some(s => s[0] === id)) || ADMIN_GROUPS[0] }
+function sectionLabel(id) { for (const g of ADMIN_GROUPS) { const f = g.sections.find(s => s[0] === id); if (f) return f[1] } return '' }
 
 function adminView() {
+  const group = groupOfSection(S.adminSection)
   return `
   <section style="display:flex;flex-direction:column;gap:12px">
     <div style="display:flex;align-items:center;justify-content:space-between">
-      <h2 style="margin:0;font-size:17px;font-weight:800">แอดมิน · ${ADMIN_SECTIONS.find(s => s[0] === S.adminSection)?.[1] || ''}</h2>
+      <h2 style="margin:0;font-size:17px;font-weight:800">แอดมิน · ${sectionLabel(S.adminSection)}</h2>
       <button data-act="tab" data-tab="schedule" style="font-size:11.5px;color:#6b7280;background:none;border:none;cursor:pointer">ออกจากแอดมิน</button>
     </div>
+    ${group.sections.length > 1 ? `
+    <div style="display:flex;gap:6px">
+      ${group.sections.map(([id, label]) => `<button data-act="adminSec" data-v="${id}" style="flex:1;font-size:12px;padding:7px 10px;border-radius:9px;border:1px solid ${S.adminSection === id ? '#db2777' : '#e5e7eb'};background:${S.adminSection === id ? '#db2777' : '#fff'};color:${S.adminSection === id ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${label}</button>`).join('')}
+    </div>` : ''}
     ${S.adminSection === 'general' ? adminGeneral() : ''}
     ${S.adminSection === 'staff' ? adminStaff() : ''}
     ${S.adminSection === 'teams' ? adminTeams() : ''}
@@ -932,6 +970,14 @@ function adminGeneral() {
     <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:10px">สถานที่
       <input id="cfg-venue" value="${esc(cfg('INFO_VENUE', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
     </label>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <label style="font-size:11.5px;color:#6b7280;flex:1">สีธีม ม.ต้น
+        <input id="cfg-colorMs" type="color" value="${esc(cfg('COLOR_MS', '#ec4899'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:4px;height:38px;cursor:pointer"/>
+      </label>
+      <label style="font-size:11.5px;color:#6b7280;flex:1">สีธีม ม.ปลาย
+        <input id="cfg-colorHs" type="color" value="${esc(cfg('COLOR_HS', '#22c55e'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:4px;height:38px;cursor:pointer"/>
+      </label>
+    </div>
     <button data-act="saveGeneral" style="width:100%;padding:10px;border-radius:10px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">บันทึก</button>
   `) + box(`
     <div style="font-weight:700;font-size:14px;margin-bottom:10px">ตั้งค่าการลงทะเบียน</div>
@@ -1265,9 +1311,13 @@ async function handleReviewPayment(id, status) {
 }
 
 async function handleViewProof(path) {
-  const { data, error } = await SB.storage.from('azfutsal-payments').createSignedUrl(path, 60)
-  if (error || !data) { azToast('เปิดไฟล์ไม่สำเร็จ'); return }
-  window.open(data.signedUrl, '_blank')
+  S.viewProofOpen = true
+  S.viewProofUrl = null
+  draw()
+  const { data, error } = await SB.storage.from('azfutsal-payments').createSignedUrl(path, 300)
+  if (error || !data) { azToast('เปิดไฟล์ไม่สำเร็จ'); S.viewProofOpen = false; draw(); return }
+  S.viewProofUrl = data.signedUrl
+  draw()
 }
 
 function bindEvents() {
@@ -1280,6 +1330,7 @@ function bindEvents() {
     if (act === 'setStats') { S.statsLevel = btn.dataset.v; draw(); return }
     if (act === 'setTeamStatusLevel') { S.teamStatusLevel = btn.dataset.v; draw(); return }
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
+    if (act === 'adminGroup') { const g = ADMIN_GROUPS.find(g => g.id === btn.dataset.v); if (g) S.adminSection = g.sections[0][0]; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.certModalOpen = false; S.certFullscreen = false; draw(); return }
     if (act === 'account') {
@@ -1339,6 +1390,7 @@ function bindEvents() {
     if (act === 'closeConfirmReg') { S.confirmRegOpen = false; S.confirmRegQR = null; draw(); return }
     if (act === 'reviewPayment') { await handleReviewPayment(btn.dataset.id, btn.dataset.status); return }
     if (act === 'viewProof') { await handleViewProof(btn.dataset.path); return }
+    if (act === 'closeViewProof') { S.viewProofOpen = false; S.viewProofUrl = null; draw(); return }
     if (act === 'toggleCert') {
       const cur = cfg('CERT_ENABLED', '1') === '1'
       await SB.from('azfutsal_config').upsert({ key: 'CERT_ENABLED', value: cur ? '0' : '1' })
@@ -1374,6 +1426,8 @@ function bindEvents() {
         { key: 'EVENT_NAME', value: gid('cfg-eventName').value },
         { key: 'INFO_DATE', value: gid('cfg-date').value },
         { key: 'INFO_VENUE', value: gid('cfg-venue').value },
+        { key: 'COLOR_MS', value: gid('cfg-colorMs').value },
+        { key: 'COLOR_HS', value: gid('cfg-colorHs').value },
       ])
       await refresh(); azToast('บันทึกแล้ว'); return
     }
