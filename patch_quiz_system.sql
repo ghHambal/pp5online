@@ -837,11 +837,11 @@ BEGIN
     IF v_is_correct AND v_new_streak % 3 = 0 THEN
       v_regular := (ARRAY['fifty_fifty','fix_wrong','extra_time'])[floor(random() * 3 + 1)];
       v_inventory := jsonb_set(v_inventory, ARRAY[v_regular], to_jsonb(COALESCE((v_inventory->>v_regular)::int, 0) + 1));
-      v_awarded := v_awarded || v_regular;
+      v_awarded := array_append(v_awarded, v_regular);
     END IF;
     IF v_is_correct AND v_new_streak % 6 = 0 THEN
       v_inventory := jsonb_set(v_inventory, ARRAY['reveal_answer'], to_jsonb(COALESCE((v_inventory->>'reveal_answer')::int, 0) + 1));
-      v_awarded := v_awarded || 'reveal_answer';
+      v_awarded := array_append(v_awarded, 'reveal_answer');
     END IF;
   ELSE
     v_new_streak := v_attempt.current_streak; -- lock-only mode: streak concept unused
