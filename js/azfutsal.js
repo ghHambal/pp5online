@@ -1168,11 +1168,17 @@ function liveDrawView() {
     const teams = S.teams.filter(tm => tm.level === level)
     const slotSeq = liveDrawSlotSeq(level)
     const mismatch = teams.length > slotSeq.length
+    const testMode = ld.testMode !== false // ค่าเริ่มต้นคือโหมดทดสอบ ปลอดภัยไว้ก่อน
     return `
     <div style="position:fixed;inset:0;z-index:80;background:#0b0f1a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
       <button data-act="closeLiveDraw" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
       <div style="font-size:20px;font-weight:800;margin-bottom:8px">🎬 จับสลากสด · ${t.label}</div>
-      <div style="font-size:13px;color:#9ca3af;margin-bottom:4px">ทีมในโหล ${teams.length} ทีม · ช่องรอบแรกทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
+      <div style="font-size:13px;color:#9ca3af;margin-bottom:16px">ทีมในโหล ${teams.length} ทีม · ช่องรอบแรกทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
+      <div style="display:flex;gap:8px;background:rgba(255,255,255,.06);padding:5px;border-radius:12px">
+        <button data-act="setLiveDrawMode" data-v="1" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${testMode ? '#f59e0b' : 'transparent'};color:${testMode ? '#111827' : '#9ca3af'}">🧪 โหมดทดสอบ (ไม่บันทึก)</button>
+        <button data-act="setLiveDrawMode" data-v="0" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${!testMode ? '#dc2626' : 'transparent'};color:${!testMode ? '#fff' : '#9ca3af'}">🔴 จับจริง (บันทึกผล)</button>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:${testMode ? '#fbbf24' : '#f87171'}">${testMode ? 'ซ้อมได้อิสระด้วยรายชื่อทีมจริง จะไม่มีการเขียนอะไรลงฐานข้อมูลเลย' : 'ผลจะถูกบันทึกลงระบบจริงทันทีที่จับครบแต่ละคู่ ใช้ตอนไลฟ์จริงเท่านั้น'}</div>
       ${mismatch
         ? `<div style="margin-top:14px;padding:12px 16px;border-radius:10px;background:#7f1d1d;color:#fecaca;font-size:12.5px;max-width:320px">จำนวนทีม (${teams.length}) มากกว่าจำนวนช่องรอบแรก (${slotSeq.length}) กรุณาตรวจสอบทีมก่อนเริ่มจับสลาก</div>`
         : `<button data-act="startLiveDraw" style="margin-top:18px;padding:14px 32px;border-radius:999px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:15px;cursor:pointer">เริ่มจับสลาก</button>
@@ -1185,6 +1191,7 @@ function liveDrawView() {
   const isDone = ld.pickIndex >= slotSeq.length || ld.pickIndex >= ld.order.length
   return `
   <div style="position:fixed;inset:0;z-index:80;background:#0b0f1a;color:#fff;display:flex;flex-direction:column;overflow-y:auto">
+    ${ld.testMode ? `<div style="background:#f59e0b;color:#111827;text-align:center;padding:6px;font-weight:800;font-size:12px;flex-shrink:0">🧪 โหมดทดสอบ — ไม่มีการบันทึกผลลงระบบจริง</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
       <div style="font-weight:800;font-size:15px">🎬 จับสลากสด · ${t.label}</div>
       <button data-act="closeLiveDraw" style="border:none;background:rgba(255,255,255,.1);color:#fff;width:32px;height:32px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
@@ -1220,7 +1227,8 @@ async function handleStartLiveDraw() {
   if (!ld) return
   const teams = S.teams.filter(tm => tm.level === ld.level).map(tm => tm.id)
   const slotSeq = liveDrawSlotSeq(ld.level)
-  S.liveDraw = { level: ld.level, started: true, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle' }
+  const testMode = ld.testMode !== false
+  S.liveDraw = { level: ld.level, started: true, testMode, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle' }
   await loadConfetti()
   draw()
 }
@@ -1253,7 +1261,7 @@ async function handleDrawNext() {
   ld.phase = 'landed'
   fireConfetti('high')
   const aId = ld.filled[`${slot.code}_a`], bId = ld.filled[`${slot.code}_b`]
-  if (aId && bId) {
+  if (aId && bId && !ld.testMode) {
     await SB.from('azfutsal_matches').upsert(
       { level: ld.level, match_code: slot.code, round: 'รอบแรก', team_a_id: aId, team_b_id: bId },
       { onConflict: 'level,match_code' }
@@ -1809,7 +1817,8 @@ function bindEvents() {
       if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('ลบทีมแล้ว'); return
     }
-    if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false }; draw(); return }
+    if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false, testMode: true }; draw(); return }
+    if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
     if (act === 'closeLiveDraw') { S.liveDraw = null; draw(); return }
     if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
     if (act === 'drawNext') { await handleDrawNext(); return }
