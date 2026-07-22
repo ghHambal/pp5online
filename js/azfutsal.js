@@ -2147,6 +2147,11 @@ function bindEvents() {
     if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
     if (act === 'shakePool') { await handleShakePool(); return }
     if (act === 'drawNext') { await handleDrawNext(); return }
+    if (act === 'clearAward') {
+      const { error } = await SB.from('azfutsal_awards').upsert({ level: btn.dataset.level, award_type: btn.dataset.type, student_id: null }, { onConflict: 'level,award_type' })
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); azToast('ล้างรางวัลแล้ว'); return
+    }
     if (act === 'toggleOrganizer') {
       const { error } = await SB.from('azfutsal_teams').update({ is_organizer: btn.dataset.v === '1' }).eq('id', btn.dataset.id)
       if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
@@ -2186,11 +2191,6 @@ function bindEvents() {
   ROOT.addEventListener('change', async e => {
     const el = e.target
     if (el.id === 'new-team-level') { S.newTeamLevel = el.value; return }
-    if (el.dataset.act === 'setAward') {
-      const { error } = await SB.from('azfutsal_awards').upsert({ level: el.dataset.level, award_type: el.dataset.type, student_id: el.value || null }, { onConflict: 'level,award_type' })
-      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
-      await refresh(); azToast('บันทึกรางวัลแล้ว'); return
-    }
     if (el.dataset.act === 'uploadPlayerPhoto' && el.files?.[0]) {
       await handleUploadPlayerPhoto(el.dataset.id, el.files[0])
       return
@@ -2231,6 +2231,27 @@ function bindEvents() {
         gid('staff-search').value = ''; box.style.display = 'none'
         await loadStaffList()
         azToast(`มอบสิทธิ์แอดมินให้ ${row.dataset.name} แล้ว`)
+      }))
+    }
+    if (e.target.classList?.contains('az-award-search')) {
+      const level = e.target.dataset.level, type = e.target.dataset.type
+      const q = e.target.value.trim().toLowerCase()
+      const box = gid(`award-results-${level}-${type}`)
+      if (!q) { box.style.display = 'none'; return }
+      const players = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
+      const results = players.filter(p => {
+        const name = (p.students?.full_name || '').toLowerCase()
+        const code = String(p.students?.student_code || '').toLowerCase()
+        const jersey = String(p.jersey_number ?? '')
+        return name.includes(q) || code.includes(q) || jersey.includes(q)
+      }).slice(0, 20)
+      box.innerHTML = results.length ? results.map(p => `<div data-student="${p.student_id}" style="padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid #f3f4f6" class="az-award-cand">${p.jersey_number !== null && p.jersey_number !== undefined ? `<b>#${esc(p.jersey_number)}</b> ` : ''}<b>${esc(p.students?.full_name || '')}</b> <span style="color:#9ca3af">${esc(p.students?.student_code || '')} · ${esc(teamName(p.team_id))}</span></div>`).join('') : `<div style="padding:8px 10px;font-size:12px;color:#9ca3af">ไม่พบนักกีฬาที่ตรงกับคำค้น</div>`
+      box.style.display = 'block'
+      box.querySelectorAll('.az-award-cand').forEach(row => row.addEventListener('click', async () => {
+        box.style.display = 'none'
+        const { error } = await SB.from('azfutsal_awards').upsert({ level, award_type: type, student_id: row.dataset.student }, { onConflict: 'level,award_type' })
+        if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+        await refresh(); azToast('บันทึกรางวัลแล้ว')
       }))
     }
     if (e.target.id === 'cap-code') {
@@ -2391,13 +2412,20 @@ function adminOps() {
     })
   }
   const awardPicker = (level, type, label) => {
-    const current = S.awards.find(a => a.level === level && a.award_type === type)?.student_id || ''
+    const currentId = S.awards.find(a => a.level === level && a.award_type === type)?.student_id || ''
     const players = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
-    return `<label style="font-size:11.5px;color:#6b7280;flex:1">${label}
-      <select data-act="setAward" data-level="${level}" data-type="${type}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12px">
-        <option value="">-</option>
-        ${players.map(p => `<option value="${p.student_id}" ${String(current) === String(p.student_id) ? 'selected' : ''}>${esc(p.students?.full_name || '')}</option>`).join('')}
-      </select></label>`
+    const currentPlayer = currentId ? players.find(p => String(p.student_id) === String(currentId)) : null
+    const currentName = currentPlayer ? currentPlayer.students?.full_name || '' : ''
+    return `<label style="font-size:11.5px;color:#6b7280;flex:1">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span>${label}</span>
+        ${currentId ? `<button data-act="clearAward" data-level="${level}" data-type="${type}" style="border:none;background:none;color:#9ca3af;font-size:10.5px;cursor:pointer;text-decoration:underline">ล้าง</button>` : ''}
+      </div>
+      <div style="position:relative;margin-top:4px">
+        <input class="az-award-search" data-level="${level}" data-type="${type}" value="${esc(currentName)}" autocomplete="off" placeholder="พิมพ์เลขเสื้อ/รหัส/ชื่อนักกีฬา..." style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12px"/>
+        <div id="award-results-${level}-${type}" style="position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:20;display:none;box-shadow:0 6px 16px rgba(0,0,0,.08)"></div>
+      </div>
+    </label>`
   }
   return `
     ${box(`
