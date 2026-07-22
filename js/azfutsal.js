@@ -70,6 +70,7 @@ const esc = v => String(v ?? '')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
 const money = n => Number(n || 0).toLocaleString('th-TH')
+const fmtDT = iso => iso ? new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 
 let SB = null
 let ROOT = null
@@ -305,7 +306,7 @@ function organizerBadge() {
 export async function renderAzfutsal(root, supabaseClient) {
   ROOT = root
   SB = supabaseClient
-  root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;color:#9ca3af;font-size:13px">กำลังโหลด...</div>`
+  root.innerHTML = `<div style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px">กำลังโหลด...</div>`
   await loadAll()
   draw()
   bindEvents()
@@ -320,24 +321,26 @@ function draw() {
   const s = S
   const accent = '#db2777'
   ROOT.innerHTML = `
-  <div style="max-width:440px;margin:0 auto;min-height:100vh;background:#fff;position:relative;box-shadow:0 0 40px rgba(0,0,0,.06);color:#111827">
-    ${header()}
-    <main style="padding:16px 20px 100px">
-      ${s.tab === 'teamStatus' ? teamStatusView() : ''}
-      ${s.tab === 'schedule' ? scheduleView() : ''}
-      ${s.tab === 'teams' ? statsView() : ''}
-      ${s.tab === 'summary' ? summaryView() : ''}
-      ${s.tab === 'myteam' ? myTeamView() : ''}
-      ${s.tab === 'admin' && s.identity.isAdmin ? adminView() : ''}
-    </main>
-    ${bottomNav()}
-    ${s.certModalOpen ? certModal() : ''}
-    ${s.editMatch ? matchEditorModal() : ''}
-    ${s.adminLoginOpen ? adminLoginModal() : ''}
-    ${s.confirmRegOpen ? confirmRegistrationModal() : ''}
-    ${s.viewProofOpen ? viewProofModal() : ''}
-    ${s.rejectPaymentId ? rejectReasonModal() : ''}
-    ${s.liveDraw ? liveDrawView() : ''}
+  <div style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden">
+    <div style="width:100%;max-width:440px;height:100%;max-height:1000px;background:#fff;position:relative;box-shadow:0 24px 64px rgba(0,0,0,.5);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;color:#111827">
+      ${header()}
+      <main style="flex:1;overflow-y:auto;padding:16px 20px 24px">
+        ${s.tab === 'teamStatus' ? teamStatusView() : ''}
+        ${s.tab === 'schedule' ? scheduleView() : ''}
+        ${s.tab === 'teams' ? statsView() : ''}
+        ${s.tab === 'summary' ? summaryView() : ''}
+        ${s.tab === 'myteam' ? myTeamView() : ''}
+        ${s.tab === 'admin' && s.identity.isAdmin ? adminView() : ''}
+      </main>
+      ${bottomNav()}
+      ${s.certModalOpen ? certModal() : ''}
+      ${s.editMatch ? matchEditorModal() : ''}
+      ${s.adminLoginOpen ? adminLoginModal() : ''}
+      ${s.confirmRegOpen ? confirmRegistrationModal() : ''}
+      ${s.viewProofOpen ? viewProofModal() : ''}
+      ${s.rejectPaymentId ? rejectReasonModal() : ''}
+      ${s.liveDraw ? liveDrawView() : ''}
+    </div>
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
 }
@@ -347,7 +350,7 @@ function header() {
   const eventName = cfg('EVENT_NAME', 'AZFUTSALCUP2025')
   const date = cfg('INFO_DATE', '-'), venue = cfg('INFO_VENUE', '-')
   return `
-  <header style="position:sticky;top:0;z-index:30;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-bottom:1px solid #ececec;padding:16px 20px 14px">
+  <header style="flex-shrink:0;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-bottom:1px solid #ececec;padding:16px 20px 14px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div>
         <h1 style="margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em;color:#db2777">${esc(eventName)}</h1>
@@ -374,23 +377,23 @@ function bottomNav() {
   if (s.tab === 'admin' && s.identity.isAdmin) {
     const activeGroup = groupOfSection(s.adminSection).id
     return `
-    <nav style="position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #ececec">
-      <div style="max-width:440px;margin:0 auto;display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
+    <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+      <div style="display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
         ${ADMIN_GROUPS.map(g => `<button data-act="adminGroup" data-v="${g.id}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 2px;cursor:pointer;color:${activeGroup === g.id ? '#db2777' : '#9ca3af'}"><span style="font-size:19px;line-height:1">${g.icon}</span><span style="font-size:10px;font-weight:${activeGroup === g.id ? 800 : 600}">${g.label}</span></button>`).join('')}
       </div>
     </nav>`
   }
   if (s.tab === 'myteam') {
     return `
-    <nav style="position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #ececec">
-      <div style="max-width:440px;margin:0 auto;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
+    <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+      <div style="padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
         <button data-act="tab" data-tab="schedule" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">← กลับหน้าหลัก</button>
       </div>
     </nav>`
   }
   return `
-  <nav style="position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #ececec">
-    <div style="max-width:440px;margin:0 auto;display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
+  <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+    <div style="display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
       ${item('teamStatus', 'สถานะทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>')}
       ${item('teams', 'สถิติทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>')}
       ${item('schedule', 'ตาราง', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>')}
@@ -2223,6 +2226,13 @@ function updateScheduleList() {
   if (listWrap) listWrap.innerHTML = rows.length ? rows.map(matchCard).join('') : `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดที่ตรงกับตัวกรอง</div>`
 }
 
+function paymentStatusLine(teamId) {
+  const p = S.payments.find(pm => pm.team_id === teamId)
+  if (!p) return `<span style="color:#9ca3af;font-weight:600">● ยังไม่ส่งหลักฐานชำระเงิน</span>`
+  if (p.status === 'verified') return `<span style="color:#16a34a;font-weight:600">● ยืนยันแล้ว</span> · ส่ง ${fmtDT(p.created_at)}${p.reviewed_at ? ' · ยืนยัน ' + fmtDT(p.reviewed_at) : ''}`
+  if (p.status === 'rejected') return `<span style="color:#ef4444;font-weight:600">● ถูกปฏิเสธ</span> · ส่ง ${fmtDT(p.created_at)}${p.reviewed_at ? ' · ปฏิเสธ ' + fmtDT(p.reviewed_at) : ''}`
+  return `<span style="color:#f59e0b;font-weight:600">● รอตรวจสอบ</span> · ส่งหลักฐาน ${fmtDT(p.created_at)}`
+}
 function teamAdminRow(t) {
   return `
   <div style="border:1px solid #f3f4f6;border-radius:10px;padding:8px 10px">
@@ -2234,6 +2244,7 @@ function teamAdminRow(t) {
       </div>
     </div>
     <div style="font-size:11px;color:#6b7280;margin-top:2px">หัวหน้าทีม: ${t.captain?.full_name ? esc(t.captain.full_name) : '-'}${t.vice_captain?.full_name ? ' · รอง: ' + esc(t.vice_captain.full_name) : ''}</div>
+    <div style="font-size:10.5px;color:#6b7280;margin-top:3px">${paymentStatusLine(t.id)}</div>
     <button data-act="toggleOrganizer" data-id="${t.id}" data-v="${t.is_organizer ? '0' : '1'}" style="margin-top:4px;border:none;background:none;color:#4338ca;font-size:10.5px;cursor:pointer;font-weight:600">${t.is_organizer ? 'ยกเลิกทีมผู้จัด' : 'ตั้งเป็นทีมผู้จัด'}</button>
   </div>`
 }
