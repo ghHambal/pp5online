@@ -102,6 +102,7 @@ let S = {
   teamCreating: false,
   rejectPaymentId: null,
   rejectReasonText: '',
+  pendingConfirm: null, // { message, danger, run } — โมดัลยืนยันแทน window.confirm() ของเบราว์เซอร์
   viewProofOpen: false,
   viewProofUrl: null,
   liveDraw: null, // { level, order:[teamId...] (สับแล้ว), slotSeq:[{code,side}], pickIndex, filled:{`${code}_${side}`:teamId}, phase:'idle'|'spinning' }
@@ -341,6 +342,7 @@ function draw() {
       ${s.viewProofOpen ? viewProofModal() : ''}
       ${s.rejectPaymentId ? rejectReasonModal() : ''}
       ${s.liveDraw ? liveDrawView() : ''}
+      ${s.pendingConfirm ? confirmActionModal() : ''}
     </div>
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
@@ -936,6 +938,22 @@ function rejectReasonModal() {
     <textarea id="reject-reason-text" rows="3" placeholder="เหตุผลที่ปฏิเสธ" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:10px;padding:9px 10px;font-size:13px;font-family:inherit;resize:vertical">${esc(S.rejectReasonText)}</textarea>
     <button data-act="confirmReject" ${S.rejectReasonText.trim() ? '' : 'disabled'} style="margin-top:10px;width:100%;padding:11px;border:none;border-radius:10px;background:${S.rejectReasonText.trim() ? '#dc2626' : '#f3b6b6'};color:#fff;font-weight:800;font-size:14px;cursor:${S.rejectReasonText.trim() ? 'pointer' : 'default'}">ยืนยันการปฏิเสธ</button>
   `)
+}
+
+// โมดัลยืนยันการทำรายการ ใช้แทน window.confirm() ของเบราว์เซอร์ทุกจุด (สไตล์เดียวกับโมดัลอื่นในระบบ)
+function confirmActionModal() {
+  const pc = S.pendingConfirm
+  if (!pc) return ''
+  return `
+  <div style="position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:24px">
+    <div style="background:#fff;width:100%;max-width:320px;border-radius:16px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+      <div style="font-size:14px;font-weight:700;color:#111827;line-height:1.6;margin-bottom:18px;white-space:pre-line">${esc(pc.message)}</div>
+      <div style="display:flex;gap:8px">
+        <button data-act="confirmActionNo" style="flex:1;padding:10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">ยกเลิก</button>
+        <button data-act="confirmActionYes" style="flex:1;padding:10px;border-radius:10px;border:none;background:${pc.danger ? '#dc2626' : '#db2777'};color:#fff;font-weight:700;font-size:13px;cursor:pointer">${esc(pc.confirmLabel || 'ยืนยัน')}</button>
+      </div>
+    </div>
+  </div>`
 }
 
 function viewProofModal() {
@@ -1944,6 +1962,14 @@ function bindEvents() {
     if (act === 'adminAthleteLevel') { S.adminAthleteLevel = btn.dataset.v; draw(); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; draw(); return }
+    if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
+    if (act === 'confirmActionYes') {
+      const pc = S.pendingConfirm
+      S.pendingConfirm = null
+      draw()
+      if (pc?.run) await pc.run()
+      return
+    }
     if (act === 'account') {
       if (!S.identity.session) { goToLogin(); return }
       if (!S.identity.student) { azToast('หน้านี้สำหรับนักเรียน (หัวหน้าทีม/ตัวแทนทีม) เท่านั้น'); return }
@@ -2099,10 +2125,16 @@ function bindEvents() {
       draw(); return
     }
     if (act === 'removeTeam') {
-      if (!confirm('ลบทีมนี้? ข้อมูลนักกีฬาและการชำระเงินของทีมจะถูกลบด้วย')) return
-      const { error } = await SB.from('azfutsal_teams').delete().eq('id', btn.dataset.id)
-      if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
-      await refresh(); azToast('ลบทีมแล้ว'); return
+      S.pendingConfirm = {
+        message: 'ลบทีมนี้?\nข้อมูลนักกีฬาและการชำระเงินของทีมจะถูกลบด้วย',
+        danger: true, confirmLabel: 'ลบทีม',
+        run: async () => {
+          const { error } = await SB.from('azfutsal_teams').delete().eq('id', btn.dataset.id)
+          if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
+          await refresh(); azToast('ลบทีมแล้ว')
+        }
+      }
+      draw(); return
     }
     if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false, testMode: true, orderStrategy: 'bypair' }; draw(); return }
     if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
@@ -2117,21 +2149,33 @@ function bindEvents() {
       await refresh(); return
     }
     if (act === 'removePlayer') {
-      if (!confirm('ลบนักกีฬาคนนี้ออกจากทีม?')) return
-      const { error } = await SB.from('azfutsal_players').delete().eq('id', btn.dataset.id)
-      if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
-      await refresh(); return
+      S.pendingConfirm = {
+        message: 'ลบนักกีฬาคนนี้ออกจากทีม?',
+        danger: true, confirmLabel: 'ลบ',
+        run: async () => {
+          const { error } = await SB.from('azfutsal_players').delete().eq('id', btn.dataset.id)
+          if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
+          await refresh()
+        }
+      }
+      draw(); return
     }
     if (act === 'removeStaff') {
       if ((S.staffList || []).length <= 1) { azToast('ต้องมีแอดมินอย่างน้อย 1 คนเสมอ ลบคนสุดท้ายไม่ได้'); return }
-      const msg = btn.dataset.self === '1'
-        ? 'นี่คือบัญชีที่คุณกำลังใช้อยู่ ถ้าถอนสิทธิ์ตัวเองจะออกจากหน้าแอดมินทันที ยืนยันหรือไม่?'
-        : 'ถอนสิทธิ์แอดมินคนนี้?'
-      if (!confirm(msg)) return
-      const { error } = await SB.from('azfutsal_admins').delete().eq('id', btn.dataset.id)
-      if (error) { azToast('ถอนสิทธิ์ไม่สำเร็จ: ' + error.message); return }
-      if (btn.dataset.self === '1') { await refresh(); S.tab = 'schedule'; draw(); return }
-      await loadStaffList(); return
+      const isSelf = btn.dataset.self === '1'
+      S.pendingConfirm = {
+        message: isSelf
+          ? 'นี่คือบัญชีที่คุณกำลังใช้อยู่\nถ้าถอนสิทธิ์ตัวเองจะออกจากหน้าแอดมินทันที ยืนยันหรือไม่?'
+          : 'ถอนสิทธิ์แอดมินคนนี้?',
+        danger: true, confirmLabel: 'ถอนสิทธิ์',
+        run: async () => {
+          const { error } = await SB.from('azfutsal_admins').delete().eq('id', btn.dataset.id)
+          if (error) { azToast('ถอนสิทธิ์ไม่สำเร็จ: ' + error.message); return }
+          if (isSelf) { await refresh(); S.tab = 'schedule'; draw(); return }
+          await loadStaffList()
+        }
+      }
+      draw(); return
     }
   })
 
@@ -2280,12 +2324,12 @@ function adminPayments() {
   const level = S.adminPaymentsLevel || 'MS'
   const rows = S.payments.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
   const pendingCount = rows.filter(p => p.status === 'pending').length
-  return box(`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+  return boxFill(`
+    <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-weight:700;font-size:14px">ตรวจสอบการชำระเงินประกัน${pendingCount ? ` <span style="font-weight:600;font-size:11.5px;color:#f59e0b">(${pendingCount} รอตรวจสอบ)</span>` : ''}</div>
       <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminPaymentsLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;overflow-y:auto">
       ${rows.length ? rows.map(p => {
         const team = S.teams.find(t => t.id === p.team_id)
         return `
