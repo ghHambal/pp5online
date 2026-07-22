@@ -113,6 +113,7 @@ let S = {
   eventPicker: null, // { team: 'a'|'b', type: 'goal'|'yellow'|'red' }
   eventPickerFilter: '',
   adminTeamLevel: 'MS',
+  adminAthleteLevel: 'MS',
   adminPaymentsLevel: 'MS',
   staffList: null,
 
@@ -324,7 +325,7 @@ function draw() {
   <div style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden">
     <div style="width:100%;max-width:440px;height:100%;max-height:1000px;background:#fff;position:relative;box-shadow:0 24px 64px rgba(0,0,0,.5);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;color:#111827">
       ${header()}
-      <main style="flex:1;overflow-y:auto;padding:16px 20px 24px">
+      <main style="flex:1;min-height:0;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column">
         ${s.tab === 'teamStatus' ? teamStatusView() : ''}
         ${s.tab === 'schedule' ? scheduleView() : ''}
         ${s.tab === 'teams' ? statsView() : ''}
@@ -1027,7 +1028,7 @@ function sectionLabel(id) { for (const g of ADMIN_GROUPS) { const f = g.sections
 function adminView() {
   const group = groupOfSection(S.adminSection)
   return `
-  <section style="display:flex;flex-direction:column;gap:12px">
+  <section style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <h2 style="margin:0;font-size:17px;font-weight:800">แอดมิน · ${sectionLabel(S.adminSection)}</h2>
       <button data-act="tab" data-tab="schedule" style="font-size:11.5px;color:#6b7280;background:none;border:none;cursor:pointer">ออกจากแอดมิน</button>
@@ -1047,6 +1048,8 @@ function adminView() {
 }
 
 function box(inner) { return `<div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px">${inner}</div>` }
+// เหมือน box() แต่ยืดเต็มพื้นที่ที่เหลือของจอ (ใช้กับการ์ดที่มีลิสต์ยาวๆ ด้านในที่ต้องการสกรอลล์เอง แทนที่จะเว้นพื้นที่ว่างด้านล่าง)
+function boxFill(inner) { return `<div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px;flex:1;min-height:0;display:flex;flex-direction:column">${inner}</div>` }
 
 function adminGeneral() {
   const isStandaloneSession = S.identity.session?.user?.email === STANDALONE_ADMIN_EMAIL
@@ -1141,17 +1144,17 @@ function adminTeams() {
   const seeded = S.matches[level].length >= BRACKET[level].length
   const quota = Number(cfg(level === 'MS' ? 'MAX_TEAMS_MS' : 'MAX_TEAMS_HS', '') || 0)
   const verifiedCount = S.payments.filter(p => p.status === 'verified' && S.teams.find(t2 => t2.id === p.team_id)?.level === level).length
-  return box(`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+  return boxFill(`
+    <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-weight:700;font-size:14px">จัดการทีม${quota > 0 ? ` <span style="font-weight:600;font-size:11.5px;color:#6b7280">(${verifiedCount}/${quota} ทีมยืนยันแล้ว)</span>` : ''}</div>
       <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminTeamLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
     </div>
-    ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="width:100%;margin-bottom:6px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่ (ทันที ไม่มีแอนิเมชัน)</button>`}
-    ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="width:100%;margin-bottom:10px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด (สำหรับไลฟ์)</button>` : ''}
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:340px;overflow-y:auto">
+    ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:6px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่ (ทันที ไม่มีแอนิเมชัน)</button>`}
+    ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด (สำหรับไลฟ์)</button>` : ''}
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;overflow-y:auto">
       ${rows.length ? rows.map(t => teamAdminRow(t)).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีทีมในระดับนี้</div>`}
     </div>
-    <button data-act="adminNewTeamFromList" style="width:100%;padding:9px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">+ ลงทะเบียนทีมใหม่ (ระบุหัวหน้าทีม)</button>
+    <button data-act="adminNewTeamFromList" style="flex-shrink:0;width:100%;padding:9px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">+ ลงทะเบียนทีมใหม่ (ระบุหัวหน้าทีม)</button>
   `)
 }
 
@@ -1938,6 +1941,7 @@ function bindEvents() {
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
     if (act === 'adminGroup') { const g = ADMIN_GROUPS.find(g => g.id === btn.dataset.v); if (g) S.adminSection = g.sections[0][0]; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
+    if (act === 'adminAthleteLevel') { S.adminAthleteLevel = btn.dataset.v; draw(); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; draw(); return }
     if (act === 'account') {
@@ -2250,10 +2254,14 @@ function teamAdminRow(t) {
 }
 
 function adminAthletes() {
-  const rows = S.players
-  return box(`
-    <div style="font-weight:700;font-size:14px;margin-bottom:10px">นักกีฬาที่ลงทะเบียน (${rows.length})</div>
-    <div style="display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto">
+  const level = S.adminAthleteLevel || 'MS'
+  const rows = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
+  return boxFill(`
+    <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-weight:700;font-size:14px">นักกีฬาที่ลงทะเบียน (${rows.length})</div>
+      <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminAthleteLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
+    </div>
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
       ${rows.length ? rows.map(p => { const g = playerGoals(p.id); return `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6">
           <div style="min-width:0">
@@ -2263,7 +2271,7 @@ function adminAthletes() {
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             <button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
           </div>
-        </div>`}).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬาลงทะเบียน</div>`}
+        </div>`}).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬาลงทะเบียนในระดับนี้</div>`}
     </div>
   `)
 }
