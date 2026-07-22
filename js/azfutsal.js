@@ -105,6 +105,8 @@ let S = {
   certResult: null,
   certFullscreen: false,
   editMatch: null, // { level, code }
+  eventPicker: null, // { team: 'a'|'b', type: 'goal'|'yellow'|'red' }
+  eventPickerFilter: '',
   adminTeamLevel: 'MS',
   staffList: null,
 
@@ -113,6 +115,7 @@ let S = {
   teams: [],
   players: [],
   matches: { MS: [], HS: [] },
+  matchEvents: [],
   awards: [],
   payments: [],
   loading: true,
@@ -137,13 +140,14 @@ async function loadAll() {
   }
   S.identity = { session, profile, isAdmin, student, teacher }
 
-  const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }] = await Promise.all([
+  const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }, { data: matchEvents }] = await Promise.all([
     SB.from('azfutsal_config').select('key, value'),
     SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, is_reserve, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
-    SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, goals, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
+    SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
     SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
+    SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, created_at').order('created_at'),
   ])
   S.config = Object.fromEntries((config || []).map(r => [r.key, r.value]))
   applyThemeColors()
@@ -151,6 +155,7 @@ async function loadAll() {
   S.players = players || []
   S.matches = { MS: msMatches || [], HS: hsMatches || [] }
   S.awards = awards || []
+  S.matchEvents = matchEvents || []
 
   // สถานะการชำระเงินเปิดอ่านสาธารณะ (ไม่มีข้อมูลอ่อนไหว) เพื่อให้แท็บ "สถานะทีม" ใช้ได้โดยไม่ต้อง login
   const { data: payments } = await SB.from('azfutsal_payments').select('*').order('created_at', { ascending: false })
@@ -188,6 +193,16 @@ function resolveRef(level, ref, seen) {
   return null
 }
 
+// นับจำนวนเหตุการณ์ (ประตู/เหลือง/แดง) ของนัดหนึ่งๆ จาก log เหตุการณ์รายคน — ไม่มีการเก็บตัวเลขรวมแยกไว้ต่างหากอีกแล้ว
+function matchEventCounts(level, code, teamId) {
+  const evs = S.matchEvents.filter(e => e.level === level && e.match_code === code && e.team_id === teamId)
+  return {
+    goal: evs.filter(e => e.event_type === 'goal').length,
+    yellow: evs.filter(e => e.event_type === 'yellow').length,
+    red: evs.filter(e => e.event_type === 'red').length,
+  }
+}
+
 function computeTeamStats(level) {
   const teams = new Map()
   const reg = id => { if (!id) return; if (!teams.has(id)) teams.set(id, { id, team: teamName(id), gp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, y: 0, r: 0 }) }
@@ -198,19 +213,36 @@ function computeTeamStats(level) {
     const ta = teams.get(r.teamAId), tb = teams.get(r.teamBId)
     ta.gp++; tb.gp++
     ta.gf += m.score_a; ta.ga += m.score_b; tb.gf += m.score_b; tb.ga += m.score_a
-    ta.y += m.yellow_a || 0; ta.r += m.red_a || 0; tb.y += m.yellow_b || 0; tb.r += m.red_b || 0
     if (m.score_a > m.score_b) { ta.w++; tb.l++ }
     else if (m.score_a < m.score_b) { tb.w++; ta.l++ }
     else { ta.d++; tb.d++ }
+  })
+  S.matchEvents.filter(e => e.level === level && e.event_type !== 'goal').forEach(e => {
+    const t = teams.get(e.team_id)
+    if (!t) return
+    if (e.event_type === 'yellow') t.y++
+    else if (e.event_type === 'red') t.r++
   })
   return Array.from(teams.values()).map(t => ({ ...t, gd: t.gf - t.ga })).sort((a, b) =>
     b.w - a.w || (b.gd - a.gd) || (b.gf - a.gf) || (a.r - b.r) || (a.y - b.y) || a.team.localeCompare(b.team, 'th'))
 }
 
+function playerGoals(playerId) {
+  return S.matchEvents.filter(e => e.event_type === 'goal' && e.player_id === playerId).length
+}
+
 function computeTopScorers(level) {
-  return S.players
-    .filter(p => S.teams.find(t => t.id === p.team_id)?.level === level && p.goals > 0)
-    .map(p => ({ name: p.students?.full_name || '', team: teamName(p.team_id), goals: p.goals, studentId: p.student_id }))
+  const counts = new Map()
+  S.matchEvents.filter(e => e.event_type === 'goal' && e.level === level).forEach(e => {
+    counts.set(e.player_id, (counts.get(e.player_id) || 0) + 1)
+  })
+  return Array.from(counts.entries())
+    .map(([playerId, goals]) => {
+      const p = S.players.find(pl => pl.id === playerId)
+      if (!p) return null
+      return { name: p.students?.full_name || '', team: teamName(p.team_id), goals, studentId: p.student_id }
+    })
+    .filter(Boolean)
     .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name, 'th'))
     .slice(0, 20)
 }
@@ -363,7 +395,7 @@ function scheduleRows() {
     BRACKET[level].forEach(def => {
       const r = resolveMatch(level, def.code)
       const m = r.match
-      rows.push({ level, code: def.code, round: def.round, teamA: r.teamA, teamB: r.teamB, m })
+      rows.push({ level, code: def.code, round: def.round, teamA: r.teamA, teamB: r.teamB, teamAId: r.teamAId, teamBId: r.teamBId, m })
     })
   })
   return rows.filter(r => {
@@ -399,15 +431,24 @@ function scheduleView() {
   </section>`
 }
 
+function eventPlayerName(playerId) {
+  const p = S.players.find(pl => pl.id === playerId)
+  return p?.students?.full_name || ''
+}
+
 function matchCard(r) {
   const t = T[r.level]
   const m = r.m
   const hasScore = m && m.score_a !== null && m.score_b !== null
+  const cA = m ? matchEventCounts(r.level, r.code, r.teamAId) : { goal: 0, yellow: 0, red: 0 }
+  const cB = m ? matchEventCounts(r.level, r.code, r.teamBId) : { goal: 0, yellow: 0, red: 0 }
   const cardsBits = []
-  if (m?.yellow_a) cardsBits.push(`${r.teamA} 🟨x${m.yellow_a}`)
-  if (m?.red_a) cardsBits.push(`${r.teamA} 🟥x${m.red_a}`)
-  if (m?.yellow_b) cardsBits.push(`${r.teamB} 🟨x${m.yellow_b}`)
-  if (m?.red_b) cardsBits.push(`${r.teamB} 🟥x${m.red_b}`)
+  if (cA.yellow) cardsBits.push(`${r.teamA} 🟨x${cA.yellow}`)
+  if (cA.red) cardsBits.push(`${r.teamA} 🟥x${cA.red}`)
+  if (cB.yellow) cardsBits.push(`${r.teamB} 🟨x${cB.yellow}`)
+  if (cB.red) cardsBits.push(`${r.teamB} 🟥x${cB.red}`)
+  const scorerNames = teamId => S.matchEvents.filter(e => e.level === r.level && e.match_code === r.code && e.team_id === teamId && e.event_type === 'goal').map(e => eventPlayerName(e.player_id)).filter(Boolean)
+  const scorersA = m ? scorerNames(r.teamAId) : [], scorersB = m ? scorerNames(r.teamBId) : []
   return `
   <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:12px 14px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -424,7 +465,8 @@ function matchCard(r) {
       ${hasScore ? `<div style="text-align:right;flex-shrink:0"><div style="font-size:26px;font-weight:800;line-height:1.2">${m.score_a}</div><div style="font-size:26px;font-weight:800;line-height:1.2">${m.score_b}</div></div>`
         : `<div style="text-align:right;flex-shrink:0;font-size:15px;font-weight:800;color:#374151">${esc(m?.kickoff_time || '')}</div>`}
     </div>
-    ${cardsBits.length ? `<div style="display:flex;gap:10px;margin-top:8px;font-size:11px;color:#6b7280">${esc(cardsBits.join(' · '))}</div>` : ''}
+    ${(scorersA.length || scorersB.length) ? `<div style="margin-top:8px;font-size:11px;color:#6b7280">⚽ ${esc([...scorersA, ...scorersB].join(', '))}</div>` : ''}
+    ${cardsBits.length ? `<div style="display:flex;gap:10px;margin-top:4px;font-size:11px;color:#6b7280">${esc(cardsBits.join(' · '))}</div>` : ''}
     ${S.identity.isAdmin ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="margin-top:8px;width:100%;padding:7px;border-radius:9px;border:1px solid ${t.border};background:#fff;color:${t.accent};font-weight:700;font-size:12px;cursor:pointer">แก้ไขผล/เวลา</button>` : ''}
   </div>`
 }
@@ -1052,6 +1094,60 @@ function pickableSlots(level, code) {
   return slots
 }
 
+function eventListRow(level, code, teamId, side, type, label, color, bg) {
+  const evs = S.matchEvents.filter(e => e.level === level && e.match_code === code && e.team_id === teamId && e.event_type === type)
+  return `
+  <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <span style="font-size:11px;font-weight:700;color:${color}">${label}</span>
+      ${teamId ? `<button data-act="openEventPicker" data-team="${side}" data-type="${type}" style="font-size:10.5px;border:1px dashed ${color};background:${bg};color:${color};border-radius:8px;padding:3px 8px;cursor:pointer">+ เพิ่ม</button>` : ''}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${evs.length ? evs.map(e => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:${bg};border-radius:999px;padding:3px 4px 3px 10px">${esc(eventPlayerName(e.player_id))}<button data-act="removeMatchEvent" data-id="${e.id}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px;line-height:1;padding:2px">✕</button></span>`).join('') : `<span style="font-size:11px;color:#c1c5cc">-</span>`}
+    </div>
+  </div>`
+}
+
+function eventPickerRoster() {
+  const { team } = S.eventPicker
+  const { level, code } = S.editMatch
+  const r = resolveMatch(level, code)
+  const teamId = team === 'a' ? r.teamAId : r.teamBId
+  return S.players.filter(p => p.team_id === teamId)
+}
+
+function eventPickerPlayerList() {
+  const roster = eventPickerRoster()
+  const filter = (S.eventPickerFilter || '').trim().toLowerCase()
+  const filtered = filter ? roster.filter(p => String(p.jersey_number ?? '').includes(filter) || (p.students?.full_name || '').toLowerCase().includes(filter)) : roster
+  return filtered.length ? filtered.map(p => `
+    <button data-act="pickEventPlayer" data-player="${p.id}" style="display:flex;align-items:center;gap:8px;padding:6px;border:none;background:#fff;border-radius:9px;cursor:pointer;text-align:left;width:100%">
+      ${photoTag(p.students?.image_url || p.students?.photo_url)}
+      <div style="min-width:0;font-size:12.5px;font-weight:700">#${p.jersey_number ?? '-'} ${esc(p.students?.full_name || '')}</div>
+    </button>`).join('') : `<div style="font-size:11.5px;color:#9ca3af;padding:6px 0">ไม่พบผู้เล่น</div>`
+}
+
+function eventPickerSection() {
+  if (!S.eventPicker) return ''
+  const { team, type } = S.eventPicker
+  const { level, code } = S.editMatch
+  const r = resolveMatch(level, code)
+  const teamId = team === 'a' ? r.teamAId : r.teamBId
+  if (!teamId) return ''
+  const typeLabel = { goal: 'ผู้ทำประตู', yellow: 'ใบเหลือง', red: 'ใบแดง' }[type]
+  return `
+  <div style="border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-weight:700;font-size:12.5px">เลือกผู้เล่น · ${esc(typeLabel)} (${esc(team === 'a' ? r.teamA : r.teamB)})</div>
+      <button data-act="closeEventPicker" style="border:none;background:none;color:#9ca3af;font-size:12px;cursor:pointer">ปิด</button>
+    </div>
+    <input id="event-picker-filter" placeholder="พิมพ์เบอร์เสื้อหรือชื่อ..." value="${esc(S.eventPickerFilter)}" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px;margin-bottom:8px"/>
+    <div id="event-picker-list" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto">
+      ${eventPickerPlayerList()}
+    </div>
+  </div>`
+}
+
 function matchEditorModal() {
   const { level, code } = S.editMatch
   const m = matchByCode(level, code) || {}
@@ -1067,12 +1163,22 @@ function matchEditorModal() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ A<input id="mx-scoreA" type="number" min="0" value="${m.score_a ?? ''}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ B<input id="mx-scoreB" type="number" min="0" value="${m.score_b ?? ''}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
-      <div style="display:flex;gap:8px">
-        <input id="mx-yelA" type="number" min="0" placeholder="เหลือง A" value="${m.yellow_a || 0}" style="flex:1;min-width:0;border:1px solid #F59E0B;background:#FEF9C3;border-radius:9px;padding:7px 8px;font-size:12px"/>
-        <input id="mx-redA" type="number" min="0" placeholder="แดง A" value="${m.red_a || 0}" style="flex:1;min-width:0;border:1px solid #EF4444;background:#FEE2E2;border-radius:9px;padding:7px 8px;font-size:12px"/>
-        <input id="mx-yelB" type="number" min="0" placeholder="เหลือง B" value="${m.yellow_b || 0}" style="flex:1;min-width:0;border:1px solid #F59E0B;background:#FEF9C3;border-radius:9px;padding:7px 8px;font-size:12px"/>
-        <input id="mx-redB" type="number" min="0" placeholder="แดง B" value="${m.red_b || 0}" style="flex:1;min-width:0;border:1px solid #EF4444;background:#FEE2E2;border-radius:9px;padding:7px 8px;font-size:12px"/>
-      </div>
+      ${!r.teamAId || !r.teamBId ? `<div style="font-size:11px;color:#9ca3af">* ระบุทีมทั้งสองฝั่งก่อน จึงจะบันทึกผู้ทำประตู/ใบเหลือง/ใบแดงได้</div>` : `
+      <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid #f3f4f6;padding-top:10px">
+        <div style="display:flex;gap:10px">
+          <div style="flex:1">${eventListRow(level, code, r.teamAId, 'a', 'goal', `⚽ ประตู (${esc(r.teamA)})`, '#16a34a', '#dcfce7')}</div>
+          <div style="flex:1">${eventListRow(level, code, r.teamBId, 'b', 'goal', `⚽ ประตู (${esc(r.teamB)})`, '#16a34a', '#dcfce7')}</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div style="flex:1">${eventListRow(level, code, r.teamAId, 'a', 'yellow', 'เหลือง A', '#b45309', '#FEF9C3')}</div>
+          <div style="flex:1">${eventListRow(level, code, r.teamBId, 'b', 'yellow', 'เหลือง B', '#b45309', '#FEF9C3')}</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div style="flex:1">${eventListRow(level, code, r.teamAId, 'a', 'red', 'แดง A', '#dc2626', '#FEE2E2')}</div>
+          <div style="flex:1">${eventListRow(level, code, r.teamBId, 'b', 'red', 'แดง B', '#dc2626', '#FEE2E2')}</div>
+        </div>
+        ${eventPickerSection()}
+      </div>`}
       <div style="display:flex;gap:10px">
         <label style="font-size:11.5px;color:#6b7280;flex:1">เวลาแข่ง<input id="mx-kickoff" placeholder="HH:MM" value="${esc(m.kickoff_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">รายงานตัว<input id="mx-ready" placeholder="HH:MM" value="${esc(m.ready_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
@@ -1138,8 +1244,6 @@ async function handleSaveMatch(level, code) {
     level, match_code: code,
     round: (BRACKET[level].find(b => b.code === code) || {}).round || '',
     score_a: scoreA, score_b: scoreB,
-    yellow_a: numOrNull(gid('mx-yelA').value) || 0, red_a: numOrNull(gid('mx-redA').value) || 0,
-    yellow_b: numOrNull(gid('mx-yelB').value) || 0, red_b: numOrNull(gid('mx-redB').value) || 0,
     ready_time: gid('mx-ready').value || null, kickoff_time: gid('mx-kickoff').value || null,
     updated_at: new Date().toISOString(),
   }
@@ -1154,6 +1258,25 @@ async function handleSaveMatch(level, code) {
   S.editMatch = null
   await refresh()
   azToast('บันทึกผลการแข่งขันแล้ว')
+}
+
+async function handleAddMatchEvent(playerId) {
+  if (!S.editMatch || !S.eventPicker) return
+  const { level, code } = S.editMatch
+  const { team, type } = S.eventPicker
+  const r = resolveMatch(level, code)
+  const teamId = team === 'a' ? r.teamAId : r.teamBId
+  if (!teamId) return
+  const { error } = await SB.from('azfutsal_match_events').insert({ level, match_code: code, team_id: teamId, player_id: playerId, event_type: type })
+  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+  await refresh()
+  // เปิดตัวเลือกผู้เล่นค้างไว้ต่อ เพื่อกดเพิ่มคนถัดไปได้เร็วๆ ไม่ต้องเปิดใหม่ทุกครั้ง
+}
+
+async function handleRemoveMatchEvent(id) {
+  const { error } = await SB.from('azfutsal_match_events').delete().eq('id', id)
+  if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
+  await refresh()
 }
 
 async function handleSeedMatches(level) {
@@ -1332,7 +1455,7 @@ function bindEvents() {
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
     if (act === 'adminGroup') { const g = ADMIN_GROUPS.find(g => g.id === btn.dataset.v); if (g) S.adminSection = g.sections[0][0]; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
-    if (act === 'closeModal') { S.editMatch = null; S.certModalOpen = false; S.certFullscreen = false; draw(); return }
+    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; draw(); return }
     if (act === 'account') {
       if (!S.identity.session) { goToLogin(); return }
       if (!S.identity.student) { azToast('หน้านี้สำหรับนักเรียน (หัวหน้าทีม/ตัวแทนทีม) เท่านั้น'); return }
@@ -1351,7 +1474,11 @@ function bindEvents() {
       await refresh()
       azToast('ออกจากระบบแล้ว'); return
     }
-    if (act === 'editMatch') { S.editMatch = { level: btn.dataset.level, code: btn.dataset.code }; draw(); return }
+    if (act === 'editMatch') { S.editMatch = { level: btn.dataset.level, code: btn.dataset.code }; S.eventPicker = null; S.eventPickerFilter = ''; draw(); return }
+    if (act === 'openEventPicker') { S.eventPicker = { team: btn.dataset.team, type: btn.dataset.type }; S.eventPickerFilter = ''; draw(); return }
+    if (act === 'closeEventPicker') { S.eventPicker = null; S.eventPickerFilter = ''; draw(); return }
+    if (act === 'pickEventPlayer') { await handleAddMatchEvent(btn.dataset.player); return }
+    if (act === 'removeMatchEvent') { await handleRemoveMatchEvent(btn.dataset.id); return }
     if (act === 'saveMatch') { await handleSaveMatch(btn.dataset.level, btn.dataset.code); return }
     if (act === 'seedMatches') { await handleSeedMatches(btn.dataset.level); return }
     if (act === 'randomDraw') { await handleRandomDraw(btn.dataset.level); return }
@@ -1511,11 +1638,6 @@ function bindEvents() {
       if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('บันทึกรางวัลแล้ว'); return
     }
-    if (el.dataset.act === 'setGoals') {
-      const { error } = await SB.from('azfutsal_players').update({ goals: Number(el.value || 0) }).eq('id', el.dataset.id)
-      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
-      await refresh(); return
-    }
   })
 
   ROOT.addEventListener('input', async e => {
@@ -1524,6 +1646,11 @@ function bindEvents() {
     // เก็บค่าฟอร์มไว้ใน state เสมอ กัน draw() รอบใหม่ (เช่นตอนเลือกผลค้นหา) ล้างข้อความที่พิมพ์ไว้
     if (e.target.id === 'new-team-name') S.newTeamName = e.target.value
     if (e.target.id === 'roster-jersey') S.rosterJersey = e.target.value
+    if (e.target.id === 'event-picker-filter') {
+      S.eventPickerFilter = e.target.value
+      const listEl = gid('event-picker-list')
+      if (listEl) listEl.innerHTML = eventPickerPlayerList()
+    }
     if (e.target.id === 'staff-search') {
       const q = e.target.value
       const box = gid('staff-search-results')
@@ -1603,17 +1730,16 @@ function adminAthletes() {
   return box(`
     <div style="font-weight:700;font-size:14px;margin-bottom:10px">นักกีฬาที่ลงทะเบียน (${rows.length})</div>
     <div style="display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto">
-      ${rows.length ? rows.map(p => `
+      ${rows.length ? rows.map(p => { const g = playerGoals(p.id); return `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6">
           <div style="min-width:0">
-            <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${p.goals ? ` · ⚽${p.goals}` : ''}</div>
+            <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${g ? ` · ⚽${g}` : ''}</div>
             <div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')} · ${esc(teamName(p.team_id))}</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <input type="number" min="0" value="${p.goals || 0}" data-act="setGoals" data-id="${p.id}" style="width:44px;border:1px solid #e5e7eb;border-radius:8px;padding:4px;font-size:12px;text-align:center"/>
             <button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
           </div>
-        </div>`).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬาลงทะเบียน</div>`}
+        </div>`}).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬาลงทะเบียน</div>`}
     </div>
   `)
 }
