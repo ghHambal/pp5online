@@ -44,30 +44,26 @@ const MS_BRACKET = [
   { code: 'M16', round: 'ชิงที่ 3', refA: 'L_M14', refB: 'L_M15' },
   { code: 'M17', round: 'ชิงที่ 1', refA: 'W_M14', refB: 'W_M15' },
 ]
-// M1-M7 first round (14 teams). M8-M10 recovery from losers of M1-M6 only (M7 has no partner).
-// M11 = wildcard from winners of M8-M10 (pick 2 of 3, stored directly).
+// M1-M8 first round (16 ทีม = 14 ทีมทั่วไป + 2 ทีมผู้จัด). สายแพ้คัดออกล้วน ไม่มีรอบแก้ตัว/ไวด์การ์ด
+// (ของเดิม 14 ทีมมีรอบแก้ตัว แต่พอขยายเป็น 16 ทีมพอดี 2^4 เลยตัดกลไกรอบแก้ตัวออก ให้เป็นสายมาตรฐานสากล)
 const HS_BRACKET = [
   { code: 'M1', round: 'รอบแรก' }, { code: 'M2', round: 'รอบแรก' }, { code: 'M3', round: 'รอบแรก' },
   { code: 'M4', round: 'รอบแรก' }, { code: 'M5', round: 'รอบแรก' }, { code: 'M6', round: 'รอบแรก' },
-  { code: 'M7', round: 'รอบแรก' },
-  { code: 'M8', round: 'รอบแก้ตัว', refA: 'L_M1', refB: 'L_M2' },
-  { code: 'M9', round: 'รอบแก้ตัว', refA: 'L_M3', refB: 'L_M4' },
-  { code: 'M10', round: 'รอบแก้ตัว', refA: 'L_M5', refB: 'L_M6' },
-  { code: 'M11', round: 'ไวด์การ์ด', refA: 'WC_1', refB: 'WC_2' },
-  { code: 'M12', round: 'ก่อนรองฯ', refA: 'W_M1', refB: 'W_M2' },
-  { code: 'M13', round: 'ก่อนรองฯ', refA: 'W_M3', refB: 'W_M4' },
-  { code: 'M14', round: 'ก่อนรองฯ', refA: 'W_M5', refB: 'W_M7' },
-  { code: 'M15', round: 'ก่อนรองฯ', refA: 'W_M6', refB: 'W_M11' },
-  { code: 'M16', round: 'รองฯ', refA: 'W_M12', refB: 'W_M13' },
-  { code: 'M17', round: 'รองฯ', refA: 'W_M14', refB: 'W_M15' },
-  { code: 'M18', round: 'ชิงที่ 3', refA: 'L_M16', refB: 'L_M17' },
-  { code: 'M19', round: 'ชิงที่ 1', refA: 'W_M16', refB: 'W_M17' },
+  { code: 'M7', round: 'รอบแรก' }, { code: 'M8', round: 'รอบแรก' },
+  { code: 'M9', round: 'ก่อนรองฯ', refA: 'W_M1', refB: 'W_M2' },
+  { code: 'M10', round: 'ก่อนรองฯ', refA: 'W_M3', refB: 'W_M4' },
+  { code: 'M11', round: 'ก่อนรองฯ', refA: 'W_M5', refB: 'W_M6' },
+  { code: 'M12', round: 'ก่อนรองฯ', refA: 'W_M7', refB: 'W_M8' },
+  { code: 'M13', round: 'รองฯ', refA: 'W_M9', refB: 'W_M10' },
+  { code: 'M14', round: 'รองฯ', refA: 'W_M11', refB: 'W_M12' },
+  { code: 'M15', round: 'ชิงที่ 3', refA: 'L_M13', refB: 'L_M14' },
+  { code: 'M16', round: 'ชิงที่ 1', refA: 'W_M13', refB: 'W_M14' },
 ]
 const BRACKET = { MS: MS_BRACKET, HS: HS_BRACKET }
-const FINAL_CODE = { MS: 'M17', HS: 'M19' }
-const THIRD_CODE = { MS: 'M16', HS: 'M18' }
+const FINAL_CODE = { MS: 'M17', HS: 'M16' }
+const THIRD_CODE = { MS: 'M16', HS: 'M15' }
 const RECOVER_SOURCES = { MS: ['M7', 'M8', 'M9'] }
-const WILDCARD_SOURCES = { HS: ['M8', 'M9', 'M10'] }
+const WILDCARD_SOURCES = {}
 
 const esc = v => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -429,7 +425,7 @@ function scheduleView() {
       <span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${rows.length} นัด</span>
     </div>
     <p style="margin:0 0 14px;font-size:12px;color:#6b7280">${esc(cfg('INFO_VENUE', ''))}</p>
-    ${cfg('REGISTRATION_OPEN', '0') === '1' ? `
+    ${(cfg('REGISTRATION_OPEN_MS', '0') === '1' || cfg('REGISTRATION_OPEN_HS', '0') === '1') ? `
     <button data-act="account" style="width:100%;margin-bottom:14px;padding:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
       📝 ลงทะเบียนทีม (สมัครเข้าร่วมการแข่งขัน)
     </button>` : ''}
@@ -1050,7 +1046,6 @@ function adminView() {
 function box(inner) { return `<div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px">${inner}</div>` }
 
 function adminGeneral() {
-  const regOpen = cfg('REGISTRATION_OPEN', '0') === '1'
   const isStandaloneSession = S.identity.session?.user?.email === STANDALONE_ADMIN_EMAIL
   return box(`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -1068,12 +1063,16 @@ function adminGeneral() {
       </label>
       <button data-act="saveAdminAccount" style="width:100%;padding:9px;border-radius:9px;border:none;background:#374151;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">บันทึกบัญชีแอดมินสำรอง</button>
     </div>` : ''}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div>
-        <div style="font-weight:700;font-size:14px">เปิดรับสมัครทีม</div>
-        <div style="font-size:11px;color:#6b7280;margin-top:2px">เมื่อเปิด ปุ่ม "ลงทะเบียนทีม" จะแสดงในหน้าตารางให้นักเรียนทั่วไปสมัครเองได้</div>
-      </div>
-      <button data-act="toggleRegistration" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${regOpen ? '#dcfce7' : '#f3f4f6'};color:${regOpen ? '#16a34a' : '#6b7280'}">${regOpen ? 'เปิดอยู่' : 'ปิดอยู่'}</button>
+    <div style="margin-bottom:10px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:2px">เปิดรับสมัครทีม</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:8px">เปิด/ปิดแยกแต่ละระดับชั้นได้ ม.ปลายจะปิดอัตโนมัติเมื่อทีมทั่วไปครบ ${esc(cfg('MAX_TEAMS_HS', '14'))} ทีม</div>
+      ${['MS', 'HS'].map(v => {
+        const open = cfg(`REGISTRATION_OPEN_${v}`, '0') === '1'
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;${v === 'MS' ? 'border-bottom:1px solid #f3f4f6' : ''}">
+          <div style="font-size:12.5px;font-weight:600;color:${T[v].accent}">${T[v].label}</div>
+          <button data-act="toggleRegistration" data-level="${v}" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${open ? '#dcfce7' : '#f3f4f6'};color:${open ? '#16a34a' : '#6b7280'}">${open ? 'เปิดอยู่' : 'ปิดอยู่'}</button>
+        </div>`
+      }).join('')}
     </div>
     <div style="font-weight:700;font-size:14px;margin-bottom:10px">ตั้งค่าทั่วไป</div>
     <label style="font-size:11.5px;color:#6b7280;display:block;margin-bottom:10px">ชื่อกิจกรรม
@@ -1112,7 +1111,7 @@ function adminGeneral() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">โควตาทีม ม.ต้น (เว้นว่าง=ไม่จำกัด)<input id="reg-quota-ms" type="number" min="0" value="${esc(cfg('MAX_TEAMS_MS', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">โควตาทีม ม.ปลาย (เว้นว่าง=ไม่จำกัด)<input id="reg-quota-hs" type="number" min="0" value="${esc(cfg('MAX_TEAMS_HS', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
-      <div style="font-size:10.5px;color:#9ca3af;margin-top:-4px">ทีมที่ยืนยันเกินโควตาจะถูกติดป้าย "ทีมสำรอง" อัตโนมัติ (ยังลงทะเบียน/ชำระเงินได้ตามปกติ ไม่ปิดรับสมัคร)</div>
+      <div style="font-size:10.5px;color:#9ca3af;margin-top:-4px">ม.ต้น: ทีมที่ยืนยันเกินโควตาจะถูกติดป้าย "ทีมสำรอง" อัตโนมัติ (ยังลงทะเบียนได้ ไม่ปิดรับสมัคร) · ม.ปลาย: ปิดรับสมัครอัตโนมัติทันทีที่ทีมทั่วไปครบโควตา (ไม่นับทีมผู้จัด)</div>
       <label style="font-size:11.5px;color:#6b7280">ปิดแก้ไขรายชื่อนักกีฬาเมื่อ (เว้นว่าง = ไม่จำกัด)
         <input id="reg-deadline" type="datetime-local" value="${esc(cfg('REGISTER_EDIT_DEADLINE', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
       </label>
@@ -1742,6 +1741,7 @@ async function handleCreateTeam(adminMode) {
   const name = gid('new-team-name').value.trim()
   const level = gid('new-team-level').value
   if (!name) { azToast('กรุณากรอกชื่อทีม'); return }
+  if (!adminMode && cfg(`REGISTRATION_OPEN_${level}`, '0') !== '1') { azToast(`ขณะนี้ปิดรับสมัครทีม${T[level].label}แล้ว`); return }
   let captainId
   if (adminMode) {
     const lr = S.capLookupResult
@@ -1752,12 +1752,32 @@ async function handleCreateTeam(adminMode) {
   }
   S.teamCreating = true
   draw()
+  if (!adminMode && level === 'HS') {
+    const { count } = await SB.from('azfutsal_teams').select('id', { count: 'exact', head: true }).eq('level', 'HS').eq('is_organizer', false)
+    const hsQuota = Number(cfg('MAX_TEAMS_HS', '14') || 14)
+    if ((count || 0) >= hsQuota) {
+      S.teamCreating = false
+      azToast('ทีม ม.ปลาย เต็มโควตาแล้ว')
+      draw()
+      return
+    }
+  }
   const { data, error } = await SB.from('azfutsal_teams').insert({ name, level, captain_student_id: captainId }).select('id').single()
   S.teamCreating = false
   if (error) {
-    azToast(error.code === '23505' ? 'นักเรียนคนนี้เป็นหัวหน้าทีมอยู่แล้ว สร้างทีมซ้ำไม่ได้' : 'สร้างทีมไม่สำเร็จ: ' + error.message)
+    const msg = error.code === '23505' ? 'นักเรียนคนนี้เป็นหัวหน้าทีมอยู่แล้ว สร้างทีมซ้ำไม่ได้'
+      : error.message?.includes('HS_TEAM_QUOTA_FULL') ? 'ทีม ม.ปลาย เต็มโควตาแล้ว'
+      : 'สร้างทีมไม่สำเร็จ: ' + error.message
+    azToast(msg)
     draw()
     return
+  }
+  if (level === 'HS') {
+    const { count } = await SB.from('azfutsal_teams').select('id', { count: 'exact', head: true }).eq('level', 'HS').eq('is_organizer', false)
+    const hsQuota = Number(cfg('MAX_TEAMS_HS', '14') || 14)
+    if ((count || 0) >= hsQuota && cfg('REGISTRATION_OPEN_HS', '0') === '1') {
+      await SB.from('azfutsal_config').upsert({ key: 'REGISTRATION_OPEN_HS', value: '0' })
+    }
   }
   S.newTeamName = ''; S.capLookupCode = ''; S.capLookupResult = null
   if (adminMode) { S.adminCreatingTeam = false; S.adminManageTeamId = data.id }
@@ -1877,10 +1897,11 @@ async function handleReviewPayment(id, status) {
       const updates = {}
       if (!team.team_code) updates.team_code = genTeamCode(team.level)
       const quota = Number(cfg(team.level === 'MS' ? 'MAX_TEAMS_MS' : 'MAX_TEAMS_HS', '') || 0)
-      if (quota > 0) {
+      if (quota > 0 && !team.is_organizer) {
         const verifiedCount = S.payments.filter(p =>
           p.status === 'verified' && p.team_id !== team.id &&
-          S.teams.find(t2 => t2.id === p.team_id)?.level === team.level
+          S.teams.find(t2 => t2.id === p.team_id)?.level === team.level &&
+          !S.teams.find(t2 => t2.id === p.team_id)?.is_organizer
         ).length
         updates.is_reserve = verifiedCount >= quota
       }
@@ -1987,8 +2008,10 @@ function bindEvents() {
       await refresh(); return
     }
     if (act === 'toggleRegistration') {
-      const cur = cfg('REGISTRATION_OPEN', '0') === '1'
-      await SB.from('azfutsal_config').upsert({ key: 'REGISTRATION_OPEN', value: cur ? '0' : '1' })
+      const level = btn.dataset.level
+      const key = `REGISTRATION_OPEN_${level}`
+      const cur = cfg(key, '0') === '1'
+      await SB.from('azfutsal_config').upsert({ key, value: cur ? '0' : '1' })
       await refresh(); return
     }
     if (act === 'uploadCertTemplate') {
