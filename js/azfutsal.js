@@ -1275,7 +1275,11 @@ function liveDrawView() {
     </div>
     ${liveDrawJarHtml(remainingTeamIds)}
     <div style="text-align:center;padding-bottom:14px;flex-shrink:0">
-      <button data-act="drawNext" ${ld.phase === 'spinning' || isDone ? 'disabled' : ''} style="padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'spinning' || isDone ? '#374151' : 'linear-gradient(135deg,#4338ca,#6366f1)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'spinning' || isDone ? 'default' : 'pointer'}">${isDone ? '🎉 จับสลากครบทุกคู่แล้ว' : (ld.phase === 'spinning' ? 'กำลังจับ...' : 'จับทีมถัดไป')}</button>
+      ${isDone
+        ? `<button disabled style="padding:12px 28px;border-radius:999px;border:none;background:#374151;color:#fff;font-weight:800;font-size:14px;cursor:default">🎉 จับสลากครบทุกคู่แล้ว</button>`
+        : !ld.shaken
+          ? `<button data-act="shakePool" ${ld.phase === 'shaking' ? 'disabled' : ''} style="padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'shaking' ? '#374151' : 'linear-gradient(135deg,#f59e0b,#f97316)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'shaking' ? 'default' : 'pointer'}">${ld.phase === 'shaking' ? '🎲 กำลังเขย่า...' : '🎲 เขย่าลูกบอล'}</button>`
+          : `<button data-act="drawNext" ${ld.phase === 'spinning' ? 'disabled' : ''} style="padding:12px 28px;border-radius:999px;border:none;background:${ld.phase === 'spinning' ? '#374151' : 'linear-gradient(135deg,#4338ca,#6366f1)'};color:#fff;font-weight:800;font-size:14px;cursor:${ld.phase === 'spinning' ? 'default' : 'pointer'}">${ld.phase === 'spinning' ? 'กำลังจับ...' : 'จับทีมถัดไป'}</button>`}
     </div>
     <div id="live-draw-center" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);opacity:0;z-index:90;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:14px"></div>
     <div style="flex:1;padding:0 18px 18px;display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:10px;align-content:start">
@@ -1305,8 +1309,29 @@ async function handleStartLiveDraw() {
   const orderStrategy = ld.orderStrategy || 'bypair'
   const slotSeq = liveDrawSlotSeq(ld.level, orderStrategy)
   const testMode = ld.testMode !== false
-  S.liveDraw = { level: ld.level, started: true, testMode, orderStrategy, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle' }
+  S.liveDraw = { level: ld.level, started: true, testMode, orderStrategy, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle', shaken: false }
   await loadConfetti()
+  draw()
+}
+
+async function handleShakePool() {
+  const ld = S.liveDraw
+  if (!ld || !ld.started || ld.phase !== 'idle' || ld.shaken) return
+  ld.phase = 'shaking'
+  draw()
+  const sleep = ms => new Promise(r => setTimeout(r, ms))
+  const pool = document.getElementById('live-draw-pool')
+  const balls = pool ? Array.from(pool.querySelectorAll('div[id^="ball-"]')) : []
+  balls.forEach(b => { b.style.transition = 'top .17s cubic-bezier(.4,0,.2,1), left .17s cubic-bezier(.4,0,.2,1)' })
+  for (let i = 0; i < 8; i++) {
+    balls.forEach(b => {
+      b.style.top = (14 + Math.random() * 58) + '%'
+      b.style.left = (10 + Math.random() * 72) + '%'
+    })
+    await sleep(180)
+  }
+  ld.phase = 'idle'
+  ld.shaken = true
   draw()
 }
 
@@ -1385,6 +1410,7 @@ async function handleDrawNext() {
   await sleep(350)
 
   ld.phase = 'idle'
+  ld.shaken = false // รอบถัดไปต้องเขย่าใหม่ก่อนถึงจะจับได้
   const aId = ld.filled[`${slot.code}_a`], bId = ld.filled[`${slot.code}_b`]
   if (aId && bId && !ld.testMode) {
     await SB.from('azfutsal_matches').upsert(
@@ -1961,6 +1987,7 @@ function bindEvents() {
     if (act === 'setLiveDrawOrder') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.orderStrategy = btn.dataset.v; draw() } return }
     if (act === 'closeLiveDraw') { S.liveDraw = null; draw(); return }
     if (act === 'startLiveDraw') { await handleStartLiveDraw(); return }
+    if (act === 'shakePool') { await handleShakePool(); return }
     if (act === 'drawNext') { await handleDrawNext(); return }
     if (act === 'toggleOrganizer') {
       const { error } = await SB.from('azfutsal_teams').update({ is_organizer: btn.dataset.v === '1' }).eq('id', btn.dataset.id)
