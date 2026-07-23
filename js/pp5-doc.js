@@ -422,9 +422,12 @@ async function _loadDocData(classId) {
   }
 
   // score columns: ถ้ามี source ให้ filter เฉพาะที่ครูกรอกเอง (ไม่รวม auto columns)
-  const filteredScoreColumns = srcClassId
+  // และตัดคอลัมน์ปรับคะแนน (column_type='override') ออกเสมอ — เป็น helper ภายในของครู
+  // ไม่ใช่คะแนนจริงที่ต้องลงเอกสาร (ค่าที่ถูกปรับแล้วจะอยู่ในคอลัมน์กลางภาคหลักที่ลิงก์ไว้)
+  const filteredScoreColumns = (srcClassId
     ? scoreColumns.filter(c => !AUTO_COL_NAMES.has(c.assignment_name))
     : scoreColumns
+  ).filter(c => c.column_type !== 'override')
 
   // score map: { studentId: { columnId: score } }
   const scoreMap = {}

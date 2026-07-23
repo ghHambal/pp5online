@@ -258,9 +258,10 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     window._scoreColCache = Object.fromEntries(cols.map(c => [c.id, c]))
     checkedIds = new Set()
 
-    const regular = cols.filter(c => (c.column_type ?? 'regular') === 'regular')
-    const bonus   = cols.filter(c => c.column_type === 'bonus')
-    const derived = cols.filter(c => c.column_type === 'derived')
+    const regular  = cols.filter(c => (c.column_type ?? 'regular') === 'regular')
+    const bonus    = cols.filter(c => c.column_type === 'bonus')
+    const derived  = cols.filter(c => c.column_type === 'derived')
+    const override = cols.filter(c => c.column_type === 'override')
     const bonusWithVars = assignBonusVars(bonus)
 
     const totalRegular = regular.reduce((s,c) => s + (Number(c.max_score)||0), 0)
@@ -336,7 +337,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
             </p>
           </div>
           <div class="text-xs text-gray-400 text-right">
-            <p>คอลัมน์หลัก: ${regular.length} | อ้างอิง: ${derived.length} | พิเศษ: ${bonus.length}</p>
+            <p>คอลัมน์หลัก: ${regular.length} | อ้างอิง: ${derived.length} | พิเศษ: ${bonus.length} | ปรับคะแนน: ${override.length}</p>
             <p class="mt-1">กลางภาค: ${regular.filter(c=>c.assignment_type==='กลางภาค').reduce((s,c)=>s+(Number(c.max_score)||0),0)} |
                ปลายภาค: ${regular.filter(c=>c.assignment_type==='ปลายภาค').reduce((s,c)=>s+(Number(c.max_score)||0),0)}</p>
           </div>
@@ -372,6 +373,20 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           <button onclick="window._addDerivedCol()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">＋ เพิ่ม</button>
         </div>
         ${renderTable(derived)}
+      </div>
+
+      <!-- Override columns (ปรับคะแนนกลางภาค) -->
+      <div class="bg-white rounded-2xl border border-teal-100 shadow-sm overflow-hidden mb-4">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-teal-50 bg-teal-50/50">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">🔄 คอลัมน์ปรับคะแนนกลางภาค</span>
+            <span class="text-xs text-gray-400">ไม่นับใน 100 · นักเรียนไม่เห็น · ไม่ลงเอกสาร ปพ.5</span>
+          </div>
+          <button onclick="window._addOverrideCol()" class="text-xs text-teal-600 hover:text-teal-800 font-medium">＋ เพิ่ม</button>
+        </div>
+        ${renderTable(override, c => c.link_column_id
+          ? ` <span class="ml-1 text-[10px] text-teal-500">🔗 → ${window._scoreColCache?.[c.link_column_id]?.assignment_name ?? '—'}</span>`
+          : ` <span class="ml-1 text-[10px] text-red-400">⚠️ ยังไม่ได้เชื่อมคอลัมน์</span>`)}
       </div>
 
       <!-- Bonus columns (toggle) -->
@@ -422,6 +437,14 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           <div>
             <label class="block text-xs font-medium text-gray-600 mb-1" id="sc-max-label">คะแนนเต็ม</label>
             <input id="sc-max" type="number" min="0" placeholder="20" class="${INPUT_CLS}" />
+          </div>
+          <!-- Link column section (shown only for override) -->
+          <div id="sc-link-wrap" class="col-span-2 hidden">
+            <label class="block text-xs font-medium text-gray-600 mb-1">เชื่อมกับคอลัมน์กลางภาคหลัก <span class="text-red-400">*</span></label>
+            <select id="sc-link-col" class="${SELECT_CLS}">
+              <option value="">— เลือกคอลัมน์ —</option>
+            </select>
+            <p class="text-[11px] text-gray-400 mt-1">ถ้าคะแนนในคอลัมน์นี้สูงกว่าคอลัมน์ที่เลือก ระบบจะเขียนทับคะแนนจริงในคอลัมน์หลักให้อัตโนมัติทันที</p>
           </div>
           <!-- Formula section (shown only for derived) -->
           <div id="sc-formula-section" class="col-span-2 hidden">
@@ -505,17 +528,27 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       document.getElementById('sc-max').value = ''
       if (document.getElementById('sc-type')) document.getElementById('sc-type').value = initialType
       document.getElementById('sc-form-title').textContent = title
-      const isBonus   = ctype === 'bonus'
-      const isDerived = ctype === 'derived'
-      document.getElementById('sc-type-wrap').classList.toggle('hidden', isBonus || isDerived)
+      const isBonus    = ctype === 'bonus'
+      const isDerived  = ctype === 'derived'
+      const isOverride = ctype === 'override'
+      document.getElementById('sc-type-wrap').classList.toggle('hidden', isBonus || isDerived || isOverride)
       document.getElementById('sc-formula-section').classList.toggle('hidden', !isDerived)
-      document.getElementById('sc-max-label').textContent = isBonus ? 'คะแนนเต็ม (ไม่บังคับ)' : 'คะแนนเต็ม'
+      document.getElementById('sc-link-wrap').classList.toggle('hidden', !isOverride)
+      document.getElementById('sc-max-label').textContent = isBonus ? 'คะแนนเต็ม (ไม่บังคับ)' : isOverride ? 'คะแนนเต็ม (auto ตามคอลัมน์ที่เชื่อม)' : 'คะแนนเต็ม'
+      document.getElementById('sc-max').readOnly = isOverride
       if (isDerived) {
         document.getElementById('sc-formula').value = ''
         document.getElementById('sc-formula-result').classList.add('hidden')
         document.getElementById('sc-vars-hint').textContent = bonusWithVars.length
           ? bonusWithVars.map(c => `${c.var} = "${c.assignment_name}"`).join('  |  ')
           : 'ยังไม่มีคอลัมน์พิเศษ — เพิ่มก่อน'
+      }
+      if (isOverride) {
+        const linkSelect = document.getElementById('sc-link-col')
+        const midtermCols = regular.filter(c => c.assignment_type === 'กลางภาค')
+        linkSelect.innerHTML = '<option value="">— เลือกคอลัมน์ —</option>' +
+          midtermCols.map(c => `<option value="${c.id}">${c.assignment_name} (เต็ม ${c.max_score ?? '—'})</option>`).join('')
+        linkSelect.value = ''
       }
       document.getElementById('sc-form-wrap').classList.remove('hidden')
       document.getElementById('sc-name').focus()
@@ -524,6 +557,13 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     window._addScoreCol = (type) => _openForm('regular', `เพิ่มคอลัมน์หลัก — ${type}`, type)
     window._addBonusCol = ()     => _openForm('bonus',   'เพิ่มคอลัมน์พิเศษ (Bonus)')
     window._addDerivedCol = ()   => _openForm('derived', 'เพิ่มคอลัมน์อ้างอิงสูตร')
+    window._addOverrideCol = () => _openForm('override', 'เพิ่มคอลัมน์ปรับคะแนนกลางภาค')
+
+    document.getElementById('sc-link-col')?.addEventListener('change', e => {
+      const linkedId = Number(e.target.value)
+      const linked = regular.find(c => c.id === linkedId)
+      document.getElementById('sc-max').value = linked?.max_score ?? ''
+    })
 
     window._editScoreCol = (id) => {
       const c = window._scoreColCache?.[id]
@@ -537,6 +577,9 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       document.getElementById('sc-max').value  = c.max_score ?? ''
       if (ctype === 'derived' && c.formula) {
         document.getElementById('sc-formula').value = c.formula
+      }
+      if (ctype === 'override' && c.link_column_id) {
+        document.getElementById('sc-link-col').value = String(c.link_column_id)
       }
     }
 
@@ -583,10 +626,12 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       const maxVal = document.getElementById('sc-max').value
       const max    = maxVal ? (parseFloat(maxVal) || null) : null
       const formula = ctype === 'derived' ? (document.getElementById('sc-formula').value.trim() || null) : null
+      const linkColumnId = ctype === 'override' ? (Number(document.getElementById('sc-link-col')?.value) || null) : null
 
       if (!name) { showToast('กรุณากรอกชื่อรายการ', 'warning'); return }
       if (ctype === 'derived' && !max) { showToast('คอลัมน์อ้างอิงสูตรต้องระบุคะแนนเต็ม', 'warning'); return }
       if (ctype === 'derived' && !formula) { showToast('กรุณากรอกสูตรคำนวณ', 'warning'); return }
+      if (ctype === 'override' && !linkColumnId) { showToast('กรุณาเลือกคอลัมน์กลางภาคที่จะเชื่อม', 'warning'); return }
 
       // Build formula_refs from bonusWithVars
       const formulaRefs = ctype === 'derived'
@@ -597,9 +642,10 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       try {
         const payload = {
           assignment_name: name,
-          assignment_type: (ctype === 'bonus' || ctype === 'derived') ? 'คะแนนพิเศษ' : type,
+          assignment_type: (ctype === 'bonus' || ctype === 'derived' || ctype === 'override') ? 'คะแนนพิเศษ' : type,
           sheet_column: col, max_score: max,
           column_type: ctype, formula, formula_refs: formulaRefs,
+          link_column_id: linkColumnId,
         }
         if (id) await updateScoreColumn(Number(id), payload)
         else    await createScoreColumn({ ...payload, class_id: classId })

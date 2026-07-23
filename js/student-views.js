@@ -2000,7 +2000,7 @@ export async function renderExamRequestForm(student, classId) {
   const studentRoom = student?.main_room || student?.religion_room || cls.class_name || '—'
   let scheduleLoadError = null
 
-  const [columns, schedule, periods] = await Promise.all([
+  const [columnsRaw, schedule, periods] = await Promise.all([
     getScoreColumnsForClass(classId).catch(()=>[]),
     teacherId
       ? getTeacherFullSchedule(teacherId, classId).catch(err => {
@@ -2010,6 +2010,8 @@ export async function renderExamRequestForm(student, classId) {
       : Promise.resolve([]),
     getSchoolPeriods().catch(()=>[]),
   ])
+  // คอลัมน์ override (ปรับคะแนนกลางภาค) เป็น helper ภายในของครู ไม่ให้นักเรียนเห็น
+  const columns = columnsRaw.filter(c => c.column_type !== 'override')
 
   // Build schedule lookup: { 'day_period': entry }, including multi-period spans.
   const schedMap = {}

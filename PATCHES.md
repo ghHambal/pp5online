@@ -91,6 +91,7 @@
 | 46 | `patch_prayer_scanner_safety.sql` | เพิ่ม metadata และค่า config สำหรับกันสแกนห้องเดียวกัน + จำกัดกรอกรหัสต่อเดือน | ✅ จำเป็นสำหรับฟีเจอร์ความปลอดภัย scanner |
 | 47 | `patch_prayer_homeroom_category_rls.sql` | ปรับ RLS ให้ครูที่ปรึกษาดูคะแนนละหมาดตามประเภทห้องชัดเจน: ศาสนา→religion_room, สามัญ→main_room | ✅ แนะนำสำหรับ Monitor ครูที่ปรึกษาศาสนา |
 | 48 | `patch_student_leave_settings.sql` | เพิ่มตารางตั้งค่าโควต้าออกนอกห้องต่อห้องเรียน + index สำหรับ dashboard ติดตามใบอนุญาต | ✅ จำเป็นสำหรับให้ครูตั้งโควต้าเอง |
+| 49 | `patch_score_override_link.sql` | เพิ่ม `link_column_id` ใน `class_score_columns` — สำหรับคอลัมน์ "ปรับคะแนนกลางภาค" (column_type='override') ที่เชื่อมกับคอลัมน์กลางภาคหลัก เปรียบเทียบ+เขียนทับฝั่ง client (ไม่มี logic ฝั่ง DB) | ✅ จำเป็นสำหรับฟีเจอร์ปรับคะแนนกลางภาค |
 
 ---
 

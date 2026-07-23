@@ -207,9 +207,11 @@ export async function renderGradesGrid(teacher, classData) {
         : 'คะแนนระบบกลาง: แก้ไขไม่ได้'
 
     // แยก column_type
-    const bonusCols   = allCols.filter(c => c.column_type === 'bonus')
-    const derivedCols = allCols.filter(c => c.column_type === 'derived')
-    const regularCols = allCols.filter(c => (c.column_type ?? 'regular') === 'regular')
+    const bonusCols    = allCols.filter(c => c.column_type === 'bonus')
+    const derivedCols  = allCols.filter(c => c.column_type === 'derived')
+    const overrideCols = allCols.filter(c => c.column_type === 'override')
+    const regularCols  = allCols.filter(c => (c.column_type ?? 'regular') === 'regular')
+    const colById = Object.fromEntries(allCols.map(c => [c.id, c]))
     // midCols/finalCols เฉพาะ regular (ไม่นับ bonus/derived ซ้ำ)
     const midCols   = regularCols.filter(c => c.assignment_type !== 'final' && c.assignment_type !== 'ปลายภาค')
     const finalCols = regularCols.filter(c => c.assignment_type === 'final' || c.assignment_type === 'ปลายภาค')
@@ -1006,6 +1008,7 @@ export async function renderGradesGrid(teacher, classData) {
             if (inp) inp.value = result.final !== null ? String(result.final) : ''
             inp?.closest('td')?.querySelector('.hist-indicator')?.remove()
             showToast('รีเซ็ตประวัติแล้ว', 'success')
+            await _applyOverrideIfNeeded(sid, colId)
           }
         } catch { showToast('ไม่สำเร็จ', 'error') }
         pop.remove()
@@ -1071,6 +1074,7 @@ export async function renderGradesGrid(teacher, classData) {
                 }
               } else { cell?.querySelector('.hist-indicator')?.remove() }
               saved++
+              await _applyOverrideIfNeeded(s.id, colId)
             }
           } catch { failed++ }
         }
@@ -1107,6 +1111,7 @@ export async function renderGradesGrid(teacher, classData) {
           <th colspan="${finalCols.length+1}" class="${thBase} bg-purple-600 text-white font-semibold py-1.5">
             📙 ปลายภาค${finMax>0?' (เต็ม '+finMax+')':''}</th>
           ${derivedCols.length ? `<th colspan="${derivedCols.length}" class="${thBase} bg-indigo-600 text-white font-semibold py-1.5">🧮 อ้างอิงสูตร</th>` : ''}
+          ${overrideCols.length ? `<th colspan="${overrideCols.length}" class="${thBase} bg-teal-600 text-white font-semibold py-1.5">🔄 ปรับคะแนนกลางภาค</th>` : ''}
           ${showBonusCols ? `<th colspan="${bonusCols.length+1}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนเก็บ/พิเศษ</th>` : ''}
           <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax+(derivedCols.reduce((s,c)=>s+(parseFloat(c.max_score)||0),0))||'?'}</div></th>
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
@@ -1138,6 +1143,12 @@ export async function renderGradesGrid(teacher, classData) {
           ${derivedCols.map(c=>`<th class="${thBase} bg-indigo-50" style="width:${colW}px;min-width:${colW}px">
             <span class="text-[10px] text-indigo-400 font-mono block text-center truncate" title="${c.formula??''}">${c.formula??'—'}</span>
           </th>`).join('')}
+          ${overrideCols.map(c=>`<th class="${thBase} bg-teal-50" style="width:${colW}px;min-width:${colW}px">
+            <div class="flex items-center justify-between gap-0.5 px-0.5">
+              <span class="text-[10px] text-teal-500 flex-1 text-center truncate" title="เชื่อมกับ: ${_htmlEsc(colById[c.link_column_id]?.assignment_name ?? 'ยังไม่ได้เชื่อม')}">🔗</span>
+              <button class="btn-mass-score text-teal-300 hover:text-teal-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+            </div>
+          </th>`).join('')}
           ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
             <div class="flex items-center justify-between gap-0.5 px-0.5">
               <span class="text-[11px] text-amber-500 flex-1 text-center">${c.sheet_column||'—'}</span>
@@ -1165,6 +1176,11 @@ export async function renderGradesGrid(teacher, classData) {
           ${derivedCols.map(c=>`<th class="${thBase} bg-indigo-50" style="width:${colW}px;min-width:${colW}px">
             <span class="text-[11px] text-indigo-700 font-medium block text-center truncate">${c.assignment_name}</span>
             <span class="text-[10px] text-indigo-400">/${c.max_score??'?'}</span>
+          </th>`).join('')}
+          ${overrideCols.map(c=>`<th class="${thBase} bg-teal-50" style="width:${colW}px;min-width:${colW}px">
+            <span class="col-edit text-[11px] px-1 rounded block truncate text-teal-700 cursor-text hover:bg-teal-100"
+              contenteditable="true" data-colid="${c.id}" data-field="assignment_name">${c.assignment_name||'—'}</span>
+            <span class="text-[10px] text-teal-400">/${c.max_score??'?'}</span>
           </th>`).join('')}
           ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
             <span class="col-edit text-[11px] px-1 rounded block truncate text-amber-700 cursor-text hover:bg-amber-100"
@@ -1204,6 +1220,12 @@ export async function renderGradesGrid(teacher, classData) {
             </td>`}).join('')}
           <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?finRaw.toFixed(1):'—'}</td>
           ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?Number(dv.toFixed(2)):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium grade-derived-td" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
+          ${overrideCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-teal-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
+            <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-teal-50 focus:outline-none focus:ring-1 focus:ring-teal-300 focus:rounded"
+              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
+            ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
+            </td>`}).join('')}
           ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
               type="text" inputmode="decimal" value="${v}" placeholder="—"
@@ -1222,6 +1244,40 @@ export async function renderGradesGrid(teacher, classData) {
       wrap.innerHTML = `<table class="border-collapse text-xs" style="min-width:max-content">
         <thead>${head}</thead><tbody>${body}</tbody></table>`
       const tbl = wrap.querySelector('table')
+
+      // ── คอลัมน์ปรับคะแนนกลางภาค: เทียบกับคอลัมน์ที่เชื่อมไว้ (link_column_id)
+      // ถ้าคะแนนคอลัมน์นี้สูงกว่า ให้เขียนทับคะแนนจริงในคอลัมน์หลักทันที (one-directional) ──
+      const _applyOverrideIfNeeded = async (sid, overrideColId) => {
+        const col = colById[overrideColId]
+        if (!col || col.column_type !== 'override' || !col.link_column_id) return
+        const overrideScore = scoreMap[sid]?.[overrideColId]?.final
+        if (overrideScore == null) return
+        const mainColId = col.link_column_id
+        const mainScore = scoreMap[sid]?.[mainColId]?.final
+        if (mainScore != null && mainScore >= overrideScore) return
+
+        const result = await saveStudentScore(classData.id, sid, mainColId, overrideScore, {})
+        if (!result) return
+        scoreMap[sid][mainColId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
+
+        const mainInp = wrap.querySelector(`.grade-input[data-sid="${sid}"][data-col="${mainColId}"]`)
+        if (mainInp) {
+          mainInp.value = result.final !== null ? String(result.final) : ''
+          mainInp.style.boxShadow = '0 0 0 2px #059669,0 0 10px rgba(5,150,105,.45)'
+          mainInp.style.background = '#f0fdf4'
+          setTimeout(() => { mainInp.style.boxShadow = ''; mainInp.style.background = '' }, 900)
+        }
+        const { midRaw, finRaw, total, grade, khuna } = _calcGradeRow(sid)
+        const fg = scoreMap[sid]?.['__force'] ?? ''
+        const midEl = document.getElementById(`gmid-${sid}`), finEl = document.getElementById(`gfin-${sid}`)
+        if (midEl) midEl.textContent = midRaw > 0 ? midRaw.toFixed(1) : '—'
+        if (finEl) finEl.textContent = finRaw > 0 ? finRaw.toFixed(1) : '—'
+        const tEl = document.getElementById(`gtotal-${sid}`), gEl = document.getElementById(`ggrade-${sid}`), kEl = document.getElementById(`gkhuna-${sid}`)
+        if (tEl) tEl.textContent = total > 0 ? total : '—'
+        if (gEl) gEl.textContent = fg || (grade > 0 ? grade.toFixed(1) : '0')
+        if (kEl) { kEl.textContent = khuna.label; kEl.className = `border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}` }
+        showToast(`ปรับคะแนนกลางภาคอัตโนมัติ → ${result.final} (จากคอลัมน์ปรับคะแนน) ✅`, 'success')
+      }
 
       // ── Score input + force grade (single listener on table, not wrap) ──
       tbl.addEventListener('change', async e => {
@@ -1277,6 +1333,7 @@ export async function renderGradesGrid(teacher, classData) {
             if(tEl)tEl.textContent=total>0?total:'—'
             if(gEl)gEl.textContent=fg||(grade>0?grade.toFixed(1):'0')
             if(kEl){kEl.textContent=khuna.label;kEl.className=`border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}`}
+            await _applyOverrideIfNeeded(sid,colId)
           }catch{showToast('บันทึกไม่สำเร็จ','error')}
           finally{document.getElementById('grade-saving')?.classList.add('hidden')}
         }

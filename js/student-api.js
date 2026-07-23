@@ -182,7 +182,7 @@ export async function getSchoolPeriods() {
 export async function getScoreColumnsForClass(classId) {
   const { data, error } = await supabase
     .from('class_score_columns')
-    .select('id, assignment_name, assignment_type, max_score')
+    .select('id, assignment_name, assignment_type, max_score, column_type')
     .eq('class_id', classId)
     .order('id')
   if (error) throw error
