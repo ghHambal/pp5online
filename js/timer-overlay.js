@@ -1,6 +1,7 @@
 // js/timer-overlay.js — ⏱️ จับเวลาเต็มจอสำหรับหน้าห้องเรียน
 // โหมด 1) นับถอยหลังทั่วไป (คุมกิจกรรมระหว่างคาบ) — พื้นไล่สีเขียว→เหลือง→แดง + เอฟเฟกต์สั่น/ขยายตอนใกล้หมดเวลา
-// โหมด 2) พักเบรค — พื้นมืด→สว่างสวนทางกับตัวเลข ครูปรับเวลา +/- กลางคันได้
+// โหมด 2) พักเบรค — พื้นมืด→สว่างสวนทางกับตัวเลข ครูปรับเวลา +/- กลางคันได้ + เสียงธรรมชาติประกอบ
+// โหมด 3) นับเวลา (stopwatch) — นับขึ้นจาก 0 ไม่มีกำหนดเวลา หยุดชั่วคราว/เล่นต่อได้
 import { showToast } from './ui.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 
@@ -8,8 +9,28 @@ const FREE_COUNT_KEY = 'pp5_free_timer_count'
 const LS_EFFECT       = 'pp5_timer_effect_style'      // 'shake' | 'scale'
 const LS_SOUND        = 'pp5_timer_sound'             // 'on' | 'off'
 const LS_BREAK_STEP   = 'pp5_timer_break_step'        // '60' | '30' (วินาที)
+const LS_AMBIENT      = 'pp5_timer_ambient'           // key ใน AMBIENT_TRACKS หรือ 'none'
+const LS_FONT_SCALE   = 'pp5_timer_font_scale'        // 0.5 - 1.8
 const LS_LAST_COUNTDOWN_MIN = 'pp5_timer_last_countdown_min'
 const LS_LAST_BREAK_MIN     = 'pp5_timer_last_break_min'
+
+const ALARM_FILE = 'alarm-bell.mp3'
+const AMBIENT_TRACKS = [
+  { key: 'forest-wind',       label: '🌲 ลมป่า',        file: 'forest-wind.mp3' },
+  { key: 'calm-ocean-breeze', label: '🌊 สายลมทะเล',    file: 'calm-ocean-breeze.mp3' },
+  { key: 'path-to-jannah',    label: '🕌 Path to Jannah', file: 'path-to-jannah.mp3' },
+  { key: 'waterfall-nature',  label: '💦 น้ำตกธรรมชาติ', file: 'waterfall-nature.mp3' },
+  { key: 'calm',              label: '🧘 สงบ',          file: 'calm.mp3' },
+  { key: 'meditation-01',     label: '🎐 สมาธิ 01',     file: 'meditation-01.mp3' },
+  { key: 'meditation-02',     label: '🎐 สมาธิ 02',     file: 'meditation-02.mp3' },
+  { key: 'nature-piano',      label: '🎹 เปียโนธรรมชาติ', file: 'nature-piano.mp3' },
+  { key: 'solo-piano',        label: '🎹 เปียโนเดี่ยว',  file: 'solo-piano.mp3' },
+  { key: 'rain',              label: '🌧️ เสียงฝน',      file: 'rain.mp3' },
+]
+
+function _soundUrl(file) {
+  return `${import.meta.env.BASE_URL || '/'}sounds/${file}`
+}
 
 function _freeLimit() {
   const v = parseInt(window._pp5SystemCfg?.freeTimerLimit, 10)
@@ -26,12 +47,15 @@ function _lerpColor(hexA, hexB, t) {
 
 function _fmtClock(totalSec) {
   const s = Math.max(0, Math.round(totalSec))
-  const m = Math.floor(s / 60)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
   const r = s % 60
-  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
+  return h > 0
+    ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
+    : `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
 }
 
-// เสียงสังเคราะห์ด้วย WebAudio — ไม่ต้องพึ่งไฟล์เสียง
+// เสียงติ๊กสังเคราะห์ด้วย WebAudio — ของเสริมเล็กๆ ไม่ต้องพึ่งไฟล์เสียง
 let _actx = null
 function _beep(freq, durMs, type = 'sine', vol = 0.18) {
   if (localStorage.getItem(LS_SOUND) === 'off') return
@@ -49,8 +73,19 @@ function _beep(freq, durMs, type = 'sine', vol = 0.18) {
     osc.stop(_actx.currentTime + durMs / 1000)
   } catch { /* เสียงเป็นแค่ของเสริม ไม่บล็อกการทำงานหลัก */ }
 }
-const _tickSound  = () => _beep(880, 120, 'square', 0.12)
-const _finishSound = () => { _beep(660, 160); setTimeout(() => _beep(990, 220), 150) }
+const _tickSound = () => _beep(880, 120, 'square', 0.12)
+
+// เสียงกริ่งหมดเวลาจริง (ไฟล์เสียง ไม่ใช่เสียงสังเคราะห์)
+let _alarmAudio = null
+function _playAlarm() {
+  if (localStorage.getItem(LS_SOUND) === 'off') return
+  try {
+    _alarmAudio = _alarmAudio || new Audio(_soundUrl(ALARM_FILE))
+    _alarmAudio.currentTime = 0
+    _alarmAudio.volume = 0.7
+    _alarmAudio.play().catch(() => {})
+  } catch { /* เสียงเป็นแค่ของเสริม ไม่บล็อกการทำงานหลัก */ }
+}
 
 function _showPaywall() {
   const m = document.createElement('div')
@@ -72,10 +107,11 @@ function _showPaywall() {
 export function openTimerModal(classId, cls, isDonorTeacher) {
   document.getElementById('timer-setup-modal')?.remove()
 
-  let mode = 'countdown' // 'countdown' | 'break'
+  let mode = 'countdown' // 'countdown' | 'break' | 'stopwatch'
   let effectStyle = localStorage.getItem(LS_EFFECT) || 'shake'
   let soundOn = localStorage.getItem(LS_SOUND) !== 'off'
   let breakStep = localStorage.getItem(LS_BREAK_STEP) || '60'
+  let ambient = localStorage.getItem(LS_AMBIENT) || 'none'
   let minutes = parseInt(localStorage.getItem(LS_LAST_COUNTDOWN_MIN) || '5', 10)
 
   const m = document.createElement('div')
@@ -84,6 +120,11 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
   document.body.appendChild(m)
 
   const PRESETS = [1, 3, 5, 10, 15, 20]
+  const MODE_DEFS = [
+    { key: 'countdown', icon: '⏱️', label: 'นับถอยหลัง', sub: 'คุมเวลากิจกรรม', grad: 'linear-gradient(135deg,#10b981,#0ea5e9);' },
+    { key: 'break',     icon: '☕', label: 'พักเบรค',    sub: 'มืด→สว่างเตือนหมดเวลา', grad: 'linear-gradient(135deg,#334155,#64748b);' },
+    { key: 'stopwatch', icon: '⏳', label: 'นับเวลา',    sub: 'นับขึ้นไม่จำกัด', grad: 'linear-gradient(135deg,#6366f1,#a855f7);' },
+  ]
 
   function render() {
     m.innerHTML = `
@@ -97,13 +138,14 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
         </div>
         <div class="p-5 overflow-y-auto flex flex-col gap-4">
 
-          <div class="grid grid-cols-2 gap-2">
-            <button data-mode="countdown" class="tm-mode-btn py-3 rounded-2xl text-sm font-bold transition ${mode === 'countdown' ? 'text-white' : 'bg-gray-100 text-gray-500'}"
-              style="${mode === 'countdown' ? 'background:linear-gradient(135deg,#10b981,#0ea5e9);' : ''}">⏱️ นับถอยหลัง<br><span class="font-normal text-xs opacity-80">คุมเวลากิจกรรม</span></button>
-            <button data-mode="break" class="tm-mode-btn py-3 rounded-2xl text-sm font-bold transition ${mode === 'break' ? 'text-white' : 'bg-gray-100 text-gray-500'}"
-              style="${mode === 'break' ? 'background:linear-gradient(135deg,#334155,#64748b);' : ''}">☕ พักเบรค<br><span class="font-normal text-xs opacity-80">มืด→สว่างเตือนหมดเวลา</span></button>
+          <div class="grid grid-cols-3 gap-1.5">
+            ${MODE_DEFS.map(d => `
+              <button data-mode="${d.key}" class="tm-mode-btn py-2.5 px-1 rounded-2xl text-xs font-bold transition ${mode === d.key ? 'text-white' : 'bg-gray-100 text-gray-500'}"
+                style="${mode === d.key ? `background:${d.grad}` : ''}">${d.icon}<br>${d.label}<br><span class="font-normal text-[10px] opacity-80">${d.sub}</span></button>
+            `).join('')}
           </div>
 
+          ${mode !== 'stopwatch' ? `
           <div>
             <p class="text-xs font-semibold text-gray-500 mb-1.5">ระยะเวลา</p>
             <div class="flex flex-wrap gap-1.5">
@@ -114,6 +156,7 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
               <span class="text-xs text-gray-500">นาที (กำหนดเอง)</span>
             </div>
           </div>
+          ` : ''}
 
           ${mode === 'countdown' ? `
           <div>
@@ -125,9 +168,11 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
           </div>
           <label class="flex items-center gap-2 text-sm text-gray-600">
             <input id="tm-sound" type="checkbox" ${soundOn ? 'checked' : ''} class="w-4 h-4 rounded" />
-            🔊 เปิดเสียงตอนนับถอยหลัง/หมดเวลา
+            🔊 เปิดเสียงตอนนับถอยหลัง/หมดเวลา (เสียงกริ่งนาฬิกาปลุก)
           </label>
-          ` : `
+          ` : ''}
+
+          ${mode === 'break' ? `
           <div>
             <p class="text-xs font-semibold text-gray-500 mb-1.5">หน่วยปรับเวลาระหว่างเบรค</p>
             <div class="flex gap-2">
@@ -135,7 +180,14 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
               <button data-step="30" class="tm-step-btn flex-1 py-2 rounded-xl text-sm font-semibold transition ${breakStep === '30' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600'}">±30 วินาที</button>
             </div>
           </div>
-          `}
+          <div>
+            <p class="text-xs font-semibold text-gray-500 mb-1.5">🎵 เสียงประกอบระหว่างเบรค</p>
+            <div class="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
+              <button data-ambient="none" class="tm-ambient-btn px-2 py-2 rounded-xl text-xs font-semibold transition text-left ${ambient === 'none' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600'}">🔇 ไม่มีเสียง</button>
+              ${AMBIENT_TRACKS.map(t => `<button data-ambient="${t.key}" class="tm-ambient-btn px-2 py-2 rounded-xl text-xs font-semibold transition text-left ${ambient === t.key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600'}">${t.label}</button>`).join('')}
+            </div>
+          </div>
+          ` : ''}
 
           <button id="tm-start" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98]"
             style="background:linear-gradient(135deg,#0ea5e9,#6366f1);">▶️ เริ่มจับเวลา</button>
@@ -145,11 +197,11 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
     m.querySelector('#tm-close').addEventListener('click', () => m.remove())
     m.querySelectorAll('.tm-mode-btn').forEach(btn => btn.addEventListener('click', () => {
       mode = btn.dataset.mode
-      minutes = parseInt(localStorage.getItem(mode === 'break' ? LS_LAST_BREAK_MIN : LS_LAST_COUNTDOWN_MIN) || (mode === 'break' ? '5' : '5'), 10)
+      if (mode !== 'stopwatch') minutes = parseInt(localStorage.getItem(mode === 'break' ? LS_LAST_BREAK_MIN : LS_LAST_COUNTDOWN_MIN) || '5', 10)
       render()
     }))
     m.querySelectorAll('.tm-preset-btn').forEach(btn => btn.addEventListener('click', () => { minutes = parseInt(btn.dataset.min, 10); render() }))
-    m.querySelector('#tm-custom-min').addEventListener('change', e => {
+    m.querySelector('#tm-custom-min')?.addEventListener('change', e => {
       const v = parseInt(e.target.value, 10)
       if (Number.isFinite(v) && v > 0) minutes = v
     })
@@ -161,6 +213,11 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
     m.querySelectorAll('.tm-step-btn').forEach(btn => btn.addEventListener('click', () => {
       breakStep = btn.dataset.step
       localStorage.setItem(LS_BREAK_STEP, breakStep)
+      render()
+    }))
+    m.querySelectorAll('.tm-ambient-btn').forEach(btn => btn.addEventListener('click', () => {
+      ambient = btn.dataset.ambient
+      localStorage.setItem(LS_AMBIENT, ambient)
       render()
     }))
     const soundBox = m.querySelector('#tm-sound')
@@ -176,9 +233,9 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
         localStorage.setItem(FREE_COUNT_KEY, String(used + 1))
       }
 
-      localStorage.setItem(mode === 'break' ? LS_LAST_BREAK_MIN : LS_LAST_COUNTDOWN_MIN, String(minutes))
+      if (mode !== 'stopwatch') localStorage.setItem(mode === 'break' ? LS_LAST_BREAK_MIN : LS_LAST_COUNTDOWN_MIN, String(minutes))
       m.remove()
-      _launchOverlay(mode, minutes * 60, { effectStyle, breakStepSec: parseInt(breakStep, 10) })
+      _launchOverlay(mode, mode === 'stopwatch' ? 0 : minutes * 60, { effectStyle, breakStepSec: parseInt(breakStep, 10), ambient })
     })
   }
 
@@ -186,14 +243,30 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
   m.addEventListener('click', e => { if (e.target === m) m.remove() })
 }
 
-function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec }) {
+function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec, ambient }) {
   document.getElementById('timer-fullscreen-overlay')?.remove()
 
   let totalSeconds = initialSeconds
   let remaining = initialSeconds
+  let elapsed = 0
   let finished = false
+  let isPaused = false
   let rafId = null
   let lastTickWhole = -1
+  let fontScale = parseFloat(localStorage.getItem(LS_FONT_SCALE)) || 1
+
+  let ambientAudio = null
+  if (mode === 'break' && ambient && ambient !== 'none') {
+    const track = AMBIENT_TRACKS.find(t => t.key === ambient)
+    if (track) {
+      try {
+        ambientAudio = new Audio(_soundUrl(track.file))
+        ambientAudio.loop = true
+        ambientAudio.volume = 0.45
+        ambientAudio.play().catch(() => {})
+      } catch { /* เสียงประกอบเป็นของเสริม ไม่บล็อกการทำงานหลัก */ }
+    }
+  }
 
   const ov = document.createElement('div')
   ov.id = 'timer-fullscreen-overlay'
@@ -203,11 +276,18 @@ function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec }) {
       @keyframes tm-shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
       @keyframes tm-scale { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
       .tm-digits { font-variant-numeric:tabular-nums; font-weight:800; letter-spacing:2px; transition:color .6s linear; }
+      #tm-size-slider { -webkit-appearance:none; width:120px; height:4px; border-radius:2px; background:rgba(255,255,255,.3); }
+      #tm-size-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:#fff; cursor:pointer; }
+      #tm-size-slider::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:#fff; border:none; cursor:pointer; }
     </style>
     <button id="tm-exit" style="position:absolute;top:20px;right:24px;background:rgba(255,255,255,.15);border:none;color:inherit;width:44px;height:44px;border-radius:14px;font-size:22px;cursor:pointer;">✕</button>
-    <div id="tm-digits" class="tm-digits" style="font-size:min(28vw,220px);line-height:1;">${_fmtClock(remaining)}</div>
+    <div style="position:absolute;top:28px;left:24px;display:flex;align-items:center;gap:8px;color:inherit;opacity:.85;">
+      <span style="font-size:13px;">🔠</span>
+      <input id="tm-size-slider" type="range" min="0.5" max="1.8" step="0.1" value="${fontScale}" />
+    </div>
+    <div id="tm-digits" class="tm-digits" style="font-size:calc(min(28vw,220px) * ${fontScale});line-height:1;">${_fmtClock(mode === 'stopwatch' ? 0 : remaining)}</div>
     <div id="tm-sub" style="margin-top:12px;font-size:18px;opacity:.75;"></div>
-    <div id="tm-break-controls" style="display:none;margin-top:28px;gap:16px;"></div>
+    <div id="tm-mode-controls" style="display:none;margin-top:28px;gap:16px;align-items:center;"></div>
   `
   document.body.appendChild(ov)
 
@@ -216,15 +296,22 @@ function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec }) {
   const digitsEl = ov.querySelector('#tm-digits')
   const subEl    = ov.querySelector('#tm-sub')
 
+  ov.querySelector('#tm-size-slider').addEventListener('input', e => {
+    fontScale = parseFloat(e.target.value)
+    localStorage.setItem(LS_FONT_SCALE, String(fontScale))
+    digitsEl.style.fontSize = `calc(min(28vw,220px) * ${fontScale})`
+  })
+
   function exit() {
     if (rafId) cancelAnimationFrame(rafId)
+    if (ambientAudio) { try { ambientAudio.pause() } catch {} }
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
     ov.remove()
   }
   ov.querySelector('#tm-exit').addEventListener('click', exit)
 
   if (mode === 'break') {
-    const ctrl = ov.querySelector('#tm-break-controls')
+    const ctrl = ov.querySelector('#tm-mode-controls')
     ctrl.style.display = 'flex'
     const stepLabel = breakStepSec === 30 ? '30 วิ' : '1 นาที'
     ctrl.innerHTML = `
@@ -237,6 +324,20 @@ function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec }) {
       totalSeconds = Math.max(totalSeconds, remaining)
     })
     subEl.textContent = 'พักเบรค — จอสว่างเต็มที่ = หมดเวลาพัก'
+  } else if (mode === 'stopwatch') {
+    const ctrl = ov.querySelector('#tm-mode-controls')
+    ctrl.style.display = 'flex'
+    ctrl.innerHTML = `
+      <button id="tm-pause" style="background:rgba(0,0,0,.15);border:none;padding:12px 26px;border-radius:16px;font-weight:700;font-size:16px;cursor:pointer;color:inherit;">⏸️ หยุดชั่วคราว</button>
+    `
+    const pauseBtn = ctrl.querySelector('#tm-pause')
+    pauseBtn.addEventListener('click', () => {
+      isPaused = !isPaused
+      pauseBtn.textContent = isPaused ? '▶️ เล่นต่อ' : '⏸️ หยุดชั่วคราว'
+    })
+    ov.style.backgroundColor = '#1e293b'
+    digitsEl.style.color = '#ffffff'
+    subEl.textContent = 'นับเวลา'
   } else {
     subEl.textContent = 'นับถอยหลัง'
   }
@@ -245,6 +346,16 @@ function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec }) {
   function tick(now) {
     const dt = (now - lastTs) / 1000
     lastTs = now
+
+    if (mode === 'stopwatch') {
+      if (!isPaused) {
+        elapsed += dt
+        digitsEl.textContent = _fmtClock(elapsed)
+      }
+      rafId = requestAnimationFrame(tick)
+      return
+    }
+
     if (!finished) {
       remaining = Math.max(0, remaining - dt)
       const wholeSec = Math.ceil(remaining)
@@ -291,7 +402,7 @@ function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec }) {
           subEl.textContent = 'หมดเวลาพักเบรคแล้ว'
         } else {
           subEl.textContent = '⏰ หมดเวลา!'
-          _finishSound()
+          _playAlarm()
           loadConfetti().then(() => fireConfetti('mid')).catch(() => {})
         }
       }
