@@ -11,8 +11,9 @@ const LS_SOUND        = 'pp5_timer_sound'             // 'on' | 'off'
 const LS_BREAK_STEP   = 'pp5_timer_break_step'        // '60' | '30' (วินาที)
 const LS_AMBIENT      = 'pp5_timer_ambient'           // key ใน AMBIENT_TRACKS หรือ 'none'
 const LS_FONT_SCALE   = 'pp5_timer_font_scale'        // 0.5 - 1.8
-const LS_LAST_COUNTDOWN_MIN = 'pp5_timer_last_countdown_min'
-const LS_LAST_BREAK_MIN     = 'pp5_timer_last_break_min'
+const LS_SHOW_AMBIENT_COUNTDOWN = 'pp5_timer_show_ambient_countdown' // 'on' | 'off'
+const LS_LAST_COUNTDOWN_SEC = 'pp5_timer_last_countdown_sec'
+const LS_LAST_BREAK_SEC     = 'pp5_timer_last_break_sec'
 
 const ALARM_FILE = 'alarm-bell.mp3'
 const AMBIENT_TRACKS = [
@@ -87,6 +88,28 @@ function _playAlarm() {
   } catch { /* เสียงเป็นแค่ของเสริม ไม่บล็อกการทำงานหลัก */ }
 }
 
+// เล่นตัวอย่างเสียงประกอบตอนครูคลิกเลือกในหน้าตั้งค่า (คลิกซ้ำที่ตัวเดิม = หยุด)
+let _previewAudio = null
+let _previewKey = null
+function _stopPreview() {
+  if (_previewAudio) { try { _previewAudio.pause() } catch {} }
+  _previewAudio = null
+  _previewKey = null
+}
+function _togglePreview(key) {
+  if (_previewKey === key) { _stopPreview(); return }
+  _stopPreview()
+  const track = AMBIENT_TRACKS.find(t => t.key === key)
+  if (!track) return
+  try {
+    _previewAudio = new Audio(_soundUrl(track.file))
+    _previewAudio.volume = 0.5
+    _previewAudio.play().catch(() => {})
+    _previewAudio.addEventListener('ended', () => { if (_previewKey === key) { _previewKey = null; _previewAudio = null } })
+    _previewKey = key
+  } catch { /* เสียงตัวอย่างเป็นของเสริม ไม่บล็อกการทำงานหลัก */ }
+}
+
 function _showPaywall() {
   const m = document.createElement('div')
   m.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50'
@@ -106,13 +129,21 @@ function _showPaywall() {
 
 export function openTimerModal(classId, cls, isDonorTeacher) {
   document.getElementById('timer-setup-modal')?.remove()
+  _stopPreview()
 
   let mode = 'countdown' // 'countdown' | 'break' | 'stopwatch'
   let effectStyle = localStorage.getItem(LS_EFFECT) || 'shake'
   let soundOn = localStorage.getItem(LS_SOUND) !== 'off'
   let breakStep = localStorage.getItem(LS_BREAK_STEP) || '60'
   let ambient = localStorage.getItem(LS_AMBIENT) || 'none'
-  let minutes = parseInt(localStorage.getItem(LS_LAST_COUNTDOWN_MIN) || '5', 10)
+  let showAmbientInCountdown = localStorage.getItem(LS_SHOW_AMBIENT_COUNTDOWN) === 'on'
+
+  const secFromStore = (key) => {
+    const v = parseInt(localStorage.getItem(key), 10)
+    return Number.isFinite(v) && v > 0 ? v : 300
+  }
+  let customMin = Math.floor(secFromStore(LS_LAST_COUNTDOWN_SEC) / 60)
+  let customSec = secFromStore(LS_LAST_COUNTDOWN_SEC) % 60
 
   const m = document.createElement('div')
   m.id = 'timer-setup-modal'
@@ -125,6 +156,17 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
     { key: 'break',     icon: '☕', label: 'พักเบรค',    sub: 'มืด→สว่างเตือนหมดเวลา', grad: 'linear-gradient(135deg,#334155,#64748b);' },
     { key: 'stopwatch', icon: '⏳', label: 'นับเวลา',    sub: 'นับขึ้นไม่จำกัด', grad: 'linear-gradient(135deg,#6366f1,#a855f7);' },
   ]
+
+  function ambientListHtml() {
+    return `
+      <div>
+        <p class="text-xs font-semibold text-gray-500 mb-1.5">🎵 เสียงประกอบ <span class="font-normal">(คลิกเพื่อฟังตัวอย่าง คลิกซ้ำเพื่อหยุด)</span></p>
+        <div class="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
+          <button data-ambient="none" class="tm-ambient-btn px-2 py-2 rounded-xl text-xs font-semibold transition text-left ${ambient === 'none' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600'}">🔇 ไม่มีเสียง</button>
+          ${AMBIENT_TRACKS.map(t => `<button data-ambient="${t.key}" class="tm-ambient-btn px-2 py-2 rounded-xl text-xs font-semibold transition text-left ${ambient === t.key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600'}">${t.label}${_previewKey === t.key ? ' ▶️' : ''}</button>`).join('')}
+        </div>
+      </div>`
+  }
 
   function render() {
     m.innerHTML = `
@@ -149,11 +191,13 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
           <div>
             <p class="text-xs font-semibold text-gray-500 mb-1.5">ระยะเวลา</p>
             <div class="flex flex-wrap gap-1.5">
-              ${PRESETS.map(p => `<button data-min="${p}" class="tm-preset-btn px-3 py-1.5 rounded-xl text-xs font-semibold transition ${minutes === p ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${p} นาที</button>`).join('')}
+              ${PRESETS.map(p => `<button data-min="${p}" class="tm-preset-btn px-3 py-1.5 rounded-xl text-xs font-semibold transition ${customMin === p && customSec === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${p} นาที</button>`).join('')}
             </div>
-            <div class="flex items-center gap-2 mt-2">
-              <input id="tm-custom-min" type="number" min="1" max="120" value="${minutes}" class="w-20 px-2.5 py-1.5 rounded-xl border border-gray-200 text-sm text-center" />
-              <span class="text-xs text-gray-500">นาที (กำหนดเอง)</span>
+            <div class="flex items-center gap-1.5 mt-2">
+              <input id="tm-custom-min" type="number" min="0" max="180" value="${customMin}" class="w-16 px-2 py-1.5 rounded-xl border border-gray-200 text-sm text-center" />
+              <span class="text-xs text-gray-500">นาที</span>
+              <input id="tm-custom-sec" type="number" min="0" max="59" value="${customSec}" class="w-16 px-2 py-1.5 rounded-xl border border-gray-200 text-sm text-center" />
+              <span class="text-xs text-gray-500">วินาที</span>
             </div>
           </div>
           ` : ''}
@@ -170,6 +214,11 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
             <input id="tm-sound" type="checkbox" ${soundOn ? 'checked' : ''} class="w-4 h-4 rounded" />
             🔊 เปิดเสียงตอนนับถอยหลัง/หมดเวลา (เสียงกริ่งนาฬิกาปลุก)
           </label>
+          <label class="flex items-center gap-2 text-sm text-gray-600">
+            <input id="tm-show-ambient" type="checkbox" ${showAmbientInCountdown ? 'checked' : ''} class="w-4 h-4 rounded" />
+            🎵 แสดงตัวเลือกเสียงประกอบในโหมดนับถอยหลังด้วย
+          </label>
+          ${showAmbientInCountdown ? ambientListHtml() : ''}
           ` : ''}
 
           ${mode === 'break' ? `
@@ -180,13 +229,7 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
               <button data-step="30" class="tm-step-btn flex-1 py-2 rounded-xl text-sm font-semibold transition ${breakStep === '30' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600'}">±30 วินาที</button>
             </div>
           </div>
-          <div>
-            <p class="text-xs font-semibold text-gray-500 mb-1.5">🎵 เสียงประกอบระหว่างเบรค</p>
-            <div class="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
-              <button data-ambient="none" class="tm-ambient-btn px-2 py-2 rounded-xl text-xs font-semibold transition text-left ${ambient === 'none' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600'}">🔇 ไม่มีเสียง</button>
-              ${AMBIENT_TRACKS.map(t => `<button data-ambient="${t.key}" class="tm-ambient-btn px-2 py-2 rounded-xl text-xs font-semibold transition text-left ${ambient === t.key ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600'}">${t.label}</button>`).join('')}
-            </div>
-          </div>
+          ${ambientListHtml()}
           ` : ''}
 
           <button id="tm-start" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98]"
@@ -194,16 +237,24 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
         </div>
       </div>`
 
-    m.querySelector('#tm-close').addEventListener('click', () => m.remove())
+    m.querySelector('#tm-close').addEventListener('click', () => { _stopPreview(); m.remove() })
     m.querySelectorAll('.tm-mode-btn').forEach(btn => btn.addEventListener('click', () => {
       mode = btn.dataset.mode
-      if (mode !== 'stopwatch') minutes = parseInt(localStorage.getItem(mode === 'break' ? LS_LAST_BREAK_MIN : LS_LAST_COUNTDOWN_MIN) || '5', 10)
+      _stopPreview()
+      if (mode !== 'stopwatch') {
+        const s = secFromStore(mode === 'break' ? LS_LAST_BREAK_SEC : LS_LAST_COUNTDOWN_SEC)
+        customMin = Math.floor(s / 60); customSec = s % 60
+      }
       render()
     }))
-    m.querySelectorAll('.tm-preset-btn').forEach(btn => btn.addEventListener('click', () => { minutes = parseInt(btn.dataset.min, 10); render() }))
+    m.querySelectorAll('.tm-preset-btn').forEach(btn => btn.addEventListener('click', () => { customMin = parseInt(btn.dataset.min, 10); customSec = 0; render() }))
     m.querySelector('#tm-custom-min')?.addEventListener('change', e => {
       const v = parseInt(e.target.value, 10)
-      if (Number.isFinite(v) && v > 0) minutes = v
+      if (Number.isFinite(v) && v >= 0) customMin = v
+    })
+    m.querySelector('#tm-custom-sec')?.addEventListener('change', e => {
+      const v = parseInt(e.target.value, 10)
+      if (Number.isFinite(v) && v >= 0) customSec = Math.min(59, v)
     })
     m.querySelectorAll('.tm-eff-btn').forEach(btn => btn.addEventListener('click', () => {
       effectStyle = btn.dataset.eff
@@ -218,14 +269,27 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
     m.querySelectorAll('.tm-ambient-btn').forEach(btn => btn.addEventListener('click', () => {
       ambient = btn.dataset.ambient
       localStorage.setItem(LS_AMBIENT, ambient)
+      if (ambient === 'none') _stopPreview()
+      else _togglePreview(ambient)
       render()
     }))
     const soundBox = m.querySelector('#tm-sound')
     if (soundBox) soundBox.addEventListener('change', e => localStorage.setItem(LS_SOUND, e.target.checked ? 'on' : 'off'))
+    const showAmbientBox = m.querySelector('#tm-show-ambient')
+    if (showAmbientBox) showAmbientBox.addEventListener('change', e => {
+      showAmbientInCountdown = e.target.checked
+      localStorage.setItem(LS_SHOW_AMBIENT_COUNTDOWN, showAmbientInCountdown ? 'on' : 'off')
+      render()
+    })
 
     m.querySelector('#tm-start').addEventListener('click', () => {
-      const customVal = parseInt(m.querySelector('#tm-custom-min')?.value, 10)
-      if (Number.isFinite(customVal) && customVal > 0) minutes = customVal
+      const minVal = parseInt(m.querySelector('#tm-custom-min')?.value, 10)
+      const secVal = parseInt(m.querySelector('#tm-custom-sec')?.value, 10)
+      if (Number.isFinite(minVal) && minVal >= 0) customMin = minVal
+      if (Number.isFinite(secVal) && secVal >= 0) customSec = Math.min(59, secVal)
+      const totalSec = customMin * 60 + customSec
+
+      if (mode !== 'stopwatch' && totalSec <= 0) { showToast('กรุณาตั้งเวลาอย่างน้อย 1 วินาที', 'warning'); return }
 
       if (!isDonorTeacher) {
         const used = parseInt(localStorage.getItem(FREE_COUNT_KEY) || '0', 10)
@@ -233,14 +297,16 @@ export function openTimerModal(classId, cls, isDonorTeacher) {
         localStorage.setItem(FREE_COUNT_KEY, String(used + 1))
       }
 
-      if (mode !== 'stopwatch') localStorage.setItem(mode === 'break' ? LS_LAST_BREAK_MIN : LS_LAST_COUNTDOWN_MIN, String(minutes))
+      if (mode !== 'stopwatch') localStorage.setItem(mode === 'break' ? LS_LAST_BREAK_SEC : LS_LAST_COUNTDOWN_SEC, String(totalSec))
+      const ambientForRun = (mode === 'break' || (mode === 'countdown' && showAmbientInCountdown)) ? ambient : 'none'
+      _stopPreview()
       m.remove()
-      _launchOverlay(mode, mode === 'stopwatch' ? 0 : minutes * 60, { effectStyle, breakStepSec: parseInt(breakStep, 10), ambient })
+      _launchOverlay(mode, mode === 'stopwatch' ? 0 : totalSec, { effectStyle, breakStepSec: parseInt(breakStep, 10), ambient: ambientForRun })
     })
   }
 
   render()
-  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.addEventListener('click', e => { if (e.target === m) { _stopPreview(); m.remove() } })
 }
 
 function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec, ambient }) {
@@ -256,7 +322,7 @@ function _launchOverlay(mode, initialSeconds, { effectStyle, breakStepSec, ambie
   let fontScale = parseFloat(localStorage.getItem(LS_FONT_SCALE)) || 1
 
   let ambientAudio = null
-  if (mode === 'break' && ambient && ambient !== 'none') {
+  if (ambient && ambient !== 'none') {
     const track = AMBIENT_TRACKS.find(t => t.key === ambient)
     if (track) {
       try {
