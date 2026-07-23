@@ -656,6 +656,13 @@ export async function renderGradesGrid(teacher, classData) {
           <button class="mcm-bonus-del text-gray-300 hover:text-red-400 text-lg transition-colors px-1 rounded hover:bg-red-50 flex-shrink-0"
             data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>
         </div>`
+      const overrideColRow = col => `
+        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-teal-100 bg-teal-50/40">
+          <span class="flex-1 text-xs text-teal-800 truncate">${_htmlEsc(col.assignment_name||'—')}</span>
+          <span class="text-[10px] text-teal-500 flex-shrink-0 truncate max-w-[90px]" title="เชื่อมกับ: ${_htmlEsc(colById[col.link_column_id]?.assignment_name ?? 'ยังไม่ได้เชื่อม')}">🔗 ${_htmlEsc(colById[col.link_column_id]?.assignment_name ?? '—')}</span>
+          <button class="mcm-override-del text-gray-300 hover:text-red-400 text-lg transition-colors px-1 rounded hover:bg-red-50 flex-shrink-0"
+            data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>
+        </div>`
       modal.innerHTML = `<div class="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[80vh] flex flex-col">
         <div class="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
           <div>
@@ -699,6 +706,14 @@ export async function renderGradesGrid(teacher, classData) {
             </div>
             <div id="mcm-bonus-list" class="space-y-1.5">${bonusCols.map(bonusColRow).join('')}</div>
             <button id="mcm-add-bonus" class="mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-amber-200 text-amber-500 hover:border-amber-400 hover:bg-amber-50 text-sm transition-colors">＋ เพิ่มคอลัมน์พิเศษ</button>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-semibold text-teal-700 text-sm">🔄 ปรับคะแนนกลางภาค <span class="font-normal text-gray-400">(${overrideCols.length} คอลัมน์)</span></h4>
+            </div>
+            <p class="text-[11px] text-gray-400 mb-1.5">ไม่นับใน 100 · นักเรียนไม่เห็น · ไม่ลงเอกสาร ปพ.5</p>
+            <div id="mcm-override-list" class="space-y-1.5">${overrideCols.map(overrideColRow).join('')}</div>
+            <button id="mcm-add-override" class="mt-2.5 w-full py-2 rounded-xl border-2 border-dashed border-teal-200 text-teal-600 hover:border-teal-400 hover:bg-teal-50 text-sm transition-colors">＋ เพิ่มคอลัมน์ปรับคะแนน</button>
           </div>
         </div>
       </div>`
@@ -873,6 +888,85 @@ export async function renderGradesGrid(teacher, classData) {
         })
       }
       _bindBonusSection()
+
+      // ── Override section: delete ──
+      const _bindOverrideSection = () => {
+        modal.querySelectorAll('.mcm-override-del').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const colId = parseInt(btn.dataset.colid)
+            const col = overrideCols.find(c => c.id === colId)
+            _mcmConfirm(
+              `ลบคอลัมน์ปรับคะแนน <span class="font-semibold">"${col?.assignment_name||'คอลัมน์นี้'}"</span>?<br/><span class="text-xs text-red-500">คะแนนที่บันทึกไว้จะถูกลบด้วย (คะแนนในคอลัมน์กลางภาคหลักที่เคยปรับไปแล้วจะไม่ถูกย้อนกลับ)</span>`,
+              async () => {
+                try {
+                  await deleteScoreColumn(colId)
+                  const oi = overrideCols.findIndex(c => c.id === colId)
+                  if (oi !== -1) overrideCols.splice(oi, 1)
+                  showToast('ลบคอลัมน์ปรับคะแนนแล้ว ✅', 'success')
+                  _renderGrid()
+                  const listEl = modal.querySelector('#mcm-override-list')
+                  if (listEl) { listEl.innerHTML = overrideCols.map(overrideColRow).join(''); _bindOverrideSection() }
+                } catch { showToast('ลบไม่สำเร็จ', 'error') }
+              }
+            )
+          })
+        })
+      }
+      _bindOverrideSection()
+
+      // ── Add override column ──
+      modal.querySelector('#mcm-add-override')?.addEventListener('click', () => {
+        document.getElementById('quick-add-override-mcm')?.remove()
+        const midtermCols = regularCols.filter(c => c.assignment_type === 'กลางภาค')
+        const pop = document.createElement('div')
+        pop.id = 'quick-add-override-mcm'
+        pop.className = 'fixed inset-0 z-[700] flex items-center justify-center bg-black/40 p-4'
+        pop.innerHTML = `
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3">
+            <h3 class="font-bold text-teal-700">🔄 เพิ่มคอลัมน์ปรับคะแนนกลางภาค</h3>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">ชื่อคอลัมน์ <span class="text-red-400">*</span></label>
+              <input id="qom-name" type="text" placeholder="เช่น คะแนนสอบปรับ"
+                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"/>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">เชื่อมกับคอลัมน์กลางภาคหลัก <span class="text-red-400">*</span></label>
+              <select id="qom-link" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-200">
+                <option value="">— เลือกคอลัมน์ —</option>
+                ${midtermCols.map(c => `<option value="${c.id}">${_htmlEsc(c.assignment_name)} (เต็ม ${c.max_score ?? '—'})</option>`).join('')}
+              </select>
+              <p class="text-[11px] text-gray-400 mt-1">ถ้าคะแนนคอลัมน์นี้สูงกว่าคอลัมน์ที่เลือก ระบบจะเขียนทับคะแนนจริงในคอลัมน์หลักให้อัตโนมัติทันที</p>
+            </div>
+            <div class="flex gap-3 pt-1">
+              <button id="qom-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+              <button id="qom-save" class="flex-1 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold">เพิ่ม</button>
+            </div>
+          </div>`
+        document.body.appendChild(pop)
+        pop.querySelector('#qom-cancel').addEventListener('click', () => pop.remove())
+        pop.querySelector('#qom-name').focus()
+        pop.querySelector('#qom-save').addEventListener('click', async () => {
+          const name = pop.querySelector('#qom-name').value.trim()
+          const linkId = Number(pop.querySelector('#qom-link').value) || null
+          if (!name) { showToast('กรุณากรอกชื่อคอลัมน์', 'warning'); return }
+          if (!linkId) { showToast('กรุณาเลือกคอลัมน์กลางภาคที่จะเชื่อม', 'warning'); return }
+          const linked = midtermCols.find(c => c.id === linkId)
+          const btn = pop.querySelector('#qom-save')
+          btn.disabled = true; btn.textContent = '⏳'
+          try {
+            await createScoreColumn({ class_id: classData.id, assignment_name: name,
+              assignment_type: 'คะแนนพิเศษ', sheet_column: '', max_score: linked?.max_score ?? null,
+              column_type: 'override', link_column_id: linkId })
+            pop.remove()
+            modal.remove()
+            renderGradesGrid(teacher, classData)
+            showToast(`เพิ่ม "${name}" แล้ว ✅`, 'success')
+          } catch (err) {
+            showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            btn.disabled = false; btn.textContent = 'เพิ่ม'
+          }
+        })
+      })
 
       // ── Add bonus column ──
       modal.querySelector('#mcm-add-bonus')?.addEventListener('click', () => {
