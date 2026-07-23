@@ -2,7 +2,7 @@ import { getDepartments, getSystemConfig, getRoomsByGrade, getStudentsByRoom,
          getStudentsByReligionRoom, getReligionRoomsByGrade, getMySchedule,
          createClass, updateClass, enrollStudents, getClassStudents,
          getScoreColumns, createScoreColumn, linkClassToSchedule,
-         getTeacherClassesForLinking } from './api.js'
+         getTeacherClassesForLinking, getLifeSkillColumns } from './api.js'
 import { showToast } from './ui.js'
 
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
@@ -434,15 +434,25 @@ export async function renderClassForm(teacher, course, opts = {}) {
       // copy score columns จากห้องต้นฉบับ (ถ้า clone)
       // ข้าม auto-generated columns (ทักษะชีวิต/ศาสนา) เพราะ Grades page จะ generate ให้ใหม่
       const PRAYER_AUTO_COLS = new Set(['คะแนนมาเรียน', 'คะแนนละหมาด'])
-      const LIFE_SKILL_AUTO_SHEET_COLS = new Set(['EH', 'EI', 'EJ'])
       const isSrcLifeSkill = (opts.srcSkill ?? '') === 'ชีวิต'
       const isSrcReligion  = ['AGM', 'AGMVOC'].includes(course.subject_group ?? '')
+      // เช็คด้วยชื่อหัวข้อปัจจุบันจาก life_skill_columns แทนการเดา sheet_column แบบ hardcode
+      // เพราะคอลัมน์อัตโนมัติอาจถูกสร้างผ่านปุ่ม "เติมทักษะชีวิต" ที่ sheet_column ไม่ใช่ EH/EI/EJ เสมอไป
+      let lifeSkillAutoNames = new Set()
+      if (isSrcLifeSkill) {
+        const cfg = await getSystemConfig().catch(() => ({}))
+        const lsCols = await getLifeSkillColumns(parseInt(cfg.academicYear ?? 2568), parseInt(cfg.semester ?? 1), 'สามัญ').catch(() => [])
+        lifeSkillAutoNames = new Set(lsCols.slice(0, 3).map(c => c.name))
+      }
       let copiedCols = 0
       if (cloneFrom && created?.id) {
         const srcCols = await getScoreColumns(cloneFrom).catch(() => [])
+        const copiedNames = new Set()
         for (const col of srcCols) {
           if (isSrcReligion  && PRAYER_AUTO_COLS.has(col.assignment_name)) continue
-          if (isSrcLifeSkill && LIFE_SKILL_AUTO_SHEET_COLS.has(col.sheet_column))  continue
+          if (isSrcLifeSkill && lifeSkillAutoNames.has(col.assignment_name)) continue
+          if (copiedNames.has(col.assignment_name)) continue // กันซ้ำถ้าห้องต้นฉบับมีคอลัมน์ชื่อซ้ำค้างอยู่
+          copiedNames.add(col.assignment_name)
           await createScoreColumn({
             class_id:        created.id,
             assignment_name: col.assignment_name,
