@@ -9,6 +9,7 @@ import {
 } from './api.js'
 import { showToast } from './ui.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
+import { openScoreScanner, isEligibleScoreColumn } from './score-qr-scanner.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade,
 } from './teacher-views-utils.js'
@@ -1220,6 +1221,7 @@ export async function renderGradesGrid(teacher, classData) {
               <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-blue-600 cursor-pointer hover:bg-blue-100'}"
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
               <button class="btn-mass-score text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+              ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
               ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เชื่อมสูตรจากคะแนนพิเศษ'}">🔗</button>` : ''}
             </div>
           </th>`).join('')}
@@ -1230,6 +1232,7 @@ export async function renderGradesGrid(teacher, classData) {
               <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-purple-600 cursor-pointer hover:bg-purple-100'}"
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
               <button class="btn-mass-score text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+              ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
               ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เชื่อมสูตรจากคะแนนพิเศษ'}">🔗</button>` : ''}
             </div>
           </th>`).join('')}
@@ -1248,6 +1251,7 @@ export async function renderGradesGrid(teacher, classData) {
             <div class="flex items-center justify-between gap-0.5 px-0.5">
               <span class="text-[11px] text-amber-500 flex-1 text-center">${c.sheet_column||'—'}</span>
               <button class="btn-mass-score text-amber-300 hover:text-amber-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
+              ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-amber-300 hover:text-amber-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
             </div>
           </th>`).join('') : ''}
           ${showBonusCols ? `<th class="${thBase} bg-amber-50" style="width:30px">
@@ -1458,6 +1462,11 @@ export async function renderGradesGrid(teacher, classData) {
           _showMassScorePopup(parseInt(massBtn.dataset.colid), massBtn.dataset.colname, massBtn.dataset.max ? parseFloat(massBtn.dataset.max) : null)
           return
         }
+        const scanBtn = e.target.closest('.btn-scan-col')
+        if (scanBtn) {
+          openScoreScanner({ classId: classData.id, className: classData.class_name, initialColumnId: parseInt(scanBtn.dataset.colid) })
+          return
+        }
       })
 
       // ── Force grade popup (click on force-cell) ──
@@ -1641,6 +1650,9 @@ export async function renderGradesGrid(teacher, classData) {
           <p class="text-xs text-gray-400">${ms?.subject_name??'—'} · ${classData.class_name} · ${students.length} คน</p>
         </div>
         <div id="grade-saving" class="hidden bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">💾 กำลังบันทึก...</div>
+        <button id="btn-scan-score" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-sky-200 text-sm text-sky-600 hover:bg-sky-50 transition flex-shrink-0">
+          📷 <span class="hidden sm:inline text-xs">สแกนคะแนน</span>
+        </button>
         <button id="btn-copy-cols" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 text-sm text-indigo-600 hover:bg-indigo-50 transition flex-shrink-0">
           📋 <span class="hidden sm:inline text-xs">สำเนาคอลัมน์</span>
         </button>
@@ -1656,6 +1668,9 @@ export async function renderGradesGrid(teacher, classData) {
     </div>`)
     document.getElementById('btn-manage-cols')?.addEventListener('click', _openManageColsModal)
     document.getElementById('btn-copy-cols')?.addEventListener('click', () => _openCopyColsPopup(classData, allMyClasses))
+    document.getElementById('btn-scan-score')?.addEventListener('click', () => {
+      openScoreScanner({ classId: classData.id, className: classData.class_name })
+    })
 
     // ── Toggle hide scores (ซ่อนค่าคะแนนทั้งหมดเพื่อพิมพ์ปพ.5) ────────────────
     let _scoresHidden = false

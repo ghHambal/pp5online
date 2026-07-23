@@ -2360,6 +2360,12 @@ async function _openTeacherScanLauncher() {
       title: 'text-white',
       sub: 'text-orange-50/90',
     },
+    score: {
+      card: `${cardBaseCls} border-indigo-700 bg-indigo-600 hover:bg-indigo-700 hover:shadow-[0_20px_42px_rgba(79,70,229,0.30)]`,
+      icon: `${SCAN_CARD_ICON_CLASS} text-white group-hover:shadow-[0_14px_26px_rgba(79,70,229,0.28),inset_0_1px_0_rgba(255,255,255,0.36)]`,
+      title: 'text-white',
+      sub: 'text-indigo-50/85',
+    },
   }
   body.innerHTML = `
     <div class="space-y-3">
@@ -2401,6 +2407,14 @@ async function _openTeacherScanLauncher() {
           <span class="block text-xs ${scanCard.leave.sub} mt-1">เปิดหน้าเดิมสำหรับสแกน QR ตรวจสถานะใบอนุญาต</span>
         </span>
       </button>
+
+      <button id="scan-launcher-score" type="button" class="${scanCard.score.card}">
+        <span class="${scanCard.score.icon}" aria-hidden="true">📷</span>
+        <span class="min-w-0">
+          <span class="block font-extrabold ${scanCard.score.title} text-sm">สแกนบันทึกคะแนน</span>
+          <span class="block text-xs ${scanCard.score.sub} mt-1">เลือกห้องและคอลัมน์ แล้วสแกน QR นักเรียนเพื่อกรอกคะแนนต่อเนื่อง</span>
+        </span>
+      </button>
     </div>
   `
 
@@ -2412,6 +2426,11 @@ async function _openTeacherScanLauncher() {
   body.querySelector('#scan-launcher-leave')?.addEventListener('click', () => {
     close()
     navigate('student-leave-scanner')
+  })
+  body.querySelector('#scan-launcher-score')?.addEventListener('click', async () => {
+    close()
+    const { openScoreScannerPickClass } = await import('./score-qr-scanner.js')
+    openScoreScannerPickClass(_teacher)
   })
   body.querySelector('#scan-launcher-prayer-open')?.addEventListener('click', async () => {
     close()
