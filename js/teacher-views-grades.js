@@ -1147,12 +1147,13 @@ export async function renderGradesGrid(teacher, classData) {
         const v = inp.value.trim(); if (!v) { pop.remove(); return }
         const btn = pop.querySelector('#mass-confirm')
         btn.disabled = true; btn.textContent = '⏳'
-        let saved = 0, failed = 0
+        let saved = 0, failed = 0, clampedCount = 0
         for (const s of students) {
           const currentHist = scoreMap[s.id]?.[colId]?.history ?? []
           try {
-            const result = await saveStudentScore(classData.id, s.id, colId, v, { currentHistory: currentHist })
+            const result = await saveStudentScore(classData.id, s.id, colId, v, { currentHistory: currentHist, max: maxScore ?? null })
             if (result) {
+              if (result.clamped) clampedCount++
               if (!scoreMap[s.id]) scoreMap[s.id] = {}
               scoreMap[s.id][colId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
               const grWrap = document.getElementById('grade-grid-wrap')
@@ -1183,7 +1184,7 @@ export async function renderGradesGrid(teacher, classData) {
           if (gEl) gEl.textContent = fg || (grade > 0 ? grade.toFixed(1) : '0')
           if (kEl) { kEl.textContent = khuna.label; kEl.className = `border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}` }
         })
-        showToast(`ตั้งคะแนนสำเร็จ ${saved}/${students.length} คน${failed ? ' (ล้มเหลว ' + failed + ')' : ''}`, saved > 0 ? 'success' : 'error')
+        showToast(`ตั้งคะแนนสำเร็จ ${saved}/${students.length} คน${clampedCount ? ' (ปรับ ' + clampedCount + ' คนที่เกินคะแนนเต็มอัตโนมัติ)' : ''}${failed ? ' (ล้มเหลว ' + failed + ')' : ''}`, saved > 0 ? 'success' : 'error')
         pop.remove()
       })
       pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
@@ -1350,7 +1351,8 @@ export async function renderGradesGrid(teacher, classData) {
         const mainScore = scoreMap[sid]?.[mainColId]?.final
         if (mainScore != null && mainScore >= overrideScore) return
 
-        const result = await saveStudentScore(classData.id, sid, mainColId, overrideScore, {})
+        const mainMax = colById[mainColId]?.max_score
+        const result = await saveStudentScore(classData.id, sid, mainColId, overrideScore, { max: typeof mainMax === 'number' ? mainMax : null })
         if (!result) return
         scoreMap[sid][mainColId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
 
@@ -1385,22 +1387,18 @@ export async function renderGradesGrid(teacher, classData) {
             return
           }
           let val=gradeInp.value.trim()
-          const isDeltaInput = /^[+-]/.test(val)
-          if(!isDeltaInput){
-            if(val!==''&&parseFloat(val)>max){gradeInp.value=max;val=String(max)}
-            if(val!==''&&parseFloat(val)<0){gradeInp.value=0;val='0'}
-          }
           const currentHist = scoreMap[sid]?.[colId]?.history ?? []
           if(!scoreMap[sid])scoreMap[sid]={}
           gradeInp.style.outline='2px solid #6366f1';gradeInp.style.outlineOffset='1px'
           document.getElementById('grade-saving')?.classList.remove('hidden')
           try{
-            const result = await saveStudentScore(classData.id,sid,colId,val===''?null:val,{currentHistory:currentHist})
+            const result = await saveStudentScore(classData.id,sid,colId,val===''?null:val,{currentHistory:currentHist,max:isNaN(max)?null:max})
             if(!result){gradeInp.value=scoreMap[sid][colId]?.final??'';return}
-            const{final,history}=result
+            const{final,history,clamped}=result
             scoreMap[sid][colId]={orig:history[0]?.d??final,retake:null,final,history}
             gradeInp.value = final!==null ? String(final) : ''
             gradeInp.title = ''
+            if(clamped) showToast(`คะแนนเกินคะแนนเต็ม ปรับให้เป็น ${final} อัตโนมัติ`,'warning')
             // update hist indicator
             const cell=gradeInp.closest('td')
             if(history.length>1){
@@ -2010,6 +2008,7 @@ function _openAddColumnModal(classData, type, onDone) {
         <label class="block text-sm font-medium text-gray-700 mb-1">ชื่องาน <span class="text-red-400">*</span></label>
         <input id="acol-name" type="text" placeholder="เช่น งานที่ 1"
           class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-${clr}-400"/>
+        <button type="button" id="acol-quick-adj" class="mt-1 text-xs text-teal-600 hover:text-teal-800 underline">⚡ ปรับคะแนนเก็บ (คะแนนเต็มกำหนดเอง)</button>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -2033,6 +2032,11 @@ function _openAddColumnModal(classData, type, onDone) {
   </div>`
   document.body.appendChild(modal)
   modal.querySelector('#acol-sheet')?.addEventListener('input', e => { e.target.value = e.target.value.toUpperCase() })
+  modal.querySelector('#acol-quick-adj').addEventListener('click', () => {
+    modal.querySelector('#acol-name').value = `ปรับคะแนนเก็บ (${label})`
+    const maxInp = modal.querySelector('#acol-max')
+    maxInp.focus(); maxInp.select()
+  })
   modal.querySelector('#acol-cancel').addEventListener('click', () => modal.remove())
   // ไม่ปิดด้วย backdrop click
   modal.querySelector('#acol-save').addEventListener('click', async () => {

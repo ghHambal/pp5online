@@ -751,6 +751,7 @@ export async function getStudentScores(classId) {
 export async function saveStudentScore(classId, studentId, columnId, score, opts = {}) {
   // opts.delta: true = score is +/- delta, false/undefined = absolute set
   // opts.currentHistory: existing history array (for delta mode)
+  // opts.max: max_score ของคอลัมน์ (ถ้ามี) — ใช้ตัดคะแนนไม่ให้เกิน/ติดลบ
   const raw = String(score ?? '').trim()
   if (raw === '' || score === null) {
     await supabase.from('student_scores').delete()
@@ -772,7 +773,12 @@ export async function saveStudentScore(classId, studentId, columnId, score, opts
     history = [entry]
   }
 
-  const finalScore = Math.round(history.reduce((s, e) => s + e.d, 0) * 1000) / 1000
+  const rawFinal = Math.round(history.reduce((s, e) => s + e.d, 0) * 1000) / 1000
+  const max = typeof opts.max === 'number' && !isNaN(opts.max) ? opts.max : null
+  let finalScore = rawFinal
+  let clamped = false
+  if (finalScore < 0) { finalScore = 0; clamped = true }
+  if (max !== null && finalScore > max) { finalScore = max; clamped = true }
 
   const { error } = await supabase.from('student_scores')
     .upsert({ student_id: studentId, assignment_id: columnId,
@@ -781,7 +787,7 @@ export async function saveStudentScore(classId, studentId, columnId, score, opts
               score_history: history },
              { onConflict: 'student_id,assignment_id' })
   if (error) throw error
-  return { final: finalScore, history }
+  return { final: finalScore, history, clamped }
 }
 
 // ─── Prayer Records ───────────────────────────────────────────────────────────
