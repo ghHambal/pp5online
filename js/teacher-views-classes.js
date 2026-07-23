@@ -32,6 +32,7 @@ import { renderScoreColumns } from './teacher-score-columns.js'
 import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
 import { renderGradesGrid } from './teacher-views-grades.js'
 import { renderAttendanceGrid } from './teacher-views-attendance.js'
+import { openTimerModal } from './timer-overlay.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
   SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS,
@@ -1307,6 +1308,11 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
             🎲 <span>สุ่มรายชื่อ</span>
           </button>
+          <button onclick="window._openTimerModal(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+            style="background:linear-gradient(135deg,#0ea5e9,#6366f1);">
+            ⏱️ <span>จับเวลา</span>
+          </button>
           <button onclick="window._openClassFlashcardsModal(${classId})"
             class="cd-action-btn flex-shrink-0 px-3 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-700 transition flex items-center gap-1.5">
             🃏 <span>บัตรคำศัพท์</span>
@@ -1382,6 +1388,11 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       } catch (err) {
         showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ', 'error')
       }
+    }
+    window._openTimerModal = (cid) => {
+      const c = window._classCache?.[cid]
+      if (!c) return
+      openTimerModal(cid, c, isDonorTeacher)
     }
     window._openClassFlashcardsModal = async (cid) => {
       const c = window._classCache?.[cid]

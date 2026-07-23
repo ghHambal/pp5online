@@ -2243,6 +2243,7 @@ export async function renderSettings() {
     cfg.feedbackQuotaStudent = cfg.feedbackQuotaStudent || '3'
     cfg.freeAttendanceScanLimit = cfg.freeAttendanceScanLimit || '2'
     cfg.freeRandomPickerLimit = cfg.freeRandomPickerLimit || '1'
+    cfg.freeTimerLimit = cfg.freeTimerLimit || '1'
     cfg.freeDashboardLimit = cfg.freeDashboardLimit || '0'
     cfg.freePromptAiLimit = cfg.freePromptAiLimit || '1'
     // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
@@ -2580,6 +2581,8 @@ export async function renderSettings() {
                 hint:'จำนวนครั้งต่อสัปดาห์ที่ครูทั่วไปสามารถใช้กล้องสแกน QR Code เช็คชื่อได้ (ค่าเริ่มต้นคือ 2)' },
               { key:'freeRandomPickerLimit', label:'สุ่มรายชื่อนักเรียน (ครั้งตลอดชีพ)', type:'text', placeholder:'1',
                 hint:'จำนวนครั้งทั้งหมดที่ครูทั่วไปสามารถทดลองสุ่มรายชื่อได้ (ค่าเริ่มต้นคือ 1)' },
+              { key:'freeTimerLimit', label:'จับเวลาเต็มจอ (ครั้งตลอดชีพ)', type:'text', placeholder:'1',
+                hint:'จำนวนครั้งทั้งหมดที่ครูทั่วไปสามารถทดลองใช้ฟีเจอร์จับเวลาเต็มจอได้ (ค่าเริ่มต้นคือ 1)' },
               { key:'freeDashboardLimit', label:'เข้าดูแดชบอร์ดห้องเรียน (ครั้ง/สัปดาห์)', type:'text', placeholder:'0',
                 hint:'จำนวนครั้งต่อสัปดาห์ที่ครูทั่วไปสามารถเข้าดูหน้า Dashboard ได้ (ใส่ 0 หรือเว้นว่างเพื่อไม่ให้ดูฟรีเลย)' },
               { key:'freePromptAiLimit', label:'สร้าง Prompt AI (ครั้งตลอดชีพ)', type:'text', placeholder:'1',
