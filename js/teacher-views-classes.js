@@ -21,6 +21,7 @@ import {
   getFlashcardDecks, getClassSessionDOWs, updateClassStudentSpecialResult,
   logQrReissue, getQrReissueLogs, updateQrReissueLog, deleteQrReissueLog,
   getClassScoreSummary,
+  getAttendanceByDate,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -2478,43 +2479,32 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
   }
 
   function renderGroupSetupForm() {
-    const genderValues = new Set(students.map(s => s.gender).filter(Boolean))
-    const showGenderOption = genderValues.size > 1
+    let poolMode = 'all' // 'all' | 'present' | 'manual'
+    let presentIds = null // Set, lazy-loaded on first switch to 'present'
+    let manualSelectedIds = new Set(students.map(s => s.id))
+    let gmode = 'count'
+
+    const getActiveStudents = () => {
+      if (poolMode === 'present') return presentIds ? students.filter(s => presentIds.has(s.id)) : []
+      if (poolMode === 'manual') return students.filter(s => manualSelectedIds.has(s.id))
+      return students
+    }
 
     body.innerHTML = `
-      <div class="flex items-center gap-2 mb-3">
-        <button class="rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition" data-gmode="count">📦 กำหนดจำนวนกลุ่ม</button>
-        <button class="rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition" data-gmode="size">👤 กำหนดคนต่อกลุ่ม</button>
+      <div class="mb-3">
+        <p class="text-xs font-semibold text-gray-500 mb-1.5">นักเรียนที่จะจัดกลุ่ม</p>
+        <div class="flex gap-1.5">
+          <button data-pool="all" class="rp-pool-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition">👥 ทั้งห้อง</button>
+          <button data-pool="present" class="rp-pool-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition">✅ มาวันนี้</button>
+          <button data-pool="manual" class="rp-pool-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition">✍️ เลือกเอง</button>
+        </div>
+        <p id="rp-pool-info" class="text-[11px] text-gray-400 mt-1.5"></p>
+        <div id="rp-pool-manual-list" class="hidden mt-2 max-h-40 overflow-y-auto border border-gray-100 rounded-xl p-2"></div>
       </div>
-      <div class="flex items-center gap-2 mb-3">
-        <input id="rp-gnum" type="number" min="1" max="${students.length}" value="4"
-          class="${INPUT_CLS} w-24 flex-shrink-0 text-center font-bold text-lg" />
-        <span id="rp-gnum-label" class="text-xs text-gray-400">กลุ่ม (จากทั้งหมด ${students.length} คน)</span>
-      </div>
-      ${showGenderOption ? `
-      <label class="flex items-start gap-2.5 mb-4 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50/60 cursor-pointer">
-        <input id="rp-gender-split" type="checkbox" class="mt-0.5 w-4 h-4 rounded accent-pink-500" />
-        <span class="text-xs text-gray-600 leading-relaxed">⚧ <strong>แยกกลุ่มตามเพศ</strong> — แต่ละกลุ่มจะมีนักเรียนเพศเดียวกันเท่านั้น (ไม่ติ๊ก = คละเพศได้ในกลุ่มเดียวกัน)</span>
-      </label>` : ''}
+      <div id="rp-count-section"></div>
       <button id="rp-group-go" class="w-full py-3.5 rounded-2xl text-white font-bold text-base shadow-lg transition active:scale-[0.98] mb-4"
         style="background:linear-gradient(135deg,#f59e0b,#ec4899);">🎲 จัดกลุ่มเลย!</button>
     `
-    let gmode = 'count'
-    const btns = [...body.querySelectorAll('.rp-gmode-btn')]
-    const setGmode = (mode) => {
-      gmode = mode
-      btns.forEach(b => {
-        const on = b.dataset.gmode === mode
-        b.className = `rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition ${on ? 'border-pink-300 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
-      })
-      const label = body.querySelector('#rp-gnum-label')
-      label.textContent = mode === 'count'
-        ? `กลุ่ม (จากทั้งหมด ${students.length} คน)`
-        : `คน/กลุ่ม (จากทั้งหมด ${students.length} คน)`
-      body.querySelector('#rp-gnum').value = 4
-    }
-    btns.forEach(b => b.addEventListener('click', () => setGmode(b.dataset.gmode)))
-    setGmode('count')
 
     const shuffle = (arr) => {
       const a = [...arr]
@@ -2524,8 +2514,8 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
       }
       return a
     }
-    const buildGroups = (pool, n) => {
-      const shuffled = shuffle(pool)
+    const buildGroups = (poolArr, n) => {
+      const shuffled = shuffle(poolArr)
       if (!shuffled.length) return []
       if (gmode === 'count') {
         const groupCount = Math.min(n, shuffled.length)
@@ -2539,6 +2529,109 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
       return out
     }
 
+    const renderCountSection = () => {
+      const activeStudents = getActiveStudents()
+      const genderValues = new Set(activeStudents.map(s => s.gender).filter(Boolean))
+      const showGenderOption = genderValues.size > 1
+      const section = body.querySelector('#rp-count-section')
+      section.innerHTML = `
+        <div class="flex items-center gap-2 mb-3">
+          <button class="rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition" data-gmode="count">📦 กำหนดจำนวนกลุ่ม</button>
+          <button class="rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition" data-gmode="size">👤 กำหนดคนต่อกลุ่ม</button>
+        </div>
+        <div class="flex items-center gap-2 mb-3">
+          <input id="rp-gnum" type="number" min="1" max="${Math.max(1, activeStudents.length)}" value="4"
+            class="${INPUT_CLS} w-24 flex-shrink-0 text-center font-bold text-lg" />
+          <span id="rp-gnum-label" class="text-xs text-gray-400">กลุ่ม (จากทั้งหมด ${activeStudents.length} คน)</span>
+        </div>
+        ${showGenderOption ? `
+        <label class="flex items-start gap-2.5 mb-4 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50/60 cursor-pointer">
+          <input id="rp-gender-split" type="checkbox" class="mt-0.5 w-4 h-4 rounded accent-pink-500" />
+          <span class="text-xs text-gray-600 leading-relaxed">⚧ <strong>แยกกลุ่มตามเพศ</strong> — แต่ละกลุ่มจะมีนักเรียนเพศเดียวกันเท่านั้น (ไม่ติ๊ก = คละเพศได้ในกลุ่มเดียวกัน)</span>
+        </label>` : ''}
+      `
+      const btns = [...section.querySelectorAll('.rp-gmode-btn')]
+      const setGmode = (mode) => {
+        gmode = mode
+        btns.forEach(b => {
+          const on = b.dataset.gmode === mode
+          b.className = `rp-gmode-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition ${on ? 'border-pink-300 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
+        })
+        const label = section.querySelector('#rp-gnum-label')
+        label.textContent = mode === 'count'
+          ? `กลุ่ม (จากทั้งหมด ${activeStudents.length} คน)`
+          : `คน/กลุ่ม (จากทั้งหมด ${activeStudents.length} คน)`
+        section.querySelector('#rp-gnum').value = 4
+      }
+      btns.forEach(b => b.addEventListener('click', () => setGmode(b.dataset.gmode)))
+      setGmode('count')
+    }
+
+    const updatePoolInfo = () => {
+      const info = body.querySelector('#rp-pool-info')
+      const n = getActiveStudents().length
+      if (poolMode === 'all') info.textContent = `ทั้งห้อง ${students.length} คน`
+      else if (poolMode === 'present') info.textContent = presentIds === null
+        ? 'กำลังโหลดข้อมูลเช็คชื่อวันนี้...'
+        : `มาเรียนวันนี้ ${n} คน${n === 0 ? ' (ยังไม่ได้เช็คชื่อวันนี้ หรือทุกคนขาด/ลา)' : ''}`
+      else info.textContent = `เลือกไว้ ${n} คน`
+    }
+
+    const renderManualList = () => {
+      const listEl = body.querySelector('#rp-pool-manual-list')
+      listEl.innerHTML = `
+        <div class="flex justify-end gap-2 mb-1.5">
+          <button id="rp-manual-all" type="button" class="text-[11px] text-indigo-500 hover:underline">เลือกทั้งหมด</button>
+          <button id="rp-manual-none" type="button" class="text-[11px] text-gray-400 hover:underline">ไม่เลือกเลย</button>
+        </div>
+        ${students.map(s => `
+          <label class="flex items-center gap-2 py-1 px-1 rounded-lg hover:bg-gray-50 cursor-pointer">
+            <input type="checkbox" class="rp-manual-cb w-3.5 h-3.5 rounded" data-sid="${s.id}" ${manualSelectedIds.has(s.id) ? 'checked' : ''} />
+            <span class="text-xs text-gray-700 truncate">${_htmlEsc(s.full_name)}</span>
+          </label>
+        `).join('')}
+      `
+      listEl.querySelector('#rp-manual-all').addEventListener('click', () => {
+        manualSelectedIds = new Set(students.map(s => s.id))
+        renderManualList(); updatePoolInfo(); renderCountSection()
+      })
+      listEl.querySelector('#rp-manual-none').addEventListener('click', () => {
+        manualSelectedIds = new Set()
+        renderManualList(); updatePoolInfo(); renderCountSection()
+      })
+      listEl.querySelectorAll('.rp-manual-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const sid = parseInt(cb.dataset.sid, 10)
+          if (cb.checked) manualSelectedIds.add(sid); else manualSelectedIds.delete(sid)
+          updatePoolInfo(); renderCountSection()
+        })
+      })
+    }
+
+    const selectPool = async (key) => {
+      poolMode = key
+      body.querySelectorAll('.rp-pool-btn').forEach(b => {
+        const on = b.dataset.pool === key
+        b.className = `rp-pool-btn flex-1 py-2 rounded-xl border text-xs font-semibold transition ${on ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
+      })
+      body.querySelector('#rp-pool-manual-list').classList.toggle('hidden', key !== 'manual')
+      if (key === 'manual') renderManualList()
+      if (key === 'present' && presentIds === null) {
+        updatePoolInfo()
+        try {
+          const todayStr = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10)
+          const records = await getAttendanceByDate(classId, todayStr)
+          presentIds = new Set(records.filter(r => r.status === 'present' || r.status === 'late').map(r => r.student_id))
+        } catch {
+          presentIds = new Set()
+        }
+      }
+      updatePoolInfo()
+      renderCountSection()
+    }
+    body.querySelectorAll('.rp-pool-btn').forEach(b => b.addEventListener('click', () => selectPool(b.dataset.pool)))
+    selectPool('all')
+
     body.querySelector('#rp-group-go').addEventListener('click', () => {
       if (!isDonorTeacher) {
         const randomCount = parseInt(localStorage.getItem('pp5_free_random_count') || '0', 10)
@@ -2548,22 +2641,25 @@ async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
         }
         localStorage.setItem('pp5_free_random_count', String(randomCount + 1))
       }
+      const activeStudents = getActiveStudents()
+      if (!activeStudents.length) { showToast('ยังไม่มีนักเรียนในกลุ่มที่เลือกไว้', 'warning'); return }
+
       const n = Math.max(1, parseInt(body.querySelector('#rp-gnum').value, 10) || 1)
-      const splitByGender = showGenderOption && body.querySelector('#rp-gender-split')?.checked
+      const splitByGender = !!body.querySelector('#rp-gender-split')?.checked
 
       let pools
       if (splitByGender) {
         pools = [
-          students.filter(s => s.gender === 'ชาย'),
-          students.filter(s => s.gender === 'หญิง'),
-          students.filter(s => s.gender !== 'ชาย' && s.gender !== 'หญิง'),
+          activeStudents.filter(s => s.gender === 'ชาย'),
+          activeStudents.filter(s => s.gender === 'หญิง'),
+          activeStudents.filter(s => s.gender !== 'ชาย' && s.gender !== 'หญิง'),
         ].filter(p => p.length)
       } else {
-        pools = [students]
+        pools = [activeStudents]
       }
 
       let no = 1
-      currentGroups = pools.flatMap(pool => buildGroups(pool, n).map(items => ({ no: no++, items })))
+      currentGroups = pools.flatMap(poolArr => buildGroups(poolArr, n).map(items => ({ no: no++, items })))
       renderGroupsResult()
       persistGroups()
     })
