@@ -1293,50 +1293,53 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
           </div>
         </div>
 
-        <!-- Row 2: action buttons (scrollable on mobile) -->
+        <!-- Row 2: action button groups (scrollable on mobile) -->
         <div class="flex gap-2 pb-3 overflow-x-auto no-scrollbar">
-          <button onclick="window._openPP5Doc(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-xl hover:bg-violet-700 transition flex items-center gap-1.5">
-            💾 <span class="hidden xs:inline">ปพ.5</span><span class="xs:hidden">ปพ.5</span>
-          </button>
-          <button onclick="window._openExamDocsForClass(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 transition flex items-center gap-1.5">
-            🧾 <span>เอกสารสอบ</span>
-          </button>
-          <button onclick="window._openRandomPickerModal(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
-            style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
-            🎲 <span>สุ่มรายชื่อ</span>
-          </button>
-          <button onclick="window._openTimerModal(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
-            style="background:linear-gradient(135deg,#0ea5e9,#6366f1);">
-            ⏱️ <span>จับเวลา</span>
-          </button>
-          <button onclick="window._openClassFlashcardsModal(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-700 transition flex items-center gap-1.5">
-            🃏 <span>บัตรคำศัพท์</span>
-          </button>
-          <button onclick="window._openPromptGenModal(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-cyan-600 text-white text-xs font-semibold rounded-xl hover:bg-cyan-700 transition flex items-center gap-1.5">
-            ✍️ <span>Prompt AI</span>
-          </button>
-          ${cls.google_sheet_id ? `
-          <button onclick="window._openSheetToolsModal(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl hover:bg-teal-700 transition flex items-center gap-1.5">
-            ⚙️ <span>จัดการชีท</span>
-          </button>` : copyTemplate?.id ? `
-          <button onclick="window._openClassCopyModal(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-amber-500 text-white text-xs font-semibold rounded-xl hover:bg-amber-600 transition flex items-center gap-1.5">
-            🔗 <span>ทำสำเนาชีท</span>
-          </button>` : ''}
+          <div class="cd-action-group relative flex-shrink-0" data-group="docs">
+            <button onclick="window._toggleActionGroup(event,'docs')"
+              class="cd-action-btn px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-lg hover:bg-violet-700 transition flex items-center gap-1.5">
+              📄 <span>เอกสาร</span> <span class="text-[9px] opacity-70">▾</span>
+            </button>
+            <div class="cd-action-dropdown hidden absolute top-full left-0 mt-1 z-20 bg-white rounded-lg shadow-xl border border-gray-100 py-1 min-w-[160px]">
+              <button onclick="window._closeActionGroups();window._openPP5Doc(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">💾 ปพ.5</button>
+              <button onclick="window._closeActionGroups();window._openExamDocsForClass(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">🧾 เอกสารสอบ</button>
+              ${cls.google_sheet_id ? `
+              <button onclick="window._closeActionGroups();window._openSheetToolsModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">⚙️ จัดการชีท</button>` : copyTemplate?.id ? `
+              <button onclick="window._closeActionGroups();window._openClassCopyModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">🔗 ทำสำเนาชีท</button>` : ''}
+            </div>
+          </div>
+
+          <div class="cd-action-group relative flex-shrink-0" data-group="tools">
+            <button onclick="window._toggleActionGroup(event,'tools')"
+              class="cd-action-btn px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+              style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
+              🛠️ <span>เครื่องมือห้องเรียน</span> <span class="text-[9px] opacity-70">▾</span>
+            </button>
+            <div class="cd-action-dropdown hidden absolute top-full left-0 mt-1 z-20 bg-white rounded-lg shadow-xl border border-gray-100 py-1 min-w-[160px]">
+              <button onclick="window._closeActionGroups();window._openRandomPickerModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-amber-50 flex items-center gap-2">🎲 สุ่มรายชื่อ</button>
+              <button onclick="window._closeActionGroups();window._openTimerModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-amber-50 flex items-center gap-2">⏱️ จับเวลา</button>
+            </div>
+          </div>
+
+          <div class="cd-action-group relative flex-shrink-0" data-group="assist">
+            <button onclick="window._toggleActionGroup(event,'assist')"
+              class="cd-action-btn px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+              style="background:linear-gradient(135deg,#6366f1,#06b6d4);">
+              🤖 <span>ผู้ช่วยครู</span> <span class="text-[9px] opacity-70">▾</span>
+            </button>
+            <div class="cd-action-dropdown hidden absolute top-full left-0 mt-1 z-20 bg-white rounded-lg shadow-xl border border-gray-100 py-1 min-w-[160px]">
+              <button onclick="window._closeActionGroups();window._openClassFlashcardsModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-indigo-50 flex items-center gap-2">🃏 บัตรคำศัพท์</button>
+              <button onclick="window._closeActionGroups();window._openPromptGenModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-indigo-50 flex items-center gap-2">✍️ Prompt AI</button>
+            </div>
+          </div>
+
           <div class="flex-shrink-0 w-px bg-gray-200 my-0.5"></div>
           <button onclick="window._openCombinedEdit2(${classId})"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-xl hover:bg-gray-50 transition flex items-center gap-1.5">
+            class="cd-action-btn flex-shrink-0 px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 transition flex items-center gap-1.5">
             ✏️ <span>แก้ไข</span>
           </button>
           <button onclick="event.stopPropagation();window._deleteClass(${classId},'${(cls.class_name??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"
-            class="cd-action-btn flex-shrink-0 px-3 py-2 border border-red-100 text-red-400 text-xs font-semibold rounded-xl hover:bg-red-50 transition flex items-center gap-1.5">
+            class="cd-action-btn flex-shrink-0 px-3 py-2 border border-red-100 text-red-400 text-xs font-semibold rounded-lg hover:bg-red-50 transition flex items-center gap-1.5">
             🗑️ <span>ลบ</span>
           </button>
         </div>
@@ -1370,6 +1373,22 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     const tabContent = () => document.getElementById('cd-tab-content')
     window._backToClasses = () => {
       renderMyClasses(teacher)
+    }
+    window._closeActionGroups = () => {
+      document.querySelectorAll('.cd-action-dropdown').forEach(dd => dd.classList.add('hidden'))
+    }
+    window._toggleActionGroup = (ev, key) => {
+      ev.stopPropagation()
+      const group = document.querySelector(`.cd-action-group[data-group="${key}"]`)
+      const dd = group?.querySelector('.cd-action-dropdown')
+      if (!dd) return
+      const willOpen = dd.classList.contains('hidden')
+      window._closeActionGroups()
+      if (willOpen) dd.classList.remove('hidden')
+    }
+    if (!window._cdActionGroupListenerAttached) {
+      document.addEventListener('click', () => window._closeActionGroups())
+      window._cdActionGroupListenerAttached = true
     }
     window._openPP5Doc    = (cid) => openPP5Doc(cid)
     window._openExamDocsForClass = (cid) => _openExamDocsForClass(cid)
