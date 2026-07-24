@@ -1,20 +1,41 @@
 // js/score-qr-scanner.js — 📷 สแกน QR นักเรียนเพื่อบันทึกคะแนนแบบต่อเนื่อง
 // ใช้ QR ใบเดียวกับเช็คชื่อ/สแกนละหมาด (รูปแบบ SQ:{student_code}:{timestamp}, อายุ ±60 วินาที)
-// เฉพาะคอลัมน์ที่ไม่ใช่คะแนนอัตโนมัติ (column_type ต้องเป็น regular/bonus และไม่ใช่ชื่อคอลัมน์ระบบกลาง)
-import { getClassStudents, getScoreColumns, getStudentScores, saveStudentScore, getMyClasses, getLifeSkillColumns, getSystemConfig } from './api.js'
+// เฉพาะคอลัมน์ที่ไม่ใช่คะแนนอัตโนมัติ (column_type ต้องเป็น regular/bonus และไม่ใช่คอลัมน์ระบบกลางของ "ห้องนี้โดยเฉพาะ")
+import { getClassStudents, getScoreColumns, getStudentScores, saveStudentScore, getMyClasses, getLifeSkillColumns, getSystemConfig, getClassByIdFull } from './api.js'
 import { showToast } from './ui.js'
 
-// ชื่อคอลัมน์คะแนนอัตโนมัติที่รู้จักตายตัว — ศาสนา (_RELIGION_REQUIRED_COLUMNS ใน api.js)
-// + ทักษะชีวิต (แถวเริ่มต้นของตาราง life_skill_columns) กันไว้ก่อนแม้ query แถวจริงจะพลาด
-const AUTO_COLUMN_NAMES = ['คะแนนมาเรียน', 'คะแนนละหมาด', 'การมาเรียน', 'เดินสวนสนาม', 'ความสะอาด']
-
-export function isEligibleScoreColumn(col, extraExcludedNames = []) {
+// สำคัญ: ชื่อคอลัมน์อัตโนมัติ (เช่น "การมาเรียน") เป็นวลีธรรมดาที่ครูวิชาอื่นอาจตั้งชื่อคอลัมน์ของตัวเอง
+// ซ้ำกันได้โดยบังเอิญ — ห้าม exclude แบบ global ตามชื่ออย่างเดียว ต้องเช็คบริบทห้อง (skill_group/subject_group)
+// ก่อนเสมอ ว่าห้องนี้เป็นห้องศาสนา/ทักษะชีวิตจริงไหม ถึงจะ exclude ชื่อกลุ่มนั้น (ดู _buildExcludedNames)
+export function isEligibleScoreColumn(col, excludedNames = []) {
   if (!col) return false
   const type = col.column_type ?? 'regular'
   if (type !== 'regular' && type !== 'bonus') return false
-  if (AUTO_COLUMN_NAMES.includes(col.assignment_name)) return false
-  if (extraExcludedNames.includes(col.assignment_name)) return false
+  if (excludedNames.includes(col.assignment_name)) return false
   return true
+}
+
+async function _buildExcludedNames(classId) {
+  const excluded = []
+  try {
+    const classInfo = await getClassByIdFull(classId)
+    const subjectGroup = classInfo?.master_subjects?.subject_group
+    const skillGroup = classInfo?.skill_group
+    if (['AGM', 'AGMVOC'].includes(subjectGroup)) {
+      excluded.push('คะแนนมาเรียน', 'คะแนนละหมาด')
+    }
+    if (skillGroup === 'ชีวิต') {
+      excluded.push('การมาเรียน', 'เดินสวนสนาม', 'ความสะอาด')
+      try {
+        const sysCfg = await getSystemConfig()
+        const ay  = parseInt(sysCfg.academicYear ?? 2568)
+        const sem = parseInt(sysCfg.semester ?? 1)
+        const lsCols = await getLifeSkillColumns(ay, sem, 'สามัญ')
+        lsCols.forEach(c => { if (!excluded.includes(c.name)) excluded.push(c.name) })
+      } catch { /* ใช้รายชื่อ static ที่กันไว้แล้วด้านบนต่อไปได้ */ }
+    }
+  } catch { /* หาบริบทห้องไม่ได้ — ไม่ exclude อะไรเพิ่ม ปล่อยให้ column_type filter ทำงานตามปกติ */ }
+  return excluded
 }
 
 function _playScanBeep(type = 'success') {
@@ -89,22 +110,19 @@ export async function openScoreScannerPickClass(teacher) {
 // จุดเข้าใช้งานหลัก — opts: { classId, className, initialColumnId? }
 export async function openScoreScanner(opts) {
   const { classId, className } = opts
-  let students = [], columns = [], lifeSkillNames = []
+  let students = [], columns = [], excludedNames = []
   try {
-    const sysCfg = await getSystemConfig().catch(() => ({}))
-    const ay  = parseInt(sysCfg.academicYear ?? 2568)
-    const sem = parseInt(sysCfg.semester ?? 1)
-    ;[students, columns, lifeSkillNames] = await Promise.all([
+    ;[students, columns, excludedNames] = await Promise.all([
       getClassStudents(classId),
       getScoreColumns(classId),
-      getLifeSkillColumns(ay, sem, 'สามัญ').then(cols => cols.map(c => c.name)).catch(() => []),
+      _buildExcludedNames(classId),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลห้องไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     return
   }
   if (!students.length) { showToast('ห้องนี้ยังไม่มีนักเรียน', 'warning'); return }
-  const eligibleCols = columns.filter(c => isEligibleScoreColumn(c, lifeSkillNames))
+  const eligibleCols = columns.filter(c => isEligibleScoreColumn(c, excludedNames))
   if (!eligibleCols.length) {
     showToast('ห้องนี้มีแต่คอลัมน์คะแนนอัตโนมัติ (เช่น คะแนนมาเรียน/คะแนนละหมาด/ทักษะชีวิต) ยังไม่มีคอลัมน์ที่ครูสร้างเองให้สแกนบันทึกได้ — เพิ่มคอลัมน์คะแนนใหม่ที่หน้าบันทึกคะแนนก่อนครับ', 'warning')
     return
