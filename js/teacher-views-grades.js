@@ -918,7 +918,7 @@ export async function renderGradesGrid(teacher, classData) {
       // ── Add override column ──
       modal.querySelector('#mcm-add-override')?.addEventListener('click', () => {
         document.getElementById('quick-add-override-mcm')?.remove()
-        const midtermCols = regularCols.filter(c => c.assignment_type === 'กลางภาค')
+        const midtermCols = regularCols.filter(c => c.assignment_type === 'กลางภาค' || c.assignment_type === 'midterm')
         const pop = document.createElement('div')
         pop.id = 'quick-add-override-mcm'
         pop.className = 'fixed inset-0 z-[700] flex items-center justify-center bg-black/40 p-4'

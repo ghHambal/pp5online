@@ -545,7 +545,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       }
       if (isOverride) {
         const linkSelect = document.getElementById('sc-link-col')
-        const midtermCols = regular.filter(c => c.assignment_type === 'กลางภาค')
+        const midtermCols = regular.filter(c => c.assignment_type === 'กลางภาค' || c.assignment_type === 'midterm')
         linkSelect.innerHTML = '<option value="">— เลือกคอลัมน์ —</option>' +
           midtermCols.map(c => `<option value="${c.id}">${c.assignment_name} (เต็ม ${c.max_score ?? '—'})</option>`).join('')
         linkSelect.value = ''
