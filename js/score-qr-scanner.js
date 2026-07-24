@@ -1,16 +1,19 @@
 // js/score-qr-scanner.js — 📷 สแกน QR นักเรียนเพื่อบันทึกคะแนนแบบต่อเนื่อง
 // ใช้ QR ใบเดียวกับเช็คชื่อ/สแกนละหมาด (รูปแบบ SQ:{student_code}:{timestamp}, อายุ ±60 วินาที)
 // เฉพาะคอลัมน์ที่ไม่ใช่คะแนนอัตโนมัติ (column_type ต้องเป็น regular/bonus และไม่ใช่ชื่อคอลัมน์ระบบกลาง)
-import { getClassStudents, getScoreColumns, getStudentScores, saveStudentScore, getMyClasses } from './api.js'
+import { getClassStudents, getScoreColumns, getStudentScores, saveStudentScore, getMyClasses, getLifeSkillColumns, getSystemConfig } from './api.js'
 import { showToast } from './ui.js'
 
-const AUTO_COLUMN_NAMES = ['คะแนนมาเรียน', 'คะแนนละหมาด']
+// ชื่อคอลัมน์คะแนนอัตโนมัติที่รู้จักตายตัว — ศาสนา (_RELIGION_REQUIRED_COLUMNS ใน api.js)
+// + ทักษะชีวิต (แถวเริ่มต้นของตาราง life_skill_columns) กันไว้ก่อนแม้ query แถวจริงจะพลาด
+const AUTO_COLUMN_NAMES = ['คะแนนมาเรียน', 'คะแนนละหมาด', 'การมาเรียน', 'เดินสวนสนาม', 'ความสะอาด']
 
-export function isEligibleScoreColumn(col) {
+export function isEligibleScoreColumn(col, extraExcludedNames = []) {
   if (!col) return false
   const type = col.column_type ?? 'regular'
   if (type !== 'regular' && type !== 'bonus') return false
   if (AUTO_COLUMN_NAMES.includes(col.assignment_name)) return false
+  if (extraExcludedNames.includes(col.assignment_name)) return false
   return true
 }
 
@@ -86,20 +89,24 @@ export async function openScoreScannerPickClass(teacher) {
 // จุดเข้าใช้งานหลัก — opts: { classId, className, initialColumnId? }
 export async function openScoreScanner(opts) {
   const { classId, className } = opts
-  let students = [], columns = []
+  let students = [], columns = [], lifeSkillNames = []
   try {
-    ;[students, columns] = await Promise.all([
+    const sysCfg = await getSystemConfig().catch(() => ({}))
+    const ay  = parseInt(sysCfg.academicYear ?? 2568)
+    const sem = parseInt(sysCfg.semester ?? 1)
+    ;[students, columns, lifeSkillNames] = await Promise.all([
       getClassStudents(classId),
       getScoreColumns(classId),
+      getLifeSkillColumns(ay, sem, 'สามัญ').then(cols => cols.map(c => c.name)).catch(() => []),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลห้องไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     return
   }
   if (!students.length) { showToast('ห้องนี้ยังไม่มีนักเรียน', 'warning'); return }
-  const eligibleCols = columns.filter(isEligibleScoreColumn)
+  const eligibleCols = columns.filter(c => isEligibleScoreColumn(c, lifeSkillNames))
   if (!eligibleCols.length) {
-    showToast('ห้องนี้ยังไม่มีคอลัมน์คะแนนที่สแกนได้ (ต้องไม่ใช่คอลัมน์คะแนนอัตโนมัติ)', 'warning')
+    showToast('ห้องนี้มีแต่คอลัมน์คะแนนอัตโนมัติ (เช่น คะแนนมาเรียน/คะแนนละหมาด/ทักษะชีวิต) ยังไม่มีคอลัมน์ที่ครูสร้างเองให้สแกนบันทึกได้ — เพิ่มคอลัมน์คะแนนใหม่ที่หน้าบันทึกคะแนนก่อนครับ', 'warning')
     return
   }
   let currentColumnId = (opts.initialColumnId && eligibleCols.some(c => c.id === opts.initialColumnId))

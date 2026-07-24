@@ -9,7 +9,7 @@ import {
 } from './api.js'
 import { showToast } from './ui.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
-import { openScoreScanner, isEligibleScoreColumn } from './score-qr-scanner.js'
+import { openScoreScanner } from './score-qr-scanner.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade,
 } from './teacher-views-utils.js'
