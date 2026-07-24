@@ -1295,43 +1295,20 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
 
         <!-- Row 2: action button groups (scrollable on mobile) -->
         <div class="flex gap-2 pb-3 overflow-x-auto no-scrollbar">
-          <div class="cd-action-group relative flex-shrink-0" data-group="docs">
-            <button onclick="window._toggleActionGroup(event,'docs')"
-              class="cd-action-btn px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-lg hover:bg-violet-700 transition flex items-center gap-1.5">
-              📄 <span>เอกสาร</span> <span class="text-[9px] opacity-70">▾</span>
-            </button>
-            <div class="cd-action-dropdown hidden absolute top-full left-0 mt-1 z-20 bg-white rounded-lg shadow-xl border border-gray-100 py-1 min-w-[160px]">
-              <button onclick="window._closeActionGroups();window._openPP5Doc(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">💾 ปพ.5</button>
-              <button onclick="window._closeActionGroups();window._openExamDocsForClass(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">🧾 เอกสารสอบ</button>
-              ${cls.google_sheet_id ? `
-              <button onclick="window._closeActionGroups();window._openSheetToolsModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">⚙️ จัดการชีท</button>` : copyTemplate?.id ? `
-              <button onclick="window._closeActionGroups();window._openClassCopyModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-violet-50 flex items-center gap-2">🔗 ทำสำเนาชีท</button>` : ''}
-            </div>
-          </div>
-
-          <div class="cd-action-group relative flex-shrink-0" data-group="tools">
-            <button onclick="window._toggleActionGroup(event,'tools')"
-              class="cd-action-btn px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
-              style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
-              🛠️ <span>เครื่องมือห้องเรียน</span> <span class="text-[9px] opacity-70">▾</span>
-            </button>
-            <div class="cd-action-dropdown hidden absolute top-full left-0 mt-1 z-20 bg-white rounded-lg shadow-xl border border-gray-100 py-1 min-w-[160px]">
-              <button onclick="window._closeActionGroups();window._openRandomPickerModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-amber-50 flex items-center gap-2">🎲 สุ่มรายชื่อ</button>
-              <button onclick="window._closeActionGroups();window._openTimerModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-amber-50 flex items-center gap-2">⏱️ จับเวลา</button>
-            </div>
-          </div>
-
-          <div class="cd-action-group relative flex-shrink-0" data-group="assist">
-            <button onclick="window._toggleActionGroup(event,'assist')"
-              class="cd-action-btn px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
-              style="background:linear-gradient(135deg,#6366f1,#06b6d4);">
-              🤖 <span>ผู้ช่วยครู</span> <span class="text-[9px] opacity-70">▾</span>
-            </button>
-            <div class="cd-action-dropdown hidden absolute top-full left-0 mt-1 z-20 bg-white rounded-lg shadow-xl border border-gray-100 py-1 min-w-[160px]">
-              <button onclick="window._closeActionGroups();window._openClassFlashcardsModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-indigo-50 flex items-center gap-2">🃏 บัตรคำศัพท์</button>
-              <button onclick="window._closeActionGroups();window._openPromptGenModal(${classId})" class="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-indigo-50 flex items-center gap-2">✍️ Prompt AI</button>
-            </div>
-          </div>
+          <button onclick="window._openActionGroupPopup('docs')"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 bg-violet-600 text-white text-xs font-semibold rounded-lg hover:bg-violet-700 transition flex items-center gap-1.5">
+            📄 <span>เอกสาร</span>
+          </button>
+          <button onclick="window._openActionGroupPopup('tools')"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+            style="background:linear-gradient(135deg,#f59e0b,#ec4899);">
+            🛠️ <span>เครื่องมือห้องเรียน</span>
+          </button>
+          <button onclick="window._openActionGroupPopup('assist')"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+            style="background:linear-gradient(135deg,#6366f1,#06b6d4);">
+            🤖 <span>ผู้ช่วยครู</span>
+          </button>
 
           <div class="flex-shrink-0 w-px bg-gray-200 my-0.5"></div>
           <button onclick="window._openCombinedEdit2(${classId})"
@@ -1343,6 +1320,22 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             🗑️ <span>ลบ</span>
           </button>
         </div>
+
+        <template id="cd-group-tpl-docs">
+          <button onclick="window._closeActionGroupPopup();window._openPP5Doc(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">💾 ปพ.5</button>
+          <button onclick="window._closeActionGroupPopup();window._openExamDocsForClass(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">🧾 เอกสารสอบ</button>
+          ${cls.google_sheet_id ? `
+          <button onclick="window._closeActionGroupPopup();window._openSheetToolsModal(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">⚙️ จัดการชีท</button>` : copyTemplate?.id ? `
+          <button onclick="window._closeActionGroupPopup();window._openClassCopyModal(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">🔗 ทำสำเนาชีท</button>` : ''}
+        </template>
+        <template id="cd-group-tpl-tools">
+          <button onclick="window._closeActionGroupPopup();window._openRandomPickerModal(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">🎲 สุ่มรายชื่อ</button>
+          <button onclick="window._closeActionGroupPopup();window._openTimerModal(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">⏱️ จับเวลา</button>
+        </template>
+        <template id="cd-group-tpl-assist">
+          <button onclick="window._closeActionGroupPopup();window._openClassFlashcardsModal(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">🃏 บัตรคำศัพท์</button>
+          <button onclick="window._closeActionGroupPopup();window._openPromptGenModal(${classId})" class="w-full text-left px-3 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5 transition">✍️ Prompt AI</button>
+        </template>
 
         <!-- Row 3: tabs -->
         <div class="flex border-t border-gray-100">
@@ -1374,21 +1367,31 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     window._backToClasses = () => {
       renderMyClasses(teacher)
     }
-    window._closeActionGroups = () => {
-      document.querySelectorAll('.cd-action-dropdown').forEach(dd => dd.classList.add('hidden'))
+    const ACTION_GROUP_META = {
+      docs:   { title: '📄 เอกสาร',            grad: 'linear-gradient(135deg,#7c3aed,#6366f1)' },
+      tools:  { title: '🛠️ เครื่องมือห้องเรียน', grad: 'linear-gradient(135deg,#f59e0b,#ec4899)' },
+      assist: { title: '🤖 ผู้ช่วยครู',          grad: 'linear-gradient(135deg,#6366f1,#06b6d4)' },
     }
-    window._toggleActionGroup = (ev, key) => {
-      ev.stopPropagation()
-      const group = document.querySelector(`.cd-action-group[data-group="${key}"]`)
-      const dd = group?.querySelector('.cd-action-dropdown')
-      if (!dd) return
-      const willOpen = dd.classList.contains('hidden')
-      window._closeActionGroups()
-      if (willOpen) dd.classList.remove('hidden')
-    }
-    if (!window._cdActionGroupListenerAttached) {
-      document.addEventListener('click', () => window._closeActionGroups())
-      window._cdActionGroupListenerAttached = true
+    window._closeActionGroupPopup = () => document.getElementById('cd-action-popup')?.remove()
+    window._openActionGroupPopup = (key) => {
+      window._closeActionGroupPopup()
+      const tpl = document.getElementById(`cd-group-tpl-${key}`)
+      const meta = ACTION_GROUP_META[key]
+      if (!tpl || !meta) return
+      const m = document.createElement('div')
+      m.id = 'cd-action-popup'
+      m.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 animate-fade'
+      m.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+          <div style="background:${meta.grad}" class="px-4 py-3 flex items-center justify-between">
+            <h3 class="text-white font-bold text-sm">${meta.title}</h3>
+            <button id="cd-action-popup-close" class="text-white/90 hover:text-white text-2xl leading-none px-1">&times;</button>
+          </div>
+          <div class="p-2 flex flex-col gap-0.5">${tpl.innerHTML}</div>
+        </div>`
+      document.body.appendChild(m)
+      m.querySelector('#cd-action-popup-close').addEventListener('click', window._closeActionGroupPopup)
+      m.addEventListener('click', e => { if (e.target === m) window._closeActionGroupPopup() })
     }
     window._openPP5Doc    = (cid) => openPP5Doc(cid)
     window._openExamDocsForClass = (cid) => _openExamDocsForClass(cid)
