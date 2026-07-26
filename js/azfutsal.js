@@ -160,13 +160,15 @@ let S = {
   adminPaymentsLevel: 'MS',
   staffList: null,
 
-  identity: { session: null, profile: null, isAdmin: false, student: null, teacher: null },
+  identity: { session: null, profile: null, isAdmin: false, scopes: [], student: null, teacher: null },
+  staffScopeEdit: null, // { mode:'add'|'edit', id?, profile_id?, name, scopes:[] }
   config: {},
   teams: [],
   players: [],
   matches: { MS: [], HS: [] },
   matchEvents: [],
   checkins: [],
+  staffNames: {},
   awards: [],
   payments: [],
   loading: true,
@@ -176,20 +178,21 @@ function cfg(key, fallback = '') { return S.config[key] ?? fallback }
 
 async function loadAll() {
   const { data: { session } } = await SB.auth.getSession()
-  let profile = null, isAdmin = false, student = null, teacher = null
+  let profile = null, isAdmin = false, scopes = [], student = null, teacher = null
   if (session) {
     const { data: p } = await SB.from('profiles').select('id, role, user_code, is_also_admin').eq('id', session.user.id).maybeSingle()
     profile = p || null
     if (profile) {
-      const { data: adminRow } = await SB.from('azfutsal_admins').select('id').eq('profile_id', profile.id).maybeSingle()
-      isAdmin = !!adminRow
+      const { data: adminRow } = await SB.from('azfutsal_admins').select('id, scopes').eq('profile_id', profile.id).maybeSingle()
+      scopes = adminRow?.scopes || []
+      isAdmin = scopes.includes('full')
       const { data: st } = await SB.from('students').select('id, student_code, full_name, class_name, main_room').eq('profile_id', profile.id).maybeSingle()
       student = st || null
       const { data: tc } = await SB.from('teachers').select('id, full_name, teacher_code').eq('profile_id', profile.id).maybeSingle()
       teacher = tc || null
     }
   }
-  S.identity = { session, profile, isAdmin, student, teacher }
+  S.identity = { session, profile, isAdmin, scopes, student, teacher }
 
   const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }, { data: matchEvents }, { data: checkins }] = await Promise.all([
     SB.from('azfutsal_config').select('key, value'),
@@ -209,6 +212,20 @@ async function loadAll() {
   S.awards = awards || []
   S.matchEvents = matchEvents || []
   S.checkins = checkins || []
+
+  // ชื่อผู้รับรายงานตัว (สำหรับ "ปั๊มดิจิทัล") — ดึงเฉพาะ id ที่ปรากฏจริงใน checkins กันยิง query เปล่าๆ
+  const staffIds = [...new Set(S.checkins.map(c => c.checked_in_by).filter(Boolean))]
+  if (staffIds.length) {
+    const [{ data: staffTeachers }, { data: staffStudents }] = await Promise.all([
+      SB.from('teachers').select('profile_id, full_name').in('profile_id', staffIds),
+      SB.from('students').select('profile_id, full_name').in('profile_id', staffIds),
+    ])
+    S.staffNames = {}
+    ;(staffTeachers || []).forEach(t => { S.staffNames[t.profile_id] = t.full_name })
+    ;(staffStudents || []).forEach(st => { if (!S.staffNames[st.profile_id]) S.staffNames[st.profile_id] = st.full_name })
+  } else {
+    S.staffNames = {}
+  }
 
   // สถานะการชำระเงินเปิดอ่านสาธารณะ (ไม่มีข้อมูลอ่อนไหว) เพื่อให้แท็บ "สถานะทีม" ใช้ได้โดยไม่ต้อง login
   const { data: payments } = await SB.from('azfutsal_payments').select('*').order('created_at', { ascending: false })
@@ -393,6 +410,7 @@ function draw() {
         ${s.tab === 'summary' ? summaryView() : ''}
         ${s.tab === 'myteam' ? myTeamView() : ''}
         ${s.tab === 'admin' && s.identity.isAdmin ? adminView() : ''}
+        ${s.tab === 'staff' && !s.identity.isAdmin && (s.identity.scopes || []).length ? staffScopedView() : ''}
       </main>
       ${bottomNav()}
       ${s.certModalOpen ? certModal() : ''}
@@ -403,6 +421,7 @@ function draw() {
       ${s.rejectPaymentId ? rejectReasonModal() : ''}
       ${s.liveDraw ? liveDrawView() : ''}
       ${s.pendingConfirm ? confirmActionModal() : ''}
+      ${s.staffScopeEdit ? staffScopeModal() : ''}
     </div>
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
@@ -423,7 +442,7 @@ function header() {
         <button data-act="account" style="width:38px;height:38px;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#f3f4f6;color:#9ca3af" aria-label="บัญชี">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
         </button>
-        <button data-act="admin-gear" style="width:38px;height:38px;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;background:${s.identity.isAdmin ? '#db2777' : '#f3f4f6'};color:${s.identity.isAdmin ? '#fff' : '#9ca3af'}" aria-label="แอดมิน">
+        <button data-act="admin-gear" style="width:38px;height:38px;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;background:${s.identity.isAdmin || (s.identity.scopes || []).length ? '#db2777' : '#f3f4f6'};color:${s.identity.isAdmin || (s.identity.scopes || []).length ? '#fff' : '#9ca3af'}" aria-label="แอดมิน">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
       </div>
@@ -443,6 +462,14 @@ function bottomNav() {
     <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
       <div style="display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
         ${ADMIN_GROUPS.map(g => `<button data-act="adminGroup" data-v="${g.id}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 2px;cursor:pointer;color:${activeGroup === g.id ? '#db2777' : '#9ca3af'}"><span style="font-size:19px;line-height:1">${g.icon}</span><span style="font-size:10px;font-weight:${activeGroup === g.id ? 800 : 600}">${g.label}</span></button>`).join('')}
+      </div>
+    </nav>`
+  }
+  if (s.tab === 'staff') {
+    return `
+    <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+      <div style="padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
+        <button data-act="adminSignOut" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">ออกจากระบบ</button>
       </div>
     </nav>`
   }
@@ -512,6 +539,25 @@ function teamPlayerEventSummary(team) {
     .map(([pid, c]) => ({ name: playerName(pid), yellow: c.yellow, red: c.red }))
     .sort((a, b) => (b.yellow.length + b.red.length) - (a.yellow.length + a.red.length) || a.name.localeCompare(b.name, 'th'))
   return { goalList, cardList }
+}
+
+// "ปั๊มดิจิทัล" แสดงว่ารายงานตัวแล้ว พร้อมชื่อผู้รับรายงานตัวและเวลา (checked_in_by/checked_in_at จาก azfutsal_checkins)
+function checkinStamp(c) {
+  const name = c.checked_in_by ? (S.staffNames[c.checked_in_by] || 'เจ้าหน้าที่') : ''
+  const time = c.checked_in_at ? new Date(c.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''
+  return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:#16a34a;border:1.5px dashed #16a34a;border-radius:6px;padding:2px 7px;transform:rotate(-2deg);white-space:nowrap">✅ รายงานตัวแล้ว${name ? ` · รับโดย ${esc(name)}` : ''}${time ? ` · ${time}` : ''}</span>`
+}
+
+// สรุปสถานะรายงานตัวของทีมหนึ่งๆ สำหรับนัดหนึ่งๆ (เฉพาะฝั่งทีมตัวเอง ไม่ปนกับทีมคู่แข่ง)
+function teamCheckinLine(team, level, code) {
+  const roster = S.players.filter(p => p.team_id === team.id)
+  if (!roster.length) return ''
+  const checkedForMatch = S.checkins.filter(c => c.level === level && c.match_code === code && c.team_id === team.id)
+  if (!checkedForMatch.length) return `<div style="margin-top:6px;font-size:11px;color:#9ca3af">ยังไม่มีใครในทีมรายงานตัวสำหรับนัดนี้</div>`
+  const checkedIds = new Set(checkedForMatch.map(c => c.player_id))
+  const names = roster.filter(p => checkedIds.has(p.id)).map(p => p.students?.full_name || '').filter(Boolean)
+  const latest = [...checkedForMatch].sort((a, b) => new Date(b.checked_in_at) - new Date(a.checked_in_at))[0]
+  return `<div style="margin-top:6px">${checkinStamp(latest)}<div style="margin-top:4px;font-size:11px;color:#6b7280">รายงานตัวแล้ว: ${esc(names.join(', '))} (${names.length}/${roster.length} คน)</div></div>`
 }
 
 // ---------------- แบบฟอร์มพิมพ์สำรอง (ออฟไลน์) ----------------
@@ -721,7 +767,7 @@ function openCheckinScanner(level, code) {
     }
 
     const { error } = await SB.from('azfutsal_checkins').upsert(
-      { level, match_code: code, team_id: player.teamId, player_id: player.id },
+      { level, match_code: code, team_id: player.teamId, player_id: player.id, checked_in_by: S.identity.profile?.id || null, checked_in_at: new Date().toISOString() },
       { onConflict: 'level,match_code,player_id' },
     )
     if (error) {
@@ -801,6 +847,46 @@ function scheduleView() {
     </div>
     <div id="az-schedule-rows" style="display:flex;flex-direction:column;gap:10px">
       ${rows.length ? rows.map(matchCard).join('') : `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดที่ตรงกับตัวกรอง</div>`}
+    </div>
+  </section>`
+}
+
+// ---------------- หน้าสตาฟจำกัดสิทธิ์ (รับรายงานตัว / บันทึกผลการแข่งขัน) ----------------
+const SCOPE_OPTIONS = [
+  { key: 'full', label: 'สิทธิ์เต็มรูปแบบ (แอดมิน)', desc: 'เข้าถึงทุกส่วน: ทีม การเงิน ตั้งค่า ผลการแข่งขัน รายงานตัว' },
+  { key: 'checkin', label: 'รับรายงานตัว', desc: 'เปิดกล้องสแกน QR รายงานตัวนักกีฬาก่อนแข่งเท่านั้น' },
+  { key: 'result', label: 'บันทึกผลการแข่งขัน', desc: 'แก้ไขสกอร์ ผู้ทำประตู ใบเหลือง-แดงเท่านั้น' },
+]
+
+function staffMatchPickerRow(r, hasCheckin, hasResult) {
+  const t = T[r.level]
+  const canScan = hasCheckin && r.teamAId && r.teamBId
+  if (!canScan && !hasResult) return ''
+  return `
+  <div style="border:1px solid ${t.border};background:${t.soft};border-radius:12px;padding:10px 12px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${levelBadge(r.level)}<span style="font-size:11px;color:#9ca3af;font-weight:600">${esc(r.round)} · ${r.code}</span></div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px;overflow-wrap:break-word">${esc(r.teamA) || '<span style="color:#c1c5cc">รอผลรอบก่อน</span>'} vs ${esc(r.teamB) || '<span style="color:#c1c5cc">รอผลรอบก่อน</span>'}</div>
+    <div style="display:flex;gap:8px">
+      ${canScan ? `<button data-act="openCheckinScanner" data-level="${r.level}" data-code="${r.code}" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:700;font-size:11.5px;cursor:pointer">📷 รับรายงานตัว</button>` : ''}
+      ${hasResult ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="flex:1;padding:9px;border:1px solid ${t.border};border-radius:9px;background:#fff;color:${t.accent};font-weight:700;font-size:11.5px;cursor:pointer">✏️ บันทึกผล</button>` : ''}
+    </div>
+  </div>`
+}
+
+function staffScopedView() {
+  const scopes = S.identity.scopes || []
+  const hasCheckin = scopes.includes('checkin')
+  const hasResult = scopes.includes('result')
+  const rows = scheduleRows()
+  return `
+  <section>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:800">หน้าสตาฟ</h2>
+    <p style="margin:0 0 16px;font-size:12.5px;color:#6b7280">เลือกนัดที่ต้องการ${hasCheckin && hasResult ? 'รับรายงานตัวหรือบันทึกผล' : hasCheckin ? 'รับรายงานตัว' : 'บันทึกผล'} — สิทธิ์นี้เข้าถึงเฉพาะส่วนนี้เท่านั้น</p>
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      ${['ALL', 'MS', 'HS'].map(v => `<button data-act="setLevel" data-v="${v}" style="font-size:12.5px;padding:7px 14px;border-radius:9px;border:1px solid ${S.filterLevel === v ? '#db2777' : '#e5e7eb'};background:${S.filterLevel === v ? '#db2777' : '#fff'};color:${S.filterLevel === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${v === 'ALL' ? 'ทั้งหมด' : T[v].label}</button>`).join('')}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${rows.map(r => staffMatchPickerRow(r, hasCheckin, hasResult)).join('') || `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ยังไม่มีตารางแข่ง</div>`}
     </div>
   </section>`
 }
@@ -1298,7 +1384,7 @@ function manageTeamView(team, isAdminView, readOnly) {
 
     <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
       <div style="font-weight:700;font-size:13.5px;margin-bottom:${myMatches.length ? '10px' : '0'}">ผลการแข่งขันของทีมคุณ</div>
-      ${myMatches.length ? `<div style="display:flex;flex-direction:column;gap:8px">${myMatches.map(matchCard).join('')}</div>` : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีตารางแข่งของทีมนี้ (รอจับสลากประกบคู่)</div>`}
+      ${myMatches.length ? `<div style="display:flex;flex-direction:column;gap:8px">${myMatches.map(m => matchCard(m) + (m.teamAId && m.teamBId ? teamCheckinLine(team, m.level, m.code) : '')).join('')}</div>` : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีตารางแข่งของทีมนี้ (รอจับสลากประกบคู่)</div>`}
     </div>` : ''}
 
     ${S.myTeamTab === 'finance' ? `
@@ -1366,6 +1452,22 @@ function rejectReasonModal() {
     </div>
     <textarea id="reject-reason-text" rows="3" placeholder="เหตุผลที่ปฏิเสธ" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:10px;padding:9px 10px;font-size:13px;font-family:inherit;resize:vertical">${esc(S.rejectReasonText)}</textarea>
     <button data-act="confirmReject" ${S.rejectReasonText.trim() ? '' : 'disabled'} style="margin-top:10px;width:100%;padding:11px;border:none;border-radius:10px;background:${S.rejectReasonText.trim() ? '#dc2626' : '#f3b6b6'};color:#fff;font-weight:800;font-size:14px;cursor:${S.rejectReasonText.trim() ? 'pointer' : 'default'}">ยืนยันการปฏิเสธ</button>
+  `)
+}
+
+function staffScopeModal() {
+  const ed = S.staffScopeEdit
+  if (!ed) return ''
+  const current = ed.scopes || []
+  return simpleModal(ed.mode === 'add' ? `มอบสิทธิ์ให้ ${ed.name}` : `แก้ไขสิทธิ์ของ ${ed.name}`, `
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+      ${SCOPE_OPTIONS.map(o => `
+        <label style="display:flex;align-items:flex-start;gap:10px;border:1px solid ${current.includes(o.key) ? '#db2777' : '#e5e7eb'};border-radius:10px;padding:10px;cursor:pointer">
+          <input type="checkbox" data-act="toggleStaffScope" data-key="${o.key}" ${current.includes(o.key) ? 'checked' : ''} style="margin-top:2px;flex-shrink:0"/>
+          <div><div style="font-size:13px;font-weight:700">${o.label}</div><div style="font-size:11px;color:#6b7280">${o.desc}</div></div>
+        </label>`).join('')}
+    </div>
+    <button data-act="saveStaffScope" style="width:100%;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">${ed.mode === 'add' ? 'มอบสิทธิ์' : 'บันทึก'}</button>
   `)
 }
 
@@ -1579,7 +1681,7 @@ function adminGeneral() {
 function adminStaff() {
   const rows = S.staffList || []
   return box(`
-    <div style="font-weight:700;font-size:14px;margin-bottom:10px">มอบสิทธิ์แอดมิน (ครู/นักเรียน)</div>
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">มอบสิทธิ์ผู้ดูแล/สตาฟ (ครู/นักเรียน)</div>
     <div id="az-staff-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">กำลังโหลด...</div>
     <div style="position:relative">
       <input id="staff-search" placeholder="พิมพ์ชื่อครูหรือนักเรียน..." autocomplete="off" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:10px;padding:9px 10px;font-size:12.5px"/>
@@ -2100,7 +2202,7 @@ function matchEditorModal() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">เวลาแข่ง<input id="mx-kickoff" placeholder="HH:MM" value="${esc(m.kickoff_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">รายงานตัว<input id="mx-ready" placeholder="HH:MM" value="${esc(m.ready_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
-      ${r.teamAId && r.teamBId ? (() => {
+      ${r.teamAId && r.teamBId && (S.identity.isAdmin || (S.identity.scopes || []).includes('checkin')) ? (() => {
         const checkedCount = S.checkins.filter(c => c.level === level && c.match_code === code).length
         const totalCount = S.players.filter(p => p.team_id === r.teamAId || p.team_id === r.teamBId).length
         return `<button data-act="openCheckinScanner" data-level="${level}" data-code="${code}" style="padding:9px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">📷 สแกน QR รายงานตัว (${checkedCount}/${totalCount})</button>`
@@ -2112,7 +2214,7 @@ function matchEditorModal() {
 
 // ---------------- staff search ----------------
 async function loadStaffList() {
-  const { data: rows } = await SB.from('azfutsal_admins').select('id, profile_id, note, created_at').order('created_at')
+  const { data: rows } = await SB.from('azfutsal_admins').select('id, profile_id, note, created_at, scopes').order('created_at')
   const ids = (rows || []).map(r => r.profile_id)
   const safeIds = ids.length ? ids : ['00000000-0000-0000-0000-000000000000']
   const [{ data: teachers }, { data: students }] = await Promise.all([
@@ -2125,16 +2227,25 @@ async function loadStaffList() {
     const isStandalone = r.profile_id === STANDALONE_ADMIN_PROFILE_ID
     const name = t ? t.full_name : (st ? st.full_name : (isStandalone ? `${cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa')} (แอดมินสำรอง)` : '(ไม่พบผู้ใช้)'))
     const isSelf = r.profile_id === S.identity.profile?.id
-    return { id: r.id, name, role: t ? 'ครู' : (st ? 'นักเรียน' : (isStandalone ? 'บัญชีสำรอง' : '-')), isSelf }
+    return { id: r.id, name, role: t ? 'ครู' : (st ? 'นักเรียน' : (isStandalone ? 'บัญชีสำรอง' : '-')), isSelf, scopes: r.scopes && r.scopes.length ? r.scopes : ['full'] }
   })
   const el = document.getElementById('az-staff-list')
   if (!el) return
-  const onlyOneLeft = S.staffList.length <= 1
-  el.innerHTML = S.staffList.length ? S.staffList.map(s => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6">
-      <div><div style="font-size:13px;font-weight:700">${esc(s.name)}${s.isSelf ? ' <span style="color:#9ca3af;font-weight:600">(คุณ)</span>' : ''}</div><div style="font-size:11px;color:#6b7280">${s.role}</div></div>
-      ${onlyOneLeft ? `<span style="font-size:10.5px;color:#9ca3af" title="ต้องมีแอดมินอย่างน้อย 1 คนเสมอ">ลบไม่ได้ (คนสุดท้าย)</span>` : `<button data-act="removeStaff" data-id="${s.id}" data-self="${s.isSelf ? '1' : '0'}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>`}
-    </div>`).join('') : `<div style="font-size:12px;color:#9ca3af">ยังไม่มีผู้ดูแลระบบ</div>`
+  const fullAdminCount = S.staffList.filter(s => s.scopes.includes('full')).length
+  el.innerHTML = S.staffList.length ? S.staffList.map(s => {
+    const isLastFullAdmin = s.scopes.includes('full') && fullAdminCount <= 1
+    const scopeLabel = s.scopes.includes('full') ? 'สิทธิ์เต็มรูปแบบ' : s.scopes.map(k => SCOPE_OPTIONS.find(o => o.key === k)?.label).filter(Boolean).join(' + ')
+    return `
+    <div style="padding:7px 0;border-bottom:1px solid #f3f4f6">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="min-width:0"><div style="font-size:13px;font-weight:700">${esc(s.name)}${s.isSelf ? ' <span style="color:#9ca3af;font-weight:600">(คุณ)</span>' : ''}</div><div style="font-size:11px;color:#6b7280">${s.role} · ${esc(scopeLabel)}</div></div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button data-act="editStaffScope" data-id="${s.id}" data-name="${esc(s.name)}" data-scopes="${esc(s.scopes.join(','))}" style="border:none;background:none;color:#4338ca;font-size:11.5px;cursor:pointer;font-weight:600">แก้ไขสิทธิ์</button>
+          ${isLastFullAdmin ? `<span style="font-size:10.5px;color:#9ca3af" title="ต้องมีแอดมินเต็มรูปแบบอย่างน้อย 1 คนเสมอ">ลบไม่ได้</span>` : `<button data-act="removeStaff" data-id="${s.id}" data-self="${s.isSelf ? '1' : '0'}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>`}
+        </div>
+      </div>
+    </div>`
+  }).join('') : `<div style="font-size:12px;color:#9ca3af">ยังไม่มีผู้ดูแลระบบ</div>`
 }
 
 async function searchStaffCandidates(q) {
@@ -2314,9 +2425,9 @@ async function handleAdminLogin() {
   if (error) { S.adminLoginError = 'ยูสเซอร์เนมหรือรหัสผ่านไม่ถูกต้อง'; draw(); return }
   S.adminLoginOpen = false
   await refresh()
-  S.tab = 'admin'
+  S.tab = S.identity.isAdmin ? 'admin' : (S.identity.scopes || []).length ? 'staff' : 'schedule'
   draw()
-  azToast('เข้าสู่ระบบแอดมินแล้ว')
+  azToast('เข้าสู่ระบบแล้ว')
 }
 
 async function handleSetRole(teamId, studentId, role) {
@@ -2449,7 +2560,7 @@ function bindEvents() {
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'adminAthleteLevel') { S.adminAthleteLevel = btn.dataset.v; draw(); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
-    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; draw(); return }
+    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; draw(); return }
     if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
     if (act === 'confirmActionYes') {
       const pc = S.pendingConfirm
@@ -2465,6 +2576,7 @@ function bindEvents() {
     }
     if (act === 'admin-gear') {
       if (S.identity.isAdmin) { S.tab = 'admin'; draw(); return }
+      if ((S.identity.scopes || []).length) { S.tab = 'staff'; draw(); return }
       S.adminLoginOpen = true; S.adminLoginError = ''; S.adminLoginUsername = ''; draw(); return
     }
     if (act === 'closeAdminLogin') { S.adminLoginOpen = false; draw(); return }
@@ -2705,13 +2817,48 @@ function bindEvents() {
       }
       draw(); return
     }
+    if (act === 'toggleStaffScope') {
+      if (!S.staffScopeEdit) return
+      const key = btn.dataset.key
+      const cur = S.staffScopeEdit.scopes || []
+      S.staffScopeEdit.scopes = btn.checked ? [...cur, key] : cur.filter(k => k !== key)
+      draw(); return
+    }
+    if (act === 'cancelStaffScope') { S.staffScopeEdit = null; draw(); return }
+    if (act === 'saveStaffScope') {
+      const ed = S.staffScopeEdit
+      if (!ed) return
+      if (!ed.scopes || !ed.scopes.length) { azToast('เลือกสิทธิ์อย่างน้อย 1 อย่าง'); return }
+      if (ed.mode === 'add') {
+        const { error } = await SB.from('azfutsal_admins').insert({ profile_id: ed.profile_id, granted_by: S.identity.profile.id, scopes: ed.scopes })
+        if (error) { azToast('มอบสิทธิ์ไม่สำเร็จ: ' + error.message); return }
+        azToast(`มอบสิทธิ์ให้ ${ed.name} แล้ว`)
+      } else {
+        const isSelf = S.staffList?.find(s => s.id === ed.id)?.isSelf
+        const wasFullAdmin = (S.staffList?.find(s => s.id === ed.id)?.scopes || []).includes('full')
+        const { error } = await SB.from('azfutsal_admins').update({ scopes: ed.scopes }).eq('id', ed.id)
+        if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+        azToast('บันทึกสิทธิ์แล้ว')
+        if (isSelf && wasFullAdmin && !ed.scopes.includes('full')) { S.staffScopeEdit = null; await refresh(); S.tab = 'schedule'; draw(); return }
+      }
+      S.staffScopeEdit = null
+      await loadStaffList()
+      draw()
+      return
+    }
+    if (act === 'editStaffScope') {
+      S.staffScopeEdit = { mode: 'edit', id: btn.dataset.id, name: btn.dataset.name, scopes: btn.dataset.scopes ? btn.dataset.scopes.split(',') : [] }
+      draw(); return
+    }
     if (act === 'removeStaff') {
-      if ((S.staffList || []).length <= 1) { azToast('ต้องมีแอดมินอย่างน้อย 1 คนเสมอ ลบคนสุดท้ายไม่ได้'); return }
+      const fullAdminCount = (S.staffList || []).filter(s => (s.scopes || []).includes('full')).length
+      const isTargetFullAdmin = (S.staffList || []).find(s => s.id === btn.dataset.id)?.scopes?.includes('full')
+      if (isTargetFullAdmin && fullAdminCount <= 1) { azToast('ต้องมีแอดมินเต็มรูปแบบอย่างน้อย 1 คนเสมอ ลบคนสุดท้ายไม่ได้'); return }
       const isSelf = btn.dataset.self === '1'
       S.pendingConfirm = {
         message: isSelf
           ? 'นี่คือบัญชีที่คุณกำลังใช้อยู่\nถ้าถอนสิทธิ์ตัวเองจะออกจากหน้าแอดมินทันที ยืนยันหรือไม่?'
-          : 'ถอนสิทธิ์แอดมินคนนี้?',
+          : 'ถอนสิทธิ์คนนี้?',
         danger: true, confirmLabel: 'ถอนสิทธิ์',
         run: async () => {
           const { error } = await SB.from('azfutsal_admins').delete().eq('id', btn.dataset.id)
@@ -2762,12 +2909,10 @@ function bindEvents() {
       const results = await searchStaffCandidates(q)
       box.innerHTML = results.length ? results.map(r => `<div data-profile="${r.profile_id}" data-name="${esc(r.name)}" style="padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid #f3f4f6" class="az-staff-cand"><b>${esc(r.name)}</b> <span style="color:#9ca3af">${r.sub}</span></div>`).join('') : `<div style="padding:8px 10px;font-size:12px;color:#9ca3af">ไม่พบ</div>`
       box.style.display = 'block'
-      box.querySelectorAll('.az-staff-cand').forEach(row => row.addEventListener('click', async () => {
-        const { error } = await SB.from('azfutsal_admins').insert({ profile_id: row.dataset.profile, granted_by: S.identity.profile.id })
-        if (error) { azToast('เพิ่มสิทธิ์ไม่สำเร็จ: ' + error.message); return }
+      box.querySelectorAll('.az-staff-cand').forEach(row => row.addEventListener('click', () => {
+        S.staffScopeEdit = { mode: 'add', profile_id: row.dataset.profile, name: row.dataset.name, scopes: [] }
         gid('staff-search').value = ''; box.style.display = 'none'
-        await loadStaffList()
-        azToast(`มอบสิทธิ์แอดมินให้ ${row.dataset.name} แล้ว`)
+        draw()
       }))
     }
     if (e.target.classList?.contains('az-award-search')) {
