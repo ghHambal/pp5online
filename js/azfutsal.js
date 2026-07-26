@@ -88,6 +88,11 @@ let S = {
   rosterLookupCode: '',
   rosterLookupResult: null, // student row or 'notfound' | null
   rosterJersey: '',
+  editingJerseyId: null, // player id ที่กำลังแก้เบอร์เสื้ออยู่
+  editJerseyValue: '',
+  editingTeamName: false,
+  editTeamNameValue: '',
+  myTeamMatchesOpen: false,
   adminManageTeamId: null,
   adminCreatingTeam: false,
   capLookupCode: '',
@@ -406,6 +411,15 @@ function bottomNav() {
 }
 
 // ---------------- schedule ----------------
+function teamMatchRows(team) {
+  return BRACKET[team.level]
+    .map(def => {
+      const r = resolveMatch(team.level, def.code)
+      return { level: team.level, code: def.code, round: def.round, teamA: r.teamA, teamB: r.teamB, teamAId: r.teamAId, teamBId: r.teamBId, m: r.match }
+    })
+    .filter(row => row.teamAId === team.id || row.teamBId === team.id)
+}
+
 function scheduleRows() {
   const rows = []
   ;(S.filterLevel === 'ALL' ? ['MS', 'HS'] : [S.filterLevel]).forEach(level => {
@@ -811,6 +825,9 @@ function manageTeamView(team, isAdminView) {
   const deadline = cfg('REGISTER_EDIT_DEADLINE', '')
   const editable = isAdminView || !deadline || new Date() < new Date(deadline)
   const lr = S.rosterLookupResult
+  const myMatches = teamMatchRows(team)
+  const teamCardStats = computeTeamStats(team.level).find(r => r.id === team.id) || { y: 0, r: 0 }
+  const refundEstimate = Math.max(Number(cfg('DEPOSIT_AMOUNT', 500)) - Number(cfg('OPERATION_FEE', 100)) - teamCardStats.y * Number(cfg('RATE_YELLOW', 30)) - teamCardStats.r * Number(cfg('RATE_RED', 50)), 0)
 
   const roleTag = (p) => {
     if (team.captain_student_id === p.student_id) return ` <span style="color:${t.accent};font-weight:700">(หัวหน้าทีม)</span>`
@@ -832,7 +849,14 @@ function manageTeamView(team, isAdminView) {
       <div style="display:flex;align-items:center;gap:8px">
         ${levelBadge(team.level)}
         ${team.is_reserve ? reserveBadge() : ''}${team.is_organizer ? organizerBadge() : ''}
-        <h2 style="margin:0;font-size:17px;font-weight:800">${esc(team.name)}</h2>
+        ${S.editingTeamName ? `
+          <input id="edit-team-name-input" value="${esc(S.editTeamNameValue)}" style="flex:1;min-width:0;font-size:15px;font-weight:700;border:1px solid #e5e7eb;border-radius:8px;padding:5px 8px"/>
+          <button data-act="saveTeamName" data-team="${team.id}" style="flex-shrink:0;border:none;background:${t.base};color:#fff;font-size:11px;font-weight:700;padding:6px 10px;border-radius:7px;cursor:pointer">บันทึก</button>
+          <button data-act="cancelEditTeamName" style="flex-shrink:0;border:none;background:none;color:#9ca3af;font-size:11px;cursor:pointer">ยกเลิก</button>
+        ` : `
+          <h2 style="margin:0;font-size:17px;font-weight:800">${esc(team.name)}</h2>
+          ${editable ? `<button data-act="startEditTeamName" data-name="${esc(team.name)}" style="flex-shrink:0;border:none;background:none;color:#9ca3af;font-size:13px;cursor:pointer" aria-label="แก้ไขชื่อทีม">✎</button>` : ''}
+        `}
       </div>
       ${team.team_code ? `<div style="margin-top:6px;font-size:12px;color:${t.accent};font-weight:700">รหัสประจำทีม: ${esc(team.team_code)}</div>` : ''}
       ${team.is_reserve ? `<div style="margin-top:4px;font-size:11.5px;color:#b45309">ทีมของคุณอยู่ในสถานะทีมสำรอง (สมัครและชำระเงินเรียบร้อยแล้ว แต่เกินโควตาทีมหลักของรุ่นนี้)</div>` : ''}
@@ -857,7 +881,18 @@ function manageTeamView(team, isAdminView) {
             </div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${roleTag(p)}</div>
-              <div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')}${p.jersey_number ? ` · เบอร์ ${p.jersey_number}` : ''}</div>
+              <div style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+                <span>${esc(p.students?.student_code || '')}</span>
+                ${S.editingJerseyId === p.id ? `
+                  <span>·</span>
+                  <input id="edit-jersey-input" type="number" min="0" value="${esc(S.editJerseyValue)}" style="width:56px;border:1px solid #e5e7eb;border-radius:6px;padding:2px 5px;font-size:11px"/>
+                  <button data-act="saveJersey" data-id="${p.id}" style="border:none;background:none;color:${t.accent};font-size:11px;font-weight:700;cursor:pointer">บันทึก</button>
+                  <button data-act="cancelEditJersey" style="border:none;background:none;color:#9ca3af;font-size:11px;cursor:pointer">ยกเลิก</button>
+                ` : `
+                  <span>${p.jersey_number !== null && p.jersey_number !== undefined ? `· เบอร์ ${p.jersey_number}` : '· ยังไม่ระบุเบอร์'}</span>
+                  ${editable ? `<button data-act="startEditJersey" data-id="${p.id}" data-v="${p.jersey_number ?? ''}" style="border:none;background:none;color:${t.accent};font-size:10.5px;cursor:pointer;font-weight:600">แก้ไข</button>` : ''}
+                `}
+              </div>
               ${roleButtons(p) ? `<div style="margin-top:2px">${roleButtons(p)}</div>` : ''}
             </div>
             ${editable ? `<button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">ลบ</button>` : ''}
@@ -882,6 +917,11 @@ function manageTeamView(team, isAdminView) {
       </div>` : ''}
     </div>
 
+    <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
+      <div style="font-weight:700;font-size:13.5px;margin-bottom:${myMatches.length ? '10px' : '0'}">ผลการแข่งขันของทีมคุณ</div>
+      ${myMatches.length ? `<div style="display:flex;flex-direction:column;gap:8px">${myMatches.map(matchCard).join('')}</div>` : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีตารางแข่งของทีมนี้ (รอจับสลากประกบคู่)</div>`}
+    </div>
+
     <div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px">
       <div style="font-weight:700;font-size:13.5px;margin-bottom:8px">ค่าประกันทีม (${money(cfg('DEPOSIT_AMOUNT', 500))} บาท)</div>
       ${payment ? `
@@ -890,6 +930,12 @@ function manageTeamView(team, isAdminView) {
         ${payment.status === 'rejected' ? `
           <div style="font-size:11.5px;color:#dc2626;margin-bottom:8px">เหตุผล: ${esc(payment.admin_note || '-')}  กรุณายืนยันการลงทะเบียนและแนบหลักฐานใหม่</div>
           <button data-act="openConfirmReg" data-team="${team.id}" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">ยืนยันการลงทะเบียนอีกครั้ง</button>
+        ` : ''}
+        ${payment.status !== 'rejected' ? `
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f3f4f6;font-size:12px;color:#6b7280">
+            <div>หักค่าดำเนินการ ${money(cfg('OPERATION_FEE', 100))} บาท${teamCardStats.y ? ` · ใบเหลือง ${teamCardStats.y} ใบ (−${money(teamCardStats.y * Number(cfg('RATE_YELLOW', 30)))})` : ''}${teamCardStats.r ? ` · ใบแดง ${teamCardStats.r} ใบ (−${money(teamCardStats.r * Number(cfg('RATE_RED', 50)))})` : ''}</div>
+            <div style="margin-top:4px;font-size:13.5px;font-weight:800;color:${t.accent}">คาดว่าจะได้เงินคืน ${money(refundEstimate)} บาท</div>
+          </div>
         ` : ''}
       ` : roster.length ? `
         <button data-act="openConfirmReg" data-team="${team.id}" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">✅ ยืนยันการลงทะเบียนสมัครเข้าร่วมแข่งขัน</button>
@@ -2025,6 +2071,26 @@ function bindEvents() {
     if (act === 'createTeam') { await handleCreateTeam(btn.dataset.admin === '1'); return }
     if (act === 'setCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'captain'); return }
     if (act === 'setViceCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'vice_captain'); return }
+    if (act === 'startEditTeamName') { S.editingTeamName = true; S.editTeamNameValue = btn.dataset.name; draw(); return }
+    if (act === 'cancelEditTeamName') { S.editingTeamName = false; S.editTeamNameValue = ''; draw(); return }
+    if (act === 'saveTeamName') {
+      const name = gid('edit-team-name-input')?.value.trim()
+      if (!name) { azToast('กรุณากรอกชื่อทีม'); return }
+      const { error } = await SB.from('azfutsal_teams').update({ name }).eq('id', btn.dataset.team)
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      S.editingTeamName = false; S.editTeamNameValue = ''
+      await refresh(); azToast('บันทึกชื่อทีมแล้ว'); return
+    }
+    if (act === 'startEditJersey') { S.editingJerseyId = btn.dataset.id; S.editJerseyValue = btn.dataset.v; draw(); return }
+    if (act === 'cancelEditJersey') { S.editingJerseyId = null; S.editJerseyValue = ''; draw(); return }
+    if (act === 'saveJersey') {
+      const v = gid('edit-jersey-input')?.value
+      const jersey = v === '' || v === undefined ? null : Number(v)
+      const { error } = await SB.from('azfutsal_players').update({ jersey_number: jersey }).eq('id', btn.dataset.id)
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      S.editingJerseyId = null; S.editJerseyValue = ''
+      await refresh(); azToast('บันทึกเบอร์เสื้อแล้ว'); return
+    }
     if (act === 'adminNewTeam') { S.adminCreatingTeam = true; S.adminManageTeamId = null; draw(); return }
     if (act === 'adminBackToList') { S.adminCreatingTeam = false; S.adminManageTeamId = null; draw(); return }
     if (act === 'adminOpenTeam') { S.adminManageTeamId = btn.dataset.id; draw(); return }
