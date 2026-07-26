@@ -400,10 +400,28 @@ function computeTopScorers(level) {
     .map(([playerId, goals]) => {
       const p = S.players.find(pl => pl.id === playerId)
       if (!p) return null
-      return { name: p.students?.full_name || '', team: teamName(p.team_id), goals, studentId: p.student_id }
+      return { name: p.students?.full_name || '', team: teamName(p.team_id), goals, studentId: p.student_id, photoUrl: playerPhotoUrl(p) }
     })
     .filter(Boolean)
     .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name, 'th'))
+    .slice(0, 20)
+}
+
+// ผู้เล่นที่ได้ใบเหลือง/ใบแดงมากที่สุดของรุ่นหนึ่งๆ (เรียงตามใบแดงก่อน แล้วค่อยใบเหลือง)
+function computeTopCards(level) {
+  const counts = new Map()
+  S.matchEvents.filter(e => (e.event_type === 'yellow' || e.event_type === 'red') && e.level === level).forEach(e => {
+    if (!counts.has(e.player_id)) counts.set(e.player_id, { yellow: 0, red: 0 })
+    counts.get(e.player_id)[e.event_type]++
+  })
+  return Array.from(counts.entries())
+    .map(([playerId, c]) => {
+      const p = S.players.find(pl => pl.id === playerId)
+      if (!p) return null
+      return { name: p.students?.full_name || '', team: teamName(p.team_id), yellow: c.yellow, red: c.red, photoUrl: playerPhotoUrl(p) }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.red - a.red || b.yellow - a.yellow || a.name.localeCompare(b.name, 'th'))
     .slice(0, 20)
 }
 
@@ -1196,6 +1214,7 @@ function statsView() {
   const t = T[level]
   const rows = computeTeamStats(level)
   const scorers = computeTopScorers(level)
+  const cardLeaders = computeTopCards(level)
   return `
   <section>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -1232,10 +1251,24 @@ function statsView() {
       <div style="display:flex;flex-direction:column;gap:8px">
         ${scorers.length ? scorers.map(s => `
           <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:26px;height:26px;border-radius:50%;background:#e5e7eb;flex-shrink:0"></div>
+            ${photoTag(s.photoUrl)}
             <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">${esc(s.name)}</div><div style="font-size:11.5px;color:#6b7280">${esc(s.team)}</div></div>
             <div style="font-size:15px;font-weight:800;color:${t.accent}">${s.goals}</div>
           </div>`).join('') : `<div style="color:#9ca3af;font-size:12.5px">ยังไม่มีข้อมูลประตู</div>`}
+      </div>
+    </div>
+    <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:12px 14px;margin-top:12px">
+      <div style="font-weight:700;font-size:13.5px;margin-bottom:8px">ใบเหลือง-ใบแดงมากที่สุด · ${t.label}</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${cardLeaders.length ? cardLeaders.map(c => `
+          <div style="display:flex;align-items:center;gap:10px">
+            ${photoTag(c.photoUrl)}
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">${esc(c.name)}</div><div style="font-size:11.5px;color:#6b7280">${esc(c.team)}</div></div>
+            <div style="display:flex;gap:6px;font-size:13px;font-weight:800">
+              ${c.yellow ? `<span style="color:#d97706">🟨${c.yellow}</span>` : ''}
+              ${c.red ? `<span style="color:#dc2626">🟥${c.red}</span>` : ''}
+            </div>
+          </div>`).join('') : `<div style="color:#9ca3af;font-size:12.5px">ยังไม่มีข้อมูลใบเหลือง-ใบแดง</div>`}
       </div>
     </div>
   </section>`
@@ -2394,8 +2427,10 @@ function matchEditorModal() {
   const goalsA = r.teamAId ? matchEventCounts(level, code, r.teamAId).goal : 0
   const goalsB = r.teamBId ? matchEventCounts(level, code, r.teamBId).goal : 0
   const hasAnyGoalLogged = goalsA > 0 || goalsB > 0
-  const scoreAVal = hasAnyGoalLogged ? goalsA : (m.score_a ?? '')
-  const scoreBVal = hasAnyGoalLogged ? goalsB : (m.score_b ?? '')
+  // สกอร์ต้องซิงก์กับจำนวนผู้ทำประตูแบบเรียลไทม์เสมอไม่ว่าจะเคยกดบันทึกไปแล้วกี่ครั้ง (ไม่ใช่แค่ครั้งแรกที่ยังไม่บันทึก)
+  // ห้าม fallback ไปที่ m.score_a ที่เคยบันทึกไว้ก่อน เพราะจะทำให้ลบผู้ทำประตูจนเหลือ 0 แล้วสกอร์ค้างเป็นค่าเก่าที่เคยบันทึก
+  const scoreAVal = goalsA
+  const scoreBVal = goalsB
   const teamField = (label, slot, resolvedName) => slot
     ? `<label style="font-size:11.5px;color:#6b7280;flex:1">${label}<select id="mx-team${label}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"><option value="">-</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}</select></label>`
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
