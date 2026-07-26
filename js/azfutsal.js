@@ -129,6 +129,7 @@ let S = {
   myTeamMatchesOpen: false,
   teamCodeInput: '',
   teamCodeLookupResult: null, // team row | 'notfound' | null
+  myTeamTab: 'roster', // 'roster' | 'matches' | 'finance' — แท็บย่อยในหน้าทีมของฉัน
   adminManageTeamId: null,
   adminCreatingTeam: false,
   capLookupCode: '',
@@ -443,6 +444,23 @@ function bottomNav() {
     </nav>`
   }
   if (s.tab === 'myteam') {
+    const hasTeam = s.identity.isAdmin
+      ? !!s.adminManageTeamId
+      : !!(s.identity.student && (s.teams.find(t => t.captain_student_id === s.identity.student.id) || (s.teamCodeLookupResult && typeof s.teamCodeLookupResult === 'object')))
+    if (hasTeam) {
+      const myTeamItem = (v, label, icon) => `
+        <button data-act="myTeamTab" data-v="${v}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;padding:6px 2px;cursor:pointer;color:${s.myTeamTab === v ? '#db2777' : '#9ca3af'}">
+          ${icon}<span style="font-size:10.5px;font-weight:${s.myTeamTab === v ? 800 : 600}">${label}</span>
+        </button>`
+      return `
+      <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+        <div style="display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
+          ${myTeamItem('roster', 'ทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>')}
+          ${myTeamItem('matches', 'ผลการแข่งขัน', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>')}
+          ${myTeamItem('finance', 'การเงิน', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>')}
+        </div>
+      </nav>`
+    }
     return `
     <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
       <div style="padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
@@ -907,8 +925,8 @@ function manageTeamView(team, isAdminView, readOnly) {
   return `
   <section style="display:flex;flex-direction:column;gap:14px">
     <div>
-      ${isAdminView ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : ''}
-      ${readOnly ? `<button data-act="exitTeamCodeView" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← ค้นหาทีมอื่น</button>` : ''}
+      ${isAdminView ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : `<button data-act="tab" data-tab="schedule" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับหน้าหลัก</button>`}
+      ${readOnly ? `<button data-act="exitTeamCodeView" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px;margin-left:10px">ค้นหาทีมอื่น</button>` : ''}
       <div style="display:flex;align-items:center;gap:8px">
         ${levelBadge(team.level)}
         ${team.is_reserve ? reserveBadge() : ''}${team.is_organizer ? organizerBadge() : ''}
@@ -928,6 +946,7 @@ function manageTeamView(team, isAdminView, readOnly) {
     ${readOnly ? `<div style="font-size:12px;color:#6b7280;background:#f3f4f6;border-radius:10px;padding:8px 10px">🔒 กำลังดูข้อมูลทีมแบบอ่านอย่างเดียวผ่านรหัสทีม แก้ไขไม่ได้</div>` : ''}
     ${!editable && !readOnly ? `<div style="font-size:12px;color:#dc2626;background:#fee2e2;border-radius:10px;padding:8px 10px">หมดเวลาแก้ไขรายชื่อนักกีฬาแล้ว (ปิดแก้ไขเมื่อ ${esc(deadline)})</div>` : ''}
 
+    ${S.myTeamTab === 'roster' ? `
     <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
         <div style="font-weight:700;font-size:13.5px">รายชื่อนักกีฬา</div>
@@ -979,13 +998,15 @@ function manageTeamView(team, isAdminView, readOnly) {
           <button data-act="addRosterAthlete" data-team="${team.id}" style="width:100%;padding:9px;border-radius:9px;border:none;background:${t.base};color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">เพิ่มนักกีฬา</button>
         ` : ''}
       </div>` : ''}
-    </div>
+    </div>` : ''}
 
+    ${S.myTeamTab === 'matches' ? `
     <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
       <div style="font-weight:700;font-size:13.5px;margin-bottom:${myMatches.length ? '10px' : '0'}">ผลการแข่งขันของทีมคุณ</div>
       ${myMatches.length ? `<div style="display:flex;flex-direction:column;gap:8px">${myMatches.map(matchCard).join('')}</div>` : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีตารางแข่งของทีมนี้ (รอจับสลากประกบคู่)</div>`}
-    </div>
+    </div>` : ''}
 
+    ${S.myTeamTab === 'finance' ? `
     <div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px">
       <div style="font-weight:700;font-size:13.5px;margin-bottom:8px">ค่าประกันทีม (${money(cfg('DEPOSIT_AMOUNT', 500))} บาท)</div>
       ${payment ? `
@@ -1008,7 +1029,7 @@ function manageTeamView(team, isAdminView, readOnly) {
       ` : `
         <div style="font-size:12px;color:#9ca3af">เพิ่มนักกีฬาอย่างน้อย 1 คนก่อนยืนยันการลงทะเบียน</div>
       `}
-    </div>
+    </div>` : ''}
   </section>`
 }
 
@@ -2114,6 +2135,7 @@ function bindEvents() {
     if (act === 'toggleTeamRoster') { S.teamStatusExpanded = S.teamStatusExpanded === btn.dataset.id ? null : btn.dataset.id; draw(); return }
     if (act === 'adminSec') { S.adminSection = btn.dataset.v; draw(); return }
     if (act === 'adminGroup') { const g = ADMIN_GROUPS.find(g => g.id === btn.dataset.v); if (g) S.adminSection = g.sections[0][0]; draw(); return }
+    if (act === 'myTeamTab') { S.myTeamTab = btn.dataset.v; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'adminAthleteLevel') { S.adminAthleteLevel = btn.dataset.v; draw(); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
