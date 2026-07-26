@@ -642,25 +642,32 @@ function printCheckinForm(team) {
   openPrintArea(`
     <div class="print-title"><h2>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))} · แบบฟอร์มรายงานตัวนักกีฬา</h2>
       <p>${t.label} · ${esc(team.name)} · รหัสทีม ${esc(team.team_code || '-')}</p></div>
-    <table class="print-table print-table-checkin">
-      <thead><tr><th style="width:34px">#</th><th style="text-align:left;min-width:260px">นักกีฬา</th>${cols.map(c => `<th>นัดที่ ${c}<br><span style="font-weight:400;font-size:10px">(ปั๊มรายงานตัว)</span></th>`).join('')}</tr></thead>
+    <table class="print-table print-table-checkin" style="table-layout:fixed">
+      <colgroup>
+        <col style="width:28px">
+        <col style="width:172px">
+        ${cols.map(() => `<col>`).join('')}
+        <col style="width:120px">
+      </colgroup>
+      <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th>${cols.map(c => `<th>นัดที่ ${c}<br><span style="font-weight:400;font-size:10px">(ปั๊มรายงานตัว)</span></th>`).join('')}<th>หมายเหตุ</th></tr></thead>
       <tbody>
         ${roster.length ? roster.map((p, i) => {
           const url = playerPhotoUrl(p)
-          return `<tr>
+          return `<tr style="height:60px">
             <td>${i + 1}</td>
-            <td style="text-align:left">
-              <div style="display:flex;align-items:center;gap:10px">
+            <td style="text-align:left;vertical-align:middle">
+              <div style="display:flex;align-items:center;gap:8px">
                 <div class="print-photo print-photo-lg">${url ? `<img src="${esc(url)}">` : ''}</div>
-                <div>
-                  <div style="font-weight:700;font-size:14px;line-height:1.3">${esc(p.students?.full_name || '')}</div>
-                  <div style="font-size:11.5px;color:#374151">เบอร์เสื้อ ${p.jersey_number ?? '-'}</div>
+                <div style="min-width:0">
+                  <div style="font-weight:700;font-size:14px;line-height:1.25;overflow-wrap:break-word">${esc(p.students?.full_name || '')}</div>
+                  <div style="font-size:11px;color:#374151;margin-top:1px">เบอร์เสื้อ ${p.jersey_number ?? '-'}</div>
                 </div>
               </div>
             </td>
             ${cols.map(() => `<td class="print-stamp-cell">&nbsp;</td>`).join('')}
+            <td>&nbsp;</td>
           </tr>`
-        }).join('') : `<tr><td colspan="${2 + cols.length}">ยังไม่มีรายชื่อนักกีฬา</td></tr>`}
+        }).join('') : `<tr><td colspan="${3 + cols.length}">ยังไม่มีรายชื่อนักกีฬา</td></tr>`}
       </tbody>
     </table>
     <p style="margin-top:8px;font-size:11px;color:#6b7280">*ประทับตรา/เซ็นชื่อในช่องนัดที่ตรงกับที่นักกีฬาคนนั้นมารายงานตัวจริง จำนวนคอลัมน์ (${n} นัด) คือจำนวนนัดสูงสุดที่ทีมนี้จะได้เล่นหากเข้าถึงรอบชิงชนะเลิศ · แต่ละทีมมีสมาชิกสูงสุด 10 คน</p>
