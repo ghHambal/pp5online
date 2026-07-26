@@ -2805,7 +2805,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
           : ''}
         <!-- Card หัวหน้าห้อง -->
         <div id="cem-head-card" class="hidden mt-2 flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
-          <div id="cem-head-avatar" class="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border border-gray-200"></div>
+          <div id="cem-head-avatar" class="w-10 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 shadow-sm"></div>
           <div>
             <p id="cem-head-name" class="font-semibold text-gray-800 text-sm"></p>
             <p id="cem-head-code" class="text-xs text-gray-400"></p>

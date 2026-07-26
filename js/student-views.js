@@ -1592,7 +1592,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
 
   const _subjectHeader = () => `
     <div class="${colorCls.bg} ${colorCls.border} border border-l-4 ${colorCls.accent} rounded-2xl p-4 mb-4 flex items-start gap-3">
-      <div class="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
+      <div class="w-12 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
                   flex items-center justify-center text-white text-xl font-bold border-2 border-white shadow">
         ${student.image_url
           ? `<img src="${student.image_url}" class="w-full h-full object-cover"/>`

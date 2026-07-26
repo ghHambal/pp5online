@@ -452,8 +452,8 @@ function renderRecentList() {
         }
 
         const photoHTML = student.image_url
-          ? `<img src="${student.image_url}" class="w-8 h-8 rounded-full object-cover object-top border border-slate-100 shadow-sm" />`
-          : `<div class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs flex items-center justify-center">${student.full_name.charAt(0)}</div>`
+          ? `<img src="${student.image_url}" class="w-7 h-9 rounded-lg object-cover object-top border border-slate-100 shadow-sm" />`
+          : `<div class="w-7 h-9 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs flex items-center justify-center border border-slate-100">${student.full_name.charAt(0)}</div>`
 
         const locationLabel = getLocationLabel(rec.location)
         const locationBadgeColor = getLocationBadgeClass(rec.location)

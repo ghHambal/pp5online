@@ -1987,7 +1987,7 @@ export async function renderAttendance(teacher) {
                 <td class="px-4 py-2 text-gray-400 text-xs">${i+1}</td>
                 <td class="px-4 py-2">
                   <div class="flex items-center gap-2">
-                    ${s.image_url ? `<img src="${s.image_url}" class="w-7 h-7 rounded-full object-cover flex-shrink-0" />` : ''}
+                    ${s.image_url ? `<img src="${s.image_url}" class="w-6 h-8 rounded-md object-cover flex-shrink-0 border border-gray-200" />` : ''}
                     <div>
                       <p class="font-medium text-gray-800 text-sm">${s.full_name}</p>
                       <p class="text-xs text-gray-400 font-mono">${s.student_code}</p>
@@ -2210,8 +2210,8 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
                 <td class="${stickyM} border border-gray-100 px-3 py-1.5" style="left:100px;min-width:180px">
                   <div class="flex items-center gap-2">
                     ${s.image_url
-                      ? `<img src="${s.image_url}" class="w-7 h-7 rounded-full object-cover flex-shrink-0"/>`
-                      : `<div class="w-7 h-7 rounded-full bg-gradient-to-tr from-emerald-200 to-teal-200
+                      ? `<img src="${s.image_url}" class="w-6 h-8 rounded-md object-cover flex-shrink-0 border border-gray-200"/>`
+                      : `<div class="w-6 h-8 rounded-md border border-gray-200 bg-gradient-to-tr from-emerald-200 to-teal-200
                                     flex items-center justify-center text-xs font-bold text-emerald-700 flex-shrink-0">
                            ${(s.full_name??'?').charAt(0)}
                          </div>`}
@@ -2490,8 +2490,8 @@ export async function renderReadingScore(teacher, initialRoom = null) {
                 <td class="${stickyM} border border-gray-100 px-3 py-1.5" style="left:100px;min-width:180px">
                   <div class="flex items-center gap-2">
                     ${s.image_url
-                      ? `<img src="${s.image_url}" class="w-7 h-7 rounded-full object-cover flex-shrink-0"/>`
-                      : `<div class="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-200 to-violet-200
+                      ? `<img src="${s.image_url}" class="w-6 h-8 rounded-md object-cover flex-shrink-0 border border-gray-200"/>`
+                      : `<div class="w-6 h-8 rounded-md border border-gray-200 bg-gradient-to-tr from-indigo-200 to-violet-200
                                     flex items-center justify-center text-xs font-bold text-indigo-700 flex-shrink-0">
                            ${(s.full_name??'?').charAt(0)}
                          </div>`}
@@ -2832,8 +2832,8 @@ export async function renderPrayerRoomMonitor(teacher, homeroomRooms = [], prefe
           <td class="px-4 py-3">
             <div class="flex items-center gap-3">
               ${s.image_url
-                ? `<img src="${_htmlEsc(s.image_url)}" class="w-9 h-9 rounded-full object-cover object-top border border-gray-100" />`
-                : `<div class="w-9 h-9 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').charAt(0))}</div>`}
+                ? `<img src="${_htmlEsc(s.image_url)}" class="w-7 h-9 rounded-lg object-cover object-top border border-gray-200 shadow-sm" />`
+                : `<div class="w-7 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold border border-gray-200">${_htmlEsc((s.full_name || '?').charAt(0))}</div>`}
               <div class="min-w-0">
                 <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name || '—')}</p>
                 <p class="text-[11px] text-gray-400 font-mono">รหัส ${_htmlEsc(s.student_code || '—')}</p>
@@ -3623,8 +3623,8 @@ function _showStudentAttendanceDetail(student, no, sessions, attMap, holidaySet,
       <button id="sad-close" class="text-white/70 hover:text-white text-xl">✕</button>
       <div class="flex items-center gap-3 flex-1 min-w-0">
         ${student.image_url
-          ? `<img src="${student.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
-          : `<div class="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-lg flex-shrink-0">👤</div>`}
+          ? `<img src="${student.image_url}" class="w-9 h-11 rounded-lg object-cover flex-shrink-0 border border-white/40 shadow-sm"/>`
+          : `<div class="w-9 h-11 rounded-lg bg-emerald-600 border border-white/40 shadow-sm flex items-center justify-center text-lg flex-shrink-0">👤</div>`}
         <div class="min-w-0">
           <p class="font-bold truncate">${student.full_name}</p>
           <p class="text-xs text-emerald-200">รหัส ${student.student_code} · ${ms?.subject_name ?? classData.class_name}</p>
@@ -3689,8 +3689,8 @@ function _showStudentPrayerDetail(stat, weeks, prayMap, allDays, scCls) {
       <button id="std-close" class="text-white/70 hover:text-white text-xl">✕</button>
       <div class="flex items-center gap-3 flex-1 min-w-0">
         ${s.image_url
-          ? `<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
-          : `<div class="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-lg flex-shrink-0">👤</div>`}
+          ? `<img src="${s.image_url}" class="w-9 h-11 rounded-lg object-cover flex-shrink-0 border border-white/40 shadow-sm"/>`
+          : `<div class="w-9 h-11 rounded-lg bg-emerald-600 border border-white/40 shadow-sm flex items-center justify-center text-lg flex-shrink-0">👤</div>`}
         <div class="min-w-0">
           <p class="font-bold truncate">${s.full_name}</p>
           <p class="text-xs text-emerald-200">รหัส ${s.student_code}</p>

@@ -438,8 +438,8 @@ export async function renderGradesGrid(teacher, classData) {
       modal.className='fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4'
       modal.innerHTML=`<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col">
         <div class="flex items-center gap-3 p-4 border-b flex-shrink-0">
-          ${s.image_url?`<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover"/>`
-            :'<div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg">👤</div>'}
+          ${s.image_url?`<img src="${s.image_url}" class="w-9 h-11 rounded-lg object-cover border border-gray-200 shadow-sm"/>`
+            :'<div class="w-9 h-11 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-lg">👤</div>'}
           <div class="flex-1 min-w-0">
             <p class="font-bold text-gray-800 truncate">${s.full_name}</p>
             <p class="text-xs text-gray-400">${s.student_code}</p>
@@ -2135,7 +2135,7 @@ export async function renderRequests(teacher) {
     return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4" id="req-card-${r.id}">
       <!-- Header -->
       <div class="flex items-start gap-3 mb-3">
-        <div class="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-indigo-300 to-purple-300
+        <div class="w-9 h-11 rounded-lg overflow-hidden flex-shrink-0 border border-white/40 shadow-sm bg-gradient-to-tr from-indigo-300 to-purple-300
                     flex items-center justify-center text-white text-sm font-bold">
           ${stu?.image_url ? `<img src="${stu.image_url}" class="w-full h-full object-cover"/>` : (stu?.full_name??'น').charAt(0)}
         </div>

@@ -178,7 +178,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
           </select>
           <!-- Card แสดงหัวหน้าห้องที่เลือก -->
           <div id="cls-head-card" class="hidden mt-2 flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
-            <div id="cls-head-avatar" class="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center text-gray-400">
+            <div id="cls-head-avatar" class="w-10 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200 shadow-sm flex items-center justify-center text-gray-400">
               👤
             </div>
             <div class="min-w-0">
@@ -265,7 +265,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
                 <td class="px-3 py-2 font-mono text-indigo-600">${s.student_code}</td>
                 <td class="px-3 py-2">
                   <div class="flex items-center gap-2">
-                    ${s.image_url?`<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />`:''}
+                    ${s.image_url?`<img src="${s.image_url}" class="w-5 h-6 rounded object-cover flex-shrink-0 border border-gray-200" />`:''}
                     ${s.full_name}
                   </div>
                 </td>

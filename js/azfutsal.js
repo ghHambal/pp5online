@@ -574,12 +574,12 @@ const PRINT_CSS = `
 .print-table th,.print-table td{border:1px solid #111827;padding:5px 6px;font-size:11.5px;text-align:center}
 .print-table th{background:#f3f4f6}
 .print-grid{display:grid;gap:16px}
-.print-photo{width:32px;height:32px;border-radius:50%;overflow:hidden;background:#e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto;flex:none}
+.print-photo{width:32px;height:40px;border:1px solid #9ca3af;border-radius:8px;overflow:hidden;background:#e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto;flex:none;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .print-photo img{width:100%;height:100%;object-fit:cover}
 @media print{body{width:210mm}}
 .print-table-checkin th,.print-table-checkin td{padding:10px 8px;font-size:12.5px}
 .print-table-checkin td.print-stamp-cell{height:60px;min-width:100px}
-.print-photo-lg{width:46px;height:46px}
+.print-photo-lg{width:46px;height:58px}
 `
 function openPrintArea(innerHtml, opts = {}) {
   document.getElementById('az-print-area')?.remove()
@@ -1158,8 +1158,8 @@ function playerPhotoUrl(p) {
 
 function photoTag(url) {
   return url
-    ? `<img src="${esc(url)}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0"/>`
-    : `<div style="width:34px;height:34px;border-radius:50%;background:#e5e7eb;flex-shrink:0"></div>`
+    ? `<img src="${esc(url)}" style="width:30px;height:38px;border-radius:8px;border:1px solid #d1d5db;object-fit:cover;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.2)"/>`
+    : `<div style="width:30px;height:38px;border-radius:8px;border:1px solid #d1d5db;background:#e5e7eb;flex-shrink:0"></div>`
 }
 
 // การ์ดรูปนักกีฬาแบบมีมิติ (เงา+แสงตกกระทบ) สำหรับรายชื่อทีมสาธารณะ
