@@ -17,6 +17,7 @@ import { injectFeedbackWidget } from './ui.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { renderStudentSportsHome } from './sports-portals.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
+import { initInstallPrompt } from './install-prompt.js'
 
 let _student = null
 let _activeClassId = null
@@ -90,6 +91,7 @@ async function init() {
 
   await _loadHeader()
   _bindNav()
+  initInstallPrompt()
   navigate('overview')
 
   _startStudentPolling()   // polling 30 วิ

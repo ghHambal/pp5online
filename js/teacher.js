@@ -18,6 +18,7 @@ import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
 import { APP_VERSION } from './version.js?v=10.19.10'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
+import { initInstallPrompt } from './install-prompt.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
@@ -2941,6 +2942,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (_teacher?.id) _initDonationFlow(_teacher.id)
     if (_teacher?.id) _checkScheduleLinkPopup()
     if (_teacher?.id) _initNotifications(_teacher.id)
+    initInstallPrompt()
     // โหลด position permissions (async ไม่ block)
     if (_teacher?.position || _teacher?.positions?.length) {
       const allPositions = _teacher.positions?.length ? _teacher.positions : [_teacher.position]
