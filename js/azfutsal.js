@@ -603,10 +603,12 @@ function printMatchResultForm(level, code) {
   const rosterTable = teamId => {
     const roster = S.players.filter(p => p.team_id === teamId)
     if (!roster.length) return `<div style="font-size:12px;color:#6b7280">ยังไม่มีรายชื่อนักกีฬา</div>`
-    return `<table class="print-table"><thead><tr><th>#</th><th></th><th style="text-align:left">ชื่อ-สกุล</th><th>เบอร์</th><th>ประตู (ทำเครื่องหมาย)</th><th>🟨</th><th>🟥</th></tr></thead><tbody>
+    return `<table class="print-table" style="table-layout:fixed">
+      <colgroup><col style="width:20px"><col><col style="width:66px"><col style="width:20px"><col style="width:20px"></colgroup>
+      <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th><th>ประตู<br><span style="font-weight:400;font-size:9px">(ทำเครื่องหมาย)</span></th><th>🟨</th><th>🟥</th></tr></thead><tbody>
       ${roster.map((p, i) => {
         const url = playerPhotoUrl(p)
-        return `<tr><td>${i + 1}</td><td><div class="print-photo">${url ? `<img src="${esc(url)}">` : ''}</div></td><td style="text-align:left">${esc(p.students?.full_name || '')}</td><td>${p.jersey_number ?? '-'}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`
+        return `<tr><td>${i + 1}</td><td style="text-align:left;vertical-align:middle"><div style="display:flex;align-items:center;gap:6px"><div class="print-photo">${url ? `<img src="${esc(url)}">` : ''}</div><div style="min-width:0;flex:1;overflow:hidden"><div style="font-weight:700;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.students?.full_name || '')}</div><div style="font-size:9px;color:#374151;white-space:nowrap">เบอร์ ${p.jersey_number ?? '-'}</div></div></div></td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`
       }).join('')}
     </tbody></table>`
   }
