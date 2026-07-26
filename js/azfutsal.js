@@ -691,19 +691,26 @@ async function _azLoadHtml5Qrcode() {
     document.head.appendChild(s)
   })
 }
-function _azPlayScanBeep(ok) {
+// type: 'success' (โทนสูงครั้งเดียว) | 'duplicate' (โทนกลางสองครั้ง) | 'error' (โทนต่ำยาว) — แยกเสียงให้ต่างกันชัดเจนทั้ง 3 สถานะ
+function _azPlayScanBeep(type = 'success') {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
-    const osc = ctx.createOscillator(), gain = ctx.createGain()
-    osc.connect(gain); gain.connect(ctx.destination)
-    if (ok) {
-      osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime)
-      gain.gain.setValueAtTime(0.08, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12)
-      osc.start(); osc.stop(ctx.currentTime + 0.12)
+    const tone = (freq, dur, waveType, startOffset, vol) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = waveType
+      const t0 = ctx.currentTime + startOffset
+      osc.frequency.setValueAtTime(freq, t0)
+      gain.gain.setValueAtTime(vol, t0); gain.gain.exponentialRampToValueAtTime(0.01, t0 + dur)
+      osc.start(t0); osc.stop(t0 + dur)
+    }
+    if (type === 'success') {
+      tone(880, 0.12, 'sine', 0, 0.08)
+    } else if (type === 'duplicate') {
+      tone(600, 0.09, 'square', 0, 0.09)
+      tone(600, 0.09, 'square', 0.14, 0.09)
     } else {
-      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, ctx.currentTime)
-      gain.gain.setValueAtTime(0.12, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
-      osc.start(); osc.stop(ctx.currentTime + 0.3)
+      tone(150, 0.3, 'sawtooth', 0, 0.12)
     }
   } catch { /* เสียงเป็นแค่ของเสริม ไม่บล็อกการทำงานหลัก */ }
 }
@@ -760,9 +767,24 @@ function openCheckinScanner(level, code) {
     const list = overlay.querySelector('#az-ci-list')
     overlay.querySelector('#az-ci-count').textContent = `${checkedIds.size} / ${allRoster.length} คน`
     const done = allRoster.filter(p => checkedIds.has(p.id))
-    list.innerHTML = done.length ? done.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)"><span style="color:#e2e8f0">${esc(p.students?.full_name || '')}</span><span style="color:#38bdf8;font-weight:700;flex-shrink:0">${esc(p.teamId === r.teamAId ? r.teamA : r.teamB)}</span></div>`).join('') : `<div style="color:#64748b;text-align:center;font-size:12px;padding:6px 0">ยังไม่มีใครรายงานตัว</div>`
+    list.innerHTML = done.length ? done.map(p => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)"><span style="color:#e2e8f0;flex:1;min-width:0;overflow-wrap:break-word">${esc(p.students?.full_name || '')}</span><span style="color:#38bdf8;font-weight:700;flex-shrink:0">${esc(p.teamId === r.teamAId ? r.teamA : r.teamB)}</span><button data-ci-undo="${esc(p.id)}" style="flex-shrink:0;padding:2px 7px;border-radius:7px;border:1px solid rgba(239,68,68,.35);background:rgba(239,68,68,.1);color:#f87171;font-size:10px;font-weight:700;cursor:pointer">✕</button></div>`).join('') : `<div style="color:#64748b;text-align:center;font-size:12px;padding:6px 0">ยังไม่มีใครรายงานตัว</div>`
   }
   renderList()
+
+  async function undoCheckin(playerId) {
+    const player = allRoster.find(p => String(p.id) === String(playerId))
+    if (!player) return
+    const feedback = overlay.querySelector('#az-ci-feedback')
+    const { error } = await SB.from('azfutsal_checkins').delete().match({ level, match_code: code, player_id: player.id })
+    if (error) { azToast('ยกเลิกไม่สำเร็จ: ' + error.message); return }
+    checkedIds.delete(player.id)
+    renderList()
+    feedback.innerHTML = `<span style="color:#94a3b8">ยกเลิกรายงานตัวของ ${esc(player.students?.full_name || '')} แล้ว</span>`
+  }
+  overlay.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-ci-undo]')
+    if (btn) undoCheckin(btn.dataset.ciUndo)
+  })
 
   async function processScan(decodedText) {
     const camwrap = overlay.querySelector('#az-ci-camwrap')
@@ -774,7 +796,7 @@ function openCheckinScanner(level, code) {
       const [, sc, ts] = decodedText.split(':')
       const diff = Math.floor(Date.now() / 1000) - parseInt(ts, 10)
       if (diff > 60 || diff < -60) {
-        _azPlayScanBeep(false); flash(false)
+        _azPlayScanBeep('error'); flash(false)
         feedback.innerHTML = `<span style="color:#f87171">QR Code หมดอายุแล้ว ให้นักกีฬาเปิดหน้าใหม่</span>`
         return
       }
@@ -783,12 +805,12 @@ function openCheckinScanner(level, code) {
 
     const player = allRoster.find(p => p.students?.student_code === studentCode)
     if (!player) {
-      _azPlayScanBeep(false); flash(false)
+      _azPlayScanBeep('error'); flash(false)
       feedback.innerHTML = `<span style="color:#f87171">ไม่พบนักกีฬาคนนี้ในสองทีมที่แข่งนัดนี้</span>`
       return
     }
     if (checkedIds.has(player.id)) {
-      _azPlayScanBeep(false); flash(false)
+      _azPlayScanBeep('duplicate'); flash(false)
       feedback.innerHTML = `<span style="color:#fbbf24">${esc(player.students?.full_name || '')} รายงานตัวไปแล้ว</span>`
       return
     }
@@ -798,13 +820,26 @@ function openCheckinScanner(level, code) {
       { onConflict: 'level,match_code,player_id' },
     )
     if (error) {
-      _azPlayScanBeep(false); flash(false)
+      _azPlayScanBeep('error'); flash(false)
       feedback.innerHTML = `<span style="color:#f87171">บันทึกไม่สำเร็จ: ${esc(error.message)}</span>`
       return
     }
-    _azPlayScanBeep(true); flash(true)
+    _azPlayScanBeep('success'); flash(true)
     const teamLabel = player.teamId === r.teamAId ? r.teamA : r.teamB
-    feedback.innerHTML = `<span style="color:#4ade80">✓ ${esc(player.students?.full_name || '')} รายงานตัวแล้ว (${esc(teamLabel)})</span>`
+    const photoUrl = playerPhotoUrl(player)
+    const photoHtml = photoUrl
+      ? `<img src="${esc(photoUrl)}" style="width:40px;height:52px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15);flex-shrink:0"/>`
+      : `<div style="width:40px;height:52px;border-radius:8px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;flex-shrink:0">${esc((player.students?.full_name || '?').charAt(0))}</div>`
+    feedback.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;text-align:left">
+        ${photoHtml}
+        <div style="flex:1;min-width:0">
+          <div style="color:#4ade80;font-weight:800;font-size:12.5px">✓ รายงานตัวแล้ว</div>
+          <div style="color:#e2e8f0;font-size:12.5px;font-weight:700;margin-top:1px;overflow-wrap:break-word">${esc(player.students?.full_name || '')}</div>
+          <div style="color:#94a3b8;font-size:11px">${esc(teamLabel)}</div>
+        </div>
+        <button data-ci-undo="${esc(player.id)}" style="flex-shrink:0;padding:8px 10px;border-radius:9px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.12);color:#f87171;font-weight:700;font-size:11px;cursor:pointer">✕ ยกเลิก</button>
+      </div>`
     checkedIds.add(player.id)
     renderList()
   }
@@ -889,6 +924,8 @@ function staffMatchPickerRow(r, hasCheckin, hasResult) {
   const t = T[r.level]
   const canScan = hasCheckin && r.teamAId && r.teamBId
   if (!canScan && !hasResult) return ''
+  const teamA = r.teamAId ? S.teams.find(tm => tm.id === r.teamAId) : null
+  const teamB = r.teamBId ? S.teams.find(tm => tm.id === r.teamBId) : null
   return `
   <div style="border:1px solid ${t.border};background:${t.soft};border-radius:12px;padding:10px 12px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${levelBadge(r.level)}<span style="font-size:11px;color:#9ca3af;font-weight:600">${esc(r.round)} · ${r.code}</span></div>
@@ -897,6 +934,10 @@ function staffMatchPickerRow(r, hasCheckin, hasResult) {
       ${canScan ? `<button data-act="openCheckinScanner" data-level="${r.level}" data-code="${r.code}" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:700;font-size:11.5px;cursor:pointer">📷 รับรายงานตัว</button>` : ''}
       ${hasResult ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="flex:1;padding:9px;border:1px solid ${t.border};border-radius:9px;background:#fff;color:${t.accent};font-weight:700;font-size:11.5px;cursor:pointer">✏️ บันทึกผล</button>` : ''}
     </div>
+    ${canScan && (teamA || teamB) ? `<div style="display:flex;gap:8px;margin-top:6px">
+      ${teamA ? `<button data-act="printCheckinForm" data-id="${teamA.id}" style="flex:1;padding:7px;border:1px dashed ${t.border};border-radius:9px;background:#fff;color:#6b7280;font-weight:700;font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 เอกสาร ${esc(r.teamA)}</button>` : ''}
+      ${teamB ? `<button data-act="printCheckinForm" data-id="${teamB.id}" style="flex:1;padding:7px;border:1px dashed ${t.border};border-radius:9px;background:#fff;color:#6b7280;font-weight:700;font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 เอกสาร ${esc(r.teamB)}</button>` : ''}
+    </div>` : ''}
   </div>`
 }
 
