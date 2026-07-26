@@ -127,7 +127,8 @@ let S = {
   editingTeamName: false,
   editTeamNameValue: '',
   myTeamMatchesOpen: false,
-  teamCodeInput: '',
+  expandedPlayerId: null,
+  teamCodeInput: (typeof localStorage !== 'undefined' && localStorage.getItem('az_team_code')) || '',
   teamCodeLookupResult: null, // team row | 'notfound' | null
   myTeamTab: 'roster', // 'roster' | 'matches' | 'finance' — แท็บย่อยในหน้าทีมของฉัน
   adminManageTeamId: null,
@@ -201,7 +202,7 @@ async function loadAll() {
     SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
-    SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, minute, created_at').order('created_at'),
+    SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, minute, is_penalty, created_at').order('created_at'),
     SB.from('azfutsal_checkins').select('id, level, match_code, team_id, player_id, checked_in_by, checked_in_at'),
   ])
   S.config = Object.fromEntries((config || []).map(r => [r.key, r.value]))
@@ -318,10 +319,11 @@ function matchClockDisplay(m, opts = {}) {
   const halfMin = Number(cfg('HALF_DURATION_MINUTES', 20))
   const half = m.clock_half || 1
   const isRunning = status === 'running'
-  const label = status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ครึ่ง ${half}`
+  const halfLabel = half === 2 ? 'ครึ่งหลัง' : 'ครึ่งแรก'
+  const label = status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ${halfLabel}`
   const size = opts.compact ? '13px' : '20px'
   return `<span style="display:inline-flex;align-items:center;gap:6px;${opts.compact ? '' : 'padding:4px 10px;background:#111827;border-radius:999px;'}">
-    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:800;font-size:${size};color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
+    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:800;font-size:${size};color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
     <span style="font-size:10px;font-weight:700;color:${isRunning ? '#22c55e' : (opts.compact ? '#6b7280' : '#9ca3af')}">${label}</span>
   </span>`
 }
@@ -329,14 +331,16 @@ function matchClockDisplay(m, opts = {}) {
 function _azTickClocks() {
   document.querySelectorAll('.az-clock-live').forEach(el => {
     const status = el.dataset.clockStatus
-    const half = Number(el.dataset.clockHalf || 1)
     const startedAt = el.dataset.clockStartedAt
     const elapsedBefore = Number(el.dataset.clockElapsedBefore || 0)
+    const halfStartedElapsed = Number(el.dataset.clockHalfStartedElapsed || 0)
     const halfMin = Number(el.dataset.clockHalfMinutes || 20)
     let sec = elapsedBefore
     if (status === 'running' && startedAt) sec += Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
     const halfLimitSec = halfMin * 60
-    const elapsedInHalf = half === 2 ? sec - halfLimitSec : sec
+    // นับเวลาที่ผ่านไป "เฉพาะครึ่งปัจจุบัน" เทียบกับจุดเริ่มครึ่งนี้จริง (ไม่ใช่ลบด้วยนาทีต่อครึ่งคงที่)
+    // กันบั๊ก: ถ้าครึ่งแรกทดเวลาเกิน นาฬิกาครึ่งหลังต้องเริ่มนับใหม่เต็มจำนวนนาทีต่อครึ่งเสมอ ไม่ใช่นับต่อจากทดเวลาครึ่งแรก
+    const elapsedInHalf = sec - halfStartedElapsed
     const remain = halfLimitSec - elapsedInHalf
     el.textContent = _azFmtClock(remain)
   })
@@ -610,6 +614,25 @@ function teamPlayerEventSummary(team) {
     .map(([pid, c]) => ({ name: playerName(pid), yellow: c.yellow, red: c.red }))
     .sort((a, b) => (b.yellow.length + b.red.length) - (a.yellow.length + a.red.length) || a.name.localeCompare(b.name, 'th'))
   return { goalList, cardList }
+}
+
+// รายละเอียดเหตุการณ์รายคนแบบเจาะลึก (รอบไหน เจอใคร นาทีที่เท่าไหร่) ใช้กับการ์ดขยายในหน้ารายชื่อนักกีฬา
+function teamPlayerEventDetails(team) {
+  const matches = teamMatchRows(team)
+  const matchInfo = new Map(matches.map((m, i) => [m.code, { ...m, order: i }]))
+  const byPlayer = new Map()
+  S.matchEvents.filter(e => e.level === team.level && e.team_id === team.id).forEach(e => {
+    if (!byPlayer.has(e.player_id)) byPlayer.set(e.player_id, { goals: 0, yellow: 0, red: 0, events: [] })
+    const entry = byPlayer.get(e.player_id)
+    if (e.event_type === 'goal') entry.goals++
+    else if (e.event_type === 'yellow') entry.yellow++
+    else if (e.event_type === 'red') entry.red++
+    const mi = matchInfo.get(e.match_code)
+    const opponent = mi ? (mi.teamAId === team.id ? mi.teamB : mi.teamA) : ''
+    entry.events.push({ type: e.event_type, round: mi?.round || '', opponent, code: e.match_code, order: mi?.order ?? 999, minute: e.minute, isPenalty: !!e.is_penalty })
+  })
+  byPlayer.forEach(entry => entry.events.sort((a, b) => a.order - b.order || (a.minute ?? 0) - (b.minute ?? 0)))
+  return byPlayer
 }
 
 // "ปั๊มดิจิทัล" แสดงว่ารายงานตัวแล้ว พร้อมชื่อผู้รับรายงานตัวและเวลา (checked_in_by/checked_in_at จาก azfutsal_checkins)
@@ -1042,12 +1065,12 @@ function groupEventsByPlayer(events) {
   const map = new Map()
   events.forEach(e => {
     if (!map.has(e.player_id)) { map.set(e.player_id, []); order.push(e.player_id) }
-    if (e.minute != null) map.get(e.player_id).push(e.minute)
+    if (e.minute != null) map.get(e.player_id).push({ minute: e.minute, isPenalty: !!e.is_penalty })
   })
   return order.map(playerId => {
     const name = eventPlayerName(playerId)
-    const minutes = map.get(playerId).sort((a, b) => a - b)
-    return name ? name + (minutes.length ? ` (${minutes.map(mm => mm + "'").join(', ')})` : '') : ''
+    const marks = map.get(playerId).sort((a, b) => a.minute - b.minute)
+    return name ? name + (marks.length ? ` (${marks.map(mk => mk.minute + "'" + (mk.isPenalty ? 'P' : '')).join(', ')})` : '') : ''
   }).filter(Boolean)
 }
 
@@ -1390,10 +1413,12 @@ function adminTeamPickerView() {
 
 function createTeamView(adminMode) {
   const lr = S.capLookupResult
+  const regClosed = !adminMode && cfg('REGISTRATION_OPEN_MS', '0') !== '1' && cfg('REGISTRATION_OPEN_HS', '0') !== '1'
   return `
   <section>
     ${adminMode ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : ''}
-    <h2 style="margin:0 0 4px;font-size:17px;font-weight:800">ลงทะเบียนทีม${adminMode ? ' (แอดมิน)' : ''}</h2>
+    <h2 style="margin:0 0 4px;font-size:17px;font-weight:800">${regClosed ? 'ดูข้อมูลทีม' : `ลงทะเบียนทีม${adminMode ? ' (แอดมิน)' : ''}`}</h2>
+    ${regClosed ? `<p style="margin:0 0 16px;font-size:12.5px;color:#6b7280">ขณะนี้ปิดรับลงทะเบียนทีมใหม่แล้ว กรอกรหัสประจำทีมเพื่อดูข้อมูลทีมของคุณได้ที่นี่</p>` : `
     <p style="margin:0 0 16px;font-size:12.5px;color:#6b7280">กรอกชื่อทีม เลือกระดับ${adminMode ? ' ค้นหาหัวหน้าทีม' : ''} แล้วค่อยเพิ่มรายชื่อนักกีฬาในขั้นถัดไป</p>
     <div style="display:flex;flex-direction:column;gap:10px">
       <label style="font-size:11.5px;color:#6b7280">ชื่อทีม
@@ -1419,10 +1444,10 @@ function createTeamView(adminMode) {
           </div>` : ''}
       </div>` : ''}
       <button data-act="createTeam" data-admin="${adminMode ? '1' : '0'}" ${S.teamCreating ? 'disabled' : ''} style="margin-top:6px;padding:12px;border:none;border-radius:10px;background:${S.teamCreating ? '#f3b6d1' : '#db2777'};color:#fff;font-weight:700;font-size:14px;cursor:${S.teamCreating ? 'default' : 'pointer'}">${S.teamCreating ? 'กำลังสร้าง...' : 'สร้างทีม'}</button>
-    </div>
+    </div>`}
     ${!adminMode ? `
-    <div style="border-top:1px solid #e5e7eb;margin-top:20px;padding-top:16px">
-      <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">เป็นสมาชิกทีมอยู่แล้วแต่ไม่ใช่หัวหน้าทีม? กรอกรหัสประจำทีมเพื่อดูข้อมูลทีมของคุณ (ดูได้อย่างเดียว แก้ไขไม่ได้)</div>
+    <div style="${regClosed ? '' : 'border-top:1px solid #e5e7eb;margin-top:20px;padding-top:16px'}">
+      ${regClosed ? '' : `<div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">เป็นสมาชิกทีมอยู่แล้วแต่ไม่ใช่หัวหน้าทีม? กรอกรหัสประจำทีมเพื่อดูข้อมูลทีมของคุณ (ดูได้อย่างเดียว แก้ไขไม่ได้)</div>`}
       <div style="display:flex;gap:8px">
         <input id="team-code-input" value="${esc(S.teamCodeInput)}" placeholder="เช่น HS-6N7D" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:10px;padding:9px 10px;font-size:13px;text-transform:uppercase"/>
         <button data-act="lookupTeamCode" style="flex-shrink:0;padding:9px 16px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">ดูข้อมูล</button>
@@ -1442,6 +1467,7 @@ function manageTeamView(team, isAdminView, readOnly) {
   const lr = S.rosterLookupResult
   const myMatches = teamMatchRows(team)
   const { goalList, cardList } = teamPlayerEventSummary(team)
+  const playerEventDetails = teamPlayerEventDetails(team)
   const teamCardStats = computeTeamStats(team.level).find(r => r.id === team.id) || { y: 0, r: 0 }
   const refundEstimate = Math.max(Number(cfg('DEPOSIT_AMOUNT', 500)) - Number(cfg('OPERATION_FEE', 100)) - teamCardStats.y * Number(cfg('RATE_YELLOW', 30)) - teamCardStats.r * Number(cfg('RATE_RED', 50)), 0)
 
@@ -1489,33 +1515,51 @@ function manageTeamView(team, isAdminView, readOnly) {
         <div style="font-size:11.5px;color:#6b7280">${roster.length}/${maxRoster} คน</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:${editable && roster.length < maxRoster ? '12px' : '0'}">
-        ${roster.length ? roster.map(p => `
-          <div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:8px">
-            <div style="position:relative;flex-shrink:0">
-              ${photoTag(playerPhotoUrl(p))}
-              ${editable ? `<label style="position:absolute;bottom:-3px;right:-3px;width:17px;height:17px;border-radius:50%;background:${t.base};display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.35)">
-                <input type="file" accept="image/*" data-act="uploadPlayerPhoto" data-id="${p.id}" style="display:none"/>
-                <span style="color:#fff;font-size:9px;line-height:1">📷</span>
-              </label>` : ''}
-            </div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${roleTag(p)}</div>
-              <div style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-                <span>${esc(p.students?.student_code || '')}</span>
-                ${S.editingJerseyId === p.id ? `
-                  <span>·</span>
-                  <input id="edit-jersey-input" type="number" min="0" value="${esc(S.editJerseyValue)}" style="width:56px;border:1px solid #e5e7eb;border-radius:6px;padding:2px 5px;font-size:11px"/>
-                  <button data-act="saveJersey" data-id="${p.id}" style="border:none;background:none;color:${t.accent};font-size:11px;font-weight:700;cursor:pointer">บันทึก</button>
-                  <button data-act="cancelEditJersey" style="border:none;background:none;color:#9ca3af;font-size:11px;cursor:pointer">ยกเลิก</button>
-                ` : `
-                  <span>${p.jersey_number !== null && p.jersey_number !== undefined ? `· เบอร์ ${p.jersey_number}` : '· ยังไม่ระบุเบอร์'}</span>
-                  ${editable ? `<button data-act="startEditJersey" data-id="${p.id}" data-v="${p.jersey_number ?? ''}" style="border:none;background:none;color:${t.accent};font-size:10.5px;cursor:pointer;font-weight:600">แก้ไข</button>` : ''}
-                `}
+        ${roster.length ? roster.map(p => {
+          const ev = playerEventDetails.get(p.id)
+          const hasEvents = ev && ev.events.length > 0
+          const expanded = S.expandedPlayerId === p.id
+          const badgeBits = []
+          if (ev?.goals) badgeBits.push(`⚽${ev.goals}`)
+          if (ev?.yellow) badgeBits.push(`🟨${ev.yellow}`)
+          if (ev?.red) badgeBits.push(`🟥${ev.red}`)
+          const eventIcon = e => e.type === 'goal' ? '⚽' : e.type === 'yellow' ? '🟨' : '🟥'
+          return `
+          <div style="background:#fff;border-radius:10px;padding:8px">
+            <div style="display:flex;align-items:center;gap:10px;${hasEvents ? 'cursor:pointer' : ''}" ${hasEvents ? `data-act="togglePlayerEventDetail" data-id="${p.id}"` : ''}>
+              <div style="position:relative;flex-shrink:0">
+                ${photoTag(playerPhotoUrl(p))}
+                ${editable ? `<label style="position:absolute;bottom:-3px;right:-3px;width:17px;height:17px;border-radius:50%;background:${t.base};display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.35)">
+                  <input type="file" accept="image/*" data-act="uploadPlayerPhoto" data-id="${p.id}" style="display:none"/>
+                  <span style="color:#fff;font-size:9px;line-height:1">📷</span>
+                </label>` : ''}
               </div>
-              ${roleButtons(p) ? `<div style="margin-top:2px">${roleButtons(p)}</div>` : ''}
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${roleTag(p)}</div>
+                <div style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+                  <span>${esc(p.students?.student_code || '')}</span>
+                  ${S.editingJerseyId === p.id ? `
+                    <span>·</span>
+                    <input id="edit-jersey-input" type="number" min="0" value="${esc(S.editJerseyValue)}" style="width:56px;border:1px solid #e5e7eb;border-radius:6px;padding:2px 5px;font-size:11px"/>
+                    <button data-act="saveJersey" data-id="${p.id}" style="border:none;background:none;color:${t.accent};font-size:11px;font-weight:700;cursor:pointer">บันทึก</button>
+                    <button data-act="cancelEditJersey" style="border:none;background:none;color:#9ca3af;font-size:11px;cursor:pointer">ยกเลิก</button>
+                  ` : `
+                    <span>${p.jersey_number !== null && p.jersey_number !== undefined ? `· เบอร์ ${p.jersey_number}` : '· ยังไม่ระบุเบอร์'}</span>
+                    ${editable ? `<button data-act="startEditJersey" data-id="${p.id}" data-v="${p.jersey_number ?? ''}" style="border:none;background:none;color:${t.accent};font-size:10.5px;cursor:pointer;font-weight:600">แก้ไข</button>` : ''}
+                  `}
+                </div>
+                ${badgeBits.length ? `<div style="margin-top:3px;font-size:11px;color:#4b5563;font-weight:700">${badgeBits.join('  ')}</div>` : ''}
+                ${roleButtons(p) ? `<div style="margin-top:2px">${roleButtons(p)}</div>` : ''}
+              </div>
+              ${editable ? `<button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">ลบ</button>` : ''}
+              ${hasEvents ? `<span style="flex-shrink:0;color:#9ca3af;font-size:10px">${expanded ? '▲' : '▼'}</span>` : ''}
             </div>
-            ${editable ? `<button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">ลบ</button>` : ''}
-          </div>`).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬา</div>`}
+            ${expanded && hasEvents ? `
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;display:flex;flex-direction:column;gap:2px">
+              ${ev.events.map(e => `<div style="font-size:11px;color:#4b5563;padding:3px 0">${eventIcon(e)} ${esc(e.round || '')} vs ${esc(e.opponent || '-')}${e.minute != null ? ` · นาทีที่ ${e.minute}${e.isPenalty ? ' (จุดโทษ)' : ''}` : ''}</div>`).join('')}
+            </div>` : ''}
+          </div>`
+        }).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬา</div>`}
       </div>
 
       ${editable && roster.length < maxRoster ? `
@@ -2297,7 +2341,7 @@ function eventListRow(level, code, teamId, side, type, label, color, bg) {
       ${teamId ? `<button data-act="openEventPicker" data-team="${side}" data-type="${type}" style="font-size:10.5px;border:1px dashed ${color};background:${bg};color:${color};border-radius:8px;padding:3px 8px;cursor:pointer">+ เพิ่ม</button>` : ''}
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">
-      ${evs.length ? evs.map(e => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:${bg};border-radius:999px;padding:3px 4px 3px 10px">${esc(eventPlayerName(e.player_id))}${e.minute != null ? ` <span style="opacity:.7">(${e.minute}')</span>` : ''}<button data-act="removeMatchEvent" data-id="${e.id}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px;line-height:1;padding:2px">✕</button></span>`).join('') : `<span style="font-size:11px;color:#c1c5cc">-</span>`}
+      ${evs.length ? evs.map(e => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:${bg};border-radius:999px;padding:3px 4px 3px 10px">${esc(eventPlayerName(e.player_id))}${e.minute != null ? ` <span style="opacity:.7">(${e.minute}')</span>` : ''}${type === 'goal' ? `<button data-act="toggleEventPenalty" data-id="${e.id}" title="ประตูจากจุดโทษ" style="border:1px solid ${e.is_penalty ? color : '#d1d5db'};background:${e.is_penalty ? color : '#fff'};color:${e.is_penalty ? '#fff' : '#9ca3af'};border-radius:999px;width:16px;height:16px;font-size:9px;font-weight:800;line-height:1;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0">P</button>` : ''}<button data-act="removeMatchEvent" data-id="${e.id}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px;line-height:1;padding:2px">✕</button></span>`).join('') : `<span style="font-size:11px;color:#c1c5cc">-</span>`}
     </div>
   </div>`
 }
@@ -2350,8 +2394,8 @@ function matchEditorModal() {
   const goalsA = r.teamAId ? matchEventCounts(level, code, r.teamAId).goal : 0
   const goalsB = r.teamBId ? matchEventCounts(level, code, r.teamBId).goal : 0
   const hasAnyGoalLogged = goalsA > 0 || goalsB > 0
-  const scoreAVal = m.score_a ?? (hasAnyGoalLogged ? goalsA : '')
-  const scoreBVal = m.score_b ?? (hasAnyGoalLogged ? goalsB : '')
+  const scoreAVal = hasAnyGoalLogged ? goalsA : (m.score_a ?? '')
+  const scoreBVal = hasAnyGoalLogged ? goalsB : (m.score_b ?? '')
   const teamField = (label, slot, resolvedName) => slot
     ? `<label style="font-size:11.5px;color:#6b7280;flex:1">${label}<select id="mx-team${label}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"><option value="">-</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}</select></label>`
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
@@ -2367,7 +2411,7 @@ function matchEditorModal() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ A<input id="mx-scoreA" type="number" min="0" value="${scoreAVal}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ B<input id="mx-scoreB" type="number" min="0" value="${scoreBVal}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
-      ${hasAnyGoalLogged && m.score_a == null ? `<div style="font-size:10.5px;color:#9ca3af;margin-top:-4px">* สกอร์เติมอัตโนมัติตามจำนวนผู้ทำประตูที่บันทึกไว้ แก้ไขได้ก่อนกดบันทึก ยังไม่ถือว่าจบการแข่งขันจนกว่าจะกดบันทึก</div>` : ''}
+      ${hasAnyGoalLogged ? `<div style="font-size:10.5px;color:#9ca3af;margin-top:-4px">* สกอร์ซิงก์ตามจำนวนผู้ทำประตูที่บันทึกไว้เสมอ (เพิ่ม/ลบผู้ทำประตูแล้วสกอร์จะอัปเดตตาม) แก้ไขเองได้ก่อนกดบันทึก ยังไม่ถือว่าจบการแข่งขันจนกว่าจะกดบันทึก</div>` : ''}
       ${!r.teamAId || !r.teamBId ? `<div style="font-size:11px;color:#9ca3af">* ระบุทีมทั้งสองฝั่งก่อน จึงจะบันทึกผู้ทำประตู/ใบเหลือง/ใบแดงได้</div>` : `
       <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid #f3f4f6;padding-top:10px">
         <div style="display:flex;gap:10px">
@@ -2759,6 +2803,7 @@ function bindEvents() {
     if (act === 'account') {
       if (!S.identity.session) { goToLogin(); return }
       if (!S.identity.student) { azToast('หน้านี้สำหรับนักเรียน (หัวหน้าทีม/ตัวแทนทีม) เท่านั้น'); return }
+      if (!S.teamCodeInput) S.teamCodeInput = localStorage.getItem('az_team_code') || ''
       S.tab = 'myteam'; draw(); return
     }
     if (act === 'admin-gear') {
@@ -2780,6 +2825,14 @@ function bindEvents() {
     if (act === 'closeEventPicker') { S.eventPicker = null; S.eventPickerFilter = ''; draw(); return }
     if (act === 'pickEventPlayer') { await handleAddMatchEvent(btn.dataset.player); return }
     if (act === 'removeMatchEvent') { await handleRemoveMatchEvent(btn.dataset.id); return }
+    if (act === 'togglePlayerEventDetail') { S.expandedPlayerId = S.expandedPlayerId === btn.dataset.id ? null : btn.dataset.id; draw(); return }
+    if (act === 'toggleEventPenalty') {
+      const ev = S.matchEvents.find(e => e.id === btn.dataset.id)
+      if (!ev) return
+      const { error } = await SB.from('azfutsal_match_events').update({ is_penalty: !ev.is_penalty }).eq('id', ev.id)
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); return
+    }
     if (act === 'saveMatch') { await handleSaveMatch(btn.dataset.level, btn.dataset.code); return }
     if (act === 'seedMatches') { await handleSeedMatches(btn.dataset.level); return }
     if (act === 'randomDraw') { await handleRandomDraw(btn.dataset.level); return }
@@ -2818,6 +2871,7 @@ function bindEvents() {
       if (!code) return
       const found = S.teams.find(t => (t.team_code || '').toUpperCase() === code)
       S.teamCodeLookupResult = found || 'notfound'
+      if (found) localStorage.setItem('az_team_code', code)
       draw(); return
     }
     if (act === 'exitTeamCodeView') { S.teamCodeLookupResult = null; S.teamCodeInput = ''; draw(); return }
@@ -2966,7 +3020,7 @@ function bindEvents() {
               commonRows.push({
                 level, match_code: def.code,
                 score_a: null, score_b: null, winner_team_id: null, loser_team_id: null,
-                clock_status: 'not_started', clock_half: null, clock_started_at: null, clock_elapsed_before: 0,
+                clock_status: 'not_started', clock_half: null, clock_started_at: null, clock_elapsed_before: 0, clock_half_started_elapsed: 0,
               })
               // ทุก row ในชุดนี้มี key ชุดเดียวกันเป๊ะเสมอ (team_a_id/team_b_id ทั้งคู่) กันปัญหา PostgREST เติม null ให้ row ที่ key ไม่ครบ
               if (def.refA || def.refB) refRows.push({ level, match_code: def.code, team_a_id: null, team_b_id: null })
@@ -2987,7 +3041,7 @@ function bindEvents() {
       draw(); return
     }
     if (act === 'startMatchClock') {
-      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0 }).eq('level', btn.dataset.level).eq('match_code', btn.dataset.code)
+      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0, clock_half_started_elapsed: 0 }).eq('level', btn.dataset.level).eq('match_code', btn.dataset.code)
       if (error) { azToast('เริ่มนาฬิกาไม่สำเร็จ: ' + error.message); return }
       await refresh(); return
     }
@@ -3003,7 +3057,11 @@ function bindEvents() {
       await refresh(); return
     }
     if (act === 'startSecondHalfClock') {
-      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 2, clock_started_at: new Date().toISOString() }).eq('level', btn.dataset.level).eq('match_code', btn.dataset.code)
+      const level = btn.dataset.level, code = btn.dataset.code
+      const m = matchByCode(level, code)
+      // จุดสำคัญของการแก้บั๊ก: ครึ่งหลังต้องเริ่มนับนาทีต่อครึ่งใหม่เต็มจำนวนเสมอ ไม่ว่าครึ่งแรกจะทดเวลาไปเท่าไหร่ก็ตาม
+      // จึงต้อง snapshot ค่า clock_elapsed_before ปัจจุบัน (รวมทดเวลาครึ่งแรกแล้ว) ไว้เป็นจุดฐานของครึ่งหลัง
+      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 2, clock_started_at: new Date().toISOString(), clock_half_started_elapsed: m?.clock_elapsed_before || 0 }).eq('level', level).eq('match_code', code)
       if (error) { azToast('เริ่มครึ่งหลังไม่สำเร็จ: ' + error.message); return }
       await refresh(); return
     }
