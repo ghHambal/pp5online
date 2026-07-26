@@ -489,6 +489,28 @@ function teamMatchRows(team) {
     .filter(row => row.teamAId === team.id || row.teamBId === team.id)
 }
 
+// สรุปผู้ทำประตู/ใบเหลือง-แดงรายคนของทีมหนึ่งๆ จากเหตุการณ์จริงที่บันทึกไว้ (matchEvents) — ไม่ต้องนับเองจากรายนัด
+function teamPlayerEventSummary(team) {
+  const goals = new Map() // player_id -> count
+  const cards = new Map() // player_id -> { yellow: [match_code...], red: [match_code...] }
+  S.matchEvents.filter(e => e.level === team.level && e.team_id === team.id).forEach(e => {
+    if (e.event_type === 'goal') {
+      goals.set(e.player_id, (goals.get(e.player_id) || 0) + 1)
+    } else if (e.event_type === 'yellow' || e.event_type === 'red') {
+      if (!cards.has(e.player_id)) cards.set(e.player_id, { yellow: [], red: [] })
+      cards.get(e.player_id)[e.event_type].push(e.match_code)
+    }
+  })
+  const playerName = id => S.players.find(pl => pl.id === id)?.students?.full_name || ''
+  const goalList = Array.from(goals.entries())
+    .map(([pid, n]) => ({ name: playerName(pid), goals: n }))
+    .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name, 'th'))
+  const cardList = Array.from(cards.entries())
+    .map(([pid, c]) => ({ name: playerName(pid), yellow: c.yellow, red: c.red }))
+    .sort((a, b) => (b.yellow.length + b.red.length) - (a.yellow.length + a.red.length) || a.name.localeCompare(b.name, 'th'))
+  return { goalList, cardList }
+}
+
 function scheduleRows() {
   const rows = []
   ;(S.filterLevel === 'ALL' ? ['MS', 'HS'] : [S.filterLevel]).forEach(level => {
@@ -906,6 +928,7 @@ function manageTeamView(team, isAdminView, readOnly) {
   const editable = !readOnly && (isAdminView || !deadline || new Date() < new Date(deadline))
   const lr = S.rosterLookupResult
   const myMatches = teamMatchRows(team)
+  const { goalList, cardList } = teamPlayerEventSummary(team)
   const teamCardStats = computeTeamStats(team.level).find(r => r.id === team.id) || { y: 0, r: 0 }
   const refundEstimate = Math.max(Number(cfg('DEPOSIT_AMOUNT', 500)) - Number(cfg('OPERATION_FEE', 100)) - teamCardStats.y * Number(cfg('RATE_YELLOW', 30)) - teamCardStats.r * Number(cfg('RATE_RED', 50)), 0)
 
@@ -1001,6 +1024,26 @@ function manageTeamView(team, isAdminView, readOnly) {
     </div>` : ''}
 
     ${S.myTeamTab === 'matches' ? `
+    ${goalList.length ? `
+    <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
+      <div style="font-weight:700;font-size:13.5px;margin-bottom:10px">⚽ สรุปผู้ทำประตูของทีม</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${goalList.map(g => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px"><span>${esc(g.name)}</span><span style="font-weight:800;color:${t.accent}">${g.goals} ประตู</span></div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${cardList.length ? `
+    <div style="border:1px solid #e5e7eb;border-radius:14px;padding:14px">
+      <div style="font-weight:700;font-size:13.5px;margin-bottom:10px">🟨🟥 สรุปใบเหลือง/ใบแดงของทีม</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${cardList.map(c => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px">
+            <span>${esc(c.name)}</span>
+            <span style="text-align:right;color:#6b7280">${c.yellow.length ? `<span style="color:#b45309;font-weight:700">🟨×${c.yellow.length}</span> (${esc(c.yellow.join(', '))})` : ''}${c.yellow.length && c.red.length ? ' · ' : ''}${c.red.length ? `<span style="color:#dc2626;font-weight:700">🟥×${c.red.length}</span> (${esc(c.red.join(', '))})` : ''}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
     <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
       <div style="font-weight:700;font-size:13.5px;margin-bottom:${myMatches.length ? '10px' : '0'}">ผลการแข่งขันของทีมคุณ</div>
       ${myMatches.length ? `<div style="display:flex;flex-direction:column;gap:8px">${myMatches.map(matchCard).join('')}</div>` : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีตารางแข่งของทีมนี้ (รอจับสลากประกบคู่)</div>`}
@@ -1020,6 +1063,7 @@ function manageTeamView(team, isAdminView, readOnly) {
           <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f3f4f6;font-size:12px;color:#6b7280">
             <div>หักค่าดำเนินการ ${money(cfg('OPERATION_FEE', 100))} บาท${teamCardStats.y ? ` · ใบเหลือง ${teamCardStats.y} ใบ (−${money(teamCardStats.y * Number(cfg('RATE_YELLOW', 30)))})` : ''}${teamCardStats.r ? ` · ใบแดง ${teamCardStats.r} ใบ (−${money(teamCardStats.r * Number(cfg('RATE_RED', 50)))})` : ''}</div>
             <div style="margin-top:4px;font-size:13.5px;font-weight:800;color:${t.accent}">คาดว่าจะได้เงินคืน ${money(refundEstimate)} บาท</div>
+            ${(teamCardStats.y || teamCardStats.r) ? `<div style="margin-top:6px;font-size:11px;color:#9ca3af">ดูว่าใครได้ใบเหลือง/แดงบ้างที่แท็บ "ผลการแข่งขัน"</div>` : ''}
           </div>
         ` : ''}
       ` : readOnly ? `
