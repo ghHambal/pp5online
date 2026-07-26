@@ -317,11 +317,12 @@ function matchClockDisplay(m, opts = {}) {
   if (status === 'not_started') return ''
   const halfMin = Number(cfg('HALF_DURATION_MINUTES', 20))
   const half = m.clock_half || 1
+  const isRunning = status === 'running'
   const label = status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ครึ่ง ${half}`
   const size = opts.compact ? '13px' : '20px'
   return `<span style="display:inline-flex;align-items:center;gap:6px;${opts.compact ? '' : 'padding:4px 10px;background:#111827;border-radius:999px;'}">
     <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:800;font-size:${size};color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
-    <span style="font-size:10px;font-weight:700;color:${opts.compact ? '#6b7280' : '#9ca3af'}">${label}</span>
+    <span style="font-size:10px;font-weight:700;color:${isRunning ? '#22c55e' : (opts.compact ? '#6b7280' : '#9ca3af')}">${label}</span>
   </span>`
 }
 // อัปเดตตัวเลขนาฬิกาทุกวินาทีแบบ DOM ตรงๆ ไม่เรียก draw() ใหม่ — self-healing เพราะ query DOM สดทุกครั้ง ถ้า draw() แทนที่ element ไปแล้วรอบถัดไปก็จะเจอตัวใหม่เอง
@@ -1083,7 +1084,7 @@ function matchCard(r) {
       ${levelBadge(r.level)}
       <span style="font-size:11px;color:#9ca3af;font-weight:600">${esc(r.round)} · ${r.code}</span>
       <span style="flex:1"></span>
-      ${isLive ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:#dc2626"><span style="width:7px;height:7px;border-radius:50%;background:#dc2626;animation:azLivePulse 1.2s ease-in-out infinite"></span>กำลังแข่งขัน</span>${matchClockDisplay(m, { compact: true })}`
+      ${isLive ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:999px"><span style="width:7px;height:7px;border-radius:50%;background:#16a34a;animation:azLivePulse 1.2s ease-in-out infinite"></span>กำลังแข่งขัน</span>${matchClockDisplay(m, { compact: true })}`
         : `<span style="font-size:${hasScore ? '10.5px' : '13px'};font-weight:${hasScore ? 700 : 800};color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : esc(m?.kickoff_time || 'รอแข่ง')}</span>`}
     </div>
     <div style="display:flex;align-items:center;gap:8px">
