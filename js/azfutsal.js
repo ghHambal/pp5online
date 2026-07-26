@@ -201,8 +201,8 @@ async function loadAll() {
     SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
-    SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, created_at').order('created_at'),
-    SB.from('azfutsal_checkins').select('id, level, match_code, team_id, player_id, checked_in_at'),
+    SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, minute, created_at').order('created_at'),
+    SB.from('azfutsal_checkins').select('id, level, match_code, team_id, player_id, checked_in_by, checked_in_at'),
   ])
   S.config = Object.fromEntries((config || []).map(r => [r.key, r.value]))
   applyThemeColors()
@@ -286,6 +286,76 @@ function matchEventCounts(level, code, teamId) {
     yellow: evs.filter(e => e.event_type === 'yellow').length,
     red: evs.filter(e => e.event_type === 'red').length,
   }
+}
+
+// ---------------- นาฬิกาจับเวลาแข่งขันสด ----------------
+// clock_status: 'not_started' | 'running' | 'half_break' | 'ended'
+// elapsed = clock_elapsed_before (วินาทีสะสมจากช่วงก่อนหน้า) + (ถ้ากำลังวิ่งอยู่ ให้บวกเวลาที่ผ่านไปจริงตั้งแต่ clock_started_at)
+function matchClockElapsedSeconds(m) {
+  if (!m || !m.clock_status || m.clock_status === 'not_started') return null
+  let sec = m.clock_elapsed_before || 0
+  if (m.clock_status === 'running' && m.clock_started_at) {
+    sec += Math.max(0, Math.floor((Date.now() - new Date(m.clock_started_at).getTime()) / 1000))
+  }
+  return sec
+}
+// นาทีสะสมแบบเดียวกับบอลจริง (0:00-0:59 = นาทีที่ 1, 1:00-1:59 = นาทีที่ 2, ...)
+function matchClockMinute(m) {
+  const sec = matchClockElapsedSeconds(m)
+  return sec === null ? null : Math.floor(sec / 60) + 1
+}
+function _azFmtClock(sec) {
+  const neg = sec < 0
+  const abs = Math.abs(sec)
+  const mm = String(Math.floor(abs / 60)).padStart(2, '0')
+  const ss = String(abs % 60).padStart(2, '0')
+  return `${neg ? '+' : ''}${mm}:${ss}`
+}
+// แสดงตัวนับเวลาสด (data-* ให้ _azTickClocks อัปเดตทุกวินาทีโดยไม่ต้อง draw() ใหม่ทั้งหน้า)
+function matchClockDisplay(m, opts = {}) {
+  const status = m?.clock_status || 'not_started'
+  if (status === 'not_started') return ''
+  const halfMin = Number(cfg('HALF_DURATION_MINUTES', 20))
+  const half = m.clock_half || 1
+  const label = status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ครึ่ง ${half}`
+  const size = opts.compact ? '13px' : '20px'
+  return `<span style="display:inline-flex;align-items:center;gap:6px;${opts.compact ? '' : 'padding:4px 10px;background:#111827;border-radius:999px;'}">
+    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:800;font-size:${size};color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
+    <span style="font-size:10px;font-weight:700;color:${opts.compact ? '#6b7280' : '#9ca3af'}">${label}</span>
+  </span>`
+}
+// อัปเดตตัวเลขนาฬิกาทุกวินาทีแบบ DOM ตรงๆ ไม่เรียก draw() ใหม่ — self-healing เพราะ query DOM สดทุกครั้ง ถ้า draw() แทนที่ element ไปแล้วรอบถัดไปก็จะเจอตัวใหม่เอง
+function _azTickClocks() {
+  document.querySelectorAll('.az-clock-live').forEach(el => {
+    const status = el.dataset.clockStatus
+    const half = Number(el.dataset.clockHalf || 1)
+    const startedAt = el.dataset.clockStartedAt
+    const elapsedBefore = Number(el.dataset.clockElapsedBefore || 0)
+    const halfMin = Number(el.dataset.clockHalfMinutes || 20)
+    let sec = elapsedBefore
+    if (status === 'running' && startedAt) sec += Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+    const halfLimitSec = halfMin * 60
+    const elapsedInHalf = half === 2 ? sec - halfLimitSec : sec
+    const remain = halfLimitSec - elapsedInHalf
+    el.textContent = _azFmtClock(remain)
+  })
+}
+if (typeof window !== 'undefined' && !window._azClockTickerStarted) {
+  window._azClockTickerStarted = true
+  setInterval(_azTickClocks, 1000)
+  const styleEl = document.createElement('style')
+  styleEl.textContent = '@keyframes azLivePulse{0%,100%{opacity:1}50%{opacity:.25}}'
+  document.head.appendChild(styleEl)
+}
+// ปุ่มควบคุมนาฬิกา (เฉพาะแอดมิน/สตาฟผู้บันทึกผล) — วนสถานะ: ยังไม่เริ่ม → กำลังแข่งครึ่ง 1 → พักครึ่ง → กำลังแข่งครึ่ง 2 → จบเวลา
+function matchClockControls(level, code, m) {
+  const status = m?.clock_status || 'not_started'
+  const btnStyle = 'flex:1;padding:9px;border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer'
+  if (status === 'not_started') return `<button data-act="startMatchClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#16a34a">▶️ เริ่มการแข่งขัน</button>`
+  if (status === 'running' && (m.clock_half || 1) === 1) return `<button data-act="endHalfClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#d97706">⏸ จบครึ่งแรก</button>`
+  if (status === 'half_break') return `<button data-act="startSecondHalfClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#16a34a">▶️ เริ่มครึ่งหลัง</button>`
+  if (status === 'running' && (m.clock_half || 1) === 2) return `<button data-act="endMatchClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#dc2626">⏹ จบการแข่งขัน</button>`
+  return `<div style="flex:1;text-align:center;font-size:12px;font-weight:700;color:#6b7280;padding:9px">หมดเวลาการแข่งขันแล้ว</div>`
 }
 
 function computeTeamStats(level) {
@@ -965,24 +1035,41 @@ function eventPlayerName(playerId) {
   return p?.students?.full_name || ''
 }
 
+// รวมเหตุการณ์ (ประตู/เหลือง/แดง) เป็นรายคน พร้อมวงเล็บนาทีต่อท้ายแบบเว็บรายงานผลบอลทั่วไป เช่น "ชื่อ (2', 10')"
+function groupEventsByPlayer(events) {
+  const order = []
+  const map = new Map()
+  events.forEach(e => {
+    if (!map.has(e.player_id)) { map.set(e.player_id, []); order.push(e.player_id) }
+    if (e.minute != null) map.get(e.player_id).push(e.minute)
+  })
+  return order.map(playerId => {
+    const name = eventPlayerName(playerId)
+    const minutes = map.get(playerId).sort((a, b) => a - b)
+    return name ? name + (minutes.length ? ` (${minutes.map(mm => mm + "'").join(', ')})` : '') : ''
+  }).filter(Boolean)
+}
+
 function matchCard(r) {
   const t = T[r.level]
   const m = r.m
   const hasScore = m && m.score_a !== null && m.score_b !== null
-  const cA = m ? matchEventCounts(r.level, r.code, r.teamAId) : { goal: 0, yellow: 0, red: 0 }
-  const cB = m ? matchEventCounts(r.level, r.code, r.teamBId) : { goal: 0, yellow: 0, red: 0 }
-  const scorerNames = teamId => S.matchEvents.filter(e => e.level === r.level && e.match_code === r.code && e.team_id === teamId && e.event_type === 'goal').map(e => eventPlayerName(e.player_id)).filter(Boolean)
-  const scorersA = m ? scorerNames(r.teamAId) : [], scorersB = m ? scorerNames(r.teamBId) : []
+  const isLive = m && (m.clock_status === 'running' || m.clock_status === 'half_break')
+  const evsFor = (teamId, type) => S.matchEvents.filter(e => e.level === r.level && e.match_code === r.code && e.team_id === teamId && e.event_type === type)
+  const goalsA = m ? groupEventsByPlayer(evsFor(r.teamAId, 'goal')) : []
+  const goalsB = m ? groupEventsByPlayer(evsFor(r.teamBId, 'goal')) : []
+  const yellowA = m ? groupEventsByPlayer(evsFor(r.teamAId, 'yellow')) : []
+  const yellowB = m ? groupEventsByPlayer(evsFor(r.teamBId, 'yellow')) : []
+  const redA = m ? groupEventsByPlayer(evsFor(r.teamAId, 'red')) : []
+  const redB = m ? groupEventsByPlayer(evsFor(r.teamBId, 'red')) : []
   const aWins = hasScore && m.score_a > m.score_b
   const bWins = hasScore && m.score_b > m.score_a
 
-  const detailLines = (scorers, cardsInfo, align) => {
+  const detailLines = (goals, yellows, reds, align) => {
     const bits = []
-    if (scorers.length) bits.push(`<div style="font-size:10.5px;color:#6b7280;margin-top:3px;overflow-wrap:break-word;text-align:${align}">⚽ ${esc(scorers.join(', '))}</div>`)
-    const cardBits = []
-    if (cardsInfo.yellow) cardBits.push(`🟨×${cardsInfo.yellow}`)
-    if (cardsInfo.red) cardBits.push(`🟥×${cardsInfo.red}`)
-    if (cardBits.length) bits.push(`<div style="font-size:10.5px;color:#6b7280;margin-top:2px;text-align:${align}">${cardBits.join('  ')}</div>`)
+    if (goals.length) bits.push(`<div style="font-size:10.5px;color:#6b7280;margin-top:3px;overflow-wrap:break-word;text-align:${align}">⚽ ${esc(goals.join(', '))}</div>`)
+    if (yellows.length) bits.push(`<div style="font-size:10.5px;color:#6b7280;margin-top:2px;overflow-wrap:break-word;text-align:${align}">🟨 ${esc(yellows.join(', '))}</div>`)
+    if (reds.length) bits.push(`<div style="font-size:10.5px;color:#6b7280;margin-top:2px;overflow-wrap:break-word;text-align:${align}">🟥 ${esc(reds.join(', '))}</div>`)
     return bits.join('')
   }
   const teamBlock = (name, isWin, align) => `
@@ -996,7 +1083,8 @@ function matchCard(r) {
       ${levelBadge(r.level)}
       <span style="font-size:11px;color:#9ca3af;font-weight:600">${esc(r.round)} · ${r.code}</span>
       <span style="flex:1"></span>
-      <span style="font-size:${hasScore ? '10.5px' : '13px'};font-weight:${hasScore ? 700 : 800};color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : esc(m?.kickoff_time || 'รอแข่ง')}</span>
+      ${isLive ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:#dc2626"><span style="width:7px;height:7px;border-radius:50%;background:#dc2626;animation:azLivePulse 1.2s ease-in-out infinite"></span>กำลังแข่งขัน</span>${matchClockDisplay(m, { compact: true })}`
+        : `<span style="font-size:${hasScore ? '10.5px' : '13px'};font-weight:${hasScore ? 700 : 800};color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : esc(m?.kickoff_time || 'รอแข่ง')}</span>`}
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       ${teamBlock(r.teamA, aWins, 'left')}
@@ -1007,11 +1095,11 @@ function matchCard(r) {
       </div>
       ${teamBlock(r.teamB, bWins, 'right')}
     </div>
-    ${(scorersA.length || scorersB.length || cA.yellow || cA.red || cB.yellow || cB.red) ? `
+    ${(goalsA.length || goalsB.length || yellowA.length || yellowB.length || redA.length || redB.length) ? `
     <div style="display:flex;align-items:flex-start;gap:8px;margin-top:2px">
-      <div style="flex:1;min-width:0">${detailLines(scorersA, cA, 'left')}</div>
+      <div style="flex:1;min-width:0">${detailLines(goalsA, yellowA, redA, 'left')}</div>
       <div style="flex-shrink:0;min-width:56px"></div>
-      <div style="flex:1;min-width:0">${detailLines(scorersB, cB, 'right')}</div>
+      <div style="flex:1;min-width:0">${detailLines(goalsB, yellowB, redB, 'right')}</div>
     </div>` : ''}
     ${S.identity.isAdmin ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="margin-top:10px;width:100%;padding:7px;border-radius:9px;border:1px solid ${t.border};background:#fff;color:${t.accent};font-weight:700;font-size:12px;cursor:pointer">แก้ไขผล/เวลา</button>` : ''}
   </div>`
@@ -2208,7 +2296,7 @@ function eventListRow(level, code, teamId, side, type, label, color, bg) {
       ${teamId ? `<button data-act="openEventPicker" data-team="${side}" data-type="${type}" style="font-size:10.5px;border:1px dashed ${color};background:${bg};color:${color};border-radius:8px;padding:3px 8px;cursor:pointer">+ เพิ่ม</button>` : ''}
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">
-      ${evs.length ? evs.map(e => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:${bg};border-radius:999px;padding:3px 4px 3px 10px">${esc(eventPlayerName(e.player_id))}<button data-act="removeMatchEvent" data-id="${e.id}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px;line-height:1;padding:2px">✕</button></span>`).join('') : `<span style="font-size:11px;color:#c1c5cc">-</span>`}
+      ${evs.length ? evs.map(e => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;background:${bg};border-radius:999px;padding:3px 4px 3px 10px">${esc(eventPlayerName(e.player_id))}${e.minute != null ? ` <span style="opacity:.7">(${e.minute}')</span>` : ''}<button data-act="removeMatchEvent" data-id="${e.id}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px;line-height:1;padding:2px">✕</button></span>`).join('') : `<span style="font-size:11px;color:#c1c5cc">-</span>`}
     </div>
   </div>`
 }
@@ -2268,6 +2356,11 @@ function matchEditorModal() {
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
   return simpleModal(`${code} · ${T[level].label}`, `
     <div style="display:flex;flex-direction:column;gap:10px">
+      ${r.teamAId && r.teamBId ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#111827;border-radius:12px;padding:10px 12px">
+        ${m.clock_status && m.clock_status !== 'not_started' ? matchClockDisplay(m) : `<span style="font-size:11.5px;color:#9ca3af;font-weight:700">ยังไม่เริ่มจับเวลา</span>`}
+        ${matchClockControls(level, code, m)}
+      </div>` : ''}
       <div style="display:flex;gap:10px">${teamField('A', slots.a, r.teamA)}${teamField('B', slots.b, r.teamB)}</div>
       <div style="display:flex;gap:10px">
         <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ A<input id="mx-scoreA" type="number" min="0" value="${scoreAVal}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
@@ -2401,7 +2494,8 @@ async function handleAddMatchEvent(playerId) {
   const r = resolveMatch(level, code)
   const teamId = team === 'a' ? r.teamAId : r.teamBId
   if (!teamId) return
-  const { error } = await SB.from('azfutsal_match_events').insert({ level, match_code: code, team_id: teamId, player_id: playerId, event_type: type })
+  const minute = matchClockMinute(matchByCode(level, code))
+  const { error } = await SB.from('azfutsal_match_events').insert({ level, match_code: code, team_id: teamId, player_id: playerId, event_type: type, minute })
   if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
   await refresh()
   // เปิดตัวเลือกผู้เล่นค้างไว้ต่อ เพื่อกดเพิ่มคนถัดไปได้เร็วๆ ไม่ต้องเปิดใหม่ทุกครั้ง
@@ -2850,6 +2944,33 @@ function bindEvents() {
       if (error) { azToast('จัดเวลาไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('จัดเวลาอัตโนมัติเรียบร้อย'); return
     }
+    if (act === 'saveHalfDuration') {
+      const halfMin = Number(gid('ops-halfmin').value || 20)
+      if (halfMin <= 0) { azToast('นาทีต่อครึ่งต้องมากกว่า 0'); return }
+      await SB.from('azfutsal_config').upsert({ key: 'HALF_DURATION_MINUTES', value: String(halfMin) })
+      await refresh(); azToast('บันทึกนาทีต่อครึ่งแล้ว'); return
+    }
+    if (act === 'startMatchClock') {
+      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0 }).eq('level', btn.dataset.level).eq('match_code', btn.dataset.code)
+      if (error) { azToast('เริ่มนาฬิกาไม่สำเร็จ: ' + error.message); return }
+      await refresh(); return
+    }
+    if (act === 'endHalfClock' || act === 'endMatchClock') {
+      const level = btn.dataset.level, code = btn.dataset.code
+      const m = matchByCode(level, code)
+      const elapsed = matchClockElapsedSeconds(m) || 0
+      const { error } = await SB.from('azfutsal_matches').update({
+        clock_status: act === 'endHalfClock' ? 'half_break' : 'ended',
+        clock_elapsed_before: elapsed, clock_started_at: null,
+      }).eq('level', level).eq('match_code', code)
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); return
+    }
+    if (act === 'startSecondHalfClock') {
+      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 2, clock_started_at: new Date().toISOString() }).eq('level', btn.dataset.level).eq('match_code', btn.dataset.code)
+      if (error) { azToast('เริ่มครึ่งหลังไม่สำเร็จ: ' + error.message); return }
+      await refresh(); return
+    }
     if (act === 'adminNewTeamFromList' || act === 'adminOpenTeamFromList') {
       S.tab = 'myteam'
       if (act === 'adminNewTeamFromList') { S.adminCreatingTeam = true; S.adminManageTeamId = null }
@@ -3237,6 +3358,14 @@ function adminOps() {
         </div>
         <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดเวลาอัตโนมัติ</button>
       </div>
+    `)}
+    ${box(`
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px">นาฬิกาจับเวลาแข่งขันสด</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ใช้กับปุ่ม "เริ่มการแข่งขัน" ในหน้าบันทึกผลแต่ละนัด นับถอยหลังตามจำนวนนาทีต่อครึ่งนี้ และประทับเวลาให้ผู้ทำประตู/ใบเหลือง/ใบแดงอัตโนมัติ</div>
+      <label style="font-size:11.5px;color:#6b7280">นาทีต่อครึ่ง
+        <input id="ops-halfmin" type="number" min="1" value="${esc(cfg('HALF_DURATION_MINUTES', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
+      </label>
+      <button data-act="saveHalfDuration" style="margin-top:8px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">บันทึกนาทีต่อครึ่ง</button>
     `)}
     ${box(`
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
