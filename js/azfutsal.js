@@ -29,7 +29,7 @@ const STANDALONE_ADMIN_PROFILE_ID = '8112d7c9-ab32-4e63-9026-ab2367401d4c'
 // M1-M6 first round (12 teams). M7-M9 recovery from losers. M10/M11 from W1-4.
 // M12/M13 = W5/W6 + recovery pick (REC_1/REC_2, stored directly once chosen).
 // M14/M15 semis, M16 third place, M17 final.
-const MS_BRACKET = [
+const MS_BRACKET_12 = [
   { code: 'M1', round: 'รอบแรก' }, { code: 'M2', round: 'รอบแรก' }, { code: 'M3', round: 'รอบแรก' },
   { code: 'M4', round: 'รอบแรก' }, { code: 'M5', round: 'รอบแรก' }, { code: 'M6', round: 'รอบแรก' },
   { code: 'M7', round: 'รอบแก้ตัว', refA: 'L_M1', refB: 'L_M2' },
@@ -44,26 +44,60 @@ const MS_BRACKET = [
   { code: 'M16', round: 'ชิงที่ 3', refA: 'L_M14', refB: 'L_M15' },
   { code: 'M17', round: 'ชิงที่ 1', refA: 'W_M14', refB: 'W_M15' },
 ]
-// M1-M8 first round (16 ทีม = 14 ทีมทั่วไป + 2 ทีมผู้จัด). สายแพ้คัดออกล้วน ไม่มีรอบแก้ตัว/ไวด์การ์ด
-// (ของเดิม 14 ทีมมีรอบแก้ตัว แต่พอขยายเป็น 16 ทีมพอดี 2^4 เลยตัดกลไกรอบแก้ตัวออก ให้เป็นสายมาตรฐานสากล)
-const HS_BRACKET = [
+// M1-M8 รอบแรก (16 ทีม) ผู้ชนะ 8 ทีมรอไว้ก่อน ผู้แพ้ 8 ทีมไปรอบแก้ตัว
+// M9-M12 รอบแก้ตัว (เฉพาะผู้แพ้รอบแรก) ผู้ชนะ 4 ทีมไปรวมกับผู้ชนะรอบแรก = 12 ทีม ผู้แพ้ตกรอบ
+// M13-M18 รวม 12 ทีม จับคู่ 6 คู่ (pool 'R3' — จับสลากสดหรือแอดมินเลือกเองตอนนั้น) ผู้ชนะ 6 ทีมไปต่อ ผู้แพ้ตกรอบ
+// M19-M21 เหลือ 6 ทีม จับคู่ 3 คู่ (pool 'R4' — จับสลากสดหรือแอดมินเลือกเองตอนนั้น) ผู้ชนะ 3 ทีมรอรองฯ
+//   ผู้แพ้ 3 ทีม สุ่มฉลาก 1 ทีม (LOTTERY_1 จาก LOTTERY_SOURCES) เข้าร่วมรองฯ ด้วย อีก 2 ทีมตกรอบ
+// M22/M23 รองฯ (3 ทีมชนะ + 1 ทีมจากฉลาก) M24 ชิงที่ 3 M25 ชิงที่ 1 — รวม 25 นัด
+// ใช้ร่วมกันทั้ง ม.ปลาย (คงที่) และ ม.ต้นโหมด 16 ทีม (แอดมินเลือกได้) เพราะรหัสนัด/โครงสร้างไม่ผูกกับระดับชั้น
+const SIXTEEN_TEAM_BRACKET = [
   { code: 'M1', round: 'รอบแรก' }, { code: 'M2', round: 'รอบแรก' }, { code: 'M3', round: 'รอบแรก' },
   { code: 'M4', round: 'รอบแรก' }, { code: 'M5', round: 'รอบแรก' }, { code: 'M6', round: 'รอบแรก' },
   { code: 'M7', round: 'รอบแรก' }, { code: 'M8', round: 'รอบแรก' },
-  { code: 'M9', round: 'ก่อนรองฯ', refA: 'W_M1', refB: 'W_M2' },
-  { code: 'M10', round: 'ก่อนรองฯ', refA: 'W_M3', refB: 'W_M4' },
-  { code: 'M11', round: 'ก่อนรองฯ', refA: 'W_M5', refB: 'W_M6' },
-  { code: 'M12', round: 'ก่อนรองฯ', refA: 'W_M7', refB: 'W_M8' },
-  { code: 'M13', round: 'รองฯ', refA: 'W_M9', refB: 'W_M10' },
-  { code: 'M14', round: 'รองฯ', refA: 'W_M11', refB: 'W_M12' },
-  { code: 'M15', round: 'ชิงที่ 3', refA: 'L_M13', refB: 'L_M14' },
-  { code: 'M16', round: 'ชิงที่ 1', refA: 'W_M13', refB: 'W_M14' },
+  { code: 'M9', round: 'รอบแก้ตัว', refA: 'L_M1', refB: 'L_M2' },
+  { code: 'M10', round: 'รอบแก้ตัว', refA: 'L_M3', refB: 'L_M4' },
+  { code: 'M11', round: 'รอบแก้ตัว', refA: 'L_M5', refB: 'L_M6' },
+  { code: 'M12', round: 'รอบแก้ตัว', refA: 'L_M7', refB: 'L_M8' },
+  { code: 'M13', round: 'รอบ 12 ทีม', pool: 'R3' }, { code: 'M14', round: 'รอบ 12 ทีม', pool: 'R3' },
+  { code: 'M15', round: 'รอบ 12 ทีม', pool: 'R3' }, { code: 'M16', round: 'รอบ 12 ทีม', pool: 'R3' },
+  { code: 'M17', round: 'รอบ 12 ทีม', pool: 'R3' }, { code: 'M18', round: 'รอบ 12 ทีม', pool: 'R3' },
+  { code: 'M19', round: 'รอบ 6 ทีม', pool: 'R4' },
+  { code: 'M20', round: 'รอบ 6 ทีม', pool: 'R4' },
+  { code: 'M21', round: 'รอบ 6 ทีม', pool: 'R4' },
+  { code: 'M22', round: 'รองฯ', refA: 'W_M19', refB: 'LOTTERY_1' },
+  { code: 'M23', round: 'รองฯ', refA: 'W_M20', refB: 'W_M21' },
+  { code: 'M24', round: 'ชิงที่ 3', refA: 'L_M22', refB: 'L_M23' },
+  { code: 'M25', round: 'ชิงที่ 1', refA: 'W_M22', refB: 'W_M23' },
 ]
-const BRACKET = { MS: MS_BRACKET, HS: HS_BRACKET }
-const FINAL_CODE = { MS: 'M17', HS: 'M16' }
-const THIRD_CODE = { MS: 'M16', HS: 'M15' }
+const MS_BRACKET_16 = SIXTEEN_TEAM_BRACKET
+const HS_BRACKET = SIXTEEN_TEAM_BRACKET
+const msTeamFormat = () => cfg('MS_TEAM_FORMAT', '12') === '16' ? '16' : '12'
+// ม.ต้น เลือกได้ 12 หรือ 16 ทีม (ตั้งค่าก่อนสร้างตารางแข่งเท่านั้น, ล็อกหลังสร้างแล้ว) — ม.ปลายคงที่ 16 ทีมเสมอ
+const BRACKET = {
+  get MS() { return msTeamFormat() === '16' ? MS_BRACKET_16 : MS_BRACKET_12 },
+  HS: HS_BRACKET,
+}
+const FINAL_CODE = {
+  get MS() { return msTeamFormat() === '16' ? 'M25' : 'M17' },
+  HS: 'M25',
+}
+const THIRD_CODE = {
+  get MS() { return msTeamFormat() === '16' ? 'M24' : 'M16' },
+  HS: 'M24',
+}
 const RECOVER_SOURCES = { MS: ['M7', 'M8', 'M9'] }
 const WILDCARD_SOURCES = {}
+// รอบที่ทีมทั้งหมดมาจากสระผู้ชนะของรอบก่อนหน้า จับคู่กันเอง (จับสลากสด/แอดมินเลือกเอง) ไม่ใช่สายตายตัว
+// ใช้ร่วมกันได้ทั้ง HS และ MS โหมด 16 ทีม เพราะรหัสนัดในสระเหมือนกันทุกประการ (ดู SIXTEEN_TEAM_BRACKET)
+const SIXTEEN_TEAM_POOL_SOURCES = {
+  R3: ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12'],
+  R4: ['M13', 'M14', 'M15', 'M16', 'M17', 'M18'],
+}
+const POOL_SOURCES = { HS: SIXTEEN_TEAM_POOL_SOURCES, MS: SIXTEEN_TEAM_POOL_SOURCES }
+// สระผู้แพ้ที่ใช้สุ่มฉลาก 1 ทีมเข้ารองฯ (LOTTERY_1)
+const SIXTEEN_TEAM_LOTTERY_SOURCE = ['M19', 'M20', 'M21']
+const LOTTERY_SOURCES = { HS: SIXTEEN_TEAM_LOTTERY_SOURCE, MS: SIXTEEN_TEAM_LOTTERY_SOURCE }
 
 const esc = v => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -93,6 +127,8 @@ let S = {
   editingTeamName: false,
   editTeamNameValue: '',
   myTeamMatchesOpen: false,
+  teamCodeInput: '',
+  teamCodeLookupResult: null, // team row | 'notfound' | null
   adminManageTeamId: null,
   adminCreatingTeam: false,
   capLookupCode: '',
@@ -204,6 +240,21 @@ function resolveRef(level, ref, seen) {
   if (ref.startsWith('W_M')) return resolveMatch(level, ref.slice(2), seen).winnerId
   if (ref.startsWith('L_M')) return resolveMatch(level, ref.slice(2), seen).loserId
   return null
+}
+
+function winnersFrom(level, codes) { return codes.map(c => resolveMatch(level, c).winnerId).filter(Boolean) }
+function losersFrom(level, codes) { return codes.map(c => resolveMatch(level, c).loserId).filter(Boolean) }
+
+// ทีมที่ถูกเลือกไปแล้วในนัดอื่นๆ ของรอบสระเดียวกัน (กันแอดมินเลือกทีมซ้ำเข้าสองคู่)
+function poolRoundUsedIds(level, poolKey, exceptCode, exceptSide) {
+  const ids = []
+  BRACKET[level].filter(b => b.pool === poolKey).forEach(b => {
+    const mm = matchByCode(level, b.code)
+    if (!mm) return
+    if (mm.team_a_id && !(b.code === exceptCode && exceptSide === 'a')) ids.push(mm.team_a_id)
+    if (mm.team_b_id && !(b.code === exceptCode && exceptSide === 'b')) ids.push(mm.team_b_id)
+  })
+  return ids
 }
 
 // นับจำนวนเหตุการณ์ (ประตู/เหลือง/แดง) ของนัดหนึ่งๆ จาก log เหตุการณ์รายคน — ไม่มีการเก็บตัวเลขรวมแยกไว้ต่างหากอีกแล้ว
@@ -752,7 +803,9 @@ function myTeamView() {
   }
   if (!s.identity.student) return backMsg('หน้านี้สำหรับนักเรียน (หัวหน้าทีม/ตัวแทนทีม) เท่านั้น')
   const myTeam = s.teams.find(t => t.captain_student_id === s.identity.student.id)
-  return myTeam ? manageTeamView(myTeam, false) : createTeamView(false)
+  if (myTeam) return manageTeamView(myTeam, false)
+  if (s.teamCodeLookupResult && typeof s.teamCodeLookupResult === 'object') return manageTeamView(s.teamCodeLookupResult, false, true)
+  return createTeamView(false)
 }
 
 function adminTeamPickerView() {
@@ -814,16 +867,25 @@ function createTeamView(adminMode) {
       </div>` : ''}
       <button data-act="createTeam" data-admin="${adminMode ? '1' : '0'}" ${S.teamCreating ? 'disabled' : ''} style="margin-top:6px;padding:12px;border:none;border-radius:10px;background:${S.teamCreating ? '#f3b6d1' : '#db2777'};color:#fff;font-weight:700;font-size:14px;cursor:${S.teamCreating ? 'default' : 'pointer'}">${S.teamCreating ? 'กำลังสร้าง...' : 'สร้างทีม'}</button>
     </div>
+    ${!adminMode ? `
+    <div style="border-top:1px solid #e5e7eb;margin-top:20px;padding-top:16px">
+      <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">เป็นสมาชิกทีมอยู่แล้วแต่ไม่ใช่หัวหน้าทีม? กรอกรหัสประจำทีมเพื่อดูข้อมูลทีมของคุณ (ดูได้อย่างเดียว แก้ไขไม่ได้)</div>
+      <div style="display:flex;gap:8px">
+        <input id="team-code-input" value="${esc(S.teamCodeInput)}" placeholder="เช่น HS-6N7D" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:10px;padding:9px 10px;font-size:13px;text-transform:uppercase"/>
+        <button data-act="lookupTeamCode" style="flex-shrink:0;padding:9px 16px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">ดูข้อมูล</button>
+      </div>
+      ${S.teamCodeLookupResult === 'notfound' ? `<div style="margin-top:6px;font-size:12px;color:#dc2626">ไม่พบทีมที่ใช้รหัสนี้ ตรวจสอบรหัสอีกครั้ง</div>` : ''}
+    </div>` : ''}
   </section>`
 }
 
-function manageTeamView(team, isAdminView) {
+function manageTeamView(team, isAdminView, readOnly) {
   const t = T[team.level]
   const roster = S.players.filter(p => p.team_id === team.id)
   const payment = S.payments.find(p => p.team_id === team.id)
   const maxRoster = Number(cfg('MAX_ROSTER', 12))
   const deadline = cfg('REGISTER_EDIT_DEADLINE', '')
-  const editable = isAdminView || !deadline || new Date() < new Date(deadline)
+  const editable = !readOnly && (isAdminView || !deadline || new Date() < new Date(deadline))
   const lr = S.rosterLookupResult
   const myMatches = teamMatchRows(team)
   const teamCardStats = computeTeamStats(team.level).find(r => r.id === team.id) || { y: 0, r: 0 }
@@ -846,6 +908,7 @@ function manageTeamView(team, isAdminView) {
   <section style="display:flex;flex-direction:column;gap:14px">
     <div>
       ${isAdminView ? `<button data-act="adminBackToList" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← กลับรายการทีม</button>` : ''}
+      ${readOnly ? `<button data-act="exitTeamCodeView" style="border:none;background:none;color:#6b7280;font-size:12px;cursor:pointer;margin-bottom:8px">← ค้นหาทีมอื่น</button>` : ''}
       <div style="display:flex;align-items:center;gap:8px">
         ${levelBadge(team.level)}
         ${team.is_reserve ? reserveBadge() : ''}${team.is_organizer ? organizerBadge() : ''}
@@ -862,7 +925,8 @@ function manageTeamView(team, isAdminView) {
       ${team.is_reserve ? `<div style="margin-top:4px;font-size:11.5px;color:#b45309">ทีมของคุณอยู่ในสถานะทีมสำรอง (สมัครและชำระเงินเรียบร้อยแล้ว แต่เกินโควตาทีมหลักของรุ่นนี้)</div>` : ''}
     </div>
 
-    ${!editable ? `<div style="font-size:12px;color:#dc2626;background:#fee2e2;border-radius:10px;padding:8px 10px">หมดเวลาแก้ไขรายชื่อนักกีฬาแล้ว (ปิดแก้ไขเมื่อ ${esc(deadline)})</div>` : ''}
+    ${readOnly ? `<div style="font-size:12px;color:#6b7280;background:#f3f4f6;border-radius:10px;padding:8px 10px">🔒 กำลังดูข้อมูลทีมแบบอ่านอย่างเดียวผ่านรหัสทีม แก้ไขไม่ได้</div>` : ''}
+    ${!editable && !readOnly ? `<div style="font-size:12px;color:#dc2626;background:#fee2e2;border-radius:10px;padding:8px 10px">หมดเวลาแก้ไขรายชื่อนักกีฬาแล้ว (ปิดแก้ไขเมื่อ ${esc(deadline)})</div>` : ''}
 
     <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
@@ -928,8 +992,8 @@ function manageTeamView(team, isAdminView) {
         ${statusPill(payment.status)}
         ${payment.status === 'pending' ? `<div style="font-size:12px;color:#9ca3af">ส่งหลักฐานแล้ว รอแอดมินตรวจสอบ</div>` : ''}
         ${payment.status === 'rejected' ? `
-          <div style="font-size:11.5px;color:#dc2626;margin-bottom:8px">เหตุผล: ${esc(payment.admin_note || '-')}  กรุณายืนยันการลงทะเบียนและแนบหลักฐานใหม่</div>
-          <button data-act="openConfirmReg" data-team="${team.id}" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">ยืนยันการลงทะเบียนอีกครั้ง</button>
+          <div style="font-size:11.5px;color:#dc2626;margin-bottom:8px">เหตุผล: ${esc(payment.admin_note || '-')}${!readOnly ? '  กรุณายืนยันการลงทะเบียนและแนบหลักฐานใหม่' : ''}</div>
+          ${!readOnly ? `<button data-act="openConfirmReg" data-team="${team.id}" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">ยืนยันการลงทะเบียนอีกครั้ง</button>` : ''}
         ` : ''}
         ${payment.status !== 'rejected' ? `
           <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f3f4f6;font-size:12px;color:#6b7280">
@@ -937,6 +1001,8 @@ function manageTeamView(team, isAdminView) {
             <div style="margin-top:4px;font-size:13.5px;font-weight:800;color:${t.accent}">คาดว่าจะได้เงินคืน ${money(refundEstimate)} บาท</div>
           </div>
         ` : ''}
+      ` : readOnly ? `
+        <div style="font-size:12px;color:#9ca3af">ทีมนี้ยังไม่ได้ชำระค่าประกัน</div>
       ` : roster.length ? `
         <button data-act="openConfirmReg" data-team="${team.id}" style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer">✅ ยืนยันการลงทะเบียนสมัครเข้าร่วมแข่งขัน</button>
       ` : `
@@ -1216,8 +1282,20 @@ function adminTeams() {
       <div style="font-weight:700;font-size:14px">จัดการทีม${quota > 0 ? ` <span style="font-weight:600;font-size:11.5px;color:#6b7280">(${verifiedCount}/${quota} ทีมยืนยันแล้ว)</span>` : ''}</div>
       <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminTeamLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
     </div>
+    ${level === 'MS' && !seeded ? `
+    <div style="flex-shrink:0;margin-bottom:10px">
+      <div style="font-size:11.5px;color:#6b7280;margin-bottom:5px">รูปแบบสายการแข่ง ม.ต้น (เลือกก่อนสร้างตารางแข่ง — ล็อกทันทีที่สร้างแล้ว)</div>
+      <div style="display:flex;gap:6px">
+        <button data-act="setMsFormat" data-v="12" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '12' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '12' ? T.MS.base : '#fff'};color:${msTeamFormat() === '12' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">12 ทีม (17 นัด)</button>
+        <button data-act="setMsFormat" data-v="16" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '16' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '16' ? T.MS.base : '#fff'};color:${msTeamFormat() === '16' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">16 ทีม (25 นัด)</button>
+      </div>
+    </div>` : ''}
+    ${level === 'MS' && seeded ? `<div style="flex-shrink:0;font-size:10.5px;color:#9ca3af;margin-bottom:8px">รูปแบบสายการแข่ง: ${msTeamFormat()} ทีม (${BRACKET.MS.length} นัด) — ล็อกไว้แล้วเพราะสร้างตารางแข่งแล้ว</div>` : ''}
     ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:6px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่ (ทันที ไม่มีแอนิเมชัน)</button>`}
-    ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด (สำหรับไลฟ์)</button>` : ''}
+    ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:${usesSixteenTeamPools(level) ? '6px' : '10px'};padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด รอบแรก (สำหรับไลฟ์)</button>` : ''}
+    ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R3') ? `<button data-act="openLiveDraw" data-level="${level}" data-pool="R3" style="flex-shrink:0;width:100%;margin-bottom:6px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด · รอบ 12 ทีม</button>` : ''}
+    ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R4') ? `<button data-act="openLiveDraw" data-level="${level}" data-pool="R4" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด · รอบ 6 ทีม</button>` : ''}
+    ${seeded && usesSixteenTeamPools(level) ? `<div style="flex-shrink:0;font-size:10.5px;color:#9ca3af;margin:-2px 0 10px">รอบ 12 ทีม/6 ทีม เมื่อผลรอบก่อนหน้าครบแล้ว จะจับสลากสดหรือกด "แก้ไขผล/เวลา" ของแต่ละคู่เพื่อเลือกทีมเองก็ได้</div>` : ''}
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;overflow-y:auto">
       ${rows.length ? rows.map(t => teamAdminRow(t)).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีทีมในระดับนี้</div>`}
     </div>
@@ -1230,13 +1308,23 @@ function pickableSlots(level, code) {
   const def = BRACKET[level].find(b => b.code === code)
   const m = matchByCode(level, code)
   const slots = { a: null, b: null }
-  const poolFrom = codes => codes.map(c => resolveMatch(level, c).winnerId).filter(Boolean)
+  const poolFrom = codes => winnersFrom(level, codes)
+  if (def.pool) {
+    const full = winnersFrom(level, POOL_SOURCES[level]?.[def.pool] || [])
+    const usedA = poolRoundUsedIds(level, def.pool, code, 'a')
+    const usedB = poolRoundUsedIds(level, def.pool, code, 'b')
+    slots.a = { pool: full.filter(id => !usedA.includes(id)), value: m?.team_a_id || '' }
+    slots.b = { pool: full.filter(id => !usedB.includes(id)), value: m?.team_b_id || '' }
+    return slots
+  }
   if (!def.refA) slots.a = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_a_id || '' }
   else if (def.refA === 'REC_1' || def.refA === 'REC_2') slots.a = { pool: poolFrom(RECOVER_SOURCES[level] || []), value: m?.team_a_id || '' }
   else if (def.refA === 'WC_1' || def.refA === 'WC_2') slots.a = { pool: poolFrom(WILDCARD_SOURCES[level] || []), value: m?.team_a_id || '' }
+  else if (def.refA === 'LOTTERY_1') slots.a = { pool: losersFrom(level, LOTTERY_SOURCES[level] || []), value: m?.team_a_id || '' }
   if (!def.refB) slots.b = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_b_id || '' }
   else if (def.refB === 'REC_1' || def.refB === 'REC_2') slots.b = { pool: poolFrom(RECOVER_SOURCES[level] || []), value: m?.team_b_id || '' }
   else if (def.refB === 'WC_1' || def.refB === 'WC_2') slots.b = { pool: poolFrom(WILDCARD_SOURCES[level] || []), value: m?.team_b_id || '' }
+  else if (def.refB === 'LOTTERY_1') slots.b = { pool: losersFrom(level, LOTTERY_SOURCES[level] || []), value: m?.team_b_id || '' }
   return slots
 }
 
@@ -1253,13 +1341,30 @@ function cryptoShuffle(arr) {
 }
 
 // strategy: 'bypair' = จับให้ครบคู่ทีละคู่ (M1a,M1b,M2a,M2b,...) | 'byside' = จับทีมแรกของทุกคู่ก่อน (M1a..M6a แล้วค่อย M1b..M6b)
-function liveDrawSlotSeq(level, strategy) {
-  const firstCodes = BRACKET[level].filter(b => !b.refA).map(b => b.code)
+// poolKey ว่าง = จับสลากรอบแรกจากทีมทั้งหมดของระดับชั้น | poolKey ระบุ = จับสลากรอบที่มาจากสระผู้ชนะรอบก่อนหน้า (POOL_SOURCES)
+function liveDrawSlotSeq(level, strategy, poolKey) {
+  const codes = poolKey
+    ? BRACKET[level].filter(b => b.pool === poolKey).map(b => b.code)
+    : BRACKET[level].filter(b => !b.refA && !b.pool).map(b => b.code)
   if (strategy === 'byside') {
-    return [...firstCodes.map(code => ({ code, side: 'a' })), ...firstCodes.map(code => ({ code, side: 'b' }))]
+    return [...codes.map(code => ({ code, side: 'a' })), ...codes.map(code => ({ code, side: 'b' }))]
   }
-  return firstCodes.flatMap(code => [{ code, side: 'a' }, { code, side: 'b' }])
+  return codes.flatMap(code => [{ code, side: 'a' }, { code, side: 'b' }])
 }
+
+// ทีมที่ใช้จับสลาก — รอบแรกใช้ทีมทั้งหมดของระดับชั้น, รอบสระใช้ผู้ชนะของนัดต้นสระ
+function liveDrawTeamPool(level, poolKey) {
+  if (!poolKey) return S.teams.filter(tm => tm.level === level).map(tm => tm.id)
+  return winnersFrom(level, POOL_SOURCES[level]?.[poolKey] || [])
+}
+
+function poolRoundReady(level, poolKey) {
+  const src = POOL_SOURCES[level]?.[poolKey] || []
+  return src.length > 0 && src.every(c => resolveMatch(level, c).winnerId)
+}
+
+// ระดับชั้นที่กำลังใช้สาย 16 ทีม (มีรอบ 12 ทีม/6 ทีม แบบสระ) — ม.ปลายเสมอ, ม.ต้นเมื่อเลือกโหมด 16 ทีม
+function usesSixteenTeamPools(level) { return level === 'HS' || (level === 'MS' && msTeamFormat() === '16') }
 
 function hashSeed(str) {
   let h = 0
@@ -1297,20 +1402,21 @@ function liveDrawView() {
   const t = T[level]
   const stageBar = `<div style="height:4px;flex-shrink:0;background:linear-gradient(90deg,#f59e0b,#ec4899,#6366f1,#22c55e,#f59e0b);background-size:200% 100%;animation:stageBarSweep 4s linear infinite"></div>`
   const stageBg = `radial-gradient(ellipse 900px 500px at 50% -8%, rgba(99,102,241,.28), transparent 60%), radial-gradient(ellipse 700px 420px at 50% 112%, rgba(219,39,119,.18), transparent 60%), #0b0f1a`
+  const poolLabel = ld.pool ? (BRACKET[level].find(b => b.pool === ld.pool)?.round || '') : 'รอบแรก'
   if (!ld.started) {
-    const teams = S.teams.filter(tm => tm.level === level)
+    const teamIds = liveDrawTeamPool(level, ld.pool)
     const orderStrategy = ld.orderStrategy || 'bypair'
-    const slotSeq = liveDrawSlotSeq(level, orderStrategy)
-    const mismatch = teams.length > slotSeq.length
+    const slotSeq = liveDrawSlotSeq(level, orderStrategy, ld.pool)
+    const mismatch = teamIds.length > slotSeq.length
     const testMode = ld.testMode !== false // ค่าเริ่มต้นคือโหมดทดสอบ ปลอดภัยไว้ก่อน
     return `
     <div style="position:fixed;inset:0;z-index:80;background:${stageBg};color:#fff;display:flex;flex-direction:column">
       ${stageBar}
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
         <button data-act="closeLiveDraw" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
-        <div style="font-size:30px;font-weight:800;margin-bottom:2px">🎬 จับสลากสด</div>
+        <div style="font-size:30px;font-weight:800;margin-bottom:2px">🎬 จับสลากสด · ${esc(poolLabel)}</div>
         <div style="font-size:19px;font-weight:700;color:${t.base};margin-bottom:8px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))} · ${t.label}</div>
-        <div style="font-size:13px;color:#9ca3af;margin-bottom:16px">ทีมในโหล ${teams.length} ทีม · ช่องรอบแรกทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
+        <div style="font-size:13px;color:#9ca3af;margin-bottom:16px">ทีมในโหล ${teamIds.length} ทีม · ช่องทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
         <div style="display:flex;gap:8px;background:rgba(255,255,255,.06);padding:5px;border-radius:12px">
           <button data-act="setLiveDrawMode" data-v="1" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${testMode ? '#f59e0b' : 'transparent'};color:${testMode ? '#111827' : '#9ca3af'}">🧪 โหมดทดสอบ (ไม่บันทึก)</button>
           <button data-act="setLiveDrawMode" data-v="0" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${!testMode ? '#dc2626' : 'transparent'};color:${!testMode ? '#fff' : '#9ca3af'}">🔴 จับจริง (บันทึกผล)</button>
@@ -1322,7 +1428,7 @@ function liveDrawView() {
           <button data-act="setLiveDrawOrder" data-v="byside" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${orderStrategy === 'byside' ? '#6366f1' : 'transparent'};color:${orderStrategy === 'byside' ? '#fff' : '#9ca3af'}">จับทีมแรกของทุกคู่ก่อน</button>
         </div>
         ${mismatch
-          ? `<div style="margin-top:14px;padding:12px 16px;border-radius:10px;background:#7f1d1d;color:#fecaca;font-size:12.5px;max-width:320px">จำนวนทีม (${teams.length}) มากกว่าจำนวนช่องรอบแรก (${slotSeq.length}) กรุณาตรวจสอบทีมก่อนเริ่มจับสลาก</div>`
+          ? `<div style="margin-top:14px;padding:12px 16px;border-radius:10px;background:#7f1d1d;color:#fecaca;font-size:12.5px;max-width:320px">จำนวนทีม (${teamIds.length}) มากกว่าจำนวนช่อง (${slotSeq.length}) กรุณาตรวจสอบทีมก่อนเริ่มจับสลาก</div>`
           : `<button data-act="startLiveDraw" style="margin-top:18px;padding:14px 32px;border-radius:999px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:15px;cursor:pointer">เริ่มจับสลาก</button>
              <div style="margin-top:10px;font-size:11px;color:#6b7280">สุ่มลำดับทั้งหมดทันทีด้วย crypto RNG แล้วเปิดเผยทีละทีมสดๆ ให้ทุกคนเห็น</div>`}
       </div>
@@ -1339,7 +1445,7 @@ function liveDrawView() {
     ${ld.testMode ? `<div style="background:#f59e0b;color:#111827;text-align:center;padding:6px;font-weight:800;font-size:12px;flex-shrink:0">🧪 โหมดทดสอบ — ไม่มีการบันทึกผลลงระบบจริง</div>` : ''}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
       <div>
-        <div style="font-weight:800;font-size:20px">🎬 จับสลากสด · ${t.label}</div>
+        <div style="font-weight:800;font-size:20px">🎬 จับสลากสด · ${t.label} · ${esc(poolLabel)}</div>
         <div style="font-size:12.5px;color:#9ca3af;margin-top:2px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))}</div>
       </div>
       <button data-act="closeLiveDraw" style="flex-shrink:0;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
@@ -1380,11 +1486,11 @@ function liveDrawView() {
 async function handleStartLiveDraw() {
   const ld = S.liveDraw
   if (!ld) return
-  const teams = S.teams.filter(tm => tm.level === ld.level).map(tm => tm.id)
+  const teams = liveDrawTeamPool(ld.level, ld.pool)
   const orderStrategy = ld.orderStrategy || 'bypair'
-  const slotSeq = liveDrawSlotSeq(ld.level, orderStrategy)
+  const slotSeq = liveDrawSlotSeq(ld.level, orderStrategy, ld.pool)
   const testMode = ld.testMode !== false
-  S.liveDraw = { level: ld.level, started: true, testMode, orderStrategy, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle', shaken: false }
+  S.liveDraw = { level: ld.level, pool: ld.pool, started: true, testMode, orderStrategy, order: cryptoShuffle(teams), slotSeq, pickIndex: 0, filled: {}, phase: 'idle', shaken: false }
   await loadConfetti()
   draw()
 }
@@ -1577,8 +1683,9 @@ async function handleDrawNext() {
   ld.shaken = false // รอบถัดไปต้องเขย่าใหม่ก่อนถึงจะจับได้
   const aId = ld.filled[`${slot.code}_a`], bId = ld.filled[`${slot.code}_b`]
   if (aId && bId && !ld.testMode) {
+    const roundLabel = (BRACKET[ld.level].find(b => b.code === slot.code) || {}).round || ''
     await SB.from('azfutsal_matches').upsert(
-      { level: ld.level, match_code: slot.code, round: 'รอบแรก', team_a_id: aId, team_b_id: bId },
+      { level: ld.level, match_code: slot.code, round: roundLabel, team_a_id: aId, team_b_id: bId },
       { onConflict: 'level,match_code' }
     )
     await refresh()
@@ -1799,7 +1906,7 @@ async function handleSeedMatches(level) {
 
 async function handleRandomDraw(level) {
   const teams = S.teams.filter(t => t.level === level).map(t => t.id)
-  const firstCodes = BRACKET[level].filter(b => !b.refA).map(b => b.code)
+  const firstCodes = BRACKET[level].filter(b => !b.refA && !b.pool).map(b => b.code)
   if (teams.length < firstCodes.length * 2) { azToast(`ต้องมีทีมอย่างน้อย ${firstCodes.length * 2} ทีมสำหรับรอบแรก`); return }
   const shuffled = [...teams].sort(() => Math.random() - 0.5)
   const rows = firstCodes.map((code, i) => ({ level, match_code: code, round: 'รอบแรก', team_a_id: shuffled[i * 2], team_b_id: shuffled[i * 2 + 1] }))
@@ -2045,6 +2152,12 @@ function bindEvents() {
     if (act === 'saveMatch') { await handleSaveMatch(btn.dataset.level, btn.dataset.code); return }
     if (act === 'seedMatches') { await handleSeedMatches(btn.dataset.level); return }
     if (act === 'randomDraw') { await handleRandomDraw(btn.dataset.level); return }
+    if (act === 'setMsFormat') {
+      if (S.matches.MS.length) { azToast('สร้างตารางแข่ง ม.ต้น ไปแล้ว เปลี่ยนรูปแบบไม่ได้'); return }
+      const { error } = await SB.from('azfutsal_config').upsert({ key: 'MS_TEAM_FORMAT', value: btn.dataset.v })
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); azToast(`ตั้งรูปแบบสายการแข่ง ม.ต้น เป็น ${btn.dataset.v} ทีมแล้ว`); return
+    }
     if (act === 'openCert') { S.certModalOpen = true; S.certResult = null; S.certInput = ''; draw(); return }
     if (act === 'certClose') { S.certModalOpen = false; S.certFullscreen = false; draw(); return }
     if (act === 'certBack') { S.certFullscreen = false; draw(); return }
@@ -2069,6 +2182,14 @@ function bindEvents() {
       draw(); return
     }
     if (act === 'createTeam') { await handleCreateTeam(btn.dataset.admin === '1'); return }
+    if (act === 'lookupTeamCode') {
+      const code = gid('team-code-input')?.value.trim().toUpperCase()
+      if (!code) return
+      const found = S.teams.find(t => (t.team_code || '').toUpperCase() === code)
+      S.teamCodeLookupResult = found || 'notfound'
+      draw(); return
+    }
+    if (act === 'exitTeamCodeView') { S.teamCodeLookupResult = null; S.teamCodeInput = ''; draw(); return }
     if (act === 'setCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'captain'); return }
     if (act === 'setViceCaptain') { await handleSetRole(btn.dataset.team, Number(btn.dataset.student), 'vice_captain'); return }
     if (act === 'startEditTeamName') { S.editingTeamName = true; S.editTeamNameValue = btn.dataset.name; draw(); return }
@@ -2206,7 +2327,7 @@ function bindEvents() {
       }
       draw(); return
     }
-    if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, started: false, testMode: true, orderStrategy: 'bypair' }; draw(); return }
+    if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, pool: btn.dataset.pool || null, started: false, testMode: true, orderStrategy: 'bypair' }; draw(); return }
     if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
     if (act === 'setLiveDrawOrder') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.orderStrategy = btn.dataset.v; draw() } return }
     if (act === 'closeLiveDraw') { stopLiveDrawShake(); stopRollingSound(); S.liveDraw = null; draw(); return }
@@ -2273,6 +2394,7 @@ function bindEvents() {
     if (e.target.id === 'az-filterTime') { S.filterTime = e.target.value; updateScheduleList() }
     // เก็บค่าฟอร์มไว้ใน state เสมอ กัน draw() รอบใหม่ (เช่นตอนเลือกผลค้นหา) ล้างข้อความที่พิมพ์ไว้
     if (e.target.id === 'new-team-name') S.newTeamName = e.target.value
+    if (e.target.id === 'team-code-input') S.teamCodeInput = e.target.value
     if (e.target.id === 'roster-jersey') S.rosterJersey = e.target.value
     if (e.target.id === 'event-picker-filter') {
       S.eventPickerFilter = e.target.value
