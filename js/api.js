@@ -2697,6 +2697,25 @@ export async function assignTeacherToDept(teacherId, dept) {
   if (error) throw error
 }
 
+// ── push notifications (Web Push) ──────────────────────────────────────────────
+
+export async function savePushSubscription(profileId, subscription, userAgent = null) {
+  const { error } = await supabase.from('push_subscriptions').upsert({
+    profile_id: profileId,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.keys?.p256dh ?? subscription.p256dh,
+    auth: subscription.keys?.auth ?? subscription.auth,
+    user_agent: userAgent ?? (typeof navigator !== 'undefined' ? navigator.userAgent : null),
+    last_seen_at: new Date().toISOString(),
+  }, { onConflict: 'endpoint' })
+  if (error) throw error
+}
+
+export async function deletePushSubscriptionByEndpoint(endpoint) {
+  const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+  if (error) throw error
+}
+
 // ── supervisor notifications ───────────────────────────────────────────────────
 
 export async function addSupervisorCommentWithNotify(supervisorId, teacherId, metric, comment, notify, roundId = null) {

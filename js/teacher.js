@@ -19,6 +19,7 @@ import { applyThemeForRole } from './theme.js'
 import { APP_VERSION } from './version.js?v=10.19.10'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
+import { ensurePushSubscription } from './push-notify.js'
 import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-views-utils.js'
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
@@ -2510,6 +2511,7 @@ function _showNotifyPermissionBanner() {
     if (result === 'granted') {
       showToast('เปิดการแจ้งเตือนแล้ว ✅', 'success')
       if (_teacher?.id) await _scheduleClassNotifications(_teacher.id)
+      if (_teacher?.profile_id) ensurePushSubscription(_teacher.profile_id)
     }
   })
 
@@ -2604,6 +2606,7 @@ async function _initNotifications(teacherId) {
   await _registerServiceWorker()
   if (Notification.permission === 'granted') {
     await _scheduleClassNotifications(teacherId)
+    if (_teacher?.profile_id) ensurePushSubscription(_teacher.profile_id)
   } else if (Notification.permission === 'default') {
     const dismissed = localStorage.getItem('pp5_notify_dismissed')
     if (!dismissed) {

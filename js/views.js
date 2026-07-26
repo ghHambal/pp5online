@@ -8517,6 +8517,16 @@ function _getAnnSessions(m, pfx) {
 
 // ─── Announcements ────────────────────────────────────────────────────────────
 
+// ยิง push notification จริงไปหาครูทุกคนเมื่อมีประกาศใหม่ (Edge Function 'send-push')
+// เป็นของเสริม — ถ้ายิงไม่สำเร็จ (เช่นยังไม่มีใครสมัครรับ) ไม่บล็อกการบันทึกประกาศหลัก
+async function _sendAnnouncementPush(title, body) {
+  try {
+    await supabase.functions.invoke('send-push', {
+      body: { title: `📢 ${title}`, body: (body ?? '').slice(0, 150), url: 'teacher.html', target: 'all_teachers' },
+    })
+  } catch { /* เงียบไว้ ไม่กระทบผู้ใช้ */ }
+}
+
 export async function renderAnnouncements() {
   setActiveNav('announcements')
   document.getElementById('page-title').textContent = 'ประกาศ'
@@ -9029,6 +9039,7 @@ export async function renderAnnouncements() {
       try {
         if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl })
         else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl })
+        if (!isEdit && isActive) _sendAnnouncementPush(title, body)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
@@ -9665,6 +9676,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       try {
         if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl })
         else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl })
+        if (!isEdit && isActive) _sendAnnouncementPush(title, body)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
