@@ -569,17 +569,19 @@ const PRINT_CSS = `
 .print-actions{position:sticky;top:0;background:#fff;padding-bottom:12px;text-align:right}
 .print-actions button{padding:8px 14px;border-radius:10px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;margin-left:8px}
 #az-print-confirm{background:#111827;color:#fff;border:none}
-.print-title{text-align:center;margin:8px 0 16px}
-.print-table{width:100%;border-collapse:collapse;margin-bottom:14px}
+.print-title{text-align:center;margin:2px 0 8px}
+.print-title h2{margin:0;font-size:18px}
+.print-title p{margin:2px 0 0;font-size:12.5px}
+.print-table{width:100%;border-collapse:collapse;margin-bottom:6px}
 .print-table th,.print-table td{border:1px solid #111827;padding:5px 6px;font-size:11.5px;text-align:center}
 .print-table th{background:#f3f4f6}
 .print-grid{display:grid;gap:16px}
 .print-photo{width:32px;height:40px;border:1px solid #9ca3af;border-radius:8px;overflow:hidden;background:#e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto;flex:none;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .print-photo img{width:100%;height:100%;object-fit:cover}
 @media print{body{width:210mm}}
-.print-table-checkin th,.print-table-checkin td{padding:10px 8px;font-size:12.5px}
-.print-table-checkin td.print-stamp-cell{height:60px;min-width:100px}
-.print-photo-lg{width:46px;height:58px}
+.print-table-checkin th,.print-table-checkin td{padding:5px 8px;font-size:11.5px}
+.print-table-checkin td.print-stamp-cell{min-width:90px}
+.print-photo-lg{width:36px;height:46px}
 `
 function openPrintArea(innerHtml, opts = {}) {
   document.getElementById('az-print-area')?.remove()
@@ -644,23 +646,23 @@ function printCheckinForm(team) {
       <p>${t.label} · ${esc(team.name)} · รหัสทีม ${esc(team.team_code || '-')}</p></div>
     <table class="print-table print-table-checkin" style="table-layout:fixed">
       <colgroup>
-        <col style="width:28px">
-        <col style="width:172px">
+        <col style="width:26px">
+        <col style="width:242px">
         ${cols.map(() => `<col>`).join('')}
-        <col style="width:120px">
+        <col style="width:100px">
       </colgroup>
       <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th>${cols.map(c => `<th>นัดที่ ${c}<br><span style="font-weight:400;font-size:10px">(ปั๊มรายงานตัว)</span></th>`).join('')}<th>หมายเหตุ</th></tr></thead>
       <tbody>
         ${roster.length ? roster.map((p, i) => {
           const url = playerPhotoUrl(p)
-          return `<tr style="height:60px">
+          return `<tr>
             <td>${i + 1}</td>
             <td style="text-align:left;vertical-align:middle">
               <div style="display:flex;align-items:center;gap:8px">
                 <div class="print-photo print-photo-lg">${url ? `<img src="${esc(url)}">` : ''}</div>
-                <div style="min-width:0">
-                  <div style="font-weight:700;font-size:14px;line-height:1.25;overflow-wrap:break-word">${esc(p.students?.full_name || '')}</div>
-                  <div style="font-size:11px;color:#374151;margin-top:1px">เบอร์เสื้อ ${p.jersey_number ?? '-'}</div>
+                <div style="min-width:0;flex:1;overflow:hidden">
+                  <div style="font-weight:700;font-size:12.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.students?.full_name || '')}</div>
+                  <div style="font-size:10px;color:#374151;margin-top:1px;white-space:nowrap">เบอร์เสื้อ ${p.jersey_number ?? '-'}</div>
                 </div>
               </div>
             </td>
@@ -670,7 +672,7 @@ function printCheckinForm(team) {
         }).join('') : `<tr><td colspan="${3 + cols.length}">ยังไม่มีรายชื่อนักกีฬา</td></tr>`}
       </tbody>
     </table>
-    <p style="margin-top:8px;font-size:11px;color:#6b7280">*ประทับตรา/เซ็นชื่อในช่องนัดที่ตรงกับที่นักกีฬาคนนั้นมารายงานตัวจริง จำนวนคอลัมน์ (${n} นัด) คือจำนวนนัดสูงสุดที่ทีมนี้จะได้เล่นหากเข้าถึงรอบชิงชนะเลิศ · แต่ละทีมมีสมาชิกสูงสุด 10 คน</p>
+    <p style="margin-top:4px;font-size:10px;color:#6b7280">*ประทับตรา/เซ็นชื่อในช่องนัดที่ตรงกับที่นักกีฬาคนนั้นมารายงานตัวจริง จำนวนคอลัมน์ (${n} นัด) คือจำนวนนัดสูงสุดที่ทีมนี้จะได้เล่นหากเข้าถึงรอบชิงชนะเลิศ · แต่ละทีมมีสมาชิกสูงสุด 10 คน</p>
   `, { landscape: true })
 }
 
