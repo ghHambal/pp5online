@@ -166,6 +166,7 @@ let S = {
   players: [],
   matches: { MS: [], HS: [] },
   matchEvents: [],
+  checkins: [],
   awards: [],
   payments: [],
   loading: true,
@@ -190,7 +191,7 @@ async function loadAll() {
   }
   S.identity = { session, profile, isAdmin, student, teacher }
 
-  const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }, { data: matchEvents }] = await Promise.all([
+  const [{ data: config }, { data: teams }, { data: players }, { data: msMatches }, { data: hsMatches }, { data: awards }, { data: matchEvents }, { data: checkins }] = await Promise.all([
     SB.from('azfutsal_config').select('key, value'),
     SB.from('azfutsal_teams').select('id, level, name, captain_student_id, vice_captain_student_id, payment_method, team_code, is_reserve, is_organizer, created_at, captain:students!azfutsal_teams_captain_student_id_fkey(full_name), vice_captain:students!azfutsal_teams_vice_captain_student_id_fkey(full_name)'),
     SB.from('azfutsal_players').select('id, team_id, student_id, jersey_number, photo_url, registered_at, students(id, full_name, student_code, class_name, image_url, photo_url)'),
@@ -198,6 +199,7 @@ async function loadAll() {
     SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
     SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, created_at').order('created_at'),
+    SB.from('azfutsal_checkins').select('id, level, match_code, team_id, player_id, checked_in_at'),
   ])
   S.config = Object.fromEntries((config || []).map(r => [r.key, r.value]))
   applyThemeColors()
@@ -206,6 +208,7 @@ async function loadAll() {
   S.matches = { MS: msMatches || [], HS: hsMatches || [] }
   S.awards = awards || []
   S.matchEvents = matchEvents || []
+  S.checkins = checkins || []
 
   // สถานะการชำระเงินเปิดอ่านสาธารณะ (ไม่มีข้อมูลอ่อนไหว) เพื่อให้แท็บ "สถานะทีม" ใช้ได้โดยไม่ต้อง login
   const { data: payments } = await SB.from('azfutsal_payments').select('*').order('created_at', { ascending: false })
@@ -509,6 +512,255 @@ function teamPlayerEventSummary(team) {
     .map(([pid, c]) => ({ name: playerName(pid), yellow: c.yellow, red: c.red }))
     .sort((a, b) => (b.yellow.length + b.red.length) - (a.yellow.length + a.red.length) || a.name.localeCompare(b.name, 'th'))
   return { goalList, cardList }
+}
+
+// ---------------- แบบฟอร์มพิมพ์สำรอง (ออฟไลน์) ----------------
+// mirror pattern จาก js/sports-portals.js:printTeamList — สร้าง overlay เต็มจอ z-สูงสุด แล้วสั่ง window.print()
+// ใช้ id/คลาสคนละชื่อ (az-print-*) กันชนกับโมดูลอื่นถ้าโหลดอยู่หน้าเดียวกัน
+const PRINT_CSS = `
+@media print{body>*:not(#az-print-area){display:none!important}.print-actions{display:none!important}#az-print-area{position:static!important;padding:0!important}}
+#az-print-area{position:fixed;inset:0;z-index:9999;background:#fff;color:#111827;overflow:auto;padding:24px;font-family:Sarabun,Arial,sans-serif}
+.print-actions{position:sticky;top:0;background:#fff;padding-bottom:12px;text-align:right}
+.print-actions button{padding:8px 14px;border-radius:10px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;margin-left:8px}
+#az-print-confirm{background:#111827;color:#fff;border:none}
+.print-title{text-align:center;margin:8px 0 16px}
+.print-table{width:100%;border-collapse:collapse;margin-bottom:14px}
+.print-table th,.print-table td{border:1px solid #111827;padding:5px 6px;font-size:11.5px;text-align:center}
+.print-table th{background:#f3f4f6}
+.print-grid{display:grid;gap:16px}
+.print-photo{width:32px;height:32px;border-radius:50%;overflow:hidden;background:#e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.print-photo img{width:100%;height:100%;object-fit:cover}
+@media print{body{width:210mm}}
+`
+function openPrintArea(innerHtml) {
+  document.getElementById('az-print-area')?.remove()
+  const area = document.createElement('div')
+  area.id = 'az-print-area'
+  area.innerHTML = `<style>${PRINT_CSS}</style>
+    <div class="print-actions"><button id="az-print-confirm">🖨️ สั่งพิมพ์ / บันทึก PDF</button><button id="az-print-close">ปิด</button></div>
+    ${innerHtml}`
+  document.body.appendChild(area)
+  area.querySelector('#az-print-confirm').onclick = () => window.print()
+  area.querySelector('#az-print-close').onclick = () => area.remove()
+}
+
+function printMatchResultForm(level, code) {
+  const t = T[level]
+  const r = resolveMatch(level, code)
+  const def = BRACKET[level].find(b => b.code === code) || {}
+  const rosterTable = teamId => {
+    const roster = S.players.filter(p => p.team_id === teamId)
+    if (!roster.length) return `<div style="font-size:12px;color:#6b7280">ยังไม่มีรายชื่อนักกีฬา</div>`
+    return `<table class="print-table"><thead><tr><th>#</th><th></th><th style="text-align:left">ชื่อ-สกุล</th><th>เบอร์</th><th>ประตู (ทำเครื่องหมาย)</th><th>🟨</th><th>🟥</th></tr></thead><tbody>
+      ${roster.map((p, i) => {
+        const url = playerPhotoUrl(p)
+        return `<tr><td>${i + 1}</td><td><div class="print-photo">${url ? `<img src="${esc(url)}">` : ''}</div></td><td style="text-align:left">${esc(p.students?.full_name || '')}</td><td>${p.jersey_number ?? '-'}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`
+      }).join('')}
+    </tbody></table>`
+  }
+  openPrintArea(`
+    <div class="print-title"><h2>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))} · แบบฟอร์มบันทึกผลการแข่งขัน (สำรองออฟไลน์)</h2>
+      <p>${t.label} · นัด ${esc(code)} · รอบ ${esc(def.round || '')}</p></div>
+    <div style="display:flex;gap:24px;margin-bottom:14px;font-size:13px">
+      <div>ทีม A: <b>${esc(r.teamA || '.......................')}</b></div>
+      <div>ทีม B: <b>${esc(r.teamB || '.......................')}</b></div>
+    </div>
+    <div style="display:flex;gap:24px;margin-bottom:16px;font-size:13px">
+      <div>เวลารายงานตัว: ______________</div>
+      <div>เวลาแข่งจริง: ______________</div>
+      <div>สกอร์สุดท้าย: _______ − _______</div>
+    </div>
+    <div class="print-grid" style="grid-template-columns:1fr 1fr">
+      <div><h3>ทีม A: ${esc(r.teamA || '')}</h3>${rosterTable(r.teamAId)}</div>
+      <div><h3>ทีม B: ${esc(r.teamB || '')}</h3>${rosterTable(r.teamBId)}</div>
+    </div>
+    <p style="margin-top:8px;font-size:11px;color:#6b7280">*กรอกแบบฟอร์มนี้เมื่อระบบออนไลน์มีปัญหา แล้วนำข้อมูลไปกรอกในระบบภายหลังให้ตรงกับที่บันทึกไว้ที่นี่</p>
+  `)
+}
+
+// จำนวนนัดสูงสุดที่ทีมหนึ่งจะเล่นได้ถ้าเข้ารอบชิงชนะเลิศ (นับรวมเส้นทางแก้ตัว/เพลย์ออฟที่ยาวที่สุด)
+// ม.ต้น: รอบแรก+แก้ตัว+ก่อนรองฯ+รองฯ+ชิง = 5 · ม.ปลาย: รอบแรก+แก้ตัว+เพลย์ออฟ+ก่อนรองฯ+รองฯ+ชิง = 6
+function teamMaxPossibleMatches(level) {
+  return level === 'HS' ? 6 : 5
+}
+
+function printCheckinForm(team) {
+  const t = T[team.level]
+  const roster = S.players.filter(p => p.team_id === team.id)
+  const n = teamMaxPossibleMatches(team.level)
+  const cols = Array.from({ length: n }, (_, i) => i + 1)
+  openPrintArea(`
+    <div class="print-title"><h2>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))} · แบบฟอร์มรายงานตัวนักกีฬา</h2>
+      <p>${t.label} · ${esc(team.name)} · รหัสทีม ${esc(team.team_code || '-')}</p></div>
+    <table class="print-table">
+      <thead><tr><th>#</th><th></th><th style="text-align:left">ชื่อ-สกุล</th><th>เบอร์</th>${cols.map(c => `<th>นัดที่ ${c}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${roster.length ? roster.map((p, i) => {
+          const url = playerPhotoUrl(p)
+          return `<tr><td>${i + 1}</td><td><div class="print-photo">${url ? `<img src="${esc(url)}">` : ''}</div></td><td style="text-align:left">${esc(p.students?.full_name || '')}</td><td>${p.jersey_number ?? '-'}</td>${cols.map(() => `<td style="width:34px">&nbsp;</td>`).join('')}</tr>`
+        }).join('') : `<tr><td colspan="${4 + cols.length}">ยังไม่มีรายชื่อนักกีฬา</td></tr>`}
+      </tbody>
+    </table>
+    <p style="margin-top:8px;font-size:11px;color:#6b7280">*ติ๊ก/เซ็นชื่อในช่องนัดที่ตรงกับที่นักกีฬาคนนั้นมารายงานตัวจริง จำนวนคอลัมน์ (${n} นัด) คือจำนวนนัดสูงสุดที่ทีมนี้จะได้เล่นหากเข้าถึงรอบชิงชนะเลิศ</p>
+  `)
+}
+
+// ---------------- สแกน QR รายงานตัว ----------------
+// ใช้ QR ใบเดียวกับเช็คชื่อ/บันทึกคะแนนในระบบหลัก (รูปแบบ SQ:{student_code}:{timestamp} อายุ ±60 วิ หรือ student_code เปล่าๆ)
+// mirror โครงสร้างจาก js/score-qr-scanner.js แต่แปลงเป็น inline style ให้ตรงคอนเวนชันของไฟล์นี้
+async function _azLoadHtml5Qrcode() {
+  if (window.Html5Qrcode) return window.Html5Qrcode
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+    s.onload = () => resolve(window.Html5Qrcode)
+    s.onerror = () => reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ'))
+    document.head.appendChild(s)
+  })
+}
+function _azPlayScanBeep(ok) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const osc = ctx.createOscillator(), gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    if (ok) {
+      osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime)
+      gain.gain.setValueAtTime(0.08, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12)
+      osc.start(); osc.stop(ctx.currentTime + 0.12)
+    } else {
+      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, ctx.currentTime)
+      gain.gain.setValueAtTime(0.12, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
+      osc.start(); osc.stop(ctx.currentTime + 0.3)
+    }
+  } catch { /* เสียงเป็นแค่ของเสริม ไม่บล็อกการทำงานหลัก */ }
+}
+
+function openCheckinScanner(level, code) {
+  document.getElementById('az-checkin-overlay')?.remove()
+  const r = resolveMatch(level, code)
+  if (!r.teamAId || !r.teamBId) { azToast('ต้องระบุทีมทั้งสองฝั่งก่อนสแกนรายงานตัว'); return }
+  const rosterA = S.players.filter(p => p.team_id === r.teamAId).map(p => ({ ...p, teamId: r.teamAId }))
+  const rosterB = S.players.filter(p => p.team_id === r.teamBId).map(p => ({ ...p, teamId: r.teamBId }))
+  const allRoster = [...rosterA, ...rosterB]
+
+  const overlay = document.createElement('div')
+  overlay.id = 'az-checkin-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0b0f1a;display:flex;flex-direction:column'
+  overlay.innerHTML = `
+    <style>
+      @keyframes azCiLaser { 0%{top:0} 50%{top:100%} 100%{top:0} }
+      .az-ci-laser { animation: azCiLaser 2s ease-in-out infinite; }
+      .az-ci-flash-ok { box-shadow: inset 0 0 0 6px #10b981 !important; }
+      .az-ci-flash-err { box-shadow: inset 0 0 0 6px #ef4444 !important; }
+    </style>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="color:#f1f5f9;font-weight:800;font-size:14px">📷 สแกน QR รายงานตัว</div>
+        <div style="color:#94a3b8;font-size:11.5px;overflow-wrap:break-word">${esc(code)} · ${esc(r.teamA)} vs ${esc(r.teamB)}</div>
+      </div>
+      <button id="az-ci-close" style="color:#94a3b8;background:none;border:none;font-size:26px;line-height:1;cursor:pointer">×</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;max-width:420px;margin:0 auto;width:100%">
+      <div id="az-ci-camwrap" style="position:relative;width:100%;aspect-ratio:1;background:#000;border-radius:16px;overflow:hidden">
+        <div id="az-ci-reader" style="width:100%;height:100%"></div>
+        <div style="position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center">
+          <div style="position:relative;width:190px;height:190px;border-radius:16px;border:1px solid rgba(255,255,255,.2);box-shadow:0 0 0 9999px rgba(0,0,0,.4);overflow:hidden">
+            <div class="az-ci-laser" style="position:absolute;left:0;width:100%;height:2px;background:#38bdf8"></div>
+          </div>
+        </div>
+      </div>
+      <div id="az-ci-feedback" style="background:#151a26;border:1px solid #232838;border-radius:14px;padding:12px;text-align:center;font-size:12px;color:#94a3b8">ยกกล้องส่อง QR ของนักกีฬาเพื่อรายงานตัว</div>
+      <div style="background:#151a26;border:1px solid #232838;border-radius:14px;padding:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:10.5px;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:.05em">รายงานตัวแล้ว</span>
+          <span id="az-ci-count" style="font-size:10.5px;color:#38bdf8;font-weight:800">0 / ${allRoster.length} คน</span>
+        </div>
+        <div id="az-ci-list" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
+
+  const checkedIds = new Set(S.checkins.filter(c => c.level === level && c.match_code === code).map(c => c.player_id))
+  let html5Qrcode = null, lastCode = null, lastTime = 0
+
+  const renderList = () => {
+    const list = overlay.querySelector('#az-ci-list')
+    overlay.querySelector('#az-ci-count').textContent = `${checkedIds.size} / ${allRoster.length} คน`
+    const done = allRoster.filter(p => checkedIds.has(p.id))
+    list.innerHTML = done.length ? done.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)"><span style="color:#e2e8f0">${esc(p.students?.full_name || '')}</span><span style="color:#38bdf8;font-weight:700;flex-shrink:0">${esc(p.teamId === r.teamAId ? r.teamA : r.teamB)}</span></div>`).join('') : `<div style="color:#64748b;text-align:center;font-size:12px;padding:6px 0">ยังไม่มีใครรายงานตัว</div>`
+  }
+  renderList()
+
+  async function processScan(decodedText) {
+    const camwrap = overlay.querySelector('#az-ci-camwrap')
+    const feedback = overlay.querySelector('#az-ci-feedback')
+    const flash = ok => { camwrap.classList.add(ok ? 'az-ci-flash-ok' : 'az-ci-flash-err'); setTimeout(() => camwrap.classList.remove(ok ? 'az-ci-flash-ok' : 'az-ci-flash-err'), 500) }
+
+    let studentCode = decodedText
+    if (decodedText.startsWith('SQ:')) {
+      const [, sc, ts] = decodedText.split(':')
+      const diff = Math.floor(Date.now() / 1000) - parseInt(ts, 10)
+      if (diff > 60 || diff < -60) {
+        _azPlayScanBeep(false); flash(false)
+        feedback.innerHTML = `<span style="color:#f87171">QR Code หมดอายุแล้ว ให้นักกีฬาเปิดหน้าใหม่</span>`
+        return
+      }
+      studentCode = sc
+    }
+
+    const player = allRoster.find(p => p.students?.student_code === studentCode)
+    if (!player) {
+      _azPlayScanBeep(false); flash(false)
+      feedback.innerHTML = `<span style="color:#f87171">ไม่พบนักกีฬาคนนี้ในสองทีมที่แข่งนัดนี้</span>`
+      return
+    }
+    if (checkedIds.has(player.id)) {
+      _azPlayScanBeep(false); flash(false)
+      feedback.innerHTML = `<span style="color:#fbbf24">${esc(player.students?.full_name || '')} รายงานตัวไปแล้ว</span>`
+      return
+    }
+
+    const { error } = await SB.from('azfutsal_checkins').upsert(
+      { level, match_code: code, team_id: player.teamId, player_id: player.id },
+      { onConflict: 'level,match_code,player_id' },
+    )
+    if (error) {
+      _azPlayScanBeep(false); flash(false)
+      feedback.innerHTML = `<span style="color:#f87171">บันทึกไม่สำเร็จ: ${esc(error.message)}</span>`
+      return
+    }
+    _azPlayScanBeep(true); flash(true)
+    const teamLabel = player.teamId === r.teamAId ? r.teamA : r.teamB
+    feedback.innerHTML = `<span style="color:#4ade80">✓ ${esc(player.students?.full_name || '')} รายงานตัวแล้ว (${esc(teamLabel)})</span>`
+    checkedIds.add(player.id)
+    renderList()
+  }
+
+  overlay.querySelector('#az-ci-close').addEventListener('click', async () => {
+    if (html5Qrcode) { try { await html5Qrcode.stop() } catch { /* กล้องอาจปิดไปแล้ว ไม่ต้องบล็อกการปิดหน้าต่าง */ } }
+    overlay.remove()
+    refresh()
+  })
+
+  ;(async () => {
+    try {
+      const Html5Qrcode = await _azLoadHtml5Qrcode()
+      html5Qrcode = new Html5Qrcode('az-ci-reader')
+      await html5Qrcode.start(
+        { facingMode: 'environment' },
+        { fps: 25, aspectRatio: 1.0 },
+        (decodedText) => {
+          if (decodedText === lastCode && Date.now() - lastTime < 2000) return
+          lastCode = decodedText; lastTime = Date.now()
+          processScan(decodedText)
+        },
+        () => { /* error ต่อเนื่องระหว่างหากรอบยังไม่เจอ QR — ไม่ต้อง block UI */ },
+      )
+    } catch (err) {
+      azToast('ไม่สามารถเปิดกล้องได้: ' + (err.message || ''))
+      overlay.remove()
+    }
+  })()
 }
 
 function scheduleRows() {
@@ -1848,7 +2100,13 @@ function matchEditorModal() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">เวลาแข่ง<input id="mx-kickoff" placeholder="HH:MM" value="${esc(m.kickoff_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">รายงานตัว<input id="mx-ready" placeholder="HH:MM" value="${esc(m.ready_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
+      ${r.teamAId && r.teamBId ? (() => {
+        const checkedCount = S.checkins.filter(c => c.level === level && c.match_code === code).length
+        const totalCount = S.players.filter(p => p.team_id === r.teamAId || p.team_id === r.teamBId).length
+        return `<button data-act="openCheckinScanner" data-level="${level}" data-code="${code}" style="padding:9px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">📷 สแกน QR รายงานตัว (${checkedCount}/${totalCount})</button>`
+      })() : ''}
       <button data-act="saveMatch" data-level="${level}" data-code="${code}" style="margin-top:4px;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">บันทึก</button>
+      <button data-act="printMatchForm" data-level="${level}" data-code="${code}" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">🖨️ พิมพ์แบบฟอร์มบันทึกผลสำรอง (ออฟไลน์)</button>
     </div>`)
 }
 
@@ -1905,6 +2163,14 @@ async function handleSaveMatch(level, code) {
   const scoreA = numOrNull(gid('mx-scoreA').value)
   const scoreB = numOrNull(gid('mx-scoreB').value)
   if (scoreA !== null && scoreB !== null && scoreA === scoreB) { azToast('สกอร์ต้องมีผู้ชนะ ห้ามเสมอ'); return }
+  if (scoreA !== null && scoreB !== null && teamAId && teamBId && cfg('REQUIRE_EVENTS_BEFORE_SCORE', '0') === '1') {
+    const goalsA = matchEventCounts(level, code, teamAId).goal
+    const goalsB = matchEventCounts(level, code, teamBId).goal
+    if (goalsA !== scoreA || goalsB !== scoreB) {
+      azToast(`ผู้ทำประตูที่บันทึกไว้ (${goalsA}-${goalsB}) ไม่ตรงกับสกอร์ (${scoreA}-${scoreB}) กรุณาระบุผู้ทำประตูให้ครบก่อนบันทึก`)
+      return
+    }
+  }
   const payload = {
     level, match_code: code,
     round: (BRACKET[level].find(b => b.code === code) || {}).round || '',
@@ -2291,6 +2557,11 @@ function bindEvents() {
     if (act === 'confirmReject') { await handleConfirmReject(); return }
     if (act === 'viewProof') { await handleViewProof(btn.dataset.path); return }
     if (act === 'closeViewProof') { S.viewProofOpen = false; S.viewProofUrl = null; draw(); return }
+    if (act === 'toggleRequireEvents') {
+      const cur = cfg('REQUIRE_EVENTS_BEFORE_SCORE', '0') === '1'
+      await SB.from('azfutsal_config').upsert({ key: 'REQUIRE_EVENTS_BEFORE_SCORE', value: cur ? '0' : '1' })
+      await refresh(); return
+    }
     if (act === 'toggleCert') {
       const cur = cfg('CERT_ENABLED', '1') === '1'
       await SB.from('azfutsal_config').upsert({ key: 'CERT_ENABLED', value: cur ? '0' : '1' })
@@ -2409,6 +2680,13 @@ function bindEvents() {
       const { error } = await SB.from('azfutsal_awards').upsert({ level: btn.dataset.level, award_type: btn.dataset.type, student_id: null }, { onConflict: 'level,award_type' })
       if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast('ล้างรางวัลแล้ว'); return
+    }
+    if (act === 'printMatchForm') { printMatchResultForm(btn.dataset.level, btn.dataset.code); return }
+    if (act === 'openCheckinScanner') { openCheckinScanner(btn.dataset.level, btn.dataset.code); return }
+    if (act === 'printCheckinForm') {
+      const team = S.teams.find(tm => tm.id === btn.dataset.id)
+      if (team) printCheckinForm(team)
+      return
     }
     if (act === 'toggleOrganizer') {
       const { error } = await SB.from('azfutsal_teams').update({ is_organizer: btn.dataset.v === '1' }).eq('id', btn.dataset.id)
@@ -2577,7 +2855,10 @@ function teamAdminRow(t) {
     </div>
     <div style="font-size:11px;color:#6b7280;margin-top:2px">หัวหน้าทีม: ${t.captain?.full_name ? esc(t.captain.full_name) : '-'}${t.vice_captain?.full_name ? ' · รอง: ' + esc(t.vice_captain.full_name) : ''}</div>
     <div style="font-size:10.5px;color:#6b7280;margin-top:3px">${paymentStatusLine(t.id)}</div>
-    <button data-act="toggleOrganizer" data-id="${t.id}" data-v="${t.is_organizer ? '0' : '1'}" style="margin-top:4px;border:none;background:none;color:#4338ca;font-size:10.5px;cursor:pointer;font-weight:600">${t.is_organizer ? 'ยกเลิกทีมผู้จัด' : 'ตั้งเป็นทีมผู้จัด'}</button>
+    <div style="margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button data-act="toggleOrganizer" data-id="${t.id}" data-v="${t.is_organizer ? '0' : '1'}" style="border:none;background:none;color:#4338ca;font-size:10.5px;cursor:pointer;font-weight:600">${t.is_organizer ? 'ยกเลิกทีมผู้จัด' : 'ตั้งเป็นทีมผู้จัด'}</button>
+      <button data-act="printCheckinForm" data-id="${t.id}" style="border:none;background:none;color:#0891b2;font-size:10.5px;cursor:pointer;font-weight:600">🖨️ พิมพ์แบบฟอร์มรายงานตัว</button>
+    </div>
   </div>`
 }
 
@@ -2718,6 +2999,15 @@ function adminOps() {
           <label style="font-size:11.5px;color:#6b7280;flex:1">พัก (นาที)<input id="ops-breakmin" type="number" value="${esc(cfg('BREAK_MIN', 5))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
         </div>
         <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดเวลาอัตโนมัติ</button>
+      </div>
+    `)}
+    ${box(`
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-weight:700;font-size:14px">บังคับกรอกผู้ทำประตูก่อนบันทึกผล</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">เมื่อเปิด ระบบจะไม่ยอมบันทึกสกอร์ถ้าจำนวนผู้ทำประตูที่ระบุไว้ไม่ตรงกับสกอร์ ปิดไว้ถ้าต้องการบันทึกผลเร็วๆ ระหว่างแข่งจริง</div>
+        </div>
+        <button data-act="toggleRequireEvents" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${cfg('REQUIRE_EVENTS_BEFORE_SCORE', '0') === '1' ? '#dcfce7' : '#f3f4f6'};color:${cfg('REQUIRE_EVENTS_BEFORE_SCORE', '0') === '1' ? '#16a34a' : '#6b7280'}">${cfg('REQUIRE_EVENTS_BEFORE_SCORE', '0') === '1' ? 'เปิดอยู่' : 'ปิดอยู่'}</button>
       </div>
     `)}
     ${box(`
