@@ -2951,6 +2951,41 @@ function bindEvents() {
       await SB.from('azfutsal_config').upsert({ key: 'HALF_DURATION_MINUTES', value: String(halfMin) })
       await refresh(); azToast('บันทึกนาทีต่อครึ่งแล้ว'); return
     }
+    if (act === 'resetAllMatchResults') {
+      S.pendingConfirm = {
+        message: 'ล้างผลการแข่งขันทั้งหมดจริงหรือไม่?\nสกอร์ ผู้ทำประตู ใบเหลือง/ใบแดง และนาฬิกาของทุกนัดจะถูกล้างกลับเป็นค่าเริ่มต้น\nการกระทำนี้ย้อนกลับไม่ได้',
+        danger: true, confirmLabel: 'ล้างผลทั้งหมด',
+        run: async () => {
+          // สำคัญ: ต้องแยก upsert เป็น 2 ชุดตาม key ที่เหมือนกันในแต่ละชุดเสมอ — ถ้า rows ใน upsert เดียวกันมี key ไม่ตรงกัน
+          // (บาง row มี team_a_id บาง row ไม่มี) PostgREST จะรวม column set ของทั้ง batch แล้วเติม null ให้ row ที่ไม่ได้ระบุ
+          // ทำให้ค่าจริงของ row อื่นที่ไม่ได้ตั้งใจแตะ (เช่นทีมที่จับสลากไว้จริงในรอบแรก) ถูกลบไปด้วย — เคยเกิดเหตุจริงมาแล้ว
+          const commonRows = []
+          const refRows = []
+          ;['MS', 'HS'].forEach(level => {
+            BRACKET[level].forEach(def => {
+              commonRows.push({
+                level, match_code: def.code,
+                score_a: null, score_b: null, winner_team_id: null, loser_team_id: null,
+                clock_status: 'not_started', clock_half: null, clock_started_at: null, clock_elapsed_before: 0,
+              })
+              // ทุก row ในชุดนี้มี key ชุดเดียวกันเป๊ะเสมอ (team_a_id/team_b_id ทั้งคู่) กันปัญหา PostgREST เติม null ให้ row ที่ key ไม่ครบ
+              if (def.refA || def.refB) refRows.push({ level, match_code: def.code, team_a_id: null, team_b_id: null })
+            })
+          })
+          const { error } = await SB.from('azfutsal_matches').upsert(commonRows, { onConflict: 'level,match_code' })
+          if (error) { azToast('ล้างผลไม่สำเร็จ: ' + error.message); return }
+          if (refRows.length) {
+            const { error: refErr } = await SB.from('azfutsal_matches').upsert(refRows, { onConflict: 'level,match_code' })
+            if (refErr) { azToast('ล้างทีมรอบถัดไปไม่สำเร็จ: ' + refErr.message); return }
+          }
+          const { error: delErr } = await SB.from('azfutsal_match_events').delete().in('level', ['MS', 'HS'])
+          if (delErr) { azToast('ลบผู้ทำประตู/การ์ดไม่สำเร็จ: ' + delErr.message); return }
+          await refresh()
+          azToast('ล้างผลการแข่งขันทั้งหมดแล้ว')
+        }
+      }
+      draw(); return
+    }
     if (act === 'startMatchClock') {
       const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0 }).eq('level', btn.dataset.level).eq('match_code', btn.dataset.code)
       if (error) { azToast('เริ่มนาฬิกาไม่สำเร็จ: ' + error.message); return }
@@ -3367,6 +3402,11 @@ function adminOps() {
         <input id="ops-halfmin" type="number" min="1" value="${esc(cfg('HALF_DURATION_MINUTES', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
       </label>
       <button data-act="saveHalfDuration" style="margin-top:8px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">บันทึกนาทีต่อครึ่ง</button>
+    `)}
+    ${box(`
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#dc2626">⚠️ ล้างผลการแข่งขันทั้งหมด</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ใช้ตอนทดสอบระบบบันทึกผล — ล้างสกอร์ ผู้ทำประตู ใบเหลือง/ใบแดง และนาฬิกาจับเวลาของ<b>ทุกนัด</b>กลับเป็นค่าเริ่มต้น (ยังไม่เริ่มแข่ง) รวมถึงทีมที่เข้ารอบต่อไปแบบที่แอดมินเลือกเอง (เช่น รอบแก้ตัว ม.ต้น) กลับเป็นค่าว่าง เพื่อให้จับสลาก/บันทึกผลใหม่ได้ตั้งแต่ต้น<br><b>ไม่กระทบ</b> ทีม/นักกีฬา/การชำระเงิน/การรายงานตัว และ<b>ไม่กระทบ</b>คู่แข่งขันรอบแรกที่จับสลากไว้แล้ว</div>
+      <button data-act="resetAllMatchResults" style="width:100%;padding:10px;border-radius:10px;border:none;background:#dc2626;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🗑️ ล้างผลการแข่งขันทั้งหมด</button>
     `)}
     ${box(`
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
