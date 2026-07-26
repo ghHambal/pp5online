@@ -642,7 +642,8 @@ function printCheckinForm(team) {
   const t = T[team.level]
   const roster = S.players.filter(p => p.team_id === team.id)
   const n = teamMaxPossibleMatches(team.level)
-  const cols = Array.from({ length: n }, (_, i) => i + 1)
+  const matches = teamMatchRows(team)
+  const cols = Array.from({ length: n }, (_, i) => matches[i] ? { code: matches[i].code, round: matches[i].round } : null)
   openPrintArea(`
     <div class="print-title"><h2>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))} · แบบฟอร์มรายงานตัวนักกีฬา</h2>
       <p>${t.label} · ${esc(team.name)} · รหัสทีม ${esc(team.team_code || '-')}</p></div>
@@ -653,7 +654,7 @@ function printCheckinForm(team) {
         ${cols.map(() => `<col>`).join('')}
         <col style="width:100px">
       </colgroup>
-      <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th>${cols.map(c => `<th>นัดที่ ${c}<br><span style="font-weight:400;font-size:10px">(ปั๊มรายงานตัว)</span></th>`).join('')}<th>หมายเหตุ</th></tr></thead>
+      <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th>${cols.map(c => `<th>${c ? esc(c.round) : 'รอบถัดไป'}<br><span style="font-weight:400;font-size:9px">${c ? esc(c.code) : '(รอผลรอบก่อน)'}</span></th>`).join('')}<th>หมายเหตุ</th></tr></thead>
       <tbody>
         ${roster.length ? roster.map((p, i) => {
           const url = playerPhotoUrl(p)
@@ -970,32 +971,49 @@ function matchCard(r) {
   const hasScore = m && m.score_a !== null && m.score_b !== null
   const cA = m ? matchEventCounts(r.level, r.code, r.teamAId) : { goal: 0, yellow: 0, red: 0 }
   const cB = m ? matchEventCounts(r.level, r.code, r.teamBId) : { goal: 0, yellow: 0, red: 0 }
-  const cardsBits = []
-  if (cA.yellow) cardsBits.push(`${r.teamA} 🟨x${cA.yellow}`)
-  if (cA.red) cardsBits.push(`${r.teamA} 🟥x${cA.red}`)
-  if (cB.yellow) cardsBits.push(`${r.teamB} 🟨x${cB.yellow}`)
-  if (cB.red) cardsBits.push(`${r.teamB} 🟥x${cB.red}`)
   const scorerNames = teamId => S.matchEvents.filter(e => e.level === r.level && e.match_code === r.code && e.team_id === teamId && e.event_type === 'goal').map(e => eventPlayerName(e.player_id)).filter(Boolean)
   const scorersA = m ? scorerNames(r.teamAId) : [], scorersB = m ? scorerNames(r.teamBId) : []
+  const aWins = hasScore && m.score_a > m.score_b
+  const bWins = hasScore && m.score_b > m.score_a
+
+  const detailLines = (scorers, cardsInfo, align) => {
+    const bits = []
+    if (scorers.length) bits.push(`<div style="font-size:10.5px;color:#6b7280;margin-top:3px;overflow-wrap:break-word;text-align:${align}">⚽ ${esc(scorers.join(', '))}</div>`)
+    const cardBits = []
+    if (cardsInfo.yellow) cardBits.push(`🟨×${cardsInfo.yellow}`)
+    if (cardsInfo.red) cardBits.push(`🟥×${cardsInfo.red}`)
+    if (cardBits.length) bits.push(`<div style="font-size:10.5px;color:#6b7280;margin-top:2px;text-align:${align}">${cardBits.join('  ')}</div>`)
+    return bits.join('')
+  }
+  const teamBlock = (name, isWin, align) => `
+    <div style="flex:1;min-width:0;${isWin ? 'background:#dcfce7;border-radius:10px;' : ''}padding:6px 8px;text-align:${align}">
+      <div style="font-size:13.5px;font-weight:${isWin ? 800 : 600};color:${isWin ? '#15803d' : '#111827'};line-height:1.3;overflow-wrap:break-word">${esc(name) || '<span style="color:#c1c5cc">รอผลรอบก่อน</span>'}</div>
+    </div>`
+
   return `
-  <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:12px 14px">
+  <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:12px 14px;overflow:hidden">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       ${levelBadge(r.level)}
       <span style="font-size:11px;color:#9ca3af;font-weight:600">${esc(r.round)} · ${r.code}</span>
       <span style="flex:1"></span>
-      <span style="font-size:10.5px;font-weight:700;color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : 'รอแข่ง'}</span>
+      <span style="font-size:${hasScore ? '10.5px' : '13px'};font-weight:${hasScore ? 700 : 800};color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : esc(m?.kickoff_time || 'รอแข่ง')}</span>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:break-word">${esc(r.teamA) || '<span style=\"color:#c1c5cc\">รอผลรอบก่อน</span>'}</div>
-        <div style="font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:break-word;margin-top:4px">${esc(r.teamB) || '<span style=\"color:#c1c5cc\">รอผลรอบก่อน</span>'}</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      ${teamBlock(r.teamA, aWins, 'left')}
+      <div style="flex-shrink:0;text-align:center;min-width:56px">
+        ${hasScore
+          ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800"><span style="color:${aWins ? '#15803d' : '#9ca3af'}">${m.score_a}</span><span style="color:#d1d5db;font-weight:600;font-size:15px">:</span><span style="color:${bWins ? '#15803d' : '#9ca3af'}">${m.score_b}</span></div>`
+          : `<span style="font-size:11px;color:#9ca3af;font-weight:700">VS</span>`}
       </div>
-      ${hasScore ? `<div style="text-align:right;flex-shrink:0"><div style="font-size:26px;font-weight:800;line-height:1.2">${m.score_a}</div><div style="font-size:26px;font-weight:800;line-height:1.2">${m.score_b}</div></div>`
-        : `<div style="text-align:right;flex-shrink:0;font-size:15px;font-weight:800;color:#374151">${esc(m?.kickoff_time || '')}</div>`}
+      ${teamBlock(r.teamB, bWins, 'right')}
     </div>
-    ${(scorersA.length || scorersB.length) ? `<div style="margin-top:8px;font-size:11px;color:#6b7280">⚽ ${esc([...scorersA, ...scorersB].join(', '))}</div>` : ''}
-    ${cardsBits.length ? `<div style="display:flex;gap:10px;margin-top:4px;font-size:11px;color:#6b7280">${esc(cardsBits.join(' · '))}</div>` : ''}
-    ${S.identity.isAdmin ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="margin-top:8px;width:100%;padding:7px;border-radius:9px;border:1px solid ${t.border};background:#fff;color:${t.accent};font-weight:700;font-size:12px;cursor:pointer">แก้ไขผล/เวลา</button>` : ''}
+    ${(scorersA.length || scorersB.length || cA.yellow || cA.red || cB.yellow || cB.red) ? `
+    <div style="display:flex;align-items:flex-start;gap:8px;margin-top:2px">
+      <div style="flex:1;min-width:0">${detailLines(scorersA, cA, 'left')}</div>
+      <div style="flex-shrink:0;min-width:56px"></div>
+      <div style="flex:1;min-width:0">${detailLines(scorersB, cB, 'right')}</div>
+    </div>` : ''}
+    ${S.identity.isAdmin ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="margin-top:10px;width:100%;padding:7px;border-radius:9px;border:1px solid ${t.border};background:#fff;color:${t.accent};font-weight:700;font-size:12px;cursor:pointer">แก้ไขผล/เวลา</button>` : ''}
   </div>`
 }
 
@@ -2240,6 +2258,11 @@ function matchEditorModal() {
   const m = matchByCode(level, code) || {}
   const r = resolveMatch(level, code)
   const slots = pickableSlots(level, code)
+  const goalsA = r.teamAId ? matchEventCounts(level, code, r.teamAId).goal : 0
+  const goalsB = r.teamBId ? matchEventCounts(level, code, r.teamBId).goal : 0
+  const hasAnyGoalLogged = goalsA > 0 || goalsB > 0
+  const scoreAVal = m.score_a ?? (hasAnyGoalLogged ? goalsA : '')
+  const scoreBVal = m.score_b ?? (hasAnyGoalLogged ? goalsB : '')
   const teamField = (label, slot, resolvedName) => slot
     ? `<label style="font-size:11.5px;color:#6b7280;flex:1">${label}<select id="mx-team${label}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"><option value="">-</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}</select></label>`
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
@@ -2247,9 +2270,10 @@ function matchEditorModal() {
     <div style="display:flex;flex-direction:column;gap:10px">
       <div style="display:flex;gap:10px">${teamField('A', slots.a, r.teamA)}${teamField('B', slots.b, r.teamB)}</div>
       <div style="display:flex;gap:10px">
-        <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ A<input id="mx-scoreA" type="number" min="0" value="${m.score_a ?? ''}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
-        <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ B<input id="mx-scoreB" type="number" min="0" value="${m.score_b ?? ''}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
+        <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ A<input id="mx-scoreA" type="number" min="0" value="${scoreAVal}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
+        <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ B<input id="mx-scoreB" type="number" min="0" value="${scoreBVal}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
+      ${hasAnyGoalLogged && m.score_a == null ? `<div style="font-size:10.5px;color:#9ca3af;margin-top:-4px">* สกอร์เติมอัตโนมัติตามจำนวนผู้ทำประตูที่บันทึกไว้ แก้ไขได้ก่อนกดบันทึก ยังไม่ถือว่าจบการแข่งขันจนกว่าจะกดบันทึก</div>` : ''}
       ${!r.teamAId || !r.teamBId ? `<div style="font-size:11px;color:#9ca3af">* ระบุทีมทั้งสองฝั่งก่อน จึงจะบันทึกผู้ทำประตู/ใบเหลือง/ใบแดงได้</div>` : `
       <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid #f3f4f6;padding-top:10px">
         <div style="display:flex;gap:10px">
