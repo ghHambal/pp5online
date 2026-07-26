@@ -574,15 +574,19 @@ const PRINT_CSS = `
 .print-table th,.print-table td{border:1px solid #111827;padding:5px 6px;font-size:11.5px;text-align:center}
 .print-table th{background:#f3f4f6}
 .print-grid{display:grid;gap:16px}
-.print-photo{width:32px;height:32px;border-radius:50%;overflow:hidden;background:#e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.print-photo{width:32px;height:32px;border-radius:50%;overflow:hidden;background:#e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto;flex:none}
 .print-photo img{width:100%;height:100%;object-fit:cover}
 @media print{body{width:210mm}}
+.print-table-checkin th,.print-table-checkin td{padding:10px 8px;font-size:12.5px}
+.print-table-checkin td.print-stamp-cell{height:60px;min-width:100px}
+.print-photo-lg{width:46px;height:46px}
 `
-function openPrintArea(innerHtml) {
+function openPrintArea(innerHtml, opts = {}) {
   document.getElementById('az-print-area')?.remove()
   const area = document.createElement('div')
   area.id = 'az-print-area'
-  area.innerHTML = `<style>${PRINT_CSS}</style>
+  const landscapeCss = opts.landscape ? `@media print{@page{size:A4 landscape}body{width:297mm}}` : ''
+  area.innerHTML = `<style>${PRINT_CSS}${landscapeCss}</style>
     <div class="print-actions"><button id="az-print-confirm">🖨️ สั่งพิมพ์ / บันทึก PDF</button><button id="az-print-close">ปิด</button></div>
     ${innerHtml}`
   document.body.appendChild(area)
@@ -638,17 +642,29 @@ function printCheckinForm(team) {
   openPrintArea(`
     <div class="print-title"><h2>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))} · แบบฟอร์มรายงานตัวนักกีฬา</h2>
       <p>${t.label} · ${esc(team.name)} · รหัสทีม ${esc(team.team_code || '-')}</p></div>
-    <table class="print-table">
-      <thead><tr><th>#</th><th></th><th style="text-align:left">ชื่อ-สกุล</th><th>เบอร์</th>${cols.map(c => `<th>นัดที่ ${c}</th>`).join('')}</tr></thead>
+    <table class="print-table print-table-checkin">
+      <thead><tr><th style="width:34px">#</th><th style="text-align:left;min-width:260px">นักกีฬา</th>${cols.map(c => `<th>นัดที่ ${c}<br><span style="font-weight:400;font-size:10px">(ปั๊มรายงานตัว)</span></th>`).join('')}</tr></thead>
       <tbody>
         ${roster.length ? roster.map((p, i) => {
           const url = playerPhotoUrl(p)
-          return `<tr><td>${i + 1}</td><td><div class="print-photo">${url ? `<img src="${esc(url)}">` : ''}</div></td><td style="text-align:left">${esc(p.students?.full_name || '')}</td><td>${p.jersey_number ?? '-'}</td>${cols.map(() => `<td style="width:34px">&nbsp;</td>`).join('')}</tr>`
-        }).join('') : `<tr><td colspan="${4 + cols.length}">ยังไม่มีรายชื่อนักกีฬา</td></tr>`}
+          return `<tr>
+            <td>${i + 1}</td>
+            <td style="text-align:left">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="print-photo print-photo-lg">${url ? `<img src="${esc(url)}">` : ''}</div>
+                <div>
+                  <div style="font-weight:700;font-size:14px;line-height:1.3">${esc(p.students?.full_name || '')}</div>
+                  <div style="font-size:11.5px;color:#374151">เบอร์เสื้อ ${p.jersey_number ?? '-'}</div>
+                </div>
+              </div>
+            </td>
+            ${cols.map(() => `<td class="print-stamp-cell">&nbsp;</td>`).join('')}
+          </tr>`
+        }).join('') : `<tr><td colspan="${2 + cols.length}">ยังไม่มีรายชื่อนักกีฬา</td></tr>`}
       </tbody>
     </table>
-    <p style="margin-top:8px;font-size:11px;color:#6b7280">*ติ๊ก/เซ็นชื่อในช่องนัดที่ตรงกับที่นักกีฬาคนนั้นมารายงานตัวจริง จำนวนคอลัมน์ (${n} นัด) คือจำนวนนัดสูงสุดที่ทีมนี้จะได้เล่นหากเข้าถึงรอบชิงชนะเลิศ</p>
-  `)
+    <p style="margin-top:8px;font-size:11px;color:#6b7280">*ประทับตรา/เซ็นชื่อในช่องนัดที่ตรงกับที่นักกีฬาคนนั้นมารายงานตัวจริง จำนวนคอลัมน์ (${n} นัด) คือจำนวนนัดสูงสุดที่ทีมนี้จะได้เล่นหากเข้าถึงรอบชิงชนะเลิศ · แต่ละทีมมีสมาชิกสูงสุด 10 คน</p>
+  `, { landscape: true })
 }
 
 // ---------------- สแกน QR รายงานตัว ----------------
