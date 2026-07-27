@@ -830,12 +830,14 @@ function teamMaxPossibleMatches(level) {
 }
 
 // ตราปั๊มดิจิทัลจำลอง (สำหรับเอกสารพิมพ์) — สุ่มสีหมึก/มุมเอียง/ตำแหน่งเหลื่อมทุกดวง ให้ดูเหมือนปั๊มจริงที่ไม่มีทางเหมือนกันเป๊ะสองครั้ง
-function printCheckinInkStamp() {
+function printCheckinInkStamp(ck) {
   const color = Math.random() < 0.5 ? '#1d4ed8' : '#dc2626'
   const angle = Math.round(Math.random() * 70 - 25) // สุ่มมุมเอียง -25 ถึง 45 องศา
   const offX = Math.round(Math.random() * 10 - 5)
   const offY = Math.round(Math.random() * 6 - 3)
-  return `<div style="display:inline-block;border:2px solid ${color};color:${color};border-radius:8px;padding:3px 7px;font-size:9.5px;font-weight:800;line-height:1.25;transform:rotate(${angle}deg) translate(${offX}px,${offY}px);opacity:.82;white-space:nowrap">✓ รายงานตัว</div>`
+  const staffName = ck?.checked_in_by ? (S.staffNames[ck.checked_in_by] || 'เจ้าหน้าที่') : ''
+  const time = ck?.checked_in_at ? new Date(ck.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''
+  return `<div style="display:inline-block;border:2px solid ${color};color:${color};border-radius:8px;padding:3px 6px;font-size:8.5px;font-weight:800;line-height:1.35;transform:rotate(${angle}deg) translate(${offX}px,${offY}px);opacity:.82;white-space:nowrap;text-align:center">✓ รายงานตัว${staffName ? `<br><span style="font-size:7.5px;font-weight:700">${esc(staffName)}</span>` : ''}${time ? `<br><span style="font-size:7.5px;font-weight:600">${esc(time)} น.</span>` : ''}</div>`
 }
 
 function printCheckinForm(team) {
@@ -870,8 +872,8 @@ function printCheckinForm(team) {
               </div>
             </td>
             ${cols.map(c => {
-              const stamped = c && S.checkins.some(ck => ck.level === team.level && ck.match_code === c.code && ck.player_id === p.id)
-              return `<td class="print-stamp-cell">${stamped ? printCheckinInkStamp() : '&nbsp;'}</td>`
+              const ck = c && S.checkins.find(ck => ck.level === team.level && ck.match_code === c.code && ck.player_id === p.id)
+              return `<td class="print-stamp-cell">${ck ? printCheckinInkStamp(ck) : '&nbsp;'}</td>`
             }).join('')}
             <td>&nbsp;</td>
           </tr>`
@@ -2470,16 +2472,20 @@ function eventListRow(level, code, teamId, side, type, label, color, bg) {
   </div>`
 }
 
+// เหลือเฉพาะคนที่สแกน QR รายงานตัวแล้วจริงสำหรับนัดนี้ — กันเลือกผิดคน/นับประตูให้คนที่ไม่ได้ลงเล่น
+// ถ้าลืมสแกนจริงๆ ให้เปิดกล้องสแกนรายงานตัวเพิ่มตรงนั้นแทน (ไม่ทำ toggle "แสดงทั้งหมด" ให้ซับซ้อนเกินจำเป็น)
 function eventPickerRoster() {
   const { team } = S.eventPicker
   const { level, code } = S.editMatch
   const r = resolveMatch(level, code)
   const teamId = team === 'a' ? r.teamAId : r.teamBId
-  return S.players.filter(p => p.team_id === teamId)
+  const checkedIds = new Set(S.checkins.filter(c => c.level === level && c.match_code === code && c.team_id === teamId).map(c => c.player_id))
+  return S.players.filter(p => p.team_id === teamId && checkedIds.has(p.id))
 }
 
 function eventPickerPlayerList() {
   const roster = eventPickerRoster()
+  if (!roster.length) return `<div style="font-size:11.5px;color:#9ca3af;padding:6px 0">ยังไม่มีใครในทีมนี้รายงานตัวสำหรับนัดนี้ — สแกน QR รายงานตัวก่อนจึงจะเลือกได้</div>`
   const filter = (S.eventPickerFilter || '').trim().toLowerCase()
   const filtered = filter ? roster.filter(p => String(p.jersey_number ?? '').includes(filter) || (p.students?.full_name || '').toLowerCase().includes(filter)) : roster
   return filtered.length ? filtered.map(p => `
