@@ -3196,6 +3196,19 @@ function bindEvents() {
       }
       draw(); return
     }
+    if (act === 'resetAllCheckins') {
+      S.pendingConfirm = {
+        message: 'ล้างข้อมูลรายงานตัวทั้งหมดจริงหรือไม่?\nสถานะรายงานตัว (สแกน QR) ของทุกนัดทุกทีมจะถูกล้างกลับเป็นยังไม่รายงานตัว\nการกระทำนี้ย้อนกลับไม่ได้',
+        danger: true, confirmLabel: 'ล้างข้อมูลรายงานตัว',
+        run: async () => {
+          const { error } = await SB.from('azfutsal_checkins').delete().in('level', ['MS', 'HS'])
+          if (error) { azToast('ล้างข้อมูลรายงานตัวไม่สำเร็จ: ' + error.message); return }
+          await refresh()
+          azToast('ล้างข้อมูลรายงานตัวทั้งหมดแล้ว')
+        }
+      }
+      draw(); return
+    }
     if (act === 'startMatchClock') {
       azQueueClockUpdate(btn.dataset.level, btn.dataset.code, { clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0, clock_half_started_elapsed: 0 })
       draw(); return
@@ -3615,6 +3628,11 @@ function adminOps() {
       <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#dc2626">⚠️ ล้างผลการแข่งขันทั้งหมด</div>
       <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ใช้ตอนทดสอบระบบบันทึกผล — ล้างสกอร์ ผู้ทำประตู ใบเหลือง/ใบแดง และนาฬิกาจับเวลาของ<b>ทุกนัด</b>กลับเป็นค่าเริ่มต้น (ยังไม่เริ่มแข่ง) รวมถึงทีมที่เข้ารอบต่อไปแบบที่แอดมินเลือกเอง (เช่น รอบแก้ตัว ม.ต้น) กลับเป็นค่าว่าง เพื่อให้จับสลาก/บันทึกผลใหม่ได้ตั้งแต่ต้น<br><b>ไม่กระทบ</b> ทีม/นักกีฬา/การชำระเงิน/การรายงานตัว และ<b>ไม่กระทบ</b>คู่แข่งขันรอบแรกที่จับสลากไว้แล้ว</div>
       <button data-act="resetAllMatchResults" style="width:100%;padding:10px;border-radius:10px;border:none;background:#dc2626;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🗑️ ล้างผลการแข่งขันทั้งหมด</button>
+    `)}
+    ${box(`
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#dc2626">⚠️ ล้างข้อมูลรายงานตัวทั้งหมด</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ล้างสถานะรายงานตัว (ที่สแกน QR ไว้) ของ<b>ทุกนัดทุกทีม</b>กลับเป็นยังไม่รายงานตัว — แยกจากปุ่มล้างผลด้านบน<br><b>ไม่กระทบ</b> ทีม/นักกีฬา/สกอร์/การชำระเงิน</div>
+      <button data-act="resetAllCheckins" style="width:100%;padding:10px;border-radius:10px;border:none;background:#dc2626;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🗑️ ล้างข้อมูลรายงานตัวทั้งหมด</button>
     `)}
     ${box(`
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
