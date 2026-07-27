@@ -853,8 +853,8 @@ function printMatchResultForm(level, code) {
     const roster = S.players.filter(p => p.team_id === teamId)
     if (!roster.length) return `<div style="font-size:12px;color:#6b7280">ยังไม่มีรายชื่อนักกีฬา</div>`
     return `<table class="print-table" style="table-layout:fixed">
-      <colgroup><col style="width:20px"><col><col style="width:66px"><col style="width:20px"><col style="width:20px"></colgroup>
-      <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th><th>ประตู<br><span style="font-weight:400;font-size:9px">(ทำเครื่องหมาย)</span></th><th>🟨</th><th>🟥</th></tr></thead><tbody>
+      <colgroup><col style="width:18px"><col><col style="width:90px"><col style="width:34px"><col style="width:34px"></colgroup>
+      <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th><th>ประตู<br><span style="font-weight:400;font-size:8px">(นาที เช่น 5, 12P)</span></th><th>🟨<br><span style="font-weight:400;font-size:8px">(นาที)</span></th><th>🟥<br><span style="font-weight:400;font-size:8px">(นาที)</span></th></tr></thead><tbody>
       ${roster.map((p, i) => {
         const url = playerPhotoUrl(p)
         return `<tr><td>${i + 1}</td><td style="text-align:left;vertical-align:middle"><div style="display:flex;align-items:center;gap:6px"><div class="print-photo">${url ? `<img src="${esc(url)}">` : ''}</div><div style="min-width:0;flex:1;overflow:hidden"><div style="font-weight:700;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.students?.full_name || '')}</div><div style="font-size:9px;color:#374151;white-space:nowrap">เบอร์ ${p.jersey_number ?? '-'}</div></div></div></td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`
@@ -862,8 +862,11 @@ function printMatchResultForm(level, code) {
     </tbody></table>`
   }
   openPrintArea(`
-    <div class="print-title"><h2>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))} · แบบฟอร์มบันทึกผลการแข่งขัน (สำรองออฟไลน์)</h2>
-      <p>${t.label} · นัด ${esc(code)} · รอบ ${esc(def.round || '')}</p></div>
+    <div class="print-title">
+      <h2>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))} · แบบฟอร์มบันทึกผลการแข่งขัน (สำรองออฟไลน์)</h2>
+      <div style="display:inline-block;margin-top:4px;padding:3px 18px;border:2px solid #111827;border-radius:8px;font-size:19px;font-weight:800">นัด ${esc(code)}</div>
+      <p style="margin-top:5px">${t.label} · รอบ ${esc(def.round || '')}</p>
+    </div>
     <div style="display:flex;gap:24px;margin-bottom:14px;font-size:13px">
       <div>ทีม A: <b>${esc(r.teamA || '.......................')}</b></div>
       <div>ทีม B: <b>${esc(r.teamB || '.......................')}</b></div>
@@ -877,7 +880,7 @@ function printMatchResultForm(level, code) {
       <div><h3>ทีม A: ${esc(r.teamA || '')}</h3>${rosterTable(r.teamAId)}</div>
       <div><h3>ทีม B: ${esc(r.teamB || '')}</h3>${rosterTable(r.teamBId)}</div>
     </div>
-    <p style="margin-top:8px;font-size:11px;color:#6b7280">*กรอกแบบฟอร์มนี้เมื่อระบบออนไลน์มีปัญหา แล้วนำข้อมูลไปกรอกในระบบภายหลังให้ตรงกับที่บันทึกไว้ที่นี่</p>
+    <p style="margin-top:8px;font-size:11px;color:#6b7280">*เขียนนาทีที่ทำประตู/ได้ใบเหลือง-แดงลงในช่องเลย (เขียน "P" ต่อท้ายนาทีถ้าประตูนั้นเป็นจุดโทษ เช่น "12P") จะได้กรอกกลับเข้าระบบภายหลังตรงกับที่เกิดขึ้นจริง ไม่ต้องเดา · รหัสนัด "${esc(code)}" ด้านบนใช้หาแมตช์ในระบบตอนกรอกกลับได้เร็วขึ้น</p>
   `)
 }
 
