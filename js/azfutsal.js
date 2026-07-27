@@ -853,7 +853,7 @@ function printMatchResultForm(level, code) {
     const roster = S.players.filter(p => p.team_id === teamId)
     if (!roster.length) return `<div style="font-size:12px;color:#6b7280">ยังไม่มีรายชื่อนักกีฬา</div>`
     return `<table class="print-table" style="table-layout:fixed">
-      <colgroup><col style="width:18px"><col><col style="width:90px"><col style="width:34px"><col style="width:34px"></colgroup>
+      <colgroup><col style="width:18px"><col style="width:170px"><col style="width:130px"><col style="width:50px"><col style="width:50px"></colgroup>
       <thead><tr><th>#</th><th style="text-align:left">นักกีฬา</th><th>ประตู<br><span style="font-weight:400;font-size:8px">(นาที เช่น 5, 12P)</span></th><th>🟨<br><span style="font-weight:400;font-size:8px">(นาที)</span></th><th>🟥<br><span style="font-weight:400;font-size:8px">(นาที)</span></th></tr></thead><tbody>
       ${roster.map((p, i) => {
         const url = playerPhotoUrl(p)
