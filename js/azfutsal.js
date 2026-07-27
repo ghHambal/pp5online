@@ -751,6 +751,64 @@ function teamCheckinLine(team, level, code) {
   return `<div style="margin-top:6px">${checkinStamp(latest)}<div style="margin-top:4px;font-size:11px;color:#6b7280">รายงานตัวแล้ว: ${esc(names.join(', '))} (${names.length}/${roster.length} คน)</div></div>`
 }
 
+// ---------------- จอแสดงผลรายงานตัวสด (สำหรับเปิดจอที่สอง โชว์นักกีฬาว่าสแกนสำเร็จ) ----------------
+function renderCheckinLiveBody(level, code) {
+  const r = resolveMatch(level, code)
+  const teamA = r.teamAId ? S.teams.find(tm => tm.id === r.teamAId) : null
+  const teamB = r.teamBId ? S.teams.find(tm => tm.id === r.teamBId) : null
+  const side = (team, teamId) => {
+    if (!team) return `<div style="flex:1;text-align:center;color:#9ca3af;padding:60px 0;font-size:15px">รอผลรอบก่อน</div>`
+    const roster = S.players.filter(p => p.team_id === teamId)
+    const checkedIds = new Set(S.checkins.filter(c => c.level === level && c.match_code === code && c.team_id === teamId).map(c => c.player_id))
+    const doneCount = roster.filter(p => checkedIds.has(p.id)).length
+    return `
+    <div style="flex:1;min-width:0">
+      <div style="text-align:center;font-size:22px;font-weight:800;margin-bottom:4px">${esc(team.name)}</div>
+      <div style="text-align:center;font-size:14px;color:#6b7280;margin-bottom:16px;font-weight:700">รายงานตัวแล้ว ${doneCount}/${roster.length} คน</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${roster.map(p => {
+          const isChecked = checkedIds.has(p.id)
+          return `
+          <div style="display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:14px;background:${isChecked ? '#dcfce7' : '#f9fafb'};border:2px solid ${isChecked ? '#16a34a' : '#e5e7eb'}">
+            <div style="width:52px;height:66px;border-radius:10px;overflow:hidden;background:#e5e7eb;flex-shrink:0;border:1px solid #d1d5db">
+              ${playerPhotoUrl(p) ? `<img src="${esc(playerPhotoUrl(p))}" style="width:100%;height:100%;object-fit:cover"/>` : ''}
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:17px;font-weight:800;color:#111827">${esc(p.students?.full_name || '')}</div>
+              <div style="font-size:13px;color:#6b7280">เบอร์เสื้อ ${p.jersey_number ?? '-'}</div>
+            </div>
+            ${isChecked ? `<div style="flex-shrink:0;font-size:28px">✅</div>` : `<div style="flex-shrink:0;font-size:13px;color:#9ca3af;font-weight:700">รอสแกน</div>`}
+          </div>`
+        }).join('')}
+      </div>
+    </div>`
+  }
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px">
+    ${levelBadge(level)}
+    <span style="font-size:18px;font-weight:800">${esc(r.round)} · ${esc(code)}</span>
+  </div>
+  <div style="display:flex;gap:32px;max-width:1100px;margin:0 auto">
+    ${side(teamA, r.teamAId)}
+    <div style="width:2px;background:#e5e7eb"></div>
+    ${side(teamB, r.teamBId)}
+  </div>`
+}
+function openCheckinLiveDisplay(level, code) {
+  document.getElementById('az-live-display-overlay')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'az-live-display-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fff;overflow-y:auto;padding:24px;font-family:Sarabun,Arial,sans-serif'
+  overlay.innerHTML = `
+    <button id="az-live-display-close" style="position:fixed;top:16px;right:16px;z-index:10;padding:10px 16px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">✕ ปิด</button>
+    <div id="az-live-display-body" style="padding-top:8px"></div>`
+  document.body.appendChild(overlay)
+  const renderBody = () => { const el = document.getElementById('az-live-display-body'); if (el) el.innerHTML = renderCheckinLiveBody(level, code) }
+  renderBody()
+  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
+  overlay.querySelector('#az-live-display-close').onclick = () => { clearInterval(intervalId); overlay.remove() }
+}
+
 // ---------------- แบบฟอร์มพิมพ์สำรอง (ออฟไลน์) ----------------
 // mirror pattern จาก js/sports-portals.js:printTeamList — สร้าง overlay เต็มจอ z-สูงสุด แล้วสั่ง window.print()
 // ใช้ id/คลาสคนละชื่อ (az-print-*) กันชนกับโมดูลอื่นถ้าโหลดอยู่หน้าเดียวกัน
@@ -1143,7 +1201,8 @@ function staffMatchPickerRow(r, hasCheckin, hasResult) {
     ${canScan && (teamA || teamB) ? `<div style="display:flex;gap:8px;margin-top:6px">
       ${teamA ? `<button data-act="printCheckinForm" data-id="${teamA.id}" style="flex:1;padding:7px;border:1px dashed ${t.border};border-radius:9px;background:#fff;color:#6b7280;font-weight:700;font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 เอกสาร ${esc(r.teamA)}</button>` : ''}
       ${teamB ? `<button data-act="printCheckinForm" data-id="${teamB.id}" style="flex:1;padding:7px;border:1px dashed ${t.border};border-radius:9px;background:#fff;color:#6b7280;font-weight:700;font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 เอกสาร ${esc(r.teamB)}</button>` : ''}
-    </div>` : ''}
+    </div>
+    <button data-act="openCheckinLiveDisplay" data-level="${r.level}" data-code="${r.code}" style="width:100%;margin-top:6px;padding:7px;border:1px dashed ${t.border};border-radius:9px;background:#fff;color:#6b7280;font-weight:700;font-size:10px;cursor:pointer">🖥️ จอแสดงผลสด (เปิดจอที่สองให้นักกีฬาดู)</button>` : ''}
   </div>`
 }
 
@@ -2568,7 +2627,8 @@ function matchEditorModal() {
       ${r.teamAId && r.teamBId && (S.identity.isAdmin || (S.identity.scopes || []).includes('checkin')) ? (() => {
         const checkedCount = S.checkins.filter(c => c.level === level && c.match_code === code).length
         const totalCount = S.players.filter(p => p.team_id === r.teamAId || p.team_id === r.teamBId).length
-        return `<button data-act="openCheckinScanner" data-level="${level}" data-code="${code}" style="padding:9px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">📷 สแกน QR รายงานตัว (${checkedCount}/${totalCount})</button>`
+        return `<button data-act="openCheckinScanner" data-level="${level}" data-code="${code}" style="padding:9px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">📷 สแกน QR รายงานตัว (${checkedCount}/${totalCount})</button>
+        <button data-act="openCheckinLiveDisplay" data-level="${level}" data-code="${code}" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">🖥️ จอแสดงผลสด (เปิดจอที่สองให้นักกีฬาดู)</button>`
       })() : ''}
       <button data-act="saveMatch" data-level="${level}" data-code="${code}" style="margin-top:4px;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">บันทึก</button>
       <button data-act="printMatchForm" data-level="${level}" data-code="${code}" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">🖨️ พิมพ์แบบฟอร์มบันทึกผลสำรอง (ออฟไลน์)</button>
@@ -3271,6 +3331,7 @@ function bindEvents() {
     }
     if (act === 'printMatchForm') { printMatchResultForm(btn.dataset.level, btn.dataset.code); return }
     if (act === 'openCheckinScanner') { openCheckinScanner(btn.dataset.level, btn.dataset.code); return }
+    if (act === 'openCheckinLiveDisplay') { openCheckinLiveDisplay(btn.dataset.level, btn.dataset.code); return }
     if (act === 'printCheckinForm') {
       const team = S.teams.find(tm => tm.id === btn.dataset.id)
       if (team) printCheckinForm(team)
