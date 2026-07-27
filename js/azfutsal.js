@@ -363,6 +363,85 @@ function matchClockControls(level, code, m) {
   return `<div style="flex:1;text-align:center;font-size:12px;font-weight:700;color:#6b7280;padding:9px">หมดเวลาการแข่งขันแล้ว</div>`
 }
 
+// ---------------- คิวออฟไลน์สำหรับบันทึกผลการแข่งขัน (กันสัญญาณเน็ตขาดตอนแข่งสด) ----------------
+// แพทเทิร์นเดียวกับ prayer_scan_queue ใน js/student-views.js: เขียนลง local state ทันทีเสมอ (ไม่เช็คว่าออนไลน์ก่อน)
+// แล้วค่อยพยายาม sync ขึ้น server แยกเป็นระยะ ถ้าพลาด (เน็ตหลุด) ก็ค้างคิวไว้ retry ใหม่เรื่อยๆ โดยรักษาลำดับเดิม
+const AZ_QUEUE_KEY = 'az_offline_queue'
+function azQueueGet() {
+  try { return JSON.parse(localStorage.getItem(AZ_QUEUE_KEY) || '[]') } catch { return [] }
+}
+function azQueueSet(q) { localStorage.setItem(AZ_QUEUE_KEY, JSON.stringify(q)) }
+function azMakeLocalId() { return 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9) }
+
+// เพิ่ม/แทนที่การอัปเดตนาฬิกาของนัดหนึ่งๆ ในคิว — ยุบรวมกับรายการที่ยังไม่ sync ของนัดเดียวกัน เก็บแค่ค่าล่าสุดพอ
+function azQueueClockUpdate(level, code, fields) {
+  const m = matchByCode(level, code)
+  if (m) Object.assign(m, fields)
+  const payload = { level, match_code: code, ...fields }
+  let q = azQueueGet().filter(item => !(item.type === 'clockUpdate' && item.payload.level === level && item.payload.match_code === code))
+  q.push({ localId: azMakeLocalId(), type: 'clockUpdate', payload })
+  azQueueSet(q)
+  azTriggerBackgroundSync()
+}
+
+async function azProcessQueueItem(item) {
+  if (item.type === 'insertEvent') {
+    const { data, error } = await SB.from('azfutsal_match_events').insert(item.payload).select().single()
+    if (error) throw error
+    const idx = S.matchEvents.findIndex(e => e.id === item.localEventId)
+    if (idx !== -1) S.matchEvents[idx] = data
+  } else if (item.type === 'deleteEvent') {
+    const { error } = await SB.from('azfutsal_match_events').delete().eq('id', item.payload.id)
+    if (error) throw error
+  } else if (item.type === 'togglePenalty') {
+    const { error } = await SB.from('azfutsal_match_events').update({ is_penalty: item.payload.is_penalty }).eq('id', item.payload.id)
+    if (error) throw error
+  } else if (item.type === 'saveMatch' || item.type === 'clockUpdate') {
+    const { error } = await SB.from('azfutsal_matches').upsert(item.payload, { onConflict: 'level,match_code' })
+    if (error) throw error
+  }
+}
+
+async function azTriggerBackgroundSync() {
+  if (S._azSyncing) return
+  let queue = azQueueGet()
+  if (!queue.length) return
+  S._azSyncing = true
+  draw()
+  let processed = 0
+  for (const item of queue) {
+    try {
+      await azProcessQueueItem(item)
+      processed++
+    } catch {
+      break // เจอปัญหา (เน็ตหลุด ฯลฯ) หยุดตรงนี้ เก็บที่เหลือไว้ retry รอบหน้า รักษาลำดับเดิม
+    }
+  }
+  S._azSyncing = false
+  if (processed > 0) {
+    queue = queue.slice(processed)
+    azQueueSet(queue)
+    if (queue.length === 0) {
+      azToast('✅ ซิงก์ข้อมูลออฟไลน์ครบแล้ว')
+      await refresh()
+      return
+    }
+  }
+  draw()
+}
+if (typeof window !== 'undefined' && !window._azSyncStarted) {
+  window._azSyncStarted = true
+  setInterval(azTriggerBackgroundSync, 6000)
+  window.addEventListener('online', azTriggerBackgroundSync)
+}
+// แสดงสถานะคิวออฟไลน์แบบ inline ในหน้าบันทึกผล อ่านค่าคิวสดตอน render ทุกครั้ง (draw() ทั้งหน้าอยู่แล้วเมื่อคิวเปลี่ยน ไม่ต้อง patch DOM แยก)
+function azSyncBadge() {
+  const n = azQueueGet().length
+  if (S._azSyncing) return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#d97706">🔄 กำลังซิงก์...</span>`
+  if (n > 0) return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#d97706">📡 ค้างซิงก์ ${n} รายการ (ออฟไลน์)</span>`
+  return ''
+}
+
 function computeTeamStats(level) {
   const teams = new Map()
   const reg = id => { if (!id) return; if (!teams.has(id)) teams.set(id, { id, team: teamName(id), gp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, y: 0, r: 0 }) }
@@ -2436,6 +2515,7 @@ function matchEditorModal() {
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
   return simpleModal(`${code} · ${T[level].label}`, `
     <div style="display:flex;flex-direction:column;gap:10px">
+      ${azSyncBadge() ? `<div>${azSyncBadge()}</div>` : ''}
       ${r.teamAId && r.teamBId ? `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#111827;border-radius:12px;padding:10px 12px">
         ${m.clock_status && m.clock_status !== 'not_started' ? matchClockDisplay(m) : `<span style="font-size:11.5px;color:#9ca3af;font-weight:700">ยังไม่เริ่มจับเวลา</span>`}
@@ -2531,7 +2611,7 @@ const numOrNull = v => (v === '' || v === null || v === undefined) ? null : (isN
 const gid = id => document.getElementById(id)
 
 // ---------------- action handlers ----------------
-async function handleSaveMatch(level, code) {
+function handleSaveMatch(level, code) {
   const r = resolveMatch(level, code)
   const selA = gid('mx-teamA'), selB = gid('mx-teamB')
   const teamAId = selA ? (selA.value || null) : r.teamAId
@@ -2560,14 +2640,20 @@ async function handleSaveMatch(level, code) {
     payload.winner_team_id = scoreA > scoreB ? teamAId : teamBId
     payload.loser_team_id = scoreA > scoreB ? teamBId : teamAId
   }
-  const { error } = await SB.from('azfutsal_matches').upsert(payload, { onConflict: 'level,match_code' })
-  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+  const m = matchByCode(level, code)
+  if (m) Object.assign(m, payload)
+  else S.matches[level].push(payload)
+  // ยุบรวมกับ saveMatch ที่ยังไม่ sync ของนัดเดียวกัน เก็บแค่ค่าล่าสุดพอ (upsert ทับกันได้อยู่แล้ว ไม่ต้อง replay ทุกครั้ง)
+  let q = azQueueGet().filter(item => !(item.type === 'saveMatch' && item.payload.level === level && item.payload.match_code === code))
+  q.push({ localId: azMakeLocalId(), type: 'saveMatch', payload })
+  azQueueSet(q)
   S.editMatch = null
-  await refresh()
+  draw()
+  azTriggerBackgroundSync()
   azToast('บันทึกผลการแข่งขันแล้ว')
 }
 
-async function handleAddMatchEvent(playerId) {
+function handleAddMatchEvent(playerId) {
   if (!S.editMatch || !S.eventPicker) return
   const { level, code } = S.editMatch
   const { team, type } = S.eventPicker
@@ -2575,16 +2661,30 @@ async function handleAddMatchEvent(playerId) {
   const teamId = team === 'a' ? r.teamAId : r.teamBId
   if (!teamId) return
   const minute = matchClockMinute(matchByCode(level, code))
-  const { error } = await SB.from('azfutsal_match_events').insert({ level, match_code: code, team_id: teamId, player_id: playerId, event_type: type, minute })
-  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
-  await refresh()
+  const localId = azMakeLocalId()
+  const eventPayload = { level, match_code: code, team_id: teamId, player_id: playerId, event_type: type, minute, is_penalty: false }
+  S.matchEvents.push({ id: localId, ...eventPayload, created_at: new Date().toISOString() })
+  const q = azQueueGet()
+  q.push({ localId, type: 'insertEvent', localEventId: localId, payload: eventPayload })
+  azQueueSet(q)
+  draw()
+  azTriggerBackgroundSync()
   // เปิดตัวเลือกผู้เล่นค้างไว้ต่อ เพื่อกดเพิ่มคนถัดไปได้เร็วๆ ไม่ต้องเปิดใหม่ทุกครั้ง
 }
 
-async function handleRemoveMatchEvent(id) {
-  const { error } = await SB.from('azfutsal_match_events').delete().eq('id', id)
-  if (error) { azToast('ลบไม่สำเร็จ: ' + error.message); return }
-  await refresh()
+function handleRemoveMatchEvent(id) {
+  const idx = S.matchEvents.findIndex(e => e.id === id)
+  if (idx !== -1) S.matchEvents.splice(idx, 1)
+  let q = azQueueGet()
+  if (String(id).startsWith('local_')) {
+    // ยังไม่เคย sync ขึ้น server เลย แค่ยกเลิกรายการที่ค้างคิวไว้ ไม่ต้องส่ง delete จริง
+    q = q.filter(item => item.localEventId !== id)
+  } else {
+    q.push({ localId: azMakeLocalId(), type: 'deleteEvent', payload: { id } })
+  }
+  azQueueSet(q)
+  draw()
+  azTriggerBackgroundSync()
 }
 
 async function handleUploadPlayerPhoto(playerId, file) {
@@ -2864,9 +2964,18 @@ function bindEvents() {
     if (act === 'toggleEventPenalty') {
       const ev = S.matchEvents.find(e => e.id === btn.dataset.id)
       if (!ev) return
-      const { error } = await SB.from('azfutsal_match_events').update({ is_penalty: !ev.is_penalty }).eq('id', ev.id)
-      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
-      await refresh(); return
+      ev.is_penalty = !ev.is_penalty
+      let q = azQueueGet()
+      if (String(ev.id).startsWith('local_')) {
+        const qi = q.find(item => item.localEventId === ev.id)
+        if (qi) qi.payload.is_penalty = ev.is_penalty
+      } else {
+        q.push({ localId: azMakeLocalId(), type: 'togglePenalty', payload: { id: ev.id, is_penalty: ev.is_penalty } })
+      }
+      azQueueSet(q)
+      draw()
+      azTriggerBackgroundSync()
+      return
     }
     if (act === 'saveMatch') { await handleSaveMatch(btn.dataset.level, btn.dataset.code); return }
     if (act === 'seedMatches') { await handleSeedMatches(btn.dataset.level); return }
@@ -3076,29 +3185,23 @@ function bindEvents() {
       draw(); return
     }
     if (act === 'startMatchClock') {
-      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0, clock_half_started_elapsed: 0 }).eq('level', btn.dataset.level).eq('match_code', btn.dataset.code)
-      if (error) { azToast('เริ่มนาฬิกาไม่สำเร็จ: ' + error.message); return }
-      await refresh(); return
+      azQueueClockUpdate(btn.dataset.level, btn.dataset.code, { clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0, clock_half_started_elapsed: 0 })
+      draw(); return
     }
     if (act === 'endHalfClock' || act === 'endMatchClock') {
       const level = btn.dataset.level, code = btn.dataset.code
       const m = matchByCode(level, code)
       const elapsed = matchClockElapsedSeconds(m) || 0
-      const { error } = await SB.from('azfutsal_matches').update({
-        clock_status: act === 'endHalfClock' ? 'half_break' : 'ended',
-        clock_elapsed_before: elapsed, clock_started_at: null,
-      }).eq('level', level).eq('match_code', code)
-      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
-      await refresh(); return
+      azQueueClockUpdate(level, code, { clock_status: act === 'endHalfClock' ? 'half_break' : 'ended', clock_elapsed_before: elapsed, clock_started_at: null })
+      draw(); return
     }
     if (act === 'startSecondHalfClock') {
       const level = btn.dataset.level, code = btn.dataset.code
       const m = matchByCode(level, code)
       // จุดสำคัญของการแก้บั๊ก: ครึ่งหลังต้องเริ่มนับนาทีต่อครึ่งใหม่เต็มจำนวนเสมอ ไม่ว่าครึ่งแรกจะทดเวลาไปเท่าไหร่ก็ตาม
       // จึงต้อง snapshot ค่า clock_elapsed_before ปัจจุบัน (รวมทดเวลาครึ่งแรกแล้ว) ไว้เป็นจุดฐานของครึ่งหลัง
-      const { error } = await SB.from('azfutsal_matches').update({ clock_status: 'running', clock_half: 2, clock_started_at: new Date().toISOString(), clock_half_started_elapsed: m?.clock_elapsed_before || 0 }).eq('level', level).eq('match_code', code)
-      if (error) { azToast('เริ่มครึ่งหลังไม่สำเร็จ: ' + error.message); return }
-      await refresh(); return
+      azQueueClockUpdate(level, code, { clock_status: 'running', clock_half: 2, clock_started_at: new Date().toISOString(), clock_half_started_elapsed: m?.clock_elapsed_before || 0 })
+      draw(); return
     }
     if (act === 'adminNewTeamFromList' || act === 'adminOpenTeamFromList') {
       S.tab = 'myteam'
