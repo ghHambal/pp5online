@@ -497,9 +497,26 @@ export async function getMonthlyManualPrayerEntryCount(studentId, dateStr) {
 }
 
 export async function saveScannedPrayerRecords(records) {
-  if (!records.length) return
+  if (!records.length) return { savedCount: 0, skippedCount: 0 }
+
+  // ตาราง prayer_records มี unique constraint (student_id, main_room, check_date) ที่ไม่แยก teacher_id
+  // ถ้าครูบันทึกของนักเรียนคนนั้นวันนั้นไว้ก่อนแล้ว (teacher_id ไม่ใช่ null) การ insert record จากสแกน
+  // ทับวันเดียวกันจะชน unique constraint นี้ทันที — และเพราะ insert เป็น batch เดียว แค่แถวเดียวชน
+  // ก็ทำให้ทั้ง batch (นักเรียนคนอื่นที่ไม่ได้ชนด้วย) ไม่ถูกบันทึกไปด้วยทั้งหมด ต้องกรองแถวที่ชนออกก่อน
+  const studentIds = [...new Set(records.map(r => r.student_id))]
+  const { data: teacherRows, error: teacherErr } = await supabase
+    .from('prayer_records')
+    .select('student_id, check_date')
+    .in('student_id', studentIds)
+    .not('teacher_id', 'is', null)
+  if (teacherErr) throw teacherErr
+  const teacherTaken = new Set((teacherRows ?? []).map(r => `${r.student_id}|${r.check_date}`))
+
+  const toSave  = records.filter(r => !teacherTaken.has(`${r.student_id}|${r.check_date}`))
+  const skipped = records.length - toSave.length
+
   // ลบเฉพาะ record ที่ scanner เคยบันทึก (teacher_id IS NULL) — ไม่ลบ record ของครู
-  for (const r of records) {
+  for (const r of toSave) {
     const { error: delError } = await supabase
       .from('prayer_records')
       .delete()
@@ -508,26 +525,30 @@ export async function saveScannedPrayerRecords(records) {
       .is('teacher_id', null)
     if (delError) throw delError
   }
-  
-  const payloads = records.map(r => ({
-    student_id: r.student_id,
-    main_room: r.main_room,
-    check_date: r.check_date,
-    status: r.status,
-    week_number: r.week_number,
-    location: r.location || null,
-    teacher_id: null, // บันทึกเป็น NULL สำหรับการสแกนสภานักเรียน
-    scanned_by: r.scanned_by || null,
-    input_method: r.input_method || 'qr',
-    scanner_code: r.scanner_code || null,
-    scanner_name: r.scanner_name || null,
-    scanner_room: r.scanner_room || null,
-    scanner_gender: r.scanner_gender || null,
-    same_room_flag: !!r.same_room_flag
-  }))
 
-  const { error } = await supabase.from('prayer_records').insert(payloads)
-  if (error) throw error
+  if (toSave.length) {
+    const payloads = toSave.map(r => ({
+      student_id: r.student_id,
+      main_room: r.main_room,
+      check_date: r.check_date,
+      status: r.status,
+      week_number: r.week_number,
+      location: r.location || null,
+      teacher_id: null, // บันทึกเป็น NULL สำหรับการสแกนสภานักเรียน
+      scanned_by: r.scanned_by || null,
+      input_method: r.input_method || 'qr',
+      scanner_code: r.scanner_code || null,
+      scanner_name: r.scanner_name || null,
+      scanner_room: r.scanner_room || null,
+      scanner_gender: r.scanner_gender || null,
+      same_room_flag: !!r.same_room_flag
+    }))
+
+    const { error } = await supabase.from('prayer_records').insert(payloads)
+    if (error) throw error
+  }
+
+  return { savedCount: toSave.length, skippedCount: skipped }
 }
 
 export async function getStudentClassroomRole(mainRoom) {

@@ -4192,9 +4192,13 @@ export async function renderStudentPrayerScanner(student) {
     updateQueueUI(true)
 
     try {
-      await saveScannedPrayerRecords(queue)
+      const result = await saveScannedPrayerRecords(queue)
       localStorage.setItem('prayer_scan_queue', JSON.stringify([]))
-      showToast('ซิงก์บันทึกสแกนละหมาดสำเร็จ', 'success')
+      if (result?.skippedCount) {
+        showToast(`ซิงก์สำเร็จ (ข้าม ${result.skippedCount} รายการที่ครูบันทึกไว้แล้ว)`, 'warning')
+      } else {
+        showToast('ซิงก์บันทึกสแกนละหมาดสำเร็จ', 'success')
+      }
     } catch (err) {
       console.warn('Sync failed, offline backup kept:', err)
     } finally {
