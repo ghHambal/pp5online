@@ -657,6 +657,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.104': [
+    '🐛 AZIZGAMES: แก้ปัญหาเปิดหน้ากีฬาสีแล้วเจอเวอร์ชันเก่าค้างนานถึง 10 นาทีหลัง deploy — เพิ่ม cache-busting ให้ลิงก์ iframe ที่เปิดหน้า azizgames.html เอง (เดิมมีแค่ไฟล์ js/css ภายในที่กันแคชอยู่แล้ว แต่ตัวหน้า .html เองไม่มี)'
+  ],
   '10.22.103': [
     '📸 AZIZGAMES: กริดเลือก MVP ประจำนัดในหน้าบันทึกผลกีฬาบอล เพิ่มรูปนักกีฬาประกอบชื่อ ช่วยให้กรรมการเลือกได้ง่ายและแม่นยำขึ้น'
   ],
