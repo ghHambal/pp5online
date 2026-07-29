@@ -503,26 +503,35 @@ export async function saveScannedPrayerRecords(records) {
   // ถ้าครูบันทึกของนักเรียนคนนั้นวันนั้นไว้ก่อนแล้ว (teacher_id ไม่ใช่ null) การ insert record จากสแกน
   // ทับวันเดียวกันจะชน unique constraint นี้ทันที — และเพราะ insert เป็น batch เดียว แค่แถวเดียวชน
   // ก็ทำให้ทั้ง batch (นักเรียนคนอื่นที่ไม่ได้ชนด้วย) ไม่ถูกบันทึกไปด้วยทั้งหมด ต้องกรองแถวที่ชนออกก่อน
+  //
+  // ครูที่ปรึกษาศาสนาบางคนมาร์ก status='absent' (ขาดละหมาด) ไว้ล่วงหน้าทั้งสัปดาห์ให้ทุกคนก่อน
+  // เพื่อไม่ต้องกลับมาติ๊กขาดทีหลังให้คนที่ไม่ได้สแกน — ดังนั้นถ้าครูมาร์กไว้เป็น "ขาด" (แค่ placeholder)
+  // การสแกนจริงทีหลังต้องทับสถานะนั้นได้ (นักเรียนมาละหมาดจริง ไม่ควรค้างสถานะขาด)
+  // แต่ถ้าครูมาร์กสถานะอื่น (usor/avoid/pray/followed เอง) ถือเป็นการตัดสินใจพิเศษของครู ไม่ทับ
   const studentIds = [...new Set(records.map(r => r.student_id))]
   const { data: teacherRows, error: teacherErr } = await supabase
     .from('prayer_records')
-    .select('student_id, check_date')
+    .select('student_id, check_date, status')
     .in('student_id', studentIds)
     .not('teacher_id', 'is', null)
   if (teacherErr) throw teacherErr
-  const teacherTaken = new Set((teacherRows ?? []).map(r => `${r.student_id}|${r.check_date}`))
+  const teacherStatusByKey = new Map((teacherRows ?? []).map(r => [`${r.student_id}|${r.check_date}`, r.status]))
 
-  const toSave  = records.filter(r => !teacherTaken.has(`${r.student_id}|${r.check_date}`))
-  const skipped = records.length - toSave.length
+  const toSave = []
+  let skipped = 0
+  for (const r of records) {
+    const teacherStatus = teacherStatusByKey.get(`${r.student_id}|${r.check_date}`)
+    if (teacherStatus !== undefined && teacherStatus !== 'absent') { skipped++; continue }
+    toSave.push(r)
+  }
 
-  // ลบเฉพาะ record ที่ scanner เคยบันทึก (teacher_id IS NULL) — ไม่ลบ record ของครู
+  // ลบ record เดิมของวันนั้น (ทั้ง scanner เดิม และ "ขาด" ที่ครูมาร์กล่วงหน้าไว้ — ที่เหลือผ่านการกรองมาแล้วว่าทับได้)
   for (const r of toSave) {
     const { error: delError } = await supabase
       .from('prayer_records')
       .delete()
       .eq('student_id', r.student_id)
       .eq('check_date', r.check_date)
-      .is('teacher_id', null)
     if (delError) throw delError
   }
 
