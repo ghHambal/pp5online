@@ -9,6 +9,7 @@ import {
   renderExamRequestForm,
   renderStudentProfile,
   renderStudentPrayerScanner,
+  renderStudentPrayerScanHistory,
   openEmailLinkPrompt,
 } from './student-views.js'
 import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
@@ -166,6 +167,7 @@ const ROUTES = {
   requests: () => renderStudentRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
   prayer_scanner: () => renderStudentPrayerScanner(_student),
+  prayer_scan_history: () => renderStudentPrayerScanHistory(_student),
 }
 
 function _navButtonHTML(view, icon, label, mode = 'main') {

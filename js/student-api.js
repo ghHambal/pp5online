@@ -560,6 +560,31 @@ export async function saveScannedPrayerRecords(records) {
   return { savedCount: toSave.length, skippedCount: skipped }
 }
 
+// ─── ประวัติการสแกนของฉัน (สภานักเรียน/แกนนำ) ──────────────────────────────────
+export async function getMyScannedPrayerHistory(scannerCode, checkDate) {
+  if (!scannerCode || !checkDate) return []
+  const { data, error } = await supabase
+    .from('prayer_records')
+    .select('id, student_id, check_date, status, location, input_method, created_at, students(id, student_code, full_name, main_room, religion_room, gender, image_url)')
+    .eq('scanner_code', scannerCode)
+    .eq('check_date', checkDate)
+    .order('created_at')
+  if (error) throw error
+  return data ?? []
+}
+
+// ค้นหานักเรียนด้วยรหัส เพื่อใช้ตอนจะบันทึกซ้ำจากหน้าประวัติการสแกน (ไม่พึ่ง roster ที่ต้องโหลดไว้ก่อน)
+export async function findStudentByCode(studentCode) {
+  if (!studentCode) return null
+  const { data, error } = await supabase
+    .from('students')
+    .select('id, student_code, full_name, main_room, religion_room, gender, image_url')
+    .eq('student_code', String(studentCode).trim())
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
 export async function getStudentClassroomRole(mainRoom) {
   if (!mainRoom) return null
   const { data, error } = await supabase

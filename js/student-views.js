@@ -7,6 +7,7 @@ import {
   getStudentDailySchedule, getStudentAllAnnouncements, getStudentGPA,
   getClassSchedulesByIds, getStudentWeeklySchedule,
   getScannerRoster, saveScannedPrayerRecords,
+  getMyScannedPrayerHistory, findStudentByCode,
   getMonthlyManualPrayerEntryCount,
   getStudentClassroomRole,
   getMyActiveLeavePermission, getMyLeaveHistory,
@@ -488,6 +489,18 @@ export async function renderStudentOverview(student) {
         เข้าสู่ระบบสแกน →
       </button>
     </div>
+    ` : ''}
+    ${student.can_scan_prayer ? `
+    <button onclick="window._stuNav('prayer_scan_history')" class="w-full flex items-center justify-between gap-3 bg-white rounded-2xl border border-gray-200 shadow-sm p-3.5 mb-4 hover:border-emerald-300 transition-colors text-left">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-lg flex-shrink-0">🗂️</span>
+        <div class="min-w-0">
+          <p class="text-sm font-bold text-gray-700 truncate">ประวัติการสแกนของฉัน</p>
+          <p class="text-[11px] text-gray-400">ดูย้อนหลัง ค้นหา และบันทึกซ้ำถ้าข้อมูลหาย</p>
+        </div>
+      </div>
+      <span class="text-gray-300 flex-shrink-0">→</span>
+    </button>
     ` : ''}
 
     <!-- แบบทดสอบที่เปิดสอบอยู่ตอนนี้ (ครูกดเริ่มแล้ว) -->
@@ -4212,6 +4225,290 @@ export async function renderStudentPrayerScanner(student) {
     triggerBackgroundSync()
   }, 8000)
   window._activePrayerScannerState.syncInterval = syncInterval
+
+  renderUI()
+}
+
+// ─── ประวัติการสแกนของฉัน (สภานักเรียน/แกนนำ) ──────────────────────────────────
+// ดูย้อนหลังว่าแต่ละวันตัวเองสแกนให้ใครไว้บ้าง ค้นหาด้วยรหัส/กล้อง บันทึกซ้ำถ้าตรวจพบว่าหาย
+// หรือส่งเรื่องต่อแอดมินผ่านระบบ Feedback ถ้าไม่มั่นใจ
+export async function renderStudentPrayerScanHistory(student) {
+  if (!student?.can_scan_prayer) {
+    setContent(`
+      <div class="max-w-lg mx-auto px-4 py-16 text-center text-gray-400">
+        <p class="text-4xl mb-3">⚠️</p>
+        <p class="font-medium text-gray-600">ขออภัย คุณไม่มีสิทธิ์เข้าใช้งานหน้านี้</p>
+      </div>`)
+    return
+  }
+
+  setContent(`<div class="flex justify-center py-10 text-gray-300">
+    <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>`)
+
+  let cfg = {}
+  let selectedDate = _localDateValue(new Date())
+  let records = []
+
+  const _fmtTime = (iso) => {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+  const _shiftDate = (dateStr, days) => {
+    const d = new Date(dateStr + 'T00:00:00')
+    d.setDate(d.getDate() + days)
+    return _localDateValue(d)
+  }
+
+  async function _load() {
+    try {
+      records = await getMyScannedPrayerHistory(student.student_code, selectedDate)
+    } catch (err) {
+      records = []
+      showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+    const searchInput = document.getElementById('sh-search-input')
+    _renderList(searchInput?.value.trim() ?? '')
+  }
+
+  function _renderList(filterCode = '') {
+    const listEl = document.getElementById('sh-list')
+    const countEl = document.getElementById('sh-count')
+    if (!listEl) return
+    if (countEl) countEl.textContent = `${records.length} คน`
+
+    const filtered = filterCode
+      ? records.filter(r => String(r.students?.student_code ?? '').includes(filterCode))
+      : records
+
+    if (filterCode && !filtered.length) {
+      listEl.innerHTML = `
+        <div class="py-8 text-center">
+          <p class="text-3xl mb-2">🔍</p>
+          <p class="text-sm text-gray-500 mb-1">ไม่พบข้อมูลการสแกนของรหัส "<b>${_esc(filterCode)}</b>" ในวันที่เลือก</p>
+          <p class="text-xs text-gray-400 mb-4">ถ้าตรวจสอบแล้วว่านักเรียนคนนี้ละหมาดจริง บันทึกซ้ำได้เลย หรือถ้าไม่มั่นใจให้ส่งแอดมินตรวจสอบ</p>
+          <div class="flex flex-col sm:flex-row gap-2 justify-center">
+            <button id="sh-resave-btn" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition">✏️ บันทึกซ้ำ</button>
+            <button id="sh-report-btn" class="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold transition">🚩 ไม่มั่นใจ ส่งแอดมิน</button>
+          </div>
+        </div>`
+      document.getElementById('sh-resave-btn')?.addEventListener('click', () => _openResaveModal(filterCode))
+      document.getElementById('sh-report-btn')?.addEventListener('click', () => _reportToAdmin(filterCode))
+      return
+    }
+
+    if (!filtered.length) {
+      listEl.innerHTML = `<div class="py-10 text-center text-gray-300 text-sm">ยังไม่มีข้อมูลการสแกนในวันที่เลือก</div>`
+      return
+    }
+
+    listEl.innerHTML = filtered.map(r => {
+      const s = r.students ?? {}
+      const st = PRAYER_SCORE[r.status] ?? { label: '?', cls: 'bg-gray-50 text-gray-400 border-gray-100', title: r.status ?? '—' }
+      return `
+      <div class="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50/60 mb-1.5">
+        <div class="w-9 h-9 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0 flex items-center justify-center text-xs font-bold text-gray-500">
+          ${s.image_url ? `<img src="${s.image_url}" class="w-full h-full object-cover"/>` : _esc((s.full_name ?? '?').charAt(0))}
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold text-gray-700 truncate">${_esc(s.full_name ?? '—')}</p>
+          <p class="text-[11px] text-gray-400">รหัส ${_esc(s.student_code ?? '—')} · ${_esc(s.religion_room ?? s.main_room ?? '—')}</p>
+        </div>
+        <div class="text-right flex-shrink-0">
+          <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg border text-xs font-bold ${st.cls}" title="${_esc(st.title)}">${st.label}</span>
+          <p class="text-[10px] text-gray-400 mt-0.5">${_fmtTime(r.created_at)}</p>
+        </div>
+      </div>`
+    }).join('')
+  }
+
+  async function _startSearchCamera() {
+    window._activePrayerScannerState = { html5Qrcode: null }
+    try {
+      const Html5Qrcode = await loadHtml5Qrcode()
+      const html5Qrcode = new Html5Qrcode('sh-camera-reader')
+      window._activePrayerScannerState.html5Qrcode = html5Qrcode
+      await html5Qrcode.start(
+        { facingMode: 'environment' },
+        { fps: 25, aspectRatio: 1.0 },
+        (decodedText) => {
+          let code = String(decodedText).trim()
+          if (code.startsWith('SQ:')) code = code.split(':')[1] ?? code
+          _stopSearchCamera()
+          document.getElementById('sh-camera-wrap')?.classList.add('hidden')
+          const input = document.getElementById('sh-search-input')
+          if (input) input.value = code
+          _renderList(code)
+        },
+        () => {}
+      )
+    } catch (err) {
+      showToast('ไม่สามารถเปิดกล้องได้: ' + (err.message || 'ไม่มีสิทธิ์เข้าถึง'), 'error')
+    }
+  }
+
+  function _stopSearchCamera() {
+    if (window._activePrayerScannerState?.html5Qrcode) {
+      window._activePrayerScannerState.html5Qrcode.stop().catch(() => {})
+      window._activePrayerScannerState.html5Qrcode = null
+    }
+  }
+
+  async function _openResaveModal(code) {
+    let target = null
+    try { target = await findStudentByCode(code) } catch {}
+    if (!target) { showToast('ไม่พบนักเรียนรหัสนี้ในระบบ', 'error'); return }
+
+    document.getElementById('sh-resave-modal')?.remove()
+    const modal = document.createElement('div')
+    modal.id = 'sh-resave-modal'
+    modal.className = 'fixed inset-0 z-[700] flex items-center justify-center bg-black/40 p-4'
+    const statusEntries = Object.entries(PRAYER_SCORE)
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h4 class="font-bold text-gray-800 mb-1">✏️ บันทึกซ้ำ</h4>
+        <p class="text-xs text-gray-500 mb-3">${_esc(target.full_name)} (รหัส ${_esc(target.student_code)})<br/>${_esc(target.religion_room ?? target.main_room ?? '—')} · วันที่ ${selectedDate}</p>
+        <p class="text-xs font-medium text-gray-600 mb-1.5">สถานะ</p>
+        <div class="grid grid-cols-2 gap-1.5 mb-4" id="sh-status-grid">
+          ${statusEntries.map(([key, v], i) => `
+            <button class="sh-status-btn px-3 py-2 rounded-xl border text-xs font-bold transition ${i === 0 ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-500'}" data-status="${key}">${v.title}</button>
+          `).join('')}
+        </div>
+        <div class="flex gap-2">
+          <button id="sh-resave-cancel" class="flex-1 py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-semibold">ยกเลิก</button>
+          <button id="sh-resave-confirm" class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition">บันทึก</button>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+
+    let chosenStatus = statusEntries[0][0]
+    modal.querySelectorAll('.sh-status-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        chosenStatus = btn.dataset.status
+        modal.querySelectorAll('.sh-status-btn').forEach(b => {
+          b.classList.remove('border-emerald-400', 'bg-emerald-50', 'text-emerald-700')
+          b.classList.add('border-gray-200', 'text-gray-500')
+        })
+        btn.classList.remove('border-gray-200', 'text-gray-500')
+        btn.classList.add('border-emerald-400', 'bg-emerald-50', 'text-emerald-700')
+      })
+    })
+    modal.querySelector('#sh-resave-cancel').addEventListener('click', () => modal.remove())
+    modal.querySelector('#sh-resave-confirm').addEventListener('click', async () => {
+      const btn = modal.querySelector('#sh-resave-confirm')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        const record = {
+          student_id: target.id,
+          main_room: target.main_room,
+          check_date: selectedDate,
+          status: chosenStatus,
+          week_number: getWeekNumber(selectedDate, cfg),
+          location: null,
+          scanned_by: `${student.full_name} (รหัส ${student.student_code || '—'})`,
+          input_method: 'manual',
+          scanner_code: student.student_code,
+          scanner_name: student.full_name,
+          scanner_room: student.main_room,
+          scanner_gender: student.gender,
+          same_room_flag: false,
+        }
+        await saveScannedPrayerRecords([record])
+        showToast('บันทึกสำเร็จ ✅', 'success')
+        modal.remove()
+        await _load()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึก'
+      }
+    })
+  }
+
+  async function _reportToAdmin(code) {
+    let target = null
+    try { target = await findStudentByCode(code) } catch {}
+    const nameInfo = target
+      ? `${target.full_name} (รหัส ${target.student_code}) ห้องศาสนา ${target.religion_room ?? target.main_room ?? '—'}`
+      : `รหัสนักเรียน ${code} (ไม่พบชื่อในระบบ)`
+    const msg = `[รายงานการสแกนละหมาด] ไม่พบข้อมูลการสแกนของ ${nameInfo} วันที่ ${selectedDate} — ${student.full_name} (รหัส ${student.student_code}) ไม่แน่ใจว่าตนเองสแกนไว้หรือไม่ รบกวนแอดมินช่วยตรวจสอบให้ด้วยครับ`
+    if (window._openFeedbackWidget) window._openFeedbackWidget(msg)
+    else showToast('ไม่พบระบบ Feedback กรุณาติดต่อแอดมินโดยตรง', 'error')
+  }
+
+  async function renderUI() {
+    cfg = await getSystemConfig().catch(() => ({}))
+    setContent(`
+      <div class="flex items-center gap-2 mb-4">
+        <button id="sh-back" class="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 flex-shrink-0">←</button>
+        <div class="min-w-0">
+          <h2 class="font-bold text-gray-800 text-base">🕌 ประวัติการสแกนของฉัน</h2>
+          <p class="text-[11px] text-gray-400">ดูย้อนหลังว่าแต่ละวันสแกนให้ใครไว้บ้าง</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4">
+        <div class="flex items-center gap-2 mb-3">
+          <button id="sh-prev-day" class="w-8 h-8 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 flex-shrink-0">‹</button>
+          <input type="date" id="sh-date" value="${selectedDate}" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"/>
+          <button id="sh-next-day" class="w-8 h-8 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 flex-shrink-0">›</button>
+        </div>
+        <div class="flex gap-2">
+          <input type="text" id="sh-search-input" placeholder="พิมพ์รหัสนักเรียนเพื่อค้นหา..." class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"/>
+          <button id="sh-camera-btn" class="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 text-sm flex-shrink-0">📷</button>
+        </div>
+        <div id="sh-camera-wrap" class="hidden mt-3">
+          <div id="sh-camera-reader" class="rounded-xl overflow-hidden border border-gray-200"></div>
+          <button id="sh-camera-close" class="mt-2 w-full py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 text-xs font-semibold">ปิดกล้อง</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">รายชื่อที่สแกน</h3>
+          <span id="sh-count" class="text-[11px] text-gray-400">0 คน</span>
+        </div>
+        <div id="sh-list" class="p-3"></div>
+      </div>
+    `)
+
+    document.getElementById('sh-back').addEventListener('click', () => window._stuNav('overview'))
+    document.getElementById('sh-date').addEventListener('change', async (e) => {
+      selectedDate = e.target.value
+      document.getElementById('sh-search-input').value = ''
+      await _load()
+    })
+    document.getElementById('sh-prev-day').addEventListener('click', async () => {
+      selectedDate = _shiftDate(selectedDate, -1)
+      document.getElementById('sh-date').value = selectedDate
+      document.getElementById('sh-search-input').value = ''
+      await _load()
+    })
+    document.getElementById('sh-next-day').addEventListener('click', async () => {
+      selectedDate = _shiftDate(selectedDate, 1)
+      document.getElementById('sh-date').value = selectedDate
+      document.getElementById('sh-search-input').value = ''
+      await _load()
+    })
+    document.getElementById('sh-search-input').addEventListener('input', (e) => {
+      _renderList(e.target.value.trim())
+    })
+    document.getElementById('sh-camera-btn').addEventListener('click', () => {
+      const wrap = document.getElementById('sh-camera-wrap')
+      wrap.classList.toggle('hidden')
+      if (!wrap.classList.contains('hidden')) _startSearchCamera()
+      else _stopSearchCamera()
+    })
+    document.getElementById('sh-camera-close').addEventListener('click', () => {
+      _stopSearchCamera()
+      document.getElementById('sh-camera-wrap')?.classList.add('hidden')
+    })
+
+    await _load()
+  }
 
   renderUI()
 }
