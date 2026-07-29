@@ -620,6 +620,24 @@ export async function renderGradesGrid(teacher, classData) {
       })
     }
 
+    // คอลัมน์ระบบกลาง (ล็อก) ที่ชื่อซ้ำกันในห้องนี้ — เกิดจากบั๊กสร้างคอลัมน์ซ้ำตอน "สร้างสำเนา"/auto-fill
+    // คะแนนของคอลัมน์กลุ่มนี้เป็นค่าที่ระบบคำนวณ/เติมอัตโนมัติเสมอ (ครูไม่ได้กรอกเอง) จึงลบส่วนเกินได้อย่างปลอดภัย
+    // เก็บไว้แค่ id ต่ำสุดต่อชื่อ (ตัวที่ระบบจะยังคงเติมคะแนนกลับให้อัตโนมัติในรอบถัดไป) ที่เหลือถือเป็นส่วนเกินให้ลบได้
+    const _lockedDupSurplusIds = (() => {
+      const byName = {}
+      for (const c of allCols) {
+        if (!_isLockedScoreColumn(c)) continue
+        ;(byName[c.assignment_name] ??= []).push(c)
+      }
+      const surplus = new Set()
+      for (const list of Object.values(byName)) {
+        if (list.length <= 1) continue
+        list.sort((a, b) => a.id - b.id)
+        for (const c of list.slice(1)) surplus.add(c.id)
+      }
+      return surplus
+    })()
+
     const _openManageColsModal = () => {
       document.getElementById('manage-cols-modal')?.remove()
       const modal = document.createElement('div')
@@ -627,26 +645,30 @@ export async function renderGradesGrid(teacher, classData) {
       modal.className = 'fixed inset-0 z-[600] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4'
       const colRow = (col, group = []) => {
         const locked = _isLockedScoreColumn(col)
+        const isDupSurplus = locked && _lockedDupSurplusIds.has(col.id)
+        const truelyLocked = locked && !isDupSurplus
         const idx = group.findIndex(c => c.id === col.id)
         const canUp   = !locked && idx > 0 && !_isLockedScoreColumn(group[idx - 1])
         const canDown = !locked && idx >= 0 && idx < group.length - 1
         return `
-        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border ${locked ? 'border-emerald-100 bg-emerald-50/70' : 'border-gray-100 hover:border-gray-200 bg-gray-50/60'}">
-          ${locked
+        <div class="flex items-center gap-2 px-3 py-2 rounded-xl border ${truelyLocked ? 'border-emerald-100 bg-emerald-50/70' : isDupSurplus ? 'border-amber-200 bg-amber-50/70' : 'border-gray-100 hover:border-gray-200 bg-gray-50/60'}">
+          ${truelyLocked
             ? `<span class="w-4 text-emerald-500 text-xs flex-shrink-0">🔒</span>`
-            : `<input type="checkbox" class="mcm-cb w-4 h-4 rounded accent-red-500 flex-shrink-0" data-colid="${col.id}" />`}
+            : isDupSurplus
+              ? `<input type="checkbox" class="mcm-cb w-4 h-4 rounded accent-amber-500 flex-shrink-0" data-colid="${col.id}" title="คอลัมน์ซ้ำ (ระบบสร้างผิดพลาด)" />`
+              : `<input type="checkbox" class="mcm-cb w-4 h-4 rounded accent-red-500 flex-shrink-0" data-colid="${col.id}" />`}
           <div class="flex flex-col gap-0.5 flex-shrink-0">
             <button class="mcm-move text-[10px] leading-none px-1 rounded ${canUp ? 'text-gray-400 hover:bg-gray-200' : 'text-gray-200 cursor-default'}"
               data-colid="${col.id}" data-dir="up" ${canUp ? '' : 'disabled'}>▲</button>
             <button class="mcm-move text-[10px] leading-none px-1 rounded ${canDown ? 'text-gray-400 hover:bg-gray-200' : 'text-gray-200 cursor-default'}"
               data-colid="${col.id}" data-dir="down" ${canDown ? '' : 'disabled'}>▼</button>
           </div>
-          <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name||'—'}</span>
+          <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name||'—'}${isDupSurplus ? ' <span class="text-amber-600 font-semibold">(ซ้ำ)</span>' : ''}</span>
           <span class="text-[11px] text-gray-400">/${col.max_score||0}</span>
-          ${locked
+          ${truelyLocked
             ? `<span class="text-[10px] text-emerald-700 font-semibold">ล็อก</span>`
             : `<button class="mcm-del text-gray-300 hover:text-red-400 text-lg transition-colors px-1 rounded hover:bg-red-50"
-                data-colid="${col.id}" title="ลบคอลัมน์">🗑</button>`}
+                data-colid="${col.id}" title="ลบคอลัมน์${isDupSurplus ? 'ซ้ำ' : ''}">🗑</button>`}
         </div>`
       }
       const bonusColRow = col => `
@@ -780,9 +802,12 @@ export async function renderGradesGrid(teacher, classData) {
           btn.addEventListener('click', () => {
             const colId = parseInt(btn.dataset.colid)
             const col = [...midCols, ...finalCols].find(c => c.id === colId)
-            if (_isLockedScoreColumn(colId)) { showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning'); return }
+            const isDupSurplus = _lockedDupSurplusIds.has(colId)
+            if (_isLockedScoreColumn(colId) && !isDupSurplus) { showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถลบได้', 'warning'); return }
             _mcmConfirm(
-              `ต้องการลบ <span class="font-semibold">"${col?.assignment_name || 'คอลัมน์นี้'}"</span> ใช่ไหม?<br/><span class="text-xs text-red-500">คะแนนทั้งหมดของคอลัมน์นี้จะถูกลบด้วย</span>`,
+              isDupSurplus
+                ? `คอลัมน์นี้เป็น <span class="font-semibold">คอลัมน์ซ้ำ</span> ของ "${col?.assignment_name || ''}" (เกิดจากระบบสร้างคอลัมน์ซ้ำผิดพลาด)<br/><span class="text-xs text-gray-500">คะแนนของคอลัมน์นี้เป็นค่าที่ระบบเติมอัตโนมัติ ลบได้อย่างปลอดภัย — ระบบจะเติมคะแนนกลับให้ถูกต้องในคอลัมน์ที่เหลือของรอบถัดไป</span>`
+                : `ต้องการลบ <span class="font-semibold">"${col?.assignment_name || 'คอลัมน์นี้'}"</span> ใช่ไหม?<br/><span class="text-xs text-red-500">คะแนนทั้งหมดของคอลัมน์นี้จะถูกลบด้วย</span>`,
               async () => {
                 try {
                   await deleteScoreColumn(colId)
