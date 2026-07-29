@@ -18,6 +18,21 @@ async function _fetchAllStudents(selectColumns, configure = q => q, orderColumn 
   return rows
 }
 
+// วนดึงทุกแถวด้วย .range() เพื่อเลี่ยง PostgREST db-max-rows cap (default 1000)
+// buildQuery ต้อง return query/rpc builder ใหม่ทุกครั้ง (ต้องมี .order() ติดมาด้วยเพื่อ pagination ที่เสถียร)
+async function _fetchAllRows(buildQuery, pageSize = 1000) {
+  const rows = []
+  let from = 0
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if (!data || data.length < pageSize) break
+    from += pageSize
+  }
+  return rows
+}
+
 // ─── System Config ────────────────────────────────────────────────────────────
 export async function getSystemConfig() {
   const { data, error } = await supabase
@@ -2442,40 +2457,34 @@ export async function getSupervisorProgress() {
   const msIds = allMs.map(ms => ms.id)
 
   // ─── Step 2: โหลด classes ด้วย course_id (เหมือน getMyClasses) ────────────
-  const classQuery = msIds.length > 0
-    ? supabase
+  // ทุก query ที่อาจเกิน 1000 แถวต้องผ่าน _fetchAllRows (PostgREST ตัดเงียบๆ ที่ 1000 แถว/request)
+  const classesPromise = msIds.length > 0
+    ? _fetchAllRows(() => supabase
         .from('classes')
         .select('id, class_name, course_id, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date')
         .in('course_id', msIds)
-        .order('class_name')
-        .limit(10000)
-    : Promise.resolve({ data: [] })
+        .order('class_name'))
+    : Promise.resolve([])
 
-  const [teacherRes, classRes, attRes, scoreColRes, scoreRes, schedRes] = await Promise.all([
+  const [teacherRes, classRows, attRows, scoreCols, scoreRows, schedRows] = await Promise.all([
     supabase.from('teachers')
       .select('id, full_name, category, dept, subject_group, image_url, phone, login_email, position, position_dept_id')
       .limit(10000),
-    classQuery,
-    supabase.rpc('get_latest_class_attendances'),
-    supabase.from('class_score_columns')
+    classesPromise,
+    _fetchAllRows(() => supabase.rpc('get_latest_class_attendances').order('class_id')),
+    _fetchAllRows(() => supabase.from('class_score_columns')
       .select('id, class_id, assignment_name, max_score')
-      .limit(10000),
-    supabase.rpc('get_filled_assignment_ids'),
-    supabase.from('teacher_schedules')
-      .select('teacher_id')
-      .limit(10000),
+      .order('id')),
+    _fetchAllRows(() => supabase.rpc('get_filled_assignment_ids').order('assignment_id')),
+    _fetchAllRows(() => supabase.from('teacher_schedules').select('teacher_id').order('teacher_id')),
   ])
 
   const teachers   = teacherRes.data  ?? []
   // แนบ master_subjects กลับเข้า class แต่ละ row โดยใช้ course_id
-  const classes    = (classRes.data ?? []).map(c => ({
+  const classes    = classRows.map(c => ({
     ...c,
     master_subjects: msById[c.course_id] || null
   }))
-  const attRows    = attRes.data      ?? []
-  const scoreCols  = scoreColRes.data ?? []
-  const scoreRows  = scoreRes.data    ?? []
-  const schedRows  = schedRes.data    ?? []
 
   // index: teacher_id → จำนวน schedule entries
   const schedCount = {}
