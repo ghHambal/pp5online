@@ -1928,7 +1928,7 @@ function _dateListForTerm(startStr, endStr) {
   return days
 }
 
-const _PRAYER_SCORE = { pray: 2, absent: 0, usor: 1, followed: 1, avoid: -1 }
+const _PRAYER_SCORE = { pray: 2, absent: 0, usor: 2, followed: 1, avoid: -1 }
 const _LIFE_SKILL_SHEET_COLUMNS = ['EH', 'EI', 'EJ']
 const _RELIGION_REQUIRED_COLUMNS = [
   { name: 'คะแนนมาเรียน', sheetColumn: 'EH' },

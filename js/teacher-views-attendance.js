@@ -2616,7 +2616,7 @@ const _readingEvalBadge = (s) => {
 const PRAYER_ST = {
   pray:     { label: '/',  color: 'text-emerald-600 font-bold', bg: 'bg-emerald-50', score: 2,  fullLabel: 'ละหมาด' },
   absent:   { label: 'X',  color: 'text-red-600 font-bold',     bg: 'bg-red-50',     score: 0,  fullLabel: 'ขาดละหมาด' },
-  usor:     { label: 'U',  color: 'text-purple-600 font-bold',  bg: 'bg-purple-50',  score: 1,  fullLabel: 'อูโซร/ประจำเดือน' },
+  usor:     { label: 'U',  color: 'text-purple-600 font-bold',  bg: 'bg-purple-50',  score: 2,  fullLabel: 'อูโซร/ประจำเดือน' },
   followed: { label: '-',  color: 'text-blue-500 font-bold',    bg: 'bg-blue-50',    score: 1,  fullLabel: 'ติดตามแล้ว' },
   avoid:    { label: 'N',  color: 'text-orange-500 font-bold',  bg: 'bg-orange-50',  score: -1, fullLabel: 'หลีกเลี่ยง' },
 }

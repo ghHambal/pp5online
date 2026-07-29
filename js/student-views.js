@@ -65,7 +65,7 @@ const DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
 const PRAYER_SCORE = {
   pray: { label: '/', score: 2, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100', title: 'ละหมาด' },
   absent: { label: 'X', score: 0, cls: 'bg-red-50 text-red-600 border-red-100', title: 'ขาดละหมาด' },
-  usor: { label: 'U', score: 1, cls: 'bg-purple-50 text-purple-600 border-purple-100', title: 'อูโซร' },
+  usor: { label: 'U', score: 2, cls: 'bg-purple-50 text-purple-600 border-purple-100', title: 'อูโซร' },
   followed: { label: '-', score: 1, cls: 'bg-blue-50 text-blue-600 border-blue-100', title: 'ติดตามแล้ว' },
   avoid: { label: 'N', score: -1, cls: 'bg-orange-50 text-orange-600 border-orange-100', title: 'หลีกเลี่ยง' },
 }
