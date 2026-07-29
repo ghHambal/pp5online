@@ -445,7 +445,12 @@ async function _loadDocData(classId) {
   let hrSamai, hrReligion
   if (isRelSubject) {
     // วิชาศาสนา: ครูศาสนา = ห้องของชั้นนั้น, ครูสามัญ = dominant main_room ของนักเรียน
-    hrReligion = homerooms.find(h => h.category === 'ศาสนา' && h.main_room === classRoom) ?? null
+    // หมายเหตุ: ห้องศาสนาใน homeroom_teachers เก็บชื่อเต็มพร้อมคำต่อท้าย (เช่น "อก.1/15 Alhamdulillah")
+    // ต้องเทียบด้วย cls.class_name เต็มๆ (ไม่ใช่ classRoom ที่ตัดเหลือแค่ระดับชั้น) ไม่งั้นจะไม่ match เลย
+    // เผื่อชื่อห้องพิมพ์ไม่ตรงเป๊ะ ให้ fallback ไปหา dominant religion_room ของนักเรียนในห้องเหมือนฝั่งวิชาสามัญ
+    hrReligion = homerooms.find(h => h.category === 'ศาสนา' && h.main_room === cls.class_name)
+                  ?? (domRelRoom ? homerooms.find(h => h.category === 'ศาสนา' && h.main_room === domRelRoom) : null)
+                  ?? null
     hrSamai    = domMainRoom ? homerooms.find(h => h.category !== 'ศาสนา' && h.main_room === domMainRoom) ?? null : null
   } else {
     // วิชาสามัญ: ครูสามัญ = ห้องของชั้นนั้น (fallback dominant), ครูศาสนา = dominant religion_room
