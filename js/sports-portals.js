@@ -835,8 +835,11 @@ export async function openMyTeamWorkspace() {
       canAttendance?safe(supabase.from('sports_attendance').select('*').eq('team_color_id',c.id).eq('event_id',event.id)):Promise.resolve([]),
     ])
     const myTotal=totals.find(x=>x.color_name===c.name)||{}
-    const rankedByScore=[...totals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
-    const rankedByMedals=[...totals].sort((a,b)=>(Number(b.gold_count)||0)-(Number(a.gold_count)||0)||(Number(b.silver_count)||0)-(Number(a.silver_count)||0)||(Number(b.bronze_count)||0)-(Number(a.bronze_count)||0))
+    // ระบบกีฬาสีแข่งแยกเพศชาย-หญิงเด็ดขาด (4 สีต่อเพศ) ห้ามเทียบอันดับ/คะแนนข้ามเพศกัน —
+    // ต้องกรองเฉพาะสีเพศเดียวกับทีมนี้ก่อนจัดอันดับเสมอ ไม่ใช้ totals ทั้ง 8 สีดิบๆ
+    const sameGenderTotals=totals.filter(t=>t.gender===c.gender)
+    const rankedByScore=[...sameGenderTotals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
+    const rankedByMedals=[...sameGenderTotals].sort((a,b)=>(Number(b.gold_count)||0)-(Number(a.gold_count)||0)||(Number(b.silver_count)||0)-(Number(a.silver_count)||0)||(Number(b.bronze_count)||0)-(Number(a.bronze_count)||0))
     const scoreRank=rankedByScore.findIndex(x=>x.color_name===c.name)+1||'—', medalRank=rankedByMedals.findIndex(x=>x.color_name===c.name)+1||'—'
     const pendingTasks=tasks.filter(x=>x.status!=='done').length, doneMatches=matches.filter(x=>x.status==='done').length
     const tabState={active:'overview'}
@@ -931,7 +934,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
   else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,card})
   else if(tab==='schedule') renderScheduleSection(body,matches,c.name,card)
-  else if(tab==='scores') body.innerHTML=scoreMedalSection(totals,c.name,myTotal,scoreRank,medalRank)
+  else if(tab==='scores') renderScoreMedalSection(body,{totals,colorName:c.name,gender:c.gender,myTotal,scoreRank,medalRank,card})
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
   body.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
   body.querySelectorAll('[data-goto-tab]').forEach(b=>b.onclick=()=>wrap.querySelector(`[data-team-tab="${b.dataset.gotoTab}"]`)?.click())
@@ -1184,9 +1187,38 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,card}){
   renderProgress();renderRecent()
 }
 
-function scoreMedalSection(totals,colorName,myTotal,scoreRank,medalRank){
-  const ranked=[...totals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
-  return `<section class="team-card rounded-2xl p-5 border"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">🏅 คะแนนรวมและเหรียญ</h2><p class="text-xs muted">สรุปเฉพาะสี${esc(colorName)} พร้อมเปรียบเทียบอันดับรวม</p></div><div class="flex gap-2 text-xs"><span class="px-3 py-1 rounded-full bg-amber-500/15 text-amber-300">อันดับสี #${scoreRank}</span><span class="px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300">อันดับเหรียญ #${medalRank}</span></div></div><div class="grid md:grid-cols-5 gap-2 mb-5">${[['คะแนนรวม',myTotal.grand_total||0],['คะแนนกรรมการ',myTotal.rubric_points||0],['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th><th class="p-2">ทอง</th><th class="p-2">เงิน</th><th class="p-2">ทองแดง</th></tr></thead><tbody>${ranked.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td><td class="p-2 text-center">${r.gold_count||0}</td><td class="p-2 text-center">${r.silver_count||0}</td><td class="p-2 text-center">${r.bronze_count||0}</td></tr>`).join('')||'<tr><td colspan="6" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div></section>`
+// แท็บ "คะแนน/เหรียญ" — ระบบกีฬาสีแข่งแยกเพศชาย-หญิงเด็ดขาด (4 สีต่อเพศ) ตารางเปรียบเทียบ
+// ต้องกรองเฉพาะสีเพศเดียวกันเท่านั้น ห้ามเอา 8 สีมาปนกันจัดอันดับ (scoreRank/medalRank ที่ส่ง
+// เข้ามาคำนวณกรองเพศไว้แล้วตั้งแต่ openMyTeamWorkspace) เพิ่มแถบสลับ "รวมทุกสีเพศเดียวกัน"
+// ⇄ "เฉพาะสีของฉัน" (ดูรายละเอียดคะแนนแยกหมวดของสีตัวเองเท่านั้น)
+function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank,medalRank,card}){
+  const sameGenderTotals=totals.filter(t=>t.gender===gender)
+  const rankedByScore=[...sameGenderTotals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
+  const genderLabel=gender==='W'?'หญิง':'ชาย'
+  let view='all'
+
+  body.innerHTML=`<section class="${card}">
+    <div class="flex flex-wrap justify-between gap-3 mb-4">
+      <div><h2 class="font-bold">🏅 คะแนนรวมและเหรียญ</h2><p class="text-xs muted">เปรียบเทียบเฉพาะสี${esc(genderLabel)}ด้วยกัน (แข่งแยกเพศ ไม่ปนกัน)</p></div>
+      <div class="flex gap-2 text-xs"><span class="px-3 py-1 rounded-full bg-amber-500/15 text-amber-300">อันดับสี #${scoreRank}</span><span class="px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300">อันดับเหรียญ #${medalRank}</span></div>
+    </div>
+    <div class="inline-flex p-1 rounded-xl team-sub gap-1 mb-4">
+      <button type="button" data-score-view="all" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">📊 รวมทุกสี${esc(genderLabel)}</button>
+      <button type="button" data-score-view="mine" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">🎯 เฉพาะสี${esc(colorName)}</button>
+    </div>
+    <div id="score-view-body"></div>
+  </section>`
+
+  const renderMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-4 gap-2">${[['คะแนนรวม',myTotal.grand_total||0],['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0],['ขบวนพาเหรด',myTotal.parade_total||0],['วิชาการ',myTotal.academic_total||0],['คะแนนกีฬา',myTotal.sport_score_total||0],['หน้าบ้าน/สแตนด์',myTotal.page_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>`
+
+  const renderAllTable=()=>`<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th><th class="p-2">ทอง</th><th class="p-2">เงิน</th><th class="p-2">ทองแดง</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td><td class="p-2 text-center">${r.gold_count||0}</td><td class="p-2 text-center">${r.silver_count||0}</td><td class="p-2 text-center">${r.bronze_count||0}</td></tr>`).join('')||'<tr><td colspan="6" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
+
+  const renderView=()=>{
+    body.querySelectorAll('[data-score-view]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.scoreView===view))
+    body.querySelector('#score-view-body').innerHTML = view==='mine' ? renderMineDetail() : renderAllTable()
+  }
+  body.querySelectorAll('[data-score-view]').forEach(b=>b.onclick=()=>{view=b.dataset.scoreView;renderView()})
+  renderView()
 }
 function openAthletePrintDialog(wrap,c,regs,competitions){
   const modal=document.createElement('div');modal.className='fixed inset-0 bg-black/70 grid place-items-center p-4';modal.style.zIndex='430'
