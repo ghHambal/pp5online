@@ -808,21 +808,30 @@ export async function openMyTeamWorkspace() {
     ].filter(x=>x[3])
     wrap.innerHTML=`<style>
       #my-team-workspace[data-theme="dark"]{background:#020617;color:#f8fafc}
-      #my-team-workspace[data-theme="light"]{background:#f8fafc;color:#0f172a}
+      #my-team-workspace[data-theme="light"]{background:#f1f5f9;color:#0f172a}
       #my-team-workspace[data-theme="dark"] .team-head{background:rgba(2,6,23,.94);border-color:#1e293b}
-      #my-team-workspace[data-theme="light"] .team-head{background:rgba(255,255,255,.95);border-color:#e2e8f0}
+      #my-team-workspace[data-theme="light"] .team-head{background:rgba(255,255,255,.97);border-color:#e2e8f0;box-shadow:0 1px 3px rgba(15,23,42,.06)}
       #my-team-workspace[data-theme="dark"] .team-tabs{background:rgba(15,23,42,.88);border-color:#1e293b}
-      #my-team-workspace[data-theme="light"] .team-tabs{background:rgba(255,255,255,.92);border-color:#e2e8f0}
-      #my-team-workspace[data-theme="dark"] .team-card{background:#0f172a;border-color:#1e293b}
-      #my-team-workspace[data-theme="light"] .team-card{background:#fff;border-color:#e2e8f0}
+      #my-team-workspace[data-theme="light"] .team-tabs{background:rgba(255,255,255,.95);border-color:#e2e8f0}
+      #my-team-workspace[data-theme="dark"] .team-card{background:#0f172a;border-color:#1e293b;box-shadow:0 8px 24px -12px rgba(0,0,0,.5)}
+      #my-team-workspace[data-theme="light"] .team-card{background:#fff;border-color:#e2e8f0;box-shadow:0 2px 10px -4px rgba(15,23,42,.08)}
       #my-team-workspace[data-theme="dark"] .team-sub{background:#1e293b}
-      #my-team-workspace[data-theme="light"] .team-sub{background:#f1f5f9}
+      #my-team-workspace[data-theme="light"] .team-sub{background:#f8fafc;border:1px solid #e2e8f0}
       #my-team-workspace[data-theme="dark"] .muted{color:#94a3b8}
       #my-team-workspace[data-theme="light"] .muted{color:#64748b}
       #my-team-workspace[data-theme="dark"] .line{border-color:#1e293b}
       #my-team-workspace[data-theme="light"] .line{border-color:#e2e8f0}
-      .team-tab-active{background:#db2777;color:white;border-color:#db2777}
+      #my-team-workspace h2{font-size:.95rem;letter-spacing:-.01em}
+      #my-team-workspace[data-theme="light"] table th{background:#f1f5f9;color:#475569}
+      #my-team-workspace[data-theme="dark"] table th{background:#1e293b;color:#94a3b8}
+      .team-tab-active{background:#db2777;color:white;border-color:#db2777;box-shadow:0 4px 12px -4px rgba(219,39,119,.5)}
       #team-tab-body{height:calc(100vh - 180px);overflow:auto}
+      .status-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
+      .status-done{background:rgba(16,185,129,.15);color:#10b981}
+      .status-live{background:rgba(245,158,11,.15);color:#f59e0b;animation:status-pulse 1.6s ease-in-out infinite}
+      .status-pending{background:rgba(100,116,139,.15);color:#64748b}
+      @keyframes status-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+      @media (max-width:480px){#my-team-workspace .team-head b{font-size:.95rem}#my-team-workspace table{font-size:12px}#my-team-workspace .team-card{padding:1rem!important}}
     </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover">`:''}<div><b>จัดการทีมสี${esc(c.name)}</b><p class="text-xs muted">${esc(roleLabel(m.role))} · เห็นเฉพาะข้อมูลสีตัวเอง</p></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main>`
     const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead,theme}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
@@ -863,7 +872,12 @@ function trackingSection(matches, totals, colorName, myTotal, scoreRank, medalRa
   const done=matches.filter(m=>m.status==='done'), upcoming=matches.filter(m=>m.status!=='done')
   return `<section class="team-card rounded-2xl p-5 border"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">📊 ติดตามการแข่งขัน คะแนน และเหรียญ</h2><p class="text-xs muted">ข้อมูลอ่านจากตารางเดียวกับระบบกีฬาสีหลัก</p></div><div class="flex gap-2 text-xs"><span class="px-3 py-1 rounded-full bg-amber-500/15 text-amber-300">อันดับสี #${scoreRank}</span><span class="px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300">อันดับเหรียญ #${medalRank}</span></div></div><div class="grid md:grid-cols-5 gap-2 mb-4">${[['คะแนนรวม',myTotal.grand_total||0],['คะแนนกรรมการ',myTotal.rubric_points||0],['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div><div class="grid xl:grid-cols-2 gap-4"><div><h3 class="font-bold mb-2">🗓️ ตาราง/ติดตามการแข่งขันของสี${esc(colorName)}</h3><div class="space-y-2">${upcoming.slice(0,12).map(m=>matchRow(m)).join('')||'<p class="text-sm muted">ยังไม่มีตารางที่รอแข่งขัน</p>'}</div></div><div><h3 class="font-bold mb-2">✅ ผลการแข่งขันล่าสุด</h3><div class="space-y-2">${done.slice(0,12).map(m=>matchRow(m)).join('')||'<p class="text-sm muted">ยังไม่มีผลการแข่งขัน</p>'}</div></div></div></section>`
 }
-function matchRow(m){return `<div class="team-sub rounded-xl p-3"><div class="flex justify-between gap-3"><b>${esc(m.sports?.name||'รายการแข่งขัน')}</b><span class="text-xs muted">${esc(m.status||'pending')}</span></div><p class="text-xs muted">${esc(m.scheduled_date||'ยังไม่ระบุวัน')} ${esc(m.scheduled_time?String(m.scheduled_time).slice(0,5):'')} · สี${esc(m.team_a?.name||'—')} พบ สี${esc(m.team_b?.name||'—')} · ผล ${esc(m.score_a||'—')} : ${esc(m.score_b||'—')}</p></div>`}
+const matchStatusPill = status => {
+  const map = { done:['เสร็จสิ้น','status-done'], live:['กำลังแข่ง','status-live'], pending:['รอแข่ง','status-pending'], cancelled:['ยกเลิก','status-pending'] }
+  const [label,cls] = map[status] || ['รอแข่ง','status-pending']
+  return `<span class="status-pill ${cls}">${label}</span>`
+}
+function matchRow(m){return `<div class="team-sub rounded-xl p-3"><div class="flex justify-between items-center gap-3"><b>${esc(m.sports?.name||'รายการแข่งขัน')}</b>${matchStatusPill(m.status)}</div><p class="text-xs muted mt-1">${esc(m.scheduled_date||'ยังไม่ระบุวัน')} ${esc(m.scheduled_time?String(m.scheduled_time).slice(0,5):'')} · สี${esc(m.team_a?.name||'—')} พบ สี${esc(m.team_b?.name||'—')} · ผล ${esc(m.score_a||'—')} : ${esc(m.score_b||'—')}</p></div>`}
 function trackingMatchesOnly(matches,colorName){
   const done=matches.filter(m=>m.status==='done'), upcoming=matches.filter(m=>m.status!=='done')
   return `<div class="grid xl:grid-cols-2 gap-4"><div><h2 class="font-bold mb-3">🗓️ ตาราง/ติดตามการแข่งขันของสี${esc(colorName)}</h2><div class="space-y-2">${upcoming.map(m=>matchRow(m)).join('')||'<p class="text-sm muted">ยังไม่มีตารางที่รอแข่งขัน</p>'}</div></div><div><h2 class="font-bold mb-3">✅ ผลการแข่งขันล่าสุด</h2><div class="space-y-2">${done.map(m=>matchRow(m)).join('')||'<p class="text-sm muted">ยังไม่มีผลการแข่งขัน</p>'}</div></div></div>`
