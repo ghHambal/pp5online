@@ -2,6 +2,7 @@ import { supabase }            from './supabase.js'
 import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
+         getCourseDocPage2, saveCourseDocPage2,
          getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
          getPendingExamRequestCount,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests,
@@ -649,6 +650,27 @@ window._editCourse = async (id) => {
   renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
     await updateSubject(id, payload, coTeacherIds)
   }, editData)
+}
+
+window._copyCourse = async (id) => {
+  const subjects = _teacher
+    ? await getMySubjects(_teacher.id).catch(()=>[])
+    : await getMasterSubjects().catch(()=>[])
+  const sourceSubject = subjects.find(s => s.id === id)
+  if (!sourceSubject) { showToast('ไม่พบข้อมูลคอร์สต้นฉบับ', 'error'); return }
+
+  renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
+    const newSubject = await createSubject(payload, coTeacherIds)
+    try {
+      const sourceDoc = await getCourseDocPage2(id)
+      if (sourceDoc) {
+        const { subject_id, updated_at, updated_by, ...page2Payload } = sourceDoc
+        await saveCourseDocPage2(newSubject.id, page2Payload)
+      }
+    } catch (err) {
+      showToast('คัดลอกคำอธิบายรายวิชาไม่สำเร็จ (สร้างคอร์สแล้ว แก้ไขคำอธิบายเพิ่มเองได้): ' + (err.message ?? ''), 'warning')
+    }
+  }, sourceSubject, { cloneFrom: id })
 }
 
 window._deleteCourse = (id, name) => {

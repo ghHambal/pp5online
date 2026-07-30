@@ -90,6 +90,10 @@ export async function renderMyCourses(teacher) {
                     data-sid="${s.id}">
                     💾 ปพ.5
                   </button>
+                  <button onclick="window._copyCourse(${s.id})"
+                    class="text-xs text-purple-600 hover:text-purple-800 font-medium px-2 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50 transition">
+                    📋 ทำสำเนา
+                  </button>
                   <button onclick="window._editCourse(${s.id})"
                     class="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1.5 border border-gray-200 rounded-lg">
                     แก้ไข
@@ -1040,14 +1044,15 @@ Output language: ${L.aiLang}
 
 // ─── Course Registration Form (2.1) ──────────────────────────────────────────
 
-export async function renderCourseForm(teacher, onSave, editData = null) {
+export async function renderCourseForm(teacher, onSave, editData = null, opts = {}) {
+  const isClone = !!opts.cloneFrom
   setActiveNav('my-courses')
-  setTitle(editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์ส')
+  setTitle(isClone ? 'ทำสำเนาคอร์สวิชา' : editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์ส')
 
   const [depts, teachers, coTeachers] = await Promise.all([
     getDepartments().catch(()=>[]),
     getTeachers().catch(()=>[]),
-    editData ? getSubjectCoTeachers(editData.id).catch(()=>[]) : Promise.resolve([]),
+    (editData && !isClone) ? getSubjectCoTeachers(editData.id).catch(()=>[]) : Promise.resolve([]),
   ])
   let _selectedCoTeachers = coTeachers ?? []
 
@@ -1100,8 +1105,13 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     <div class="flex items-center gap-3 mb-6">
       <button onclick="window._goBack()"
         class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
-      <h2 class="text-lg font-bold text-gray-800">${editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์สวิชา'}</h2>
+      <h2 class="text-lg font-bold text-gray-800">${isClone ? 'ทำสำเนาคอร์สวิชา' : editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์สวิชา'}</h2>
     </div>
+    ${isClone ? `
+    <div class="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 mb-5 text-xs text-violet-700 max-w-2xl">
+      📋 ทำสำเนาคอร์สวิชา — ระบบจะคัดลอกคำอธิบายรายวิชา (หน้า 2 ของ ปพ.5) จากคอร์สต้นฉบับให้อัตโนมัติ
+      แก้ไขกลุ่มวิชา/กลุ่มสาระ/ชั้นปี/รหัสวิชาให้ตรงกับโปรแกรมใหม่ได้เลย (ไม่กระทบคอร์สต้นฉบับ)
+    </div>` : ''}
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7">
       <form id="course-form" novalidate class="space-y-5">
         <!-- กลุ่มวิชา -->
@@ -1257,7 +1267,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
           </button>
           <button id="cf-submit" type="submit"
             class="btn-primary flex-1 py-3 rounded-xl text-white text-sm font-semibold">
-            ${editData ? 'บันทึกการแก้ไข' : 'บันทึกคอร์สวิชา'}
+            ${isClone ? 'บันทึกสำเนาคอร์ส' : editData ? 'บันทึกการแก้ไข' : 'บันทึกคอร์สวิชา'}
           </button>
         </div>
       </form>
@@ -1741,7 +1751,7 @@ export async function renderCourseForm(teacher, onSave, editData = null) {
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
     } finally {
-      btn.disabled = false; btn.textContent = editData ? 'บันทึกการแก้ไข' : 'บันทึกคอร์สวิชา'
+      btn.disabled = false; btn.textContent = isClone ? 'บันทึกสำเนาคอร์ส' : editData ? 'บันทึกการแก้ไข' : 'บันทึกคอร์สวิชา'
     }
   })
 
