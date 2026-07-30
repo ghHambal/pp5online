@@ -1187,36 +1187,50 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,card}){
   renderProgress();renderRecent()
 }
 
-// แท็บ "คะแนน/เหรียญ" — ระบบกีฬาสีแข่งแยกเพศชาย-หญิงเด็ดขาด (4 สีต่อเพศ) ตารางเปรียบเทียบ
-// ต้องกรองเฉพาะสีเพศเดียวกันเท่านั้น ห้ามเอา 8 สีมาปนกันจัดอันดับ (scoreRank/medalRank ที่ส่ง
-// เข้ามาคำนวณกรองเพศไว้แล้วตั้งแต่ openMyTeamWorkspace) เพิ่มแถบสลับ "รวมทุกสีเพศเดียวกัน"
-// ⇄ "เฉพาะสีของฉัน" (ดูรายละเอียดคะแนนแยกหมวดของสีตัวเองเท่านั้น)
+// แท็บ "คะแนน/เหรียญ" — คะแนนรวมกับจำนวนเหรียญเป็นคนละส่วนกันจริงๆ (เหรียญมาจากอันดับการแข่งขัน
+// แต่ละรายการ ส่วนคะแนนรวมมาจากหลายหมวดรวมกัน: ขบวนพาเหรด/วิชาการ/กีฬา/หน้าบ้าน-สแตนด์ ฯลฯ)
+// จึงแยกเป็น 2 แท็บใหญ่ "คะแนนรวม" กับ "อันดับเหรียญ" ไม่ปนกันในตารางเดียวแบบเดิม แต่ละแท็บใหญ่
+// มีแท็บย่อย "รวมทุกสีเพศเดียวกัน" ⇄ "เฉพาะสีของฉัน" เหมือนกัน — ระบบแข่งแยกเพศชาย-หญิงเด็ดขาด
+// (4 สีต่อเพศ) ต้องกรองเฉพาะสีเพศเดียวกันเสมอ (scoreRank/medalRank กรองเพศไว้แล้วตั้งแต่ต้นทาง)
 function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank,medalRank,card}){
   const sameGenderTotals=totals.filter(t=>t.gender===gender)
   const rankedByScore=[...sameGenderTotals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
+  const rankedByMedals=[...sameGenderTotals].sort((a,b)=>(Number(b.gold_count)||0)-(Number(a.gold_count)||0)||(Number(b.silver_count)||0)-(Number(a.silver_count)||0)||(Number(b.bronze_count)||0)-(Number(a.bronze_count)||0))
   const genderLabel=gender==='W'?'หญิง':'ชาย'
-  let view='all'
+  let mainTab='score', view='all'
 
   body.innerHTML=`<section class="${card}">
     <div class="flex flex-wrap justify-between gap-3 mb-4">
       <div><h2 class="font-bold">🏅 คะแนนรวมและเหรียญ</h2><p class="text-xs muted">เปรียบเทียบเฉพาะสี${esc(genderLabel)}ด้วยกัน (แข่งแยกเพศ ไม่ปนกัน)</p></div>
-      <div class="flex gap-2 text-xs"><span class="px-3 py-1 rounded-full bg-amber-500/15 text-amber-300">อันดับสี #${scoreRank}</span><span class="px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300">อันดับเหรียญ #${medalRank}</span></div>
+    </div>
+    <div class="inline-flex p-1 rounded-xl team-sub gap-1 mb-3">
+      <button type="button" data-score-main="score" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">📊 คะแนนรวม</button>
+      <button type="button" data-score-main="medals" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">🏅 อันดับเหรียญ</button>
     </div>
     <div class="inline-flex p-1 rounded-xl team-sub gap-1 mb-4">
-      <button type="button" data-score-view="all" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">📊 รวมทุกสี${esc(genderLabel)}</button>
+      <button type="button" data-score-view="all" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">รวมทุกสี${esc(genderLabel)}</button>
       <button type="button" data-score-view="mine" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">🎯 เฉพาะสี${esc(colorName)}</button>
     </div>
     <div id="score-view-body"></div>
   </section>`
 
-  const renderMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-4 gap-2">${[['คะแนนรวม',myTotal.grand_total||0],['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0],['ขบวนพาเหรด',myTotal.parade_total||0],['วิชาการ',myTotal.academic_total||0],['คะแนนกีฬา',myTotal.sport_score_total||0],['หน้าบ้าน/สแตนด์',myTotal.page_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>`
+  const scoreMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-4 gap-2"><div class="team-sub rounded-xl p-3 md:col-span-4"><p class="text-xs muted">คะแนนรวมทุกหมวด</p><b class="text-3xl">${Number(myTotal.grand_total||0).toLocaleString()}</b></div>${[['ขบวนพาเหรด',myTotal.parade_total||0],['วิชาการ',myTotal.academic_total||0],['คะแนนกีฬา',myTotal.sport_score_total||0],['หน้าบ้าน/สแตนด์',myTotal.page_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>`
 
-  const renderAllTable=()=>`<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th><th class="p-2">ทอง</th><th class="p-2">เงิน</th><th class="p-2">ทองแดง</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td><td class="p-2 text-center">${r.gold_count||0}</td><td class="p-2 text-center">${r.silver_count||0}</td><td class="p-2 text-center">${r.bronze_count||0}</td></tr>`).join('')||'<tr><td colspan="6" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
+  const scoreAllTable=()=>`<div class="text-xs muted mb-2">อันดับคะแนนรวมของสี${esc(colorName)}: <b class="text-slate-200">#${scoreRank}</b></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="3" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
+
+  const medalsMineDetail=()=>`<div class="grid grid-cols-3 gap-2">${[['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3 text-center"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>`
+
+  const medalsAllTable=()=>`<div class="text-xs muted mb-2">อันดับเหรียญของสี${esc(colorName)}: <b class="text-slate-200">#${medalRank}</b></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">🥇 ทอง</th><th class="p-2">🥈 เงิน</th><th class="p-2">🥉 ทองแดง</th></tr></thead><tbody>${rankedByMedals.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${r.gold_count||0}</td><td class="p-2 text-center">${r.silver_count||0}</td><td class="p-2 text-center">${r.bronze_count||0}</td></tr>`).join('')||'<tr><td colspan="5" class="p-8 text-center muted">ยังไม่มีเหรียญ</td></tr>'}</tbody></table></div>`
 
   const renderView=()=>{
+    body.querySelectorAll('[data-score-main]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.scoreMain===mainTab))
     body.querySelectorAll('[data-score-view]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.scoreView===view))
-    body.querySelector('#score-view-body').innerHTML = view==='mine' ? renderMineDetail() : renderAllTable()
+    const isScore=mainTab==='score'
+    body.querySelector('#score-view-body').innerHTML = view==='mine'
+      ? (isScore?scoreMineDetail():medalsMineDetail())
+      : (isScore?scoreAllTable():medalsAllTable())
   }
+  body.querySelectorAll('[data-score-main]').forEach(b=>b.onclick=()=>{mainTab=b.dataset.scoreMain;renderView()})
   body.querySelectorAll('[data-score-view]').forEach(b=>b.onclick=()=>{view=b.dataset.scoreView;renderView()})
   renderView()
 }
