@@ -822,7 +822,7 @@ export async function openMyTeamWorkspace() {
     // หมายเหตุ: ตาราง sports_registrations/sports_matches/sports_color_totals/sports_competitions
     // เป็นสคีมาเก่าที่ไม่มีข้อมูลจริง (AZIZGAMES เขียนลง registrations/matches/color_totals/sports แทน)
     // — สลับมาใช้ตารางจริงเพื่อให้ "นักกีฬาในสี" ตรงกับสิ่งที่ลงทะเบียนจริงใน AZIZGAMES
-    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance] = await Promise.all([
+    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreCriteria,scoreEntries] = await Promise.all([
       safe(supabase.from('students').select('id,student_code,full_name,main_room,house_color,sports_shirt_size,image_url,photo_url').eq('is_active',true).or(`team_color_id.eq.${c.id},house_color.eq.${c.name}`).order('main_room').order('student_code')),
       safe(supabase.from('sports_team_tasks').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
       safe(supabase.from('sports_team_announcements').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
@@ -833,6 +833,8 @@ export async function openMyTeamWorkspace() {
       canShirt?_fetchAllRows('sports_shirt_requests', q=>q.select('status,requested_size,confirmed_size,students(id,full_name,student_code,main_room,house_color)').eq('event_id',event.id)).catch(e=>{console.warn(e);return []}):Promise.resolve([]),
       safe(supabase.from('sports').select('id,code,name,category,gender,venue').eq('event_id',event.id).eq('is_active',true).order('display_order').order('name')),
       canAttendance?safe(supabase.from('sports_attendance').select('*').eq('team_color_id',c.id).eq('event_id',event.id)):Promise.resolve([]),
+      safe(supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('display_order')),
+      safe(supabase.from('sports_score_entries').select('*').eq('event_id',event.id).eq('team_color_id',c.id)),
     ])
     const myTotal=totals.find(x=>x.color_name===c.name)||{}
     // ระบบกีฬาสีแข่งแยกเพศชาย-หญิงเด็ดขาด (4 สีต่อเพศ) ห้ามเทียบอันดับ/คะแนนข้ามเพศกัน —
@@ -896,7 +898,14 @@ export async function openMyTeamWorkspace() {
       @keyframes status-pulse{0%,100%{opacity:1}50%{opacity:.55}}
       @media (max-width:480px){#my-team-workspace .team-head b{font-size:.95rem}#my-team-workspace table{font-size:12px}#my-team-workspace .team-card{padding:1rem!important}}
     </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>จัดการทีมสี${esc(c.name)}</b><p class="text-xs muted">${esc(roleLabel(m.role))} · เห็นเฉพาะข้อมูลสีตัวเอง</p></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main>`
-    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead,theme}
+    // รายละเอียดคะแนนแยกเกณฑ์ (เฉลี่ยจากกรรมการทุกคนที่ให้คะแนนเกณฑ์นั้นแล้ว) — เฉพาะสีเราเอง
+    // เพราะ sports_score_entries query ข้างบนกรอง team_color_id ไว้แล้ว
+    const scoreBreakdown=(scoreCriteria||[]).map(crit=>{
+      const entries=(scoreEntries||[]).filter(e=>e.criteria_id===crit.id)
+      const avg=entries.length?entries.reduce((s,e)=>s+Number(e.score||0),0)/entries.length:0
+      return {name:crit.name,maxScore:Number(crit.max_score),category:crit.category,avg:Math.round(avg*100)/100,judgeCount:entries.length}
+    }).filter(x=>x.judgeCount>0)
+    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead,theme}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     wrap.querySelector('[data-close]').onclick=()=>wrap.remove();wrap.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
     wrap.querySelectorAll('[data-team-tab]').forEach(b=>b.onclick=()=>{tabState.active=b.dataset.teamTab;wrap.querySelectorAll('[data-team-tab]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.teamTab===tabState.active));drawTab()})
@@ -910,7 +919,7 @@ const roleLabel = role => ({lead_teacher:'พ่อสี/แม่สี (ห�
 const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bold ${on?'bg-emerald-500/15 text-emerald-300':'bg-slate-500/15 text-slate-400'}">${on?'เปิดให้ใช้':'ไม่เปิดให้ใช้'} · ${esc(label)}</div>`
 const memberCard = s => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div></div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const kpis=[
@@ -934,7 +943,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
   else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,card})
   else if(tab==='schedule') renderScheduleSection(body,matches,c.name,card)
-  else if(tab==='scores') renderScoreMedalSection(body,{totals,colorName:c.name,gender:c.gender,myTotal,scoreRank,medalRank,card})
+  else if(tab==='scores') renderScoreMedalSection(body,{totals,colorName:c.name,gender:c.gender,myTotal,scoreRank,medalRank,scoreBreakdown,card})
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
   body.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
   body.querySelectorAll('[data-goto-tab]').forEach(b=>b.onclick=()=>wrap.querySelector(`[data-team-tab="${b.dataset.gotoTab}"]`)?.click())
@@ -1192,7 +1201,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,card}){
 // จึงแยกเป็น 2 แท็บใหญ่ "คะแนนรวม" กับ "อันดับเหรียญ" ไม่ปนกันในตารางเดียวแบบเดิม แต่ละแท็บใหญ่
 // มีแท็บย่อย "รวมทุกสีเพศเดียวกัน" ⇄ "เฉพาะสีของฉัน" เหมือนกัน — ระบบแข่งแยกเพศชาย-หญิงเด็ดขาด
 // (4 สีต่อเพศ) ต้องกรองเฉพาะสีเพศเดียวกันเสมอ (scoreRank/medalRank กรองเพศไว้แล้วตั้งแต่ต้นทาง)
-function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank,medalRank,card}){
+function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank,medalRank,scoreBreakdown,card}){
   const sameGenderTotals=totals.filter(t=>t.gender===gender)
   const rankedByScore=[...sameGenderTotals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
   const rankedByMedals=[...sameGenderTotals].sort((a,b)=>(Number(b.gold_count)||0)-(Number(a.gold_count)||0)||(Number(b.silver_count)||0)-(Number(a.silver_count)||0)||(Number(b.bronze_count)||0)-(Number(a.bronze_count)||0))
@@ -1214,7 +1223,12 @@ function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank
     <div id="score-view-body"></div>
   </section>`
 
-  const scoreMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-4 gap-2"><div class="team-sub rounded-xl p-3 md:col-span-4"><p class="text-xs muted">คะแนนรวมทุกหมวด</p><b class="text-3xl">${Number(myTotal.grand_total||0).toLocaleString()}</b></div>${[['ขบวนพาเหรด',myTotal.parade_total||0],['วิชาการ',myTotal.academic_total||0],['คะแนนกีฬา',myTotal.sport_score_total||0],['หน้าบ้าน/สแตนด์',myTotal.page_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>`
+  const SCORE_CATEGORY_ICON={parade:'🕌',page:'📣',color_eval:'🎨'}
+  const scoreMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4"><div class="team-sub rounded-xl p-3 md:col-span-4"><p class="text-xs muted">คะแนนรวมทุกหมวด</p><b class="text-3xl">${Number(myTotal.grand_total||0).toLocaleString()}</b></div>${[['ขบวนพาเหรด',myTotal.parade_total||0],['วิชาการ',myTotal.academic_total||0],['คะแนนกีฬา',myTotal.sport_score_total||0],['หน้าบ้าน/สแตนด์',myTotal.page_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>
+    <div class="border-t line pt-3">
+      <p class="text-[10.5px] uppercase tracking-wider font-bold muted mb-2">📋 รายละเอียดคะแนนแยกเกณฑ์ (เฉลี่ยจากกรรมการ)</p>
+      ${(scoreBreakdown&&scoreBreakdown.length) ? `<div class="space-y-1.5">${scoreBreakdown.map(b=>`<div class="team-sub rounded-lg px-3 py-2 flex items-center justify-between gap-2"><span class="text-xs">${SCORE_CATEGORY_ICON[b.category]||'🎯'} ${esc(b.name)} <span class="muted">(เต็ม ${b.maxScore})</span></span><b class="text-sm">${b.avg} คะแนน</b></div>`).join('')}</div>` : `<p class="text-xs muted text-center py-4">ยังไม่มีกรรมการให้คะแนนเกณฑ์นี้</p>`}
+    </div>`
 
   const scoreAllTable=()=>`<div class="text-xs muted mb-2">อันดับคะแนนรวมของสี${esc(colorName)}: <b class="text-slate-200">#${scoreRank}</b></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="3" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
 
