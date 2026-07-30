@@ -828,7 +828,7 @@ export async function openMyTeamWorkspace() {
       safe(supabase.from('sports_team_announcements').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
       safe(supabase.from('sports_team_identity_requests').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false}).limit(10)),
       safe(supabase.from('registrations').select('*,students(id,student_code,full_name,main_room,house_color,sports_shirt_size,image_url),sports(id,code,name,category,gender)').eq('event_id',event.id).eq('team_color_id',c.id).order('registered_at',{ascending:false})),
-      safe(supabase.from('matches').select('*,sports(id,code,name,category,gender),team_a:team_colors!team_a_color_id(name),team_b:team_colors!team_b_color_id(name)').eq('event_id',event.id).or(`team_a_color_id.eq.${c.id},team_b_color_id.eq.${c.id}`).order('scheduled_date',{ascending:true}).order('scheduled_time',{ascending:true})),
+      safe(supabase.from('matches').select('*,sports(id,code,name,category,gender),team_a:team_colors!team_a_color_id(name,logo_url,hex_color),team_b:team_colors!team_b_color_id(name,logo_url,hex_color)').eq('event_id',event.id).or(`team_a_color_id.eq.${c.id},team_b_color_id.eq.${c.id}`).order('scheduled_date',{ascending:true}).order('scheduled_time',{ascending:true})),
       safe(supabase.from('color_totals').select('*').eq('event_id',event.id)),
       canShirt?_fetchAllRows('sports_shirt_requests', q=>q.select('status,requested_size,confirmed_size,students(id,full_name,student_code,main_room,house_color)').eq('event_id',event.id)).catch(e=>{console.warn(e);return []}):Promise.resolve([]),
       safe(supabase.from('sports').select('id,code,name,category,gender,venue').eq('event_id',event.id).eq('is_active',true).order('display_order').order('name')),
@@ -907,7 +907,21 @@ const memberCard = s => `<div class="team-sub rounded-xl p-3 flex items-center g
 function renderTeamWorkspaceTab(wrap,tab,data){
   const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
-  if(tab==='overview') body.innerHTML=`<div class="space-y-5"><section class="rounded-3xl p-6 text-white overflow-hidden" style="background:linear-gradient(135deg,${esc(c.hex_color)},#111827)"><div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-4 text-center"><div><b class="text-3xl">${membersList.length}</b><p class="text-xs">สมาชิก</p></div><div><b class="text-3xl">${regs.length}</b><p class="text-xs">นักกีฬา</p></div><div><b class="text-3xl">${pendingTasks}</b><p class="text-xs">งานค้าง</p></div><div><b class="text-3xl">${doneMatches}/${matches.length}</b><p class="text-xs">แข่งแล้ว</p></div><div><b class="text-3xl">#${scoreRank}</b><p class="text-xs">อันดับคะแนน</p></div><div><b class="text-3xl">#${medalRank}</b><p class="text-xs">อันดับเหรียญ</p></div></div></section><section class="${card}"><h2 class="font-bold mb-3">🧭 สิทธิ์และเมนูของบทบาทนี้</h2><div class="grid md:grid-cols-5 gap-2">${permPill('สมาชิก',canMembers)}${permPill('ลงทะเบียนนักกีฬา',canReg)}${permPill('ประกาศ',canAnn)}${permPill('งานของสี',canTasks)}${permPill('สรุปเสื้อเฉพาะสี',canShirt)}</div></section></div>`
+  if(tab==='overview') {
+    const kpis=[
+      {label:'สมาชิก',value:membersList.length,icon:'👥',bg:'from-blue-500 to-indigo-600',goto:'members'},
+      {label:'นักกีฬา',value:regs.length,icon:'🏃',bg:'from-emerald-500 to-teal-600',goto:'athletes'},
+      {label:'งานค้าง',value:pendingTasks,icon:'📋',bg:'from-amber-400 to-orange-600',goto:'work'},
+      {label:'แข่งแล้ว',value:`${doneMatches}/${matches.length}`,icon:'🗓️',bg:'from-pink-500 to-rose-600',goto:'schedule'},
+      {label:'อันดับคะแนน',value:`#${scoreRank}`,icon:'🏅',bg:'from-violet-500 to-purple-600',goto:'scores'},
+      {label:'อันดับเหรียญ',value:`#${medalRank}`,icon:'🥇',bg:'from-yellow-500 to-amber-600',goto:'scores'},
+    ]
+    body.innerHTML=`<div class="space-y-5">
+      <section class="rounded-3xl p-5 text-white overflow-hidden" style="background:linear-gradient(135deg,${esc(c.hex_color)},#111827)"><h2 class="font-bold text-sm">👋 สรุปภาพรวมสี${esc(c.name)}</h2><p class="text-xs opacity-80 mt-1">${esc(roleLabel(m.role))} — แตะการ์ดด้านล่างเพื่อไปยังหน้าที่เกี่ยวข้องได้เลย</p></section>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3">${kpis.map(k=>`<button type="button" data-goto-tab="${k.goto}" class="text-left rounded-2xl p-4 flex flex-col justify-between shadow-lg text-white bg-gradient-to-br ${k.bg} transition-transform duration-300 hover:-translate-y-1 cursor-pointer"><div class="flex justify-between items-start"><span class="text-[10px] md:text-xs text-white/80 font-semibold tracking-wide leading-tight">${esc(k.label)}</span><span class="text-lg">${k.icon}</span></div><span class="text-2xl md:text-3xl font-extrabold mt-3">${esc(k.value)}</span></button>`).join('')}</div>
+      <section class="${card}"><h2 class="font-bold mb-3">🧭 สิทธิ์และเมนูของบทบาทนี้</h2><div class="grid md:grid-cols-5 gap-2">${permPill('สมาชิก',canMembers)}${permPill('ลงทะเบียนนักกีฬา',canReg)}${permPill('ประกาศ',canAnn)}${permPill('งานของสี',canTasks)}${permPill('สรุปเสื้อเฉพาะสี',canShirt)}</div></section>
+    </div>`
+  }
   else if(tab==='members') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">👥 รายชื่อสมาชิกในสี</h2><p class="text-xs muted">รายชื่อนักเรียนสี${esc(c.name)} ทั้งหมด</p></div>${publicButtons.athlete_print!==false?`<button data-print-members class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖨️ พิมพ์/บันทึกใบรายชื่อสมาชิก</button>`:''}</div><div class="grid md:grid-cols-2 lg:grid-cols-3 gap-2">${membersList.map(s=>memberCard(s)).join('')||'<p class="text-sm muted">ยังไม่มีสมาชิก</p>'}</div></section>`
   else if(tab==='athletes') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">🏃 นักกีฬาในสี</h2><p class="text-xs muted">แสดงเฉพาะนักกีฬาของสี${esc(c.name)} จากระบบกีฬาสีหลัก</p></div><div class="flex flex-wrap gap-2">${publicButtons.athlete_print!==false?`<button data-print-athletes class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖨️ พิมพ์/บันทึกใบรายชื่อนักกีฬา</button>`:''}${publicButtons.athlete_registration?`<button data-full class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">ลงทะเบียนนักกีฬา</button>`:''}</div></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2 text-left">นักเรียน</th><th class="p-2 text-left">รายการ</th><th class="p-2">เบอร์</th><th class="p-2 text-left">เวลา</th></tr></thead><tbody>${regs.map(r=>{const icon=sportIconUrl(r.sports);return `<tr class="border-b line"><td class="p-2"><b>${esc(r.students?.full_name||'—')}</b><p class="text-xs muted">${esc(r.students?.student_code||'')} · ${esc(r.students?.main_room||'')}</p></td><td class="p-2"><span class="flex items-center gap-2">${icon?`<img src="${esc(icon)}" class="sport-icon" alt="">`:''}${esc(r.sports?.name||'—')}</span></td><td class="p-2 text-center">${esc(r.jersey_number||'—')}</td><td class="p-2 muted text-xs">${esc(r.registered_at?new Date(r.registered_at).toLocaleString('th-TH'):'—')}</td></tr>`}).join('')||'<tr><td colspan="4" class="p-8 text-center muted">ยังไม่มีนักกีฬา</td></tr>'}</tbody></table></div></section>`
   else if(tab==='permissions') body.innerHTML=`<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
@@ -917,6 +931,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='scores') body.innerHTML=scoreMedalSection(totals,c.name,myTotal,scoreRank,medalRank)
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
   body.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
+  body.querySelectorAll('[data-goto-tab]').forEach(b=>b.onclick=()=>wrap.querySelector(`[data-team-tab="${b.dataset.gotoTab}"]`)?.click())
   body.querySelector('#identity-new')?.addEventListener('click',()=>identityForm(wrap,m,c))
   body.querySelector('[data-print-members]')?.addEventListener('click',()=>printColorRoster(c.name,membersList,docHeader))
   body.querySelector('[data-print-athletes]')?.addEventListener('click',()=>openAthletePrintDialog(wrap,c,regs,competitions))
@@ -935,10 +950,36 @@ const matchStatusPill = status => {
   const [label,cls] = map[status] || ['รอแข่ง','status-pending']
   return `<span class="status-pill ${cls}">${label}</span>`
 }
-function matchRow(m){const icon=sportIconUrl(m.sports);return `<div class="team-sub rounded-xl p-3"><div class="flex justify-between items-center gap-3"><span class="flex items-center gap-2 min-w-0">${icon?`<img src="${esc(icon)}" class="sport-icon" alt="">`:''}<b class="truncate">${esc(m.sports?.name||'รายการแข่งขัน')}</b></span>${matchStatusPill(m.status)}</div><p class="text-xs muted mt-1">${esc(m.scheduled_date||'ยังไม่ระบุวัน')} ${esc(m.scheduled_time?String(m.scheduled_time).slice(0,5):'')} · สี${esc(m.team_a?.name||'—')} พบ สี${esc(m.team_b?.name||'—')} · ผล ${esc(m.score_a||'—')} : ${esc(m.score_b||'—')}</p></div>`}
+const teamSide = (t, mine) => {
+  const hex = t?.hex_color || '#64748b'
+  const avatar = t?.logo_url
+    ? `<img src="${esc(t.logo_url)}" class="w-11 h-11 rounded-full object-cover ${mine?'ring-2 ring-pink-500':'ring-1 ring-white/10'}">`
+    : `<div class="w-11 h-11 rounded-full flex items-center justify-center text-white text-[10px] font-black ${mine?'ring-2 ring-pink-500':'ring-1 ring-white/10'}" style="background:${esc(hex)}">${esc((t?.name||'?').slice(0,1))}</div>`
+  return `<div class="flex-1 flex flex-col items-center gap-1.5 min-w-0">${avatar}<span class="text-[11px] font-bold truncate w-full text-center ${mine?'text-pink-400':''}">${t?.name?`สี${esc(t.name)}`:'รอทีม'}</span></div>`
+}
+function matchRow(m,myColorName){
+  const icon=sportIconUrl(m.sports)
+  const isDone=m.status==='done'
+  const winA=isDone&&m.winner==='A', winB=isDone&&m.winner==='B'
+  return `<div class="team-card rounded-2xl p-4 border">
+    <div class="flex items-center justify-between gap-2 mb-3">
+      <span class="flex items-center gap-2 min-w-0">${icon?`<img src="${esc(icon)}" class="sport-icon" alt="">`:''}<b class="text-xs truncate">${esc(m.sports?.name||'รายการแข่งขัน')}</b></span>
+      ${matchStatusPill(m.status)}
+    </div>
+    <div class="flex items-center justify-between gap-2">
+      ${teamSide(m.team_a, m.team_a?.name===myColorName)}
+      <div class="flex flex-col items-center px-2 flex-shrink-0">
+        <span class="text-[10px] font-black italic text-pink-400">VS</span>
+        <span class="text-lg font-black tabular-nums mt-1"><span class="${winA?'text-emerald-400':''}">${esc(m.score_a??'—')}</span> : <span class="${winB?'text-emerald-400':''}">${esc(m.score_b??'—')}</span></span>
+      </div>
+      ${teamSide(m.team_b, m.team_b?.name===myColorName)}
+    </div>
+    <p class="text-[10px] muted text-center mt-3 line">${esc(m.scheduled_date||'ยังไม่ระบุวัน')} ${esc(m.scheduled_time?String(m.scheduled_time).slice(0,5):'')}${m.venue?` · ${esc(m.venue)}`:''}</p>
+  </div>`
+}
 function trackingMatchesOnly(matches,colorName){
   const done=matches.filter(m=>m.status==='done'), upcoming=matches.filter(m=>m.status!=='done')
-  return `<div class="grid xl:grid-cols-2 gap-4"><div><h2 class="font-bold mb-3">🗓️ ตาราง/ติดตามการแข่งขันของสี${esc(colorName)}</h2><div class="space-y-2">${upcoming.map(m=>matchRow(m)).join('')||'<p class="text-sm muted">ยังไม่มีตารางที่รอแข่งขัน</p>'}</div></div><div><h2 class="font-bold mb-3">✅ ผลการแข่งขันล่าสุด</h2><div class="space-y-2">${done.map(m=>matchRow(m)).join('')||'<p class="text-sm muted">ยังไม่มีผลการแข่งขัน</p>'}</div></div></div>`
+  return `<div class="grid xl:grid-cols-2 gap-4"><div><h2 class="font-bold mb-3">🗓️ ตาราง/ติดตามการแข่งขันของสี${esc(colorName)}</h2><div class="space-y-3">${upcoming.map(m=>matchRow(m,colorName)).join('')||'<p class="text-sm muted">ยังไม่มีตารางที่รอแข่งขัน</p>'}</div></div><div><h2 class="font-bold mb-3">✅ ผลการแข่งขันล่าสุด</h2><div class="space-y-3">${done.map(m=>matchRow(m,colorName)).join('')||'<p class="text-sm muted">ยังไม่มีผลการแข่งขัน</p>'}</div></div></div>`
 }
 function scoreMedalSection(totals,colorName,myTotal,scoreRank,medalRank){
   const ranked=[...totals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
