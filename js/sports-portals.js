@@ -522,7 +522,7 @@ export async function renderShirtSummary() {
 async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:false,myTeamMemberships:[]}) {
   const slot=root.querySelector('#sports-team-membership-admin'); if(!slot)return
   const roleLabels={lead_teacher:'หัวหน้าครูประจำสี',teacher:'ครูประจำสี',staff_lead:'หัวหน้านักเรียนสต๊าฟสี',staff:'นักเรียนสต๊าฟสี'}
-  const permLabels={members:'สมาชิก',registrations:'ลงทะเบียนกีฬา',announcements:'ประกาศ',tasks:'งานของสี',shirt_summary:'สรุปเสื้อ'}
+  const permLabels={members:'สมาชิก',registrations:'ลงทะเบียนกีฬา',announcements:'ประกาศ',tasks:'งานของสี',shirt_summary:'สรุปเสื้อ',attendance:'เช็คชื่อ'}
   const isStaffGrade=s=>/(ม\.?\s*[56]|ปวช\.?\s*3|ปวช\s*3)/i.test(String(s?.main_room||''))
   const leadTeamIds=new Set((access.myTeamMemberships||[]).filter(m=>m.role==='lead_teacher').map(m=>m.team_color_id))
   const manageableColors=access.isAdmin?colors:colors.filter(c=>leadTeamIds.has(c.id))
@@ -813,7 +813,7 @@ export async function openMyTeamWorkspace() {
   const old=document.getElementById('my-team-workspace');old?.remove(); const wrap=document.createElement('div');wrap.id='my-team-workspace';wrap.className='fixed inset-0 bg-slate-950 text-slate-100 overflow-hidden';wrap.style.zIndex='350';wrap.innerHTML='<div class="py-20 text-center">กำลังโหลดจัดการสีของฉัน...</div>';document.body.appendChild(wrap)
   try { const {data:{user}}=await supabase.auth.getUser(); const {data:members,error}=await supabase.from('sports_team_memberships').select('*,team_colors(*)').eq('profile_id',user.id).eq('is_active',true);if(error)throw error;const m=members?.[0];if(!m){wrap.innerHTML='<button class="absolute right-4 top-4" data-close>✕</button><div class="py-24 text-center">ยังไม่ได้รับแต่งตั้งให้ดูแลคณะสี</div>';wrap.querySelector('[data-close]').onclick=()=>wrap.remove();return}const c=m.team_colors;
     const safe=async p=>{const {data,error}=await p;if(error){console.warn(error);return []}return data||[]}
-    const perms=m.permissions||{}, isLead=m.role==='lead_teacher', canMembers=perms.members!==false, canReg=perms.registrations!==false, canTasks=perms.tasks!==false, canAnn=perms.announcements!==false, canShirt=perms.shirt_summary!==false
+    const perms=m.permissions||{}, isLead=m.role==='lead_teacher', canMembers=perms.members!==false, canReg=perms.registrations!==false, canTasks=perms.tasks!==false, canAnn=perms.announcements!==false, canShirt=perms.shirt_summary!==false, canAttendance=perms.attendance!==false
     const theme=localStorage.getItem('sports_team_theme')||'dark'; wrap.dataset.theme=theme
     const [{event,cfg},{data:pub},{data:headerRows}] = await Promise.all([context(),supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle(),supabase.from('settings').select('key,value').in('key',['school_name','school_name_2'])])
     const publicButtons=pub?.value&&typeof pub.value==='object'?pub.value:{}
@@ -822,7 +822,7 @@ export async function openMyTeamWorkspace() {
     // หมายเหตุ: ตาราง sports_registrations/sports_matches/sports_color_totals/sports_competitions
     // เป็นสคีมาเก่าที่ไม่มีข้อมูลจริง (AZIZGAMES เขียนลง registrations/matches/color_totals/sports แทน)
     // — สลับมาใช้ตารางจริงเพื่อให้ "นักกีฬาในสี" ตรงกับสิ่งที่ลงทะเบียนจริงใน AZIZGAMES
-    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions] = await Promise.all([
+    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance] = await Promise.all([
       safe(supabase.from('students').select('id,student_code,full_name,main_room,house_color,sports_shirt_size,image_url,photo_url').eq('is_active',true).or(`team_color_id.eq.${c.id},house_color.eq.${c.name}`).order('main_room').order('student_code')),
       safe(supabase.from('sports_team_tasks').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
       safe(supabase.from('sports_team_announcements').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
@@ -832,6 +832,7 @@ export async function openMyTeamWorkspace() {
       safe(supabase.from('color_totals').select('*').eq('event_id',event.id)),
       canShirt?_fetchAllRows('sports_shirt_requests', q=>q.select('status,requested_size,confirmed_size,students(id,full_name,student_code,main_room,house_color)').eq('event_id',event.id)).catch(e=>{console.warn(e);return []}):Promise.resolve([]),
       safe(supabase.from('sports').select('id,code,name,category,gender,venue').eq('event_id',event.id).eq('is_active',true).order('display_order').order('name')),
+      canAttendance?safe(supabase.from('sports_attendance').select('*').eq('team_color_id',c.id).eq('event_id',event.id)):Promise.resolve([]),
     ])
     const myTotal=totals.find(x=>x.color_name===c.name)||{}
     const rankedByScore=[...totals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
@@ -843,6 +844,7 @@ export async function openMyTeamWorkspace() {
       ['overview','ภาพรวม','🏠',true],
       ['members','สมาชิก','👥',canMembers],
       ['athletes','นักกีฬา','🏃',canReg],
+      ['attendance','เช็คชื่อ','📷',canAttendance],
       ['permissions','สิทธิ์ประจำสี','🛡️',isLead],
       ['shirts','ไซซ์เสื้อ','👕',canShirt],
       ['work','งาน/ประกาศ','📋',canTasks||canAnn],
@@ -891,7 +893,7 @@ export async function openMyTeamWorkspace() {
       @keyframes status-pulse{0%,100%{opacity:1}50%{opacity:.55}}
       @media (max-width:480px){#my-team-workspace .team-head b{font-size:.95rem}#my-team-workspace table{font-size:12px}#my-team-workspace .team-card{padding:1rem!important}}
     </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>จัดการทีมสี${esc(c.name)}</b><p class="text-xs muted">${esc(roleLabel(m.role))} · เห็นเฉพาะข้อมูลสีตัวเอง</p></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main>`
-    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead,theme}
+    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead,theme}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     wrap.querySelector('[data-close]').onclick=()=>wrap.remove();wrap.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
     wrap.querySelectorAll('[data-team-tab]').forEach(b=>b.onclick=()=>{tabState.active=b.dataset.teamTab;wrap.querySelectorAll('[data-team-tab]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.teamTab===tabState.active));drawTab()})
@@ -905,7 +907,7 @@ const roleLabel = role => ({lead_teacher:'พ่อสี/แม่สี (ห�
 const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bold ${on?'bg-emerald-500/15 text-emerald-300':'bg-slate-500/15 text-slate-400'}">${on?'เปิดให้ใช้':'ไม่เปิดให้ใช้'} · ${esc(label)}</div>`
 const memberCard = s => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div></div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,isLead}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const kpis=[
@@ -927,6 +929,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='permissions') body.innerHTML=`<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
   else if(tab==='shirts') body.innerHTML=shirtSection(c,shirtReqs,cfg)
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
+  else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,card})
   else if(tab==='schedule') renderScheduleSection(body,matches,c.name,card)
   else if(tab==='scores') body.innerHTML=scoreMedalSection(totals,c.name,myTotal,scoreRank,medalRank)
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
@@ -1024,6 +1027,163 @@ function renderScheduleSection(body,matches,colorName,card){
   body.querySelector('#sched-sport-select').onchange=e=>{filterMode=e.target.value||'none';renderList()}
   renderList()
 }
+
+function _playScanBeepAtt(success=true){
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)()
+    const osc=ctx.createOscillator(), gain=ctx.createGain()
+    osc.connect(gain);gain.connect(ctx.destination)
+    if(success){osc.type='sine';osc.frequency.setValueAtTime(880,ctx.currentTime);gain.gain.setValueAtTime(0.08,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.12);osc.start();osc.stop(ctx.currentTime+0.12)}
+    else{osc.type='sawtooth';osc.frequency.setValueAtTime(150,ctx.currentTime);gain.gain.setValueAtTime(0.12,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);osc.start();osc.stop(ctx.currentTime+0.3)}
+  }catch(e){}
+}
+async function _loadHtml5QrcodeAtt(){
+  if(window.Html5Qrcode)return window.Html5Qrcode
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script')
+    s.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+    s.onload=()=>resolve(window.Html5Qrcode)
+    s.onerror=()=>reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ'))
+    document.head.appendChild(s)
+  })
+}
+
+// แท็บ "เช็คชื่อ" — เช็คชื่อนักกีฬาเข้าค่ายสี/วันงานจริงด้วยสแกน QR ประจำตัว (หรือกรอกรหัสมือ
+// เผื่อไม่ได้พก QR) เห็นได้เฉพาะพ่อสี/แม่สี ครูประจำสี และนักเรียนสต๊าฟที่ได้รับมอบสิทธิ์
+// "attendance" (ดูสิทธิ์ได้ที่แท็บ "สิทธิ์ประจำสี") — สรุปคนขาดออกเป็นรายงาน CSV ให้ครูกิจการ
+// นักเรียนเอาไปหักคะแนนกิจกรรมพัฒนาผู้เรียนนอกระบบ (ระบบนี้ไม่ได้เชื่อมคะแนนให้อัตโนมัติ)
+function renderAttendanceSection(body,{event,c,membersList,attendance,card}){
+  let sessionType='pre_event'
+  let attendanceLocal=[...attendance]
+  let recentScans=[]
+  let html5Qrcode=null, scanning=false, reportAbsent=[]
+  const todayStr=new Date().toISOString().slice(0,10)
+
+  body.innerHTML=`<section class="${card}">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div><h2 class="font-bold">📷 เช็คชื่อเข้าร่วมสี${esc(c.name)}</h2><p class="text-xs muted">สแกน QR ประจำตัวนักเรียน หรือกรอกรหัสด้วยมือ — บันทึกของวันที่ ${todayStr}</p></div>
+      <div class="inline-flex p-1 rounded-xl team-sub gap-1">
+        <button type="button" data-att-type="pre_event" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏕️ เข้าค่ายสี</button>
+        <button type="button" data-att-type="event_day" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏆 วันงานจริง</button>
+      </div>
+    </div>
+    <div id="att-progress" class="mb-4"></div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="team-sub rounded-2xl p-4 space-y-3">
+        <div id="att-camera-reader" class="w-full aspect-square rounded-xl overflow-hidden bg-black/40" style="display:none"></div>
+        <button type="button" data-att-camera-toggle class="w-full py-2.5 rounded-xl bg-pink-600 text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
+        <div id="att-feedback"></div>
+      </div>
+      <div class="team-sub rounded-2xl p-4 space-y-3">
+        <div>
+          <label class="text-xs font-bold muted">กรอกรหัสประจำตัวนักเรียน (เผื่อไม่ได้พก QR)</label>
+          <div class="flex gap-2 mt-1.5">
+            <input id="att-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="flex-1 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
+            <button type="button" id="att-manual-submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">เช็คชื่อ</button>
+          </div>
+        </div>
+        <div>
+          <p class="text-xs font-bold muted mb-1.5">สแกนล่าสุด</p>
+          <div id="att-recent" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
+        </div>
+      </div>
+    </div>
+    <div class="line border-t mt-5 pt-5">
+      <h3 class="font-bold mb-3">📄 รายงานขาดเช็คชื่อ</h3>
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <input id="att-report-date" type="date" value="${todayStr}" class="rounded-xl bg-slate-950/40 border line px-3 py-2 text-xs font-bold">
+        <button type="button" id="att-report-run" class="px-4 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold">สร้างรายงาน</button>
+        <button type="button" id="att-report-csv" class="px-4 py-2 rounded-xl border line text-xs font-bold" style="display:none">⬇️ ส่งออก CSV</button>
+      </div>
+      <div id="att-report-result"></div>
+    </div>
+  </section>`
+
+  const renderProgress=()=>{
+    const scannedToday=attendanceLocal.filter(a=>a.session_date===todayStr).length
+    const pct=membersList.length?Math.round(scannedToday/membersList.length*100):0
+    body.querySelector('#att-progress').innerHTML=`<div class="flex items-center justify-between text-xs font-bold mb-1.5"><span>เช็คชื่อวันนี้แล้ว ${scannedToday}/${membersList.length} คน</span><span class="muted">${pct}%</span></div><div class="h-2 rounded-full team-sub overflow-hidden"><div class="h-full bg-gradient-to-r from-emerald-500 to-teal-500" style="width:${pct}%"></div></div>`
+    body.querySelectorAll('[data-att-type]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.attType===sessionType))
+  }
+  const renderRecent=()=>{
+    const el=body.querySelector('#att-recent')
+    el.innerHTML=recentScans.length ? recentScans.map(s=>`<div class="flex items-center gap-2 team-card rounded-lg p-2"><img src="${esc(s.image_url||s.photo_url||'')}" class="w-7 h-9 rounded object-cover border border-slate-700 flex-shrink-0" onerror="this.style.display='none'"><div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)}</span></div><span class="text-emerald-400 text-xs">✓</span></div>`).join('') : '<p class="text-xs muted text-center py-4">ยังไม่มีการสแกน</p>'
+  }
+  const feedback=(ok,title,detail)=>{
+    body.querySelector('#att-feedback').innerHTML=`<div class="rounded-xl p-3 flex items-center gap-3 ${ok?'bg-emerald-950/40 border border-emerald-800/60':'bg-red-950/40 border border-red-800/60'}"><span class="text-lg">${ok?'✅':'❌'}</span><div class="min-w-0"><b class="text-xs block truncate ${ok?'text-emerald-300':'text-red-300'}">${esc(title)}</b><span class="text-[10px] muted truncate block">${esc(detail||'')}</span></div></div>`
+  }
+  const commitAttendance=async(student,method)=>{
+    if(!student){feedback(false,'ไม่พบนักเรียน','ตรวจสอบรหัส/QR อีกครั้ง — หรือไม่ใช่สมาชิกสีนี้');return}
+    const already=attendanceLocal.find(a=>a.student_id===student.id&&a.session_date===todayStr)
+    if(already){feedback(false,`${student.full_name} เช็คชื่อไปแล้ว`,'บันทึกไว้แล้ววันนี้');return}
+    const {data,error}=await supabase.from('sports_attendance').insert({event_id:event.id,team_color_id:c.id,student_id:student.id,session_date:todayStr,session_type:sessionType,method}).select().single()
+    if(error){feedback(false,'บันทึกไม่สำเร็จ',error.message);return}
+    attendanceLocal.push(data)
+    recentScans.unshift(student)
+    feedback(true,`เช็คชื่อ ${student.full_name} สำเร็จ`,`รหัส ${student.student_code}`)
+    renderProgress();renderRecent()
+  }
+
+  body.querySelectorAll('[data-att-type]').forEach(b=>b.onclick=()=>{sessionType=b.dataset.attType;renderProgress()})
+
+  body.querySelector('#att-manual-submit').onclick=()=>{
+    const input=body.querySelector('#att-manual-code')
+    const code=input.value.trim()
+    if(!code)return
+    const student=membersList.find(s=>s.student_code===code)
+    commitAttendance(student,'manual')
+    input.value='';input.focus()
+  }
+  body.querySelector('#att-manual-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#att-manual-submit').click()})
+
+  body.querySelector('[data-att-camera-toggle]').onclick=async()=>{
+    const btn=body.querySelector('[data-att-camera-toggle]')
+    const readerEl=body.querySelector('#att-camera-reader')
+    if(scanning){
+      try{await html5Qrcode?.stop()}catch(e){}
+      html5Qrcode=null;scanning=false;readerEl.style.display='none';btn.textContent='📷 เปิดกล้องสแกน QR'
+      return
+    }
+    try{
+      const Html5Qrcode=await _loadHtml5QrcodeAtt()
+      readerEl.style.display='block'
+      html5Qrcode=new Html5Qrcode('att-camera-reader')
+      let lastCode=null,lastTime=0
+      await html5Qrcode.start({facingMode:'environment'},{fps:15,aspectRatio:1},decodedText=>{
+        if(decodedText===lastCode&&Date.now()-lastTime<2000)return
+        lastCode=decodedText;lastTime=Date.now()
+        let code=decodedText
+        if(code.startsWith('SQ:')){const parts=code.split(':');code=parts[1]}
+        const student=membersList.find(s=>s.student_code===code)
+        _playScanBeepAtt(!!student)
+        commitAttendance(student,'qr')
+      })
+      scanning=true;btn.textContent='⏹ ปิดกล้อง'
+    }catch(e){feedback(false,'เปิดกล้องไม่สำเร็จ',e.message)}
+  }
+
+  body.querySelector('#att-report-run').onclick=()=>{
+    const date=body.querySelector('#att-report-date').value||todayStr
+    const scannedIds=new Set(attendanceLocal.filter(a=>a.session_date===date).map(a=>a.student_id))
+    reportAbsent=membersList.filter(s=>!scannedIds.has(s.id))
+    const resEl=body.querySelector('#att-report-result')
+    resEl.innerHTML=reportAbsent.length
+      ? `<p class="text-xs muted mb-2">ขาดเช็คชื่อวันที่ ${esc(date)}: ${reportAbsent.length} คน</p><div class="grid md:grid-cols-2 gap-2">${reportAbsent.map(s=>`<div class="team-sub rounded-lg p-2 flex items-center gap-2"><b class="text-xs truncate flex-1">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)} · ${esc(s.main_room)}</span></div>`).join('')}</div>`
+      : `<p class="text-sm text-emerald-400 text-center py-4">✅ เช็คชื่อครบทุกคนในวันที่ ${esc(date)}</p>`
+    body.querySelector('#att-report-csv').style.display=reportAbsent.length?'inline-block':'none'
+  }
+  body.querySelector('#att-report-csv').onclick=()=>{
+    const date=body.querySelector('#att-report-date').value||todayStr
+    const rows=['รหัส,ชื่อ-สกุล,ห้อง,สี,วันที่ขาด',...reportAbsent.map(s=>[s.student_code,s.full_name,s.main_room,c.name,date].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))]
+    const a=document.createElement('a')
+    a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}))
+    a.download=`ขาดเช็คชื่อ-สี${c.name}-${date}.csv`
+    a.click();URL.revokeObjectURL(a.href)
+  }
+
+  renderProgress();renderRecent()
+}
+
 function scoreMedalSection(totals,colorName,myTotal,scoreRank,medalRank){
   const ranked=[...totals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
   return `<section class="team-card rounded-2xl p-5 border"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">🏅 คะแนนรวมและเหรียญ</h2><p class="text-xs muted">สรุปเฉพาะสี${esc(colorName)} พร้อมเปรียบเทียบอันดับรวม</p></div><div class="flex gap-2 text-xs"><span class="px-3 py-1 rounded-full bg-amber-500/15 text-amber-300">อันดับสี #${scoreRank}</span><span class="px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-300">อันดับเหรียญ #${medalRank}</span></div></div><div class="grid md:grid-cols-5 gap-2 mb-5">${[['คะแนนรวม',myTotal.grand_total||0],['คะแนนกรรมการ',myTotal.rubric_points||0],['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th><th class="p-2">ทอง</th><th class="p-2">เงิน</th><th class="p-2">ทองแดง</th></tr></thead><tbody>${ranked.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td><td class="p-2 text-center">${r.gold_count||0}</td><td class="p-2 text-center">${r.silver_count||0}</td><td class="p-2 text-center">${r.bronze_count||0}</td></tr>`).join('')||'<tr><td colspan="6" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div></section>`
