@@ -556,7 +556,34 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
         <div id="team-member-preview-cards" class="grid md:grid-cols-2 gap-3 mb-3"></div>
         <button id="team-member-add" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">ยืนยันและมอบหมายสิทธิ์ประจำสี</button>
       </div>
-      <div class="overflow-x-auto border rounded-2xl"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">ผู้ได้รับสิทธิ์</th><th>สี</th><th>บทบาท</th><th>สิทธิ์</th><th></th></tr></thead><tbody>${visibleMemberships.map(m=>{const person=m.teachers?.full_name?`${m.teachers.full_name}${m.teachers.teacher_code?` (${m.teachers.teacher_code})`:''}`:`${m.students?.student_code||''} ${m.students?.full_name||''} ${m.students?.main_room?`· ${m.students.main_room}`:''}`;const perms=Object.entries(m.permissions||{}).filter(([,v])=>v).map(([k])=>permLabels[k]||k).join(', ')||'ไม่มีสิทธิ์ย่อย';const canRemove=access.isAdmin||(m.student_id&&['staff_lead','staff'].includes(m.role));return `<tr class="border-t"><td class="p-3 font-medium">${esc(person||'ไม่พบชื่อ')}</td><td class="p-3"><span class="font-bold" style="color:${esc(m.team_colors?.hex_color||'#334155')}">สี${esc(m.team_colors?.name||'—')}</span></td><td class="p-3">${esc(roleLabels[m.role]||m.role)}</td><td class="p-3 text-xs text-gray-500">${esc(perms)}</td><td class="p-3 text-right">${canRemove?`<button data-team-member-remove="${esc(m.id)}" class="px-3 py-1.5 rounded-lg border text-red-600 text-xs">ปิดสิทธิ์</button>`:'<span class="text-xs text-gray-300">ล็อกโดยแอดมิน</span>'}</td></tr>`}).join('')||'<tr><td colspan="5" class="p-6 text-center text-gray-400">ยังไม่มีผู้ได้รับสิทธิ์ประจำสี</td></tr>'}</tbody></table></div>`
+      <div class="flex flex-wrap items-center justify-between gap-2 mt-2 mb-2"><h3 class="font-bold text-sm">📋 ตรวจสอบรายชื่อผู้ได้รับสิทธิ์</h3><span id="team-member-count" class="text-xs text-gray-500"></span></div>
+      <div class="grid md:grid-cols-3 gap-3 mb-3">
+        <select id="team-member-filter-color" class="border rounded-xl px-3 py-2 text-sm"><option value="">ทุกสี</option>${manageableColors.map(c=>`<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
+        <select id="team-member-filter-role" class="border rounded-xl px-3 py-2 text-sm"><option value="">ทุกบทบาท</option><option value="lead_teacher">พ่อสี/แม่สี (หัวหน้าครูประจำสี)</option><option value="teacher">ครูประจำสี</option><option value="staff_lead">หัวหน้านักเรียนสต๊าฟสี</option><option value="staff">นักเรียนสต๊าฟสี</option></select>
+        <input id="team-member-filter-search" class="border rounded-xl px-3 py-2 text-sm" placeholder="🔍 ค้นหาชื่อ/รหัสครู/รหัสนักเรียน...">
+      </div>
+      <div id="team-member-table-wrap"></div>`
+    const memberPersonText=m=>m.teachers?.full_name?`${m.teachers.full_name}${m.teachers.teacher_code?` (${m.teachers.teacher_code})`:''}`:`${m.students?.student_code||''} ${m.students?.full_name||''} ${m.students?.main_room?`· ${m.students.main_room}`:''}`
+    const renderMemberTable=()=>{
+      const colorFilter=slot.querySelector('#team-member-filter-color')?.value||''
+      const roleFilter=slot.querySelector('#team-member-filter-role')?.value||''
+      const q=(slot.querySelector('#team-member-filter-search')?.value||'').trim().toLowerCase()
+      const filtered=visibleMemberships.filter(m=>{
+        if(colorFilter&&m.team_color_id!==colorFilter)return false
+        if(roleFilter&&m.role!==roleFilter)return false
+        if(q&&!memberPersonText(m).toLowerCase().includes(q))return false
+        return true
+      })
+      const countEl=slot.querySelector('#team-member-count')
+      if(countEl)countEl.textContent=`แสดง ${filtered.length} จาก ${visibleMemberships.length} คน`
+      const tableWrap=slot.querySelector('#team-member-table-wrap')
+      tableWrap.innerHTML=`<div class="overflow-x-auto border rounded-2xl"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">ผู้ได้รับสิทธิ์</th><th>สี</th><th>บทบาท</th><th>สิทธิ์</th><th></th></tr></thead><tbody>${filtered.map(m=>{const person=memberPersonText(m);const perms=Object.entries(m.permissions||{}).filter(([,v])=>v).map(([k])=>permLabels[k]||k).join(', ')||'ไม่มีสิทธิ์ย่อย';const canRemove=access.isAdmin||(m.student_id&&['staff_lead','staff'].includes(m.role));return `<tr class="border-t"><td class="p-3 font-medium">${esc(person||'ไม่พบชื่อ')}</td><td class="p-3"><span class="font-bold" style="color:${esc(m.team_colors?.hex_color||'#334155')}">สี${esc(m.team_colors?.name||'—')}</span></td><td class="p-3">${esc(roleLabels[m.role]||m.role)}</td><td class="p-3 text-xs text-gray-500">${esc(perms)}</td><td class="p-3 text-right">${canRemove?`<button data-team-member-remove="${esc(m.id)}" class="px-3 py-1.5 rounded-lg border text-red-600 text-xs">ปิดสิทธิ์</button>`:'<span class="text-xs text-gray-300">ล็อกโดยแอดมิน</span>'}</td></tr>`}).join('')||`<tr><td colspan="5" class="p-6 text-center text-gray-400">${visibleMemberships.length?'ไม่พบรายชื่อที่ตรงกับตัวกรอง':'ยังไม่มีผู้ได้รับสิทธิ์ประจำสี'}</td></tr>`}</tbody></table></div>`
+      tableWrap.querySelectorAll('[data-team-member-remove]').forEach(b=>b.addEventListener('click',async()=>{const {error}=await supabase.from('sports_team_memberships').update({is_active:false,ends_at:new Date().toISOString()}).eq('id',b.dataset.teamMemberRemove);if(error)return toast(error.message,'error');toast('ปิดสิทธิ์แล้ว');renderTeamMembershipAdmin(root,event,colors,access)}))
+    }
+    renderMemberTable()
+    slot.querySelector('#team-member-filter-color')?.addEventListener('change',renderMemberTable)
+    slot.querySelector('#team-member-filter-role')?.addEventListener('change',renderMemberTable)
+    slot.querySelector('#team-member-filter-search')?.addEventListener('input',renderMemberTable)
     const parseCodes=value=>String(value||'').split(/[\s,]+/).map(x=>x.trim()).filter(Boolean)
     const renderPreview=()=>{
       const wrap=slot.querySelector('#team-member-preview'), cards=slot.querySelector('#team-member-preview-cards')
@@ -589,7 +616,6 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
       if(error)return toast(error.message,'error')
       toast(`มอบหมายสิทธิ์ประจำสีแล้ว ${payload.length} คน`); renderTeamMembershipAdmin(root,event,colors,access)
     })
-    slot.querySelectorAll('[data-team-member-remove]').forEach(b=>b.addEventListener('click',async()=>{const {error}=await supabase.from('sports_team_memberships').update({is_active:false,ends_at:new Date().toISOString()}).eq('id',b.dataset.teamMemberRemove);if(error)return toast(error.message,'error');toast('ปิดสิทธิ์แล้ว');renderTeamMembershipAdmin(root,event,colors,access)}))
     slot.querySelectorAll('[data-team-perm]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';b.className=`px-3 py-2 rounded-xl text-xs font-bold border ${next?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-slate-50 text-slate-500 border-slate-200'}`;const label=(b.textContent.split(':').pop()||'').trim();b.textContent=`${next?'อนุญาต':'ไม่อนุญาต'}: ${label}`}))
   } catch(e) { console.error(e); slot.innerHTML='<div class="p-5 rounded-2xl bg-red-50 text-red-700 text-sm">โหลดหน้ามอบหมายผู้ดูแลสีไม่สำเร็จ</div>' }
 }
