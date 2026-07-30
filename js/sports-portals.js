@@ -927,7 +927,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='permissions') body.innerHTML=`<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
   else if(tab==='shirts') body.innerHTML=shirtSection(c,shirtReqs,cfg)
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
-  else if(tab==='schedule') body.innerHTML=`<section class="${card}">${trackingMatchesOnly(matches,c.name)}</section>`
+  else if(tab==='schedule') renderScheduleSection(body,matches,c.name,card)
   else if(tab==='scores') body.innerHTML=scoreMedalSection(totals,c.name,myTotal,scoreRank,medalRank)
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
   body.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
@@ -977,9 +977,52 @@ function matchRow(m,myColorName){
     <p class="text-[10px] muted text-center mt-3 line">${esc(m.scheduled_date||'ยังไม่ระบุวัน')} ${esc(m.scheduled_time?String(m.scheduled_time).slice(0,5):'')}${m.venue?` · ${esc(m.venue)}`:''}</p>
   </div>`
 }
-function trackingMatchesOnly(matches,colorName){
-  const done=matches.filter(m=>m.status==='done'), upcoming=matches.filter(m=>m.status!=='done')
-  return `<div class="grid xl:grid-cols-2 gap-4"><div><h2 class="font-bold mb-3">🗓️ ตาราง/ติดตามการแข่งขันของสี${esc(colorName)}</h2><div class="space-y-3">${upcoming.map(m=>matchRow(m,colorName)).join('')||'<p class="text-sm muted">ยังไม่มีตารางที่รอแข่งขัน</p>'}</div></div><div><h2 class="font-bold mb-3">✅ ผลการแข่งขันล่าสุด</h2><div class="space-y-3">${done.map(m=>matchRow(m,colorName)).join('')||'<p class="text-sm muted">ยังไม่มีผลการแข่งขัน</p>'}</div></div></div>`
+// แท็บ "ตาราง/ผล" — แถบสลับตารางการแข่งขัน(รอ/กำลังแข่ง)⇄ผลการแข่งขัน(เสร็จสิ้น) เหมือนระบบ
+// กีฬาสีหลัก ไม่โชว์รายการทั้งหมดตั้งแต่แรก (กันยาวเกินไปเวลาสีนั้นแข่งหลายรายการ) ต้องกด "วันนี้"
+// หรือเลือกรายการแข่งขันหนึ่งก่อน ถึงจะเห็นรายการ — เลือกรายการแล้วเห็นครบทุกนัดของกีฬานั้นที่สีนี้
+// เคยแข่ง/กำลังจะแข่ง (ทุกรอบตั้งแต่ต้นจนถึงรอบสุดท้าย) ไม่ใช่แค่นัดล่าสุด
+function renderScheduleSection(body,matches,colorName,card){
+  const sportOptions=[...new Map(matches.filter(x=>x.sports).map(x=>[String(x.sports.id),x.sports])).values()]
+  let subTab='schedule', filterMode='none' // filterMode: 'none' | 'today' | sportId
+  const todayStr=new Date().toISOString().slice(0,10)
+
+  body.innerHTML=`<section class="${card}">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <h2 class="font-bold">🗓️ ตาราง/ผลการแข่งขันของสี${esc(colorName)}</h2>
+      <div class="inline-flex p-1 rounded-xl team-sub gap-1">
+        <button type="button" data-sched-subtab="schedule" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">🗓️ ตารางการแข่งขัน</button>
+        <button type="button" data-sched-subtab="results" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">✅ ผลการแข่งขัน</button>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <button type="button" data-sched-today class="px-3 py-2 rounded-xl border line text-xs font-bold transition-all">📅 วันนี้</button>
+      <select id="sched-sport-select" class="rounded-xl bg-slate-950/40 border line px-3 py-2 text-xs font-bold flex-1 min-w-[200px]">
+        <option value="">-- เลือกรายการแข่งขันเพื่อดูทุกรอบ --</option>
+        ${sportOptions.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="sched-list"></div>
+  </section>`
+
+  const renderList=()=>{
+    body.querySelectorAll('[data-sched-subtab]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.schedSubtab===subTab))
+    body.querySelector('[data-sched-today]').classList.toggle('team-tab-active',filterMode==='today')
+    const listEl=body.querySelector('#sched-list')
+    const base=matches.filter(m=>subTab==='schedule'?m.status!=='done':m.status==='done')
+    if(filterMode==='none'){
+      listEl.innerHTML=`<p class="text-sm muted text-center py-10">กด "📅 วันนี้" หรือเลือกรายการแข่งขันด้านบน เพื่อดู${subTab==='schedule'?'ตารางการแข่งขัน':'ผลการแข่งขัน'}</p>`
+      return
+    }
+    const filtered=filterMode==='today' ? base.filter(m=>m.scheduled_date===todayStr) : base.filter(m=>String(m.sports?.id)===String(filterMode))
+    listEl.innerHTML=filtered.length
+      ? `<div class="grid md:grid-cols-2 gap-3">${filtered.map(m=>matchRow(m,colorName)).join('')}</div>`
+      : `<p class="text-sm muted text-center py-10">ไม่พบ${subTab==='schedule'?'นัดที่รอแข่งขัน':'ผลการแข่งขัน'}ตามตัวกรองนี้</p>`
+  }
+
+  body.querySelectorAll('[data-sched-subtab]').forEach(b=>b.onclick=()=>{subTab=b.dataset.schedSubtab;renderList()})
+  body.querySelector('[data-sched-today]').onclick=()=>{filterMode=filterMode==='today'?'none':'today';body.querySelector('#sched-sport-select').value='';renderList()}
+  body.querySelector('#sched-sport-select').onchange=e=>{filterMode=e.target.value||'none';renderList()}
+  renderList()
 }
 function scoreMedalSection(totals,colorName,myTotal,scoreRank,medalRank){
   const ranked=[...totals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
