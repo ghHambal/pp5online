@@ -11,6 +11,25 @@ const LOGO_URLS = [
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
+// ==== วันที่: ทำงานล้วนๆ กับตัวเลข Y/M/D ไม่ผ่าน Date object แบบ local-timezone เลย ====
+// (บั๊กเดิม: new Date("2026-09-26") ถูก parse เป็น UTC แล้วพอ .toISOString() หรือ toLocaleDateString
+// แปลงกลับผ่าน timezone เครื่องผู้ใช้ อาจได้วันที่คลาดเคลื่อนไป 1 วัน โดยเฉพาะช่วงเช้ามืดในไทย)
+const parseYMD = str => { const [y, m, d] = String(str).split('-').map(Number); return { y, m, d } }
+const toUTCms = dateStr => { const { y, m, d } = parseYMD(dateStr); return Date.UTC(y, m - 1, d) }
+const addDaysStr = (dateStr, n) => {
+  const { y, m, d } = parseYMD(dateStr)
+  const dt = new Date(Date.UTC(y, m - 1, d + n))
+  return dt.toISOString().slice(0, 10)
+}
+const todayLocalStr = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const fmtThaiDate = dateStr => {
+  const { y, m, d } = parseYMD(dateStr)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
 // เรียงห้องเรียนสามัญตามธรรมชาติ (ม.1/1, ม.1/2 ... ม.6/x, ปวช.1/1 ...) แบบเดียวกับ printColorRoster
 const roomSortKey = str => {
   const m = String(str || '').match(/ม\.(\d+)\/(\d+)/)
@@ -24,26 +43,24 @@ const levelOf = room => {
   return r.startsWith('ปวช.') ? 'ปวช.' : (r.split('/')[0] || 'ไม่ระบุ')
 }
 const levelSortKey = level => level.startsWith('ปวช.') ? 100 : (parseInt(level.replace('ม.', '')) || 99)
+const byRoomThenName = (a, b) => {
+  const [ka, kb] = [roomSortKey(a.main_room), roomSortKey(b.main_room)]
+  return ka[0] - kb[0] || ka[1] - kb[1] || a.full_name.localeCompare(b.full_name, 'th')
+}
 
 // ขยายช่วงวันของปฏิทิน (เช่น "กีฬาสี" 4 วัน) เป็นตัวเลือกวันแยกทีละวัน ให้เลือกดูรายวันได้ตรงจริง
 const buildDayOptions = (calendar) => {
   const days = []
   calendar.forEach(ev => {
-    const start = new Date(ev.event_date)
-    const end = new Date(ev.end_date || ev.event_date)
-    const totalDays = Math.round((end - start) / 86400000) + 1
+    const totalDays = Math.round((toUTCms(ev.end_date || ev.event_date) - toUTCms(ev.event_date)) / 86400000) + 1
     for (let i = 0; i < totalDays; i++) {
-      const d = new Date(start)
-      d.setDate(d.getDate() + i)
-      const dateStr = d.toISOString().slice(0, 10)
+      const dateStr = addDaysStr(ev.event_date, i)
       const label = totalDays > 1 ? `${ev.label} (วันที่ ${i + 1} จาก ${totalDays})` : ev.label
       days.push({ date: dateStr, label })
     }
   })
   return days.sort((a, b) => a.date < b.date ? -1 : 1)
 }
-
-const fmtThaiDate = dateStr => new Date(dateStr).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 
 async function fetchSnapshot(password) {
   const { data, error } = await supabase.rpc('get_public_sports_attendance_snapshot', { p_password: password })
@@ -84,11 +101,12 @@ function renderGate(onSuccess) {
 
 function renderDashboard(snapshot) {
   const dayOptions = buildDayOptions(snapshot.calendar || [])
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = todayLocalStr()
   const defaultDay = dayOptions.find(d => d.date === todayStr)?.date || dayOptions[dayOptions.length - 1]?.date || todayStr
 
   let gender = 'M'
   let selectedDay = defaultDay
+  let printMode = 'single' // 'single' | 'all'
 
   root.innerHTML = `
     <div class="space-y-4">
@@ -100,6 +118,13 @@ function renderDashboard(snapshot) {
         <select id="day-select" class="border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"></select>
       </div>
       <div id="summary-cards" class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+      <div class="no-print bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3">
+        <span class="text-xs font-bold text-slate-500">พิมพ์/บันทึกไฟล์:</span>
+        <div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
+          <button type="button" data-print-mode="single" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all">📅 เฉพาะวันที่เลือก</button>
+          <button type="button" data-print-mode="all" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all">📚 ทุกวัน (เข้าสี+วันจริงทั้งหมด)</button>
+        </div>
+      </div>
       <div class="no-print flex flex-wrap gap-2">
         <button id="btn-export-csv" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">⬇️ ส่งออก CSV</button>
         <button id="btn-print" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 text-xs font-bold">🖨️ พิมพ์เอกสาร</button>
@@ -112,30 +137,78 @@ function renderDashboard(snapshot) {
   daySelect.innerHTML = dayOptions.map(d => `<option value="${d.date}">${esc(d.label)} — ${fmtThaiDate(d.date)}</option>`).join('') || '<option value="">ไม่มีข้อมูลปฏิทิน</option>'
   daySelect.value = selectedDay
 
+  const studentsOf = g => (snapshot.students || []).filter(s => s.gender === g)
+  const scannedIdsOn = day => new Set((snapshot.attendance || []).filter(a => a.session_date === day).map(a => a.student_id))
+
   const computeAbsent = () => {
-    const students = (snapshot.students || []).filter(s => s.gender === gender)
-    const scannedIds = new Set((snapshot.attendance || []).filter(a => a.session_date === selectedDay).map(a => a.student_id))
+    const students = studentsOf(gender)
+    const scannedIds = scannedIdsOn(selectedDay)
     const present = students.filter(s => scannedIds.has(s.id))
     const absent = students.filter(s => !scannedIds.has(s.id))
     return { students, present, absent }
   }
 
-  const groupByRoom = list => {
-    const byRoom = {}
-    list.forEach(s => { (byRoom[s.main_room || 'ไม่ระบุห้อง'] = byRoom[s.main_room || 'ไม่ระบุห้อง'] || []).push(s) })
-    return byRoom
+  // สร้างเนื้อหาเอกสาร (โลโก้+หัวเรื่อง+สถิติ+ตารางเดียวต่อชั้น มีคอลัมน์เลขที่/รหัส/ชื่อ-สกุล/ห้อง
+  // เรียงตามห้องเรียน) สำหรับ "วันเดียว" — ใช้ร่วมกันได้ทั้งโหมด single และวนซ้ำในโหมด all
+  const buildDayDocument = (day, dayLabel, isFirstOverall) => {
+    const students = studentsOf(gender)
+    const scannedIds = scannedIdsOn(day)
+    const absent = students.filter(s => !scannedIds.has(s.id))
+
+    const byLevel = {}
+    students.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || { total: 0, present: 0, students: [] }); byLevel[lv].total++ })
+    students.forEach(s => { if (scannedIds.has(s.id)) byLevel[levelOf(s.main_room)].present++ })
+    absent.forEach(s => { byLevel[levelOf(s.main_room)].students.push(s) })
+    const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
+
+    const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
+
+    return levels.map((lv, idx) => {
+      const info = byLevel[lv]
+      const rows = [...info.students].sort(byRoomThenName)
+      const lvPct = info.total ? Math.round(info.present / info.total * 100) : 0
+      const pageBreak = !(isFirstOverall && idx === 0)
+      return `<div style="${pageBreak ? 'page-break-before:always;' : ''}padding-top:12px">
+        ${logoRow}
+        <div style="text-align:center;margin-bottom:10px">
+          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${gender === 'M' ? 'ชาย' : 'หญิง'}ที่ขาดเช็คชื่อ — ${esc(dayLabel)} (${fmtThaiDate(day)})</h2>
+          <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
+          <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
+        </div>
+        <div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px;font-size:12px">
+          <span>นักเรียนทั้งหมด: <b>${info.total}</b></span>
+          <span style="color:#059669">มาแล้ว: <b>${info.present}</b></span>
+          <span style="color:#dc2626">ขาด: <b>${info.students.length}</b></span>
+          <span>คิดเป็น: <b>${lvPct}%</b></span>
+        </div>
+        ${rows.length ? `<table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr>
+            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;width:36px">เลขที่</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;width:80px">รหัส</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;text-align:left">ชื่อ-สกุล</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;width:90px">ห้อง</th>
+          </tr></thead>
+          <tbody>${rows.map((s, i) => `
+            <tr>
+              <td style="border:1px solid #cbd5e1;padding:4px 8px;text-align:center">${i + 1}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 8px;text-align:center">${esc(s.student_code)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 8px">${esc(s.full_name)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 8px;text-align:center">${esc(s.main_room || '—')}</td>
+            </tr>`).join('')}</tbody>
+        </table>` : `<p style="text-align:center;color:#059669;font-weight:bold">✅ เช็คชื่อครบทุกคนในชั้นนี้</p>`}
+      </div>`
+    }).join('')
   }
-  const sortedRooms = byRoom => Object.keys(byRoom).sort((a, b) => {
-    const [ka, kb] = [roomSortKey(a), roomSortKey(b)]
-    return ka[0] - kb[0] || ka[1] - kb[1]
-  })
 
   const render = () => {
     root.querySelectorAll('[data-gender]').forEach(b => b.classList.toggle('bg-pink-600', b.dataset.gender === gender))
     root.querySelectorAll('[data-gender]').forEach(b => b.classList.toggle('text-white', b.dataset.gender === gender))
+    root.querySelectorAll('[data-print-mode]').forEach(b => b.classList.toggle('bg-pink-600', b.dataset.printMode === printMode))
+    root.querySelectorAll('[data-print-mode]').forEach(b => b.classList.toggle('text-white', b.dataset.printMode === printMode))
+    daySelect.disabled = printMode === 'all'
+
     const { students, present, absent } = computeAbsent()
     const pct = students.length ? Math.round(present.length / students.length * 100) : 0
-    const dayLabel = dayOptions.find(d => d.date === selectedDay)?.label || selectedDay
 
     root.querySelector('#summary-cards').innerHTML = `
       <div class="bg-white rounded-xl border border-slate-200 p-3 text-center"><p class="text-[10px] text-slate-500 font-bold">นักเรียนทั้งหมด</p><b class="text-xl">${students.length}</b></div>
@@ -143,9 +216,10 @@ function renderDashboard(snapshot) {
       <div class="bg-red-50 rounded-xl border border-red-200 p-3 text-center"><p class="text-[10px] text-red-600 font-bold">ขาดเช็คชื่อ</p><b class="text-xl text-red-700">${absent.length}</b></div>
       <div class="bg-slate-100 rounded-xl border border-slate-200 p-3 text-center"><p class="text-[10px] text-slate-500 font-bold">มาแล้ว</p><b class="text-xl">${pct}%</b></div>`
 
-    // แสดงบนหน้าจอ: แยกตามห้องเหมือนเดิม (กระชับ ดูเร็ว)
-    const byRoom = groupByRoom(absent)
-    const rooms = sortedRooms(byRoom)
+    // แสดงบนหน้าจอ: แยกตามห้องเหมือนเดิม (กระชับ ดูเร็ว) — ใช้วันที่เลือกเดี่ยวเสมอ ไม่ขึ้นกับ printMode
+    const byRoom = {}
+    absent.forEach(s => { (byRoom[s.main_room || 'ไม่ระบุห้อง'] = byRoom[s.main_room || 'ไม่ระบุห้อง'] || []).push(s) })
+    const rooms = Object.keys(byRoom).sort((a, b) => { const [ka, kb] = [roomSortKey(a), roomSortKey(b)]; return ka[0] - kb[0] || ka[1] - kb[1] })
     root.querySelector('#absent-list').innerHTML = rooms.length ? rooms.map(room => `
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
@@ -159,58 +233,33 @@ function renderDashboard(snapshot) {
         </table>
       </div>`).join('') : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ เช็คชื่อครบทุกคนในวันนี้</div>`
 
-    // เอกสารพิมพ์: แยกเป็นชั้นๆ ขึ้นหน้าใหม่ทุกชั้น มีโลโก้ 3 อัน + สถิติของชั้นนั้นเหนือตาราง
-    const byLevel = {}
-    students.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || { total: 0, present: 0, students: [] }); byLevel[lv].total++ })
-    present.forEach(s => { const lv = levelOf(s.main_room); byLevel[lv].present++ })
-    absent.forEach(s => { const lv = levelOf(s.main_room); byLevel[lv].students.push(s) })
-    const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
-
-    const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
-
-    root.querySelector('#print-content').innerHTML = levels.map((lv, idx) => {
-      const info = byLevel[lv]
-      const lvAbsentByRoom = groupByRoom(info.students)
-      const lvRooms = sortedRooms(lvAbsentByRoom)
-      const lvPct = info.total ? Math.round(info.present / info.total * 100) : 0
-      return `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding-top:12px">
-        ${logoRow}
-        <div style="text-align:center;margin-bottom:10px">
-          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${gender === 'M' ? 'ชาย' : 'หญิง'}ที่ขาดเช็คชื่อ — ${esc(dayLabel)} (${fmtThaiDate(selectedDay)})</h2>
-          <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
-          <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
-        </div>
-        <div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px;font-size:12px">
-          <span>นักเรียนทั้งหมด: <b>${info.total}</b></span>
-          <span style="color:#059669">มาแล้ว: <b>${info.present}</b></span>
-          <span style="color:#dc2626">ขาด: <b>${info.students.length}</b></span>
-          <span>คิดเป็น: <b>${lvPct}%</b></span>
-        </div>
-        ${lvRooms.length ? lvRooms.map(room => `
-          <div style="margin-bottom:10px">
-            <div style="background:#f1f5f9;padding:5px 10px;font-weight:bold;font-size:12px;border:1px solid #cbd5e1;border-bottom:none">ห้อง ${esc(room)} — ขาด ${lvAbsentByRoom[room].length} คน</div>
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <tbody>${lvAbsentByRoom[room].sort((a, b) => a.full_name.localeCompare(b.full_name, 'th')).map(s => `
-                <tr><td style="border:1px solid #cbd5e1;padding:4px 8px;width:80px">${esc(s.student_code)}</td><td style="border:1px solid #cbd5e1;padding:4px 8px">${esc(s.full_name)}</td></tr>
-              `).join('')}</tbody>
-            </table>
-          </div>`).join('') : `<p style="text-align:center;color:#059669;font-weight:bold">✅ เช็คชื่อครบทุกคนในชั้นนี้</p>`}
-      </div>`
-    }).join('') || `<p style="text-align:center;padding:40px">ไม่มีข้อมูลนักเรียน</p>`
+    // เอกสารพิมพ์: โหมดเดียว = วันที่เลือกอยู่ตอนนี้เท่านั้น, โหมดทุกวัน = วนทุกวันในปฏิทิน
+    if (printMode === 'all') {
+      root.querySelector('#print-content').innerHTML = dayOptions.length
+        ? dayOptions.map((d, i) => buildDayDocument(d.date, d.label, i === 0)).join('')
+        : `<p style="text-align:center;padding:40px">ไม่มีข้อมูลปฏิทิน</p>`
+    } else {
+      const dayLabel = dayOptions.find(d => d.date === selectedDay)?.label || selectedDay
+      root.querySelector('#print-content').innerHTML = buildDayDocument(selectedDay, dayLabel, true) || `<p style="text-align:center;padding:40px">ไม่มีข้อมูลนักเรียน</p>`
+    }
   }
 
   root.querySelectorAll('[data-gender]').forEach(b => b.onclick = () => { gender = b.dataset.gender; render() })
+  root.querySelectorAll('[data-print-mode]').forEach(b => b.onclick = () => { printMode = b.dataset.printMode; render() })
   daySelect.onchange = () => { selectedDay = daySelect.value; render() }
 
   root.querySelector('#btn-export-csv').onclick = () => {
-    const { absent } = computeAbsent()
-    const dayLabel = dayOptions.find(d => d.date === selectedDay)?.label || selectedDay
-    const rows = ['ห้อง,รหัส,ชื่อ-สกุล,วันที่ขาด', ...absent
-      .sort((a, b) => { const [ka, kb] = [roomSortKey(a.main_room), roomSortKey(b.main_room)]; return ka[0] - kb[0] || ka[1] - kb[1] })
-      .map(s => [s.main_room, s.student_code, s.full_name, dayLabel].map(x => `"${String(x || '').replaceAll('"', '""')}"`).join(','))]
+    const rows = ['วันที่,ห้อง,รหัส,ชื่อ-สกุล']
+    const daysToExport = printMode === 'all' ? dayOptions : [{ date: selectedDay, label: dayOptions.find(d => d.date === selectedDay)?.label || selectedDay }]
+    daysToExport.forEach(d => {
+      const students = studentsOf(gender)
+      const scannedIds = scannedIdsOn(d.date)
+      const absent = students.filter(s => !scannedIds.has(s.id)).sort(byRoomThenName)
+      absent.forEach(s => rows.push([d.label, s.main_room, s.student_code, s.full_name].map(x => `"${String(x || '').replaceAll('"', '""')}"`).join(',')))
+    })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' }))
-    a.download = `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}-${selectedDay}.csv`
+    a.download = printMode === 'all' ? `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}-ทุกวัน.csv` : `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}-${selectedDay}.csv`
     a.click(); URL.revokeObjectURL(a.href)
   }
   root.querySelector('#btn-print').onclick = () => window.print()
