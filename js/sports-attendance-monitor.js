@@ -29,6 +29,11 @@ const fmtThaiDate = dateStr => {
   const { y, m, d } = parseYMD(dateStr)
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
+// แบบย่อไม่มีปี ใช้ในคอลัมน์ "ขาดวันที่" ของโหมดทุกวัน (ปีเดียวกันทั้งช่วง ใส่ซ้ำไม่จำเป็น)
+const fmtThaiDateShort = dateStr => {
+  const { y, m, d } = parseYMD(dateStr)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+}
 
 // เรียงห้องเรียนสามัญตามธรรมชาติ (ม.1/1, ม.1/2 ... ม.6/x, ปวช.1/1 ...) แบบเดียวกับ printColorRoster
 const roomSortKey = str => {
@@ -181,21 +186,71 @@ function renderDashboard(snapshot) {
           <span style="color:#dc2626">ขาด: <b>${info.students.length}</b></span>
           <span>คิดเป็น: <b>${lvPct}%</b></span>
         </div>
-        ${rows.length ? `<table style="width:100%;border-collapse:collapse;font-size:11px">
+        ${rows.length ? `<table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed">
+          <colgroup><col style="width:32px"><col style="width:70px"><col><col style="width:64px"></colgroup>
           <thead><tr>
-            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;width:36px">เลขที่</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;width:80px">รหัส</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;text-align:left">ชื่อ-สกุล</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 8px;background:#f1f5f9;width:90px">ห้อง</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9">เลขที่</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9">รหัส</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left">ชื่อ-สกุล</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ห้อง</th>
           </tr></thead>
           <tbody>${rows.map((s, i) => `
             <tr>
-              <td style="border:1px solid #cbd5e1;padding:4px 8px;text-align:center">${i + 1}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 8px;text-align:center">${esc(s.student_code)}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 8px">${esc(s.full_name)}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 8px;text-align:center">${esc(s.main_room || '—')}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${i + 1}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${esc(s.student_code)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(s.full_name)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.main_room || '—')}</td>
             </tr>`).join('')}</tbody>
         </table>` : `<p style="text-align:center;color:#059669;font-weight:bold">✅ เช็คชื่อครบทุกคนในชั้นนี้</p>`}
+      </div>`
+    }).join('')
+  }
+
+  // เอกสาร "ทุกวัน" — สร้างครั้งเดียว (ไม่ซ้ำตามจำนวนวัน) ต่อชั้น 1 หน้า ระบุคอลัมน์ "ขาดวันที่"
+  // ว่านักเรียนคนนั้นขาดวันไหนบ้าง (แสดงเฉพาะคนที่ขาดอย่างน้อย 1 วันในช่วงทั้งหมด)
+  const buildAllDaysDocument = () => {
+    const students = studentsOf(gender)
+    const byLevel = {}
+    students.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || { total: 0, rows: [] }); byLevel[lv].total++ })
+    students.forEach(s => {
+      const missed = dayOptions.filter(d => !scannedIdsOn(d.date).has(s.id))
+      if (missed.length) byLevel[levelOf(s.main_room)].rows.push({ ...s, missedDays: missed })
+    })
+    const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
+    const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
+
+    return levels.map((lv, idx) => {
+      const info = byLevel[lv]
+      const rows = [...info.rows].sort(byRoomThenName)
+      return `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding-top:12px">
+        ${logoRow}
+        <div style="text-align:center;margin-bottom:10px">
+          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${gender === 'M' ? 'ชาย' : 'หญิง'}ที่ขาดเช็คชื่อ — สรุปทุกวัน (เข้าสี+วันงานจริง)</h2>
+          <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
+          <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
+        </div>
+        <div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px;font-size:12px">
+          <span>นักเรียนทั้งหมด: <b>${info.total}</b></span>
+          <span style="color:#dc2626">ขาดอย่างน้อย 1 วัน: <b>${rows.length}</b></span>
+        </div>
+        ${rows.length ? `<table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed">
+          <colgroup><col style="width:32px"><col style="width:70px"><col style="width:26%"><col style="width:64px"><col></colgroup>
+          <thead><tr>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9">เลขที่</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9">รหัส</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left">ชื่อ-สกุล</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ห้อง</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left">ขาดวันที่</th>
+          </tr></thead>
+          <tbody>${rows.map((s, i) => `
+            <tr>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${i + 1}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${esc(s.student_code)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(s.full_name)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.main_room || '—')}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;color:#dc2626">${s.missedDays.map(d => esc(fmtThaiDateShort(d.date))).join(', ')}</td>
+            </tr>`).join('')}</tbody>
+        </table>` : `<p style="text-align:center;color:#059669;font-weight:bold">✅ ไม่มีใครขาดเช็คชื่อเลยตลอดช่วงนี้</p>`}
       </div>`
     }).join('')
   }
@@ -233,10 +288,11 @@ function renderDashboard(snapshot) {
         </table>
       </div>`).join('') : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ เช็คชื่อครบทุกคนในวันนี้</div>`
 
-    // เอกสารพิมพ์: โหมดเดียว = วันที่เลือกอยู่ตอนนี้เท่านั้น, โหมดทุกวัน = วนทุกวันในปฏิทิน
+    // เอกสารพิมพ์: โหมดเดียว = วันที่เลือกอยู่ตอนนี้เท่านั้น, โหมดทุกวัน = สรุปครั้งเดียว
+    // (1 หน้าต่อชั้น ไม่ซ้ำตามจำนวนวัน) มีคอลัมน์ "ขาดวันที่" ระบุว่าขาดวันไหนบ้าง
     if (printMode === 'all') {
       root.querySelector('#print-content').innerHTML = dayOptions.length
-        ? dayOptions.map((d, i) => buildDayDocument(d.date, d.label, i === 0)).join('')
+        ? buildAllDaysDocument()
         : `<p style="text-align:center;padding:40px">ไม่มีข้อมูลปฏิทิน</p>`
     } else {
       const dayLabel = dayOptions.find(d => d.date === selectedDay)?.label || selectedDay
@@ -249,14 +305,21 @@ function renderDashboard(snapshot) {
   daySelect.onchange = () => { selectedDay = daySelect.value; render() }
 
   root.querySelector('#btn-export-csv').onclick = () => {
-    const rows = ['วันที่,ห้อง,รหัส,ชื่อ-สกุล']
-    const daysToExport = printMode === 'all' ? dayOptions : [{ date: selectedDay, label: dayOptions.find(d => d.date === selectedDay)?.label || selectedDay }]
-    daysToExport.forEach(d => {
-      const students = studentsOf(gender)
-      const scannedIds = scannedIdsOn(d.date)
-      const absent = students.filter(s => !scannedIds.has(s.id)).sort(byRoomThenName)
-      absent.forEach(s => rows.push([d.label, s.main_room, s.student_code, s.full_name].map(x => `"${String(x || '').replaceAll('"', '""')}"`).join(',')))
-    })
+    const q = x => `"${String(x || '').replaceAll('"', '""')}"`
+    let rows
+    if (printMode === 'all') {
+      // 1 แถวต่อนักเรียน (ไม่ซ้ำตามจำนวนวัน) คอลัมน์ "ขาดวันที่" รวมทุกวันที่ขาดไว้ในเซลล์เดียว
+      const students = studentsOf(gender).filter(s => dayOptions.some(d => !scannedIdsOn(d.date).has(s.id))).sort(byRoomThenName)
+      rows = ['ห้อง,รหัส,ชื่อ-สกุล,ขาดวันที่', ...students.map(s => {
+        const missed = dayOptions.filter(d => !scannedIdsOn(d.date).has(s.id))
+        return [s.main_room, s.student_code, s.full_name, missed.map(d => fmtThaiDateShort(d.date)).join('; ')].map(q).join(',')
+      })]
+    } else {
+      const dayLabel = dayOptions.find(d => d.date === selectedDay)?.label || selectedDay
+      const { absent } = computeAbsent()
+      rows = ['ห้อง,รหัส,ชื่อ-สกุล,วันที่ขาด', ...absent.sort(byRoomThenName)
+        .map(s => [s.main_room, s.student_code, s.full_name, dayLabel].map(q).join(','))]
+    }
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' }))
     a.download = printMode === 'all' ? `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}-ทุกวัน.csv` : `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}-${selectedDay}.csv`
