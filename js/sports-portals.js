@@ -848,7 +848,7 @@ export async function openMyTeamWorkspace() {
     // หมายเหตุ: ตาราง sports_registrations/sports_matches/sports_color_totals/sports_competitions
     // เป็นสคีมาเก่าที่ไม่มีข้อมูลจริง (AZIZGAMES เขียนลง registrations/matches/color_totals/sports แทน)
     // — สลับมาใช้ตารางจริงเพื่อให้ "นักกีฬาในสี" ตรงกับสิ่งที่ลงทะเบียนจริงใน AZIZGAMES
-    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreCriteria,scoreEntries,medalAwards] = await Promise.all([
+    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreCriteria,scoreEntries,medalAwards,campCalendar] = await Promise.all([
       safe(supabase.from('students').select('id,student_code,full_name,main_room,house_color,sports_shirt_size,image_url,photo_url').eq('is_active',true).or(`team_color_id.eq.${c.id},house_color.eq.${c.name}`).order('main_room').order('student_code')),
       safe(supabase.from('sports_team_tasks').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
       safe(supabase.from('sports_team_announcements').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
@@ -862,6 +862,9 @@ export async function openMyTeamWorkspace() {
       safe(supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('display_order')),
       safe(supabase.from('sports_score_entries').select('*').eq('event_id',event.id).eq('team_color_id',c.id)),
       safe(supabase.from('medal_awards').select('medal_type,points,sports(name)').eq('event_id',event.id).eq('team_color_id',c.id)),
+      // ปฏิทินปฏิบัติงาน (work_calendar_events) — ครูตั้งวันที่ "เข้าสีครั้งที่ N" / "กีฬาสี" ไว้ล่วงหน้า
+      // แล้ว ใช้บอกอัตโนมัติว่าวันนี้ตรงกับวันไหน แทนที่จะให้เลือกประเภทเช็คชื่อเองมั่วๆ ทุกครั้ง
+      canAttendance?safe(supabase.from('work_calendar_events').select('id,label,event_date,end_date').or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%')):Promise.resolve([]),
     ])
     const myTotal=totals.find(x=>x.color_name===c.name)||{}
     // ระบบกีฬาสีแข่งแยกเพศชาย-หญิงเด็ดขาด (4 สีต่อเพศ) ห้ามเทียบอันดับ/คะแนนข้ามเพศกัน —
@@ -937,7 +940,7 @@ export async function openMyTeamWorkspace() {
     // เหรียญแยกตามรายการแข่งขัน (medal_awards query ข้างบนกรอง team_color_id ไว้แล้ว) เรียงทอง→เงิน→ทองแดง
     const medalRankOrder={gold:0,silver:1,bronze:2}
     const medalBreakdown=[...(medalAwards||[])].sort((a,b)=>(medalRankOrder[a.medal_type]??3)-(medalRankOrder[b.medal_type]??3)).map(a=>({sport:a.sports?.name||'ไม่ระบุรายการ',medalType:a.medal_type,points:Number(a.points)||0}))
-    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead,theme}
+    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead,theme}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     wrap.querySelector('[data-close]').onclick=()=>wrap.remove();wrap.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal())
     wrap.querySelectorAll('[data-team-tab]').forEach(b=>b.onclick=()=>{tabState.active=b.dataset.teamTab;wrap.querySelectorAll('[data-team-tab]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.teamTab===tabState.active));drawTab()})
@@ -951,7 +954,7 @@ const roleLabel = role => ({lead_teacher:'พ่อสี/แม่สี (ห�
 const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bold ${on?'bg-emerald-500/15 text-emerald-300':'bg-slate-500/15 text-slate-400'}">${on?'เปิดให้ใช้':'ไม่เปิดให้ใช้'} · ${esc(label)}</div>`
 const memberCard = s => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div></div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const kpis=[
@@ -973,7 +976,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='permissions') body.innerHTML=`<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
   else if(tab==='shirts') body.innerHTML=shirtSection(c,shirtReqs,cfg)
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
-  else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,card})
+  else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card})
   else if(tab==='schedule') renderScheduleSection(body,matches,c.name,card)
   else if(tab==='scores') renderScoreMedalSection(body,{totals,colorName:c.name,gender:c.gender,myTotal,scoreRank,medalRank,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,card})
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
@@ -1096,21 +1099,34 @@ async function _loadHtml5QrcodeAtt(){
 // เผื่อไม่ได้พก QR) เห็นได้เฉพาะพ่อสี/แม่สี ครูประจำสี และนักเรียนสต๊าฟที่ได้รับมอบสิทธิ์
 // "attendance" (ดูสิทธิ์ได้ที่แท็บ "สิทธิ์ประจำสี") — สรุปคนขาดออกเป็นรายงาน CSV ให้ครูกิจการ
 // นักเรียนเอาไปหักคะแนนกิจกรรมพัฒนาผู้เรียนนอกระบบ (ระบบนี้ไม่ได้เชื่อมคะแนนให้อัตโนมัติ)
-function renderAttendanceSection(body,{event,c,membersList,attendance,card}){
-  let sessionType='pre_event'
+function renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card}){
+  const todayStr=new Date().toISOString().slice(0,10)
+  // จับคู่วันนี้กับ "ปฏิทินปฏิบัติงาน" ที่ครูตั้งวันเข้าสี/กีฬาสีไว้ล่วงหน้าแล้ว (work_calendar_events)
+  // แทนที่จะให้เลือกประเภทเช็คชื่อเองมั่วๆ ทุกครั้ง — ยังกดสลับมือทับได้เผื่อปฏิทินผิด/ทดสอบระบบ
+  const todayMatch=(campCalendar||[]).find(ev=>todayStr>=ev.event_date && todayStr<=(ev.end_date||ev.event_date))
+  const autoSessionType=todayMatch ? (todayMatch.label.includes('เข้าสี') ? 'pre_event' : 'event_day') : null
+  let sessionType=autoSessionType||'pre_event'
   let attendanceLocal=[...attendance]
   let recentScans=[]
   let html5Qrcode=null, scanning=false, reportAbsent=[]
-  const todayStr=new Date().toISOString().slice(0,10)
+
+  const campBanner=(()=>{
+    if(!todayMatch) return `<div class="rounded-xl px-3 py-2 text-xs font-bold bg-amber-500/10 text-amber-400 mb-3">⚠️ วันนี้ไม่ตรงกับวันเข้าสี/กีฬาสีในปฏิทินปฏิบัติงาน — เลือกประเภทด้วยตนเองด้านล่าง (หรือกำลังทดสอบระบบ)</div>`
+    const isMulti=todayMatch.end_date&&todayMatch.end_date!==todayMatch.event_date
+    const dayNo=isMulti?Math.floor((new Date(todayStr)-new Date(todayMatch.event_date))/86400000)+1:null
+    const totalDays=isMulti?Math.floor((new Date(todayMatch.end_date)-new Date(todayMatch.event_date))/86400000)+1:null
+    return `<div class="rounded-xl px-3 py-2 text-xs font-bold bg-emerald-500/10 text-emerald-400 mb-3">📅 วันนี้ตรงกับ "${esc(todayMatch.label)}"${isMulti?` (วันที่ ${dayNo} จาก ${totalDays})`:''} ในปฏิทินปฏิบัติงาน — ตั้งประเภทเช็คชื่อให้อัตโนมัติแล้ว</div>`
+  })()
 
   body.innerHTML=`<section class="${card}">
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
       <div><h2 class="font-bold">📷 เช็คชื่อเข้าร่วมสี${esc(c.name)}</h2><p class="text-xs muted">สแกน QR ประจำตัวนักเรียน หรือกรอกรหัสด้วยมือ — บันทึกของวันที่ ${todayStr}</p></div>
       <div class="inline-flex p-1 rounded-xl team-sub gap-1">
         <button type="button" data-att-type="pre_event" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏕️ เข้าค่ายสี</button>
         <button type="button" data-att-type="event_day" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏆 วันงานจริง</button>
       </div>
     </div>
+    ${campBanner}
     <div id="att-progress" class="mb-4"></div>
     <div class="grid md:grid-cols-2 gap-4">
       <div class="team-sub rounded-2xl p-4 space-y-3">
