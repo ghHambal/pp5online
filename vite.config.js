@@ -20,6 +20,7 @@ export default defineConfig({
         azizgames:     resolve(__dirname, 'azizgames.html'),
         azfutsal:      resolve(__dirname, 'azfutsal.html'),
         shirtVotePublic: resolve(__dirname, 'shirt-vote-public.html'),
+        sportsAttendanceMonitor: resolve(__dirname, 'sports-attendance-monitor.html'),
       },
     },
     chunkSizeWarningLimit: 600,
