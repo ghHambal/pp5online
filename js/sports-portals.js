@@ -107,13 +107,14 @@ export async function renderStudentSportsHome(student) {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดข้อมูลกีฬาสีของฉัน...</div>'
   try {
     const {event,cfg}=await context()
-    const [{data:color},{data:req},{data:regs},{data:awards},{data:myVote},{data:eligibility}] = await Promise.all([
+    const [{data:color},{data:req},{data:regs},{data:awards},{data:myVote},{data:eligibility},{data:duesStatus}] = await Promise.all([
       supabase.from('team_colors').select('*').eq('id',student.team_color_id || '').maybeSingle(),
       supabase.from('sports_shirt_requests').select('*').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
       supabase.from('registrations').select('id,jersey_number,sports(name,venue)').eq('event_id',event.id).eq('student_id',student.id),
       supabase.from('outstanding_athletes').select('id,note,awarded_at,sports(name)').eq('event_id',event.id).eq('student_id',student.id),
       supabase.from('sports_shirt_votes').select('design_id,sports_shirt_designs(design_no,name,sports_shirt_design_colors(*))').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
       supabase.rpc('get_my_sports_eligibility',{p_event:event.id}).then(r=>({data:r.error?null:r.data})).catch(()=>({data:null})),
+      supabase.rpc('get_my_sports_dues_status',{p_event:event.id}).then(r=>({data:r.error?null:r.data})).catch(()=>({data:null})),
     ])
     const c=color || {name:student.house_color,hex_color:'#64748b',logo_url:null}
     const myVoteColors=(myVote?.sports_shirt_designs?.sports_shirt_design_colors||[]).filter(x=>x.image_url)
@@ -142,6 +143,7 @@ export async function renderStudentSportsHome(student) {
         </section>
       </div>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">⚽ รายการแข่งขันของฉัน</h2>${regs?.length?`<div class="space-y-2">${regs.map(r=>`<div class="p-3 bg-gray-50 rounded-xl flex justify-between"><div><b>${esc(r.sports?.name)}</b><p class="text-xs text-gray-500">${esc(r.sports?.venue||'ยังไม่ระบุสถานที่')}</p></div><span class="text-xs text-indigo-600">${r.jersey_number?`หมายเลข ${esc(r.jersey_number)}`:'ลงทะเบียนแล้ว'}</span></div>`).join('')}</div>`:'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีรายการที่สต๊าฟลงทะเบียนให้</p>'}</section>
+      <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between items-start"><h2 class="font-bold">💰 ค่าบำรุงสี</h2><span class="px-2 py-1 rounded-full text-xs font-bold ${duesStatus?.paid?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-700'}">${duesStatus?.paid?'จ่ายแล้ว':'ยังไม่จ่าย'}</span></div>${duesStatus?.paid?`<p class="text-3xl font-black mt-3">${Number(duesStatus.amount||0).toLocaleString('th-TH')} บาท</p><p class="text-xs text-gray-500 mt-1">ชำระเมื่อ ${duesStatus.paid_at?new Date(duesStatus.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—'}</p><p class="text-xs text-gray-500">ผู้รับชำระ: ${esc(duesStatus.collected_by_name||'ไม่ระบุ')}</p>`:`<p class="text-sm text-gray-400 mt-3">ยังไม่ได้ชำระค่าบำรุงสี ${Number(duesStatus?.amount||30).toLocaleString('th-TH')} บาท — ติดต่อพ่อสี/แม่สีหรือสต๊าฟประจำสีเพื่อชำระ</p>`}</section>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">🏅 ผลงานและเกียรติบัตร</h2>${awards?.length?awards.map(a=>`<div class="p-3 rounded-xl bg-amber-50"><b>${esc(a.sports?.name||'รางวัลนักกีฬาดีเด่น')}</b><p class="text-sm">${esc(a.note)}</p></div>`).join(''):'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีเกียรติบัตรหรือรางวัล</p>'}</section>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-3">🎖️ เกียรติบัตรกีฬาสี</h2>${!eligibility ? '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีข้อมูล</p>' : eligibility.eligible ? (
         eligibility.certificate_url
@@ -1068,7 +1070,7 @@ const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bo
 // (ไม่แสดงป้ายเลยดีกว่าแสดงป้าย "แดง/ยังไม่จ่าย" มั่วๆ ทั้งที่จริงๆ แค่ไม่มีสิทธิ์ดึงข้อมูลมา)
 const memberCard = (s,duesPaidIds) => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0 flex-1"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div>${duesPaidIds?(duesPaidIds.has(s.id)?'<span class="status-pill status-done flex-shrink-0">💰 จ่ายแล้ว</span>':'<span class="status-pill bg-red-500/15 text-red-400 flex-shrink-0">💰 ยังไม่จ่าย</span>'):''}</div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,isLead}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,isLead}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const kpis=[
