@@ -7,6 +7,7 @@ import {
 } from './api.js'
 import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
+import { _readingGrade, applyReadingGradesFromConfig } from './teacher-views-utils.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -299,10 +300,7 @@ function _calcGrade(pct) {
 }
 
 function _evalLabel(pct) {
-  if (pct >= 80) return 'ดีเยี่ยม'
-  if (pct >= 65) return 'ดี'
-  if (pct >= 50) return 'ผ่าน'
-  return 'ไม่ผ่าน'
+  return _readingGrade(pct).label
 }
 
 // ─── Data Loader ──────────────────────────────────────────────────────────────
@@ -310,6 +308,7 @@ function _evalLabel(pct) {
 async function _loadDocData(classId) {
   // โหลด cfg ก่อนเพื่อเอา year/semester
   const cfg = await getSystemConfig()
+  applyReadingGradesFromConfig(cfg)
   const academicYear = parseInt(cfg.academicYear ?? cfg.academic_year ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
 

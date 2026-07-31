@@ -19,7 +19,7 @@ import { showToast, showDangerConfirm, showSuccessModal } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
   _generateSessions, _dateInputValue, ATT_STATUS, ATT_CYCLE,
-  READING_GRADES, _readingGrade,
+  READING_GRADES, _readingGrade, applyReadingGradesFromConfig,
 } from './teacher-views-utils.js'
 
 const CAMERA_ICON_SM = `
@@ -2386,6 +2386,7 @@ export async function renderReadingScore(teacher, initialRoom = null) {
   const cfg  = await getSystemConfig().catch(()=>({}))
   const year = parseInt(cfg.academicYear ?? 2568)
   const sem  = parseInt(cfg.semester ?? 1)
+  applyReadingGradesFromConfig(cfg)
 
   // โหลดห้องที่ครูสอน (ทุกห้องของครูคนนี้)
   const myClasses = teacher ? await getMyClasses(teacher.id).catch(()=>[]) : []

@@ -12,7 +12,7 @@ import { showToast } from './ui.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
-  setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade,
+  setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade, applyReadingGradesFromConfig,
 } from './teacher-views-utils.js'
 
 export function renderGrades() {
@@ -70,6 +70,7 @@ export async function renderGradesGrid(teacher, classData) {
       getSystemConfig().catch(()=>({})),
       teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
     ])
+    applyReadingGradesFromConfig(sysCfg)
 
     // ตรวจหาวิชาเดียวกันในห้องอื่น (หน่วงหลัง render)
     if (classData.course_id && rawCols.length === 0) {

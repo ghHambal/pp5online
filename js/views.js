@@ -53,6 +53,7 @@ import {
   syncSubjectCatalog,
   syncStudentsFromSheetNow,
 } from './sync.js'
+import { READING_GRADES, _readingGrade, applyReadingGradesFromConfig, _htmlEsc } from './teacher-views-utils.js'
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 function _grade(room) {
@@ -5684,14 +5685,7 @@ function _openModal(col, year, sem, onSave) {
 }
 
 // ─── Reading Score Eval Helpers ───────────────────────────────────────────────
-const _RS_GRADES = [
-  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50' },
-  { label: 'ดี',       min: 65, cls: 'text-blue-700 bg-blue-50' },
-  { label: 'พอใช้',   min: 50, cls: 'text-yellow-700 bg-yellow-50' },
-  { label: 'ปรับปรุง', min: 0,  cls: 'text-red-600 bg-red-50' },
-]
-const _rsGrade = (s) => _RS_GRADES.find(g => s >= g.min) ?? _RS_GRADES[3]
-const _rsBadge = (s) => { const g = _rsGrade(s); return `<span class="px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${g.cls}">${g.label}</span>` }
+const _rsBadge = (s) => { const g = _readingGrade(s); return `<span class="px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${g.cls}">${g.label}</span>` }
 
 // ─── Admin: คะแนนอ่านคิดวิเคราะห์และเขียน ────────────────────────────────────
 export async function renderReadingAdmin() {
@@ -5701,6 +5695,7 @@ export async function renderReadingAdmin() {
   const cfg  = await getSystemConfig().catch(()=>({}))
   const year = parseInt(cfg.academicYear ?? 2568)
   const sem  = parseInt(cfg.semester ?? 1)
+  applyReadingGradesFromConfig(cfg)
 
   const _colRow = (c) => `
     <tr class="hover:bg-gray-50 transition" data-id="${c.id}">
@@ -5901,7 +5896,7 @@ export async function renderReadingAdmin() {
           const total = columns.reduce((sum,c) => sum + (scoreMap[s.id]?.[c.id] ?? 0), 0)
           if (total > 0) {
             const score100 = total / 2
-            evalMap[s.id] = { label: _rsGrade(score100).label, score100 }
+            evalMap[s.id] = { label: _readingGrade(score100).label, score100 }
           }
         }
         const classes = await getAllClassesForFill()
@@ -5954,9 +5949,32 @@ export async function renderReadingAdmin() {
               <span class="text-xs text-gray-400 w-20 flex-shrink-0">คอลัมน์:</span>
               <input type="text" id="rsa-eval-col" value="${cfg.readingEvalClassSheetCol??''}" placeholder="เช่น EZ"
                 class="w-24 text-xs border border-gray-200 rounded-lg px-3 py-1.5 font-mono uppercase bg-white focus:outline-none focus:ring-2 focus:ring-violet-300" maxlength="4" />
-              <span class="text-xs text-gray-400">คอลัมน์ในชีทรายวิชาครูสำหรับเก็บผลการประเมิน (ดีเยี่ยม/ดี/พอใช้/ปรับปรุง)</span>
+              <span class="text-xs text-gray-400">คอลัมน์ในชีทรายวิชาครูสำหรับเก็บผลการประเมิน (${READING_GRADES.map(g=>g.label).join('/')})</span>
               <button id="rsa-save-eval-col" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition flex-shrink-0">บันทึก</button>
             </div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-4">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+          <h3 class="text-sm font-semibold text-gray-700">🎯 เกณฑ์การประเมิน</h3>
+          <span class="ml-auto text-xs text-gray-400">คำนวณจากคะแนนรวมแปลงเป็น 100 คะแนน</span>
+        </div>
+        <div class="px-5 py-4 space-y-2">
+          ${READING_GRADES.map((g, i) => `
+            <div class="flex items-center gap-2" data-rsa-grade-row="${i}">
+              <span class="text-xs text-gray-400 w-24 flex-shrink-0">ระดับที่ ${i+1}:</span>
+              <input type="text" data-rsa-label value="${_htmlEsc(g.label)}"
+                class="w-28 text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-300" />
+              <span class="text-xs text-gray-400">คะแนนตั้งแต่</span>
+              <input type="number" data-rsa-min value="${g.min}" min="0" max="100" ${i === READING_GRADES.length-1 ? 'disabled' : ''}
+                class="w-20 text-sm text-center border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 ${i === READING_GRADES.length-1 ? 'bg-gray-50 text-gray-400' : ''}" />
+              <span class="text-xs text-gray-400">${i === READING_GRADES.length-1 ? 'ลงไป (ต่ำสุดเสมอ)' : 'ขึ้นไป'}</span>
+            </div>`).join('')}
+          <div class="flex items-center gap-2 pt-2">
+            <button id="rsa-save-grades" class="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 transition">บันทึกเกณฑ์</button>
+            <span id="rsa-grades-err" class="text-xs text-red-500"></span>
           </div>
         </div>
       </div>`
@@ -6000,6 +6018,28 @@ export async function renderReadingAdmin() {
         setTimeout(()=>{ btn.disabled=false; btn.textContent='บันทึก'; btn.style.background='' },1500)
         showToast('บันทึกคอลัมน์ผลประเมินแล้ว','success')
       } catch { showToast('บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='บันทึก' }
+    })
+    document.getElementById('rsa-save-grades')?.addEventListener('click', async () => {
+      const btn = document.getElementById('rsa-save-grades')
+      const errEl = document.getElementById('rsa-grades-err')
+      errEl.textContent = ''
+      const rows = [...document.querySelectorAll('[data-rsa-grade-row]')].map((row, i) => ({
+        label: row.querySelector('[data-rsa-label]').value.trim(),
+        min: i === READING_GRADES.length - 1 ? 0 : parseFloat(row.querySelector('[data-rsa-min]').value),
+      }))
+      if (rows.some(r => !r.label)) { errEl.textContent = 'กรอกชื่อระดับให้ครบทุกช่อง'; return }
+      if (rows.some(r => Number.isNaN(r.min) || r.min < 0 || r.min > 100)) { errEl.textContent = 'คะแนนต้องอยู่ระหว่าง 0-100'; return }
+      for (let i = 0; i < rows.length - 1; i++) {
+        if (rows[i].min <= rows[i + 1].min) { errEl.textContent = 'คะแนนแต่ละระดับต้องเรียงจากมากไปน้อย'; return }
+      }
+      btn.disabled = true; btn.textContent = '⏳'
+      try {
+        await updateSystemConfig('readingEvalThresholds', JSON.stringify(rows))
+        applyReadingGradesFromConfig({ readingEvalThresholds: JSON.stringify(rows) })
+        btn.textContent = '✅'; btn.style.background = '#16a34a'
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกเกณฑ์'; btn.style.background = '' }, 1500)
+        showToast('บันทึกเกณฑ์การประเมินแล้ว', 'success')
+      } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false; btn.textContent = 'บันทึกเกณฑ์' }
     })
   }
 

@@ -44,12 +44,26 @@ export function getMainContentRef() { return _realMainContent }
 export function setMainContentRef(el) { _realMainContent = el }
 
 export const READING_GRADES = [
-  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50' },
-  { label: 'ดี',       min: 65, cls: 'text-blue-700 bg-blue-50' },
-  { label: 'พอใช้',   min: 50, cls: 'text-yellow-700 bg-yellow-50' },
-  { label: 'ปรับปรุง', min: 0,  cls: 'text-red-600 bg-red-50' },
+  { label: 'ดีเยี่ยม', min: 70, cls: 'text-emerald-700 bg-emerald-50' },
+  { label: 'ดี',       min: 60, cls: 'text-blue-700 bg-blue-50' },
+  { label: 'ผ่าน',     min: 50, cls: 'text-yellow-700 bg-yellow-50' },
+  { label: 'ไม่ผ่าน',  min: 0,  cls: 'text-red-600 bg-red-50' },
 ]
-export const _readingGrade = (s) => READING_GRADES.find(g => s >= g.min) ?? READING_GRADES[3]
+// เกณฑ์เริ่มต้นข้างบน ถูกทับได้จากค่าที่แอดมินตั้งไว้ (system_config key: readingEvalThresholds)
+// เก็บเป็น const แต่ mutate ค่าใน object แต่ละตัวแทนการ reassign เพื่อให้ทุกไฟล์ที่ import อาร์เรย์นี้เห็นค่าล่าสุดพร้อมกัน
+export function applyReadingGradesFromConfig(cfg) {
+  const raw = cfg?.readingEvalThresholds
+  if (!raw) return
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    if (!Array.isArray(parsed) || parsed.length !== READING_GRADES.length) return
+    parsed.forEach((g, i) => {
+      if (typeof g?.label === 'string' && g.label) READING_GRADES[i].label = g.label
+      if (typeof g?.min === 'number' && !Number.isNaN(g.min)) READING_GRADES[i].min = g.min
+    })
+  } catch { /* ค่าเสีย ใช้ค่าเริ่มต้นต่อไป */ }
+}
+export const _readingGrade = (s) => READING_GRADES.find(g => s >= g.min) ?? READING_GRADES[READING_GRADES.length - 1]
 
 export const ATT_STATUS = {
   present: { label: 'ม', color: 'text-emerald-600 font-bold', bg: 'bg-emerald-50' },

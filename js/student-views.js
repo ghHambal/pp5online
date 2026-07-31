@@ -15,6 +15,7 @@ import {
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
+import { _readingGrade, applyReadingGradesFromConfig } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { APP_VERSION } from './version.js?v=10.18.25'
@@ -111,13 +112,6 @@ function _malePrayerLocationError(student, locationId) {
 
   return ''
 }
-
-const READING_EVAL_GRADES = [
-  { label: 'ดีเยี่ยม', min: 80, cls: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
-  { label: 'ดี', min: 65, cls: 'text-blue-700 bg-blue-50 border-blue-100' },
-  { label: 'พอใช้', min: 50, cls: 'text-yellow-700 bg-yellow-50 border-yellow-100' },
-  { label: 'ปรับปรุง', min: 0, cls: 'text-red-600 bg-red-50 border-red-100' },
-]
 
 function _hexToRgb(hex) {
   const safe = /^#[0-9a-f]{6}$/i.test(String(hex ?? '')) ? hex : '#059669'
@@ -389,10 +383,6 @@ function _generatePrayerWeeks(startValue, records = []) {
 function _scoreRows(columns, scores) {
   const map = Object.fromEntries((scores ?? []).map(s => [s.column_id, s.score]))
   return (columns ?? []).map(c => ({ ...c, score: map[c.id] ?? null }))
-}
-
-function _readingEvalGrade(score100) {
-  return READING_EVAL_GRADES.find(g => score100 >= g.min) ?? READING_EVAL_GRADES[READING_EVAL_GRADES.length - 1]
 }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
@@ -1203,6 +1193,7 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
   </div>`)
 
   const cfg = await getSystemConfig().catch(()=>({}))
+  applyReadingGradesFromConfig(cfg)
   const year = cfg.academicYear
   const sem = cfg.semester
   const [life, reading, prayers] = await Promise.all([
@@ -1216,7 +1207,7 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
   const readingTotal = readingRows.reduce((sum, r) => sum + (parseFloat(r.score) || 0), 0)
   const readingMax = readingRows.reduce((sum, r) => sum + (parseFloat(r.max_score) || 0), 0)
   const readingScore100 = readingMax > 0 ? Math.round((readingTotal / readingMax) * 1000) / 10 : 0
-  const readingEval = readingTotal > 0 ? _readingEvalGrade(readingScore100) : null
+  const readingEval = readingTotal > 0 ? _readingGrade(readingScore100) : null
   const prayerMap = Object.fromEntries((prayers ?? []).map(r => [r.check_date, r.status]))
   const weeks = _generatePrayerWeeks(cfg.semester_start, prayers ?? [])
   const allPrayerDays = weeks.flatMap(w => w.days)
