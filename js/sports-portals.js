@@ -144,7 +144,7 @@ export async function renderStudentSportsHome(student) {
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">🏅 ผลงานและเกียรติบัตร</h2>${awards?.length?awards.map(a=>`<div class="p-3 rounded-xl bg-amber-50"><b>${esc(a.sports?.name||'รางวัลนักกีฬาดีเด่น')}</b><p class="text-sm">${esc(a.note)}</p></div>`).join(''):'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีเกียรติบัตรหรือรางวัล</p>'}</section>
       <button id="open-full-sports" class="w-full py-4 rounded-2xl bg-slate-900 text-white font-bold text-base">🏆 เปิดระบบกีฬาสีแบบเต็ม</button>
     </div>`
-    el.querySelector('#open-full-sports')?.addEventListener('click',()=>openAzizGamesModal())
+    el.querySelector('#open-full-sports')?.addEventListener('click',()=>openSportsChoiceModal(student))
     el.querySelector('#open-shirt-vote')?.addEventListener('click',()=>openShirtVoteModal(student,event,cfg))
     el.querySelector('#my-vote-expand')?.addEventListener('click',()=>openImageLightbox(myVoteColors[myVoteColorPtr]?.image_url))
     el.querySelectorAll('[data-my-vote-color]').forEach(b=>b.addEventListener('click',()=>{
@@ -174,6 +174,29 @@ export function openImageLightbox(url) {
   document.body.appendChild(m)
   m.querySelector('#btn-shirt-lightbox-close').onclick=()=>m.remove()
   m.addEventListener('click',e=>{ if(e.target===m) m.remove() })
+}
+
+// ป๊อบอัพให้นักเรียนเลือกก่อนเข้าระบบกีฬาสี: ระบบหลัก (ภาพรวมทุกสี ผ่าน AZIZGAMES) หรือ
+// "สีของฉัน" (ดูเฉพาะข้อมูลสีตัวเอง หน้าตาเหมือนที่ครู/สต๊าฟใช้ แต่ดูอย่างเดียว)
+function openSportsChoiceModal(student) {
+  document.getElementById('sports-choice-modal')?.remove()
+  const m=document.createElement('div'); m.id='sports-choice-modal'; m.className='fixed inset-0 z-[340] bg-black/50 flex items-center justify-center p-6 animate-fade'
+  m.innerHTML=`
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
+      <div class="text-3xl mb-2">🏆</div>
+      <h3 class="font-bold text-gray-800 text-base mb-1">เลือกระบบกีฬาสี</h3>
+      <p class="text-sm text-gray-600 mb-5">ต้องการเข้าดูข้อมูลแบบไหน?</p>
+      <div class="flex flex-col gap-3">
+        <button id="btn-sports-choice-main" class="py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm">🏆 ระบบกีฬาสีหลัก<br><span class="font-normal text-xs opacity-70">ภาพรวมทุกสี ผล/ตาราง/คะแนนรวม</span></button>
+        <button id="btn-sports-choice-mine" class="py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-sm">🎨 สีของฉัน<br><span class="font-normal text-xs opacity-70">ดูเฉพาะข้อมูลสี${esc(student.house_color||'')}ของฉัน</span></button>
+        <button id="btn-sports-choice-cancel" class="py-2.5 rounded-2xl border-2 border-gray-200 text-gray-600 font-semibold text-sm hover:bg-gray-50">ยกเลิก</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(m)
+  m.querySelector('#btn-sports-choice-cancel').onclick=()=>m.remove()
+  m.querySelector('#btn-sports-choice-main').onclick=()=>{m.remove();openAzizGamesModal()}
+  m.querySelector('#btn-sports-choice-mine').onclick=()=>{m.remove();openMyColorAsStudent(student)}
 }
 
 export function openConfirmVoteModal(design,cfg,onConfirm) {
@@ -837,9 +860,44 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
 
 export async function openMyTeamWorkspace() {
   const old=document.getElementById('my-team-workspace');old?.remove(); const wrap=document.createElement('div');wrap.id='my-team-workspace';wrap.className='fixed inset-0 bg-slate-950 text-slate-100 overflow-hidden';wrap.style.zIndex='350';wrap.innerHTML='<div class="py-20 text-center">กำลังโหลดจัดการสีของฉัน...</div>';document.body.appendChild(wrap)
-  try { const {data:{user}}=await supabase.auth.getUser(); const {data:members,error}=await supabase.from('sports_team_memberships').select('*,team_colors(*)').eq('profile_id',user.id).eq('is_active',true);if(error)throw error;const m=members?.[0];if(!m){wrap.innerHTML='<button class="absolute right-4 top-4" data-close>✕</button><div class="py-24 text-center">ยังไม่ได้รับแต่งตั้งให้ดูแลคณะสี</div>';wrap.querySelector('[data-close]').onclick=()=>wrap.remove();return}const c=m.team_colors;
+  try {
+    const {data:{user}}=await supabase.auth.getUser()
+    const {data:members,error}=await supabase.from('sports_team_memberships').select('*,team_colors(*)').eq('profile_id',user.id).eq('is_active',true)
+    if(error)throw error
+    const m=members?.[0]
+    if(!m){wrap.innerHTML='<button class="absolute right-4 top-4" data-close>✕</button><div class="py-24 text-center">ยังไม่ได้รับแต่งตั้งให้ดูแลคณะสี</div>';wrap.querySelector('[data-close]').onclick=()=>wrap.remove();return}
+    await renderColorWorkspace(wrap,m,m.team_colors)
+  } catch(e){console.error(e);wrap.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
+}
+
+// หน้า "สีของฉัน" แบบดูอย่างเดียวสำหรับนักเรียนทั่วไป (ไม่ต้องมีสิทธิ์ครู/สต๊าฟ)
+// ใช้ renderColorWorkspace ตัวเดียวกับหน้าจัดการของครู แต่บังคับ canAttendance=false และ
+// isLead=false เสมอ (studentView) เพราะแท็บเช็คชื่อให้แก้ไขข้อมูลการเข้าแถวของคนอื่นได้ —
+// นักเรียนทั่วไปไม่ควรมีสิทธิ์นี้เด็ดขาด (เสี่ยงมาร์กเช็คชื่อปลอมให้ตัวเอง/เพื่อน)
+export async function openMyColorAsStudent(student) {
+  const old=document.getElementById('my-team-workspace');old?.remove(); const wrap=document.createElement('div');wrap.id='my-team-workspace';wrap.className='fixed inset-0 bg-slate-950 text-slate-100 overflow-hidden';wrap.style.zIndex='350';wrap.innerHTML='<div class="py-20 text-center">กำลังโหลดสีของฉัน...</div>';document.body.appendChild(wrap)
+  try {
+    const {event}=await context()
+    let q=supabase.from('team_colors').select('*').eq('event_id',event.id)
+    q=student.team_color_id?q.eq('id',student.team_color_id):q.eq('name',student.house_color||'')
+    const {data:c,error}=await q.maybeSingle()
+    if(error)throw error
+    if(!c){wrap.innerHTML='<button class="absolute right-4 top-4" data-close>✕</button><div class="py-24 text-center">ยังไม่พบข้อมูลสีของคุณ</div>';wrap.querySelector('[data-close]').onclick=()=>wrap.remove();return}
+    const {data:{user}}=await supabase.auth.getUser()
+    const m={role:'student',profile_id:user?.id||null,permissions:{}}
+    await renderColorWorkspace(wrap,m,c,{studentView:true})
+  } catch(e){console.error(e);wrap.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
+}
+
+async function renderColorWorkspace(wrap,m,c,opts={}) {
+  const studentView=!!opts.studentView
+  try {
     const safe=async p=>{const {data,error}=await p;if(error){console.warn(error);return []}return data||[]}
-    const perms=m.permissions||{}, isLead=m.role==='lead_teacher', canMembers=perms.members!==false, canReg=perms.registrations!==false, canTasks=perms.tasks!==false, canAnn=perms.announcements!==false, canShirt=perms.shirt_summary!==false, canAttendance=perms.attendance!==false
+    // นักเรียนทั่วไป (studentView) ไม่มีแถวใน sports_team_memberships จริง ทำให้ RLS ของตาราง
+    // sports_team_tasks/sports_team_announcements/sports_team_identity_requests (is_team_member())
+    // และ sports_shirt_requests (เห็นแค่แถวตัวเอง) บล็อกการอ่านข้อมูลจริงอยู่แล้ว — ถ้าเปิดแท็บ
+    // เหล่านี้ให้นักเรียนจะเห็นแค่ "ว่างเปล่า"/ข้อมูลไม่ครบ ดูเหมือนระบบพัง จึงปิดแท็บไปเลยดีกว่า
+    const perms=m.permissions||{}, isLead=!studentView&&m.role==='lead_teacher', canMembers=perms.members!==false, canReg=perms.registrations!==false, canTasks=!studentView&&perms.tasks!==false, canAnn=!studentView&&perms.announcements!==false, canShirt=!studentView&&perms.shirt_summary!==false, canAttendance=!studentView&&perms.attendance!==false
     const theme=localStorage.getItem('sports_team_theme')||'dark'; wrap.dataset.theme=theme
     const [{event,cfg},{data:pub},{data:headerRows}] = await Promise.all([context(),supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle(),supabase.from('settings').select('key,value').in('key',['school_name','school_name_2'])])
     const publicButtons=pub?.value&&typeof pub.value==='object'?pub.value:{}
@@ -885,7 +943,7 @@ export async function openMyTeamWorkspace() {
       ['work','งาน/ประกาศ','📋',canTasks||canAnn],
       ['schedule','ตาราง/ผล','🗓️',true],
       ['scores','คะแนน/เหรียญ','🏅',true],
-      ['identity','อัตลักษณ์','🎨',true],
+      ['identity','อัตลักษณ์','🎨',!studentView],
     ].filter(x=>x[3])
     wrap.innerHTML=`<style>
       @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap');
@@ -928,7 +986,7 @@ export async function openMyTeamWorkspace() {
       @keyframes status-pulse{0%,100%{opacity:1}50%{opacity:.55}}
       @media (max-width:480px){#my-team-workspace .team-head b{font-size:.95rem}#my-team-workspace table{font-size:12px}#my-team-workspace .team-card{padding:1rem!important}}
       @media (max-width:639px){#team-tab-body{height:calc(100vh - 132px)}}
-    </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>จัดการทีมสี${esc(c.name)}</b></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs hidden sm:block border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main><nav id="team-bottom-nav" class="team-tabs sm:hidden fixed bottom-0 inset-x-0 z-40 flex border-t safe-area-bottom"></nav>`
+    </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>${studentView?'สีของฉัน':'จัดการทีมสี'}${esc(c.name)}</b></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs hidden sm:block border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main><nav id="team-bottom-nav" class="team-tabs sm:hidden fixed bottom-0 inset-x-0 z-40 flex border-t safe-area-bottom"></nav>`
     // รายละเอียดคะแนนแยกเกณฑ์ (เฉลี่ยจากกรรมการทุกคนที่ให้คะแนนเกณฑ์นั้นแล้ว) — เฉพาะสีเราเอง
     // เพราะ sports_score_entries query ข้างบนกรอง team_color_id ไว้แล้ว
     const scoreBreakdown=(scoreCriteria||[]).map(crit=>{
