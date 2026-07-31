@@ -4,7 +4,7 @@ import {
   getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
   detectAssignmentKind, getSheetColumnOptions,
   getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
-  syncAutoAttendanceScoreColumns,
+  syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
   getReadingScoreColumns, getReadingScores,
   getTeacherExamRequests, updateExamResult,
 } from './api.js'
@@ -681,6 +681,10 @@ export async function renderGradesGrid(teacher, classData) {
           </div>
           <span class="flex-1 text-xs text-gray-700 truncate">${col.assignment_name||'—'}${isDupSurplus ? ' <span class="text-amber-600 font-semibold">(ซ้ำ)</span>' : ''}</span>
           <span class="text-[11px] text-gray-400">/${col.max_score||0}</span>
+          ${!locked ? `
+          <button class="mcm-sync-toggle text-[10px] font-semibold px-1.5 py-0.5 rounded-lg flex-shrink-0 ${col.auto_attendance_sync ? 'bg-emerald-50 text-emerald-700' : 'text-gray-300 hover:bg-gray-100 hover:text-gray-500'}"
+            data-colid="${col.id}"
+            title="${col.auto_attendance_sync ? 'ปิดใช้งานดึงคะแนนจากเช็คชื่ออัตโนมัติ' : 'เปิดใช้งานดึงคะแนนจากเช็คชื่ออัตโนมัติ — sync ทุกครั้งที่เปิดหน้าบันทึกคะแนน ข้ามคนที่เคยแก้คะแนนด้วยมือ'}">🔄</button>` : ''}
           ${truelyLocked
             ? `<span class="text-[10px] text-emerald-700 font-semibold">ล็อก</span>`
             : `<button class="mcm-del text-gray-300 hover:text-red-400 text-lg transition-colors px-1 rounded hover:bg-red-50"
@@ -811,6 +815,34 @@ export async function renderGradesGrid(teacher, classData) {
             await updateColumnSortOrders([{ id: a.id, sort_order: bOrder }, { id: b.id, sort_order: aOrder }])
             _renderGrid()
             _rerenderColLists()
+          })
+        })
+        // rebind auto-attendance-sync toggle
+        modal.querySelectorAll('.mcm-sync-toggle').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const colId = parseInt(btn.dataset.colid)
+            const col = [...midCols, ...finalCols].find(c => c.id === colId)
+            if (!col) return
+            const next = !col.auto_attendance_sync
+            const _doToggle = async () => {
+              try {
+                await setColumnAutoAttendanceSync(colId, next)
+                col.auto_attendance_sync = next
+                showToast(next
+                  ? 'เปิดใช้งานแล้ว — คะแนนจะดึงจากเช็คชื่อให้อัตโนมัติทุกครั้งที่เปิดหน้านี้ ✅'
+                  : 'ปิดใช้งานแล้ว', 'success')
+                _rerenderColLists()
+              } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
+            }
+            if (next) {
+              _mcmConfirm(
+                `เปิดใช้งานดึงคะแนนจากเช็คชื่ออัตโนมัติให้คอลัมน์ <span class="font-semibold">"${col.assignment_name}"</span>?<br/>` +
+                `<span class="text-xs text-gray-500">ระบบจะคำนวณ %มาเรียนใส่ให้ทุกครั้งที่เปิดหน้าบันทึกคะแนน — คนที่เคยแก้คะแนนด้วยมือไว้ก่อนจะไม่ถูกทับ</span>`,
+                _doToggle,
+              )
+            } else {
+              _doToggle()
+            }
           })
         })
         // rebind delete buttons after re-render
