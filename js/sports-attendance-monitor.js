@@ -298,7 +298,17 @@ function renderDashboard(snapshot) {
         </div>
         <table class="w-full text-xs">
           <tbody>${byRoom[room].sort((a, b) => a.full_name.localeCompare(b.full_name, 'th')).map(s => `
-            <tr class="border-t border-slate-100"><td class="p-2 w-24 text-slate-500">${esc(s.student_code)}</td><td class="p-2">${esc(s.full_name)}</td></tr>
+            <tr class="border-t border-slate-100">
+              <td class="p-2 w-24 text-slate-500">${esc(s.student_code)}</td>
+              <td class="p-2">
+                <div class="flex items-center gap-2">
+                  ${s.photo_url
+                    ? `<img src="${esc(s.photo_url)}" alt="" class="w-7 h-9 rounded-md object-cover border border-slate-200 bg-slate-100 flex-shrink-0 shadow-sm" loading="lazy">`
+                    : `<div class="w-7 h-9 rounded-md bg-slate-100 text-slate-400 grid place-items-center flex-shrink-0 border border-slate-200 text-[10px] font-bold">${esc((s.full_name || '?').charAt(0))}</div>`}
+                  <span>${esc(s.full_name)}</span>
+                </div>
+              </td>
+            </tr>
           `).join('')}</tbody>
         </table>
       </div>`).join('') : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ เช็คชื่อครบทุกคนในวันนี้</div>`
