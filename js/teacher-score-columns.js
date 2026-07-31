@@ -1,6 +1,6 @@
 import { getScoreColumns, getSystemConfig, getLifeSkillColumns,
          createScoreColumn, updateScoreColumn, deleteScoreColumn,
-         updateColumnSortOrders, getMyClasses } from './api.js'
+         updateColumnSortOrders, getMyClasses, setColumnAutoAttendanceSync } from './api.js'
 import { showToast } from './ui.js'
 
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
@@ -298,7 +298,13 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         <td class="px-4 py-2.5 text-right whitespace-nowrap">
           ${locked
             ? `<span class="text-xs text-emerald-700 font-medium">ระบบล็อก</span>`
-            : `<button onclick="window._editScoreCol(${c.id})" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-2">แก้ไข</button>
+            : `${ctype === 'regular' ? `
+               <button onclick="window._toggleAutoSync(${c.id})"
+                 title="${c.auto_attendance_sync ? 'ปิดใช้งานดึงคะแนนจากเช็คชื่ออัตโนมัติ' : 'เปิดใช้งานดึงคะแนนจากเช็คชื่ออัตโนมัติ — sync ทุกครั้งที่เปิดหน้าบันทึกคะแนน ข้ามคนที่เคยแก้คะแนนด้วยมือ'}"
+                 class="text-xs font-medium mr-2 px-2 py-1 rounded-lg ${c.auto_attendance_sync ? 'bg-emerald-50 text-emerald-700' : 'text-gray-400 hover:bg-gray-100'}">
+                 ${c.auto_attendance_sync ? '🔄 ดึงจากเช็คชื่ออัตโนมัติ' : '🔄 ดึงจากเช็คชื่อ'}
+               </button>` : ''}
+               <button onclick="window._editScoreCol(${c.id})" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium mr-2">แก้ไข</button>
                <button onclick="window._deleteScoreCol(${c.id})" class="text-xs text-red-400 hover:text-red-600 font-medium">ลบ</button>`}
         </td>
       </tr>`
@@ -609,6 +615,30 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           await deleteScoreColumn(id); showToast('ลบแล้ว ✅', 'success'); await _reload()
         } catch { showToast('ลบไม่สำเร็จ', 'error') }
       })
+    }
+
+    window._toggleAutoSync = async (id) => {
+      const col = window._scoreColCache?.[id]
+      if (!col) return
+      const next = !col.auto_attendance_sync
+      const doToggle = async () => {
+        try {
+          await setColumnAutoAttendanceSync(id, next)
+          showToast(next
+            ? 'เปิดใช้งานแล้ว — คะแนนจะดึงจากเช็คชื่อให้อัตโนมัติทุกครั้งที่เปิดหน้าบันทึกคะแนน ✅'
+            : 'ปิดใช้งานแล้ว', 'success')
+          await _reload()
+        } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
+      }
+      if (next) {
+        _showConfirm(
+          `เปิดใช้งานดึงคะแนนจากเช็คชื่ออัตโนมัติให้คอลัมน์ <span class="font-semibold">"${col.assignment_name}"</span>?<br/>` +
+          `<span class="text-xs text-gray-500">ระบบจะคำนวณ %มาเรียนใส่ให้ทุกครั้งที่เปิดหน้านี้ — ถ้าเคยแก้คะแนนคนไหนด้วยมือไว้ก่อน จะไม่ถูกทับ</span>`,
+          doToggle,
+        )
+      } else {
+        await doToggle()
+      }
     }
 
     document.getElementById('sc-form-cancel')?.addEventListener('click', () => {

@@ -4,6 +4,7 @@ import {
   getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
   detectAssignmentKind, getSheetColumnOptions,
   getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
+  syncAutoAttendanceScoreColumns,
   getReadingScoreColumns, getReadingScores,
   getTeacherExamRequests, updateExamResult,
 } from './api.js'
@@ -156,6 +157,21 @@ export async function renderGradesGrid(teacher, classData) {
       })
       priorityColumnNames = result.columnNames ?? ['คะแนนมาเรียน', 'คะแนนละหมาด']
       scoreRows = await getStudentScores(classData.id)
+    }
+
+    // คอลัมน์คะแนนที่ครูเปิด "ดึงคะแนนจากเช็คชื่ออัตโนมัติ" เอง (ไม่ผูกกับกลุ่มวิชา)
+    try {
+      const autoSyncResult = await syncAutoAttendanceScoreColumns(classData.id, {
+        attendanceScoreMode: sysCfg.attendanceScoreMode ?? 'recorded',
+      })
+      if (autoSyncResult.columns > 0) {
+        scoreRows = await getStudentScores(classData.id)
+        if (autoSyncResult.skipped > 0) {
+          showToast(`ดึงคะแนนมาเรียนอัตโนมัติแล้ว (ข้าม ${autoSyncResult.skipped} รายการที่เคยแก้คะแนนด้วยมือ)`, 'success')
+        }
+      }
+    } catch (err) {
+      console.error('syncAutoAttendanceScoreColumns failed', err)
     }
 
     const _rsCols = await getReadingScoreColumns(_rsYear, _rsSem).catch(()=>[])

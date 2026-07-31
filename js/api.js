@@ -859,7 +859,7 @@ export async function savePrayerCell(teacherId, studentId, room, checkDate, stat
 export async function getScoreColumns(classId) {
   const { data, error } = await supabase
     .from('class_score_columns')
-    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs, bonus_formula, bonus_formula_refs, sort_order, link_column_id')
+    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs, bonus_formula, bonus_formula_refs, sort_order, link_column_id, auto_attendance_sync')
     .eq('class_id', classId)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('id', { ascending: true })
@@ -1946,6 +1946,99 @@ function _calcAttendanceScore(rows, totalSessions) {
   const attended = rows.filter(r => r.status === 'present' || r.status === 'late').length
   const denom = totalSessions ?? rows.length
   return Math.round((attended / denom) * 100) / 10
+}
+
+// ─── Auto Attendance Sync (คอลัมน์คะแนน custom ของครู นอกกลุ่มศาสนา) ──────────
+// ต่างจาก fillPrayerScoresForReligionClass ตรงที่ (1) ใช้ได้กับคอลัมน์ที่ครูสร้างเอง
+// ชื่ออะไรก็ได้ ไม่ผูกกับกลุ่มวิชา (2) เคารพคะแนนที่ครูเคยแก้ด้วยมือ — เช็คจาก
+// score_history entry ล่าสุด: ถ้าไม่มี source:'auto' แปลว่าแก้มือ จะข้ามไม่ทับ
+function _calcAttendanceScoreScaled(rows, totalSessions, maxScore) {
+  if (!rows.length) return null
+  const attended = rows.filter(r => r.status === 'present' || r.status === 'late').length
+  const denom = totalSessions ?? rows.length
+  if (denom <= 0) return null
+  return Math.round((attended / denom) * (maxScore ?? 10) * 10) / 10
+}
+
+function _isManuallyEditedHistory(history) {
+  return Array.isArray(history) && history.length > 0 &&
+    history[history.length - 1]?.source !== 'auto'
+}
+
+export async function setColumnAutoAttendanceSync(columnId, enabled) {
+  const { error } = await supabase
+    .from('class_score_columns')
+    .update({ auto_attendance_sync: !!enabled })
+    .eq('id', columnId)
+  if (error) throw error
+}
+
+// เรียกทุกครั้งที่เปิดหน้าบันทึกคะแนนของห้อง — sync เฉพาะคอลัมน์ที่ครูเปิดใช้งานไว้
+// คืน { columns, scores, skipped } ให้ UI แจ้งผลได้ (skipped = จำนวนที่ข้ามเพราะแก้มือไว้)
+export async function syncAutoAttendanceScoreColumns(classId, options = {}) {
+  const { data: cols, error: colErr } = await supabase
+    .from('class_score_columns')
+    .select('id, max_score')
+    .eq('class_id', classId)
+    .eq('auto_attendance_sync', true)
+  if (colErr) throw colErr
+  if (!cols?.length) return { columns: 0, scores: 0, skipped: 0 }
+
+  const { data: cls, error: clsErr } = await supabase
+    .from('classes')
+    .select('class_students ( student_id )')
+    .eq('id', classId)
+    .single()
+  if (clsErr) throw clsErr
+  const students = (cls?.class_students ?? []).map(r => r.student_id).filter(Boolean)
+  if (!students.length) return { columns: cols.length, scores: 0, skipped: 0 }
+
+  const attendanceRows = await _fetchPaged(
+    'attendances',
+    'student_id, session_number, status',
+    q => q.eq('class_id', classId)
+  )
+  const attendanceMap = {}
+  const _attSessionNums = new Set()
+  for (const r of attendanceRows) {
+    if (!attendanceMap[r.student_id]) attendanceMap[r.student_id] = []
+    attendanceMap[r.student_id].push(r)
+    if (r.session_number != null) _attSessionNums.add(r.session_number)
+  }
+  const _attTotalSessions = (options.attendanceScoreMode ?? 'recorded') === 'total'
+    ? (_attSessionNums.size || undefined) : undefined
+
+  const colIds = cols.map(c => c.id)
+  const { data: existingScores, error: existErr } = await supabase
+    .from('student_scores')
+    .select('assignment_id, student_id, score_history')
+    .in('assignment_id', colIds)
+  if (existErr) throw existErr
+  const existingMap = {}
+  for (const r of existingScores ?? []) {
+    existingMap[`${r.assignment_id}:${r.student_id}`] = r.score_history
+  }
+
+  const now = new Date().toISOString()
+  const rows = []
+  let skipped = 0
+  for (const col of cols) {
+    for (const studentId of students) {
+      const key = `${col.id}:${studentId}`
+      if (_isManuallyEditedHistory(existingMap[key])) { skipped++; continue }
+      const score = _calcAttendanceScoreScaled(attendanceMap[studentId] ?? [], _attTotalSessions, col.max_score)
+      if (score === null) continue
+      rows.push({
+        assignment_id: col.id,
+        student_id: studentId,
+        original_score: score,
+        final_score: score,
+        score_history: [{ d: score, at: now, source: 'auto' }],
+      })
+    }
+  }
+  const scoreCount = await _upsertStudentScoreRows(rows)
+  return { columns: cols.length, scores: scoreCount, skipped }
 }
 
 export async function fillLifeSkillScoresForClass(classId, academicYear, semester) {
