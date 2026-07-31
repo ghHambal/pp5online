@@ -2320,7 +2320,7 @@ export async function getTeacherExamRequests(teacherId) {
     .select(`
       id, request_type, requested_date, requested_period_no,
       reason, status, teacher_comment, exam_attended, exam_score,
-      students ( id, student_code, full_name, main_room, image_url ),
+      students ( id, student_code, full_name, main_room, image_url, profile_id ),
       classes ( id, class_name, master_subjects ( subject_name, subject_code ) ),
       class_score_columns ( id, assignment_name, max_score )
     `)

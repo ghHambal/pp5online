@@ -14,7 +14,8 @@ import {
 } from './student-views.js'
 import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
 import { applyThemeForRole } from './theme.js'
-import { injectFeedbackWidget } from './ui.js'
+import { injectFeedbackWidget, showToast } from './ui.js'
+import { ensurePushSubscription } from './push-notify.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { renderStudentSportsHome } from './sports-portals.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -51,6 +52,56 @@ async function _loadSportsVisibility() {
     // ถ้าโมดูลกีฬาสียังไม่ได้ลง SQL patch ให้ใช้ค่าเปิดตามเดิม
   }
   return _sportsVisibility
+}
+
+// ── Web Push Notifications ────────────────────────────────────────────────────
+async function _registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return
+  try { await navigator.serviceWorker.register('/pp5online/sw.js', { scope: '/pp5online/' }) } catch {}
+}
+
+function _showNotifyPermissionBanner() {
+  if (document.getElementById('notify-banner')) return
+  const banner = document.createElement('div')
+  banner.id = 'notify-banner'
+  banner.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-[80] w-[90vw] max-w-sm bg-white rounded-2xl shadow-2xl border border-indigo-100 p-4 flex items-center gap-3 animate-fade'
+  banner.innerHTML = `
+    <div class="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-xl flex-shrink-0">🔔</div>
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-bold text-gray-800">เปิดการแจ้งเตือน?</p>
+      <p class="text-xs text-gray-400 mt-0.5">รับแจ้งเตือนผลคำร้อง/ประกาศสำคัญ แม้ปิดแท็บอยู่</p>
+    </div>
+    <div class="flex gap-2 flex-shrink-0">
+      <button id="notify-deny" class="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition">ไม่</button>
+      <button id="notify-allow" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold transition">เปิด</button>
+    </div>`
+  document.body.appendChild(banner)
+
+  banner.querySelector('#notify-deny').addEventListener('click', () => {
+    banner.remove()
+    localStorage.setItem('pp5_notify_dismissed_student', '1')
+  })
+  banner.querySelector('#notify-allow').addEventListener('click', async () => {
+    banner.remove()
+    const result = await Notification.requestPermission()
+    if (result === 'granted') {
+      showToast('เปิดการแจ้งเตือนแล้ว ✅', 'success')
+      if (_student?.profile_id) ensurePushSubscription(_student.profile_id)
+    }
+  })
+
+  setTimeout(() => banner.remove(), 12000)
+}
+
+async function _initNotifications() {
+  if (!('Notification' in window)) return
+  await _registerServiceWorker()
+  if (Notification.permission === 'granted') {
+    if (_student?.profile_id) ensurePushSubscription(_student.profile_id)
+  } else if (Notification.permission === 'default') {
+    const dismissed = localStorage.getItem('pp5_notify_dismissed_student')
+    if (!dismissed) setTimeout(_showNotifyPermissionBanner, 2000)
+  }
 }
 
 // ─── Auth Guard ───────────────────────────────────────────────────────────────
@@ -97,6 +148,7 @@ async function init() {
 
   _startStudentPolling()   // polling 30 วิ
   if (_student?.profile_id) injectFeedbackWidget({ profileId: _student.profile_id, role: 'student', name: _student.full_name })
+  _initNotifications()
 
   // เด้งขอเชื่อมอีเมลส่วนตัวทุกครั้งหลัง login จนกว่าจะเชื่อม (ยังเป็นอีเมลปลอมเริ่มต้นอยู่)
   if (session.user.email?.endsWith('@student.pp5.local')) {

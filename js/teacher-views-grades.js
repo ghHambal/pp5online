@@ -6,9 +6,10 @@ import {
   getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
   syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
   getReadingScoreColumns, getReadingScores,
-  getTeacherExamRequests, updateExamResult,
+  getTeacherExamRequests, updateExamResult, reviewExamRequest,
 } from './api.js'
 import { showToast } from './ui.js'
+import { supabase } from './supabase.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
@@ -2336,6 +2337,24 @@ export async function renderRequests(teacher) {
     })
   }
 
+  // ยิง push notification จริงไปหานักเรียนเมื่อครูอนุมัติ/ปฏิเสธคำร้องขอสอบ (Edge Function 'send-push')
+  // เป็นของเสริม — ถ้ายิงไม่สำเร็จ (เช่นนักเรียนยังไม่สมัครรับ) ไม่บล็อกการอนุมัติหลัก
+  const _sendExamRequestPush = async (request, statusLabel, comment) => {
+    const profileId = request?.students?.profile_id
+    if (!profileId) return
+    try {
+      const subjectName = request?.classes?.master_subjects?.subject_name ?? 'วิชา'
+      await supabase.functions.invoke('send-push', {
+        body: {
+          title: `📋 คำร้องขอสอบ: ${statusLabel}`,
+          body: `${subjectName}${comment ? ' — ' + comment : ''}`,
+          url: 'student.html',
+          profileIds: [profileId],
+        },
+      })
+    } catch { /* เงียบไว้ ไม่กระทบผู้ใช้ */ }
+  }
+
   // ── Action handlers ──────────────────────────────────────────────────────────
   window._approveRequest = (id) => {
     _showModal({
@@ -2350,6 +2369,8 @@ export async function renderRequests(teacher) {
         try {
           await reviewExamRequest(id, { status: 'approved', teacher_comment: comment })
           showToast('อนุมัติคำร้องแล้ว ✅', 'success')
+          const req = all.find(r => r.id === id)
+          if (req) _sendExamRequestPush(req, 'อนุมัติแล้ว ✅', comment)
           renderRequests(teacher)
         } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
       }
@@ -2372,6 +2393,8 @@ export async function renderRequests(teacher) {
         try {
           await reviewExamRequest(id, { status: 'rejected', teacher_comment: comment })
           showToast('บันทึกการปฏิเสธแล้ว', 'success')
+          const req = all.find(r => r.id === id)
+          if (req) _sendExamRequestPush(req, 'ถูกปฏิเสธ ✕', comment)
           renderRequests(teacher)
         } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
       }
