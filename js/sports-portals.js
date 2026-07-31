@@ -1438,6 +1438,32 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
   const feedback=(ok,title,detail)=>{
     body.querySelector('#dues-feedback').innerHTML=`<div class="rounded-xl p-3 flex items-center gap-3 ${ok?'bg-emerald-950/40 border border-emerald-800/60':'bg-red-950/40 border border-red-800/60'}"><span class="text-lg">${ok?'✅':'❌'}</span><div class="min-w-0"><b class="text-xs block truncate ${ok?'text-emerald-300':'text-red-300'}">${esc(title)}</b><span class="text-[10px] muted truncate block">${esc(detail||'')}</span></div></div>`
   }
+  // ป๊อบอัพยืนยันเต็มจอตอนรับเงินสำเร็จ — ให้ผู้สแกนมั่นใจว่าบันทึกเข้าระบบแล้วจริงๆ
+  // (ตัวเลขเล็กๆ ใน #dues-feedback อาจมองข้ามได้ง่ายตอนรับเงินติดๆ กันหลายคน) หายเองใน 5 วิ
+  // หรือกดปุ่ม "สแกนคนถัดไป" ปิดทันทีได้เผื่อรีบ — ปิดสองทางไว้ครอบคลุมทั้งคิวยาวและคนละเอียด
+  const showDuesSuccessPopup=(student,amount)=>{
+    document.getElementById('dues-success-popup')?.remove()
+    const m=document.createElement('div')
+    m.id='dues-success-popup'
+    m.className='fixed inset-0 z-[400] bg-black/70 flex items-center justify-center p-6'
+    m.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center">
+      <div class="text-5xl mb-2">✅</div>
+      ${(student.image_url||student.photo_url)?`<img src="${esc(student.image_url||student.photo_url)}" class="w-20 h-24 rounded-xl object-cover border-2 border-emerald-400 mx-auto mb-3 shadow-md">`:''}
+      <h3 class="font-bold text-gray-800 text-lg">${esc(student.full_name)}</h3>
+      <p class="text-xs text-gray-500 mb-3">${esc(student.student_code)}${student.main_room?` · ${esc(student.main_room)}`:''}</p>
+      <p class="text-3xl font-black text-emerald-600 mb-1">${Number(amount).toLocaleString('th-TH')} บาท</p>
+      <p class="text-sm text-emerald-700 font-bold mb-5">ชำระค่าบำรุงสีสำเร็จ</p>
+      <button id="dues-popup-next" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm">📷 สแกนคนถัดไป</button>
+      <div class="h-1 bg-gray-100 rounded-full mt-4 overflow-hidden"><div id="dues-popup-bar" class="h-full bg-emerald-500" style="width:100%"></div></div>
+    </div>`
+    document.body.appendChild(m)
+    const bar=m.querySelector('#dues-popup-bar')
+    requestAnimationFrame(()=>{bar.style.transition='width 5s linear';bar.style.width='0%'})
+    const close=()=>m.remove()
+    const timer=setTimeout(close,5000)
+    m.querySelector('#dues-popup-next').onclick=()=>{clearTimeout(timer);close()}
+    m.addEventListener('click',e=>{if(e.target===m){clearTimeout(timer);close()}})
+  }
   const commitDues=async(student,method)=>{
     if(!student){feedback(false,'ไม่พบนักเรียน','ตรวจสอบรหัส/QR อีกครั้ง — หรือไม่ใช่สมาชิกสีนี้');return}
     const already=duesLocal.find(d=>d.student_id===student.id)
@@ -1447,6 +1473,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
     duesLocal.push(data)
     recentScans.unshift({...student,_duesId:data.id})
     feedback(true,`รับเงิน ${student.full_name} สำเร็จ`,`รหัส ${student.student_code} · ${Number(duesAmount).toLocaleString('th-TH')} บาท`)
+    showDuesSuccessPopup(student,duesAmount)
     renderProgress();renderRecent()
   }
   // ยกเลิกรายการที่สแกนผิด/พลาด — ลบทั้งจากฐานข้อมูลและรายการล่าสุดในหน้านี้ทันที
