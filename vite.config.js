@@ -21,6 +21,7 @@ export default defineConfig({
         azfutsal:      resolve(__dirname, 'azfutsal.html'),
         shirtVotePublic: resolve(__dirname, 'shirt-vote-public.html'),
         sportsAttendanceMonitor: resolve(__dirname, 'sports-attendance-monitor.html'),
+        sportsDuesMonitor: resolve(__dirname, 'sports-dues-monitor.html'),
       },
     },
     chunkSizeWarningLimit: 600,
