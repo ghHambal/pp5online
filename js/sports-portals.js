@@ -1167,7 +1167,8 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   }
   const renderRecent=()=>{
     const el=body.querySelector('#att-recent')
-    el.innerHTML=recentScans.length ? recentScans.map(s=>`<div class="flex items-center gap-2 team-card rounded-lg p-2"><img src="${esc(s.image_url||s.photo_url||'')}" class="w-7 h-9 rounded object-cover border border-slate-700 flex-shrink-0" onerror="this.style.display='none'"><div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)}</span></div><span class="text-emerald-400 text-xs">✓</span></div>`).join('') : '<p class="text-xs muted text-center py-4">ยังไม่มีการสแกน</p>'
+    el.innerHTML=recentScans.length ? recentScans.map(s=>`<div class="flex items-center gap-2 team-card rounded-lg p-2"><img src="${esc(s.image_url||s.photo_url||'')}" class="w-7 h-9 rounded object-cover border border-slate-700 flex-shrink-0" onerror="this.style.display='none'"><div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)}</span></div><span class="text-emerald-400 text-xs">✓</span><button type="button" data-cancel-scan="${esc(s._attendanceId)}" class="px-2 py-1 rounded-lg bg-red-950/40 text-red-300 border border-red-800/60 hover:bg-red-600 hover:text-white transition text-[10px] font-bold flex-shrink-0">ยกเลิก</button></div>`).join('') : '<p class="text-xs muted text-center py-4">ยังไม่มีการสแกน</p>'
+    el.querySelectorAll('[data-cancel-scan]').forEach(btn=>btn.onclick=()=>cancelScan(btn.dataset.cancelScan))
   }
   const feedback=(ok,title,detail)=>{
     body.querySelector('#att-feedback').innerHTML=`<div class="rounded-xl p-3 flex items-center gap-3 ${ok?'bg-emerald-950/40 border border-emerald-800/60':'bg-red-950/40 border border-red-800/60'}"><span class="text-lg">${ok?'✅':'❌'}</span><div class="min-w-0"><b class="text-xs block truncate ${ok?'text-emerald-300':'text-red-300'}">${esc(title)}</b><span class="text-[10px] muted truncate block">${esc(detail||'')}</span></div></div>`
@@ -1179,8 +1180,18 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     const {data,error}=await supabase.from('sports_attendance').insert({event_id:event.id,team_color_id:c.id,student_id:student.id,session_date:todayStr,session_type:sessionType,method}).select().single()
     if(error){feedback(false,'บันทึกไม่สำเร็จ',error.message);return}
     attendanceLocal.push(data)
-    recentScans.unshift(student)
+    recentScans.unshift({...student,_attendanceId:data.id})
     feedback(true,`เช็คชื่อ ${student.full_name} สำเร็จ`,`รหัส ${student.student_code}`)
+    renderProgress();renderRecent()
+  }
+  // ยกเลิกรายการที่สแกนผิด/พลาด — ลบทั้งจากฐานข้อมูลและรายการล่าสุดในหน้านี้ทันที
+  const cancelScan=async(attendanceId)=>{
+    const student=recentScans.find(s=>String(s._attendanceId)===String(attendanceId))
+    const {error}=await supabase.from('sports_attendance').delete().eq('id',attendanceId)
+    if(error){feedback(false,'ยกเลิกไม่สำเร็จ',error.message);return}
+    attendanceLocal=attendanceLocal.filter(a=>String(a.id)!==String(attendanceId))
+    recentScans=recentScans.filter(s=>String(s._attendanceId)!==String(attendanceId))
+    feedback(true,`ยกเลิกการเช็คชื่อ${student?` ${student.full_name}`:''}แล้ว`,'ลบออกจากระบบเรียบร้อย')
     renderProgress();renderRecent()
   }
 
