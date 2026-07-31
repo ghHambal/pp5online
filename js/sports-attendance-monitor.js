@@ -12,8 +12,10 @@ const LOGO_URLS = [
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 // รูปนักเรียนแบบสี่เหลี่ยมขอบมนแนวตั้ง (ตามธีมเดิมของระบบ ห้ามวงกลม) แสดงในเซลล์ชื่อ-สกุลเลย ไม่แยกคอลัมน์
+// ห้ามใส่ loading="lazy" — เซลล์นี้อยู่ใน #print-content ที่ซ่อนด้วย display:none จนกว่าจะสั่งพิมพ์
+// รูปแบบ lazy จะไม่โหลดเลยเพราะ browser มองว่า element นี้ไม่เคยเข้าใกล้ viewport
 const photoImg = url => url
-  ? `<img src="${esc(url)}" style="width:20px;height:26px;border-radius:4px;object-fit:cover;border:1px solid #cbd5e1;vertical-align:middle;margin-right:5px" loading="lazy">`
+  ? `<img src="${esc(url)}" style="width:20px;height:26px;border-radius:4px;object-fit:cover;border:1px solid #cbd5e1;vertical-align:middle;margin-right:5px">`
   : ''
 
 // ==== วันที่: ทำงานล้วนๆ กับตัวเลข Y/M/D ไม่ผ่าน Date object แบบ local-timezone เลย ====
