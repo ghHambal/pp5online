@@ -2,6 +2,12 @@ import { supabase } from './supabase.js'
 
 const PW_KEY = 'sports_att_monitor_pw'
 const root = document.getElementById('attendance-monitor-root')
+const SCHOOL_NAME = 'โรงเรียนมูลนิธิอาซิซสถานร่วมกับวิทยาลัยเทคโนโลยีอาซิซสถานพณิชยการ'
+const LOGO_URLS = [
+  'https://lh3.googleusercontent.com/d/1JDduqJInp2BjORgZhhUgv80fXtMs3JzV',
+  'https://lh3.googleusercontent.com/d/1lXMVnPf8rIl5SBzqZeSCEtbpf6U7idWa',
+  'https://lh3.googleusercontent.com/d/1JPmgiu_pgACGYTymHsLqROm1GrzZSklP',
+]
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
@@ -12,6 +18,12 @@ const roomSortKey = str => {
   if (String(str || '').startsWith('ปวช.')) return [parseInt(str.split('.')[1]) + 6, 1]
   return [99, 99]
 }
+// ดึง "ชั้น" จากห้อง (ม.1/1→ม.1, ปวช.2/1→ปวช. รวมทุกปวช.เป็นกลุ่มเดียว) แบบเดียวกับ printColorRoster
+const levelOf = room => {
+  const r = String(room || 'ไม่ระบุ')
+  return r.startsWith('ปวช.') ? 'ปวช.' : (r.split('/')[0] || 'ไม่ระบุ')
+}
+const levelSortKey = level => level.startsWith('ปวช.') ? 100 : (parseInt(level.replace('ม.', '')) || 99)
 
 // ขยายช่วงวันของปฏิทิน (เช่น "กีฬาสี" 4 วัน) เป็นตัวเลือกวันแยกทีละวัน ให้เลือกดูรายวันได้ตรงจริง
 const buildDayOptions = (calendar) => {
@@ -87,15 +99,13 @@ function renderDashboard(snapshot) {
         </div>
         <select id="day-select" class="border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"></select>
       </div>
-      <div id="summary-cards" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+      <div id="summary-cards" class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
       <div class="no-print flex flex-wrap gap-2">
         <button id="btn-export-csv" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">⬇️ ส่งออก CSV</button>
         <button id="btn-print" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 text-xs font-bold">🖨️ พิมพ์เอกสาร</button>
       </div>
-      <div id="print-title" class="hidden print:block text-center mb-4">
-        <h2 class="font-bold text-lg"></h2>
-      </div>
-      <div id="absent-list" class="space-y-4"></div>
+      <div id="absent-list" class="no-print space-y-4"></div>
+      <div id="print-content" class="print-only"></div>
     </div>`
 
   const daySelect = root.querySelector('#day-select')
@@ -110,11 +120,22 @@ function renderDashboard(snapshot) {
     return { students, present, absent }
   }
 
+  const groupByRoom = list => {
+    const byRoom = {}
+    list.forEach(s => { (byRoom[s.main_room || 'ไม่ระบุห้อง'] = byRoom[s.main_room || 'ไม่ระบุห้อง'] || []).push(s) })
+    return byRoom
+  }
+  const sortedRooms = byRoom => Object.keys(byRoom).sort((a, b) => {
+    const [ka, kb] = [roomSortKey(a), roomSortKey(b)]
+    return ka[0] - kb[0] || ka[1] - kb[1]
+  })
+
   const render = () => {
     root.querySelectorAll('[data-gender]').forEach(b => b.classList.toggle('bg-pink-600', b.dataset.gender === gender))
     root.querySelectorAll('[data-gender]').forEach(b => b.classList.toggle('text-white', b.dataset.gender === gender))
     const { students, present, absent } = computeAbsent()
     const pct = students.length ? Math.round(present.length / students.length * 100) : 0
+    const dayLabel = dayOptions.find(d => d.date === selectedDay)?.label || selectedDay
 
     root.querySelector('#summary-cards').innerHTML = `
       <div class="bg-white rounded-xl border border-slate-200 p-3 text-center"><p class="text-[10px] text-slate-500 font-bold">นักเรียนทั้งหมด</p><b class="text-xl">${students.length}</b></div>
@@ -122,16 +143,9 @@ function renderDashboard(snapshot) {
       <div class="bg-red-50 rounded-xl border border-red-200 p-3 text-center"><p class="text-[10px] text-red-600 font-bold">ขาดเช็คชื่อ</p><b class="text-xl text-red-700">${absent.length}</b></div>
       <div class="bg-slate-100 rounded-xl border border-slate-200 p-3 text-center"><p class="text-[10px] text-slate-500 font-bold">มาแล้ว</p><b class="text-xl">${pct}%</b></div>`
 
-    const byRoom = {}
-    absent.forEach(s => { (byRoom[s.main_room || 'ไม่ระบุห้อง'] = byRoom[s.main_room || 'ไม่ระบุห้อง'] || []).push(s) })
-    const rooms = Object.keys(byRoom).sort((a, b) => {
-      const [ka, kb] = [roomSortKey(a), roomSortKey(b)]
-      return ka[0] - kb[0] || ka[1] - kb[1]
-    })
-
-    const dayLabel = dayOptions.find(d => d.date === selectedDay)?.label || selectedDay
-    root.querySelector('#print-title h2').textContent = `รายชื่อนักเรียน${gender === 'M' ? 'ชาย' : 'หญิง'}ที่ขาดเช็คชื่อ — ${dayLabel} (${fmtThaiDate(selectedDay)})`
-
+    // แสดงบนหน้าจอ: แยกตามห้องเหมือนเดิม (กระชับ ดูเร็ว)
+    const byRoom = groupByRoom(absent)
+    const rooms = sortedRooms(byRoom)
     root.querySelector('#absent-list').innerHTML = rooms.length ? rooms.map(room => `
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
@@ -144,6 +158,45 @@ function renderDashboard(snapshot) {
           `).join('')}</tbody>
         </table>
       </div>`).join('') : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ เช็คชื่อครบทุกคนในวันนี้</div>`
+
+    // เอกสารพิมพ์: แยกเป็นชั้นๆ ขึ้นหน้าใหม่ทุกชั้น มีโลโก้ 3 อัน + สถิติของชั้นนั้นเหนือตาราง
+    const byLevel = {}
+    students.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || { total: 0, present: 0, students: [] }); byLevel[lv].total++ })
+    present.forEach(s => { const lv = levelOf(s.main_room); byLevel[lv].present++ })
+    absent.forEach(s => { const lv = levelOf(s.main_room); byLevel[lv].students.push(s) })
+    const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
+
+    const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
+
+    root.querySelector('#print-content').innerHTML = levels.map((lv, idx) => {
+      const info = byLevel[lv]
+      const lvAbsentByRoom = groupByRoom(info.students)
+      const lvRooms = sortedRooms(lvAbsentByRoom)
+      const lvPct = info.total ? Math.round(info.present / info.total * 100) : 0
+      return `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding-top:12px">
+        ${logoRow}
+        <div style="text-align:center;margin-bottom:10px">
+          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${gender === 'M' ? 'ชาย' : 'หญิง'}ที่ขาดเช็คชื่อ — ${esc(dayLabel)} (${fmtThaiDate(selectedDay)})</h2>
+          <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
+          <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
+        </div>
+        <div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px;font-size:12px">
+          <span>นักเรียนทั้งหมด: <b>${info.total}</b></span>
+          <span style="color:#059669">มาแล้ว: <b>${info.present}</b></span>
+          <span style="color:#dc2626">ขาด: <b>${info.students.length}</b></span>
+          <span>คิดเป็น: <b>${lvPct}%</b></span>
+        </div>
+        ${lvRooms.length ? lvRooms.map(room => `
+          <div style="margin-bottom:10px">
+            <div style="background:#f1f5f9;padding:5px 10px;font-weight:bold;font-size:12px;border:1px solid #cbd5e1;border-bottom:none">ห้อง ${esc(room)} — ขาด ${lvAbsentByRoom[room].length} คน</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <tbody>${lvAbsentByRoom[room].sort((a, b) => a.full_name.localeCompare(b.full_name, 'th')).map(s => `
+                <tr><td style="border:1px solid #cbd5e1;padding:4px 8px;width:80px">${esc(s.student_code)}</td><td style="border:1px solid #cbd5e1;padding:4px 8px">${esc(s.full_name)}</td></tr>
+              `).join('')}</tbody>
+            </table>
+          </div>`).join('') : `<p style="text-align:center;color:#059669;font-weight:bold">✅ เช็คชื่อครบทุกคนในชั้นนี้</p>`}
+      </div>`
+    }).join('') || `<p style="text-align:center;padding:40px">ไม่มีข้อมูลนักเรียน</p>`
   }
 
   root.querySelectorAll('[data-gender]').forEach(b => b.onclick = () => { gender = b.dataset.gender; render() })
