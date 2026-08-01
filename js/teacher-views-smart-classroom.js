@@ -167,7 +167,8 @@ export async function renderSmartClassroom(teacher, classId) {
         <h1 class="font-bold text-gray-800 text-base truncate">${_htmlEsc(ms.subject_name ?? '')} · ${_htmlEsc(cls.class_name ?? '')}</h1>
         <p class="text-xs text-gray-400">${students.length} คน</p>
       </div>
-      <button id="sc-back" class="ml-auto flex-shrink-0 text-xs text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50">← กลับ</button>
+      <button id="sc-switch-class" class="ml-auto flex-shrink-0 text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg">🔀 สลับห้อง</button>
+      <button id="sc-back" class="flex-shrink-0 text-xs text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50">← กลับ</button>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
@@ -218,9 +219,51 @@ export async function renderSmartClassroom(teacher, classId) {
     </div>
   </div>`)
 
-  // ── Wiring: back / attendance ────────────────────────────────────────────
-  document.getElementById('sc-back').addEventListener('click', () => renderClassDetail(teacher, classId))
+  // ── Wiring: fullscreen mode / back / switch class / attendance ──────────
+  document.body.classList.add('sc-fullscreen')
+  document.getElementById('sc-back').addEventListener('click', () => {
+    document.body.classList.remove('sc-fullscreen')
+    renderClassDetail(teacher, classId)
+  })
+  document.getElementById('sc-switch-class').addEventListener('click', () => _openClassSwitcher())
   document.getElementById('sc-open-attendance').addEventListener('click', () => _openTodayAttendance())
+
+  async function _openClassSwitcher() {
+    document.getElementById('sc-switch-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'sc-switch-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-3 animate-fade">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">🔀 สลับห้องเรียน</h3>
+          <button id="sc-switch-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+        </div>
+        <div id="sc-switch-list" class="max-h-80 overflow-y-auto space-y-1.5">
+          <div class="text-center py-6 text-xs text-gray-400">กำลังโหลด...</div>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#sc-switch-close').addEventListener('click', () => m.remove())
+
+    const otherClasses = (await getMyClasses(teacher.id).catch(() => [])).filter(c => c.id !== classId)
+    const listEl = m.querySelector('#sc-switch-list')
+    if (!otherClasses.length) {
+      listEl.innerHTML = `<p class="text-center py-6 text-xs text-gray-400">ไม่มีห้องอื่นให้สลับ</p>`
+      return
+    }
+    listEl.innerHTML = otherClasses.map(c => `
+      <button class="sc-switch-btn w-full text-left px-3 py-2.5 rounded-xl border border-gray-100 hover:border-amber-300 hover:bg-amber-50 transition" data-cid="${c.id}">
+        <p class="text-sm font-semibold text-gray-700 truncate">${_htmlEsc(c.class_name ?? '')}</p>
+        <p class="text-xs text-gray-400 truncate">${_htmlEsc(c.master_subjects?.subject_name ?? '')}</p>
+      </button>`).join('')
+    listEl.querySelectorAll('.sc-switch-btn').forEach(b => b.addEventListener('click', () => {
+      const newId = parseInt(b.dataset.cid, 10)
+      m.remove()
+      renderSmartClassroom(teacher, newId)
+    }))
+  }
 
   // เช็คชื่อระหว่างสอนสด — หาคาบของ "วันนี้" อัตโนมัติแล้วเด้งป๊อบอัพเช็คชื่อเดิมตรงเลย
   // (ไม่ต้องเข้าไปหน้าเช็คชื่อเต็มแล้วเลือกวันที่เอง เพราะระหว่างสอนวันที่คือวันนี้อยู่แล้ว)

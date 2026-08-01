@@ -265,6 +265,7 @@ const ROUTES = {
 
 let _currentView = 'overview'
 function navigate(view) {
+  document.body.classList.remove('sc-fullscreen') // กันค้างโหมดเต็มจอ Smart Classroom เวลาสลับเมนูด้วยทางอื่น
   if (typeof window._cleanupLeaveScanner === 'function') {
     try { window._cleanupLeaveScanner() } catch (e) {}
   }
