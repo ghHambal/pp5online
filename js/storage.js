@@ -90,3 +90,10 @@ export async function uploadAnnouncementImage(file) {
   const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   return uploadFile('system-assets', `announcements/${key}.jpg`, blob)
 }
+
+// ภาพประมวลกีฬาสี (บรรยากาศ/การแข่งขัน) → บีบ max 1600px คุณภาพสูงเพราะเปิดดูเต็มจอ+ดาวน์โหลดได้
+export async function uploadGalleryPhoto(eventId, colorId, file) {
+  const blob = await compressImage(file, { maxWidth: 1600, quality: 0.85 })
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return uploadFile('sports-gallery', `${eventId}/${colorId}/${key}.jpg`, blob)
+}

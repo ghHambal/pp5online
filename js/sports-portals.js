@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
-import { uploadShirtDesignColorImage, uploadShirtDesignHtml } from './storage.js'
+import { uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
 
 export const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 const main = () => document.getElementById('stu-content') || document.getElementById('main-content')
@@ -154,9 +154,11 @@ export async function renderStudentSportsHome(student) {
         <div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.dues_paid?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.dues_paid?'✅':'❌'} ชำระค่าบำรุงสีแล้ว</span></div>
         ${eligibility.is_athlete?`<div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.roll_call_complete?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.roll_call_complete?'✅':'❌'} รายงานตัวนักกีฬาครบทุกครั้ง</span></div>`:''}
       </div>`}</section>
+      <button id="open-gallery" class="w-full py-4 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-base">📸 ภาพกิจกรรมกีฬาสี</button>
       <button id="open-full-sports" class="w-full py-4 rounded-2xl bg-slate-900 text-white font-bold text-base">🏆 เปิดระบบกีฬาสีแบบเต็ม</button>
     </div>`
     el.querySelector('#open-full-sports')?.addEventListener('click',()=>openSportsChoiceModal(student))
+    el.querySelector('#open-gallery')?.addEventListener('click',()=>openSportsGalleryModal(event))
     el.querySelector('#view-cert')?.addEventListener('click',()=>{
       const url=eligibility?.certificate_url
       if(!url)return
@@ -967,6 +969,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       ['schedule','ตาราง/ผล','🗓️',true],
       ['scores','คะแนน/เหรียญ','🏅',true],
       ['identity','อัตลักษณ์','🎨',!studentView],
+      ['gallery','ภาพกิจกรรม','📸',true],
     ].filter(x=>x[3])
     wrap.innerHTML=`<style>
       @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap');
@@ -1022,7 +1025,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     // เหรียญแยกตามรายการแข่งขัน (medal_awards query ข้างบนกรอง team_color_id ไว้แล้ว) เรียงทอง→เงิน→ทองแดง
     const medalRankOrder={gold:0,silver:1,bronze:2}
     const medalBreakdown=[...(medalAwards||[])].sort((a,b)=>(medalRankOrder[a.medal_type]??3)-(medalRankOrder[b.medal_type]??3)).map(a=>({sport:a.sports?.name||'ไม่ระบุรายการ',medalType:a.medal_type,points:Number(a.points)||0}))
-    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,isLead,theme}
+    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,isLead,theme,studentView}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     // จัดกลุ่มแท็บสำหรับแถบเมนูด้านล่างบนมือถือ (บนเดสก์ท็อปยังใช้แถบเดิมด้านบนเหมือนเดิม)
     // กดกลุ่มที่มีแท็บเดียว (เช่น ภาพรวม) ไปหน้านั้นทันที ส่วนกลุ่มที่มีหลายแท็บ ปุ่มด้านล่างจะ
@@ -1031,7 +1034,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       {key:'overview',label:'ภาพรวม',icon:'🏠',keys:['overview']},
       {key:'team',label:'ทีม',icon:'👥',keys:['members','athletes','permissions']},
       {key:'event',label:'กิจกรรม',icon:'📅',keys:['attendance','dues','schedule','work']},
-      {key:'results',label:'ผลงาน',icon:'🏆',keys:['scores','shirts','identity']},
+      {key:'results',label:'ผลงาน',icon:'🏆',keys:['scores','shirts','identity','gallery']},
     ]
     const tabGroups=groupDefs.map(g=>({...g,tabs:tabList.filter(t=>g.keys.includes(t[0]))})).filter(g=>g.tabs.length>0)
     const navState={pickerOpen:true}
@@ -1070,7 +1073,7 @@ const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bo
 // (ไม่แสดงป้ายเลยดีกว่าแสดงป้าย "แดง/ยังไม่จ่าย" มั่วๆ ทั้งที่จริงๆ แค่ไม่มีสิทธิ์ดึงข้อมูลมา)
 const memberCard = (s,duesPaidIds) => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0 flex-1"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div>${duesPaidIds?(duesPaidIds.has(s.id)?'<span class="status-pill status-done flex-shrink-0">💰 จ่ายแล้ว</span>':'<span class="status-pill bg-red-500/15 text-red-400 flex-shrink-0">💰 ยังไม่จ่าย</span>'):''}</div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,isLead}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,isLead,studentView}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const kpis=[
@@ -1094,6 +1097,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
   else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card})
   else if(tab==='dues') renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount:cfg?.dues_amount||30,card})
+  else if(tab==='gallery') renderGallerySection(body,{event,c,competitions,card,studentView:data.studentView})
   else if(tab==='schedule') renderScheduleSection(body,matches,c.name,card)
   else if(tab==='scores') renderScoreMedalSection(body,{totals,colorName:c.name,gender:c.gender,myTotal,scoreRank,medalRank,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,card})
   else if(tab==='identity') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-3"><div><h2 class="font-bold">🎨 เสนอแก้อัตลักษณ์ประจำสี</h2><p class="text-xs muted">โลโก้/ชื่อ/คำขวัญใช้ชุดเดียวกับระบบกีฬาสีหลัก และต้องผ่านหัวหน้าครูประจำสี + แอดมิน</p></div><button id="identity-new" class="px-4 py-2 bg-violet-600 text-white rounded-xl">สร้างคำขอ</button></div><div class="space-y-2">${identity.map(x=>`<div class="${sub} flex justify-between gap-3"><span>${esc(x.proposed_name||'แก้ไขอัตลักษณ์/โลโก้')}</span><span class="text-xs text-amber-400">${esc(x.status)}</span></div>`).join('')||'<p class="text-sm muted">ยังไม่มีคำขอ</p>'}</div></section>`
@@ -1566,6 +1570,207 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
   }
 
   renderProgress();renderRecent()
+}
+
+// แท็บ "ภาพกิจกรรม" — อัปโหลดรูปเข้าคลังกลาง (ไม่แบ่งสีตอนแสดงผล ทุกสีเห็นกันหมด) สตาฟทุกสี
+// อัปโหลดได้เลยไม่ต้องขอสิทธิ์เพิ่ม (ความเสี่ยงต่ำกว่าเงิน/เช็คชื่อ) ในนี้แสดงเฉพาะรูปที่สีตัวเอง
+// อัปโหลดไว้ (จัดการลบได้) ส่วนแกลเลอรีรวมทุกสีเปิดผ่านปุ่มแยกไปอีกหน้า (renderSportsGalleryModal)
+async function renderGallerySection(body,{event,c,competitions,card,studentView}){
+  body.innerHTML=`<div class="py-16 text-center muted">กำลังโหลดภาพกิจกรรม...</div>`
+  const {data:myPhotos,error}=await supabase.from('sports_gallery_photos').select('*,sports(name)').eq('team_color_id',c.id).order('created_at',{ascending:false})
+  if(error){body.innerHTML=`<section class="${card}"><p class="text-center text-red-400 py-8">โหลดไม่สำเร็จ: ${esc(error.message)}</p></section>`;return}
+  let photos=myPhotos||[]
+
+  body.innerHTML=`<section class="${card}">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div><h2 class="font-bold">📸 ภาพกิจกรรมสี${esc(c.name)}</h2><p class="text-xs muted">อัปโหลดภาพกิจกรรม/บรรยากาศ — ทุกสีเห็นภาพของกันและกันได้ในแกลเลอรีรวม</p></div>
+      <button id="gallery-open-full" class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖼️ เปิดแกลเลอรีรวมทุกสี</button>
+    </div>
+    ${!studentView?`<div class="team-sub rounded-2xl p-4 mb-4 space-y-3">
+      <div class="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-bold muted">รายการแข่งขันที่เกี่ยวข้อง (ถ้ามี)</label>
+          <select id="gallery-sport" class="w-full mt-1.5 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
+            <option value="">— ภาพทั่วไป/บรรยากาศ —</option>
+            ${(competitions||[]).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-bold muted">เลือกรูปภาพ (เลือกได้หลายรูป)</label>
+          <input id="gallery-files" type="file" accept="image/*" multiple class="w-full mt-1.5 text-xs">
+        </div>
+      </div>
+      <button id="gallery-upload-btn" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">⬆️ อัปโหลด</button>
+      <div id="gallery-upload-status" class="text-xs muted"></div>
+    </div>`:''}
+    <div id="gallery-my-photos" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+  </section>`
+
+  const renderMyPhotos=()=>{
+    const el=body.querySelector('#gallery-my-photos')
+    el.innerHTML=photos.length?photos.map(p=>`
+      <div class="team-sub rounded-xl overflow-hidden">
+        <img src="${esc(p.photo_url)}" class="w-full aspect-square object-cover" loading="lazy">
+        <div class="p-2">
+          <p class="text-[10px] muted truncate">${esc(p.sports?.name||'ภาพทั่วไป')}</p>
+          <p class="text-[10px] muted">${new Date(p.taken_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short'})}</p>
+          ${!studentView?`<button data-gallery-delete="${esc(p.id)}" class="w-full mt-1 px-2 py-1 rounded-lg bg-red-950/40 text-red-300 border border-red-800/60 hover:bg-red-600 hover:text-white transition text-[10px] font-bold">ลบ</button>`:''}
+        </div>
+      </div>`).join('') : `<p class="text-sm muted text-center py-8 col-span-full">ยังไม่มีภาพที่สีนี้อัปโหลด</p>`
+    el.querySelectorAll('[data-gallery-delete]').forEach(btn=>btn.onclick=async()=>{
+      if(!confirm('ลบภาพนี้?'))return
+      const id=btn.dataset.galleryDelete
+      const {error}=await supabase.from('sports_gallery_photos').delete().eq('id',id)
+      if(error){toast(error.message,'error');return}
+      photos=photos.filter(p=>String(p.id)!==String(id))
+      renderMyPhotos()
+      toast('ลบภาพแล้ว')
+    })
+  }
+  renderMyPhotos()
+
+  body.querySelector('#gallery-open-full').onclick=()=>openSportsGalleryModal(event)
+
+  body.querySelector('#gallery-upload-btn')?.addEventListener('click',async()=>{
+    const filesInput=body.querySelector('#gallery-files')
+    const sportId=body.querySelector('#gallery-sport').value||null
+    const files=Array.from(filesInput.files||[])
+    if(!files.length)return
+    const statusEl=body.querySelector('#gallery-upload-status')
+    const btn=body.querySelector('#gallery-upload-btn')
+    btn.disabled=true
+    for(let i=0;i<files.length;i++){
+      statusEl.textContent=`กำลังอัปโหลด ${i+1}/${files.length}...`
+      try{
+        const url=await uploadGalleryPhoto(event.id,c.id,files[i])
+        const {data,error}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,sport_id:sportId,photo_url:url}).select('*,sports(name)').single()
+        if(error)throw error
+        photos.unshift(data)
+      }catch(e){statusEl.textContent=`อัปโหลดรูปที่ ${i+1} ไม่สำเร็จ: ${e.message}`;btn.disabled=false;renderMyPhotos();return}
+    }
+    statusEl.textContent=`อัปโหลดสำเร็จ ${files.length} รูป`
+    filesInput.value=''
+    btn.disabled=false
+    renderMyPhotos()
+  })
+}
+
+// แกลเลอรีรวมทุกสี — ไม่แยกสี จัดกลุ่มตามรายการแข่งขัน คลิกเปิดเต็มจอเรียงตามเวลาถ่ายจริง
+// แต่ละรูปโชว์ผู้อัปโหลด+สี+เวลา กดดาวน์โหลดทีละรูปได้ และดาวน์โหลดทั้งหมดเป็น zip (JSZip จาก CDN)
+export async function openSportsGalleryModal(event) {
+  document.getElementById('sports-gallery-modal')?.remove()
+  const m=document.createElement('div')
+  m.id='sports-gallery-modal'
+  m.className='fixed inset-0 z-[380] bg-slate-950 text-slate-100 overflow-y-auto'
+  m.innerHTML=`<div class="py-20 text-center">กำลังโหลดแกลเลอรี...</div>`
+  document.body.appendChild(m)
+  try{
+    if(!event) event=(await context()).event
+    const [{data:photos,error},{data:colors},{data:teachersAll},{data:studentsAll}]=await Promise.all([
+      supabase.from('sports_gallery_photos').select('*,sports(name)').eq('event_id',event.id).order('taken_at',{ascending:true}),
+      supabase.from('team_colors').select('id,name,hex_color').eq('event_id',event.id),
+      supabase.from('teachers').select('profile_id,full_name').not('profile_id','is',null),
+      supabase.from('students').select('profile_id,full_name').not('profile_id','is',null),
+    ])
+    if(error)throw error
+    const colorMap=Object.fromEntries((colors||[]).map(c=>[c.id,c]))
+    const nameMap=Object.fromEntries([...(teachersAll||[]).map(t=>[t.profile_id,t.full_name]),...(studentsAll||[]).map(s=>[s.profile_id,s.full_name])])
+    const groups={}
+    ;(photos||[]).forEach(p=>{const key=p.sport_id||'general';(groups[key]=groups[key]||{label:p.sports?.name||'ภาพทั่วไป/บรรยากาศ',photos:[]}).photos.push(p)})
+    const groupKeys=Object.keys(groups).sort((a,b)=>a==='general'?1:b==='general'?-1:0)
+
+    m.innerHTML=`<div class="max-w-6xl mx-auto p-4 md:p-6">
+      <div class="flex items-center justify-between gap-3 mb-5">
+        <h1 class="text-xl font-extrabold">📸 ประมวลภาพกีฬาสี</h1>
+        <div class="flex gap-2">
+          <button id="gallery-download-all" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">⬇️ ดาวน์โหลดทั้งหมด</button>
+          <button id="gallery-modal-close" class="w-10 h-10 border border-slate-700 rounded-xl">✕</button>
+        </div>
+      </div>
+      ${groupKeys.length?`<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">${groupKeys.map(k=>{
+        const g=groups[k]
+        return `<button data-open-group="${esc(k)}" class="text-left rounded-2xl overflow-hidden border border-slate-800 hover:border-pink-500/60 transition group">
+          <div class="aspect-video bg-slate-900 relative">
+            <img src="${esc(g.photos[0].photo_url)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <span class="absolute bottom-2 right-2 bg-black/70 px-2 py-0.5 rounded-full text-[10px] font-bold">${g.photos.length} รูป</span>
+          </div>
+          <div class="p-3"><b class="text-sm">${esc(g.label)}</b></div>
+        </button>`
+      }).join('')}</div>`:'<p class="text-center muted py-20">ยังไม่มีภาพในระบบ</p>'}
+      <div id="gallery-lightbox-slot"></div>
+    </div>`
+
+    m.querySelector('#gallery-modal-close').onclick=()=>m.remove()
+    m.querySelector('#gallery-download-all').onclick=()=>downloadAllGalleryPhotos(photos||[])
+    m.querySelectorAll('[data-open-group]').forEach(btn=>btn.onclick=()=>openGalleryLightbox(m,groups[btn.dataset.openGroup],colorMap,nameMap))
+  }catch(e){console.error(e);m.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
+}
+
+function openGalleryLightbox(modalRoot,group,colorMap,nameMap){
+  let idx=0
+  const overlay=document.createElement('div')
+  overlay.className='fixed inset-0 z-[390] bg-black/95 flex flex-col'
+  modalRoot.appendChild(overlay)
+  const photoInfo=p=>{
+    const color=colorMap[p.team_color_id]
+    const uploader=nameMap[p.uploaded_by]||'ไม่ระบุ'
+    return `<b>${esc(uploader)}</b>${color?` · <span style="color:${esc(color.hex_color)}">สี${esc(color.name)}</span>`:''} · ${new Date(p.taken_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})}`
+  }
+  const render=()=>{
+    const p=group.photos[idx]
+    overlay.innerHTML=`
+      <div class="flex items-center justify-between p-3 text-white text-xs sm:text-sm gap-3">
+        <span class="truncate">${photoInfo(p)}</span>
+        <div class="flex gap-2 flex-shrink-0">
+          <a href="${esc(p.photo_url)}" download target="_blank" class="px-3 py-1.5 rounded-lg bg-emerald-600 font-bold">⬇️ โหลด</a>
+          <button data-lightbox-close class="w-8 h-8 rounded-lg bg-white/10">✕</button>
+        </div>
+      </div>
+      <div class="flex-1 flex items-center justify-center relative px-2">
+        ${idx>0?`<button data-lightbox-prev class="absolute left-2 w-11 h-11 rounded-full bg-white/10 text-white text-xl">‹</button>`:''}
+        <img src="${esc(p.photo_url)}" class="max-w-full max-h-full object-contain">
+        ${idx<group.photos.length-1?`<button data-lightbox-next class="absolute right-2 w-11 h-11 rounded-full bg-white/10 text-white text-xl">›</button>`:''}
+      </div>
+      <p class="text-center text-white/60 text-xs py-3">${idx+1} / ${group.photos.length}</p>`
+    overlay.querySelector('[data-lightbox-close]').onclick=()=>overlay.remove()
+    overlay.querySelector('[data-lightbox-prev]')?.addEventListener('click',()=>{idx--;render()})
+    overlay.querySelector('[data-lightbox-next]')?.addEventListener('click',()=>{idx++;render()})
+  }
+  render()
+}
+
+// ดาวน์โหลดทั้งหมดเป็น zip — โหลด JSZip จาก CDN แบบ lazy (ไม่ต้องเพิ่ม dependency ถ้าไม่ได้ใช้ปุ่มนี้)
+let _jsZipPromise=null
+function _loadJSZip(){
+  if(window.JSZip) return Promise.resolve(window.JSZip)
+  if(_jsZipPromise) return _jsZipPromise
+  _jsZipPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script')
+    s.src='https://unpkg.com/jszip@3.10.1/dist/jszip.min.js'
+    s.onload=()=>resolve(window.JSZip)
+    s.onerror=reject
+    document.head.appendChild(s)
+  })
+  return _jsZipPromise
+}
+async function downloadAllGalleryPhotos(photos){
+  if(!photos.length){toast('ยังไม่มีภาพให้ดาวน์โหลด','error');return}
+  toast(`กำลังเตรียมไฟล์ ${photos.length} รูป...`)
+  try{
+    const JSZip=await _loadJSZip()
+    const zip=new JSZip()
+    for(let i=0;i<photos.length;i++){
+      const res=await fetch(photos[i].photo_url)
+      const blob=await res.blob()
+      zip.file(`photo-${i+1}.jpg`,blob)
+    }
+    const content=await zip.generateAsync({type:'blob'})
+    const a=document.createElement('a')
+    a.href=URL.createObjectURL(content)
+    a.download='ภาพกิจกรรมกีฬาสี.zip'
+    a.click();URL.revokeObjectURL(a.href)
+    toast('ดาวน์โหลดสำเร็จ')
+  }catch(e){toast('ดาวน์โหลดไม่สำเร็จ: '+e.message,'error')}
 }
 
 // แท็บ "คะแนน/เหรียญ" — คะแนนรวมกับจำนวนเหรียญเป็นคนละส่วนกันจริงๆ (เหรียญมาจากอันดับการแข่งขัน
