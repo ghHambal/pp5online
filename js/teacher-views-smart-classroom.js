@@ -6,6 +6,7 @@ import {
   getMyClasses, getClassStudents, getSystemConfig, getClassSessionDOWs,
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
   closeLeavePermission, getMyDonationRequests, createAnnouncement,
+  getScoreColumns, getStudentScores, getClassAttendanceAllFull, getClassLeaveHistory,
 } from './api.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
@@ -17,7 +18,7 @@ import { openQuizMonitor } from './teacher-views-quiz-monitor.js'
 import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail } from './teacher-views-classes.js'
 import { showToast } from './ui.js'
-import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue } from './teacher-views-utils.js'
+import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS } from './teacher-views-utils.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -67,19 +68,25 @@ export async function renderSmartClassroom(teacher, classId) {
     return
   }
 
-  let cls, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests
+  let cls, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
+    scoreColumns, studentScores, attendanceFull, leaveHistory
   try {
     const classes = await getMyClasses(teacher.id)
     cls = classes.find(c => c.id === classId)
     if (!cls) { renderClassDetail(teacher, classId); return }
 
-    ;[students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests] = await Promise.all([
+    ;[students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
+      scoreColumns, studentScores, attendanceFull, leaveHistory] = await Promise.all([
       getClassStudents(classId).catch(() => []),
       getActiveLeavePermissionsForClass(classId).catch(() => []),
       getLeaveMaxActiveForClass(classId).catch(() => 3),
       getLeaveMaxPerStudentWeekForClass(classId).catch(() => 2),
       getQuizzesForClass(classId).catch(() => []),
       getMyDonationRequests(teacher.id).catch(() => []),
+      getScoreColumns(classId).catch(() => []),
+      getStudentScores(classId).catch(() => []),
+      getClassAttendanceAllFull(classId).catch(() => []),
+      getClassLeaveHistory(classId).catch(() => []),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -91,6 +98,14 @@ export async function renderSmartClassroom(teacher, classId) {
   const ms = cls.master_subjects ?? {}
   let activeLeaveMap = Object.fromEntries(activeLeaves.map(l => [l.student_id, l]))
   const studentsById = Object.fromEntries(students.map(s => [s.id, s]))
+
+  // ── Per-student lookup maps (สำหรับแผงข้อมูลนักเรียน) ─────────────────────
+  const scoresByStudent = {}
+  for (const r of studentScores) (scoresByStudent[r.student_id] ??= []).push(r)
+  const attendanceByStudent = {}
+  for (const r of attendanceFull) (attendanceByStudent[r.student_id] ??= []).push(r)
+  const leaveHistoryByStudent = {}
+  for (const l of leaveHistory) (leaveHistoryByStudent[l.student_id] ??= []).push(l)
 
   const _reload = () => renderSmartClassroom(teacher, classId)
 
@@ -224,9 +239,17 @@ export async function renderSmartClassroom(teacher, classId) {
       if (todays.length === 1) {
         await _openAttendanceModalForSession(teacher, cls, todays[0].n, {})
       } else if (todays.length > 1) {
-        _openSessionPicker(todays, 'วันนี้มีหลายคาบ — เลือกคาบที่จะเช็คชื่อ')
+        _openSessionPicker(sessions, todays[0].n, 'วันนี้มีหลายคาบ — เลือกคาบที่จะเช็คชื่อ')
       } else {
-        _openSessionPicker(sessions.slice(-8), 'วันนี้ไม่ตรงกับตารางสอนของห้องนี้ — เลือกคาบเอง')
+        // หาคาบที่ใกล้วันนี้ที่สุด (ทั้งก่อน/หลัง) เพื่อเลื่อนรายการไปโฟกัสให้อัตโนมัติ — ไม่ตัดรายการทิ้ง
+        const todayTime = new Date(today).getTime()
+        let nearest = sessions[0]
+        let nearestDiff = Infinity
+        for (const s of sessions) {
+          const diff = Math.abs(new Date(s.ds).getTime() - todayTime)
+          if (diff < nearestDiff) { nearestDiff = diff; nearest = s }
+        }
+        _openSessionPicker(sessions, nearest?.n, 'วันนี้ไม่ตรงกับตารางสอนของห้องนี้ — เลือกคาบเอง (เลื่อนไปคาบใกล้วันนี้ที่สุดให้แล้ว)')
       }
     } catch (err) {
       showToast('เปิดหน้าเช็คชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -235,7 +258,7 @@ export async function renderSmartClassroom(teacher, classId) {
     }
   }
 
-  function _openSessionPicker(list, title) {
+  function _openSessionPicker(list, focusN, title) {
     document.getElementById('sc-session-picker')?.remove()
     const m = document.createElement('div')
     m.id = 'sc-session-picker'
@@ -247,9 +270,9 @@ export async function renderSmartClassroom(teacher, classId) {
           <button id="sc-sess-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
         </div>
         <p class="text-xs text-gray-400">${_htmlEsc(title)}</p>
-        <div class="max-h-72 overflow-y-auto space-y-1.5">
-          ${list.map(s => `<button class="sc-sess-btn w-full text-left px-3 py-2.5 rounded-xl border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition text-sm font-semibold text-gray-700" data-n="${s.n}">
-            คาบที่ ${s.n} <span class="text-gray-400 font-normal">· ${_htmlEsc(s.ds)}</span>
+        <div class="max-h-72 overflow-y-auto space-y-1.5" id="sc-sess-list">
+          ${list.map(s => `<button class="sc-sess-btn w-full text-left px-3 py-2.5 rounded-xl border transition text-sm font-semibold ${s.n === focusN ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 text-gray-700'}" data-n="${s.n}">
+            คาบที่ ${s.n} <span class="${s.n === focusN ? 'text-indigo-400' : 'text-gray-400'} font-normal">· ${_htmlEsc(s.ds)}</span>${s.n === focusN ? ' <span class="text-[10px] text-indigo-500">← ใกล้วันนี้ที่สุด</span>' : ''}
           </button>`).join('')}
         </div>
       </div>`
@@ -262,6 +285,8 @@ export async function renderSmartClassroom(teacher, classId) {
       try { await _openAttendanceModalForSession(teacher, cls, n, {}) }
       catch (err) { showToast('เปิดคาบนี้ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
     }))
+    const focusEl = m.querySelector(`.sc-sess-btn[data-n="${focusN}"]`)
+    focusEl?.scrollIntoView({ block: 'center' })
   }
 
   // ── Wiring: roster click → student detail panel ─────────────────────────
@@ -272,51 +297,127 @@ export async function renderSmartClassroom(teacher, classId) {
     if (s) _openStudentPanel(s)
   })
 
+  const SC_TABS = [
+    { key: 'info',  label: '👤 ข้อมูล' },
+    { key: 'score', label: '📝 คะแนน' },
+    { key: 'att',   label: '✅ มาเรียน' },
+    { key: 'leave', label: '🚪 ออกห้อง' },
+  ]
+
+  function _tabInfoHTML(s) {
+    const leave = activeLeaveMap[s.id]
+    return `
+      <div class="space-y-2">
+        ${leave ? `
+          <div class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100">
+            <div class="text-xs text-amber-800"><b>🚪 ออกนอกห้องอยู่</b><br>${_htmlEsc(leave.reason ?? '')} · ${_fmtElapsed(leave.created_at)}</div>
+          </div>
+          <button id="sc-sp-return" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700">✅ บันทึกกลับเข้าห้องแล้ว</button>
+        ` : `
+          <button id="sc-sp-leave" class="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600">🚪 อนุญาตออกนอกห้อง</button>
+        `}
+      </div>`
+  }
+
+  function _tabScoreHTML(s) {
+    const rows = scoresByStudent[s.id] ?? []
+    if (!scoreColumns.length) return `<p class="text-center py-6 text-xs text-gray-400">ห้องนี้ยังไม่มีคอลัมน์คะแนน</p>`
+    return `<div class="space-y-1.5">${scoreColumns.map(col => {
+      const r = rows.find(x => x.score_column_id === col.id)
+      const val = r?.score
+      return `<div class="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
+        <span class="font-semibold text-gray-700 truncate">${_htmlEsc(col.assignment_name ?? '')}</span>
+        <span class="font-mono font-bold ${val == null ? 'text-gray-300' : 'text-indigo-600'} flex-shrink-0">${val ?? '—'} <span class="text-gray-400 font-normal">/ ${col.max_score}</span></span>
+      </div>`
+    }).join('')}</div>`
+  }
+
+  function _tabAttHTML(s) {
+    const rows = (attendanceByStudent[s.id] ?? []).slice().sort((a, b) => (b.check_date ?? '').localeCompare(a.check_date ?? ''))
+    if (!rows.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีข้อมูลเช็คชื่อ</p>`
+    const counts = {}
+    for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1
+    const summary = Object.entries(counts).map(([k, v]) => {
+      const meta = ATT_STATUS[k]
+      return `<span class="px-2 py-1 rounded-full text-[11px] font-bold ${meta?.bg ?? 'bg-gray-50'} ${meta?.color ?? 'text-gray-500'}">${meta?.label ?? k} ${v}</span>`
+    }).join(' ')
+    const recent = rows.slice(0, 15).map(r => {
+      const meta = ATT_STATUS[r.status]
+      return `<div class="flex items-center justify-between px-3 py-1.5 text-xs border-b border-gray-50">
+        <span class="text-gray-500">${_htmlEsc(r.check_date ?? '')} · คาบ ${r.session_number}</span>
+        <span class="font-bold ${meta?.color ?? 'text-gray-500'}">${meta?.label ?? r.status}</span>
+      </div>`
+    }).join('')
+    return `<div class="flex flex-wrap gap-1.5 mb-3">${summary}</div><div class="max-h-56 overflow-y-auto">${recent}</div>`
+  }
+
+  function _tabLeaveHTML(s) {
+    const rows = leaveHistoryByStudent[s.id] ?? []
+    if (!rows.length) return `<p class="text-center py-6 text-xs text-gray-400">ไม่เคยขอออกนอกห้องในวิชานี้</p>`
+    return `<div class="max-h-64 overflow-y-auto space-y-1.5">${rows.map(l => {
+      const statusLabel = l.status === 'returned' ? 'กลับแล้ว' : l.status === 'overdue' ? 'เลยเวลา' : 'ยังไม่กลับ'
+      const statusCls = l.status === 'returned' ? 'text-emerald-600' : l.status === 'overdue' ? 'text-red-600' : 'text-amber-600'
+      return `<div class="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-gray-700">${_htmlEsc(l.reason ?? '')}</span>
+          <span class="font-bold ${statusCls}">${statusLabel}</span>
+        </div>
+        <div class="text-gray-400 mt-0.5">${new Date(l.created_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ขออนุญาต ${l.allowed_duration} นาที</div>
+      </div>`
+    }).join('')}</div>`
+  }
+
   function _openStudentPanel(s) {
     document.getElementById('sc-student-modal')?.remove()
-    const leave = activeLeaveMap[s.id]
+    let activeTab = 'info'
     const m = document.createElement('div')
     m.id = 'sc-student-modal'
     m.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
-    m.innerHTML = `
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-fade">
-        <div class="flex items-center gap-3">
-          <div class="w-14 h-14 rounded-xl overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl flex-shrink-0">
-            ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name ?? '—')}</p>
-            <p class="text-xs text-gray-400">${_htmlEsc(s.student_code ?? '')} · ${_htmlEsc(s.main_room ?? '')}</p>
-          </div>
-          <button id="sc-sp-close" class="text-gray-400 hover:text-gray-700 text-lg flex-shrink-0">✕</button>
-        </div>
-        <div class="border-t border-gray-100 pt-3 space-y-2">
-          ${leave ? `
-            <div class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100">
-              <div class="text-xs text-amber-800"><b>🚪 ออกนอกห้อง</b><br>${_htmlEsc(leave.reason ?? '')} · ${_fmtElapsed(leave.created_at)}</div>
-            </div>
-            <button id="sc-sp-return" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700">✅ บันทึกกลับเข้าห้องแล้ว</button>
-          ` : `
-            <button id="sc-sp-leave" class="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600">🚪 อนุญาตออกนอกห้อง</button>
-          `}
-        </div>
-      </div>`
     document.body.appendChild(m)
+
+    const _renderPanel = () => {
+      const leave = activeLeaveMap[s.id]
+      m.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[88vh] flex flex-col animate-fade">
+          <div class="p-5 pb-3 flex-shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="w-14 h-14 rounded-xl overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl flex-shrink-0">
+                ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name ?? '—')}</p>
+                <p class="text-xs text-gray-400">${_htmlEsc(s.student_code ?? '')} · ${_htmlEsc(s.main_room ?? '')}</p>
+              </div>
+              <button id="sc-sp-close" class="text-gray-400 hover:text-gray-700 text-lg flex-shrink-0">✕</button>
+            </div>
+          </div>
+          <div class="flex gap-1 px-5 flex-shrink-0 border-b border-gray-100">
+            ${SC_TABS.map(t => `<button data-tab="${t.key}" class="sc-sp-tab px-2.5 py-2 text-xs font-bold border-b-2 -mb-px transition ${activeTab === t.key ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">${t.label}</button>`).join('')}
+          </div>
+          <div class="p-5 pt-3 overflow-y-auto flex-1">
+            ${activeTab === 'info' ? _tabInfoHTML(s) : activeTab === 'score' ? _tabScoreHTML(s) : activeTab === 'att' ? _tabAttHTML(s) : _tabLeaveHTML(s)}
+          </div>
+        </div>`
+
+      m.querySelector('#sc-sp-close').addEventListener('click', () => m.remove())
+      m.querySelectorAll('.sc-sp-tab').forEach(b => b.addEventListener('click', () => { activeTab = b.dataset.tab; _renderPanel() }))
+      m.querySelector('#sc-sp-return')?.addEventListener('click', async () => {
+        const leaveNow = activeLeaveMap[s.id]
+        try { await closeLeavePermission(leaveNow.id, 'returned'); showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); m.remove(); _reload() }
+        catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      })
+      m.querySelector('#sc-sp-leave')?.addEventListener('click', () => {
+        const activeOutCount = Object.keys(activeLeaveMap).length
+        if (activeOutCount >= leaveMaxActive) {
+          showToast(`ไม่อนุญาตให้ออกนอกห้องเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบโควต้า ${leaveMaxActive} คนแล้ว`, 'warning')
+          return
+        }
+        m.remove()
+        _openLeaveRequestModal(teacher, cls, s.id, s.full_name, s.image_url, activeLeaveMap, leaveMaxActive, () => _reload())
+      })
+    }
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
-    m.querySelector('#sc-sp-close').addEventListener('click', () => m.remove())
-    m.querySelector('#sc-sp-return')?.addEventListener('click', async () => {
-      try { await closeLeavePermission(leave.id, 'returned'); showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); m.remove(); _reload() }
-      catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
-    })
-    m.querySelector('#sc-sp-leave')?.addEventListener('click', () => {
-      const activeOutCount = Object.keys(activeLeaveMap).length
-      if (activeOutCount >= leaveMaxActive) {
-        showToast(`ไม่อนุญาตให้ออกนอกห้องเพิ่ม เนื่องจากมีนักเรียนอยู่นอกห้องครบโควต้า ${leaveMaxActive} คนแล้ว`, 'warning')
-        return
-      }
-      m.remove()
-      _openLeaveRequestModal(teacher, cls, s.id, s.full_name, s.image_url, activeLeaveMap, leaveMaxActive, () => _reload())
-    })
+    _renderPanel()
   }
 
   // ── Wiring: hall pass list return buttons + quota ────────────────────────
