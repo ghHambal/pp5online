@@ -5,9 +5,10 @@
 import {
   getMyClasses, getClassStudents, getSystemConfig, getClassSessionDOWs,
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
-  closeLeavePermission, getMyDonationRequests, createAnnouncement,
+  closeLeavePermission, getMyDonationRequests, createAnnouncement, getClassAnnouncements,
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
   getClassAssignmentsWithSubmissions, createAssignment, deleteAssignment,
+  getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
 } from './api.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
@@ -71,14 +72,19 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   let cls, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
-    scoreColumns, studentScores, attendanceFull, leaveHistory, assignments
+    scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
+    examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements
   try {
     const classes = await getMyClasses(teacher.id)
     cls = classes.find(c => c.id === classId)
     if (!cls) { renderClassDetail(teacher, classId); return }
 
+    const academicYear = parseInt(cfg.academicYear ?? 2568)
+    const semester = parseInt(cfg.semester ?? 1)
+
     ;[students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
-      scoreColumns, studentScores, attendanceFull, leaveHistory, assignments] = await Promise.all([
+      scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
+      examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements] = await Promise.all([
       getClassStudents(classId).catch(() => []),
       getActiveLeavePermissionsForClass(classId).catch(() => []),
       getLeaveMaxActiveForClass(classId).catch(() => 3),
@@ -90,6 +96,11 @@ export async function renderSmartClassroom(teacher, classId) {
       getClassAttendanceAllFull(classId).catch(() => []),
       getClassLeaveHistory(classId).catch(() => []),
       getClassAssignmentsWithSubmissions(classId).catch(() => []),
+      getTeacherExamRequests(teacher.id).catch(() => []),
+      getMySchedule(teacher.id, academicYear, semester).catch(() => []),
+      getClassScheduleLinks(teacher.id).catch(() => []),
+      getPeriods().catch(() => []),
+      getClassAnnouncements(classId).catch(() => []),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -109,6 +120,45 @@ export async function renderSmartClassroom(teacher, classId) {
   for (const r of attendanceFull) (attendanceByStudent[r.student_id] ??= []).push(r)
   const leaveHistoryByStudent = {}
   for (const l of leaveHistory) (leaveHistoryByStudent[l.student_id] ??= []).push(l)
+
+  // ── คำร้องขอสอบปรับ/สอบย้อนหลัง ของห้องนี้ — คิวเรียงใกล้→ไกล ────────────────
+  const examQueue = examRequestsAll
+    .filter(r => r.classes?.id === classId && r.status !== 'rejected' && (r.status !== 'approved' || r.exam_attended == null))
+    .sort((a, b) => (a.requested_date ?? '').localeCompare(b.requested_date ?? ''))
+
+  // ── ตารางเรียนของห้องนี้ (day_of_week + period) ────────────────────────────
+  const myScheduleIds = new Set(scheduleLinks.filter(l => l.class_id === classId).map(l => l.teacher_schedule_id))
+  const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
+  const classScheduleSlots = mySchedule
+    .filter(s => myScheduleIds.has(s.id))
+    .map(s => ({ ...s, period: periodMap[s.period_no], actualEndPeriod: periodMap[(s.period_no ?? 1) + (s.span_periods ?? 1) - 1] ?? periodMap[s.period_no] }))
+    .sort((a, b) => a.day_of_week - b.day_of_week || a.period_no - b.period_no)
+
+  // หาว่าตอนนี้ "กำลังสอน" คาบไหนของห้องนี้อยู่ไหม ถ้าไม่ ให้หาคาบถัดไปที่ใกล้ที่สุด (อาจข้ามวัน)
+  function _computeClassTiming() {
+    const now = new Date()
+    const dow = now.getDay()
+    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+    for (const slot of classScheduleSlots) {
+      if (slot.day_of_week !== dow || !slot.period?.start_time || !slot.actualEndPeriod?.end_time) continue
+      const [sh, sm] = slot.period.start_time.split(':').map(Number)
+      const [eh, em] = slot.actualEndPeriod.end_time.split(':').map(Number)
+      const startSec = sh * 3600 + sm * 60
+      const endSec = eh * 3600 + em * 60
+      if (nowSec >= startSec && nowSec < endSec) return { mode: 'live', remainingSec: endSec - nowSec, slot }
+    }
+    let best = null
+    for (const slot of classScheduleSlots) {
+      if (!slot.period?.start_time) continue
+      const [sh, sm] = slot.period.start_time.split(':').map(Number)
+      const startSec = sh * 3600 + sm * 60
+      let daysUntil = (slot.day_of_week - dow + 7) % 7
+      if (daysUntil === 0 && startSec <= nowSec) daysUntil = 7
+      const totalSecUntil = daysUntil * 86400 + startSec - nowSec
+      if (best === null || totalSecUntil < best.totalSecUntil) best = { totalSecUntil, slot }
+    }
+    return best ? { mode: 'upcoming', remainingSec: best.totalSecUntil, slot: best.slot } : { mode: 'none' }
+  }
 
   const _reload = () => renderSmartClassroom(teacher, classId)
 
@@ -161,6 +211,56 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>`).join('')
   }
 
+  // ── ประกาศของห้องนี้ (ทุกแหล่ง ไม่ใช่แค่ที่ส่งจากตรงนี้) ──────────────────────
+  const _annHistoryHTML = () => {
+    if (!classAnnouncements.length) return `<p class="text-xs text-gray-400 mb-2">ยังไม่มีประกาศสำหรับห้องนี้</p>`
+    return `<div class="space-y-1.5 mb-3 max-h-40 overflow-y-auto">${classAnnouncements.slice(0, 10).map(a => `
+      <div class="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
+        <p class="font-semibold text-gray-700 truncate">${_htmlEsc(a.title)}</p>
+        ${a.body ? `<p class="text-gray-400 truncate">${_htmlEsc(a.body.slice(0, 80))}</p>` : ''}
+        <p class="text-[10px] text-gray-300 mt-0.5">${new Date(a.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}${a.teachers?.full_name ? ' · ' + _htmlEsc(a.teachers.full_name) : ''}</p>
+      </div>`).join('')}</div>`
+  }
+
+  // ── ตารางเรียนของห้องนี้ ────────────────────────────────────────────────────
+  const DAY_TH_FULL = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+  const _scheduleHTML = (mode) => {
+    if (!classScheduleSlots.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่ได้ผูกตารางสอนให้ห้องนี้</p>`
+    if (mode === 'daily') {
+      const today = new Date().getDay()
+      const todaySlots = classScheduleSlots.filter(sl => sl.day_of_week === today)
+      if (!todaySlots.length) return `<p class="text-center py-6 text-xs text-gray-400">วันนี้ไม่มีคาบของห้องนี้</p>`
+      return todaySlots.map(sl => `
+        <div class="flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50 mb-1.5 text-xs">
+          <span class="font-semibold text-gray-700">คาบที่ ${sl.period_no}${sl.span_periods > 1 ? `-${sl.period_no + sl.span_periods - 1}` : ''}</span>
+          <span class="text-gray-500 font-mono">${sl.period?.start_time?.slice(0, 5) ?? '—'} - ${sl.actualEndPeriod?.end_time?.slice(0, 5) ?? '—'}</span>
+        </div>`).join('')
+    }
+    const byDay = {}
+    classScheduleSlots.forEach(sl => { (byDay[sl.day_of_week] ??= []).push(sl) })
+    return Object.keys(byDay).sort((a, b) => a - b).map(dow => `
+      <div class="mb-2.5">
+        <p class="text-[11px] font-bold text-gray-500 mb-1">${DAY_TH_FULL[dow]}</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${byDay[dow].map(sl => `<span class="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-semibold font-mono">คาบ ${sl.period_no}${sl.span_periods > 1 ? `-${sl.period_no + sl.span_periods - 1}` : ''} · ${sl.period?.start_time?.slice(0, 5) ?? '—'}</span>`).join('')}
+        </div>
+      </div>`).join('')
+  }
+
+  // ── คิวคำร้องขอสอบปรับ/สอบย้อนหลัง ────────────────────────────────────────────
+  const _examQueueHTML = () => {
+    if (!examQueue.length) return `<p class="text-center py-6 text-xs text-gray-400">ไม่มีคำร้องรอดำเนินการ</p>`
+    return examQueue.map((r, i) => `
+      <div class="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 bg-gray-50 mb-1.5 text-xs">
+        <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center flex-shrink-0">${i + 1}</span>
+        <div class="flex-1 min-w-0">
+          <p class="font-semibold text-gray-700 truncate">${_htmlEsc(r.students?.full_name ?? '—')} — ${_htmlEsc(r.request_type ?? '')}</p>
+          <p class="text-gray-400">${r.requested_date ? new Date(r.requested_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : 'ไม่ระบุวันที่'}${r.requested_period_no ? ` · คาบ ${r.requested_period_no}` : ''}</p>
+        </div>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${r.status === 'pending' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'} flex-shrink-0">${r.status === 'pending' ? 'รออนุมัติ' : 'อนุมัติแล้ว รอสอบ'}</span>
+      </div>`).join('')
+  }
+
   // ── งานที่มอบหมาย ────────────────────────────────────────────────────────
   const _fmtDueDate = iso => !iso ? 'ไม่กำหนดส่ง' : new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
   const _isLate = (a, submittedAtIso) => a.due_at ? new Date(submittedAtIso).getTime() > new Date(a.due_at).getTime() : false
@@ -202,7 +302,8 @@ export async function renderSmartClassroom(teacher, classId) {
         <h1 class="font-bold text-gray-800 text-base truncate">${_htmlEsc(ms.subject_name ?? '')} · ${_htmlEsc(cls.class_name ?? '')}</h1>
         <p class="text-xs text-gray-400">${students.length} คน</p>
       </div>
-      <button id="sc-switch-class" class="ml-auto flex-shrink-0 text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg">🔀 สลับห้อง</button>
+      <div id="sc-clock-wrap" class="ml-auto flex-shrink-0 text-right"></div>
+      <button id="sc-switch-class" class="flex-shrink-0 text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg">🔀 สลับห้อง</button>
       <button id="sc-back" class="flex-shrink-0 text-xs text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50">← กลับ</button>
     </div>
 
@@ -244,13 +345,33 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <h2 class="text-sm font-bold text-gray-700 mb-2">📣 แจ้งห้องนี้ทันที</h2>
+          <h2 class="text-sm font-bold text-gray-700 mb-2">📣 ประกาศของห้องนี้</h2>
+          <p class="text-[10px] text-gray-400 mb-2">รวมประกาศที่ตรงกับห้องนี้ทั้งหมด ไม่ว่าจะประกาศจากตรงนี้หรือหน้าประกาศหลัก</p>
+          <div id="sc-ann-history">${_annHistoryHTML()}</div>
           <textarea id="sc-ann-text" rows="3" placeholder="เช่น พรุ่งนี้เตรียมสมุดการบ้านมาส่งด้วยนะ"
             class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2"></textarea>
           <button id="sc-ann-send" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">ส่งประกาศ</button>
         </div>
       </div>
 
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-gray-700">🗓️ ตารางเรียนห้องนี้</h2>
+          <div class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button data-sched="daily" class="sc-sched-tab px-2.5 py-1 rounded-md text-[11px] font-bold transition">รายวัน</button>
+            <button data-sched="weekly" class="sc-sched-tab px-2.5 py-1 rounded-md text-[11px] font-bold transition">รายสัปดาห์</button>
+          </div>
+        </div>
+        <div id="sc-schedule-body">${_scheduleHTML('daily')}</div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <h2 class="text-sm font-bold text-gray-700 mb-3">📋 คิวคำร้องขอสอบปรับ/สอบย้อนหลัง</h2>
+        <div id="sc-exam-queue">${_examQueueHTML()}</div>
+      </div>
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mt-4">
@@ -265,11 +386,36 @@ export async function renderSmartClassroom(teacher, classId) {
   // ── Wiring: fullscreen mode / back / switch class / attendance ──────────
   document.body.classList.add('sc-fullscreen')
   document.getElementById('sc-back').addEventListener('click', () => {
+    if (window._scClockInterval) { clearInterval(window._scClockInterval); window._scClockInterval = null }
     document.body.classList.remove('sc-fullscreen')
     renderClassDetail(teacher, classId)
   })
   document.getElementById('sc-switch-class').addEventListener('click', () => _openClassSwitcher())
   document.getElementById('sc-open-attendance').addEventListener('click', () => _openTodayAttendance())
+
+  // ── นาฬิกา: กำลังสอนอยู่ (นับถอยหลังจนจบคาบ) หรือคาบถัดไปของห้องนี้ (นับถอยหลังจนเริ่ม) ──
+  function _fmtCountdownParts(sec) {
+    return { d: Math.floor(sec / 86400), h: Math.floor((sec % 86400) / 3600), m: Math.floor((sec % 3600) / 60), s: sec % 60 }
+  }
+  function _paintClock() {
+    const wrap = document.getElementById('sc-clock-wrap')
+    if (!wrap) { if (window._scClockInterval) { clearInterval(window._scClockInterval); window._scClockInterval = null }; return }
+    const t = _computeClassTiming()
+    if (t.mode === 'live') {
+      const { h, m, s } = _fmtCountdownParts(t.remainingSec)
+      wrap.innerHTML = `<p class="text-[10px] text-emerald-600 font-bold uppercase tracking-wide">🟢 กำลังสอน — เหลืออีก</p>
+        <p class="text-xl font-extrabold text-emerald-700 font-mono">${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}</p>`
+    } else if (t.mode === 'upcoming') {
+      const { d, h, m, s } = _fmtCountdownParts(t.remainingSec)
+      wrap.innerHTML = `<p class="text-[10px] text-amber-600 font-bold uppercase tracking-wide">คาบนี้จะเริ่มสอนในอีก</p>
+        <p class="text-sm font-extrabold text-amber-700 font-mono">${d > 0 ? d + ' วัน ' : ''}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}</p>`
+    } else {
+      wrap.innerHTML = `<p class="text-[10px] text-gray-400">ไม่พบตารางสอนของห้องนี้</p>`
+    }
+  }
+  if (window._scClockInterval) clearInterval(window._scClockInterval)
+  _paintClock()
+  window._scClockInterval = setInterval(_paintClock, 1000)
 
   async function _openClassSwitcher() {
     document.getElementById('sc-switch-modal')?.remove()
@@ -512,9 +658,10 @@ export async function renderSmartClassroom(teacher, classId) {
     }).join('')}</div>`
   }
 
-  function _openStudentPanel(s) {
+  function _openStudentPanel(initialStudent) {
     document.getElementById('sc-student-modal')?.remove()
     let activeTab = 'info'
+    let s = initialStudent
     const m = document.createElement('div')
     m.id = 'sc-student-modal'
     m.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
@@ -522,17 +669,20 @@ export async function renderSmartClassroom(teacher, classId) {
 
     const _renderPanel = () => {
       const leave = activeLeaveMap[s.id]
+      const idx = students.findIndex(x => x.id === s.id)
       m.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[88vh] flex flex-col animate-fade">
           <div class="p-5 pb-3 flex-shrink-0">
             <div class="flex items-center gap-3">
+              <button id="sc-sp-prev" ${idx <= 0 ? 'disabled' : ''} class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-25 disabled:pointer-events-none" title="คนก่อนหน้า">‹</button>
               <div class="w-14 h-14 rounded-xl overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl flex-shrink-0">
                 ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
               </div>
               <div class="min-w-0 flex-1">
                 <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name ?? '—')}</p>
-                <p class="text-xs text-gray-400">${_htmlEsc(s.student_code ?? '')} · ${_htmlEsc(s.main_room ?? '')}</p>
+                <p class="text-xs text-gray-400">${_htmlEsc(s.student_code ?? '')} · ${_htmlEsc(s.main_room ?? '')} · ${idx + 1}/${students.length}</p>
               </div>
+              <button id="sc-sp-next" ${idx >= students.length - 1 ? 'disabled' : ''} class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-25 disabled:pointer-events-none" title="คนถัดไป">›</button>
               <button id="sc-sp-close" class="text-gray-400 hover:text-gray-700 text-lg flex-shrink-0">✕</button>
             </div>
           </div>
@@ -545,6 +695,8 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>`
 
       m.querySelector('#sc-sp-close').addEventListener('click', () => m.remove())
+      m.querySelector('#sc-sp-prev')?.addEventListener('click', () => { if (idx > 0) { s = students[idx - 1]; activeTab = 'info'; _renderPanel() } })
+      m.querySelector('#sc-sp-next')?.addEventListener('click', () => { if (idx < students.length - 1) { s = students[idx + 1]; activeTab = 'info'; _renderPanel() } })
       m.querySelectorAll('.sc-sp-tab').forEach(b => b.addEventListener('click', () => { activeTab = b.dataset.tab; _renderPanel() }))
       m.querySelectorAll('.sc-score-input').forEach(input => {
         input.addEventListener('change', async () => {
@@ -633,10 +785,23 @@ export async function renderSmartClassroom(teacher, classId) {
     try {
       await createAnnouncement({ title: `📣 ${cls.class_name}`, body: text, isActive: true, teacherId: teacher.id, targetClassIds: [classId] })
       showToast('ส่งประกาศถึงห้องนี้แล้ว 📣', 'success')
-      document.getElementById('sc-ann-text').value = ''
-    } catch (err) { showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
-    finally { btn.disabled = false; btn.textContent = 'ส่งประกาศ' }
+      _reload()
+    } catch (err) { showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false; btn.textContent = 'ส่งประกาศ' }
   })
+
+  // ── Wiring: schedule daily/weekly toggle ──────────────────────────────────
+  let _schedMode = 'daily'
+  const _paintSchedTabs = () => {
+    document.querySelectorAll('.sc-sched-tab').forEach(b => {
+      b.className = `sc-sched-tab px-2.5 py-1 rounded-md text-[11px] font-bold transition ${b.dataset.sched === _schedMode ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`
+    })
+  }
+  _paintSchedTabs()
+  document.querySelectorAll('.sc-sched-tab').forEach(b => b.addEventListener('click', () => {
+    _schedMode = b.dataset.sched
+    _paintSchedTabs()
+    document.getElementById('sc-schedule-body').innerHTML = _scheduleHTML(_schedMode)
+  }))
 
   // ── Wiring: assignments ───────────────────────────────────────────────────
   document.getElementById('sc-add-assignment').addEventListener('click', () => _openCreateAssignmentModal())
