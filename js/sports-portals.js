@@ -1621,21 +1621,25 @@ function createSportSearchSelect({wrap,options}){
     if(open)return
     open=true
     const rect=trigger.getBoundingClientRect()
+    // เผื่อพื้นที่เหลือใต้ปุ่มไม่พอ (จอมือถือเตี้ย/ปุ่มอยู่ค่อนไปทางล่างจอ) — คำนวณความสูง
+    // สูงสุดจากพื้นที่ว่างจริงแทนตัวเลขตายตัว กันไม่ให้ panel ล้นจอจนกดสิ่งอื่นไม่ได้
+    const spaceBelow=window.innerHeight-rect.bottom-16
+    const maxH=Math.max(200,Math.min(320,spaceBelow))
     panel=document.createElement('div')
     panel.className='fixed z-[500] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col'
     panel.style.left=`${rect.left}px`
     panel.style.top=`${rect.bottom+4}px`
     panel.style.width=`${rect.width}px`
-    panel.style.maxHeight='320px'
+    panel.style.maxHeight=`${maxH}px`
     panel.innerHTML=`
-      <div class="p-2 border-b border-slate-700">
+      <div class="p-2 border-b border-slate-700 flex-shrink-0">
         <input class="sss-search w-full rounded-lg bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100" placeholder="ค้นหาชื่อรายการแข่งขัน...">
       </div>
-      <div class="sss-groups flex flex-wrap gap-1.5 p-2 border-b border-slate-700 overflow-x-auto">
-        <button type="button" data-group="" class="px-2.5 py-1 rounded-full text-[11px] font-bold ${!activeGroup?'bg-pink-600 text-white':'bg-white/5 text-slate-300'}">ทั้งหมด</button>
-        ${groups.map(g=>`<button type="button" data-group="${esc(g)}" class="px-2.5 py-1 rounded-full text-[11px] font-bold ${activeGroup===g?'bg-pink-600 text-white':'bg-white/5 text-slate-300'}">${esc(g)}</button>`).join('')}
+      <div class="sss-groups flex flex-nowrap gap-1.5 p-2 border-b border-slate-700 overflow-x-auto flex-shrink-0">
+        <button type="button" data-group="" class="flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${!activeGroup?'bg-pink-600 text-white':'bg-white/5 text-slate-300'}">ทั้งหมด</button>
+        ${groups.map(g=>`<button type="button" data-group="${esc(g)}" class="flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${activeGroup===g?'bg-pink-600 text-white':'bg-white/5 text-slate-300'}">${esc(g)}</button>`).join('')}
       </div>
-      <ul class="sss-list flex-1 overflow-y-auto"></ul>`
+      <ul class="sss-list flex-1 overflow-y-auto" style="-webkit-overflow-scrolling:touch"></ul>`
     document.body.appendChild(panel)
     panel.querySelectorAll('[data-group]').forEach(btn=>btn.addEventListener('click',()=>{
       activeGroup=btn.dataset.group||null
@@ -1648,8 +1652,10 @@ function createSportSearchSelect({wrap,options}){
   }
 
   trigger.addEventListener('click',()=>open?closePanel():openPanel())
+  // ปิดเฉพาะตอนคลิก/แตะนอก panel เท่านั้น — ห้ามปิดตอนเลื่อนหน้าจอ (เดิมปิดตอน scroll
+  // ด้วย ทำให้เลื่อนดูรายการยาวๆ ในมือถือไม่ได้เลยเพราะโดนปิดก่อนจะทันเห็น)
   document.addEventListener('mousedown',e=>{if(open&&panel&&!panel.contains(e.target)&&!trigger.contains(e.target))closePanel()},true)
-  window.addEventListener('scroll',()=>{if(open)closePanel()},true)
+  document.addEventListener('touchstart',e=>{if(open&&panel&&!panel.contains(e.target)&&!trigger.contains(e.target))closePanel()},true)
 
   return {getValue:()=>selected, setValue:v=>{selected=v||null;const opt=options.find(o=>String(o.id)===String(v));displayEl.textContent=opt?opt.name:'— ภาพทั่วไป/บรรยากาศ —';displayEl.classList.toggle('text-slate-400',!opt)}}
 }
