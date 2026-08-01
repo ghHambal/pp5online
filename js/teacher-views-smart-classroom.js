@@ -6,7 +6,7 @@ import {
   getMyClasses, getClassStudents, getSystemConfig, getClassSessionDOWs,
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
   closeLeavePermission, getMyDonationRequests, createAnnouncement,
-  getScoreColumns, getStudentScores, getClassAttendanceAllFull, getClassLeaveHistory,
+  getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
 } from './api.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
@@ -319,27 +319,76 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>`
   }
 
-  function _tabScoreHTML(s) {
-    const rows = scoresByStudent[s.id] ?? []
-    if (!scoreColumns.length) return `<p class="text-center py-6 text-xs text-gray-400">ห้องนี้ยังไม่มีคอลัมน์คะแนน</p>`
-    return `<div class="space-y-1.5">${scoreColumns.map(col => {
-      const r = rows.find(x => x.score_column_id === col.id)
-      const val = r?.score
-      return `<div class="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
-        <span class="font-semibold text-gray-700 truncate">${_htmlEsc(col.assignment_name ?? '')}</span>
-        <span class="font-mono font-bold ${val == null ? 'text-gray-300' : 'text-indigo-600'} flex-shrink-0">${val ?? '—'} <span class="text-gray-400 font-normal">/ ${col.max_score}</span></span>
-      </div>`
-    }).join('')}</div>`
+  // เกรดประมาณจาก % รวม — สูตรเดียวกับที่ใช้สร้างเอกสาร ปพ.5 (pp5-doc.js:_calcGrade)
+  // หมายเหตุ: ไม่รวมสูตรพิเศษ/บังคับเกรด/แยกกลางภาค-ปลายภาคแบบหน้าคะแนนหลัก (teacher-views-grades.js)
+  // ถ้าต้องการเลขที่ตรงกับหน้าคะแนนหลักเป๊ะ ต้องเปิดหน้านั้นแทน
+  function _estimateGrade(pct) {
+    if (pct >= 80) return '4'
+    if (pct >= 75) return '3.5'
+    if (pct >= 70) return '3'
+    if (pct >= 65) return '2.5'
+    if (pct >= 60) return '2'
+    if (pct >= 55) return '1.5'
+    if (pct >= 50) return '1'
+    return '0'
   }
+
+  function _tabScoreHTML(s) {
+    if (!scoreColumns.length) return `<p class="text-center py-6 text-xs text-gray-400">ห้องนี้ยังไม่มีคอลัมน์คะแนน</p>`
+    const rows = scoresByStudent[s.id] ?? []
+    const totalMax = scoreColumns.reduce((sum, c) => sum + (parseFloat(c.max_score) || 0), 0)
+    const totalScore = scoreColumns.reduce((sum, c) => {
+      const r = rows.find(x => x.score_column_id === c.id)
+      return sum + (parseFloat(r?.score) || 0)
+    }, 0)
+    const pct = totalMax > 0 ? (totalScore / totalMax * 100) : 0
+    return `
+      <div class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-100 mb-1">
+        <div>
+          <p class="text-[10px] text-indigo-400 font-semibold uppercase tracking-wide">รวมคะแนน</p>
+          <p class="text-sm font-bold text-indigo-700">${totalScore.toFixed(1).replace(/\.0$/, '')} / ${totalMax} · ${pct.toFixed(1)}%</p>
+        </div>
+        <div class="text-right">
+          <p class="text-[10px] text-indigo-400 font-semibold uppercase tracking-wide">เกรดประมาณ</p>
+          <p class="text-lg font-extrabold text-indigo-700">${_estimateGrade(pct)}</p>
+        </div>
+      </div>
+      <p class="text-[10px] text-gray-400 mb-3">* รวมทุกคอลัมน์แบบตรงไปตรงมา ไม่รวมสูตร/บังคับเกรดจากหน้าคะแนนหลัก — แก้ตรงนี้บันทึกจริงเข้าระบบทันที</p>
+      <div class="space-y-1.5">
+        ${scoreColumns.map(col => {
+          const r = rows.find(x => x.score_column_id === col.id)
+          const val = r?.score ?? ''
+          return `<div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
+            <span class="font-semibold text-gray-700 truncate flex-1">${_htmlEsc(col.assignment_name ?? '')}</span>
+            <input type="number" class="sc-score-input w-16 text-center border border-gray-200 rounded-lg px-1 py-1 font-mono font-bold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              data-col="${col.id}" value="${val}" placeholder="—" />
+            <span class="text-gray-400 flex-shrink-0 w-10">/ ${col.max_score}</span>
+          </div>`
+        }).join('')}
+      </div>`
+  }
+
+  const ATT_HEX = { present: '#059669', absent: '#dc2626', late: '#f59e0b', excused: '#3b82f6', sick: '#f97316' }
 
   function _tabAttHTML(s) {
     const rows = (attendanceByStudent[s.id] ?? []).slice().sort((a, b) => (b.check_date ?? '').localeCompare(a.check_date ?? ''))
     if (!rows.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีข้อมูลเช็คชื่อ</p>`
+    const order = ['present', 'absent', 'late', 'excused', 'sick']
     const counts = {}
     for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1
-    const summary = Object.entries(counts).map(([k, v]) => {
+    const total = rows.length
+    let acc = 0
+    const segments = order.filter(k => counts[k]).map(k => {
+      const pct = (counts[k] / total) * 100
+      const seg = `${ATT_HEX[k]} ${acc}% ${acc + pct}%`
+      acc += pct
+      return seg
+    })
+    const gradient = segments.length ? `conic-gradient(${segments.join(',')})` : '#e5e7eb'
+    const presentPct = Math.round(((counts.present ?? 0) / total) * 100)
+    const legend = order.filter(k => counts[k]).map(k => {
       const meta = ATT_STATUS[k]
-      return `<span class="px-2 py-1 rounded-full text-[11px] font-bold ${meta?.bg ?? 'bg-gray-50'} ${meta?.color ?? 'text-gray-500'}">${meta?.label ?? k} ${v}</span>`
+      return `<span class="px-2 py-1 rounded-full text-[11px] font-bold ${meta?.bg ?? 'bg-gray-50'} ${meta?.color ?? 'text-gray-500'}">${meta?.label ?? k} ${counts[k]}</span>`
     }).join(' ')
     const recent = rows.slice(0, 15).map(r => {
       const meta = ATT_STATUS[r.status]
@@ -348,7 +397,17 @@ export async function renderSmartClassroom(teacher, classId) {
         <span class="font-bold ${meta?.color ?? 'text-gray-500'}">${meta?.label ?? r.status}</span>
       </div>`
     }).join('')
-    return `<div class="flex flex-wrap gap-1.5 mb-3">${summary}</div><div class="max-h-56 overflow-y-auto">${recent}</div>`
+    return `
+      <div class="flex items-center gap-4 mb-3">
+        <div class="relative flex-shrink-0" style="width:72px;height:72px;border-radius:50%;background:${gradient}">
+          <div class="absolute" style="inset:7px;background:white;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <span class="text-sm font-bold text-gray-800">${presentPct}%</span>
+            <span class="text-[8px] text-gray-400">มาเรียน</span>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5 flex-1">${legend}</div>
+      </div>
+      <div class="max-h-48 overflow-y-auto border-t border-gray-100 pt-2">${recent}</div>`
   }
 
   function _tabLeaveHTML(s) {
@@ -401,6 +460,26 @@ export async function renderSmartClassroom(teacher, classId) {
 
       m.querySelector('#sc-sp-close').addEventListener('click', () => m.remove())
       m.querySelectorAll('.sc-sp-tab').forEach(b => b.addEventListener('click', () => { activeTab = b.dataset.tab; _renderPanel() }))
+      m.querySelectorAll('.sc-score-input').forEach(input => {
+        input.addEventListener('change', async () => {
+          const colId = parseInt(input.dataset.col, 10)
+          const raw = input.value.trim()
+          input.disabled = true
+          try {
+            await saveStudentScore(classId, s.id, colId, raw === '' ? null : raw)
+            const list = (scoresByStudent[s.id] ??= [])
+            const existing = list.find(r => r.score_column_id === colId)
+            const numVal = raw === '' ? null : parseFloat(raw)
+            if (existing) existing.score = numVal
+            else list.push({ student_id: s.id, score_column_id: colId, score: numVal })
+            showToast('บันทึกคะแนนแล้ว', 'success')
+            _renderPanel()
+          } catch (err) {
+            showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            input.disabled = false
+          }
+        })
+      })
       m.querySelector('#sc-sp-return')?.addEventListener('click', async () => {
         const leaveNow = activeLeaveMap[s.id]
         try { await closeLeavePermission(leaveNow.id, 'returned'); showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); m.remove(); _reload() }
