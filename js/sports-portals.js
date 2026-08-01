@@ -1575,11 +1575,92 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
 // แท็บ "ภาพกิจกรรม" — อัปโหลดรูปเข้าคลังกลาง (ไม่แบ่งสีตอนแสดงผล ทุกสีเห็นกันหมด) สตาฟทุกสี
 // อัปโหลดได้เลยไม่ต้องขอสิทธิ์เพิ่ม (ความเสี่ยงต่ำกว่าเงิน/เช็คชื่อ) ในนี้แสดงเฉพาะรูปที่สีตัวเอง
 // อัปโหลดไว้ (จัดการลบได้) ส่วนแกลเลอรีรวมทุกสีเปิดผ่านปุ่มแยกไปอีกหน้า (renderSportsGalleryModal)
+// ดึง "กลุ่มประเภทกีฬา" จากชื่อรายการแข่งขัน — ตัดวงเล็บ (ชาย)/(หญิง)/(เดี่ยว)/(ทีมคู่)
+// และท้ายชื่อ "ม.ต้น"/"ม.ปลาย" ออก เหลือแค่ชื่อกีฬาฐาน เช่น "ฟุตซอล ม.ต้น" → "ฟุตซอล",
+// "วอลเลย์บอล(ชาย) ม.ต้น" → "วอลเลย์บอล" — ใช้เป็นปุ่มกรองด่วนโดยไม่ต้องมี column แยกในฐานข้อมูล
+const sportGroupOf=name=>String(name||'').replace(/\([^)]*\)/g,'').replace(/\s*ม\.(ต้น|ปลาย)\s*$/,'').trim()||'อื่นๆ'
+
+// ดรอปดาวน์ค้นหา+กรองตามกลุ่มประเภทกีฬา สำหรับเลือกรายการแข่งขัน (ใช้กับ "ภาพกิจกรรม" ที่มี
+// ตัวเลือกเป็นสิบๆ รายการ) — panel เป็น portal ต่อท้าย document.body เสมอ (ตามกฎ floating UI
+// ของโปรเจกต์นี้) กันโดน overflow:auto ของ #team-tab-body ตัดบัง แทนที่จะ absolute ธรรมดา
+function createSportSearchSelect({wrap,options}){
+  let selected=null, activeGroup=null, open=false
+  const groups=[...new Set(options.map(o=>sportGroupOf(o.name)))]
+  wrap.innerHTML=`<button type="button" class="sss-trigger w-full flex items-center justify-between gap-2 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm text-left">
+    <span class="sss-display text-slate-400 truncate">— ภาพทั่วไป/บรรยากาศ —</span>
+    <span class="text-xs muted flex-shrink-0">▾</span>
+  </button>`
+  const trigger=wrap.querySelector('.sss-trigger')
+  const displayEl=wrap.querySelector('.sss-display')
+  let panel=null
+
+  const closePanel=()=>{panel?.remove();panel=null;open=false}
+
+  const renderList=()=>{
+    const q=panel.querySelector('.sss-search').value.trim().toLowerCase()
+    const listEl=panel.querySelector('.sss-list')
+    const filtered=options.filter(o=>{
+      if(activeGroup&&sportGroupOf(o.name)!==activeGroup)return false
+      if(q&&!o.name.toLowerCase().includes(q))return false
+      return true
+    })
+    listEl.innerHTML=`<li data-val="" class="sss-opt px-3 py-2 text-sm cursor-pointer hover:bg-white/10 ${!selected?'text-pink-400 font-bold':'text-slate-300'}">— ภาพทั่วไป/บรรยากาศ —</li>`+
+      (filtered.map(o=>`<li data-val="${o.id}" class="sss-opt px-3 py-2 text-sm cursor-pointer hover:bg-white/10 ${selected===o.id?'text-pink-400 font-bold':'text-slate-300'}">${esc(o.name)}</li>`).join('')||`<li class="px-3 py-4 text-xs muted text-center">ไม่พบรายการที่ตรงกับคำค้น</li>`)
+    listEl.querySelectorAll('.sss-opt[data-val]').forEach(li=>li.addEventListener('mousedown',e=>{
+      e.preventDefault()
+      const val=li.dataset.val
+      selected=val||null
+      const opt=options.find(o=>String(o.id)===val)
+      displayEl.textContent=opt?opt.name:'— ภาพทั่วไป/บรรยากาศ —'
+      displayEl.classList.toggle('text-slate-400',!opt)
+      closePanel()
+    }))
+  }
+
+  const openPanel=()=>{
+    if(open)return
+    open=true
+    const rect=trigger.getBoundingClientRect()
+    panel=document.createElement('div')
+    panel.className='fixed z-[500] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col'
+    panel.style.left=`${rect.left}px`
+    panel.style.top=`${rect.bottom+4}px`
+    panel.style.width=`${rect.width}px`
+    panel.style.maxHeight='320px'
+    panel.innerHTML=`
+      <div class="p-2 border-b border-slate-700">
+        <input class="sss-search w-full rounded-lg bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100" placeholder="ค้นหาชื่อรายการแข่งขัน...">
+      </div>
+      <div class="sss-groups flex flex-wrap gap-1.5 p-2 border-b border-slate-700 overflow-x-auto">
+        <button type="button" data-group="" class="px-2.5 py-1 rounded-full text-[11px] font-bold ${!activeGroup?'bg-pink-600 text-white':'bg-white/5 text-slate-300'}">ทั้งหมด</button>
+        ${groups.map(g=>`<button type="button" data-group="${esc(g)}" class="px-2.5 py-1 rounded-full text-[11px] font-bold ${activeGroup===g?'bg-pink-600 text-white':'bg-white/5 text-slate-300'}">${esc(g)}</button>`).join('')}
+      </div>
+      <ul class="sss-list flex-1 overflow-y-auto"></ul>`
+    document.body.appendChild(panel)
+    panel.querySelectorAll('[data-group]').forEach(btn=>btn.addEventListener('click',()=>{
+      activeGroup=btn.dataset.group||null
+      panel.querySelectorAll('[data-group]').forEach(b=>{b.classList.toggle('bg-pink-600',b.dataset.group===(activeGroup||''));b.classList.toggle('text-white',b.dataset.group===(activeGroup||''));b.classList.toggle('bg-white/5',b.dataset.group!==(activeGroup||''));b.classList.toggle('text-slate-300',b.dataset.group!==(activeGroup||''))})
+      renderList()
+    }))
+    panel.querySelector('.sss-search').addEventListener('input',renderList)
+    renderList()
+    setTimeout(()=>panel.querySelector('.sss-search').focus(),30)
+  }
+
+  trigger.addEventListener('click',()=>open?closePanel():openPanel())
+  document.addEventListener('mousedown',e=>{if(open&&panel&&!panel.contains(e.target)&&!trigger.contains(e.target))closePanel()},true)
+  window.addEventListener('scroll',()=>{if(open)closePanel()},true)
+
+  return {getValue:()=>selected, setValue:v=>{selected=v||null;const opt=options.find(o=>String(o.id)===String(v));displayEl.textContent=opt?opt.name:'— ภาพทั่วไป/บรรยากาศ —';displayEl.classList.toggle('text-slate-400',!opt)}}
+}
+
 async function renderGallerySection(body,{event,c,competitions,card,studentView}){
   body.innerHTML=`<div class="py-16 text-center muted">กำลังโหลดภาพกิจกรรม...</div>`
   const {data:myPhotos,error}=await supabase.from('sports_gallery_photos').select('*,sports(name)').eq('team_color_id',c.id).order('created_at',{ascending:false})
   if(error){body.innerHTML=`<section class="${card}"><p class="text-center text-red-400 py-8">โหลดไม่สำเร็จ: ${esc(error.message)}</p></section>`;return}
   let photos=myPhotos||[]
+  // 'groups' = การ์ดรวมตามรายการแข่งขันที่เคยอัปโหลดแล้ว, 'detail' = คลิกเข้าไปดู/อัปโหลดเพิ่มในรายการนั้น
+  let viewMode='groups', activeGroupKey=null
 
   body.innerHTML=`<section class="${card}">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -1587,13 +1668,11 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
       <button id="gallery-open-full" class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖼️ เปิดแกลเลอรีรวมทุกสี</button>
     </div>
     ${!studentView?`<div class="team-sub rounded-2xl p-4 mb-4 space-y-3">
+      <p class="text-xs font-bold">⬆️ อัปโหลดรูปใหม่ (รายการที่ยังไม่เคยอัปโหลด/ภาพทั่วไป)</p>
       <div class="grid sm:grid-cols-2 gap-3">
         <div>
           <label class="text-xs font-bold muted">รายการแข่งขันที่เกี่ยวข้อง (ถ้ามี)</label>
-          <select id="gallery-sport" class="w-full mt-1.5 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
-            <option value="">— ภาพทั่วไป/บรรยากาศ —</option>
-            ${(competitions||[]).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}
-          </select>
+          <div id="gallery-sport-wrap" class="mt-1.5"></div>
         </div>
         <div>
           <label class="text-xs font-bold muted">เลือกรูปภาพ (เลือกได้หลายรูป)</label>
@@ -1603,37 +1682,100 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
       <button id="gallery-upload-btn" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">⬆️ อัปโหลด</button>
       <div id="gallery-upload-status" class="text-xs muted"></div>
     </div>`:''}
-    <div id="gallery-my-photos" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+    <div id="gallery-body"></div>
   </section>`
 
-  const renderMyPhotos=()=>{
-    const el=body.querySelector('#gallery-my-photos')
-    el.innerHTML=photos.length?photos.map(p=>`
-      <div class="team-sub rounded-xl overflow-hidden">
-        <img src="${esc(p.photo_url)}" class="w-full aspect-square object-cover" loading="lazy">
-        <div class="p-2">
-          <p class="text-[10px] muted truncate">${esc(p.sports?.name||'ภาพทั่วไป')}</p>
-          <p class="text-[10px] muted">${new Date(p.taken_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short'})}</p>
-          ${!studentView?`<button data-gallery-delete="${esc(p.id)}" class="w-full mt-1 px-2 py-1 rounded-lg bg-red-950/40 text-red-300 border border-red-800/60 hover:bg-red-600 hover:text-white transition text-[10px] font-bold">ลบ</button>`:''}
-        </div>
-      </div>`).join('') : `<p class="text-sm muted text-center py-8 col-span-full">ยังไม่มีภาพที่สีนี้อัปโหลด</p>`
-    el.querySelectorAll('[data-gallery-delete]').forEach(btn=>btn.onclick=async()=>{
-      if(!confirm('ลบภาพนี้?'))return
-      const id=btn.dataset.galleryDelete
-      const {error}=await supabase.from('sports_gallery_photos').delete().eq('id',id)
-      if(error){toast(error.message,'error');return}
-      photos=photos.filter(p=>String(p.id)!==String(id))
-      renderMyPhotos()
-      toast('ลบภาพแล้ว')
-    })
+  // จัดกลุ่มรูปที่สีนี้เคยอัปโหลดแล้วตามรายการแข่งขันจริง (sport_id) — ใช้แสดงเป็นการ์ด
+  const groupsOf=()=>{
+    const map={}
+    photos.forEach(p=>{const key=p.sport_id||'general';(map[key]=map[key]||{key,label:p.sports?.name||'ภาพทั่วไป/บรรยากาศ',photos:[]}).photos.push(p)})
+    return Object.values(map).sort((a,b)=>a.key==='general'?1:b.key==='general'?-1:b.photos.length-a.photos.length)
   }
-  renderMyPhotos()
+
+  const renderBody=()=>{
+    const el=body.querySelector('#gallery-body')
+    if(viewMode==='detail'){
+      const group=groupsOf().find(g=>g.key===activeGroupKey)
+      if(!group){viewMode='groups';renderBody();return}
+      el.innerHTML=`
+        <div class="flex items-center justify-between mb-3">
+          <button data-gallery-back class="px-3 py-1.5 rounded-lg team-sub text-xs font-bold">← กลับ</button>
+          <b class="text-sm">${esc(group.label)} (${group.photos.length} รูป)</b>
+          <span></span>
+        </div>
+        ${!studentView?`<div class="team-sub rounded-xl p-3 mb-3 flex flex-wrap items-center gap-2">
+          <input id="gallery-add-files" type="file" accept="image/*" multiple class="text-xs flex-1 min-w-[160px]">
+          <button id="gallery-add-btn" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold flex-shrink-0">⬆️ อัปโหลดเพิ่มในรายการนี้</button>
+          <span id="gallery-add-status" class="text-[11px] muted w-full"></span>
+        </div>`:''}
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          ${group.photos.map(p=>`
+            <div class="team-sub rounded-xl overflow-hidden">
+              <img src="${esc(p.photo_url)}" class="w-full aspect-square object-cover" loading="lazy">
+              <div class="p-2">
+                <p class="text-[10px] muted">${new Date(p.taken_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short'})}</p>
+                ${!studentView?`<button data-gallery-delete="${esc(p.id)}" class="w-full mt-1 px-2 py-1 rounded-lg bg-red-950/40 text-red-300 border border-red-800/60 hover:bg-red-600 hover:text-white transition text-[10px] font-bold">ลบ</button>`:''}
+              </div>
+            </div>`).join('')}
+        </div>`
+      el.querySelector('[data-gallery-back]').onclick=()=>{viewMode='groups';renderBody()}
+      el.querySelectorAll('[data-gallery-delete]').forEach(btn=>btn.onclick=async()=>{
+        if(!confirm('ลบภาพนี้?'))return
+        const id=btn.dataset.galleryDelete
+        const {error}=await supabase.from('sports_gallery_photos').delete().eq('id',id)
+        if(error){toast(error.message,'error');return}
+        photos=photos.filter(p=>String(p.id)!==String(id))
+        renderBody()
+        toast('ลบภาพแล้ว')
+      })
+      // อัปโหลดเพิ่มในรายการเดิม — ล็อค sport_id ตามการ์ดที่กำลังเปิดอยู่เลย ไม่ต้องเลือกใหม่
+      el.querySelector('#gallery-add-btn')?.addEventListener('click',async()=>{
+        const filesInput=el.querySelector('#gallery-add-files')
+        const files=Array.from(filesInput.files||[])
+        if(!files.length)return
+        const statusEl=el.querySelector('#gallery-add-status')
+        const btn=el.querySelector('#gallery-add-btn')
+        btn.disabled=true
+        const sportId=group.key==='general'?null:group.key
+        for(let i=0;i<files.length;i++){
+          statusEl.textContent=`กำลังอัปโหลด ${i+1}/${files.length}...`
+          try{
+            const url=await uploadGalleryPhoto(event.id,c.id,files[i])
+            const {data,error:insErr}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,sport_id:sportId,photo_url:url}).select('*,sports(name)').single()
+            if(insErr)throw insErr
+            photos.unshift(data)
+          }catch(e){statusEl.textContent=`อัปโหลดรูปที่ ${i+1} ไม่สำเร็จ: ${e.message}`;btn.disabled=false;renderBody();return}
+        }
+        statusEl.textContent=`อัปโหลดสำเร็จ ${files.length} รูป`
+        filesInput.value=''
+        btn.disabled=false
+        renderBody()
+      })
+    }else{
+      const groups=groupsOf()
+      el.innerHTML=groups.length?`<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">${groups.map(g=>`
+        <button type="button" data-gallery-group="${esc(g.key)}" class="text-left team-sub rounded-xl overflow-hidden">
+          <div class="aspect-square relative">
+            <img src="${esc(g.photos[0].photo_url)}" class="w-full h-full object-cover" loading="lazy">
+            <span class="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white">${g.photos.length} รูป</span>
+          </div>
+          <p class="p-2 text-[11px] font-bold truncate">${esc(g.label)}</p>
+        </button>`).join('')}</div>`:`<p class="text-sm muted text-center py-8">ยังไม่มีภาพที่สีนี้อัปโหลด</p>`
+      el.querySelectorAll('[data-gallery-group]').forEach(btn=>btn.onclick=()=>{activeGroupKey=btn.dataset.galleryGroup;viewMode='detail';renderBody()})
+    }
+  }
+  renderBody()
+
+  let sportSelectApi=null
+  if(body.querySelector('#gallery-sport-wrap')){
+    sportSelectApi=createSportSearchSelect({wrap:body.querySelector('#gallery-sport-wrap'),options:competitions||[]})
+  }
 
   body.querySelector('#gallery-open-full').onclick=()=>openSportsGalleryModal(event)
 
   body.querySelector('#gallery-upload-btn')?.addEventListener('click',async()=>{
     const filesInput=body.querySelector('#gallery-files')
-    const sportId=body.querySelector('#gallery-sport').value||null
+    const sportId=sportSelectApi?.getValue()||null
     const files=Array.from(filesInput.files||[])
     if(!files.length)return
     const statusEl=body.querySelector('#gallery-upload-status')
@@ -1643,15 +1785,15 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
       statusEl.textContent=`กำลังอัปโหลด ${i+1}/${files.length}...`
       try{
         const url=await uploadGalleryPhoto(event.id,c.id,files[i])
-        const {data,error}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,sport_id:sportId,photo_url:url}).select('*,sports(name)').single()
-        if(error)throw error
+        const {data,error:insErr}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,sport_id:sportId,photo_url:url}).select('*,sports(name)').single()
+        if(insErr)throw insErr
         photos.unshift(data)
-      }catch(e){statusEl.textContent=`อัปโหลดรูปที่ ${i+1} ไม่สำเร็จ: ${e.message}`;btn.disabled=false;renderMyPhotos();return}
+      }catch(e){statusEl.textContent=`อัปโหลดรูปที่ ${i+1} ไม่สำเร็จ: ${e.message}`;btn.disabled=false;renderBody();return}
     }
     statusEl.textContent=`อัปโหลดสำเร็จ ${files.length} รูป`
     filesInput.value=''
     btn.disabled=false
-    renderMyPhotos()
+    renderBody()
   })
 }
 
