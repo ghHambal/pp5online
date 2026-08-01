@@ -1124,7 +1124,7 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
 
 // sameDateSessions = array of all sessions on the same date as sessN
 
-async function _openAttendanceModalForSession(teacher, classData, sessN, options = {}) {
+export async function _openAttendanceModalForSession(teacher, classData, sessN, options = {}) {
   const ms = classData.master_subjects
   const credit = ms?.credit ?? 1
   const cfg = await getSystemConfig().catch(() => ({}))

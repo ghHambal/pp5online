@@ -1,20 +1,23 @@
 // js/teacher-views-smart-classroom.js — 👑 Smart Classroom (เฉพาะโดเนทระดับ 4+)
 // หน้าควบคุมขณะสอนสด รวมเครื่องมือที่มีอยู่แล้วในระบบไว้จอเดียว — ไม่มีการเขียน logic ใหม่ซ้ำซ้อน
-// ทุกปุ่มเรียกฟังก์ชัน/โมดัลจริงของระบบเดิม: renderAttendanceGrid, openTimerModal, _openRandomPickerModal,
+// ทุกปุ่มเรียกฟังก์ชัน/โมดัลจริงของระบบเดิม: _openAttendanceModalForSession, openTimerModal, _openRandomPickerModal,
 // _openLeaveRequestModal/_openLeaveQuotaModal (hall pass), startQuizLive, openScoreScanner, openAttendanceScanSetup
 import {
-  getMyClasses, getClassStudents, getSystemConfig,
+  getMyClasses, getClassStudents, getSystemConfig, getClassSessionDOWs,
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
   closeLeavePermission, getMyDonationRequests, createAnnouncement,
 } from './api.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
-import { openAttendanceScanSetup, renderAttendanceGrid, _openLeaveRequestModal, _openLeaveQuotaModal } from './teacher-views-attendance.js'
+import {
+  openAttendanceScanSetup, _openLeaveRequestModal, _openLeaveQuotaModal,
+  _openAttendanceModalForSession,
+} from './teacher-views-attendance.js'
 import { openQuizMonitor } from './teacher-views-quiz-monitor.js'
 import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail } from './teacher-views-classes.js'
 import { showToast } from './ui.js'
-import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
+import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue } from './teacher-views-utils.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -160,7 +163,7 @@ export async function renderSmartClassroom(teacher, classId) {
             <h2 class="text-sm font-bold text-gray-700">👥 นักเรียน — แตะเพื่อดูข้อมูล/สั่งการ</h2>
             <button id="sc-open-attendance" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">✅ เช็คชื่อ</button>
           </div>
-          <p class="text-xs text-gray-400 mb-3">เปิดหน้าเช็คชื่อจริงของระบบ (บันทึกคะแนน/สถานะทำที่นั่น)</p>
+          <p class="text-xs text-gray-400 mb-3">เด้งป๊อบอัพเช็คชื่อของคาบวันนี้ให้อัตโนมัติ (ถ้าวันนี้มีหลายคาบหรือไม่ตรงตาราง จะให้เลือกคาบเอง)</p>
           <div class="grid grid-cols-4 sm:grid-cols-6 gap-2" id="sc-roster">${_rosterHTML()}</div>
         </div>
 
@@ -202,7 +205,64 @@ export async function renderSmartClassroom(teacher, classId) {
 
   // ── Wiring: back / attendance ────────────────────────────────────────────
   document.getElementById('sc-back').addEventListener('click', () => renderClassDetail(teacher, classId))
-  document.getElementById('sc-open-attendance').addEventListener('click', () => renderAttendanceGrid(teacher, cls))
+  document.getElementById('sc-open-attendance').addEventListener('click', () => _openTodayAttendance())
+
+  // เช็คชื่อระหว่างสอนสด — หาคาบของ "วันนี้" อัตโนมัติแล้วเด้งป๊อบอัพเช็คชื่อเดิมตรงเลย
+  // (ไม่ต้องเข้าไปหน้าเช็คชื่อเต็มแล้วเลือกวันที่เอง เพราะระหว่างสอนวันที่คือวันนี้อยู่แล้ว)
+  // ถ้าวันนี้ตรงกับหลายคาบ (สอนหลายคาบ) หรือไม่ตรงกับตารางเลย ให้ครูเลือกคาบเอง
+  async function _openTodayAttendance() {
+    const btn = document.getElementById('sc-open-attendance')
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = '⏳'
+    try {
+      const credit = cls.master_subjects?.credit ?? 1
+      const isACDMVOC = cls.master_subjects?.subject_group === 'ACDMVOC'
+      const dowPattern = isACDMVOC ? await getClassSessionDOWs(classId).catch(() => []) : []
+      const sessions = _generateSessions(cls, credit, dowPattern.length ? dowPattern : null, isACDMVOC)
+      const today = _dateInputValue(new Date())
+      const todays = sessions.filter(s => s.ds === today)
+
+      if (todays.length === 1) {
+        await _openAttendanceModalForSession(teacher, cls, todays[0].n, {})
+      } else if (todays.length > 1) {
+        _openSessionPicker(todays, 'วันนี้มีหลายคาบ — เลือกคาบที่จะเช็คชื่อ')
+      } else {
+        _openSessionPicker(sessions.slice(-8), 'วันนี้ไม่ตรงกับตารางสอนของห้องนี้ — เลือกคาบเอง')
+      }
+    } catch (err) {
+      showToast('เปิดหน้าเช็คชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally {
+      btn.disabled = false; btn.textContent = orig
+    }
+  }
+
+  function _openSessionPicker(list, title) {
+    document.getElementById('sc-session-picker')?.remove()
+    const m = document.createElement('div')
+    m.id = 'sc-session-picker'
+    m.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-3 animate-fade">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">✅ เลือกคาบเช็คชื่อ</h3>
+          <button id="sc-sess-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+        </div>
+        <p class="text-xs text-gray-400">${_htmlEsc(title)}</p>
+        <div class="max-h-72 overflow-y-auto space-y-1.5">
+          ${list.map(s => `<button class="sc-sess-btn w-full text-left px-3 py-2.5 rounded-xl border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition text-sm font-semibold text-gray-700" data-n="${s.n}">
+            คาบที่ ${s.n} <span class="text-gray-400 font-normal">· ${_htmlEsc(s.ds)}</span>
+          </button>`).join('')}
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#sc-sess-close').addEventListener('click', () => m.remove())
+    m.querySelectorAll('.sc-sess-btn').forEach(b => b.addEventListener('click', async () => {
+      const n = parseInt(b.dataset.n, 10)
+      m.remove()
+      try { await _openAttendanceModalForSession(teacher, cls, n, {}) }
+      catch (err) { showToast('เปิดคาบนี้ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    }))
+  }
 
   // ── Wiring: roster click → student detail panel ─────────────────────────
   document.getElementById('sc-roster').addEventListener('click', e => {
