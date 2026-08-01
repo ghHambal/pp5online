@@ -253,6 +253,11 @@ const ROUTES = {
   'student-leave-scanner': () => {
     import('./teacher-views-leave-scanner.js?v=10.18.25').then(m => m.renderStudentLeaveScanner(_teacher))
   },
+  'smart-classroom': () => {
+    const classId = window._pendingSmartClassroomId
+    window._pendingSmartClassroomId = null
+    import('./teacher-views-smart-classroom.js').then(m => m.renderSmartClassroom(_teacher, classId))
+  },
   'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
   'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
   'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),

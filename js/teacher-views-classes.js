@@ -1310,6 +1310,11 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             style="background:linear-gradient(135deg,#6366f1,#06b6d4);">
             🤖 <span>ผู้ช่วยครู</span>
           </button>
+          <button onclick="window._openSmartClassroom(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+            style="background:linear-gradient(135deg,#a9781a,#e6c988);">
+            👑 <span>Smart Classroom</span>
+          </button>
 
           <div class="flex-shrink-0 w-px bg-gray-200 my-0.5"></div>
           <button onclick="window._openCombinedEdit2(${classId})"
@@ -1416,6 +1421,9 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       const c = window._classCache?.[cid]
       if (!c) return
       openTimerModal(cid, c, isDonorTeacher)
+    }
+    window._openSmartClassroom = (cid) => {
+      import('./teacher-views-smart-classroom.js').then(m => m.renderSmartClassroom(teacher, cid))
     }
     window._openClassFlashcardsModal = async (cid) => {
       const c = window._classCache?.[cid]
@@ -1956,7 +1964,7 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
   renderForm()
 }
 
-async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
+export async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
   const systemLimitVal = window._pp5SystemCfg?.freeRandomPickerLimit
   let limit = 1
   if (systemLimitVal !== undefined && systemLimitVal !== '') {

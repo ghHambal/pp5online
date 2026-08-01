@@ -584,7 +584,7 @@ function _renderStudentRosterLeavePart(student, activeLeaveMap, leaveCountMap, l
   }
 }
 
-function _openLeaveQuotaModal(classData, currentMax, currentMaxPerWeek, onSave) {
+export function _openLeaveQuotaModal(classData, currentMax, currentMaxPerWeek, onSave) {
   document.getElementById('leave-quota-modal')?.remove()
   const modal = document.createElement('div')
   modal.id = 'leave-quota-modal'
@@ -671,7 +671,7 @@ function _openLeaveQuotaModal(classData, currentMax, currentMaxPerWeek, onSave) 
   })
 }
 
-function _openLeaveRequestModal(teacher, classData, studentId, studentName, studentImg, activeLeaveMap, leaveMaxActive, onSave) {
+export function _openLeaveRequestModal(teacher, classData, studentId, studentName, studentImg, activeLeaveMap, leaveMaxActive, onSave) {
   const existing = document.getElementById('leave-request-modal')
   if (existing) existing.remove()
   
