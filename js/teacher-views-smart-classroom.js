@@ -7,6 +7,7 @@ import {
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
   closeLeavePermission, getMyDonationRequests, createAnnouncement,
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
+  getClassAssignmentsWithSubmissions, createAssignment, deleteAssignment,
 } from './api.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
@@ -18,6 +19,7 @@ import { openQuizMonitor } from './teacher-views-quiz-monitor.js'
 import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail } from './teacher-views-classes.js'
 import { showToast } from './ui.js'
+import { uploadAssignmentFile } from './storage.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS } from './teacher-views-utils.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
@@ -69,14 +71,14 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   let cls, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
-    scoreColumns, studentScores, attendanceFull, leaveHistory
+    scoreColumns, studentScores, attendanceFull, leaveHistory, assignments
   try {
     const classes = await getMyClasses(teacher.id)
     cls = classes.find(c => c.id === classId)
     if (!cls) { renderClassDetail(teacher, classId); return }
 
     ;[students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
-      scoreColumns, studentScores, attendanceFull, leaveHistory] = await Promise.all([
+      scoreColumns, studentScores, attendanceFull, leaveHistory, assignments] = await Promise.all([
       getClassStudents(classId).catch(() => []),
       getActiveLeavePermissionsForClass(classId).catch(() => []),
       getLeaveMaxActiveForClass(classId).catch(() => 3),
@@ -87,6 +89,7 @@ export async function renderSmartClassroom(teacher, classId) {
       getStudentScores(classId).catch(() => []),
       getClassAttendanceAllFull(classId).catch(() => []),
       getClassLeaveHistory(classId).catch(() => []),
+      getClassAssignmentsWithSubmissions(classId).catch(() => []),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -158,6 +161,38 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>`).join('')
   }
 
+  // ── งานที่มอบหมาย ────────────────────────────────────────────────────────
+  const _fmtDueDate = iso => !iso ? 'ไม่กำหนดส่ง' : new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const _isLate = (a, submittedAtIso) => a.due_at ? new Date(submittedAtIso).getTime() > new Date(a.due_at).getTime() : false
+  const _lateDays = (a, submittedAtIso) => a.due_at ? Math.max(1, Math.ceil((new Date(submittedAtIso).getTime() - new Date(a.due_at).getTime()) / 86400000)) : 0
+  const _latePenaltyPoints = (a, submittedAtIso) => {
+    if (!_isLate(a, submittedAtIso)) return 0
+    if (a.late_penalty_mode === 'flat') return parseFloat(a.late_penalty_value) || 0
+    if (a.late_penalty_mode === 'per_day') return (parseFloat(a.late_penalty_value) || 0) * _lateDays(a, submittedAtIso)
+    return 0
+  }
+
+  const _assignmentsHTML = () => {
+    if (!assignments.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีงานที่มอบหมาย — กด "➕ สั่งงานใหม่" เพื่อเริ่ม</p>`
+    return assignments.map(a => {
+      const submittedCount = a.submissions.length
+      const totalCount = students.length
+      const pct = totalCount > 0 ? Math.round(submittedCount / totalCount * 100) : 0
+      const lateCount = a.submissions.filter(s => _isLate(a, s.submitted_at)).length
+      return `<button class="sc-assignment-row w-full text-left px-3 py-2.5 rounded-xl border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition mb-2" data-aid="${a.id}">
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-sm font-bold text-gray-700 truncate">${_htmlEsc(a.title)}</p>
+          <span class="text-[10px] text-gray-400 flex-shrink-0">${_fmtDueDate(a.due_at)}</span>
+        </div>
+        <div class="flex items-center gap-2 mt-1.5">
+          <div class="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width:${pct}%"></div></div>
+          <span class="text-[11px] font-bold text-gray-600 flex-shrink-0">${submittedCount}/${totalCount} ส่งแล้ว</span>
+          ${lateCount ? `<span class="text-[10px] font-bold text-amber-600 flex-shrink-0">⏰ ช้า ${lateCount}</span>` : ''}
+        </div>
+      </button>`
+    }).join('')
+  }
+
   setContent(`<div class="animate-fade max-w-6xl mx-auto">
 
     <div class="relative overflow-hidden bg-white border border-amber-200 rounded-2xl shadow-sm px-5 py-4 mb-4 flex items-center gap-4 flex-wrap">
@@ -216,6 +251,14 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>
       </div>
 
+    </div>
+
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mt-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold text-gray-700">📚 งานที่มอบหมาย</h2>
+        <button id="sc-add-assignment" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">➕ สั่งงานใหม่</button>
+      </div>
+      <div id="sc-assignment-list">${_assignmentsHTML()}</div>
     </div>
   </div>`)
 
@@ -594,4 +637,178 @@ export async function renderSmartClassroom(teacher, classId) {
     } catch (err) { showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
     finally { btn.disabled = false; btn.textContent = 'ส่งประกาศ' }
   })
+
+  // ── Wiring: assignments ───────────────────────────────────────────────────
+  document.getElementById('sc-add-assignment').addEventListener('click', () => _openCreateAssignmentModal())
+  document.getElementById('sc-assignment-list').addEventListener('click', e => {
+    const row = e.target.closest('.sc-assignment-row')
+    if (!row) return
+    const a = assignments.find(x => x.id === parseInt(row.dataset.aid, 10))
+    if (a) _openAssignmentTrackingModal(a)
+  })
+
+  function _openCreateAssignmentModal() {
+    document.getElementById('sc-assign-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'sc-assign-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-3 animate-fade">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">➕ สั่งงานใหม่</h3>
+          <button id="sa-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่องาน *</label>
+          <input id="sa-title" type="text" placeholder="เช่น ใบงานที่ 3 — สมการเชิงเส้น" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">รายละเอียด</label>
+          <textarea id="sa-desc" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">แนบไฟล์/รูปภาพ (เลือกได้หลายไฟล์)</label>
+          <input id="sa-files" type="file" multiple class="w-full text-xs" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ผูกกับคอลัมน์คะแนน</label>
+          <select id="sa-col" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
+            <option value="">— ไม่ผูกกับคะแนน —</option>
+            ${scoreColumns.map(c => `<option value="${c.id}">${_htmlEsc(c.assignment_name)} (เต็ม ${c.max_score})</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">กำหนดส่ง</label>
+          <input id="sa-due" type="datetime-local" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">หักคะแนนกรณีส่งช้า</label>
+          <div class="flex gap-2 mb-1.5">
+            <select id="sa-penalty-mode" class="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
+              <option value="none">ไม่หัก</option>
+              <option value="flat">หักครั้งเดียว (คงที่)</option>
+              <option value="per_day">หักตามจำนวนวันที่ช้า</option>
+            </select>
+            <input id="sa-penalty-value" type="number" min="0" step="0.1" placeholder="0" disabled class="w-24 text-sm text-center border border-gray-200 rounded-xl px-2 py-2 bg-gray-50" />
+          </div>
+          <p id="sa-penalty-hint" class="text-[10px] text-gray-400"></p>
+        </div>
+        <button id="sa-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึกงาน</button>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#sa-close').addEventListener('click', () => m.remove())
+
+    const modeSel = m.querySelector('#sa-penalty-mode')
+    const valInput = m.querySelector('#sa-penalty-value')
+    const hint = m.querySelector('#sa-penalty-hint')
+    modeSel.addEventListener('change', () => {
+      valInput.disabled = modeSel.value === 'none'
+      if (!valInput.disabled) valInput.classList.remove('bg-gray-50')
+      else { valInput.classList.add('bg-gray-50'); valInput.value = '' }
+      hint.textContent = modeSel.value === 'flat' ? 'หักคะแนนเท่านี้ทันทีถ้าส่งช้า ไม่ว่าจะช้ากี่วัน'
+        : modeSel.value === 'per_day' ? 'หักคะแนนเท่านี้ต่อวันที่ส่งช้า (คูณตามจำนวนวัน)'
+        : ''
+    })
+
+    m.querySelector('#sa-save').addEventListener('click', async () => {
+      const title = m.querySelector('#sa-title').value.trim()
+      if (!title) { showToast('กรอกชื่องานก่อนนะ', 'warning'); return }
+      const btn = m.querySelector('#sa-save')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        const files = [...(m.querySelector('#sa-files').files ?? [])]
+        const attachments = []
+        for (const f of files) attachments.push(await uploadAssignmentFile(f, `class-${classId}`))
+        const dueVal = m.querySelector('#sa-due').value
+        await createAssignment({
+          class_id: classId,
+          teacher_id: teacher.id,
+          score_column_id: m.querySelector('#sa-col').value ? parseInt(m.querySelector('#sa-col').value, 10) : null,
+          title,
+          description: m.querySelector('#sa-desc').value.trim() || null,
+          attachment_urls: attachments,
+          due_at: dueVal ? new Date(dueVal).toISOString() : null,
+          late_penalty_mode: modeSel.value,
+          late_penalty_value: parseFloat(valInput.value) || 0,
+        })
+        showToast('สั่งงานสำเร็จ ✅', 'success')
+        m.remove()
+        _reload()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกงาน'
+      }
+    })
+  }
+
+  function _openAssignmentTrackingModal(a) {
+    document.getElementById('sc-track-modal')?.remove()
+    const subByStudent = Object.fromEntries(a.submissions.map(s => [s.student_id, s]))
+    const col = scoreColumns.find(c => c.id === a.score_column_id)
+    const m = document.createElement('div')
+    m.id = 'sc-track-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-fade">
+        <div class="p-5 pb-3 flex-shrink-0 border-b border-gray-100">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="font-bold text-gray-800 truncate">${_htmlEsc(a.title)}</p>
+              <p class="text-xs text-gray-400 mt-0.5">${a.description ? _htmlEsc(a.description) + ' · ' : ''}กำหนดส่ง ${_fmtDueDate(a.due_at)}</p>
+              ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${a.attachment_urls.map(f => `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">📎 ${_htmlEsc(f.name)}</a>`).join('')}</div>` : ''}
+            </div>
+            <div class="flex gap-2 flex-shrink-0">
+              <button id="st-delete" class="text-[11px] text-red-400 hover:text-red-600 px-2 py-1">🗑️ ลบ</button>
+              <button id="st-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-400 mt-2">${a.submissions.length}/${students.length} ส่งแล้ว</p>
+        </div>
+        <div class="overflow-y-auto flex-1 p-5 space-y-2">
+          ${students.map(s => {
+            const sub = subByStudent[s.id]
+            if (!sub) return `<div class="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
+              <span class="font-semibold text-gray-600 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+              <span class="text-gray-300 font-medium">ยังไม่ส่ง</span>
+            </div>`
+            const late = _isLate(a, sub.submitted_at)
+            const penalty = _latePenaltyPoints(a, sub.submitted_at)
+            const suggested = col ? Math.max(0, (parseFloat(col.max_score) || 0) - penalty) : ''
+            return `<div class="px-3 py-2.5 rounded-xl border ${late ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'} text-xs">
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-semibold text-gray-700 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+                <span class="text-gray-400 flex-shrink-0">${new Date(sub.submitted_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              ${sub.file_urls?.length ? `<div class="flex flex-wrap gap-1.5 mt-1.5">${sub.file_urls.map(f => `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="text-[10px] px-2 py-1 rounded-lg bg-white border border-gray-200 text-indigo-600 hover:bg-indigo-50">📎 ${_htmlEsc(f.name)}</a>`).join('')}</div>` : ''}
+              ${late ? `<p class="text-[10px] text-amber-700 font-bold mt-1.5">⏰ ส่งช้า ${_lateDays(a, sub.submitted_at)} วัน${penalty > 0 ? ` — หักคะแนนแนะนำ ${penalty}` : ''}</p>` : ''}
+              ${col ? `<div class="flex items-center gap-1.5 mt-1.5">
+                <input type="number" class="st-grade-input w-16 text-center border border-gray-200 rounded-lg px-1 py-1 font-mono font-bold text-indigo-600" data-sid="${s.id}" value="${suggested}" placeholder="—" />
+                <span class="text-gray-400">/ ${col.max_score}</span>
+                <button class="st-grade-save text-[10px] font-bold px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" data-sid="${s.id}">บันทึกคะแนน</button>
+              </div>` : ''}
+            </div>`
+          }).join('')}
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#st-close').addEventListener('click', () => m.remove())
+    m.querySelector('#st-delete').addEventListener('click', async () => {
+      if (!confirm(`ลบงาน "${a.title}"? ข้อมูลการส่งของนักเรียนจะหายไปด้วย`)) return
+      try { await deleteAssignment(a.id); showToast('ลบงานแล้ว', 'success'); m.remove(); _reload() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+    m.querySelectorAll('.st-grade-save').forEach(btn => btn.addEventListener('click', async () => {
+      const sid = parseInt(btn.dataset.sid, 10)
+      const input = m.querySelector(`.st-grade-input[data-sid="${sid}"]`)
+      const val = input.value.trim()
+      btn.disabled = true
+      try {
+        await saveStudentScore(classId, sid, a.score_column_id, val === '' ? null : val)
+        showToast('บันทึกคะแนนแล้ว', 'success')
+      } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      finally { btn.disabled = false }
+    }))
+  }
 }

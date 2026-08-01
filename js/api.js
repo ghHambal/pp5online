@@ -4023,3 +4023,54 @@ export async function updateQrReissueLog(id, { reason, note = null }) {
   if (error) throw error
   return data
 }
+
+// ─── Class Assignments (งานที่มอบหมาย) ─────────────────────────────────────────
+export async function getClassAssignments(classId) {
+  const { data, error } = await supabase
+    .from('class_assignments')
+    .select('*, class_score_columns(id, assignment_name, max_score)')
+    .eq('class_id', classId)
+    .order('due_at', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createAssignment(payload) {
+  const { data, error } = await supabase.from('class_assignments').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateAssignment(id, payload) {
+  const { error } = await supabase.from('class_assignments').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteAssignment(id) {
+  const { error } = await supabase.from('class_assignments').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getAssignmentSubmissions(assignmentId) {
+  const { data, error } = await supabase
+    .from('assignment_submissions')
+    .select('*, students(id, student_code, full_name, image_url)')
+    .eq('assignment_id', assignmentId)
+    .order('submitted_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+// ดึงงานทั้งหมด + submission ของทุกคนในห้อง ครั้งเดียว — ใช้สรุปยอดส่งแล้ว/ยังไม่ส่งต่อวิชา
+export async function getClassAssignmentsWithSubmissions(classId) {
+  const assignments = await getClassAssignments(classId)
+  if (!assignments.length) return []
+  const ids = assignments.map(a => a.id)
+  const { data: subs, error } = await supabase
+    .from('assignment_submissions')
+    .select('id, assignment_id, student_id, file_urls, note, submitted_at')
+    .in('assignment_id', ids)
+  if (error) throw error
+  return assignments.map(a => ({ ...a, submissions: (subs ?? []).filter(s => s.assignment_id === a.id) }))
+}

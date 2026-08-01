@@ -624,3 +624,26 @@ export async function getMyLeaveHistory(studentId, limit = 50) {
   if (error) throw error
   return data || []
 }
+
+// ─── Assignments (งานที่มอบหมาย) ────────────────────────────────────────────────
+export async function getMyClassAssignments(classId, studentId) {
+  const [{ data: assignments, error: aErr }, { data: mySubs, error: sErr }] = await Promise.all([
+    supabase.from('class_assignments').select('*').eq('class_id', classId).order('due_at', { ascending: true, nullsFirst: false }),
+    supabase.from('assignment_submissions').select('*').eq('student_id', studentId),
+  ])
+  if (aErr) throw aErr
+  if (sErr) throw sErr
+  const subByAssignment = Object.fromEntries((mySubs ?? []).map(s => [s.assignment_id, s]))
+  return (assignments ?? []).map(a => ({ ...a, mySubmission: subByAssignment[a.id] ?? null }))
+}
+
+export async function submitAssignment(assignmentId, studentId, fileUrls, note = null) {
+  const { error } = await supabase.from('assignment_submissions').upsert({
+    assignment_id: assignmentId,
+    student_id: studentId,
+    file_urls: fileUrls,
+    note,
+    submitted_at: new Date().toISOString(),
+  }, { onConflict: 'assignment_id,student_id' })
+  if (error) throw error
+}

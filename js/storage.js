@@ -97,3 +97,16 @@ export async function uploadGalleryPhoto(eventId, colorId, file) {
   const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   return uploadFile('sports-gallery', `${eventId}/${colorId}/${key}.jpg`, blob)
 }
+
+// ไฟล์งานที่มอบหมาย/ไฟล์ที่นักเรียนส่ง — เก็บไฟล์ต้นฉบับตรงๆ ไม่บีบ (รองรับ PDF/Word/PPT/รูป ฯลฯ)
+export async function uploadAssignmentFile(file, prefix) {
+  const ext = file.name.split('.').pop()
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const path = `${prefix}/${key}.${ext}`
+  const { error } = await supabase.storage
+    .from('assignment-files')
+    .upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('assignment-files').getPublicUrl(path)
+  return { url: data.publicUrl, name: file.name }
+}

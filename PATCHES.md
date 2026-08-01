@@ -92,6 +92,7 @@
 | 47 | `patch_prayer_homeroom_category_rls.sql` | ปรับ RLS ให้ครูที่ปรึกษาดูคะแนนละหมาดตามประเภทห้องชัดเจน: ศาสนา→religion_room, สามัญ→main_room | ✅ แนะนำสำหรับ Monitor ครูที่ปรึกษาศาสนา |
 | 48 | `patch_student_leave_settings.sql` | เพิ่มตารางตั้งค่าโควต้าออกนอกห้องต่อห้องเรียน + index สำหรับ dashboard ติดตามใบอนุญาต | ✅ จำเป็นสำหรับให้ครูตั้งโควต้าเอง |
 | 49 | `patch_score_override_link.sql` | เพิ่ม `link_column_id` ใน `class_score_columns` — สำหรับคอลัมน์ "ปรับคะแนนกลางภาค" (column_type='override') ที่เชื่อมกับคอลัมน์กลางภาคหลัก เปรียบเทียบ+เขียนทับฝั่ง client (ไม่มี logic ฝั่ง DB) | ✅ จำเป็นสำหรับฟีเจอร์ปรับคะแนนกลางภาค |
+| 50 | `patch_class_assignments.sql` | สร้างตาราง `class_assignments` + `assignment_submissions` + RLS + storage bucket `assignment-files` — ระบบสั่งงาน/ส่งงาน (Smart Classroom) | ✅ จำเป็นสำหรับฟีเจอร์งานที่มอบหมาย (รันแล้วบน production ผ่าน apply_migration 2026-08-01) |
 
 ---
 

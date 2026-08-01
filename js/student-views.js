@@ -11,13 +11,14 @@ import {
   getMonthlyManualPrayerEntryCount,
   getStudentClassroomRole,
   getMyActiveLeavePermission, getMyLeaveHistory,
-  updateStudentEmail,
+  updateStudentEmail, getMyClassAssignments, submitAssignment,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
 import { _readingGrade, applyReadingGradesFromConfig } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
+import { uploadAssignmentFile } from './storage.js'
 import { APP_VERSION } from './version.js?v=10.18.25'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
@@ -1498,12 +1499,13 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   if (!cls) { setContent(`<p class="text-center py-10 text-gray-400">ไม่พบรายวิชา</p>`); return }
 
   const { getClassAnnouncements: _getClassAnn } = await import('./api.js').catch(() => ({}))
-  const [{ columns, scores }, attendance, requestsAll, classAnns, quizzes] = await Promise.all([
+  const [{ columns, scores }, attendance, requestsAll, classAnns, quizzes, assignments] = await Promise.all([
     getMyScores(student.id, classId).catch(()=>({ columns:[], scores:[] })),
     getMyAttendance(student.id, classId).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     _getClassAnn ? _getClassAnn(classId).catch(()=>[]) : Promise.resolve([]),
     getQuizzesForStudentClass(classId, student.id).catch(()=>[]),
+    getMyClassAssignments(classId, student.id).catch(()=>[]),
   ])
   const requests = requestsAll.filter(r => r.classes?.id === classId)
 
@@ -1643,6 +1645,21 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
 
   const _todoContent = () => {
     const items = []
+
+    // ── งานที่มอบหมาย (ยังไม่ส่ง) ──
+    const unsubmittedAssignments = assignments.filter(a => !a.mySubmission)
+    if (unsubmittedAssignments.length > 0) {
+      items.push(`
+        <button onclick="window._stuOpenClassTab(${classId},'assignments')"
+          class="w-full bg-white rounded-2xl border border-indigo-100 shadow-sm p-4 flex items-center gap-3 text-left hover:border-indigo-300 transition">
+          <span class="text-2xl flex-shrink-0">📚</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-gray-800">งานที่ยังไม่ได้ส่ง</p>
+            <p class="text-xs text-gray-400 mt-0.5">${unsubmittedAssignments.length} งาน — แตะเพื่อดู/ส่งงาน</p>
+          </div>
+          <span class="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">${unsubmittedAssignments.length}</span>
+        </button>`)
+    }
 
     // ── คำร้องที่รอดำเนินการ ──
     const pendingReqs = requests.filter(r => r.status === 'pending')
@@ -1856,11 +1873,45 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         <p class="text-sm">ยังไม่มีคำร้องในรายวิชานี้</p>
       </div>`}`
 
+  const _assignmentFmtDue = iso => !iso ? 'ไม่กำหนดส่ง' : new Date(iso).toLocaleString('th-TH', { day:'numeric', month:'short', year:'2-digit', hour:'2-digit', minute:'2-digit' })
+  const _assignmentIsLate = (a, submittedAtIso) => a.due_at ? new Date(submittedAtIso).getTime() > new Date(a.due_at).getTime() : false
+  const _assignmentIsOverdue = a => a.due_at ? Date.now() > new Date(a.due_at).getTime() : false
+
+  const _assignmentCard = (a) => {
+    const sub = a.mySubmission
+    const late = sub ? _assignmentIsLate(a, sub.submitted_at) : false
+    const overdue = !sub && _assignmentIsOverdue(a)
+    return `<div class="bg-white rounded-2xl border ${sub ? 'border-emerald-100' : overdue ? 'border-red-100' : 'border-gray-200'} shadow-sm p-4">
+      <div class="flex items-start justify-between gap-2 mb-1.5">
+        <p class="font-semibold text-gray-800 text-sm">${_esc(a.title)}</p>
+        ${sub
+          ? `<span class="flex-shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${late ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">${late ? '⏰ ส่งช้า' : '✅ ส่งแล้ว'}</span>`
+          : `<span class="flex-shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${overdue ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-50 text-gray-500 border border-gray-200'}">${overdue ? 'เลยกำหนดส่ง' : 'ยังไม่ส่ง'}</span>`}
+      </div>
+      ${a.description ? `<p class="text-xs text-gray-500 mb-1.5">${_esc(a.description)}</p>` : ''}
+      <p class="text-xs text-gray-400 mb-2">📅 กำหนดส่ง: ${_assignmentFmtDue(a.due_at)}</p>
+      ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mb-2">${a.attachment_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">📎 ${_esc(f.name)}</a>`).join('')}</div>` : ''}
+      ${sub?.file_urls?.length ? `<div class="border-t border-gray-50 pt-2 mt-1"><p class="text-[10px] text-gray-400 mb-1">ไฟล์ที่ส่ง (${new Date(sub.submitted_at).toLocaleString('th-TH',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})})</p>
+        <div class="flex flex-wrap gap-1.5">${sub.file_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">📎 ${_esc(f.name)}</a>`).join('')}</div></div>` : ''}
+      <button class="stu-submit-assign-btn mt-3 w-full py-2 rounded-xl text-xs font-bold ${sub ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'}" data-aid="${a.id}">${sub ? '📤 ส่งใหม่ (แทนที่ของเดิม)' : '📤 ส่งงาน'}</button>
+    </div>`
+  }
+
+  const _assignmentsContent = () => `
+    <h2 class="font-bold text-gray-800 mb-3">📚 งานที่ได้รับมอบหมาย</h2>
+    ${assignments.length ? `<div class="space-y-3">${assignments.map(_assignmentCard).join('')}</div>` : `
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-8 text-center text-gray-300">
+        <p class="text-4xl mb-2">📭</p>
+        <p class="text-sm">ยังไม่มีงานที่ได้รับมอบหมายในวิชานี้</p>
+      </div>`}`
+
   const content = tab === 'scores'
     ? _scoresContent()
     : tab === 'requests'
       ? _requestsContent()
-      : _todoContent()
+      : tab === 'assignments'
+        ? _assignmentsContent()
+        : _todoContent()
 
   setContent(`
     <button onclick="window._stuBackFromSubject()" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← ${window._stuFromTimetable ? 'ตารางเรียน' : 'รายวิชาอื่น'}</button>
@@ -1884,6 +1935,57 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     } catch (err) {
       showToast('เข้าสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     }
+  }
+
+  document.querySelectorAll('.stu-submit-assign-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const a = assignments.find(x => x.id === parseInt(btn.dataset.aid, 10))
+      if (a) _openAssignmentSubmitModal(a)
+    })
+  })
+
+  function _openAssignmentSubmitModal(a) {
+    document.getElementById('stu-submit-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'stu-submit-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-3 animate-fade">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">📤 ส่งงาน — ${_esc(a.title)}</h3>
+          <button id="ss-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">แนบไฟล์ (เลือกได้หลายไฟล์)</label>
+          <input id="ss-files" type="file" multiple class="w-full text-xs" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">หมายเหตุถึงครู (ไม่บังคับ)</label>
+          <textarea id="ss-note" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"></textarea>
+        </div>
+        <button id="ss-submit" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">ส่งงาน</button>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#ss-close').addEventListener('click', () => m.remove())
+    m.querySelector('#ss-submit').addEventListener('click', async () => {
+      const files = [...(m.querySelector('#ss-files').files ?? [])]
+      if (!files.length && !a.mySubmission) { showToast('เลือกไฟล์อย่างน้อย 1 ไฟล์ก่อนส่งนะ', 'warning'); return }
+      const btn = m.querySelector('#ss-submit')
+      btn.disabled = true; btn.textContent = 'กำลังส่ง...'
+      try {
+        const uploaded = []
+        for (const f of files) uploaded.push(await uploadAssignmentFile(f, `class-${classId}/student-${student.id}`))
+        const fileUrls = uploaded.length ? uploaded : (a.mySubmission?.file_urls ?? [])
+        await submitAssignment(a.id, student.id, fileUrls, m.querySelector('#ss-note').value.trim() || null)
+        showToast('ส่งงานสำเร็จ ✅', 'success')
+        m.remove()
+        renderStudentSubjectDetail(student, classId, 'assignments')
+      } catch (err) {
+        showToast('ส่งงานไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'ส่งงาน'
+      }
+    })
   }
 }
 
