@@ -123,8 +123,13 @@ export async function openSmartClassroomLanding(teacher) {
   document.getElementById('sc-landing-modal')?.remove()
   const minTier = _smartClassroomMinTier(cfg)
   const title  = cfg.smartClassroomLandingTitle?.trim() || 'Smart Classroom — หน้าควบคุมขณะสอนสด'
-  const desc   = cfg.smartClassroomLandingDesc?.trim() || 'รวมเช็คชื่ออัตโนมัติ, Hall Pass (อนุญาตออกนอกห้องแบบสด), จับเวลา, สุ่มรายชื่อ/จัดกลุ่ม, เปิดควิซสด, สแกน QR, งานที่มอบหมาย, ตารางเรียน, กำหนดการสอน+แผนการจัดการเรียนรู้ (พร้อมบันทึกหลังสอน+เซ็นชื่อ), และประกาศแนบไฟล์พร้อมแจ้งเตือนถึงมือถือนักเรียนทันที ไว้จอเดียว — ออกแบบมาให้การสอนสดของคุณครูมีประสิทธิภาพที่สุด'
+  const desc   = cfg.smartClassroomLandingDesc?.trim() || 'ทุกวินาทีระหว่างสอนสดมีค่า — ไม่ต้องเสียเวลาสลับหน้าจอไปมาระหว่างเช็คชื่อ คุมเวลา เปิดควิซ หรือสั่งงาน อีกต่อไป Smart Classroom รวมทุกเครื่องมือที่คุณใช้บ่อยที่สุดไว้จอเดียว ให้คุณโฟกัสกับการสอนได้เต็มที่ นักเรียนก็ได้รับข่าวสารถึงมือถือทันทีโดยไม่พลาด และแผนการสอน/บันทึกหลังสอนของคุณจะถูกเก็บเป็นระบบ พร้อมให้ตรวจสอบได้ทุกเมื่อโดยไม่ต้องมานั่งรวบรวมทีหลัง'
   const images = [cfg.smartClassroomLandingImg1, cfg.smartClassroomLandingImg2, cfg.smartClassroomLandingImg3].filter(Boolean)
+  const WHY_REASONS = [
+    { emoji: '⏱️', text: 'ไม่ต้องสลับหน้าจอนับสิบรอบระหว่างสอน ทุกเครื่องมือรวมไว้จอเดียว' },
+    { emoji: '📲', text: 'นักเรียนไม่พลาดประกาศ/งานอีกต่อไป แจ้งเตือนถึงมือถือทันทีที่กดส่ง' },
+    { emoji: '📋', text: 'แผนการสอน+บันทึกหลังสอนเป็นระบบ พร้อมตรวจสอบได้ทุกเมื่อ' },
+  ]
   const FEATURES = [
     '✅ เช็คชื่ออัตโนมัติ', '🚪 Hall Pass สด', '🎲 สุ่ม/จัดกลุ่ม', '🧠 เปิดควิซสด',
     '📚 สั่งงาน/ติดตามงาน', '📘 กำหนดการสอน+แผนการสอน', '🖊️ บันทึกหลังสอน+เซ็นชื่อ', '📣 ประกาศแนบไฟล์+แจ้งเตือนมือถือ',
@@ -141,10 +146,20 @@ export async function openSmartClassroomLanding(teacher) {
         <h2 class="text-white font-extrabold text-xl">${_htmlEsc(title)}</h2>
       </div>
       <div class="p-6 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          ${WHY_REASONS.map(r => `
+            <div class="px-3 py-3 rounded-xl bg-amber-50 border border-amber-100 text-center">
+              <div class="text-xl mb-1">${r.emoji}</div>
+              <p class="text-[11px] font-bold text-amber-800 leading-snug">${_htmlEsc(r.text)}</p>
+            </div>`).join('')}
+        </div>
         <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">${_htmlEsc(desc)}</p>
         ${images.length ? `<div class="grid ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-2">${images.map(u => `<img src="${_htmlEsc(u)}" class="w-full rounded-xl border border-gray-100 object-cover" />`).join('')}</div>` : ''}
-        <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
-          ${FEATURES.map(f => `<div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">${f}</div>`).join('')}
+        <div>
+          <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">🎁 รวมฟีเจอร์เหล่านี้ไว้ให้แล้ว</p>
+          <div class="grid grid-cols-2 gap-1.5 text-[11px] text-gray-500">
+            ${FEATURES.map(f => `<div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-50">${f}</div>`).join('')}
+          </div>
         </div>
         ${unlocked ? `
           <label class="flex items-center justify-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
