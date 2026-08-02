@@ -990,7 +990,7 @@ export async function renderSmartClassroom(teacher, classId) {
   document.getElementById('sc-pass-list').addEventListener('click', async e => {
     const btn = e.target.closest('.sc-return-btn')
     if (!btn) return
-    try { await closeLeavePermission(parseInt(btn.dataset.lid, 10), 'returned'); showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); _reload() }
+    try { await closeLeavePermission(btn.dataset.lid, 'returned'); showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); _reload() }
     catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
   })
   document.getElementById('sc-leave-quota').addEventListener('click', () => {
@@ -1016,16 +1016,16 @@ export async function renderSmartClassroom(teacher, classId) {
     const closeBtn = e.target.closest('.sc-quiz-close')
     const analyticsBtn = e.target.closest('.sc-quiz-analytics')
     if (startBtn) {
-      try { await startQuizLive(parseInt(startBtn.dataset.qid, 10)); showToast('เริ่มควิซให้ห้องนี้แล้ว 🧠', 'success'); _reload() }
+      try { await startQuizLive(startBtn.dataset.qid); showToast('เริ่มควิซให้ห้องนี้แล้ว 🧠', 'success'); _reload() }
       catch (err) { showToast('เริ่มควิซไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
     } else if (monitorBtn) {
-      const q = quizzes.find(x => x.id === parseInt(monitorBtn.dataset.qid, 10))
+      const q = quizzes.find(x => x.id === monitorBtn.dataset.qid)
       if (q) openQuizMonitor(q)
     } else if (closeBtn) {
-      try { await closeQuiz(parseInt(closeBtn.dataset.qid, 10)); showToast('ปิดสอบแล้ว', 'success'); _reload() }
+      try { await closeQuiz(closeBtn.dataset.qid); showToast('ปิดสอบแล้ว', 'success'); _reload() }
       catch (err) { showToast('ปิดสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
     } else if (analyticsBtn) {
-      const q = quizzes.find(x => x.id === parseInt(analyticsBtn.dataset.qid, 10))
+      const q = quizzes.find(x => x.id === analyticsBtn.dataset.qid)
       if (q) openQuizAnalytics(q)
     }
   })
