@@ -2927,7 +2927,7 @@ export async function getActiveAnnouncements() {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, deadlineAt = null }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, deadlineAt = null, attachmentUrls = null }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
@@ -2941,11 +2941,19 @@ export async function createAnnouncement({ title, body, isActive = true, priorit
               schedule_filter: scheduleFilter,
               target_class_ids: targetClassIds || null,
               file_url: fileUrl || null,
+              attachment_urls: attachmentUrls || null,
               deadline_at: deadlineAt || null,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
   return data
+}
+
+// รายชื่อ "ประเภทประกาศ" ที่เคยใช้จริงในระบบ — ใช้ประกอบ datalist ให้ครูเลือกซ้ำหรือพิมพ์ใหม่ได้อิสระ (ann_type เป็น text ธรรมดา ไม่ผูก enum)
+export async function getAnnouncementTypeSuggestions() {
+  const { data, error } = await supabase.from('announcements').select('ann_type').not('ann_type', 'is', null)
+  if (error) throw error
+  return [...new Set((data ?? []).map(r => r.ann_type).filter(Boolean))]
 }
 
 // ประกาศที่ครูสร้างเอง (สำหรับห้องเรียน)
@@ -2963,7 +2971,7 @@ export async function getTeacherOwnAnnouncements(teacherId) {
 // ประกาศที่ targeting ห้องเรียนนี้ (สำหรับแสดงในห้อง)
 export async function getClassAnnouncements(classId) {
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, ann_type, file_url, deadline_at, created_at, teachers:created_by_teacher_id(full_name)')
+    .select('id, title, body, priority, ann_type, file_url, attachment_urls, deadline_at, created_at, teachers:created_by_teacher_id(full_name)')
     .eq('is_active', true)
     .contains('target_class_ids', [classId])
     .order('priority', { ascending: false })

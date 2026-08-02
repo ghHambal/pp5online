@@ -11,7 +11,7 @@ import {
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
   getCourseSyllabus, createSyllabusItem, updateSyllabusItem, deleteSyllabusItem,
   getLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan,
-  getLessonPlanReflection, upsertLessonPlanReflection,
+  getLessonPlanReflection, upsertLessonPlanReflection, getAnnouncementTypeSuggestions,
 } from './api.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
@@ -238,7 +238,7 @@ export async function renderSmartClassroom(teacher, classId) {
   let cls, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
     scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
     examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements,
-    syllabusItems, lessonPlans
+    syllabusItems, lessonPlans, annTypeSuggestions
   let courseId = null
   try {
     const classes = await getMyClasses(teacher.id)
@@ -252,7 +252,7 @@ export async function renderSmartClassroom(teacher, classId) {
     ;[students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
       scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
       examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements,
-      syllabusItems, lessonPlans] = await Promise.all([
+      syllabusItems, lessonPlans, annTypeSuggestions] = await Promise.all([
       getClassStudents(classId).catch(() => []),
       getActiveLeavePermissionsForClass(classId).catch(() => []),
       getLeaveMaxActiveForClass(classId).catch(() => 3),
@@ -271,6 +271,7 @@ export async function renderSmartClassroom(teacher, classId) {
       getClassAnnouncements(classId).catch(() => []),
       courseId ? getCourseSyllabus(courseId).catch(() => []) : Promise.resolve([]),
       courseId ? getLessonPlans(courseId).catch(() => []) : Promise.resolve([]),
+      getAnnouncementTypeSuggestions().catch(() => []),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -459,12 +460,19 @@ export async function renderSmartClassroom(teacher, classId) {
   // ── ประกาศของห้องนี้ (ทุกแหล่ง ไม่ใช่แค่ที่ส่งจากตรงนี้) ──────────────────────
   const _annHistoryHTML = () => {
     if (!classAnnouncements.length) return `<p class="text-xs text-gray-400 mb-2">ยังไม่มีประกาศสำหรับห้องนี้</p>`
-    return `<div class="space-y-1.5 mb-3 max-h-40 overflow-y-auto">${classAnnouncements.slice(0, 10).map(a => `
+    return `<div class="space-y-1.5 mb-3 max-h-40 overflow-y-auto">${classAnnouncements.slice(0, 10).map(a => {
+      const files = [...(Array.isArray(a.attachment_urls) ? a.attachment_urls : []), ...(a.file_url ? [{ url: a.file_url, name: 'ไฟล์แนบ' }] : [])]
+      return `
       <div class="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
-        <p class="font-semibold text-gray-700 truncate">${_htmlEsc(a.title)}</p>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          ${a.ann_type && a.ann_type !== 'general' ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">${_htmlEsc(a.ann_type)}</span>` : ''}
+          <p class="font-semibold text-gray-700 truncate flex-1 min-w-0">${_htmlEsc(a.title)}</p>
+        </div>
         ${a.body ? `<p class="text-gray-400 truncate">${_htmlEsc(a.body.slice(0, 80))}</p>` : ''}
+        ${files.length ? `<div class="flex flex-wrap gap-1 mt-1">${files.map(f => `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="text-[10px] px-1.5 py-0.5 rounded-lg bg-white border border-gray-200 text-indigo-600 hover:bg-indigo-50">📎 ${_htmlEsc(f.name ?? 'ไฟล์')}</a>`).join('')}</div>` : ''}
         <p class="text-[10px] text-gray-300 mt-0.5">${new Date(a.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}${a.teachers?.full_name ? ' · ' + _htmlEsc(a.teachers.full_name) : ''}</p>
-      </div>`).join('')}</div>`
+      </div>`
+    }).join('')}</div>`
   }
 
   // ── ตารางเรียนของห้องนี้ ────────────────────────────────────────────────────
@@ -620,6 +628,10 @@ export async function renderSmartClassroom(teacher, classId) {
         <h1 class="font-bold text-gray-800 text-base truncate">${_htmlEsc(ms.subject_name ?? '')} · ${_htmlEsc(cls.class_name ?? '')}</h1>
         <p class="text-xs text-gray-400">${students.length} คน</p>
       </div>
+      <div class="min-w-0 border-l border-amber-100 pl-4">
+        <p class="text-[10px] font-bold text-amber-500 uppercase tracking-wide">📘 สัปดาห์ที่ ${curWeek || '—'}</p>
+        <p class="text-xs font-semibold ${currentTopic ? 'text-gray-700' : 'text-gray-400'} truncate max-w-[240px]">${currentTopic ? _htmlEsc(currentTopic.topic) : 'ยังไม่ได้กำหนดหัวข้อสำหรับสัปดาห์นี้'}</p>
+      </div>
       <div id="sc-clock-wrap" class="ml-auto flex-shrink-0 text-right"></div>
       <button id="sc-switch-class" class="flex-shrink-0 text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg">🔀 สลับห้อง</button>
       <button id="sc-back" class="flex-shrink-0 text-xs text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50">← กลับ</button>
@@ -679,6 +691,16 @@ export async function renderSmartClassroom(teacher, classId) {
           <div id="sc-ann-history">${_annHistoryHTML()}</div>
           <textarea id="sc-ann-text" rows="3" placeholder="เช่น พรุ่งนี้เตรียมสมุดการบ้านมาส่งด้วยนะ"
             class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2"></textarea>
+          <div class="mb-2">
+            <label class="block text-[10px] font-semibold text-gray-400 mb-1">ประเภทประกาศ (พิมพ์ใหม่ได้อิสระ หรือเลือกจากที่เคยใช้)</label>
+            <input id="sc-ann-type" type="text" list="sc-ann-type-list" placeholder="เช่น การบ้าน, เอกสารประกอบ, กำหนดส่งงาน..."
+              class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <datalist id="sc-ann-type-list">${annTypeSuggestions.map(t => `<option value="${_htmlEsc(t)}"></option>`).join('')}</datalist>
+          </div>
+          <div class="mb-2">
+            <label class="block text-[10px] font-semibold text-gray-400 mb-1">แนบไฟล์/รูปภาพ (เลือกได้หลายไฟล์ ไม่บังคับ)</label>
+            <input id="sc-ann-files" type="file" multiple class="w-full text-xs" />
+          </div>
           <button id="sc-ann-send" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">ส่งประกาศ</button>
         </div>
       </div>
@@ -1234,9 +1256,13 @@ export async function renderSmartClassroom(teacher, classId) {
     const btn = document.getElementById('sc-ann-send')
     const text = document.getElementById('sc-ann-text').value.trim()
     if (!text) { showToast('พิมพ์ข้อความก่อนส่งนะ', 'warning'); return }
+    const annType = document.getElementById('sc-ann-type').value.trim() || 'general'
     btn.disabled = true; btn.textContent = 'กำลังส่ง...'
     try {
-      await createAnnouncement({ title: `📣 ${cls.class_name}`, body: text, isActive: true, teacherId: teacher.id, targetClassIds: [classId] })
+      const files = [...(document.getElementById('sc-ann-files').files ?? [])]
+      const attachments = []
+      for (const f of files) attachments.push(await uploadAssignmentFile(f, `class-${classId}/announcements`))
+      await createAnnouncement({ title: `📣 ${cls.class_name}`, body: text, isActive: true, teacherId: teacher.id, targetClassIds: [classId], annType, attachmentUrls: attachments.length ? attachments : null })
       showToast('ส่งประกาศถึงห้องนี้แล้ว 📣', 'success')
       _reload()
     } catch (err) { showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false; btn.textContent = 'ส่งประกาศ' }
