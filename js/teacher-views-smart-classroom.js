@@ -304,6 +304,61 @@ export async function renderSmartClassroom(teacher, classId) {
   const leaveHistoryByStudent = {}
   for (const l of leaveHistory) (leaveHistoryByStudent[l.student_id] ??= []).push(l)
 
+  // ── เลขที่ — คงที่ตามลำดับ student_code จาก getClassStudents() (ตรงกับหน้าอื่นทั้งระบบ) ──
+  // ไม่เปลี่ยนตามการเรียงลำดับการ์ดบนจอ (เรียงแค่ตำแหน่งแสดงผล เลขที่ยังอ้างอิงตัวเดิมเสมอ)
+  const seatNoByStudent = new Map(students.map((s, i) => [s.id, i + 1]))
+  const studentBySeatNo = new Map(students.map((s, i) => [i + 1, s]))
+
+  // ── คำนวณค่าไว้ใช้เรียงลำดับ/แสดงผลการ์ด: คะแนนรวมทั้งเทอม, % มาเรียน, คะแนนรายคอลัมน์ ──
+  const _studentTotalScorePct = (s) => {
+    if (!scoreColumns.length) return null
+    const rows = scoresByStudent[s.id] ?? []
+    const totalMax = scoreColumns.reduce((sum, c) => sum + (parseFloat(c.max_score) || 0), 0)
+    if (totalMax <= 0) return null
+    const totalScore = scoreColumns.reduce((sum, c) => {
+      const r = rows.find(x => x.score_column_id === c.id)
+      return sum + (parseFloat(r?.score) || 0)
+    }, 0)
+    return totalScore / totalMax * 100
+  }
+  const _studentAttendancePct = (s) => {
+    const rows = attendanceByStudent[s.id] ?? []
+    if (!rows.length) return null
+    return rows.filter(r => r.status === 'present').length / rows.length * 100
+  }
+  const _studentColumnScore = (s, colId) => {
+    const r = (scoresByStudent[s.id] ?? []).find(x => x.score_column_id === colId)
+    return r?.score != null ? parseFloat(r.score) : null
+  }
+
+  // ── สถานะการเรียงลำดับการ์ดนักเรียน ──────────────────────────────────────────
+  let _rosterSort = { key: 'seatno', label: 'เลขที่' }
+  const _rosterSortValue = (s) => {
+    if (_rosterSort.key === 'total') { const v = _studentTotalScorePct(s); return v == null ? null : `${v.toFixed(0)}%` }
+    if (_rosterSort.key === 'att') { const v = _studentAttendancePct(s); return v == null ? null : `${v.toFixed(0)}%` }
+    if (_rosterSort.key.startsWith('col:')) {
+      const colId = parseInt(_rosterSort.key.slice(4), 10)
+      const v = _studentColumnScore(s, colId)
+      const col = scoreColumns.find(c => c.id === colId)
+      return v == null ? null : `${v}${col ? '/' + col.max_score : ''}`
+    }
+    return null
+  }
+  const _sortedStudents = () => {
+    if (_rosterSort.key === 'seatno') return students
+    if (_rosterSort.key === 'name') return [...students].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '', 'th'))
+    const getVal = _rosterSort.key === 'total' ? _studentTotalScorePct
+      : _rosterSort.key === 'att' ? _studentAttendancePct
+      : (s) => _studentColumnScore(s, parseInt(_rosterSort.key.slice(4), 10))
+    return [...students].sort((a, b) => {
+      const va = getVal(a), vb = getVal(b)
+      if (va == null && vb == null) return seatNoByStudent.get(a.id) - seatNoByStudent.get(b.id)
+      if (va == null) return 1
+      if (vb == null) return -1
+      return vb - va // สูง→ต่ำ
+    })
+  }
+
   // ── คำร้องขอสอบปรับ/สอบย้อนหลัง ของห้องนี้ — คิวเรียงใกล้→ไกล ────────────────
   const examQueue = examRequestsAll
     .filter(r => r.classes?.id === classId && r.status !== 'rejected' && (r.status !== 'approved' || r.exam_attended == null))
@@ -346,19 +401,22 @@ export async function renderSmartClassroom(teacher, classId) {
   const _reload = () => renderSmartClassroom(teacher, classId)
 
   // ── Roster grid ──────────────────────────────────────────────────────────
-  const _rosterHTML = () => students.map(s => {
+  const _rosterHTML = () => _sortedStudents().map(s => {
     const out = activeLeaveMap[s.id]
     const qa = quizAttemptByStudent[s.id]
     const qBadge = liveQuiz ? (QUIZ_STATUS_BADGE[qa?.status] ?? { icon: '⚪', cls: 'bg-gray-300' }) : null
+    const sortVal = _rosterSortValue(s)
     return `<button type="button" data-sid="${s.id}"
         class="sc-stu relative border rounded-xl px-2 py-2.5 text-center hover:border-indigo-300 hover:-translate-y-0.5 transition ${out ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50'}">
+      <span class="absolute top-1 left-1 text-[9px] font-bold text-gray-500 bg-white/80 border border-gray-200 rounded-full w-4 h-4 flex items-center justify-center" title="เลขที่ ${seatNoByStudent.get(s.id) ?? '—'}">${seatNoByStudent.get(s.id) ?? '—'}</span>
       ${out ? `<span class="absolute top-1 right-1 text-[9px] font-bold bg-amber-500 text-white px-1 py-0.5 rounded">🚪</span>` : ''}
-      ${qBadge ? `<span class="absolute top-1 left-1 text-[9px] font-bold ${qBadge.cls} text-white w-4 h-4 rounded-full flex items-center justify-center" title="สถานะสอบ: ${qa?.status ?? 'ยังไม่เข้าสอบ'}">${qBadge.icon}</span>` : ''}
-      <div class="w-9 h-9 mx-auto mb-1.5 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
+      <div class="relative w-9 h-9 mx-auto mb-1.5 mt-2 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
         ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
+        ${qBadge ? `<span class="absolute -bottom-0.5 -right-0.5 text-[8px] font-bold ${qBadge.cls} text-white w-3.5 h-3.5 rounded-full flex items-center justify-center ring-2 ring-white" title="สถานะสอบ: ${qa?.status ?? 'ยังไม่เข้าสอบ'}">${qBadge.icon}</span>` : ''}
       </div>
       <div class="text-[9px] text-gray-400 font-mono">${_htmlEsc(s.student_code ?? '')}</div>
       <div class="text-[11px] font-semibold text-gray-700 leading-tight truncate">${_htmlEsc(s.full_name ?? '')}</div>
+      ${sortVal ? `<div class="text-[10px] font-bold text-amber-600 mt-0.5">${_htmlEsc(sortVal)}</div>` : ''}
     </button>`
   }).join('')
 
@@ -571,9 +629,12 @@ export async function renderSmartClassroom(teacher, classId) {
 
       <div>
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-          <div class="flex items-center justify-between mb-1">
+          <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
             <h2 class="text-sm font-bold text-gray-700">👥 นักเรียน — แตะเพื่อดูข้อมูล/สั่งการ</h2>
-            <button id="sc-open-attendance" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg">✅ เช็คชื่อ</button>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button id="sc-sort-trigger" class="text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100">🔀 เรียงตาม: <span id="sc-sort-label">เลขที่</span></button>
+              <button id="sc-open-attendance" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg">✅ เช็คชื่อ</button>
+            </div>
           </div>
           <p class="text-xs text-gray-400 mb-3">เด้งป๊อบอัพเช็คชื่อของคาบวันนี้ให้อัตโนมัติ (ถ้าวันนี้มีหลายคาบหรือไม่ตรงตาราง จะให้เลือกคาบเอง)</p>
           ${liveQuiz ? `<div class="flex items-center flex-wrap gap-2 mb-3 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-700">
@@ -792,6 +853,63 @@ export async function renderSmartClassroom(teacher, classId) {
     if (s) _openStudentPanel(s)
   })
 
+  // ── Wiring: เรียงลำดับการ์ดนักเรียน (เลขที่/ชื่อ/คะแนนรวม/มาเรียน/รายคอลัมน์คะแนน) ──
+  function _applyRosterSort(key, label) {
+    _rosterSort = { key, label }
+    document.getElementById('sc-sort-label').textContent = label
+    document.getElementById('sc-roster').innerHTML = _rosterHTML()
+  }
+  document.getElementById('sc-sort-trigger').addEventListener('click', () => _openSortPanel())
+
+  function _openSortPanel() {
+    document.getElementById('sc-sort-panel')?.remove()
+    const trigger = document.getElementById('sc-sort-trigger')
+    const rect = trigger.getBoundingClientRect()
+    const p = document.createElement('div')
+    p.id = 'sc-sort-panel'
+    p.className = 'fixed z-[96] bg-white rounded-2xl shadow-2xl border border-gray-100 w-72 max-h-[70vh] overflow-hidden flex flex-col animate-fade'
+    p.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 300)}px`
+    p.style.left = `${Math.min(rect.left, window.innerWidth - 300)}px`
+    const QUICK_SORTS = [
+      { key: 'seatno', label: 'เลขที่ (ค่าเริ่มต้น)' },
+      { key: 'name', label: 'ชื่อ-สกุล (ก–ฮ)' },
+      { key: 'total', label: 'คะแนนรวมทั้งเทอม (สูง→ต่ำ)' },
+      { key: 'att', label: 'คะแนนการมาเรียน (สูง→ต่ำ)' },
+    ]
+    p.innerHTML = `
+      <div class="p-3 border-b border-gray-100 flex-shrink-0">
+        <p class="text-xs font-bold text-gray-500 mb-2">เรียงลำดับตาม</p>
+        <div class="space-y-1">
+          ${QUICK_SORTS.map(q => `<button data-sortkey="${q.key}" data-sortlabel="${_htmlEsc(q.label)}" class="sc-sort-opt w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${_rosterSort.key === q.key ? 'bg-amber-100 text-amber-800' : 'text-gray-600 hover:bg-gray-50'}">${q.label}</button>`).join('')}
+        </div>
+      </div>
+      <div class="p-3 flex-1 overflow-y-auto min-h-0">
+        <p class="text-xs font-bold text-gray-500 mb-2">คะแนนรายช่อง</p>
+        ${scoreColumns.length > 8 ? `<input id="sc-sort-search" type="text" placeholder="พิมพ์ค้นหาชื่อคอลัมน์..." class="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 mb-2 focus:outline-none focus:ring-2 focus:ring-amber-300" />` : ''}
+        <div id="sc-sort-col-list" class="space-y-1">
+          ${scoreColumns.length ? scoreColumns.map(c => `<button data-sortkey="col:${c.id}" data-sortlabel="${_htmlEsc(c.assignment_name ?? '')}" data-search="${_htmlEsc((c.assignment_name ?? '').toLowerCase())}" class="sc-sort-opt sc-sort-col-opt w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${_rosterSort.key === 'col:' + c.id ? 'bg-amber-100 text-amber-800' : 'text-gray-600 hover:bg-gray-50'}">${_htmlEsc(c.assignment_name ?? '')}</button>`).join('') : `<p class="text-xs text-gray-300 text-center py-3">ห้องนี้ยังไม่มีคอลัมน์คะแนน</p>`}
+        </div>
+      </div>`
+    document.body.appendChild(p)
+    p.querySelectorAll('.sc-sort-opt').forEach(b => b.addEventListener('click', () => {
+      _applyRosterSort(b.dataset.sortkey, b.dataset.sortlabel)
+      p.remove()
+    }))
+    const searchInput = p.querySelector('#sc-sort-search')
+    searchInput?.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase()
+      p.querySelectorAll('.sc-sort-col-opt').forEach(b => {
+        b.style.display = !q || b.dataset.search.includes(q) ? '' : 'none'
+      })
+    })
+    const _closeOnOutside = (e) => {
+      if (p.contains(e.target) || e.target === trigger) return
+      p.remove()
+      document.removeEventListener('mousedown', _closeOnOutside, true)
+    }
+    setTimeout(() => document.addEventListener('mousedown', _closeOnOutside, true), 0)
+  }
+
   const SC_TABS = [
     { key: 'info',  label: '👤 ข้อมูล' },
     { key: 'score', label: '📝 คะแนน' },
@@ -958,10 +1076,16 @@ export async function renderSmartClassroom(teacher, classId) {
               </div>
               <div class="min-w-0 flex-1">
                 <p class="font-bold text-gray-800 truncate">${_htmlEsc(s.full_name ?? '—')}</p>
-                <p class="text-xs text-gray-400">${_htmlEsc(s.student_code ?? '')} · ${_htmlEsc(s.main_room ?? '')} · ${idx + 1}/${students.length}</p>
+                <p class="text-xs text-gray-400">${_htmlEsc(s.student_code ?? '')} · ${_htmlEsc(s.main_room ?? '')} · เลขที่ ${seatNoByStudent.get(s.id) ?? '—'}</p>
               </div>
               <button id="sc-sp-next" ${idx >= students.length - 1 ? 'disabled' : ''} class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-25 disabled:pointer-events-none" title="คนถัดไป">›</button>
               <button id="sc-sp-close" class="text-gray-400 hover:text-gray-700 text-lg flex-shrink-0">✕</button>
+            </div>
+            <div class="flex items-center gap-2 mt-2.5">
+              <label for="sc-sp-jump" class="text-[11px] text-gray-400 font-semibold flex-shrink-0">ไปที่เลขที่</label>
+              <input id="sc-sp-jump" type="number" min="1" max="${students.length}" value="${seatNoByStudent.get(s.id) ?? ''}"
+                class="w-16 text-center text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono font-bold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              <span class="text-[11px] text-gray-300">/ ${students.length}</span>
             </div>
           </div>
           <div class="px-5 pb-3 flex-shrink-0">
@@ -977,6 +1101,16 @@ export async function renderSmartClassroom(teacher, classId) {
       m.querySelector('#sc-sp-close').addEventListener('click', () => m.remove())
       m.querySelector('#sc-sp-prev')?.addEventListener('click', () => { if (idx > 0) { s = students[idx - 1]; activeTab = 'info'; _renderPanel() } })
       m.querySelector('#sc-sp-next')?.addEventListener('click', () => { if (idx < students.length - 1) { s = students[idx + 1]; activeTab = 'info'; _renderPanel() } })
+      const _jumpToSeat = () => {
+        const jumpInput = m.querySelector('#sc-sp-jump')
+        const n = parseInt(jumpInput.value, 10)
+        const target = studentBySeatNo.get(n)
+        if (!target) { showToast(`ไม่พบเลขที่ ${jumpInput.value}`, 'warning'); jumpInput.value = seatNoByStudent.get(s.id) ?? ''; return }
+        if (target.id === s.id) return
+        s = target; activeTab = 'info'; _renderPanel()
+      }
+      m.querySelector('#sc-sp-jump')?.addEventListener('change', _jumpToSeat)
+      m.querySelector('#sc-sp-jump')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _jumpToSeat() } })
       m.querySelectorAll('.sc-sp-tab').forEach(b => b.addEventListener('click', () => { activeTab = b.dataset.tab; _renderPanel() }))
       m.querySelectorAll('.sc-score-input').forEach(input => {
         input.addEventListener('change', async () => {
