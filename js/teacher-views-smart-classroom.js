@@ -42,6 +42,165 @@ function _fmtElapsed(startIso) {
   return mins < 1 ? '<1 นาที' : `${mins} นาที`
 }
 
+const SC_SKIP_POPUP_KEY = 'pp5_sc_skip_popup'
+
+// ─── หาห้องที่ "กำลังสอนอยู่ตอนนี้" ของครูคนนี้ ถ้าไม่มีให้หาห้องถัดไปที่ใกล้ที่สุด ──
+// ใช้ตรรกะเดียวกับ _computeClassTiming ใน renderSmartClassroom แต่ไล่ทุกห้องของครู ไม่ใช่ห้องเดียว
+export async function findCurrentOrNextClass(teacher) {
+  const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
+  const academicYear = parseInt(cfg.academicYear ?? 2568)
+  const semester = parseInt(cfg.semester ?? 1)
+  const [classes, schedule, links, periods] = await Promise.all([
+    getMyClasses(teacher.id).catch(() => []),
+    getMySchedule(teacher.id, academicYear, semester).catch(() => []),
+    getClassScheduleLinks(teacher.id).catch(() => []),
+    getPeriods().catch(() => []),
+  ])
+  if (!classes.length) return { classId: null, mode: 'none' }
+
+  const periodMap = Object.fromEntries(periods.map(p => [p.period_no, p]))
+  const scheduleMap = Object.fromEntries(schedule.map(s => [s.id, s]))
+  const slots = []
+  for (const link of links) {
+    const sched = scheduleMap[link.teacher_schedule_id]
+    if (!sched) continue
+    const lastPeriodNo = (sched.period_no ?? 1) + (sched.span_periods ?? 1) - 1
+    slots.push({
+      classId: link.class_id,
+      day_of_week: sched.day_of_week,
+      period: periodMap[sched.period_no],
+      actualEndPeriod: periodMap[lastPeriodNo] ?? periodMap[sched.period_no],
+    })
+  }
+
+  const now = new Date()
+  const dow = now.getDay()
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+
+  for (const slot of slots) {
+    if (slot.day_of_week !== dow || !slot.period?.start_time || !slot.actualEndPeriod?.end_time) continue
+    const [sh, sm] = slot.period.start_time.split(':').map(Number)
+    const [eh, em] = slot.actualEndPeriod.end_time.split(':').map(Number)
+    const startSec = sh * 3600 + sm * 60
+    const endSec = eh * 3600 + em * 60
+    if (nowSec >= startSec && nowSec < endSec) return { classId: slot.classId, mode: 'live' }
+  }
+
+  let best = null
+  for (const slot of slots) {
+    if (!slot.period?.start_time) continue
+    const [sh, sm] = slot.period.start_time.split(':').map(Number)
+    const startSec = sh * 3600 + sm * 60
+    let daysUntil = (slot.day_of_week - dow + 7) % 7
+    if (daysUntil === 0 && startSec <= nowSec) daysUntil = 7
+    const totalSecUntil = daysUntil * 86400 + startSec - nowSec
+    if (best === null || totalSecUntil < best.totalSecUntil) best = { totalSecUntil, classId: slot.classId }
+  }
+  if (best) return { classId: best.classId, mode: 'upcoming' }
+
+  // ไม่เคยผูกตารางสอนไว้เลยสักห้อง — fallback ไปห้องแรกที่มี กันเปิดไม่ได้เลย
+  return { classId: classes[0]?.id ?? null, mode: 'none' }
+}
+
+// ─── หน้าอธิบายฟีเจอร์ (เปิดจากปุ่มพรีเมียมในหน้าภาพรวม) ──────────────────────────
+export async function openSmartClassroomLanding(teacher) {
+  const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
+  document.getElementById('sc-landing-modal')?.remove()
+  const title  = cfg.smartClassroomLandingTitle?.trim() || 'Smart Classroom — หน้าควบคุมขณะสอนสด'
+  const desc   = cfg.smartClassroomLandingDesc?.trim() || 'รวมเช็คชื่อ, Hall Pass (อนุญาตออกนอกห้องแบบสด), จับเวลา, สุ่มรายชื่อ/จัดกลุ่ม, เปิดควิซสด, สแกน QR, งานที่มอบหมาย และตารางเรียน ไว้จอเดียว — ออกแบบมาให้การสอนสดของคุณครูมีประสิทธิภาพที่สุด'
+  const images = [cfg.smartClassroomLandingImg1, cfg.smartClassroomLandingImg2, cfg.smartClassroomLandingImg3].filter(Boolean)
+
+  const m = document.createElement('div')
+  m.id = 'sc-landing-modal'
+  m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4'
+  m.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-fade">
+      <div class="relative px-6 py-8 text-center" style="background:linear-gradient(135deg,#a9781a,#e6c988)">
+        <button id="sl-close" class="absolute top-4 right-4 text-white/80 hover:text-white text-2xl leading-none">✕</button>
+        <div class="text-5xl mb-2">👑</div>
+        <h2 class="text-white font-extrabold text-xl">${_htmlEsc(title)}</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">${_htmlEsc(desc)}</p>
+        ${images.length ? `<div class="grid ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-2">${images.map(u => `<img src="${_htmlEsc(u)}" class="w-full rounded-xl border border-gray-100 object-cover" />`).join('')}</div>` : ''}
+        <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
+          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">✅ เช็คชื่ออัตโนมัติ</div>
+          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">🚪 Hall Pass สด</div>
+          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">🎲 สุ่ม/จัดกลุ่ม</div>
+          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">📚 สั่งงาน/ติดตามงาน</div>
+        </div>
+        <button id="sl-start" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+          style="background:linear-gradient(135deg,#a9781a,#e6c988)">🚀 เริ่มใช้งาน</button>
+      </div>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#sl-close').addEventListener('click', () => m.remove())
+  m.querySelector('#sl-start').addEventListener('click', () => {
+    m.remove()
+    _openEligibilityGate(teacher, cfg)
+  })
+}
+
+function _showTierPaywall(cfg) {
+  const minTier = _smartClassroomMinTier(cfg)
+  document.getElementById('sc-gate-modal')?.remove()
+  const m = document.createElement('div')
+  m.id = 'sc-gate-modal'
+  m.className = 'fixed inset-0 z-[96] flex items-center justify-center bg-black/50 p-4'
+  m.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-3 animate-fade">
+      <div class="text-5xl">🔒</div>
+      <p class="font-bold text-gray-800">ฟีเจอร์นี้เฉพาะผู้สนับสนุนระบบระดับ ${minTier} ขึ้นไป</p>
+      <p class="text-xs text-gray-500">สนับสนุนระบบเพื่อปลดล็อก Smart Classroom และสิทธิพิเศษอื่นๆ ได้เลยครับ</p>
+      <button id="sc-gate-donate" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+        style="background:linear-gradient(135deg,#a9781a,#e6c988)">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
+      <button id="sc-gate-cancel2" class="text-xs text-gray-400 hover:text-gray-600">ปิด</button>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#sc-gate-cancel2').addEventListener('click', () => m.remove())
+  m.querySelector('#sc-gate-donate').addEventListener('click', () => { m.remove(); document.getElementById('btn-donate-float')?.click() })
+}
+
+async function _launchAuto(teacher) {
+  showToast('กำลังตรวจสอบตารางสอน...', 'info')
+  const { classId } = await findCurrentOrNextClass(teacher)
+  if (!classId) { showToast('ยังไม่มีห้องเรียน กรุณาสร้างห้องเรียนก่อนครับ', 'warning'); return }
+  renderSmartClassroom(teacher, classId)
+}
+
+function _openEligibilityGate(teacher, cfg) {
+  if (!isSmartClassroomUnlocked(cfg)) { _showTierPaywall(cfg); return }
+  if (localStorage.getItem(SC_SKIP_POPUP_KEY) === '1') { _launchAuto(teacher); return }
+
+  document.getElementById('sc-gate-modal')?.remove()
+  const m = document.createElement('div')
+  m.id = 'sc-gate-modal'
+  m.className = 'fixed inset-0 z-[96] flex items-center justify-center bg-black/50 p-4'
+  m.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 animate-fade">
+      <div class="text-5xl">👑</div>
+      <p class="font-bold text-gray-800">พร้อมเข้าใช้งาน Smart Classroom</p>
+      <p class="text-xs text-gray-500">ระบบจะตรวจสอบตารางสอนแล้วเปิดห้องที่กำลังสอนอยู่ตอนนี้ให้อัตโนมัติ (หรือห้องถัดไปที่ใกล้ที่สุดถ้ายังไม่ถึงเวลา)</p>
+      <label class="flex items-center justify-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+        <input type="checkbox" id="sc-gate-skip" class="w-4 h-4 rounded" />
+        ไม่ต้องโชว์ป๊อบอัพนี้ในครั้งหน้า
+      </label>
+      <button id="sc-gate-go" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+        style="background:linear-gradient(135deg,#a9781a,#e6c988)">เข้าใช้งานเลย →</button>
+      <button id="sc-gate-cancel" class="text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#sc-gate-cancel').addEventListener('click', () => m.remove())
+  m.querySelector('#sc-gate-go').addEventListener('click', () => {
+    if (m.querySelector('#sc-gate-skip').checked) localStorage.setItem(SC_SKIP_POPUP_KEY, '1')
+    m.remove()
+    _launchAuto(teacher)
+  })
+}
+
 export async function renderSmartClassroom(teacher, classId) {
   setActiveNav('my-classes')
   setTitle('Smart Classroom')

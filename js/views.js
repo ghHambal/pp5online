@@ -2701,6 +2701,15 @@ export async function renderSettings() {
                 placeholder:'99|☕|ผู้สนับสนุนเริ่มต้น|ขอบคุณที่ช่วยเติมแรงพัฒนาระบบ\n149|🌱|ผู้สนับสนุนอบอุ่น|ช่วยให้ระบบเติบโตต่อได้เรื่อยๆ\n199|⭐|ผู้สนับสนุนพิเศษ|สนับสนุนการทำฟีเจอร์ใหม่ๆ\n249|💎|ผู้สนับสนุนใจดีมาก|เป็นแรงหนุนสำคัญของระบบนี้',
                 hint:'รูปแบบ: ยอดขั้นต่ำ|สติกเกอร์หรือ URL รูป|ชื่อระดับ|คำอธิบาย|#สีขอบ เช่น #f59e0b — สีขอบจะเรืองแสงบนการ์ดครูตามสีที่กำหนด' },
             ]),
+            section('👑 หน้าอธิบายฟีเจอร์ Smart Classroom', [
+              { key:'smartClassroomLandingTitle', label:'หัวข้อหลัก', type:'text', placeholder:'Smart Classroom — หน้าควบคุมขณะสอนสด' },
+              { key:'smartClassroomLandingDesc', label:'คำอธิบาย', type:'textarea', rows:5,
+                placeholder:'รวมเช็คชื่อ จับเวลา สุ่มรายชื่อ Hall Pass เปิดควิซสด และอีกมากมาย ไว้จอเดียว...',
+                hint:'ข้อความนี้จะแสดงในหน้าอธิบายฟีเจอร์ก่อนครูกด "เริ่มใช้งาน"' },
+              { key:'smartClassroomLandingImg1', label:'รูปภาพประกอบ 1', type:'upload' },
+              { key:'smartClassroomLandingImg2', label:'รูปภาพประกอบ 2', type:'upload' },
+              { key:'smartClassroomLandingImg3', label:'รูปภาพประกอบ 3', type:'upload' },
+            ]),
           ].join(''),
 
           popup: [

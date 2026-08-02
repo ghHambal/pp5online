@@ -363,6 +363,12 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     renderClassDetail(teacher, classId)
   }
 
+  // แบนเนอร์พรีเมียม "Smart Classroom" → เปิดหน้าอธิบายฟีเจอร์ (ทุกครูเห็น ไม่ว่าจะมีสิทธิ์ใช้งานหรือไม่)
+  window._openSmartClassroomLanding = async () => {
+    const { openSmartClassroomLanding } = await import('./teacher-views-smart-classroom.js')
+    openSmartClassroomLanding(teacher)
+  }
+
   // แบนเนอร์สัปดาห์ปัจจุบันของภาคเรียน
   const weekBannerHtml = curWeek > 0 ? (() => {
     const wkStart = new Date(cfg.semester_start)
@@ -397,6 +403,17 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>` : ''
 
   setContent(`<div class="animate-fade">
+
+    <button type="button" onclick="window._openSmartClassroomLanding()" class="w-full text-left relative overflow-hidden rounded-2xl shadow-lg mb-4 px-5 py-4 flex items-center gap-4 group transition hover:shadow-xl"
+      style="background:linear-gradient(135deg,#7a5810,#a9781a,#e6c988)">
+      <div class="absolute inset-0 opacity-20" style="background:radial-gradient(circle at 85% 20%,#ffffff,transparent 55%)"></div>
+      <div class="relative text-4xl flex-shrink-0">👑</div>
+      <div class="relative flex-1 min-w-0">
+        <p class="text-white font-extrabold text-base leading-tight">Smart Classroom</p>
+        <p class="text-white/85 text-xs mt-0.5">หน้าควบคุมขณะสอนสด — เช็คชื่อ/Hall Pass/สุ่มชื่อ/ควิซสด/สั่งงาน ไว้จอเดียว</p>
+      </div>
+      <div class="relative flex-shrink-0 text-white/90 text-xl group-hover:translate-x-1 transition-transform">→</div>
+    </button>
 
     ${svDashboardHtml}
 
