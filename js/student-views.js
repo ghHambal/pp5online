@@ -11,11 +11,11 @@ import {
   getMonthlyManualPrayerEntryCount,
   getStudentClassroomRole,
   getMyActiveLeavePermission, getMyLeaveHistory,
-  updateStudentEmail, getMyClassAssignments, submitAssignment,
+  updateStudentEmail, getMyClassAssignments, submitAssignment, getClassSyllabus,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
-import { _readingGrade, applyReadingGradesFromConfig } from './teacher-views-utils.js'
+import { _readingGrade, applyReadingGradesFromConfig, _currentWeek } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
@@ -1499,14 +1499,18 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   if (!cls) { setContent(`<p class="text-center py-10 text-gray-400">ไม่พบรายวิชา</p>`); return }
 
   const { getClassAnnouncements: _getClassAnn } = await import('./api.js').catch(() => ({}))
-  const [{ columns, scores }, attendance, requestsAll, classAnns, quizzes, assignments] = await Promise.all([
+  const [{ columns, scores }, attendance, requestsAll, classAnns, quizzes, assignments, syllabusItems] = await Promise.all([
     getMyScores(student.id, classId).catch(()=>({ columns:[], scores:[] })),
     getMyAttendance(student.id, classId).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     _getClassAnn ? _getClassAnn(classId).catch(()=>[]) : Promise.resolve([]),
     getQuizzesForStudentClass(classId, student.id).catch(()=>[]),
     getMyClassAssignments(classId, student.id).catch(()=>[]),
+    getClassSyllabus(classId).catch(()=>[]),
   ])
+  const _cfgForWeek = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
+  const curWeek = _currentWeek(_cfgForWeek.semester_start)
+  const currentTopic = syllabusItems.find(it => curWeek >= it.week_start && curWeek <= it.week_end)
   const requests = requestsAll.filter(r => r.classes?.id === classId)
 
   const scoreMap = Object.fromEntries(scores.map(s => [s.assignment_id, s]))
@@ -1916,6 +1920,12 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   setContent(`
     <button onclick="window._stuBackFromSubject()" class="text-xs text-gray-400 hover:text-emerald-600 mb-3 flex items-center gap-1">← ${window._stuFromTimetable ? 'ตารางเรียน' : 'รายวิชาอื่น'}</button>
     ${_subjectHeader()}
+    ${currentTopic ? `
+    <div class="bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 mb-4">
+      <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wide">📘 สัปดาห์นี้ — สัปดาห์ที่ ${curWeek}</p>
+      <p class="text-sm font-bold text-indigo-700 mt-0.5">${_esc(currentTopic.topic)}</p>
+      ${currentTopic.description ? `<p class="text-xs text-indigo-400 mt-0.5">${_esc(currentTopic.description)}</p>` : ''}
+    </div>` : ''}
     ${content}
   `)
 

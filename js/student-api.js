@@ -647,3 +647,17 @@ export async function submitAssignment(assignmentId, studentId, fileUrls, note =
   }, { onConflict: 'assignment_id,student_id' })
   if (error) throw error
 }
+
+// ─── กำหนดการสอน (Syllabus) — นักเรียนดูหัวข้อที่กำลังสอนของวิชานี้ ────────────
+export async function getClassSyllabus(classId) {
+  const { data: cls, error: cErr } = await supabase.from('classes').select('course_id').eq('id', classId).single()
+  if (cErr) throw cErr
+  if (!cls?.course_id) return []
+  const { data, error } = await supabase
+    .from('course_syllabus_items')
+    .select('*')
+    .eq('course_id', cls.course_id)
+    .order('week_start', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}

@@ -9,6 +9,9 @@ import {
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
   getClassAssignmentsWithSubmissions, createAssignment, deleteAssignment,
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
+  getCourseSyllabus, createSyllabusItem, updateSyllabusItem, deleteSyllabusItem,
+  getLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan,
+  getLessonPlanReflection, upsertLessonPlanReflection,
 } from './api.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
@@ -23,7 +26,7 @@ import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail } from './teacher-views-classes.js'
 import { showToast } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
-import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS } from './teacher-views-utils.js'
+import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek } from './teacher-views-utils.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -234,18 +237,22 @@ export async function renderSmartClassroom(teacher, classId) {
 
   let cls, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
     scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
-    examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements
+    examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements,
+    syllabusItems, lessonPlans
+  let courseId = null
   try {
     const classes = await getMyClasses(teacher.id)
     cls = classes.find(c => c.id === classId)
     if (!cls) { renderClassDetail(teacher, classId); return }
+    courseId = cls.course_id ?? cls.master_subjects?.id ?? null
 
     const academicYear = parseInt(cfg.academicYear ?? 2568)
     const semester = parseInt(cfg.semester ?? 1)
 
     ;[students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
       scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
-      examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements] = await Promise.all([
+      examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements,
+      syllabusItems, lessonPlans] = await Promise.all([
       getClassStudents(classId).catch(() => []),
       getActiveLeavePermissionsForClass(classId).catch(() => []),
       getLeaveMaxActiveForClass(classId).catch(() => 3),
@@ -262,6 +269,8 @@ export async function renderSmartClassroom(teacher, classId) {
       getClassScheduleLinks(teacher.id).catch(() => []),
       getPeriods().catch(() => []),
       getClassAnnouncements(classId).catch(() => []),
+      courseId ? getCourseSyllabus(courseId).catch(() => []) : Promise.resolve([]),
+      courseId ? getLessonPlans(courseId).catch(() => []) : Promise.resolve([]),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -471,6 +480,32 @@ export async function renderSmartClassroom(teacher, classId) {
     }).join('')
   }
 
+  // ── กำหนดการสอน (ผูกกับรายวิชา) — สัปดาห์นี้คือสัปดาห์ที่เท่าไหร่ ตรงกับหัวข้ออะไร ──
+  const curWeek = _currentWeek(cfg.semester_start)
+  const currentTopic = syllabusItems.find(it => curWeek >= it.week_start && curWeek <= it.week_end)
+
+  const _syllabusHTML = () => {
+    if (!syllabusItems.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่ได้กำหนดหัวข้อการสอน — กด "➕ เพิ่มหัวข้อ" เพื่อเริ่มวางกำหนดการสอน</p>`
+    return `<div class="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">${syllabusItems.map(it => `
+      <button class="sc-syllabus-row w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl border transition ${curWeek >= it.week_start && curWeek <= it.week_end ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-gray-50 hover:border-indigo-200'}" data-sylid="${it.id}">
+        <span class="text-[10px] font-bold text-gray-500 flex-shrink-0 w-16">สัปดาห์ ${it.week_start}${it.week_end !== it.week_start ? `-${it.week_end}` : ''}</span>
+        <span class="text-xs font-semibold text-gray-700 truncate flex-1">${_htmlEsc(it.topic)}</span>
+      </button>`).join('')}</div>`
+  }
+
+  // ── แผนการจัดการเรียนรู้ (ผูกกับรายวิชา ยืดหยุ่นจำนวนแผน) ────────────────────
+  const _lessonPlansHTML = () => {
+    if (!lessonPlans.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีแผนการสอน — กด "➕ สร้างแผน" เพื่อเริ่ม</p>`
+    return `<div class="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">${lessonPlans.map(p => `
+      <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50">
+        <button class="sc-plan-row flex-1 min-w-0 text-left" data-planid="${p.id}">
+          <p class="text-xs font-bold text-gray-700 truncate">${_htmlEsc(p.title)}</p>
+          <p class="text-[10px] text-gray-400">สัปดาห์ ${p.week_start}${p.week_end !== p.week_start ? `-${p.week_end}` : ''}</p>
+        </button>
+        <button class="sc-plan-reflect text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex-shrink-0" data-planid="${p.id}">🖊️ บันทึกหลังสอน</button>
+      </div>`).join('')}</div>`
+  }
+
   setContent(`<div class="animate-fade max-w-6xl mx-auto">
 
     <div class="relative overflow-hidden bg-white border border-amber-200 rounded-2xl shadow-sm px-5 py-4 mb-4 flex items-center gap-4 flex-wrap">
@@ -557,6 +592,28 @@ export async function renderSmartClassroom(teacher, classId) {
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
         <h2 class="text-sm font-bold text-gray-700 mb-3">📋 คิวคำร้องขอสอบปรับ/สอบย้อนหลัง</h2>
         <div id="sc-exam-queue">${_examQueueHTML()}</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div class="flex items-center justify-between mb-1">
+          <h2 class="text-sm font-bold text-gray-700">📘 กำหนดการสอน</h2>
+          <button id="sc-add-syllabus" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">➕ เพิ่มหัวข้อ</button>
+        </div>
+        <div class="mb-3 px-3 py-2.5 rounded-xl ${currentTopic ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}">
+          <p class="text-[10px] font-bold ${currentTopic ? 'text-indigo-500' : 'text-gray-400'} uppercase tracking-wide">สัปดาห์นี้ — สัปดาห์ที่ ${curWeek || '—'}</p>
+          <p class="text-sm font-bold ${currentTopic ? 'text-indigo-700' : 'text-gray-400'} mt-0.5">${currentTopic ? _htmlEsc(currentTopic.topic) : 'ยังไม่ได้กำหนดหัวข้อสำหรับสัปดาห์นี้'}</p>
+        </div>
+        <div id="sc-syllabus-list">${_syllabusHTML()}</div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-gray-700">📝 แผนการจัดการเรียนรู้</h2>
+          <button id="sc-add-plan" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">➕ สร้างแผน</button>
+        </div>
+        <div id="sc-plan-list">${_lessonPlansHTML()}</div>
       </div>
     </div>
 
@@ -1056,6 +1113,300 @@ export async function renderSmartClassroom(teacher, classId) {
     _paintSchedTabs()
     document.getElementById('sc-schedule-body').innerHTML = _scheduleHTML(_schedMode)
   }))
+
+  // ── Wiring: กำหนดการสอน / แผนการจัดการเรียนรู้ ───────────────────────────────
+  document.getElementById('sc-add-syllabus').addEventListener('click', () => _openSyllabusItemModal())
+  document.getElementById('sc-syllabus-list').addEventListener('click', e => {
+    const row = e.target.closest('.sc-syllabus-row')
+    if (!row) return
+    const it = syllabusItems.find(x => x.id === parseInt(row.dataset.sylid, 10))
+    if (it) _openSyllabusItemModal(it)
+  })
+  document.getElementById('sc-add-plan').addEventListener('click', () => _openLessonPlanModal())
+  document.getElementById('sc-plan-list').addEventListener('click', e => {
+    const reflectBtn = e.target.closest('.sc-plan-reflect')
+    const row = e.target.closest('.sc-plan-row')
+    if (reflectBtn) {
+      const p = lessonPlans.find(x => x.id === parseInt(reflectBtn.dataset.planid, 10))
+      if (p) _openReflectionModal(p)
+    } else if (row) {
+      const p = lessonPlans.find(x => x.id === parseInt(row.dataset.planid, 10))
+      if (p) _openLessonPlanModal(p)
+    }
+  })
+
+  function _openSyllabusItemModal(item) {
+    document.getElementById('sc-syllabus-modal')?.remove()
+    const isEdit = !!item
+    const it = item ?? {}
+    const m = document.createElement('div')
+    m.id = 'sc-syllabus-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-3 animate-fade">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">${isEdit ? '📘 แก้ไขหัวข้อสอน' : '➕ เพิ่มหัวข้อสอน'}</h3>
+          <div class="flex items-center gap-2">
+            ${isEdit ? `<button id="sy-delete" class="text-[11px] text-red-400 hover:text-red-600">🗑️ ลบ</button>` : ''}
+            <button id="sy-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">สัปดาห์เริ่ม *</label>
+            <input id="sy-week-start" type="number" min="1" value="${it.week_start ?? ''}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">สัปดาห์สิ้นสุด *</label>
+            <input id="sy-week-end" type="number" min="1" value="${it.week_end ?? ''}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">หัวข้อ/เรื่องที่สอน *</label>
+          <input id="sy-topic" type="text" value="${_htmlEsc(it.topic ?? '')}" placeholder="เช่น สมการเชิงเส้นตัวแปรเดียว" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">รายละเอียดเพิ่มเติม</label>
+          <textarea id="sy-desc" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none">${_htmlEsc(it.description ?? '')}</textarea>
+        </div>
+        <button id="sy-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึก</button>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#sy-close').addEventListener('click', () => m.remove())
+    m.querySelector('#sy-delete')?.addEventListener('click', async () => {
+      if (!confirm('ลบหัวข้อนี้?')) return
+      try { await deleteSyllabusItem(it.id); showToast('ลบแล้ว', 'success'); m.remove(); _reload() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+    m.querySelector('#sy-save').addEventListener('click', async () => {
+      const weekStart = parseInt(m.querySelector('#sy-week-start').value, 10)
+      const weekEnd = parseInt(m.querySelector('#sy-week-end').value, 10)
+      const topic = m.querySelector('#sy-topic').value.trim()
+      if (!weekStart || !weekEnd || weekEnd < weekStart) { showToast('กำหนดช่วงสัปดาห์ให้ถูกต้อง', 'warning'); return }
+      if (!topic) { showToast('กรอกหัวข้อก่อนนะ', 'warning'); return }
+      const btn = m.querySelector('#sy-save')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      const payload = { course_id: courseId, week_start: weekStart, week_end: weekEnd, topic, description: m.querySelector('#sy-desc').value.trim() || null }
+      try {
+        if (isEdit) await updateSyllabusItem(it.id, payload)
+        else await createSyllabusItem(payload)
+        showToast('บันทึกแล้ว ✅', 'success')
+        m.remove(); _reload()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึก'
+      }
+    })
+  }
+
+  function _openLessonPlanModal(plan) {
+    document.getElementById('sc-plan-modal')?.remove()
+    const isEdit = !!plan
+    const p = plan ?? {}
+    const m = document.createElement('div')
+    m.id = 'sc-plan-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-3 animate-fade">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">${isEdit ? '📝 แก้ไขแผนการสอน' : '➕ สร้างแผนการสอนใหม่'}</h3>
+          <div class="flex items-center gap-2">
+            ${isEdit ? `<button id="lp-delete" class="text-[11px] text-red-400 hover:text-red-600">🗑️ ลบ</button>` : ''}
+            <button id="lp-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่อแผน *</label>
+          <input id="lp-title" type="text" value="${_htmlEsc(p.title ?? '')}" placeholder="เช่น แผนที่ 1 — เรื่องสมการเชิงเส้น" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">สัปดาห์เริ่ม *</label>
+            <input id="lp-week-start" type="number" min="1" value="${p.week_start ?? ''}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">สัปดาห์สิ้นสุด *</label>
+            <input id="lp-week-end" type="number" min="1" value="${p.week_end ?? ''}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          </div>
+        </div>
+        ${[
+          ['objectives', 'จุดประสงค์การเรียนรู้'], ['key_concept', 'สาระสำคัญ'],
+          ['activities_intro', 'นำเข้าสู่บทเรียน'], ['activities_main', 'กิจกรรมหลัก'], ['activities_wrap', 'สรุป'],
+          ['media', 'สื่อ/อุปกรณ์'], ['assessment', 'การวัดประเมินผล'], ['homework', 'งาน/การบ้าน'], ['teacher_notes', 'หมายเหตุครู'],
+        ].map(([key, label]) => `
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">${label}</label>
+          <textarea id="lp-${key}" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none">${_htmlEsc(p[key] ?? '')}</textarea>
+        </div>`).join('')}
+        <button id="lp-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึกแผน</button>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#lp-close').addEventListener('click', () => m.remove())
+    m.querySelector('#lp-delete')?.addEventListener('click', async () => {
+      if (!confirm(`ลบแผน "${p.title}"? บันทึกหลังสอน/ลายเซ็นที่ผูกกับแผนนี้จะหายไปด้วย`)) return
+      try { await deleteLessonPlan(p.id); showToast('ลบแผนแล้ว', 'success'); m.remove(); _reload() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+    m.querySelector('#lp-save').addEventListener('click', async () => {
+      const title = m.querySelector('#lp-title').value.trim()
+      const weekStart = parseInt(m.querySelector('#lp-week-start').value, 10)
+      const weekEnd = parseInt(m.querySelector('#lp-week-end').value, 10)
+      if (!title) { showToast('กรอกชื่อแผนก่อนนะ', 'warning'); return }
+      if (!weekStart || !weekEnd || weekEnd < weekStart) { showToast('กำหนดช่วงสัปดาห์ให้ถูกต้อง', 'warning'); return }
+      const btn = m.querySelector('#lp-save')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      const payload = {
+        course_id: courseId,
+        teacher_id: teacher.id,
+        title, week_start: weekStart, week_end: weekEnd,
+        objectives: m.querySelector('#lp-objectives').value.trim() || null,
+        key_concept: m.querySelector('#lp-key_concept').value.trim() || null,
+        activities_intro: m.querySelector('#lp-activities_intro').value.trim() || null,
+        activities_main: m.querySelector('#lp-activities_main').value.trim() || null,
+        activities_wrap: m.querySelector('#lp-activities_wrap').value.trim() || null,
+        media: m.querySelector('#lp-media').value.trim() || null,
+        assessment: m.querySelector('#lp-assessment').value.trim() || null,
+        homework: m.querySelector('#lp-homework').value.trim() || null,
+        teacher_notes: m.querySelector('#lp-teacher_notes').value.trim() || null,
+      }
+      try {
+        if (isEdit) await updateLessonPlan(p.id, payload)
+        else await createLessonPlan(payload)
+        showToast('บันทึกแผนแล้ว ✅', 'success')
+        m.remove(); _reload()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกแผน'
+      }
+    })
+  }
+
+  // บันทึกหลังสอน + เซ็นชื่อ — ผูกกับห้องจริง(classId)+สัปดาห์จริงที่สอน ไม่ใช่ระดับรายวิชา
+  // เพราะครูคนเดียวกันอาจสอนวิชานี้หลายห้อง แต่ละห้องสอนไปถึงจุดไหนไม่เท่ากัน
+  function _openReflectionModal(plan) {
+    document.getElementById('sc-reflect-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'sc-reflect-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    document.body.appendChild(m)
+
+    const weekOptions = []
+    for (let w = plan.week_start; w <= plan.week_end; w++) weekOptions.push(w)
+    let selectedWeek = (curWeek >= plan.week_start && curWeek <= plan.week_end) ? curWeek : plan.week_start
+
+    const _render = async () => {
+      const reflection = await getLessonPlanReflection(plan.id, classId, selectedWeek).catch(() => null)
+      let hasDrawn = false
+      let clearedSig = false
+      m.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-3 animate-fade">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-gray-800 text-sm">🖊️ บันทึกหลังสอน — ${_htmlEsc(plan.title)}</h3>
+            <button id="rf-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">สัปดาห์ที่สอน</label>
+            <select id="rf-week" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
+              ${weekOptions.map(w => `<option value="${w}" ${w === selectedWeek ? 'selected' : ''}>สัปดาห์ที่ ${w}${w === curWeek ? ' (สัปดาห์นี้)' : ''}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">บันทึกหลังสอน</label>
+            <textarea id="rf-text" rows="4" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300">${_htmlEsc(reflection?.reflection_text ?? '')}</textarea>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">ปัญหา/แนวทางแก้ไข</label>
+            <textarea id="rf-issues" rows="3" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300">${_htmlEsc(reflection?.issues_solutions ?? '')}</textarea>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">ลายเซ็นผู้สอน (วาดด้วยนิ้ว/เมาส์)</label>
+            <div class="border border-gray-200 rounded-xl bg-gray-50 relative overflow-hidden">
+              <canvas id="rf-sig-canvas" width="380" height="150" class="w-full block" style="touch-action:none;cursor:crosshair"></canvas>
+              ${reflection?.signature_data_url ? `<img id="rf-sig-preview" src="${reflection.signature_data_url}" class="absolute inset-0 w-full h-full object-contain pointer-events-none" />` : ''}
+            </div>
+            <div class="flex items-center gap-2 mt-1.5">
+              <button id="rf-sig-clear" type="button" class="text-[11px] font-semibold text-red-500 hover:text-red-700">🗑️ ล้างลายเซ็น</button>
+              ${reflection?.signed_at ? `<span class="text-[10px] text-gray-400">เซ็นล่าสุด: ${new Date(reflection.signed_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
+            </div>
+          </div>
+          <button id="rf-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึก</button>
+        </div>`
+
+      m.querySelector('#rf-close').addEventListener('click', () => m.remove())
+      m.querySelector('#rf-week').addEventListener('change', (e) => { selectedWeek = parseInt(e.target.value, 10); _render() })
+
+      const canvas = m.querySelector('#rf-sig-canvas')
+      const preview = m.querySelector('#rf-sig-preview')
+      const ctx = canvas.getContext('2d')
+      ctx.strokeStyle = '#1f2937'
+      ctx.lineWidth = 2.5
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      let drawing = false
+      let lastX = 0, lastY = 0
+      const _pos = (e) => {
+        const rect = canvas.getBoundingClientRect()
+        const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
+        const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+        return { x: cx * (canvas.width / rect.width), y: cy * (canvas.height / rect.height) }
+      }
+      const _start = (e) => {
+        e.preventDefault()
+        preview?.remove()
+        drawing = true; hasDrawn = true
+        const pt = _pos(e); lastX = pt.x; lastY = pt.y
+      }
+      const _move = (e) => {
+        if (!drawing) return
+        e.preventDefault()
+        const pt = _pos(e)
+        ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(pt.x, pt.y); ctx.stroke()
+        lastX = pt.x; lastY = pt.y
+      }
+      const _end = () => { drawing = false }
+      canvas.addEventListener('mousedown', _start)
+      canvas.addEventListener('mousemove', _move)
+      canvas.addEventListener('mouseup', _end)
+      canvas.addEventListener('mouseleave', _end)
+      canvas.addEventListener('touchstart', _start, { passive: false })
+      canvas.addEventListener('touchmove', _move, { passive: false })
+      canvas.addEventListener('touchend', _end)
+
+      m.querySelector('#rf-sig-clear').addEventListener('click', () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        preview?.remove()
+        hasDrawn = false
+        clearedSig = true
+      })
+
+      m.querySelector('#rf-save').addEventListener('click', async () => {
+        const btn = m.querySelector('#rf-save')
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+        try {
+          const finalSig = hasDrawn ? canvas.toDataURL('image/png') : (clearedSig ? null : (reflection?.signature_data_url ?? null))
+          await upsertLessonPlanReflection({
+            lesson_plan_id: plan.id,
+            class_id: classId,
+            teacher_id: teacher.id,
+            week_no: selectedWeek,
+            reflection_text: m.querySelector('#rf-text').value.trim() || null,
+            issues_solutions: m.querySelector('#rf-issues').value.trim() || null,
+            signature_data_url: finalSig,
+            signed_at: finalSig ? new Date().toISOString() : null,
+          })
+          showToast('บันทึกแล้ว ✅', 'success')
+          m.remove()
+        } catch (err) {
+          showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = 'บันทึก'
+        }
+      })
+    }
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    _render()
+  }
 
   // ── Wiring: assignments ───────────────────────────────────────────────────
   document.getElementById('sc-add-assignment').addEventListener('click', () => _openCreateAssignmentModal())

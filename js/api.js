@@ -4074,3 +4074,90 @@ export async function getClassAssignmentsWithSubmissions(classId) {
   if (error) throw error
   return assignments.map(a => ({ ...a, submissions: (subs ?? []).filter(s => s.assignment_id === a.id) }))
 }
+
+// ─── กำหนดการสอน (Syllabus — ผูกกับรายวิชา) ────────────────────────────────────
+export async function getCourseSyllabus(courseId) {
+  const { data, error } = await supabase
+    .from('course_syllabus_items')
+    .select('*')
+    .eq('course_id', courseId)
+    .order('week_start', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createSyllabusItem(payload) {
+  const { data, error } = await supabase.from('course_syllabus_items').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateSyllabusItem(id, payload) {
+  const { error } = await supabase.from('course_syllabus_items').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteSyllabusItem(id) {
+  const { error } = await supabase.from('course_syllabus_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─── แผนการจัดการเรียนรู้ (Lesson Plans — ผูกกับรายวิชา) ───────────────────────
+export async function getLessonPlans(courseId) {
+  const { data, error } = await supabase
+    .from('lesson_plans')
+    .select('*')
+    .eq('course_id', courseId)
+    .order('week_start', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createLessonPlan(payload) {
+  const { data, error } = await supabase.from('lesson_plans').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateLessonPlan(id, payload) {
+  const { error } = await supabase.from('lesson_plans').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteLessonPlan(id) {
+  const { error } = await supabase.from('lesson_plans').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─── บันทึกหลังสอน + เซ็นชื่อ (ผูกกับห้องจริง+สัปดาห์จริงที่สอน) ───────────────
+export async function getLessonPlanReflection(lessonPlanId, classId, weekNo) {
+  const { data, error } = await supabase
+    .from('lesson_plan_reflections')
+    .select('*')
+    .eq('lesson_plan_id', lessonPlanId)
+    .eq('class_id', classId)
+    .eq('week_no', weekNo)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
+}
+
+export async function getLessonPlanReflectionsForPlan(lessonPlanId) {
+  const { data, error } = await supabase
+    .from('lesson_plan_reflections')
+    .select('*')
+    .eq('lesson_plan_id', lessonPlanId)
+    .order('week_no', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertLessonPlanReflection(payload) {
+  const { data, error } = await supabase
+    .from('lesson_plan_reflections')
+    .upsert({ ...payload, updated_at: new Date().toISOString() }, { onConflict: 'lesson_plan_id,class_id,week_no' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
