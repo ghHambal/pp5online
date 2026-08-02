@@ -10,7 +10,7 @@ import {
   getClassAssignmentsWithSubmissions, createAssignment, deleteAssignment,
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
 } from './api.js'
-import { getQuizzesForClass, startQuizLive, closeQuiz } from './quiz-api.js'
+import { getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
   openAttendanceScanSetup, _openLeaveRequestModal, _openLeaveQuotaModal,
@@ -272,6 +272,19 @@ export async function renderSmartClassroom(teacher, classId) {
   let activeLeaveMap = Object.fromEntries(activeLeaves.map(l => [l.student_id, l]))
   const studentsById = Object.fromEntries(students.map(s => [s.id, s]))
 
+  // ── สถานะการสอบสดของนักเรียนแต่ละคน (ถ้ามีควิซที่กำลังสอบสดอยู่ในห้องนี้) ────
+  const liveQuiz = quizzes.find(q => q.status === 'started') ?? null
+  let quizAttemptByStudent = {}
+  if (liveQuiz) {
+    const attempts = await getQuizAttemptsForMonitor(liveQuiz.id).catch(() => [])
+    quizAttemptByStudent = Object.fromEntries(attempts.map(a => [a.student_id, a]))
+  }
+  const QUIZ_STATUS_BADGE = {
+    in_progress: { icon: '📝', cls: 'bg-emerald-500' },
+    submitted: { icon: '✅', cls: 'bg-blue-500' },
+    terminated_violation: { icon: '🔒', cls: 'bg-red-500' },
+  }
+
   // ── Per-student lookup maps (สำหรับแผงข้อมูลนักเรียน) ─────────────────────
   const scoresByStudent = {}
   for (const r of studentScores) (scoresByStudent[r.student_id] ??= []).push(r)
@@ -324,9 +337,12 @@ export async function renderSmartClassroom(teacher, classId) {
   // ── Roster grid ──────────────────────────────────────────────────────────
   const _rosterHTML = () => students.map(s => {
     const out = activeLeaveMap[s.id]
+    const qa = quizAttemptByStudent[s.id]
+    const qBadge = liveQuiz ? (QUIZ_STATUS_BADGE[qa?.status] ?? { icon: '⚪', cls: 'bg-gray-300' }) : null
     return `<button type="button" data-sid="${s.id}"
         class="sc-stu relative border rounded-xl px-2 py-2.5 text-center hover:border-indigo-300 hover:-translate-y-0.5 transition ${out ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50'}">
       ${out ? `<span class="absolute top-1 right-1 text-[9px] font-bold bg-amber-500 text-white px-1 py-0.5 rounded">🚪</span>` : ''}
+      ${qBadge ? `<span class="absolute top-1 left-1 text-[9px] font-bold ${qBadge.cls} text-white w-4 h-4 rounded-full flex items-center justify-center" title="สถานะสอบ: ${qa?.status ?? 'ยังไม่เข้าสอบ'}">${qBadge.icon}</span>` : ''}
       <div class="w-9 h-9 mx-auto mb-1.5 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
         ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
       </div>
@@ -475,6 +491,13 @@ export async function renderSmartClassroom(teacher, classId) {
             <button id="sc-open-attendance" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">✅ เช็คชื่อ</button>
           </div>
           <p class="text-xs text-gray-400 mb-3">เด้งป๊อบอัพเช็คชื่อของคาบวันนี้ให้อัตโนมัติ (ถ้าวันนี้มีหลายคาบหรือไม่ตรงตาราง จะให้เลือกคาบเอง)</p>
+          ${liveQuiz ? `<div class="flex items-center flex-wrap gap-2 mb-3 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-700">
+            <span class="font-bold">🔴 กำลังสอบสด: ${_htmlEsc(liveQuiz.title)}</span>
+            <span class="flex items-center gap-1"><span class="w-3.5 h-3.5 rounded-full bg-emerald-500 inline-flex items-center justify-center text-[8px]">📝</span>กำลังทำ</span>
+            <span class="flex items-center gap-1"><span class="w-3.5 h-3.5 rounded-full bg-blue-500 inline-flex items-center justify-center text-[8px]">✅</span>ส่งแล้ว</span>
+            <span class="flex items-center gap-1"><span class="w-3.5 h-3.5 rounded-full bg-red-500 inline-flex items-center justify-center text-[8px]">🔒</span>ถูกล็อก</span>
+            <span class="flex items-center gap-1"><span class="w-3.5 h-3.5 rounded-full bg-gray-300 inline-flex items-center justify-center text-[8px]">⚪</span>ยังไม่เข้าสอบ</span>
+          </div>` : ''}
           <div class="grid grid-cols-4 sm:grid-cols-6 gap-2" id="sc-roster">${_rosterHTML()}</div>
         </div>
 
@@ -546,6 +569,7 @@ export async function renderSmartClassroom(teacher, classId) {
   document.body.classList.add('sc-fullscreen')
   document.getElementById('sc-back').addEventListener('click', () => {
     if (window._scClockInterval) { clearInterval(window._scClockInterval); window._scClockInterval = null }
+    if (window._scQuizPollInterval) { clearInterval(window._scQuizPollInterval); window._scQuizPollInterval = null }
     document.body.classList.remove('sc-fullscreen')
     renderClassDetail(teacher, classId)
   })
@@ -575,6 +599,19 @@ export async function renderSmartClassroom(teacher, classId) {
   if (window._scClockInterval) clearInterval(window._scClockInterval)
   _paintClock()
   window._scClockInterval = setInterval(_paintClock, 1000)
+
+  // ── โพลสถานะสอบสดของนักเรียนทุก 4 วิ (ให้ badge บนการ์ดตามทันจริง) ──────────
+  if (window._scQuizPollInterval) clearInterval(window._scQuizPollInterval)
+  if (liveQuiz) {
+    window._scQuizPollInterval = setInterval(async () => {
+      const rosterEl = document.getElementById('sc-roster')
+      if (!rosterEl) { clearInterval(window._scQuizPollInterval); window._scQuizPollInterval = null; return }
+      const attempts = await getQuizAttemptsForMonitor(liveQuiz.id).catch(() => null)
+      if (!attempts) return
+      quizAttemptByStudent = Object.fromEntries(attempts.map(a => [a.student_id, a]))
+      rosterEl.innerHTML = _rosterHTML()
+    }, 4000)
+  }
 
   async function _openClassSwitcher() {
     document.getElementById('sc-switch-modal')?.remove()
@@ -697,8 +734,23 @@ export async function renderSmartClassroom(teacher, classId) {
 
   function _tabInfoHTML(s) {
     const leave = activeLeaveMap[s.id]
+    const qa = liveQuiz ? quizAttemptByStudent[s.id] : null
     return `
       <div class="space-y-2">
+        ${liveQuiz ? `
+          <div class="px-3 py-2.5 rounded-xl bg-red-50 border border-red-100">
+            <p class="text-xs text-red-700 font-bold mb-1">🔴 ${_htmlEsc(liveQuiz.title)}</p>
+            ${!qa ? `<p class="text-xs text-gray-500">⚪ ยังไม่เข้าสอบ</p>` : `
+              <p class="text-xs text-gray-600">${
+                qa.status === 'in_progress' ? '📝 กำลังทำอยู่' :
+                qa.status === 'submitted' ? `✅ ส่งแล้ว${qa.score_pct != null ? ` · คะแนน ${qa.score_pct.toFixed(1)}%` : ''}` :
+                qa.status === 'terminated_violation' ? '🔒 ถูกล็อกจากการทำผิดกติกา' : qa.status
+              }${qa.question_order?.length ? ` · ตอบแล้ว ${Object.keys(qa.answers ?? {}).length}/${qa.question_order.length} ข้อ` : ''}</p>
+              ${qa.status === 'terminated_violation' ? `<button id="sc-sp-unlock" data-attempt="${qa.id}" class="w-full mt-2 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600">🔓 ปลดล็อกให้ทำต่อ</button>` : ''}
+            `}
+            <button id="sc-sp-quiz-monitor" class="w-full mt-2 py-1.5 rounded-xl border border-red-200 text-red-600 text-[11px] font-bold hover:bg-red-100">เปิดหน้าจัดการสอบสดแบบเต็ม →</button>
+          </div>
+        ` : ''}
         ${leave ? `
           <div class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100">
             <div class="text-xs text-amber-800"><b>🚪 ออกนอกห้องอยู่</b><br>${_htmlEsc(leave.reason ?? '')} · ${_fmtElapsed(leave.created_at)}</div>
@@ -891,9 +943,43 @@ export async function renderSmartClassroom(teacher, classId) {
         m.remove()
         _openLeaveRequestModal(teacher, cls, s.id, s.full_name, s.image_url, activeLeaveMap, leaveMaxActive, () => _reload())
       })
+      m.querySelector('#sc-sp-quiz-monitor')?.addEventListener('click', () => { if (liveQuiz) openQuizMonitor(liveQuiz) })
+      m.querySelector('#sc-sp-unlock')?.addEventListener('click', (e) => {
+        const attemptId = e.target.dataset.attempt
+        _openQuizUnlockChoice(attemptId, () => { m.remove(); _reload() })
+      })
     }
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
     _renderPanel()
+  }
+
+  // ปลดล็อกนักเรียนที่ถูกล็อกจากการทำผิดกติกาสอบ — ทางเลือกเดียวกับในหน้าจัดการสอบสดแบบเต็ม
+  function _openQuizUnlockChoice(attemptId, onDone) {
+    const um = document.createElement('div')
+    um.className = 'fixed inset-0 z-[97] bg-black/40 flex items-center justify-center p-4'
+    um.innerHTML = `
+      <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl text-center">
+        <div class="text-4xl mb-3">🔓</div>
+        <h3 class="font-bold text-gray-800 text-lg mb-2">ปลดล็อกนักเรียนคนนี้</h3>
+        <p class="text-sm text-gray-500 mb-5">เลือกวิธีที่ต้องการให้นักเรียนทำต่อ</p>
+        <div class="space-y-2">
+          <button id="qu-resume" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm">▶️ ทำต่อจากจุดเดิม</button>
+          <button id="qu-restart" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">🔄 เริ่มใหม่ทั้งชุด</button>
+          <button id="qu-cancel" class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm">ยกเลิก</button>
+        </div>
+      </div>`
+    document.body.appendChild(um)
+    um.querySelector('#qu-cancel').addEventListener('click', () => um.remove())
+    const doUnlock = async (mode) => {
+      um.remove()
+      try {
+        await rpcUnlockAttempt(attemptId, mode)
+        showToast(mode === 'resume' ? 'ปลดล็อก — ทำต่อจากจุดเดิมแล้ว' : 'ปลดล็อก — เริ่มชุดใหม่แล้ว', 'success')
+        onDone?.()
+      } catch (err) { showToast('ปลดล็อกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    }
+    um.querySelector('#qu-resume').addEventListener('click', () => doUnlock('resume'))
+    um.querySelector('#qu-restart').addEventListener('click', () => doUnlock('restart'))
   }
 
   // ── Wiring: hall pass list return buttons + quota ────────────────────────
