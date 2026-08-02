@@ -24,6 +24,56 @@
     body.sc-fullscreen #app-main-col { margin-left: 0 !important; }
     body.sc-fullscreen #app-main-col > header { display: none !important; }
 
+    /* ─── Smart Classroom: ปุ่ม/แท็บพรีเมี่ยม (โทนทอง+น้ำเงินเข้ม ให้เข้ากับมงกุฎ 👑) ─── */
+    .sc-tabbar {
+      background: #faf6ea;
+      border: 1px solid #f0e3bd;
+      border-radius: 9999px;
+      padding: 3px;
+      display: inline-flex;
+      gap: 2px;
+      flex-wrap: wrap;
+    }
+    .sc-tab-pill {
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #8a7a4a;
+      background: transparent;
+      border: none;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+    .sc-tab-pill:hover:not(.active) { background: rgba(169,120,26,0.10); color: #6d5a1f; }
+    .sc-tab-pill.active {
+      color: #fff;
+      background: linear-gradient(135deg,#d9b654,#a9781a 65%,#7a5810);
+      box-shadow: 0 3px 10px rgba(138,106,20,0.35), inset 0 1px 0 rgba(255,255,255,0.35);
+    }
+
+    .sc-btn-dark {
+      background: linear-gradient(135deg,#3730a3,#1e1b4b);
+      color: #fff;
+      border: none;
+      box-shadow: 0 3px 10px rgba(30,27,75,0.28), inset 0 1px 0 rgba(255,255,255,0.12);
+      transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    }
+    .sc-btn-dark:hover { filter: brightness(1.15); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(30,27,75,0.34); }
+    .sc-btn-dark:active { transform: translateY(0); filter: brightness(1.05); }
+    .sc-btn-dark:disabled { opacity: .55; transform: none; filter: none; cursor: default; }
+
+    .sc-btn-gold {
+      background: linear-gradient(135deg,#eccf82,#c9a227 55%,#8a6a14);
+      color: #3b2a05;
+      border: 1px solid rgba(138,106,20,0.3);
+      box-shadow: 0 3px 10px rgba(138,106,20,0.28), inset 0 1px 0 rgba(255,255,255,0.5);
+      transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    }
+    .sc-btn-gold:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(138,106,20,0.35); }
+    .sc-btn-gold:active { transform: translateY(0); }
+
     /* ─── Global CSS Tooltip (title attribute) ─── */
     /* ยกเว้น th/td/tr เพื่อไม่ทับ position:sticky ของตาราง */
     [title]:not(th):not(td):not(tr) { position: relative; }

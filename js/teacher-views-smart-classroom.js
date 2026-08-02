@@ -506,6 +506,53 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>`).join('')}</div>`
   }
 
+  // ── โซนอ้างอิง — แท็บรวมข้อมูลที่ไม่ได้ใช้ระหว่างสอนสดทุกวินาที (เดิมแยกการ์ดเรียงยาว 3 แถว) ──
+  const REF_TABS = [
+    { key: 'schedule',    label: '🗓️ ตารางเรียน' },
+    { key: 'examqueue',   label: '📋 คิวสอบ' },
+    { key: 'syllabus',    label: '📘 กำหนดการสอน' },
+    { key: 'plans',       label: '📝 แผนการสอน' },
+    { key: 'assignments', label: '📚 งานที่มอบหมาย' },
+  ]
+  let _refTab = 'schedule'
+
+  const _refTabBodyHTML = (tab) => {
+    if (tab === 'schedule') return `
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs text-gray-400">ตารางเรียนของห้องนี้</p>
+        <div class="sc-tabbar">
+          <button data-sched="daily" class="sc-sched-tab sc-tab-pill">รายวัน</button>
+          <button data-sched="weekly" class="sc-sched-tab sc-tab-pill">รายสัปดาห์</button>
+        </div>
+      </div>
+      <div id="sc-schedule-body">${_scheduleHTML('daily')}</div>`
+    if (tab === 'examqueue') return `
+      <p class="text-xs text-gray-400 mb-3">คิวคำร้องขอสอบปรับ/สอบย้อนหลัง เรียงจากใกล้ไปไกล</p>
+      <div id="sc-exam-queue">${_examQueueHTML()}</div>`
+    if (tab === 'syllabus') return `
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-xs text-gray-400">หัวข้อที่สอนแต่ละช่วงสัปดาห์ — ผูกกับรายวิชา ใช้ร่วมกันทุกห้อง</p>
+        <button id="sc-add-syllabus" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0">➕ เพิ่มหัวข้อ</button>
+      </div>
+      <div class="my-3 px-3 py-2.5 rounded-xl ${currentTopic ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}">
+        <p class="text-[10px] font-bold ${currentTopic ? 'text-indigo-500' : 'text-gray-400'} uppercase tracking-wide">สัปดาห์นี้ — สัปดาห์ที่ ${curWeek || '—'}</p>
+        <p class="text-sm font-bold ${currentTopic ? 'text-indigo-700' : 'text-gray-400'} mt-0.5">${currentTopic ? _htmlEsc(currentTopic.topic) : 'ยังไม่ได้กำหนดหัวข้อสำหรับสัปดาห์นี้'}</p>
+      </div>
+      <div id="sc-syllabus-list">${_syllabusHTML()}</div>`
+    if (tab === 'plans') return `
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs text-gray-400">แผนหน้าเดียว ยืดหยุ่นจำนวน/ช่วงสัปดาห์ พร้อมบันทึกหลังสอน+เซ็นชื่อ</p>
+        <button id="sc-add-plan" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0">➕ สร้างแผน</button>
+      </div>
+      <div id="sc-plan-list">${_lessonPlansHTML()}</div>`
+    return `
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-xs text-gray-400">ติดตามงานที่มอบหมาย + สถานะการส่งของนักเรียน</p>
+        <button id="sc-add-assignment" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0">➕ สั่งงานใหม่</button>
+      </div>
+      <div id="sc-assignment-list">${_assignmentsHTML()}</div>`
+  }
+
   setContent(`<div class="animate-fade max-w-6xl mx-auto">
 
     <div class="relative overflow-hidden bg-white border border-amber-200 rounded-2xl shadow-sm px-5 py-4 mb-4 flex items-center gap-4 flex-wrap">
@@ -526,7 +573,7 @@ export async function renderSmartClassroom(teacher, classId) {
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
           <div class="flex items-center justify-between mb-1">
             <h2 class="text-sm font-bold text-gray-700">👥 นักเรียน — แตะเพื่อดูข้อมูล/สั่งการ</h2>
-            <button id="sc-open-attendance" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">✅ เช็คชื่อ</button>
+            <button id="sc-open-attendance" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg">✅ เช็คชื่อ</button>
           </div>
           <p class="text-xs text-gray-400 mb-3">เด้งป๊อบอัพเช็คชื่อของคาบวันนี้ให้อัตโนมัติ (ถ้าวันนี้มีหลายคาบหรือไม่ตรงตาราง จะให้เลือกคาบเอง)</p>
           ${liveQuiz ? `<div class="flex items-center flex-wrap gap-2 mb-3 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-700">
@@ -557,11 +604,11 @@ export async function renderSmartClassroom(teacher, classId) {
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
           <h2 class="text-sm font-bold text-gray-700 mb-3">🛠️ เครื่องมือห้องเรียน</h2>
           <div class="grid grid-cols-2 gap-2">
-            <button id="sc-timer" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">⏱️<br>จับเวลา</button>
-            <button id="sc-random" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">🎲<br>สุ่ม/จัดกลุ่ม</button>
-            <button id="sc-scan-att" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">📷<br>สแกน QR เช็คชื่อ</button>
-            <button id="sc-scan-score" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">📷<br>สแกน QR คะแนน</button>
-            <button id="sc-dashboard" class="col-span-2 px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">📈 Dashboard วิเคราะห์ห้องนี้</button>
+            <button id="sc-timer" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-amber-300 hover:bg-amber-50/50 hover:-translate-y-0.5 transition text-xs font-bold text-gray-700">⏱️<br>จับเวลา</button>
+            <button id="sc-random" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-amber-300 hover:bg-amber-50/50 hover:-translate-y-0.5 transition text-xs font-bold text-gray-700">🎲<br>สุ่ม/จัดกลุ่ม</button>
+            <button id="sc-scan-att" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-amber-300 hover:bg-amber-50/50 hover:-translate-y-0.5 transition text-xs font-bold text-gray-700">📷<br>สแกน QR เช็คชื่อ</button>
+            <button id="sc-scan-score" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-amber-300 hover:bg-amber-50/50 hover:-translate-y-0.5 transition text-xs font-bold text-gray-700">📷<br>สแกน QR คะแนน</button>
+            <button id="sc-dashboard" class="col-span-2 px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-amber-300 hover:bg-amber-50/50 hover:-translate-y-0.5 transition text-xs font-bold text-gray-700">📈 Dashboard วิเคราะห์ห้องนี้</button>
           </div>
         </div>
 
@@ -571,58 +618,17 @@ export async function renderSmartClassroom(teacher, classId) {
           <div id="sc-ann-history">${_annHistoryHTML()}</div>
           <textarea id="sc-ann-text" rows="3" placeholder="เช่น พรุ่งนี้เตรียมสมุดการบ้านมาส่งด้วยนะ"
             class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2"></textarea>
-          <button id="sc-ann-send" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">ส่งประกาศ</button>
+          <button id="sc-ann-send" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">ส่งประกาศ</button>
         </div>
       </div>
 
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-bold text-gray-700">🗓️ ตารางเรียนห้องนี้</h2>
-          <div class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-            <button data-sched="daily" class="sc-sched-tab px-2.5 py-1 rounded-md text-[11px] font-bold transition">รายวัน</button>
-            <button data-sched="weekly" class="sc-sched-tab px-2.5 py-1 rounded-md text-[11px] font-bold transition">รายสัปดาห์</button>
-          </div>
-        </div>
-        <div id="sc-schedule-body">${_scheduleHTML('daily')}</div>
-      </div>
-
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <h2 class="text-sm font-bold text-gray-700 mb-3">📋 คิวคำร้องขอสอบปรับ/สอบย้อนหลัง</h2>
-        <div id="sc-exam-queue">${_examQueueHTML()}</div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <div class="flex items-center justify-between mb-1">
-          <h2 class="text-sm font-bold text-gray-700">📘 กำหนดการสอน</h2>
-          <button id="sc-add-syllabus" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">➕ เพิ่มหัวข้อ</button>
-        </div>
-        <div class="mb-3 px-3 py-2.5 rounded-xl ${currentTopic ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}">
-          <p class="text-[10px] font-bold ${currentTopic ? 'text-indigo-500' : 'text-gray-400'} uppercase tracking-wide">สัปดาห์นี้ — สัปดาห์ที่ ${curWeek || '—'}</p>
-          <p class="text-sm font-bold ${currentTopic ? 'text-indigo-700' : 'text-gray-400'} mt-0.5">${currentTopic ? _htmlEsc(currentTopic.topic) : 'ยังไม่ได้กำหนดหัวข้อสำหรับสัปดาห์นี้'}</p>
-        </div>
-        <div id="sc-syllabus-list">${_syllabusHTML()}</div>
-      </div>
-
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-bold text-gray-700">📝 แผนการจัดการเรียนรู้</h2>
-          <button id="sc-add-plan" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">➕ สร้างแผน</button>
-        </div>
-        <div id="sc-plan-list">${_lessonPlansHTML()}</div>
-      </div>
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mt-4">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-bold text-gray-700">📚 งานที่มอบหมาย</h2>
-        <button id="sc-add-assignment" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">➕ สั่งงานใหม่</button>
+      <div id="sc-reftabs-bar" class="sc-tabbar mb-4">
+        ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn sc-tab-pill ${t.key === _refTab ? 'active' : ''}">${t.label}</button>`).join('')}
       </div>
-      <div id="sc-assignment-list">${_assignmentsHTML()}</div>
+      <div id="sc-reftab-body">${_refTabBodyHTML(_refTab)}</div>
     </div>
   </div>`)
 
@@ -958,8 +964,10 @@ export async function renderSmartClassroom(teacher, classId) {
               <button id="sc-sp-close" class="text-gray-400 hover:text-gray-700 text-lg flex-shrink-0">✕</button>
             </div>
           </div>
-          <div class="flex gap-1 px-5 flex-shrink-0 border-b border-gray-100">
-            ${SC_TABS.map(t => `<button data-tab="${t.key}" class="sc-sp-tab px-2.5 py-2 text-xs font-bold border-b-2 -mb-px transition ${activeTab === t.key ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">${t.label}</button>`).join('')}
+          <div class="px-5 pb-3 flex-shrink-0">
+            <div class="sc-tabbar w-full">
+              ${SC_TABS.map(t => `<button data-tab="${t.key}" class="sc-sp-tab sc-tab-pill ${activeTab === t.key ? 'active' : ''}">${t.label}</button>`).join('')}
+            </div>
           </div>
           <div class="p-5 pt-3 overflow-y-auto flex-1">
             ${activeTab === 'info' ? _tabInfoHTML(s) : activeTab === 'score' ? _tabScoreHTML(s) : activeTab === 'att' ? _tabAttHTML(s) : _tabLeaveHTML(s)}
@@ -1025,7 +1033,7 @@ export async function renderSmartClassroom(teacher, classId) {
         <p class="text-sm text-gray-500 mb-5">เลือกวิธีที่ต้องการให้นักเรียนทำต่อ</p>
         <div class="space-y-2">
           <button id="qu-resume" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm">▶️ ทำต่อจากจุดเดิม</button>
-          <button id="qu-restart" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">🔄 เริ่มใหม่ทั้งชุด</button>
+          <button id="qu-restart" class="sc-btn-dark w-full py-3 rounded-2xl font-bold text-sm">🔄 เริ่มใหม่ทั้งชุด</button>
           <button id="qu-cancel" class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm">ยกเลิก</button>
         </div>
       </div>`
@@ -1100,39 +1108,61 @@ export async function renderSmartClassroom(teacher, classId) {
     } catch (err) { showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false; btn.textContent = 'ส่งประกาศ' }
   })
 
-  // ── Wiring: schedule daily/weekly toggle ──────────────────────────────────
+  // ── Wiring: แท็บโซนอ้างอิง (ตารางเรียน/คิวสอบ/กำหนดการสอน/แผนการสอน/งานที่มอบหมาย) ──
+  // แต่ละแท็บ render แค่ตัวเองใน #sc-reftab-body ทีละแท็บ ต้อง wire ใหม่ทุกครั้งที่สลับแท็บ
   let _schedMode = 'daily'
-  const _paintSchedTabs = () => {
-    document.querySelectorAll('.sc-sched-tab').forEach(b => {
-      b.className = `sc-sched-tab px-2.5 py-1 rounded-md text-[11px] font-bold transition ${b.dataset.sched === _schedMode ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`
+
+  function _paintRefTabs() {
+    document.querySelectorAll('.sc-reftab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.reftab === _refTab)
     })
   }
-  _paintSchedTabs()
-  document.querySelectorAll('.sc-sched-tab').forEach(b => b.addEventListener('click', () => {
-    _schedMode = b.dataset.sched
-    _paintSchedTabs()
-    document.getElementById('sc-schedule-body').innerHTML = _scheduleHTML(_schedMode)
-  }))
 
-  // ── Wiring: กำหนดการสอน / แผนการจัดการเรียนรู้ ───────────────────────────────
-  document.getElementById('sc-add-syllabus').addEventListener('click', () => _openSyllabusItemModal())
-  document.getElementById('sc-syllabus-list').addEventListener('click', e => {
-    const row = e.target.closest('.sc-syllabus-row')
-    if (!row) return
-    const it = syllabusItems.find(x => x.id === parseInt(row.dataset.sylid, 10))
-    if (it) _openSyllabusItemModal(it)
-  })
-  document.getElementById('sc-add-plan').addEventListener('click', () => _openLessonPlanModal())
-  document.getElementById('sc-plan-list').addEventListener('click', e => {
-    const reflectBtn = e.target.closest('.sc-plan-reflect')
-    const row = e.target.closest('.sc-plan-row')
-    if (reflectBtn) {
-      const p = lessonPlans.find(x => x.id === parseInt(reflectBtn.dataset.planid, 10))
-      if (p) _openReflectionModal(p)
-    } else if (row) {
-      const p = lessonPlans.find(x => x.id === parseInt(row.dataset.planid, 10))
-      if (p) _openLessonPlanModal(p)
-    }
+  function _wireRefTabBody() {
+    document.querySelectorAll('.sc-sched-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.sched === _schedMode)
+      b.addEventListener('click', () => {
+        _schedMode = b.dataset.sched
+        document.querySelectorAll('.sc-sched-tab').forEach(x => x.classList.toggle('active', x.dataset.sched === _schedMode))
+        document.getElementById('sc-schedule-body').innerHTML = _scheduleHTML(_schedMode)
+      })
+    })
+    document.getElementById('sc-add-syllabus')?.addEventListener('click', () => _openSyllabusItemModal())
+    document.getElementById('sc-syllabus-list')?.addEventListener('click', e => {
+      const row = e.target.closest('.sc-syllabus-row')
+      if (!row) return
+      const it = syllabusItems.find(x => x.id === parseInt(row.dataset.sylid, 10))
+      if (it) _openSyllabusItemModal(it)
+    })
+    document.getElementById('sc-add-plan')?.addEventListener('click', () => _openLessonPlanModal())
+    document.getElementById('sc-plan-list')?.addEventListener('click', e => {
+      const reflectBtn = e.target.closest('.sc-plan-reflect')
+      const row = e.target.closest('.sc-plan-row')
+      if (reflectBtn) {
+        const p = lessonPlans.find(x => x.id === parseInt(reflectBtn.dataset.planid, 10))
+        if (p) _openReflectionModal(p)
+      } else if (row) {
+        const p = lessonPlans.find(x => x.id === parseInt(row.dataset.planid, 10))
+        if (p) _openLessonPlanModal(p)
+      }
+    })
+    document.getElementById('sc-add-assignment')?.addEventListener('click', () => _openCreateAssignmentModal())
+    document.getElementById('sc-assignment-list')?.addEventListener('click', e => {
+      const row = e.target.closest('.sc-assignment-row')
+      if (!row) return
+      const a = assignments.find(x => x.id === parseInt(row.dataset.aid, 10))
+      if (a) _openAssignmentTrackingModal(a)
+    })
+  }
+  _wireRefTabBody()
+
+  document.getElementById('sc-reftabs-bar').addEventListener('click', e => {
+    const btn = e.target.closest('.sc-reftab-btn')
+    if (!btn || btn.dataset.reftab === _refTab) return
+    _refTab = btn.dataset.reftab
+    _paintRefTabs()
+    document.getElementById('sc-reftab-body').innerHTML = _refTabBodyHTML(_refTab)
+    _wireRefTabBody()
   })
 
   function _openSyllabusItemModal(item) {
@@ -1169,7 +1199,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <label class="block text-xs font-semibold text-gray-500 mb-1">รายละเอียดเพิ่มเติม</label>
           <textarea id="sy-desc" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none">${_htmlEsc(it.description ?? '')}</textarea>
         </div>
-        <button id="sy-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึก</button>
+        <button id="sy-save" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">บันทึก</button>
       </div>`
     document.body.appendChild(m)
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
@@ -1239,7 +1269,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <label class="block text-xs font-semibold text-gray-500 mb-1">${label}</label>
           <textarea id="lp-${key}" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none">${_htmlEsc(p[key] ?? '')}</textarea>
         </div>`).join('')}
-        <button id="lp-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึกแผน</button>
+        <button id="lp-save" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">บันทึกแผน</button>
       </div>`
     document.body.appendChild(m)
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
@@ -1331,7 +1361,7 @@ export async function renderSmartClassroom(teacher, classId) {
               ${reflection?.signed_at ? `<span class="text-[10px] text-gray-400">เซ็นล่าสุด: ${new Date(reflection.signed_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
             </div>
           </div>
-          <button id="rf-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึก</button>
+          <button id="rf-save" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">บันทึก</button>
         </div>`
 
       m.querySelector('#rf-close').addEventListener('click', () => m.remove())
@@ -1408,15 +1438,6 @@ export async function renderSmartClassroom(teacher, classId) {
     _render()
   }
 
-  // ── Wiring: assignments ───────────────────────────────────────────────────
-  document.getElementById('sc-add-assignment').addEventListener('click', () => _openCreateAssignmentModal())
-  document.getElementById('sc-assignment-list').addEventListener('click', e => {
-    const row = e.target.closest('.sc-assignment-row')
-    if (!row) return
-    const a = assignments.find(x => x.id === parseInt(row.dataset.aid, 10))
-    if (a) _openAssignmentTrackingModal(a)
-  })
-
   function _openCreateAssignmentModal() {
     document.getElementById('sc-assign-modal')?.remove()
     const m = document.createElement('div')
@@ -1463,7 +1484,7 @@ export async function renderSmartClassroom(teacher, classId) {
           </div>
           <p id="sa-penalty-hint" class="text-[10px] text-gray-400"></p>
         </div>
-        <button id="sa-save" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">บันทึกงาน</button>
+        <button id="sa-save" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">บันทึกงาน</button>
       </div>`
     document.body.appendChild(m)
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
@@ -1555,7 +1576,7 @@ export async function renderSmartClassroom(teacher, classId) {
               ${col ? `<div class="flex items-center gap-1.5 mt-1.5">
                 <input type="number" class="st-grade-input w-16 text-center border border-gray-200 rounded-lg px-1 py-1 font-mono font-bold text-indigo-600" data-sid="${s.id}" value="${suggested}" placeholder="—" />
                 <span class="text-gray-400">/ ${col.max_score}</span>
-                <button class="st-grade-save text-[10px] font-bold px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700" data-sid="${s.id}">บันทึกคะแนน</button>
+                <button class="st-grade-save sc-btn-dark text-[10px] font-bold px-2 py-1 rounded-lg" data-sid="${s.id}">บันทึกคะแนน</button>
               </div>` : ''}
             </div>`
           }).join('')}
