@@ -17,6 +17,8 @@ import {
   _openAttendanceModalForSession,
 } from './teacher-views-attendance.js'
 import { openQuizMonitor } from './teacher-views-quiz-monitor.js'
+import { openQuizAnalytics } from './teacher-views-quiz-analytics.js'
+import { openClassDashboard } from './teacher-views-dashboard.js'
 import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail } from './teacher-views-classes.js'
 import { showToast } from './ui.js'
@@ -373,8 +375,8 @@ export async function renderSmartClassroom(teacher, classId) {
   // ── Quiz launch list ─────────────────────────────────────────────────────
   const _quizHTML = () => {
     if (!quizzes.length) return `<p class="text-xs text-gray-400">ห้องนี้ยังไม่มีควิซที่สร้างไว้</p>`
-    return quizzes.slice(0, 4).map(q => `
-      <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50 mb-1.5">
+    return `<div class="max-h-72 overflow-y-auto space-y-1.5 pr-0.5">${quizzes.map(q => `
+      <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50">
         <span class="text-base flex-shrink-0">🧠</span>
         <div class="flex-1 min-w-0">
           <p class="text-xs font-bold text-gray-700 truncate">${_htmlEsc(q.title ?? 'ควิซ')}</p>
@@ -383,7 +385,8 @@ export async function renderSmartClassroom(teacher, classId) {
         ${q.status === 'announced' ? `<button class="sc-quiz-start text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex-shrink-0" data-qid="${q.id}">▶ เริ่ม</button>` : ''}
         ${q.status === 'started' ? `<button class="sc-quiz-monitor text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex-shrink-0" data-qid="${q.id}">🔴 ดูสด</button>
                                      <button class="sc-quiz-close text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 flex-shrink-0" data-qid="${q.id}">ปิด</button>` : ''}
-      </div>`).join('')
+        ${q.status === 'started' || q.status === 'closed' ? `<button class="sc-quiz-analytics text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 flex-shrink-0" data-qid="${q.id}">📊 สถิติ</button>` : ''}
+      </div>`).join('')}</div>`
   }
 
   // ── ประกาศของห้องนี้ (ทุกแหล่ง ไม่ใช่แค่ที่ส่งจากตรงนี้) ──────────────────────
@@ -523,6 +526,7 @@ export async function renderSmartClassroom(teacher, classId) {
             <button id="sc-random" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">🎲<br>สุ่ม/จัดกลุ่ม</button>
             <button id="sc-scan-att" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">📷<br>สแกน QR เช็คชื่อ</button>
             <button id="sc-scan-score" class="px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">📷<br>สแกน QR คะแนน</button>
+            <button id="sc-dashboard" class="col-span-2 px-3 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-indigo-300 text-xs font-bold text-gray-700">📈 Dashboard วิเคราะห์ห้องนี้</button>
           </div>
         </div>
 
@@ -1000,15 +1004,17 @@ export async function renderSmartClassroom(teacher, classId) {
     _openRandomPickerModal(classId, cls, rosterWithSeats, isDonorTeacher)
   })
 
-  // ── Wiring: QR scanners ───────────────────────────────────────────────────
+  // ── Wiring: QR scanners / dashboard ───────────────────────────────────────
   document.getElementById('sc-scan-att').addEventListener('click', () => openAttendanceScanSetup(teacher))
   document.getElementById('sc-scan-score').addEventListener('click', () => openScoreScanner({ classId, className: cls.class_name }))
+  document.getElementById('sc-dashboard').addEventListener('click', () => openClassDashboard(classId, cls, window._pp5DonorTierIndex ?? 0, cfg))
 
-  // ── Wiring: quiz launch ───────────────────────────────────────────────────
+  // ── Wiring: quiz launch / ประวัติ-สถิติ ───────────────────────────────────
   document.getElementById('sc-quiz-list').addEventListener('click', async e => {
     const startBtn = e.target.closest('.sc-quiz-start')
     const monitorBtn = e.target.closest('.sc-quiz-monitor')
     const closeBtn = e.target.closest('.sc-quiz-close')
+    const analyticsBtn = e.target.closest('.sc-quiz-analytics')
     if (startBtn) {
       try { await startQuizLive(parseInt(startBtn.dataset.qid, 10)); showToast('เริ่มควิซให้ห้องนี้แล้ว 🧠', 'success'); _reload() }
       catch (err) { showToast('เริ่มควิซไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
@@ -1018,6 +1024,9 @@ export async function renderSmartClassroom(teacher, classId) {
     } else if (closeBtn) {
       try { await closeQuiz(parseInt(closeBtn.dataset.qid, 10)); showToast('ปิดสอบแล้ว', 'success'); _reload() }
       catch (err) { showToast('ปิดสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } else if (analyticsBtn) {
+      const q = quizzes.find(x => x.id === parseInt(analyticsBtn.dataset.qid, 10))
+      if (q) openQuizAnalytics(q)
     }
   })
 
