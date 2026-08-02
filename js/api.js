@@ -370,7 +370,7 @@ export async function advisorRemoveStudentFromRoom(studentId, category) {
 export async function getClassStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('is_active, special_result, students ( id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
+    .select('is_active, special_result, students ( id, profile_id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error

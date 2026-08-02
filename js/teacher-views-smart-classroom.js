@@ -27,6 +27,7 @@ import { _openRandomPickerModal, renderClassDetail } from './teacher-views-class
 import { showToast } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek } from './teacher-views-utils.js'
+import { supabase } from './supabase.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -412,6 +413,15 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   const _reload = () => renderSmartClassroom(teacher, classId)
+
+  // ── Push notification ไปหานักเรียนทั้งห้อง (ประกาศ/งานใหม่) — ของเสริม ยิงไม่สำเร็จไม่บล็อกการบันทึกหลัก ──
+  const _sendClassPush = async (title, body, tag) => {
+    const profileIds = students.map(s => s.profile_id).filter(Boolean)
+    if (!profileIds.length) return
+    try {
+      await supabase.functions.invoke('send-push', { body: { title, body, url: 'student.html', tag, profileIds } })
+    } catch { /* เงียบไว้ ไม่กระทบผู้ใช้ */ }
+  }
 
   // ── Roster grid ──────────────────────────────────────────────────────────
   const _rosterHTML = () => _sortedStudents().map(s => {
@@ -1317,6 +1327,7 @@ export async function renderSmartClassroom(teacher, classId) {
         const attachments = []
         for (const f of files) attachments.push(await uploadAssignmentFile(f, `class-${classId}/announcements`))
         await createAnnouncement({ title: `📣 ${cls.class_name}`, body: text, isActive: true, teacherId: teacher.id, targetClassIds: [classId], annType, attachmentUrls: attachments.length ? attachments : null })
+        _sendClassPush(`${annType} — ${cls.class_name}`, text.slice(0, 120), 'sc-announcement')
         showToast('ส่งประกาศถึงห้องนี้แล้ว 📣', 'success')
         m.remove()
         _reload()
@@ -1742,6 +1753,7 @@ export async function renderSmartClassroom(teacher, classId) {
           late_penalty_mode: modeSel.value,
           late_penalty_value: parseFloat(valInput.value) || 0,
         })
+        _sendClassPush(`📚 งานใหม่ — ${cls.class_name}`, title, 'sc-assignment')
         showToast('สั่งงานสำเร็จ ✅', 'success')
         m.remove()
         _reload()
