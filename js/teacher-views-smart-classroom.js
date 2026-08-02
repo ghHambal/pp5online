@@ -109,12 +109,26 @@ export async function findCurrentOrNextClass(teacher) {
 }
 
 // ─── หน้าอธิบายฟีเจอร์ (เปิดจากปุ่มพรีเมียมในหน้าภาพรวม) ──────────────────────────
+// ครูระดับ 4+ ที่ติ๊ก "ไม่ต้องโชว์อีก" จะข้ามป๊อบอัพนี้ไปเปิดคลาสรูมอัตโนมัติทันทีในครั้งถัดไป
+// ครูที่ยังไม่ถึงระดับจะเห็นป๊อบอัพนี้ทุกครั้งที่กด (ไม่มีปุ่มข้าม) พร้อมปุ่มไปหน้าสนับสนุนโครงการ
 export async function openSmartClassroomLanding(teacher) {
   const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
+  const unlocked = isSmartClassroomUnlocked(cfg)
+
+  if (unlocked && localStorage.getItem(SC_SKIP_POPUP_KEY) === '1') {
+    _launchAuto(teacher)
+    return
+  }
+
   document.getElementById('sc-landing-modal')?.remove()
+  const minTier = _smartClassroomMinTier(cfg)
   const title  = cfg.smartClassroomLandingTitle?.trim() || 'Smart Classroom — หน้าควบคุมขณะสอนสด'
-  const desc   = cfg.smartClassroomLandingDesc?.trim() || 'รวมเช็คชื่อ, Hall Pass (อนุญาตออกนอกห้องแบบสด), จับเวลา, สุ่มรายชื่อ/จัดกลุ่ม, เปิดควิซสด, สแกน QR, งานที่มอบหมาย และตารางเรียน ไว้จอเดียว — ออกแบบมาให้การสอนสดของคุณครูมีประสิทธิภาพที่สุด'
+  const desc   = cfg.smartClassroomLandingDesc?.trim() || 'รวมเช็คชื่ออัตโนมัติ, Hall Pass (อนุญาตออกนอกห้องแบบสด), จับเวลา, สุ่มรายชื่อ/จัดกลุ่ม, เปิดควิซสด, สแกน QR, งานที่มอบหมาย, ตารางเรียน, กำหนดการสอน+แผนการจัดการเรียนรู้ (พร้อมบันทึกหลังสอน+เซ็นชื่อ), และประกาศแนบไฟล์พร้อมแจ้งเตือนถึงมือถือนักเรียนทันที ไว้จอเดียว — ออกแบบมาให้การสอนสดของคุณครูมีประสิทธิภาพที่สุด'
   const images = [cfg.smartClassroomLandingImg1, cfg.smartClassroomLandingImg2, cfg.smartClassroomLandingImg3].filter(Boolean)
+  const FEATURES = [
+    '✅ เช็คชื่ออัตโนมัติ', '🚪 Hall Pass สด', '🎲 สุ่ม/จัดกลุ่ม', '🧠 เปิดควิซสด',
+    '📚 สั่งงาน/ติดตามงาน', '📘 กำหนดการสอน+แผนการสอน', '🖊️ บันทึกหลังสอน+เซ็นชื่อ', '📣 ประกาศแนบไฟล์+แจ้งเตือนมือถือ',
+  ]
 
   const m = document.createElement('div')
   m.id = 'sc-landing-modal'
@@ -130,43 +144,31 @@ export async function openSmartClassroomLanding(teacher) {
         <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-line">${_htmlEsc(desc)}</p>
         ${images.length ? `<div class="grid ${images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-2">${images.map(u => `<img src="${_htmlEsc(u)}" class="w-full rounded-xl border border-gray-100 object-cover" />`).join('')}</div>` : ''}
         <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
-          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">✅ เช็คชื่ออัตโนมัติ</div>
-          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">🚪 Hall Pass สด</div>
-          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">🎲 สุ่ม/จัดกลุ่ม</div>
-          <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">📚 สั่งงาน/ติดตามงาน</div>
+          ${FEATURES.map(f => `<div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50">${f}</div>`).join('')}
         </div>
-        <button id="sl-start" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
-          style="background:linear-gradient(135deg,#a9781a,#e6c988)">🚀 เริ่มใช้งาน</button>
+        ${unlocked ? `
+          <label class="flex items-center justify-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+            <input type="checkbox" id="sl-skip" class="w-4 h-4 rounded" />
+            ไม่ต้องโชว์ป๊อบอัพนี้ในครั้งหน้า — เปิดคลาสรูมที่กำลังสอนให้อัตโนมัติเลย
+          </label>
+          <button id="sl-start" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+            style="background:linear-gradient(135deg,#a9781a,#e6c988)">🚀 เริ่มใช้งาน</button>
+        ` : `
+          <p class="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5 text-center">🔒 ฟีเจอร์นี้เฉพาะผู้สนับสนุนระบบระดับ ${minTier} ขึ้นไป</p>
+          <button id="sl-donate" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+            style="background:linear-gradient(135deg,#a9781a,#e6c988)">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
+        `}
       </div>
     </div>`
   document.body.appendChild(m)
   m.addEventListener('click', e => { if (e.target === m) m.remove() })
   m.querySelector('#sl-close').addEventListener('click', () => m.remove())
-  m.querySelector('#sl-start').addEventListener('click', () => {
+  m.querySelector('#sl-start')?.addEventListener('click', () => {
+    if (m.querySelector('#sl-skip')?.checked) localStorage.setItem(SC_SKIP_POPUP_KEY, '1')
     m.remove()
-    _openEligibilityGate(teacher, cfg)
+    _launchAuto(teacher)
   })
-}
-
-function _showTierPaywall(cfg) {
-  const minTier = _smartClassroomMinTier(cfg)
-  document.getElementById('sc-gate-modal')?.remove()
-  const m = document.createElement('div')
-  m.id = 'sc-gate-modal'
-  m.className = 'fixed inset-0 z-[96] flex items-center justify-center bg-black/50 p-4'
-  m.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-3 animate-fade">
-      <div class="text-5xl">🔒</div>
-      <p class="font-bold text-gray-800">ฟีเจอร์นี้เฉพาะผู้สนับสนุนระบบระดับ ${minTier} ขึ้นไป</p>
-      <p class="text-xs text-gray-500">สนับสนุนระบบเพื่อปลดล็อก Smart Classroom และสิทธิพิเศษอื่นๆ ได้เลยครับ</p>
-      <button id="sc-gate-donate" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
-        style="background:linear-gradient(135deg,#a9781a,#e6c988)">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
-      <button id="sc-gate-cancel2" class="text-xs text-gray-400 hover:text-gray-600">ปิด</button>
-    </div>`
-  document.body.appendChild(m)
-  m.addEventListener('click', e => { if (e.target === m) m.remove() })
-  m.querySelector('#sc-gate-cancel2').addEventListener('click', () => m.remove())
-  m.querySelector('#sc-gate-donate').addEventListener('click', () => { m.remove(); document.getElementById('btn-donate-float')?.click() })
+  m.querySelector('#sl-donate')?.addEventListener('click', () => { m.remove(); document.getElementById('btn-donate-float')?.click() })
 }
 
 async function _launchAuto(teacher) {
@@ -174,37 +176,6 @@ async function _launchAuto(teacher) {
   const { classId } = await findCurrentOrNextClass(teacher)
   if (!classId) { showToast('ยังไม่มีห้องเรียน กรุณาสร้างห้องเรียนก่อนครับ', 'warning'); return }
   renderSmartClassroom(teacher, classId)
-}
-
-function _openEligibilityGate(teacher, cfg) {
-  if (!isSmartClassroomUnlocked(cfg)) { _showTierPaywall(cfg); return }
-  if (localStorage.getItem(SC_SKIP_POPUP_KEY) === '1') { _launchAuto(teacher); return }
-
-  document.getElementById('sc-gate-modal')?.remove()
-  const m = document.createElement('div')
-  m.id = 'sc-gate-modal'
-  m.className = 'fixed inset-0 z-[96] flex items-center justify-center bg-black/50 p-4'
-  m.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 animate-fade">
-      <div class="text-5xl">👑</div>
-      <p class="font-bold text-gray-800">พร้อมเข้าใช้งาน Smart Classroom</p>
-      <p class="text-xs text-gray-500">ระบบจะตรวจสอบตารางสอนแล้วเปิดห้องที่กำลังสอนอยู่ตอนนี้ให้อัตโนมัติ (หรือห้องถัดไปที่ใกล้ที่สุดถ้ายังไม่ถึงเวลา)</p>
-      <label class="flex items-center justify-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
-        <input type="checkbox" id="sc-gate-skip" class="w-4 h-4 rounded" />
-        ไม่ต้องโชว์ป๊อบอัพนี้ในครั้งหน้า
-      </label>
-      <button id="sc-gate-go" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
-        style="background:linear-gradient(135deg,#a9781a,#e6c988)">เข้าใช้งานเลย →</button>
-      <button id="sc-gate-cancel" class="text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
-    </div>`
-  document.body.appendChild(m)
-  m.addEventListener('click', e => { if (e.target === m) m.remove() })
-  m.querySelector('#sc-gate-cancel').addEventListener('click', () => m.remove())
-  m.querySelector('#sc-gate-go').addEventListener('click', () => {
-    if (m.querySelector('#sc-gate-skip').checked) localStorage.setItem(SC_SKIP_POPUP_KEY, '1')
-    m.remove()
-    _launchAuto(teacher)
-  })
 }
 
 export async function renderSmartClassroom(teacher, classId) {
