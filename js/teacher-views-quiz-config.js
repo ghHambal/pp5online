@@ -14,6 +14,11 @@ const STATUS_LABEL = {
 
 const SCORING_LABEL = { first: 'ครั้งแรก', last: 'ครั้งล่าสุด', highest: 'คะแนนสูงสุด' }
 const REVIEW_LABEL = { total_only: 'เห็นคะแนนรวมเท่านั้น', per_question: 'เห็นถูก/ผิดรายข้อ', full_review: 'เห็นเฉลยเต็ม' }
+const WRITE_MODE_LABEL = {
+  highest: { label: 'เทียบเอาคะแนนสูงกว่า', hint: 'ถ้าคอลัมน์นี้มีคะแนนอยู่แล้ว (กรอกมือ/กิจกรรมอื่น) จะเก็บค่าที่สูงกว่าไว้ (ค่าเริ่มต้น)' },
+  overwrite: { label: 'ทับคะแนนเก่า', hint: 'เขียนทับคะแนนเดิมในคอลัมน์นี้เสมอ ไม่ว่าเดิมจะมีค่าเท่าไหร่' },
+  add: { label: 'บวกเพิ่มจากคะแนนเดิม', hint: 'บวกคะแนนที่ได้จากควิซนี้เข้ากับคะแนนที่มีอยู่แล้วในคอลัมน์ เหมาะกับคอลัมน์สะสมคะแนนจากหลายควิซ' },
+}
 
 export async function renderBankQuizzes(teacher, bank) {
   if (!bank) return
@@ -250,6 +255,13 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
             <input id="qz-score-max" type="number" min="0" step="0.5" class="${INPUT_CLS}" value="${quiz?.score_max ?? 100}" />
           </div>
         </div>
+        <div id="qz-write-mode-wrap" class="${quiz?.score_column_id ? '' : 'hidden'}">
+          <label class="text-xs font-semibold text-gray-500 mb-1 block">ถ้าคอลัมน์นี้มีคะแนนอยู่แล้ว ให้ทำอย่างไร</label>
+          <select id="qz-write-mode" class="${SELECT_CLS}">
+            ${Object.entries(WRITE_MODE_LABEL).map(([v, m]) => `<option value="${v}" ${(quiz?.score_write_mode ?? 'highest') === v ? 'selected' : ''}>${m.label}</option>`).join('')}
+          </select>
+          <p id="qz-write-mode-hint" class="text-[11px] text-gray-400 mt-1 leading-relaxed"></p>
+        </div>
       </div>
       <div class="flex gap-2 mt-5">
         <button id="qz-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">ยกเลิก</button>
@@ -270,6 +282,17 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
   }
   classSelect.addEventListener('change', loadScoreColumns)
   if (classSelect.value) await loadScoreColumns()
+
+  const writeModeWrap = modal.querySelector('#qz-write-mode-wrap')
+  const writeModeSelect = modal.querySelector('#qz-write-mode')
+  const writeModeHint = modal.querySelector('#qz-write-mode-hint')
+  const syncWriteModeUI = () => {
+    writeModeWrap.classList.toggle('hidden', !scoreColSelect.value)
+    writeModeHint.textContent = WRITE_MODE_LABEL[writeModeSelect.value]?.hint ?? ''
+  }
+  scoreColSelect.addEventListener('change', syncWriteModeUI)
+  writeModeSelect.addEventListener('change', syncWriteModeUI)
+  syncWriteModeUI()
 
   const lockAnswerBox = modal.querySelector('#qz-lock-answer')
   const instantBonusBox = modal.querySelector('#qz-instant-bonus')
@@ -316,6 +339,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
       review_policy: modal.querySelector('#qz-review').value,
       score_column_id: scoreColSelect.value || null,
       score_max: parseFloat(modal.querySelector('#qz-score-max').value) || null,
+      score_write_mode: writeModeSelect.value,
     }
 
     setButtonLoading(e.target, true)
