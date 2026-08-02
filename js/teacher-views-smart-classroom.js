@@ -297,6 +297,18 @@ export async function renderSmartClassroom(teacher, classId) {
     terminated_violation: { icon: '🔒', cls: 'bg-red-500' },
   }
 
+  // ── ประเภทประกาศแนะนำ (อิโมจิ+ชื่อไทย) — เลือกจากนี้ได้ หรือพิมพ์ประเภทใหม่เองอิสระ ──
+  const ANN_TYPE_PRESETS = [
+    { emoji: '📢', label: 'ทั่วไป' },
+    { emoji: '📚', label: 'การบ้าน' },
+    { emoji: '📄', label: 'เอกสารประกอบ' },
+    { emoji: '⏰', label: 'กำหนดส่งงาน' },
+    { emoji: '📝', label: 'แบบทดสอบ' },
+    { emoji: '📊', label: 'คะแนน' },
+    { emoji: '🎓', label: 'กิจกรรม/ฝึกอบรม' },
+    { emoji: '⚠️', label: 'ด่วน/สำคัญ' },
+  ]
+
   // ── Per-student lookup maps (สำหรับแผงข้อมูลนักเรียน) ─────────────────────
   const scoresByStudent = {}
   for (const r of studentScores) (scoresByStudent[r.student_id] ??= []).push(r)
@@ -686,22 +698,12 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <h2 class="text-sm font-bold text-gray-700 mb-2">📣 ประกาศของห้องนี้</h2>
+          <div class="flex items-center justify-between mb-1">
+            <h2 class="text-sm font-bold text-gray-700">📣 ประกาศของห้องนี้</h2>
+            <button id="sc-add-announcement" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0">➕ สร้างประกาศ</button>
+          </div>
           <p class="text-[10px] text-gray-400 mb-2">รวมประกาศที่ตรงกับห้องนี้ทั้งหมด ไม่ว่าจะประกาศจากตรงนี้หรือหน้าประกาศหลัก</p>
           <div id="sc-ann-history">${_annHistoryHTML()}</div>
-          <textarea id="sc-ann-text" rows="3" placeholder="เช่น พรุ่งนี้เตรียมสมุดการบ้านมาส่งด้วยนะ"
-            class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-2"></textarea>
-          <div class="mb-2">
-            <label class="block text-[10px] font-semibold text-gray-400 mb-1">ประเภทประกาศ (พิมพ์ใหม่ได้อิสระ หรือเลือกจากที่เคยใช้)</label>
-            <input id="sc-ann-type" type="text" list="sc-ann-type-list" placeholder="เช่น การบ้าน, เอกสารประกอบ, กำหนดส่งงาน..."
-              class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            <datalist id="sc-ann-type-list">${annTypeSuggestions.map(t => `<option value="${_htmlEsc(t)}"></option>`).join('')}</datalist>
-          </div>
-          <div class="mb-2">
-            <label class="block text-[10px] font-semibold text-gray-400 mb-1">แนบไฟล์/รูปภาพ (เลือกได้หลายไฟล์ ไม่บังคับ)</label>
-            <input id="sc-ann-files" type="file" multiple class="w-full text-xs" />
-          </div>
-          <button id="sc-ann-send" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">ส่งประกาศ</button>
         </div>
       </div>
 
@@ -1251,22 +1253,79 @@ export async function renderSmartClassroom(teacher, classId) {
     }
   })
 
-  // ── Wiring: instant announcement ─────────────────────────────────────────
-  document.getElementById('sc-ann-send').addEventListener('click', async () => {
-    const btn = document.getElementById('sc-ann-send')
-    const text = document.getElementById('sc-ann-text').value.trim()
-    if (!text) { showToast('พิมพ์ข้อความก่อนส่งนะ', 'warning'); return }
-    const annType = document.getElementById('sc-ann-type').value.trim() || 'general'
-    btn.disabled = true; btn.textContent = 'กำลังส่ง...'
-    try {
-      const files = [...(document.getElementById('sc-ann-files').files ?? [])]
-      const attachments = []
-      for (const f of files) attachments.push(await uploadAssignmentFile(f, `class-${classId}/announcements`))
-      await createAnnouncement({ title: `📣 ${cls.class_name}`, body: text, isActive: true, teacherId: teacher.id, targetClassIds: [classId], annType, attachmentUrls: attachments.length ? attachments : null })
-      showToast('ส่งประกาศถึงห้องนี้แล้ว 📣', 'success')
-      _reload()
-    } catch (err) { showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false; btn.textContent = 'ส่งประกาศ' }
-  })
+  // ── Wiring: สร้างประกาศ (เด้งฟอร์มในโมดัล) ────────────────────────────────
+  document.getElementById('sc-add-announcement').addEventListener('click', () => _openCreateAnnouncementModal())
+
+  function _openCreateAnnouncementModal() {
+    document.getElementById('sc-ann-modal')?.remove()
+    let selectedType = null
+    const m = document.createElement('div')
+    m.id = 'sc-ann-modal'
+    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-3 animate-fade">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold text-gray-800 text-sm">📣 สร้างประกาศ — ${_htmlEsc(cls.class_name ?? '')}</h3>
+          <button id="ca-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ข้อความประกาศ *</label>
+          <textarea id="ca-text" rows="3" placeholder="เช่น พรุ่งนี้เตรียมสมุดการบ้านมาส่งด้วยนะ"
+            class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ประเภทประกาศ</label>
+          <div id="ca-type-chips" class="flex flex-wrap gap-1.5 mb-2">
+            ${ANN_TYPE_PRESETS.map(t => `<button type="button" data-emoji="${t.emoji}" data-label="${_htmlEsc(t.label)}" class="ca-type-chip px-2.5 py-1.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-600 hover:border-amber-300 hover:bg-amber-50 transition">${t.emoji} ${t.label}</button>`).join('')}
+          </div>
+          <input id="ca-type-custom" type="text" list="ca-type-list" placeholder="หรือพิมพ์ประเภทใหม่เอง..."
+            class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <datalist id="ca-type-list">${annTypeSuggestions.map(t => `<option value="${_htmlEsc(t)}"></option>`).join('')}</datalist>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">แนบไฟล์/รูปภาพ (เลือกได้หลายไฟล์ ไม่บังคับ)</label>
+          <input id="ca-files" type="file" multiple class="w-full text-xs" />
+        </div>
+        <button id="ca-send" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">ส่งประกาศ</button>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#ca-close').addEventListener('click', () => m.remove())
+
+    const customInput = m.querySelector('#ca-type-custom')
+    m.querySelectorAll('.ca-type-chip').forEach(chip => chip.addEventListener('click', () => {
+      selectedType = `${chip.dataset.emoji} ${chip.dataset.label}`
+      customInput.value = ''
+      m.querySelectorAll('.ca-type-chip').forEach(c => c.classList.remove('border-amber-400', 'bg-amber-100', 'text-amber-800'))
+      chip.classList.add('border-amber-400', 'bg-amber-100', 'text-amber-800')
+    }))
+    customInput.addEventListener('input', () => {
+      if (customInput.value.trim()) {
+        selectedType = null
+        m.querySelectorAll('.ca-type-chip').forEach(c => c.classList.remove('border-amber-400', 'bg-amber-100', 'text-amber-800'))
+      }
+    })
+
+    m.querySelector('#ca-send').addEventListener('click', async () => {
+      const text = m.querySelector('#ca-text').value.trim()
+      if (!text) { showToast('พิมพ์ข้อความก่อนส่งนะ', 'warning'); return }
+      const annType = customInput.value.trim() || selectedType || `${ANN_TYPE_PRESETS[0].emoji} ${ANN_TYPE_PRESETS[0].label}`
+      const btn = m.querySelector('#ca-send')
+      btn.disabled = true; btn.textContent = 'กำลังส่ง...'
+      try {
+        const files = [...(m.querySelector('#ca-files').files ?? [])]
+        const attachments = []
+        for (const f of files) attachments.push(await uploadAssignmentFile(f, `class-${classId}/announcements`))
+        await createAnnouncement({ title: `📣 ${cls.class_name}`, body: text, isActive: true, teacherId: teacher.id, targetClassIds: [classId], annType, attachmentUrls: attachments.length ? attachments : null })
+        showToast('ส่งประกาศถึงห้องนี้แล้ว 📣', 'success')
+        m.remove()
+        _reload()
+      } catch (err) {
+        showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'ส่งประกาศ'
+      }
+    })
+  }
 
   // ── Wiring: แท็บโซนอ้างอิง (ตารางเรียน/คิวสอบ/กำหนดการสอน/แผนการสอน/งานที่มอบหมาย) ──
   // แต่ละแท็บ render แค่ตัวเองใน #sc-reftab-body ทีละแท็บ ต้อง wire ใหม่ทุกครั้งที่สลับแท็บ
