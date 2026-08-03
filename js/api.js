@@ -4060,6 +4060,15 @@ export async function deleteAssignment(id) {
   if (error) throw error
 }
 
+// บันทึกคะแนนงานที่มอบหมายเข้าคอลัมน์คะแนนที่ผูกไว้ ตามโหมด score_write_mode ของงานนั้น
+// (เทียบเอาคะแนนสูงกว่า/ทับคะแนนเก่า/บวกเพิ่มจากคะแนนเดิม — หลักการเดียวกับควิซ)
+export async function saveAssignmentGrade(assignmentId, studentId, score) {
+  const { error } = await supabase.rpc('_apply_assignment_score', {
+    p_assignment_id: assignmentId, p_student_id: studentId, p_score: score,
+  })
+  if (error) throw error
+}
+
 export async function getAssignmentSubmissions(assignmentId) {
   const { data, error } = await supabase
     .from('assignment_submissions')

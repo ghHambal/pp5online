@@ -7,7 +7,7 @@ import {
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
   closeLeavePermission, getMyDonationRequests, createAnnouncement, getClassAnnouncements,
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
-  getClassAssignmentsWithSubmissions, createAssignment, deleteAssignment,
+  getClassAssignmentsWithSubmissions, createAssignment, deleteAssignment, saveAssignmentGrade,
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
   getCourseSyllabus, createSyllabusItem, updateSyllabusItem, deleteSyllabusItem,
   getLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan,
@@ -295,6 +295,13 @@ export async function renderSmartClassroom(teacher, classId) {
     { emoji: '🎓', label: 'กิจกรรม/ฝึกอบรม' },
     { emoji: '⚠️', label: 'ด่วน/สำคัญ' },
   ]
+
+  // ── โหมดเขียนคะแนนงานที่มอบหมายเข้าคอลัมน์คะแนน — หลักการเดียวกับ score_write_mode ของควิซ ──
+  const ASSIGN_WRITE_MODE_LABEL = {
+    overwrite: { label: 'ทับคะแนนเก่า (ค่าเริ่มต้น)', hint: 'เขียนทับคะแนนเดิมในคอลัมน์นี้เสมอ ไม่ว่าเดิมจะมีค่าเท่าไหร่' },
+    highest:   { label: 'เทียบเอาคะแนนสูงกว่า', hint: 'ถ้าคอลัมน์นี้มีคะแนนอยู่แล้ว (กรอกมือ/งานอื่น) จะเก็บค่าที่สูงกว่าไว้' },
+    add:       { label: 'บวกเพิ่มจากคะแนนเดิม', hint: 'บวกคะแนนงานนี้เข้ากับคะแนนที่มีอยู่แล้วในคอลัมน์ เหมาะกับคอลัมน์สะสมคะแนนจากหลายงาน' },
+  }
 
   // ── Per-student lookup maps (สำหรับแผงข้อมูลนักเรียน) ─────────────────────
   const scoresByStudent = {}
@@ -1684,6 +1691,13 @@ export async function renderSmartClassroom(teacher, classId) {
             ${scoreColumns.map(c => `<option value="${c.id}">${_htmlEsc(c.assignment_name)} (เต็ม ${c.max_score})</option>`).join('')}
           </select>
         </div>
+        <div id="sa-write-mode-wrap" class="hidden">
+          <label class="text-xs font-semibold text-gray-500 mb-1 block">ถ้าคอลัมน์นี้มีคะแนนอยู่แล้ว ให้ทำอย่างไร</label>
+          <select id="sa-write-mode" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
+            ${Object.entries(ASSIGN_WRITE_MODE_LABEL).map(([v, mo]) => `<option value="${v}" ${v === 'overwrite' ? 'selected' : ''}>${mo.label}</option>`).join('')}
+          </select>
+          <p id="sa-write-mode-hint" class="text-[11px] text-gray-400 mt-1 leading-relaxed"></p>
+        </div>
         <div>
           <label class="block text-xs font-semibold text-gray-500 mb-1">กำหนดส่ง</label>
           <input id="sa-due" type="datetime-local" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
@@ -1718,6 +1732,18 @@ export async function renderSmartClassroom(teacher, classId) {
         : ''
     })
 
+    const colSelect = m.querySelector('#sa-col')
+    const writeModeWrap = m.querySelector('#sa-write-mode-wrap')
+    const writeModeSelect = m.querySelector('#sa-write-mode')
+    const writeModeHint = m.querySelector('#sa-write-mode-hint')
+    const syncWriteModeUI = () => {
+      writeModeWrap.classList.toggle('hidden', !colSelect.value)
+      writeModeHint.textContent = ASSIGN_WRITE_MODE_LABEL[writeModeSelect.value]?.hint ?? ''
+    }
+    colSelect.addEventListener('change', syncWriteModeUI)
+    writeModeSelect.addEventListener('change', syncWriteModeUI)
+    syncWriteModeUI()
+
     m.querySelector('#sa-save').addEventListener('click', async () => {
       const title = m.querySelector('#sa-title').value.trim()
       if (!title) { showToast('กรอกชื่องานก่อนนะ', 'warning'); return }
@@ -1731,13 +1757,14 @@ export async function renderSmartClassroom(teacher, classId) {
         await createAssignment({
           class_id: classId,
           teacher_id: teacher.id,
-          score_column_id: m.querySelector('#sa-col').value ? parseInt(m.querySelector('#sa-col').value, 10) : null,
+          score_column_id: colSelect.value ? parseInt(colSelect.value, 10) : null,
           title,
           description: m.querySelector('#sa-desc').value.trim() || null,
           attachment_urls: attachments,
           due_at: dueVal ? new Date(dueVal).toISOString() : null,
           late_penalty_mode: modeSel.value,
           late_penalty_value: parseFloat(valInput.value) || 0,
+          score_write_mode: writeModeSelect.value,
         })
         _sendClassPush(`📚 งานใหม่ — ${cls.class_name}`, title, 'sc-assignment')
         showToast('สั่งงานสำเร็จ ✅', 'success')
@@ -1813,7 +1840,7 @@ export async function renderSmartClassroom(teacher, classId) {
       const val = input.value.trim()
       btn.disabled = true
       try {
-        await saveStudentScore(classId, sid, a.score_column_id, val === '' ? null : val)
+        await saveAssignmentGrade(a.id, sid, val === '' ? 0 : parseFloat(val))
         showToast('บันทึกคะแนนแล้ว', 'success')
       } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
       finally { btn.disabled = false }
