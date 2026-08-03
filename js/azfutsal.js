@@ -1174,6 +1174,10 @@ function scheduleRows() {
     if (S.filterTeam && !`${r.teamA} ${r.teamB}`.toLowerCase().includes(S.filterTeam.toLowerCase())) return false
     if (S.filterTime && !(r.m?.kickoff_time || '').includes(S.filterTime)) return false
     return true
+  }).sort((a, b) => {
+    const timeA = a.m?.kickoff_time || '99:99'
+    const timeB = b.m?.kickoff_time || '99:99'
+    return timeA.localeCompare(timeB)
   })
 }
 
@@ -3446,7 +3450,13 @@ function bindEvents() {
       if (!start) { azToast('กรุณาเลือกเวลาเริ่มแข่ง'); return }
       await SB.from('azfutsal_config').upsert([{ key: 'START_TIME', value: start }, { key: 'MATCH_MIN', value: String(matchMin) }, { key: 'BREAK_MIN', value: String(breakMin) }])
       let t = new Date(start)
-      const allCodes = [...BRACKET.MS.map(b => ['MS', b.code]), ...BRACKET.HS.map(b => ['HS', b.code])]
+      const msCodes = BRACKET.MS.map(b => ['MS', b.code])
+      const hsCodes = BRACKET.HS.map(b => ['HS', b.code])
+      const allCodes = []
+      for (let i = 0; i < Math.max(msCodes.length, hsCodes.length); i += 1) {
+        if (msCodes[i]) allCodes.push(msCodes[i])
+        if (hsCodes[i]) allCodes.push(hsCodes[i])
+      }
       const rows = allCodes.map(([level, code]) => {
         const kickoff = t.toTimeString().slice(0, 5)
         const ready = new Date(t.getTime() - 5 * 60000).toTimeString().slice(0, 5)
@@ -3455,7 +3465,7 @@ function bindEvents() {
       })
       const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
       if (error) { azToast('จัดเวลาไม่สำเร็จ: ' + error.message); return }
-      await refresh(); azToast('จัดเวลาอัตโนมัติเรียบร้อย'); return
+      await refresh(); azToast('จัดเวลาอัตโนมัติแบบสลับ ม.ต้น–ม.ปลาย เรียบร้อย'); return
     }
     if (act === 'saveHalfDuration') {
       const halfMin = Number(gid('ops-halfmin').value || 20)
@@ -3928,7 +3938,8 @@ function adminOps() {
           <label style="font-size:11.5px;color:#6b7280;flex:1">นัด (นาที)<input id="ops-matchmin" type="number" value="${esc(cfg('MATCH_MIN', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
           <label style="font-size:11.5px;color:#6b7280;flex:1">พัก (นาที)<input id="ops-breakmin" type="number" value="${esc(cfg('BREAK_MIN', 5))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
         </div>
-        <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดเวลาอัตโนมัติ</button>
+        <div style="font-size:10.5px;color:#6b7280">ระบบจะเรียงสลับ ม.ต้น → ม.ปลาย ตามลำดับนัด และจัดระดับที่เหลือต่อเมื่ออีกระดับแข่งขันครบแล้ว</div>
+        <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดเวลาอัตโนมัติแบบสลับระดับ</button>
       </div>
     `)}
     ${box(`
