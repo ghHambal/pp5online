@@ -44,6 +44,13 @@ const MS_BRACKET_12 = [
   { code: 'M16', round: 'ชิงที่ 3', refA: 'L_M14', refB: 'L_M15' },
   { code: 'M17', round: 'ชิงที่ 1', refA: 'W_M14', refB: 'W_M15' },
 ]
+// เมื่อ ม.ต้น มี 13 ทีม: จับ 1 ทีมเข้ารอบบายก่อน แล้วนำ 12 ทีมที่เหลือจับคู่ M1-M6
+// ทีมบายเข้าช่อง M12 โดยตรง จึงเหลือสิทธิ์จากผู้ชนะรอบแก้ตัวเพียง 1 ทีมที่ M13
+const MS_BRACKET_13 = MS_BRACKET_12.map(match => {
+  if (match.code === 'M12') return { ...match, refB: 'FIRST_ROUND_BYE' }
+  if (match.code === 'M13') return { ...match, refB: 'REC_1' }
+  return { ...match }
+})
 // M1-M8 รอบแรก (16 ทีม) ผู้ชนะ 8 ทีมรอไว้ก่อน ผู้แพ้ 8 ทีมไปรอบแก้ตัว
 // M9-M12 รอบแก้ตัว (เฉพาะผู้แพ้รอบแรก) ผู้ชนะ 4 ทีมไปรวมกับผู้ชนะรอบแรก = 12 ทีม ผู้แพ้ตกรอบ
 // M13-M18 รวม 12 ทีม จับคู่ 6 คู่ (pool 'R3' — จับสลากสดหรือแอดมินเลือกเองตอนนั้น) ผู้ชนะ 6 ทีมไปต่อ ผู้แพ้ตกรอบ
@@ -75,7 +82,10 @@ const HS_BRACKET = SIXTEEN_TEAM_BRACKET
 const msTeamFormat = () => cfg('MS_TEAM_FORMAT', '12') === '16' ? '16' : '12'
 // ม.ต้น เลือกได้ 12 หรือ 16 ทีม (ตั้งค่าก่อนสร้างตารางแข่งเท่านั้น, ล็อกหลังสร้างแล้ว) — ม.ปลายคงที่ 16 ทีมเสมอ
 const BRACKET = {
-  get MS() { return msTeamFormat() === '16' ? MS_BRACKET_16 : MS_BRACKET_12 },
+  get MS() {
+    if (msTeamFormat() === '16') return MS_BRACKET_16
+    return hasMsFirstRoundBye() ? MS_BRACKET_13 : MS_BRACKET_12
+  },
   HS: HS_BRACKET,
 }
 const FINAL_CODE = {
@@ -110,6 +120,8 @@ let SB = null
 let ROOT = null
 let S = {
   tab: 'schedule',
+  scheduleMode: 'timeline',
+  bracketLevel: 'MS',
   filterLevel: 'ALL',
   filterTeam: '',
   filterTime: '',
@@ -177,6 +189,14 @@ let S = {
 }
 
 function cfg(key, fallback = '') { return S.config[key] ?? fallback }
+
+function hasMsFirstRoundBye() {
+  return msTeamFormat() === '12' && S.teams.filter(team => team.level === 'MS').length === 13
+}
+
+function supportsFirstRoundBye(level, poolKey = null) {
+  return !poolKey && level === 'MS' && hasMsFirstRoundBye()
+}
 
 async function loadAll() {
   const { data: { session } } = await SB.auth.getSession()
@@ -262,6 +282,7 @@ function resolveRef(level, ref, seen) {
   if (!ref) return null
   if (ref.startsWith('W_M')) return resolveMatch(level, ref.slice(2), seen).winnerId
   if (ref.startsWith('L_M')) return resolveMatch(level, ref.slice(2), seen).loserId
+  if (ref === 'FIRST_ROUND_BYE') return cfg(`FIRST_ROUND_BYE_${level}`, '') || null
   return null
 }
 
@@ -1156,19 +1177,105 @@ function scheduleRows() {
   })
 }
 
+function bracketRoundLabel(round) {
+  return round === 'ชิงที่ 3' || round === 'ชิงที่ 1' ? 'รอบชิง' : round
+}
+
+function bracketSlotPlaceholder(def, side) {
+  const ref = side === 'a' ? def.refA : def.refB
+  if (def.pool) return 'รอจับสลากรอบนี้'
+  if (!ref) return 'รอจับสลาก'
+  if (ref.startsWith('W_M')) return `ผู้ชนะ ${ref.slice(2)}`
+  if (ref.startsWith('L_M')) return `ผู้แพ้ ${ref.slice(2)}`
+  if (ref === 'FIRST_ROUND_BYE') return 'ทีมที่ได้สิทธิ์บาย'
+  if (ref.startsWith('REC_')) return 'ทีมจากรอบแก้ตัว'
+  if (ref === 'LOTTERY_1') return 'ทีมที่จับฉลากกลับมา'
+  return 'รอผลรอบก่อน'
+}
+
+function bracketMatchCard(level, def) {
+  const t = T[level]
+  const resolved = resolveMatch(level, def.code)
+  const match = resolved.match || {}
+  const hasScore = match.score_a !== null && match.score_a !== undefined && match.score_b !== null && match.score_b !== undefined
+  const teamRow = (side, name, teamId, score) => {
+    const isWinner = hasScore && resolved.winnerId && String(resolved.winnerId) === String(teamId)
+    const placeholder = bracketSlotPlaceholder(def, side)
+    const isBye = (side === 'a' ? def.refA : def.refB) === 'FIRST_ROUND_BYE'
+    return `
+    <div style="display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:8px;background:${isWinner ? '#dcfce7' : '#fff'};border:1px solid ${isWinner ? '#86efac' : '#f1f5f9'}">
+      <div style="flex:1;min-width:0;font-size:11.5px;font-weight:${name ? 700 : 600};color:${name ? (isWinner ? '#15803d' : '#1f2937') : '#9ca3af'};line-height:1.3;overflow-wrap:break-word">${name ? esc(name) : esc(placeholder)}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}</div>
+      ${hasScore ? `<div style="font-size:13px;font-weight:800;color:${isWinner ? '#15803d' : '#374151'}">${esc(score)}</div>` : ''}
+    </div>`
+  }
+  return `
+  <div style="position:relative;border:1px solid ${t.border};background:${t.soft};border-radius:12px;padding:8px;box-shadow:0 2px 8px rgba(15,23,42,.05)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">
+      <span style="font-size:10px;font-weight:800;color:${t.accent}">${def.code}</span>
+      <span style="font-size:9.5px;color:#9ca3af">${esc(match.kickoff_time || '')}</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      ${teamRow('a', resolved.teamA, resolved.teamAId, match.score_a)}
+      ${teamRow('b', resolved.teamB, resolved.teamBId, match.score_b)}
+    </div>
+    ${def.round === 'ชิงที่ 3' ? `<div style="margin-top:5px;font-size:9.5px;color:#b45309;font-weight:700;text-align:center">ชิงอันดับ 3</div>` : ''}
+    ${def.round === 'ชิงที่ 1' ? `<div style="margin-top:5px;font-size:9.5px;color:#7c3aed;font-weight:700;text-align:center">ชิงชนะเลิศ</div>` : ''}
+  </div>`
+}
+
+function tournamentBracketView() {
+  const level = S.bracketLevel || 'MS'
+  const groups = []
+  BRACKET[level].forEach(def => {
+    const label = bracketRoundLabel(def.round)
+    let group = groups.find(item => item.label === label)
+    if (!group) { group = { label, matches: [] }; groups.push(group) }
+    group.matches.push(def)
+  })
+  const byeTeamId = level === 'MS' ? cfg('FIRST_ROUND_BYE_MS', '') : ''
+  return `
+  <div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      ${['MS', 'HS'].map(v => `<button data-act="setBracketLevel" data-v="${v}" style="flex:1;padding:9px;border-radius:10px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-size:12.5px;font-weight:800;cursor:pointer">${T[v].label} · ${BRACKET[v].length} นัด</button>`).join('')}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+      <div style="font-size:11.5px;color:#6b7280">เลื่อนซ้าย–ขวาเพื่อดูเส้นทางถึงรอบชิง</div>
+      ${level === 'MS' && hasMsFirstRoundBye() ? `<div style="font-size:10.5px;color:#b45309;font-weight:700">⭐ ทีมบาย: ${esc(teamName(byeTeamId) || 'รอจับสลาก')}</div>` : ''}
+    </div>
+    <div style="overflow-x:auto;overflow-y:hidden;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch">
+      <div style="display:flex;align-items:flex-start;gap:12px;min-width:max-content">
+        ${groups.map((group, groupIndex) => `
+        <div style="width:190px;flex:0 0 190px;scroll-snap-align:start">
+          <div style="position:sticky;top:0;z-index:1;text-align:center;font-size:11px;font-weight:800;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:5px 8px;margin-bottom:8px">${esc(group.label)} · ${group.matches.length} นัด</div>
+          <div style="display:flex;flex-direction:column;gap:${Math.max(8, groupIndex * 4 + 8)}px;padding-top:${groupIndex * 10}px">
+            ${group.matches.map(def => bracketMatchCard(level, def)).join('')}
+          </div>
+        </div>
+        ${groupIndex < groups.length - 1 ? `<div style="width:22px;flex:0 0 22px;align-self:center;text-align:center;color:#94a3b8;font-size:26px;font-weight:300">›</div>` : ''}`).join('')}
+      </div>
+    </div>
+  </div>`
+}
+
 function scheduleView() {
   const rows = scheduleRows()
+  const isBracket = S.scheduleMode === 'bracket'
   return `
   <section>
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px">
-      <h2 style="margin:0;font-size:17px;font-weight:800">ตารางการแข่งขัน</h2>
-      <span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${rows.length} นัด</span>
+      <h2 style="margin:0;font-size:17px;font-weight:800">${isBracket ? 'ผังการแข่งขัน' : 'ตารางการแข่งขัน'}</h2>
+      ${isBracket ? '' : `<span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${rows.length} นัด</span>`}
     </div>
     <p style="margin:0 0 14px;font-size:12px;color:#6b7280">${esc(cfg('INFO_VENUE', ''))}</p>
     ${(cfg('REGISTRATION_OPEN_MS', '0') === '1' || cfg('REGISTRATION_OPEN_HS', '0') === '1') ? `
     <button data-act="account" style="width:100%;margin-bottom:14px;padding:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
       📝 ลงทะเบียนทีม (สมัครเข้าร่วมการแข่งขัน)
     </button>` : ''}
+    <div style="display:flex;gap:5px;padding:4px;background:#f3f4f6;border-radius:12px;margin-bottom:12px">
+      <button data-act="setScheduleMode" data-v="timeline" style="flex:1;padding:8px;border-radius:9px;border:none;background:${!isBracket ? '#fff' : 'transparent'};color:${!isBracket ? '#111827' : '#6b7280'};box-shadow:${!isBracket ? '0 1px 4px rgba(0,0,0,.08)' : 'none'};font-size:12px;font-weight:800;cursor:pointer">🕐 ตารางตามเวลา</button>
+      <button data-act="setScheduleMode" data-v="bracket" style="flex:1;padding:8px;border-radius:9px;border:none;background:${isBracket ? '#fff' : 'transparent'};color:${isBracket ? '#111827' : '#6b7280'};box-shadow:${isBracket ? '0 1px 4px rgba(0,0,0,.08)' : 'none'};font-size:12px;font-weight:800;cursor:pointer">🏆 ผังการแข่งขัน</button>
+    </div>
+    ${isBracket ? tournamentBracketView() : `
     <div style="display:flex;gap:6px;margin-bottom:10px">
       ${['ALL', 'MS', 'HS'].map(v => `<button data-act="setLevel" data-v="${v}" style="font-size:12.5px;padding:7px 14px;border-radius:9px;border:1px solid ${S.filterLevel === v ? '#db2777' : '#e5e7eb'};background:${S.filterLevel === v ? '#db2777' : '#fff'};color:${S.filterLevel === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${v === 'ALL' ? 'ทั้งหมด' : T[v].label}</button>`).join('')}
     </div>
@@ -1178,7 +1285,7 @@ function scheduleView() {
     </div>
     <div id="az-schedule-rows" style="display:flex;flex-direction:column;gap:10px">
       ${rows.length ? rows.map(matchCard).join('') : `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดที่ตรงกับตัวกรอง</div>`}
-    </div>
+    </div>`}
   </section>`
 }
 
@@ -2115,6 +2222,7 @@ function poolActionButtons(level, poolKey, label) {
 function adminTeams() {
   const level = S.adminTeamLevel || 'MS'
   const rows = S.teams.filter(t => t.level === level)
+  const hasFirstRoundBye = level === 'MS' && hasMsFirstRoundBye()
   const seeded = S.matches[level].length >= BRACKET[level].length
   const quota = Number(cfg(level === 'MS' ? 'MAX_TEAMS_MS' : 'MAX_TEAMS_HS', '') || 0)
   const verifiedCount = S.payments.filter(p => p.status === 'verified' && S.teams.find(t2 => t2.id === p.team_id)?.level === level).length
@@ -2127,11 +2235,11 @@ function adminTeams() {
     <div style="flex-shrink:0;margin-bottom:10px">
       <div style="font-size:11.5px;color:#6b7280;margin-bottom:5px">รูปแบบสายการแข่ง ม.ต้น (เลือกก่อนสร้างตารางแข่ง — ล็อกทันทีที่สร้างแล้ว)</div>
       <div style="display:flex;gap:6px">
-        <button data-act="setMsFormat" data-v="12" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '12' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '12' ? T.MS.base : '#fff'};color:${msTeamFormat() === '12' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">12 ทีม (17 นัด)</button>
+        <button data-act="setMsFormat" data-v="12" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '12' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '12' ? T.MS.base : '#fff'};color:${msTeamFormat() === '12' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">12 ทีม${hasFirstRoundBye ? ' + บาย 1' : ''} (17 นัด)</button>
         <button data-act="setMsFormat" data-v="16" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '16' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '16' ? T.MS.base : '#fff'};color:${msTeamFormat() === '16' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">16 ทีม (25 นัด)</button>
       </div>
     </div>` : ''}
-    ${level === 'MS' && seeded ? `<div style="flex-shrink:0;font-size:10.5px;color:#9ca3af;margin-bottom:8px">รูปแบบสายการแข่ง: ${msTeamFormat()} ทีม (${BRACKET.MS.length} นัด) — ล็อกไว้แล้วเพราะสร้างตารางแข่งแล้ว</div>` : ''}
+    ${level === 'MS' && seeded ? `<div style="flex-shrink:0;font-size:10.5px;color:#9ca3af;margin-bottom:8px">รูปแบบสายการแข่ง: ${hasFirstRoundBye ? '13 ทีม (จับบาย 1 ทีมก่อน)' : `${msTeamFormat()} ทีม`} (${BRACKET.MS.length} นัด) — ล็อกไว้แล้วเพราะสร้างตารางแข่งแล้ว</div>` : ''}
     ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:6px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่ (ทันที ไม่มีแอนิเมชัน)</button>`}
     ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:${usesSixteenTeamPools(level) ? '6px' : '10px'};padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด รอบแรก (สำหรับไลฟ์)</button>` : ''}
     ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R3') ? poolActionButtons(level, 'R3', 'รอบ 12 ทีม') : ''}
@@ -2158,10 +2266,12 @@ function pickableSlots(level, code) {
     return slots
   }
   if (!def.refA) slots.a = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_a_id || '' }
+  else if (def.refA === 'FIRST_ROUND_BYE') slots.a = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_a_id || cfg(`FIRST_ROUND_BYE_${level}`, '') }
   else if (def.refA === 'REC_1' || def.refA === 'REC_2') slots.a = { pool: poolFrom(RECOVER_SOURCES[level] || []), value: m?.team_a_id || '' }
   else if (def.refA === 'WC_1' || def.refA === 'WC_2') slots.a = { pool: poolFrom(WILDCARD_SOURCES[level] || []), value: m?.team_a_id || '' }
   else if (def.refA === 'LOTTERY_1') slots.a = { pool: losersFrom(level, LOTTERY_SOURCES[level] || []), value: m?.team_a_id || '' }
   if (!def.refB) slots.b = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_b_id || '' }
+  else if (def.refB === 'FIRST_ROUND_BYE') slots.b = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_b_id || cfg(`FIRST_ROUND_BYE_${level}`, '') }
   else if (def.refB === 'REC_1' || def.refB === 'REC_2') slots.b = { pool: poolFrom(RECOVER_SOURCES[level] || []), value: m?.team_b_id || '' }
   else if (def.refB === 'WC_1' || def.refB === 'WC_2') slots.b = { pool: poolFrom(WILDCARD_SOURCES[level] || []), value: m?.team_b_id || '' }
   else if (def.refB === 'LOTTERY_1') slots.b = { pool: losersFrom(level, LOTTERY_SOURCES[level] || []), value: m?.team_b_id || '' }
@@ -2186,10 +2296,11 @@ function liveDrawSlotSeq(level, strategy, poolKey) {
   const codes = poolKey
     ? BRACKET[level].filter(b => b.pool === poolKey).map(b => b.code)
     : BRACKET[level].filter(b => !b.refA && !b.pool).map(b => b.code)
+  const byeSlot = supportsFirstRoundBye(level, poolKey) ? [{ code: 'BYE', side: 'bye', isBye: true }] : []
   if (strategy === 'byside') {
-    return [...codes.map(code => ({ code, side: 'a' })), ...codes.map(code => ({ code, side: 'b' }))]
+    return [...byeSlot, ...codes.map(code => ({ code, side: 'a' })), ...codes.map(code => ({ code, side: 'b' }))]
   }
-  return codes.flatMap(code => [{ code, side: 'a' }, { code, side: 'b' }])
+  return [...byeSlot, ...codes.flatMap(code => [{ code, side: 'a' }, { code, side: 'b' }])]
 }
 
 // ทีมที่ใช้จับสลาก — รอบแรกใช้ทีมทั้งหมดของระดับชั้น, รอบสระใช้ผู้ชนะของนัดต้นสระ
@@ -2248,6 +2359,8 @@ function liveDrawView() {
     const orderStrategy = ld.orderStrategy || 'bypair'
     const slotSeq = liveDrawSlotSeq(level, orderStrategy, ld.pool)
     const mismatch = teamIds.length > slotSeq.length
+    const hasBye = slotSeq.some(slot => slot.isBye)
+    const pairCount = slotSeq.filter(slot => !slot.isBye).length / 2
     const testMode = ld.testMode !== false // ค่าเริ่มต้นคือโหมดทดสอบ ปลอดภัยไว้ก่อน
     return `
     <div style="position:fixed;inset:0;z-index:80;background:${stageBg};color:#fff;display:flex;flex-direction:column">
@@ -2256,7 +2369,8 @@ function liveDrawView() {
         <button data-act="closeLiveDraw" style="position:absolute;top:16px;right:16px;border:none;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:15px">✕</button>
         <div style="font-size:30px;font-weight:800;margin-bottom:2px">🎬 จับสลากสด · ${esc(poolLabel)}</div>
         <div style="font-size:19px;font-weight:700;color:${t.base};margin-bottom:8px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))} · ${t.label}</div>
-        <div style="font-size:13px;color:#9ca3af;margin-bottom:16px">ทีมในโหล ${teamIds.length} ทีม · ช่องทั้งหมด ${slotSeq.length / 2} คู่ (${slotSeq.length} ช่อง)</div>
+        <div style="font-size:13px;color:#9ca3af;margin-bottom:${hasBye ? '6px' : '16px'}">ทีมในโหล ${teamIds.length} ทีม · ${hasBye ? '1 สิทธิ์บาย + ' : ''}${pairCount} คู่ (${slotSeq.length} ฉลาก)</div>
+        ${hasBye ? `<div style="font-size:12px;color:#fbbf24;font-weight:700;margin-bottom:16px">ฉลากแรกจะเป็นทีมที่ได้สิทธิ์เข้ารอบบาย จากนั้นจึงจับ 12 ทีมที่เหลือประกบคู่ M1-M6</div>` : ''}
         <div style="display:flex;gap:8px;background:rgba(255,255,255,.06);padding:5px;border-radius:12px">
           <button data-act="setLiveDrawMode" data-v="1" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${testMode ? '#f59e0b' : 'transparent'};color:${testMode ? '#111827' : '#9ca3af'}">🧪 โหมดทดสอบ (ไม่บันทึก)</button>
           <button data-act="setLiveDrawMode" data-v="0" style="padding:9px 16px;border-radius:9px;border:none;font-weight:700;font-size:12.5px;cursor:pointer;background:${!testMode ? '#dc2626' : 'transparent'};color:${!testMode ? '#fff' : '#9ca3af'}">🔴 จับจริง (บันทึกผล)</button>
@@ -2275,10 +2389,11 @@ function liveDrawView() {
     </div>`
   }
   const slotSeq = ld.slotSeq
-  const codes = [...new Set(slotSeq.map(s => s.code))]
+  const codes = [...new Set(slotSeq.filter(s => !s.isBye).map(s => s.code))]
   const remaining = ld.order.length - ld.pickIndex
   const isDone = ld.pickIndex >= slotSeq.length || ld.pickIndex >= ld.order.length
   const remainingTeamIds = ld.order.slice(ld.pickIndex)
+  const byeId = ld.filled.BYE_bye
   return `
   <div style="position:fixed;inset:0;z-index:80;background:${stageBg};color:#fff;display:flex;flex-direction:column;overflow-y:auto">
     ${stageBar}
@@ -2304,6 +2419,11 @@ function liveDrawView() {
     </div>
     <div id="live-draw-center" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);opacity:0;z-index:90;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:14px"></div>
     <div style="flex:1;padding:0 18px 18px;display:grid;grid-template-columns:repeat(auto-fill, minmax(150px,1fr));gap:10px;align-content:start">
+      ${slotSeq.some(slot => slot.isBye) ? `
+      <div style="border:1px solid rgba(251,191,36,.55);border-radius:12px;padding:10px;background:rgba(245,158,11,.12)">
+        <div style="font-size:10.5px;color:#fbbf24;font-weight:800;margin-bottom:6px">⭐ สิทธิ์เข้ารอบบาย</div>
+        <div style="font-size:12.5px;font-weight:700;min-height:18px;overflow-wrap:break-word">${byeId ? esc(teamName(byeId)) : '<span style="color:#6b7280">จับเป็นฉลากแรก</span>'}</div>
+      </div>` : ''}
       ${codes.map(code => {
         const aId = ld.filled[`${code}_a`], bId = ld.filled[`${code}_b`]
         const teamLabel = id => {
@@ -2468,7 +2588,7 @@ async function handleDrawNext() {
 
   // ลูกบอลลอยออกจากโถ ขยายใหญ่มากลางจอ แล้ว "แตกแคปซูล" แยกซ้าย-ขวา เผยชื่อทีมบนกระดาษสีขาว (ตัวใหญ่เด่นชัด ให้คนที่เพิ่งเข้ามาดูไลฟ์เข้าใจทันที)
   const s = ballStyleFor(teamId)
-  const slotLabel = `${slot.code} · ทีม ${slot.side.toUpperCase()}`
+  const slotLabel = slot.isBye ? '⭐ สิทธิ์เข้ารอบบาย' : `${slot.code} · ทีม ${slot.side.toUpperCase()}`
   const center = document.getElementById('live-draw-center')
   if (center) {
     center.innerHTML = `
@@ -2521,6 +2641,23 @@ async function handleDrawNext() {
 
   ld.phase = 'idle'
   ld.shaken = false // รอบถัดไปต้องเขย่าใหม่ก่อนถึงจะจับได้
+  if (slot.isBye) {
+    if (!ld.testMode) {
+      const key = `FIRST_ROUND_BYE_${ld.level}`
+      const [{ error }, { error: clearError }] = await Promise.all([
+        SB.from('azfutsal_config').upsert({ key, value: teamId }),
+        SB.from('azfutsal_matches').update({ team_b_id: null }).eq('level', ld.level).in('match_code', ['M12', 'M13']),
+      ])
+      if (error || clearError) { azToast('บันทึกทีมบายไม่สำเร็จ: ' + (error?.message || clearError?.message)); draw(); return }
+      S.config[key] = teamId
+      S.matches[ld.level].forEach(match => {
+        if (match.match_code === 'M12' || match.match_code === 'M13') match.team_b_id = null
+      })
+      azToast(`ทีม ${teamName(teamId)} ได้สิทธิ์เข้ารอบบาย`)
+    }
+    draw()
+    return
+  }
   const aId = ld.filled[`${slot.code}_a`], bId = ld.filled[`${slot.code}_b`]
   if (aId && bId && !ld.testMode) {
     const roundLabel = (BRACKET[ld.level].find(b => b.code === slot.code) || {}).round || ''
@@ -2835,13 +2972,25 @@ async function handleSeedMatches(level) {
 async function handleRandomDraw(level) {
   const teams = S.teams.filter(t => t.level === level).map(t => t.id)
   const firstCodes = BRACKET[level].filter(b => !b.refA && !b.pool).map(b => b.code)
-  if (teams.length < firstCodes.length * 2) { azToast(`ต้องมีทีมอย่างน้อย ${firstCodes.length * 2} ทีมสำหรับรอบแรก`); return }
-  const shuffled = [...teams].sort(() => Math.random() - 0.5)
+  const requiredTeams = firstCodes.length * 2
+  const hasBye = supportsFirstRoundBye(level)
+  const maxTeams = requiredTeams + (hasBye ? 1 : 0)
+  if (teams.length < requiredTeams) { azToast(`ต้องมีทีมอย่างน้อย ${requiredTeams} ทีมสำหรับรอบแรก`); return }
+  if (teams.length > maxTeams) { azToast(`รอบแรกมี ${requiredTeams} ช่อง รองรับทีมบายเพิ่มได้สูงสุด 1 ทีม`); return }
+  const shuffled = cryptoShuffle(teams)
+  const byeTeamId = hasBye ? shuffled.shift() : null
   const rows = firstCodes.map((code, i) => ({ level, match_code: code, round: 'รอบแรก', team_a_id: shuffled[i * 2], team_b_id: shuffled[i * 2 + 1] }))
+  if (byeTeamId) {
+    const key = `FIRST_ROUND_BYE_${level}`
+    const { error: byeError } = await SB.from('azfutsal_config').upsert({ key, value: byeTeamId })
+    if (byeError) { azToast('บันทึกทีมบายไม่สำเร็จ: ' + byeError.message); return }
+    const { error: clearError } = await SB.from('azfutsal_matches').update({ team_b_id: null }).eq('level', level).in('match_code', ['M12', 'M13'])
+    if (clearError) { azToast('เตรียมช่องทีมบายไม่สำเร็จ: ' + clearError.message); return }
+  }
   const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
   if (error) { azToast('สุ่มจับคู่ไม่สำเร็จ: ' + error.message); return }
   await refresh()
-  azToast('สุ่มจับคู่รอบแรกแล้ว')
+  azToast(byeTeamId ? `ทีม ${teamName(byeTeamId)} ได้บาย · สุ่มประกบคู่ 12 ทีมที่เหลือแล้ว` : 'สุ่มจับคู่รอบแรกแล้ว')
 }
 
 // จับคู่รอบสระ (12/6 ทีม) อัตโนมัติแบบจัดอันดับ (seeding): เรียงทีมตามผลงานจริงที่ผ่านมา (ชนะ/ผลต่างประตู/ได้ประตู — สูตรเดียวกับ computeTeamStats)
@@ -3074,6 +3223,8 @@ function bindEvents() {
     if (!btn) return
     const act = btn.dataset.act
     if (act === 'tab') { S.tab = btn.dataset.tab; draw(); return }
+    if (act === 'setScheduleMode') { S.scheduleMode = btn.dataset.v === 'bracket' ? 'bracket' : 'timeline'; draw(); return }
+    if (act === 'setBracketLevel') { S.bracketLevel = btn.dataset.v === 'HS' ? 'HS' : 'MS'; draw(); return }
     if (act === 'setLevel') { S.filterLevel = btn.dataset.v; draw(); return }
     if (act === 'setStats') { S.statsLevel = btn.dataset.v; draw(); return }
     if (act === 'setTeamStatusLevel') { S.teamStatusLevel = btn.dataset.v; draw(); return }
