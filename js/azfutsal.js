@@ -350,10 +350,10 @@ function matchClockDisplay(m, opts = {}) {
   const isRunning = status === 'running'
   const halfLabel = half === 2 ? 'ครึ่งหลัง' : 'ครึ่งแรก'
   const label = status === 'paused' ? `หยุดเวลา · ${halfLabel}` : status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ${halfLabel}`
-  const size = opts.compact ? '13px' : '20px'
-  return `<span style="display:inline-flex;align-items:center;gap:6px;${opts.compact ? '' : 'padding:4px 10px;background:#111827;border-radius:999px;'}">
-    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:800;font-size:${size};color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
-    <span style="font-size:10px;font-weight:700;color:${isRunning ? '#22c55e' : status === 'paused' ? '#f59e0b' : (opts.compact ? '#6b7280' : '#9ca3af')}">${label}</span>
+  const size = opts.compact ? '13px' : 'clamp(44px,12vw,64px)'
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:${opts.compact ? '6px' : '2px'};${opts.compact ? '' : 'width:100%;box-sizing:border-box;flex-direction:column;padding:10px 14px;background:#111827;border-radius:14px;'}">
+    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:900;font-size:${size};letter-spacing:${opts.compact ? '0' : '1.5px'};line-height:1;color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
+    <span style="font-size:${opts.compact ? '10px' : '12px'};font-weight:800;color:${isRunning ? '#22c55e' : status === 'paused' ? '#f59e0b' : (opts.compact ? '#6b7280' : '#9ca3af')}">${label}</span>
   </span>`
 }
 // อัปเดตตัวเลขนาฬิกาทุกวินาทีแบบ DOM ตรงๆ ไม่เรียก draw() ใหม่ — self-healing เพราะ query DOM สดทุกครั้ง ถ้า draw() แทนที่ element ไปแล้วรอบถัดไปก็จะเจอตัวใหม่เอง
