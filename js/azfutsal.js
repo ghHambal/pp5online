@@ -163,6 +163,7 @@ let S = {
 
   identity: { session: null, profile: null, isAdmin: false, scopes: [], student: null, teacher: null },
   staffScopeEdit: null, // { mode:'add'|'edit', id?, profile_id?, name, scopes:[] }
+  manualPoolAssign: null, // { level, pool } — จับคู่รอบสระ (12/6 ทีม) ด้วยตนเองทีละคู่ในหน้าเดียว
   config: {},
   teams: [],
   players: [],
@@ -592,6 +593,7 @@ function draw() {
       ${s.viewProofOpen ? viewProofModal() : ''}
       ${s.rejectPaymentId ? rejectReasonModal() : ''}
       ${s.liveDraw ? liveDrawView() : ''}
+      ${s.manualPoolAssign ? manualPoolAssignModal() : ''}
       ${s.pendingConfirm ? confirmActionModal() : ''}
       ${s.staffScopeEdit ? staffScopeModal() : ''}
     </div>
@@ -2097,6 +2099,19 @@ function adminStaff() {
   `)
 }
 
+// 3 โหมดจับคู่รอบสระ (12 ทีม/6 ทีม) เมื่อผลรอบก่อนหน้าครบแล้ว: อัตโนมัติจัดอันดับ / จับสลากสดโชว์ / กรอกเองทีละคู่
+function poolActionButtons(level, poolKey, label) {
+  return `
+  <div style="flex-shrink:0;margin-bottom:6px">
+    <div style="font-size:10.5px;color:#9ca3af;font-weight:700;margin-bottom:4px">${esc(label)}</div>
+    <div style="display:flex;gap:6px">
+      <button data-act="autoSeedPool" data-level="${level}" data-pool="${poolKey}" style="flex:1;padding:8px 4px;border-radius:9px;border:none;background:linear-gradient(135deg,#0891b2,#06b6d4);color:#fff;font-weight:800;font-size:10.5px;line-height:1.35;cursor:pointer">🎲 อัตโนมัติ<br/><span style="font-weight:600;opacity:.9">จัดอันดับ</span></button>
+      <button data-act="openLiveDraw" data-level="${level}" data-pool="${poolKey}" style="flex:1;padding:8px 4px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:10.5px;line-height:1.35;cursor:pointer">🎬 จับสลากสด<br/><span style="font-weight:600;opacity:.9">โชว์ไลฟ์</span></button>
+      <button data-act="openManualPoolAssign" data-level="${level}" data-pool="${poolKey}" style="flex:1;padding:8px 4px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:800;font-size:10.5px;line-height:1.35;cursor:pointer">✍️ กรอกเอง<br/><span style="font-weight:600;opacity:.7">Manual</span></button>
+    </div>
+  </div>`
+}
+
 function adminTeams() {
   const level = S.adminTeamLevel || 'MS'
   const rows = S.teams.filter(t => t.level === level)
@@ -2119,9 +2134,8 @@ function adminTeams() {
     ${level === 'MS' && seeded ? `<div style="flex-shrink:0;font-size:10.5px;color:#9ca3af;margin-bottom:8px">รูปแบบสายการแข่ง: ${msTeamFormat()} ทีม (${BRACKET.MS.length} นัด) — ล็อกไว้แล้วเพราะสร้างตารางแข่งแล้ว</div>` : ''}
     ${!seeded ? `<button data-act="seedMatches" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:9px;border-radius:9px;border:1px dashed ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:700;font-size:12.5px;cursor:pointer">สร้างตารางแข่งเริ่มต้น (${BRACKET[level].length} นัด)</button>` : `<button data-act="randomDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:6px;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">สุ่มจับคู่รอบแรกใหม่ (ทันที ไม่มีแอนิเมชัน)</button>`}
     ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:${usesSixteenTeamPools(level) ? '6px' : '10px'};padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด รอบแรก (สำหรับไลฟ์)</button>` : ''}
-    ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R3') ? `<button data-act="openLiveDraw" data-level="${level}" data-pool="R3" style="flex-shrink:0;width:100%;margin-bottom:6px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด · รอบ 12 ทีม</button>` : ''}
-    ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R4') ? `<button data-act="openLiveDraw" data-level="${level}" data-pool="R4" style="flex-shrink:0;width:100%;margin-bottom:10px;padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด · รอบ 6 ทีม</button>` : ''}
-    ${seeded && usesSixteenTeamPools(level) ? `<div style="flex-shrink:0;font-size:10.5px;color:#9ca3af;margin:-2px 0 10px">รอบ 12 ทีม/6 ทีม เมื่อผลรอบก่อนหน้าครบแล้ว จะจับสลากสดหรือกด "แก้ไขผล/เวลา" ของแต่ละคู่เพื่อเลือกทีมเองก็ได้</div>` : ''}
+    ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R3') ? poolActionButtons(level, 'R3', 'รอบ 12 ทีม') : ''}
+    ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R4') ? poolActionButtons(level, 'R4', 'รอบ 6 ทีม') : ''}
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;overflow-y:auto">
       ${rows.length ? rows.map(t => teamAdminRow(t)).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีทีมในระดับนี้</div>`}
     </div>
@@ -2638,6 +2652,31 @@ function matchEditorModal() {
     </div>`)
 }
 
+// จับคู่รอบสระ (12/6 ทีม) ด้วยตนเองทีละคู่ในหน้าเดียว — ใช้หลังจับฉลากสดนอกระบบ (กล่อง/ถุงจริง) แล้วมาพิมพ์ผลใส่ทีเดียว
+function manualPoolAssignModal() {
+  const { level, pool } = S.manualPoolAssign
+  const codes = BRACKET[level].filter(b => b.pool === pool).map(b => b.code)
+  const roundLabel = (BRACKET[level].find(b => b.pool === pool) || {}).round || ''
+  return simpleModal(`กรอกเอง (Manual) · ${esc(roundLabel)} · ${T[level].label}`, `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:11.5px;color:#6b7280">เลือกทีมของแต่ละคู่เอง เช่น หลังจับฉลากสดนอกระบบแล้วมาบันทึกผล ห้ามเลือกทีมซ้ำกันข้ามคู่</div>
+      ${codes.map(code => {
+        const slots = pickableSlots(level, code)
+        const opts = slot => `<option value="">- เลือกทีม -</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}`
+        return `
+        <div style="border:1px solid #e5e7eb;border-radius:12px;padding:10px">
+          <div style="font-size:11px;color:#9ca3af;font-weight:700;margin-bottom:6px">${code}</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="mp-${code}-a" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px">${opts(slots.a)}</select>
+            <span style="font-size:11px;color:#9ca3af;flex-shrink:0">vs</span>
+            <select id="mp-${code}-b" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px">${opts(slots.b)}</select>
+          </div>
+        </div>`
+      }).join('')}
+      <button data-act="saveManualPoolAssign" style="margin-top:4px;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">บันทึกทั้งหมด</button>
+    </div>`)
+}
+
 // ---------------- staff search ----------------
 async function loadStaffList() {
   const { data: rows } = await SB.from('azfutsal_admins').select('id, profile_id, note, created_at, scopes').order('created_at')
@@ -2803,6 +2842,44 @@ async function handleRandomDraw(level) {
   if (error) { azToast('สุ่มจับคู่ไม่สำเร็จ: ' + error.message); return }
   await refresh()
   azToast('สุ่มจับคู่รอบแรกแล้ว')
+}
+
+// จับคู่รอบสระ (12/6 ทีม) อัตโนมัติแบบจัดอันดับ (seeding): เรียงทีมตามผลงานจริงที่ผ่านมา (ชนะ/ผลต่างประตู/ได้ประตู — สูตรเดียวกับ computeTeamStats)
+// แล้วจับคู่แบบ 1 พบบ๊วย, 2 พบรองบ๊วย, ... กันทีมท็อปชนกันเองเร็วเกินไป
+async function handleAutoSeedPool(level, poolKey) {
+  if (!poolRoundReady(level, poolKey)) { azToast('รอบก่อนหน้ายังแข่งไม่ครบ จับคู่รอบนี้ไม่ได้'); return }
+  const poolTeamIds = winnersFrom(level, POOL_SOURCES[level]?.[poolKey] || [])
+  const ranked = computeTeamStats(level).map(t => t.id).filter(id => poolTeamIds.includes(id))
+  poolTeamIds.forEach(id => { if (!ranked.includes(id)) ranked.push(id) }) // เผื่อทีมที่ยังไม่มีสถิติ (เช่น walkover) ต่อท้ายไว้
+  const codes = BRACKET[level].filter(b => b.pool === poolKey).map(b => b.code)
+  const n = ranked.length
+  const roundLabel = (BRACKET[level].find(b => b.pool === poolKey) || {}).round || ''
+  const rows = codes.map((code, i) => ({ level, match_code: code, round: roundLabel, team_a_id: ranked[i], team_b_id: ranked[n - 1 - i] }))
+  const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
+  if (error) { azToast('จัดคู่อัตโนมัติไม่สำเร็จ: ' + error.message); return }
+  await refresh()
+  azToast('จัดคู่ตามอันดับแล้ว (อันดับดี พบ อันดับรอง)')
+}
+
+async function handleSaveManualPoolAssign() {
+  const { level, pool } = S.manualPoolAssign
+  const codes = BRACKET[level].filter(b => b.pool === pool).map(b => b.code)
+  const roundLabel = (BRACKET[level].find(b => b.pool === pool) || {}).round || ''
+  const rows = []
+  const seen = new Set()
+  for (const code of codes) {
+    const aId = gid(`mp-${code}-a`).value || null
+    const bId = gid(`mp-${code}-b`).value || null
+    if (!aId || !bId) { azToast(`กรุณาเลือกทีมให้ครบทุกคู่ (ขาด ${code})`); return }
+    if (aId === bId || seen.has(aId) || seen.has(bId)) { azToast('มีทีมถูกเลือกซ้ำกันมากกว่า 1 คู่ กรุณาตรวจสอบ'); return }
+    seen.add(aId); seen.add(bId)
+    rows.push({ level, match_code: code, round: roundLabel, team_a_id: aId, team_b_id: bId })
+  }
+  const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
+  if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+  S.manualPoolAssign = null
+  await refresh()
+  azToast('บันทึกการจับคู่แล้ว')
 }
 
 async function handleCreateTeam(adminMode) {
@@ -3007,7 +3084,7 @@ function bindEvents() {
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'adminAthleteLevel') { S.adminAthleteLevel = btn.dataset.v; draw(); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
-    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; draw(); return }
+    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
     if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
     if (act === 'confirmActionYes') {
       const pc = S.pendingConfirm
@@ -3316,6 +3393,18 @@ function bindEvents() {
       draw(); return
     }
     if (act === 'openLiveDraw') { S.liveDraw = { level: btn.dataset.level, pool: btn.dataset.pool || null, started: false, testMode: true, orderStrategy: 'bypair' }; draw(); return }
+    if (act === 'autoSeedPool') {
+      const level = btn.dataset.level, pool = btn.dataset.pool
+      S.pendingConfirm = {
+        message: `จัดคู่รอบนี้อัตโนมัติตามอันดับผลงาน (ทีมอันดับดี พบ ทีมอันดับรอง)?\nจะทับข้อมูลคู่แข่งเดิมของรอบนี้ถ้ามี`,
+        danger: false,
+        confirmLabel: 'จัดคู่เลย',
+        run: async () => { await handleAutoSeedPool(level, pool) }
+      }
+      draw(); return
+    }
+    if (act === 'openManualPoolAssign') { S.manualPoolAssign = { level: btn.dataset.level, pool: btn.dataset.pool }; draw(); return }
+    if (act === 'saveManualPoolAssign') { await handleSaveManualPoolAssign(); return }
     if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
     if (act === 'setLiveDrawOrder') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.orderStrategy = btn.dataset.v; draw() } return }
     if (act === 'closeLiveDraw') { stopLiveDrawShake(); stopRollingSound(); S.liveDraw = null; draw(); return }
