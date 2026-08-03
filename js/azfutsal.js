@@ -1233,6 +1233,12 @@ function tournamentBracketView() {
     group.matches.push(def)
   })
   const byeTeamId = level === 'MS' ? cfg('FIRST_ROUND_BYE_MS', '') : ''
+  const columnBackgrounds = level === 'MS'
+    ? ['#fff1f2', '#fdf2f8', '#faf5ff', '#eef2ff', '#fffbeb']
+    : ['#ecfdf5', '#f0fdf4', '#ecfeff', '#eff6ff', '#f5f3ff', '#fffbeb']
+  const columnBorders = level === 'MS'
+    ? ['#fecdd3', '#fbcfe8', '#e9d5ff', '#c7d2fe', '#fde68a']
+    : ['#a7f3d0', '#bbf7d0', '#a5f3fc', '#bfdbfe', '#ddd6fe', '#fde68a']
   return `
   <div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -1243,11 +1249,11 @@ function tournamentBracketView() {
       ${level === 'MS' && hasMsFirstRoundBye() ? `<div style="font-size:10.5px;color:#b45309;font-weight:700">⭐ ทีมบาย: ${esc(teamName(byeTeamId) || 'รอจับสลาก')}</div>` : ''}
     </div>
     <div style="overflow-x:auto;overflow-y:hidden;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch">
-      <div style="display:flex;align-items:flex-start;gap:12px;min-width:max-content">
+      <div style="display:flex;align-items:stretch;gap:12px;min-width:max-content">
         ${groups.map((group, groupIndex) => `
-        <div style="width:190px;flex:0 0 190px;scroll-snap-align:start">
-          <div style="position:sticky;top:0;z-index:1;text-align:center;font-size:11px;font-weight:800;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:5px 8px;margin-bottom:8px">${esc(group.label)} · ${group.matches.length} นัด</div>
-          <div style="display:flex;flex-direction:column;gap:${Math.max(8, groupIndex * 4 + 8)}px;padding-top:${groupIndex * 10}px">
+        <div style="width:190px;flex:0 0 190px;scroll-snap-align:start;display:flex;flex-direction:column;box-sizing:border-box;padding:9px;border-radius:16px;background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};border:1px solid ${columnBorders[groupIndex % columnBorders.length]};box-shadow:0 4px 14px rgba(15,23,42,.06)">
+          <div style="position:sticky;top:0;z-index:1;text-align:center;font-size:11px;font-weight:800;color:#334155;background:rgba(255,255,255,.88);border:1px solid ${columnBorders[groupIndex % columnBorders.length]};border-radius:999px;padding:6px 8px;margin-bottom:9px;box-shadow:0 2px 6px rgba(15,23,42,.05)">${esc(group.label)} · ${group.matches.length} นัด</div>
+          <div style="display:flex;flex-direction:column;gap:${Math.max(8, groupIndex * 4 + 8)}px;padding-top:${groupIndex * 10}px;flex:1">
             ${group.matches.map(def => bracketMatchCard(level, def)).join('')}
           </div>
         </div>
