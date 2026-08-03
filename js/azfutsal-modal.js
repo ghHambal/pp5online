@@ -1,6 +1,12 @@
+import { APP_VERSION } from './version.js'
+
 const AZFUTSAL_PATH = 'azfutsal.html'
 
-const getAzfutsalUrl = () => new URL(AZFUTSAL_PATH, window.location.href).href
+const getAzfutsalUrl = () => {
+  const url = new URL(AZFUTSAL_PATH, window.location.href)
+  url.searchParams.set('v', APP_VERSION)
+  return url.href
+}
 
 export function openAzfutsalModal() {
   document.getElementById('azfutsal-modal')?.remove()
