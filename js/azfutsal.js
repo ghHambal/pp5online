@@ -1220,28 +1220,32 @@ function bracketMatchCard(level, def) {
   const resolved = resolveMatch(level, def.code)
   const match = resolved.match || {}
   const hasScore = match.score_a !== null && match.score_a !== undefined && match.score_b !== null && match.score_b !== undefined
-  const teamPanel = (side, name, teamId, score) => {
-    const isWinner = hasScore && resolved.winnerId && String(resolved.winnerId) === String(teamId)
-    const placeholder = bracketSlotPlaceholder(def, side)
+  const aWins = hasScore && Number(match.score_a) > Number(match.score_b)
+  const bWins = hasScore && Number(match.score_b) > Number(match.score_a)
+  const displayTeam = (side, name) => {
     const isBye = (side === 'a' ? def.refA : def.refB) === 'FIRST_ROUND_BYE'
-    const align = side === 'a' ? 'left' : 'right'
-    return `
-    <div style="position:relative;min-width:170px;min-height:62px;box-sizing:border-box;padding:8px 12px 7px;border-radius:9px;background:${isWinner ? '#dcfce7' : '#fff'};border:1px solid ${isWinner ? '#86efac' : t.border};border-top:3px solid ${isWinner ? '#22c55e' : t.base};text-align:${align};display:flex;flex-direction:column;justify-content:center">
-      <div style="font-size:8.5px;font-weight:800;color:${isWinner ? '#15803d' : t.accent};letter-spacing:.04em;margin-bottom:3px">ทีม ${side.toUpperCase()}</div>
-      <div style="font-size:11px;font-weight:${name ? 750 : 600};color:${name ? (isWinner ? '#15803d' : '#1f2937') : '#9ca3af'};line-height:1.28;white-space:nowrap">${name ? esc(name) : esc(placeholder)}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}</div>
-      ${hasScore ? `<div style="position:absolute;top:5px;${side === 'a' ? 'right' : 'left'}:5px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:${isWinner ? '#16a34a' : t.base};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800">${esc(score)}</div>` : ''}
-    </div>`
+    return `${esc(name || bracketSlotPlaceholder(def, side))}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}`
   }
+  const teamBlock = (side, name, isWinner, align) => `
+    <div style="flex:1;min-width:0;${isWinner ? 'background:#dcfce7;border-radius:10px;' : ''}padding:7px 8px;text-align:${align}">
+      <div style="font-size:13.5px;font-weight:${isWinner ? 800 : 600};color:${name ? (isWinner ? '#15803d' : '#111827') : '#9ca3af'};line-height:1.3;overflow-wrap:break-word">${displayTeam(side, name)}</div>
+    </div>`
   return `
-  <div style="position:relative;border:1px solid ${t.border};background:${t.soft};border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(15,23,42,.07)">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">
-      <span style="font-size:10px;font-weight:800;color:${t.accent}">${def.code}</span>
-      <span style="font-size:9.5px;color:#9ca3af">${esc(match.kickoff_time || '')}</span>
+  <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:12px 14px;overflow:hidden;box-shadow:0 3px 10px rgba(15,23,42,.07)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      ${levelBadge(level)}
+      <span style="font-size:11px;color:#9ca3af;font-weight:600">${esc(def.round)} · ${def.code}</span>
+      <span style="flex:1"></span>
+      <span style="font-size:11px;font-weight:700;color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : esc(match.kickoff_time || 'รอแข่ง')}</span>
     </div>
-    <div style="display:grid;grid-template-columns:minmax(170px,max-content) 32px minmax(170px,max-content);gap:8px;align-items:stretch">
-      ${teamPanel('a', resolved.teamA, resolved.teamAId, match.score_a)}
-      <div style="display:flex;align-items:center;justify-content:center;color:${t.accent};font-size:9px;font-weight:900">VS</div>
-      ${teamPanel('b', resolved.teamB, resolved.teamBId, match.score_b)}
+    <div style="display:flex;align-items:center;gap:8px">
+      ${teamBlock('a', resolved.teamA, aWins, 'left')}
+      <div style="flex-shrink:0;text-align:center;min-width:56px">
+        ${hasScore
+          ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800"><span style="color:${aWins ? '#15803d' : '#9ca3af'}">${esc(match.score_a)}</span><span style="color:#d1d5db;font-weight:600;font-size:15px">:</span><span style="color:${bWins ? '#15803d' : '#9ca3af'}">${esc(match.score_b)}</span></div>`
+          : `<span style="font-size:11px;color:#9ca3af;font-weight:700">VS</span>`}
+      </div>
+      ${teamBlock('b', resolved.teamB, bWins, 'right')}
     </div>
     ${def.round === 'ชิงที่ 3' ? `<div style="margin-top:5px;font-size:9.5px;color:#b45309;font-weight:700;text-align:center">ชิงอันดับ 3</div>` : ''}
     ${def.round === 'ชิงที่ 1' ? `<div style="margin-top:5px;font-size:9.5px;color:#7c3aed;font-weight:700;text-align:center">ชิงชนะเลิศ</div>` : ''}
@@ -1279,7 +1283,7 @@ function tournamentBracketView() {
     <div id="az-bracket-scroll" style="overflow-x:auto;overflow-y:hidden;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch">
       <div style="display:flex;align-items:stretch;gap:12px;min-width:max-content">
         ${groups.map((group, groupIndex) => `
-        <div id="az-bracket-round-${groupIndex}" style="width:max-content;min-width:430px;flex:0 0 auto;scroll-snap-align:start;display:flex;flex-direction:column;box-sizing:border-box;padding:9px;border-radius:16px;background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};border:1px solid ${columnBorders[groupIndex % columnBorders.length]};box-shadow:0 4px 14px rgba(15,23,42,.06)">
+        <div id="az-bracket-round-${groupIndex}" style="width:390px;flex:0 0 390px;scroll-snap-align:start;display:flex;flex-direction:column;box-sizing:border-box;padding:9px;border-radius:16px;background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};border:1px solid ${columnBorders[groupIndex % columnBorders.length]};box-shadow:0 4px 14px rgba(15,23,42,.06)">
           <div style="position:sticky;top:0;z-index:1;text-align:center;font-size:11px;font-weight:800;color:#334155;background:rgba(255,255,255,.88);border:1px solid ${columnBorders[groupIndex % columnBorders.length]};border-radius:999px;padding:6px 8px;margin-bottom:9px;box-shadow:0 2px 6px rgba(15,23,42,.05)">${esc(group.label)} · ${group.matches.length} นัด</div>
           <div style="display:flex;flex-direction:column;gap:${Math.max(8, groupIndex * 4 + 8)}px;padding-top:${groupIndex * 10}px;flex:1">
             ${group.matches.map(def => bracketMatchCard(level, def)).join('')}
@@ -3487,13 +3491,16 @@ function bindEvents() {
       if (!start) { azToast('กรุณาเลือกเวลาเริ่มแข่ง'); return }
       await SB.from('azfutsal_config').upsert([{ key: 'START_TIME', value: start }, { key: 'MATCH_MIN', value: String(matchMin) }, { key: 'BREAK_MIN', value: String(breakMin) }])
       let t = new Date(start)
-      const msCodes = BRACKET.MS.map(b => ['MS', b.code])
-      const hsCodes = BRACKET.HS.map(b => ['HS', b.code])
+      const msFinalCode = FINAL_CODE.MS
+      const hsFinalCode = FINAL_CODE.HS
+      const msCodes = BRACKET.MS.filter(b => b.code !== msFinalCode).map(b => ['MS', b.code])
+      const hsCodes = BRACKET.HS.filter(b => b.code !== hsFinalCode).map(b => ['HS', b.code])
       const allCodes = []
       for (let i = 0; i < Math.max(msCodes.length, hsCodes.length); i += 1) {
         if (msCodes[i]) allCodes.push(msCodes[i])
         if (hsCodes[i]) allCodes.push(hsCodes[i])
       }
+      allCodes.push(['MS', msFinalCode], ['HS', hsFinalCode])
       const rows = allCodes.map(([level, code]) => {
         const kickoff = t.toTimeString().slice(0, 5)
         const ready = new Date(t.getTime() - 5 * 60000).toTimeString().slice(0, 5)
@@ -3502,7 +3509,7 @@ function bindEvents() {
       })
       const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
       if (error) { azToast('จัดเวลาไม่สำเร็จ: ' + error.message); return }
-      await refresh(); azToast('จัดเวลาอัตโนมัติแบบสลับ ม.ต้น–ม.ปลาย เรียบร้อย'); return
+      await refresh(); azToast('จัดเวลาสลับระดับและวางคู่ชิงเป็น 2 นัดสุดท้ายแล้ว'); return
     }
     if (act === 'saveHalfDuration') {
       const halfMin = Number(gid('ops-halfmin').value || 20)
@@ -3975,7 +3982,7 @@ function adminOps() {
           <label style="font-size:11.5px;color:#6b7280;flex:1">นัด (นาที)<input id="ops-matchmin" type="number" value="${esc(cfg('MATCH_MIN', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
           <label style="font-size:11.5px;color:#6b7280;flex:1">พัก (นาที)<input id="ops-breakmin" type="number" value="${esc(cfg('BREAK_MIN', 5))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
         </div>
-        <div style="font-size:10.5px;color:#6b7280">ระบบจะเรียงสลับ ม.ต้น → ม.ปลาย ตามลำดับนัด และจัดระดับที่เหลือต่อเมื่ออีกระดับแข่งขันครบแล้ว</div>
+        <div style="font-size:10.5px;color:#6b7280">ระบบจะเรียงสลับ ม.ต้น → ม.ปลาย ตามลำดับนัด โดยกันคู่ชิง ม.ต้นและ ม.ปลายไว้เป็น 2 นัดสุดท้ายของตาราง</div>
         <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดเวลาอัตโนมัติแบบสลับระดับ</button>
       </div>
     `)}
