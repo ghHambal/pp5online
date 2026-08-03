@@ -186,11 +186,58 @@ export async function getQuizAttempt(attemptId) {
   return data
 }
 
+// รอบล่าสุด (ไม่ว่าสถานะไหน) — ใช้ตัดสินใจตอนกดเข้าสอบจากหน้าหลัก: ถ้ารอบ
+// ล่าสุดยังไม่ submitted/terminated (คือ in_progress) ให้ resume ต่อผ่าน
+// start_quiz_attempt ตามเดิม แต่ถ้าจบไปแล้วให้พาไปหน้าสรุปผลของรอบนั้นก่อน
+// (แสดงประวัติ+สิทธิ์ที่เหลือ+ปุ่มยืนยันจบ) แทนที่จะสร้างรอบใหม่ทันที
+export async function getLatestQuizAttempt(quizId, studentId) {
+  const { data, error } = await supabase
+    .from('quiz_attempts')
+    .select('id, attempt_number, status')
+    .eq('quiz_id', quizId)
+    .eq('student_id', studentId)
+    .order('attempt_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// นักเรียนกดยืนยันจบเองแล้วหรือยัง (ไม่ว่าจะเหลือสิทธิ์อยู่หรือหมดแล้วก็ตาม)
+export async function getQuizFinalization(quizId, studentId) {
+  const { data, error } = await supabase
+    .from('quiz_student_finalizations')
+    .select('confirmed_at')
+    .eq('quiz_id', quizId)
+    .eq('student_id', studentId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// เซ็ตของ quiz_id ที่นักเรียนกดยืนยันจบไปแล้ว — ใช้กรองการ์ด "เปิดสอบอยู่ตอนนี้"
+// ที่หน้าหลัก ไม่ให้โชว์การ์ดค้างอยู่หลังจากยืนยันจบไปแล้วทั้งที่ยังมีสิทธิ์เหลือ
+export async function getMyQuizFinalizations(quizIds, studentId) {
+  if (!quizIds?.length) return new Set()
+  const { data, error } = await supabase
+    .from('quiz_student_finalizations')
+    .select('quiz_id')
+    .eq('student_id', studentId)
+    .in('quiz_id', quizIds)
+  if (error) throw error
+  return new Set((data ?? []).map(r => r.quiz_id))
+}
+
 // ─── RPC wrappers ───────────────────────────────────────────────────────────
 export async function rpcStartAttempt(quizId) {
   const { data, error } = await supabase.rpc('start_quiz_attempt', { p_quiz_id: quizId })
   if (error) throw error
   return data
+}
+
+export async function rpcConfirmQuizFinal(quizId) {
+  const { error } = await supabase.rpc('confirm_quiz_final', { p_quiz_id: quizId })
+  if (error) throw error
 }
 
 export async function rpcGetAttemptQuestions(attemptId) {

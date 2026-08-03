@@ -16,7 +16,7 @@ import {
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek } from './teacher-views-utils.js'
-import { getQuizzesForStudentClass, rpcStartAttempt } from './quiz-api.js'
+import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
 import { APP_VERSION } from './version.js?v=10.18.25'
@@ -415,9 +415,12 @@ export async function renderStudentOverview(student) {
   const quizzesByClass = await Promise.all(
     classes.map(c => getQuizzesForStudentClass(c.id, student.id).catch(() => []))
   )
-  const liveQuizzes = classes.flatMap((c, i) => (quizzesByClass[i] ?? []).map(q => ({ ...q, _class: c })))
+  const _quizCandidates = classes.flatMap((c, i) => (quizzesByClass[i] ?? []).map(q => ({ ...q, _class: c })))
+  const _finalizedQuizIds = await getMyQuizFinalizations(_quizCandidates.map(q => q.id), student.id).catch(() => new Set())
+  const liveQuizzes = _quizCandidates
     .filter(q => {
       if (q.status !== 'started') return false
+      if (_finalizedQuizIds.has(q.id)) return false // นักเรียนกดยืนยันจบเองไปแล้ว ไม่ต้องโชว์การ์ดค้าง
       const finishedCount = q.attempts.filter(a => a.status === 'submitted' || a.status === 'terminated_violation').length
       const lockedAttempt = q.attempts.length && q.attempts[q.attempts.length - 1].status === 'terminated_violation'
       return !lockedAttempt && finishedCount < q.max_attempts
@@ -1176,6 +1179,14 @@ export async function renderStudentOverview(student) {
   // (re)assign เฉพาะตอน renderStudentSubjectDetail ทำงานเท่านั้น
   window._stuStartQuiz = async (quizId) => {
     try {
+      // ถ้ารอบล่าสุดจบไปแล้ว (submitted/terminated) ให้พาไปหน้าสรุปผลของรอบ
+      // นั้นก่อน (ประวัติ+สิทธิ์ที่เหลือ+ปุ่มทำอีกครั้ง/ยืนยันจบ) แทนที่จะ
+      // สร้างรอบใหม่ทันที — กันเคสนักเรียนออกกลางคันโดยไม่ได้กดยืนยันอะไร
+      const last = await getLatestQuizAttempt(quizId, student.id).catch(() => null)
+      if (last && last.status !== 'in_progress') {
+        window.location.href = `quiz-exam.html?attempt=${last.id}`
+        return
+      }
       const attempt = await rpcStartAttempt(quizId)
       window.location.href = `quiz-exam.html?attempt=${attempt.id}`
     } catch (err) {
@@ -1508,6 +1519,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     getMyClassAssignments(classId, student.id).catch(()=>[]),
     getClassSyllabus(classId).catch(()=>[]),
   ])
+  const finalizedQuizIds = await getMyQuizFinalizations(quizzes.map(q => q.id), student.id).catch(() => new Set())
   const _cfgForWeek = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
   const curWeek = _currentWeek(_cfgForWeek.semester_start)
   const currentTopic = syllabusItems.find(it => curWeek >= it.week_start && curWeek <= it.week_end)
@@ -1717,6 +1729,8 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       let actionBtn = ''
       if (q.status === 'announced') {
         statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รอครูเริ่ม</span>`
+      } else if (q.status === 'started' && finalizedQuizIds.has(q.id)) {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✅ ยืนยันคะแนนสุดท้ายแล้ว</span>`
       } else if (q.status === 'started' && lockedAttempt) {
         statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">🔒 ถูกล็อก — ติดต่อครูผู้สอน</span>`
       } else if (q.status === 'started' && inProgressAttempt) {
@@ -1940,6 +1954,14 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
 
   window._stuStartQuiz = async (quizId) => {
     try {
+      // ถ้ารอบล่าสุดจบไปแล้ว (submitted/terminated) ให้พาไปหน้าสรุปผลของรอบ
+      // นั้นก่อน (ประวัติ+สิทธิ์ที่เหลือ+ปุ่มทำอีกครั้ง/ยืนยันจบ) แทนที่จะ
+      // สร้างรอบใหม่ทันที — กันเคสนักเรียนออกกลางคันโดยไม่ได้กดยืนยันอะไร
+      const last = await getLatestQuizAttempt(quizId, student.id).catch(() => null)
+      if (last && last.status !== 'in_progress') {
+        window.location.href = `quiz-exam.html?attempt=${last.id}`
+        return
+      }
       const attempt = await rpcStartAttempt(quizId)
       window.location.href = `quiz-exam.html?attempt=${attempt.id}`
     } catch (err) {

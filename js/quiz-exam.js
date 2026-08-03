@@ -2,7 +2,8 @@
 import {
   getQuizAttempt, rpcGetAttemptQuestions, rpcSubmitAttempt,
   rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank,
-  rpcSubmitQuizAnswer, rpcUseQuizBonus, getMyQuizAttemptHistory
+  rpcSubmitQuizAnswer, rpcUseQuizBonus, getMyQuizAttemptHistory,
+  rpcStartAttempt, rpcConfirmQuizFinal, getQuizFinalization,
 } from './quiz-api.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
@@ -35,6 +36,8 @@ let _currentStreak = 0
 let _avgPerQuestionSec = null // time_limit_minutes*60 / num_questions — pacing guide only, never force-advances
 let _perQBarStart = null
 let _perQTimerInterval = null
+let _wakeLock = null
+let _violationGraceTimer = null
 
 const BONUS_META = {
   fifty_fifty:   { icon: '✂️', label: '50/50' },
@@ -593,25 +596,73 @@ function _attachAntiCheat() {
   // Over: the page stays visually visible (not hidden) while the OS moves
   // keyboard/touch focus to the other split-screen app.
   window.addEventListener('blur', _onWindowBlur)
+  window.addEventListener('focus', _onWindowFocus)
+  _requestWakeLock()
 }
 
 function _detachAntiCheat() {
   document.removeEventListener('visibilitychange', _onVisibilityChange)
   document.removeEventListener('fullscreenchange', _onFullscreenChange)
   window.removeEventListener('blur', _onWindowBlur)
+  window.removeEventListener('focus', _onWindowFocus)
+  _cancelPendingViolation()
+  _releaseWakeLock()
   if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
 }
 
+// กันจอมือถือดับเองระหว่างทำข้อสอบ (บาง OS ตั้งล็อกจออัตโนมัติไว้สั้นๆ) ซึ่งถ้า
+// จอดับจริงจะโดนนับเป็นออกนอกหน้าสอบทั้งที่ไม่ได้ตั้งใจ — รองรับ Android Chrome
+// ดี, iOS Safari รองรับตั้งแต่ 16.4 ขึ้นไปเท่านั้น (รุ่นเก่ากว่าไม่มี API นี้เลย
+// จึงต้องพึ่งเกณฑ์ผ่อนผันใน _scheduleViolation ด้านล่างเป็นตาข่ายสำรอง)
+async function _requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && _attempt?.status === 'in_progress') {
+      _wakeLock = await navigator.wakeLock.request('screen')
+      _wakeLock.addEventListener('release', () => { _wakeLock = null })
+    }
+  } catch { /* ไม่รองรับ/ถูกปฏิเสธ — ไม่ถือเป็น error ร้ายแรง มี fallback ชั้นอื่นอยู่แล้ว */ }
+}
+function _releaseWakeLock() {
+  _wakeLock?.release().catch(() => {})
+  _wakeLock = null
+}
+
 function _onVisibilityChange() {
-  if (document.hidden) _reportViolation('visibility_change')
+  if (document.hidden) {
+    _scheduleViolation('visibility_change')
+  } else {
+    _cancelPendingViolation()
+    if (_attempt?.status === 'in_progress') _requestWakeLock() // wake lock หลุดอัตโนมัติตอนสลับแท็บ ต้องขอใหม่ทุกครั้งที่กลับมา
+  }
 }
 
 function _onFullscreenChange() {
-  if (!document.fullscreenElement && _attempt?.status === 'in_progress') _reportViolation('fullscreen_exit')
+  if (document.fullscreenElement) _cancelPendingViolation()
+  else if (_attempt?.status === 'in_progress') _scheduleViolation('fullscreen_exit')
 }
 
 function _onWindowBlur() {
-  _reportViolation('focus_lost')
+  _scheduleViolation('focus_lost')
+}
+
+function _onWindowFocus() {
+  _cancelPendingViolation()
+}
+
+// เกณฑ์ผ่อนผัน: ถ้าจอดับ/สลับหน้าแวบเดียวแล้วกลับมาโฟกัสภายในเวลาสั้นๆ (เช่น
+// จอดับเองจากตั้งค่าล็อกอัตโนมัติของเครื่อง แล้วนักเรียนปลดล็อกกลับมาทันที) จะ
+// ไม่นับเป็นการออกนอกหน้าสอบ — ต่างจากการสลับไปแอปอื่นค้างไว้นานซึ่งจะครบ
+// เวลาผ่อนผันแล้วนับจริง
+const VIOLATION_GRACE_MS = 2500
+function _scheduleViolation(type) {
+  if (_violationGraceTimer) return // มีรอบผ่อนผันค้างอยู่แล้ว ไม่ตั้งซ้ำ
+  _violationGraceTimer = setTimeout(() => {
+    _violationGraceTimer = null
+    _reportViolation(type)
+  }, VIOLATION_GRACE_MS)
+}
+function _cancelPendingViolation() {
+  if (_violationGraceTimer) { clearTimeout(_violationGraceTimer); _violationGraceTimer = null }
 }
 
 let _lastViolationReportAt = 0
@@ -724,20 +775,30 @@ async function _renderResultScreen(root) {
     ? `<p class="text-sm text-indigo-100 mt-2">🏆 อันดับที่ ${rank.my_rank} จาก ${rank.total_participants} คน</p>`
     : ''
 
-  // สรุปคะแนนทุกครั้ง — เฉพาะตอนที่สอบได้หลายครั้งและใช้ครบโควตาแล้ว (รวมครั้งนี้ด้วย)
+  // สรุปคะแนนทุกครั้ง + สิทธิ์ที่เหลือ + ปุ่มทำอีกครั้ง/ยืนยันจบ — แสดงทุกครั้งที่
+  // จบรอบ (ไม่ใช่แค่ตอนใช้สิทธิ์ครบแล้วเหมือนเดิม) เพื่อให้นักเรียนเห็นสถานะ
+  // ตัวเองชัดเจนตั้งแต่รอบแรก ไม่ต้องเดาว่าเหลือกี่ครั้ง
   let allAttemptsHtml = ''
+  let actionsHtml = ''
   if (quiz?.max_attempts > 1) {
-    const allAttempts = await getMyQuizAttemptHistory(fresh.quiz_id, fresh.student_id).catch(() => [])
-    if (allAttempts.length >= quiz.max_attempts) {
-      const mode = quiz.attempt_scoring_mode ?? 'last'
-      const finalAttemptNo = mode === 'highest'
-        ? allAttempts.reduce((best, a) => (a.score_pct ?? 0) > (best?.score_pct ?? -1) ? a : best, null)?.attempt_number
-        : mode === 'first' ? allAttempts[0]?.attempt_number
-        : allAttempts[allAttempts.length - 1]?.attempt_number
-      const modeLabel = { first: 'ครั้งแรก', last: 'ครั้งล่าสุด', highest: 'คะแนนสูงสุด' }[mode] ?? mode
-      allAttemptsHtml = `
+    const [allAttempts, finalization] = await Promise.all([
+      getMyQuizAttemptHistory(fresh.quiz_id, fresh.student_id).catch(() => []),
+      getQuizFinalization(fresh.quiz_id, fresh.student_id).catch(() => null),
+    ])
+    const mode = quiz.attempt_scoring_mode ?? 'last'
+    const finalAttemptNo = mode === 'highest'
+      ? allAttempts.reduce((best, a) => (a.score_pct ?? 0) > (best?.score_pct ?? -1) ? a : best, null)?.attempt_number
+      : mode === 'first' ? allAttempts[0]?.attempt_number
+      : allAttempts[allAttempts.length - 1]?.attempt_number
+    const modeLabel = { first: 'ครั้งแรก', last: 'ครั้งล่าสุด', highest: 'คะแนนสูงสุด' }[mode] ?? mode
+    const remaining = Math.max(0, quiz.max_attempts - allAttempts.length)
+
+    allAttemptsHtml = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <p class="text-xs font-bold text-gray-500 mb-3">สรุปคะแนนทุกครั้ง (ทำครบ ${allAttempts.length}/${quiz.max_attempts} ครั้งแล้ว)</p>
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-bold text-gray-500">สรุปคะแนนทุกครั้ง</p>
+          <p class="text-xs font-bold ${remaining > 0 && !finalization ? 'text-indigo-600' : 'text-gray-400'}">เหลือสิทธิ์ ${remaining}/${quiz.max_attempts} ครั้ง</p>
+        </div>
         <div class="space-y-1.5">
           ${allAttempts.map(a => `
             <div class="flex items-center justify-between text-sm ${a.attempt_number === finalAttemptNo ? 'font-bold text-indigo-700' : 'text-gray-500'}">
@@ -747,6 +808,22 @@ async function _renderResultScreen(root) {
         </div>
         <p class="text-[11px] text-gray-400 mt-3">⭐ = คะแนนที่ใช้บันทึกจริง (ตามที่ครูตั้งไว้: ${modeLabel})</p>
       </div>`
+
+    if (finalization) {
+      actionsHtml = `
+      <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
+        <p class="text-sm font-bold text-emerald-700">✅ ยืนยันบันทึกคะแนนสอบขั้นสุดท้ายแล้ว</p>
+        <p class="text-xs text-emerald-600 mt-1">ทำแบบทดสอบนี้ซ้ำอีกไม่ได้แล้ว</p>
+      </div>`
+    } else if (remaining > 0) {
+      actionsHtml = `
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button id="btn-quiz-retake" class="py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow">ทำอีกครั้ง (เหลือ ${remaining} สิทธิ์)</button>
+        <button id="btn-quiz-finalize" class="py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50">ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย</button>
+      </div>`
+    } else {
+      actionsHtml = `
+      <button id="btn-quiz-finalize" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow">ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย</button>`
     }
   }
 
@@ -789,11 +866,42 @@ async function _renderResultScreen(root) {
         ${rankHtml}
       </div>
       ${allAttemptsHtml}
+      ${actionsHtml}
       ${detailHtml}
       <button id="btn-back-overview" class="w-full py-3 rounded-2xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50">← กลับหน้าภาพรวม</button>
     </div>
   `
   document.getElementById('btn-back-overview').addEventListener('click', () => { window.location.href = 'student.html' })
+
+  document.getElementById('btn-quiz-retake')?.addEventListener('click', async e => {
+    const originalLabel = e.currentTarget.textContent
+    setButtonLoading(e.currentTarget, true)
+    try {
+      const next = await rpcStartAttempt(fresh.quiz_id)
+      window.location.href = `quiz-exam.html?attempt=${next.id}`
+    } catch (err) {
+      showToast('เริ่มรอบใหม่ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      setButtonLoading(e.currentTarget, false, originalLabel)
+    }
+  })
+
+  document.getElementById('btn-quiz-finalize')?.addEventListener('click', async e => {
+    const ok = await showDangerConfirm({
+      title: 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย?',
+      message: 'หลังยืนยันแล้วจะไม่สามารถกลับเข้ามาทำแบบทดสอบนี้ได้อีก',
+      confirmText: 'ยืนยันจบการสอบ',
+    })
+    if (!ok) return
+    setButtonLoading(e.currentTarget, true)
+    try {
+      await rpcConfirmQuizFinal(fresh.quiz_id)
+      await _renderResultScreen(root)
+    } catch (err) {
+      showToast('ยืนยันไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      setButtonLoading(e.currentTarget, false, 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย')
+    }
+  })
+
   if (reviewPolicy !== 'total_only') _renderMath(root)
 
   const confettiTier = scorePct >= 80 ? 'high' : scorePct >= 50 ? 'mid' : null
