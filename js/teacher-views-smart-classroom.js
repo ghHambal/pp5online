@@ -7,7 +7,7 @@ import {
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
   closeLeavePermission, getMyDonationRequests, createAnnouncement, getClassAnnouncements,
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
-  getClassAssignmentsWithSubmissions, createAssignment, deleteAssignment, saveAssignmentGrade,
+  getClassAssignmentsWithSubmissions, createAssignment, updateAssignment, deleteAssignment, saveAssignmentGrade,
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
   getCourseSyllabus, createSyllabusItem, updateSyllabusItem, deleteSyllabusItem,
   getLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan,
@@ -1369,7 +1369,7 @@ export async function renderSmartClassroom(teacher, classId) {
         if (p) _openLessonPlanModal(p)
       }
     })
-    document.getElementById('sc-add-assignment')?.addEventListener('click', () => _openCreateAssignmentModal())
+    document.getElementById('sc-add-assignment')?.addEventListener('click', () => _openAssignmentModal())
     document.getElementById('sc-assignment-list')?.addEventListener('click', e => {
       const row = e.target.closest('.sc-assignment-row')
       if (!row) return
@@ -1661,64 +1661,98 @@ export async function renderSmartClassroom(teacher, classId) {
     _render()
   }
 
-  function _openCreateAssignmentModal() {
+  const _toLocalDatetimeValue = (isoStr) => {
+    if (!isoStr) return ''
+    const d = new Date(isoStr)
+    const pad = n => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  function _openAssignmentModal(assignment) {
     document.getElementById('sc-assign-modal')?.remove()
+    const isEdit = !!assignment
+    const a = assignment ?? {}
+    let keptAttachments = [...(a.attachment_urls ?? [])]
     const m = document.createElement('div')
     m.id = 'sc-assign-modal'
     m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
     m.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-3 animate-fade">
         <div class="flex items-center justify-between">
-          <h3 class="font-bold text-gray-800 text-sm">➕ สั่งงานใหม่</h3>
-          <button id="sa-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+          <h3 class="font-bold text-gray-800 text-sm">${isEdit ? '✏️ แก้ไขงาน' : '➕ สั่งงานใหม่'}</h3>
+          <div class="flex items-center gap-2">
+            ${isEdit ? `<button id="sa-delete" class="text-[11px] text-red-400 hover:text-red-600">🗑️ ลบ</button>` : ''}
+            <button id="sa-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+          </div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่องาน *</label>
-          <input id="sa-title" type="text" placeholder="เช่น ใบงานที่ 3 — สมการเชิงเส้น" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <input id="sa-title" type="text" value="${_htmlEsc(a.title ?? '')}" placeholder="เช่น ใบงานที่ 3 — สมการเชิงเส้น" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-500 mb-1">รายละเอียด</label>
-          <textarea id="sa-desc" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"></textarea>
+          <textarea id="sa-desc" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300">${_htmlEsc(a.description ?? '')}</textarea>
         </div>
         <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">แนบไฟล์/รูปภาพ (เลือกได้หลายไฟล์)</label>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ไฟล์แนบ${isEdit ? '' : '/รูปภาพ (เลือกได้หลายไฟล์)'}</label>
+          <div id="sa-kept-files" class="flex flex-wrap gap-1.5 mb-1.5"></div>
           <input id="sa-files" type="file" multiple class="w-full text-xs" />
+          ${isEdit ? `<p class="text-[10px] text-gray-400 mt-1">ไฟล์ใหม่ที่แนบเพิ่มจะรวมกับไฟล์เดิมที่เหลือด้านบน</p>` : ''}
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-500 mb-1">ผูกกับคอลัมน์คะแนน</label>
           <select id="sa-col" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
             <option value="">— ไม่ผูกกับคะแนน —</option>
-            ${scoreColumns.map(c => `<option value="${c.id}">${_htmlEsc(c.assignment_name)} (เต็ม ${c.max_score})</option>`).join('')}
+            ${scoreColumns.map(c => `<option value="${c.id}" ${a.score_column_id === c.id ? 'selected' : ''}>${_htmlEsc(c.assignment_name)} (เต็ม ${c.max_score})</option>`).join('')}
           </select>
         </div>
         <div id="sa-write-mode-wrap" class="hidden">
           <label class="text-xs font-semibold text-gray-500 mb-1 block">ถ้าคอลัมน์นี้มีคะแนนอยู่แล้ว ให้ทำอย่างไร</label>
           <select id="sa-write-mode" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
-            ${Object.entries(ASSIGN_WRITE_MODE_LABEL).map(([v, mo]) => `<option value="${v}" ${v === 'overwrite' ? 'selected' : ''}>${mo.label}</option>`).join('')}
+            ${Object.entries(ASSIGN_WRITE_MODE_LABEL).map(([v, mo]) => `<option value="${v}" ${(a.score_write_mode ?? 'overwrite') === v ? 'selected' : ''}>${mo.label}</option>`).join('')}
           </select>
           <p id="sa-write-mode-hint" class="text-[11px] text-gray-400 mt-1 leading-relaxed"></p>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-500 mb-1">กำหนดส่ง</label>
-          <input id="sa-due" type="datetime-local" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          <input id="sa-due" type="datetime-local" value="${_toLocalDatetimeValue(a.due_at)}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-500 mb-1">หักคะแนนกรณีส่งช้า</label>
           <div class="flex gap-2 mb-1.5">
             <select id="sa-penalty-mode" class="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
-              <option value="none">ไม่หัก</option>
-              <option value="flat">หักครั้งเดียว (คงที่)</option>
-              <option value="per_day">หักตามจำนวนวันที่ช้า</option>
+              <option value="none" ${(a.late_penalty_mode ?? 'none') === 'none' ? 'selected' : ''}>ไม่หัก</option>
+              <option value="flat" ${a.late_penalty_mode === 'flat' ? 'selected' : ''}>หักครั้งเดียว (คงที่)</option>
+              <option value="per_day" ${a.late_penalty_mode === 'per_day' ? 'selected' : ''}>หักตามจำนวนวันที่ช้า</option>
             </select>
-            <input id="sa-penalty-value" type="number" min="0" step="0.1" placeholder="0" disabled class="w-24 text-sm text-center border border-gray-200 rounded-xl px-2 py-2 bg-gray-50" />
+            <input id="sa-penalty-value" type="number" min="0" step="0.1" placeholder="0" value="${a.late_penalty_value ?? ''}" ${(a.late_penalty_mode ?? 'none') === 'none' ? 'disabled' : ''} class="w-24 text-sm text-center border border-gray-200 rounded-xl px-2 py-2 ${(a.late_penalty_mode ?? 'none') === 'none' ? 'bg-gray-50' : ''}" />
           </div>
           <p id="sa-penalty-hint" class="text-[10px] text-gray-400"></p>
         </div>
-        <button id="sa-save" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">บันทึกงาน</button>
+        <button id="sa-save" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">${isEdit ? 'บันทึกการแก้ไข' : 'บันทึกงาน'}</button>
       </div>`
     document.body.appendChild(m)
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
     m.querySelector('#sa-close').addEventListener('click', () => m.remove())
+    m.querySelector('#sa-delete')?.addEventListener('click', async () => {
+      if (!confirm(`ลบงาน "${a.title}"? ข้อมูลการส่งของนักเรียนจะหายไปด้วย`)) return
+      try { await deleteAssignment(a.id); showToast('ลบงานแล้ว', 'success'); m.remove(); _reload() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+
+    const keptWrap = m.querySelector('#sa-kept-files')
+    const _paintKeptFiles = () => {
+      keptWrap.innerHTML = keptAttachments.map((f, i) => `
+        <span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">
+          📎 ${_htmlEsc(f.name)}
+          <button type="button" class="sa-remove-file text-indigo-400 hover:text-red-500 font-bold" data-i="${i}">✕</button>
+        </span>`).join('')
+      keptWrap.querySelectorAll('.sa-remove-file').forEach(btn => btn.addEventListener('click', () => {
+        keptAttachments.splice(parseInt(btn.dataset.i, 10), 1)
+        _paintKeptFiles()
+      }))
+    }
+    _paintKeptFiles()
 
     const modeSel = m.querySelector('#sa-penalty-mode')
     const valInput = m.querySelector('#sa-penalty-value')
@@ -1751,28 +1785,32 @@ export async function renderSmartClassroom(teacher, classId) {
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
         const files = [...(m.querySelector('#sa-files').files ?? [])]
-        const attachments = []
-        for (const f of files) attachments.push(await uploadAssignmentFile(f, `class-${classId}`))
+        const newAttachments = []
+        for (const f of files) newAttachments.push(await uploadAssignmentFile(f, `class-${classId}`))
         const dueVal = m.querySelector('#sa-due').value
-        await createAssignment({
-          class_id: classId,
-          teacher_id: teacher.id,
+        const payload = {
           score_column_id: colSelect.value ? parseInt(colSelect.value, 10) : null,
           title,
           description: m.querySelector('#sa-desc').value.trim() || null,
-          attachment_urls: attachments,
+          attachment_urls: [...keptAttachments, ...newAttachments],
           due_at: dueVal ? new Date(dueVal).toISOString() : null,
           late_penalty_mode: modeSel.value,
           late_penalty_value: parseFloat(valInput.value) || 0,
           score_write_mode: writeModeSelect.value,
-        })
-        _sendClassPush(`📚 งานใหม่ — ${cls.class_name}`, title, 'sc-assignment')
-        showToast('สั่งงานสำเร็จ ✅', 'success')
+        }
+        if (isEdit) {
+          await updateAssignment(a.id, payload)
+          showToast('บันทึกการแก้ไขแล้ว ✅', 'success')
+        } else {
+          await createAssignment({ ...payload, class_id: classId, teacher_id: teacher.id })
+          _sendClassPush(`📚 งานใหม่ — ${cls.class_name}`, title, 'sc-assignment')
+          showToast('สั่งงานสำเร็จ ✅', 'success')
+        }
         m.remove()
         _reload()
       } catch (err) {
         showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        btn.disabled = false; btn.textContent = 'บันทึกงาน'
+        btn.disabled = false; btn.textContent = isEdit ? 'บันทึกการแก้ไข' : 'บันทึกงาน'
       }
     })
   }
@@ -1794,6 +1832,7 @@ export async function renderSmartClassroom(teacher, classId) {
               ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${a.attachment_urls.map(f => `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">📎 ${_htmlEsc(f.name)}</a>`).join('')}</div>` : ''}
             </div>
             <div class="flex gap-2 flex-shrink-0">
+              <button id="st-edit" class="text-[11px] text-indigo-500 hover:text-indigo-700 px-2 py-1">✏️ แก้ไข</button>
               <button id="st-delete" class="text-[11px] text-red-400 hover:text-red-600 px-2 py-1">🗑️ ลบ</button>
               <button id="st-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
             </div>
@@ -1829,6 +1868,7 @@ export async function renderSmartClassroom(teacher, classId) {
     document.body.appendChild(m)
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
     m.querySelector('#st-close').addEventListener('click', () => m.remove())
+    m.querySelector('#st-edit').addEventListener('click', () => { m.remove(); _openAssignmentModal(a) })
     m.querySelector('#st-delete').addEventListener('click', async () => {
       if (!confirm(`ลบงาน "${a.title}"? ข้อมูลการส่งของนักเรียนจะหายไปด้วย`)) return
       try { await deleteAssignment(a.id); showToast('ลบงานแล้ว', 'success'); m.remove(); _reload() }
