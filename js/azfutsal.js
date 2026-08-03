@@ -1198,25 +1198,28 @@ function bracketMatchCard(level, def) {
   const resolved = resolveMatch(level, def.code)
   const match = resolved.match || {}
   const hasScore = match.score_a !== null && match.score_a !== undefined && match.score_b !== null && match.score_b !== undefined
-  const teamRow = (side, name, teamId, score) => {
+  const teamPanel = (side, name, teamId, score) => {
     const isWinner = hasScore && resolved.winnerId && String(resolved.winnerId) === String(teamId)
     const placeholder = bracketSlotPlaceholder(def, side)
     const isBye = (side === 'a' ? def.refA : def.refB) === 'FIRST_ROUND_BYE'
+    const align = side === 'a' ? 'left' : 'right'
     return `
-    <div style="display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:8px;background:${isWinner ? '#dcfce7' : '#fff'};border:1px solid ${isWinner ? '#86efac' : '#f1f5f9'}">
-      <div style="flex:1;min-width:0;font-size:11.5px;font-weight:${name ? 700 : 600};color:${name ? (isWinner ? '#15803d' : '#1f2937') : '#9ca3af'};line-height:1.3;overflow-wrap:break-word">${name ? esc(name) : esc(placeholder)}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}</div>
-      ${hasScore ? `<div style="font-size:13px;font-weight:800;color:${isWinner ? '#15803d' : '#374151'}">${esc(score)}</div>` : ''}
+    <div style="position:relative;min-width:0;min-height:62px;box-sizing:border-box;padding:8px 8px 7px;border-radius:9px;background:${isWinner ? '#dcfce7' : '#fff'};border:1px solid ${isWinner ? '#86efac' : t.border};border-top:3px solid ${isWinner ? '#22c55e' : t.base};text-align:${align};display:flex;flex-direction:column;justify-content:center">
+      <div style="font-size:8.5px;font-weight:800;color:${isWinner ? '#15803d' : t.accent};letter-spacing:.04em;margin-bottom:3px">ทีม ${side.toUpperCase()}</div>
+      <div style="font-size:11px;font-weight:${name ? 750 : 600};color:${name ? (isWinner ? '#15803d' : '#1f2937') : '#9ca3af'};line-height:1.28;overflow-wrap:anywhere">${name ? esc(name) : esc(placeholder)}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}</div>
+      ${hasScore ? `<div style="position:absolute;top:5px;${side === 'a' ? 'right' : 'left'}:5px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:${isWinner ? '#16a34a' : t.base};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800">${esc(score)}</div>` : ''}
     </div>`
   }
   return `
-  <div style="position:relative;border:1px solid ${t.border};background:${t.soft};border-radius:12px;padding:8px;box-shadow:0 2px 8px rgba(15,23,42,.05)">
+  <div style="position:relative;border:1px solid ${t.border};background:${t.soft};border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(15,23,42,.07)">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">
       <span style="font-size:10px;font-weight:800;color:${t.accent}">${def.code}</span>
       <span style="font-size:9.5px;color:#9ca3af">${esc(match.kickoff_time || '')}</span>
     </div>
-    <div style="display:flex;flex-direction:column;gap:4px">
-      ${teamRow('a', resolved.teamA, resolved.teamAId, match.score_a)}
-      ${teamRow('b', resolved.teamB, resolved.teamBId, match.score_b)}
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);gap:5px;align-items:stretch">
+      ${teamPanel('a', resolved.teamA, resolved.teamAId, match.score_a)}
+      <div style="display:flex;align-items:center;justify-content:center;color:${t.accent};font-size:9px;font-weight:900">VS</div>
+      ${teamPanel('b', resolved.teamB, resolved.teamBId, match.score_b)}
     </div>
     ${def.round === 'ชิงที่ 3' ? `<div style="margin-top:5px;font-size:9.5px;color:#b45309;font-weight:700;text-align:center">ชิงอันดับ 3</div>` : ''}
     ${def.round === 'ชิงที่ 1' ? `<div style="margin-top:5px;font-size:9.5px;color:#7c3aed;font-weight:700;text-align:center">ชิงชนะเลิศ</div>` : ''}
@@ -1233,12 +1236,8 @@ function tournamentBracketView() {
     group.matches.push(def)
   })
   const byeTeamId = level === 'MS' ? cfg('FIRST_ROUND_BYE_MS', '') : ''
-  const columnBackgrounds = level === 'MS'
-    ? ['#fff1f2', '#fdf2f8', '#faf5ff', '#eef2ff', '#fffbeb']
-    : ['#ecfdf5', '#f0fdf4', '#ecfeff', '#eff6ff', '#f5f3ff', '#fffbeb']
-  const columnBorders = level === 'MS'
-    ? ['#fecdd3', '#fbcfe8', '#e9d5ff', '#c7d2fe', '#fde68a']
-    : ['#a7f3d0', '#bbf7d0', '#a5f3fc', '#bfdbfe', '#ddd6fe', '#fde68a']
+  const columnBackgrounds = ['#f8fafc', '#fff7ed', '#eff6ff', '#f5f3ff', '#f0fdfa', '#fffbeb']
+  const columnBorders = ['#cbd5e1', '#fed7aa', '#bfdbfe', '#ddd6fe', '#99f6e4', '#fde68a']
   return `
   <div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -1251,7 +1250,7 @@ function tournamentBracketView() {
     <div style="overflow-x:auto;overflow-y:hidden;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch">
       <div style="display:flex;align-items:stretch;gap:12px;min-width:max-content">
         ${groups.map((group, groupIndex) => `
-        <div style="width:190px;flex:0 0 190px;scroll-snap-align:start;display:flex;flex-direction:column;box-sizing:border-box;padding:9px;border-radius:16px;background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};border:1px solid ${columnBorders[groupIndex % columnBorders.length]};box-shadow:0 4px 14px rgba(15,23,42,.06)">
+        <div style="width:242px;flex:0 0 242px;scroll-snap-align:start;display:flex;flex-direction:column;box-sizing:border-box;padding:9px;border-radius:16px;background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};border:1px solid ${columnBorders[groupIndex % columnBorders.length]};box-shadow:0 4px 14px rgba(15,23,42,.06)">
           <div style="position:sticky;top:0;z-index:1;text-align:center;font-size:11px;font-weight:800;color:#334155;background:rgba(255,255,255,.88);border:1px solid ${columnBorders[groupIndex % columnBorders.length]};border-radius:999px;padding:6px 8px;margin-bottom:9px;box-shadow:0 2px 6px rgba(15,23,42,.05)">${esc(group.label)} · ${group.matches.length} นัด</div>
           <div style="display:flex;flex-direction:column;gap:${Math.max(8, groupIndex * 4 + 8)}px;padding-top:${groupIndex * 10}px;flex:1">
             ${group.matches.map(def => bracketMatchCard(level, def)).join('')}
