@@ -1231,16 +1231,7 @@ function scheduleTimelineMarkup(rows) {
   const day = S.scheduleDay === 2 ? 2 : 1
   const dayRows = rows.filter(row => row.day === day)
   if (!dayRows.length) return `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดของวันที่ ${day} ที่ตรงกับตัวกรอง</div>`
-  const color = day === 1 ? '#0284c7' : '#7c3aed'
-  const background = S.theme === 'dark' ? (day === 1 ? '#102a3b' : '#251842') : (day === 1 ? '#f0f9ff' : '#f5f3ff')
-  return `
-  <section style="display:flex;flex-direction:column;gap:10px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:12px;background:${background};border:1px solid ${color}55">
-      <div><div style="font-size:13px;font-weight:900;color:${color}">วันที่ ${day}</div><div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(scheduleDateLabel(day))}</div></div>
-      <span style="flex-shrink:0;font-size:10.5px;font-weight:800;color:${color}">${dayRows.length} นัด</span>
-    </div>
-    ${dayRows.map(matchCard).join('')}
-  </section>`
+  return dayRows.map(matchCard).join('')
 }
 
 function scheduleDayTabs() {
