@@ -278,9 +278,14 @@ function resolveMatch(level, code, seen = new Set()) {
   if (!teamAId && def.refA) teamAId = resolveRef(level, def.refA, seen)
   if (!teamBId && def.refB) teamBId = resolveRef(level, def.refB, seen)
   let winnerId = m.winner_team_id, loserId = m.loser_team_id
-  if (!winnerId && m.score_a !== null && m.score_b !== null && m.score_a !== m.score_b && teamAId && teamBId) {
-    winnerId = m.score_a > m.score_b ? teamAId : teamBId
-    loserId = m.score_a > m.score_b ? teamBId : teamAId
+  if (!winnerId && teamAId && teamBId) {
+    if (matchPenaltyShootoutComplete(m) && m.penalty_score_a !== m.penalty_score_b) {
+      winnerId = m.penalty_score_a > m.penalty_score_b ? teamAId : teamBId
+      loserId = m.penalty_score_a > m.penalty_score_b ? teamBId : teamAId
+    } else if (m.score_a !== null && m.score_b !== null && m.score_a !== m.score_b) {
+      winnerId = m.score_a > m.score_b ? teamAId : teamBId
+      loserId = m.score_a > m.score_b ? teamBId : teamAId
+    }
   }
   return { teamA: teamName(teamAId), teamB: teamName(teamBId), teamAId, teamBId, winnerId, loserId, match: m }
 }
@@ -316,6 +321,32 @@ function matchEventCounts(level, code, teamId) {
     yellow: evs.filter(e => e.event_type === 'yellow').length,
     red: evs.filter(e => e.event_type === 'red').length,
   }
+}
+
+function matchPenaltyShootoutComplete(match) {
+  return !!match?.is_penalty_shootout
+    && match.penalty_score_a !== null && match.penalty_score_a !== undefined
+    && match.penalty_score_b !== null && match.penalty_score_b !== undefined
+}
+
+function matchWinnerFlags(match, teamAId, teamBId) {
+  if (!match) return { aWins: false, bWins: false }
+  if (match.winner_team_id) {
+    return {
+      aWins: !!teamAId && String(match.winner_team_id) === String(teamAId),
+      bWins: !!teamBId && String(match.winner_team_id) === String(teamBId),
+    }
+  }
+  const hasScore = match.score_a !== null && match.score_a !== undefined && match.score_b !== null && match.score_b !== undefined
+  return {
+    aWins: hasScore && Number(match.score_a) > Number(match.score_b),
+    bWins: hasScore && Number(match.score_b) > Number(match.score_a),
+  }
+}
+
+function penaltyShootoutScoreLine(match) {
+  if (!matchPenaltyShootoutComplete(match)) return ''
+  return `<div style="margin-top:3px;font-size:9.5px;font-weight:800;color:#7c3aed;white-space:nowrap">จุดโทษ ${esc(match.penalty_score_a)}-${esc(match.penalty_score_b)}</div>`
 }
 
 // ---------------- นาฬิกาจับเวลาแข่งขันสด ----------------
@@ -933,6 +964,7 @@ function printMatchResultForm(level, code) {
       <div>เวลารายงานตัว: ______________</div>
       <div>เวลาแข่งจริง: ______________</div>
       <div>สกอร์สุดท้าย: _______ − _______</div>
+      <div>ผลจุดโทษ (ถ้ามี): _______ − _______</div>
     </div>
     <div class="print-grid" style="grid-template-columns:1fr 1fr">
       <div><h3>ทีม A: ${esc(r.teamA || '')}</h3>${rosterTable(r.teamAId)}</div>
@@ -1282,8 +1314,7 @@ function bracketMatchCard(level, def) {
   const resolved = resolveMatch(level, def.code)
   const match = resolved.match || {}
   const hasScore = match.score_a !== null && match.score_a !== undefined && match.score_b !== null && match.score_b !== undefined
-  const aWins = hasScore && Number(match.score_a) > Number(match.score_b)
-  const bWins = hasScore && Number(match.score_b) > Number(match.score_a)
+  const { aWins, bWins } = matchWinnerFlags(match, resolved.teamAId, resolved.teamBId)
   const displayTeam = (side, name) => {
     const isBye = (side === 'a' ? def.refA : def.refB) === 'FIRST_ROUND_BYE'
     return `${esc(name || bracketSlotPlaceholder(def, side))}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}`
@@ -1304,7 +1335,7 @@ function bracketMatchCard(level, def) {
       ${teamBlock('a', resolved.teamA, aWins, 'left')}
       <div style="flex-shrink:0;text-align:center;min-width:56px">
         ${hasScore
-          ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800"><span style="color:${aWins ? '#15803d' : '#9ca3af'}">${esc(match.score_a)}</span><span style="color:#d1d5db;font-weight:600;font-size:15px">:</span><span style="color:${bWins ? '#15803d' : '#9ca3af'}">${esc(match.score_b)}</span></div>`
+          ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800"><span style="color:${aWins ? '#15803d' : '#9ca3af'}">${esc(match.score_a)}</span><span style="color:#d1d5db;font-weight:600;font-size:15px">:</span><span style="color:${bWins ? '#15803d' : '#9ca3af'}">${esc(match.score_b)}</span></div>${penaltyShootoutScoreLine(match)}`
           : `<span style="font-size:11px;color:#9ca3af;font-weight:700">VS</span>`}
       </div>
       ${teamBlock('b', resolved.teamB, bWins, 'right')}
@@ -1473,8 +1504,7 @@ function matchCard(r) {
   const yellowB = m ? groupEventsByPlayer(evsFor(r.teamBId, 'yellow')) : []
   const redA = m ? groupEventsByPlayer(evsFor(r.teamAId, 'red')) : []
   const redB = m ? groupEventsByPlayer(evsFor(r.teamBId, 'red')) : []
-  const aWins = hasScore && m.score_a > m.score_b
-  const bWins = hasScore && m.score_b > m.score_a
+  const { aWins, bWins } = matchWinnerFlags(m, r.teamAId, r.teamBId)
 
   const detailLines = (goals, yellows, reds, align) => {
     const bits = []
@@ -1501,7 +1531,7 @@ function matchCard(r) {
       ${teamBlock(r.teamA, aWins, 'left')}
       <div style="flex-shrink:0;text-align:center;min-width:56px">
         ${hasScore
-          ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800"><span style="color:${aWins ? '#15803d' : '#9ca3af'}">${m.score_a}</span><span style="color:#d1d5db;font-weight:600;font-size:15px">:</span><span style="color:${bWins ? '#15803d' : '#9ca3af'}">${m.score_b}</span></div>`
+          ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800"><span style="color:${aWins ? '#15803d' : '#9ca3af'}">${m.score_a}</span><span style="color:#d1d5db;font-weight:600;font-size:15px">:</span><span style="color:${bWins ? '#15803d' : '#9ca3af'}">${m.score_b}</span></div>${penaltyShootoutScoreLine(m)}`
           : `<span style="font-size:11px;color:#9ca3af;font-weight:700">VS</span>`}
       </div>
       ${teamBlock(r.teamB, bWins, 'right')}
@@ -2837,6 +2867,7 @@ function eventPickerSection() {
 function matchEditorModal() {
   const { level, code } = S.editMatch
   const m = matchByCode(level, code) || {}
+  const penaltyMode = !!S.editMatch.penaltyMode
   const r = resolveMatch(level, code)
   const slots = pickableSlots(level, code)
   const goalsA = r.teamAId ? matchEventCounts(level, code, r.teamAId).goal : 0
@@ -2863,6 +2894,16 @@ function matchEditorModal() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">สกอร์ B<input id="mx-scoreB" type="number" min="0" value="${scoreBVal}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
       ${hasAnyGoalLogged ? `<div style="font-size:10.5px;color:#9ca3af;margin-top:-4px">* สกอร์ซิงก์ตามจำนวนผู้ทำประตูที่บันทึกไว้เสมอ (เพิ่ม/ลบผู้ทำประตูแล้วสกอร์จะอัปเดตตาม) แก้ไขเองได้ก่อนกดบันทึก ยังไม่ถือว่าจบการแข่งขันจนกว่าจะกดบันทึก</div>` : ''}
+      <button data-act="togglePenaltyShootoutMode" style="width:100%;padding:10px;border-radius:10px;border:1px solid ${penaltyMode ? '#7c3aed' : '#cbd5e1'};background:${penaltyMode ? '#7c3aed' : 'transparent'};color:${penaltyMode ? '#fff' : '#64748b'};font-size:12.5px;font-weight:800;cursor:pointer">${penaltyMode ? '✓ เปิดโหมดตัดสินด้วยการยิงจุดโทษอยู่ · กดเพื่อปิด' : '🎯 เปิดโหมดตัดสินด้วยการยิงจุดโทษ'}</button>
+      ${penaltyMode ? `
+      <div style="padding:11px;border:1px solid #c4b5fd;border-radius:12px;background:#f5f3ff">
+        <div style="font-size:11.5px;font-weight:800;color:#6d28d9;margin-bottom:3px">ผลการดวลจุดโทษ</div>
+        <div style="font-size:10.5px;color:#7c3aed;margin-bottom:9px">ใช้เมื่อสกอร์เวลาปกติเสมอเท่านั้น · ไม่ต้องบันทึกชื่อผู้ยิง และไม่นับรวมดาวซัลโว</div>
+        <div style="display:flex;gap:10px">
+          <label style="font-size:11.5px;color:#6b7280;flex:1">จุดโทษ A<input id="mx-penaltyScoreA" type="number" min="0" value="${esc(m.penalty_score_a ?? '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #c4b5fd;border-radius:9px;padding:9px 8px;font-size:16px;font-weight:800;text-align:center"/></label>
+          <label style="font-size:11.5px;color:#6b7280;flex:1">จุดโทษ B<input id="mx-penaltyScoreB" type="number" min="0" value="${esc(m.penalty_score_b ?? '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #c4b5fd;border-radius:9px;padding:9px 8px;font-size:16px;font-weight:800;text-align:center"/></label>
+        </div>
+      </div>` : ''}
       ${!r.teamAId || !r.teamBId ? `<div style="font-size:11px;color:#9ca3af">* ระบุทีมทั้งสองฝั่งก่อน จึงจะบันทึกผู้ทำประตู/ใบเหลือง/ใบแดงได้</div>` : `
       <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid #f3f4f6;padding-top:10px">
         <div style="display:flex;gap:10px">
@@ -2980,7 +3021,21 @@ function handleSaveMatch(level, code) {
   const teamBId = selB ? (selB.value || null) : r.teamBId
   const scoreA = numOrNull(gid('mx-scoreA').value)
   const scoreB = numOrNull(gid('mx-scoreB').value)
-  if (scoreA !== null && scoreB !== null && scoreA === scoreB) { azToast('สกอร์ต้องมีผู้ชนะ ห้ามเสมอ'); return }
+  const penaltyMode = !!S.editMatch?.penaltyMode
+  const penaltyScoreA = penaltyMode ? numOrNull(gid('mx-penaltyScoreA')?.value) : null
+  const penaltyScoreB = penaltyMode ? numOrNull(gid('mx-penaltyScoreB')?.value) : null
+  if ((scoreA !== null && scoreA < 0) || (scoreB !== null && scoreB < 0)) { azToast('สกอร์ต้องไม่ติดลบ'); return }
+  if ((scoreA === null) !== (scoreB === null)) { azToast('กรุณากรอกสกอร์เวลาปกติให้ครบทั้งสองทีม'); return }
+  if (penaltyMode) {
+    if (!teamAId || !teamBId) { azToast('กรุณาระบุทีมทั้งสองฝั่งก่อนบันทึกผลจุดโทษ'); return }
+    if (scoreA === null || scoreB === null) { azToast('กรุณากรอกสกอร์เวลาปกติก่อนบันทึกผลจุดโทษ'); return }
+    if (scoreA !== scoreB) { azToast('โหมดจุดโทษใช้ได้เมื่อสกอร์เวลาปกติเสมอกันเท่านั้น'); return }
+    if (penaltyScoreA === null || penaltyScoreB === null) { azToast('กรุณากรอกผลการดวลจุดโทษให้ครบทั้งสองทีม'); return }
+    if (penaltyScoreA < 0 || penaltyScoreB < 0) { azToast('ผลการดวลจุดโทษต้องไม่ติดลบ'); return }
+    if (penaltyScoreA === penaltyScoreB) { azToast('ผลการดวลจุดโทษต้องมีผู้ชนะ ห้ามเสมอ'); return }
+  } else if (scoreA !== null && scoreB !== null && scoreA === scoreB) {
+    azToast('สกอร์เสมอ กรุณาเปิดโหมดตัดสินด้วยการยิงจุดโทษ'); return
+  }
   if (scoreA !== null && scoreB !== null && teamAId && teamBId && cfg('REQUIRE_EVENTS_BEFORE_SCORE', '0') === '1') {
     const goalsA = matchEventCounts(level, code, teamAId).goal
     const goalsB = matchEventCounts(level, code, teamBId).goal
@@ -2993,14 +3048,20 @@ function handleSaveMatch(level, code) {
     level, match_code: code,
     round: (BRACKET[level].find(b => b.code === code) || {}).round || '',
     score_a: scoreA, score_b: scoreB,
+    is_penalty_shootout: penaltyMode,
+    penalty_score_a: penaltyScoreA,
+    penalty_score_b: penaltyScoreB,
+    winner_team_id: null,
+    loser_team_id: null,
     ready_time: gid('mx-ready').value || null, kickoff_time: gid('mx-kickoff').value || null,
     updated_at: new Date().toISOString(),
   }
   if (selA) payload.team_a_id = selA.value || null
   if (selB) payload.team_b_id = selB.value || null
   if (scoreA !== null && scoreB !== null && teamAId && teamBId) {
-    payload.winner_team_id = scoreA > scoreB ? teamAId : teamBId
-    payload.loser_team_id = scoreA > scoreB ? teamBId : teamAId
+    const teamAWins = penaltyMode ? penaltyScoreA > penaltyScoreB : scoreA > scoreB
+    payload.winner_team_id = teamAWins ? teamAId : teamBId
+    payload.loser_team_id = teamAWins ? teamBId : teamAId
   }
   const m = matchByCode(level, code)
   if (m) Object.assign(m, payload)
@@ -3382,7 +3443,12 @@ function bindEvents() {
       await refresh()
       azToast('ออกจากระบบแล้ว'); return
     }
-    if (act === 'editMatch') { S.editMatch = { level: btn.dataset.level, code: btn.dataset.code }; S.eventPicker = null; S.eventPickerFilter = ''; draw(); return }
+    if (act === 'editMatch') {
+      const match = matchByCode(btn.dataset.level, btn.dataset.code)
+      S.editMatch = { level: btn.dataset.level, code: btn.dataset.code, penaltyMode: !!match?.is_penalty_shootout }
+      S.eventPicker = null; S.eventPickerFilter = ''; draw(); return
+    }
+    if (act === 'togglePenaltyShootoutMode') { S.editMatch.penaltyMode = !S.editMatch.penaltyMode; draw(); return }
     if (act === 'openEventPicker') { S.eventPicker = { team: btn.dataset.team, type: btn.dataset.type }; S.eventPickerFilter = ''; draw(); return }
     if (act === 'closeEventPicker') { S.eventPicker = null; S.eventPickerFilter = ''; draw(); return }
     if (act === 'pickEventPlayer') { await handleAddMatchEvent(btn.dataset.player); return }
@@ -3624,7 +3690,8 @@ function bindEvents() {
             BRACKET[level].forEach(def => {
               commonRows.push({
                 level, match_code: def.code,
-                score_a: null, score_b: null, winner_team_id: null, loser_team_id: null,
+                score_a: null, score_b: null, is_penalty_shootout: false, penalty_score_a: null, penalty_score_b: null,
+                winner_team_id: null, loser_team_id: null,
                 clock_status: 'not_started', clock_half: null, clock_started_at: null, clock_elapsed_before: 0, clock_half_started_elapsed: 0,
               })
               // ทุก row ในชุดนี้มี key ชุดเดียวกันเป๊ะเสมอ (team_a_id/team_b_id ทั้งคู่) กันปัญหา PostgREST เติม null ให้ row ที่ key ไม่ครบ
