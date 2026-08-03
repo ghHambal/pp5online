@@ -1841,17 +1841,29 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>
         <div class="overflow-y-auto flex-1 p-5 space-y-2">
           ${students.map(s => {
+            const avatar = `<div class="w-7 h-7 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-[10px] flex-shrink-0">
+              ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
+            </div>`
+            const seatBadge = `<span class="text-gray-400 font-mono text-[10px] flex-shrink-0">#${seatNoByStudent.get(s.id) ?? '—'}</span>`
             const sub = subByStudent[s.id]
             if (!sub) return `<div class="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
-              <span class="font-semibold text-gray-600 truncate">${_htmlEsc(s.full_name ?? '')}</span>
-              <span class="text-gray-300 font-medium">ยังไม่ส่ง</span>
+              <div class="flex items-center gap-2 min-w-0">
+                ${avatar}
+                ${seatBadge}
+                <span class="font-semibold text-gray-600 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+              </div>
+              <span class="text-gray-300 font-medium flex-shrink-0">ยังไม่ส่ง</span>
             </div>`
             const late = _isLate(a, sub.submitted_at)
             const penalty = _latePenaltyPoints(a, sub.submitted_at)
             const suggested = col ? Math.max(0, (parseFloat(col.max_score) || 0) - penalty) : ''
             return `<div class="px-3 py-2.5 rounded-xl border ${late ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'} text-xs">
               <div class="flex items-center justify-between gap-2">
-                <span class="font-semibold text-gray-700 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+                <div class="flex items-center gap-2 min-w-0">
+                  ${avatar}
+                  ${seatBadge}
+                  <span class="font-semibold text-gray-700 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+                </div>
                 <span class="text-gray-400 flex-shrink-0">${new Date(sub.submitted_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               ${sub.file_urls?.length ? `<div class="flex flex-wrap gap-1.5 mt-1.5">${sub.file_urls.map(f => `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="text-[10px] px-2 py-1 rounded-lg bg-white border border-gray-200 text-indigo-600 hover:bg-indigo-50">📎 ${_htmlEsc(f.name)}</a>`).join('')}</div>` : ''}
