@@ -16,17 +16,70 @@
     body{margin:0;background:#f7f5f3;font-family:'Noto Sans Thai',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
     input,select,button,textarea{font-family:inherit}
     ::selection{background:#fbcfe8}
+    #azfutsal-root[data-theme="dark"] .az-futsal-stage{background:#020617!important}
+    #azfutsal-root[data-theme="dark"] .az-futsal-app{background:#0f172a!important;color:#f8fafc!important;box-shadow:0 24px 72px rgba(0,0,0,.72)!important}
+    #azfutsal-root[data-theme="dark"] .az-futsal-main{background:linear-gradient(180deg,#0f172a 0%,#111827 100%)}
+    #azfutsal-root[data-theme="dark"] .az-theme-header{background:rgba(15,23,42,.96)!important;border-color:#334155!important}
+    #azfutsal-root[data-theme="dark"] .az-theme-nav{background:#0f172a!important;border-color:#334155!important}
+    #azfutsal-root[data-theme="dark"] input,
+    #azfutsal-root[data-theme="dark"] select,
+    #azfutsal-root[data-theme="dark"] textarea{background:#111827!important;color:#f8fafc!important;border-color:#475569!important;color-scheme:dark}
+    #azfutsal-root[data-theme="dark"] input::placeholder,
+    #azfutsal-root[data-theme="dark"] textarea::placeholder{color:#94a3b8!important;opacity:1}
+    #azfutsal-root[data-theme="dark"] option{background:#111827;color:#f8fafc}
+    #azfutsal-root[data-theme="dark"] [style*="background:#fff"]{background:#182235!important}
+    #azfutsal-root[data-theme="dark"] [style*="background:rgba(255,255,255,.94)"],
+    #azfutsal-root[data-theme="dark"] [style*="background:rgba(255,255,255,.88)"]{background:rgba(24,34,53,.96)!important}
+    #azfutsal-root[data-theme="dark"] [style*="background:#f3f4f6"],
+    #azfutsal-root[data-theme="dark"] [style*="background:#f9fafb"],
+    #azfutsal-root[data-theme="dark"] [style*="background:#fafafa"],
+    #azfutsal-root[data-theme="dark"] [style*="background:#faf9f8"]{background:#222e43!important}
+    #azfutsal-root[data-theme="dark"] [style*="background:#dcfce7"]{background:#123524!important}
+    #azfutsal-root[data-theme="dark"] [style*="background:#fef3c7"]{background:#422006!important}
+    #azfutsal-root[data-theme="dark"] [style*="background:#fee2e2"]{background:#450a0a!important}
+    #azfutsal-root[data-theme="dark"] [style*="background:#e0e7ff"]{background:#1e1b4b!important}
+    #azfutsal-root[data-theme="dark"] [style*="background:#f59e0b"][style*="color:#111827"]{color:#111827!important}
+    #azfutsal-root[data-theme="dark"] [style*="color:#111827"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#1f2937"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#374151"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#334155"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#4b5563"]{color:#f1f5f9!important}
+    #azfutsal-root[data-theme="dark"] [style*="color:#6b7280"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#64748b"]{color:#cbd5e1!important}
+    #azfutsal-root[data-theme="dark"] [style*="color:#9ca3af"]{color:#94a3b8!important}
+    #azfutsal-root[data-theme="dark"] [style*="color:#15803d"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#16a34a"]{color:#86efac!important}
+    #azfutsal-root[data-theme="dark"] [style*="color:#b45309"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#d97706"]{color:#fbbf24!important}
+    #azfutsal-root[data-theme="dark"] [style*="color:#4338ca"],
+    #azfutsal-root[data-theme="dark"] [style*="color:#7c3aed"]{color:#c4b5fd!important}
+    #azfutsal-root[data-theme="dark"] [style*="border:1px solid #e5e7eb"],
+    #azfutsal-root[data-theme="dark"] [style*="border:1px solid #ececec"],
+    #azfutsal-root[data-theme="dark"] [style*="border:1px solid #f1f5f9"],
+    #azfutsal-root[data-theme="dark"] [style*="border:1px solid #f3f4f6"]{border-color:#475569!important}
+    #azfutsal-root[data-theme="dark"] [style*="border-bottom:1px solid #f3f4f6"],
+    #azfutsal-root[data-theme="dark"] [style*="border-top:1px solid #ececec"]{border-color:#334155!important}
+    #azfutsal-root[data-theme="dark"] table{border-color:#475569!important}
+    #azfutsal-root[data-theme="dark"] th{background:#1e293b!important;color:#f8fafc!important;border-color:#475569!important}
+    #azfutsal-root[data-theme="dark"] td{border-color:#334155!important}
+    #azfutsal-root[data-theme="dark"] .az-futsal-main::-webkit-scrollbar{width:8px}
+    #azfutsal-root[data-theme="dark"] .az-futsal-main::-webkit-scrollbar-thumb{background:#475569;border-radius:999px}
+    #azfutsal-root[data-theme="dark"] button:focus-visible,
+    #azfutsal-root[data-theme="dark"] input:focus-visible,
+    #azfutsal-root[data-theme="dark"] select:focus-visible,
+    #azfutsal-root[data-theme="dark"] textarea:focus-visible{outline:2px solid #f472b6;outline-offset:2px}
+    .az-futsal-app,.az-theme-header,.az-theme-nav{transition:background-color .2s ease,color .2s ease,border-color .2s ease}
     @keyframes azToastIn{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translate(-50%,0)}}
     @keyframes ballFloat{0%,100%{transform:translate(0,0) rotate(0deg)}25%{transform:translate(7px,-9px) rotate(-7deg)}50%{transform:translate(-5px,5px) rotate(5deg)}75%{transform:translate(6px,7px) rotate(-4deg)}}
     @keyframes stageBarSweep{from{background-position:0% 0}to{background-position:200% 0}}
   </style>
 </head>
 <body>
-  <div id="azfutsal-root"></div>
+  <div id="azfutsal-root" data-theme="dark"></div>
 
   <script type="module">
     import { supabase } from './js/supabase.js'
-    import { renderAzfutsal } from './js/azfutsal.js?v=10.22.216'
+    import { renderAzfutsal } from './js/azfutsal.js?v=10.22.217'
 
     async function init() {
       await renderAzfutsal(document.getElementById('azfutsal-root'), supabase)

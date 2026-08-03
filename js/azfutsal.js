@@ -17,6 +17,11 @@ function mix(hex, target, amt) {
 function applyThemeColors() {
   const ms = /^#[0-9a-fA-F]{6}$/.test(cfg('COLOR_MS', '')) ? cfg('COLOR_MS') : '#ec4899'
   const hs = /^#[0-9a-fA-F]{6}$/.test(cfg('COLOR_HS', '')) ? cfg('COLOR_HS') : '#22c55e'
+  if (S.theme === 'dark') {
+    T.MS.base = ms; T.MS.accent = mix(ms, 255, 0.18); T.MS.soft = mix(ms, 15, 0.82); T.MS.border = mix(ms, 100, 0.58)
+    T.HS.base = hs; T.HS.accent = mix(hs, 255, 0.18); T.HS.soft = mix(hs, 15, 0.82); T.HS.border = mix(hs, 100, 0.58)
+    return
+  }
   T.MS.base = ms; T.MS.accent = mix(ms, 0, 0.15); T.MS.soft = mix(ms, 255, 0.94); T.MS.border = mix(ms, 255, 0.78)
   T.HS.base = hs; T.HS.accent = mix(hs, 0, 0.15); T.HS.soft = mix(hs, 255, 0.94); T.HS.border = mix(hs, 255, 0.78)
 }
@@ -119,6 +124,7 @@ const fmtDT = iso => iso ? new Date(iso).toLocaleString('th-TH', { day: 'numeric
 let SB = null
 let ROOT = null
 let S = {
+  theme: (typeof localStorage !== 'undefined' && localStorage.getItem('az_theme') === 'light') ? 'light' : 'dark',
   tab: 'schedule',
   scheduleMode: 'timeline',
   bracketLevel: 'MS',
@@ -576,9 +582,18 @@ function organizerBadge() {
 }
 
 // ---------------- render: shell ----------------
+function applyAzTheme() {
+  if (!ROOT) return
+  ROOT.dataset.theme = S.theme
+  document.documentElement.style.colorScheme = S.theme
+  const themeMeta = document.querySelector('meta[name="theme-color"]')
+  if (themeMeta) themeMeta.content = S.theme === 'dark' ? '#0f172a' : '#ec4899'
+}
+
 export async function renderAzfutsal(root, supabaseClient) {
   ROOT = root
   SB = supabaseClient
+  applyAzTheme()
   root.innerHTML = `<div style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px">กำลังโหลด...</div>`
   await loadAll()
   draw()
@@ -593,11 +608,13 @@ async function refresh() {
 function draw() {
   const s = S
   const accent = '#db2777'
+  applyAzTheme()
+  applyThemeColors()
   ROOT.innerHTML = `
-  <div style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden">
-    <div style="width:100%;max-width:440px;height:100%;max-height:1000px;background:#fff;position:relative;box-shadow:0 24px 64px rgba(0,0,0,.5);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;color:#111827">
+  <div class="az-futsal-stage" style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden">
+    <div class="az-futsal-app" style="width:100%;max-width:440px;height:100%;max-height:1000px;background:#fff;position:relative;box-shadow:0 24px 64px rgba(0,0,0,.5);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;color:#111827">
       ${header()}
-      <main style="flex:1;min-height:0;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column">
+      <main class="az-futsal-main" style="flex:1;min-height:0;overflow-y:auto;padding:16px 20px 24px;display:flex;flex-direction:column">
         ${s.tab === 'teamStatus' ? teamStatusView() : ''}
         ${s.tab === 'schedule' ? scheduleView() : ''}
         ${s.tab === 'teams' ? statsView() : ''}
@@ -627,13 +644,14 @@ function header() {
   const eventName = cfg('EVENT_NAME', 'AZFUTSALCUP2025')
   const date = cfg('INFO_DATE', '-'), venue = cfg('INFO_VENUE', '-')
   return `
-  <header style="flex-shrink:0;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-bottom:1px solid #ececec;padding:16px 20px 14px">
+  <header class="az-theme-header" style="flex-shrink:0;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-bottom:1px solid #ececec;padding:16px 20px 14px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div>
         <h1 style="margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em;color:#db2777">${esc(eventName)}</h1>
         <p style="margin:4px 0 0;font-size:12px;color:#6b7280">${esc(date)} · ${esc(venue)}</p>
       </div>
       <div style="display:flex;gap:8px">
+        <button data-act="toggleTheme" style="width:38px;height:38px;border-radius:12px;border:1px solid ${s.theme === 'dark' ? '#475569' : '#e5e7eb'};display:flex;align-items:center;justify-content:center;cursor:pointer;background:${s.theme === 'dark' ? '#1e293b' : '#fff'};color:${s.theme === 'dark' ? '#fbbf24' : '#475569'};font-size:18px" aria-label="${s.theme === 'dark' ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}" title="${s.theme === 'dark' ? 'โหมดมืด · กดเพื่อเปลี่ยนเป็นโหมดสว่าง' : 'โหมดสว่าง · กดเพื่อเปลี่ยนเป็นโหมดมืด'}">${s.theme === 'dark' ? '☀️' : '🌙'}</button>
         <button data-act="account" style="width:38px;height:38px;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#f3f4f6;color:#9ca3af" aria-label="บัญชี">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
         </button>
@@ -654,7 +672,7 @@ function bottomNav() {
   if (s.tab === 'admin' && s.identity.isAdmin) {
     const activeGroup = groupOfSection(s.adminSection).id
     return `
-    <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+    <nav class="az-theme-nav" style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
       <div style="display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
         ${ADMIN_GROUPS.map(g => `<button data-act="adminGroup" data-v="${g.id}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 2px;cursor:pointer;color:${activeGroup === g.id ? '#db2777' : '#9ca3af'}"><span style="font-size:19px;line-height:1">${g.icon}</span><span style="font-size:10px;font-weight:${activeGroup === g.id ? 800 : 600}">${g.label}</span></button>`).join('')}
       </div>
@@ -662,7 +680,7 @@ function bottomNav() {
   }
   if (s.tab === 'staff') {
     return `
-    <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+    <nav class="az-theme-nav" style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
       <div style="padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
         <button data-act="adminSignOut" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">ออกจากระบบ</button>
       </div>
@@ -678,7 +696,7 @@ function bottomNav() {
           ${icon}<span style="font-size:10.5px;font-weight:${s.myTeamTab === v ? 800 : 600}">${label}</span>
         </button>`
       return `
-      <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+      <nav class="az-theme-nav" style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
         <div style="display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
           ${myTeamItem('roster', 'ทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>')}
           ${myTeamItem('matches', 'ผลการแข่งขัน', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>')}
@@ -687,14 +705,14 @@ function bottomNav() {
       </nav>`
     }
     return `
-    <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+    <nav class="az-theme-nav" style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
       <div style="padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
         <button data-act="tab" data-tab="schedule" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">← กลับหน้าหลัก</button>
       </div>
     </nav>`
   }
   return `
-  <nav style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
+  <nav class="az-theme-nav" style="flex-shrink:0;background:#fff;border-top:1px solid #ececec">
     <div style="display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom))">
       ${item('teamStatus', 'สถานะทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>')}
       ${item('teams', 'สถิติทีม', '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>')}
@@ -1208,9 +1226,9 @@ function bracketMatchCard(level, def) {
     const isBye = (side === 'a' ? def.refA : def.refB) === 'FIRST_ROUND_BYE'
     const align = side === 'a' ? 'left' : 'right'
     return `
-    <div style="position:relative;min-width:0;min-height:62px;box-sizing:border-box;padding:8px 8px 7px;border-radius:9px;background:${isWinner ? '#dcfce7' : '#fff'};border:1px solid ${isWinner ? '#86efac' : t.border};border-top:3px solid ${isWinner ? '#22c55e' : t.base};text-align:${align};display:flex;flex-direction:column;justify-content:center">
+    <div style="position:relative;min-width:170px;min-height:62px;box-sizing:border-box;padding:8px 12px 7px;border-radius:9px;background:${isWinner ? '#dcfce7' : '#fff'};border:1px solid ${isWinner ? '#86efac' : t.border};border-top:3px solid ${isWinner ? '#22c55e' : t.base};text-align:${align};display:flex;flex-direction:column;justify-content:center">
       <div style="font-size:8.5px;font-weight:800;color:${isWinner ? '#15803d' : t.accent};letter-spacing:.04em;margin-bottom:3px">ทีม ${side.toUpperCase()}</div>
-      <div style="font-size:11px;font-weight:${name ? 750 : 600};color:${name ? (isWinner ? '#15803d' : '#1f2937') : '#9ca3af'};line-height:1.28;overflow-wrap:anywhere">${name ? esc(name) : esc(placeholder)}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}</div>
+      <div style="font-size:11px;font-weight:${name ? 750 : 600};color:${name ? (isWinner ? '#15803d' : '#1f2937') : '#9ca3af'};line-height:1.28;white-space:nowrap">${name ? esc(name) : esc(placeholder)}${isBye && name ? ' <span style="color:#d97706">⭐</span>' : ''}</div>
       ${hasScore ? `<div style="position:absolute;top:5px;${side === 'a' ? 'right' : 'left'}:5px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:${isWinner ? '#16a34a' : t.base};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800">${esc(score)}</div>` : ''}
     </div>`
   }
@@ -1220,7 +1238,7 @@ function bracketMatchCard(level, def) {
       <span style="font-size:10px;font-weight:800;color:${t.accent}">${def.code}</span>
       <span style="font-size:9.5px;color:#9ca3af">${esc(match.kickoff_time || '')}</span>
     </div>
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);gap:5px;align-items:stretch">
+    <div style="display:grid;grid-template-columns:minmax(170px,max-content) 32px minmax(170px,max-content);gap:8px;align-items:stretch">
       ${teamPanel('a', resolved.teamA, resolved.teamAId, match.score_a)}
       <div style="display:flex;align-items:center;justify-content:center;color:${t.accent};font-size:9px;font-weight:900">VS</div>
       ${teamPanel('b', resolved.teamB, resolved.teamBId, match.score_b)}
@@ -1240,8 +1258,12 @@ function tournamentBracketView() {
     group.matches.push(def)
   })
   const byeTeamId = level === 'MS' ? cfg('FIRST_ROUND_BYE_MS', '') : ''
-  const columnBackgrounds = ['#f8fafc', '#fff7ed', '#eff6ff', '#f5f3ff', '#f0fdfa', '#fffbeb']
-  const columnBorders = ['#cbd5e1', '#fed7aa', '#bfdbfe', '#ddd6fe', '#99f6e4', '#fde68a']
+  const columnBackgrounds = S.theme === 'dark'
+    ? ['#172033', '#2d1f13', '#15243b', '#231c3d', '#0f2928', '#2e2812']
+    : ['#f8fafc', '#fff7ed', '#eff6ff', '#f5f3ff', '#f0fdfa', '#fffbeb']
+  const columnBorders = S.theme === 'dark'
+    ? ['#475569', '#9a5b27', '#3b6a9f', '#6650a4', '#247b75', '#92762d']
+    : ['#cbd5e1', '#fed7aa', '#bfdbfe', '#ddd6fe', '#99f6e4', '#fde68a']
   return `
   <div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -1251,10 +1273,13 @@ function tournamentBracketView() {
       <div style="font-size:11.5px;color:#6b7280">เลื่อนซ้าย–ขวาเพื่อดูเส้นทางถึงรอบชิง</div>
       ${level === 'MS' && hasMsFirstRoundBye() ? `<div style="font-size:10.5px;color:#b45309;font-weight:700">⭐ ทีมบาย: ${esc(teamName(byeTeamId) || 'รอจับสลาก')}</div>` : ''}
     </div>
-    <div style="overflow-x:auto;overflow-y:hidden;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch">
+    <div style="display:flex;gap:6px;overflow-x:auto;padding:2px 1px 9px;scrollbar-width:thin">
+      ${groups.map((group, groupIndex) => `<button data-act="jumpBracketRound" data-v="${groupIndex}" style="flex:0 0 auto;padding:7px 12px;border-radius:999px;border:1px solid ${columnBorders[groupIndex % columnBorders.length]};background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};color:${S.theme === 'dark' ? '#f1f5f9' : '#334155'};font-size:10.5px;font-weight:800;cursor:pointer">${esc(group.label)} · ${group.matches.length}</button>`).join('')}
+    </div>
+    <div id="az-bracket-scroll" style="overflow-x:auto;overflow-y:hidden;padding:2px 2px 12px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch">
       <div style="display:flex;align-items:stretch;gap:12px;min-width:max-content">
         ${groups.map((group, groupIndex) => `
-        <div style="width:242px;flex:0 0 242px;scroll-snap-align:start;display:flex;flex-direction:column;box-sizing:border-box;padding:9px;border-radius:16px;background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};border:1px solid ${columnBorders[groupIndex % columnBorders.length]};box-shadow:0 4px 14px rgba(15,23,42,.06)">
+        <div id="az-bracket-round-${groupIndex}" style="width:max-content;min-width:430px;flex:0 0 auto;scroll-snap-align:start;display:flex;flex-direction:column;box-sizing:border-box;padding:9px;border-radius:16px;background:${columnBackgrounds[groupIndex % columnBackgrounds.length]};border:1px solid ${columnBorders[groupIndex % columnBorders.length]};box-shadow:0 4px 14px rgba(15,23,42,.06)">
           <div style="position:sticky;top:0;z-index:1;text-align:center;font-size:11px;font-weight:800;color:#334155;background:rgba(255,255,255,.88);border:1px solid ${columnBorders[groupIndex % columnBorders.length]};border-radius:999px;padding:6px 8px;margin-bottom:9px;box-shadow:0 2px 6px rgba(15,23,42,.05)">${esc(group.label)} · ${group.matches.length} นัด</div>
           <div style="display:flex;flex-direction:column;gap:${Math.max(8, groupIndex * 4 + 8)}px;padding-top:${groupIndex * 10}px;flex:1">
             ${group.matches.map(def => bracketMatchCard(level, def)).join('')}
@@ -3231,9 +3256,21 @@ function bindEvents() {
     const btn = e.target.closest('[data-act]')
     if (!btn) return
     const act = btn.dataset.act
+    if (act === 'toggleTheme') {
+      S.theme = S.theme === 'dark' ? 'light' : 'dark'
+      localStorage.setItem('az_theme', S.theme)
+      draw()
+      return
+    }
     if (act === 'tab') { S.tab = btn.dataset.tab; draw(); return }
     if (act === 'setScheduleMode') { S.scheduleMode = btn.dataset.v === 'bracket' ? 'bracket' : 'timeline'; draw(); return }
     if (act === 'setBracketLevel') { S.bracketLevel = btn.dataset.v === 'HS' ? 'HS' : 'MS'; draw(); return }
+    if (act === 'jumpBracketRound') {
+      const scroller = document.getElementById('az-bracket-scroll')
+      const target = document.getElementById(`az-bracket-round-${btn.dataset.v}`)
+      if (scroller && target) scroller.scrollTo({ left: target.offsetLeft - 2, behavior: 'smooth' })
+      return
+    }
     if (act === 'setLevel') { S.filterLevel = btn.dataset.v; draw(); return }
     if (act === 'setStats') { S.statsLevel = btn.dataset.v; draw(); return }
     if (act === 'setTeamStatusLevel') { S.teamStatusLevel = btn.dataset.v; draw(); return }
