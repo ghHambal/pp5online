@@ -127,6 +127,7 @@ let S = {
   theme: (typeof localStorage !== 'undefined' && localStorage.getItem('az_theme') === 'light') ? 'light' : 'dark',
   tab: 'schedule',
   scheduleMode: 'timeline',
+  scheduleDay: 1,
   bracketLevel: 'MS',
   filterLevel: 'ALL',
   filterTeam: '',
@@ -1227,21 +1228,30 @@ function scheduleRows() {
 }
 
 function scheduleTimelineMarkup(rows) {
-  if (!rows.length) return `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดที่ตรงกับตัวกรอง</div>`
-  return [1, 2].map(day => {
-    const dayRows = rows.filter(row => row.day === day)
-    if (!dayRows.length) return ''
-    const color = day === 1 ? '#0284c7' : '#7c3aed'
-    const background = S.theme === 'dark' ? (day === 1 ? '#102a3b' : '#251842') : (day === 1 ? '#f0f9ff' : '#f5f3ff')
-    return `
-    <section style="display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:12px;background:${background};border:1px solid ${color}55">
-        <div><div style="font-size:13px;font-weight:900;color:${color}">วันที่ ${day}</div><div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(scheduleDateLabel(day))}</div></div>
-        <span style="flex-shrink:0;font-size:10.5px;font-weight:800;color:${color}">${dayRows.length} นัด</span>
-      </div>
-      ${dayRows.map(matchCard).join('')}
-    </section>`
-  }).join('')
+  const day = S.scheduleDay === 2 ? 2 : 1
+  const dayRows = rows.filter(row => row.day === day)
+  if (!dayRows.length) return `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดของวันที่ ${day} ที่ตรงกับตัวกรอง</div>`
+  const color = day === 1 ? '#0284c7' : '#7c3aed'
+  const background = S.theme === 'dark' ? (day === 1 ? '#102a3b' : '#251842') : (day === 1 ? '#f0f9ff' : '#f5f3ff')
+  return `
+  <section style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:12px;background:${background};border:1px solid ${color}55">
+      <div><div style="font-size:13px;font-weight:900;color:${color}">วันที่ ${day}</div><div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(scheduleDateLabel(day))}</div></div>
+      <span style="flex-shrink:0;font-size:10.5px;font-weight:800;color:${color}">${dayRows.length} นัด</span>
+    </div>
+    ${dayRows.map(matchCard).join('')}
+  </section>`
+}
+
+function scheduleDayTabs() {
+  return `
+  <div style="display:flex;gap:6px;margin-bottom:10px">
+    ${[1, 2].map(day => {
+      const active = S.scheduleDay === day
+      const color = day === 1 ? '#0284c7' : '#7c3aed'
+      return `<button data-act="setScheduleDay" data-v="${day}" style="flex:1;min-width:0;padding:9px 8px;border-radius:11px;border:1px solid ${active ? color : '#e5e7eb'};background:${active ? color : '#fff'};color:${active ? '#fff' : '#374151'};cursor:pointer;text-align:center"><span style="display:block;font-size:12px;font-weight:900">วันที่ ${day}</span><span style="display:block;margin-top:2px;font-size:9.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(scheduleDateLabel(day))}</span></button>`
+    }).join('')}
+  </div>`
 }
 
 function bracketRoundLabel(round) {
@@ -1343,11 +1353,12 @@ function tournamentBracketView() {
 function scheduleView() {
   const rows = scheduleRows()
   const isBracket = S.scheduleMode === 'bracket'
+  const visibleRowCount = rows.filter(row => row.day === (S.scheduleDay === 2 ? 2 : 1)).length
   return `
   <section>
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px">
       <h2 style="margin:0;font-size:17px;font-weight:800">${isBracket ? 'ผังการแข่งขัน' : 'ตารางการแข่งขัน'}</h2>
-      ${isBracket ? '' : `<span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${rows.length} นัด</span>`}
+      ${isBracket ? '' : `<span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${visibleRowCount} นัด</span>`}
     </div>
     <p style="margin:0 0 14px;font-size:12px;color:#6b7280">${esc(cfg('INFO_VENUE', ''))}</p>
     ${(cfg('REGISTRATION_OPEN_MS', '0') === '1' || cfg('REGISTRATION_OPEN_HS', '0') === '1') ? `
@@ -1359,6 +1370,7 @@ function scheduleView() {
       <button data-act="setScheduleMode" data-v="bracket" style="flex:1;padding:8px;border-radius:9px;border:none;background:${isBracket ? '#fff' : 'transparent'};color:${isBracket ? '#111827' : '#6b7280'};box-shadow:${isBracket ? '0 1px 4px rgba(0,0,0,.08)' : 'none'};font-size:12px;font-weight:800;cursor:pointer">🏆 ผังการแข่งขัน</button>
     </div>
     ${isBracket ? tournamentBracketView() : `
+    ${scheduleDayTabs()}
     <div style="display:flex;gap:6px;margin-bottom:10px">
       ${['ALL', 'MS', 'HS'].map(v => `<button data-act="setLevel" data-v="${v}" style="font-size:12.5px;padding:7px 14px;border-radius:9px;border:1px solid ${S.filterLevel === v ? '#db2777' : '#e5e7eb'};background:${S.filterLevel === v ? '#db2777' : '#fff'};color:${S.filterLevel === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${v === 'ALL' ? 'ทั้งหมด' : T[v].label}</button>`).join('')}
     </div>
@@ -3313,6 +3325,7 @@ function bindEvents() {
     }
     if (act === 'tab') { S.tab = btn.dataset.tab; draw(); return }
     if (act === 'setScheduleMode') { S.scheduleMode = btn.dataset.v === 'bracket' ? 'bracket' : 'timeline'; draw(); return }
+    if (act === 'setScheduleDay') { S.scheduleDay = btn.dataset.v === '2' ? 2 : 1; draw(); return }
     if (act === 'setBracketLevel') { S.bracketLevel = btn.dataset.v === 'HS' ? 'HS' : 'MS'; draw(); return }
     if (act === 'jumpBracketRound') {
       const scroller = document.getElementById('az-bracket-scroll')
@@ -3884,9 +3897,10 @@ function bindEvents() {
 
 function updateScheduleList() {
   const rows = scheduleRows()
+  const selectedDay = S.scheduleDay === 2 ? 2 : 1
   const countEl = gid('az-schedule-count')
   const listWrap = gid('az-schedule-rows')
-  if (countEl) countEl.textContent = `${rows.length} นัด`
+  if (countEl) countEl.textContent = `${rows.filter(row => row.day === selectedDay).length} นัด`
   if (listWrap) listWrap.innerHTML = scheduleTimelineMarkup(rows)
 }
 
