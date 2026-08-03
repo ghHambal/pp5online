@@ -813,16 +813,18 @@ async function _renderResultScreen(root) {
       actionsHtml = `
       <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
         <p class="text-sm font-bold text-emerald-700">✅ ยืนยันบันทึกคะแนนสอบขั้นสุดท้ายแล้ว</p>
-        <p class="text-xs text-emerald-600 mt-1">ทำแบบทดสอบนี้ซ้ำอีกไม่ได้แล้ว</p>
+        <p class="text-xs text-emerald-600 mt-1">คะแนนถูกบันทึกเข้าสมุดคะแนนแล้ว — ทำแบบทดสอบนี้ซ้ำอีกไม่ได้แล้ว</p>
       </div>`
     } else if (remaining > 0) {
       actionsHtml = `
+      <p class="text-[11px] text-gray-400 text-center">⚠️ คะแนนยังไม่เข้าสมุดคะแนนจนกว่าจะกด "ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย"</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <button id="btn-quiz-retake" class="py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow">ทำอีกครั้ง (เหลือ ${remaining} สิทธิ์)</button>
         <button id="btn-quiz-finalize" class="py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50">ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย</button>
       </div>`
     } else {
       actionsHtml = `
+      <p class="text-[11px] text-gray-400 text-center">⚠️ คะแนนยังไม่เข้าสมุดคะแนนจนกว่าจะกดยืนยัน</p>
       <button id="btn-quiz-finalize" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow">ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย</button>`
     }
   }
@@ -888,7 +890,7 @@ async function _renderResultScreen(root) {
   document.getElementById('btn-quiz-finalize')?.addEventListener('click', async e => {
     const ok = await showDangerConfirm({
       title: 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย?',
-      message: 'หลังยืนยันแล้วจะไม่สามารถกลับเข้ามาทำแบบทดสอบนี้ได้อีก',
+      message: 'คะแนนจะถูกบันทึกเข้าสมุดคะแนนจริงตอนนี้ และหลังยืนยันแล้วจะไม่สามารถกลับเข้ามาทำแบบทดสอบนี้ได้อีก',
       confirmText: 'ยืนยันจบการสอบ',
     })
     if (!ok) return
