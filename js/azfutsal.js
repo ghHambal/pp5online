@@ -1179,13 +1179,39 @@ function openCheckinScanner(level, code) {
   })()
 }
 
+function nextDayStartValue(startValue) {
+  if (!startValue) return ''
+  const date = new Date(startValue)
+  if (Number.isNaN(date.getTime())) return ''
+  date.setDate(date.getDate() + 1)
+  const pad = value => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function scheduleDayStart(day) {
+  const firstDay = cfg('START_TIME', '')
+  return day === 1 ? firstDay : cfg('SECOND_DAY_START_TIME', nextDayStartValue(firstDay))
+}
+
+function scheduleDayFor(level, code) {
+  const matchNumber = Number(String(code).replace(/^M/, ''))
+  const dayOneLastMatch = usesSixteenTeamPools(level) ? 12 : 9
+  return matchNumber <= dayOneLastMatch ? 1 : 2
+}
+
+function scheduleDateLabel(day) {
+  const dateValue = scheduleDayStart(day).slice(0, 10)
+  if (!dateValue) return 'ยังไม่ได้กำหนดวันที่'
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 function scheduleRows() {
   const rows = []
   ;(S.filterLevel === 'ALL' ? ['MS', 'HS'] : [S.filterLevel]).forEach(level => {
     BRACKET[level].forEach(def => {
       const r = resolveMatch(level, def.code)
       const m = r.match
-      rows.push({ level, code: def.code, round: def.round, teamA: r.teamA, teamB: r.teamB, teamAId: r.teamAId, teamBId: r.teamBId, m })
+      rows.push({ level, code: def.code, round: def.round, day: scheduleDayFor(level, def.code), teamA: r.teamA, teamB: r.teamB, teamAId: r.teamAId, teamBId: r.teamBId, m })
     })
   })
   return rows.filter(r => {
@@ -1193,10 +1219,29 @@ function scheduleRows() {
     if (S.filterTime && !(r.m?.kickoff_time || '').includes(S.filterTime)) return false
     return true
   }).sort((a, b) => {
+    if (a.day !== b.day) return a.day - b.day
     const timeA = a.m?.kickoff_time || '99:99'
     const timeB = b.m?.kickoff_time || '99:99'
     return timeA.localeCompare(timeB)
   })
+}
+
+function scheduleTimelineMarkup(rows) {
+  if (!rows.length) return `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดที่ตรงกับตัวกรอง</div>`
+  return [1, 2].map(day => {
+    const dayRows = rows.filter(row => row.day === day)
+    if (!dayRows.length) return ''
+    const color = day === 1 ? '#0284c7' : '#7c3aed'
+    const background = S.theme === 'dark' ? (day === 1 ? '#102a3b' : '#251842') : (day === 1 ? '#f0f9ff' : '#f5f3ff')
+    return `
+    <section style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:12px;background:${background};border:1px solid ${color}55">
+        <div><div style="font-size:13px;font-weight:900;color:${color}">วันที่ ${day}</div><div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(scheduleDateLabel(day))}</div></div>
+        <span style="flex-shrink:0;font-size:10.5px;font-weight:800;color:${color}">${dayRows.length} นัด</span>
+      </div>
+      ${dayRows.map(matchCard).join('')}
+    </section>`
+  }).join('')
 }
 
 function bracketRoundLabel(round) {
@@ -1322,7 +1367,7 @@ function scheduleView() {
       <input id="az-filterTime" value="${esc(S.filterTime)}" placeholder="เวลา เช่น 09:00" style="width:132px;border:1px solid #e5e7eb;border-radius:10px;padding:9px 12px;font-size:13px;outline:none;background:#faf9f8"/>
     </div>
     <div id="az-schedule-rows" style="display:flex;flex-direction:column;gap:10px">
-      ${rows.length ? rows.map(matchCard).join('') : `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดที่ตรงกับตัวกรอง</div>`}
+      ${scheduleTimelineMarkup(rows)}
     </div>`}
   </section>`
 }
@@ -3487,31 +3532,54 @@ function bindEvents() {
       await refresh(); azToast('บันทึกการตั้งค่าแล้ว'); return
     }
     if (act === 'saveAutoTime') {
-      const start = gid('ops-start').value, matchMin = Number(gid('ops-matchmin').value || 20), breakMin = Number(gid('ops-breakmin').value || 5)
-      if (!start) { azToast('กรุณาเลือกเวลาเริ่มแข่ง'); return }
-      await SB.from('azfutsal_config').upsert([{ key: 'START_TIME', value: start }, { key: 'MATCH_MIN', value: String(matchMin) }, { key: 'BREAK_MIN', value: String(breakMin) }])
-      let t = new Date(start)
+      const firstDayStart = gid('ops-start').value
+      const secondDayStart = gid('ops-start-day2').value
+      const matchMin = Number(gid('ops-matchmin').value || 20)
+      const breakMin = Number(gid('ops-breakmin').value || 5)
+      if (!firstDayStart || !secondDayStart) { azToast('กรุณาเลือกวันและเวลาเริ่มแข่งให้ครบทั้ง 2 วัน'); return }
+      if (new Date(secondDayStart) <= new Date(firstDayStart)) { azToast('วันที่ 2 ต้องอยู่หลังวันที่ 1'); return }
+      await SB.from('azfutsal_config').upsert([
+        { key: 'START_TIME', value: firstDayStart },
+        { key: 'SECOND_DAY_START_TIME', value: secondDayStart },
+        { key: 'MATCH_MIN', value: String(matchMin) },
+        { key: 'BREAK_MIN', value: String(breakMin) },
+      ])
       const msThirdCode = THIRD_CODE.MS
       const hsThirdCode = THIRD_CODE.HS
       const msFinalCode = FINAL_CODE.MS
       const hsFinalCode = FINAL_CODE.HS
-      const msCodes = BRACKET.MS.filter(b => b.code !== msThirdCode && b.code !== msFinalCode).map(b => ['MS', b.code])
-      const hsCodes = BRACKET.HS.filter(b => b.code !== hsThirdCode && b.code !== hsFinalCode).map(b => ['HS', b.code])
-      const allCodes = []
-      for (let i = 0; i < Math.max(msCodes.length, hsCodes.length); i += 1) {
-        if (msCodes[i]) allCodes.push(msCodes[i])
-        if (hsCodes[i]) allCodes.push(hsCodes[i])
+      const alternate = (msCodes, hsCodes) => {
+        const codes = []
+        for (let i = 0; i < Math.max(msCodes.length, hsCodes.length); i += 1) {
+          if (msCodes[i]) codes.push(msCodes[i])
+          if (hsCodes[i]) codes.push(hsCodes[i])
+        }
+        return codes
       }
-      allCodes.push(['MS', msThirdCode], ['HS', hsThirdCode], ['MS', msFinalCode], ['HS', hsFinalCode])
-      const rows = allCodes.map(([level, code]) => {
-        const kickoff = t.toTimeString().slice(0, 5)
-        const ready = new Date(t.getTime() - 5 * 60000).toTimeString().slice(0, 5)
-        t = new Date(t.getTime() + (matchMin + breakMin) * 60000)
-        return { level, match_code: code, round: (BRACKET[level].find(b => b.code === code) || {}).round || '', kickoff_time: kickoff, ready_time: ready, duration_min: matchMin, break_min: breakMin }
+      const dayCodes = day => ['MS', 'HS'].map(level => BRACKET[level]
+        .filter(match => scheduleDayFor(level, match.code) === day)
+        .filter(match => day === 1 || (match.code !== THIRD_CODE[level] && match.code !== FINAL_CODE[level]))
+        .map(match => [level, match.code]))
+      const [dayOneMs, dayOneHs] = dayCodes(1)
+      const [dayTwoMs, dayTwoHs] = dayCodes(2)
+      const dayOneCodes = alternate(dayOneMs, dayOneHs)
+      const dayTwoCodes = alternate(dayTwoMs, dayTwoHs)
+      dayTwoCodes.push(['MS', msThirdCode], ['HS', hsThirdCode], ['MS', msFinalCode], ['HS', hsFinalCode])
+      const rows = [
+        { start: firstDayStart, codes: dayOneCodes },
+        { start: secondDayStart, codes: dayTwoCodes },
+      ].flatMap(day => {
+        let time = new Date(day.start)
+        return day.codes.map(([level, code]) => {
+          const kickoff = time.toTimeString().slice(0, 5)
+          const ready = new Date(time.getTime() - 5 * 60000).toTimeString().slice(0, 5)
+          time = new Date(time.getTime() + (matchMin + breakMin) * 60000)
+          return { level, match_code: code, round: (BRACKET[level].find(b => b.code === code) || {}).round || '', kickoff_time: kickoff, ready_time: ready, duration_min: matchMin, break_min: breakMin }
+        })
       })
       const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
       if (error) { azToast('จัดเวลาไม่สำเร็จ: ' + error.message); return }
-      await refresh(); azToast('จัดเวลาสลับระดับและวาง 4 นัดชิงไว้ท้ายตารางแล้ว'); return
+      await refresh(); azToast('จัดตารางแข่งขัน 2 วันเรียบร้อยแล้ว'); return
     }
     if (act === 'saveHalfDuration') {
       const halfMin = Number(gid('ops-halfmin').value || 20)
@@ -3819,7 +3887,7 @@ function updateScheduleList() {
   const countEl = gid('az-schedule-count')
   const listWrap = gid('az-schedule-rows')
   if (countEl) countEl.textContent = `${rows.length} นัด`
-  if (listWrap) listWrap.innerHTML = rows.length ? rows.map(matchCard).join('') : `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดที่ตรงกับตัวกรอง</div>`
+  if (listWrap) listWrap.innerHTML = scheduleTimelineMarkup(rows)
 }
 
 function paymentStatusLine(teamId) {
@@ -3977,15 +4045,18 @@ function adminOps() {
     ${box(`
       <div style="font-weight:700;font-size:14px;margin-bottom:10px">ตั้งค่าเวลา / ไทม์ไลน์</div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <label style="font-size:11.5px;color:#6b7280">เริ่มแข่ง
+        <label style="font-size:11.5px;color:#6b7280">วันที่ 1 · รอบแรกและรอบแก้ตัว
           <input id="ops-start" type="datetime-local" value="${esc(cfg('START_TIME', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
+        </label>
+        <label style="font-size:11.5px;color:#6b7280">วันที่ 2 · รอบเข้ารอบจนถึงรอบชิง
+          <input id="ops-start-day2" type="datetime-local" value="${esc(scheduleDayStart(2))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
         </label>
         <div style="display:flex;gap:8px">
           <label style="font-size:11.5px;color:#6b7280;flex:1">นัด (นาที)<input id="ops-matchmin" type="number" value="${esc(cfg('MATCH_MIN', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
           <label style="font-size:11.5px;color:#6b7280;flex:1">พัก (นาที)<input id="ops-breakmin" type="number" value="${esc(cfg('BREAK_MIN', 5))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
         </div>
-        <div style="font-size:10.5px;color:#6b7280">ระบบจะเรียงสลับ ม.ต้น → ม.ปลาย โดยกัน 4 นัดท้ายเป็น ชิงที่ 3 ม.ต้น → ชิงที่ 3 ม.ปลาย → ชิงที่ 1 ม.ต้น → ชิงที่ 1 ม.ปลาย</div>
-        <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดเวลาอัตโนมัติแบบสลับระดับ</button>
+        <div style="font-size:10.5px;color:#6b7280">วันแรกจัดรอบแรก/รอบแก้ตัว 21 นัด วันที่สองจัดรอบที่เหลือ 21 นัด โดย 4 นัดท้ายเป็นชิงที่ 3 ม.ต้น → ชิงที่ 3 ม.ปลาย → ชิงที่ 1 ม.ต้น → ชิงที่ 1 ม.ปลาย</div>
+        <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดตารางอัตโนมัติ 2 วัน</button>
       </div>
     `)}
     ${box(`
