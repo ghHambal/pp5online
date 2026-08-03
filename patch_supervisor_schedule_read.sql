@@ -1,7 +1,11 @@
 -- patch_supervisor_schedule_read.sql
--- ให้ supervisor (teachers.position IS NOT NULL) และ is_also_admin อ่านตารางสอน
+-- ให้ supervisor (teachers.position/positions ไม่ว่าง) และ is_also_admin อ่านตารางสอน
 -- ของครูทุกคนได้ (ก่อนหน้านี้เห็นแค่ของตัวเอง)
 -- รัน 1 ครั้งใน Supabase Dashboard → SQL Editor
+--
+-- หมายเหตุ (2026-08-02): แก้บั๊ก — เดิมเช็คเฉพาะคอลัมน์ position (เดี่ยว, ของเก่า)
+-- แต่ระบบปัจจุบัน assign บทบาทผ่าน positions (array) เป็นหลัก ครูที่มี position
+-- เดี่ยว = NULL แต่มี positions array ไม่ได้สิทธิ์เลย ทุก policy เช็คสองคอลัมน์แล้ว
 
 -- 1. teacher_schedules — อ่านได้ทุกคน (สำหรับ supervisor view)
 DROP POLICY IF EXISTS "teacher_schedules_supervisor_read" ON public.teacher_schedules;
@@ -12,7 +16,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.teachers
     WHERE profile_id = auth.uid()
-    AND position IS NOT NULL
+    AND (position IS NOT NULL OR (positions IS NOT NULL AND cardinality(positions) > 0))
   )
   OR
   EXISTS (
@@ -31,7 +35,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.teachers
     WHERE profile_id = auth.uid()
-    AND position IS NOT NULL
+    AND (position IS NOT NULL OR (positions IS NOT NULL AND cardinality(positions) > 0))
   )
   OR
   EXISTS (
@@ -50,7 +54,7 @@ USING (
   EXISTS (
     SELECT 1 FROM public.teachers
     WHERE profile_id = auth.uid()
-    AND position IS NOT NULL
+    AND (position IS NOT NULL OR (positions IS NOT NULL AND cardinality(positions) > 0))
   )
   OR
   EXISTS (
