@@ -319,7 +319,7 @@ function matchEventCounts(level, code, teamId) {
 }
 
 // ---------------- นาฬิกาจับเวลาแข่งขันสด ----------------
-// clock_status: 'not_started' | 'running' | 'half_break' | 'ended'
+// clock_status: 'not_started' | 'running' | 'paused' | 'half_break' | 'ended'
 // elapsed = clock_elapsed_before (วินาทีสะสมจากช่วงก่อนหน้า) + (ถ้ากำลังวิ่งอยู่ ให้บวกเวลาที่ผ่านไปจริงตั้งแต่ clock_started_at)
 function matchClockElapsedSeconds(m) {
   if (!m || !m.clock_status || m.clock_status === 'not_started') return null
@@ -349,11 +349,11 @@ function matchClockDisplay(m, opts = {}) {
   const half = m.clock_half || 1
   const isRunning = status === 'running'
   const halfLabel = half === 2 ? 'ครึ่งหลัง' : 'ครึ่งแรก'
-  const label = status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ${halfLabel}`
+  const label = status === 'paused' ? `หยุดเวลา · ${halfLabel}` : status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ${halfLabel}`
   const size = opts.compact ? '13px' : '20px'
   return `<span style="display:inline-flex;align-items:center;gap:6px;${opts.compact ? '' : 'padding:4px 10px;background:#111827;border-radius:999px;'}">
     <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:800;font-size:${size};color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
-    <span style="font-size:10px;font-weight:700;color:${isRunning ? '#22c55e' : (opts.compact ? '#6b7280' : '#9ca3af')}">${label}</span>
+    <span style="font-size:10px;font-weight:700;color:${isRunning ? '#22c55e' : status === 'paused' ? '#f59e0b' : (opts.compact ? '#6b7280' : '#9ca3af')}">${label}</span>
   </span>`
 }
 // อัปเดตตัวเลขนาฬิกาทุกวินาทีแบบ DOM ตรงๆ ไม่เรียก draw() ใหม่ — self-healing เพราะ query DOM สดทุกครั้ง ถ้า draw() แทนที่ element ไปแล้วรอบถัดไปก็จะเจอตัวใหม่เอง
@@ -381,15 +381,23 @@ if (typeof window !== 'undefined' && !window._azClockTickerStarted) {
   styleEl.textContent = '@keyframes azLivePulse{0%,100%{opacity:1}50%{opacity:.25}}'
   document.head.appendChild(styleEl)
 }
-// ปุ่มควบคุมนาฬิกา (เฉพาะแอดมิน/สตาฟผู้บันทึกผล) — วนสถานะ: ยังไม่เริ่ม → กำลังแข่งครึ่ง 1 → พักครึ่ง → กำลังแข่งครึ่ง 2 → จบเวลา
+// ปุ่มควบคุมนาฬิกา (เฉพาะแอดมิน/สตาฟผู้บันทึกผล) — ระหว่างแต่ละครึ่งหยุด/เล่นต่อได้ตามสัญญาณกรรมการ
 function matchClockControls(level, code, m) {
   const status = m?.clock_status || 'not_started'
-  const btnStyle = 'flex:1;padding:9px;border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer'
-  if (status === 'not_started') return `<button data-act="startMatchClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#16a34a">▶️ เริ่มการแข่งขัน</button>`
-  if (status === 'running' && (m.clock_half || 1) === 1) return `<button data-act="endHalfClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#d97706">⏸ จบครึ่งแรก</button>`
-  if (status === 'half_break') return `<button data-act="startSecondHalfClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#16a34a">▶️ เริ่มครึ่งหลัง</button>`
-  if (status === 'running' && (m.clock_half || 1) === 2) return `<button data-act="endMatchClock" data-level="${level}" data-code="${code}" style="${btnStyle};background:#dc2626">⏹ จบการแข่งขัน</button>`
-  return `<div style="flex:1;text-align:center;font-size:12px;font-weight:700;color:#6b7280;padding:9px">หมดเวลาการแข่งขันแล้ว</div>`
+  const half = m?.clock_half || 1
+  const primaryStyle = 'width:100%;padding:14px;border:none;border-radius:11px;color:#fff;font-weight:900;font-size:15px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.18)'
+  const secondaryStyle = 'width:100%;padding:8px;border:1px solid #64748b;border-radius:9px;background:transparent;color:#cbd5e1;font-weight:700;font-size:11.5px;cursor:pointer'
+  if (status === 'not_started') return `<button data-act="startMatchClock" data-level="${level}" data-code="${code}" style="${primaryStyle};background:#16a34a">▶️ เริ่มการแข่งขัน</button>`
+  if (status === 'running' || status === 'paused') {
+    const toggleAction = status === 'running' ? 'pauseMatchClock' : 'resumeMatchClock'
+    const toggleLabel = status === 'running' ? '⏸ หยุดเวลา' : '▶️ เล่นต่อ'
+    const toggleColor = status === 'running' ? '#f59e0b' : '#16a34a'
+    const endAction = half === 1 ? 'endHalfClock' : 'endMatchClock'
+    const endLabel = half === 1 ? 'จบครึ่งแรก' : 'จบการแข่งขัน'
+    return `<div style="width:100%;display:flex;flex-direction:column;gap:7px"><button data-act="${toggleAction}" data-level="${level}" data-code="${code}" style="${primaryStyle};background:${toggleColor}">${toggleLabel}</button><button data-act="${endAction}" data-level="${level}" data-code="${code}" style="${secondaryStyle}">⏹ ${endLabel}</button></div>`
+  }
+  if (status === 'half_break') return `<button data-act="startSecondHalfClock" data-level="${level}" data-code="${code}" style="${primaryStyle};background:#16a34a">▶️ เริ่มครึ่งหลัง</button>`
+  return `<div style="width:100%;text-align:center;font-size:12px;font-weight:700;color:#94a3b8;padding:9px">หมดเวลาการแข่งขันแล้ว</div>`
 }
 
 // ---------------- คิวออฟไลน์สำหรับบันทึกผลการแข่งขัน (กันสัญญาณเน็ตขาดตอนแข่งสด) ----------------
@@ -406,7 +414,15 @@ function azMakeLocalId() { return 'local_' + Date.now() + '_' + Math.random().to
 function azQueueClockUpdate(level, code, fields) {
   const m = matchByCode(level, code)
   if (m) Object.assign(m, fields)
-  const payload = { level, match_code: code, ...fields }
+  const payload = {
+    level,
+    match_code: code,
+    clock_status: m?.clock_status || fields.clock_status || 'not_started',
+    clock_half: m?.clock_half ?? fields.clock_half ?? null,
+    clock_started_at: m?.clock_started_at ?? fields.clock_started_at ?? null,
+    clock_elapsed_before: m?.clock_elapsed_before ?? fields.clock_elapsed_before ?? 0,
+    clock_half_started_elapsed: m?.clock_half_started_elapsed ?? fields.clock_half_started_elapsed ?? 0,
+  }
   let q = azQueueGet().filter(item => !(item.type === 'clockUpdate' && item.payload.level === level && item.payload.match_code === code))
   q.push({ localId: azMakeLocalId(), type: 'clockUpdate', payload })
   azQueueSet(q)
@@ -1446,7 +1462,10 @@ function matchCard(r) {
   const t = T[r.level]
   const m = r.m
   const hasScore = m && m.score_a !== null && m.score_b !== null
-  const isLive = m && (m.clock_status === 'running' || m.clock_status === 'half_break')
+  const isLive = m && ['running', 'paused', 'half_break'].includes(m.clock_status)
+  const liveLabel = m?.clock_status === 'paused' ? 'หยุดเวลา' : m?.clock_status === 'half_break' ? 'พักครึ่ง' : 'กำลังแข่งขัน'
+  const liveColor = m?.clock_status === 'paused' ? '#d97706' : m?.clock_status === 'half_break' ? '#64748b' : '#15803d'
+  const liveBackground = m?.clock_status === 'paused' ? '#fef3c7' : m?.clock_status === 'half_break' ? '#e2e8f0' : '#dcfce7'
   const evsFor = (teamId, type) => S.matchEvents.filter(e => e.level === r.level && e.match_code === r.code && e.team_id === teamId && e.event_type === type)
   const goalsA = m ? groupEventsByPlayer(evsFor(r.teamAId, 'goal')) : []
   const goalsB = m ? groupEventsByPlayer(evsFor(r.teamBId, 'goal')) : []
@@ -1475,7 +1494,7 @@ function matchCard(r) {
       ${levelBadge(r.level)}
       <span style="font-size:11px;color:#9ca3af;font-weight:600">${esc(r.round)} · ${r.code}</span>
       <span style="flex:1"></span>
-      ${isLive ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:999px"><span style="width:7px;height:7px;border-radius:50%;background:#16a34a;animation:azLivePulse 1.2s ease-in-out infinite"></span>กำลังแข่งขัน</span>${matchClockDisplay(m, { compact: true })}`
+      ${isLive ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:${liveColor};background:${liveBackground};padding:3px 9px;border-radius:999px"><span style="width:7px;height:7px;border-radius:50%;background:${liveColor};${m.clock_status === 'running' ? 'animation:azLivePulse 1.2s ease-in-out infinite' : ''}"></span>${liveLabel}</span>${matchClockDisplay(m, { compact: true })}`
         : `<span style="font-size:${hasScore ? '10.5px' : '13px'};font-weight:${hasScore ? 700 : 800};color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : esc(m?.kickoff_time || 'รอแข่ง')}</span>`}
     </div>
     <div style="display:flex;align-items:center;gap:8px">
@@ -2834,7 +2853,7 @@ function matchEditorModal() {
     <div style="display:flex;flex-direction:column;gap:10px">
       ${azSyncBadge() ? `<div>${azSyncBadge()}</div>` : ''}
       ${r.teamAId && r.teamBId ? `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#111827;border-radius:12px;padding:10px 12px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;background:#111827;border-radius:12px;padding:12px">
         ${m.clock_status && m.clock_status !== 'not_started' ? matchClockDisplay(m) : `<span style="font-size:11.5px;color:#9ca3af;font-weight:700">ยังไม่เริ่มจับเวลา</span>`}
         ${matchClockControls(level, code, m)}
       </div>` : ''}
@@ -3641,6 +3660,17 @@ function bindEvents() {
     }
     if (act === 'startMatchClock') {
       azQueueClockUpdate(btn.dataset.level, btn.dataset.code, { clock_status: 'running', clock_half: 1, clock_started_at: new Date().toISOString(), clock_elapsed_before: 0, clock_half_started_elapsed: 0 })
+      draw(); return
+    }
+    if (act === 'pauseMatchClock') {
+      const level = btn.dataset.level, code = btn.dataset.code
+      const m = matchByCode(level, code)
+      const elapsed = matchClockElapsedSeconds(m) || 0
+      azQueueClockUpdate(level, code, { clock_status: 'paused', clock_elapsed_before: elapsed, clock_started_at: null })
+      draw(); return
+    }
+    if (act === 'resumeMatchClock') {
+      azQueueClockUpdate(btn.dataset.level, btn.dataset.code, { clock_status: 'running', clock_started_at: new Date().toISOString() })
       draw(); return
     }
     if (act === 'endHalfClock' || act === 'endMatchClock') {
