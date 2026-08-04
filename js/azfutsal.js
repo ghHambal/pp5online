@@ -3413,6 +3413,7 @@ function bindEvents() {
     if (act === 'myTeamTab') { S.myTeamTab = btn.dataset.v; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'adminAthleteLevel') { S.adminAthleteLevel = btn.dataset.v; draw(); return }
+    if (act === 'downloadAthletesExcel') { downloadAthletesExcel(btn.dataset.level); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
     if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
@@ -4018,13 +4019,105 @@ function teamAdminRow(t) {
   </div>`
 }
 
+function excelXmlEscape(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
+}
+
+function downloadAthletesExcel(level) {
+  if (!['MS', 'HS'].includes(level)) return
+  const teamsById = new Map(S.teams.map(team => [team.id, team]))
+  const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
+  const players = S.players
+    .filter(player => teamsById.get(player.team_id)?.level === level)
+    .sort((a, b) => {
+      const teamCompare = collator.compare(teamsById.get(a.team_id)?.name || '', teamsById.get(b.team_id)?.name || '')
+      if (teamCompare) return teamCompare
+      const jerseyCompare = Number(a.jersey_number ?? 999) - Number(b.jersey_number ?? 999)
+      if (jerseyCompare) return jerseyCompare
+      return collator.compare(a.students?.full_name || '', b.students?.full_name || '')
+    })
+
+  if (!players.length) {
+    azToast(`ยังไม่มีนักกีฬา${T[level].label}ให้ดาวน์โหลด`)
+    return
+  }
+
+  const headers = ['ลำดับ', 'ระดับ', 'ชื่อทีม', 'รหัสทีม', 'สถานะทีม', 'เบอร์เสื้อ', 'รหัสนักเรียน', 'ชื่อ-สกุล', 'ชั้นเรียน', 'บทบาทในทีม', 'วันที่ลงทะเบียน']
+  const rows = players.map((player, index) => {
+    const team = teamsById.get(player.team_id)
+    const teamStatus = team?.is_organizer ? 'ทีมผู้จัด' : team?.is_reserve ? 'ทีมสำรอง' : 'ทีมแข่งขัน'
+    const role = String(player.student_id) === String(team?.captain_student_id)
+      ? 'หัวหน้าทีม'
+      : String(player.student_id) === String(team?.vice_captain_student_id)
+        ? 'รองหัวหน้าทีม'
+        : 'นักกีฬา'
+    return [
+      index + 1,
+      T[level].label,
+      team?.name || '',
+      team?.team_code || '',
+      teamStatus,
+      player.jersey_number ?? '',
+      player.students?.student_code || '',
+      player.students?.full_name || '',
+      player.students?.class_name || '',
+      role,
+      player.registered_at ? new Date(player.registered_at).toLocaleString('th-TH') : '',
+    ]
+  })
+  const cell = (value, style = 'Body') => `<Cell ss:StyleID="${style}"><Data ss:Type="String">${excelXmlEscape(value)}</Data></Cell>`
+  const worksheetRows = [
+    `<Row>${headers.map(header => cell(header, 'Header')).join('')}</Row>`,
+    ...rows.map(row => `<Row>${row.map(value => cell(value)).join('')}</Row>`),
+  ].join('')
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="Body"><Alignment ss:Vertical="Center"/><Font ss:FontName="Tahoma" ss:Size="10"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
+  <Style ss:ID="Header"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Tahoma" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="${T[level].base}" ss:Pattern="Solid"/></Style>
+ </Styles>
+ <Worksheet ss:Name="${excelXmlEscape(T[level].label)}">
+  <Table>
+   <Column ss:Width="42"/><Column ss:Width="55"/><Column ss:Width="150"/><Column ss:Width="75"/><Column ss:Width="75"/><Column ss:Width="55"/><Column ss:Width="80"/><Column ss:Width="170"/><Column ss:Width="110"/><Column ss:Width="90"/><Column ss:Width="125"/>
+   ${worksheetRows}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane><ActivePane>2</ActivePane><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios></WorksheetOptions>
+ </Worksheet>
+</Workbook>`
+  const blob = new Blob(['\ufeff', xml], { type: 'application/vnd.ms-excel;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const date = new Date().toISOString().slice(0, 10)
+  link.href = url
+  link.download = `AZFUTSALCUP_รายชื่อนักกีฬา_${level === 'MS' ? 'มต้น' : 'มปลาย'}_${date}.xls`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  azToast(`ดาวน์โหลดรายชื่อนักกีฬา${T[level].label} ${players.length} คนแล้ว`)
+}
+
 function adminAthletes() {
   const level = S.adminAthleteLevel || 'MS'
   const rows = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
   return boxFill(`
-    <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="font-weight:700;font-size:14px">นักกีฬาที่ลงทะเบียน (${rows.length})</div>
-      <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminAthleteLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
+    <div style="flex-shrink:0;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="font-weight:700;font-size:14px">นักกีฬาที่ลงทะเบียน (${rows.length})</div>
+        <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminAthleteLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:9px">
+        ${['MS', 'HS'].map(v => `<button data-act="downloadAthletesExcel" data-level="${v}" style="flex:1;padding:8px 6px;border-radius:9px;border:1px solid ${T[v].border};background:${T[v].soft};color:${T[v].accent};font-size:11px;font-weight:800;cursor:pointer">⬇️ Excel ${T[v].label}</button>`).join('')}
+      </div>
     </div>
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
       ${rows.length ? rows.map(p => { const g = playerGoals(p.id); return `
