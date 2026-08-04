@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.19.10'
+import { APP_VERSION } from './version.js?v=10.22.227'
 
 const AZIZGAMES_PATH = 'azizgames.html'
 
@@ -51,7 +51,7 @@ export function openAzizGamesModal({ admin = false, manage = false, teacherName 
 
   const modal = document.createElement('div')
   modal.id = 'azizgames-modal'
-  modal.className = 'fixed inset-0 z-[320] bg-slate-950 flex flex-col'
+  modal.className = 'fixed inset-0 z-[400] bg-slate-950 flex flex-col'
   const canManageSports = admin || manage
   modal.innerHTML = `
     <div class="h-12 flex items-center gap-2 px-3 sm:px-4 border-b border-slate-800 bg-slate-950 text-slate-100 shadow-lg">
