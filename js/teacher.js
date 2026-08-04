@@ -25,7 +25,7 @@ import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
-import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.228'
+import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.229'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,

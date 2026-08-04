@@ -25,7 +25,7 @@ import { APP_VERSION } from './version.js?v=10.19.10'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
-import { renderShirtSummary, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.228'
+import { renderShirtSummary, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.229'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
