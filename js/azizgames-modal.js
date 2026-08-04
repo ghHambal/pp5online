@@ -1,10 +1,15 @@
-import { APP_VERSION } from './version.js?v=10.22.227'
+import { APP_VERSION } from './version.js?v=10.22.228'
 
 const AZIZGAMES_PATH = 'azizgames.html'
 
 // เดิม iframe src ไม่มี cache-busting เลย ทำให้ GitHub Pages (cache-control: max-age=600)
 // เสิร์ฟ azizgames.html เวอร์ชันเก่าค้างได้นานถึง 10 นาทีหลัง deploy แม้ asset จริงจะอัปเดตแล้ว
-const getAzizGamesUrl = () => `${new URL(AZIZGAMES_PATH, window.location.href).href}?v=${APP_VERSION}`
+const getAzizGamesUrl = (tab = '') => {
+  const url = new URL(AZIZGAMES_PATH, window.location.href)
+  url.searchParams.set('v', APP_VERSION)
+  if (tab) url.searchParams.set('tab', tab)
+  return url.href
+}
 
 const shareAzizGames = async (url, statusEl) => {
   try {
@@ -29,7 +34,7 @@ const shareAzizGames = async (url, statusEl) => {
   }
 }
 
-export function openAzizGamesModal({ admin = false, manage = false, teacherName = '', teacherCode = '' } = {}) {
+export function openAzizGamesModal({ admin = false, manage = false, teacherName = '', teacherCode = '', tab = '' } = {}) {
   document.getElementById('azizgames-modal')?.remove()
 
   if (admin) {
@@ -45,7 +50,7 @@ export function openAzizGamesModal({ admin = false, manage = false, teacherName 
     else localStorage.removeItem('aziz_sports_admin_allowed')
   }
 
-  const url = getAzizGamesUrl()
+  const url = getAzizGamesUrl(tab)
   const previousOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
 
