@@ -1245,6 +1245,12 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
          ไม่งั้นจะใช้สีพื้นหลัง/ตัวอักษรของเบราว์เซอร์ดีฟอลต์ที่ไม่รู้จัก data-theme ของแอป ทำให้อ่านไม่ออก
          เวลาสลับโหมด (ตัวอักษรมืดตัดกับพื้นมืด หรือกล่องขาวโพลนกลางหน้าธีมมืด) */
       #my-team-workspace .team-field{color-scheme:light}
+      /* masonry จัดคอลัมน์ตามสัดส่วนภาพจริง (แบบ Pinterest) ใช้กับแท็บภาพกิจกรรม แทนกริดสี่เหลี่ยม
+         ตัดเท่ากันทุกรูปแบบเดิม ให้ความรู้สึกเป็นแกลเลอรีจริงมากกว่าตารางไฟล์ */
+      #my-team-workspace .masonry{column-count:2;column-gap:.75rem}
+      @media(min-width:640px){#my-team-workspace .masonry{column-count:3}}
+      @media(min-width:1024px){#my-team-workspace .masonry{column-count:4}}
+      #my-team-workspace .masonry>*{break-inside:avoid;margin-bottom:.75rem}
       #my-team-workspace[data-theme="light"] .team-field{background:#fff;border:1px solid #e2e8f0;color:#0f172a}
       #my-team-workspace[data-theme="dark"] .team-field{background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.12);color:#f8fafc;color-scheme:dark}
       #my-team-workspace[data-theme="light"] .team-field::placeholder{color:#94a3b8}
@@ -2156,10 +2162,10 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
           <button id="gallery-add-btn" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold flex-shrink-0">⬆️ อัปโหลดเพิ่มในรายการนี้</button>
           <span id="gallery-add-status" class="text-[11px] muted w-full"></span>
         </div>`:''}
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          ${group.photos.map(p=>`
+        <div class="masonry">
+          ${group.photos.map((p,i)=>`
             <div class="team-sub rounded-xl overflow-hidden">
-              <img src="${esc(p.photo_url)}" class="w-full aspect-square object-cover" loading="lazy">
+              <button type="button" data-open-lightbox="${i}" class="block w-full"><img src="${esc(p.photo_url)}" class="w-full block" loading="lazy"></button>
               <div class="p-2">
                 <p class="text-[10px] muted">${new Date(p.taken_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short'})}</p>
                 ${!studentView?`<button data-gallery-delete="${esc(p.id)}" class="w-full mt-1 px-2 py-1 rounded-lg btn-danger-ghost hover:bg-red-600 hover:text-white transition text-[10px] font-bold">ลบ</button>`:''}
@@ -2167,6 +2173,7 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
             </div>`).join('')}
         </div>`
       el.querySelector('[data-gallery-back]').onclick=()=>{viewMode='groups';renderBody()}
+      el.querySelectorAll('[data-open-lightbox]').forEach(btn=>btn.onclick=()=>openGalleryLightbox(document.body,group,{},{},Number(btn.dataset.openLightbox)))
       el.querySelectorAll('[data-gallery-delete]').forEach(btn=>btn.onclick=async()=>{
         if(!confirm('ลบภาพนี้?'))return
         const id=btn.dataset.galleryDelete
@@ -2268,8 +2275,43 @@ export async function openSportsGalleryModal(event) {
     const groups={}
     ;(photos||[]).forEach(p=>{const key=p.sport_id||'general';(groups[key]=groups[key]||{label:p.sports?.name||'ภาพทั่วไป/บรรยากาศ',photos:[]}).photos.push(p)})
     const groupKeys=Object.keys(groups).sort((a,b)=>a==='general'?1:b==='general'?-1:0)
+    // masonry จัดคอลัมน์ตามสัดส่วนภาพจริง (แบบ Pinterest) แทนกริดสี่เหลี่ยมตัดเท่ากันทุกรูป — ใส่
+    // ไว้ในโมดัลนี้เองเพราะเรียกได้จากหน้านักเรียน (ไม่มี #my-team-workspace ห่ออยู่เสมอไป)
+    const masonryStyle=`<style>#sports-gallery-modal .masonry{column-count:2;column-gap:.75rem}@media(min-width:640px){#sports-gallery-modal .masonry{column-count:3}}@media(min-width:1024px){#sports-gallery-modal .masonry{column-count:4}}#sports-gallery-modal .masonry>*{break-inside:avoid;margin-bottom:.75rem}</style>`
+    let viewMode='groups', activeKey=null
 
-    m.innerHTML=`<div class="max-w-6xl mx-auto p-4 md:p-6">
+    const renderView=()=>{
+      const slot=m.querySelector('#gallery-view')
+      if(viewMode==='detail'){
+        const g=groups[activeKey]
+        slot.innerHTML=`
+          <div class="flex items-center justify-between mb-4">
+            <button data-gallery-modal-back class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-bold">← กลับ</button>
+            <b class="text-sm">${esc(g.label)} (${g.photos.length} รูป)</b>
+            <span></span>
+          </div>
+          <div class="masonry">${g.photos.map((p,i)=>`
+            <button type="button" data-open-photo="${i}" class="block w-full rounded-2xl overflow-hidden border border-slate-800 hover:border-pink-500/60 transition">
+              <img src="${esc(p.photo_url)}" class="w-full block" loading="lazy">
+            </button>`).join('')}</div>`
+        slot.querySelector('[data-gallery-modal-back]').onclick=()=>{viewMode='groups';renderView()}
+        slot.querySelectorAll('[data-open-photo]').forEach(btn=>btn.onclick=()=>openGalleryLightbox(m,g,colorMap,nameMap,Number(btn.dataset.openPhoto)))
+      }else{
+        slot.innerHTML=groupKeys.length?`<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">${groupKeys.map(k=>{
+          const g=groups[k]
+          return `<button data-open-group="${esc(k)}" class="text-left rounded-2xl overflow-hidden border border-slate-800 hover:border-pink-500/60 transition group">
+            <div class="aspect-video bg-slate-900 relative">
+              <img src="${esc(g.photos[0].photo_url)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+              <span class="absolute bottom-2 right-2 bg-black/70 px-2 py-0.5 rounded-full text-[10px] font-bold">${g.photos.length} รูป</span>
+            </div>
+            <div class="p-3"><b class="text-sm">${esc(g.label)}</b></div>
+          </button>`
+        }).join('')}</div>`:'<p class="text-center muted py-20">ยังไม่มีภาพในระบบ</p>'
+        slot.querySelectorAll('[data-open-group]').forEach(btn=>btn.onclick=()=>{activeKey=btn.dataset.openGroup;viewMode='detail';renderView()})
+      }
+    }
+
+    m.innerHTML=`${masonryStyle}<div class="max-w-6xl mx-auto p-4 md:p-6">
       <div class="flex items-center justify-between gap-3 mb-5">
         <h1 class="text-xl font-extrabold">📸 ประมวลภาพกีฬาสี</h1>
         <div class="flex gap-2">
@@ -2277,27 +2319,18 @@ export async function openSportsGalleryModal(event) {
           <button id="gallery-modal-close" class="w-10 h-10 border border-slate-700 rounded-xl">✕</button>
         </div>
       </div>
-      ${groupKeys.length?`<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">${groupKeys.map(k=>{
-        const g=groups[k]
-        return `<button data-open-group="${esc(k)}" class="text-left rounded-2xl overflow-hidden border border-slate-800 hover:border-pink-500/60 transition group">
-          <div class="aspect-video bg-slate-900 relative">
-            <img src="${esc(g.photos[0].photo_url)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
-            <span class="absolute bottom-2 right-2 bg-black/70 px-2 py-0.5 rounded-full text-[10px] font-bold">${g.photos.length} รูป</span>
-          </div>
-          <div class="p-3"><b class="text-sm">${esc(g.label)}</b></div>
-        </button>`
-      }).join('')}</div>`:'<p class="text-center muted py-20">ยังไม่มีภาพในระบบ</p>'}
-      <div id="gallery-lightbox-slot"></div>
+      <div id="gallery-view"></div>
     </div>`
+    renderView()
 
     m.querySelector('#gallery-modal-close').onclick=()=>m.remove()
     m.querySelector('#gallery-download-all').onclick=()=>downloadAllGalleryPhotos(photos||[])
-    m.querySelectorAll('[data-open-group]').forEach(btn=>btn.onclick=()=>openGalleryLightbox(m,groups[btn.dataset.openGroup],colorMap,nameMap))
   }catch(e){console.error(e);m.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
 }
 
-function openGalleryLightbox(modalRoot,group,colorMap,nameMap){
-  let idx=0
+function openGalleryLightbox(modalRoot,group,colorMap,nameMap,startIdx=0){
+  let idx=Math.min(Math.max(startIdx,0),group.photos.length-1)
+  let slideshowTimer=null
   const overlay=document.createElement('div')
   overlay.className='fixed inset-0 z-[390] bg-black/95 flex flex-col'
   modalRoot.appendChild(overlay)
@@ -2306,12 +2339,32 @@ function openGalleryLightbox(modalRoot,group,colorMap,nameMap){
     const uploader=nameMap[p.uploaded_by]||'ไม่ระบุ'
     return `<b>${esc(uploader)}</b>${color?` · <span style="color:${esc(color.hex_color)}">สี${esc(color.name)}</span>`:''} · ${new Date(p.taken_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})}`
   }
+  const goPrev=()=>{if(idx>0){idx--;render()}}
+  const goNext=()=>{if(idx<group.photos.length-1){idx++;render()}else stopSlideshow()}
+  const stopSlideshow=()=>{if(slideshowTimer){clearInterval(slideshowTimer);slideshowTimer=null}}
+  const close=()=>{stopSlideshow();document.removeEventListener('keydown',onKeydown);overlay.remove()}
+  const onKeydown=e=>{
+    if(e.key==='Escape')close()
+    else if(e.key==='ArrowLeft')goPrev()
+    else if(e.key==='ArrowRight')goNext()
+  }
+  document.addEventListener('keydown',onKeydown)
+  // ปัดนิ้วซ้าย-ขวาเปลี่ยนรูปบนมือถือ (ระยะปัดขั้นต่ำ 40px กันสลับมือถือแตะพลาด)
+  let touchStartX=null
+  overlay.addEventListener('touchstart',e=>{touchStartX=e.touches[0].clientX},{passive:true})
+  overlay.addEventListener('touchend',e=>{
+    if(touchStartX===null)return
+    const dx=e.changedTouches[0].clientX-touchStartX
+    if(Math.abs(dx)>40){dx>0?goPrev():goNext()}
+    touchStartX=null
+  },{passive:true})
   const render=()=>{
     const p=group.photos[idx]
     overlay.innerHTML=`
       <div class="flex items-center justify-between p-3 text-white text-xs sm:text-sm gap-3">
         <span class="truncate">${photoInfo(p)}</span>
         <div class="flex gap-2 flex-shrink-0">
+          <button data-lightbox-slideshow class="px-3 py-1.5 rounded-lg bg-white/10 font-bold">${slideshowTimer?'⏸ หยุด':'▶️ สไลด์โชว์'}</button>
           <a href="${esc(p.photo_url)}" download target="_blank" class="px-3 py-1.5 rounded-lg bg-emerald-600 font-bold">⬇️ โหลด</a>
           <button data-lightbox-close class="w-8 h-8 rounded-lg bg-white/10">✕</button>
         </div>
@@ -2322,9 +2375,14 @@ function openGalleryLightbox(modalRoot,group,colorMap,nameMap){
         ${idx<group.photos.length-1?`<button data-lightbox-next class="absolute right-2 w-11 h-11 rounded-full bg-white/10 text-white text-xl">›</button>`:''}
       </div>
       <p class="text-center text-white/60 text-xs py-3">${idx+1} / ${group.photos.length}</p>`
-    overlay.querySelector('[data-lightbox-close]').onclick=()=>overlay.remove()
-    overlay.querySelector('[data-lightbox-prev]')?.addEventListener('click',()=>{idx--;render()})
-    overlay.querySelector('[data-lightbox-next]')?.addEventListener('click',()=>{idx++;render()})
+    overlay.querySelector('[data-lightbox-close]').onclick=close
+    overlay.querySelector('[data-lightbox-prev]')?.addEventListener('click',goPrev)
+    overlay.querySelector('[data-lightbox-next]')?.addEventListener('click',goNext)
+    overlay.querySelector('[data-lightbox-slideshow]').onclick=()=>{
+      if(slideshowTimer)stopSlideshow()
+      else slideshowTimer=setInterval(goNext,3000)
+      render()
+    }
   }
   render()
 }
