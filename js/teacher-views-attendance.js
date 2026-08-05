@@ -1885,7 +1885,7 @@ export async function renderAttendance(teacher) {
   const preClassId = window._preSelectClass ?? null
   window._preSelectClass = null  // clear after use
   const classes = await getMyClasses(teacher?.id ?? null).catch(()=>[])
-  const today   = new Date().toISOString().slice(0,10)
+  const today   = _localDateValue()
   setContent(`<div class="animate-fade">
     <div class="flex items-center justify-between mb-5">
       <div>

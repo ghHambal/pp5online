@@ -3,6 +3,9 @@ import { openAzizGamesModal } from './azizgames-modal.js'
 import { uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
 
 export const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+// ห้ามใช้ new Date().toISOString().slice(0,10) หาวันที่ "วันนี้" — toISOString() คืนวันที่ตาม UTC
+// ทำให้ช่วงเที่ยงคืน-ตี 7 เวลาไทย (UTC+7) วันที่จะเพี้ยนไปเป็นเมื่อวาน ต้องใช้ todayLocal() แทนเสมอ
+const todayLocal = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 const main = () => document.getElementById('stu-content') || document.getElementById('main-content')
 const DEFAULT_EVENT = '00000000-0000-0000-0000-000000000001'
 const badge = s => ({pending:'รอยืนยัน',confirmed:'ยืนยันแล้ว',advisor_updated:'ครูเลือก/แก้ไขแทน'}[s] || 'ยังไม่จำนง')
@@ -952,7 +955,7 @@ export async function renderSportsFundAdmin() {
           <select id="fund-admin-category" class="border rounded-xl px-3 py-2 text-sm"><option value="school_support">เงินสนับสนุนโรงเรียน</option><option value="prize">เงินรางวัล</option></select>
           <input id="fund-admin-amount" type="number" min="1" step="1" placeholder="จำนวนเงิน" class="border rounded-xl px-3 py-2 text-sm">
           <input id="fund-admin-desc" type="text" placeholder="รายละเอียด เช่น ชนะเลิศฟุตซอลชาย ม.ต้น" class="border rounded-xl px-3 py-2 text-sm">
-          <input id="fund-admin-date" type="date" value="${new Date().toISOString().slice(0,10)}" class="border rounded-xl px-3 py-2 text-sm">
+          <input id="fund-admin-date" type="date" value="${todayLocal()}" class="border rounded-xl px-3 py-2 text-sm">
         </div>
         <button id="fund-admin-submit" class="mt-3 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">➕ เพิ่มรายการ</button>
         <div id="fund-admin-status" class="text-xs text-gray-500 mt-2"></div>
@@ -1021,7 +1024,7 @@ export async function renderSportsFundAdmin() {
       const category=el.querySelector('#fund-admin-category').value
       const amount=Number(el.querySelector('#fund-admin-amount').value)
       const description=el.querySelector('#fund-admin-desc').value.trim()
-      const entry_date=el.querySelector('#fund-admin-date').value||new Date().toISOString().slice(0,10)
+      const entry_date=el.querySelector('#fund-admin-date').value||todayLocal()
       const statusEl=el.querySelector('#fund-admin-status')
       if(!amount||amount<=0||!description){statusEl.textContent='กรุณากรอกจำนวนเงินและรายละเอียดให้ครบ';statusEl.className='text-xs text-red-600 mt-2';return}
       const btn=el.querySelector('#fund-admin-submit');btn.disabled=true
@@ -1610,7 +1613,7 @@ function matchRow(m,myColorName){
 function renderScheduleSection(body,matches,colorName,card){
   const sportOptions=[...new Map(matches.filter(x=>x.sports).map(x=>[String(x.sports.id),x.sports])).values()]
   let subTab='schedule', filterMode='none' // filterMode: 'none' | 'today' | sportId
-  const todayStr=new Date().toISOString().slice(0,10)
+  const todayStr=todayLocal()
 
   body.innerHTML=`<section class="${card}">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -1729,7 +1732,7 @@ window.addEventListener('online',()=>trySyncSportsQueue())
 // "attendance" (ดูสิทธิ์ได้ที่แท็บ "สิทธิ์ประจำสี") — สรุปคนขาดออกเป็นรายงาน CSV ให้ครูกิจการ
 // นักเรียนเอาไปหักคะแนนกิจกรรมพัฒนาผู้เรียนนอกระบบ (ระบบนี้ไม่ได้เชื่อมคะแนนให้อัตโนมัติ)
 function renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg}){
-  const todayStr=new Date().toISOString().slice(0,10)
+  const todayStr=todayLocal()
   // จับคู่วันนี้กับ "ปฏิทินปฏิบัติงาน" ที่ครูตั้งวันเข้าสี/กีฬาสีไว้ล่วงหน้าแล้ว (work_calendar_events)
   // แทนที่จะให้เลือกประเภทเช็คชื่อเองมั่วๆ ทุกครั้ง — ยังกดสลับมือทับได้เผื่อปฏิทินผิด/ทดสอบระบบ
   const todayMatch=(campCalendar||[]).find(ev=>todayStr>=ev.event_date && todayStr<=(ev.end_date||ev.event_date))
@@ -2193,7 +2196,7 @@ function renderTeamLedgerSection(body,{event,c,fundLedger,canExpenses,card}){
         <div class="grid sm:grid-cols-4 gap-2">
           <input id="fund-expense-amount" type="number" min="1" step="1" placeholder="จำนวนเงิน" class="team-field rounded-xl px-3 py-2 text-sm">
           <input id="fund-expense-desc" type="text" placeholder="ใช้จ่ายเรื่องอะไร" class="team-field rounded-xl px-3 py-2 text-sm sm:col-span-2">
-          <input id="fund-expense-date" type="date" value="${new Date().toISOString().slice(0,10)}" class="team-field rounded-xl px-3 py-2 text-sm">
+          <input id="fund-expense-date" type="date" value="${todayLocal()}" class="team-field rounded-xl px-3 py-2 text-sm">
         </div>
         <button id="fund-expense-submit" class="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold">➖ บันทึกรายจ่าย</button>
         <div id="fund-expense-status" class="text-xs muted"></div>
@@ -2218,7 +2221,7 @@ function renderTeamLedgerSection(body,{event,c,fundLedger,canExpenses,card}){
       const amount=Number(amountEl.value),description=descEl.value.trim()
       if(!amount||amount<=0||!description){statusEl.textContent='กรุณากรอกจำนวนเงินและรายละเอียดให้ครบ';statusEl.className='text-xs tone-bad';return}
       const btn=body.querySelector('#fund-expense-submit');btn.disabled=true
-      const {data,error}=await supabase.from('sports_team_fund_entries').insert({event_id:event.id,team_color_id:c.id,category:'expense',amount,description,entry_date:dateEl.value||new Date().toISOString().slice(0,10)}).select().single()
+      const {data,error}=await supabase.from('sports_team_fund_entries').insert({event_id:event.id,team_color_id:c.id,category:'expense',amount,description,entry_date:dateEl.value||todayLocal()}).select().single()
       btn.disabled=false
       if(error){statusEl.textContent='บันทึกไม่สำเร็จ: '+error.message;statusEl.className='text-xs tone-bad';return}
       entries.unshift({id:data.id,category:'expense',amount:data.amount,description:data.description,entry_date:data.entry_date,created_at:data.created_at,recorded_by_name:'ฉัน'})

@@ -15,7 +15,7 @@ import {
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
-import { _readingGrade, applyReadingGradesFromConfig, _currentWeek } from './teacher-views-utils.js'
+import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
@@ -1780,7 +1780,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold text-gray-800">📅 วันเรียนถัดไป</p>
-            <p class="text-xs text-gray-400 mt-0.5">${_fmtDate(next.toISOString().slice(0,10))}</p>
+            <p class="text-xs text-gray-400 mt-0.5">${_fmtDate(_dateInputValue(next))}</p>
           </div>
           <span class="text-xs font-bold ${diff === 0 ? 'text-red-500' : diff === 1 ? 'text-amber-500' : 'text-emerald-600'}">${diffLabel}</span>
         </div>`)
@@ -2375,7 +2375,7 @@ export async function renderExamRequestForm(student, classId) {
             <div>
               <label class="block text-xs text-gray-500 mb-1">วันที่ขอสอบ</label>
               <input type="date" id="req-date" class="${INPUT}"
-                min="${new Date().toISOString().slice(0,10)}" required />
+                min="${_dateInputValue(new Date())}" required />
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-1">คาบที่ขอสอบ</label>

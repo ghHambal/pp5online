@@ -53,7 +53,7 @@ import {
   syncSubjectCatalog,
   syncStudentsFromSheetNow,
 } from './sync.js'
-import { READING_GRADES, _readingGrade, applyReadingGradesFromConfig, _htmlEsc } from './teacher-views-utils.js'
+import { READING_GRADES, _readingGrade, applyReadingGradesFromConfig, _htmlEsc, _dateInputValue } from './teacher-views-utils.js'
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 function _grade(room) {
@@ -11353,7 +11353,7 @@ export async function renderWorkCalendarView() {
       list.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm">ยังไม่มีกิจกรรมในปฏิทิน</div>'
       return
     }
-    const today = new Date().toISOString().slice(0,10)
+    const today = _dateInputValue(new Date())
     list.innerHTML = events.map(ev => {
       const items = (ev.work_calendar_items || []).sort((a,b)=>a.sort_order-b.sort_order)
       const isPast = ev.event_date < today
