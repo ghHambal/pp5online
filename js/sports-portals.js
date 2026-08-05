@@ -1531,10 +1531,12 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   const todayMatch=(campCalendar||[]).find(ev=>todayStr>=ev.event_date && todayStr<=(ev.end_date||ev.event_date))
   const autoSessionType=todayMatch ? (todayMatch.label.includes('เข้าสี') ? 'pre_event' : 'event_day') : null
   let sessionType=autoSessionType||'pre_event'
-  // วันเข้าสีวันแรกที่แอดมินกำหนดไว้ (sports_portal_settings.advisor_checkin_date) — เฉพาะวันนี้
-  // ให้ครูที่ปรึกษาสามัญเป็นผู้บันทึกแทน (หน้า "นักเรียนที่ปรึกษา" แท็บ "เช็คชื่อเข้าสีวันแรก")
-  // ฝั่งฝ่ายสีจึงปิดปุ่มสแกน/บันทึกชั่วคราวเพื่อกันบันทึกทับกัน แต่ยังดูข้อมูลได้ตามปกติ
-  const advisorLockActive=!!cfg?.advisor_checkin_date && todayStr===cfg.advisor_checkin_date
+  // วันเข้าสีวันแรกที่แอดมินกำหนดไว้ (sports_portal_settings.advisor_checkin_date) — ครูที่ปรึกษา
+  // สามัญเช็คชื่อช่วงเข้าแถวตอนเช้าเท่านั้น (คนละช่วงเวลากับที่ฝ่ายสีใช้หน้านี้) ถ้าตกหล่นหรือครูที่
+  // ปรึกษาไม่ได้เช็ค นักเรียนต้องแจ้งพ่อสี/แม่สี/ครูประจำสีให้เช็คแทนได้เลยตามปกติ — จึง "ไม่ล็อก"
+  // ปุ่มใดๆ แค่ขึ้นแบนเนอร์แจ้งเตือนเฉยๆ ส่วนการกันบันทึกทับกันจริงอาศัย unique constraint เดิม
+  // ของตาราง sports_attendance (ใครกดซ้ำทีหลังจะเจอ error 23505 ซึ่งจัดการเป็นข้อความที่เข้าใจง่ายแทน)
+  const advisorCheckinToday=!!cfg?.advisor_checkin_date && todayStr===cfg.advisor_checkin_date
   let attendanceLocal=[...attendance]
   let recentScans=[]
   let html5Qrcode=null, scanning=false, reportAbsent=[]
@@ -1555,22 +1557,22 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
         <button type="button" data-att-type="event_day" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏆 วันงานจริง</button>
       </div>
     </div>
-    ${advisorLockActive?`<div class="rounded-xl px-3 py-2 text-xs font-bold bg-sky-500/10 text-sky-300 mb-3">🔒 วันนี้เป็นวันเช็คชื่อเข้าสีวันแรก ครูที่ปรึกษาสามัญเป็นผู้บันทึกข้อมูลแทน ฝ่ายสีดูข้อมูลได้อย่างเดียวชั่วคราวเพื่อกันบันทึกทับกัน</div>`:''}
+    ${advisorCheckinToday?`<div class="rounded-xl px-3 py-2 text-xs font-bold bg-sky-500/10 text-sky-300 mb-3">ℹ️ วันนี้ครูที่ปรึกษาสามัญเช็คชื่อเข้าสีช่วงเข้าแถวตอนเช้าแล้ว หากพบนักเรียนตกหล่นหรือครูที่ปรึกษาไม่ได้เช็ค ฝ่ายสีเช็คชื่อเพิ่มเติมที่นี่ได้ตามปกติ</div>`:''}
     ${campBanner}
     <div id="att-queue-status" class="mb-3"></div>
     <div id="att-progress" class="mb-4"></div>
     <div class="grid md:grid-cols-2 gap-4">
       <div class="team-sub rounded-2xl p-4 space-y-3">
         <div id="att-camera-reader" class="w-full aspect-square rounded-xl overflow-hidden bg-black/40" style="display:none"></div>
-        <button type="button" data-att-camera-toggle ${advisorLockActive?'disabled':''} class="w-full py-2.5 rounded-xl bg-pink-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
+        <button type="button" data-att-camera-toggle class="w-full py-2.5 rounded-xl bg-pink-600 text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
         <div id="att-feedback"></div>
       </div>
       <div class="team-sub rounded-2xl p-4 space-y-3">
         <div>
           <label class="text-xs font-bold muted">กรอกรหัสประจำตัวนักเรียน (เผื่อไม่ได้พก QR)</label>
           <div class="flex gap-2 mt-1.5">
-            <input id="att-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" ${advisorLockActive?'disabled':''} class="flex-1 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
-            <button type="button" id="att-manual-submit" ${advisorLockActive?'disabled':''} class="px-4 py-2 rounded-xl bg-emerald-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white text-sm font-bold">เช็คชื่อ</button>
+            <input id="att-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="flex-1 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
+            <button type="button" id="att-manual-submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">เช็คชื่อ</button>
           </div>
         </div>
         <div>
@@ -1650,6 +1652,10 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     }catch(e){queueOffline();return} // fetch เองก็ throw ได้ตอนไม่มีเน็ตจริงๆ (ไม่ใช่แค่ error object)
     if(error){
       if(sqLikelyOffline(error)){queueOffline();return}
+      // 23505 = ชนกับแถวที่มีอยู่แล้ว (unique event_id+student_id+session_date) — ปกติมากตอนนี้
+      // เพราะครูที่ปรึกษาสามัญก็เช็คชื่อลงตารางเดียวกันนี้ได้เหมือนกัน แค่ local state ของหน้านี้
+      // ยังไม่รู้ (โหลดหน้าไว้ก่อนครูที่ปรึกษาเช็ค) ไม่ใช่ error จริง แจ้งแบบเข้าใจง่ายแทน
+      if(error.code==='23505'){feedback(false,`${student.full_name} เช็คชื่อไปแล้ว`,'อาจถูกเช็คชื่อไปแล้วโดยครูที่ปรึกษาสามัญช่วงเข้าแถว ลองรีเฟรชหน้านี้เพื่ออัปเดตรายชื่อ');return}
       feedback(false,'บันทึกไม่สำเร็จ',error.message);return
     }
     attendanceLocal.push(data)
@@ -1692,7 +1698,6 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   body.querySelectorAll('[data-att-type]').forEach(b=>b.onclick=()=>{sessionType=b.dataset.attType;renderProgress()})
 
   body.querySelector('#att-manual-submit').onclick=()=>{
-    if(advisorLockActive)return
     const input=body.querySelector('#att-manual-code')
     const code=input.value.trim()
     if(!code)return
@@ -1703,7 +1708,6 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   body.querySelector('#att-manual-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#att-manual-submit').click()})
 
   body.querySelector('[data-att-camera-toggle]').onclick=async()=>{
-    if(advisorLockActive)return
     const btn=body.querySelector('[data-att-camera-toggle]')
     const readerEl=body.querySelector('#att-camera-reader')
     if(scanning){
