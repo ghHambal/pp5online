@@ -25,7 +25,7 @@ import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
-import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.233'
+import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.234'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -273,6 +273,9 @@ function navigate(view) {
   }
   if (typeof window._cleanupPrayerRoomMonitor === 'function') {
     try { window._cleanupPrayerRoomMonitor() } catch (e) {}
+  }
+  if (typeof window._cleanupAdvisorShirtPaymentScanner === 'function') {
+    try { window._cleanupAdvisorShirtPaymentScanner() } catch (e) {}
   }
   const fn = ROUTES[view]
   if (fn) { _currentView = view; fn() }

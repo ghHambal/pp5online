@@ -107,7 +107,7 @@ export async function renderStudentSportsHome(student) {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดข้อมูลกีฬาสีของฉัน...</div>'
   try {
     const {event,cfg}=await context()
-    const [{data:color},{data:req},{data:regs},{data:awards},{data:myVote},{data:eligibility},{data:duesStatus}] = await Promise.all([
+    const [{data:color},{data:req},{data:regs},{data:awards},{data:myVote},{data:eligibility},{data:duesStatus},{data:shirtPaymentStatus}] = await Promise.all([
       supabase.from('team_colors').select('*').eq('id',student.team_color_id || '').maybeSingle(),
       supabase.from('sports_shirt_requests').select('*').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
       supabase.from('registrations').select('id,jersey_number,sports(name,venue)').eq('event_id',event.id).eq('student_id',student.id),
@@ -115,6 +115,7 @@ export async function renderStudentSportsHome(student) {
       supabase.from('sports_shirt_votes').select('design_id,sports_shirt_designs(design_no,name,sports_shirt_design_colors(*))').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
       supabase.rpc('get_my_sports_eligibility',{p_event:event.id}).then(r=>({data:r.error?null:r.data})).catch(()=>({data:null})),
       supabase.rpc('get_my_sports_dues_status',{p_event:event.id}).then(r=>({data:r.error?null:r.data})).catch(()=>({data:null})),
+      supabase.rpc('get_my_sports_shirt_payment_status',{p_event:event.id}).then(r=>({data:r.error?null:r.data})).catch(()=>({data:null})),
     ])
     const c=color || {name:student.house_color,hex_color:'#64748b',logo_url:null}
     const myVoteColors=(myVote?.sports_shirt_designs?.sports_shirt_design_colors||[]).filter(x=>x.image_url)
@@ -144,6 +145,7 @@ export async function renderStudentSportsHome(student) {
       </div>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">⚽ รายการแข่งขันของฉัน</h2>${regs?.length?`<div class="space-y-2">${regs.map(r=>`<div class="p-3 bg-gray-50 rounded-xl flex justify-between"><div><b>${esc(r.sports?.name)}</b><p class="text-xs text-gray-500">${esc(r.sports?.venue||'ยังไม่ระบุสถานที่')}</p></div><span class="text-xs text-indigo-600">${r.jersey_number?`หมายเลข ${esc(r.jersey_number)}`:'ลงทะเบียนแล้ว'}</span></div>`).join('')}</div>`:'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีรายการที่สต๊าฟลงทะเบียนให้</p>'}</section>
       <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between items-start"><h2 class="font-bold">💰 ค่าบำรุงสี</h2><span class="px-2 py-1 rounded-full text-xs font-bold ${duesStatus?.paid?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-700'}">${duesStatus?.paid?'จ่ายแล้ว':'ยังไม่จ่าย'}</span></div>${duesStatus?.paid?`<p class="text-3xl font-black mt-3">${Number(duesStatus.amount||0).toLocaleString('th-TH')} บาท</p><p class="text-xs text-gray-500 mt-1">ชำระเมื่อ ${duesStatus.paid_at?new Date(duesStatus.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—'}</p><p class="text-xs text-gray-500">ผู้รับชำระ: ${esc(duesStatus.collected_by_name||'ไม่ระบุ')}</p>`:`<p class="text-sm text-gray-400 mt-3">ยังไม่ได้ชำระค่าบำรุงสี ${Number(duesStatus?.amount||30).toLocaleString('th-TH')} บาท — ติดต่อพ่อสี/แม่สีหรือสต๊าฟประจำสีเพื่อชำระ</p>`}</section>
+      <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between items-start gap-3"><h2 class="font-bold">👕 ค่าเสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs font-bold ${shirtPaymentStatus?.paid?'bg-emerald-100 text-emerald-700':Number(shirtPaymentStatus?.amount||0)>0?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}">${shirtPaymentStatus?.paid?'ชำระแล้ว':Number(shirtPaymentStatus?.amount||0)>0?'ยังไม่ชำระ':'รอประกาศราคา'}</span></div>${shirtPaymentStatus?.paid?`<p class="text-3xl font-black mt-3">${Number(shirtPaymentStatus.amount||0).toLocaleString('th-TH')} บาท</p><p class="text-xs text-gray-500 mt-1">ชำระเมื่อ ${shirtPaymentStatus.paid_at?new Date(shirtPaymentStatus.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—'}</p><p class="text-xs text-gray-500">ผู้รับชำระ: ${esc(shirtPaymentStatus.collected_by_name||'ไม่ระบุ')}</p>`:Number(shirtPaymentStatus?.amount||0)>0?`<p class="text-3xl font-black text-red-600 mt-3">${Number(shirtPaymentStatus.amount).toLocaleString('th-TH')} บาท</p><p class="text-sm text-gray-500 mt-2">กรุณาติดต่อครูที่ปรึกษาศาสนาเพื่อชำระค่าเสื้อ</p>`:'<p class="text-sm text-gray-400 mt-3">ระบบยังไม่เปิดรับชำระค่าเสื้อกีฬาสี</p>'}</section>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">🏅 ผลงานและเกียรติบัตร</h2>${awards?.length?awards.map(a=>`<div class="p-3 rounded-xl bg-amber-50"><b>${esc(a.sports?.name||'รางวัลนักกีฬาดีเด่น')}</b><p class="text-sm">${esc(a.note)}</p></div>`).join(''):'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีเกียรติบัตรหรือรางวัล</p>'}</section>
       <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-3">🎖️ เกียรติบัตรกีฬาสี</h2>${!eligibility ? '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีข้อมูล</p>' : eligibility.eligible ? (
         eligibility.certificate_url
@@ -316,6 +318,9 @@ async function openShirtVoteModal(student,event,cfg) {
 }
 
 export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category=null) {
+  if (typeof window._cleanupAdvisorShirtPaymentScanner === 'function') {
+    await window._cleanupAdvisorShirtPaymentScanner()
+  }
   const el=main(); el.innerHTML='<div class="py-16 text-center">กำลังโหลด...</div>'
   const samai=rooms.filter(r=>r.category==='สามัญ')
   const religion=rooms.filter(r=>r.category==='ศาสนา')
@@ -337,7 +342,8 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
       <button data-advisor-tab="list" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='list'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👥 รายชื่อ</button>
       ${cat==='สามัญ'?`
       <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
-      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>`:''}
+      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>`:`
+      <button data-advisor-tab="shirt-payment" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='shirt-payment'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">💰 รับชำระค่าเสื้อ</button>`}
     </div>
     <div id="advisor-tab-body"></div>
   </div>`
@@ -346,6 +352,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   const body=el.querySelector('#advisor-tab-body')
   if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
   else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
+  else if(tab==='shirt-payment') await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames)
   else await _renderAdvisorListTab(body,teacher,rooms,roomNames,cat)
 }
 
@@ -407,6 +414,108 @@ async function _renderAdvisorListTab(body,teacher,rooms,roomNames,category) {
       } catch(e) { toast(e.message ?? 'ลบไม่สำเร็จ', 'error') }
     }))
   } catch(e) { console.error(e); body.innerHTML = missing() }
+}
+
+async function _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames,selectedRoom=null) {
+  const room=selectedRoom&&roomNames.includes(selectedRoom)?selectedRoom:roomNames[0]
+  body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลดข้อมูลการชำระค่าเสื้อ...</div>'
+  if(!room){body.innerHTML='<div class="py-12 text-center text-gray-400">ไม่พบห้องที่ปรึกษาศาสนา</div>';return}
+  try{
+    const {event}=await context()
+    const {data:snapshot,error}=await supabase.rpc('get_religion_advisor_shirt_payment_snapshot',{p_event:event.id,p_room:room})
+    if(error)throw error
+    const students=snapshot?.students||[]
+    let payments=[...(snapshot?.payments||[])]
+    const amount=Number(snapshot?.amount||0)
+    let html5Qrcode=null,scanning=false,recentScans=[],filter='all'
+
+    const stopScanner=async()=>{
+      if(html5Qrcode){try{await html5Qrcode.stop()}catch(e){}try{await html5Qrcode.clear()}catch(e){}}
+      html5Qrcode=null;scanning=false
+    }
+    window._cleanupAdvisorShirtPaymentScanner=stopScanner
+
+    body.innerHTML=`
+      ${roomNames.length>1?`<div class="flex flex-wrap gap-2 mb-3">${roomNames.map(r=>`<button data-shirt-pay-room="${esc(r)}" class="px-3 py-2 rounded-xl text-xs font-bold border ${r===room?'bg-violet-600 text-white border-violet-600':'bg-white text-gray-500 border-gray-200'}">${esc(r)}</button>`).join('')}</div>`:''}
+      <section class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-gray-100 flex flex-wrap items-start justify-between gap-3">
+          <div><h2 class="font-bold text-gray-800">💰 รับชำระค่าเสื้อกีฬาสี</h2><p class="text-xs text-gray-500 mt-1">ห้องศาสนา ${esc(room)} · สแกน QR ประจำตัวนักเรียนหรือกรอกรหัสด้วยมือ</p></div>
+          <span class="px-3 py-1.5 rounded-full text-xs font-bold ${amount>0?'bg-violet-100 text-violet-700':'bg-amber-100 text-amber-700'}">${amount>0?`คนละ ${amount.toLocaleString('th-TH')} บาท`:'รอแอดมินตั้งราคา'}</span>
+        </div>
+        ${amount<=0?'<div class="mx-4 mt-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs font-semibold text-amber-700">⚠️ แอดมินยังไม่ได้ตั้งราคาค่าเสื้อ ระบบจึงปิดการรับชำระชั่วคราว</div>':''}
+        <div id="advisor-shirt-pay-summary" class="p-4 pb-0"></div>
+        <div class="grid md:grid-cols-2 gap-4 p-4">
+          <div class="rounded-2xl bg-slate-900 p-4 space-y-3">
+            <div id="advisor-shirt-pay-camera" class="w-full aspect-square rounded-xl overflow-hidden bg-black/40" style="display:none"></div>
+            <button type="button" id="advisor-shirt-pay-camera-toggle" ${amount<=0?'disabled':''} class="w-full py-3 rounded-xl bg-pink-600 hover:bg-pink-700 disabled:bg-gray-400 text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
+            <div id="advisor-shirt-pay-feedback"></div>
+          </div>
+          <div class="rounded-2xl bg-gray-50 border border-gray-200 p-4 space-y-4">
+            <div><label class="text-xs font-bold text-gray-600">กรอกรหัสนักเรียน (กรณีไม่ได้พก QR)</label><div class="flex gap-2 mt-2"><input id="advisor-shirt-pay-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" ${amount<=0?'disabled':''} class="flex-1 min-w-0 border border-gray-200 bg-white rounded-xl px-3 py-2.5 text-sm"><button id="advisor-shirt-pay-submit" ${amount<=0?'disabled':''} class="px-4 py-2.5 rounded-xl bg-emerald-600 disabled:bg-gray-400 text-white text-sm font-bold">รับเงิน</button></div></div>
+            <div><p class="text-xs font-bold text-gray-600 mb-2">รับชำระล่าสุด</p><div id="advisor-shirt-pay-recent" class="space-y-2 max-h-56 overflow-y-auto"><p class="text-xs text-gray-400 text-center py-4">ยังไม่มีรายการใหม่</p></div></div>
+          </div>
+        </div>
+        <div class="border-t border-gray-100 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><div class="inline-flex rounded-xl bg-gray-100 p-1"><button data-shirt-pay-filter="all" class="px-3 py-1.5 rounded-lg text-xs font-bold">ทั้งหมด</button><button data-shirt-pay-filter="paid" class="px-3 py-1.5 rounded-lg text-xs font-bold">ชำระแล้ว</button><button data-shirt-pay-filter="unpaid" class="px-3 py-1.5 rounded-lg text-xs font-bold">ยังไม่ชำระ</button></div><button id="advisor-shirt-pay-csv" class="px-3 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-600">⬇️ รายชื่อยังไม่ชำระ CSV</button></div>
+          <div id="advisor-shirt-pay-list" class="grid md:grid-cols-2 gap-2"></div>
+        </div>
+      </section>`
+
+    body.querySelectorAll('[data-shirt-pay-room]').forEach(b=>b.onclick=async()=>{
+      await stopScanner();await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames,b.dataset.shirtPayRoom)
+    })
+
+    const paidOf=id=>payments.find(p=>Number(p.student_id)===Number(id))
+    const renderSummary=()=>{
+      const paid=students.filter(s=>paidOf(s.id)),unpaid=students.filter(s=>!paidOf(s.id))
+      const total=payments.reduce((sum,p)=>sum+(Number(p.amount)||0),0)
+      const pct=students.length?Math.round(paid.length/students.length*100):0
+      body.querySelector('#advisor-shirt-pay-summary').innerHTML=`<div class="grid grid-cols-2 lg:grid-cols-5 gap-2"><div class="rounded-xl bg-gray-50 border p-3 text-center"><p class="text-[10px] text-gray-500 font-bold">ทั้งหมด</p><b class="text-xl">${students.length}</b></div><div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center"><p class="text-[10px] text-emerald-600 font-bold">ชำระแล้ว</p><b class="text-xl text-emerald-700">${paid.length}</b></div><div class="rounded-xl bg-red-50 border border-red-200 p-3 text-center"><p class="text-[10px] text-red-600 font-bold">ยังไม่ชำระ</p><b class="text-xl text-red-700">${unpaid.length}</b></div><div class="rounded-xl bg-violet-50 border border-violet-200 p-3 text-center"><p class="text-[10px] text-violet-600 font-bold">รวมเงิน</p><b class="text-xl text-violet-700">${total.toLocaleString('th-TH')}</b><span class="text-[10px] ml-1">บาท</span></div><div class="rounded-xl bg-blue-50 border border-blue-200 p-3 text-center"><p class="text-[10px] text-blue-600 font-bold">ความคืบหน้า</p><b class="text-xl text-blue-700">${pct}%</b></div></div>`
+    }
+    const studentRow=s=>{
+      const p=paidOf(s.id),photo=s.image_url||s.photo_url
+      return `<div class="rounded-xl border ${p?'border-emerald-200 bg-emerald-50/50':'border-gray-200 bg-white'} p-3 flex items-center gap-3">${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border bg-gray-100">`:`<div class="w-9 h-11 rounded-lg bg-violet-50 text-violet-600 grid place-items-center font-bold">${esc((s.full_name||'?').charAt(0))}</div>`}<div class="min-w-0 flex-1"><b class="text-sm text-gray-800 truncate block">${esc(s.full_name)}</b><p class="text-[11px] text-gray-500">${esc(s.student_code)} · ${esc(s.main_room||'—')} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p>${p?`<p class="text-[10px] text-emerald-600">${new Date(p.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})}</p>`:''}</div><div class="text-right flex-shrink-0">${p?`<span class="block text-xs font-bold text-emerald-700">✓ ชำระแล้ว</span><button data-shirt-pay-cancel="${esc(p.id)}" data-student-name="${esc(s.full_name)}" class="mt-1 text-[10px] text-red-500 hover:underline">ยกเลิกรายการ</button>`:'<span class="text-xs font-bold text-red-600">ยังไม่ชำระ</span>'}</div></div>`
+    }
+    const renderList=()=>{
+      body.querySelectorAll('[data-shirt-pay-filter]').forEach(b=>{const active=b.dataset.shirtPayFilter===filter;b.className=`px-3 py-1.5 rounded-lg text-xs font-bold ${active?'bg-white text-violet-700 shadow':'text-gray-500'}`})
+      const list=students.filter(s=>filter==='all'||(filter==='paid'?!!paidOf(s.id):!paidOf(s.id)))
+      const listEl=body.querySelector('#advisor-shirt-pay-list')
+      listEl.innerHTML=list.map(studentRow).join('')||'<p class="md:col-span-2 text-sm text-gray-400 text-center py-8">ไม่พบรายการ</p>'
+      listEl.querySelectorAll('[data-shirt-pay-cancel]').forEach(b=>b.onclick=async()=>{
+        if(!confirm(`ยกเลิกรายการรับชำระค่าเสื้อของ ${b.dataset.studentName}?`))return
+        const {data,error}=await supabase.rpc('cancel_religion_advisor_shirt_payment',{p_payment:b.dataset.shirtPayCancel})
+        if(error||!data){toast(error?.message||'ยกเลิกไม่สำเร็จ','error');return}
+        payments=payments.filter(p=>String(p.id)!==String(b.dataset.shirtPayCancel));toast('ยกเลิกรายการรับชำระแล้ว');renderSummary();renderList()
+      })
+    }
+    const renderRecent=()=>{
+      const el=body.querySelector('#advisor-shirt-pay-recent')
+      el.innerHTML=recentScans.length?recentScans.map(s=>`<div class="bg-white border border-emerald-200 rounded-xl p-2 flex items-center gap-2"><div class="min-w-0 flex-1"><b class="text-xs text-gray-800 truncate block">${esc(s.full_name)}</b><span class="text-[10px] text-gray-500">${esc(s.student_code)}</span></div><span class="text-xs font-bold text-emerald-600">✓ ${amount.toLocaleString('th-TH')} บาท</span></div>`).join(''):'<p class="text-xs text-gray-400 text-center py-4">ยังไม่มีรายการใหม่</p>'
+    }
+    const feedback=(ok,title,detail='')=>{body.querySelector('#advisor-shirt-pay-feedback').innerHTML=`<div class="rounded-xl p-3 flex items-center gap-3 ${ok?'bg-emerald-950/70 border border-emerald-700':'bg-red-950/70 border border-red-700'}"><span class="text-lg">${ok?'✅':'❌'}</span><div class="min-w-0"><b class="text-xs block truncate ${ok?'text-emerald-300':'text-red-300'}">${esc(title)}</b><span class="text-[10px] text-slate-300 truncate block">${esc(detail)}</span></div></div>`}
+    const showSuccessPopup=student=>{
+      document.getElementById('advisor-shirt-pay-success')?.remove();const m=document.createElement('div');m.id='advisor-shirt-pay-success';m.className='fixed inset-0 z-[400] bg-black/70 flex items-center justify-center p-6';const photo=student.image_url||student.photo_url;m.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center"><div class="text-5xl mb-2">✅</div>${photo?`<img src="${esc(photo)}" class="w-20 h-24 rounded-xl object-cover border-2 border-emerald-400 mx-auto mb-3 shadow-md">`:''}<h3 class="font-bold text-gray-800 text-lg">${esc(student.full_name)}</h3><p class="text-xs text-gray-500 mb-3">${esc(student.student_code)} · ${esc(student.religion_room||'')}</p><p class="text-3xl font-black text-emerald-600 mb-1">${amount.toLocaleString('th-TH')} บาท</p><p class="text-sm text-emerald-700 font-bold mb-5">ชำระค่าเสื้อกีฬาสีสำเร็จ</p><button id="advisor-shirt-pay-next" class="w-full py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm">📷 สแกนคนถัดไป</button><div class="h-1 bg-gray-100 rounded-full mt-4 overflow-hidden"><div id="advisor-shirt-pay-popup-bar" class="h-full bg-emerald-500" style="width:100%"></div></div></div>`;document.body.appendChild(m);const bar=m.querySelector('#advisor-shirt-pay-popup-bar');requestAnimationFrame(()=>{bar.style.transition='width 5s linear';bar.style.width='0%'});const close=()=>m.remove(),timer=setTimeout(close,5000);m.querySelector('#advisor-shirt-pay-next').onclick=()=>{clearTimeout(timer);close()};m.onclick=e=>{if(e.target===m){clearTimeout(timer);close()}}
+    }
+    const commitPayment=async(student,method)=>{
+      if(!student){_playScanBeepAtt(false);feedback(false,'ไม่พบนักเรียนในห้องนี้','ตรวจสอบรหัสหรือ QR Code อีกครั้ง');return}
+      const existing=paidOf(student.id)
+      if(existing){_playScanBeepAtt(false);feedback(false,`${student.full_name} ชำระแล้ว`,`${Number(existing.amount).toLocaleString('th-TH')} บาท`);return}
+      const {data,error}=await supabase.rpc('record_religion_advisor_shirt_payment',{p_event:event.id,p_student:student.id,p_method:method})
+      if(error){_playScanBeepAtt(false);feedback(false,'บันทึกไม่สำเร็จ',error.message);return}
+      payments.unshift({...data,student_id:student.id});recentScans.unshift(student);_playScanBeepAtt(true);feedback(true,`รับเงิน ${student.full_name} สำเร็จ`,`${amount.toLocaleString('th-TH')} บาท`);renderSummary();renderList();renderRecent();showSuccessPopup(student)
+    }
+
+    body.querySelectorAll('[data-shirt-pay-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.shirtPayFilter;renderList()})
+    body.querySelector('#advisor-shirt-pay-submit').onclick=()=>{const input=body.querySelector('#advisor-shirt-pay-code'),code=input.value.trim();if(!code)return;commitPayment(students.find(s=>s.student_code===code),'manual');input.value='';input.focus()}
+    body.querySelector('#advisor-shirt-pay-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#advisor-shirt-pay-submit').click()})
+    body.querySelector('#advisor-shirt-pay-camera-toggle').onclick=async()=>{
+      const btn=body.querySelector('#advisor-shirt-pay-camera-toggle'),reader=body.querySelector('#advisor-shirt-pay-camera')
+      if(scanning){await stopScanner();reader.style.display='none';btn.textContent='📷 เปิดกล้องสแกน QR';return}
+      try{const Html5Qrcode=await _loadHtml5QrcodeAtt();reader.style.display='block';html5Qrcode=new Html5Qrcode('advisor-shirt-pay-camera');let lastCode=null,lastTime=0;await html5Qrcode.start({facingMode:'environment'},{fps:15,aspectRatio:1},decodedText=>{if(decodedText===lastCode&&Date.now()-lastTime<2000)return;lastCode=decodedText;lastTime=Date.now();let code=decodedText;if(code.startsWith('SQ:'))code=code.split(':')[1];commitPayment(students.find(s=>s.student_code===code),'qr')});scanning=true;btn.textContent='⏹ ปิดกล้อง'}catch(e){feedback(false,'เปิดกล้องไม่สำเร็จ',e.message);await stopScanner();reader.style.display='none'}
+    }
+    body.querySelector('#advisor-shirt-pay-csv').onclick=()=>{const unpaid=students.filter(s=>!paidOf(s.id));const rows=['รหัส,ชื่อ-สกุล,ห้องสามัญ,ห้องศาสนา,สี,ไซซ์เสื้อ,ยอดที่ต้องชำระ',...unpaid.map(s=>[s.student_code,s.full_name,s.main_room,s.religion_room,s.house_color,s.sports_shirt_size,amount].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download=`ยังไม่ชำระค่าเสื้อ-${room}.csv`;a.click();URL.revokeObjectURL(a.href)}
+    renderSummary();renderList();renderRecent()
+  }catch(e){console.error(e);body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลค่าเสื้อไม่สำเร็จ: ${esc(e.message||'')}</div>`}
 }
 
 function _openAdvisorResetPasswordModal(studentId, onConfirm) {
@@ -554,6 +663,11 @@ export async function renderShirtSummary() {
     const [{data:colors},reqs,{data:approvals}]=await Promise.all([supabase.from('team_colors').select('id,name,hex_color').eq('event_id',event.id).order('display_order'),_fetchAllRows('sports_shirt_requests', q=>q.select('status,requested_size,confirmed_size,students(full_name,student_code,main_room,house_color)').eq('event_id',event.id)),isAdmin?supabase.from('sports_team_identity_requests').select('*,team_colors(name,logo_url)').eq('event_id',event.id).eq('status','pending_admin'):Promise.resolve({data:[]})])
     const sizes=cfg?.allowed_sizes||['S','M','L','XL','2XL','3XL']; const confirmed=(reqs||[]).filter(r=>['confirmed','advisor_updated'].includes(r.status));
     el.innerHTML=`<div class="max-w-7xl mx-auto space-y-5"><div class="flex justify-between"><div><h1 class="text-2xl font-bold">📊 สรุปยอดเสื้อกีฬาสี</h1><p class="text-sm text-gray-500">ยอดผลิตนับเฉพาะรายการที่ครูยืนยันแล้ว</p></div><button id="shirt-export" class="px-4 py-2 bg-emerald-600 text-white rounded-xl">ส่งออก CSV</button></div>${isAdmin?`<section class="bg-white border border-indigo-100 rounded-2xl p-4"><div class="flex items-center justify-between gap-3 mb-3"><div><h2 class="font-bold">⚙️ การเปิดใช้งาน</h2><p class="text-xs text-gray-500 mt-1">กดปุ่มในแต่ละการ์ดเพื่อเปลี่ยนสถานะ แล้วบันทึก</p></div><button id="cfg-save" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">บันทึกการตั้งค่า</button></div><div class="grid md:grid-cols-4 gap-3">${actionCard('shirt_request_enabled','รับจำนงไซซ์เสื้อ','นักเรียนจะเห็นปุ่มส่งไซซ์ และรอครูที่ปรึกษายืนยัน',!!cfg?.shirt_request_enabled)}${actionCard('shirt_summary_enabled','หน้าสรุปยอดเสื้อ','ผู้รับผิดชอบสามารถดูยอดสีและไซซ์เสื้อได้',!!cfg?.shirt_summary_enabled)}${actionCard('team_workspace_enabled','จัดการสีของฉัน','ครูประจำสีและสต๊าฟเข้าหน้าจัดการสีได้',!!cfg?.team_workspace_enabled)}${actionCard('shirt_vote_enabled','โหวตแบบเสื้อกีฬาสี','นักเรียนเปิดหน้าโหวตดีไซน์เสื้อได้',!!cfg?.shirt_vote_enabled)}</div><div class="grid md:grid-cols-2 gap-3 mt-3"><div class="rounded-2xl border p-4 bg-slate-50 border-slate-200"><h3 class="font-bold text-sm text-slate-800">ค่าบำรุงสี (บาท/คน)</h3><p class="text-xs text-gray-500 mt-1">จำนวนเงินเริ่มต้นที่จะบันทึกทุกครั้งที่สแกน QR เก็บค่าบำรุง</p><input id="cfg-dues-amount" type="number" min="0" step="1" value="${Number(cfg?.dues_amount ?? 30)}" class="mt-3 w-full border rounded-xl px-3 py-2 text-sm"></div><div class="rounded-2xl border p-4 bg-slate-50 border-slate-200"><h3 class="font-bold text-sm text-slate-800">เกณฑ์เช็คชื่อขั้นต่ำสำหรับเกียรติบัตร (%)</h3><p class="text-xs text-gray-500 mt-1">ค่าเริ่มต้นทุกสี — พ่อสี/แม่สีแต่ละคนตั้งค่าเฉพาะสีตัวเองทับได้ในหน้าจัดการสี</p><input id="cfg-cert-threshold" type="number" min="0" max="100" step="1" value="${Number(cfg?.cert_attendance_threshold_pct ?? 80)}" class="mt-3 w-full border rounded-xl px-3 py-2 text-sm"></div></div></section>`:''}<div class="grid grid-cols-3 gap-3"><div class="bg-white border rounded-2xl p-4"><p class="text-xs text-gray-500">ส่งข้อมูล</p><b class="text-2xl">${reqs?.length||0}</b></div><div class="bg-amber-50 rounded-2xl p-4"><p class="text-xs text-amber-700">รอยืนยัน</p><b class="text-2xl">${(reqs||[]).filter(x=>x.status==='pending').length}</b></div><div class="bg-emerald-50 rounded-2xl p-4"><p class="text-xs text-emerald-700">ยืนยันแล้ว</p><b class="text-2xl">${confirmed.length}</b></div></div><div class="bg-white border rounded-2xl overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">สี</th>${sizes.map(s=>`<th>${esc(s)}</th>`).join('')}<th>รวม</th></tr></thead><tbody>${(colors||[]).map(c=>{const rr=confirmed.filter(r=>r.students?.house_color===c.name);return `<tr class="border-t"><td class="p-3 font-bold" style="color:${c.hex_color}">สี${esc(c.name)}</td>${sizes.map(s=>`<td class="text-center">${rr.filter(r=>r.confirmed_size===s).length}</td>`).join('')}<td class="text-center font-bold">${rr.length}</td></tr>`}).join('')}</tbody></table></div>${canManageTeamStaff?`<section id="sports-team-membership-admin" class="bg-white border rounded-2xl p-5"><div class="py-8 text-center text-gray-400">กำลังโหลดหน้ามอบหมายผู้ดูแลสี...</div></section>`:''}${isAdmin?`<section class="bg-white border rounded-2xl p-5"><h2 class="font-bold mb-3">🎨 คิวอนุมัติอัตลักษณ์ขั้นสุดท้าย</h2>${approvals?.map(a=>`<div class="p-3 bg-gray-50 rounded-xl flex items-center gap-3 mb-2">${a.proposed_logo_url?`<img src="${esc(a.proposed_logo_url)}" class="w-12 h-12 rounded-full object-cover">`:''}<div class="flex-1"><b>ทีมสี${esc(a.team_colors?.name)}</b><p class="text-xs text-gray-500">${esc(a.proposed_name||a.proposed_motto||'เปลี่ยนโลโก้/อัตลักษณ์')}</p></div><button data-review="${a.id}" data-decision="reject" class="px-3 py-1.5 border rounded-lg text-red-600">ปฏิเสธ</button><button data-review="${a.id}" data-decision="approve" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg">อนุมัติ</button></div>`).join('')||'<p class="text-sm text-gray-400">ไม่มีคำขอรออนุมัติ</p>'}</section>`:''}</div>`
+    if(isAdmin){
+      const settingsGrid=el.querySelector('#cfg-dues-amount')?.closest('.grid')
+      settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-violet-50 border-violet-200"><h3 class="font-bold text-sm text-violet-900">ค่าเสื้อกีฬาสี (บาท/คน)</h3><p class="text-xs text-violet-700 mt-1">ยอดที่ครูที่ปรึกษาศาสนาจะบันทึกเมื่อสแกนรับชำระ ตั้งเป็น 0 เพื่อปิดรับชำระชั่วคราว</p><input id="cfg-shirt-payment-amount" type="number" min="0" step="1" value="${Number(cfg?.shirt_payment_amount||0)}" class="mt-3 w-full border border-violet-200 rounded-xl px-3 py-2 text-sm bg-white"></div>`)
+      el.querySelector('#cfg-shirt-payment-amount')?.addEventListener('input',e=>{renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),shirt_payment_amount:Math.max(0,Number(e.target.value)||0)}})
+    }
     el.querySelector('#shirt-export').onclick=()=>{const rows=['รหัส,ชื่อ,ห้อง,สี,ไซซ์,สถานะ',...confirmed.map(r=>[r.students?.student_code,r.students?.full_name,r.students?.main_room,r.students?.house_color,r.confirmed_size,r.status].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download='sports-shirt-summary.csv';a.click();URL.revokeObjectURL(a.href)}
     el.querySelectorAll('[data-cfg]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),[b.dataset.cfg]:next};b.textContent=next?'ปิดใช้งาน':'เปิดใช้งาน';toast(`เปลี่ยนสถานะแล้ว กดบันทึกเพื่อยืนยัน`)}))
     el.querySelector('#cfg-save')?.addEventListener('click',async()=>{const payload={shirt_request_enabled:!!cfg?.shirt_request_enabled,shirt_summary_enabled:!!cfg?.shirt_summary_enabled,team_workspace_enabled:!!cfg?.team_workspace_enabled,shirt_vote_enabled:!!cfg?.shirt_vote_enabled,dues_amount:Number(el.querySelector('#cfg-dues-amount')?.value)||30,cert_attendance_threshold_pct:Number(el.querySelector('#cfg-cert-threshold')?.value)||80,...(renderShirtSummary.pendingCfg||{})};const {error}=await supabase.from('sports_portal_settings').update({...payload,updated_at:new Date().toISOString()}).eq('event_id',event.id);if(error)return toast(error.message,'error');try{await syncAzizPublicShirtButton(payload.shirt_request_enabled)}catch(e){console.warn('Unable to sync AZIZGAMES shirt button',e)}renderShirtSummary.pendingCfg={};toast('บันทึกการเปิดใช้งานแล้ว');renderShirtSummary()})
