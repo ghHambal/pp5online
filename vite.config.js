@@ -22,6 +22,7 @@ export default defineConfig({
         shirtVotePublic: resolve(__dirname, 'shirt-vote-public.html'),
         sportsAttendanceMonitor: resolve(__dirname, 'sports-attendance-monitor.html'),
         sportsDuesMonitor: resolve(__dirname, 'sports-dues-monitor.html'),
+        sportsShirtMonitor: resolve(__dirname, 'sports-shirt-monitor.html'),
       },
     },
     chunkSizeWarningLimit: 600,
