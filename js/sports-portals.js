@@ -806,9 +806,9 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
     let foundTeamMembers=[]
     slot.innerHTML=`<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h2 class="font-bold">🛡️ มอบหมายผู้ดูแลประจำสี</h2><p class="text-xs text-gray-500 mt-1">${access.isAdmin?'แอดมินกำหนดครูประจำสีและนักเรียนสต๊าฟได้ทุกสี':'พ่อสี/แม่สีมอบหมายได้เฉพาะนักเรียนสต๊าฟในสีของตนเอง'}</p></div><span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">ใช้งานอยู่ ${memberships?.length||0} คน</span></div>
       <div class="grid lg:grid-cols-5 gap-3 mb-4">
-        <select id="team-member-color" class="border rounded-xl px-3 py-2 text-sm">${manageableColors.map(c=>`<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
-        <input id="team-member-code-input" class="border rounded-xl px-3 py-2 text-sm lg:col-span-2" placeholder="กรอกรหัสครู/รหัสนักเรียน เช่น 1087, 608001">
-        <select id="team-member-role" class="border rounded-xl px-3 py-2 text-sm">
+        <select id="team-member-color" class="team-field rounded-xl px-3 py-2 text-sm">${manageableColors.map(c=>`<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
+        <input id="team-member-code-input" class="team-field rounded-xl px-3 py-2 text-sm lg:col-span-2" placeholder="กรอกรหัสครู/รหัสนักเรียน เช่น 1087, 608001">
+        <select id="team-member-role" class="team-field rounded-xl px-3 py-2 text-sm">
           ${canAssignTeachers?'<option value="lead_teacher">พ่อสี/แม่สี (หัวหน้าครูประจำสี)</option><option value="teacher">ครูประจำสี</option>':''}
           <option value="staff_lead">หัวหน้านักเรียนสต๊าฟสี</option>
           <option value="staff">นักเรียนสต๊าฟสี</option>
@@ -824,9 +824,9 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
       </div>
       <div class="flex flex-wrap items-center justify-between gap-2 mt-2 mb-2"><h3 class="font-bold text-sm">📋 ตรวจสอบรายชื่อผู้ได้รับสิทธิ์</h3><span id="team-member-count" class="text-xs text-gray-500"></span></div>
       <div class="grid md:grid-cols-3 gap-3 mb-3">
-        <select id="team-member-filter-color" class="border rounded-xl px-3 py-2 text-sm"><option value="">ทุกสี</option>${manageableColors.map(c=>`<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
-        <select id="team-member-filter-role" class="border rounded-xl px-3 py-2 text-sm"><option value="">ทุกบทบาท</option><option value="lead_teacher">พ่อสี/แม่สี (หัวหน้าครูประจำสี)</option><option value="teacher">ครูประจำสี</option><option value="staff_lead">หัวหน้านักเรียนสต๊าฟสี</option><option value="staff">นักเรียนสต๊าฟสี</option></select>
-        <input id="team-member-filter-search" class="border rounded-xl px-3 py-2 text-sm" placeholder="🔍 ค้นหาชื่อ/รหัสครู/รหัสนักเรียน...">
+        <select id="team-member-filter-color" class="team-field rounded-xl px-3 py-2 text-sm"><option value="">ทุกสี</option>${manageableColors.map(c=>`<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
+        <select id="team-member-filter-role" class="team-field rounded-xl px-3 py-2 text-sm"><option value="">ทุกบทบาท</option><option value="lead_teacher">พ่อสี/แม่สี (หัวหน้าครูประจำสี)</option><option value="teacher">ครูประจำสี</option><option value="staff_lead">หัวหน้านักเรียนสต๊าฟสี</option><option value="staff">นักเรียนสต๊าฟสี</option></select>
+        <input id="team-member-filter-search" class="team-field rounded-xl px-3 py-2 text-sm" placeholder="🔍 ค้นหาชื่อ/รหัสครู/รหัสนักเรียน...">
       </div>
       <div id="team-member-table-wrap"></div>`
     const memberPersonText=m=>m.teachers?.full_name?`${m.teachers.full_name}${m.teachers.teacher_code?` (${m.teachers.teacher_code})`:''}`:`${m.students?.student_code||''} ${m.students?.full_name||''} ${m.students?.main_room?`· ${m.students.main_room}`:''}`
@@ -1241,6 +1241,15 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       #my-team-workspace[data-theme="light"] .muted{color:#64748b}
       #my-team-workspace[data-theme="dark"] .line{border-color:#1e293b}
       #my-team-workspace[data-theme="light"] .line{border-color:#e2e8f0}
+      /* input/select/textarea ทุกจุดในหน้านี้ต้องผ่าน .team-field เสมอ — ห้ามปล่อย <input>/<select> ดิบๆ
+         ไม่งั้นจะใช้สีพื้นหลัง/ตัวอักษรของเบราว์เซอร์ดีฟอลต์ที่ไม่รู้จัก data-theme ของแอป ทำให้อ่านไม่ออก
+         เวลาสลับโหมด (ตัวอักษรมืดตัดกับพื้นมืด หรือกล่องขาวโพลนกลางหน้าธีมมืด) */
+      #my-team-workspace .team-field{color-scheme:light}
+      #my-team-workspace[data-theme="light"] .team-field{background:#fff;border:1px solid #e2e8f0;color:#0f172a}
+      #my-team-workspace[data-theme="dark"] .team-field{background:rgba(15,23,42,.6);border:1px solid rgba(255,255,255,.12);color:#f8fafc;color-scheme:dark}
+      #my-team-workspace[data-theme="light"] .team-field::placeholder{color:#94a3b8}
+      #my-team-workspace[data-theme="dark"] .team-field::placeholder{color:#64748b}
+      #my-team-workspace[data-theme="dark"] .team-field option{background:#0f172a;color:#f8fafc}
       #my-team-workspace h2{font-size:.95rem;letter-spacing:-.01em;font-weight:800}
       #my-team-workspace[data-theme="light"] table th{background:#f1f5f9;color:#475569}
       #my-team-workspace[data-theme="dark"] table th{background:rgba(30,41,59,.6);color:#94a3b8}
@@ -1334,7 +1343,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   }
   else if(tab==='members'){const duesPaidIds=canDues?new Set((duesPayments||[]).map(d=>d.student_id)):null;body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">👥 รายชื่อสมาชิกในสี</h2><p class="text-xs muted">รายชื่อนักเรียนสี${esc(c.name)} ทั้งหมด</p></div>${publicButtons.athlete_print!==false?`<button data-print-members class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖨️ พิมพ์/บันทึกใบรายชื่อสมาชิก</button>`:''}</div><div class="grid md:grid-cols-2 lg:grid-cols-3 gap-2">${membersList.map(s=>memberCard(s,duesPaidIds)).join('')||'<p class="text-sm muted">ยังไม่มีสมาชิก</p>'}</div></section>`}
   else if(tab==='athletes') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">🏃 นักกีฬาในสี</h2><p class="text-xs muted">แสดงเฉพาะนักกีฬาของสี${esc(c.name)} จากระบบกีฬาสีหลัก</p></div><div class="flex flex-wrap gap-2">${publicButtons.athlete_print!==false?`<button data-print-athletes class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖨️ พิมพ์/บันทึกใบรายชื่อนักกีฬา</button>`:''}${publicButtons.athlete_registration?`<button data-full data-aziz-tab="p2" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">ลงทะเบียนนักกีฬา</button>`:''}</div></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2 text-left">นักเรียน</th><th class="p-2 text-left">รายการ</th><th class="p-2">เบอร์</th><th class="p-2 text-left">เวลา</th></tr></thead><tbody>${regs.map(r=>{const icon=sportIconUrl(r.sports);return `<tr class="border-b line"><td class="p-2"><b>${esc(r.students?.full_name||'—')}</b><p class="text-xs muted">${esc(r.students?.student_code||'')} · ${esc(r.students?.main_room||'')}</p></td><td class="p-2"><span class="flex items-center gap-2">${icon?`<img src="${esc(icon)}" class="sport-icon" alt="">`:''}${esc(r.sports?.name||'—')}</span></td><td class="p-2 text-center">${esc(r.jersey_number||'—')}</td><td class="p-2 muted text-xs">${esc(r.registered_at?new Date(r.registered_at).toLocaleString('th-TH'):'—')}</td></tr>`}).join('')||'<tr><td colspan="4" class="p-8 text-center muted">ยังไม่มีนักกีฬา</td></tr>'}</tbody></table></div></section>`
-  else if(tab==='permissions') body.innerHTML=`${isLead?`<section class="${card} mb-4"><h2 class="font-bold mb-1">🎖️ เกณฑ์เช็คชื่อขั้นต่ำสำหรับเกียรติบัตร (เฉพาะสีนี้)</h2><p class="text-xs muted mb-3">ปล่อยว่างไว้ = ใช้ค่าเริ่มต้นของแอดมิน (ตอนนี้ ${Number(cfg?.cert_attendance_threshold_pct??80)}%) — กำหนดเป็นตัวเลขถ้าอยากให้สีนี้เข้มงวด/ผ่อนปรนกว่าสีอื่น</p><div class="flex gap-2 items-center"><input id="cert-threshold-override" type="number" min="0" max="100" step="1" placeholder="ค่าเริ่มต้น (${Number(cfg?.cert_attendance_threshold_pct??80)}%)" value="${c.cert_attendance_threshold_pct_override ?? ''}" class="w-40 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm"><button id="cert-threshold-save" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">บันทึก</button></div></section>`:''}<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
+  else if(tab==='permissions') body.innerHTML=`${isLead?`<section class="${card} mb-4"><h2 class="font-bold mb-1">🎖️ เกณฑ์เช็คชื่อขั้นต่ำสำหรับเกียรติบัตร (เฉพาะสีนี้)</h2><p class="text-xs muted mb-3">ปล่อยว่างไว้ = ใช้ค่าเริ่มต้นของแอดมิน (ตอนนี้ ${Number(cfg?.cert_attendance_threshold_pct??80)}%) — กำหนดเป็นตัวเลขถ้าอยากให้สีนี้เข้มงวด/ผ่อนปรนกว่าสีอื่น</p><div class="flex gap-2 items-center"><input id="cert-threshold-override" type="number" min="0" max="100" step="1" placeholder="ค่าเริ่มต้น (${Number(cfg?.cert_attendance_threshold_pct??80)}%)" value="${c.cert_attendance_threshold_pct_override ?? ''}" class="w-40 rounded-xl team-field px-3 py-2 text-sm"><button id="cert-threshold-save" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">บันทึก</button></div></section>`:''}<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
   else if(tab==='shirts') body.innerHTML=shirtSection(c,shirtReqs,cfg)
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
   else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg})
@@ -1418,7 +1427,7 @@ function renderScheduleSection(body,matches,colorName,card){
     </div>
     <div class="flex flex-wrap items-center gap-2 mb-4">
       <button type="button" data-sched-today class="px-3 py-2 rounded-xl border line text-xs font-bold transition-all">📅 วันนี้</button>
-      <select id="sched-sport-select" class="rounded-xl bg-slate-950/40 border line px-3 py-2 text-xs font-bold flex-1 min-w-[200px]">
+      <select id="sched-sport-select" class="rounded-xl team-field px-3 py-2 text-xs font-bold flex-1 min-w-[200px]">
         <option value="">-- เลือกรายการแข่งขันเพื่อดูทุกรอบ --</option>
         ${sportOptions.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
       </select>
@@ -1571,7 +1580,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
         <div>
           <label class="text-xs font-bold muted">กรอกรหัสประจำตัวนักเรียน (เผื่อไม่ได้พก QR)</label>
           <div class="flex gap-2 mt-1.5">
-            <input id="att-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="flex-1 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
+            <input id="att-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="flex-1 rounded-xl team-field px-3 py-2 text-sm">
             <button type="button" id="att-manual-submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">เช็คชื่อ</button>
           </div>
         </div>
@@ -1584,7 +1593,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     <div class="line border-t mt-5 pt-5">
       <h3 class="font-bold mb-3">📄 รายงานขาดเช็คชื่อ</h3>
       <div class="flex flex-wrap items-center gap-2 mb-3">
-        <input id="att-report-date" type="date" value="${todayStr}" class="rounded-xl bg-slate-950/40 border line px-3 py-2 text-xs font-bold">
+        <input id="att-report-date" type="date" value="${todayStr}" class="rounded-xl team-field px-3 py-2 text-xs font-bold">
         <button type="button" id="att-report-run" class="px-4 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold">สร้างรายงาน</button>
         <button type="button" id="att-report-csv" class="px-4 py-2 rounded-xl border line text-xs font-bold" style="display:none">⬇️ ส่งออก CSV</button>
       </div>
@@ -1779,7 +1788,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
         <div>
           <label class="text-xs font-bold muted">กรอกรหัสประจำตัวนักเรียน (เผื่อไม่ได้พก QR)</label>
           <div class="flex gap-2 mt-1.5">
-            <input id="dues-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="flex-1 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
+            <input id="dues-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="flex-1 rounded-xl team-field px-3 py-2 text-sm">
             <button type="button" id="dues-manual-submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">รับเงิน</button>
           </div>
         </div>
@@ -1970,7 +1979,7 @@ const sportGroupOf=name=>String(name||'').replace(/\([^)]*\)/g,'').replace(/\s*�
 function createSportSearchSelect({wrap,options}){
   let selected=null, activeGroup=null, open=false
   const groups=[...new Set(options.map(o=>sportGroupOf(o.name)))]
-  wrap.innerHTML=`<button type="button" class="sss-trigger w-full flex items-center justify-between gap-2 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm text-left">
+  wrap.innerHTML=`<button type="button" class="sss-trigger w-full flex items-center justify-between gap-2 rounded-xl team-field px-3 py-2 text-sm text-left">
     <span class="sss-display text-slate-400 truncate">— ภาพทั่วไป/บรรยากาศ —</span>
     <span class="text-xs muted flex-shrink-0">▾</span>
   </button>`
@@ -2377,7 +2386,7 @@ function openAthletePrintDialog(wrap,c,regs,competitions){
   const modal=document.createElement('div');modal.className='fixed inset-0 bg-black/70 grid place-items-center p-4';modal.style.zIndex='430'
   const compIds=[...new Set(regs.map(r=>r.sport_id).filter(Boolean).map(String))]
   const comps=competitions.filter(x=>compIds.includes(String(x.id)))
-  modal.innerHTML=`<div class="team-card border rounded-3xl w-full max-w-2xl p-5 shadow-2xl"><div class="flex items-center justify-between gap-3 mb-4"><div><h2 class="text-lg font-bold">🖨️ พิมพ์บัญชีนักกีฬา สี${esc(c.name)}</h2><p class="text-xs muted">เลือกรายการกีฬาและรูปแบบใบรายชื่อก่อนสร้างเอกสาร</p></div><button data-close-print class="w-10 h-10 rounded-xl border line">✕</button></div><div class="space-y-4"><div><label class="text-xs font-bold muted">เลือกรายการกีฬา</label><select id="ath-print-comp" class="mt-1 w-full rounded-xl bg-slate-950/40 border line px-3 py-3"><option value="all">-- ทุกประเภทกีฬาที่สีนี้ลงทะเบียน --</option>${comps.map(x=>`<option value="${x.id}">${esc(x.name)}${x.code?` (${esc(x.code)})`:''}</option>`).join('')}</select></div><div><label class="text-xs font-bold muted">เลือกรูปแบบเอกสารพิมพ์</label><div class="grid sm:grid-cols-2 gap-2 mt-2"><button data-ath-format="table" class="ath-format team-tab-active rounded-xl border line px-4 py-3 text-left"><b>📋 แบบตารางรายชื่อ</b><p class="text-xs opacity-80">เหมาะสำหรับเซ็นชื่อ/ตรวจสอบ</p></button><button data-ath-format="cards" class="ath-format rounded-xl border line px-4 py-3 text-left"><b>🖼️ แบบการ์ดรูปภาพ</b><p class="text-xs opacity-80">เหมาะสำหรับตรวจตัวนักกีฬา</p></button></div></div><button data-ath-print-confirm class="w-full py-3 rounded-xl bg-pink-600 text-white font-bold">สร้างเอกสาร / พิมพ์</button></div></div>`
+  modal.innerHTML=`<div class="team-card border rounded-3xl w-full max-w-2xl p-5 shadow-2xl"><div class="flex items-center justify-between gap-3 mb-4"><div><h2 class="text-lg font-bold">🖨️ พิมพ์บัญชีนักกีฬา สี${esc(c.name)}</h2><p class="text-xs muted">เลือกรายการกีฬาและรูปแบบใบรายชื่อก่อนสร้างเอกสาร</p></div><button data-close-print class="w-10 h-10 rounded-xl border line">✕</button></div><div class="space-y-4"><div><label class="text-xs font-bold muted">เลือกรายการกีฬา</label><select id="ath-print-comp" class="mt-1 w-full rounded-xl team-field px-3 py-3"><option value="all">-- ทุกประเภทกีฬาที่สีนี้ลงทะเบียน --</option>${comps.map(x=>`<option value="${x.id}">${esc(x.name)}${x.code?` (${esc(x.code)})`:''}</option>`).join('')}</select></div><div><label class="text-xs font-bold muted">เลือกรูปแบบเอกสารพิมพ์</label><div class="grid sm:grid-cols-2 gap-2 mt-2"><button data-ath-format="table" class="ath-format team-tab-active rounded-xl border line px-4 py-3 text-left"><b>📋 แบบตารางรายชื่อ</b><p class="text-xs opacity-80">เหมาะสำหรับเซ็นชื่อ/ตรวจสอบ</p></button><button data-ath-format="cards" class="ath-format rounded-xl border line px-4 py-3 text-left"><b>🖼️ แบบการ์ดรูปภาพ</b><p class="text-xs opacity-80">เหมาะสำหรับตรวจตัวนักกีฬา</p></button></div></div><button data-ath-print-confirm class="w-full py-3 rounded-xl bg-pink-600 text-white font-bold">สร้างเอกสาร / พิมพ์</button></div></div>`
   wrap.appendChild(modal)
   let format='table'
   modal.querySelector('[data-close-print]').onclick=()=>modal.remove()
