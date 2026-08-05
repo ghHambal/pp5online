@@ -341,6 +341,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
     <div class="flex gap-2 flex-wrap">
       <button data-advisor-tab="list" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='list'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👥 รายชื่อ</button>
       ${cat==='สามัญ'?`
+      <button data-advisor-tab="checkin" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='checkin'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🎽 เช็คชื่อเข้าสีวันแรก</button>
       <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
       <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>`:`
       <button data-advisor-tab="shirt-payment" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='shirt-payment'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">💰 รับชำระค่าเสื้อ</button>`}
@@ -353,6 +354,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
   else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
   else if(tab==='shirt-payment') await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames)
+  else if(tab==='checkin') await _renderAdvisorCheckinTab(body,teacher,rooms,roomNames)
   else await _renderAdvisorListTab(body,teacher,rooms,roomNames,cat)
 }
 
@@ -518,6 +520,112 @@ async function _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames,select
   }catch(e){console.error(e);body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลค่าเสื้อไม่สำเร็จ: ${esc(e.message||'')}</div>`}
 }
 
+// แท็บ "เช็คชื่อเข้าสีวันแรก" — เฉพาะครูที่ปรึกษาสามัญ ใช้ตาราง sports_attendance ชุดเดียวกับ
+// หน้า "จัดการสีของฉัน" (RPC หาสีจริงของนักเรียนแล้วบันทึกให้อัตโนมัติ) เปิดใช้งานได้เฉพาะวันที่
+// แอดมินกำหนดไว้ใน sports_portal_settings.advisor_checkin_date เท่านั้น — วันอื่นเห็นรายชื่อ/
+// สถานะได้แต่กดเช็คชื่อไม่ได้ (ฝั่งเซิร์ฟเวอร์เช็คซ้ำอีกชั้น ไม่ใช่แค่ปิดปุ่มฝั่งหน้าเว็บ)
+async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
+  body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลดข้อมูลเช็คชื่อเข้าสีวันแรก...</div>'
+  try {
+    const {event}=await context()
+    const {data:snapshot,error}=await supabase.rpc('get_advisor_sports_checkin_snapshot',{p_event:event.id})
+    if(error)throw error
+    const students=snapshot?.students||[]
+    const attendanceMap={}
+    ;(snapshot?.attendance||[]).forEach(a=>{attendanceMap[a.student_id]=a})
+    const active=!!snapshot?.active
+    const checkinDate=snapshot?.checkin_date
+    let html5Qrcode=null,scanning=false,recentScans=[],filter='all'
+
+    const stopScanner=async()=>{
+      if(html5Qrcode){try{await html5Qrcode.stop()}catch(e){}try{await html5Qrcode.clear()}catch(e){}}
+      html5Qrcode=null;scanning=false
+    }
+    window._cleanupAdvisorShirtPaymentScanner=stopScanner
+
+    const statusBanner=(()=>{
+      if(!checkinDate) return `<div class="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs font-semibold text-amber-700">⚠️ แอดมินยังไม่ได้กำหนดวันเช็คชื่อเข้าสีวันแรก ระบบนี้จึงยังปิดอยู่</div>`
+      if(active) return `<div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-700">✅ วันนี้ (${esc(checkinDate)}) เป็นวันเช็คชื่อเข้าสีวันแรก — ครูที่ปรึกษาสามัญบันทึกแทนฝ่ายสีได้เฉพาะวันนี้เท่านั้น</div>`
+      const future=new Date(checkinDate)>new Date()
+      return `<div class="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-xs font-semibold text-gray-600">${future?`⏳ ยังไม่ถึงวันเช็คชื่อเข้าสีวันแรก (กำหนดไว้วันที่ ${esc(checkinDate)})`:`ℹ️ พ้นวันเช็คชื่อเข้าสีวันแรกแล้ว (${esc(checkinDate)}) ระบบกลับไปใช้การเช็คชื่อโดยฝ่ายสีตามปกติ`} — ดูข้อมูลได้อย่างเดียว</div>`
+    })()
+
+    body.innerHTML=`
+      <section class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-gray-100">
+          <h2 class="font-bold text-gray-800">🎽 เช็คชื่อเข้าสีวันแรก</h2>
+          <p class="text-xs text-gray-500 mt-1">ห้อง ${roomNames.map(esc).join(', ')} · สแกน QR ประจำตัวนักเรียนหรือกรอกรหัสด้วยมือ</p>
+        </div>
+        <div class="p-4 pb-0">${statusBanner}</div>
+        <div id="advisor-checkin-summary" class="p-4 pb-0"></div>
+        <div class="grid md:grid-cols-2 gap-4 p-4">
+          <div class="rounded-2xl bg-slate-900 p-4 space-y-3">
+            <div id="advisor-checkin-camera" class="w-full aspect-square rounded-xl overflow-hidden bg-black/40" style="display:none"></div>
+            <button type="button" id="advisor-checkin-camera-toggle" ${active?'':'disabled'} class="w-full py-3 rounded-xl bg-pink-600 hover:bg-pink-700 disabled:bg-gray-400 text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
+            <div id="advisor-checkin-feedback"></div>
+          </div>
+          <div class="rounded-2xl bg-gray-50 border border-gray-200 p-4 space-y-4">
+            <div><label class="text-xs font-bold text-gray-600">กรอกรหัสนักเรียน (กรณีไม่ได้พก QR)</label><div class="flex gap-2 mt-2"><input id="advisor-checkin-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" ${active?'':'disabled'} class="flex-1 min-w-0 border border-gray-200 bg-white rounded-xl px-3 py-2.5 text-sm"><button id="advisor-checkin-submit" ${active?'':'disabled'} class="px-4 py-2.5 rounded-xl bg-emerald-600 disabled:bg-gray-400 text-white text-sm font-bold">เช็คชื่อ</button></div></div>
+            <div><p class="text-xs font-bold text-gray-600 mb-2">สแกนล่าสุด</p><div id="advisor-checkin-recent" class="space-y-2 max-h-56 overflow-y-auto"><p class="text-xs text-gray-400 text-center py-4">ยังไม่มีรายการใหม่</p></div></div>
+          </div>
+        </div>
+        <div class="border-t border-gray-100 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><div class="inline-flex rounded-xl bg-gray-100 p-1"><button data-checkin-filter="all" class="px-3 py-1.5 rounded-lg text-xs font-bold">ทั้งหมด</button><button data-checkin-filter="came" class="px-3 py-1.5 rounded-lg text-xs font-bold">มาแล้ว</button><button data-checkin-filter="pending" class="px-3 py-1.5 rounded-lg text-xs font-bold">ยังไม่มา</button></div></div>
+          <div id="advisor-checkin-list" class="grid md:grid-cols-2 gap-2"></div>
+        </div>
+      </section>`
+
+    const attOf=id=>attendanceMap[id]
+    const renderSummary=()=>{
+      const came=students.filter(s=>attOf(s.id)),pending=students.filter(s=>!attOf(s.id))
+      body.querySelector('#advisor-checkin-summary').innerHTML=`<div class="grid grid-cols-3 gap-2"><div class="rounded-xl bg-gray-50 border p-3 text-center"><p class="text-[10px] text-gray-500 font-bold">ทั้งหมด</p><b class="text-xl">${students.length}</b></div><div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center"><p class="text-[10px] text-emerald-600 font-bold">มาแล้ว</p><b class="text-xl text-emerald-700">${came.length}</b></div><div class="rounded-xl bg-red-50 border border-red-200 p-3 text-center"><p class="text-[10px] text-red-600 font-bold">ยังไม่มา</p><b class="text-xl text-red-700">${pending.length}</b></div></div>`
+    }
+    const studentRow=s=>{
+      const a=attOf(s.id),photo=s.image_url||s.photo_url
+      const sourceLabel=a?.recorded_source==='homeroom_advisor'?'ครูที่ปรึกษาสามัญ':'ฝ่ายสี'
+      return `<div class="rounded-xl border ${a?'border-emerald-200 bg-emerald-50/50':'border-gray-200 bg-white'} p-3 flex items-center gap-3">${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border bg-gray-100">`:`<div class="w-9 h-11 rounded-lg bg-pink-50 text-pink-600 grid place-items-center font-bold">${esc((s.full_name||'?').charAt(0))}</div>`}<div class="min-w-0 flex-1"><b class="text-sm text-gray-800 truncate block">${esc(s.full_name)}</b><p class="text-[11px] text-gray-500">${esc(s.student_code)} · ${esc(s.main_room||'—')}</p>${a?`<p class="text-[10px] text-emerald-600">${new Date(a.scanned_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})} · ${esc(sourceLabel)}${a.team_color_name?` · สี${esc(a.team_color_name)}`:''}</p>`:''}</div><div class="text-right flex-shrink-0">${a?'<span class="text-xs font-bold text-emerald-700">✓ มาแล้ว</span>':`<span class="text-xs font-bold text-red-600 block">ยังไม่มา</span>${active?`<button data-checkin-manual-mark="${s.id}" class="mt-1 text-[10px] text-indigo-600 hover:underline">มาร์กมาแล้ว</button>`:''}`}</div></div>`
+    }
+    const renderList=()=>{
+      body.querySelectorAll('[data-checkin-filter]').forEach(b=>{const on=b.dataset.checkinFilter===filter;b.className=`px-3 py-1.5 rounded-lg text-xs font-bold ${on?'bg-white text-pink-700 shadow':'text-gray-500'}`})
+      const list=students.filter(s=>filter==='all'||(filter==='came'?!!attOf(s.id):!attOf(s.id)))
+      const listEl=body.querySelector('#advisor-checkin-list')
+      listEl.innerHTML=list.map(studentRow).join('')||'<p class="md:col-span-2 text-sm text-gray-400 text-center py-8">ไม่พบรายการ</p>'
+      listEl.querySelectorAll('[data-checkin-manual-mark]').forEach(b=>b.onclick=()=>{
+        const s=students.find(x=>String(x.id)===String(b.dataset.checkinManualMark))
+        if(s)commitCheckin(s,'manual')
+      })
+    }
+    const renderRecent=()=>{
+      const elR=body.querySelector('#advisor-checkin-recent')
+      elR.innerHTML=recentScans.length?recentScans.map(s=>`<div class="bg-white border border-emerald-200 rounded-xl p-2 flex items-center gap-2"><div class="min-w-0 flex-1"><b class="text-xs text-gray-800 truncate block">${esc(s.full_name)}</b><span class="text-[10px] text-gray-500">${esc(s.student_code)}</span></div><span class="text-xs font-bold text-emerald-600">✓ เช็คชื่อแล้ว</span></div>`).join(''):'<p class="text-xs text-gray-400 text-center py-4">ยังไม่มีรายการใหม่</p>'
+    }
+    const feedback=(ok,title,detail='')=>{body.querySelector('#advisor-checkin-feedback').innerHTML=`<div class="rounded-xl p-3 flex items-center gap-3 ${ok?'bg-emerald-950/70 border border-emerald-700':'bg-red-950/70 border border-red-700'}"><span class="text-lg">${ok?'✅':'❌'}</span><div class="min-w-0"><b class="text-xs block truncate ${ok?'text-emerald-300':'text-red-300'}">${esc(title)}</b><span class="text-[10px] text-slate-300 truncate block">${esc(detail)}</span></div></div>`}
+    const showSuccessPopup=(student,teamColorName)=>{
+      document.getElementById('advisor-checkin-success')?.remove();const m=document.createElement('div');m.id='advisor-checkin-success';m.className='fixed inset-0 z-[400] bg-black/70 flex items-center justify-center p-6';const photo=student.image_url||student.photo_url;m.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center"><div class="text-5xl mb-2">✅</div>${photo?`<img src="${esc(photo)}" class="w-20 h-24 rounded-xl object-cover border-2 border-emerald-400 mx-auto mb-3 shadow-md">`:''}<h3 class="font-bold text-gray-800 text-lg">${esc(student.full_name)}</h3><p class="text-xs text-gray-500 mb-3">${esc(student.student_code)} · ${esc(student.main_room||'')}</p><p class="text-sm text-emerald-700 font-bold mb-1">เช็คชื่อเข้าสีวันแรกสำเร็จ</p>${teamColorName?`<p class="text-2xl font-black" style="color:${esc(_colorSwatchHex(teamColorName))}">สี${esc(teamColorName)}</p>`:''}<button id="advisor-checkin-next" class="w-full py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm mt-4">📷 สแกนคนถัดไป</button><div class="h-1 bg-gray-100 rounded-full mt-4 overflow-hidden"><div id="advisor-checkin-popup-bar" class="h-full bg-emerald-500" style="width:100%"></div></div></div>`;document.body.appendChild(m);const bar=m.querySelector('#advisor-checkin-popup-bar');requestAnimationFrame(()=>{bar.style.transition='width 2.5s linear';bar.style.width='0%'});const close=()=>m.remove(),timer=setTimeout(close,2500);m.querySelector('#advisor-checkin-next').onclick=()=>{clearTimeout(timer);close()};m.onclick=e=>{if(e.target===m){clearTimeout(timer);close()}}
+    }
+    const commitCheckin=async(student,method)=>{
+      if(!active){feedback(false,'ยังไม่อยู่ในช่วงเช็คชื่อเข้าสีวันแรก','');return}
+      if(!student){_playScanBeepAtt(false);feedback(false,'ไม่พบนักเรียนในห้องที่ปรึกษา','ตรวจสอบรหัสหรือ QR Code อีกครั้ง');return}
+      const {data,error}=await supabase.rpc('advisor_record_sports_attendance_for_student',{p_event:event.id,p_student:student.id,p_method:method})
+      if(error){_playScanBeepAtt(false);feedback(false,'บันทึกไม่สำเร็จ',error.message);return}
+      attendanceMap[student.id]={student_id:student.id,method:data.method,scanned_at:data.scanned_at,recorded_source:'homeroom_advisor',team_color_name:data.team_color_name}
+      recentScans.unshift(student);_playScanBeepAtt(true);feedback(true,`เช็คชื่อ ${student.full_name} สำเร็จ`,data.team_color_name?`สี${data.team_color_name}`:'')
+      renderSummary();renderList();renderRecent();showSuccessPopup(student,data.team_color_name)
+    }
+
+    body.querySelectorAll('[data-checkin-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.checkinFilter;renderList()})
+    body.querySelector('#advisor-checkin-submit').onclick=()=>{const input=body.querySelector('#advisor-checkin-code'),code=input.value.trim();if(!code)return;commitCheckin(students.find(s=>s.student_code===code),'manual');input.value='';input.focus()}
+    body.querySelector('#advisor-checkin-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#advisor-checkin-submit').click()})
+    body.querySelector('#advisor-checkin-camera-toggle').onclick=async()=>{
+      if(!active)return
+      const btn=body.querySelector('#advisor-checkin-camera-toggle'),reader=body.querySelector('#advisor-checkin-camera')
+      if(scanning){await stopScanner();reader.style.display='none';btn.textContent='📷 เปิดกล้องสแกน QR';return}
+      try{const Html5Qrcode=await _loadHtml5QrcodeAtt();reader.style.display='block';html5Qrcode=new Html5Qrcode('advisor-checkin-camera');let lastCode=null,lastTime=0;await html5Qrcode.start({facingMode:'environment'},{fps:15,aspectRatio:1},decodedText=>{if(decodedText===lastCode&&Date.now()-lastTime<2000)return;lastCode=decodedText;lastTime=Date.now();let code=decodedText;if(code.startsWith('SQ:'))code=code.split(':')[1];const student=students.find(s=>s.student_code===code);_playScanBeepAtt(!!student);commitCheckin(student,'qr')});scanning=true;btn.textContent='⏹ ปิดกล้อง'}catch(e){feedback(false,'เปิดกล้องไม่สำเร็จ',e.message);await stopScanner();reader.style.display='none'}
+    }
+    renderSummary();renderList();renderRecent()
+  } catch(e) { console.error(e); body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลเช็คชื่อเข้าสีวันแรกไม่สำเร็จ: ${esc(e.message||'')}</div>` }
+}
+
 function _openAdvisorResetPasswordModal(studentId, onConfirm) {
   document.getElementById('advisor-reset-pw-modal')?.remove()
   const m = document.createElement('div')
@@ -667,10 +775,11 @@ export async function renderShirtSummary() {
       const settingsGrid=el.querySelector('#cfg-dues-amount')?.closest('.grid')
       settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-violet-50 border-violet-200"><h3 class="font-bold text-sm text-violet-900">ค่าเสื้อกีฬาสี (บาท/คน)</h3><p class="text-xs text-violet-700 mt-1">ยอดที่ครูที่ปรึกษาศาสนาจะบันทึกเมื่อสแกนรับชำระ ตั้งเป็น 0 เพื่อปิดรับชำระชั่วคราว</p><input id="cfg-shirt-payment-amount" type="number" min="0" step="1" value="${Number(cfg?.shirt_payment_amount||0)}" class="mt-3 w-full border border-violet-200 rounded-xl px-3 py-2 text-sm bg-white"></div>`)
       el.querySelector('#cfg-shirt-payment-amount')?.addEventListener('input',e=>{renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),shirt_payment_amount:Math.max(0,Number(e.target.value)||0)}})
+      settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-sky-50 border-sky-200"><h3 class="font-bold text-sm text-sky-900">🎽 วันเช็คชื่อเข้าสีวันแรก</h3><p class="text-xs text-sky-700 mt-1">เฉพาะวันนี้ ให้ครูที่ปรึกษาสามัญเช็คชื่อนักเรียนแทนฝ่ายสี (ฝ่ายสีเห็นข้อมูลอ่านอย่างเดียวชั่วคราว) เว้นว่างเพื่อปิดระบบนี้</p><input id="cfg-advisor-checkin-date" type="date" value="${esc(cfg?.advisor_checkin_date||'')}" class="mt-3 w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white"></div>`)
     }
     el.querySelector('#shirt-export').onclick=()=>{const rows=['รหัส,ชื่อ,ห้อง,สี,ไซซ์,สถานะ',...confirmed.map(r=>[r.students?.student_code,r.students?.full_name,r.students?.main_room,r.students?.house_color,r.confirmed_size,r.status].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download='sports-shirt-summary.csv';a.click();URL.revokeObjectURL(a.href)}
     el.querySelectorAll('[data-cfg]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),[b.dataset.cfg]:next};b.textContent=next?'ปิดใช้งาน':'เปิดใช้งาน';toast(`เปลี่ยนสถานะแล้ว กดบันทึกเพื่อยืนยัน`)}))
-    el.querySelector('#cfg-save')?.addEventListener('click',async()=>{const payload={shirt_request_enabled:!!cfg?.shirt_request_enabled,shirt_summary_enabled:!!cfg?.shirt_summary_enabled,team_workspace_enabled:!!cfg?.team_workspace_enabled,shirt_vote_enabled:!!cfg?.shirt_vote_enabled,dues_amount:Number(el.querySelector('#cfg-dues-amount')?.value)||30,cert_attendance_threshold_pct:Number(el.querySelector('#cfg-cert-threshold')?.value)||80,...(renderShirtSummary.pendingCfg||{})};const {error}=await supabase.from('sports_portal_settings').update({...payload,updated_at:new Date().toISOString()}).eq('event_id',event.id);if(error)return toast(error.message,'error');try{await syncAzizPublicShirtButton(payload.shirt_request_enabled)}catch(e){console.warn('Unable to sync AZIZGAMES shirt button',e)}renderShirtSummary.pendingCfg={};toast('บันทึกการเปิดใช้งานแล้ว');renderShirtSummary()})
+    el.querySelector('#cfg-save')?.addEventListener('click',async()=>{const payload={shirt_request_enabled:!!cfg?.shirt_request_enabled,shirt_summary_enabled:!!cfg?.shirt_summary_enabled,team_workspace_enabled:!!cfg?.team_workspace_enabled,shirt_vote_enabled:!!cfg?.shirt_vote_enabled,dues_amount:Number(el.querySelector('#cfg-dues-amount')?.value)||30,cert_attendance_threshold_pct:Number(el.querySelector('#cfg-cert-threshold')?.value)||80,advisor_checkin_date:el.querySelector('#cfg-advisor-checkin-date')?.value||null,...(renderShirtSummary.pendingCfg||{})};const {error}=await supabase.from('sports_portal_settings').update({...payload,updated_at:new Date().toISOString()}).eq('event_id',event.id);if(error)return toast(error.message,'error');try{await syncAzizPublicShirtButton(payload.shirt_request_enabled)}catch(e){console.warn('Unable to sync AZIZGAMES shirt button',e)}renderShirtSummary.pendingCfg={};toast('บันทึกการเปิดใช้งานแล้ว');renderShirtSummary()})
     el.querySelectorAll('[data-review]').forEach(b=>b.onclick=async()=>{const {error}=await supabase.rpc('review_team_identity',{p_request:b.dataset.review,p_decision:b.dataset.decision,p_comment:null});if(error)return toast(error.message,'error');toast('บันทึกผลตรวจสอบแล้ว');renderShirtSummary()})
     if(canManageTeamStaff) renderTeamMembershipAdmin(el,event,colors||[],{isAdmin,myTeamMemberships:myTeamMemberships||[]})
   }catch(e){console.error(e);el.innerHTML=missing()}
@@ -1228,7 +1337,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='permissions') body.innerHTML=`${isLead?`<section class="${card} mb-4"><h2 class="font-bold mb-1">🎖️ เกณฑ์เช็คชื่อขั้นต่ำสำหรับเกียรติบัตร (เฉพาะสีนี้)</h2><p class="text-xs muted mb-3">ปล่อยว่างไว้ = ใช้ค่าเริ่มต้นของแอดมิน (ตอนนี้ ${Number(cfg?.cert_attendance_threshold_pct??80)}%) — กำหนดเป็นตัวเลขถ้าอยากให้สีนี้เข้มงวด/ผ่อนปรนกว่าสีอื่น</p><div class="flex gap-2 items-center"><input id="cert-threshold-override" type="number" min="0" max="100" step="1" placeholder="ค่าเริ่มต้น (${Number(cfg?.cert_attendance_threshold_pct??80)}%)" value="${c.cert_attendance_threshold_pct_override ?? ''}" class="w-40 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm"><button id="cert-threshold-save" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">บันทึก</button></div></section>`:''}<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
   else if(tab==='shirts') body.innerHTML=shirtSection(c,shirtReqs,cfg)
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
-  else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card})
+  else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg})
   else if(tab==='dues') renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount:cfg?.dues_amount||30,card})
   else if(tab==='gallery') renderGallerySection(body,{event,c,competitions,card,studentView:data.studentView})
   else if(tab==='schedule') renderScheduleSection(body,matches,c.name,card)
@@ -1415,13 +1524,17 @@ window.addEventListener('online',()=>trySyncSportsQueue())
 // เผื่อไม่ได้พก QR) เห็นได้เฉพาะพ่อสี/แม่สี ครูประจำสี และนักเรียนสต๊าฟที่ได้รับมอบสิทธิ์
 // "attendance" (ดูสิทธิ์ได้ที่แท็บ "สิทธิ์ประจำสี") — สรุปคนขาดออกเป็นรายงาน CSV ให้ครูกิจการ
 // นักเรียนเอาไปหักคะแนนกิจกรรมพัฒนาผู้เรียนนอกระบบ (ระบบนี้ไม่ได้เชื่อมคะแนนให้อัตโนมัติ)
-function renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card}){
+function renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg}){
   const todayStr=new Date().toISOString().slice(0,10)
   // จับคู่วันนี้กับ "ปฏิทินปฏิบัติงาน" ที่ครูตั้งวันเข้าสี/กีฬาสีไว้ล่วงหน้าแล้ว (work_calendar_events)
   // แทนที่จะให้เลือกประเภทเช็คชื่อเองมั่วๆ ทุกครั้ง — ยังกดสลับมือทับได้เผื่อปฏิทินผิด/ทดสอบระบบ
   const todayMatch=(campCalendar||[]).find(ev=>todayStr>=ev.event_date && todayStr<=(ev.end_date||ev.event_date))
   const autoSessionType=todayMatch ? (todayMatch.label.includes('เข้าสี') ? 'pre_event' : 'event_day') : null
   let sessionType=autoSessionType||'pre_event'
+  // วันเข้าสีวันแรกที่แอดมินกำหนดไว้ (sports_portal_settings.advisor_checkin_date) — เฉพาะวันนี้
+  // ให้ครูที่ปรึกษาสามัญเป็นผู้บันทึกแทน (หน้า "นักเรียนที่ปรึกษา" แท็บ "เช็คชื่อเข้าสีวันแรก")
+  // ฝั่งฝ่ายสีจึงปิดปุ่มสแกน/บันทึกชั่วคราวเพื่อกันบันทึกทับกัน แต่ยังดูข้อมูลได้ตามปกติ
+  const advisorLockActive=!!cfg?.advisor_checkin_date && todayStr===cfg.advisor_checkin_date
   let attendanceLocal=[...attendance]
   let recentScans=[]
   let html5Qrcode=null, scanning=false, reportAbsent=[]
@@ -1442,21 +1555,22 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
         <button type="button" data-att-type="event_day" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏆 วันงานจริง</button>
       </div>
     </div>
+    ${advisorLockActive?`<div class="rounded-xl px-3 py-2 text-xs font-bold bg-sky-500/10 text-sky-300 mb-3">🔒 วันนี้เป็นวันเช็คชื่อเข้าสีวันแรก ครูที่ปรึกษาสามัญเป็นผู้บันทึกข้อมูลแทน ฝ่ายสีดูข้อมูลได้อย่างเดียวชั่วคราวเพื่อกันบันทึกทับกัน</div>`:''}
     ${campBanner}
     <div id="att-queue-status" class="mb-3"></div>
     <div id="att-progress" class="mb-4"></div>
     <div class="grid md:grid-cols-2 gap-4">
       <div class="team-sub rounded-2xl p-4 space-y-3">
         <div id="att-camera-reader" class="w-full aspect-square rounded-xl overflow-hidden bg-black/40" style="display:none"></div>
-        <button type="button" data-att-camera-toggle class="w-full py-2.5 rounded-xl bg-pink-600 text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
+        <button type="button" data-att-camera-toggle ${advisorLockActive?'disabled':''} class="w-full py-2.5 rounded-xl bg-pink-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
         <div id="att-feedback"></div>
       </div>
       <div class="team-sub rounded-2xl p-4 space-y-3">
         <div>
           <label class="text-xs font-bold muted">กรอกรหัสประจำตัวนักเรียน (เผื่อไม่ได้พก QR)</label>
           <div class="flex gap-2 mt-1.5">
-            <input id="att-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="flex-1 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
-            <button type="button" id="att-manual-submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">เช็คชื่อ</button>
+            <input id="att-manual-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" ${advisorLockActive?'disabled':''} class="flex-1 rounded-xl bg-slate-950/40 border line px-3 py-2 text-sm">
+            <button type="button" id="att-manual-submit" ${advisorLockActive?'disabled':''} class="px-4 py-2 rounded-xl bg-emerald-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white text-sm font-bold">เช็คชื่อ</button>
           </div>
         </div>
         <div>
@@ -1578,6 +1692,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   body.querySelectorAll('[data-att-type]').forEach(b=>b.onclick=()=>{sessionType=b.dataset.attType;renderProgress()})
 
   body.querySelector('#att-manual-submit').onclick=()=>{
+    if(advisorLockActive)return
     const input=body.querySelector('#att-manual-code')
     const code=input.value.trim()
     if(!code)return
@@ -1588,6 +1703,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   body.querySelector('#att-manual-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#att-manual-submit').click()})
 
   body.querySelector('[data-att-camera-toggle]').onclick=async()=>{
+    if(advisorLockActive)return
     const btn=body.querySelector('[data-att-camera-toggle]')
     const readerEl=body.querySelector('#att-camera-reader')
     if(scanning){
