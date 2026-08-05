@@ -78,31 +78,63 @@ function renderGate(onSuccess) {
 function renderDashboard(snapshot) {
   const amount = Number(snapshot.shirt_payment_amount) || 0
   const paymentsOpen = amount > 0
-  let gender = 'ALL' // 'M' | 'W' | 'ALL' — ดีฟอลต์ "ทั้งหมด" เพราะ gender อาจเป็น null/Coed ถ้า house_color ไม่ผูก team_colors
-  let filter = 'all' // 'all' | 'size_pending' | 'unpaid'
+  const allowedSizes = (snapshot.allowed_sizes && snapshot.allowed_sizes.length) ? snapshot.allowed_sizes : ['S', 'M', 'L', 'XL', '2XL', '3XL']
+  const colors = snapshot.team_colors || []
+
+  let activeTab = 'size' // 'size' | 'payment'
+  let gender = 'ALL' // 'M' | 'W' | 'ALL'
+  let selectedColorId = null
+  let selectedSize = null
+  let statusFilter = 'all' // size: 'all'|'pending' — payment: 'all'|'unpaid'
 
   const requestOf = id => (snapshot.shirt_requests || []).find(r => r.student_id === id)
   const paymentOf = id => (snapshot.shirt_payments || []).find(p => p.student_id === id)
+  const rowStatus = s => {
+    const req = requestOf(s.id)
+    const pay = paymentOf(s.id)
+    return { req, pay, sizeStatus: req?.status || null, sizeOk: sizeConfirmed(req?.status), paid: !!pay }
+  }
+
+  const colorsForGender = () => gender === 'ALL' ? colors : colors.filter(c => c.gender === gender)
+  const studentsOf = g => g === 'ALL' ? (snapshot.students || []) : (snapshot.students || []).filter(s => s.gender === g)
+  const baseStudents = () => studentsOf(gender) // ขอบเขตตามเพศเท่านั้น ไว้คำนวณตัวเลขในการ์ดสี/ตารางกริด
+
+  const computeRows = () => {
+    let list = baseStudents()
+    if (selectedColorId) list = list.filter(s => s.team_color_id === selectedColorId)
+    if (activeTab === 'size') {
+      if (selectedSize) list = list.filter(s => requestOf(s.id)?.confirmed_size === selectedSize)
+      if (statusFilter === 'pending') list = list.filter(s => !rowStatus(s).sizeOk)
+    } else if (paymentsOpen && statusFilter === 'unpaid') {
+      list = list.filter(s => !rowStatus(s).paid)
+    }
+    return list
+  }
 
   root.innerHTML = `
     <div class="space-y-4">
       <div class="no-print flex flex-wrap items-center justify-between gap-3">
+        <div class="inline-flex p-1 rounded-xl bg-white border border-slate-200 gap-1">
+          <button type="button" data-tab="size" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👕 ไซซ์เสื้อ</button>
+          <button type="button" data-tab="payment" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">💰 ค่าเสื้อ</button>
+        </div>
         <div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
-          <button type="button" data-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👦 นักเรียนชาย</button>
-          <button type="button" data-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👧 นักเรียนหญิง</button>
+          <button type="button" data-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👦 ชาย</button>
+          <button type="button" data-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👧 หญิง</button>
           <button type="button" data-gender="ALL" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👥 ทั้งหมด</button>
         </div>
-        <p class="text-xs text-slate-500 font-bold">${paymentsOpen ? `ค่าเสื้อกีฬาสีคนละ ${amount.toLocaleString('th-TH')} บาท` : 'แอดมินยังไม่ได้ตั้งราคาค่าเสื้อ'}</p>
       </div>
-      <div id="summary-cards" class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+
+      <p id="scope-line" class="no-print text-xs text-slate-500"></p>
+
+      <div id="color-cards" class="no-print grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
+      <div id="size-grid-wrap" class="no-print bg-white rounded-xl border border-slate-200 p-3 overflow-x-auto"></div>
+
       <div class="no-print bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3">
-        <span class="text-xs font-bold text-slate-500">กรองรายชื่อ:</span>
-        <div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
-          <button type="button" data-filter="all" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all">ทั้งหมด</button>
-          <button type="button" data-filter="size_pending" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all">ไซซ์ยังไม่ยืนยัน</button>
-          <button type="button" data-filter="unpaid" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all">ยังไม่ชำระ</button>
-        </div>
+        <span class="text-xs font-bold text-slate-500">กรองสถานะ:</span>
+        <div id="status-filter" class="inline-flex p-1 rounded-xl bg-slate-100 gap-1"></div>
       </div>
+
       <div class="no-print flex flex-wrap gap-2">
         <button id="btn-export-csv" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">⬇️ ดาวน์โหลด Excel (CSV)</button>
         <button id="btn-print" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 text-xs font-bold">🖨️ พิมพ์เอกสาร</button>
@@ -111,100 +143,155 @@ function renderDashboard(snapshot) {
       <div id="print-content" class="print-only"></div>
     </div>`
 
-  const studentsOf = g => g === 'ALL' ? (snapshot.students || []) : (snapshot.students || []).filter(s => s.gender === g)
-
-  const rowStatus = s => {
-    const req = requestOf(s.id)
-    const pay = paymentOf(s.id)
-    const sizeStatus = req?.status || null
-    const sizeOk = sizeConfirmed(sizeStatus)
-    const paid = !!pay
-    return { req, pay, sizeStatus, sizeOk, paid }
-  }
-
-  const computeRows = () => {
-    const students = studentsOf(gender)
-    return students.filter(s => {
-      if (filter === 'size_pending') { const { sizeOk } = rowStatus(s); return !sizeOk }
-      if (filter === 'unpaid') { if (!paymentsOpen) return false; const { paid } = rowStatus(s); return !paid }
-      return true
+  // ---- การ์ดสรุปตามสี (กดกรองได้) ----
+  const renderColorCards = () => {
+    const cardsOf = colorsForGender()
+    root.querySelector('#color-cards').innerHTML = cardsOf.map(c => {
+      const inColor = baseStudents().filter(s => s.team_color_id === c.id)
+      const metricValue = activeTab === 'size'
+        ? `${inColor.filter(s => rowStatus(s).sizeOk).length} / ${inColor.length}`
+        : (paymentsOpen ? `${inColor.filter(s => rowStatus(s).paid).length} / ${inColor.length}` : 'รอราคา')
+      const active = selectedColorId === c.id
+      return `<button type="button" data-color-card="${esc(c.id)}" class="text-left rounded-xl border p-3 transition-all ${active ? 'ring-2 ring-offset-1' : 'border-slate-200 bg-white hover:border-slate-300'}" style="${active ? `border-color:${esc(c.hex_color)};box-shadow:0 0 0 2px ${esc(c.hex_color)}22;` : ''}">
+        <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full flex-shrink-0" style="background:${esc(c.hex_color)}"></span><b class="text-xs text-slate-700">สี${esc(c.name)}</b></div>
+        <p class="text-[10px] text-slate-400">${inColor.length} คน</p>
+        <p class="text-lg font-black mt-0.5" style="color:${esc(c.hex_color)}">${esc(metricValue)}</p>
+      </button>`
+    }).join('') || '<p class="col-span-full text-xs text-slate-400 text-center py-4">ไม่มีข้อมูลสี</p>'
+    root.querySelectorAll('[data-color-card]').forEach(b => b.onclick = () => {
+      selectedColorId = selectedColorId === b.dataset.colorCard ? null : b.dataset.colorCard
+      render()
     })
   }
 
-  // สร้างเนื้อหาเอกสารพิมพ์ (โลโก้+หัวเรื่อง+สถิติ+ตารางเดียวต่อชั้น เรียงตามห้องเรียน) — ยึดตาม filter ที่เลือกอยู่
+  // ---- ตารางกริด สี × ไซซ์ (เฉพาะแท็บไซซ์เสื้อ) — กดตัวเลขเพื่อกรองได้ ----
+  const renderSizeGrid = () => {
+    const wrap = root.querySelector('#size-grid-wrap')
+    if (activeTab !== 'size') { wrap.innerHTML = ''; return }
+    const cardsOf = colorsForGender()
+    const countOf = (colorId, size) => baseStudents().filter(s => s.team_color_id === colorId && requestOf(s.id)?.confirmed_size === size).length
+    const totalOfColor = colorId => baseStudents().filter(s => s.team_color_id === colorId && rowStatus(s).sizeOk).length
+    const totalOfSize = size => baseStudents().filter(s => requestOf(s.id)?.confirmed_size === size && s.team_color_id && cardsOf.some(c => c.id === s.team_color_id)).length
+    const grandTotal = cardsOf.reduce((sum, c) => sum + totalOfColor(c.id), 0)
+
+    wrap.innerHTML = `
+      <p class="text-xs font-bold text-slate-500 mb-2">สรุปจำนวนไซซ์ที่ยืนยันแล้วต่อสี — กดตัวเลขเพื่อกรองรายชื่อด้านล่าง</p>
+      <table class="w-full text-xs border-collapse">
+        <thead><tr>
+          <th class="p-2 text-left border-b border-slate-200">สี</th>
+          ${allowedSizes.map(sz => `<th class="p-2 text-center border-b border-slate-200 ${selectedSize === sz ? 'text-pink-600' : 'text-slate-500'}"><button type="button" data-size-col="${esc(sz)}" class="font-bold hover:underline">${esc(sz)}</button></th>`).join('')}
+          <th class="p-2 text-center border-b border-slate-200 text-slate-500 font-bold">รวม</th>
+        </tr></thead>
+        <tbody>
+          ${cardsOf.map(c => `<tr class="border-b border-slate-100">
+            <td class="p-2"><span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:${esc(c.hex_color)}"></span>${esc(c.name)}</span></td>
+            ${allowedSizes.map(sz => {
+              const n = countOf(c.id, sz)
+              const on = selectedColorId === c.id && selectedSize === sz
+              return `<td class="p-1 text-center"><button type="button" data-cell-color="${esc(c.id)}" data-cell-size="${esc(sz)}" class="w-9 h-8 rounded-lg text-xs font-bold ${on ? 'bg-pink-600 text-white' : n > 0 ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'text-slate-300'}">${n || '·'}</button></td>`
+            }).join('')}
+            <td class="p-1 text-center"><button type="button" data-color-total="${esc(c.id)}" class="w-10 h-8 rounded-lg text-xs font-bold ${selectedColorId === c.id && !selectedSize ? 'bg-pink-600 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'}">${totalOfColor(c.id)}</button></td>
+          </tr>`).join('')}
+          <tr>
+            <td class="p-2 font-bold text-slate-600">รวม</td>
+            ${allowedSizes.map(sz => `<td class="p-1 text-center"><button type="button" data-size-total="${esc(sz)}" class="w-9 h-8 rounded-lg text-xs font-bold ${!selectedColorId && selectedSize === sz ? 'bg-pink-600 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'}">${totalOfSize(sz)}</button></td>`).join('')}
+            <td class="p-1 text-center font-black text-slate-700">${grandTotal}</td>
+          </tr>
+        </tbody>
+      </table>`
+
+    wrap.querySelectorAll('[data-cell-color]').forEach(b => b.onclick = () => {
+      const cId = b.dataset.cellColor, sz = b.dataset.cellSize
+      if (selectedColorId === cId && selectedSize === sz) { selectedColorId = null; selectedSize = null } else { selectedColorId = cId; selectedSize = sz }
+      render()
+    })
+    wrap.querySelectorAll('[data-color-total]').forEach(b => b.onclick = () => {
+      const cId = b.dataset.colorTotal
+      if (selectedColorId === cId && !selectedSize) selectedColorId = null
+      else { selectedColorId = cId; selectedSize = null }
+      render()
+    })
+    wrap.querySelectorAll('[data-size-total],[data-size-col]').forEach(b => b.onclick = () => {
+      const sz = b.dataset.sizeTotal || b.dataset.sizeCol
+      if (!selectedColorId && selectedSize === sz) selectedSize = null
+      else { selectedSize = sz; selectedColorId = null }
+      render()
+    })
+  }
+
+  const renderStatusFilter = () => {
+    const el = root.querySelector('#status-filter')
+    const options = activeTab === 'size'
+      ? [['all', 'ทั้งหมด'], ['pending', 'ไซซ์ยังไม่ยืนยัน']]
+      : (paymentsOpen ? [['all', 'ทั้งหมด'], ['unpaid', 'ยังไม่ชำระ']] : [['all', 'ทั้งหมด']])
+    el.innerHTML = options.map(([v, label]) => `<button type="button" data-status="${v}" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === v ? 'bg-pink-600 text-white' : 'text-slate-500'}">${esc(label)}</button>`).join('')
+    el.querySelectorAll('[data-status]').forEach(b => b.onclick = () => { statusFilter = b.dataset.status; render() })
+  }
+
+  // ---- เอกสารพิมพ์ (โลโก้+หัวเรื่อง+สถิติ+ตารางเดียวต่อชั้น) — ยึดตาม tab + ตัวกรองที่เลือกอยู่ ----
   const buildDocument = () => {
-    const students = studentsOf(gender)
     const rows = computeRows()
-
     const byLevel = {}
-    students.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || { total: 0, sizeOk: 0, paid: 0, students: [] }); byLevel[lv].total++ })
-    students.forEach(s => { const { sizeOk, paid } = rowStatus(s); const lv = levelOf(s.main_room); if (sizeOk) byLevel[lv].sizeOk++; if (paid) byLevel[lv].paid++ })
-    rows.forEach(s => { byLevel[levelOf(s.main_room)].students.push(s) })
+    rows.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || []).push(s) })
     const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
-
     const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
     const genderLabel = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : ''
-    const titleByFilter = { all: 'รายชื่อนักเรียน', size_pending: 'รายชื่อนักเรียนที่ไซซ์เสื้อยังไม่ยืนยัน', unpaid: 'รายชื่อนักเรียนที่ยังไม่ชำระค่าเสื้อ' }[filter]
+    const colorLabel = selectedColorId ? colors.find(c => c.id === selectedColorId)?.name : ''
+    const title = activeTab === 'size' ? 'รายชื่อนักเรียน — ไซซ์เสื้อกีฬาสี' : 'รายชื่อนักเรียน — ค่าเสื้อกีฬาสี'
 
     return levels.map((lv, idx) => {
-      const info = byLevel[lv]
-      const rowsOfLevel = [...info.students].sort(byRoomThenName)
+      const rowsOfLevel = [...byLevel[lv]].sort(byRoomThenName)
       return `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding-top:12px">
         ${logoRow}
         <div style="text-align:center;margin-bottom:10px">
-          <h2 style="font-size:16px;margin:0 0 4px">${esc(titleByFilter)}${genderLabel ? esc(genderLabel) : ''}</h2>
+          <h2 style="font-size:16px;margin:0 0 4px">${esc(title)}${genderLabel ? esc(genderLabel) : ''}${colorLabel ? ` — สี${esc(colorLabel)}` : ''}${selectedSize ? ` — ไซซ์ ${esc(selectedSize)}` : ''}</h2>
           <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
           <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
         </div>
         <div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px;font-size:12px">
-          <span>นักเรียนทั้งหมด: <b>${info.total}</b></span>
-          <span style="color:#059669">ยืนยันไซซ์แล้ว: <b>${info.sizeOk}</b></span>
-          ${paymentsOpen ? `<span style="color:#059669">ชำระแล้ว: <b>${info.paid}</b></span>` : ''}
+          <span>จำนวน: <b>${rowsOfLevel.length}</b> คน</span>
         </div>
-        ${rowsOfLevel.length ? `<table style="width:100%;border-collapse:collapse;font-size:10.5px">
+        <table style="width:100%;border-collapse:collapse;font-size:10.5px">
           <thead><tr>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">เลขที่</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">รหัส</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left;width:100%">ชื่อ-สกุล</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ห้อง</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ไซซ์ยืนยัน</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สถานะไซซ์</th>
-            ${paymentsOpen ? `<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สถานะชำระ</th>` : ''}
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สี</th>
+            ${activeTab === 'size'
+              ? `<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ไซซ์ยืนยัน</th><th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สถานะ</th>`
+              : (paymentsOpen ? `<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สถานะชำระ</th>` : '')}
           </tr></thead>
           <tbody>${rowsOfLevel.map((s, i) => {
-            const { sizeStatus, paid } = rowStatus(s)
-            const req = requestOf(s.id)
+            const st = rowStatus(s)
             return `<tr>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${i + 1}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.student_code)}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px">${photoImg(s.photo_url)}${esc(s.full_name)}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.main_room || '—')}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(req?.confirmed_size || '—')}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(sizeBadgeLabel(sizeStatus))}</td>
-              ${paymentsOpen ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</td>` : ''}
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.color_name || '—')}</td>
+              ${activeTab === 'size'
+                ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(st.req?.confirmed_size || '—')}</td><td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(sizeBadgeLabel(st.sizeStatus))}</td>`
+                : (paymentsOpen ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</td>` : '')}
             </tr>`
           }).join('')}</tbody>
-        </table>` : `<p style="text-align:center;color:#059669;font-weight:bold">✅ ไม่มีรายชื่อตามเงื่อนไขนี้ในชั้นนี้</p>`}
+        </table>
       </div>`
     }).join('')
   }
 
   const render = () => {
+    root.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === activeTab; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
     root.querySelectorAll('[data-gender]').forEach(b => { const on = b.dataset.gender === gender; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
-    root.querySelectorAll('[data-filter]').forEach(b => { const on = b.dataset.filter === filter; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
 
-    const students = studentsOf(gender)
-    const sizeOkCount = students.filter(s => rowStatus(s).sizeOk).length
-    const paidCount = students.filter(s => rowStatus(s).paid).length
-    const totalCollected = students.reduce((sum, s) => sum + (Number(paymentOf(s.id)?.amount) || 0), 0)
+    const scope = baseStudents()
+    const genderLabel = gender === 'M' ? 'นักเรียนชาย' : gender === 'W' ? 'นักเรียนหญิง' : 'นักเรียนทั้งหมด'
+    root.querySelector('#scope-line').textContent = `${genderLabel} ${scope.length} คน — กำลังแสดง ${computeRows().length} คนตามตัวกรองที่เลือก`
 
-    root.querySelector('#summary-cards').innerHTML = `
-      <div class="bg-white rounded-xl border border-slate-200 p-3 text-center"><p class="text-[10px] text-slate-500 font-bold">นักเรียนทั้งหมด</p><b class="text-xl">${students.length}</b></div>
-      <div class="bg-emerald-50 rounded-xl border border-emerald-200 p-3 text-center"><p class="text-[10px] text-emerald-600 font-bold">ยืนยันไซซ์แล้ว</p><b class="text-xl text-emerald-700">${sizeOkCount} / ${students.length}</b></div>
-      <div class="${paymentsOpen ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'} rounded-xl border p-3 text-center"><p class="text-[10px] ${paymentsOpen ? 'text-emerald-600' : 'text-amber-600'} font-bold">ชำระแล้ว</p><b class="text-xl ${paymentsOpen ? 'text-emerald-700' : 'text-amber-700'}">${paymentsOpen ? `${paidCount} / ${students.length}` : 'รอประกาศราคา'}</b></div>
-      <div class="bg-slate-100 rounded-xl border border-slate-200 p-3 text-center"><p class="text-[10px] text-slate-500 font-bold">รวมเงินที่เก็บได้</p><b class="text-xl">${totalCollected.toLocaleString('th-TH')}</b></div>`
+    renderColorCards()
+    renderSizeGrid()
+    renderStatusFilter()
 
-    // แสดงบนหน้าจอ: แยกตามห้อง ตามรายการที่ผ่าน filter อยู่
     const rows = computeRows()
     const byRoom = {}
     rows.forEach(s => { (byRoom[s.main_room || 'ไม่ระบุห้อง'] = byRoom[s.main_room || 'ไม่ระบุห้อง'] || []).push(s) })
@@ -217,14 +304,14 @@ function renderDashboard(snapshot) {
         </div>
         <table class="w-full text-xs">
           <thead><tr class="text-slate-400 text-left">
-            <th class="p-2 font-bold">รหัส</th><th class="p-2 font-bold">ชื่อ-สกุล</th>
-            <th class="p-2 font-bold text-center">ไซซ์จำนง</th><th class="p-2 font-bold text-center">ไซซ์ยืนยัน</th>
-            <th class="p-2 font-bold text-center">สถานะไซซ์</th>
-            ${paymentsOpen ? '<th class="p-2 font-bold text-center">สถานะชำระ</th><th class="p-2 font-bold text-right">จำนวนเงิน</th>' : ''}
+            <th class="p-2 font-bold">รหัส</th><th class="p-2 font-bold">ชื่อ-สกุล</th><th class="p-2 font-bold text-center">สี</th>
+            ${activeTab === 'size'
+              ? '<th class="p-2 font-bold text-center">ไซซ์จำนง</th><th class="p-2 font-bold text-center">ไซซ์ยืนยัน</th><th class="p-2 font-bold text-center">สถานะไซซ์</th>'
+              : (paymentsOpen ? '<th class="p-2 font-bold text-center">สถานะชำระ</th><th class="p-2 font-bold text-right">จำนวนเงิน</th>' : '<th class="p-2 font-bold text-center">สถานะชำระ</th>')}
           </tr></thead>
           <tbody>${byRoom[room].sort((a, b) => a.full_name.localeCompare(b.full_name, 'th')).map(s => {
-            const { sizeStatus, sizeOk, paid, pay } = rowStatus(s)
-            const req = requestOf(s.id)
+            const st = rowStatus(s)
+            const colorObj = colors.find(c => c.id === s.team_color_id)
             return `<tr class="border-t border-slate-100">
               <td class="p-2 w-24 text-slate-500">${esc(s.student_code)}</td>
               <td class="p-2">
@@ -235,13 +322,15 @@ function renderDashboard(snapshot) {
                   <span>${esc(s.full_name)}</span>
                 </div>
               </td>
-              <td class="p-2 text-center">${esc(req?.requested_size || '—')}</td>
-              <td class="p-2 text-center">${esc(req?.confirmed_size || '—')}</td>
-              <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${sizeOk ? 'bg-emerald-100 text-emerald-700' : sizeStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}">${esc(sizeBadgeLabel(sizeStatus))}</span></td>
-              ${paymentsOpen ? `
-                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${paid ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</span></td>
-                <td class="p-2 text-right">${paid ? `${Number(pay.amount).toLocaleString('th-TH')} บาท` : '—'}</td>
-              ` : ''}
+              <td class="p-2 text-center"><span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full inline-block" style="background:${esc(colorObj?.hex_color || '#94a3b8')}"></span>${esc(s.color_name || '—')}</span></td>
+              ${activeTab === 'size' ? `
+                <td class="p-2 text-center">${esc(st.req?.requested_size || '—')}</td>
+                <td class="p-2 text-center">${esc(st.req?.confirmed_size || '—')}</td>
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.sizeOk ? 'bg-emerald-100 text-emerald-700' : st.sizeStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}">${esc(sizeBadgeLabel(st.sizeStatus))}</span></td>
+              ` : paymentsOpen ? `
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</span></td>
+                <td class="p-2 text-right">${st.paid ? `${Number(st.pay.amount).toLocaleString('th-TH')} บาท` : '—'}</td>
+              ` : `<td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอประกาศราคา</span></td>`}
             </tr>`
           }).join('')}</tbody>
         </table>
@@ -250,26 +339,41 @@ function renderDashboard(snapshot) {
     root.querySelector('#print-content').innerHTML = buildDocument() || `<p style="text-align:center;padding:40px">ไม่มีข้อมูลนักเรียน</p>`
   }
 
-  root.querySelectorAll('[data-gender]').forEach(b => b.onclick = () => { gender = b.dataset.gender; render() })
-  root.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { filter = b.dataset.filter; render() })
+  root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+    activeTab = b.dataset.tab
+    selectedSize = null
+    statusFilter = 'all'
+    render()
+  })
+  root.querySelectorAll('[data-gender]').forEach(b => b.onclick = () => {
+    gender = b.dataset.gender
+    if (selectedColorId && !colorsForGender().some(c => c.id === selectedColorId)) selectedColorId = null
+    render()
+  })
 
   root.querySelector('#btn-export-csv').onclick = () => {
     const q = x => `"${String(x || '').replaceAll('"', '""')}"`
     const rows = computeRows().sort(byRoomThenName)
-    const header = ['ห้อง', 'รหัส', 'ชื่อ-สกุล', 'ไซซ์ที่จำนง', 'ไซซ์ที่ยืนยัน', 'สถานะไซซ์', 'สถานะชำระ', 'วันที่ชำระ', 'จำนวนเงิน', 'วิธีชำระ']
+    const header = activeTab === 'size'
+      ? ['ห้อง', 'รหัส', 'ชื่อ-สกุล', 'สี', 'ไซซ์ที่จำนง', 'ไซซ์ที่ยืนยัน', 'สถานะไซซ์']
+      : ['ห้อง', 'รหัส', 'ชื่อ-สกุล', 'สี', 'สถานะชำระ', 'วันที่ชำระ', 'จำนวนเงิน', 'วิธีชำระ']
     const body = rows.map(s => {
-      const { sizeStatus, paid, pay } = rowStatus(s)
-      const req = requestOf(s.id)
-      const payStatus = !paymentsOpen ? 'รอประกาศราคา' : (paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ')
-      const paidAt = paid ? new Date(pay.paid_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''
-      const methodLabel = paid ? (pay.method === 'qr' ? 'สแกน QR' : 'กรอกรหัส') : ''
-      return [s.main_room, s.student_code, s.full_name, req?.requested_size || '', req?.confirmed_size || '', sizeBadgeLabel(sizeStatus), payStatus, paidAt, paid ? Number(pay.amount) : '', methodLabel].map(q).join(',')
+      const st = rowStatus(s)
+      if (activeTab === 'size') {
+        return [s.main_room, s.student_code, s.full_name, s.color_name, st.req?.requested_size || '', st.req?.confirmed_size || '', sizeBadgeLabel(st.sizeStatus)].map(q).join(',')
+      }
+      const payStatus = !paymentsOpen ? 'รอประกาศราคา' : (st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ')
+      const paidAt = st.paid ? new Date(st.pay.paid_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''
+      const methodLabel = st.paid ? (st.pay.method === 'qr' ? 'สแกน QR' : 'กรอกรหัส') : ''
+      return [s.main_room, s.student_code, s.full_name, s.color_name, payStatus, paidAt, st.paid ? Number(st.pay.amount) : '', methodLabel].map(q).join(',')
     })
     const csvRows = [header.map(q).join(','), ...body]
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv' }))
     const genderTag = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'ทั้งหมด'
-    a.download = `ไซซ์เสื้อและค่าเสื้อกีฬาสี-${genderTag}.csv`
+    const colorTag = selectedColorId ? `-${colors.find(c => c.id === selectedColorId)?.name || ''}` : ''
+    const sizeTag = selectedSize ? `-${selectedSize}` : ''
+    a.download = `${activeTab === 'size' ? 'ไซซ์เสื้อ' : 'ค่าเสื้อ'}กีฬาสี-${genderTag}${colorTag}${sizeTag}.csv`
     a.click(); URL.revokeObjectURL(a.href)
   }
   root.querySelector('#btn-print').onclick = () => window.print()
