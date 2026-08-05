@@ -25,7 +25,7 @@ import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
-import { renderAdvisorStudents, renderShirtSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.235'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.247'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -242,6 +242,7 @@ const ROUTES = {
   },
   'advisor-students': () => renderAdvisorStudents(_teacher, _homeroomRooms),
   'shirt-summary': () => renderShirtSummary(),
+  'sports-fund-admin': () => renderSportsFundAdmin(),
   'shirt-vote-settings': () => renderShirtVoteSettings(),
   'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
   'my-team-workspace': () => openMyTeamWorkspace(),
@@ -618,6 +619,7 @@ async function _applyRoleMenus() {
   const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
+  toggle('menu-sports-fund-admin', !!isSportsManager)
   let isShirtVoteManager = false
   try {
     const { data: activeEvent } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
@@ -2166,6 +2168,7 @@ const _SV_MENU_ITEMS = [
   { key:'menu_sports_admin',       icon:'🏆', label:'ระบบกีฬาสี',          fn: async () => openAzizGamesModal({ admin: true, teacherName: _teacher?.full_name, teacherCode: _teacher?.teacher_code }) },
   { key:'menu_azfutsal',           icon:'⚽', label:'AZFUTSALCUP',        fn: async () => openAzfutsalModal() },
   { key:'menu_sports_shirt_settings', icon:'👕', label:'ตั้งค่าและสรุปเสื้อกีฬาสี', fn: async () => renderShirtSummary() },
+  { key:'menu_sports_fund_admin', icon:'💰', label:'บัญชีเงินกีฬาสี', fn: async () => renderSportsFundAdmin() },
   { key:'manage_religion_groups',  icon:'🕌', label:'กลุ่มวิชาศาสนา',      fn: async () => { const {renderReligionGroups}  = await import('./views.js'); renderReligionGroups() }},
   { key:'manage_my_religion_group', icon:'👥', label:'กลุ่มของฉัน',        fn: async (t) => { const {renderMyReligionGroup} = await import('./views.js'); renderMyReligionGroup(t) }},
   { key:'menu_classroom_leaders',  icon:'👑', label:'หัวหน้า/รองหัวหน้าห้อง',  fn: async () => { const {renderClassroomLeaders} = await import('./views.js'); renderClassroomLeaders() }},
@@ -2192,6 +2195,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
         if (m.key === 'menu_house_colors') return _positionPerms.menu_house_colors || _tPositions2.includes('house_color_admin')
         if (m.key === 'menu_sports_admin') return sportsVisibleForTeacher && (_positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin'))
         if (m.key === 'menu_sports_shirt_settings') return _positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin')
+        if (m.key === 'menu_sports_fund_admin') return _positionPerms.menu_sports_admin || _tPositions2.includes('house_color_admin')
         if (m.key === 'menu_azfutsal') return true
         if (m.key === 'menu_classroom_leaders') return _positionPerms.menu_classroom_leaders || _tPositions2.includes('classroom_leaders_admin')
         if (m.key === 'manage_religion_groups') return _positionPerms.manage_religion_groups || _tPositions2.includes('religion_group_head')
