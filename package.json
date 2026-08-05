@@ -1,7 +1,7 @@
 {
   "name": "pp5-online",
   "private": true,
-  "version": "10.22.245",
+  "version": "10.22.246",
   "type": "module",
   "scripts": {
     "dev": "vite",

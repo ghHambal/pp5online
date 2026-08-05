@@ -2369,7 +2369,7 @@ function openGalleryLightbox(modalRoot,group,colorMap,nameMap,startIdx=0){
           <button data-lightbox-close class="w-8 h-8 rounded-lg bg-white/10">✕</button>
         </div>
       </div>
-      <div class="flex-1 flex items-center justify-center relative px-2">
+      <div class="flex-1 min-h-0 flex items-center justify-center relative px-2">
         ${idx>0?`<button data-lightbox-prev class="absolute left-2 w-11 h-11 rounded-full bg-white/10 text-white text-xl">‹</button>`:''}
         <img src="${esc(p.photo_url)}" class="max-w-full max-h-full object-contain">
         ${idx<group.photos.length-1?`<button data-lightbox-next class="absolute right-2 w-11 h-11 rounded-full bg-white/10 text-white text-xl">›</button>`:''}
