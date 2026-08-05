@@ -363,7 +363,7 @@ export async function renderMyClasses(teacher) {
       })
     }
 
-    const _openPrintableRoster = async (cls, type, orientation = 'landscape') => {
+    const _openPrintableRoster = async (cls, type, orientation = 'landscape', gender = 'all') => {
       const win = window.open('', '_blank')
       if (!win) {
         showToast('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup ก่อน', 'warning')
@@ -371,11 +371,20 @@ export async function renderMyClasses(teacher) {
       }
       win.document.write('<p style="font-family:sans-serif;padding:24px">กำลังสร้างเอกสาร...</p>')
       try {
-        const [cfg, students, scoreColumns] = await Promise.all([
+        const [cfg, allStudents, scoreColumns] = await Promise.all([
           getSystemConfig().catch(() => ({})),
           getClassStudents(cls.id),
           type === 'score' ? getScoreColumns(cls.id) : Promise.resolve([]),
         ])
+        const genderLabel = gender === 'ชาย' || gender === 'หญิง' ? gender : 'ทั้งหมด'
+        const students = genderLabel === 'ทั้งหมด'
+          ? allStudents
+          : allStudents.filter(s => String(s.gender || '').trim() === genderLabel)
+        if (!students.length) {
+          win.close()
+          showToast(`ไม่พบนักเรียน${genderLabel === 'ทั้งหมด' ? '' : genderLabel}ในห้องนี้`, 'warning')
+          return
+        }
         const ms = cls.master_subjects ?? {}
         const isVoc = ['ACDMVOC', 'AGMVOC'].includes(ms.subject_group)
         const schoolName = isVoc
@@ -471,11 +480,12 @@ export async function renderMyClasses(teacher) {
       <div class="logo-wrap">${printLogoUrl ? `<img class="logo" src="${_htmlEsc(printLogoUrl)}" />` : ''}</div>
       <div class="school">
         <h1>${_htmlEsc(schoolName)}</h1>
-        <h2>${_htmlEsc(title)}</h2>
+        <h2>${_htmlEsc(title)}${genderLabel === 'ทั้งหมด' ? '' : ` (${_htmlEsc(genderLabel)})`}</h2>
       </div>
       <div class="meta">
         <div><strong>ภาคเรียน</strong> ${_htmlEsc(cfg.semester || '')}/${_htmlEsc(cfg.academicYear || '')}</div>
         <div><strong>ห้อง</strong> ${_htmlEsc(cls.class_name || '')}</div>
+        <div><strong>รายชื่อ</strong> ${_htmlEsc(genderLabel)}</div>
         <div><strong>จำนวน</strong> ${students.length} คน</div>
       </div>
     </section>
@@ -537,6 +547,23 @@ export async function renderMyClasses(teacher) {
             </label>
           </div>
         </div>
+        <div class="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <p class="text-xs font-semibold text-gray-500 mb-2">รายชื่อนักเรียนที่ต้องการพิมพ์</p>
+          <div class="grid grid-cols-3 gap-2">
+            <label class="cursor-pointer">
+              <input class="hidden roster-gender" type="radio" name="roster-gender" value="all" checked />
+              <span class="roster-gender-card block text-center rounded-lg border border-violet-500 bg-violet-50 px-2 py-2 text-sm font-semibold text-violet-700">ทั้งหมด</span>
+            </label>
+            <label class="cursor-pointer">
+              <input class="hidden roster-gender" type="radio" name="roster-gender" value="ชาย" />
+              <span class="roster-gender-card block text-center rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm font-semibold text-gray-600">ชาย</span>
+            </label>
+            <label class="cursor-pointer">
+              <input class="hidden roster-gender" type="radio" name="roster-gender" value="หญิง" />
+              <span class="roster-gender-card block text-center rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm font-semibold text-gray-600">หญิง</span>
+            </label>
+          </div>
+        </div>
         <div class="grid gap-3">
           <button id="btn-roster-att" class="py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">✅ สร้างใบเช็คชื่อ</button>
           <button id="btn-roster-score" class="py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">📝 สร้างใบบันทึกคะแนน</button>
@@ -545,6 +572,7 @@ export async function renderMyClasses(teacher) {
       </div>`
       document.body.appendChild(m)
       const _getOrientation = () => m.querySelector('.roster-orientation:checked')?.value || 'landscape'
+      const _getGender = () => m.querySelector('.roster-gender:checked')?.value || 'all'
       m.querySelectorAll('.roster-orientation').forEach(inp => {
         inp.addEventListener('change', () => {
           m.querySelectorAll('.roster-orientation-card').forEach(card => {
@@ -553,17 +581,27 @@ export async function renderMyClasses(teacher) {
           inp.nextElementSibling.className = 'roster-orientation-card block text-center rounded-lg border border-indigo-500 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700'
         })
       })
+      m.querySelectorAll('.roster-gender').forEach(inp => {
+        inp.addEventListener('change', () => {
+          m.querySelectorAll('.roster-gender-card').forEach(card => {
+            card.className = 'roster-gender-card block text-center rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm font-semibold text-gray-600'
+          })
+          inp.nextElementSibling.className = 'roster-gender-card block text-center rounded-lg border border-violet-500 bg-violet-50 px-2 py-2 text-sm font-semibold text-violet-700'
+        })
+      })
       m.querySelector('#btn-roster-close').addEventListener('click', () => m.remove())
       m.addEventListener('click', e => { if (e.target === m) m.remove() })
       m.querySelector('#btn-roster-att').addEventListener('click', () => {
         const orientation = _getOrientation()
+        const gender = _getGender()
         m.remove()
-        _openPrintableRoster(cls, 'attendance', orientation)
+        _openPrintableRoster(cls, 'attendance', orientation, gender)
       })
       m.querySelector('#btn-roster-score').addEventListener('click', () => {
         const orientation = _getOrientation()
+        const gender = _getGender()
         m.remove()
-        _openPrintableRoster(cls, 'score', orientation)
+        _openPrintableRoster(cls, 'score', orientation, gender)
       })
     }
 
