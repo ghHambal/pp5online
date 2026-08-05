@@ -680,19 +680,18 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
   const slot=root.querySelector('#sports-team-membership-admin'); if(!slot)return
   const roleLabels={lead_teacher:'หัวหน้าครูประจำสี',teacher:'ครูประจำสี',staff_lead:'หัวหน้านักเรียนสต๊าฟสี',staff:'นักเรียนสต๊าฟสี'}
   const permLabels={members:'สมาชิก',registrations:'ลงทะเบียนกีฬา',announcements:'ประกาศ',tasks:'งานของสี',shirt_summary:'สรุปเสื้อ',attendance:'เช็คชื่อ',dues:'เก็บค่าบำรุงสี'}
-  const isStaffGrade=s=>/(ม\.?\s*[56]|ปวช\.?\s*3|ปวช\s*3)/i.test(String(s?.main_room||''))
+  const isStaffLevel=s=>/^\s*(?:ม\.?\s*[456]|ปวช\.?\s*[123])(?:\s*\/|\s|$)/i.test(String(s?.main_room||''))
   const leadTeamIds=new Set((access.myTeamMemberships||[]).filter(m=>m.role==='lead_teacher').map(m=>m.team_color_id))
   const manageableColors=access.isAdmin?colors:colors.filter(c=>leadTeamIds.has(c.id))
   const canAssignTeachers=!!access.isAdmin
   if(!manageableColors.length){slot.innerHTML='<div class="p-6 text-center text-gray-400">ยังไม่มีสีที่คุณมีสิทธิ์มอบหมายสต๊าฟ</div>';return}
   try {
-    const [{data:memberships,error},{data:teachers},{data:students}] = await Promise.all([
+    const [{data:memberships,error},{data:teachers},students] = await Promise.all([
       supabase.from('sports_team_memberships').select('*,team_colors(name,hex_color),teachers(full_name,teacher_code),students(full_name,student_code,main_room)').eq('event_id',event.id).eq('is_active',true).order('created_at',{ascending:false}),
       supabase.from('teachers').select('id,teacher_code,full_name,dept,image_url,profile_id').not('profile_id','is',null).order('full_name'),
-      supabase.from('students').select('id,student_code,full_name,main_room,profile_id,is_active,image_url,team_color_id,house_color').not('profile_id','is',null).eq('is_active',true).order('student_code'),
+      _fetchAllRows('students',q=>q.select('id,student_code,full_name,main_room,profile_id,is_active,image_url,team_color_id,house_color').order('student_code')),
     ])
     if(error)throw error
-    const staffStudents=(students||[]).filter(isStaffGrade)
     const manageableColorIds=new Set(manageableColors.map(c=>c.id))
     const visibleMemberships=(memberships||[]).filter(m=>access.isAdmin||manageableColorIds.has(m.team_color_id))
     let foundTeamMembers=[]
@@ -707,6 +706,7 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
         </select>
         <button id="team-member-search" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm">ค้นหารายชื่อ</button>
       </div>
+      <p class="text-[11px] text-gray-500 -mt-2 mb-3">มอบสิทธิ์นักเรียนระดับ ม.4–ม.6 และ ปวช.1–3 ที่อยู่สีเดียวกันและมีบัญชีเข้าใช้งานระบบแล้ว</p>
       <div class="flex flex-wrap gap-2 mb-4">${Object.entries(permLabels).map(([k,v])=>permissionButton(k,v,true)).join('')}</div>
       <div id="team-member-preview" class="hidden border border-indigo-100 bg-indigo-50/40 rounded-2xl p-4 mb-4">
         <p class="text-xs font-bold text-indigo-700 mb-2">ตรวจสอบรายชื่อที่ต้องการมอบหมาย:</p>
@@ -742,6 +742,12 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
     slot.querySelector('#team-member-filter-role')?.addEventListener('change',renderMemberTable)
     slot.querySelector('#team-member-filter-search')?.addEventListener('input',renderMemberTable)
     const parseCodes=value=>String(value||'').split(/[\s,]+/).map(x=>x.trim()).filter(Boolean)
+    const showLookupIssues=issues=>{
+      document.getElementById('team-member-lookup-issue')?.remove()
+      const modal=document.createElement('div');modal.id='team-member-lookup-issue';modal.className='fixed inset-0 z-[420] bg-black/60 flex items-center justify-center p-4';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true')
+      modal.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"><div class="p-5 border-b border-red-100 bg-red-50"><div class="flex items-start gap-3"><div class="w-10 h-10 rounded-full bg-red-100 grid place-items-center text-xl flex-shrink-0">🔎</div><div><h3 class="font-bold text-red-800">ไม่สามารถเลือกรายชื่อนี้ได้</h3><p class="text-xs text-red-600 mt-1">ระบบตรวจสอบพบสาเหตุดังต่อไปนี้</p></div></div></div><div class="p-5 space-y-2 max-h-[55vh] overflow-y-auto">${issues.map(x=>`<div class="rounded-xl border border-gray-200 p-3"><b class="text-sm text-gray-800">รหัส ${esc(x.code)}</b><p class="text-xs text-gray-600 mt-1">${esc(x.reason)}</p></div>`).join('')}</div><div class="p-4 border-t border-gray-100"><button id="team-member-lookup-close" class="w-full py-2.5 rounded-xl bg-slate-800 text-white text-sm font-bold">รับทราบ</button></div></div>`
+      document.body.appendChild(modal);modal.querySelector('#team-member-lookup-close').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}
+    }
     const renderPreview=()=>{
       const wrap=slot.querySelector('#team-member-preview'), cards=slot.querySelector('#team-member-preview-cards')
       if(!foundTeamMembers.length){wrap?.classList.add('hidden');return}
@@ -755,9 +761,22 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
       const selectedColor=manageableColors.find(c=>c.id===selectedColorId)
       const codeSet=new Set(codes.map(String))
       const foundTeachers=canAssignTeachers?(teachers||[]).filter(t=>codeSet.has(String(t.teacher_code))).map(t=>({...t,kind:'teacher',code:t.teacher_code,detail:`รหัสครู ${t.teacher_code} · กลุ่มสาระ ${t.dept||'—'}`})):[]
-      const foundStudents=staffStudents.filter(s=>codeSet.has(String(s.student_code))&&(s.team_color_id===selectedColorId||s.house_color===selectedColor?.name)).map(s=>({...s,kind:'student',code:s.student_code,detail:`รหัส ${s.student_code} · ห้อง ${s.main_room||'—'} · สี${selectedColor?.name||'—'}`}))
+      const teacherCodes=new Set(foundTeachers.map(t=>String(t.code)))
+      const foundStudents=[],issues=[]
+      codes.forEach(code=>{
+        if(teacherCodes.has(String(code)))return
+        const matches=(students||[]).filter(s=>String(s.student_code)===String(code))
+        if(!matches.length){issues.push({code,reason:'ไม่พบรหัสนักเรียนนี้ในฐานข้อมูล'});return}
+        const student=matches.find(s=>s.is_active)||matches[0]
+        if(!student.is_active){issues.push({code,reason:'บัญชีนักเรียนถูกปิดสถานะ ไม่ใช่นักเรียนที่กำลังใช้งาน'});return}
+        if(!(student.team_color_id===selectedColorId||student.house_color===selectedColor?.name)){issues.push({code,reason:`นักเรียนอยู่สี${student.house_color||'อื่น'} ไม่ใช่สี${selectedColor?.name||'ที่เลือก'}`});return}
+        if(!isStaffLevel(student)){issues.push({code,reason:`นักเรียนอยู่ห้อง ${student.main_room||'ไม่ระบุ'} ระบบอนุญาตให้มอบสิทธิ์เฉพาะ ม.4–ม.6 และ ปวช.1–3`});return}
+        if(!student.profile_id){issues.push({code,reason:'นักเรียนยังไม่มีบัญชีเข้าใช้งานระบบ จึงยังผูกสิทธิ์ประจำสีไม่ได้'});return}
+        foundStudents.push({...student,kind:'student',code:student.student_code,detail:`รหัส ${student.student_code} · ห้อง ${student.main_room||'—'} · สี${selectedColor?.name||'—'}`})
+      })
       foundTeamMembers=[...foundTeachers,...foundStudents]
-      if(!foundTeamMembers.length)return toast('ไม่พบรายชื่อที่ตรงกับรหัสและสีที่เลือก หรือเด็กไม่ได้อยู่ระดับสต๊าฟที่อนุญาต','error')
+      if(issues.length)showLookupIssues(issues)
+      if(!foundTeamMembers.length)return
       renderPreview()
     })
     slot.querySelector('#team-member-code-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();slot.querySelector('#team-member-search')?.click()}})
