@@ -1911,6 +1911,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mb-2">${a.attachment_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">📎 ${_esc(f.name)}</a>`).join('')}</div>` : ''}
       ${sub?.file_urls?.length ? `<div class="border-t border-gray-50 pt-2 mt-1"><p class="text-[10px] text-gray-400 mb-1">ไฟล์ที่ส่ง (${new Date(sub.submitted_at).toLocaleString('th-TH',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})})</p>
         <div class="flex flex-wrap gap-1.5">${sub.file_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">📎 ${_esc(f.name)}</a>`).join('')}</div></div>` : ''}
+      ${sub?.teacher_feedback ? `<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mt-2"><p class="text-[10px] font-bold text-indigo-500 mb-0.5">💬 คอมเมนต์จากครู</p><p class="text-xs text-indigo-800">${_esc(sub.teacher_feedback)}</p></div>` : ''}
       <button class="stu-submit-assign-btn mt-3 w-full py-2 rounded-xl text-xs font-bold ${sub ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'}" data-aid="${a.id}">${sub ? '📤 ส่งใหม่ (แทนที่ของเดิม)' : '📤 ส่งงาน'}</button>
     </div>`
   }

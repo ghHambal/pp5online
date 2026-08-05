@@ -4069,6 +4069,16 @@ export async function saveAssignmentGrade(assignmentId, studentId, score) {
   if (error) throw error
 }
 
+// คอมเมนต์/feedback ของครูกลับไปหานักเรียน — เขียนทับได้ (แก้ feedback เดิมได้)
+export async function saveAssignmentFeedback(assignmentId, studentId, feedback) {
+  const { error } = await supabase
+    .from('assignment_submissions')
+    .update({ teacher_feedback: feedback || null })
+    .eq('assignment_id', assignmentId)
+    .eq('student_id', studentId)
+  if (error) throw error
+}
+
 export async function getAssignmentSubmissions(assignmentId) {
   const { data, error } = await supabase
     .from('assignment_submissions')
@@ -4086,7 +4096,7 @@ export async function getClassAssignmentsWithSubmissions(classId) {
   const ids = assignments.map(a => a.id)
   const { data: subs, error } = await supabase
     .from('assignment_submissions')
-    .select('id, assignment_id, student_id, file_urls, note, submitted_at')
+    .select('id, assignment_id, student_id, file_urls, note, teacher_feedback, submitted_at')
     .in('assignment_id', ids)
   if (error) throw error
   return assignments.map(a => ({ ...a, submissions: (subs ?? []).filter(s => s.assignment_id === a.id) }))
