@@ -606,8 +606,11 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
     }
     const studentRow=s=>{
       const a=attOf(s.id),photo=s.image_url||s.photo_url
-      const sourceLabel=a?.recorded_source==='homeroom_advisor'?'ครูที่ปรึกษาสามัญ':'ฝ่ายสี'
-      return `<div class="rounded-xl border ${a?'border-emerald-200 bg-emerald-50/50':'border-gray-200 bg-white'} p-3 flex items-center gap-3">${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border bg-gray-100">`:`<div class="w-9 h-11 rounded-lg bg-pink-50 text-pink-600 grid place-items-center font-bold">${esc((s.full_name||'?').charAt(0))}</div>`}<div class="min-w-0 flex-1"><b class="text-sm text-gray-800 truncate block">${esc(s.full_name)}</b><p class="text-[11px] text-gray-500">${esc(s.student_code)} · ${esc(s.main_room||'—')}</p>${a?`<p class="text-[10px] text-emerald-600">${new Date(a.scanned_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})} · ${esc(sourceLabel)}${a.team_color_name?` · สี${esc(a.team_color_name)}`:''}</p>`:''}</div><div class="text-right flex-shrink-0">${a?'<span class="text-xs font-bold text-emerald-700">✓ มาแล้ว</span>':`<span class="text-xs font-bold text-red-600 block">ยังไม่มา</span>${active?`<button data-checkin-manual-mark="${s.id}" class="mt-1 text-[10px] text-indigo-600 hover:underline">มาร์กมาแล้ว</button>`:''}`}</div></div>`
+      const fromAdvisor=a?.recorded_source==='homeroom_advisor'
+      const sourceLabel=fromAdvisor?'ครูที่ปรึกษาสามัญ':'ฝ่ายสี'
+      // ยกเลิกได้เฉพาะรายการที่ครูที่ปรึกษาสามัญบันทึกเอง (กันแก้ข้อมูลที่ฝ่ายสีบันทึกไว้) และ
+      // เฉพาะช่วงวันเช็คชื่อเข้าสีวันแรกที่ยังเปิดอยู่เท่านั้น
+      return `<div class="rounded-xl border ${a?'border-emerald-200 bg-emerald-50/50':'border-gray-200 bg-white'} p-3 flex items-center gap-3">${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border bg-gray-100">`:`<div class="w-9 h-11 rounded-lg bg-pink-50 text-pink-600 grid place-items-center font-bold">${esc((s.full_name||'?').charAt(0))}</div>`}<div class="min-w-0 flex-1"><b class="text-sm text-gray-800 truncate block">${esc(s.full_name)}</b><p class="text-[11px] text-gray-500">${esc(s.student_code)} · ${esc(s.main_room||'—')}</p>${a?`<p class="text-[10px] text-emerald-600">${new Date(a.scanned_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})} · ${esc(sourceLabel)}${a.team_color_name?` · สี${esc(a.team_color_name)}`:''}</p>`:''}</div><div class="text-right flex-shrink-0">${a?`<span class="text-xs font-bold text-emerald-700 block">✓ มาแล้ว</span>${active&&fromAdvisor?`<button data-checkin-undo="${s.id}" class="mt-1 text-[10px] text-red-600 hover:underline">ยกเลิก</button>`:''}`:`<span class="text-xs font-bold text-red-600 block">ยังไม่มา</span>${active?`<button data-checkin-manual-mark="${s.id}" class="mt-1 text-[10px] text-indigo-600 hover:underline">มาร์กมาแล้ว</button>`:''}`}</div></div>`
     }
     const renderList=()=>{
       body.querySelectorAll('[data-checkin-filter]').forEach(b=>{const on=b.dataset.checkinFilter===filter;b.className=`px-3 py-1.5 rounded-lg text-xs font-bold ${on?'bg-white text-pink-700 shadow':'text-gray-500'}`})
@@ -617,6 +620,10 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
       listEl.querySelectorAll('[data-checkin-manual-mark]').forEach(b=>b.onclick=()=>{
         const s=students.find(x=>String(x.id)===String(b.dataset.checkinManualMark))
         if(s)commitCheckin(s,'manual')
+      })
+      listEl.querySelectorAll('[data-checkin-undo]').forEach(b=>b.onclick=()=>{
+        const s=students.find(x=>String(x.id)===String(b.dataset.checkinUndo))
+        if(s)undoCheckin(s)
       })
     }
     const renderRecent=()=>{
@@ -635,6 +642,14 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
       attendanceMap[student.id]={student_id:student.id,method:data.method,scanned_at:data.scanned_at,recorded_source:'homeroom_advisor',team_color_name:data.team_color_name}
       recentScans.unshift(student);_playScanBeepAtt(true);feedback(true,`เช็คชื่อ ${student.full_name} สำเร็จ`,data.team_color_name?`สี${data.team_color_name}`:'')
       renderSummary();renderList();renderRecent();showSuccessPopup(student,data.team_color_name)
+    }
+    const undoCheckin=async(student)=>{
+      if(!active){feedback(false,'ยังไม่อยู่ในช่วงเช็คชื่อเข้าสีวันแรก','');return}
+      const {error}=await supabase.rpc('advisor_undo_sports_attendance_for_student',{p_event:event.id,p_student:student.id})
+      if(error){feedback(false,'ยกเลิกไม่สำเร็จ',error.message);return}
+      delete attendanceMap[student.id]
+      feedback(true,`ยกเลิกการเช็คชื่อ ${student.full_name} แล้ว`,'')
+      renderSummary();renderList()
     }
 
     body.querySelectorAll('[data-checkin-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.checkinFilter;renderList()})

@@ -121,6 +121,10 @@ function renderDashboard(snapshot) {
   let gender = 'M'
   let selectedDay = defaultDay
   let printMode = 'single' // 'single' | 'all'
+  let levelFilter = '' // '' = ทุกระดับชั้น
+
+  // รายชั้นทั้งหมดที่มีอยู่จริง (รวมทั้งสองเพศ) ให้ตัวเลือกคงที่ไม่กระโดดตอนสลับเพศ
+  const allLevels = [...new Set((snapshot.students || []).map(s => levelOf(s.main_room)))].sort((a, b) => levelSortKey(a) - levelSortKey(b))
 
   root.innerHTML = `
     <div class="space-y-4">
@@ -129,7 +133,10 @@ function renderDashboard(snapshot) {
           <button type="button" data-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👦 นักเรียนชาย</button>
           <button type="button" data-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👧 นักเรียนหญิง</button>
         </div>
-        <select id="day-select" class="border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"></select>
+        <div class="flex items-center gap-2">
+          <select id="level-select" class="border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"><option value="">ทุกระดับชั้น</option>${allLevels.map(lv => `<option value="${esc(lv)}">ชั้น ${esc(lv)}</option>`).join('')}</select>
+          <select id="day-select" class="border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"></select>
+        </div>
       </div>
       <div id="summary-cards" class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
       <div class="no-print bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3">
@@ -151,7 +158,7 @@ function renderDashboard(snapshot) {
   daySelect.innerHTML = dayOptions.map(d => `<option value="${d.date}">${esc(d.label)} — ${fmtThaiDate(d.date)}</option>`).join('') || '<option value="">ไม่มีข้อมูลปฏิทิน</option>'
   daySelect.value = selectedDay
 
-  const studentsOf = g => (snapshot.students || []).filter(s => s.gender === g)
+  const studentsOf = g => (snapshot.students || []).filter(s => s.gender === g && (!levelFilter || levelOf(s.main_room) === levelFilter))
   const scannedIdsOn = day => new Set((snapshot.attendance || []).filter(a => a.session_date === day).map(a => a.student_id))
 
   const computeAbsent = () => {
@@ -330,6 +337,7 @@ function renderDashboard(snapshot) {
   root.querySelectorAll('[data-gender]').forEach(b => b.onclick = () => { gender = b.dataset.gender; render() })
   root.querySelectorAll('[data-print-mode]').forEach(b => b.onclick = () => { printMode = b.dataset.printMode; render() })
   daySelect.onchange = () => { selectedDay = daySelect.value; render() }
+  root.querySelector('#level-select').onchange = e => { levelFilter = e.target.value; render() }
 
   root.querySelector('#btn-export-csv').onclick = () => {
     const q = x => `"${String(x || '').replaceAll('"', '""')}"`
@@ -349,7 +357,8 @@ function renderDashboard(snapshot) {
     }
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' }))
-    a.download = printMode === 'all' ? `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}-ทุกวัน.csv` : `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}-${selectedDay}.csv`
+    const levelSuffix = levelFilter ? `-${levelFilter}` : ''
+    a.download = printMode === 'all' ? `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}${levelSuffix}-ทุกวัน.csv` : `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}${levelSuffix}-${selectedDay}.csv`
     a.click(); URL.revokeObjectURL(a.href)
   }
   root.querySelector('#btn-print').onclick = () => window.print()
