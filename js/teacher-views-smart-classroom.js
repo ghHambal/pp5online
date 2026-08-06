@@ -1840,7 +1840,7 @@ export async function renderSmartClassroom(teacher, classId) {
           </div>
           <div class="flex items-center justify-between mt-2">
             <p class="text-[11px] text-gray-400">${a.submissions.length}/${students.length} ส่งแล้ว</p>
-            ${a.submissions.length ? `<button id="st-review-start" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">🔎 ตรวจทีละคน</button>` : ''}
+            <button id="st-review-start" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">🔎 ตรวจทีละคน</button>
           </div>
         </div>
         <div class="overflow-y-auto flex-1 p-5 space-y-2">
@@ -1850,7 +1850,7 @@ export async function renderSmartClassroom(teacher, classId) {
             </div>`
             const seatBadge = `<span class="text-gray-400 font-mono text-[10px] flex-shrink-0">#${seatNoByStudent.get(s.id) ?? '—'}</span>`
             const sub = subByStudent[s.id]
-            if (!sub) return `<div class="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
+            if (!sub) return `<div class="sc-track-row flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs cursor-pointer hover:border-indigo-200" data-sid="${s.id}">
               <div class="flex items-center gap-2 min-w-0">
                 ${avatar}
                 ${seatBadge}
@@ -1886,7 +1886,7 @@ export async function renderSmartClassroom(teacher, classId) {
       try { await deleteAssignment(a.id); showToast('ลบงานแล้ว', 'success'); m.remove(); _reload() }
       catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
     })
-    const _firstSubmittedId = () => students.find(s => subByStudent[s.id])?.id
+    const _firstSubmittedId = () => (students.find(s => subByStudent[s.id]) ?? students[0])?.id
     m.querySelector('#st-review-start')?.addEventListener('click', () => {
       const sid = _firstSubmittedId()
       if (sid != null) _openAssignmentGradeCard(a, sid)
