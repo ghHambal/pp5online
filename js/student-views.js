@@ -11,7 +11,7 @@ import {
   getMonthlyManualPrayerEntryCount,
   getStudentClassroomRole,
   getMyActiveLeavePermission, getMyLeaveHistory,
-  updateStudentEmail, getMyClassAssignments, submitAssignment, getClassSyllabus,
+  updateStudentEmail, getMyClassAssignments, getMyAllAssignments, submitAssignment, getClassSyllabus,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig } from './api.js'
@@ -395,7 +395,7 @@ export async function renderStudentOverview(student) {
     </svg>
   </div>`)
 
-  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole] = await Promise.all([
+  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole, myAssignments] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
@@ -403,7 +403,10 @@ export async function renderStudentOverview(student) {
     getStudentGPA(student.id).catch(()=>({ samai:[], sasana:[] })),
     getSystemConfig().catch(()=>({})),
     getStudentClassroomRole(student.main_room).catch(()=>null),
+    getMyAllAssignments(student.id).catch(()=>[]),
   ])
+  const pendingAssignments = myAssignments.filter(a => !a.mySubmission)
+    .sort((x, y) => (x.due_at ? new Date(x.due_at).getTime() : Infinity) - (y.due_at ? new Date(y.due_at).getTime() : Infinity))
   const pending = requests.filter(r => r.status === 'pending')
   const recent  = requests.slice(0, 3)
   const hasExtendedScanWindow = _isExtendedPrayerScanner(student, cfg)
@@ -529,6 +532,24 @@ export async function renderStudentOverview(student) {
         <p class="text-[9px] sm:text-xs text-gray-400 mt-0.5 leading-tight">คำร้อง<br>ทั้งหมด</p>
       </div>
     </div>
+
+    <!-- แบนเนอร์งานค้าง — โชว์เฉพาะตอนมีงานค้างจริง ไม่รกจอตอนไม่มีอะไรต้องทำ -->
+    ${pendingAssignments.length ? (() => {
+      const nearest = pendingAssignments[0]
+      const nearestDue = nearest.due_at ? new Date(nearest.due_at).toLocaleString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : null
+      return `<button onclick="window._stuNav('assignments')"
+        class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150 w-full mb-4 flex items-center gap-3"
+        style="background:linear-gradient(135deg,#dc2626,#b91c1c)">
+        <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
+        <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
+        <p class="text-2xl relative flex-shrink-0">📚</p>
+        <div class="relative min-w-0 flex-1">
+          <p class="font-bold text-sm text-white">มีงานค้างอยู่ ${pendingAssignments.length} ชิ้น</p>
+          <p class="text-[11px] text-red-200 mt-0.5 truncate">ใกล้สุด: ${_esc(nearest.title)}${nearestDue ? ` · กำหนดส่ง ${nearestDue}` : ''}</p>
+        </div>
+        <p class="relative text-white text-lg flex-shrink-0">→</p>
+      </button>`
+    })() : ''}
 
     <!-- Quick actions — 4 ปุ่มใน grid เดียว: 2×2 บนมือถือ, 4×1 บน tablet -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -1494,6 +1515,87 @@ export async function renderStudentSubjects(student) {
     ${_renderSection('วิชาสามัญ', '📖', samai)}
     ${_renderSection('วิชาศาสนา', '🕌', satsana)}
   `)
+}
+
+// ─── งานทั้งหมดของฉัน (ศูนย์รวมงานที่มอบหมายจากทุกวิชา) ──────────────────────────
+export async function renderStudentAllAssignments(student, group = 'samai') {
+  setContent(`<div class="flex justify-center py-10 text-gray-300">
+    <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>`)
+
+  const all = await getMyAllAssignments(student.id).catch(() => [])
+
+  const _isReligionA = a => {
+    const sg  = a._class?.master_subjects?.subject_group ?? ''
+    const cat = a._class?.master_subjects?.teachers?.category ?? ''
+    return cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC'
+  }
+  const samai  = all.filter(a => !_isReligionA(a))
+  const sasana = all.filter(a => _isReligionA(a))
+
+  const _fmtDue    = iso => !iso ? 'ไม่กำหนดส่ง' : new Date(iso).toLocaleString('th-TH', { day:'numeric', month:'short', year:'2-digit', hour:'2-digit', minute:'2-digit' })
+  const _isLate    = (a, submittedAtIso) => a.due_at ? new Date(submittedAtIso).getTime() > new Date(a.due_at).getTime() : false
+  const _isOverdue = a => a.due_at ? Date.now() > new Date(a.due_at).getTime() : false
+
+  const _card = a => {
+    const sub = a.mySubmission
+    const late = sub ? _isLate(a, sub.submitted_at) : false
+    const overdue = !sub && _isOverdue(a)
+    return `<div onclick="window._stuOpenClass(${a.class_id})"
+      class="bg-white rounded-2xl border ${sub ? 'border-emerald-100' : overdue ? 'border-red-200' : 'border-gray-200'} shadow-sm p-3.5 cursor-pointer hover:shadow-md transition">
+      <div class="flex items-start justify-between gap-2 mb-1">
+        <p class="text-[10px] font-semibold text-gray-400 truncate">${_esc(a._class?.master_subjects?.subject_name ?? '')}</p>
+        ${sub
+          ? `<span class="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${late ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">${late ? '⏰ ส่งช้า' : '✅ ทำแล้ว'}</span>`
+          : `<span class="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${overdue ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-50 text-gray-500 border border-gray-200'}">${overdue ? 'เลยกำหนดส่ง' : 'ยังไม่ส่ง'}</span>`}
+      </div>
+      <p class="font-semibold text-gray-800 text-sm">${_esc(a.title)}</p>
+      <p class="text-xs text-gray-400 mt-1">📅 กำหนดส่ง: ${_fmtDue(a.due_at)}</p>
+      ${sub?.teacher_feedback ? `<p class="text-[11px] text-indigo-600 mt-1.5">💬 ${_esc(sub.teacher_feedback)}</p>` : ''}
+    </div>`
+  }
+
+  const _groupContent = list => {
+    if (!list.length) return `<div class="text-center py-14 text-gray-300"><p class="text-4xl mb-2">📭</p><p class="text-sm">ไม่มีงานในกลุ่มนี้</p></div>`
+    const pending = list.filter(a => !a.mySubmission)
+      .sort((x, y) => (x.due_at ? new Date(x.due_at).getTime() : Infinity) - (y.due_at ? new Date(y.due_at).getTime() : Infinity))
+    const done = list.filter(a => a.mySubmission)
+      .sort((x, y) => new Date(y.mySubmission.submitted_at).getTime() - new Date(x.mySubmission.submitted_at).getTime())
+    return `
+      <div class="mb-5">
+        <p class="text-xs font-bold text-red-500 mb-2">🔴 ค้างอยู่ (${pending.length})</p>
+        ${pending.length ? `<div class="space-y-2.5">${pending.map(_card).join('')}</div>` : `<p class="text-xs text-gray-300">ไม่มีงานค้าง 🎉</p>`}
+      </div>
+      <div>
+        <p class="text-xs font-bold text-emerald-600 mb-2">✅ ทำแล้ว (${done.length})</p>
+        ${done.length ? `<div class="space-y-2.5">${done.map(_card).join('')}</div>` : `<p class="text-xs text-gray-300">ยังไม่มีงานที่ทำเสร็จ</p>`}
+      </div>`
+  }
+
+  const samaiPending  = samai.filter(a => !a.mySubmission).length
+  const sasanaPending = sasana.filter(a => !a.mySubmission).length
+
+  setContent(`
+    <div class="flex items-center justify-between gap-3 mb-4">
+      <h2 class="font-bold text-gray-800">📚 งานทั้งหมดของฉัน</h2>
+    </div>
+    <div class="flex gap-2 mb-4">
+      <button data-grp="samai" class="stu-assign-tab flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${group === 'samai' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}">
+        📖 สามัญ ${samaiPending ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${group === 'samai' ? 'bg-white/25' : 'bg-red-100 text-red-600'}">${samaiPending}</span>` : ''}
+      </button>
+      <button data-grp="sasana" class="stu-assign-tab flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${group === 'sasana' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}">
+        🕌 ศาสนา ${sasanaPending ? `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${group === 'sasana' ? 'bg-white/25' : 'bg-red-100 text-red-600'}">${sasanaPending}</span>` : ''}
+      </button>
+    </div>
+    <div id="stu-assign-content">${_groupContent(group === 'sasana' ? sasana : samai)}</div>
+  `)
+
+  document.querySelectorAll('.stu-assign-tab').forEach(btn => {
+    btn.addEventListener('click', () => renderStudentAllAssignments(student, btn.dataset.grp))
+  })
 }
 
 // ─── Subject Detail ───────────────────────────────────────────────────────────

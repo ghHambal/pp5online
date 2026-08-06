@@ -637,6 +637,14 @@ export async function getMyClassAssignments(classId, studentId) {
   return (assignments ?? []).map(a => ({ ...a, mySubmission: subByAssignment[a.id] ?? null }))
 }
 
+// รวมงานที่มอบหมายจากทุกวิชาที่นักเรียนคนนี้ลงทะเบียนไว้ — ใช้ทำหน้า "งานทั้งหมดของฉัน"
+export async function getMyAllAssignments(studentId) {
+  const classes = await getMyEnrolledClasses(studentId)
+  if (!classes.length) return []
+  const perClass = await Promise.all(classes.map(c => getMyClassAssignments(c.id, studentId).catch(() => [])))
+  return classes.flatMap((c, i) => (perClass[i] ?? []).map(a => ({ ...a, _class: c })))
+}
+
 export async function submitAssignment(assignmentId, studentId, fileUrls, note = null) {
   const { error } = await supabase.from('assignment_submissions').upsert({
     assignment_id: assignmentId,
