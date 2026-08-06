@@ -4,6 +4,7 @@ import {
   getHomeroomTeachers, getDepartments, getTeacherById,
   getCourseDocLangSettings, getClassSessionDOWs, getSchoolHolidays,
   getLifeSkillColumns, getLifeSkillScores,
+  getReadingScoreColumns, getReadingScores,
 } from './api.js'
 import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
@@ -479,7 +480,29 @@ async function _loadDocData(classId) {
     } catch {}
   }
 
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName }
+  // "การประเมินการอ่าน คิดวิเคราะห์และเขียนสื่อความ" — มาจากระบบคะแนนอ่านกลาง (reading_score_columns/
+  // reading_scores) ผูกกับนักเรียนรายคนเหมือนคะแนนคุณธรรม ACDMVOC ข้างบน ไม่ใช่คอลัมน์คะแนนของวิชานี้
+  // (เดิมโค้ดหาคอลัมน์ชื่อมี "อ่าน" ในคะแนนรายวิชาซึ่งไม่เคยมีจริง เลยไม่เคยขึ้นในเอกสารเลย)
+  let readingEvalMap = {}
+  try {
+    const rCols = await getReadingScoreColumns(academicYear, semester)
+    if (rCols.length) {
+      const rScores = await getReadingScores(rCols.map(c => c.id))
+      const maxTotal = rCols.reduce((s, c) => s + (c.max_score ?? 0), 0)
+      const totalByStudent = {}
+      for (const row of rScores) {
+        if (row.score == null) continue
+        totalByStudent[row.student_id] = (totalByStudent[row.student_id] ?? 0) + (parseFloat(row.score) || 0)
+      }
+      if (maxTotal > 0) {
+        for (const [studentId, total] of Object.entries(totalByStudent)) {
+          readingEvalMap[studentId] = _readingGrade((total / maxTotal) * 100).label
+        }
+      }
+    }
+  } catch {}
+
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName, readingEvalMap }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -846,7 +869,7 @@ function _getCSS() {
 // ─── Page 1: หน้าปก ───────────────────────────────────────────────────────────
 
 function _buildPage1(d) {
-  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions } = d
+  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions, readingEvalMap } = d
 
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
@@ -900,7 +923,6 @@ function _buildPage1(d) {
   const gradeCounts = { 4:0, '3.5':0, 3:0, '2.5':0, 2:0, '1.5':0, 1:0, 0:0 }
   const evalReadCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
   const evalCharCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
-  const readCol  = scoreColumns.find(c => (c.assignment_name ?? '').includes('อ่าน'))
   const charCol  = scoreColumns.find(c => (c.assignment_name ?? '').includes('คุณลักษณะ') || (c.assignment_name ?? '').includes('จิตพิสัย'))
 
   if (!_hideScores) for (const st of students) {
@@ -912,13 +934,8 @@ function _buildPage1(d) {
       const key = String(g)
       if (key in gradeCounts) gradeCounts[key]++
     }
-    if (readCol) {
-      const rs = stScores[readCol.id]
-      if (rs != null) {
-        const lbl = _evalLabel((rs / (readCol.max_score || 1)) * 100)
-        evalReadCount[lbl]++
-      }
-    }
+    const readLbl = readingEvalMap?.[st.id]
+    if (readLbl && readLbl in evalReadCount) evalReadCount[readLbl]++
     if (charCol) {
       const cs = stScores[charCol.id]
       if (cs != null) {
@@ -1375,7 +1392,7 @@ function _buildPage4(d) {
 }
 
 function _buildScorePage(d, chunk, startNo) {
-  const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap } = d
+  const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap, readingEvalMap } = d
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้าหมวดวิชา'
 
   // แบ่ง between / final / special
@@ -1446,7 +1463,7 @@ function _buildScorePage(d, chunk, startNo) {
       ${fScores.map(v=>`<td>${v}</td>`).join('')}
       <td style="font-weight:700;">${fSum||''}</td>
       <td style="font-weight:700;border-right:2.0px solid #000;">${total||''}</td>
-      <td></td>
+      <td>${_esc(readingEvalMap?.[st.id] ?? '')}</td>
       <td style="border-right:2.0px solid #000;"></td>
       <td style="font-weight:700;">${grade}</td>
     </tr>`

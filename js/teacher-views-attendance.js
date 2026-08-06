@@ -1,6 +1,7 @@
 import {
   saveAttendance, getAttendanceByDate, getClassStudents,
   getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
+  upsertHoliday, deleteHolidayByDate,
   getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
   getReadingScoreColumns, getReadingScores, upsertReadingScore,
   fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
@@ -50,7 +51,7 @@ export async function renderAttendanceGrid(teacher, classData) {
   try {
     const { getSystemConfig: _cfg, getClassSessionDOWs } = await import('./api.js')
     const cfg      = await _cfg().catch(() => ({}))
-    const curYear  = cfg.academic_year ?? new Date().getFullYear() + 543
+    const curYear  = cfg.academicYear ?? cfg.academic_year ?? new Date().getFullYear() + 543
     const curSem   = cfg.semester ?? 1
     const srcClassId = classData.source_class_id ?? null
     const [students, attRows, holidays, dowPattern, activeLeaves, classLeaves] = await Promise.all([
@@ -310,6 +311,29 @@ export async function renderAttendanceGrid(teacher, classData) {
       ))
       showToast(`ลบข้อมูลเช็คชื่อในวันหยุดเรียบร้อย ${holAttRows.length} รายการ`, 'success')
       renderAttendanceGrid(teacher, classData)
+    })
+
+    // ติ๊ก/ปลดวันหยุดที่ครูกำหนดเองจากหน้าเช็คชื่อ — เดิมช่องนี้แค่แสดงเฉยๆ ไม่มี handler เลย
+    // ติ๊กแล้วรีเฟรชค่าจะกลับไปเป็นเดิมทุกครั้งเพราะไม่เคยบันทึกลง school_holidays จริง
+    wrap.addEventListener('change', async e => {
+      const cb = e.target.closest('.att-holiday-cb')
+      if (!cb) return
+      const date = cb.dataset.date
+      cb.disabled = true
+      try {
+        if (cb.checked) {
+          await upsertHoliday({ holiday_date: date, description: 'ครูกำหนดเอง', academic_year: curYear, semester: curSem })
+          showToast('กำหนดเป็นวันหยุดแล้ว', 'success')
+        } else {
+          await deleteHolidayByDate(curYear, curSem, date)
+          showToast('ยกเลิกวันหยุดแล้ว', 'success')
+        }
+        renderAttendanceGrid(teacher, classData)
+      } catch (err) {
+        cb.checked = !cb.checked
+        cb.disabled = false
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
     })
 
     // คลิกชื่อนักเรียน → สถิติรายบุคคล
@@ -1128,7 +1152,7 @@ export async function _openAttendanceModalForSession(teacher, classData, sessN, 
   const ms = classData.master_subjects
   const credit = ms?.credit ?? 1
   const cfg = await getSystemConfig().catch(() => ({}))
-  const curYear = cfg.academic_year ?? new Date().getFullYear() + 543
+  const curYear = cfg.academicYear ?? cfg.academic_year ?? new Date().getFullYear() + 543
   const curSem = cfg.semester ?? 1
   const srcClassId = classData.source_class_id ?? null
   const [students, attRows, holidays, dowPattern] = await Promise.all([
@@ -2993,7 +3017,7 @@ export async function renderPrayerScore(teacher, homeroomRooms) {
     </div>`)
     const { getSystemConfig: _cfg } = await import('./api.js')
     const cfg  = await _cfg().catch(() => ({}))
-    const year = cfg.academic_year ?? new Date().getFullYear() + 543
+    const year = cfg.academicYear ?? cfg.academic_year ?? new Date().getFullYear() + 543
     const sem  = cfg.semester ?? 1
     const semStart = cfg.semester_start
     const semEnd   = cfg.semester_end

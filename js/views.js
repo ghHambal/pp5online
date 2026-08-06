@@ -4710,7 +4710,7 @@ export async function renderHolidays() {
   document.getElementById('page-title').textContent = 'วันหยุดโรงเรียน'
 
   const cfg    = await getSystemConfig().catch(() => ({}))
-  const year   = cfg.academic_year ?? new Date().getFullYear() + 543
+  const year   = cfg.academicYear ?? cfg.academic_year ?? new Date().getFullYear() + 543
   const sem    = cfg.semester ?? 1
 
   const _load = async () => {
@@ -4774,6 +4774,14 @@ export async function renderHolidays() {
     const date = document.getElementById('hol-date').value
     const desc = document.getElementById('hol-desc').value.trim() || null
     if (!date) { showToast('กรุณาเลือกวันที่', 'warning'); return }
+    // ช่อง <input type="date"> พิมพ์เลขปีตรงๆ ได้ ถ้าเผลอพิมพ์ปี พ.ศ. (เช่น 2569) แทน ค.ศ.
+    // เบราว์เซอร์จะรับไว้เฉยๆ ไม่เตือน กลายเป็นวันที่ผิดจริงในฐานข้อมูล (เจอมาแล้ว 2 รายการ) — กันไว้
+    const dateYear = parseInt(date.slice(0, 4), 10)
+    const thisGregorianYear = new Date().getFullYear()
+    if (Math.abs(dateYear - thisGregorianYear) > 3) {
+      showToast(`ปี ${dateYear} ดูผิดปกติ (พ.ศ. หรือเปล่า? ปีปัจจุบันคือ ค.ศ. ${thisGregorianYear}) กรุณาตรวจสอบวันที่อีกครั้ง`, 'error')
+      return
+    }
     try {
       await upsertHoliday({ holiday_date: date, description: desc, academic_year: year, semester: sem })
       document.getElementById('hol-date').value = ''

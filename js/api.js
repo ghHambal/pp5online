@@ -623,6 +623,14 @@ export async function deleteHoliday(id) {
   if (error) throw error
 }
 
+// ลบวันหยุดด้วยวันที่ตรงๆ (ไม่ต้องรู้ id) — ใช้ตอนครูติ๊กปลดวันหยุดที่ตัวเองกำหนดเองในหน้าเช็คชื่อ
+export async function deleteHolidayByDate(academicYear, semester, holidayDate) {
+  const { error } = await supabase.from('school_holidays')
+    .delete()
+    .eq('academic_year', academicYear).eq('semester', semester).eq('holiday_date', holidayDate)
+  if (error) throw error
+}
+
 export async function getSchoolHolidaysFull(academicYear, semester) {
   const { data, error } = await supabase
     .from('school_holidays')
