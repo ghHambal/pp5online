@@ -631,6 +631,16 @@ export async function deleteHolidayByDate(academicYear, semester, holidayDate) {
   if (error) throw error
 }
 
+// ข้อมูลเช็คชื่อที่ดึงมาจากระบบดูแล (bookmarklet) รอครูนำไปใช้ในหน้าเช็คชื่อรายวิชา
+export async function getExternalAttendanceStaging(mainRoom, checkDate) {
+  const { data, error } = await supabase
+    .from('external_attendance_staging')
+    .select('student_code, status, raw_name, imported_at')
+    .eq('main_room', mainRoom).eq('check_date', checkDate)
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getSchoolHolidaysFull(academicYear, semester) {
   const { data, error } = await supabase
     .from('school_holidays')

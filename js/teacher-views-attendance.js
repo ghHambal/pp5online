@@ -1,7 +1,7 @@
 import {
   saveAttendance, getAttendanceByDate, getClassStudents,
   getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
-  upsertHoliday, deleteHolidayByDate,
+  upsertHoliday, deleteHolidayByDate, getExternalAttendanceStaging,
   getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
   getReadingScoreColumns, getReadingScores, upsertReadingScore,
   fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
@@ -1327,6 +1327,40 @@ export async function openAttendanceScanSetup(teacher) {
   }
 }
 
+// พรีวิวข้อมูลที่ดึงมาจากระบบดูแลก่อนนำไปเติมในฟอร์มเช็คชื่อ — ให้ครูตรวจก่อนเสมอ ไม่เขียนทับอัตโนมัติ
+function _openStudentCareImportPreview(matched, onApply) {
+  document.getElementById('stc-import-preview')?.remove()
+  const STATUS_LABEL = { present: 'มา', absent: 'ขาด', late: 'สาย', excused: 'ลากิจ', sick: 'ลาป่วย' }
+  const STATUS_COLOR = { present: 'text-emerald-600', absent: 'text-red-600', late: 'text-amber-500', excused: 'text-blue-500', sick: 'text-orange-500' }
+  const wrap = document.createElement('div')
+  wrap.id = 'stc-import-preview'
+  wrap.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4'
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
+        <h3 class="font-bold text-gray-800 text-sm">📥 ข้อมูลจากระบบดูแล (${matched.length} คน)</h3>
+        <button id="stc-preview-close" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+      </div>
+      <div class="overflow-y-auto flex-1 px-4 py-2 space-y-1">
+        ${matched.map(({ student, staged }) => `
+          <div class="flex items-center justify-between gap-2 py-1.5 border-b border-gray-50 text-xs">
+            <span class="text-gray-700 truncate">${_htmlEsc(student.full_name)}</span>
+            <span class="font-bold flex-shrink-0 ${STATUS_COLOR[staged.status] ?? 'text-gray-500'}">${STATUS_LABEL[staged.status] ?? staged.status}</span>
+          </div>`).join('')}
+      </div>
+      <div class="px-4 py-3 border-t flex-shrink-0 flex gap-2">
+        <button id="stc-preview-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold">ยกเลิก</button>
+        <button id="stc-preview-apply" class="flex-1 py-2.5 rounded-xl btn-primary text-white text-sm font-semibold">นำไปใช้</button>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+  const close = () => wrap.remove()
+  wrap.querySelector('#stc-preview-close').onclick = close
+  wrap.querySelector('#stc-preview-cancel').onclick = close
+  wrap.onclick = e => { if (e.target === wrap) close() }
+  wrap.querySelector('#stc-preview-apply').onclick = () => { onApply(); close() }
+}
+
 function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set(), saveClassId = null, sessionRemap = n => n, options = {}) {
   const existing = document.getElementById('att-form-modal')
   if (existing) existing.remove()
@@ -1357,6 +1391,12 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
             title="สแกน QR Code ของนักเรียนเพื่อเช็คชื่อ">
             ${CAMERA_ICON_SM}
             <span>สแกน QR</span>
+          </button>
+          <button id="btn-att-import-studentcare"
+            class="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-xl
+                   font-bold flex items-center gap-1.5 hover:bg-indigo-700 active:scale-[0.98] transition shadow-sm"
+            title="ดึงข้อมูลเช็คชื่อที่ส่งมาจากระบบดูแล (ต้องกดส่งจากหน้าระบบดูแลก่อน)">
+            📥 <span>ระบบดูแล</span>
           </button>
           ${hasMulti ? `
           <!-- Toggle ทุกคาบ (ปุ่มสี) -->
@@ -1842,6 +1882,52 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       showToast('ไม่สามารถเปิดกล้องได้: ' + err.message, 'error')
       overlay.remove()
     }
+  })
+
+  // ─── นำเข้าจากระบบดูแล (โดเนทระดับ 2 ขึ้นไป) ───────────────────────
+  // ข้อมูลถูกส่งมาพักไว้ล่วงหน้าจาก bookmarklet ที่รันบนหน้าระบบดูแลเอง (public/js/studentcare-bridge.js)
+  // จับคู่ด้วยรหัสนักเรียน + ห้องเรียนหลักส่วนใหญ่ของคลาสนี้ + วันที่ของคาบนี้
+  modal.querySelector('#btn-att-import-studentcare')?.addEventListener('click', async () => {
+    const donorTier = window._pp5DonorTierIndex ?? 0
+    if (donorTier < 2) {
+      showToast('ฟีเจอร์นี้สำหรับผู้สนับสนุนระดับ 2 ขึ้นไป — ไปที่หน้าโปรไฟล์เพื่อสนับสนุนระบบได้ครับ', 'warning')
+      return
+    }
+    const roomCounts = {}
+    students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
+    const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+    if (!mainRoom) { showToast('หาห้องเรียนของนักเรียนในคลาสนี้ไม่เจอ', 'error'); return }
+
+    let staged
+    try {
+      staged = await getExternalAttendanceStaging(mainRoom, date)
+    } catch (err) {
+      showToast('ดึงข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      return
+    }
+    if (!staged.length) {
+      showToast(`ยังไม่มีข้อมูลจากระบบดูแลสำหรับห้อง ${mainRoom} วันที่ ${date} — ไปกดส่งข้อมูลจากหน้าระบบดูแลก่อน`, 'warning')
+      return
+    }
+
+    const byCode = Object.fromEntries(staged.map(r => [r.student_code, r]))
+    const matched = students.map(s => ({ student: s, staged: byCode[s.student_code] })).filter(x => x.staged)
+    if (!matched.length) {
+      showToast('มีข้อมูลจากระบบดูแลสำหรับวันนี้ แต่ไม่ตรงกับรหัสนักเรียนในห้องนี้เลยสักคน', 'error')
+      return
+    }
+
+    _openStudentCareImportPreview(matched, () => {
+      matched.forEach(({ student, staged: st }) => {
+        const row = modal.querySelector(`[data-modal-sid="${student.id}"]`)
+        row?.querySelector('[data-att-touched]')?.setAttribute('data-att-touched', '1')
+        row?.querySelectorAll('.att-modal-status').forEach(b => {
+          b.className = `att-modal-status text-xs px-1.5 py-1 rounded-lg border transition font-medium
+            ${b.dataset.status === st.status ? b.dataset.color : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`
+        })
+      })
+      showToast(`นำเข้าข้อมูล ${matched.length} คนจากระบบดูแลแล้ว — ตรวจสอบแล้วกด "บันทึกการเช็คชื่อ" อีกครั้ง`, 'success')
+    })
   })
 
   // ─── Close ───────────────────────────────────────────────────────
