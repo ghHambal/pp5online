@@ -543,9 +543,9 @@ export async function renderStudentOverview(student) {
         style="background:linear-gradient(135deg,${hasPending ? '#dc2626,#b91c1c' : '#059669,#047857'})">
         <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
         <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
-        <p class="text-2xl relative flex-shrink-0">📚</p>
+        <p class="text-2xl relative flex-shrink-0">📝</p>
         <div class="relative min-w-0 flex-1">
-          <p class="font-bold text-sm text-white">📚 ภาระงานของฉัน</p>
+          <p class="font-bold text-sm text-white">ภาระงานของฉัน</p>
           <p class="text-[11px] ${hasPending ? 'text-red-200' : 'text-emerald-200'} mt-0.5 truncate">${hasPending ? `ค้างอยู่ ${pendingAssignments.length} ชิ้น · ใกล้สุด: ${_esc(nearest.title)}${nearestDue ? ` (${nearestDue})` : ''}` : 'ไม่มีงานค้าง 🎉'}</p>
         </div>
         <p class="relative text-white text-lg flex-shrink-0">→</p>
@@ -1581,7 +1581,7 @@ export async function renderStudentAllAssignments(student, group = 'samai') {
 
   setContent(`
     <div class="flex items-center justify-between gap-3 mb-4">
-      <h2 class="font-bold text-gray-800">📚 ภาระงานของฉัน</h2>
+      <h2 class="font-bold text-gray-800">📝 ภาระงานของฉัน</h2>
     </div>
     <div class="flex gap-2 mb-4">
       <button data-grp="samai" class="stu-assign-tab flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${group === 'samai' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}">
