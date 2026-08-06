@@ -353,6 +353,10 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   const activeRooms = cat==='ศาสนา' ? religion : samai
   const roomNames=activeRooms.map(r=>r.main_room)
   const hasBoth = samai.length && religion.length
+  // เช็คชื่อเข้าสีวันแรก: รวมห้องทุกประเภทที่ครูคนนี้เป็นที่ปรึกษาอยู่ (ไม่แยกตามแท็บสามัญ/ศาสนา
+  // ที่กำลังดู) เพราะบางห้องเรียนสามัญและศาสนาเป็นห้องเดียวกัน ครูที่ปรึกษาศาสนาต้องเช็คชื่อแทน
+  // ครูที่ปรึกษาสามัญที่ลาได้ — เห็นห้องของตัวเองครบทุกห้องไม่ว่าจะสลับแท็บไหนอยู่
+  const allRoomNames=[...new Set(rooms.map(r=>r.main_room))]
   el.innerHTML=`<div class="max-w-6xl mx-auto space-y-4">
     <div>
       <h1 class="text-2xl font-bold">👥 นักเรียนที่ปรึกษา${cat==='ศาสนา'?' (ศาสนา)':hasBoth?' (สามัญ)':''}</h1>
@@ -364,8 +368,8 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
     </div>`:''}
     <div class="flex gap-2 flex-wrap">
       <button data-advisor-tab="list" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='list'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👥 รายชื่อ</button>
-      ${cat==='สามัญ'?`
       <button data-advisor-tab="checkin" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='checkin'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🎽 เช็คชื่อเข้าสีวันแรก</button>
+      ${cat==='สามัญ'?`
       <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
       <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>`:`
       <button data-advisor-tab="shirt-payment" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='shirt-payment'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">💰 รับชำระค่าเสื้อ</button>`}
@@ -378,7 +382,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
   else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
   else if(tab==='shirt-payment') await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames)
-  else if(tab==='checkin') await _renderAdvisorCheckinTab(body,teacher,rooms,roomNames)
+  else if(tab==='checkin') await _renderAdvisorCheckinTab(body,teacher,rooms,allRoomNames)
   else await _renderAdvisorListTab(body,teacher,rooms,roomNames,cat)
 }
 
@@ -544,7 +548,8 @@ async function _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames,select
   }catch(e){console.error(e);body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลค่าเสื้อไม่สำเร็จ: ${esc(e.message||'')}</div>`}
 }
 
-// แท็บ "เช็คชื่อเข้าสีวันแรก" — เฉพาะครูที่ปรึกษาสามัญ ใช้ตาราง sports_attendance ชุดเดียวกับ
+// แท็บ "เช็คชื่อเข้าสีวันแรก" — ครูที่ปรึกษาทั้งสามัญและศาสนาใช้ได้ (บางห้องเรียนสามัญ+ศาสนา
+// เป็นห้องเดียวกัน เผื่อกรณีครูที่ปรึกษาสามัญลา) ใช้ตาราง sports_attendance ชุดเดียวกับ
 // หน้า "จัดการสีของฉัน" (RPC หาสีจริงของนักเรียนแล้วบันทึกให้อัตโนมัติ) เปิดใช้งานได้เฉพาะวันที่
 // แอดมินกำหนดไว้ใน sports_portal_settings.advisor_checkin_date เท่านั้น — วันอื่นเห็นรายชื่อ/
 // สถานะได้แต่กดเช็คชื่อไม่ได้ (ฝั่งเซิร์ฟเวอร์เช็คซ้ำอีกชั้น ไม่ใช่แค่ปิดปุ่มฝั่งหน้าเว็บ)
@@ -569,7 +574,7 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
 
     const statusBanner=(()=>{
       if(!checkinDate) return `<div class="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs font-semibold text-amber-700">⚠️ แอดมินยังไม่ได้กำหนดวันเช็คชื่อเข้าสีวันแรก ระบบนี้จึงยังปิดอยู่</div>`
-      if(active) return `<div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-700">✅ วันนี้ (${esc(checkinDate)}) เป็นวันเช็คชื่อเข้าสีวันแรก — ครูที่ปรึกษาสามัญบันทึกแทนฝ่ายสีได้เฉพาะวันนี้เท่านั้น</div>`
+      if(active) return `<div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-700">✅ วันนี้ (${esc(checkinDate)}) เป็นวันเช็คชื่อเข้าสีวันแรก — ครูที่ปรึกษาบันทึกแทนฝ่ายสีได้เฉพาะวันนี้เท่านั้น</div>`
       const future=new Date(checkinDate)>new Date()
       return `<div class="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-xs font-semibold text-gray-600">${future?`⏳ ยังไม่ถึงวันเช็คชื่อเข้าสีวันแรก (กำหนดไว้วันที่ ${esc(checkinDate)})`:`ℹ️ พ้นวันเช็คชื่อเข้าสีวันแรกแล้ว (${esc(checkinDate)}) ระบบกลับไปใช้การเช็คชื่อโดยฝ่ายสีตามปกติ`} — ดูข้อมูลได้อย่างเดียว</div>`
     })()
@@ -607,8 +612,8 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
     const studentRow=s=>{
       const a=attOf(s.id),photo=s.image_url||s.photo_url
       const fromAdvisor=a?.recorded_source==='homeroom_advisor'
-      const sourceLabel=fromAdvisor?'ครูที่ปรึกษาสามัญ':'ฝ่ายสี'
-      // ยกเลิกได้เฉพาะรายการที่ครูที่ปรึกษาสามัญบันทึกเอง (กันแก้ข้อมูลที่ฝ่ายสีบันทึกไว้) และ
+      const sourceLabel=fromAdvisor?'ครูที่ปรึกษา':'ฝ่ายสี'
+      // ยกเลิกได้เฉพาะรายการที่ครูที่ปรึกษาบันทึกเอง (กันแก้ข้อมูลที่ฝ่ายสีบันทึกไว้) และ
       // เฉพาะช่วงวันเช็คชื่อเข้าสีวันแรกที่ยังเปิดอยู่เท่านั้น
       return `<div class="rounded-xl border ${a?'border-emerald-200 bg-emerald-50/50':'border-gray-200 bg-white'} p-3 flex items-center gap-3">${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border bg-gray-100">`:`<div class="w-9 h-11 rounded-lg bg-pink-50 text-pink-600 grid place-items-center font-bold">${esc((s.full_name||'?').charAt(0))}</div>`}<div class="min-w-0 flex-1"><b class="text-sm text-gray-800 truncate block">${esc(s.full_name)}</b><p class="text-[11px] text-gray-500">${esc(s.student_code)} · ${esc(s.main_room||'—')}</p>${a?`<p class="text-[10px] text-emerald-600">${new Date(a.scanned_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})} · ${esc(sourceLabel)}${a.team_color_name?` · สี${esc(a.team_color_name)}`:''}</p>`:''}</div><div class="text-right flex-shrink-0">${a?`<span class="text-xs font-bold text-emerald-700 block">✓ มาแล้ว</span>${active&&fromAdvisor?`<button data-checkin-undo="${s.id}" class="mt-1 text-[10px] text-red-600 hover:underline">ยกเลิก</button>`:''}`:`<span class="text-xs font-bold text-red-600 block">ยังไม่มา</span>${active?`<button data-checkin-manual-mark="${s.id}" class="mt-1 text-[10px] text-indigo-600 hover:underline">มาร์กมาแล้ว</button>`:''}`}</div></div>`
     }
@@ -814,7 +819,7 @@ export async function renderShirtSummary() {
       const settingsGrid=el.querySelector('#cfg-dues-amount')?.closest('.grid')
       settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-violet-50 border-violet-200"><h3 class="font-bold text-sm text-violet-900">ค่าเสื้อกีฬาสี (บาท/คน)</h3><p class="text-xs text-violet-700 mt-1">ยอดที่ครูที่ปรึกษาศาสนาจะบันทึกเมื่อสแกนรับชำระ ตั้งเป็น 0 เพื่อปิดรับชำระชั่วคราว</p><input id="cfg-shirt-payment-amount" type="number" min="0" step="1" value="${Number(cfg?.shirt_payment_amount||0)}" class="mt-3 w-full border border-violet-200 rounded-xl px-3 py-2 text-sm bg-white"></div>`)
       el.querySelector('#cfg-shirt-payment-amount')?.addEventListener('input',e=>{renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),shirt_payment_amount:Math.max(0,Number(e.target.value)||0)}})
-      settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-sky-50 border-sky-200"><h3 class="font-bold text-sm text-sky-900">🎽 วันเช็คชื่อเข้าสีวันแรก</h3><p class="text-xs text-sky-700 mt-1">เฉพาะวันนี้ ให้ครูที่ปรึกษาสามัญเช็คชื่อนักเรียนแทนฝ่ายสี (ฝ่ายสีเห็นข้อมูลอ่านอย่างเดียวชั่วคราว) เว้นว่างเพื่อปิดระบบนี้</p><input id="cfg-advisor-checkin-date" type="date" value="${esc(cfg?.advisor_checkin_date||'')}" class="mt-3 w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white"></div>`)
+      settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-sky-50 border-sky-200"><h3 class="font-bold text-sm text-sky-900">🎽 วันเช็คชื่อเข้าสีวันแรก</h3><p class="text-xs text-sky-700 mt-1">เฉพาะวันนี้ ให้ครูที่ปรึกษา (สามัญ/ศาสนา) เช็คชื่อนักเรียนแทนฝ่ายสี (ฝ่ายสีเห็นข้อมูลอ่านอย่างเดียวชั่วคราว) เว้นว่างเพื่อปิดระบบนี้</p><input id="cfg-advisor-checkin-date" type="date" value="${esc(cfg?.advisor_checkin_date||'')}" class="mt-3 w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white"></div>`)
     }
     el.querySelector('#shirt-export').onclick=()=>{const rows=['รหัส,ชื่อ,ห้อง,สี,ไซซ์,สถานะ',...confirmed.map(r=>[r.students?.student_code,r.students?.full_name,r.students?.main_room,r.students?.house_color,r.confirmed_size,r.status].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download='sports-shirt-summary.csv';a.click();URL.revokeObjectURL(a.href)}
     el.querySelectorAll('[data-cfg]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),[b.dataset.cfg]:next};b.textContent=next?'ปิดใช้งาน':'เปิดใช้งาน';toast(`เปลี่ยนสถานะแล้ว กดบันทึกเพื่อยืนยัน`)}))
@@ -1812,7 +1817,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
         <button type="button" data-att-type="event_day" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏆 วันงานจริง</button>
       </div>
     </div>
-    ${advisorCheckinToday?`<div class="rounded-xl px-3 py-2 text-xs font-bold bg-sky-500/10 text-sky-300 mb-3">ℹ️ วันนี้ครูที่ปรึกษาสามัญเช็คชื่อเข้าสีช่วงเข้าแถวตอนเช้าแล้ว หากพบนักเรียนตกหล่นหรือครูที่ปรึกษาไม่ได้เช็ค ฝ่ายสีเช็คชื่อเพิ่มเติมที่นี่ได้ตามปกติ</div>`:''}
+    ${advisorCheckinToday?`<div class="rounded-xl px-3 py-2 text-xs font-bold bg-sky-500/10 text-sky-300 mb-3">ℹ️ วันนี้ครูที่ปรึกษาเช็คชื่อเข้าสีช่วงเข้าแถวตอนเช้าแล้ว หากพบนักเรียนตกหล่นหรือครูที่ปรึกษาไม่ได้เช็ค ฝ่ายสีเช็คชื่อเพิ่มเติมที่นี่ได้ตามปกติ</div>`:''}
     ${campBanner}
     <div id="att-queue-status" class="mb-3"></div>
     <div id="att-progress" class="mb-4"></div>
@@ -1910,7 +1915,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
       // 23505 = ชนกับแถวที่มีอยู่แล้ว (unique event_id+student_id+session_date) — ปกติมากตอนนี้
       // เพราะครูที่ปรึกษาสามัญก็เช็คชื่อลงตารางเดียวกันนี้ได้เหมือนกัน แค่ local state ของหน้านี้
       // ยังไม่รู้ (โหลดหน้าไว้ก่อนครูที่ปรึกษาเช็ค) ไม่ใช่ error จริง แจ้งแบบเข้าใจง่ายแทน
-      if(error.code==='23505'){feedback(false,`${student.full_name} เช็คชื่อไปแล้ว`,'อาจถูกเช็คชื่อไปแล้วโดยครูที่ปรึกษาสามัญช่วงเข้าแถว ลองรีเฟรชหน้านี้เพื่ออัปเดตรายชื่อ');return}
+      if(error.code==='23505'){feedback(false,`${student.full_name} เช็คชื่อไปแล้ว`,'อาจถูกเช็คชื่อไปแล้วโดยครูที่ปรึกษาช่วงเข้าแถว ลองรีเฟรชหน้านี้เพื่ออัปเดตรายชื่อ');return}
       feedback(false,'บันทึกไม่สำเร็จ',error.message);return
     }
     attendanceLocal.push(data)
