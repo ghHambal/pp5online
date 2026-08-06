@@ -144,17 +144,28 @@ function renderApp(data) {
       <div id="ci-list" class="bg-white rounded-xl border border-slate-200 overflow-hidden"></div>
     </div>`
 
-  const renderScanner = () => {
-    const wrap = root.querySelector('#ci-scanner-wrap')
-    if (!showScanner) { wrap.innerHTML = ''; return }
+  // สำคัญ: สร้าง DOM ของกล้อง (#ci-camera-reader) แค่ครั้งเดียวตอนเปิดกล้อง ห้ามเขียนทับ
+  // wrap.innerHTML ซ้ำระหว่างสแกน — ไม่งั้นสตรีมกล้องเดิมจะยังทำงานค้างอยู่เบื้องหลังพร้อมกับ
+  // สตรีมใหม่ที่เพิ่งสั่ง start() ซ้อนกัน ทำให้จอกระพริบแล้วกล้องหลุด/ปิดเองแบบสุ่ม (เจอบั๊กจริง
+  // ตอนอัปเดตข้อความ feedback ทุกครั้งที่สแกนแล้วเรียก renderScanner() ทั้งฟังก์ชันซ้ำ) — แก้โดย
+  // แยกอัปเดตแค่ข้อความ feedback ออกจากการสร้างกล้องใหม่ ตามแบบเดียวกับหน้าเช็คชื่อเข้าสี
+  const updateFeedback = () => {
+    const el = root.querySelector('#ci-feedback')
+    if (!el) return
     const feedbackColor = { muted: '#64748b', success: '#059669', warn: '#d97706', error: '#dc2626' }[feedback.tone] || '#64748b'
+    el.style.color = feedbackColor
+    el.textContent = feedback.text
+  }
+
+  const openScanner = () => {
+    const wrap = root.querySelector('#ci-scanner-wrap')
     wrap.innerHTML = `
       <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row gap-4">
         <div class="relative w-full sm:w-56 flex-shrink-0 rounded-xl overflow-hidden bg-black" style="aspect-ratio:1">
           <div id="ci-camera-reader" class="w-full h-full"></div>
         </div>
         <div class="flex-1 flex flex-col justify-center gap-2.5">
-          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center text-xs font-bold" style="color:${feedbackColor}">${esc(feedback.text)}</div>
+          <div id="ci-feedback" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center text-xs font-bold"></div>
           <form id="ci-manual-form" class="flex gap-2">
             <input id="ci-manual-code" placeholder="หรือพิมพ์รหัสนักเรียนแล้วกด Enter" class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm">
             <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold">รายงานตัว</button>
@@ -162,11 +173,17 @@ function renderApp(data) {
         </div>
       </div>`
     wrap.querySelector('#ci-manual-form').onsubmit = e => { e.preventDefault(); const code = wrap.querySelector('#ci-manual-code').value.trim(); if (code) { tryCheckin(code); wrap.querySelector('#ci-manual-code').value = '' } }
+    updateFeedback()
     startCamera()
+  }
+
+  const closeScanner = () => {
+    root.querySelector('#ci-scanner-wrap').innerHTML = ''
   }
 
   const stopCamera = async () => {
     if (html5Qrcode && scanning) { try { await html5Qrcode.stop() } catch (e) {} }
+    html5Qrcode = null
     scanning = false
   }
 
@@ -185,19 +202,19 @@ function renderApp(data) {
       scanning = true
     } catch (e) {
       feedback = { text: 'เปิดกล้องไม่สำเร็จ: ' + (e?.message || ''), tone: 'error' }
-      renderScanner()
+      updateFeedback()
     }
   }
 
   const tryCheckin = async (code) => {
     const roster = rosterForDate()
     const row = roster.find(r => r.student.student_code === code)
-    if (!row) { playBeep(false); feedback = { text: `ไม่พบรหัส ${code} ในนักกีฬาที่มีนัดแข่งวันนี้`, tone: 'error' }; renderScanner(); return }
-    if (checkedIdsToday().has(row.student.id)) { playBeep(false); feedback = { text: `${row.student.full_name} รายงานตัวไปแล้ว`, tone: 'warn' }; renderScanner(); return }
+    if (!row) { playBeep(false); feedback = { text: `ไม่พบรหัส ${code} ในนักกีฬาที่มีนัดแข่งวันนี้`, tone: 'error' }; updateFeedback(); return }
+    if (checkedIdsToday().has(row.student.id)) { playBeep(false); feedback = { text: `${row.student.full_name} รายงานตัวไปแล้ว`, tone: 'warn' }; updateFeedback(); return }
     await doCheckin(row.student.id)
     playBeep(true)
     feedback = { text: `✓ รายงานตัวแล้ว · ${row.student.full_name}`, tone: 'success' }
-    renderScanner()
+    updateFeedback()
   }
 
   const doCheckin = async (studentId) => {
@@ -277,11 +294,11 @@ function renderApp(data) {
     const btn = root.querySelector('#ci-scan-toggle')
     if (showScanner) {
       btn.textContent = '⏹ ปิดกล้องสแกน'; btn.classList.add('bg-pink-600', 'text-white'); btn.classList.remove('bg-slate-100', 'border', 'border-slate-200', 'text-slate-700')
-      renderScanner()
+      openScanner()
     } else {
       await stopCamera()
       btn.textContent = '📷 สแกน QR'; btn.classList.remove('bg-pink-600', 'text-white'); btn.classList.add('bg-slate-100', 'border', 'border-slate-200', 'text-slate-700')
-      renderScanner()
+      closeScanner()
     }
   }
 
