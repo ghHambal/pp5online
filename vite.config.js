@@ -24,6 +24,7 @@ export default defineConfig({
         sportsDuesMonitor: resolve(__dirname, 'sports-dues-monitor.html'),
         sportsShirtMonitor: resolve(__dirname, 'sports-shirt-monitor.html'),
         sportsFundMonitor: resolve(__dirname, 'sports-fund-monitor.html'),
+        sportsCheckin: resolve(__dirname, 'sports-checkin.html'),
       },
     },
     chunkSizeWarningLimit: 600,
