@@ -854,6 +854,23 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
       </div>
       <div id="team-member-table-wrap"></div>`
     const memberPersonText=m=>m.teachers?.full_name?`${m.teachers.full_name}${m.teachers.teacher_code?` (${m.teachers.teacher_code})`:''}`:`${m.students?.student_code||''} ${m.students?.full_name||''} ${m.students?.main_room?`· ${m.students.main_room}`:''}`
+    const openEditPermsModal=(id,perms)=>{
+      document.getElementById('team-member-edit-modal')?.remove()
+      const modal=document.createElement('div');modal.id='team-member-edit-modal';modal.className='fixed inset-0 z-[420] bg-black/60 flex items-center justify-center p-4';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true')
+      modal.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"><div class="p-5 border-b border-gray-100"><h3 class="font-bold text-gray-800">✏️ แก้ไขสิทธิ์</h3><p class="text-xs text-gray-500 mt-1">แตะเพื่อเปิด/ปิดสิทธิ์แต่ละอย่าง แล้วกดบันทึก</p></div><div class="p-5"><div id="team-member-edit-perms" class="flex flex-wrap gap-2"></div></div><div class="p-4 border-t border-gray-100 flex gap-2"><button id="team-member-edit-cancel" class="flex-1 py-2.5 rounded-xl border text-sm font-bold">ยกเลิก</button><button id="team-member-edit-save" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold">บันทึก</button></div></div>`
+      document.body.appendChild(modal)
+      const permsWrap=modal.querySelector('#team-member-edit-perms')
+      permsWrap.innerHTML=Object.entries(permLabels).map(([k,v])=>permissionButton(k,v,perms?.[k]===true)).join('')
+      permsWrap.querySelectorAll('[data-team-perm]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';b.className=`px-3 py-2 rounded-xl text-xs font-bold border ${next?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-slate-50 text-slate-500 border-slate-200'}`;const label=(b.textContent.split(':').pop()||'').trim();b.textContent=`${next?'อนุญาต':'ไม่อนุญาต'}: ${label}`}))
+      modal.querySelector('#team-member-edit-cancel').onclick=()=>modal.remove()
+      modal.onclick=e=>{if(e.target===modal)modal.remove()}
+      modal.querySelector('#team-member-edit-save').onclick=async()=>{
+        const newPerms={};permsWrap.querySelectorAll('[data-team-perm]').forEach(x=>newPerms[x.dataset.teamPerm]=x.dataset.enabled==='true')
+        const {error}=await supabase.from('sports_team_memberships').update({permissions:newPerms}).eq('id',id)
+        if(error)return toast(error.message,'error')
+        modal.remove();toast('บันทึกสิทธิ์แล้ว');renderTeamMembershipAdmin(root,event,colors,access)
+      }
+    }
     const renderMemberTable=()=>{
       const colorFilter=slot.querySelector('#team-member-filter-color')?.value||''
       const roleFilter=slot.querySelector('#team-member-filter-role')?.value||''
@@ -867,8 +884,9 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
       const countEl=slot.querySelector('#team-member-count')
       if(countEl)countEl.textContent=`แสดง ${filtered.length} จาก ${visibleMemberships.length} คน`
       const tableWrap=slot.querySelector('#team-member-table-wrap')
-      tableWrap.innerHTML=`<div class="overflow-x-auto border rounded-2xl"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">ผู้ได้รับสิทธิ์</th><th>สี</th><th>บทบาท</th><th>สิทธิ์</th><th></th></tr></thead><tbody>${filtered.map(m=>{const person=memberPersonText(m);const perms=Object.entries(m.permissions||{}).filter(([,v])=>v).map(([k])=>permLabels[k]||k).join(', ')||'ไม่มีสิทธิ์ย่อย';const canRemove=access.isAdmin||(m.student_id&&['staff_lead','staff'].includes(m.role));return `<tr class="border-t"><td class="p-3 font-medium">${esc(person||'ไม่พบชื่อ')}</td><td class="p-3"><span class="font-bold" style="color:${esc(m.team_colors?.hex_color||'#334155')}">สี${esc(m.team_colors?.name||'—')}</span></td><td class="p-3">${esc(roleLabels[m.role]||m.role)}</td><td class="p-3 text-xs text-gray-500">${esc(perms)}</td><td class="p-3 text-right">${canRemove?`<button data-team-member-remove="${esc(m.id)}" class="px-3 py-1.5 rounded-lg border text-red-600 text-xs">ปิดสิทธิ์</button>`:'<span class="text-xs text-gray-300">ล็อกโดยแอดมิน</span>'}</td></tr>`}).join('')||`<tr><td colspan="5" class="p-6 text-center text-gray-400">${visibleMemberships.length?'ไม่พบรายชื่อที่ตรงกับตัวกรอง':'ยังไม่มีผู้ได้รับสิทธิ์ประจำสี'}</td></tr>`}</tbody></table></div>`
+      tableWrap.innerHTML=`<div class="overflow-x-auto border rounded-2xl"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-left">ผู้ได้รับสิทธิ์</th><th>สี</th><th>บทบาท</th><th>สิทธิ์</th><th></th></tr></thead><tbody>${filtered.map(m=>{const person=memberPersonText(m);const perms=Object.entries(m.permissions||{}).filter(([,v])=>v).map(([k])=>permLabels[k]||k).join(', ')||'ไม่มีสิทธิ์ย่อย';const canRemove=access.isAdmin||(m.student_id&&['staff_lead','staff'].includes(m.role));return `<tr class="border-t"><td class="p-3 font-medium">${esc(person||'ไม่พบชื่อ')}</td><td class="p-3"><span class="font-bold" style="color:${esc(m.team_colors?.hex_color||'#334155')}">สี${esc(m.team_colors?.name||'—')}</span></td><td class="p-3">${esc(roleLabels[m.role]||m.role)}</td><td class="p-3 text-xs text-gray-500">${esc(perms)}</td><td class="p-3 text-right whitespace-nowrap">${canRemove?`<button data-team-member-edit="${esc(m.id)}" data-perms='${esc(JSON.stringify(m.permissions||{}))}' class="px-3 py-1.5 rounded-lg border text-indigo-600 text-xs mr-1">แก้ไขสิทธิ์</button><button data-team-member-remove="${esc(m.id)}" class="px-3 py-1.5 rounded-lg border text-red-600 text-xs">ปิดสิทธิ์</button>`:'<span class="text-xs text-gray-300">ล็อกโดยแอดมิน</span>'}</td></tr>`}).join('')||`<tr><td colspan="5" class="p-6 text-center text-gray-400">${visibleMemberships.length?'ไม่พบรายชื่อที่ตรงกับตัวกรอง':'ยังไม่มีผู้ได้รับสิทธิ์ประจำสี'}</td></tr>`}</tbody></table></div>`
       tableWrap.querySelectorAll('[data-team-member-remove]').forEach(b=>b.addEventListener('click',async()=>{const {error}=await supabase.from('sports_team_memberships').update({is_active:false,ends_at:new Date().toISOString()}).eq('id',b.dataset.teamMemberRemove);if(error)return toast(error.message,'error');toast('ปิดสิทธิ์แล้ว');renderTeamMembershipAdmin(root,event,colors,access)}))
+      tableWrap.querySelectorAll('[data-team-member-edit]').forEach(b=>b.addEventListener('click',()=>{let perms={};try{perms=JSON.parse(b.dataset.perms||'{}')}catch(e){perms={}};openEditPermsModal(b.dataset.teamMemberEdit,perms)}))
     }
     renderMemberTable()
     slot.querySelector('#team-member-filter-color')?.addEventListener('change',renderMemberTable)
