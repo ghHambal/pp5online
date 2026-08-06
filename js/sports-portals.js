@@ -827,6 +827,8 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
     if(error)throw error
     const manageableColorIds=new Set(manageableColors.map(c=>c.id))
     const visibleMemberships=(memberships||[]).filter(m=>access.isAdmin||manageableColorIds.has(m.team_color_id))
+    // แต่ละสีมีหัวหน้านักเรียนสต๊าฟสีได้แค่คนเดียว — ใช้คำนวณว่าจะปิดตัวเลือกนี้ในฟอร์มมอบหมายไหม
+    const staffLeadColorIds=new Set((memberships||[]).filter(m=>m.role==='staff_lead').map(m=>m.team_color_id))
     let foundTeamMembers=[]
     slot.innerHTML=`<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h2 class="font-bold">🛡️ มอบหมายผู้ดูแลประจำสี</h2><p class="text-xs text-gray-500 mt-1">${access.isAdmin?'แอดมินกำหนดครูประจำสีและนักเรียนสต๊าฟได้ทุกสี':'พ่อสี/แม่สีมอบหมายได้เฉพาะนักเรียนสต๊าฟในสีของตนเอง'}</p></div><span class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">ใช้งานอยู่ ${memberships?.length||0} คน</span></div>
       <div class="grid lg:grid-cols-5 gap-3 mb-4">
@@ -853,6 +855,18 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
         <input id="team-member-filter-search" class="team-field rounded-xl px-3 py-2 text-sm" placeholder="🔍 ค้นหาชื่อ/รหัสครู/รหัสนักเรียน...">
       </div>
       <div id="team-member-table-wrap"></div>`
+    const updateRoleOptions=()=>{
+      const colorId=slot.querySelector('#team-member-color')?.value
+      const roleSel=slot.querySelector('#team-member-role')
+      const opt=roleSel?.querySelector('option[value="staff_lead"]')
+      if(!roleSel||!opt)return
+      const taken=staffLeadColorIds.has(colorId)
+      opt.disabled=taken
+      opt.textContent=taken?'หัวหน้านักเรียนสต๊าฟสี (มีแล้ว — เลือกนักเรียนสต๊าฟสีแทน)':'หัวหน้านักเรียนสต๊าฟสี'
+      if(taken&&roleSel.value==='staff_lead')roleSel.value='staff'
+    }
+    updateRoleOptions()
+    slot.querySelector('#team-member-color')?.addEventListener('change',updateRoleOptions)
     const memberPersonText=m=>m.teachers?.full_name?`${m.teachers.full_name}${m.teachers.teacher_code?` (${m.teachers.teacher_code})`:''}`:`${m.students?.student_code||''} ${m.students?.full_name||''} ${m.students?.main_room?`· ${m.students.main_room}`:''}`
     const openEditPermsModal=(id,perms)=>{
       document.getElementById('team-member-edit-modal')?.remove()
@@ -937,6 +951,7 @@ async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:fa
       if(!access.isAdmin&&!leadTeamIds.has(teamColorId))return toast('หัวหน้าครูประจำสีมอบหมายได้เฉพาะสีของตนเอง','error')
       if(foundTeamMembers.some(p=>p.kind==='student')&&!['staff_lead','staff'].includes(role))return toast('บทบาทนี้ใช้กับครูเท่านั้น หากจะมอบหมายให้นักเรียนให้เลือกบทบาทนักเรียนสต๊าฟ','error')
       if(foundTeamMembers.some(p=>p.kind==='teacher')&&!['lead_teacher','teacher'].includes(role))return toast('บทบาทนี้ใช้กับนักเรียนเท่านั้น หากจะมอบหมายให้ครูให้เลือกบทบาทครูประจำสี','error')
+      if(role==='staff_lead'&&(staffLeadColorIds.has(teamColorId)||foundTeamMembers.length>1))return toast('สีนี้มีหัวหน้านักเรียนสต๊าฟสีอยู่แล้ว หรือเลือกได้ทีละ 1 คนเท่านั้นสำหรับบทบาทนี้','error')
       const permissions={};slot.querySelectorAll('[data-team-perm]').forEach(x=>permissions[x.dataset.teamPerm]=x.dataset.enabled==='true')
       const payload=foundTeamMembers.map(p=>({event_id:event.id,team_color_id:teamColorId,profile_id:p.profile_id,teacher_id:p.kind==='teacher'?Number(p.id):null,student_id:p.kind==='student'?Number(p.id):null,role,permissions,is_active:true,ends_at:null}))
       const {error}=await supabase.from('sports_team_memberships').upsert(payload,{onConflict:'event_id,team_color_id,profile_id'})
