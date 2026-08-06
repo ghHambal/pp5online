@@ -533,23 +533,24 @@ export async function renderStudentOverview(student) {
       </div>
     </div>
 
-    <!-- แบนเนอร์งานค้าง — โชว์เฉพาะตอนมีงานค้างจริง ไม่รกจอตอนไม่มีอะไรต้องทำ -->
-    ${pendingAssignments.length ? (() => {
+    <!-- ปุ่มภาระงานของฉัน — แสดงตลอด ไม่ใช่แค่ตอนมีงานค้าง (หาเจอง่าย เข้าถึงได้ทุกครั้ง) -->
+    ${(() => {
+      const hasPending = pendingAssignments.length > 0
       const nearest = pendingAssignments[0]
-      const nearestDue = nearest.due_at ? new Date(nearest.due_at).toLocaleString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : null
+      const nearestDue = nearest?.due_at ? new Date(nearest.due_at).toLocaleString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : null
       return `<button onclick="window._stuNav('assignments')"
         class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150 w-full mb-4 flex items-center gap-3"
-        style="background:linear-gradient(135deg,#dc2626,#b91c1c)">
+        style="background:linear-gradient(135deg,${hasPending ? '#dc2626,#b91c1c' : '#059669,#047857'})">
         <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
         <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
         <p class="text-2xl relative flex-shrink-0">📚</p>
         <div class="relative min-w-0 flex-1">
-          <p class="font-bold text-sm text-white">มีงานค้างอยู่ ${pendingAssignments.length} ชิ้น</p>
-          <p class="text-[11px] text-red-200 mt-0.5 truncate">ใกล้สุด: ${_esc(nearest.title)}${nearestDue ? ` · กำหนดส่ง ${nearestDue}` : ''}</p>
+          <p class="font-bold text-sm text-white">📚 ภาระงานของฉัน</p>
+          <p class="text-[11px] ${hasPending ? 'text-red-200' : 'text-emerald-200'} mt-0.5 truncate">${hasPending ? `ค้างอยู่ ${pendingAssignments.length} ชิ้น · ใกล้สุด: ${_esc(nearest.title)}${nearestDue ? ` (${nearestDue})` : ''}` : 'ไม่มีงานค้าง 🎉'}</p>
         </div>
         <p class="relative text-white text-lg flex-shrink-0">→</p>
       </button>`
-    })() : ''}
+    })()}
 
     <!-- Quick actions — 4 ปุ่มใน grid เดียว: 2×2 บนมือถือ, 4×1 บน tablet -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -1517,7 +1518,7 @@ export async function renderStudentSubjects(student) {
   `)
 }
 
-// ─── งานทั้งหมดของฉัน (ศูนย์รวมงานที่มอบหมายจากทุกวิชา) ──────────────────────────
+// ─── ภาระงานของฉัน (ศูนย์รวมงานที่มอบหมายจากทุกวิชา) ──────────────────────────
 export async function renderStudentAllAssignments(student, group = 'samai') {
   setContent(`<div class="flex justify-center py-10 text-gray-300">
     <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
@@ -1580,7 +1581,7 @@ export async function renderStudentAllAssignments(student, group = 'samai') {
 
   setContent(`
     <div class="flex items-center justify-between gap-3 mb-4">
-      <h2 class="font-bold text-gray-800">📚 งานทั้งหมดของฉัน</h2>
+      <h2 class="font-bold text-gray-800">📚 ภาระงานของฉัน</h2>
     </div>
     <div class="flex gap-2 mb-4">
       <button data-grp="samai" class="stu-assign-tab flex-1 py-2.5 rounded-xl text-sm font-semibold transition ${group === 'samai' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}">
