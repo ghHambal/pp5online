@@ -10,6 +10,7 @@ const LOGO_URLS = [
 ]
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const genderLabel = g => g === 'M' ? 'ชาย' : g === 'W' ? 'หญิง' : 'ทั้งหมด'
 
 // รูปนักเรียนแบบสี่เหลี่ยมขอบมนแนวตั้ง (ตามธีมเดิมของระบบ ห้ามวงกลม) แสดงในเซลล์ชื่อ-สกุลเลย ไม่แยกคอลัมน์
 // ห้ามใส่ loading="lazy" — เซลล์นี้อยู่ใน #print-content ที่ซ่อนด้วย display:none จนกว่าจะสั่งพิมพ์
@@ -132,6 +133,7 @@ function renderDashboard(snapshot) {
         <div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
           <button type="button" data-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👦 นักเรียนชาย</button>
           <button type="button" data-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👧 นักเรียนหญิง</button>
+          <button type="button" data-gender="ALL" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👥 ทั้งหมด</button>
         </div>
         <div class="flex items-center gap-2">
           <select id="level-select" class="border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold"><option value="">ทุกระดับชั้น</option>${allLevels.map(lv => `<option value="${esc(lv)}">ชั้น ${esc(lv)}</option>`).join('')}</select>
@@ -158,7 +160,7 @@ function renderDashboard(snapshot) {
   daySelect.innerHTML = dayOptions.map(d => `<option value="${d.date}">${esc(d.label)} — ${fmtThaiDate(d.date)}</option>`).join('') || '<option value="">ไม่มีข้อมูลปฏิทิน</option>'
   daySelect.value = selectedDay
 
-  const studentsOf = g => (snapshot.students || []).filter(s => s.gender === g && (!levelFilter || levelOf(s.main_room) === levelFilter))
+  const studentsOf = g => (snapshot.students || []).filter(s => (g === 'ALL' || s.gender === g) && (!levelFilter || levelOf(s.main_room) === levelFilter))
   const scannedIdsOn = day => new Set((snapshot.attendance || []).filter(a => a.session_date === day).map(a => a.student_id))
 
   const computeAbsent = () => {
@@ -192,7 +194,7 @@ function renderDashboard(snapshot) {
       return `<div style="${pageBreak ? 'page-break-before:always;' : ''}padding-top:12px">
         ${logoRow}
         <div style="text-align:center;margin-bottom:10px">
-          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${gender === 'M' ? 'ชาย' : 'หญิง'}ที่ขาดเช็คชื่อ — ${esc(dayLabel)} (${fmtThaiDate(day)})</h2>
+          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${genderLabel(gender)}ที่ขาดเช็คชื่อ — ${esc(dayLabel)} (${fmtThaiDate(day)})</h2>
           <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
           <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
         </div>
@@ -243,7 +245,7 @@ function renderDashboard(snapshot) {
       return `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding-top:12px">
         ${logoRow}
         <div style="text-align:center;margin-bottom:10px">
-          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${gender === 'M' ? 'ชาย' : 'หญิง'}ที่ขาดเช็คชื่อ — สรุปทุกวัน (เข้าสี+วันงานจริง)</h2>
+          <h2 style="font-size:16px;margin:0 0 4px">รายชื่อนักเรียน${genderLabel(gender)}ที่ขาดเช็คชื่อ — สรุปทุกวัน (เข้าสี+วันงานจริง)</h2>
           <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
           <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
         </div>
@@ -358,7 +360,7 @@ function renderDashboard(snapshot) {
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + rows.join('\n')], { type: 'text/csv' }))
     const levelSuffix = levelFilter ? `-${levelFilter}` : ''
-    a.download = printMode === 'all' ? `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}${levelSuffix}-ทุกวัน.csv` : `ขาดเช็คชื่อ-${gender === 'M' ? 'ชาย' : 'หญิง'}${levelSuffix}-${selectedDay}.csv`
+    a.download = printMode === 'all' ? `ขาดเช็คชื่อ-${genderLabel(gender)}${levelSuffix}-ทุกวัน.csv` : `ขาดเช็คชื่อ-${genderLabel(gender)}${levelSuffix}-${selectedDay}.csv`
     a.click(); URL.revokeObjectURL(a.href)
   }
   root.querySelector('#btn-print').onclick = () => window.print()
