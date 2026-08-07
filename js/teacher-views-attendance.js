@@ -160,7 +160,6 @@ export async function renderAttendanceGrid(teacher, classData) {
                    hover:bg-amber-100 transition flex items-center gap-1">
             🚪 <span class="hidden sm:inline">โควต้า</span> <span id="leave-quota-label">${Object.keys(activeLeaveMap).length}/${leaveMaxActive}</span>
           </button>
-          ${(window._pp5DonorTierIndex ?? 0) >= 2 ? `
           <button id="btn-att-import-studentcare-bulk"
             class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-medium
                    hover:bg-indigo-700 transition flex items-center gap-1"
@@ -171,7 +170,7 @@ export async function renderAttendanceGrid(teacher, classData) {
             class="px-2 py-1.5 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition flex items-center"
             title="วิธีติดตั้งปุ่มดึงเช็คชื่อจากระบบดูแล (ครั้งแรกเท่านั้น)">
             ❓
-          </button>` : ''}
+          </button>
         </div>
       </div>
       ${holAttRows.length > 0 ? `
@@ -313,6 +312,11 @@ export async function renderAttendanceGrid(teacher, classData) {
       students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
       const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
       if (!mainRoom) { showToast('หาห้องเรียนหลักของนักเรียนกลุ่มนี้ไม่เจอ', 'error'); return }
+
+      const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
+      const access = _checkStudentCareRoomAccess(teacher?.id, mainRoom, isSupported)
+      if (!access.allowed) { _openStudentCareRoomPaywall(access.claimedRoom, mainRoom); return }
+      if (!isSupported && !access.claimedRoom) _claimStudentCareRoom(teacher?.id, mainRoom)
 
       let staged
       try {
@@ -1415,6 +1419,7 @@ function _openStudentCareInstallModal() {
         <button id="stc-install-close" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
       </div>
       <div class="overflow-y-auto flex-1 px-4 py-4 space-y-5 text-sm text-gray-600">
+        <p class="text-[11px] text-center bg-amber-50 text-amber-700 rounded-lg px-3 py-2">ใช้ได้ฟรี 1 ห้องเรียนต่อครู 1 คน — ห้องเพิ่มเติมต้องสนับสนุนระบบระดับ 2 ขึ้นไป</p>
         <div class="text-center space-y-2">
           <p class="text-xs font-bold text-indigo-600">① ดึงจากระบบดูแล เข้า pp5</p>
           <p class="text-xs"><b>ลากปุ่มนี้</b> ไปวางที่แถบบุ๊กมาร์กของเบราว์เซอร์ (ทำครั้งเดียว)</p>
@@ -1575,12 +1580,16 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
   modal.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
       <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b flex-shrink-0 gap-2">
-        <div class="min-w-0">
-          <h3 class="font-bold text-gray-800 text-sm">เช็คชื่อ — คาบที่ ${sessN}</h3>
-          <p class="text-xs text-gray-400">${date} · ${classData.class_name}</p>
+      <div class="px-4 py-3 border-b flex-shrink-0 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <h3 class="font-bold text-gray-800 text-sm">เช็คชื่อ — คาบที่ ${sessN}</h3>
+            <p class="text-xs text-gray-400">${date} · ${classData.class_name}</p>
+          </div>
+          <button id="att-modal-close"
+            class="text-gray-400 hover:text-gray-700 text-lg leading-none flex-shrink-0">✕</button>
         </div>
-        <div class="flex items-center gap-1.5 flex-shrink-0">
+        <div class="flex items-center flex-wrap gap-1.5">
           <button id="btn-att-scan-qr"
             class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-xl
                    font-bold flex items-center gap-1.5 hover:bg-slate-800 active:scale-[0.98] transition shadow-sm"
@@ -1627,8 +1636,6 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
                 </button>`).join('')}
             </div>
           </div>
-          <button id="att-modal-close"
-            class="text-gray-400 hover:text-gray-700 text-lg leading-none ml-1">✕</button>
         </div>
       </div>
       <!-- Student list -->
@@ -2090,15 +2097,15 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
   // ข้อมูลถูกส่งมาพักไว้ล่วงหน้าจาก bookmarklet ที่รันบนหน้าระบบดูแลเอง (public/js/studentcare-bridge.js)
   // จับคู่ด้วยรหัสนักเรียน + ห้องเรียนหลักส่วนใหญ่ของคลาสนี้ + วันที่ของคาบนี้
   modal.querySelector('#btn-att-import-studentcare')?.addEventListener('click', async () => {
-    const donorTier = window._pp5DonorTierIndex ?? 0
-    if (donorTier < 2) {
-      showToast('ฟีเจอร์นี้สำหรับผู้สนับสนุนระดับ 2 ขึ้นไป — ไปที่หน้าโปรไฟล์เพื่อสนับสนุนระบบได้ครับ', 'warning')
-      return
-    }
     const roomCounts = {}
     students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
     const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
     if (!mainRoom) { showToast('หาห้องเรียนของนักเรียนในคลาสนี้ไม่เจอ', 'error'); return }
+
+    const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
+    const access = _checkStudentCareRoomAccess(teacher?.id, mainRoom, isSupported)
+    if (!access.allowed) { _openStudentCareRoomPaywall(access.claimedRoom, mainRoom); return }
+    if (!isSupported && !access.claimedRoom) _claimStudentCareRoom(teacher?.id, mainRoom)
 
     let staged
     try {
@@ -2134,15 +2141,15 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
 
   // ส่งเช็คชื่อของคาบนี้ (สถานะที่ติ๊กอยู่บนหน้าจอตอนนี้) ออกไปรอให้บุ๊กมาร์กฝั่งระบบดูแลมาติ๊กให้
   modal.querySelector('#btn-att-export-studentcare')?.addEventListener('click', async () => {
-    const donorTier = window._pp5DonorTierIndex ?? 0
-    if (donorTier < 2) {
-      showToast('ฟีเจอร์นี้สำหรับผู้สนับสนุนระดับ 2 ขึ้นไป — ไปที่หน้าโปรไฟล์เพื่อสนับสนุนระบบได้ครับ', 'warning')
-      return
-    }
     const roomCounts = {}
     students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
     const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
     if (!mainRoom) { showToast('หาห้องเรียนของนักเรียนในคลาสนี้ไม่เจอ', 'error'); return }
+
+    const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
+    const access = _checkStudentCareRoomAccess(teacher?.id, mainRoom, isSupported)
+    if (!access.allowed) { _openStudentCareRoomPaywall(access.claimedRoom, mainRoom); return }
+    if (!isSupported && !access.claimedRoom) _claimStudentCareRoom(teacher?.id, mainRoom)
 
     const records = students.map(s => {
       const row = modal.querySelector(`[data-modal-sid="${s.id}"]`)
@@ -4134,6 +4141,44 @@ function _incrementWeeklyScanQuota(teacherId, weekMonday) {
   } catch (e) {}
   
   localStorage.setItem(key, JSON.stringify({ weekMonday, count: count + 1 }))
+}
+
+// ฟีเจอร์เชื่อมข้อมูลกับระบบดูแล — ครูทุกคนใช้ได้ฟรี "ห้องแรกที่ใช้" เท่านั้น จะใช้ห้องอื่นเพิ่มต้องสนับสนุนระดับ 2 ขึ้นไป
+function _checkStudentCareRoomAccess(teacherId, mainRoom, isSupported) {
+  if (isSupported) return { allowed: true, claimedRoom: null }
+  let claimedRoom = null
+  try { claimedRoom = localStorage.getItem(`pp5_studentcare_room_${teacherId}`) } catch (e) {}
+  if (!claimedRoom || claimedRoom === mainRoom) return { allowed: true, claimedRoom }
+  return { allowed: false, claimedRoom }
+}
+
+function _claimStudentCareRoom(teacherId, mainRoom) {
+  try { localStorage.setItem(`pp5_studentcare_room_${teacherId}`, mainRoom) } catch (e) {}
+}
+
+function _openStudentCareRoomPaywall(claimedRoom, wantedRoom) {
+  document.getElementById('stc-room-paywall')?.remove()
+  const paywall = document.createElement('div')
+  paywall.id = 'stc-room-paywall'
+  paywall.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60'
+  paywall.innerHTML = `
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl flex flex-col p-6 text-center gap-4 relative animate-fade">
+      <button id="stc-pw-close" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      <div class="text-6xl mt-4">🔒</div>
+      <p class="font-bold text-gray-800 text-lg">ใช้ครบโควต้าห้องฟรีแล้ว</p>
+      <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">
+        ฟีเจอร์เชื่อมข้อมูลกับระบบดูแลใช้ได้ฟรี <b>1 ห้องเรียน</b> ต่อครู 1 คน — ตอนนี้ผูกกับห้อง <b>${_htmlEsc(claimedRoom)}</b> ไว้แล้ว
+        ${wantedRoom ? `<br><br>ต้องการใช้กับห้อง <b>${_htmlEsc(wantedRoom)}</b> เพิ่ม` : ''}<br><br>
+        ร่วมสนับสนุนระบบระดับ 2 ขึ้นไปเพื่อใช้ได้ไม่จำกัดจำนวนห้องครับ
+      </p>
+      <button id="stc-pw-donate" class="mt-2 w-full py-3.5 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition bg-gradient-to-r from-amber-500 to-orange-500">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
+    </div>`
+  document.body.appendChild(paywall)
+  paywall.querySelector('#stc-pw-close').addEventListener('click', () => paywall.remove())
+  paywall.querySelector('#stc-pw-donate').addEventListener('click', () => {
+    paywall.remove()
+    document.getElementById('btn-donate-float')?.click()
+  })
 }
 
 function _playScanBeep(type = 'success') {
