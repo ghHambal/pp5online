@@ -870,7 +870,7 @@ export async function renderShirtSummary() {
 
 // ดรอปดาวน์แบบพิมพ์ค้นหา ใช้ซ้ำได้ทั่วไป — items ต้องเป็น [{id,label,sub,photo}] ที่ normalize มาแล้ว
 // (ไม่ใช้ select ธรรมดาเวลาตัวเลือกเยอะ ตามธรรมเนียมเดิมของระบบ)
-function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyLabel='-- เลือก --',photoClass='w-7 h-9 rounded object-cover flex-shrink-0 border'}) {
+function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyLabel='-- เลือก --',photoClass='w-7 h-9 rounded object-cover flex-shrink-0 border',onChange=null}) {
   let _selected=null,_open=false
   wrap.style.position='relative'
   wrap.innerHTML=`
@@ -900,6 +900,7 @@ function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyL
       displayEl.classList.toggle('text-gray-400',!_selected)
       displayEl.classList.toggle('text-gray-800',!!_selected)
       _close()
+      onChange?.(_selected?.id??null)
     }))
   }
   function _open_(){_open=true;dropdown.classList.remove('hidden');arrowEl.style.transform='rotate(180deg)';searchEl.value='';_renderList();setTimeout(()=>searchEl.focus(),50)}
@@ -908,7 +909,7 @@ function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyL
   inputEl.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();_open?_close():_open_()}})
   searchEl.addEventListener('input',()=>_renderList(searchEl.value.trim()))
   document.addEventListener('mousedown',e=>{if(_open&&!wrap.contains(e.target))_close()},true)
-  return {getValue:()=>_selected?.id??null}
+  return {getValue:()=>_selected?.id??null,reset:()=>{_selected=null;displayEl.textContent=emptyLabel;displayEl.classList.add('text-gray-400');displayEl.classList.remove('text-gray-800')}}
 }
 
 // มอบหมายรายการแข่งขันให้สตาฟรับผิดชอบเฉพาะคน — คนละกลไกกับ sports.responsible_teacher_id เดิม
@@ -1832,13 +1833,12 @@ function renderScheduleSection(body,matches,colorName,card){
     </div>
     <div class="flex flex-wrap items-center gap-2 mb-4">
       <button type="button" data-sched-today class="px-3 py-2 rounded-xl border line text-xs font-bold transition-all">📅 วันนี้</button>
-      <select id="sched-sport-select" class="rounded-xl team-field px-3 py-2 text-xs font-bold flex-1 min-w-[200px]">
-        <option value="">-- เลือกรายการแข่งขันเพื่อดูทุกรอบ --</option>
-        ${sportOptions.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
-      </select>
+      <div id="sched-sport-select-wrap" class="flex-1 min-w-[200px]"></div>
     </div>
     <div id="sched-list"></div>
   </section>`
+
+  const sportPicker=_createPickerSelect({wrap:body.querySelector('#sched-sport-select-wrap'),items:sportOptions.map(s=>({id:s.id,label:s.name,photo:sportIconUrl(s)})),placeholder:'พิมพ์ชื่อรายการ...',emptyLabel:'-- เลือกรายการแข่งขันเพื่อดูทุกรอบ --',photoClass:'w-6 h-6 object-contain flex-shrink-0',onChange:v=>{filterMode=v||'none';renderList()}})
 
   const renderList=()=>{
     body.querySelectorAll('[data-sched-subtab]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.schedSubtab===subTab))
@@ -1856,8 +1856,7 @@ function renderScheduleSection(body,matches,colorName,card){
   }
 
   body.querySelectorAll('[data-sched-subtab]').forEach(b=>b.onclick=()=>{subTab=b.dataset.schedSubtab;renderList()})
-  body.querySelector('[data-sched-today]').onclick=()=>{filterMode=filterMode==='today'?'none':'today';body.querySelector('#sched-sport-select').value='';renderList()}
-  body.querySelector('#sched-sport-select').onchange=e=>{filterMode=e.target.value||'none';renderList()}
+  body.querySelector('[data-sched-today]').onclick=()=>{filterMode=filterMode==='today'?'none':'today';sportPicker.reset();renderList()}
   renderList()
 }
 
@@ -2477,8 +2476,8 @@ function createSportSearchSelect({wrap,options}){
       if(q&&!o.name.toLowerCase().includes(q))return false
       return true
     })
-    listEl.innerHTML=`<li data-val="" class="sss-opt px-3 py-2 text-sm cursor-pointer hover:bg-white/10 ${!selected?'text-pink-400 font-bold':'text-slate-300'}">— ภาพทั่วไป/บรรยากาศ —</li>`+
-      (filtered.map(o=>`<li data-val="${o.id}" class="sss-opt px-3 py-2 text-sm cursor-pointer hover:bg-white/10 ${selected===o.id?'text-pink-400 font-bold':'text-slate-300'}">${esc(o.name)}</li>`).join('')||`<li class="px-3 py-4 text-xs muted text-center">ไม่พบรายการที่ตรงกับคำค้น</li>`)
+    listEl.innerHTML=`<li data-val="" class="sss-opt px-3 py-2 text-sm cursor-pointer hover:bg-white/10 flex items-center gap-2 ${!selected?'text-pink-400 font-bold':'text-slate-300'}"><span class="w-5 h-5 flex-shrink-0"></span>— ภาพทั่วไป/บรรยากาศ —</li>`+
+      (filtered.map(o=>{const icon=sportIconUrl(o);return `<li data-val="${o.id}" class="sss-opt px-3 py-2 text-sm cursor-pointer hover:bg-white/10 flex items-center gap-2 ${selected===o.id?'text-pink-400 font-bold':'text-slate-300'}">${icon?`<img src="${esc(icon)}" class="w-5 h-5 object-contain flex-shrink-0">`:'<span class="w-5 h-5 flex-shrink-0"></span>'}${esc(o.name)}</li>`}).join('')||`<li class="px-3 py-4 text-xs muted text-center">ไม่พบรายการที่ตรงกับคำค้น</li>`)
     listEl.querySelectorAll('.sss-opt[data-val]').forEach(li=>li.addEventListener('mousedown',e=>{
       e.preventDefault()
       const val=li.dataset.val
@@ -2918,12 +2917,13 @@ function openAthletePrintDialog(wrap,c,regs,competitions){
   const modal=document.createElement('div');modal.className='fixed inset-0 bg-black/70 grid place-items-center p-4';modal.style.zIndex='430'
   const compIds=[...new Set(regs.map(r=>r.sport_id).filter(Boolean).map(String))]
   const comps=competitions.filter(x=>compIds.includes(String(x.id)))
-  modal.innerHTML=`<div class="team-card border rounded-3xl w-full max-w-2xl p-5 shadow-2xl"><div class="flex items-center justify-between gap-3 mb-4"><div><h2 class="text-lg font-bold">🖨️ พิมพ์บัญชีนักกีฬา สี${esc(c.name)}</h2><p class="text-xs muted">เลือกรายการกีฬาและรูปแบบใบรายชื่อก่อนสร้างเอกสาร</p></div><button data-close-print class="w-10 h-10 rounded-xl border line">✕</button></div><div class="space-y-4"><div><label class="text-xs font-bold muted">เลือกรายการกีฬา</label><select id="ath-print-comp" class="mt-1 w-full rounded-xl team-field px-3 py-3"><option value="all">-- ทุกประเภทกีฬาที่สีนี้ลงทะเบียน --</option>${comps.map(x=>`<option value="${x.id}">${esc(x.name)}${x.code?` (${esc(x.code)})`:''}</option>`).join('')}</select></div><div><label class="text-xs font-bold muted">เลือกรูปแบบเอกสารพิมพ์</label><div class="grid sm:grid-cols-2 gap-2 mt-2"><button data-ath-format="table" class="ath-format team-tab-active rounded-xl border line px-4 py-3 text-left"><b>📋 แบบตารางรายชื่อ</b><p class="text-xs opacity-80">เหมาะสำหรับเซ็นชื่อ/ตรวจสอบ</p></button><button data-ath-format="cards" class="ath-format rounded-xl border line px-4 py-3 text-left"><b>🖼️ แบบการ์ดรูปภาพ</b><p class="text-xs opacity-80">เหมาะสำหรับตรวจตัวนักกีฬา</p></button></div></div><button data-ath-print-confirm class="w-full py-3 rounded-xl bg-pink-600 text-white font-bold">สร้างเอกสาร / พิมพ์</button></div></div>`
+  modal.innerHTML=`<div class="team-card border rounded-3xl w-full max-w-2xl p-5 shadow-2xl"><div class="flex items-center justify-between gap-3 mb-4"><div><h2 class="text-lg font-bold">🖨️ พิมพ์บัญชีนักกีฬา สี${esc(c.name)}</h2><p class="text-xs muted">เลือกรายการกีฬาและรูปแบบใบรายชื่อก่อนสร้างเอกสาร</p></div><button data-close-print class="w-10 h-10 rounded-xl border line">✕</button></div><div class="space-y-4"><div><label class="text-xs font-bold muted">เลือกรายการกีฬา</label><div id="ath-print-comp-wrap" class="mt-1"></div></div><div><label class="text-xs font-bold muted">เลือกรูปแบบเอกสารพิมพ์</label><div class="grid sm:grid-cols-2 gap-2 mt-2"><button data-ath-format="table" class="ath-format team-tab-active rounded-xl border line px-4 py-3 text-left"><b>📋 แบบตารางรายชื่อ</b><p class="text-xs opacity-80">เหมาะสำหรับเซ็นชื่อ/ตรวจสอบ</p></button><button data-ath-format="cards" class="ath-format rounded-xl border line px-4 py-3 text-left"><b>🖼️ แบบการ์ดรูปภาพ</b><p class="text-xs opacity-80">เหมาะสำหรับตรวจตัวนักกีฬา</p></button></div></div><button data-ath-print-confirm class="w-full py-3 rounded-xl bg-pink-600 text-white font-bold">สร้างเอกสาร / พิมพ์</button></div></div>`
   wrap.appendChild(modal)
+  const compPicker=_createPickerSelect({wrap:modal.querySelector('#ath-print-comp-wrap'),items:comps.map(x=>({id:x.id,label:x.name+(x.code?` (${x.code})`:''),photo:sportIconUrl(x)})),placeholder:'พิมพ์ชื่อรายการ...',emptyLabel:'-- ทุกประเภทกีฬาที่สีนี้ลงทะเบียน --',photoClass:'w-6 h-6 object-contain flex-shrink-0'})
   let format='table'
   modal.querySelector('[data-close-print]').onclick=()=>modal.remove()
   modal.querySelectorAll('[data-ath-format]').forEach(b=>b.onclick=()=>{format=b.dataset.athFormat;modal.querySelectorAll('[data-ath-format]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.athFormat===format))})
-  modal.querySelector('[data-ath-print-confirm]').onclick=()=>{const comp=modal.querySelector('#ath-print-comp').value;const rows=regs.filter(r=>comp==='all'||String(r.sport_id)===String(comp)).map(r=>({name:r.students?.full_name,code:r.students?.student_code,room:r.students?.main_room,detail:r.sports?.name||'—',extra:r.jersey_number?`เบอร์ ${r.jersey_number}`:'',photo:r.students?.image_url}));const label=comp==='all'?'ทุกประเภทกีฬา':(comps.find(x=>String(x.id)===String(comp))?.name||'รายการกีฬา');modal.remove();printTeamList(`บัญชีนักกีฬาสี${c.name} · ${label}`,c,rows,{mode:format})}
+  modal.querySelector('[data-ath-print-confirm]').onclick=()=>{const comp=compPicker.getValue();const rows=regs.filter(r=>!comp||String(r.sport_id)===String(comp)).map(r=>({name:r.students?.full_name,code:r.students?.student_code,room:r.students?.main_room,detail:r.sports?.name||'—',extra:r.jersey_number?`เบอร์ ${r.jersey_number}`:'',photo:r.students?.image_url}));const label=!comp?'ทุกประเภทกีฬา':(comps.find(x=>String(x.id)===String(comp))?.name||'รายการกีฬา');modal.remove();printTeamList(`บัญชีนักกีฬาสี${c.name} · ${label}`,c,rows,{mode:format})}
 }
 // รูปแบบเดียวกับใบรายชื่อสมาชิกสีที่พิมพ์จากระบบกีฬาสีหลัก (AZIZGAMES handlePrintMemberList) —
 // ต้องอัปเดตคู่กันทุกครั้งถ้าแก้ฝั่ง AZIZGAMES (src/pages/Registrations.jsx)
