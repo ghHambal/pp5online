@@ -651,6 +651,18 @@ export async function getExternalAttendanceStagingByRoom(mainRoom) {
   return data ?? []
 }
 
+// ส่งเช็คชื่อจากหน้าวิชาที่เปิดอยู่ออกไปรอให้บุ๊กมาร์กฝั่งระบบดูแลมาดึงไปติ๊กให้ (ทิศทางย้อนกลับ)
+export async function exportAttendanceToStudentCare(mainRoom, checkDate, records) {
+  const rows = records.map(r => ({
+    main_room: mainRoom, check_date: checkDate, student_code: r.studentCode,
+    status: r.status, student_name: r.studentName ?? null, source_class_id: r.classId ?? null,
+  }))
+  const { error } = await supabase
+    .from('pp5_attendance_export')
+    .upsert(rows, { onConflict: 'main_room,check_date,student_code' })
+  if (error) throw error
+}
+
 export async function getSchoolHolidaysFull(academicYear, semester) {
   const { data, error } = await supabase
     .from('school_holidays')

@@ -2,7 +2,7 @@ import {
   saveAttendance, getAttendanceByDate, getClassStudents,
   getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
   upsertHoliday, deleteHolidayByDate, getExternalAttendanceStaging,
-  getExternalAttendanceStagingByRoom,
+  getExternalAttendanceStagingByRoom, exportAttendanceToStudentCare,
   getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
   getReadingScoreColumns, getReadingScores, upsertReadingScore,
   fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
@@ -1411,26 +1411,43 @@ function _openStudentCareInstallModal() {
   wrap.innerHTML = `
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] flex flex-col">
       <div class="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
-        <h3 class="font-bold text-gray-800 text-sm">📥 ติดตั้งปุ่มดึงเช็คชื่อจากระบบดูแล</h3>
+        <h3 class="font-bold text-gray-800 text-sm">🔗 ติดตั้งปุ่มเชื่อมกับระบบดูแล</h3>
         <button id="stc-install-close" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
       </div>
-      <div class="overflow-y-auto flex-1 px-4 py-4 space-y-4 text-sm text-gray-600">
+      <div class="overflow-y-auto flex-1 px-4 py-4 space-y-5 text-sm text-gray-600">
         <div class="text-center space-y-2">
-          <p class="text-xs">ขั้นตอนที่ 1 — <b>ลากปุ่มนี้</b> ไปวางที่แถบบุ๊กมาร์กของเบราว์เซอร์ (ทำครั้งเดียว)</p>
+          <p class="text-xs font-bold text-indigo-600">① ดึงจากระบบดูแล เข้า pp5</p>
+          <p class="text-xs"><b>ลากปุ่มนี้</b> ไปวางที่แถบบุ๊กมาร์กของเบราว์เซอร์ (ทำครั้งเดียว)</p>
           <a
             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold shadow-lg"
             style="cursor:grab"
             href="javascript:(function(){var s=document.createElement('script');s.src='https://ghhambal.github.io/pp5online/js/studentcare-bridge.js?v='+Date.now();document.body.appendChild(s);})();"
             onclick="alert('อย่ากดปุ่มนี้ตรงๆ นะครับ — ให้ลาก (drag) ปุ่มนี้ไปวางที่แถบบุ๊กมาร์กด้านบนของเบราว์เซอร์แทน'); return false;"
           >📥 ส่งเช็คชื่อเข้า pp5</a>
-          <p class="text-[11px] text-gray-400">ไม่เห็นแถบบุ๊กมาร์ก? กด ⌘/Ctrl+Shift+B เพื่อเปิดก่อน</p>
         </div>
-        <ol class="space-y-2 text-xs list-decimal list-inside">
+        <ol class="space-y-1.5 text-xs list-decimal list-inside">
           <li>เปิดหน้าระบบดูแล เลือกห้อง/วันที่ ติ๊กสถานะนักเรียนตามปกติ</li>
           <li>กดปุ่มบุ๊กมาร์กที่ลากไว้ — รอข้อความแจ้งผลมุมขวาล่าง</li>
           <li>ทำซ้ำได้หลายวันตามต้องการ ข้อมูลจะถูกเก็บรอไว้</li>
           <li>กลับมาที่นี่ กดปุ่ม "ระบบดูแล (หลายวัน)" เพื่อเลือกวันที่นำเข้า</li>
         </ol>
+
+        <div class="border-t border-gray-100 pt-4 text-center space-y-2">
+          <p class="text-xs font-bold text-purple-600">② ส่งจาก pp5 กลับเข้าระบบดูแล</p>
+          <p class="text-xs"><b>ลากปุ่มนี้</b> ไปวางที่แถบบุ๊กมาร์กด้วยเช่นกัน (ทำครั้งเดียว)</p>
+          <a
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold shadow-lg"
+            style="cursor:grab"
+            href="javascript:(function(){var s=document.createElement('script');s.src='https://ghhambal.github.io/pp5online/js/studentcare-bridge-push.js?v='+Date.now();document.body.appendChild(s);})();"
+            onclick="alert('อย่ากดปุ่มนี้ตรงๆ นะครับ — ให้ลาก (drag) ปุ่มนี้ไปวางที่แถบบุ๊กมาร์กด้านบนของเบราว์เซอร์แทน'); return false;"
+          >📤 ส่งจาก pp5 เข้าระบบดูแล</a>
+        </div>
+        <ol class="space-y-1.5 text-xs list-decimal list-inside">
+          <li>ในหน้าเช็คชื่อ pp5-online เปิดคาบที่ต้องการ กดปุ่ม "ส่งไประบบดูแล"</li>
+          <li>เปิดหน้าระบบดูแล เลือกห้อง/วันที่เดียวกัน กดปุ่มบุ๊กมาร์กที่ลากไว้</li>
+          <li>สคริปต์จะติ๊กสถานะให้อัตโนมัติ — <b>ตรวจสอบให้ดีก่อนกดปุ่ม "บันทึกข้อมูล" ของระบบดูแลเอง</b> (ไม่บันทึกให้อัตโนมัติ)</li>
+        </ol>
+        <p class="text-[11px] text-gray-400 text-center">ไม่เห็นแถบบุ๊กมาร์ก? กด ⌘/Ctrl+Shift+B เพื่อเปิดก่อน</p>
       </div>
     </div>`
   document.body.appendChild(wrap)
@@ -1576,6 +1593,12 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
                    font-bold flex items-center gap-1.5 hover:bg-indigo-700 active:scale-[0.98] transition shadow-sm"
             title="ดึงข้อมูลเช็คชื่อที่ส่งมาจากระบบดูแล (ต้องกดส่งจากหน้าระบบดูแลก่อน)">
             📥 <span>ระบบดูแล</span>
+          </button>
+          <button id="btn-att-export-studentcare"
+            class="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-xl
+                   font-bold flex items-center gap-1.5 hover:bg-purple-700 active:scale-[0.98] transition shadow-sm"
+            title="ส่งเช็คชื่อของวันนี้ไปรอให้บุ๊กมาร์กฝั่งระบบดูแลติ๊กให้อัตโนมัติ">
+            📤 <span>ส่งไประบบดูแล</span>
           </button>
           ${hasMulti ? `
           <!-- Toggle ทุกคาบ (ปุ่มสี) -->
@@ -2107,6 +2130,38 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       })
       showToast(`นำเข้าข้อมูล ${matched.length} คนจากระบบดูแลแล้ว — ตรวจสอบแล้วกด "บันทึกการเช็คชื่อ" อีกครั้ง`, 'success')
     })
+  })
+
+  // ส่งเช็คชื่อของคาบนี้ (สถานะที่ติ๊กอยู่บนหน้าจอตอนนี้) ออกไปรอให้บุ๊กมาร์กฝั่งระบบดูแลมาติ๊กให้
+  modal.querySelector('#btn-att-export-studentcare')?.addEventListener('click', async () => {
+    const donorTier = window._pp5DonorTierIndex ?? 0
+    if (donorTier < 2) {
+      showToast('ฟีเจอร์นี้สำหรับผู้สนับสนุนระดับ 2 ขึ้นไป — ไปที่หน้าโปรไฟล์เพื่อสนับสนุนระบบได้ครับ', 'warning')
+      return
+    }
+    const roomCounts = {}
+    students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
+    const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+    if (!mainRoom) { showToast('หาห้องเรียนของนักเรียนในคลาสนี้ไม่เจอ', 'error'); return }
+
+    const records = students.map(s => {
+      const row = modal.querySelector(`[data-modal-sid="${s.id}"]`)
+      const active = Array.from(row?.querySelectorAll('.att-modal-status') ?? [])
+        .find(b => !b.className.includes('bg-white'))
+      const status = active?.dataset.status ?? 'present'
+      return { studentCode: s.student_code, status, studentName: s.full_name, classId: classData.id }
+    })
+
+    const btn = modal.querySelector('#btn-att-export-studentcare')
+    btn.disabled = true; btn.textContent = 'กำลังส่ง...'
+    try {
+      await exportAttendanceToStudentCare(mainRoom, date, records)
+      showToast(`ส่งเช็คชื่อ ${records.length} คนไปรอที่ระบบดูแลแล้ว — ไปเปิดหน้าระบบดูแลห้อง ${mainRoom} วันที่ ${date} แล้วกดปุ่มบุ๊กมาร์ก "ส่งจาก pp5" ได้เลย`, 'success')
+    } catch (err) {
+      showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally {
+      btn.disabled = false; btn.innerHTML = '📤 <span>ส่งไประบบดูแล</span>'
+    }
   })
 
   // ─── Close ───────────────────────────────────────────────────────
