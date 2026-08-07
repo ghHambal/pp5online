@@ -106,11 +106,34 @@ async function context() {
   return { event:event || {id:DEFAULT_EVENT,name:'AZIZGAMES'}, cfg }
 }
 
-export async function renderStudentSportsHome(student) {
+const SPORTS_HOME_TABS = [
+  ['overview','🏠','ภาพรวม'],
+  ['shirt','👕','เสื้อกีฬาสี'],
+  ['compete','🏃','แข่งขัน'],
+  ['together','🤝','ร่วมมือ'],
+]
+const SPORTS_SESSION_TYPE_LABEL = { pre_event:'🏕️ เข้าค่ายสี', event_day:'🏆 วันงานจริง' }
+
+// ไล่ช่วงวันที่ (event_date..end_date) เป็น array วันเดี่ยวๆ ทีละวัน — ใช้คู่กับ work_calendar_events
+function _expandCalendarDays(campCalendar) {
+  const days=[]
+  ;(campCalendar||[]).forEach(ev=>{
+    const start=_parseDateOnlyLocal(ev.event_date), end=_parseDateOnlyLocal(ev.end_date||ev.event_date)
+    if(!start)return
+    for(let d=new Date(start); d<=(end||start); d.setDate(d.getDate()+1)) {
+      days.push({date:_dateInputValueLocal(d), label:ev.label})
+    }
+  })
+  return days.sort((a,b)=>a.date<b.date?1:-1)
+}
+function _parseDateOnlyLocal(s){ if(!s)return null; const [y,m,d]=String(s).slice(0,10).split('-').map(Number); return new Date(y,m-1,d) }
+function _dateInputValueLocal(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
+
+export async function renderStudentSportsHome(student, tab='overview') {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดข้อมูลกีฬาสีของฉัน...</div>'
   try {
     const {event,cfg}=await context()
-    const [{data:color},{data:req},{data:regs},{data:awards},{data:myVote},{data:eligibility},{data:duesStatus},{data:shirtPaymentStatus},{data:fundLedger}] = await Promise.all([
+    const [{data:color},{data:req},{data:regs},{data:awards},{data:myVote},{data:eligibility},{data:duesStatus},{data:shirtPaymentStatus},{data:fundLedger},{data:attHistory},{data:campCalendar}] = await Promise.all([
       supabase.from('team_colors').select('*').eq('id',student.team_color_id || '').maybeSingle(),
       supabase.from('sports_shirt_requests').select('*').eq('event_id',event.id).eq('student_id',student.id).maybeSingle(),
       supabase.from('registrations').select('id,jersey_number,sports(name,venue)').eq('event_id',event.id).eq('student_id',student.id),
@@ -120,17 +143,28 @@ export async function renderStudentSportsHome(student) {
       supabase.rpc('get_my_sports_dues_status',{p_event:event.id}).then(r=>({data:r.error?null:r.data})).catch(()=>({data:null})),
       supabase.rpc('get_my_sports_shirt_payment_status',{p_event:event.id}).then(r=>({data:r.error?null:r.data})).catch(()=>({data:null})),
       supabase.rpc('get_team_fund_ledger',{p_event:event.id,p_team_color_id:student.team_color_id||null}).then(r=>({data:r.error?{entries:[],dues_total:0}:(r.data||{entries:[],dues_total:0})})).catch(()=>({data:{entries:[],dues_total:0}})),
+      supabase.rpc('get_my_sports_attendance_history',{p_event:event.id}).then(r=>({data:r.error?[]:(r.data||[])})).catch(()=>({data:[]})),
+      supabase.from('work_calendar_events').select('id,label,event_date,end_date').or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%').then(r=>({data:r.error?[]:(r.data||[])})).catch(()=>({data:[]})),
     ])
     const c=color || {name:student.house_color,hex_color:'#64748b',logo_url:null}
     const myVoteColors=(myVote?.sports_shirt_designs?.sports_shirt_design_colors||[]).filter(x=>x.image_url)
     let myVoteColorPtr=Math.max(0,myVoteColors.findIndex(x=>x.color_name===student.house_color))
     const sizes=cfg?.allowed_sizes || ['S','M','L','XL','2XL','3XL']
     const open=cfg?.shirt_request_enabled && (!cfg.shirt_request_opens_at || new Date(cfg.shirt_request_opens_at)<=new Date()) && (!cfg.shirt_request_closes_at || new Date(cfg.shirt_request_closes_at)>=new Date())
-    el.innerHTML=`<div class="max-w-5xl mx-auto space-y-5 pb-28">
-      <section id="sports-home-banner" class="rounded-3xl p-6 text-white shadow-xl overflow-hidden relative cursor-pointer hover:brightness-110 active:scale-[0.99] transition" style="background:linear-gradient(135deg,${esc(c.hex_color)},#111827)" title="คลิกเพื่อดูข้อมูลสีของฉันแบบเต็ม">
+
+    const attByDate=Object.fromEntries((attHistory||[]).map(r=>[r.session_date,r]))
+    const todayStr=todayLocal()
+    const calendarDays=_expandCalendarDays(campCalendar).filter(d=>d.date<=todayStr)
+    const attendedCount=calendarDays.filter(d=>attByDate[d.date]).length
+    const attendancePct=calendarDays.length ? Math.round(attendedCount/calendarDays.length*100) : null
+
+    const banner=`<section id="sports-home-banner" class="rounded-3xl p-6 text-white shadow-xl overflow-hidden relative cursor-pointer hover:brightness-110 active:scale-[0.99] transition" style="background:linear-gradient(135deg,${esc(c.hex_color)},#111827)" title="คลิกเพื่อดูข้อมูลสีของฉันแบบเต็ม">
         <div class="flex items-center gap-4 relative z-10">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-20 h-20 rounded-full object-cover bg-white/90 p-1">`:'<div class="w-20 h-20 rounded-full bg-white/20 grid place-items-center text-4xl">🏆</div>'}<div class="flex-1 min-w-0"><p class="text-xs text-white/70">กีฬาสีของฉัน</p><h1 class="text-2xl font-extrabold">ทีมสี${esc(c.name||'—')}</h1><p class="text-sm text-white/80">${esc(student.full_name)} · ${esc(student.main_room)}</p>${c.motto?`<p class="text-xs mt-1">“${esc(c.motto)}”</p>`:''}</div><div class="flex-shrink-0 flex flex-col items-center gap-1 text-white/90"><span class="text-2xl">›</span><span class="text-[10px] font-bold whitespace-nowrap">ดูสีของฉัน</span></div></div>
-      </section>
-      <div class="grid md:grid-cols-2 gap-4">
+      </section>`
+
+    let content=''
+    if(tab==='shirt') {
+      content=`<div class="grid md:grid-cols-2 gap-4">
         <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between"><h2 class="font-bold">👕 ไซซ์เสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs ${statusClass(req?.status)}">${badge(req?.status)}</span></div><p class="text-3xl font-black mt-3">${esc(req?.confirmed_size || req?.requested_size || student.sports_shirt_size || '—')}</p><p class="text-xs text-gray-500 mt-1">${req?.confirmed_size?'ไซซ์ที่ครูที่ปรึกษายืนยัน':'ไซซ์ที่จำนง'}</p>${open && !req?.confirmed_size?`<div class="flex gap-2 mt-4"><select id="stu-shirt-size" class="flex-1 border rounded-xl px-3 py-2">${sizes.map(x=>`<option ${req?.requested_size===x?'selected':''}>${esc(x)}</option>`).join('')}</select><button id="stu-shirt-save" class="px-4 rounded-xl bg-indigo-600 text-white font-semibold">บันทึก</button></div>`:`<p class="text-xs mt-4 text-gray-400">${open?'ข้อมูลได้รับการยืนยันแล้ว':'ขณะนี้ยังไม่เปิดรับจำนงไซซ์เสื้อ'}</p>`}</section>
         <section class="bg-white rounded-2xl border p-5">
           <h2 class="font-bold">🗳️ โหวตแบบเสื้อกีฬาสี</h2>
@@ -147,9 +181,31 @@ export async function renderStudentSportsHome(student) {
           <button id="open-shirt-vote" class="w-full mt-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">🗳️ เปิดหน้าโหวต</button>
         </section>
       </div>
-      <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">⚽ รายการแข่งขันของฉัน</h2>${regs?.length?`<div class="space-y-2">${regs.map(r=>`<div class="p-3 bg-gray-50 rounded-xl flex justify-between"><div><b>${esc(r.sports?.name)}</b><p class="text-xs text-gray-500">${esc(r.sports?.venue||'ยังไม่ระบุสถานที่')}</p></div><span class="text-xs text-indigo-600">${r.jersey_number?`หมายเลข ${esc(r.jersey_number)}`:'ลงทะเบียนแล้ว'}</span></div>`).join('')}</div>`:'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีรายการที่สต๊าฟลงทะเบียนให้</p>'}</section>
+      <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between items-start gap-3"><h2 class="font-bold">👕 ค่าเสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs font-bold ${shirtPaymentStatus?.paid?'bg-emerald-100 text-emerald-700':Number(shirtPaymentStatus?.amount||0)>0?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}">${shirtPaymentStatus?.paid?'ชำระแล้ว':Number(shirtPaymentStatus?.amount||0)>0?'ยังไม่ชำระ':'รอประกาศราคา'}</span></div>${shirtPaymentStatus?.paid?`<p class="text-3xl font-black mt-3">${Number(shirtPaymentStatus.amount||0).toLocaleString('th-TH')} บาท</p><p class="text-xs text-gray-500 mt-1">ชำระเมื่อ ${shirtPaymentStatus.paid_at?new Date(shirtPaymentStatus.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—'}</p><p class="text-xs text-gray-500">ผู้รับชำระ: ${esc(shirtPaymentStatus.collected_by_name||'ไม่ระบุ')}</p>`:Number(shirtPaymentStatus?.amount||0)>0?`<p class="text-3xl font-black text-red-600 mt-3">${Number(shirtPaymentStatus.amount).toLocaleString('th-TH')} บาท</p><p class="text-sm text-gray-500 mt-2">กรุณาติดต่อครูที่ปรึกษาศาสนาเพื่อชำระค่าเสื้อ</p>`:'<p class="text-sm text-gray-400 mt-3">ระบบยังไม่เปิดรับชำระค่าเสื้อกีฬาสี</p>'}</section>`
+    } else if(tab==='compete') {
+      content=`<section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">⚽ รายการแข่งขันของฉัน</h2>${regs?.length?`<div class="space-y-2">${regs.map(r=>`<div class="p-3 bg-gray-50 rounded-xl flex justify-between"><div><b>${esc(r.sports?.name)}</b><p class="text-xs text-gray-500">${esc(r.sports?.venue||'ยังไม่ระบุสถานที่')}</p></div><span class="text-xs text-indigo-600">${r.jersey_number?`หมายเลข ${esc(r.jersey_number)}`:'ลงทะเบียนแล้ว'}</span></div>`).join('')}</div>`:'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีรายการที่สต๊าฟลงทะเบียนให้</p>'}</section>
+      <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">🏅 ผลงานและเกียรติบัตร</h2>${awards?.length?awards.map(a=>`<div class="p-3 rounded-xl bg-amber-50"><b>${esc(a.sports?.name||'รางวัลนักกีฬาดีเด่น')}</b><p class="text-sm">${esc(a.note)}</p></div>`).join(''):'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีเกียรติบัตรหรือรางวัล</p>'}</section>
+      <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-3">🎖️ เกียรติบัตรกีฬาสี</h2>${!eligibility ? '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีข้อมูล</p>' : eligibility.eligible ? (
+        eligibility.certificate_url
+          ? `<div class="text-center py-4"><p class="text-emerald-600 font-bold mb-3">🎉 คุณผ่านเกณฑ์รับเกียรติบัตรแล้ว!</p><button id="view-cert" class="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm">🎖️ ดูเกียรติบัตรของฉัน</button></div>`
+          : `<p class="text-emerald-600 font-bold text-center py-4">🎉 คุณผ่านเกณฑ์รับเกียรติบัตรแล้ว! รอแอดมินออกเกียรติบัตรให้เร็วๆ นี้</p>`
+      ) : `<p class="text-xs text-gray-500 mb-3">เงื่อนไขรับเกียรติบัตร:</p><div class="space-y-2 text-sm">
+        <div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.attendance_pct>=eligibility.threshold_pct?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.attendance_pct>=eligibility.threshold_pct?'✅':'❌'} เช็คชื่อเข้าร่วมกิจกรรม ≥ ${esc(eligibility.threshold_pct)}%</span><b>${esc(eligibility.attendance_pct)}% (${esc(eligibility.present_days)}/${esc(eligibility.total_days)} วัน)</b></div>
+        <div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.dues_paid?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.dues_paid?'✅':'❌'} ชำระค่าบำรุงสีแล้ว</span></div>
+        ${eligibility.is_athlete?`<div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.roll_call_complete?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.roll_call_complete?'✅':'❌'} รายงานตัวนักกีฬาครบทุกครั้ง</span></div>`:''}
+      </div>`}</section>`
+    } else if(tab==='together') {
+      content=`<section class="bg-white rounded-2xl border p-5">
+        <div class="flex justify-between items-center mb-4"><h2 class="font-bold">✅ ประวัติเช็คชื่อเข้าร่วมสี</h2>${attendancePct!==null?`<span class="px-3 py-1 rounded-full text-xs font-bold ${attendancePct>=80?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${attendancePct}% (${attendedCount}/${calendarDays.length} วัน)</span>`:''}</div>
+        ${calendarDays.length?`<div class="space-y-2">${calendarDays.map(d=>{
+          const a=attByDate[d.date]
+          const dateLabel=new Date(d.date).toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short',year:'numeric'})
+          return a
+            ? `<div class="p-3 bg-emerald-50 rounded-xl flex items-center justify-between gap-3"><div><p class="text-sm font-bold text-emerald-700">✅ มา — ${esc(dateLabel)}</p><p class="text-xs text-gray-500 mt-0.5">${esc(SPORTS_SESSION_TYPE_LABEL[a.session_type]||a.session_type||'')} · เช็คเมื่อ ${a.scanned_at?new Date(a.scanned_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}):'—'} น. · โดย ${esc(a.scanned_by_name)}</p></div></div>`
+            : `<div class="p-3 bg-red-50 rounded-xl flex items-center justify-between gap-3"><p class="text-sm font-bold text-red-600">❌ ขาด — ${esc(dateLabel)}</p></div>`
+        }).join('')}</div>`:'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีวันเข้าสี/กีฬาสีในปฏิทินปฏิบัติงาน</p>'}
+      </section>
       <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between items-start"><h2 class="font-bold">💰 ค่าบำรุงสี</h2><span class="px-2 py-1 rounded-full text-xs font-bold ${duesStatus?.paid?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-700'}">${duesStatus?.paid?'จ่ายแล้ว':'ยังไม่จ่าย'}</span></div>${duesStatus?.paid?`<p class="text-3xl font-black mt-3">${Number(duesStatus.amount||0).toLocaleString('th-TH')} บาท</p><p class="text-xs text-gray-500 mt-1">ชำระเมื่อ ${duesStatus.paid_at?new Date(duesStatus.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—'}</p><p class="text-xs text-gray-500">ผู้รับชำระ: ${esc(duesStatus.collected_by_name||'ไม่ระบุ')}</p>`:`<p class="text-sm text-gray-400 mt-3">ยังไม่ได้ชำระค่าบำรุงสี ${Number(duesStatus?.amount||30).toLocaleString('th-TH')} บาท — ติดต่อพ่อสี/แม่สีหรือสต๊าฟประจำสีเพื่อชำระ</p>`}</section>
-      <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between items-start gap-3"><h2 class="font-bold">👕 ค่าเสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs font-bold ${shirtPaymentStatus?.paid?'bg-emerald-100 text-emerald-700':Number(shirtPaymentStatus?.amount||0)>0?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}">${shirtPaymentStatus?.paid?'ชำระแล้ว':Number(shirtPaymentStatus?.amount||0)>0?'ยังไม่ชำระ':'รอประกาศราคา'}</span></div>${shirtPaymentStatus?.paid?`<p class="text-3xl font-black mt-3">${Number(shirtPaymentStatus.amount||0).toLocaleString('th-TH')} บาท</p><p class="text-xs text-gray-500 mt-1">ชำระเมื่อ ${shirtPaymentStatus.paid_at?new Date(shirtPaymentStatus.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'—'}</p><p class="text-xs text-gray-500">ผู้รับชำระ: ${esc(shirtPaymentStatus.collected_by_name||'ไม่ระบุ')}</p>`:Number(shirtPaymentStatus?.amount||0)>0?`<p class="text-3xl font-black text-red-600 mt-3">${Number(shirtPaymentStatus.amount).toLocaleString('th-TH')} บาท</p><p class="text-sm text-gray-500 mt-2">กรุณาติดต่อครูที่ปรึกษาศาสนาเพื่อชำระค่าเสื้อ</p>`:'<p class="text-sm text-gray-400 mt-3">ระบบยังไม่เปิดรับชำระค่าเสื้อกีฬาสี</p>'}</section>
       <section class="bg-white rounded-2xl border p-5">
         <div class="flex justify-between items-start mb-3"><h2 class="font-bold">📒 บัญชีเงินสี</h2><span class="text-xs text-gray-400">เปิดเผยเพื่อความโปร่งใส</span></div>
         ${(() => {
@@ -168,21 +224,24 @@ export async function renderStudentSportsHome(student) {
           </div>
           <button id="open-fund-ledger" class="w-full py-2 rounded-xl border border-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-50">ดูรายการละเอียดทั้งหมด →</button>`
         })()}
-      </section>
-      <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-4">🏅 ผลงานและเกียรติบัตร</h2>${awards?.length?awards.map(a=>`<div class="p-3 rounded-xl bg-amber-50"><b>${esc(a.sports?.name||'รางวัลนักกีฬาดีเด่น')}</b><p class="text-sm">${esc(a.note)}</p></div>`).join(''):'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีเกียรติบัตรหรือรางวัล</p>'}</section>
-      <section class="bg-white rounded-2xl border p-5"><h2 class="font-bold mb-3">🎖️ เกียรติบัตรกีฬาสี</h2>${!eligibility ? '<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีข้อมูล</p>' : eligibility.eligible ? (
-        eligibility.certificate_url
-          ? `<div class="text-center py-4"><p class="text-emerald-600 font-bold mb-3">🎉 คุณผ่านเกณฑ์รับเกียรติบัตรแล้ว!</p><button id="view-cert" class="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm">🎖️ ดูเกียรติบัตรของฉัน</button></div>`
-          : `<p class="text-emerald-600 font-bold text-center py-4">🎉 คุณผ่านเกณฑ์รับเกียรติบัตรแล้ว! รอแอดมินออกเกียรติบัตรให้เร็วๆ นี้</p>`
-      ) : `<p class="text-xs text-gray-500 mb-3">เงื่อนไขรับเกียรติบัตร:</p><div class="space-y-2 text-sm">
-        <div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.attendance_pct>=eligibility.threshold_pct?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.attendance_pct>=eligibility.threshold_pct?'✅':'❌'} เช็คชื่อเข้าร่วมกิจกรรม ≥ ${esc(eligibility.threshold_pct)}%</span><b>${esc(eligibility.attendance_pct)}% (${esc(eligibility.present_days)}/${esc(eligibility.total_days)} วัน)</b></div>
-        <div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.dues_paid?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.dues_paid?'✅':'❌'} ชำระค่าบำรุงสีแล้ว</span></div>
-        ${eligibility.is_athlete?`<div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.roll_call_complete?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.roll_call_complete?'✅':'❌'} รายงานตัวนักกีฬาครบทุกครั้ง</span></div>`:''}
-      </div>`}</section>
+      </section>`
+    } else {
+      // overview
+      const shirtSize=req?.confirmed_size || req?.requested_size || student.sports_shirt_size
+      content=`<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button data-sports-quick-tab="shirt" class="bg-white rounded-2xl border p-4 text-left hover:border-indigo-300 transition"><p class="text-xs text-gray-500 font-bold">👕 เสื้อกีฬาสี</p><p class="text-xl font-black mt-1">${esc(shirtSize||'—')}</p><p class="text-[11px] text-gray-400 mt-0.5">ไซซ์เสื้อ</p></button>
+        <button data-sports-quick-tab="compete" class="bg-white rounded-2xl border p-4 text-left hover:border-indigo-300 transition"><p class="text-xs text-gray-500 font-bold">🏃 แข่งขัน</p><p class="text-xl font-black mt-1">${regs?.length||0}</p><p class="text-[11px] text-gray-400 mt-0.5">รายการที่ลงทะเบียน</p></button>
+        <button data-sports-quick-tab="together" class="bg-white rounded-2xl border p-4 text-left hover:border-indigo-300 transition"><p class="text-xs text-gray-500 font-bold">✅ เช็คชื่อ</p><p class="text-xl font-black mt-1">${attendancePct!==null?attendancePct+'%':'—'}</p><p class="text-[11px] text-gray-400 mt-0.5">เข้าร่วมกิจกรรม</p></button>
+        <button data-sports-quick-tab="together" class="bg-white rounded-2xl border p-4 text-left hover:border-indigo-300 transition"><p class="text-xs text-gray-500 font-bold">💰 ค่าบำรุงสี</p><p class="text-xl font-black mt-1">${duesStatus?.paid?'จ่ายแล้ว':'ยังไม่จ่าย'}</p><p class="text-[11px] text-gray-400 mt-0.5">สถานะการชำระ</p></button>
+      </div>
       <button id="open-my-color" class="w-full py-4 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-base">🎨 สีของฉัน<span class="font-normal text-sm opacity-80"> — ${esc(student.house_color||'')}</span></button>
       <button id="open-gallery" class="w-full py-4 rounded-2xl bg-white border-2 border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-base">📸 ภาพกิจกรรมกีฬาสี</button>
-      <button id="open-full-sports" class="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">🏆 ระบบกีฬาสีหลัก (ภาพรวมทุกสี)</button>
-    </div>`
+      <button id="open-full-sports" class="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">🏆 ระบบกีฬาสีหลัก (ภาพรวมทุกสี)</button>`
+    }
+
+    el.innerHTML=`<div class="max-w-5xl mx-auto space-y-5 pb-28">${banner}<div class="space-y-4">${content}</div></div>`
+
+    el.querySelectorAll('[data-sports-quick-tab]').forEach(b=>b.addEventListener('click',()=>window._stuNavSportsTab?.(b.dataset.sportsQuickTab)))
     el.querySelector('#open-my-color')?.addEventListener('click',()=>openMyColorAsStudent(student))
     el.querySelector('#sports-home-banner')?.addEventListener('click',()=>openMyColorAsStudent(student))
     el.querySelector('#open-full-sports')?.addEventListener('click',()=>openAzizGamesModal())
@@ -204,7 +263,7 @@ export async function renderStudentSportsHome(student) {
         btn.className=`w-7 h-7 rounded-full border-2 ${i===myVoteColorPtr?'border-indigo-500 scale-110':'border-gray-200'} transition`
       })
     }))
-    el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');renderStudentSportsHome(student)})
+    el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');renderStudentSportsHome(student,tab)})
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 

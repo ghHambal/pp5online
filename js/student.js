@@ -26,6 +26,7 @@ let _student = null
 let _activeClassId = null
 let _activeSubjectTab = 'todo'
 let _activeScoreTab = 'life'
+let _activeSportsTab = 'overview'
 let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
 let _futsalRegistered = false
 
@@ -216,7 +217,7 @@ const ROUTES = {
   overview: () => renderStudentOverview(_student),
   subjects: () => renderStudentSubjects(_student),
   scores:   () => renderStudentMyScores(_student, _activeScoreTab),
-  sports:   () => renderStudentSportsHome(_student),
+  sports:   () => renderStudentSportsHome(_student, _activeSportsTab),
   requests: () => renderStudentRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
   prayer_scanner: () => renderStudentPrayerScanner(_student),
@@ -277,6 +278,19 @@ function _renderScoreNav(activeTab = 'life') {
   _setBottomNavActive(activeTab)
 }
 
+function _renderSportsNav(activeTab = 'overview') {
+  const nav = document.getElementById('stu-bottom-nav')
+  if (!nav) return
+  nav.innerHTML = [
+    _navButtonHTML('overview', '🏠', 'ภาพรวม', 'sports'),
+    _navButtonHTML('shirt', '👕', 'เสื้อกีฬาสี', 'sports'),
+    _navButtonHTML('compete', '🏃', 'แข่งขัน', 'sports'),
+    _navButtonHTML('together', '🤝', 'ร่วมมือ', 'sports'),
+  ].join('')
+  _bindNav()
+  _setBottomNavActive(activeTab)
+}
+
 function _setBottomNavActive(activeView) {
   document.querySelectorAll('.stu-nav-btn').forEach(btn => {
     const isActive = btn.dataset.view === activeView
@@ -309,6 +323,12 @@ function navigate(view) {
     ROUTES.scores()
     return
   }
+  if (view === 'sports') {
+    _activeSportsTab = 'overview'
+    _renderSportsNav(_activeSportsTab)
+    ROUTES.sports()
+    return
+  }
   _renderMainNav(view)
   const fn = ROUTES[view]
   if (fn) fn()
@@ -333,6 +353,13 @@ function _bindNav() {
           _renderScoreNav(_activeScoreTab)
           renderStudentMyScores(_student, _activeScoreTab)
         }
+        return
+      }
+      if (btn.dataset.mode === 'sports') {
+        // ต่างจากโหมด subject/score — แท็บ "ภาพรวม" ที่นี่คือภาพรวมของหน้ากีฬาสีเอง ไม่ใช่กลับหน้าแรกของแอป
+        _activeSportsTab = btn.dataset.view
+        _renderSportsNav(_activeSportsTab)
+        renderStudentSportsHome(_student, _activeSportsTab)
         return
       }
       navigate(btn.dataset.view)
@@ -361,6 +388,12 @@ window._stuOpenClass = (classId) => {
 
 window._stuOpenClassTab = (classId, tab = 'todo') => {
   openClassTab(classId, tab)
+}
+
+window._stuNavSportsTab = (tab) => {
+  _activeSportsTab = tab
+  _renderSportsNav(_activeSportsTab)
+  renderStudentSportsHome(_student, _activeSportsTab)
 }
 
 window._stuOpenRequest = (classId) => {
