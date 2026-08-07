@@ -1499,6 +1499,9 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     const canDues=!studentView&&perms.dues===true
     // เหมือน dues — เกี่ยวกับเงินจริง (รายจ่ายของสี) ต้องเปิดชัดเจนเท่านั้น ไม่ default เปิด
     const canExpenses=!studentView&&perms.expenses===true
+    // แต่งตั้ง/มอบหมายสตาฟ (สิทธิ์ทั่วไป + สิทธิ์รายการแข่งขัน) — เดิมให้แค่ครูประจำสี (lead_teacher)
+    // เท่านั้น ผู้ใช้ขอให้หัวหน้าสตาฟนักเรียน (staff_lead) ทำแทนได้ด้วย เผื่อพ่อสี/แม่สีมอบหมายให้ช่วย
+    const canManageStaff=isLead||m.role==='staff_lead'
     const theme=localStorage.getItem('sports_team_theme')||'dark'; wrap.dataset.theme=theme
     const [{event,cfg},{data:pub},{data:headerRows}] = await Promise.all([context(),supabase.from('settings').select('value').eq('key','public_buttons').maybeSingle(),supabase.from('settings').select('key,value').in('key',['school_name','school_name_2'])])
     const publicButtons=pub?.value&&typeof pub.value==='object'?pub.value:{}
@@ -1545,7 +1548,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       ['attendance','เช็คชื่อ','📷',canAttendance],
       ['dues','ค่าบำรุงสี','💰',canDues],
       ['ledger','บัญชีสี','📒',true],
-      ['permissions','สิทธิ์ประจำสี','🛡️',isLead],
+      ['permissions','สิทธิ์ประจำสี','🛡️',canManageStaff],
       ['shirts','ไซซ์เสื้อ','👕',canShirt],
       ['work','งาน/ประกาศ','📋',canTasks||canAnn],
       ['schedule','ตาราง/ผล','🗓️',true],
@@ -1640,7 +1643,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     // เหรียญแยกตามรายการแข่งขัน (medal_awards query ข้างบนกรอง team_color_id ไว้แล้ว) เรียงทอง→เงิน→ทองแดง
     const medalRankOrder={gold:0,silver:1,bronze:2}
     const medalBreakdown=[...(medalAwards||[])].sort((a,b)=>(medalRankOrder[a.medal_type]??3)-(medalRankOrder[b.medal_type]??3)).map(a=>({sport:a.sports?.name||'ไม่ระบุรายการ',medalType:a.medal_type,points:Number(a.points)||0}))
-    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,isLead,theme,studentView}
+    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,isLead,canManageStaff,theme,studentView}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     // จัดกลุ่มแท็บสำหรับแถบเมนูด้านล่างบนมือถือ (บนเดสก์ท็อปยังใช้แถบเดิมด้านบนเหมือนเดิม)
     // กดกลุ่มที่มีแท็บเดียว (เช่น ภาพรวม) ไปหน้านั้นทันที ส่วนกลุ่มที่มีหลายแท็บ ปุ่มด้านล่างจะ
@@ -1688,7 +1691,7 @@ const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bo
 // (ไม่แสดงป้ายเลยดีกว่าแสดงป้าย "แดง/ยังไม่จ่าย" มั่วๆ ทั้งที่จริงๆ แค่ไม่มีสิทธิ์ดึงข้อมูลมา)
 const memberCard = (s,duesPaidIds) => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0 flex-1"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div>${duesPaidIds?(duesPaidIds.has(s.id)?'<span class="status-pill status-done flex-shrink-0">💰 จ่ายแล้ว</span>':'<span class="status-pill status-bad flex-shrink-0">💰 ยังไม่จ่าย</span>'):''}</div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,isLead,studentView}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,isLead,canManageStaff,studentView}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const kpis=[
@@ -1761,9 +1764,9 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   if(tab==='athletes'){
     // มอบหมายรายการแข่งขันให้สตาฟรับผิดชอบเฉพาะคน — พ่อสี/แม่สี/ครูประจำสี (lead_teacher) หรือ
     // หัวหน้าสตาฟนักเรียน (staff_lead) เป็นคนมอบหมายได้ คนอื่นเห็นได้แต่แก้ไม่ได้
-    renderCompetitionAssignmentSection(wrap,{event,c,m,competitions,canManage:isLead||m.role==='staff_lead'})
+    renderCompetitionAssignmentSection(wrap,{event,c,m,competitions,canManage:canManageStaff})
   }
-  if(tab==='permissions'&&isLead){
+  if(tab==='permissions'&&canManageStaff){
     renderTeamMembershipAdmin(wrap,event,[c],{isAdmin:false,myTeamMemberships:[m]})
     body.querySelector('#cert-threshold-save')?.addEventListener('click',async()=>{
       const raw=body.querySelector('#cert-threshold-override').value.trim()
