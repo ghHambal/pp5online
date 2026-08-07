@@ -25,6 +25,7 @@ export default defineConfig({
         sportsShirtMonitor: resolve(__dirname, 'sports-shirt-monitor.html'),
         sportsFundMonitor: resolve(__dirname, 'sports-fund-monitor.html'),
         sportsCheckin: resolve(__dirname, 'sports-checkin.html'),
+        studentcareInstall: resolve(__dirname, 'studentcare-install.html'),
       },
     },
     chunkSizeWarningLimit: 600,

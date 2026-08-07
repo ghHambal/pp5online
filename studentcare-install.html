@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ.5 ออนไลน์ — ติดตั้งปุ่มดึงเช็คชื่อจากระบบดูแล</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css?v=202607061625" />
+  <style>
+    body { font-family: 'Sarabun', sans-serif; }
+    .bm-btn { cursor: grab; user-select: none; }
+    .bm-btn:active { cursor: grabbing; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <main class="min-h-screen flex flex-col items-center py-10 px-4">
+    <div class="max-w-lg w-full space-y-6">
+
+      <div class="text-center">
+        <span class="text-4xl">📥</span>
+        <h1 class="text-lg sm:text-xl font-extrabold text-pink-700 mt-2">ติดตั้งปุ่มดึงเช็คชื่อจากระบบดูแล</h1>
+        <p class="text-xs text-slate-500 mt-1">สำหรับครูที่ได้รับสิทธิ์ใช้งานฟีเจอร์นี้ (ผู้สนับสนุนระดับ 2 ขึ้นไป) — ติดตั้งครั้งเดียว ใช้ได้ตลอด</p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-center space-y-4">
+        <p class="text-sm text-slate-600">ขั้นตอนที่ 1 — <b>ลากปุ่มด้านล่างนี้</b> ไปวางที่แถบบุ๊กมาร์กของเบราว์เซอร์ (แถบที่อยู่ใต้ช่อง URL)</p>
+        <a
+          class="bm-btn inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold shadow-lg"
+          href="javascript:(function(){var s=document.createElement('script');s.src='https://ghhambal.github.io/pp5online/js/studentcare-bridge.js?v='+Date.now();document.body.appendChild(s);})();"
+          onclick="alert('อย่ากดปุ่มนี้ตรงๆ นะครับ — ให้ลาก (drag) ปุ่มนี้ไปวางที่แถบบุ๊กมาร์กด้านบนของเบราว์เซอร์แทน'); return false;"
+        >
+          📥 ส่งเช็คชื่อเข้า pp5
+        </a>
+        <p class="text-[11px] text-slate-400">ถ้าไม่เห็นแถบบุ๊กมาร์ก: กด <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">⌘/Ctrl</kbd> + <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">Shift</kbd> + <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">B</kbd> เพื่อเปิดแถบบุ๊กมาร์กก่อน</p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+        <p class="text-sm font-bold text-slate-700">ขั้นตอนที่ 2 — วิธีใช้งาน</p>
+        <ol class="space-y-3 text-sm text-slate-600 list-decimal list-inside">
+          <li>เปิดหน้า <a href="https://azizstan.net/StudentCareV4/STA" target="_blank" rel="noopener noreferrer" class="text-pink-600 underline">azizstan.net/StudentCareV4/STA</a> เลือกห้องเรียน วันที่ และติ๊กสถานะนักเรียนตามปกติ (มา/สาย/ลา/ขาด)</li>
+          <li>กดปุ่มบุ๊กมาร์ก <b>"📥 ส่งเช็คชื่อเข้า pp5"</b> ที่ลากไว้เมื่อกี้ — จะมีข้อความแจ้งผลที่มุมขวาล่างของหน้าจอว่าส่งสำเร็จกี่คน</li>
+          <li>ทำซ้ำขั้นตอน 1-2 นี้กับวันอื่นๆ ที่ต้องการได้เรื่อยๆ (เปลี่ยนวันที่ในระบบดูแล แล้วกดบุ๊กมาร์กอีกครั้ง) ข้อมูลแต่ละวันจะถูกเก็บรอไว้</li>
+          <li>ไปที่หน้า <b>เช็คชื่อ</b> ในระบบ ปพ.5 ออนไลน์ เลือกห้องเรียน/วิชาของคุณ กดปุ่ม <b>"📥 ระบบดูแล (หลายวัน)"</b> ที่แถบด้านบน จะเห็นรายการทุกวันที่ส่งไว้ ให้เลือกวันที่ต้องการแล้วกดบันทึกได้ทีเดียว (ตรวจสอบก่อนกดบันทึกจริงเสมอ)</li>
+        </ol>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-700">
+        💡 ไม่ต้องรีบนำเข้าทันทีทุกวัน — กดส่งจากระบบดูแลสะสมไว้ได้หลายวัน แล้วค่อยไปกด "ระบบดูแล (หลายวัน)" ในหน้าเช็คชื่อครั้งเดียวเพื่อดึงเข้าทั้งหมดพร้อมกัน
+      </div>
+
+    </div>
+  </main>
+</body>
+</html>

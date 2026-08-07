@@ -2,6 +2,7 @@ import {
   saveAttendance, getAttendanceByDate, getClassStudents,
   getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
   upsertHoliday, deleteHolidayByDate, getExternalAttendanceStaging,
+  getExternalAttendanceStagingByRoom,
   getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
   getReadingScoreColumns, getReadingScores, upsertReadingScore,
   fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
@@ -159,6 +160,13 @@ export async function renderAttendanceGrid(teacher, classData) {
                    hover:bg-amber-100 transition flex items-center gap-1">
             🚪 <span class="hidden sm:inline">โควต้า</span> <span id="leave-quota-label">${Object.keys(activeLeaveMap).length}/${leaveMaxActive}</span>
           </button>
+          ${(window._pp5DonorTierIndex ?? 0) >= 2 ? `
+          <button id="btn-att-import-studentcare-bulk"
+            class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-medium
+                   hover:bg-indigo-700 transition flex items-center gap-1"
+            title="นำเข้าเช็คชื่อจากระบบดูแลทีเดียวหลายวัน (ต้องกดส่งจากหน้าระบบดูแลของแต่ละวันมาก่อน)">
+            📥 <span class="hidden sm:inline">ระบบดูแล (หลายวัน)</span>
+          </button>` : ''}
         </div>
       </div>
       ${holAttRows.length > 0 ? `
@@ -290,6 +298,62 @@ export async function renderAttendanceGrid(teacher, classData) {
     }
 
     document.getElementById('btn-leave-quota')?.addEventListener('click', openLeaveQuotaModal)
+
+    // นำเข้าเช็คชื่อจากระบบดูแลทีเดียวหลายวัน (ต้องกดส่งจากหน้าระบบดูแลของแต่ละวันมาก่อนแล้ว)
+    document.getElementById('btn-att-import-studentcare-bulk')?.addEventListener('click', async () => {
+      const roomCounts = {}
+      students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
+      const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+      if (!mainRoom) { showToast('หาห้องเรียนหลักของนักเรียนกลุ่มนี้ไม่เจอ', 'error'); return }
+
+      let staged
+      try {
+        staged = await getExternalAttendanceStagingByRoom(mainRoom)
+      } catch (err) {
+        showToast('ดึงข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        return
+      }
+      if (!staged.length) {
+        showToast(`ยังไม่มีข้อมูลจากระบบดูแลสำหรับห้อง ${mainRoom} เลย — ไปกดส่งข้อมูลจากหน้าระบบดูแลก่อน`, 'warning')
+        return
+      }
+
+      const byDate = {}
+      staged.forEach(r => { (byDate[r.check_date] ??= []).push(r) })
+
+      const dateGroups = Object.keys(byDate).sort().map(date => {
+        const sess = sessions.find(s => s.ds === date)
+        const byCode = Object.fromEntries(byDate[date].map(r => [r.student_code, r]))
+        const matched = students.map(s => ({ student: s, staged: byCode[s.student_code] })).filter(x => x.staged)
+        const hasExisting = sess ? matched.some(({ student }) => attMap[student.id]?.[sess.n] != null) : false
+        return { date, n: sess?.n ?? null, matched, isHoliday: holidaySet.has(date), hasExisting }
+      }).filter(g => g.matched.length > 0)
+
+      if (!dateGroups.length) {
+        showToast('มีข้อมูลจากระบบดูแล แต่ไม่ตรงกับรหัสนักเรียนในห้องนี้เลยสักคน', 'error')
+        return
+      }
+
+      _openStudentCareBulkImportPreview(dateGroups, async (selectedGroups) => {
+        const allRecords = []
+        selectedGroups.forEach(g => {
+          g.matched.forEach(({ student, staged: st }) => {
+            allRecords.push({
+              class_id: saveClassId, student_id: student.id,
+              session_number: saveSessN(g.n), check_date: g.date, status: st.status,
+            })
+          })
+        })
+        if (!allRecords.length) return
+        try {
+          await saveAttendance(allRecords)
+          showToast(`นำเข้าและบันทึกสำเร็จ ${allRecords.length} รายการ (${selectedGroups.length} วัน) ✅`, 'success')
+          renderAttendanceGrid(teacher, classData)
+        } catch (err) {
+          showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        }
+      })
+    })
 
     // คลิกป้าย "ครบสิทธิ์" ของนักเรียนเพื่อเปิดโมดัลปรับโควต้า
     wrap.addEventListener('click', e => {
@@ -1359,6 +1423,48 @@ function _openStudentCareImportPreview(matched, onApply) {
   wrap.querySelector('#stc-preview-cancel').onclick = close
   wrap.onclick = e => { if (e.target === wrap) close() }
   wrap.querySelector('#stc-preview-apply').onclick = () => { onApply(); close() }
+}
+
+// พรีวิวข้อมูลจากระบบดูแลหลายวันพร้อมกันก่อนบันทึกจริง — เลือกได้เป็นรายวัน เตือนวันที่ไม่มีคาบ/เป็นวันหยุด/มีข้อมูลอยู่แล้ว
+function _openStudentCareBulkImportPreview(dateGroups, onApply) {
+  document.getElementById('stc-bulk-import-preview')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'stc-bulk-import-preview'
+  wrap.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4'
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
+        <h3 class="font-bold text-gray-800 text-sm">📥 ข้อมูลจากระบบดูแล (${dateGroups.length} วัน)</h3>
+        <button id="stc-bulk-preview-close" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+      </div>
+      <p class="px-4 pt-2 text-xs text-gray-400">เลือกวันที่ต้องการนำเข้า — ตรวจสอบให้ดีก่อนกดบันทึก ข้อมูลของวันที่มีอยู่แล้วจะถูกเขียนทับ</p>
+      <div class="overflow-y-auto flex-1 px-4 py-2 space-y-1.5 mt-1">
+        ${dateGroups.map((g, i) => `
+          <label class="flex items-center gap-2 py-2 px-2 rounded-xl border ${g.n === null ? 'border-gray-100 opacity-50' : 'border-gray-100 hover:bg-gray-50'} text-xs cursor-pointer">
+            <input type="checkbox" class="stc-bulk-date-cb" data-idx="${i}" ${g.n === null ? 'disabled' : 'checked'} />
+            <span class="flex-1 text-gray-700 font-medium">${_fmtDate(g.date)}</span>
+            <span class="text-gray-400">${g.matched.length} คน</span>
+            ${g.n === null ? '<span class="text-red-400 font-bold">ไม่มีคาบ</span>' : ''}
+            ${g.isHoliday ? '<span class="text-amber-500 font-bold">วันหยุด</span>' : ''}
+            ${g.hasExisting ? '<span class="text-orange-500 font-bold">มีข้อมูลแล้ว</span>' : ''}
+          </label>`).join('')}
+      </div>
+      <div class="px-4 py-3 border-t flex-shrink-0 flex gap-2">
+        <button id="stc-bulk-preview-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold">ยกเลิก</button>
+        <button id="stc-bulk-preview-apply" class="flex-1 py-2.5 rounded-xl btn-primary text-white text-sm font-semibold">บันทึกที่เลือก</button>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+  const close = () => wrap.remove()
+  wrap.querySelector('#stc-bulk-preview-close').onclick = close
+  wrap.querySelector('#stc-bulk-preview-cancel').onclick = close
+  wrap.onclick = e => { if (e.target === wrap) close() }
+  wrap.querySelector('#stc-bulk-preview-apply').onclick = () => {
+    const selected = Array.from(wrap.querySelectorAll('.stc-bulk-date-cb:checked'))
+      .map(cb => dateGroups[Number(cb.dataset.idx)])
+    close()
+    onApply(selected)
+  }
 }
 
 function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sameDateSessions, holidaySet = new Set(), saveClassId = null, sessionRemap = n => n, options = {}) {

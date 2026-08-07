@@ -641,6 +641,16 @@ export async function getExternalAttendanceStaging(mainRoom, checkDate) {
   return data ?? []
 }
 
+// เหมือน getExternalAttendanceStaging แต่ดึงทุกวันที่ที่มีของห้องนั้น (สำหรับนำเข้าทีเดียวหลายวัน)
+export async function getExternalAttendanceStagingByRoom(mainRoom) {
+  const { data, error } = await supabase
+    .from('external_attendance_staging')
+    .select('student_code, status, raw_name, check_date, imported_at')
+    .eq('main_room', mainRoom)
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getSchoolHolidaysFull(academicYear, semester) {
   const { data, error } = await supabase
     .from('school_holidays')
