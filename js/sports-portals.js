@@ -1513,7 +1513,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     // หมายเหตุ: ตาราง sports_registrations/sports_matches/sports_color_totals/sports_competitions
     // เป็นสคีมาเก่าที่ไม่มีข้อมูลจริง (AZIZGAMES เขียนลง registrations/matches/color_totals/sports แทน)
     // — สลับมาใช้ตารางจริงเพื่อให้ "นักกีฬาในสี" ตรงกับสิ่งที่ลงทะเบียนจริงใน AZIZGAMES
-    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreCriteria,scoreEntries,medalAwards,campCalendar,duesPayments,fundLedger] = await Promise.all([
+    const [membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreCriteria,scoreEntries,medalAwards,campCalendar,duesPayments,fundLedger,compAssignments] = await Promise.all([
       safe(supabase.from('students').select('id,student_code,full_name,main_room,house_color,sports_shirt_size,image_url,photo_url').eq('is_active',true).or(`team_color_id.eq.${c.id},house_color.eq.${c.name}`).order('main_room').order('student_code')),
       safe(supabase.from('sports_team_tasks').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
       safe(supabase.from('sports_team_announcements').select('*').eq('team_color_id',c.id).order('created_at',{ascending:false})),
@@ -1534,6 +1534,8 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       // บัญชีสี (เงินสนับสนุนโรงเรียน+เงินรางวัล+รายจ่าย+ยอดค่าบำรุงรวม) — เปิดให้ทุกคนเห็นเสมอ
       // เพื่อความโปร่งใส ไม่ผูกกับ canX ใดๆ (RLS ฝั่ง DB เป็นคนกันสิทธิ์เขียนอยู่แล้ว)
       supabase.rpc('get_team_fund_ledger',{p_event:event.id,p_team_color_id:c.id}).then(r=>r.error?{entries:[],dues_total:0}:(r.data||{entries:[],dues_total:0})).catch(()=>({entries:[],dues_total:0})),
+      // นับจำนวนการมอบหมาย "ผู้จัดการทีม" ไว้โชว์เป็นตัวเลขในการ์ดภาพรวม (รายละเอียดเต็มอยู่ในแท็บ managers)
+      safe(supabase.from('sports_team_competition_assignments').select('id').eq('team_color_id',c.id)),
     ])
     const myTotal=totals.find(x=>x.color_name===c.name)||{}
     // ระบบกีฬาสีแข่งแยกเพศชาย-หญิงเด็ดขาด (4 สีต่อเพศ) ห้ามเทียบอันดับ/คะแนนข้ามเพศกัน —
@@ -1548,6 +1550,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       ['overview','ภาพรวม','🏠',true],
       ['members','สมาชิก','👥',canMembers],
       ['athletes','นักกีฬา','🏃',canReg],
+      ['managers','ผู้จัดการทีม','🧑‍💼',true],
       ['attendance','เช็คชื่อ','📷',canAttendance],
       ['dues','ค่าบำรุงสี','💰',canDues],
       ['ledger','บัญชีสี','📒',true],
@@ -1646,14 +1649,14 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     // เหรียญแยกตามรายการแข่งขัน (medal_awards query ข้างบนกรอง team_color_id ไว้แล้ว) เรียงทอง→เงิน→ทองแดง
     const medalRankOrder={gold:0,silver:1,bronze:2}
     const medalBreakdown=[...(medalAwards||[])].sort((a,b)=>(medalRankOrder[a.medal_type]??3)-(medalRankOrder[b.medal_type]??3)).map(a=>({sport:a.sports?.name||'ไม่ระบุรายการ',medalType:a.medal_type,points:Number(a.points)||0}))
-    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,theme,studentView}
+    const data={m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,theme,studentView}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     // จัดกลุ่มแท็บสำหรับแถบเมนูด้านล่างบนมือถือ (บนเดสก์ท็อปยังใช้แถบเดิมด้านบนเหมือนเดิม)
     // กดกลุ่มที่มีแท็บเดียว (เช่น ภาพรวม) ไปหน้านั้นทันที ส่วนกลุ่มที่มีหลายแท็บ ปุ่มด้านล่างจะ
     // เปลี่ยนเป็นแท็บย่อยของกลุ่มนั้นแทน พร้อมปุ่ม "กลับ" ให้ย้อนไปเลือกกลุ่มอื่นได้
     const groupDefs=[
       {key:'overview',label:'ภาพรวม',icon:'🏠',keys:['overview']},
-      {key:'team',label:'ทีม',icon:'👥',keys:['members','athletes','permissions']},
+      {key:'team',label:'ทีม',icon:'👥',keys:['members','athletes','managers','permissions']},
       {key:'event',label:'กิจกรรม',icon:'📅',keys:['attendance','dues','ledger','schedule','work']},
       {key:'results',label:'ผลงาน',icon:'🏆',keys:['scores','shirts','identity','gallery']},
     ]
@@ -1694,12 +1697,13 @@ const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bo
 // (ไม่แสดงป้ายเลยดีกว่าแสดงป้าย "แดง/ยังไม่จ่าย" มั่วๆ ทั้งที่จริงๆ แค่ไม่มีสิทธิ์ดึงข้อมูลมา)
 const memberCard = (s,duesPaidIds) => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0 flex-1"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div>${duesPaidIds?(duesPaidIds.has(s.id)?'<span class="status-pill status-done flex-shrink-0">💰 จ่ายแล้ว</span>':'<span class="status-pill status-bad flex-shrink-0">💰 ยังไม่จ่าย</span>'):''}</div>`
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,studentView}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,studentView}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const kpis=[
       {label:'สมาชิก',value:membersList.length,icon:'👥',bg:'from-blue-500 to-indigo-600',goto:'members'},
       {label:'นักกีฬา',value:regs.length,icon:'🏃',bg:'from-emerald-500 to-teal-600',goto:'athletes'},
+      {label:'ผู้จัดการทีม',value:compAssignments.length,icon:'🧑‍💼',bg:'from-cyan-500 to-blue-600',goto:'managers'},
       {label:'งานค้าง',value:pendingTasks,icon:'📋',bg:'from-amber-400 to-orange-600',goto:'work'},
       {label:'แข่งแล้ว',value:`${doneMatches}/${matches.length}`,icon:'🗓️',bg:'from-pink-500 to-rose-600',goto:'schedule'},
       {label:'อันดับคะแนน',value:`#${scoreRank}`,icon:'🏅',bg:'from-violet-500 to-purple-600',goto:'scores'},
@@ -1747,8 +1751,8 @@ function renderTeamWorkspaceTab(wrap,tab,data){
     body.querySelector('#member-level-filter').addEventListener('change',e=>{memberLevel=e.target.value;drawMembers()})
     drawMembers()
   }
-  else if(tab==='athletes') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">🏃 นักกีฬาในสี</h2><p class="text-xs muted">แสดงเฉพาะนักกีฬาของสี${esc(c.name)} จากระบบกีฬาสีหลัก</p></div><div class="flex flex-wrap gap-2">${publicButtons.athlete_print!==false?`<button data-print-athletes class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖨️ พิมพ์/บันทึกใบรายชื่อนักกีฬา</button>`:''}${publicButtons.athlete_registration?`<button data-full data-aziz-tab="p2" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">ลงทะเบียนนักกีฬา</button>`:''}</div></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2 text-left">นักเรียน</th><th class="p-2 text-left">รายการ</th><th class="p-2">เบอร์</th><th class="p-2 text-left">เวลา</th></tr></thead><tbody>${regs.map(r=>{const icon=sportIconUrl(r.sports);return `<tr class="border-b line"><td class="p-2"><b>${esc(r.students?.full_name||'—')}</b><p class="text-xs muted">${esc(r.students?.student_code||'')} · ${esc(r.students?.main_room||'')}</p></td><td class="p-2"><span class="flex items-center gap-2">${icon?`<img src="${esc(icon)}" class="sport-icon" alt="">`:''}${esc(r.sports?.name||'—')}</span></td><td class="p-2 text-center">${esc(r.jersey_number||'—')}</td><td class="p-2 muted text-xs">${esc(r.registered_at?new Date(r.registered_at).toLocaleString('th-TH'):'—')}</td></tr>`}).join('')||'<tr><td colspan="4" class="p-8 text-center muted">ยังไม่มีนักกีฬา</td></tr>'}</tbody></table></div></section>
-    <section id="sports-comp-assign" class="${card} mt-4"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายรายการแข่งขัน...</div></section>`
+  else if(tab==='athletes') body.innerHTML=`<section class="${card}"><div class="flex flex-wrap justify-between gap-3 mb-4"><div><h2 class="font-bold">🏃 นักกีฬาในสี</h2><p class="text-xs muted">แสดงเฉพาะนักกีฬาของสี${esc(c.name)} จากระบบกีฬาสีหลัก</p></div><div class="flex flex-wrap gap-2">${publicButtons.athlete_print!==false?`<button data-print-athletes class="px-4 py-2 rounded-xl bg-pink-600 text-white text-sm font-bold">🖨️ พิมพ์/บันทึกใบรายชื่อนักกีฬา</button>`:''}${publicButtons.athlete_registration?`<button data-full data-aziz-tab="p2" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">ลงทะเบียนนักกีฬา</button>`:''}</div></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2 text-left">นักเรียน</th><th class="p-2 text-left">รายการ</th><th class="p-2">เบอร์</th><th class="p-2 text-left">เวลา</th></tr></thead><tbody>${regs.map(r=>{const icon=sportIconUrl(r.sports);return `<tr class="border-b line"><td class="p-2"><b>${esc(r.students?.full_name||'—')}</b><p class="text-xs muted">${esc(r.students?.student_code||'')} · ${esc(r.students?.main_room||'')}</p></td><td class="p-2"><span class="flex items-center gap-2">${icon?`<img src="${esc(icon)}" class="sport-icon" alt="">`:''}${esc(r.sports?.name||'—')}</span></td><td class="p-2 text-center">${esc(r.jersey_number||'—')}</td><td class="p-2 muted text-xs">${esc(r.registered_at?new Date(r.registered_at).toLocaleString('th-TH'):'—')}</td></tr>`}).join('')||'<tr><td colspan="4" class="p-8 text-center muted">ยังไม่มีนักกีฬา</td></tr>'}</tbody></table></div></section>`
+  else if(tab==='managers') body.innerHTML=`<section id="sports-comp-assign" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายรายการแข่งขัน...</div></section>`
   else if(tab==='permissions') body.innerHTML=`${isLead?`<section class="${card} mb-4"><h2 class="font-bold mb-1">🎖️ เกณฑ์เช็คชื่อขั้นต่ำสำหรับเกียรติบัตร (เฉพาะสีนี้)</h2><p class="text-xs muted mb-3">ปล่อยว่างไว้ = ใช้ค่าเริ่มต้นของแอดมิน (ตอนนี้ ${Number(cfg?.cert_attendance_threshold_pct??80)}%) — กำหนดเป็นตัวเลขถ้าอยากให้สีนี้เข้มงวด/ผ่อนปรนกว่าสีอื่น</p><div class="flex gap-2 items-center"><input id="cert-threshold-override" type="number" min="0" max="100" step="1" placeholder="ค่าเริ่มต้น (${Number(cfg?.cert_attendance_threshold_pct??80)}%)" value="${c.cert_attendance_threshold_pct_override ?? ''}" class="w-40 rounded-xl team-field px-3 py-2 text-sm"><button id="cert-threshold-save" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">บันทึก</button></div></section>`:''}<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
   else if(tab==='shirts') body.innerHTML=shirtSection(c,shirtReqs,cfg)
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
@@ -1764,9 +1768,10 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   body.querySelector('#identity-new')?.addEventListener('click',()=>identityForm(wrap,m,c))
   body.querySelector('[data-print-members]')?.addEventListener('click',()=>printColorRoster(c.name,membersList,docHeader))
   body.querySelector('[data-print-athletes]')?.addEventListener('click',()=>openAthletePrintDialog(wrap,c,regs,competitions))
-  if(tab==='athletes'){
+  if(tab==='managers'){
     // มอบหมายรายการแข่งขันให้สตาฟรับผิดชอบเฉพาะคน — สิทธิ์แยกต่างหาก (comp_assign) ไม่ผูกกับ
     // role และไม่ปนกับสิทธิ์ลงทะเบียนกีฬา ใครก็ได้ในทีมที่ได้รับสิทธิ์นี้มอบหมายได้ คนอื่นเห็นได้แต่แก้ไม่ได้
+    // แยกเป็นแท็บของตัวเอง ("ผู้จัดการทีม") ไม่ปนกับแท็บ "นักกีฬา" ตามคำขอผู้ใช้ — คนละความหมายกัน
     renderCompetitionAssignmentSection(wrap,{event,c,m,competitions,canManage:canCompAssign})
   }
   if(tab==='permissions'&&canManageStaff){
