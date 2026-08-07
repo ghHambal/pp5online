@@ -167,11 +167,11 @@ export async function renderAttendanceGrid(teacher, classData) {
             title="นำเข้าเช็คชื่อจากระบบดูแลทีเดียวหลายวัน (ต้องกดส่งจากหน้าระบบดูแลของแต่ละวันมาก่อน)">
             📥 <span class="hidden sm:inline">ระบบดูแล (หลายวัน)</span>
           </button>
-          <a href="/pp5online/studentcare-install.html" target="_blank" rel="noopener noreferrer"
+          <button id="btn-att-studentcare-help" type="button"
             class="px-2 py-1.5 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition flex items-center"
             title="วิธีติดตั้งปุ่มดึงเช็คชื่อจากระบบดูแล (ครั้งแรกเท่านั้น)">
             ❓
-          </a>` : ''}
+          </button>` : ''}
         </div>
       </div>
       ${holAttRows.length > 0 ? `
@@ -304,6 +304,9 @@ export async function renderAttendanceGrid(teacher, classData) {
 
     document.getElementById('btn-leave-quota')?.addEventListener('click', openLeaveQuotaModal)
 
+    // วิธีติดตั้งบุ๊กมาร์กระบบดูแล — เปิดเป็นโมดัลในหน้าเดิม ไม่เปิดหน้าต่าง/แท็บใหม่แยกออกไป
+    document.getElementById('btn-att-studentcare-help')?.addEventListener('click', _openStudentCareInstallModal)
+
     // นำเข้าเช็คชื่อจากระบบดูแลทีเดียวหลายวัน (ต้องกดส่งจากหน้าระบบดูแลของแต่ละวันมาก่อนแล้ว)
     document.getElementById('btn-att-import-studentcare-bulk')?.addEventListener('click', async () => {
       const roomCounts = {}
@@ -327,11 +330,12 @@ export async function renderAttendanceGrid(teacher, classData) {
       staged.forEach(r => { (byDate[r.check_date] ??= []).push(r) })
 
       const dateGroups = Object.keys(byDate).sort().map(date => {
-        const sess = sessions.find(s => s.ds === date)
+        // วันหนึ่งอาจตรงกับมากกว่า 1 คาบของวิชานี้ (เช่นสอนซ้ำวันเดียวกัน) — เอาให้ครบทุกคาบที่ตรงวันนั้น
+        const ns = sessions.filter(s => s.ds === date).map(s => s.n)
         const byCode = Object.fromEntries(byDate[date].map(r => [r.student_code, r]))
         const matched = students.map(s => ({ student: s, staged: byCode[s.student_code] })).filter(x => x.staged)
-        const hasExisting = sess ? matched.some(({ student }) => attMap[student.id]?.[sess.n] != null) : false
-        return { date, n: sess?.n ?? null, matched, isHoliday: holidaySet.has(date), hasExisting }
+        const hasExisting = ns.length ? matched.some(({ student }) => ns.some(n => attMap[student.id]?.[n] != null)) : false
+        return { date, ns, matched, isHoliday: holidaySet.has(date), hasExisting }
       }).filter(g => g.matched.length > 0)
 
       if (!dateGroups.length) {
@@ -342,10 +346,12 @@ export async function renderAttendanceGrid(teacher, classData) {
       _openStudentCareBulkImportPreview(dateGroups, async (selectedGroups) => {
         const allRecords = []
         selectedGroups.forEach(g => {
-          g.matched.forEach(({ student, staged: st }) => {
-            allRecords.push({
-              class_id: saveClassId, student_id: student.id,
-              session_number: saveSessN(g.n), check_date: g.date, status: st.status,
+          g.ns.forEach(n => {
+            g.matched.forEach(({ student, staged: st }) => {
+              allRecords.push({
+                class_id: saveClassId, student_id: student.id,
+                session_number: saveSessN(n), check_date: g.date, status: st.status,
+              })
             })
           })
         })
@@ -1396,6 +1402,43 @@ export async function openAttendanceScanSetup(teacher) {
   }
 }
 
+// วิธีติดตั้งบุ๊กมาร์กระบบดูแล — เป็นโมดัลในหน้าเดิม ไม่พาออกไปเปิดหน้าต่าง/แท็บแยก (สำคัญกับผู้ใช้ที่เปิดแอปแบบ PWA)
+function _openStudentCareInstallModal() {
+  document.getElementById('stc-install-modal')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'stc-install-modal'
+  wrap.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4'
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
+        <h3 class="font-bold text-gray-800 text-sm">📥 ติดตั้งปุ่มดึงเช็คชื่อจากระบบดูแล</h3>
+        <button id="stc-install-close" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+      </div>
+      <div class="overflow-y-auto flex-1 px-4 py-4 space-y-4 text-sm text-gray-600">
+        <div class="text-center space-y-2">
+          <p class="text-xs">ขั้นตอนที่ 1 — <b>ลากปุ่มนี้</b> ไปวางที่แถบบุ๊กมาร์กของเบราว์เซอร์ (ทำครั้งเดียว)</p>
+          <a
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold shadow-lg"
+            style="cursor:grab"
+            href="javascript:(function(){var s=document.createElement('script');s.src='https://ghhambal.github.io/pp5online/js/studentcare-bridge.js?v='+Date.now();document.body.appendChild(s);})();"
+            onclick="alert('อย่ากดปุ่มนี้ตรงๆ นะครับ — ให้ลาก (drag) ปุ่มนี้ไปวางที่แถบบุ๊กมาร์กด้านบนของเบราว์เซอร์แทน'); return false;"
+          >📥 ส่งเช็คชื่อเข้า pp5</a>
+          <p class="text-[11px] text-gray-400">ไม่เห็นแถบบุ๊กมาร์ก? กด ⌘/Ctrl+Shift+B เพื่อเปิดก่อน</p>
+        </div>
+        <ol class="space-y-2 text-xs list-decimal list-inside">
+          <li>เปิดหน้าระบบดูแล เลือกห้อง/วันที่ ติ๊กสถานะนักเรียนตามปกติ</li>
+          <li>กดปุ่มบุ๊กมาร์กที่ลากไว้ — รอข้อความแจ้งผลมุมขวาล่าง</li>
+          <li>ทำซ้ำได้หลายวันตามต้องการ ข้อมูลจะถูกเก็บรอไว้</li>
+          <li>กลับมาที่นี่ กดปุ่ม "ระบบดูแล (หลายวัน)" เพื่อเลือกวันที่นำเข้า</li>
+        </ol>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+  const close = () => wrap.remove()
+  wrap.querySelector('#stc-install-close').onclick = close
+  wrap.onclick = e => { if (e.target === wrap) close() }
+}
+
 // พรีวิวข้อมูลที่ดึงมาจากระบบดูแลก่อนนำไปเติมในฟอร์มเช็คชื่อ — ให้ครูตรวจก่อนเสมอ ไม่เขียนทับอัตโนมัติ
 function _openStudentCareImportPreview(matched, onApply) {
   document.getElementById('stc-import-preview')?.remove()
@@ -1430,7 +1473,11 @@ function _openStudentCareImportPreview(matched, onApply) {
   wrap.querySelector('#stc-preview-apply').onclick = () => { onApply(); close() }
 }
 
+const STC_STATUS_LABEL = { present: 'มา', absent: 'ขาด', late: 'สาย', excused: 'ลากิจ', sick: 'ลาป่วย' }
+const STC_STATUS_COLOR = { present: 'text-emerald-600', absent: 'text-red-600', late: 'text-amber-500', excused: 'text-blue-500', sick: 'text-orange-500' }
+
 // พรีวิวข้อมูลจากระบบดูแลหลายวันพร้อมกันก่อนบันทึกจริง — เลือกได้เป็นรายวัน เตือนวันที่ไม่มีคาบ/เป็นวันหยุด/มีข้อมูลอยู่แล้ว
+// แต่ละวันกดดูรายชื่อพร้อมรูปนักเรียน+สถานะได้ก่อนตัดสินใจ
 function _openStudentCareBulkImportPreview(dateGroups, onApply) {
   document.getElementById('stc-bulk-import-preview')?.remove()
   const wrap = document.createElement('div')
@@ -1442,17 +1489,30 @@ function _openStudentCareBulkImportPreview(dateGroups, onApply) {
         <h3 class="font-bold text-gray-800 text-sm">📥 ข้อมูลจากระบบดูแล (${dateGroups.length} วัน)</h3>
         <button id="stc-bulk-preview-close" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
       </div>
-      <p class="px-4 pt-2 text-xs text-gray-400">เลือกวันที่ต้องการนำเข้า — ตรวจสอบให้ดีก่อนกดบันทึก ข้อมูลของวันที่มีอยู่แล้วจะถูกเขียนทับ</p>
+      <p class="px-4 pt-2 text-xs text-gray-400">เลือกวันที่ต้องการนำเข้า — กด "ดูรายชื่อ" เพื่อตรวจก่อนบันทึก ข้อมูลของวันที่มีอยู่แล้วจะถูกเขียนทับ</p>
       <div class="overflow-y-auto flex-1 px-4 py-2 space-y-1.5 mt-1">
         ${dateGroups.map((g, i) => `
-          <label class="flex items-center gap-2 py-2 px-2 rounded-xl border ${g.n === null ? 'border-gray-100 opacity-50' : 'border-gray-100 hover:bg-gray-50'} text-xs cursor-pointer">
-            <input type="checkbox" class="stc-bulk-date-cb" data-idx="${i}" ${g.n === null ? 'disabled' : 'checked'} />
+        <div class="rounded-xl border ${g.ns.length === 0 ? 'border-gray-100 opacity-50' : 'border-gray-100'} overflow-hidden">
+          <label class="flex items-center gap-2 py-2 px-2 text-xs cursor-pointer hover:bg-gray-50">
+            <input type="checkbox" class="stc-bulk-date-cb" data-idx="${i}" ${g.ns.length === 0 ? 'disabled' : 'checked'} />
             <span class="flex-1 text-gray-700 font-medium">${_fmtDate(g.date)}</span>
             <span class="text-gray-400">${g.matched.length} คน</span>
-            ${g.n === null ? '<span class="text-red-400 font-bold">ไม่มีคาบ</span>' : ''}
+            ${g.ns.length === 0 ? '<span class="text-red-400 font-bold">ไม่มีคาบ</span>' : ''}
             ${g.isHoliday ? '<span class="text-amber-500 font-bold">วันหยุด</span>' : ''}
             ${g.hasExisting ? '<span class="text-orange-500 font-bold">มีข้อมูลแล้ว</span>' : ''}
-          </label>`).join('')}
+            <button type="button" class="stc-bulk-date-toggle text-indigo-500 font-bold flex-shrink-0" data-idx="${i}">ดูรายชื่อ ▾</button>
+          </label>
+          <div class="stc-bulk-date-detail hidden border-t border-gray-50 px-2 py-2 space-y-1 max-h-56 overflow-y-auto" data-detail-idx="${i}">
+            ${g.matched.map(({ student, staged }) => `
+              <div class="flex items-center gap-2 py-1 text-xs">
+                ${student.image_url
+                  ? `<img src="${student.image_url}" class="w-7 h-9 rounded-md object-cover border border-gray-200 shadow-sm flex-shrink-0" />`
+                  : `<div class="w-7 h-9 rounded-md bg-gray-100 flex-shrink-0"></div>`}
+                <span class="flex-1 text-gray-700 truncate">${_htmlEsc(student.full_name)}</span>
+                <span class="font-bold flex-shrink-0 ${STC_STATUS_COLOR[staged.status] ?? 'text-gray-500'}">${STC_STATUS_LABEL[staged.status] ?? staged.status}</span>
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}
       </div>
       <div class="px-4 py-3 border-t flex-shrink-0 flex gap-2">
         <button id="stc-bulk-preview-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold">ยกเลิก</button>
@@ -1464,6 +1524,14 @@ function _openStudentCareBulkImportPreview(dateGroups, onApply) {
   wrap.querySelector('#stc-bulk-preview-close').onclick = close
   wrap.querySelector('#stc-bulk-preview-cancel').onclick = close
   wrap.onclick = e => { if (e.target === wrap) close() }
+  wrap.querySelectorAll('.stc-bulk-date-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const detail = wrap.querySelector(`.stc-bulk-date-detail[data-detail-idx="${btn.dataset.idx}"]`)
+      if (!detail) return
+      const nowHidden = detail.classList.toggle('hidden')
+      btn.textContent = nowHidden ? 'ดูรายชื่อ ▾' : 'ซ่อนรายชื่อ ▴'
+    })
+  })
   wrap.querySelector('#stc-bulk-preview-apply').onclick = () => {
     const selected = Array.from(wrap.querySelectorAll('.stc-bulk-date-cb:checked'))
       .map(cb => dateGroups[Number(cb.dataset.idx)])
