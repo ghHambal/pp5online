@@ -179,10 +179,12 @@ export async function renderStudentSportsHome(student) {
         <div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.dues_paid?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.dues_paid?'✅':'❌'} ชำระค่าบำรุงสีแล้ว</span></div>
         ${eligibility.is_athlete?`<div class="flex items-center justify-between p-2.5 rounded-lg ${eligibility.roll_call_complete?'bg-emerald-50':'bg-red-50'}"><span>${eligibility.roll_call_complete?'✅':'❌'} รายงานตัวนักกีฬาครบทุกครั้ง</span></div>`:''}
       </div>`}</section>
-      <button id="open-gallery" class="w-full py-4 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-base">📸 ภาพกิจกรรมกีฬาสี</button>
-      <button id="open-full-sports" class="w-full py-4 rounded-2xl bg-slate-900 text-white font-bold text-base">🏆 เปิดระบบกีฬาสีแบบเต็ม</button>
+      <button id="open-my-color" class="w-full py-4 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-base">🎨 สีของฉัน<span class="font-normal text-sm opacity-80"> — ${esc(student.house_color||'')}</span></button>
+      <button id="open-gallery" class="w-full py-4 rounded-2xl bg-white border-2 border-gray-200 hover:bg-gray-50 text-gray-700 font-bold text-base">📸 ภาพกิจกรรมกีฬาสี</button>
+      <button id="open-full-sports" class="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">🏆 ระบบกีฬาสีหลัก (ภาพรวมทุกสี)</button>
     </div>`
-    el.querySelector('#open-full-sports')?.addEventListener('click',()=>openSportsChoiceModal(student))
+    el.querySelector('#open-my-color')?.addEventListener('click',()=>openMyColorAsStudent(student))
+    el.querySelector('#open-full-sports')?.addEventListener('click',()=>openAzizGamesModal())
     el.querySelector('#open-fund-ledger')?.addEventListener('click',()=>openMyColorAsStudent(student))
     el.querySelector('#open-gallery')?.addEventListener('click',()=>openSportsGalleryModal(event))
     el.querySelector('#view-cert')?.addEventListener('click',()=>{
@@ -220,29 +222,6 @@ export function openImageLightbox(url) {
   document.body.appendChild(m)
   m.querySelector('#btn-shirt-lightbox-close').onclick=()=>m.remove()
   m.addEventListener('click',e=>{ if(e.target===m) m.remove() })
-}
-
-// ป๊อบอัพให้นักเรียนเลือกก่อนเข้าระบบกีฬาสี: ระบบหลัก (ภาพรวมทุกสี ผ่าน AZIZGAMES) หรือ
-// "สีของฉัน" (ดูเฉพาะข้อมูลสีตัวเอง หน้าตาเหมือนที่ครู/สต๊าฟใช้ แต่ดูอย่างเดียว)
-function openSportsChoiceModal(student) {
-  document.getElementById('sports-choice-modal')?.remove()
-  const m=document.createElement('div'); m.id='sports-choice-modal'; m.className='fixed inset-0 z-[340] bg-black/50 flex items-center justify-center p-6 animate-fade'
-  m.innerHTML=`
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center">
-      <div class="text-3xl mb-2">🏆</div>
-      <h3 class="font-bold text-gray-800 text-base mb-1">เลือกระบบกีฬาสี</h3>
-      <p class="text-sm text-gray-600 mb-5">ต้องการเข้าดูข้อมูลแบบไหน?</p>
-      <div class="flex flex-col gap-3">
-        <button id="btn-sports-choice-main" class="py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm">🏆 ระบบกีฬาสีหลัก<br><span class="font-normal text-xs opacity-70">ภาพรวมทุกสี ผล/ตาราง/คะแนนรวม</span></button>
-        <button id="btn-sports-choice-mine" class="py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-sm">🎨 สีของฉัน<br><span class="font-normal text-xs opacity-70">ดูเฉพาะข้อมูลสี${esc(student.house_color||'')}ของฉัน</span></button>
-        <button id="btn-sports-choice-cancel" class="py-2.5 rounded-2xl border-2 border-gray-200 text-gray-600 font-semibold text-sm hover:bg-gray-50">ยกเลิก</button>
-      </div>
-    </div>
-  `
-  document.body.appendChild(m)
-  m.querySelector('#btn-sports-choice-cancel').onclick=()=>m.remove()
-  m.querySelector('#btn-sports-choice-main').onclick=()=>{m.remove();openAzizGamesModal()}
-  m.querySelector('#btn-sports-choice-mine').onclick=()=>{m.remove();openMyColorAsStudent(student)}
 }
 
 export function openConfirmVoteModal(design,cfg,onConfirm) {
@@ -1321,13 +1300,20 @@ export async function openMyTeamWorkspace() {
   } catch(e){console.error(e);wrap.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
 }
 
-// หน้า "สีของฉัน" แบบดูอย่างเดียวสำหรับนักเรียนทั่วไป (ไม่ต้องมีสิทธิ์ครู/สต๊าฟ)
-// ใช้ renderColorWorkspace ตัวเดียวกับหน้าจัดการของครู แต่บังคับ canAttendance=false และ
-// isLead=false เสมอ (studentView) เพราะแท็บเช็คชื่อให้แก้ไขข้อมูลการเข้าแถวของคนอื่นได้ —
-// นักเรียนทั่วไปไม่ควรมีสิทธิ์นี้เด็ดขาด (เสี่ยงมาร์กเช็คชื่อปลอมให้ตัวเอง/เพื่อน)
+// หน้า "สีของฉัน" — ถ้านักเรียนคนนี้ได้รับแต่งตั้งเป็นสตาฟสีจริง (พ่อสี/แม่สีให้สิทธิ์ไว้ผ่าน
+// sports_team_memberships.student_id) ต้องแสดงผลด้วยสิทธิ์จริงที่ได้รับ (studentView:false)
+// ไม่งั้นปุ่มที่ได้รับสิทธิ์มา (เช่นเช็คชื่อ/งานของสี/ประกาศ) จะไม่โผล่เลยแม้จะถูกเปิดให้แล้วก็ตาม
+// ถ้าไม่มีแถวแต่งตั้งจริง ถือเป็นนักเรียนทั่วไป ใช้โหมดดูอย่างเดียว (studentView:true, สิทธิ์ว่าง)
+// เพราะแท็บเช็คชื่อให้แก้ไขข้อมูลการเข้าแถวของคนอื่นได้ นักเรียนทั่วไปไม่ควรมีสิทธิ์นี้เด็ดขาด
 export async function openMyColorAsStudent(student) {
   const old=document.getElementById('my-team-workspace');old?.remove(); const wrap=document.createElement('div');wrap.id='my-team-workspace';wrap.className='fixed inset-0 bg-slate-950 text-slate-100 overflow-hidden';wrap.style.zIndex='350';wrap.innerHTML='<div class="py-20 text-center">กำลังโหลดสีของฉัน...</div>';document.body.appendChild(wrap)
   try {
+    const {data:staffRows}=await supabase.from('sports_team_memberships').select('*,team_colors(*)').eq('student_id',student.id).eq('is_active',true).limit(1)
+    const staffM=staffRows?.[0]
+    if(staffM){
+      await renderColorWorkspace(wrap,staffM,staffM.team_colors)
+      return
+    }
     const {event}=await context()
     let q=supabase.from('team_colors').select('*').eq('event_id',event.id)
     q=student.team_color_id?q.eq('id',student.team_color_id):q.eq('name',student.house_color||'')
