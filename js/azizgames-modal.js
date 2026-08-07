@@ -4,10 +4,11 @@ const AZIZGAMES_PATH = 'azizgames.html'
 
 // เดิม iframe src ไม่มี cache-busting เลย ทำให้ GitHub Pages (cache-control: max-age=600)
 // เสิร์ฟ azizgames.html เวอร์ชันเก่าค้างได้นานถึง 10 นาทีหลัง deploy แม้ asset จริงจะอัปเดตแล้ว
-const getAzizGamesUrl = (tab = '') => {
+const getAzizGamesUrl = (tab = '', stdid = '') => {
   const url = new URL(AZIZGAMES_PATH, window.location.href)
   url.searchParams.set('v', APP_VERSION)
   if (tab) url.searchParams.set('tab', tab)
+  if (stdid) url.searchParams.set('stdid', stdid)
   return url.href
 }
 
@@ -34,7 +35,7 @@ const shareAzizGames = async (url, statusEl) => {
   }
 }
 
-export function openAzizGamesModal({ admin = false, manage = false, teacherName = '', teacherCode = '', tab = '' } = {}) {
+export function openAzizGamesModal({ admin = false, manage = false, teacherName = '', teacherCode = '', tab = '', stdid = '' } = {}) {
   document.getElementById('azizgames-modal')?.remove()
 
   if (admin) {
@@ -50,7 +51,7 @@ export function openAzizGamesModal({ admin = false, manage = false, teacherName 
     else localStorage.removeItem('aziz_sports_admin_allowed')
   }
 
-  const url = getAzizGamesUrl(tab)
+  const url = getAzizGamesUrl(tab, stdid)
   const previousOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
 
