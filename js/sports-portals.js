@@ -967,7 +967,7 @@ async function renderCompetitionAssignmentSection(root,{event,c,m,competitions,c
 async function renderTeamMembershipAdmin(root,event,colors=[],access={isAdmin:false,myTeamMemberships:[]}) {
   const slot=root.querySelector('#sports-team-membership-admin'); if(!slot)return
   const roleLabels={lead_teacher:'หัวหน้าครูประจำสี',teacher:'ครูประจำสี',staff_lead:'หัวหน้านักเรียนสต๊าฟสี',staff:'นักเรียนสต๊าฟสี'}
-  const permLabels={members:'สมาชิก',registrations:'ลงทะเบียนกีฬา',announcements:'ประกาศ',tasks:'งานของสี',shirt_summary:'สรุปเสื้อ',attendance:'เช็คชื่อ',dues:'เก็บค่าบำรุงสี',expenses:'บันทึกรายจ่ายสี'}
+  const permLabels={members:'สมาชิก',registrations:'ลงทะเบียนกีฬา',announcements:'ประกาศ',tasks:'งานของสี',shirt_summary:'สรุปเสื้อ',attendance:'เช็คชื่อ',dues:'เก็บค่าบำรุงสี',expenses:'บันทึกรายรับ-รายจ่ายสี'}
   const isStaffLevel=s=>/^\s*(?:ม\.?\s*[456]|ปวช\.?\s*[123])(?:\s*\/|\s|$)/i.test(String(s?.main_room||''))
   const leadTeamIds=new Set((access.myTeamMemberships||[]).filter(m=>m.role==='lead_teacher').map(m=>m.team_color_id))
   const manageableColors=access.isAdmin?colors:colors.filter(c=>leadTeamIds.has(c.id))
@@ -1706,7 +1706,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
         <div><h2 class="font-bold">📷 ช่วยกันเก็บภาพความทรงจำหน่อย!</h2><p class="text-xs muted mt-1">ถ่ายภาพบรรยากาศตอนเข้าค่ายสี ตอนแข่งขัน หรือเชียร์เพื่อนๆ แล้วอัปโหลดเก็บไว้ — ทุกสีเห็นภาพของกันและกันได้ในแกลเลอรีรวม</p></div>
         <button type="button" data-goto-tab="gallery" class="px-5 py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold flex-shrink-0">📸 ไปถ่าย/อัปโหลดรูป</button>
       </section>
-      <section class="${card}"><h2 class="font-bold mb-3">🧭 สิทธิ์และเมนูของบทบาทนี้</h2><div class="grid md:grid-cols-5 gap-2">${permPill('สมาชิก',canMembers)}${permPill('ลงทะเบียนนักกีฬา',canReg)}${permPill('ประกาศ',canAnn)}${permPill('งานของสี',canTasks)}${permPill('สรุปเสื้อเฉพาะสี',canShirt)}${permPill('เก็บค่าบำรุงสี',canDues)}${permPill('บันทึกรายจ่ายสี',canExpenses)}</div></section>
+      <section class="${card}"><h2 class="font-bold mb-3">🧭 สิทธิ์และเมนูของบทบาทนี้</h2><div class="grid md:grid-cols-5 gap-2">${permPill('สมาชิก',canMembers)}${permPill('ลงทะเบียนนักกีฬา',canReg)}${permPill('ประกาศ',canAnn)}${permPill('งานของสี',canTasks)}${permPill('สรุปเสื้อเฉพาะสี',canShirt)}${permPill('เก็บค่าบำรุงสี',canDues)}${permPill('บันทึกรายรับ-รายจ่ายสี',canExpenses)}</div></section>
     </div>`
   }
   else if(tab==='members'){
@@ -2398,6 +2398,17 @@ function renderTeamLedgerSection(body,{event,c,fundLedger,canExpenses,card}){
         <div class="team-sub rounded-xl p-3 text-center"><p class="text-[10px] muted font-bold">คงเหลือ</p><b class="text-lg tone-ok">${balance.toLocaleString('th-TH')}</b></div>
       </div>
       ${canExpenses?`<div class="team-sub rounded-2xl p-4 mb-4 space-y-3">
+        <p class="text-xs font-bold">➕ บันทึกรายรับใหม่</p>
+        <div class="grid sm:grid-cols-5 gap-2">
+          <select id="fund-income-category" class="team-field rounded-xl px-3 py-2 text-sm"><option value="school_support">สนับสนุนโรงเรียน</option><option value="prize">เงินรางวัล</option></select>
+          <input id="fund-income-amount" type="number" min="1" step="1" placeholder="จำนวนเงิน" class="team-field rounded-xl px-3 py-2 text-sm">
+          <input id="fund-income-desc" type="text" placeholder="รายละเอียด เช่น ชนะเลิศฟุตซอลชาย" class="team-field rounded-xl px-3 py-2 text-sm sm:col-span-2">
+          <input id="fund-income-date" type="date" value="${todayLocal()}" class="team-field rounded-xl px-3 py-2 text-sm">
+        </div>
+        <button id="fund-income-submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold">➕ บันทึกรายรับ</button>
+        <div id="fund-income-status" class="text-xs muted"></div>
+      </div>
+      <div class="team-sub rounded-2xl p-4 mb-4 space-y-3">
         <p class="text-xs font-bold">➖ บันทึกรายจ่ายใหม่</p>
         <div class="grid sm:grid-cols-4 gap-2">
           <input id="fund-expense-amount" type="number" min="1" step="1" placeholder="จำนวนเงิน" class="team-field rounded-xl px-3 py-2 text-sm">
@@ -2416,11 +2427,25 @@ function renderTeamLedgerSection(body,{event,c,fundLedger,canExpenses,card}){
               <p class="text-[10px] muted">${new Date(en.entry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})} · บันทึกโดย ${esc(en.recorded_by_name)}</p>
             </div>
             <b class="flex-shrink-0 ${en.category==='expense'?'tone-bad':'tone-ok'}">${en.category==='expense'?'-':'+'}${Number(en.amount).toLocaleString('th-TH')}</b>
-            ${canExpenses&&en.category==='expense'?`<button type="button" data-fund-delete="${esc(en.id)}" class="btn-danger-ghost px-2 py-1 rounded-lg text-[10px] font-bold hover:bg-red-600 hover:text-white transition flex-shrink-0">ลบ</button>`:''}
+            ${canExpenses?`<button type="button" data-fund-delete="${esc(en.id)}" class="btn-danger-ghost px-2 py-1 rounded-lg text-[10px] font-bold hover:bg-red-600 hover:text-white transition flex-shrink-0">ลบ</button>`:''}
           </div>`).join(''):'<p class="text-sm muted text-center py-6">ยังไม่มีรายการเงินสนับสนุน/รางวัล/รายจ่าย</p>'}
       </div>
     </section>`
 
+    body.querySelector('#fund-income-submit')?.addEventListener('click',async()=>{
+      const catEl=body.querySelector('#fund-income-category'),amountEl=body.querySelector('#fund-income-amount'),descEl=body.querySelector('#fund-income-desc'),dateEl=body.querySelector('#fund-income-date')
+      const statusEl=body.querySelector('#fund-income-status')
+      const category=catEl.value,amount=Number(amountEl.value),description=descEl.value.trim()
+      if(!amount||amount<=0||!description){statusEl.textContent='กรุณากรอกจำนวนเงินและรายละเอียดให้ครบ';statusEl.className='text-xs tone-bad';return}
+      const btn=body.querySelector('#fund-income-submit');btn.disabled=true
+      const {data,error}=await supabase.from('sports_team_fund_entries').insert({event_id:event.id,team_color_id:c.id,category,amount,description,entry_date:dateEl.value||todayLocal()}).select().single()
+      btn.disabled=false
+      if(error){statusEl.textContent='บันทึกไม่สำเร็จ: '+error.message;statusEl.className='text-xs tone-bad';return}
+      entries.unshift({id:data.id,category,amount:data.amount,description:data.description,entry_date:data.entry_date,created_at:data.created_at,recorded_by_name:'ฉัน'})
+      toast('บันทึกรายรับแล้ว')
+      amountEl.value='';descEl.value='';statusEl.textContent=''
+      render()
+    })
     body.querySelector('#fund-expense-submit')?.addEventListener('click',async()=>{
       const amountEl=body.querySelector('#fund-expense-amount'),descEl=body.querySelector('#fund-expense-desc'),dateEl=body.querySelector('#fund-expense-date')
       const statusEl=body.querySelector('#fund-expense-status')
