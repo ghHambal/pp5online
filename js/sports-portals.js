@@ -870,7 +870,7 @@ export async function renderShirtSummary() {
 
 // ดรอปดาวน์แบบพิมพ์ค้นหา ใช้ซ้ำได้ทั่วไป — items ต้องเป็น [{id,label,sub,photo}] ที่ normalize มาแล้ว
 // (ไม่ใช้ select ธรรมดาเวลาตัวเลือกเยอะ ตามธรรมเนียมเดิมของระบบ)
-function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyLabel='-- เลือก --'}) {
+function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyLabel='-- เลือก --',photoClass='w-7 h-9 rounded object-cover flex-shrink-0 border'}) {
   let _selected=null,_open=false
   wrap.style.position='relative'
   wrap.innerHTML=`
@@ -889,7 +889,7 @@ function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyL
     listEl.innerHTML=filtered.length?filtered.map(it=>{
       const active=_selected?.id===it.id
       return `<li data-id="${esc(String(it.id))}" class="ps-opt px-3 py-2.5 text-sm cursor-pointer hover:bg-indigo-50 flex items-center gap-2 ${active?'bg-indigo-50 font-semibold text-indigo-700':'text-gray-700'}">
-        ${it.photo?`<img src="${esc(it.photo)}" class="w-7 h-9 rounded object-cover flex-shrink-0 border">`:''}
+        ${it.photo?`<img src="${esc(it.photo)}" class="${photoClass}">`:''}
         <span class="truncate">${esc(it.label)}${it.sub?` <span class="text-xs text-gray-400 font-mono">${esc(it.sub)}</span>`:''}</span>
       </li>`
     }).join(''):`<li class="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบรายการ</li>`
@@ -939,7 +939,7 @@ async function renderCompetitionAssignmentSection(root,{event,c,m,competitions,c
     </div>`
   let sportPicker=null,staffPicker=null
   if(canManage){
-    sportPicker=_createPickerSelect({wrap:slot.querySelector('#comp-assign-sport-wrap'),items:sportsForTeam.map(s=>({id:s.id,label:s.name})),placeholder:'พิมพ์ชื่อรายการ...',emptyLabel:'-- เลือกรายการ --'})
+    sportPicker=_createPickerSelect({wrap:slot.querySelector('#comp-assign-sport-wrap'),items:sportsForTeam.map(s=>({id:s.id,label:s.name,photo:sportIconUrl(s)})),placeholder:'พิมพ์ชื่อรายการ...',emptyLabel:'-- เลือกรายการ --',photoClass:'w-7 h-7 object-contain flex-shrink-0'})
     staffPicker=_createPickerSelect({wrap:slot.querySelector('#comp-assign-student-wrap'),items:staffList.map(s=>({id:s.student_id,label:s.students?.full_name||'—',sub:s.students?.student_code||'',photo:s.students?.image_url||s.students?.photo_url})),placeholder:'พิมพ์ชื่อหรือรหัสนักเรียน...',emptyLabel:'-- เลือกสตาฟ --'})
   }
   slot.querySelector('#comp-assign-btn')?.addEventListener('click',async()=>{
