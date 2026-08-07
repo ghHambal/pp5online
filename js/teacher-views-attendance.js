@@ -166,7 +166,12 @@ export async function renderAttendanceGrid(teacher, classData) {
                    hover:bg-indigo-700 transition flex items-center gap-1"
             title="นำเข้าเช็คชื่อจากระบบดูแลทีเดียวหลายวัน (ต้องกดส่งจากหน้าระบบดูแลของแต่ละวันมาก่อน)">
             📥 <span class="hidden sm:inline">ระบบดูแล (หลายวัน)</span>
-          </button>` : ''}
+          </button>
+          <a href="/pp5online/studentcare-install.html" target="_blank" rel="noopener noreferrer"
+            class="px-2 py-1.5 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition flex items-center"
+            title="วิธีติดตั้งปุ่มดึงเช็คชื่อจากระบบดูแล (ครั้งแรกเท่านั้น)">
+            ❓
+          </a>` : ''}
         </div>
       </div>
       ${holAttRows.length > 0 ? `
