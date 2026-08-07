@@ -875,7 +875,7 @@ async function renderCompetitionAssignmentSection(root,{event,c,m,competitions,c
   const slot=root.querySelector('#sports-comp-assign'); if(!slot)return
   const [{data:staffRows},{data:assignments}] = await Promise.all([
     supabase.from('sports_team_memberships').select('id,student_id,role,students(id,full_name,student_code)').eq('team_color_id',c.id).eq('is_active',true).not('student_id','is',null),
-    supabase.from('sports_team_competition_assignments').select('id,sport_id,student_id,sports(name),students(full_name,student_code)').eq('team_color_id',c.id).order('assigned_at',{ascending:false}),
+    supabase.from('sports_team_competition_assignments').select('id,sport_id,student_id,sports(name),students(full_name,student_code,image_url,photo_url)').eq('team_color_id',c.id).order('assigned_at',{ascending:false}),
   ])
   const staffList=staffRows||[], assignList=assignments||[]
   slot.innerHTML=`
@@ -886,10 +886,11 @@ async function renderCompetitionAssignmentSection(root,{event,c,m,competitions,c
       <button id="comp-assign-btn" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold">➕ มอบหมาย</button>
     </div>`:''}
     <div class="space-y-2">
-      ${assignList.map(a=>`<div class="team-sub rounded-xl p-3 flex items-center justify-between gap-3">
-        <div><b>${esc(a.sports?.name||'—')}</b><p class="text-xs muted">${esc(a.students?.full_name||'—')} (${esc(a.students?.student_code||'')})</p></div>
-        ${canManage?`<button data-remove-assign="${a.id}" class="px-3 py-1.5 border rounded-lg text-red-500 text-xs">ยกเลิก</button>`:''}
-      </div>`).join('')||'<p class="text-sm muted">ยังไม่มีการมอบหมาย</p>'}
+      ${assignList.map(a=>{const photo=a.students?.image_url||a.students?.photo_url;return `<div class="team-sub rounded-xl p-3 flex items-center gap-3">
+        ${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border flex-shrink-0">`:`<div class="w-9 h-11 rounded-lg bg-gray-200 flex-shrink-0 grid place-items-center text-lg">👤</div>`}
+        <div class="flex-1 min-w-0"><b>${esc(a.sports?.name||'—')}</b><p class="text-xs muted truncate">${esc(a.students?.full_name||'—')} (${esc(a.students?.student_code||'')})</p></div>
+        ${canManage?`<button data-remove-assign="${a.id}" class="px-3 py-1.5 border rounded-lg text-red-500 text-xs flex-shrink-0">ยกเลิก</button>`:''}
+      </div>`}).join('')||'<p class="text-sm muted">ยังไม่มีการมอบหมาย</p>'}
     </div>`
   slot.querySelector('#comp-assign-btn')?.addEventListener('click',async()=>{
     const sportId=slot.querySelector('#comp-assign-sport').value
