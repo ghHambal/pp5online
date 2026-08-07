@@ -868,21 +868,66 @@ export async function renderShirtSummary() {
   }catch(e){console.error(e);el.innerHTML=missing()}
 }
 
+// ดรอปดาวน์แบบพิมพ์ค้นหา ใช้ซ้ำได้ทั่วไป — items ต้องเป็น [{id,label,sub,photo}] ที่ normalize มาแล้ว
+// (ไม่ใช้ select ธรรมดาเวลาตัวเลือกเยอะ ตามธรรมเนียมเดิมของระบบ)
+function _createPickerSelect({wrap,items,placeholder='ค้นหา...',emptyLabel='-- เลือก --'}) {
+  let _selected=null,_open=false
+  wrap.style.position='relative'
+  wrap.innerHTML=`
+    <div class="ps-input flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 cursor-pointer bg-white hover:border-indigo-300 transition" tabindex="0">
+      <span class="ps-display flex-1 text-sm text-gray-400 truncate">${esc(emptyLabel)}</span>
+      <svg class="ps-arrow w-4 h-4 text-gray-400 flex-shrink-0 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="ps-dropdown absolute left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden hidden">
+      <div class="p-2 border-b border-gray-100"><input class="ps-search w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="${esc(placeholder)}" autocomplete="off"></div>
+      <ul class="ps-list max-h-52 overflow-y-auto"></ul>
+    </div>`
+  const inputEl=wrap.querySelector('.ps-input'),dropdown=wrap.querySelector('.ps-dropdown'),searchEl=wrap.querySelector('.ps-search'),listEl=wrap.querySelector('.ps-list'),displayEl=wrap.querySelector('.ps-display'),arrowEl=wrap.querySelector('.ps-arrow')
+  function _renderList(q=''){
+    const lq=q.toLowerCase()
+    const filtered=items.filter(it=>!q||(it.label||'').toLowerCase().includes(lq)||(it.sub||'').toLowerCase().includes(lq))
+    listEl.innerHTML=filtered.length?filtered.map(it=>{
+      const active=_selected?.id===it.id
+      return `<li data-id="${esc(String(it.id))}" class="ps-opt px-3 py-2.5 text-sm cursor-pointer hover:bg-indigo-50 flex items-center gap-2 ${active?'bg-indigo-50 font-semibold text-indigo-700':'text-gray-700'}">
+        ${it.photo?`<img src="${esc(it.photo)}" class="w-7 h-9 rounded object-cover flex-shrink-0 border">`:''}
+        <span class="truncate">${esc(it.label)}${it.sub?` <span class="text-xs text-gray-400 font-mono">${esc(it.sub)}</span>`:''}</span>
+      </li>`
+    }).join(''):`<li class="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบรายการ</li>`
+    listEl.querySelectorAll('.ps-opt').forEach(li=>li.addEventListener('mousedown',e=>{
+      e.preventDefault()
+      _selected=items.find(it=>String(it.id)===li.dataset.id)||null
+      displayEl.textContent=_selected?_selected.label:emptyLabel
+      displayEl.classList.toggle('text-gray-400',!_selected)
+      displayEl.classList.toggle('text-gray-800',!!_selected)
+      _close()
+    }))
+  }
+  function _open_(){_open=true;dropdown.classList.remove('hidden');arrowEl.style.transform='rotate(180deg)';searchEl.value='';_renderList();setTimeout(()=>searchEl.focus(),50)}
+  function _close(){_open=false;dropdown.classList.add('hidden');arrowEl.style.transform=''}
+  inputEl.addEventListener('click',()=>_open?_close():_open_())
+  inputEl.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();_open?_close():_open_()}})
+  searchEl.addEventListener('input',()=>_renderList(searchEl.value.trim()))
+  document.addEventListener('mousedown',e=>{if(_open&&!wrap.contains(e.target))_close()},true)
+  return {getValue:()=>_selected?.id??null}
+}
+
 // มอบหมายรายการแข่งขันให้สตาฟรับผิดชอบเฉพาะคน — คนละกลไกกับ sports.responsible_teacher_id เดิม
 // (แอดมินระบบตั้งได้คนเดียวต่อรายการทั้งโรงเรียน) อันนี้พ่อสี/แม่สี/ครูประจำสี หรือหัวหน้าสตาฟ
 // นักเรียน มอบหมายได้เองระดับทีมสี มอบหมายได้หลายคน/หลายรายการ
 async function renderCompetitionAssignmentSection(root,{event,c,m,competitions,canManage}) {
   const slot=root.querySelector('#sports-comp-assign'); if(!slot)return
   const [{data:staffRows},{data:assignments}] = await Promise.all([
-    supabase.from('sports_team_memberships').select('id,student_id,role,students(id,full_name,student_code)').eq('team_color_id',c.id).eq('is_active',true).not('student_id','is',null),
+    supabase.from('sports_team_memberships').select('id,student_id,role,students(id,full_name,student_code,image_url,photo_url)').eq('team_color_id',c.id).eq('is_active',true).not('student_id','is',null),
     supabase.from('sports_team_competition_assignments').select('id,sport_id,student_id,sports(name),students(full_name,student_code,image_url,photo_url)').eq('team_color_id',c.id).order('assigned_at',{ascending:false}),
   ])
   const staffList=staffRows||[], assignList=assignments||[]
+  // ทีมสีหนึ่งมีเพศเดียวเสมอ (4 สีต่อเพศ) — กรองรายการแข่งขันให้ตรงเพศทีมนี้ (หรือ Coed) เท่านั้น
+  const sportsForTeam=(competitions||[]).filter(s=>!s.gender||s.gender==='Coed'||s.gender===c.gender)
   slot.innerHTML=`
     <div class="mb-4"><h2 class="font-bold">🎯 มอบหมายรายการแข่งขันให้สตาฟ</h2><p class="text-xs muted mt-1">กำหนดว่าสตาฟคนไหนรับผิดชอบรายการไหน — คนที่ถูกมอบหมายจะเห็นเมนู "รายการของฉัน" ในหน้าแข่งขันของ AZIZGAMES พร้อมปุ่มอัปโหลดรูปตรงรายการนั้นได้เลย</p></div>
     ${canManage?`<div class="team-sub rounded-2xl p-4 mb-4 grid sm:grid-cols-3 gap-3 items-end">
-      <div><label class="text-xs font-bold muted">รายการแข่งขัน</label><select id="comp-assign-sport" class="mt-1 w-full rounded-xl team-field px-3 py-2 text-sm"><option value="">-- เลือกรายการ --</option>${(competitions||[]).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
-      <div><label class="text-xs font-bold muted">สตาฟที่รับผิดชอบ</label><select id="comp-assign-student" class="mt-1 w-full rounded-xl team-field px-3 py-2 text-sm"><option value="">-- เลือกสตาฟ --</option>${staffList.map(s=>`<option value="${s.student_id}">${esc(s.students?.full_name||'—')} (${esc(s.students?.student_code||'')})</option>`).join('')}</select></div>
+      <div><label class="text-xs font-bold muted">รายการแข่งขัน</label><div id="comp-assign-sport-wrap" class="mt-1"></div></div>
+      <div><label class="text-xs font-bold muted">สตาฟที่รับผิดชอบ</label><div id="comp-assign-student-wrap" class="mt-1"></div></div>
       <button id="comp-assign-btn" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold">➕ มอบหมาย</button>
     </div>`:''}
     <div class="space-y-2">
@@ -892,9 +937,14 @@ async function renderCompetitionAssignmentSection(root,{event,c,m,competitions,c
         ${canManage?`<button data-remove-assign="${a.id}" class="px-3 py-1.5 border rounded-lg text-red-500 text-xs flex-shrink-0">ยกเลิก</button>`:''}
       </div>`}).join('')||'<p class="text-sm muted">ยังไม่มีการมอบหมาย</p>'}
     </div>`
+  let sportPicker=null,staffPicker=null
+  if(canManage){
+    sportPicker=_createPickerSelect({wrap:slot.querySelector('#comp-assign-sport-wrap'),items:sportsForTeam.map(s=>({id:s.id,label:s.name})),placeholder:'พิมพ์ชื่อรายการ...',emptyLabel:'-- เลือกรายการ --'})
+    staffPicker=_createPickerSelect({wrap:slot.querySelector('#comp-assign-student-wrap'),items:staffList.map(s=>({id:s.student_id,label:s.students?.full_name||'—',sub:s.students?.student_code||'',photo:s.students?.image_url||s.students?.photo_url})),placeholder:'พิมพ์ชื่อหรือรหัสนักเรียน...',emptyLabel:'-- เลือกสตาฟ --'})
+  }
   slot.querySelector('#comp-assign-btn')?.addEventListener('click',async()=>{
-    const sportId=slot.querySelector('#comp-assign-sport').value
-    const studentId=slot.querySelector('#comp-assign-student').value
+    const sportId=sportPicker?.getValue()
+    const studentId=staffPicker?.getValue()
     if(!sportId||!studentId){toast('เลือกทั้งรายการแข่งขันและสตาฟก่อน','warning');return}
     const {data:{user}}=await supabase.auth.getUser()
     const {error}=await supabase.from('sports_team_competition_assignments').upsert({
