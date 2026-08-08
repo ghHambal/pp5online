@@ -8,14 +8,14 @@
     <script>
       (() => {
         const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/';
-        const version = '20260808e-fix-sync-queue-race';
+        const version = '20260808f-live-score-poll-fallback';
         const stylesheet = document.createElement('link');
         stylesheet.rel = 'stylesheet';
         stylesheet.crossOrigin = 'anonymous';
         stylesheet.href = `${base}azizgames/assets/index-DpTYDPAs.css?v=${version}`;
         document.head.appendChild(stylesheet);
 
-        ['azizgames/assets/index-61ldGX4X.js', 'azizgames-public-controls.js'].forEach((src) => {
+        ['azizgames/assets/index-b4EFEY-S.js', 'azizgames-public-controls.js'].forEach((src) => {
           const script = document.createElement('script');
           script.type = 'module';
           script.crossOrigin = 'anonymous';
