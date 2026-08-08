@@ -2488,6 +2488,51 @@ function renderTeamLedgerSection(body,{event,c,fundLedger,canExpenses,card}){
 // "วอลเลย์บอล(ชาย) ม.ต้น" → "วอลเลย์บอล" — ใช้เป็นปุ่มกรองด่วนโดยไม่ต้องมี column แยกในฐานข้อมูล
 const sportGroupOf=name=>String(name||'').replace(/\([^)]*\)/g,'').replace(/\s*ม\.(ต้น|ปลาย)\s*$/,'').trim()||'อื่นๆ'
 
+// รายการพิเศษที่แยกอัลบั้มภาพกิจกรรมได้ แต่ไม่ใช่รายการแข่งขันจริงและไม่มีวันที่แน่นอนในปฏิทิน
+// (พิธีเปิด/ปิด) — ถ้าอยากเพิ่มแบบอื่นเพิ่ม object ในนี้ได้เลย ไม่ต้องแก้ schema
+const GALLERY_CUSTOM_LABELS=[
+  {key:'opening_ceremony',name:'🎉 พิธีเปิด'},
+  {key:'closing_ceremony',name:'🏁 พิธีปิด'},
+]
+
+// รวมตัวเลือก "รายการที่เกี่ยวข้อง" ของภาพกิจกรรมเป็นชุดเดียว — กีฬาแข่งขันจริง (id เดิม เก็บ
+// backward-compat กับรูปเก่าที่ผูก sport_id ตรงๆ) + ปฏิทินปฏิบัติงาน (เข้าสีครั้งที่ N/กีฬาสี จาก
+// work_calendar_events ตัวเดียวกับที่หน้าเช็คชื่อใช้) + รายการพิเศษด้านบน — ใส่ prefix แยกชนิดไว้ที่
+// id (cal:/label:) แล้วค่อยแกะกลับตอนบันทึกจริงด้วย _resolveGalleryItemFields
+async function _buildGalleryItemOptions(competitions){
+  const {data:calRows}=await supabase.from('work_calendar_events').select('id,label,event_date,end_date')
+    .or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%')
+  const calOptions=(calRows||[]).map(ev=>({id:`cal:${ev.id}`,name:`📅 ${ev.label}`}))
+  const labelOptions=GALLERY_CUSTOM_LABELS.map(l=>({id:`label:${l.key}`,name:l.name}))
+  return [...(competitions||[]),...calOptions,...labelOptions]
+}
+
+// แกะค่าที่เลือกจาก _buildGalleryItemOptions กลับเป็นฟิลด์ที่จะ insert ลง sports_gallery_photos —
+// เลือกได้แค่หนึ่งใน sport_id/calendar_event_id/custom_label ต่อรูปเสมอ
+function _resolveGalleryItemFields(selectedId){
+  if(!selectedId) return {sport_id:null,calendar_event_id:null,custom_label:null}
+  const val=String(selectedId)
+  if(val.startsWith('cal:')) return {sport_id:null,calendar_event_id:Number(val.slice(4)),custom_label:null}
+  if(val.startsWith('label:')) return {sport_id:null,calendar_event_id:null,custom_label:val.slice(6)}
+  return {sport_id:selectedId,calendar_event_id:null,custom_label:null}
+}
+
+// กุญแจจัดกลุ่มอัลบั้ม + ป้ายชื่อที่จะโชว์ — ใช้ร่วมกันทั้ง renderGallerySection (เฉพาะสี) และ
+// openSportsGalleryModal (รวมทุกสี) ต้องมี calendarMap ({id:label}) ประกอบเพราะรูปที่ผูกปฏิทิน
+// ไม่มี join แบบ sports(name) ให้มาด้วยตรงๆ
+function _galleryPhotoGroupKey(p){
+  if(p.sport_id) return p.sport_id
+  if(p.calendar_event_id) return `cal:${p.calendar_event_id}`
+  if(p.custom_label) return `label:${p.custom_label}`
+  return 'general'
+}
+function _galleryPhotoGroupLabel(p,calendarMap){
+  if(p.sports?.name) return p.sports.name
+  if(p.calendar_event_id) return `📅 ${calendarMap?.[p.calendar_event_id]?.label||'ปฏิทินกิจกรรม'}`
+  if(p.custom_label) return GALLERY_CUSTOM_LABELS.find(l=>l.key===p.custom_label)?.name||p.custom_label
+  return 'ภาพทั่วไป/บรรยากาศ'
+}
+
 // ดรอปดาวน์ค้นหา+กรองตามกลุ่มประเภทกีฬา สำหรับเลือกรายการแข่งขัน (ใช้กับ "ภาพกิจกรรม" ที่มี
 // ตัวเลือกเป็นสิบๆ รายการ) — panel เป็น portal ต่อท้าย document.body เสมอ (ตามกฎ floating UI
 // ของโปรเจกต์นี้) กันโดน overflow:auto ของ #team-tab-body ตัดบัง แทนที่จะ absolute ธรรมดา
@@ -2570,8 +2615,12 @@ function createSportSearchSelect({wrap,options}){
 
 async function renderGallerySection(body,{event,c,competitions,card,studentView}){
   body.innerHTML=`<div class="py-16 text-center muted">กำลังโหลดภาพกิจกรรม...</div>`
-  const {data:myPhotos,error}=await supabase.from('sports_gallery_photos').select('*,sports(name)').eq('team_color_id',c.id).order('created_at',{ascending:false})
+  const [{data:myPhotos,error},{data:calRows}]=await Promise.all([
+    supabase.from('sports_gallery_photos').select('*,sports(name,gender)').eq('team_color_id',c.id).order('created_at',{ascending:false}),
+    supabase.from('work_calendar_events').select('id,label'),
+  ])
   if(error){body.innerHTML=`<section class="${card}"><p class="text-center tone-bad py-8">โหลดไม่สำเร็จ: ${esc(error.message)}</p></section>`;return}
+  const calendarMap=Object.fromEntries((calRows||[]).map(ev=>[ev.id,ev]))
   let photos=myPhotos||[]
   // 'groups' = การ์ดรวมตามรายการแข่งขันที่เคยอัปโหลดแล้ว, 'detail' = คลิกเข้าไปดู/อัปโหลดเพิ่มในรายการนั้น
   let viewMode='groups', activeGroupKey=null
@@ -2599,10 +2648,13 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
     <div id="gallery-body"></div>
   </section>`
 
-  // จัดกลุ่มรูปที่สีนี้เคยอัปโหลดแล้วตามรายการแข่งขันจริง (sport_id) — ใช้แสดงเป็นการ์ด
+  // จัดกลุ่มรูปที่สีนี้เคยอัปโหลดแล้วตามรายการแข่งขันจริง/ปฏิทินกิจกรรม/รายการพิเศษ — ใช้แสดงเป็นการ์ด
   const groupsOf=()=>{
     const map={}
-    photos.forEach(p=>{const key=p.sport_id||'general';(map[key]=map[key]||{key,label:p.sports?.name||'ภาพทั่วไป/บรรยากาศ',photos:[]}).photos.push(p)})
+    photos.forEach(p=>{
+      const key=_galleryPhotoGroupKey(p)
+      ;(map[key]=map[key]||{key,label:_galleryPhotoGroupLabel(p,calendarMap),icon:p.sports?sportIconUrl(p.sports):null,photos:[]}).photos.push(p)
+    })
     return Object.values(map).sort((a,b)=>a.key==='general'?1:b.key==='general'?-1:b.photos.length-a.photos.length)
   }
 
@@ -2651,12 +2703,12 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
         const statusEl=el.querySelector('#gallery-add-status')
         const btn=el.querySelector('#gallery-add-btn')
         btn.disabled=true
-        const sportId=group.key==='general'?null:group.key
+        const itemFields=_resolveGalleryItemFields(group.key==='general'?null:group.key)
         for(let i=0;i<files.length;i++){
           statusEl.textContent=`กำลังอัปโหลด ${i+1}/${files.length}...`
           try{
             const url=await uploadGalleryPhoto(event.id,c.id,files[i])
-            const {data,error:insErr}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,sport_id:sportId,photo_url:url}).select('*,sports(name)').single()
+            const {data,error:insErr}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,...itemFields,photo_url:url}).select('*,sports(name,gender)').single()
             if(insErr)throw insErr
             photos.unshift(data)
           }catch(e){statusEl.textContent=`อัปโหลดรูปที่ ${i+1} ไม่สำเร็จ: ${e.message}`;btn.disabled=false;renderBody();return}
@@ -2674,7 +2726,7 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
             <img src="${esc(g.photos[0].photo_url)}" class="w-full h-full object-cover" loading="lazy">
             <span class="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white">${g.photos.length} รูป</span>
           </div>
-          <p class="p-2 text-[11px] font-bold truncate">${esc(g.label)}</p>
+          <p class="p-2 text-[11px] font-bold truncate flex items-center gap-1.5">${g.icon?`<img src="${esc(g.icon)}" class="w-4 h-4 object-contain flex-shrink-0">`:''}<span class="truncate">${esc(g.label)}</span></p>
         </button>`).join('')}</div>`:`<p class="text-sm muted text-center py-8">ยังไม่มีภาพที่สีนี้อัปโหลด</p>`
       el.querySelectorAll('[data-gallery-group]').forEach(btn=>btn.onclick=()=>{activeGroupKey=btn.dataset.galleryGroup;viewMode='detail';renderBody()})
     }
@@ -2683,14 +2735,14 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
 
   let sportSelectApi=null
   if(body.querySelector('#gallery-sport-wrap')){
-    sportSelectApi=createSportSearchSelect({wrap:body.querySelector('#gallery-sport-wrap'),options:competitions||[]})
+    sportSelectApi=createSportSearchSelect({wrap:body.querySelector('#gallery-sport-wrap'),options:await _buildGalleryItemOptions(competitions)})
   }
 
   body.querySelector('#gallery-open-full').onclick=()=>openSportsGalleryModal(event)
 
   body.querySelector('#gallery-upload-btn')?.addEventListener('click',async()=>{
     const filesInput=body.querySelector('#gallery-files')
-    const sportId=sportSelectApi?.getValue()||null
+    const itemFields=_resolveGalleryItemFields(sportSelectApi?.getValue()||null)
     const files=Array.from(filesInput.files||[])
     if(!files.length)return
     const statusEl=body.querySelector('#gallery-upload-status')
@@ -2700,7 +2752,7 @@ async function renderGallerySection(body,{event,c,competitions,card,studentView}
       statusEl.textContent=`กำลังอัปโหลด ${i+1}/${files.length}...`
       try{
         const url=await uploadGalleryPhoto(event.id,c.id,files[i])
-        const {data,error:insErr}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,sport_id:sportId,photo_url:url}).select('*,sports(name)').single()
+        const {data,error:insErr}=await supabase.from('sports_gallery_photos').insert({event_id:event.id,team_color_id:c.id,...itemFields,photo_url:url}).select('*,sports(name,gender)').single()
         if(insErr)throw insErr
         photos.unshift(data)
       }catch(e){statusEl.textContent=`อัปโหลดรูปที่ ${i+1} ไม่สำเร็จ: ${e.message}`;btn.disabled=false;renderBody();return}
@@ -2723,17 +2775,22 @@ export async function openSportsGalleryModal(event) {
   document.body.appendChild(m)
   try{
     if(!event) event=(await context()).event
-    const [{data:photos,error},{data:colors},{data:teachersAll},{data:studentsAll}]=await Promise.all([
-      supabase.from('sports_gallery_photos').select('*,sports(name)').eq('event_id',event.id).order('taken_at',{ascending:true}),
+    const [{data:photos,error},{data:colors},{data:teachersAll},{data:studentsAll},{data:calRows}]=await Promise.all([
+      supabase.from('sports_gallery_photos').select('*,sports(name,gender)').eq('event_id',event.id).order('taken_at',{ascending:true}),
       supabase.from('team_colors').select('id,name,hex_color').eq('event_id',event.id),
       supabase.from('teachers').select('profile_id,full_name').not('profile_id','is',null),
       supabase.from('students').select('profile_id,full_name').not('profile_id','is',null),
+      supabase.from('work_calendar_events').select('id,label'),
     ])
     if(error)throw error
     const colorMap=Object.fromEntries((colors||[]).map(c=>[c.id,c]))
     const nameMap=Object.fromEntries([...(teachersAll||[]).map(t=>[t.profile_id,t.full_name]),...(studentsAll||[]).map(s=>[s.profile_id,s.full_name])])
+    const calendarMap=Object.fromEntries((calRows||[]).map(ev=>[ev.id,ev]))
     const groups={}
-    ;(photos||[]).forEach(p=>{const key=p.sport_id||'general';(groups[key]=groups[key]||{label:p.sports?.name||'ภาพทั่วไป/บรรยากาศ',photos:[]}).photos.push(p)})
+    ;(photos||[]).forEach(p=>{
+      const key=_galleryPhotoGroupKey(p)
+      ;(groups[key]=groups[key]||{label:_galleryPhotoGroupLabel(p,calendarMap),icon:p.sports?sportIconUrl(p.sports):null,photos:[]}).photos.push(p)
+    })
     const groupKeys=Object.keys(groups).sort((a,b)=>a==='general'?1:b==='general'?-1:0)
     // masonry จัดคอลัมน์ตามสัดส่วนภาพจริง (แบบ Pinterest) แทนกริดสี่เหลี่ยมตัดเท่ากันทุกรูป — ใส่
     // ไว้ในโมดัลนี้เองเพราะเรียกได้จากหน้านักเรียน (ไม่มี #my-team-workspace ห่ออยู่เสมอไป)
@@ -2764,7 +2821,7 @@ export async function openSportsGalleryModal(event) {
               <img src="${esc(g.photos[0].photo_url)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
               <span class="absolute bottom-2 right-2 bg-black/70 px-2 py-0.5 rounded-full text-[10px] font-bold">${g.photos.length} รูป</span>
             </div>
-            <div class="p-3"><b class="text-sm">${esc(g.label)}</b></div>
+            <div class="p-3 flex items-center gap-2">${g.icon?`<img src="${esc(g.icon)}" class="w-5 h-5 object-contain flex-shrink-0">`:''}<b class="text-sm truncate">${esc(g.label)}</b></div>
           </button>`
         }).join('')}</div>`:'<p class="text-center muted py-20">ยังไม่มีภาพในระบบ</p>'
         slot.querySelectorAll('[data-open-group]').forEach(btn=>btn.onclick=()=>{activeKey=btn.dataset.openGroup;viewMode='detail';renderView()})
@@ -2784,8 +2841,52 @@ export async function openSportsGalleryModal(event) {
     renderView()
 
     m.querySelector('#gallery-modal-close').onclick=()=>m.remove()
-    m.querySelector('#gallery-download-all').onclick=()=>downloadAllGalleryPhotos(photos||[])
+    m.querySelector('#gallery-download-all').onclick=()=>openGalleryDownloadPicker(groups)
   }catch(e){console.error(e);m.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
+}
+
+// ป๊อปอัปเลือกรายการที่ต้องการดาวน์โหลด — ติ๊กได้หลายรายการ (ค่าเริ่มต้นติ๊กทุกรายการ) กด
+// ดาวน์โหลดแล้วแยกโฟลเดอร์ในซิปตามรายการที่เลือกให้อัตโนมัติ (ดู downloadGalleryGroupsAsZip)
+function openGalleryDownloadPicker(groups){
+  const entries=Object.entries(groups)
+  document.getElementById('gallery-download-picker')?.remove()
+  const overlay=document.createElement('div')
+  overlay.id='gallery-download-picker'
+  overlay.className='fixed inset-0 z-[400] bg-black/70 flex items-center justify-center p-4'
+  overlay.innerHTML=`
+    <div class="w-full max-w-md bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-3 max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between flex-shrink-0">
+        <b class="text-sm text-slate-100">⬇️ เลือกรายการที่ต้องการดาวน์โหลด</b>
+        <button data-picker-close class="w-8 h-8 rounded-lg bg-white/10 text-slate-200">✕</button>
+      </div>
+      <p class="text-[10.5px] muted flex-shrink-0">แต่ละรายการจะถูกแยกเป็นคนละโฟลเดอร์ในไฟล์ zip ให้อัตโนมัติ</p>
+      <div class="flex gap-2 flex-shrink-0">
+        <button data-picker-all class="flex-1 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs font-bold">เลือกทั้งหมด</button>
+        <button data-picker-none class="flex-1 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs font-bold">ไม่เลือกเลย</button>
+      </div>
+      <div class="space-y-1.5 overflow-y-auto flex-1">
+        ${entries.map(([key,g])=>`
+          <label class="flex items-center gap-2.5 p-2 rounded-lg bg-slate-900/60 border border-slate-800 cursor-pointer">
+            <input type="checkbox" data-picker-key="${esc(key)}" checked class="w-4 h-4 flex-shrink-0">
+            ${g.icon?`<img src="${esc(g.icon)}" class="w-5 h-5 object-contain flex-shrink-0">`:''}
+            <span class="text-xs text-slate-200 flex-1 truncate">${esc(g.label)}</span>
+            <span class="text-[10px] muted flex-shrink-0">${g.photos.length} รูป</span>
+          </label>`).join('')}
+      </div>
+      <button data-picker-download class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex-shrink-0">⬇️ ดาวน์โหลดที่เลือก</button>
+    </div>`
+  document.body.appendChild(overlay)
+  const close=()=>overlay.remove()
+  overlay.querySelector('[data-picker-close]').onclick=close
+  overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close()})
+  overlay.querySelector('[data-picker-all]').onclick=()=>overlay.querySelectorAll('[data-picker-key]').forEach(cb=>cb.checked=true)
+  overlay.querySelector('[data-picker-none]').onclick=()=>overlay.querySelectorAll('[data-picker-key]').forEach(cb=>cb.checked=false)
+  overlay.querySelector('[data-picker-download]').onclick=()=>{
+    const selectedKeys=[...overlay.querySelectorAll('[data-picker-key]:checked')].map(cb=>cb.dataset.pickerKey)
+    if(!selectedKeys.length){toast('เลือกอย่างน้อย 1 รายการ','warning');return}
+    close()
+    downloadGalleryGroupsAsZip(selectedKeys.map(k=>groups[k]))
+  }
 }
 
 function openGalleryLightbox(modalRoot,group,colorMap,nameMap,startIdx=0){
@@ -2861,16 +2962,26 @@ function _loadJSZip(){
   })
   return _jsZipPromise
 }
-async function downloadAllGalleryPhotos(photos){
-  if(!photos.length){toast('ยังไม่มีภาพให้ดาวน์โหลด','error');return}
-  toast(`กำลังเตรียมไฟล์ ${photos.length} รูป...`)
+// selectedGroups = [{label, photos}] — แยกโฟลเดอร์ในซิปตาม label ของแต่ละรายการที่เลือกให้อัตโนมัติ
+async function downloadGalleryGroupsAsZip(selectedGroups){
+  const totalPhotos=selectedGroups.reduce((s,g)=>s+g.photos.length,0)
+  if(!totalPhotos){toast('ยังไม่มีภาพให้ดาวน์โหลด','error');return}
+  toast(`กำลังเตรียมไฟล์ ${totalPhotos} รูป...`)
   try{
     const JSZip=await _loadJSZip()
     const zip=new JSZip()
-    for(let i=0;i<photos.length;i++){
-      const res=await fetch(photos[i].photo_url)
-      const blob=await res.blob()
-      zip.file(`photo-${i+1}.jpg`,blob)
+    let done=0
+    for(const g of selectedGroups){
+      // ตัดอักขระต้องห้ามของชื่อไฟล์/โฟลเดอร์ระบบออก (/ \ : * ? " < > |) กันสร้างโฟลเดอร์พลาด
+      const folderName=(g.label||'ภาพทั่วไป').replace(/[\\/:*?"<>|]/g,'-').trim()||'ภาพทั่วไป'
+      const folder=zip.folder(folderName)
+      for(let i=0;i<g.photos.length;i++){
+        const res=await fetch(g.photos[i].photo_url)
+        const blob=await res.blob()
+        folder.file(`${folderName}-${i+1}.jpg`,blob)
+        done++
+        if(done%5===0) toast(`กำลังเตรียมไฟล์ ${done}/${totalPhotos} รูป...`)
+      }
     }
     const content=await zip.generateAsync({type:'blob'})
     const a=document.createElement('a')
