@@ -4130,16 +4130,42 @@ export async function getAssignmentSubmissions(assignmentId) {
 }
 
 // ดึงงานทั้งหมด + submission ของทุกคนในห้อง ครั้งเดียว — ใช้สรุปยอดส่งแล้ว/ยังไม่ส่งต่อวิชา
+// แต่ละ submission จะมี hasScore แนบมาด้วย (เช็คจาก assignment_score_contributions จริง
+// ไม่ใช่เดาจาก student_scores เฉยๆ เพราะคอลัมน์เดียวกันอาจมีคะแนนจากแหล่งอื่นปนอยู่)
 export async function getClassAssignmentsWithSubmissions(classId) {
   const assignments = await getClassAssignments(classId)
   if (!assignments.length) return []
   const ids = assignments.map(a => a.id)
-  const { data: subs, error } = await supabase
-    .from('assignment_submissions')
-    .select('id, assignment_id, student_id, file_urls, note, teacher_feedback, submitted_at')
-    .in('assignment_id', ids)
+  const [{ data: subs, error }, { data: contributions, error: cErr }] = await Promise.all([
+    supabase
+      .from('assignment_submissions')
+      .select('id, assignment_id, student_id, file_urls, note, teacher_feedback, submitted_at, reviewed_at')
+      .in('assignment_id', ids),
+    supabase
+      .from('assignment_score_contributions')
+      .select('assignment_id, student_id')
+      .in('assignment_id', ids),
+  ])
   if (error) throw error
-  return assignments.map(a => ({ ...a, submissions: (subs ?? []).filter(s => s.assignment_id === a.id) }))
+  if (cErr) throw cErr
+  const scoredSet = new Set((contributions ?? []).map(c => `${c.assignment_id}:${c.student_id}`))
+  return assignments.map(a => ({
+    ...a,
+    submissions: (subs ?? [])
+      .filter(s => s.assignment_id === a.id)
+      .map(s => ({ ...s, hasScore: scoredSet.has(`${s.assignment_id}:${s.student_id}`) })),
+  }))
+}
+
+// mark ว่าครูเปิดดู/ตรวจงานชิ้นนี้แล้ว — ตั้งครั้งแรกเท่านั้น (ไม่ทับเวลาที่ตรวจครั้งแรกถ้าเปิดซ้ำ)
+export async function markAssignmentSubmissionReviewed(assignmentId, studentId) {
+  const { error } = await supabase
+    .from('assignment_submissions')
+    .update({ reviewed_at: new Date().toISOString() })
+    .eq('assignment_id', assignmentId)
+    .eq('student_id', studentId)
+    .is('reviewed_at', null)
+  if (error) throw error
 }
 
 // ─── กำหนดการสอน (Syllabus — ผูกกับรายวิชา) ────────────────────────────────────

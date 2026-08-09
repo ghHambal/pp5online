@@ -8,7 +8,7 @@ import {
   closeLeavePermission, getMyDonationRequests, createAnnouncement, getClassAnnouncements,
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
   getClassAssignmentsWithSubmissions, createAssignment, updateAssignment, deleteAssignment, saveAssignmentGrade,
-  saveAssignmentFeedback,
+  saveAssignmentFeedback, markAssignmentSubmissionReviewed,
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
   getCourseSyllabus, createSyllabusItem, updateSyllabusItem, deleteSyllabusItem,
   getLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan,
@@ -1838,46 +1838,64 @@ export async function renderSmartClassroom(teacher, classId) {
               <button id="st-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
             </div>
           </div>
-          <div class="flex items-center justify-between mt-2">
-            <p class="text-[11px] text-gray-400">${a.submissions.length}/${students.length} ส่งแล้ว</p>
-            <button id="st-review-start" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">🔎 ตรวจทีละคน</button>
+          <div class="flex items-center justify-between mt-2 gap-2">
+            <p class="text-[11px] text-gray-400 flex-shrink-0">${a.submissions.length}/${students.length} ส่งแล้ว</p>
+            <label class="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer select-none">
+              <input id="st-sort-toggle" type="checkbox" class="w-3.5 h-3.5 rounded accent-indigo-500" />
+              เรียงตามสถานะ
+            </label>
+            <button id="st-review-start" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex-shrink-0">🔎 ตรวจทีละคน</button>
           </div>
         </div>
-        <div class="overflow-y-auto flex-1 p-5 space-y-2">
-          ${students.map(s => {
-            const avatar = `<div class="w-7 h-7 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-[10px] flex-shrink-0">
-              ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
-            </div>`
-            const seatBadge = `<span class="text-gray-400 font-mono text-[10px] flex-shrink-0">#${seatNoByStudent.get(s.id) ?? '—'}</span>`
-            const sub = subByStudent[s.id]
-            if (!sub) return `<div class="sc-track-row flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs cursor-pointer hover:border-indigo-200" data-sid="${s.id}">
-              <div class="flex items-center gap-2 min-w-0">
-                ${avatar}
-                ${seatBadge}
-                <span class="font-semibold text-gray-600 truncate">${_htmlEsc(s.full_name ?? '')}</span>
-              </div>
-              <span class="text-gray-300 font-medium flex-shrink-0">ยังไม่ส่ง</span>
-            </div>`
-            const late = _isLate(a, sub.submitted_at)
-            const penalty = _latePenaltyPoints(a, sub.submitted_at)
-            const suggested = col ? Math.max(0, (parseFloat(col.max_score) || 0) - penalty) : ''
-            return `<div class="sc-track-row px-3 py-2.5 rounded-xl border ${late ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'} text-xs cursor-pointer hover:border-indigo-200" data-sid="${s.id}">
-              <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2 min-w-0">
-                  ${avatar}
-                  ${seatBadge}
-                  <span class="font-semibold text-gray-700 truncate">${_htmlEsc(s.full_name ?? '')}</span>
-                </div>
-                <span class="text-gray-400 flex-shrink-0">${new Date(sub.submitted_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-              ${sub.file_urls?.length ? `<div class="flex flex-wrap gap-1.5 mt-1.5">${sub.file_urls.map(f => `<span class="text-[10px] px-2 py-1 rounded-lg bg-white border border-gray-200 text-indigo-600">📎 ${_htmlEsc(f.name)}</span>`).join('')}</div>` : ''}
-              ${late ? `<p class="text-[10px] text-amber-700 font-bold mt-1.5">⏰ ส่งช้า ${_lateDays(a, sub.submitted_at)} วัน${penalty > 0 ? ` — หักคะแนนแนะนำ ${penalty}` : ''}</p>` : ''}
-              <p class="text-[10px] text-indigo-400 font-semibold mt-1.5">คลิกเพื่อดู/ตรวจงาน →</p>
-            </div>`
-          }).join('')}
-        </div>
+        <div class="overflow-y-auto flex-1 p-5 space-y-2" id="st-row-list"></div>
       </div>`
     document.body.appendChild(m)
+
+    const _renderRow = s => {
+      const avatar = `<div class="w-7 h-7 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-[10px] flex-shrink-0">
+        ${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}
+      </div>`
+      const seatBadge = `<span class="text-gray-400 font-mono text-[10px] flex-shrink-0">#${seatNoByStudent.get(s.id) ?? '—'}</span>`
+      const sub = subByStudent[s.id]
+      if (!sub) return `<div class="sc-track-row flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs cursor-pointer hover:border-indigo-200" data-sid="${s.id}">
+        <div class="flex items-center gap-2 min-w-0">
+          ${avatar}
+          ${seatBadge}
+          <span class="font-semibold text-gray-600 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+        </div>
+        <span class="text-gray-300 font-medium flex-shrink-0">ยังไม่ส่ง</span>
+      </div>`
+      const late = _isLate(a, sub.submitted_at)
+      const status = _statusOf(sub)
+      return `<div class="sc-track-row px-3 py-2.5 rounded-xl border ${late ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'} text-xs cursor-pointer hover:border-indigo-200" data-sid="${s.id}">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            ${avatar}
+            ${seatBadge}
+            <span class="font-semibold text-gray-700 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+          </div>
+          <span class="text-gray-400 flex-shrink-0">${new Date(sub.submitted_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+        <div class="flex items-center justify-between mt-1.5">
+          ${sub.file_urls?.length ? `<div class="flex flex-wrap gap-1.5">${sub.file_urls.map(f => `<span class="text-[10px] px-2 py-1 rounded-lg bg-white border border-gray-200 text-indigo-600">📎 ${_htmlEsc(f.name)}</span>`).join('')}</div>` : '<span></span>'}
+          ${_statusBadge(status)}
+        </div>
+        ${late ? `<p class="text-[10px] text-amber-700 font-bold mt-1.5">⏰ ส่งช้า ${_lateDays(a, sub.submitted_at)} วัน</p>` : ''}
+      </div>`
+    }
+
+    let sortByStatus = false
+    const _renderList = () => {
+      const ordered = sortByStatus
+        ? [...students].sort((x, y) => _statusRank[_statusOf(subByStudent[x.id])] - _statusRank[_statusOf(subByStudent[y.id])])
+        : students
+      m.querySelector('#st-row-list').innerHTML = ordered.map(_renderRow).join('')
+      m.querySelectorAll('.sc-track-row').forEach(row => row.addEventListener('click', () => {
+        _openAssignmentGradeCard(a, parseInt(row.dataset.sid, 10))
+      }))
+    }
+    _renderList()
+
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
     m.querySelector('#st-close').addEventListener('click', () => m.remove())
     m.querySelector('#st-edit').addEventListener('click', () => { m.remove(); _openAssignmentModal(a) })
@@ -1886,14 +1904,38 @@ export async function renderSmartClassroom(teacher, classId) {
       try { await deleteAssignment(a.id); showToast('ลบงานแล้ว', 'success'); m.remove(); _reload() }
       catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
     })
+    m.querySelector('#st-sort-toggle').addEventListener('change', e => { sortByStatus = e.target.checked; _renderList() })
     const _firstSubmittedId = () => (students.find(s => subByStudent[s.id]) ?? students[0])?.id
     m.querySelector('#st-review-start')?.addEventListener('click', () => {
       const sid = _firstSubmittedId()
       if (sid != null) _openAssignmentGradeCard(a, sid)
     })
-    m.querySelectorAll('.sc-track-row').forEach(row => row.addEventListener('click', () => {
-      _openAssignmentGradeCard(a, parseInt(row.dataset.sid, 10))
-    }))
+  }
+
+  // สถานะ 3 ระดับ: ยังไม่ตรวจ / ตรวจแล้วยังไม่ให้คะแนน / ให้คะแนนแล้ว — ใช้ร่วมกันทั้งลิสต์และการ์ดตรวจทีละคน
+  const _statusOf = sub => !sub ? 'unsubmitted' : sub.hasScore ? 'graded' : sub.reviewed_at ? 'reviewed' : 'unreviewed'
+  const _statusBadge = status => ({
+    unreviewed: '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex-shrink-0">🔵 ยังไม่ตรวจ</span>',
+    reviewed:   '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">🟡 ตรวจแล้ว ยังไม่ให้คะแนน</span>',
+    graded:     '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex-shrink-0">✅ ให้คะแนนแล้ว</span>',
+  }[status] ?? '')
+  const _statusRank = { unreviewed: 0, unsubmitted: 1, reviewed: 2, graded: 3 }
+
+  // ตัวอย่างคอมเมนต์ให้ครูเลือกแทรก (แก้ไขต่อได้หลังแทรก) — โทนให้กำลังใจ เชิงจิตวิทยาเชิงบวก
+  // สอดแทรกดุอาอ์/ความหวังบารอกัตแบบพอดี ไม่ใช่ทุกประโยค
+  const _FEEDBACK_TEMPLATES = {
+    praise: [
+      'ทำได้ดีมากครับ/ค่ะ เห็นความตั้งใจชัดเจน ขอให้อัลลอฮ์ทรงประทานบารอกัตในความพยายามของเธอนะ 🌟',
+      'เก่งมากเลย ครูภูมิใจในตัวเธอ ขอดุอาอ์ให้พัฒนาต่อไปเรื่อยๆ อินชาอัลลอฮ์',
+      'ยอดเยี่ยม! งานชิ้นนี้แสดงถึงความพยายามที่ดีมาก ขอให้เป็นบารอกัตติดตัวเธอไปตลอด',
+      'สุดยอดค่ะ/ครับ ทำมาได้ดีมาก ครูขอดุอาอ์ให้เธอประสบความสำเร็จเสมอ',
+    ],
+    improve: [
+      'ทำได้ดีในหลายจุดแล้วนะ ลองทบทวนอีกครั้งในส่วนที่ยังไม่สมบูรณ์ ครูเชื่อว่าเธอทำได้ดีกว่านี้ อินชาอัลลอฮ์',
+      'ครูเห็นความตั้งใจแล้ว ลองกลับไปทบทวนเพิ่มอีกนิดแล้วส่งใหม่ได้นะ ครูให้กำลังใจอยู่เสมอ',
+      'ยังไม่สมบูรณ์เท่าที่ควร แต่ไม่เป็นไรนะ ทุกความผิดพลาดคือบทเรียน ลองแก้ไขแล้วส่งมาใหม่ได้เลย',
+      'อยากให้ตรวจทานอีกรอบก่อนส่งครั้งหน้า ครูเชื่อมั่นในศักยภาพของเธอ ขอให้อัลลอฮ์ทรงช่วยให้เข้าใจง่ายขึ้นนะ',
+    ],
   }
 
   // ── โหมดตรวจงานทีละคน — พรีวิวไฟล์ในตัว + ให้คะแนน + คอมเมนต์ + สลับ/กระโดดไปเลขที่ ──
@@ -1920,6 +1962,11 @@ export async function renderSmartClassroom(teacher, classId) {
       const late = sub && _isLate(a, sub.submitted_at)
       const penalty = sub ? _latePenaltyPoints(a, sub.submitted_at) : 0
       const suggested = col ? Math.max(0, (parseFloat(col.max_score) || 0) - penalty) : ''
+
+      if (sub && !sub.reviewed_at) {
+        sub.reviewed_at = new Date().toISOString() // optimistic — กันเรียกซ้ำถ้า re-render ก่อน request จบ
+        markAssignmentSubmissionReviewed(a.id, s.id).catch(() => {})
+      }
 
       const previewHTML = !sub ? '' : !sub.file_urls?.length ? '' : sub.file_urls.map(f => {
         const kind = _FILE_EXT_KIND(f)
@@ -1950,6 +1997,7 @@ export async function renderSmartClassroom(teacher, classId) {
               <span class="text-[11px] text-gray-300">/ ${students.length}</span>
               <span class="text-[11px] text-gray-300 ml-auto">${idx + 1} / ${students.length} คน</span>
             </div>
+            ${sub ? `<div class="mt-2">${_statusBadge(_statusOf(sub))}</div>` : ''}
           </div>
           <div class="p-5 pt-3 overflow-y-auto flex-1">
             ${!sub ? `
@@ -1961,14 +2009,25 @@ export async function renderSmartClassroom(teacher, classId) {
               ${late ? `<p class="text-[11px] text-amber-700 font-bold mb-2">⏰ ส่งช้า ${_lateDays(a, sub.submitted_at)} วัน${penalty > 0 ? ` — หักคะแนนแนะนำ ${penalty}` : ''}</p>` : ''}
               ${previewHTML}
               ${sub.note ? `<div class="bg-gray-50 border border-gray-100 rounded-xl p-3 mb-3"><p class="text-[10px] font-bold text-gray-400 mb-0.5">ข้อความจากนักเรียน</p><p class="text-xs text-gray-600">${_htmlEsc(sub.note)}</p></div>` : ''}
-              ${col ? `<div class="flex items-center gap-2 mb-3">
-                <input id="sgc-grade" type="number" class="w-20 text-center border border-gray-200 rounded-lg px-1 py-1.5 font-mono font-bold text-indigo-600" value="${suggested}" placeholder="—" />
-                <span class="text-xs text-gray-400">/ ${col.max_score}</span>
-                <button id="sgc-grade-save" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg">บันทึกคะแนน</button>
+              ${col ? `<div class="mb-3">
+                <div class="flex items-center gap-2">
+                  <input id="sgc-grade" type="number" class="w-20 text-center border border-gray-200 rounded-lg px-1 py-1.5 font-mono font-bold text-indigo-600" value="${suggested}" placeholder="—" />
+                  <span class="text-xs text-gray-400">/ ${col.max_score}</span>
+                  <button id="sgc-grade-save" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg">บันทึกคะแนน</button>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-1">โหมดคะแนน: ${ASSIGN_WRITE_MODE_LABEL[a.score_write_mode ?? 'overwrite']?.label ?? ''}</p>
               </div>` : `<p class="text-[11px] text-gray-300 mb-3">งานนี้ไม่ได้ผูกกับคอลัมน์คะแนน</p>`}
               <div>
                 <label for="sgc-feedback" class="text-[11px] font-bold text-gray-500 mb-1 block">คอมเมนต์ถึงนักเรียน</label>
-                <textarea id="sgc-feedback" rows="2" placeholder="เช่น ทำได้ดีมาก แต่ข้อ 3 ทบทวนอีกครั้ง" class="w-full text-xs border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none">${_htmlEsc(sub.teacher_feedback ?? '')}</textarea>
+                <div class="flex flex-wrap gap-1.5 mb-1.5">
+                  <span class="text-[10px] text-gray-400 flex items-center">💚 ชื่นชม:</span>
+                  ${_FEEDBACK_TEMPLATES.praise.map((t, i) => `<button type="button" class="sgc-tmpl text-[10px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100" data-tmpl="praise-${i}">ตัวอย่าง ${i + 1}</button>`).join('')}
+                </div>
+                <div class="flex flex-wrap gap-1.5 mb-2">
+                  <span class="text-[10px] text-gray-400 flex items-center">💡 ปรับปรุง:</span>
+                  ${_FEEDBACK_TEMPLATES.improve.map((t, i) => `<button type="button" class="sgc-tmpl text-[10px] px-2 py-1 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-100" data-tmpl="improve-${i}">ตัวอย่าง ${i + 1}</button>`).join('')}
+                </div>
+                <textarea id="sgc-feedback" rows="2" placeholder="เช่น ทำได้ดีมาก แต่ข้อ 3 ทบทวนอีกครั้ง — หรือกดตัวอย่างด้านบนแล้วแก้ไขต่อได้" class="w-full text-xs border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none">${_htmlEsc(sub.teacher_feedback ?? '')}</textarea>
                 <button id="sgc-feedback-save" class="mt-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">บันทึกคอมเมนต์</button>
               </div>`}
           </div>
@@ -1994,10 +2053,17 @@ export async function renderSmartClassroom(teacher, classId) {
         btn.disabled = true
         try {
           await saveAssignmentGrade(a.id, s.id, val === '' ? 0 : parseFloat(val))
+          sub.hasScore = true
           showToast('บันทึกคะแนนแล้ว ✅', 'success')
-        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
-        finally { btn.disabled = false }
+          _render()
+        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false }
       })
+      m.querySelectorAll('.sgc-tmpl').forEach(btn => btn.addEventListener('click', () => {
+        const [group, i] = btn.dataset.tmpl.split('-')
+        const textarea = m.querySelector('#sgc-feedback')
+        textarea.value = _FEEDBACK_TEMPLATES[group][parseInt(i, 10)]
+        textarea.focus()
+      }))
       m.querySelector('#sgc-feedback-save')?.addEventListener('click', async () => {
         const btn = m.querySelector('#sgc-feedback-save')
         const val = m.querySelector('#sgc-feedback').value.trim()
