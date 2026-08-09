@@ -3159,9 +3159,20 @@ export async function updateHouseGroupTeacher(id, teacherId) {
   if (error) throw error
 }
 
+// หน้า "จัดการสีนักเรียน" คือความจริงหลักของสีนักเรียน (house_color) — แต่ระบบ AZIZGAMES/กีฬาสี
+// ทั้งหมดอ่านสีจาก team_color_id (FK ไปตาราง team_colors ของ event ปัจจุบัน) ไม่ใช่ house_color
+// ถ้าไม่ sync กันตรงนี้ 2 ฟิลด์จะเพี้ยนออกจากกันได้ (เจอจริง 54 คน 2026-08-09) จึงต้องอัปเดตคู่กันเสมอ
 export async function assignStudentsHouseColor(studentIds, colorName) {
+  let teamColorId = null
+  if (colorName) {
+    const { data: activeEvent } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
+    if (activeEvent) {
+      const { data: tc } = await supabase.from('team_colors').select('id').eq('event_id', activeEvent.id).eq('name', colorName).maybeSingle()
+      teamColorId = tc?.id ?? null
+    }
+  }
   const updates = studentIds.map(id =>
-    supabase.from('students').update({ house_color: colorName || null }).eq('id', id)
+    supabase.from('students').update({ house_color: colorName || null, team_color_id: teamColorId }).eq('id', id)
   )
   const results = await Promise.all(updates)
   const err = results.find(r => r.error)
