@@ -76,8 +76,10 @@ function renderGate(onSuccess) {
 }
 
 function renderDashboard(snapshot) {
-  const amount = Number(snapshot.shirt_payment_amount) || 0
-  const paymentsOpen = amount > 0
+  const amountM = Number(snapshot.shirt_payment_amount_m) || 0
+  const amountW = Number(snapshot.shirt_payment_amount_w) || 0
+  const amountForGender = g => g === 'W' ? amountW : amountM
+  const paymentsOpen = amountM > 0 || amountW > 0
   const allowedSizes = (snapshot.allowed_sizes && snapshot.allowed_sizes.length) ? snapshot.allowed_sizes : ['SS', 'S', 'M', 'L', 'XL', '2X', '3X', '4X', '5X', '6X', '7X', '8X']
   const colors = snapshot.team_colors || []
   // ครู — แยกจากนักเรียนโดยสิ้นเชิง ไม่มีสี/ห้อง แจ้งแล้วถือเป็นค่าสุดท้ายทันที (ไม่มีสถานะรอยืนยัน)
@@ -112,7 +114,7 @@ function renderDashboard(snapshot) {
       if (selectedSize) list = list.filter(s => requestOf(s.id)?.confirmed_size === selectedSize)
       if (statusFilter === 'pending') list = list.filter(s => !rowStatus(s).sizeOk)
     } else if (paymentsOpen && statusFilter === 'unpaid') {
-      list = list.filter(s => !rowStatus(s).paid)
+      list = list.filter(s => amountForGender(s.gender) > 0 && !rowStatus(s).paid)
     }
     return list
   }
@@ -157,7 +159,7 @@ function renderDashboard(snapshot) {
       const inColor = baseStudents().filter(s => s.team_color_id === c.id)
       const metricValue = activeTab === 'size'
         ? `${inColor.filter(s => rowStatus(s).sizeOk).length} / ${inColor.length}`
-        : (paymentsOpen ? `${inColor.filter(s => rowStatus(s).paid).length} / ${inColor.length}` : 'รอราคา')
+        : (amountForGender(c.gender) > 0 ? `${inColor.filter(s => rowStatus(s).paid).length} / ${inColor.length}` : 'รอราคา')
       const active = selectedColorId === c.id
       return `<button type="button" data-color-card="${esc(c.id)}" class="text-left rounded-xl border p-3 transition-all ${active ? 'ring-2 ring-offset-1' : 'border-slate-200 bg-white hover:border-slate-300'}" style="${active ? `border-color:${esc(c.hex_color)};box-shadow:0 0 0 2px ${esc(c.hex_color)}22;` : ''}">
         <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full flex-shrink-0" style="background:${esc(c.hex_color)}"></span><b class="text-xs text-slate-700">สี${esc(c.name)}</b></div>
@@ -279,7 +281,7 @@ function renderDashboard(snapshot) {
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.color_name || '—')}</td>
               ${activeTab === 'size'
                 ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(st.req?.confirmed_size || '—')}</td><td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(sizeBadgeLabel(st.sizeStatus))}</td>`
-                : (paymentsOpen ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</td>` : '')}
+                : (paymentsOpen ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${amountForGender(s.gender) > 0 ? (st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ') : 'รอราคา'}</td>` : '')}
             </tr>`
           }).join('')}</tbody>
         </table>
@@ -395,10 +397,13 @@ function renderDashboard(snapshot) {
                 <td class="p-2 text-center">${esc(st.req?.requested_size || '—')}</td>
                 <td class="p-2 text-center">${esc(st.req?.confirmed_size || '—')}</td>
                 <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.sizeOk ? 'bg-emerald-100 text-emerald-700' : st.sizeStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}">${esc(sizeBadgeLabel(st.sizeStatus))}</span></td>
-              ` : paymentsOpen ? `
+              ` : paymentsOpen ? (amountForGender(s.gender) > 0 ? `
                 <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</span></td>
                 <td class="p-2 text-right">${st.paid ? `${Number(st.pay.amount).toLocaleString('th-TH')} บาท` : '—'}</td>
-              ` : `<td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอประกาศราคา</span></td>`}
+              ` : `
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอราคา</span></td>
+                <td class="p-2 text-right text-slate-400">—</td>
+              `) : `<td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอประกาศราคา</span></td>`}
             </tr>`
           }).join('')}</tbody>
         </table>
@@ -446,7 +451,7 @@ function renderDashboard(snapshot) {
       if (activeTab === 'size') {
         return [s.main_room, s.student_code, s.full_name, s.color_name, st.req?.requested_size || '', st.req?.confirmed_size || '', sizeBadgeLabel(st.sizeStatus)].map(q).join(',')
       }
-      const payStatus = !paymentsOpen ? 'รอประกาศราคา' : (st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ')
+      const payStatus = amountForGender(s.gender) <= 0 ? 'รอประกาศราคา' : (st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ')
       const paidAt = st.paid ? new Date(st.pay.paid_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''
       const methodLabel = st.paid ? (st.pay.method === 'qr' ? 'สแกน QR' : 'กรอกรหัส') : ''
       return [s.main_room, s.student_code, s.full_name, s.color_name, payStatus, paidAt, st.paid ? Number(st.pay.amount) : '', methodLabel].map(q).join(',')
