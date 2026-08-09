@@ -22,6 +22,18 @@ const DEFAULT_SHIRT_SIZES = [
 // (main_room เช่น "ม.6/2 Delima" หรือ "ปวช.2/1") — ใช้กรองเฉพาะจุดที่นักเรียนคนเดียวเลือกไซซ์เอง
 // ไม่ใช้กรองตารางสรุปยอดรวม (ต้องโชว์ข้อมูลจริงครบทุกไซซ์)
 const _isHighSchoolOrVoc = room => { const r = String(room || ''); return r.startsWith('ม.4') || r.startsWith('ม.5') || r.startsWith('ม.6') || r.startsWith('ปวช') }
+// แนะไซซ์จากรอบอกที่นักเรียนกรอก — ปัดขึ้นเสมอ (เลือกไซซ์เล็กที่สุดที่รอบอก >= ที่กรอก ไม่ใช่ไซซ์
+// ใกล้เคียงที่สุด) กันไซซ์รัดเกินไป นักเรียนหญิงแนะ 2 ไซซ์ (ตัวที่ปัดขึ้น + ไซซ์ถัดไปอีกไซซ์) ให้เลือก
+// เอง เผื่อความสบายใจ/เคลื่อนไหวสะดวก/ผ่านเกณฑ์ฝ่ายปกครอง — ชายแนะไซซ์เดียว
+function _recommendSizes(val, sizes, isFemale) {
+  const sorted=[...sizes].sort((a,b)=>a.chest-b.chest)
+  let idx=sorted.findIndex(s=>s.chest>=val)
+  if(idx===-1) idx=sorted.length-1
+  const primary=sorted[idx]
+  if(!isFemale) return [primary]
+  const secondary=sorted[idx+1]||null
+  return secondary?[primary,secondary]:[primary]
+}
 const badge = s => ({pending:'รอยืนยัน',confirmed:'ยืนยันแล้ว',advisor_updated:'ครูเลือก/แก้ไขแทน'}[s] || 'ยังไม่จำนง')
 const statusClass = s => s === 'confirmed' || s === 'advisor_updated' ? 'bg-emerald-100 text-emerald-700' : s === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
 export const toast = (msg,type='success') => { const e=document.createElement('div');e.className=`fixed top-4 left-1/2 -translate-x-1/2 z-[999] px-4 py-3 rounded-xl text-white text-sm shadow-xl ${type==='error'?'bg-red-600':'bg-emerald-600'}`;e.textContent=msg;document.body.appendChild(e);setTimeout(()=>e.remove(),3000) }
@@ -306,10 +318,10 @@ export async function renderStudentSportsHome(student, tab='overview') {
       const val=Number(el.querySelector('#stu-shirt-chest-input')?.value)
       if(!val){toast('กรุณากรอกตัวเลขรอบอกก่อน','warning');return}
       const candidates=shirtSizes.filter(s=>!(s.code==='S'&&_isHighSchoolOrVoc(student.main_room)))
-      const nearest=[...candidates].sort((a,b)=>Math.abs(a.chest-val)-Math.abs(b.chest-val))[0]
-      if(!nearest) return
-      const sizeSel=el.querySelector('#stu-shirt-size'); if(sizeSel) sizeSel.value=nearest.code
-      openShirtPreview(nearest.code)
+      const rec=_recommendSizes(val,candidates,c.gender==='W')
+      const pick=(meta)=>{const sizeSel=el.querySelector('#stu-shirt-size'); if(sizeSel) sizeSel.value=meta.code; openShirtPreview(meta.code)}
+      if(rec.length<2) pick(rec[0])
+      else showShirtSizeChoiceModal(rec[0],rec[1],pick)
     })
     el.querySelector('#stu-shirt-chest-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el.querySelector('#stu-shirt-chest-go')?.click()}})
   } catch(e) { console.error(e); el.innerHTML=missing() }
@@ -349,6 +361,29 @@ function showShirtSizePreviewModal(color, meta, onConfirm) {
     const ok=await onConfirm()
     if(ok===false){btn.disabled=false;btn.textContent='✅ ยืนยันไซซ์นี้'}
   }
+}
+
+// ป๊อปอัพให้นักเรียนหญิงเลือกระหว่าง 2 ไซซ์ที่แนะนำ (จาก _recommendSizes) — ก่อนเข้าป๊อปอัพ
+// ตัวอย่างเสื้อ+ยืนยัน
+function showShirtSizeChoiceModal(a, b, onPick) {
+  document.getElementById('shirt-size-choice-modal')?.remove()
+  const overlay=document.createElement('div')
+  overlay.id='shirt-size-choice-modal'
+  overlay.className='fixed inset-0 z-[500] bg-black/80 flex items-center justify-center p-4'
+  overlay.innerHTML=`<div class="w-full max-w-sm bg-white rounded-2xl p-5 space-y-3">
+      <h3 class="font-bold text-base text-center">เลือกไซซ์ที่สบายใจที่สุด</h3>
+      <p class="text-xs text-gray-500 text-center">แนะนำ 2 ไซซ์นี้ เพื่อความสบายใจ เคลื่อนไหวสะดวก และผ่านเกณฑ์ฝ่ายปกครอง</p>
+      <div class="grid grid-cols-2 gap-3">
+        <button data-choice="${esc(a.code)}" class="p-4 rounded-xl border-2 border-indigo-200 hover:border-indigo-500 text-center transition"><div class="text-2xl font-black">${esc(a.code)}</div><div class="text-xs text-gray-500 mt-1">รอบอก ${esc(a.chest)} นิ้ว</div></button>
+        <button data-choice="${esc(b.code)}" class="p-4 rounded-xl border-2 border-indigo-200 hover:border-indigo-500 text-center transition"><div class="text-2xl font-black">${esc(b.code)}</div><div class="text-xs text-gray-500 mt-1">รอบอก ${esc(b.chest)} นิ้ว</div></button>
+      </div>
+      <button data-choice-cancel class="w-full py-2 text-xs text-gray-400">ยกเลิก</button>
+    </div>`
+  document.body.appendChild(overlay)
+  const close=()=>overlay.remove()
+  overlay.querySelectorAll('[data-choice]').forEach(btn=>btn.onclick=()=>{const meta=btn.dataset.choice===a.code?a:b;close();onPick(meta)})
+  overlay.querySelector('[data-choice-cancel]').onclick=close
+  overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close()})
 }
 
 // ป๊อปอัพสรุปหลังส่งไซซ์สำเร็จ — เด้งต่อจากป๊อปอัพตัวอย่างเสื้อ (หลังกด "ยืนยันไซซ์นี้")
