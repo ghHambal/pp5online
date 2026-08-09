@@ -863,6 +863,12 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       el.innerHTML = _renderWorkCalendarUpcoming(workCalEvents, cfg.semester_start)
     }, 1000)
   }
+
+  // ปุ่มแจ้งไซซ์เสื้อกีฬาสีของครู — inject แยกจาก template หลักด้านบน (ไม่แตะโครงสร้าง setContent เดิม)
+  // เพราะฟังก์ชันนี้ใหญ่/เปราะบางเกินกว่าจะแทรกเข้าไปในเทมเพลตตรงๆ อย่างปลอดภัย
+  if (teacher) {
+    import('./sports-portals.js').then(m => m.injectTeacherShirtButton?.(teacher)).catch(() => {})
+  }
 }
 
 // ─── Lesson Plan Approval Document ───────────────────────────────────────────

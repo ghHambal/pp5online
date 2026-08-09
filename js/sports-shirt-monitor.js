@@ -80,12 +80,18 @@ function renderDashboard(snapshot) {
   const paymentsOpen = amount > 0
   const allowedSizes = (snapshot.allowed_sizes && snapshot.allowed_sizes.length) ? snapshot.allowed_sizes : ['SS', 'S', 'M', 'L', 'XL', '2X', '3X', '4X', '5X', '6X', '7X', '8X']
   const colors = snapshot.team_colors || []
+  // ครู — แยกจากนักเรียนโดยสิ้นเชิง ไม่มีสี/ห้อง แจ้งแล้วถือเป็นค่าสุดท้ายทันที (ไม่มีสถานะรอยืนยัน)
+  // เพศเดาจากคำนำหน้าชื่อฝั่ง RPC (นาย/นาง/นางสาว, Mr/Mrs/Ms) อาจมีบางคนเดาไม่ได้ (gender=null)
+  const teachers = snapshot.teachers || []
+  const teacherRequests = snapshot.teacher_shirt_requests || []
+  const teacherAllowedSizes = (snapshot.teacher_allowed_sizes && snapshot.teacher_allowed_sizes.length) ? snapshot.teacher_allowed_sizes : allowedSizes
+  const teacherRequestOf = id => teacherRequests.find(r => r.teacher_id === id)
 
-  let activeTab = 'size' // 'size' | 'payment'
+  let activeTab = 'size' // 'size' | 'payment' | 'teacher'
   let gender = 'ALL' // 'M' | 'W' | 'ALL'
   let selectedColorId = null
   let selectedSize = null
-  let statusFilter = 'all' // size: 'all'|'pending' — payment: 'all'|'unpaid'
+  let statusFilter = 'all' // size: 'all'|'pending' — payment: 'all'|'unpaid' — teacher: 'all'|'not_reported'
 
   const requestOf = id => (snapshot.shirt_requests || []).find(r => r.student_id === id)
   const paymentOf = id => (snapshot.shirt_payments || []).find(p => p.student_id === id)
@@ -117,6 +123,7 @@ function renderDashboard(snapshot) {
         <div class="inline-flex p-1 rounded-xl bg-white border border-slate-200 gap-1">
           <button type="button" data-tab="size" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👕 ไซซ์เสื้อ</button>
           <button type="button" data-tab="payment" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">💰 ค่าเสื้อ</button>
+          <button type="button" data-tab="teacher" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👔 ไซซ์เสื้อครู</button>
         </div>
         <div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
           <button type="button" data-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👦 ชาย</button>
@@ -280,9 +287,70 @@ function renderDashboard(snapshot) {
     }).join('')
   }
 
+  // ---- แท็บ "ไซซ์เสื้อครู" — แยกจากนักเรียนโดยสิ้นเชิง ไม่มีสี/ห้อง ใช้ #color-cards/#size-grid-wrap/
+  // #shirt-list ร่วมกับฝั่งนักเรียน (คนละเนื้อหา สลับตามแท็บ) ----
+  const teacherRows = () => {
+    let list = gender === 'ALL' ? teachers : teachers.filter(t => t.gender === gender)
+    if (selectedSize) list = list.filter(t => teacherRequestOf(t.id)?.size === selectedSize)
+    if (statusFilter === 'not_reported') list = list.filter(t => !teacherRequestOf(t.id))
+    return list
+  }
+  const renderTeacherView = () => {
+    root.querySelector('#color-cards').innerHTML = ''
+    const scope = gender === 'ALL' ? teachers : teachers.filter(t => t.gender === gender)
+    const reportedCount = scope.filter(t => teacherRequestOf(t.id)).length
+    root.querySelector('#scope-line').textContent = `คุณครู${gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'ทั้งหมด'} ${scope.length} คน — แจ้งไซซ์แล้ว ${reportedCount} คน`
+
+    const countOf = sz => scope.filter(t => teacherRequestOf(t.id)?.size === sz).length
+    const total = scope.filter(t => teacherRequestOf(t.id)).length
+    root.querySelector('#size-grid-wrap').innerHTML = `
+      <p class="text-xs font-bold text-slate-500 mb-2">สรุปจำนวนไซซ์เสื้อครูที่แจ้งแล้ว — กดตัวเลขเพื่อกรองรายชื่อด้านล่าง</p>
+      <table class="w-full text-xs border-collapse">
+        <thead><tr>
+          ${teacherAllowedSizes.map(sz => `<th class="p-2 text-center border-b border-slate-200 ${selectedSize === sz ? 'text-pink-600' : 'text-slate-500'}"><button type="button" data-tsize-col="${esc(sz)}" class="font-bold hover:underline">${esc(sz)}</button></th>`).join('')}
+          <th class="p-2 text-center border-b border-slate-200 text-slate-500 font-bold">รวม</th>
+        </tr></thead>
+        <tbody><tr>
+          ${teacherAllowedSizes.map(sz => `<td class="p-1 text-center"><button type="button" data-tsize-col="${esc(sz)}" class="w-9 h-8 rounded-lg text-xs font-bold ${selectedSize === sz ? 'bg-pink-600 text-white' : countOf(sz) > 0 ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'text-slate-300'}">${countOf(sz) || '·'}</button></td>`).join('')}
+          <td class="p-1 text-center font-black text-slate-700">${total}</td>
+        </tr></tbody>
+      </table>`
+    root.querySelectorAll('[data-tsize-col]').forEach(b => b.onclick = () => {
+      const sz = b.dataset.tsizeCol
+      selectedSize = selectedSize === sz ? null : sz
+      render()
+    })
+
+    const el = root.querySelector('#status-filter')
+    el.innerHTML = [['all', 'ทั้งหมด'], ['not_reported', 'ยังไม่แจ้ง']].map(([v, label]) => `<button type="button" data-status="${v}" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === v ? 'bg-pink-600 text-white' : 'text-slate-500'}">${esc(label)}</button>`).join('')
+    el.querySelectorAll('[data-status]').forEach(b => b.onclick = () => { statusFilter = b.dataset.status; render() })
+
+    const rows = teacherRows().sort((a, b) => a.full_name.localeCompare(b.full_name, 'th'))
+    root.querySelector('#shirt-list').innerHTML = rows.length ? `
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table class="w-full text-xs">
+          <thead><tr class="text-slate-400 text-left bg-slate-50">
+            <th class="p-2 font-bold">รหัส</th><th class="p-2 font-bold">ชื่อ-สกุล</th><th class="p-2 font-bold text-center">ไซซ์ที่แจ้ง</th><th class="p-2 font-bold text-center">วันที่แจ้ง</th>
+          </tr></thead>
+          <tbody>${rows.map(t => {
+            const r = teacherRequestOf(t.id)
+            return `<tr class="border-t border-slate-100">
+              <td class="p-2 w-24 text-slate-500">${esc(t.teacher_code)}</td>
+              <td class="p-2">${esc(t.full_name)}</td>
+              <td class="p-2 text-center">${r ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${esc(r.size)}</span>` : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">ยังไม่แจ้ง</span>`}</td>
+              <td class="p-2 text-center text-slate-400">${r?.updated_at ? new Date(r.updated_at).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : '—'}</td>
+            </tr>`
+          }).join('')}</tbody>
+        </table>
+      </div>` : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ ไม่มีรายชื่อตามเงื่อนไขที่เลือก</div>`
+    root.querySelector('#print-content').innerHTML = ''
+  }
+
   const render = () => {
     root.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === activeTab; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
     root.querySelectorAll('[data-gender]').forEach(b => { const on = b.dataset.gender === gender; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
+
+    if (activeTab === 'teacher') { renderTeacherView(); return }
 
     const scope = baseStudents()
     const genderLabel = gender === 'M' ? 'นักเรียนชาย' : gender === 'W' ? 'นักเรียนหญิง' : 'นักเรียนทั้งหมด'
@@ -353,6 +421,22 @@ function renderDashboard(snapshot) {
 
   root.querySelector('#btn-export-csv').onclick = () => {
     const q = x => `"${String(x || '').replaceAll('"', '""')}"`
+    const genderTag = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'ทั้งหมด'
+    const sizeTag = selectedSize ? `-${selectedSize}` : ''
+    if (activeTab === 'teacher') {
+      const rows = teacherRows().sort((a, b) => a.full_name.localeCompare(b.full_name, 'th'))
+      const header = ['รหัส', 'ชื่อ-สกุล', 'ไซซ์ที่แจ้ง', 'วันที่แจ้ง']
+      const body = rows.map(t => {
+        const r = teacherRequestOf(t.id)
+        return [t.teacher_code, t.full_name, r?.size || '', r?.updated_at ? new Date(r.updated_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''].map(q).join(',')
+      })
+      const csvRows = [header.map(q).join(','), ...body]
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv' }))
+      a.download = `ไซซ์เสื้อครู-${genderTag}${sizeTag}.csv`
+      a.click(); URL.revokeObjectURL(a.href)
+      return
+    }
     const rows = computeRows().sort(byRoomThenName)
     const header = activeTab === 'size'
       ? ['ห้อง', 'รหัส', 'ชื่อ-สกุล', 'สี', 'ไซซ์ที่จำนง', 'ไซซ์ที่ยืนยัน', 'สถานะไซซ์']
@@ -370,9 +454,7 @@ function renderDashboard(snapshot) {
     const csvRows = [header.map(q).join(','), ...body]
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv' }))
-    const genderTag = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'ทั้งหมด'
     const colorTag = selectedColorId ? `-${colors.find(c => c.id === selectedColorId)?.name || ''}` : ''
-    const sizeTag = selectedSize ? `-${selectedSize}` : ''
     a.download = `${activeTab === 'size' ? 'ไซซ์เสื้อ' : 'ค่าเสื้อ'}กีฬาสี-${genderTag}${colorTag}${sizeTag}.csv`
     a.click(); URL.revokeObjectURL(a.href)
   }
