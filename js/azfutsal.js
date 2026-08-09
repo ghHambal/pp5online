@@ -1536,15 +1536,26 @@ async function openEventCheckinBigScreen(day) {
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-size:15px;font-weight:800;color:#111827">${esc(p?.students?.full_name || '')}</div>
-          <div style="font-size:12.5px;color:#6b7280">${esc(p ? teamName(p.team_id) : '')}</div>
+          <div style="font-size:13.5px;font-weight:700;color:#16a34a;margin-top:1px">${esc(p ? teamName(p.team_id) : '')}${p?.jersey_number != null ? ` · เบอร์ ${esc(String(p.jersey_number))}` : ''}</div>
         </div>
-        <div style="flex-shrink:0;font-size:12px;color:#16a34a;font-weight:700">${time}</div>
+        <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+          <div style="font-size:12px;color:#6b7280;font-weight:700">${time}</div>
+          <button data-evbig-undo="${esc(c.id)}" style="padding:3px 9px;border-radius:7px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-size:10.5px;font-weight:700;cursor:pointer">✕ ยกเลิก</button>
+        </div>
       </div>`
     }).join('') || `<div style="color:#9ca3af;font-size:13px;text-align:center;padding:40px 0">ยังไม่มีใครเช็คอิน</div>`
   }
   renderBody()
   const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
   overlay.querySelector('#az-evbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+  overlay.querySelector('#az-evbig-feed').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-evbig-undo]')
+    if (!btn) return
+    const { error } = await SB.from('azfutsal_event_checkins').delete().eq('id', btn.dataset.evbigUndo)
+    if (error) { azToast('ยกเลิกไม่สำเร็จ: ' + error.message); return }
+    await refresh()
+    renderBody()
+  })
 }
 
 function nextDayStartValue(startValue) {
@@ -1646,6 +1657,7 @@ function eventCheckinPanel(showSettings) {
         <button data-act="toggleEventCheckinBothDays" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${eventCheckinRequiresBothDays() ? '#dcfce7' : '#f3f4f6'};color:${eventCheckinRequiresBothDays() ? '#16a34a' : '#6b7280'}">${eventCheckinRequiresBothDays() ? 'บังคับ 2 วัน' : 'วันแรกพอ'}</button>
       </div>
       <div style="font-size:10.5px;color:#9ca3af;margin-top:6px">ถ้าปิด นักกีฬาจะถือว่าเช็คอินครบแค่เช็คอินวันแรก แต่ยังสแกนวันที่ 2 ได้ตามปกติ</div>
+      <button data-act="resetAllEventCheckins" style="width:100%;margin-top:12px;padding:9px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-weight:700;font-size:12px;cursor:pointer">🗑️ ล้างการเช็คอินเข้างานทั้งหมด (ทั้ง 2 วัน)</button>
     </div>` : ''}
   `)
 }
@@ -4121,6 +4133,19 @@ function bindEvents() {
           if (error) { azToast('ล้างข้อมูลรายงานตัวไม่สำเร็จ: ' + error.message); return }
           await refresh()
           azToast('ล้างข้อมูลรายงานตัวทั้งหมดแล้ว')
+        }
+      }
+      draw(); return
+    }
+    if (act === 'resetAllEventCheckins') {
+      S.pendingConfirm = {
+        message: 'ล้างข้อมูลเช็คอินเข้างานทั้งหมดจริงหรือไม่?\nสถานะเช็คอินเข้างาน (ทั้งสแกนเองและสตาฟสแกนให้) ของนักกีฬาทุกคนทั้ง 2 วันจะถูกล้างทั้งหมด\nการกระทำนี้ย้อนกลับไม่ได้',
+        danger: true, confirmLabel: 'ล้างเช็คอินเข้างาน',
+        run: async () => {
+          const { error } = await SB.from('azfutsal_event_checkins').delete().in('day', [1, 2])
+          if (error) { azToast('ล้างข้อมูลไม่สำเร็จ: ' + error.message); return }
+          await refresh()
+          azToast('ล้างข้อมูลเช็คอินเข้างานทั้งหมดแล้ว')
         }
       }
       draw(); return
