@@ -186,7 +186,12 @@ export async function renderStudentSportsHome(student, tab='overview') {
     let content=''
     if(tab==='shirt') {
       content=`<div class="grid md:grid-cols-2 gap-4">
-        <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between"><h2 class="font-bold">👕 ไซซ์เสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs ${statusClass(req?.status)}">${badge(req?.status)}</span></div><p class="text-3xl font-black mt-3">${esc(req?.confirmed_size || req?.requested_size || student.sports_shirt_size || '—')}</p><p class="text-xs text-gray-500 mt-1">${req?.confirmed_size?'ไซซ์ที่ครูที่ปรึกษายืนยัน':'ไซซ์ที่จำนง'}</p>${open && !req?.confirmed_size?`<div class="flex gap-2 mt-4"><select id="stu-shirt-size" class="flex-1 border rounded-xl px-3 py-2">${sizes.map(x=>{const meta=shirtSizes.find(s=>s.code===x);const label=meta?`${x} (รอบอก ${meta.chest} นิ้ว)`:x;return `<option value="${esc(x)}" ${req?.requested_size===x?'selected':''}>${esc(label)}</option>`}).join('')}</select><button id="stu-shirt-save" class="px-4 rounded-xl bg-indigo-600 text-white font-semibold">บันทึก</button></div>`:`<p class="text-xs mt-4 text-gray-400">${open?'ข้อมูลได้รับการยืนยันแล้ว':'ขณะนี้ยังไม่เปิดรับจำนงไซซ์เสื้อ'}</p>`}</section>
+        <section class="bg-white rounded-2xl border p-5"><div class="flex justify-between"><h2 class="font-bold">👕 ไซซ์เสื้อกีฬาสี</h2><span class="px-2 py-1 rounded-full text-xs ${statusClass(req?.status)}">${badge(req?.status)}</span></div><p class="text-3xl font-black mt-3">${esc(req?.confirmed_size || req?.requested_size || student.sports_shirt_size || '—')}</p><p class="text-xs text-gray-500 mt-1">${req?.confirmed_size?'ไซซ์ที่ครูที่ปรึกษายืนยัน':'ไซซ์ที่จำนง'}</p>${open && !req?.confirmed_size?`<div class="mt-4 space-y-2">
+          <label class="block text-xs text-gray-500">เลือกไซซ์จากตาราง — เลือกแล้วจะเห็นตัวอย่างเสื้อทันที</label>
+          <select id="stu-shirt-size" class="w-full border rounded-xl px-3 py-2"><option value="">-- เลือกไซซ์ --</option>${sizes.map(x=>{const meta=shirtSizes.find(s=>s.code===x);const label=meta?`${x} (รอบอก ${meta.chest} นิ้ว)`:x;return `<option value="${esc(x)}" ${req?.requested_size===x?'selected':''}>${esc(label)}</option>`}).join('')}</select>
+          <label class="block text-xs text-gray-500 mt-3">หรือพิมพ์รอบอกของคุณเอง (นิ้ว) ให้ระบบแนะไซซ์ให้</label>
+          <div class="flex gap-2"><input id="stu-shirt-chest-input" type="number" min="0" placeholder="เช่น 39" class="flex-1 border rounded-xl px-3 py-2"><button id="stu-shirt-chest-go" class="px-4 rounded-xl bg-slate-100 text-slate-700 font-semibold whitespace-nowrap">ดูไซซ์ที่แนะนำ</button></div>
+        </div>`:`<p class="text-xs mt-4 text-gray-400">${open?'ข้อมูลได้รับการยืนยันแล้ว':'ขณะนี้ยังไม่เปิดรับจำนงไซซ์เสื้อ'}</p>`}</section>
         <section class="bg-white rounded-2xl border p-5">
           <h2 class="font-bold">🗳️ โหวตแบบเสื้อกีฬาสี</h2>
           ${myVote?`
@@ -284,15 +289,38 @@ export async function renderStudentSportsHome(student, tab='overview') {
         btn.className=`w-7 h-7 rounded-full border-2 ${i===myVoteColorPtr?'border-indigo-500 scale-110':'border-gray-200'} transition`
       })
     }))
-    el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');showShirtSizePreviewModal(c,size);renderStudentSportsHome(student,tab)})
+    const openShirtPreview=(code)=>{
+      const meta=shirtSizes.find(s=>s.code===code)
+      if(!meta) return
+      showShirtSizePreviewModal(c,meta,async()=>{
+        const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:meta.code})
+        if(error){toast(error.message,'error');return false}
+        document.getElementById('shirt-size-preview-modal')?.remove()
+        showShirtRequestSubmittedModal(meta.code)
+        renderStudentSportsHome(student,tab)
+        return true
+      })
+    }
+    el.querySelector('#stu-shirt-size')?.addEventListener('change',e=>{if(e.target.value)openShirtPreview(e.target.value)})
+    el.querySelector('#stu-shirt-chest-go')?.addEventListener('click',()=>{
+      const val=Number(el.querySelector('#stu-shirt-chest-input')?.value)
+      if(!val){toast('กรุณากรอกตัวเลขรอบอกก่อน','warning');return}
+      const candidates=shirtSizes.filter(s=>!(s.code==='S'&&_isHighSchoolOrVoc(student.main_room)))
+      const nearest=[...candidates].sort((a,b)=>Math.abs(a.chest-val)-Math.abs(b.chest-val))[0]
+      if(!nearest) return
+      const sizeSel=el.querySelector('#stu-shirt-size'); if(sizeSel) sizeSel.value=nearest.code
+      openShirtPreview(nearest.code)
+    })
+    el.querySelector('#stu-shirt-chest-input')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el.querySelector('#stu-shirt-chest-go')?.click()}})
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
-// ป๊อปอัพโชว์ตัวอย่างเสื้อกีฬาสีตามสี+ไซซ์ที่เลือก — เด้งหลังบันทึกไซซ์สำเร็จ รูปมาจาก
-// team_colors.shirt_preview_url (อัปโหลดไว้ล่วงหน้า 1 รูปต่อสี ไม่แยกรูปตามไซซ์) ซ้อนป้ายไซซ์
-// ทับด้วย CSS แทนการทำรูปแยกทุกไซซ์ทุกสี
-function showShirtSizePreviewModal(color, size) {
-  if (!color?.shirt_preview_url) return
+// ป๊อปอัพโชว์ตัวอย่างเสื้อกีฬาสีตามสี+ไซซ์ที่กำลังเลือก (ก่อนบันทึกจริง) — เด้งทันทีตอนเลือกไซซ์
+// จากดรอปดาวน์ หรือกรอกรอบอกให้ระบบแนะไซซ์ รูปมาจาก team_colors.shirt_preview_url (1 รูปต่อสี
+// ไม่แยกรูปตามไซซ์) ซ้อนเลขรอบอกทับด้วย CSS แทนการทำรูปแยกทุกไซซ์ทุกสี — กด "ยืนยันไซซ์นี้" แล้ว
+// ค่อยบันทึกจริงผ่าน onConfirm (async, return true ถ้าสำเร็จ)
+function showShirtSizePreviewModal(color, meta, onConfirm) {
+  if (!color?.shirt_preview_url) { onConfirm?.(); return }
   document.getElementById('shirt-size-preview-modal')?.remove()
   const overlay=document.createElement('div')
   overlay.id='shirt-size-preview-modal'
@@ -300,13 +328,44 @@ function showShirtSizePreviewModal(color, size) {
   overlay.innerHTML=`<div class="w-full max-w-sm bg-white rounded-2xl overflow-hidden relative">
       <button data-preview-close class="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center z-10">✕</button>
       <div class="relative"><img src="${esc(color.shirt_preview_url)}" class="w-full block">
-        <span class="absolute top-3 left-3 bg-white/95 text-slate-900 font-black text-lg px-3 py-1.5 rounded-xl shadow-lg border-2" style="border-color:${esc(color.hex_color||'#000')}">ไซซ์ ${esc(size)}</span>
+        <span class="absolute top-3 left-3 bg-white/95 text-slate-900 font-black text-base px-3 py-1.5 rounded-xl shadow-lg border-2" style="border-color:${esc(color.hex_color||'#000')}">ไซซ์ ${esc(meta.code)} · รอบอก ${esc(meta.chest)} นิ้ว</span>
       </div>
-      <div class="p-4 text-center"><p class="text-sm text-gray-600">ตัวอย่างเสื้อทีมสี<b style="color:${esc(color.hex_color||'#000')}">${esc(color.name||'')}</b> ไซซ์ ${esc(size)}</p></div>
+      <div class="p-4 space-y-3">
+        <p class="text-sm text-center text-gray-600">ตัวอย่างเสื้อทีมสี<b style="color:${esc(color.hex_color||'#000')}">${esc(color.name||'')}</b> ไซซ์ ${esc(meta.code)}</p>
+        <div class="flex gap-2">
+          <button data-preview-cancel class="flex-1 py-2.5 rounded-xl border font-semibold text-sm text-gray-600">เลือกไซซ์ใหม่</button>
+          <button data-preview-confirm class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">✅ ยืนยันไซซ์นี้</button>
+        </div>
+      </div>
     </div>`
   document.body.appendChild(overlay)
   const close=()=>overlay.remove()
   overlay.querySelector('[data-preview-close]').onclick=close
+  overlay.querySelector('[data-preview-cancel]').onclick=close
+  overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close()})
+  overlay.querySelector('[data-preview-confirm]').onclick=async()=>{
+    const btn=overlay.querySelector('[data-preview-confirm]')
+    btn.disabled=true; btn.textContent='กำลังบันทึก...'
+    const ok=await onConfirm()
+    if(ok===false){btn.disabled=false;btn.textContent='✅ ยืนยันไซซ์นี้'}
+  }
+}
+
+// ป๊อปอัพสรุปหลังส่งไซซ์สำเร็จ — เด้งต่อจากป๊อปอัพตัวอย่างเสื้อ (หลังกด "ยืนยันไซซ์นี้")
+function showShirtRequestSubmittedModal(size) {
+  document.getElementById('shirt-request-submitted-modal')?.remove()
+  const overlay=document.createElement('div')
+  overlay.id='shirt-request-submitted-modal'
+  overlay.className='fixed inset-0 z-[500] bg-black/80 flex items-center justify-center p-4'
+  overlay.innerHTML=`<div class="w-full max-w-sm bg-white rounded-2xl p-6 text-center space-y-3">
+      <div class="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 grid place-items-center mx-auto text-2xl">✅</div>
+      <h3 class="font-bold text-lg">แจ้งไซซ์ ${esc(size)} เรียบร้อยแล้ว</h3>
+      <p class="text-sm text-gray-500">รอครูที่ปรึกษาสามัญยืนยันเพื่อเสร็จสิ้นการแจ้งไซซ์</p>
+      <button data-submitted-close class="w-full py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm mt-2">ตกลง</button>
+    </div>`
+  document.body.appendChild(overlay)
+  const close=()=>overlay.remove()
+  overlay.querySelector('[data-submitted-close]').onclick=close
   overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close()})
 }
 
