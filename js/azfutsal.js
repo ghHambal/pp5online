@@ -1503,21 +1503,42 @@ async function openEventCheckinBigScreen(day) {
 
   const overlay = document.createElement('div')
   overlay.id = 'az-evbig-overlay'
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fff;overflow:hidden;font-family:Sarabun,Arial,sans-serif;display:flex'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:linear-gradient(160deg,#fdf2f8 0%,#eff6ff 100%);overflow:hidden;font-family:Sarabun,Arial,sans-serif;display:flex;flex-direction:column'
   overlay.innerHTML = `
-    <button id="az-evbig-close" style="position:fixed;top:16px;right:16px;z-index:10;padding:10px 16px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:13px;cursor:pointer">✕ ปิด</button>
-    <div style="flex:0 0 380px;border-right:1px solid #e5e7eb;padding:36px 28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center">
-      <div style="font-size:20px;font-weight:800">📷 สแกนเพื่อเช็คอินเข้างาน</div>
-      <div style="font-size:14px;color:#6b7280">วันที่ ${day} · ${esc(scheduleDateLabel(day))}</div>
-      ${eventCheckinWindowLabel(day) ? `<div style="font-size:12.5px;color:#9ca3af">🕐 ${esc(eventCheckinWindowLabel(day))}</div>` : ''}
-      <img src="${qrDataUrl}" style="width:280px;height:280px;border:1px solid #e5e7eb;border-radius:16px;padding:10px"/>
-      <div style="font-size:12.5px;color:#9ca3af">เปิดพอร์ทัลของตัวเอง แล้วกด "เช็คอินเข้างาน" เพื่อสแกน</div>
-      <div id="az-evbig-count" style="margin-top:10px;font-size:32px;font-weight:800;color:#16a34a"></div>
-      <div style="font-size:12px;color:#9ca3af">คนเช็คอินแล้ว</div>
+    <style>
+      @keyframes azEvbigPulse { 0%,100%{opacity:.55;transform:scale(1)} 50%{opacity:.9;transform:scale(1.06)} }
+      @keyframes azEvbigBlink { 0%,100%{opacity:1} 50%{opacity:.25} }
+    </style>
+    <div style="flex-shrink:0;padding:18px 28px;background:linear-gradient(120deg,#db2777,#6366f1 65%,#0ea5e9);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 6px 18px rgba(0,0,0,.15)">
+      <div style="min-width:0">
+        <div style="font-size:23px;font-weight:900;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">⚽ ${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))}</div>
+        <div style="font-size:13px;opacity:.92;font-weight:700;margin-top:2px">จุดลงทะเบียนเข้างาน · วันที่ ${day} · ${esc(scheduleDateLabel(day))}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+        ${eventCheckinWindowLabel(day) ? `<div style="font-size:12.5px;font-weight:800;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:999px;white-space:nowrap">🕐 ${esc(eventCheckinWindowLabel(day))}</div>` : ''}
+        <button id="az-evbig-close" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">✕ ปิด</button>
+      </div>
     </div>
-    <div style="flex:1;min-width:0;padding:28px;overflow-y:auto">
-      <div style="font-size:14px;font-weight:800;color:#6b7280;margin-bottom:14px">✅ เช็คอินล่าสุด</div>
-      <div id="az-evbig-feed" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div style="flex:1;min-height:0;display:flex">
+      <div style="flex:0 0 380px;padding:32px 28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center">
+        <div style="position:relative;display:flex;align-items:center;justify-content:center">
+          <div style="position:absolute;inset:-16px;border-radius:26px;background:radial-gradient(circle,rgba(14,165,233,.35),transparent 72%);animation:azEvbigPulse 2.4s ease-in-out infinite"></div>
+          <img src="${qrDataUrl}" style="position:relative;width:270px;height:270px;border-radius:18px;padding:10px;background:#fff;box-shadow:0 10px 28px rgba(15,23,42,.14)"/>
+        </div>
+        <div style="font-size:14px;color:#374151;font-weight:800;margin-top:4px">📱 เปิดพอร์ทัลของตัวเอง แล้วกด "เช็คอินเข้างาน" เพื่อสแกน QR นี้</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-top:8px">
+          <span id="az-evbig-count" style="font-size:44px;font-weight:900;color:#16a34a;line-height:1">0</span>
+          <span style="font-size:13px;color:#6b7280;font-weight:700">คนเช็คอินแล้ว</span>
+        </div>
+        <div id="az-evbig-levelcounts" style="display:flex;gap:8px;margin-top:2px"></div>
+      </div>
+      <div style="flex:1;min-width:0;padding:28px;overflow-y:auto;background:rgba(255,255,255,.55);border-left:1px solid rgba(15,23,42,.06)">
+        <div style="font-size:14px;font-weight:800;color:#374151;margin-bottom:14px;display:flex;align-items:center;gap:7px">
+          <span style="width:9px;height:9px;border-radius:50%;background:#16a34a;display:inline-block;animation:azEvbigBlink 1.6s ease-in-out infinite"></span>
+          เช็คอินล่าสุด
+        </div>
+        <div id="az-evbig-feed" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
     </div>`
   document.body.appendChild(overlay)
 
@@ -1525,6 +1546,13 @@ async function openEventCheckinBigScreen(day) {
     const rows = S.eventCheckins.filter(c => c.day === day).sort((a, b) => new Date(b.checked_in_at) - new Date(a.checked_in_at))
     const countEl = document.getElementById('az-evbig-count')
     if (countEl) countEl.textContent = String(rows.length)
+    const levelCountsEl = document.getElementById('az-evbig-levelcounts')
+    if (levelCountsEl) {
+      levelCountsEl.innerHTML = ['MS', 'HS'].map(lv => {
+        const c = eventCheckinCounts(lv, day)
+        return `<div style="font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;background:${T[lv].soft};color:${T[lv].accent}">${T[lv].label} ${c.done}/${c.total}</div>`
+      }).join('')
+    }
     const feedEl = document.getElementById('az-evbig-feed')
     if (!feedEl) return
     feedEl.innerHTML = rows.slice(0, 40).map(c => {
@@ -1545,7 +1573,7 @@ async function openEventCheckinBigScreen(day) {
           <button data-evbig-undo="${esc(c.id)}" style="padding:3px 9px;border-radius:7px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-size:10.5px;font-weight:700;cursor:pointer">✕ ยกเลิก</button>
         </div>
       </div>`
-    }).join('') || `<div style="color:#9ca3af;font-size:13px;text-align:center;padding:40px 0">ยังไม่มีใครเช็คอิน</div>`
+    }).join('') || `<div style="text-align:center;padding:60px 0;color:#9ca3af"><div style="font-size:40px;margin-bottom:8px">🙋</div><div style="font-size:13px;font-weight:700">ยังไม่มีใครเช็คอิน</div><div style="font-size:12px;margin-top:2px">รอนักกีฬาคนแรกมาสแกน QR</div></div>`
   }
   renderBody()
   const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
