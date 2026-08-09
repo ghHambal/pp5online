@@ -284,8 +284,30 @@ export async function renderStudentSportsHome(student, tab='overview') {
         btn.className=`w-7 h-7 rounded-full border-2 ${i===myVoteColorPtr?'border-indigo-500 scale-110':'border-gray-200'} transition`
       })
     }))
-    el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');renderStudentSportsHome(student,tab)})
+    el.querySelector('#stu-shirt-save')?.addEventListener('click',async()=>{const size=el.querySelector('#stu-shirt-size').value;const {error}=await supabase.rpc('request_my_sports_shirt_size',{p_event:event.id,p_size:size});if(error)return toast(error.message,'error');toast('ส่งข้อมูลแล้ว รอครูที่ปรึกษายืนยัน');showShirtSizePreviewModal(c,size);renderStudentSportsHome(student,tab)})
   } catch(e) { console.error(e); el.innerHTML=missing() }
+}
+
+// ป๊อปอัพโชว์ตัวอย่างเสื้อกีฬาสีตามสี+ไซซ์ที่เลือก — เด้งหลังบันทึกไซซ์สำเร็จ รูปมาจาก
+// team_colors.shirt_preview_url (อัปโหลดไว้ล่วงหน้า 1 รูปต่อสี ไม่แยกรูปตามไซซ์) ซ้อนป้ายไซซ์
+// ทับด้วย CSS แทนการทำรูปแยกทุกไซซ์ทุกสี
+function showShirtSizePreviewModal(color, size) {
+  if (!color?.shirt_preview_url) return
+  document.getElementById('shirt-size-preview-modal')?.remove()
+  const overlay=document.createElement('div')
+  overlay.id='shirt-size-preview-modal'
+  overlay.className='fixed inset-0 z-[500] bg-black/80 flex items-center justify-center p-4'
+  overlay.innerHTML=`<div class="w-full max-w-sm bg-white rounded-2xl overflow-hidden relative">
+      <button data-preview-close class="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center z-10">✕</button>
+      <div class="relative"><img src="${esc(color.shirt_preview_url)}" class="w-full block">
+        <span class="absolute top-3 left-3 bg-white/95 text-slate-900 font-black text-lg px-3 py-1.5 rounded-xl shadow-lg border-2" style="border-color:${esc(color.hex_color||'#000')}">ไซซ์ ${esc(size)}</span>
+      </div>
+      <div class="p-4 text-center"><p class="text-sm text-gray-600">ตัวอย่างเสื้อทีมสี<b style="color:${esc(color.hex_color||'#000')}">${esc(color.name||'')}</b> ไซซ์ ${esc(size)}</p></div>
+    </div>`
+  document.body.appendChild(overlay)
+  const close=()=>overlay.remove()
+  overlay.querySelector('[data-preview-close]').onclick=close
+  overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close()})
 }
 
 export function open3dShirtViewer(url) {
