@@ -1508,6 +1508,7 @@ async function openEventCheckinBigScreen(day) {
     <div style="flex:0 0 380px;border-right:1px solid #e5e7eb;padding:36px 28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center">
       <div style="font-size:20px;font-weight:800">📷 สแกนเพื่อเช็คอินเข้างาน</div>
       <div style="font-size:14px;color:#6b7280">วันที่ ${day} · ${esc(scheduleDateLabel(day))}</div>
+      ${eventCheckinWindowLabel(day) ? `<div style="font-size:12.5px;color:#9ca3af">🕐 ${esc(eventCheckinWindowLabel(day))}</div>` : ''}
       <img src="${qrDataUrl}" style="width:280px;height:280px;border:1px solid #e5e7eb;border-radius:16px;padding:10px"/>
       <div style="font-size:12.5px;color:#9ca3af">เปิดพอร์ทัลของตัวเอง แล้วกด "เช็คอินเข้างาน" เพื่อสแกน</div>
       <div id="az-evbig-count" style="margin-top:10px;font-size:32px;font-weight:800;color:#16a34a"></div>
@@ -1612,6 +1613,41 @@ function eventCheckinCounts(level, day) {
   return { done: roster.filter(p => checkedIds.has(p.id)).length, total: roster.length }
 }
 
+// ช่วงเวลาเปิด-ปิดรับเช็คอินเข้างาน (ตั้งเวลาเดียว ใช้ซ้ำกับวันที่ของแต่ละวันแข่ง) — ปิดรับ = เส้นตายสำหรับแจ้งเตือนทีมมาไม่ครบ
+function eventCheckinOpenTime() { return cfg('EVENT_CHECKIN_OPEN_TIME', '') }
+function eventCheckinCloseTime() { return cfg('EVENT_CHECKIN_CLOSE_TIME', '') }
+
+function eventCheckinWindowLabel(day) {
+  const open = eventCheckinOpenTime(), close = eventCheckinCloseTime()
+  if (!open && !close) return ''
+  return `เปิดเช็คอิน ${open || '-'} - ${close || '-'} น.`
+}
+
+function eventCheckinDeadline(day) {
+  const close = eventCheckinCloseTime()
+  const dateValue = scheduleDayStart(day).slice(0, 10)
+  if (!close || !dateValue) return null
+  const d = new Date(`${dateValue}T${close}:00`)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function eventCheckinDeadlinePassed(day) {
+  const dl = eventCheckinDeadline(day)
+  return !!dl && new Date() >= dl
+}
+
+// ทีมที่ยังเช็คอินไม่ครบทุกคนในรายชื่อ สำหรับวันที่ระบุ (ครบ = เช็คอินครบทุกคนที่ลงทะเบียนไว้ในทีม)
+function incompleteTeamsForDay(day) {
+  return S.teams.map(team => {
+    const roster = S.players.filter(p => p.team_id === team.id)
+    if (!roster.length) return null
+    const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
+    const done = roster.filter(p => checkedIds.has(p.id)).length
+    if (done >= roster.length) return null
+    return { team, done, total: roster.length }
+  }).filter(Boolean)
+}
+
 // แบนเนอร์ให้นักกีฬาที่ล็อกอินอยู่กดเช็คอินเข้างานด้วยตัวเอง — โชว์เฉพาะคนที่ลงทะเบียนเป็นนักกีฬาไว้แล้วเท่านั้น
 function eventSelfCheckinBanner() {
   const player = myEventPlayer()
@@ -1639,9 +1675,13 @@ function eventCheckinPanel(showSettings) {
   const day = S.eventCheckinDay || eventCheckinDefaultDay()
   const msCount = eventCheckinCounts('MS', day)
   const hsCount = eventCheckinCounts('HS', day)
+  const windowLabel = eventCheckinWindowLabel(day)
+  const incomplete = incompleteTeamsForDay(day)
+  const deadlinePassed = eventCheckinDeadlinePassed(day)
   return box(`
     <div style="font-weight:700;font-size:14px;margin-bottom:10px">📷 เช็คอินเข้างาน</div>
     ${eventCheckinDayTabs()}
+    ${windowLabel ? `<div style="font-size:11px;color:#6b7280;margin-bottom:8px">🕐 ${esc(windowLabel)}</div>` : ''}
     <div style="display:flex;gap:14px;margin-bottom:12px;font-size:11.5px;color:#6b7280">
       <div>${T.MS.label}: <b style="color:${T.MS.accent}">${msCount.done}/${msCount.total}</b></div>
       <div>${T.HS.label}: <b style="color:${T.HS.accent}">${hsCount.done}/${hsCount.total}</b></div>
@@ -1651,6 +1691,23 @@ function eventCheckinPanel(showSettings) {
       <button data-act="openEventCheckinBigScreen" data-day="${day}" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:800;font-size:12.5px;cursor:pointer">🖥️ จอใหญ่หน้าลงทะเบียน</button>
     </div>
     ${showSettings ? `
+    ${incomplete.length ? `
+    <div style="margin-top:14px;padding:12px;border-radius:12px;background:${deadlinePassed ? '#fef2f2' : '#f9fafb'};border:1px solid ${deadlinePassed ? '#fecaca' : '#e5e7eb'}">
+      <div style="font-size:12.5px;font-weight:800;color:${deadlinePassed ? '#dc2626' : '#6b7280'};margin-bottom:6px">${deadlinePassed ? `⚠️ เลยเวลาปิดรับเช็คอิน (${esc(eventCheckinCloseTime())} น.) แล้ว — ทีมต่อไปนี้มาไม่ครบ พิจารณาสกอร์ตามนโยบายที่ตั้งไว้` : `🕐 ยังมาไม่ครบ ${incomplete.length} ทีม (จะเตือนชัดเจนเมื่อถึงเวลาปิดรับ${eventCheckinCloseTime() ? ` ${esc(eventCheckinCloseTime())} น.` : ''})`}</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${incomplete.map(({ team, done, total }) => `<div style="font-size:12px;color:#374151;display:flex;justify-content:space-between;gap:8px"><span>${levelBadge(team.level)} ${esc(team.name)}</span><b style="color:${deadlinePassed ? '#dc2626' : '#6b7280'}">${done}/${total}</b></div>`).join('')}
+      </div>
+    </div>` : `<div style="margin-top:14px;padding:10px 12px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;font-size:12px;font-weight:700">✅ ทุกทีมเช็คอินครบแล้วสำหรับวันที่ ${day}</div>`}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6">
+      <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:6px">เวลาเปิด-ปิดรับเช็คอิน (ใช้เวลาเดียวกันทั้ง 2 วัน)</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="evci-open" type="time" value="${esc(eventCheckinOpenTime())}" style="flex:1;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
+        <span style="font-size:12px;color:#9ca3af">ถึง</span>
+        <input id="evci-close" type="time" value="${esc(eventCheckinCloseTime())}" style="flex:1;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
+      </div>
+      <div style="font-size:10.5px;color:#9ca3af;margin-top:6px">เวลาปิดรับใช้เป็นเส้นตายเตือนทีมมาไม่ครบด้านบน — ไม่ได้ล็อกปุ่มสแกนอัตโนมัติ ยังสแกนหลังเวลานี้ได้ตามปกติ</div>
+      <button data-act="saveEventCheckinWindow" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;border:none;background:#374151;color:#fff;font-weight:700;font-size:12px;cursor:pointer">บันทึกเวลาเปิด-ปิดรับ</button>
+    </div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <span style="font-size:12px;color:#374151;font-weight:600">บังคับเช็คอินทั้ง 2 วัน</span>
@@ -4238,6 +4295,13 @@ function bindEvents() {
       const cur = eventCheckinRequiresBothDays()
       await SB.from('azfutsal_config').upsert({ key: 'EVENT_CHECKIN_REQUIRE_BOTH_DAYS', value: cur ? '0' : '1' })
       await refresh(); return
+    }
+    if (act === 'saveEventCheckinWindow') {
+      await SB.from('azfutsal_config').upsert([
+        { key: 'EVENT_CHECKIN_OPEN_TIME', value: gid('evci-open').value || '' },
+        { key: 'EVENT_CHECKIN_CLOSE_TIME', value: gid('evci-close').value || '' },
+      ])
+      await refresh(); azToast('บันทึกเวลาเปิด-ปิดรับเช็คอินแล้ว'); return
     }
     if (act === 'printCheckinForm') {
       const team = S.teams.find(tm => tm.id === btn.dataset.id)
