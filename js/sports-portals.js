@@ -340,7 +340,17 @@ function showShirtSizePreviewModal(color, meta, onConfirm) {
   overlay.innerHTML=`<div class="w-full max-w-sm bg-white rounded-2xl overflow-hidden relative">
       <button data-preview-close class="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center z-10">✕</button>
       <div class="relative"><img src="${esc(color.shirt_preview_url)}" class="w-full block">
-        <span class="absolute top-3 left-3 bg-white/95 text-slate-900 font-black text-base px-3 py-1.5 rounded-xl shadow-lg border-2" style="border-color:${esc(color.hex_color||'#000')}">ไซซ์ ${esc(meta.code)} · รอบอก ${esc(meta.chest)} นิ้ว</span>
+        <span class="absolute top-3 left-3 bg-white/95 text-slate-900 font-black text-sm px-2.5 py-1 rounded-lg shadow-lg border-2 z-10" style="border-color:${esc(color.hex_color||'#000')}">ไซซ์ ${esc(meta.code)}</span>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="absolute inset-0 w-full h-full pointer-events-none">
+          <line x1="11" y1="36" x2="50" y2="36" stroke="#fff" stroke-width="0.5" stroke-linecap="round"/>
+          <line x1="11" y1="34.3" x2="11" y2="37.7" stroke="#fff" stroke-width="0.5"/>
+          <line x1="50" y1="34.3" x2="50" y2="37.7" stroke="#fff" stroke-width="0.5"/>
+          <line x1="64" y1="36" x2="93" y2="36" stroke="#fff" stroke-width="0.5" stroke-linecap="round"/>
+          <line x1="64" y1="34.3" x2="64" y2="37.7" stroke="#fff" stroke-width="0.5"/>
+          <line x1="93" y1="34.3" x2="93" y2="37.7" stroke="#fff" stroke-width="0.5"/>
+        </svg>
+        <span class="absolute -translate-x-1/2 -translate-y-1/2 bg-slate-900 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow" style="left:30.5%;top:36%">${esc(meta.chest)}"</span>
+        <span class="absolute -translate-x-1/2 -translate-y-1/2 bg-slate-900 text-white text-[11px] font-bold px-1.5 py-0.5 rounded shadow" style="left:78.5%;top:36%">${esc(meta.chest)}"</span>
       </div>
       <div class="p-4 space-y-3">
         <p class="text-sm text-center text-gray-600">ตัวอย่างเสื้อทีมสี<b style="color:${esc(color.hex_color||'#000')}">${esc(color.name||'')}</b> ไซซ์ ${esc(meta.code)}</p>
