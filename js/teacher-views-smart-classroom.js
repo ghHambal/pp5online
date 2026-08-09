@@ -8,7 +8,7 @@ import {
   closeLeavePermission, getMyDonationRequests, createAnnouncement, getClassAnnouncements,
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
   getClassAssignmentsWithSubmissions, createAssignment, updateAssignment, deleteAssignment, saveAssignmentGrade,
-  saveAssignmentFeedback, markAssignmentSubmissionReviewed,
+  saveAssignmentFeedback, markAssignmentSubmissionReviewed, rejectAssignmentSubmission,
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
   getCourseSyllabus, createSyllabusItem, updateSyllabusItem, deleteSyllabusItem,
   getLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan,
@@ -1707,12 +1707,19 @@ export async function renderSmartClassroom(teacher, classId) {
             ${scoreColumns.map(c => `<option value="${c.id}" ${a.score_column_id === c.id ? 'selected' : ''}>${_htmlEsc(c.assignment_name)} (เต็ม ${c.max_score})</option>`).join('')}
           </select>
         </div>
-        <div id="sa-write-mode-wrap" class="hidden">
-          <label class="text-xs font-semibold text-gray-500 mb-1 block">ถ้าคอลัมน์นี้มีคะแนนอยู่แล้ว ให้ทำอย่างไร</label>
-          <select id="sa-write-mode" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
-            ${Object.entries(ASSIGN_WRITE_MODE_LABEL).map(([v, mo]) => `<option value="${v}" ${(a.score_write_mode ?? 'overwrite') === v ? 'selected' : ''}>${mo.label}</option>`).join('')}
-          </select>
-          <p id="sa-write-mode-hint" class="text-[11px] text-gray-400 mt-1 leading-relaxed"></p>
+        <div id="sa-write-mode-wrap" class="hidden space-y-3">
+          <div>
+            <label class="text-xs font-semibold text-gray-500 mb-1 block">คะแนนเต็มของงานนี้</label>
+            <input id="sa-max-score" type="number" min="0" step="0.5" value="${a.max_score ?? ''}" placeholder="ไม่ระบุ = ใช้คะแนนเต็มของคอลัมน์คะแนน" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <p class="text-[10px] text-gray-400 mt-1">เผื่อคอลัมน์เดียวกันสะสมคะแนนจากหลายงาน แต่แต่ละงานเต็มไม่เท่ากัน (เช่น คอลัมน์เต็ม 100 แต่ใบงานนี้เต็มแค่ 5)</p>
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-500 mb-1 block">ถ้าคอลัมน์นี้มีคะแนนอยู่แล้ว ให้ทำอย่างไร</label>
+            <select id="sa-write-mode" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white">
+              ${Object.entries(ASSIGN_WRITE_MODE_LABEL).map(([v, mo]) => `<option value="${v}" ${(a.score_write_mode ?? 'overwrite') === v ? 'selected' : ''}>${mo.label}</option>`).join('')}
+            </select>
+            <p id="sa-write-mode-hint" class="text-[11px] text-gray-400 mt-1 leading-relaxed"></p>
+          </div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-gray-500 mb-1">กำหนดส่ง</label>
@@ -1789,6 +1796,7 @@ export async function renderSmartClassroom(teacher, classId) {
         const newAttachments = []
         for (const f of files) newAttachments.push(await uploadAssignmentFile(f, `class-${classId}`))
         const dueVal = m.querySelector('#sa-due').value
+        const maxScoreVal = m.querySelector('#sa-max-score').value.trim()
         const payload = {
           score_column_id: colSelect.value ? parseInt(colSelect.value, 10) : null,
           title,
@@ -1798,6 +1806,7 @@ export async function renderSmartClassroom(teacher, classId) {
           late_penalty_mode: modeSel.value,
           late_penalty_value: parseFloat(valInput.value) || 0,
           score_write_mode: writeModeSelect.value,
+          max_score: maxScoreVal === '' ? null : parseFloat(maxScoreVal),
         }
         if (isEdit) {
           await updateAssignment(a.id, payload)
@@ -1894,6 +1903,7 @@ export async function renderSmartClassroom(teacher, classId) {
         _openAssignmentGradeCard(a, parseInt(row.dataset.sid, 10))
       }))
     }
+    m._refresh = _renderList // ให้ grade card เรียก refresh ตอนปิดกลับมา (กันสถานะค้างจนต้องปิดเปิดใหม่)
     _renderList()
 
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
@@ -1912,14 +1922,15 @@ export async function renderSmartClassroom(teacher, classId) {
     })
   }
 
-  // สถานะ 3 ระดับ: ยังไม่ตรวจ / ตรวจแล้วยังไม่ให้คะแนน / ให้คะแนนแล้ว — ใช้ร่วมกันทั้งลิสต์และการ์ดตรวจทีละคน
-  const _statusOf = sub => !sub ? 'unsubmitted' : sub.hasScore ? 'graded' : sub.reviewed_at ? 'reviewed' : 'unreviewed'
+  // สถานะต่อการส่งงาน — ใช้ร่วมกันทั้งลิสต์และการ์ดตรวจทีละคน
+  const _statusOf = sub => !sub ? 'unsubmitted' : sub.status === 'rejected' ? 'rejected' : sub.hasScore ? 'graded' : sub.reviewed_at ? 'reviewed' : 'unreviewed'
   const _statusBadge = status => ({
     unreviewed: '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 flex-shrink-0">🔵 ยังไม่ตรวจ</span>',
     reviewed:   '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">🟡 ตรวจแล้ว ยังไม่ให้คะแนน</span>',
     graded:     '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex-shrink-0">✅ ให้คะแนนแล้ว</span>',
+    rejected:   '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">❌ ตีกลับ รอส่งใหม่</span>',
   }[status] ?? '')
-  const _statusRank = { unreviewed: 0, unsubmitted: 1, reviewed: 2, graded: 3 }
+  const _statusRank = { unreviewed: 0, unsubmitted: 1, reviewed: 2, rejected: 3, graded: 4 }
 
   // ตัวอย่างคอมเมนต์ให้ครูเลือกแทรก (แก้ไขต่อได้หลังแทรก) — โทนให้กำลังใจ เชิงจิตวิทยาเชิงบวก
   // สอดแทรกดุอาอ์/ความหวังบารอกัตแบบพอดี ไม่ใช่ทุกประโยค
@@ -1956,12 +1967,13 @@ export async function renderSmartClassroom(teacher, classId) {
     m.className = 'fixed inset-0 z-[96] flex items-center justify-center bg-black/55 p-4'
     document.body.appendChild(m)
 
+    const effectiveMax = a.max_score != null ? parseFloat(a.max_score) : (col ? parseFloat(col.max_score) : null)
     const _render = () => {
       const s = students[idx]
       const sub = subByStudent[s.id]
       const late = sub && _isLate(a, sub.submitted_at)
       const penalty = sub ? _latePenaltyPoints(a, sub.submitted_at) : 0
-      const suggested = col ? Math.max(0, (parseFloat(col.max_score) || 0) - penalty) : ''
+      const suggested = effectiveMax != null ? Math.max(0, (effectiveMax || 0) - penalty) : ''
 
       if (sub && !sub.reviewed_at) {
         sub.reviewed_at = new Date().toISOString() // optimistic — กันเรียกซ้ำถ้า re-render ก่อน request จบ
@@ -2011,11 +2023,11 @@ export async function renderSmartClassroom(teacher, classId) {
               ${sub.note ? `<div class="bg-gray-50 border border-gray-100 rounded-xl p-3 mb-3"><p class="text-[10px] font-bold text-gray-400 mb-0.5">ข้อความจากนักเรียน</p><p class="text-xs text-gray-600">${_htmlEsc(sub.note)}</p></div>` : ''}
               ${col ? `<div class="mb-3">
                 <div class="flex items-center gap-2">
-                  <input id="sgc-grade" type="number" class="w-20 text-center border border-gray-200 rounded-lg px-1 py-1.5 font-mono font-bold text-indigo-600" value="${suggested}" placeholder="—" />
-                  <span class="text-xs text-gray-400">/ ${col.max_score}</span>
-                  <button id="sgc-grade-save" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg">บันทึกคะแนน</button>
+                  <input id="sgc-grade" type="number" min="0" max="${effectiveMax ?? ''}" class="w-20 text-center border border-gray-200 rounded-lg px-1 py-1.5 font-mono font-bold text-indigo-600" value="${suggested}" placeholder="—" />
+                  <span class="text-xs text-gray-400">/ ${effectiveMax ?? col.max_score}</span>
+                  <button id="sgc-grade-save" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg ml-auto">บันทึกคะแนน</button>
                 </div>
-                <p class="text-[10px] text-gray-400 mt-1">โหมดคะแนน: ${ASSIGN_WRITE_MODE_LABEL[a.score_write_mode ?? 'overwrite']?.label ?? ''}</p>
+                <p class="text-[10px] text-gray-400 mt-1">โหมดคะแนน: ${ASSIGN_WRITE_MODE_LABEL[a.score_write_mode ?? 'overwrite']?.label ?? ''} · บันทึกอัตโนมัติเมื่อออกจากช่องกรอก</p>
               </div>` : `<p class="text-[11px] text-gray-300 mb-3">งานนี้ไม่ได้ผูกกับคอลัมน์คะแนน</p>`}
               <div>
                 <label for="sgc-feedback" class="text-[11px] font-bold text-gray-500 mb-1 block">คอมเมนต์ถึงนักเรียน</label>
@@ -2028,12 +2040,17 @@ export async function renderSmartClassroom(teacher, classId) {
                   ${_FEEDBACK_TEMPLATES.improve.map((t, i) => `<button type="button" class="sgc-tmpl text-[10px] px-2 py-1 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-100" data-tmpl="improve-${i}">ตัวอย่าง ${i + 1}</button>`).join('')}
                 </div>
                 <textarea id="sgc-feedback" rows="2" placeholder="เช่น ทำได้ดีมาก แต่ข้อ 3 ทบทวนอีกครั้ง — หรือกดตัวอย่างด้านบนแล้วแก้ไขต่อได้" class="w-full text-xs border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none">${_htmlEsc(sub.teacher_feedback ?? '')}</textarea>
-                <button id="sgc-feedback-save" class="mt-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">บันทึกคอมเมนต์</button>
+                <div class="flex items-center gap-2 mt-1.5">
+                  <button id="sgc-feedback-save" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">บันทึกคอมเมนต์</button>
+                  ${sub.status === 'rejected'
+                    ? `<span class="text-[11px] text-red-500 font-semibold">❌ ตีกลับแล้ว รอนักเรียนส่งใหม่</span>`
+                    : `<button id="sgc-reject" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 ml-auto">❌ ตีกลับให้แก้ไข</button>`}
+                </div>
               </div>`}
           </div>
         </div>`
 
-      m.querySelector('#sgc-close').addEventListener('click', () => m.remove())
+      m.querySelector('#sgc-close').addEventListener('click', () => _closeCard())
       m.querySelector('#sgc-prev')?.addEventListener('click', () => { if (idx > 0) { idx--; _render() } })
       m.querySelector('#sgc-next')?.addEventListener('click', () => { if (idx < students.length - 1) { idx++; _render() } })
       const _jump = () => {
@@ -2047,7 +2064,7 @@ export async function renderSmartClassroom(teacher, classId) {
       }
       m.querySelector('#sgc-jump')?.addEventListener('change', _jump)
       m.querySelector('#sgc-jump')?.addEventListener('keydown', e => { if (e.key === 'Enter') _jump() })
-      m.querySelector('#sgc-grade-save')?.addEventListener('click', async () => {
+      const _saveGrade = async () => {
         const btn = m.querySelector('#sgc-grade-save')
         const val = m.querySelector('#sgc-grade').value.trim()
         btn.disabled = true
@@ -2057,7 +2074,9 @@ export async function renderSmartClassroom(teacher, classId) {
           showToast('บันทึกคะแนนแล้ว ✅', 'success')
           _render()
         } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false }
-      })
+      }
+      m.querySelector('#sgc-grade-save')?.addEventListener('click', _saveGrade)
+      m.querySelector('#sgc-grade')?.addEventListener('change', _saveGrade) // บันทึกอัตโนมัติเมื่อกรอกเสร็จ (blur/Enter)
       m.querySelectorAll('.sgc-tmpl').forEach(btn => btn.addEventListener('click', () => {
         const [group, i] = btn.dataset.tmpl.split('-')
         const textarea = m.querySelector('#sgc-feedback')
@@ -2075,8 +2094,26 @@ export async function renderSmartClassroom(teacher, classId) {
         } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
         finally { btn.disabled = false }
       })
+      m.querySelector('#sgc-reject')?.addEventListener('click', async () => {
+        const reason = m.querySelector('#sgc-feedback').value.trim()
+        if (!reason) { showToast('กรอกเหตุผลในช่องคอมเมนต์ก่อนตีกลับงาน', 'warning'); m.querySelector('#sgc-feedback').focus(); return }
+        if (!confirm(`ตีกลับงานของ "${s.full_name}" ให้แก้ไขใหม่?\n\nเหตุผล: ${reason}`)) return
+        const btn = m.querySelector('#sgc-reject')
+        btn.disabled = true
+        try {
+          await rejectAssignmentSubmission(a.id, s.id, reason)
+          sub.status = 'rejected'
+          sub.teacher_feedback = reason
+          showToast('ตีกลับงานแล้ว — นักเรียนจะเห็นเหตุผลนี้และส่งใหม่ได้', 'success')
+          _render()
+        } catch (err) { showToast('ตีกลับไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false }
+      })
     }
-    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    const _closeCard = () => {
+      m.remove()
+      document.getElementById('sc-track-modal')?._refresh?.()
+    }
+    m.addEventListener('click', e => { if (e.target === m) _closeCard() })
     _render()
   }
 }

@@ -646,12 +646,16 @@ export async function getMyAllAssignments(studentId) {
 }
 
 export async function submitAssignment(assignmentId, studentId, fileUrls, note = null) {
+  // ส่งใหม่ (เช่น หลังถูกครูตีกลับ) ต้องรีเซ็ตสถานะ+เวลาที่ตรวจกลับเป็นค่าเริ่มต้น
+  // เพื่อให้เข้าคิว "ยังไม่ตรวจ" ใหม่อีกครั้ง — ไม่ล้าง teacher_feedback เดิมเพื่อเก็บบริบทไว้ให้ครูดู
   const { error } = await supabase.from('assignment_submissions').upsert({
     assignment_id: assignmentId,
     student_id: studentId,
     file_urls: fileUrls,
     note,
     submitted_at: new Date().toISOString(),
+    status: 'submitted',
+    reviewed_at: null,
   }, { onConflict: 'assignment_id,student_id' })
   if (error) throw error
 }

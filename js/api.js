@@ -4119,6 +4119,17 @@ export async function saveAssignmentFeedback(assignmentId, studentId, feedback) 
   if (error) throw error
 }
 
+// ตีกลับงานให้นักเรียนแก้ไข — บังคับใส่เหตุผล (เก็บใน teacher_feedback เดียวกับคอมเมนต์)
+// ฝั่งนักเรียนจะเห็นสถานะ "ถูกตีกลับ" พร้อมเหตุผลนี้ จนกว่าจะส่งใหม่ (submitAssignment จะรีเซ็ตกลับเป็น submitted เอง)
+export async function rejectAssignmentSubmission(assignmentId, studentId, reason) {
+  const { error } = await supabase
+    .from('assignment_submissions')
+    .update({ status: 'rejected', teacher_feedback: reason })
+    .eq('assignment_id', assignmentId)
+    .eq('student_id', studentId)
+  if (error) throw error
+}
+
 export async function getAssignmentSubmissions(assignmentId) {
   const { data, error } = await supabase
     .from('assignment_submissions')
@@ -4139,7 +4150,7 @@ export async function getClassAssignmentsWithSubmissions(classId) {
   const [{ data: subs, error }, { data: contributions, error: cErr }] = await Promise.all([
     supabase
       .from('assignment_submissions')
-      .select('id, assignment_id, student_id, file_urls, note, teacher_feedback, submitted_at, reviewed_at')
+      .select('id, assignment_id, student_id, file_urls, note, teacher_feedback, submitted_at, reviewed_at, status')
       .in('assignment_id', ids),
     supabase
       .from('assignment_score_contributions')

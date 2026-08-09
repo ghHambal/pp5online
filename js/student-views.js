@@ -25,6 +25,9 @@ import QRCode from 'qrcode'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
+// งานที่ต้องทำ = ยังไม่เคยส่ง หรือ เคยส่งแต่ถูกครูตีกลับให้แก้ไข (ทั้งคู่ถือว่า "ค้างอยู่" ไม่ใช่เสร็จแล้ว)
+const _assignmentNeedsAction = a => !a.mySubmission || a.mySubmission.status === 'rejected'
+
 const _esc = value => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -405,7 +408,7 @@ export async function renderStudentOverview(student) {
     getStudentClassroomRole(student.main_room).catch(()=>null),
     getMyAllAssignments(student.id).catch(()=>[]),
   ])
-  const pendingAssignments = myAssignments.filter(a => !a.mySubmission)
+  const pendingAssignments = myAssignments.filter(_assignmentNeedsAction)
     .sort((x, y) => (x.due_at ? new Date(x.due_at).getTime() : Infinity) - (y.due_at ? new Date(y.due_at).getTime() : Infinity))
   const pending = requests.filter(r => r.status === 'pending')
   const recent  = requests.slice(0, 3)
@@ -1561,9 +1564,9 @@ export async function renderStudentAllAssignments(student, group = 'samai') {
 
   const _groupContent = list => {
     if (!list.length) return `<div class="text-center py-14 text-gray-300"><p class="text-4xl mb-2">📭</p><p class="text-sm">ไม่มีงานในกลุ่มนี้</p></div>`
-    const pending = list.filter(a => !a.mySubmission)
+    const pending = list.filter(_assignmentNeedsAction)
       .sort((x, y) => (x.due_at ? new Date(x.due_at).getTime() : Infinity) - (y.due_at ? new Date(y.due_at).getTime() : Infinity))
-    const done = list.filter(a => a.mySubmission)
+    const done = list.filter(a => a.mySubmission && a.mySubmission.status !== 'rejected')
       .sort((x, y) => new Date(y.mySubmission.submitted_at).getTime() - new Date(x.mySubmission.submitted_at).getTime())
     return `
       <div class="mb-5">
@@ -1576,8 +1579,8 @@ export async function renderStudentAllAssignments(student, group = 'samai') {
       </div>`
   }
 
-  const samaiPending  = samai.filter(a => !a.mySubmission).length
-  const sasanaPending = sasana.filter(a => !a.mySubmission).length
+  const samaiPending  = samai.filter(_assignmentNeedsAction).length
+  const sasanaPending = sasana.filter(_assignmentNeedsAction).length
 
   setContent(`
     <div class="flex items-center justify-between gap-3 mb-4">
@@ -1766,7 +1769,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     const items = []
 
     // ── งานที่มอบหมาย (ยังไม่ส่ง) ──
-    const unsubmittedAssignments = assignments.filter(a => !a.mySubmission)
+    const unsubmittedAssignments = assignments.filter(_assignmentNeedsAction)
     if (unsubmittedAssignments.length > 0) {
       items.push(`
         <button onclick="window._stuOpenClassTab(${classId},'assignments')"
@@ -2000,12 +2003,15 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
 
   const _assignmentCard = (a) => {
     const sub = a.mySubmission
+    const rejected = sub?.status === 'rejected'
     const late = sub ? _assignmentIsLate(a, sub.submitted_at) : false
     const overdue = !sub && _assignmentIsOverdue(a)
-    return `<div class="bg-white rounded-2xl border ${sub ? 'border-emerald-100' : overdue ? 'border-red-100' : 'border-gray-200'} shadow-sm p-4">
+    return `<div class="bg-white rounded-2xl border ${rejected ? 'border-red-200' : sub ? 'border-emerald-100' : overdue ? 'border-red-100' : 'border-gray-200'} shadow-sm p-4">
       <div class="flex items-start justify-between gap-2 mb-1.5">
         <p class="font-semibold text-gray-800 text-sm">${_esc(a.title)}</p>
-        ${sub
+        ${rejected
+          ? `<span class="flex-shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">❌ ถูกตีกลับ ให้แก้ไข</span>`
+          : sub
           ? `<span class="flex-shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${late ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">${late ? '⏰ ส่งช้า' : '✅ ส่งแล้ว'}</span>`
           : `<span class="flex-shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${overdue ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-50 text-gray-500 border border-gray-200'}">${overdue ? 'เลยกำหนดส่ง' : 'ยังไม่ส่ง'}</span>`}
       </div>
@@ -2014,8 +2020,11 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mb-2">${a.attachment_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">📎 ${_esc(f.name)}</a>`).join('')}</div>` : ''}
       ${sub?.file_urls?.length ? `<div class="border-t border-gray-50 pt-2 mt-1"><p class="text-[10px] text-gray-400 mb-1">ไฟล์ที่ส่ง (${new Date(sub.submitted_at).toLocaleString('th-TH',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})})</p>
         <div class="flex flex-wrap gap-1.5">${sub.file_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">📎 ${_esc(f.name)}</a>`).join('')}</div></div>` : ''}
-      ${sub?.teacher_feedback ? `<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mt-2"><p class="text-[10px] font-bold text-indigo-500 mb-0.5">💬 คอมเมนต์จากครู</p><p class="text-xs text-indigo-800">${_esc(sub.teacher_feedback)}</p></div>` : ''}
-      <button class="stu-submit-assign-btn mt-3 w-full py-2 rounded-xl text-xs font-bold ${sub ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'}" data-aid="${a.id}">${sub ? '📤 ส่งใหม่ (แทนที่ของเดิม)' : '📤 ส่งงาน'}</button>
+      ${sub?.teacher_feedback ? (rejected
+        ? `<div class="bg-red-50 border border-red-100 rounded-xl p-2.5 mt-2"><p class="text-[10px] font-bold text-red-500 mb-0.5">❌ เหตุผลที่ถูกตีกลับ</p><p class="text-xs text-red-800">${_esc(sub.teacher_feedback)}</p></div>`
+        : `<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mt-2"><p class="text-[10px] font-bold text-indigo-500 mb-0.5">💬 คอมเมนต์จากครู</p><p class="text-xs text-indigo-800">${_esc(sub.teacher_feedback)}</p></div>`
+      ) : ''}
+      <button class="stu-submit-assign-btn mt-3 w-full py-2 rounded-xl text-xs font-bold ${rejected ? 'bg-red-600 text-white hover:bg-red-700' : sub ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-indigo-600 text-white hover:bg-indigo-700'}" data-aid="${a.id}">${rejected ? '📤 ส่งแก้ไขใหม่' : sub ? '📤 ส่งใหม่ (แทนที่ของเดิม)' : '📤 ส่งงาน'}</button>
     </div>`
   }
 
