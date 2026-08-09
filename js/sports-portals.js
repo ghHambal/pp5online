@@ -416,7 +416,14 @@ function showShirtRequestSubmittedModal(size) {
 
 // ปุ่ม "แจ้งไซซ์เสื้อวันกีฬาสี2026" บนหน้าภาพรวมของครู — เรียกจาก js/teacher-views.js
 // (renderTeacherOverview) ทุกครั้งที่เข้าหน้านี้ ต่อ card ใหม่ไว้บนสุดของ #main-content เสมอ
-export function injectTeacherShirtButton(teacher) {
+// ซ่อนปุ่มถ้าแอดมินปิดรับแจ้งไว้ ยกเว้นครูที่เคยแจ้งไว้แล้ว — ยังให้เห็นปุ่มไว้ดูประวัติของตัวเองได้เสมอ
+export async function injectTeacherShirtButton(teacher) {
+  document.getElementById('teacher-shirt-btn-card')?.remove()
+  try {
+    const {event,cfg} = await context()
+    const {data:existing} = await supabase.from('sports_shirt_teacher_requests').select('id').eq('event_id',event.id).eq('teacher_id',teacher.id).maybeSingle()
+    if (!cfg?.teacher_shirt_request_enabled && !existing) return
+  } catch (e) { console.error(e); return }
   const container = document.getElementById('main-content')
   if (!container) return
   document.getElementById('teacher-shirt-btn-card')?.remove()
