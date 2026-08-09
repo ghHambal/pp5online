@@ -4154,17 +4154,20 @@ export async function getClassAssignmentsWithSubmissions(classId) {
       .in('assignment_id', ids),
     supabase
       .from('assignment_score_contributions')
-      .select('assignment_id, student_id')
+      .select('assignment_id, student_id, contributed_score')
       .in('assignment_id', ids),
   ])
   if (error) throw error
   if (cErr) throw cErr
-  const scoredSet = new Set((contributions ?? []).map(c => `${c.assignment_id}:${c.student_id}`))
+  const scoreByKey = new Map((contributions ?? []).map(c => [`${c.assignment_id}:${c.student_id}`, c.contributed_score]))
   return assignments.map(a => ({
     ...a,
     submissions: (subs ?? [])
       .filter(s => s.assignment_id === a.id)
-      .map(s => ({ ...s, hasScore: scoredSet.has(`${s.assignment_id}:${s.student_id}`) })),
+      .map(s => {
+        const key = `${s.assignment_id}:${s.student_id}`
+        return { ...s, hasScore: scoreByKey.has(key), savedScore: scoreByKey.get(key) ?? null }
+      }),
   }))
 }
 

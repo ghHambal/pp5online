@@ -1973,7 +1973,10 @@ export async function renderSmartClassroom(teacher, classId) {
       const sub = subByStudent[s.id]
       const late = sub && _isLate(a, sub.submitted_at)
       const penalty = sub ? _latePenaltyPoints(a, sub.submitted_at) : 0
-      const suggested = effectiveMax != null ? Math.max(0, (effectiveMax || 0) - penalty) : ''
+      // ถ้าเคยให้คะแนนไปแล้ว โชว์คะแนนจริงที่บันทึกไว้ ไม่ใช่คะแนนเต็มตั้งต้น (บั๊กเดิม: เปิดซ้ำแล้วเห็นเป็นคะแนนเต็มเสมอ)
+      const suggested = sub?.hasScore
+        ? (sub.savedScore ?? '')
+        : effectiveMax != null ? Math.max(0, (effectiveMax || 0) - penalty) : ''
 
       if (sub && !sub.reviewed_at) {
         sub.reviewed_at = new Date().toISOString() // optimistic — กันเรียกซ้ำถ้า re-render ก่อน request จบ
@@ -2067,10 +2070,12 @@ export async function renderSmartClassroom(teacher, classId) {
       const _saveGrade = async () => {
         const btn = m.querySelector('#sgc-grade-save')
         const val = m.querySelector('#sgc-grade').value.trim()
+        const scoreNum = val === '' ? 0 : parseFloat(val)
         btn.disabled = true
         try {
-          await saveAssignmentGrade(a.id, s.id, val === '' ? 0 : parseFloat(val))
+          await saveAssignmentGrade(a.id, s.id, scoreNum)
           sub.hasScore = true
+          sub.savedScore = scoreNum
           showToast('บันทึกคะแนนแล้ว ✅', 'success')
           _render()
         } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false }
