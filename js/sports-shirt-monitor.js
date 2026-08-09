@@ -78,7 +78,7 @@ function renderGate(onSuccess) {
 function renderDashboard(snapshot) {
   const amount = Number(snapshot.shirt_payment_amount) || 0
   const paymentsOpen = amount > 0
-  const allowedSizes = (snapshot.allowed_sizes && snapshot.allowed_sizes.length) ? snapshot.allowed_sizes : ['S', 'M', 'L', 'XL', '2XL', '3XL']
+  const allowedSizes = (snapshot.allowed_sizes && snapshot.allowed_sizes.length) ? snapshot.allowed_sizes : ['SS', 'S', 'M', 'L', 'XL', '2X', '3X', '4X', '5X', '6X', '7X', '8X']
   const colors = snapshot.team_colors || []
 
   let activeTab = 'size' // 'size' | 'payment'
