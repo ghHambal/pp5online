@@ -192,6 +192,7 @@ let S = {
   checkins: [],
   eventCheckins: [],
   eventCheckinDay: null, // แท็บวันที่กำลังดูอยู่ในหน้าจอสแกน/จอใหญ่ (1 หรือ 2) — null = เดาจากวันที่ปัจจุบันอัตโนมัติ
+  eventCheckinIncompleteLevel: 'ALL', // แท็บกรองระดับชั้นในรายการ "ทีมมาไม่ครบ" ของหน้าแอดมิน
   staffNames: {},
   awards: [],
   payments: [],
@@ -1637,8 +1638,8 @@ function eventCheckinDeadlinePassed(day) {
 }
 
 // ทีมที่ยังเช็คอินไม่ครบทุกคนในรายชื่อ สำหรับวันที่ระบุ (ครบ = เช็คอินครบทุกคนที่ลงทะเบียนไว้ในทีม)
-function incompleteTeamsForDay(day) {
-  return S.teams.map(team => {
+function incompleteTeamsForDay(day, level = 'ALL') {
+  return S.teams.filter(team => level === 'ALL' || team.level === level).map(team => {
     const roster = S.players.filter(p => p.team_id === team.id)
     if (!roster.length) return null
     const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
@@ -1646,6 +1647,31 @@ function incompleteTeamsForDay(day) {
     if (done >= roster.length) return null
     return { team, done, total: roster.length }
   }).filter(Boolean)
+}
+
+// การ์ดสถานะเช็คอินเข้างานของทีม โชว์ในหน้าทีมของฉัน (ฝั่งนักเรียน/หัวหน้าทีม) ให้เห็นว่าครบหรือยังโดยไม่ต้องรอแอดมิน
+function teamEventCheckinStatusBlock(roster) {
+  if (!roster.length) return ''
+  const days = eventCheckinRequiresBothDays() ? [1, 2] : [1]
+  const statusFor = day => {
+    const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
+    const done = roster.filter(p => checkedIds.has(p.id)).length
+    return { done, total: roster.length, complete: done >= roster.length }
+  }
+  const allComplete = days.every(d => statusFor(d).complete)
+  return `
+  <div style="border:1px solid ${allComplete ? '#bbf7d0' : '#fde68a'};background:${allComplete ? '#f0fdf4' : '#fffbeb'};border-radius:14px;padding:12px 14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-weight:700;font-size:13px">📷 สถานะเช็คอินเข้างาน</div>
+      <span style="font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:999px;background:${allComplete ? '#16a34a' : '#d97706'};color:#fff">${allComplete ? 'ครบแล้ว' : 'ยังไม่ครบ'}</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      ${days.map(d => {
+        const s = statusFor(d)
+        return `<div style="font-size:12px;color:#374151;display:flex;justify-content:space-between;gap:8px"><span>วันที่ ${d} · ${esc(scheduleDateLabel(d))}</span><b style="color:${s.complete ? '#16a34a' : '#d97706'}">${s.complete ? '✅' : '⏳'} ${s.done}/${s.total}</b></div>`
+      }).join('')}
+    </div>
+  </div>`
 }
 
 // แบนเนอร์ให้นักกีฬาที่ล็อกอินอยู่กดเช็คอินเข้างานด้วยตัวเอง — โชว์เฉพาะคนที่ลงทะเบียนเป็นนักกีฬาไว้แล้วเท่านั้น
@@ -1676,7 +1702,8 @@ function eventCheckinPanel(showSettings) {
   const msCount = eventCheckinCounts('MS', day)
   const hsCount = eventCheckinCounts('HS', day)
   const windowLabel = eventCheckinWindowLabel(day)
-  const incomplete = incompleteTeamsForDay(day)
+  const incompleteLevel = S.eventCheckinIncompleteLevel || 'ALL'
+  const incomplete = incompleteTeamsForDay(day, incompleteLevel)
   const deadlinePassed = eventCheckinDeadlinePassed(day)
   return box(`
     <div style="font-weight:700;font-size:14px;margin-bottom:10px">📷 เช็คอินเข้างาน</div>
@@ -1691,13 +1718,16 @@ function eventCheckinPanel(showSettings) {
       <button data-act="openEventCheckinBigScreen" data-day="${day}" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:800;font-size:12.5px;cursor:pointer">🖥️ จอใหญ่หน้าลงทะเบียน</button>
     </div>
     ${showSettings ? `
+    <div style="margin-top:14px;display:flex;gap:6px">
+      ${['ALL', 'MS', 'HS'].map(v => `<button data-act="setEventCheckinIncompleteLevel" data-v="${v}" style="flex:1;padding:6px;border-radius:8px;border:1px solid ${incompleteLevel === v ? '#db2777' : '#e5e7eb'};background:${incompleteLevel === v ? '#db2777' : '#fff'};color:${incompleteLevel === v ? '#fff' : '#374151'};font-weight:700;font-size:11.5px;cursor:pointer">${v === 'ALL' ? 'ทั้งหมด' : T[v].label}</button>`).join('')}
+    </div>
     ${incomplete.length ? `
-    <div style="margin-top:14px;padding:12px;border-radius:12px;background:${deadlinePassed ? '#fef2f2' : '#f9fafb'};border:1px solid ${deadlinePassed ? '#fecaca' : '#e5e7eb'}">
+    <div style="margin-top:8px;padding:12px;border-radius:12px;background:${deadlinePassed ? '#fef2f2' : '#f9fafb'};border:1px solid ${deadlinePassed ? '#fecaca' : '#e5e7eb'}">
       <div style="font-size:12.5px;font-weight:800;color:${deadlinePassed ? '#dc2626' : '#6b7280'};margin-bottom:6px">${deadlinePassed ? `⚠️ เลยเวลาปิดรับเช็คอิน (${esc(eventCheckinCloseTime())} น.) แล้ว — ทีมต่อไปนี้มาไม่ครบ พิจารณาสกอร์ตามนโยบายที่ตั้งไว้` : `🕐 ยังมาไม่ครบ ${incomplete.length} ทีม (จะเตือนชัดเจนเมื่อถึงเวลาปิดรับ${eventCheckinCloseTime() ? ` ${esc(eventCheckinCloseTime())} น.` : ''})`}</div>
       <div style="display:flex;flex-direction:column;gap:4px">
         ${incomplete.map(({ team, done, total }) => `<div style="font-size:12px;color:#374151;display:flex;justify-content:space-between;gap:8px"><span>${levelBadge(team.level)} ${esc(team.name)}</span><b style="color:${deadlinePassed ? '#dc2626' : '#6b7280'}">${done}/${total}</b></div>`).join('')}
       </div>
-    </div>` : `<div style="margin-top:14px;padding:10px 12px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;font-size:12px;font-weight:700">✅ ทุกทีมเช็คอินครบแล้วสำหรับวันที่ ${day}</div>`}
+    </div>` : `<div style="margin-top:8px;padding:10px 12px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;font-size:12px;font-weight:700">✅ ทุกทีมเช็คอินครบแล้วสำหรับวันที่ ${day}</div>`}
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6">
       <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:6px">เวลาเปิด-ปิดรับเช็คอิน (ใช้เวลาเดียวกันทั้ง 2 วัน)</div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -2406,6 +2436,7 @@ function manageTeamView(team, isAdminView, readOnly) {
 
     ${readOnly ? `<div style="font-size:12px;color:#6b7280;background:#f3f4f6;border-radius:10px;padding:8px 10px">🔒 กำลังดูข้อมูลทีมแบบอ่านอย่างเดียวผ่านรหัสทีม แก้ไขไม่ได้</div>` : ''}
     ${!editable && !readOnly ? `<div style="font-size:12px;color:#dc2626;background:#fee2e2;border-radius:10px;padding:8px 10px">หมดเวลาแก้ไขรายชื่อนักกีฬาแล้ว (ปิดแก้ไขเมื่อ ${esc(deadline)})</div>` : ''}
+    ${teamEventCheckinStatusBlock(roster)}
 
     ${S.myTeamTab === 'roster' ? `
     <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:14px">
@@ -2448,6 +2479,7 @@ function manageTeamView(team, isAdminView, readOnly) {
                   `}
                 </div>
                 ${badgeBits.length ? `<div style="margin-top:3px;font-size:11px;color:#4b5563;font-weight:700">${badgeBits.join('  ')}</div>` : ''}
+                <div style="margin-top:3px;font-size:10.5px;color:#9ca3af">📷 ${eventCheckinRequiresBothDays() ? `วันที่1 ${eventCheckinFor(p.id, 1) ? '✅' : '❌'} · วันที่2 ${eventCheckinFor(p.id, 2) ? '✅' : '❌'}` : `เช็คอินเข้างาน ${eventCheckinFor(p.id, 1) ? '✅' : '❌'}`}</div>
                 ${roleButtons(p) ? `<div style="margin-top:2px">${roleButtons(p)}</div>` : ''}
               </div>
               ${editable ? `<button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">ลบ</button>` : ''}
@@ -4288,6 +4320,7 @@ function bindEvents() {
     if (act === 'openCheckinScanner') { openCheckinScanner(btn.dataset.level, btn.dataset.code); return }
     if (act === 'openCheckinLiveDisplay') { openCheckinLiveDisplay(btn.dataset.level, btn.dataset.code); return }
     if (act === 'setEventCheckinDay') { S.eventCheckinDay = Number(btn.dataset.v); draw(); return }
+    if (act === 'setEventCheckinIncompleteLevel') { S.eventCheckinIncompleteLevel = btn.dataset.v; draw(); return }
     if (act === 'openEventCheckinScanner') { openEventCheckinScanner(Number(btn.dataset.day)); return }
     if (act === 'openEventCheckinBigScreen') { openEventCheckinBigScreen(Number(btn.dataset.day)); return }
     if (act === 'openEventSelfCheckin') { openEventSelfCheckinScanner(); return }
