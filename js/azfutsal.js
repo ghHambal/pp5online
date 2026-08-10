@@ -1275,6 +1275,7 @@ function openEventCheckinScanner(day) {
       </div>
     </div>`
   document.body.appendChild(overlay)
+  wireJerseyEditHandlers(overlay.querySelector('#az-evci-feedback'), id => allRoster.find(p => String(p.id) === String(id)))
 
   const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
   let recentIds = []
@@ -1338,7 +1339,8 @@ function openEventCheckinScanner(day) {
           <div style="color:#e2e8f0;font-size:12.5px;font-weight:700;margin-top:1px;overflow-wrap:break-word">${esc(player.students?.full_name || '')}</div>
           <div style="color:#94a3b8;font-size:11px">${esc(teamName(player.team_id))}</div>
         </div>
-      </div>`
+      </div>
+      ${jerseyConfirmRowHtml(player)}`
     checkedIds.add(player.id)
     recentIds.unshift(player.id)
     recentIds = recentIds.slice(0, 30)
@@ -1407,6 +1409,7 @@ function openEventSelfCheckinScanner() {
       <div id="az-evsc-feedback" style="background:#151a26;border:1px solid #232838;border-radius:14px;padding:14px;text-align:center;font-size:12.5px;color:#94a3b8">รอสแกน QR ที่จุดลงทะเบียน</div>
     </div>`
   document.body.appendChild(overlay)
+  wireJerseyEditHandlers(overlay.querySelector('#az-evsc-feedback'), id => (String(player.id) === String(id) ? player : null))
 
   let html5Qrcode = null, lastCode = null, lastTime = 0, done = false
 
@@ -1464,7 +1467,8 @@ function openEventSelfCheckinScanner() {
           <div style="color:#e2e8f0;font-size:13.5px;font-weight:700;margin-top:2px;overflow-wrap:break-word">${esc(player.students?.full_name || '')}</div>
           <div style="color:#94a3b8;font-size:12px">${esc(teamName(player.team_id))} · วันที่ ${day}</div>
         </div>
-      </div>`
+      </div>
+      ${jerseyConfirmRowHtml(player)}`
     await refresh()
   }
 
@@ -1627,6 +1631,56 @@ function eventCheckinDefaultDay() {
 }
 
 function eventStationQRPayload(day) { return `${EVENT_CHECKIN_QR_PREFIX}${day}` }
+
+// แถวยืนยัน/แก้ไขเบอร์เสื้อ ต่อท้ายการ์ดสำเร็จตอนเช็คอินเข้างาน (ไม่บังคับกดยืนยัน แค่โชว์ให้เห็นเบอร์ปัจจุบัน แก้ไวได้ถ้าไม่ตรงกับเสื้อจริง)
+function jerseyConfirmRowHtml(player) {
+  return `<div class="az-jersey-row" data-jersey-id="${esc(player.id)}" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <span style="color:#94a3b8;font-size:11px">เบอร์เสื้อในระบบ: <b style="color:#e2e8f0;font-size:13px">${player.jersey_number ?? '-'}</b></span>
+    <button class="az-jersey-edit-btn" data-jersey-id="${esc(player.id)}" style="border:none;background:none;color:#38bdf8;font-size:11px;font-weight:700;cursor:pointer">ไม่ตรง? แก้ไข</button>
+  </div>`
+}
+function jerseyEditRowHtml(player) {
+  return `<div class="az-jersey-row" data-jersey-id="${esc(player.id)}" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:6px">
+    <span style="color:#94a3b8;font-size:11px;flex-shrink:0">เบอร์เสื้อจริง:</span>
+    <input type="number" min="0" class="az-jersey-input" value="${player.jersey_number ?? ''}" style="width:64px;border:1px solid #334155;border-radius:6px;padding:4px 6px;font-size:12px;background:#0b0f1a;color:#e2e8f0"/>
+    <button class="az-jersey-save-btn" data-jersey-id="${esc(player.id)}" style="border:none;background:#0ea5e9;color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer">บันทึก</button>
+  </div>`
+}
+// ผูก event delegation ครั้งเดียวกับ container ที่ไม่ถูกสร้างใหม่ทุกครั้งที่สแกน (feedback div ตัวมันเองอยู่ยาวตลอด แค่ innerHTML เปลี่ยน)
+function wireJerseyEditHandlers(container, findPlayer) {
+  container.addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('.az-jersey-edit-btn')
+    if (editBtn) {
+      const player = findPlayer(editBtn.dataset.jerseyId)
+      if (!player) return
+      editBtn.closest('.az-jersey-row').outerHTML = jerseyEditRowHtml(player)
+      return
+    }
+    const saveBtn = e.target.closest('.az-jersey-save-btn')
+    if (saveBtn) {
+      const row = saveBtn.closest('.az-jersey-row')
+      const player = findPlayer(saveBtn.dataset.jerseyId)
+      if (!player || !row) return
+      const input = row.querySelector('.az-jersey-input')
+      const raw = input.value.trim()
+      const newVal = raw === '' ? null : Number(raw)
+      if (raw !== '' && (Number.isNaN(newVal) || newVal < 0)) { azToast('เบอร์เสื้อไม่ถูกต้อง'); return }
+      const { error } = await SB.from('azfutsal_players').update({ jersey_number: newVal }).eq('id', player.id)
+      if (error) { azToast('บันทึกเบอร์เสื้อไม่สำเร็จ: ' + error.message); return }
+      // แก้ค่าตรงตัว player object (อ้างอิงเดียวกับใน S.players ระหว่างสแกน) ให้การ์ดอัปเดตทันทีโดยไม่ต้องรอ refresh()
+      // ซึ่งจะไป reassign S.players เป็น array ใหม่จนอ้างอิงตัวเดิมหลุดได้
+      player.jersey_number = newVal
+      row.outerHTML = jerseyConfirmRowHtml(player)
+      azToast('บันทึกเบอร์เสื้อแล้ว')
+      refresh()
+    }
+  })
+  container.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList?.contains('az-jersey-input')) {
+      e.target.closest('.az-jersey-row')?.querySelector('.az-jersey-save-btn')?.click()
+    }
+  })
+}
 
 // player row ของนักเรียนที่ล็อกอินอยู่ตอนนี้ (สำหรับปุ่ม "เช็คอินเข้างานด้วยตัวเอง" ในพอร์ทัลนักเรียน)
 function myEventPlayer() {
