@@ -42,15 +42,25 @@ function renderGate(onSuccess) {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') submit() })
 }
 
+const PREFIX_OPTIONS = ['นาย', 'นาง', 'นางสาว', 'อื่นๆ']
+
 function renderForm(password, options) {
-  const sizes = options?.allowed_sizes || []
+  const sizes = options?.sizes || []
   let gender = null
   root.innerHTML = `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
       <div>
-        <label class="block text-xs font-bold text-slate-600 mb-1.5">ชื่อ-นามสกุล</label>
+        <label class="block text-xs font-bold text-slate-600 mb-1.5">คำนำหน้าชื่อ</label>
+        <select id="staff-prefix" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white">
+          <option value="">-- เลือกคำนำหน้าชื่อ --</option>
+          ${PREFIX_OPTIONS.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}
+        </select>
+        <input id="staff-prefix-custom" type="text" placeholder="ระบุคำนำหน้าชื่อ" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm mt-2 hidden">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-600 mb-1.5">ชื่อ-นามสกุล (ไม่ต้องใส่คำนำหน้าชื่อซ้ำ)</label>
         <input id="staff-name" type="text" placeholder="เช่น สมชาย ใจดี" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm">
-        <p class="text-[10.5px] text-slate-400 mt-1">พิมพ์ชื่อเดิมอีกครั้งได้ถ้าต้องการแก้ไขไซซ์ที่เคยแจ้งไว้</p>
+        <p class="text-[10.5px] text-slate-400 mt-1">พิมพ์คำนำหน้าชื่อ+ชื่อเดิมอีกครั้งได้ถ้าต้องการแก้ไขไซซ์ที่เคยแจ้งไว้</p>
       </div>
       <div>
         <label class="block text-xs font-bold text-slate-600 mb-1.5">เพศ</label>
@@ -63,7 +73,7 @@ function renderForm(password, options) {
         <label class="block text-xs font-bold text-slate-600 mb-1.5">ไซซ์เสื้อ</label>
         <select id="staff-size" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white">
           <option value="">-- เลือกไซซ์ --</option>
-          ${sizes.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+          ${sizes.map(s => `<option value="${esc(s.code)}">${esc(s.code)} (รอบอก ${esc(s.chest)} นิ้ว)</option>`).join('')}
         </select>
       </div>
       <div id="staff-feedback"></div>
@@ -74,6 +84,10 @@ function renderForm(password, options) {
     root.querySelector('#staff-feedback').innerHTML = `<div class="rounded-xl px-3 py-2.5 text-xs font-semibold ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}">${esc(text)}</div>`
   }
 
+  root.querySelector('#staff-prefix').addEventListener('change', e => {
+    root.querySelector('#staff-prefix-custom').classList.toggle('hidden', e.target.value !== 'อื่นๆ')
+  })
+
   root.querySelectorAll('[data-gender]').forEach(b => b.onclick = () => {
     gender = b.dataset.gender
     root.querySelectorAll('[data-gender]').forEach(btn => {
@@ -83,16 +97,20 @@ function renderForm(password, options) {
   })
 
   root.querySelector('#staff-submit').onclick = async () => {
+    const prefixSelected = root.querySelector('#staff-prefix').value
+    const prefix = prefixSelected === 'อื่นๆ' ? root.querySelector('#staff-prefix-custom').value.trim() : prefixSelected
     const name = root.querySelector('#staff-name').value.trim()
     const size = root.querySelector('#staff-size').value
+    if (!prefix) { feedback(false, 'กรุณาเลือก (หรือระบุ) คำนำหน้าชื่อ'); return }
     if (!name) { feedback(false, 'กรุณากรอกชื่อ-นามสกุล'); return }
     if (!gender) { feedback(false, 'กรุณาเลือกเพศ'); return }
     if (!size) { feedback(false, 'กรุณาเลือกไซซ์เสื้อ'); return }
+    const fullName = `${prefix}${name}`
     const btn = root.querySelector('#staff-submit')
     btn.disabled = true
     try {
-      await supabase.rpc('submit_personnel_shirt_size', { p_password: password, p_full_name: name, p_gender: gender, p_size: size }).then(r => { if (r.error) throw r.error })
-      renderSuccess(name, size)
+      await supabase.rpc('submit_personnel_shirt_size', { p_password: password, p_full_name: fullName, p_gender: gender, p_size: size }).then(r => { if (r.error) throw r.error })
+      renderSuccess(fullName, size)
     } catch (e) {
       feedback(false, e?.message || 'บันทึกไม่สำเร็จ กรุณาลองใหม่')
       btn.disabled = false
