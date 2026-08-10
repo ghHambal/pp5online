@@ -847,11 +847,21 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
     const {event}=await context()
     const {data:snapshot,error}=await supabase.rpc('get_advisor_sports_checkin_snapshot',{p_event:event.id})
     if(error)throw error
+    const todayStr=todayLocal()
     const students=snapshot?.students||[]
+    // เก็บเช็คชื่อทั้งหมด (ไม่ใช่แค่วันนี้แล้ว) คีย์ด้วย studentId|date เพราะเปิดโหมดย้อนหลังได้
     const attendanceMap={}
-    ;(snapshot?.attendance||[]).forEach(a=>{attendanceMap[a.student_id]=a})
-    const active=!!snapshot?.active
+    ;(snapshot?.attendance||[]).forEach(a=>{attendanceMap[`${a.student_id}|${a.session_date}`]=a})
     const checkinDate=snapshot?.checkin_date
+    const backfillEnabled=!!snapshot?.backfill_enabled
+    const isScheduledToday=!!checkinDate && todayStr===checkinDate
+    // ตัวเลือกวันที่ย้อนหลัง — มีให้เลือกเฉพาะตอนแอดมินเปิด backfillEnabled เท่านั้น (ปิดอยู่ใช้
+    // พฤติกรรมเดิมเป๊ะ ล็อกวันเดียวตาม advisor_checkin_date) ดึงจากปฏิทินปฏิบัติงานเหมือนฝั่งฝ่ายสี
+    const calendarDaysDesc=_expandCalendarDays(snapshot?.camp_calendar||[])
+    const pastCalendarDays=calendarDaysDesc.filter(d=>d.date<todayStr)
+    const dateOptions=[{date:todayStr,label:calendarDaysDesc.find(d=>d.date===todayStr)?.label||''},...pastCalendarDays]
+    let sessionDate=todayStr
+    let active=backfillEnabled?true:(isScheduledToday && sessionDate===todayStr)
     let html5Qrcode=null,scanning=false,recentScans=[],filter='all'
 
     const stopScanner=async()=>{
@@ -860,20 +870,25 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
     }
     window._cleanupAdvisorShirtPaymentScanner=stopScanner
 
-    const statusBanner=(()=>{
+    const statusBannerHtml=()=>{
+      if(backfillEnabled){
+        if(sessionDate===todayStr && isScheduledToday) return `<div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-700">✅ วันนี้ (${esc(checkinDate)}) เป็นวันเช็คชื่อเข้าสีวันแรก</div>`
+        if(sessionDate===todayStr) return `<div class="rounded-xl bg-sky-50 border border-sky-200 px-4 py-3 text-xs font-semibold text-sky-700">ℹ️ แอดมินเปิดโหมดเช็คชื่อย้อนหลังไว้ — บันทึกของวันนี้ได้ตามปกติ</div>`
+        return `<div class="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs font-semibold text-amber-700">⚠️ กำลังบันทึกเช็คชื่อ<b>ย้อนหลัง</b>สำหรับวันที่ ${esc(sessionDate)} ไม่ใช่วันนี้ — ตรวจสอบวันที่ให้ถูกต้องก่อนสแกน</div>`
+      }
       if(!checkinDate) return `<div class="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs font-semibold text-amber-700">⚠️ แอดมินยังไม่ได้กำหนดวันเช็คชื่อเข้าสีวันแรก ระบบนี้จึงยังปิดอยู่</div>`
-      if(active) return `<div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-700">✅ วันนี้ (${esc(checkinDate)}) เป็นวันเช็คชื่อเข้าสีวันแรก — ครูที่ปรึกษาบันทึกแทนฝ่ายสีได้เฉพาะวันนี้เท่านั้น</div>`
+      if(isScheduledToday) return `<div class="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-700">✅ วันนี้ (${esc(checkinDate)}) เป็นวันเช็คชื่อเข้าสีวันแรก — ครูที่ปรึกษาบันทึกแทนฝ่ายสีได้เฉพาะวันนี้เท่านั้น</div>`
       const future=new Date(checkinDate)>new Date()
-      return `<div class="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-xs font-semibold text-gray-600">${future?`⏳ ยังไม่ถึงวันเช็คชื่อเข้าสีวันแรก (กำหนดไว้วันที่ ${esc(checkinDate)})`:`ℹ️ พ้นวันเช็คชื่อเข้าสีวันแรกแล้ว (${esc(checkinDate)}) ระบบกลับไปใช้การเช็คชื่อโดยฝ่ายสีตามปกติ`} — ดูข้อมูลได้อย่างเดียว</div>`
-    })()
+      return `<div class="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-xs font-semibold text-gray-600">${future?`⏳ ยังไม่ถึงวันเช็คชื่อเข้าสีวันแรก (กำหนดไว้วันที่ ${esc(checkinDate)})`:`ℹ️ พ้นวันเช็คชื่อเข้าสีวันแรกแล้ว (${esc(checkinDate)}) ระบบกลับไปใช้การเช็คชื่อโดยฝ่ายสีตามปกติ — ให้แอดมินเปิด "เช็คชื่อย้อนหลัง" ถ้าต้องการแก้ไข`} — ดูข้อมูลได้อย่างเดียว</div>`
+    }
 
     body.innerHTML=`
       <section class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div class="p-4 sm:p-5 border-b border-gray-100">
-          <h2 class="font-bold text-gray-800">🎽 เช็คชื่อเข้าสีวันแรก</h2>
-          <p class="text-xs text-gray-500 mt-1">ห้อง ${roomNames.map(esc).join(', ')} · สแกน QR ประจำตัวนักเรียนหรือกรอกรหัสด้วยมือ</p>
+        <div class="p-4 sm:p-5 border-b border-gray-100 flex flex-wrap items-start justify-between gap-3">
+          <div><h2 class="font-bold text-gray-800">🎽 เช็คชื่อเข้าสีวันแรก</h2><p class="text-xs text-gray-500 mt-1">ห้อง ${roomNames.map(esc).join(', ')} · สแกน QR ประจำตัวนักเรียนหรือกรอกรหัสด้วยมือ</p></div>
+          ${backfillEnabled&&dateOptions.length>1?`<select id="advisor-checkin-date-select" class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold bg-white">${dateOptions.map(d=>`<option value="${esc(d.date)}">${d.date===todayStr?'วันนี้':esc(d.date)}${d.label?` — ${esc(d.label)}`:''}</option>`).join('')}</select>`:''}
         </div>
-        <div class="p-4 pb-0">${statusBanner}</div>
+        <div id="advisor-checkin-banner" class="p-4 pb-0"></div>
         <div id="advisor-checkin-summary" class="p-4 pb-0"></div>
         <div class="grid md:grid-cols-2 gap-4 p-4">
           <div class="rounded-2xl bg-slate-900 p-4 space-y-3">
@@ -892,7 +907,8 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
         </div>
       </section>`
 
-    const attOf=id=>attendanceMap[id]
+    const attOf=id=>attendanceMap[`${id}|${sessionDate}`]
+    const renderBanner=()=>{ body.querySelector('#advisor-checkin-banner').innerHTML=statusBannerHtml() }
     const renderSummary=()=>{
       const came=students.filter(s=>attOf(s.id)),pending=students.filter(s=>!attOf(s.id))
       body.querySelector('#advisor-checkin-summary').innerHTML=`<div class="grid grid-cols-3 gap-2"><div class="rounded-xl bg-gray-50 border p-3 text-center"><p class="text-[10px] text-gray-500 font-bold">ทั้งหมด</p><b class="text-xl">${students.length}</b></div><div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center"><p class="text-[10px] text-emerald-600 font-bold">มาแล้ว</p><b class="text-xl text-emerald-700">${came.length}</b></div><div class="rounded-xl bg-red-50 border border-red-200 p-3 text-center"><p class="text-[10px] text-red-600 font-bold">ยังไม่มา</p><b class="text-xl text-red-700">${pending.length}</b></div></div>`
@@ -902,7 +918,7 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
       const fromAdvisor=a?.recorded_source==='homeroom_advisor'
       const sourceLabel=fromAdvisor?'ครูที่ปรึกษา':'ฝ่ายสี'
       // ยกเลิกได้เฉพาะรายการที่ครูที่ปรึกษาบันทึกเอง (กันแก้ข้อมูลที่ฝ่ายสีบันทึกไว้) และ
-      // เฉพาะช่วงวันเช็คชื่อเข้าสีวันแรกที่ยังเปิดอยู่เท่านั้น
+      // เฉพาะช่วงวันเช็คชื่อเข้าสีวันแรกที่ยังเปิดอยู่เท่านั้น (หรือช่วงย้อนหลังที่เปิดใช้งาน)
       return `<div class="rounded-xl border ${a?'border-emerald-200 bg-emerald-50/50':'border-gray-200 bg-white'} p-3 flex items-center gap-3">${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border bg-gray-100">`:`<div class="w-9 h-11 rounded-lg bg-pink-50 text-pink-600 grid place-items-center font-bold">${esc((s.full_name||'?').charAt(0))}</div>`}<div class="min-w-0 flex-1"><b class="text-sm text-gray-800 truncate block">${esc(s.full_name)}</b><p class="text-[11px] text-gray-500">${esc(s.student_code)} · ${esc(s.main_room||'—')}</p>${a?`<p class="text-[10px] text-emerald-600">${new Date(a.scanned_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})} · ${esc(sourceLabel)}${a.team_color_name?` · สี${esc(a.team_color_name)}`:''}</p>`:''}</div><div class="text-right flex-shrink-0">${a?`<span class="text-xs font-bold text-emerald-700 block">✓ มาแล้ว</span>${active&&fromAdvisor?`<button data-checkin-undo="${s.id}" class="mt-1 text-[10px] text-red-600 hover:underline">ยกเลิก</button>`:''}`:`<span class="text-xs font-bold text-red-600 block">ยังไม่มา</span>${active?`<button data-checkin-manual-mark="${s.id}" class="mt-1 text-[10px] text-indigo-600 hover:underline">มาร์กมาแล้ว</button>`:''}`}</div></div>`
     }
     const renderList=()=>{
@@ -925,27 +941,39 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
     }
     const feedback=(ok,title,detail='')=>{body.querySelector('#advisor-checkin-feedback').innerHTML=`<div class="rounded-xl p-3 flex items-center gap-3 ${ok?'bg-emerald-950/70 border border-emerald-700':'bg-red-950/70 border border-red-700'}"><span class="text-lg">${ok?'✅':'❌'}</span><div class="min-w-0"><b class="text-xs block truncate ${ok?'text-emerald-300':'text-red-300'}">${esc(title)}</b><span class="text-[10px] text-slate-300 truncate block">${esc(detail)}</span></div></div>`}
     const showSuccessPopup=(student,teamColorName)=>{
-      document.getElementById('advisor-checkin-success')?.remove();const m=document.createElement('div');m.id='advisor-checkin-success';m.className='fixed inset-0 z-[400] bg-black/70 flex items-center justify-center p-6';const photo=student.image_url||student.photo_url;m.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center"><div class="text-5xl mb-2">✅</div>${photo?`<img src="${esc(photo)}" class="w-20 h-24 rounded-xl object-cover border-2 border-emerald-400 mx-auto mb-3 shadow-md">`:''}<h3 class="font-bold text-gray-800 text-lg">${esc(student.full_name)}</h3><p class="text-xs text-gray-500 mb-3">${esc(student.student_code)} · ${esc(student.main_room||'')}</p><p class="text-sm text-emerald-700 font-bold mb-1">เช็คชื่อเข้าสีวันแรกสำเร็จ</p>${teamColorName?`<p class="text-2xl font-black" style="color:${esc(_colorSwatchHex(teamColorName))}">สี${esc(teamColorName)}</p>`:''}<button id="advisor-checkin-next" class="w-full py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm mt-4">📷 สแกนคนถัดไป</button><div class="h-1 bg-gray-100 rounded-full mt-4 overflow-hidden"><div id="advisor-checkin-popup-bar" class="h-full bg-emerald-500" style="width:100%"></div></div></div>`;document.body.appendChild(m);const bar=m.querySelector('#advisor-checkin-popup-bar');requestAnimationFrame(()=>{bar.style.transition='width 2.5s linear';bar.style.width='0%'});const close=()=>m.remove(),timer=setTimeout(close,2500);m.querySelector('#advisor-checkin-next').onclick=()=>{clearTimeout(timer);close()};m.onclick=e=>{if(e.target===m){clearTimeout(timer);close()}}
+      document.getElementById('advisor-checkin-success')?.remove();const m=document.createElement('div');m.id='advisor-checkin-success';m.className='fixed inset-0 z-[400] bg-black/70 flex items-center justify-center p-6';const photo=student.image_url||student.photo_url;m.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center"><div class="text-5xl mb-2">✅</div>${photo?`<img src="${esc(photo)}" class="w-20 h-24 rounded-xl object-cover border-2 border-emerald-400 mx-auto mb-3 shadow-md">`:''}<h3 class="font-bold text-gray-800 text-lg">${esc(student.full_name)}</h3><p class="text-xs text-gray-500 mb-3">${esc(student.student_code)} · ${esc(student.main_room||'')}</p><p class="text-sm text-emerald-700 font-bold mb-1">เช็คชื่อเข้าสีวันแรกสำเร็จ${sessionDate!==todayStr?` (ย้อนหลังวันที่ ${esc(sessionDate)})`:''}</p>${teamColorName?`<p class="text-2xl font-black" style="color:${esc(_colorSwatchHex(teamColorName))}">สี${esc(teamColorName)}</p>`:''}<button id="advisor-checkin-next" class="w-full py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm mt-4">📷 สแกนคนถัดไป</button><div class="h-1 bg-gray-100 rounded-full mt-4 overflow-hidden"><div id="advisor-checkin-popup-bar" class="h-full bg-emerald-500" style="width:100%"></div></div></div>`;document.body.appendChild(m);const bar=m.querySelector('#advisor-checkin-popup-bar');requestAnimationFrame(()=>{bar.style.transition='width 2.5s linear';bar.style.width='0%'});const close=()=>m.remove(),timer=setTimeout(close,2500);m.querySelector('#advisor-checkin-next').onclick=()=>{clearTimeout(timer);close()};m.onclick=e=>{if(e.target===m){clearTimeout(timer);close()}}
     }
     const commitCheckin=async(student,method)=>{
       if(!active){feedback(false,'ยังไม่อยู่ในช่วงเช็คชื่อเข้าสีวันแรก','');return}
       if(!student){_playScanBeepAtt(false);feedback(false,'ไม่พบนักเรียนในห้องที่ปรึกษา','ตรวจสอบรหัสหรือ QR Code อีกครั้ง');return}
-      const {data,error}=await supabase.rpc('advisor_record_sports_attendance_for_student',{p_event:event.id,p_student:student.id,p_method:method})
+      const {data,error}=await supabase.rpc('advisor_record_sports_attendance_for_student',{p_event:event.id,p_student:student.id,p_method:method,p_date:sessionDate})
       if(error){_playScanBeepAtt(false);feedback(false,'บันทึกไม่สำเร็จ',error.message);return}
-      attendanceMap[student.id]={student_id:student.id,method:data.method,scanned_at:data.scanned_at,recorded_source:'homeroom_advisor',team_color_name:data.team_color_name}
+      attendanceMap[`${student.id}|${sessionDate}`]={student_id:student.id,session_date:sessionDate,method:data.method,scanned_at:data.scanned_at,recorded_source:'homeroom_advisor',team_color_name:data.team_color_name}
       recentScans.unshift(student);_playScanBeepAtt(true);feedback(true,`เช็คชื่อ ${student.full_name} สำเร็จ`,data.team_color_name?`สี${data.team_color_name}`:'')
       renderSummary();renderList();renderRecent();showSuccessPopup(student,data.team_color_name)
     }
     const undoCheckin=async(student)=>{
       if(!active){feedback(false,'ยังไม่อยู่ในช่วงเช็คชื่อเข้าสีวันแรก','');return}
-      const {error}=await supabase.rpc('advisor_undo_sports_attendance_for_student',{p_event:event.id,p_student:student.id})
+      const {error}=await supabase.rpc('advisor_undo_sports_attendance_for_student',{p_event:event.id,p_student:student.id,p_date:sessionDate})
       if(error){feedback(false,'ยกเลิกไม่สำเร็จ',error.message);return}
-      delete attendanceMap[student.id]
+      delete attendanceMap[`${student.id}|${sessionDate}`]
       feedback(true,`ยกเลิกการเช็คชื่อ ${student.full_name} แล้ว`,'')
       renderSummary();renderList()
     }
 
     body.querySelectorAll('[data-checkin-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.checkinFilter;renderList()})
+    body.querySelector('#advisor-checkin-date-select')?.addEventListener('change',async e=>{
+      await stopScanner()
+      const reader=body.querySelector('#advisor-checkin-camera'),btn=body.querySelector('#advisor-checkin-camera-toggle')
+      if(reader)reader.style.display='none'
+      if(btn)btn.textContent='📷 เปิดกล้องสแกน QR'
+      sessionDate=e.target.value
+      active=backfillEnabled?true:(isScheduledToday && sessionDate===todayStr)
+      body.querySelector('#advisor-checkin-camera-toggle').disabled=!active
+      body.querySelector('#advisor-checkin-code').disabled=!active
+      body.querySelector('#advisor-checkin-submit').disabled=!active
+      renderBanner();renderSummary();renderList()
+    })
     body.querySelector('#advisor-checkin-submit').onclick=()=>{const input=body.querySelector('#advisor-checkin-code'),code=input.value.trim();if(!code)return;commitCheckin(students.find(s=>s.student_code===code),'manual');input.value='';input.focus()}
     body.querySelector('#advisor-checkin-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#advisor-checkin-submit').click()})
     body.querySelector('#advisor-checkin-camera-toggle').onclick=async()=>{
@@ -954,7 +982,7 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
       if(scanning){await stopScanner();reader.style.display='none';btn.textContent='📷 เปิดกล้องสแกน QR';return}
       try{const Html5Qrcode=await _loadHtml5QrcodeAtt();reader.style.display='block';html5Qrcode=new Html5Qrcode('advisor-checkin-camera');let lastCode=null,lastTime=0;await html5Qrcode.start({facingMode:'environment'},{fps:15,aspectRatio:1},decodedText=>{if(decodedText===lastCode&&Date.now()-lastTime<2000)return;lastCode=decodedText;lastTime=Date.now();let code=decodedText;if(code.startsWith('SQ:'))code=code.split(':')[1];const student=students.find(s=>s.student_code===code);_playScanBeepAtt(!!student);commitCheckin(student,'qr')});scanning=true;btn.textContent='⏹ ปิดกล้อง'}catch(e){feedback(false,'เปิดกล้องไม่สำเร็จ',e.message);await stopScanner();reader.style.display='none'}
     }
-    renderSummary();renderList();renderRecent()
+    renderBanner();renderSummary();renderList();renderRecent()
   } catch(e) { console.error(e); body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลเช็คชื่อเข้าสีวันแรกไม่สำเร็จ: ${esc(e.message||'')}</div>` }
 }
 
@@ -1112,7 +1140,7 @@ export async function renderShirtSummary() {
       el.querySelector('#cfg-shirt-payment-amount-m')?.addEventListener('input',e=>{renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),shirt_payment_amount_m:Math.max(0,Number(e.target.value)||0)}})
       el.querySelector('#cfg-shirt-payment-amount-w')?.addEventListener('input',e=>{renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),shirt_payment_amount_w:Math.max(0,Number(e.target.value)||0)}})
       settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-teal-50 border-teal-200"><h3 class="font-bold text-sm text-teal-900">📏 ไซซ์เริ่มต้นขั้นต่ำ</h3><p class="text-xs text-teal-700 mt-1">ไซซ์ที่เล็กกว่าที่เลือกจะถูกซ่อนจากตัวเลือกของกลุ่มนั้นอัตโนมัติ (เฉพาะตอนนักเรียนเลือกไซซ์เอง — ตารางสรุปยอดยังโชว์ครบทุกไซซ์)</p><div class="grid grid-cols-2 gap-2 mt-3"><label class="block"><span class="text-xs text-teal-700">ม.ต้น (ม.1-3)</span><select id="cfg-shirt-size-min-junior" class="mt-1 w-full border border-teal-200 rounded-xl px-3 py-2 text-sm bg-white"><option value="">ไม่จำกัด</option>${shirtSizes.map(s=>`<option value="${esc(s.code)}" ${cfg?.shirt_size_min_junior===s.code?'selected':''}>${esc(s.code)}</option>`).join('')}</select></label><label class="block"><span class="text-xs text-teal-700">ม.ปลาย/ปวช (ม.4-6, ปวช.1-3)</span><select id="cfg-shirt-size-min-senior" class="mt-1 w-full border border-teal-200 rounded-xl px-3 py-2 text-sm bg-white"><option value="">ไม่จำกัด</option>${shirtSizes.map(s=>`<option value="${esc(s.code)}" ${(cfg?.shirt_size_min_senior||'M')===s.code?'selected':''}>${esc(s.code)}</option>`).join('')}</select></label></div></div>`)
-      settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-sky-50 border-sky-200"><h3 class="font-bold text-sm text-sky-900">🎽 วันเช็คชื่อเข้าสีวันแรก</h3><p class="text-xs text-sky-700 mt-1">เฉพาะวันนี้ ให้ครูที่ปรึกษา (สามัญ/ศาสนา) เช็คชื่อนักเรียนแทนฝ่ายสี (ฝ่ายสีเห็นข้อมูลอ่านอย่างเดียวชั่วคราว) เว้นว่างเพื่อปิดระบบนี้</p><input id="cfg-advisor-checkin-date" type="date" value="${esc(cfg?.advisor_checkin_date||'')}" class="mt-3 w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white"></div>`)
+      settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-sky-50 border-sky-200"><h3 class="font-bold text-sm text-sky-900">🎽 วันเช็คชื่อเข้าสีวันแรก</h3><p class="text-xs text-sky-700 mt-1">เฉพาะวันนี้ ให้ครูที่ปรึกษา (สามัญ/ศาสนา) เช็คชื่อนักเรียนแทนฝ่ายสี (ฝ่ายสีเห็นข้อมูลอ่านอย่างเดียวชั่วคราว) เว้นว่างเพื่อปิดระบบนี้</p><input id="cfg-advisor-checkin-date" type="date" value="${esc(cfg?.advisor_checkin_date||'')}" class="mt-3 w-full border border-sky-200 rounded-xl px-3 py-2 text-sm bg-white"><label class="flex items-center gap-2 mt-3 text-xs text-sky-800 cursor-pointer"><input id="cfg-advisor-checkin-backfill" type="checkbox" ${cfg?.advisor_checkin_backfill_enabled?'checked':''} class="w-4 h-4">เปิดให้ครูที่ปรึกษาเช็คชื่อ<b>ย้อนหลัง</b>ได้ (เลือกวันที่จากปฏิทินปฏิบัติงาน ไม่จำกัดแค่วันที่ตั้งไว้ด้านบน — ใช้แก้ห้องที่ครูลา/ตกหล่น)</label></div>`)
       // ไซซ์เสื้อที่เปิดให้แจ้งได้ — บันทึกในตาราง settings (key='shirt_sizes') ตารางเดียวกับที่
       // AZIZGAMES ใช้ ตั้งค่าฝั่งไหนก็ได้ อีกฝั่งเห็นอัตโนมัติ ไม่ต้องตั้งซ้ำ 2 ที่
       settingsGrid?.insertAdjacentHTML('afterend',`<div class="rounded-2xl border p-4 bg-white border-slate-200 mt-3"><div class="flex items-center justify-between gap-3 mb-1"><h3 class="font-bold text-sm text-slate-800">👕 ไซซ์เสื้อที่เปิดให้แจ้งได้</h3><button id="shirt-size-add" type="button" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border">+ เพิ่มไซซ์</button></div><p class="text-xs text-gray-500 mb-3">ตั้งค่าที่นี่หรือฝั่ง AZIZGAMES ก็ได้ บันทึกในตารางเดียวกัน อีกฝั่งเห็นอัตโนมัติ — กด "บันทึกการตั้งค่า" ด้านบนเพื่อบันทึกด้วย</p><div id="shirt-size-rows" class="space-y-2"></div></div>`)
@@ -1152,7 +1180,7 @@ export async function renderShirtSummary() {
     }
     el.querySelector('#shirt-export').onclick=()=>{const rows=['รหัส,ชื่อ,ห้อง,สี,ไซซ์,สถานะ',...confirmed.map(r=>[r.students?.student_code,r.students?.full_name,r.students?.main_room,r.students?.house_color,r.confirmed_size,r.status].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download='sports-shirt-summary.csv';a.click();URL.revokeObjectURL(a.href)}
     el.querySelectorAll('[data-cfg]').forEach(b=>b.addEventListener('click',()=>{const next=b.dataset.enabled!=='true';b.dataset.enabled=next?'true':'false';renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),[b.dataset.cfg]:next};b.textContent=next?'ปิดใช้งาน':'เปิดใช้งาน';toast(`เปลี่ยนสถานะแล้ว กดบันทึกเพื่อยืนยัน`)}))
-    el.querySelector('#cfg-save')?.addEventListener('click',async()=>{const payload={shirt_request_enabled:!!cfg?.shirt_request_enabled,shirt_summary_enabled:!!cfg?.shirt_summary_enabled,team_workspace_enabled:!!cfg?.team_workspace_enabled,shirt_vote_enabled:!!cfg?.shirt_vote_enabled,teacher_shirt_request_enabled:!!cfg?.teacher_shirt_request_enabled,teacher_shirt_use_student_sizes:el.querySelector('#teacher-shirt-use-student-sizes')?.checked!==false,dues_amount:Number(el.querySelector('#cfg-dues-amount')?.value)||30,cert_attendance_threshold_pct:Number(el.querySelector('#cfg-cert-threshold')?.value)||80,advisor_checkin_date:el.querySelector('#cfg-advisor-checkin-date')?.value||null,shirt_size_min_junior:el.querySelector('#cfg-shirt-size-min-junior')?.value||null,shirt_size_min_senior:el.querySelector('#cfg-shirt-size-min-senior')?.value||null,...(renderShirtSummary.pendingCfg||{})};const {error}=await supabase.from('sports_portal_settings').update({...payload,updated_at:new Date().toISOString()}).eq('event_id',event.id);if(error)return toast(error.message,'error');const cleanedSizes=sizeRows.filter(sz=>String(sz.code||'').trim()).map(sz=>({code:String(sz.code).trim(),chest:Number(sz.chest)||0}));if(cleanedSizes.length){try{await updateShirtSizes(cleanedSizes)}catch(e){toast('บันทึกไซซ์เสื้อไม่สำเร็จ: '+e.message,'error')}}const cleanedTeacherSizes=teacherSizeRows.filter(sz=>String(sz.code||'').trim()).map(sz=>({code:String(sz.code).trim(),chest:Number(sz.chest)||0}));if(cleanedTeacherSizes.length){try{await updateTeacherShirtSizes(cleanedTeacherSizes)}catch(e){toast('บันทึกไซซ์เสื้อครูไม่สำเร็จ: '+e.message,'error')}}try{await syncAzizPublicShirtButton(payload.shirt_request_enabled)}catch(e){console.warn('Unable to sync AZIZGAMES shirt button',e)}renderShirtSummary.pendingCfg={};toast('บันทึกการเปิดใช้งานแล้ว');renderShirtSummary()})
+    el.querySelector('#cfg-save')?.addEventListener('click',async()=>{const payload={shirt_request_enabled:!!cfg?.shirt_request_enabled,shirt_summary_enabled:!!cfg?.shirt_summary_enabled,team_workspace_enabled:!!cfg?.team_workspace_enabled,shirt_vote_enabled:!!cfg?.shirt_vote_enabled,teacher_shirt_request_enabled:!!cfg?.teacher_shirt_request_enabled,teacher_shirt_use_student_sizes:el.querySelector('#teacher-shirt-use-student-sizes')?.checked!==false,dues_amount:Number(el.querySelector('#cfg-dues-amount')?.value)||30,cert_attendance_threshold_pct:Number(el.querySelector('#cfg-cert-threshold')?.value)||80,advisor_checkin_date:el.querySelector('#cfg-advisor-checkin-date')?.value||null,advisor_checkin_backfill_enabled:!!el.querySelector('#cfg-advisor-checkin-backfill')?.checked,shirt_size_min_junior:el.querySelector('#cfg-shirt-size-min-junior')?.value||null,shirt_size_min_senior:el.querySelector('#cfg-shirt-size-min-senior')?.value||null,...(renderShirtSummary.pendingCfg||{})};const {error}=await supabase.from('sports_portal_settings').update({...payload,updated_at:new Date().toISOString()}).eq('event_id',event.id);if(error)return toast(error.message,'error');const cleanedSizes=sizeRows.filter(sz=>String(sz.code||'').trim()).map(sz=>({code:String(sz.code).trim(),chest:Number(sz.chest)||0}));if(cleanedSizes.length){try{await updateShirtSizes(cleanedSizes)}catch(e){toast('บันทึกไซซ์เสื้อไม่สำเร็จ: '+e.message,'error')}}const cleanedTeacherSizes=teacherSizeRows.filter(sz=>String(sz.code||'').trim()).map(sz=>({code:String(sz.code).trim(),chest:Number(sz.chest)||0}));if(cleanedTeacherSizes.length){try{await updateTeacherShirtSizes(cleanedTeacherSizes)}catch(e){toast('บันทึกไซซ์เสื้อครูไม่สำเร็จ: '+e.message,'error')}}try{await syncAzizPublicShirtButton(payload.shirt_request_enabled)}catch(e){console.warn('Unable to sync AZIZGAMES shirt button',e)}renderShirtSummary.pendingCfg={};toast('บันทึกการเปิดใช้งานแล้ว');renderShirtSummary()})
     el.querySelectorAll('[data-review]').forEach(b=>b.onclick=async()=>{const {error}=await supabase.rpc('review_team_identity',{p_request:b.dataset.review,p_decision:b.dataset.decision,p_comment:null});if(error)return toast(error.message,'error');toast('บันทึกผลตรวจสอบแล้ว');renderShirtSummary()})
     if(canManageTeamStaff) renderTeamMembershipAdmin(el,event,colors||[],{isAdmin,myTeamMemberships:myTeamMemberships||[]})
   }catch(e){console.error(e);el.innerHTML=missing()}
