@@ -1397,7 +1397,7 @@ function openEventSelfCheckinScanner() {
       </div>
       <button id="az-evsc-close" style="color:#94a3b8;background:none;border:none;font-size:26px;line-height:1;cursor:pointer">×</button>
     </div>
-    <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;max-width:420px;margin:0 auto;width:100%">
+    <div id="az-evsc-scanwrap" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;max-width:420px;margin:0 auto;width:100%">
       <div id="az-evsc-camwrap" style="position:relative;width:100%;aspect-ratio:1;background:#000;border-radius:16px;overflow:hidden">
         <div id="az-evsc-reader" style="width:100%;height:100%"></div>
         <div style="position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center">
@@ -1407,11 +1407,43 @@ function openEventSelfCheckinScanner() {
         </div>
       </div>
       <div id="az-evsc-feedback" style="background:#151a26;border:1px solid #232838;border-radius:14px;padding:14px;text-align:center;font-size:12.5px;color:#94a3b8">รอสแกน QR ที่จุดลงทะเบียน</div>
-    </div>`
+    </div>
+    <div id="az-evsc-success" style="display:none;flex:1;overflow-y:auto;padding:24px;flex-direction:column;align-items:center;justify-content:center;gap:16px;max-width:420px;margin:0 auto;width:100%;box-sizing:border-box;text-align:center"></div>`
   document.body.appendChild(overlay)
-  wireJerseyEditHandlers(overlay.querySelector('#az-evsc-feedback'), id => (String(player.id) === String(id) ? player : null))
 
   let html5Qrcode = null, lastCode = null, lastTime = 0, done = false
+
+  // แสดงหน้าจอสำเร็จเต็มจอตรงกลาง (แทนการ์ดเล็กๆ ใต้กล้องที่ต้องเลื่อนดู) หยุดกล้องแล้วสลับไปโชว์แทน
+  async function showSuccessScreen(day) {
+    if (html5Qrcode) { try { await html5Qrcode.stop() } catch { /* กล้องอาจปิดไปแล้ว */ } }
+    overlay.querySelector('#az-evsc-scanwrap').style.display = 'none'
+    const successEl = overlay.querySelector('#az-evsc-success')
+    successEl.style.display = 'flex'
+    const photoUrl = playerPhotoUrl(player)
+    const photoHtml = photoUrl
+      ? `<img src="${esc(photoUrl)}" style="width:104px;height:132px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,.15)"/>`
+      : `<div style="width:104px;height:132px;border-radius:14px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;font-size:34px">${esc((player.students?.full_name || '?').charAt(0))}</div>`
+    successEl.innerHTML = `
+      ${photoHtml}
+      <div>
+        <div style="color:#4ade80;font-weight:900;font-size:20px">✓ เช็คอินเข้างานสำเร็จ</div>
+        <div style="color:#e2e8f0;font-size:16px;font-weight:800;margin-top:4px">${esc(player.students?.full_name || '')}</div>
+        <div style="color:#94a3b8;font-size:13px;margin-top:2px">${esc(teamName(player.team_id))} · วันที่ ${day}</div>
+      </div>
+      <div id="az-evsc-jersey-wrap" style="width:100%"></div>
+      <button id="az-evsc-done" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16a34a;color:#fff;font-weight:800;font-size:15px;cursor:pointer">✓ เสร็จสิ้น</button>`
+    const jerseyWrap = successEl.querySelector('#az-evsc-jersey-wrap')
+    const doneBtn = successEl.querySelector('#az-evsc-done')
+    const hasJersey = player.jersey_number !== null && player.jersey_number !== undefined
+    jerseyWrap.innerHTML = hasJersey ? jerseySelfViewBlock(player) : jerseySelfEditBlock(player)
+    wireJerseySelfHandlers(jerseyWrap, player, doneBtn)
+    doneBtn.addEventListener('click', () => {
+      if (doneBtn.disabled) return
+      overlay.remove()
+      draw()
+    })
+    await refresh()
+  }
 
   async function processScan(decodedText) {
     if (done) return
@@ -1433,8 +1465,8 @@ function openEventSelfCheckinScanner() {
 
     if (eventCheckinFor(player.id, day)) {
       _azPlayScanBeep('duplicate'); flash(false)
-      feedback.innerHTML = `<span style="color:#fbbf24">คุณเช็คอินวันที่ ${day} ไปแล้ว</span>`
       done = true
+      await showSuccessScreen(day)
       return
     }
 
@@ -1445,8 +1477,8 @@ function openEventSelfCheckinScanner() {
       if (error.code === '23505') {
         // แข่งกันเขียนพร้อมกัน (เช่นกดสแกนซ้ำเร็วมาก) ถือว่าเช็คอินสำเร็จแล้วจากอีกครั้งหนึ่ง
         _azPlayScanBeep('duplicate'); flash(false)
-        feedback.innerHTML = `<span style="color:#fbbf24">คุณเช็คอินวันที่ ${day} ไปแล้ว</span>`
         done = true
+        await showSuccessScreen(day)
         return
       }
       _azPlayScanBeep('error'); flash(false)
@@ -1455,21 +1487,7 @@ function openEventSelfCheckinScanner() {
     }
     done = true
     _azPlayScanBeep('success'); flash(true)
-    const photoUrl = playerPhotoUrl(player)
-    const photoHtml = photoUrl
-      ? `<img src="${esc(photoUrl)}" style="width:64px;height:82px;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.15);flex-shrink:0"/>`
-      : `<div style="width:64px;height:82px;border-radius:10px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;flex-shrink:0;font-size:22px">${esc((player.students?.full_name || '?').charAt(0))}</div>`
-    feedback.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;text-align:left">
-        ${photoHtml}
-        <div style="flex:1;min-width:0">
-          <div style="color:#4ade80;font-weight:800;font-size:15px">✓ เช็คอินเข้างานสำเร็จ</div>
-          <div style="color:#e2e8f0;font-size:13.5px;font-weight:700;margin-top:2px;overflow-wrap:break-word">${esc(player.students?.full_name || '')}</div>
-          <div style="color:#94a3b8;font-size:12px">${esc(teamName(player.team_id))} · วันที่ ${day}</div>
-        </div>
-      </div>
-      ${jerseyConfirmRowHtml(player)}`
-    await refresh()
+    await showSuccessScreen(day)
   }
 
   overlay.querySelector('#az-evsc-close').addEventListener('click', async () => {
@@ -1504,6 +1522,7 @@ function openEventSelfCheckinScanner() {
 async function openEventCheckinBigScreen(day) {
   document.getElementById('az-evbig-overlay')?.remove()
   const qrDataUrl = await QRCode.toDataURL(eventStationQRPayload(day), { width: 320, margin: 2, color: { dark: '#111827', light: '#ffffff' } })
+  const deadline = eventCheckinDeadline(day)
 
   const overlay = document.createElement('div')
   overlay.id = 'az-evbig-overlay'
@@ -1512,6 +1531,8 @@ async function openEventCheckinBigScreen(day) {
     <style>
       @keyframes azEvbigPulse { 0%,100%{opacity:.55;transform:scale(1)} 50%{opacity:.9;transform:scale(1.06)} }
       @keyframes azEvbigBlink { 0%,100%{opacity:1} 50%{opacity:.25} }
+      #az-evbig-countdown-box { transition: background .3s; }
+      #az-evbig-countdown-box.az-evbig-urgent { animation: azEvbigBlink 1s ease-in-out infinite; }
     </style>
     <div style="flex-shrink:0;padding:18px 28px;background:linear-gradient(120deg,#db2777,#6366f1 65%,#0ea5e9);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 6px 18px rgba(0,0,0,.15)">
       <div style="min-width:0">
@@ -1519,7 +1540,11 @@ async function openEventCheckinBigScreen(day) {
         <div style="font-size:13px;opacity:.92;font-weight:700;margin-top:2px">จุดลงทะเบียนเข้างาน · วันที่ ${day} · ${esc(scheduleDateLabel(day))}</div>
       </div>
       <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
-        ${eventCheckinWindowLabel(day) ? `<div style="font-size:12.5px;font-weight:800;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:999px;white-space:nowrap">🕐 ${esc(eventCheckinWindowLabel(day))}</div>` : ''}
+        ${deadline ? `
+        <div id="az-evbig-countdown-box" style="text-align:center;background:rgba(255,255,255,.18);border-radius:14px;padding:7px 22px;min-width:170px">
+          <div id="az-evbig-countdown-label" style="font-size:10.5px;font-weight:800;opacity:.9;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">ปิดรับเช็คอินใน</div>
+          <div id="az-evbig-countdown" style="font-size:32px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.15">--:--</div>
+        </div>` : eventCheckinWindowLabel(day) ? `<div style="font-size:12.5px;font-weight:800;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:999px;white-space:nowrap">🕐 ${esc(eventCheckinWindowLabel(day))}</div>` : ''}
         <button id="az-evbig-close" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">✕ ปิด</button>
       </div>
     </div>
@@ -1581,7 +1606,47 @@ async function openEventCheckinBigScreen(day) {
   }
   renderBody()
   const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
-  overlay.querySelector('#az-evbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+
+  let countdownIntervalId = null
+  if (deadline) {
+    const tick = () => {
+      const box = document.getElementById('az-evbig-countdown-box')
+      const label = document.getElementById('az-evbig-countdown-label')
+      const clockEl = document.getElementById('az-evbig-countdown')
+      if (!box || !label || !clockEl) return
+      const remain = deadline.getTime() - Date.now()
+      clockEl.textContent = formatCountdownClock(remain)
+      if (remain <= 0) {
+        label.textContent = 'ปิดรับเช็คอินแล้ว'
+        box.style.background = '#dc2626'
+        box.style.boxShadow = '0 0 0 2px rgba(255,255,255,.7)'
+        box.classList.add('az-evbig-urgent')
+      } else if (remain <= 60 * 1000) {
+        label.textContent = 'ปิดรับเช็คอินใน'
+        box.style.background = '#dc2626'
+        box.style.boxShadow = '0 0 0 2px rgba(255,255,255,.7)'
+        box.classList.add('az-evbig-urgent')
+      } else if (remain <= 5 * 60 * 1000) {
+        label.textContent = 'ปิดรับเช็คอินใน'
+        box.style.background = '#f59e0b'
+        box.style.boxShadow = '0 0 0 2px rgba(255,255,255,.6)'
+        box.classList.remove('az-evbig-urgent')
+      } else {
+        label.textContent = 'ปิดรับเช็คอินใน'
+        box.style.background = 'rgba(255,255,255,.18)'
+        box.style.boxShadow = 'none'
+        box.classList.remove('az-evbig-urgent')
+      }
+    }
+    tick()
+    countdownIntervalId = setInterval(tick, 1000)
+  }
+
+  overlay.querySelector('#az-evbig-close').addEventListener('click', () => {
+    clearInterval(intervalId)
+    if (countdownIntervalId) clearInterval(countdownIntervalId)
+    overlay.remove()
+  })
   overlay.querySelector('#az-evbig-feed').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-evbig-undo]')
     if (!btn) return
@@ -1682,6 +1747,64 @@ function wireJerseyEditHandlers(container, findPlayer) {
   })
 }
 
+// เวอร์ชันตัวใหญ่ของบล็อกเบอร์เสื้อ ใช้เฉพาะหน้าจอสำเร็จเต็มจอตอนนักกีฬาสแกนเอง (คนละสไตล์กับ jerseyConfirmRowHtml ที่ใช้ในลิสต์สแกนของสตาฟซึ่งต้องกระชับเพราะสแกนทีละหลายคนรัวๆ)
+// ถ้ายังไม่มีเบอร์เสื้อในระบบ บังคับให้กรอกก่อนถึงจะกดปุ่ม "เสร็จสิ้น" ได้
+function jerseySelfViewBlock(player) {
+  const has = player.jersey_number !== null && player.jersey_number !== undefined
+  return `<div class="az-jersey-self" style="width:100%;background:#151a26;border:1px solid #232838;border-radius:14px;padding:16px;text-align:left;box-sizing:border-box">
+    <div style="font-size:12px;color:#94a3b8;font-weight:700;margin-bottom:6px">เบอร์เสื้อในระบบ</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-size:30px;font-weight:900;color:#e2e8f0;line-height:1">${has ? esc(String(player.jersey_number)) : '-'}</div>
+      <button class="az-jersey-self-edit-btn" style="border:none;background:#0ea5e9;color:#fff;font-weight:700;font-size:13px;padding:9px 14px;border-radius:9px;cursor:pointer;white-space:nowrap">ไม่ตรง? แก้ไข</button>
+    </div>
+  </div>`
+}
+function jerseySelfEditBlock(player) {
+  const has = player.jersey_number !== null && player.jersey_number !== undefined
+  return `<div class="az-jersey-self" style="width:100%;background:${has ? '#151a26' : 'rgba(217,119,6,.14)'};border:1px solid ${has ? '#232838' : '#d97706'};border-radius:14px;padding:16px;text-align:left;box-sizing:border-box">
+    <div style="font-size:12.5px;color:${has ? '#94a3b8' : '#fbbf24'};font-weight:700;margin-bottom:10px">${has ? 'แก้ไขเบอร์เสื้อ' : '⚠️ ยังไม่มีเบอร์เสื้อในระบบ กรุณาระบุเบอร์ที่ใส่จริงวันนี้เพื่อยืนยันการเช็คอิน'}</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <input type="number" min="0" class="az-jersey-self-input" value="${player.jersey_number ?? ''}" placeholder="เช่น 7" style="flex:1;min-width:0;border:1px solid #334155;border-radius:9px;padding:11px 12px;font-size:20px;font-weight:800;background:#0b0f1a;color:#e2e8f0;box-sizing:border-box"/>
+      <button class="az-jersey-self-save-btn" style="flex-shrink:0;border:none;background:#16a34a;color:#fff;font-weight:800;font-size:14px;padding:11px 16px;border-radius:9px;cursor:pointer">บันทึก</button>
+    </div>
+  </div>`
+}
+// ผูก handler ให้บล็อกเบอร์เสื้อตัวใหญ่ + คุมสถานะปุ่ม "เสร็จสิ้น" ให้กดไม่ได้จนกว่าจะมีเบอร์เสื้อ
+function wireJerseySelfHandlers(wrapEl, player, doneBtn) {
+  const updateDoneBtn = () => {
+    const has = player.jersey_number !== null && player.jersey_number !== undefined
+    if (!doneBtn) return
+    doneBtn.disabled = !has
+    doneBtn.style.opacity = has ? '1' : '.45'
+    doneBtn.style.cursor = has ? 'pointer' : 'not-allowed'
+    doneBtn.textContent = has ? '✓ เสร็จสิ้น' : 'กรุณาระบุเบอร์เสื้อก่อน'
+  }
+  const renderView = () => { wrapEl.innerHTML = jerseySelfViewBlock(player); updateDoneBtn() }
+  wrapEl.addEventListener('click', async (e) => {
+    if (e.target.closest('.az-jersey-self-edit-btn')) { wrapEl.innerHTML = jerseySelfEditBlock(player); return }
+    const saveBtn = e.target.closest('.az-jersey-self-save-btn')
+    if (saveBtn) {
+      const input = wrapEl.querySelector('.az-jersey-self-input')
+      const raw = input.value.trim()
+      if (raw === '') { azToast('กรุณากรอกเบอร์เสื้อ'); return }
+      const newVal = Number(raw)
+      if (Number.isNaN(newVal) || newVal < 0) { azToast('เบอร์เสื้อไม่ถูกต้อง'); return }
+      const { error } = await SB.from('azfutsal_players').update({ jersey_number: newVal }).eq('id', player.id)
+      if (error) { azToast('บันทึกเบอร์เสื้อไม่สำเร็จ: ' + error.message); return }
+      player.jersey_number = newVal
+      renderView()
+      azToast('บันทึกเบอร์เสื้อแล้ว')
+      refresh()
+    }
+  })
+  wrapEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList?.contains('az-jersey-self-input')) {
+      wrapEl.querySelector('.az-jersey-self-save-btn')?.click()
+    }
+  })
+  updateDoneBtn()
+}
+
 // player row ของนักเรียนที่ล็อกอินอยู่ตอนนี้ (สำหรับปุ่ม "เช็คอินเข้างานด้วยตัวเอง" ในพอร์ทัลนักเรียน)
 function myEventPlayer() {
   if (!S.identity.student) return null
@@ -1717,6 +1840,16 @@ function eventCheckinDeadline(day) {
 function eventCheckinDeadlinePassed(day) {
   const dl = eventCheckinDeadline(day)
   return !!dl && new Date() >= dl
+}
+
+// นับถอยหลังแบบ H:MM:SS (ตัดชั่วโมงทิ้งถ้าเหลือไม่ถึงชั่วโมง) สำหรับจอใหญ่หน้าลงทะเบียน
+function formatCountdownClock(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  const pad = n => String(n).padStart(2, '0')
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
 // ทีมที่ยังเช็คอินไม่ครบทุกคนในรายชื่อ สำหรับวันที่ระบุ (ครบ = เช็คอินครบทุกคนที่ลงทะเบียนไว้ในทีม)
