@@ -23,6 +23,7 @@ export default defineConfig({
         sportsAttendanceMonitor: resolve(__dirname, 'sports-attendance-monitor.html'),
         sportsDuesMonitor: resolve(__dirname, 'sports-dues-monitor.html'),
         sportsShirtMonitor: resolve(__dirname, 'sports-shirt-monitor.html'),
+        staffShirtSize: resolve(__dirname, 'staff-shirt-size.html'),
         sportsFundMonitor: resolve(__dirname, 'sports-fund-monitor.html'),
         sportsCheckin: resolve(__dirname, 'sports-checkin.html'),
         studentcareInstall: resolve(__dirname, 'studentcare-install.html'),
