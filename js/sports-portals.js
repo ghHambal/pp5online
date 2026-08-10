@@ -2243,8 +2243,17 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   // จับคู่วันนี้กับ "ปฏิทินปฏิบัติงาน" ที่ครูตั้งวันเข้าสี/กีฬาสีไว้ล่วงหน้าแล้ว (work_calendar_events)
   // แทนที่จะให้เลือกประเภทเช็คชื่อเองมั่วๆ ทุกครั้ง — ยังกดสลับมือทับได้เผื่อปฏิทินผิด/ทดสอบระบบ
   const todayMatch=(campCalendar||[]).find(ev=>todayStr>=ev.event_date && todayStr<=(ev.end_date||ev.event_date))
-  const autoSessionType=todayMatch ? (todayMatch.label.includes('เข้าสี') ? 'pre_event' : 'event_day') : null
+  const sessionTypeForLabel=label=>label&&label.includes('เข้าสี')?'pre_event':'event_day'
+  const autoSessionType=todayMatch ? sessionTypeForLabel(todayMatch.label) : null
   let sessionType=autoSessionType||'pre_event'
+  // เช็คชื่อย้อนหลัง — เดิมบันทึกลง session_date=วันนี้ตายตัวเสมอ ไม่มีทางแก้ห้องที่ตกหล่นไปแล้ว
+  // (เช่นครูที่ปรึกษาลาวันนั้น ทั้งแท็บของครูที่ปรึกษาเองก็ล็อกเฉพาะ advisor_checkin_date วันเดียว)
+  // เพิ่มดรอปดาวน์เลือกวันที่จากปฏิทินปฏิบัติงาน (เฉพาะวันที่ผ่านมาแล้วหรือวันนี้ ห้ามอนาคต) ให้
+  // ฝ่ายสีย้อนกลับไปบันทึกแทนได้ — ดีฟอลต์ยังเป็นวันนี้เสมอ กันกดพลาดย้อนหลังโดยไม่ตั้งใจ
+  const calendarDaysDesc=_expandCalendarDays(campCalendar) // เรียงใหม่→เก่าอยู่แล้ว
+  const pastCalendarDays=calendarDaysDesc.filter(d=>d.date<todayStr)
+  const dateOptions=[{date:todayStr,label:todayMatch?.label||'วันนี้'},...pastCalendarDays]
+  let sessionDate=todayStr
   // วันเข้าสีวันแรกที่แอดมินกำหนดไว้ (sports_portal_settings.advisor_checkin_date) — ครูที่ปรึกษา
   // สามัญเช็คชื่อช่วงเข้าแถวตอนเช้าเท่านั้น (คนละช่วงเวลากับที่ฝ่ายสีใช้หน้านี้) ถ้าตกหล่นหรือครูที่
   // ปรึกษาไม่ได้เช็ค นักเรียนต้องแจ้งพ่อสี/แม่สี/ครูประจำสีให้เช็คแทนได้เลยตามปกติ — จึง "ไม่ล็อก"
@@ -2265,12 +2274,16 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
 
   body.innerHTML=`<section class="${card}">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-      <div><h2 class="font-bold">📷 เช็คชื่อเข้าร่วมสี${esc(c.name)}</h2><p class="text-xs muted">สแกน QR ประจำตัวนักเรียน หรือกรอกรหัสด้วยมือ — บันทึกของวันที่ ${todayStr}</p></div>
-      <div class="inline-flex p-1 rounded-xl team-sub gap-1">
-        <button type="button" data-att-type="pre_event" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏕️ เข้าค่ายสี</button>
-        <button type="button" data-att-type="event_day" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏆 วันงานจริง</button>
+      <div><h2 class="font-bold">📷 เช็คชื่อเข้าร่วมสี${esc(c.name)}</h2><p id="att-subtitle" class="text-xs muted">สแกน QR ประจำตัวนักเรียน หรือกรอกรหัสด้วยมือ — บันทึกของวันที่ ${todayStr}</p></div>
+      <div class="flex flex-wrap items-center gap-2">
+        ${dateOptions.length>1?`<select id="att-session-date" class="rounded-xl team-field px-3 py-2 text-xs font-bold">${dateOptions.map(d=>`<option value="${esc(d.date)}">${d.date===todayStr?'วันนี้':esc(d.date)}${d.label?` — ${esc(d.label)}`:''}</option>`).join('')}</select>`:''}
+        <div class="inline-flex p-1 rounded-xl team-sub gap-1">
+          <button type="button" data-att-type="pre_event" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏕️ เข้าค่ายสี</button>
+          <button type="button" data-att-type="event_day" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏆 วันงานจริง</button>
+        </div>
       </div>
     </div>
+    <div id="att-backfill-warning"></div>
     ${advisorCheckinToday?`<div class="rounded-xl px-3 py-2 text-xs font-bold bg-sky-500/10 text-sky-300 mb-3">ℹ️ วันนี้ครูที่ปรึกษาเช็คชื่อเข้าสีช่วงเข้าแถวตอนเช้าแล้ว หากพบนักเรียนตกหล่นหรือครูที่ปรึกษาไม่ได้เช็ค ฝ่ายสีเช็คชื่อเพิ่มเติมที่นี่ได้ตามปกติ</div>`:''}
     ${campBanner}
     <div id="att-queue-status" class="mb-3"></div>
@@ -2307,10 +2320,15 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   </section>`
 
   const renderProgress=()=>{
-    const scannedToday=attendanceLocal.filter(a=>a.session_date===todayStr).length
-    const pct=membersList.length?Math.round(scannedToday/membersList.length*100):0
-    body.querySelector('#att-progress').innerHTML=`<div class="flex items-center justify-between text-xs font-bold mb-1.5"><span>เช็คชื่อวันนี้แล้ว ${scannedToday}/${membersList.length} คน</span><span class="muted">${pct}%</span></div><div class="h-2 rounded-full team-sub overflow-hidden"><div class="h-full bg-gradient-to-r from-emerald-500 to-teal-500" style="width:${pct}%"></div></div>`
+    const scannedForDate=attendanceLocal.filter(a=>a.session_date===sessionDate).length
+    const pct=membersList.length?Math.round(scannedForDate/membersList.length*100):0
+    const dateLabel=sessionDate===todayStr?'วันนี้':`วันที่ ${sessionDate}`
+    body.querySelector('#att-progress').innerHTML=`<div class="flex items-center justify-between text-xs font-bold mb-1.5"><span>เช็คชื่อ${dateLabel}แล้ว ${scannedForDate}/${membersList.length} คน</span><span class="muted">${pct}%</span></div><div class="h-2 rounded-full team-sub overflow-hidden"><div class="h-full bg-gradient-to-r from-emerald-500 to-teal-500" style="width:${pct}%"></div></div>`
     body.querySelectorAll('[data-att-type]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.attType===sessionType))
+    const subtitle=body.querySelector('#att-subtitle')
+    if(subtitle) subtitle.textContent=`สแกน QR ประจำตัวนักเรียน หรือกรอกรหัสด้วยมือ — บันทึกของวันที่ ${sessionDate}`
+    const warnEl=body.querySelector('#att-backfill-warning')
+    if(warnEl) warnEl.innerHTML=sessionDate!==todayStr?`<div class="rounded-xl px-3 py-2 text-xs font-bold bg-amber-500/10 text-amber-400 mb-3">⚠️ กำลังบันทึกเช็คชื่อ<b>ย้อนหลัง</b>สำหรับวันที่ ${esc(sessionDate)} ไม่ใช่วันนี้ — ตรวจสอบวันที่ให้ถูกต้องก่อนสแกน</div>`:''
   }
   const renderRecent=()=>{
     const el=body.querySelector('#att-recent')
@@ -2350,9 +2368,9 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   }
   const commitAttendance=async(student,method)=>{
     if(!student){feedback(false,'ไม่พบนักเรียน','ตรวจสอบรหัส/QR อีกครั้ง — หรือไม่ใช่สมาชิกสีนี้');return}
-    const already=attendanceLocal.find(a=>a.student_id===student.id&&a.session_date===todayStr)
-    if(already){feedback(false,`${student.full_name} เช็คชื่อไปแล้ว`,already._pending?'บันทึกไว้ในเครื่อง รอซิงก์อยู่':'บันทึกไว้แล้ววันนี้');return}
-    const payload={event_id:event.id,team_color_id:c.id,student_id:student.id,session_date:todayStr,session_type:sessionType,method}
+    const already=attendanceLocal.find(a=>a.student_id===student.id&&a.session_date===sessionDate)
+    if(already){feedback(false,`${student.full_name} เช็คชื่อไปแล้ว`,already._pending?'บันทึกไว้ในเครื่อง รอซิงก์อยู่':`บันทึกไว้แล้ววันที่ ${sessionDate}`);return}
+    const payload={event_id:event.id,team_color_id:c.id,student_id:student.id,session_date:sessionDate,session_type:sessionType,method}
     const queueOffline=()=>{
       const localId=sportsQueuePush({type:'attendance',payload})
       attendanceLocal.push({...payload,id:localId,_pending:true})
@@ -2410,6 +2428,14 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   trySyncSportsQueue()
 
   body.querySelectorAll('[data-att-type]').forEach(b=>b.onclick=()=>{sessionType=b.dataset.attType;renderProgress()})
+
+  body.querySelector('#att-session-date')?.addEventListener('change',e=>{
+    sessionDate=e.target.value
+    // ถ้าวันที่เลือกตรงกับปฏิทินปฏิบัติงานพอดี ตั้งประเภทเช็คชื่อให้อัตโนมัติตามป้ายชื่อวันนั้น
+    const matched=dateOptions.find(d=>d.date===sessionDate)
+    if(matched?.label) sessionType=sessionTypeForLabel(matched.label)
+    renderProgress()
+  })
 
   body.querySelector('#att-manual-submit').onclick=()=>{
     const input=body.querySelector('#att-manual-code')
