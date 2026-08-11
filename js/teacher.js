@@ -2652,6 +2652,52 @@ async function _initNotifications(teacherId) {
   }
 }
 
+// ── เตือนแจ้งไซซ์เสื้อกีฬาสี (ยังไม่แจ้ง) ──────────────────────────────────────
+// เด้งทุกครั้งหลังล็อกอินจนกว่าจะแจ้งไซซ์สำเร็จ (เช็คเงื่อนไขใหม่ทุกครั้ง ไม่มีปุ่ม "ไม่ต้องเตือนอีก"
+// เพราะฝ่ายที่รับผิดชอบต้องสรุปยอดด่วนภายในสัปดาห์หน้า — ไม่โชว์ถ้าแอดมินปิดสวิตช์รับแจ้งไซซ์ครูไว้)
+async function _checkTeacherShirtSizePopup() {
+  try {
+    const { data: event } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
+    if (!event) return
+    const { data: cfg } = await supabase.from('sports_portal_settings').select('teacher_shirt_request_enabled').eq('event_id', event.id).maybeSingle()
+    if (!cfg?.teacher_shirt_request_enabled) return
+    const { data: existing } = await supabase.from('sports_shirt_teacher_requests').select('id').eq('event_id', event.id).eq('teacher_id', _teacher.id).maybeSingle()
+    if (existing) return
+    _showShirtSizeReminderPopup()
+  } catch {}
+}
+
+function _showShirtSizeReminderPopup() {
+  document.getElementById('shirt-size-reminder-popup')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'shirt-size-reminder-popup'
+  wrap.className = 'fixed inset-0 z-[85] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6'
+  wrap.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="bg-gradient-to-br from-pink-500 to-rose-500 px-6 py-6 text-center">
+        <div class="text-4xl mb-2">👕</div>
+        <h3 class="text-white font-bold text-base">ยังไม่ได้แจ้งไซซ์เสื้อกีฬาสี</h3>
+        <p class="text-white/80 text-xs mt-1">ฝ่ายที่รับผิดชอบต้องการสรุปยอดภายในสัปดาห์หน้า กรุณาแจ้งไซซ์โดยเร็ว</p>
+      </div>
+      <div class="p-6">
+        <button id="ssrp-go"
+          class="w-full py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-sm shadow-md transition mb-2">
+          👕 แจ้งไซซ์เสื้อตอนนี้
+        </button>
+        <button id="ssrp-close"
+          class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition">
+          ภายหลัง
+        </button>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+  wrap.querySelector('#ssrp-go').addEventListener('click', () => {
+    wrap.remove()
+    import('./sports-portals.js').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+  })
+  wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
+}
+
 // ── ตรวจสอบการเชื่อมโยงตารางสอน ──────────────────────────────────────────────
 
 async function _checkScheduleLinkPopup() {
@@ -2981,6 +3027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     logLogin('teacher').catch(() => {})
     if (_teacher?.id) _initDonationFlow(_teacher.id)
     if (_teacher?.id) _checkScheduleLinkPopup()
+    if (_teacher?.id) _checkTeacherShirtSizePopup()
     if (_teacher?.id) _initNotifications(_teacher.id)
     initInstallPrompt()
     // โหลด position permissions (async ไม่ block)
