@@ -1470,6 +1470,24 @@ function openEventSelfCheckinScanner() {
       return
     }
 
+    // ตรวจพิกัด GPS ว่าอยู่ในรัศมีสถานที่จัดงานจริงหรือไม่ (ถ้าแอดมินตั้งพิกัดไว้) กันสแกนจากนอกสถานที่
+    const geofence = eventVenueGeofence()
+    if (geofence) {
+      feedback.innerHTML = `<span style="color:#94a3b8">📍 กำลังตรวจสอบพิกัด...</span>`
+      const pos = await getCurrentGPSPosition()
+      if (pos.error) {
+        _azPlayScanBeep('error'); flash(false)
+        feedback.innerHTML = `<span style="color:#f87171">${esc(pos.error)}</span>`
+        return
+      }
+      const distance = haversineDistanceMeters(pos.lat, pos.lng, geofence.lat, geofence.lng)
+      if (distance > geofence.radius) {
+        _azPlayScanBeep('error'); flash(false)
+        feedback.innerHTML = `<span style="color:#f87171">คุณอยู่นอกระยะจุดลงทะเบียน (ห่างประมาณ ${Math.round(distance)} เมตร) กรุณาเข้าใกล้จุดลงทะเบียนแล้วลองสแกนใหม่</span>`
+        return
+      }
+    }
+
     const { error } = await SB.from('azfutsal_event_checkins').insert(
       { day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'self', checked_in_at: new Date().toISOString() },
     )
@@ -1540,14 +1558,15 @@ async function openEventCheckinBigScreen(day) {
         <div style="font-size:13px;opacity:.92;font-weight:700;margin-top:2px">จุดลงทะเบียนเข้างาน · วันที่ ${day} · ${esc(scheduleDateLabel(day))}</div>
       </div>
       <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
-        ${deadline ? `
-        <div id="az-evbig-countdown-box" style="text-align:center;background:rgba(255,255,255,.18);border-radius:14px;padding:7px 22px;min-width:170px">
-          <div id="az-evbig-countdown-label" style="font-size:10.5px;font-weight:800;opacity:.9;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">ปิดรับเช็คอินใน</div>
-          <div id="az-evbig-countdown" style="font-size:32px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.15">--:--</div>
-        </div>` : eventCheckinWindowLabel(day) ? `<div style="font-size:12.5px;font-weight:800;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:999px;white-space:nowrap">🕐 ${esc(eventCheckinWindowLabel(day))}</div>` : ''}
+        ${!deadline && eventCheckinWindowLabel(day) ? `<div style="font-size:12.5px;font-weight:800;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:999px;white-space:nowrap">🕐 ${esc(eventCheckinWindowLabel(day))}</div>` : ''}
         <button id="az-evbig-close" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">✕ ปิด</button>
       </div>
     </div>
+    ${deadline ? `
+    <div id="az-evbig-countdown-box" style="flex-shrink:0;text-align:center;background:#1e293b;padding:10px 20px 16px">
+      <div id="az-evbig-countdown-label" style="font-size:15px;font-weight:800;color:#cbd5e1;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">ปิดรับเช็คอินใน</div>
+      <div id="az-evbig-countdown" style="font-size:120px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.05;color:#fff">--:--</div>
+    </div>` : ''}
     <div style="flex:1;min-height:0;display:flex">
       <div style="flex:0 0 380px;padding:32px 28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center">
         <div style="position:relative;display:flex;align-items:center;justify-content:center">
@@ -1618,23 +1637,23 @@ async function openEventCheckinBigScreen(day) {
       clockEl.textContent = formatCountdownClock(remain)
       if (remain <= 0) {
         label.textContent = 'ปิดรับเช็คอินแล้ว'
+        label.style.color = '#fecaca'
         box.style.background = '#dc2626'
-        box.style.boxShadow = '0 0 0 2px rgba(255,255,255,.7)'
         box.classList.add('az-evbig-urgent')
       } else if (remain <= 60 * 1000) {
         label.textContent = 'ปิดรับเช็คอินใน'
+        label.style.color = '#fecaca'
         box.style.background = '#dc2626'
-        box.style.boxShadow = '0 0 0 2px rgba(255,255,255,.7)'
         box.classList.add('az-evbig-urgent')
       } else if (remain <= 5 * 60 * 1000) {
         label.textContent = 'ปิดรับเช็คอินใน'
+        label.style.color = '#78350f'
         box.style.background = '#f59e0b'
-        box.style.boxShadow = '0 0 0 2px rgba(255,255,255,.6)'
         box.classList.remove('az-evbig-urgent')
       } else {
         label.textContent = 'ปิดรับเช็คอินใน'
-        box.style.background = 'rgba(255,255,255,.18)'
-        box.style.boxShadow = 'none'
+        label.style.color = '#cbd5e1'
+        box.style.background = '#1e293b'
         box.classList.remove('az-evbig-urgent')
       }
     }
@@ -1852,6 +1871,45 @@ function formatCountdownClock(ms) {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
+// ---------------- ตรวจพิกัด GPS ตอนนักกีฬาสแกนเช็คอินเข้างานด้วยตัวเอง (กันสแกนจากนอกสถานที่จริง) — สไตล์เดียวกับระบบเวร ----------------
+function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371e3
+  const φ1 = lat1 * Math.PI / 180
+  const φ2 = lat2 * Math.PI / 180
+  const Δφ = (lat2 - lat1) * Math.PI / 180
+  const Δλ = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+// คืน null ถ้าแอดมินยังไม่ได้ตั้งพิกัดสถานที่ไว้ (ไม่บังคับตรวจ — fail-open กันเช็คอินพังตั้งแต่ยังไม่ตั้งค่า)
+function eventVenueGeofence() {
+  const lat = parseFloat(cfg('EVENT_VENUE_LAT', ''))
+  const lng = parseFloat(cfg('EVENT_VENUE_LNG', ''))
+  const radius = parseFloat(cfg('EVENT_VENUE_RADIUS', '150')) || 150
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null
+  return { lat, lng, radius }
+}
+
+function explainGPSError(err) {
+  if (err && err.code === 1) return 'กรุณาอนุญาตให้เว็บนี้เข้าถึงตำแหน่ง GPS เพื่อเช็คอิน (เปิดสิทธิ์ตำแหน่งในตั้งค่าเบราว์เซอร์แล้วลองใหม่)'
+  if (err && err.code === 2) return 'โทรศัพท์ค้นหาพิกัดไม่พบ กรุณาเปิด GPS/บริการตำแหน่งแล้วลองใหม่'
+  if (err && err.code === 3) return 'ค้นหาพิกัดใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง'
+  return 'อุปกรณ์นี้ไม่สามารถอ่านพิกัด GPS ได้'
+}
+
+function getCurrentGPSPosition() {
+  return new Promise((resolve) => {
+    if (!window.isSecureContext) { resolve({ error: 'การใช้ GPS ต้องเปิดผ่านลิงก์ https:// เท่านั้น' }); return }
+    if (!navigator.geolocation) { resolve({ error: 'อุปกรณ์นี้ไม่รองรับ GPS' }); return }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => resolve({ error: explainGPSError(err) }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  })
+}
+
 // ทีมที่ยังเช็คอินไม่ครบทุกคนในรายชื่อ สำหรับวันที่ระบุ (ครบ = เช็คอินครบทุกคนที่ลงทะเบียนไว้ในทีม)
 function incompleteTeamsForDay(day, level = 'ALL') {
   return S.teams.filter(team => level === 'ALL' || team.level === level).map(team => {
@@ -1952,6 +2010,19 @@ function eventCheckinPanel(showSettings) {
       </div>
       <div style="font-size:10.5px;color:#9ca3af;margin-top:6px">เวลาปิดรับใช้เป็นเส้นตายเตือนทีมมาไม่ครบด้านบน — ไม่ได้ล็อกปุ่มสแกนอัตโนมัติ ยังสแกนหลังเวลานี้ได้ตามปกติ</div>
       <button data-act="saveEventCheckinWindow" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;border:none;background:#374151;color:#fff;font-weight:700;font-size:12px;cursor:pointer">บันทึกเวลาเปิด-ปิดรับ</button>
+    </div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6">
+      <div style="font-size:12px;color:#374151;font-weight:600;margin-bottom:6px">📍 พิกัดสถานที่จัดงาน (ตรวจตำแหน่งตอนนักกีฬาสแกนเช็คอินเอง)</div>
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        <input id="evci-venue-lat" type="text" inputmode="decimal" placeholder="ละติจูด" value="${esc(cfg('EVENT_VENUE_LAT', ''))}" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"/>
+        <input id="evci-venue-lng" type="text" inputmode="decimal" placeholder="ลองจิจูด" value="${esc(cfg('EVENT_VENUE_LNG', ''))}" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"/>
+      </div>
+      <button data-act="useCurrentGPSForVenue" style="width:100%;padding:8px;border-radius:9px;border:1px dashed #0ea5e9;background:#f0f9ff;color:#0369a1;font-weight:700;font-size:12px;cursor:pointer">📍 ใช้พิกัดปัจจุบันของอุปกรณ์นี้ (ยืนที่สนามแล้วกด)</button>
+      <label style="display:block;margin-top:8px;font-size:11.5px;color:#6b7280">รัศมีที่อนุญาต (เมตร)
+        <input id="evci-venue-radius" type="number" min="10" value="${esc(cfg('EVENT_VENUE_RADIUS', '150'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
+      </label>
+      <div style="font-size:10.5px;color:#9ca3af;margin-top:6px">ถ้าปล่อยพิกัดว่างไว้ ระบบจะไม่ตรวจตำแหน่ง (นักกีฬาสแกนเองได้จากที่ไหนก็ได้) — ตั้งไว้เมื่อไปถึงสนามจริงแล้วเท่านั้น</div>
+      <button data-act="saveEventVenueGeofence" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;border:none;background:#374151;color:#fff;font-weight:700;font-size:12px;cursor:pointer">บันทึกพิกัดสถานที่</button>
     </div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -4550,6 +4621,29 @@ function bindEvents() {
         { key: 'EVENT_CHECKIN_CLOSE_TIME', value: gid('evci-close').value || '' },
       ])
       await refresh(); azToast('บันทึกเวลาเปิด-ปิดรับเช็คอินแล้ว'); return
+    }
+    if (act === 'useCurrentGPSForVenue') {
+      azToast('กำลังอ่านพิกัด GPS...')
+      const pos = await getCurrentGPSPosition()
+      if (pos.error) { azToast(pos.error); return }
+      const latInput = gid('evci-venue-lat'), lngInput = gid('evci-venue-lng')
+      if (latInput) latInput.value = pos.lat.toFixed(6)
+      if (lngInput) lngInput.value = pos.lng.toFixed(6)
+      azToast('อ่านพิกัดสำเร็จ — ตรวจสอบแล้วกดบันทึกพิกัดสถานที่')
+      return
+    }
+    if (act === 'saveEventVenueGeofence') {
+      const lat = gid('evci-venue-lat').value.trim()
+      const lng = gid('evci-venue-lng').value.trim()
+      const radius = gid('evci-venue-radius').value.trim()
+      if (lat && Number.isNaN(parseFloat(lat))) { azToast('ละติจูดไม่ถูกต้อง'); return }
+      if (lng && Number.isNaN(parseFloat(lng))) { azToast('ลองจิจูดไม่ถูกต้อง'); return }
+      await SB.from('azfutsal_config').upsert([
+        { key: 'EVENT_VENUE_LAT', value: lat },
+        { key: 'EVENT_VENUE_LNG', value: lng },
+        { key: 'EVENT_VENUE_RADIUS', value: radius || '150' },
+      ])
+      await refresh(); azToast('บันทึกพิกัดสถานที่แล้ว'); return
     }
     if (act === 'printCheckinForm') {
       const team = S.teams.find(tm => tm.id === btn.dataset.id)
