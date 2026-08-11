@@ -344,35 +344,34 @@ function renderDashboard(snapshot) {
       </div>`
     }
 
-    const byLevel = {}
-    rows.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || []).push(s) })
-    const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
+    // แยกเอกสารเป็นรายห้องเรียน (ไม่ใช่รวมทุกห้องในชั้นเดียวกันเป็นตารางเดียว) — ขึ้นหน้าใหม่ต่อห้อง
+    // พร้อมชื่อครูที่ปรึกษาบนหัวกระดาษแต่ละห้อง สะดวกต่อการแยกส่งให้แต่ละห้อง/แต่ละครูที่ปรึกษา
+    const groups = groupByRoom(rows)
 
-    return levels.map((lv, idx) => {
-      const rowsOfLevel = [...byLevel[lv]].sort(byRoomThenName)
+    return groups.map(({ room, students: roomStudents }, idx) => {
+      const sorted = [...roomStudents].sort((a, b) => a.full_name.localeCompare(b.full_name, 'th'))
+      const teacherName = homeroomTeacherOf(room)
       return `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding-top:12px">
-        ${headerBlock(`ชั้น ${lv}`)}
+        ${headerBlock(`ห้อง ${room}${teacherName !== '—' ? ` — ครูที่ปรึกษา: ${teacherName}` : ''}`)}
         <div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px;font-size:12px">
-          <span>จำนวน: <b>${rowsOfLevel.length}</b> คน</span>
+          <span>จำนวน: <b>${sorted.length}</b> คน</span>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:10.5px">
           <thead><tr>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">เลขที่</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">รหัส</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left;width:100%">ชื่อ-สกุล</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ห้อง</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สี</th>
             ${activeTab === 'size'
               ? `<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ไซซ์ยืนยัน</th><th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สถานะ</th>`
               : (paymentsOpen ? `<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">สถานะชำระ</th>` : '')}
           </tr></thead>
-          <tbody>${rowsOfLevel.map((s, i) => {
+          <tbody>${sorted.map((s, i) => {
             const st = rowStatus(s)
             return `<tr>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${i + 1}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.student_code)}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(s.full_name)}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.main_room || '—')}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.color_name || '—')}</td>
               ${activeTab === 'size'
                 ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(st.req?.confirmed_size || '—')}</td><td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(sizeBadgeLabel(st.sizeStatus))}</td>`
