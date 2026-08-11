@@ -236,7 +236,7 @@ async function loadAll() {
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
     SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, minute, is_penalty, created_at').order('created_at'),
     SB.from('azfutsal_checkins').select('id, level, match_code, team_id, player_id, checked_in_by, checked_in_at'),
-    SB.from('azfutsal_event_checkins').select('id, day, team_id, player_id, checked_in_by, method, checked_in_at, parent_permission_confirmed, attire_confirmed'),
+    SB.from('azfutsal_event_checkins').select('id, day, team_id, player_id, checked_in_by, method, checked_in_at, parent_permission_confirmed, attire_confirmed, confirmed'),
   ])
   S.config = Object.fromEntries((config || []).map(r => [r.key, r.value]))
   applyThemeColors()
@@ -1054,6 +1054,24 @@ async function _azLoadHtml5Qrcode() {
     document.head.appendChild(s)
   })
 }
+// โหลด Leaflet (CSS+JS) แบบ lazy สำหรับแผนที่ฝังในหน้าตั้งค่าพิกัดสถานที่ — ใช้ tile ดาวเทียม Google เหมือนระบบเวร
+async function _azLoadLeaflet() {
+  if (window.L) return window.L
+  if (!document.getElementById('az-leaflet-css')) {
+    const link = document.createElement('link')
+    link.id = 'az-leaflet-css'
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+  }
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    s.onload = () => resolve(window.L)
+    s.onerror = () => reject(new Error('โหลดแผนที่ไม่สำเร็จ'))
+    document.head.appendChild(s)
+  })
+}
 // type: 'success' (โทนสูงครั้งเดียว) | 'duplicate' (โทนกลางสองครั้ง) | 'error' (โทนต่ำยาว) — แยกเสียงให้ต่างกันชัดเจนทั้ง 3 สถานะ
 function _azPlayScanBeep(type = 'success') {
   try {
@@ -1275,12 +1293,14 @@ function openEventCheckinScanner(day) {
       </div>
     </div>`
   document.body.appendChild(overlay)
-  wireJerseyEditHandlers(overlay.querySelector('#az-evci-feedback'), id => allRoster.find(p => String(p.id) === String(id)))
-  wireCheckinExtraHandlers(overlay.querySelector('#az-evci-feedback'))
+  const feedbackEl = overlay.querySelector('#az-evci-feedback')
+  wireJerseyEditHandlers(feedbackEl, id => allRoster.find(p => String(p.id) === String(id)))
+  wireCheckinExtraHandlers(feedbackEl)
 
   const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
   let recentIds = []
   let html5Qrcode = null, lastCode = null, lastTime = 0
+  let stagingPlayer = null, stagingPermission = false, stagingAttire = false
 
   const renderList = () => {
     const list = overlay.querySelector('#az-evci-list')
@@ -1290,9 +1310,91 @@ function openEventCheckinScanner(day) {
   }
   renderList()
 
+  function renderSuccessCard(player, checkin) {
+    const photoUrl = playerPhotoUrl(player)
+    const photoHtml = photoUrl
+      ? `<img src="${esc(photoUrl)}" style="width:40px;height:52px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15);flex-shrink:0"/>`
+      : `<div style="width:40px;height:52px;border-radius:8px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;flex-shrink:0">${esc((player.students?.full_name || '?').charAt(0))}</div>`
+    feedbackEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;text-align:left">
+        ${photoHtml}
+        <div style="flex:1;min-width:0">
+          <div style="color:#4ade80;font-weight:800;font-size:12.5px">✓ เช็คอินเข้างานแล้ว</div>
+          <div style="color:#e2e8f0;font-size:12.5px;font-weight:700;margin-top:1px;overflow-wrap:break-word">${esc(player.students?.full_name || '')}</div>
+          <div style="color:#94a3b8;font-size:11px">${esc(teamName(player.team_id))}</div>
+        </div>
+      </div>
+      ${jerseyConfirmRowHtml(player)}
+      ${checkinExtraRowHtml(day, player.id, checkin)}`
+  }
+
+  // บันทึกเช็คอินจริงลง DB — เรียกทันทีถ้าไม่บังคับตรวจใบอนุญาต/แต่งกาย หรือเรียกหลังสตาฟติ๊กครบแล้วกดยืนยัน (ผ่าน staging ด้านล่าง)
+  async function finalizeStaffCheckin(player, permission, attire) {
+    const { error } = await SB.from('azfutsal_event_checkins').insert(
+      { day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'staff', checked_in_at: new Date().toISOString(), confirmed: true, parent_permission_confirmed: permission, attire_confirmed: attire },
+    )
+    if (error) {
+      _azPlayScanBeep('error')
+      feedbackEl.innerHTML = `<span style="color:#f87171">บันทึกไม่สำเร็จ: ${esc(error.message)}</span>`
+      return
+    }
+    // เก็บลง S.eventCheckins ในเครื่องทันที (ไม่รอ refresh) ให้ปุ่มแก้ไขเพิ่มเติมด้านล่างหาแถวเช็คอินนี้เจอได้เลย
+    const newCheckin = { id: null, day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'staff', checked_in_at: new Date().toISOString(), parent_permission_confirmed: permission, attire_confirmed: attire, confirmed: true }
+    S.eventCheckins.push(newCheckin)
+    _azPlayScanBeep('success')
+    renderSuccessCard(player, newCheckin)
+    checkedIds.add(player.id)
+    recentIds.unshift(player.id)
+    recentIds = recentIds.slice(0, 30)
+    renderList()
+  }
+
+  // การ์ด "ตรวจสอบก่อนบันทึก" — โชว์เฉพาะรายการที่แอดมินบังคับตรวจไว้ ปุ่มยืนยันกดไม่ได้จนกว่าจะติ๊กครบ
+  function renderStagingCard() {
+    const player = stagingPlayer
+    if (!player) return
+    const photoUrl = playerPhotoUrl(player)
+    const photoHtml = photoUrl
+      ? `<img src="${esc(photoUrl)}" style="width:40px;height:52px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15);flex-shrink:0"/>`
+      : `<div style="width:40px;height:52px;border-radius:8px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;flex-shrink:0">${esc((player.students?.full_name || '?').charAt(0))}</div>`
+    const requirePermission = eventCheckinRequiresParentPermission()
+    const requireAttire = eventCheckinRequiresAttire()
+    const canConfirm = (!requirePermission || stagingPermission) && (!requireAttire || stagingAttire)
+    const pillStyle = on => `flex:1;min-width:130px;padding:8px;border-radius:9px;border:1px solid ${on ? '#16a34a' : '#334155'};background:${on ? 'rgba(22,163,74,.18)' : 'transparent'};color:${on ? '#4ade80' : '#94a3b8'};font-size:11px;font-weight:700;cursor:pointer`
+    feedbackEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;text-align:left">
+        ${photoHtml}
+        <div style="flex:1;min-width:0">
+          <div style="color:#38bdf8;font-weight:800;font-size:12.5px">ตรวจสอบก่อนบันทึกเช็คอิน</div>
+          <div style="color:#e2e8f0;font-size:12.5px;font-weight:700;margin-top:1px;overflow-wrap:break-word">${esc(player.students?.full_name || '')}</div>
+          <div style="color:#94a3b8;font-size:11px">${esc(teamName(player.team_id))}${player.jersey_number != null ? ` · เบอร์ ${esc(String(player.jersey_number))}` : ''}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:6px;flex-wrap:wrap">
+        ${requirePermission ? `<button class="az-staging-toggle" data-field="permission" style="${pillStyle(stagingPermission)}">${stagingPermission ? '✅' : '⬜'} ใบอนุญาตผู้ปกครอง</button>` : ''}
+        ${requireAttire ? `<button class="az-staging-toggle" data-field="attire" style="${pillStyle(stagingAttire)}">${stagingAttire ? '✅' : '⬜'} แต่งกายเรียบร้อย</button>` : ''}
+      </div>
+      <button id="az-evci-staging-confirm" ${canConfirm ? '' : 'disabled'} style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:none;background:${canConfirm ? '#16a34a' : '#334155'};color:#fff;font-weight:800;font-size:12.5px;cursor:${canConfirm ? 'pointer' : 'not-allowed'}">${canConfirm ? '✅ ยืนยันและบันทึกเช็คอิน' : 'ติ๊กให้ครบก่อนถึงจะบันทึกได้'}</button>`
+  }
+  feedbackEl.addEventListener('click', async (e) => {
+    const toggleBtn = e.target.closest('.az-staging-toggle')
+    if (toggleBtn) {
+      if (toggleBtn.dataset.field === 'permission') stagingPermission = !stagingPermission
+      else stagingAttire = !stagingAttire
+      renderStagingCard()
+      return
+    }
+    const confirmBtn = e.target.closest('#az-evci-staging-confirm')
+    if (confirmBtn && !confirmBtn.disabled) {
+      const player = stagingPlayer
+      stagingPlayer = null
+      await finalizeStaffCheckin(player, stagingPermission, stagingAttire)
+    }
+  })
+
   async function processScan(decodedText) {
     const camwrap = overlay.querySelector('#az-evci-camwrap')
-    const feedback = overlay.querySelector('#az-evci-feedback')
+    const feedback = feedbackEl
     const flash = ok => { camwrap.classList.add(ok ? 'az-evci-flash-ok' : 'az-evci-flash-err'); setTimeout(() => camwrap.classList.remove(ok ? 'az-evci-flash-ok' : 'az-evci-flash-err'), 500) }
 
     let studentCode = decodedText
@@ -1319,37 +1421,16 @@ function openEventCheckinScanner(day) {
       return
     }
 
-    const { error } = await SB.from('azfutsal_event_checkins').insert(
-      { day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'staff', checked_in_at: new Date().toISOString() },
-    )
-    if (error) {
-      _azPlayScanBeep('error'); flash(false)
-      feedback.innerHTML = `<span style="color:#f87171">บันทึกไม่สำเร็จ: ${esc(error.message)}</span>`
+    if (eventCheckinRequiresAnyExtra()) {
+      stagingPlayer = player
+      stagingPermission = false
+      stagingAttire = false
+      _azPlayScanBeep('success'); flash(true)
+      renderStagingCard()
       return
     }
-    // เก็บลง S.eventCheckins ในเครื่องทันที (ไม่รอ refresh) ให้ปุ่มยืนยันเพิ่มเติมด้านล่างหาแถวเช็คอินนี้เจอได้เลย
-    const newCheckin = { id: null, day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'staff', checked_in_at: new Date().toISOString(), parent_permission_confirmed: false, attire_confirmed: false }
-    S.eventCheckins.push(newCheckin)
-    _azPlayScanBeep('success'); flash(true)
-    const photoUrl = playerPhotoUrl(player)
-    const photoHtml = photoUrl
-      ? `<img src="${esc(photoUrl)}" style="width:40px;height:52px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,.15);flex-shrink:0"/>`
-      : `<div style="width:40px;height:52px;border-radius:8px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;flex-shrink:0">${esc((player.students?.full_name || '?').charAt(0))}</div>`
-    feedback.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;text-align:left">
-        ${photoHtml}
-        <div style="flex:1;min-width:0">
-          <div style="color:#4ade80;font-weight:800;font-size:12.5px">✓ เช็คอินเข้างานแล้ว</div>
-          <div style="color:#e2e8f0;font-size:12.5px;font-weight:700;margin-top:1px;overflow-wrap:break-word">${esc(player.students?.full_name || '')}</div>
-          <div style="color:#94a3b8;font-size:11px">${esc(teamName(player.team_id))}</div>
-        </div>
-      </div>
-      ${jerseyConfirmRowHtml(player)}
-      ${checkinExtraRowHtml(day, player.id, newCheckin)}`
-    checkedIds.add(player.id)
-    recentIds.unshift(player.id)
-    recentIds = recentIds.slice(0, 30)
-    renderList()
+
+    await finalizeStaffCheckin(player, false, false)
   }
 
   overlay.querySelector('#az-evci-close').addEventListener('click', async () => {
@@ -1428,27 +1509,23 @@ function openEventSelfCheckinScanner() {
     const photoHtml = photoUrl
       ? `<img src="${esc(photoUrl)}" style="width:104px;height:132px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,.15)"/>`
       : `<div style="width:104px;height:132px;border-radius:14px;background:#1e293b;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;font-size:34px">${esc((player.students?.full_name || '?').charAt(0))}</div>`
+    const checkin = eventCheckinFor(player.id, day)
+    const pending = !!checkin && !checkin.confirmed
     successEl.innerHTML = `
       ${photoHtml}
       <div>
-        <div style="color:#4ade80;font-weight:900;font-size:20px">✓ เช็คอินเข้างานสำเร็จ</div>
+        <div style="color:${pending ? '#fbbf24' : '#4ade80'};font-weight:900;font-size:20px">${pending ? '⏳ ส่งคำขอเช็คอินแล้ว' : '✓ เช็คอินเข้างานสำเร็จ'}</div>
         <div style="color:#e2e8f0;font-size:16px;font-weight:800;margin-top:4px">${esc(player.students?.full_name || '')}</div>
         <div style="color:#94a3b8;font-size:13px;margin-top:2px">${esc(teamName(player.team_id))} · วันที่ ${day}</div>
+        ${pending ? `<div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(217,119,6,.14);border:1px solid #d97706;color:#fbbf24;font-size:12px;text-align:left">รอสตาฟยืนยันใบอนุญาตผู้ปกครอง/การแต่งกายที่จุดลงทะเบียน จึงจะนับว่าเช็คอินสำเร็จ</div>` : ''}
       </div>
       <div id="az-evsc-jersey-wrap" style="width:100%"></div>
-      <div id="az-evsc-extra-wrap" style="width:100%"></div>
       <button id="az-evsc-done" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16a34a;color:#fff;font-weight:800;font-size:15px;cursor:pointer">✓ เสร็จสิ้น</button>`
     const jerseyWrap = successEl.querySelector('#az-evsc-jersey-wrap')
-    const extraWrap = successEl.querySelector('#az-evsc-extra-wrap')
     const doneBtn = successEl.querySelector('#az-evsc-done')
     const hasJersey = player.jersey_number !== null && player.jersey_number !== undefined
     jerseyWrap.innerHTML = hasJersey ? jerseySelfViewBlock(player) : jerseySelfEditBlock(player)
     wireJerseySelfHandlers(jerseyWrap, player, doneBtn)
-    const checkin = eventCheckinFor(player.id, day)
-    if (checkin) {
-      extraWrap.innerHTML = checkinExtraRowHtml(day, player.id, checkin)
-      wireCheckinExtraHandlers(extraWrap)
-    }
     doneBtn.addEventListener('click', () => {
       if (doneBtn.disabled) return
       overlay.remove()
@@ -1500,8 +1577,11 @@ function openEventSelfCheckinScanner() {
       }
     }
 
+    // ถ้าแอดมินบังคับตรวจใบอนุญาต/แต่งกายไว้ สแกนเองจะบันทึกเป็น "รอยืนยัน" (confirmed=false) ก่อน
+    // ต้องให้สตาฟไปยืนยันในหน้าจอรีวิวแยกถึงจะนับว่าเช็คอินสำเร็จจริง (นักกีฬายืนยันเองไม่ได้ตามที่ตั้งใจไว้)
+    const requiresExtra = eventCheckinRequiresAnyExtra()
     const { error } = await SB.from('azfutsal_event_checkins').insert(
-      { day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'self', checked_in_at: new Date().toISOString() },
+      { day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'self', checked_in_at: new Date().toISOString(), confirmed: !requiresExtra },
     )
     if (error) {
       if (error.code === '23505') {
@@ -1516,8 +1596,8 @@ function openEventSelfCheckinScanner() {
       return
     }
     done = true
-    // เก็บลง S.eventCheckins ในเครื่องทันที (ไม่รอ refresh) ให้ปุ่มยืนยันเพิ่มเติมในหน้าจอสำเร็จหาแถวเช็คอินนี้เจอได้เลย
-    S.eventCheckins.push({ id: null, day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'self', checked_in_at: new Date().toISOString(), parent_permission_confirmed: false, attire_confirmed: false })
+    // เก็บลง S.eventCheckins ในเครื่องทันที (ไม่รอ refresh) ให้หน้าจอสำเร็จอ่านสถานะล่าสุดได้เลย
+    S.eventCheckins.push({ id: null, day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'self', checked_in_at: new Date().toISOString(), parent_permission_confirmed: false, attire_confirmed: false, confirmed: !requiresExtra })
     _azPlayScanBeep('success'); flash(true)
     await showSuccessScreen(day)
   }
@@ -1690,6 +1770,125 @@ async function openEventCheckinBigScreen(day) {
   })
 }
 
+// ---------------- หน้าจอสตาฟรีวิว/ยืนยันรายการที่นักกีฬาสแกนเองแล้วรอตรวจใบอนุญาตผู้ปกครอง/แต่งกาย ----------------
+function openEventCheckinPendingReview(day) {
+  document.getElementById('az-evpend-overlay')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'az-evpend-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0b0f1a;display:flex;flex-direction:column'
+  overlay.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="color:#f1f5f9;font-weight:800;font-size:14px">🕐 รอสตาฟยืนยันการเช็คอิน</div>
+        <div style="color:#94a3b8;font-size:11.5px">วันที่ ${day} · ${esc(scheduleDateLabel(day))} · จากการสแกนเองของนักกีฬา</div>
+      </div>
+      <button id="az-evpend-close" style="color:#94a3b8;background:none;border:none;font-size:26px;line-height:1;cursor:pointer">×</button>
+    </div>
+    <div id="az-evpend-list" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;max-width:520px;margin:0 auto;width:100%"></div>`
+  document.body.appendChild(overlay)
+
+  const draftByPlayer = {} // player_id -> { permission, attire } ค่าที่กำลังติ๊กอยู่ ยังไม่บันทึกจนกว่าจะกดยืนยัน
+
+  const renderList = () => {
+    const listEl = document.getElementById('az-evpend-list')
+    if (!listEl) return
+    const rows = S.eventCheckins.filter(c => c.day === day && !c.confirmed).sort((a, b) => new Date(a.checked_in_at) - new Date(b.checked_in_at))
+    const requirePermission = eventCheckinRequiresParentPermission()
+    const requireAttire = eventCheckinRequiresAttire()
+    const pillStyle = on => `flex:1;min-width:130px;padding:8px;border-radius:9px;border:1px solid ${on ? '#16a34a' : '#334155'};background:${on ? 'rgba(22,163,74,.18)' : 'transparent'};color:${on ? '#4ade80' : '#94a3b8'};font-size:11px;font-weight:700;cursor:pointer`
+    listEl.innerHTML = rows.length ? rows.map(c => {
+      const p = S.players.find(pl => pl.id === c.player_id)
+      if (!p) return ''
+      if (!draftByPlayer[c.player_id]) draftByPlayer[c.player_id] = { permission: !!c.parent_permission_confirmed, attire: !!c.attire_confirmed }
+      const draft = draftByPlayer[c.player_id]
+      const canConfirm = (!requirePermission || draft.permission) && (!requireAttire || draft.attire)
+      const photoUrl = playerPhotoUrl(p)
+      const photoHtml = photoUrl
+        ? `<img src="${esc(photoUrl)}" style="width:44px;height:56px;object-fit:cover;border-radius:9px;border:1px solid #d1d5db;flex-shrink:0"/>`
+        : `<div style="width:44px;height:56px;border-radius:9px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-weight:800;color:#9ca3af;flex-shrink:0">${esc((p.students?.full_name || '?').charAt(0))}</div>`
+      const time = new Date(c.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+      return `
+      <div class="az-pend-row" data-player-id="${esc(p.id)}" style="border:1px solid #fde68a;background:#fffbeb;border-radius:14px;padding:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          ${photoHtml}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:800;color:#111827">${esc(p.students?.full_name || '')}</div>
+            <div style="font-size:12px;color:#6b7280">${esc(teamName(p.team_id))}${p.jersey_number != null ? ` · เบอร์ ${esc(String(p.jersey_number))}` : ' · ยังไม่ระบุเบอร์เสื้อ'}</div>
+          </div>
+          <div style="font-size:11px;color:#b45309;font-weight:700;flex-shrink:0">สแกนเมื่อ ${time}</div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          ${requirePermission ? `<button class="az-pend-toggle" data-field="permission" style="${pillStyle(draft.permission)}">${draft.permission ? '✅' : '⬜'} ใบอนุญาตผู้ปกครอง</button>` : ''}
+          ${requireAttire ? `<button class="az-pend-toggle" data-field="attire" style="${pillStyle(draft.attire)}">${draft.attire ? '✅' : '⬜'} แต่งกายเรียบร้อย</button>` : ''}
+        </div>
+        <button class="az-pend-confirm" ${canConfirm ? '' : 'disabled'} style="width:100%;margin-top:8px;padding:9px;border-radius:9px;border:none;background:${canConfirm ? '#16a34a' : '#d1d5db'};color:#fff;font-weight:800;font-size:12.5px;cursor:${canConfirm ? 'pointer' : 'not-allowed'}">${canConfirm ? '✅ ยืนยันสำเร็จ' : 'ติ๊กให้ครบก่อนถึงจะยืนยันได้'}</button>
+      </div>`
+    }).join('') : `<div style="text-align:center;padding:60px 0;color:#9ca3af"><div style="font-size:40px;margin-bottom:8px">🎉</div><div style="font-size:13px;font-weight:700">ไม่มีรายการรอยืนยัน</div></div>`
+  }
+  renderList()
+
+  document.getElementById('az-evpend-list').addEventListener('click', async (e) => {
+    const row = e.target.closest('.az-pend-row')
+    if (!row) return
+    const playerId = row.dataset.playerId
+    const draft = draftByPlayer[playerId]
+    if (!draft) return
+    if (e.target.closest('.az-pend-toggle')) {
+      const field = e.target.closest('.az-pend-toggle').dataset.field
+      draft[field] = !draft[field]
+      renderList()
+      return
+    }
+    const confirmBtn = e.target.closest('.az-pend-confirm')
+    if (confirmBtn && !confirmBtn.disabled) {
+      const { error } = await SB.from('azfutsal_event_checkins').update({
+        confirmed: true, parent_permission_confirmed: draft.permission, attire_confirmed: draft.attire,
+      }).eq('day', day).eq('player_id', playerId)
+      if (error) { azToast('ยืนยันไม่สำเร็จ: ' + error.message); return }
+      const c = eventCheckinFor(playerId, day)
+      if (c) { c.confirmed = true; c.parent_permission_confirmed = draft.permission; c.attire_confirmed = draft.attire }
+      delete draftByPlayer[playerId]
+      azToast('ยืนยันเช็คอินสำเร็จแล้ว')
+      renderList()
+      refresh()
+    }
+  })
+
+  const intervalId = setInterval(async () => { await refresh(); renderList() }, 4000)
+  overlay.querySelector('#az-evpend-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+}
+
+// ---------------- ดูพิกัดสถานที่บนแผนที่ฝัง (satellite) + วงกลมรัศมีที่อนุญาต — พรีวิวก่อนบันทึกจริงก็ได้ ----------------
+async function openVenueMapPreview(lat, lng, radius) {
+  document.getElementById('az-venuemap-overlay')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'az-venuemap-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0b0f1a;display:flex;flex-direction:column'
+  overlay.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="color:#f1f5f9;font-weight:800;font-size:14px">🗺️ พิกัดสถานที่จัดงาน</div>
+        <div style="color:#94a3b8;font-size:11.5px">${lat.toFixed(6)}, ${lng.toFixed(6)} · รัศมี ${radius} ม.</div>
+      </div>
+      <button id="az-venuemap-close" style="color:#94a3b8;background:none;border:none;font-size:26px;line-height:1;cursor:pointer">×</button>
+    </div>
+    <div id="az-venuemap-canvas" style="flex:1;min-height:0"></div>`
+  document.body.appendChild(overlay)
+  overlay.querySelector('#az-venuemap-close').addEventListener('click', () => overlay.remove())
+
+  try {
+    const L = await _azLoadLeaflet()
+    if (!document.getElementById('az-venuemap-overlay')) return // ปิดไปแล้วระหว่างโหลด
+    const map = L.map('az-venuemap-canvas').setView([lat, lng], 17)
+    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { attribution: '© Google Maps', maxZoom: 21 }).addTo(map)
+    L.marker([lat, lng]).addTo(map)
+    L.circle([lat, lng], { radius, color: '#16a34a', fillColor: '#16a34a', fillOpacity: 0.15, weight: 2 }).addTo(map)
+  } catch (err) {
+    const canvas = document.getElementById('az-venuemap-canvas')
+    if (canvas) canvas.innerHTML = `<div style="color:#f87171;text-align:center;padding:40px;font-size:13px">${esc(err.message || 'โหลดแผนที่ไม่สำเร็จ')}</div>`
+  }
+}
+
 function nextDayStartValue(startValue) {
   if (!startValue) return ''
   const date = new Date(startValue)
@@ -1720,6 +1919,20 @@ function scheduleDateLabel(day) {
 const EVENT_CHECKIN_QR_PREFIX = 'AZEVENTCHECKIN:'
 
 function eventCheckinRequiresBothDays() { return cfg('EVENT_CHECKIN_REQUIRE_BOTH_DAYS', '1') === '1' }
+function eventCheckinRequiresParentPermission() { return cfg('EVENT_CHECKIN_REQUIRE_PARENT_PERMISSION', '0') === '1' }
+function eventCheckinRequiresAttire() { return cfg('EVENT_CHECKIN_REQUIRE_ATTIRE', '0') === '1' }
+function eventCheckinRequiresAnyExtra() { return eventCheckinRequiresParentPermission() || eventCheckinRequiresAttire() }
+// ทีมถือว่า "เช็คอินสำเร็จจริง" เมื่อมีแถวและ confirmed=true เท่านั้น — ถ้าตั้งค่าบังคับตรวจใบอนุญาต/แต่งกายไว้ แถวจาก
+// การสแกนเองจะเป็น confirmed=false (รอสตาฟยืนยัน) จนกว่าสตาฟจะไปกดยืนยันในหน้าจอรีวิว
+function eventCheckinIsConfirmed(playerId, day) {
+  const c = eventCheckinFor(playerId, day)
+  return !!c && c.confirmed
+}
+function eventCheckinStatusIcon(playerId, day) {
+  const c = eventCheckinFor(playerId, day)
+  if (!c) return '❌'
+  return c.confirmed ? '✅' : '⏳'
+}
 
 // เดาวันที่เริ่มต้นจากวันที่ปัจจุบันเทียบกับวันแข่งที่ตั้งค่าไว้ — เป็นแค่ค่าเริ่มต้นให้สลับแท็บเองได้เสมอ
 function eventCheckinDefaultDay() {
@@ -1838,14 +2051,18 @@ function wireJerseySelfHandlers(wrapEl, player, doneBtn) {
   updateDoneBtn()
 }
 
-// ปุ่มยืนยันเพิ่มเติมตอนเช็คอินเข้างาน (ใบอนุญาตผู้ปกครอง / แต่งกายเรียบร้อย) — เป็น toggle ไม่บังคับกด ใช้ร่วมกันทั้งการ์ดสตาฟสแกนและการ์ดนักกีฬาสแกนเอง
+// ปุ่มแก้ไข/ทบทวนเพิ่มเติมของใบอนุญาตผู้ปกครอง/แต่งกาย — โชว์เฉพาะรายการที่แอดมินเปิดบังคับตรวจไว้เท่านั้น
+// (สำหรับสตาฟแก้ไขทีหลังได้ถ้าพลาด — คนละส่วนกับหน้าจอ staging ก่อนบันทึกครั้งแรก)
 function checkinExtraRowHtml(day, playerId, checkin) {
+  const showPermission = eventCheckinRequiresParentPermission()
+  const showAttire = eventCheckinRequiresAttire()
+  if (!showPermission && !showAttire) return ''
   const permission = !!checkin?.parent_permission_confirmed
   const attire = !!checkin?.attire_confirmed
   const pillStyle = on => `flex:1;min-width:130px;padding:8px;border-radius:9px;border:1px solid ${on ? '#16a34a' : '#334155'};background:${on ? 'rgba(22,163,74,.18)' : 'transparent'};color:${on ? '#4ade80' : '#94a3b8'};font-size:11px;font-weight:700;cursor:pointer`
   return `<div class="az-checkin-extra" data-day="${day}" data-player-id="${esc(playerId)}" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:6px;flex-wrap:wrap">
-    <button class="az-extra-toggle" data-field="parent_permission_confirmed" style="${pillStyle(permission)}">${permission ? '✅' : '⬜'} ใบอนุญาตผู้ปกครอง</button>
-    <button class="az-extra-toggle" data-field="attire_confirmed" style="${pillStyle(attire)}">${attire ? '✅' : '⬜'} แต่งกายเรียบร้อย</button>
+    ${showPermission ? `<button class="az-extra-toggle" data-field="parent_permission_confirmed" style="${pillStyle(permission)}">${permission ? '✅' : '⬜'} ใบอนุญาตผู้ปกครอง</button>` : ''}
+    ${showAttire ? `<button class="az-extra-toggle" data-field="attire_confirmed" style="${pillStyle(attire)}">${attire ? '✅' : '⬜'} แต่งกายเรียบร้อย</button>` : ''}
   </div>`
 }
 // ผูก event delegation ให้ปุ่มยืนยันเพิ่มเติม — container ต้องมี .az-checkin-extra อยู่ข้างในตอนคลิก (จะหาแถวปัจจุบันจาก data-day/data-player-id แล้ว toggle ค่าใน S.eventCheckins ตรงตัว)
@@ -1879,8 +2096,9 @@ function eventCheckinFor(playerId, day) { return S.eventCheckins.find(c => c.day
 
 function eventCheckinCounts(level, day) {
   const roster = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
-  const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
-  return { done: roster.filter(p => checkedIds.has(p.id)).length, total: roster.length }
+  const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day && c.confirmed).map(c => c.player_id))
+  const pendingIds = new Set(S.eventCheckins.filter(c => c.day === day && !c.confirmed).map(c => c.player_id))
+  return { done: roster.filter(p => checkedIds.has(p.id)).length, pending: roster.filter(p => pendingIds.has(p.id)).length, total: roster.length }
 }
 
 // ช่วงเวลาเปิด-ปิดรับเช็คอินเข้างาน (ตั้งเวลาเดียว ใช้ซ้ำกับวันที่ของแต่ละวันแข่ง) — ปิดรับ = เส้นตายสำหรับแจ้งเตือนทีมมาไม่ครบ
@@ -1960,7 +2178,7 @@ function incompleteTeamsForDay(day, level = 'ALL') {
   return S.teams.filter(team => level === 'ALL' || team.level === level).map(team => {
     const roster = S.players.filter(p => p.team_id === team.id)
     if (!roster.length) return null
-    const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
+    const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day && c.confirmed).map(c => c.player_id))
     const done = roster.filter(p => checkedIds.has(p.id)).length
     if (done >= roster.length) return null
     return { team, done, total: roster.length }
@@ -1972,7 +2190,7 @@ function teamEventCheckinStatusBlock(roster) {
   if (!roster.length) return ''
   const days = eventCheckinRequiresBothDays() ? [1, 2] : [1]
   const statusFor = day => {
-    const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
+    const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day && c.confirmed).map(c => c.player_id))
     const done = roster.filter(p => checkedIds.has(p.id)).length
     return { done, total: roster.length, complete: done >= roster.length }
   }
@@ -1997,13 +2215,21 @@ function eventSelfCheckinBanner() {
   const player = myEventPlayer()
   if (!player) return ''
   const bothDays = eventCheckinRequiresBothDays()
-  const day1Done = !!eventCheckinFor(player.id, 1)
-  const day2Done = !!eventCheckinFor(player.id, 2)
-  const allDone = bothDays ? (day1Done && day2Done) : day1Done
-  if (allDone) {
+  const c1 = eventCheckinFor(player.id, 1)
+  const c2 = eventCheckinFor(player.id, 2)
+  const day1Confirmed = !!c1?.confirmed
+  const day2Confirmed = !!c2?.confirmed
+  const day1Submitted = !!c1
+  const day2Submitted = !!c2
+  const allConfirmed = bothDays ? (day1Confirmed && day2Confirmed) : day1Confirmed
+  const allSubmitted = bothDays ? (day1Submitted && day2Submitted) : day1Submitted
+  if (allConfirmed) {
     return `<div style="margin-bottom:14px;padding:11px 14px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:8px">✅ เช็คอินเข้างานแล้ว${bothDays ? ` (วันที่ 1 · วันที่ 2)` : ''}</div>`
   }
-  const nextDay = bothDays && day1Done ? 2 : 1
+  if (allSubmitted) {
+    return `<div style="margin-bottom:14px;padding:11px 14px;border-radius:12px;background:#fffbeb;border:1px solid #fde68a;color:#b45309;font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:8px">⏳ ส่งคำขอเช็คอินแล้ว รอสตาฟยืนยันใบอนุญาตผู้ปกครอง/การแต่งกายที่จุดลงทะเบียน</div>`
+  }
+  const nextDay = bothDays && day1Submitted ? 2 : 1
   return `<button data-act="openEventSelfCheckin" style="width:100%;margin-bottom:14px;padding:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:800;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">📷 เช็คอินเข้างาน (วันที่ ${nextDay})</button>`
 }
 
@@ -2028,13 +2254,14 @@ function eventCheckinPanel(showSettings) {
     ${eventCheckinDayTabs()}
     ${windowLabel ? `<div style="font-size:11px;color:#6b7280;margin-bottom:8px">🕐 ${esc(windowLabel)}</div>` : ''}
     <div style="display:flex;gap:14px;margin-bottom:12px;font-size:11.5px;color:#6b7280">
-      <div>${T.MS.label}: <b style="color:${T.MS.accent}">${msCount.done}/${msCount.total}</b></div>
-      <div>${T.HS.label}: <b style="color:${T.HS.accent}">${hsCount.done}/${hsCount.total}</b></div>
+      <div>${T.MS.label}: <b style="color:${T.MS.accent}">${msCount.done}/${msCount.total}</b>${msCount.pending ? ` <span style="color:#d97706">(รอยืนยัน ${msCount.pending})</span>` : ''}</div>
+      <div>${T.HS.label}: <b style="color:${T.HS.accent}">${hsCount.done}/${hsCount.total}</b>${hsCount.pending ? ` <span style="color:#d97706">(รอยืนยัน ${hsCount.pending})</span>` : ''}</div>
     </div>
     <div style="display:flex;gap:8px">
       <button data-act="openEventCheckinScanner" data-day="${day}" style="flex:1;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">📷 สแกนเช็คอิน</button>
       <button data-act="openEventCheckinBigScreen" data-day="${day}" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:800;font-size:12.5px;cursor:pointer">🖥️ จอใหญ่หน้าลงทะเบียน</button>
     </div>
+    ${eventCheckinRequiresAnyExtra() ? `<button data-act="openEventCheckinPendingReview" data-day="${day}" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;font-weight:800;font-size:12.5px;cursor:pointer">🕐 รอสตาฟยืนยัน (${(msCount.pending || 0) + (hsCount.pending || 0)} คน)</button>` : ''}
     ${showSettings ? `
     <div style="margin-top:14px;display:flex;gap:6px">
       ${['ALL', 'MS', 'HS'].map(v => `<button data-act="setEventCheckinIncompleteLevel" data-v="${v}" style="flex:1;padding:6px;border-radius:8px;border:1px solid ${incompleteLevel === v ? '#db2777' : '#e5e7eb'};background:${incompleteLevel === v ? '#db2777' : '#fff'};color:${incompleteLevel === v ? '#fff' : '#374151'};font-weight:700;font-size:11.5px;cursor:pointer">${v === 'ALL' ? 'ทั้งหมด' : T[v].label}</button>`).join('')}
@@ -2064,7 +2291,7 @@ function eventCheckinPanel(showSettings) {
       </div>
       <div style="display:flex;gap:8px">
         <button data-act="useCurrentGPSForVenue" style="flex:1;padding:8px;border-radius:9px;border:1px dashed #0ea5e9;background:#f0f9ff;color:#0369a1;font-weight:700;font-size:12px;cursor:pointer">📍 ใช้พิกัดปัจจุบัน (ยืนที่สนามแล้วกด)</button>
-        <button data-act="viewVenueOnMap" style="flex-shrink:0;padding:8px 14px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12px;cursor:pointer">🗺️ ดูบนแผนที่</button>
+        <button data-act="viewVenueOnMap" style="flex-shrink:0;padding:8px 14px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12px;cursor:pointer">🗺️ ดูแผนที่</button>
       </div>
       <label style="display:block;margin-top:8px;font-size:11.5px;color:#6b7280">รัศมีที่อนุญาต (เมตร)
         <input id="evci-venue-radius" type="number" min="10" value="${esc(cfg('EVENT_VENUE_RADIUS', '150'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
@@ -2078,7 +2305,21 @@ function eventCheckinPanel(showSettings) {
         <button data-act="toggleEventCheckinBothDays" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${eventCheckinRequiresBothDays() ? '#dcfce7' : '#f3f4f6'};color:${eventCheckinRequiresBothDays() ? '#16a34a' : '#6b7280'}">${eventCheckinRequiresBothDays() ? 'บังคับ 2 วัน' : 'วันแรกพอ'}</button>
       </div>
       <div style="font-size:10.5px;color:#9ca3af;margin-top:6px">ถ้าปิด นักกีฬาจะถือว่าเช็คอินครบแค่เช็คอินวันแรก แต่ยังสแกนวันที่ 2 ได้ตามปกติ</div>
-      <button data-act="resetAllEventCheckins" style="width:100%;margin-top:12px;padding:9px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-weight:700;font-size:12px;cursor:pointer">🗑️ ล้างการเช็คอินเข้างานทั้งหมด (ทั้ง 2 วัน)</button>
+    </div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6">
+      <div style="font-size:12px;color:#374151;font-weight:700;margin-bottom:8px">บังคับตรวจก่อนนับว่าเช็คอินสำเร็จ</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+        <span style="font-size:12px;color:#374151;font-weight:600">ใบอนุญาตผู้ปกครอง</span>
+        <button data-act="toggleEventCheckinRequirePermission" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${eventCheckinRequiresParentPermission() ? '#dcfce7' : '#f3f4f6'};color:${eventCheckinRequiresParentPermission() ? '#16a34a' : '#6b7280'}">${eventCheckinRequiresParentPermission() ? 'บังคับตรวจ' : 'ไม่บังคับ'}</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-size:12px;color:#374151;font-weight:600">แต่งกายเรียบร้อย</span>
+        <button data-act="toggleEventCheckinRequireAttire" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${eventCheckinRequiresAttire() ? '#dcfce7' : '#f3f4f6'};color:${eventCheckinRequiresAttire() ? '#16a34a' : '#6b7280'}">${eventCheckinRequiresAttire() ? 'บังคับตรวจ' : 'ไม่บังคับ'}</button>
+      </div>
+      <div style="font-size:10.5px;color:#9ca3af;margin-top:6px">ถ้าเปิด: สตาฟต้องติ๊กครบก่อนถึงจะบันทึกเช็คอินได้ ส่วนนักกีฬาที่สแกนเอง ระบบจะบันทึกเป็น "รอยืนยัน" จนกว่าสตาฟจะไปยืนยันในหน้าจอรีวิว (นักกีฬายืนยันเองไม่ได้)</div>
+    </div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f3f4f6">
+      <button data-act="resetAllEventCheckins" style="width:100%;padding:9px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-weight:700;font-size:12px;cursor:pointer">🗑️ ล้างการเช็คอินเข้างานทั้งหมด (ทั้ง 2 วัน)</button>
     </div>` : ''}
   `)
 }
@@ -2813,7 +3054,7 @@ function manageTeamView(team, isAdminView, readOnly) {
                   `}
                 </div>
                 ${badgeBits.length ? `<div style="margin-top:3px;font-size:11px;color:#4b5563;font-weight:700">${badgeBits.join('  ')}</div>` : ''}
-                <div style="margin-top:3px;font-size:10.5px;color:#9ca3af">📷 ${eventCheckinRequiresBothDays() ? `วันที่1 ${eventCheckinFor(p.id, 1) ? '✅' : '❌'} · วันที่2 ${eventCheckinFor(p.id, 2) ? '✅' : '❌'}` : `เช็คอินเข้างาน ${eventCheckinFor(p.id, 1) ? '✅' : '❌'}`}</div>
+                <div style="margin-top:3px;font-size:10.5px;color:#9ca3af">📷 ${eventCheckinRequiresBothDays() ? `วันที่1 ${eventCheckinStatusIcon(p.id, 1)} · วันที่2 ${eventCheckinStatusIcon(p.id, 2)}` : `เช็คอินเข้างาน ${eventCheckinStatusIcon(p.id, 1)}`}</div>
                 ${roleButtons(p) ? `<div style="margin-top:2px">${roleButtons(p)}</div>` : ''}
               </div>
               ${editable ? `<button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">ลบ</button>` : ''}
@@ -4657,10 +4898,21 @@ function bindEvents() {
     if (act === 'setEventCheckinIncompleteLevel') { S.eventCheckinIncompleteLevel = btn.dataset.v; draw(); return }
     if (act === 'openEventCheckinScanner') { openEventCheckinScanner(Number(btn.dataset.day)); return }
     if (act === 'openEventCheckinBigScreen') { openEventCheckinBigScreen(Number(btn.dataset.day)); return }
+    if (act === 'openEventCheckinPendingReview') { openEventCheckinPendingReview(Number(btn.dataset.day)); return }
     if (act === 'openEventSelfCheckin') { openEventSelfCheckinScanner(); return }
     if (act === 'toggleEventCheckinBothDays') {
       const cur = eventCheckinRequiresBothDays()
       await SB.from('azfutsal_config').upsert({ key: 'EVENT_CHECKIN_REQUIRE_BOTH_DAYS', value: cur ? '0' : '1' })
+      await refresh(); return
+    }
+    if (act === 'toggleEventCheckinRequirePermission') {
+      const cur = eventCheckinRequiresParentPermission()
+      await SB.from('azfutsal_config').upsert({ key: 'EVENT_CHECKIN_REQUIRE_PARENT_PERMISSION', value: cur ? '0' : '1' })
+      await refresh(); return
+    }
+    if (act === 'toggleEventCheckinRequireAttire') {
+      const cur = eventCheckinRequiresAttire()
+      await SB.from('azfutsal_config').upsert({ key: 'EVENT_CHECKIN_REQUIRE_ATTIRE', value: cur ? '0' : '1' })
       await refresh(); return
     }
     if (act === 'saveEventCheckinWindow') {
@@ -4681,10 +4933,11 @@ function bindEvents() {
       return
     }
     if (act === 'viewVenueOnMap') {
-      const lat = gid('evci-venue-lat').value.trim()
-      const lng = gid('evci-venue-lng').value.trim()
-      if (!lat || !lng) { azToast('ยังไม่มีพิกัดให้ดู กรอกหรือกด "ใช้พิกัดปัจจุบัน" ก่อน'); return }
-      window.open(`https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`, '_blank', 'noopener')
+      const lat = parseFloat(gid('evci-venue-lat').value.trim())
+      const lng = parseFloat(gid('evci-venue-lng').value.trim())
+      const radius = parseFloat(gid('evci-venue-radius').value.trim()) || 150
+      if (Number.isNaN(lat) || Number.isNaN(lng)) { azToast('ยังไม่มีพิกัดให้ดู กรอกหรือกด "ใช้พิกัดปัจจุบัน" ก่อน'); return }
+      openVenueMapPreview(lat, lng, radius)
       return
     }
     if (act === 'saveEventVenueGeofence') {
