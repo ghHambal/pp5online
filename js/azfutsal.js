@@ -236,7 +236,7 @@ async function loadAll() {
     SB.from('azfutsal_awards').select('id, level, award_type, student_id, students(id, full_name)'),
     SB.from('azfutsal_match_events').select('id, level, match_code, team_id, player_id, event_type, minute, is_penalty, created_at').order('created_at'),
     SB.from('azfutsal_checkins').select('id, level, match_code, team_id, player_id, checked_in_by, checked_in_at'),
-    SB.from('azfutsal_event_checkins').select('id, day, team_id, player_id, checked_in_by, method, checked_in_at'),
+    SB.from('azfutsal_event_checkins').select('id, day, team_id, player_id, checked_in_by, method, checked_in_at, parent_permission_confirmed, attire_confirmed'),
   ])
   S.config = Object.fromEntries((config || []).map(r => [r.key, r.value]))
   applyThemeColors()
@@ -1276,6 +1276,7 @@ function openEventCheckinScanner(day) {
     </div>`
   document.body.appendChild(overlay)
   wireJerseyEditHandlers(overlay.querySelector('#az-evci-feedback'), id => allRoster.find(p => String(p.id) === String(id)))
+  wireCheckinExtraHandlers(overlay.querySelector('#az-evci-feedback'))
 
   const checkedIds = new Set(S.eventCheckins.filter(c => c.day === day).map(c => c.player_id))
   let recentIds = []
@@ -1326,6 +1327,9 @@ function openEventCheckinScanner(day) {
       feedback.innerHTML = `<span style="color:#f87171">บันทึกไม่สำเร็จ: ${esc(error.message)}</span>`
       return
     }
+    // เก็บลง S.eventCheckins ในเครื่องทันที (ไม่รอ refresh) ให้ปุ่มยืนยันเพิ่มเติมด้านล่างหาแถวเช็คอินนี้เจอได้เลย
+    const newCheckin = { id: null, day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'staff', checked_in_at: new Date().toISOString(), parent_permission_confirmed: false, attire_confirmed: false }
+    S.eventCheckins.push(newCheckin)
     _azPlayScanBeep('success'); flash(true)
     const photoUrl = playerPhotoUrl(player)
     const photoHtml = photoUrl
@@ -1340,7 +1344,8 @@ function openEventCheckinScanner(day) {
           <div style="color:#94a3b8;font-size:11px">${esc(teamName(player.team_id))}</div>
         </div>
       </div>
-      ${jerseyConfirmRowHtml(player)}`
+      ${jerseyConfirmRowHtml(player)}
+      ${checkinExtraRowHtml(day, player.id, newCheckin)}`
     checkedIds.add(player.id)
     recentIds.unshift(player.id)
     recentIds = recentIds.slice(0, 30)
@@ -1431,12 +1436,19 @@ function openEventSelfCheckinScanner() {
         <div style="color:#94a3b8;font-size:13px;margin-top:2px">${esc(teamName(player.team_id))} · วันที่ ${day}</div>
       </div>
       <div id="az-evsc-jersey-wrap" style="width:100%"></div>
+      <div id="az-evsc-extra-wrap" style="width:100%"></div>
       <button id="az-evsc-done" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16a34a;color:#fff;font-weight:800;font-size:15px;cursor:pointer">✓ เสร็จสิ้น</button>`
     const jerseyWrap = successEl.querySelector('#az-evsc-jersey-wrap')
+    const extraWrap = successEl.querySelector('#az-evsc-extra-wrap')
     const doneBtn = successEl.querySelector('#az-evsc-done')
     const hasJersey = player.jersey_number !== null && player.jersey_number !== undefined
     jerseyWrap.innerHTML = hasJersey ? jerseySelfViewBlock(player) : jerseySelfEditBlock(player)
     wireJerseySelfHandlers(jerseyWrap, player, doneBtn)
+    const checkin = eventCheckinFor(player.id, day)
+    if (checkin) {
+      extraWrap.innerHTML = checkinExtraRowHtml(day, player.id, checkin)
+      wireCheckinExtraHandlers(extraWrap)
+    }
     doneBtn.addEventListener('click', () => {
       if (doneBtn.disabled) return
       overlay.remove()
@@ -1504,6 +1516,8 @@ function openEventSelfCheckinScanner() {
       return
     }
     done = true
+    // เก็บลง S.eventCheckins ในเครื่องทันที (ไม่รอ refresh) ให้ปุ่มยืนยันเพิ่มเติมในหน้าจอสำเร็จหาแถวเช็คอินนี้เจอได้เลย
+    S.eventCheckins.push({ id: null, day, team_id: player.team_id, player_id: player.id, checked_in_by: S.identity.profile?.id || null, method: 'self', checked_in_at: new Date().toISOString(), parent_permission_confirmed: false, attire_confirmed: false })
     _azPlayScanBeep('success'); flash(true)
     await showSuccessScreen(day)
   }
@@ -1824,6 +1838,37 @@ function wireJerseySelfHandlers(wrapEl, player, doneBtn) {
   updateDoneBtn()
 }
 
+// ปุ่มยืนยันเพิ่มเติมตอนเช็คอินเข้างาน (ใบอนุญาตผู้ปกครอง / แต่งกายเรียบร้อย) — เป็น toggle ไม่บังคับกด ใช้ร่วมกันทั้งการ์ดสตาฟสแกนและการ์ดนักกีฬาสแกนเอง
+function checkinExtraRowHtml(day, playerId, checkin) {
+  const permission = !!checkin?.parent_permission_confirmed
+  const attire = !!checkin?.attire_confirmed
+  const pillStyle = on => `flex:1;min-width:130px;padding:8px;border-radius:9px;border:1px solid ${on ? '#16a34a' : '#334155'};background:${on ? 'rgba(22,163,74,.18)' : 'transparent'};color:${on ? '#4ade80' : '#94a3b8'};font-size:11px;font-weight:700;cursor:pointer`
+  return `<div class="az-checkin-extra" data-day="${day}" data-player-id="${esc(playerId)}" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:6px;flex-wrap:wrap">
+    <button class="az-extra-toggle" data-field="parent_permission_confirmed" style="${pillStyle(permission)}">${permission ? '✅' : '⬜'} ใบอนุญาตผู้ปกครอง</button>
+    <button class="az-extra-toggle" data-field="attire_confirmed" style="${pillStyle(attire)}">${attire ? '✅' : '⬜'} แต่งกายเรียบร้อย</button>
+  </div>`
+}
+// ผูก event delegation ให้ปุ่มยืนยันเพิ่มเติม — container ต้องมี .az-checkin-extra อยู่ข้างในตอนคลิก (จะหาแถวปัจจุบันจาก data-day/data-player-id แล้ว toggle ค่าใน S.eventCheckins ตรงตัว)
+function wireCheckinExtraHandlers(container) {
+  container.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.az-extra-toggle')
+    if (!btn) return
+    const wrap = btn.closest('.az-checkin-extra')
+    if (!wrap) return
+    const day = Number(wrap.dataset.day)
+    const playerId = wrap.dataset.playerId
+    const checkin = eventCheckinFor(playerId, day)
+    if (!checkin) return
+    const field = btn.dataset.field
+    const newVal = !checkin[field]
+    const { error } = await SB.from('azfutsal_event_checkins').update({ [field]: newVal }).eq('day', day).eq('player_id', playerId)
+    if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+    checkin[field] = newVal
+    wrap.outerHTML = checkinExtraRowHtml(day, playerId, checkin)
+    refresh()
+  })
+}
+
 // player row ของนักเรียนที่ล็อกอินอยู่ตอนนี้ (สำหรับปุ่ม "เช็คอินเข้างานด้วยตัวเอง" ในพอร์ทัลนักเรียน)
 function myEventPlayer() {
   if (!S.identity.student) return null
@@ -2017,7 +2062,10 @@ function eventCheckinPanel(showSettings) {
         <input id="evci-venue-lat" type="text" inputmode="decimal" placeholder="ละติจูด" value="${esc(cfg('EVENT_VENUE_LAT', ''))}" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"/>
         <input id="evci-venue-lng" type="text" inputmode="decimal" placeholder="ลองจิจูด" value="${esc(cfg('EVENT_VENUE_LNG', ''))}" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"/>
       </div>
-      <button data-act="useCurrentGPSForVenue" style="width:100%;padding:8px;border-radius:9px;border:1px dashed #0ea5e9;background:#f0f9ff;color:#0369a1;font-weight:700;font-size:12px;cursor:pointer">📍 ใช้พิกัดปัจจุบันของอุปกรณ์นี้ (ยืนที่สนามแล้วกด)</button>
+      <div style="display:flex;gap:8px">
+        <button data-act="useCurrentGPSForVenue" style="flex:1;padding:8px;border-radius:9px;border:1px dashed #0ea5e9;background:#f0f9ff;color:#0369a1;font-weight:700;font-size:12px;cursor:pointer">📍 ใช้พิกัดปัจจุบัน (ยืนที่สนามแล้วกด)</button>
+        <button data-act="viewVenueOnMap" style="flex-shrink:0;padding:8px 14px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-weight:700;font-size:12px;cursor:pointer">🗺️ ดูบนแผนที่</button>
+      </div>
       <label style="display:block;margin-top:8px;font-size:11.5px;color:#6b7280">รัศมีที่อนุญาต (เมตร)
         <input id="evci-venue-radius" type="number" min="10" value="${esc(cfg('EVENT_VENUE_RADIUS', '150'))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/>
       </label>
@@ -4630,6 +4678,13 @@ function bindEvents() {
       if (latInput) latInput.value = pos.lat.toFixed(6)
       if (lngInput) lngInput.value = pos.lng.toFixed(6)
       azToast('อ่านพิกัดสำเร็จ — ตรวจสอบแล้วกดบันทึกพิกัดสถานที่')
+      return
+    }
+    if (act === 'viewVenueOnMap') {
+      const lat = gid('evci-venue-lat').value.trim()
+      const lng = gid('evci-venue-lng').value.trim()
+      if (!lat || !lng) { azToast('ยังไม่มีพิกัดให้ดู กรอกหรือกด "ใช้พิกัดปัจจุบัน" ก่อน'); return }
+      window.open(`https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`, '_blank', 'noopener')
       return
     }
     if (act === 'saveEventVenueGeofence') {
