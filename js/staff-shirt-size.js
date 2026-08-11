@@ -6,6 +6,14 @@ const root = document.getElementById('staff-shirt-root')
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const PREFIX_OPTIONS = ['นาย', 'นาง', 'นางสาว', 'อื่นๆ']
 
+// เตือนตั้งแต่แรกเห็นหน้า — เจอเหตุการณ์จริง 2026-08-11 มีครู 33 คนเข้าใจผิดมาแจ้งไซซ์ที่หน้านี้
+// (เพราะแจ้งได้เหมือนกัน แต่ข้อมูลไปลงคนละตารางกับระบบครูจริง) เพิ่มแบนเนอร์เตือนแบบ passive ไว้ก่อน
+const teacherWarningBannerHtml = () => `
+  <div class="rounded-xl px-3 py-2.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-start gap-2">
+    <span class="flex-shrink-0">📌</span>
+    <span><b>คุณครูที่มีบัญชีเข้าระบบ ปพ.5</b> กรุณาแจ้งไซซ์ผ่านระบบของตัวเอง (ล็อกอิน → หน้าภาพรวม → ปุ่ม "👕 แจ้งไซซ์เสื้อ") แทนหน้านี้ — หน้านี้สำหรับบุคลากรที่ไม่มีบัญชีเข้าระบบเท่านั้น</span>
+  </div>`
+
 async function fetchOptions(password) {
   const { data, error } = await supabase.rpc('get_personnel_shirt_size_options', { p_password: password })
   if (error) throw error
@@ -27,6 +35,7 @@ function renderGate(onSuccess) {
         <h2 class="font-bold text-slate-800 mt-2">กรุณาใส่รหัสผ่าน</h2>
         <p class="text-xs text-slate-500 mt-1">ขอรหัสผ่านได้จากฝ่ายที่รับผิดชอบเรื่องเสื้อกีฬาสี</p>
       </div>
+      ${teacherWarningBannerHtml()}
       <input id="gate-password" type="password" placeholder="รหัสผ่าน" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-center tracking-widest" autofocus>
       <button id="gate-submit" class="w-full py-2.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold">เข้าแจ้งไซซ์เสื้อ</button>
       <p id="gate-error" class="text-xs text-red-500 text-center hidden">รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่</p>
@@ -97,6 +106,7 @@ function renderForm(password, options) {
   root.innerHTML = `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
       ${tabBarHtml('new')}
+      ${teacherWarningBannerHtml()}
       ${identityFieldsHtml()}
       <p class="text-[10.5px] text-slate-400 -mt-3">พิมพ์คำนำหน้าชื่อ+ชื่อเดิมอีกครั้งได้ถ้าต้องการแก้ไขไซซ์ที่เคยแจ้งไว้</p>
       <div>
@@ -132,13 +142,12 @@ function renderForm(password, options) {
     })
   })
 
-  root.querySelector('#staff-submit').onclick = async () => {
-    const { prefix, fullName } = readIdentityFields()
-    const size = root.querySelector('#staff-size').value
-    if (!prefix) { feedback(false, 'กรุณาเลือก (หรือระบุ) คำนำหน้าชื่อ'); return }
-    if (!fullName) { feedback(false, 'กรุณากรอกชื่อ-นามสกุล'); return }
-    if (!gender) { feedback(false, 'กรุณาเลือกเพศ'); return }
-    if (!size) { feedback(false, 'กรุณาเลือกไซซ์เสื้อ'); return }
+  let confirmedNotTeacher = false
+  root.querySelector('#staff-prefix').addEventListener('change', () => { confirmedNotTeacher = false })
+  root.querySelector('#staff-prefix-custom').addEventListener('input', () => { confirmedNotTeacher = false })
+  root.querySelector('#staff-name').addEventListener('input', () => { confirmedNotTeacher = false })
+
+  const doSubmit = async (fullName, size) => {
     const btn = root.querySelector('#staff-submit')
     btn.disabled = true
     try {
@@ -147,6 +156,38 @@ function renderForm(password, options) {
     } catch (e) {
       feedback(false, e?.message || 'บันทึกไม่สำเร็จ กรุณาลองใหม่')
       btn.disabled = false
+    }
+  }
+
+  root.querySelector('#staff-submit').onclick = async () => {
+    const { prefix, fullName } = readIdentityFields()
+    const size = root.querySelector('#staff-size').value
+    if (!prefix) { feedback(false, 'กรุณาเลือก (หรือระบุ) คำนำหน้าชื่อ'); return }
+    if (!fullName) { feedback(false, 'กรุณากรอกชื่อ-นามสกุล'); return }
+    if (!gender) { feedback(false, 'กรุณาเลือกเพศ'); return }
+    if (!size) { feedback(false, 'กรุณาเลือกไซซ์เสื้อ'); return }
+
+    if (confirmedNotTeacher) { await doSubmit(fullName, size); return }
+
+    const btn = root.querySelector('#staff-submit')
+    btn.disabled = true
+    try {
+      const { data, error } = await supabase.rpc('check_personnel_name_is_teacher', { p_password: password, p_full_name: fullName })
+      if (error) throw error
+      if (data?.is_teacher) {
+        btn.disabled = false
+        root.querySelector('#staff-feedback').innerHTML = `
+          <div class="rounded-xl px-3 py-3 text-xs font-semibold bg-amber-50 text-amber-800 border-2 border-amber-300 space-y-2">
+            <p>⚠️ ชื่อ "${esc(fullName)}" ตรงกับรายชื่อ<b>คุณครู</b>ในระบบ ปพ.5 — ถ้าคุณเป็นครูคนนี้ กรุณาไปแจ้งไซซ์ผ่านระบบ ปพ.5 แทน (ล็อกอิน → หน้าภาพรวม → ปุ่ม "แจ้งไซซ์เสื้อ") ไม่ใช่หน้านี้</p>
+            <button type="button" id="staff-confirm-not-teacher" class="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs">ไม่ใช่ครูคนนี้ ยืนยันแจ้งไซซ์ต่อ</button>
+          </div>`
+        root.querySelector('#staff-confirm-not-teacher').onclick = () => { confirmedNotTeacher = true; doSubmit(fullName, size) }
+        return
+      }
+      await doSubmit(fullName, size)
+    } catch (e) {
+      btn.disabled = false
+      feedback(false, e?.message || 'ตรวจสอบไม่สำเร็จ กรุณาลองใหม่')
     }
   }
 }
