@@ -1909,6 +1909,31 @@ function scheduleDayFor(level, code) {
   return matchNumber <= dayOneLastMatch ? 1 : 2
 }
 
+// ลำดับนัด [level, code] ของวันหนึ่งๆ ตามที่ "จัดตารางอัตโนมัติ" ใช้ไล่เวลา (สลับ ม.ต้น/ม.ปลาย) — แยกออกมาให้ทั้งจัดตารางครั้งแรก
+// และฟีเจอร์ "เลื่อนนัดถัดไปอัตโนมัติ" (เช่นตอนคั่นด้วยพิธีเปิด) ใช้ลำดับเดียวกันเป๊ะ ไม่มีทางเพี้ยนกัน
+function daySequenceCodes(day) {
+  const alternate = (msCodes, hsCodes) => {
+    const codes = []
+    for (let i = 0; i < Math.max(msCodes.length, hsCodes.length); i += 1) {
+      if (msCodes[i]) codes.push(msCodes[i])
+      if (hsCodes[i]) codes.push(hsCodes[i])
+    }
+    return codes
+  }
+  const dayCodes = d => ['MS', 'HS'].map(level => BRACKET[level]
+    .filter(match => scheduleDayFor(level, match.code) === d)
+    .filter(match => d === 1 || (match.code !== THIRD_CODE[level] && match.code !== FINAL_CODE[level]))
+    .map(match => [level, match.code]))
+  if (day === 1) {
+    const [dayOneMs, dayOneHs] = dayCodes(1)
+    return alternate(dayOneMs, dayOneHs)
+  }
+  const [dayTwoMs, dayTwoHs] = dayCodes(2)
+  const codes = alternate(dayTwoMs, dayTwoHs)
+  codes.push(['MS', THIRD_CODE.MS], ['HS', THIRD_CODE.HS], ['MS', FINAL_CODE.MS], ['HS', FINAL_CODE.HS])
+  return codes
+}
+
 function scheduleDateLabel(day) {
   const dateValue = scheduleDayStart(day).slice(0, 10)
   if (!dateValue) return 'ยังไม่ได้กำหนดวันที่'
@@ -3999,6 +4024,7 @@ function matchEditorModal() {
         <label style="font-size:11.5px;color:#6b7280;flex:1">เวลาแข่ง<input id="mx-kickoff" placeholder="HH:MM" value="${esc(m.kickoff_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
         <label style="font-size:11.5px;color:#6b7280;flex:1">รายงานตัว<input id="mx-ready" placeholder="HH:MM" value="${esc(m.ready_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
       </div>
+      <button data-act="saveMatchAndShift" data-level="${level}" data-code="${code}" style="padding:9px;border:1px dashed #db2777;border-radius:10px;background:#fdf2f8;color:#db2777;font-weight:700;font-size:12px;cursor:pointer">⏩ ใช้เวลานี้ + เลื่อนนัดที่เหลือของวันนี้ตามไปด้วย (เช่น คั่นพิธีเปิด)</button>
       ${r.teamAId && r.teamBId && (S.identity.isAdmin || (S.identity.scopes || []).includes('checkin')) ? (() => {
         const checkedCount = S.checkins.filter(c => c.level === level && c.match_code === code).length
         const totalCount = S.players.filter(p => p.team_id === r.teamAId || p.team_id === r.teamBId).length
@@ -4547,6 +4573,39 @@ function bindEvents() {
       return
     }
     if (act === 'saveMatch') { await handleSaveMatch(btn.dataset.level, btn.dataset.code); return }
+    if (act === 'saveMatchAndShift') {
+      const level = btn.dataset.level, code = btn.dataset.code
+      const newKickoff = gid('mx-kickoff').value.trim()
+      if (!/^\d{1,2}:\d{2}$/.test(newKickoff)) { azToast('กรุณากรอกเวลาแข่งของนัดนี้ให้ถูกต้องก่อน (HH:MM)'); return }
+      const day = scheduleDayFor(level, code)
+      const seq = daySequenceCodes(day)
+      const idx = seq.findIndex(([lv, cd]) => lv === level && cd === code)
+      if (idx === -1) { azToast('ไม่พบนัดนี้ในลำดับตารางของวันนี้'); return }
+      const matchMin = Number(cfg('MATCH_MIN', 20)) || 20
+      const breakMin = Number(cfg('BREAK_MIN', 5)) || 5
+      const [hh, mm] = newKickoff.split(':').map(Number)
+      let time = new Date()
+      time.setHours(hh, mm, 0, 0)
+      let q = azQueueGet()
+      for (let i = idx; i < seq.length; i += 1) {
+        const [lv, cd] = seq[i]
+        const kickoff = time.toTimeString().slice(0, 5)
+        const ready = new Date(time.getTime() - 5 * 60000).toTimeString().slice(0, 5)
+        const payload = { level: lv, match_code: cd, kickoff_time: kickoff, ready_time: ready, duration_min: matchMin, break_min: breakMin }
+        const m = matchByCode(lv, cd)
+        if (m) Object.assign(m, payload)
+        else S.matches[lv].push(payload)
+        q = q.filter(item => !(item.type === 'saveMatch' && item.payload.level === lv && item.payload.match_code === cd))
+        q.push({ localId: azMakeLocalId(), type: 'saveMatch', payload })
+        time = new Date(time.getTime() + (matchMin + breakMin) * 60000)
+      }
+      azQueueSet(q)
+      S.editMatch = null
+      draw()
+      azTriggerBackgroundSync()
+      azToast(`ปรับเวลานัดนี้และเลื่อนอีก ${seq.length - idx - 1} นัดที่เหลือของวันนี้แล้ว`)
+      return
+    }
     if (act === 'seedMatches') { await handleSeedMatches(btn.dataset.level); return }
     if (act === 'randomDraw') { await handleRandomDraw(btn.dataset.level); return }
     if (act === 'setMsFormat') {
@@ -4709,30 +4768,9 @@ function bindEvents() {
         { key: 'MATCH_MIN', value: String(matchMin) },
         { key: 'BREAK_MIN', value: String(breakMin) },
       ])
-      const msThirdCode = THIRD_CODE.MS
-      const hsThirdCode = THIRD_CODE.HS
-      const msFinalCode = FINAL_CODE.MS
-      const hsFinalCode = FINAL_CODE.HS
-      const alternate = (msCodes, hsCodes) => {
-        const codes = []
-        for (let i = 0; i < Math.max(msCodes.length, hsCodes.length); i += 1) {
-          if (msCodes[i]) codes.push(msCodes[i])
-          if (hsCodes[i]) codes.push(hsCodes[i])
-        }
-        return codes
-      }
-      const dayCodes = day => ['MS', 'HS'].map(level => BRACKET[level]
-        .filter(match => scheduleDayFor(level, match.code) === day)
-        .filter(match => day === 1 || (match.code !== THIRD_CODE[level] && match.code !== FINAL_CODE[level]))
-        .map(match => [level, match.code]))
-      const [dayOneMs, dayOneHs] = dayCodes(1)
-      const [dayTwoMs, dayTwoHs] = dayCodes(2)
-      const dayOneCodes = alternate(dayOneMs, dayOneHs)
-      const dayTwoCodes = alternate(dayTwoMs, dayTwoHs)
-      dayTwoCodes.push(['MS', msThirdCode], ['HS', hsThirdCode], ['MS', msFinalCode], ['HS', hsFinalCode])
       const rows = [
-        { start: firstDayStart, codes: dayOneCodes },
-        { start: secondDayStart, codes: dayTwoCodes },
+        { start: firstDayStart, codes: daySequenceCodes(1) },
+        { start: secondDayStart, codes: daySequenceCodes(2) },
       ].flatMap(day => {
         let time = new Date(day.start)
         return day.codes.map(([level, code]) => {
