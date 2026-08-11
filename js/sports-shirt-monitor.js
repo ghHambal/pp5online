@@ -11,12 +11,6 @@ const LOGO_URLS = [
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
-// รูปนักเรียนแบบสี่เหลี่ยมขอบมนแนวตั้ง (ตามธีมเดิมของระบบ ห้ามวงกลม) — ห้ามใส่ loading="lazy"
-// ในเซลล์ที่อยู่ใน #print-content (ซ่อนด้วย display:none จนกว่าจะสั่งพิมพ์ lazy จะไม่โหลดเลย)
-const photoImg = url => url
-  ? `<img src="${esc(url)}" style="width:20px;height:26px;border-radius:4px;object-fit:cover;border:1px solid #cbd5e1;vertical-align:middle;margin-right:5px">`
-  : ''
-
 // สถานะไซซ์ — คำเดิมเป๊ะจาก js/sports-portals.js (badge/statusClass) ห้ามคิดคำใหม่
 const sizeBadgeLabel = s => ({ pending: 'รอยืนยัน', confirmed: 'ยืนยันแล้ว', advisor_updated: 'ครูเลือก/แก้ไขแทน' }[s] || 'ยังไม่จำนง')
 const sizeConfirmed = s => s === 'confirmed' || s === 'advisor_updated'
@@ -91,13 +85,22 @@ function renderDashboard(snapshot) {
   // บุคลากรที่ไม่ใช่ครู (พิมพ์ชื่อเองอิสระ ไม่มีบัญชี ไม่มีรายชื่อล่วงหน้า) — คนละแหล่งข้อมูลกับครูโดย
   // สิ้นเชิง ไม่มีแนวคิด "ยังไม่แจ้ง" เพราะไม่รู้ว่าบุคลากรทั้งหมดมีกี่คน มีแต่คนที่แจ้งแล้วเท่านั้น
   const personnel = snapshot.personnel_shirt_requests || []
+  // ครูที่ปรึกษาสามัญต่อห้อง — ห้องหนึ่งอาจมีมากกว่า 1 คน (co-teacher) รวมชื่อด้วย " / "
+  const homeroomTeacherMap = {}
+  ;(snapshot.homeroom_teachers || []).forEach(h => {
+    homeroomTeacherMap[h.main_room] = homeroomTeacherMap[h.main_room] ? `${homeroomTeacherMap[h.main_room]} / ${h.teacher_name}` : h.teacher_name
+  })
+  const homeroomTeacherOf = room => homeroomTeacherMap[room] || '—'
 
   let activeTab = 'size' // 'size' | 'payment' | 'teacher'
   let roleFilter = 'teacher' // 'teacher' | 'personnel' — เฉพาะตอน activeTab==='teacher'
   let gender = 'ALL' // 'M' | 'W' | 'ALL'
   let selectedColorId = null
   let selectedSize = null
-  let statusFilter = 'all' // size: 'all'|'pending' — payment: 'all'|'unpaid' — teacher: 'all'|'not_reported'
+  let selectedLevel = null // 'ม.1' | 'ม.2' | ... | 'ปวช.' | null
+  let searchQuery = ''
+  let viewMode = 'list' // 'list' | 'summary' — เฉพาะแท็บนักเรียน (size/payment)
+  let statusFilter = 'all' // size: 'all'|'pending'|'confirmed' — payment: 'all'|'unpaid' — teacher: 'all'|'not_reported'
 
   const requestOf = id => (snapshot.shirt_requests || []).find(r => r.student_id === id)
   const paymentOf = id => (snapshot.shirt_payments || []).find(p => p.student_id === id)
@@ -114,13 +117,29 @@ function renderDashboard(snapshot) {
   const computeRows = () => {
     let list = baseStudents()
     if (selectedColorId) list = list.filter(s => s.team_color_id === selectedColorId)
+    if (selectedLevel) list = list.filter(s => levelOf(s.main_room) === selectedLevel)
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      list = list.filter(s =>
+        (s.full_name || '').toLowerCase().includes(q) ||
+        (s.student_code || '').toLowerCase().includes(q) ||
+        (s.main_room || '').toLowerCase().includes(q) ||
+        (s.color_name || '').toLowerCase().includes(q))
+    }
     if (activeTab === 'size') {
       if (selectedSize) list = list.filter(s => requestOf(s.id)?.confirmed_size === selectedSize)
       if (statusFilter === 'pending') list = list.filter(s => !rowStatus(s).sizeOk)
+      if (statusFilter === 'confirmed') list = list.filter(s => rowStatus(s).sizeOk)
     } else if (paymentsOpen && statusFilter === 'unpaid') {
       list = list.filter(s => amountForGender(s.gender) > 0 && !rowStatus(s).paid)
     }
     return list
+  }
+
+  // รายการระดับชั้นที่มีจริง (จากขอบเขตเพศที่เลือกอยู่) เรียงตาม levelSortKey — ใช้ทำแถบตัวกรอง
+  const levelsAvailable = () => {
+    const set = new Set(baseStudents().map(s => levelOf(s.main_room)))
+    return [...set].sort((a, b) => levelSortKey(a) - levelSortKey(b))
   }
 
   root.innerHTML = `
@@ -140,6 +159,11 @@ function renderDashboard(snapshot) {
 
       <div id="role-filter-row" class="no-print"></div>
 
+      <div id="search-row" class="no-print">
+        <input id="shirt-search" type="text" placeholder="🔍 ค้นหาชื่อ/รหัส/ห้อง/สี — พิมพ์อะไรก็เจอ" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white">
+      </div>
+      <div id="level-filter-row" class="no-print"></div>
+
       <p id="scope-line" class="no-print text-xs text-slate-500"></p>
 
       <div id="color-cards" class="no-print grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
@@ -148,6 +172,7 @@ function renderDashboard(snapshot) {
       <div class="no-print bg-white rounded-xl border border-slate-200 p-3 flex flex-wrap items-center gap-3">
         <span class="text-xs font-bold text-slate-500">กรองสถานะ:</span>
         <div id="status-filter" class="inline-flex p-1 rounded-xl bg-slate-100 gap-1"></div>
+        <div id="view-mode-row" class="inline-flex p-1 rounded-xl bg-slate-100 gap-1 ml-auto"></div>
       </div>
 
       <div class="no-print flex flex-wrap gap-2">
@@ -237,32 +262,96 @@ function renderDashboard(snapshot) {
   const renderStatusFilter = () => {
     const el = root.querySelector('#status-filter')
     const options = activeTab === 'size'
-      ? [['all', 'ทั้งหมด'], ['pending', 'ไซซ์ยังไม่ยืนยัน']]
+      ? [['all', 'ทั้งหมด'], ['pending', 'ไซซ์ยังไม่ยืนยัน'], ['confirmed', 'ยืนยันแล้ว']]
       : (paymentsOpen ? [['all', 'ทั้งหมด'], ['unpaid', 'ยังไม่ชำระ']] : [['all', 'ทั้งหมด']])
     el.innerHTML = options.map(([v, label]) => `<button type="button" data-status="${v}" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === v ? 'bg-pink-600 text-white' : 'text-slate-500'}">${esc(label)}</button>`).join('')
     el.querySelectorAll('[data-status]').forEach(b => b.onclick = () => { statusFilter = b.dataset.status; render() })
   }
 
+  // ---- ตัวกรองระดับชั้น (ม.1-ม.6/ปวช.) — เฉพาะแท็บนักเรียน (size/payment) ----
+  const renderLevelFilter = () => {
+    const el = root.querySelector('#level-filter-row')
+    const levels = levelsAvailable()
+    if (levels.length <= 1) { el.innerHTML = ''; return }
+    el.innerHTML = `<div class="flex flex-wrap gap-1.5">
+      <button type="button" data-level="" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${!selectedLevel ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-500 border-slate-200'}">ทุกระดับชั้น</button>
+      ${levels.map(lv => `<button type="button" data-level="${esc(lv)}" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${selectedLevel === lv ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-slate-500 border-slate-200'}">${esc(lv)}</button>`).join('')}
+    </div>`
+    el.querySelectorAll('[data-level]').forEach(b => b.onclick = () => { selectedLevel = b.dataset.level || null; render() })
+  }
+
+  // ---- สลับมุมมอง "รายชื่อ" / "สรุปตามห้อง" — เฉพาะแท็บนักเรียน (size/payment) ----
+  const renderViewModeToggle = () => {
+    const el = root.querySelector('#view-mode-row')
+    el.innerHTML = `
+      <button type="button" data-view="list" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-pink-600 text-white' : 'text-slate-500'}">📋 รายชื่อ</button>
+      <button type="button" data-view="summary" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'summary' ? 'bg-pink-600 text-white' : 'text-slate-500'}">📊 สรุปตามห้อง</button>`
+    el.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { viewMode = b.dataset.view; render() })
+  }
+
+  // ---- จัดกลุ่มแถวเป็นรายห้อง (ใช้ทั้งมุมมองรายชื่อและสรุป) ----
+  const groupByRoom = rows => {
+    const byRoom = {}
+    rows.forEach(s => { (byRoom[s.main_room || 'ไม่ระบุห้อง'] = byRoom[s.main_room || 'ไม่ระบุห้อง'] || []).push(s) })
+    return Object.keys(byRoom).sort((a, b) => { const [ka, kb] = [roomSortKey(a), roomSortKey(b)]; return ka[0] - kb[0] || ka[1] - kb[1] }).map(room => ({ room, students: byRoom[room] }))
+  }
+
   // ---- เอกสารพิมพ์ (โลโก้+หัวเรื่อง+สถิติ+ตารางเดียวต่อชั้น) — ยึดตาม tab + ตัวกรองที่เลือกอยู่ ----
+  // เดิมพิมพ์แล้วค้าง "Loading preview" นานมาก (เจอจริง 125 หน้า) เพราะใส่รูปนักเรียนทุกแถวทุกคน
+  // (โหลด <img> เป็นร้อยๆ พร้อมกันตอน render preview) — ตัดรูปออกจากเอกสารพิมพ์แบบละเอียดทั้งหมด
+  // (ไม่จำเป็นสำหรับเอกสารเช็ครายชื่อ/ไซซ์) เบาลงมาก และเพิ่มโหมด "สรุปตามห้อง" ที่เบากว่าเดิมอีก
+  // (1 แถวต่อห้อง ไม่ใช่ 1 แถวต่อคน) ให้เจ้าหน้าที่เลือกพิมพ์แบบสรุปได้เวลาข้อมูลเยอะมาก
   const buildDocument = () => {
     const rows = computeRows()
-    const byLevel = {}
-    rows.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || []).push(s) })
-    const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
     const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
     const genderLabel = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : ''
     const colorLabel = selectedColorId ? colors.find(c => c.id === selectedColorId)?.name : ''
+    const levelLabel = selectedLevel ? ` — ชั้น${selectedLevel}` : ''
     const title = activeTab === 'size' ? 'รายชื่อนักเรียน — ไซซ์เสื้อกีฬาสี' : 'รายชื่อนักเรียน — ค่าเสื้อกีฬาสี'
+    const headerBlock = subtitle => `
+      ${logoRow}
+      <div style="text-align:center;margin-bottom:10px">
+        <h2 style="font-size:16px;margin:0 0 4px">${esc(title)}${genderLabel ? esc(genderLabel) : ''}${colorLabel ? ` — สี${esc(colorLabel)}` : ''}${selectedSize ? ` — ไซซ์ ${esc(selectedSize)}` : ''}${esc(levelLabel)}</h2>
+        <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
+        ${subtitle ? `<p style="font-size:14px;margin:6px 0 0;font-weight:bold">${esc(subtitle)}</p>` : ''}
+      </div>`
+
+    if (viewMode === 'summary') {
+      // สรุปตามห้องแบบพิมพ์ — ตารางเดียวจบทุกห้อง ไม่แบ่งหน้าตามชั้น เบามาก พิมพ์ไวแม้ข้อมูลเยอะ
+      const groups = groupByRoom(rows)
+      return `<div style="padding-top:12px">
+        ${headerBlock('สรุปตามห้อง')}
+        <div style="text-align:center;margin-bottom:10px;font-size:12px">จำนวนทั้งหมด: <b>${rows.length}</b> คน</div>
+        <table style="width:100%;border-collapse:collapse;font-size:10.5px">
+          <thead><tr>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ห้อง</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left;width:100%">ครูที่ปรึกษา</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">จำนวน</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">${activeTab === 'size' ? 'ยืนยันแล้ว' : 'ชำระแล้ว'}</th>
+            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">${activeTab === 'size' ? 'ยังไม่ยืนยัน' : 'ยังไม่ชำระ'}</th>
+          </tr></thead>
+          <tbody>${groups.map(({ room, students }) => {
+            const okCount = activeTab === 'size' ? students.filter(s => rowStatus(s).sizeOk).length : students.filter(s => rowStatus(s).paid).length
+            return `<tr>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(room)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(homeroomTeacherOf(room))}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${students.length}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${okCount}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${students.length - okCount}</td>
+            </tr>`
+          }).join('')}</tbody>
+        </table>
+      </div>`
+    }
+
+    const byLevel = {}
+    rows.forEach(s => { const lv = levelOf(s.main_room); (byLevel[lv] = byLevel[lv] || []).push(s) })
+    const levels = Object.keys(byLevel).sort((a, b) => levelSortKey(a) - levelSortKey(b))
 
     return levels.map((lv, idx) => {
       const rowsOfLevel = [...byLevel[lv]].sort(byRoomThenName)
       return `<div style="${idx > 0 ? 'page-break-before:always;' : ''}padding-top:12px">
-        ${logoRow}
-        <div style="text-align:center;margin-bottom:10px">
-          <h2 style="font-size:16px;margin:0 0 4px">${esc(title)}${genderLabel ? esc(genderLabel) : ''}${colorLabel ? ` — สี${esc(colorLabel)}` : ''}${selectedSize ? ` — ไซซ์ ${esc(selectedSize)}` : ''}</h2>
-          <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
-          <p style="font-size:14px;margin:6px 0 0;font-weight:bold">ชั้น ${esc(lv)}</p>
-        </div>
+        ${headerBlock(`ชั้น ${lv}`)}
         <div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px;font-size:12px">
           <span>จำนวน: <b>${rowsOfLevel.length}</b> คน</span>
         </div>
@@ -282,7 +371,7 @@ function renderDashboard(snapshot) {
             return `<tr>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${i + 1}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.student_code)}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 6px">${photoImg(s.photo_url)}${esc(s.full_name)}</td>
+              <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(s.full_name)}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.main_room || '—')}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.color_name || '—')}</td>
               ${activeTab === 'size'
@@ -301,14 +390,17 @@ function renderDashboard(snapshot) {
   // ล่วงหน้า จึงมีแต่คนที่แจ้งแล้วเท่านั้น ไม่มีแนวคิด "ยังไม่แจ้ง")
   const personnelOf = g => g === 'ALL' ? personnel : personnel.filter(p => p.gender === g)
   const teacherRows = () => {
+    const q = searchQuery.trim().toLowerCase()
     if (roleFilter === 'personnel') {
       let list = personnelOf(gender)
       if (selectedSize) list = list.filter(p => p.size === selectedSize)
+      if (q) list = list.filter(p => (p.full_name || '').toLowerCase().includes(q))
       return list
     }
     let list = gender === 'ALL' ? teachers : teachers.filter(t => t.gender === gender)
     if (selectedSize) list = list.filter(t => teacherRequestOf(t.id)?.size === selectedSize)
     if (statusFilter === 'not_reported') list = list.filter(t => !teacherRequestOf(t.id))
+    if (q) list = list.filter(t => (t.full_name || '').toLowerCase().includes(q) || (t.teacher_code || '').toLowerCase().includes(q))
     return list
   }
   const renderTeacherView = () => {
@@ -393,11 +485,53 @@ function renderDashboard(snapshot) {
     root.querySelector('#print-content').innerHTML = ''
   }
 
+  // ---- มุมมอง "สรุปตามห้อง" — หนึ่งแถวต่อห้อง มีชื่อครูที่ปรึกษา เบาพอสำหรับพิมพ์ได้ไม่ค้าง ----
+  const renderRoomSummaryTable = rows => {
+    const groups = groupByRoom(rows)
+    if (!groups.length) return `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ ไม่มีรายชื่อตามเงื่อนไขที่เลือก</div>`
+    return `
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead><tr class="text-slate-400 text-left bg-slate-50">
+            <th class="p-2 font-bold">ห้อง</th><th class="p-2 font-bold">ครูที่ปรึกษา</th><th class="p-2 font-bold text-center">จำนวน</th>
+            ${activeTab === 'size'
+              ? '<th class="p-2 font-bold text-center">ยืนยันแล้ว</th><th class="p-2 font-bold text-center">ยังไม่ยืนยัน</th>'
+              : '<th class="p-2 font-bold text-center">ชำระแล้ว</th><th class="p-2 font-bold text-center">ยังไม่ชำระ</th>'}
+          </tr></thead>
+          <tbody>${groups.map(({ room, students }) => {
+            const okCount = activeTab === 'size'
+              ? students.filter(s => rowStatus(s).sizeOk).length
+              : students.filter(s => rowStatus(s).paid).length
+            return `<tr class="border-t border-slate-100">
+              <td class="p-2 font-bold text-slate-700 whitespace-nowrap">${esc(room)}</td>
+              <td class="p-2 text-slate-600">${esc(homeroomTeacherOf(room))}</td>
+              <td class="p-2 text-center">${students.length}</td>
+              <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${okCount}</span></td>
+              <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">${students.length - okCount}</span></td>
+            </tr>`
+          }).join('')}</tbody>
+        </table>
+      </div>`
+  }
+
   const render = () => {
     root.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === activeTab; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
     root.querySelectorAll('[data-gender]').forEach(b => { const on = b.dataset.gender === gender; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
 
-    if (activeTab === 'teacher') { renderTeacherView(); return }
+    // ช่องค้นหาเป็น element เดียวที่มีอยู่แล้วในเทมเพลตหลัก (ไม่สร้างใหม่ทุกครั้ง กัน cursor กระโดด
+    // ตอนพิมพ์) แค่ปรับ placeholder/ค่า/handler ให้ตรงแท็บที่เลือกอยู่ — ใช้ .oninput= (ไม่ใช่
+    // addEventListener) กัน handler ซ้อนทับกันทุกครั้งที่ render() ถูกเรียกใหม่
+    const searchEl = root.querySelector('#shirt-search')
+    searchEl.placeholder = activeTab === 'teacher' ? '🔍 ค้นหาชื่อ...' : '🔍 ค้นหาชื่อ/รหัส/ห้อง/สี — พิมพ์อะไรก็เจอ'
+    if (searchEl.value !== searchQuery) searchEl.value = searchQuery
+    searchEl.oninput = e => { searchQuery = e.target.value; render() }
+
+    if (activeTab === 'teacher') {
+      root.querySelector('#level-filter-row').innerHTML = ''
+      root.querySelector('#view-mode-row').innerHTML = ''
+      renderTeacherView()
+      return
+    }
     root.querySelector('#role-filter-row').innerHTML = ''
 
     const scope = baseStudents()
@@ -407,53 +541,57 @@ function renderDashboard(snapshot) {
     renderColorCards()
     renderSizeGrid()
     renderStatusFilter()
+    renderLevelFilter()
+    renderViewModeToggle()
 
     const rows = computeRows()
-    const byRoom = {}
-    rows.forEach(s => { (byRoom[s.main_room || 'ไม่ระบุห้อง'] = byRoom[s.main_room || 'ไม่ระบุห้อง'] || []).push(s) })
-    const rooms = Object.keys(byRoom).sort((a, b) => { const [ka, kb] = [roomSortKey(a), roomSortKey(b)]; return ka[0] - kb[0] || ka[1] - kb[1] })
-    root.querySelector('#shirt-list').innerHTML = rooms.length ? rooms.map(room => `
-      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-          <b class="text-sm">ห้อง ${esc(room)}</b>
-          <span class="text-xs text-slate-500 font-bold">${byRoom[room].length} คน</span>
-        </div>
-        <table class="w-full text-xs">
-          <thead><tr class="text-slate-400 text-left">
-            <th class="p-2 font-bold">รหัส</th><th class="p-2 font-bold">ชื่อ-สกุล</th><th class="p-2 font-bold text-center">สี</th>
-            ${activeTab === 'size'
-              ? '<th class="p-2 font-bold text-center">ไซซ์จำนง</th><th class="p-2 font-bold text-center">ไซซ์ยืนยัน</th><th class="p-2 font-bold text-center">สถานะไซซ์</th>'
-              : (paymentsOpen ? '<th class="p-2 font-bold text-center">สถานะชำระ</th><th class="p-2 font-bold text-right">จำนวนเงิน</th>' : '<th class="p-2 font-bold text-center">สถานะชำระ</th>')}
-          </tr></thead>
-          <tbody>${byRoom[room].sort((a, b) => a.full_name.localeCompare(b.full_name, 'th')).map(s => {
-            const st = rowStatus(s)
-            const colorObj = colors.find(c => c.id === s.team_color_id)
-            return `<tr class="border-t border-slate-100">
-              <td class="p-2 w-24 text-slate-500">${esc(s.student_code)}</td>
-              <td class="p-2">
-                <div class="flex items-center gap-2">
-                  ${s.photo_url
-                    ? `<img src="${esc(s.photo_url)}" alt="" class="w-7 h-9 rounded-md object-cover border border-slate-200 bg-slate-100 flex-shrink-0 shadow-sm" loading="lazy">`
-                    : `<div class="w-7 h-9 rounded-md bg-slate-100 text-slate-400 grid place-items-center flex-shrink-0 border border-slate-200 text-[10px] font-bold">${esc((s.full_name || '?').charAt(0))}</div>`}
-                  <span>${esc(s.full_name)}</span>
-                </div>
-              </td>
-              <td class="p-2 text-center"><span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full inline-block" style="background:${esc(colorObj?.hex_color || '#94a3b8')}"></span>${esc(s.color_name || '—')}</span></td>
-              ${activeTab === 'size' ? `
-                <td class="p-2 text-center">${esc(st.req?.requested_size || '—')}</td>
-                <td class="p-2 text-center">${esc(st.req?.confirmed_size || '—')}</td>
-                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.sizeOk ? 'bg-emerald-100 text-emerald-700' : st.sizeStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}">${esc(sizeBadgeLabel(st.sizeStatus))}</span></td>
-              ` : paymentsOpen ? (amountForGender(s.gender) > 0 ? `
-                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</span></td>
-                <td class="p-2 text-right">${st.paid ? `${Number(st.pay.amount).toLocaleString('th-TH')} บาท` : '—'}</td>
-              ` : `
-                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอราคา</span></td>
-                <td class="p-2 text-right text-slate-400">—</td>
-              `) : `<td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอประกาศราคา</span></td>`}
-            </tr>`
-          }).join('')}</tbody>
-        </table>
-      </div>`).join('') : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ ไม่มีรายชื่อตามเงื่อนไขที่เลือก</div>`
+    if (viewMode === 'summary') {
+      root.querySelector('#shirt-list').innerHTML = renderRoomSummaryTable(rows)
+    } else {
+      const groups = groupByRoom(rows)
+      root.querySelector('#shirt-list').innerHTML = groups.length ? groups.map(({ room, students }) => `
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+            <div><b class="text-sm">ห้อง ${esc(room)}</b><span class="text-xs text-slate-500 ml-2">ครูที่ปรึกษา: ${esc(homeroomTeacherOf(room))}</span></div>
+            <span class="text-xs text-slate-500 font-bold">${students.length} คน</span>
+          </div>
+          <table class="w-full text-xs">
+            <thead><tr class="text-slate-400 text-left">
+              <th class="p-2 font-bold">รหัส</th><th class="p-2 font-bold">ชื่อ-สกุล</th><th class="p-2 font-bold text-center">สี</th>
+              ${activeTab === 'size'
+                ? '<th class="p-2 font-bold text-center">ไซซ์จำนง</th><th class="p-2 font-bold text-center">ไซซ์ยืนยัน</th><th class="p-2 font-bold text-center">สถานะไซซ์</th>'
+                : (paymentsOpen ? '<th class="p-2 font-bold text-center">สถานะชำระ</th><th class="p-2 font-bold text-right">จำนวนเงิน</th>' : '<th class="p-2 font-bold text-center">สถานะชำระ</th>')}
+            </tr></thead>
+            <tbody>${students.sort((a, b) => a.full_name.localeCompare(b.full_name, 'th')).map(s => {
+              const st = rowStatus(s)
+              const colorObj = colors.find(c => c.id === s.team_color_id)
+              return `<tr class="border-t border-slate-100">
+                <td class="p-2 w-24 text-slate-500">${esc(s.student_code)}</td>
+                <td class="p-2">
+                  <div class="flex items-center gap-2">
+                    ${s.photo_url
+                      ? `<img src="${esc(s.photo_url)}" alt="" class="w-7 h-9 rounded-md object-cover border border-slate-200 bg-slate-100 flex-shrink-0 shadow-sm" loading="lazy">`
+                      : `<div class="w-7 h-9 rounded-md bg-slate-100 text-slate-400 grid place-items-center flex-shrink-0 border border-slate-200 text-[10px] font-bold">${esc((s.full_name || '?').charAt(0))}</div>`}
+                    <span>${esc(s.full_name)}</span>
+                  </div>
+                </td>
+                <td class="p-2 text-center"><span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full inline-block" style="background:${esc(colorObj?.hex_color || '#94a3b8')}"></span>${esc(s.color_name || '—')}</span></td>
+                ${activeTab === 'size' ? `
+                  <td class="p-2 text-center">${esc(st.req?.requested_size || '—')}</td>
+                  <td class="p-2 text-center">${esc(st.req?.confirmed_size || '—')}</td>
+                  <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.sizeOk ? 'bg-emerald-100 text-emerald-700' : st.sizeStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}">${esc(sizeBadgeLabel(st.sizeStatus))}</span></td>
+                ` : paymentsOpen ? (amountForGender(s.gender) > 0 ? `
+                  <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${st.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</span></td>
+                  <td class="p-2 text-right">${st.paid ? `${Number(st.pay.amount).toLocaleString('th-TH')} บาท` : '—'}</td>
+                ` : `
+                  <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอราคา</span></td>
+                  <td class="p-2 text-right text-slate-400">—</td>
+                `) : `<td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">รอประกาศราคา</span></td>`}
+              </tr>`
+            }).join('')}</tbody>
+          </table>
+        </div>`).join('') : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ ไม่มีรายชื่อตามเงื่อนไขที่เลือก</div>`
+    }
 
     root.querySelector('#print-content').innerHTML = buildDocument() || `<p style="text-align:center;padding:40px">ไม่มีข้อมูลนักเรียน</p>`
   }
@@ -492,24 +630,43 @@ function renderDashboard(snapshot) {
       return
     }
     const rows = computeRows().sort(byRoomThenName)
+    const colorTag = selectedColorId ? `-${colors.find(c => c.id === selectedColorId)?.name || ''}` : ''
+    const levelTag = selectedLevel ? `-ชั้น${selectedLevel}` : ''
+
+    if (viewMode === 'summary') {
+      const groups = groupByRoom(rows)
+      const header = activeTab === 'size'
+        ? ['ห้อง', 'ครูที่ปรึกษา', 'จำนวน', 'ยืนยันแล้ว', 'ยังไม่ยืนยัน']
+        : ['ห้อง', 'ครูที่ปรึกษา', 'จำนวน', 'ชำระแล้ว', 'ยังไม่ชำระ']
+      const body = groups.map(({ room, students }) => {
+        const okCount = activeTab === 'size' ? students.filter(s => rowStatus(s).sizeOk).length : students.filter(s => rowStatus(s).paid).length
+        return [room, homeroomTeacherOf(room), students.length, okCount, students.length - okCount].map(q).join(',')
+      })
+      const csvRows = [header.map(q).join(','), ...body]
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv' }))
+      a.download = `สรุปตามห้อง-${activeTab === 'size' ? 'ไซซ์เสื้อ' : 'ค่าเสื้อ'}กีฬาสี-${genderTag}${colorTag}${levelTag}${sizeTag}.csv`
+      a.click(); URL.revokeObjectURL(a.href)
+      return
+    }
+
     const header = activeTab === 'size'
-      ? ['ห้อง', 'รหัส', 'ชื่อ-สกุล', 'สี', 'ไซซ์ที่จำนง', 'ไซซ์ที่ยืนยัน', 'สถานะไซซ์']
-      : ['ห้อง', 'รหัส', 'ชื่อ-สกุล', 'สี', 'สถานะชำระ', 'วันที่ชำระ', 'จำนวนเงิน', 'วิธีชำระ']
+      ? ['ห้อง', 'ครูที่ปรึกษา', 'รหัส', 'ชื่อ-สกุล', 'สี', 'ไซซ์ที่จำนง', 'ไซซ์ที่ยืนยัน', 'สถานะไซซ์']
+      : ['ห้อง', 'ครูที่ปรึกษา', 'รหัส', 'ชื่อ-สกุล', 'สี', 'สถานะชำระ', 'วันที่ชำระ', 'จำนวนเงิน', 'วิธีชำระ']
     const body = rows.map(s => {
       const st = rowStatus(s)
       if (activeTab === 'size') {
-        return [s.main_room, s.student_code, s.full_name, s.color_name, st.req?.requested_size || '', st.req?.confirmed_size || '', sizeBadgeLabel(st.sizeStatus)].map(q).join(',')
+        return [s.main_room, homeroomTeacherOf(s.main_room), s.student_code, s.full_name, s.color_name, st.req?.requested_size || '', st.req?.confirmed_size || '', sizeBadgeLabel(st.sizeStatus)].map(q).join(',')
       }
       const payStatus = amountForGender(s.gender) <= 0 ? 'รอประกาศราคา' : (st.paid ? 'ชำระแล้ว' : 'ยังไม่ชำระ')
       const paidAt = st.paid ? new Date(st.pay.paid_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''
       const methodLabel = st.paid ? (st.pay.method === 'qr' ? 'สแกน QR' : 'กรอกรหัส') : ''
-      return [s.main_room, s.student_code, s.full_name, s.color_name, payStatus, paidAt, st.paid ? Number(st.pay.amount) : '', methodLabel].map(q).join(',')
+      return [s.main_room, homeroomTeacherOf(s.main_room), s.student_code, s.full_name, s.color_name, payStatus, paidAt, st.paid ? Number(st.pay.amount) : '', methodLabel].map(q).join(',')
     })
     const csvRows = [header.map(q).join(','), ...body]
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv' }))
-    const colorTag = selectedColorId ? `-${colors.find(c => c.id === selectedColorId)?.name || ''}` : ''
-    a.download = `${activeTab === 'size' ? 'ไซซ์เสื้อ' : 'ค่าเสื้อ'}กีฬาสี-${genderTag}${colorTag}${sizeTag}.csv`
+    a.download = `${activeTab === 'size' ? 'ไซซ์เสื้อ' : 'ค่าเสื้อ'}กีฬาสี-${genderTag}${colorTag}${levelTag}${sizeTag}.csv`
     a.click(); URL.revokeObjectURL(a.href)
   }
   root.querySelector('#btn-print').onclick = () => window.print()
