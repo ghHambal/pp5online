@@ -372,18 +372,18 @@ function matchClockMinute(m) {
   const sec = matchClockElapsedSeconds(m)
   return sec === null ? null : Math.floor(sec / 60) + 1
 }
-function _azFmtClock(sec) {
-  const neg = sec < 0
-  const abs = Math.abs(sec)
-  const mm = String(Math.floor(abs / 60)).padStart(2, '0')
-  const ss = String(abs % 60).padStart(2, '0')
-  return `${neg ? '+' : ''}${mm}:${ss}`
+function _azFmtClock(sec, halfLimitSec) {
+  const isAddedTime = sec >= halfLimitSec
+  const shownSec = isAddedTime ? sec - halfLimitSec : sec
+  const mm = String(Math.floor(shownSec / 60)).padStart(2, '0')
+  const ss = String(shownSec % 60).padStart(2, '0')
+  return `${isAddedTime ? '+' : ''}${mm}:${ss}`
 }
 // แสดงตัวนับเวลาสด (data-* ให้ _azTickClocks อัปเดตทุกวินาทีโดยไม่ต้อง draw() ใหม่ทั้งหน้า)
 function matchClockDisplay(m, opts = {}) {
   const status = m?.clock_status || 'not_started'
   if (status === 'not_started') return ''
-  const halfMin = Number(cfg('HALF_DURATION_MINUTES', 20))
+  const halfMin = Number(cfg('HALF_DURATION_MINUTES', 7))
   const half = m.clock_half || 1
   const isRunning = status === 'running'
   const halfLabel = half === 2 ? 'ครึ่งหลัง' : 'ครึ่งแรก'
@@ -401,15 +401,15 @@ function _azTickClocks() {
     const startedAt = el.dataset.clockStartedAt
     const elapsedBefore = Number(el.dataset.clockElapsedBefore || 0)
     const halfStartedElapsed = Number(el.dataset.clockHalfStartedElapsed || 0)
-    const halfMin = Number(el.dataset.clockHalfMinutes || 20)
+    const halfMin = Number(el.dataset.clockHalfMinutes || 7)
     let sec = elapsedBefore
     if (status === 'running' && startedAt) sec += Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
     const halfLimitSec = halfMin * 60
     // นับเวลาที่ผ่านไป "เฉพาะครึ่งปัจจุบัน" เทียบกับจุดเริ่มครึ่งนี้จริง (ไม่ใช่ลบด้วยนาทีต่อครึ่งคงที่)
     // กันบั๊ก: ถ้าครึ่งแรกทดเวลาเกิน นาฬิกาครึ่งหลังต้องเริ่มนับใหม่เต็มจำนวนนาทีต่อครึ่งเสมอ ไม่ใช่นับต่อจากทดเวลาครึ่งแรก
     const elapsedInHalf = sec - halfStartedElapsed
-    const remain = halfLimitSec - elapsedInHalf
-    el.textContent = _azFmtClock(remain)
+    // นับขึ้นจาก 00:00 จนครบเวลาต่อครึ่ง จากนั้นเริ่มแสดงเวลาทดเป็น +00:01, +00:02, ...
+    el.textContent = _azFmtClock(Math.max(0, elapsedInHalf), halfLimitSec)
   })
 }
 if (typeof window !== 'undefined' && !window._azClockTickerStarted) {
@@ -553,12 +553,12 @@ function playerGoals(playerId) {
   return S.matchEvents.filter(e => e.event_type === 'goal' && e.player_id === playerId).length
 }
 
-function computeTopScorers(level) {
+function computeTopScorers(level, limit = 20) {
   const counts = new Map()
   S.matchEvents.filter(e => e.event_type === 'goal' && e.level === level).forEach(e => {
     counts.set(e.player_id, (counts.get(e.player_id) || 0) + 1)
   })
-  return Array.from(counts.entries())
+  const rows = Array.from(counts.entries())
     .map(([playerId, goals]) => {
       const p = S.players.find(pl => pl.id === playerId)
       if (!p) return null
@@ -566,7 +566,7 @@ function computeTopScorers(level) {
     })
     .filter(Boolean)
     .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name, 'th'))
-    .slice(0, 20)
+  return Number.isFinite(limit) ? rows.slice(0, limit) : rows
 }
 
 // ผู้เล่นที่ได้ใบเหลือง/ใบแดงมากที่สุดของรุ่นหนึ่งๆ (เรียงตามใบแดงก่อน แล้วค่อยใบเหลือง)
@@ -585,6 +585,21 @@ function computeTopCards(level) {
     .filter(Boolean)
     .sort((a, b) => b.red - a.red || b.yellow - a.yellow || a.name.localeCompare(b.name, 'th'))
     .slice(0, 20)
+}
+
+function computeCardRecipients(level, type) {
+  const counts = new Map()
+  S.matchEvents.filter(e => e.event_type === type && e.level === level).forEach(e => {
+    counts.set(e.player_id, (counts.get(e.player_id) || 0) + 1)
+  })
+  return Array.from(counts.entries())
+    .map(([playerId, count]) => {
+      const p = S.players.find(pl => pl.id === playerId)
+      if (!p) return null
+      return { name: p.students?.full_name || '', team: teamName(p.team_id), [type]: count, photoUrl: playerPhotoUrl(p) }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b[type] - a[type] || a.name.localeCompare(b.name, 'th'))
 }
 
 function computeSummary(level) {
@@ -2577,21 +2592,53 @@ function openScheduleBigScreen() {
 }
 
 // ---------------- จอใหญ่เฉพาะคู่เดียว — ชื่อทีม+สกอร์ตัวใหญ่เห็นชัดจากระยะไกล ผู้ทำประตู/ใบเหลือง-แดงโชว์รองด้านล่าง ----------------
+// หาลำดับคู่ก่อนหน้า/ถัดไปของคู่ที่ระบุ จากลำดับแข่งขันทั้งสองวัน — คืน [level, code] หรือ null ถ้าไม่มี
+function adjacentMatchCode(level, code, delta) {
+  const seq = [...daySequenceCodes(1), ...daySequenceCodes(2)]
+  const idx = seq.findIndex(([lv, cd]) => lv === level && cd === code)
+  if (idx === -1) return null
+  const target = seq[idx + delta]
+  return target || null
+}
+// หานัดที่ "กำลังแข่งขันอยู่ตอนนี้" ตัวแรกที่เจอ (ทั้งสองวัน/ทั้งสองระดับชั้น) — ใช้กับปุ่ม "คู่ปัจจุบัน"
+function findLiveMatchCode() {
+  const row = allScheduleRowsRaw().find(r => r.m && ['running', 'paused', 'half_break'].includes(r.m.clock_status))
+  return row ? [row.level, row.code] : null
+}
+
 function openMatchBigScreen(level, code) {
   document.getElementById('az-matchbig-overlay')?.remove()
+  let curLevel = level, curCode = code
   const overlay = document.createElement('div')
   overlay.id = 'az-matchbig-overlay'
   overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0b0f1a;display:flex;flex-direction:column;font-family:Sarabun,Arial,sans-serif'
   overlay.innerHTML = `
-    <button id="az-matchbig-close" style="position:absolute;top:16px;right:16px;z-index:10;padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:13px;cursor:pointer">✕ ปิด</button>
+    <div style="position:absolute;top:16px;left:16px;right:16px;z-index:10;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="az-matchbig-prev" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:13px;cursor:pointer">◀ คู่ก่อนหน้า</button>
+        <button id="az-matchbig-live" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.12);color:#4ade80;font-weight:700;font-size:13px;cursor:pointer">🔴 คู่ปัจจุบัน</button>
+        <button id="az-matchbig-next" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:13px;cursor:pointer">คู่ถัดไป ▶</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="az-matchbig-standings" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:13px;cursor:pointer">📊 ดูตารางคะแนน</button>
+        <button id="az-matchbig-close" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:13px;cursor:pointer">✕ ปิด</button>
+      </div>
+    </div>
     <div id="az-matchbig-body" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px"></div>`
   document.body.appendChild(overlay)
 
   function renderBody() {
+    const level = curLevel, code = curCode
     const resolved = resolveMatch(level, code)
     const def = BRACKET[level].find(b => b.code === code) || {}
     const r = { level, code, round: def.round, teamA: resolved.teamA, teamB: resolved.teamB, teamAId: resolved.teamAId, teamBId: resolved.teamBId, m: resolved.match }
     const m = r.m
+    const prevBtn = overlay.querySelector('#az-matchbig-prev')
+    const nextBtn = overlay.querySelector('#az-matchbig-next')
+    const prevTarget = adjacentMatchCode(level, code, -1)
+    const nextTarget = adjacentMatchCode(level, code, 1)
+    if (prevBtn) { prevBtn.disabled = !prevTarget; prevBtn.style.opacity = prevTarget ? '1' : '.4'; prevBtn.style.cursor = prevTarget ? 'pointer' : 'not-allowed' }
+    if (nextBtn) { nextBtn.disabled = !nextTarget; nextBtn.style.opacity = nextTarget ? '1' : '.4'; nextBtn.style.cursor = nextTarget ? 'pointer' : 'not-allowed' }
     const hasScore = m && m.score_a !== null && m.score_b !== null
     const isLive = m && ['running', 'paused', 'half_break'].includes(m.clock_status)
     const liveLabel = m?.clock_status === 'paused' ? 'หยุดเวลา' : m?.clock_status === 'half_break' ? 'พักครึ่ง' : 'กำลังแข่งขัน'
@@ -2648,6 +2695,127 @@ function openMatchBigScreen(level, code) {
   renderBody()
   const intervalId = setInterval(async () => { await refresh(); renderBody() }, 3000)
   overlay.querySelector('#az-matchbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+  overlay.querySelector('#az-matchbig-prev').addEventListener('click', () => {
+    const target = adjacentMatchCode(curLevel, curCode, -1)
+    if (!target) return
+    ;[curLevel, curCode] = target
+    renderBody()
+  })
+  overlay.querySelector('#az-matchbig-next').addEventListener('click', () => {
+    const target = adjacentMatchCode(curLevel, curCode, 1)
+    if (!target) return
+    ;[curLevel, curCode] = target
+    renderBody()
+  })
+  overlay.querySelector('#az-matchbig-live').addEventListener('click', () => {
+    const target = findLiveMatchCode()
+    if (!target) { azToast('ไม่มีคู่ที่กำลังแข่งขันอยู่ตอนนี้'); return }
+    ;[curLevel, curCode] = target
+    renderBody()
+  })
+  overlay.querySelector('#az-matchbig-standings').addEventListener('click', () => { openStandingsBigScreen() })
+}
+
+// ---------------- จอใหญ่ตารางคะแนน — อันดับทีม (ตามประตู/ผลต่างประตู) + ดาวซัลโว + ใบเหลือง-ใบแดงมากที่สุด ----------------
+function openStandingsBigScreen() {
+  document.getElementById('az-standbig-overlay')?.remove()
+  let level = 'MS'
+  const overlay = document.createElement('div')
+  overlay.id = 'az-standbig-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#f8fafc;overflow:hidden;font-family:Sarabun,Arial,sans-serif;display:flex;flex-direction:column'
+  overlay.innerHTML = `
+    <div style="flex-shrink:0;padding:16px 24px;background:linear-gradient(120deg,#db2777,#6366f1 65%,#0ea5e9);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;box-shadow:0 4px 16px rgba(0,0,0,.12)">
+      <div style="font-size:22px;font-weight:900">📊 ${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))} · ตารางคะแนน</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div id="az-standbig-leveltabs" style="display:flex;gap:6px"></div>
+        <button id="az-standbig-close" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer">✕ ปิด</button>
+      </div>
+    </div>
+    <div id="az-standbig-body" style="flex:1;min-height:0;overflow-y:auto;padding:24px"></div>`
+  document.body.appendChild(overlay)
+
+  const levelTabsEl = overlay.querySelector('#az-standbig-leveltabs')
+  const bodyEl = overlay.querySelector('#az-standbig-body')
+  const pillStyle = active => `padding:8px 14px;border-radius:9px;border:1px solid ${active ? '#fff' : 'rgba(255,255,255,.4)'};background:${active ? '#fff' : 'rgba(255,255,255,.12)'};color:${active ? '#db2777' : '#fff'};font-weight:800;font-size:12.5px;cursor:pointer`
+
+  function renderTabs() {
+    levelTabsEl.innerHTML = ['MS', 'HS'].map(v => `<button class="az-standbig-level" data-v="${v}" style="${pillStyle(level === v)}">${T[v].label}</button>`).join('')
+  }
+
+  function renderBody() {
+    const t = T[level]
+    const rows = computeTeamStats(level)
+    const scorers = computeTopScorers(level, Infinity)
+    const yellowLeaders = computeCardRecipients(level, 'yellow')
+    const redLeaders = computeCardRecipients(level, 'red')
+    const playerRanking = (players, type) => players.length ? players.map((player, i) => {
+      const count = type === 'goal' ? player.goals : player[type]
+      const icon = type === 'goal' ? '⚽' : type === 'yellow' ? '🟨' : '🟥'
+      return `<div style="display:flex;align-items:center;gap:12px">
+        <div style="width:22px;font-weight:800;color:#9ca3af;font-size:14px">${i + 1}</div>
+        ${photoTag(player.photoUrl)}
+        <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700">${esc(player.name)}</div><div style="font-size:12.5px;color:#6b7280">${esc(player.team)}</div></div>
+        <div style="font-size:20px;font-weight:900;color:${type === 'red' ? '#dc2626' : type === 'yellow' ? '#d97706' : t.accent}">${icon} ${count}</div>
+      </div>`
+    }).join('') : `<div style="color:#9ca3af;font-size:13px">ยังไม่มีข้อมูล</div>`
+    bodyEl.innerHTML = `
+      <div style="max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:20px">
+        <div style="background:#fff;border:1px solid ${t.border};border-radius:16px;padding:18px;overflow-x:auto">
+          <div style="font-weight:800;font-size:16px;margin-bottom:12px;color:${t.accent}">อันดับทีม · ${t.label}</div>
+          <table style="width:100%;border-collapse:collapse;font-size:15px;white-space:nowrap">
+            <thead><tr>
+              ${['#', 'ทีม', 'GP', 'ชนะ', 'แพ้', 'GF', 'GA', 'GD', 'Y', 'R'].map(h => `<th style="text-align:${h === 'ทีม' ? 'left' : 'center'};padding:9px 10px;font-weight:800;color:#6b7280;border-bottom:2px solid #f3f4f6">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${rows.length ? rows.map((row, i) => `
+                <tr style="background:${i % 2 === 0 ? '#fff' : t.soft}">
+                  <td style="padding:10px;font-weight:700;color:#9ca3af">${i + 1}</td>
+                  <td style="padding:10px;font-weight:800">${esc(row.team)}</td>
+                  <td style="text-align:center;padding:10px">${row.gp}</td>
+                  <td style="text-align:center;padding:10px;color:#16a34a;font-weight:800">${row.w}</td>
+                  <td style="text-align:center;padding:10px;color:#dc2626;font-weight:800">${row.l}</td>
+                  <td style="text-align:center;padding:10px">${row.gf}</td>
+                  <td style="text-align:center;padding:10px">${row.ga}</td>
+                  <td style="text-align:center;padding:10px;font-weight:800">${row.gd}</td>
+                  <td style="text-align:center;padding:10px">${row.y}</td>
+                  <td style="text-align:center;padding:10px">${row.r}</td>
+                </tr>`).join('') : `<tr><td colspan="10" style="text-align:center;padding:24px;color:#9ca3af">ยังไม่มีผลการแข่งขัน</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px">
+          <div style="background:#fff;border:1px solid ${t.border};border-radius:16px;padding:18px">
+            <div style="font-weight:800;font-size:16px;margin-bottom:12px;color:${t.accent}">⚽ ดาวซัลโว · ${t.label}</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              ${playerRanking(scorers, 'goal')}
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid ${t.border};border-radius:16px;padding:18px">
+            <div style="font-weight:800;font-size:16px;margin-bottom:12px;color:#d97706">🟨 ผู้ได้รับใบเหลือง · ${t.label}</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              ${playerRanking(yellowLeaders, 'yellow')}
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid ${t.border};border-radius:16px;padding:18px">
+            <div style="font-weight:800;font-size:16px;margin-bottom:12px;color:#dc2626">🟥 ผู้ได้รับใบแดง · ${t.label}</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              ${playerRanking(redLeaders, 'red')}
+            </div>
+          </div>
+        </div>
+      </div>`
+  }
+
+  renderTabs()
+  renderBody()
+
+  overlay.addEventListener('click', (e) => {
+    const levelBtn = e.target.closest('.az-standbig-level')
+    if (levelBtn) { level = levelBtn.dataset.v; renderTabs(); renderBody(); return }
+  })
+
+  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 5000)
+  overlay.querySelector('#az-standbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
 }
 
 function scheduleTimelineMarkup(rows) {
@@ -5759,9 +5927,9 @@ function adminOps() {
     `)}
     ${box(`
       <div style="font-weight:700;font-size:14px;margin-bottom:4px">นาฬิกาจับเวลาแข่งขันสด</div>
-      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ใช้กับปุ่ม "เริ่มการแข่งขัน" ในหน้าบันทึกผลแต่ละนัด นับถอยหลังตามจำนวนนาทีต่อครึ่งนี้ และประทับเวลาให้ผู้ทำประตู/ใบเหลือง/ใบแดงอัตโนมัติ</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ใช้กับปุ่ม "เริ่มการแข่งขัน" ในหน้าบันทึกผลแต่ละนัด นับขึ้นจาก 00:00 ตามจำนวนนาทีต่อครึ่งนี้ และเมื่อครบเวลาแล้วจะแสดง +เวลาทด พร้อมประทับเวลาให้ผู้ทำประตู/ใบเหลือง/ใบแดงอัตโนมัติ</div>
       <label style="font-size:11.5px;color:#6b7280">นาทีต่อครึ่ง
-        <input id="ops-halfmin" type="number" min="1" value="${esc(cfg('HALF_DURATION_MINUTES', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
+        <input id="ops-halfmin" type="number" min="1" value="${esc(cfg('HALF_DURATION_MINUTES', 7))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
       </label>
       <button data-act="saveHalfDuration" style="margin-top:8px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">บันทึกนาทีต่อครึ่ง</button>
     `)}
