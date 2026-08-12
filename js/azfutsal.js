@@ -2567,10 +2567,87 @@ function openScheduleBigScreen() {
     if (dayBtn) { day = Number(dayBtn.dataset.v); renderTabs(); renderBody(); return }
     const levelBtn = e.target.closest('.az-schedbig-level')
     if (levelBtn) { level = levelBtn.dataset.v; renderTabs(); renderBody(); return }
+    // การ์ดในนี้อยู่นอก ROOT ปุ่ม data-act ปกติจะไม่ทำงาน ต้องดักคลิกเองแล้วเรียกฟังก์ชันตรงๆ
+    const bigBtn = e.target.closest('[data-act="openMatchBigScreen"]')
+    if (bigBtn) { openMatchBigScreen(bigBtn.dataset.level, bigBtn.dataset.code); return }
   })
 
   const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
   overlay.querySelector('#az-schedbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+}
+
+// ---------------- จอใหญ่เฉพาะคู่เดียว — ชื่อทีม+สกอร์ตัวใหญ่เห็นชัดจากระยะไกล ผู้ทำประตู/ใบเหลือง-แดงโชว์รองด้านล่าง ----------------
+function openMatchBigScreen(level, code) {
+  document.getElementById('az-matchbig-overlay')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'az-matchbig-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0b0f1a;display:flex;flex-direction:column;font-family:Sarabun,Arial,sans-serif'
+  overlay.innerHTML = `
+    <button id="az-matchbig-close" style="position:absolute;top:16px;right:16px;z-index:10;padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:13px;cursor:pointer">✕ ปิด</button>
+    <div id="az-matchbig-body" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px"></div>`
+  document.body.appendChild(overlay)
+
+  function renderBody() {
+    const resolved = resolveMatch(level, code)
+    const def = BRACKET[level].find(b => b.code === code) || {}
+    const r = { level, code, round: def.round, teamA: resolved.teamA, teamB: resolved.teamB, teamAId: resolved.teamAId, teamBId: resolved.teamBId, m: resolved.match }
+    const m = r.m
+    const hasScore = m && m.score_a !== null && m.score_b !== null
+    const isLive = m && ['running', 'paused', 'half_break'].includes(m.clock_status)
+    const liveLabel = m?.clock_status === 'paused' ? 'หยุดเวลา' : m?.clock_status === 'half_break' ? 'พักครึ่ง' : 'กำลังแข่งขัน'
+    const evsFor = (teamId, type) => S.matchEvents.filter(e => e.level === level && e.match_code === code && e.team_id === teamId && e.event_type === type)
+    const goalsA = groupEventsByPlayer(evsFor(r.teamAId, 'goal'))
+    const goalsB = groupEventsByPlayer(evsFor(r.teamBId, 'goal'))
+    const yellowA = groupEventsByPlayer(evsFor(r.teamAId, 'yellow'))
+    const yellowB = groupEventsByPlayer(evsFor(r.teamBId, 'yellow'))
+    const redA = groupEventsByPlayer(evsFor(r.teamAId, 'red'))
+    const redB = groupEventsByPlayer(evsFor(r.teamBId, 'red'))
+    const showLive = !hasScore && (goalsA.length > 0 || goalsB.length > 0)
+    const scoreA = hasScore ? m.score_a : (showLive ? goalsA.length : null)
+    const scoreB = hasScore ? m.score_b : (showLive ? goalsB.length : null)
+    const { aWins, bWins } = matchWinnerFlags(m, r.teamAId, r.teamBId)
+
+    const detailBlock = (goals, yellows, reds, align) => {
+      const bits = []
+      if (goals.length) bits.push(`<div style="font-size:18px;color:#e2e8f0;margin-top:6px">⚽ ${esc(goals.join(', '))}</div>`)
+      if (yellows.length) bits.push(`<div style="font-size:18px;color:#fbbf24;margin-top:4px">🟨 ${esc(yellows.join(', '))}</div>`)
+      if (reds.length) bits.push(`<div style="font-size:18px;color:#f87171;margin-top:4px">🟥 ${esc(reds.join(', '))}</div>`)
+      return bits.length ? `<div style="text-align:${align}">${bits.join('')}</div>` : ''
+    }
+    const penaltyLine = penaltyShootoutScoreLine(m)
+
+    const bodyEl = document.getElementById('az-matchbig-body')
+    if (!bodyEl) return
+    bodyEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">${levelBadge(level)}<span style="color:#94a3b8;font-size:16px;font-weight:700">${esc(r.round || '')} · ${esc(code)}</span></div>
+      ${isLive ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="width:12px;height:12px;border-radius:50%;background:#22c55e;${m.clock_status === 'running' ? 'animation:azLivePulse 1.2s ease-in-out infinite' : ''}"></span><span style="color:#4ade80;font-weight:800;font-size:18px">${liveLabel}</span><span style="color:#fff;font-size:18px;font-weight:800">${matchClockDisplay(m, { compact: true })}</span></div>`
+        : hasScore ? `<div style="color:#94a3b8;font-weight:700;font-size:16px;margin-bottom:20px">จบการแข่งขัน</div>`
+        : `<div style="color:#94a3b8;font-weight:700;font-size:16px;margin-bottom:20px">${esc(m?.kickoff_time || 'รอแข่ง')}</div>`}
+      <div style="display:flex;align-items:center;justify-content:center;gap:5vw;width:100%;max-width:1400px">
+        <div style="flex:1;text-align:right;min-width:0">
+          <div style="font-size:min(6vw,64px);font-weight:900;color:${aWins ? '#4ade80' : '#fff'};line-height:1.15;overflow-wrap:break-word">${esc(r.teamA) || 'รอผลรอบก่อน'}</div>
+        </div>
+        <div style="flex-shrink:0;text-align:center">
+          <div style="display:flex;align-items:center;gap:20px;font-size:min(14vw,150px);font-weight:900;color:#fff;line-height:1">
+            <span>${scoreA ?? '-'}</span><span style="color:#475569">:</span><span>${scoreB ?? '-'}</span>
+          </div>
+          ${showLive ? `<div style="font-size:14px;color:#94a3b8;font-weight:700;margin-top:6px">ยังไม่บันทึกผล</div>` : ''}
+          ${penaltyLine ? `<div style="margin-top:6px">${penaltyLine}</div>` : ''}
+        </div>
+        <div style="flex:1;text-align:left;min-width:0">
+          <div style="font-size:min(6vw,64px);font-weight:900;color:${bWins ? '#4ade80' : '#fff'};line-height:1.15;overflow-wrap:break-word">${esc(r.teamB) || 'รอผลรอบก่อน'}</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;gap:5vw;width:100%;max-width:1400px;margin-top:30px">
+        <div style="flex:1;min-width:0">${detailBlock(goalsA, yellowA, redA, 'right')}</div>
+        <div style="flex-shrink:0;width:150px"></div>
+        <div style="flex:1;min-width:0">${detailBlock(goalsB, yellowB, redB, 'left')}</div>
+      </div>`
+  }
+
+  renderBody()
+  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 3000)
+  overlay.querySelector('#az-matchbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
 }
 
 function scheduleTimelineMarkup(rows) {
@@ -2827,13 +2904,16 @@ function matchCard(r, opts) {
       <span style="flex:1"></span>
       ${isLive ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:${liveColor};background:${liveBackground};padding:3px 9px;border-radius:999px"><span style="width:7px;height:7px;border-radius:50%;background:${liveColor};${m.clock_status === 'running' ? 'animation:azLivePulse 1.2s ease-in-out infinite' : ''}"></span>${liveLabel}</span>${matchClockDisplay(m, { compact: true })}`
         : `<span style="font-size:${hasScore ? '10.5px' : '13px'};font-weight:${hasScore ? 700 : 800};color:${hasScore ? '#6b7280' : t.base}">${hasScore ? 'จบการแข่งขัน' : esc(m?.kickoff_time || 'รอแข่ง')}</span>`}
+      <button data-act="openMatchBigScreen" data-level="${r.level}" data-code="${r.code}" title="เปิดเต็มจอคู่นี้" style="flex-shrink:0;border:none;background:none;color:#9ca3af;font-size:14px;cursor:pointer;line-height:1;padding:2px">🖥️</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       ${teamBlock(r.teamA, aWins, 'left')}
       <div style="flex-shrink:0;text-align:center;min-width:56px">
         ${hasScore
           ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800"><span style="color:${aWins ? '#15803d' : '#9ca3af'}">${m.score_a}</span><span style="color:#d1d5db;font-weight:600;font-size:15px">:</span><span style="color:${bWins ? '#15803d' : '#9ca3af'}">${m.score_b}</span></div>${penaltyShootoutScoreLine(m)}`
-          : `<span style="font-size:11px;color:#9ca3af;font-weight:700">VS</span>`}
+          : (goalsA.length || goalsB.length)
+            ? `<div style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:800;color:#9ca3af">${goalsA.length}<span style="color:#d1d5db;font-weight:600;font-size:15px">:</span>${goalsB.length}</div><div style="font-size:8.5px;color:#9ca3af;font-weight:700;margin-top:1px;white-space:nowrap">ยังไม่บันทึกผล</div>`
+            : `<span style="font-size:11px;color:#9ca3af;font-weight:700">VS</span>`}
       </div>
       ${teamBlock(r.teamB, bWins, 'right')}
     </div>
@@ -5154,6 +5234,7 @@ function bindEvents() {
     if (act === 'openEventCheckinScanner') { openEventCheckinScanner(Number(btn.dataset.day)); return }
     if (act === 'openEventCheckinBigScreen') { openEventCheckinBigScreen(Number(btn.dataset.day)); return }
     if (act === 'openScheduleBigScreen') { openScheduleBigScreen(); return }
+    if (act === 'openMatchBigScreen') { openMatchBigScreen(btn.dataset.level, btn.dataset.code); return }
     if (act === 'openEventCheckinPendingReview') { openEventCheckinPendingReview(Number(btn.dataset.day)); return }
     if (act === 'openEventSelfCheckin') { openEventSelfCheckinScanner(); return }
     if (act === 'toggleEventCheckinBothDays') {
