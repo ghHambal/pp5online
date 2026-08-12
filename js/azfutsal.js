@@ -1131,7 +1131,6 @@ function openCheckinScanner(level, code) {
         </div>
       </div>
       <div id="az-ci-feedback" style="background:#151a26;border:1px solid #232838;border-radius:14px;padding:12px;text-align:center;font-size:12px;color:#94a3b8">ยกกล้องส่อง QR ของนักกีฬาเพื่อรายงานตัว</div>
-      <button id="az-ci-copy-first" style="padding:10px;border-radius:12px;border:1px dashed #0ea5e9;background:rgba(14,165,233,.08);color:#38bdf8;font-weight:700;font-size:12px;cursor:pointer">📋 ใช้รายชื่อจากนัดแรกที่แต่ละทีมเคยรายงานตัว</button>
       <div style="background:#151a26;border:1px solid #232838;border-radius:14px;padding:12px">
         <div style="font-size:10.5px;color:#94a3b8;font-weight:800;margin-bottom:8px">ไม่มี QR? กรอกรหัสนักเรียนแทนได้</div>
         <div style="display:flex;gap:8px">
@@ -1244,45 +1243,53 @@ function openCheckinScanner(level, code) {
   overlay.querySelector('#az-ci-manual-submit').addEventListener('click', submitManualCode)
   manualInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitManualCode() })
 
-  // หานัดแรกสุด (เลขนัดน้อยสุด ไม่นับนัดปัจจุบัน) ที่ทีมนี้เคยมีคนรายงานตัวไว้ — ใช้เป็นต้นทางคัดลอกรายชื่อ
+  // หานัดแรกสุด (เลขนัดน้อยสุด ไม่นับนัดปัจจุบัน) ที่ทีมนี้เคยมีคนรายงานตัวไว้ — ใช้เป็นต้นทางหนึ่งของ "รู้ว่ามาแล้ว"
   function earliestCheckinMatchCodeForTeam(teamId) {
     const codes = [...new Set(S.checkins.filter(c => c.team_id === teamId && c.match_code !== code).map(c => c.match_code))]
     if (!codes.length) return null
     codes.sort((a, b) => Number(String(a).replace(/^M/, '')) - Number(String(b).replace(/^M/, '')))
     return codes[0]
   }
-  async function copyCheckinsFromFirstMatch(team, roster) {
-    if (!team) return { copied: 0, source: null }
+  // รวม id คนที่ "รู้แล้วว่ามาสนามจริง" ของทีมนี้ จาก 2 แหล่ง: (1) นัดแรกสุดที่เคยรายงานตัวรายนัด (2) เช็คอินเข้างานตอนเช้าที่สตาฟ/ระบบยืนยันแล้ว (confirmed) ของวันเดียวกับนัดนี้
+  function knownPresentPlayerIds(team) {
+    const ids = new Set()
     const sourceCode = earliestCheckinMatchCodeForTeam(team.id)
-    if (!sourceCode) return { copied: 0, source: null }
-    const sourceIds = new Set(S.checkins.filter(c => c.level === level && c.match_code === sourceCode && c.team_id === team.id).map(c => c.player_id))
-    const toCopy = roster.filter(p => sourceIds.has(p.id) && !checkedIds.has(p.id))
-    if (!toCopy.length) return { copied: 0, source: sourceCode }
+    if (sourceCode) {
+      S.checkins.filter(c => c.level === level && c.match_code === sourceCode && c.team_id === team.id).forEach(c => ids.add(c.player_id))
+    }
+    const day = scheduleDayFor(level, code)
+    S.eventCheckins.filter(c => c.day === day && c.team_id === team.id && c.confirmed).forEach(c => ids.add(c.player_id))
+    return ids
+  }
+  async function copyKnownPresentPlayers(team, roster) {
+    if (!team) return { copied: 0 }
+    const ids = knownPresentPlayerIds(team)
+    const toCopy = roster.filter(p => ids.has(p.id) && !checkedIds.has(p.id))
+    if (!toCopy.length) return { copied: 0 }
     const rows = toCopy.map(p => ({ level, match_code: code, team_id: team.id, player_id: p.id, checked_in_by: S.identity.profile?.id || null, checked_in_at: new Date().toISOString() }))
     const { error } = await SB.from('azfutsal_checkins').upsert(rows, { onConflict: 'level,match_code,player_id' })
     if (error) throw error
     toCopy.forEach(p => checkedIds.add(p.id))
-    return { copied: toCopy.length, source: sourceCode }
+    return { copied: toCopy.length }
   }
-  overlay.querySelector('#az-ci-copy-first').addEventListener('click', async () => {
+  // นำรายชื่อที่รู้อยู่แล้วว่ามาสนามจริง (นัดแรกที่เคยรายงานตัว + เช็คอินเข้างานตอนเช้า) มาใช้อัตโนมัติทันทีที่เปิดสแกนเนอร์ (ไม่ต้องกดปุ่ม)
+  // ใครไม่ได้มาจริงในนัดนี้ ให้กด ✕ ยกเลิกออกทีหลังในลิสต์ได้ตามปกติ
+  ;(async () => {
     const feedback = overlay.querySelector('#az-ci-feedback')
-    feedback.innerHTML = `<span style="color:#94a3b8">กำลังคัดลอกรายชื่อจากนัดแรก...</span>`
     try {
       const teamA = S.teams.find(t => t.id === r.teamAId)
       const teamB = S.teams.find(t => t.id === r.teamBId)
-      const resA = await copyCheckinsFromFirstMatch(teamA, rosterA)
-      const resB = await copyCheckinsFromFirstMatch(teamB, rosterB)
+      const resA = await copyKnownPresentPlayers(teamA, rosterA)
+      const resB = await copyKnownPresentPlayers(teamB, rosterB)
       renderList()
       const parts = []
-      if (resA.copied) parts.push(`${esc(r.teamA)} ${resA.copied} คน (จาก ${esc(resA.source)})`)
-      if (resB.copied) parts.push(`${esc(r.teamB)} ${resB.copied} คน (จาก ${esc(resB.source)})`)
-      feedback.innerHTML = parts.length
-        ? `<span style="color:#4ade80">✓ คัดลอกแล้ว: ${parts.join(' · ')}</span>`
-        : `<span style="color:#94a3b8">ไม่มีรายชื่อให้คัดลอก (อาจเป็นนัดแรกของทั้งสองทีม หรือคัดลอกไปหมดแล้ว)</span>`
+      if (resA.copied) parts.push(`${esc(r.teamA)} ${resA.copied} คน`)
+      if (resB.copied) parts.push(`${esc(r.teamB)} ${resB.copied} คน`)
+      if (parts.length) feedback.innerHTML = `<span style="color:#4ade80">✓ นำรายชื่อที่เคยรายงานตัว/เช็คอินเข้างานตอนเช้ามาใช้แล้ว: ${parts.join(' · ')} — ใครไม่มาจริงกด ✕ ในลิสต์ด้านล่างได้</span>`
     } catch (err) {
-      feedback.innerHTML = `<span style="color:#f87171">คัดลอกไม่สำเร็จ: ${esc(err.message)}</span>`
+      feedback.innerHTML = `<span style="color:#f87171">นำรายชื่ออัตโนมัติไม่สำเร็จ: ${esc(err.message)}</span>`
     }
-  })
+  })()
 
   overlay.querySelector('#az-ci-close').addEventListener('click', async () => {
     if (html5Qrcode) { try { await html5Qrcode.stop() } catch { /* กล้องอาจปิดไปแล้ว ไม่ต้องบล็อกการปิดหน้าต่าง */ } }
