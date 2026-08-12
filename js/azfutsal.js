@@ -178,6 +178,7 @@ let S = {
   eventPickerFilter: '',
   adminTeamLevel: 'MS',
   adminAthleteLevel: 'MS',
+  adminAthleteSearch: '',
   adminPaymentsLevel: 'MS',
   staffList: null,
 
@@ -1949,6 +1950,42 @@ function openEventCheckinPendingReview(day) {
 
   const intervalId = setInterval(async () => { await refresh(); renderList() }, 4000)
   overlay.querySelector('#az-evpend-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+}
+
+// ---------------- แสดง QR Code ของนักกีฬาแต่ละคน (เผื่อไม่ได้พก QR ของตัวเองมา จะได้เปิดจากเครื่องแอดมิน/สตาฟให้สแกนแทน) ----------------
+async function openPlayerQRModal(player) {
+  document.getElementById('az-playerqr-overlay')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'az-playerqr-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px'
+  const photoUrl = playerPhotoUrl(player)
+  const photoHtml = photoUrl
+    ? `<img src="${esc(photoUrl)}" style="width:64px;height:82px;object-fit:cover;border-radius:10px;border:1px solid #e5e7eb;margin:0 auto"/>`
+    : ''
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:20px;padding:24px;max-width:320px;width:100%;text-align:center">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:${photoUrl ? '-8px' : '-4px'}"><button id="az-playerqr-close" style="border:none;background:none;color:#9ca3af;font-size:22px;cursor:pointer;line-height:1">×</button></div>
+      ${photoHtml}
+      <div style="font-size:16px;font-weight:800;margin-top:10px">${esc(player.students?.full_name || '')}</div>
+      <div style="font-size:12.5px;color:#6b7280;margin-top:2px">${esc(teamName(player.team_id))}${player.jersey_number != null ? ` · เบอร์ ${esc(String(player.jersey_number))}` : ''}</div>
+      <div id="az-playerqr-canvas" style="margin-top:14px;display:flex;justify-content:center">
+        <div style="width:220px;height:220px;border:1px solid #e5e7eb;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">กำลังสร้าง QR...</div>
+      </div>
+      <div style="font-size:13px;color:#374151;font-weight:700;margin-top:8px;letter-spacing:.05em">${esc(player.students?.student_code || '')}</div>
+      <div style="font-size:11px;color:#9ca3af;margin-top:6px">ใช้สแกนแทนได้กรณีนักกีฬาไม่ได้พก QR ของตัวเองมา</div>
+    </div>`
+  document.body.appendChild(overlay)
+  overlay.querySelector('#az-playerqr-close').addEventListener('click', () => overlay.remove())
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove() })
+
+  try {
+    const qrDataUrl = await QRCode.toDataURL(player.students?.student_code || '', { width: 220, margin: 2, color: { dark: '#111827', light: '#ffffff' } })
+    const canvas = document.getElementById('az-playerqr-canvas')
+    if (canvas) canvas.innerHTML = `<img src="${qrDataUrl}" style="width:220px;height:220px;border:1px solid #e5e7eb;border-radius:14px;padding:8px"/>`
+  } catch (err) {
+    const canvas = document.getElementById('az-playerqr-canvas')
+    if (canvas) canvas.innerHTML = `<div style="color:#dc2626;font-size:12px;padding:20px">สร้าง QR ไม่สำเร็จ</div>`
+  }
 }
 
 // ---------------- ดูพิกัดสถานที่บนแผนที่ฝัง (satellite) + วงกลมรัศมีที่อนุญาต — พรีวิวก่อนบันทึกจริงก็ได้ ----------------
@@ -4607,6 +4644,11 @@ function bindEvents() {
     if (act === 'myTeamTab') { S.myTeamTab = btn.dataset.v; draw(); return }
     if (act === 'adminTeamLevel') { S.adminTeamLevel = btn.dataset.v; draw(); return }
     if (act === 'adminAthleteLevel') { S.adminAthleteLevel = btn.dataset.v; draw(); return }
+    if (act === 'showPlayerQR') {
+      const player = S.players.find(p => p.id === btn.dataset.id)
+      if (player) openPlayerQRModal(player)
+      return
+    }
     if (act === 'downloadAthletesExcel') { downloadAthletesExcel(btn.dataset.level); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
@@ -5181,6 +5223,11 @@ function bindEvents() {
       const listEl = gid('event-picker-list')
       if (listEl) listEl.innerHTML = eventPickerPlayerList()
     }
+    if (e.target.id === 'athlete-search') {
+      S.adminAthleteSearch = e.target.value
+      const listEl = gid('athlete-list')
+      if (listEl) listEl.innerHTML = adminAthleteRows()
+    }
     if (e.target.id === 'reject-reason-text') {
       S.rejectReasonText = e.target.value
       const btn = document.querySelector('[data-act="confirmReject"]')
@@ -5384,30 +5431,44 @@ function downloadAthletesExcel(level) {
   azToast(`ดาวน์โหลดรายชื่อนักกีฬา${T[level].label} ${players.length} คนแล้ว`)
 }
 
+// ค้นหานักกีฬาแบบ "อะไรก็เจอ" — ชื่อ, รหัสนักเรียน, ห้อง, ชื่อทีม จับคู่ได้หมด (ตัดช่องว่างหัวท้าย, ไม่สนตัวพิมพ์เล็ก-ใหญ่)
+function adminAthleteRows() {
+  const level = S.adminAthleteLevel || 'MS'
+  const q = (S.adminAthleteSearch || '').trim().toLowerCase()
+  let rows = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
+  if (q) {
+    rows = rows.filter(p => [
+      p.students?.full_name, p.students?.student_code, p.students?.class_name, teamName(p.team_id), p.jersey_number,
+    ].some(v => v != null && String(v).toLowerCase().includes(q)))
+  }
+  return rows.length ? rows.map(p => { const g = playerGoals(p.id); return `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6">
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${g ? ` · ⚽${g}` : ''}</div>
+            <div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')} · ${esc(teamName(p.team_id))}${p.jersey_number != null ? ` · เบอร์ ${esc(String(p.jersey_number))}` : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <button data-act="showPlayerQR" data-id="${p.id}" style="border:none;background:none;color:#0ea5e9;font-size:11.5px;cursor:pointer;font-weight:600">🔳 QR</button>
+            <button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
+          </div>
+        </div>`}).join('') : `<div style="font-size:12.5px;color:#9ca3af">${q ? 'ไม่พบนักกีฬาที่ค้นหา' : 'ยังไม่มีนักกีฬาลงทะเบียนในระดับนี้'}</div>`
+}
 function adminAthletes() {
   const level = S.adminAthleteLevel || 'MS'
-  const rows = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level)
+  const totalCount = S.players.filter(p => S.teams.find(t => t.id === p.team_id)?.level === level).length
   return boxFill(`
     <div style="flex-shrink:0;margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <div style="font-weight:700;font-size:14px">นักกีฬาที่ลงทะเบียน (${rows.length})</div>
+        <div style="font-weight:700;font-size:14px">นักกีฬาที่ลงทะเบียน (${totalCount})</div>
         <div style="display:flex;gap:6px">${['MS', 'HS'].map(v => `<button data-act="adminAthleteLevel" data-v="${v}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === v ? T[v].base : '#e5e7eb'};background:${level === v ? T[v].base : '#fff'};color:${level === v ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[v].label}</button>`).join('')}</div>
       </div>
+      <input id="athlete-search" value="${esc(S.adminAthleteSearch)}" placeholder="ค้นหาชื่อ/รหัสนักเรียน/ห้อง/ทีม/เบอร์เสื้อ..." autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:9px;border:1px solid #e5e7eb;border-radius:9px;padding:9px 10px;font-size:13px"/>
       <div style="display:flex;gap:6px;margin-top:9px">
         ${['MS', 'HS'].map(v => `<button data-act="downloadAthletesExcel" data-level="${v}" style="flex:1;padding:8px 6px;border-radius:9px;border:1px solid ${T[v].border};background:${T[v].soft};color:${T[v].accent};font-size:11px;font-weight:800;cursor:pointer">⬇️ Excel ${T[v].label}</button>`).join('')}
       </div>
     </div>
-    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
-      ${rows.length ? rows.map(p => { const g = playerGoals(p.id); return `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6">
-          <div style="min-width:0">
-            <div style="font-size:13px;font-weight:700">${esc(p.students?.full_name || '')}${g ? ` · ⚽${g}` : ''}</div>
-            <div style="font-size:11px;color:#6b7280">${esc(p.students?.student_code || '')} · ${esc(teamName(p.team_id))}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600">ลบ</button>
-          </div>
-        </div>`}).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีนักกีฬาลงทะเบียนในระดับนี้</div>`}
+    <div id="athlete-list" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
+      ${adminAthleteRows()}
     </div>
   `)
 }
