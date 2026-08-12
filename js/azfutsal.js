@@ -2500,6 +2500,79 @@ function scheduleRows() {
   })
 }
 
+// เหมือน scheduleRows() แต่ไม่พึ่ง S.filterLevel/filterTeam/filterTime (ทั้งสองระดับชั้นเสมอ ไม่กรอง) — ใช้กับจอใหญ่ตารางแข่งขัน
+// ที่เป็น overlay แยกนอก ROOT ต้องมี state กรองเป็นของตัวเอง ไม่แตะ state หลักของแอป
+function allScheduleRowsRaw() {
+  const rows = []
+  ;['MS', 'HS'].forEach(level => {
+    BRACKET[level].forEach(def => {
+      const r = resolveMatch(level, def.code)
+      rows.push({ level, code: def.code, round: def.round, day: scheduleDayFor(level, def.code), teamA: r.teamA, teamB: r.teamB, teamAId: r.teamAId, teamBId: r.teamBId, m: r.match })
+    })
+  })
+  return rows.sort((a, b) => {
+    if (a.day !== b.day) return a.day - b.day
+    const timeA = a.m?.kickoff_time || '99:99'
+    const timeB = b.m?.kickoff_time || '99:99'
+    return timeA.localeCompare(timeB)
+  })
+}
+
+// ---------------- จอใหญ่ตารางการแข่งขัน — สำหรับเปิดฉายจอโปรเจกเตอร์/ทีวีให้ผู้ชมดูสด สกอร์ระหว่างแข่งอัปเดตอัตโนมัติ ----------------
+function openScheduleBigScreen() {
+  document.getElementById('az-schedbig-overlay')?.remove()
+  let day = eventCheckinDefaultDay()
+  let level = 'ALL'
+
+  const overlay = document.createElement('div')
+  overlay.id = 'az-schedbig-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#f8fafc;overflow:hidden;font-family:Sarabun,Arial,sans-serif;display:flex;flex-direction:column'
+  overlay.innerHTML = `
+    <div style="flex-shrink:0;padding:16px 24px;background:linear-gradient(120deg,#db2777,#6366f1 65%,#0ea5e9);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;box-shadow:0 4px 16px rgba(0,0,0,.12)">
+      <div style="min-width:0">
+        <div style="font-size:22px;font-weight:900">⚽ ${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))} · ตารางการแข่งขัน</div>
+        <div style="font-size:13px;opacity:.9;font-weight:700;margin-top:2px">${esc(cfg('INFO_VENUE', ''))}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div id="az-schedbig-daytabs" style="display:flex;gap:6px"></div>
+        <div id="az-schedbig-leveltabs" style="display:flex;gap:6px"></div>
+        <button id="az-schedbig-close" style="padding:9px 15px;border-radius:10px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:13px;cursor:pointer">✕ ปิด</button>
+      </div>
+    </div>
+    <div id="az-schedbig-body" style="flex:1;min-height:0;overflow-y:auto;padding:24px"></div>`
+  document.body.appendChild(overlay)
+
+  const dayTabsEl = overlay.querySelector('#az-schedbig-daytabs')
+  const levelTabsEl = overlay.querySelector('#az-schedbig-leveltabs')
+  const bodyEl = overlay.querySelector('#az-schedbig-body')
+  const pillStyle = active => `padding:8px 14px;border-radius:9px;border:1px solid ${active ? '#fff' : 'rgba(255,255,255,.4)'};background:${active ? '#fff' : 'rgba(255,255,255,.12)'};color:${active ? '#db2777' : '#fff'};font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap`
+
+  function renderTabs() {
+    dayTabsEl.innerHTML = [1, 2].map(d => `<button class="az-schedbig-day" data-v="${d}" style="${pillStyle(day === d)}">วันที่ ${d}</button>`).join('')
+    levelTabsEl.innerHTML = ['ALL', 'MS', 'HS'].map(v => `<button class="az-schedbig-level" data-v="${v}" style="${pillStyle(level === v)}">${v === 'ALL' ? 'ทั้งหมด' : T[v].label}</button>`).join('')
+  }
+
+  function renderBody() {
+    const rows = allScheduleRowsRaw().filter(r => r.day === day && (level === 'ALL' || r.level === level))
+    bodyEl.innerHTML = rows.length
+      ? `<div style="zoom:1.25;display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px;max-width:1600px;margin:0 auto">${rows.map(r => matchCard(r, { hideAdminActions: true })).join('')}</div>`
+      : `<div style="text-align:center;padding:80px 0;color:#9ca3af;font-size:15px">ไม่พบนัดของวันที่ ${day}</div>`
+  }
+
+  renderTabs()
+  renderBody()
+
+  overlay.addEventListener('click', (e) => {
+    const dayBtn = e.target.closest('.az-schedbig-day')
+    if (dayBtn) { day = Number(dayBtn.dataset.v); renderTabs(); renderBody(); return }
+    const levelBtn = e.target.closest('.az-schedbig-level')
+    if (levelBtn) { level = levelBtn.dataset.v; renderTabs(); renderBody(); return }
+  })
+
+  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
+  overlay.querySelector('#az-schedbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+}
+
 function scheduleTimelineMarkup(rows) {
   const day = S.scheduleDay === 2 ? 2 : 1
   const dayRows = rows.filter(row => row.day === day)
@@ -2624,6 +2697,7 @@ function scheduleView() {
       ${isBracket ? '' : `<span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${visibleRowCount} นัด</span>`}
     </div>
     <p style="margin:0 0 14px;font-size:12px;color:#6b7280">${esc(cfg('INFO_VENUE', ''))}</p>
+    <button data-act="openScheduleBigScreen" style="width:100%;margin-bottom:14px;padding:11px;border-radius:12px;border:1px dashed #6366f1;background:#eef2ff;color:#4338ca;font-weight:800;font-size:13px;cursor:pointer">🖥️ เปิดจอใหญ่ดูตารางการแข่งขัน (สกอร์อัปเดตสด)</button>
     ${eventSelfCheckinBanner()}
     ${(cfg('REGISTRATION_OPEN_MS', '0') === '1' || cfg('REGISTRATION_OPEN_HS', '0') === '1') ? `
     <button data-act="account" style="width:100%;margin-bottom:14px;padding:12px;border-radius:12px;border:none;background:linear-gradient(135deg,#ec4899,#db2777);color:#fff;font-weight:800;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
@@ -2716,7 +2790,7 @@ function groupEventsByPlayer(events) {
   }).filter(Boolean)
 }
 
-function matchCard(r) {
+function matchCard(r, opts) {
   const t = T[r.level]
   const m = r.m
   const hasScore = m && m.score_a !== null && m.score_b !== null
@@ -2769,7 +2843,7 @@ function matchCard(r) {
       <div style="flex-shrink:0;min-width:56px"></div>
       <div style="flex:1;min-width:0">${detailLines(goalsB, yellowB, redB, 'right')}</div>
     </div>` : ''}
-    ${S.identity.isAdmin ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="margin-top:10px;width:100%;padding:7px;border-radius:9px;border:1px solid ${t.border};background:#fff;color:${t.accent};font-weight:700;font-size:12px;cursor:pointer">แก้ไขผล/เวลา</button>` : ''}
+    ${S.identity.isAdmin && !opts?.hideAdminActions ? `<button data-act="editMatch" data-level="${r.level}" data-code="${r.code}" style="margin-top:10px;width:100%;padding:7px;border-radius:9px;border:1px solid ${t.border};background:#fff;color:${t.accent};font-weight:700;font-size:12px;cursor:pointer">แก้ไขผล/เวลา</button>` : ''}
   </div>`
 }
 
@@ -5079,6 +5153,7 @@ function bindEvents() {
     if (act === 'setEventCheckinIncompleteLevel') { S.eventCheckinIncompleteLevel = btn.dataset.v; draw(); return }
     if (act === 'openEventCheckinScanner') { openEventCheckinScanner(Number(btn.dataset.day)); return }
     if (act === 'openEventCheckinBigScreen') { openEventCheckinBigScreen(Number(btn.dataset.day)); return }
+    if (act === 'openScheduleBigScreen') { openScheduleBigScreen(); return }
     if (act === 'openEventCheckinPendingReview') { openEventCheckinPendingReview(Number(btn.dataset.day)); return }
     if (act === 'openEventSelfCheckin') { openEventSelfCheckinScanner(); return }
     if (act === 'toggleEventCheckinBothDays') {
