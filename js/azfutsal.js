@@ -2398,7 +2398,25 @@ function attendanceFormRows() {
   })
 }
 
-function attendanceFormHtml() {
+function attendanceSystemNameStyle(studentCode, day) {
+  const seedText = `${studentCode}:${day}`
+  let hash = 2166136261
+  for (let i = 0; i < seedText.length; i += 1) {
+    hash ^= seedText.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  const value = hash >>> 0
+  const rotate = (value % 51 - 25) / 10
+  const offsetX = ((value >>> 6) % 9) - 4
+  const offsetY = ((value >>> 10) % 5) - 2
+  const opacity = (78 + ((value >>> 14) % 21)) / 100
+  const fontSize = 8.6 + ((value >>> 18) % 13) / 10
+  const fonts = ['Mali', 'Itim', 'Sriracha']
+  return `font-family:'${fonts[(value >>> 22) % fonts.length]}',cursive;font-size:${fontSize.toFixed(1)}pt;color:#123a72;opacity:${opacity.toFixed(2)};transform:translate(${offsetX}px,${offsetY}px) rotate(${rotate.toFixed(1)}deg)`
+}
+
+function attendanceFormHtml(options = {}) {
+  const systemNames = !!options.systemNames
   const rows = attendanceFormRows()
   const logoUrl = new URL('./pp5-form-logo.png', window.location.href).href
   let runningNumber = 0
@@ -2408,37 +2426,40 @@ function attendanceFormHtml() {
     const title = level === 'MS' ? 'ระดับมัธยมศึกษาตอนต้น' : 'ระดับมัธยมศึกษาตอนปลาย'
     return `<tr class="level-row"><td colspan="6">${title} (${levelRows.length} คน)</td></tr>${levelRows.map(row => {
       runningNumber += 1
-      return `<tr><td class="center">${runningNumber}</td><td class="center code">${esc(row.studentCode)}</td><td>${esc(row.fullName)}</td><td></td><td></td><td></td></tr>`
+      const systemNameCell = (attended, day) => attended && systemNames
+        ? `<td class="system-name-cell"><span class="system-name" style="${attendanceSystemNameStyle(row.studentCode, day)}">${esc(row.fullName)}</span><span class="auto-label">ชื่อพิมพ์โดยระบบ</span></td>`
+        : '<td></td>'
+      return `<tr><td class="center">${runningNumber}</td><td class="center code">${esc(row.studentCode)}</td><td>${esc(row.fullName)}</td>${systemNameCell(row.day1, 1)}${systemNameCell(row.day2, 2)}<td></td></tr>`
     }).join('')}`
   }).join('')
-  return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ใบรายชื่อนักกีฬาฟุตซอล ปีงบประมาณ 2569</title><style>
-    @page{size:A4 portrait;margin:10mm 9mm 12mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;font-size:11pt}table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.doc-head{border:none!important;padding:0 0 7mm!important;background:#fff!important}.head-wrap{min-height:42mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;background:#fff}.logo-ring{width:25mm;height:25mm;border:1.2px solid #111;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;margin:0 auto 3mm}.logo{width:27mm;height:27mm;max-width:none;object-fit:cover;display:block}.title{font-size:16pt;font-weight:700;line-height:1.45}.subtitle{font-size:13pt;font-weight:700;margin-top:1mm}th,td{border:1px solid #111;padding:2.1mm 2mm;vertical-align:middle;height:8mm}th{font-weight:700;text-align:center;background:#fff}.center{text-align:center}.code{font-variant-numeric:tabular-nums}.level-row td{font-weight:700;background:#e8eef7;padding:2mm 3mm}.col-no{width:11mm}.col-code{width:28mm}.col-date{width:27mm}.col-note{width:36mm}.screen-actions{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#111827}.screen-actions button{border:0;border-radius:8px;padding:9px 16px;color:#fff;font-weight:700;cursor:pointer}.print{background:#16a34a}.close{background:#475569}@media print{.screen-actions{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body><div class="screen-actions"><button class="print" onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button><button class="close" onclick="window.close()">✕ ปิด</button></div><table><colgroup><col class="col-no"><col class="col-code"><col><col class="col-date"><col class="col-date"><col class="col-note"></colgroup><thead><tr><th colspan="6" class="doc-head"><div class="head-wrap"><div class="logo-ring"><img class="logo" src="${logoUrl}" alt="โลโก้โรงเรียน"></div><div class="title">ฟุตซอลภายในโรงเรียนมูลนิธิอาซิซสถานครั้งที่ 10</div><div class="subtitle">ประจำปีงบประมาณ 2569</div></div></th></tr><tr><th>ลำดับที่</th><th>รหัสนักเรียน</th><th>ชื่อสกุล</th><th>12 สิงหาคม</th><th>15 สิงหาคม</th><th>หมายเหตุ</th></tr></thead><tbody>${body}</tbody></table></body></html>`
+  return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${systemNames ? 'รายชื่อยืนยันจากระบบ' : 'ใบรายชื่อเปล่า'} · นักกีฬาฟุตซอล ปีงบประมาณ 2569</title>${systemNames ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap" rel="stylesheet">' : ''}<style>
+    @page{size:A4 portrait;margin:10mm 9mm 12mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;font-size:11pt}table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.doc-head{border:none!important;padding:0 0 7mm!important;background:#fff!important}.head-wrap{min-height:${systemNames ? '48' : '42'}mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;background:#fff}.logo-ring{width:25mm;height:25mm;border:1.2px solid #111;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;margin:0 auto 3mm}.logo{width:27mm;height:27mm;max-width:none;object-fit:cover;display:block}.title{font-size:16pt;font-weight:700;line-height:1.45}.subtitle{font-size:13pt;font-weight:700;margin-top:1mm}.system-notice{margin-top:2mm;padding:1.2mm 4mm;border:1px solid #1d4ed8;border-radius:999px;color:#1d4ed8;font-size:9.5pt;font-weight:700;background:#fff}th,td{border:1px solid #111;padding:2.1mm 2mm;vertical-align:middle;height:8mm}th{font-weight:700;text-align:center;background:#fff}.center{text-align:center}.code{font-variant-numeric:tabular-nums}.level-row td{font-weight:700;background:#e8eef7;padding:2mm 3mm}.system-name-cell{position:relative;text-align:center;height:11mm;padding:1mm!important;overflow:hidden}.system-name{display:block;line-height:1.05;overflow-wrap:anywhere}.auto-label{display:block;margin-top:.6mm;color:#64748b;font-family:Tahoma,sans-serif;font-size:5.7pt;line-height:1}.col-no{width:11mm}.col-code{width:28mm}.col-date{width:31mm}.col-note{width:28mm}.screen-actions{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#111827}.screen-actions button{border:0;border-radius:8px;padding:9px 16px;color:#fff;font-weight:700;cursor:pointer}.print{background:#16a34a}.close{background:#475569}@media print{.screen-actions{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body><div class="screen-actions"><button class="print" onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button><button class="close" onclick="window.close()">✕ ปิด</button></div><table><colgroup><col class="col-no"><col class="col-code"><col><col class="col-date"><col class="col-date"><col class="col-note"></colgroup><thead><tr><th colspan="6" class="doc-head"><div class="head-wrap"><div class="logo-ring"><img class="logo" src="${logoUrl}" alt="โลโก้โรงเรียน"></div><div class="title">ฟุตซอลภายในโรงเรียนมูลนิธิอาซิซสถานครั้งที่ 10</div><div class="subtitle">ประจำปีงบประมาณ 2569</div>${systemNames ? '<div class="system-notice">ชื่อในช่องวันที่พิมพ์โดยระบบจากข้อมูลรายงานตัว ไม่ใช่ลายเซ็นของนักเรียน</div>' : ''}</div></th></tr><tr><th>ลำดับที่</th><th>รหัสนักเรียน</th><th>ชื่อสกุล</th><th>12 สิงหาคม</th><th>15 สิงหาคม</th><th>หมายเหตุ</th></tr></thead><tbody>${body}</tbody></table></body></html>`
 }
 
-function openAttendanceFormPrint() {
+function openAttendanceFormPrint(systemNames = false) {
   const rows = attendanceFormRows()
   if (!rows.length) { azToast('ยังไม่มีรายชื่อนักเรียนที่เช็กอินหรือรายงานตัว'); return }
   const win = window.open('', '_blank')
   if (!win) { azToast('เบราว์เซอร์ปิดกั้นหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัพ'); return }
   win.document.open()
-  win.document.write(attendanceFormHtml())
+  win.document.write(attendanceFormHtml({ systemNames }))
   win.document.close()
 }
 
-function downloadAttendanceForm() {
+function downloadAttendanceForm(systemNames = false) {
   const rows = attendanceFormRows()
   if (!rows.length) { azToast('ยังไม่มีรายชื่อนักเรียนที่เช็กอินหรือรายงานตัว'); return }
-  const blob = new Blob(['\ufeff', attendanceFormHtml()], { type: 'text/html;charset=utf-8' })
+  const blob = new Blob(['\ufeff', attendanceFormHtml({ systemNames })], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'ใบรายชื่อนักกีฬาฟุตซอล_ปีงบประมาณ2569.html'
+  link.download = systemNames ? 'รายชื่อยืนยันจากระบบ_ไม่ใช่ลายเซ็น_ปีงบประมาณ2569.html' : 'ใบรายชื่อเปล่า_นักกีฬาฟุตซอล_ปีงบประมาณ2569.html'
   document.body.appendChild(link)
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
-  azToast(`ดาวน์โหลดใบรายชื่อ ${rows.length} คนแล้ว`)
+  azToast(`ดาวน์โหลด${systemNames ? 'รายชื่อยืนยันจากระบบ' : 'ใบรายชื่อเปล่า'} ${rows.length} คนแล้ว`)
 }
 
 // ช่วงเวลาเปิด-ปิดรับเช็คอินเข้างาน (ตั้งเวลาเดียว ใช้ซ้ำกับวันที่ของแต่ละวันแข่ง) — ปิดรับ = เส้นตายสำหรับแจ้งเตือนทีมมาไม่ครบ
@@ -2601,9 +2622,12 @@ function eventCheckinPanel(showSettings) {
       <button data-act="openEventCheckinScanner" data-day="${day}" style="flex:1;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">📷 สแกนเช็คอิน</button>
       <button data-act="openEventCheckinBigScreen" data-day="${day}" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:800;font-size:12.5px;cursor:pointer">🖥️ จอใหญ่หน้าลงทะเบียน</button>
     </div>
-    ${showSettings ? `<div style="display:flex;gap:8px;margin-top:8px">
-      <button data-act="printAttendanceForm" style="flex:1;padding:9px;border-radius:10px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-weight:800;font-size:12px;cursor:pointer">🖨️ พิมพ์ใบรายชื่อ</button>
-      <button data-act="downloadAttendanceForm" style="flex:1;padding:9px;border-radius:10px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer">⬇️ ดาวน์โหลดใบรายชื่อ</button>
+    ${showSettings ? `<div style="margin-top:8px;padding:9px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa">
+      <div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:6px">ใบรายชื่อเปล่า</div>
+      <div style="display:flex;gap:8px"><button data-act="printAttendanceForm" style="flex:1;padding:8px;border-radius:9px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-weight:800;font-size:11.5px;cursor:pointer">🖨️ พิมพ์</button><button data-act="downloadAttendanceForm" style="flex:1;padding:8px;border-radius:9px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:11.5px;cursor:pointer">⬇️ ดาวน์โหลด</button></div>
+      <div style="font-size:11px;font-weight:800;color:#475569;margin:9px 0 4px">ฉบับชื่อพิมพ์โดยระบบ <span style="font-weight:600;color:#64748b">(ไม่ใช่ลายเซ็น)</span></div>
+      <div style="font-size:9.5px;color:#64748b;margin-bottom:6px">เติมชื่อสีน้ำเงินเฉพาะวันที่มีข้อมูลรายงานตัว พร้อมข้อความกำกับทุกช่อง</div>
+      <div style="display:flex;gap:8px"><button data-act="printAttendanceSystemNames" style="flex:1;padding:8px;border-radius:9px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;font-weight:800;font-size:11.5px;cursor:pointer">🖨️ พิมพ์ฉบับระบบ</button><button data-act="downloadAttendanceSystemNames" style="flex:1;padding:8px;border-radius:9px;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;font-weight:800;font-size:11.5px;cursor:pointer">⬇️ ดาวน์โหลดฉบับระบบ</button></div>
     </div>` : ''}
     ${eventCheckinRequiresAnyExtra() ? `<button data-act="openEventCheckinPendingReview" data-day="${day}" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;font-weight:800;font-size:12.5px;cursor:pointer">🕐 รอสตาฟยืนยัน (${(msCount.pending || 0) + (hsCount.pending || 0)} คน)</button>` : ''}
     ${showSettings ? `
@@ -5200,6 +5224,8 @@ function bindEvents() {
     if (act === 'downloadAthletesExcel') { downloadAthletesExcel(btn.dataset.level); return }
     if (act === 'printAttendanceForm') { openAttendanceFormPrint(); return }
     if (act === 'downloadAttendanceForm') { downloadAttendanceForm(); return }
+    if (act === 'printAttendanceSystemNames') { openAttendanceFormPrint(true); return }
+    if (act === 'downloadAttendanceSystemNames') { downloadAttendanceForm(true); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
     if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
