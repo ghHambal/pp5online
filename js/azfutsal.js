@@ -233,6 +233,7 @@ function supportsFirstRoundBye(level, poolKey = null) {
 }
 
 const MS_13_BRACKET_REVISION = '20_MATCHES_2026_V1'
+const TWO_DAY_SCHEDULE_REVISION = 'MS_M11_HS_M14_DAY2_ALTERNATE_0830_V1'
 
 // อัปเกรดข้อมูลผัง ม.ต้น 13 ทีมผ่าน session แอดมินเพียงครั้งเดียว
 // ต้องไม่แตะ M1-M9 เพราะอาจมีผลแข่ง/รายงานตัวแล้ว และจะยกเลิกทันทีหาก M10 เป็นต้นไปเริ่มแข่งขันแล้ว
@@ -289,6 +290,48 @@ async function ensureMs13BracketRevision() {
   return true
 }
 
+function dateTimeWithTime(value, time) {
+  const datePart = String(value || '').slice(0, 10)
+  return datePart ? `${datePart}T${time}` : ''
+}
+
+// ตารางฉบับหน้างาน: ม.ต้น M11 เป็นต้นไปและ ม.ปลาย M14 เป็นต้นไปอยู่วันที่ 2 แล้วสลับระดับ
+// ปรับเฉพาะวันเวลา/ระยะห่าง ไม่แตะคู่แข่งขัน สกอร์ เหตุการณ์ หรือผลการแข่งขันที่บันทึกไว้แล้ว
+async function ensureTwoDayScheduleRevision() {
+  if (!S.identity.isAdmin || cfg('TWO_DAY_SCHEDULE_REVISION') === TWO_DAY_SCHEDULE_REVISION) return false
+  const fallbackDay2 = nextDayStartValue(cfg('START_TIME', ''))
+  const secondDayStart = dateTimeWithTime(cfg('SECOND_DAY_START_TIME', fallbackDay2), '08:30')
+  if (!secondDayStart) return false
+
+  const matchMin = 14
+  const breakMin = 1
+  let time = new Date(secondDayStart)
+  const rows = daySequenceCodes(2).map(([level, code]) => {
+    const kickoff = time.toTimeString().slice(0, 5)
+    const ready = new Date(time.getTime() - 10 * 60000).toTimeString().slice(0, 5)
+    time = new Date(time.getTime() + (matchMin + breakMin) * 60000)
+    return { level, match_code: code, kickoff_time: kickoff, ready_time: ready, duration_min: matchMin, break_min: breakMin }
+  })
+  const { error: matchError } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
+  if (matchError) return false
+  const configRows = [
+    { key: 'SECOND_DAY_START_TIME', value: secondDayStart },
+    { key: 'MATCH_MIN', value: String(matchMin) },
+    { key: 'BREAK_MIN', value: String(breakMin) },
+    { key: 'TWO_DAY_SCHEDULE_REVISION', value: TWO_DAY_SCHEDULE_REVISION },
+  ]
+  const { error: configError } = await SB.from('azfutsal_config').upsert(configRows)
+  if (configError) return false
+
+  rows.forEach(row => {
+    const match = matchByCode(row.level, row.match_code)
+    if (match) Object.assign(match, row)
+    else S.matches[row.level].push(row)
+  })
+  configRows.forEach(row => { S.config[row.key] = row.value })
+  return true
+}
+
 async function loadAll() {
   const { data: { session } } = await SB.auth.getSession()
   let profile = null, isAdmin = false, scopes = [], student = null, teacher = null
@@ -324,6 +367,7 @@ async function loadAll() {
   S.players = players || []
   S.matches = { MS: msMatches || [], HS: hsMatches || [] }
   await ensureMs13BracketRevision()
+  await ensureTwoDayScheduleRevision()
   S.awards = awards || []
   S.matchEvents = matchEvents || []
   S.checkins = checkins || []
@@ -1377,7 +1421,13 @@ function openCheckinScanner(level, code) {
       if (err2) throw err2
 
       const earliestMatchCodeFor = teamId => {
-        const codes = [...new Set((freshCheckins || []).filter(c => c.team_id === teamId && c.match_code !== code).map(c => c.match_code))]
+        const currentMatchNumber = Number(String(code).replace(/^M/, ''))
+        const codes = [...new Set((freshCheckins || []).filter(c =>
+          c.team_id === teamId
+          && c.match_code !== code
+          && scheduleDayFor(level, c.match_code) === day
+          && Number(String(c.match_code).replace(/^M/, '')) < currentMatchNumber
+        ).map(c => c.match_code))]
         if (!codes.length) return null
         codes.sort((a, b) => Number(String(a).replace(/^M/, '')) - Number(String(b).replace(/^M/, '')))
         return codes[0]
@@ -1387,8 +1437,9 @@ function openCheckinScanner(level, code) {
         const sourceCode = earliestMatchCodeFor(teamId)
         if (sourceCode) {
           (freshCheckins || []).filter(c => c.match_code === sourceCode && c.team_id === teamId).forEach(c => ids.add(c.player_id))
+        } else {
+          ;(freshEventCheckins || []).filter(c => c.team_id === teamId && c.confirmed).forEach(c => ids.add(c.player_id))
         }
-        ;(freshEventCheckins || []).filter(c => c.team_id === teamId && c.confirmed).forEach(c => ids.add(c.player_id))
         return ids
       }
       async function copyKnownPresentPlayers(team, roster) {
@@ -2148,12 +2199,9 @@ function scheduleDayStart(day) {
 }
 
 function scheduleDayFor(level, code) {
-  // ม.ปลายคู่ที่ 13 ให้แข่งขันต่อในวันที่ 1 ตามกำหนดการหน้างาน
-  if (level === 'HS' && code === 'M13') return 1
   const matchNumber = Number(String(code).replace(/^M/, ''))
-  if (level === 'MS' && hasMsFirstRoundBye()) return matchNumber <= 14 ? 1 : 2
-  const dayOneLastMatch = usesSixteenTeamPools(level) ? 12 : 9
-  return matchNumber <= dayOneLastMatch ? 1 : 2
+  const firstDayLastMatch = level === 'HS' ? 13 : 10
+  return matchNumber <= firstDayLastMatch ? 1 : 2
 }
 
 // ลำดับนัด [level, code] ของวันหนึ่งๆ ตามที่ "จัดตารางอัตโนมัติ" ใช้ไล่เวลา (สลับ ม.ต้น/ม.ปลาย) — แยกออกมาให้ทั้งจัดตารางครั้งแรก
@@ -2167,20 +2215,10 @@ function daySequenceCodes(day) {
     }
     return codes
   }
-  const dayCodes = d => ['MS', 'HS'].map(level => BRACKET[level]
-    .filter(match => scheduleDayFor(level, match.code) === d)
-    .filter(match => d === 1 || ((!THIRD_CODE[level] || match.code !== THIRD_CODE[level]) && match.code !== FINAL_CODE[level]))
+  const [msCodes, hsCodes] = ['MS', 'HS'].map(level => BRACKET[level]
+    .filter(match => scheduleDayFor(level, match.code) === day)
     .map(match => [level, match.code]))
-  if (day === 1) {
-    const [dayOneMs, dayOneHs] = dayCodes(1)
-    return alternate(dayOneMs, dayOneHs)
-  }
-  const [dayTwoMs, dayTwoHs] = dayCodes(2)
-  const codes = alternate(dayTwoMs, dayTwoHs)
-  if (THIRD_CODE.MS) codes.push(['MS', THIRD_CODE.MS])
-  if (THIRD_CODE.HS) codes.push(['HS', THIRD_CODE.HS])
-  codes.push(['MS', FINAL_CODE.MS], ['HS', FINAL_CODE.HS])
-  return codes
+  return alternate(msCodes, hsCodes)
 }
 
 function scheduleDateLabel(day) {
@@ -5356,7 +5394,7 @@ function bindEvents() {
       for (let i = idx; i < seq.length; i += 1) {
         const [lv, cd] = seq[i]
         const kickoff = time.toTimeString().slice(0, 5)
-        const ready = new Date(time.getTime() - 5 * 60000).toTimeString().slice(0, 5)
+        const ready = new Date(time.getTime() - 10 * 60000).toTimeString().slice(0, 5)
         const payload = { level: lv, match_code: cd, kickoff_time: kickoff, ready_time: ready, duration_min: matchMin, break_min: breakMin }
         const m = matchByCode(lv, cd)
         if (m) Object.assign(m, payload)
@@ -5542,7 +5580,7 @@ function bindEvents() {
         let time = new Date(day.start)
         return day.codes.map(([level, code]) => {
           const kickoff = time.toTimeString().slice(0, 5)
-          const ready = new Date(time.getTime() - 5 * 60000).toTimeString().slice(0, 5)
+          const ready = new Date(time.getTime() - 10 * 60000).toTimeString().slice(0, 5)
           time = new Date(time.getTime() + (matchMin + breakMin) * 60000)
           return { level, match_code: code, round: (BRACKET[level].find(b => b.code === code) || {}).round || '', kickoff_time: kickoff, ready_time: ready, duration_min: matchMin, break_min: breakMin }
         })
