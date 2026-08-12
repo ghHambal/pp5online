@@ -232,6 +232,63 @@ function supportsFirstRoundBye(level, poolKey = null) {
   return !poolKey && level === 'MS' && hasMsFirstRoundBye()
 }
 
+const MS_13_BRACKET_REVISION = '20_MATCHES_2026_V1'
+
+// อัปเกรดข้อมูลผัง ม.ต้น 13 ทีมผ่าน session แอดมินเพียงครั้งเดียว
+// ต้องไม่แตะ M1-M9 เพราะอาจมีผลแข่ง/รายงานตัวแล้ว และจะยกเลิกทันทีหาก M10 เป็นต้นไปเริ่มแข่งขันแล้ว
+async function ensureMs13BracketRevision() {
+  if (!S.identity.isAdmin || !hasMsFirstRoundBye() || cfg('MS_BRACKET_REVISION') === MS_13_BRACKET_REVISION) return false
+  const future = S.matches.MS.filter(match => Number(String(match.match_code).replace(/^M/, '')) >= 10)
+  const hasStartedFutureMatch = future.some(match =>
+    match.clock_status !== 'not_started'
+    || match.score_a !== null || match.score_b !== null
+    || match.winner_team_id || match.loser_team_id
+  )
+  if (hasStartedFutureMatch) return false
+
+  const definitions = [
+    ['M10', 'รอบ 10 ทีม', 'FIRST_ROUND_BYE', 'W_M1', '16:40', '16:45'],
+    ['M11', 'รอบ 10 ทีม', 'W_M2', 'W_M3', '16:55', '17:00'],
+    ['M12', 'รอบ 10 ทีม', 'W_M4', 'W_M5', '17:10', '17:15'],
+    ['M13', 'รอบ 10 ทีม', 'W_M6', 'W_M7', '17:25', '17:30'],
+    ['M14', 'รอบ 10 ทีม', 'W_M8', 'W_M9', '17:40', '17:45'],
+    ['M15', 'รอบ 6 ทีม', 'W_M10', 'W_M11', '08:25', '08:30'],
+    ['M16', 'รอบ 6 ทีม', 'W_M12', 'W_M13', '08:55', '09:00'],
+    ['M17', 'รอบ 6 ทีม', 'W_M14', 'LOTTERY_1', '09:25', '09:30'],
+    ['M18', 'รองฯ', 'W_M15', 'W_M16', '09:55', '10:00'],
+    ['M19', 'รองฯ', 'W_M17', 'LOTTERY_2', '10:25', '10:30'],
+    ['M20', 'ชิงที่ 1', 'W_M18', 'W_M19', '12:25', '12:30'],
+  ]
+  const rows = definitions.map(([code, round, refA, refB, readyTime, kickoffTime]) => ({
+    level: 'MS', match_code: code, round, order_no: Number(code.slice(1)),
+    team_a_id: null, team_b_id: null, ref_a: refA, ref_b: refB,
+    ready_time: readyTime, kickoff_time: kickoffTime, duration_min: 14, break_min: 1,
+    score_a: null, score_b: null, yellow_a: 0, red_a: 0, yellow_b: 0, red_b: 0,
+    winner_team_id: null, loser_team_id: null, is_locked: false,
+    clock_status: 'not_started', clock_half: null, clock_started_at: null,
+    clock_elapsed_before: 0, clock_half_started_elapsed: 0,
+    is_penalty_shootout: false, penalty_score_a: null, penalty_score_b: null,
+  }))
+  const { error: matchError } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
+  if (matchError) return false
+
+  for (const [code, readyTime, kickoffTime] of [['M13', '16:25', '16:30'], ['M24', '12:10', '12:15'], ['M25', '12:40', '12:45']]) {
+    const { error } = await SB.from('azfutsal_matches').update({ ready_time: readyTime, kickoff_time: kickoffTime })
+      .eq('level', 'HS').eq('match_code', code).eq('clock_status', 'not_started')
+    if (error) return false
+  }
+  const { error: configError } = await SB.from('azfutsal_config').upsert({ key: 'MS_BRACKET_REVISION', value: MS_13_BRACKET_REVISION })
+  if (configError) return false
+
+  const [{ data: msMatches }, { data: hsMatches }] = await Promise.all([
+    SB.from('azfutsal_matches').select('*').eq('level', 'MS'),
+    SB.from('azfutsal_matches').select('*').eq('level', 'HS'),
+  ])
+  S.matches = { MS: msMatches || S.matches.MS, HS: hsMatches || S.matches.HS }
+  S.config.MS_BRACKET_REVISION = MS_13_BRACKET_REVISION
+  return true
+}
+
 async function loadAll() {
   const { data: { session } } = await SB.auth.getSession()
   let profile = null, isAdmin = false, scopes = [], student = null, teacher = null
@@ -266,6 +323,7 @@ async function loadAll() {
   S.teams = teams || []
   S.players = players || []
   S.matches = { MS: msMatches || [], HS: hsMatches || [] }
+  await ensureMs13BracketRevision()
   S.awards = awards || []
   S.matchEvents = matchEvents || []
   S.checkins = checkins || []
