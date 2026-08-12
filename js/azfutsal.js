@@ -697,6 +697,7 @@ function draw() {
       ${bottomNav()}
       ${s.certModalOpen ? certModal() : ''}
       ${s.editMatch ? matchEditorModal() : ''}
+      ${s.editMatch && s.eventPicker ? eventPickerModal() : ''}
       ${s.adminLoginOpen ? adminLoginModal() : ''}
       ${s.confirmRegOpen ? confirmRegistrationModal() : ''}
       ${s.viewProofOpen ? viewProofModal() : ''}
@@ -3626,10 +3627,10 @@ function statusPill(status) {
   return `<span style="display:inline-block;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:${bg};color:${color};margin-bottom:8px">${label}</span>`
 }
 
-function simpleModal(title, body) {
+function simpleModal(title, body, opts = {}) {
   return `
   <div style="position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px">
-    <div style="background:#fff;width:100%;max-width:360px;max-height:85vh;overflow-y:auto;border-radius:16px;padding:18px">
+    <div ${opts.bodyAttr || ''} style="background:#fff;width:100%;max-width:360px;max-height:85vh;overflow-y:auto;border-radius:16px;padding:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <h3 style="margin:0;font-size:15px;font-weight:800">${esc(title)}</h3>
         <button data-act="closeModal" style="border:none;background:none;color:#9ca3af;font-size:16px;cursor:pointer">✕</button>
@@ -4392,13 +4393,13 @@ function eventPickerPlayerList() {
   const filter = (S.eventPickerFilter || '').trim().toLowerCase()
   const filtered = filter ? roster.filter(p => String(p.jersey_number ?? '').includes(filter) || (p.students?.full_name || '').toLowerCase().includes(filter)) : roster
   return filtered.length ? filtered.map(p => `
-    <button data-act="pickEventPlayer" data-player="${p.id}" style="display:flex;align-items:center;gap:8px;padding:6px;border:none;background:#fff;border-radius:9px;cursor:pointer;text-align:left;width:100%">
+    <button data-act="pickEventPlayer" data-player="${p.id}" style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #f3f4f6;background:#fff;border-radius:12px;cursor:pointer;text-align:left;width:100%">
       ${photoTag(playerPhotoUrl(p))}
-      <div style="min-width:0;font-size:12.5px;font-weight:700">#${p.jersey_number ?? '-'} ${esc(p.students?.full_name || '')}</div>
+      <div style="min-width:0"><div style="font-size:14px;font-weight:800">#${p.jersey_number ?? '-'} ${esc(p.students?.full_name || '')}</div><div style="font-size:11px;color:#9ca3af;margin-top:2px">แตะเพื่อบันทึกและปิดหน้าต่าง</div></div>
     </button>`).join('') : `<div style="font-size:11.5px;color:#9ca3af;padding:6px 0">ไม่พบผู้เล่น</div>`
 }
 
-function eventPickerSection() {
+function eventPickerModal() {
   if (!S.eventPicker) return ''
   const { team, type } = S.eventPicker
   const { level, code } = S.editMatch
@@ -4407,14 +4408,16 @@ function eventPickerSection() {
   if (!teamId) return ''
   const typeLabel = { goal: 'ผู้ทำประตู', yellow: 'ใบเหลือง', red: 'ใบแดง' }[type]
   return `
-  <div style="border:1px solid #e5e7eb;border-radius:12px;padding:10px;background:#fafafa">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div style="font-weight:700;font-size:12.5px">เลือกผู้เล่น · ${esc(typeLabel)} (${esc(team === 'a' ? r.teamA : r.teamB)})</div>
-      <button data-act="closeEventPicker" style="border:none;background:none;color:#9ca3af;font-size:12px;cursor:pointer">ปิด</button>
-    </div>
-    <input id="event-picker-filter" placeholder="พิมพ์เบอร์เสื้อหรือชื่อ..." value="${esc(S.eventPickerFilter)}" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px;margin-bottom:8px"/>
-    <div id="event-picker-list" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto">
-      ${eventPickerPlayerList()}
+  <div data-event-picker-backdrop style="position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.68);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)">
+    <div role="dialog" aria-modal="true" aria-label="เลือก${esc(typeLabel)}" style="background:#fff;width:100%;max-width:390px;max-height:min(76vh,680px);display:flex;flex-direction:column;border-radius:18px;padding:18px;box-shadow:0 24px 70px rgba(0,0,0,.35)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+        <div><div style="font-weight:900;font-size:17px">เลือก${esc(typeLabel)}</div><div style="font-size:12px;color:#6b7280;margin-top:3px">${esc(team === 'a' ? r.teamA : r.teamB)} · เลือกแล้วระบบจะบันทึกทันที</div></div>
+        <button data-act="closeEventPicker" aria-label="ปิด" style="border:none;background:#f3f4f6;color:#64748b;width:34px;height:34px;border-radius:10px;font-size:17px;cursor:pointer;flex-shrink:0">✕</button>
+      </div>
+      <input id="event-picker-filter" autofocus placeholder="ค้นหาเบอร์เสื้อหรือชื่อ..." value="${esc(S.eventPickerFilter)}" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:10px 12px;font-size:14px;margin-bottom:10px"/>
+      <div id="event-picker-list" style="display:flex;flex-direction:column;gap:7px;min-height:80px;overflow-y:auto">
+        ${eventPickerPlayerList()}
+      </div>
     </div>
   </div>`
 }
@@ -4474,7 +4477,6 @@ function matchEditorModal() {
           <div style="flex:1">${eventListRow(level, code, r.teamAId, 'a', 'red', 'แดง A', '#dc2626', '#FEE2E2')}</div>
           <div style="flex:1">${eventListRow(level, code, r.teamBId, 'b', 'red', 'แดง B', '#dc2626', '#FEE2E2')}</div>
         </div>
-        ${eventPickerSection()}
       </div>`}
       <div style="display:flex;gap:10px">
         <label style="font-size:11.5px;color:#6b7280;flex:1">เวลาแข่ง<input id="mx-kickoff" placeholder="HH:MM" value="${esc(m.kickoff_time || '')}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:13px"/></label>
@@ -4489,7 +4491,7 @@ function matchEditorModal() {
       })() : ''}
       <button data-act="saveMatch" data-level="${level}" data-code="${code}" style="margin-top:4px;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">บันทึก</button>
       <button data-act="printMatchForm" data-level="${level}" data-code="${code}" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:700;font-size:12.5px;cursor:pointer">🖨️ พิมพ์แบบฟอร์มบันทึกผลสำรอง (ออฟไลน์)</button>
-    </div>`)
+    </div>`, { bodyAttr: 'data-match-editor-body' })
 }
 
 // จับคู่รอบสระ (12/6 ทีม) ด้วยตนเองทีละคู่ในหน้าเดียว — ใช้หลังจับฉลากสดนอกระบบ (กล่อง/ถุงจริง) แล้วมาพิมพ์ผลใส่ทีเดียว
@@ -4647,9 +4649,15 @@ function handleAddMatchEvent(playerId) {
   const q = azQueueGet()
   q.push({ localId, type: 'insertEvent', localEventId: localId, payload: eventPayload })
   azQueueSet(q)
+  S.eventPicker = null
+  S.eventPickerFilter = ''
   draw()
+  requestAnimationFrame(() => {
+    const modalBody = ROOT?.querySelector('[data-match-editor-body]')
+    if (modalBody && Number.isFinite(S.editMatch?.scrollTop)) modalBody.scrollTop = S.editMatch.scrollTop
+  })
   azTriggerBackgroundSync()
-  // เปิดตัวเลือกผู้เล่นค้างไว้ต่อ เพื่อกดเพิ่มคนถัดไปได้เร็วๆ ไม่ต้องเปิดใหม่ทุกครั้ง
+  azToast('บันทึกเหตุการณ์แล้ว')
 }
 
 function handleRemoveMatchEvent(id) {
@@ -5012,8 +5020,25 @@ function bindEvents() {
       S.eventPicker = null; S.eventPickerFilter = ''; draw(); return
     }
     if (act === 'togglePenaltyShootoutMode') { S.editMatch.penaltyMode = !S.editMatch.penaltyMode; draw(); return }
-    if (act === 'openEventPicker') { S.eventPicker = { team: btn.dataset.team, type: btn.dataset.type }; S.eventPickerFilter = ''; draw(); return }
-    if (act === 'closeEventPicker') { S.eventPicker = null; S.eventPickerFilter = ''; draw(); return }
+    if (act === 'openEventPicker') {
+      const modalBody = btn.closest('[data-match-editor-body]')
+      if (S.editMatch) S.editMatch.scrollTop = modalBody?.scrollTop || 0
+      S.eventPicker = { team: btn.dataset.team, type: btn.dataset.type }
+      S.eventPickerFilter = ''
+      draw()
+      requestAnimationFrame(() => document.getElementById('event-picker-filter')?.focus())
+      return
+    }
+    if (act === 'closeEventPicker') {
+      S.eventPicker = null
+      S.eventPickerFilter = ''
+      draw()
+      requestAnimationFrame(() => {
+        const modalBody = ROOT?.querySelector('[data-match-editor-body]')
+        if (modalBody && Number.isFinite(S.editMatch?.scrollTop)) modalBody.scrollTop = S.editMatch.scrollTop
+      })
+      return
+    }
     if (act === 'pickEventPlayer') { await handleAddMatchEvent(btn.dataset.player); return }
     if (act === 'removeMatchEvent') { await handleRemoveMatchEvent(btn.dataset.id); return }
     if (act === 'togglePlayerEventDetail') { S.expandedPlayerId = S.expandedPlayerId === btn.dataset.id ? null : btn.dataset.id; draw(); return }
