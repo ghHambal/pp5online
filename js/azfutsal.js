@@ -3212,6 +3212,7 @@ function manageTeamView(team, isAdminView, readOnly) {
                 <div style="margin-top:3px;font-size:10.5px;color:#9ca3af">📷 ${eventCheckinRequiresBothDays() ? `วันที่1 ${eventCheckinStatusIcon(p.id, 1)} · วันที่2 ${eventCheckinStatusIcon(p.id, 2)}` : `เช็คอินเข้างาน ${eventCheckinStatusIcon(p.id, 1)}`}</div>
                 ${roleButtons(p) ? `<div style="margin-top:2px">${roleButtons(p)}</div>` : ''}
               </div>
+              <button data-act="showPlayerQR" data-id="${p.id}" style="border:none;background:none;color:#0ea5e9;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">🔳 QR</button>
               ${editable ? `<button data-act="removePlayer" data-id="${p.id}" style="border:none;background:none;color:#ef4444;font-size:11.5px;cursor:pointer;font-weight:600;flex-shrink:0">ลบ</button>` : ''}
               ${hasEvents ? `<span style="flex-shrink:0;color:#9ca3af;font-size:10px">${expanded ? '▲' : '▼'}</span>` : ''}
             </div>
@@ -4112,6 +4113,7 @@ function matchEditorModal() {
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
   return simpleModal(`${code} · ${T[level].label}`, `
     <div style="display:flex;flex-direction:column;gap:10px">
+      <button data-act="refreshMatchEditorData" style="padding:8px;border-radius:9px;border:1px dashed #cbd5e1;background:#f8fafc;color:#475569;font-weight:700;font-size:11.5px;cursor:pointer">🔄 รีเฟรชข้อมูล (ทีม/รายชื่อนักกีฬา/รายงานตัวล่าสุด)</button>
       ${azSyncBadge() ? `<div>${azSyncBadge()}</div>` : ''}
       ${r.teamAId && r.teamBId ? `
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;background:#111827;border-radius:12px;padding:12px">
@@ -4705,6 +4707,12 @@ function bindEvents() {
       azQueueSet(q)
       draw()
       azTriggerBackgroundSync()
+      return
+    }
+    if (act === 'refreshMatchEditorData') {
+      btn.disabled = true; btn.textContent = 'กำลังรีเฟรช...'
+      await refresh()
+      azToast('ดึงข้อมูลล่าสุดแล้ว')
       return
     }
     if (act === 'saveMatch') { await handleSaveMatch(btn.dataset.level, btn.dataset.code); return }
