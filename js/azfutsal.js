@@ -483,14 +483,18 @@ function _azTickClocks() {
     const elapsedBefore = Number(el.dataset.clockElapsedBefore || 0)
     const halfStartedElapsed = Number(el.dataset.clockHalfStartedElapsed || 0)
     const halfMin = Number(el.dataset.clockHalfMinutes || 7)
+    const half = Number(el.dataset.clockHalf || 1)
     let sec = elapsedBefore
     if (status === 'running' && startedAt) sec += Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
     const halfLimitSec = halfMin * 60
     // นับเวลาที่ผ่านไป "เฉพาะครึ่งปัจจุบัน" เทียบกับจุดเริ่มครึ่งนี้จริง (ไม่ใช่ลบด้วยนาทีต่อครึ่งคงที่)
     // กันบั๊ก: ถ้าครึ่งแรกทดเวลาเกิน นาฬิกาครึ่งหลังต้องเริ่มนับใหม่เต็มจำนวนนาทีต่อครึ่งเสมอ ไม่ใช่นับต่อจากทดเวลาครึ่งแรก
-    const elapsedInHalf = sec - halfStartedElapsed
-    // นับขึ้นจาก 00:00 จนครบเวลาต่อครึ่ง จากนั้นเริ่มแสดงเวลาทดเป็น +00:01, +00:02, ...
-    el.textContent = _azFmtClock(Math.max(0, elapsedInHalf), halfLimitSec)
+    const elapsedInHalf = Math.max(0, sec - halfStartedElapsed)
+    // เวลาแสดงผลเป็นเวลาสะสมของการแข่งขัน: ครึ่งแรก 00:00-07:00, ครึ่งหลังเริ่มที่ 07:00 และไปถึง 14:00
+    // เวลาทดของครึ่งหลังจึงเริ่มหลัง 14:00 โดยไม่เอาทดเวลาครึ่งแรกมาบวกซ้ำ
+    const displaySec = (half === 2 ? halfLimitSec : 0) + elapsedInHalf
+    const displayLimitSec = half === 2 ? halfLimitSec * 2 : halfLimitSec
+    el.textContent = _azFmtClock(displaySec, displayLimitSec)
   })
 }
 if (typeof window !== 'undefined' && !window._azClockTickerStarted) {
