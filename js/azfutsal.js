@@ -2691,9 +2691,12 @@ function adjacentMatchCode(level, code, delta) {
   const target = seq[idx + delta]
   return target || null
 }
-// หานัดที่ "กำลังแข่งขันอยู่ตอนนี้" ตัวแรกที่เจอ (ทั้งสองวัน/ทั้งสองระดับชั้น) — ใช้กับปุ่ม "คู่ปัจจุบัน"
+// หานัดที่ "กำลังแข่งขันอยู่ตอนนี้" ตัวแรกที่เจอ (ทั้งสองวัน/ทั้งสองระดับชั้น)
+function findLiveScheduleRow() {
+  return allScheduleRowsRaw().find(r => r.m && ['running', 'paused', 'half_break'].includes(r.m.clock_status)) || null
+}
 function findLiveMatchCode() {
-  const row = allScheduleRowsRaw().find(r => r.m && ['running', 'paused', 'half_break'].includes(r.m.clock_status))
+  const row = findLiveScheduleRow()
   return row ? [row.level, row.code] : null
 }
 
@@ -2910,9 +2913,10 @@ function openStandingsBigScreen() {
   overlay.querySelector('#az-standbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
 }
 
-function scheduleTimelineMarkup(rows) {
+function scheduleTimelineMarkup(rows, pinnedLiveRow = null) {
   const day = S.scheduleDay === 2 ? 2 : 1
-  const dayRows = rows.filter(row => row.day === day)
+  // คู่สดถูกปักไว้ด้านบนสุดแล้ว จึงไม่แสดงซ้ำในไทม์ไลน์ด้านล่าง
+  const dayRows = rows.filter(row => row.day === day && !(pinnedLiveRow && row.level === pinnedLiveRow.level && row.code === pinnedLiveRow.code))
   if (!dayRows.length) return `<div style="text-align:center;padding:32px 0;color:#9ca3af;font-size:13px">ไม่พบนัดของวันที่ ${day} ที่ตรงกับตัวกรอง</div>`
   return dayRows.map(matchCard).join('')
 }
@@ -3027,6 +3031,7 @@ function tournamentBracketView() {
 function scheduleView() {
   const rows = scheduleRows()
   const isBracket = S.scheduleMode === 'bracket'
+  const liveRow = findLiveScheduleRow()
   const visibleRowCount = rows.filter(row => row.day === (S.scheduleDay === 2 ? 2 : 1)).length
   return `
   <section>
@@ -3035,6 +3040,15 @@ function scheduleView() {
       ${isBracket ? '' : `<span id="az-schedule-count" style="font-size:11px;color:#9ca3af;font-weight:600">${visibleRowCount} นัด</span>`}
     </div>
     <p style="margin:0 0 14px;font-size:12px;color:#6b7280">${esc(cfg('INFO_VENUE', ''))}</p>
+    ${liveRow ? `
+    <div style="position:sticky;top:6px;z-index:20;margin-bottom:8px">
+      <button data-act="jumpToCurrentMatch" style="width:100%;padding:10px 12px;border-radius:12px;border:1px solid #86efac;background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;box-shadow:0 5px 16px rgba(22,163,74,.24);font-weight:900;font-size:13px;cursor:pointer">🔴 คู่ปัจจุบัน · ${T[liveRow.level].label} ${liveRow.code} — กดเพื่อเลื่อนไปยังคู่ที่กำลังแข่งขัน</button>
+    </div>
+    <div id="az-current-match" style="scroll-margin-top:70px;margin-bottom:14px;padding:10px;border:2px solid #22c55e;border-radius:17px;background:#f0fdf4;box-shadow:0 5px 18px rgba(22,163,74,.14)">
+      <div style="display:flex;align-items:center;gap:7px;margin:0 2px 8px;color:#15803d;font-size:12px;font-weight:900"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;animation:azLivePulse 1.2s ease-in-out infinite"></span>กำลังแข่งขันอยู่ขณะนี้</div>
+      ${matchCard(liveRow)}
+    </div>` : `
+    <button data-act="jumpToCurrentMatch" disabled style="width:100%;margin-bottom:14px;padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;background:#f9fafb;color:#9ca3af;font-weight:800;font-size:12.5px;cursor:not-allowed">⚪ ขณะนี้ยังไม่มีคู่ที่กำลังแข่งขัน</button>`}
     <button data-act="openScheduleBigScreen" style="width:100%;margin-bottom:14px;padding:11px;border-radius:12px;border:1px dashed #6366f1;background:#eef2ff;color:#4338ca;font-weight:800;font-size:13px;cursor:pointer">🖥️ เปิดจอใหญ่ดูตารางการแข่งขัน (สกอร์อัปเดตสด)</button>
     ${eventSelfCheckinBanner()}
     ${(cfg('REGISTRATION_OPEN_MS', '0') === '1' || cfg('REGISTRATION_OPEN_HS', '0') === '1') ? `
@@ -3055,7 +3069,7 @@ function scheduleView() {
       <input id="az-filterTime" value="${esc(S.filterTime)}" placeholder="เวลา เช่น 09:00" style="width:132px;border:1px solid #e5e7eb;border-radius:10px;padding:9px 12px;font-size:13px;outline:none;background:#faf9f8"/>
     </div>
     <div id="az-schedule-rows" style="display:flex;flex-direction:column;gap:10px">
-      ${scheduleTimelineMarkup(rows)}
+      ${scheduleTimelineMarkup(rows, liveRow)}
     </div>`}
   </section>`
 }
@@ -5073,6 +5087,12 @@ function bindEvents() {
     if (act === 'tab') { S.tab = btn.dataset.tab; draw(); return }
     if (act === 'setScheduleMode') { S.scheduleMode = btn.dataset.v === 'bracket' ? 'bracket' : 'timeline'; draw(); return }
     if (act === 'setScheduleDay') { S.scheduleDay = btn.dataset.v === '2' ? 2 : 1; draw(); return }
+    if (act === 'jumpToCurrentMatch') {
+      const liveRow = findLiveScheduleRow()
+      if (!liveRow) { azToast('ไม่มีคู่ที่กำลังแข่งขันอยู่ตอนนี้'); return }
+      document.getElementById('az-current-match')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
     if (act === 'setBracketLevel') { S.bracketLevel = btn.dataset.v === 'HS' ? 'HS' : 'MS'; draw(); return }
     if (act === 'jumpBracketRound') {
       const scroller = document.getElementById('az-bracket-scroll')
