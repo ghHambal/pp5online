@@ -2386,15 +2386,28 @@ function attendanceFormRows() {
   const participatingIds = new Set([...confirmedByDay.get(1), ...confirmedByDay.get(2)])
   const teamById = new Map(S.teams.map(team => [team.id, team]))
   const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
+  const teamOrderById = new Map([...S.teams].sort((a, b) => {
+    if (a.level !== b.level) return a.level === 'MS' ? -1 : 1
+    const aLabel = a.team_code || a.name || ''
+    const bLabel = b.team_code || b.name || ''
+    return collator.compare(aLabel, bLabel) || collator.compare(String(a.id), String(b.id))
+  }).map((team, index) => [team.id, index]))
   return S.players.filter(player => participatingIds.has(player.id)).map(player => ({
     level: teamById.get(player.team_id)?.level || '',
+    teamOrder: teamOrderById.get(player.team_id) ?? Number.MAX_SAFE_INTEGER,
+    jerseyNumber: player.jersey_number != null && String(player.jersey_number).trim() !== '' && Number.isFinite(Number(player.jersey_number))
+      ? Number(player.jersey_number)
+      : Number.MAX_SAFE_INTEGER,
     studentCode: player.students?.student_code || '',
     fullName: player.students?.full_name || '',
     day1: confirmedByDay.get(1).has(player.id),
     day2: confirmedByDay.get(2).has(player.id),
   })).filter(row => row.level === 'MS' || row.level === 'HS').sort((a, b) => {
     if (a.level !== b.level) return a.level === 'MS' ? -1 : 1
-    return collator.compare(a.fullName, b.fullName) || collator.compare(a.studentCode, b.studentCode)
+    return a.teamOrder - b.teamOrder
+      || a.jerseyNumber - b.jerseyNumber
+      || collator.compare(a.fullName, b.fullName)
+      || collator.compare(a.studentCode, b.studentCode)
   })
 }
 
@@ -2435,21 +2448,25 @@ function attendanceFormHtml(options = {}) {
   const rows = attendanceFormRows()
   const logoUrl = new URL('./pp5-form-logo.png', window.location.href).href
   let runningNumber = 0
-  const body = ['MS', 'HS'].map(level => {
+  const hasMsRows = rows.some(row => row.level === 'MS')
+  const tableHead = `<colgroup><col class="col-no"><col class="col-code"><col><col class="col-date"><col class="col-date"><col class="col-note"></colgroup><thead><tr><th colspan="6" class="doc-head"><div class="head-wrap"><div class="logo-ring"><img class="logo" src="${logoUrl}" alt="โลโก้โรงเรียน"></div><div class="title">ฟุตซอลภายในโรงเรียนมูลนิธิอาซิซสถานครั้งที่ 10</div><div class="subtitle">ประจำปีงบประมาณ 2569</div>${systemNames ? '<div class="system-notice">รายชื่อในช่องวันที่สร้างอัตโนมัติเพื่อจัดทำเอกสาร ไม่ใช่ลายเซ็นของนักเรียน</div>' : ''}</div></th></tr><tr><th>ลำดับที่</th><th>รหัสนักเรียน</th><th>ชื่อสกุล</th><th>12 สิงหาคม</th><th>15 สิงหาคม</th><th>หมายเหตุ</th></tr></thead>`
+  const sections = ['MS', 'HS'].map(level => {
     const levelRows = rows.filter(row => row.level === level)
     if (!levelRows.length) return ''
     const title = level === 'MS' ? 'ระดับมัธยมศึกษาตอนต้น' : 'ระดับมัธยมศึกษาตอนปลาย'
-    return `<tr class="level-row"><td colspan="6">${title} (${levelRows.length} คน)</td></tr>${levelRows.map(row => {
+    const body = `<tr class="level-row"><td colspan="6">${title} (${levelRows.length} คน)</td></tr>${levelRows.map(row => {
       runningNumber += 1
       const systemNameCell = day => systemNames
         ? `<td class="system-name-cell"><span class="system-name" style="${attendanceSystemNameStyle(row.studentCode, day)}">${esc(attendanceSystemDisplayName(row.fullName, row.studentCode, day))}</span></td>`
         : '<td></td>'
       return `<tr><td class="center">${runningNumber}</td><td class="center code">${esc(row.studentCode)}</td><td>${esc(row.fullName)}</td>${systemNameCell(1)}${systemNameCell(2)}<td></td></tr>`
     }).join('')}`
+    const sectionClass = level === 'HS' && hasMsRows ? 'hs-document' : 'ms-document'
+    return `<table class="level-document ${sectionClass}">${tableHead}<tbody>${body}</tbody></table>`
   }).join('')
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${systemNames ? 'รายชื่อยืนยันจากระบบ' : 'ใบรายชื่อเปล่า'} · นักกีฬาฟุตซอล ปีงบประมาณ 2569</title>${systemNames ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap" rel="stylesheet">' : ''}<style>
-    @page{size:A4 portrait;margin:10mm 9mm 12mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;font-size:11pt}table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.doc-head{border:none!important;padding:0 0 7mm!important;background:#fff!important}.head-wrap{min-height:${systemNames ? '48' : '42'}mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;background:#fff}.logo-ring{width:24.5mm;height:24.5mm;border:.8px solid #111;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;margin:0 auto 3mm}.logo{width:30mm;height:30mm;max-width:none;object-fit:cover;display:block;transform:translateY(1mm)}.title{font-size:16pt;font-weight:700;line-height:1.45}.subtitle{font-size:13pt;font-weight:700;margin-top:1mm}.system-notice{margin-top:2mm;padding:1.2mm 4mm;border:1px solid #1d4ed8;border-radius:999px;color:#1d4ed8;font-size:9.5pt;font-weight:700;background:#fff}th,td{border:1px solid #111;padding:2.1mm 2mm;vertical-align:middle;height:8mm}th{font-weight:700;text-align:center;background:#fff}.center{text-align:center}.code{font-variant-numeric:tabular-nums}.level-row td{font-weight:700;background:#e8eef7;padding:2mm 3mm}.system-name-cell{position:relative;text-align:center;height:11mm;padding:1mm!important;overflow:hidden}.system-name{display:block;line-height:1.05;overflow-wrap:anywhere}.col-no{width:11mm}.col-code{width:28mm}.col-date{width:31mm}.col-note{width:28mm}.screen-actions{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#111827}.screen-actions button{border:0;border-radius:8px;padding:9px 16px;color:#fff;font-weight:700;cursor:pointer}.print{background:#16a34a}.close{background:#475569}@media print{.screen-actions{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body><div class="screen-actions"><button class="print" onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button><button class="close" onclick="window.close()">✕ ปิด</button></div><table><colgroup><col class="col-no"><col class="col-code"><col><col class="col-date"><col class="col-date"><col class="col-note"></colgroup><thead><tr><th colspan="6" class="doc-head"><div class="head-wrap"><div class="logo-ring"><img class="logo" src="${logoUrl}" alt="โลโก้โรงเรียน"></div><div class="title">ฟุตซอลภายในโรงเรียนมูลนิธิอาซิซสถานครั้งที่ 10</div><div class="subtitle">ประจำปีงบประมาณ 2569</div>${systemNames ? '<div class="system-notice">รายชื่อในช่องวันที่สร้างอัตโนมัติเพื่อจัดทำเอกสาร ไม่ใช่ลายเซ็นของนักเรียน</div>' : ''}</div></th></tr><tr><th>ลำดับที่</th><th>รหัสนักเรียน</th><th>ชื่อสกุล</th><th>12 สิงหาคม</th><th>15 สิงหาคม</th><th>หมายเหตุ</th></tr></thead><tbody>${body}</tbody></table></body></html>`
+    @page{size:A4 portrait;margin:10mm 9mm 12mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;font-size:11pt}.level-document{width:100%;border-collapse:collapse;table-layout:fixed}.hs-document{break-before:page;page-break-before:always;margin-top:10mm}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.doc-head{border:none!important;padding:0 0 7mm!important;background:#fff!important}.head-wrap{min-height:${systemNames ? '48' : '42'}mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;background:#fff}.logo-ring{width:24.5mm;height:24.5mm;border:.8px solid #111;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;margin:0 auto 3mm}.logo{width:30mm;height:32mm;max-width:none;object-fit:cover;display:block}.title{font-size:16pt;font-weight:700;line-height:1.45}.subtitle{font-size:13pt;font-weight:700;margin-top:1mm}.system-notice{margin-top:2mm;padding:1.2mm 4mm;border:1px solid #1d4ed8;border-radius:999px;color:#1d4ed8;font-size:9.5pt;font-weight:700;background:#fff}th,td{border:1px solid #111;padding:2.1mm 2mm;vertical-align:middle;height:8mm}th{font-weight:700;text-align:center;background:#fff}.center{text-align:center}.code{font-variant-numeric:tabular-nums}.level-row td{font-weight:700;background:#e8eef7;padding:2mm 3mm}.system-name-cell{position:relative;text-align:center;height:11mm;padding:1mm!important;overflow:hidden}.system-name{display:block;line-height:1.05;overflow-wrap:anywhere}.col-no{width:11mm}.col-code{width:28mm}.col-date{width:31mm}.col-note{width:28mm}.screen-actions{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#111827}.screen-actions button{border:0;border-radius:8px;padding:9px 16px;color:#fff;font-weight:700;cursor:pointer}.print{background:#16a34a}.close{background:#475569}@media print{.screen-actions{display:none}.hs-document{margin-top:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body><div class="screen-actions"><button class="print" onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button><button class="close" onclick="window.close()">✕ ปิด</button></div>${sections}</body></html>`
 }
 
 function openAttendanceFormPrint(systemNames = false) {
