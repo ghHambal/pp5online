@@ -2366,6 +2366,72 @@ function eventCheckinCounts(level, day) {
   return { done: roster.filter(p => checkedIds.has(p.id)).length, pending: roster.filter(p => pendingIds.has(p.id)).length, total: roster.length }
 }
 
+function attendanceFormRows() {
+  const confirmedByDay = new Map([[1, new Set()], [2, new Set()]])
+  S.eventCheckins.filter(checkin => checkin.confirmed && (checkin.day === 1 || checkin.day === 2))
+    .forEach(checkin => confirmedByDay.get(checkin.day).add(checkin.player_id))
+  S.checkins.forEach(checkin => {
+    const day = scheduleDayFor(checkin.level, checkin.match_code)
+    if (confirmedByDay.has(day)) confirmedByDay.get(day).add(checkin.player_id)
+  })
+  const participatingIds = new Set([...confirmedByDay.get(1), ...confirmedByDay.get(2)])
+  const teamById = new Map(S.teams.map(team => [team.id, team]))
+  const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' })
+  return S.players.filter(player => participatingIds.has(player.id)).map(player => ({
+    level: teamById.get(player.team_id)?.level || '',
+    studentCode: player.students?.student_code || '',
+    fullName: player.students?.full_name || '',
+    day1: confirmedByDay.get(1).has(player.id),
+    day2: confirmedByDay.get(2).has(player.id),
+  })).filter(row => row.level === 'MS' || row.level === 'HS').sort((a, b) => {
+    if (a.level !== b.level) return a.level === 'MS' ? -1 : 1
+    return collator.compare(a.fullName, b.fullName) || collator.compare(a.studentCode, b.studentCode)
+  })
+}
+
+function attendanceFormHtml() {
+  const rows = attendanceFormRows()
+  const logoUrl = new URL('./pp5-form-logo.png', window.location.href).href
+  let runningNumber = 0
+  const body = ['MS', 'HS'].map(level => {
+    const levelRows = rows.filter(row => row.level === level)
+    if (!levelRows.length) return ''
+    const title = level === 'MS' ? 'ระดับมัธยมศึกษาตอนต้น' : 'ระดับมัธยมศึกษาตอนปลาย'
+    return `<tr class="level-row"><td colspan="6">${title} (${levelRows.length} คน)</td></tr>${levelRows.map(row => {
+      runningNumber += 1
+      return `<tr><td class="center">${runningNumber}</td><td class="center code">${esc(row.studentCode)}</td><td>${esc(row.fullName)}</td><td class="check">${row.day1 ? '✓' : ''}</td><td class="check">${row.day2 ? '✓' : ''}</td><td></td></tr>`
+    }).join('')}`
+  }).join('')
+  return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ใบรายชื่อนักกีฬาฟุตซอล ปีงบประมาณ 2569</title><style>
+    @page{size:A4 portrait;margin:10mm 9mm 12mm}*{box-sizing:border-box}body{margin:0;color:#111;font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;font-size:11pt}table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.doc-head{border:none!important;padding:0 0 7mm!important}.head-wrap{position:relative;min-height:28mm;display:flex;align-items:center;justify-content:center;text-align:center}.logo{position:absolute;left:3mm;top:0;width:25mm;height:25mm;object-fit:contain}.title{font-size:16pt;font-weight:700;line-height:1.45}.subtitle{font-size:13pt;font-weight:700;margin-top:1mm}th,td{border:1px solid #111;padding:2.1mm 2mm;vertical-align:middle;height:8mm}th{font-weight:700;text-align:center;background:#f2f2f2}.center,.check{text-align:center}.check{font-size:15pt;font-weight:700}.code{font-variant-numeric:tabular-nums}.level-row td{font-weight:700;background:#e8eef7;padding:2mm 3mm}.col-no{width:11mm}.col-code{width:28mm}.col-date{width:27mm}.col-note{width:36mm}.screen-actions{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#111827}.screen-actions button{border:0;border-radius:8px;padding:9px 16px;color:#fff;font-weight:700;cursor:pointer}.print{background:#16a34a}.close{background:#475569}@media print{.screen-actions{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body><div class="screen-actions"><button class="print" onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button><button class="close" onclick="window.close()">✕ ปิด</button></div><table><colgroup><col class="col-no"><col class="col-code"><col><col class="col-date"><col class="col-date"><col class="col-note"></colgroup><thead><tr><th colspan="6" class="doc-head"><div class="head-wrap"><img class="logo" src="${logoUrl}" alt="โลโก้โรงเรียน"><div><div class="title">ฟุตซอลภายในโรงเรียนมูลนิธิอาซิซสถานครั้งที่ 10</div><div class="subtitle">ประจำปีงบประมาณ 2569</div></div></div></th></tr><tr><th>ลำดับที่</th><th>รหัสนักเรียน</th><th>ชื่อสกุล</th><th>12 สิงหาคม</th><th>15 สิงหาคม</th><th>หมายเหตุ</th></tr></thead><tbody>${body}</tbody></table></body></html>`
+}
+
+function openAttendanceFormPrint() {
+  const rows = attendanceFormRows()
+  if (!rows.length) { azToast('ยังไม่มีรายชื่อนักเรียนที่เช็กอินหรือรายงานตัว'); return }
+  const win = window.open('', '_blank')
+  if (!win) { azToast('เบราว์เซอร์ปิดกั้นหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัพ'); return }
+  win.document.open()
+  win.document.write(attendanceFormHtml())
+  win.document.close()
+}
+
+function downloadAttendanceForm() {
+  const rows = attendanceFormRows()
+  if (!rows.length) { azToast('ยังไม่มีรายชื่อนักเรียนที่เช็กอินหรือรายงานตัว'); return }
+  const blob = new Blob(['\ufeff', attendanceFormHtml()], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'ใบรายชื่อนักกีฬาฟุตซอล_ปีงบประมาณ2569.html'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  azToast(`ดาวน์โหลดใบรายชื่อ ${rows.length} คนแล้ว`)
+}
+
 // ช่วงเวลาเปิด-ปิดรับเช็คอินเข้างาน (ตั้งเวลาเดียว ใช้ซ้ำกับวันที่ของแต่ละวันแข่ง) — ปิดรับ = เส้นตายสำหรับแจ้งเตือนทีมมาไม่ครบ
 function eventCheckinOpenTime() { return cfg('EVENT_CHECKIN_OPEN_TIME', '') }
 function eventCheckinCloseTime() { return cfg('EVENT_CHECKIN_CLOSE_TIME', '') }
@@ -2526,6 +2592,10 @@ function eventCheckinPanel(showSettings) {
       <button data-act="openEventCheckinScanner" data-day="${day}" style="flex:1;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">📷 สแกนเช็คอิน</button>
       <button data-act="openEventCheckinBigScreen" data-day="${day}" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:800;font-size:12.5px;cursor:pointer">🖥️ จอใหญ่หน้าลงทะเบียน</button>
     </div>
+    ${showSettings ? `<div style="display:flex;gap:8px;margin-top:8px">
+      <button data-act="printAttendanceForm" style="flex:1;padding:9px;border-radius:10px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-weight:800;font-size:12px;cursor:pointer">🖨️ พิมพ์ใบรายชื่อ</button>
+      <button data-act="downloadAttendanceForm" style="flex:1;padding:9px;border-radius:10px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:12px;cursor:pointer">⬇️ ดาวน์โหลดใบรายชื่อ</button>
+    </div>` : ''}
     ${eventCheckinRequiresAnyExtra() ? `<button data-act="openEventCheckinPendingReview" data-day="${day}" style="width:100%;margin-top:8px;padding:9px;border-radius:10px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;font-weight:800;font-size:12.5px;cursor:pointer">🕐 รอสตาฟยืนยัน (${(msCount.pending || 0) + (hsCount.pending || 0)} คน)</button>` : ''}
     ${showSettings ? `
     <div style="margin-top:14px;display:flex;gap:6px">
@@ -5119,6 +5189,8 @@ function bindEvents() {
       return
     }
     if (act === 'downloadAthletesExcel') { downloadAthletesExcel(btn.dataset.level); return }
+    if (act === 'printAttendanceForm') { openAttendanceFormPrint(); return }
+    if (act === 'downloadAttendanceForm') { downloadAttendanceForm(); return }
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
     if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
