@@ -467,11 +467,12 @@ function matchClockDisplay(m, opts = {}) {
   const half = m.clock_half || 1
   const isRunning = status === 'running'
   const onDark = !!opts.onDark
+  const clockMode = opts.countdown ? 'countdown' : 'elapsed'
   const halfLabel = half === 2 ? 'ครึ่งหลัง' : 'ครึ่งแรก'
   const label = status === 'paused' ? `หยุดเวลา · ${halfLabel}` : status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ${halfLabel}`
   const size = opts.compact ? (onDark ? '26px' : '13px') : 'clamp(44px,12vw,64px)'
   return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:${opts.compact ? '6px' : '2px'};${opts.compact ? '' : 'width:100%;box-sizing:border-box;flex-direction:column;padding:10px 14px;background:#111827;border-radius:14px;'}">
-    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:900;font-size:${size};letter-spacing:${opts.compact ? '0' : '1.5px'};line-height:1;color:${onDark || !opts.compact ? '#fff' : '#111827'}">--:--</span>
+    <span class="az-clock-live" data-clock-mode="${clockMode}" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:900;font-size:${size};letter-spacing:${opts.compact ? '0' : '1.5px'};line-height:1;color:${onDark || !opts.compact ? '#fff' : '#111827'}">--:--</span>
     <span style="font-size:${opts.compact ? (onDark ? '12px' : '10px') : '12px'};font-weight:800;color:${isRunning ? '#22c55e' : status === 'paused' ? '#f59e0b' : (onDark || !opts.compact ? '#9ca3af' : '#6b7280')}">${label}</span>
   </span>`
 }
@@ -484,12 +485,20 @@ function _azTickClocks() {
     const halfStartedElapsed = Number(el.dataset.clockHalfStartedElapsed || 0)
     const halfMin = Number(el.dataset.clockHalfMinutes || 7)
     const half = Number(el.dataset.clockHalf || 1)
+    const clockMode = el.dataset.clockMode || 'elapsed'
     let sec = elapsedBefore
     if (status === 'running' && startedAt) sec += Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
     const halfLimitSec = halfMin * 60
     // นับเวลาที่ผ่านไป "เฉพาะครึ่งปัจจุบัน" เทียบกับจุดเริ่มครึ่งนี้จริง (ไม่ใช่ลบด้วยนาทีต่อครึ่งคงที่)
     // กันบั๊ก: ถ้าครึ่งแรกทดเวลาเกิน นาฬิกาครึ่งหลังต้องเริ่มนับใหม่เต็มจำนวนนาทีต่อครึ่งเสมอ ไม่ใช่นับต่อจากทดเวลาครึ่งแรก
     const elapsedInHalf = Math.max(0, sec - halfStartedElapsed)
+    if (clockMode === 'countdown') {
+      const remainingSec = Math.max(0, halfLimitSec - elapsedInHalf)
+      const mm = String(Math.floor(remainingSec / 60)).padStart(2, '0')
+      const ss = String(remainingSec % 60).padStart(2, '0')
+      el.textContent = `${mm}:${ss}`
+      return
+    }
     // เวลาแสดงผลเป็นเวลาสะสมของการแข่งขัน: ครึ่งแรก 00:00-07:00, ครึ่งหลังเริ่มที่ 07:00 และไปถึง 14:00
     // เวลาทดของครึ่งหลังจึงเริ่มหลัง 14:00 โดยไม่เอาทดเวลาครึ่งแรกมาบวกซ้ำ
     const displaySec = (half === 2 ? halfLimitSec : 0) + elapsedInHalf
@@ -4622,7 +4631,7 @@ function matchEditorModal() {
       ${azSyncBadge() ? `<div>${azSyncBadge()}</div>` : ''}
       ${r.teamAId && r.teamBId ? `
       <div style="display:flex;flex-direction:column;align-items:center;gap:10px;background:#111827;border-radius:12px;padding:12px">
-        ${m.clock_status && m.clock_status !== 'not_started' ? matchClockDisplay(m) : `<span style="font-size:11.5px;color:#9ca3af;font-weight:700">ยังไม่เริ่มจับเวลา</span>`}
+        ${m.clock_status && m.clock_status !== 'not_started' ? matchClockDisplay(m, { countdown: true }) : `<span style="font-size:11.5px;color:#9ca3af;font-weight:700">ยังไม่เริ่มจับเวลา</span>`}
         ${matchClockControls(level, code, m)}
       </div>` : ''}
       <div style="display:flex;gap:10px">${teamField('A', slots.a, r.teamA)}${teamField('B', slots.b, r.teamB)}</div>
