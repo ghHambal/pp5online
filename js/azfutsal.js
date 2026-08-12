@@ -2051,6 +2051,8 @@ function scheduleDayStart(day) {
 }
 
 function scheduleDayFor(level, code) {
+  // ม.ปลายคู่ที่ 13 ให้แข่งขันต่อในวันที่ 1 ตามกำหนดการหน้างาน
+  if (level === 'HS' && code === 'M13') return 1
   const matchNumber = Number(String(code).replace(/^M/, ''))
   const dayOneLastMatch = usesSixteenTeamPools(level) ? 12 : 9
   return matchNumber <= dayOneLastMatch ? 1 : 2
@@ -5938,7 +5940,7 @@ function adminOps() {
     ${box(`
       <div style="font-weight:700;font-size:14px;margin-bottom:10px">ตั้งค่าเวลา / ไทม์ไลน์</div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <label style="font-size:11.5px;color:#6b7280">วันที่ 1 · รอบแรกและรอบแก้ตัว
+        <label style="font-size:11.5px;color:#6b7280">วันที่ 1 · รอบแรก/รอบแก้ตัว และ ม.ปลาย M13
           <input id="ops-start" type="datetime-local" value="${esc(cfg('START_TIME', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
         </label>
         <label style="font-size:11.5px;color:#6b7280">วันที่ 2 · รอบเข้ารอบจนถึงรอบชิง
@@ -5948,7 +5950,7 @@ function adminOps() {
           <label style="font-size:11.5px;color:#6b7280;flex:1">นัด (นาที)<input id="ops-matchmin" type="number" value="${esc(cfg('MATCH_MIN', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
           <label style="font-size:11.5px;color:#6b7280;flex:1">พัก (นาที)<input id="ops-breakmin" type="number" value="${esc(cfg('BREAK_MIN', 5))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
         </div>
-        <div style="font-size:10.5px;color:#6b7280">วันแรกจัดรอบแรก/รอบแก้ตัว 21 นัด วันที่สองจัดรอบที่เหลือ 21 นัด โดย 4 นัดท้ายเป็นชิงที่ 3 ม.ต้น → ชิงที่ 3 ม.ปลาย → ชิงที่ 1 ม.ต้น → ชิงที่ 1 ม.ปลาย</div>
+        <div style="font-size:10.5px;color:#6b7280">วันแรกจัด 22 นัด (รวม ม.ปลาย M13) วันที่สองจัดรอบที่เหลือ 20 นัด โดย 4 นัดท้ายเป็นชิงที่ 3 ม.ต้น → ชิงที่ 3 ม.ปลาย → ชิงที่ 1 ม.ต้น → ชิงที่ 1 ม.ปลาย</div>
         <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดตารางอัตโนมัติ 2 วัน</button>
       </div>
     `)}
