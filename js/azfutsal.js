@@ -1243,42 +1243,51 @@ function openCheckinScanner(level, code) {
   overlay.querySelector('#az-ci-manual-submit').addEventListener('click', submitManualCode)
   manualInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitManualCode() })
 
-  // หานัดแรกสุด (เลขนัดน้อยสุด ไม่นับนัดปัจจุบัน) ที่ทีมนี้เคยมีคนรายงานตัวไว้ — ใช้เป็นต้นทางหนึ่งของ "รู้ว่ามาแล้ว"
-  function earliestCheckinMatchCodeForTeam(teamId) {
-    const codes = [...new Set(S.checkins.filter(c => c.team_id === teamId && c.match_code !== code).map(c => c.match_code))]
-    if (!codes.length) return null
-    codes.sort((a, b) => Number(String(a).replace(/^M/, '')) - Number(String(b).replace(/^M/, '')))
-    return codes[0]
-  }
-  // รวม id คนที่ "รู้แล้วว่ามาสนามจริง" ของทีมนี้ จาก 2 แหล่ง: (1) นัดแรกสุดที่เคยรายงานตัวรายนัด (2) เช็คอินเข้างานตอนเช้าที่สตาฟ/ระบบยืนยันแล้ว (confirmed) ของวันเดียวกับนัดนี้
-  function knownPresentPlayerIds(team) {
-    const ids = new Set()
-    const sourceCode = earliestCheckinMatchCodeForTeam(team.id)
-    if (sourceCode) {
-      S.checkins.filter(c => c.level === level && c.match_code === sourceCode && c.team_id === team.id).forEach(c => ids.add(c.player_id))
-    }
-    const day = scheduleDayFor(level, code)
-    S.eventCheckins.filter(c => c.day === day && c.team_id === team.id && c.confirmed).forEach(c => ids.add(c.player_id))
-    return ids
-  }
-  async function copyKnownPresentPlayers(team, roster) {
-    if (!team) return { copied: 0 }
-    const ids = knownPresentPlayerIds(team)
-    const toCopy = roster.filter(p => ids.has(p.id) && !checkedIds.has(p.id))
-    if (!toCopy.length) return { copied: 0 }
-    const rows = toCopy.map(p => ({ level, match_code: code, team_id: team.id, player_id: p.id, checked_in_by: S.identity.profile?.id || null, checked_in_at: new Date().toISOString() }))
-    const { error } = await SB.from('azfutsal_checkins').upsert(rows, { onConflict: 'level,match_code,player_id' })
-    if (error) throw error
-    toCopy.forEach(p => checkedIds.add(p.id))
-    return { copied: toCopy.length }
-  }
   // นำรายชื่อที่รู้อยู่แล้วว่ามาสนามจริง (นัดแรกที่เคยรายงานตัว + เช็คอินเข้างานตอนเช้า) มาใช้อัตโนมัติทันทีที่เปิดสแกนเนอร์ (ไม่ต้องกดปุ่ม)
+  // ดึงข้อมูลสดจาก DB ตรงๆ แทนที่จะพึ่ง S.checkins/S.eventCheckins ที่โหลดไว้ตอนเปิดหน้า — กันพลาดตอนงานจริงที่มีคนเช็คอิน
+  // เพิ่มขึ้นเรื่อยๆ ระหว่างที่สตาฟเปิดแท็บนี้ค้างไว้นาน (เจอจริงว่าข้อมูลที่ cache ไว้ในเครื่องตามไม่ทันข้อมูลสด)
   // ใครไม่ได้มาจริงในนัดนี้ ให้กด ✕ ยกเลิกออกทีหลังในลิสต์ได้ตามปกติ
   ;(async () => {
     const feedback = overlay.querySelector('#az-ci-feedback')
     try {
       const teamA = S.teams.find(t => t.id === r.teamAId)
       const teamB = S.teams.find(t => t.id === r.teamBId)
+      const teamIds = [teamA?.id, teamB?.id].filter(Boolean)
+      const day = scheduleDayFor(level, code)
+      const [{ data: freshCheckins, error: err1 }, { data: freshEventCheckins, error: err2 }] = await Promise.all([
+        SB.from('azfutsal_checkins').select('match_code, team_id, player_id').eq('level', level).in('team_id', teamIds),
+        SB.from('azfutsal_event_checkins').select('team_id, player_id, confirmed').eq('day', day).in('team_id', teamIds),
+      ])
+      if (err1) throw err1
+      if (err2) throw err2
+
+      const earliestMatchCodeFor = teamId => {
+        const codes = [...new Set((freshCheckins || []).filter(c => c.team_id === teamId && c.match_code !== code).map(c => c.match_code))]
+        if (!codes.length) return null
+        codes.sort((a, b) => Number(String(a).replace(/^M/, '')) - Number(String(b).replace(/^M/, '')))
+        return codes[0]
+      }
+      const knownPresentIds = teamId => {
+        const ids = new Set()
+        const sourceCode = earliestMatchCodeFor(teamId)
+        if (sourceCode) {
+          (freshCheckins || []).filter(c => c.match_code === sourceCode && c.team_id === teamId).forEach(c => ids.add(c.player_id))
+        }
+        ;(freshEventCheckins || []).filter(c => c.team_id === teamId && c.confirmed).forEach(c => ids.add(c.player_id))
+        return ids
+      }
+      async function copyKnownPresentPlayers(team, roster) {
+        if (!team) return { copied: 0 }
+        const ids = knownPresentIds(team.id)
+        const toCopy = roster.filter(p => ids.has(p.id) && !checkedIds.has(p.id))
+        if (!toCopy.length) return { copied: 0 }
+        const rows = toCopy.map(p => ({ level, match_code: code, team_id: team.id, player_id: p.id, checked_in_by: S.identity.profile?.id || null, checked_in_at: new Date().toISOString() }))
+        const { error } = await SB.from('azfutsal_checkins').upsert(rows, { onConflict: 'level,match_code,player_id' })
+        if (error) throw error
+        toCopy.forEach(p => checkedIds.add(p.id))
+        return { copied: toCopy.length }
+      }
+
       const resA = await copyKnownPresentPlayers(teamA, rosterA)
       const resB = await copyKnownPresentPlayers(teamB, rosterB)
       renderList()
