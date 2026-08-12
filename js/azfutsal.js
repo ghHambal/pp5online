@@ -386,12 +386,13 @@ function matchClockDisplay(m, opts = {}) {
   const halfMin = Number(cfg('HALF_DURATION_MINUTES', 7))
   const half = m.clock_half || 1
   const isRunning = status === 'running'
+  const onDark = !!opts.onDark
   const halfLabel = half === 2 ? 'ครึ่งหลัง' : 'ครึ่งแรก'
   const label = status === 'paused' ? `หยุดเวลา · ${halfLabel}` : status === 'half_break' ? 'พักครึ่ง' : status === 'ended' ? 'หมดเวลา' : `กำลังแข่ง · ${halfLabel}`
-  const size = opts.compact ? '13px' : 'clamp(44px,12vw,64px)'
+  const size = opts.compact ? (onDark ? '26px' : '13px') : 'clamp(44px,12vw,64px)'
   return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:${opts.compact ? '6px' : '2px'};${opts.compact ? '' : 'width:100%;box-sizing:border-box;flex-direction:column;padding:10px 14px;background:#111827;border-radius:14px;'}">
-    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:900;font-size:${size};letter-spacing:${opts.compact ? '0' : '1.5px'};line-height:1;color:${opts.compact ? '#111827' : '#fff'}">--:--</span>
-    <span style="font-size:${opts.compact ? '10px' : '12px'};font-weight:800;color:${isRunning ? '#22c55e' : status === 'paused' ? '#f59e0b' : (opts.compact ? '#6b7280' : '#9ca3af')}">${label}</span>
+    <span class="az-clock-live" data-clock-status="${status}" data-clock-half="${half}" data-clock-started-at="${m.clock_started_at || ''}" data-clock-elapsed-before="${m.clock_elapsed_before || 0}" data-clock-half-started-elapsed="${m.clock_half_started_elapsed || 0}" data-clock-half-minutes="${halfMin}" style="font-variant-numeric:tabular-nums;font-weight:900;font-size:${size};letter-spacing:${opts.compact ? '0' : '1.5px'};line-height:1;color:${onDark || !opts.compact ? '#fff' : '#111827'}">--:--</span>
+    <span style="font-size:${opts.compact ? (onDark ? '12px' : '10px') : '12px'};font-weight:800;color:${isRunning ? '#22c55e' : status === 'paused' ? '#f59e0b' : (onDark || !opts.compact ? '#9ca3af' : '#6b7280')}">${label}</span>
   </span>`
 }
 // อัปเดตตัวเลขนาฬิกาทุกวินาทีแบบ DOM ตรงๆ ไม่เรียก draw() ใหม่ — self-healing เพราะ query DOM สดทุกครั้ง ถ้า draw() แทนที่ element ไปแล้วรอบถัดไปก็จะเจอตัวใหม่เอง
@@ -2667,7 +2668,7 @@ function openMatchBigScreen(level, code) {
     if (!bodyEl) return
     bodyEl.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">${levelBadge(level)}<span style="color:#94a3b8;font-size:16px;font-weight:700">${esc(r.round || '')} · ${esc(code)}</span></div>
-      ${isLive ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><span style="width:12px;height:12px;border-radius:50%;background:#22c55e;${m.clock_status === 'running' ? 'animation:azLivePulse 1.2s ease-in-out infinite' : ''}"></span><span style="color:#4ade80;font-weight:800;font-size:18px">${liveLabel}</span><span style="color:#fff;font-size:18px;font-weight:800">${matchClockDisplay(m, { compact: true })}</span></div>`
+      ${isLive ? `<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px"><span style="width:12px;height:12px;border-radius:50%;background:#22c55e;${m.clock_status === 'running' ? 'animation:azLivePulse 1.2s ease-in-out infinite' : ''}"></span><span style="color:#4ade80;font-weight:800;font-size:18px">${liveLabel}</span>${matchClockDisplay(m, { compact: true, onDark: true })}</div>`
         : hasScore ? `<div style="color:#94a3b8;font-weight:700;font-size:16px;margin-bottom:20px">จบการแข่งขัน</div>`
         : `<div style="color:#94a3b8;font-weight:700;font-size:16px;margin-bottom:20px">${esc(m?.kickoff_time || 'รอแข่ง')}</div>`}
       <div style="display:flex;align-items:center;justify-content:center;gap:5vw;width:100%;max-width:1400px">
@@ -2690,6 +2691,7 @@ function openMatchBigScreen(level, code) {
         <div style="flex-shrink:0;width:150px"></div>
         <div style="flex:1;min-width:0">${detailBlock(goalsB, yellowB, redB, 'left')}</div>
       </div>`
+    _azTickClocks()
   }
 
   renderBody()
