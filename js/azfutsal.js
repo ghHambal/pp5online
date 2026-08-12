@@ -50,13 +50,28 @@ const MS_BRACKET_12 = [
   { code: 'M16', round: 'ชิงที่ 3', refA: 'L_M14', refB: 'L_M15' },
   { code: 'M17', round: 'ชิงที่ 1', refA: 'W_M14', refB: 'W_M15' },
 ]
-// เมื่อ ม.ต้น มี 13 ทีม: จับ 1 ทีมเข้ารอบบายก่อน แล้วนำ 12 ทีมที่เหลือจับคู่ M1-M6
-// ทีมบายเข้าช่อง M12 โดยตรง จึงเหลือสิทธิ์จากผู้ชนะรอบแก้ตัวเพียง 1 ทีมที่ M13
-const MS_BRACKET_13 = MS_BRACKET_12.map(match => {
-  if (match.code === 'M12') return { ...match, refB: 'FIRST_ROUND_BYE' }
-  if (match.code === 'M13') return { ...match, refB: 'REC_1' }
-  return { ...match }
-})
+// ม.ต้น 13 ทีม: 12 ทีมลง M1-M6, อีก 1 ทีมได้บาย, ผู้แพ้ลงรอบแก้ตัว M7-M9
+// วันที่ 1 คัดเหลือ 5 ทีมใน M10-M14 แล้วจับฉลากผู้แพ้ 1 ทีมกลับเข้า M17
+// วันที่ 2 คัดเหลือ 3 ทีมใน M15-M17 แล้วจับฉลากผู้แพ้ 1 ทีมกลับเข้า M19
+// M18/M19 เป็นรอบรองฯ, ผู้แพ้ทั้งสองคู่ได้อันดับ 3 ร่วม, M20 เป็นรอบชิงชนะเลิศ
+const MS_BRACKET_13 = [
+  { code: 'M1', round: 'รอบแรก' }, { code: 'M2', round: 'รอบแรก' }, { code: 'M3', round: 'รอบแรก' },
+  { code: 'M4', round: 'รอบแรก' }, { code: 'M5', round: 'รอบแรก' }, { code: 'M6', round: 'รอบแรก' },
+  { code: 'M7', round: 'รอบแก้ตัว', refA: 'L_M1', refB: 'L_M2' },
+  { code: 'M8', round: 'รอบแก้ตัว', refA: 'L_M3', refB: 'L_M4' },
+  { code: 'M9', round: 'รอบแก้ตัว', refA: 'L_M5', refB: 'L_M6' },
+  { code: 'M10', round: 'รอบ 10 ทีม', refA: 'FIRST_ROUND_BYE', refB: 'W_M1' },
+  { code: 'M11', round: 'รอบ 10 ทีม', refA: 'W_M2', refB: 'W_M3' },
+  { code: 'M12', round: 'รอบ 10 ทีม', refA: 'W_M4', refB: 'W_M5' },
+  { code: 'M13', round: 'รอบ 10 ทีม', refA: 'W_M6', refB: 'W_M7' },
+  { code: 'M14', round: 'รอบ 10 ทีม', refA: 'W_M8', refB: 'W_M9' },
+  { code: 'M15', round: 'รอบ 6 ทีม', refA: 'W_M10', refB: 'W_M11' },
+  { code: 'M16', round: 'รอบ 6 ทีม', refA: 'W_M12', refB: 'W_M13' },
+  { code: 'M17', round: 'รอบ 6 ทีม', refA: 'W_M14', refB: 'LOTTERY_1' },
+  { code: 'M18', round: 'รองฯ', refA: 'W_M15', refB: 'W_M16' },
+  { code: 'M19', round: 'รองฯ', refA: 'W_M17', refB: 'LOTTERY_2' },
+  { code: 'M20', round: 'ชิงที่ 1', refA: 'W_M18', refB: 'W_M19' },
+]
 // M1-M8 รอบแรก (16 ทีม) ผู้ชนะ 8 ทีมรอไว้ก่อน ผู้แพ้ 8 ทีมไปรอบแก้ตัว
 // M9-M12 รอบแก้ตัว (เฉพาะผู้แพ้รอบแรก) ผู้ชนะ 4 ทีมไปรวมกับผู้ชนะรอบแรก = 12 ทีม ผู้แพ้ตกรอบ
 // M13-M18 รวม 12 ทีม จับคู่ 6 คู่ (pool 'R3' — จับสลากสดหรือแอดมินเลือกเองตอนนั้น) ผู้ชนะ 6 ทีมไปต่อ ผู้แพ้ตกรอบ
@@ -95,11 +110,11 @@ const BRACKET = {
   HS: HS_BRACKET,
 }
 const FINAL_CODE = {
-  get MS() { return msTeamFormat() === '16' ? 'M25' : 'M17' },
+  get MS() { return msTeamFormat() === '16' ? 'M25' : (hasMsFirstRoundBye() ? 'M20' : 'M17') },
   HS: 'M25',
 }
 const THIRD_CODE = {
-  get MS() { return msTeamFormat() === '16' ? 'M24' : 'M16' },
+  get MS() { return msTeamFormat() === '16' ? 'M24' : (hasMsFirstRoundBye() ? null : 'M16') },
   HS: 'M24',
 }
 const RECOVER_SOURCES = { MS: ['M7', 'M8', 'M9'] }
@@ -114,6 +129,13 @@ const POOL_SOURCES = { HS: SIXTEEN_TEAM_POOL_SOURCES, MS: SIXTEEN_TEAM_POOL_SOUR
 // สระผู้แพ้ที่ใช้สุ่มฉลาก 1 ทีมเข้ารองฯ (LOTTERY_1)
 const SIXTEEN_TEAM_LOTTERY_SOURCE = ['M19', 'M20', 'M21']
 const LOTTERY_SOURCES = { HS: SIXTEEN_TEAM_LOTTERY_SOURCE, MS: SIXTEEN_TEAM_LOTTERY_SOURCE }
+function lotterySources(level, ref) {
+  if (level === 'MS' && hasMsFirstRoundBye()) {
+    if (ref === 'LOTTERY_1') return ['M10', 'M11', 'M12', 'M13', 'M14']
+    if (ref === 'LOTTERY_2') return ['M15', 'M16', 'M17']
+  }
+  return ref === 'LOTTERY_1' ? (LOTTERY_SOURCES[level] || []) : []
+}
 
 const esc = v => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -605,13 +627,17 @@ function computeCardRecipients(level, type) {
 
 function computeSummary(level) {
   const final = resolveMatch(level, FINAL_CODE[level])
-  const third = resolveMatch(level, THIRD_CODE[level])
+  const isJointThird = level === 'MS' && hasMsFirstRoundBye()
+  const third = isJointThird ? resolveMatch(level, 'M18') : resolveMatch(level, THIRD_CODE[level])
+  const secondThird = isJointThird ? resolveMatch(level, 'M19') : null
   const award = type => S.awards.find(a => a.level === level && a.award_type === type)?.students?.full_name || ''
   return {
     champion: final.winnerId ? teamName(final.winnerId) : '',
     runnerUp: final.loserId ? teamName(final.loserId) : '',
-    third: third.winnerId ? teamName(third.winnerId) : '',
-    consolation: third.loserId ? teamName(third.loserId) : '',
+    third: isJointThird ? (third.loserId ? teamName(third.loserId) : '') : (third.winnerId ? teamName(third.winnerId) : ''),
+    third2: secondThird?.loserId ? teamName(secondThird.loserId) : '',
+    thirdLabel: isJointThird ? 'อันดับ 3 ร่วม' : 'อันดับ 3',
+    consolation: isJointThird ? '' : (third.loserId ? teamName(third.loserId) : ''),
     mvp: award('mvp'), topScorer: award('top_scorer'), bestGK: award('best_gk'),
   }
 }
@@ -2054,6 +2080,7 @@ function scheduleDayFor(level, code) {
   // ม.ปลายคู่ที่ 13 ให้แข่งขันต่อในวันที่ 1 ตามกำหนดการหน้างาน
   if (level === 'HS' && code === 'M13') return 1
   const matchNumber = Number(String(code).replace(/^M/, ''))
+  if (level === 'MS' && hasMsFirstRoundBye()) return matchNumber <= 14 ? 1 : 2
   const dayOneLastMatch = usesSixteenTeamPools(level) ? 12 : 9
   return matchNumber <= dayOneLastMatch ? 1 : 2
 }
@@ -2071,7 +2098,7 @@ function daySequenceCodes(day) {
   }
   const dayCodes = d => ['MS', 'HS'].map(level => BRACKET[level]
     .filter(match => scheduleDayFor(level, match.code) === d)
-    .filter(match => d === 1 || (match.code !== THIRD_CODE[level] && match.code !== FINAL_CODE[level]))
+    .filter(match => d === 1 || ((!THIRD_CODE[level] || match.code !== THIRD_CODE[level]) && match.code !== FINAL_CODE[level]))
     .map(match => [level, match.code]))
   if (day === 1) {
     const [dayOneMs, dayOneHs] = dayCodes(1)
@@ -2079,7 +2106,9 @@ function daySequenceCodes(day) {
   }
   const [dayTwoMs, dayTwoHs] = dayCodes(2)
   const codes = alternate(dayTwoMs, dayTwoHs)
-  codes.push(['MS', THIRD_CODE.MS], ['HS', THIRD_CODE.HS], ['MS', FINAL_CODE.MS], ['HS', FINAL_CODE.HS])
+  if (THIRD_CODE.MS) codes.push(['MS', THIRD_CODE.MS])
+  if (THIRD_CODE.HS) codes.push(['HS', THIRD_CODE.HS])
+  codes.push(['MS', FINAL_CODE.MS], ['HS', FINAL_CODE.HS])
   return codes
 }
 
@@ -2853,7 +2882,8 @@ function bracketSlotPlaceholder(def, side) {
   if (ref.startsWith('L_M')) return `ผู้แพ้ ${ref.slice(2)}`
   if (ref === 'FIRST_ROUND_BYE') return 'ทีมที่ได้สิทธิ์บาย'
   if (ref.startsWith('REC_')) return 'ทีมจากรอบแก้ตัว'
-  if (ref === 'LOTTERY_1') return 'ทีมที่จับฉลากกลับมา'
+  if (ref === 'LOTTERY_1') return 'ทีมจับฉลากจากผู้แพ้รอบนี้'
+  if (ref === 'LOTTERY_2') return 'ทีมจับฉลากจากผู้แพ้รอบนี้'
   return 'รอผลรอบก่อน'
 }
 
@@ -3247,7 +3277,7 @@ function summaryView() {
           <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
             <div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">🥇</span><div><div style="font-size:11px;color:#6b7280">แชมป์</div><div style="font-size:13.5px;font-weight:700">${esc(sum.champion) || '-'}</div></div></div>
             <div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">🥈</span><div><div style="font-size:11px;color:#6b7280">รองแชมป์</div><div style="font-size:13.5px;font-weight:700">${esc(sum.runnerUp) || '-'}</div></div></div>
-            <div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">🥉</span><div><div style="font-size:11px;color:#6b7280">อันดับ 3</div><div style="font-size:13.5px;font-weight:700">${esc(sum.third) || '-'}</div></div></div>
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">🥉</span><div><div style="font-size:11px;color:#6b7280">${esc(sum.thirdLabel)}</div><div style="font-size:13.5px;font-weight:700">${esc([sum.third, sum.third2].filter(Boolean).join(' · ')) || '-'}</div></div></div>
           </div>
           <div style="border-top:1px solid rgba(0,0,0,.06);padding-top:10px;display:flex;flex-direction:column;gap:6px">
             <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:#6b7280">MVP</span><span style="font-weight:700">${esc(sum.mvp) || '-'}</span></div>
@@ -3928,7 +3958,7 @@ function adminTeams() {
     <div style="flex-shrink:0;margin-bottom:10px">
       <div style="font-size:11.5px;color:#6b7280;margin-bottom:5px">รูปแบบสายการแข่ง ม.ต้น (เลือกก่อนสร้างตารางแข่ง — ล็อกทันทีที่สร้างแล้ว)</div>
       <div style="display:flex;gap:6px">
-        <button data-act="setMsFormat" data-v="12" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '12' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '12' ? T.MS.base : '#fff'};color:${msTeamFormat() === '12' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">12 ทีม${hasFirstRoundBye ? ' + บาย 1' : ''} (17 นัด)</button>
+        <button data-act="setMsFormat" data-v="12" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '12' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '12' ? T.MS.base : '#fff'};color:${msTeamFormat() === '12' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">12 ทีม${hasFirstRoundBye ? ' + บาย 1 (20 นัด)' : ' (17 นัด)'}</button>
         <button data-act="setMsFormat" data-v="16" style="flex:1;padding:8px;border-radius:9px;border:1px solid ${msTeamFormat() === '16' ? T.MS.base : '#e5e7eb'};background:${msTeamFormat() === '16' ? T.MS.base : '#fff'};color:${msTeamFormat() === '16' ? '#fff' : '#374151'};font-weight:700;font-size:12px;cursor:pointer">16 ทีม (25 นัด)</button>
       </div>
     </div>` : ''}
@@ -3962,12 +3992,12 @@ function pickableSlots(level, code) {
   else if (def.refA === 'FIRST_ROUND_BYE') slots.a = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_a_id || cfg(`FIRST_ROUND_BYE_${level}`, '') }
   else if (def.refA === 'REC_1' || def.refA === 'REC_2') slots.a = { pool: poolFrom(RECOVER_SOURCES[level] || []), value: m?.team_a_id || '' }
   else if (def.refA === 'WC_1' || def.refA === 'WC_2') slots.a = { pool: poolFrom(WILDCARD_SOURCES[level] || []), value: m?.team_a_id || '' }
-  else if (def.refA === 'LOTTERY_1') slots.a = { pool: losersFrom(level, LOTTERY_SOURCES[level] || []), value: m?.team_a_id || '' }
+  else if (def.refA === 'LOTTERY_1' || def.refA === 'LOTTERY_2') slots.a = { pool: losersFrom(level, lotterySources(level, def.refA)), value: m?.team_a_id || '', lotteryRef: def.refA }
   if (!def.refB) slots.b = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_b_id || '' }
   else if (def.refB === 'FIRST_ROUND_BYE') slots.b = { pool: S.teams.filter(t => t.level === level).map(t => t.id), value: m?.team_b_id || cfg(`FIRST_ROUND_BYE_${level}`, '') }
   else if (def.refB === 'REC_1' || def.refB === 'REC_2') slots.b = { pool: poolFrom(RECOVER_SOURCES[level] || []), value: m?.team_b_id || '' }
   else if (def.refB === 'WC_1' || def.refB === 'WC_2') slots.b = { pool: poolFrom(WILDCARD_SOURCES[level] || []), value: m?.team_b_id || '' }
-  else if (def.refB === 'LOTTERY_1') slots.b = { pool: losersFrom(level, LOTTERY_SOURCES[level] || []), value: m?.team_b_id || '' }
+  else if (def.refB === 'LOTTERY_1' || def.refB === 'LOTTERY_2') slots.b = { pool: losersFrom(level, lotterySources(level, def.refB)), value: m?.team_b_id || '', lotteryRef: def.refB }
   return slots
 }
 
@@ -4339,12 +4369,12 @@ async function handleDrawNext() {
       const key = `FIRST_ROUND_BYE_${ld.level}`
       const [{ error }, { error: clearError }] = await Promise.all([
         SB.from('azfutsal_config').upsert({ key, value: teamId }),
-        SB.from('azfutsal_matches').update({ team_b_id: null }).eq('level', ld.level).in('match_code', ['M12', 'M13']),
+        SB.from('azfutsal_matches').update({ team_b_id: null }).eq('level', ld.level).in('match_code', hasMsFirstRoundBye() ? ['M17', 'M19'] : ['M12', 'M13']),
       ])
       if (error || clearError) { azToast('บันทึกทีมบายไม่สำเร็จ: ' + (error?.message || clearError?.message)); draw(); return }
       S.config[key] = teamId
       S.matches[ld.level].forEach(match => {
-        if (match.match_code === 'M12' || match.match_code === 'M13') match.team_b_id = null
+        if ((hasMsFirstRoundBye() ? ['M17', 'M19'] : ['M12', 'M13']).includes(match.match_code)) match.team_b_id = null
       })
       azToast(`ทีม ${teamName(teamId)} ได้สิทธิ์เข้ารอบบาย`)
     }
@@ -4438,7 +4468,7 @@ function matchEditorModal() {
   const scoreAVal = goalsA
   const scoreBVal = goalsB
   const teamField = (label, slot, resolvedName) => slot
-    ? `<label style="font-size:11.5px;color:#6b7280;flex:1">${label}<select id="mx-team${label}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"><option value="">-</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}</select></label>`
+    ? `<label style="font-size:11.5px;color:#6b7280;flex:1">${label}${slot.lotteryRef ? ' · ทีมจากการจับฉลาก' : ''}<select id="mx-team${label}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"><option value="">-</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}</select>${slot.lotteryRef ? `<button type="button" data-act="drawLotteryTeam" data-level="${level}" data-code="${code}" data-side="${label.toLowerCase()}" style="display:block;width:100%;margin-top:5px;padding:7px;border:none;border-radius:8px;background:#7c3aed;color:#fff;font-weight:800;font-size:11px;cursor:pointer">🎲 สุ่มจับฉลาก 1 ทีม (${slot.pool.length} ทีม)</button>` : ''}</label>`
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
   return simpleModal(`${code} · ${T[level].label}`, `
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -4717,13 +4747,34 @@ async function handleRandomDraw(level) {
     const key = `FIRST_ROUND_BYE_${level}`
     const { error: byeError } = await SB.from('azfutsal_config').upsert({ key, value: byeTeamId })
     if (byeError) { azToast('บันทึกทีมบายไม่สำเร็จ: ' + byeError.message); return }
-    const { error: clearError } = await SB.from('azfutsal_matches').update({ team_b_id: null }).eq('level', level).in('match_code', ['M12', 'M13'])
+    const { error: clearError } = await SB.from('azfutsal_matches').update({ team_b_id: null }).eq('level', level).in('match_code', hasMsFirstRoundBye() ? ['M17', 'M19'] : ['M12', 'M13'])
     if (clearError) { azToast('เตรียมช่องทีมบายไม่สำเร็จ: ' + clearError.message); return }
   }
   const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
   if (error) { azToast('สุ่มจับคู่ไม่สำเร็จ: ' + error.message); return }
   await refresh()
   azToast(byeTeamId ? `ทีม ${teamName(byeTeamId)} ได้บาย · สุ่มประกบคู่ 12 ทีมที่เหลือแล้ว` : 'สุ่มจับคู่รอบแรกแล้ว')
+}
+
+async function handleDrawLotteryTeam(level, code, side) {
+  const def = BRACKET[level].find(match => match.code === code)
+  const ref = side === 'a' ? def?.refA : def?.refB
+  if (ref !== 'LOTTERY_1' && ref !== 'LOTTERY_2') return
+  const sources = lotterySources(level, ref)
+  if (!sources.length || !sources.every(source => resolveMatch(level, source).loserId)) {
+    azToast('ต้องบันทึกผลการแข่งขันต้นทางให้ครบก่อนจับฉลาก')
+    return
+  }
+  const candidates = losersFrom(level, sources)
+  if (!candidates.length) { azToast('ไม่พบทีมสำหรับจับฉลาก'); return }
+  const chosenId = cryptoShuffle(candidates)[0]
+  const field = side === 'a' ? 'team_a_id' : 'team_b_id'
+  const { error } = await SB.from('azfutsal_matches').update({ [field]: chosenId }).eq('level', level).eq('match_code', code)
+  if (error) { azToast('บันทึกผลจับฉลากไม่สำเร็จ: ' + error.message); return }
+  const match = matchByCode(level, code)
+  if (match) match[field] = chosenId
+  draw()
+  azToast(`จับฉลากได้ทีม ${teamName(chosenId)}`)
 }
 
 // จับคู่รอบสระ (12/6 ทีม) อัตโนมัติแบบจัดอันดับ (seeding): เรียงทีมตามผลงานจริงที่ผ่านมา (ชนะ/ผลต่างประตู/ได้ประตู — สูตรเดียวกับ computeTeamStats)
@@ -5102,6 +5153,7 @@ function bindEvents() {
     }
     if (act === 'seedMatches') { await handleSeedMatches(btn.dataset.level); return }
     if (act === 'randomDraw') { await handleRandomDraw(btn.dataset.level); return }
+    if (act === 'drawLotteryTeam') { await handleDrawLotteryTeam(btn.dataset.level, btn.dataset.code, btn.dataset.side); return }
     if (act === 'setMsFormat') {
       if (S.matches.MS.length) { azToast('สร้างตารางแข่ง ม.ต้น ไปแล้ว เปลี่ยนรูปแบบไม่ได้'); return }
       const { error } = await SB.from('azfutsal_config').upsert({ key: 'MS_TEAM_FORMAT', value: btn.dataset.v })
@@ -5127,7 +5179,7 @@ function bindEvents() {
       else if (sum.bestGK === st.full_name) award = 'รางวัลผู้รักษาประตูยอดเยี่ยม'
       else if (sum.champion === team.name) award = 'ทีมชนะเลิศ'
       else if (sum.runnerUp === team.name) award = 'ทีมรองชนะเลิศ'
-      else if (sum.third === team.name) award = 'ทีมอันดับที่ 3'
+      else if (sum.third === team.name || sum.third2 === team.name) award = sum.thirdLabel === 'อันดับ 3 ร่วม' ? 'ทีมอันดับที่ 3 ร่วม' : 'ทีมอันดับที่ 3'
       S.certResult = { name: st.full_name, team: team.name, level, award }
       draw(); return
     }
@@ -5940,7 +5992,7 @@ function adminOps() {
     ${box(`
       <div style="font-weight:700;font-size:14px;margin-bottom:10px">ตั้งค่าเวลา / ไทม์ไลน์</div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <label style="font-size:11.5px;color:#6b7280">วันที่ 1 · รอบแรก/รอบแก้ตัว และ ม.ปลาย M13
+        <label style="font-size:11.5px;color:#6b7280">วันที่ 1 · ม.ต้น M1-M14 และ ม.ปลาย M1-M13
           <input id="ops-start" type="datetime-local" value="${esc(cfg('START_TIME', ''))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/>
         </label>
         <label style="font-size:11.5px;color:#6b7280">วันที่ 2 · รอบเข้ารอบจนถึงรอบชิง
@@ -5950,7 +6002,7 @@ function adminOps() {
           <label style="font-size:11.5px;color:#6b7280;flex:1">นัด (นาที)<input id="ops-matchmin" type="number" value="${esc(cfg('MATCH_MIN', 20))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
           <label style="font-size:11.5px;color:#6b7280;flex:1">พัก (นาที)<input id="ops-breakmin" type="number" value="${esc(cfg('BREAK_MIN', 5))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;font-size:13px"/></label>
         </div>
-        <div style="font-size:10.5px;color:#6b7280">วันแรกจัด 22 นัด (รวม ม.ปลาย M13) วันที่สองจัดรอบที่เหลือ 20 นัด โดย 4 นัดท้ายเป็นชิงที่ 3 ม.ต้น → ชิงที่ 3 ม.ปลาย → ชิงที่ 1 ม.ต้น → ชิงที่ 1 ม.ปลาย</div>
+        <div style="font-size:10.5px;color:#6b7280">ผังปัจจุบันวันแรก 27 นัด วันที่สอง 18 นัด · ม.ต้นไม่มีนัดชิงที่ 3 ผู้แพ้ M18/M19 ได้อันดับ 3 ร่วม และ M20 เป็นรอบชิงชนะเลิศ</div>
         <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดตารางอัตโนมัติ 2 วัน</button>
       </div>
     `)}
