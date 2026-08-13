@@ -2174,6 +2174,20 @@ export async function renderRequests(teacher) {
   ]
 
   let _curFilter = 'pending'
+  let _curCol = null // null = ทุกช่องคะแนน, มิฉะนั้นคือ id ของ class_score_columns
+
+  // รวมช่องคะแนน (หัวข้อ) ที่มีคำร้องอยู่ในลิสต์ที่ส่งเข้ามา ไว้ทำปุ่มกรอง — คิดจากรายการ
+  // ที่ผ่านตัวกรองสถานะแล้วเท่านั้น เพื่อไม่โชว์ปุ่มของหัวข้อที่ไม่มีคำร้องเหลือในแท็บนั้น
+  const _columnsIn = (list) => {
+    const map = new Map()
+    list.forEach(r => {
+      const col = r.class_score_columns
+      if (!col) return
+      if (!map.has(col.id)) map.set(col.id, { id: col.id, name: col.assignment_name, count: 0 })
+      map.get(col.id).count++
+    })
+    return [...map.values()].sort((a, b) => b.count - a.count)
+  }
 
   const _fmtDate = (d) => {
     if (!d) return '—'
@@ -2268,14 +2282,29 @@ export async function renderRequests(teacher) {
   }
 
   const _render = () => {
-    const list = _curFilter === 'all' ? all : all.filter(r => r.status === _curFilter)
-    const counts = Object.fromEntries(FILTER_TABS.map(t => [t.key, t.key === 'all' ? all.length : all.filter(r => r.status === t.key).length]))
+    const statusList = _curFilter === 'all' ? all : all.filter(r => r.status === _curFilter)
+    const cols = _columnsIn(statusList)
+    if (_curCol && !cols.some(c => c.id === _curCol)) _curCol = null
+    const list = _curCol ? statusList.filter(r => r.class_score_columns?.id === _curCol) : statusList
+
+    // ปุ่มกรองช่องคะแนน — ซ่อนถ้ามีหัวข้อเดียวหรือไม่มีเลย (ไม่มีอะไรให้กรอง)
+    document.getElementById('req-col-filter').innerHTML = cols.length > 1 ? `
+      <button class="req-col-tab px-3 py-1.5 rounded-lg text-xs font-medium border transition
+        ${!_curCol ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'}"
+        data-col="">ทุกช่องคะแนน</button>
+      ${cols.map(c => `
+      <button class="req-col-tab px-3 py-1.5 rounded-lg text-xs font-medium border transition
+        ${_curCol === c.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'}"
+        data-col="${c.id}">${c.name} (${c.count})</button>`).join('')}` : ''
+    document.querySelectorAll('.req-col-tab').forEach(btn => {
+      btn.addEventListener('click', () => { _curCol = btn.dataset.col ? Number(btn.dataset.col) : null; _render() })
+    })
 
     document.getElementById('req-content').innerHTML = list.length
       ? `<div class="space-y-3">${list.map(_requestCard).join('')}</div>`
       : `<div class="text-center py-16 text-gray-300">
           <p class="text-4xl mb-3">📭</p>
-          <p class="text-sm">ไม่มีคำร้อง${_curFilter !== 'all' ? 'ในสถานะนี้' : ''}</p>
+          <p class="text-sm">ไม่มีคำร้อง${_curFilter !== 'all' ? 'ในสถานะนี้' : ''}${_curCol ? 'ในช่องคะแนนนี้' : ''}</p>
         </div>`
 
     // update tab active styles
@@ -2298,6 +2327,8 @@ export async function renderRequests(teacher) {
         ${t.label}${all.filter(r => t.key !== 'all' && r.status === t.key).length > 0 ? ` (${all.filter(r => r.status === t.key).length})` : t.key === 'all' ? ` (${all.length})` : ''}
       </button>`).join('')}
     </div>
+    <!-- Filter by ช่องคะแนน -->
+    <div id="req-col-filter" class="flex flex-wrap gap-1.5 mb-4"></div>
     <div id="req-content"></div>
   </div>`)
 
