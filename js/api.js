@@ -1836,13 +1836,16 @@ export async function deleteReadingScoreColumn(id) {
 }
 
 // ─── Reading Scores (teacher) ─────────────────────────────────────────────────
-export async function getReadingScores(columnIds) {
+export async function getReadingScores(columnIds, studentIds = null) {
   if (!columnIds.length) return []
-  const { data, error } = await supabase.from('reading_scores')
-    .select('id, student_id, column_id, score')
-    .in('column_id', columnIds)
-  if (error) throw error
-  return data ?? []
+  if (Array.isArray(studentIds) && !studentIds.length) return []
+  return _fetchAllRows(() => {
+    let q = supabase.from('reading_scores')
+      .select('id, student_id, column_id, score')
+      .in('column_id', columnIds)
+    if (Array.isArray(studentIds)) q = q.in('student_id', studentIds)
+    return q.order('id')
+  })
 }
 
 export async function upsertReadingScore(studentId, columnId, score, teacherId) {
@@ -1912,16 +1915,18 @@ export async function getAllLifeSkillScores(academicYear, semester) {
 }
 
 export async function getAllReadingScores(academicYear, semester) {
-  const { data: cols } = await supabase.from('reading_score_columns')
+  const { data: cols, error: colsError } = await supabase.from('reading_score_columns')
     .select('id, name, max_score, sheet_col')
     .eq('academic_year', academicYear).eq('semester', semester)
     .order('sort_order')
+  if (colsError) throw colsError
   if (!cols?.length) return { columns: [], scores: [] }
-  const { data: raw } = await supabase.from('reading_scores')
-    .select('student_id, column_id, score')
+  const raw = await _fetchAllRows(() => supabase.from('reading_scores')
+    .select('id, student_id, column_id, score')
     .in('column_id', cols.map(c => c.id))
-  const stuMap = await _fetchStudentsById([...new Set((raw ?? []).map(r => r.student_id))])
-  const scores = (raw ?? []).map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
+    .order('id'))
+  const stuMap = await _fetchStudentsById([...new Set(raw.map(r => r.student_id))])
+  const scores = raw.map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
   return { columns: cols ?? [], scores }
 }
 
@@ -2556,12 +2561,13 @@ export async function getReadingScoresForClass(studentIds, academicYear, semeste
     .eq('semester', semester)
   const colIds = (cols ?? []).map(c => c.id)
   if (!colIds.length) return { columns: cols ?? [], scores: [] }
-  const { data: scores } = await supabase
+  const scores = await _fetchAllRows(() => supabase
     .from('reading_scores')
-    .select('student_id, column_id, score')
+    .select('id, student_id, column_id, score')
     .in('student_id', studentIds)
     .in('column_id', colIds)
-  return { columns: cols ?? [], scores: scores ?? [] }
+    .order('id'))
+  return { columns: cols ?? [], scores }
 }
 
 export async function getLifeSkillScoresForClass(studentIds, academicYear, semester) {

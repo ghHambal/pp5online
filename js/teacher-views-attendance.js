@@ -2763,10 +2763,21 @@ export async function renderReadingScore(teacher, initialRoom = null) {
       </svg>
     </div>`)
 
-    const [columns, students] = await Promise.all([
-      getReadingScoreColumns(year, sem).catch(()=>[]),
-      getStudentsByRoom(room).catch(()=>[]),
-    ])
+    let columns, students
+    try {
+      ;[columns, students] = await Promise.all([
+        getReadingScoreColumns(year, sem),
+        getStudentsByRoom(room),
+      ])
+    } catch (err) {
+      setContent(`<div class="max-w-lg mx-auto text-center py-16 text-red-500">
+        <p class="text-4xl mb-3">⚠️</p>
+        <p class="font-medium">โหลดรายชื่อนักเรียนไม่สำเร็จ</p>
+        <p class="text-xs mt-1 text-gray-400">กรุณาตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้านี้อีกครั้ง</p>
+      </div>`)
+      showToast(`โหลดข้อมูลไม่สำเร็จ: ${err?.message ?? ''}`, 'error')
+      return
+    }
 
     if (!columns.length) {
       setContent(`<div class="max-w-lg mx-auto text-center py-16">
@@ -2778,7 +2789,19 @@ export async function renderReadingScore(teacher, initialRoom = null) {
     }
 
     const colIds   = columns.map(c => c.id)
-    const scores   = await getReadingScores(colIds).catch(()=>[])
+    // จำกัดคะแนนตามนักเรียนในห้องนี้ และ API จะแบ่งหน้าหากเกิน 1,000 แถว
+    let scores
+    try {
+      scores = await getReadingScores(colIds, students.map(s => s.id))
+    } catch (err) {
+      setContent(`<div class="max-w-lg mx-auto text-center py-16 text-red-500">
+        <p class="text-4xl mb-3">⚠️</p>
+        <p class="font-medium">โหลดคะแนนไม่สำเร็จ</p>
+        <p class="text-xs mt-1 text-gray-400">ระบบจะไม่แสดงช่องว่างแทนคะแนน กรุณาตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้านี้อีกครั้ง</p>
+      </div>`)
+      showToast(`โหลดคะแนนไม่สำเร็จ: ${err?.message ?? ''}`, 'error')
+      return
+    }
     const scoreMap = {}
     scores.forEach(s => {
       if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
@@ -2802,6 +2825,7 @@ export async function renderReadingScore(teacher, initialRoom = null) {
           class="text-xs px-3 py-1.5 rounded-xl border font-medium transition bg-white border-gray-200 text-gray-500 hover:border-violet-300 hover:text-violet-600">
           ซ่อนคะแนนรวม
         </button>
+        <span id="rs-save-status" class="text-xs text-gray-400" aria-live="polite">บันทึกอัตโนมัติ</span>
         <span class="text-xs text-gray-400 ml-auto">ภาค ${sem} / ${year}</span>
       </div>
 
@@ -2913,6 +2937,18 @@ export async function renderReadingScore(teacher, initialRoom = null) {
       td.classList.add(...cls.split(' '))
       setTimeout(() => td.classList.remove(...cls.split(' ')), 1200)
     }
+    const saveStatus = document.getElementById('rs-save-status')
+    let saveStatusTimer = null
+    const _setSaveStatus = (text, cls = 'text-gray-400', reset = false) => {
+      if (!saveStatus) return
+      clearTimeout(saveStatusTimer)
+      saveStatus.className = `text-xs ${cls}`
+      saveStatus.textContent = text
+      if (reset) saveStatusTimer = setTimeout(() => {
+        saveStatus.className = 'text-xs text-gray-400'
+        saveStatus.textContent = 'บันทึกอัตโนมัติ'
+      }, 2500)
+    }
     const _updateTotal = (sid) => {
       const totalEl  = document.querySelector(`.rs-total[data-sid="${sid}"]`); if (!totalEl) return
       const s100El   = document.querySelector(`.rs-score100[data-sid="${sid}"]`)
@@ -2922,12 +2958,61 @@ export async function renderReadingScore(teacher, initialRoom = null) {
       if (s100El)  s100El.textContent = sum > 0 ? (sum/2).toFixed(1).replace(/\.0$/,'') : '—'
       if (labelEl) labelEl.innerHTML  = sum > 0 ? _readingEvalBadge(sum/2) : '—'
     }
-    const _save = async (inp) => {
+    // เรียงคิวต่อช่อง ป้องกันคำขอบันทึกเก่าเสร็จทีหลังแล้วทับค่าล่าสุด
+    // และไม่ยิงซ้ำจากทั้ง Enter/input/blur เมื่อค่าไม่เปลี่ยน
+    const saveStates = new Map()
+    const _scoreKey = value => value.trim() === '' ? 'null' : String(parseFloat(value))
+    inputs.forEach(inp => saveStates.set(
+      `${inp.dataset.sid}:${inp.dataset.cid}`,
+      { chain: Promise.resolve(), requested: _scoreKey(inp.value), saved: _scoreKey(inp.value) }
+    ))
+    const _save = (inp) => {
       const sid=+inp.dataset.sid, cid=+inp.dataset.cid, max=+inp.dataset.max
       const score = inp.value.trim()==='' ? null : parseFloat(inp.value)
-      if (score!==null && (score<0||score>max)) { _flash(inp,false); return }
-      try { await upsertReadingScore(sid,cid,score,teacher?.id??null); _flash(inp,true); _updateTotal(sid) }
-      catch { _flash(inp,false) }
+      if (score!==null && (!Number.isFinite(score)||score<0||score>max)) {
+        _flash(inp,false)
+        _setSaveStatus(`คะแนนต้องอยู่ระหว่าง 0-${max}`, 'text-red-600 font-medium')
+        return Promise.resolve(false)
+      }
+
+      const key = `${sid}:${cid}`
+      const valueKey = score === null ? 'null' : String(score)
+      const state = saveStates.get(key) ?? { chain: Promise.resolve(), requested: null, saved: null }
+      saveStates.set(key, state)
+      if (state.requested === valueKey || (state.saved === valueKey && state.requested === state.saved)) return state.chain
+      state.requested = valueKey
+      const valueAtRequest = inp.value
+
+      state.chain = state.chain.catch(()=>{}).then(async () => {
+        _setSaveStatus('กำลังบันทึก...', 'text-indigo-500 font-medium')
+        let lastError = null
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            await upsertReadingScore(sid,cid,score,teacher?.id??null)
+            lastError = null
+            break
+          } catch (err) {
+            lastError = err
+            if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 500))
+          }
+        }
+        if (lastError) throw lastError
+
+        state.saved = valueKey
+        if (_scoreKey(inp.value) === _scoreKey(valueAtRequest)) {
+          _flash(inp,true)
+          _updateTotal(sid)
+        }
+        _setSaveStatus('บันทึกแล้ว ✓', 'text-emerald-600 font-medium', true)
+        return true
+      }).catch(err => {
+        if (state.requested === valueKey) state.requested = null
+        _flash(inp,false)
+        _setSaveStatus('บันทึกไม่สำเร็จ — กรุณาลองอีกครั้ง', 'text-red-600 font-medium')
+        showToast(`บันทึกคะแนนไม่สำเร็จ: ${err?.message ?? 'กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'}`, 'error')
+        return false
+      })
+      return state.chain
     }
     inputs.forEach(inp => {
       inp.addEventListener('blur', () => _save(inp))
