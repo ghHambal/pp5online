@@ -183,6 +183,7 @@ export async function renderGradesGrid(teacher, classData) {
         ? await getReadingScores(_rsCols.map(c=>c.id), students.map(s => s.id))
         : []
       if (!_rsCols.length) showToast(`ไม่พบหัวข้อคะแนนอ่านคิดวิเคราะห์ ภาค ${_rsSem}/${_rsYear}`, 'warning')
+      else if (!_rsRows.length) showToast(`ไม่พบคะแนนอ่านคิดวิเคราะห์ของนักเรียนห้องนี้ ภาค ${_rsSem}/${_rsYear}`, 'warning')
     } catch (err) {
       console.error('load reading evaluation failed', err)
       showToast(`โหลดผลประเมินการอ่านไม่สำเร็จ: ${err?.message ?? ''}`, 'error')
@@ -192,8 +193,9 @@ export async function renderGradesGrid(teacher, classData) {
       _rsTotals[r.student_id] = (_rsTotals[r.student_id] ?? 0) + (parseFloat(r.score) || 0)
     }
     const readingEvalMap = {}
+    const _rsMaxTotal = _rsCols.reduce((sum, col) => sum + (parseFloat(col.max_score) || 0), 0)
     for (const [sidStr, total] of Object.entries(_rsTotals)) {
-      const score100 = total / 2
+      const score100 = _rsMaxTotal > 0 ? total / _rsMaxTotal * 100 : 0
       const g = _readingGrade(score100)
       readingEvalMap[parseInt(sidStr)] = { score100, label: g.label, cls: g.cls }
     }

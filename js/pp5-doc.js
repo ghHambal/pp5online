@@ -300,8 +300,12 @@ function _calcGrade(pct) {
   return 0
 }
 
-function _evalLabel(pct) {
-  return _readingGrade(pct).label
+// ใช้เกณฑ์เดียวกับคอลัมน์ "คุณลักษณะ" ในหน้าบันทึกคะแนน
+function _gradeToKhunaLabel(grade) {
+  if (grade >= 3.5) return 'ดีเยี่ยม'
+  if (grade >= 2.5) return 'ดี'
+  if (grade >= 1.0) return 'ผ่าน'
+  return 'ไม่ผ่าน'
 }
 
 // ─── Data Loader ──────────────────────────────────────────────────────────────
@@ -484,10 +488,11 @@ async function _loadDocData(classId) {
   // reading_scores) ผูกกับนักเรียนรายคนเหมือนคะแนนคุณธรรม ACDMVOC ข้างบน ไม่ใช่คอลัมน์คะแนนของวิชานี้
   // (เดิมโค้ดหาคอลัมน์ชื่อมี "อ่าน" ในคะแนนรายวิชาซึ่งไม่เคยมีจริง เลยไม่เคยขึ้นในเอกสารเลย)
   let readingEvalMap = {}
+  const docWarnings = []
   try {
     const rCols = await getReadingScoreColumns(academicYear, semester)
     if (rCols.length) {
-      const rScores = await getReadingScores(rCols.map(c => c.id))
+      const rScores = await getReadingScores(rCols.map(c => c.id), students.map(s => s.id))
       const maxTotal = rCols.reduce((s, c) => s + (c.max_score ?? 0), 0)
       const totalByStudent = {}
       for (const row of rScores) {
@@ -499,10 +504,16 @@ async function _loadDocData(classId) {
           readingEvalMap[studentId] = _readingGrade((total / maxTotal) * 100).label
         }
       }
+      if (!rScores.length) docWarnings.push(`ไม่พบคะแนนอ่านคิดวิเคราะห์ของนักเรียนในห้องนี้ (ภาค ${semester}/${academicYear})`)
+    } else {
+      docWarnings.push(`ไม่พบหัวข้อคะแนนอ่านคิดวิเคราะห์ (ภาค ${semester}/${academicYear})`)
     }
-  } catch {}
+  } catch (err) {
+    console.error('[pp5-doc] load reading evaluation failed', err)
+    throw new Error(`โหลดผลประเมินการอ่านไม่สำเร็จ: ${err?.message ?? 'ไม่ทราบสาเหตุ'}`)
+  }
 
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName, readingEvalMap }
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName, readingEvalMap, docWarnings }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -923,26 +934,21 @@ function _buildPage1(d) {
   const gradeCounts = { 4:0, '3.5':0, 3:0, '2.5':0, 2:0, '1.5':0, 1:0, 0:0 }
   const evalReadCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
   const evalCharCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
-  const charCol  = scoreColumns.find(c => (c.assignment_name ?? '').includes('คุณลักษณะ') || (c.assignment_name ?? '').includes('จิตพิสัย'))
 
   if (!_hideScores) for (const st of students) {
     const stScores = scoreMap[st.id] ?? {}
     const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
+    let grade = 0
     if (maxTotal > 0) {
       const pct = (total / maxTotal) * 100
-      const g   = _calcGrade(pct)
-      const key = String(g)
+      grade = _calcGrade(pct)
+      const key = String(grade)
       if (key in gradeCounts) gradeCounts[key]++
     }
     const readLbl = readingEvalMap?.[st.id]
     if (readLbl && readLbl in evalReadCount) evalReadCount[readLbl]++
-    if (charCol) {
-      const cs = stScores[charCol.id]
-      if (cs != null) {
-        const lbl = _evalLabel((cs / (charCol.max_score || 1)) * 100)
-        evalCharCount[lbl]++
-      }
-    }
+    const charLbl = _gradeToKhunaLabel(grade)
+    if (charLbl in evalCharCount) evalCharCount[charLbl]++
   }
 
   const box = (checked) => `<span class="box${checked?' checked':''}"></span>`
@@ -1453,6 +1459,7 @@ function _buildScorePage(d, chunk, startNo) {
     const bPct  = betweenMax > 0 ? bSum / betweenMax * 100 : 0
     const fPct  = finalMax   > 0 ? fSum / finalMax   * 100 : 0
     const grade = _calcGrade(total)
+    const charLabel = _gradeToKhunaLabel(grade)
 
     return `<tr>
       <td>${startNo + idx}</td>
@@ -1464,7 +1471,7 @@ function _buildScorePage(d, chunk, startNo) {
       <td style="font-weight:700;">${fSum||''}</td>
       <td style="font-weight:700;border-right:2.0px solid #000;">${total||''}</td>
       <td>${_esc(readingEvalMap?.[st.id] ?? '')}</td>
-      <td style="border-right:2.0px solid #000;"></td>
+      <td style="border-right:2.0px solid #000;">${_esc(charLabel)}</td>
       <td style="font-weight:700;">${grade}</td>
     </tr>`
   })
@@ -2303,6 +2310,7 @@ export async function openPP5Doc(classId) {
   try {
     const d = await _loadDocData(classId)
     _openViewer(d)
+    for (const warning of (d.docWarnings ?? [])) showToast(warning, 'warning')
   } catch (err) {
     console.error('[pp5-doc]', err)
     showToast('โหลดเอกสารไม่สำเร็จ: ' + (err.message ?? ''), 'error')
