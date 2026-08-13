@@ -176,8 +176,17 @@ export async function renderGradesGrid(teacher, classData) {
       console.error('syncAutoAttendanceScoreColumns failed', err)
     }
 
-    const _rsCols = await getReadingScoreColumns(_rsYear, _rsSem).catch(()=>[])
-    const _rsRows = _rsCols.length ? await getReadingScores(_rsCols.map(c=>c.id)).catch(()=>[]) : []
+    let _rsCols = [], _rsRows = []
+    try {
+      _rsCols = await getReadingScoreColumns(_rsYear, _rsSem)
+      _rsRows = _rsCols.length
+        ? await getReadingScores(_rsCols.map(c=>c.id), students.map(s => s.id))
+        : []
+      if (!_rsCols.length) showToast(`ไม่พบหัวข้อคะแนนอ่านคิดวิเคราะห์ ภาค ${_rsSem}/${_rsYear}`, 'warning')
+    } catch (err) {
+      console.error('load reading evaluation failed', err)
+      showToast(`โหลดผลประเมินการอ่านไม่สำเร็จ: ${err?.message ?? ''}`, 'error')
+    }
     const _rsTotals = {}
     for (const r of _rsRows) {
       _rsTotals[r.student_id] = (_rsTotals[r.student_id] ?? 0) + (parseFloat(r.score) || 0)
@@ -2174,10 +2183,21 @@ export async function renderRequests(teacher) {
   ]
 
   let _curFilter = 'pending'
+  let _curType = null // null = ทุกประเภทการสอบ, มิฉะนั้นคือ request_type (เช่น 'สอบย้อนหลัง'/'สอบปรับคะแนน')
   let _curCol = null // null = ทุกช่องคะแนน, มิฉะนั้นคือ id ของ class_score_columns
 
+  // รวมประเภทการสอบ (request_type) ที่มีคำร้องอยู่ในลิสต์ที่ส่งเข้ามา ไว้ทำปุ่มกรอง
+  const _typesIn = (list) => {
+    const map = new Map()
+    list.forEach(r => {
+      if (!r.request_type) return
+      map.set(r.request_type, (map.get(r.request_type) || 0) + 1)
+    })
+    return [...map.entries()].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count)
+  }
+
   // รวมช่องคะแนน (หัวข้อ) ที่มีคำร้องอยู่ในลิสต์ที่ส่งเข้ามา ไว้ทำปุ่มกรอง — คิดจากรายการ
-  // ที่ผ่านตัวกรองสถานะแล้วเท่านั้น เพื่อไม่โชว์ปุ่มของหัวข้อที่ไม่มีคำร้องเหลือในแท็บนั้น
+  // ที่ผ่านตัวกรองสถานะ/ประเภทแล้วเท่านั้น เพื่อไม่โชว์ปุ่มของหัวข้อที่ไม่มีคำร้องเหลือในแท็บนั้น
   const _columnsIn = (list) => {
     const map = new Map()
     list.forEach(r => {
@@ -2283,9 +2303,26 @@ export async function renderRequests(teacher) {
 
   const _render = () => {
     const statusList = _curFilter === 'all' ? all : all.filter(r => r.status === _curFilter)
-    const cols = _columnsIn(statusList)
+    const types = _typesIn(statusList)
+    if (_curType && !types.some(t => t.type === _curType)) _curType = null
+    const typeList = _curType ? statusList.filter(r => r.request_type === _curType) : statusList
+
+    const cols = _columnsIn(typeList)
     if (_curCol && !cols.some(c => c.id === _curCol)) _curCol = null
-    const list = _curCol ? statusList.filter(r => r.class_score_columns?.id === _curCol) : statusList
+    const list = _curCol ? typeList.filter(r => r.class_score_columns?.id === _curCol) : typeList
+
+    // ปุ่มกรองประเภทการสอบ — ซ่อนถ้ามีประเภทเดียวหรือไม่มีเลย (ไม่มีอะไรให้กรอง)
+    document.getElementById('req-type-filter').innerHTML = types.length > 1 ? `
+      <button class="req-type-tab px-3 py-1.5 rounded-lg text-xs font-medium border transition
+        ${!_curType ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'}"
+        data-type="">ทุกประเภทการสอบ</button>
+      ${types.map(t => `
+      <button class="req-type-tab px-3 py-1.5 rounded-lg text-xs font-medium border transition
+        ${_curType === t.type ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-500 border-gray-200 hover:text-gray-700'}"
+        data-type="${t.type}">${t.type} (${t.count})</button>`).join('')}` : ''
+    document.querySelectorAll('.req-type-tab').forEach(btn => {
+      btn.addEventListener('click', () => { _curType = btn.dataset.type || null; _render() })
+    })
 
     // ปุ่มกรองช่องคะแนน — ซ่อนถ้ามีหัวข้อเดียวหรือไม่มีเลย (ไม่มีอะไรให้กรอง)
     document.getElementById('req-col-filter').innerHTML = cols.length > 1 ? `
@@ -2304,7 +2341,7 @@ export async function renderRequests(teacher) {
       ? `<div class="space-y-3">${list.map(_requestCard).join('')}</div>`
       : `<div class="text-center py-16 text-gray-300">
           <p class="text-4xl mb-3">📭</p>
-          <p class="text-sm">ไม่มีคำร้อง${_curFilter !== 'all' ? 'ในสถานะนี้' : ''}${_curCol ? 'ในช่องคะแนนนี้' : ''}</p>
+          <p class="text-sm">ไม่มีคำร้อง${_curFilter !== 'all' ? 'ในสถานะนี้' : ''}${_curType ? 'ในประเภทนี้' : ''}${_curCol ? 'ในช่องคะแนนนี้' : ''}</p>
         </div>`
 
     // update tab active styles
@@ -2327,6 +2364,8 @@ export async function renderRequests(teacher) {
         ${t.label}${all.filter(r => t.key !== 'all' && r.status === t.key).length > 0 ? ` (${all.filter(r => r.status === t.key).length})` : t.key === 'all' ? ` (${all.length})` : ''}
       </button>`).join('')}
     </div>
+    <!-- Filter by ประเภทการสอบ -->
+    <div id="req-type-filter" class="flex flex-wrap gap-1.5 mb-3"></div>
     <!-- Filter by ช่องคะแนน -->
     <div id="req-col-filter" class="flex flex-wrap gap-1.5 mb-4"></div>
     <div id="req-content"></div>
@@ -2487,4 +2526,3 @@ export async function renderRequests(teacher) {
     })
   }
 }
-
