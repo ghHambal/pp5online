@@ -118,7 +118,7 @@ function renderDashboard(snapshot) {
   const rowStatus = s => {
     const req = requestOf(s.id)
     const pay = paymentOf(s.id)
-    return { req, pay, sizeStatus: req?.status || null, sizeOk: sizeConfirmed(req?.status), paid: !!pay }
+    return { req, pay, sizeStatus: req?.status || null, sizeReported: !!req, sizeOk: sizeConfirmed(req?.status), paid: !!pay }
   }
 
   const colorsForGender = () => gender === 'ALL' ? colors : colors.filter(c => c.gender === gender)
@@ -353,17 +353,21 @@ function renderDashboard(snapshot) {
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ห้อง</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left;width:100%">ครูที่ปรึกษา</th>
             <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">จำนวน</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">${activeTab === 'size' ? 'ยืนยันแล้ว' : 'ชำระแล้ว'}</th>
-            <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">${activeTab === 'size' ? 'ยังไม่ยืนยัน' : 'ยังไม่ชำระ'}</th>
+            ${activeTab === 'size'
+              ? `<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">นักเรียนแจ้งแล้ว</th><th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ครูยืนยันแล้ว</th>`
+              : `<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ชำระแล้ว</th><th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ยังไม่ชำระ</th>`}
           </tr></thead>
           <tbody>${groups.map(({ room, students }) => {
-            const okCount = activeTab === 'size' ? students.filter(s => rowStatus(s).sizeOk).length : students.filter(s => rowStatus(s).paid).length
+            const reportedCount = students.filter(s => rowStatus(s).sizeReported).length
+            const confirmedCount = students.filter(s => rowStatus(s).sizeOk).length
+            const paidCount = students.filter(s => rowStatus(s).paid).length
             return `<tr>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(room)}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(homeroomTeacherOf(room))}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${students.length}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${okCount}</td>
-              <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${students.length - okCount}</td>
+              ${activeTab === 'size'
+                ? `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${reportedCount} / ${students.length}</td><td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${confirmedCount} / ${students.length}</td>`
+                : `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${paidCount}</td><td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center">${students.length - paidCount}</td>`}
             </tr>`
           }).join('')}</tbody>
         </table>
@@ -570,19 +574,24 @@ function renderDashboard(snapshot) {
           <thead><tr class="text-slate-400 text-left bg-slate-50">
             <th class="p-2 font-bold">ห้อง</th><th class="p-2 font-bold">ครูที่ปรึกษา</th><th class="p-2 font-bold text-center">จำนวน</th>
             ${activeTab === 'size'
-              ? '<th class="p-2 font-bold text-center">ยืนยันแล้ว</th><th class="p-2 font-bold text-center">ยังไม่ยืนยัน</th>'
+              ? '<th class="p-2 font-bold text-center">นักเรียนแจ้งแล้ว</th><th class="p-2 font-bold text-center">ครูยืนยันแล้ว</th>'
               : '<th class="p-2 font-bold text-center">ชำระแล้ว</th><th class="p-2 font-bold text-center">ยังไม่ชำระ</th>'}
           </tr></thead>
           <tbody>${groups.map(({ room, students }) => {
-            const okCount = activeTab === 'size'
-              ? students.filter(s => rowStatus(s).sizeOk).length
-              : students.filter(s => rowStatus(s).paid).length
+            const reportedCount = students.filter(s => rowStatus(s).sizeReported).length
+            const confirmedCount = students.filter(s => rowStatus(s).sizeOk).length
+            const paidCount = students.filter(s => rowStatus(s).paid).length
             return `<tr class="border-t border-slate-100">
               <td class="p-2 font-bold text-slate-700 whitespace-nowrap">${esc(room)}</td>
               <td class="p-2 text-slate-600">${esc(homeroomTeacherOf(room))}</td>
               <td class="p-2 text-center">${students.length}</td>
-              <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${okCount}</span></td>
-              <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">${students.length - okCount}</span></td>
+              ${activeTab === 'size' ? `
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${reportedCount === students.length ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${reportedCount} / ${students.length}</span></td>
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${confirmedCount === students.length ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${confirmedCount} / ${students.length}</span></td>
+              ` : `
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${paidCount}</span></td>
+                <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">${students.length - paidCount}</span></td>
+              `}
             </tr>`
           }).join('')}</tbody>
         </table>
@@ -713,11 +722,16 @@ function renderDashboard(snapshot) {
     if (viewMode === 'summary') {
       const groups = groupByRoom(rows)
       const header = activeTab === 'size'
-        ? ['ห้อง', 'ครูที่ปรึกษา', 'จำนวน', 'ยืนยันแล้ว', 'ยังไม่ยืนยัน']
+        ? ['ห้อง', 'ครูที่ปรึกษา', 'จำนวน', 'นักเรียนแจ้งแล้ว', 'ครูยืนยันแล้ว']
         : ['ห้อง', 'ครูที่ปรึกษา', 'จำนวน', 'ชำระแล้ว', 'ยังไม่ชำระ']
       const body = groups.map(({ room, students }) => {
-        const okCount = activeTab === 'size' ? students.filter(s => rowStatus(s).sizeOk).length : students.filter(s => rowStatus(s).paid).length
-        return [room, homeroomTeacherOf(room), students.length, okCount, students.length - okCount].map(q).join(',')
+        if (activeTab === 'size') {
+          const reportedCount = students.filter(s => rowStatus(s).sizeReported).length
+          const confirmedCount = students.filter(s => rowStatus(s).sizeOk).length
+          return [room, homeroomTeacherOf(room), students.length, reportedCount, confirmedCount].map(q).join(',')
+        }
+        const paidCount = students.filter(s => rowStatus(s).paid).length
+        return [room, homeroomTeacherOf(room), students.length, paidCount, students.length - paidCount].map(q).join(',')
       })
       const csvRows = [header.map(q).join(','), ...body]
       const a = document.createElement('a')
