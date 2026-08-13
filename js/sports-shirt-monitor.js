@@ -100,7 +100,9 @@ function renderDashboard(snapshot) {
   let selectedLevel = null // 'ม.1' | 'ม.2' | ... | 'ปวช.' | null
   let searchQuery = ''
   let viewMode = 'list' // 'list' | 'summary' — เฉพาะแท็บนักเรียน (size/payment)
-  let statusFilter = 'all' // size: 'all'|'pending'|'confirmed' — payment: 'all'|'unpaid' — teacher: 'all'|'not_reported'
+  let statusFilter = 'all' // size: 'all'|'pending'|'confirmed' — payment: 'all'|'unpaid'|'paid' — teacher: 'all'|'not_reported'|'reported'
+  let selectMode = false // เฉพาะแท็บ 'teacher' — ติ๊กเลือกบางคนเพื่อพิมพ์เฉพาะที่เลือก
+  const selectedIds = new Set()
 
   const requestOf = id => (snapshot.shirt_requests || []).find(r => r.student_id === id)
   const paymentOf = id => (snapshot.shirt_payments || []).find(p => p.student_id === id)
@@ -132,6 +134,8 @@ function renderDashboard(snapshot) {
       if (statusFilter === 'confirmed') list = list.filter(s => rowStatus(s).sizeOk)
     } else if (paymentsOpen && statusFilter === 'unpaid') {
       list = list.filter(s => amountForGender(s.gender) > 0 && !rowStatus(s).paid)
+    } else if (paymentsOpen && statusFilter === 'paid') {
+      list = list.filter(s => rowStatus(s).paid)
     }
     return list
   }
@@ -162,7 +166,6 @@ function renderDashboard(snapshot) {
       <div id="search-row" class="no-print">
         <input id="shirt-search" type="text" placeholder="🔍 ค้นหาชื่อ/รหัส/ห้อง/สี — พิมพ์อะไรก็เจอ" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm bg-white">
       </div>
-      <div id="level-filter-row" class="no-print"></div>
 
       <p id="scope-line" class="no-print text-xs text-slate-500"></p>
 
@@ -179,6 +182,8 @@ function renderDashboard(snapshot) {
         <button id="btn-export-csv" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">⬇️ ดาวน์โหลด Excel (CSV)</button>
         <button id="btn-print" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 text-xs font-bold">🖨️ พิมพ์เอกสาร</button>
       </div>
+      <div id="level-filter-row" class="no-print"></div>
+
       <div id="shirt-list" class="no-print space-y-4"></div>
       <div id="print-content" class="print-only"></div>
     </div>`
@@ -263,7 +268,7 @@ function renderDashboard(snapshot) {
     const el = root.querySelector('#status-filter')
     const options = activeTab === 'size'
       ? [['all', 'ทั้งหมด'], ['pending', 'ไซซ์ยังไม่ยืนยัน'], ['confirmed', 'ยืนยันแล้ว']]
-      : (paymentsOpen ? [['all', 'ทั้งหมด'], ['unpaid', 'ยังไม่ชำระ']] : [['all', 'ทั้งหมด']])
+      : (paymentsOpen ? [['all', 'ทั้งหมด'], ['unpaid', 'ยังไม่ชำระ'], ['paid', 'ชำระแล้ว']] : [['all', 'ทั้งหมด']])
     el.innerHTML = options.map(([v, label]) => `<button type="button" data-status="${v}" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === v ? 'bg-pink-600 text-white' : 'text-slate-500'}">${esc(label)}</button>`).join('')
     el.querySelectorAll('[data-status]').forEach(b => b.onclick = () => { statusFilter = b.dataset.status; render() })
   }
@@ -287,6 +292,18 @@ function renderDashboard(snapshot) {
       <button type="button" data-view="list" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-pink-600 text-white' : 'text-slate-500'}">📋 รายชื่อ</button>
       <button type="button" data-view="summary" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'summary' ? 'bg-pink-600 text-white' : 'text-slate-500'}">📊 สรุปตามห้อง</button>`
     el.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { viewMode = b.dataset.view; render() })
+  }
+
+  // ---- สลับโหมด "เลือกเพื่อพิมพ์" — เฉพาะแท็บ 'teacher' (ครู/บุคลากร) ----
+  const renderSelectToggle = () => {
+    const el = root.querySelector('#view-mode-row')
+    el.innerHTML = `
+      <button type="button" id="btn-select-mode" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectMode ? 'bg-pink-600 text-white' : 'text-slate-500'}">☑️ เลือกเพื่อพิมพ์${selectMode && selectedIds.size ? ` (${selectedIds.size})` : ''}</button>`
+    el.querySelector('#btn-select-mode').onclick = () => {
+      selectMode = !selectMode
+      if (!selectMode) selectedIds.clear()
+      render()
+    }
   }
 
   // ---- จัดกลุ่มแถวเป็นรายห้อง (ใช้ทั้งมุมมองรายชื่อและสรุป) ----
@@ -399,6 +416,7 @@ function renderDashboard(snapshot) {
     let list = gender === 'ALL' ? teachers : teachers.filter(t => t.gender === gender)
     if (selectedSize) list = list.filter(t => teacherRequestOf(t.id)?.size === selectedSize)
     if (statusFilter === 'not_reported') list = list.filter(t => !teacherRequestOf(t.id))
+    if (statusFilter === 'reported') list = list.filter(t => !!teacherRequestOf(t.id))
     if (q) list = list.filter(t => (t.full_name || '').toLowerCase().includes(q) || (t.teacher_code || '').toLowerCase().includes(q))
     return list
   }
@@ -416,6 +434,8 @@ function renderDashboard(snapshot) {
       roleFilter = b.dataset.role
       selectedSize = null
       statusFilter = 'all'
+      selectMode = false
+      selectedIds.clear()
       render()
     })
 
@@ -455,7 +475,7 @@ function renderDashboard(snapshot) {
     if (isPersonnel) {
       el.innerHTML = ''
     } else {
-      el.innerHTML = [['all', 'ทั้งหมด'], ['not_reported', 'ยังไม่แจ้ง']].map(([v, label]) => `<button type="button" data-status="${v}" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === v ? 'bg-pink-600 text-white' : 'text-slate-500'}">${esc(label)}</button>`).join('')
+      el.innerHTML = [['all', 'ทั้งหมด'], ['not_reported', 'ยังไม่แจ้ง'], ['reported', 'แจ้งแล้ว']].map(([v, label]) => `<button type="button" data-status="${v}" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === v ? 'bg-pink-600 text-white' : 'text-slate-500'}">${esc(label)}</button>`).join('')
       el.querySelectorAll('[data-status]').forEach(b => b.onclick = () => { statusFilter = b.dataset.status; render() })
     }
 
@@ -464,15 +484,17 @@ function renderDashboard(snapshot) {
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <table class="w-full text-xs">
           <thead><tr class="text-slate-400 text-left bg-slate-50">
-            ${isPersonnel ? '' : '<th class="p-2 font-bold">รหัส</th>'}<th class="p-2 font-bold">ชื่อ-สกุล</th><th class="p-2 font-bold text-center">ไซซ์ที่แจ้ง</th><th class="p-2 font-bold text-center">วันที่แจ้ง</th>
+            ${selectMode ? '<th class="p-2 w-8"></th>' : ''}${isPersonnel ? '' : '<th class="p-2 font-bold">รหัส</th>'}<th class="p-2 font-bold">ชื่อ-สกุล</th><th class="p-2 font-bold text-center">ไซซ์ที่แจ้ง</th><th class="p-2 font-bold text-center">วันที่แจ้ง</th>
           </tr></thead>
           <tbody>${isPersonnel ? rows.map(p => `<tr class="border-t border-slate-100">
+              ${selectMode ? `<td class="p-2"><input type="checkbox" data-select-id="${esc(p.id)}" ${selectedIds.has(p.id) ? 'checked' : ''}></td>` : ''}
               <td class="p-2">${esc(p.full_name)}</td>
               <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${esc(p.size)}</span></td>
               <td class="p-2 text-center text-slate-400">${p.updated_at ? new Date(p.updated_at).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : '—'}</td>
             </tr>`).join('') : rows.map(t => {
             const r = teacherRequestOf(t.id)
             return `<tr class="border-t border-slate-100">
+              ${selectMode ? `<td class="p-2"><input type="checkbox" data-select-id="${esc(t.id)}" ${selectedIds.has(t.id) ? 'checked' : ''}></td>` : ''}
               <td class="p-2 w-24 text-slate-500">${esc(t.teacher_code)}</td>
               <td class="p-2">${esc(t.full_name)}</td>
               <td class="p-2 text-center">${r ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${esc(r.size)}</span>` : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">ยังไม่แจ้ง</span>`}</td>
@@ -481,7 +503,51 @@ function renderDashboard(snapshot) {
           }).join('')}</tbody>
         </table>
       </div>` : `<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-6 text-center text-emerald-700 font-bold text-sm">✅ ไม่มีรายชื่อตามเงื่อนไขที่เลือก</div>`
-    root.querySelector('#print-content').innerHTML = ''
+    if (selectMode) {
+      root.querySelectorAll('[data-select-id]').forEach(cb => cb.onchange = () => {
+        if (cb.checked) selectedIds.add(cb.dataset.selectId); else selectedIds.delete(cb.dataset.selectId)
+        render()
+      })
+    }
+    root.querySelector('#print-content').innerHTML = buildTeacherDocument(rows, isPersonnel)
+  }
+
+  // ---- เอกสารพิมพ์รายชื่อครู/บุคลากร — ถ้าอยู่ในโหมด "เลือกเพื่อพิมพ์" และมีติ๊กไว้ พิมพ์เฉพาะที่เลือก ----
+  const buildTeacherDocument = (rows, isPersonnel) => {
+    const printRows = (selectMode && selectedIds.size) ? rows.filter(r => selectedIds.has(r.id)) : rows
+    if (!printRows.length) return ''
+    const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
+    const genderLabel = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : ''
+    const title = `รายชื่อ${isPersonnel ? 'บุคลากร' : 'ครู'} — ไซซ์เสื้อกีฬาสี`
+    return `<div style="padding-top:12px">
+      ${logoRow}
+      <div style="text-align:center;margin-bottom:10px">
+        <h2 style="font-size:16px;margin:0 0 4px">${esc(title)}${genderLabel ? esc(genderLabel) : ''}</h2>
+        <p style="font-size:13px;margin:0;font-weight:bold">${esc(SCHOOL_NAME)}</p>
+      </div>
+      <div style="text-align:center;margin-bottom:10px;font-size:12px">จำนวน: <b>${printRows.length}</b> คน</div>
+      <table style="width:100%;border-collapse:collapse;font-size:10.5px">
+        <thead><tr>
+          <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">เลขที่</th>
+          ${isPersonnel ? '' : '<th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">รหัส</th>'}
+          <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;text-align:left;width:100%">ชื่อ-สกุล</th>
+          <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">ไซซ์ที่แจ้ง</th>
+          <th style="border:1px solid #cbd5e1;padding:4px 6px;background:#f1f5f9;white-space:nowrap">วันที่แจ้ง</th>
+        </tr></thead>
+        <tbody>${printRows.map((r, i) => {
+          const req = isPersonnel ? r : teacherRequestOf(r.id)
+          const size = isPersonnel ? r.size : (req?.size || '—')
+          const dateVal = isPersonnel ? r.updated_at : req?.updated_at
+          return `<tr>
+            <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${i + 1}</td>
+            ${isPersonnel ? '' : `<td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(r.teacher_code)}</td>`}
+            <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(r.full_name)}</td>
+            <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(size)}</td>
+            <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${dateVal ? new Date(dateVal).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : '—'}</td>
+          </tr>`
+        }).join('')}</tbody>
+      </table>
+    </div>`
   }
 
   // ---- มุมมอง "สรุปตามห้อง" — หนึ่งแถวต่อห้อง มีชื่อครูที่ปรึกษา เบาพอสำหรับพิมพ์ได้ไม่ค้าง ----
@@ -527,7 +593,7 @@ function renderDashboard(snapshot) {
 
     if (activeTab === 'teacher') {
       root.querySelector('#level-filter-row').innerHTML = ''
-      root.querySelector('#view-mode-row').innerHTML = ''
+      renderSelectToggle()
       renderTeacherView()
       return
     }
@@ -599,6 +665,8 @@ function renderDashboard(snapshot) {
     activeTab = b.dataset.tab
     selectedSize = null
     statusFilter = 'all'
+    selectMode = false
+    selectedIds.clear()
     render()
   })
   root.querySelectorAll('[data-gender]').forEach(b => b.onclick = () => {
