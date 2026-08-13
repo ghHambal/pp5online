@@ -29,6 +29,7 @@ import { showToast } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek } from './teacher-views-utils.js'
 import { supabase } from './supabase.js'
+import { publishGradebookUpdate } from './gradebook-sync.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -2071,11 +2072,31 @@ export async function renderSmartClassroom(teacher, classId) {
         const btn = m.querySelector('#sgc-grade-save')
         const val = m.querySelector('#sgc-grade').value.trim()
         const scoreNum = val === '' ? 0 : parseFloat(val)
+        if (!Number.isFinite(scoreNum) || scoreNum < 0 || (effectiveMax != null && scoreNum > effectiveMax)) {
+          showToast(`คะแนนต้องอยู่ระหว่าง 0 – ${effectiveMax ?? col.max_score}`, 'warning')
+          return
+        }
         btn.disabled = true
         try {
-          await saveAssignmentGrade(a.id, s.id, scoreNum)
+          const saved = await saveAssignmentGrade(a.id, s.id, scoreNum)
           sub.hasScore = true
           sub.savedScore = scoreNum
+          const rows = scoresByStudent[s.id] ?? (scoresByStudent[s.id] = [])
+          let scoreRow = rows.find(row => row.score_column_id === saved.columnId)
+          if (!scoreRow) {
+            scoreRow = { student_id: s.id, score_column_id: saved.columnId }
+            rows.push(scoreRow)
+          }
+          Object.assign(scoreRow, {
+            score: saved.score,
+            original_score: saved.originalScore,
+            retake_score: saved.retakeScore,
+            final_score: saved.finalScore,
+            score_history: saved.scoreHistory,
+          })
+          publishGradebookUpdate(saved)
+          const roster = document.getElementById('sc-roster')
+          if (roster) roster.innerHTML = _rosterHTML()
           showToast('บันทึกคะแนนแล้ว ✅', 'success')
           _render()
         } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false }

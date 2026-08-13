@@ -12,6 +12,7 @@ import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { openScoreScanner } from './score-qr-scanner.js'
+import { subscribeGradebookUpdates } from './gradebook-sync.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade, applyReadingGradesFromConfig,
 } from './teacher-views-utils.js'
@@ -25,6 +26,8 @@ export function renderGrades() {
     <p class="text-sm mt-2">แล้วกดปุ่ม 📝 คะแนน ที่การ์ดห้องเรียน</p>
   </div>`)
 }
+
+let _gradebookSyncCleanup = null
 
 // ─── Grade Book Grid ──────────────────────────────────────────────────────────
 // คำนวณเกรด จากเปอร์เซ็นต์
@@ -47,6 +50,8 @@ function _gradeToKhuna(grade) {
 }
 
 export async function renderGradesGrid(teacher, classData) {
+  _gradebookSyncCleanup?.()
+  _gradebookSyncCleanup = null
   window._currentGradeTeacher = teacher
   setActiveNav('grades')
   setTitle('บันทึกคะแนน', 'scores')
@@ -1799,6 +1804,15 @@ export async function renderGradesGrid(teacher, classData) {
 
     _renderToggleBar()
     _renderGrid()
+
+    let realtimeRefreshTimer = null
+    _gradebookSyncCleanup = subscribeGradebookUpdates(update => {
+      const belongsToGrid = allCols.some(col => Number(col.id) === Number(update.columnId))
+      if (!belongsToGrid && Number(update.classId) !== Number(scoreClassId)) return
+      if (!document.getElementById('grade-grid-wrap')) return
+      clearTimeout(realtimeRefreshTimer)
+      realtimeRefreshTimer = setTimeout(() => renderGradesGrid(teacher, classData), 120)
+    })
 
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')

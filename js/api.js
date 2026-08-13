@@ -4185,10 +4185,38 @@ export async function deleteAssignment(id) {
 // บันทึกคะแนนงานที่มอบหมายเข้าคอลัมน์คะแนนที่ผูกไว้ ตามโหมด score_write_mode ของงานนั้น
 // (เทียบเอาคะแนนสูงกว่า/ทับคะแนนเก่า/บวกเพิ่มจากคะแนนเดิม — หลักการเดียวกับควิซ)
 export async function saveAssignmentGrade(assignmentId, studentId, score) {
+  const { data: assignment, error: assignmentError } = await supabase
+    .from('class_assignments')
+    .select('class_id, score_column_id')
+    .eq('id', assignmentId)
+    .single()
+  if (assignmentError) throw assignmentError
+  if (!assignment?.score_column_id) throw new Error('งานนี้ยังไม่ได้ผูกกับคอลัมน์คะแนน')
+
   const { error } = await supabase.rpc('_apply_assignment_score', {
     p_assignment_id: assignmentId, p_student_id: studentId, p_score: score,
   })
   if (error) throw error
+
+  // อ่านผลกลับเพื่อยืนยันว่า RPC เขียนลงสมุดคะแนนจริง ไม่แสดง success จากแค่ RPC ที่จบเฉยๆ
+  const { data: saved, error: verifyError } = await supabase
+    .from('student_scores')
+    .select('original_score, retake_score, final_score, score_history')
+    .eq('assignment_id', assignment.score_column_id)
+    .eq('student_id', studentId)
+    .maybeSingle()
+  if (verifyError) throw verifyError
+  if (!saved) throw new Error('ระบบรับคำสั่งแล้ว แต่ไม่พบคะแนนในสมุดคะแนน กรุณาตรวจสอบการตั้งค่างาน')
+  return {
+    classId: assignment.class_id,
+    columnId: assignment.score_column_id,
+    studentId,
+    score: saved.final_score ?? saved.original_score,
+    originalScore: saved.original_score,
+    retakeScore: saved.retake_score,
+    finalScore: saved.final_score,
+    scoreHistory: saved.score_history ?? [],
+  }
 }
 
 // คอมเมนต์/feedback ของครูกลับไปหานักเรียน — เขียนทับได้ (แก้ feedback เดิมได้)
