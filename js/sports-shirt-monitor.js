@@ -11,6 +11,15 @@ const LOGO_URLS = [
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
+// ผสมสีทีมกับขาว 85% ให้ได้โทนพาสเทลอ่อนๆ ไว้ทำพื้นหลังแถวในเอกสารพิมพ์ (พิมพ์สีเปลืองหมึกน้อยกว่าสีเข้ม)
+const pastelBg = hex => {
+  const h = String(hex || '').replace('#', '')
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return 'transparent'
+  const mix = 0.85
+  const blend = c => Math.round(parseInt(h.slice(c * 2, c * 2 + 2), 16) + (255 - parseInt(h.slice(c * 2, c * 2 + 2), 16)) * mix)
+  return `rgb(${blend(0)}, ${blend(1)}, ${blend(2)})`
+}
+
 // สถานะไซซ์ — คำเดิมเป๊ะจาก js/sports-portals.js (badge/statusClass) ห้ามคิดคำใหม่
 const sizeBadgeLabel = s => ({ pending: 'รอยืนยัน', confirmed: 'ยืนยันแล้ว', advisor_updated: 'ครูเลือก/แก้ไขแทน' }[s] || 'ยังไม่จำนง')
 const sizeConfirmed = s => s === 'confirmed' || s === 'advisor_updated'
@@ -385,7 +394,8 @@ function renderDashboard(snapshot) {
           </tr></thead>
           <tbody>${sorted.map((s, i) => {
             const st = rowStatus(s)
-            return `<tr>
+            const rowBg = pastelBg(colors.find(c => c.id === s.team_color_id)?.hex_color)
+            return `<tr style="background:${rowBg}">
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${i + 1}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px;text-align:center;white-space:nowrap">${esc(s.student_code)}</td>
               <td style="border:1px solid #cbd5e1;padding:4px 6px">${esc(s.full_name)}</td>
