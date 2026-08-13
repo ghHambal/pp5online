@@ -230,7 +230,7 @@ export function injectFeedbackWidget({ profileId, role, name }) {
 
 const _FB_STATUS = {
   label: (item) => {
-    if (item.admin_reply) return { icon: '💬', text: 'มีการตอบกลับ', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
+    if (item.admin_reply || (item.messages ?? []).some(message => message.author_role === 'admin')) return { icon: '💬', text: 'มีการตอบกลับ', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
     if (item.status === 'resolved')     return { icon: '✅', text: 'แก้ไขแล้ว',     cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
     if (item.status === 'acknowledged') return { icon: '👍', text: 'รับทราบแล้ว',   cls: 'text-blue-700 bg-blue-50 border-blue-200' }
     if (item.is_read)                   return { icon: '👀', text: 'อ่านแล้ว',       cls: 'text-indigo-700 bg-indigo-50 border-indigo-200' }
@@ -392,20 +392,37 @@ function _openFeedbackModal({ profileId, role, name, prefillMessage }) {
         const st  = _FB_STATUS.label(item)
         const cat = _FB_CAT_ICON[item.category] ?? '💬'
         return `
-          <div class="rounded-2xl border border-gray-100 bg-gray-50/60 p-3.5 space-y-2">
+          <div class="rounded-2xl border border-gray-100 bg-gray-50/60 p-3.5 space-y-2" data-feedback-thread="${item.id}">
             <div class="flex items-center justify-between gap-2 flex-wrap">
               <span class="text-xs font-semibold text-gray-600">${cat} ${FEEDBACK_CATEGORIES.find(c => c.value === item.category)?.label?.replace(/^.\s/,'') ?? item.category}</span>
               <span class="text-[10px] border rounded-full px-2 py-0.5 font-semibold ${st.cls}">${st.icon} ${st.text}</span>
             </div>
-            <p class="text-sm text-gray-700 leading-relaxed line-clamp-3">${_fbEsc(item.message)}</p>
-            <p class="text-[10px] text-gray-400">${_fmtDate(item.created_at)}</p>
-            ${item.admin_reply ? `
-            <div class="bg-white border border-emerald-100 rounded-xl px-3 py-2 mt-1">
-              <p class="text-[10px] font-semibold text-emerald-700 mb-0.5">💬 แอดมินตอบกลับ</p>
-              <p class="text-xs text-gray-700 leading-relaxed">${_fbEsc(item.admin_reply)}</p>
-            </div>` : ''}
+            <div class="space-y-2 rounded-xl border border-slate-100 bg-white/70 p-2.5">
+              <div class="flex justify-end"><div class="max-w-[88%] rounded-2xl rounded-tr-sm px-3 py-2 text-white" style="background:linear-gradient(135deg,#db2777,#9d174d);"><p class="text-[10px] font-semibold text-white/75 mb-0.5">คุณ</p><p class="text-xs leading-relaxed whitespace-pre-wrap">${_fbEsc(item.message)}</p><p class="text-[9px] text-white/60 mt-1">${_fmtDate(item.created_at)}</p></div></div>
+              ${(item.messages ?? []).map(message => message.author_role === 'admin'
+                ? `<div class="flex justify-start"><div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-emerald-50 border border-emerald-100 px-3 py-2"><p class="text-[10px] font-semibold text-emerald-700 mb-0.5">แอดมิน</p><p class="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">${_fbEsc(message.message)}</p><p class="text-[9px] text-gray-400 mt-1">${_fmtDate(message.created_at)}</p></div></div>`
+                : `<div class="flex justify-end"><div class="max-w-[88%] rounded-2xl rounded-tr-sm px-3 py-2 text-white" style="background:linear-gradient(135deg,#db2777,#9d174d);"><p class="text-[10px] font-semibold text-white/75 mb-0.5">คุณ</p><p class="text-xs leading-relaxed whitespace-pre-wrap">${_fbEsc(message.message)}</p><p class="text-[9px] text-white/60 mt-1">${_fmtDate(message.created_at)}</p></div></div>`).join('')}
+              ${item.admin_reply && !(item.messages ?? []).some(message => message.author_role === 'admin' && message.message === item.admin_reply) ? `<div class="flex justify-start"><div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-emerald-50 border border-emerald-100 px-3 py-2"><p class="text-[10px] font-semibold text-emerald-700 mb-0.5">แอดมิน</p><p class="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">${_fbEsc(item.admin_reply)}</p><p class="text-[9px] text-gray-400 mt-1">${item.replied_at ? _fmtDate(item.replied_at) : ''}</p></div></div>` : ''}
+            </div>
+            ${item.chatAvailable ? `<textarea class="fb-user-reply w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-pink-200" rows="2" maxlength="2000" placeholder="พิมพ์รับทราบหรือตอบกลับแอดมิน..."></textarea>
+            <div class="flex justify-end"><button class="fb-user-reply-send px-3 py-1.5 rounded-xl text-white text-xs font-semibold" style="background:linear-gradient(135deg,#db2777,#9d174d);" data-id="${item.id}">ส่งข้อความ</button></div>` : ''}
           </div>`
       }).join('') + `</div>`
+      body.querySelectorAll('.fb-user-reply-send').forEach(button => button.addEventListener('click', async () => {
+        const thread = button.closest('[data-feedback-thread]')
+        const message = thread?.querySelector('.fb-user-reply')?.value.trim()
+        if (!message) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'warning'); return }
+        button.disabled = true; button.textContent = 'กำลังส่ง...'
+        try {
+          const { sendFeedbackMessage } = await import('./api.js')
+          await sendFeedbackMessage({ feedbackId: Number(button.dataset.id), authorRole: role, message })
+          showToast('ส่งข้อความตอบกลับแล้ว', 'success')
+          await renderHistoryTab()
+        } catch {
+          button.disabled = false; button.textContent = 'ส่งข้อความ'
+          showToast('ส่งข้อความไม่สำเร็จ กรุณาลองใหม่', 'error')
+        }
+      }))
     } catch {
       body.innerHTML = `<div class="p-5 text-center text-rose-400 text-sm">โหลดข้อมูลไม่สำเร็จ</div>`
     }
@@ -657,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.380': [
+    '💬 Feedback แสดงรหัสนักเรียน ห้องสามัญ และห้องศาสนา พร้อมระบบสนทนาสองทางให้แอดมินและผู้ส่งตอบกลับต่อเนื่องในกระทู้เดิมได้'
+  ],
   '10.22.379': [
     '🎨 เอกสารพิมพ์รายชื่อไซซ์เสื้อ/ค่าเสื้อกีฬาสี — พื้นหลังแต่ละแถวนักเรียนเป็นสีพาสเทลอ่อนตามสีทีมของตัวเอง อ่านแยกสีได้ง่ายขึ้นตอนพิมพ์'
   ],

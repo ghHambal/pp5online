@@ -11133,7 +11133,7 @@ export async function renderFeedbackAdmin() {
     <p class="text-[11px] text-gray-400 -mt-3">💡 คลิกการ์ดหมวดเพื่อกรองรายการตามหมวดนั้น</p>
 
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
-      <input id="fb-search" type="search" placeholder="🔍 ค้นหาชื่อ / ข้อความ"
+      <input id="fb-search" type="search" placeholder="🔍 ค้นหาชื่อ รหัส ห้อง หรือข้อความ"
         class="flex-1 min-w-[160px] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200" />
       <select id="fb-filter-role" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
         <option value="all">ผู้ส่ง: ทั้งหมด</option>
@@ -11207,7 +11207,8 @@ export async function renderFeedbackAdmin() {
     const read = document.getElementById('fb-filter-read')?.value ?? 'all'
 
     let rows = _all.filter(f => {
-      if (q && !String(f.sender_name ?? '').toLowerCase().includes(q) && !String(f.message ?? '').toLowerCase().includes(q)) return false
+      const searchable = [f.sender_name, f.message, f.student?.student_code, f.student?.main_room, f.student?.religion_room, ...(f.messages ?? []).map(message => message.message)].join(' ').toLowerCase()
+      if (q && !searchable.includes(q)) return false
       if (role !== 'all' && f.sender_role !== role) return false
       if (cat  !== 'all' && f.category !== cat) return false
       if (read === 'unread' && f.is_read) return false
@@ -11230,6 +11231,7 @@ export async function renderFeedbackAdmin() {
                 <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${f.sender_role === 'teacher' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}">${f.sender_role === 'teacher' ? 'ครู' : 'นักเรียน'}</span>
               </p>
               <p class="text-[11px] text-gray-400">${fmtDate(f.created_at)}</p>
+              ${f.sender_role === 'student' ? `<p class="text-[11px] text-slate-500 mt-0.5">รหัส ${_esc(f.student?.student_code || '—')} · ห้องสามัญ ${_esc(f.student?.main_room || '—')} · ห้องศาสนา ${_esc(f.student?.religion_room || '—')}</p>` : ''}
             </div>
           </div>
           ${!f.is_read ? `<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-semibold flex-shrink-0">ใหม่</span>` : ''}
@@ -11240,7 +11242,13 @@ export async function renderFeedbackAdmin() {
           </select>
           ${ACTIONABLE_CATS.includes(f.category) ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${STATUS_BADGE[f.status]?.cls ?? 'bg-gray-100 text-gray-600'}">${STATUS_BADGE[f.status]?.label ?? f.status}</span>` : ''}
         </div>
-        <p class="mt-1 text-sm text-gray-700 whitespace-pre-wrap">${_esc(f.message)}</p>
+        <div class="mt-3 space-y-2 rounded-2xl bg-slate-50 border border-slate-100 p-3">
+          <div class="flex justify-start"><div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-white border border-slate-200 px-3 py-2"><p class="text-[10px] font-semibold text-slate-500 mb-0.5">${_esc(f.sender_name || 'ผู้ส่ง')}</p><p class="text-sm text-gray-700 whitespace-pre-wrap">${_esc(f.message)}</p><p class="text-[9px] text-slate-400 mt-1">${fmtDate(f.created_at)}</p></div></div>
+          ${(f.messages ?? []).map(message => message.author_role === 'admin'
+            ? `<div class="flex justify-end"><div class="max-w-[88%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-3 py-2"><p class="text-[10px] font-semibold text-indigo-100 mb-0.5">แอดมิน</p><p class="text-sm whitespace-pre-wrap">${_esc(message.message)}</p><p class="text-[9px] text-indigo-200 mt-1">${fmtDate(message.created_at)}</p></div></div>`
+            : `<div class="flex justify-start"><div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-white border border-slate-200 px-3 py-2"><p class="text-[10px] font-semibold text-slate-500 mb-0.5">${_esc(f.sender_name || 'ผู้ส่ง')}</p><p class="text-sm text-gray-700 whitespace-pre-wrap">${_esc(message.message)}</p><p class="text-[9px] text-slate-400 mt-1">${fmtDate(message.created_at)}</p></div></div>`).join('')}
+          ${f.admin_reply && !(f.messages ?? []).some(message => message.author_role === 'admin' && message.message === f.admin_reply) ? `<div class="flex justify-end"><div class="max-w-[88%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-3 py-2"><p class="text-[10px] font-semibold text-indigo-100 mb-0.5">แอดมิน</p><p class="text-sm whitespace-pre-wrap">${_esc(f.admin_reply)}</p><p class="text-[9px] text-indigo-200 mt-1">${f.replied_at ? fmtDate(f.replied_at) : ''}</p></div></div>` : ''}
+        </div>
         <div class="mt-3 flex items-center gap-2">
           <button class="fb-toggle-read px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition" data-id="${f.id}" data-read="${f.is_read}">
             ${f.is_read ? '↩️ ทำเป็นยังไม่อ่าน' : '✓ ทำเครื่องหมายว่าอ่านแล้ว'}
@@ -11249,7 +11257,6 @@ export async function renderFeedbackAdmin() {
             🗑️ ลบ
           </button>
         </div>
-        ${ACTIONABLE_CATS.includes(f.category) ? `
         <div class="mt-3 pt-3 border-t border-gray-100 space-y-2">
           <div class="flex items-center gap-2">
             <span class="text-[11px] font-semibold text-gray-500 flex-shrink-0">เปลี่ยนสถานะ:</span>
@@ -11257,13 +11264,13 @@ export async function renderFeedbackAdmin() {
               ${STATUS_OPTS.map(s => `<option value="${s.value}" ${f.status === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
             </select>
           </div>
-          <textarea class="fb-reply-input w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200" rows="2"
-            placeholder="พิมพ์คำตอบกลับถึงผู้ส่ง (ไม่บังคับ)..." data-id="${f.id}">${_esc(f.admin_reply || '')}</textarea>
+          <textarea class="fb-reply-input w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200" rows="2" maxlength="2000"
+            placeholder="พิมพ์ข้อความใหม่ถึงผู้ส่ง..." data-id="${f.id}"></textarea>
           <div class="flex items-center justify-between gap-2">
-            <span class="text-[10px] text-gray-400">${f.replied_at ? `ตอบล่าสุด ${fmtDate(f.replied_at)}` : ''}</span>
-            <button class="fb-save-status px-3 py-1.5 rounded-xl text-white text-xs font-semibold transition" style="background:linear-gradient(135deg,#db2777,#9d174d);" data-id="${f.id}">💾 บันทึก</button>
+            <span class="text-[10px] text-gray-400">${f.replied_at ? `ตอบล่าสุด ${fmtDate(f.replied_at)}` : 'ยังไม่มีคำตอบจากแอดมิน'}</span>
+            <button class="fb-save-status px-3 py-1.5 rounded-xl text-white text-xs font-semibold transition" style="background:linear-gradient(135deg,#db2777,#9d174d);" data-id="${f.id}">💬 ส่งข้อความ / บันทึกสถานะ</button>
           </div>
-        </div>` : ''}
+        </div>
       </div>`).join('')
 
     box.querySelectorAll('.fb-toggle-read').forEach(btn => btn.addEventListener('click', async () => {
@@ -11311,9 +11318,16 @@ export async function renderFeedbackAdmin() {
         await setFeedbackStatusReply(id, { status, adminReply: reply })
       } catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled = false; btn.textContent = '💾 บันทึก'; return }
       const item = _all.find(x => x.id === id)
-      if (item) { item.status = status; item.admin_reply = reply || null; item.replied_at = new Date().toISOString() }
-      showToast('บันทึกสถานะ/คำตอบแล้ว', 'success')
-      _render()
+      if (item) {
+        item.status = status
+        if (reply) {
+          const now = new Date().toISOString()
+          item.admin_reply = reply; item.replied_at = now
+          item.messages = [...(item.messages ?? []), { id: `local-${Date.now()}`, feedback_id: id, author_role: 'admin', message: reply, created_at: now }]
+        }
+      }
+      showToast(reply ? 'ส่งข้อความและบันทึกสถานะแล้ว' : 'บันทึกสถานะแล้ว', 'success')
+      _updateStats(); _render()
     }))
   }
 

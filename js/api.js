@@ -453,6 +453,7 @@ export async function resetClassRandomizerPicks(classId) {
 // (system_config: feedbackQuotaTeacher / feedbackQuotaStudent), ถ้ายังไม่ตั้งค่าใช้ค่าเริ่มต้นนี้
 const FEEDBACK_MONTHLY_LIMIT_DEFAULT = { teacher: 5, student: 3 }
 const FEEDBACK_QUOTA_CFG_KEY = { teacher: 'feedbackQuotaTeacher', student: 'feedbackQuotaStudent' }
+const _feedbackChatTableMissing = error => error?.code === '42P01' || error?.code === 'PGRST205'
 
 function _startOfThisMonthIso() {
   const d = new Date()
@@ -494,7 +495,33 @@ export async function getAllAppFeedback() {
     .select('id, profile_id, sender_role, sender_name, category, message, is_read, status, admin_reply, replied_at, created_at')
     .order('created_at', { ascending: false })
   if (error) throw error
-  return data ?? []
+  const items = data ?? []
+  if (!items.length) return items
+  const feedbackIds = items.map(item => item.id)
+  const studentProfileIds = [...new Set(items.filter(item => item.sender_role === 'student').map(item => item.profile_id).filter(Boolean))]
+  const [{ data: messages, error: messagesError }, studentResult] = await Promise.all([
+    supabase.from('app_feedback_messages')
+      .select('id, feedback_id, author_role, message, created_at')
+      .in('feedback_id', feedbackIds)
+      .order('created_at', { ascending: true }),
+    studentProfileIds.length
+      ? supabase.from('students').select('profile_id, student_code, main_room, religion_room').in('profile_id', studentProfileIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (messagesError && !_feedbackChatTableMissing(messagesError)) throw messagesError
+  if (studentResult.error) throw studentResult.error
+  const studentByProfile = new Map((studentResult.data ?? []).map(student => [student.profile_id, student]))
+  const messagesByFeedback = new Map()
+  ;(messagesError ? [] : (messages ?? [])).forEach(message => {
+    if (!messagesByFeedback.has(message.feedback_id)) messagesByFeedback.set(message.feedback_id, [])
+    messagesByFeedback.get(message.feedback_id).push(message)
+  })
+  return items.map(item => ({
+    ...item,
+    student: item.sender_role === 'student' ? (studentByProfile.get(item.profile_id) ?? null) : null,
+    messages: messagesByFeedback.get(item.id) ?? [],
+    chatAvailable: !messagesError,
+  }))
 }
 
 export async function setFeedbackRead(id, isRead) {
@@ -512,8 +539,23 @@ export async function setFeedbackCategory(id, category) {
 }
 
 export async function setFeedbackStatusReply(id, { status, adminReply }) {
+  const reply = String(adminReply ?? '').trim()
+  let chatReady = true
+  if (reply) {
+    try {
+      await sendFeedbackMessage({ feedbackId: id, authorRole: 'admin', message: reply })
+    } catch (error) {
+      if (error?.message !== 'ยังไม่ได้ติดตั้งตารางสนทนา Feedback') throw error
+      chatReady = false
+    }
+  }
+  const payload = { status }
+  if (reply && !chatReady) {
+    payload.admin_reply = reply
+    payload.replied_at = new Date().toISOString()
+  }
   const { error } = await supabase.from('app_feedback')
-    .update({ status, admin_reply: adminReply ?? null, replied_at: new Date().toISOString() })
+    .update(payload)
     .eq('id', id)
   if (error) throw error
 }
@@ -530,7 +572,30 @@ export async function getMyFeedbackHistory(profileId) {
     .order('created_at', { ascending: false })
     .limit(30)
   if (error) throw error
-  return data ?? []
+  const items = data ?? []
+  if (!items.length) return items
+  const { data: messages, error: messagesError } = await supabase.from('app_feedback_messages')
+    .select('id, feedback_id, author_role, message, created_at')
+    .in('feedback_id', items.map(item => item.id))
+    .order('created_at', { ascending: true })
+  if (messagesError && !_feedbackChatTableMissing(messagesError)) throw messagesError
+  const messagesByFeedback = new Map()
+  ;(messagesError ? [] : (messages ?? [])).forEach(message => {
+    if (!messagesByFeedback.has(message.feedback_id)) messagesByFeedback.set(message.feedback_id, [])
+    messagesByFeedback.get(message.feedback_id).push(message)
+  })
+  return items.map(item => ({ ...item, messages: messagesByFeedback.get(item.id) ?? [], chatAvailable: !messagesError }))
+}
+
+export async function sendFeedbackMessage({ feedbackId, authorRole, message }) {
+  const text = String(message ?? '').trim()
+  if (!text) throw new Error('กรุณาพิมพ์ข้อความ')
+  const { error } = await supabase.from('app_feedback_messages')
+    .insert({ feedback_id: feedbackId, author_role: authorRole, message: text })
+  if (error) {
+    if (_feedbackChatTableMissing(error)) throw new Error('ยังไม่ได้ติดตั้งตารางสนทนา Feedback')
+    throw error
+  }
 }
 
 export async function getStudentByCode(studentCode) {
