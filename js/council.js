@@ -29,13 +29,25 @@ async function init() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) { window.location.replace('index.html'); return }
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role, is_also_admin').eq('id', session.user.id).single()
   const role = profile?.role
+  const isAdmin = role === 'admin' || profile?.is_also_admin === true
 
   const [cfg, positions, members, elections] = await Promise.all([
     getCouncilConfig(), getCouncilPositions(), getCouncilMembers(), getCouncilElectionConfigs(),
   ])
   applyBranding(cfg)
+
+  // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน — ปิดแล้วเข้าได้เฉพาะแอดมิน/ครูที่ได้รับมอบหมายเป็นแอดมิน
+  if (cfg.council_visible_to_all === 'false' && !isAdmin) {
+    content.innerHTML = `
+      <div class="max-w-md mx-auto px-4 py-20 text-center text-gray-400">
+        <p class="text-4xl mb-3">🔒</p>
+        <p class="font-medium text-gray-600">ระบบสภานักเรียนปิดใช้งานชั่วคราว</p>
+        <p class="text-xs mt-1">ติดต่อผู้ดูแลระบบ</p>
+      </div>`
+    return
+  }
 
   let student = null, applications = [], membership = []
   if (role === 'student') {

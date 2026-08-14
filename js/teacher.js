@@ -611,6 +611,9 @@ async function _applyRoleMenus() {
   toggle('menu-reading',    hasReading)
   toggle('menu-prayer',     hasPrayer)
   toggle('menu-advisor-students', hasAdvisorRoom)
+  // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) — ปิดแล้วเห็นเฉพาะครูที่ is_also_admin
+  const councilCfg = await getSystemConfig().catch(() => ({}))
+  toggle('menu-council', councilCfg.council_visible_to_all !== 'false' || _isAlsoAdmin)
   let sportsMemberships = []
   try {
     const { data: memberships } = await supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true)

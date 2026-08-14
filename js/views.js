@@ -2396,6 +2396,7 @@ export async function renderSettings() {
       { id:'sync',     icon:'🔗',  label:'Google Sync' },
       { id:'template', icon:'📄',  label:'เทมเพลต ปพ.5' },
       { id:'schedule', icon:'🗓️', label:'ตารางสอน' },
+      { id:'council',  icon:'🏛️', label:'สภานักเรียน' },
     ]
 
     // ─── Panel content per tab ──────────────────────────────────────────────────
@@ -2873,6 +2874,13 @@ export async function renderSettings() {
             }))
           : [{ key:'geminiKey_MATH', label:'Key กลุ่มสาระ MATH (ตัวอย่าง)', type:'password' }]
         ),
+      ].join('')
+
+      if (tabId === 'council') return [
+        section('การแสดงผล', [
+          { key:'council_visible_to_all', label:'แสดงเมนู "ระบบสภานักเรียน" ให้ทุกคนเห็น', type:'toggle',
+            hint:'ปิดแล้วจะมีแค่แอดมิน หรือครูที่ได้รับมอบหมายเป็นแอดมิน (is_also_admin) เท่านั้นที่เห็นเมนูและเข้าหน้า council.html ได้ นักเรียนและครูทั่วไปจะไม่เห็นเมนูนี้เลย' },
+        ]),
       ].join('')
 
       return ''

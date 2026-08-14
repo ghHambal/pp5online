@@ -7,6 +7,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_term_end_semester', 'council_term_end_year',
   'council_min_gpa', 'council_eligible_grade_levels', 'council_require_teacher_endorsement',
   'council_election_thank_you_message',
+  'council_visible_to_all', // 'true'/'false' — ปิดแล้วเห็นเฉพาะแอดมิน/ครูที่ is_also_admin
 ]
 
 export async function getCouncilConfig() {
