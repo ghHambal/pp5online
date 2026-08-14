@@ -27,6 +27,7 @@ export default defineConfig({
         sportsFundMonitor: resolve(__dirname, 'sports-fund-monitor.html'),
         sportsCheckin: resolve(__dirname, 'sports-checkin.html'),
         studentcareInstall: resolve(__dirname, 'studentcare-install.html'),
+        council:       resolve(__dirname, 'council.html'),
       },
     },
     chunkSizeWarningLimit: 600,

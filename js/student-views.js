@@ -477,6 +477,18 @@ export async function renderStudentOverview(student) {
     </a>
     ` : ''}
 
+    <!-- ระบบสภานักเรียน — ลิงก์ไป council.html เสมอ ทุกคนเห็น (เพื่อติดตามกิจกรรม/รายชื่อสภา/สมัคร/โหวต) -->
+    <a href="council.html" class="relative overflow-hidden bg-gradient-to-r from-violet-600 to-purple-600 rounded-2xl border border-violet-500 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
+      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🏛️</div>
+      <div class="min-w-0 z-10">
+        <h4 class="font-bold text-xs sm:text-sm">🏛️ ระบบสภานักเรียน</h4>
+        <p class="text-[10px] text-violet-100 mt-0.5">ดูกิจกรรม รายชื่อสภา สมัคร และโหวตเลือกตั้ง</p>
+      </div>
+      <span class="relative z-10 px-3 py-1.5 bg-white text-violet-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
+        เข้าสู่ระบบ →
+      </span>
+    </a>
+
     <!-- Scanner Access Banner -->
     ${_hasScannerPermissionForToday(student, cfg) && _isPrayerTimeWindow(cfg, hasExtendedScanWindow) ? `
     <div class="relative overflow-hidden bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl border border-emerald-500/20 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4">
