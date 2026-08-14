@@ -12,7 +12,6 @@ import { openPP5CourseModal } from './pp5-doc.js'
 import { showToast } from './ui.js'
 import { _openCourseColsModal } from './teacher-views-grades.js'
 import { _openLessonPlanApproval } from './teacher-views.js'
-import { isImpersonating } from './impersonation.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
   SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS,
@@ -2102,7 +2101,7 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
     </div>
 
     <!-- เปลี่ยนรหัสผ่าน -->
-    <div id="profile-password-card" class="bg-white rounded-2xl border border-gray-200 shadow-md p-7 mt-4">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7 mt-4">
       <h3 class="font-bold text-gray-800 mb-4">🔒 เปลี่ยนรหัสผ่าน</h3>
       <div class="space-y-3">
         <div>
@@ -2121,16 +2120,6 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
     </div>
   </div>`)
   if (!teacher) return
-
-  // auth.updateUser() changes the real signed-in account, not the effective teacher.
-  if (isImpersonating()) {
-    const card = document.getElementById('profile-password-card')
-    if (card) card.innerHTML = `
-      <h3 class="font-bold text-gray-800 mb-2">🔒 รหัสผ่านบัญชี</h3>
-      <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-4">
-        ปิดการเปลี่ยนรหัสผ่านระหว่างสวมบทบาท เพื่อไม่ให้รหัสผ่านบัญชีแอดมินที่ล็อกอินอยู่ถูกเปลี่ยนโดยไม่ตั้งใจ
-      </p>`
-  }
 
   // phone format
   document.getElementById('prof-phone').addEventListener('input', e => {
