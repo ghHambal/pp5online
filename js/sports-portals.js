@@ -2018,24 +2018,53 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,shirtSizes,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,studentView}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
-    const kpis=[
+    const kpisBefore=[
       {label:'สมาชิก',value:membersList.length,icon:'👥',bg:'from-blue-500 to-indigo-600',goto:'members'},
       {label:'นักกีฬา',value:regs.length,icon:'🏃',bg:'from-emerald-500 to-teal-600',goto:'athletes'},
       {label:'ผู้จัดการทีม',value:compAssignments.length,icon:'🧑‍💼',bg:'from-cyan-500 to-blue-600',goto:'managers'},
       {label:'งานค้าง',value:pendingTasks,icon:'📋',bg:'from-amber-400 to-orange-600',goto:'work'},
-      {label:'แข่งแล้ว',value:`${doneMatches}/${matches.length}`,icon:'🗓️',bg:'from-pink-500 to-rose-600',goto:'schedule'},
+    ]
+    const kpisAfter=[
       {label:'อันดับคะแนน',value:`#${scoreRank}`,icon:'🏅',bg:'from-violet-500 to-purple-600',goto:'scores'},
       {label:'อันดับเหรียญ',value:`#${medalRank}`,icon:'🥇',bg:'from-yellow-500 to-amber-600',goto:'scores'},
     ]
+    const kpiBtn=k=>`<button type="button" data-goto-tab="${k.goto}" class="text-left rounded-2xl p-4 flex flex-col justify-between shadow-lg text-white bg-gradient-to-br ${k.bg} transition-transform duration-300 hover:-translate-y-1 cursor-pointer"><div class="flex justify-between items-start"><span class="text-[10px] md:text-xs text-white/80 font-semibold tracking-wide leading-tight">${esc(k.label)}</span><span class="text-lg">${k.icon}</span></div><span class="text-2xl md:text-3xl font-extrabold mt-3">${esc(k.value)}</span></button>`
+    // "แข่งแล้ว" แยกออกมาจาก kpis ทั่วไปเพราะมีปุ่มสลับช่วงเวลาในตัว — ดีฟอลต์นับเฉพาะนัดที่นัดไว้
+    // วันนี้ (scheduled_date ตรงวันปัจจุบัน) สลับดูรวมทุกวันได้โดยไม่ต้องออกจากการ์ด
+    const todayStr=_dateInputValueLocal(new Date())
+    const matchesToday=matches.filter(x=>x.scheduled_date===todayStr)
+    const doneMatchesToday=matchesToday.filter(x=>x.status==='done').length
+    // ใช้ <div> ห่อนอกแทน <button> (แต่ยังใช้ data-goto-tab ได้เหมือนกัน — ตัว wiring จับทุก element
+    // ที่มี attribute นี้ ไม่จำกัดแค่ <button>) เพราะข้างในมีปุ่มสลับช่วงเวลาซ้อนอยู่ ห้ามซ้อน
+    // <button> ใน <button> (HTML ไม่รองรับ เบราว์เซอร์จะดันปุ่มในออกมานอกโครงสร้างเอง)
+    const matchesTile=`<div data-goto-tab="schedule" data-matches-tile class="relative text-left rounded-2xl p-4 flex flex-col justify-between shadow-lg text-white bg-gradient-to-br from-pink-500 to-rose-600 transition-transform duration-300 hover:-translate-y-1 cursor-pointer"><div class="flex justify-between items-start"><span data-matches-label class="text-[10px] md:text-xs text-white/80 font-semibold tracking-wide leading-tight">แข่งแล้ว (วันนี้)</span><span class="text-lg">🗓️</span></div><span data-matches-value class="text-2xl md:text-3xl font-extrabold mt-3">${doneMatchesToday}/${matchesToday.length}</span><button type="button" data-toggle-matches-scope data-scope="today" class="self-end text-[9px] font-bold bg-black/25 hover:bg-black/40 rounded-full px-2 py-0.5 mt-1">ดูทั้งหมด</button></div>`
     body.innerHTML=`<div class="space-y-5">
       <section class="rounded-3xl p-5 text-white overflow-hidden" style="background:linear-gradient(135deg,${esc(c.hex_color)},#111827)"><h2 class="font-bold text-sm">👋 สรุปภาพรวมสี${esc(c.name)}</h2><p class="text-xs opacity-80 mt-1">${esc(roleLabel(m.role))} — แตะการ์ดด้านล่างเพื่อไปยังหน้าที่เกี่ยวข้องได้เลย</p></section>
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-3">${kpis.map(k=>`<button type="button" data-goto-tab="${k.goto}" class="text-left rounded-2xl p-4 flex flex-col justify-between shadow-lg text-white bg-gradient-to-br ${k.bg} transition-transform duration-300 hover:-translate-y-1 cursor-pointer"><div class="flex justify-between items-start"><span class="text-[10px] md:text-xs text-white/80 font-semibold tracking-wide leading-tight">${esc(k.label)}</span><span class="text-lg">${k.icon}</span></div><span class="text-2xl md:text-3xl font-extrabold mt-3">${esc(k.value)}</span></button>`).join('')}</div>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3">${kpisBefore.map(kpiBtn).join('')}${matchesTile}${kpisAfter.map(kpiBtn).join('')}</div>
       <section class="${card} flex flex-wrap items-center justify-between gap-3">
         <div><h2 class="font-bold">📷 ช่วยกันเก็บภาพความทรงจำหน่อย!</h2><p class="text-xs muted mt-1">ถ่ายภาพบรรยากาศตอนเข้าค่ายสี ตอนแข่งขัน หรือเชียร์เพื่อนๆ แล้วอัปโหลดเก็บไว้ — ทุกสีเห็นภาพของกันและกันได้ในแกลเลอรีรวม</p></div>
         <button type="button" data-goto-tab="gallery" class="px-5 py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold flex-shrink-0">📸 ไปถ่าย/อัปโหลดรูป</button>
       </section>
       <section class="${card}"><h2 class="font-bold mb-3">🧭 สิทธิ์และเมนูของบทบาทนี้</h2><div class="grid md:grid-cols-5 gap-2">${permPill('สมาชิก',canMembers)}${permPill('ลงทะเบียนนักกีฬา',canReg)}${permPill('ประกาศ',canAnn)}${permPill('งานของสี',canTasks)}${permPill('สรุปเสื้อเฉพาะสี',canShirt)}${permPill('เก็บค่าบำรุงสี',canDues)}${permPill('บันทึกรายรับ-รายจ่ายสี',canExpenses)}${permPill('มอบหมายรายการแข่งขัน',canCompAssign)}</div></section>
     </div>`
+    // สลับตัวเลข "แข่งแล้ว" ระหว่างวันนี้/ทั้งหมดในเครื่อง ไม่ต้องรีเฟรชข้อมูลใหม่ทั้งหน้า เพราะ
+    // ทั้งสองค่าคำนวณไว้ในตัวแปรพร้อมอยู่แล้ว (matches ทั้งชุดโหลดมาแล้วตั้งแต่ต้น)
+    body.querySelector('[data-toggle-matches-scope]')?.addEventListener('click',e=>{
+      e.stopPropagation()
+      const btn=e.currentTarget, tile=btn.closest('[data-matches-tile]')
+      const valueEl=tile.querySelector('[data-matches-value]'), labelEl=tile.querySelector('[data-matches-label]')
+      if(btn.dataset.scope==='today'){
+        valueEl.textContent=`${doneMatches}/${matches.length}`
+        labelEl.textContent='แข่งแล้ว (ทั้งหมด)'
+        btn.textContent='ดูวันนี้'
+        btn.dataset.scope='all'
+      } else {
+        valueEl.textContent=`${doneMatchesToday}/${matchesToday.length}`
+        labelEl.textContent='แข่งแล้ว (วันนี้)'
+        btn.textContent='ดูทั้งหมด'
+        btn.dataset.scope='today'
+      }
+    })
   }
   else if(tab==='members'){
     const duesPaidIds=canDues?new Set((duesPayments||[]).map(d=>d.student_id)):null
