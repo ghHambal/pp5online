@@ -12,7 +12,7 @@ import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { openScoreScanner } from './score-qr-scanner.js'
-import { subscribeGradebookUpdates } from './gradebook-sync.js'
+import { publishGradebookUpdate, subscribeGradebookUpdates } from './gradebook-sync.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade, applyReadingGradesFromConfig,
 } from './teacher-views-utils.js'
@@ -2296,7 +2296,7 @@ export async function renderRequests(teacher) {
       <div class="border-t border-gray-100 pt-3">
         <p class="text-xs text-gray-500 mb-2 font-medium">📋 บันทึกผลการสอบ</p>
         <div class="flex gap-2">
-          <button onclick="window._markAttended(${r.id}, ${stu?.id ?? 'null'}, ${col?.id ?? 'null'}, ${col?.max_score ?? 100}, null)"
+          <button onclick="window._markAttended(${r.id})"
             class="flex-1 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition">
             📝 มาสอบแล้ว + ใส่คะแนน
           </button>
@@ -2309,7 +2309,7 @@ export async function renderRequests(teacher) {
       ${canEditScore ? `
       <div class="border-t border-gray-100 pt-3 flex items-center justify-between">
         <p class="text-xs text-blue-600 font-medium">📝 มาสอบแล้ว${r.exam_score != null ? ' · คะแนน '+r.exam_score : ''}</p>
-        <button onclick="window._markAttended(${r.id}, ${stu?.id ?? 'null'}, ${col?.id ?? 'null'}, ${col?.max_score ?? 100}, ${r.exam_score ?? 'null'})"
+        <button onclick="window._markAttended(${r.id})"
           class="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition font-medium">
           ✏️ แก้ไขคะแนน
         </button>
@@ -2487,18 +2487,64 @@ export async function renderRequests(teacher) {
     })
   }
 
-  window._markAttended = (id, studentId, assignmentId, maxScore, currentScore) => {
+  window._markAttended = async (id) => {
+    const request = all.find(r => Number(r.id) === Number(id))
+    const studentId = request?.students?.id
+    const classId = request?.classes?.id
+    const currentScore = request?.exam_score
     const isEdit = currentScore != null
+
+    if (!studentId || !classId) {
+      showToast('ไม่พบข้อมูลนักเรียนหรือห้องเรียนของคำร้องนี้', 'error')
+      return
+    }
+
+    const canChooseColumn = String(request?.request_type ?? '').includes('ปรับคะแนน')
+    let columns
+    try {
+      columns = (await getScoreColumns(classId))
+        .filter(col => (col.column_type ?? 'regular') === 'regular')
+    } catch (err) {
+      showToast('โหลดคอลัมน์คะแนนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      return
+    }
+    if (!columns.length) {
+      showToast('วิชานี้ยังไม่มีคอลัมน์คะแนนที่สามารถบันทึกได้', 'warning')
+      return
+    }
+
+    const requestedColumnId = Number(request?.class_score_columns?.id)
+    if (!canChooseColumn) {
+      const requestedColumn = columns.find(col => Number(col.id) === requestedColumnId)
+      if (requestedColumn) columns = [requestedColumn]
+    }
+    const defaultColumn = columns.find(col => Number(col.id) === requestedColumnId) ?? columns[0]
+    const columnOptions = columns.map(col => `
+      <option value="${col.id}" data-max="${Number(col.max_score ?? 100)}"
+        ${Number(col.id) === Number(defaultColumn.id) ? 'selected' : ''}>
+        ${_htmlEsc(col.assignment_name)} (เต็ม ${Number(col.max_score ?? 100)})
+      </option>`).join('')
+
     _showModal({
       title: isEdit ? '✏️ แก้ไขคะแนน' : '📝 บันทึกผลการสอบ — มาสอบ',
-      body: `<label class="block text-sm text-gray-600 mb-1.5">คะแนนที่สอบได้ <span class="text-red-500">*</span> <span class="text-gray-400">(เต็ม ${maxScore})</span></label>
-             <input id="req-modal-score" type="number" min="0" max="${maxScore}" step="0.5"
+      body: `<label class="block text-sm text-gray-600 mb-1.5">บันทึกลงคอลัมน์ <span class="text-red-500">*</span></label>
+             <select id="req-modal-column" ${canChooseColumn ? '' : 'disabled'}
+               class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 mb-4">
+               ${columnOptions}
+             </select>
+             ${canChooseColumn ? '<p class="text-xs text-blue-600 -mt-2 mb-4">เลือกคอลัมน์ที่จะรับคะแนนสอบปรับคะแนนครั้งนี้</p>' : ''}
+             <label class="block text-sm text-gray-600 mb-1.5">คะแนนที่สอบได้ <span class="text-red-500">*</span> <span id="req-modal-max-label" class="text-gray-400">(เต็ม ${Number(defaultColumn.max_score ?? 100)})</span></label>
+             <input id="req-modal-score" type="number" min="0" max="${Number(defaultColumn.max_score ?? 100)}" step="0.5"
                value="${isEdit ? currentScore : ''}"
-               placeholder="0 – ${maxScore}"
+               placeholder="0 – ${Number(defaultColumn.max_score ?? 100)}"
                class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />`,
       confirmLabel: isEdit ? 'บันทึกการแก้ไข' : 'บันทึกคะแนน',
       confirmCls: 'bg-blue-600 hover:bg-blue-700',
       onConfirm: async (m) => {
+        const select = m.querySelector('#req-modal-column')
+        const assignmentId = Number(select.value)
+        const selectedOption = select.options[select.selectedIndex]
+        const maxScore = Number(selectedOption?.dataset.max ?? 100)
         const scoreStr = m.querySelector('#req-modal-score').value
         const score = parseFloat(scoreStr)
         if (isNaN(score) || score < 0 || score > maxScore) {
@@ -2507,10 +2553,24 @@ export async function renderRequests(teacher) {
         m.remove()
         try {
           await updateExamResult(id, { exam_attended: true, exam_score: score, studentId, assignmentId })
+          publishGradebookUpdate({ classId, columnId: assignmentId, studentId, score })
           showToast(isEdit ? 'แก้ไขคะแนนแล้ว ✅' : 'บันทึกผลสอบและคะแนนแล้ว ✅', 'success')
           renderRequests(teacher)
         } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
       }
+    })
+
+    const modal = document.getElementById('req-modal')
+    const select = modal?.querySelector('#req-modal-column')
+    const scoreInput = modal?.querySelector('#req-modal-score')
+    const maxLabel = modal?.querySelector('#req-modal-max-label')
+    select?.addEventListener('change', () => {
+      const option = select.options[select.selectedIndex]
+      const maxScore = Number(option?.dataset.max ?? 100)
+      scoreInput.max = String(maxScore)
+      scoreInput.placeholder = `0 – ${maxScore}`
+      maxLabel.textContent = `(เต็ม ${maxScore})`
+      if (scoreInput.value !== '' && Number(scoreInput.value) > maxScore) scoreInput.value = ''
     })
   }
 

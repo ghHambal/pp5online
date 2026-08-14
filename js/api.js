@@ -2449,16 +2449,21 @@ export async function reviewExamRequest(id, { status, teacher_comment }) {
 }
 
 export async function updateExamResult(id, { exam_attended, exam_score, studentId, assignmentId }) {
-  const { error } = await supabase.from('exam_requests')
-    .update({ exam_attended, exam_score: exam_attended ? (exam_score ?? null) : null })
-    .eq('id', id)
-  if (error) throw error
   if (exam_attended && exam_score != null && assignmentId && studentId) {
-    await supabase.from('student_scores').upsert({
+    const { error: scoreError } = await supabase.from('student_scores').upsert({
       student_id: studentId, assignment_id: assignmentId,
       original_score: exam_score, final_score: exam_score,
     }, { onConflict: 'student_id,assignment_id' })
+    if (scoreError) throw scoreError
   }
+  const { error } = await supabase.from('exam_requests')
+    .update({
+      exam_attended,
+      exam_score: exam_attended ? (exam_score ?? null) : null,
+      ...(exam_attended && assignmentId ? { assignment_id: assignmentId } : {}),
+    })
+    .eq('id', id)
+  if (error) throw error
 }
 
 export async function getPendingExamRequestCount(teacherId) {
