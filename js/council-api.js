@@ -8,6 +8,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_min_gpa', 'council_eligible_grade_levels', 'council_require_teacher_endorsement',
   'council_election_thank_you_message',
   'council_visible_to_all', // 'true'/'false' — ปิดแล้วเห็นเฉพาะแอดมิน/ครูที่ is_also_admin
+  'council_test_student_codes', // รหัสนักเรียนที่ให้ทดสอบได้แม้ council_visible_to_all ปิดอยู่ (คั่นด้วย , หรือขึ้นบรรทัดใหม่)
   'academicYear', // key กลางเดิมของระบบ (ไม่มี prefix council_) ใช้ผูกใบสมัครเข้าปีการศึกษาปัจจุบัน
 ]
 

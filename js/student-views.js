@@ -436,6 +436,11 @@ export async function renderStudentOverview(student) {
   const isVice = classroomRole && Number(classroomRole.vice_head_student_id) === Number(student.id)
   const certUrl = isHead ? classroomRole.head_cert_url : (isVice ? classroomRole.vice_head_cert_url : null)
 
+  // ปุ่มเมนูสภานักเรียนโชว์ถ้าเปิดให้ทุกคนเห็น หรือรหัสนักเรียนคนนี้อยู่ในรายชื่อทดสอบที่แอดมินตั้งไว้
+  // (council_test_student_codes) — ให้ทดสอบระบบจริงได้แม้ปิดปุ่มไว้สำหรับนักเรียนทั่วไป
+  const councilTestCodes = (cfg.council_test_student_codes || '').split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
+  const councilVisible = cfg.council_visible_to_all !== 'false' || councilTestCodes.includes(student.student_code)
+
   setContent(`
     <!-- Profile card -->
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 mb-4 flex items-center gap-4 sm:gap-6">
@@ -478,8 +483,9 @@ export async function renderStudentOverview(student) {
     ` : ''}
 
     <!-- ระบบสภานักเรียน — ลิงก์ไป council.html เพื่อติดตามกิจกรรม/รายชื่อสภา/สมัคร/โหวต
-         ปิดได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) — นักเรียนไม่มีสิทธิ์ผ่าน gate เลยถ้าปิด -->
-    ${cfg.council_visible_to_all !== 'false' ? `
+         ปิดได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) ยกเว้นรหัสนักเรียนที่อยู่ใน
+         รายชื่อทดสอบ (council_test_student_codes) จะยังเห็นปุ่มนี้เสมอแม้ปิดไว้ก็ตาม -->
+    ${councilVisible ? `
     <a href="council.html" class="relative overflow-hidden bg-gradient-to-r from-violet-600 to-purple-600 rounded-2xl border border-violet-500 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
       <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🏛️</div>
       <div class="min-w-0 z-10">

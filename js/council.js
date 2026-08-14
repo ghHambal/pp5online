@@ -60,8 +60,15 @@ async function init() {
   ])
   applyBranding(cfg)
 
+  // ดึงข้อมูลนักเรียนก่อน (ถ้า role เป็น student) เพราะต้องใช้ student_code เช็ครายชื่อทดสอบ
+  let student = null, applications = [], membership = []
+  if (role === 'student') student = await getMyStudentProfile().catch(() => null)
+
   // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน — ปิดแล้วเข้าได้เฉพาะแอดมิน/ครูที่ได้รับมอบหมายเป็นแอดมิน
-  if (cfg.council_visible_to_all === 'false' && !isAdmin) {
+  // หรือนักเรียนที่รหัสอยู่ในรายชื่อทดสอบที่แอดมินตั้งไว้ (council_test_student_codes)
+  const testCodes = (cfg.council_test_student_codes || '').split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
+  const isTestStudent = role === 'student' && !!student && testCodes.includes(student.student_code)
+  if (cfg.council_visible_to_all === 'false' && !isAdmin && !isTestStudent) {
     content.innerHTML = `
       <div class="max-w-md mx-auto px-4 py-20 text-center text-gray-400">
         <p class="text-4xl mb-3">🔒</p>
@@ -71,9 +78,7 @@ async function init() {
     return
   }
 
-  let student = null, applications = [], membership = []
   if (role === 'student') {
-    student = await getMyStudentProfile().catch(() => null)
     if (student) {
       ;[applications, membership] = await Promise.all([
         getMyCouncilApplications(student.id).catch(() => []),
@@ -97,7 +102,7 @@ async function init() {
   }
 
   ctx = {
-    role, student, applications, membership, positions, members, elections, cfg,
+    role, isAdmin, student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
   renderAll()
