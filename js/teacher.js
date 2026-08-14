@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.19.10'
+import { APP_VERSION } from './version.js?v=10.22.403'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -25,7 +25,8 @@ import { POS_LBL, _teacherPositionList, _teacherPositionLabel } from './teacher-
 import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.260'
+import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.403'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -629,8 +630,9 @@ async function _applyRoleMenus() {
   try {
     const { data: activeEvent } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
     const eventId = activeEvent?.id || '00000000-0000-0000-0000-000000000001'
-    const { data: canView } = await supabase.rpc('can_view_shirt_vote_dashboard', { p_event: eventId })
-    isShirtVoteManager = !!canView
+    const { data: manager } = await supabase.from('sports_shirt_vote_managers')
+      .select('id').eq('event_id', eventId).eq('profile_id', _teacher?.profile_id).maybeSingle()
+    isShirtVoteManager = !!manager
   } catch { isShirtVoteManager = false }
   toggle('menu-shirt-vote-dashboard', !!(isSportsManager || isShirtVoteManager))
 }
@@ -2698,7 +2700,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.403').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }
@@ -2976,25 +2978,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   blockPullToRefresh()
 
   // ─── Impersonation mode ─────────────────────────────────────────────────────
-  const _impRaw = sessionStorage.getItem('impersonated_teacher')
+  const impData = getImpersonationContext()
   let isImpersonating = false
-  if (_impRaw) {
+  if (impData) {
     try {
-      const impData = JSON.parse(_impRaw)
       showPageLoader(true)
+      await validateImpersonation(supabase)
       // โหลด full profile ผ่าน profile_id (ถ้ามี) หรือ getTeacherById
       _teacher = impData.profile_id
         ? (await getMyTeacherProfile(impData.profile_id).catch(() => null)) ?? await getTeacherById(impData.id).catch(() => impData)
         : await getTeacherById(impData.id).catch(() => impData)
+      if (!_teacher?.id || _teacher?.profile_id !== impData.profile_id) {
+        throw new Error('ไม่พบข้อมูลครูเป้าหมายของเซสชันสวมบทบาท')
+      }
+      const { data: effectiveProfile } = await supabase.from('profiles')
+        .select('role,is_also_admin').eq('id', impData.profile_id).maybeSingle()
+      _isAlsoAdmin = effectiveProfile?.is_also_admin === true
+      _hasAdminAccess = effectiveProfile?.role === 'admin' || _isAlsoAdmin
+      await _loadSportsVisibility()
       await applyThemeForRole('teacher', _teacher ?? {})
       _homeroomRooms = _teacher?.id ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
-      await _applyRoleMenus()
-      loadSidebarHeader(_teacher)
-      // โหลด position permissions ก่อน เพื่อให้เมนูหัวหน้า/supervisor แสดงถูกต้องตอน "ดูในฐานะ"
+      // โหลดสิทธิ์ตำแหน่งก่อนสร้างเมนู เพื่อให้เมนูเหมือนครูเป้าหมายล็อกอินจริง
       if (_teacher?.position || _teacher?.positions?.length) {
         const allPositions = _teacher.positions?.length ? _teacher.positions : [_teacher.position]
         _positionPerms = await getTeacherPositionPermissions(allPositions).catch(() => ({}))
       }
+      await _applyRoleMenus()
+      loadSidebarHeader(_teacher)
       // แสดงปุ่ม Dashboard ตามตำแหน่ง + ข้อมูลครูใน sidebar/header (เหมือน loadTeacherInfo)
       _renderTeacherSidebarUI(_teacher)
       // แสดง banner
@@ -3007,14 +3017,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         banner.classList.add('flex')
       }
       if (exitBtn) {
-        exitBtn.addEventListener('click', () => {
-          sessionStorage.removeItem('impersonated_teacher')
-          window.location.replace('dashboard.html')
+        exitBtn.addEventListener('click', async () => {
+          try {
+            exitBtn.disabled = true
+            exitBtn.textContent = 'กำลังกลับสู่บัญชีแอดมิน...'
+            await endImpersonation(supabase)
+            window.location.replace('dashboard.html')
+          } catch (error) {
+            console.error('Cannot end impersonation:', error)
+            exitBtn.disabled = false
+            exitBtn.textContent = '← ออกจากโหมดนี้'
+            showToast('ยังไม่สามารถกลับสู่บัญชีแอดมินได้ กรุณาลองอีกครั้ง', 'error')
+          }
         })
       }
       isImpersonating = true
     } catch (e) {
-      sessionStorage.removeItem('impersonated_teacher')
+      console.error('Invalid impersonation session:', e)
+      clearImpersonation()
+      await supabase.auth.signOut()
+      showToast('เซสชันสวมบทบาทไม่ถูกต้อง กรุณาเข้าสู่ระบบแอดมินใหม่', 'error')
+      setTimeout(() => window.location.replace('index.html'), 1000)
+      return
     }
   }
 
@@ -3024,28 +3048,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadTeacherInfo(session.user.id)
     _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
-    await _applyRoleMenus()
-    loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
-    _updateRequestsBadge()       // badge คำร้องรอดำเนินการ
-    _startPolling()              // polling 30 วิ
-    updateLastSeen('teachers').catch(() => {})
-    logLogin('teacher').catch(() => {})
-    if (_teacher?.id) _initDonationFlow(_teacher.id)
-    if (_teacher?.id) _checkScheduleLinkPopup()
-    if (_teacher?.id) _checkTeacherShirtSizePopup()
-    if (_teacher?.id) _initNotifications(_teacher.id)
-    initInstallPrompt()
-    // โหลด position permissions (async ไม่ block)
     if (_teacher?.position || _teacher?.positions?.length) {
       const allPositions = _teacher.positions?.length ? _teacher.positions : [_teacher.position]
-      getTeacherPositionPermissions(allPositions)
-        .then(p => { _positionPerms = p })
-        .catch(() => {})
+      _positionPerms = await getTeacherPositionPermissions(allPositions).catch(() => ({}))
     }
-    // โหลดและแสดงประกาศ active
-    _loadAnnouncementBanners()
-    if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
+    await _applyRoleMenus()
+    loadSidebarHeader(_teacher) // โหลด logo + term แบบ async ไม่ block
+    updateLastSeen('teachers').catch(() => {})
+    logLogin('teacher').catch(() => {})
   }
+
+  // บริการประจำหน้าครูใช้ตัวตนครูที่มีผล ทั้งโหมดปกติและสวมบทบาท
+  _updateRequestsBadge()
+  _startPolling()
+  if (_teacher?.id) _initDonationFlow(_teacher.id)
+  if (_teacher?.id) _checkScheduleLinkPopup()
+  if (_teacher?.id) _checkTeacherShirtSizePopup()
+  if (_teacher?.id) _initNotifications(_teacher.id)
+  initInstallPrompt()
+  _loadAnnouncementBanners()
+  if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
 
   const verEl = document.getElementById('app-version')
   if (verEl) {
@@ -3158,8 +3180,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Logout
   document.getElementById('btn-logout')?.addEventListener('click', async () => {
     if (isImpersonating) {
-      sessionStorage.removeItem('impersonated_teacher')
-      window.location.replace('dashboard.html')
+      try {
+        await endImpersonation(supabase)
+        window.location.replace('dashboard.html')
+      } catch (error) {
+        console.error('Cannot end impersonation:', error)
+        showToast('ยังไม่สามารถกลับสู่บัญชีแอดมินได้ กรุณาลองอีกครั้ง', 'error')
+      }
       return
     }
     await supabase.auth.signOut()

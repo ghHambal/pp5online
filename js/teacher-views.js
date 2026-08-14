@@ -867,7 +867,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   // ปุ่มแจ้งไซซ์เสื้อกีฬาสีของครู — inject แยกจาก template หลักด้านบน (ไม่แตะโครงสร้าง setContent เดิม)
   // เพราะฟังก์ชันนี้ใหญ่/เปราะบางเกินกว่าจะแทรกเข้าไปในเทมเพลตตรงๆ อย่างปลอดภัย
   if (teacher) {
-    import('./sports-portals.js').then(m => m.injectTeacherShirtButton?.(teacher)).catch(() => {})
+    import('./sports-portals.js?v=10.22.403').then(m => m.injectTeacherShirtButton?.(teacher)).catch(() => {})
   }
 }
 

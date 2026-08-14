@@ -1151,16 +1151,21 @@ export async function renderTeachers() {
     renderTeacherTable(all)
     let currentRows = all
 
-    // Impersonation handler
+    // Full teacher impersonation: server validates the admin and records an audit session.
     window._impersonateTeacher = async (teacherId) => {
       const t = all.find(x => x.id === teacherId)
       if (!t) { showToast('ไม่พบข้อมูลครู', 'error'); return }
-      if (!t.profile_id && !confirm(`ครู ${t.full_name} ยังไม่มีบัญชีผู้ใช้\nยังต้องการดูในโหมดนี้ไหม?`)) return
-      sessionStorage.setItem('impersonated_teacher', JSON.stringify({
-        id: t.id, full_name: t.full_name, teacher_code: t.teacher_code,
-        profile_id: t.profile_id ?? null, image_url: t.image_url ?? null,
-      }))
-      window.location.href = 'teacher.html'
+      try {
+        const { startImpersonation } = await import('./impersonation.js')
+        await startImpersonation(supabase, t)
+        window.location.href = 'teacher.html'
+      } catch (error) {
+        console.error('Cannot start impersonation:', error)
+        const needsBackend = /function|schema cache|start_admin_impersonation|edge/i.test(error?.message || '')
+        showToast(needsBackend
+          ? 'ระบบสวมบทบาทฝั่งเซิร์ฟเวอร์ยังไม่พร้อม กรุณารัน SQL และ deploy ฟังก์ชัน admin-impersonate'
+          : (error?.message || 'ไม่สามารถเริ่มโหมดสวมบทบาทได้'), 'error')
+      }
     }
 
     const _filter = () => {

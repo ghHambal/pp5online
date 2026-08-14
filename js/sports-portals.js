@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
+import { getEffectiveProfileId, getEffectiveUser } from './impersonation.js'
 
 export const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 // ห้ามใช้ new Date().toISOString().slice(0,10) หาวันที่ "วันนี้" — toISOString() คืนวันที่ตาม UTC
@@ -1128,8 +1129,8 @@ export async function renderShirtSummary() {
     let sizeRows=shirtSizes.map(sz=>({...sz}))
     const {data:teacherSizesRow}=await supabase.from('settings').select('value').eq('key','teacher_shirt_sizes').maybeSingle()
     let teacherSizeRows=(Array.isArray(teacherSizesRow?.value)&&teacherSizesRow.value.length?teacherSizesRow.value:DEFAULT_SHIRT_SIZES).map(sz=>({...sz}))
-    const {data:{user}}=await supabase.auth.getUser(); const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',user.id).maybeSingle(); const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true||await _hasHouseColorAdminPosition(user.id)
-    const {data:myTeamMemberships}=await supabase.from('sports_team_memberships').select('team_color_id,role,permissions').eq('event_id',event.id).eq('profile_id',user.id).eq('is_active',true)
+    const profileId=await getEffectiveProfileId(supabase); const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',profileId).maybeSingle(); const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true||await _hasHouseColorAdminPosition(profileId)
+    const {data:myTeamMemberships}=await supabase.from('sports_team_memberships').select('team_color_id,role,permissions').eq('event_id',event.id).eq('profile_id',profileId).eq('is_active',true)
     const canManageTeamStaff=isAdmin||(myTeamMemberships||[]).some(m=>m.role==='lead_teacher')
     const [{data:colors},reqs,{data:approvals}]=await Promise.all([supabase.from('team_colors').select('id,name,hex_color').eq('event_id',event.id).order('display_order'),_fetchAllRows('sports_shirt_requests', q=>q.select('status,requested_size,confirmed_size,students(full_name,student_code,main_room,house_color)').eq('event_id',event.id)),isAdmin?supabase.from('sports_team_identity_requests').select('*,team_colors(name,logo_url)').eq('event_id',event.id).eq('status','pending_admin'):Promise.resolve({data:[]})])
     const sizes=shirtSizes.map(s=>s.code); const confirmed=(reqs||[]).filter(r=>['confirmed','advisor_updated'].includes(r.status));
@@ -1265,7 +1266,7 @@ async function renderCompetitionAssignmentSection(root,{event,c,m,competitions,c
     const sportId=sportPicker?.getValue()
     const studentId=staffPicker?.getValue()
     if(!sportId||!studentId){toast('เลือกทั้งรายการแข่งขันและสตาฟก่อน','warning');return}
-    const {data:{user}}=await supabase.auth.getUser()
+    const user=await getEffectiveUser(supabase)
     const {error}=await supabase.from('sports_team_competition_assignments').upsert({
       event_id:event.id,team_color_id:c.id,sport_id:sportId,student_id:Number(studentId),assigned_by:user?.id||null,
     },{onConflict:'team_color_id,sport_id,student_id'})
@@ -1551,7 +1552,7 @@ export async function renderShirtVoteSettings(gender='ชาย') {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลด...</div>'
   try {
     const {event,cfg}=await context()
-    const {data:{user}}=await supabase.auth.getUser()
+    const user=await getEffectiveUser(supabase)
     const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',user.id).maybeSingle()
     const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true
     if(!isAdmin){el.innerHTML='<div class="max-w-lg mx-auto mt-16 p-6 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-center">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</div>';return}
@@ -1696,11 +1697,11 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลด...</div>'
   try {
     const {event}=await context()
-    const {data:{user}}=await supabase.auth.getUser()
+    const user=await getEffectiveUser(supabase)
     const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',user.id).maybeSingle()
     const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true
-    const {data:canView}=await supabase.rpc('can_view_shirt_vote_dashboard',{p_event:event.id})
-    if(!isAdmin&&!canView){el.innerHTML='<div class="max-w-lg mx-auto mt-16 p-6 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-center">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</div>';return}
+    const {data:manager}=await supabase.from('sports_shirt_vote_managers').select('id').eq('event_id',event.id).eq('profile_id',user.id).maybeSingle()
+    if(!isAdmin&&!manager){el.innerHTML='<div class="max-w-lg mx-auto mt-16 p-6 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-center">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</div>';return}
     const [{data:designs,error},allVotes] = await Promise.all([
       supabase.from('sports_shirt_designs').select('*,sports_shirt_design_colors(*)').eq('event_id',event.id).eq('gender',gender).order('design_no'),
       _fetchAllRows('sports_shirt_votes', q => q.select('design_id').eq('event_id',event.id)),
@@ -1765,7 +1766,7 @@ export async function renderShirtVoteDashboard(gender='ชาย') {
 export async function openMyTeamWorkspace() {
   const old=document.getElementById('my-team-workspace');old?.remove(); const wrap=document.createElement('div');wrap.id='my-team-workspace';wrap.className='fixed inset-0 bg-slate-950 text-slate-100 overflow-hidden';wrap.style.zIndex='350';wrap.innerHTML='<div class="py-20 text-center">กำลังโหลดจัดการสีของฉัน...</div>';document.body.appendChild(wrap)
   try {
-    const {data:{user}}=await supabase.auth.getUser()
+    const user=await getEffectiveUser(supabase)
     const {data:members,error}=await supabase.from('sports_team_memberships').select('*,team_colors(*)').eq('profile_id',user.id).eq('is_active',true)
     if(error)throw error
     const m=members?.[0]
@@ -1797,7 +1798,7 @@ export async function openMyColorAsStudent(student) {
     const {data:c,error}=await q.maybeSingle()
     if(error)throw error
     if(!c){wrap.innerHTML='<button class="absolute right-4 top-4" data-close>✕</button><div class="py-24 text-center">ยังไม่พบข้อมูลสีของคุณ</div>';wrap.querySelector('[data-close]').onclick=()=>wrap.remove();return}
-    const {data:{user}}=await supabase.auth.getUser()
+    const user=await getEffectiveUser(supabase)
     const m={role:'student',profile_id:user?.id||null,permissions:{}}
     await renderColorWorkspace(wrap,m,c,{studentView:true})
   } catch(e){console.error(e);wrap.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
