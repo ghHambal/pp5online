@@ -661,11 +661,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (verEl) {
     verEl.textContent = `v${APP_VERSION}`
     verEl.classList.add('cursor-pointer', 'hover:underline')
-    verEl.addEventListener('click', () => checkAndShowChangelog(session.user.id, true))
+    verEl.addEventListener('click', () => checkAndShowChangelog(session.user.id, true, true))
   }
 
   if (session?.user?.id) {
-    checkAndShowChangelog(session.user.id)
+    checkAndShowChangelog(session.user.id, false, true)
   }
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)

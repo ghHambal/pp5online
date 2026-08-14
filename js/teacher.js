@@ -41,6 +41,7 @@ import { renderTutorial } from './tutorial.js'
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
 let _isAlsoAdmin   = false
+let _hasAdminAccess = false
 let _positionPerms = {}   // { feature: boolean } สำหรับ position ของครูคนนี้
 let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
 window._pp5DonorTierIndex = 0
@@ -78,8 +79,9 @@ async function loadTeacherInfo(userId) {
   await applyThemeForRole('teacher', _teacher ?? {})
 
   // เช็ค is_also_admin — ถ้าใช่แสดงปุ่มสลับเป็นแอดมิน
-  const { data: profileRow } = await supabase.from('profiles').select('is_also_admin').eq('id', userId).maybeSingle()
+  const { data: profileRow } = await supabase.from('profiles').select('role, is_also_admin').eq('id', userId).maybeSingle()
   _isAlsoAdmin = profileRow?.is_also_admin === true
+  _hasAdminAccess = profileRow?.role === 'admin' || _isAlsoAdmin
   const headerRight = document.querySelector('header .flex.items-center.gap-3:last-child')
   if (_isAlsoAdmin && headerRight && !document.getElementById('btn-switch-admin')) {
     const switchBtn = document.createElement('a')
@@ -3045,15 +3047,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const verEl = document.getElementById('app-version')
   if (verEl) {
     verEl.textContent = `v${APP_VERSION}`
-    verEl.classList.add('cursor-pointer', 'hover:underline')
-    const userId = _teacher?.profile_id || (await supabase.auth.getSession()).data.session?.user?.id
-    if (userId) {
-      verEl.addEventListener('click', () => checkAndShowChangelog(userId, true))
+    if (_hasAdminAccess) {
+      verEl.classList.add('cursor-pointer', 'hover:underline')
+      const userId = _teacher?.profile_id || (await supabase.auth.getSession()).data.session?.user?.id
+      if (userId) {
+        verEl.addEventListener('click', () => checkAndShowChangelog(userId, true, true))
+      }
     }
   }
 
-  if (!isImpersonating && _teacher?.profile_id) {
-    checkAndShowChangelog(_teacher.profile_id)
+  if (!isImpersonating && _teacher?.profile_id && _hasAdminAccess) {
+    checkAndShowChangelog(_teacher.profile_id, false, true)
   }
 
   // teacher-nav event (from supervisor dashboard)

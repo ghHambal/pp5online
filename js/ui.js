@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.397': [
+    '🔐 จำกัดป๊อปอัพ “มีอะไรใหม่ในเวอร์ชันนี้” ให้แสดงเฉพาะแอดมินและครูที่ได้รับมอบหมายสิทธิ์แอดมิน (is_also_admin) เท่านั้น ครูทั่วไปจะไม่เห็นป๊อปอัพและไม่สามารถเปิดจากเลขเวอร์ชันได้'
+  ],
   '10.22.396': [
     '🏛️ เริ่มระบบงานสภานักเรียน (Phase 1) — สร้างฐานข้อมูล 7 ตาราง (รับสมัคร/สัมภาษณ์/เลือกตั้งประธาน/รายชื่อสภา) แยกสภาชาย-หญิง และหน้า council.html เบื้องต้น (โครงสร้าง + รายชื่อสภา + สถานะเลือกตั้ง) เข้าถึงได้จากเมนูในหน้านักเรียนและครู — ยังอยู่ระหว่างพัฒนาต่อ (สมัคร/โหวต/จัดการยังไม่เสร็จ)'
   ],
@@ -2517,8 +2520,9 @@ function compareVersions(a, b) {
   return 0
 }
 
-// ─── Check and Show Changelog Pop-up for Admin/Teacher ─────────────────────
-export function checkAndShowChangelog(userId, forceShow = false) {
+// ─── Check and Show Changelog Pop-up for users with admin access ───────────
+export function checkAndShowChangelog(userId, forceShow = false, hasAdminAccess = false) {
+  if (!hasAdminAccess) return
   const currentVersion = APP_VERSION
   const lastVersion = localStorage.getItem(`last_seen_version_adm_${userId}`)
   
@@ -2547,7 +2551,7 @@ export function checkAndShowChangelog(userId, forceShow = false) {
           ✨
         </div>
         <h3 class="font-extrabold text-gray-800 text-base mb-1">มีอะไรใหม่ในเวอร์ชันนี้!</h3>
-        <p class="text-xs text-gray-400 mb-4 font-medium">รายการปรับปรุงและฟีเจอร์ใหม่สำหรับผู้ดูแลระบบและคุณครู</p>
+        <p class="text-xs text-gray-400 mb-4 font-medium">รายการปรับปรุงและฟีเจอร์ใหม่สำหรับผู้ดูแลระบบ</p>
         
         <div class="bg-gray-50 border border-gray-100 rounded-2xl p-4 mb-5 max-h-60 overflow-y-auto text-left">
           ${changelogHTML || '<p class="text-xs text-gray-400 text-center">ไม่มีการเปลี่ยนแปลงล่าสุด</p>'}
