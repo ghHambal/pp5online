@@ -1,15 +1,26 @@
 import { supabase } from './supabase.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
+import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
+import { uploadCouncilApplicationPhoto } from './storage.js'
 import {
   getCouncilConfig, getCouncilPositions, getCouncilMembers,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
+  submitCouncilApplication,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const content = document.getElementById('council-content')
 
 const GENDER_LABEL = { M: 'ชาย', W: 'หญิง' }
+
+// ค่าจริงของ students.gender ปนกัน 'ชาย'/'หญิง'/'M' อยู่ (data inconsistency) — ต้อง
+// normalize เป็น 'M'/'W' มาตรฐานของโมดูลนี้เองเสมอ ห้ามเทียบ === 'ชาย' หรือ === 'M' เฉยๆ
+const normalizeGender = raw => {
+  if (raw === 'ชาย' || raw === 'M') return 'M'
+  if (raw === 'หญิง' || raw === 'W') return 'W'
+  return null
+}
 
 // รูปนักเรียน — สี่เหลี่ยมขอบมนแนวตั้ง + border/shadow (ห้ามวงกลม) ตาม pattern เดิมของระบบ
 // precedent: js/sports-portals.js:923
@@ -22,6 +33,10 @@ const APPLICATION_STATUS_LABEL = {
   pending: 'รอดำเนินการ', interview_scheduled: 'นัดสัมภาษณ์แล้ว', interviewed: 'สัมภาษณ์แล้ว',
   candidate: 'ผู้สมัครเลือกตั้ง', appointed: 'ได้รับแต่งตั้ง', rejected: 'ไม่ผ่าน',
 }
+
+let ctx = null
+let showApplyForm = false
+let applyPhotoFile = null
 
 async function init() {
   blockPullToRefresh()
@@ -60,7 +75,14 @@ async function init() {
     }
   }
 
-  render({ role, student, applications, membership, positions, members, elections })
+  ctx = { role, student, applications, membership, positions, members, elections, cfg }
+  renderAll()
+}
+
+// โหลดใบสมัคร/สมาชิกภาพของตัวเองใหม่หลังส่งใบสมัครสำเร็จ — ไม่ต้องรีโหลดทั้งหน้า
+async function refreshMyApplications() {
+  if (!ctx?.student) return
+  ctx.applications = await getMyCouncilApplications(ctx.student.id).catch(() => ctx.applications)
 }
 
 function applyBranding(cfg) {
@@ -96,6 +118,66 @@ function renderPersonalCard({ applications, membership }) {
             <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-white/20">${esc(APPLICATION_STATUS_LABEL[a.status] ?? a.status)}</span>
           </div>`).join('')}
       </div>
+    </div>`
+}
+
+// ─── สมัครสภานักเรียน — เฉพาะนักเรียนที่เชื่อมบัญชีแล้ว ─────────────────────────────
+function renderApplySection() {
+  if (ctx.role !== 'student') return ''
+  if (!ctx.student) {
+    return `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center text-amber-700 text-sm">
+      ⚠️ ยังไม่ได้เชื่อมบัญชีกับข้อมูลนักเรียน ติดต่อผู้ดูแลระบบเพื่อสมัครสภานักเรียน
+    </div>`
+  }
+
+  const gender = normalizeGender(ctx.student.gender)
+  const positionsForGender = ctx.positions.filter(p => p.gender === gender)
+  const appliedIds = new Set(ctx.applications.filter(a => a.status !== 'rejected').map(a => a.position_id))
+  const openPositions = positionsForGender.filter(p => !appliedIds.has(p.id))
+
+  if (!gender) {
+    return `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center text-amber-700 text-sm">
+      ⚠️ ไม่พบข้อมูลเพศของนักเรียน ติดต่อผู้ดูแลระบบเพื่อสมัครสภานักเรียน
+    </div>`
+  }
+
+  if (!showApplyForm) {
+    return `
+      <button id="btn-open-apply" type="button"
+        class="w-full bg-white rounded-2xl border border-violet-200 p-4 text-left hover:border-violet-400 transition flex items-center justify-between gap-3 ${openPositions.length ? '' : 'opacity-50 pointer-events-none'}">
+        <div>
+          <p class="text-sm font-bold text-violet-700">📝 สมัครสภานักเรียน${GENDER_LABEL[gender]}</p>
+          <p class="text-xs text-gray-400 mt-0.5">${openPositions.length ? `เปิดรับ ${openPositions.length} ตำแหน่ง` : 'ไม่มีตำแหน่งเปิดรับ (สมัครครบแล้ว หรือยังไม่เปิดรับ)'}</p>
+        </div>
+        <span class="text-violet-400">→</span>
+      </button>`
+  }
+
+  return `
+    <div class="bg-white rounded-2xl border border-violet-200 p-4">
+      <p class="text-sm font-bold text-violet-700 mb-3">📝 ใบสมัครสภานักเรียน${GENDER_LABEL[gender]}</p>
+      <form id="apply-form" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1.5">ตำแหน่งที่สมัคร <span class="text-red-400">*</span></label>
+          <select id="apply-position" required class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+            <option value="">— เลือกตำแหน่ง —</option>
+            ${openPositions.map(p => `<option value="${p.id}">${esc(p.position_name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1.5">แรงจูงใจ / นโยบาย <span class="text-red-400">*</span></label>
+          <textarea id="apply-motivation" required rows="4" placeholder="เล่าเหตุผลที่อยากสมัคร หรือแนวทางที่จะทำถ้าได้รับเลือก"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1.5">รูปภาพ (ถ้ามี)</label>
+          <input id="apply-photo" type="file" accept="image/*" class="w-full text-xs" />
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button type="button" id="btn-cancel-apply" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">ยกเลิก</button>
+          <button type="submit" id="btn-submit-apply" class="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold">ส่งใบสมัคร</button>
+        </div>
+      </form>
     </div>`
 }
 
@@ -156,16 +238,61 @@ function renderRoster(members) {
     </div>`
 }
 
-function render(ctx) {
+function renderAll() {
   content.innerHTML = `
     <div class="max-w-2xl mx-auto px-4 py-4 space-y-4">
-      ${ctx.role === 'student' ? renderPersonalCard(ctx) : ''}
+      ${renderPersonalCard(ctx)}
+      ${renderApplySection()}
       ${renderElectionStatus(ctx.elections)}
       ${renderRoster(ctx.members)}
       <div class="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-center text-gray-400 text-sm">
-        🚧 หน้าสมัคร/โหวต/จัดการกิจกรรม/ตั้งค่า ยังอยู่ระหว่างพัฒนา
+        🚧 หน้าโหวต/จัดการกิจกรรม/ตั้งค่า ยังอยู่ระหว่างพัฒนา
       </div>
     </div>`
+  wireEvents()
+}
+
+function wireEvents() {
+  document.getElementById('btn-open-apply')?.addEventListener('click', () => {
+    showApplyForm = true
+    renderAll()
+  })
+  document.getElementById('btn-cancel-apply')?.addEventListener('click', () => {
+    showApplyForm = false
+    applyPhotoFile = null
+    renderAll()
+  })
+  document.getElementById('apply-photo')?.addEventListener('change', e => {
+    applyPhotoFile = e.target.files?.[0] ?? null
+  })
+  document.getElementById('apply-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const positionId = document.getElementById('apply-position').value
+    const motivation = document.getElementById('apply-motivation').value.trim()
+    if (!positionId || !motivation) { showToast('กรุณากรอกให้ครบ', 'warning'); return }
+
+    const btn = document.getElementById('btn-submit-apply')
+    btn.disabled = true; btn.textContent = 'กำลังส่ง...'
+    try {
+      let photoUrl = null
+      if (applyPhotoFile) photoUrl = await uploadCouncilApplicationPhoto(ctx.student.id, applyPhotoFile)
+      await submitCouncilApplication({
+        studentId: ctx.student.id,
+        positionId: Number(positionId),
+        academicYear: Number(ctx.cfg.academicYear) || new Date().getFullYear() + 543,
+        motivation,
+        photoUrl,
+      })
+      showToast('ส่งใบสมัครสำเร็จ ✅', 'success')
+      showApplyForm = false
+      applyPhotoFile = null
+      await refreshMyApplications()
+      renderAll()
+    } catch (err) {
+      showToast('ส่งใบสมัครไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'ส่งใบสมัคร'
+    }
+  })
 }
 
 init()

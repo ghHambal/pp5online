@@ -84,6 +84,13 @@ export async function uploadAzfutsalPlayerPhoto(teamId, playerId, file) {
   return uploadFile('azfutsal-assets', `players/${teamId}/${playerId}.jpg`, blob)
 }
 
+// รูปแนบใบสมัครสภานักเรียน → บีบ max 600px (thumbnail การ์ดผู้สมัคร), quality 0.82
+export async function uploadCouncilApplicationPhoto(studentId, file) {
+  const blob = await compressImage(file, { maxWidth: 600, quality: 0.82 })
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return uploadFile('system-assets', `council/applications/${studentId}/${key}.jpg`, blob)
+}
+
 // รูปแนบประกาศ (เช่น อินโฟกราฟิก) → บีบ max 1600px คุณภาพสูงเพราะเป็นภาพนำเสนอ
 export async function uploadAnnouncementImage(file) {
   const blob = await compressImage(file, { maxWidth: 1600, quality: 0.88 })
