@@ -2449,12 +2449,43 @@ export async function reviewExamRequest(id, { status, teacher_comment }) {
 }
 
 export async function updateExamResult(id, { exam_attended, exam_score, studentId, assignmentId }) {
+  let linkedColumnId = null
   if (exam_attended && exam_score != null && assignmentId && studentId) {
+    const { data: selectedColumn, error: columnError } = await supabase
+      .from('class_score_columns')
+      .select('id, column_type, link_column_id')
+      .eq('id', assignmentId)
+      .maybeSingle()
+    if (columnError) throw columnError
+
     const { error: scoreError } = await supabase.from('student_scores').upsert({
       student_id: studentId, assignment_id: assignmentId,
       original_score: exam_score, final_score: exam_score,
     }, { onConflict: 'student_id,assignment_id' })
     if (scoreError) throw scoreError
+
+    // คอลัมน์ “ปรับคะแนนกลางภาค” เป็นคอลัมน์พักคะแนนที่เชื่อมกับคอลัมน์หลัก
+    // ใช้กติกาเดียวกับหน้าคะแนน: เขียนทับคอลัมน์หลักเมื่อคะแนนใหม่สูงกว่าเท่านั้น
+    if (selectedColumn?.column_type === 'override' && selectedColumn.link_column_id) {
+      const { data: linkedScore, error: linkedReadError } = await supabase
+        .from('student_scores')
+        .select('original_score, final_score')
+        .eq('student_id', studentId)
+        .eq('assignment_id', selectedColumn.link_column_id)
+        .maybeSingle()
+      if (linkedReadError) throw linkedReadError
+      const currentLinkedScore = linkedScore?.final_score ?? linkedScore?.original_score
+      if (currentLinkedScore == null || Number(currentLinkedScore) < Number(exam_score)) {
+        const { error: linkedWriteError } = await supabase.from('student_scores').upsert({
+          student_id: studentId,
+          assignment_id: selectedColumn.link_column_id,
+          original_score: exam_score,
+          final_score: exam_score,
+        }, { onConflict: 'student_id,assignment_id' })
+        if (linkedWriteError) throw linkedWriteError
+        linkedColumnId = selectedColumn.link_column_id
+      }
+    }
   }
   const { error } = await supabase.from('exam_requests')
     .update({
@@ -2464,6 +2495,7 @@ export async function updateExamResult(id, { exam_attended, exam_score, studentI
     })
     .eq('id', id)
   if (error) throw error
+  return { assignmentId, linkedColumnId }
 }
 
 export async function getPendingExamRequestCount(teacherId) {

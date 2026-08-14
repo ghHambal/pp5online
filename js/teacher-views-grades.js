@@ -2503,7 +2503,7 @@ export async function renderRequests(teacher) {
     let columns
     try {
       columns = (await getScoreColumns(classId))
-        .filter(col => (col.column_type ?? 'regular') === 'regular')
+        .filter(col => ['regular', 'override'].includes(col.column_type ?? 'regular'))
     } catch (err) {
       showToast('โหลดคอลัมน์คะแนนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       return
@@ -2522,7 +2522,7 @@ export async function renderRequests(teacher) {
     const columnOptions = columns.map(col => `
       <option value="${col.id}" data-max="${Number(col.max_score ?? 100)}"
         ${Number(col.id) === Number(defaultColumn.id) ? 'selected' : ''}>
-        ${_htmlEsc(col.assignment_name)} (เต็ม ${Number(col.max_score ?? 100)})
+        ${(col.column_type === 'override' ? '🔄 ปรับคะแนน — ' : '')}${_htmlEsc(col.assignment_name)} (เต็ม ${Number(col.max_score ?? 100)})
       </option>`).join('')
 
     _showModal({
@@ -2552,9 +2552,11 @@ export async function renderRequests(teacher) {
         }
         m.remove()
         try {
-          await updateExamResult(id, { exam_attended: true, exam_score: score, studentId, assignmentId })
+          const result = await updateExamResult(id, { exam_attended: true, exam_score: score, studentId, assignmentId })
           publishGradebookUpdate({ classId, columnId: assignmentId, studentId, score })
-          showToast(isEdit ? 'แก้ไขคะแนนแล้ว ✅' : 'บันทึกผลสอบและคะแนนแล้ว ✅', 'success')
+          showToast(result?.linkedColumnId
+            ? 'บันทึกคะแนนปรับและอัปเดตคอลัมน์หลักแล้ว ✅'
+            : (isEdit ? 'แก้ไขคะแนนแล้ว ✅' : 'บันทึกผลสอบและคะแนนแล้ว ✅'), 'success')
           renderRequests(teacher)
         } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
       }
