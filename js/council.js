@@ -41,6 +41,28 @@ let activeView = 'overview'
 let showApplyForm = false
 let applyPhotoFile = null
 
+// "สมัคร" กับ "เลือกตั้ง" ไม่ใช่แท็บถาวรในเมนูหลัก (นั่นมีไว้สำหรับ "ดูภาพรวมสภานักเรียน"
+// เท่านั้น) — ทั้งคู่เป็นปุ่มเข้าใช้งานบนหน้าภาพรวม กดแล้วเปิดเป็นโฟลว์เต็มจอที่มีแท็บย่อย
+// ของตัวเอง แยกกันชัดเจนจากการเนวิเกตหลัก (ตัดสินใจแล้ว 2026-08-14)
+let fullscreenFlow = null // null | 'apply' | 'election'
+let flowSubtab = null
+
+const FLOW_DEFS = {
+  apply: {
+    title: '📝 สมัครสภานักเรียน',
+    subtabs: [
+      { id: 'new', label: 'สมัครตำแหน่งใหม่' },
+      { id: 'mine', label: 'ใบสมัครของฉัน' },
+    ],
+  },
+  election: {
+    title: '🗳️ การเลือกตั้งประธานสภา',
+    subtabs: [
+      { id: 'status', label: 'สถานะการเลือกตั้ง' },
+    ],
+  },
+}
+
 async function init() {
   blockPullToRefresh()
 
@@ -71,8 +93,7 @@ async function init() {
   const testCodes = (cfg.council_test_student_codes || '').split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
   const isTestStudent = role === 'student' && !!student && testCodes.includes(student.student_code)
   if (cfg.council_visible_to_all === 'false' && !isAdmin && !isTestStudent) {
-    document.getElementById('council-sidebar').classList.add('hidden')
-    document.getElementById('council-bottom-tabs').classList.add('hidden')
+    setNavChromeVisible(false)
     content.innerHTML = `
       <div class="max-w-md mx-auto px-4 py-20 text-center text-gray-400">
         <p class="text-4xl mb-3">🔒</p>
@@ -123,6 +144,15 @@ async function refreshPendingEndorsements() {
   ctx.pendingEndorsements = await getPendingEndorsements(ctx.homeroomMainRooms).catch(() => ctx.pendingEndorsements)
 }
 
+// ใช้ inline style แทนสลับคลาส 'hidden' ตรงๆ เพราะ #council-sidebar/#council-bottom-tabs
+// มีคลาส responsive อยู่แล้ว (hidden md:flex / md:hidden) — สลับคลาส 'hidden' ตรงจะไปทับ
+// พฤติกรรม breakpoint เดิม (เจอบั๊กจริง: sidebar โผล่ค้างบนมือถือ) ต้องคุมด้วย
+// inline style.display เสมอ เพื่อไม่แตะคลาส responsive ที่มีอยู่แล้ว
+function setNavChromeVisible(visible) {
+  document.getElementById('council-sidebar').style.display = visible ? '' : 'none'
+  document.getElementById('council-bottom-tabs').style.display = visible ? '' : 'none'
+}
+
 function applyBranding(cfg) {
   const name = cfg.council_name || 'ระบบสภานักเรียน'
   document.title = name
@@ -138,12 +168,11 @@ function applyBranding(cfg) {
 
 // ─── Navigation — ไซด์บาร์ (เดสก์ท็อป) + แท็บล่าง (มือถือ) ───────────────────────
 function getNavItems() {
+  // เมนูหลัก = ดูภาพรวมสภานักเรียนเท่านั้น ("สมัคร"/"เลือกตั้ง" ไม่อยู่ที่นี่ — เป็นปุ่มบนหน้าภาพรวมแทน)
   const items = [{ id: 'overview', icon: '🏠', label: 'ภาพรวม' }]
-  if (ctx.role === 'student') items.push({ id: 'apply', icon: '📝', label: 'สมัคร' })
   if (ctx.role === 'teacher' && ctx.pendingEndorsements.length) {
     items.push({ id: 'endorse', icon: '✋', label: 'รอยืนยัน', badge: ctx.pendingEndorsements.length })
   }
-  items.push({ id: 'election', icon: '🗳️', label: 'เลือกตั้ง' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภานักเรียน' })
   return items
 }
@@ -198,16 +227,17 @@ function renderPersonalCard() {
 
 function renderOverviewView() {
   const personal = renderPersonalCard()
-  if (personal) return `<div class="space-y-4">${personal}</div>`
-  const hint = ctx.role === 'student'
-    ? 'ใช้เมนู "สมัคร" เพื่อสมัครเป็นสภานักเรียน หรือดูเมนู "เลือกตั้ง"/"สภานักเรียน" เพื่อติดตามความเคลื่อนไหว'
-    : 'ดูเมนู "เลือกตั้ง"/"สภานักเรียน" เพื่อติดตามความเคลื่อนไหวของสภานักเรียน'
-  return `
-    <div class="bg-white rounded-2xl border border-gray-100 p-6 text-center">
-      <p class="text-3xl mb-2">🏛️</p>
-      <p class="text-sm font-bold text-gray-700 mb-1">ยินดีต้อนรับสู่ระบบสภานักเรียน</p>
-      <p class="text-xs text-gray-500 max-w-xs mx-auto">${hint}</p>
+  const entryCard = (flow, icon, label) => `
+    <button type="button" class="flow-entry-btn bg-white rounded-2xl border border-violet-200 p-4 text-center hover:border-violet-400 hover:shadow-sm transition" data-flow="${flow}">
+      <p class="text-2xl mb-1">${icon}</p>
+      <p class="text-sm font-bold text-violet-700">${esc(label)}</p>
+    </button>`
+  const entryCards = `
+    <div class="grid ${ctx.role === 'student' ? 'grid-cols-2' : 'grid-cols-1'} gap-3">
+      ${ctx.role === 'student' ? entryCard('apply', '📝', 'สมัครสภานักเรียน') : ''}
+      ${entryCard('election', '🗳️', 'การเลือกตั้ง')}
     </div>`
+  return `<div class="space-y-4">${personal}${entryCards}</div>`
 }
 
 // ─── สมัครสภานักเรียน — เฉพาะนักเรียนที่เชื่อมบัญชีแล้ว ─────────────────────────────
@@ -267,6 +297,31 @@ function renderApplyView() {
           <button type="submit" id="btn-submit-apply" class="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold">ส่งใบสมัคร</button>
         </div>
       </form>
+    </div>`
+}
+
+// ─── ใบสมัครของฉัน — ประวัติ+สถานะใบสมัครทุกใบ + สมาชิกภาพปัจจุบัน (subtab ในโฟลว์สมัคร) ──
+function renderMyApplicationsList() {
+  if (!ctx.student) return ''
+  if (!ctx.applications.length && !ctx.membership.length) {
+    return `<p class="text-sm text-gray-400 text-center py-16">ยังไม่เคยสมัครสภานักเรียน</p>`
+  }
+  return `
+    <div class="space-y-2">
+      ${ctx.membership.map(m => `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+          <p class="text-xs text-emerald-600 font-bold">ตำแหน่งปัจจุบัน</p>
+          <p class="text-sm font-bold text-emerald-800">${esc(m.council_positions?.position_name ?? '—')} <span class="text-xs font-normal">(สภา${esc(GENDER_LABEL[m.council_positions?.gender] ?? '')})</span></p>
+        </div>`).join('')}
+      ${ctx.applications.map(a => `
+        <div class="bg-white rounded-xl border border-gray-100 p-3 flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <p class="text-sm font-bold text-gray-800 truncate">${esc(a.council_positions?.position_name ?? '—')}</p>
+            <p class="text-xs text-gray-400">${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
+            ${a.motivation ? `<p class="text-xs text-gray-500 mt-1">${esc(a.motivation)}</p>` : ''}
+          </div>
+          <span class="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">${esc(APPLICATION_STATUS_LABEL[a.status] ?? a.status)}</span>
+        </div>`).join('')}
     </div>`
 }
 
@@ -379,13 +434,22 @@ async function handleEndorsement(applicationId, action) {
 
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
-  apply: renderApplyView,
   endorse: renderEndorseView,
-  election: renderElectionView,
   roster: renderRosterView,
 }
 
+// เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
+// ของเมนูหลัก เพราะโฟลว์พวกนี้ไม่ได้อยู่ในเนวิเกชันหลัก
+const FLOW_SUBTAB_RENDERERS = {
+  apply: { new: renderApplyView, mine: renderMyApplicationsList },
+  election: { status: renderElectionView },
+}
+
 function render() {
+  if (fullscreenFlow) { renderFullscreenFlow(); return }
+
+  setNavChromeVisible(true)
+
   const items = getNavItems()
   if (!items.some(it => it.id === activeView)) activeView = 'overview'
   renderNav(items)
@@ -395,7 +459,45 @@ function render() {
   wireContentEvents()
 }
 
+// ─── โฟลว์เต็มจอ "สมัคร"/"เลือกตั้ง" — แยกจากเนวิเกชันหลัก มีแท็บย่อยของตัวเอง ───────────
+function renderFullscreenFlow() {
+  setNavChromeVisible(false)
+
+  const flow = FLOW_DEFS[fullscreenFlow]
+  if (!flow.subtabs.some(t => t.id === flowSubtab)) flowSubtab = flow.subtabs[0].id
+  document.getElementById('council-view-title').textContent = flow.title
+
+  const renderer = FLOW_SUBTAB_RENDERERS[fullscreenFlow]?.[flowSubtab] ?? (() => '')
+
+  content.innerHTML = `
+    <div class="max-w-2xl mx-auto px-4 py-4">
+      <div class="flex items-center gap-3 mb-4">
+        <button type="button" id="btn-flow-close" title="กลับภาพรวม"
+          class="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 flex items-center justify-center flex-shrink-0 text-lg">←</button>
+        <h2 class="text-base font-bold text-gray-800">${flow.title}</h2>
+      </div>
+      ${flow.subtabs.length > 1 ? `
+      <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
+        ${flow.subtabs.map(t => `
+          <button type="button" class="flow-subtab-btn flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition ${t.id === flowSubtab ? 'bg-violet-600 text-white' : 'bg-white border border-gray-200 text-gray-500'}"
+            data-subtab="${t.id}">${esc(t.label)}</button>`).join('')}
+      </div>` : ''}
+      <div>${renderer()}</div>
+    </div>`
+
+  document.getElementById('btn-flow-close').addEventListener('click', () => {
+    fullscreenFlow = null; flowSubtab = null; showApplyForm = false; applyPhotoFile = null; render()
+  })
+  document.querySelectorAll('.flow-subtab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { flowSubtab = btn.dataset.subtab; render() })
+  })
+  wireContentEvents()
+}
+
 function wireContentEvents() {
+  document.querySelectorAll('.flow-entry-btn').forEach(btn => {
+    btn.addEventListener('click', () => { fullscreenFlow = btn.dataset.flow; flowSubtab = null; render() })
+  })
   document.getElementById('btn-open-apply')?.addEventListener('click', () => {
     showApplyForm = true
     render()
