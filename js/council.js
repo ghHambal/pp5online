@@ -2,11 +2,13 @@ import { supabase } from './supabase.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
+import { getMyTeacherProfile, getMyHomeroomRooms } from './api.js'
 import { uploadCouncilApplicationPhoto } from './storage.js'
 import {
   getCouncilConfig, getCouncilPositions, getCouncilMembers,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
-  submitCouncilApplication,
+  submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
+  confirmApplicationEndorsement, declineApplicationEndorsement,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -75,7 +77,24 @@ async function init() {
     }
   }
 
-  ctx = { role, student, applications, membership, positions, members, elections, cfg }
+  // ครูที่ปรึกษาสามัญ — ดึงคิวใบสมัครของนักเรียนในห้องตัวเองที่ยังรอยืนยัน
+  let teacher = null, homeroomMainRooms = [], pendingEndorsements = [], endorsementPhrases = []
+  if (role === 'teacher') {
+    teacher = await getMyTeacherProfile(session.user.id).catch(() => null)
+    if (teacher) {
+      const homeroomRooms = await getMyHomeroomRooms(teacher.id).catch(() => [])
+      homeroomMainRooms = homeroomRooms.filter(r => r.category === 'สามัญ').map(r => r.main_room)
+      ;[pendingEndorsements, endorsementPhrases] = await Promise.all([
+        getPendingEndorsements(homeroomMainRooms).catch(() => []),
+        getEndorsementPhrases().catch(() => []),
+      ])
+    }
+  }
+
+  ctx = {
+    role, student, applications, membership, positions, members, elections, cfg,
+    teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
+  }
   renderAll()
 }
 
@@ -83,6 +102,12 @@ async function init() {
 async function refreshMyApplications() {
   if (!ctx?.student) return
   ctx.applications = await getMyCouncilApplications(ctx.student.id).catch(() => ctx.applications)
+}
+
+// โหลดคิวใบสมัครที่รอครูที่ปรึกษายืนยันใหม่หลังกดรับรอง/ไม่รับรอง
+async function refreshPendingEndorsements() {
+  if (!ctx?.teacher) return
+  ctx.pendingEndorsements = await getPendingEndorsements(ctx.homeroomMainRooms).catch(() => ctx.pendingEndorsements)
 }
 
 function applyBranding(cfg) {
@@ -238,10 +263,65 @@ function renderRoster(members) {
     </div>`
 }
 
+// ─── คิว "รอฉันยืนยัน" — เฉพาะครูที่ปรึกษาสามัญของห้องที่มีใบสมัครค้างอยู่ ─────────────
+function renderEndorsementQueue() {
+  if (ctx.role !== 'teacher' || !ctx.teacher) return ''
+  if (!ctx.homeroomMainRooms.length || !ctx.pendingEndorsements.length) return ''
+
+  const card = a => `
+    <div class="rounded-xl border border-gray-100 p-3 space-y-2.5" data-endorsement-card="${a.id}">
+      <div class="flex items-center gap-3">
+        ${studentPhoto(a.students)}
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-gray-800 truncate">${esc(a.students?.full_name ?? '—')}</p>
+          <p class="text-xs text-gray-500">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · สมัคร${esc(a.council_positions?.position_name ?? '—')}</p>
+        </div>
+      </div>
+      ${a.motivation ? `<p class="text-xs text-gray-600 bg-gray-50 rounded-lg p-2.5">${esc(a.motivation)}</p>` : ''}
+      <div class="flex flex-wrap gap-1.5">
+        ${ctx.endorsementPhrases.map(p => `
+          <button type="button" class="endorse-phrase-chip text-[11px] px-2.5 py-1 rounded-full border border-gray-200 bg-gray-50 hover:bg-violet-50 hover:border-violet-300 text-gray-600 transition"
+            data-target="${a.id}" data-phrase="${esc(p.phrase)}">${esc(p.phrase)}</button>`).join('')}
+      </div>
+      <textarea class="endorse-comment w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" data-id="${a.id}" rows="2"
+        placeholder="คอมเมนต์ถึงนักเรียนคนนี้ (เลือกจากปุ่มด้านบนแล้วแก้ไขเพิ่มได้)"></textarea>
+      <div class="flex gap-2">
+        <button type="button" class="btn-endorse-decline flex-1 py-2 rounded-xl border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50" data-id="${a.id}">❌ ไม่รับรอง</button>
+        <button type="button" class="btn-endorse-confirm flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold" data-id="${a.id}">✅ รับรอง</button>
+      </div>
+    </div>`
+
+  return `
+    <div class="bg-white rounded-2xl border border-amber-200 p-4">
+      <p class="text-sm font-bold text-amber-700 mb-3">✋ รอฉันยืนยัน (ครูที่ปรึกษาสามัญ) — ${ctx.pendingEndorsements.length} รายการ</p>
+      <div class="space-y-3">${ctx.pendingEndorsements.map(card).join('')}</div>
+    </div>`
+}
+
+async function handleEndorsement(applicationId, action) {
+  const ta = document.querySelector(`.endorse-comment[data-id="${applicationId}"]`)
+  const comment = ta?.value.trim() ?? ''
+  if (!comment) { showToast('กรุณาใส่คอมเมนต์ก่อนยืนยัน', 'warning'); return }
+  try {
+    if (action === 'confirm') {
+      await confirmApplicationEndorsement({ applicationId: Number(applicationId), teacherId: ctx.teacher.id, comment })
+      showToast('รับรองใบสมัครแล้ว ✅', 'success')
+    } else {
+      await declineApplicationEndorsement({ applicationId: Number(applicationId), teacherId: ctx.teacher.id, comment })
+      showToast('บันทึกผล "ไม่รับรอง" แล้ว', 'success')
+    }
+    await refreshPendingEndorsements()
+    renderAll()
+  } catch (err) {
+    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+  }
+}
+
 function renderAll() {
   content.innerHTML = `
     <div class="max-w-2xl mx-auto px-4 py-4 space-y-4">
       ${renderPersonalCard(ctx)}
+      ${renderEndorsementQueue()}
       ${renderApplySection()}
       ${renderElectionStatus(ctx.elections)}
       ${renderRoster(ctx.members)}
@@ -292,6 +372,22 @@ function wireEvents() {
       showToast('ส่งใบสมัครไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       btn.disabled = false; btn.textContent = 'ส่งใบสมัคร'
     }
+  })
+
+  document.querySelectorAll('.endorse-phrase-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const ta = document.querySelector(`.endorse-comment[data-id="${chip.dataset.target}"]`)
+      if (!ta) return
+      const cur = ta.value.trim()
+      ta.value = cur ? cur + ' ' + chip.dataset.phrase : chip.dataset.phrase
+      ta.focus()
+    })
+  })
+  document.querySelectorAll('.btn-endorse-confirm').forEach(btn => {
+    btn.addEventListener('click', () => handleEndorsement(btn.dataset.id, 'confirm'))
+  })
+  document.querySelectorAll('.btn-endorse-decline').forEach(btn => {
+    btn.addEventListener('click', () => handleEndorsement(btn.dataset.id, 'decline'))
   })
 }
 

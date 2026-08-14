@@ -76,3 +76,36 @@ export async function submitCouncilApplication({ studentId, positionId, academic
   })
   if (error) throw error
 }
+
+// ─── การยืนยัน (รับรอง) ใบสมัคร โดยครูที่ปรึกษาสามัญของห้องนั้นๆ ──────────────────
+// ดึงใบสมัครที่ "รอ" ครูคนนี้ยืนยันทั้งหมด (กรองห้องฝั่ง client เพราะ RLS อนุญาตครูทุกคน
+// อ่านได้กว้างกว่านี้อยู่แล้ว — ต้อง filter ที่ถูกต้องจริงในโค้ดฝั่งนี้)
+export async function getPendingEndorsements(mainRooms) {
+  if (!mainRooms?.length) return []
+  const { data, error } = await supabase.from('council_applications')
+    .select('id, position_id, motivation, photo_url, status, created_at, council_positions(position_name, gender), students(id, full_name, student_code, main_room, image_url, photo_url)')
+    .eq('status', 'pending').is('endorsed_at', null)
+    .order('created_at')
+  if (error) throw error
+  return (data ?? []).filter(a => mainRooms.includes(a.students?.main_room))
+}
+
+export async function getEndorsementPhrases() {
+  const { data, error } = await supabase.from('council_endorsement_phrases').select('*').order('sort_order')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function confirmApplicationEndorsement({ applicationId, teacherId, comment }) {
+  const { error } = await supabase.from('council_applications')
+    .update({ endorsing_teacher_id: teacherId, endorsement_comment: comment, endorsed_at: new Date().toISOString() })
+    .eq('id', applicationId)
+  if (error) throw error
+}
+
+export async function declineApplicationEndorsement({ applicationId, teacherId, comment }) {
+  const { error } = await supabase.from('council_applications')
+    .update({ endorsing_teacher_id: teacherId, endorsement_comment: comment, endorsed_at: new Date().toISOString(), status: 'rejected' })
+    .eq('id', applicationId)
+  if (error) throw error
+}
