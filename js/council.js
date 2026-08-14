@@ -50,6 +50,11 @@ async function init() {
   const role = profile?.role
   const isAdmin = role === 'admin' || profile?.is_also_admin === true
 
+  // ปุ่ม "← กลับ ปพ.5 ออนไลน์" — พากลับพอร์ทัลของตัวเองตาม role (เผื่อเข้ามาด้วยการวาง URL ตรงๆ)
+  const BACK_HREF = { student: 'student.html', teacher: 'teacher.html', admin: 'dashboard.html' }
+  const backBtn = document.getElementById('council-back-btn')
+  if (backBtn) backBtn.href = BACK_HREF[role] || 'index.html'
+
   const [cfg, positions, members, elections] = await Promise.all([
     getCouncilConfig(), getCouncilPositions(), getCouncilMembers(), getCouncilElectionConfigs(),
   ])
