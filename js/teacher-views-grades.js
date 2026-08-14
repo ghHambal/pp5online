@@ -2194,6 +2194,8 @@ export async function renderRequests(teacher) {
   const FILTER_TABS = [
     { key: 'pending',  label: 'รอดำเนินการ', cls: 'text-amber-600'  },
     { key: 'approved', label: 'อนุมัติแล้ว',  cls: 'text-emerald-600'},
+    { key: 'attended', label: 'มาสอบแล้ว',    cls: 'text-blue-600'   },
+    { key: 'absent',   label: 'ขาดสอบ/ผิดนัด', cls: 'text-red-600'  },
     { key: 'rejected', label: 'ปฏิเสธ',       cls: 'text-red-500'   },
     { key: 'all',      label: 'ทั้งหมด',      cls: 'text-gray-600'  },
   ]
@@ -2201,6 +2203,14 @@ export async function renderRequests(teacher) {
   let _curFilter = 'pending'
   let _curType = null // null = ทุกประเภทการสอบ, มิฉะนั้นคือ request_type (เช่น 'สอบย้อนหลัง'/'สอบปรับคะแนน')
   let _curCol = null // null = ทุกช่องคะแนน, มิฉะนั้นคือ id ของ class_score_columns
+
+  const _matchesFilter = (request, filter) => {
+    if (filter === 'all') return true
+    if (filter === 'attended') return request.status === 'approved' && request.exam_attended === true
+    if (filter === 'absent') return request.status === 'approved' && request.exam_attended === false
+    return request.status === filter
+  }
+  const _filterCount = filter => all.filter(request => _matchesFilter(request, filter)).length
 
   // รวมประเภทการสอบ (request_type) ที่มีคำร้องอยู่ในลิสต์ที่ส่งเข้ามา ไว้ทำปุ่มกรอง
   const _typesIn = (list) => {
@@ -2318,7 +2328,7 @@ export async function renderRequests(teacher) {
   }
 
   const _render = () => {
-    const statusList = _curFilter === 'all' ? all : all.filter(r => r.status === _curFilter)
+    const statusList = all.filter(r => _matchesFilter(r, _curFilter))
     const types = _typesIn(statusList)
     if (_curType && !types.some(t => t.type === _curType)) _curType = null
     const typeList = _curType ? statusList.filter(r => r.request_type === _curType) : statusList
@@ -2373,11 +2383,11 @@ export async function renderRequests(teacher) {
       <span class="text-xs text-gray-400">${all.length} รายการ</span>
     </div>
     <!-- Filter tabs -->
-    <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-4">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1 bg-gray-100 rounded-xl p-1 mb-4">
       ${FILTER_TABS.map(t => `
       <button class="req-tab flex-1 py-2 text-xs font-medium rounded-lg transition text-gray-500 hover:text-gray-700"
         data-filter="${t.key}">
-        ${t.label}${all.filter(r => t.key !== 'all' && r.status === t.key).length > 0 ? ` (${all.filter(r => r.status === t.key).length})` : t.key === 'all' ? ` (${all.length})` : ''}
+        ${t.label}${_filterCount(t.key) > 0 || t.key === 'all' ? ` (${_filterCount(t.key)})` : ''}
       </button>`).join('')}
     </div>
     <!-- Filter by ประเภทการสอบ -->
