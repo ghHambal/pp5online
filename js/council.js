@@ -37,6 +37,7 @@ const APPLICATION_STATUS_LABEL = {
 }
 
 let ctx = null
+let activeView = 'overview'
 let showApplyForm = false
 let applyPhotoFile = null
 
@@ -50,10 +51,11 @@ async function init() {
   const role = profile?.role
   const isAdmin = role === 'admin' || profile?.is_also_admin === true
 
-  // ปุ่ม "← กลับ ปพ.5 ออนไลน์" — พากลับพอร์ทัลของตัวเองตาม role (เผื่อเข้ามาด้วยการวาง URL ตรงๆ)
+  // ปุ่ม "← กลับ ปพ.5 ออนไลน์" (มือถือ+เดสก์ท็อป) — พากลับพอร์ทัลของตัวเองตาม role
   const BACK_HREF = { student: 'student.html', teacher: 'teacher.html', admin: 'dashboard.html' }
-  const backBtn = document.getElementById('council-back-btn')
-  if (backBtn) backBtn.href = BACK_HREF[role] || 'index.html'
+  const backHref = BACK_HREF[role] || 'index.html'
+  document.getElementById('council-back-btn-desktop').href = backHref
+  document.getElementById('council-back-btn-mobile').href = backHref
 
   const [cfg, positions, members, elections] = await Promise.all([
     getCouncilConfig(), getCouncilPositions(), getCouncilMembers(), getCouncilElectionConfigs(),
@@ -69,6 +71,8 @@ async function init() {
   const testCodes = (cfg.council_test_student_codes || '').split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
   const isTestStudent = role === 'student' && !!student && testCodes.includes(student.student_code)
   if (cfg.council_visible_to_all === 'false' && !isAdmin && !isTestStudent) {
+    document.getElementById('council-sidebar').classList.add('hidden')
+    document.getElementById('council-bottom-tabs').classList.add('hidden')
     content.innerHTML = `
       <div class="max-w-md mx-auto px-4 py-20 text-center text-gray-400">
         <p class="text-4xl mb-3">🔒</p>
@@ -78,13 +82,11 @@ async function init() {
     return
   }
 
-  if (role === 'student') {
-    if (student) {
-      ;[applications, membership] = await Promise.all([
-        getMyCouncilApplications(student.id).catch(() => []),
-        getMyCouncilMembership(student.id).catch(() => []),
-      ])
-    }
+  if (role === 'student' && student) {
+    ;[applications, membership] = await Promise.all([
+      getMyCouncilApplications(student.id).catch(() => []),
+      getMyCouncilMembership(student.id).catch(() => []),
+    ])
   }
 
   // ครูที่ปรึกษาสามัญ — ดึงคิวใบสมัครของนักเรียนในห้องตัวเองที่ยังรอยืนยัน
@@ -105,7 +107,8 @@ async function init() {
     role, isAdmin, student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
-  renderAll()
+  if (role === 'teacher' && pendingEndorsements.length) activeView = 'endorse'
+  render()
 }
 
 // โหลดใบสมัคร/สมาชิกภาพของตัวเองใหม่หลังส่งใบสมัครสำเร็จ — ไม่ต้องรีโหลดทั้งหน้า
@@ -124,6 +127,7 @@ function applyBranding(cfg) {
   const name = cfg.council_name || 'ระบบสภานักเรียน'
   document.title = name
   document.getElementById('council-title').textContent = name
+  document.getElementById('council-title-mobile').textContent = name
   if (cfg.council_logo_url) {
     const logo = document.getElementById('council-logo')
     logo.src = cfg.council_logo_url
@@ -132,8 +136,44 @@ function applyBranding(cfg) {
   }
 }
 
+// ─── Navigation — ไซด์บาร์ (เดสก์ท็อป) + แท็บล่าง (มือถือ) ───────────────────────
+function getNavItems() {
+  const items = [{ id: 'overview', icon: '🏠', label: 'ภาพรวม' }]
+  if (ctx.role === 'student') items.push({ id: 'apply', icon: '📝', label: 'สมัคร' })
+  if (ctx.role === 'teacher' && ctx.pendingEndorsements.length) {
+    items.push({ id: 'endorse', icon: '✋', label: 'รอยืนยัน', badge: ctx.pendingEndorsements.length })
+  }
+  items.push({ id: 'election', icon: '🗳️', label: 'เลือกตั้ง' })
+  items.push({ id: 'roster', icon: '🏛️', label: 'สภานักเรียน' })
+  return items
+}
+
+function renderNav(items) {
+  document.getElementById('council-sidebar-nav').innerHTML = items.map(it => `
+    <button type="button" class="council-nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+      ${it.id === activeView ? 'bg-violet-800 text-white' : 'text-violet-200 hover:bg-violet-800 hover:text-white'}" data-view="${it.id}">
+      <span>${it.icon}</span> ${esc(it.label)}
+      ${it.badge ? `<span class="ml-auto bg-amber-400 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
+    </button>`).join('')
+
+  document.getElementById('council-bottom-tabs').innerHTML = `<div class="flex">${items.map(it => `
+    <button type="button" class="council-nav-btn relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 ${it.id === activeView ? 'text-violet-600' : 'text-gray-500'}" data-view="${it.id}">
+      <span class="text-xl">${it.icon}</span>
+      <span class="text-[10px] font-medium">${esc(it.label)}</span>
+      ${it.badge ? `<span class="absolute top-1 right-1/4 bg-amber-400 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
+    </button>`).join('')}</div>`
+
+  document.querySelectorAll('.council-nav-link, .council-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => { activeView = btn.dataset.view; render() })
+  })
+
+  const activeItem = items.find(it => it.id === activeView)
+  document.getElementById('council-view-title').textContent = activeItem?.label ?? 'ภาพรวม'
+}
+
 // ─── การ์ดสถานะสภาส่วนตัว — โผล่เฉพาะคนที่มีใบสมัคร/เป็นสมาชิกอยู่ ─────────────────
-function renderPersonalCard({ applications, membership }) {
+function renderPersonalCard() {
+  const { applications, membership } = ctx
   if (!applications.length && !membership.length) return ''
   return `
     <div class="bg-gradient-to-br from-violet-600 to-purple-600 rounded-2xl p-5 text-white shadow-sm">
@@ -156,8 +196,22 @@ function renderPersonalCard({ applications, membership }) {
     </div>`
 }
 
+function renderOverviewView() {
+  const personal = renderPersonalCard()
+  if (personal) return `<div class="space-y-4">${personal}</div>`
+  const hint = ctx.role === 'student'
+    ? 'ใช้เมนู "สมัคร" เพื่อสมัครเป็นสภานักเรียน หรือดูเมนู "เลือกตั้ง"/"สภานักเรียน" เพื่อติดตามความเคลื่อนไหว'
+    : 'ดูเมนู "เลือกตั้ง"/"สภานักเรียน" เพื่อติดตามความเคลื่อนไหวของสภานักเรียน'
+  return `
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 text-center">
+      <p class="text-3xl mb-2">🏛️</p>
+      <p class="text-sm font-bold text-gray-700 mb-1">ยินดีต้อนรับสู่ระบบสภานักเรียน</p>
+      <p class="text-xs text-gray-500 max-w-xs mx-auto">${hint}</p>
+    </div>`
+}
+
 // ─── สมัครสภานักเรียน — เฉพาะนักเรียนที่เชื่อมบัญชีแล้ว ─────────────────────────────
-function renderApplySection() {
+function renderApplyView() {
   if (ctx.role !== 'student') return ''
   if (!ctx.student) {
     return `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center text-amber-700 text-sm">
@@ -217,8 +271,9 @@ function renderApplySection() {
 }
 
 // ─── สถานะการเลือกตั้ง (public) ────────────────────────────────────────────────
-function renderElectionStatus(elections) {
-  if (!elections.length) return ''
+function renderElectionView() {
+  const elections = ctx.elections
+  if (!elections.length) return `<p class="text-sm text-gray-400 text-center py-16">ยังไม่มีข้อมูลการเลือกตั้ง</p>`
   const now = new Date()
   const statusOf = e => {
     if (e.results_published_at) return { label: '✅ ประกาศผลแล้ว', cls: 'bg-emerald-100 text-emerald-700' }
@@ -242,9 +297,9 @@ function renderElectionStatus(elections) {
 }
 
 // ─── รายชื่อสภานักเรียนปัจจุบัน (public, จัดกลุ่มตามเพศ→ตำแหน่ง) ──────────────────
-function renderRoster(members) {
+function renderRosterView() {
   const byGender = { M: [], W: [] }
-  members.forEach(m => { if (byGender[m.council_positions?.gender]) byGender[m.council_positions.gender].push(m) })
+  ctx.members.forEach(m => { if (byGender[m.council_positions?.gender]) byGender[m.council_positions.gender].push(m) })
 
   const genderBlock = g => {
     const list = byGender[g].slice().sort((a, b) => (a.council_positions?.sort_order ?? 99) - (b.council_positions?.sort_order ?? 99))
@@ -252,7 +307,7 @@ function renderRoster(members) {
       <div>
         <p class="text-xs font-bold text-gray-400 mb-2">สภานักเรียน${GENDER_LABEL[g]}</p>
         ${list.length ? `<div class="space-y-2">${list.map(m => `
-          <div class="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5">
+          <div class="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 bg-white">
             ${studentPhoto(m.students)}
             <div class="min-w-0 flex-1">
               <p class="text-sm font-bold text-gray-800 truncate">${esc(m.students?.full_name ?? '—')}</p>
@@ -264,22 +319,21 @@ function renderRoster(members) {
   }
 
   return `
-    <div class="bg-white rounded-2xl border border-gray-100 p-4">
-      <p class="text-sm font-bold text-gray-700 mb-3">🏛️ สภานักเรียนของเรา</p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        ${genderBlock('M')}
-        ${genderBlock('W')}
-      </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      ${genderBlock('M')}
+      ${genderBlock('W')}
     </div>`
 }
 
 // ─── คิว "รอฉันยืนยัน" — เฉพาะครูที่ปรึกษาสามัญของห้องที่มีใบสมัครค้างอยู่ ─────────────
-function renderEndorsementQueue() {
+function renderEndorseView() {
   if (ctx.role !== 'teacher' || !ctx.teacher) return ''
-  if (!ctx.homeroomMainRooms.length || !ctx.pendingEndorsements.length) return ''
+  if (!ctx.pendingEndorsements.length) {
+    return `<div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center text-emerald-700 text-sm">✅ ไม่มีใบสมัครค้างยืนยันในตอนนี้</div>`
+  }
 
   const card = a => `
-    <div class="rounded-xl border border-gray-100 p-3 space-y-2.5" data-endorsement-card="${a.id}">
+    <div class="rounded-xl border border-gray-100 p-3 space-y-2.5 bg-white" data-endorsement-card="${a.id}">
       <div class="flex items-center gap-3">
         ${studentPhoto(a.students)}
         <div class="min-w-0 flex-1">
@@ -301,11 +355,7 @@ function renderEndorsementQueue() {
       </div>
     </div>`
 
-  return `
-    <div class="bg-white rounded-2xl border border-amber-200 p-4">
-      <p class="text-sm font-bold text-amber-700 mb-3">✋ รอฉันยืนยัน (ครูที่ปรึกษาสามัญ) — ${ctx.pendingEndorsements.length} รายการ</p>
-      <div class="space-y-3">${ctx.pendingEndorsements.map(card).join('')}</div>
-    </div>`
+  return `<div class="space-y-3">${ctx.pendingEndorsements.map(card).join('')}</div>`
 }
 
 async function handleEndorsement(applicationId, action) {
@@ -321,36 +371,39 @@ async function handleEndorsement(applicationId, action) {
       showToast('บันทึกผล "ไม่รับรอง" แล้ว', 'success')
     }
     await refreshPendingEndorsements()
-    renderAll()
+    render()
   } catch (err) {
     showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
   }
 }
 
-function renderAll() {
-  content.innerHTML = `
-    <div class="max-w-2xl mx-auto px-4 py-4 space-y-4">
-      ${renderPersonalCard(ctx)}
-      ${renderEndorsementQueue()}
-      ${renderApplySection()}
-      ${renderElectionStatus(ctx.elections)}
-      ${renderRoster(ctx.members)}
-      <div class="bg-white rounded-2xl border border-dashed border-gray-200 p-6 text-center text-gray-400 text-sm">
-        🚧 หน้าโหวต/จัดการกิจกรรม/ตั้งค่า ยังอยู่ระหว่างพัฒนา
-      </div>
-    </div>`
-  wireEvents()
+const VIEW_RENDERERS = {
+  overview: renderOverviewView,
+  apply: renderApplyView,
+  endorse: renderEndorseView,
+  election: renderElectionView,
+  roster: renderRosterView,
 }
 
-function wireEvents() {
+function render() {
+  const items = getNavItems()
+  if (!items.some(it => it.id === activeView)) activeView = 'overview'
+  renderNav(items)
+
+  const renderer = VIEW_RENDERERS[activeView] || renderOverviewView
+  content.innerHTML = `<div class="max-w-2xl mx-auto px-4 py-4">${renderer()}</div>`
+  wireContentEvents()
+}
+
+function wireContentEvents() {
   document.getElementById('btn-open-apply')?.addEventListener('click', () => {
     showApplyForm = true
-    renderAll()
+    render()
   })
   document.getElementById('btn-cancel-apply')?.addEventListener('click', () => {
     showApplyForm = false
     applyPhotoFile = null
-    renderAll()
+    render()
   })
   document.getElementById('apply-photo')?.addEventListener('change', e => {
     applyPhotoFile = e.target.files?.[0] ?? null
@@ -377,7 +430,7 @@ function wireEvents() {
       showApplyForm = false
       applyPhotoFile = null
       await refreshMyApplications()
-      renderAll()
+      render()
     } catch (err) {
       showToast('ส่งใบสมัครไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       btn.disabled = false; btn.textContent = 'ส่งใบสมัคร'
