@@ -11,7 +11,7 @@ import {
   confirmApplicationEndorsement, declineApplicationEndorsement,
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
-  getCandidatesForElection, getMyVote, castVote, getVoteTally, publishElectionResults,
+  getCandidatesForElection, publishElectionResults,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -53,8 +53,6 @@ let flowSubtab = null
 // สถานะที่โหลดแบบ lazy ตอนเปิดหน้าจอนั้นๆ ครั้งแรก (ไม่ต้องโหลดทุกอย่างตั้งแต่ init)
 let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
 const candidatesByGender = {} // { M: [...], W: [...] }
-const myVoteByElectionId = {} // { [electionConfigId]: candidateId | null }
-const tallyByElectionId = {} // { [electionConfigId]: { [candidateId]: count } } — แอดมินเท่านั้น
 let electionYear = null // ปีการศึกษาปัจจุบันที่ resolve แล้ว (จาก ctx.cfg.academicYear)
 
 const FLOW_DEFS = {
@@ -348,12 +346,6 @@ async function loadCandidates(gender, electionConfigId) {
   render()
 }
 
-async function loadMyVote(electionConfigId) {
-  const v = await getMyVote(electionConfigId, ctx.student.id).catch(() => null)
-  myVoteByElectionId[electionConfigId] = v?.candidate_id ?? null
-  render()
-}
-
 function renderElectionView() {
   return `<div class="space-y-4">${['M', 'W'].map(renderElectionBlock).join('')}</div>`
 }
@@ -396,33 +388,13 @@ function renderElectionBlock(gender) {
         </div>
       </div>` : `<p class="text-xs text-gray-400 mt-2">ประกาศผลแล้ว</p>`
   } else if (isOpen && isMine) {
-    if (myVoteByElectionId[e.id] === undefined) {
-      loadMyVote(e.id)
-      body = `<p class="text-xs text-gray-400 mt-2">⏳ กำลังตรวจสอบสิทธิ์โหวต...</p>`
-    } else if (myVoteByElectionId[e.id]) {
-      body = `<p class="text-xs text-emerald-600 font-bold mt-2">✅ คุณโหวตแล้ว ขอบคุณที่ใช้สิทธิ์!</p>`
-    } else {
-      const list = candidatesByGender[gender]
-      if (list === undefined) {
-        loadCandidates(gender, e.id)
-        body = `<p class="text-xs text-gray-400 mt-2">⏳ กำลังโหลดผู้สมัคร...</p>`
-      } else if (!list.length) {
-        body = `<p class="text-xs text-gray-400 mt-2">ยังไม่มีผู้สมัครในการเลือกตั้งนี้</p>`
-      } else {
-        body = `
-          <div class="space-y-2 mt-2">
-            ${list.map(c => `
-              <button type="button" class="btn-cast-vote w-full flex items-center gap-3 rounded-xl border border-gray-100 hover:border-violet-300 p-3 bg-white text-left transition" data-election-id="${e.id}" data-candidate-id="${c.id}">
-                <div class="w-8 h-8 rounded-full bg-violet-100 text-violet-700 grid place-items-center font-bold text-sm flex-shrink-0">${c.ballot_number}</div>
-                ${studentPhoto(c.students)}
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm font-bold text-gray-800 truncate">${esc(c.students?.full_name ?? '—')}</p>
-                  <p class="text-xs text-gray-500">${esc(c.students?.main_room ?? '')}</p>
-                </div>
-              </button>`).join('')}
-          </div>`
-      }
-    }
+    // ⚠️ โหวตต้องทำที่จุดลงคะแนนแยก (council-election.html) เท่านั้น — ห้ามโหวตผ่าน session
+    // ที่ล็อกอินอยู่ในมือถือตัวเอง (ตัดสินใจย้ำ 2026-08-15) หน้านี้แจ้งสถานะอย่างเดียว
+    body = `
+      <div class="bg-violet-50 border border-violet-100 rounded-xl p-3 mt-2 text-center">
+        <p class="text-xs font-bold text-violet-700">🗳️ กำลังเปิดโหวต — ไปลงคะแนนที่จุดที่โรงเรียนจัดไว้</p>
+        <p class="text-[11px] text-gray-500 mt-1">โหวตผ่านมือถือ/บัญชีตัวเองไม่ได้ ต้องกรอกรหัสนักเรียนที่หน้าจอ ณ จุดลงคะแนนซึ่งมีครูดูแล</p>
+      </div>`
   } else if (isClosed && !published) {
     body = `<p class="text-xs text-gray-400 mt-2">รอผู้ดูแลระบบประกาศผล</p>`
   } else if (!isOpen && !isClosed) {
@@ -439,6 +411,7 @@ function renderElectionBlock(gender) {
           <button type="submit" class="px-3 py-1.5 rounded-lg border border-violet-200 text-violet-600 text-xs font-bold">บันทึกช่วงเวลา</button>
         </form>
         ${isClosed && !published ? `<button type="button" class="btn-publish-results px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold" data-election-id="${e.id}" data-gender="${gender}">📢 ประกาศผล+แต่งตั้ง</button>` : ''}
+        <p class="text-[11px] text-gray-400">🔗 หน้าโหวต (เปิดที่จุดลงคะแนนเท่านั้น): <a href="council-election.html" target="_blank" class="text-violet-600 underline">council-election.html</a></p>
       </div>`
   }
 
@@ -913,24 +886,6 @@ function wireElectionEvents() {
       } catch (err) {
         showToast('ประกาศผลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
         btn.disabled = false; btn.textContent = '📢 ประกาศผล+แต่งตั้ง'
-      }
-    })
-  })
-
-  document.querySelectorAll('.btn-cast-vote').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('ยืนยันการโหวต? เปลี่ยนแปลงภายหลังไม่ได้')) return
-      const electionId = Number(btn.dataset.electionId)
-      const candidateId = Number(btn.dataset.candidateId)
-      btn.disabled = true
-      try {
-        await castVote({ electionConfigId: electionId, candidateId, voterStudentId: ctx.student.id })
-        myVoteByElectionId[electionId] = candidateId
-        showToast('โหวตสำเร็จ ขอบคุณที่ใช้สิทธิ์! 🗳️', 'success')
-        render()
-      } catch (err) {
-        showToast('โหวตไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        btn.disabled = false
       }
     })
   })

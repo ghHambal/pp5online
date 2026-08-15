@@ -203,19 +203,12 @@ export async function getCandidatesForElection(electionConfigId) {
   return data ?? []
 }
 
-// ─── โหวต — นักเรียนโหวตได้คนละ 1 เสียงต่อการเลือกตั้ง 1 ครั้ง (unique constraint คุมซ้ำ) ──
-export async function getMyVote(electionConfigId, studentId) {
-  const { data, error } = await supabase.from('council_votes')
-    .select('candidate_id').eq('election_config_id', electionConfigId).eq('voter_student_id', studentId).maybeSingle()
-  if (error) throw error
-  return data
-}
-
-export async function castVote({ electionConfigId, candidateId, voterStudentId }) {
-  const { error } = await supabase.from('council_votes')
-    .insert({ election_config_id: electionConfigId, candidate_id: candidateId, voter_student_id: voterStudentId })
-  if (error) throw error
-}
+// ⚠️ การโหวตจริง (นักเรียนกรอกรหัส+ยืนยันตัวตนด้วยรูป+เลือกผู้สมัคร) ทำที่หน้า
+// council-election.html (js/council-election-public.js) เท่านั้น ผ่าน RPC ฝั่ง server
+// (get_public_council_election_bundle / cast_public_council_vote — ดู
+// patch_council_election_public_vote.sql) — ไม่มีฟังก์ชันโหวตแบบ session-based ในไฟล์นี้
+// โดยตั้งใจ เพราะจะเปิดช่องให้นักเรียนโหวตผ่านมือถือ/บัญชีตัวเองได้ ซึ่งขัดกับสเปคที่ต้อง
+// โหวตที่จุดลงคะแนนซึ่งมีครูดูแลเท่านั้น (ตัดสินใจย้ำ 2026-08-15)
 
 // ─── นับคะแนน+ประกาศผล (แอดมิน) ────────────────────────────────────────────────
 export async function getVoteTally(electionConfigId) {
