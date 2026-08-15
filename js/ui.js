@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.413'
+import { APP_VERSION } from './version.js?v=10.22.414'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.414': [
+    '⚽ AZFUTSALCUP: หน้าแก้ผล M22–M23 เลือกทีมได้ทั้งฝั่ง A/B ในโหมดประกบใหม่ พร้อมกันทีมซ้ำ จำกัดผู้แพ้คืนสิทธิ์ 1 ทีม และเว้นสกอร์ว่างจนกว่าจะเริ่มบันทึกผล'
+  ],
   '10.22.413': [
     '⚽ AZFUTSALCUP: ล้างการประกบ M22–M23 ได้โดยไม่ลบผล M19–M21 และเพิ่มหน้าจอเลือกคู่รอบรองฯ ใหม่ โดยบังคับใช้ผู้ชนะครบ 3 ทีมกับผู้แพ้คืนสิทธิ์ 1 ทีม'
   ],

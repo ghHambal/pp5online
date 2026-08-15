@@ -460,6 +460,21 @@ function semifinalPairingEditable(level) {
   })
 }
 
+function hiddenSemifinalPairing(level, code) {
+  return ['M22', 'M23'].includes(code) && cfg(`PAIRING_HIDDEN_${level}_${code}`, '0') === '1'
+}
+
+function semifinalUsedIds(level, exceptCode, exceptSide) {
+  const ids = []
+  for (const code of ['M22', 'M23']) {
+    const match = matchByCode(level, code)
+    if (!match) continue
+    if (match.team_a_id && !(code === exceptCode && exceptSide === 'a')) ids.push(match.team_a_id)
+    if (match.team_b_id && !(code === exceptCode && exceptSide === 'b')) ids.push(match.team_b_id)
+  }
+  return ids
+}
+
 // ทีมที่ถูกเลือกไปแล้วในนัดอื่นๆ ของรอบสระเดียวกัน (กันแอดมินเลือกทีมซ้ำเข้าสองคู่)
 function poolRoundUsedIds(level, poolKey, exceptCode, exceptSide) {
   const ids = []
@@ -4262,6 +4277,14 @@ function pickableSlots(level, code) {
   const m = matchByCode(level, code)
   const slots = { a: null, b: null }
   const poolFrom = codes => winnersFrom(level, codes)
+  if (hiddenSemifinalPairing(level, code) && semifinalPairingEditable(level)) {
+    const full = semifinalEligibleIds(level)
+    const usedA = semifinalUsedIds(level, code, 'a')
+    const usedB = semifinalUsedIds(level, code, 'b')
+    slots.a = { pool: full.filter(id => !usedA.includes(id)), value: m?.team_a_id || '' }
+    slots.b = { pool: full.filter(id => !usedB.includes(id)), value: m?.team_b_id || '' }
+    return slots
+  }
   if (def.pool) {
     const full = winnersFrom(level, POOL_SOURCES[level]?.[def.pool] || [])
     const usedA = poolRoundUsedIds(level, def.pool, code, 'a')
@@ -4747,8 +4770,9 @@ function matchEditorModal() {
   const hasAnyGoalLogged = goalsA > 0 || goalsB > 0
   // สกอร์ต้องซิงก์กับจำนวนผู้ทำประตูแบบเรียลไทม์เสมอไม่ว่าจะเคยกดบันทึกไปแล้วกี่ครั้ง (ไม่ใช่แค่ครั้งแรกที่ยังไม่บันทึก)
   // ห้าม fallback ไปที่ m.score_a ที่เคยบันทึกไว้ก่อน เพราะจะทำให้ลบผู้ทำประตูจนเหลือ 0 แล้วสกอร์ค้างเป็นค่าเก่าที่เคยบันทึก
-  const scoreAVal = goalsA
-  const scoreBVal = goalsB
+  const hasSavedScore = m.score_a !== null || m.score_b !== null
+  const scoreAVal = hasAnyGoalLogged || hasSavedScore ? goalsA : ''
+  const scoreBVal = hasAnyGoalLogged || hasSavedScore ? goalsB : ''
   const teamField = (label, slot, resolvedName) => slot
     ? `<label style="font-size:11.5px;color:#6b7280;flex:1">${label}${slot.lotteryRef ? ' · ทีมจากการจับฉลาก' : ''}<select id="mx-team${label}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:7px 8px;font-size:12.5px"><option value="">-</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}</select>${slot.lotteryRef ? `<button type="button" data-act="drawLotteryTeam" data-level="${level}" data-code="${code}" data-side="${label.toLowerCase()}" style="display:block;width:100%;margin-top:5px;padding:7px;border:none;border-radius:8px;background:#7c3aed;color:#fff;font-weight:800;font-size:11px;cursor:pointer">🎲 สุ่มจับฉลาก 1 ทีม (${slot.pool.length} ทีม)</button>` : ''}</label>`
     : `<div style="font-size:11.5px;color:#6b7280;flex:1">${label}<div style="margin-top:4px;font-size:13px;font-weight:700">${esc(resolvedName) || '-'}</div></div>`
@@ -4902,6 +4926,24 @@ function handleSaveMatch(level, code) {
   const penaltyMode = !!S.editMatch?.penaltyMode
   const penaltyScoreA = penaltyMode ? numOrNull(gid('mx-penaltyScoreA')?.value) : null
   const penaltyScoreB = penaltyMode ? numOrNull(gid('mx-penaltyScoreB')?.value) : null
+  if (hiddenSemifinalPairing(level, code)) {
+    if (!semifinalPairingEditable(level)) { azToast('เปลี่ยนคู่ไม่ได้ เพราะ M22 หรือ M23 เริ่มแข่งขันหรือมีข้อมูลรายงานตัวแล้ว'); return }
+    const eligible = semifinalEligibleIds(level)
+    if ((teamAId && !eligible.includes(teamAId)) || (teamBId && !eligible.includes(teamBId))) {
+      azToast('เลือกได้เฉพาะทีมจาก M19–M21 เท่านั้น'); return
+    }
+    const assigned = []
+    for (const semifinalCode of ['M22', 'M23']) {
+      const match = matchByCode(level, semifinalCode)
+      const aId = semifinalCode === code ? teamAId : match?.team_a_id
+      const bId = semifinalCode === code ? teamBId : match?.team_b_id
+      if (aId) assigned.push(aId)
+      if (bId) assigned.push(bId)
+    }
+    if (new Set(assigned).size !== assigned.length) { azToast('ทีมเดิมถูกเลือกซ้ำใน M22–M23'); return }
+    const losers = losersFrom(level, SIXTEEN_TEAM_SEMIFINAL_SOURCE)
+    if (assigned.filter(id => losers.includes(id)).length > 1) { azToast('เลือกผู้แพ้คืนสิทธิ์ได้เพียง 1 ทีม'); return }
+  }
   if ((scoreA !== null && scoreA < 0) || (scoreB !== null && scoreB < 0)) { azToast('สกอร์ต้องไม่ติดลบ'); return }
   if ((scoreA === null) !== (scoreB === null)) { azToast('กรุณากรอกสกอร์เวลาปกติให้ครบทั้งสองทีม'); return }
   if (penaltyMode) {
