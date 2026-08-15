@@ -2,7 +2,7 @@ import { supabase } from './supabase.js'
 
 // ─── Image Compressor (Canvas API) ───────────────────────────────────────────
 // maxWidth: px สูงสุด, quality: 0–1 (JPEG)
-export function compressImage(file, { maxWidth = 800, quality = 0.82 } = {}) {
+export function compressImage(file, { maxWidth = 800, quality = 0.82, background = null } = {}) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = reject
@@ -18,7 +18,12 @@ export function compressImage(file, { maxWidth = 800, quality = 0.82 } = {}) {
         const canvas = document.createElement('canvas')
         canvas.width  = w
         canvas.height = h
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        const context = canvas.getContext('2d')
+        if (background) {
+          context.fillStyle = background
+          context.fillRect(0, 0, w, h)
+        }
+        context.drawImage(img, 0, 0, w, h)
 
         canvas.toBlob(
           blob => blob ? resolve(blob) : reject(new Error('compress failed')),
@@ -89,6 +94,18 @@ export async function uploadCouncilApplicationPhoto(studentId, file) {
   const blob = await compressImage(file, { maxWidth: 600, quality: 0.82 })
   const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   return uploadFile('system-assets', `council/applications/${studentId}/${key}.jpg`, blob)
+}
+
+// ลายเซ็นระบบค่าย TERANGGANU — รองรับทั้งไฟล์ภาพและ Blob จาก canvas
+export async function uploadTerangganuSignature(profileId, fileOrBlob) {
+  const blob = await compressImage(fileOrBlob, { maxWidth: 1000, quality: 0.9, background: '#fff' })
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return uploadFile('terangganu-assets', `signatures/${profileId}/${key}.jpg`, blob)
+}
+
+export async function uploadTerangganuDirectorSignature(fileOrBlob) {
+  const blob = await compressImage(fileOrBlob, { maxWidth: 1000, quality: 0.9, background: '#fff' })
+  return uploadFile('terangganu-assets', 'director-signature.jpg', blob)
 }
 
 // รูปแนบประกาศ (เช่น อินโฟกราฟิก) → บีบ max 1600px คุณภาพสูงเพราะเป็นภาพนำเสนอ

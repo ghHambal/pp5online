@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.404'
+import { APP_VERSION } from './version.js?v=10.22.409'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 
@@ -440,6 +440,7 @@ export async function renderStudentOverview(student) {
   // (council_test_student_codes) — ให้ทดสอบระบบจริงได้แม้ปิดปุ่มไว้สำหรับนักเรียนทั่วไป
   const councilTestCodes = (cfg.council_test_student_codes || '').split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
   const councilVisible = cfg.council_visible_to_all !== 'false' || councilTestCodes.includes(student.student_code)
+  const terangganuVisible = cfg.terangganu_visible_to_students === 'true'
 
   setContent(`
     <!-- Profile card -->
@@ -495,6 +496,17 @@ export async function renderStudentOverview(student) {
       <span class="relative z-10 px-3 py-1.5 bg-white text-violet-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
         เข้าสู่ระบบ →
       </span>
+    </a>
+    ` : ''}
+
+    ${terangganuVisible ? `
+    <a href="terangganu.html" class="relative overflow-hidden bg-gradient-to-r from-teal-700 to-emerald-600 rounded-2xl border border-teal-500 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
+      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">⚜️</div>
+      <div class="min-w-0 z-10">
+        <h4 class="font-bold text-xs sm:text-sm">⚜️ ค่ายลูกเสือ TERANGGANU 2026</h4>
+        <p class="text-[10px] text-teal-100 mt-0.5">กรอกแบบสำรวจ ตรวจสอบการชำระเงิน และดาวน์โหลดใบเสร็จ</p>
+      </div>
+      <span class="relative z-10 px-3 py-1.5 bg-white text-teal-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">เปิดแบบฟอร์ม →</span>
     </a>
     ` : ''}
 

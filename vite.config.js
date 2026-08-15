@@ -28,6 +28,7 @@ export default defineConfig({
         sportsCheckin: resolve(__dirname, 'sports-checkin.html'),
         studentcareInstall: resolve(__dirname, 'studentcare-install.html'),
         council:       resolve(__dirname, 'council.html'),
+        terangganu:     resolve(__dirname, 'terangganu.html'),
       },
     },
     chunkSizeWarningLimit: 600,
