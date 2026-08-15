@@ -45,6 +45,15 @@ export async function assignTerangganuStaff(teacherId, options = {}) {
   if (error) throw error
 }
 
+export async function addTerangganuParticipants(studentCodes, markDepositPaid = true) {
+  const { data, error } = await supabase.rpc('add_terangganu_participants', {
+    p_student_codes: studentCodes,
+    p_mark_deposit_paid: markDepositPaid,
+  })
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function updateMyTerangganuSignature(signatureUrl, displayName, title) {
   const { error } = await supabase.rpc('update_my_terangganu_signature', {
     p_signature_url: signatureUrl,
@@ -77,6 +86,7 @@ export function subscribeTerangganu(eventId, onChange) {
   if (!eventId) return null
   return supabase.channel(`terangganu-${eventId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_events', filter: `id=eq.${eventId}` }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_participants', filter: `event_id=eq.${eventId}` }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_registrations', filter: `event_id=eq.${eventId}` }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_payments', filter: `event_id=eq.${eventId}` }, onChange)
     .subscribe()

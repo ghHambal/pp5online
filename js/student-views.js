@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.409'
+import { APP_VERSION } from './version.js?v=10.22.410'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 
@@ -440,7 +440,15 @@ export async function renderStudentOverview(student) {
   // (council_test_student_codes) — ให้ทดสอบระบบจริงได้แม้ปิดปุ่มไว้สำหรับนักเรียนทั่วไป
   const councilTestCodes = (cfg.council_test_student_codes || '').split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
   const councilVisible = cfg.council_visible_to_all !== 'false' || councilTestCodes.includes(student.student_code)
-  const terangganuVisible = cfg.terangganu_visible_to_students === 'true'
+  // ให้ RPC เป็นผู้ตัดสินสิทธิ์จริง เพราะระบบค่ายเลือกได้ว่าจะเปิดให้ทั้งโรง
+  // หรือเฉพาะนักเรียนที่ถูกเพิ่มในรายชื่อผู้เข้าร่วม
+  let terangganuVisible = false
+  try {
+    const { data: campAccess, error: campAccessError } = await supabase.rpc('get_terangganu_access')
+    if (!campAccessError) terangganuVisible = campAccess?.visible === true && campAccess?.student_allowed === true
+  } catch (_) {
+    terangganuVisible = false
+  }
 
   setContent(`
     <!-- Profile card -->
