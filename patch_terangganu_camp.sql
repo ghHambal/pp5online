@@ -443,7 +443,7 @@ for insert to authenticated with check (
       and public.terangganu_can((select id from public.terangganu_camp_events where slug='terangganu-2026'),'view')
     )
     or (
-      name='director-signature.jpg'
+      name in ('director-signature.jpg','receipt-logo.jpg')
       and public.terangganu_can((select id from public.terangganu_camp_events where slug='terangganu-2026'),'settings')
     )
   )
@@ -455,7 +455,7 @@ for select to authenticated using (
   bucket_id='terangganu-assets' and (
     name like ('signatures/' || auth.uid()::text || '/%')
     or (
-      name='director-signature.jpg'
+      name in ('director-signature.jpg','receipt-logo.jpg')
       and public.terangganu_can((select id from public.terangganu_camp_events where slug='terangganu-2026'),'settings')
     )
   )
@@ -467,7 +467,7 @@ for update to authenticated using (
   bucket_id='terangganu-assets' and (
     name like ('signatures/' || auth.uid()::text || '/%')
     or (
-      name='director-signature.jpg'
+      name in ('director-signature.jpg','receipt-logo.jpg')
       and public.terangganu_can((select id from public.terangganu_camp_events where slug='terangganu-2026'),'settings')
     )
   )
@@ -475,7 +475,7 @@ for update to authenticated using (
   bucket_id='terangganu-assets' and (
     name like ('signatures/' || auth.uid()::text || '/%')
     or (
-      name='director-signature.jpg'
+      name in ('director-signature.jpg','receipt-logo.jpg')
       and public.terangganu_can((select id from public.terangganu_camp_events where slug='terangganu-2026'),'settings')
     )
   )
