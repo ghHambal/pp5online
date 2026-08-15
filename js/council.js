@@ -254,7 +254,90 @@ function renderPersonalCard() {
     </div>`
 }
 
+function cardShell(title, body, gotoView, linkLabel) {
+  return `
+    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[#f1e9e9] p-4">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-sm font-bold text-[#1d1519]">${title}</p>
+        ${gotoView ? `<button type="button" class="goto-view text-xs font-bold text-[#14563b] hover:underline" data-view="${gotoView}">${esc(linkLabel)} →</button>` : ''}
+      </div>
+      ${body}
+    </div>`
+}
+
+function renderHomeHero() {
+  const cfg = ctx.cfg
+  const termLabel = (cfg.council_term_start_semester && cfg.council_term_start_year)
+    ? `ภาคเรียนที่ ${esc(cfg.council_term_start_semester)}/${esc(cfg.council_term_start_year)} – ภาคเรียนที่ ${esc(cfg.council_term_end_semester || cfg.council_term_start_semester)}/${esc(cfg.council_term_end_year || cfg.council_term_start_year)}`
+    : null
+  const visible = cfg.council_visible_to_all !== 'false'
+  return `
+    <div class="bg-gradient-to-br from-[#14563b] to-[#0a2d1f] rounded-2xl p-5 sm:p-6 text-white shadow-[0_4px_12px_rgba(23,32,42,0.07)]">
+      ${termLabel ? `<span class="inline-block text-xs font-bold px-3 py-1.5 rounded-full bg-white/15 border border-white/20 mb-3">🗓️ ห้วงปฏิบัติหน้าที่ · ${termLabel}</span>` : ''}
+      <p class="text-lg sm:text-xl font-extrabold leading-snug">${visible ? '✅ ระบบพร้อมใช้งาน · เปิดให้นักเรียนทุกคนเห็นเมนูแล้ว' : '🔒 ระบบยังไม่เปิดให้ทุกคนเห็น · เห็นเฉพาะแอดมิน/ผู้ทดสอบ'}</p>
+      <p class="text-sm text-[#cfe3d8] mt-1.5">ตั้งค่าทุกอย่างได้เองจากหน้าตั้งค่า ทั้งตำแหน่ง ห้วงปฏิบัติหน้าที่ เกณฑ์คุณสมบัติ และข้อความในระบบ</p>
+      ${ctx.isAdmin || ctx.isChair ? `
+      <div class="flex flex-wrap gap-2 mt-4">
+        ${ctx.isAdmin ? `<a href="dashboard.html" class="px-4 py-2 rounded-[10px] bg-white text-[#14563b] text-sm font-bold hover:bg-[#edf4f0]">⚙️ ตั้งค่าระบบ</a>` : ''}
+        <a href="council-election.html" target="_blank" class="px-4 py-2 rounded-[10px] bg-white/10 border border-white/25 text-white text-sm font-bold hover:bg-white/20">🗳️ หน้าลงคะแนน</a>
+      </div>` : ''}
+    </div>`
+}
+
+function renderHomeActivitySummary() {
+  if (activities === null) { loadActivities(); return cardShell('📅 กิจกรรมประจำปี', '<p class="text-sm text-[#90828a] text-center py-8">⏳ กำลังโหลด...</p>') }
+  const counts = {}
+  activities.forEach(a => { counts[a.status] = (counts[a.status] ?? 0) + 1 })
+  const tiles = `
+    <div class="grid grid-cols-4 gap-2 mb-3">
+      ${ACT_SUMMARY_TILES.map(([k, label, box, num]) => `
+        <div class="rounded-[10px] border ${box} p-2 text-center">
+          <p class="text-lg font-bold ${num}">${counts[k] ?? 0}</p>
+          <p class="text-[10px] text-[#6e5f65]">${label}</p>
+        </div>`).join('')}
+    </div>`
+  const upcoming = [...activities].sort((a, b) => new Date(a.activity_date || 0) - new Date(b.activity_date || 0)).slice(0, 5)
+  const list = upcoming.length ? `
+    <div class="space-y-0.5">
+      ${upcoming.map(a => {
+        const [label, fg, bg] = ACT_STATUS_BADGE[a.status] ?? ['—', 'text-[#6e5f65]', 'bg-[#f2ecec]']
+        return `
+        <div class="flex items-center justify-between gap-2 py-1.5 border-b border-[#f1e9e9] last:border-0">
+          <div class="min-w-0">
+            <p class="text-sm font-bold text-[#1d1519] truncate">${esc(a.title)}</p>
+            <p class="text-[11px] text-[#90828a]">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} ${a.owner_text ? '· ' + esc(a.owner_text) : ''}</p>
+          </div>
+          <span class="flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded-full ${bg} ${fg}">${label}</span>
+        </div>`
+      }).join('')}
+    </div>` : `<p class="text-sm text-[#90828a] text-center py-6">ยังไม่มีกิจกรรม</p>`
+  return cardShell('📅 กิจกรรมประจำปี', tiles + list, 'activities', 'ดูทั้งหมด')
+}
+
+function renderHomeCouncilPreview() {
+  const chairs = ['M', 'W'].map(g => ctx.members.find(m => m.status === 'active' && m.council_positions?.gender === g && m.council_positions?.is_elected))
+  const body = chairs.some(Boolean) ? `
+    <div class="space-y-3">
+      ${chairs.map((m, i) => {
+        const g = i === 0 ? 'M' : 'W'
+        if (!m) return `<div class="rounded-xl border border-dashed border-[#e8dcdd] p-3 text-center text-xs text-[#90828a]">ยังไม่มีประธานสภา${GENDER_LABEL[g]}</div>`
+        const isW = g === 'W'
+        return `
+        <div class="flex items-center gap-3 rounded-xl border p-3 ${isW ? 'bg-[#fdeef4] border-[#f3d4e2]' : 'bg-[#edf4f0] border-[#cfe3d8]'}">
+          ${studentPhoto(m.students, 'w-12 h-16')}
+          <div class="min-w-0">
+            <p class="text-[11px] font-bold ${isW ? 'text-[#a3134f]' : 'text-[#14563b]'}">${esc(m.council_positions?.position_name ?? ('ประธานสภานักเรียนฝ่าย' + GENDER_LABEL[g]))}</p>
+            <p class="text-sm font-bold text-[#1d1519] truncate">${esc(m.students?.full_name ?? '—')}</p>
+            <p class="text-xs text-[#6e5f65]">${esc(m.students?.main_room ?? '')}</p>
+          </div>
+        </div>`
+      }).join('')}
+    </div>` : `<p class="text-sm text-[#90828a] text-center py-6">ยังไม่มีสภานักเรียนชุดปัจจุบัน</p>`
+  return cardShell('🏛️ สภานักเรียนชุดปัจจุบัน', body, 'roster', 'ดูโครงสร้าง')
+}
+
 function renderOverviewView() {
+  const hero = renderHomeHero()
   const personal = renderPersonalCard()
   const entryCard = (flow, icon, label) => `
     <button type="button" class="flow-entry-btn bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[#b9d6c7] p-4 text-center hover:border-[#6ba888] hover:shadow-[0_4px_12px_rgba(23,32,42,0.07)] transition" data-flow="${flow}">
@@ -266,7 +349,15 @@ function renderOverviewView() {
       ${ctx.role === 'student' ? entryCard('apply', '📝', 'สมัครสภานักเรียน') : ''}
       ${entryCard('election', '🗳️', 'การเลือกตั้ง')}
     </div>`
-  return `<div class="space-y-4">${personal}${entryCards}</div>`
+  return `<div class="space-y-4">
+    ${hero}
+    ${personal}
+    ${entryCards}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      ${renderHomeActivitySummary()}
+      ${renderHomeCouncilPreview()}
+    </div>
+  </div>`
 }
 
 // ─── สมัครสภานักเรียน — เฉพาะนักเรียนที่เชื่อมบัญชีแล้ว ─────────────────────────────
@@ -1136,6 +1227,9 @@ function renderFullscreenFlow() {
 function wireContentEvents() {
   document.querySelectorAll('.flow-entry-btn').forEach(btn => {
     btn.addEventListener('click', () => { fullscreenFlow = btn.dataset.flow; flowSubtab = null; render() })
+  })
+  document.querySelectorAll('.goto-view').forEach(btn => {
+    btn.addEventListener('click', () => { activeView = btn.dataset.view; render() })
   })
   document.getElementById('btn-open-apply')?.addEventListener('click', () => {
     showApplyForm = true
