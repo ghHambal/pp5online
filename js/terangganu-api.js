@@ -54,6 +54,14 @@ export async function addTerangganuParticipants(studentCodes, markDepositPaid = 
   return unwrap(data)
 }
 
+export async function removeTerangganuParticipant(studentId) {
+  const { data, error } = await supabase.rpc('remove_terangganu_participant', {
+    p_student_id: Number(studentId),
+  })
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function updateMyTerangganuSignature(signatureUrl, displayName, title) {
   const { error } = await supabase.rpc('update_my_terangganu_signature', {
     p_signature_url: signatureUrl,
