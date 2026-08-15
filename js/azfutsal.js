@@ -4285,6 +4285,9 @@ function pickableSlots(level, code) {
     slots.b = { pool: full.filter(id => !usedB.includes(id)), value: m?.team_b_id || '' }
     return slots
   }
+  // เมื่อเริ่มแข่งขันแล้ว ห้ามย้อนกลับไปแสดงช่องอ้างอิงสายเดิม/จับฉลาก
+  // ให้ match editor ใช้ชื่อทีมที่บันทึกตรงใน M22/M23 แบบอ่านอย่างเดียวแทน
+  if (hiddenSemifinalPairing(level, code)) return slots
   if (def.pool) {
     const full = winnersFrom(level, POOL_SOURCES[level]?.[def.pool] || [])
     const usedA = poolRoundUsedIds(level, def.pool, code, 'a')
@@ -4713,27 +4716,31 @@ function eventListRow(level, code, teamId, side, type, label, color, bg) {
   </div>`
 }
 
-// เหลือเฉพาะคนที่สแกน QR รายงานตัวแล้วจริงสำหรับนัดนี้ — กันเลือกผิดคน/นับประตูให้คนที่ไม่ได้ลงเล่น
-// ถ้าลืมสแกนจริงๆ ให้เปิดกล้องสแกนรายงานตัวเพิ่มตรงนั้นแทน (ไม่ทำ toggle "แสดงทั้งหมด" ให้ซับซ้อนเกินจำเป็น)
-function eventPickerRoster() {
+// ปกติให้เลือกเฉพาะคนที่รายงานตัวรายนัดแล้ว แต่ถ้าไม่มีเช็กอินเลยทั้งทีมและผู้บันทึกมีสิทธิ์ผลการแข่งขัน
+// ให้ใช้รายชื่อทั้งทีมเพื่อกรอกผลย้อนหลังจากแบบฟอร์มกระดาษได้
+function eventPickerRosterInfo() {
   const { team } = S.eventPicker
   const { level, code } = S.editMatch
   const r = resolveMatch(level, code)
   const teamId = team === 'a' ? r.teamAId : r.teamBId
   const checkedIds = new Set(S.checkins.filter(c => c.level === level && c.match_code === code && c.team_id === teamId).map(c => c.player_id))
-  return S.players.filter(p => p.team_id === teamId && checkedIds.has(p.id))
+  const fullRoster = S.players.filter(p => p.team_id === teamId)
+  const canBackfillPaper = S.identity.isAdmin || (S.identity.scopes || []).some(scope => scope === 'full' || scope === 'result')
+  const paperMode = canBackfillPaper && checkedIds.size === 0
+  return { roster: paperMode ? fullRoster : fullRoster.filter(p => checkedIds.has(p.id)), paperMode }
 }
 
 function eventPickerPlayerList() {
-  const roster = eventPickerRoster()
+  const { roster, paperMode } = eventPickerRosterInfo()
   if (!roster.length) return `<div style="font-size:11.5px;color:#9ca3af;padding:6px 0">ยังไม่มีใครในทีมนี้รายงานตัวสำหรับนัดนี้ — สแกน QR รายงานตัวก่อนจึงจะเลือกได้</div>`
   const filter = (S.eventPickerFilter || '').trim().toLowerCase()
   const filtered = filter ? roster.filter(p => String(p.jersey_number ?? '').includes(filter) || (p.students?.full_name || '').toLowerCase().includes(filter)) : roster
-  return filtered.length ? filtered.map(p => `
+  const notice = paperMode ? `<div style="padding:8px 10px;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:10px;font-size:11px;font-weight:700">📝 โหมดบันทึกย้อนหลังจากกระดาษ — นัดนี้ไม่มีข้อมูลรายงานตัว จึงแสดงรายชื่อทั้งทีม</div>` : ''
+  return notice + (filtered.length ? filtered.map(p => `
     <button data-act="pickEventPlayer" data-player="${p.id}" style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #f3f4f6;background:#fff;border-radius:12px;cursor:pointer;text-align:left;width:100%">
       ${photoTag(playerPhotoUrl(p))}
       <div style="min-width:0"><div style="font-size:14px;font-weight:800">#${p.jersey_number ?? '-'} ${esc(p.students?.full_name || '')}</div><div style="font-size:11px;color:#9ca3af;margin-top:2px">แตะเพื่อบันทึกและปิดหน้าต่าง</div></div>
-    </button>`).join('') : `<div style="font-size:11.5px;color:#9ca3af;padding:6px 0">ไม่พบผู้เล่น</div>`
+    </button>`).join('') : `<div style="font-size:11.5px;color:#9ca3af;padding:6px 0">ไม่พบผู้เล่น</div>`)
 }
 
 function eventPickerModal() {
@@ -4751,7 +4758,10 @@ function eventPickerModal() {
         <div><div style="font-weight:900;font-size:17px">เลือก${esc(typeLabel)}</div><div style="font-size:12px;color:#6b7280;margin-top:3px">${esc(team === 'a' ? r.teamA : r.teamB)} · เลือกแล้วระบบจะบันทึกทันที</div></div>
         <button data-act="closeEventPicker" aria-label="ปิด" style="border:none;background:#f3f4f6;color:#64748b;width:34px;height:34px;border-radius:10px;font-size:17px;cursor:pointer;flex-shrink:0">✕</button>
       </div>
-      <input id="event-picker-filter" autofocus placeholder="ค้นหาเบอร์เสื้อหรือชื่อ..." value="${esc(S.eventPickerFilter)}" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:10px 12px;font-size:14px;margin-bottom:10px"/>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input id="event-picker-filter" autofocus placeholder="ค้นหาเบอร์เสื้อหรือชื่อ..." value="${esc(S.eventPickerFilter)}" style="flex:1;min-width:0;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:10px 12px;font-size:14px"/>
+        <input id="event-picker-minute" type="number" min="1" max="99" inputmode="numeric" placeholder="นาที" title="นาทีที่เกิดเหตุการณ์ (เว้นว่างเพื่อใช้เวลาจากนาฬิกา)" style="width:70px;box-sizing:border-box;border:1px solid #d1d5db;border-radius:11px;padding:10px 8px;font-size:14px;text-align:center"/>
+      </div>
       <div id="event-picker-list" style="display:flex;flex-direction:column;gap:7px;min-height:80px;overflow-y:auto">
         ${eventPickerPlayerList()}
       </div>
@@ -4926,7 +4936,7 @@ function handleSaveMatch(level, code) {
   const penaltyMode = !!S.editMatch?.penaltyMode
   const penaltyScoreA = penaltyMode ? numOrNull(gid('mx-penaltyScoreA')?.value) : null
   const penaltyScoreB = penaltyMode ? numOrNull(gid('mx-penaltyScoreB')?.value) : null
-  if (hiddenSemifinalPairing(level, code)) {
+  if (hiddenSemifinalPairing(level, code) && (selA || selB)) {
     if (!semifinalPairingEditable(level)) { azToast('เปลี่ยนคู่ไม่ได้ เพราะ M22 หรือ M23 เริ่มแข่งขันหรือมีข้อมูลรายงานตัวแล้ว'); return }
     const eligible = semifinalEligibleIds(level)
     if ((teamAId && !eligible.includes(teamAId)) || (teamBId && !eligible.includes(teamBId))) {
@@ -5003,7 +5013,9 @@ function handleAddMatchEvent(playerId) {
   const r = resolveMatch(level, code)
   const teamId = team === 'a' ? r.teamAId : r.teamBId
   if (!teamId) return
-  const minute = matchClockMinute(matchByCode(level, code))
+  const manualMinute = numOrNull(gid('event-picker-minute')?.value)
+  if (manualMinute !== null && manualMinute < 1) { azToast('นาทีต้องเริ่มตั้งแต่ 1'); return }
+  const minute = manualMinute ?? matchClockMinute(matchByCode(level, code))
   const localId = azMakeLocalId()
   const eventPayload = { level, match_code: code, team_id: teamId, player_id: playerId, event_type: type, minute, is_penalty: false }
   S.matchEvents.push({ id: localId, ...eventPayload, created_at: new Date().toISOString() })
