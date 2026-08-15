@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.412'
+import { APP_VERSION } from './version.js?v=10.22.413'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.413': [
+    '⚽ AZFUTSALCUP: ล้างการประกบ M22–M23 ได้โดยไม่ลบผล M19–M21 และเพิ่มหน้าจอเลือกคู่รอบรองฯ ใหม่ โดยบังคับใช้ผู้ชนะครบ 3 ทีมกับผู้แพ้คืนสิทธิ์ 1 ทีม'
+  ],
   '10.22.412': [
     '🖼️ ระบบค่าย TERANGGANU: แสดงรูปนักเรียนด้านซ้ายของทุกแถวในสไตล์เดียวกับหน้า ปพ. พร้อมปุ่มลบผู้เข้าร่วมแบบยืนยันก่อนลบ โดยเก็บแบบสำรวจและประวัติใบเสร็จเดิมไว้ตรวจสอบ'
   ],

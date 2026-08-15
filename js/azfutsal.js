@@ -129,6 +129,7 @@ const POOL_SOURCES = { HS: SIXTEEN_TEAM_POOL_SOURCES, MS: SIXTEEN_TEAM_POOL_SOUR
 // สระผู้แพ้ที่ใช้สุ่มฉลาก 1 ทีมเข้ารองฯ (LOTTERY_1)
 const SIXTEEN_TEAM_LOTTERY_SOURCE = ['M19', 'M20', 'M21']
 const LOTTERY_SOURCES = { HS: SIXTEEN_TEAM_LOTTERY_SOURCE, MS: SIXTEEN_TEAM_LOTTERY_SOURCE }
+const SIXTEEN_TEAM_SEMIFINAL_SOURCE = ['M19', 'M20', 'M21']
 function lotterySources(level, ref) {
   if (level === 'MS' && hasMsFirstRoundBye()) {
     if (ref === 'LOTTERY_1') return ['M10', 'M11', 'M12', 'M13', 'M14']
@@ -406,8 +407,11 @@ function resolveMatch(level, code, seen = new Set()) {
   seen.add(code)
   const def = BRACKET[level].find(b => b.code === code) || {}
   let teamAId = m.team_a_id, teamBId = m.team_b_id
-  if (!teamAId && def.refA) teamAId = resolveRef(level, def.refA, seen)
-  if (!teamBId && def.refB) teamBId = resolveRef(level, def.refB, seen)
+  // บางรอบต้องรอประกาศผลจับสลากก่อน แม้ผลนัดต้นทางจะครบแล้วก็ตาม
+  // เมื่อเปิด flag นี้ ให้แสดงเฉพาะทีมที่บันทึกลงแมตช์โดยตรง ไม่ดึงผู้ชนะ/ผู้แพ้อัตโนมัติจาก ref
+  const pairingHidden = cfg(`PAIRING_HIDDEN_${level}_${code}`, '0') === '1'
+  if (!pairingHidden && !teamAId && def.refA) teamAId = resolveRef(level, def.refA, seen)
+  if (!pairingHidden && !teamBId && def.refB) teamBId = resolveRef(level, def.refB, seen)
   let winnerId = m.winner_team_id, loserId = m.loser_team_id
   if (!winnerId && teamAId && teamBId) {
     if (matchPenaltyShootoutComplete(m) && m.penalty_score_a !== m.penalty_score_b) {
@@ -431,6 +435,30 @@ function resolveRef(level, ref, seen) {
 
 function winnersFrom(level, codes) { return codes.map(c => resolveMatch(level, c).winnerId).filter(Boolean) }
 function losersFrom(level, codes) { return codes.map(c => resolveMatch(level, c).loserId).filter(Boolean) }
+
+function semifinalEligibleIds(level) {
+  return [...new Set([
+    ...winnersFrom(level, SIXTEEN_TEAM_SEMIFINAL_SOURCE),
+    ...losersFrom(level, SIXTEEN_TEAM_SEMIFINAL_SOURCE),
+  ])]
+}
+
+function semifinalPairingReady(level) {
+  return usesSixteenTeamPools(level)
+    && SIXTEEN_TEAM_SEMIFINAL_SOURCE.every(code => resolveMatch(level, code).winnerId && resolveMatch(level, code).loserId)
+}
+
+function semifinalPairingEditable(level) {
+  return semifinalPairingReady(level) && ['M22', 'M23'].every(code => {
+    const match = matchByCode(level, code)
+    return match
+      && match.clock_status === 'not_started'
+      && match.score_a === null && match.score_b === null
+      && !match.winner_team_id && !match.loser_team_id
+      && !S.matchEvents.some(event => event.level === level && event.match_code === code)
+      && !S.checkins.some(checkin => checkin.level === level && checkin.match_code === code)
+  })
+}
 
 // ทีมที่ถูกเลือกไปแล้วในนัดอื่นๆ ของรอบสระเดียวกัน (กันแอดมินเลือกทีมซ้ำเข้าสองคู่)
 function poolRoundUsedIds(level, poolKey, exceptCode, exceptSide) {
@@ -4218,6 +4246,9 @@ function adminTeams() {
     ${seeded ? `<button data-act="openLiveDraw" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:${usesSixteenTeamPools(level) ? '6px' : '10px'};padding:10px;border-radius:9px;border:none;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer">🎬 จับสลากสด รอบแรก (สำหรับไลฟ์)</button>` : ''}
     ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R3') ? poolActionButtons(level, 'R3', 'รอบ 12 ทีม') : ''}
     ${seeded && usesSixteenTeamPools(level) && poolRoundReady(level, 'R4') ? poolActionButtons(level, 'R4', 'รอบ 6 ทีม') : ''}
+    ${seeded && semifinalPairingEditable(level) ? `
+      <button data-act="openSemifinalAssign" data-level="${level}" style="flex-shrink:0;width:100%;margin-bottom:6px;padding:10px;border-radius:9px;border:1px solid ${T[level].base};background:${T[level].soft};color:${T[level].accent};font-weight:800;font-size:12px;cursor:pointer">✍️ เลือกคู่รอบรองฯ M22–M23 ใหม่</button>
+    ` : ''}
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;overflow-y:auto">
       ${rows.length ? rows.map(t => teamAdminRow(t)).join('') : `<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีทีมในระดับนี้</div>`}
     </div>
@@ -4780,13 +4811,18 @@ function matchEditorModal() {
 // จับคู่รอบสระ (12/6 ทีม) ด้วยตนเองทีละคู่ในหน้าเดียว — ใช้หลังจับฉลากสดนอกระบบ (กล่อง/ถุงจริง) แล้วมาพิมพ์ผลใส่ทีเดียว
 function manualPoolAssignModal() {
   const { level, pool } = S.manualPoolAssign
-  const codes = BRACKET[level].filter(b => b.pool === pool).map(b => b.code)
-  const roundLabel = (BRACKET[level].find(b => b.pool === pool) || {}).round || ''
+  const isSemifinal = pool === 'SF'
+  const codes = isSemifinal ? ['M22', 'M23'] : BRACKET[level].filter(b => b.pool === pool).map(b => b.code)
+  const roundLabel = isSemifinal ? 'รองฯ' : (BRACKET[level].find(b => b.pool === pool) || {}).round || ''
+  const semifinalPool = isSemifinal ? semifinalEligibleIds(level) : []
   return simpleModal(`กรอกเอง (Manual) · ${esc(roundLabel)} · ${T[level].label}`, `
     <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="font-size:11.5px;color:#6b7280">เลือกทีมของแต่ละคู่เอง เช่น หลังจับฉลากสดนอกระบบแล้วมาบันทึกผล ห้ามเลือกทีมซ้ำกันข้ามคู่</div>
+      <div style="font-size:11.5px;color:#6b7280">${isSemifinal ? 'เลือกผู้ชนะ M19–M21 ให้ครบทั้ง 3 ทีม และเลือกผู้แพ้กลับเข้ารอบอีก 1 ทีม จากนั้นประกบเป็น M22–M23 ห้ามเลือกทีมซ้ำ' : 'เลือกทีมของแต่ละคู่เอง เช่น หลังจับฉลากสดนอกระบบแล้วมาบันทึกผล ห้ามเลือกทีมซ้ำกันข้ามคู่'}</div>
       ${codes.map(code => {
-        const slots = pickableSlots(level, code)
+        const match = matchByCode(level, code)
+        const slots = isSemifinal
+          ? { a: { pool: semifinalPool, value: match?.team_a_id || '' }, b: { pool: semifinalPool, value: match?.team_b_id || '' } }
+          : pickableSlots(level, code)
         const opts = slot => `<option value="">- เลือกทีม -</option>${slot.pool.map(id => `<option value="${id}" ${String(slot.value) === String(id) ? 'selected' : ''}>${esc(teamName(id))}</option>`).join('')}`
         return `
         <div style="border:1px solid #e5e7eb;border-radius:12px;padding:10px">
@@ -5047,8 +5083,9 @@ async function handleAutoSeedPool(level, poolKey) {
 
 async function handleSaveManualPoolAssign() {
   const { level, pool } = S.manualPoolAssign
-  const codes = BRACKET[level].filter(b => b.pool === pool).map(b => b.code)
-  const roundLabel = (BRACKET[level].find(b => b.pool === pool) || {}).round || ''
+  const isSemifinal = pool === 'SF'
+  const codes = isSemifinal ? ['M22', 'M23'] : BRACKET[level].filter(b => b.pool === pool).map(b => b.code)
+  const roundLabel = isSemifinal ? 'รองฯ' : (BRACKET[level].find(b => b.pool === pool) || {}).round || ''
   const rows = []
   const seen = new Set()
   for (const code of codes) {
@@ -5058,6 +5095,18 @@ async function handleSaveManualPoolAssign() {
     if (aId === bId || seen.has(aId) || seen.has(bId)) { azToast('มีทีมถูกเลือกซ้ำกันมากกว่า 1 คู่ กรุณาตรวจสอบ'); return }
     seen.add(aId); seen.add(bId)
     rows.push({ level, match_code: code, round: roundLabel, team_a_id: aId, team_b_id: bId })
+  }
+  if (isSemifinal) {
+    if (!semifinalPairingEditable(level)) {
+      azToast('เปลี่ยนคู่ไม่ได้ เพราะ M22 หรือ M23 เริ่มแข่งขันหรือมีข้อมูลรายงานตัวแล้ว')
+      return
+    }
+    const winners = winnersFrom(level, SIXTEEN_TEAM_SEMIFINAL_SOURCE)
+    const losers = losersFrom(level, SIXTEEN_TEAM_SEMIFINAL_SOURCE)
+    if (!winners.every(id => seen.has(id)) || [...seen].filter(id => losers.includes(id)).length !== 1) {
+      azToast('ต้องเลือกผู้ชนะ M19–M21 ครบ 3 ทีม และผู้แพ้กลับเข้ารอบอีก 1 ทีม')
+      return
+    }
   }
   const { error } = await SB.from('azfutsal_matches').upsert(rows, { onConflict: 'level,match_code' })
   if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
@@ -5719,6 +5768,7 @@ function bindEvents() {
       draw(); return
     }
     if (act === 'openManualPoolAssign') { S.manualPoolAssign = { level: btn.dataset.level, pool: btn.dataset.pool }; draw(); return }
+    if (act === 'openSemifinalAssign') { S.manualPoolAssign = { level: btn.dataset.level, pool: 'SF' }; draw(); return }
     if (act === 'saveManualPoolAssign') { await handleSaveManualPoolAssign(); return }
     if (act === 'setLiveDrawMode') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.testMode = btn.dataset.v === '1'; draw() } return }
     if (act === 'setLiveDrawOrder') { if (S.liveDraw && !S.liveDraw.started) { S.liveDraw.orderStrategy = btn.dataset.v; draw() } return }
