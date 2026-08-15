@@ -35,7 +35,7 @@ export async function getCouncilPositions() {
 // ─── รายชื่อสภาปัจจุบัน (public roster) ───────────────────────────────────────
 export async function getCouncilMembers(academicYear) {
   let q = supabase.from('council_members')
-    .select('id, position_id, student_id, academic_year, status, source, council_positions(gender, position_name, sort_order), students(full_name, student_code, main_room, image_url, photo_url)')
+    .select('id, position_id, student_id, academic_year, status, source, council_positions(gender, position_name, sort_order, is_elected), students(full_name, student_code, main_room, image_url, photo_url)')
     .eq('status', 'active')
   if (academicYear) q = q.eq('academic_year', academicYear)
   const { data, error } = await q
@@ -109,4 +109,143 @@ export async function declineApplicationEndorsement({ applicationId, teacherId, 
     .update({ endorsing_teacher_id: teacherId, endorsement_comment: comment, endorsed_at: new Date().toISOString(), status: 'rejected' })
     .eq('id', applicationId)
   if (error) throw error
+}
+
+// ─── จัดการใบสมัคร (แอดมิน) — รับรองแล้วเท่านั้น: นัดสัมภาษณ์ → ให้คะแนน → ตั้งผู้สมัคร ──
+export async function getCouncilApplicationsForAdmin(academicYear) {
+  let q = supabase.from('council_applications')
+    .select(`id, position_id, status, motivation, photo_url, academic_year, created_at,
+      endorsing_teacher_id, endorsement_comment, endorsed_at,
+      council_positions(id, position_name, gender, is_elected),
+      students(id, full_name, student_code, main_room, image_url, photo_url),
+      council_interviews(id, scheduled_at, location, interviewer_teacher_id, result, score, comment),
+      council_candidates(id, election_config_id, ballot_number)`)
+    .not('endorsed_at', 'is', null)
+    .order('created_at', { ascending: false })
+  if (academicYear) q = q.eq('academic_year', academicYear)
+  const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+
+export async function scheduleCouncilInterview({ applicationId, existingInterviewId, scheduledAt, location, interviewerTeacherId }) {
+  const payload = { application_id: applicationId, scheduled_at: scheduledAt, location, interviewer_teacher_id: interviewerTeacherId }
+  if (existingInterviewId) {
+    const { error } = await supabase.from('council_interviews').update(payload).eq('id', existingInterviewId)
+    if (error) throw error
+  } else {
+    const { error } = await supabase.from('council_interviews').insert(payload)
+    if (error) throw error
+  }
+  const { error: e2 } = await supabase.from('council_applications').update({ status: 'interview_scheduled' }).eq('id', applicationId)
+  if (e2) throw e2
+}
+
+export async function saveCouncilInterviewScore({ interviewId, applicationId, score, result, comment }) {
+  const { error } = await supabase.from('council_interviews')
+    .update({ score, result, comment }).eq('id', interviewId)
+  if (error) throw error
+  const nextStatus = result === 'pass' ? 'interviewed' : 'rejected'
+  const { error: e2 } = await supabase.from('council_applications').update({ status: nextStatus }).eq('id', applicationId)
+  if (e2) throw e2
+}
+
+// ─── ตั้งเป็นผู้สมัครเลือกตั้ง (ประธานสภา) — เฉพาะตำแหน่งที่ is_elected=true และผ่านสัมภาษณ์ ──
+export async function promoteToCandidate({ applicationId, studentId, electionConfigId, campaignStatement, photoUrl }) {
+  const { data: existing, error: e0 } = await supabase.from('council_candidates')
+    .select('ballot_number').eq('election_config_id', electionConfigId).order('ballot_number', { ascending: false }).limit(1)
+  if (e0) throw e0
+  const nextBallot = (existing?.[0]?.ballot_number ?? 0) + 1
+  const { error } = await supabase.from('council_candidates').insert({
+    election_config_id: electionConfigId, application_id: applicationId, student_id: studentId,
+    ballot_number: nextBallot, campaign_statement: campaignStatement, photo_url: photoUrl,
+  })
+  if (error) throw error
+  const { error: e2 } = await supabase.from('council_applications').update({ status: 'candidate' }).eq('id', applicationId)
+  if (e2) throw e2
+}
+
+// ─── แต่งตั้งตรง (ตำแหน่งที่ไม่ได้มาจากการเลือกตั้ง — ผ่านสัมภาษณ์แล้วแต่งตั้งได้เลย) ────
+export async function appointMember({ applicationId, positionId, studentId, academicYear }) {
+  const { error } = await supabase.from('council_members').insert({
+    position_id: positionId, student_id: studentId, academic_year: academicYear,
+    source: 'appointed', status: 'active', term_start_date: new Date().toISOString().slice(0, 10),
+  })
+  if (error) throw error
+  const { error: e2 } = await supabase.from('council_applications').update({ status: 'appointed' }).eq('id', applicationId)
+  if (e2) throw e2
+}
+
+// ─── ตั้งค่าห้วงเวลาเลือกตั้ง (แอดมิน) ─────────────────────────────────────────
+export async function ensureElectionConfig({ gender, academicYear }) {
+  const { data: existing, error: e0 } = await supabase.from('council_election_config')
+    .select('*').eq('gender', gender).eq('academic_year', academicYear).maybeSingle()
+  if (e0) throw e0
+  if (existing) return existing
+  const { data, error } = await supabase.from('council_election_config')
+    .insert({ gender, academic_year: academicYear }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateElectionWindow({ electionConfigId, opensAt, closesAt }) {
+  const { error } = await supabase.from('council_election_config')
+    .update({ opens_at: opensAt, closes_at: closesAt }).eq('id', electionConfigId)
+  if (error) throw error
+}
+
+// ─── ผู้สมัครเลือกตั้ง (public) ────────────────────────────────────────────────
+export async function getCandidatesForElection(electionConfigId) {
+  const { data, error } = await supabase.from('council_candidates')
+    .select('id, ballot_number, campaign_statement, photo_url, student_id, students(full_name, student_code, main_room, image_url, photo_url)')
+    .eq('election_config_id', electionConfigId).order('ballot_number')
+  if (error) throw error
+  return data ?? []
+}
+
+// ─── โหวต — นักเรียนโหวตได้คนละ 1 เสียงต่อการเลือกตั้ง 1 ครั้ง (unique constraint คุมซ้ำ) ──
+export async function getMyVote(electionConfigId, studentId) {
+  const { data, error } = await supabase.from('council_votes')
+    .select('candidate_id').eq('election_config_id', electionConfigId).eq('voter_student_id', studentId).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function castVote({ electionConfigId, candidateId, voterStudentId }) {
+  const { error } = await supabase.from('council_votes')
+    .insert({ election_config_id: electionConfigId, candidate_id: candidateId, voter_student_id: voterStudentId })
+  if (error) throw error
+}
+
+// ─── นับคะแนน+ประกาศผล (แอดมิน) ────────────────────────────────────────────────
+export async function getVoteTally(electionConfigId) {
+  const { data, error } = await supabase.from('council_votes').select('candidate_id').eq('election_config_id', electionConfigId)
+  if (error) throw error
+  const counts = {}
+  ;(data ?? []).forEach(v => { counts[v.candidate_id] = (counts[v.candidate_id] ?? 0) + 1 })
+  return counts
+}
+
+// เลือกผู้ชนะ (คะแนนสูงสุด) → ประกาศผล → แต่งตั้งเข้าตำแหน่งประธานสภา (council_members) อัตโนมัติ
+export async function publishElectionResults({ electionConfigId, gender, academicYear }) {
+  const candidates = await getCandidatesForElection(electionConfigId)
+  if (!candidates.length) throw new Error('ยังไม่มีผู้สมัครในการเลือกตั้งนี้')
+  const tally = await getVoteTally(electionConfigId)
+  const winner = candidates.reduce((best, c) => (tally[c.id] ?? 0) > (tally[best?.id] ?? -1) ? c : best, null)
+  if (!winner) throw new Error('ยังไม่มีผู้ลงคะแนนเลย')
+
+  const positions = await getCouncilPositions()
+  const electedPosition = positions.find(p => p.gender === gender && p.is_elected)
+  if (!electedPosition) throw new Error('ไม่พบตำแหน่งที่กำหนดให้มาจากการเลือกตั้งของสภา' + (gender === 'M' ? 'ชาย' : 'หญิง'))
+
+  const { error } = await supabase.from('council_election_config')
+    .update({ results_published_at: new Date().toISOString() }).eq('id', electionConfigId)
+  if (error) throw error
+
+  const { error: e2 } = await supabase.from('council_members').insert({
+    position_id: electedPosition.id, student_id: winner.student_id, academic_year: academicYear,
+    source: 'elected', status: 'active', term_start_date: new Date().toISOString().slice(0, 10),
+  })
+  if (e2) throw e2
+  return winner
 }

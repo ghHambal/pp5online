@@ -9,6 +9,9 @@ import {
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
   submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
   confirmApplicationEndorsement, declineApplicationEndorsement,
+  getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
+  promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
+  getCandidatesForElection, getMyVote, castVote, getVoteTally, publishElectionResults,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -46,6 +49,13 @@ let applyPhotoFile = null
 // ของตัวเอง แยกกันชัดเจนจากการเนวิเกตหลัก (ตัดสินใจแล้ว 2026-08-14)
 let fullscreenFlow = null // null | 'apply' | 'election'
 let flowSubtab = null
+
+// สถานะที่โหลดแบบ lazy ตอนเปิดหน้าจอนั้นๆ ครั้งแรก (ไม่ต้องโหลดทุกอย่างตั้งแต่ init)
+let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
+const candidatesByGender = {} // { M: [...], W: [...] }
+const myVoteByElectionId = {} // { [electionConfigId]: candidateId | null }
+const tallyByElectionId = {} // { [electionConfigId]: { [candidateId]: count } } — แอดมินเท่านั้น
+let electionYear = null // ปีการศึกษาปัจจุบันที่ resolve แล้ว (จาก ctx.cfg.academicYear)
 
 const FLOW_DEFS = {
   apply: {
@@ -128,6 +138,7 @@ async function init() {
     role, isAdmin, student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
+  electionYear = Number(cfg.academicYear) || (new Date().getFullYear() + 543)
   if (role === 'teacher' && pendingEndorsements.length) activeView = 'endorse'
   render()
 }
@@ -173,6 +184,8 @@ function getNavItems() {
   if (ctx.role === 'teacher' && ctx.pendingEndorsements.length) {
     items.push({ id: 'endorse', icon: '✋', label: 'รอยืนยัน', badge: ctx.pendingEndorsements.length })
   }
+  if (ctx.isAdmin) items.push({ id: 'apps', icon: '📋', label: 'จัดการใบสมัคร' })
+  items.push({ id: 'candidates', icon: '🗳️', label: 'ผู้สมัครเลือกตั้ง' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภานักเรียน' })
   return items
 }
@@ -325,30 +338,227 @@ function renderMyApplicationsList() {
     </div>`
 }
 
-// ─── สถานะการเลือกตั้ง (public) ────────────────────────────────────────────────
+// ─── สถานะการเลือกตั้ง — โหวตจริง (นักเรียน) + ตั้งช่วงเวลา/ประกาศผล+แต่งตั้ง (แอดมิน) ──────
+function electionOf(gender) {
+  return ctx.elections.find(e => e.gender === gender && e.academic_year === electionYear) || null
+}
+
+async function loadCandidates(gender, electionConfigId) {
+  candidatesByGender[gender] = await getCandidatesForElection(electionConfigId).catch(() => [])
+  render()
+}
+
+async function loadMyVote(electionConfigId) {
+  const v = await getMyVote(electionConfigId, ctx.student.id).catch(() => null)
+  myVoteByElectionId[electionConfigId] = v?.candidate_id ?? null
+  render()
+}
+
 function renderElectionView() {
-  const elections = ctx.elections
-  if (!elections.length) return `<p class="text-sm text-gray-400 text-center py-16">ยังไม่มีข้อมูลการเลือกตั้ง</p>`
-  const now = new Date()
-  const statusOf = e => {
-    if (e.results_published_at) return { label: '✅ ประกาศผลแล้ว', cls: 'bg-emerald-100 text-emerald-700' }
-    if (e.closes_at && new Date(e.closes_at) < now) return { label: '🔒 ปิดโหวตแล้ว รอประกาศผล', cls: 'bg-amber-100 text-amber-700' }
-    if (e.opens_at && new Date(e.opens_at) <= now && (!e.closes_at || new Date(e.closes_at) > now)) return { label: '🗳️ กำลังเปิดโหวต', cls: 'bg-violet-100 text-violet-700' }
-    return { label: '⏳ ยังไม่เปิดโหวต', cls: 'bg-gray-100 text-gray-500' }
+  return `<div class="space-y-4">${['M', 'W'].map(renderElectionBlock).join('')}</div>`
+}
+
+function renderElectionBlock(gender) {
+  const e = electionOf(gender)
+  const myGender = ctx.student ? normalizeGender(ctx.student.gender) : null
+  const isMine = ctx.role === 'student' && myGender === gender
+
+  if (!e) {
+    return `
+      <div class="bg-white rounded-2xl border border-gray-100 p-4">
+        <p class="text-sm font-bold text-gray-700 mb-1">🗳️ สภา${GENDER_LABEL[gender]}</p>
+        <p class="text-xs text-gray-400">ยังไม่เปิดการเลือกตั้ง</p>
+        ${ctx.isAdmin ? `<button type="button" class="btn-create-election mt-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold" data-gender="${gender}">เปิดใช้งานการเลือกตั้ง</button>` : ''}
+      </div>`
   }
+
+  const now = new Date()
+  const opens = e.opens_at ? new Date(e.opens_at) : null
+  const closes = e.closes_at ? new Date(e.closes_at) : null
+  const isOpen = !!(opens && opens <= now && (!closes || closes > now))
+  const isClosed = !!(closes && closes <= now)
+  const published = !!e.results_published_at
+
+  const status = published ? { label: '✅ ประกาศผลแล้ว', cls: 'bg-emerald-100 text-emerald-700' }
+    : isClosed ? { label: '🔒 ปิดโหวตแล้ว รอประกาศผล', cls: 'bg-amber-100 text-amber-700' }
+    : isOpen ? { label: '🗳️ กำลังเปิดโหวต', cls: 'bg-violet-100 text-violet-700' }
+    : { label: '⏳ ยังไม่เปิดโหวต', cls: 'bg-gray-100 text-gray-500' }
+
+  let body = ''
+  if (published) {
+    const winner = ctx.members.find(m => m.council_positions?.gender === gender && m.council_positions?.is_elected)
+    body = winner ? `
+      <div class="flex items-center gap-3 bg-emerald-50 rounded-xl p-3 mt-2">
+        ${studentPhoto(winner.students, 'w-12 h-16')}
+        <div class="min-w-0">
+          <p class="text-[11px] text-emerald-600 font-bold">ผู้ได้รับเลือกตั้ง</p>
+          <p class="text-sm font-bold text-gray-800 truncate">${esc(winner.students?.full_name ?? '—')}</p>
+        </div>
+      </div>` : `<p class="text-xs text-gray-400 mt-2">ประกาศผลแล้ว</p>`
+  } else if (isOpen && isMine) {
+    if (myVoteByElectionId[e.id] === undefined) {
+      loadMyVote(e.id)
+      body = `<p class="text-xs text-gray-400 mt-2">⏳ กำลังตรวจสอบสิทธิ์โหวต...</p>`
+    } else if (myVoteByElectionId[e.id]) {
+      body = `<p class="text-xs text-emerald-600 font-bold mt-2">✅ คุณโหวตแล้ว ขอบคุณที่ใช้สิทธิ์!</p>`
+    } else {
+      const list = candidatesByGender[gender]
+      if (list === undefined) {
+        loadCandidates(gender, e.id)
+        body = `<p class="text-xs text-gray-400 mt-2">⏳ กำลังโหลดผู้สมัคร...</p>`
+      } else if (!list.length) {
+        body = `<p class="text-xs text-gray-400 mt-2">ยังไม่มีผู้สมัครในการเลือกตั้งนี้</p>`
+      } else {
+        body = `
+          <div class="space-y-2 mt-2">
+            ${list.map(c => `
+              <button type="button" class="btn-cast-vote w-full flex items-center gap-3 rounded-xl border border-gray-100 hover:border-violet-300 p-3 bg-white text-left transition" data-election-id="${e.id}" data-candidate-id="${c.id}">
+                <div class="w-8 h-8 rounded-full bg-violet-100 text-violet-700 grid place-items-center font-bold text-sm flex-shrink-0">${c.ballot_number}</div>
+                ${studentPhoto(c.students)}
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-bold text-gray-800 truncate">${esc(c.students?.full_name ?? '—')}</p>
+                  <p class="text-xs text-gray-500">${esc(c.students?.main_room ?? '')}</p>
+                </div>
+              </button>`).join('')}
+          </div>`
+      }
+    }
+  } else if (isClosed && !published) {
+    body = `<p class="text-xs text-gray-400 mt-2">รอผู้ดูแลระบบประกาศผล</p>`
+  } else if (!isOpen && !isClosed) {
+    body = `<p class="text-xs text-gray-400 mt-2">${e.opens_at ? 'เปิดโหวต ' + new Date(e.opens_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</p>`
+  }
+
+  let adminCtrl = ''
+  if (ctx.isAdmin) {
+    adminCtrl = `
+      <div class="mt-3 pt-3 border-t border-gray-100 space-y-2">
+        <form class="election-window-form flex flex-wrap gap-2 items-end" data-election-id="${e.id}">
+          <label class="text-[11px] text-gray-400">เปิดโหวต<br><input type="datetime-local" name="opens_at" value="${e.opens_at ? e.opens_at.slice(0, 16) : ''}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs"/></label>
+          <label class="text-[11px] text-gray-400">ปิดโหวต<br><input type="datetime-local" name="closes_at" value="${e.closes_at ? e.closes_at.slice(0, 16) : ''}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs"/></label>
+          <button type="submit" class="px-3 py-1.5 rounded-lg border border-violet-200 text-violet-600 text-xs font-bold">บันทึกช่วงเวลา</button>
+        </form>
+        ${isClosed && !published ? `<button type="button" class="btn-publish-results px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold" data-election-id="${e.id}" data-gender="${gender}">📢 ประกาศผล+แต่งตั้ง</button>` : ''}
+      </div>`
+  }
+
   return `
     <div class="bg-white rounded-2xl border border-gray-100 p-4">
-      <p class="text-sm font-bold text-gray-700 mb-3">🗳️ การเลือกตั้งประธานสภานักเรียน</p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        ${elections.map(e => {
-          const st = statusOf(e)
-          return `<div class="rounded-xl border border-gray-100 p-3 flex items-center justify-between gap-2">
-            <span class="text-sm font-medium text-gray-600">สภา${esc(GENDER_LABEL[e.gender] ?? e.gender)}</span>
-            <span class="text-xs font-bold px-2.5 py-1 rounded-full ${st.cls}">${st.label}</span>
-          </div>`
-        }).join('')}
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-sm font-bold text-gray-700">🗳️ สภา${GENDER_LABEL[gender]}</p>
+        <span class="text-xs font-bold px-2.5 py-1 rounded-full ${status.cls}">${status.label}</span>
       </div>
+      ${body}
+      ${adminCtrl}
     </div>`
+}
+
+// ─── ผู้สมัครเลือกตั้ง (public browse) ──────────────────────────────────────────
+function renderCandidatesView() {
+  const block = gender => {
+    const e = electionOf(gender)
+    const head = `<p class="text-xs font-bold text-gray-400 mb-2">สภา${GENDER_LABEL[gender]}</p>`
+    if (!e) return `<div>${head}<p class="text-xs text-gray-300 text-center py-4">ยังไม่เปิดรับผู้สมัคร</p></div>`
+    const list = candidatesByGender[gender]
+    if (list === undefined) { loadCandidates(gender, e.id); return `<div>${head}<p class="text-xs text-gray-300 text-center py-4">⏳ กำลังโหลด...</p></div>` }
+    if (!list.length) return `<div>${head}<p class="text-xs text-gray-300 text-center py-4">ยังไม่มีผู้สมัคร</p></div>`
+    return `
+      <div>
+        ${head}
+        <div class="space-y-2">
+          ${list.map(c => `
+            <div class="flex items-center gap-3 rounded-xl border border-gray-100 p-3 bg-white">
+              <div class="w-8 h-8 rounded-full bg-violet-100 text-violet-700 grid place-items-center font-bold text-sm flex-shrink-0">${c.ballot_number}</div>
+              ${studentPhoto(c.students)}
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-bold text-gray-800 truncate">${esc(c.students?.full_name ?? '—')}</p>
+                <p class="text-xs text-gray-500">${esc(c.students?.main_room ?? '')}</p>
+                ${c.campaign_statement ? `<p class="text-xs text-gray-500 mt-1">${esc(c.campaign_statement)}</p>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`
+  }
+  return `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${block('M')}${block('W')}</div>`
+}
+
+// ─── จัดการใบสมัคร (แอดมิน) — รับรองแล้ว → นัดสัมภาษณ์ → ให้คะแนน → ตั้งผู้สมัคร/แต่งตั้ง ──
+const PIPELINE_STATUS_BADGE = {
+  pending: ['รอนัดสัมภาษณ์', 'bg-gray-100 text-gray-500'],
+  interview_scheduled: ['นัดสัมภาษณ์แล้ว รอให้คะแนน', 'bg-amber-100 text-amber-700'],
+  interviewed: ['ผ่านสัมภาษณ์', 'bg-emerald-100 text-emerald-700'],
+  candidate: ['ผู้สมัครเลือกตั้ง', 'bg-violet-100 text-violet-700'],
+  appointed: ['แต่งตั้งแล้ว', 'bg-blue-100 text-blue-700'],
+  rejected: ['ไม่ผ่าน', 'bg-red-100 text-red-600'],
+}
+
+async function loadAdminApps() {
+  adminApps = await getCouncilApplicationsForAdmin(electionYear).catch(() => [])
+  render()
+}
+
+function renderApplicationsAdminView() {
+  if (!ctx.isAdmin) return ''
+  if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-gray-400 text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (!adminApps.length) return `<p class="text-sm text-gray-400 text-center py-16">ยังไม่มีใบสมัครที่ครูที่ปรึกษารับรองแล้ว</p>`
+
+  const card = a => {
+    const iv = a.council_interviews?.[0]
+    const [label, cls] = PIPELINE_STATUS_BADGE[a.status] ?? ['—', 'bg-gray-100 text-gray-500']
+    const isElected = !!a.council_positions?.is_elected
+    return `
+    <div class="rounded-xl border border-gray-100 p-3 space-y-2.5 bg-white" data-app-card="${a.id}">
+      <div class="flex items-center gap-3">
+        ${studentPhoto(a.students)}
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-gray-800 truncate">${esc(a.students?.full_name ?? '—')}</p>
+          <p class="text-xs text-gray-500">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · ${esc(a.council_positions?.position_name ?? '—')} (สภา${esc(GENDER_LABEL[a.council_positions?.gender] ?? '')})</p>
+        </div>
+        <span class="flex-shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full ${cls}">${label}</span>
+      </div>
+      ${a.motivation ? `<p class="text-xs text-gray-600 bg-gray-50 rounded-lg p-2.5">${esc(a.motivation)}</p>` : ''}
+      ${a.endorsement_comment ? `<p class="text-[11px] text-emerald-600">✅ ครูที่ปรึกษา: ${esc(a.endorsement_comment)}</p>` : ''}
+
+      ${a.status === 'pending' ? `
+        <form class="schedule-form space-y-2 pt-1 border-t border-gray-100" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}">
+          <p class="text-xs font-semibold text-gray-500">นัดสัมภาษณ์</p>
+          <div class="grid grid-cols-2 gap-2">
+            <input type="datetime-local" name="scheduled_at" required class="border border-gray-200 rounded-lg px-2.5 py-2 text-xs" />
+            <input type="text" name="location" placeholder="สถานที่" class="border border-gray-200 rounded-lg px-2.5 py-2 text-xs" />
+          </div>
+          <button type="submit" class="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold">บันทึกนัดสัมภาษณ์</button>
+        </form>` : ''}
+
+      ${a.status === 'interview_scheduled' ? `
+        <div class="pt-1 border-t border-gray-100 space-y-2">
+          <p class="text-xs text-gray-500">📅 ${iv?.scheduled_at ? new Date(iv.scheduled_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'} ${iv?.location ? '· ' + esc(iv.location) : ''}</p>
+          <form class="score-form space-y-2" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}">
+            <p class="text-xs font-semibold text-gray-500">บันทึกผลสัมภาษณ์</p>
+            <div class="grid grid-cols-2 gap-2">
+              <input type="number" name="score" min="0" max="100" placeholder="คะแนน (0-100)" class="border border-gray-200 rounded-lg px-2.5 py-2 text-xs" />
+              <select name="result" required class="border border-gray-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                <option value="">— ผลสัมภาษณ์ —</option>
+                <option value="pass">ผ่าน</option>
+                <option value="fail">ไม่ผ่าน</option>
+              </select>
+            </div>
+            <textarea name="comment" rows="2" placeholder="ความเห็นกรรมการ" class="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-xs resize-none"></textarea>
+            <button type="submit" class="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold">บันทึกผล</button>
+          </form>
+        </div>` : ''}
+
+      ${a.status === 'interviewed' ? `
+        <div class="pt-1 border-t border-gray-100">
+          ${isElected
+            ? `<button type="button" class="btn-promote-candidate w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold" data-app-id="${a.id}">🗳️ ตั้งเป็นผู้สมัครเลือกตั้ง</button>`
+            : `<button type="button" class="btn-appoint-member w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold" data-app-id="${a.id}">✅ แต่งตั้งเข้าตำแหน่ง</button>`}
+        </div>` : ''}
+
+      ${a.status === 'candidate' ? `<p class="text-xs text-violet-600 pt-1 border-t border-gray-100">เบอร์ผู้สมัคร ${a.council_candidates?.[0]?.ballot_number ?? '—'} · รอผลเลือกตั้ง</p>` : ''}
+      ${a.status === 'rejected' && iv?.comment ? `<p class="text-xs text-red-500 pt-1 border-t border-gray-100">${esc(iv.comment)}</p>` : ''}
+    </div>`
+  }
+  return `<div class="space-y-3">${adminApps.map(card).join('')}</div>`
 }
 
 // ─── รายชื่อสภานักเรียนปัจจุบัน (public, จัดกลุ่มตามเพศ→ตำแหน่ง) ──────────────────
@@ -435,6 +645,8 @@ async function handleEndorsement(applicationId, action) {
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   endorse: renderEndorseView,
+  apps: renderApplicationsAdminView,
+  candidates: renderCandidatesView,
   roster: renderRosterView,
 }
 
@@ -553,6 +765,174 @@ function wireContentEvents() {
   })
   document.querySelectorAll('.btn-endorse-decline').forEach(btn => {
     btn.addEventListener('click', () => handleEndorsement(btn.dataset.id, 'decline'))
+  })
+
+  wireApplicationsAdminEvents()
+  wireElectionEvents()
+}
+
+// ─── จัดการใบสมัคร (แอดมิน) — นัดสัมภาษณ์ / ให้คะแนน / ตั้งผู้สมัคร / แต่งตั้ง ───────────
+function wireApplicationsAdminEvents() {
+  document.querySelectorAll('.schedule-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const appId = Number(form.dataset.appId)
+      const ivId = form.dataset.ivId ? Number(form.dataset.ivId) : null
+      const scheduledAt = form.scheduled_at.value
+      const location = form.location.value.trim()
+      if (!scheduledAt) { showToast('กรุณาระบุวันเวลานัดสัมภาษณ์', 'warning'); return }
+      const btn = form.querySelector('button[type="submit"]')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await scheduleCouncilInterview({ applicationId: appId, existingInterviewId: ivId, scheduledAt: new Date(scheduledAt).toISOString(), location, interviewerTeacherId: null })
+        showToast('นัดสัมภาษณ์แล้ว ✅', 'success')
+        adminApps = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกนัดสัมภาษณ์'
+      }
+    })
+  })
+
+  document.querySelectorAll('.score-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const appId = Number(form.dataset.appId)
+      const ivId = form.dataset.ivId ? Number(form.dataset.ivId) : null
+      if (!ivId) { showToast('ไม่พบข้อมูลการนัดสัมภาษณ์', 'error'); return }
+      const result = form.result.value
+      if (!result) { showToast('กรุณาเลือกผลสัมภาษณ์', 'warning'); return }
+      const score = form.score.value ? Number(form.score.value) : null
+      const comment = form.comment.value.trim()
+      const btn = form.querySelector('button[type="submit"]')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await saveCouncilInterviewScore({ interviewId: ivId, applicationId: appId, score, result, comment })
+        showToast('บันทึกผลสัมภาษณ์แล้ว ✅', 'success')
+        adminApps = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกผล'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-promote-candidate').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const appId = Number(btn.dataset.appId)
+      const app = adminApps?.find(a => a.id === appId)
+      if (!app) return
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        const econf = await ensureElectionConfig({ gender: app.council_positions.gender, academicYear: electionYear })
+        await promoteToCandidate({
+          applicationId: appId, studentId: app.students.id, electionConfigId: econf.id,
+          campaignStatement: app.motivation, photoUrl: app.photo_url,
+        })
+        showToast('ตั้งเป็นผู้สมัครเลือกตั้งแล้ว 🗳️', 'success')
+        delete candidatesByGender[app.council_positions.gender]
+        ctx.elections = await getCouncilElectionConfigs().catch(() => ctx.elections)
+        adminApps = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = '🗳️ ตั้งเป็นผู้สมัครเลือกตั้ง'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-appoint-member').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const appId = Number(btn.dataset.appId)
+      const app = adminApps?.find(a => a.id === appId)
+      if (!app) return
+      if (!confirm(`ยืนยันแต่งตั้ง ${app.students?.full_name ?? ''} เป็น ${app.council_positions?.position_name ?? ''}?`)) return
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await appointMember({ applicationId: appId, positionId: app.position_id, studentId: app.students.id, academicYear: electionYear })
+        showToast('แต่งตั้งสำเร็จ ✅', 'success')
+        adminApps = null
+        ctx.members = await getCouncilMembers().catch(() => ctx.members)
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = '✅ แต่งตั้งเข้าตำแหน่ง'
+      }
+    })
+  })
+}
+
+// ─── การเลือกตั้ง — เปิดใช้งาน / ตั้งช่วงเวลา / โหวต / ประกาศผล ──────────────────────────
+function wireElectionEvents() {
+  document.querySelectorAll('.btn-create-election').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      try {
+        const e = await ensureElectionConfig({ gender: btn.dataset.gender, academicYear: electionYear })
+        ctx.elections = [...ctx.elections.filter(x => x.id !== e.id), e]
+        render()
+      } catch (err) {
+        showToast('เปิดใช้งานไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.election-window-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const id = Number(form.dataset.electionId)
+      const opensAt = form.opens_at.value ? new Date(form.opens_at.value).toISOString() : null
+      const closesAt = form.closes_at.value ? new Date(form.closes_at.value).toISOString() : null
+      const btn = form.querySelector('button[type="submit"]')
+      btn.disabled = true
+      try {
+        await updateElectionWindow({ electionConfigId: id, opensAt, closesAt })
+        ctx.elections = await getCouncilElectionConfigs().catch(() => ctx.elections)
+        showToast('บันทึกช่วงเวลาแล้ว', 'success')
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-publish-results').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ยืนยันประกาศผลและแต่งตั้งผู้ชนะเป็นประธานสภา? การกระทำนี้ย้อนกลับไม่ได้')) return
+      btn.disabled = true; btn.textContent = 'กำลังประกาศผล...'
+      try {
+        await publishElectionResults({ electionConfigId: Number(btn.dataset.electionId), gender: btn.dataset.gender, academicYear: electionYear })
+        showToast('ประกาศผลแล้ว 🎉', 'success')
+        ctx.elections = await getCouncilElectionConfigs().catch(() => ctx.elections)
+        ctx.members = await getCouncilMembers().catch(() => ctx.members)
+        render()
+      } catch (err) {
+        showToast('ประกาศผลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = '📢 ประกาศผล+แต่งตั้ง'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-cast-vote').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ยืนยันการโหวต? เปลี่ยนแปลงภายหลังไม่ได้')) return
+      const electionId = Number(btn.dataset.electionId)
+      const candidateId = Number(btn.dataset.candidateId)
+      btn.disabled = true
+      try {
+        await castVote({ electionConfigId: electionId, candidateId, voterStudentId: ctx.student.id })
+        myVoteByElectionId[electionId] = candidateId
+        showToast('โหวตสำเร็จ ขอบคุณที่ใช้สิทธิ์! 🗳️', 'success')
+        render()
+      } catch (err) {
+        showToast('โหวตไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
   })
 }
 
