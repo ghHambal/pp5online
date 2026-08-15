@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.425'
+import { APP_VERSION } from './version.js?v=10.22.426'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.426': [
+    '🎨 ระบบสภานักเรียน: แทนที่สีทั่วไป (เขียว/ทอง/แดงมาตรฐาน Tailwind) และมุมโค้งด้วยค่าจริงจากไฟล์ต้นแบบทุกจุด (สถานะ/ป้าย/การ์ด) ให้ตรงมากที่สุด'
+  ],
   '10.22.425': [
     '🎨 ระบบสภานักเรียน: ปรับโทนสีเทา/พื้นหลัง/หน้าโหวตให้ตรงกับต้นแบบดีไซน์ต่อเนื่อง (รวมหน้าลงคะแนนที่จุดเลือกตั้ง) ให้ตรงกับไฟล์ต้นแบบมากขึ้น'
   ],

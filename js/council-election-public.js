@@ -26,7 +26,7 @@ function renderLanding() {
       <label class="block text-xs font-bold text-[#6e5f65] uppercase tracking-wider mb-2">กรอกรหัสนักเรียนของคุณ</label>
       <input id="student-code-input" inputmode="numeric" placeholder="เช่น 608001"
         class="w-full border border-[#e8dcdd] rounded-xl px-4 py-3 text-lg font-bold text-center tracking-widest focus:outline-none focus:border-[#edf4f0]0" />
-      <p id="student-code-error" class="hidden text-xs text-red-500 mt-2 text-center"></p>
+      <p id="student-code-error" class="hidden text-xs text-[#a63a2c] mt-2 text-center"></p>
       <div id="student-confirm-card" class="hidden mt-4"></div>
     </div>
     <p class="text-xs text-white/70 text-center mt-4">📢 หน้านี้ใช้ที่จุดลงคะแนนที่โรงเรียนจัดไว้เท่านั้น กรอกรหัสตัวเองแล้วดูรูปให้ตรงก่อนกดเข้าโหวต</p>
@@ -120,8 +120,8 @@ function renderVotePage(bundle, code) {
       <button data-candidate="${c.id}" class="w-full flex items-center gap-3 rounded-xl border p-3 text-left transition ${selected === c.id ? 'border-[#edf4f0]0 bg-[#edf4f0]' : 'border-[#f1e9e9] hover:border-[#b9d6c7]'}">
         <div class="w-8 h-8 rounded-full bg-[#cfe3d8] text-[#0d3a28] grid place-items-center font-bold text-sm flex-shrink-0">${c.ballot_number}</div>
         ${c.image_url
-          ? `<img src="${esc(c.image_url)}" class="w-10 h-12 object-cover rounded-lg border flex-shrink-0">`
-          : `<div class="w-10 h-12 rounded-lg bg-[#edf4f0] text-[#edf4f0]0 grid place-items-center font-bold flex-shrink-0 border">${esc((c.full_name || '?').charAt(0))}</div>`}
+          ? `<img src="${esc(c.image_url)}" class="w-10 h-12 object-cover rounded-[10px] border flex-shrink-0">`
+          : `<div class="w-10 h-12 rounded-[10px] bg-[#edf4f0] text-[#edf4f0]0 grid place-items-center font-bold flex-shrink-0 border">${esc((c.full_name || '?').charAt(0))}</div>`}
         <div class="min-w-0 flex-1">
           <p class="text-sm font-bold text-[#1d1519] truncate">${esc(c.full_name)}</p>
           <p class="text-xs text-[#6e5f65]">${esc(c.main_room || '')}</p>
