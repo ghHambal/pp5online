@@ -74,6 +74,17 @@ export async function recordTerangganuPayment(studentId, installmentType, paymen
   return unwrap(data)
 }
 
+export async function recordTerangganuPaymentsBulk(studentIds, installmentType, paymentMethod, note = '') {
+  const { data, error } = await supabase.rpc('record_terangganu_payments_bulk', {
+    p_student_ids: [...new Set(studentIds.map(Number).filter(Number.isFinite))],
+    p_installment_type: installmentType,
+    p_payment_method: paymentMethod,
+    p_note: note || null,
+  })
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function voidTerangganuPayment(paymentId, reason) {
   const { error } = await supabase.rpc('void_terangganu_payment', {
     p_payment_id: paymentId,
