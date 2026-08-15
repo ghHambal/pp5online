@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#7c3aed" />
+  <meta name="theme-color" content="#14563b" />
   <title>ระบบสภานักเรียน</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/css/main.css?v=202606082700" />
 </head>
 
-<body class="bg-gray-50 flex h-screen overflow-hidden">
+<body class="bg-[#f8f4f4] flex h-screen overflow-hidden">
 
   <!-- ─── Sidebar (จอกว้าง md ขึ้นไป) ─────────────────────────────────────────── -->
   <aside id="council-sidebar" class="hidden md:flex md:flex-col w-64 bg-[#0a2d1f] text-white flex-shrink-0 h-screen">
@@ -40,18 +40,18 @@
   <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
 
     <!-- Top header (มือถือ: โลโก้+ชื่อ+ย้อนกลับ / เดสก์ท็อป: แค่รีเฟรช เพราะไซด์บาร์มีครบแล้ว) -->
-    <header class="bg-white border-b border-gray-100 shadow-sm flex-shrink-0 z-30">
+    <header class="bg-white border-b border-[#f1e9e9] shadow-sm flex-shrink-0 z-30">
       <div class="px-4 md:px-6 h-14 flex items-center justify-between">
         <div class="flex items-center gap-2 min-w-0 md:hidden">
           <a id="council-back-btn-mobile" href="index.html" title="กลับไป ปพ.5 ออนไลน์"
-            class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-[#edf4f0] hover:text-[#14563b] transition text-lg">
+            class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-[#90828a] hover:bg-[#edf4f0] hover:text-[#14563b] transition text-lg">
             ←
           </a>
-          <p id="council-title-mobile" class="text-sm font-bold text-gray-700 truncate">ระบบสภานักเรียน</p>
+          <p id="council-title-mobile" class="text-sm font-bold text-[#4a3b41] truncate">ระบบสภานักเรียน</p>
         </div>
-        <p id="council-view-title" class="hidden md:block text-lg font-bold text-gray-800">ภาพรวม</p>
+        <p id="council-view-title" class="hidden md:block text-lg font-bold text-[#1d1519]">ภาพรวม</p>
         <button onclick="window.location.reload()" title="รีเฟรชหน้านี้"
-          class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-[#edf4f0] hover:text-[#14563b] transition text-base">
+          class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-[#90828a] hover:bg-[#edf4f0] hover:text-[#14563b] transition text-base">
           ↺
         </button>
       </div>
@@ -59,7 +59,7 @@
 
     <!-- Page Content -->
     <main id="council-content" class="flex-1 overflow-y-auto pb-20 md:pb-0">
-      <div class="flex justify-center py-16 text-gray-400">
+      <div class="flex justify-center py-16 text-[#90828a]">
         <svg class="animate-spin h-6 w-6 text-[#6ba888]" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
@@ -68,7 +68,7 @@
     </main>
 
     <!-- Bottom tab bar (มือถือเท่านั้น) -->
-    <nav id="council-bottom-tabs" class="md:hidden bg-white border-t border-gray-100 shadow-[0_-1px_4px_rgba(0,0,0,0.06)] flex-shrink-0 fixed bottom-0 inset-x-0 z-30 safe-area-bottom"></nav>
+    <nav id="council-bottom-tabs" class="md:hidden bg-white border-t border-[#f1e9e9] shadow-[0_-1px_4px_rgba(0,0,0,0.06)] flex-shrink-0 fixed bottom-0 inset-x-0 z-30 safe-area-bottom"></nav>
   </div>
 
   <script type="module" src="/js/council.js"></script>

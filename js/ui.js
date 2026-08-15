@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.424'
+import { APP_VERSION } from './version.js?v=10.22.425'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.425': [
+    '🎨 ระบบสภานักเรียน: ปรับโทนสีเทา/พื้นหลัง/หน้าโหวตให้ตรงกับต้นแบบดีไซน์ต่อเนื่อง (รวมหน้าลงคะแนนที่จุดเลือกตั้ง) ให้ตรงกับไฟล์ต้นแบบมากขึ้น'
+  ],
   '10.22.424': [
     '🎨 ระบบสภานักเรียน: ปรับโทนสีทั้งระบบให้ตรงกับต้นแบบดีไซน์ (เขียวเข้ม/ทอง แทนม่วง) ให้ตรงกับไฟล์ต้นแบบที่ออกแบบไว้'
   ],
