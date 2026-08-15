@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.422'
+import { APP_VERSION } from './version.js?v=10.22.423'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.423': [
+    '📄 ระบบสภานักเรียน: เพิ่มหน้าเอกสารขออนุมัติโครงการ/กิจกรรม (ร่าง → เสนอครูที่ปรึกษา → อนุมัติ/ไม่อนุมัติ) พร้อมพิมพ์เอกสารได้เมื่ออนุมัติแล้ว'
+  ],
   '10.22.422': [
     '🧾 AZFUTSALCUP: เพิ่มการยืนยันคืนเงินค่าประกันทีมและใบเสร็จพร้อมรายละเอียดหักใบเหลือง/แดงแยกตามนัดและคู่แข่งขัน โดยไม่แสดงชื่อนักกีฬา พร้อมอัปโหลดโลโก้โรงเรียนในหน้าตั้งค่า'
   ],

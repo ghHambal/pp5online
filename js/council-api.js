@@ -342,3 +342,32 @@ export async function issueCertificate({ evaluationId, certificateNo }) {
     .update({ certificate_no: certificateNo, certificate_issued_at: new Date().toISOString() }).eq('id', evaluationId)
   if (error) throw error
 }
+
+// ─── เอกสารขออนุมัติโครงการ/กิจกรรม — ภายในแอดมิน/ครู/ประธานสภาเท่านั้น (ไม่ public) ─────────
+export async function getCouncilDocuments(academicYear) {
+  const { data, error } = await supabase.from('council_documents').select('*')
+    .eq('academic_year', academicYear).order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createDocument({ title, rationale, objective, budget, ownerText, academicYear, createdByStudentId }) {
+  const { error } = await supabase.from('council_documents').insert({
+    title, rationale, objective, budget: budget || null, owner_text: ownerText,
+    academic_year: academicYear, created_by_student_id: createdByStudentId || null,
+  })
+  if (error) throw error
+}
+
+export async function submitDocument(id) {
+  const { error } = await supabase.from('council_documents').update({ status: 'pending', updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+export async function decideDocument({ id, approve, teacherId, comment }) {
+  const { error } = await supabase.from('council_documents').update({
+    status: approve ? 'approved' : 'rejected', approved_by_teacher_id: teacherId || null,
+    approval_comment: comment, updated_at: new Date().toISOString(),
+  }).eq('id', id)
+  if (error) throw error
+}

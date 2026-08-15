@@ -15,6 +15,7 @@ import {
   getCouncilActivities, createActivity, updateActivityStatus, getActivityAttendance, checkInAttendance,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
+  getCouncilDocuments, createDocument, submitDocument, decideDocument,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -199,6 +200,7 @@ function getNavItems() {
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม' })
   if (ctx.isAdmin || ctx.role === 'teacher' || ctx.membership.length) items.push({ id: 'eval', icon: '📊', label: 'ประเมิน/เกียรติบัตร' })
+  if (ctx.isAdmin || ctx.role === 'teacher' || ctx.isChair) items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ' })
   items.push({ id: 'candidates', icon: '🗳️', label: 'ผู้สมัครเลือกตั้ง' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภานักเรียน' })
   return items
@@ -963,6 +965,106 @@ function openCertificatePrint(member, evaluation) {
   setTimeout(() => win.print(), 600)
 }
 
+// ─── เอกสารขออนุมัติโครงการ/กิจกรรม — ภายในแอดมิน/ครู/ประธานสภาเท่านั้น ────────────────────
+let docs = null
+const DOC_STATUS_BADGE = {
+  draft: ['ร่าง', 'text-gray-500 bg-gray-100 border-gray-200'],
+  pending: ['เสนอขออนุมัติแล้ว', 'text-amber-700 bg-amber-100 border-amber-200'],
+  approved: ['อนุมัติแล้ว', 'text-emerald-700 bg-emerald-100 border-emerald-200'],
+  rejected: ['ไม่อนุมัติ', 'text-red-600 bg-red-100 border-red-200'],
+}
+
+async function loadDocs() {
+  docs = await getCouncilDocuments(electionYear).catch(() => [])
+  render()
+}
+
+function renderDocsView() {
+  const canManage = ctx.isAdmin || ctx.role === 'teacher' || ctx.isChair
+  if (!canManage) return `<p class="text-sm text-gray-400 text-center py-16">หน้านี้ใช้ได้เฉพาะแอดมิน ครู หรือประธานสภาที่ล็อกอินอยู่</p>`
+  if (docs === null) { loadDocs(); return `<p class="text-sm text-gray-400 text-center py-16">⏳ กำลังโหลด...</p>` }
+  const canDecide = ctx.isAdmin || ctx.role === 'teacher'
+
+  const createForm = `
+    <div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+      <p class="text-sm font-bold text-gray-700 mb-3">➕ ร่างเอกสารขออนุมัติโครงการใหม่</p>
+      <form id="doc-form" class="space-y-2">
+        <input name="title" required placeholder="ชื่อโครงการ/กิจกรรม" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        <textarea name="rationale" rows="2" placeholder="หลักการและเหตุผล" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
+        <textarea name="objective" rows="2" placeholder="วัตถุประสงค์" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+          <input name="owner_text" placeholder="ผู้รับผิดชอบ" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold">บันทึกร่าง</button>
+      </form>
+    </div>`
+
+  if (!docs.length) return `${createForm}<p class="text-sm text-gray-400 text-center py-10">ยังไม่มีเอกสารโครงการ</p>`
+
+  const card = d => {
+    const [label, cls] = DOC_STATUS_BADGE[d.status] ?? ['—', 'text-gray-500 bg-gray-100 border-gray-200']
+    return `
+      <div class="rounded-xl border border-gray-100 p-3.5 space-y-2 bg-white">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-gray-800">${esc(d.title)}</p>
+            <p class="text-xs text-gray-400">${d.owner_text ? esc(d.owner_text) + ' · ' : ''}${d.budget ? Number(d.budget).toLocaleString('th-TH') + ' บาท' : 'ไม่ระบุงบ'}</p>
+          </div>
+          <span class="flex-shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full border ${cls}">${label}</span>
+        </div>
+        ${d.rationale ? `<p class="text-xs text-gray-500"><b>เหตุผล:</b> ${esc(d.rationale)}</p>` : ''}
+        ${d.objective ? `<p class="text-xs text-gray-500"><b>วัตถุประสงค์:</b> ${esc(d.objective)}</p>` : ''}
+        ${d.approval_comment ? `<p class="text-xs ${d.status === 'approved' ? 'text-emerald-600' : 'text-red-500'}">💬 ${esc(d.approval_comment)}</p>` : ''}
+        <div class="flex flex-wrap gap-2 pt-1 border-t border-gray-100">
+          ${d.status === 'draft' ? `<button type="button" class="btn-submit-doc text-xs font-bold px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white" data-id="${d.id}">📤 เสนอขออนุมัติ</button>` : ''}
+          ${d.status === 'pending' && canDecide ? `
+            <button type="button" class="btn-approve-doc text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white" data-id="${d.id}">✅ อนุมัติ</button>
+            <button type="button" class="btn-reject-doc text-xs font-bold px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50" data-id="${d.id}">❌ ไม่อนุมัติ</button>` : ''}
+          ${d.status === 'approved' ? `<button type="button" class="btn-print-doc text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50" data-id="${d.id}">🖨️ พิมพ์เอกสาร</button>` : ''}
+        </div>
+      </div>`
+  }
+
+  return `${createForm}<div class="space-y-3">${docs.map(card).join('')}</div>`
+}
+
+function buildDocumentHtml(d, cfg) {
+  const councilName = esc(cfg.council_name || 'ระบบสภานักเรียน')
+  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>โครงการ ${esc(d.title)}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Sarabun', sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.9; color: #1d1519; }
+      h1 { text-align: center; font-size: 20px; margin-bottom: 2px; }
+      .sub { text-align: center; color: #6e5f65; font-size: 13px; margin-bottom: 24px; }
+      .row { margin-bottom: 14px; } .row b { display: block; margin-bottom: 3px; }
+      .sign { display: flex; justify-content: space-around; margin-top: 60px; text-align: center; }
+      .sign div { width: 220px; border-top: 1px solid #999; padding-top: 6px; font-size: 13px; }
+      @media print { body { padding: 0; } }
+    </style></head><body>
+      <h1>เอกสารขออนุมัติโครงการ/กิจกรรม</h1>
+      <p class="sub">${councilName} · ปีการศึกษา ${d.academic_year}</p>
+      <div class="row"><b>ชื่อโครงการ</b>${esc(d.title)}</div>
+      <div class="row"><b>หลักการและเหตุผล</b>${esc(d.rationale || '—')}</div>
+      <div class="row"><b>วัตถุประสงค์</b>${esc(d.objective || '—')}</div>
+      <div class="row"><b>งบประมาณ</b>${d.budget ? Number(d.budget).toLocaleString('th-TH') + ' บาท' : 'ไม่ระบุ'}</div>
+      <div class="row"><b>ผู้รับผิดชอบ</b>${esc(d.owner_text || '—')}</div>
+      <div class="row"><b>สถานะ</b>อนุมัติแล้ว ${d.approval_comment ? '· ' + esc(d.approval_comment) : ''}</div>
+      <div class="sign">
+        <div>ผู้เสนอโครงการ (ประธานสภานักเรียน)</div>
+        <div>ผู้อนุมัติ (ครูที่ปรึกษาสภา/ผู้อำนวยการ)</div>
+      </div>
+      <div style="text-align:center;margin-top:24px;"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #7c3aed;background:#fff;color:#7c3aed;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+    </body></html>`
+}
+
+function openDocumentPrint(d) {
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์', 'warning'); return }
+  win.document.open(); win.document.write(buildDocumentHtml(d, ctx.cfg)); win.document.close()
+  setTimeout(() => win.print(), 600)
+}
+
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   endorse: renderEndorseView,
@@ -970,6 +1072,7 @@ const VIEW_RENDERERS = {
   news: renderNewsView,
   activities: renderActivitiesView,
   eval: renderEvalView,
+  docs: renderDocsView,
   candidates: renderCandidatesView,
   roster: renderRosterView,
 }
@@ -1096,6 +1199,70 @@ function wireContentEvents() {
   wireActivitiesEvents()
   wireNewsEvents()
   wireEvalEvents()
+  wireDocsEvents()
+}
+
+// ─── เอกสารขออนุมัติโครงการ/กิจกรรม ─────────────────────────────────────────────
+function wireDocsEvents() {
+  document.getElementById('doc-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const title = f.title.value.trim()
+    if (!title) { showToast('กรุณากรอกชื่อโครงการ', 'warning'); return }
+    const btn = f.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      await createDocument({
+        title, rationale: f.rationale.value.trim(), objective: f.objective.value.trim(),
+        budget: f.budget.value ? Number(f.budget.value) : null, ownerText: f.owner_text.value.trim(),
+        academicYear: electionYear, createdByStudentId: ctx.isChair && ctx.student ? ctx.student.id : null,
+      })
+      showToast('บันทึกร่างเอกสารแล้ว ✅', 'success')
+      docs = null
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'บันทึกร่าง'
+    }
+  })
+
+  document.querySelectorAll('.btn-submit-doc').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      try {
+        await submitDocument(Number(btn.dataset.id))
+        docs = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-approve-doc, .btn-reject-doc').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const approve = btn.classList.contains('btn-approve-doc')
+      const comment = prompt(approve ? 'ความเห็นประกอบการอนุมัติ (ถ้ามี)' : 'เหตุผลที่ไม่อนุมัติ') ?? ''
+      if (!approve && !comment.trim()) { showToast('กรุณาระบุเหตุผลที่ไม่อนุมัติ', 'warning'); return }
+      btn.disabled = true
+      try {
+        await decideDocument({ id: Number(btn.dataset.id), approve, teacherId: ctx.teacher?.id ?? null, comment: comment.trim() })
+        docs = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-print-doc').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const d = docs.find(x => x.id === Number(btn.dataset.id))
+      if (d) openDocumentPrint(d)
+    })
+  })
 }
 
 // ─── ประเมินผลปฏิบัติหน้าที่ + เกียรติบัตร ─────────────────────────────────────────
