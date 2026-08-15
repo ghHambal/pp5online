@@ -14,23 +14,23 @@
 <body class="bg-gray-50 flex h-screen overflow-hidden">
 
   <!-- ─── Sidebar (จอกว้าง md ขึ้นไป) ─────────────────────────────────────────── -->
-  <aside id="council-sidebar" class="hidden md:flex md:flex-col w-64 bg-violet-900 text-white flex-shrink-0 h-screen">
-    <div class="px-4 py-4 border-b border-violet-800 flex-shrink-0">
+  <aside id="council-sidebar" class="hidden md:flex md:flex-col w-64 bg-[#0a2d1f] text-white flex-shrink-0 h-screen">
+    <div class="px-4 py-4 border-b border-[#0a2d1f] flex-shrink-0">
       <div class="flex items-center gap-3">
-        <div class="w-11 h-11 rounded-full bg-violet-800 border border-violet-700 flex-shrink-0 flex items-center justify-center overflow-hidden">
+        <div class="w-11 h-11 rounded-full bg-[#0a2d1f] border border-[#0d3a28] flex-shrink-0 flex items-center justify-center overflow-hidden">
           <img id="council-logo" src="" alt="" class="w-full h-full object-contain hidden"/>
           <span id="council-logo-fallback" class="text-lg">🏛️</span>
         </div>
         <div class="min-w-0">
           <p id="council-title" class="text-sm font-bold leading-tight truncate">ระบบสภานักเรียน</p>
-          <p class="text-[11px] text-violet-300">ปพ.5 ออนไลน์</p>
+          <p class="text-[11px] text-[#9cc4b0]">ปพ.5 ออนไลน์</p>
         </div>
       </div>
     </div>
     <nav id="council-sidebar-nav" class="flex-1 p-3 space-y-1 overflow-y-auto"></nav>
-    <div class="p-3 border-t border-violet-800 flex-shrink-0">
+    <div class="p-3 border-t border-[#0a2d1f] flex-shrink-0">
       <a id="council-back-btn-desktop" href="index.html"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-violet-200 hover:bg-violet-800 hover:text-white transition">
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-[#b9d6c7] hover:bg-[#0a2d1f] hover:text-white transition">
         <span>←</span> กลับ ปพ.5 ออนไลน์
       </a>
     </div>
@@ -44,14 +44,14 @@
       <div class="px-4 md:px-6 h-14 flex items-center justify-between">
         <div class="flex items-center gap-2 min-w-0 md:hidden">
           <a id="council-back-btn-mobile" href="index.html" title="กลับไป ปพ.5 ออนไลน์"
-            class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition text-lg">
+            class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-[#edf4f0] hover:text-[#14563b] transition text-lg">
             ←
           </a>
           <p id="council-title-mobile" class="text-sm font-bold text-gray-700 truncate">ระบบสภานักเรียน</p>
         </div>
         <p id="council-view-title" class="hidden md:block text-lg font-bold text-gray-800">ภาพรวม</p>
         <button onclick="window.location.reload()" title="รีเฟรชหน้านี้"
-          class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-violet-50 hover:text-violet-600 transition text-base">
+          class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-gray-400 hover:bg-[#edf4f0] hover:text-[#14563b] transition text-base">
           ↺
         </button>
       </div>
@@ -60,7 +60,7 @@
     <!-- Page Content -->
     <main id="council-content" class="flex-1 overflow-y-auto pb-20 md:pb-0">
       <div class="flex justify-center py-16 text-gray-400">
-        <svg class="animate-spin h-6 w-6 text-violet-400" viewBox="0 0 24 24" fill="none">
+        <svg class="animate-spin h-6 w-6 text-[#6ba888]" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
         </svg>

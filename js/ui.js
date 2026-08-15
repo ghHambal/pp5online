@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.423'
+import { APP_VERSION } from './version.js?v=10.22.424'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.424': [
+    '🎨 ระบบสภานักเรียน: ปรับโทนสีทั้งระบบให้ตรงกับต้นแบบดีไซน์ (เขียวเข้ม/ทอง แทนม่วง) ให้ตรงกับไฟล์ต้นแบบที่ออกแบบไว้'
+  ],
   '10.22.423': [
     '📄 ระบบสภานักเรียน: เพิ่มหน้าเอกสารขออนุมัติโครงการ/กิจกรรม (ร่าง → เสนอครูที่ปรึกษา → อนุมัติ/ไม่อนุมัติ) พร้อมพิมพ์เอกสารได้เมื่ออนุมัติแล้ว'
   ],
