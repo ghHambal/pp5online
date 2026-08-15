@@ -22,6 +22,18 @@ export async function saveMyTerangganuRegistration(payload) {
   return unwrap(data)
 }
 
+export async function getMyTerangganuTeacherContext() {
+  const { data, error } = await supabase.rpc('get_my_terangganu_teacher_context')
+  if (error) throw error
+  return unwrap(data)
+}
+
+export async function saveMyTerangganuTeacherRegistration(payload) {
+  const { data, error } = await supabase.rpc('save_my_terangganu_teacher_registration', { p_payload: payload })
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function getTerangganuManagerContext() {
   const { data, error } = await supabase.rpc('get_terangganu_manager_context')
   if (error) throw error
@@ -57,6 +69,22 @@ export async function addTerangganuParticipants(studentCodes, markDepositPaid = 
 export async function removeTerangganuParticipant(studentId) {
   const { data, error } = await supabase.rpc('remove_terangganu_participant', {
     p_student_id: Number(studentId),
+  })
+  if (error) throw error
+  return unwrap(data)
+}
+
+export async function addTerangganuTeacherParticipants(teacherIds) {
+  const { data, error } = await supabase.rpc('add_terangganu_teacher_participants', {
+    p_teacher_ids: [...new Set(teacherIds.map(Number).filter(Number.isFinite))],
+  })
+  if (error) throw error
+  return unwrap(data)
+}
+
+export async function removeTerangganuTeacherParticipant(teacherId) {
+  const { data, error } = await supabase.rpc('remove_terangganu_teacher_participant', {
+    p_teacher_id: Number(teacherId),
   })
   if (error) throw error
   return unwrap(data)
@@ -108,5 +136,7 @@ export function subscribeTerangganu(eventId, onChange) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_participants', filter: `event_id=eq.${eventId}` }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_registrations', filter: `event_id=eq.${eventId}` }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_payments', filter: `event_id=eq.${eventId}` }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_teacher_participants', filter: `event_id=eq.${eventId}` }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_teacher_registrations', filter: `event_id=eq.${eventId}` }, onChange)
     .subscribe()
 }

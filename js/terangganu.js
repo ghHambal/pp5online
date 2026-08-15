@@ -1,12 +1,14 @@
 import { supabase } from './supabase.js'
 import {
   getTerangganuAccess, getMyTerangganuContext, saveMyTerangganuRegistration,
+  getMyTerangganuTeacherContext, saveMyTerangganuTeacherRegistration,
   getTerangganuManagerContext, updateTerangganuEvent, assignTerangganuStaff,
   addTerangganuParticipants, removeTerangganuParticipant,
+  addTerangganuTeacherParticipants, removeTerangganuTeacherParticipant,
   updateMyTerangganuSignature, recordTerangganuPayment, recordTerangganuPaymentsBulk, voidTerangganuPayment,
   subscribeTerangganu,
 } from './terangganu-api.js'
-import { uploadTerangganuSignature, uploadTerangganuDirectorSignature } from './storage.js'
+import { uploadTerangganuSignature, uploadTerangganuDirectorSignature, uploadTerangganuReceiptLogo } from './storage.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 
 const content = document.getElementById('camp-content')
@@ -75,6 +77,7 @@ async function init() {
     access = await getTerangganuAccess()
     if (profile?.role === 'student') await loadStudent()
     else if (access?.is_manager) await loadManager()
+    else if (access?.teacher_participant) await loadTeacher()
     else errorView('บัญชีนี้ยังไม่ได้รับมอบหมายให้ดูแลค่าย TERANGGANU 2026')
   } catch (error) {
     errorView(error.message || 'ระบบยังไม่ได้ติดตั้งฐานข้อมูล')
@@ -91,7 +94,7 @@ function subscribe() {
   if (channel) supabase.removeChannel(channel)
   channel = subscribeTerangganu(access?.event_id, () => {
     clearTimeout(refreshTimer)
-    refreshTimer = setTimeout(() => profile?.role === 'student' ? loadStudent(true) : loadManager(true), 500)
+    refreshTimer = setTimeout(() => profile?.role === 'student' ? loadStudent(true) : access?.is_manager ? loadManager(true) : loadTeacher(true), 500)
   })
 }
 
@@ -111,12 +114,13 @@ async function loadStudent(silent = false) {
 
 function paymentCard(type, label, amount) {
   const payment = (ctx.payments || []).find(p => p.installment_type === type && !p.voided_at)
+  const fullyPaid = ['deposit','balance'].every(kind => (ctx.payments || []).some(p => p.installment_type === kind && !p.voided_at))
   return `<div class="camp-card p-4 border-l-4 ${payment ? 'border-l-emerald-500' : 'border-l-amber-400'}">
     <div class="flex items-start justify-between gap-3">
       <div><p class="text-xs text-gray-400">${esc(label)}</p><p class="text-2xl font-bold mt-1">฿${money(amount)}</p></div>
       <span class="px-2.5 py-1 rounded-full text-xs font-bold ${payment ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${payment ? 'ชำระแล้ว' : 'ยังไม่ชำระ'}</span>
     </div>
-    ${payment ? `<p class="text-xs text-gray-400 mt-3">เลขที่ ${esc(payment.receipt_no)} · ${thaiDate(payment.paid_at)}</p><button data-receipt="${payment.id}" class="camp-btn mt-3 w-full bg-teal-50 text-teal-700 hover:bg-teal-100">🧾 พิมพ์ / บันทึก PDF</button>` : ''}
+    ${payment ? `<p class="text-xs text-gray-400 mt-3">เลขที่ ${esc(payment.receipt_no)} · ${thaiDate(payment.paid_at)}</p>${!fullyPaid||type==='balance'?`<button data-receipt="${payment.id}" class="camp-btn mt-3 w-full bg-teal-50 text-teal-700 hover:bg-teal-100">🧾 ${fullyPaid?'ใบเสร็จรวมชำระครบ':'พิมพ์ / บันทึก PDF'}</button>`:''}` : ''}
   </div>`
 }
 
@@ -152,7 +156,7 @@ function renderStudent() {
         ${field('birth_date','วันเดือนปีเกิด',r?.birth_date,'date',true,canEdit)}
         ${field('nationality','สัญชาติ',r?.nationality || 'ไทย','text',true,canEdit)}
         <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r?.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
-        ${field('phone','หมายเลขโทรศัพท์',r?.phone,'tel',true,canEdit)}
+        ${field('phone','เบอร์โทรศัพท์ผู้ปกครอง',r?.phone,'tel',true,canEdit)}
         <label><span class="camp-label">ไซซ์เสื้อ *</span><select name="shirt_size" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกไซซ์</option>${['XS','S','M','L','XL','2XL','3XL','4XL','อื่น ๆ'].map(v=>`<option ${r?.shirt_size===v?'selected':''}>${v}</option>`).join('')}</select></label>
         <label class="sm:col-span-2"><span class="camp-label">ที่อยู่ปัจจุบัน *</span><textarea name="current_address" rows="3" class="camp-input" required ${canEdit?'':'disabled'}>${esc(r?.current_address||'')}</textarea></label>
         <label class="sm:col-span-2"><span class="camp-label">โรคประจำตัว</span><textarea name="medical_conditions" rows="2" class="camp-input" ${canEdit?'':'disabled'}>${esc(r?.medical_conditions||'ไม่มี')}</textarea></label>
@@ -179,9 +183,54 @@ async function saveStudentForm(event) {
   } catch (error) { toast(error.message || 'บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='💾 บันทึกแบบสำรวจ' }
 }
 
+// ─── Teacher participant ───────────────────────────────────────────────────
+async function loadTeacher(silent = false) {
+  if (!silent) content.innerHTML = '<div class="text-center py-20 text-teal-600">กำลังโหลดข้อมูล...</div>'
+  ctx = await getMyTerangganuTeacherContext()
+  updateBrand(ctx.event)
+  nav.classList.add('hidden')
+  renderTeacherSurvey(ctx.teacher, ctx.registration, false)
+  subscribe()
+}
+
+function teacherSurveyForm(teacher, registration, canEdit) {
+  const r = registration || {}
+  return `<form id="teacher-camp-form" class="grid sm:grid-cols-2 gap-4">
+    ${field('nickname','ชื่อเล่น',r.nickname,'text',true,canEdit)}
+    ${field('thai_name','ชื่อภาษาไทย',r.thai_name || teacher?.full_name,'text',true,canEdit)}
+    ${field('english_name','ชื่อภาษาอังกฤษ',r.english_name,'text',true,canEdit)}
+    ${field('passport_number','เลขที่หนังสือเดินทาง',r.passport_number,'text',true,canEdit)}
+    ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง',r.passport_expiry,'date',true,canEdit)}
+    ${field('birth_date','วันเดือนปีเกิด',r.birth_date,'date',true,canEdit)}
+    ${field('nationality','สัญชาติ',r.nationality || 'ไทย','text',true,canEdit)}
+    <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
+    ${field('phone','หมายเลขโทรศัพท์',r.phone || teacher?.phone,'tel',true,canEdit)}
+    <label><span class="camp-label">ไซซ์เสื้อ *</span><select name="shirt_size" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกไซซ์</option>${['XS','S','M','L','XL','2XL','3XL','4XL','อื่น ๆ'].map(v=>`<option ${r.shirt_size===v?'selected':''}>${v}</option>`).join('')}</select></label>
+    <label class="sm:col-span-2"><span class="camp-label">ที่อยู่ปัจจุบัน *</span><textarea name="current_address" rows="3" class="camp-input" required ${canEdit?'':'disabled'}>${esc(r.current_address||'')}</textarea></label>
+    <label class="sm:col-span-2"><span class="camp-label">โรคประจำตัว</span><textarea name="medical_conditions" rows="2" class="camp-input" ${canEdit?'':'disabled'}>${esc(r.medical_conditions||'ไม่มี')}</textarea></label>
+    ${canEdit ? '<button class="sm:col-span-2 camp-btn bg-teal-700 hover:bg-teal-800 text-white py-3" type="submit">💾 บันทึกแบบสำรวจครู</button>' : ''}
+  </form>`
+}
+
+function renderTeacherSurvey(teacher, registration, insideManager = false) {
+  const e = ctx.event || {}, now = Date.now()
+  const withinWindow = (!e.form_open_at || now >= new Date(e.form_open_at).getTime()) && (!e.form_close_at || now <= new Date(e.form_close_at).getTime())
+  const canEdit = e.form_open && withinWindow
+  content.innerHTML = `<section class="rounded-3xl bg-gradient-to-br from-teal-800 via-teal-700 to-emerald-600 text-white p-6 shadow-xl mb-5">
+    <p class="text-teal-100 text-xs">ครูที่ปรึกษา / ครูร่วมค่าย</p><h2 class="text-xl font-bold mt-1">${esc(teacher?.full_name)}</h2>
+    <p class="text-sm text-teal-100 mt-1">${esc(teacher?.teacher_code || '—')} · ${esc(teacher?.position || teacher?.dept || teacher?.subject_group || 'ครู')}</p>
+  </section><section class="camp-card p-5 sm:p-7"><div class="flex items-start justify-between gap-3 mb-5"><div><h2 class="font-bold text-lg">📝 แบบสำรวจครูร่วมค่าย</h2><p class="text-xs text-gray-400 mt-1">${registration ? `ส่งข้อมูลแล้ว ${thaiDate(registration.updated_at)}` : 'กรอกข้อมูลสำหรับการเดินทางเข้าค่าย'}</p></div><span class="px-2.5 py-1 rounded-full text-xs font-bold ${registration?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${registration?'ครบแล้ว':'ยังไม่กรอก'}</span></div>
+    ${!canEdit?'<div class="mb-5 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">แบบสำรวจปิดรับข้อมูลแล้ว สามารถดูข้อมูลเดิมได้</div>':''}${teacherSurveyForm(teacher,registration,canEdit)}</section>`
+  content.querySelector('#teacher-camp-form')?.addEventListener('submit', async event => {
+    event.preventDefault(); const btn=event.submitter; btn.disabled=true; btn.textContent='กำลังบันทึก...'
+    try { await saveMyTerangganuTeacherRegistration(Object.fromEntries(new FormData(event.currentTarget).entries())); toast('บันทึกแบบสำรวจครูเรียบร้อยแล้ว'); insideManager ? await loadManager(true) : await loadTeacher(true) }
+    catch(error){ toast(error.message||'บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='💾 บันทึกแบบสำรวจครู' }
+  })
+}
+
 // ─── Manager ────────────────────────────────────────────────────────────────
 const MANAGER_TABS = [
-  ['dashboard','📊','ภาพรวม'],['participants','👥','นักเรียน'],['registrations','📝','แบบสำรวจ'],['payments','💰','รับชำระ'],['settings','⚙️','ตั้งค่า'],['staff','👩‍🏫','ผู้รับผิดชอบ'],
+  ['dashboard','📊','ภาพรวม'],['participants','👥','นักเรียน'],['teacher_participants','🧑‍🏫','ครูร่วมค่าย'],['registrations','📝','แบบสำรวจ'],['payments','💰','รับชำระ'],['my_teacher_survey','✍️','แบบสำรวจของฉัน'],['settings','⚙️','ตั้งค่า'],['staff','👩‍🏫','ผู้รับผิดชอบ'],
 ]
 
 async function loadManager(silent = false) {
@@ -190,7 +239,7 @@ async function loadManager(silent = false) {
   access = ctx.access || access
   updateBrand(ctx.event)
   nav.classList.remove('hidden')
-  const allowedTab = id => id === 'staff' ? access.is_admin : id === 'settings' ? access.can_settings : id === 'payments' ? access.can_payments : true
+  const allowedTab = id => id === 'staff' ? access.is_admin : id === 'settings' ? access.can_settings : id === 'payments' ? access.can_payments : id === 'my_teacher_survey' ? access.teacher_participant : true
   const availableTabs = MANAGER_TABS.filter(([id]) => allowedTab(id))
   if (!availableTabs.some(([id]) => id === activeTab)) activeTab = 'dashboard'
   tabs.innerHTML = availableTabs.map(([id,icon,label]) => `<button data-tab="${id}" class="camp-tab camp-btn whitespace-nowrap ${activeTab===id?'active':'bg-gray-50 text-gray-600'}">${icon} ${label}</button>`).join('')
@@ -213,8 +262,10 @@ function renderManager() {
   tabs.querySelectorAll('[data-tab]').forEach(btn=>btn.classList.toggle('active',btn.dataset.tab===activeTab))
   if(activeTab==='dashboard') renderDashboard()
   else if(activeTab==='participants') renderParticipants()
+  else if(activeTab==='teacher_participants') renderTeacherParticipants()
   else if(activeTab==='registrations') renderRegistrations()
   else if(activeTab==='payments') renderPayments()
+  else if(activeTab==='my_teacher_survey') { const teacher=(ctx.teachers||[]).find(t=>Number(t.id)===Number(access.teacher_id)),registration=(ctx.teacher_registrations||[]).find(r=>Number(r.teacher_id)===Number(access.teacher_id)); renderTeacherSurvey(teacher,registration,true) }
   else if(activeTab==='settings') renderSettings()
   else if(activeTab==='staff') renderStaff()
 }
@@ -242,6 +293,7 @@ function participantDemographics(rows) {
 
 function renderDashboard() {
   const {students,participants,regs,payments,activePayments}=maps(), e=ctx.event||{}
+  const teacherParticipantCount=(ctx.teacher_participants||[]).length, teacherRegistrationCount=(ctx.teacher_registrations||[]).length
   const people=participantDemographics([...participants.keys()].map(studentId=>({s:students.get(studentId),r:regs.get(studentId),p:payments.get(studentId)||{}})))
   const deposits=activePayments.filter(p=>p.installment_type==='deposit'), balances=activePayments.filter(p=>p.installment_type==='balance')
   const revenue=activePayments.reduce((s,p)=>s+Number(p.amount||0),0)
@@ -250,7 +302,7 @@ function renderDashboard() {
   const grades=[...new Set(people.map(x=>x.grade))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true}))
   const rooms=[...new Set(people.map(x=>x.room))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true}))
   content.innerHTML=`<div class="flex flex-wrap items-end justify-between gap-3 mb-5"><div><p class="text-xs text-teal-600 font-bold">แดชบอร์ดผู้รับผิดชอบ</p><h2 class="text-2xl font-bold">${esc(e.name)}</h2></div><button id="refresh-manager" class="camp-btn bg-white border border-teal-200 text-teal-700">↻ โหลดข้อมูลใหม่</button></div>
-  <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">${stat('รายชื่อเข้าร่วม',participants.size,'👥')}${stat('ส่งแบบสำรวจ',regs.size,'📝')}${stat('ชำระมัดจำ',deposits.length,'1️⃣','amber')}${stat('ชำระครบ',balances.length,'✅','emerald')}${stat('ยอดรับรวม',`฿${money(revenue)}`,'💰','blue')}</div>
+  <div class="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5">${stat('นักเรียนเข้าร่วม',participants.size,'👥')}${stat('ครูร่วมค่าย',teacherParticipantCount,'🧑‍🏫','blue')}${stat('แบบสำรวจ นร.',regs.size,'📝')}${stat('แบบสำรวจครู',teacherRegistrationCount,'✍️','teal')}${stat('ชำระครบ',balances.length,'✅','emerald')}${stat('ยอดรับรวม',`฿${money(revenue)}`,'💰','amber')}</div>
   <section class="camp-card p-5 mb-5"><div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-bold">สรุปนักเรียนผู้เข้าร่วม</h3><p class="text-xs text-gray-400">คำนวณจากรายชื่อที่เพิ่มในระบบค่าย</p></div><span class="text-xs text-gray-400">ไม่ระบุเพศ ${people.filter(x=>x.genderKey==='unknown').length} คน</span></div>
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mt-4">${stat('ทั้งหมด',people.length,'👥')}${stat('ชาย',male,'👦','blue')}${stat('หญิง',female,'👧','amber')}${stat('ม.ต้น',middle,'🏫','teal')}${stat('ม.ปลาย',upper,'🎓','emerald')}</div>
     <div class="flex flex-wrap gap-2 mt-4">${grades.map(grade=>`<span class="px-3 py-1.5 rounded-xl bg-teal-50 text-teal-700 text-xs font-bold">${esc(grade)} ${people.filter(x=>x.grade===grade).length} คน</span>`).join('')||'<span class="text-xs text-gray-400">ยังไม่มีข้อมูลระดับชั้น</span>'}</div>
@@ -266,7 +318,7 @@ function renderDashboard() {
 function renderParticipants(){
   const {students,participants,regs,payments}=maps()
   const rows=participantDemographics([...participants.keys()].map(studentId=>({s:students.get(studentId),r:regs.get(studentId),p:payments.get(studentId)||{}})))
-  content.innerHTML=`<div class="mb-4"><h2 class="text-xl font-bold">รายชื่อนักเรียนเข้าร่วมค่าย</h2><p class="text-xs text-gray-400">เพิ่มรหัสได้หลายรายการ โดยคั่นด้วยเว้นวรรค จุลภาค หรือขึ้นบรรทัดใหม่</p></div>
+  content.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-bold">รายชื่อนักเรียนเข้าร่วมค่าย</h2><p class="text-xs text-gray-400">เพิ่มรหัสได้หลายรายการ โดยคั่นด้วยเว้นวรรค จุลภาค หรือขึ้นบรรทัดใหม่</p></div><button id="print-student-roster" class="camp-btn bg-white border border-teal-200 text-teal-700">🖨️ พิมพ์ใบรายชื่อนักเรียน</button></div>
   ${access.can_settings?`<section class="camp-card p-5 mb-5"><div class="mb-4"><label><span class="camp-label">🔎 ค้นหานักเรียนจากฐานข้อมูล</span><input id="participant-add-search" class="camp-input" autocomplete="off" placeholder="ค้นหาอะไรก็เจอ เช่น ชื่อบางส่วน รหัส ห้องสามัญ หรือห้องศาสนา"></label><div id="participant-add-search-results" class="hidden mt-2 max-h-72 overflow-y-auto rounded-xl border bg-white divide-y shadow-lg"></div><p class="text-[11px] text-gray-400 mt-1">คลิกชื่อนักเรียนเพื่อเติมรหัสลงในรายการด้านล่าง</p></div><label><span class="camp-label">รหัสนักเรียนที่เลือกหรือกรอกเอง</span><textarea id="participant-codes" class="camp-input font-mono" rows="5" placeholder="เช่น&#10;25944&#10;25945&#10;25946"></textarea></label><div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700 mt-3">ปุ่มบันทึกมัดจำจะสร้างใบเสร็จ 1,000 บาทให้โดยอัตโนมัติ จึงต้องตั้งชื่อและลายเซ็นผู้อำนวยการ รวมถึงลายเซ็นครูผู้ลงนามให้เรียบร้อยก่อน</div><div class="grid sm:grid-cols-2 gap-3 mt-4"><button id="add-participants-paid" class="camp-btn bg-teal-700 text-white py-3">💰 เพิ่มรายชื่อ + บันทึกมัดจำแล้ว</button><button id="add-participants-only" class="camp-btn border border-teal-200 text-teal-700 py-3">👥 เพิ่มเฉพาะรายชื่อ</button></div><div id="participant-result" class="hidden mt-4 rounded-xl p-3 text-sm"></div></section>`:''}
   <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><div><b>เพิ่มแล้ว ${rows.length} คน</b><span id="participant-count" class="text-xs text-gray-400 ml-2">กรอกแบบสำรวจ ${rows.filter(x=>x.r).length} คน</span></div><div class="grid sm:grid-cols-3 gap-2 w-full lg:w-auto"><select id="participant-grade" class="camp-input"><option value="">ทุกระดับชั้น</option>${[...new Set(rows.map(x=>x.grade))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true})).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select><select id="participant-room" class="camp-input"><option value="">ทุกห้อง</option>${[...new Set(rows.map(x=>x.room))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true})).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select><input id="participant-search" class="camp-input" placeholder="ค้นหาอะไรก็เจอ"></div></div><div id="participant-list" class="space-y-3"></div>`
   const draw=()=>{const q=document.getElementById('participant-search').value.trim().toLowerCase(),grade=document.getElementById('participant-grade').value,room=document.getElementById('participant-room').value;const filtered=rows.filter(({s,r,p,grade:g,room:rm})=>{const haystack=[s?.student_code,s?.full_name,s?.main_room,s?.religion_room,s?.gender,r?.nickname,r?.thai_name,r?.english_name,r?.phone,r?.shirt_size,r?.medical_conditions,p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ',r?'กรอกแล้ว':'รอกรอก'].join(' ').toLowerCase();return(!grade||g===grade)&&(!room||rm===room)&&(!q||haystack.includes(q))});document.getElementById('participant-count').textContent=`แสดง ${filtered.length} คน · กรอกแบบสำรวจ ${filtered.filter(x=>x.r).length} คน`;document.getElementById('participant-list').innerHTML=filtered.map(({s,r,p})=>`<article class="camp-card p-4 flex items-center gap-3">${studentAvatar(s)}<div class="flex-1 min-w-0"><b class="block truncate">${esc(s?.full_name)}</b><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room||'—')} · ${esc(s?.gender||'ไม่ระบุเพศ')}</p><div class="flex flex-wrap gap-2 mt-2"><span class="px-2 py-1 rounded-lg text-xs font-bold ${r?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${r?'กรอกข้อมูลแล้ว':'รอกรอกข้อมูล'}</span><span class="px-2 py-1 rounded-lg text-xs font-bold ${p.deposit?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-400'}">${p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ'}</span></div></div>${access.can_settings?`<button type="button" data-remove-participant="${s.id}" data-remove-name="${esc(s.full_name)}" class="camp-btn bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 flex-shrink-0" title="ลบออกจากรายชื่อค่าย">🗑️ <span class="hidden sm:inline">ลบ</span></button>`:''}</article>`).join('')||'<div class="text-center py-16 text-gray-400">ไม่พบรายชื่อนักเรียน</div>';document.querySelectorAll('[data-remove-participant]').forEach(btn=>btn.addEventListener('click',async()=>{const name=btn.dataset.removeName;if(!confirm(`ยืนยันลบ ${name} ออกจากรายชื่อผู้เข้าร่วมค่าย?\n\nข้อมูลแบบสำรวจและประวัติใบเสร็จเดิมจะยังถูกเก็บไว้เพื่อการตรวจสอบ`))return;btn.disabled=true;btn.textContent='กำลังลบ...';try{await removeTerangganuParticipant(Number(btn.dataset.removeParticipant));toast(`ลบ ${name} ออกจากรายชื่อแล้ว`);await loadManager(true)}catch(error){toast(error.message||'ลบรายชื่อไม่สำเร็จ','error');btn.disabled=false;btn.textContent='🗑️ ลบ'}}))}
@@ -276,6 +328,34 @@ function renderParticipants(){
   addSearch?.addEventListener('input',()=>{const q=addSearch.value.trim().toLowerCase();if(q.length<2){addResults.classList.add('hidden');return}const found=[...students.values()].filter(s=>!participants.has(Number(s.id))&&[s.student_code,s.full_name,s.main_room,s.religion_room,s.gender].join(' ').toLowerCase().includes(q)).slice(0,20);addResults.innerHTML=found.map(s=>`<button type="button" data-add-student-code="${esc(s.student_code)}" class="w-full text-left p-3 hover:bg-teal-50 flex items-center gap-3">${studentAvatar(s,'w-9 h-12')}<span class="flex-1 min-w-0"><b class="text-sm block truncate">${esc(s.full_name)}</b><span class="block text-xs text-gray-400">${esc(s.student_code)} · ${esc(s.main_room||'—')} · ศาสนา ${esc(s.religion_room||'—')}</span></span><span class="text-xs font-bold text-teal-700">+ เลือก</span></button>`).join('')||'<div class="p-4 text-sm text-center text-gray-400">ไม่พบนักเรียนที่ตรงกับคำค้น</div>';addResults.classList.remove('hidden');addResults.querySelectorAll('[data-add-student-code]').forEach(btn=>btn.addEventListener('click',()=>addCode(btn.dataset.addStudentCode)))})
   const add=async markPaid=>{const codes=document.getElementById('participant-codes').value,buttons=[document.getElementById('add-participants-paid'),document.getElementById('add-participants-only')];if(!codes.trim()){toast('กรุณากรอกรหัสนักเรียน','warning');return}buttons.forEach(x=>x.disabled=true);try{const result=await addTerangganuParticipants(codes,markPaid),missing=result.missing_codes||[],box=document.getElementById('participant-result');box.className=`mt-4 rounded-xl p-3 text-sm ${missing.length?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'}`;box.innerHTML=`พบ ${Number(result.matched_count||0)} คน · เพิ่มใหม่ ${Number(result.new_participants||0)} คน${markPaid?` · บันทึกมัดจำ ${Number(result.payments_added||0)} คน`:''}${missing.length?`<br>ไม่พบรหัส: ${missing.map(esc).join(', ')}`:''}`;toast(`เพิ่มรายชื่อแล้ว ${Number(result.matched_count||0)} คน${missing.length?` · ไม่พบ ${missing.length} รหัส`:''}`,missing.length?'warning':'success');setTimeout(()=>loadManager(true),missing.length?5000:1800)}catch(error){toast(error.message||'เพิ่มรายชื่อไม่สำเร็จ','error');buttons.forEach(x=>x.disabled=false)}}
   document.getElementById('add-participants-paid')?.addEventListener('click',()=>add(true));document.getElementById('add-participants-only')?.addEventListener('click',()=>add(false))
+  document.getElementById('print-student-roster').addEventListener('click',()=>openRosterPrint('student',rows))
+}
+
+function teacherMaps(){
+  const teachers=new Map((ctx.teachers||[]).map(t=>[Number(t.id),t]))
+  const participants=new Map((ctx.teacher_participants||[]).map(p=>[Number(p.teacher_id),p]))
+  const regs=new Map((ctx.teacher_registrations||[]).map(r=>[Number(r.teacher_id),r]))
+  return {teachers,participants,regs}
+}
+
+function renderTeacherParticipants(){
+  const {teachers,participants,regs}=teacherMaps(),rows=[...participants.keys()].map(id=>({t:teachers.get(id),r:regs.get(id)})).sort((a,b)=>(a.t?.full_name||'').localeCompare(b.t?.full_name||'','th'))
+  const selected=new Set()
+  content.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-bold">รายชื่อครูร่วมค่าย</h2><p class="text-xs text-gray-400">ใช้ข้อมูลครูจากฐานข้อมูล PP5 และให้ครูเข้ามากรอกข้อมูลการเดินทางเพิ่มเติมด้วยตนเอง</p></div><button id="print-teacher-roster" class="camp-btn bg-white border border-teal-200 text-teal-700">🖨️ พิมพ์ใบรายชื่อครู</button></div>
+  ${access.can_settings?`<section class="camp-card p-5 mb-5"><label><span class="camp-label">ค้นหาครูจากชื่อ รหัส ฝ่าย หรือตำแหน่ง</span><input id="teacher-add-search" class="camp-input" placeholder="ค้นหาอะไรก็เจอ"></label><div id="teacher-add-results" class="mt-3 max-h-72 overflow-y-auto divide-y rounded-xl border"></div><div class="flex items-center justify-between gap-3 mt-4"><p class="text-xs text-gray-500">เลือกแล้ว <b id="teacher-selected-count">0</b> คน</p><button id="add-teachers" class="camp-btn bg-teal-700 text-white">+ เพิ่มครูที่เลือก</button></div></section>`:''}
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><b>เพิ่มแล้ว ${rows.length} คน · กรอกแบบสำรวจ ${rows.filter(x=>x.r).length} คน</b><input id="teacher-participant-search" class="camp-input w-full sm:w-72" placeholder="ค้นหาอะไรก็เจอ"></div><div id="teacher-participant-list" class="space-y-3"></div>`
+  const drawRows=()=>{const q=document.getElementById('teacher-participant-search').value.trim().toLowerCase(),filtered=rows.filter(({t,r})=>[t?.teacher_code,t?.full_name,t?.dept,t?.subject_group,t?.position,t?.phone,r?.nickname,r?.english_name,r?.shirt_size].join(' ').toLowerCase().includes(q));document.getElementById('teacher-participant-list').innerHTML=filtered.map(({t,r})=>`<article class="camp-card p-4 flex items-center gap-3">${studentAvatar(t)}<div class="flex-1 min-w-0"><b class="block truncate">${esc(t?.full_name)}</b><p class="text-xs text-gray-400">${esc(t?.teacher_code||'—')} · ${esc(t?.position||t?.dept||t?.subject_group||'ครู')}</p><div class="flex flex-wrap gap-2 mt-2"><span class="px-2 py-1 rounded-lg text-xs font-bold ${r?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${r?'กรอกข้อมูลแล้ว':'รอกรอกข้อมูล'}</span>${t?.has_account?'':'<span class="px-2 py-1 rounded-lg text-xs bg-red-50 text-red-600">ยังไม่มีบัญชีเข้าใช้</span>'}</div></div>${access.can_settings?`<button data-remove-teacher="${t.id}" data-remove-name="${esc(t.full_name)}" class="camp-btn bg-red-50 text-red-600">🗑️ ลบ</button>`:''}</article>`).join('')||'<div class="text-center py-16 text-gray-400">ไม่พบรายชื่อครู</div>';document.querySelectorAll('[data-remove-teacher]').forEach(btn=>btn.addEventListener('click',async()=>{if(!confirm(`ยืนยันลบ ${btn.dataset.removeName} ออกจากรายชื่อครูร่วมค่าย?`))return;try{await removeTerangganuTeacherParticipant(btn.dataset.removeTeacher);toast('ลบรายชื่อครูแล้ว');await loadManager(true)}catch(error){toast(error.message||'ลบรายชื่อไม่สำเร็จ','error')}}))}
+  drawRows();document.getElementById('teacher-participant-search').addEventListener('input',drawRows)
+  const addSearch=document.getElementById('teacher-add-search'),addResults=document.getElementById('teacher-add-results'),drawChoices=()=>{if(!addResults)return;const q=(addSearch.value||'').trim().toLowerCase(),choices=[...teachers.values()].filter(t=>!participants.has(Number(t.id))&&(!q||[t.teacher_code,t.full_name,t.dept,t.subject_group,t.position,t.phone].join(' ').toLowerCase().includes(q))).slice(0,40);addResults.innerHTML=choices.map(t=>`<label class="p-3 flex items-center gap-3 cursor-pointer hover:bg-teal-50"><input type="checkbox" data-teacher-choice="${t.id}" class="w-5 h-5 accent-teal-700" ${selected.has(Number(t.id))?'checked':''}>${studentAvatar(t,'w-9 h-12')}<span class="flex-1"><b class="text-sm">${esc(t.full_name)}</b><span class="block text-xs text-gray-400">${esc(t.teacher_code||'—')} · ${esc(t.position||t.dept||t.subject_group||'ครู')}</span></span></label>`).join('')||'<p class="p-4 text-center text-sm text-gray-400">ไม่พบครู</p>';addResults.querySelectorAll('[data-teacher-choice]').forEach(input=>input.addEventListener('change',()=>{const id=Number(input.dataset.teacherChoice);input.checked?selected.add(id):selected.delete(id);document.getElementById('teacher-selected-count').textContent=selected.size}))}
+  if(addSearch){addSearch.addEventListener('input',drawChoices);drawChoices();document.getElementById('add-teachers').addEventListener('click',async()=>{if(!selected.size){toast('กรุณาเลือกครูอย่างน้อย 1 คน','warning');return}try{const result=await addTerangganuTeacherParticipants([...selected]);toast(`เพิ่มครูแล้ว ${Number(result.added_count||0)} คน`);await loadManager(true)}catch(error){toast(error.message||'เพิ่มครูไม่สำเร็จ','error')}})}
+  document.getElementById('print-teacher-roster').addEventListener('click',()=>openRosterPrint('teacher',rows))
+}
+
+function openRosterPrint(type,rows){
+  const isStudent=type==='student',e=ctx.event||{},logo=e.receipt_logo_url
+  const body=isStudent?rows.map(({s,r,p},i)=>`<tr><td>${i+1}</td><td>${esc(s?.student_code)}</td><td class="name">${esc(s?.full_name)}</td><td>${esc(s?.main_room||'')}</td><td>${esc(s?.gender||'')}</td><td>${esc(r?.phone||'')}</td><td>${esc(r?.shirt_size||'')}</td><td>${p?.deposit?'✓':''}</td><td>${p?.balance?'✓':''}</td><td></td></tr>`).join(''):rows.map(({t,r},i)=>`<tr><td>${i+1}</td><td>${esc(t?.teacher_code||'')}</td><td class="name">${esc(t?.full_name)}</td><td>${esc(t?.position||t?.dept||t?.subject_group||'')}</td><td>${esc(r?.phone||t?.phone||'')}</td><td>${esc(r?.shirt_size||'')}</td><td>${r?'✓':''}</td><td></td></tr>`).join('')
+  const head=isStudent?'<th>ลำดับ</th><th>รหัส</th><th>ชื่อ-สกุล</th><th>ชั้น</th><th>เพศ</th><th>โทรศัพท์ผู้ปกครอง</th><th>ไซซ์เสื้อ</th><th>มัดจำ</th><th>ส่วนที่เหลือ</th><th>หมายเหตุ</th>':'<th>ลำดับ</th><th>รหัสครู</th><th>ชื่อ-สกุล</th><th>ฝ่าย/ตำแหน่ง</th><th>โทรศัพท์</th><th>ไซซ์เสื้อ</th><th>แบบสำรวจ</th><th>หมายเหตุ</th>'
+  const w=window.open('','_blank');if(!w){toast('เบราว์เซอร์ปิดกั้นหน้าต่างพิมพ์','error');return}w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ใบรายชื่อ${isStudent?'นักเรียน':'ครู'} TERANGGANU 2026</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Arial,'Sarabun',sans-serif;color:#111}.tools{text-align:center;margin-bottom:12px}.head{text-align:center}.logo{width:75px;height:75px;object-fit:contain;filter:grayscale(1);margin:auto}.head h1{font-size:18px;margin:4px}.head p{margin:2px;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:14px;font-size:11px}th,td{border:1px solid #222;padding:6px;text-align:center;height:25px}.name{text-align:left;min-width:150px}th{background:#eee}.note{min-width:120px}@media print{.tools{display:none}}</style></head><body><div class="tools"><button onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button></div><div class="head">${logo?`<img class="logo" src="${esc(logo)}">`:''}<h1>${esc(e.name||'ค่ายลูกเสือ TERANGGANU 2026')}</h1><p>ใบรายชื่อ${isStudent?'นักเรียน':'ครู'}ผู้เข้าร่วมกิจกรรม · จำนวน ${rows.length} คน</p></div><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`);w.document.close()
 }
 
 function renderRegistrations() {
@@ -293,12 +373,12 @@ function renderRegistrations() {
 
 function showRegistrationDetail(studentId) {
   const {students,regs}=maps(),s=students.get(studentId),r=regs.get(studentId)
-  modal(`<div class="p-6"><div class="flex justify-between gap-3"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">${esc(s?.full_name)}</h3><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room)}</p></div></div><button data-close>✕</button></div><div class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">${detail('ชื่อเล่น',r.nickname)}${detail('ชื่ออังกฤษ',r.english_name)}${detail('เพศ',s.gender)}${detail('วันเกิด',thaiDate(r.birth_date))}${detail('สัญชาติ',r.nationality)}${detail('กรุ๊ปเลือด',r.blood_group)}${detail('เลขหนังสือเดินทาง',r.passport_number)}${detail('หมดอายุ',thaiDate(r.passport_expiry))}${detail('โทรศัพท์',r.phone)}${detail('ไซซ์เสื้อ',r.shirt_size)}<div class="sm:col-span-2">${detail('ที่อยู่',r.current_address)}</div><div class="sm:col-span-2">${detail('โรคประจำตัว',r.medical_conditions)}</div></div></div>`)
+  modal(`<div class="p-6"><div class="flex justify-between gap-3"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">${esc(s?.full_name)}</h3><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room)}</p></div></div><button data-close>✕</button></div><div class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">${detail('ชื่อเล่น',r.nickname)}${detail('ชื่ออังกฤษ',r.english_name)}${detail('เพศ',s.gender)}${detail('วันเกิด',thaiDate(r.birth_date))}${detail('สัญชาติ',r.nationality)}${detail('กรุ๊ปเลือด',r.blood_group)}${detail('เลขหนังสือเดินทาง',r.passport_number)}${detail('หมดอายุ',thaiDate(r.passport_expiry))}${detail('เบอร์โทรศัพท์ผู้ปกครอง',r.phone)}${detail('ไซซ์เสื้อ',r.shirt_size)}<div class="sm:col-span-2">${detail('ที่อยู่',r.current_address)}</div><div class="sm:col-span-2">${detail('โรคประจำตัว',r.medical_conditions)}</div></div></div>`)
 }
 function detail(label,value){return `<div class="bg-gray-50 rounded-xl p-3"><p class="text-[11px] text-gray-400">${label}</p><p class="font-semibold mt-1">${esc(value||'—')}</p></div>`}
 
 function exportRegistrations(){
-  const {students,participants,regs,payments}=maps();const bom='\ufeff';const headers=['รหัสนักเรียน','ชื่อไทย','ชื่ออังกฤษ','ห้อง','เพศ','ชื่อเล่น','เลขหนังสือเดินทาง','วันหมดอายุ','วันเกิด','สัญชาติ','กรุ๊ปเลือด','โทรศัพท์','ไซซ์เสื้อ','โรคประจำตัว','ที่อยู่','มัดจำ','ส่วนที่เหลือ']
+  const {students,participants,regs,payments}=maps();const bom='\ufeff';const headers=['รหัสนักเรียน','ชื่อไทย','ชื่ออังกฤษ','ห้อง','เพศ','ชื่อเล่น','เลขหนังสือเดินทาง','วันหมดอายุ','วันเกิด','สัญชาติ','กรุ๊ปเลือด','เบอร์โทรศัพท์ผู้ปกครอง','ไซซ์เสื้อ','โรคประจำตัว','ที่อยู่','มัดจำ','ส่วนที่เหลือ']
   const quote=v=>`"${String(v??'').replace(/"/g,'""')}"`;const lines=[headers,...[...regs.values()].filter(r=>participants.has(Number(r.student_id))).map(r=>{const s=students.get(Number(r.student_id)),p=payments.get(Number(r.student_id))||{};return[s?.student_code,s?.full_name,r.english_name,s?.main_room,s?.gender,r.nickname,r.passport_number,r.passport_expiry,r.birth_date,r.nationality,r.blood_group,r.phone,r.shirt_size,r.medical_conditions,r.current_address,p.deposit?'ชำระแล้ว':'',p.balance?'ชำระแล้ว':'']})].map(row=>row.map(quote).join(','))
   const url=URL.createObjectURL(new Blob([bom+lines.join('\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='TERANGGANU2026_ข้อมูลผู้เข้าร่วม.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
 }
@@ -342,6 +422,7 @@ function renderSettings(){
     ${field('receipt_prefix','คำนำหน้าเลขที่ใบเสร็จ',e.receipt_prefix,'text',true,true)}
     <label><span class="camp-label">ครูผู้ลงนามในใบเสร็จ</span><select id="receipt-teacher-select" name="receipt_teacher_id" class="camp-input"><option value="">เลือกครูผู้รับผิดชอบ</option>${staff.filter(x=>x.active).map(x=>`<option value="${x.teacher_id}" ${Number(e.receipt_teacher_id)===Number(x.teacher_id)?'selected':''}>${esc(x.display_name||x.full_name)}</option>`).join('')}</select></label>
     <div id="receipt-teacher-signature" class="sm:col-span-2"></div>
+    <div class="sm:col-span-2 rounded-xl bg-gray-50 p-4"><p class="camp-label">โลโก้โรงเรียนขาวดำบนใบเสร็จและใบรายชื่อ</p><div class="flex flex-col sm:flex-row sm:items-center gap-3">${e.receipt_logo_url?`<img src="${esc(e.receipt_logo_url)}" class="h-24 w-24 object-contain bg-white grayscale">`:'<div class="h-24 w-24 rounded-lg border border-dashed flex items-center justify-center text-xs text-gray-400 bg-white text-center">ยังไม่มี<br>โลโก้</div>'}<div class="flex-1"><input id="receipt-logo-file" type="file" accept="image/*" class="text-xs"><button id="upload-receipt-logo" type="button" class="camp-btn bg-gray-800 text-white mt-2">⬆ อัปโหลดโลโก้</button><p class="text-[11px] text-gray-400 mt-2">ระบบจะแสดงเป็นขาวดำบนเอกสารโดยอัตโนมัติ</p></div></div></div>
     <label class="sm:col-span-2"><span class="camp-label">รายละเอียดกิจกรรม</span><textarea name="details" class="camp-input" rows="3">${esc(e.details||'')}</textarea></label>
     ${field('director_name','ชื่อผู้อำนวยการ',e.director_name)}${field('director_title','ตำแหน่งผู้อำนวยการ',e.director_title)}
     <div class="sm:col-span-2 rounded-xl bg-gray-50 p-4"><p class="camp-label">ลายเซ็นผู้อำนวยการ</p><div class="flex flex-col sm:flex-row sm:items-center gap-3">${e.director_signature_url?`<img src="${esc(e.director_signature_url)}" class="h-20 max-w-56 object-contain bg-white rounded-lg border p-1">`:'<div class="h-20 w-44 rounded-lg border border-dashed flex items-center justify-center text-xs text-gray-400 bg-white">ยังไม่มีลายเซ็น</div>'}<div><p class="text-xs text-gray-500 mb-2">สามารถวาดบนหน้าจอหรืออัปโหลดไฟล์ภาพได้</p><button id="edit-director-sign" type="button" class="camp-btn bg-indigo-50 text-indigo-700">✍️ เขียน / อัปโหลดลายเซ็น</button></div></div></div>
@@ -362,6 +443,7 @@ function renderSettings(){
   teacherSelect.addEventListener('change',drawReceiptTeacherSignature)
   drawReceiptTeacherSignature()
   document.getElementById('edit-director-sign').addEventListener('click',openDirectorSignatureModal)
+  document.getElementById('upload-receipt-logo').addEventListener('click',async event=>{const file=document.getElementById('receipt-logo-file').files[0];if(!file){toast('กรุณาเลือกไฟล์โลโก้','warning');return}const btn=event.currentTarget;btn.disabled=true;btn.textContent='กำลังอัปโหลด...';try{const url=await uploadTerangganuReceiptLogo(file);await updateTerangganuEvent({receipt_logo_url:url});toast('บันทึกโลโก้ใบเสร็จแล้ว');await loadManager(true)}catch(error){toast(error.message||'อัปโหลดโลโก้ไม่สำเร็จ','error');btn.disabled=false;btn.textContent='⬆ อัปโหลดโลโก้'}})
 }
 
 async function quickSetting(payload){try{await updateTerangganuEvent(payload);toast('อัปเดตสถานะแล้ว');await loadManager(true)}catch(error){toast(error.message,'error')}}
@@ -412,9 +494,11 @@ function bahtTextSimple(amount){
   return `${integer(baht)}บาท${satangNumber?`${group(satang)}สตางค์`:'ถ้วน'}`
 }
 function openReceipt(paymentId){
-  const p=findPayment(paymentId);if(!p){toast('ไม่พบข้อมูลใบเสร็จ','error');return}const s=findStudent(p.student_id),snap=p.receipt_snapshot||{},label=p.installment_type==='deposit'?'ค่ามัดจำเข้าร่วมค่าย':'ค่าใช้จ่ายส่วนที่เหลือ'
+  const p=findPayment(paymentId);if(!p){toast('ไม่พบข้อมูลใบเสร็จ','error');return}
+  const s=findStudent(p.student_id),studentPayments=(ctx.payments||[]).filter(x=>Number(x.student_id)===Number(p.student_id)&&!x.voided_at).sort((a,b)=>(a.installment_type==='deposit'?0:1)-(b.installment_type==='deposit'?0:1)),complete=studentPayments.some(x=>x.installment_type==='deposit')&&studentPayments.some(x=>x.installment_type==='balance'),items=complete?studentPayments:[p],latest=[...items].sort((a,b)=>new Date(b.paid_at)-new Date(a.paid_at))[0],snap=latest.receipt_snapshot||p.receipt_snapshot||{},total=items.reduce((sum,x)=>sum+Number(x.amount||0),0),numbers=items.map(x=>x.receipt_no).join(' / '),logo=ctx.event?.receipt_logo_url||snap.receipt_logo_url
+  const itemRows=items.map(x=>`<tr><td>${x.installment_type==='deposit'?'ค่ามัดจำเข้าร่วมค่าย':'ค่าใช้จ่ายส่วนที่เหลือ'}</td><td>${thaiDate(x.paid_at)}</td><td>${esc(x.receipt_no)}</td><td class="num">${money(x.amount)} บาท</td></tr>`).join('')
   const w=window.open('','_blank');if(!w){toast('เบราว์เซอร์ปิดกั้นหน้าต่างใบเสร็จ','error');return}
-  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(p.receipt_no)}</title><style>@page{size:A4;margin:14mm}body{font-family:Arial,'Sarabun',sans-serif;color:#111}.tools{text-align:center;margin-bottom:16px}.receipt{border:1.5px solid #111;padding:24px;max-width:760px;margin:auto}.head{text-align:center}.head h1{font-size:21px;margin:4px}.head p{margin:3px;font-size:13px}.no{text-align:right;margin:16px 0;font-weight:bold}.row{display:flex;border-bottom:1px dotted #aaa;padding:8px 0;gap:12px}.row span:first-child{width:150px;color:#555}.amount{font-size:20px;font-weight:bold}.signs{display:grid;grid-template-columns:1fr 1fr;gap:50px;margin-top:55px;text-align:center}.signs img{height:65px;max-width:180px;object-fit:contain}.line{border-bottom:1px solid #111;height:68px;margin:auto;max-width:220px}.muted{font-size:11px;color:#666}@media print{.tools{display:none}}</style></head><body><div class="tools"><button onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div><div class="receipt"><div class="head"><h1>ใบเสร็จรับเงิน</h1><h1>${esc(snap.event_name||ctx.event?.name)}</h1><p>${esc(snap.location||'โรงเรียนมูลนิธิอาซิซสถาน')}</p></div><div class="no">เลขที่ ${esc(p.receipt_no)}</div><div class="row"><span>ได้รับเงินจาก</span><b>${esc(s?.full_name)}</b></div><div class="row"><span>รหัสนักเรียน / ชั้น</span><b>${esc(s?.student_code)} / ${esc(s?.main_room||'—')}</b></div><div class="row"><span>รายการ</span><b>${label}</b></div><div class="row"><span>จำนวนเงิน</span><b class="amount">${money(p.amount)} บาท</b></div><div class="row"><span>จำนวนเงินตัวอักษร</span><b>${bahtTextSimple(p.amount)}</b></div><div class="row"><span>วันที่รับเงิน</span><b>${thaiDate(p.paid_at)}</b></div><div class="signs"><div>${snap.teacher_signature_url?`<img src="${esc(snap.teacher_signature_url)}">`:'<div class="line"></div>'}<p>(${esc(snap.teacher_name||'ครูผู้รับผิดชอบ')})</p><p class="muted">${esc(snap.teacher_title||'ครูผู้รับผิดชอบ')}</p></div><div>${snap.director_signature_url?`<img src="${esc(snap.director_signature_url)}">`:'<div class="line"></div>'}<p>(${esc(snap.director_name||'ผู้อำนวยการ')})</p><p class="muted">${esc(snap.director_title||'ผู้อำนวยการ')}</p></div></div><p class="muted" style="margin-top:30px">สร้างโดยระบบ PP5 Online · ${new Date(p.created_at).toLocaleString('th-TH')}</p></div></body></html>`);w.document.close()
+  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(complete?'ใบเสร็จรวม '+numbers:p.receipt_no)}</title><style>@page{size:A4;margin:14mm}body{font-family:Arial,'Sarabun',sans-serif;color:#111}.tools{text-align:center;margin-bottom:16px}.receipt{border:1.5px solid #111;padding:24px;max-width:760px;margin:auto}.head{text-align:center}.logo{width:82px;height:82px;object-fit:contain;filter:grayscale(1);margin:auto}.head h1{font-size:21px;margin:4px}.head p{margin:3px;font-size:13px}.no{text-align:right;margin:16px 0;font-weight:bold}.row{display:flex;border-bottom:1px dotted #aaa;padding:8px 0;gap:12px}.row span:first-child{width:150px;color:#555}table{width:100%;border-collapse:collapse;margin-top:15px;font-size:13px}th,td{border:1px solid #777;padding:9px}th{background:#f3f3f3}.num{text-align:right}.amount{font-size:20px;font-weight:bold}.signs{display:grid;grid-template-columns:1fr 1fr;gap:50px;margin-top:55px;text-align:center}.signs img{height:65px;max-width:180px;object-fit:contain}.line{border-bottom:1px solid #111;height:68px;margin:auto;max-width:220px}.muted{font-size:11px;color:#666}@media print{.tools{display:none}}</style></head><body><div class="tools"><button onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div><div class="receipt"><div class="head">${logo?`<img class="logo" src="${esc(logo)}">`:''}<h1>ใบเสร็จรับเงิน${complete?' (ชำระครบ)':''}</h1><h1>${esc(snap.event_name||ctx.event?.name)}</h1><p>${esc(snap.location||'โรงเรียนมูลนิธิอาซิซสถาน')}</p></div><div class="no">เลขที่ ${esc(numbers)}</div><div class="row"><span>ได้รับเงินจาก</span><b>${esc(s?.full_name)}</b></div><div class="row"><span>รหัสนักเรียน / ชั้น</span><b>${esc(s?.student_code)} / ${esc(s?.main_room||'—')}</b></div><table><thead><tr><th>รายการ</th><th>วันที่ชำระ</th><th>เลขที่รายการ</th><th>จำนวนเงิน</th></tr></thead><tbody>${itemRows}</tbody></table><div class="row"><span>ยอดรวมทั้งหมด</span><b class="amount">${money(total)} บาท</b></div><div class="row"><span>จำนวนเงินตัวอักษร</span><b>${bahtTextSimple(total)}</b></div><div class="signs"><div>${snap.teacher_signature_url?`<img src="${esc(snap.teacher_signature_url)}">`:'<div class="line"></div>'}<p>(${esc(snap.teacher_name||'ครูผู้รับผิดชอบ')})</p><p class="muted">${esc(snap.teacher_title||'ครูผู้รับผิดชอบ')}</p></div><div>${snap.director_signature_url?`<img src="${esc(snap.director_signature_url)}">`:'<div class="line"></div>'}<p>(${esc(snap.director_name||'ผู้อำนวยการ')})</p><p class="muted">${esc(snap.director_title||'ผู้อำนวยการ')}</p></div></div><p class="muted" style="margin-top:30px">สร้างโดยระบบ PP5 Online · ${new Date(latest.created_at).toLocaleString('th-TH')}</p></div></body></html>`);w.document.close()
 }
 
 init()

@@ -108,6 +108,11 @@ export async function uploadTerangganuDirectorSignature(fileOrBlob) {
   return uploadFile('terangganu-assets', 'director-signature.jpg', blob)
 }
 
+export async function uploadTerangganuReceiptLogo(fileOrBlob) {
+  const blob = await compressImage(fileOrBlob, { maxWidth: 1000, quality: 0.92, background: '#fff' })
+  return uploadFile('terangganu-assets', 'receipt-logo.jpg', blob)
+}
+
 // รูปแนบประกาศ (เช่น อินโฟกราฟิก) → บีบ max 1600px คุณภาพสูงเพราะเป็นภาพนำเสนอ
 export async function uploadAnnouncementImage(file) {
   const blob = await compressImage(file, { maxWidth: 1600, quality: 0.88 })
