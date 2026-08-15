@@ -40,6 +40,24 @@ export async function getTerangganuManagerContext() {
   return unwrap(data)
 }
 
+export async function getTerangganuSchedule() {
+  const { data, error } = await supabase.rpc('get_terangganu_schedule')
+  if (error) throw error
+  return Array.isArray(data) ? data : []
+}
+
+export async function saveTerangganuScheduleItem(payload) {
+  const { data, error } = await supabase.rpc('save_terangganu_schedule_item', { p_payload: payload })
+  if (error) throw error
+  return unwrap(data)
+}
+
+export async function deleteTerangganuScheduleItem(itemId) {
+  const { data, error } = await supabase.rpc('delete_terangganu_schedule_item', { p_item_id: itemId })
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function updateTerangganuEvent(payload) {
   const { data, error } = await supabase.rpc('update_terangganu_event', { p_payload: payload })
   if (error) throw error
@@ -138,5 +156,6 @@ export function subscribeTerangganu(eventId, onChange) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_payments', filter: `event_id=eq.${eventId}` }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_teacher_participants', filter: `event_id=eq.${eventId}` }, onChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_teacher_registrations', filter: `event_id=eq.${eventId}` }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'terangganu_camp_schedule_items', filter: `event_id=eq.${eventId}` }, onChange)
     .subscribe()
 }

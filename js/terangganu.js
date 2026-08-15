@@ -3,6 +3,7 @@ import {
   getTerangganuAccess, getMyTerangganuContext, saveMyTerangganuRegistration,
   getMyTerangganuTeacherContext, saveMyTerangganuTeacherRegistration,
   getTerangganuManagerContext, updateTerangganuEvent, assignTerangganuStaff,
+  getTerangganuSchedule, saveTerangganuScheduleItem, deleteTerangganuScheduleItem,
   addTerangganuParticipants, removeTerangganuParticipant,
   addTerangganuTeacherParticipants, removeTerangganuTeacherParticipant,
   updateMyTerangganuSignature, recordTerangganuPayment, recordTerangganuPaymentsBulk, voidTerangganuPayment,
@@ -105,7 +106,8 @@ async function loadStudent(silent = false) {
     return
   }
   if (!silent) content.innerHTML = '<div class="text-center py-20 text-teal-600">กำลังโหลดข้อมูล...</div>'
-  ctx = await getMyTerangganuContext()
+  const [studentContext, schedule] = await Promise.all([getMyTerangganuContext(), getTerangganuSchedule()])
+  ctx = { ...studentContext, schedule }
   updateBrand(ctx.event)
   nav.classList.add('hidden')
   renderStudent()
@@ -144,6 +146,7 @@ function renderStudent() {
       </div>
     </section>
     <div class="grid sm:grid-cols-2 gap-4 mb-5">${paymentCard('deposit','ค่ามัดจำ',e.deposit_amount)}${paymentCard('balance','ส่วนที่เหลือ',e.balance_amount)}</div>
+    ${scheduleSection()}
     <section class="camp-card p-5 sm:p-7">
       <div class="flex items-start justify-between gap-3 mb-5"><div><h2 class="font-bold text-lg">📝 แบบสำรวจนักเรียน</h2><p class="text-xs text-gray-400 mt-1">${r ? `ส่งข้อมูลแล้ว ${thaiDate(r.updated_at)}` : 'กรอกข้อมูลสำหรับการเดินทางเข้าค่าย'}</p></div><span class="px-2.5 py-1 rounded-full text-xs font-bold ${r ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${r ? 'ครบแล้ว' : 'ยังไม่กรอก'}</span></div>
       ${!canEdit ? `<div class="mb-5 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">แบบสำรวจปิดรับข้อมูลแล้ว สามารถดูข้อมูลเดิมได้</div>` : ''}
@@ -186,7 +189,8 @@ async function saveStudentForm(event) {
 // ─── Teacher participant ───────────────────────────────────────────────────
 async function loadTeacher(silent = false) {
   if (!silent) content.innerHTML = '<div class="text-center py-20 text-teal-600">กำลังโหลดข้อมูล...</div>'
-  ctx = await getMyTerangganuTeacherContext()
+  const [teacherContext, schedule] = await Promise.all([getMyTerangganuTeacherContext(), getTerangganuSchedule()])
+  ctx = { ...teacherContext, schedule }
   updateBrand(ctx.event)
   nav.classList.add('hidden')
   renderTeacherSurvey(ctx.teacher, ctx.registration, false)
@@ -219,7 +223,7 @@ function renderTeacherSurvey(teacher, registration, insideManager = false) {
   content.innerHTML = `<section class="rounded-3xl bg-gradient-to-br from-teal-800 via-teal-700 to-emerald-600 text-white p-6 shadow-xl mb-5">
     <p class="text-teal-100 text-xs">ครูที่ปรึกษา / ครูร่วมค่าย</p><h2 class="text-xl font-bold mt-1">${esc(teacher?.full_name)}</h2>
     <p class="text-sm text-teal-100 mt-1">${esc(teacher?.teacher_code || '—')} · ${esc(teacher?.position || teacher?.dept || teacher?.subject_group || 'ครู')}</p>
-  </section><section class="camp-card p-5 sm:p-7"><div class="flex items-start justify-between gap-3 mb-5"><div><h2 class="font-bold text-lg">📝 แบบสำรวจครูร่วมค่าย</h2><p class="text-xs text-gray-400 mt-1">${registration ? `ส่งข้อมูลแล้ว ${thaiDate(registration.updated_at)}` : 'กรอกข้อมูลสำหรับการเดินทางเข้าค่าย'}</p></div><span class="px-2.5 py-1 rounded-full text-xs font-bold ${registration?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${registration?'ครบแล้ว':'ยังไม่กรอก'}</span></div>
+  </section>${insideManager ? '' : scheduleSection()}<section class="camp-card p-5 sm:p-7"><div class="flex items-start justify-between gap-3 mb-5"><div><h2 class="font-bold text-lg">📝 แบบสำรวจครูร่วมค่าย</h2><p class="text-xs text-gray-400 mt-1">${registration ? `ส่งข้อมูลแล้ว ${thaiDate(registration.updated_at)}` : 'กรอกข้อมูลสำหรับการเดินทางเข้าค่าย'}</p></div><span class="px-2.5 py-1 rounded-full text-xs font-bold ${registration?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${registration?'ครบแล้ว':'ยังไม่กรอก'}</span></div>
     ${!canEdit?'<div class="mb-5 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">แบบสำรวจปิดรับข้อมูลแล้ว สามารถดูข้อมูลเดิมได้</div>':''}${teacherSurveyForm(teacher,registration,canEdit)}</section>`
   content.querySelector('#teacher-camp-form')?.addEventListener('submit', async event => {
     event.preventDefault(); const btn=event.submitter; btn.disabled=true; btn.textContent='กำลังบันทึก...'
@@ -230,12 +234,13 @@ function renderTeacherSurvey(teacher, registration, insideManager = false) {
 
 // ─── Manager ────────────────────────────────────────────────────────────────
 const MANAGER_TABS = [
-  ['dashboard','📊','ภาพรวม'],['participants','👥','นักเรียน'],['teacher_participants','🧑‍🏫','ครูร่วมค่าย'],['registrations','📝','แบบสำรวจ'],['payments','💰','รับชำระ'],['my_teacher_survey','✍️','แบบสำรวจของฉัน'],['settings','⚙️','ตั้งค่า'],['staff','👩‍🏫','ผู้รับผิดชอบ'],
+  ['dashboard','📊','ภาพรวม'],['schedule','📅','กำหนดการ'],['participants','👥','นักเรียน'],['teacher_participants','🧑‍🏫','ครูร่วมค่าย'],['registrations','📝','แบบสำรวจ'],['payments','💰','รับชำระ'],['my_teacher_survey','✍️','แบบสำรวจของฉัน'],['settings','⚙️','ตั้งค่า'],['staff','👩‍🏫','ผู้รับผิดชอบ'],
 ]
 
 async function loadManager(silent = false) {
   if (!silent) content.innerHTML = '<div class="text-center py-20 text-teal-600">กำลังโหลดข้อมูล...</div>'
-  ctx = await getTerangganuManagerContext()
+  const [managerContext, schedule] = await Promise.all([getTerangganuManagerContext(), getTerangganuSchedule()])
+  ctx = { ...managerContext, schedule }
   access = ctx.access || access
   updateBrand(ctx.event)
   nav.classList.remove('hidden')
@@ -261,6 +266,7 @@ function maps() {
 function renderManager() {
   tabs.querySelectorAll('[data-tab]').forEach(btn=>btn.classList.toggle('active',btn.dataset.tab===activeTab))
   if(activeTab==='dashboard') renderDashboard()
+  else if(activeTab==='schedule') renderSchedule()
   else if(activeTab==='participants') renderParticipants()
   else if(activeTab==='teacher_participants') renderTeacherParticipants()
   else if(activeTab==='registrations') renderRegistrations()
@@ -268,6 +274,49 @@ function renderManager() {
   else if(activeTab==='my_teacher_survey') { const teacher=(ctx.teachers||[]).find(t=>Number(t.id)===Number(access.teacher_id)),registration=(ctx.teacher_registrations||[]).find(r=>Number(r.teacher_id)===Number(access.teacher_id)); renderTeacherSurvey(teacher,registration,true) }
   else if(activeTab==='settings') renderSettings()
   else if(activeTab==='staff') renderStaff()
+}
+
+function scheduleRows(canManage = false) {
+  const rows = ctx.schedule || []
+  if (!rows.length) return '<tr><td colspan="4" class="px-4 py-10 text-center text-gray-400">ยังไม่มีกำหนดการ</td></tr>'
+  return rows.map(item => `<tr class="border-t border-gray-100 align-top">
+    <td class="px-3 py-3 text-center font-bold text-teal-700">${esc(item.item_no)}</td>
+    <td class="px-3 py-3 whitespace-nowrap">${thaiDate(item.item_date)}</td>
+    <td class="px-3 py-3 font-semibold">${esc(item.item_text)}</td>
+    <td class="px-3 py-3"><div class="whitespace-pre-line text-gray-600">${esc(item.note || '—')}</div>${canManage ? `<div class="flex flex-wrap gap-2 mt-2 no-print"><button type="button" data-schedule-edit="${item.id}" class="text-xs font-bold text-indigo-600 hover:underline">แก้ไข</button><button type="button" data-schedule-delete="${item.id}" class="text-xs font-bold text-red-600 hover:underline">ลบ</button></div>` : ''}</td>
+  </tr>`).join('')
+}
+
+function scheduleTable(canManage = false) {
+  return `<div class="overflow-x-auto"><table class="w-full min-w-[680px] text-sm"><thead><tr class="bg-teal-50 text-teal-900"><th class="px-3 py-3 w-24">รายการที่</th><th class="px-3 py-3 w-40">วันที่</th><th class="px-3 py-3 text-left">รายการ</th><th class="px-3 py-3 text-left w-64">หมายเหตุ</th></tr></thead><tbody>${scheduleRows(canManage)}</tbody></table></div>`
+}
+
+function scheduleSection() {
+  return `<section class="camp-card mb-5 overflow-hidden"><div class="px-5 py-4 border-b border-teal-100"><h2 class="font-bold text-lg">📅 กำหนดการ</h2><p class="text-xs text-gray-400 mt-1">กำหนดการเข้าร่วมค่ายเรียงตามรายการที่</p></div>${scheduleTable(false)}</section>`
+}
+
+function renderSchedule() {
+  content.innerHTML = `<div class="flex flex-wrap items-end justify-between gap-3 mb-5"><div><p class="text-xs text-teal-600 font-bold">ข้อมูลสำหรับผู้เข้าร่วม</p><h2 class="text-2xl font-bold">กำหนดการ</h2><p class="text-xs text-gray-400 mt-1">รุ่นแรกประกอบด้วย รายการที่ วันที่ รายการ และหมายเหตุ</p></div>${access.can_settings ? '<button id="schedule-add" class="camp-btn bg-teal-700 text-white">+ เพิ่มรายการ</button>' : ''}</div><section class="camp-card overflow-hidden">${scheduleTable(Boolean(access.can_settings))}</section>`
+  document.getElementById('schedule-add')?.addEventListener('click', () => openScheduleModal())
+  document.querySelectorAll('[data-schedule-edit]').forEach(btn => btn.addEventListener('click', () => openScheduleModal((ctx.schedule || []).find(item => item.id === btn.dataset.scheduleEdit))))
+  document.querySelectorAll('[data-schedule-delete]').forEach(btn => btn.addEventListener('click', async () => {
+    const item = (ctx.schedule || []).find(row => row.id === btn.dataset.scheduleDelete)
+    if (!item || !confirm(`ยืนยันลบรายการที่ ${item.item_no}: ${item.item_text}?`)) return
+    btn.disabled = true
+    try { await deleteTerangganuScheduleItem(item.id); toast('ลบรายการกำหนดการแล้ว'); await loadManager(true) }
+    catch (error) { toast(error.message || 'ลบรายการไม่สำเร็จ', 'error'); btn.disabled = false }
+  }))
+}
+
+function openScheduleModal(item = null) {
+  const nextNo = Math.max(0, ...(ctx.schedule || []).map(row => Number(row.item_no) || 0)) + 1
+  const defaultDate = ctx.event?.event_start_date || new Date().toISOString().slice(0, 10)
+  const wrap = modal(`<form id="schedule-form" class="p-6"><div class="flex items-start justify-between gap-3"><div><h3 class="font-bold text-lg">${item ? 'แก้ไข' : 'เพิ่ม'}รายการกำหนดการ</h3><p class="text-xs text-gray-400 mt-1">กรอกข้อมูลทั้ง 4 ช่องตามรูปแบบกำหนดการ</p></div><button type="button" data-close>✕</button></div><input type="hidden" name="id" value="${esc(item?.id || '')}"><div class="grid sm:grid-cols-2 gap-4 mt-5">${field('item_no','รายการที่',item?.item_no || nextNo,'number',true,true)}${field('item_date','วันที่',item?.item_date || defaultDate,'date',true,true)}<label class="sm:col-span-2"><span class="camp-label">รายการ *</span><textarea name="item_text" rows="3" class="camp-input" required>${esc(item?.item_text || '')}</textarea></label><label class="sm:col-span-2"><span class="camp-label">หมายเหตุ</span><textarea name="note" rows="3" class="camp-input">${esc(item?.note || '')}</textarea></label></div><div class="grid grid-cols-2 gap-3 mt-5"><button type="button" data-close class="camp-btn bg-gray-100 text-gray-600">ยกเลิก</button><button type="submit" class="camp-btn bg-teal-700 text-white">💾 บันทึก</button></div></form>`)
+  wrap.querySelector('#schedule-form').addEventListener('submit', async event => {
+    event.preventDefault(); const btn = event.submitter; btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try { await saveTerangganuScheduleItem(Object.fromEntries(new FormData(event.currentTarget).entries())); wrap.remove(); toast('บันทึกกำหนดการแล้ว'); await loadManager(true) }
+    catch (error) { toast(error.message || 'บันทึกกำหนดการไม่สำเร็จ', 'error'); btn.disabled = false; btn.textContent = '💾 บันทึก' }
+  })
 }
 
 function stat(label,value,icon,color='teal') {
