@@ -12,6 +12,8 @@ import {
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
   getCandidatesForElection, publishElectionResults,
+  getCouncilActivities, createActivity, updateActivityStatus, getActivityAttendance, checkInAttendance,
+  getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -54,6 +56,12 @@ let flowSubtab = null
 let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
 const candidatesByGender = {} // { M: [...], W: [...] }
 let electionYear = null // ปีการศึกษาปัจจุบันที่ resolve แล้ว (จาก ctx.cfg.academicYear)
+let activities = null // null = ยังไม่โหลด
+const attendanceByActivity = {} // { [activityId]: Set<memberId> }
+let announcements = null // null = ยังไม่โหลด
+let myAcks = null // Set<announcementId> — เฉพาะนักเรียนที่ล็อกอินอยู่
+let annFilter = 'all'
+let showAnnForm = false
 
 const FLOW_DEFS = {
   apply: {
@@ -132,8 +140,12 @@ async function init() {
     }
   }
 
+  // ประธานสภา (chair) — นักเรียนที่ล็อกอินอยู่และมีสมาชิกภาพ active ในตำแหน่งที่ is_elected=true
+  // ได้สิทธิ์จัดการกิจกรรม/ประกาศเท่าแอดมิน (RLS คุมไว้แล้ว ดู patch_council_phase3_activities_news.sql)
+  const isChair = role === 'student' && membership.some(m => m.council_positions?.is_elected)
+
   ctx = {
-    role, isAdmin, student, applications, membership, positions, members, elections, cfg,
+    role, isAdmin, isChair, student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
   electionYear = Number(cfg.academicYear) || (new Date().getFullYear() + 543)
@@ -183,6 +195,8 @@ function getNavItems() {
     items.push({ id: 'endorse', icon: '✋', label: 'รอยืนยัน', badge: ctx.pendingEndorsements.length })
   }
   if (ctx.isAdmin) items.push({ id: 'apps', icon: '📋', label: 'จัดการใบสมัคร' })
+  items.push({ id: 'news', icon: '📣', label: 'ประกาศ' })
+  items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม' })
   items.push({ id: 'candidates', icon: '🗳️', label: 'ผู้สมัครเลือกตั้ง' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภานักเรียน' })
   return items
@@ -615,10 +629,201 @@ async function handleEndorsement(applicationId, action) {
   }
 }
 
+// ─── กิจกรรมประจำปีของสภา — public browse + แอดมิน/ประธานสภาจัดการ+เช็คชื่อ ──────────────
+const ACT_STATUS_BADGE = {
+  planned: ['ยังไม่จัด', 'text-amber-700', 'bg-amber-100', 'border-amber-200'],
+  ongoing: ['กำลังดำเนินการ', 'text-violet-700', 'bg-violet-100', 'border-violet-200'],
+  completed: ['เสร็จแล้ว', 'text-emerald-700', 'bg-emerald-100', 'border-emerald-200'],
+  cancelled: ['ยกเลิก', 'text-gray-400', 'bg-gray-50', 'border-gray-200'],
+}
+const ACT_SUMMARY_TILES = [
+  ['completed', 'เสร็จแล้ว', 'border-emerald-100 bg-emerald-50', 'text-emerald-600'],
+  ['ongoing', 'กำลังดำเนินการ', 'border-violet-100 bg-violet-50', 'text-violet-600'],
+  ['planned', 'ยังไม่จัด', 'border-amber-100 bg-amber-50', 'text-amber-600'],
+  ['cancelled', 'ยกเลิก', 'border-gray-100 bg-gray-50', 'text-gray-400'],
+]
+const ACT_NEXT_STATUS = { planned: 'ongoing', ongoing: 'completed' }
+const ACT_NEXT_LABEL = { planned: '▶️ เริ่มดำเนินการ', ongoing: '✅ ทำเครื่องหมายเสร็จแล้ว' }
+
+async function loadActivities() {
+  activities = await getCouncilActivities(electionYear).catch(() => [])
+  render()
+}
+
+async function loadAttendance(activityId) {
+  attendanceByActivity[activityId] = await getActivityAttendance(activityId).catch(() => new Set())
+  render()
+}
+
+function renderActivitiesView() {
+  if (activities === null) { loadActivities(); return `<p class="text-sm text-gray-400 text-center py-16">⏳ กำลังโหลด...</p>` }
+  const canManage = ctx.isAdmin || ctx.isChair
+  const counts = {}
+  activities.forEach(a => { counts[a.status] = (counts[a.status] ?? 0) + 1 })
+
+  const summary = `
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+      ${ACT_SUMMARY_TILES.map(([k, label, box, num]) => `
+        <div class="rounded-xl border ${box} p-3 text-center">
+          <p class="text-2xl font-bold ${num}">${counts[k] ?? 0}</p>
+          <p class="text-[11px] text-gray-500">${label}</p>
+        </div>`).join('')}
+    </div>`
+
+  const createForm = canManage ? `
+    <div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+      <p class="text-sm font-bold text-gray-700 mb-3">➕ สร้างกิจกรรมใหม่</p>
+      <form id="activity-form" class="space-y-2">
+        <input name="title" required placeholder="ชื่อกิจกรรม" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        <textarea name="detail" rows="2" placeholder="รายละเอียด (ถ้ามี)" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <input name="activity_date" type="date" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+          <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <select name="gender" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+            <option value="">สภาชาย+หญิงร่วมกัน</option>
+            <option value="M">สภาชายเท่านั้น</option>
+            <option value="W">สภาหญิงเท่านั้น</option>
+          </select>
+          <input name="owner_text" placeholder="ฝ่าย/ผู้รับผิดชอบ" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold">สร้างกิจกรรม</button>
+      </form>
+    </div>` : ''
+
+  if (!activities.length) return `${summary}${createForm}<p class="text-sm text-gray-400 text-center py-10">ยังไม่มีกิจกรรม</p>`
+
+  const card = a => {
+    const [label, fg, bg, border] = ACT_STATUS_BADGE[a.status] ?? ['—', 'text-gray-500', 'bg-gray-100', 'border-gray-200']
+    const members = ctx.members.filter(m => !a.gender || m.council_positions?.gender === a.gender)
+    const attendance = attendanceByActivity[a.id]
+    return `
+      <div class="rounded-xl border border-gray-100 p-3 space-y-2 bg-white" data-activity-card="${a.id}">
+        <div class="flex items-start gap-2">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-gray-800">${esc(a.title)}</p>
+            <p class="text-xs text-gray-400 mt-0.5">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนดวัน'} ${a.gender ? '· สภา' + GENDER_LABEL[a.gender] : ''} ${a.owner_text ? '· ' + esc(a.owner_text) : ''}</p>
+          </div>
+          <span class="flex-shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full border ${border} ${bg} ${fg}">${label}</span>
+        </div>
+        ${a.detail ? `<p class="text-xs text-gray-600">${esc(a.detail)}</p>` : ''}
+        ${canManage ? `
+          <div class="flex flex-wrap gap-2 pt-1 border-t border-gray-100">
+            ${ACT_NEXT_STATUS[a.status] ? `<button type="button" class="btn-activity-next text-xs font-bold px-3 py-1.5 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50" data-id="${a.id}" data-next="${ACT_NEXT_STATUS[a.status]}">${ACT_NEXT_LABEL[a.status]}</button>` : ''}
+            ${a.status !== 'cancelled' && a.status !== 'completed' ? `<button type="button" class="btn-activity-cancel text-xs font-bold px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50" data-id="${a.id}">ยกเลิก</button>` : ''}
+            <button type="button" class="btn-activity-attendance text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50" data-id="${a.id}">👥 เช็คชื่อสมาชิก</button>
+          </div>
+          <div class="activity-attendance-panel" data-panel-for="${a.id}">
+            ${attendance ? `
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
+                ${members.map(m => {
+                  const done = attendance.has(m.id)
+                  return `<button type="button" class="btn-checkin flex items-center gap-2 text-xs rounded-lg border px-2.5 py-2 text-left ${done ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}" data-activity-id="${a.id}" data-member-id="${m.id}" ${done ? 'disabled' : ''}>
+                    <span>${done ? '✅' : '➕'}</span><span class="truncate">${esc(m.students?.full_name ?? '—')}</span>
+                  </button>`
+                }).join('')}
+                ${!members.length ? '<p class="text-xs text-gray-300 col-span-2">ยังไม่มีสมาชิกสภาที่เกี่ยวข้อง</p>' : ''}
+              </div>` : ''}
+          </div>` : ''}
+      </div>`
+  }
+
+  return `${summary}${createForm}<div class="space-y-3">${activities.map(card).join('')}</div>`
+}
+
+// ─── ประกาศสภานักเรียน — feed+ปักหมุด+รับทราบ, โพสต์ได้เฉพาะแอดมิน/ประธานสภา ────────────────
+const ANN_TYPE_BADGE = {
+  info: ['แจ้งให้ทราบ', 'text-violet-700', 'bg-violet-100', 'border-violet-200'],
+  ack: ['ต้องกดรับทราบ', 'text-amber-700', 'bg-amber-100', 'border-amber-200'],
+  urgent: ['ด่วน', 'text-red-600', 'bg-red-100', 'border-red-200'],
+}
+
+async function loadAnnouncements() {
+  announcements = await getCouncilAnnouncements().catch(() => [])
+  render()
+}
+
+async function loadMyAcks() {
+  myAcks = await getMyAnnouncementAcks(ctx.student.id).catch(() => new Set())
+  render()
+}
+
+function renderNewsView() {
+  if (announcements === null) { loadAnnouncements(); return `<p class="text-sm text-gray-400 text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (ctx.role === 'student' && ctx.student && myAcks === null) loadMyAcks()
+  const canPost = ctx.isAdmin || ctx.isChair
+
+  const visible = announcements.filter(a => a.audience === 'all' || a.audience === (ctx.student ? normalizeGender(ctx.student.gender) : null) || ctx.isAdmin || ctx.isChair)
+  const filtered = annFilter === 'all' ? visible : visible.filter(a => a.type === annFilter)
+
+  const postBtn = canPost ? `<button type="button" id="btn-open-ann-form" class="w-full py-3 rounded-2xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold mb-4">➕ เพิ่มประกาศ</button>` : ''
+
+  const form = (canPost && showAnnForm) ? `
+    <div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+      <p class="text-sm font-bold text-gray-700 mb-3">📣 ประกาศใหม่</p>
+      <form id="announcement-form" class="space-y-2">
+        <input name="title" required placeholder="หัวเรื่องประกาศ" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+        <textarea name="body" rows="3" placeholder="รายละเอียด" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <select name="type" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+            <option value="info">แจ้งให้ทราบ</option>
+            <option value="ack">ต้องกดรับทราบ</option>
+            <option value="urgent">ด่วน</option>
+          </select>
+          <select name="audience" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white">
+            <option value="all">ทุกคน</option>
+            <option value="M">สภาชาย</option>
+            <option value="W">สภาหญิง</option>
+          </select>
+        </div>
+        <label class="flex items-center gap-2 text-xs text-gray-500"><input type="checkbox" name="pinned" class="rounded" /> ปักหมุดไว้บนสุด</label>
+        <div class="flex gap-2 pt-1">
+          <button type="button" id="btn-cancel-ann" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">ยกเลิก</button>
+          <button type="submit" class="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold">เผยแพร่ประกาศ</button>
+        </div>
+      </form>
+    </div>` : ''
+
+  const filters = [['all', 'ทั้งหมด'], ['urgent', 'ด่วน'], ['ack', 'ต้องรับทราบ'], ['info', 'แจ้งให้ทราบ']]
+  const filterBar = `
+    <div class="flex gap-2 overflow-x-auto pb-1 mb-4">
+      ${filters.map(([k, label]) => `
+        <button type="button" class="ann-filter-btn flex-shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border ${annFilter === k ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-500 border-gray-200'}" data-filter="${k}">${label}</button>`).join('')}
+    </div>`
+
+  if (!filtered.length) return `${postBtn}${form}${filterBar}<p class="text-sm text-gray-400 text-center py-10">ไม่มีประกาศ</p>`
+
+  const card = a => {
+    const [label, fg, bg, border] = ANN_TYPE_BADGE[a.type] ?? ANN_TYPE_BADGE.info
+    const author = a.teachers?.full_name ? esc(a.teachers.full_name) + ' (ครู)' : a.students?.full_name ? esc(a.students.full_name) + ' (ประธานสภา)' : 'ระบบ'
+    const acked = myAcks?.has(a.id)
+    const needsAck = a.type === 'ack' && ctx.role === 'student' && ctx.student
+    return `
+      <div class="rounded-xl border ${a.pinned ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100 bg-white'} p-3.5 space-y-2">
+        <div class="flex items-center gap-2 flex-wrap">
+          ${a.pinned ? '<span class="text-[11px] font-bold text-amber-600">📌 ปักหมุด</span>' : ''}
+          <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border ${border} ${bg} ${fg}">${label}</span>
+          ${a.audience !== 'all' ? `<span class="text-[11px] text-gray-400">สภา${GENDER_LABEL[a.audience] ?? ''}</span>` : ''}
+        </div>
+        <p class="text-sm font-bold text-gray-800">${esc(a.title)}</p>
+        ${a.body ? `<p class="text-xs text-gray-600 whitespace-pre-line">${esc(a.body)}</p>` : ''}
+        <p class="text-[11px] text-gray-400">${author} · ${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
+        ${needsAck ? (acked
+          ? `<p class="text-xs font-bold text-emerald-600 pt-1 border-t border-gray-100">✅ รับทราบแล้ว</p>`
+          : `<button type="button" class="btn-ack-ann text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white" data-id="${a.id}">รับทราบ</button>`) : ''}
+      </div>`
+  }
+
+  return `${postBtn}${form}${filterBar}<div class="space-y-3">${filtered.map(card).join('')}</div>`
+}
+
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   endorse: renderEndorseView,
   apps: renderApplicationsAdminView,
+  news: renderNewsView,
+  activities: renderActivitiesView,
   candidates: renderCandidatesView,
   roster: renderRosterView,
 }
@@ -742,6 +947,135 @@ function wireContentEvents() {
 
   wireApplicationsAdminEvents()
   wireElectionEvents()
+  wireActivitiesEvents()
+  wireNewsEvents()
+}
+
+// ─── กิจกรรมประจำปี ────────────────────────────────────────────────────────────
+function wireActivitiesEvents() {
+  document.getElementById('activity-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const title = f.title.value.trim()
+    if (!title) { showToast('กรุณากรอกชื่อกิจกรรม', 'warning'); return }
+    const btn = f.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      await createActivity({
+        title, detail: f.detail.value.trim(), gender: f.gender.value || null,
+        activityDate: f.activity_date.value || null, budget: f.budget.value ? Number(f.budget.value) : null,
+        ownerText: f.owner_text.value.trim(), academicYear: electionYear,
+      })
+      showToast('สร้างกิจกรรมแล้ว ✅', 'success')
+      activities = null
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'สร้างกิจกรรม'
+    }
+  })
+
+  document.querySelectorAll('.btn-activity-next').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      try {
+        await updateActivityStatus(Number(btn.dataset.id), btn.dataset.next)
+        activities = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-activity-cancel').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ยืนยันยกเลิกกิจกรรมนี้?')) return
+      btn.disabled = true
+      try {
+        await updateActivityStatus(Number(btn.dataset.id), 'cancelled')
+        activities = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-activity-attendance').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id)
+      if (attendanceByActivity[id] === undefined) loadAttendance(id)
+    })
+  })
+
+  document.querySelectorAll('.btn-checkin').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const activityId = Number(btn.dataset.activityId)
+      const memberId = Number(btn.dataset.memberId)
+      btn.disabled = true
+      try {
+        await checkInAttendance({ activityId, memberId })
+        attendanceByActivity[activityId]?.add(memberId)
+        render()
+      } catch (err) {
+        showToast('เช็คชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+}
+
+// ─── ประกาศสภานักเรียน ─────────────────────────────────────────────────────────
+function wireNewsEvents() {
+  document.getElementById('btn-open-ann-form')?.addEventListener('click', () => { showAnnForm = true; render() })
+  document.getElementById('btn-cancel-ann')?.addEventListener('click', () => { showAnnForm = false; render() })
+
+  document.querySelectorAll('.ann-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => { annFilter = btn.dataset.filter; render() })
+  })
+
+  document.getElementById('announcement-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const title = f.title.value.trim()
+    if (!title) { showToast('กรุณากรอกหัวเรื่องประกาศ', 'warning'); return }
+    const btn = f.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังเผยแพร่...'
+    try {
+      await postAnnouncement({
+        type: f.type.value, audience: f.audience.value, title, body: f.body.value.trim(),
+        pinned: f.pinned.checked,
+        postedByTeacherId: ctx.role === 'teacher' && ctx.teacher ? ctx.teacher.id : null,
+        postedByStudentId: ctx.isChair && ctx.student ? ctx.student.id : null,
+      })
+      showToast('เผยแพร่ประกาศแล้ว 📣', 'success')
+      showAnnForm = false
+      announcements = null
+      render()
+    } catch (err) {
+      showToast('เผยแพร่ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'เผยแพร่ประกาศ'
+    }
+  })
+
+  document.querySelectorAll('.btn-ack-ann').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.dataset.id)
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await ackAnnouncement({ announcementId: id, studentId: ctx.student.id })
+        myAcks?.add(id)
+        showToast('รับทราบแล้ว', 'success')
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'รับทราบ'
+      }
+    })
+  })
 }
 
 // ─── จัดการใบสมัคร (แอดมิน) — นัดสัมภาษณ์ / ให้คะแนน / ตั้งผู้สมัคร / แต่งตั้ง ───────────

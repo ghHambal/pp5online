@@ -63,7 +63,7 @@ export async function getMyCouncilApplications(studentId) {
 
 export async function getMyCouncilMembership(studentId) {
   const { data, error } = await supabase.from('council_members')
-    .select('id, position_id, status, source, term_start_date, term_end_date, council_positions(position_name, gender)')
+    .select('id, position_id, status, source, term_start_date, term_end_date, council_positions(position_name, gender, is_elected)')
     .eq('student_id', studentId).eq('status', 'active')
   if (error) throw error
   return data ?? []
@@ -241,4 +241,65 @@ export async function publishElectionResults({ electionConfigId, gender, academi
   })
   if (e2) throw e2
   return winner
+}
+
+// ─── กิจกรรมประจำปีของสภา — เขียนได้เฉพาะแอดมิน/ประธานสภาที่ล็อกอินอยู่ (RLS คุมแล้ว) ────────
+export async function getCouncilActivities(academicYear) {
+  let q = supabase.from('council_activities').select('*').order('activity_date', { ascending: false, nullsFirst: false })
+  if (academicYear) q = q.eq('academic_year', academicYear)
+  const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear }) {
+  const { error } = await supabase.from('council_activities').insert({
+    title, detail, gender: gender || null, activity_date: activityDate || null,
+    budget: budget || null, owner_text: ownerText || null, academic_year: academicYear,
+  })
+  if (error) throw error
+}
+
+export async function updateActivityStatus(activityId, status) {
+  const { error } = await supabase.from('council_activities').update({ status, updated_at: new Date().toISOString() }).eq('id', activityId)
+  if (error) throw error
+}
+
+export async function getActivityAttendance(activityId) {
+  const { data, error } = await supabase.from('council_activity_attendance').select('member_id').eq('activity_id', activityId)
+  if (error) throw error
+  return new Set((data ?? []).map(r => r.member_id))
+}
+
+export async function checkInAttendance({ activityId, memberId }) {
+  const { error } = await supabase.from('council_activity_attendance').insert({ activity_id: activityId, member_id: memberId })
+  if (error) throw error
+}
+
+// ─── ประกาศสภานักเรียน — ทุกคนอ่านได้ (กรอง audience ฝั่ง client), โพสต์ได้เฉพาะแอดมิน/ประธาน ──
+export async function getCouncilAnnouncements() {
+  const { data, error } = await supabase.from('council_announcements')
+    .select('*, teachers(full_name), students(full_name)')
+    .order('pinned', { ascending: false }).order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function postAnnouncement({ type, audience, title, body, pinned, postedByTeacherId, postedByStudentId }) {
+  const { error } = await supabase.from('council_announcements').insert({
+    type, audience, title, body, pinned,
+    posted_by_teacher_id: postedByTeacherId || null, posted_by_student_id: postedByStudentId || null,
+  })
+  if (error) throw error
+}
+
+export async function getMyAnnouncementAcks(studentId) {
+  const { data, error } = await supabase.from('council_announcement_acks').select('announcement_id').eq('student_id', studentId)
+  if (error) throw error
+  return new Set((data ?? []).map(r => r.announcement_id))
+}
+
+export async function ackAnnouncement({ announcementId, studentId }) {
+  const { error } = await supabase.from('council_announcement_acks').insert({ announcement_id: announcementId, student_id: studentId })
+  if (error) throw error
 }
