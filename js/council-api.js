@@ -303,3 +303,42 @@ export async function ackAnnouncement({ announcementId, studentId }) {
   const { error } = await supabase.from('council_announcement_acks').insert({ announcement_id: announcementId, student_id: studentId })
   if (error) throw error
 }
+
+// ─── ประเมินผลปฏิบัติหน้าที่ + เกียรติบัตร — เขียนได้เฉพาะแอดมิน/ครู (ครูที่ปรึกษาสภาประเมิน) ──
+export async function getEvaluationCriteria() {
+  const { data, error } = await supabase.from('council_evaluation_criteria')
+    .select('*').eq('is_active', true).order('sort_order')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addCriterion({ name, weight }) {
+  const { error } = await supabase.from('council_evaluation_criteria').insert({ name, weight })
+  if (error) throw error
+}
+
+export async function removeCriterion(id) {
+  const { error } = await supabase.from('council_evaluation_criteria').update({ is_active: false }).eq('id', id)
+  if (error) throw error
+}
+
+export async function getCouncilEvaluations(academicYear) {
+  const { data, error } = await supabase.from('council_evaluations').select('*').eq('academic_year', academicYear)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveEvaluation({ memberId, academicYear, scores, totalScore, maxScore, decision, comment, evaluatorTeacherId }) {
+  const { error } = await supabase.from('council_evaluations').upsert({
+    member_id: memberId, academic_year: academicYear, scores, total_score: totalScore, max_score: maxScore,
+    decision, comment, evaluator_teacher_id: evaluatorTeacherId, evaluated_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'member_id,academic_year' })
+  if (error) throw error
+}
+
+export async function issueCertificate({ evaluationId, certificateNo }) {
+  const { error } = await supabase.from('council_evaluations')
+    .update({ certificate_no: certificateNo, certificate_issued_at: new Date().toISOString() }).eq('id', evaluationId)
+  if (error) throw error
+}

@@ -14,6 +14,7 @@ import {
   getCandidatesForElection, publishElectionResults,
   getCouncilActivities, createActivity, updateActivityStatus, getActivityAttendance, checkInAttendance,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
+  getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -197,6 +198,7 @@ function getNavItems() {
   if (ctx.isAdmin) items.push({ id: 'apps', icon: '📋', label: 'จัดการใบสมัคร' })
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม' })
+  if (ctx.isAdmin || ctx.role === 'teacher' || ctx.membership.length) items.push({ id: 'eval', icon: '📊', label: 'ประเมิน/เกียรติบัตร' })
   items.push({ id: 'candidates', icon: '🗳️', label: 'ผู้สมัครเลือกตั้ง' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภานักเรียน' })
   return items
@@ -818,12 +820,156 @@ function renderNewsView() {
   return `${postBtn}${form}${filterBar}<div class="space-y-3">${filtered.map(card).join('')}</div>`
 }
 
+// ─── ประเมินผลปฏิบัติหน้าที่ + เกียรติบัตร — ครู/แอดมินให้คะแนน (ไม่ให้ประธานประเมินตัวเอง) ──
+let evalCriteria = null
+let evaluations = null // { [memberId]: evaluationRow }
+let evalOpenMemberId = null
+
+const DECISION_LABEL = {
+  pass: ['ผ่าน', 'text-emerald-700 bg-emerald-100 border-emerald-200'],
+  improve: ['ควรปรับปรุง', 'text-amber-700 bg-amber-100 border-amber-200'],
+  fail: ['ไม่ผ่าน', 'text-red-600 bg-red-100 border-red-200'],
+}
+
+async function loadEvalCriteria() {
+  evalCriteria = await getEvaluationCriteria().catch(() => [])
+  render()
+}
+async function loadEvaluations() {
+  const rows = await getCouncilEvaluations(electionYear).catch(() => [])
+  evaluations = Object.fromEntries(rows.map(r => [r.member_id, r]))
+  render()
+}
+
+function renderEvalView() {
+  if (evalCriteria === null) { loadEvalCriteria(); return `<p class="text-sm text-gray-400 text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (evaluations === null) { loadEvaluations(); return `<p class="text-sm text-gray-400 text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  const canEvaluate = ctx.isAdmin || ctx.role === 'teacher'
+  const totalWeight = evalCriteria.reduce((t, c) => t + Number(c.weight), 0)
+
+  const criteriaEditor = canEvaluate ? `
+    <div class="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+      <p class="text-sm font-bold text-gray-700 mb-3">📐 เกณฑ์การประเมิน (รวม ${totalWeight} คะแนน)</p>
+      <div class="space-y-1.5">
+        ${evalCriteria.map(c => `
+          <div class="flex items-center gap-2 text-xs">
+            <span class="flex-1 text-gray-600">${esc(c.name)}</span>
+            <span class="font-bold text-gray-500">${c.weight} คะแนน</span>
+            <button type="button" class="btn-remove-criterion text-red-400 hover:text-red-600" data-id="${c.id}">✕</button>
+          </div>`).join('')}
+      </div>
+      <form id="criterion-form" class="flex gap-2 mt-3">
+        <input name="name" placeholder="เพิ่มเกณฑ์ใหม่" class="flex-1 border border-gray-200 rounded-lg px-2.5 py-2 text-xs" required />
+        <input name="weight" type="number" min="1" placeholder="คะแนน" class="w-20 border border-gray-200 rounded-lg px-2.5 py-2 text-xs" required />
+        <button type="submit" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold">เพิ่ม</button>
+      </form>
+    </div>` : ''
+
+  const memberCard = m => {
+    const ev = evaluations[m.id]
+    const [decLabel, decCls] = ev?.decision ? DECISION_LABEL[ev.decision] : ['ยังไม่ประเมิน', 'text-gray-400 bg-gray-100 border-gray-200']
+    const isOwn = ctx.role === 'student' && ctx.student && m.student_id === ctx.student.id
+    if (!canEvaluate && !isOwn) return ''
+
+    const open = evalOpenMemberId === m.id
+    return `
+      <div class="rounded-xl border border-gray-100 p-3 space-y-2 bg-white" data-eval-card="${m.id}">
+        <div class="flex items-center gap-3">
+          ${studentPhoto(m.students, 'w-10 h-12')}
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-gray-800 truncate">${esc(m.students?.full_name ?? '—')}</p>
+            <p class="text-xs text-gray-500">${esc(m.council_positions?.position_name ?? '—')}</p>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border ${decCls}">${decLabel}</span>
+            ${ev?.total_score != null ? `<p class="text-xs text-gray-400 mt-0.5">${ev.total_score}/${ev.max_score ?? totalWeight}</p>` : ''}
+          </div>
+        </div>
+        ${canEvaluate ? `<button type="button" class="btn-toggle-eval text-xs font-bold text-violet-600" data-id="${m.id}">${open ? '▲ ซ่อนแบบประเมิน' : (ev ? '✏️ แก้ไขคะแนน' : '📝 ให้คะแนน')}</button>` : ''}
+        ${canEvaluate && open ? `
+          <form class="eval-score-form space-y-2 pt-2 border-t border-gray-100" data-member-id="${m.id}">
+            ${evalCriteria.map(c => `
+              <div class="flex items-center gap-2">
+                <span class="flex-1 text-xs text-gray-600">${esc(c.name)} <span class="text-gray-300">(เต็ม ${c.weight})</span></span>
+                <input type="number" min="0" max="${c.weight}" step="0.5" name="c_${c.id}" value="${ev?.scores?.[c.id] ?? ''}" class="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center" />
+              </div>`).join('')}
+            <select name="decision" required class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs bg-white">
+              <option value="">— สรุปผล —</option>
+              <option value="pass" ${ev?.decision === 'pass' ? 'selected' : ''}>ผ่าน</option>
+              <option value="improve" ${ev?.decision === 'improve' ? 'selected' : ''}>ควรปรับปรุง</option>
+              <option value="fail" ${ev?.decision === 'fail' ? 'selected' : ''}>ไม่ผ่าน</option>
+            </select>
+            <textarea name="comment" rows="2" placeholder="ความเห็นผู้ประเมิน" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none">${esc(ev?.comment ?? '')}</textarea>
+            <button type="submit" class="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold">บันทึกผลประเมิน</button>
+          </form>` : ''}
+        ${ev?.decision === 'pass' ? (ev.certificate_issued_at
+          ? `<button type="button" class="btn-view-cert text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50" data-member-id="${m.id}">🏅 ดูเกียรติบัตร</button>`
+          : (canEvaluate ? `<button type="button" class="btn-issue-cert text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white" data-member-id="${m.id}">🏅 ออกเกียรติบัตร</button>` : '')) : ''}
+      </div>`
+  }
+
+  const relevant = ctx.members.filter(m => canEvaluate || (ctx.role === 'student' && ctx.student && m.student_id === ctx.student.id))
+  const list = relevant.map(memberCard).filter(Boolean).join('')
+
+  if (!canEvaluate && !list) return `${criteriaEditor}<p class="text-sm text-gray-400 text-center py-10">คุณยังไม่ได้เป็นสมาชิกสภาที่มีผลประเมิน</p>`
+  if (!list) return `${criteriaEditor}<p class="text-sm text-gray-400 text-center py-10">ยังไม่มีสมาชิกสภาให้ประเมิน</p>`
+
+  return `${criteriaEditor}<div class="space-y-3">${list}</div>`
+}
+
+function buildCertificateHtml({ member, evaluation, cfg }) {
+  const name = esc(member.students?.full_name ?? '—')
+  const position = esc(member.council_positions?.position_name ?? '—')
+  const councilName = esc(cfg.council_name || 'ระบบสภานักเรียน')
+  const no = esc(evaluation.certificate_no || '')
+  const issuedAt = new Date(evaluation.certificate_issued_at || Date.now()).toLocaleDateString('th-TH', { dateStyle: 'long' })
+  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
+    <title>เกียรติบัตร ${name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: 'Sarabun', sans-serif; background: #fdfaf3; padding: 40px; }
+      .cert { max-width: 900px; margin: 0 auto; border: 6px double #b5892b; padding: 50px 40px; text-align: center; background: #fffdf8; }
+      .badge { width: 74px; height: 74px; border-radius: 50%; border: 2px solid #e2d4ae; background: #fdf7e9; display: grid; place-items: center; margin: 0 auto 14px; font-size: 24px; color: #8a6a1f; font-weight: 700; }
+      h1 { color: #8a6a1f; font-size: 34px; margin: 6px 0 18px; }
+      .name { font-size: 26px; font-weight: 700; border-bottom: 1px solid #e2d4ae; display: inline-block; padding: 0 24px 8px; margin: 10px 0 18px; }
+      .sign { display: flex; justify-content: space-around; margin-top: 60px; }
+      .sign div { width: 220px; border-top: 1px solid #999; padding-top: 6px; font-size: 13px; color: #555; }
+      @media print { body { background: #fff; padding: 0; } .cert { border-width: 4px; } }
+    </style></head>
+    <body>
+      <div class="cert">
+        <div class="badge">🏛️</div>
+        <p style="color:#6e5f65;font-size:13px;letter-spacing:1px;">${councilName}</p>
+        <h1>เกียรติบัตร</h1>
+        <p style="color:#4a3b41;">มอบเพื่อแสดงว่า</p>
+        <p class="name">${name}</p>
+        <p style="color:#1d1519;line-height:1.9;max-width:560px;margin:0 auto;">ได้ปฏิบัติหน้าที่ <b>${position}</b> ของ${councilName} ด้วยความรับผิดชอบ ทุ่มเท และเป็นแบบอย่างที่ดี จึงมอบเกียรติบัตรฉบับนี้ไว้เป็นเกียรติประวัติสืบไป</p>
+        <p style="color:#90828a;font-size:12px;margin-top:16px;">ให้ไว้ ณ วันที่ ${issuedAt} ${no ? '· เลขที่ ' + no : ''}</p>
+        <div class="sign">
+          <div>ครูที่ปรึกษาสภานักเรียน</div>
+          <div>ผู้อำนวยการโรงเรียน</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+    </body></html>`
+}
+
+function openCertificatePrint(member, evaluation) {
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์', 'warning'); return }
+  win.document.open(); win.document.write(buildCertificateHtml({ member, evaluation, cfg: ctx.cfg })); win.document.close()
+  setTimeout(() => win.print(), 600)
+}
+
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   endorse: renderEndorseView,
   apps: renderApplicationsAdminView,
   news: renderNewsView,
   activities: renderActivitiesView,
+  eval: renderEvalView,
   candidates: renderCandidatesView,
   roster: renderRosterView,
 }
@@ -949,6 +1095,107 @@ function wireContentEvents() {
   wireElectionEvents()
   wireActivitiesEvents()
   wireNewsEvents()
+  wireEvalEvents()
+}
+
+// ─── ประเมินผลปฏิบัติหน้าที่ + เกียรติบัตร ─────────────────────────────────────────
+function wireEvalEvents() {
+  document.getElementById('criterion-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const name = f.name.value.trim()
+    const weight = Number(f.weight.value)
+    if (!name || !weight) { showToast('กรอกชื่อเกณฑ์และคะแนนให้ครบ', 'warning'); return }
+    try {
+      await addCriterion({ name, weight })
+      evalCriteria = null
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  })
+
+  document.querySelectorAll('.btn-remove-criterion').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบเกณฑ์นี้ออกจากการประเมิน?')) return
+      try {
+        await removeCriterion(Number(btn.dataset.id))
+        evalCriteria = null
+        render()
+      } catch (err) {
+        showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-toggle-eval').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id)
+      evalOpenMemberId = evalOpenMemberId === id ? null : id
+      render()
+    })
+  })
+
+  document.querySelectorAll('.eval-score-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const memberId = Number(form.dataset.memberId)
+      const decision = form.decision.value
+      if (!decision) { showToast('กรุณาเลือกสรุปผล', 'warning'); return }
+      const scores = {}
+      let total = 0
+      evalCriteria.forEach(c => {
+        const v = form[`c_${c.id}`]?.value
+        if (v !== '' && v != null) { scores[c.id] = Number(v); total += Number(v) }
+      })
+      const maxScore = evalCriteria.reduce((t, c) => t + Number(c.weight), 0)
+      const btn = form.querySelector('button[type="submit"]')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await saveEvaluation({
+          memberId, academicYear: electionYear, scores, totalScore: total, maxScore, decision,
+          comment: form.comment.value.trim(), evaluatorTeacherId: ctx.role === 'teacher' && ctx.teacher ? ctx.teacher.id : null,
+        })
+        showToast('บันทึกผลประเมินแล้ว ✅', 'success')
+        evaluations = null
+        evalOpenMemberId = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกผลประเมิน'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-issue-cert').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const memberId = Number(btn.dataset.memberId)
+      const member = ctx.members.find(m => m.id === memberId)
+      const ev = evaluations[memberId]
+      if (!member || !ev) return
+      btn.disabled = true; btn.textContent = 'กำลังออก...'
+      try {
+        const certNo = `${electionYear}-${String(ev.id).padStart(4, '0')}`
+        await issueCertificate({ evaluationId: ev.id, certificateNo: certNo })
+        ev.certificate_no = certNo
+        ev.certificate_issued_at = new Date().toISOString()
+        openCertificatePrint(member, ev)
+        render()
+      } catch (err) {
+        showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = '🏅 ออกเกียรติบัตร'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-view-cert').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const memberId = Number(btn.dataset.memberId)
+      const member = ctx.members.find(m => m.id === memberId)
+      const ev = evaluations[memberId]
+      if (member && ev) openCertificatePrint(member, ev)
+    })
+  })
 }
 
 // ─── กิจกรรมประจำปี ────────────────────────────────────────────────────────────
