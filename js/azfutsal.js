@@ -794,7 +794,18 @@ function computeSummary(level) {
   const isJointThird = level === 'MS' && hasMsFirstRoundBye()
   const third = isJointThird ? resolveMatch(level, 'M18') : resolveMatch(level, THIRD_CODE[level])
   const secondThird = isJointThird ? resolveMatch(level, 'M19') : null
-  const award = type => S.awards.find(a => a.level === level && a.award_type === type)?.students?.full_name || ''
+  const award = type => {
+    const row = S.awards.find(item => item.level === level && item.award_type === type)
+    const player = row ? S.players.find(item => String(item.student_id) === String(row.student_id)) : null
+    return {
+      name: row?.students?.full_name || player?.students?.full_name || '',
+      photoUrl: player ? playerPhotoUrl(player) : '',
+      team: player ? teamName(player.team_id) : '',
+    }
+  }
+  const mvpAward = award('mvp')
+  const topScorerAward = award('top_scorer')
+  const bestGKAward = award('best_gk')
   return {
     champion: final.winnerId ? teamName(final.winnerId) : '',
     runnerUp: final.loserId ? teamName(final.loserId) : '',
@@ -802,8 +813,27 @@ function computeSummary(level) {
     third2: secondThird?.loserId ? teamName(secondThird.loserId) : '',
     thirdLabel: isJointThird ? 'อันดับ 3 ร่วม' : 'อันดับ 3',
     consolation: isJointThird ? '' : (third.loserId ? teamName(third.loserId) : ''),
-    mvp: award('mvp'), topScorer: award('top_scorer'), bestGK: award('best_gk'),
+    mvp: mvpAward.name, topScorer: topScorerAward.name, bestGK: bestGKAward.name,
+    mvpAward, topScorerAward, bestGKAward,
   }
+}
+
+function summaryAwardRow(label, award, theme) {
+  if (!award?.name) {
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;font-size:12.5px"><span style="color:#6b7280">${esc(label)}</span><span style="font-weight:700">-</span></div>`
+  }
+  const initial = esc(award.name.replace(/^(นาย|นางสาว|ด\.ช\.|ด\.ญ\.)\s*/, '').trim().charAt(0) || '?')
+  const photo = award.photoUrl
+    ? `<img src="${esc(award.photoUrl)}" alt="รูป ${esc(award.name)}" style="width:46px;height:58px;border-radius:10px;border:2px solid ${theme.border};object-fit:cover;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.14)"/>`
+    : `<div style="width:46px;height:58px;border-radius:10px;border:2px solid ${theme.border};background:#fff;display:flex;align-items:center;justify-content:center;color:${theme.accent};font-size:18px;font-weight:800;flex-shrink:0">${initial}</div>`
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:11px;background:rgba(255,255,255,.72)">
+    ${photo}
+    <div style="flex:1;min-width:0">
+      <div style="font-size:11px;color:#6b7280;margin-bottom:2px">${esc(label)}</div>
+      <div style="font-size:13px;font-weight:800;line-height:1.35;overflow-wrap:anywhere">${esc(award.name)}</div>
+      ${award.team ? `<div style="font-size:10.5px;color:${theme.accent};font-weight:700;margin-top:2px">${esc(award.team)}</div>` : ''}
+    </div>
+  </div>`
 }
 
 // ---------------- shared UI bits ----------------
@@ -3672,10 +3702,10 @@ function summaryView() {
             <div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">🥈</span><div><div style="font-size:11px;color:#6b7280">รองแชมป์</div><div style="font-size:13.5px;font-weight:700">${esc(sum.runnerUp) || '-'}</div></div></div>
             <div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">🥉</span><div><div style="font-size:11px;color:#6b7280">${esc(sum.thirdLabel)}</div><div style="font-size:13.5px;font-weight:700">${esc([sum.third, sum.third2].filter(Boolean).join(' · ')) || '-'}</div></div></div>
           </div>
-          <div style="border-top:1px solid rgba(0,0,0,.06);padding-top:10px;display:flex;flex-direction:column;gap:6px">
-            <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:#6b7280">MVP</span><span style="font-weight:700">${esc(sum.mvp) || '-'}</span></div>
-            <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:#6b7280">ดาวซัลโว</span><span style="font-weight:700">${esc(sum.topScorer) || '-'}</span></div>
-            <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:#6b7280">ผู้รักษาประตูยอดเยี่ยม</span><span style="font-weight:700">${esc(sum.bestGK) || '-'}</span></div>
+          <div style="border-top:1px solid rgba(0,0,0,.06);padding-top:10px;display:flex;flex-direction:column;gap:7px">
+            ${summaryAwardRow('MVP', sum.mvpAward, t)}
+            ${summaryAwardRow('ดาวซัลโว', sum.topScorerAward, t)}
+            ${summaryAwardRow('ผู้รักษาประตูยอดเยี่ยม', sum.bestGKAward, t)}
           </div>
         </div>`
       }).join('')}
