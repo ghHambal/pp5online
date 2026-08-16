@@ -168,17 +168,17 @@ export async function declineApplicationEndorsement({ applicationId, teacherId, 
   if (error) throw error
 }
 
-// ─── จัดการใบสมัคร (แอดมิน) — รับรองแล้วเท่านั้น: นัดสัมภาษณ์ → ให้คะแนน → ตั้งผู้สมัคร ──
+// ─── จัดการใบสมัคร (แอดมิน) — ดูได้ทุกสถานะ (รวม "รอรับรอง" เพื่อติดตามภาพรวม) แต่นัดสัมภาษณ์/
+// ให้คะแนนได้เฉพาะใบที่ครูที่ปรึกษาสามัญรับรองแล้วเท่านั้น (สเปคข้อ 8.4 — ฟิลเตอร์ 6 สถานะ) ──
 export async function getCouncilApplicationsForAdmin(academicYear) {
   let q = supabase.from('council_applications')
     .select(`id, position_id, status, motivation, photo_url, academic_year, created_at,
       gpa_general, gpa_religious, intro_video_url,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
       council_positions(id, position_name, gender, is_elected),
-      students(id, full_name, student_code, main_room, image_url, photo_url),
-      council_interviews(id, scheduled_at, location, interviewer_teacher_id, result, score, comment),
+      students(id, full_name, student_code, main_room, image_url, photo_url, profile_id),
+      council_interviews(id, scheduled_at, location, interviewer_teacher_id, result, score, scores, comment),
       council_candidates(id, election_config_id, ballot_number)`)
-    .not('endorsed_at', 'is', null)
     .order('created_at', { ascending: false })
   if (academicYear) q = q.eq('academic_year', academicYear)
   const { data, error } = await q
@@ -199,9 +199,11 @@ export async function scheduleCouncilInterview({ applicationId, existingIntervie
   if (e2) throw e2
 }
 
-export async function saveCouncilInterviewScore({ interviewId, applicationId, score, result, comment }) {
+// ให้คะแนนรายหัวข้อ (สเปคข้อ 8.5) — result ตัดสินอัตโนมัติจาก score รวมเทียบครึ่งหนึ่งของ
+// คะแนนเต็ม คำนวณแล้วส่งมาจาก UI (ไม่ตัดสินซ้ำในนี้ เพราะ UI ต้องโชว์ผลสดให้ผู้ใช้เห็นอยู่แล้ว)
+export async function saveCouncilInterviewScore({ interviewId, applicationId, score, scores, result, comment }) {
   const { error } = await supabase.from('council_interviews')
-    .update({ score, result, comment }).eq('id', interviewId)
+    .update({ score, scores, result, comment }).eq('id', interviewId)
   if (error) throw error
   const nextStatus = result === 'pass' ? 'interviewed' : 'rejected'
   const { error: e2 } = await supabase.from('council_applications').update({ status: nextStatus }).eq('id', applicationId)

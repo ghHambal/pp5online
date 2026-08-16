@@ -2,7 +2,7 @@ import { supabase } from './supabase.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
-import { getMyTeacherProfile, getMyHomeroomRooms } from './api.js'
+import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
 import { uploadCouncilApplicationPhoto } from './storage.js'
 import {
   getCouncilConfig, updateCouncilConfig, getCouncilPositions, getCouncilMembers,
@@ -74,6 +74,8 @@ let flowSubtab = null
 
 // สถานะที่โหลดแบบ lazy ตอนเปิดหน้าจอนั้นๆ ครั้งแรก (ไม่ต้องโหลดทุกอย่างตั้งแต่ init)
 let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
+let appsFilter = 'all' // ฟิลเตอร์สถานะในหน้า "จัดการใบสมัคร" (สเปคข้อ 8.4)
+let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์
 const candidatesByGender = {} // { M: [...], W: [...] }
 let electionYear = null // ปีการศึกษาปัจจุบันที่ resolve แล้ว (จาก ctx.cfg.academicYear)
 let activities = null // null = ยังไม่โหลด
@@ -863,57 +865,123 @@ const PIPELINE_STATUS_BADGE = {
   rejected: ['ไม่ผ่าน', 'bg-[var(--bad-soft-line)] text-[#8a2f22]'],
 }
 
+// ป้ายฝ่ายสีคงที่ (ชาย=เขียว หญิง=ชมพู) — ใช้เฮกซ์ตรงๆ ไม่ใช่ var(--primary) เพราะสเปคข้อ 8.4
+// ระบุชัดว่า "ไม่เปลี่ยนตามธีมที่ดู" (ต่างจากส่วนอื่นในระบบที่ใช้ var() สลับตามธีม/โหมดมืด)
+const GENDER_BADGE_FIXED = { M: 'bg-[#edf4f0] text-[#14563b]', W: 'bg-[#fdeef4] text-[#a3134f]' }
+
+// สเปคข้อ 8.4 — ฟิลเตอร์นับจำนวน 6 หมวดตามลำดับ pipeline จริง (แยก "รอรับรอง" ออกจาก
+// "รับรองแล้ว" ด้วย endorsed_at เพราะ status='pending' ใช้ร่วมกันทั้งสองช่วง)
+const APPS_FILTERS = [
+  { id: 'all', label: 'ทั้งหมด' },
+  { id: 'awaiting_endorsement', label: 'รอรับรอง' },
+  { id: 'endorsed', label: 'รับรองแล้ว' },
+  { id: 'scheduled', label: 'นัดแล้ว' },
+  { id: 'interviewed', label: 'ผ่านสัมภาษณ์' },
+  { id: 'rejected', label: 'ไม่ผ่าน' },
+]
+
+function appPipelineStage(a) {
+  if (a.status === 'rejected') return 'rejected'
+  if (a.status === 'pending') return a.endorsed_at ? 'endorsed' : 'awaiting_endorsement'
+  if (a.status === 'interview_scheduled') return 'scheduled'
+  return 'interviewed' // interviewed / candidate / appointed — ผ่านสัมภาษณ์ไปแล้วทั้งหมด
+}
+
 async function loadAdminApps() {
   adminApps = await getCouncilApplicationsForAdmin(electionYear).catch(() => [])
   render()
+}
+async function loadIvTeachers() {
+  ivTeachers = await getTeachers().catch(() => [])
+  render()
+}
+
+function ivTeacherLabel(id) {
+  const t = ivTeachers?.find(x => x.id === id)
+  return t ? `${t.full_name} · รหัส ${t.id}` : ''
 }
 
 function renderApplicationsAdminView() {
   if (!ctx.isAdmin) return ''
   if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
-  if (!adminApps.length) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">ยังไม่มีใบสมัครที่ครูที่ปรึกษารับรองแล้ว</p>`
+  if (interviewCriteria === null) { loadInterviewCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (ivTeachers === null) { loadIvTeachers(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  const maxWeight = interviewCriteria.reduce((t, c) => t + Number(c.weight), 0)
+  const passThreshold = maxWeight / 2
+
+  const counts = { all: adminApps.length }
+  adminApps.forEach(a => { const s = appPipelineStage(a); counts[s] = (counts[s] ?? 0) + 1 })
+  if (!APPS_FILTERS.some(f => f.id === appsFilter)) appsFilter = 'all'
+
+  const filterBar = `
+    <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
+      ${APPS_FILTERS.map(f => `
+        <button type="button" class="apps-filter-btn flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition ${f.id === appsFilter ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-filter="${f.id}">
+          ${esc(f.label)} <span class="${f.id === appsFilter ? 'text-white/80' : 'text-[var(--muted-2)]'}">${counts[f.id] ?? 0}</span>
+        </button>`).join('')}
+    </div>`
+
+  const datalist = `<datalist id="council-teacher-datalist">${ivTeachers.map(t => `<option value="${esc(t.full_name)} · รหัส ${t.id}"></option>`).join('')}</datalist>`
+
+  if (!adminApps.length) return `${filterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-16">ยังไม่มีใบสมัครสภานักเรียน</p>`
+
+  const list = adminApps.filter(a => appsFilter === 'all' || appPipelineStage(a) === appsFilter)
+  if (!list.length) return `${filterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-10">ไม่มีใบสมัครในหมวดนี้</p>`
 
   const card = a => {
     const iv = a.council_interviews?.[0]
     const [label, cls] = PIPELINE_STATUS_BADGE[a.status] ?? ['—', 'bg-[var(--bg-2)] text-[var(--muted)]']
+    const genderCls = GENDER_BADGE_FIXED[a.council_positions?.gender] ?? 'bg-[var(--bg-2)] text-[var(--muted)]'
     const isElected = !!a.council_positions?.is_elected
+    const stage = appPipelineStage(a)
     return `
     <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2.5 bg-[var(--surface)]" data-app-card="${a.id}">
       <div class="flex items-center gap-3">
         ${studentPhoto(a.students)}
         <div class="min-w-0 flex-1">
-          <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
-          <p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · ${esc(a.council_positions?.position_name ?? '—')} (สภา${esc(GENDER_LABEL[a.council_positions?.gender] ?? '')})</p>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
+            <span class="flex-shrink-0 text-[0.5625rem] font-bold px-2 py-0.5 rounded-full ${genderCls}">${esc(GENDER_LABEL[a.council_positions?.gender] ?? '—')}</span>
+          </div>
+          <p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · ${esc(a.council_positions?.position_name ?? '—')}</p>
         </div>
         <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full ${cls}">${label}</span>
       </div>
       ${a.motivation ? `<p class="text-xs text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(a.motivation)}</p>` : ''}
       ${a.endorsement_comment ? `<p class="text-[0.6875rem] text-[var(--ok)]">✅ ครูที่ปรึกษา: ${esc(a.endorsement_comment)}</p>` : ''}
 
-      ${a.status === 'pending' ? `
-        <form class="schedule-form space-y-2 pt-1 border-t border-[var(--line-soft)]" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}">
+      ${stage === 'awaiting_endorsement' ? `<p class="text-xs text-[var(--gold-ink)] pt-1 border-t border-[var(--line-soft)]">⏳ รอครูที่ปรึกษาสามัญของนักเรียนคนนี้รับรองก่อน จึงจะนัดสัมภาษณ์ได้</p>` : ''}
+
+      ${a.status === 'pending' && a.endorsed_at ? `
+        <form class="schedule-form space-y-2 pt-1 border-t border-[var(--line-soft)]" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}" data-profile-id="${esc(a.students?.profile_id ?? '')}" data-student-name="${esc(a.students?.full_name ?? '')}" data-position-name="${esc(a.council_positions?.position_name ?? '')}">
           <p class="text-xs font-semibold text-[var(--muted)]">นัดสัมภาษณ์</p>
           <div class="grid grid-cols-2 gap-2">
-            <input type="datetime-local" name="scheduled_at" required class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs" />
-            <input type="text" name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs" />
+            <input type="datetime-local" name="scheduled_at" required class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" />
+            <input type="text" name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" />
           </div>
+          <input type="text" name="interviewerText" list="council-teacher-datalist" placeholder="พิมพ์ชื่อครูกรรมการ (ไม่บังคับ)"
+            value="${iv?.interviewer_teacher_id ? esc(ivTeacherLabel(iv.interviewer_teacher_id)) : ''}"
+            class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" />
           <button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">บันทึกนัดสัมภาษณ์</button>
         </form>` : ''}
 
       ${a.status === 'interview_scheduled' ? `
         <div class="pt-1 border-t border-[var(--line-soft)] space-y-2">
-          <p class="text-xs text-[var(--muted)]">📅 ${iv?.scheduled_at ? new Date(iv.scheduled_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'} ${iv?.location ? '· ' + esc(iv.location) : ''}</p>
-          <form class="score-form space-y-2" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}">
-            <p class="text-xs font-semibold text-[var(--muted)]">บันทึกผลสัมภาษณ์</p>
-            <div class="grid grid-cols-2 gap-2">
-              <input type="number" name="score" min="0" max="100" placeholder="คะแนน (0-100)" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs" />
-              <select name="result" required class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)]">
-                <option value="">— ผลสัมภาษณ์ —</option>
-                <option value="pass">ผ่าน</option>
-                <option value="fail">ไม่ผ่าน</option>
-              </select>
+          <p class="text-xs text-[var(--muted)]">📅 ${iv?.scheduled_at ? new Date(iv.scheduled_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'} ${iv?.location ? '· ' + esc(iv.location) : ''} ${iv?.interviewer_teacher_id ? '· กรรมการ ' + esc(ivTeachers.find(t => t.id === iv.interviewer_teacher_id)?.full_name ?? '') : ''}</p>
+          <form class="score-form space-y-1.5" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}" data-max-weight="${maxWeight}" data-pass-threshold="${passThreshold}">
+            <p class="text-xs font-semibold text-[var(--muted)]">ให้คะแนนสัมภาษณ์รายหัวข้อ</p>
+            ${interviewCriteria.map(c => `
+              <div class="flex items-center gap-2">
+                <span class="flex-1 text-xs text-[var(--ink-2)]">${esc(c.name)} <span class="text-[var(--muted-2)]">(เต็ม ${c.weight})</span></span>
+                <input type="number" min="0" max="${c.weight}" step="0.5" name="c_${c.id}" data-criterion-id="${c.id}"
+                  value="${iv?.scores?.[c.id] ?? ''}" class="score-input w-20 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs text-center bg-[var(--surface)] text-[var(--ink)]" />
+              </div>`).join('')}
+            <div class="flex items-center justify-between text-xs font-bold pt-1.5 border-t border-[var(--line-soft)]">
+              <span class="text-[var(--ink-2)]">คะแนนรวม</span>
+              <span class="score-total-display text-[var(--primary)]">${iv?.score ?? 0} / ${maxWeight} · ต้อง ≥ ${passThreshold} จึงผ่าน</span>
             </div>
-            <textarea name="comment" rows="2" placeholder="ความเห็นกรรมการ" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none"></textarea>
+            <textarea name="comment" rows="2" placeholder="ความเห็นกรรมการ" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(iv?.comment ?? '')}</textarea>
             <button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">บันทึกผล</button>
           </form>
         </div>` : ''}
@@ -929,7 +997,7 @@ function renderApplicationsAdminView() {
       ${a.status === 'rejected' && iv?.comment ? `<p class="text-xs text-[var(--bad)] pt-1 border-t border-[var(--line-soft)]">${esc(iv.comment)}</p>` : ''}
     </div>`
   }
-  return `<div class="space-y-3">${adminApps.map(card).join('')}</div>`
+  return `${filterBar}${datalist}<div class="space-y-3">${list.map(card).join('')}</div>`
 }
 
 // ─── รายชื่อสภานักเรียนปัจจุบัน (public, จัดกลุ่มตามเพศ→ตำแหน่ง) ──────────────────
@@ -2341,6 +2409,10 @@ function wireNewsEvents() {
 
 // ─── จัดการใบสมัคร (แอดมิน) — นัดสัมภาษณ์ / ให้คะแนน / ตั้งผู้สมัคร / แต่งตั้ง ───────────
 function wireApplicationsAdminEvents() {
+  document.querySelectorAll('.apps-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => { appsFilter = btn.dataset.filter; render() })
+  })
+
   document.querySelectorAll('.schedule-form').forEach(form => {
     form.addEventListener('submit', async e => {
       e.preventDefault()
@@ -2349,11 +2421,34 @@ function wireApplicationsAdminEvents() {
       const scheduledAt = form.scheduled_at.value
       const location = form.location.value.trim()
       if (!scheduledAt) { showToast('กรุณาระบุวันเวลานัดสัมภาษณ์', 'warning'); return }
+
+      const interviewerText = form.interviewerText.value.trim()
+      let interviewerTeacherId = null
+      if (interviewerText) {
+        const m = interviewerText.match(/· รหัส (\d+)$/)
+        if (!m) { showToast('กรุณาเลือกชื่อครูจากรายการที่แสดง (หรือเว้นว่างไว้ถ้ายังไม่ระบุ)', 'warning'); return }
+        interviewerTeacherId = Number(m[1])
+      }
+
       const btn = form.querySelector('button[type="submit"]')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        await scheduleCouncilInterview({ applicationId: appId, existingInterviewId: ivId, scheduledAt: new Date(scheduledAt).toISOString(), location, interviewerTeacherId: null })
+        const scheduledAtIso = new Date(scheduledAt).toISOString()
+        await scheduleCouncilInterview({ applicationId: appId, existingInterviewId: ivId, scheduledAt: scheduledAtIso, location, interviewerTeacherId })
         showToast('นัดสัมภาษณ์แล้ว ✅', 'success')
+        // ส่ง push แจ้งนักเรียน (ของเสริม ไม่บล็อกการบันทึกหลัก) — reuse pattern Edge Function
+        // 'send-push' เดียวกับที่ใช้แจ้งผลคำร้องขอสอบ (js/teacher-views-grades.js)
+        const profileId = form.dataset.profileId
+        if (profileId) {
+          const when = new Date(scheduledAtIso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+          supabase.functions.invoke('send-push', {
+            body: {
+              title: '🗓️ นัดสัมภาษณ์สภานักเรียน',
+              body: `${form.dataset.positionName || ''} — ${when}${location ? ' · ' + location : ''}`,
+              url: 'council.html', profileIds: [profileId],
+            },
+          }).catch(() => { /* เงียบไว้ ไม่กระทบผู้ใช้ */ })
+        }
         adminApps = null
         render()
       } catch (err) {
@@ -2363,21 +2458,36 @@ function wireApplicationsAdminEvents() {
     })
   })
 
+  // อัปเดตคะแนนรวมสดทุกครั้งที่แก้ตัวเลขรายหัวข้อ (สเปคข้อ 8.5 "แสดงคะแนนรวมสด")
   document.querySelectorAll('.score-form').forEach(form => {
+    const maxWeight = Number(form.dataset.maxWeight)
+    const passThreshold = Number(form.dataset.passThreshold)
+    const totalEl = form.querySelector('.score-total-display')
+    const recalc = () => {
+      let total = 0
+      form.querySelectorAll('.score-input').forEach(inp => { if (inp.value !== '') total += Number(inp.value) })
+      if (totalEl) totalEl.textContent = `${total} / ${maxWeight} · ต้อง ≥ ${passThreshold} จึงผ่าน`
+    }
+    form.querySelectorAll('.score-input').forEach(inp => inp.addEventListener('input', recalc))
+
     form.addEventListener('submit', async e => {
       e.preventDefault()
       const appId = Number(form.dataset.appId)
       const ivId = form.dataset.ivId ? Number(form.dataset.ivId) : null
       if (!ivId) { showToast('ไม่พบข้อมูลการนัดสัมภาษณ์', 'error'); return }
-      const result = form.result.value
-      if (!result) { showToast('กรุณาเลือกผลสัมภาษณ์', 'warning'); return }
-      const score = form.score.value ? Number(form.score.value) : null
+      const scores = {}
+      let total = 0
+      form.querySelectorAll('.score-input').forEach(inp => {
+        if (inp.value !== '') { scores[inp.dataset.criterionId] = Number(inp.value); total += Number(inp.value) }
+      })
+      // ตัดสินอัตโนมัติที่ครึ่งหนึ่งของคะแนนเต็ม (สเปคข้อ 8.5) ไม่มีการเลือก ผ่าน/ไม่ผ่าน เอง
+      const result = total >= passThreshold ? 'pass' : 'fail'
       const comment = form.comment.value.trim()
       const btn = form.querySelector('button[type="submit"]')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        await saveCouncilInterviewScore({ interviewId: ivId, applicationId: appId, score, result, comment })
-        showToast('บันทึกผลสัมภาษณ์แล้ว ✅', 'success')
+        await saveCouncilInterviewScore({ interviewId: ivId, applicationId: appId, score: total, scores, result, comment })
+        showToast(`บันทึกผลสัมภาษณ์แล้ว ✅ (${result === 'pass' ? 'ผ่าน' : 'ไม่ผ่าน'})`, 'success')
         adminApps = null
         render()
       } catch (err) {
