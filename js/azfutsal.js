@@ -1080,14 +1080,9 @@ function teamRefundDraft(team) {
   }
 }
 
-function openRefundReceipt(teamId) {
-  const team = S.teams.find(item => item.id === teamId)
-  const refund = refundForTeam(teamId)
-  if (!team || !refund) { azToast('ยังไม่มีใบเสร็จรับเงินคืนของทีมนี้'); return }
+// ใช้ร่วมกันทั้งใบเสร็จตัวจริง (refund ที่ล็อกแล้ว) และตัวอย่างก่อนยืนยัน (teamRefundDraft สดๆ) — โครงข้อมูลหน้าตาเดียวกันทั้งคู่
+function buildRefundReceiptDocument(team, refund, isPreview) {
   const details = Array.isArray(refund.deduction_snapshot) ? refund.deduction_snapshot : []
-  const confirmedAt = new Date(refund.confirmed_at).toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
   const detailRows = details.length ? details.map(detail => `
     <tr>
       <td>${esc(detail.match_code)}${detail.round ? ` · ${esc(detail.round)}` : ''}<br><span>พบ ${esc(detail.opponent)}</span></td>
@@ -1095,14 +1090,19 @@ function openRefundReceipt(teamId) {
       <td class="num">${Number(detail.red_count || 0) ? `${Number(detail.red_count)} × ${money(refund.red_rate)}` : '-'}</td>
       <td class="num">${money(Number(detail.yellow_deduction || 0) + Number(detail.red_deduction || 0))}</td>
     </tr>`).join('') : '<tr><td colspan="4" class="empty">ไม่มีรายการหักจากใบเหลืองหรือใบแดง</td></tr>'
-  const popup = window.open('', '_blank', 'width=860,height=760')
-  if (!popup) { azToast('เบราว์เซอร์บล็อกหน้าต่างใบเสร็จ กรุณาอนุญาตป๊อปอัป'); return }
-  popup.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(refund.receipt_no)}</title>
+  const metaRow = isPreview
+    ? `<div><b>สถานะ</b> <span style="color:#b45309;font-weight:800">ตัวอย่าง (ยังไม่ยืนยัน)</span></div><div><b>ข้อมูล ณ เวลา</b> ${esc(new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</div>`
+    : `<div><b>เลขที่ใบเสร็จ</b> ${esc(refund.receipt_no)}</div><div><b>วันที่ยืนยันคืนเงิน</b> ${esc(new Date(refund.confirmed_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</div>`
+  const title = isPreview ? 'ตัวอย่างใบเสร็จรับเงินคืนค่าประกันทีม' : 'ใบเสร็จรับเงินคืนค่าประกันทีม'
+  const note = isPreview
+    ? 'นี่คือตัวอย่างคำนวณจากข้อมูลปัจจุบัน (ใบเหลือง/ใบแดงล่าสุด) ยังไม่ใช่เอกสารทางการ ยอดเงินอาจเปลี่ยนได้ถ้ามีการแก้ไขผลการแข่งขันเพิ่มเติมก่อนผู้จัดกดยืนยันจริง'
+    : 'เอกสารนี้ออกจากระบบหลังผู้จัดการแข่งขันยืนยันการคืนเงินแล้ว รายละเอียดและยอดเงินเป็นข้อมูลที่บันทึก ณ เวลายืนยัน'
+  return `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(isPreview ? `ตัวอย่างใบเสร็จ · ${team.name}` : refund.receipt_no)}</title>
   <style>
-    @page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Tahoma,"Noto Sans Thai",sans-serif;color:#111827;margin:0;font-size:13px}.sheet{max-width:760px;margin:auto;border:1px solid #d1d5db;padding:28px}.head{display:flex;align-items:center;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px}.logo{width:82px;height:82px;object-fit:contain}.head h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin:18px 0}.meta b{display:inline-block;min-width:105px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d1d5db;padding:9px;vertical-align:top}th{background:#f3f4f6;text-align:left}.num{text-align:right;white-space:nowrap}td span{color:#4b5563;font-size:12px}.empty{text-align:center;color:#6b7280}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .total{border-top:2px solid #111827;margin-top:5px;padding-top:10px;font-size:17px;font-weight:800}.note{margin-top:22px;padding:10px 12px;background:#f9fafb;color:#4b5563;font-size:11.5px}.actions{text-align:center;margin:20px}.actions button{padding:10px 22px;border:0;border-radius:8px;background:#111827;color:white;font-weight:700;cursor:pointer}@media print{.actions{display:none}.sheet{border:0;padding:0}}
+    @page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Tahoma,"Noto Sans Thai",sans-serif;color:#111827;margin:0;font-size:13px}.sheet{max-width:760px;margin:auto;border:1px solid #d1d5db;padding:28px;position:relative}${isPreview ? '.sheet::before{content:"ตัวอย่าง";position:absolute;top:40%;left:0;right:0;text-align:center;font-size:80px;font-weight:900;color:rgba(217,119,6,.14);transform:rotate(-18deg);pointer-events:none}' : ''}.head{display:flex;align-items:center;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px}.logo{width:82px;height:82px;object-fit:contain}.head h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin:18px 0}.meta b{display:inline-block;min-width:105px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d1d5db;padding:9px;vertical-align:top}th{background:#f3f4f6;text-align:left}.num{text-align:right;white-space:nowrap}td span{color:#4b5563;font-size:12px}.empty{text-align:center;color:#6b7280}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .total{border-top:2px solid #111827;margin-top:5px;padding-top:10px;font-size:17px;font-weight:800}.note{margin-top:22px;padding:10px 12px;background:${isPreview ? '#fffbeb' : '#f9fafb'};color:${isPreview ? '#92400e' : '#4b5563'};font-size:11.5px}.actions{text-align:center;margin:20px}.actions button{padding:10px 22px;border:0;border-radius:8px;background:#111827;color:white;font-weight:700;cursor:pointer}@media print{.actions{display:none}.sheet{border:0;padding:0}}
   </style></head><body><div class="actions"><button onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button></div><main class="sheet">
-    <header class="head"><img class="logo" src="${esc(refund.logo_url || refundReceiptLogoUrl())}" alt="โลโก้โรงเรียน"><div><h1>ใบเสร็จรับเงินคืนค่าประกันทีม</h1><div>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))}</div><div class="muted">${esc(cfg('INFO_VENUE', ''))}</div></div></header>
-    <section class="meta"><div><b>เลขที่ใบเสร็จ</b> ${esc(refund.receipt_no)}</div><div><b>วันที่ยืนยันคืนเงิน</b> ${esc(confirmedAt)}</div><div><b>ทีม</b> ${esc(team.name)}</div><div><b>ระดับ</b> ${esc(T[team.level]?.label || team.level)}</div></section>
+    <header class="head"><img class="logo" src="${esc(refund.logo_url || refundReceiptLogoUrl())}" alt="โลโก้โรงเรียน"><div><h1>${esc(title)}</h1><div>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))}</div><div class="muted">${esc(cfg('INFO_VENUE', ''))}</div></div></header>
+    <section class="meta">${metaRow}<div><b>ทีม</b> ${esc(team.name)}</div><div><b>ระดับ</b> ${esc(T[team.level]?.label || team.level)}</div></section>
     <div><b>รายละเอียดการหักจากใบเหลืองและใบแดง</b> <span class="muted">(แสดงเฉพาะนัดและคู่แข่งขัน ไม่ระบุผู้ได้รับใบ)</span></div>
     <table><thead><tr><th>นัดที่แข่งขัน / คู่แข่งขัน</th><th class="num">ใบเหลือง (ใบ × บาท)</th><th class="num">ใบแดง (ใบ × บาท)</th><th class="num">หัก (บาท)</th></tr></thead><tbody>${detailRows}</tbody></table>
     <section class="summary">
@@ -1112,8 +1112,28 @@ function openRefundReceipt(teamId) {
       <div><span>หักใบแดง ${Number(refund.red_count)} ใบ</span><b>−${money(refund.red_deduction)} บาท</b></div>
       <div class="total"><span>ยอดเงินคืนสุทธิ</span><span>${money(refund.refund_amount)} บาท</span></div>
     </section>
-    <div class="note">เอกสารนี้ออกจากระบบหลังผู้จัดการแข่งขันยืนยันการคืนเงินแล้ว รายละเอียดและยอดเงินเป็นข้อมูลที่บันทึก ณ เวลายืนยัน</div>
-  </main></body></html>`)
+    <div class="note">${esc(note)}</div>
+  </main></body></html>`
+}
+
+function openRefundReceipt(teamId) {
+  const team = S.teams.find(item => item.id === teamId)
+  const refund = refundForTeam(teamId)
+  if (!team || !refund) { azToast('ยังไม่มีใบเสร็จรับเงินคืนของทีมนี้'); return }
+  const popup = window.open('', '_blank', 'width=860,height=760')
+  if (!popup) { azToast('เบราว์เซอร์บล็อกหน้าต่างใบเสร็จ กรุณาอนุญาตป๊อปอัป'); return }
+  popup.document.write(buildRefundReceiptDocument(team, refund, false))
+  popup.document.close()
+}
+
+// ดูตัวอย่างใบเสร็จก่อนผู้จัดยืนยันจริง — คำนวณสดจากใบเหลือง/ใบแดงปัจจุบัน ไม่ต้องรอยืนยันก่อน
+function openRefundReceiptPreview(teamId) {
+  const team = S.teams.find(item => item.id === teamId)
+  if (!team) return
+  const draft = teamRefundDraft(team)
+  const popup = window.open('', '_blank', 'width=860,height=760')
+  if (!popup) { azToast('เบราว์เซอร์บล็อกหน้าต่างใบเสร็จ กรุณาอนุญาตป๊อปอัป'); return }
+  popup.document.write(buildRefundReceiptDocument(team, draft, true))
   popup.document.close()
 }
 
@@ -4063,7 +4083,9 @@ function manageTeamView(team, isAdminView, readOnly) {
           <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f3f4f6;font-size:12px;color:#6b7280">
             <div>หักค่าดำเนินการ ${money(refund?.operation_fee ?? cfg('OPERATION_FEE', 100))} บาท${(refund?.yellow_count ?? teamCardStats.y) ? ` · ใบเหลือง ${refund?.yellow_count ?? teamCardStats.y} ใบ (−${money(refund?.yellow_deduction ?? teamCardStats.y * Number(cfg('RATE_YELLOW', 30)))})` : ''}${(refund?.red_count ?? teamCardStats.r) ? ` · ใบแดง ${refund?.red_count ?? teamCardStats.r} ใบ (−${money(refund?.red_deduction ?? teamCardStats.r * Number(cfg('RATE_RED', 50)))})` : ''}</div>
             <div style="margin-top:4px;font-size:13.5px;font-weight:800;color:${t.accent}">${refund ? 'คืนเงินแล้ว' : 'คาดว่าจะได้เงินคืน'} ${money(refund?.refund_amount ?? refundEstimate)} บาท</div>
-            ${refund ? `<button data-act="openRefundReceipt" data-team="${team.id}" style="width:100%;margin-top:10px;padding:10px;border-radius:9px;border:none;background:${t.base};color:#fff;font-weight:800;font-size:13px;cursor:pointer">🧾 ใบเสร็จรับเงินคืน ${esc(refund.receipt_no)}</button>` : `<div style="margin-top:6px;font-size:11px;color:#9ca3af">ปุ่มใบเสร็จจะปรากฏหลังผู้จัดยืนยันการคืนเงิน</div>`}
+            ${refund ? `<button data-act="openRefundReceipt" data-team="${team.id}" style="width:100%;margin-top:10px;padding:10px;border-radius:9px;border:none;background:${t.base};color:#fff;font-weight:800;font-size:13px;cursor:pointer">🧾 ใบเสร็จรับเงินคืน ${esc(refund.receipt_no)}</button>` : `
+            <button data-act="openRefundReceiptPreview" data-team="${team.id}" style="width:100%;margin-top:10px;padding:9px;border-radius:9px;border:1px dashed ${t.border};background:${t.soft};color:${t.accent};font-weight:700;font-size:12.5px;cursor:pointer">👁️ ดูตัวอย่างใบเสร็จ (ยังไม่ยืนยัน)</button>
+            <div style="margin-top:6px;font-size:11px;color:#9ca3af">ใบเสร็จตัวจริงจะออกให้หลังผู้จัดยืนยันการคืนเงินแล้ว</div>`}
           </div>
         ` : ''}
       ` : readOnly ? `
@@ -5562,6 +5584,7 @@ function bindEvents() {
     if (act === 'adminPaymentsLevel') { S.adminPaymentsLevel = btn.dataset.v; draw(); return }
     if (act === 'adminRefundLevel') { S.adminRefundLevel = btn.dataset.v; draw(); return }
     if (act === 'openRefundReceipt') { openRefundReceipt(btn.dataset.team); return }
+    if (act === 'openRefundReceiptPreview') { openRefundReceiptPreview(btn.dataset.team); return }
     if (act === 'confirmRefund') {
       const team = S.teams.find(item => item.id === btn.dataset.team)
       if (!team) return
@@ -6491,7 +6514,11 @@ function adminRefunds() {
             <div><div style="font-size:13px;font-weight:800">${esc(team.name)}</div><div style="font-size:11px;color:#6b7280;margin-top:2px">ใบเหลือง ${Number(draft.yellow_count)} · ใบแดง ${Number(draft.red_count)} · คืนสุทธิ <b>${money(draft.refund_amount)} บาท</b></div></div>
             ${refund ? `<span style="font-size:10.5px;font-weight:700;color:#16a34a;background:#dcfce7;border-radius:999px;padding:4px 8px;white-space:nowrap">ยืนยันแล้ว</span>` : `<span style="font-size:10.5px;font-weight:700;color:#b45309;background:#fef3c7;border-radius:999px;padding:4px 8px;white-space:nowrap">รอยืนยัน</span>`}
           </div>
-          ${refund ? `<button data-act="openRefundReceipt" data-team="${team.id}" style="width:100%;margin-top:9px;padding:8px;border-radius:8px;border:1px solid ${T[level].border};background:${T[level].soft};color:${T[level].accent};font-size:12px;font-weight:800;cursor:pointer">🧾 เปิดใบเสร็จ ${esc(refund.receipt_no)}</button>` : `<button data-act="confirmRefund" data-team="${team.id}" style="width:100%;margin-top:9px;padding:8px;border-radius:8px;border:none;background:${T[level].base};color:#fff;font-size:12px;font-weight:800;cursor:pointer">ยืนยันการให้เงินคืน ${money(draft.refund_amount)} บาท</button>`}
+          ${refund ? `<button data-act="openRefundReceipt" data-team="${team.id}" style="width:100%;margin-top:9px;padding:8px;border-radius:8px;border:1px solid ${T[level].border};background:${T[level].soft};color:${T[level].accent};font-size:12px;font-weight:800;cursor:pointer">🧾 เปิดใบเสร็จ ${esc(refund.receipt_no)}</button>` : `
+          <div style="display:flex;gap:6px;margin-top:9px">
+            <button data-act="openRefundReceiptPreview" data-team="${team.id}" style="flex:1;padding:8px;border-radius:8px;border:1px dashed ${T[level].border};background:#fff;color:${T[level].accent};font-size:12px;font-weight:800;cursor:pointer">👁️ ดูตัวอย่าง</button>
+            <button data-act="confirmRefund" data-team="${team.id}" style="flex:1;padding:8px;border-radius:8px;border:none;background:${T[level].base};color:#fff;font-size:12px;font-weight:800;cursor:pointer">ยืนยันคืนเงิน ${money(draft.refund_amount)} บาท</button>
+          </div>`}
         </div>`
       }).join('') : '<div style="font-size:12.5px;color:#9ca3af">ยังไม่มีทีมที่ยืนยันการชำระค่าประกัน</div>'}
     </div>
