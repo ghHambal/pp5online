@@ -326,6 +326,70 @@ export async function publishElectionResults({ electionConfigId, gender, academi
   return winner
 }
 
+// ─── เสนอคณะทำงาน (ประธาน) → แต่งตั้ง (ครูที่ปรึกษาสภา) — สเปคข้อ 8.6 ───────────────────────
+// ตำแหน่งที่ยังว่าง — ไม่นับตำแหน่งประธาน (มาจากการเลือกตั้งเท่านั้น ไม่ใช่การเสนอ)
+export async function getOpenPositionsForNomination(gender) {
+  const [{ data: positions, error: e1 }, { data: members, error: e2 }] = await Promise.all([
+    supabase.from('council_positions').select('*').eq('gender', gender).eq('is_active', true).eq('is_elected', false).order('sort_order'),
+    supabase.from('council_members').select('position_id').eq('status', 'active'),
+  ])
+  if (e1) throw e1
+  if (e2) throw e2
+  const occupied = {}
+  ;(members ?? []).forEach(m => { occupied[m.position_id] = (occupied[m.position_id] ?? 0) + 1 })
+  return (positions ?? []).filter(p => (occupied[p.id] ?? 0) < p.seats_count)
+}
+
+// ผู้สมัครที่ผ่านสัมภาษณ์แล้ว (ตำแหน่งที่ไม่ใช่ประธาน) — กรองคนที่มีการเสนอค้างอยู่แล้วฝั่ง UI
+export async function getInterviewedForNomination(gender) {
+  const { data, error } = await supabase.from('council_applications')
+    .select(`id, position_id, motivation, photo_url, student_id,
+      students(id, full_name, student_code, main_room, image_url, photo_url),
+      council_positions!inner(id, position_name, gender, is_elected),
+      council_interviews(score, comment)`)
+    .eq('status', 'interviewed').eq('council_positions.gender', gender).eq('council_positions.is_elected', false)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function proposeNomination({ applicationId, positionId, proposedByStudentId }) {
+  const { error } = await supabase.from('council_nominations').insert({
+    application_id: applicationId, position_id: positionId, proposed_by_student_id: proposedByStudentId,
+  })
+  if (error) throw error
+}
+
+export async function getPendingNominations(gender) {
+  const { data, error } = await supabase.from('council_nominations')
+    .select(`id, application_id, position_id, status, comment, created_at,
+      council_positions!inner(position_name, gender),
+      council_applications(motivation, photo_url, students(full_name, student_code, main_room, image_url, photo_url))`)
+    .eq('status', 'proposed').eq('council_positions.gender', gender).order('created_at')
+  if (error) throw error
+  return data ?? []
+}
+
+// อนุมัติ → แต่งตั้งเข้า council_members จริง (mirror pattern appointMember) / ไม่อนุมัติ → บันทึกเหตุผล
+export async function decideNomination({ nominationId, approve, teacherId, comment }) {
+  const { data: nom, error: e0 } = await supabase.from('council_nominations').select('*').eq('id', nominationId).single()
+  if (e0) throw e0
+  const { error } = await supabase.from('council_nominations')
+    .update({ status: approve ? 'approved' : 'rejected', decided_by_teacher_id: teacherId, decided_at: new Date().toISOString(), comment })
+    .eq('id', nominationId)
+  if (error) throw error
+  if (approve) {
+    const { data: app, error: e1 } = await supabase.from('council_applications').select('student_id, academic_year').eq('id', nom.application_id).single()
+    if (e1) throw e1
+    const { error: e2 } = await supabase.from('council_members').insert({
+      position_id: nom.position_id, student_id: app.student_id, academic_year: app.academic_year,
+      source: 'appointed', status: 'active', term_start_date: new Date().toISOString().slice(0, 10),
+    })
+    if (e2) throw e2
+    const { error: e3 } = await supabase.from('council_applications').update({ status: 'appointed' }).eq('id', nom.application_id)
+    if (e3) throw e3
+  }
+}
+
 // ─── กิจกรรมประจำปีของสภา — เขียนได้เฉพาะแอดมิน/ประธานสภาที่ล็อกอินอยู่ (RLS คุมแล้ว) ────────
 export async function getCouncilActivities(academicYear) {
   let q = supabase.from('council_activities').select('*').order('activity_date', { ascending: false, nullsFirst: false })
@@ -385,6 +449,24 @@ export async function getMyAnnouncementAcks(studentId) {
 export async function ackAnnouncement({ announcementId, studentId }) {
   const { error } = await supabase.from('council_announcement_acks').insert({ announcement_id: announcementId, student_id: studentId })
   if (error) throw error
+}
+
+// นับ "รับทราบแล้ว N จาก M คน" ต่อประกาศ (สเปคข้อ 8.10) — N มาจากฟังก์ชันนี้, M มาจาก
+// getEligibleVoterCount (แยกตามเพศ) หรือ getTotalActiveStudentCount (audience='all')
+export async function getAnnouncementAckCounts() {
+  const { data, error } = await supabase.from('council_announcement_acks').select('announcement_id')
+  if (error) throw error
+  const counts = {}
+  ;(data ?? []).forEach(r => { counts[r.announcement_id] = (counts[r.announcement_id] ?? 0) + 1 })
+  return counts
+}
+
+export async function getTotalActiveStudentCount() {
+  const { count, error } = await supabase.from('students')
+    .select('id', { count: 'exact', head: true })
+    .or('is_active.is.null,is_active.eq.true')
+  if (error) throw error
+  return count ?? 0
 }
 
 // ─── ประเมินผลปฏิบัติหน้าที่ + เกียรติบัตร — เขียนได้เฉพาะแอดมิน/ครู (ครูที่ปรึกษาสภาประเมิน) ──
