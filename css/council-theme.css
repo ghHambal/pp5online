@@ -1,0 +1,51 @@
+/* โทเคนสี/เงา/พื้นผิวของระบบสภานักเรียน — คัดลอกค่าตรงจากไฟล์ต้นแบบ "ระบบสภานักเรียน.html"
+   ที่ผู้ใช้อัปโหลด (2026-08-15/16) ไม่ใช่ค่าประมาณ — โหลดเฉพาะหน้า council.html/council-election.html
+   [data-side="W"] สลับสีหลักเป็นชมพูเมื่อดูฝั่งสภานักเรียนหญิง (ตรงตามกลไกต้นแบบ) */
+:root {
+  --bg: #f8f4f4; --bg-2: #f2ecec; --surface: #ffffff; --surface-2: #fbf7f7;
+  --line: #e8dcdd; --line-soft: #f1e9e9;
+  --ink: #1d1519; --ink-2: #4a3b41; --muted: #6e5f65; --muted-2: #90828a;
+  --primary: #14563b; --primary-dark: #0d3a28; --primary-soft: #edf4f0; --primary-soft-line: #cfe3d8;
+  --primary-25: #cfe3d8; --primary-45: #9cc4b0; --primary-70: #4d8e70;
+  --pink: #a3134f; --pink-soft: #fdeef4; --pink-soft-line: #f3d4e2;
+  --ok: #157a52; --ok-soft: #ecf5f0; --ok-soft-line: #cfe4d9;
+  --gold: #b5892b; --gold-ink: #8a6a1f; --gold-soft: #fdf7e9; --gold-soft-line: #efe0bd;
+  --bad: #a63a2c; --bad-soft: #fbeeec; --bad-soft-line: #eed3ce;
+  --info: #14563b; --teal: #0f6b60;
+  --photo-1: #f3ecee; --photo-2: #ddd0d5;
+  --btn-dark-bg: #1d1519; --btn-dark-fg: #ffffff;
+  --toast-bg: #1d1519; --toast-fg: #ffffff;
+  --hero-1: #14563b; --hero-2: #0f4530; --hero-3: #0a2d1f;
+  --hero-btn: #ffffff; --hero-btn-fg: #14563b;
+  --green: #14563b; --green-soft: #edf4f0; --green-soft-line: #cfe3d8;
+  --glass: rgba(255,255,255,.72); --glass-on: rgba(237,244,240,.86); --glass-line: rgba(255,255,255,.6);
+}
+:root[data-dark] {
+  --bg: #14100f; --bg-2: #1b1615; --surface: #1f1a19; --surface-2: #262020;
+  --line: #392f30; --line-soft: #2e2626;
+  --ink: #f6efef; --ink-2: #d8cbcd; --muted: #a99ba0; --muted-2: #8d8085;
+  --primary: #2f9268; --primary-dark: #1c5f43; --primary-soft: #16281f; --primary-soft-line: #2a4a3a;
+  --primary-25: #2a4a3a; --primary-45: #3d7359; --primary-70: #2f9268;
+  --pink: #e2578f; --pink-soft: #331420; --pink-soft-line: #55253a;
+  --ok: #35a273; --ok-soft: #142a20; --ok-soft-line: #29513c;
+  --gold: #d9a94a; --gold-ink: #e5bc66; --gold-soft: #2b2214; --gold-soft-line: #4a3a1c;
+  --bad: #e07a68; --bad-soft: #2e1a17; --bad-soft-line: #4d2a24;
+  --info: #4fb488; --teal: #2f9c8e;
+  --photo-1: #3a3134; --photo-2: #241e20;
+  --btn-dark-bg: #c53a70; --btn-dark-fg: #ffffff;
+  --toast-bg: #3a2f33; --toast-fg: #ffffff;
+  --hero-1: #16452f; --hero-2: #103324; --hero-3: #0a2318;
+  --hero-btn: #f3e7ea; --hero-btn-fg: #14563b;
+  --green: #2f9268; --green-soft: #16281f; --green-soft-line: #2a4a3a;
+  --glass: rgba(38,32,32,.68); --glass-on: rgba(22,40,31,.82); --glass-line: rgba(255,255,255,.12);
+}
+:root[data-side="W"] {
+  --primary: #a3134f; --primary-dark: #7a0e3b; --primary-soft: #fdeef4; --primary-soft-line: #f3d4e2;
+  --primary-25: #f3d4e2; --primary-45: #dd93b4; --primary-70: #c23f76;
+  --info: #a3134f; --hero-1: #a3134f; --hero-2: #7d0e3c; --hero-3: #56082a; --hero-btn-fg: #a3134f;
+}
+:root[data-dark][data-side="W"] {
+  --primary: #e2578f; --primary-dark: #a3134f; --primary-soft: #331420; --primary-soft-line: #55253a;
+  --primary-25: #55253a; --primary-45: #8d3459; --primary-70: #c74a7e;
+  --info: #ef7fae; --hero-1: #6e1136; --hero-2: #530d29; --hero-3: #38081c; --hero-btn-fg: #a3134f;
+}

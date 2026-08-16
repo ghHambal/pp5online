@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.428'
+import { APP_VERSION } from './version.js?v=10.22.429'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -674,6 +674,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.429': [
+    '🎨 ระบบสภานักเรียน: เปลี่ยนมาใช้ CSS variable ตรงตามไฟล์ต้นแบบทั้งระบบ (รองรับสลับธีมเขียว/ชมพูตามฝั่ง และโหมดมืดในอนาคต) + จัดกลุ่มเมนูไซด์บาร์ตามหมวดตรงกับต้นแบบ'
+  ],
   '10.22.428': [
     '🧾 ฟุตซอล: เพิ่มปุ่ม "ดูตัวอย่างใบเสร็จ (ยังไม่ยืนยัน)" ทั้งฝั่งทีมและแอดมิน ดูรายละเอียดการหักใบเหลือง/ใบแดงล่วงหน้าได้โดยไม่ต้องกดยืนยันคืนเงินก่อน'
   ],
