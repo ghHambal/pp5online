@@ -636,3 +636,32 @@ export async function decideDocument({ id, approve, teacherId, comment }) {
   }).eq('id', id)
   if (error) throw error
 }
+
+// ─── มอบสิทธิ์ครูที่ปรึกษาสภานักเรียน (แอดมิน) — สเปคข้อ 8.19 ────────────────────────────
+// เขียนเฉพาะคอลัมน์ positions[] เสมอ ห้ามแตะคอลัมน์ position (เดี่ยว) เด็ดขาด เพราะมี check
+// constraint teachers_position_check จำกัดค่าที่ยอมรับไว้ตายตัว (dept_head/registrar_*/
+// academic_*) ไม่มี 'council_advisor' อยู่ในนั้น — เขียนผิดคอลัมน์จะชน constraint ทันที
+export async function getCouncilAdvisorTeachers() {
+  const { data, error } = await supabase.from('teachers')
+    .select('id, full_name, teacher_code, image_url, category')
+    .contains('positions', ['council_advisor'])
+    .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addCouncilAdvisor(teacherId) {
+  const { data: t, error: e0 } = await supabase.from('teachers').select('positions').eq('id', teacherId).single()
+  if (e0) throw e0
+  const positions = Array.from(new Set([...(t.positions ?? []), 'council_advisor']))
+  const { error } = await supabase.from('teachers').update({ positions }).eq('id', teacherId)
+  if (error) throw error
+}
+
+export async function removeCouncilAdvisor(teacherId) {
+  const { data: t, error: e0 } = await supabase.from('teachers').select('positions').eq('id', teacherId).single()
+  if (e0) throw e0
+  const positions = (t.positions ?? []).filter(p => p !== 'council_advisor')
+  const { error } = await supabase.from('teachers').update({ positions }).eq('id', teacherId)
+  if (error) throw error
+}

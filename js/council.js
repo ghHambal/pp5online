@@ -26,6 +26,7 @@ import {
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
   getInterviewCriteria, addInterviewCriterion, removeInterviewCriterion,
   getCouncilDocuments, createDocument, submitDocument, decideDocument,
+  getCouncilAdvisorTeachers, addCouncilAdvisor, removeCouncilAdvisor,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -83,7 +84,8 @@ let flowSubtab = null
 let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
 let adminAppDetailId = null // id ของใบสมัครที่กำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
 let appsFilter = 'all' // ฟิลเตอร์สถานะในหน้า "จัดการใบสมัคร" (สเปคข้อ 8.4)
-let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์
+let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์ (ใช้ร่วมกับหน้ามอบสิทธิ์ด้วย)
+let councilAdvisors = null // null = ยังไม่โหลด — ทำเนียบครูที่ปรึกษาสภานักเรียน (หน้า "มอบสิทธิ์")
 const candidatesByGender = {} // { M: [...], W: [...] }
 let candidateProfileOpen = null // { gender, id } — การ์ดผู้สมัครที่กำลังเปิดดูโปรไฟล์เต็ม (สเปคข้อ 8.11)
 let candidateEditMode = false // สลับเป็นฟอร์มแก้ไขโปรไฟล์ผู้สมัคร (เฉพาะแอดมิน/ครูที่ปรึกษาสภา)
@@ -300,6 +302,9 @@ function getNavItems() {
   if (isTeacherStaff || ctx.isChair) items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'teacherWork' })
   // ระบบ — ตั้งค่า (Phase 2, สเปคข้อ 8.18) — ภาพรวม/มอบสิทธิ์ยังไม่ได้สร้าง
   if (isTeacherStaff) items.push({ id: 'settings', icon: '⚙️', label: 'ตั้งค่า', group: 'system' })
+  // มอบสิทธิ์ครูที่ปรึกษาสภา — เห็นเฉพาะแอดมิน (ครูที่ปรึกษาสภาเองไม่เห็นเมนูนี้ ตามสเปคข้อ 4
+  // "เกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์")
+  if (ctx.isAdmin) items.push({ id: 'perms', icon: '🔑', label: 'มอบสิทธิ์', group: 'system' })
 
   // สวิตช์เปิด/ปิดโมดูล (สเปคข้อ 8.18.4, council_modules) — บังคับใช้เฉพาะโมดูลที่ผูกกับ
   // nav item เดี่ยวๆ ตรงๆ ได้เท่านั้น (interview/appoint/perms ยังไม่มี nav item แยกของตัวเอง
@@ -442,6 +447,20 @@ function homeHeroCopy() {
   return ['ระบบสภานักเรียน', 'ติดตามข่าวสาร กิจกรรม ผู้สมัคร และผลการเลือกตั้งของสภานักเรียน']
 }
 
+// แสดงว่าใครกำลังล็อกอินอยู่ในบทบาท/สถานะอะไร (ผู้ใช้ขอ 2026-08-16 หลังสับสนว่าทำไมครูที่มี
+// profiles.is_also_admin=true ถึงเห็นเมนู/สิทธิ์เหมือนแอดมินทั้งที่ไม่ใช่ครูที่ปรึกษาสภา) —
+// แยกกรณี role==='admin' จริง กับ is_also_admin (สิทธิ์แอดมินที่ได้รับมอบเพิ่มเติม) ให้ชัดเจน
+function currentIdentityLabel() {
+  if (ctx.isChair) return '👑 ประธานสภานักเรียน'
+  if (ctx.membership.length) return '🎫 สมาชิกสภานักเรียน'
+  if (ctx.isCouncilAdvisor) return '🏫 ครูที่ปรึกษาสภานักเรียน'
+  if (ctx.role === 'admin') return '🛡️ ผู้ดูแลระบบ (แอดมิน)'
+  if (ctx.isAdmin) return '🛡️ ผู้ดูแลระบบ (ได้รับสิทธิ์แอดมินเพิ่มเติมจากระบบหลัก ปพ.5 ออนไลน์)'
+  if (ctx.role === 'teacher') return '👨‍🏫 ครู (ยังไม่ได้รับมอบหมายเป็นครูที่ปรึกษาสภานักเรียน)'
+  if (ctx.role === 'student') return '🎓 นักเรียน'
+  return 'ผู้เยี่ยมชม'
+}
+
 function renderHomeHero() {
   const cfg = ctx.cfg
   const termLabel = (cfg.council_term_start_semester && cfg.council_term_start_year)
@@ -460,14 +479,15 @@ function renderHomeHero() {
     </div>` : ''
 
   return `
+    <p class="text-[0.6875rem] text-[var(--muted-2)] mb-2">กำลังใช้งานในฐานะ: <span class="font-bold text-[var(--ink-2)]">${esc(currentIdentityLabel())}</span></p>
     ${visibilityAlert}
     <div class="bg-gradient-to-br from-[var(--primary)] to-[var(--hero-3)] rounded-2xl p-5 sm:p-6 text-white shadow-[0_4px_12px_rgba(23,32,42,0.07)]">
       ${termLabel ? `<span class="inline-block text-xs font-bold px-3 py-1.5 rounded-full bg-white/15 border border-white/20 mb-3">🗓️ ห้วงปฏิบัติหน้าที่ · ${termLabel}</span>` : ''}
       <p class="text-lg sm:text-xl font-extrabold leading-snug [text-wrap:pretty]">${esc(headline)}</p>
       <p class="text-sm text-[var(--primary-soft-line)] mt-1.5 [text-wrap:pretty]">${esc(sub)}</p>
-      ${ctx.isAdmin || ctx.isChair ? `
+      ${ctx.isAdmin || ctx.isCouncilAdvisor || ctx.isChair ? `
       <div class="flex flex-wrap gap-2 mt-4">
-        ${ctx.isAdmin ? `<a href="dashboard.html" class="px-4 py-2 rounded-[10px] bg-[var(--hero-btn)] text-[var(--hero-btn-fg)] text-sm font-bold hover:opacity-90">⚙️ ตั้งค่าระบบ</a>` : ''}
+        ${ctx.isAdmin || ctx.isCouncilAdvisor ? `<button type="button" class="goto-view px-4 py-2 rounded-[10px] bg-[var(--hero-btn)] text-[var(--hero-btn-fg)] text-sm font-bold hover:opacity-90" data-view="settings">⚙️ ตั้งค่าระบบ</button>` : ''}
         <a href="council-election.html" target="_blank" class="px-4 py-2 rounded-[10px] bg-white/10 border border-white/25 text-white text-sm font-bold hover:bg-white/20">🗳️ หน้าลงคะแนน</a>
       </div>` : ''}
     </div>`
@@ -2381,6 +2401,46 @@ function renderAssignmentsView() {
   return `${form}<p class="text-xs font-bold text-[var(--muted-2)] mb-2">งานทั้งหมด (${doneCount}/${list.length} เสร็จแล้ว)</p><div class="space-y-2">${list.map(card).join('')}</div>`
 }
 
+// ─── มอบสิทธิ์ครูที่ปรึกษาสภานักเรียน (แอดมิน) — สเปคข้อ 8.19 ────────────────────────────
+async function loadCouncilAdvisors() {
+  councilAdvisors = await getCouncilAdvisorTeachers().catch(() => [])
+  render()
+}
+
+function renderPermsView() {
+  if (!ctx.isAdmin) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะแอดมินเท่านั้น</p>`
+  if (councilAdvisors === null) { loadCouncilAdvisors(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (ivTeachers === null) { loadIvTeachers(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  const datalist = `<datalist id="council-teacher-datalist">${ivTeachers.map(t => `<option value="${esc(t.full_name)} · รหัส ${t.id}"></option>`).join('')}</datalist>`
+
+  const addForm = `
+    <form id="perms-add-form" class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4 space-y-2.5">
+      <p class="text-sm font-bold text-[var(--ink-2)]">➕ เพิ่มครูที่ปรึกษาสภานักเรียน</p>
+      <input type="text" name="teacherText" list="council-teacher-datalist" placeholder="พิมพ์ชื่อครู แล้วเลือกจากรายการ..." required
+        class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+      <button type="submit" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">เพิ่ม</button>
+    </form>`
+
+  const rosterCard = t => `
+    <div class="rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)] flex items-center gap-3">
+      ${t.image_url
+        ? `<img src="${esc(t.image_url)}" class="w-10 h-12 rounded-[10px] object-cover border border-[var(--line)] flex-shrink-0" />`
+        : `<div class="w-10 h-12 rounded-[10px] bg-[var(--primary-soft)] text-[var(--primary-70)] grid place-items-center font-bold flex-shrink-0 border border-[var(--line)]">${esc((t.full_name || '?').charAt(0))}</div>`}
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(t.full_name)}</p>
+        <p class="text-xs text-[var(--muted)]">${esc(t.teacher_code || '')}${t.category ? ' · ' + esc(t.category) : ''}</p>
+      </div>
+      <button type="button" class="btn-remove-council-advisor text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)] flex-shrink-0" data-id="${t.id}">ถอดถอน</button>
+    </div>`
+
+  const roster = councilAdvisors.length
+    ? `<div class="space-y-2">${councilAdvisors.map(rosterCard).join('')}</div>`
+    : `<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีครูที่ปรึกษาสภานักเรียน</p>`
+
+  return `${datalist}${addForm}<p class="text-xs font-bold text-[var(--muted-2)] mb-2">ทำเนียบครูที่ปรึกษาสภานักเรียน (${councilAdvisors.length} คน)</p>${roster}`
+}
+
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   endorse: renderEndorseView,
@@ -2397,6 +2457,7 @@ const VIEW_RENDERERS = {
   myduty: renderMyDutyView,
   assignments: renderAssignmentsView,
   peerEndorse: renderPeerEndorseView,
+  perms: renderPermsView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
@@ -2592,6 +2653,44 @@ function wireContentEvents() {
   wireChairTeamEvents()
   wireMyDutyEvents()
   wireAssignmentsEvents()
+  wirePermsEvents()
+}
+
+// ─── มอบสิทธิ์ครูที่ปรึกษาสภานักเรียน ──────────────────────────────────────────────────
+function wirePermsEvents() {
+  document.getElementById('perms-add-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const text = f.teacherText.value.trim()
+    const m = text.match(/· รหัส (\d+)$/)
+    if (!m) { showToast('กรุณาเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
+    const teacherId = Number(m[1])
+    if (councilAdvisors.some(t => t.id === teacherId)) { showToast('ครูคนนี้เป็นครูที่ปรึกษาสภาอยู่แล้ว', 'warning'); return }
+    const btn = f.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      await addCouncilAdvisor(teacherId)
+      showToast('เพิ่มครูที่ปรึกษาสภาแล้ว ✅', 'success')
+      councilAdvisors = null
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'เพิ่ม'
+    }
+  })
+
+  document.querySelectorAll('.btn-remove-council-advisor').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ถอดถอนออกจากครูที่ปรึกษาสภานักเรียน?')) return
+      try {
+        await removeCouncilAdvisor(Number(btn.dataset.id))
+        councilAdvisors = null
+        render()
+      } catch (err) {
+        showToast('ถอดถอนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
+  })
 }
 
 // ─── หน้าที่/งานของฉัน (สมาชิกสภา) ──────────────────────────────────────────────────
