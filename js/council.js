@@ -301,12 +301,12 @@ function renderNav(items) {
     if (!groupItems.length) return ''
     return `
       <div class="pb-2">
-        <p class="text-[11px] font-bold text-[var(--primary-45)] tracking-wide px-3 pt-3 pb-1.5">${esc(NAV_GROUPS[g].label)}</p>
+        <p class="text-[0.6875rem] font-bold text-[var(--primary-45)] tracking-wide px-3 pt-3 pb-1.5">${esc(NAV_GROUPS[g].label)}</p>
         ${groupItems.map(it => `
           <button type="button" class="council-nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
             ${it.id === activeView ? 'bg-[var(--hero-3)] text-white' : 'text-[var(--primary-45)] hover:bg-[var(--hero-3)] hover:text-white'}" data-view="${it.id}">
             <span>${it.icon}</span> ${esc(it.label)}
-            ${it.badge ? `<span class="ml-auto bg-[var(--gold)] text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
+            ${it.badge ? `<span class="ml-auto bg-[var(--gold)] text-white text-[0.625rem] rounded-full w-5 h-5 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
           </button>`).join('')}
       </div>`
   }).join('')
@@ -323,8 +323,8 @@ function renderNav(items) {
     return `
     <button type="button" class="council-nav-group-btn relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 min-h-[44px] ${on ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}" data-group="${g.id}">
       <span class="text-xl">${g.icon}</span>
-      <span class="text-[10px] font-medium">${esc(g.label)}</span>
-      ${badge ? `<span class="absolute top-1 right-1/4 bg-[var(--gold)] text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">${badge}</span>` : ''}
+      <span class="text-[0.625rem] font-medium">${esc(g.label)}</span>
+      ${badge ? `<span class="absolute top-1 right-1/4 bg-[var(--gold)] text-white text-[0.5625rem] rounded-full w-4 h-4 flex items-center justify-center font-bold">${badge}</span>` : ''}
     </button>`
   }).join('')}</div>`
 
@@ -358,7 +358,7 @@ function renderMobileSheet(items) {
             <button type="button" class="mobile-sheet-item text-left border ${it.id === activeView ? 'border-[var(--primary-soft-line)] bg-[var(--glass-on)] text-[var(--primary)]' : 'border-[var(--glass-line)] bg-[var(--glass)] text-[var(--ink)]'}
               backdrop-blur-md px-4 py-3 rounded-full text-sm font-bold flex items-center gap-3 min-h-[44px] shadow-[0_8px_22px_rgba(11,20,16,0.18)]" data-view="${it.id}">
               <span class="text-base">${it.icon}</span><span>${esc(it.label)}</span>
-              ${it.badge ? `<span class="ml-auto bg-[var(--gold)] text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
+              ${it.badge ? `<span class="ml-auto bg-[var(--gold)] text-white text-[0.625rem] rounded-full w-5 h-5 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
             </button>`).join('')}
         </div>
       </div>
@@ -388,7 +388,7 @@ function renderPersonalCard() {
           <div class="bg-white/10 rounded-xl p-3 flex items-center justify-between gap-2">
             <div>
               <p class="text-xs text-[var(--primary-soft-line)]">ใบสมัคร — ${esc(a.council_positions?.position_name ?? '—')}</p>
-              <p class="text-[11px] text-[var(--primary-45)]">${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
+              <p class="text-[0.6875rem] text-[var(--primary-45)]">${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
             </div>
             <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-white/20">${esc(APPLICATION_STATUS_LABEL[a.status] ?? a.status)}</span>
           </div>`).join('')}
@@ -458,7 +458,7 @@ function renderHomeActivitySummary() {
       ${ACT_SUMMARY_TILES.map(([k, label, box, num]) => `
         <div class="rounded-[10px] border ${box} p-2 text-center">
           <p class="text-lg font-bold ${num}">${counts[k] ?? 0}</p>
-          <p class="text-[10px] text-[var(--muted)]">${label}</p>
+          <p class="text-[0.625rem] text-[var(--muted)]">${label}</p>
         </div>`).join('')}
     </div>`
   const upcoming = [...activities].sort((a, b) => new Date(a.activity_date || 0) - new Date(b.activity_date || 0)).slice(0, 5)
@@ -470,9 +470,9 @@ function renderHomeActivitySummary() {
         <div class="flex items-center justify-between gap-2 py-1.5 border-b border-[var(--line-soft)] last:border-0">
           <div class="min-w-0">
             <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.title)}</p>
-            <p class="text-[11px] text-[var(--muted-2)]">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} ${a.owner_text ? '· ' + esc(a.owner_text) : ''}</p>
+            <p class="text-[0.6875rem] text-[var(--muted-2)]">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} ${a.owner_text ? '· ' + esc(a.owner_text) : ''}</p>
           </div>
-          <span class="flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded-full ${bg} ${fg}">${label}</span>
+          <span class="flex-shrink-0 text-[0.625rem] font-bold px-2 py-1 rounded-full ${bg} ${fg}">${label}</span>
         </div>`
       }).join('')}
     </div>` : `<p class="text-sm text-[var(--muted-2)] text-center py-6">ยังไม่มีกิจกรรม</p>`
@@ -491,7 +491,7 @@ function renderHomeCouncilPreview() {
         <div class="flex items-center gap-3 rounded-xl border p-3 ${isW ? 'bg-[var(--pink-soft)] border-[var(--pink-soft-line)]' : 'bg-[var(--primary-soft)] border-[var(--primary-soft-line)]'}">
           ${studentPhoto(m.students, 'w-12 h-16')}
           <div class="min-w-0">
-            <p class="text-[11px] font-bold ${isW ? 'text-[var(--pink)]' : 'text-[var(--primary)]'}">${esc(m.council_positions?.position_name ?? ('ประธานสภานักเรียนฝ่าย' + GENDER_LABEL[g]))}</p>
+            <p class="text-[0.6875rem] font-bold ${isW ? 'text-[var(--pink)]' : 'text-[var(--primary)]'}">${esc(m.council_positions?.position_name ?? ('ประธานสภานักเรียนฝ่าย' + GENDER_LABEL[g]))}</p>
             <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
             <p class="text-xs text-[var(--muted)]">${esc(m.students?.main_room ?? '')}</p>
           </div>
@@ -508,7 +508,7 @@ function renderOverviewView() {
     <button type="button" class="flow-entry-btn bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4 text-center hover:border-[var(--primary-70)] hover:shadow-[0_4px_12px_rgba(23,32,42,0.07)] transition" data-flow="${flow}">
       <p class="text-2xl mb-1">${icon}</p>
       <p class="text-sm font-bold text-[var(--primary-dark)]">${esc(label)}</p>
-      ${sub ? `<p class="text-[11px] text-[var(--muted-2)] mt-0.5">${esc(sub)}</p>` : ''}
+      ${sub ? `<p class="text-[0.6875rem] text-[var(--muted-2)] mt-0.5">${esc(sub)}</p>` : ''}
     </button>`
   const hasElection = ctx.elections.length > 0
   // ยังไม่มี council_election_config เลย — ซ่อนปุ่มไปเลยสำหรับคนทั่วไป ส่วนแอดมิน
@@ -617,12 +617,12 @@ function renderApplyStep2() {
         <div>
           <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">เกรดเฉลี่ยสามัญ <span class="text-[var(--bad)]">*</span></label>
           <input name="gpaGeneral" type="number" step="0.01" min="0" max="4" required value="${esc(applyData.gpaGeneral)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
-          <p class="text-[11px] text-[var(--muted-2)] mt-1">ต้อง ≥ ${esc(minGpa)}</p>
+          <p class="text-[0.6875rem] text-[var(--muted-2)] mt-1">ต้อง ≥ ${esc(minGpa)}</p>
         </div>
         <div>
           <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">เกรดเฉลี่ยศาสนา <span class="text-[var(--bad)]">*</span></label>
           <input name="gpaReligious" type="number" step="0.01" min="0" max="4" required value="${esc(applyData.gpaReligious)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
-          <p class="text-[11px] text-[var(--muted-2)] mt-1">ต้อง ≥ ${esc(minGpaRel)}</p>
+          <p class="text-[0.6875rem] text-[var(--muted-2)] mt-1">ต้อง ≥ ${esc(minGpaRel)}</p>
         </div>
       </div>
       <div>
@@ -643,7 +643,7 @@ function renderApplyStep3() {
       <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">รูปถ่าย <span class="text-[var(--bad)]">*</span></label>
       ${applyPhotoPreviewUrl ? `<img src="${applyPhotoPreviewUrl}" class="w-24 h-32 rounded-[10px] object-cover border-2 border-white shadow-[0_3px_9px_rgba(23,32,42,.15),0_0_0_1px_var(--line)]" />` : ''}
       <input id="apply-photo" type="file" accept="image/*" class="w-full text-xs" />
-      <p class="text-[11px] text-[var(--muted-2)]">ใช้รูปหน้าตรง ชัดเจน — ระบบจะย่อขนาดให้อัตโนมัติ</p>
+      <p class="text-[0.6875rem] text-[var(--muted-2)]">ใช้รูปหน้าตรง ชัดเจน — ระบบจะย่อขนาดให้อัตโนมัติ</p>
       <div class="flex gap-2 pt-1">
         <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
         <button type="button" id="btn-apply-step3-next" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ถัดไป →</button>
@@ -659,7 +659,7 @@ function renderApplyStep4() {
       <div>
         <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">ลิงก์วิดีโอแนะนำตัว <span class="text-[var(--bad)]">*</span></label>
         <input name="videoUrl" type="url" required placeholder="https://..." value="${esc(applyData.videoUrl)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
-        <p class="text-[11px] text-[var(--muted-2)] mt-1">ความยาวไม่เกิน ${esc(maxMin)} นาที (ลิงก์ YouTube/Google Drive/TikTok ที่เปิดดูได้)</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)] mt-1">ความยาวไม่เกิน ${esc(maxMin)} นาที (ลิงก์ YouTube/Google Drive/TikTok ที่เปิดดูได้)</p>
       </div>
       ${brief.length ? `
         <div class="bg-[var(--primary-soft)] border border-[var(--primary-soft-line)] rounded-xl p-3">
@@ -781,7 +781,7 @@ function renderElectionBlock(gender) {
       <div class="flex items-center gap-3 bg-[var(--ok-soft)] rounded-xl p-3 mt-2">
         ${studentPhoto(winner.students, 'w-12 h-16')}
         <div class="min-w-0">
-          <p class="text-[11px] text-[var(--ok)] font-bold">ผู้ได้รับเลือกตั้ง</p>
+          <p class="text-[0.6875rem] text-[var(--ok)] font-bold">ผู้ได้รับเลือกตั้ง</p>
           <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(winner.students?.full_name ?? '—')}</p>
         </div>
       </div>` : `<p class="text-xs text-[var(--muted-2)] mt-2">ประกาศผลแล้ว</p>`
@@ -791,7 +791,7 @@ function renderElectionBlock(gender) {
     body = `
       <div class="bg-[var(--primary-soft)] border border-[var(--primary-soft-line)] rounded-xl p-3 mt-2 text-center">
         <p class="text-xs font-bold text-[var(--primary-dark)]">🗳️ กำลังเปิดโหวต — ไปลงคะแนนที่จุดที่โรงเรียนจัดไว้</p>
-        <p class="text-[11px] text-[var(--muted)] mt-1">โหวตผ่านมือถือ/บัญชีตัวเองไม่ได้ ต้องกรอกรหัสนักเรียนที่หน้าจอ ณ จุดลงคะแนนซึ่งมีครูดูแล</p>
+        <p class="text-[0.6875rem] text-[var(--muted)] mt-1">โหวตผ่านมือถือ/บัญชีตัวเองไม่ได้ ต้องกรอกรหัสนักเรียนที่หน้าจอ ณ จุดลงคะแนนซึ่งมีครูดูแล</p>
       </div>`
   } else if (isClosed && !published) {
     body = `<p class="text-xs text-[var(--muted-2)] mt-2">รอผู้ดูแลระบบประกาศผล</p>`
@@ -804,12 +804,12 @@ function renderElectionBlock(gender) {
     adminCtrl = `
       <div class="mt-3 pt-3 border-t border-[var(--line-soft)] space-y-2">
         <form class="election-window-form flex flex-wrap gap-2 items-end" data-election-id="${e.id}">
-          <label class="text-[11px] text-[var(--muted-2)]">เปิดโหวต<br><input type="datetime-local" name="opens_at" value="${e.opens_at ? e.opens_at.slice(0, 16) : ''}" class="border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs"/></label>
-          <label class="text-[11px] text-[var(--muted-2)]">ปิดโหวต<br><input type="datetime-local" name="closes_at" value="${e.closes_at ? e.closes_at.slice(0, 16) : ''}" class="border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs"/></label>
+          <label class="text-[0.6875rem] text-[var(--muted-2)]">เปิดโหวต<br><input type="datetime-local" name="opens_at" value="${e.opens_at ? e.opens_at.slice(0, 16) : ''}" class="border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs"/></label>
+          <label class="text-[0.6875rem] text-[var(--muted-2)]">ปิดโหวต<br><input type="datetime-local" name="closes_at" value="${e.closes_at ? e.closes_at.slice(0, 16) : ''}" class="border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs"/></label>
           <button type="submit" class="px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] text-xs font-bold">บันทึกช่วงเวลา</button>
         </form>
         ${isClosed && !published ? `<button type="button" class="btn-publish-results px-3 py-1.5 rounded-[10px] bg-[var(--ok)] hover:bg-[#106143] text-white text-xs font-bold" data-election-id="${e.id}" data-gender="${gender}">📢 ประกาศผล+แต่งตั้ง</button>` : ''}
-        <p class="text-[11px] text-[var(--muted-2)]">🔗 หน้าโหวต (เปิดที่จุดลงคะแนนเท่านั้น): <a href="council-election.html" target="_blank" class="text-[var(--primary)] underline">council-election.html</a></p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">🔗 หน้าโหวต (เปิดที่จุดลงคะแนนเท่านั้น): <a href="council-election.html" target="_blank" class="text-[var(--primary)] underline">council-election.html</a></p>
       </div>`
   }
 
@@ -885,10 +885,10 @@ function renderApplicationsAdminView() {
           <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
           <p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · ${esc(a.council_positions?.position_name ?? '—')} (สภา${esc(GENDER_LABEL[a.council_positions?.gender] ?? '')})</p>
         </div>
-        <span class="flex-shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full ${cls}">${label}</span>
+        <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full ${cls}">${label}</span>
       </div>
       ${a.motivation ? `<p class="text-xs text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(a.motivation)}</p>` : ''}
-      ${a.endorsement_comment ? `<p class="text-[11px] text-[var(--ok)]">✅ ครูที่ปรึกษา: ${esc(a.endorsement_comment)}</p>` : ''}
+      ${a.endorsement_comment ? `<p class="text-[0.6875rem] text-[var(--ok)]">✅ ครูที่ปรึกษา: ${esc(a.endorsement_comment)}</p>` : ''}
 
       ${a.status === 'pending' ? `
         <form class="schedule-form space-y-2 pt-1 border-t border-[var(--line-soft)]" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}">
@@ -982,7 +982,7 @@ function renderEndorseView() {
       ${a.intro_video_url ? `<a href="${esc(a.intro_video_url)}" target="_blank" rel="noopener" class="inline-block text-xs font-bold text-[var(--primary)] hover:underline">🎬 ดูวิดีโอแนะนำตัว</a>` : ''}
       <div class="flex flex-wrap gap-1.5">
         ${ctx.endorsementPhrases.map(p => `
-          <button type="button" class="endorse-phrase-chip text-[11px] px-2.5 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)] hover:bg-[var(--primary-soft)] hover:border-[var(--primary-45)] text-[var(--ink-2)] transition"
+          <button type="button" class="endorse-phrase-chip text-[0.6875rem] px-2.5 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)] hover:bg-[var(--primary-soft)] hover:border-[var(--primary-45)] text-[var(--ink-2)] transition"
             data-target="${a.id}" data-phrase="${esc(p.phrase)}">${esc(p.phrase)}</button>`).join('')}
       </div>
       <textarea class="endorse-comment w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm resize-none" data-id="${a.id}" rows="2"
@@ -1052,7 +1052,7 @@ function renderActivitiesView() {
       ${ACT_SUMMARY_TILES.map(([k, label, box, num]) => `
         <div class="rounded-xl border ${box} p-3 text-center">
           <p class="text-2xl font-bold ${num}">${counts[k] ?? 0}</p>
-          <p class="text-[11px] text-[var(--muted)]">${label}</p>
+          <p class="text-[0.6875rem] text-[var(--muted)]">${label}</p>
         </div>`).join('')}
     </div>`
 
@@ -1091,7 +1091,7 @@ function renderActivitiesView() {
             <p class="text-sm font-bold text-[var(--ink)]">${esc(a.title)}</p>
             <p class="text-xs text-[var(--muted-2)] mt-0.5">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนดวัน'} ${a.gender ? '· สภา' + GENDER_LABEL[a.gender] : ''} ${a.owner_text ? '· ' + esc(a.owner_text) : ''}</p>
           </div>
-          <span class="flex-shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full border ${border} ${bg} ${fg}">${label}</span>
+          <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${border} ${bg} ${fg}">${label}</span>
         </div>
         ${a.detail ? `<p class="text-xs text-[var(--ink-2)]">${esc(a.detail)}</p>` : ''}
         ${canManage ? `
@@ -1188,13 +1188,13 @@ function renderNewsView() {
     return `
       <div class="rounded-xl border ${a.pinned ? 'border-[var(--gold-soft-line)] bg-[var(--gold-soft)]/40' : 'border-[var(--line-soft)] bg-[var(--surface)]'} p-3.5 space-y-2">
         <div class="flex items-center gap-2 flex-wrap">
-          ${a.pinned ? '<span class="text-[11px] font-bold text-[var(--gold-ink)]">📌 ปักหมุด</span>' : ''}
-          <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border ${border} ${bg} ${fg}">${label}</span>
-          ${a.audience !== 'all' ? `<span class="text-[11px] text-[var(--muted-2)]">สภา${GENDER_LABEL[a.audience] ?? ''}</span>` : ''}
+          ${a.pinned ? '<span class="text-[0.6875rem] font-bold text-[var(--gold-ink)]">📌 ปักหมุด</span>' : ''}
+          <span class="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full border ${border} ${bg} ${fg}">${label}</span>
+          ${a.audience !== 'all' ? `<span class="text-[0.6875rem] text-[var(--muted-2)]">สภา${GENDER_LABEL[a.audience] ?? ''}</span>` : ''}
         </div>
         <p class="text-sm font-bold text-[var(--ink)]">${esc(a.title)}</p>
         ${a.body ? `<p class="text-xs text-[var(--ink-2)] whitespace-pre-line">${esc(a.body)}</p>` : ''}
-        <p class="text-[11px] text-[var(--muted-2)]">${author} · ${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">${author} · ${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
         ${needsAck ? (acked
           ? `<p class="text-xs font-bold text-[var(--ok)] pt-1 border-t border-[var(--line-soft)]">✅ รับทราบแล้ว</p>`
           : `<button type="button" class="btn-ack-ann text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--gold)] hover:bg-[var(--gold-ink)] text-white" data-id="${a.id}">รับทราบ</button>`) : ''}
@@ -1273,7 +1273,7 @@ function renderEvalView() {
             <p class="text-xs text-[var(--muted)]">${esc(m.council_positions?.position_name ?? '—')}</p>
           </div>
           <div class="text-right flex-shrink-0">
-            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border ${decCls}">${decLabel}</span>
+            <span class="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full border ${decCls}">${decLabel}</span>
             ${ev?.total_score != null ? `<p class="text-xs text-[var(--muted-2)] mt-0.5">${ev.total_score}/${ev.max_score ?? totalWeight}</p>` : ''}
           </div>
         </div>
@@ -1400,7 +1400,7 @@ function renderDocsView() {
             <p class="text-sm font-bold text-[var(--ink)]">${esc(d.title)}</p>
             <p class="text-xs text-[var(--muted-2)]">${d.owner_text ? esc(d.owner_text) + ' · ' : ''}${d.budget ? Number(d.budget).toLocaleString('th-TH') + ' บาท' : 'ไม่ระบุงบ'}</p>
           </div>
-          <span class="flex-shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full border ${cls}">${label}</span>
+          <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${cls}">${label}</span>
         </div>
         ${d.rationale ? `<p class="text-xs text-[var(--muted)]"><b>เหตุผล:</b> ${esc(d.rationale)}</p>` : ''}
         ${d.objective ? `<p class="text-xs text-[var(--muted)]"><b>วัตถุประสงค์:</b> ${esc(d.objective)}</p>` : ''}
@@ -1487,7 +1487,7 @@ function renderSettingsGeneral() {
             <input type="color" name="council_theme_side_w" value="${esc(cfg.council_theme_side_w || '#a3134f')}" class="w-full h-10 border border-[var(--line)] rounded-xl px-1 bg-[var(--surface)]" />
           </div>
         </div>
-        <p class="text-[11px] text-[var(--muted-2)]">⚠️ สีธีมยังเป็นค่าที่บันทึกไว้เฉยๆ ยังไม่ได้ใช้สลับสีจริงในหน้าเว็บ (รอฟีเจอร์สลับธีมตามฝ่ายในเฟสถัดไป)</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">⚠️ สีธีมยังเป็นค่าที่บันทึกไว้เฉยๆ ยังไม่ได้ใช้สลับสีจริงในหน้าเว็บ (รอฟีเจอร์สลับธีมตามฝ่ายในเฟสถัดไป)</p>
       </div>
 
       <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
@@ -1585,7 +1585,7 @@ function renderSettingsPositions() {
       <form class="position-row-form flex items-center gap-2 py-2 border-b border-[var(--line-soft)] last:border-0" data-id="${p.id}">
         <input name="position_name" value="${esc(p.position_name)}" class="flex-1 min-w-0 border border-[var(--line)] rounded-[10px] px-2.5 py-1.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
         <input name="seats_count" type="number" min="1" value="${p.seats_count}" class="w-16 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-sm text-center bg-[var(--surface)] text-[var(--ink)]" />
-        ${p.is_elected ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-[var(--gold-soft)] text-[var(--gold-ink)] flex-shrink-0">มาจากเลือกตั้ง</span>' : ''}
+        ${p.is_elected ? '<span class="text-[0.625rem] font-bold px-2 py-1 rounded-full bg-[var(--gold-soft)] text-[var(--gold-ink)] flex-shrink-0">มาจากเลือกตั้ง</span>' : ''}
         <button type="submit" class="text-xs font-bold text-[var(--primary)] flex-shrink-0 px-2 py-1.5">บันทึก</button>
         <button type="button" class="btn-delete-position text-[var(--bad)] flex-shrink-0 px-1 text-lg leading-none" data-id="${p.id}" title="ลบตำแหน่ง">✕</button>
       </form>`).join('')
@@ -1722,8 +1722,10 @@ function render() {
   if (!items.some(it => it.id === activeView)) activeView = 'overview'
   renderNav(items)
 
+  // เนื้อหาเต็มพื้นที่ที่มีจริง (ไม่ล็อก max-width) — ตามที่ผู้ใช้ทักท้วงว่าจอใหญ่ยังมีขอบว่าง
+  // เหลือมาก ระยะขอบ (padding) ไล่กว้างขึ้นตาม breakpoint แทน ให้เนื้อหาไม่ชิดขอบจอเกินไป
   const renderer = VIEW_RENDERERS[activeView] || renderOverviewView
-  content.innerHTML = `<div class="max-w-[1120px] mx-auto px-4 py-4">${renderer()}</div>`
+  content.innerHTML = `<div class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-4">${renderer()}</div>`
   wireContentEvents()
 }
 
