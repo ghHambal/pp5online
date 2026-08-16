@@ -208,7 +208,9 @@ const NAV_GROUPS = {
 
 function getNavItems() {
   // เมนูหลัก = ดูภาพรวมสภานักเรียนเท่านั้น ("สมัคร" ไม่อยู่ที่นี่ — เป็นปุ่มบนหน้าภาพรวมแทน)
-  const items = [{ id: 'overview', icon: '🏠', label: 'ภาพรวม', group: 'main' }]
+  // ⚠️ label "หน้าหลัก" ไม่ใช่ "ภาพรวม" — "ภาพรวม" ชื่อนี้สงวนไว้สำหรับหน้าแดชบอร์ดสถิติของ
+  // แอดมิน (สเปคข้อ 8.17, กลุ่ม "ระบบ") ที่ยังไม่ได้สร้าง ห้ามใช้ชื่อซ้ำกับหน้านี้ซึ่งเป็นคนละหน้า
+  const items = [{ id: 'overview', icon: '🏠', label: 'หน้าหลัก', group: 'main' }]
   // งานสภา — สาธารณะ/สมาชิกสภา (เสนอคณะทำงาน, มอบหมายงาน, หน้าที่/งานของฉัน ยังไม่ได้สร้าง)
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
@@ -276,7 +278,7 @@ function renderNav(items) {
   })
 
   const activeItem = items.find(it => it.id === activeView)
-  document.getElementById('council-view-title').textContent = activeItem?.label ?? 'ภาพรวม'
+  document.getElementById('council-view-title').textContent = activeItem?.label ?? 'หน้าหลัก'
   renderMobileSheet(items)
 }
 
@@ -343,17 +345,40 @@ function cardShell(title, body, gotoView, linkLabel) {
     </div>`
 }
 
+// ข้อความพาดหัว/คำอธิบายฮีโร่ — ต่างกันตามบทบาท (สเปคข้อ 8.1) แยกจากป้ายสถานะการมองเห็นระบบ
+// เดิมสองอย่างนี้ปนอยู่บรรทัดเดียวกัน แก้แยกออกจากกันตามที่ผู้ใช้ทักท้วง 2026-08-16
+function homeHeroCopy() {
+  if (ctx.isChair) return ['ยินดีต้อนรับประธานสภานักเรียน', 'ดูภาพรวมงานสภา เสนอทีมงาน มอบหมายงาน และประกาศข่าวสารได้จากที่นี่']
+  if (ctx.membership.length) return ['ยินดีต้อนรับสมาชิกสภานักเรียน', 'ติดตามหน้าที่ ตารางงาน และผลการประเมินของคุณ']
+  if (ctx.isCouncilAdvisor) return ['ครูที่ปรึกษาสภานักเรียน', 'ดูแลใบสมัคร ตารางสัมภาษณ์ การประเมิน และเอกสารต่างๆ ของสภา']
+  if (ctx.isAdmin) return ['จัดการระบบสภานักเรียน', 'ภาพรวมทั้งระบบ ตั้งค่าตำแหน่ง เกณฑ์คุณสมบัติ และมอบสิทธิ์ผู้ดูแล']
+  if (ctx.role === 'teacher' && ctx.pendingEndorsements.length) return ['รับรองผู้สมัครสภานักเรียน', 'ตรวจสอบและรับรองใบสมัครของนักเรียนในความดูแลของคุณ']
+  return ['ระบบสภานักเรียน', 'ติดตามข่าวสาร กิจกรรม ผู้สมัคร และผลการเลือกตั้งของสภานักเรียน']
+}
+
 function renderHomeHero() {
   const cfg = ctx.cfg
   const termLabel = (cfg.council_term_start_semester && cfg.council_term_start_year)
     ? `ภาคเรียนที่ ${esc(cfg.council_term_start_semester)}/${esc(cfg.council_term_start_year)} – ภาคเรียนที่ ${esc(cfg.council_term_end_semester || cfg.council_term_start_semester)}/${esc(cfg.council_term_end_year || cfg.council_term_start_year)}`
     : null
   const visible = cfg.council_visible_to_all !== 'false'
+  const [headline, sub] = homeHeroCopy()
+
+  // แถบแจ้งสถานะการมองเห็นระบบ — แยกจากฮีโร่ เห็นเฉพาะแอดมิน/ครูที่ปรึกษาสภา (คนอื่นที่เข้าถึง
+  // หน้านี้ได้แปลว่าผ่านเงื่อนไข test code อยู่แล้ว ไม่จำเป็นต้องเห็นสถานะภายในนี้)
+  const visibilityAlert = (ctx.isAdmin || ctx.isCouncilAdvisor) ? `
+    <div class="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-xl mb-3
+      ${visible ? 'bg-[var(--ok-soft)] text-[#106143] border border-[var(--ok-soft-line)]' : 'bg-[var(--gold-soft)] text-[var(--gold-ink)] border border-[var(--gold-soft-line)]'}">
+      <span>${visible ? '✅' : '🔒'}</span>
+      <span>${visible ? 'ระบบเปิดให้นักเรียนทุกคนเห็นเมนูแล้ว' : 'ระบบยังไม่เปิดให้ทุกคนเห็น — เห็นเฉพาะแอดมิน/ผู้ทดสอบเท่านั้น'}</span>
+    </div>` : ''
+
   return `
+    ${visibilityAlert}
     <div class="bg-gradient-to-br from-[var(--primary)] to-[var(--hero-3)] rounded-2xl p-5 sm:p-6 text-white shadow-[0_4px_12px_rgba(23,32,42,0.07)]">
       ${termLabel ? `<span class="inline-block text-xs font-bold px-3 py-1.5 rounded-full bg-white/15 border border-white/20 mb-3">🗓️ ห้วงปฏิบัติหน้าที่ · ${termLabel}</span>` : ''}
-      <p class="text-lg sm:text-xl font-extrabold leading-snug">${visible ? '✅ ระบบพร้อมใช้งาน · เปิดให้นักเรียนทุกคนเห็นเมนูแล้ว' : '🔒 ระบบยังไม่เปิดให้ทุกคนเห็น · เห็นเฉพาะแอดมิน/ผู้ทดสอบ'}</p>
-      <p class="text-sm text-[var(--primary-soft-line)] mt-1.5">ตั้งค่าทุกอย่างได้เองจากหน้าตั้งค่า ทั้งตำแหน่ง ห้วงปฏิบัติหน้าที่ เกณฑ์คุณสมบัติ และข้อความในระบบ</p>
+      <p class="text-lg sm:text-xl font-extrabold leading-snug [text-wrap:pretty]">${esc(headline)}</p>
+      <p class="text-sm text-[var(--primary-soft-line)] mt-1.5 [text-wrap:pretty]">${esc(sub)}</p>
       ${ctx.isAdmin || ctx.isChair ? `
       <div class="flex flex-wrap gap-2 mt-4">
         ${ctx.isAdmin ? `<a href="dashboard.html" class="px-4 py-2 rounded-[10px] bg-[var(--hero-btn)] text-[var(--hero-btn-fg)] text-sm font-bold hover:opacity-90">⚙️ ตั้งค่าระบบ</a>` : ''}
@@ -417,16 +442,25 @@ function renderHomeCouncilPreview() {
 function renderOverviewView() {
   const hero = renderHomeHero()
   const personal = renderPersonalCard()
-  const entryCard = (flow, icon, label) => `
+  const entryCard = (flow, icon, label, sub) => `
     <button type="button" class="flow-entry-btn bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4 text-center hover:border-[var(--primary-70)] hover:shadow-[0_4px_12px_rgba(23,32,42,0.07)] transition" data-flow="${flow}">
       <p class="text-2xl mb-1">${icon}</p>
       <p class="text-sm font-bold text-[var(--primary-dark)]">${esc(label)}</p>
+      ${sub ? `<p class="text-[11px] text-[var(--muted-2)] mt-0.5">${esc(sub)}</p>` : ''}
     </button>`
-  const entryCards = `
-    <div class="grid ${ctx.role === 'student' ? 'grid-cols-2' : 'grid-cols-1'} gap-3">
+  const hasElection = ctx.elections.length > 0
+  // ยังไม่มี council_election_config เลย — ซ่อนปุ่มไปเลยสำหรับคนทั่วไป ส่วนแอดมิน
+  // ยังเห็นปุ่มไว้พาไปตั้งค่าเปิดใช้งานได้ แต่เปลี่ยนข้อความให้ตรงสถานะจริง ไม่ใช่กล่องว่าง
+  const showElectionEntry = hasElection || ctx.isAdmin
+  const electionEntry = showElectionEntry
+    ? entryCard('election', '🗳️', hasElection ? 'การเลือกตั้ง' : 'ตั้งค่าการเลือกตั้ง', hasElection ? '' : 'ยังไม่เปิดใช้งาน — แตะเพื่อตั้งค่า')
+    : ''
+  const cols = ctx.role === 'student' && showElectionEntry ? 'grid-cols-2' : 'grid-cols-1'
+  const entryCards = (ctx.role === 'student' || showElectionEntry) ? `
+    <div class="grid ${cols} gap-3">
       ${ctx.role === 'student' ? entryCard('apply', '📝', 'สมัครสภานักเรียน') : ''}
-      ${entryCard('election', '🗳️', 'การเลือกตั้ง')}
-    </div>`
+      ${electionEntry}
+    </div>` : ''
   return `<div class="space-y-4">
     ${hero}
     ${personal}
