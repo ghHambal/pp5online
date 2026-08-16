@@ -423,6 +423,80 @@ export async function checkInAttendance({ activityId, memberId }) {
   if (error) throw error
 }
 
+// ─── รูทีนประจำสัปดาห์ของสมาชิกสภา — จัดการเองได้ (self-service checklist ส่วนตัว, สเปคข้อ 8.8) ──
+export async function getMyRoutines(memberId) {
+  const { data, error } = await supabase.from('council_routines')
+    .select('*').eq('member_id', memberId).eq('is_active', true).order('day_of_week')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getRoutineLogsForWeek(routineIds, weekStart) {
+  if (!routineIds?.length) return new Set()
+  const { data, error } = await supabase.from('council_routine_logs')
+    .select('routine_id').in('routine_id', routineIds).eq('week_start', weekStart)
+  if (error) throw error
+  return new Set((data ?? []).map(r => r.routine_id))
+}
+
+export async function addRoutine({ memberId, dayOfWeek, timeRange, task, location }) {
+  const { error } = await supabase.from('council_routines').insert({
+    member_id: memberId, day_of_week: dayOfWeek, time_range: timeRange, task, location,
+  })
+  if (error) throw error
+}
+
+export async function removeRoutine(id) {
+  const { error } = await supabase.from('council_routines').update({ is_active: false }).eq('id', id)
+  if (error) throw error
+}
+
+export async function toggleRoutineLog({ routineId, weekStart, done }) {
+  if (done) {
+    const { error } = await supabase.from('council_routine_logs').insert({ routine_id: routineId, week_start: weekStart })
+    if (error) throw error
+  } else {
+    const { error } = await supabase.from('council_routine_logs').delete().eq('routine_id', routineId).eq('week_start', weekStart)
+    if (error) throw error
+  }
+}
+
+// ─── มอบหมายงาน (ประธาน) — สเปคข้อ 8.7 ─────────────────────────────────────────
+export async function getMyAssignments(memberId) {
+  const { data, error } = await supabase.from('council_assignments')
+    .select('*').eq('member_id', memberId).order('due_date', { ascending: true, nullsFirst: false })
+  if (error) throw error
+  return data ?? []
+}
+
+// รายการงานที่มอบหมายทั้งหมดของสภาฝ่ายนั้น (สำหรับประธานดูภาพรวม+นับ "N จาก M งานเสร็จแล้ว")
+export async function getAssignmentsForGender(gender) {
+  const { data, error } = await supabase.from('council_assignments')
+    .select(`id, task, due_date, status, created_at,
+      council_members!inner(id, position_id, council_positions!inner(gender, position_name), students(full_name, student_code, main_room, image_url, photo_url))`)
+    .eq('council_members.council_positions.gender', gender)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createAssignment({ memberId, task, dueDate, assignedByStudentId }) {
+  const { error } = await supabase.from('council_assignments').insert({
+    member_id: memberId, task, due_date: dueDate || null, assigned_by_student_id: assignedByStudentId,
+  })
+  if (error) throw error
+}
+
+export async function updateAssignmentStatus(id, status) {
+  const { error } = await supabase.from('council_assignments').update({ status }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteAssignment(id) {
+  const { error } = await supabase.from('council_assignments').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ─── ประกาศสภานักเรียน — ทุกคนอ่านได้ (กรอง audience ฝั่ง client), โพสต์ได้เฉพาะแอดมิน/ประธาน ──
 export async function getCouncilAnnouncements() {
   const { data, error } = await supabase.from('council_announcements')

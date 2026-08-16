@@ -4,6 +4,8 @@ import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
 import { uploadCouncilApplicationPhoto } from './storage.js'
+import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
+import QRCode from 'qrcode'
 import {
   getCouncilConfig, updateCouncilConfig, getCouncilPositions, getCouncilMembers,
   createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
@@ -18,6 +20,8 @@ import {
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
   getAnnouncementAckCounts, getTotalActiveStudentCount,
   getOpenPositionsForNomination, getInterviewedForNomination, proposeNomination, getPendingNominations, decideNomination,
+  getMyRoutines, getRoutineLogsForWeek, addRoutine, removeRoutine, toggleRoutineLog,
+  getMyAssignments, getAssignmentsForGender, createAssignment, updateAssignmentStatus, deleteAssignment,
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
   getInterviewCriteria, addInterviewCriterion, removeInterviewCriterion,
   getCouncilDocuments, createDocument, submitDocument, decideDocument,
@@ -106,7 +110,7 @@ const SETTINGS_TABS = [
 
 const MODULE_LABELS = {
   candidates: 'ว่าที่ประธาน / ผลเลือกตั้ง', news: 'ประกาศ', interview: 'ตารางสัมภาษณ์',
-  appoint: 'แต่งตั้งตรง', chairteam: 'เสนอคณะทำงาน', chairtasks: 'มอบหมายงาน (ยังไม่สร้างหน้า)',
+  appoint: 'แต่งตั้งตรง', chairteam: 'เสนอคณะทำงาน', chairtasks: 'มอบหมายงาน',
   evaluate: 'ประเมินการปฏิบัติหน้าที่', certissue: 'ออกเกียรติบัตร', docs: 'เอกสารโครงการ',
   perms: 'มอบสิทธิ์ครู (ยังไม่สร้างหน้า)',
 }
@@ -270,11 +274,13 @@ function getNavItems() {
   // ⚠️ label "หน้าหลัก" ไม่ใช่ "ภาพรวม" — "ภาพรวม" ชื่อนี้สงวนไว้สำหรับหน้าแดชบอร์ดสถิติของ
   // แอดมิน (สเปคข้อ 8.17, กลุ่ม "ระบบ") ที่ยังไม่ได้สร้าง ห้ามใช้ชื่อซ้ำกับหน้านี้ซึ่งเป็นคนละหน้า
   const items = [{ id: 'overview', icon: '🏠', label: 'หน้าหลัก', group: 'main' }]
-  // งานสภา — สาธารณะ/สมาชิกสภา (มอบหมายงาน, หน้าที่/งานของฉัน ยังไม่ได้สร้าง)
+  // งานสภา — สาธารณะ/สมาชิกสภา
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม', group: 'council' })
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
+  if (ctx.isChair) items.push({ id: 'assignments', icon: '📌', label: 'มอบหมายงาน', group: 'council' })
+  if (ctx.membership.length) items.push({ id: 'myduty', icon: '🎫', label: 'หน้าที่/งานของฉัน', group: 'council' })
   // เลือกตั้ง — สาธารณะ
   items.push({ id: 'candidates', icon: '🗳️', label: 'ว่าที่ประธาน', group: 'election' })
   items.push({ id: 'result', icon: '📊', label: 'ผลเลือกตั้ง', group: 'election' })
@@ -290,9 +296,9 @@ function getNavItems() {
   if (isTeacherStaff) items.push({ id: 'settings', icon: '⚙️', label: 'ตั้งค่า', group: 'system' })
 
   // สวิตช์เปิด/ปิดโมดูล (สเปคข้อ 8.18.4, council_modules) — บังคับใช้เฉพาะโมดูลที่ผูกกับ
-  // nav item เดี่ยวๆ ตรงๆ ได้เท่านั้น (interview/appoint/chairtasks/perms ยังไม่มี nav item
-  // แยกของตัวเอง เพราะฟีเจอร์นั้นยังไม่ได้สร้างเป็นหน้าต่างหาก — toggle เก็บไว้ล่วงหน้าให้ตรงสเปค
-  // แต่ยังไม่มีผลจนกว่าจะสร้างหน้านั้นจริง — chairteam มีหน้าแล้วตั้งแต่ Phase 6)
+  // nav item เดี่ยวๆ ตรงๆ ได้เท่านั้น (interview/appoint/perms ยังไม่มี nav item แยกของตัวเอง
+  // เพราะฟีเจอร์นั้นยังไม่ได้สร้างเป็นหน้าต่างหาก — toggle เก็บไว้ล่วงหน้าให้ตรงสเปค แต่ยังไม่มีผล
+  // จนกว่าจะสร้างหน้านั้นจริง — chairteam/chairtasks มีหน้าแล้วตั้งแต่ Phase 6-7)
   const modules = getModulesConfig()
   const hiddenByModule = new Set()
   if (modules.candidates === false) { hiddenByModule.add('candidates'); hiddenByModule.add('result') }
@@ -300,6 +306,7 @@ function getNavItems() {
   if (modules.evaluate === false) hiddenByModule.add('eval')
   if (modules.docs === false) hiddenByModule.add('docs')
   if (modules.chairteam === false) hiddenByModule.add('chairteam')
+  if (modules.chairtasks === false) hiddenByModule.add('assignments')
   return items.filter(it => !hiddenByModule.has(it.id))
 }
 
@@ -1310,6 +1317,7 @@ function renderActivitiesView() {
             ${ACT_NEXT_STATUS[a.status] ? `<button type="button" class="btn-activity-next text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)]" data-id="${a.id}" data-next="${ACT_NEXT_STATUS[a.status]}">${ACT_NEXT_LABEL[a.status]}</button>` : ''}
             ${a.status !== 'cancelled' && a.status !== 'completed' ? `<button type="button" class="btn-activity-cancel text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${a.id}">ยกเลิก</button>` : ''}
             <button type="button" class="btn-activity-attendance text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${a.id}">👥 เช็คชื่อสมาชิก</button>
+            <button type="button" class="btn-activity-scan text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white" data-id="${a.id}" data-title="${esc(a.title)}">📷 สแกน QR เช็คอิน</button>
           </div>
           <div class="activity-attendance-panel" data-panel-for="${a.id}">
             ${attendance ? `
@@ -2023,6 +2031,201 @@ function renderSettingsView() {
     <div>${SETTINGS_TAB_RENDERERS[settingsTab]()}</div>`
 }
 
+// ─── หน้าที่/งานของฉัน (สมาชิกสภา) — 2 แท็บย่อย (สเปคข้อ 8.8) ─────────────────────────────
+let myDutySubtab = 'duty' // 'duty' | 'work'
+let myRoutines = null // null = ยังไม่โหลด
+let myRoutineLogDone = null // Set<routineId> — รูทีนที่ติ๊กแล้วในสัปดาห์นี้
+let myAssignments = null
+
+const DAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+
+function currentWeekStart() {
+  const d = new Date()
+  const day = d.getDay()
+  const diff = (day === 0 ? -6 : 1) - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diff)
+  monday.setHours(0, 0, 0, 0)
+  return monday.toISOString().slice(0, 10)
+}
+
+async function loadMyDutyData() {
+  const member = ctx.membership[0]
+  if (!member) { myRoutines = []; myRoutineLogDone = new Set(); myAssignments = []; render(); return }
+  const [routines, assignments] = await Promise.all([
+    getMyRoutines(member.id).catch(() => []),
+    getMyAssignments(member.id).catch(() => []),
+  ])
+  myRoutines = routines
+  myAssignments = assignments
+  myRoutineLogDone = await getRoutineLogsForWeek(routines.map(r => r.id), currentWeekStart()).catch(() => new Set())
+  render()
+}
+
+function renderMyDutyView() {
+  const member = ctx.membership[0]
+  if (!member) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะสมาชิกสภาที่ล็อกอินอยู่เท่านั้น</p>`
+  if (myRoutines === null) { loadMyDutyData(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  const tabs = `
+    <div class="flex gap-2 mb-4">
+      <button type="button" class="myduty-subtab-btn flex-1 py-2.5 rounded-full text-sm font-bold transition ${myDutySubtab === 'duty' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-tab="duty">หน้าที่</button>
+      <button type="button" class="myduty-subtab-btn flex-1 py-2.5 rounded-full text-sm font-bold transition ${myDutySubtab === 'work' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-tab="work">งานของฉัน</button>
+    </div>`
+
+  return `${tabs}${myDutySubtab === 'duty' ? renderMyDutyTab(member) : renderMyWorkTab()}`
+}
+
+function renderMyDutyTab(member) {
+  const doneCount = myRoutines.filter(r => myRoutineLogDone.has(r.id)).length
+  const pct = myRoutines.length ? Math.round((doneCount / myRoutines.length) * 100) : 0
+  return `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+      <div class="flex items-center gap-3">
+        ${studentPhoto(ctx.student, 'w-14 h-18')}
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(member.council_positions?.position_name ?? '—')}</p>
+          <p class="text-xs text-[var(--muted)]">${member.source === 'elected' ? '🗳️ มาจากการเลือกตั้ง' : '✅ ได้รับการแต่งตั้ง'} · ${member.term_start_date ? new Date(member.term_start_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : '—'}</p>
+        </div>
+      </div>
+    </div>
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-bold text-[var(--ink-2)]">📅 รูทีนประจำสัปดาห์นี้</p>
+        <span class="text-xs font-bold text-[var(--primary)]">${doneCount}/${myRoutines.length}</span>
+      </div>
+      <div class="w-full h-2 rounded-full bg-[var(--bg-2)] overflow-hidden mb-3"><div class="h-full bg-[var(--primary)]" style="width:${pct}%"></div></div>
+      ${myRoutines.length ? `<div class="space-y-1.5">${myRoutines.map(r => {
+        const done = myRoutineLogDone.has(r.id)
+        return `
+        <label class="flex items-center gap-2.5 rounded-xl border ${done ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)]' : 'border-[var(--line-soft)]'} p-2.5">
+          <input type="checkbox" class="routine-check w-[1.125rem] h-[1.125rem] flex-shrink-0" data-id="${r.id}" ${done ? 'checked' : ''} />
+          <div class="min-w-0 flex-1">
+            <p class="text-sm ${done ? 'text-[#106143] line-through' : 'text-[var(--ink-2)]'} truncate">${esc(r.task)}</p>
+            <p class="text-[0.6875rem] text-[var(--muted-2)]">${r.day_of_week != null ? DAY_NAMES[r.day_of_week] : ''}${r.time_range ? ' · ' + esc(r.time_range) : ''}${r.location ? ' · ' + esc(r.location) : ''}</p>
+          </div>
+          <button type="button" class="btn-remove-routine text-[var(--bad)] text-lg leading-none flex-shrink-0" data-id="${r.id}">✕</button>
+        </label>`
+      }).join('')}</div>` : '<p class="text-xs text-[var(--muted-2)] text-center py-4">ยังไม่มีรูทีน — เพิ่มได้ด้านล่าง</p>'}
+      <form id="routine-add-form" class="grid grid-cols-2 gap-2 mt-3">
+        <select name="dayOfWeek" class="col-span-2 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">
+          <option value="">— วัน (ไม่บังคับ) —</option>
+          ${DAY_NAMES.map((d, i) => `<option value="${i}">${d}</option>`).join('')}
+        </select>
+        <input name="timeRange" placeholder="เวลา เช่น 07:00-07:20" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" />
+        <input name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" />
+        <input name="task" required placeholder="งานที่ต้องทำ" class="col-span-2 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" />
+        <button type="submit" class="col-span-2 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">+ เพิ่มรูทีน</button>
+      </form>
+    </div>`
+}
+
+function renderMyWorkTab() {
+  const openTasks = myAssignments.filter(a => a.status !== 'done')
+  const doneTasks = myAssignments.filter(a => a.status === 'done')
+  const taskCard = a => `
+    <label class="flex items-center gap-2.5 rounded-xl border ${a.status === 'done' ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'} p-3">
+      <input type="checkbox" class="assignment-check w-[1.125rem] h-[1.125rem] flex-shrink-0" data-id="${a.id}" ${a.status === 'done' ? 'checked' : ''} />
+      <div class="min-w-0 flex-1">
+        <p class="text-sm ${a.status === 'done' ? 'text-[#106143] line-through' : 'text-[var(--ink)]'}">${esc(a.task)}</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">${a.due_date ? 'กำหนดส่ง ' + new Date(a.due_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ไม่กำหนดวัน'}</p>
+      </div>
+      <span class="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${a.status === 'done' ? 'bg-[var(--ok-soft-line)] text-[#106143]' : 'bg-[var(--gold-soft-line)] text-[var(--gold-ink)]'}">${a.status === 'done' ? 'ส่งงานแล้ว' : 'กำลังทำ'}</span>
+    </label>`
+  return `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4 text-center">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-2">🎫 QR เช็คอินกิจกรรมของฉัน</p>
+      <p class="text-xs text-[var(--muted-2)] mb-3">แสดงให้ผู้ดูแลกิจกรรมสแกนเพื่อเช็คอิน</p>
+      <button type="button" id="btn-show-my-council-qr" class="px-6 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">แสดง QR ของฉัน</button>
+    </div>
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-3">📋 งานที่ได้รับมอบหมาย (${doneTasks.length}/${myAssignments.length} เสร็จแล้ว)</p>
+      ${myAssignments.length ? `<div class="space-y-2">${[...openTasks, ...doneTasks].map(taskCard).join('')}</div>` : `<p class="text-xs text-[var(--muted-2)] text-center py-6">ยังไม่มีงานที่ได้รับมอบหมาย</p>`}
+    </div>`
+}
+
+function showMyCouncilQr(student) {
+  document.getElementById('council-my-qr-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'council-my-qr-modal'
+  modal.className = 'fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-[var(--surface)] rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center">
+      <p class="text-lg font-bold text-[var(--ink)]">🎫 QR เช็คอินของฉัน</p>
+      <p class="text-sm font-semibold text-[var(--primary)] mt-1">${esc(student.full_name)}</p>
+      <div class="w-56 h-56 mx-auto my-4 bg-[var(--surface-2)] border border-[var(--line)] rounded-2xl flex items-center justify-center">
+        <canvas id="council-my-qr-canvas" class="w-48 h-48"></canvas>
+      </div>
+      <p class="text-xs text-[var(--muted-2)]">หมดอายุใน <span id="council-qr-timer">60</span> วินาที (สร้างใหม่อัตโนมัติ)</p>
+      <button type="button" id="btn-close-council-qr" class="w-full mt-4 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">ปิด</button>
+    </div>`
+  document.body.appendChild(modal)
+  const canvas = modal.querySelector('#council-my-qr-canvas')
+  const draw = async () => {
+    const payload = `SQ:${student.student_code}:${Math.floor(Date.now() / 1000)}`
+    try { await QRCode.toCanvas(canvas, payload, { width: 190, margin: 1.5, color: { dark: '#111827', light: '#FFFFFF' } }) } catch { /* วาดไม่สำเร็จ ปล่อยแคนวาสว่าง ไม่บล็อกการปิดหน้าต่าง */ }
+  }
+  draw()
+  let secs = 60
+  const timerEl = modal.querySelector('#council-qr-timer')
+  const timer = setInterval(() => {
+    secs -= 1
+    if (timerEl) timerEl.textContent = String(secs)
+    if (secs <= 0) { secs = 60; draw() }
+  }, 1000)
+  const close = () => { clearInterval(timer); modal.remove() }
+  modal.querySelector('#btn-close-council-qr').addEventListener('click', close)
+  modal.addEventListener('click', e => { if (e.target === modal) close() })
+}
+
+// ─── มอบหมายงาน (ประธาน) — สเปคข้อ 8.7 ───────────────────────────────────────────
+const assignmentsByGender = {} // { M: [...], W: [...] } — undefined = ยังไม่โหลด
+
+async function loadAssignmentsData(gender) {
+  assignmentsByGender[gender] = await getAssignmentsForGender(gender).catch(() => [])
+  render()
+}
+
+function renderAssignmentsView() {
+  if (!ctx.isChair) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะประธานสภาเท่านั้น</p>`
+  const gender = normalizeGender(ctx.student?.gender)
+  if (!gender) return ''
+  if (assignmentsByGender[gender] === undefined) { loadAssignmentsData(gender); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  const list = assignmentsByGender[gender]
+  const doneCount = list.filter(a => a.status === 'done').length
+  const membersOfGender = ctx.members.filter(m => m.council_positions?.gender === gender)
+
+  const form = `
+    <form id="assignment-form" class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4 space-y-2.5">
+      <p class="text-sm font-bold text-[var(--ink-2)]">➕ มอบหมายงานใหม่ — สภา${GENDER_LABEL[gender]}</p>
+      <select name="memberId" required class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]">
+        <option value="">— เลือกผู้รับมอบหมาย —</option>
+        ${membersOfGender.map(m => `<option value="${m.id}">${esc(m.students?.full_name ?? '—')} (${esc(m.council_positions?.position_name ?? '')})</option>`).join('')}
+      </select>
+      <textarea name="task" required rows="2" placeholder="รายละเอียดงาน" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]"></textarea>
+      <input name="dueDate" type="date" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+      <button type="submit" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">มอบหมายงาน</button>
+    </form>`
+
+  if (!list.length) return `${form}<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีงานที่มอบหมาย</p>`
+
+  const card = a => `
+    <div class="rounded-xl border ${a.status === 'done' ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'} p-3 flex items-center gap-3">
+      ${studentPhoto(a.council_members?.students)}
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.council_members?.students?.full_name ?? '—')}</p>
+        <p class="text-xs text-[var(--ink-2)]">${esc(a.task)}</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">${a.due_date ? 'กำหนดส่ง ' + new Date(a.due_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ไม่กำหนดวัน'}</p>
+      </div>
+      <div class="flex flex-col items-end gap-1 flex-shrink-0">
+        <span class="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full ${a.status === 'done' ? 'bg-[var(--ok-soft-line)] text-[#106143]' : 'bg-[var(--gold-soft-line)] text-[var(--gold-ink)]'}">${a.status === 'done' ? 'ส่งงานแล้ว' : 'กำลังทำ'}</span>
+        <button type="button" class="btn-delete-assignment text-[var(--bad)] text-xs" data-id="${a.id}">ลบ</button>
+      </div>
+    </div>`
+
+  return `${form}<p class="text-xs font-bold text-[var(--muted-2)] mb-2">งานทั้งหมด (${doneCount}/${list.length} เสร็จแล้ว)</p><div class="space-y-2">${list.map(card).join('')}</div>`
+}
+
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   endorse: renderEndorseView,
@@ -2036,6 +2239,8 @@ const VIEW_RENDERERS = {
   result: renderElectionView,
   settings: renderSettingsView,
   chairteam: renderChairTeamView,
+  myduty: renderMyDutyView,
+  assignments: renderAssignmentsView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
@@ -2226,6 +2431,115 @@ function wireContentEvents() {
   wireDocsEvents()
   wireSettingsEvents()
   wireChairTeamEvents()
+  wireMyDutyEvents()
+  wireAssignmentsEvents()
+}
+
+// ─── หน้าที่/งานของฉัน (สมาชิกสภา) ──────────────────────────────────────────────────
+function wireMyDutyEvents() {
+  document.querySelectorAll('.myduty-subtab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { myDutySubtab = btn.dataset.tab; render() })
+  })
+
+  document.getElementById('routine-add-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const task = f.task.value.trim()
+    if (!task) { showToast('กรุณากรอกงานที่ต้องทำ', 'warning'); return }
+    const member = ctx.membership[0]
+    try {
+      await addRoutine({
+        memberId: member.id, dayOfWeek: f.dayOfWeek.value === '' ? null : Number(f.dayOfWeek.value),
+        timeRange: f.timeRange.value.trim(), task, location: f.location.value.trim(),
+      })
+      myRoutines = null
+      render()
+    } catch (err) {
+      showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  })
+
+  document.querySelectorAll('.btn-remove-routine').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบรูทีนนี้?')) return
+      try { await removeRoutine(Number(btn.dataset.id)); myRoutines = null; render() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+
+  document.querySelectorAll('.routine-check').forEach(chk => {
+    chk.addEventListener('change', async () => {
+      const routineId = Number(chk.dataset.id)
+      const done = chk.checked
+      chk.disabled = true
+      try {
+        await toggleRoutineLog({ routineId, weekStart: currentWeekStart(), done })
+        if (done) myRoutineLogDone.add(routineId); else myRoutineLogDone.delete(routineId)
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        chk.checked = !done; chk.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.assignment-check').forEach(chk => {
+    chk.addEventListener('change', async () => {
+      const id = Number(chk.dataset.id)
+      const status = chk.checked ? 'done' : 'open'
+      chk.disabled = true
+      try {
+        await updateAssignmentStatus(id, status)
+        const a = myAssignments.find(x => x.id === id)
+        if (a) a.status = status
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        chk.checked = !chk.checked; chk.disabled = false
+      }
+    })
+  })
+
+  document.getElementById('btn-show-my-council-qr')?.addEventListener('click', () => {
+    if (ctx.student) showMyCouncilQr(ctx.student)
+  })
+}
+
+// ─── มอบหมายงาน (ประธาน) ────────────────────────────────────────────────────────
+function wireAssignmentsEvents() {
+  document.getElementById('assignment-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const memberId = Number(f.memberId.value)
+    const task = f.task.value.trim()
+    if (!memberId || !task) { showToast('กรุณาเลือกผู้รับมอบหมายและกรอกรายละเอียดงาน', 'warning'); return }
+    const btn = f.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      await createAssignment({ memberId, task, dueDate: f.dueDate.value || null, assignedByStudentId: ctx.student.id })
+      showToast('มอบหมายงานแล้ว ✅', 'success')
+      const gender = normalizeGender(ctx.student.gender)
+      delete assignmentsByGender[gender]
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'มอบหมายงาน'
+    }
+  })
+
+  document.querySelectorAll('.btn-delete-assignment').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบงานที่มอบหมายนี้?')) return
+      try {
+        await deleteAssignment(Number(btn.dataset.id))
+        const gender = normalizeGender(ctx.student.gender)
+        delete assignmentsByGender[gender]
+        render()
+      } catch (err) {
+        showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
+  })
 }
 
 // ─── เสนอคณะทำงาน (ประธาน) → แต่งตั้ง (ครูที่ปรึกษาสภา) ──────────────────────────────────
@@ -2652,6 +2966,22 @@ function wireActivitiesEvents() {
     btn.addEventListener('click', () => {
       const id = Number(btn.dataset.id)
       if (attendanceByActivity[id] === undefined) loadAttendance(id)
+    })
+  })
+
+  // สแกน QR เช็คอิน (สเปคข้อ 8.8 "ทางเลือกสแกน QR จุดลงทะเบียนด้วย html5-qrcode") — ใช้ QR
+  // ใบเดียวกับปุ่ม "แสดง QR" ในแท็บ "งานของฉัน" ของสมาชิก
+  document.querySelectorAll('.btn-activity-scan').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const activityId = Number(btn.dataset.id)
+      if (attendanceByActivity[activityId] === undefined) await loadAttendance(activityId)
+      const activity = activities.find(a => a.id === activityId)
+      const eligibleMembers = ctx.members.filter(m => !activity?.gender || m.council_positions?.gender === activity.gender)
+      openCouncilCheckinScanner({
+        activityId, activityTitle: btn.dataset.title,
+        members: eligibleMembers, alreadyChecked: attendanceByActivity[activityId],
+        onCheckedIn: memberId => { attendanceByActivity[activityId]?.add(memberId); render() },
+      })
     })
   })
 
