@@ -7,7 +7,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_term_start_semester', 'council_term_start_year',
   'council_term_end_semester', 'council_term_end_year',
   'council_min_gpa', 'council_min_gpa_religious', // เกรดขั้นต่ำ สามัญ/ศาสนา แยกกัน (สเปคข้อ 8.2)
-  'council_eligible_grade_levels', 'council_require_teacher_endorsement',
+  'council_eligible_grade_levels', 'council_require_teacher_endorsement', 'council_require_peer_endorsement',
   'council_apply_opens_at', 'council_apply_closes_at', // ช่วงเวลาเปิด-ปิดรับสมัคร
   'council_video_max_minutes', 'council_video_brief', // วิดีโอแนะนำตัว: จำนวนนาที + หัวข้อที่ต้องพูด (JSON array)
   'council_signer_advisor_name', 'council_signer_director_name', // ชื่อผู้ลงนามเอกสาร/เกียรติบัตร
@@ -168,6 +168,29 @@ export async function declineApplicationEndorsement({ applicationId, teacherId, 
   if (error) throw error
 }
 
+// ─── รับรองจากสภานักเรียนปัจจุบัน (เพศเดียวกัน) — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 ─────────────
+// เกิดขึ้นคู่ขนานกับการรับรองของครูที่ปรึกษาสามัญ (ไม่ใช่ทีหลัง) — ตำแหน่งที่สมัครกำหนดเพศ
+// ของคิวอยู่แล้ว จึงกรองแค่ status='pending' + peer_endorsed_at ยังว่าง + position gender ตรง
+// (ฝั่ง UI จะกรองคนที่เป็นสมาชิกสภาปัจจุบันอยู่แล้วออกอีกชั้น เพราะคนกลุ่มนั้นข้ามขั้นตอนนี้ได้)
+export async function getPendingPeerEndorsements(gender) {
+  const { data, error } = await supabase.from('council_applications')
+    .select(`id, position_id, motivation, photo_url, status, created_at,
+      council_positions!inner(position_name, gender),
+      students(id, full_name, student_code, main_room, image_url, photo_url)`)
+    .eq('status', 'pending').is('peer_endorsed_at', null)
+    .eq('council_positions.gender', gender)
+    .order('created_at')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function submitPeerEndorsement({ applicationId, memberId, comment }) {
+  const { error } = await supabase.from('council_applications')
+    .update({ peer_endorsed_by_member_id: memberId, peer_endorsement_comment: comment, peer_endorsed_at: new Date().toISOString() })
+    .eq('id', applicationId)
+  if (error) throw error
+}
+
 // ─── จัดการใบสมัคร (แอดมิน) — ดูได้ทุกสถานะ (รวม "รอรับรอง" เพื่อติดตามภาพรวม) แต่นัดสัมภาษณ์/
 // ให้คะแนนได้เฉพาะใบที่ครูที่ปรึกษาสามัญรับรองแล้วเท่านั้น (สเปคข้อ 8.4 — ฟิลเตอร์ 6 สถานะ) ──
 export async function getCouncilApplicationsForAdmin(academicYear) {
@@ -175,7 +198,9 @@ export async function getCouncilApplicationsForAdmin(academicYear) {
     .select(`id, position_id, status, motivation, photo_url, academic_year, created_at,
       gpa_general, gpa_religious, intro_video_url,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
+      peer_endorsed_by_member_id, peer_endorsement_comment, peer_endorsed_at,
       teachers(full_name),
+      council_members!council_applications_peer_endorsed_by_member_id_fkey(students(full_name)),
       council_positions(id, position_name, gender, is_elected),
       students(id, full_name, student_code, main_room, image_url, photo_url, profile_id),
       council_interviews(id, scheduled_at, location, interviewer_teacher_id, result, score, scores, comment),

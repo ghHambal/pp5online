@@ -13,6 +13,7 @@ import {
   submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
   addEndorsementPhrase, removeEndorsementPhrase,
   confirmApplicationEndorsement, declineApplicationEndorsement,
+  getPendingPeerEndorsements, submitPeerEndorsement,
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
   getCandidatesForElection, publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
@@ -282,6 +283,10 @@ function getNavItems() {
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
   if (ctx.isChair) items.push({ id: 'assignments', icon: '📌', label: 'มอบหมายงาน', group: 'council' })
   if (ctx.membership.length) items.push({ id: 'myduty', icon: '🎫', label: 'หน้าที่/งานของฉัน', group: 'council' })
+  // รับรองจากสภานักเรียนปัจจุบัน — เห็นเฉพาะสมาชิกสภา active เมื่อเปิดใช้บังคับจากหน้าตั้งค่า
+  if (ctx.membership.length && ctx.cfg.council_require_peer_endorsement === 'true') {
+    items.push({ id: 'peerEndorse', icon: '✋', label: 'รับรองผู้สมัคร (สภา)', group: 'council' })
+  }
   // เลือกตั้ง — สาธารณะ
   items.push({ id: 'candidates', icon: '🗳️', label: 'ว่าที่ประธาน', group: 'election' })
   items.push({ id: 'result', icon: '📊', label: 'ผลเลือกตั้ง', group: 'election' })
@@ -1015,9 +1020,31 @@ const APPS_FILTERS = [
   { id: 'rejected', label: 'ไม่ผ่าน' },
 ]
 
+// รับรองจากสภานักเรียนปัจจุบัน (เพศเดียวกัน) — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 เปิด/ปิดบังคับได้
+// จากหน้าตั้งค่า (council_require_peer_endorsement) ผู้สมัครที่เป็นสมาชิกสภาปัจจุบันอยู่แล้ว
+// (ลงสมัครตำแหน่งใหม่) ข้ามขั้นตอนนี้ไปเลยตามที่ผู้ใช้ยืนยัน
+function peerEndorsementRequired() {
+  return ctx.cfg.council_require_peer_endorsement === 'true'
+}
+function applicantIsCurrentMember(a) {
+  const studentId = a.students?.id
+  return !!studentId && ctx.members.some(m => m.student_id === studentId)
+}
+function peerEndorsementSatisfied(a) {
+  if (!peerEndorsementRequired()) return true
+  if (applicantIsCurrentMember(a)) return true
+  return !!a.peer_endorsed_at
+}
+function endorsementStatusNote(a) {
+  const notes = []
+  if (!a.endorsed_at) notes.push('รอครูที่ปรึกษาสามัญรับรอง')
+  if (!peerEndorsementSatisfied(a)) notes.push('รอสมาชิกสภาปัจจุบัน (เพศเดียวกัน) รับรอง')
+  return notes.join(' และ')
+}
+
 function appPipelineStage(a) {
   if (a.status === 'rejected') return 'rejected'
-  if (a.status === 'pending') return a.endorsed_at ? 'endorsed' : 'awaiting_endorsement'
+  if (a.status === 'pending') return (a.endorsed_at && peerEndorsementSatisfied(a)) ? 'endorsed' : 'awaiting_endorsement'
   if (a.status === 'interview_scheduled') return 'scheduled'
   return 'interviewed' // interviewed / candidate / appointed — ผ่านสัมภาษณ์ไปแล้วทั้งหมด
 }
@@ -1092,6 +1119,17 @@ function renderAdminAppDetailModal() {
               ? `<p class="text-[#106143] bg-[var(--ok-soft)] rounded-xl p-3">${esc(a.endorsement_comment)}</p>`
               : `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">ยังไม่ได้รับรอง</p>`}
           </div>
+          ${peerEndorsementRequired() ? `
+          <div>
+            <p class="text-xs font-bold text-[var(--muted)] mb-1">🏛️ ความเห็นสมาชิกสภาปัจจุบัน${a.council_members?.students?.full_name ? ' — ' + esc(a.council_members.students.full_name) : ''}</p>
+            ${applicantIsCurrentMember(a)
+              ? `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">ผู้สมัครเป็นสมาชิกสภาปัจจุบันอยู่แล้ว — ข้ามขั้นตอนนี้</p>`
+              : a.peer_endorsement_comment
+                ? `<p class="text-[#106143] bg-[var(--ok-soft)] rounded-xl p-3">${esc(a.peer_endorsement_comment)}</p>`
+                : a.peer_endorsed_at
+                  ? `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">รับรองแล้ว (ไม่มีความเห็นเพิ่มเติม)</p>`
+                  : `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">ยังไม่ได้รับรอง</p>`}
+          </div>` : ''}
         </div>
       </div>
     </div>`
@@ -1146,9 +1184,9 @@ function renderApplicationsAdminView() {
       </div>
       <button type="button" class="btn-view-app-detail w-full text-xs font-bold py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${a.id}">📄 ดูใบสมัคร</button>
 
-      ${stage === 'awaiting_endorsement' ? `<p class="text-xs text-[var(--gold-ink)] pt-1 border-t border-[var(--line-soft)]">⏳ รอครูที่ปรึกษาสามัญของนักเรียนคนนี้รับรองก่อน จึงจะนัดสัมภาษณ์ได้</p>` : ''}
+      ${stage === 'awaiting_endorsement' ? `<p class="text-xs text-[var(--gold-ink)] pt-1 border-t border-[var(--line-soft)]">⏳ ${endorsementStatusNote(a)} ก่อน จึงจะนัดสัมภาษณ์ได้</p>` : ''}
 
-      ${a.status === 'pending' && a.endorsed_at ? `
+      ${a.status === 'pending' && a.endorsed_at && peerEndorsementSatisfied(a) ? `
         <form class="schedule-form space-y-2 pt-1 border-t border-[var(--line-soft)]" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}" data-profile-id="${esc(a.students?.profile_id ?? '')}" data-student-name="${esc(a.students?.full_name ?? '')}" data-position-name="${esc(a.council_positions?.position_name ?? '')}">
           <p class="text-xs font-semibold text-[var(--muted)]">นัดสัมภาษณ์</p>
           <div class="grid grid-cols-2 gap-2">
@@ -1273,6 +1311,58 @@ function renderEndorseView() {
     </div>`
 
   return `<div class="space-y-3">${ctx.pendingEndorsements.map(card).join('')}</div>`
+}
+
+// ─── รับรองจากสภานักเรียนปัจจุบัน (เพศเดียวกัน) — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 ──────────────
+// สมาชิกสภา active คนไหนก็ได้ (เพศเดียวกับตำแหน่งที่สมัคร) รับรอง 1 คนพอ ไม่บังคับคอมเมนต์
+// (ต่างจากครูที่ปรึกษาสามัญที่บังคับคอมเมนต์ทั้งรับรอง/ไม่รับรอง — อันนี้เบากว่า ไม่มีปุ่ม "ไม่รับรอง")
+const peerEndorsements = {} // { M: [...], W: [...] } — undefined = ยังไม่โหลด
+
+async function loadPeerEndorsements(gender) {
+  peerEndorsements[gender] = await getPendingPeerEndorsements(gender).catch(() => [])
+  render()
+}
+
+function renderPeerEndorseView() {
+  const myMember = ctx.membership[0]
+  if (!myMember) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะสมาชิกสภานักเรียนปัจจุบันเท่านั้น</p>`
+  const gender = myMember.council_positions?.gender
+  if (!gender) return ''
+  if (peerEndorsements[gender] === undefined) { loadPeerEndorsements(gender); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  const list = peerEndorsements[gender]
+  if (!list.length) return `<div class="bg-[var(--ok-soft)] border border-[var(--ok-soft-line)] rounded-2xl p-6 text-center text-[#106143] text-sm">✅ ไม่มีใบสมัครค้างรับรองในตอนนี้</div>`
+
+  const card = a => `
+    <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2.5 bg-[var(--surface)]" data-peer-endorsement-card="${a.id}">
+      <div class="flex items-center gap-3">
+        ${studentPhoto(a.students)}
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
+          <p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · สมัคร${esc(a.council_positions?.position_name ?? '—')}</p>
+        </div>
+      </div>
+      ${a.motivation ? `<p class="text-xs text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(a.motivation)}</p>` : ''}
+      <textarea class="peer-endorse-comment w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm resize-none" data-id="${a.id}" rows="2"
+        placeholder="ความเห็นถึงนักเรียนคนนี้ (ไม่บังคับ)"></textarea>
+      <button type="button" class="btn-peer-endorse w-full py-2 rounded-xl bg-[var(--ok)] hover:bg-[#106143] text-white text-xs font-bold" data-id="${a.id}">✅ รับรองในนามสภานักเรียน</button>
+    </div>`
+
+  return `<div class="space-y-3">${list.map(card).join('')}</div>`
+}
+
+async function handlePeerEndorsement(applicationId) {
+  const myMember = ctx.membership[0]
+  if (!myMember) return
+  const ta = document.querySelector(`.peer-endorse-comment[data-id="${applicationId}"]`)
+  const comment = ta?.value.trim() || null
+  try {
+    await submitPeerEndorsement({ applicationId: Number(applicationId), memberId: myMember.id, comment })
+    showToast('รับรองในนามสภานักเรียนแล้ว ✅', 'success')
+    delete peerEndorsements[myMember.council_positions?.gender]
+    render()
+  } catch (err) {
+    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+  }
 }
 
 async function handleEndorsement(applicationId, action) {
@@ -1824,6 +1914,10 @@ function renderSettingsGeneral() {
           <input type="checkbox" name="council_require_teacher_endorsement" ${cfg.council_require_teacher_endorsement !== 'false' ? 'checked' : ''} class="w-4 h-4" />
           บังคับให้ครูที่ปรึกษาสามัญรับรองก่อนเข้าสัมภาษณ์
         </label>
+        <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
+          <input type="checkbox" name="council_require_peer_endorsement" ${cfg.council_require_peer_endorsement === 'true' ? 'checked' : ''} class="w-4 h-4" />
+          บังคับให้สมาชิกสภานักเรียนปัจจุบัน (เพศเดียวกัน) รับรองด้วยก่อนเข้าสัมภาษณ์ — ยกเว้นผู้สมัครที่เป็นสมาชิกสภาปัจจุบันอยู่แล้ว
+        </label>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-medium text-[var(--muted)] mb-1">เปิดรับสมัครตั้งแต่</label>
@@ -2302,6 +2396,7 @@ const VIEW_RENDERERS = {
   chairteam: renderChairTeamView,
   myduty: renderMyDutyView,
   assignments: renderAssignmentsView,
+  peerEndorse: renderPeerEndorseView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
@@ -2371,6 +2466,9 @@ function wireContentEvents() {
   })
   document.querySelectorAll('.roster-gender-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => { rosterGenderTab = btn.dataset.gender; render() })
+  })
+  document.querySelectorAll('.btn-peer-endorse').forEach(btn => {
+    btn.addEventListener('click', () => handlePeerEndorsement(btn.dataset.id))
   })
   document.getElementById('btn-open-apply')?.addEventListener('click', () => {
     showApplyForm = true
@@ -2675,6 +2773,7 @@ function wireSettingsEvents() {
         council_min_gpa_religious: f.council_min_gpa_religious.value,
         council_eligible_grade_levels: f.council_eligible_grade_levels.value.trim(),
         council_require_teacher_endorsement: f.council_require_teacher_endorsement.checked ? 'true' : 'false',
+        council_require_peer_endorsement: f.council_require_peer_endorsement.checked ? 'true' : 'false',
         council_apply_opens_at: f.council_apply_opens_at.value ? new Date(f.council_apply_opens_at.value).toISOString() : '',
         council_apply_closes_at: f.council_apply_closes_at.value ? new Date(f.council_apply_closes_at.value).toISOString() : '',
         council_visible_to_all: f.council_visible_to_all.checked ? 'true' : 'false',
