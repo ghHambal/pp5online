@@ -257,10 +257,33 @@ export async function updateElectionWindow({ electionConfigId, opensAt, closesAt
 // ─── ผู้สมัครเลือกตั้ง (public) ────────────────────────────────────────────────
 export async function getCandidatesForElection(electionConfigId) {
   const { data, error } = await supabase.from('council_candidates')
-    .select('id, ballot_number, campaign_statement, photo_url, student_id, students(full_name, student_code, main_room, image_url, photo_url)')
+    .select(`id, ballot_number, campaign_statement, photo_url, student_id, application_id,
+      slogan, vision, policies, experience,
+      students(full_name, student_code, main_room, image_url, photo_url),
+      council_applications(gpa_general, gpa_religious)`)
     .eq('election_config_id', electionConfigId).order('ballot_number')
   if (error) throw error
   return data ?? []
+}
+
+// แก้ไขโปรไฟล์ผู้สมัคร (สโลแกน/วิสัยทัศน์/นโยบาย/ประสบการณ์) — เห็นเฉพาะแอดมิน/ครูที่
+// ปรึกษาสภาจากหน้า "ว่าที่ประธาน" (สเปคไม่ได้ระบุหน้าจอแก้ไขแยกต่างหาก จึงผูกกับหน้าดูโปรไฟล์เดิม)
+export async function updateCandidateProfile({ candidateId, slogan, vision, policies, experience }) {
+  const { error } = await supabase.from('council_candidates')
+    .update({ slogan, vision, policies, experience }).eq('id', candidateId)
+  if (error) throw error
+}
+
+// จำนวนผู้มีสิทธิ์เลือกตั้งฝ่ายนั้น (นักเรียนที่ active ทั้งหมดของเพศนั้น) — ใช้คำนวณ % ผู้ใช้สิทธิ์
+// ในหน้าผลเลือกตั้ง (สเปคข้อ 8.13) — normalize เพศแบบเดียวกับที่อื่นในระบบ (ปนกัน ชาย/M, หญิง/W)
+export async function getEligibleVoterCount(gender) {
+  const values = gender === 'M' ? ['ชาย', 'M'] : ['หญิง', 'W']
+  const { count, error } = await supabase.from('students')
+    .select('id', { count: 'exact', head: true })
+    .in('gender', values)
+    .or('is_active.is.null,is_active.eq.true')
+  if (error) throw error
+  return count ?? 0
 }
 
 // ⚠️ การโหวตจริง (นักเรียนกรอกรหัส+ยืนยันตัวตนด้วยรูป+เลือกผู้สมัคร) ทำที่หน้า

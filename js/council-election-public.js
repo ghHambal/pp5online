@@ -115,20 +115,68 @@ function renderVotePage(bundle, code) {
     return
   }
 
+  // โปรไฟล์เต็มของผู้สมัคร (สเปคข้อ 8.11) — ปุ่ม "ดูรายละเอียด" แยกจากปุ่มเลือก และเลือก
+  // จากในโปรไฟล์ได้เลย (append ไป document.body ตรงๆ เพราะหน้านี้ standalone ไม่มีระบบ modal อื่น)
+  const renderProfileModal = c => {
+    const policies = Array.isArray(c.policies) ? c.policies : []
+    const experience = Array.isArray(c.experience) ? c.experience : []
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4'
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-y-auto">
+        <div class="relative aspect-[4/5] bg-[var(--surface-2)]">
+          ${c.image_url
+            ? `<img src="${esc(c.image_url)}" class="w-full h-full object-cover">`
+            : `<div class="w-full h-full grid place-items-center text-5xl font-bold text-[var(--primary-70)]">${esc((c.full_name || '?').charAt(0))}</div>`}
+          <div class="absolute top-3 left-3 w-10 h-10 rounded-full bg-white/90 grid place-items-center font-extrabold text-[var(--primary-dark)] shadow">${c.ballot_number}</div>
+          <button id="profile-modal-close" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 grid place-items-center text-[var(--ink-2)]">✕</button>
+        </div>
+        <div class="p-5 space-y-3">
+          <div>
+            <p class="text-lg font-bold text-[var(--ink)]">${esc(c.full_name)}</p>
+            <p class="text-xs text-[var(--muted)]">${esc(c.main_room || '')}${(c.gpa_general != null || c.gpa_religious != null) ? ` · เกรดสามัญ ${esc(c.gpa_general ?? '—')} · ศาสนา ${esc(c.gpa_religious ?? '—')}` : ''}</p>
+          </div>
+          ${c.slogan ? `<p class="text-sm font-bold text-[var(--primary-dark)]">"${esc(c.slogan)}"</p>` : ''}
+          ${c.vision ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">วิสัยทัศน์</p><p class="text-sm text-[var(--ink-2)]">${esc(c.vision)}</p></div>` : ''}
+          ${policies.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">นโยบาย</p><ul class="text-sm text-[var(--ink-2)] list-disc list-inside space-y-0.5">${policies.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
+          ${experience.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">ประสบการณ์และผลงาน</p><ul class="text-sm text-[var(--ink-2)] list-disc list-inside space-y-0.5">${experience.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
+          ${!c.slogan && !c.vision && !policies.length && !experience.length ? `<p class="text-xs text-[var(--muted-2)] text-center py-4">ยังไม่ได้กรอกข้อมูลโปรไฟล์เพิ่มเติม</p>` : ''}
+          <button id="profile-modal-select" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white font-bold text-sm mt-2">เลือกคนนี้</button>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+    const close = () => modal.remove()
+    modal.addEventListener('click', e => { if (e.target === modal) close() })
+    modal.querySelector('#profile-modal-close').addEventListener('click', close)
+    modal.querySelector('#profile-modal-select').addEventListener('click', () => {
+      close(); selected = c.id; renderList(); renderConfirm()
+    })
+  }
+
   const renderList = () => {
     list.innerHTML = bundle.candidates.map(c => `
-      <button data-candidate="${c.id}" class="w-full flex items-center gap-3 rounded-xl border p-3 text-left transition ${selected === c.id ? 'border-[var(--primary-70)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)] hover:border-[var(--primary-45)]'}">
-        <div class="w-8 h-8 rounded-full bg-[var(--primary-soft-line)] text-[var(--primary-dark)] grid place-items-center font-bold text-sm flex-shrink-0">${c.ballot_number}</div>
-        ${c.image_url
-          ? `<img src="${esc(c.image_url)}" class="w-10 h-12 object-cover rounded-[10px] border flex-shrink-0">`
-          : `<div class="w-10 h-12 rounded-[10px] bg-[var(--primary-soft)] text-[var(--primary-70)] grid place-items-center font-bold flex-shrink-0 border">${esc((c.full_name || '?').charAt(0))}</div>`}
-        <div class="min-w-0 flex-1">
-          <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(c.full_name)}</p>
-          <p class="text-xs text-[var(--muted)]">${esc(c.main_room || '')}</p>
-        </div>
-      </button>`).join('')
+      <div class="rounded-xl border p-3 transition ${selected === c.id ? 'border-[var(--primary-70)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)]'}">
+        <button data-candidate="${c.id}" class="w-full flex items-center gap-3 text-left">
+          <div class="w-8 h-8 rounded-full bg-[var(--primary-soft-line)] text-[var(--primary-dark)] grid place-items-center font-bold text-sm flex-shrink-0">${c.ballot_number}</div>
+          ${c.image_url
+            ? `<img src="${esc(c.image_url)}" class="w-10 h-12 object-cover rounded-[10px] border flex-shrink-0">`
+            : `<div class="w-10 h-12 rounded-[10px] bg-[var(--primary-soft)] text-[var(--primary-70)] grid place-items-center font-bold flex-shrink-0 border">${esc((c.full_name || '?').charAt(0))}</div>`}
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(c.full_name)}</p>
+            <p class="text-xs text-[var(--muted)]">${esc(c.main_room || '')}</p>
+            ${c.slogan ? `<p class="text-xs text-[var(--primary-dark)] font-semibold truncate mt-0.5">"${esc(c.slogan)}"</p>` : ''}
+          </div>
+        </button>
+        <button data-detail="${c.id}" class="w-full mt-2 pt-2 border-t border-[var(--line-soft)] text-xs font-bold text-[var(--primary)]">ℹ️ ดูรายละเอียด</button>
+      </div>`).join('')
     list.querySelectorAll('[data-candidate]').forEach(btn => {
       btn.addEventListener('click', () => { selected = Number(btn.dataset.candidate); renderList(); renderConfirm() })
+    })
+    list.querySelectorAll('[data-detail]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const c = bundle.candidates.find(x => x.id === Number(btn.dataset.detail))
+        if (c) renderProfileModal(c)
+      })
     })
   }
 
