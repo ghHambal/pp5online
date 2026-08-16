@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.430'
+import { APP_VERSION } from './version.js?v=10.22.431'
 
 const AZIZGAMES_PATH = 'azizgames.html'
 

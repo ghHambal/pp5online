@@ -334,7 +334,7 @@ function renderPersonalCard() {
 
 function cardShell(title, body, gotoView, linkLabel) {
   return `
-    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
       <div class="flex items-center justify-between mb-3">
         <p class="text-sm font-bold text-[var(--ink)]">${title}</p>
         ${gotoView ? `<button type="button" class="goto-view text-xs font-bold text-[var(--primary)] hover:underline" data-view="${gotoView}">${esc(linkLabel)} →</button>` : ''}
@@ -356,7 +356,7 @@ function renderHomeHero() {
       <p class="text-sm text-[var(--primary-soft-line)] mt-1.5">ตั้งค่าทุกอย่างได้เองจากหน้าตั้งค่า ทั้งตำแหน่ง ห้วงปฏิบัติหน้าที่ เกณฑ์คุณสมบัติ และข้อความในระบบ</p>
       ${ctx.isAdmin || ctx.isChair ? `
       <div class="flex flex-wrap gap-2 mt-4">
-        ${ctx.isAdmin ? `<a href="dashboard.html" class="px-4 py-2 rounded-[10px] bg-white text-[var(--primary)] text-sm font-bold hover:bg-[var(--primary-soft)]">⚙️ ตั้งค่าระบบ</a>` : ''}
+        ${ctx.isAdmin ? `<a href="dashboard.html" class="px-4 py-2 rounded-[10px] bg-[var(--hero-btn)] text-[var(--hero-btn-fg)] text-sm font-bold hover:opacity-90">⚙️ ตั้งค่าระบบ</a>` : ''}
         <a href="council-election.html" target="_blank" class="px-4 py-2 rounded-[10px] bg-white/10 border border-white/25 text-white text-sm font-bold hover:bg-white/20">🗳️ หน้าลงคะแนน</a>
       </div>` : ''}
     </div>`
@@ -418,7 +418,7 @@ function renderOverviewView() {
   const hero = renderHomeHero()
   const personal = renderPersonalCard()
   const entryCard = (flow, icon, label) => `
-    <button type="button" class="flow-entry-btn bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4 text-center hover:border-[var(--primary-70)] hover:shadow-[0_4px_12px_rgba(23,32,42,0.07)] transition" data-flow="${flow}">
+    <button type="button" class="flow-entry-btn bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4 text-center hover:border-[var(--primary-70)] hover:shadow-[0_4px_12px_rgba(23,32,42,0.07)] transition" data-flow="${flow}">
       <p class="text-2xl mb-1">${icon}</p>
       <p class="text-sm font-bold text-[var(--primary-dark)]">${esc(label)}</p>
     </button>`
@@ -461,7 +461,7 @@ function renderApplyView() {
   if (!showApplyForm) {
     return `
       <button id="btn-open-apply" type="button"
-        class="w-full bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4 text-left hover:border-[var(--primary-70)] transition flex items-center justify-between gap-3 ${openPositions.length ? '' : 'opacity-50 pointer-events-none'}">
+        class="w-full bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4 text-left hover:border-[var(--primary-70)] transition flex items-center justify-between gap-3 ${openPositions.length ? '' : 'opacity-50 pointer-events-none'}">
         <div>
           <p class="text-sm font-bold text-[var(--primary-dark)]">📝 สมัครสภานักเรียน${GENDER_LABEL[gender]}</p>
           <p class="text-xs text-[var(--muted-2)] mt-0.5">${openPositions.length ? `เปิดรับ ${openPositions.length} ตำแหน่ง` : 'ไม่มีตำแหน่งเปิดรับ (สมัครครบแล้ว หรือยังไม่เปิดรับ)'}</p>
@@ -471,12 +471,12 @@ function renderApplyView() {
   }
 
   return `
-    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4">
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4">
       <p class="text-sm font-bold text-[var(--primary-dark)] mb-3">📝 ใบสมัครสภานักเรียน${GENDER_LABEL[gender]}</p>
       <form id="apply-form" class="space-y-3">
         <div>
           <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">ตำแหน่งที่สมัคร <span class="text-[var(--bad)]">*</span></label>
-          <select id="apply-position" required class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-white">
+          <select id="apply-position" required class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
             <option value="">— เลือกตำแหน่ง —</option>
             ${openPositions.map(p => `<option value="${p.id}">${esc(p.position_name)}</option>`).join('')}
           </select>
@@ -512,7 +512,7 @@ function renderMyApplicationsList() {
           <p class="text-sm font-bold text-[#0d4d36]">${esc(m.council_positions?.position_name ?? '—')} <span class="text-xs font-normal">(สภา${esc(GENDER_LABEL[m.council_positions?.gender] ?? '')})</span></p>
         </div>`).join('')}
       ${ctx.applications.map(a => `
-        <div class="bg-white rounded-xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-3 flex items-center justify-between gap-2">
+        <div class="bg-[var(--surface)] rounded-xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-3 flex items-center justify-between gap-2">
           <div class="min-w-0">
             <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.council_positions?.position_name ?? '—')}</p>
             <p class="text-xs text-[var(--muted-2)]">${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
@@ -544,7 +544,7 @@ function renderElectionBlock(gender) {
 
   if (!e) {
     return `
-      <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
         <p class="text-sm font-bold text-[var(--ink-2)] mb-1">🗳️ สภา${GENDER_LABEL[gender]}</p>
         <p class="text-xs text-[var(--muted-2)]">ยังไม่เปิดการเลือกตั้ง</p>
         ${ctx.isAdmin ? `<button type="button" class="btn-create-election mt-2 px-4 py-2 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold" data-gender="${gender}">เปิดใช้งานการเลือกตั้ง</button>` : ''}
@@ -603,7 +603,7 @@ function renderElectionBlock(gender) {
   }
 
   return `
-    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
       <div class="flex items-center justify-between gap-2">
         <p class="text-sm font-bold text-[var(--ink-2)]">🗳️ สภา${GENDER_LABEL[gender]}</p>
         <span class="text-xs font-bold px-2.5 py-1 rounded-full ${status.cls}">${status.label}</span>
@@ -627,7 +627,7 @@ function renderCandidatesView() {
         ${head}
         <div class="space-y-2">
           ${list.map(c => `
-            <div class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] p-3 bg-white">
+            <div class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)]">
               <div class="w-8 h-8 rounded-full bg-[var(--primary-soft-line)] text-[var(--primary-dark)] grid place-items-center font-bold text-sm flex-shrink-0">${c.ballot_number}</div>
               ${studentPhoto(c.students)}
               <div class="min-w-0 flex-1">
@@ -667,7 +667,7 @@ function renderApplicationsAdminView() {
     const [label, cls] = PIPELINE_STATUS_BADGE[a.status] ?? ['—', 'bg-[var(--bg-2)] text-[var(--muted)]']
     const isElected = !!a.council_positions?.is_elected
     return `
-    <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2.5 bg-white" data-app-card="${a.id}">
+    <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2.5 bg-[var(--surface)]" data-app-card="${a.id}">
       <div class="flex items-center gap-3">
         ${studentPhoto(a.students)}
         <div class="min-w-0 flex-1">
@@ -696,7 +696,7 @@ function renderApplicationsAdminView() {
             <p class="text-xs font-semibold text-[var(--muted)]">บันทึกผลสัมภาษณ์</p>
             <div class="grid grid-cols-2 gap-2">
               <input type="number" name="score" min="0" max="100" placeholder="คะแนน (0-100)" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs" />
-              <select name="result" required class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-white">
+              <select name="result" required class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)]">
                 <option value="">— ผลสัมภาษณ์ —</option>
                 <option value="pass">ผ่าน</option>
                 <option value="fail">ไม่ผ่าน</option>
@@ -732,7 +732,7 @@ function renderRosterView() {
       <div>
         <p class="text-xs font-bold text-[var(--muted-2)] mb-2">สภานักเรียน${GENDER_LABEL[g]}</p>
         ${list.length ? `<div class="space-y-2">${list.map(m => `
-          <div class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] p-2.5 bg-white">
+          <div class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] p-2.5 bg-[var(--surface)]">
             ${studentPhoto(m.students)}
             <div class="min-w-0 flex-1">
               <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
@@ -758,7 +758,7 @@ function renderEndorseView() {
   }
 
   const card = a => `
-    <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2.5 bg-white" data-endorsement-card="${a.id}">
+    <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2.5 bg-[var(--surface)]" data-endorsement-card="${a.id}">
       <div class="flex items-center gap-3">
         ${studentPhoto(a.students)}
         <div class="min-w-0 flex-1">
@@ -844,7 +844,7 @@ function renderActivitiesView() {
     </div>`
 
   const createForm = canManage ? `
-    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
       <p class="text-sm font-bold text-[var(--ink-2)] mb-3">➕ สร้างกิจกรรมใหม่</p>
       <form id="activity-form" class="space-y-2">
         <input name="title" required placeholder="ชื่อกิจกรรม" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
@@ -854,7 +854,7 @@ function renderActivitiesView() {
           <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <select name="gender" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-white">
+          <select name="gender" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
             <option value="">สภาชาย+หญิงร่วมกัน</option>
             <option value="M">สภาชายเท่านั้น</option>
             <option value="W">สภาหญิงเท่านั้น</option>
@@ -872,7 +872,7 @@ function renderActivitiesView() {
     const members = ctx.members.filter(m => !a.gender || m.council_positions?.gender === a.gender)
     const attendance = attendanceByActivity[a.id]
     return `
-      <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2 bg-white" data-activity-card="${a.id}">
+      <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2 bg-[var(--surface)]" data-activity-card="${a.id}">
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <p class="text-sm font-bold text-[var(--ink)]">${esc(a.title)}</p>
@@ -933,18 +933,18 @@ function renderNewsView() {
   const postBtn = canPost ? `<button type="button" id="btn-open-ann-form" class="w-full py-3 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold mb-4">➕ เพิ่มประกาศ</button>` : ''
 
   const form = (canPost && showAnnForm) ? `
-    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
       <p class="text-sm font-bold text-[var(--ink-2)] mb-3">📣 ประกาศใหม่</p>
       <form id="announcement-form" class="space-y-2">
         <input name="title" required placeholder="หัวเรื่องประกาศ" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
         <textarea name="body" rows="3" placeholder="รายละเอียด" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
         <div class="grid grid-cols-2 gap-2">
-          <select name="type" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-white">
+          <select name="type" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
             <option value="info">แจ้งให้ทราบ</option>
             <option value="ack">ต้องกดรับทราบ</option>
             <option value="urgent">ด่วน</option>
           </select>
-          <select name="audience" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-white">
+          <select name="audience" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
             <option value="all">ทุกคน</option>
             <option value="M">สภาชาย</option>
             <option value="W">สภาหญิง</option>
@@ -962,7 +962,7 @@ function renderNewsView() {
   const filterBar = `
     <div class="flex gap-2 overflow-x-auto pb-1 mb-4">
       ${filters.map(([k, label]) => `
-        <button type="button" class="ann-filter-btn flex-shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border ${annFilter === k ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-white text-[var(--muted)] border-[var(--line)]'}" data-filter="${k}">${label}</button>`).join('')}
+        <button type="button" class="ann-filter-btn flex-shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border ${annFilter === k ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-[var(--surface)] text-[var(--muted)] border-[var(--line)]'}" data-filter="${k}">${label}</button>`).join('')}
     </div>`
 
   if (!filtered.length) return `${postBtn}${form}${filterBar}<p class="text-sm text-[var(--muted-2)] text-center py-10">ไม่มีประกาศ</p>`
@@ -973,7 +973,7 @@ function renderNewsView() {
     const acked = myAcks?.has(a.id)
     const needsAck = a.type === 'ack' && ctx.role === 'student' && ctx.student
     return `
-      <div class="rounded-xl border ${a.pinned ? 'border-[var(--gold-soft-line)] bg-[var(--gold-soft)]/40' : 'border-[var(--line-soft)] bg-white'} p-3.5 space-y-2">
+      <div class="rounded-xl border ${a.pinned ? 'border-[var(--gold-soft-line)] bg-[var(--gold-soft)]/40' : 'border-[var(--line-soft)] bg-[var(--surface)]'} p-3.5 space-y-2">
         <div class="flex items-center gap-2 flex-wrap">
           ${a.pinned ? '<span class="text-[11px] font-bold text-[var(--gold-ink)]">📌 ปักหมุด</span>' : ''}
           <span class="text-[11px] font-bold px-2 py-0.5 rounded-full border ${border} ${bg} ${fg}">${label}</span>
@@ -1020,7 +1020,7 @@ function renderEvalView() {
   const totalWeight = evalCriteria.reduce((t, c) => t + Number(c.weight), 0)
 
   const criteriaEditor = canEvaluate ? `
-    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
       <p class="text-sm font-bold text-[var(--ink-2)] mb-3">📐 เกณฑ์การประเมิน (รวม ${totalWeight} คะแนน)</p>
       <div class="space-y-1.5">
         ${evalCriteria.map(c => `
@@ -1045,7 +1045,7 @@ function renderEvalView() {
 
     const open = evalOpenMemberId === m.id
     return `
-      <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2 bg-white" data-eval-card="${m.id}">
+      <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2 bg-[var(--surface)]" data-eval-card="${m.id}">
         <div class="flex items-center gap-3">
           ${studentPhoto(m.students, 'w-10 h-12')}
           <div class="min-w-0 flex-1">
@@ -1065,7 +1065,7 @@ function renderEvalView() {
                 <span class="flex-1 text-xs text-[var(--ink-2)]">${esc(c.name)} <span class="text-[var(--muted-2)]">(เต็ม ${c.weight})</span></span>
                 <input type="number" min="0" max="${c.weight}" step="0.5" name="c_${c.id}" value="${ev?.scores?.[c.id] ?? ''}" class="w-20 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs text-center" />
               </div>`).join('')}
-            <select name="decision" required class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-xs bg-white">
+            <select name="decision" required class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-xs bg-[var(--surface)]">
               <option value="">— สรุปผล —</option>
               <option value="pass" ${ev?.decision === 'pass' ? 'selected' : ''}>ผ่าน</option>
               <option value="improve" ${ev?.decision === 'improve' ? 'selected' : ''}>ควรปรับปรุง</option>
@@ -1155,7 +1155,7 @@ function renderDocsView() {
   const canDecide = ctx.isAdmin || ctx.role === 'teacher'
 
   const createForm = `
-    <div class="bg-white rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
       <p class="text-sm font-bold text-[var(--ink-2)] mb-3">➕ ร่างเอกสารขออนุมัติโครงการใหม่</p>
       <form id="doc-form" class="space-y-2">
         <input name="title" required placeholder="ชื่อโครงการ/กิจกรรม" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
@@ -1174,7 +1174,7 @@ function renderDocsView() {
   const card = d => {
     const [label, cls] = DOC_STATUS_BADGE[d.status] ?? ['—', 'text-[var(--muted)] bg-[var(--bg-2)] border-[var(--line)]']
     return `
-      <div class="rounded-xl border border-[var(--line-soft)] p-3.5 space-y-2 bg-white">
+      <div class="rounded-xl border border-[var(--line-soft)] p-3.5 space-y-2 bg-[var(--surface)]">
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <p class="text-sm font-bold text-[var(--ink)]">${esc(d.title)}</p>
@@ -1264,7 +1264,7 @@ function render() {
   renderNav(items)
 
   const renderer = VIEW_RENDERERS[activeView] || renderOverviewView
-  content.innerHTML = `<div class="max-w-2xl mx-auto px-4 py-4">${renderer()}</div>`
+  content.innerHTML = `<div class="max-w-[1120px] mx-auto px-4 py-4">${renderer()}</div>`
   wireContentEvents()
 }
 
@@ -1288,7 +1288,7 @@ function renderFullscreenFlow() {
       ${flow.subtabs.length > 1 ? `
       <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
         ${flow.subtabs.map(t => `
-          <button type="button" class="flow-subtab-btn flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition ${t.id === flowSubtab ? 'bg-[var(--primary)] text-white' : 'bg-white border border-[var(--line)] text-[var(--muted)]'}"
+          <button type="button" class="flow-subtab-btn flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition ${t.id === flowSubtab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}"
             data-subtab="${t.id}">${esc(t.label)}</button>`).join('')}
       </div>` : ''}
       <div>${renderer()}</div>
