@@ -21,7 +21,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.429'
+import { APP_VERSION } from './version.js?v=10.22.430'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -683,6 +683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     { value: 'academic_pvch',        label: 'หัวหน้าวิชาการปวช' },
     { value: 'house_color_admin',    label: 'ผู้รับผิดชอบสีนักเรียน' },
     { value: 'classroom_leaders_admin', label: 'ผู้ดูแลหัวหน้า/รองหัวหน้า' },
+    { value: 'council_advisor',      label: 'ครูที่ปรึกษาสภานักเรียน' },
   ]
   const posOptHtml = () =>
     `<option value="">— ไม่มี —</option>` +

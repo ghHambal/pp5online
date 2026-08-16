@@ -146,8 +146,14 @@ async function init() {
   // ได้สิทธิ์จัดการกิจกรรม/ประกาศเท่าแอดมิน (RLS คุมไว้แล้ว ดู patch_council_phase3_activities_news.sql)
   const isChair = role === 'student' && membership.some(m => m.council_positions?.is_elected)
 
+  // ครูที่ปรึกษาสภา — ตำแหน่ง (position) 'council_advisor' ที่แอดมินมอบให้จากหน้าตั้งค่าครูเดิม
+  // (dashboard.html) เห็นเกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์ — ต้องเช็คทั้ง teacher.position
+  // (เดี่ยว) และ teacher.positions (array) เพราะข้อมูลจริงมีทั้งสองแบบปนกัน (ดู feedback_supervisor_position_rls_column)
+  const isCouncilAdvisor = role === 'teacher' && !!teacher &&
+    (teacher.position === 'council_advisor' || (teacher.positions ?? []).includes('council_advisor'))
+
   ctx = {
-    role, isAdmin, isChair, student, applications, membership, positions, members, elections, cfg,
+    role, isAdmin, isChair, isCouncilAdvisor, student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
   electionYear = Number(cfg.academicYear) || (new Date().getFullYear() + 543)
@@ -190,29 +196,39 @@ function applyBranding(cfg) {
 }
 
 // ─── Navigation — ไซด์บาร์ (เดสก์ท็อป) + แท็บล่าง (มือถือ) ───────────────────────
-// กลุ่มเมนู (ตรงตามไฟล์ต้นแบบ) — ใช้ทำหัวข้อคั่นในไซด์บาร์เดสก์ท็อป
+// กลุ่มเมนู 5 กลุ่มตรงตามสเปคส่งมอบ (หัวข้อ 5) — หน้าที่ยังไม่ได้สร้าง (เสนอคณะทำงาน/
+// มอบหมายงาน/หน้าที่ของฉัน/ตั้งค่า/มอบสิทธิ์) จะยังไม่โผล่ในกลุ่มจนกว่าจะสร้างเสร็จ
 const NAV_GROUPS = {
-  main: 'ภาพรวม',
-  election: 'รับสมัครและเลือกตั้ง',
-  council: 'งานสภา',
-  assess: 'ประเมินและเอกสาร',
+  main: { label: 'หน้าหลัก', icon: '🏠' },
+  council: { label: 'งานสภา', icon: '👥' },
+  election: { label: 'เลือกตั้ง', icon: '🗳️' },
+  teacherWork: { label: 'งานครู', icon: '📋' },
+  system: { label: 'ระบบ', icon: '⚙️' },
 }
 
 function getNavItems() {
-  // เมนูหลัก = ดูภาพรวมสภานักเรียนเท่านั้น ("สมัคร"/"เลือกตั้ง" ไม่อยู่ที่นี่ — เป็นปุ่มบนหน้าภาพรวมแทน)
+  // เมนูหลัก = ดูภาพรวมสภานักเรียนเท่านั้น ("สมัคร" ไม่อยู่ที่นี่ — เป็นปุ่มบนหน้าภาพรวมแทน)
   const items = [{ id: 'overview', icon: '🏠', label: 'ภาพรวม', group: 'main' }]
-  if (ctx.role === 'teacher' && ctx.pendingEndorsements.length) {
-    items.push({ id: 'endorse', icon: '✋', label: 'รอยืนยัน', badge: ctx.pendingEndorsements.length, group: 'election' })
-  }
-  if (ctx.isAdmin) items.push({ id: 'apps', icon: '📋', label: 'จัดการใบสมัคร', group: 'election' })
-  items.push({ id: 'candidates', icon: '🗳️', label: 'ผู้สมัครเลือกตั้ง', group: 'election' })
+  // งานสภา — สาธารณะ/สมาชิกสภา (เสนอคณะทำงาน, มอบหมายงาน, หน้าที่/งานของฉัน ยังไม่ได้สร้าง)
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
+  items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม', group: 'council' })
-  items.push({ id: 'roster', icon: '🏛️', label: 'สภานักเรียน', group: 'council' })
-  if (ctx.isAdmin || ctx.role === 'teacher' || ctx.membership.length) items.push({ id: 'eval', icon: '📊', label: 'ประเมิน/เกียรติบัตร', group: 'assess' })
-  if (ctx.isAdmin || ctx.role === 'teacher' || ctx.isChair) items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'assess' })
+  // เลือกตั้ง — สาธารณะ
+  items.push({ id: 'candidates', icon: '🗳️', label: 'ว่าที่ประธาน', group: 'election' })
+  items.push({ id: 'result', icon: '📊', label: 'ผลเลือกตั้ง', group: 'election' })
+  // งานครู — ครูที่ปรึกษาสามัญ/ครูที่ปรึกษาสภา/แอดมิน
+  if (ctx.role === 'teacher' && ctx.pendingEndorsements.length) {
+    items.push({ id: 'endorse', icon: '✋', label: 'รับรองผู้สมัคร', badge: ctx.pendingEndorsements.length, group: 'teacherWork' })
+  }
+  const isTeacherStaff = ctx.isAdmin || ctx.isCouncilAdvisor
+  if (isTeacherStaff) items.push({ id: 'apps', icon: '📋', label: 'ใบสมัคร', group: 'teacherWork' })
+  if (isTeacherStaff || ctx.membership.length) items.push({ id: 'eval', icon: '🎖️', label: 'ประเมิน/เกียรติบัตร', group: 'teacherWork' })
+  if (isTeacherStaff || ctx.isChair) items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'teacherWork' })
+  // ระบบ — ภาพรวม/ตั้งค่า/มอบสิทธิ์ (ตั้งค่า+มอบสิทธิ์ยังไม่ได้สร้าง)
   return items
 }
+
+let mobileSheetGroup = null // null | group id — กลุ่มที่กำลังเปิดแคปซูลกระจกฝ้าอยู่ (มือถือ)
 
 function renderNav(items) {
   const groupOrder = Object.keys(NAV_GROUPS)
@@ -221,7 +237,7 @@ function renderNav(items) {
     if (!groupItems.length) return ''
     return `
       <div class="pb-2">
-        <p class="text-[11px] font-bold text-[var(--primary-45)] tracking-wide px-3 pt-3 pb-1.5">${esc(NAV_GROUPS[g])}</p>
+        <p class="text-[11px] font-bold text-[var(--primary-45)] tracking-wide px-3 pt-3 pb-1.5">${esc(NAV_GROUPS[g].label)}</p>
         ${groupItems.map(it => `
           <button type="button" class="council-nav-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
             ${it.id === activeView ? 'bg-[var(--hero-3)] text-white' : 'text-[var(--primary-45)] hover:bg-[var(--hero-3)] hover:text-white'}" data-view="${it.id}">
@@ -231,19 +247,64 @@ function renderNav(items) {
       </div>`
   }).join('')
 
-  document.getElementById('council-bottom-tabs').innerHTML = `<div class="flex">${items.map(it => `
-    <button type="button" class="council-nav-btn relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 ${it.id === activeView ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}" data-view="${it.id}">
-      <span class="text-xl">${it.icon}</span>
-      <span class="text-[10px] font-medium">${esc(it.label)}</span>
-      ${it.badge ? `<span class="absolute top-1 right-1/4 bg-[var(--gold)] text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
-    </button>`).join('')}</div>`
+  // แถบล่างมือถือ — จัดกลุ่มตาม NAV_GROUPS ไม่เกิน 5 ปุ่ม (สเปคข้อ 5) กลุ่มที่มีหลายหน้า
+  // กดแล้วเด้งแคปซูลกระจกฝ้าลอยขึ้นแทนเปลี่ยนหน้าตรงๆ
+  const groupsWithItems = groupOrder
+    .map(g => ({ id: g, ...NAV_GROUPS[g], items: items.filter(it => it.group === g) }))
+    .filter(g => g.items.length)
+  const activeGroupId = (groupsWithItems.find(g => g.items.some(it => it.id === activeView)) || groupsWithItems[0])?.id
+  document.getElementById('council-bottom-tabs').innerHTML = `<div class="flex">${groupsWithItems.map(g => {
+    const on = g.id === activeGroupId
+    const badge = g.items.reduce((n, it) => n + (it.badge || 0), 0)
+    return `
+    <button type="button" class="council-nav-group-btn relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 min-h-[44px] ${on ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}" data-group="${g.id}">
+      <span class="text-xl">${g.icon}</span>
+      <span class="text-[10px] font-medium">${esc(g.label)}</span>
+      ${badge ? `<span class="absolute top-1 right-1/4 bg-[var(--gold)] text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">${badge}</span>` : ''}
+    </button>`
+  }).join('')}</div>`
 
-  document.querySelectorAll('.council-nav-link, .council-nav-btn').forEach(btn => {
+  document.querySelectorAll('.council-nav-link').forEach(btn => {
     btn.addEventListener('click', () => { activeView = btn.dataset.view; render() })
+  })
+  document.querySelectorAll('.council-nav-group-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const g = groupsWithItems.find(x => x.id === btn.dataset.group)
+      if (g.items.length === 1) { activeView = g.items[0].id; mobileSheetGroup = null; render() }
+      else { mobileSheetGroup = mobileSheetGroup === g.id ? null : g.id; renderMobileSheet(items) }
+    })
   })
 
   const activeItem = items.find(it => it.id === activeView)
   document.getElementById('council-view-title').textContent = activeItem?.label ?? 'ภาพรวม'
+  renderMobileSheet(items)
+}
+
+// แคปซูลกระจกฝ้าลอย — เมนูย่อยของกลุ่มที่มีหลายหน้า (มือถือเท่านั้น)
+function renderMobileSheet(items) {
+  const el = document.getElementById('council-mobile-sheet')
+  if (!el) return
+  if (!mobileSheetGroup) { el.innerHTML = ''; return }
+  const groupItems = items.filter(it => it.group === mobileSheetGroup)
+  el.innerHTML = `
+    <div class="fixed inset-0 z-[70] bg-black/20" id="mobile-sheet-backdrop">
+      <div class="absolute left-1/2 -translate-x-1/2" style="bottom: calc(78px + env(safe-area-inset-bottom));">
+        <div class="flex flex-col-reverse gap-2 items-stretch" style="width: min(74vw, 260px);">
+          ${groupItems.map((it, i) => `
+            <button type="button" class="mobile-sheet-item text-left border ${it.id === activeView ? 'border-[var(--primary-soft-line)] bg-[var(--glass-on)] text-[var(--primary)]' : 'border-[var(--glass-line)] bg-[var(--glass)] text-[var(--ink)]'}
+              backdrop-blur-md px-4 py-3 rounded-full text-sm font-bold flex items-center gap-3 min-h-[44px] shadow-[0_8px_22px_rgba(11,20,16,0.18)]" data-view="${it.id}">
+              <span class="text-base">${it.icon}</span><span>${esc(it.label)}</span>
+              ${it.badge ? `<span class="ml-auto bg-[var(--gold)] text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">${it.badge}</span>` : ''}
+            </button>`).join('')}
+        </div>
+      </div>
+    </div>`
+  document.getElementById('mobile-sheet-backdrop').addEventListener('click', e => {
+    if (e.target.id === 'mobile-sheet-backdrop') { mobileSheetGroup = null; render() }
+  })
+  document.querySelectorAll('.mobile-sheet-item').forEach(btn => {
+    btn.addEventListener('click', () => { activeView = btn.dataset.view; mobileSheetGroup = null; render() })
+  })
 }
 
 // ─── การ์ดสถานะสภาส่วนตัว — โผล่เฉพาะคนที่มีใบสมัคร/เป็นสมาชิกอยู่ ─────────────────
@@ -1183,6 +1244,7 @@ const VIEW_RENDERERS = {
   docs: renderDocsView,
   candidates: renderCandidatesView,
   roster: renderRosterView,
+  result: renderElectionView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
@@ -1749,5 +1811,32 @@ function wireElectionEvents() {
     })
   })
 }
+
+// ─── โหมดมืด — วน 3 สถานะ ตามระบบ → สว่าง → มืด, เก็บ localStorage['council_theme'] ─────
+// เรียกทันทีตอนโหลดสคริปต์ (ก่อน init() ที่ต้อง await auth) กันจอกะพริบสว่างก่อนสลับมืด
+const THEME_LABEL = { auto: 'ตามระบบ', light: 'สว่าง', dark: 'มืด' }
+const THEME_ICON = { auto: '🌓', light: '☀️', dark: '🌙' }
+function applyCouncilTheme(mode) {
+  const dark = mode === 'dark' || (mode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  document.documentElement.toggleAttribute('data-dark', dark)
+  const icon = document.getElementById('council-theme-icon')
+  const label = document.getElementById('council-theme-label')
+  if (icon) icon.textContent = THEME_ICON[mode]
+  if (label) label.textContent = THEME_LABEL[mode]
+}
+function initTheme() {
+  const saved = localStorage.getItem('council_theme') || 'auto'
+  applyCouncilTheme(saved)
+  document.getElementById('council-theme-toggle')?.addEventListener('click', () => {
+    const cur = localStorage.getItem('council_theme') || 'auto'
+    const next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto'
+    localStorage.setItem('council_theme', next)
+    applyCouncilTheme(next)
+  })
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if ((localStorage.getItem('council_theme') || 'auto') === 'auto') applyCouncilTheme('auto')
+  })
+}
+initTheme()
 
 init()

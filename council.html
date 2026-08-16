@@ -51,10 +51,16 @@
           <p id="council-title-mobile" class="text-sm font-bold text-[var(--ink-2)] truncate">ระบบสภานักเรียน</p>
         </div>
         <p id="council-view-title" class="hidden md:block text-lg font-bold text-[var(--ink)]">ภาพรวม</p>
-        <button onclick="window.location.reload()" title="รีเฟรชหน้านี้"
-          class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-[var(--muted-2)] hover:bg-[var(--primary-soft)] hover:text-[var(--primary)] transition text-base">
-          ↺
-        </button>
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+          <button id="council-theme-toggle" type="button" title="สลับธีมสว่าง/มืด"
+            class="flex items-center gap-1.5 h-8 px-3 rounded-full border border-[var(--line)] bg-[var(--surface-2)] text-[var(--ink-2)] hover:bg-[var(--primary-soft)] transition text-xs font-semibold">
+            <span id="council-theme-icon">🌓</span><span id="council-theme-label" class="hidden sm:inline">ตามระบบ</span>
+          </button>
+          <button onclick="window.location.reload()" title="รีเฟรชหน้านี้"
+            class="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full text-[var(--muted-2)] hover:bg-[var(--primary-soft)] hover:text-[var(--primary)] transition text-base">
+            ↺
+          </button>
+        </div>
       </div>
     </header>
 
@@ -70,6 +76,8 @@
 
     <!-- Bottom tab bar (มือถือเท่านั้น) -->
     <nav id="council-bottom-tabs" class="md:hidden bg-white border-t border-[var(--line-soft)] shadow-[0_-1px_4px_rgba(0,0,0,0.06)] flex-shrink-0 fixed bottom-0 inset-x-0 z-30 safe-area-bottom"></nav>
+    <!-- แคปซูลกระจกฝ้าลอย — เมนูย่อยของกลุ่มที่มีหลายหน้า (มือถือเท่านั้น) -->
+    <div id="council-mobile-sheet" class="md:hidden"></div>
   </div>
 
   <script type="module" src="/js/council.js"></script>
