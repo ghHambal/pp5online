@@ -80,6 +80,7 @@ let flowSubtab = null
 
 // สถานะที่โหลดแบบ lazy ตอนเปิดหน้าจอนั้นๆ ครั้งแรก (ไม่ต้องโหลดทุกอย่างตั้งแต่ init)
 let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
+let adminAppDetailId = null // id ของใบสมัครที่กำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
 let appsFilter = 'all' // ฟิลเตอร์สถานะในหน้า "จัดการใบสมัคร" (สเปคข้อ 8.4)
 let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์
 const candidatesByGender = {} // { M: [...], W: [...] }
@@ -1035,6 +1036,67 @@ function ivTeacherLabel(id) {
   return t ? `${t.full_name} · รหัส ${t.id}` : ''
 }
 
+// ฝังวิดีโอในหน้าได้เลยถ้าจับรูปแบบลิงก์ได้ (YouTube/Google Drive) ตามที่ผู้ใช้ขอ "คลิกดูในหน้านั้น
+// ได้เลย" — แพลตฟอร์มอื่น (เช่น TikTok ที่ต้องใช้ embed widget เฉพาะ) fallback เป็นลิงก์เปิดแท็บใหม่
+function videoEmbedHtml(url) {
+  if (!url) return ''
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)
+  if (yt) return `<div class="aspect-video rounded-xl overflow-hidden bg-black"><iframe class="w-full h-full" src="https://www.youtube.com/embed/${esc(yt[1])}" allowfullscreen loading="lazy"></iframe></div>`
+  const gd = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/)
+  if (gd) return `<div class="aspect-video rounded-xl overflow-hidden bg-black"><iframe class="w-full h-full" src="https://drive.google.com/file/d/${esc(gd[1])}/preview" allowfullscreen loading="lazy"></iframe></div>`
+  return `<a href="${esc(url)}" target="_blank" rel="noopener" class="block text-center py-3 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold hover:bg-[var(--primary-soft)]">🎬 เปิดดูวิดีโอแนะนำตัว (แท็บใหม่)</a>`
+}
+
+// ป๊อบอัพดูใบสมัครแบบเต็ม (เหมือนเอกสารใบสมัครจริง) — เกรด/แรงจูงใจ/วิดีโอฝังในหน้า/
+// ความเห็นครูที่ปรึกษาสามัญ ตามที่ผู้ใช้ขอ 2026-08-16
+function renderAdminAppDetailModal() {
+  if (!adminAppDetailId) return ''
+  const a = adminApps?.find(x => x.id === adminAppDetailId)
+  if (!a) return ''
+  const genderCls = GENDER_BADGE_FIXED[a.council_positions?.gender] ?? 'bg-[var(--bg-2)] text-[var(--muted)]'
+  return `
+    <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="admin-app-detail-backdrop">
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_8px_28px_rgba(11,20,16,0.25)] max-w-lg w-full max-h-[85vh] overflow-y-auto p-5">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <p class="text-base font-bold text-[var(--ink)]">📄 ใบสมัครสภานักเรียน</p>
+          <button type="button" id="btn-admin-app-detail-close" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
+        </div>
+        <div class="flex items-center gap-3 pb-3 border-b border-[var(--line-soft)]">
+          ${studentPhoto(a.students, 'w-16 h-20')}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <p class="font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
+              <span class="text-[0.5625rem] font-bold px-2 py-0.5 rounded-full ${genderCls}">${esc(GENDER_LABEL[a.council_positions?.gender] ?? '—')}</span>
+            </div>
+            <p class="text-xs text-[var(--muted-2)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')}</p>
+            <p class="text-xs text-[var(--primary)] font-semibold mt-0.5">${esc(a.council_positions?.position_name ?? '—')}</p>
+          </div>
+        </div>
+        <div class="space-y-3 pt-3 text-sm">
+          <div class="grid grid-cols-2 gap-2">
+            <div class="rounded-xl bg-[var(--surface-2)] p-2.5"><p class="text-[0.6875rem] text-[var(--muted)]">เกรดสามัญ</p><p class="font-bold text-[var(--ink)]">${esc(a.gpa_general ?? '—')}</p></div>
+            <div class="rounded-xl bg-[var(--surface-2)] p-2.5"><p class="text-[0.6875rem] text-[var(--muted)]">เกรดศาสนา</p><p class="font-bold text-[var(--ink)]">${esc(a.gpa_religious ?? '—')}</p></div>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-[var(--muted)] mb-1">แรงจูงใจ / นโยบาย</p>
+            <p class="text-[var(--ink-2)] bg-[var(--surface-2)] rounded-xl p-3 whitespace-pre-line">${esc(a.motivation || '—')}</p>
+          </div>
+          ${a.intro_video_url ? `
+          <div>
+            <p class="text-xs font-bold text-[var(--muted)] mb-1">🎬 วิดีโอแนะนำตัว</p>
+            ${videoEmbedHtml(a.intro_video_url)}
+          </div>` : ''}
+          <div>
+            <p class="text-xs font-bold text-[var(--muted)] mb-1">✅ ความเห็นครูที่ปรึกษาสามัญ</p>
+            ${a.endorsement_comment
+              ? `<p class="text-[#106143] bg-[var(--ok-soft)] rounded-xl p-3">${esc(a.endorsement_comment)}</p>`
+              : `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">ยังไม่ได้รับรอง</p>`}
+          </div>
+        </div>
+      </div>
+    </div>`
+}
+
 function renderApplicationsAdminView() {
   if (!ctx.isAdmin) return ''
   if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
@@ -1082,8 +1144,7 @@ function renderApplicationsAdminView() {
         </div>
         <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full ${cls}">${label}</span>
       </div>
-      ${a.motivation ? `<p class="text-xs text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(a.motivation)}</p>` : ''}
-      ${a.endorsement_comment ? `<p class="text-[0.6875rem] text-[var(--ok)]">✅ ครูที่ปรึกษา: ${esc(a.endorsement_comment)}</p>` : ''}
+      <button type="button" class="btn-view-app-detail w-full text-xs font-bold py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${a.id}">📄 ดูใบสมัคร</button>
 
       ${stage === 'awaiting_endorsement' ? `<p class="text-xs text-[var(--gold-ink)] pt-1 border-t border-[var(--line-soft)]">⏳ รอครูที่ปรึกษาสามัญของนักเรียนคนนี้รับรองก่อน จึงจะนัดสัมภาษณ์ได้</p>` : ''}
 
@@ -1131,7 +1192,7 @@ function renderApplicationsAdminView() {
       ${a.status === 'rejected' && iv?.comment ? `<p class="text-xs text-[var(--bad)] pt-1 border-t border-[var(--line-soft)]">${esc(iv.comment)}</p>` : ''}
     </div>`
   }
-  return `${filterBar}${datalist}<div class="space-y-3">${list.map(card).join('')}</div>`
+  return `${filterBar}${datalist}<div class="space-y-3">${list.map(card).join('')}</div>${renderAdminAppDetailModal()}`
 }
 
 // ─── รายชื่อสภานักเรียนปัจจุบัน (public, จัดกลุ่มตามเพศ→ตำแหน่ง) ──────────────────
@@ -3057,6 +3118,14 @@ function wireNewsEvents() {
 function wireApplicationsAdminEvents() {
   document.querySelectorAll('.apps-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => { appsFilter = btn.dataset.filter; render() })
+  })
+
+  document.querySelectorAll('.btn-view-app-detail').forEach(btn => {
+    btn.addEventListener('click', () => { adminAppDetailId = Number(btn.dataset.id); render() })
+  })
+  document.getElementById('btn-admin-app-detail-close')?.addEventListener('click', () => { adminAppDetailId = null; render() })
+  document.getElementById('admin-app-detail-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'admin-app-detail-backdrop') { adminAppDetailId = null; render() }
   })
 
   document.querySelectorAll('.schedule-form').forEach(form => {
