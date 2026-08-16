@@ -3,12 +3,18 @@ import { supabase } from './supabase.js'
 // ─── Settings (reuse system_config เดิม, key prefix council_) ────────────────
 const COUNCIL_CONFIG_KEYS = [
   'council_logo_url', 'council_theme_color', 'council_name',
+  'council_theme_side_m', 'council_theme_side_w', // สีธีมตามฝ่าย (Phase 2 ตั้งค่า > ทั่วไป)
   'council_term_start_semester', 'council_term_start_year',
   'council_term_end_semester', 'council_term_end_year',
-  'council_min_gpa', 'council_eligible_grade_levels', 'council_require_teacher_endorsement',
+  'council_min_gpa', 'council_min_gpa_religious', // เกรดขั้นต่ำ สามัญ/ศาสนา แยกกัน (สเปคข้อ 8.2)
+  'council_eligible_grade_levels', 'council_require_teacher_endorsement',
+  'council_apply_opens_at', 'council_apply_closes_at', // ช่วงเวลาเปิด-ปิดรับสมัคร
+  'council_video_max_minutes', 'council_video_brief', // วิดีโอแนะนำตัว: จำนวนนาที + หัวข้อที่ต้องพูด (JSON array)
+  'council_signer_advisor_name', 'council_signer_director_name', // ชื่อผู้ลงนามเอกสาร/เกียรติบัตร
   'council_election_thank_you_message',
   'council_visible_to_all', // 'true'/'false' — ปิดแล้วเห็นเฉพาะแอดมิน/ครูที่ is_also_admin
   'council_test_student_codes', // รหัสนักเรียนที่ให้ทดสอบได้แม้ council_visible_to_all ปิดอยู่ (คั่นด้วย , หรือขึ้นบรรทัดใหม่)
+  'council_modules', // เปิด/ปิดโมดูลย่อยรายฟีเจอร์ (JSON) — สเปคข้อ 8.18.4
   'academicYear', // key กลางเดิมของระบบ (ไม่มี prefix council_) ใช้ผูกใบสมัครเข้าปีการศึกษาปัจจุบัน
 ]
 
@@ -30,6 +36,56 @@ export async function getCouncilPositions() {
     .select('*').eq('is_active', true).order('gender').order('sort_order')
   if (error) throw error
   return data ?? []
+}
+
+// ─── ตำแหน่ง — CRUD (หน้าตั้งค่า > ตำแหน่ง, สเปคข้อ 8.18.2) ─────────────────────
+export async function createCouncilPosition({ gender, positionName, seatsCount, isElected, sortOrder }) {
+  const { error } = await supabase.from('council_positions').insert({
+    gender, position_name: positionName, seats_count: seatsCount || 1,
+    is_elected: !!isElected, sort_order: sortOrder ?? 0,
+  })
+  if (error) throw error
+}
+
+export async function updateCouncilPosition(id, updates) {
+  const { error } = await supabase.from('council_positions').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+// ลบแบบ soft delete (is_active=false) — ตรง convention เดียวกับ removeCriterion เดิม
+// กันไม่ให้ประวัติสมาชิก/ใบสมัครเก่าที่อ้างตำแหน่งนี้ (FK) หายไปด้วย
+export async function deleteCouncilPosition(id) {
+  const { error } = await supabase.from('council_positions').update({ is_active: false }).eq('id', id)
+  if (error) throw error
+}
+
+// ─── หัวข้อสัมภาษณ์ — CRUD (หน้าตั้งค่า > เกณฑ์และข้อความ, สเปคข้อ 6.3/8.18.3) ────────────
+export async function getInterviewCriteria() {
+  const { data, error } = await supabase.from('council_interview_criteria')
+    .select('*').eq('is_active', true).order('sort_order')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addInterviewCriterion({ name, weight }) {
+  const { error } = await supabase.from('council_interview_criteria').insert({ name, weight })
+  if (error) throw error
+}
+
+export async function removeInterviewCriterion(id) {
+  const { error } = await supabase.from('council_interview_criteria').update({ is_active: false }).eq('id', id)
+  if (error) throw error
+}
+
+// ─── ข้อความสำเร็จรูปของครูที่ปรึกษาสามัญ — CRUD (หน้าตั้งค่า > เกณฑ์และข้อความ) ───────────
+export async function addEndorsementPhrase({ phrase, sortOrder }) {
+  const { error } = await supabase.from('council_endorsement_phrases').insert({ phrase, sort_order: sortOrder ?? 0 })
+  if (error) throw error
+}
+
+export async function removeEndorsementPhrase(id) {
+  const { error } = await supabase.from('council_endorsement_phrases').delete().eq('id', id)
+  if (error) throw error
 }
 
 // ─── รายชื่อสภาปัจจุบัน (public roster) ───────────────────────────────────────

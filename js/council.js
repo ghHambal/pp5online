@@ -5,9 +5,11 @@ import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms } from './api.js'
 import { uploadCouncilApplicationPhoto } from './storage.js'
 import {
-  getCouncilConfig, getCouncilPositions, getCouncilMembers,
+  getCouncilConfig, updateCouncilConfig, getCouncilPositions, getCouncilMembers,
+  createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
   submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
+  addEndorsementPhrase, removeEndorsementPhrase,
   confirmApplicationEndorsement, declineApplicationEndorsement,
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
@@ -15,6 +17,7 @@ import {
   getCouncilActivities, createActivity, updateActivityStatus, getActivityAttendance, checkInAttendance,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
+  getInterviewCriteria, addInterviewCriterion, removeInterviewCriterion,
   getCouncilDocuments, createDocument, submitDocument, decideDocument,
 } from './council-api.js'
 
@@ -64,6 +67,38 @@ let announcements = null // null = ยังไม่โหลด
 let myAcks = null // Set<announcementId> — เฉพาะนักเรียนที่ล็อกอินอยู่
 let annFilter = 'all'
 let showAnnForm = false
+
+// ─── หน้าตั้งค่า (Phase 2, สเปคข้อ 8.18) — เห็นเฉพาะ isAdmin/isCouncilAdvisor ────────────
+let settingsTab = 'general'
+let interviewCriteria = null // null = ยังไม่โหลด
+let endorsementPhrasesAdmin = null // null = ยังไม่โหลด (แยกจาก ctx.endorsementPhrases ที่ใช้ในหน้ารับรอง)
+
+const SETTINGS_TABS = [
+  { id: 'general', label: 'ทั่วไป' },
+  { id: 'positions', label: 'ตำแหน่ง' },
+  { id: 'criteria', label: 'เกณฑ์และข้อความ' },
+  { id: 'modules', label: 'โมดูล' },
+]
+
+const MODULE_LABELS = {
+  candidates: 'ว่าที่ประธาน / ผลเลือกตั้ง', news: 'ประกาศ', interview: 'ตารางสัมภาษณ์',
+  appoint: 'แต่งตั้งตรง', chairteam: 'เสนอคณะทำงาน (ยังไม่สร้างหน้า)', chairtasks: 'มอบหมายงาน (ยังไม่สร้างหน้า)',
+  evaluate: 'ประเมินการปฏิบัติหน้าที่', certissue: 'ออกเกียรติบัตร', docs: 'เอกสารโครงการ',
+  perms: 'มอบสิทธิ์ครู (ยังไม่สร้างหน้า)',
+}
+
+function getModulesConfig() {
+  try { return { ...JSON.parse(ctx.cfg.council_modules || '{}') } } catch { return {} }
+}
+
+async function loadInterviewCriteria() {
+  interviewCriteria = await getInterviewCriteria().catch(() => [])
+  render()
+}
+async function loadEndorsementPhrasesAdmin() {
+  endorsementPhrasesAdmin = await getEndorsementPhrases().catch(() => [])
+  render()
+}
 
 const FLOW_DEFS = {
   apply: {
@@ -226,8 +261,20 @@ function getNavItems() {
   if (isTeacherStaff) items.push({ id: 'apps', icon: '📋', label: 'ใบสมัคร', group: 'teacherWork' })
   if (isTeacherStaff || ctx.membership.length) items.push({ id: 'eval', icon: '🎖️', label: 'ประเมิน/เกียรติบัตร', group: 'teacherWork' })
   if (isTeacherStaff || ctx.isChair) items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'teacherWork' })
-  // ระบบ — ภาพรวม/ตั้งค่า/มอบสิทธิ์ (ตั้งค่า+มอบสิทธิ์ยังไม่ได้สร้าง)
-  return items
+  // ระบบ — ตั้งค่า (Phase 2, สเปคข้อ 8.18) — ภาพรวม/มอบสิทธิ์ยังไม่ได้สร้าง
+  if (isTeacherStaff) items.push({ id: 'settings', icon: '⚙️', label: 'ตั้งค่า', group: 'system' })
+
+  // สวิตช์เปิด/ปิดโมดูล (สเปคข้อ 8.18.4, council_modules) — บังคับใช้เฉพาะโมดูลที่ผูกกับ
+  // nav item เดี่ยวๆ ตรงๆ ได้เท่านั้น (interview/appoint/chairteam/chairtasks/perms ยังไม่มี
+  // nav item แยกของตัวเอง เพราะฟีเจอร์นั้นยังไม่ได้สร้างเป็นหน้าต่างหาก — toggle เก็บไว้ล่วงหน้า
+  // ให้ตรงสเปค แต่ยังไม่มีผลจนกว่าจะสร้างหน้านั้นจริง)
+  const modules = getModulesConfig()
+  const hiddenByModule = new Set()
+  if (modules.candidates === false) { hiddenByModule.add('candidates'); hiddenByModule.add('result') }
+  if (modules.news === false) hiddenByModule.add('news')
+  if (modules.evaluate === false) hiddenByModule.add('eval')
+  if (modules.docs === false) hiddenByModule.add('docs')
+  return items.filter(it => !hiddenByModule.has(it.id))
 }
 
 let mobileSheetGroup = null // null | group id — กลุ่มที่กำลังเปิดแคปซูลกระจกฝ้าอยู่ (มือถือ)
@@ -1046,16 +1093,13 @@ async function loadEvaluations() {
   render()
 }
 
-function renderEvalView() {
-  if (evalCriteria === null) { loadEvalCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
-  if (evaluations === null) { loadEvaluations(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
-
-  const canEvaluate = ctx.isAdmin || ctx.role === 'teacher'
+// ใช้ร่วมกัน 2 จุด: หน้า "ประเมิน/เกียรติบัตร" และแท็บ "เกณฑ์และข้อความ" ของหน้าตั้งค่า
+// (สเปคข้อ 8.18.3 — เกณฑ์ประเมินการปฏิบัติหน้าที่แก้ได้จากหน้าตั้งค่าด้วย ไม่ใช่แค่หน้าประเมิน)
+function renderDutyCriteriaEditor() {
   const totalWeight = evalCriteria.reduce((t, c) => t + Number(c.weight), 0)
-
-  const criteriaEditor = canEvaluate ? `
+  return `
     <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
-      <p class="text-sm font-bold text-[var(--ink-2)] mb-3">📐 เกณฑ์การประเมิน (รวม ${totalWeight} คะแนน)</p>
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-3">📐 เกณฑ์การประเมินการปฏิบัติหน้าที่ (รวม ${totalWeight} คะแนน)</p>
       <div class="space-y-1.5">
         ${evalCriteria.map(c => `
           <div class="flex items-center gap-2 text-xs">
@@ -1069,7 +1113,17 @@ function renderEvalView() {
         <input name="weight" type="number" min="1" placeholder="คะแนน" class="w-20 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs" required />
         <button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">เพิ่ม</button>
       </form>
-    </div>` : ''
+    </div>`
+}
+
+function renderEvalView() {
+  if (evalCriteria === null) { loadEvalCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (evaluations === null) { loadEvaluations(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  const canEvaluate = ctx.isAdmin || ctx.role === 'teacher'
+  const totalWeight = evalCriteria.reduce((t, c) => t + Number(c.weight), 0)
+
+  const criteriaEditor = canEvaluate ? renderDutyCriteriaEditor() : ''
 
   const memberCard = m => {
     const ev = evaluations[m.id]
@@ -1268,6 +1322,244 @@ function openDocumentPrint(d) {
   setTimeout(() => win.print(), 600)
 }
 
+// ─── หน้าตั้งค่า (Phase 2) — 4 แท็บ: ทั่วไป / ตำแหน่ง / เกณฑ์และข้อความ / โมดูล ────────────
+const toDatetimeLocal = iso => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d)) return ''
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function renderSettingsGeneral() {
+  const cfg = ctx.cfg
+  return `
+    <form id="settings-general-form" class="space-y-4 pb-4">
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
+        <p class="text-sm font-bold text-[var(--ink-2)]">🏛️ ข้อมูลทั่วไป</p>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">ชื่อสภานักเรียน</label>
+          <input name="council_name" value="${esc(cfg.council_name || '')}" placeholder="สภานักเรียนโรงเรียน..." class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">โลโก้ (URL รูปภาพ)</label>
+          <input name="council_logo_url" value="${esc(cfg.council_logo_url || '')}" placeholder="https://..." class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">สีธีมฝ่ายชาย</label>
+            <input type="color" name="council_theme_side_m" value="${esc(cfg.council_theme_side_m || '#14563b')}" class="w-full h-10 border border-[var(--line)] rounded-xl px-1 bg-[var(--surface)]" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">สีธีมฝ่ายหญิง</label>
+            <input type="color" name="council_theme_side_w" value="${esc(cfg.council_theme_side_w || '#a3134f')}" class="w-full h-10 border border-[var(--line)] rounded-xl px-1 bg-[var(--surface)]" />
+          </div>
+        </div>
+        <p class="text-[11px] text-[var(--muted-2)]">⚠️ สีธีมยังเป็นค่าที่บันทึกไว้เฉยๆ ยังไม่ได้ใช้สลับสีจริงในหน้าเว็บ (รอฟีเจอร์สลับธีมตามฝ่ายในเฟสถัดไป)</p>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
+        <p class="text-sm font-bold text-[var(--ink-2)]">🗓️ ห้วงปฏิบัติหน้าที่</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex gap-2 items-center">
+            <span class="text-xs text-[var(--muted)] flex-shrink-0">เริ่ม ภาค/ปี</span>
+            <input name="council_term_start_semester" value="${esc(cfg.council_term_start_semester || '')}" placeholder="2" class="w-14 border border-[var(--line)] rounded-xl px-2 py-2 text-sm text-center bg-[var(--surface)] text-[var(--ink)]" />
+            <input name="council_term_start_year" value="${esc(cfg.council_term_start_year || '')}" placeholder="2568" class="flex-1 min-w-0 border border-[var(--line)] rounded-xl px-2 py-2 text-sm text-center bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+          <div class="flex gap-2 items-center">
+            <span class="text-xs text-[var(--muted)] flex-shrink-0">สิ้นสุด ภาค/ปี</span>
+            <input name="council_term_end_semester" value="${esc(cfg.council_term_end_semester || '')}" placeholder="2" class="w-14 border border-[var(--line)] rounded-xl px-2 py-2 text-sm text-center bg-[var(--surface)] text-[var(--ink)]" />
+            <input name="council_term_end_year" value="${esc(cfg.council_term_end_year || '')}" placeholder="2569" class="flex-1 min-w-0 border border-[var(--line)] rounded-xl px-2 py-2 text-sm text-center bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
+        <p class="text-sm font-bold text-[var(--ink-2)]">✅ เกณฑ์คุณสมบัติผู้สมัคร</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">เกรดเฉลี่ยขั้นต่ำ (สามัญ)</label>
+            <input type="number" step="0.01" min="0" max="4" name="council_min_gpa" value="${esc(cfg.council_min_gpa || '2.50')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">เกรดเฉลี่ยขั้นต่ำ (ศาสนา)</label>
+            <input type="number" step="0.01" min="0" max="4" name="council_min_gpa_religious" value="${esc(cfg.council_min_gpa_religious || '2.50')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">ระดับชั้นที่สมัครได้ (คั่นด้วย ,)</label>
+          <input name="council_eligible_grade_levels" value="${esc(cfg.council_eligible_grade_levels || 'ม.4,ม.5,ม.6')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+        <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
+          <input type="checkbox" name="council_require_teacher_endorsement" ${cfg.council_require_teacher_endorsement !== 'false' ? 'checked' : ''} class="w-4 h-4" />
+          บังคับให้ครูที่ปรึกษาสามัญรับรองก่อนเข้าสัมภาษณ์
+        </label>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">เปิดรับสมัครตั้งแต่</label>
+            <input type="datetime-local" name="council_apply_opens_at" value="${esc(toDatetimeLocal(cfg.council_apply_opens_at))}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">ปิดรับสมัครเมื่อ</label>
+            <input type="datetime-local" name="council_apply_closes_at" value="${esc(toDatetimeLocal(cfg.council_apply_closes_at))}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
+        <p class="text-sm font-bold text-[var(--ink-2)]">👁️ การมองเห็นระบบ</p>
+        <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
+          <input type="checkbox" name="council_visible_to_all" ${cfg.council_visible_to_all !== 'false' ? 'checked' : ''} class="w-4 h-4" />
+          เปิดให้นักเรียน/ครูทุกคนเห็นเมนูสภานักเรียน
+        </label>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">รหัสนักเรียนที่ทดสอบได้แม้ปิดระบบ (คั่นด้วย , หรือขึ้นบรรทัดใหม่)</label>
+          <textarea name="council_test_student_codes" rows="2" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(cfg.council_test_student_codes || '')}</textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">ข้อความขอบคุณหลังโหวต</label>
+          <textarea name="council_election_thank_you_message" rows="2" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(cfg.council_election_thank_you_message || '')}</textarea>
+        </div>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
+        <p class="text-sm font-bold text-[var(--ink-2)]">✍️ ผู้ลงนามเอกสาร/เกียรติบัตร</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">ครูที่ปรึกษาสภา</label>
+            <input name="council_signer_advisor_name" value="${esc(cfg.council_signer_advisor_name || '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[var(--muted)] mb-1">ผู้อำนวยการโรงเรียน</label>
+            <input name="council_signer_director_name" value="${esc(cfg.council_signer_director_name || '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+        </div>
+      </div>
+
+      <div class="sticky bottom-0 -mx-4 px-4 py-3 bg-[var(--surface)] border-t border-[var(--line)] flex justify-end">
+        <button type="submit" class="px-6 py-2.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">💾 บันทึกการตั้งค่า</button>
+      </div>
+    </form>`
+}
+
+function renderSettingsPositions() {
+  const byGender = {
+    M: ctx.positions.filter(p => p.gender === 'M').sort((a, b) => a.sort_order - b.sort_order),
+    W: ctx.positions.filter(p => p.gender === 'W').sort((a, b) => a.sort_order - b.sort_order),
+  }
+  const section = gender => {
+    const label = gender === 'M' ? '👦 ฝ่ายชาย' : '👧 ฝ่ายหญิง'
+    const rows = byGender[gender].map(p => `
+      <form class="position-row-form flex items-center gap-2 py-2 border-b border-[var(--line-soft)] last:border-0" data-id="${p.id}">
+        <input name="position_name" value="${esc(p.position_name)}" class="flex-1 min-w-0 border border-[var(--line)] rounded-[10px] px-2.5 py-1.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        <input name="seats_count" type="number" min="1" value="${p.seats_count}" class="w-16 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-sm text-center bg-[var(--surface)] text-[var(--ink)]" />
+        ${p.is_elected ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-[var(--gold-soft)] text-[var(--gold-ink)] flex-shrink-0">มาจากเลือกตั้ง</span>' : ''}
+        <button type="submit" class="text-xs font-bold text-[var(--primary)] flex-shrink-0 px-2 py-1.5">บันทึก</button>
+        <button type="button" class="btn-delete-position text-[var(--bad)] flex-shrink-0 px-1 text-lg leading-none" data-id="${p.id}" title="ลบตำแหน่ง">✕</button>
+      </form>`).join('')
+    return `
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+        <p class="text-sm font-bold text-[var(--ink-2)] mb-2">${label}</p>
+        ${rows || '<p class="text-xs text-[var(--muted-2)] py-2">ยังไม่มีตำแหน่ง</p>'}
+        <form class="position-add-form flex gap-2 mt-3" data-gender="${gender}">
+          <input name="position_name" placeholder="เพิ่มตำแหน่งใหม่" class="flex-1 min-w-0 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" required />
+          <input name="seats_count" type="number" min="1" value="1" class="w-16 border border-[var(--line)] rounded-[10px] px-2 py-2 text-xs text-center bg-[var(--surface)] text-[var(--ink)]" />
+          <button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold flex-shrink-0">เพิ่ม</button>
+        </form>
+      </div>`
+  }
+  return `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${section('M')}${section('W')}</div>`
+}
+
+function renderSettingsCriteria() {
+  if (interviewCriteria === null) { loadInterviewCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (endorsementPhrasesAdmin === null) { loadEndorsementPhrasesAdmin(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (evalCriteria === null) { loadEvalCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  const ivTotal = interviewCriteria.reduce((t, c) => t + Number(c.weight), 0)
+  const passThreshold = (ivTotal / 2).toFixed(1)
+
+  const interviewBlock = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-1">🎤 หัวข้อสัมภาษณ์ (รวม ${ivTotal} คะแนน · ผ่านเกณฑ์ที่ ≥ ${passThreshold})</p>
+      <div class="space-y-1.5 mt-2">
+        ${interviewCriteria.map(c => `
+          <div class="flex items-center gap-2 text-xs">
+            <span class="flex-1 text-[var(--ink-2)]">${esc(c.name)}</span>
+            <span class="font-bold text-[var(--muted)]">${c.weight} คะแนน</span>
+            <button type="button" class="btn-remove-interview-criterion text-[var(--bad)] hover:text-[#8a2f22]" data-id="${c.id}">✕</button>
+          </div>`).join('') || '<p class="text-xs text-[var(--muted-2)]">ยังไม่มีหัวข้อ</p>'}
+      </div>
+      <form id="interview-criterion-form" class="flex gap-2 mt-3">
+        <input name="name" placeholder="เพิ่มหัวข้อใหม่" class="flex-1 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" required />
+        <input name="weight" type="number" min="1" value="10" class="w-20 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" required />
+        <button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">เพิ่ม</button>
+      </form>
+    </div>`
+
+  const videoBrief = (() => { try { return JSON.parse(ctx.cfg.council_video_brief || '[]') } catch { return [] } })()
+  const videoBlock = `
+    <form id="settings-video-form" class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4 space-y-2">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-1">🎬 วิดีโอแนะนำตัว</p>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-[var(--muted)]">ความยาวไม่เกิน</span>
+        <input name="council_video_max_minutes" type="number" min="1" value="${esc(ctx.cfg.council_video_max_minutes || '3')}" class="w-16 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs text-center bg-[var(--surface)] text-[var(--ink)]" />
+        <span class="text-xs text-[var(--muted)]">นาที</span>
+      </div>
+      <label class="block text-xs font-medium text-[var(--muted)]">หัวข้อที่ต้องพูด (บรรทัดละ 1 หัวข้อ)</label>
+      <textarea name="council_video_brief" rows="5" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(videoBrief.join('\n'))}</textarea>
+      <button type="submit" class="px-4 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">บันทึก</button>
+    </form>`
+
+  const phraseBlock = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-2">💬 ข้อความสำเร็จรูปของครูที่ปรึกษาสามัญ</p>
+      <div class="space-y-1.5">
+        ${endorsementPhrasesAdmin.map(p => `
+          <div class="flex items-center gap-2 text-xs">
+            <span class="flex-1 text-[var(--ink-2)]">${esc(p.phrase)}</span>
+            <button type="button" class="btn-remove-phrase text-[var(--bad)] hover:text-[#8a2f22]" data-id="${p.id}">✕</button>
+          </div>`).join('') || '<p class="text-xs text-[var(--muted-2)]">ยังไม่มีข้อความ</p>'}
+      </div>
+      <form id="phrase-form" class="flex gap-2 mt-3">
+        <input name="phrase" placeholder="เพิ่มข้อความใหม่" class="flex-1 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" required />
+        <button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">เพิ่ม</button>
+      </form>
+    </div>`
+
+  return `${interviewBlock}${videoBlock}${renderDutyCriteriaEditor()}${phraseBlock}`
+}
+
+function renderSettingsModules() {
+  const modules = getModulesConfig()
+  return `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-1">🧩 เปิด/ปิดโมดูลย่อย</p>
+      <p class="text-xs text-[var(--muted-2)] mb-3">ปิดแล้วเมนู/หน้านั้นจะหายไปทั้งระบบทันที (บันทึกอัตโนมัติเมื่อกดสวิตช์)</p>
+      ${Object.entries(MODULE_LABELS).map(([key, label]) => `
+        <label class="flex items-center justify-between gap-3 py-2 border-b border-[var(--line-soft)] last:border-0">
+          <span class="text-sm text-[var(--ink-2)]">${esc(label)}</span>
+          <input type="checkbox" class="module-toggle w-5 h-5 flex-shrink-0" data-key="${key}" ${modules[key] !== false ? 'checked' : ''} />
+        </label>`).join('')}
+    </div>`
+}
+
+const SETTINGS_TAB_RENDERERS = {
+  general: renderSettingsGeneral, positions: renderSettingsPositions,
+  criteria: renderSettingsCriteria, modules: renderSettingsModules,
+}
+
+function renderSettingsView() {
+  if (!(ctx.isAdmin || ctx.isCouncilAdvisor)) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะแอดมินหรือครูที่ปรึกษาสภาเท่านั้น</p>`
+  if (!SETTINGS_TABS.some(t => t.id === settingsTab)) settingsTab = 'general'
+  return `
+    <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
+      ${SETTINGS_TABS.map(t => `
+        <button type="button" class="settings-tab-btn flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition ${t.id === settingsTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-tab="${t.id}">${esc(t.label)}</button>`).join('')}
+    </div>
+    <div>${SETTINGS_TAB_RENDERERS[settingsTab]()}</div>`
+}
+
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   endorse: renderEndorseView,
@@ -1279,6 +1571,7 @@ const VIEW_RENDERERS = {
   candidates: renderCandidatesView,
   roster: renderRosterView,
   result: renderElectionView,
+  settings: renderSettingsView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
@@ -1407,6 +1700,164 @@ function wireContentEvents() {
   wireNewsEvents()
   wireEvalEvents()
   wireDocsEvents()
+  wireSettingsEvents()
+}
+
+// ─── หน้าตั้งค่า (Phase 2) ──────────────────────────────────────────────────────
+function wireSettingsEvents() {
+  document.querySelectorAll('.settings-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { settingsTab = btn.dataset.tab; render() })
+  })
+
+  document.getElementById('settings-general-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const btn = f.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      const updates = {
+        council_name: f.council_name.value.trim(),
+        council_logo_url: f.council_logo_url.value.trim(),
+        council_theme_side_m: f.council_theme_side_m.value,
+        council_theme_side_w: f.council_theme_side_w.value,
+        council_term_start_semester: f.council_term_start_semester.value.trim(),
+        council_term_start_year: f.council_term_start_year.value.trim(),
+        council_term_end_semester: f.council_term_end_semester.value.trim(),
+        council_term_end_year: f.council_term_end_year.value.trim(),
+        council_min_gpa: f.council_min_gpa.value,
+        council_min_gpa_religious: f.council_min_gpa_religious.value,
+        council_eligible_grade_levels: f.council_eligible_grade_levels.value.trim(),
+        council_require_teacher_endorsement: f.council_require_teacher_endorsement.checked ? 'true' : 'false',
+        council_apply_opens_at: f.council_apply_opens_at.value ? new Date(f.council_apply_opens_at.value).toISOString() : '',
+        council_apply_closes_at: f.council_apply_closes_at.value ? new Date(f.council_apply_closes_at.value).toISOString() : '',
+        council_visible_to_all: f.council_visible_to_all.checked ? 'true' : 'false',
+        council_test_student_codes: f.council_test_student_codes.value.trim(),
+        council_election_thank_you_message: f.council_election_thank_you_message.value.trim(),
+        council_signer_advisor_name: f.council_signer_advisor_name.value.trim(),
+        council_signer_director_name: f.council_signer_director_name.value.trim(),
+      }
+      await updateCouncilConfig(updates)
+      ctx.cfg = { ...ctx.cfg, ...updates }
+      applyBranding(ctx.cfg)
+      showToast('บันทึกการตั้งค่าแล้ว ✅', 'success')
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = '💾 บันทึกการตั้งค่า'
+    }
+  })
+
+  document.querySelectorAll('.position-row-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const id = Number(form.dataset.id)
+      const name = form.position_name.value.trim()
+      const seats = Number(form.seats_count.value)
+      if (!name || !seats) { showToast('กรอกชื่อและจำนวนที่นั่งให้ครบ', 'warning'); return }
+      try {
+        await updateCouncilPosition(id, { position_name: name, seats_count: seats })
+        ctx.positions = await getCouncilPositions()
+        showToast('บันทึกแล้ว ✅', 'success')
+        render()
+      } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+
+  document.querySelectorAll('.btn-delete-position').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบตำแหน่งนี้? (ประวัติสมาชิก/ใบสมัครเดิมจะยังอยู่)')) return
+      try {
+        await deleteCouncilPosition(Number(btn.dataset.id))
+        ctx.positions = await getCouncilPositions()
+        render()
+      } catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+
+  document.querySelectorAll('.position-add-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const gender = form.dataset.gender
+      const name = form.position_name.value.trim()
+      const seats = Number(form.seats_count.value) || 1
+      if (!name) { showToast('กรอกชื่อตำแหน่ง', 'warning'); return }
+      try {
+        await createCouncilPosition({ gender, positionName: name, seatsCount: seats, isElected: false, sortOrder: 999 })
+        ctx.positions = await getCouncilPositions()
+        showToast('เพิ่มตำแหน่งแล้ว ✅', 'success')
+        render()
+      } catch (err) { showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+
+  document.getElementById('interview-criterion-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const name = f.name.value.trim()
+    const weight = Number(f.weight.value)
+    if (!name || !weight) { showToast('กรอกชื่อหัวข้อและคะแนนให้ครบ', 'warning'); return }
+    try {
+      await addInterviewCriterion({ name, weight })
+      interviewCriteria = null
+      render()
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  })
+  document.querySelectorAll('.btn-remove-interview-criterion').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบหัวข้อนี้ออกจากเกณฑ์สัมภาษณ์?')) return
+      try { await removeInterviewCriterion(Number(btn.dataset.id)); interviewCriteria = null; render() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+
+  document.getElementById('settings-video-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const minutes = f.council_video_max_minutes.value.trim()
+    const brief = f.council_video_brief.value.split('\n').map(s => s.trim()).filter(Boolean)
+    try {
+      const updates = { council_video_max_minutes: minutes, council_video_brief: JSON.stringify(brief) }
+      await updateCouncilConfig(updates)
+      ctx.cfg = { ...ctx.cfg, ...updates }
+      showToast('บันทึกแล้ว ✅', 'success')
+      render()
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  })
+
+  document.getElementById('phrase-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const phrase = f.phrase.value.trim()
+    if (!phrase) return
+    try {
+      await addEndorsementPhrase({ phrase, sortOrder: endorsementPhrasesAdmin?.length ?? 0 })
+      endorsementPhrasesAdmin = null
+      render()
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  })
+  document.querySelectorAll('.btn-remove-phrase').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบข้อความนี้?')) return
+      try { await removeEndorsementPhrase(Number(btn.dataset.id)); endorsementPhrasesAdmin = null; render() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+
+  document.querySelectorAll('.module-toggle').forEach(chk => {
+    chk.addEventListener('change', async () => {
+      const modules = getModulesConfig()
+      modules[chk.dataset.key] = chk.checked
+      try {
+        await updateCouncilConfig({ council_modules: JSON.stringify(modules) })
+        ctx.cfg = { ...ctx.cfg, council_modules: JSON.stringify(modules) }
+        showToast(chk.checked ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว', 'success')
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        chk.checked = !chk.checked
+      }
+    })
+  })
 }
 
 // ─── เอกสารขออนุมัติโครงการ/กิจกรรม ─────────────────────────────────────────────
