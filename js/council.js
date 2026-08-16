@@ -48,8 +48,23 @@ const APPLICATION_STATUS_LABEL = {
 
 let ctx = null
 let activeView = 'overview'
-let showApplyForm = false
+// ─── สมัครสภานักเรียน — wizard 4 ขั้น (สเปคข้อ 8.2) ─────────────────────────────
+let showApplyForm = false // true = กำลังแสดง wizard (แทนปุ่มเปิดฟอร์ม)
+let applyStep = 1 // 1 เลือกตำแหน่ง / 2 เกรด+แรงจูงใจ / 3 รูปถ่าย / 4 วิดีโอแนะนำตัว
+let applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '' }
 let applyPhotoFile = null
+let applyPhotoPreviewUrl = null // object URL สำหรับพรีวิวรูปก่อนอัปโหลดจริง
+let showApplyConfirm = false // ป๊อบอัพสรุปยืนยันก่อน insert จริง
+
+function resetApplyWizard() {
+  showApplyForm = false
+  applyStep = 1
+  applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '' }
+  applyPhotoFile = null
+  if (applyPhotoPreviewUrl) URL.revokeObjectURL(applyPhotoPreviewUrl)
+  applyPhotoPreviewUrl = null
+  showApplyConfirm = false
+}
 
 // "สมัคร" กับ "เลือกตั้ง" ไม่ใช่แท็บถาวรในเมนูหลัก (นั่นมีไว้สำหรับ "ดูภาพรวมสภานักเรียน"
 // เท่านั้น) — ทั้งคู่เป็นปุ่มเข้าใช้งานบนหน้าภาพรวม กดแล้วเปิดเป็นโฟลว์เต็มจอที่มีแท็บย่อย
@@ -551,31 +566,146 @@ function renderApplyView() {
       </button>`
   }
 
+  const stepBody = applyStep === 1 ? renderApplyStep1(openPositions)
+    : applyStep === 2 ? renderApplyStep2()
+    : applyStep === 3 ? renderApplyStep3()
+    : renderApplyStep4()
+
   return `
     <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4">
-      <p class="text-sm font-bold text-[var(--primary-dark)] mb-3">📝 ใบสมัครสภานักเรียน${GENDER_LABEL[gender]}</p>
-      <form id="apply-form" class="space-y-3">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-sm font-bold text-[var(--primary-dark)]">📝 ใบสมัครสภานักเรียน${GENDER_LABEL[gender]}</p>
+        <button type="button" id="btn-cancel-apply" class="text-xs text-[var(--muted)] hover:text-[var(--bad)]">ยกเลิก ✕</button>
+      </div>
+      ${renderApplyProgress()}
+      ${stepBody}
+    </div>
+    ${showApplyConfirm ? renderApplyConfirmModal() : ''}`
+}
+
+const APPLY_STEP_LABELS = ['เลือกตำแหน่ง', 'เกรดเฉลี่ย & แรงจูงใจ', 'รูปถ่าย', 'วิดีโอแนะนำตัว']
+
+function renderApplyProgress() {
+  return `
+    <div class="flex items-center gap-1.5 mb-3">
+      ${[1, 2, 3, 4].map(n => `<div class="flex-1 h-1.5 rounded-full ${n <= applyStep ? 'bg-[var(--primary)]' : 'bg-[var(--line-soft)]'}"></div>`).join('')}
+    </div>
+    <p class="text-xs font-bold text-[var(--muted)] mb-3">ขั้นตอนที่ ${applyStep}/4 · ${APPLY_STEP_LABELS[applyStep - 1]}</p>`
+}
+
+function renderApplyStep1(openPositions) {
+  return `
+    <form id="apply-step1-form" class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">ตำแหน่งที่สมัคร <span class="text-[var(--bad)]">*</span></label>
+        <select name="positionId" required class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]">
+          <option value="">— เลือกตำแหน่ง —</option>
+          ${openPositions.map(p => `<option value="${p.id}" ${applyData.positionId === String(p.id) ? 'selected' : ''}>${esc(p.position_name)}</option>`).join('')}
+        </select>
+        ${!openPositions.length ? '<p class="text-xs text-[var(--gold-ink)] mt-1.5">ไม่มีตำแหน่งเปิดรับในขณะนี้</p>' : ''}
+      </div>
+      <button type="submit" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold" ${!openPositions.length ? 'disabled' : ''}>ถัดไป →</button>
+    </form>`
+}
+
+function renderApplyStep2() {
+  const minGpa = ctx.cfg.council_min_gpa || '2.50'
+  const minGpaRel = ctx.cfg.council_min_gpa_religious || '2.50'
+  return `
+    <form id="apply-step2-form" class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">ตำแหน่งที่สมัคร <span class="text-[var(--bad)]">*</span></label>
-          <select id="apply-position" required class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
-            <option value="">— เลือกตำแหน่ง —</option>
-            ${openPositions.map(p => `<option value="${p.id}">${esc(p.position_name)}</option>`).join('')}
-          </select>
+          <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">เกรดเฉลี่ยสามัญ <span class="text-[var(--bad)]">*</span></label>
+          <input name="gpaGeneral" type="number" step="0.01" min="0" max="4" required value="${esc(applyData.gpaGeneral)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          <p class="text-[11px] text-[var(--muted-2)] mt-1">ต้อง ≥ ${esc(minGpa)}</p>
         </div>
         <div>
-          <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">แรงจูงใจ / นโยบาย <span class="text-[var(--bad)]">*</span></label>
-          <textarea id="apply-motivation" required rows="4" placeholder="เล่าเหตุผลที่อยากสมัคร หรือแนวทางที่จะทำถ้าได้รับเลือก"
-            class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
+          <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">เกรดเฉลี่ยศาสนา <span class="text-[var(--bad)]">*</span></label>
+          <input name="gpaReligious" type="number" step="0.01" min="0" max="4" required value="${esc(applyData.gpaReligious)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          <p class="text-[11px] text-[var(--muted-2)] mt-1">ต้อง ≥ ${esc(minGpaRel)}</p>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">รูปภาพ (ถ้ามี)</label>
-          <input id="apply-photo" type="file" accept="image/*" class="w-full text-xs" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">แรงจูงใจ / นโยบาย <span class="text-[var(--bad)]">*</span></label>
+        <textarea name="motivation" required rows="4" placeholder="เล่าเหตุผลที่อยากสมัคร หรือแนวทางที่จะทำถ้าได้รับเลือก (อย่างน้อย 10 ตัวอักษร)"
+          class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(applyData.motivation)}</textarea>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
+        <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ถัดไป →</button>
+      </div>
+    </form>`
+}
+
+function renderApplyStep3() {
+  return `
+    <div class="space-y-3">
+      <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">รูปถ่าย <span class="text-[var(--bad)]">*</span></label>
+      ${applyPhotoPreviewUrl ? `<img src="${applyPhotoPreviewUrl}" class="w-24 h-32 rounded-[10px] object-cover border-2 border-white shadow-[0_3px_9px_rgba(23,32,42,.15),0_0_0_1px_var(--line)]" />` : ''}
+      <input id="apply-photo" type="file" accept="image/*" class="w-full text-xs" />
+      <p class="text-[11px] text-[var(--muted-2)]">ใช้รูปหน้าตรง ชัดเจน — ระบบจะย่อขนาดให้อัตโนมัติ</p>
+      <div class="flex gap-2 pt-1">
+        <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
+        <button type="button" id="btn-apply-step3-next" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ถัดไป →</button>
+      </div>
+    </div>`
+}
+
+function renderApplyStep4() {
+  const brief = (() => { try { return JSON.parse(ctx.cfg.council_video_brief || '[]') } catch { return [] } })()
+  const maxMin = ctx.cfg.council_video_max_minutes || '3'
+  return `
+    <form id="apply-step4-form" class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold text-[var(--muted)] mb-1.5">ลิงก์วิดีโอแนะนำตัว <span class="text-[var(--bad)]">*</span></label>
+        <input name="videoUrl" type="url" required placeholder="https://..." value="${esc(applyData.videoUrl)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        <p class="text-[11px] text-[var(--muted-2)] mt-1">ความยาวไม่เกิน ${esc(maxMin)} นาที (ลิงก์ YouTube/Google Drive/TikTok ที่เปิดดูได้)</p>
+      </div>
+      ${brief.length ? `
+        <div class="bg-[var(--primary-soft)] border border-[var(--primary-soft-line)] rounded-xl p-3">
+          <p class="text-xs font-bold text-[var(--primary-dark)] mb-1.5">🎬 หัวข้อที่ควรพูดถึงในวิดีโอ</p>
+          <ul class="text-xs text-[var(--ink-2)] space-y-1 list-disc list-inside">
+            ${brief.map(b => `<li>${esc(b)}</li>`).join('')}
+          </ul>
+        </div>` : ''}
+      <div class="flex gap-2 pt-1">
+        <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
+        <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ตรวจสอบและยืนยัน →</button>
+      </div>
+    </form>`
+}
+
+// ป๊อบอัพสรุปข้อมูลก่อนส่งจริง (สเปคข้อ 8.2 — insert เมื่อกด "ยืนยันการสมัคร" เท่านั้น)
+function renderApplyConfirmModal() {
+  const position = ctx.positions.find(p => p.id === Number(applyData.positionId))
+  const s = ctx.student
+  return `
+    <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="apply-confirm-backdrop">
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_8px_28px_rgba(11,20,16,0.25)] max-w-md w-full max-h-[85vh] overflow-y-auto p-5">
+        <p class="text-base font-bold text-[var(--ink)] mb-3">📋 ตรวจสอบก่อนส่งใบสมัคร</p>
+        <div class="space-y-2.5 text-sm">
+          <div class="flex items-center gap-3 pb-2.5 border-b border-[var(--line-soft)]">
+            ${applyPhotoPreviewUrl ? `<img src="${applyPhotoPreviewUrl}" class="w-12 h-16 rounded-[10px] object-cover border-2 border-white shadow-[0_3px_9px_rgba(23,32,42,.15),0_0_0_1px_var(--line)] flex-shrink-0" />` : ''}
+            <div class="min-w-0">
+              <p class="font-bold text-[var(--ink)] truncate">${esc(s?.full_name ?? '—')}</p>
+              <p class="text-xs text-[var(--muted-2)]">${esc(s?.student_code ?? '')} · ${esc(s?.main_room ?? '')}</p>
+            </div>
+          </div>
+          <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">ตำแหน่ง</span><span class="font-bold text-[var(--ink)] text-right">${esc(position?.position_name ?? '—')}</span></div>
+          <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">เกรดสามัญ</span><span class="font-bold text-[var(--ink)]">${esc(applyData.gpaGeneral)}</span></div>
+          <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">เกรดศาสนา</span><span class="font-bold text-[var(--ink)]">${esc(applyData.gpaReligious)}</span></div>
+          <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">รูปถ่าย</span><span class="font-bold ${applyPhotoFile ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}">${applyPhotoFile ? '✅ แนบแล้ว' : '❌ ยังไม่ได้แนบ'}</span></div>
+          <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">วิดีโอ</span><span class="font-bold text-[var(--ink)] truncate">${esc(applyData.videoUrl)}</span></div>
+          <div>
+            <p class="text-[var(--muted)] mb-1">แรงจูงใจ</p>
+            <p class="text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(applyData.motivation)}</p>
+          </div>
         </div>
-        <div class="flex gap-2 pt-1">
-          <button type="button" id="btn-cancel-apply" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">ยกเลิก</button>
-          <button type="submit" id="btn-submit-apply" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ส่งใบสมัคร</button>
+        <div class="flex gap-2 pt-4 mt-3 border-t border-[var(--line-soft)]">
+          <button type="button" id="btn-apply-edit" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">✏️ แก้ไข</button>
+          <button type="button" id="btn-apply-confirm-submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">✅ ยืนยันการสมัคร</button>
         </div>
-      </form>
+      </div>
     </div>`
 }
 
@@ -845,9 +975,11 @@ function renderEndorseView() {
         <div class="min-w-0 flex-1">
           <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
           <p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · สมัคร${esc(a.council_positions?.position_name ?? '—')}</p>
+          ${a.gpa_general != null || a.gpa_religious != null ? `<p class="text-xs text-[var(--muted)] mt-0.5">เกรดสามัญ ${esc(a.gpa_general ?? '—')} · เกรดศาสนา ${esc(a.gpa_religious ?? '—')}</p>` : ''}
         </div>
       </div>
       ${a.motivation ? `<p class="text-xs text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(a.motivation)}</p>` : ''}
+      ${a.intro_video_url ? `<a href="${esc(a.intro_video_url)}" target="_blank" rel="noopener" class="inline-block text-xs font-bold text-[var(--primary)] hover:underline">🎬 ดูวิดีโอแนะนำตัว</a>` : ''}
       <div class="flex flex-wrap gap-1.5">
         ${ctx.endorsementPhrases.map(p => `
           <button type="button" class="endorse-phrase-chip text-[11px] px-2.5 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)] hover:bg-[var(--primary-soft)] hover:border-[var(--primary-45)] text-[var(--ink-2)] transition"
@@ -1622,7 +1754,7 @@ function renderFullscreenFlow() {
     </div>`
 
   document.getElementById('btn-flow-close').addEventListener('click', () => {
-    fullscreenFlow = null; flowSubtab = null; showApplyForm = false; applyPhotoFile = null; render()
+    fullscreenFlow = null; flowSubtab = null; resetApplyWizard(); render()
   })
   document.querySelectorAll('.flow-subtab-btn').forEach(btn => {
     btn.addEventListener('click', () => { flowSubtab = btn.dataset.subtab; render() })
@@ -1642,39 +1774,94 @@ function wireContentEvents() {
     render()
   })
   document.getElementById('btn-cancel-apply')?.addEventListener('click', () => {
-    showApplyForm = false
-    applyPhotoFile = null
+    resetApplyWizard()
+    render()
+  })
+  document.getElementById('btn-apply-back')?.addEventListener('click', () => {
+    applyStep = Math.max(1, applyStep - 1)
+    render()
+  })
+  document.getElementById('apply-step1-form')?.addEventListener('submit', e => {
+    e.preventDefault()
+    const positionId = e.target.positionId.value
+    if (!positionId) { showToast('กรุณาเลือกตำแหน่ง', 'warning'); return }
+    applyData.positionId = positionId
+    applyStep = 2
+    render()
+  })
+  document.getElementById('apply-step2-form')?.addEventListener('submit', e => {
+    e.preventDefault()
+    const f = e.target
+    const gpaGeneral = f.gpaGeneral.value
+    const gpaReligious = f.gpaReligious.value
+    const motivation = f.motivation.value.trim()
+    const gGeneral = Number(gpaGeneral), gReligious = Number(gpaReligious)
+    if (!gpaGeneral || !gpaReligious || gGeneral < 0 || gGeneral > 4 || gReligious < 0 || gReligious > 4) {
+      showToast('กรอกเกรดเฉลี่ยให้ถูกต้อง (0.00–4.00)', 'warning'); return
+    }
+    const minGpa = Number(ctx.cfg.council_min_gpa || 2.5)
+    const minGpaRel = Number(ctx.cfg.council_min_gpa_religious || 2.5)
+    if (gGeneral < minGpa || gReligious < minGpaRel) {
+      showToast(`เกรดเฉลี่ยไม่ถึงเกณฑ์ขั้นต่ำ (สามัญ ≥ ${minGpa}, ศาสนา ≥ ${minGpaRel})`, 'warning'); return
+    }
+    if (motivation.length < 10) { showToast('กรุณากรอกแรงจูงใจอย่างน้อย 10 ตัวอักษร', 'warning'); return }
+    applyData.gpaGeneral = gpaGeneral
+    applyData.gpaReligious = gpaReligious
+    applyData.motivation = motivation
+    applyStep = 3
     render()
   })
   document.getElementById('apply-photo')?.addEventListener('change', e => {
-    applyPhotoFile = e.target.files?.[0] ?? null
+    const file = e.target.files?.[0] ?? null
+    applyPhotoFile = file
+    if (applyPhotoPreviewUrl) URL.revokeObjectURL(applyPhotoPreviewUrl)
+    applyPhotoPreviewUrl = file ? URL.createObjectURL(file) : null
+    render()
   })
-  document.getElementById('apply-form')?.addEventListener('submit', async e => {
+  document.getElementById('btn-apply-step3-next')?.addEventListener('click', () => {
+    if (!applyPhotoFile) { showToast('กรุณาแนบรูปถ่าย', 'warning'); return }
+    applyStep = 4
+    render()
+  })
+  document.getElementById('apply-step4-form')?.addEventListener('submit', e => {
     e.preventDefault()
-    const positionId = document.getElementById('apply-position').value
-    const motivation = document.getElementById('apply-motivation').value.trim()
-    if (!positionId || !motivation) { showToast('กรุณากรอกให้ครบ', 'warning'); return }
-
-    const btn = document.getElementById('btn-submit-apply')
+    const videoUrl = e.target.videoUrl.value.trim()
+    if (!/^https?:\/\//.test(videoUrl)) { showToast('กรุณาใส่ลิงก์วิดีโอที่ถูกต้อง (ขึ้นต้นด้วย http:// หรือ https://)', 'warning'); return }
+    applyData.videoUrl = videoUrl
+    showApplyConfirm = true
+    render()
+  })
+  document.getElementById('btn-apply-edit')?.addEventListener('click', () => {
+    showApplyConfirm = false
+    render()
+  })
+  document.getElementById('apply-confirm-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'apply-confirm-backdrop') { showApplyConfirm = false; render() }
+  })
+  document.getElementById('btn-apply-confirm-submit')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-apply-confirm-submit')
     btn.disabled = true; btn.textContent = 'กำลังส่ง...'
     try {
       let photoUrl = null
       if (applyPhotoFile) photoUrl = await uploadCouncilApplicationPhoto(ctx.student.id, applyPhotoFile)
       await submitCouncilApplication({
         studentId: ctx.student.id,
-        positionId: Number(positionId),
+        positionId: Number(applyData.positionId),
         academicYear: Number(ctx.cfg.academicYear) || new Date().getFullYear() + 543,
-        motivation,
+        motivation: applyData.motivation,
         photoUrl,
+        gpaGeneral: Number(applyData.gpaGeneral),
+        gpaReligious: Number(applyData.gpaReligious),
+        introVideoUrl: applyData.videoUrl,
       })
       showToast('ส่งใบสมัครสำเร็จ ✅', 'success')
-      showApplyForm = false
-      applyPhotoFile = null
+      resetApplyWizard()
       await refreshMyApplications()
+      flowSubtab = 'mine'
       render()
     } catch (err) {
       showToast('ส่งใบสมัครไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      btn.disabled = false; btn.textContent = 'ส่งใบสมัคร'
+      btn.disabled = false; btn.textContent = '✅ ยืนยันการสมัคร'
     }
   })
 

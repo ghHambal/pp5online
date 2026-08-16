@@ -125,11 +125,12 @@ export async function getMyCouncilMembership(studentId) {
   return data ?? []
 }
 
-// ─── สมัครสภานักเรียน ──────────────────────────────────────────────────────
-export async function submitCouncilApplication({ studentId, positionId, academicYear, motivation, photoUrl }) {
+// ─── สมัครสภานักเรียน — wizard 4 ขั้น (สเปคข้อ 8.2) ────────────────────────────
+export async function submitCouncilApplication({ studentId, positionId, academicYear, motivation, photoUrl, gpaGeneral, gpaReligious, introVideoUrl }) {
   const { error } = await supabase.from('council_applications').insert({
     student_id: studentId, position_id: positionId, academic_year: academicYear,
     motivation, photo_url: photoUrl,
+    gpa_general: gpaGeneral, gpa_religious: gpaReligious, intro_video_url: introVideoUrl,
   })
   if (error) throw error
 }
@@ -140,7 +141,7 @@ export async function submitCouncilApplication({ studentId, positionId, academic
 export async function getPendingEndorsements(mainRooms) {
   if (!mainRooms?.length) return []
   const { data, error } = await supabase.from('council_applications')
-    .select('id, position_id, motivation, photo_url, status, created_at, council_positions(position_name, gender), students(id, full_name, student_code, main_room, image_url, photo_url)')
+    .select('id, position_id, motivation, photo_url, status, created_at, gpa_general, gpa_religious, intro_video_url, council_positions(position_name, gender), students(id, full_name, student_code, main_room, image_url, photo_url)')
     .eq('status', 'pending').is('endorsed_at', null)
     .order('created_at')
   if (error) throw error
@@ -171,6 +172,7 @@ export async function declineApplicationEndorsement({ applicationId, teacherId, 
 export async function getCouncilApplicationsForAdmin(academicYear) {
   let q = supabase.from('council_applications')
     .select(`id, position_id, status, motivation, photo_url, academic_year, created_at,
+      gpa_general, gpa_religious, intro_video_url,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
       council_positions(id, position_name, gender, is_elected),
       students(id, full_name, student_code, main_room, image_url, photo_url),
