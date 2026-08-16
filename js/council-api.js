@@ -175,6 +175,7 @@ export async function getCouncilApplicationsForAdmin(academicYear) {
     .select(`id, position_id, status, motivation, photo_url, academic_year, created_at,
       gpa_general, gpa_religious, intro_video_url,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
+      teachers(full_name),
       council_positions(id, position_name, gender, is_elected),
       students(id, full_name, student_code, main_room, image_url, photo_url, profile_id),
       council_interviews(id, scheduled_at, location, interviewer_teacher_id, result, score, scores, comment),

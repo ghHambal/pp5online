@@ -1087,7 +1087,7 @@ function renderAdminAppDetailModal() {
             ${videoEmbedHtml(a.intro_video_url)}
           </div>` : ''}
           <div>
-            <p class="text-xs font-bold text-[var(--muted)] mb-1">✅ ความเห็นครูที่ปรึกษาสามัญ</p>
+            <p class="text-xs font-bold text-[var(--muted)] mb-1">✅ ความเห็นครูที่ปรึกษาสามัญ${a.teachers?.full_name ? ' — ' + esc(a.teachers.full_name) : ''}</p>
             ${a.endorsement_comment
               ? `<p class="text-[#106143] bg-[var(--ok-soft)] rounded-xl p-3">${esc(a.endorsement_comment)}</p>`
               : `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">ยังไม่ได้รับรอง</p>`}
