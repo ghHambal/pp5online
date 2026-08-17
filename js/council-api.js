@@ -111,7 +111,7 @@ export async function getCouncilElectionConfigs(academicYear) {
 // ─── ใบสมัคร/สมาชิกภาพของตัวเอง (นักเรียน) ────────────────────────────────────
 export async function getMyCouncilApplications(studentId) {
   const { data, error } = await supabase.from('council_applications')
-    .select('id, position_id, status, motivation, photo_url, created_at, council_positions(position_name, gender, is_elected)')
+    .select('id, position_id, status, motivation, photo_url, created_at, intro_video_url, certificates, council_positions(position_name, gender, is_elected)')
     .eq('student_id', studentId).order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
@@ -125,12 +125,13 @@ export async function getMyCouncilMembership(studentId) {
   return data ?? []
 }
 
-// ─── สมัครสภานักเรียน — wizard 4 ขั้น (สเปคข้อ 8.2) ────────────────────────────
-export async function submitCouncilApplication({ studentId, positionId, academicYear, motivation, photoUrl, gpaGeneral, gpaReligious, introVideoUrl }) {
+// ─── สมัครสภานักเรียน — wizard 5 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
+export async function submitCouncilApplication({ studentId, positionId, academicYear, motivation, photoUrl, gpaGeneral, gpaReligious, introVideoUrl, certificates }) {
   const { error } = await supabase.from('council_applications').insert({
     student_id: studentId, position_id: positionId, academic_year: academicYear,
     motivation, photo_url: photoUrl,
     gpa_general: gpaGeneral, gpa_religious: gpaReligious, intro_video_url: introVideoUrl,
+    certificates: certificates ?? [],
   })
   if (error) throw error
 }
@@ -196,7 +197,7 @@ export async function submitPeerEndorsement({ applicationId, memberId, comment }
 export async function getCouncilApplicationsForAdmin(academicYear) {
   let q = supabase.from('council_applications')
     .select(`id, position_id, status, motivation, photo_url, academic_year, created_at,
-      gpa_general, gpa_religious, intro_video_url,
+      gpa_general, gpa_religious, intro_video_url, certificates,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
       peer_endorsed_by_member_id, peer_endorsement_comment, peer_endorsed_at,
       teachers(full_name),

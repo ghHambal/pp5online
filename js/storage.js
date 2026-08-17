@@ -104,6 +104,16 @@ export async function uploadCouncilTeacherSignature(teacherId, fileOrBlob) {
   return uploadFile('system-assets', `council/signatures/${teacherId}/${key}.jpg`, blob)
 }
 
+// เกียรติบัตร/รางวัลแนบตอนสมัครสภานักเรียน — รับได้ทั้งรูปภาพ (บีบอัด) และ PDF (เก็บไฟล์ต้นฉบับตรงๆ ไม่ผ่าน canvas)
+export async function uploadCouncilCertificate(studentId, file) {
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  if (file.type === 'application/pdf') {
+    return uploadFile('system-assets', `council/certificates/${studentId}/${key}.pdf`, file, 'application/pdf')
+  }
+  const blob = await compressImage(file, { maxWidth: 1200, quality: 0.85 })
+  return uploadFile('system-assets', `council/certificates/${studentId}/${key}.jpg`, blob)
+}
+
 export async function uploadCouncilTeacherPhoto(teacherId, file) {
   const blob = await compressImage(file, { maxWidth: 600, quality: 0.85 })
   const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`

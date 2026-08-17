@@ -3,7 +3,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
-import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto } from './storage.js'
+import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate } from './storage.js'
 import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
 import QRCode from 'qrcode'
 import {
@@ -59,12 +59,17 @@ const APPLICATION_STATUS_LABEL = {
 
 let ctx = null
 let activeView = 'overview'
-// ─── สมัครสภานักเรียน — wizard 4 ขั้น (สเปคข้อ 8.2) ─────────────────────────────
+// ─── สมัครสภานักเรียน — wizard 5 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
 let showApplyForm = false // true = กำลังแสดง wizard (แทนปุ่มเปิดฟอร์ม)
-let applyStep = 1 // 1 เลือกตำแหน่ง / 2 เกรด+แรงจูงใจ / 3 รูปถ่าย / 4 วิดีโอแนะนำตัว
+let applyStep = 1 // 1 เลือกตำแหน่ง / 2 เกรด+แรงจูงใจ / 3 รูปถ่าย / 4 วิดีโอแนะนำตัว / 5 เกียรติบัตร/รางวัล
 let applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '' }
 let applyPhotoFile = null
 let applyPhotoPreviewUrl = null // object URL สำหรับพรีวิวรูปก่อนอัปโหลดจริง
+const MIN_APPLY_CERTIFICATES = 5
+function newBlankCertificateSlots(n) {
+  return Array.from({ length: n }, () => ({ file: null, title: '', previewUrl: null, isPdf: false }))
+}
+let applyCertificates = newBlankCertificateSlots(MIN_APPLY_CERTIFICATES) // { file, title, previewUrl, isPdf } — ต้องมี ≥5 รายการที่มีไฟล์+ชื่อครบถึงจะสมัครได้ (บังคับ ตามที่ผู้ใช้ยืนยัน)
 let showApplyConfirm = false // ป๊อบอัพสรุปยืนยันก่อน insert จริง
 
 function resetApplyWizard() {
@@ -74,6 +79,8 @@ function resetApplyWizard() {
   applyPhotoFile = null
   if (applyPhotoPreviewUrl) URL.revokeObjectURL(applyPhotoPreviewUrl)
   applyPhotoPreviewUrl = null
+  applyCertificates.forEach(c => { if (c.previewUrl) URL.revokeObjectURL(c.previewUrl) })
+  applyCertificates = newBlankCertificateSlots(MIN_APPLY_CERTIFICATES)
   showApplyConfirm = false
 }
 
@@ -630,7 +637,8 @@ function renderApplyView() {
   const stepBody = applyStep === 1 ? renderApplyStep1(openPositions)
     : applyStep === 2 ? renderApplyStep2()
     : applyStep === 3 ? renderApplyStep3()
-    : renderApplyStep4()
+    : applyStep === 4 ? renderApplyStep4()
+    : renderApplyStep5()
 
   return `
     <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4">
@@ -644,14 +652,14 @@ function renderApplyView() {
     ${showApplyConfirm ? renderApplyConfirmModal() : ''}`
 }
 
-const APPLY_STEP_LABELS = ['เลือกตำแหน่ง', 'เกรดเฉลี่ย & แรงจูงใจ', 'รูปถ่าย', 'วิดีโอแนะนำตัว']
+const APPLY_STEP_LABELS = ['เลือกตำแหน่ง', 'เกรดเฉลี่ย & แรงจูงใจ', 'รูปถ่าย', 'วิดีโอแนะนำตัว', 'เกียรติบัตร/รางวัล']
 
 function renderApplyProgress() {
   return `
     <div class="flex items-center gap-1.5 mb-3">
-      ${[1, 2, 3, 4].map(n => `<div class="flex-1 h-1.5 rounded-full ${n <= applyStep ? 'bg-[var(--primary)]' : 'bg-[var(--line-soft)]'}"></div>`).join('')}
+      ${[1, 2, 3, 4, 5].map(n => `<div class="flex-1 h-1.5 rounded-full ${n <= applyStep ? 'bg-[var(--primary)]' : 'bg-[var(--line-soft)]'}"></div>`).join('')}
     </div>
-    <p class="text-xs font-bold text-[var(--muted)] mb-3">ขั้นตอนที่ ${applyStep}/4 · ${APPLY_STEP_LABELS[applyStep - 1]}</p>`
+    <p class="text-xs font-bold text-[var(--muted)] mb-3">ขั้นตอนที่ ${applyStep}/5 · ${APPLY_STEP_LABELS[applyStep - 1]}</p>`
 }
 
 function renderApplyStep1(openPositions) {
@@ -731,9 +739,41 @@ function renderApplyStep4() {
         </div>` : ''}
       <div class="flex gap-2 pt-1">
         <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
-        <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ตรวจสอบและยืนยัน →</button>
+        <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ถัดไป →</button>
       </div>
     </form>`
+}
+
+function renderApplyStep5() {
+  const validCount = applyCertificates.filter(c => c.file && c.title.trim()).length
+  const itemCard = (c, i) => `
+    <div class="rounded-xl border border-[var(--line)] p-3 space-y-2" data-cert-idx="${i}">
+      <div class="flex items-center justify-between">
+        <p class="text-xs font-bold text-[var(--muted)]">รายการที่ ${i + 1}</p>
+        ${applyCertificates.length > 1 ? `<button type="button" class="btn-remove-cert text-xs text-[var(--bad)]" data-idx="${i}">🗑️ ลบ</button>` : ''}
+      </div>
+      <input type="text" class="cert-title-input w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm bg-[var(--surface)] text-[var(--ink)]"
+        placeholder="ชื่อรางวัล/กิจกรรม เช่น รางวัลชนะเลิศการแข่งขันโต้วาทีระดับจังหวัด" data-idx="${i}" value="${esc(c.title)}" />
+      <div class="flex items-center gap-2">
+        ${c.file ? (c.isPdf
+          ? `<span class="w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] flex items-center justify-center text-lg flex-shrink-0">📄</span>`
+          : `<img src="${c.previewUrl}" class="w-10 h-10 rounded-lg object-cover border border-[var(--line)] flex-shrink-0" />`) : ''}
+        <input type="file" accept="image/*,.pdf,application/pdf" class="cert-file-input text-xs flex-1 min-w-0" data-idx="${i}" />
+      </div>
+    </div>`
+  return `
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-semibold text-[var(--muted)] mb-1">เกียรติบัตร/รางวัลจากการแข่งขันหรือกิจกรรมนอกโรงเรียน <span class="text-[var(--bad)]">*</span></label>
+        <p class="text-[0.6875rem] ${validCount >= MIN_APPLY_CERTIFICATES ? 'text-[var(--ok)]' : 'text-[var(--muted-2)]'}">แนบได้ทั้งรูปภาพและไฟล์ PDF — ต้องมีอย่างน้อย ${MIN_APPLY_CERTIFICATES} รายการ (ตอนนี้ครบ ${validCount}/${MIN_APPLY_CERTIFICATES})</p>
+      </div>
+      <div class="space-y-2.5">${applyCertificates.map(itemCard).join('')}</div>
+      <button type="button" id="btn-add-cert" class="w-full py-2 rounded-xl border border-dashed border-[var(--line)] text-xs font-bold text-[var(--muted)] hover:bg-[var(--surface-2)]">＋ เพิ่มรายการ</button>
+      <div class="flex gap-2 pt-1">
+        <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
+        <button type="button" id="btn-apply-step5-next" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ตรวจสอบและยืนยัน →</button>
+      </div>
+    </div>`
 }
 
 // ป๊อบอัพสรุปข้อมูลก่อนส่งจริง (สเปคข้อ 8.2 — insert เมื่อกด "ยืนยันการสมัคร" เท่านั้น)
@@ -757,6 +797,7 @@ function renderApplyConfirmModal() {
           <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">เกรดศาสนา</span><span class="font-bold text-[var(--ink)]">${esc(applyData.gpaReligious)}</span></div>
           <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">รูปถ่าย</span><span class="font-bold ${applyPhotoFile ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}">${applyPhotoFile ? '✅ แนบแล้ว' : '❌ ยังไม่ได้แนบ'}</span></div>
           <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">วิดีโอ</span><span class="font-bold text-[var(--ink)] truncate">${esc(applyData.videoUrl)}</span></div>
+          <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">เกียรติบัตร/รางวัล</span><span class="font-bold text-[var(--ok)]">✅ ${applyCertificates.filter(c => c.file && c.title.trim()).length} รายการ</span></div>
           <div>
             <p class="text-[var(--muted)] mb-1">แรงจูงใจ</p>
             <p class="text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(applyData.motivation)}</p>
@@ -789,6 +830,7 @@ function renderMyApplicationsList() {
             <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.council_positions?.position_name ?? '—')}</p>
             <p class="text-xs text-[var(--muted-2)]">${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
             ${a.motivation ? `<p class="text-xs text-[var(--muted)] mt-1">${esc(a.motivation)}</p>` : ''}
+            ${a.certificates?.length ? `<p class="text-[0.6875rem] text-[var(--muted-2)] mt-1">🏅 แนบเกียรติบัตร ${a.certificates.length} รายการ</p>` : ''}
           </div>
           <span class="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--bg-2)] text-[var(--ink-2)]">${esc(APPLICATION_STATUS_LABEL[a.status] ?? a.status)}</span>
         </div>`).join('')}
@@ -1149,6 +1191,19 @@ function renderAdminAppDetailModal() {
           <div>
             <p class="text-xs font-bold text-[var(--muted)] mb-1">🎬 วิดีโอแนะนำตัว</p>
             ${videoEmbedHtml(a.intro_video_url)}
+          </div>` : ''}
+          ${a.certificates?.length ? `
+          <div>
+            <p class="text-xs font-bold text-[var(--muted)] mb-1.5">🏅 เกียรติบัตร/รางวัล (${a.certificates.length} รายการ)</p>
+            <div class="grid grid-cols-3 gap-2">
+              ${a.certificates.map(c => `
+                <a href="${esc(c.url)}" target="_blank" rel="noopener" class="block rounded-lg border border-[var(--line)] overflow-hidden hover:border-[var(--primary-45)]">
+                  ${(c.url ?? '').endsWith('.pdf')
+                    ? `<div class="aspect-square bg-[var(--surface-2)] flex items-center justify-center text-2xl">📄</div>`
+                    : `<img src="${esc(c.url)}" class="aspect-square object-cover w-full" />`}
+                  <p class="text-[0.5625rem] text-[var(--ink-2)] px-1 py-1 truncate">${esc(c.title || '—')}</p>
+                </a>`).join('')}
+            </div>
           </div>` : ''}
           <div>
             <p class="text-xs font-bold text-[var(--muted)] mb-1">✅ ความเห็นครูที่ปรึกษาสามัญ${a.teachers?.full_name ? ' — ' + esc(a.teachers.full_name) : ''}</p>
@@ -3122,6 +3177,40 @@ function wireContentEvents() {
     const videoUrl = e.target.videoUrl.value.trim()
     if (!/^https?:\/\//.test(videoUrl)) { showToast('กรุณาใส่ลิงก์วิดีโอที่ถูกต้อง (ขึ้นต้นด้วย http:// หรือ https://)', 'warning'); return }
     applyData.videoUrl = videoUrl
+    applyStep = 5
+    render()
+  })
+  document.querySelectorAll('.cert-title-input').forEach(el => {
+    el.addEventListener('input', () => { applyCertificates[+el.dataset.idx].title = el.value })
+  })
+  document.querySelectorAll('.cert-file-input').forEach(el => {
+    el.addEventListener('change', e => {
+      const idx = +el.dataset.idx
+      const file = e.target.files?.[0] ?? null
+      const c = applyCertificates[idx]
+      if (c.previewUrl) URL.revokeObjectURL(c.previewUrl)
+      c.file = file
+      c.isPdf = file?.type === 'application/pdf'
+      c.previewUrl = file && !c.isPdf ? URL.createObjectURL(file) : null
+      render()
+    })
+  })
+  document.getElementById('btn-add-cert')?.addEventListener('click', () => {
+    applyCertificates.push(...newBlankCertificateSlots(1))
+    render()
+  })
+  document.querySelectorAll('.btn-remove-cert').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.idx
+      const c = applyCertificates[idx]
+      if (c.previewUrl) URL.revokeObjectURL(c.previewUrl)
+      applyCertificates.splice(idx, 1)
+      render()
+    })
+  })
+  document.getElementById('btn-apply-step5-next')?.addEventListener('click', () => {
+    const validCount = applyCertificates.filter(c => c.file && c.title.trim()).length
+    if (validCount < MIN_APPLY_CERTIFICATES) { showToast(`กรุณาแนบเกียรติบัตร/รางวัลอย่างน้อย ${MIN_APPLY_CERTIFICATES} รายการ (พร้อมชื่อรางวัล)`, 'warning'); return }
     showApplyConfirm = true
     render()
   })
@@ -3138,6 +3227,11 @@ function wireContentEvents() {
     try {
       let photoUrl = null
       if (applyPhotoFile) photoUrl = await uploadCouncilApplicationPhoto(ctx.student.id, applyPhotoFile)
+      const validCerts = applyCertificates.filter(c => c.file && c.title.trim())
+      const certificates = await Promise.all(validCerts.map(async c => ({
+        title: c.title.trim(),
+        url: await uploadCouncilCertificate(ctx.student.id, c.file),
+      })))
       await submitCouncilApplication({
         studentId: ctx.student.id,
         positionId: Number(applyData.positionId),
@@ -3147,6 +3241,7 @@ function wireContentEvents() {
         gpaGeneral: Number(applyData.gpaGeneral),
         gpaReligious: Number(applyData.gpaReligious),
         introVideoUrl: applyData.videoUrl,
+        certificates,
       })
       showToast('ส่งใบสมัครสำเร็จ ✅', 'success')
       resetApplyWizard()
