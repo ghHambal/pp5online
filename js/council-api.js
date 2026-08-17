@@ -263,6 +263,44 @@ export async function appointMember({ applicationId, positionId, studentId, acad
   if (e2) throw e2
 }
 
+// ─── จัดการสภาวาระปัจจุบันโดยตรง (แอดมิน) — เพิ่ม/แก้ไข/ลบ นอกเหนือจากทางแต่งตั้ง/เลือกตั้ง/
+// เสนอคณะทำงานปกติ — ใช้ตอนนำเข้าข้อมูลสภาจริงจากภายนอก (เช่น Google ชีท) หรือแก้ไขคลาดเคลื่อน ──
+export async function searchStudentsForCouncil(query) {
+  const q = (query ?? '').trim()
+  if (q.length < 2) return []
+  const { data, error } = await supabase.from('students')
+    .select('id, full_name, student_code, main_room, gender, image_url, photo_url')
+    .or(`full_name.ilike.%${q}%,student_code.ilike.%${q}%`)
+    .limit(15)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addCouncilMemberManual({ positionId, studentId, academicYear, termStartDate, appointedByTeacherId }) {
+  const { error } = await supabase.from('council_members').insert({
+    position_id: positionId, student_id: studentId, academic_year: academicYear,
+    source: 'appointed', status: 'active',
+    term_start_date: termStartDate || new Date().toISOString().slice(0, 10),
+    appointed_by_teacher_id: appointedByTeacherId ?? null,
+  })
+  if (error) throw error
+}
+
+export async function updateCouncilMember(memberId, { positionId, termStartDate, termEndDate }) {
+  const { error } = await supabase.from('council_members')
+    .update({ position_id: positionId, term_start_date: termStartDate || null, term_end_date: termEndDate || null, updated_at: new Date().toISOString() })
+    .eq('id', memberId)
+  if (error) throw error
+}
+
+// soft-delete — เก็บประวัติไว้ (ตามที่ผู้ใช้ยืนยัน) แทนการลบแถวออกจริง
+export async function removeCouncilMember(memberId) {
+  const { error } = await supabase.from('council_members')
+    .update({ status: 'removed', term_end_date: new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString() })
+    .eq('id', memberId)
+  if (error) throw error
+}
+
 // ─── ตั้งค่าห้วงเวลาเลือกตั้ง (แอดมิน) ─────────────────────────────────────────
 export async function ensureElectionConfig({ gender, academicYear }) {
   const { data: existing, error: e0 } = await supabase.from('council_election_config')

@@ -30,6 +30,7 @@ import {
   getTeachersByPosition, addTeacherPosition, removeTeacherPosition,
   getAdvisorPositions, setAdvisorPositions,
   updateMySignature, updateMyPhoto,
+  searchStudentsForCouncil, addCouncilMemberManual, updateCouncilMember, removeCouncilMember,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -1349,12 +1350,21 @@ function renderRosterView() {
         <button type="button" class="roster-gender-tab-btn flex-1 py-2.5 rounded-full text-sm font-bold transition ${g === rosterGenderTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-gender="${g}">สภา${GENDER_LABEL[g]}</button>`).join('')}
     </div>`
 
+  const addBtn = ctx.isAdmin
+    ? `<button type="button" id="btn-add-council-member" class="w-full py-2.5 rounded-xl border border-dashed border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold mb-4 hover:bg-[var(--primary-soft)]">＋ เพิ่มสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</button>`
+    : ''
+
   const memberCard = m => `
     <div class="rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)] text-center">
       ${studentPhoto(m.students, 'w-16 h-20 mx-auto')}
       <p class="text-sm font-bold text-[var(--ink)] truncate mt-2">${esc(m.students?.full_name ?? '—')}</p>
       <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(m.students?.main_room ?? '')}</p>
       <p class="text-[0.6875rem] text-[var(--primary)] font-semibold truncate mt-0.5">${esc(m.council_positions?.position_name ?? '—')}</p>
+      ${ctx.isAdmin ? `
+        <div class="flex gap-1.5 mt-2 pt-2 border-t border-[var(--line-soft)]">
+          <button type="button" class="btn-edit-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${m.id}">✏️ แก้ไข</button>
+          <button type="button" class="btn-remove-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${m.id}">🗑️ ลบ</button>
+        </div>` : ''}
     </div>`
 
   const groups = ROSTER_CATEGORIES.map(cat => {
@@ -1367,7 +1377,130 @@ function renderRosterView() {
       </div>`
   }).join('')
 
-  return `${tabs}${groups || `<p class="text-xs text-[var(--muted-2)] text-center py-10">ยังไม่มีข้อมูลสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</p>`}`
+  return `${addBtn}${tabs}${groups || `<p class="text-xs text-[var(--muted-2)] text-center py-10">ยังไม่มีข้อมูลสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</p>`}`
+}
+
+// ─── เพิ่ม/แก้ไขสมาชิกสภาโดยตรง (แอดมิน) — นอกเหนือจากทางแต่งตั้ง/เลือกตั้ง/เสนอคณะทำงานปกติ ──
+// ใช้ตอนนำเข้าข้อมูลสภาจริงจากภายนอก (เช่น Google ชีท) หรือแก้ไขข้อมูลที่คลาดเคลื่อน
+function openMemberModal({ mode, gender, member }) {
+  document.getElementById('member-modal')?.remove()
+  const positionsForGender = ctx.positions.filter(p => p.gender === gender)
+  let selectedStudent = mode === 'edit' ? member.students : null
+  let searchTimer = null
+
+  const modal = document.createElement('div')
+  modal.id = 'member-modal'
+  modal.className = 'fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-base font-bold text-[var(--ink)]">${mode === 'add' ? `➕ เพิ่มสมาชิกสภา${GENDER_LABEL[gender]}` : '✏️ แก้ไขสมาชิกสภา'}</p>
+        <button type="button" id="btn-close-member-modal" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
+      </div>
+      <div class="space-y-3">
+        ${mode === 'add' ? `
+          <div>
+            <label class="block text-xs font-semibold text-[var(--muted)] mb-1">ค้นหานักเรียน (พิมพ์ชื่อหรือรหัส)</label>
+            <input type="text" id="member-student-search" placeholder="พิมพ์อย่างน้อย 2 ตัวอักษร" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+            <div id="member-student-results" class="mt-1.5 space-y-1"></div>
+          </div>
+          <div id="member-student-selected"></div>
+        ` : `
+          <div class="rounded-xl bg-[var(--surface-2)] p-3">
+            <p class="text-[0.6875rem] text-[var(--muted)]">นักเรียน</p>
+            <p class="text-sm font-bold text-[var(--ink)]">${esc(member.students?.full_name ?? '—')} · ${esc(member.students?.student_code ?? '')}</p>
+          </div>
+        `}
+        <div>
+          <label class="block text-xs font-semibold text-[var(--muted)] mb-1">ตำแหน่ง <span class="text-[var(--bad)]">*</span></label>
+          <select id="member-position-select" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]">
+            <option value="">— เลือกตำแหน่ง —</option>
+            ${positionsForGender.map(p => `<option value="${p.id}" ${mode === 'edit' && member.position_id === p.id ? 'selected' : ''}>${esc(p.position_name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-[var(--muted)] mb-1">เริ่มวาระ</label>
+            <input type="date" id="member-term-start" value="${mode === 'edit' ? esc(member.term_start_date ?? '') : new Date().toISOString().slice(0, 10)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>
+          ${mode === 'edit' ? `
+          <div>
+            <label class="block text-xs font-semibold text-[var(--muted)] mb-1">สิ้นสุดวาระ (ถ้ามี)</label>
+            <input type="date" id="member-term-end" value="${esc(member.term_end_date ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          </div>` : ''}
+        </div>
+        <button type="button" id="btn-save-member" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">บันทึก</button>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+  modal.querySelector('#btn-close-member-modal').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+
+  const renderSelectedStudent = () => {
+    const el = modal.querySelector('#member-student-selected')
+    if (!el) return
+    el.innerHTML = selectedStudent ? `
+      <div class="flex items-center gap-2 rounded-xl bg-[var(--primary-soft)] border border-[var(--primary-soft-line)] p-2.5">
+        ${studentPhoto(selectedStudent, 'w-10 h-12')}
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(selectedStudent.full_name)}</p>
+          <p class="text-[0.6875rem] text-[var(--muted-2)] truncate">${esc(selectedStudent.student_code)} · ${esc(selectedStudent.main_room ?? '')}</p>
+        </div>
+      </div>` : ''
+  }
+
+  if (mode === 'add') {
+    const searchInput = modal.querySelector('#member-student-search')
+    const resultsEl = modal.querySelector('#member-student-results')
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer)
+      const q = searchInput.value.trim()
+      if (q.length < 2) { resultsEl.innerHTML = ''; return }
+      searchTimer = setTimeout(async () => {
+        const results = await searchStudentsForCouncil(q).catch(() => [])
+        resultsEl.innerHTML = results.length ? results.map(s => `
+          <button type="button" class="member-search-result-item w-full text-left flex items-center gap-2 rounded-xl border border-[var(--line)] p-2 hover:bg-[var(--surface-2)]" data-id="${s.id}">
+            <span class="text-sm font-bold text-[var(--ink)] flex-1 truncate">${esc(s.full_name)}</span>
+            <span class="text-[0.6875rem] text-[var(--muted-2)] flex-shrink-0">${esc(s.student_code)} · ${esc(s.main_room ?? '')}</span>
+          </button>`).join('') : `<p class="text-xs text-[var(--muted-2)] px-1">ไม่พบนักเรียน</p>`
+        resultsEl.querySelectorAll('.member-search-result-item').forEach(btn => {
+          btn.addEventListener('click', () => {
+            selectedStudent = results.find(s => s.id === Number(btn.dataset.id))
+            resultsEl.innerHTML = ''
+            searchInput.value = ''
+            renderSelectedStudent()
+          })
+        })
+      }, 300)
+    })
+  }
+
+  modal.querySelector('#btn-save-member').addEventListener('click', async () => {
+    const positionId = Number(modal.querySelector('#member-position-select').value)
+    if (!positionId) { showToast('กรุณาเลือกตำแหน่ง', 'warning'); return }
+    if (mode === 'add' && !selectedStudent) { showToast('กรุณาค้นหาและเลือกนักเรียน', 'warning'); return }
+    const termStart = modal.querySelector('#member-term-start').value
+    const btn = modal.querySelector('#btn-save-member')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      if (mode === 'add') {
+        await addCouncilMemberManual({
+          positionId, studentId: selectedStudent.id, academicYear: electionYear,
+          termStartDate: termStart, appointedByTeacherId: ctx.teacher?.id ?? null,
+        })
+      } else {
+        const termEnd = modal.querySelector('#member-term-end').value
+        await updateCouncilMember(member.id, { positionId, termStartDate: termStart, termEndDate: termEnd })
+      }
+      showToast('บันทึกแล้ว ✅', 'success')
+      modal.remove()
+      ctx.members = await getCouncilMembers().catch(() => ctx.members)
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'บันทึก'
+    }
+  })
 }
 
 // ─── คิว "รอฉันยืนยัน" — เฉพาะครูที่ปรึกษาสามัญของห้องที่มีใบสมัครค้างอยู่ ─────────────
@@ -3114,6 +3247,28 @@ function wireContentEvents() {
   })
   document.querySelectorAll('.roster-gender-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => { rosterGenderTab = btn.dataset.gender; render() })
+  })
+  document.getElementById('btn-add-council-member')?.addEventListener('click', () => {
+    openMemberModal({ mode: 'add', gender: rosterGenderTab })
+  })
+  document.querySelectorAll('.btn-edit-council-member').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const m = ctx.members.find(x => x.id === Number(btn.dataset.id))
+      if (m) openMemberModal({ mode: 'edit', gender: m.council_positions?.gender, member: m })
+    })
+  })
+  document.querySelectorAll('.btn-remove-council-member').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบสมาชิกสภาคนนี้ออกจากทำเนียบ? (จะเก็บประวัติไว้ ไม่ได้ลบข้อมูลทิ้งถาวร)')) return
+      try {
+        await removeCouncilMember(Number(btn.dataset.id))
+        showToast('ลบแล้ว ✅', 'success')
+        ctx.members = await getCouncilMembers().catch(() => ctx.members)
+        render()
+      } catch (err) {
+        showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
   })
   document.querySelectorAll('.btn-peer-endorse').forEach(btn => {
     btn.addEventListener('click', () => handlePeerEndorsement(btn.dataset.id))
