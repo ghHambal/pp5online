@@ -66,12 +66,16 @@ let applyStep = 1 // 1 เลือกตำแหน่ง / 2 เกรด+แ
 let applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '' }
 let applyPhotoFile = null
 let applyPhotoPreviewUrl = null // object URL สำหรับพรีวิวรูปก่อนอัปโหลดจริง
-const MIN_APPLY_CERTIFICATES = 5
+const MIN_APPLY_CERTIFICATES = 5 // ค่า fallback ก่อนโหลด ctx.cfg เสร็จ/ก่อนแอดมินตั้งค่าเอง — ค่าจริงที่ใช้บังคับดู minApplyCertificates()
+function minApplyCertificates() {
+  return Number(ctx?.cfg?.council_min_certificates) || MIN_APPLY_CERTIFICATES
+}
 function newBlankCertificateSlots(n) {
   return Array.from({ length: n }, () => ({ file: null, title: '', previewUrl: null, isPdf: false }))
 }
-let applyCertificates = newBlankCertificateSlots(MIN_APPLY_CERTIFICATES) // { file, title, previewUrl, isPdf } — ต้องมี ≥5 รายการที่มีไฟล์+ชื่อครบถึงจะสมัครได้ (บังคับ ตามที่ผู้ใช้ยืนยัน)
+let applyCertificates = newBlankCertificateSlots(MIN_APPLY_CERTIFICATES) // { file, title, previewUrl, isPdf } — ต้องมี ≥ minApplyCertificates() รายการที่มีไฟล์+ชื่อครบถึงจะสมัครได้ (บังคับ ตามที่ผู้ใช้ยืนยัน, จำนวนขั้นต่ำแอดมินตั้งค่าเองได้)
 let showApplyConfirm = false // ป๊อบอัพสรุปยืนยันก่อน insert จริง
+let applyDraftPrompt = null // ร่างที่กู้คืนได้จาก localStorage (ยังไม่ได้ตัดสินใจกู้คืน/เริ่มใหม่) — null = ไม่มีหรือตัดสินใจแล้ว
 
 function resetApplyWizard() {
   showApplyForm = false
@@ -81,8 +85,37 @@ function resetApplyWizard() {
   if (applyPhotoPreviewUrl) URL.revokeObjectURL(applyPhotoPreviewUrl)
   applyPhotoPreviewUrl = null
   applyCertificates.forEach(c => { if (c.previewUrl) URL.revokeObjectURL(c.previewUrl) })
-  applyCertificates = newBlankCertificateSlots(MIN_APPLY_CERTIFICATES)
+  applyCertificates = newBlankCertificateSlots(minApplyCertificates())
   showApplyConfirm = false
+}
+
+// ─── บันทึกร่างวิซาร์ดสมัครลง localStorage — กันข้อมูลหายตอนรีเฟรช/ปิดแท็บโดยไม่ตั้งใจ
+// (เก็บได้แค่ข้อความ ไม่เก็บไฟล์รูป/เกียรติบัตรเพราะเบราว์เซอร์ persist File ข้ามหน้าไม่ได้) ──
+function applyDraftKey() {
+  return ctx?.student ? `council_apply_draft_${ctx.student.id}` : null
+}
+function saveApplyDraft() {
+  const key = applyDraftKey()
+  if (!key) return
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      step: applyStep, data: applyData,
+      certTitles: applyCertificates.map(c => c.title),
+      savedAt: Date.now(),
+    }))
+  } catch { /* localStorage เต็ม/ถูกปิด — ไม่ใช่ฟีเจอร์คอขาดบาดตาย ปล่อยผ่านเงียบๆ */ }
+}
+function loadApplyDraft() {
+  const key = applyDraftKey()
+  if (!key) return null
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+function clearApplyDraft() {
+  const key = applyDraftKey()
+  if (key) localStorage.removeItem(key)
 }
 
 // "สมัคร" กับ "เลือกตั้ง" ไม่ใช่แท็บถาวรในเมนูหลัก (นั่นมีไว้สำหรับ "ดูภาพรวมสภานักเรียน"
@@ -94,6 +127,7 @@ let flowSubtab = null
 // สถานะที่โหลดแบบ lazy ตอนเปิดหน้าจอนั้นๆ ครั้งแรก (ไม่ต้องโหลดทุกอย่างตั้งแต่ init)
 let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
 let adminAppDetailId = null // id ของใบสมัครที่กำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
+let myAppDetailId = null // id ของใบสมัครของตัวเองที่นักเรียนกำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
 let appsFilter = 'all' // ฟิลเตอร์สถานะในหน้า "จัดการใบสมัคร" (สเปคข้อ 8.4)
 let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์ (ใช้ร่วมกับหน้ามอบสิทธิ์ด้วย)
 let councilAdvisors = null // null = ยังไม่โหลด — ทำเนียบครูที่ปรึกษาสภานักเรียน (หน้า "มอบสิทธิ์")
@@ -635,7 +669,8 @@ function renderApplyView() {
       </button>`
   }
 
-  const stepBody = applyStep === 1 ? renderApplyStep1(openPositions)
+  const stepBody = applyDraftPrompt ? renderApplyDraftPrompt()
+    : applyStep === 1 ? renderApplyStep1(openPositions)
     : applyStep === 2 ? renderApplyStep2()
     : applyStep === 3 ? renderApplyStep3()
     : applyStep === 4 ? renderApplyStep4()
@@ -647,10 +682,26 @@ function renderApplyView() {
         <p class="text-sm font-bold text-[var(--primary-dark)]">📝 ใบสมัครสภานักเรียน${GENDER_LABEL[gender]}</p>
         <button type="button" id="btn-cancel-apply" class="text-xs text-[var(--muted)] hover:text-[var(--bad)]">ยกเลิก ✕</button>
       </div>
-      ${renderApplyProgress()}
+      ${applyDraftPrompt ? '' : renderApplyProgress()}
       ${stepBody}
     </div>
     ${showApplyConfirm ? renderApplyConfirmModal() : ''}`
+}
+
+function renderApplyDraftPrompt() {
+  const stepLabel = APPLY_STEP_LABELS[applyDraftPrompt.step - 1] ?? ''
+  const savedDate = applyDraftPrompt.savedAt ? new Date(applyDraftPrompt.savedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''
+  return `
+    <div class="text-center py-4 space-y-3">
+      <p class="text-3xl">📝</p>
+      <p class="text-sm font-bold text-[var(--ink)]">พบข้อมูลที่กรอกค้างไว้</p>
+      <p class="text-xs text-[var(--muted-2)]">กรอกถึงขั้นตอนที่ ${applyDraftPrompt.step}/5 · ${esc(stepLabel)}${savedDate ? ` · บันทึกล่าสุด ${savedDate}` : ''}</p>
+      <p class="text-[0.6875rem] text-[var(--gold-ink)] bg-[var(--gold-soft)] border border-[var(--gold-soft-line)] rounded-xl p-2.5 text-left">⚠️ รูปถ่าย/ไฟล์เกียรติบัตรที่เคยแนบไว้ต้องแนบใหม่อีกครั้ง (เบราว์เซอร์เก็บไฟล์ข้ามการปิดหน้าไม่ได้) ส่วนข้อความอื่นๆ กู้คืนให้ครบ</p>
+      <div class="flex gap-2 pt-1">
+        <button type="button" id="btn-apply-draft-discard" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">เริ่มใหม่</button>
+        <button type="button" id="btn-apply-draft-resume" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">กู้คืนข้อมูล</button>
+      </div>
+    </div>`
 }
 
 const APPLY_STEP_LABELS = ['เลือกตำแหน่ง', 'เกรดเฉลี่ย & แรงจูงใจ', 'รูปถ่าย', 'วิดีโอแนะนำตัว', 'เกียรติบัตร/รางวัล']
@@ -747,6 +798,7 @@ function renderApplyStep4() {
 
 function renderApplyStep5() {
   const validCount = applyCertificates.filter(c => c.file && c.title.trim()).length
+  const minCerts = minApplyCertificates()
   const itemCard = (c, i) => `
     <div class="rounded-xl border border-[var(--line)] p-3 space-y-2" data-cert-idx="${i}">
       <div class="flex items-center justify-between">
@@ -766,7 +818,7 @@ function renderApplyStep5() {
     <div class="space-y-3">
       <div>
         <label class="block text-xs font-semibold text-[var(--muted)] mb-1">เกียรติบัตร/รางวัลจากการแข่งขันหรือกิจกรรมนอกโรงเรียน <span class="text-[var(--bad)]">*</span></label>
-        <p class="text-[0.6875rem] ${validCount >= MIN_APPLY_CERTIFICATES ? 'text-[var(--ok)]' : 'text-[var(--muted-2)]'}">แนบได้ทั้งรูปภาพและไฟล์ PDF — ต้องมีอย่างน้อย ${MIN_APPLY_CERTIFICATES} รายการ (ตอนนี้ครบ ${validCount}/${MIN_APPLY_CERTIFICATES})</p>
+        <p class="text-[0.6875rem] ${validCount >= minCerts ? 'text-[var(--ok)]' : 'text-[var(--muted-2)]'}">แนบได้ทั้งรูปภาพและไฟล์ PDF — ต้องมีอย่างน้อย ${minCerts} รายการ (ตอนนี้ครบ ${validCount}/${minCerts})</p>
       </div>
       <div class="space-y-2.5">${applyCertificates.map(itemCard).join('')}</div>
       <button type="button" id="btn-add-cert" class="w-full py-2 rounded-xl border border-dashed border-[var(--line)] text-xs font-bold text-[var(--muted)] hover:bg-[var(--surface-2)]">＋ เพิ่มรายการ</button>
@@ -826,16 +878,18 @@ function renderMyApplicationsList() {
           <p class="text-sm font-bold text-[#0d4d36]">${esc(m.council_positions?.position_name ?? '—')} <span class="text-xs font-normal">(สภา${esc(GENDER_LABEL[m.council_positions?.gender] ?? '')})</span></p>
         </div>`).join('')}
       ${ctx.applications.map(a => `
-        <div class="bg-[var(--surface)] rounded-xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-3 flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.council_positions?.position_name ?? '—')}</p>
-            <p class="text-xs text-[var(--muted-2)]">${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
-            ${a.motivation ? `<p class="text-xs text-[var(--muted)] mt-1">${esc(a.motivation)}</p>` : ''}
-            ${a.certificates?.length ? `<p class="text-[0.6875rem] text-[var(--muted-2)] mt-1">🏅 แนบเกียรติบัตร ${a.certificates.length} รายการ</p>` : ''}
+        <div class="bg-[var(--surface)] rounded-xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-3 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.council_positions?.position_name ?? '—')}</p>
+              <p class="text-xs text-[var(--muted-2)]">${new Date(a.created_at).toLocaleDateString('th-TH', { dateStyle: 'medium' })}</p>
+            </div>
+            <span class="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--bg-2)] text-[var(--ink-2)]">${esc(APPLICATION_STATUS_LABEL[a.status] ?? a.status)}</span>
           </div>
-          <span class="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--bg-2)] text-[var(--ink-2)]">${esc(APPLICATION_STATUS_LABEL[a.status] ?? a.status)}</span>
+          <button type="button" class="btn-view-my-app-detail w-full text-xs font-bold py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${a.id}">📄 ดูใบสมัคร</button>
         </div>`).join('')}
-    </div>`
+    </div>
+    ${renderMyAppDetailModal()}`
 }
 
 // ─── สถานะการเลือกตั้ง — โหวตจริง (นักเรียน) + ตั้งช่วงเวลา/ประกาศผล+แต่งตั้ง (แอดมิน) ──────
@@ -1107,7 +1161,7 @@ function peerEndorsementRequired() {
   return ctx.cfg.council_require_peer_endorsement === 'true'
 }
 function applicantIsCurrentMember(a) {
-  const studentId = a.students?.id
+  const studentId = a.students?.id ?? a.student_id
   return !!studentId && ctx.members.some(m => m.student_id === studentId)
 }
 function peerEndorsementSatisfied(a) {
@@ -1160,22 +1214,34 @@ function renderAdminAppDetailModal() {
   if (!adminAppDetailId) return ''
   const a = adminApps?.find(x => x.id === adminAppDetailId)
   if (!a) return ''
+  return renderAppDetailModalBody(a, a.students, { closeId: 'btn-admin-app-detail-close', backdropId: 'admin-app-detail-backdrop' })
+}
+
+// นักเรียนดูใบสมัครของตัวเองแบบเต็ม (เหมือนที่แอดมิน/ครูเห็น) — reuse modal เดียวกัน
+function renderMyAppDetailModal() {
+  if (!myAppDetailId) return ''
+  const a = ctx.applications?.find(x => x.id === myAppDetailId)
+  if (!a) return ''
+  return renderAppDetailModalBody(a, ctx.student, { closeId: 'btn-my-app-detail-close', backdropId: 'my-app-detail-backdrop' })
+}
+
+function renderAppDetailModalBody(a, student, { closeId, backdropId }) {
   const genderCls = GENDER_BADGE_FIXED[a.council_positions?.gender] ?? 'bg-[var(--bg-2)] text-[var(--muted)]'
   return `
-    <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="admin-app-detail-backdrop">
+    <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="${backdropId}">
       <div class="bg-[var(--surface)] rounded-2xl shadow-[0_8px_28px_rgba(11,20,16,0.25)] max-w-lg w-full max-h-[85vh] overflow-y-auto p-5">
         <div class="flex items-start justify-between gap-3 mb-3">
           <p class="text-base font-bold text-[var(--ink)]">📄 ใบสมัครสภานักเรียน</p>
-          <button type="button" id="btn-admin-app-detail-close" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
+          <button type="button" id="${closeId}" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
         </div>
         <div class="flex items-center gap-3 pb-3 border-b border-[var(--line-soft)]">
-          ${studentPhoto(a.students, 'w-16 h-20')}
+          ${studentPhoto(student, 'w-16 h-20')}
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5 flex-wrap">
-              <p class="font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
+              <p class="font-bold text-[var(--ink)] truncate">${esc(student?.full_name ?? '—')}</p>
               <span class="text-[0.5625rem] font-bold px-2 py-0.5 rounded-full ${genderCls}">${esc(GENDER_LABEL[a.council_positions?.gender] ?? '—')}</span>
             </div>
-            <p class="text-xs text-[var(--muted-2)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')}</p>
+            <p class="text-xs text-[var(--muted-2)]">${esc(student?.student_code ?? '')} · ${esc(student?.main_room ?? '')}</p>
             <p class="text-xs text-[var(--primary)] font-semibold mt-0.5">${esc(a.council_positions?.position_name ?? '—')}</p>
           </div>
         </div>
@@ -2495,6 +2561,10 @@ function renderSettingsGeneral() {
           <label class="block text-xs font-medium text-[var(--muted)] mb-1">ระดับชั้นที่สมัครได้ (คั่นด้วย ,)</label>
           <input name="council_eligible_grade_levels" value="${esc(cfg.council_eligible_grade_levels || 'ม.4,ม.5,ม.6')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
         </div>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">จำนวนเกียรติบัตร/รางวัลขั้นต่ำที่ต้องแนบ</label>
+          <input type="number" min="0" step="1" name="council_min_certificates" value="${esc(cfg.council_min_certificates || '5')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
         <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
           <input type="checkbox" name="council_require_teacher_endorsement" ${cfg.council_require_teacher_endorsement !== 'false' ? 'checked' : ''} class="w-4 h-4" />
           บังคับให้ครูที่ปรึกษาสามัญรับรองก่อนเข้าสัมภาษณ์
@@ -3248,6 +3318,13 @@ function wireContentEvents() {
   document.querySelectorAll('.roster-gender-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => { rosterGenderTab = btn.dataset.gender; render() })
   })
+  document.querySelectorAll('.btn-view-my-app-detail').forEach(btn => {
+    btn.addEventListener('click', () => { myAppDetailId = Number(btn.dataset.id); render() })
+  })
+  document.getElementById('btn-my-app-detail-close')?.addEventListener('click', () => { myAppDetailId = null; render() })
+  document.getElementById('my-app-detail-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'my-app-detail-backdrop') { myAppDetailId = null; render() }
+  })
   document.getElementById('btn-add-council-member')?.addEventListener('click', () => {
     openMemberModal({ mode: 'add', gender: rosterGenderTab })
   })
@@ -3275,14 +3352,36 @@ function wireContentEvents() {
   })
   document.getElementById('btn-open-apply')?.addEventListener('click', () => {
     showApplyForm = true
+    const draft = loadApplyDraft()
+    applyDraftPrompt = (draft && draft.step > 1) ? draft : null
+    if (!applyDraftPrompt) applyCertificates = newBlankCertificateSlots(minApplyCertificates())
     render()
   })
   document.getElementById('btn-cancel-apply')?.addEventListener('click', () => {
     resetApplyWizard()
+    applyDraftPrompt = null
+    render()
+  })
+  document.getElementById('btn-apply-draft-resume')?.addEventListener('click', () => {
+    applyData = { ...applyData, ...applyDraftPrompt.data }
+    applyStep = applyDraftPrompt.step
+    const titles = applyDraftPrompt.certTitles || []
+    applyCertificates = titles.length
+      ? titles.map(title => ({ file: null, title: title || '', previewUrl: null, isPdf: false }))
+      : newBlankCertificateSlots(minApplyCertificates())
+    applyDraftPrompt = null
+    render()
+  })
+  document.getElementById('btn-apply-draft-discard')?.addEventListener('click', () => {
+    clearApplyDraft()
+    resetApplyWizard()
+    applyDraftPrompt = null
+    showApplyForm = true
     render()
   })
   document.getElementById('btn-apply-back')?.addEventListener('click', () => {
     applyStep = Math.max(1, applyStep - 1)
+    saveApplyDraft()
     render()
   })
   document.getElementById('apply-step1-form')?.addEventListener('submit', e => {
@@ -3291,6 +3390,7 @@ function wireContentEvents() {
     if (!positionId) { showToast('กรุณาเลือกตำแหน่ง', 'warning'); return }
     applyData.positionId = positionId
     applyStep = 2
+    saveApplyDraft()
     render()
   })
   document.getElementById('apply-step2-form')?.addEventListener('submit', e => {
@@ -3313,6 +3413,7 @@ function wireContentEvents() {
     applyData.gpaReligious = gpaReligious
     applyData.motivation = motivation
     applyStep = 3
+    saveApplyDraft()
     render()
   })
   document.getElementById('apply-photo')?.addEventListener('change', e => {
@@ -3325,6 +3426,7 @@ function wireContentEvents() {
   document.getElementById('btn-apply-step3-next')?.addEventListener('click', () => {
     if (!applyPhotoFile) { showToast('กรุณาแนบรูปถ่าย', 'warning'); return }
     applyStep = 4
+    saveApplyDraft()
     render()
   })
   document.getElementById('apply-step4-form')?.addEventListener('submit', e => {
@@ -3333,10 +3435,11 @@ function wireContentEvents() {
     if (!/^https?:\/\//.test(videoUrl)) { showToast('กรุณาใส่ลิงก์วิดีโอที่ถูกต้อง (ขึ้นต้นด้วย http:// หรือ https://)', 'warning'); return }
     applyData.videoUrl = videoUrl
     applyStep = 5
+    saveApplyDraft()
     render()
   })
   document.querySelectorAll('.cert-title-input').forEach(el => {
-    el.addEventListener('input', () => { applyCertificates[+el.dataset.idx].title = el.value })
+    el.addEventListener('input', () => { applyCertificates[+el.dataset.idx].title = el.value; saveApplyDraft() })
   })
   document.querySelectorAll('.cert-file-input').forEach(el => {
     el.addEventListener('change', e => {
@@ -3352,6 +3455,7 @@ function wireContentEvents() {
   })
   document.getElementById('btn-add-cert')?.addEventListener('click', () => {
     applyCertificates.push(...newBlankCertificateSlots(1))
+    saveApplyDraft()
     render()
   })
   document.querySelectorAll('.btn-remove-cert').forEach(btn => {
@@ -3360,13 +3464,16 @@ function wireContentEvents() {
       const c = applyCertificates[idx]
       if (c.previewUrl) URL.revokeObjectURL(c.previewUrl)
       applyCertificates.splice(idx, 1)
+      saveApplyDraft()
       render()
     })
   })
   document.getElementById('btn-apply-step5-next')?.addEventListener('click', () => {
     const validCount = applyCertificates.filter(c => c.file && c.title.trim()).length
-    if (validCount < MIN_APPLY_CERTIFICATES) { showToast(`กรุณาแนบเกียรติบัตร/รางวัลอย่างน้อย ${MIN_APPLY_CERTIFICATES} รายการ (พร้อมชื่อรางวัล)`, 'warning'); return }
+    const minCerts = minApplyCertificates()
+    if (validCount < minCerts) { showToast(`กรุณาแนบเกียรติบัตร/รางวัลอย่างน้อย ${minCerts} รายการ (พร้อมชื่อรางวัล)`, 'warning'); return }
     showApplyConfirm = true
+    saveApplyDraft()
     render()
   })
   document.getElementById('btn-apply-edit')?.addEventListener('click', () => {
@@ -3399,6 +3506,7 @@ function wireContentEvents() {
         certificates,
       })
       showToast('ส่งใบสมัครสำเร็จ ✅', 'success')
+      clearApplyDraft()
       resetApplyWizard()
       await refreshMyApplications()
       flowSubtab = 'mine'
@@ -3697,6 +3805,7 @@ function wireSettingsEvents() {
         council_min_gpa: f.council_min_gpa.value,
         council_min_gpa_religious: f.council_min_gpa_religious.value,
         council_eligible_grade_levels: f.council_eligible_grade_levels.value.trim(),
+        council_min_certificates: f.council_min_certificates.value,
         council_require_teacher_endorsement: f.council_require_teacher_endorsement.checked ? 'true' : 'false',
         council_require_peer_endorsement: f.council_require_peer_endorsement.checked ? 'true' : 'false',
         council_apply_opens_at: f.council_apply_opens_at.value ? new Date(f.council_apply_opens_at.value).toISOString() : '',

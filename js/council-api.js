@@ -8,6 +8,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_term_end_semester', 'council_term_end_year',
   'council_min_gpa', 'council_min_gpa_religious', // เกรดขั้นต่ำ สามัญ/ศาสนา แยกกัน (สเปคข้อ 8.2)
   'council_eligible_grade_levels', 'council_require_teacher_endorsement', 'council_require_peer_endorsement',
+  'council_min_certificates', // จำนวนเกียรติบัตร/รางวัลขั้นต่ำที่ต้องแนบตอนสมัคร (default '5')
   'council_apply_opens_at', 'council_apply_closes_at', // ช่วงเวลาเปิด-ปิดรับสมัคร
   'council_video_max_minutes', 'council_video_brief', // วิดีโอแนะนำตัว: จำนวนนาที + หัวข้อที่ต้องพูด (JSON array)
   'council_signer_advisor_name', 'council_signer_director_name', // ชื่อผู้ลงนามเอกสาร/เกียรติบัตร
@@ -111,7 +112,13 @@ export async function getCouncilElectionConfigs(academicYear) {
 // ─── ใบสมัคร/สมาชิกภาพของตัวเอง (นักเรียน) ────────────────────────────────────
 export async function getMyCouncilApplications(studentId) {
   const { data, error } = await supabase.from('council_applications')
-    .select('id, position_id, status, motivation, photo_url, created_at, intro_video_url, certificates, council_positions(position_name, gender, is_elected)')
+    .select(`id, student_id, position_id, status, motivation, photo_url, created_at,
+      gpa_general, gpa_religious, intro_video_url, certificates,
+      endorsing_teacher_id, endorsement_comment, endorsed_at,
+      peer_endorsed_by_member_id, peer_endorsement_comment, peer_endorsed_at,
+      teachers(full_name),
+      council_members!council_applications_peer_endorsed_by_member_id_fkey(students(full_name)),
+      council_positions(position_name, gender, is_elected)`)
     .eq('student_id', studentId).order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
