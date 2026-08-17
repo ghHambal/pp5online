@@ -354,21 +354,8 @@ export function _generateSessions(classData, credit, dowPattern = null, useSched
       usedCounts[dow] = (usedCounts[dow] || 0) + 1
     }
   }
-  // เลือก periodsPerWeek entries จาก dowPattern แบบ round-robin ไล่ทีละวันที่ต่างกันก่อน
-  // (ไม่ใช่ slice(0,N) ตรงๆ) เพราะ dowPattern อาจมีคาบต่อเนื่องซ้ำวันเดิมหลายรอบ
-  // (เช่น อ.2 คาบ + พ.2 คาบ = [2,2,3,3]) ถ้า slice ตรงๆ ตอน periodsPerWeek ไม่พอ
-  // จะตัดวันท้ายๆ ทิ้งทั้งวัน (พ. หายไปเลย) round-robin นี้การันตีว่าทุกวันที่ตั้งไว้จริง
-  // ได้อย่างน้อย 1 คาบก่อน ค่อยเติมคาบที่ 2 ของวันเดิมทีหลัง
-  const _dowCounts = {}
-  for (const d of dowPattern) _dowCounts[d] = (_dowCounts[d] || 0) + 1
-  const _uniqueDOW = [...new Set(dowPattern)]
-  const cappedDOW = []
-  for (let round = 0; cappedDOW.length < periodsPerWeek && _uniqueDOW.some(d => round < _dowCounts[d]); round++) {
-    for (const d of _uniqueDOW) {
-      if (cappedDOW.length >= periodsPerWeek) break
-      if (round < _dowCounts[d]) cappedDOW.push(d)
-    }
-  }
+  // ใช้เฉพาะ periodsPerWeek DOW entries แรก (cap ไม่เกิน credit ที่กำหนด)
+  const cappedDOW = dowPattern.slice(0, periodsPerWeek)
   const patternCounts = {}
   for (const dow of cappedDOW) patternCounts[dow] = (patternCounts[dow] || 0) + 1
   const remaining = []

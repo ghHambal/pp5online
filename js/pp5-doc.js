@@ -87,21 +87,8 @@ function _generateSessions(classData, credit, dowPattern = null, useScheduleCoun
     }
     effectiveDOW.sort((a, b) => a - b)
   } else if (effectiveDOW && effectiveDOW.length > targetPerWeek) {
-    // ตารางสอนมีมากกว่า credit — ตัดให้เหลือแค่ที่ต้องการ แบบ round-robin ไล่ทีละวันที่ต่างกันก่อน
-    // (ไม่ใช่ slice(0,N) ตรงๆ) เพราะ effectiveDOW อาจมีคาบต่อเนื่องซ้ำวันเดิมหลายรอบ
-    // (เช่น อ.2 คาบ + พ.2 คาบ = [2,2,3,3]) ถ้า slice ตรงๆ ตอน targetPerWeek ไม่พอ
-    // จะตัดวันท้ายๆ ทิ้งทั้งวัน round-robin นี้การันตีว่าทุกวันที่ตั้งไว้จริงได้อย่างน้อย 1 คาบก่อน
-    const _dowCounts = {}
-    for (const d of effectiveDOW) _dowCounts[d] = (_dowCounts[d] || 0) + 1
-    const _uniqueDOW = [...new Set(effectiveDOW)]
-    const _capped = []
-    for (let round = 0; _capped.length < targetPerWeek && _uniqueDOW.some(d => round < _dowCounts[d]); round++) {
-      for (const d of _uniqueDOW) {
-        if (_capped.length >= targetPerWeek) break
-        if (round < _dowCounts[d]) _capped.push(d)
-      }
-    }
-    effectiveDOW = _capped
+    // ตารางสอนมีมากกว่า credit — ตัดให้เหลือแค่ที่ต้องการ
+    effectiveDOW = effectiveDOW.slice(0, targetPerWeek)
   }
 
   const bases = ['day1_date','day2_date','day3_date','day4_date','day5_date','day6_date']
