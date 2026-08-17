@@ -3,7 +3,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
-import { uploadCouncilApplicationPhoto } from './storage.js'
+import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto } from './storage.js'
 import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
 import QRCode from 'qrcode'
 import {
@@ -25,8 +25,11 @@ import {
   getMyAssignments, getAssignmentsForGender, createAssignment, updateAssignmentStatus, deleteAssignment,
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
   getInterviewCriteria, addInterviewCriterion, removeInterviewCriterion,
-  getCouncilDocuments, createDocument, submitDocument, decideDocument,
-  getCouncilAdvisorTeachers, addCouncilAdvisor, removeCouncilAdvisor,
+  getCouncilDocuments, createDocument, updateDocumentDraft, submitDocument,
+  decideAsAdvisor, decideAsDeptHead, decideAsDirector,
+  getTeachersByPosition, addTeacherPosition, removeTeacherPosition,
+  getAdvisorPositions, setAdvisorPositions,
+  updateMySignature, updateMyPhoto,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -218,9 +221,16 @@ async function init() {
   // (เดี่ยว) และ teacher.positions (array) เพราะข้อมูลจริงมีทั้งสองแบบปนกัน (ดู feedback_supervisor_position_rls_column)
   const isCouncilAdvisor = role === 'teacher' && !!teacher &&
     (teacher.position === 'council_advisor' || (teacher.positions ?? []).includes('council_advisor'))
+  // หัวหน้าฝ่ายกิจการนักเรียน/ผู้อำนวยการ — ตำแหน่งใหม่ที่ผู้ใช้ขอเพิ่มสำหรับอนุมัติเอกสาร
+  // โครงการ (2026-08-16) ตรวจแบบเดียวกับ isCouncilAdvisor ทุกจุด
+  const isStudentAffairsHead = role === 'teacher' && !!teacher &&
+    (teacher.position === 'student_affairs_head' || (teacher.positions ?? []).includes('student_affairs_head'))
+  const isSchoolDirector = role === 'teacher' && !!teacher &&
+    (teacher.position === 'school_director' || (teacher.positions ?? []).includes('school_director'))
 
   ctx = {
-    role, isAdmin, isChair, isCouncilAdvisor, student, applications, membership, positions, members, elections, cfg,
+    role, isAdmin, isChair, isCouncilAdvisor, isStudentAffairsHead, isSchoolDirector,
+    student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
   electionYear = Number(cfg.academicYear) || (new Date().getFullYear() + 543)
@@ -299,12 +309,19 @@ function getNavItems() {
   const isTeacherStaff = ctx.isAdmin || ctx.isCouncilAdvisor
   if (isTeacherStaff) items.push({ id: 'apps', icon: '📋', label: 'ใบสมัคร', group: 'teacherWork' })
   if (isTeacherStaff || ctx.membership.length) items.push({ id: 'eval', icon: '🎖️', label: 'ประเมิน/เกียรติบัตร', group: 'teacherWork' })
-  if (isTeacherStaff || ctx.isChair) items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'teacherWork' })
-  // ระบบ — ตั้งค่า (Phase 2, สเปคข้อ 8.18) — ภาพรวม/มอบสิทธิ์ยังไม่ได้สร้าง
+  // เอกสารโครงการ — เห็นด้วยกันทั้งครูที่ปรึกษาสภา/ประธานสภา (ริเริ่ม+รับรอง) และหัวหน้าฝ่าย
+  // กิจการนักเรียน/ผู้อำนวยการ (อนุมัติขั้นถัดไป) แม้ไม่ใช่ครูที่ปรึกษาสภาก็ตาม
+  if (isTeacherStaff || ctx.isChair || ctx.isStudentAffairsHead || ctx.isSchoolDirector) {
+    items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'teacherWork' })
+  }
+  // ระบบ — ตั้งค่า (Phase 2, สเปคข้อ 8.18) — ภาพรวมยังไม่ได้สร้าง
   if (isTeacherStaff) items.push({ id: 'settings', icon: '⚙️', label: 'ตั้งค่า', group: 'system' })
-  // มอบสิทธิ์ครูที่ปรึกษาสภา — เห็นเฉพาะแอดมิน (ครูที่ปรึกษาสภาเองไม่เห็นเมนูนี้ ตามสเปคข้อ 4
-  // "เกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์")
+  // มอบสิทธิ์ — เห็นเฉพาะแอดมิน (ตามสเปคข้อ 4 "เกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์")
   if (ctx.isAdmin) items.push({ id: 'perms', icon: '🔑', label: 'มอบสิทธิ์', group: 'system' })
+  // โปรไฟล์ของฉัน (รูป+ลายเซ็น) — เห็นเฉพาะ 3 บทบาทที่ต้องลงนามเอกสาร
+  if (ctx.isCouncilAdvisor || ctx.isStudentAffairsHead || ctx.isSchoolDirector) {
+    items.push({ id: 'myCouncilProfile', icon: '✍️', label: 'โปรไฟล์ของฉัน', group: 'system' })
+  }
 
   // สวิตช์เปิด/ปิดโมดูล (สเปคข้อ 8.18.4, council_modules) — บังคับใช้เฉพาะโมดูลที่ผูกกับ
   // nav item เดี่ยวๆ ตรงๆ ได้เท่านั้น (interview/appoint/perms ยังไม่มี nav item แยกของตัวเอง
@@ -1762,60 +1779,87 @@ function openCertificatePrint(member, evaluation) {
   setTimeout(() => win.print(), 600)
 }
 
-// ─── เอกสารขออนุมัติโครงการ/กิจกรรม — ภายในแอดมิน/ครู/ประธานสภาเท่านั้น ────────────────────
+// ─── เอกสารขออนุมัติโครงการ/กิจกรรม — อนุมัติ 3 ระดับตามแบบฟอร์มโรงเรียนจริง (2026-08-17) ──
+// origin='teacher' (ครูที่ปรึกษาสภาริเริ่ม): draft → pending_dept_head → pending_director → approved
+// origin='council'  (ประธานสภาริเริ่ม): draft → pending_advisor (ครูที่ปรึกษาประจำฝ่าย) →
+//   pending_dept_head → pending_director → approved — ตีกลับขั้นไหนก็กลับเป็น draft เสมอ
 let docs = null
+let docEditingId = null // null=ไม่ได้แก้ไข, 'new'=ร่างใหม่, <id>=แก้ไขร่างเดิม
+let docDetailId = null // id ของเอกสารที่กำลังเปิดดูรายละเอียดแบบเต็ม (ป๊อบอัพ)
+let myAdvisorPositionIds = null // null=ยังไม่โหลด — ฝ่ายที่ตัวเอง (ถ้าเป็นครูที่ปรึกษาสภา) ดูแล
+
 const DOC_STATUS_BADGE = {
   draft: ['ร่าง', 'text-[var(--muted)] bg-[var(--bg-2)] border-[var(--line)]'],
-  pending: ['เสนอขออนุมัติแล้ว', 'text-[var(--gold-ink)] bg-[var(--gold-soft-line)] border-[var(--gold-soft-line)]'],
+  pending_advisor: ['รอครูที่ปรึกษาประจำฝ่ายรับรอง', 'text-[var(--gold-ink)] bg-[var(--gold-soft-line)] border-[var(--gold-soft-line)]'],
+  pending_dept_head: ['รอหัวหน้าฝ่ายกิจการนักเรียน', 'text-[var(--gold-ink)] bg-[var(--gold-soft-line)] border-[var(--gold-soft-line)]'],
+  pending_director: ['รอผู้อำนวยการ', 'text-[var(--gold-ink)] bg-[var(--gold-soft-line)] border-[var(--gold-soft-line)]'],
   approved: ['อนุมัติแล้ว', 'text-[#106143] bg-[var(--ok-soft-line)] border-[var(--ok-soft-line)]'],
-  rejected: ['ไม่อนุมัติ', 'text-[#8a2f22] bg-[var(--bad-soft-line)] border-[var(--bad-soft-line)]'],
 }
 
 async function loadDocs() {
   docs = await getCouncilDocuments(electionYear).catch(() => [])
   render()
 }
+async function loadMyAdvisorPositions() {
+  myAdvisorPositionIds = ctx.teacher ? await getAdvisorPositions(ctx.teacher.id).catch(() => []) : []
+  render()
+}
+
+const parseList = text => (text || '').split('\n').map(l => l.trim()).filter(Boolean)
+const parseRows = (text, numCols) => parseList(text).map(l => {
+  const parts = l.split('|').map(s => s.trim())
+  while (parts.length < numCols) parts.push('')
+  return parts.slice(0, numCols)
+})
+const rowsToText = rows => (Array.isArray(rows) ? rows : []).map(r => r.join(' | ')).join('\n')
+const listToText = list => (Array.isArray(list) ? list : []).join('\n')
+const moneyFmt = n => Number(n || 0).toLocaleString('th-TH')
+const budgetTotal = d => (d.budget_items || []).reduce((sum, r) => sum + (Number(r[1]) || 0), 0)
+
+function canCreateDoc() {
+  return ctx.isCouncilAdvisor || ctx.isAdmin || ctx.isChair
+}
+function canDecideAdvisor(d) {
+  return d.status === 'pending_advisor' && (ctx.isAdmin || (ctx.isCouncilAdvisor && myAdvisorPositionIds?.includes(d.position_id)))
+}
+function canDecideDeptHead(d) {
+  return d.status === 'pending_dept_head' && (ctx.isAdmin || ctx.isStudentAffairsHead)
+}
+function canDecideDirector(d) {
+  return d.status === 'pending_director' && (ctx.isAdmin || ctx.isSchoolDirector)
+}
 
 function renderDocsView() {
-  const canManage = ctx.isAdmin || ctx.role === 'teacher' || ctx.isChair
-  if (!canManage) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะแอดมิน ครู หรือประธานสภาที่ล็อกอินอยู่</p>`
+  const canView = ctx.isAdmin || ctx.role === 'teacher' || ctx.isChair
+  if (!canView) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะแอดมิน ครู หรือประธานสภาที่ล็อกอินอยู่</p>`
   if (docs === null) { loadDocs(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
-  const canDecide = ctx.isAdmin || ctx.role === 'teacher'
+  if (ctx.isCouncilAdvisor && myAdvisorPositionIds === null) { loadMyAdvisorPositions(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
 
-  const createForm = `
-    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
-      <p class="text-sm font-bold text-[var(--ink-2)] mb-3">➕ ร่างเอกสารขออนุมัติโครงการใหม่</p>
-      <form id="doc-form" class="space-y-2">
-        <input name="title" required placeholder="ชื่อโครงการ/กิจกรรม" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
-        <textarea name="rationale" rows="2" placeholder="หลักการและเหตุผล" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
-        <textarea name="objective" rows="2" placeholder="วัตถุประสงค์" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
-        <div class="grid grid-cols-2 gap-2">
-          <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
-          <input name="owner_text" placeholder="ผู้รับผิดชอบ" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
-        </div>
-        <button type="submit" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">บันทึกร่าง</button>
-      </form>
-    </div>`
+  if (docEditingId !== null) return renderDocEditForm()
 
-  if (!docs.length) return `${createForm}<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีเอกสารโครงการ</p>`
+  const createBtn = canCreateDoc()
+    ? `<button type="button" id="btn-new-doc" class="w-full py-3 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold mb-4">➕ ร่างเอกสารโครงการใหม่</button>` : ''
+
+  if (!docs.length) return `${createBtn}<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีเอกสารโครงการ</p>`
 
   const card = d => {
     const [label, cls] = DOC_STATUS_BADGE[d.status] ?? ['—', 'text-[var(--muted)] bg-[var(--bg-2)] border-[var(--line)]']
+    const isOwner = (ctx.student && d.created_by_student_id === ctx.student.id) || (ctx.teacher && d.created_by_teacher_id === ctx.teacher.id)
     return `
       <div class="rounded-xl border border-[var(--line-soft)] p-3.5 space-y-2 bg-[var(--surface)]">
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <p class="text-sm font-bold text-[var(--ink)]">${esc(d.title)}</p>
-            <p class="text-xs text-[var(--muted-2)]">${d.owner_text ? esc(d.owner_text) + ' · ' : ''}${d.budget ? Number(d.budget).toLocaleString('th-TH') + ' บาท' : 'ไม่ระบุงบ'}</p>
+            <p class="text-xs text-[var(--muted-2)]">${d.council_positions?.position_name ? esc(d.council_positions.position_name) + ' · ' : ''}${moneyFmt(budgetTotal(d))} บาท</p>
           </div>
           <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${cls}">${label}</span>
         </div>
-        ${d.rationale ? `<p class="text-xs text-[var(--muted)]"><b>เหตุผล:</b> ${esc(d.rationale)}</p>` : ''}
-        ${d.objective ? `<p class="text-xs text-[var(--muted)]"><b>วัตถุประสงค์:</b> ${esc(d.objective)}</p>` : ''}
-        ${d.approval_comment ? `<p class="text-xs ${d.status === 'approved' ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}">💬 ${esc(d.approval_comment)}</p>` : ''}
+        ${d.status === 'draft' && d.last_rejected_stage ? `<p class="text-xs text-[var(--bad)] bg-[var(--bad-soft)] rounded-[10px] p-2.5">↩️ ถูกตีกลับจากขั้น${esc({ advisor: 'ครูที่ปรึกษาประจำฝ่าย', dept_head: 'หัวหน้าฝ่ายกิจการนักเรียน', director: 'ผู้อำนวยการ' }[d.last_rejected_stage] ?? d.last_rejected_stage)}${d.last_rejection_comment ? ': ' + esc(d.last_rejection_comment) : ''}</p>` : ''}
         <div class="flex flex-wrap gap-2 pt-1 border-t border-[var(--line-soft)]">
-          ${d.status === 'draft' ? `<button type="button" class="btn-submit-doc text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white" data-id="${d.id}">📤 เสนอขออนุมัติ</button>` : ''}
-          ${d.status === 'pending' && canDecide ? `
+          <button type="button" class="btn-view-doc-detail text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${d.id}">📄 ดูรายละเอียด</button>
+          ${d.status === 'draft' && (isOwner || ctx.isAdmin) ? `<button type="button" class="btn-edit-doc text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)]" data-id="${d.id}">✏️ แก้ไข</button>` : ''}
+          ${d.status === 'draft' && (isOwner || ctx.isAdmin) ? `<button type="button" class="btn-submit-doc text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white" data-id="${d.id}">📤 เสนอขออนุมัติ</button>` : ''}
+          ${canDecideAdvisor(d) || canDecideDeptHead(d) || canDecideDirector(d) ? `
             <button type="button" class="btn-approve-doc text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--ok)] hover:bg-[#106143] text-white" data-id="${d.id}">✅ อนุมัติ</button>
             <button type="button" class="btn-reject-doc text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${d.id}">❌ ไม่อนุมัติ</button>` : ''}
           ${d.status === 'approved' ? `<button type="button" class="btn-print-doc text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${d.id}">🖨️ พิมพ์เอกสาร</button>` : ''}
@@ -1823,35 +1867,196 @@ function renderDocsView() {
       </div>`
   }
 
-  return `${createForm}<div class="space-y-3">${docs.map(card).join('')}</div>`
+  return `${createBtn}<div class="space-y-3">${docs.map(card).join('')}</div>${renderDocDetailModal()}`
+}
+
+function renderDocEditForm() {
+  const isNew = docEditingId === 'new'
+  const d = isNew ? {} : (docs.find(x => x.id === docEditingId) ?? {})
+  const origin = ctx.isChair && !ctx.isCouncilAdvisor && !ctx.isAdmin ? 'council' : (d.origin ?? (ctx.isChair ? 'council' : 'teacher'))
+  return `
+    <div class="flex items-center gap-3 mb-4">
+      <button type="button" id="btn-doc-form-back" class="w-8 h-8 rounded-full hover:bg-[var(--bg-2)] text-[var(--muted)] flex items-center justify-center flex-shrink-0 text-lg">←</button>
+      <h2 class="text-base font-bold text-[var(--ink)]">${isNew ? 'ร่างเอกสารโครงการใหม่' : 'แก้ไขร่างเอกสารโครงการ'}</h2>
+    </div>
+    <form id="doc-form" class="space-y-3" data-origin="${origin}">
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
+        <p class="text-sm font-bold text-[var(--ink-2)]">ข้อมูลทั่วไป</p>
+        <input name="title" required placeholder="ชื่อโครงการ" value="${esc(d.title ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        <div class="grid grid-cols-2 gap-2">
+          <input name="planArea" placeholder="แผนงาน" value="${esc(d.plan_area ?? '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          <input name="projectType" placeholder="ลักษณะโครงการ เช่น โครงการต่อเนื่อง" value="${esc(d.project_type ?? '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+        <input name="schoolStrategy" placeholder="สนองกลยุทธ์โรงเรียน" value="${esc(d.school_strategy ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        <input name="educationStandard" placeholder="สนองมาตรฐานการศึกษา/ตัวชี้วัด" value="${esc(d.education_standard ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        <textarea name="responsiblePersons" rows="2" placeholder="ผู้รับผิดชอบโครงการ (บรรทัดละ 1 ชื่อ)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(listToText(d.responsible_persons))}</textarea>
+        <div>
+          <label class="block text-xs font-semibold text-[var(--muted)] mb-1">ฝ่ายที่รับผิดชอบ ${origin === 'council' ? '<span class="text-[var(--bad)]">*</span>' : ''}</label>
+          <select name="positionId" ${origin === 'council' ? 'required' : ''} class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]">
+            <option value="">— ไม่ระบุ —</option>
+            ${ctx.positions.map(p => `<option value="${p.id}" ${d.position_id === p.id ? 'selected' : ''}>${esc(p.position_name)} (สภา${esc(GENDER_LABEL[p.gender] ?? '')})</option>`).join('')}
+          </select>
+          ${origin === 'council' ? `<p class="text-[0.6875rem] text-[var(--muted-2)] mt-1">โครงการที่สภาริเริ่มเองต้องระบุฝ่าย เพื่อส่งให้ครูที่ปรึกษาประจำฝ่ายนั้นตรวจก่อน</p>` : ''}
+        </div>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
+        <p class="text-sm font-bold text-[var(--ink-2)]">หลักการ วัตถุประสงค์ เป้าหมาย</p>
+        <textarea name="rationale" rows="3" placeholder="หลักการและเหตุผล" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(d.rationale ?? '')}</textarea>
+        <textarea name="objectives" rows="2" placeholder="วัตถุประสงค์ (บรรทัดละ 1 ข้อ)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(listToText(d.objectives))}</textarea>
+        <textarea name="goalsQuantitative" rows="2" placeholder="เป้าหมายเชิงปริมาณ (บรรทัดละ 1 ข้อ)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(listToText(d.goals_quantitative))}</textarea>
+        <textarea name="goalsQualitative" rows="2" placeholder="เป้าหมายเชิงคุณภาพ (บรรทัดละ 1 ข้อ)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(listToText(d.goals_qualitative))}</textarea>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
+        <p class="text-sm font-bold text-[var(--ink-2)]">วิธีดำเนินงาน</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">บรรทัดละ 1 แถว รูปแบบ: ขั้นตอน/กิจกรรม | ระยะเวลา | งบประมาณ | ผู้รับผิดชอบ</p>
+        <textarea name="workSteps" rows="4" placeholder="เสนอโครงการต่อผู้บริหาร | ธ.ค.2568 | - | นายเปาซี" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(rowsToText(d.work_steps))}</textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <input name="durationText" placeholder="ระยะเวลาดำเนินการ" value="${esc(d.duration_text ?? '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          <input name="locationText" placeholder="สถานที่ดำเนินงาน" value="${esc(d.location_text ?? '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
+        <p class="text-sm font-bold text-[var(--ink-2)]">งบประมาณ</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">บรรทัดละ 1 รายการ รูปแบบ: รายการ | จำนวนเงิน(บาท) — รวมยอดคำนวณอัตโนมัติ</p>
+        <textarea name="budgetItems" rows="4" placeholder="ค่าอาหาร 115 คน x 5 มื้อ | 17250" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(rowsToText(d.budget_items))}</textarea>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
+        <p class="text-sm font-bold text-[var(--ink-2)]">หน่วยงาน/ผู้เกี่ยวข้อง</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">บรรทัดละ 1 รายการ รูปแบบ: หน่วยงาน/บุคคล | จำนวน(คน)</p>
+        <textarea name="stakeholders" rows="3" placeholder="ครูที่ปรึกษา | 9" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(rowsToText(d.stakeholders))}</textarea>
+      </div>
+
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
+        <p class="text-sm font-bold text-[var(--ink-2)]">การประเมินผลความสำเร็จ</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">บรรทัดละ 1 แถว รูปแบบ: เป้าหมาย | ตัวบ่งชี้ความสำเร็จ | วิธีวัดและประเมินผล | เครื่องมือวัด</p>
+        <textarea name="evaluationItems" rows="4" placeholder="ผู้เรียนพัฒนาศักยภาพผู้นำ | ร้อยละ 80 | ประเมินจากแบบสังเกตการณ์ | แบบสังเกตการณ์" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(rowsToText(d.evaluation_items))}</textarea>
+        <textarea name="expectedResults" rows="2" placeholder="ผลที่คาดว่าจะได้รับ (บรรทัดละ 1 ข้อ)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(listToText(d.expected_results))}</textarea>
+      </div>
+
+      <div class="sticky bottom-0 -mx-4 px-4 py-3 bg-[var(--surface)] border-t border-[var(--line)] flex gap-2">
+        <button type="button" id="btn-doc-form-cancel" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">ยกเลิก</button>
+        <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">💾 บันทึกร่าง</button>
+      </div>
+    </form>`
+}
+
+function renderDocDetailModal() {
+  if (!docDetailId) return ''
+  const d = docs.find(x => x.id === docDetailId)
+  if (!d) return ''
+  const [label, cls] = DOC_STATUS_BADGE[d.status] ?? ['—', 'text-[var(--muted)] bg-[var(--bg-2)] border-[var(--line)]']
+  const row = (label2, val) => val ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">${label2}</p><p class="text-sm text-[var(--ink-2)] whitespace-pre-line">${esc(val)}</p></div>` : ''
+  const listRow = (label2, list) => list?.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">${label2}</p><ul class="text-sm text-[var(--ink-2)] list-disc list-inside space-y-0.5">${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''
+  const stepsTable = d.work_steps?.length ? `
+    <div>
+      <p class="text-xs font-bold text-[var(--muted)] mb-1">วิธีดำเนินงาน</p>
+      <div class="overflow-x-auto"><table class="w-full text-xs border-collapse"><thead><tr class="text-left text-[var(--muted)]"><th class="border-b border-[var(--line-soft)] py-1 pr-2">ขั้นตอน</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">ระยะเวลา</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">งบประมาณ</th><th class="border-b border-[var(--line-soft)] py-1">ผู้รับผิดชอบ</th></tr></thead>
+      <tbody>${d.work_steps.map(r => `<tr><td class="py-1 pr-2">${esc(r[0])}</td><td class="py-1 pr-2">${esc(r[1])}</td><td class="py-1 pr-2">${esc(r[2])}</td><td class="py-1">${esc(r[3])}</td></tr>`).join('')}</tbody></table></div>
+    </div>` : ''
+  const budgetTable = d.budget_items?.length ? `
+    <div>
+      <p class="text-xs font-bold text-[var(--muted)] mb-1">งบประมาณ (รวม ${moneyFmt(budgetTotal(d))} บาท)</p>
+      <div class="overflow-x-auto"><table class="w-full text-xs border-collapse"><tbody>${d.budget_items.map(r => `<tr><td class="py-1 pr-2 border-b border-[var(--line-soft)]">${esc(r[0])}</td><td class="py-1 text-right border-b border-[var(--line-soft)]">${moneyFmt(r[1])}</td></tr>`).join('')}</tbody></table></div>
+    </div>` : ''
+  const evalTable = d.evaluation_items?.length ? `
+    <div>
+      <p class="text-xs font-bold text-[var(--muted)] mb-1">การประเมินผลความสำเร็จ</p>
+      <div class="overflow-x-auto"><table class="w-full text-xs border-collapse"><thead><tr class="text-left text-[var(--muted)]"><th class="border-b border-[var(--line-soft)] py-1 pr-2">เป้าหมาย</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">ตัวบ่งชี้</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">วิธีวัด</th><th class="border-b border-[var(--line-soft)] py-1">เครื่องมือ</th></tr></thead>
+      <tbody>${d.evaluation_items.map(r => `<tr><td class="py-1 pr-2">${esc(r[0])}</td><td class="py-1 pr-2">${esc(r[1])}</td><td class="py-1 pr-2">${esc(r[2])}</td><td class="py-1">${esc(r[3])}</td></tr>`).join('')}</tbody></table></div>
+    </div>` : ''
+  const approvalTrail = [
+    d.advisor_decided_at ? `✅ ครูที่ปรึกษาประจำฝ่ายรับรองแล้ว${d.advisor_comment ? ' — ' + esc(d.advisor_comment) : ''}` : '',
+    d.dept_head_decided_at ? `✅ หัวหน้าฝ่ายกิจการนักเรียนอนุมัติแล้ว${d.dept_head_comment ? ' — ' + esc(d.dept_head_comment) : ''}` : '',
+    d.director_decided_at ? `✅ ผู้อำนวยการอนุมัติแล้ว${d.director_comment ? ' — ' + esc(d.director_comment) : ''}` : '',
+  ].filter(Boolean)
+
+  return `
+    <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="doc-detail-backdrop">
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_8px_28px_rgba(11,20,16,0.25)] max-w-lg w-full max-h-[85vh] overflow-y-auto p-5">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p class="text-base font-bold text-[var(--ink)]">${esc(d.title)}</p>
+            <span class="text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${cls} inline-block mt-1">${label}</span>
+          </div>
+          <button type="button" id="btn-doc-detail-close" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
+        </div>
+        <div class="space-y-3">
+          ${row('แผนงาน', d.plan_area)}${row('ลักษณะโครงการ', d.project_type)}${row('สนองกลยุทธ์โรงเรียน', d.school_strategy)}${row('สนองมาตรฐานการศึกษา', d.education_standard)}
+          ${listRow('ผู้รับผิดชอบโครงการ', d.responsible_persons)}
+          ${d.council_positions?.position_name ? row('ฝ่ายที่รับผิดชอบ', d.council_positions.position_name) : ''}
+          ${row('หลักการและเหตุผล', d.rationale)}
+          ${listRow('วัตถุประสงค์', d.objectives)}
+          ${listRow('เป้าหมายเชิงปริมาณ', d.goals_quantitative)}
+          ${listRow('เป้าหมายเชิงคุณภาพ', d.goals_qualitative)}
+          ${stepsTable}
+          ${row('ระยะเวลาดำเนินการ', d.duration_text)}${row('สถานที่ดำเนินงาน', d.location_text)}
+          ${budgetTable}
+          ${listRow('หน่วยงาน/ผู้เกี่ยวข้อง', (d.stakeholders || []).map(r => `${r[0]} (${r[1]} คน)`))}
+          ${evalTable}
+          ${listRow('ผลที่คาดว่าจะได้รับ', d.expected_results)}
+          ${approvalTrail.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">ประวัติการอนุมัติ</p><div class="space-y-1">${approvalTrail.map(t => `<p class="text-xs text-[var(--ok)]">${t}</p>`).join('')}</div></div>` : ''}
+        </div>
+      </div>
+    </div>`
 }
 
 function buildDocumentHtml(d, cfg) {
   const councilName = esc(cfg.council_name || 'ระบบสภานักเรียน')
+  const table = (headers, rows) => rows?.length ? `
+    <table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:13px;">
+      <thead><tr>${headers.map(h => `<th style="border:1px solid #ccc;padding:6px;background:#f8f4f4;">${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr>${r.map(c => `<td style="border:1px solid #ccc;padding:6px;">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>` : ''
+  const list = items => items?.length ? `<ol style="margin:4px 0;padding-left:20px;">${items.map(i => `<li>${esc(i)}</li>`).join('')}</ol>` : '—'
+
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>โครงการ ${esc(d.title)}</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-      body { font-family: 'Sarabun', sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.9; color: var(--ink); }
+      body { font-family: 'Sarabun', sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.8; color: #1d1519; }
       h1 { text-align: center; font-size: 20px; margin-bottom: 2px; }
-      .sub { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 24px; }
-      .row { margin-bottom: 14px; } .row b { display: block; margin-bottom: 3px; }
-      .sign { display: flex; justify-content: space-around; margin-top: 60px; text-align: center; }
-      .sign div { width: 220px; border-top: 1px solid #999; padding-top: 6px; font-size: 13px; }
+      .sub { text-align: center; color: #6e5f65; font-size: 13px; margin-bottom: 20px; }
+      .row { margin-bottom: 12px; } .row b { display: block; margin-bottom: 3px; }
+      .sign { display: flex; justify-content: space-around; margin-top: 50px; text-align: center; flex-wrap: wrap; gap: 20px; }
+      .sign div { width: 200px; }
+      .sign img { height: 50px; object-fit: contain; display: block; margin: 0 auto 4px; }
+      .sign .line { border-top: 1px solid #999; padding-top: 6px; font-size: 13px; }
       @media print { body { padding: 0; } }
     </style></head><body>
-      <h1>เอกสารขออนุมัติโครงการ/กิจกรรม</h1>
+      <h1>แบบเสนอโครงการ</h1>
       <p class="sub">${councilName} · ปีการศึกษา ${d.academic_year}</p>
       <div class="row"><b>ชื่อโครงการ</b>${esc(d.title)}</div>
+      <div class="row"><b>แผนงาน</b>${esc(d.plan_area || '—')} &nbsp;·&nbsp; <b style="display:inline">ลักษณะโครงการ</b> ${esc(d.project_type || '—')}</div>
+      <div class="row"><b>สนองกลยุทธ์โรงเรียน</b>${esc(d.school_strategy || '—')}</div>
+      <div class="row"><b>สนองมาตรฐานการศึกษา/ตัวชี้วัด</b>${esc(d.education_standard || '—')}</div>
+      <div class="row"><b>ผู้รับผิดชอบโครงการ</b>${list(d.responsible_persons)}</div>
+      <div class="row"><b>ฝ่ายที่รับผิดชอบ</b>${esc(d.council_positions?.position_name || '—')}</div>
       <div class="row"><b>หลักการและเหตุผล</b>${esc(d.rationale || '—')}</div>
-      <div class="row"><b>วัตถุประสงค์</b>${esc(d.objective || '—')}</div>
-      <div class="row"><b>งบประมาณ</b>${d.budget ? Number(d.budget).toLocaleString('th-TH') + ' บาท' : 'ไม่ระบุ'}</div>
-      <div class="row"><b>ผู้รับผิดชอบ</b>${esc(d.owner_text || '—')}</div>
-      <div class="row"><b>สถานะ</b>อนุมัติแล้ว ${d.approval_comment ? '· ' + esc(d.approval_comment) : ''}</div>
+      <div class="row"><b>วัตถุประสงค์</b>${list(d.objectives)}</div>
+      <div class="row"><b>เป้าหมายเชิงปริมาณ</b>${list(d.goals_quantitative)}</div>
+      <div class="row"><b>เป้าหมายเชิงคุณภาพ</b>${list(d.goals_qualitative)}</div>
+      <div class="row"><b>วิธีดำเนินงาน</b>${table(['ขั้นตอน/กิจกรรม', 'ระยะเวลา', 'งบประมาณ', 'ผู้รับผิดชอบ'], d.work_steps)}</div>
+      <div class="row"><b>ระยะเวลาดำเนินการ</b>${esc(d.duration_text || '—')}</div>
+      <div class="row"><b>สถานที่ดำเนินงาน</b>${esc(d.location_text || '—')}</div>
+      <div class="row"><b>งบประมาณ</b>${table(['รายการ', 'จำนวนเงิน (บาท)'], d.budget_items)}<b>รวมเป็นเงิน ${moneyFmt(budgetTotal(d))} บาท</b></div>
+      <div class="row"><b>หน่วยงาน/ผู้เกี่ยวข้อง</b>${table(['หน่วยงาน/บุคคล', 'จำนวน (คน)'], d.stakeholders)}</div>
+      <div class="row"><b>การประเมินผลความสำเร็จ</b>${table(['เป้าหมาย', 'ตัวบ่งชี้ความสำเร็จ', 'วิธีวัดและประเมินผล', 'เครื่องมือวัด'], d.evaluation_items)}</div>
+      <div class="row"><b>ผลที่คาดว่าจะได้รับ</b>${list(d.expected_results)}</div>
       <div class="sign">
-        <div>ผู้เสนอโครงการ (ประธานสภานักเรียน)</div>
-        <div>ผู้อนุมัติ (ครูที่ปรึกษาสภา/ผู้อำนวยการ)</div>
+        <div><div class="line">ผู้เสนอโครงการ</div></div>
+        <div>
+          ${d.dept_head_signature_url ? `<img src="${esc(d.dept_head_signature_url)}" />` : ''}
+          <div class="line">หัวหน้าฝ่ายกิจการนักเรียน</div>
+        </div>
+        <div>
+          ${d.director_signature_url ? `<img src="${esc(d.director_signature_url)}" />` : ''}
+          <div class="line">ผู้อำนวยการ${cfg.council_signer_director_name ? ' (' + esc(cfg.council_signer_director_name) + ')' : ''}</div>
+        </div>
       </div>
-      <div style="text-align:center;margin-top:24px;"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid var(--gold);background:#fff;color:var(--gold-ink);cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+      <div style="text-align:center;margin-top:24px;"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
     </body></html>`
 }
 
@@ -2401,44 +2606,198 @@ function renderAssignmentsView() {
   return `${form}<p class="text-xs font-bold text-[var(--muted-2)] mb-2">งานทั้งหมด (${doneCount}/${list.length} เสร็จแล้ว)</p><div class="space-y-2">${list.map(card).join('')}</div>`
 }
 
-// ─── มอบสิทธิ์ครูที่ปรึกษาสภานักเรียน (แอดมิน) — สเปคข้อ 8.19 ────────────────────────────
-async function loadCouncilAdvisors() {
-  councilAdvisors = await getCouncilAdvisorTeachers().catch(() => [])
+// ─── มอบสิทธิ์บทบาทครู (แอดมิน) — สเปคข้อ 8.19 + ครูที่ปรึกษาสภาผูกฝ่ายที่ดูแล + หัวหน้าฝ่าย
+// กิจการนักเรียน/ผู้อำนวยการ (2 ตำแหน่งที่ผู้ใช้ขอเพิ่ม 2026-08-16) ──────────────────────────
+let studentAffairsHeads = null
+let schoolDirectors = null
+let editingAdvisorDeptId = null // teacherId ที่กำลังเปิดแก้ไขฝ่ายที่ดูแลอยู่ (null = ไม่มีใครเปิด)
+const advisorDeptCache = {} // { [teacherId]: number[] } แคชฝ่ายที่ดูแลของครูที่ปรึกษาแต่ละคน
+
+async function loadPermsRosters() {
+  const [advisors, deptHeads, directors] = await Promise.all([
+    getTeachersByPosition('council_advisor').catch(() => []),
+    getTeachersByPosition('student_affairs_head').catch(() => []),
+    getTeachersByPosition('school_director').catch(() => []),
+  ])
+  councilAdvisors = advisors
+  studentAffairsHeads = deptHeads
+  schoolDirectors = directors
   render()
+}
+async function loadAdvisorDepts(teacherId) {
+  advisorDeptCache[teacherId] = await getAdvisorPositions(teacherId).catch(() => [])
+  render()
+}
+
+function renderAdvisorDeptEditor(teacherId) {
+  if (advisorDeptCache[teacherId] === undefined) { loadAdvisorDepts(teacherId); return `<p class="text-xs text-[var(--muted-2)] py-2">⏳ กำลังโหลด...</p>` }
+  const selected = new Set(advisorDeptCache[teacherId])
+  return `
+    <form class="advisor-dept-form mt-3 pt-3 border-t border-[var(--line-soft)]" data-teacher-id="${teacherId}">
+      <p class="text-xs font-semibold text-[var(--muted)] mb-2">ติ๊กฝ่ายที่ครูคนนี้รับผิดชอบตรวจ/รับรองเอกสารโครงการ</p>
+      <div class="grid grid-cols-2 gap-1.5 mb-2">
+        ${ctx.positions.map(p => `
+          <label class="flex items-center gap-1.5 text-xs text-[var(--ink-2)]">
+            <input type="checkbox" name="pos_${p.id}" value="${p.id}" ${selected.has(p.id) ? 'checked' : ''} />
+            ${esc(p.position_name)} (${esc(GENDER_LABEL[p.gender] ?? '')})
+          </label>`).join('')}
+      </div>
+      <button type="submit" class="px-4 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">บันทึกฝ่าย</button>
+    </form>`
+}
+
+function rosterCard(t, positionValue, showDeptEditor) {
+  const expanded = editingAdvisorDeptId === t.id
+  return `
+    <div class="rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)]">
+      <div class="flex items-center gap-3">
+        ${t.image_url
+          ? `<img src="${esc(t.image_url)}" class="w-10 h-12 rounded-[10px] object-cover border border-[var(--line)] flex-shrink-0" />`
+          : `<div class="w-10 h-12 rounded-[10px] bg-[var(--primary-soft)] text-[var(--primary-70)] grid place-items-center font-bold flex-shrink-0 border border-[var(--line)]">${esc((t.full_name || '?').charAt(0))}</div>`}
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(t.full_name)}</p>
+          <p class="text-xs text-[var(--muted)]">${esc(t.teacher_code || '')}${t.category ? ' · ' + esc(t.category) : ''} · ${t.signature_url ? '✅ มีลายเซ็นแล้ว' : '⚠️ ยังไม่มีลายเซ็น'}</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-[var(--line-soft)]">
+        <button type="button" class="btn-edit-council-profile text-[0.6875rem] font-bold px-2.5 py-1 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${t.id}" data-name="${esc(t.full_name)}" data-image="${esc(t.image_url ?? '')}" data-signature="${esc(t.signature_url ?? '')}">✍️ รูป/ลายเซ็น</button>
+        ${showDeptEditor ? `<button type="button" class="btn-toggle-advisor-depts text-[0.6875rem] font-bold px-2.5 py-1 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${t.id}">${expanded ? '▲ ซ่อนฝ่ายที่ดูแล' : '🏛️ ฝ่ายที่ดูแล'}</button>` : ''}
+        <button type="button" class="btn-remove-teacher-position text-[0.6875rem] font-bold px-2.5 py-1 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${t.id}" data-position="${positionValue}">ถอดถอน</button>
+      </div>
+      ${showDeptEditor && expanded ? renderAdvisorDeptEditor(t.id) : ''}
+    </div>`
 }
 
 function renderPermsView() {
   if (!ctx.isAdmin) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะแอดมินเท่านั้น</p>`
-  if (councilAdvisors === null) { loadCouncilAdvisors(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (councilAdvisors === null) { loadPermsRosters(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
   if (ivTeachers === null) { loadIvTeachers(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
 
   const datalist = `<datalist id="council-teacher-datalist">${ivTeachers.map(t => `<option value="${esc(t.full_name)} · รหัส ${t.id}"></option>`).join('')}</datalist>`
 
-  const addForm = `
-    <form id="perms-add-form" class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4 space-y-2.5">
-      <p class="text-sm font-bold text-[var(--ink-2)]">➕ เพิ่มครูที่ปรึกษาสภานักเรียน</p>
-      <input type="text" name="teacherText" list="council-teacher-datalist" placeholder="พิมพ์ชื่อครู แล้วเลือกจากรายการ..." required
-        class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
-      <button type="submit" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">เพิ่ม</button>
-    </form>`
-
-  const rosterCard = t => `
-    <div class="rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)] flex items-center gap-3">
-      ${t.image_url
-        ? `<img src="${esc(t.image_url)}" class="w-10 h-12 rounded-[10px] object-cover border border-[var(--line)] flex-shrink-0" />`
-        : `<div class="w-10 h-12 rounded-[10px] bg-[var(--primary-soft)] text-[var(--primary-70)] grid place-items-center font-bold flex-shrink-0 border border-[var(--line)]">${esc((t.full_name || '?').charAt(0))}</div>`}
-      <div class="min-w-0 flex-1">
-        <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(t.full_name)}</p>
-        <p class="text-xs text-[var(--muted)]">${esc(t.teacher_code || '')}${t.category ? ' · ' + esc(t.category) : ''}</p>
-      </div>
-      <button type="button" class="btn-remove-council-advisor text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)] flex-shrink-0" data-id="${t.id}">ถอดถอน</button>
+  const section = (title, list, positionValue, showDeptEditor) => `
+    <div class="mb-5">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-2">${title} (${list.length} คน)</p>
+      <form class="perms-add-form bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-3 mb-2 flex gap-2" data-position="${positionValue}">
+        <input type="text" name="teacherText" list="council-teacher-datalist" placeholder="พิมพ์ชื่อครู แล้วเลือกจากรายการ..." required
+          class="flex-1 min-w-0 border border-[var(--line)] rounded-[10px] px-3 py-2 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        <button type="submit" class="px-4 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold flex-shrink-0">เพิ่ม</button>
+      </form>
+      ${list.length ? `<div class="space-y-2">${list.map(t => rosterCard(t, positionValue, showDeptEditor)).join('')}</div>` : `<p class="text-xs text-[var(--muted-2)] text-center py-4">ยังไม่มี</p>`}
     </div>`
 
-  const roster = councilAdvisors.length
-    ? `<div class="space-y-2">${councilAdvisors.map(rosterCard).join('')}</div>`
-    : `<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีครูที่ปรึกษาสภานักเรียน</p>`
+  return `${datalist}
+    ${section('ครูที่ปรึกษาสภานักเรียน', councilAdvisors, 'council_advisor', true)}
+    ${section('หัวหน้าฝ่ายกิจการนักเรียน', studentAffairsHeads, 'student_affairs_head', false)}
+    ${section('ผู้อำนวยการ', schoolDirectors, 'school_director', false)}`
+}
 
-  return `${datalist}${addForm}<p class="text-xs font-bold text-[var(--muted-2)] mb-2">ทำเนียบครูที่ปรึกษาสภานักเรียน (${councilAdvisors.length} คน)</p>${roster}`
+// ─── ลายเซ็น/รูปประจำตัว — วาดเองหรืออัปโหลด (mirror pattern js/terangganu.js wireSignatureInput) ──
+function wireSignatureCanvas(canvasEl) {
+  const g = canvasEl.getContext('2d')
+  const clear = () => { g.fillStyle = '#fff'; g.fillRect(0, 0, canvasEl.width, canvasEl.height); g.strokeStyle = '#0f172a' }
+  clear(); g.lineWidth = 4; g.lineCap = 'round'
+  let drawing = false, drawn = false
+  const pos = e => {
+    const r = canvasEl.getBoundingClientRect()
+    return { x: (e.clientX - r.left) * canvasEl.width / r.width, y: (e.clientY - r.top) * canvasEl.height / r.height }
+  }
+  canvasEl.addEventListener('pointerdown', e => { drawing = true; canvasEl.setPointerCapture?.(e.pointerId); const p = pos(e); g.beginPath(); g.moveTo(p.x, p.y) })
+  canvasEl.addEventListener('pointermove', e => { if (!drawing) return; const p = pos(e); g.lineTo(p.x, p.y); g.stroke(); drawn = true })
+  canvasEl.addEventListener('pointerup', () => { drawing = false })
+  canvasEl.addEventListener('pointercancel', () => { drawing = false })
+  return {
+    clear: () => { clear(); drawn = false },
+    isDrawn: () => drawn,
+    toBlob: () => new Promise(resolve => canvasEl.toBlob(resolve, 'image/png')),
+  }
+}
+
+function openCouncilProfileModal(teacher) {
+  document.getElementById('council-profile-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'council-profile-modal'
+  modal.className = 'fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-base font-bold text-[var(--ink)]">✍️ รูปและลายเซ็น — ${esc(teacher.full_name)}</p>
+        <button type="button" id="btn-close-council-profile" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <p class="text-xs font-bold text-[var(--muted)] mb-1.5">รูปประจำตัว</p>
+          <div class="flex items-center gap-3">
+            ${teacher.image_url ? `<img src="${esc(teacher.image_url)}" class="w-14 h-[4.5rem] rounded-[10px] object-cover border border-[var(--line)] flex-shrink-0" />` : `<div class="w-14 h-[4.5rem] rounded-[10px] bg-[var(--primary-soft)] text-[var(--primary-70)] grid place-items-center font-bold border border-[var(--line)] flex-shrink-0">${esc((teacher.full_name || '?').charAt(0))}</div>`}
+            <input type="file" id="council-profile-photo-file" accept="image/*" class="text-xs flex-1 min-w-0" />
+          </div>
+        </div>
+        <div>
+          <p class="text-xs font-bold text-[var(--muted)] mb-1.5">ลายเซ็น</p>
+          ${teacher.signature_url ? `<img src="${esc(teacher.signature_url)}" class="h-16 max-w-full object-contain bg-white border border-[var(--line)] rounded-lg p-1 mb-2" />` : ''}
+          <canvas id="council-signature-canvas" width="700" height="220" class="w-full h-32 border border-[var(--line)] rounded-xl bg-white touch-none"></canvas>
+          <button type="button" id="council-signature-clear" class="text-xs text-[var(--bad)] mt-1">ล้างลายเซ็น</button>
+          <p class="text-xs font-medium text-[var(--muted)] mt-2 mb-1">หรืออัปโหลดรูปลายเซ็น</p>
+          <input type="file" id="council-signature-file" accept="image/*" class="text-xs" />
+        </div>
+        <button type="button" id="council-profile-save" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">บันทึก</button>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+
+  const canvas = modal.querySelector('#council-signature-canvas')
+  const sig = wireSignatureCanvas(canvas)
+  modal.querySelector('#council-signature-clear').addEventListener('click', () => sig.clear())
+  modal.querySelector('#btn-close-council-profile').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+
+  modal.querySelector('#council-profile-save').addEventListener('click', async () => {
+    const btn = modal.querySelector('#council-profile-save')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      const photoFile = modal.querySelector('#council-profile-photo-file').files?.[0]
+      if (photoFile) {
+        const url = await uploadCouncilTeacherPhoto(teacher.id, photoFile)
+        await updateMyPhoto(teacher.id, url)
+        if (ctx.teacher && ctx.teacher.id === teacher.id) ctx.teacher.image_url = url
+      }
+      const sigFile = modal.querySelector('#council-signature-file').files?.[0]
+      const sigSource = sigFile || (sig.isDrawn() ? await sig.toBlob() : null)
+      if (sigSource) {
+        const url = await uploadCouncilTeacherSignature(teacher.id, sigSource)
+        await updateMySignature(teacher.id, url)
+        if (ctx.teacher && ctx.teacher.id === teacher.id) ctx.teacher.signature_url = url
+      }
+      showToast('บันทึกแล้ว ✅', 'success')
+      modal.remove()
+      councilAdvisors = null; studentAffairsHeads = null; schoolDirectors = null
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'บันทึก'
+    }
+  })
+}
+
+function renderMyCouncilProfileView() {
+  if (!ctx.teacher) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะบัญชีครูเท่านั้น</p>`
+  const t = ctx.teacher
+  return `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-5 text-center">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-4">✍️ โปรไฟล์ของฉัน — ${esc(t.full_name)}</p>
+      <div class="flex items-center justify-center gap-6 mb-4">
+        <div>
+          <p class="text-xs text-[var(--muted)] mb-1.5">รูปประจำตัว</p>
+          ${t.image_url ? `<img src="${esc(t.image_url)}" class="w-16 h-20 rounded-[10px] object-cover border border-[var(--line)] mx-auto" />` : `<div class="w-16 h-20 rounded-[10px] bg-[var(--primary-soft)] text-[var(--primary-70)] grid place-items-center font-bold border border-[var(--line)] mx-auto">${esc((t.full_name || '?').charAt(0))}</div>`}
+        </div>
+        <div>
+          <p class="text-xs text-[var(--muted)] mb-1.5">ลายเซ็น</p>
+          ${t.signature_url ? `<img src="${esc(t.signature_url)}" class="h-20 max-w-[10rem] object-contain bg-white border border-[var(--line)] rounded-lg p-1 mx-auto" />` : `<div class="h-20 w-40 rounded-lg border border-dashed border-[var(--line)] flex items-center justify-center text-xs text-[var(--muted-2)] mx-auto">ยังไม่มีลายเซ็น</div>`}
+        </div>
+      </div>
+      <button type="button" id="btn-edit-my-council-profile" class="px-6 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">✏️ แก้ไขรูป/ลายเซ็น</button>
+      <p class="text-[0.6875rem] text-[var(--muted-2)] mt-3">ลายเซ็นนี้จะถูกใช้ประทับอัตโนมัติเมื่อคุณอนุมัติเอกสารโครงการ ไม่ต้องวาดใหม่ทุกครั้ง</p>
+    </div>`
 }
 
 const VIEW_RENDERERS = {
@@ -2458,6 +2817,7 @@ const VIEW_RENDERERS = {
   assignments: renderAssignmentsView,
   peerEndorse: renderPeerEndorseView,
   perms: renderPermsView,
+  myCouncilProfile: renderMyCouncilProfileView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
@@ -2658,38 +3018,82 @@ function wireContentEvents() {
 
 // ─── มอบสิทธิ์ครูที่ปรึกษาสภานักเรียน ──────────────────────────────────────────────────
 function wirePermsEvents() {
-  document.getElementById('perms-add-form')?.addEventListener('submit', async e => {
-    e.preventDefault()
-    const f = e.target
-    const text = f.teacherText.value.trim()
-    const m = text.match(/· รหัส (\d+)$/)
-    if (!m) { showToast('กรุณาเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
-    const teacherId = Number(m[1])
-    if (councilAdvisors.some(t => t.id === teacherId)) { showToast('ครูคนนี้เป็นครูที่ปรึกษาสภาอยู่แล้ว', 'warning'); return }
-    const btn = f.querySelector('button[type="submit"]')
-    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-    try {
-      await addCouncilAdvisor(teacherId)
-      showToast('เพิ่มครูที่ปรึกษาสภาแล้ว ✅', 'success')
-      councilAdvisors = null
-      render()
-    } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      btn.disabled = false; btn.textContent = 'เพิ่ม'
-    }
+  document.querySelectorAll('.perms-add-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const f = e.target
+      const positionValue = f.dataset.position
+      const text = f.teacherText.value.trim()
+      const m = text.match(/· รหัส (\d+)$/)
+      if (!m) { showToast('กรุณาเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
+      const teacherId = Number(m[1])
+      const rosters = { council_advisor: councilAdvisors, student_affairs_head: studentAffairsHeads, school_director: schoolDirectors }
+      if (rosters[positionValue]?.some(t => t.id === teacherId)) { showToast('ครูคนนี้อยู่ในรายชื่อนี้แล้ว', 'warning'); return }
+      const btn = f.querySelector('button[type="submit"]')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await addTeacherPosition(teacherId, positionValue)
+        showToast('เพิ่มแล้ว ✅', 'success')
+        councilAdvisors = null; studentAffairsHeads = null; schoolDirectors = null
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'เพิ่ม'
+      }
+    })
   })
 
-  document.querySelectorAll('.btn-remove-council-advisor').forEach(btn => {
+  document.querySelectorAll('.btn-remove-teacher-position').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('ถอดถอนออกจากครูที่ปรึกษาสภานักเรียน?')) return
+      if (!confirm('ถอดถอนออกจากรายชื่อนี้?')) return
       try {
-        await removeCouncilAdvisor(Number(btn.dataset.id))
-        councilAdvisors = null
+        await removeTeacherPosition(Number(btn.dataset.id), btn.dataset.position)
+        councilAdvisors = null; studentAffairsHeads = null; schoolDirectors = null
         render()
       } catch (err) {
         showToast('ถอดถอนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       }
     })
+  })
+
+  document.querySelectorAll('.btn-toggle-advisor-depts').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id)
+      editingAdvisorDeptId = editingAdvisorDeptId === id ? null : id
+      render()
+    })
+  })
+
+  document.querySelectorAll('.advisor-dept-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const teacherId = Number(form.dataset.teacherId)
+      const positionIds = ctx.positions.filter(p => form[`pos_${p.id}`]?.checked).map(p => p.id)
+      const btn = form.querySelector('button[type="submit"]')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await setAdvisorPositions(teacherId, positionIds)
+        advisorDeptCache[teacherId] = positionIds
+        showToast('บันทึกฝ่ายที่ดูแลแล้ว ✅', 'success')
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกฝ่าย'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-edit-council-profile').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openCouncilProfileModal({
+        id: Number(btn.dataset.id), full_name: btn.dataset.name,
+        image_url: btn.dataset.image || null, signature_url: btn.dataset.signature || null,
+      })
+    })
+  })
+
+  document.getElementById('btn-edit-my-council-profile')?.addEventListener('click', () => {
+    if (ctx.teacher) openCouncilProfileModal(ctx.teacher)
   })
 }
 
@@ -3007,25 +3411,63 @@ function wireSettingsEvents() {
 
 // ─── เอกสารขออนุมัติโครงการ/กิจกรรม ─────────────────────────────────────────────
 function wireDocsEvents() {
+  document.getElementById('btn-new-doc')?.addEventListener('click', () => { docEditingId = 'new'; render() })
+  document.getElementById('btn-doc-form-back')?.addEventListener('click', () => { docEditingId = null; render() })
+  document.getElementById('btn-doc-form-cancel')?.addEventListener('click', () => { docEditingId = null; render() })
+
+  document.querySelectorAll('.btn-edit-doc').forEach(btn => {
+    btn.addEventListener('click', () => { docEditingId = Number(btn.dataset.id); render() })
+  })
+
   document.getElementById('doc-form')?.addEventListener('submit', async e => {
     e.preventDefault()
     const f = e.target
     const title = f.title.value.trim()
     if (!title) { showToast('กรุณากรอกชื่อโครงการ', 'warning'); return }
+    const origin = f.dataset.origin
+    const positionId = f.positionId.value ? Number(f.positionId.value) : null
+    if (origin === 'council' && !positionId) { showToast('กรุณาเลือกฝ่ายที่รับผิดชอบ (ใช้ส่งให้ครูที่ปรึกษาประจำฝ่ายตรวจ)', 'warning'); return }
+
+    const fields = {
+      title,
+      planArea: f.planArea.value.trim(),
+      projectType: f.projectType.value.trim(),
+      schoolStrategy: f.schoolStrategy.value.trim(),
+      educationStandard: f.educationStandard.value.trim(),
+      responsiblePersons: parseList(f.responsiblePersons.value),
+      positionId,
+      rationale: f.rationale.value.trim(),
+      objectives: parseList(f.objectives.value),
+      goalsQuantitative: parseList(f.goalsQuantitative.value),
+      goalsQualitative: parseList(f.goalsQualitative.value),
+      workSteps: parseRows(f.workSteps.value, 4),
+      durationText: f.durationText.value.trim(),
+      locationText: f.locationText.value.trim(),
+      budgetItems: parseRows(f.budgetItems.value, 2),
+      stakeholders: parseRows(f.stakeholders.value, 2),
+      evaluationItems: parseRows(f.evaluationItems.value, 4),
+      expectedResults: parseList(f.expectedResults.value),
+    }
+
     const btn = f.querySelector('button[type="submit"]')
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
     try {
-      await createDocument({
-        title, rationale: f.rationale.value.trim(), objective: f.objective.value.trim(),
-        budget: f.budget.value ? Number(f.budget.value) : null, ownerText: f.owner_text.value.trim(),
-        academicYear: electionYear, createdByStudentId: ctx.isChair && ctx.student ? ctx.student.id : null,
-      })
-      showToast('บันทึกร่างเอกสารแล้ว ✅', 'success')
+      if (docEditingId === 'new') {
+        await createDocument({
+          ...fields, origin, academicYear: electionYear,
+          createdByStudentId: origin === 'council' && ctx.student ? ctx.student.id : null,
+          createdByTeacherId: origin === 'teacher' && ctx.teacher ? ctx.teacher.id : null,
+        })
+      } else {
+        await updateDocumentDraft(docEditingId, fields)
+      }
+      showToast('บันทึกร่างแล้ว ✅', 'success')
       docs = null
+      docEditingId = null
       render()
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      btn.disabled = false; btn.textContent = 'บันทึกร่าง'
+      btn.disabled = false; btn.textContent = '💾 บันทึกร่าง'
     }
   })
 
@@ -3046,11 +3488,22 @@ function wireDocsEvents() {
   document.querySelectorAll('.btn-approve-doc, .btn-reject-doc').forEach(btn => {
     btn.addEventListener('click', async () => {
       const approve = btn.classList.contains('btn-approve-doc')
-      const comment = prompt(approve ? 'ความเห็นประกอบการอนุมัติ (ถ้ามี)' : 'เหตุผลที่ไม่อนุมัติ') ?? ''
+      const id = Number(btn.dataset.id)
+      const d = docs.find(x => x.id === id)
+      if (!d) return
+      const comment = prompt(approve ? 'ความเห็นประกอบ (ถ้ามี)' : 'เหตุผลที่ไม่อนุมัติ (จำเป็นต้องระบุ)') ?? ''
       if (!approve && !comment.trim()) { showToast('กรุณาระบุเหตุผลที่ไม่อนุมัติ', 'warning'); return }
       btn.disabled = true
       try {
-        await decideDocument({ id: Number(btn.dataset.id), approve, teacherId: ctx.teacher?.id ?? null, comment: comment.trim() })
+        const teacherId = ctx.teacher?.id ?? null
+        if (d.status === 'pending_advisor') {
+          await decideAsAdvisor({ id, approve, teacherId, comment: comment.trim() })
+        } else if (d.status === 'pending_dept_head') {
+          await decideAsDeptHead({ id, approve, teacherId, comment: comment.trim(), signatureUrl: ctx.teacher?.signature_url ?? null })
+        } else if (d.status === 'pending_director') {
+          await decideAsDirector({ id, approve, teacherId, comment: comment.trim(), signatureUrl: ctx.teacher?.signature_url ?? null })
+        }
+        showToast(approve ? 'อนุมัติแล้ว ✅' : 'ตีกลับให้แก้ไขแล้ว', 'success')
         docs = null
         render()
       } catch (err) {
@@ -3065,6 +3518,14 @@ function wireDocsEvents() {
       const d = docs.find(x => x.id === Number(btn.dataset.id))
       if (d) openDocumentPrint(d)
     })
+  })
+
+  document.querySelectorAll('.btn-view-doc-detail').forEach(btn => {
+    btn.addEventListener('click', () => { docDetailId = Number(btn.dataset.id); render() })
+  })
+  document.getElementById('btn-doc-detail-close')?.addEventListener('click', () => { docDetailId = null; render() })
+  document.getElementById('doc-detail-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'doc-detail-backdrop') { docDetailId = null; render() }
   })
 }
 

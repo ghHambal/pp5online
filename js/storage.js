@@ -96,6 +96,20 @@ export async function uploadCouncilApplicationPhoto(studentId, file) {
   return uploadFile('system-assets', `council/applications/${studentId}/${key}.jpg`, blob)
 }
 
+// ลายเซ็น/รูปประจำตัวครูที่ปรึกษาสภา, หัวหน้าฝ่ายกิจการนักเรียน, ผู้อำนวยการ (ระบบสภานักเรียน)
+// — ใช้ตอนลงนามอนุมัติเอกสารโครงการ รองรับทั้งไฟล์ภาพและ Blob จาก canvas (วาดลายเซ็นเอง)
+export async function uploadCouncilTeacherSignature(teacherId, fileOrBlob) {
+  const blob = await compressImage(fileOrBlob, { maxWidth: 1000, quality: 0.9, background: '#fff' })
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return uploadFile('system-assets', `council/signatures/${teacherId}/${key}.jpg`, blob)
+}
+
+export async function uploadCouncilTeacherPhoto(teacherId, file) {
+  const blob = await compressImage(file, { maxWidth: 600, quality: 0.85 })
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return uploadFile('system-assets', `council/teachers/${teacherId}/${key}.jpg`, blob)
+}
+
 // ลายเซ็นระบบค่าย TERANGGANU — รองรับทั้งไฟล์ภาพและ Blob จาก canvas
 export async function uploadTerangganuSignature(profileId, fileOrBlob) {
   const blob = await compressImage(fileOrBlob, { maxWidth: 1000, quality: 0.9, background: '#fff' })

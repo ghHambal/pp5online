@@ -609,59 +609,164 @@ export async function issueCertificate({ evaluationId, certificateNo }) {
 }
 
 // ─── เอกสารขออนุมัติโครงการ/กิจกรรม — ภายในแอดมิน/ครู/ประธานสภาเท่านั้น (ไม่ public) ─────────
+// ตามแบบฟอร์มจริงของโรงเรียน (แบบเสนอโครงการ) + อนุมัติ 3 ระดับ: ครูที่ปรึกษาประจำฝ่าย
+// (เฉพาะ origin='council') → หัวหน้าฝ่ายกิจการนักเรียน → ผู้อำนวยการ (2026-08-16)
 export async function getCouncilDocuments(academicYear) {
-  const { data, error } = await supabase.from('council_documents').select('*')
+  const { data, error } = await supabase.from('council_documents')
+    .select('*, council_positions(position_name, gender)')
     .eq('academic_year', academicYear).order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
 
-export async function createDocument({ title, rationale, objective, budget, ownerText, academicYear, createdByStudentId }) {
-  const { error } = await supabase.from('council_documents').insert({
-    title, rationale, objective, budget: budget || null, owner_text: ownerText,
-    academic_year: academicYear, created_by_student_id: createdByStudentId || null,
-  })
+const DOC_FIELD_MAP = {
+  title: 'title', planArea: 'plan_area', projectType: 'project_type', schoolStrategy: 'school_strategy',
+  educationStandard: 'education_standard', responsiblePersons: 'responsible_persons', rationale: 'rationale',
+  objectives: 'objectives', goalsQuantitative: 'goals_quantitative', goalsQualitative: 'goals_qualitative',
+  workSteps: 'work_steps', durationText: 'duration_text', locationText: 'location_text',
+  budgetItems: 'budget_items', stakeholders: 'stakeholders', evaluationItems: 'evaluation_items',
+  expectedResults: 'expected_results', positionId: 'position_id',
+}
+
+export async function createDocument(fields) {
+  const payload = {}
+  Object.entries(fields).forEach(([k, v]) => { if (DOC_FIELD_MAP[k]) payload[DOC_FIELD_MAP[k]] = v })
+  payload.origin = fields.origin
+  payload.academic_year = fields.academicYear
+  payload.created_by_student_id = fields.createdByStudentId || null
+  payload.created_by_teacher_id = fields.createdByTeacherId || null
+  const { data, error } = await supabase.from('council_documents').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateDocumentDraft(id, fields) {
+  const payload = {}
+  Object.entries(fields).forEach(([k, v]) => { if (DOC_FIELD_MAP[k]) payload[DOC_FIELD_MAP[k]] = v })
+  payload.updated_at = new Date().toISOString()
+  const { error } = await supabase.from('council_documents').update(payload).eq('id', id)
   if (error) throw error
 }
 
+// ส่งจากร่าง — ไปคิวครูที่ปรึกษาประจำฝ่ายก่อนถ้าสภาริเริ่มเอง (origin='council') หรือข้ามไปคิว
+// หัวหน้าฝ่ายกิจการนักเรียนเลยถ้าครูที่ปรึกษาสภาริเริ่มเอง (origin='teacher') — ล้างประวัติ
+// ตีกลับครั้งก่อนออกด้วย เพราะกำลังส่งรอบใหม่แล้ว
 export async function submitDocument(id) {
-  const { error } = await supabase.from('council_documents').update({ status: 'pending', updated_at: new Date().toISOString() }).eq('id', id)
-  if (error) throw error
-}
-
-export async function decideDocument({ id, approve, teacherId, comment }) {
+  const { data: doc, error: e0 } = await supabase.from('council_documents').select('origin').eq('id', id).single()
+  if (e0) throw e0
+  const nextStatus = doc.origin === 'council' ? 'pending_advisor' : 'pending_dept_head'
   const { error } = await supabase.from('council_documents').update({
-    status: approve ? 'approved' : 'rejected', approved_by_teacher_id: teacherId || null,
-    approval_comment: comment, updated_at: new Date().toISOString(),
+    status: nextStatus, updated_at: new Date().toISOString(),
+    last_rejected_stage: null, last_rejected_by_teacher_id: null, last_rejected_at: null, last_rejection_comment: null,
   }).eq('id', id)
   if (error) throw error
 }
 
-// ─── มอบสิทธิ์ครูที่ปรึกษาสภานักเรียน (แอดมิน) — สเปคข้อ 8.19 ────────────────────────────
-// เขียนเฉพาะคอลัมน์ positions[] เสมอ ห้ามแตะคอลัมน์ position (เดี่ยว) เด็ดขาด เพราะมี check
-// constraint teachers_position_check จำกัดค่าที่ยอมรับไว้ตายตัว (dept_head/registrar_*/
-// academic_*) ไม่มี 'council_advisor' อยู่ในนั้น — เขียนผิดคอลัมน์จะชน constraint ทันที
-export async function getCouncilAdvisorTeachers() {
+// ไม่อนุมัติที่ขั้นไหนก็ตาม → กลับไปเป็นร่างเสมอ (ตามที่ผู้ใช้ตัดสินใจ ไม่มีสถานะ "ถูกปฏิเสธถาวร")
+async function decideDocumentStage({ id, approve, teacherId, comment, stage, decidedCol, decidedAtCol, commentCol, signatureCol, signatureUrl, nextStatus }) {
+  const now = new Date().toISOString()
+  if (approve) {
+    const payload = { status: nextStatus, updated_at: now, [decidedCol]: teacherId, [decidedAtCol]: now, [commentCol]: comment || null }
+    if (signatureCol) payload[signatureCol] = signatureUrl || null
+    const { error } = await supabase.from('council_documents').update(payload).eq('id', id)
+    if (error) throw error
+  } else {
+    const { error } = await supabase.from('council_documents').update({
+      status: 'draft', updated_at: now, last_rejected_stage: stage,
+      last_rejected_by_teacher_id: teacherId, last_rejected_at: now, last_rejection_comment: comment,
+    }).eq('id', id)
+    if (error) throw error
+  }
+}
+
+export async function decideAsAdvisor({ id, approve, teacherId, comment }) {
+  return decideDocumentStage({
+    id, approve, teacherId, comment, stage: 'advisor',
+    decidedCol: 'advisor_decided_by_teacher_id', decidedAtCol: 'advisor_decided_at', commentCol: 'advisor_comment',
+    nextStatus: 'pending_dept_head',
+  })
+}
+
+export async function decideAsDeptHead({ id, approve, teacherId, comment, signatureUrl }) {
+  return decideDocumentStage({
+    id, approve, teacherId, comment, stage: 'dept_head',
+    decidedCol: 'dept_head_decided_by_teacher_id', decidedAtCol: 'dept_head_decided_at', commentCol: 'dept_head_comment',
+    signatureCol: 'dept_head_signature_url', signatureUrl, nextStatus: 'pending_director',
+  })
+}
+
+export async function decideAsDirector({ id, approve, teacherId, comment, signatureUrl }) {
+  return decideDocumentStage({
+    id, approve, teacherId, comment, stage: 'director',
+    decidedCol: 'director_decided_by_teacher_id', decidedAtCol: 'director_decided_at', commentCol: 'director_comment',
+    signatureCol: 'director_signature_url', signatureUrl, nextStatus: 'approved',
+  })
+}
+
+// ─── มอบสิทธิ์บทบาทครู (แอดมิน) — สเปคข้อ 8.19 + ตำแหน่งใหม่ 2 ตำแหน่งที่ผู้ใช้ขอเพิ่ม
+// (หัวหน้าฝ่ายกิจการนักเรียน/ผู้อำนวยการ) — การ์เนราไลซ์เป็นฟังก์ชันเดียวรับ position value
+// แทนคัดลอก 3 ชุด เขียนเฉพาะคอลัมน์ positions[] เสมอ ห้ามแตะคอลัมน์ position (เดี่ยว) เด็ดขาด
+// เพราะมี check constraint teachers_position_check จำกัดค่าที่ยอมรับไว้ตายตัว (dept_head/
+// registrar_*/academic_*) ไม่มีตำแหน่งสภาทั้ง 3 อยู่ในนั้น — เขียนผิดคอลัมน์จะชน constraint ทันที
+export async function getTeachersByPosition(positionValue) {
   const { data, error } = await supabase.from('teachers')
-    .select('id, full_name, teacher_code, image_url, category')
-    .contains('positions', ['council_advisor'])
+    .select('id, full_name, teacher_code, image_url, signature_url, category')
+    .contains('positions', [positionValue])
     .order('full_name')
   if (error) throw error
   return data ?? []
 }
 
-export async function addCouncilAdvisor(teacherId) {
+export async function addTeacherPosition(teacherId, positionValue) {
   const { data: t, error: e0 } = await supabase.from('teachers').select('positions').eq('id', teacherId).single()
   if (e0) throw e0
-  const positions = Array.from(new Set([...(t.positions ?? []), 'council_advisor']))
+  const positions = Array.from(new Set([...(t.positions ?? []), positionValue]))
   const { error } = await supabase.from('teachers').update({ positions }).eq('id', teacherId)
   if (error) throw error
 }
 
-export async function removeCouncilAdvisor(teacherId) {
+export async function removeTeacherPosition(teacherId, positionValue) {
   const { data: t, error: e0 } = await supabase.from('teachers').select('positions').eq('id', teacherId).single()
   if (e0) throw e0
-  const positions = (t.positions ?? []).filter(p => p !== 'council_advisor')
+  const positions = (t.positions ?? []).filter(p => p !== positionValue)
   const { error } = await supabase.from('teachers').update({ positions }).eq('id', teacherId)
+  if (error) throw error
+}
+
+// ─── ฝ่ายที่ครูที่ปรึกษาสภาแต่ละคนรับผิดชอบ (many-to-many กับ council_positions) ──────────
+export async function getAdvisorPositions(teacherId) {
+  const { data, error } = await supabase.from('council_advisor_positions')
+    .select('position_id').eq('teacher_id', teacherId)
+  if (error) throw error
+  return (data ?? []).map(r => r.position_id)
+}
+
+export async function setAdvisorPositions(teacherId, positionIds) {
+  const { error: e1 } = await supabase.from('council_advisor_positions').delete().eq('teacher_id', teacherId)
+  if (e1) throw e1
+  if (positionIds.length) {
+    const { error: e2 } = await supabase.from('council_advisor_positions')
+      .insert(positionIds.map(positionId => ({ teacher_id: teacherId, position_id: positionId })))
+    if (e2) throw e2
+  }
+}
+
+// คืนรายชื่อครูที่ปรึกษาที่ดูแลตำแหน่งนี้ (ใช้ตอนหาคิวว่าใครต้องรับรองเอกสารของฝ่ายไหน)
+export async function getAdvisorsForPosition(positionId) {
+  const { data, error } = await supabase.from('council_advisor_positions')
+    .select('teacher_id').eq('position_id', positionId)
+  if (error) throw error
+  return (data ?? []).map(r => r.teacher_id)
+}
+
+// ─── ลายเซ็น/รูปประจำตัวของตัวเอง — ครูที่ปรึกษาสภา/หัวหน้าฝ่ายฯ/ผู้อำนวยการตั้งเองได้
+// (แอดมินตั้งแทนให้ได้ด้วย ใช้ฟังก์ชันเดียวกันนี้เพราะ RLS teachers_admin ครอบคลุมอยู่แล้ว) ──
+export async function updateMySignature(teacherId, signatureUrl) {
+  const { error } = await supabase.from('teachers').update({ signature_url: signatureUrl }).eq('id', teacherId)
+  if (error) throw error
+}
+
+export async function updateMyPhoto(teacherId, imageUrl) {
+  const { error } = await supabase.from('teachers').update({ image_url: imageUrl }).eq('id', teacherId)
   if (error) throw error
 }
