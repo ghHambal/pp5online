@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.454'
+import { APP_VERSION } from './version.js?v=10.22.455'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 
@@ -2794,28 +2794,6 @@ export async function renderStudentProfile(student, onLogout) {
 
     ${_contactLinks()}
 
-    <!-- เปลี่ยนรหัสผ่าน -->
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-5 mb-4">
-      <h3 class="font-bold text-gray-700 mb-3 text-sm flex items-center gap-1.5">🔒 เปลี่ยนรหัสผ่าน</h3>
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold text-gray-400 mb-1">รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)</label>
-          <input id="stu-new-pw" type="password" placeholder="รหัสผ่านใหม่"
-            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-400 mb-1">ยืนยันรหัสผ่านใหม่</label>
-          <input id="stu-new-pw-confirm" type="password" placeholder="พิมพ์ยืนยันอีกครั้ง"
-            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
-        </div>
-        <button id="btn-stu-save-pw"
-          class="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold text-sm transition">
-          บันทึกรหัสผ่านใหม่
-        </button>
-        <div id="stu-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
-      </div>
-    </div>
-
     <button id="stu-logout-btn"
       class="w-full py-3.5 rounded-2xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold text-sm
              shadow-md shadow-red-200/60 transition flex items-center justify-center gap-2">
@@ -2832,46 +2810,106 @@ export async function renderStudentProfile(student, onLogout) {
     window._openFeedbackWidget?.()
   })
   document.getElementById('btn-stu-pw-reset')?.addEventListener('click', () => {
-    window._openPasswordResetRequest?.()
+    _openPasswordResetChoiceModal()
   })
 
-  // Bind change password event
-  document.getElementById('btn-stu-save-pw')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-stu-save-pw')
-    const pw  = document.getElementById('stu-new-pw').value
-    const pw2 = document.getElementById('stu-new-pw-confirm').value
-    const msgEl = document.getElementById('stu-pw-msg')
+  // ป๊อบอัพให้เลือก: เปลี่ยนรหัสผ่านด้วยตนเอง หรือ ให้แอดมินรีเซ็ทให้
+  function _openPasswordResetChoiceModal() {
+    document.getElementById('pw-choice-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'pw-choice-modal'
+    m.className = 'fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50'
+    m.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xs p-6 text-center space-y-4 animate-fade">
+        <div class="text-4xl">🔑</div>
+        <p class="font-bold text-gray-800">ต้องการเปลี่ยนรหัสผ่านแบบไหน?</p>
+        <div class="space-y-2.5">
+          <button id="pwc-self" class="w-full py-3 rounded-2xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition text-sm font-semibold text-gray-700">
+            ✏️ เปลี่ยนด้วยตนเอง
+          </button>
+          <button id="pwc-admin" class="w-full py-3 rounded-2xl text-white text-sm font-semibold transition"
+            style="background:linear-gradient(135deg,#db2777,#9d174d);">
+            📨 ให้แอดมินรีเซ็ทให้
+          </button>
+        </div>
+        <button id="pwc-cancel" class="text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#pwc-cancel').addEventListener('click', () => m.remove())
+    m.querySelector('#pwc-self').addEventListener('click', () => { m.remove(); _openSelfChangePasswordModal() })
+    m.querySelector('#pwc-admin').addEventListener('click', () => { m.remove(); window._openPasswordResetRequest?.() })
+  }
 
-    const _showMsg = (text, isError) => {
-      msgEl.className = `text-xs text-center py-2.5 rounded-xl ${isError ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`
-      msgEl.textContent = text
-      msgEl.classList.remove('hidden')
-    }
+  // ป๊อบอัพเปลี่ยนรหัสผ่านด้วยตนเอง (ย้ายมาจากการ์ดที่เคยฝังอยู่ในหน้าโปรไฟล์)
+  function _openSelfChangePasswordModal() {
+    document.getElementById('self-pw-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'self-pw-modal'
+    m.className = 'fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50'
+    m.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4 animate-fade">
+        <h3 class="font-bold text-gray-700 text-sm flex items-center gap-1.5">🔒 เปลี่ยนรหัสผ่าน</h3>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)</label>
+            <input id="stu-new-pw" type="password" placeholder="รหัสผ่านใหม่"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 mb-1">ยืนยันรหัสผ่านใหม่</label>
+            <input id="stu-new-pw-confirm" type="password" placeholder="พิมพ์ยืนยันอีกครั้ง"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition" />
+          </div>
+          <button id="btn-stu-save-pw"
+            class="w-full py-2.5 rounded-xl bg-gray-700 hover:bg-gray-800 active:bg-gray-900 text-white font-semibold text-sm transition">
+            บันทึกรหัสผ่านใหม่
+          </button>
+          <div id="stu-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
+        </div>
+        <button id="self-pw-close" class="w-full text-xs text-gray-400 hover:text-gray-600">ปิด</button>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#self-pw-close').addEventListener('click', () => m.remove())
 
-    if (!pw || pw.length < 6) {
-      _showMsg('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', true)
-      return
-    }
-    if (pw !== pw2) {
-      _showMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน', true)
-      return
-    }
+    m.querySelector('#btn-stu-save-pw').addEventListener('click', async () => {
+      const btn = m.querySelector('#btn-stu-save-pw')
+      const pw  = m.querySelector('#stu-new-pw').value
+      const pw2 = m.querySelector('#stu-new-pw-confirm').value
+      const msgEl = m.querySelector('#stu-pw-msg')
 
-    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-    msgEl.classList.add('hidden')
+      const _showMsg = (text, isError) => {
+        msgEl.className = `text-xs text-center py-2.5 rounded-xl ${isError ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`
+        msgEl.textContent = text
+        msgEl.classList.remove('hidden')
+      }
 
-    try {
-      const { error } = await supabase.auth.updateUser({ password: pw })
-      if (error) throw error
-      _showMsg('เปลี่ยนรหัสผ่านสำเร็จแล้ว ✅', false)
-      document.getElementById('stu-new-pw').value = ''
-      document.getElementById('stu-new-pw-confirm').value = ''
-    } catch (err) {
-      _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
-    } finally {
-      btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
-    }
-  })
+      if (!pw || pw.length < 6) {
+        _showMsg('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', true)
+        return
+      }
+      if (pw !== pw2) {
+        _showMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน', true)
+        return
+      }
+
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      msgEl.classList.add('hidden')
+
+      try {
+        const { error } = await supabase.auth.updateUser({ password: pw })
+        if (error) throw error
+        _showMsg('เปลี่ยนรหัสผ่านสำเร็จแล้ว ✅', false)
+        m.querySelector('#stu-new-pw').value = ''
+        m.querySelector('#stu-new-pw-confirm').value = ''
+      } catch (err) {
+        _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
+      } finally {
+        btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
+      }
+    })
+  }
 
   document.getElementById('stu-logout-btn')?.addEventListener('click', () => {
     document.getElementById('stu-logout-confirm')?.remove()
