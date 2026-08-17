@@ -11,6 +11,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_min_certificates', // จำนวนเกียรติบัตร/รางวัลขั้นต่ำที่ต้องแนบตอนสมัคร (default '5')
   'council_apply_opens_at', 'council_apply_closes_at', // ช่วงเวลาเปิด-ปิดรับสมัคร
   'council_video_max_minutes', 'council_video_brief', // วิดีโอแนะนำตัว: จำนวนนาที + หัวข้อที่ต้องพูด (JSON array)
+  'council_doc_plan_areas', 'council_doc_project_types', 'council_doc_school_strategies', 'council_doc_education_standards', // ตัวเลือกฟอร์มเอกสารโครงการ (JSON array) — ข้อมูลจากโรงเรียน แอดมินตั้งค่าเองในหน้าตั้งค่า
   'council_signer_advisor_name', 'council_signer_director_name', // ชื่อผู้ลงนามเอกสาร/เกียรติบัตร
   'council_election_thank_you_message',
   'council_visible_to_all', // 'true'/'false' — ปิดแล้วเห็นเฉพาะแอดมิน/ครูที่ is_also_admin

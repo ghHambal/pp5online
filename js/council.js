@@ -2295,10 +2295,34 @@ function renderDocsView() {
   return `${createBtn}<div class="space-y-3">${docs.map(card).join('')}</div>${renderDocDetailModal()}`
 }
 
+// ตัวเลือกฟอร์มเอกสารโครงการ (แผนงาน/ลักษณะโครงการ/สนองกลยุทธ์/สนองมาตรฐาน) — แอดมินตั้งค่าเองในหน้าตั้งค่า
+// เพราะเป็นข้อมูลเฉพาะของโรงเรียน (ตามที่ผู้ใช้ขอ) — ถ้ายังไม่ตั้งค่า fallback เป็นช่องพิมพ์เองแทน
+function docOptionsFor(key) {
+  try { return JSON.parse(ctx.cfg[key] || '[]') } catch { return [] }
+}
+function docFieldSelectOrInput({ name, placeholder, configKey, value, extraClass = '' }) {
+  const options = docOptionsFor(configKey)
+  if (!options.length) {
+    return `<input name="${name}" placeholder="${esc(placeholder)} (ยังไม่ได้ตั้งค่าตัวเลือกในหน้าตั้งค่า)" value="${esc(value ?? '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)] ${extraClass}" />`
+  }
+  return `<select name="${name}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)] ${extraClass}">
+    <option value="">— เลือก${esc(placeholder)} —</option>
+    ${options.map(v => `<option value="${esc(v)}" ${value === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+  </select>`
+}
+
 function renderDocEditForm() {
   const isNew = docEditingId === 'new'
   const d = isNew ? {} : (docs.find(x => x.id === docEditingId) ?? {})
   const origin = ctx.isChair && !ctx.isCouncilAdvisor && !ctx.isAdmin ? 'council' : (d.origin ?? (ctx.isChair ? 'council' : 'teacher'))
+  if (councilAdvisors === null) loadPermsRosters() // โหลดครูที่ปรึกษาสภาแบบไม่บล็อกฟอร์ม — ใช้ทำ chip เพิ่มชื่อในช่องผู้รับผิดชอบ
+  const advisorChips = councilAdvisors?.length ? `
+    <div>
+      <p class="text-[0.6875rem] text-[var(--muted-2)] mb-1">ครูที่ปรึกษาสภานักเรียน (คลิกเพื่อเพิ่ม)</p>
+      <div class="flex flex-wrap gap-1.5">
+        ${councilAdvisors.map(t => `<button type="button" class="doc-responsible-chip text-[0.6875rem] px-2.5 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)] hover:bg-[var(--primary-soft)] hover:border-[var(--primary-45)] text-[var(--ink-2)] transition" data-name="${esc(t.full_name)}">+ ${esc(t.full_name)}</button>`).join('')}
+      </div>
+    </div>` : ''
   return `
     <div class="flex items-center gap-3 mb-4">
       <button type="button" id="btn-doc-form-back" class="w-8 h-8 rounded-full hover:bg-[var(--bg-2)] text-[var(--muted)] flex items-center justify-center flex-shrink-0 text-lg">←</button>
@@ -2310,11 +2334,12 @@ function renderDocEditForm() {
         <p class="text-sm font-bold text-[var(--ink-2)]">ข้อมูลทั่วไป</p>
         <input name="title" required placeholder="ชื่อโครงการ" value="${esc(d.title ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
         <div class="grid grid-cols-2 gap-2">
-          <input name="planArea" placeholder="แผนงาน" value="${esc(d.plan_area ?? '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
-          <input name="projectType" placeholder="ลักษณะโครงการ เช่น โครงการต่อเนื่อง" value="${esc(d.project_type ?? '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          ${docFieldSelectOrInput({ name: 'planArea', placeholder: 'แผนงาน', configKey: 'council_doc_plan_areas', value: d.plan_area })}
+          ${docFieldSelectOrInput({ name: 'projectType', placeholder: 'ลักษณะโครงการ', configKey: 'council_doc_project_types', value: d.project_type })}
         </div>
-        <input name="schoolStrategy" placeholder="สนองกลยุทธ์โรงเรียน" value="${esc(d.school_strategy ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
-        <input name="educationStandard" placeholder="สนองมาตรฐานการศึกษา/ตัวชี้วัด" value="${esc(d.education_standard ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        ${docFieldSelectOrInput({ name: 'schoolStrategy', placeholder: 'สนองกลยุทธ์โรงเรียน', configKey: 'council_doc_school_strategies', value: d.school_strategy, extraClass: 'w-full' })}
+        ${docFieldSelectOrInput({ name: 'educationStandard', placeholder: 'สนองมาตรฐานการศึกษา/ตัวชี้วัด', configKey: 'council_doc_education_standards', value: d.education_standard, extraClass: 'w-full' })}
+        ${advisorChips}
         <textarea name="responsiblePersons" rows="2" placeholder="ผู้รับผิดชอบโครงการ (บรรทัดละ 1 ชื่อ)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(listToText(d.responsible_persons))}</textarea>
         <div>
           <label class="block text-xs font-semibold text-[var(--muted)] mb-1">ฝ่ายที่รับผิดชอบ ${origin === 'council' ? '<span class="text-[var(--bad)]">*</span>' : ''}</label>
@@ -2370,67 +2395,11 @@ function renderDocEditForm() {
     </form>`
 }
 
-function renderDocDetailModal() {
-  if (!docDetailId) return ''
-  const d = docs.find(x => x.id === docDetailId)
-  if (!d) return ''
-  const [label, cls] = DOC_STATUS_BADGE[d.status] ?? ['—', 'text-[var(--muted)] bg-[var(--bg-2)] border-[var(--line)]']
-  const row = (label2, val) => val ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">${label2}</p><p class="text-sm text-[var(--ink-2)] whitespace-pre-line">${esc(val)}</p></div>` : ''
-  const listRow = (label2, list) => list?.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">${label2}</p><ul class="text-sm text-[var(--ink-2)] list-disc list-inside space-y-0.5">${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''
-  const stepsTable = d.work_steps?.length ? `
-    <div>
-      <p class="text-xs font-bold text-[var(--muted)] mb-1">วิธีดำเนินงาน</p>
-      <div class="overflow-x-auto"><table class="w-full text-xs border-collapse"><thead><tr class="text-left text-[var(--muted)]"><th class="border-b border-[var(--line-soft)] py-1 pr-2">ขั้นตอน</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">ระยะเวลา</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">งบประมาณ</th><th class="border-b border-[var(--line-soft)] py-1">ผู้รับผิดชอบ</th></tr></thead>
-      <tbody>${d.work_steps.map(r => `<tr><td class="py-1 pr-2">${esc(r[0])}</td><td class="py-1 pr-2">${esc(r[1])}</td><td class="py-1 pr-2">${esc(r[2])}</td><td class="py-1">${esc(r[3])}</td></tr>`).join('')}</tbody></table></div>
-    </div>` : ''
-  const budgetTable = d.budget_items?.length ? `
-    <div>
-      <p class="text-xs font-bold text-[var(--muted)] mb-1">งบประมาณ (รวม ${moneyFmt(budgetTotal(d))} บาท)</p>
-      <div class="overflow-x-auto"><table class="w-full text-xs border-collapse"><tbody>${d.budget_items.map(r => `<tr><td class="py-1 pr-2 border-b border-[var(--line-soft)]">${esc(r[0])}</td><td class="py-1 text-right border-b border-[var(--line-soft)]">${moneyFmt(r[1])}</td></tr>`).join('')}</tbody></table></div>
-    </div>` : ''
-  const evalTable = d.evaluation_items?.length ? `
-    <div>
-      <p class="text-xs font-bold text-[var(--muted)] mb-1">การประเมินผลความสำเร็จ</p>
-      <div class="overflow-x-auto"><table class="w-full text-xs border-collapse"><thead><tr class="text-left text-[var(--muted)]"><th class="border-b border-[var(--line-soft)] py-1 pr-2">เป้าหมาย</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">ตัวบ่งชี้</th><th class="border-b border-[var(--line-soft)] py-1 pr-2">วิธีวัด</th><th class="border-b border-[var(--line-soft)] py-1">เครื่องมือ</th></tr></thead>
-      <tbody>${d.evaluation_items.map(r => `<tr><td class="py-1 pr-2">${esc(r[0])}</td><td class="py-1 pr-2">${esc(r[1])}</td><td class="py-1 pr-2">${esc(r[2])}</td><td class="py-1">${esc(r[3])}</td></tr>`).join('')}</tbody></table></div>
-    </div>` : ''
-  const approvalTrail = [
-    d.advisor_decided_at ? `✅ ครูที่ปรึกษาประจำฝ่ายรับรองแล้ว${d.advisor_comment ? ' — ' + esc(d.advisor_comment) : ''}` : '',
-    d.dept_head_decided_at ? `✅ หัวหน้าฝ่ายกิจการนักเรียนอนุมัติแล้ว${d.dept_head_comment ? ' — ' + esc(d.dept_head_comment) : ''}` : '',
-    d.director_decided_at ? `✅ ผู้อำนวยการอนุมัติแล้ว${d.director_comment ? ' — ' + esc(d.director_comment) : ''}` : '',
-  ].filter(Boolean)
-
-  return `
-    <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="doc-detail-backdrop">
-      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_8px_28px_rgba(11,20,16,0.25)] max-w-lg w-full max-h-[85vh] overflow-y-auto p-5">
-        <div class="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <p class="text-base font-bold text-[var(--ink)]">${esc(d.title)}</p>
-            <span class="text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${cls} inline-block mt-1">${label}</span>
-          </div>
-          <button type="button" id="btn-doc-detail-close" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
-        </div>
-        <div class="space-y-3">
-          ${row('แผนงาน', d.plan_area)}${row('ลักษณะโครงการ', d.project_type)}${row('สนองกลยุทธ์โรงเรียน', d.school_strategy)}${row('สนองมาตรฐานการศึกษา', d.education_standard)}
-          ${listRow('ผู้รับผิดชอบโครงการ', d.responsible_persons)}
-          ${d.council_positions?.position_name ? row('ฝ่ายที่รับผิดชอบ', d.council_positions.position_name) : ''}
-          ${row('หลักการและเหตุผล', d.rationale)}
-          ${listRow('วัตถุประสงค์', d.objectives)}
-          ${listRow('เป้าหมายเชิงปริมาณ', d.goals_quantitative)}
-          ${listRow('เป้าหมายเชิงคุณภาพ', d.goals_qualitative)}
-          ${stepsTable}
-          ${row('ระยะเวลาดำเนินการ', d.duration_text)}${row('สถานที่ดำเนินงาน', d.location_text)}
-          ${budgetTable}
-          ${listRow('หน่วยงาน/ผู้เกี่ยวข้อง', (d.stakeholders || []).map(r => `${r[0]} (${r[1]} คน)`))}
-          ${evalTable}
-          ${listRow('ผลที่คาดว่าจะได้รับ', d.expected_results)}
-          ${approvalTrail.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">ประวัติการอนุมัติ</p><div class="space-y-1">${approvalTrail.map(t => `<p class="text-xs text-[var(--ok)]">${t}</p>`).join('')}</div></div>` : ''}
-        </div>
-      </div>
-    </div>`
-}
-
-function buildDocumentHtml(d, cfg) {
+// เนื้อหาเอกสารโครงการแบบเดียวกับที่พิมพ์จริง — ใช้ร่วมกันทั้งป๊อบอัพดูในแอปและหน้าต่างพิมพ์
+// (ให้สองที่นี้เหมือนกันเป๊ะ ไม่ต้องดูแล layout แยกกัน 2 ชุด) — เลขข้อ 1-10 ตรงกับแบบฟอร์มต้นฉบับ
+// ของโรงเรียน (ดึงจาก Google Doc ต้นฉบับ) ส่วนข้อมูลหัวเรื่อง (แผนงาน/ลักษณะโครงการ/ฯลฯ) ต้นฉบับ
+// ไม่มีเลขข้อกำกับ จึงไม่ใส่เลขให้เช่นกัน
+function renderDocumentPreviewBody(d, cfg) {
   const councilName = esc(cfg.council_name || 'ระบบสภานักเรียน')
   const table = (headers, rows) => rows?.length ? `
     <table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:13px;">
@@ -2438,50 +2407,85 @@ function buildDocumentHtml(d, cfg) {
       <tbody>${rows.map(r => `<tr>${r.map(c => `<td style="border:1px solid #ccc;padding:6px;">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>` : ''
   const list = items => items?.length ? `<ol style="margin:4px 0;padding-left:20px;">${items.map(i => `<li>${esc(i)}</li>`).join('')}</ol>` : '—'
+  const B = 'style="display:block;margin-bottom:3px;"'
 
+  return `
+    ${cfg.council_logo_url ? `<img src="${esc(cfg.council_logo_url)}" style="height:64px;object-fit:contain;display:block;margin:0 auto 8px;" />` : ''}
+    <h1 style="text-align:center;font-size:20px;margin-bottom:2px;">แบบเสนอโครงการ</h1>
+    <p style="text-align:center;color:#6e5f65;font-size:13px;margin-bottom:20px;">${councilName} · ปีการศึกษา ${d.academic_year}</p>
+    <div style="margin-bottom:12px;"><b ${B}>ชื่อโครงการ</b>${esc(d.title)}</div>
+    <div style="margin-bottom:12px;"><b ${B}>แผนงาน</b>${esc(d.plan_area || '—')} &nbsp;·&nbsp; <b style="display:inline">ลักษณะโครงการ</b> ${esc(d.project_type || '—')}</div>
+    <div style="margin-bottom:12px;"><b ${B}>สนองกลยุทธ์โรงเรียน</b>${esc(d.school_strategy || '—')}</div>
+    <div style="margin-bottom:12px;"><b ${B}>สนองมาตรฐานการศึกษา/ตัวชี้วัด</b>${esc(d.education_standard || '—')}</div>
+    <div style="margin-bottom:12px;"><b ${B}>ผู้รับผิดชอบโครงการ</b>${list(d.responsible_persons)}</div>
+    <div style="margin-bottom:12px;"><b ${B}>ฝ่ายที่รับผิดชอบ</b>${esc(d.council_positions?.position_name || '—')}</div>
+    <div style="margin-bottom:12px;"><b ${B}>1. หลักการและเหตุผล</b>${esc(d.rationale || '—')}</div>
+    <div style="margin-bottom:12px;"><b ${B}>2. วัตถุประสงค์</b>${list(d.objectives)}</div>
+    <div style="margin-bottom:12px;"><b ${B}>3. เป้าหมาย</b>
+      <div style="margin-top:4px;"><i>3.1 เชิงปริมาณ</i>${list(d.goals_quantitative)}</div>
+      <div><i>3.2 เชิงคุณภาพ</i>${list(d.goals_qualitative)}</div>
+    </div>
+    <div style="margin-bottom:12px;"><b ${B}>4. วิธีดำเนินงาน</b>${table(['ขั้นตอน/กิจกรรม', 'ระยะเวลา', 'งบประมาณ', 'ผู้รับผิดชอบ'], d.work_steps)}</div>
+    <div style="margin-bottom:12px;"><b ${B}>5. ระยะเวลาดำเนินการ</b>${esc(d.duration_text || '—')}</div>
+    <div style="margin-bottom:12px;"><b ${B}>6. สถานที่ดำเนินงาน</b>${esc(d.location_text || '—')}</div>
+    <div style="margin-bottom:12px;"><b ${B}>7. งบประมาณ</b>${table(['รายการ', 'จำนวนเงิน (บาท)'], d.budget_items)}<b>รวมเป็นเงิน ${moneyFmt(budgetTotal(d))} บาท</b></div>
+    <div style="margin-bottom:12px;"><b ${B}>8. หน่วยงาน/ผู้เกี่ยวข้อง</b>${table(['หน่วยงาน/บุคคล', 'จำนวน (คน)'], d.stakeholders)}</div>
+    <div style="margin-bottom:12px;"><b ${B}>9. การประเมินผลความสำเร็จ</b>${table(['เป้าหมาย', 'ตัวบ่งชี้ความสำเร็จ', 'วิธีวัดและประเมินผล', 'เครื่องมือวัด'], d.evaluation_items)}</div>
+    <div style="margin-bottom:12px;"><b ${B}>10. ผลที่คาดว่าจะได้รับ</b>${list(d.expected_results)}</div>
+    <div style="display:flex;justify-content:space-around;margin-top:50px;text-align:center;flex-wrap:wrap;gap:20px;">
+      <div style="width:200px;"><div style="border-top:1px solid #999;padding-top:6px;font-size:13px;">ผู้เสนอโครงการ</div></div>
+      <div style="width:200px;">
+        ${d.dept_head_signature_url ? `<img src="${esc(d.dept_head_signature_url)}" style="height:50px;object-fit:contain;display:block;margin:0 auto 4px;" />` : ''}
+        <div style="border-top:1px solid #999;padding-top:6px;font-size:13px;">หัวหน้าฝ่ายกิจการนักเรียน</div>
+      </div>
+      <div style="width:200px;">
+        ${d.director_signature_url ? `<img src="${esc(d.director_signature_url)}" style="height:50px;object-fit:contain;display:block;margin:0 auto 4px;" />` : ''}
+        <div style="border-top:1px solid #999;padding-top:6px;font-size:13px;">ผู้อำนวยการ${cfg.council_signer_director_name ? ' (' + esc(cfg.council_signer_director_name) + ')' : ''}</div>
+      </div>
+    </div>`
+}
+
+// เต็มหน้าจอ (ไม่ใช่ป๊อบอัพแคบ) ตามที่ผู้ใช้ขอ — ให้ดูเหมือนเปิดอ่านเอกสารจริง มีปุ่มพิมพ์ในตัว
+function renderDocDetailModal() {
+  if (!docDetailId) return ''
+  const d = docs.find(x => x.id === docDetailId)
+  if (!d) return ''
+  const [label, cls] = DOC_STATUS_BADGE[d.status] ?? ['—', 'text-[var(--muted)] bg-[var(--bg-2)] border-[var(--line)]']
+  const approvalTrail = [
+    d.advisor_decided_at ? `✅ ครูที่ปรึกษาประจำฝ่ายรับรองแล้ว${d.advisor_comment ? ' — ' + esc(d.advisor_comment) : ''}` : '',
+    d.dept_head_decided_at ? `✅ หัวหน้าฝ่ายกิจการนักเรียนอนุมัติแล้ว${d.dept_head_comment ? ' — ' + esc(d.dept_head_comment) : ''}` : '',
+    d.director_decided_at ? `✅ ผู้อำนวยการอนุมัติแล้ว${d.director_comment ? ' — ' + esc(d.director_comment) : ''}` : '',
+  ].filter(Boolean)
+
+  return `
+    <div class="fixed inset-0 z-[90] bg-[var(--surface)] flex flex-col" id="doc-detail-backdrop">
+      <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--line)] flex-shrink-0">
+        <div class="min-w-0">
+          <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(d.title)}</p>
+          <span class="text-[0.625rem] font-bold px-2 py-0.5 rounded-full border ${cls} inline-block mt-0.5">${label}</span>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button type="button" id="btn-doc-detail-print" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]">🖨️ พิมพ์</button>
+          <button type="button" id="btn-doc-detail-close" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none">✕</button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5">
+        <div style="font-family:'Sarabun',sans-serif;line-height:1.8;color:#1d1519;max-width:800px;margin:0 auto;">
+          ${renderDocumentPreviewBody(d, ctx.cfg)}
+          ${approvalTrail.length ? `<div style="margin-top:24px;padding-top:16px;border-top:1px dashed #ccc;"><b style="display:block;margin-bottom:6px;font-size:13px;">ประวัติการอนุมัติ</b><div style="font-size:13px;color:#106143;">${approvalTrail.map(t => `<p style="margin-bottom:2px;">${t}</p>`).join('')}</div></div>` : ''}
+        </div>
+      </div>
+    </div>`
+}
+
+function buildDocumentHtml(d, cfg) {
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>โครงการ ${esc(d.title)}</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
       body { font-family: 'Sarabun', sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.8; color: #1d1519; }
-      h1 { text-align: center; font-size: 20px; margin-bottom: 2px; }
-      .sub { text-align: center; color: #6e5f65; font-size: 13px; margin-bottom: 20px; }
-      .row { margin-bottom: 12px; } .row b { display: block; margin-bottom: 3px; }
-      .sign { display: flex; justify-content: space-around; margin-top: 50px; text-align: center; flex-wrap: wrap; gap: 20px; }
-      .sign div { width: 200px; }
-      .sign img { height: 50px; object-fit: contain; display: block; margin: 0 auto 4px; }
-      .sign .line { border-top: 1px solid #999; padding-top: 6px; font-size: 13px; }
       @media print { body { padding: 0; } }
     </style></head><body>
-      <h1>แบบเสนอโครงการ</h1>
-      <p class="sub">${councilName} · ปีการศึกษา ${d.academic_year}</p>
-      <div class="row"><b>ชื่อโครงการ</b>${esc(d.title)}</div>
-      <div class="row"><b>แผนงาน</b>${esc(d.plan_area || '—')} &nbsp;·&nbsp; <b style="display:inline">ลักษณะโครงการ</b> ${esc(d.project_type || '—')}</div>
-      <div class="row"><b>สนองกลยุทธ์โรงเรียน</b>${esc(d.school_strategy || '—')}</div>
-      <div class="row"><b>สนองมาตรฐานการศึกษา/ตัวชี้วัด</b>${esc(d.education_standard || '—')}</div>
-      <div class="row"><b>ผู้รับผิดชอบโครงการ</b>${list(d.responsible_persons)}</div>
-      <div class="row"><b>ฝ่ายที่รับผิดชอบ</b>${esc(d.council_positions?.position_name || '—')}</div>
-      <div class="row"><b>หลักการและเหตุผล</b>${esc(d.rationale || '—')}</div>
-      <div class="row"><b>วัตถุประสงค์</b>${list(d.objectives)}</div>
-      <div class="row"><b>เป้าหมายเชิงปริมาณ</b>${list(d.goals_quantitative)}</div>
-      <div class="row"><b>เป้าหมายเชิงคุณภาพ</b>${list(d.goals_qualitative)}</div>
-      <div class="row"><b>วิธีดำเนินงาน</b>${table(['ขั้นตอน/กิจกรรม', 'ระยะเวลา', 'งบประมาณ', 'ผู้รับผิดชอบ'], d.work_steps)}</div>
-      <div class="row"><b>ระยะเวลาดำเนินการ</b>${esc(d.duration_text || '—')}</div>
-      <div class="row"><b>สถานที่ดำเนินงาน</b>${esc(d.location_text || '—')}</div>
-      <div class="row"><b>งบประมาณ</b>${table(['รายการ', 'จำนวนเงิน (บาท)'], d.budget_items)}<b>รวมเป็นเงิน ${moneyFmt(budgetTotal(d))} บาท</b></div>
-      <div class="row"><b>หน่วยงาน/ผู้เกี่ยวข้อง</b>${table(['หน่วยงาน/บุคคล', 'จำนวน (คน)'], d.stakeholders)}</div>
-      <div class="row"><b>การประเมินผลความสำเร็จ</b>${table(['เป้าหมาย', 'ตัวบ่งชี้ความสำเร็จ', 'วิธีวัดและประเมินผล', 'เครื่องมือวัด'], d.evaluation_items)}</div>
-      <div class="row"><b>ผลที่คาดว่าจะได้รับ</b>${list(d.expected_results)}</div>
-      <div class="sign">
-        <div><div class="line">ผู้เสนอโครงการ</div></div>
-        <div>
-          ${d.dept_head_signature_url ? `<img src="${esc(d.dept_head_signature_url)}" />` : ''}
-          <div class="line">หัวหน้าฝ่ายกิจการนักเรียน</div>
-        </div>
-        <div>
-          ${d.director_signature_url ? `<img src="${esc(d.director_signature_url)}" />` : ''}
-          <div class="line">ผู้อำนวยการ${cfg.council_signer_director_name ? ' (' + esc(cfg.council_signer_director_name) + ')' : ''}</div>
-        </div>
-      </div>
+      ${renderDocumentPreviewBody(d, cfg)}
       <div style="text-align:center;margin-top:24px;"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
     </body></html>`
 }
@@ -2647,7 +2651,31 @@ function renderSettingsPositions() {
         </form>
       </div>`
   }
-  return `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${section('M')}${section('W')}</div>`
+  // สรุปรวมจำนวนที่นั่งทั้งสภาชาย+หญิง — ชื่อฝ่ายฝั่งชายกับหญิงมักตรงกัน แต่จำนวนที่นั่งตั้งแยกกันได้
+  // อิสระต่อกัน (คนละแถวในตาราง) จึงรวมยอดที่นี่ให้ดูภาพรวมทั้งสภาในที่เดียว ไม่ได้ผูกข้อมูลเป็นแถวเดียวกัน
+  const order = []
+  const seen = new Set()
+  ;[...byGender.M, ...byGender.W].forEach(p => { if (!seen.has(p.position_name)) { seen.add(p.position_name); order.push(p.position_name) } })
+  const grandM = byGender.M.reduce((s, p) => s + Number(p.seats_count), 0)
+  const grandW = byGender.W.reduce((s, p) => s + Number(p.seats_count), 0)
+  const summaryBlock = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mt-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-2">📊 สรุปรวมจำนวนที่นั่งทั้งสภา</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead><tr class="text-left text-[var(--muted)]"><th class="py-1.5 pr-2">ตำแหน่ง</th><th class="py-1.5 px-2 text-center">ชาย</th><th class="py-1.5 px-2 text-center">หญิง</th><th class="py-1.5 pl-2 text-center">รวม</th></tr></thead>
+          <tbody>
+            ${order.map(name => {
+              const m = byGender.M.find(p => p.position_name === name)?.seats_count ?? 0
+              const w = byGender.W.find(p => p.position_name === name)?.seats_count ?? 0
+              return `<tr class="border-t border-[var(--line-soft)]"><td class="py-1.5 pr-2 text-[var(--ink-2)]">${esc(name)}</td><td class="py-1.5 px-2 text-center">${m}</td><td class="py-1.5 px-2 text-center">${w}</td><td class="py-1.5 pl-2 text-center font-bold text-[var(--primary)]">${m + w}</td></tr>`
+            }).join('')}
+            <tr class="border-t-2 border-[var(--line)] font-bold"><td class="py-1.5 pr-2 text-[var(--ink)]">รวมทั้งหมด</td><td class="py-1.5 px-2 text-center">${grandM}</td><td class="py-1.5 px-2 text-center">${grandW}</td><td class="py-1.5 pl-2 text-center text-[var(--primary)]">${grandM + grandW}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`
+  return `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${section('M')}${section('W')}</div>${summaryBlock}`
 }
 
 function renderSettingsCriteria() {
@@ -2706,7 +2734,25 @@ function renderSettingsCriteria() {
       </form>
     </div>`
 
-  return `${interviewBlock}${videoBlock}${renderDutyCriteriaEditor()}${phraseBlock}`
+  // ตัวเลือกฟอร์มเอกสารโครงการ — ข้อมูลเฉพาะของโรงเรียน (แผนงาน/ลักษณะโครงการ/สนองกลยุทธ์/สนองมาตรฐาน)
+  // แอดมินเพิ่ม/แก้ไข/ลบเองได้ (บรรทัดละ 1 รายการ ตรง convention เดียวกับ "หัวข้อที่ต้องพูด" ด้านบน)
+  const docOptField = (labelText, key) => `
+    <div>
+      <label class="block text-xs font-medium text-[var(--muted)] mb-1">${labelText} (บรรทัดละ 1 รายการ)</label>
+      <textarea name="${key}" rows="3" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(docOptionsFor(key).join('\n'))}</textarea>
+    </div>`
+  const docOptionsBlock = `
+    <form id="settings-doc-options-form" class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4 space-y-3">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-1">📄 ตัวเลือกฟอร์มเอกสารโครงการ</p>
+      <p class="text-[0.6875rem] text-[var(--muted-2)] -mt-2">ใช้เป็นตัวเลือกในฟอร์มร่างเอกสารโครงการ (ถ้าไม่ตั้งค่าไว้ ฟอร์มจะให้พิมพ์เองแทน)</p>
+      ${docOptField('แผนงาน', 'council_doc_plan_areas')}
+      ${docOptField('ลักษณะโครงการ', 'council_doc_project_types')}
+      ${docOptField('สนองกลยุทธ์โรงเรียน', 'council_doc_school_strategies')}
+      ${docOptField('สนองมาตรฐานการศึกษา/ตัวชี้วัด', 'council_doc_education_standards')}
+      <button type="submit" class="px-4 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">บันทึก</button>
+    </form>`
+
+  return `${interviewBlock}${videoBlock}${renderDutyCriteriaEditor()}${phraseBlock}${docOptionsBlock}`
 }
 
 function renderSettingsModules() {
@@ -3904,6 +3950,24 @@ function wireSettingsEvents() {
     } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
   })
 
+  document.getElementById('settings-doc-options-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const toList = raw => raw.split('\n').map(s => s.trim()).filter(Boolean)
+    try {
+      const updates = {
+        council_doc_plan_areas: JSON.stringify(toList(f.council_doc_plan_areas.value)),
+        council_doc_project_types: JSON.stringify(toList(f.council_doc_project_types.value)),
+        council_doc_school_strategies: JSON.stringify(toList(f.council_doc_school_strategies.value)),
+        council_doc_education_standards: JSON.stringify(toList(f.council_doc_education_standards.value)),
+      }
+      await updateCouncilConfig(updates)
+      ctx.cfg = { ...ctx.cfg, ...updates }
+      showToast('บันทึกแล้ว ✅', 'success')
+      render()
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  })
+
   document.getElementById('phrase-form')?.addEventListener('submit', async e => {
     e.preventDefault()
     const f = e.target
@@ -3951,6 +4015,16 @@ function wireDocsEvents() {
   })
 
   document.getElementById('btn-doc-ai-import-open')?.addEventListener('click', () => openDocAiImportModal())
+
+  document.querySelectorAll('.doc-responsible-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const ta = document.querySelector('textarea[name="responsiblePersons"]')
+      if (!ta) return
+      const lines = ta.value.split('\n').map(s => s.trim()).filter(Boolean)
+      if (!lines.includes(chip.dataset.name)) lines.push(chip.dataset.name)
+      ta.value = lines.join('\n')
+    })
+  })
 
   document.getElementById('doc-form')?.addEventListener('submit', async e => {
     e.preventDefault()
@@ -4057,8 +4131,9 @@ function wireDocsEvents() {
     btn.addEventListener('click', () => { docDetailId = Number(btn.dataset.id); render() })
   })
   document.getElementById('btn-doc-detail-close')?.addEventListener('click', () => { docDetailId = null; render() })
-  document.getElementById('doc-detail-backdrop')?.addEventListener('click', e => {
-    if (e.target.id === 'doc-detail-backdrop') { docDetailId = null; render() }
+  document.getElementById('btn-doc-detail-print')?.addEventListener('click', () => {
+    const d = docs.find(x => x.id === docDetailId)
+    if (d) openDocumentPrint(d)
   })
 }
 
