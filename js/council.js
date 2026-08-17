@@ -506,6 +506,22 @@ function homeHeroCopy() {
   return ['ระบบสภานักเรียน', 'ติดตามข่าวสาร กิจกรรม ผู้สมัคร และผลการเลือกตั้งของสภานักเรียน']
 }
 
+// ช่วงสำคัญที่ควรเน้นในหน้าหลัก ('apply' | 'election' | 'none') — แอดมินเลือกเองในหน้าตั้งค่า
+// ได้ก่อนเสมอ (ใช้ได้กับกรณีที่ยังไม่ถึงช่วงเปิดรับสมัครจริงตามวันที่ แต่รู้ล่วงหน้าว่าใกล้
+// ช่วงท้ายวาระแล้วอยากเริ่มประชาสัมพันธ์ก่อน) — ถ้าไม่ได้เลือกไว้ (ค่าว่าง) คำนวณจากวันที่:
+// ช่วงรับสมัครเปิดอยู่จริง > มีการเลือกตั้งเปิดอยู่จริง > ไม่เน้นอะไรเป็นพิเศษ
+function computeFeaturedPhase() {
+  const manual = ctx.cfg.council_featured_phase
+  if (manual) return manual
+  const now = new Date()
+  const opensAt = ctx.cfg.council_apply_opens_at ? new Date(ctx.cfg.council_apply_opens_at) : null
+  const closesAt = ctx.cfg.council_apply_closes_at ? new Date(ctx.cfg.council_apply_closes_at) : null
+  if (opensAt && closesAt && now >= opensAt && now <= closesAt) return 'apply'
+  const electionOpen = ctx.elections.some(e => e.opens_at && e.closes_at && now >= new Date(e.opens_at) && now <= new Date(e.closes_at))
+  if (electionOpen) return 'election'
+  return 'none'
+}
+
 // แสดงว่าใครกำลังล็อกอินอยู่ในบทบาท/สถานะอะไร (ผู้ใช้ขอ 2026-08-16 หลังสับสนว่าทำไมครูที่มี
 // profiles.is_also_admin=true ถึงเห็นเมนู/สิทธิ์เหมือนแอดมินทั้งที่ไม่ใช่ครูที่ปรึกษาสภา) —
 // แยกกรณี role==='admin' จริง กับ is_also_admin (สิทธิ์แอดมินที่ได้รับมอบเพิ่มเติม) ให้ชัดเจน
@@ -613,19 +629,43 @@ function renderOverviewView() {
       <p class="text-sm font-bold text-[var(--primary-dark)]">${esc(label)}</p>
       ${sub ? `<p class="text-[0.6875rem] text-[var(--muted-2)] mt-0.5">${esc(sub)}</p>` : ''}
     </button>`
+  // เวอร์ชันเด่น — ใช้ตอนเป็นช่วงที่แอดมินเลือกเน้น (หรือคำนวณอัตโนมัติจากวันที่) เท่านั้น
+  const featuredEntryCard = (flow, icon, label, sub) => `
+    <button type="button" class="flow-entry-btn w-full bg-gradient-to-br from-[var(--primary)] to-[var(--hero-3)] rounded-2xl shadow-[0_4px_14px_rgba(23,32,42,0.15)] p-4 text-left text-white hover:opacity-95 transition flex items-center gap-3" data-flow="${flow}">
+      <p class="text-3xl flex-shrink-0">${icon}</p>
+      <div class="min-w-0 flex-1">
+        <span class="inline-block text-[0.625rem] font-bold px-2 py-0.5 rounded-full bg-white/20 mb-1">🔥 ช่วงนี้</span>
+        <p class="text-base font-extrabold [text-wrap:pretty]">${esc(label)}</p>
+        ${sub ? `<p class="text-xs text-white/85 mt-0.5 [text-wrap:pretty]">${esc(sub)}</p>` : ''}
+      </div>
+      <span class="text-white/70 flex-shrink-0">→</span>
+    </button>`
   const hasElection = ctx.elections.length > 0
   // ยังไม่มี council_election_config เลย — ซ่อนปุ่มไปเลยสำหรับคนทั่วไป ส่วนแอดมิน
   // ยังเห็นปุ่มไว้พาไปตั้งค่าเปิดใช้งานได้ แต่เปลี่ยนข้อความให้ตรงสถานะจริง ไม่ใช่กล่องว่าง
   const showElectionEntry = hasElection || ctx.isAdmin
-  const electionEntry = showElectionEntry
-    ? entryCard('election', '🗳️', hasElection ? 'การเลือกตั้ง' : 'ตั้งค่าการเลือกตั้ง', hasElection ? '' : 'ยังไม่เปิดใช้งาน — แตะเพื่อตั้งค่า')
-    : ''
-  const cols = ctx.role === 'student' && showElectionEntry ? 'grid-cols-2' : 'grid-cols-1'
-  const entryCards = (ctx.role === 'student' || showElectionEntry) ? `
+  const showApplyEntry = ctx.role === 'student'
+  const electionLabel = hasElection ? 'การเลือกตั้ง' : 'ตั้งค่าการเลือกตั้ง'
+  const electionSub = hasElection ? '' : 'ยังไม่เปิดใช้งาน — แตะเพื่อตั้งค่า'
+
+  // จุดเด่นหน้าหลัก (สเปคใหม่ผู้ใช้ขอ 2026-08-17) — สลับให้ปุ่ม "สมัครสภานักเรียน"/"การเลือกตั้ง"
+  // อันไหนเด่นกว่าตามช่วงเวลาปัจจุบัน มีผลก็ต่อเมื่อโชว์ทั้งสองปุ่มพร้อมกันเท่านั้น (ถ้ามีปุ่มเดียว
+  // ไม่มีอะไรให้เทียบ ใช้สไตล์ปกติเหมือนเดิม ไม่ต้องเปลี่ยนพฤติกรรมเดิมของกรณีนั้น)
+  const featured = (showApplyEntry && showElectionEntry) ? computeFeaturedPhase() : 'none'
+
+  let entryCards = ''
+  if (showApplyEntry && showElectionEntry && featured !== 'none') {
+    const applyBlock = featured === 'apply' ? featuredEntryCard('apply', '📝', 'สมัครสภานักเรียน', 'เปิดรับสมัครสภานักเรียนวาระใหม่') : entryCard('apply', '📝', 'สมัครสภานักเรียน')
+    const electionBlock = featured === 'election' ? featuredEntryCard('election', '🗳️', electionLabel, electionSub || 'เปิดใช้งานอยู่ ณ ขณะนี้') : entryCard('election', '🗳️', electionLabel, electionSub)
+    entryCards = `<div class="space-y-3">${featured === 'apply' ? applyBlock + electionBlock : electionBlock + applyBlock}</div>`
+  } else if (showApplyEntry || showElectionEntry) {
+    const cols = showApplyEntry && showElectionEntry ? 'grid-cols-2' : 'grid-cols-1'
+    entryCards = `
     <div class="grid ${cols} gap-3">
-      ${ctx.role === 'student' ? entryCard('apply', '📝', 'สมัครสภานักเรียน') : ''}
-      ${electionEntry}
-    </div>` : ''
+      ${showApplyEntry ? entryCard('apply', '📝', 'สมัครสภานักเรียน') : ''}
+      ${showElectionEntry ? entryCard('election', '🗳️', electionLabel, electionSub) : ''}
+    </div>`
+  }
   return `<div class="space-y-4">
     ${hero}
     ${personal}
@@ -2593,6 +2633,17 @@ function renderSettingsGeneral() {
         </div>
       </div>
 
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2">
+        <p class="text-sm font-bold text-[var(--ink-2)]">🌟 จุดเด่นในหน้าหลัก</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">ควบคุมว่าปุ่ม "สมัครสภานักเรียน" หรือ "การเลือกตั้ง" จะโชว์เด่นในหน้าหลักของนักเรียน/ครูทั่วไป — ปล่อยว่างไว้ให้ระบบคำนวณจากช่วงเปิด-ปิดรับสมัคร/เลือกตั้งด้านบนให้อัตโนมัติ</p>
+        <select name="council_featured_phase" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]">
+          <option value="" ${!cfg.council_featured_phase ? 'selected' : ''}>— อัตโนมัติจากวันที่ (แนะนำ) —</option>
+          <option value="apply" ${cfg.council_featured_phase === 'apply' ? 'selected' : ''}>เน้น "สมัครสภานักเรียน"</option>
+          <option value="election" ${cfg.council_featured_phase === 'election' ? 'selected' : ''}>เน้น "การเลือกตั้ง"</option>
+          <option value="none" ${cfg.council_featured_phase === 'none' ? 'selected' : ''}>ไม่เน้นอะไรเป็นพิเศษ (แสดงเท่ากัน)</option>
+        </select>
+      </div>
+
       <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
         <p class="text-sm font-bold text-[var(--ink-2)]">👁️ การมองเห็นระบบ</p>
         <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
@@ -3860,6 +3911,7 @@ function wireSettingsEvents() {
         council_require_peer_endorsement: f.council_require_peer_endorsement.checked ? 'true' : 'false',
         council_apply_opens_at: f.council_apply_opens_at.value ? new Date(f.council_apply_opens_at.value).toISOString() : '',
         council_apply_closes_at: f.council_apply_closes_at.value ? new Date(f.council_apply_closes_at.value).toISOString() : '',
+        council_featured_phase: f.council_featured_phase.value,
         council_visible_to_all: f.council_visible_to_all.checked ? 'true' : 'false',
         council_test_student_codes: f.council_test_student_codes.value.trim(),
         council_election_thank_you_message: f.council_election_thank_you_message.value.trim(),

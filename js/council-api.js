@@ -10,6 +10,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_eligible_grade_levels', 'council_require_teacher_endorsement', 'council_require_peer_endorsement',
   'council_min_certificates', // จำนวนเกียรติบัตร/รางวัลขั้นต่ำที่ต้องแนบตอนสมัคร (default '5')
   'council_apply_opens_at', 'council_apply_closes_at', // ช่วงเวลาเปิด-ปิดรับสมัคร
+  'council_featured_phase', // '' (auto)/'apply'/'election'/'none' — จุดเด่นในหน้าหลักที่แอดมินเลือกเองได้ ไม่งั้นคำนวณจากวันที่
   'council_video_max_minutes', 'council_video_brief', // วิดีโอแนะนำตัว: จำนวนนาที + หัวข้อที่ต้องพูด (JSON array)
   'council_doc_plan_areas', 'council_doc_project_types', 'council_doc_school_strategies', 'council_doc_education_standards', // ตัวเลือกฟอร์มเอกสารโครงการ (JSON array) — ข้อมูลจากโรงเรียน แอดมินตั้งค่าเองในหน้าตั้งค่า
   'council_signer_advisor_name', 'council_signer_director_name', // ชื่อผู้ลงนามเอกสาร/เกียรติบัตร
