@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.460'
+import { APP_VERSION } from './version.js?v=10.22.461'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.461': [
+    '🎬 ประกาศแนบลิงก์วิดีโอได้แล้ว (YouTube/TikTok/Google Drive) — วางลิงก์ตอนสร้าง/แก้ไขประกาศ ผู้เปิดดูจะเห็นวิดีโอเล่นในป๊อบอัพประกาศได้เลยไม่ต้องออกไปแพลตฟอร์มอื่น'
+  ],
   '10.22.460': [
     '🚨 ด่วน: ย้อนกลับการแก้ไข "round-robin" ของ 10.22.450 ที่ทำให้ตารางเช็คชื่อของหลายห้องเรียนแสดงวันที่ผิด/ตรงวันหยุด — ของเดิม (450) ตั้งใจแก้ปัญหาเฉพาะห้องเดียวแต่ดันเปลี่ยนพฤติกรรมของทุกห้องที่มีคาบ/สัปดาห์เกินหน่วยกิตไปด้วย ทำให้วันที่ของคาบที่ยังไม่ถึงเปลี่ยนไปจากที่เคยคำนวณไว้ (ข้อมูลเช็คชื่อที่บันทึกไปแล้วไม่ได้หายหรือถูกแก้ไข แค่ป้ายวันที่ที่แสดงคลาดเคลื่อน) — คืนพฤติกรรมเดิมกลับมาแล้ว ห้องเรียนของครูเจะสู (อก.ปวช.2/1) ยังถูกต้องเหมือนเดิมเพราะจุดนั้นแก้ที่ตารางสอนจริงในฐานข้อมูลไปแล้ว ไม่ได้พึ่งจุดนี้'
   ],
@@ -2831,6 +2834,20 @@ export function checkAndShowChangelog(userId, forceShow = false, hasAdminAccess 
   }
 }
 
+// ─── ฝังวิดีโอในหน้าได้เลยถ้าจับรูปแบบลิงก์ได้ (YouTube/TikTok/Google Drive) ─────
+// แพลตฟอร์มอื่นที่จับรูปแบบไม่ได้ fallback เป็นลิงก์เปิดแท็บใหม่
+export function videoEmbedHtml(url) {
+  if (!url) return ''
+  const _esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)
+  if (yt) return `<div class="aspect-video rounded-xl overflow-hidden bg-black"><iframe class="w-full h-full" src="https://www.youtube.com/embed/${_esc(yt[1])}" allowfullscreen loading="lazy"></iframe></div>`
+  const gd = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/)
+  if (gd) return `<div class="aspect-video rounded-xl overflow-hidden bg-black"><iframe class="w-full h-full" src="https://drive.google.com/file/d/${_esc(gd[1])}/preview" allowfullscreen loading="lazy"></iframe></div>`
+  const tt = url.match(/tiktok\.com\/@[\w.-]+\/video\/(\d+)/)
+  if (tt) return `<div class="rounded-xl overflow-hidden bg-black" style="aspect-ratio:9/16;max-width:280px;margin:0 auto;"><iframe class="w-full h-full" src="https://www.tiktok.com/embed/v2/${_esc(tt[1])}" allowfullscreen loading="lazy"></iframe></div>`
+  return `<a href="${_esc(url)}" target="_blank" rel="noopener" class="block text-center py-3 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-bold hover:bg-indigo-50">🎬 เปิดดูวิดีโอ (แท็บใหม่ — แพลตฟอร์มนี้ไม่รองรับฝังดูในหน้า)</a>`
+}
+
 // ─── Show announcement pop-ups (centered, one at a time) for teachers/students ──
 export function showAnnouncementPopups(items, seenKey) {
   if (!items?.length) return
@@ -2853,6 +2870,7 @@ export function showAnnouncementPopups(items, seenKey) {
           <h3 class="font-extrabold text-gray-800 text-base leading-snug">${_esc(a.title)}</h3>
           <p class="text-[11px] text-gray-400 mt-1 font-medium">${_fmtD(a.created_at)}${a.teachers?.full_name ? ' · ' + _esc(a.teachers.full_name) : ''}</p>
         </div>
+        ${a.video_url ? `<div class="px-6 flex-shrink-0 mb-3">${videoEmbedHtml(a.video_url)}</div>` : ''}
         ${a.file_url ? `<div class="px-6 flex-shrink-0"><img src="${_esc(a.file_url)}" class="w-full rounded-2xl border border-gray-100 object-contain max-h-56 mb-3" /></div>` : ''}
         <div class="px-6 pb-5 overflow-y-auto flex-1 text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">${_esc(a.body ?? '') || '<span class="text-gray-300">—</span>'}</div>
         <div class="px-6 pb-6 pt-2 flex-shrink-0 flex items-center gap-3">

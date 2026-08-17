@@ -3077,7 +3077,7 @@ export async function getAllAnnouncements() {
 export async function getActiveAnnouncements(forRole = null) {
   // เฉพาะประกาศจากแอดมิน/ผู้บริหาร (ไม่ใช่ประกาศห้องเรียนของครู)
   let q = supabase.from('announcements')
-    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, audience, teachers(id, full_name)')
+    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, video_url, audience, teachers(id, full_name)')
     .eq('is_active', true)
     .is('target_class_ids', null)
   if (forRole === 'teacher' || forRole === 'student') q = q.in('audience', ['all', forRole])
@@ -3088,7 +3088,7 @@ export async function getActiveAnnouncements(forRole = null) {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, deadlineAt = null, attachmentUrls = null, audience = 'all' }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, videoUrl = null, deadlineAt = null, attachmentUrls = null, audience = 'all' }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
@@ -3102,6 +3102,7 @@ export async function createAnnouncement({ title, body, isActive = true, priorit
               schedule_filter: scheduleFilter,
               target_class_ids: targetClassIds || null,
               file_url: fileUrl || null,
+              video_url: videoUrl || null,
               attachment_urls: attachmentUrls || null,
               deadline_at: deadlineAt || null,
               audience,
@@ -3142,7 +3143,7 @@ export async function getClassAnnouncements(classId) {
   return data ?? []
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, attachmentUrls, deadlineAt, audience }) {
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, videoUrl, attachmentUrls, deadlineAt, audience }) {
   const payload = { updated_at: new Date().toISOString() }
   if (title           !== undefined) payload.title            = title
   if (body            !== undefined) payload.body             = body
@@ -3157,6 +3158,7 @@ export async function updateAnnouncement(id, { title, body, isActive, priority, 
   if (scheduleFilter  !== undefined) payload.schedule_filter  = scheduleFilter
   if (targetClassIds  !== undefined) payload.target_class_ids = targetClassIds || null
   if (fileUrl         !== undefined) payload.file_url         = fileUrl || null
+  if (videoUrl        !== undefined) payload.video_url        = videoUrl || null
   if (attachmentUrls  !== undefined) payload.attachment_urls  = attachmentUrls || null
   if (deadlineAt      !== undefined) payload.deadline_at      = deadlineAt || null
   if (audience        !== undefined) payload.audience         = audience

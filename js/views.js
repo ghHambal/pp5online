@@ -8679,6 +8679,7 @@ export async function renderAnnouncements() {
               ${a.ann_type === 'training' ? `<span class="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[11px] font-bold">🎓 อบรม/กิจกรรม</span>` : ''}
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
               ${_annAudienceBadge(a.audience)}
+              ${a.video_url ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🎥 มีวิดีโอ</span>` : ''}
             </div>
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
             ${a.ann_type === 'training' && a.event_date ? `
@@ -8852,6 +8853,12 @@ export async function renderAnnouncements() {
             </div>
             <input id="ann-image-file" type="file" accept="image/*" class="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-indigo-50 file:text-indigo-700 file:text-xs file:font-semibold hover:file:bg-indigo-100 file:cursor-pointer" />
             <p id="ann-image-status" class="text-[11px] text-gray-400 mt-1"></p>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">ลิงก์วิดีโอ <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ — YouTube/TikTok/Google Drive)</span></label>
+            <input id="ann-video-url" type="url" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
+              value="${_esc(item?.video_url ?? '')}" placeholder="วางลิงก์วิดีโอ เช่น https://youtube.com/watch?v=..."/>
+            <p class="text-[11px] text-gray-400 mt-1">ผู้เปิดดูจะเห็นวิดีโอเล่นในป๊อบอัพได้เลย</p>
           </div>
           <!-- ประเภทประกาศ -->
           <div>
@@ -9113,6 +9120,7 @@ export async function renderAnnouncements() {
       const dueDate     = m.querySelector('#ann-due').value || null
       const annType     = m.querySelector('.ann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
       const audience    = m.querySelector('.ann-audience-btn.text-white')?.dataset.audience ?? (item?.audience ?? 'all')
+      const videoUrl    = m.querySelector('#ann-video-url').value.trim() || null
       const eventLocation = annType === 'training' ? (m.querySelector('#ann-event-location').value.trim() || null) : null
       const scheduleFilter = m.querySelector('.ann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
@@ -9126,12 +9134,12 @@ export async function renderAnnouncements() {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, audience })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, audience })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, audience })
+            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await onDone()
@@ -9144,8 +9152,8 @@ export async function renderAnnouncements() {
       const btn = m.querySelector('#ann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, audience })
-        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, audience })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, videoUrl, audience })
+        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, videoUrl, audience })
         if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
@@ -9263,6 +9271,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
               ${a.requires_ack ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🔔 ต้องรับทราบ</span>` : ''}
               ${_annAudienceBadge(a.audience)}
+              ${a.video_url ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🎥 มีวิดีโอ</span>` : ''}
               ${_dueBadge(a.due_date)}
             </div>
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
@@ -9500,6 +9509,12 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
             </div>
             <input id="sann-image-file" type="file" accept="image/*" class="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-indigo-50 file:text-indigo-700 file:text-xs file:font-semibold hover:file:bg-indigo-100 file:cursor-pointer" />
             <p id="sann-image-status" class="text-[11px] text-gray-400 mt-1"></p>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">ลิงก์วิดีโอ <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ — YouTube/TikTok/Google Drive)</span></label>
+            <input id="sann-video-url" type="url" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 transition"
+              value="${_esc(item?.video_url ?? '')}" placeholder="วางลิงก์วิดีโอ เช่น https://youtube.com/watch?v=..."/>
+            <p class="text-[11px] text-gray-400 mt-1">ผู้เปิดดูจะเห็นวิดีโอเล่นในป๊อบอัพได้เลย</p>
           </div>
           <!-- ประเภทประกาศ (admin เท่านั้นที่เปลี่ยนประเภทได้) -->
           ${isAdmin ? `
@@ -9773,6 +9788,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const dueDate     = m.querySelector('#sann-due').value || null
       const annType     = m.querySelector('.sann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
       const audience    = m.querySelector('.sann-audience-btn.text-white')?.dataset.audience ?? (item?.audience ?? 'all')
+      const videoUrl    = m.querySelector('#sann-video-url').value.trim() || null
       const eventLocation = annType === 'training' ? (m.querySelector('#sann-event-location').value.trim() || null) : null
       const scheduleFilter = m.querySelector('.sann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
@@ -9786,12 +9802,12 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, audience })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, audience })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, audience })
+            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await _renderList()
@@ -9805,8 +9821,8 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl, audience })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl, audience })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl, videoUrl, audience })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl, videoUrl, audience })
         if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
