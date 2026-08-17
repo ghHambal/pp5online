@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.457'
+import { APP_VERSION } from './version.js?v=10.22.458'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -2111,7 +2111,7 @@ function _exitSupervisorMode() {
 // ── ประกาศ (ป๊อบอัพกลางจอ) ───────────────────────────────────────────────────
 async function _loadAnnouncementBanners() {
   try {
-    const items = await getActiveAnnouncements()
+    const items = await getActiveAnnouncements('teacher')
     showAnnouncementPopups(items, 'pp5_ann_dismissed')
   } catch { /* ไม่ block */ }
 }

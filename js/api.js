@@ -3074,19 +3074,21 @@ export async function getAllAnnouncements() {
   return data ?? []
 }
 
-export async function getActiveAnnouncements() {
+export async function getActiveAnnouncements(forRole = null) {
   // เฉพาะประกาศจากแอดมิน/ผู้บริหาร (ไม่ใช่ประกาศห้องเรียนของครู)
-  const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, teachers(id, full_name)')
+  let q = supabase.from('announcements')
+    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, audience, teachers(id, full_name)')
     .eq('is_active', true)
     .is('target_class_ids', null)
+  if (forRole === 'teacher' || forRole === 'student') q = q.in('audience', ['all', forRole])
+  const { data, error } = await q
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, deadlineAt = null, attachmentUrls = null }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, deadlineAt = null, attachmentUrls = null, audience = 'all' }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
@@ -3102,6 +3104,7 @@ export async function createAnnouncement({ title, body, isActive = true, priorit
               file_url: fileUrl || null,
               attachment_urls: attachmentUrls || null,
               deadline_at: deadlineAt || null,
+              audience,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
@@ -3139,7 +3142,7 @@ export async function getClassAnnouncements(classId) {
   return data ?? []
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, deadlineAt }) {
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, deadlineAt, audience }) {
   const payload = { updated_at: new Date().toISOString() }
   if (title           !== undefined) payload.title            = title
   if (body            !== undefined) payload.body             = body
@@ -3155,6 +3158,7 @@ export async function updateAnnouncement(id, { title, body, isActive, priority, 
   if (targetClassIds  !== undefined) payload.target_class_ids = targetClassIds || null
   if (fileUrl         !== undefined) payload.file_url         = fileUrl || null
   if (deadlineAt      !== undefined) payload.deadline_at      = deadlineAt || null
+  if (audience        !== undefined) payload.audience         = audience
   const { data, error } = await supabase.from('announcements')
     .update(payload).eq('id', id).select().single()
   if (error) throw error

@@ -8591,13 +8591,22 @@ function _getAnnSessions(m, pfx) {
 
 // ─── Announcements ────────────────────────────────────────────────────────────
 
-// ยิง push notification จริงไปหาครูทุกคนเมื่อมีประกาศใหม่ (Edge Function 'send-push')
+const _ANN_AUDIENCE_BADGE = {
+  teacher: '<span class="px-2 py-0.5 bg-sky-100 text-sky-700 rounded-full text-[11px] font-bold">👩‍🏫 ครูเท่านั้น</span>',
+  student: '<span class="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-[11px] font-bold">🎒 นักเรียนเท่านั้น</span>',
+}
+const _annAudienceBadge = a => _ANN_AUDIENCE_BADGE[a] ?? ''
+
+// ยิง push notification จริงไปหากลุ่มเป้าหมายเมื่อมีประกาศใหม่ (Edge Function 'send-push')
 // เป็นของเสริม — ถ้ายิงไม่สำเร็จ (เช่นยังไม่มีใครสมัครรับ) ไม่บล็อกการบันทึกประกาศหลัก
-async function _sendAnnouncementPush(title, body) {
+async function _sendAnnouncementPush(title, body, audience = 'all') {
   try {
-    await supabase.functions.invoke('send-push', {
-      body: { title: `📢 ${title}`, body: (body ?? '').slice(0, 150), url: 'teacher.html', target: 'all_teachers' },
-    })
+    const targets = audience === 'teacher' ? ['all_teachers']
+      : audience === 'student' ? ['all_students']
+      : ['all_teachers', 'all_students']
+    await Promise.all(targets.map(target => supabase.functions.invoke('send-push', {
+      body: { title: `📢 ${title}`, body: (body ?? '').slice(0, 150), url: target === 'all_students' ? 'student.html' : 'teacher.html', target },
+    })))
   } catch { /* เงียบไว้ ไม่กระทบผู้ใช้ */ }
 }
 
@@ -8669,6 +8678,7 @@ export async function renderAnnouncements() {
               </span>
               ${a.ann_type === 'training' ? `<span class="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[11px] font-bold">🎓 อบรม/กิจกรรม</span>` : ''}
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
+              ${_annAudienceBadge(a.audience)}
             </div>
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
             ${a.ann_type === 'training' && a.event_date ? `
@@ -8849,6 +8859,15 @@ export async function renderAnnouncements() {
             <div class="flex gap-2">
               <button type="button" data-type="general" class="ann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.ann_type ?? 'general') === 'general' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">📢 ทั่วไป</button>
               <button type="button" data-type="training" class="ann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.ann_type === 'training' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">🎓 อบรม/กิจกรรม</button>
+            </div>
+          </div>
+          <!-- กลุ่มเป้าหมาย -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">แสดงให้ใครเห็น</label>
+            <div class="flex gap-2">
+              <button type="button" data-audience="all" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.audience ?? 'all') === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">👥 ทั้งหมด</button>
+              <button type="button" data-audience="teacher" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'teacher' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}">👩‍🏫 ครูเท่านั้น</button>
+              <button type="button" data-audience="student" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'student' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-300'}">🎒 นักเรียนเท่านั้น</button>
             </div>
           </div>
           <!-- Training fields -->
@@ -9058,6 +9077,19 @@ export async function renderAnnouncements() {
       })
     })
 
+    // audience toggle
+    const _annAudienceColor = a => a === 'teacher' ? 'bg-sky-600 text-white border-sky-600' : a === 'student' ? 'bg-teal-600 text-white border-teal-600' : 'bg-indigo-600 text-white border-indigo-600'
+    const _annAudienceHover = a => a === 'teacher' ? 'hover:border-sky-300' : a === 'student' ? 'hover:border-teal-300' : 'hover:border-indigo-300'
+    m.querySelectorAll('.ann-audience-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        m.querySelectorAll('.ann-audience-btn').forEach(b => {
+          b.className = `ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${b.dataset.audience === btn.dataset.audience
+            ? _annAudienceColor(b.dataset.audience)
+            : `bg-white text-gray-600 border-gray-200 ${_annAudienceHover(b.dataset.audience)}`}`
+        })
+      })
+    })
+
     // period pills toggle
     _setupAnnSessions(m, 'ann')
 
@@ -9080,6 +9112,7 @@ export async function renderAnnouncements() {
       const requiresAck = m.querySelector('#ann-ack').dataset.on === 'true'
       const dueDate     = m.querySelector('#ann-due').value || null
       const annType     = m.querySelector('.ann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
+      const audience    = m.querySelector('.ann-audience-btn.text-white')?.dataset.audience ?? (item?.audience ?? 'all')
       const eventLocation = annType === 'training' ? (m.querySelector('#ann-event-location').value.trim() || null) : null
       const scheduleFilter = m.querySelector('.ann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
@@ -9093,12 +9126,12 @@ export async function renderAnnouncements() {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, audience })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: annFileUrl })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, audience })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl })
+            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, audience })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await onDone()
@@ -9111,9 +9144,9 @@ export async function renderAnnouncements() {
       const btn = m.querySelector('#ann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl })
-        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl })
-        if (!isEdit && isActive) _sendAnnouncementPush(title, body)
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, audience })
+        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, audience })
+        if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
@@ -9229,6 +9262,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
               </span>
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
               ${a.requires_ack ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🔔 ต้องรับทราบ</span>` : ''}
+              ${_annAudienceBadge(a.audience)}
               ${_dueBadge(a.due_date)}
             </div>
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
@@ -9476,6 +9510,15 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
               <button type="button" data-type="training" class="sann-type-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.ann_type === 'training' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}">🎓 อบรม/กิจกรรม</button>
             </div>
           </div>` : ''}
+          <!-- กลุ่มเป้าหมาย -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">แสดงให้ใครเห็น</label>
+            <div class="flex gap-2">
+              <button type="button" data-audience="all" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.audience ?? 'all') === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">👥 ทั้งหมด</button>
+              <button type="button" data-audience="teacher" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'teacher' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}">👩‍🏫 ครูเท่านั้น</button>
+              <button type="button" data-audience="student" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'student' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-300'}">🎒 นักเรียนเท่านั้น</button>
+            </div>
+          </div>
           <!-- Training fields (แสดงเมื่อเลือก อบรม) -->
           <div id="sann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
             <div>
@@ -9695,6 +9738,19 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       })
     })
 
+    // audience toggle
+    const _sannAudienceColor = a => a === 'teacher' ? 'bg-sky-600 text-white border-sky-600' : a === 'student' ? 'bg-teal-600 text-white border-teal-600' : 'bg-indigo-600 text-white border-indigo-600'
+    const _sannAudienceHover = a => a === 'teacher' ? 'hover:border-sky-300' : a === 'student' ? 'hover:border-teal-300' : 'hover:border-indigo-300'
+    m.querySelectorAll('.sann-audience-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        m.querySelectorAll('.sann-audience-btn').forEach(b => {
+          b.className = `sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${b.dataset.audience === btn.dataset.audience
+            ? _sannAudienceColor(b.dataset.audience)
+            : `bg-white text-gray-600 border-gray-200 ${_sannAudienceHover(b.dataset.audience)}`}`
+        })
+      })
+    })
+
     _setupAnnSessions(m, 'sann')
 
     m.querySelectorAll('.sann-filter-btn').forEach(btn => {
@@ -9716,6 +9772,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const requiresAck = m.querySelector('#sann-ack').dataset.on === 'true'
       const dueDate     = m.querySelector('#sann-due').value || null
       const annType     = m.querySelector('.sann-type-btn.bg-violet-600') ? 'training' : (item?.ann_type === 'training' ? 'training' : 'general')
+      const audience    = m.querySelector('.sann-audience-btn.text-white')?.dataset.audience ?? (item?.audience ?? 'all')
       const eventLocation = annType === 'training' ? (m.querySelector('#sann-event-location').value.trim() || null) : null
       const scheduleFilter = m.querySelector('.sann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
       if (annType === 'training') {
@@ -9729,12 +9786,12 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, audience })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, audience })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl })
+            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, audience })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await _renderList()
@@ -9748,9 +9805,9 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl })
-        if (!isEdit && isActive) _sendAnnouncementPush(title, body)
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl, audience })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl, audience })
+        if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
         showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')

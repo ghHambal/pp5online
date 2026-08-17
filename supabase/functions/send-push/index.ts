@@ -1,7 +1,7 @@
 // supabase/functions/send-push/index.ts
 // ยิง Web Push จริงไปหาอุปกรณ์ที่สมัคร push_subscriptions ไว้ ใช้ VAPID (RFC 8292)
 // เรียกจากฝั่ง client ผ่าน supabase.functions.invoke('send-push', { body: {...} })
-// - แอดมิน/is_also_admin: ยิงได้ทั้ง target: 'all_teachers' หรือ profileIds ที่ระบุเอง (ไม่จำกัดขอบเขต)
+// - แอดมิน/is_also_admin: ยิงได้ทั้ง target: 'all_teachers'/'all_students' หรือ profileIds ที่ระบุเอง (ไม่จำกัดขอบเขต)
 // - ครูทั่วไป: ยิงได้เฉพาะ profileIds ที่เป็น "นักเรียนในวิชาที่ตัวเองสอน" เท่านั้น (เช็คจริงฝั่งเซิร์ฟเวอร์ ไม่เชื่อ client)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -62,6 +62,9 @@ Deno.serve(async (req: Request) => {
       if (!targetIds && target === 'all_teachers') {
         const { data: teachers } = await admin.from('teachers').select('profile_id').not('profile_id', 'is', null)
         targetIds = (teachers ?? []).map((t: { profile_id: string }) => t.profile_id)
+      } else if (!targetIds && target === 'all_students') {
+        const { data: students } = await admin.from('students').select('profile_id').not('profile_id', 'is', null)
+        targetIds = (students ?? []).map((s: { profile_id: string }) => s.profile_id)
       }
     } else {
       // ครูทั่วไป (ไม่ใช่แอดมิน) — ยิงได้เฉพาะนักเรียนในวิชาที่ตัวเองสอนเท่านั้น
