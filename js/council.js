@@ -1816,6 +1816,177 @@ const listToText = list => (Array.isArray(list) ? list : []).join('\n')
 const moneyFmt = n => Number(n || 0).toLocaleString('th-TH')
 const budgetTotal = d => (d.budget_items || []).reduce((sum, r) => sum + (Number(r[1]) || 0), 0)
 
+// ─── AI ช่วยกรอกฟอร์มเอกสารโครงการจากไฟล์เดิม (ผู้ใช้ copy prompt ไปใช้กับ ChatGPT ฯลฯ ภายนอก แล้วนำคำตอบ/ไฟล์ CSV กลับมาอัปโหลด) ───
+// ชื่อคอลัมน์ตรงกับ name attribute ของ input/textarea ในฟอร์ม doc-form ทุกตัว (ยกเว้น positionId ซึ่งเป็นการตัดสินใจเชิงบริหาร ไม่ใช่เนื้อหาเอกสาร จึงไม่ให้ AI เลือกแทน)
+const DOC_IMPORT_FIELDS = ['title', 'planArea', 'projectType', 'schoolStrategy', 'educationStandard', 'responsiblePersons', 'rationale', 'objectives', 'goalsQuantitative', 'goalsQualitative', 'workSteps', 'durationText', 'locationText', 'budgetItems', 'stakeholders', 'evaluationItems', 'expectedResults']
+
+function buildDocAiPrompt() {
+  return [
+    'คุณคือผู้ช่วยแปลงไฟล์ใบเสนอโครงการของโรงเรียน (ไฟล์ที่แนบมาในแชทนี้) ให้เป็นข้อมูล CSV ตามสเปคที่กำหนดไว้เป๊ะๆ ด้านล่างนี้ ห้ามแต่งข้อมูลขึ้นเองถ้าไม่มีในไฟล์ต้นฉบับ — เว้นว่างไว้แทน',
+    '',
+    'สร้างตาราง CSV จำนวน 1 แถวข้อมูล (แถวหัวตาราง 1 แถว + แถวข้อมูล 1 แถว) โดยแถวหัวตารางต้องเป็นข้อความนี้เป๊ะๆ (ห้ามแปล ห้ามสลับลำดับ ห้ามเว้นคอลัมน์):',
+    DOC_IMPORT_FIELDS.join(','),
+    '',
+    'ความหมายแต่ละคอลัมน์และวิธีใส่ข้อมูล:',
+    '- title: ชื่อโครงการ',
+    '- planArea: แผนงาน',
+    '- projectType: ลักษณะโครงการ (เช่น โครงการต่อเนื่อง/โครงการใหม่)',
+    '- schoolStrategy: สนองกลยุทธ์โรงเรียน',
+    '- educationStandard: สนองมาตรฐานการศึกษา/ตัวชี้วัด',
+    '- responsiblePersons: ผู้รับผิดชอบโครงการ — ถ้ามีหลายคน ให้ขึ้นบรรทัดใหม่ทีละคนภายในเซลล์เดียวกัน',
+    '- rationale: หลักการและเหตุผล',
+    '- objectives: วัตถุประสงค์ — ขึ้นบรรทัดใหม่ทีละข้อภายในเซลล์เดียวกัน',
+    '- goalsQuantitative: เป้าหมายเชิงปริมาณ — ขึ้นบรรทัดใหม่ทีละข้อ',
+    '- goalsQualitative: เป้าหมายเชิงคุณภาพ — ขึ้นบรรทัดใหม่ทีละข้อ',
+    '- workSteps: วิธีดำเนินงาน — แต่ละขั้นตอนขึ้นบรรทัดใหม่ 1 บรรทัดต่อ 1 ขั้นตอน แต่ละบรรทัดคั่น 4 ค่าด้วย " | " ตามลำดับ: ขั้นตอน/กิจกรรม | ระยะเวลา | งบประมาณ | ผู้รับผิดชอบ',
+    '- durationText: ระยะเวลาดำเนินการโครงการโดยรวม',
+    '- locationText: สถานที่ดำเนินงาน',
+    '- budgetItems: งบประมาณ — แต่ละบรรทัดคั่นด้วย " | " ตามลำดับ: รายการ | จำนวนเงิน (ตัวเลขล้วน ห้ามมีคอมมาคั่นหลักหรือคำว่า "บาท")',
+    '- stakeholders: หน่วยงาน/ผู้เกี่ยวข้อง — แต่ละบรรทัดคั่นด้วย " | " ตามลำดับ: หน่วยงาน/บุคคล | จำนวน (คน)',
+    '- evaluationItems: การประเมินผลความสำเร็จ — แต่ละบรรทัดคั่นด้วย " | " ตามลำดับ: เป้าหมาย | ตัวบ่งชี้ความสำเร็จ | วิธีวัดและประเมินผล | เครื่องมือวัด',
+    '- expectedResults: ผลที่คาดว่าจะได้รับ — ขึ้นบรรทัดใหม่ทีละข้อ',
+    '',
+    'กฎสำคัญที่ต้องทำตามเป๊ะๆ:',
+    '1. คอลัมน์ไหนมีการขึ้นบรรทัดใหม่ภายในเซลล์ ต้องครอบข้อความทั้งเซลล์ด้วยเครื่องหมายคำพูด " " เสมอ (มาตรฐาน CSV)',
+    '2. มีข้อมูลแค่ 1 แถวข้อมูลเท่านั้น (1 โครงการต่อ 1 ไฟล์)',
+    '3. ถ้าหาข้อมูลคอลัมน์ไหนไม่เจอในไฟล์ต้นฉบับ ให้เว้นว่างไว้ ห้ามเดาขึ้นมาเอง',
+    '4. ตอบกลับเฉพาะเนื้อหา CSV เท่านั้น ห้ามมีคำอธิบายอื่นปนอยู่ในคำตอบ ให้ครอบคำตอบทั้งหมดด้วย code block รูปแบบนี้: ```csv (เนื้อหา CSV) ```',
+  ].join('\n')
+}
+
+function stripDocCodeFence(text) {
+  let t = (text ?? '').trim()
+  if (t.startsWith('```')) t = t.replace(/^```[a-zA-Z]*\n?/, '').replace(/```\s*$/, '').trim()
+  return t
+}
+
+// parser CSV แบบ RFC4180 เบาๆ — รองรับเซลล์ที่ครอบด้วย " " และมีขึ้นบรรทัดใหม่/comma อยู่ข้างในได้ (จำเป็นเพราะฟิลด์รายการ/ตารางของฟอร์มนี้เก็บเป็นข้อความหลายบรรทัดในเซลล์เดียว)
+function parseCsvGeneric(text) {
+  const rows = []
+  let row = [], field = '', inQuotes = false
+  const s = text.replace(/\r\n/g, '\n')
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (inQuotes) {
+      if (c === '"') { if (s[i + 1] === '"') { field += '"'; i++ } else inQuotes = false }
+      else field += c
+    } else {
+      if (c === '"') inQuotes = true
+      else if (c === ',') { row.push(field); field = '' }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+      else field += c
+    }
+  }
+  row.push(field)
+  rows.push(row)
+  return rows.filter(r => r.some(c => c.trim() !== ''))
+}
+
+// รับได้ทั้ง CSV (ตามพรอมต์หลัก) และ JSON object เผื่อ AI ตอบมาเป็น JSON แทน — คืน object { fieldName: text } พร้อมใส่ลงฟอร์มตรงๆ ได้เลย
+function parseDocAIResponse(rawText) {
+  const text = stripDocCodeFence(rawText)
+  if (text.startsWith('{')) {
+    const obj = JSON.parse(text)
+    const fields = {}
+    for (const key of DOC_IMPORT_FIELDS) {
+      if (!(key in obj)) continue
+      const v = obj[key]
+      fields[key] = Array.isArray(v) ? v.map(item => Array.isArray(item) ? item.join(' | ') : String(item ?? '')).join('\n') : String(v ?? '')
+    }
+    return fields
+  }
+  const rows = parseCsvGeneric(text)
+  if (rows.length < 2) throw new Error('ไม่พบข้อมูล — ต้องมีทั้งแถวหัวตารางและแถวข้อมูล')
+  const header = rows[0].map(h => h.trim())
+  const data = rows[1]
+  const fields = {}
+  header.forEach((h, i) => { if (DOC_IMPORT_FIELDS.includes(h)) fields[h] = (data[i] ?? '').trim() })
+  return fields
+}
+
+// เติมค่าลงฟอร์ม doc-form ที่เปิดอยู่ตรงๆ (ไม่ผ่าน re-render เพื่อไม่ให้ค่าที่ผู้ใช้พิมพ์ไปแล้วหายระหว่างนำเข้า) — คืนจำนวนช่องที่เติมสำเร็จ
+function applyDocImportFields(fields) {
+  const form = document.getElementById('doc-form')
+  if (!form) return 0
+  let filled = 0
+  for (const key of DOC_IMPORT_FIELDS) {
+    if (fields[key] === undefined) continue
+    const el = form.elements[key]
+    if (!el) continue
+    el.value = fields[key]
+    filled++
+  }
+  return filled
+}
+
+function openDocAiImportModal() {
+  document.getElementById('doc-ai-import-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'doc-ai-import-modal'
+  modal.className = 'fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-2xl w-full max-w-lg p-5 max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-base font-bold text-[var(--ink)]">🤖 ใช้ AI ช่วยกรอกจากไฟล์ใบโครงการเดิม</p>
+        <button type="button" id="btn-close-doc-ai-import" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
+      </div>
+      <ol class="text-xs text-[var(--muted-2)] list-decimal list-inside space-y-1 mb-3">
+        <li>คัดลอกคำสั่งด้านล่าง</li>
+        <li>วางในแชท ChatGPT (หรือ AI อื่น) พร้อมแนบไฟล์ใบโครงการเดิม (Word/PDF/รูปถ่าย)</li>
+        <li>คัดลอกคำตอบที่ได้ (หรือดาวน์โหลดไฟล์ CSV ถ้า AI สร้างไฟล์ให้) แล้วนำกลับมาวาง/อัปโหลดด้านล่างนี้</li>
+      </ol>
+      <button type="button" id="btn-doc-ai-copy-prompt" class="w-full py-2.5 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)] font-bold text-xs mb-3">📋 คัดลอกคำสั่งสำหรับ AI</button>
+      <div class="space-y-3 pt-2 border-t border-[var(--line-soft)]">
+        <div>
+          <label class="text-xs font-semibold text-[var(--muted)] mb-1 block">อัปโหลดไฟล์ CSV ที่ได้จาก AI</label>
+          <input type="file" id="doc-ai-csv-file" accept=".csv,text/csv" class="w-full text-xs border border-[var(--line)] rounded-xl px-3 py-2 bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-[var(--muted)] mb-1 block">หรือวางคำตอบที่ AI ตอบกลับมาตรงนี้</label>
+          <textarea id="doc-ai-paste" rows="5" placeholder="วางคำตอบ CSV จาก AI ที่นี่" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-xs font-mono resize-none bg-[var(--surface)] text-[var(--ink)]"></textarea>
+          <button type="button" id="btn-doc-ai-import" class="w-full mt-2 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white font-bold text-xs">นำเข้าข้อมูลนี้ลงในฟอร์ม</button>
+        </div>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+  modal.querySelector('#btn-close-doc-ai-import').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+
+  modal.querySelector('#btn-doc-ai-copy-prompt').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(buildDocAiPrompt())
+      showToast('คัดลอกคำสั่งแล้ว — ไปวางในแชท AI พร้อมแนบไฟล์ใบโครงการได้เลย', 'success')
+    } catch (err) {
+      showToast('คัดลอกอัตโนมัติไม่ได้ — ลองคัดลอกเองจากคำสั่งที่แสดง', 'warning')
+    }
+  })
+
+  const runImport = text => {
+    try {
+      const fields = parseDocAIResponse(text)
+      const filled = applyDocImportFields(fields)
+      if (!filled) throw new Error('ไม่พบข้อมูลที่ตรงกับฟอร์ม ตรวจสอบว่าหัวตาราง CSV ตรงกับคำสั่งที่กำหนด')
+      showToast(`นำเข้าข้อมูลแล้ว ${filled} ช่อง — กรุณาตรวจสอบความถูกต้องก่อนบันทึกร่าง`, 'success')
+      modal.remove()
+    } catch (err) {
+      showToast('นำเข้าข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  }
+
+  modal.querySelector('#doc-ai-csv-file').addEventListener('change', async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try { runImport(await file.text()) }
+    finally { e.target.value = '' }
+  })
+
+  modal.querySelector('#btn-doc-ai-import').addEventListener('click', () => {
+    const raw = modal.querySelector('#doc-ai-paste').value
+    if (!raw.trim()) { showToast('กรุณาวางคำตอบจาก AI ก่อน', 'warning'); return }
+    runImport(raw)
+  })
+}
+
 function canCreateDoc() {
   return ctx.isCouncilAdvisor || ctx.isAdmin || ctx.isChair
 }
@@ -1879,6 +2050,7 @@ function renderDocEditForm() {
       <button type="button" id="btn-doc-form-back" class="w-8 h-8 rounded-full hover:bg-[var(--bg-2)] text-[var(--muted)] flex items-center justify-center flex-shrink-0 text-lg">←</button>
       <h2 class="text-base font-bold text-[var(--ink)]">${isNew ? 'ร่างเอกสารโครงการใหม่' : 'แก้ไขร่างเอกสารโครงการ'}</h2>
     </div>
+    <button type="button" id="btn-doc-ai-import-open" class="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)] text-xs font-bold mb-3">🤖 ใช้ AI ช่วยกรอกจากไฟล์ใบโครงการเดิม</button>
     <form id="doc-form" class="space-y-3" data-origin="${origin}">
       <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
         <p class="text-sm font-bold text-[var(--ink-2)]">ข้อมูลทั่วไป</p>
@@ -3418,6 +3590,8 @@ function wireDocsEvents() {
   document.querySelectorAll('.btn-edit-doc').forEach(btn => {
     btn.addEventListener('click', () => { docEditingId = Number(btn.dataset.id); render() })
   })
+
+  document.getElementById('btn-doc-ai-import-open')?.addEventListener('click', () => openDocAiImportModal())
 
   document.getElementById('doc-form')?.addEventListener('submit', async e => {
     e.preventDefault()
