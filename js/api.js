@@ -3121,7 +3121,7 @@ export async function getAnnouncementTypeSuggestions() {
 // ประกาศที่ครูสร้างเอง (สำหรับห้องเรียน)
 export async function getTeacherOwnAnnouncements(teacherId) {
   const { data, error } = await supabase.from('announcements')
-    .select('id, title, body, is_active, priority, ann_type, target_class_ids, file_url, created_at, updated_at')
+    .select('id, title, body, is_active, priority, ann_type, target_class_ids, file_url, attachment_urls, created_at, updated_at')
     .eq('created_by_teacher_id', teacherId)
     .not('target_class_ids', 'is', null)
     .order('priority', { ascending: false })
@@ -3142,7 +3142,7 @@ export async function getClassAnnouncements(classId) {
   return data ?? []
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, deadlineAt, audience }) {
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, attachmentUrls, deadlineAt, audience }) {
   const payload = { updated_at: new Date().toISOString() }
   if (title           !== undefined) payload.title            = title
   if (body            !== undefined) payload.body             = body
@@ -3157,6 +3157,7 @@ export async function updateAnnouncement(id, { title, body, isActive, priority, 
   if (scheduleFilter  !== undefined) payload.schedule_filter  = scheduleFilter
   if (targetClassIds  !== undefined) payload.target_class_ids = targetClassIds || null
   if (fileUrl         !== undefined) payload.file_url         = fileUrl || null
+  if (attachmentUrls  !== undefined) payload.attachment_urls  = attachmentUrls || null
   if (deadlineAt      !== undefined) payload.deadline_at      = deadlineAt || null
   if (audience        !== undefined) payload.audience         = audience
   const { data, error } = await supabase.from('announcements')

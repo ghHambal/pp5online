@@ -4609,6 +4609,7 @@ export async function renderAnnouncementsView(teacher) {
           <p class="font-semibold text-gray-800">${_esc(a.title)}</p>
           ${a.body ? `<p class="text-sm text-gray-500 mt-1 line-clamp-2">${_esc(a.body)}</p>` : ''}
           ${a.file_url ? `<a href="${_esc(a.file_url)}" target="_blank" class="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1">📎 ไฟล์แนบ</a>` : ''}
+          ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mt-1">${a.attachment_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">📎 ${_esc(f.name)}</a>`).join('')}</div>` : ''}
           <p class="text-xs text-gray-400 mt-2">ห้อง: ${_esc(targetNames) || '—'}</p>
         </div>
         <div class="flex gap-1 flex-shrink-0">
@@ -4691,8 +4692,8 @@ export async function renderAnnouncementsView(teacher) {
         <span class="text-gray-300 truncate">${_esc(c.master_subjects?.subject_name ?? '')}</span>
       </label>`).join('')
 
-  const _entryHtml = (idx, classIds = [], fileUrl = '') => `
-    <div class="myann-entry border border-gray-200 rounded-xl p-3 space-y-2" data-entry="${idx}">
+  const _entryHtml = (idx, classIds = [], fileUrl = '', attachmentUrls = []) => `
+    <div class="myann-entry border border-gray-200 rounded-xl p-3 space-y-2" data-entry="${idx}" data-kept='${_esc(JSON.stringify(attachmentUrls)).replace(/'/g, '&#39;')}'>
       <div class="flex items-center justify-between">
         <span class="text-xs font-semibold text-indigo-600">ชุดที่ ${idx + 1}</span>
         ${idx > 0
@@ -4706,12 +4707,39 @@ export async function renderAnnouncementsView(teacher) {
         </div>
       </div>
       <div>
-        <p class="text-xs font-semibold text-gray-600 mb-1">ลิงก์ไฟล์ (ถ้ามี)</p>
+        <p class="text-xs font-semibold text-gray-600 mb-1">แนบไฟล์ (เลือกได้หลายไฟล์ ไม่บังคับ)</p>
+        <div class="myann-kept-files flex flex-wrap gap-1.5 mb-1.5" data-entry="${idx}"></div>
+        <input name="myann-files-${idx}" type="file" multiple
+          class="w-full text-xs" />
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-gray-600 mb-1">หรือลิงก์ไฟล์ (เช่น Google Drive)</p>
         <input name="myann-file-${idx}" type="url" value="${_esc(fileUrl)}"
           placeholder="https://drive.google.com/..."
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200" />
       </div>
     </div>`
+
+  // แสดง chip ไฟล์แนบเดิม (attachment_urls) ของแต่ละ entry + ปุ่มลบ (ลบแค่ใน UI, จะตัดออกจริงตอนบันทึก)
+  const _paintKeptFiles = (wrap) => {
+    wrap.querySelectorAll('.myann-entry').forEach(entryEl => {
+      const idx = entryEl.dataset.entry
+      const kept = JSON.parse(entryEl.dataset.kept || '[]')
+      const box = wrap.querySelector(`.myann-kept-files[data-entry="${idx}"]`)
+      if (!box) return
+      box.innerHTML = kept.map((f, i) => `
+        <span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">
+          📎 ${_esc(f.name)}
+          <button type="button" class="myann-remove-file text-indigo-400 hover:text-red-500 font-bold" data-entry="${idx}" data-i="${i}">✕</button>
+        </span>`).join('')
+      box.querySelectorAll('.myann-remove-file').forEach(btn => btn.addEventListener('click', () => {
+        const kept2 = JSON.parse(entryEl.dataset.kept || '[]')
+        kept2.splice(parseInt(btn.dataset.i, 10), 1)
+        entryEl.dataset.kept = JSON.stringify(kept2)
+        _paintKeptFiles(wrap)
+      }))
+    })
+  }
 
   const _openMyAnnForm = (existing = null) => {
     let entryCount = 1
@@ -4770,7 +4798,7 @@ export async function renderAnnouncementsView(teacher) {
             </button>` : ''}
           </div>
           <div id="myann-entries" class="space-y-3">
-            ${_entryHtml(0, existing?.target_class_ids ?? [], existing?.file_url ?? '')}
+            ${_entryHtml(0, existing?.target_class_ids ?? [], existing?.file_url ?? '', existing?.attachment_urls ?? [])}
           </div>
         </div>
       </div>
@@ -4782,6 +4810,7 @@ export async function renderAnnouncementsView(teacher) {
       </div>
     </div>`
     document.body.appendChild(wrap)
+    _paintKeptFiles(wrap)
     wrap.querySelector('#myann-close').addEventListener('click', () => wrap.remove())
     wrap.querySelector('#myann-cancel').addEventListener('click', () => wrap.remove())
 
@@ -4798,6 +4827,7 @@ export async function renderAnnouncementsView(teacher) {
       entryCount++
       // bind ปุ่มลบของ entry ใหม่
       _bindRemoveButtons()
+      _paintKeptFiles(wrap)
     })
 
     const _bindRemoveButtons = () => {
@@ -4825,7 +4855,9 @@ export async function renderAnnouncementsView(teacher) {
         const idx      = Number(el.dataset.entry)
         const classIds = [...el.querySelectorAll(`input[name="myann-cls-${idx}"]:checked`)].map(e => Number(e.value))
         const fileUrl  = el.querySelector(`input[name="myann-file-${idx}"]`)?.value.trim() ?? ''
-        return { classIds, fileUrl }
+        const keptFiles = JSON.parse(el.dataset.kept || '[]')
+        const newFiles  = [...(el.querySelector(`input[name="myann-files-${idx}"]`)?.files ?? [])]
+        return { classIds, fileUrl, keptFiles, newFiles }
       }).filter(e => e.classIds.length > 0)
 
       if (!entries.length) { showToast('กรุณาเลือกอย่างน้อย 1 ห้องในแต่ละชุด', 'warning'); return }
@@ -4834,14 +4866,20 @@ export async function renderAnnouncementsView(teacher) {
       saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
       try {
         const { createAnnouncement, updateAnnouncement } = await import('./api.js')
+        const { uploadAssignmentFile } = await import('./storage.js')
         if (existing) {
-          const { classIds, fileUrl } = entries[0]
-          await updateAnnouncement(existing.id, { title, body, isActive: active, priority: pinned ? 1 : 0, annType, targetClassIds: classIds, fileUrl, deadlineAt })
+          const { classIds, fileUrl, keptFiles, newFiles } = entries[0]
+          const uploaded = []
+          for (const f of newFiles) uploaded.push(await uploadAssignmentFile(f, `class-${classIds[0]}/announcements`))
+          const attachmentUrls = [...keptFiles, ...uploaded]
+          await updateAnnouncement(existing.id, { title, body, isActive: active, priority: pinned ? 1 : 0, annType, targetClassIds: classIds, fileUrl, attachmentUrls: attachmentUrls.length ? attachmentUrls : null, deadlineAt })
         } else {
           // สร้างทีละ entry
-          await Promise.all(entries.map(({ classIds, fileUrl }) =>
-            createAnnouncement({ title, body, isActive: active, priority: pinned ? 1 : 0, teacherId: teacher.id, annType, targetClassIds: classIds, fileUrl, deadlineAt })
-          ))
+          await Promise.all(entries.map(async ({ classIds, fileUrl, newFiles }) => {
+            const uploaded = []
+            for (const f of newFiles) uploaded.push(await uploadAssignmentFile(f, `class-${classIds[0]}/announcements`))
+            return createAnnouncement({ title, body, isActive: active, priority: pinned ? 1 : 0, teacherId: teacher.id, annType, targetClassIds: classIds, fileUrl, attachmentUrls: uploaded.length ? uploaded : null, deadlineAt })
+          }))
         }
         wrap.remove()
         const count = existing ? 1 : entries.length

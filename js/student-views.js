@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.458'
+import { APP_VERSION } from './version.js?v=10.22.459'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getMyActivityCertificates } from './council-api.js'
@@ -875,6 +875,7 @@ export async function renderStudentOverview(student) {
         ${a.body ? `<p class="text-xs text-gray-500 mt-1">${a.body}</p>` : ''}
         ${a.ann_type === 'deadline' && a.deadline_at ? `<div class="mt-2">${_fmtDeadlineS(a.deadline_at)}</div>` : ''}
         ${a.file_url ? `<a href="${a.file_url}" target="_blank" class="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:underline font-medium">📎 เปิดไฟล์ →</a>` : ''}
+        ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${a.attachment_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">📎 ${_esc(f.name)}</a>`).join('')}</div>` : ''}
       </div>`
     }).join('')}</div>` : `<p class="text-center text-gray-400 py-16 text-sm">ยังไม่มีประกาศ</p>`
     _openFullPopup('📢 ประกาศของฉัน', annBody)

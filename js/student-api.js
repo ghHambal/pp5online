@@ -316,7 +316,7 @@ export async function getStudentAllAnnouncements(studentId) {
 
   const { data, error } = await supabase
     .from('announcements')
-    .select('id, title, body, priority, ann_type, file_url, deadline_at, created_at, target_class_ids')
+    .select('id, title, body, priority, ann_type, file_url, attachment_urls, deadline_at, created_at, target_class_ids')
     .eq('is_active', true)
     .not('target_class_ids', 'is', null)
   if (error) throw error
