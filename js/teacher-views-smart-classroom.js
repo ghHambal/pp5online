@@ -13,7 +13,9 @@ import {
   getCourseSyllabus, createSyllabusItem, updateSyllabusItem, deleteSyllabusItem,
   getLessonPlans, createLessonPlan, updateLessonPlan, deleteLessonPlan,
   getLessonPlanReflection, upsertLessonPlanReflection, getAnnouncementTypeSuggestions,
+  setSmartClassroomFreeClass,
 } from './api.js'
+import { _toPositiveInt, _parseDonationStickers } from './teacher.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
@@ -43,6 +45,69 @@ function _smartClassroomMinTier(cfg) {
 export function isSmartClassroomUnlocked(cfg) {
   const tierIndex = window._pp5DonorTierIndex ?? 0
   return tierIndex >= _smartClassroomMinTier(cfg)
+}
+
+// ─── ห้องฟรี 1 ห้อง สำหรับครูที่ยังไม่ถึงระดับโดเนทที่ปลดล็อก Smart Classroom ────
+function _donationTierAmount(cfg, tier) {
+  const minAmt = _toPositiveInt(cfg.donationMinAmount, 49)
+  const step   = _toPositiveInt(cfg.donationAmountStep, 50)
+  const tiers  = _parseDonationStickers(cfg, minAmt, step)
+  return tiers[tier - 1]?.amount ?? null
+}
+
+export function canUseSmartClassroomForClass(teacher, cfg, classId) {
+  if (isSmartClassroomUnlocked(cfg)) return true
+  return teacher?.smart_classroom_free_class_id === classId
+}
+
+// ป๊อบอัพเลือกห้องที่จะใช้ฟรี — เลือกแล้วล็อกถาวร (setSmartClassroomFreeClass เช็ค null ก่อนเขียนกันแข่งกันเลือก)
+async function _openFreeClassPickModal(teacher, cfg, { preselectClassId = null, onPicked } = {}) {
+  document.getElementById('sc-pick-modal')?.remove()
+  const classes = await getMyClasses(teacher.id).catch(() => [])
+  const m = document.createElement('div')
+  m.id = 'sc-pick-modal'
+  m.className = 'fixed inset-0 z-[96] flex items-center justify-center bg-black/60 p-4'
+  m.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="px-6 pt-6 pb-4 flex-shrink-0 text-center" style="background:linear-gradient(135deg,#a9781a,#e6c988)">
+        <div class="text-4xl mb-1">🎁</div>
+        <h3 class="text-white font-extrabold text-base">ใช้ Smart Classroom ฟรี 1 ห้องเรียน</h3>
+        <p class="text-white/80 text-[11px] mt-1 leading-relaxed">เลือกแล้วจะล็อกใช้ได้เฉพาะห้องนี้ตลอด<br>หากต้องการเปลี่ยนห้องภายหลังต้องติดต่อแอดมิน</p>
+      </div>
+      <div class="overflow-y-auto flex-1 p-4 space-y-2">
+        ${!classes.length ? `<p class="text-center text-gray-400 text-sm py-8">ยังไม่มีห้องเรียน</p>` : classes.map(c => `
+          <label class="flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition hover:border-amber-300 ${c.id === preselectClassId ? 'border-amber-400 bg-amber-50' : 'border-gray-200'}">
+            <input type="radio" name="sc-pick-class" value="${c.id}" class="w-4 h-4" ${c.id === preselectClassId ? 'checked' : ''} />
+            <span class="text-sm font-semibold text-gray-700">${_htmlEsc(c.class_name)}</span>
+          </label>`).join('')}
+      </div>
+      <div class="p-4 flex-shrink-0 border-t border-gray-100">
+        <button id="sc-pick-confirm" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+          style="background:linear-gradient(135deg,#a9781a,#e6c988)" ${!classes.length ? 'disabled' : ''}>✅ ยืนยันใช้ห้องนี้</button>
+        <button id="sc-pick-cancel" class="w-full py-2 mt-1.5 text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
+      </div>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#sc-pick-cancel').addEventListener('click', () => m.remove())
+  m.querySelector('#sc-pick-confirm').addEventListener('click', async () => {
+    const picked = m.querySelector('input[name="sc-pick-class"]:checked')
+    if (!picked) { showToast('กรุณาเลือกห้องเรียน', 'warning'); return }
+    const classId = parseInt(picked.value)
+    const btn = m.querySelector('#sc-pick-confirm')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      const result = await setSmartClassroomFreeClass(teacher.id, classId)
+      if (!result) { showToast('มีการเลือกห้องไปแล้วก่อนหน้านี้ กรุณาลองใหม่', 'error'); m.remove(); return }
+      teacher.smart_classroom_free_class_id = classId
+      m.remove()
+      showToast('เลือกห้องฟรีสำเร็จ ✅', 'success')
+      onPicked?.(classId)
+    } catch (e) {
+      showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = '✅ ยืนยันใช้ห้องนี้'
+    }
+  })
 }
 
 function _fmtElapsed(startIso) {
@@ -121,6 +186,10 @@ export async function openSmartClassroomLanding(teacher) {
     _launchAuto(teacher)
     return
   }
+  if (!unlocked && teacher?.smart_classroom_free_class_id) {
+    renderSmartClassroom(teacher, teacher.smart_classroom_free_class_id)
+    return
+  }
 
   document.getElementById('sc-landing-modal')?.remove()
   const minTier = _smartClassroomMinTier(cfg)
@@ -171,9 +240,10 @@ export async function openSmartClassroomLanding(teacher) {
           <button id="sl-start" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
             style="background:linear-gradient(135deg,#a9781a,#e6c988)">🚀 เริ่มใช้งาน</button>
         ` : `
-          <p class="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5 text-center">🔒 ฟีเจอร์นี้เฉพาะผู้สนับสนุนระบบระดับ ${minTier} ขึ้นไป</p>
-          <button id="sl-donate" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
-            style="background:linear-gradient(135deg,#a9781a,#e6c988)">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
+          <p class="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5 text-center">🎁 ใช้ Smart Classroom ฟรีได้ 1 ห้องเรียน หรือสนับสนุนระบบระดับ ${minTier} ขึ้นไปเพื่อใช้ได้ไม่จำกัดห้อง</p>
+          <button id="sl-free" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+            style="background:linear-gradient(135deg,#a9781a,#e6c988)">🎁 เลือกห้องที่จะใช้ฟรี</button>
+          <button id="sl-donate" class="w-full py-2.5 rounded-2xl text-amber-700 font-semibold text-xs hover:bg-amber-50 transition border border-amber-200">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
         `}
       </div>
     </div>`
@@ -184,6 +254,10 @@ export async function openSmartClassroomLanding(teacher) {
     if (m.querySelector('#sl-skip')?.checked) localStorage.setItem(SC_SKIP_POPUP_KEY, '1')
     m.remove()
     _launchAuto(teacher)
+  })
+  m.querySelector('#sl-free')?.addEventListener('click', () => {
+    m.remove()
+    _openFreeClassPickModal(teacher, cfg, { onPicked: classId => renderSmartClassroom(teacher, classId) })
   })
   m.querySelector('#sl-donate')?.addEventListener('click', () => { m.remove(); document.getElementById('btn-donate-float')?.click() })
 }
@@ -207,12 +281,52 @@ export async function renderSmartClassroom(teacher, classId) {
 
   const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
 
-  if (!isSmartClassroomUnlocked(cfg)) {
+  if (!canUseSmartClassroomForClass(teacher, cfg, classId)) {
     const minTier = _smartClassroomMinTier(cfg)
+    const freeClassId = teacher?.smart_classroom_free_class_id
+
+    if (!freeClassId) {
+      setContent(`<div class="max-w-md mx-auto text-center py-14 px-6 bg-white rounded-2xl border border-amber-200 shadow-sm">
+        <div class="text-6xl mb-4">🎁</div>
+        <p class="font-bold text-gray-800 text-lg">ใช้ Smart Classroom ฟรีได้ 1 ห้องเรียน</p>
+        <p class="text-sm text-gray-500 mt-2 leading-relaxed">คุณยังไม่ได้สนับสนุนระบบระดับ ${minTier} ขึ้นไป แต่ใช้ Smart Classroom ฟรีได้ 1 ห้องเรียนครับ<br>เลือกแล้วจะล็อกใช้ได้เฉพาะห้องนี้ตลอด (เปลี่ยนภายหลังต้องติดต่อแอดมิน)</p>
+        <button id="sc-free-confirm" class="mt-5 px-6 py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
+          style="background:linear-gradient(135deg,#a9781a,#e6c988)">🎁 ใช้ห้องนี้ฟรี</button>
+        <div class="mt-2">
+          <button id="sc-free-other" class="text-xs text-gray-400 hover:text-gray-600 underline">เลือกห้องอื่นแทน</button>
+        </div>
+        <div class="mt-4">
+          <button id="sc-back" class="text-xs text-gray-400 hover:text-gray-600">← กลับไปห้องเรียน</button>
+        </div>
+      </div>`)
+      document.getElementById('sc-free-confirm')?.addEventListener('click', async btnEvt => {
+        const btn = btnEvt.currentTarget
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+        try {
+          const result = await setSmartClassroomFreeClass(teacher.id, classId)
+          if (!result) { showToast('มีการเลือกห้องไปแล้วก่อนหน้านี้', 'error'); renderSmartClassroom(teacher, classId); return }
+          teacher.smart_classroom_free_class_id = classId
+          showToast('เลือกห้องฟรีสำเร็จ ✅', 'success')
+          renderSmartClassroom(teacher, classId)
+        } catch (e) {
+          showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = '🎁 ใช้ห้องนี้ฟรี'
+        }
+      })
+      document.getElementById('sc-free-other')?.addEventListener('click', () => {
+        _openFreeClassPickModal(teacher, cfg, { preselectClassId: classId, onPicked: pickedId => renderSmartClassroom(teacher, pickedId) })
+      })
+      document.getElementById('sc-back')?.addEventListener('click', () => renderClassDetail(teacher, classId))
+      return
+    }
+
+    const myClasses = await getMyClasses(teacher.id).catch(() => [])
+    const freeClassName = myClasses.find(c => c.id === freeClassId)?.class_name ?? `ห้อง #${freeClassId}`
+    const tierAmount = _donationTierAmount(cfg, minTier)
     setContent(`<div class="max-w-md mx-auto text-center py-14 px-6 bg-white rounded-2xl border border-amber-200 shadow-sm">
-      <div class="text-6xl mb-4">👑</div>
+      <div class="text-6xl mb-4">🔒</div>
       <p class="font-bold text-gray-800 text-lg">Smart Classroom</p>
-      <p class="text-sm text-gray-500 mt-2 leading-relaxed">ฟีเจอร์นี้เฉพาะผู้สนับสนุนระบบระดับ ${minTier} ขึ้นไปเท่านั้นครับ<br>รวมเครื่องมือสอนสดทั้งหมดไว้จอเดียว — เช็คชื่อ/จับเวลา/สุ่มชื่อ/Hall Pass/เปิดควิซสด</p>
+      <p class="text-sm text-gray-500 mt-2 leading-relaxed">คุณใช้สิทธิ์ฟรีกับห้อง <b>${_htmlEsc(freeClassName)}</b> ไปแล้ว<br>หากต้องการใช้ห้องนี้ด้วย กรุณาสนับสนุนระบบระดับ ${minTier}${tierAmount ? ` (${tierAmount} บาท)` : ''} ขึ้นไปเพื่อใช้ได้ไม่จำกัดห้องครับ</p>
       <button id="sc-upgrade" class="mt-5 px-6 py-3 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition"
         style="background:linear-gradient(135deg,#a9781a,#e6c988)">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
       <div class="mt-3">

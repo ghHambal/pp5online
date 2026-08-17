@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.461'
+import { APP_VERSION } from './version.js?v=10.22.462'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -300,7 +300,7 @@ const _esc = value => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
 
-const _toPositiveInt = (value, fallback) => {
+export const _toPositiveInt = (value, fallback) => {
   const n = parseInt(value, 10)
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
@@ -358,7 +358,7 @@ const _getDonorTierIndex = (cfg, tiers, amount) => {
   return idx !== undefined ? idx + 1 : 0
 }
 
-const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
+export const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
   const raw = String(cfg.donationStickerTiers ?? '').trim()
   const defaults = [
     [49,  '🌱', 'ครูผู้จุดประกาย',     'คุณครูจุดประกายให้ผมมีแรงเดินต่ออีกก้าว 🤝',    '#22C55E'],

@@ -53,11 +53,40 @@ export async function updateSystemConfig(key, value) {
 export async function getMyTeacherProfile(profileId) {
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
+    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
     .eq('profile_id', profileId)
     .maybeSingle()
   if (error) throw error
   return data
+}
+
+// ─── Smart Classroom — ใช้ฟรี 1 ห้องสำหรับครูที่ยังไม่ถึงระดับโดเนทที่ปลดล็อก ────
+// ล็อกถาวรตั้งใจ (.is('smart_classroom_free_class_id', null) กันการเลือกซ้ำ/แข่งกันเขียน) ต้องให้แอดมิน resetSmartClassroomFreeClass ถึงจะเปลี่ยนได้
+export async function setSmartClassroomFreeClass(teacherId, classId) {
+  const { data, error } = await supabase.from('teachers')
+    .update({ smart_classroom_free_class_id: classId })
+    .eq('id', teacherId)
+    .is('smart_classroom_free_class_id', null)
+    .select('smart_classroom_free_class_id')
+    .maybeSingle()
+  if (error) throw error
+  return data // null = มีคนตั้งไปแล้วก่อนหน้า (race) — ผู้เรียกควร refetch โปรไฟล์ครู
+}
+
+export async function getSmartClassroomFreeAssignments() {
+  const { data, error } = await supabase.from('teachers')
+    .select('id, full_name, smart_classroom_free_class_id, classes:teachers_smart_classroom_free_class_id_fkey(id, class_name)')
+    .not('smart_classroom_free_class_id', 'is', null)
+    .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function resetSmartClassroomFreeClass(teacherId) {
+  const { error } = await supabase.from('teachers')
+    .update({ smart_classroom_free_class_id: null })
+    .eq('id', teacherId)
+  if (error) throw error
 }
 
 export async function getMyClasses(teacherId) {

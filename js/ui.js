@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.461'
+import { APP_VERSION } from './version.js?v=10.22.462'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.462': [
+    '🎁 Smart Classroom เปิดให้ครูทั่วไป (ที่ยังไม่ถึงระดับโดเนทที่ปลดล็อก) ใช้ฟรีได้ 1 ห้องเรียนแล้ว — เลือกห้องได้ตอนกดเข้าใช้ครั้งแรก เลือกแล้วล็อกใช้เฉพาะห้องนั้นตลอด (เปลี่ยนภายหลังต้องติดต่อแอดมิน) ห้องอื่นยังคงต้องสนับสนุนระดับที่กำหนดถึงจะใช้ได้'
+  ],
   '10.22.461': [
     '🎬 ประกาศแนบลิงก์วิดีโอได้แล้ว (YouTube/TikTok/Google Drive) — วางลิงก์ตอนสร้าง/แก้ไขประกาศ ผู้เปิดดูจะเห็นวิดีโอเล่นในป๊อบอัพประกาศได้เลยไม่ต้องออกไปแพลตฟอร์มอื่น'
   ],
