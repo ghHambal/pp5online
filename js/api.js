@@ -359,6 +359,15 @@ export async function advisorResetStudentPassword(studentId, newPassword) {
   if (error) throw error
 }
 
+// ตั้งค่าให้หน้า login นักเรียนโชว์แบนเนอร์แจ้งว่ารหัสผ่านถูกรีเซ็ทแล้ว (เช็คด้วย lookup_student_by_code
+// ตอน login, เคลียร์เองด้วย ack_password_reset_notice หลังโชว์แล้ว)
+export async function markStudentPasswordResetNotice(studentId) {
+  const { error } = await supabase.from('students')
+    .update({ password_reset_notice_at: new Date().toISOString() })
+    .eq('id', studentId)
+  if (error) throw error
+}
+
 // ครูที่ปรึกษาถอดนักเรียนออกจากห้อง (แค่ null main_room/religion_room ตาม category — ไม่ลบนักเรียน)
 export async function advisorRemoveStudentFromRoom(studentId, category) {
   const { error } = await supabase.rpc('advisor_remove_student_from_room', {
@@ -505,7 +514,7 @@ export async function getAllAppFeedback() {
       .in('feedback_id', feedbackIds)
       .order('created_at', { ascending: true }),
     studentProfileIds.length
-      ? supabase.from('students').select('profile_id, student_code, main_room, religion_room').in('profile_id', studentProfileIds)
+      ? supabase.from('students').select('id, profile_id, student_code, main_room, religion_room').in('profile_id', studentProfileIds)
       : Promise.resolve({ data: [], error: null }),
   ])
   if (messagesError && !_feedbackChatTableMissing(messagesError)) throw messagesError

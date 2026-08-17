@@ -29,6 +29,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
          autoEnrollStudentsByRoom,
          getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
+         advisorResetStudentPassword, markStudentPasswordResetNotice,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
@@ -11124,12 +11125,13 @@ export async function renderFeedbackAdmin() {
     return new Date(s).toLocaleString('th-TH', { year: '2-digit', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
   const CATEGORY_LABEL = {
-    compliment: '😊 ชื่นชม / ขอบคุณ',
-    suggestion: '💡 ข้อเสนอแนะ',
-    problem:    '🐞 แจ้งปัญหา / ข้อบกพร่อง',
-    other:      '💬 อื่นๆ',
+    compliment:     '😊 ชื่นชม / ขอบคุณ',
+    suggestion:     '💡 ข้อเสนอแนะ',
+    problem:        '🐞 แจ้งปัญหา / ข้อบกพร่อง',
+    password_reset: '🔑 ขอรีเซ็ทรหัสผ่าน',
+    other:          '💬 อื่นๆ',
   }
-  const ACTIONABLE_CATS = ['suggestion', 'problem']
+  const ACTIONABLE_CATS = ['suggestion', 'problem', 'password_reset']
   const STATUS_OPTS = [
     { value: 'pending',     label: '🕐 รอดำเนินการ',  cls: 'bg-gray-100 text-gray-600' },
     { value: 'in_progress', label: '🔧 กำลังแก้ไข',   cls: 'bg-amber-100 text-amber-700' },
@@ -11161,6 +11163,7 @@ export async function renderFeedbackAdmin() {
         <option value="compliment">ชื่นชม / ขอบคุณ</option>
         <option value="suggestion">ข้อเสนอแนะ</option>
         <option value="problem">แจ้งปัญหา</option>
+        <option value="password_reset">ขอรีเซ็ทรหัสผ่าน</option>
         <option value="other">อื่นๆ</option>
       </select>
       <select id="fb-filter-read" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
@@ -11265,6 +11268,13 @@ export async function renderFeedbackAdmin() {
             : `<div class="flex justify-start"><div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-white border border-slate-200 px-3 py-2"><p class="text-[10px] font-semibold text-slate-500 mb-0.5">${_esc(f.sender_name || 'ผู้ส่ง')}</p><p class="text-sm text-gray-700 whitespace-pre-wrap">${_esc(message.message)}</p><p class="text-[9px] text-slate-400 mt-1">${fmtDate(message.created_at)}</p></div></div>`).join('')}
           ${f.admin_reply && !(f.messages ?? []).some(message => message.author_role === 'admin' && message.message === f.admin_reply) ? `<div class="flex justify-end"><div class="max-w-[88%] rounded-2xl rounded-tr-sm bg-indigo-600 text-white px-3 py-2"><p class="text-[10px] font-semibold text-indigo-100 mb-0.5">แอดมิน</p><p class="text-sm whitespace-pre-wrap">${_esc(f.admin_reply)}</p><p class="text-[9px] text-indigo-200 mt-1">${f.replied_at ? fmtDate(f.replied_at) : ''}</p></div></div>` : ''}
         </div>
+        ${f.category === 'password_reset' && f.sender_role === 'student' && f.student?.id ? (
+          f.status === 'resolved'
+            ? `<p class="mt-3 text-xs font-semibold text-emerald-600 flex items-center gap-1.5">✅ รีเซ็ทรหัสผ่านให้แล้ว</p>`
+            : `<button class="fb-pw-reset-btn mt-3 w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition" data-id="${f.id}" data-sid="${f.student.id}" data-code="${_esc(f.student.student_code || '')}">
+                🔑 รีเซ็ทรหัสผ่าน (= รหัสนักเรียน ${_esc(f.student.student_code || '')})
+              </button>`
+        ) : ''}
         <div class="mt-3 flex items-center gap-2">
           <button class="fb-toggle-read px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition" data-id="${f.id}" data-read="${f.is_read}">
             ${f.is_read ? '↩️ ทำเป็นยังไม่อ่าน' : '✓ ทำเครื่องหมายว่าอ่านแล้ว'}
@@ -11321,6 +11331,37 @@ export async function renderFeedbackAdmin() {
       } catch { showToast('ลบไม่สำเร็จ', 'error'); return }
       _all = _all.filter(x => x.id !== id)
       showToast('ลบแล้ว', 'success')
+      _updateStats(); _render()
+    }))
+
+    box.querySelectorAll('.fb-pw-reset-btn').forEach(btn => btn.addEventListener('click', async () => {
+      const id      = parseInt(btn.dataset.id)
+      const sid     = parseInt(btn.dataset.sid)
+      const code    = btn.dataset.code
+      if (!confirm(`ยืนยันรีเซ็ทรหัสผ่านของนักเรียนรหัส ${code} เป็นรหัสนักเรียน (${code}) จริงหรือไม่?`)) return
+      const prevText = btn.textContent
+      btn.disabled = true; btn.textContent = '⏳ กำลังรีเซ็ท...'
+      try {
+        await advisorResetStudentPassword(sid, code)
+        await markStudentPasswordResetNotice(sid).catch(() => {})
+        await setFeedbackStatusReply(id, {
+          status: 'resolved',
+          adminReply: `รีเซ็ทรหัสผ่านให้แล้วครับ รหัสผ่านใหม่คือรหัสนักเรียนของคุณ (${code}) — เข้าสู่ระบบครั้งถัดไปแล้วค่อยเปลี่ยนรหัสผ่านใหม่ได้จากหน้าโปรไฟล์`,
+        })
+      } catch (err) {
+        showToast('รีเซ็ทไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = prevText
+        return
+      }
+      const item = _all.find(x => x.id === id)
+      if (item) {
+        item.status = 'resolved'
+        const now = new Date().toISOString()
+        const reply = `รีเซ็ทรหัสผ่านให้แล้วครับ รหัสผ่านใหม่คือรหัสนักเรียนของคุณ (${code}) — เข้าสู่ระบบครั้งถัดไปแล้วค่อยเปลี่ยนรหัสผ่านใหม่ได้จากหน้าโปรไฟล์`
+        item.admin_reply = reply; item.replied_at = now
+        item.messages = [...(item.messages ?? []), { id: `local-${Date.now()}`, feedback_id: id, author_role: 'admin', message: reply, created_at: now }]
+      }
+      showToast('รีเซ็ทรหัสผ่านสำเร็จแล้ว', 'success')
       _updateStats(); _render()
     }))
 

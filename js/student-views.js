@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.453'
+import { APP_VERSION } from './version.js?v=10.22.454'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 
@@ -2716,37 +2716,24 @@ export async function renderExamRequestForm(student, classId) {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export async function renderStudentProfile(student, onLogout) {
-  const cfg = await getSystemConfig().catch(()=>({}))
-
-  const _contactLinks = () => {
-    const items = [
-      cfg.contactPhone    && { icon:'📞', label: cfg.contactPhone,    href: `tel:${cfg.contactPhone.replace(/\s/g,'')}` },
-      cfg.contactLine     && { icon:'💬', label: 'LINE OA',           href: cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}` },
-      cfg.contactFacebook && { icon:'📘', label: 'Facebook',          href: cfg.contactFacebook },
-      cfg.contactEmail    && { icon:'📧', label: cfg.contactEmail,    href: `mailto:${cfg.contactEmail}` },
-      cfg.contactOther    && { icon:'🔗', label: cfg.contactOther,    href: null },
-    ].filter(Boolean)
-    if (!items.length) return ''
-    return `
+  const _contactLinks = () => `
       <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
         <div class="px-5 py-3 border-b border-gray-50">
-          <p class="text-sm font-semibold text-gray-700">📞 ติดต่อผู้ดูแลระบบ</p>
+          <p class="text-sm font-semibold text-gray-700">💬 ติดต่อแอดมิน</p>
         </div>
-        <div class="px-5 py-3 space-y-2.5">
-          ${items.map(l => l.href
-            ? `<a href="${l.href}" target="_blank" rel="noopener"
-                class="flex items-center gap-3 text-sm text-indigo-600 hover:text-indigo-800 transition">
-                <span class="text-base">${l.icon}</span>
-                <span>${l.label}</span>
-               </a>`
-            : `<div class="flex items-center gap-3 text-sm text-gray-600">
-                <span class="text-base">${l.icon}</span>
-                <span>${l.label}</span>
-               </div>`
-          ).join('')}
+        <div class="p-4 grid grid-cols-2 gap-3">
+          <button id="btn-stu-contact-admin" type="button"
+            class="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition">
+            <span class="text-2xl">📞</span>
+            <span class="text-xs font-semibold text-gray-700">ติดต่อผู้ดูแล</span>
+          </button>
+          <button id="btn-stu-pw-reset" type="button"
+            class="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition">
+            <span class="text-2xl">🔑</span>
+            <span class="text-xs font-semibold text-gray-700">รีเซ็ทรหัสผ่าน</span>
+          </button>
         </div>
       </div>`
-  }
 
   setContent(`
     <h2 class="font-bold text-gray-800 mb-4">👤 โปรไฟล์ของฉัน</h2>
@@ -2840,6 +2827,13 @@ export async function renderStudentProfile(student, onLogout) {
       ปพ.5 ออนไลน์ © 2026 v${APP_VERSION}
     </p>
   `)
+
+  document.getElementById('btn-stu-contact-admin')?.addEventListener('click', () => {
+    window._openFeedbackWidget?.()
+  })
+  document.getElementById('btn-stu-pw-reset')?.addEventListener('click', () => {
+    window._openPasswordResetRequest?.()
+  })
 
   // Bind change password event
   document.getElementById('btn-stu-save-pw')?.addEventListener('click', async () => {

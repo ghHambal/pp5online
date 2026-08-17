@@ -72,6 +72,11 @@
         <button id="btn-change-code" class="ml-auto text-xs text-gray-400 hover:text-gray-600 flex-shrink-0">เปลี่ยน</button>
       </div>
 
+      <!-- แจ้งเตือนรหัสผ่านถูกแอดมินรีเซ็ทให้ (โชว์เฉพาะกรณีมี password_reset_notice_at) -->
+      <div id="pw-reset-notice" class="hidden mb-4 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed">
+        🔑 แอดมินรีเซ็ทรหัสผ่านของคุณแล้ว — เข้าสู่ระบบด้วย <b>รหัสนักเรียนของคุณ</b> เป็นรหัสผ่าน แล้วค่อยเปลี่ยนใหม่ได้จากหน้าโปรไฟล์
+      </div>
+
       <div class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
@@ -341,6 +346,14 @@
           fillPreview('', stu)
           show('step-login')
           document.getElementById('inp-password').focus()
+
+          // แจ้งเตือนถ้าแอดมินเพิ่งรีเซ็ทรหัสผ่านให้ (เคลียร์ flag ทันทีหลังโชว์ ไม่ให้ขึ้นซ้ำ)
+          if (stu.password_reset_notice_at) {
+            show('pw-reset-notice')
+            supabase.rpc('ack_password_reset_notice', { p_student_code: stu.student_code }).then(() => {}).catch(() => {})
+          } else {
+            hide('pw-reset-notice')
+          }
         } else {
           // ครั้งแรก → ให้ตั้งรหัสผ่าน
           _email = `stu${stu.student_code}@student.pp5.local`

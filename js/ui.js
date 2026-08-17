@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.453'
+import { APP_VERSION } from './version.js?v=10.22.454'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -200,10 +200,11 @@ const _fbEsc = v => String(v ?? '')
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 
 const FEEDBACK_CATEGORIES = [
-  { value: 'compliment', label: '😊 ชื่นชม / ขอบคุณ' },
-  { value: 'suggestion', label: '💡 ข้อเสนอแนะ' },
-  { value: 'problem',    label: '🐞 แจ้งปัญหา / ข้อบกพร่อง' },
-  { value: 'other',      label: '💬 อื่นๆ' },
+  { value: 'compliment',     label: '😊 ชื่นชม / ขอบคุณ' },
+  { value: 'suggestion',     label: '💡 ข้อเสนอแนะ' },
+  { value: 'problem',        label: '🐞 แจ้งปัญหา / ข้อบกพร่อง' },
+  { value: 'password_reset', label: '🔑 ขอรีเซ็ทรหัสผ่าน' },
+  { value: 'other',          label: '💬 อื่นๆ' },
 ]
 
 export function injectFeedbackWidget({ profileId, role, name }) {
@@ -223,8 +224,11 @@ export function injectFeedbackWidget({ profileId, role, name }) {
 
   fab.addEventListener('click', () => _openFeedbackModal({ profileId, role, name }))
 
-  window._openFeedbackWidget = (prefillMessage) => {
-    _openFeedbackModal({ profileId, role, name, prefillMessage })
+  window._openFeedbackWidget = (prefillMessage, prefillCategory) => {
+    _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory })
+  }
+  window._openPasswordResetRequest = () => {
+    _openFeedbackModal({ profileId, role, name, prefillCategory: 'password_reset' })
   }
 }
 
@@ -237,9 +241,9 @@ const _FB_STATUS = {
     return                                     { icon: '⏳', text: 'รอรับเรื่อง',    cls: 'text-gray-500 bg-gray-50 border-gray-200' }
   },
 }
-const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', other:'💬' }
+const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', password_reset:'🔑', other:'💬' }
 
-function _openFeedbackModal({ profileId, role, name, prefillMessage }) {
+function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory }) {
   document.getElementById('feedback-modal')?.remove()
 
   const m = document.createElement('div')
@@ -287,91 +291,152 @@ function _openFeedbackModal({ profileId, role, name, prefillMessage }) {
         <div>
           <p class="text-xs font-semibold text-gray-600 mb-1.5">หัวข้อ</p>
           <div class="grid grid-cols-2 gap-2">
-            ${FEEDBACK_CATEGORIES.map((c, i) => `
-            <button type="button" class="fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left ${i === 0 ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}" data-cat="${c.value}">${c.label}</button>`).join('')}
+            ${FEEDBACK_CATEGORIES.map(c => `
+            <button type="button" class="fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left" data-cat="${c.value}">${c.label}</button>`).join('')}
           </div>
         </div>
+        <div id="fb-dynamic"></div>
+      </div>`
+
+    const catBtns = [...body.querySelectorAll('.fb-cat-btn')]
+    const dynEl   = body.querySelector('#fb-dynamic')
+    let category  = prefillCategory || (prefillMessage ? 'problem' : FEEDBACK_CATEGORIES[0].value)
+
+    const syncCatButtons = () => {
+      catBtns.forEach(b => {
+        const on = b.dataset.cat === category
+        b.className = `fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left ${on ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
+      })
+    }
+
+    // แจ้งรีเซ็ทรหัสผ่าน — ป๊อบอัพยืนยันก่อนส่งจริง (แยกจาก textarea ปกติ เพราะไม่ต้องพิมพ์อะไร)
+    function openPwResetConfirm() {
+      document.getElementById('fb-pwreset-confirm')?.remove()
+      const c = document.createElement('div')
+      c.id = 'fb-pwreset-confirm'
+      c.className = 'fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/50'
+      c.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 text-center space-y-4 animate-fade">
+          <div class="text-4xl">🔑</div>
+          <p class="text-sm text-gray-700 leading-relaxed">ต้องการแจ้งแอดมินให้รีเซ็ทรหัสผ่านของคุณจริงๆ ใช่ไหม?<br><span class="text-xs text-gray-400">รหัสผ่านใหม่จะเป็นรหัสนักเรียนของคุณเอง</span></p>
+          <div class="flex gap-2">
+            <button id="fb-pwreset-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+            <button id="fb-pwreset-ok" class="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold" style="background:linear-gradient(135deg,#db2777,#9d174d);">ยืนยัน</button>
+          </div>
+        </div>`
+      document.body.appendChild(c)
+      c.addEventListener('click', e => { if (e.target === c) c.remove() })
+      c.querySelector('#fb-pwreset-cancel').addEventListener('click', () => c.remove())
+      c.querySelector('#fb-pwreset-ok').addEventListener('click', async () => {
+        const okBtn = c.querySelector('#fb-pwreset-ok')
+        setButtonLoading(okBtn, true)
+        try {
+          const { submitAppFeedback } = await import('./api.js')
+          await submitAppFeedback({
+            profileId, senderRole: role, senderName: name, category: 'password_reset',
+            message: 'นักเรียนแจ้งขอให้แอดมินรีเซ็ทรหัสผ่าน (รหัสผ่านใหม่ = รหัสนักเรียน)',
+          })
+          c.remove()
+          showToast('แจ้งแอดมินแล้ว รอแอดมินดำเนินการนะครับ 🙏', 'success')
+          setTab('history')
+        } catch (err) {
+          setButtonLoading(okBtn, false, 'ยืนยัน')
+          if (err?.code === 'FEEDBACK_LIMIT_REACHED') showToast(`ส่งครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
+          else showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
+        }
+      })
+    }
+
+    function renderDynamic() {
+      if (category === 'password_reset') {
+        dynEl.innerHTML = `
+          <div class="space-y-3">
+            <div class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 leading-relaxed">
+              🔑 ระบบจะแจ้งแอดมินให้รีเซ็ทรหัสผ่านของคุณเป็น <b>รหัสนักเรียน</b> ของคุณเอง — เข้าสู่ระบบครั้งถัดไปด้วยรหัสนักเรียนเป็นรหัสผ่าน แล้วค่อยเปลี่ยนใหม่ได้ภายหลัง
+            </div>
+            <button id="fb-pw-reset-btn" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition active:scale-[0.98]"
+              style="background:linear-gradient(135deg,#db2777,#9d174d);">🔑 แจ้งแอดมินรีเซ็ทรหัสผ่าน</button>
+          </div>`
+        dynEl.querySelector('#fb-pw-reset-btn').addEventListener('click', openPwResetConfirm)
+        return
+      }
+
+      dynEl.innerHTML = `
         <div>
           <p class="text-xs font-semibold text-gray-600 mb-1.5">ข้อความ</p>
           <textarea id="fb-message" rows="5" maxlength="2000"
             class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm resize-none"
             placeholder="พิมพ์ความคิดเห็น ข้อเสนอแนะ หรือแจ้งปัญหาที่นี่..."></textarea>
         </div>
-        <p class="text-[11px] text-gray-400">ส่งในนาม: <span class="font-semibold text-gray-600">${_fbEsc(name || '—')}</span> (${role === 'teacher' ? 'ครู' : 'นักเรียน'})</p>
-        <p id="fb-quota-info" class="text-[11px] text-gray-400">กำลังตรวจสอบโควต้า...</p>
-        <div id="fb-limit-notice" class="hidden text-[11px] leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"></div>
-        <button id="fb-submit" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition active:scale-[0.98]"
-          style="background:linear-gradient(135deg,#db2777,#9d174d);">📨 ส่งความคิดเห็น</button>
-      </div>`
+        <p class="text-[11px] text-gray-400 mt-2">ส่งในนาม: <span class="font-semibold text-gray-600">${_fbEsc(name || '—')}</span> (${role === 'teacher' ? 'ครู' : 'นักเรียน'})</p>
+        <p id="fb-quota-info" class="text-[11px] text-gray-400 mt-1">กำลังตรวจสอบโควต้า...</p>
+        <div id="fb-limit-notice" class="hidden text-[11px] leading-relaxed text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-1"></div>
+        <button id="fb-submit" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition active:scale-[0.98] mt-3"
+          style="background:linear-gradient(135deg,#db2777,#9d174d);">📨 ส่งความคิดเห็น</button>`
 
-    // prefill จาก caller (เช่น error จาก Gemini)
-    if (prefillMessage) {
-      const ta = body.querySelector('#fb-message')
-      if (ta) ta.value = prefillMessage
+      // prefill จาก caller (เช่น error จาก Gemini)
+      if (prefillMessage) {
+        const ta = dynEl.querySelector('#fb-message')
+        if (ta) ta.value = prefillMessage
+      }
+
+      ;(async () => {
+        const quotaEl   = dynEl.querySelector('#fb-quota-info')
+        const noticeEl  = dynEl.querySelector('#fb-limit-notice')
+        const submitBtn = dynEl.querySelector('#fb-submit')
+        try {
+          const { getMyFeedbackQuota, getSystemConfig } = await import('./api.js')
+          const { used, limit, remaining } = await getMyFeedbackQuota(profileId, role)
+          if (quotaEl) {
+            quotaEl.textContent = `โควต้าเดือนนี้: ใช้ไป ${used}/${limit} ครั้ง (เหลืออีก ${remaining} ครั้ง)`
+            quotaEl.className = `text-[11px] font-medium ${remaining <= 0 ? 'text-rose-500' : remaining === 1 ? 'text-amber-500' : 'text-gray-400'}`
+          }
+          if (remaining <= 0 && submitBtn) {
+            submitBtn.disabled = true; submitBtn.classList.add('opacity-50', 'cursor-not-allowed')
+            if (noticeEl) {
+              if (role === 'teacher') {
+                const cfg = await getSystemConfig().catch(() => ({}))
+                const lineHref = cfg.contactLine ? (cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}`) : null
+                noticeEl.innerHTML = lineHref
+                  ? `⚠️ ครบโควต้าเดือนนี้แล้ว หากเรื่องเร่งด่วน <a href="${_fbEsc(lineHref)}" target="_blank" rel="noopener" class="font-semibold underline">แจ้งผ่าน LINE</a> แทนได้เลยครับ`
+                  : `⚠️ ครบโควต้าเดือนนี้แล้ว กรุณารอเดือนถัดไปนะครับ`
+              } else {
+                noticeEl.textContent = '⚠️ ครบโควต้าเดือนนี้แล้ว กรุณารอเดือนถัดไป หรือแจ้งผ่านครูประจำชั้น'
+              }
+              noticeEl.classList.remove('hidden')
+            }
+          }
+        } catch { if (quotaEl) quotaEl.textContent = '' }
+      })()
+
+      dynEl.querySelector('#fb-submit').addEventListener('click', async () => {
+        const message = dynEl.querySelector('#fb-message').value.trim()
+        if (!message) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'warning'); return }
+        const btn = dynEl.querySelector('#fb-submit')
+        setButtonLoading(btn, true)
+        try {
+          const { submitAppFeedback } = await import('./api.js')
+          await submitAppFeedback({ profileId, senderRole: role, senderName: name, category, message })
+          showToast('ส่งความคิดเห็นเรียบร้อยแล้ว ขอบคุณครับ 🙏', 'success')
+          setTab('history')
+        } catch (err) {
+          setButtonLoading(btn, false, '📨 ส่งความคิดเห็น')
+          if (err?.code === 'FEEDBACK_LIMIT_REACHED') {
+            showToast(`ส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
+            btn.disabled = true; btn.classList.add('opacity-50', 'cursor-not-allowed')
+          } else { showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error') }
+        }
+      })
     }
 
-    let category = prefillMessage ? 'problem' : FEEDBACK_CATEGORIES[0].value
-    const catBtns = [...body.querySelectorAll('.fb-cat-btn')]
-    // sync active state ถ้า prefill เป็น problem
-    catBtns.forEach(b => {
-      const on = b.dataset.cat === category
-      b.className = `fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left ${on ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
-    })
     catBtns.forEach(b => b.addEventListener('click', () => {
       category = b.dataset.cat
-      catBtns.forEach(x => {
-        const on = x === b
-        x.className = `fb-cat-btn px-3 py-2 rounded-xl border text-xs font-medium transition text-left ${on ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`
-      })
+      syncCatButtons()
+      renderDynamic()
     }))
 
-    ;(async () => {
-      const quotaEl   = body.querySelector('#fb-quota-info')
-      const noticeEl  = body.querySelector('#fb-limit-notice')
-      const submitBtn = body.querySelector('#fb-submit')
-      try {
-        const { getMyFeedbackQuota, getSystemConfig } = await import('./api.js')
-        const { used, limit, remaining } = await getMyFeedbackQuota(profileId, role)
-        if (quotaEl) {
-          quotaEl.textContent = `โควต้าเดือนนี้: ใช้ไป ${used}/${limit} ครั้ง (เหลืออีก ${remaining} ครั้ง)`
-          quotaEl.className = `text-[11px] font-medium ${remaining <= 0 ? 'text-rose-500' : remaining === 1 ? 'text-amber-500' : 'text-gray-400'}`
-        }
-        if (remaining <= 0 && submitBtn) {
-          submitBtn.disabled = true; submitBtn.classList.add('opacity-50', 'cursor-not-allowed')
-          if (noticeEl) {
-            if (role === 'teacher') {
-              const cfg = await getSystemConfig().catch(() => ({}))
-              const lineHref = cfg.contactLine ? (cfg.contactLine.startsWith('http') ? cfg.contactLine : `https://line.me/R/ti/p/${cfg.contactLine}`) : null
-              noticeEl.innerHTML = lineHref
-                ? `⚠️ ครบโควต้าเดือนนี้แล้ว หากเรื่องเร่งด่วน <a href="${_fbEsc(lineHref)}" target="_blank" rel="noopener" class="font-semibold underline">แจ้งผ่าน LINE</a> แทนได้เลยครับ`
-                : `⚠️ ครบโควต้าเดือนนี้แล้ว กรุณารอเดือนถัดไปนะครับ`
-            } else {
-              noticeEl.textContent = '⚠️ ครบโควต้าเดือนนี้แล้ว กรุณารอเดือนถัดไป หรือแจ้งผ่านครูประจำชั้น'
-            }
-            noticeEl.classList.remove('hidden')
-          }
-        }
-      } catch { if (quotaEl) quotaEl.textContent = '' }
-    })()
-
-    body.querySelector('#fb-submit').addEventListener('click', async () => {
-      const message = body.querySelector('#fb-message').value.trim()
-      if (!message) { showToast('กรุณาพิมพ์ข้อความก่อนส่ง', 'warning'); return }
-      const btn = body.querySelector('#fb-submit')
-      setButtonLoading(btn, true)
-      try {
-        const { submitAppFeedback } = await import('./api.js')
-        await submitAppFeedback({ profileId, senderRole: role, senderName: name, category, message })
-        showToast('ส่งความคิดเห็นเรียบร้อยแล้ว ขอบคุณครับ 🙏', 'success')
-        setTab('history')
-      } catch (err) {
-        setButtonLoading(btn, false, '📨 ส่งความคิดเห็น')
-        if (err?.code === 'FEEDBACK_LIMIT_REACHED') {
-          showToast(`ส่งความคิดเห็นครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
-          btn.disabled = true; btn.classList.add('opacity-50', 'cursor-not-allowed')
-        } else { showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error') }
-      }
-    })
+    syncCatButtons()
+    renderDynamic()
   }
 
   // ── Tab: ประวัติ ─────────────────────────────────────────────────────────────
@@ -674,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.454': [
+    '🔑 นักเรียนติดต่อแอดมิน/ขอรีเซ็ทรหัสผ่านได้เร็วขึ้น: หน้าโปรไฟล์เปลี่ยนการ์ดติดต่อเป็นปุ่ม "ติดต่อผู้ดูแล" (เปิดหน้าส่ง Feedback) และปุ่ม "รีเซ็ทรหัสผ่าน" ใหม่ — กดแล้วยืนยันในป๊อบอัพ ระบบจะแจ้งแอดมินผ่าน Feedback พร้อมข้อมูลนักเรียน/รหัส/ห้องสามัญ-ศาสนา, แอดมินกดปุ่มเดียวรีเซ็ทให้ (รหัสผ่านใหม่ = รหัสนักเรียน) ระบบตอบกลับใน Feedback อัตโนมัติ และนักเรียนจะเห็นแบนเนอร์แจ้งเตือนตอนหน้ากรอกรหัสผ่านล็อกอินครั้งถัดไป'
+  ],
   '10.22.453': [
     '✨ ระบบสภานักเรียน: หน้าหลักของนักเรียน/ครูทั่วไปเน้นปุ่ม "สมัครสภานักเรียน" หรือ "การเลือกตั้ง" ให้เด่นตามช่วงเวลาสำคัญปัจจุบัน — ตั้งค่าเองได้จากหน้าตั้งค่า > ทั่วไป > จุดเด่นในหน้าหลัก หรือปล่อยว่างให้ระบบคำนวณจากช่วงเปิด-ปิดรับสมัคร/เลือกตั้งที่ตั้งไว้ให้อัตโนมัติ'
   ],
