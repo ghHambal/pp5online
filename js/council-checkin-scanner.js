@@ -1,7 +1,10 @@
-// js/council-checkin-scanner.js — 📷 สแกน QR สมาชิกสภาเพื่อเช็คอินกิจกรรม (สเปคข้อ 8.8)
+// js/council-checkin-scanner.js — 📷 สแกน QR เช็คอินกิจกรรม (สเปคข้อ 8.8)
 // ใช้ QR ใบเดียวกับระบบเช็คชื่อ/สแกนละหมาดเดิม (รูปแบบ SQ:{student_code}:{timestamp}, อายุ ±60 วินาที)
 // mirror pattern js/score-qr-scanner.js (เปลี่ยนจากป๊อบอัพกรอกคะแนน เป็นเช็คอินทันทีเมื่อสแกนพบ)
-import { checkInAttendance } from './council-api.js'
+// รองรับกิจกรรมที่เปิดให้นักเรียนทั่วไปเข้าร่วมด้วย (openToGeneral) — ถ้าสแกนแล้วไม่เจอในรายชื่อ
+// สมาชิกสภาที่โหลดมา จะค้นหานักเรียนทั่วไปด้วย student_code แทน (ไม่โหลดรายชื่อนักเรียนทั้งโรงเรียน
+// มาไว้ล่วงหน้าเพราะมีเป็นพันคน — ค้นแบบ on-demand ทีละคนตอนสแกนเจอ)
+import { checkInAttendance, searchStudentsForCouncil } from './council-api.js'
 import { showToast } from './ui.js'
 
 function _playScanBeep(type = 'success') {
@@ -41,9 +44,10 @@ function _esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
-// opts: { activityId, activityTitle, members: [{ id, student_id, students:{full_name, student_code, image_url, photo_url} }], alreadyChecked: Set<memberId>, onCheckedIn: (memberId) => void }
+// opts: { activityId, activityTitle, members: [{ id, student_id, students:{full_name, student_code, image_url, photo_url} }],
+//   alreadyChecked: Set<studentId>, onCheckedIn: (studentId) => void, openToGeneral: boolean }
 export function openCouncilCheckinScanner(opts) {
-  const { activityId, activityTitle, members, alreadyChecked, onCheckedIn } = opts
+  const { activityId, activityTitle, members, alreadyChecked, onCheckedIn, openToGeneral } = opts
   document.getElementById('council-checkin-overlay')?.remove()
 
   const overlay = document.createElement('div')
@@ -79,9 +83,13 @@ export function openCouncilCheckinScanner(opts) {
       </div>
       <div id="ccs-feedback" class="min-h-[70px]">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center text-xs text-slate-400">
-          ยกกล้องส่อง QR ของสมาชิกสภาเพื่อเช็คอิน
+          ยกกล้องส่อง QR ของ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}เพื่อเช็คอิน
         </div>
       </div>
+      <form id="ccs-manual-form" class="flex gap-2">
+        <input id="ccs-manual-code" type="text" inputmode="numeric" placeholder="หรือพิมพ์รหัสนักเรียนแล้วกด Enter" class="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500" />
+        <button type="submit" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex-shrink-0">เช็คอิน</button>
+      </form>
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3">
         <div class="flex items-center justify-between gap-2 mb-2">
           <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">เช็คอินแล้วรอบนี้</p>
@@ -112,7 +120,18 @@ export function openCouncilCheckinScanner(opts) {
       </div>`).join('')
   }
 
-  async function processScan(decodedText) {
+  // หาว่ารหัสนี้เป็นใคร — เช็คในรายชื่อสมาชิกสภาที่โหลดมาก่อน (เร็ว ไม่ query) ถ้าไม่เจอและ
+  // กิจกรรมเปิดให้นักเรียนทั่วไป ค่อยค้นหาเพิ่มทีละคน (ไม่โหลดรายชื่อนักเรียนทั้งโรงเรียนมาล่วงหน้า)
+  async function resolveStudentByCode(studentCode) {
+    const member = members.find(m => m.students?.student_code === studentCode)
+    if (member) return { studentId: member.student_id, name: member.students?.full_name ?? '—' }
+    if (!openToGeneral) return null
+    const results = await searchStudentsForCouncil(studentCode).catch(() => [])
+    const exact = results.find(s => s.student_code === studentCode)
+    return exact ? { studentId: exact.id, name: exact.full_name } : null
+  }
+
+  async function processCode(studentCode) {
     const container = overlay.querySelector('#ccs-camera-container')
     const feedback = overlay.querySelector('#ccs-feedback')
     const flash = ok => {
@@ -120,44 +139,59 @@ export function openCouncilCheckinScanner(opts) {
       setTimeout(() => container.classList.remove(ok ? 'ccs-flash-success' : 'ccs-flash-error'), 500)
     }
 
-    let studentCode = decodedText
-    if (decodedText.startsWith('SQ:')) {
-      const [, code, timestampStr] = decodedText.split(':')
-      const diff = Math.floor(Date.now() / 1000) - parseInt(timestampStr, 10)
-      if (diff > 60 || diff < -60) {
-        _playScanBeep('error'); flash(false)
-        feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">QR Code หมดอายุแล้ว ให้เปิดหน้าใหม่</div>`
-        return
-      }
-      studentCode = code
-    }
-
-    const member = members.find(m => m.students?.student_code === studentCode)
-    if (!member) {
+    const resolved = await resolveStudentByCode(studentCode)
+    if (!resolved) {
       _playScanBeep('error'); flash(false)
-      feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">ไม่พบสมาชิกสภาคนนี้</div>`
+      feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">ไม่พบ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}รหัสนี้</div>`
       return
     }
-    if (checked.has(member.id)) {
+    if (checked.has(resolved.studentId)) {
       _playScanBeep('error'); flash(false)
-      feedback.innerHTML = `<div class="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-3 text-center text-xs text-amber-400">${_esc(member.students?.full_name ?? '')} เช็คอินไปแล้ว</div>`
+      feedback.innerHTML = `<div class="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-3 text-center text-xs text-amber-400">${_esc(resolved.name)} เช็คอินไปแล้ว</div>`
       return
     }
 
     try {
-      await checkInAttendance({ activityId, memberId: member.id })
-      checked.add(member.id)
+      await checkInAttendance({ activityId, studentId: resolved.studentId })
+      checked.add(resolved.studentId)
       _playScanBeep('success'); flash(true)
-      feedback.innerHTML = `<div class="bg-emerald-950/40 border border-emerald-800/80 rounded-2xl p-3 text-center text-xs text-emerald-300">✓ เช็คอิน ${_esc(member.students?.full_name ?? '')} สำเร็จ</div>`
-      recentList.unshift({ name: member.students?.full_name ?? '—' })
+      feedback.innerHTML = `<div class="bg-emerald-950/40 border border-emerald-800/80 rounded-2xl p-3 text-center text-xs text-emerald-300">✓ เช็คอิน ${_esc(resolved.name)} สำเร็จ</div>`
+      recentList.unshift({ name: resolved.name })
       renderHistory()
-      onCheckedIn?.(member.id)
+      onCheckedIn?.(resolved.studentId)
     } catch (err) {
       _playScanBeep('error'); flash(false)
       feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">บันทึกไม่สำเร็จ: ${_esc(err.message ?? '')}</div>`
       showToast('เช็คอินไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     }
   }
+
+  async function processScan(decodedText) {
+    let studentCode = decodedText
+    if (decodedText.startsWith('SQ:')) {
+      const [, code, timestampStr] = decodedText.split(':')
+      const diff = Math.floor(Date.now() / 1000) - parseInt(timestampStr, 10)
+      if (diff > 60 || diff < -60) {
+        const feedback = overlay.querySelector('#ccs-feedback')
+        const container = overlay.querySelector('#ccs-camera-container')
+        _playScanBeep('error'); container.classList.add('ccs-flash-error'); setTimeout(() => container.classList.remove('ccs-flash-error'), 500)
+        feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">QR Code หมดอายุแล้ว ให้เปิดหน้าใหม่</div>`
+        return
+      }
+      studentCode = code
+    }
+    await processCode(studentCode)
+  }
+
+  overlay.querySelector('#ccs-manual-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const input = overlay.querySelector('#ccs-manual-code')
+    const code = input.value.trim()
+    if (!code) return
+    await processCode(code)
+    input.value = ''
+    input.focus()
+  })
 
   overlay.querySelector('#ccs-close').addEventListener('click', async () => {
     if (html5Qrcode) { try { await html5Qrcode.stop() } catch { /* กล้องอาจปิดไปแล้ว ไม่ต้องแจ้งเตือนซ้ำ */ } }

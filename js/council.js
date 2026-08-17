@@ -3,8 +3,9 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
-import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate } from './storage.js'
+import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate, uploadCertificateTemplateBackground } from './storage.js'
 import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
+import { CERT_PRESET_LABELS, openActivityCertificatePrint } from './council-certificate.js'
 import QRCode from 'qrcode'
 import {
   getCouncilConfig, updateCouncilConfig, getCouncilPositions, getCouncilMembers,
@@ -17,7 +18,11 @@ import {
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
   getCandidatesForElection, publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
-  getCouncilActivities, createActivity, updateActivityStatus, getActivityAttendance, checkInAttendance,
+  getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
+  getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
+  getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate,
+  getCertificateRule, upsertCertificateRule,
+  getActivityCertificateOverrides, setCertificateOverride, issueActivityCertificate,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
   getAnnouncementAckCounts, getTotalActiveStudentCount,
   getOpenPositionsForNomination, getInterviewedForNomination, proposeNomination, getPendingNominations, decideNomination,
@@ -137,7 +142,12 @@ let candidateEditMode = false // สลับเป็นฟอร์มแก�
 const electionResults = {} // { M: { tally, eligible }, W: {...} } — ผลนับคะแนนหลังประกาศผล (สเปคข้อ 8.13)
 let electionYear = null // ปีการศึกษาปัจจุบันที่ resolve แล้ว (จาก ctx.cfg.academicYear)
 let activities = null // null = ยังไม่โหลด
-const attendanceByActivity = {} // { [activityId]: Set<memberId> }
+const attendanceByActivity = {} // { [activityId]: Set<studentId> }
+let certTemplates = null // null = ยังไม่โหลด — เทมเพลตเกียรติบัตร (ใช้ร่วมกันทุกกิจกรรม)
+let certManageActivityId = null // id กิจกรรมที่กำลังเปิดแผงจัดการเกียรติบัตรอยู่ — null = ปิดอยู่
+const certRuleByActivity = {} // { [activityId]: rule row | null }
+const certOverridesByActivity = {} // { [activityId]: [{student_id, override_decision, certificate_no, issued_at, ...}] }
+const certAttendanceDetailByActivity = {} // { [activityId]: [{student_id, checked_in_at, students:{...}}] }
 let announcements = null // null = ยังไม่โหลด
 let myAcks = null // Set<announcementId> — เฉพาะนักเรียนที่ล็อกอินอยู่
 let annAckCounts = null // { [announcementId]: N } — สเปคข้อ 8.10 "รับทราบแล้ว N จาก M คน"
@@ -1745,9 +1755,47 @@ async function loadAttendance(activityId) {
   render()
 }
 
+// ─── เกียรติบัตรกิจกรรม — คำนวณสิทธิ์อัตโนมัติจากเช็คชื่อ + ให้ override รายคนได้เสมอ ───────────
+function canManageActivity(a) {
+  if (ctx.isAdmin || ctx.isChair || ctx.isCouncilAdvisor) return true
+  return !!(a.owner_member_id && ctx.membership.some(m => m.id === a.owner_member_id))
+}
+
+async function loadCertTemplates() {
+  certTemplates = await getCertificateTemplates().catch(() => [])
+  render()
+}
+
+async function loadCertManageData(activityId) {
+  const [rule, overrides, detail] = await Promise.all([
+    getCertificateRule(activityId).catch(() => null),
+    getActivityCertificateOverrides(activityId).catch(() => []),
+    getActivityAttendanceDetailed(activityId).catch(() => []),
+  ])
+  certRuleByActivity[activityId] = rule
+  certOverridesByActivity[activityId] = overrides
+  certAttendanceDetailByActivity[activityId] = detail
+  render()
+}
+
+// ผลลัพธ์: 'pass' | 'fail' | 'not_eligible' | 'no_rule' — override ชนะการคำนวณเสมอ
+function computeCertEligibility({ rule, override, attendanceRows }) {
+  if (override?.override_decision === 'pass') return 'pass'
+  if (override?.override_decision === 'fail') return 'fail'
+  if (!rule) return 'no_rule'
+  const count = attendanceRows.length
+  if (rule.min_attendance_count && count < rule.min_attendance_count) return 'not_eligible'
+  if (rule.required_dates?.length) {
+    const attendedDates = new Set(attendanceRows.map(r => (r.checked_in_at || '').slice(0, 10)))
+    const missing = rule.required_dates.some(d => !attendedDates.has(d))
+    if (missing) return 'not_eligible'
+  }
+  return 'pass'
+}
+
 function renderActivitiesView() {
   if (activities === null) { loadActivities(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
-  const canManage = ctx.isAdmin || ctx.isChair
+  const canCreate = ctx.isAdmin || ctx.isChair
   const counts = {}
   activities.forEach(a => { counts[a.status] = (counts[a.status] ?? 0) + 1 })
 
@@ -1760,7 +1808,7 @@ function renderActivitiesView() {
         </div>`).join('')}
     </div>`
 
-  const createForm = canManage ? `
+  const createForm = canCreate ? `
     <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
       <p class="text-sm font-bold text-[var(--ink-2)] mb-3">➕ สร้างกิจกรรมใหม่</p>
       <form id="activity-form" class="space-y-2">
@@ -1776,8 +1824,19 @@ function renderActivitiesView() {
             <option value="M">สภาชายเท่านั้น</option>
             <option value="W">สภาหญิงเท่านั้น</option>
           </select>
-          <input name="owner_text" placeholder="ฝ่าย/ผู้รับผิดชอบ" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
+          <input name="owner_text" placeholder="ฝ่าย/ผู้รับผิดชอบ (ข้อความ)" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
         </div>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">ผู้รับผิดชอบกิจกรรม (สมาชิกสภา — จัดการเช็คชื่อ/เกียรติบัตรของกิจกรรมนี้ได้เอง)</label>
+          <select name="owner_member_id" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
+            <option value="">— ไม่ระบุ (แอดมิน/ครูที่ปรึกษาสภา/ประธานจัดการเท่านั้น) —</option>
+            ${ctx.members.map(m => `<option value="${m.id}">${esc(m.students?.full_name ?? '—')} (${esc(m.council_positions?.position_name ?? '—')})</option>`).join('')}
+          </select>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
+          <input type="checkbox" name="open_to_general" class="w-4 h-4" />
+          เปิดให้นักเรียนทั่วไป (ไม่ใช่แค่สมาชิกสภา) เช็คชื่อเข้าร่วมได้
+        </label>
         <button type="submit" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">สร้างกิจกรรม</button>
       </form>
     </div>` : ''
@@ -1788,39 +1847,131 @@ function renderActivitiesView() {
     const [label, fg, bg, border] = ACT_STATUS_BADGE[a.status] ?? ['—', 'text-[var(--muted)]', 'bg-[var(--bg-2)]', 'border-[var(--line)]']
     const members = ctx.members.filter(m => !a.gender || m.council_positions?.gender === a.gender)
     const attendance = attendanceByActivity[a.id]
+    const manageable = canManageActivity(a)
+    const ownerName = a.council_members?.students?.full_name
     return `
       <div class="rounded-xl border border-[var(--line-soft)] p-3 space-y-2 bg-[var(--surface)]" data-activity-card="${a.id}">
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <p class="text-sm font-bold text-[var(--ink)]">${esc(a.title)}</p>
-            <p class="text-xs text-[var(--muted-2)] mt-0.5">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนดวัน'} ${a.gender ? '· สภา' + GENDER_LABEL[a.gender] : ''} ${a.owner_text ? '· ' + esc(a.owner_text) : ''}</p>
+            <p class="text-xs text-[var(--muted-2)] mt-0.5">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนดวัน'} ${a.gender ? '· สภา' + GENDER_LABEL[a.gender] : ''} ${a.owner_text ? '· ' + esc(a.owner_text) : ''} ${ownerName ? '· ผู้รับผิดชอบ ' + esc(ownerName) : ''}</p>
+            ${a.open_to_general ? `<span class="inline-block text-[0.625rem] font-bold px-2 py-0.5 rounded-full bg-[var(--primary-soft)] text-[var(--primary)] mt-1">🙋 เปิดให้นักเรียนทั่วไปเข้าร่วม</span>` : ''}
           </div>
           <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${border} ${bg} ${fg}">${label}</span>
         </div>
         ${a.detail ? `<p class="text-xs text-[var(--ink-2)]">${esc(a.detail)}</p>` : ''}
-        ${canManage ? `
+        ${manageable ? `
           <div class="flex flex-wrap gap-2 pt-1 border-t border-[var(--line-soft)]">
-            ${ACT_NEXT_STATUS[a.status] ? `<button type="button" class="btn-activity-next text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)]" data-id="${a.id}" data-next="${ACT_NEXT_STATUS[a.status]}">${ACT_NEXT_LABEL[a.status]}</button>` : ''}
-            ${a.status !== 'cancelled' && a.status !== 'completed' ? `<button type="button" class="btn-activity-cancel text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${a.id}">ยกเลิก</button>` : ''}
+            ${ctx.isAdmin || ctx.isChair ? (ACT_NEXT_STATUS[a.status] ? `<button type="button" class="btn-activity-next text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)]" data-id="${a.id}" data-next="${ACT_NEXT_STATUS[a.status]}">${ACT_NEXT_LABEL[a.status]}</button>` : '') : ''}
+            ${(ctx.isAdmin || ctx.isChair) && a.status !== 'cancelled' && a.status !== 'completed' ? `<button type="button" class="btn-activity-cancel text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${a.id}">ยกเลิก</button>` : ''}
             <button type="button" class="btn-activity-attendance text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${a.id}">👥 เช็คชื่อสมาชิก</button>
-            <button type="button" class="btn-activity-scan text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white" data-id="${a.id}" data-title="${esc(a.title)}">📷 สแกน QR เช็คอิน</button>
+            <button type="button" class="btn-activity-scan text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white" data-id="${a.id}" data-title="${esc(a.title)}" data-open-general="${a.open_to_general ? '1' : ''}">📷 สแกน QR เช็คอิน</button>
+            <button type="button" class="btn-activity-cert-manage text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--gold-soft-line)] text-[var(--gold-ink)] hover:bg-[var(--gold-soft)]" data-id="${a.id}">🏅 จัดการเกียรติบัตร</button>
           </div>
           <div class="activity-attendance-panel" data-panel-for="${a.id}">
             ${attendance ? `
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
                 ${members.map(m => {
-                  const done = attendance.has(m.id)
-                  return `<button type="button" class="btn-checkin flex items-center gap-2 text-xs rounded-[10px] border px-2.5 py-2 text-left ${done ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]'}" data-activity-id="${a.id}" data-member-id="${m.id}" ${done ? 'disabled' : ''}>
+                  const done = attendance.has(m.student_id)
+                  return `<button type="button" class="btn-checkin flex items-center gap-2 text-xs rounded-[10px] border px-2.5 py-2 text-left ${done ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]'}" data-activity-id="${a.id}" data-student-id="${m.student_id}" ${done ? 'disabled' : ''}>
                     <span>${done ? '✅' : '➕'}</span><span class="truncate">${esc(m.students?.full_name ?? '—')}</span>
                   </button>`
                 }).join('')}
                 ${!members.length ? '<p class="text-xs text-[var(--muted-2)] col-span-2">ยังไม่มีสมาชิกสภาที่เกี่ยวข้อง</p>' : ''}
               </div>` : ''}
-          </div>` : ''}
+          </div>
+          ${certManageActivityId === a.id ? renderCertManagePanel(a) : ''}` : ''}
       </div>`
   }
 
   return `${summary}${createForm}<div class="space-y-3">${activities.map(card).join('')}</div>`
+}
+
+const ELIGIBILITY_BADGE = {
+  pass: ['ผ่าน', 'text-[#106143] bg-[var(--ok-soft)] border-[var(--ok-soft-line)]'],
+  fail: ['ไม่ผ่าน', 'text-[#8a2f22] bg-[var(--bad-soft)] border-[var(--bad-soft-line)]'],
+  not_eligible: ['ยังไม่ครบเงื่อนไข', 'text-[var(--muted)] bg-[var(--bg-2)] border-[var(--line)]'],
+  no_rule: ['ยังไม่ตั้งเงื่อนไข', 'text-[var(--muted-2)] bg-[var(--bg-2)] border-[var(--line)]'],
+}
+
+// แผงจัดการเกียรติบัตรต่อกิจกรรม — เห็นเฉพาะแอดมิน/ประธาน/ครูที่ปรึกษาสภา/ผู้รับผิดชอบกิจกรรมนั้นๆ
+// (canManageActivity เช็คมาก่อนแล้วตอนเรียก) — ตั้งเงื่อนไข + ดูรายชื่อพร้อมสถานะสิทธิ์คำนวณอัตโนมัติ
+// + override รายคนได้ + ออกเกียรติบัตรจริง
+function renderCertManagePanel(a) {
+  if (certTemplates === null) loadCertTemplates()
+  if (certRuleByActivity[a.id] === undefined) loadCertManageData(a.id)
+  if (certTemplates === null || certRuleByActivity[a.id] === undefined) {
+    return `<div class="mt-2 pt-2 border-t border-dashed border-[var(--line)]"><p class="text-xs text-[var(--muted-2)] text-center py-4">⏳ กำลังโหลด...</p></div>`
+  }
+  const rule = certRuleByActivity[a.id]
+  const overrides = certOverridesByActivity[a.id] ?? []
+  const detail = certAttendanceDetailByActivity[a.id] ?? []
+  const overrideByStudent = Object.fromEntries(overrides.map(o => [o.student_id, o]))
+
+  // จัดกลุ่มเช็คชื่อทั้งหมดของกิจกรรมนี้ตามนักเรียน (คนนึงอาจเช็คชื่อหลายวัน/หลายรอบ)
+  const byStudent = {}
+  detail.forEach(r => {
+    if (!byStudent[r.student_id]) byStudent[r.student_id] = { student: r.students, rows: [] }
+    byStudent[r.student_id].rows.push(r)
+  })
+
+  const ruleForm = `
+    <form class="cert-rule-form space-y-2 bg-[var(--surface-2)] rounded-xl p-3" data-activity-id="${a.id}">
+      <p class="text-xs font-bold text-[var(--ink-2)]">🏅 เงื่อนไขการรับเกียรติบัตร</p>
+      <select name="template_id" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)]">
+        <option value="">— ยังไม่เลือกเทมเพลต —</option>
+        ${certTemplates.map(t => `<option value="${t.id}" ${rule?.template_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+      </select>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-[var(--muted)] flex-shrink-0">ต้องเข้าร่วมอย่างน้อย</span>
+        <input type="number" min="0" name="min_attendance_count" value="${rule?.min_attendance_count ?? ''}" class="w-16 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs text-center bg-[var(--surface)]" />
+        <span class="text-xs text-[var(--muted)]">ครั้ง</span>
+      </div>
+      <div>
+        <label class="block text-[0.6875rem] text-[var(--muted)] mb-1">วันที่บังคับต้องเข้าร่วม (ถ้ามี บรรทัดละ 1 วัน รูปแบบ YYYY-MM-DD)</label>
+        <textarea name="required_dates" rows="2" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)]">${esc((rule?.required_dates ?? []).join('\n'))}</textarea>
+      </div>
+      <textarea name="notes" rows="2" placeholder="หมายเหตุเงื่อนไข (แสดงให้นักเรียนเห็น เช่น ต้องผ่านการประเมินความประพฤติด้วย)" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)]">${esc(rule?.notes ?? '')}</textarea>
+      <button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">บันทึกเงื่อนไข</button>
+    </form>`
+
+  const studentIds = Object.keys(byStudent)
+  const rows = studentIds.map(sidStr => {
+    const sid = Number(sidStr)
+    const { student, rows: attendanceRows } = byStudent[sid]
+    const override = overrideByStudent[sid]
+    const eligibility = computeCertEligibility({ rule, override, attendanceRows })
+    const [label, cls] = ELIGIBILITY_BADGE[eligibility]
+    const issued = override?.issued_at
+    return `
+      <div class="rounded-xl border border-[var(--line-soft)] p-2.5 space-y-1.5" data-cert-row="${sid}">
+        <div class="flex items-center gap-2">
+          ${studentPhoto(student, 'w-8 h-10')}
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-bold text-[var(--ink)] truncate">${esc(student?.full_name ?? '—')}</p>
+            <p class="text-[0.625rem] text-[var(--muted-2)]">เข้าร่วม ${attendanceRows.length} ครั้ง</p>
+          </div>
+          <span class="flex-shrink-0 text-[0.625rem] font-bold px-2 py-0.5 rounded-full border ${cls}">${label}</span>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" class="btn-cert-override text-[0.625rem] font-bold px-2 py-1 rounded-[8px] border ${override?.override_decision === 'pass' ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--ink-2)]'}" data-activity-id="${a.id}" data-student-id="${sid}" data-decision="pass">✅ ผ่าน (บังคับ)</button>
+          <button type="button" class="btn-cert-override text-[0.625rem] font-bold px-2 py-1 rounded-[8px] border ${override?.override_decision === 'fail' ? 'border-[var(--bad-soft-line)] bg-[var(--bad-soft)] text-[#8a2f22]' : 'border-[var(--line)] text-[var(--ink-2)]'}" data-activity-id="${a.id}" data-student-id="${sid}" data-decision="fail">❌ ไม่ผ่าน (บังคับ)</button>
+          ${override?.override_decision ? `<button type="button" class="btn-cert-override text-[0.625rem] font-bold px-2 py-1 rounded-[8px] border border-[var(--line)] text-[var(--ink-2)]" data-activity-id="${a.id}" data-student-id="${sid}" data-decision="">↺ กลับเป็นอัตโนมัติ</button>` : ''}
+          ${eligibility === 'pass' ? (issued
+            ? `<button type="button" class="btn-cert-view text-[0.625rem] font-bold px-2 py-1 rounded-[8px] bg-[var(--gold)] hover:bg-[var(--gold-ink)] text-white" data-activity-id="${a.id}" data-student-id="${sid}">🏅 ดูเกียรติบัตร</button>`
+            : `<button type="button" class="btn-cert-issue text-[0.625rem] font-bold px-2 py-1 rounded-[8px] bg-[var(--gold)] hover:bg-[var(--gold-ink)] text-white" data-activity-id="${a.id}" data-student-id="${sid}">🏅 ออกเกียรติบัตร</button>`) : ''}
+        </div>
+      </div>`
+  }).join('')
+
+  return `
+    <div class="mt-2 pt-2 border-t border-dashed border-[var(--line)] space-y-3">
+      ${ruleForm}
+      <div>
+        <p class="text-xs font-bold text-[var(--ink-2)] mb-1.5">รายชื่อผู้เข้าร่วม (${studentIds.length} คน)</p>
+        <div class="space-y-1.5">${rows || '<p class="text-xs text-[var(--muted-2)] text-center py-3">ยังไม่มีใครเช็คชื่อเข้าร่วมกิจกรรมนี้</p>'}</div>
+      </div>
+    </div>`
 }
 
 // ─── ประกาศสภานักเรียน — feed+ปักหมุด+รับทราบ, โพสต์ได้เฉพาะแอดมิน/ประธานสภา ────────────────
@@ -2737,6 +2888,7 @@ function renderSettingsCriteria() {
   if (interviewCriteria === null) { loadInterviewCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
   if (endorsementPhrasesAdmin === null) { loadEndorsementPhrasesAdmin(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
   if (evalCriteria === null) { loadEvalCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (certTemplates === null) { loadCertTemplates(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
 
   const ivTotal = interviewCriteria.reduce((t, c) => t + Number(c.weight), 0)
   const passThreshold = (ivTotal / 2).toFixed(1)
@@ -2807,7 +2959,37 @@ function renderSettingsCriteria() {
       <button type="submit" class="px-4 py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">บันทึก</button>
     </form>`
 
-  return `${interviewBlock}${videoBlock}${renderDutyCriteriaEditor()}${phraseBlock}${docOptionsBlock}`
+  // เทมเพลตเกียรติบัตรกิจกรรม — ใช้ร่วมกันได้ทุกกิจกรรม เลือกดีไซน์สำเร็จรูปหรืออัปโหลดพื้นหลังเอง
+  const certTemplatesBlock = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-2">🏅 เทมเพลตเกียรติบัตรกิจกรรม</p>
+      <div class="space-y-1.5 mb-3">
+        ${certTemplates.map(t => `
+          <div class="flex items-center gap-2 text-xs">
+            ${t.type === 'custom' && t.background_image_url ? `<img src="${esc(t.background_image_url)}" class="w-10 h-7 object-cover rounded border border-[var(--line)] flex-shrink-0" />` : `<span class="flex-shrink-0">${esc((CERT_PRESET_LABELS[t.preset_key] ?? '🏅').split(' ')[0])}</span>`}
+            <span class="flex-1 text-[var(--ink-2)] truncate">${esc(t.name)} ${t.type === 'preset' ? '· ' + esc(CERT_PRESET_LABELS[t.preset_key] ?? t.preset_key) : '· อัปโหลดเอง'}</span>
+            <button type="button" class="btn-remove-cert-template text-[var(--bad)] hover:text-[#8a2f22]" data-id="${t.id}">✕</button>
+          </div>`).join('') || '<p class="text-xs text-[var(--muted-2)]">ยังไม่มีเทมเพลต</p>'}
+      </div>
+      <form id="cert-template-form" class="space-y-2 pt-2 border-t border-[var(--line-soft)]">
+        <input name="name" placeholder="ชื่อเทมเพลต เช่น เกียรติบัตรกิจกรรม YLA" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)]" required />
+        <div class="flex gap-2">
+          <label class="flex-1 flex items-center gap-1.5 text-xs cursor-pointer">
+            <input type="radio" name="template_type" value="preset" checked class="cert-template-type-radio" /> ดีไซน์สำเร็จรูป
+          </label>
+          <label class="flex-1 flex items-center gap-1.5 text-xs cursor-pointer">
+            <input type="radio" name="template_type" value="custom" class="cert-template-type-radio" /> อัปโหลดเอง
+          </label>
+        </div>
+        <select name="preset_key" id="cert-template-preset-select" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)]">
+          ${Object.entries(CERT_PRESET_LABELS).map(([k, label]) => `<option value="${k}">${esc(label)}</option>`).join('')}
+        </select>
+        <input type="file" name="background_image" id="cert-template-file-input" accept="image/*" class="hidden w-full text-xs" />
+        <button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">เพิ่มเทมเพลต</button>
+      </form>
+    </div>`
+
+  return `${interviewBlock}${videoBlock}${renderDutyCriteriaEditor()}${phraseBlock}${docOptionsBlock}${certTemplatesBlock}`
 }
 
 function renderSettingsModules() {
@@ -4043,6 +4225,48 @@ function wireSettingsEvents() {
     })
   })
 
+  document.querySelectorAll('.cert-template-type-radio').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const isCustom = document.querySelector('input[name="template_type"]:checked')?.value === 'custom'
+      document.getElementById('cert-template-preset-select')?.classList.toggle('hidden', isCustom)
+      document.getElementById('cert-template-file-input')?.classList.toggle('hidden', !isCustom)
+    })
+  })
+  document.getElementById('cert-template-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    const f = e.target
+    const name = f.name.value.trim()
+    if (!name) return
+    const isCustom = f.template_type.value === 'custom'
+    const btn = f.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      let backgroundImageUrl = null
+      if (isCustom) {
+        const file = f.background_image.files?.[0]
+        if (!file) { showToast('กรุณาอัปโหลดรูปพื้นหลังเทมเพลต', 'warning'); btn.disabled = false; btn.textContent = 'เพิ่มเทมเพลต'; return }
+        backgroundImageUrl = await uploadCertificateTemplateBackground(file)
+      }
+      await createCertificateTemplate({
+        name, type: isCustom ? 'custom' : 'preset',
+        presetKey: isCustom ? null : f.preset_key.value, backgroundImageUrl,
+      })
+      showToast('เพิ่มเทมเพลตแล้ว ✅', 'success')
+      certTemplates = null
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false; btn.textContent = 'เพิ่มเทมเพลต'
+    }
+  })
+  document.querySelectorAll('.btn-remove-cert-template').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบเทมเพลตนี้?')) return
+      try { await deleteCertificateTemplate(Number(btn.dataset.id)); certTemplates = null; render() }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+
   document.querySelectorAll('.module-toggle').forEach(chk => {
     chk.addEventListener('change', async () => {
       const modules = getModulesConfig()
@@ -4307,6 +4531,7 @@ function wireActivitiesEvents() {
         title, detail: f.detail.value.trim(), gender: f.gender.value || null,
         activityDate: f.activity_date.value || null, budget: f.budget.value ? Number(f.budget.value) : null,
         ownerText: f.owner_text.value.trim(), academicYear: electionYear,
+        openToGeneral: f.open_to_general.checked, ownerMemberId: f.owner_member_id.value ? Number(f.owner_member_id.value) : null,
       })
       showToast('สร้างกิจกรรมแล้ว ✅', 'success')
       activities = null
@@ -4362,9 +4587,9 @@ function wireActivitiesEvents() {
       const activity = activities.find(a => a.id === activityId)
       const eligibleMembers = ctx.members.filter(m => !activity?.gender || m.council_positions?.gender === activity.gender)
       openCouncilCheckinScanner({
-        activityId, activityTitle: btn.dataset.title,
+        activityId, activityTitle: btn.dataset.title, openToGeneral: !!btn.dataset.openGeneral,
         members: eligibleMembers, alreadyChecked: attendanceByActivity[activityId],
-        onCheckedIn: memberId => { attendanceByActivity[activityId]?.add(memberId); render() },
+        onCheckedIn: studentId => { attendanceByActivity[activityId]?.add(studentId); render() },
       })
     })
   })
@@ -4372,16 +4597,100 @@ function wireActivitiesEvents() {
   document.querySelectorAll('.btn-checkin').forEach(btn => {
     btn.addEventListener('click', async () => {
       const activityId = Number(btn.dataset.activityId)
-      const memberId = Number(btn.dataset.memberId)
+      const studentId = Number(btn.dataset.studentId)
       btn.disabled = true
       try {
-        await checkInAttendance({ activityId, memberId })
-        attendanceByActivity[activityId]?.add(memberId)
+        await checkInAttendance({ activityId, studentId })
+        attendanceByActivity[activityId]?.add(studentId)
         render()
       } catch (err) {
         showToast('เช็คชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
         btn.disabled = false
       }
+    })
+  })
+
+  document.querySelectorAll('.btn-activity-cert-manage').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.id)
+      certManageActivityId = certManageActivityId === id ? null : id
+      render()
+    })
+  })
+
+  document.querySelectorAll('.cert-rule-form').forEach(form => {
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const f = e.target
+      const activityId = Number(f.dataset.activityId)
+      const btn = f.querySelector('button[type="submit"]')
+      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      try {
+        await upsertCertificateRule({
+          activityId,
+          templateId: f.template_id.value ? Number(f.template_id.value) : null,
+          minAttendanceCount: f.min_attendance_count.value ? Number(f.min_attendance_count.value) : null,
+          requiredDates: parseList(f.required_dates.value),
+          notes: f.notes.value.trim(),
+        })
+        showToast('บันทึกเงื่อนไขแล้ว ✅', 'success')
+        delete certRuleByActivity[activityId]
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = 'บันทึกเงื่อนไข'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-cert-override').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const activityId = Number(btn.dataset.activityId)
+      const studentId = Number(btn.dataset.studentId)
+      const decision = btn.dataset.decision || null
+      btn.disabled = true
+      try {
+        await setCertificateOverride({
+          activityId, studentId, decision,
+          decidedByTeacherId: ctx.teacher?.id ?? null, decidedByMemberId: ctx.membership[0]?.id ?? null,
+        })
+        delete certOverridesByActivity[activityId]
+        loadCertManageData(activityId)
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-cert-issue').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const activityId = Number(btn.dataset.activityId)
+      const studentId = Number(btn.dataset.studentId)
+      btn.disabled = true; btn.textContent = 'กำลังออก...'
+      try {
+        const certNo = `ACT-${activityId}-${studentId}-${Date.now().toString(36).toUpperCase()}`
+        await issueActivityCertificate({ activityId, studentId, certificateNo: certNo })
+        delete certOverridesByActivity[activityId]
+        loadCertManageData(activityId)
+      } catch (err) {
+        showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = '🏅 ออกเกียรติบัตร'
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-cert-view').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const activityId = Number(btn.dataset.activityId)
+      const studentId = Number(btn.dataset.studentId)
+      const activity = activities.find(a => a.id === activityId)
+      const rule = certRuleByActivity[activityId]
+      const template = certTemplates?.find(t => t.id === rule?.template_id)
+      const certRow = (certOverridesByActivity[activityId] ?? []).find(o => o.student_id === studentId)
+      const detail = certAttendanceDetailByActivity[activityId] ?? []
+      const student = detail.find(r => r.student_id === studentId)?.students
+      openActivityCertificatePrint({ student, activity, template, certRow, cfg: ctx.cfg }, showToast)
     })
   })
 }

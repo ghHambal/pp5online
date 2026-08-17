@@ -464,19 +464,20 @@ export async function decideNomination({ nominationId, approve, teacherId, comme
   }
 }
 
-// ─── กิจกรรมประจำปีของสภา — เขียนได้เฉพาะแอดมิน/ประธานสภาที่ล็อกอินอยู่ (RLS คุมแล้ว) ────────
+// ─── กิจกรรมประจำปีของสภา — เขียนได้เฉพาะแอดมิน/ประธานสภา/ผู้รับผิดชอบกิจกรรมนั้นๆ (RLS คุมแล้ว) ──
 export async function getCouncilActivities(academicYear) {
-  let q = supabase.from('council_activities').select('*').order('activity_date', { ascending: false, nullsFirst: false })
+  let q = supabase.from('council_activities').select('*, council_members!council_activities_owner_member_id_fkey(students(full_name))').order('activity_date', { ascending: false, nullsFirst: false })
   if (academicYear) q = q.eq('academic_year', academicYear)
   const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
 
-export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear }) {
+export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear, openToGeneral, ownerMemberId }) {
   const { error } = await supabase.from('council_activities').insert({
     title, detail, gender: gender || null, activity_date: activityDate || null,
     budget: budget || null, owner_text: ownerText || null, academic_year: academicYear,
+    open_to_general: !!openToGeneral, owner_member_id: ownerMemberId || null,
   })
   if (error) throw error
 }
@@ -486,15 +487,105 @@ export async function updateActivityStatus(activityId, status) {
   if (error) throw error
 }
 
-export async function getActivityAttendance(activityId) {
-  const { data, error } = await supabase.from('council_activity_attendance').select('member_id').eq('activity_id', activityId)
+// เปิดให้นักเรียนทั่วไปเข้าร่วม + มอบหมายผู้รับผิดชอบ (สมาชิกสภาคนใดก็ได้ ตั้งเงื่อนไขเกียรติบัตรของกิจกรรมนี้ได้)
+export async function updateActivityOwnership(activityId, { openToGeneral, ownerMemberId }) {
+  const { error } = await supabase.from('council_activities')
+    .update({ open_to_general: !!openToGeneral, owner_member_id: ownerMemberId || null, updated_at: new Date().toISOString() })
+    .eq('id', activityId)
   if (error) throw error
-  return new Set((data ?? []).map(r => r.member_id))
 }
 
-export async function checkInAttendance({ activityId, memberId }) {
-  const { error } = await supabase.from('council_activity_attendance').insert({ activity_id: activityId, member_id: memberId })
+// เซตของ student_id ที่เช็คชื่อแล้ว — ใช้ทำ checklist แบบเบา (ไม่ต้องละเอียดวันเวลา)
+export async function getActivityAttendance(activityId) {
+  const { data, error } = await supabase.from('council_activity_attendance').select('student_id').eq('activity_id', activityId)
   if (error) throw error
+  return new Set((data ?? []).map(r => r.student_id))
+}
+
+// รายละเอียดเต็มพร้อมชื่อ+เวลาเช็คชื่อ — ใช้คำนวณสิทธิ์เกียรติบัตร (ต้องรู้ "วันไหนบ้าง" ไม่ใช่แค่จำนวนครั้ง)
+export async function getActivityAttendanceDetailed(activityId) {
+  const { data, error } = await supabase.from('council_activity_attendance')
+    .select('student_id, checked_in_at, students(full_name, student_code, main_room, image_url, photo_url)')
+    .eq('activity_id', activityId).order('checked_in_at')
+  if (error) throw error
+  return data ?? []
+}
+
+// รองรับทั้งสมาชิกสภาและนักเรียนทั่วไป — resolve member_id ให้อัตโนมัติถ้านักเรียนคนนี้เป็นสมาชิกสภา active อยู่ด้วย
+export async function checkInAttendance({ activityId, studentId }) {
+  const { data: cm } = await supabase.from('council_members').select('id').eq('student_id', studentId).eq('status', 'active').maybeSingle()
+  const { error } = await supabase.from('council_activity_attendance')
+    .insert({ activity_id: activityId, student_id: studentId, member_id: cm?.id ?? null })
+  if (error) throw error
+}
+
+// ─── เกียรติบัตรกิจกรรม — เทมเพลต/เงื่อนไขต่อกิจกรรม/สถานะต่อนักเรียน ──────────────────────
+export async function getCertificateTemplates() {
+  const { data, error } = await supabase.from('council_certificate_templates').select('*').order('created_at')
+  if (error) throw error
+  return data ?? []
+}
+export async function createCertificateTemplate({ name, type, presetKey, backgroundImageUrl }) {
+  const { error } = await supabase.from('council_certificate_templates')
+    .insert({ name, type, preset_key: presetKey || null, background_image_url: backgroundImageUrl || null })
+  if (error) throw error
+}
+export async function deleteCertificateTemplate(id) {
+  const { error } = await supabase.from('council_certificate_templates').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getCertificateRule(activityId) {
+  const { data, error } = await supabase.from('council_activity_certificate_rules').select('*').eq('activity_id', activityId).maybeSingle()
+  if (error) throw error
+  return data
+}
+export async function upsertCertificateRule({ activityId, templateId, minAttendanceCount, requiredDates, notes }) {
+  const { error } = await supabase.from('council_activity_certificate_rules').upsert({
+    activity_id: activityId, template_id: templateId || null,
+    min_attendance_count: minAttendanceCount || null, required_dates: requiredDates ?? [],
+    notes: notes || null, updated_at: new Date().toISOString(),
+  }, { onConflict: 'activity_id' })
+  if (error) throw error
+}
+
+export async function getActivityCertificateOverrides(activityId) {
+  const { data, error } = await supabase.from('council_activity_certificates').select('*').eq('activity_id', activityId)
+  if (error) throw error
+  return data ?? []
+}
+export async function setCertificateOverride({ activityId, studentId, decision, comment, decidedByTeacherId, decidedByMemberId }) {
+  const { error } = await supabase.from('council_activity_certificates').upsert({
+    activity_id: activityId, student_id: studentId, override_decision: decision,
+    comment: comment || null, decided_by_teacher_id: decidedByTeacherId || null, decided_by_member_id: decidedByMemberId || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'activity_id,student_id' })
+  if (error) throw error
+}
+export async function issueActivityCertificate({ activityId, studentId, certificateNo }) {
+  const { error } = await supabase.from('council_activity_certificates').upsert({
+    activity_id: activityId, student_id: studentId, certificate_no: certificateNo, issued_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'activity_id,student_id' })
+  if (error) throw error
+}
+
+// เกียรติบัตรกิจกรรมของนักเรียนคนหนึ่ง (เฉพาะที่ออกแล้วจริง) — ใช้แสดงในหน้าของตัวเอง (นอกโมดูลสภา)
+// แนบเทมเพลตของแต่ละกิจกรรมมาด้วย (query แยกอีกรอบ เพราะ certificates กับ rules ไม่มี FK ตรงกัน
+// เป็นตารางพี่น้องที่อ้าง activity_id คนละแถวกัน — PostgREST embed ข้ามแบบนี้ไม่ได้ในคำสั่งเดียว)
+export async function getMyActivityCertificates(studentId) {
+  const { data, error } = await supabase.from('council_activity_certificates')
+    .select('id, activity_id, certificate_no, issued_at, council_activities(title, detail, activity_date)')
+    .eq('student_id', studentId).not('issued_at', 'is', null).order('issued_at', { ascending: false })
+  if (error) throw error
+  const certs = data ?? []
+  if (!certs.length) return certs
+  const activityIds = [...new Set(certs.map(c => c.activity_id))]
+  const { data: rules } = await supabase.from('council_activity_certificate_rules')
+    .select('activity_id, council_certificate_templates(id, name, type, preset_key, background_image_url)')
+    .in('activity_id', activityIds)
+  const templateByActivity = Object.fromEntries((rules ?? []).map(r => [r.activity_id, r.council_certificate_templates]))
+  return certs.map(c => ({ ...c, template: templateByActivity[c.activity_id] ?? null }))
 }
 
 // ─── รูทีนประจำสัปดาห์ของสมาชิกสภา — จัดการเองได้ (self-service checklist ส่วนตัว, สเปคข้อ 8.8) ──
