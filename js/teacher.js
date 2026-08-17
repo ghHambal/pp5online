@@ -1,5 +1,5 @@
 import { supabase }            from './supabase.js'
-import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog } from './ui.js'
+import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog, showAnnouncementPopups } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getCourseDocPage2, saveCourseDocPage2,
@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.456'
+import { APP_VERSION } from './version.js?v=10.22.457'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -2108,55 +2108,11 @@ function _exitSupervisorMode() {
   navigate('overview')
 }
 
-// ── ประกาศ banner ────────────────────────────────────────────────────────────
+// ── ประกาศ (ป๊อบอัพกลางจอ) ───────────────────────────────────────────────────
 async function _loadAnnouncementBanners() {
   try {
     const items = await getActiveAnnouncements()
-    if (!items.length) return
-    const SEEN_KEY = 'pp5_ann_dismissed'
-    const seen = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'))
-    const unseen = items.filter(a => !seen.has(a.id))
-    if (!unseen.length) return
-
-    const wrap = document.createElement('div')
-    wrap.id = 'ann-banners'
-    wrap.style.cssText = 'position:fixed;top:68px;left:0;right:0;z-index:200;'
-
-    const _fmtD = d => new Date(d).toLocaleDateString('th-TH',{day:'numeric',month:'short'})
-
-    // expose helpers บน window เพื่อให้ onclick inline เรียกได้
-    window._annDismiss = (id) => {
-      seen.add(id)
-      localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]))
-      document.querySelector(`.ann-banner[data-ann-id="${id}"]`)?.remove()
-      if (!wrap.querySelector('.ann-banner')) wrap.remove()
-    }
-    window._annOpen = () => {
-      wrap.remove()
-      window._navTo?.('announcements-view')
-    }
-
-    wrap.innerHTML = unseen.map(a => `
-      <div class="ann-banner mx-auto max-w-3xl px-4 mb-2" data-ann-id="${a.id}">
-        <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3 shadow-md">
-          <span class="text-xl flex-shrink-0">📢</span>
-          <div class="flex-1 min-w-0">
-            <p class="font-semibold text-amber-900 text-sm">${a.title}</p>
-            ${a.body ? `<p class="text-xs text-amber-700 mt-0.5 line-clamp-2">${a.body}</p>` : ''}
-            <div class="flex items-center gap-2 mt-1.5">
-              <span class="text-[10px] text-amber-400">${_fmtD(a.created_at)}</span>
-              <button onclick="window._annOpen()"
-                class="text-[11px] font-semibold text-white bg-amber-500 hover:bg-amber-600 active:bg-amber-700 px-2.5 py-0.5 rounded-full transition">
-                อ่านเพิ่มเติม →
-              </button>
-            </div>
-          </div>
-          <button onclick="window._annDismiss(${a.id})"
-            class="flex-shrink-0 text-amber-400 hover:text-amber-600 text-lg leading-none">✕</button>
-        </div>
-      </div>`).join('')
-
-    document.body.appendChild(wrap)
+    showAnnouncementPopups(items, 'pp5_ann_dismissed')
   } catch { /* ไม่ block */ }
 }
 

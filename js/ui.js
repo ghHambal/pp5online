@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.456'
+import { APP_VERSION } from './version.js?v=10.22.457'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.457': [
+    '📢 ป๊อบอัพ "ประกาศ" (เดิมใช้แจ้งฟีเจอร์ใหม่) เปลี่ยนจากแบนเนอร์เล็กๆ มุมบนเป็นป๊อบอัพกลางจอ เห็นหัวข้อ/เนื้อหา/รูปแนบครบในที่เดียว ไม่ต้องกดอ่านเพิ่มเติมอีกต่อ และตอนนี้ฝั่งนักเรียนเห็นป๊อบอัพประกาศชุดเดียวกับครูด้วยแล้ว (เดิมมีแต่ฝั่งครู)'
+  ],
   '10.22.456': [
     '✨ ระบบสภานักเรียน: เช็คชื่อกิจกรรมเปิดให้นักเรียนทั่วไป (ไม่ใช่แค่สมาชิกสภา) ได้แล้ว — ตั้งค่าต่อกิจกรรมได้ว่าจะเปิดหรือไม่ และมอบหมาย "ผู้รับผิดชอบกิจกรรม" (สมาชิกสภาคนไหนก็ได้) ให้จัดการเช็คชื่อ/เกียรติบัตรของกิจกรรมนั้นได้เอง, เพิ่มระบบเกียรติบัตรกิจกรรม — ตั้งเงื่อนไขรับเกียรติบัตรได้ (จำนวนครั้ง/วันที่บังคับ) ระบบคำนวณสิทธิ์อัตโนมัติจากการเช็คชื่อ พร้อม override รายคนได้เสมอ เลือกเทมเพลตแบบสำเร็จรูปหรืออัปโหลดดีไซน์เองก็ได้ — นักเรียนที่ได้รับเกียรติบัตรจะเห็นการ์ดในหน้าของตัวเอง เปิดดู/พิมพ์เกียรติบัตรได้ทันที'
   ],
@@ -2817,4 +2820,53 @@ export function checkAndShowChangelog(userId, forceShow = false, hasAdminAccess 
       if (e.target === modal) dismissModal()
     })
   }
+}
+
+// ─── Show announcement pop-ups (centered, one at a time) for teachers/students ──
+export function showAnnouncementPopups(items, seenKey) {
+  if (!items?.length) return
+  const seen = new Set(JSON.parse(localStorage.getItem(seenKey) ?? '[]'))
+  const queue = items.filter(a => !seen.has(a.id))
+  if (!queue.length) return
+
+  const _esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const _fmtD = d => new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
+
+  const showNext = () => {
+    const a = queue.shift()
+    if (!a) return
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
+    modal.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden" style="animation: ui-pop-in .25s ease-out">
+        <div class="px-6 pt-6 pb-4 flex-shrink-0">
+          <div class="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-3 border border-amber-100 text-2xl shadow-sm">📢</div>
+          <h3 class="font-extrabold text-gray-800 text-base leading-snug">${_esc(a.title)}</h3>
+          <p class="text-[11px] text-gray-400 mt-1 font-medium">${_fmtD(a.created_at)}${a.teachers?.full_name ? ' · ' + _esc(a.teachers.full_name) : ''}</p>
+        </div>
+        ${a.file_url ? `<div class="px-6 flex-shrink-0"><img src="${_esc(a.file_url)}" class="w-full rounded-2xl border border-gray-100 object-contain max-h-56 mb-3" /></div>` : ''}
+        <div class="px-6 pb-5 overflow-y-auto flex-1 text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">${_esc(a.body ?? '') || '<span class="text-gray-300">—</span>'}</div>
+        <div class="px-6 pb-6 pt-2 flex-shrink-0 flex items-center gap-3">
+          ${queue.length ? `<span class="text-[11px] text-gray-400 flex-shrink-0">อีก ${queue.length} รายการ</span>` : ''}
+          <button id="btn-ann-popup-close" class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-200/60 transition active:scale-95">
+            ${queue.length ? 'ถัดไป →' : 'รับทราบ'}
+          </button>
+        </div>
+      </div>
+      <style>
+        @keyframes ui-pop-in { from { opacity: 0; transform: scale(0.9) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+      </style>`
+    document.body.appendChild(modal)
+
+    const dismiss = () => {
+      seen.add(a.id)
+      localStorage.setItem(seenKey, JSON.stringify([...seen]))
+      modal.remove()
+      showNext()
+    }
+    modal.querySelector('#btn-ann-popup-close').addEventListener('click', dismiss)
+    modal.addEventListener('click', e => { if (e.target === modal) dismiss() })
+  }
+
+  showNext()
 }

@@ -13,9 +13,9 @@ import {
   renderStudentAllAssignments,
   openEmailLinkPrompt,
 } from './student-views.js'
-import { getSystemConfig, updateLastSeen, logLogin } from './api.js'
+import { getSystemConfig, updateLastSeen, logLogin, getActiveAnnouncements } from './api.js'
 import { applyThemeForRole } from './theme.js'
-import { injectFeedbackWidget, showToast } from './ui.js'
+import { injectFeedbackWidget, showToast, showAnnouncementPopups } from './ui.js'
 import { ensurePushSubscription } from './push-notify.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { renderStudentSportsHome } from './sports-portals.js'
@@ -101,6 +101,14 @@ function _showShirtSizeReminderPopup() {
     navigate('sports')
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
+}
+
+// ── ประกาศ (ป๊อบอัพกลางจอ) ───────────────────────────────────────────────────
+async function _loadAnnouncementBanners() {
+  try {
+    const items = await getActiveAnnouncements()
+    showAnnouncementPopups(items, `pp5_ann_dismissed_stu_${_student?.id ?? ''}`)
+  } catch { /* ไม่ block */ }
 }
 
 // ── Web Push Notifications ────────────────────────────────────────────────────
@@ -199,6 +207,7 @@ async function init() {
   if (_student?.profile_id) injectFeedbackWidget({ profileId: _student.profile_id, role: 'student', name: _student.full_name })
   _initNotifications()
   if (_student?.id) _checkStudentShirtSizePopup()
+  _loadAnnouncementBanners()
 
   // เด้งขอเชื่อมอีเมลส่วนตัวทุกครั้งหลัง login จนกว่าจะเชื่อม (ยังเป็นอีเมลปลอมเริ่มต้นอยู่)
   if (session.user.email?.endsWith('@student.pp5.local')) {
