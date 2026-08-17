@@ -1203,9 +1203,13 @@ function videoEmbedHtml(url) {
   if (!url) return ''
   const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{6,})/)
   if (yt) return `<div class="aspect-video rounded-xl overflow-hidden bg-black"><iframe class="w-full h-full" src="https://www.youtube.com/embed/${esc(yt[1])}" allowfullscreen loading="lazy"></iframe></div>`
-  const gd = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/)
+  // Google Drive มี 2 รูปแบบลิงก์แชร์ที่พบได้จริง: /file/d/{id}/... และ open?id={id}
+  const gd = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/)
   if (gd) return `<div class="aspect-video rounded-xl overflow-hidden bg-black"><iframe class="w-full h-full" src="https://drive.google.com/file/d/${esc(gd[1])}/preview" allowfullscreen loading="lazy"></iframe></div>`
-  return `<a href="${esc(url)}" target="_blank" rel="noopener" class="block text-center py-3 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold hover:bg-[var(--primary-soft)]">🎬 เปิดดูวิดีโอแนะนำตัว (แท็บใหม่)</a>`
+  // TikTok รองรับ embed ผ่าน /embed/v2/{videoId} ได้โดยไม่ต้องใช้ widget script ของแพลตฟอร์ม
+  const tt = url.match(/tiktok\.com\/@[\w.-]+\/video\/(\d+)/)
+  if (tt) return `<div class="rounded-xl overflow-hidden bg-black" style="aspect-ratio:9/16;max-width:280px;margin:0 auto;"><iframe class="w-full h-full" src="https://www.tiktok.com/embed/v2/${esc(tt[1])}" allowfullscreen loading="lazy"></iframe></div>`
+  return `<a href="${esc(url)}" target="_blank" rel="noopener" class="block text-center py-3 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold hover:bg-[var(--primary-soft)]">🎬 เปิดดูวิดีโอแนะนำตัว (แท็บใหม่ — แพลตฟอร์มนี้ไม่รองรับฝังดูในหน้า)</a>`
 }
 
 // ป๊อบอัพดูใบสมัครแบบเต็ม (เหมือนเอกสารใบสมัครจริง) — เกรด/แรงจูงใจ/วิดีโอฝังในหน้า/
