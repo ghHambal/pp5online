@@ -1661,18 +1661,20 @@ export async function unlinkClassFromSchedule(classId, scheduleId) {
 
 // ดึง day_of_week ของทุกคาบที่ผูกกับห้องเรียนนี้ (ใช้สร้าง DOW pattern สำหรับ _generateSessions)
 export async function getClassSessionDOWs(classId) {
+  // นับ "จำนวนวันที่สอนต่อสัปดาห์" — 1 แถวใน class_schedule_links = 1 คาบเรียนจริง 1 ครั้ง
+  // ไม่คูณด้วย span_periods เพราะ span_periods หมายถึงคาบต่อเนื่องในการเรียนครั้งเดียว
+  // (เช่น 2 คาบติดกัน = สอน 1 ครั้ง ไม่ใช่ 2 ครั้ง) การคูณจะทำให้ _generateSessions
+  // นับวันสอนต่อสัปดาห์ผิด แล้วตัด cappedDOW ทิ้งวันจริงบางวันไปเมื่อ dowPattern.length
+  // มากกว่าจำนวนคาบ/สัปดาห์ที่คำนวณจากหน่วยกิต
   const { data, error } = await supabase
     .from('class_schedule_links')
-    .select('teacher_schedules(day_of_week, span_periods)')
+    .select('teacher_schedules(day_of_week)')
     .eq('class_id', classId)
   if (error) throw error
   const dows = []
   for (const r of data ?? []) {
-    const dow  = r.teacher_schedules?.day_of_week
-    const span = r.teacher_schedules?.span_periods ?? 1
-    if (dow !== null && dow !== undefined) {
-      for (let i = 0; i < span; i++) dows.push(dow)
-    }
+    const dow = r.teacher_schedules?.day_of_week
+    if (dow !== null && dow !== undefined) dows.push(dow)
   }
   return dows.sort((a, b) => a - b)
 }
