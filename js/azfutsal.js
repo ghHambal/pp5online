@@ -3798,13 +3798,10 @@ function certPreviewOrFallback(r, templateUrl) {
 function certCard(r, idx, templateUrl) {
   const t = T[r.level]
   return `
-  <div style="border:1px solid ${t.border};border-radius:14px;padding:12px;margin-bottom:14px;background:#fff">
-    ${certPreviewOrFallback(r, templateUrl)}
-    <div style="margin-top:10px;text-align:center;font-size:13px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button data-act="certFull" data-idx="${idx}" style="flex:1;padding:10px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:12.5px;cursor:pointer">ดูเต็มจอ</button>
-      ${templateUrl ? `<button data-act="certPrint" data-idx="${idx}" style="flex:1;padding:10px;border-radius:9px;border:none;background:${t.accent};color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">🖨️ พิมพ์</button>` : ''}
-    </div>
+  <div data-act="certFull" data-idx="${idx}" style="cursor:pointer;border:1px solid ${t.border};border-radius:14px;padding:10px;margin-bottom:12px;background:#fff">
+    <div style="max-width:200px;margin:0 auto">${certPreviewOrFallback(r, templateUrl)}</div>
+    <div style="margin-top:8px;text-align:center;font-size:12.5px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
+    <div style="text-align:center;font-size:10.5px;color:#9ca3af;margin-top:2px">แตะเพื่อดูเต็มจอ / พิมพ์</div>
   </div>`
 }
 
@@ -3836,6 +3833,7 @@ function certModal() {
       <button data-act="certClose" style="border:none;background:none;color:#9ca3af;font-size:20px;cursor:pointer">✕</button>
     </div>
     <div style="padding:20px;overflow-y:auto;flex:1">
+      <div style="max-width:420px;margin:0 auto">
       ${!enabled ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ยังไม่เปิดใช้งานเกียรติบัตรสำหรับรุ่นนี้</div>` : `
       ${S.knownStudentCode ? '' : `
       <p style="margin:0 0 12px;font-size:13px;color:#6b7280">กรอกรหัสนักเรียนของคุณเพื่อค้นหาเกียรติบัตร</p>
@@ -3846,6 +3844,7 @@ function certModal() {
       ${results && results.length ? results.map((r, idx) => certCard(r, idx, templateUrl)).join('')
         : (S.knownStudentCode ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูลเกียรติบัตรของคุณ อาจยังไม่ได้ลงทะเบียนแข่งขันฟุตซอล</div>` : (S.certInput && results === null ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูล กรุณาตรวจสอบรหัสนักเรียน</div>` : ''))}
       `}
+      </div>
     </div>
   </div>`
 }
