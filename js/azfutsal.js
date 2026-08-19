@@ -5805,7 +5805,8 @@ function bindEvents() {
     if (act === 'uploadCertTemplate') {
       const file = gid('cert-template-file')?.files?.[0]
       if (!file) { azToast('กรุณาเลือกรูปภาพ'); return }
-      const path = `cert-template_${Date.now()}_${file.name}`
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `cert-template_${Date.now()}_${safeName}`
       const { error: upErr } = await SB.storage.from('azfutsal-assets').upload(path, file, { upsert: true })
       if (upErr) { azToast('อัปโหลดไม่สำเร็จ: ' + upErr.message); return }
       const { data } = SB.storage.from('azfutsal-assets').getPublicUrl(path)
@@ -5829,7 +5830,8 @@ function bindEvents() {
     if (act === 'uploadCertSong') {
       const file = gid('cert-song-file')?.files?.[0]
       if (!file) { azToast('กรุณาเลือกไฟล์เพลง'); return }
-      const path = `cert-song_${Date.now()}_${file.name}`
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `cert-song_${Date.now()}_${safeName}`
       const { error: upErr } = await SB.storage.from('azfutsal-assets').upload(path, file, { upsert: true })
       if (upErr) { azToast('อัปโหลดไม่สำเร็จ: ' + upErr.message); return }
       const { data } = SB.storage.from('azfutsal-assets').getPublicUrl(path)

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.466'
+import { APP_VERSION } from './version.js?v=10.22.467'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.467': [
+    '🐛 แก้บั๊กอัปโหลดพื้นหลัง/เพลงเกียรติบัตรฟุตซอลไม่สำเร็จเมื่อชื่อไฟล์เป็นภาษาไทย (Supabase Storage ปฏิเสธชื่อไฟล์ที่มีอักขระนอก ASCII) — ตัดชื่อไฟล์ให้ปลอดภัยก่อนอัปโหลดเหมือนจุดอัปโหลดโลโก้ใบเสร็จคืนเงิน'
+  ],
   '10.22.466': [
     '🐛 แก้บั๊ก Smart Classroom เข้าใจระดับโดเนทผิดพลาดจริงจนถึงต้นตอ — เดิมพึ่งตัวแปรที่ตั้งค่าแบบ fire-and-forget ตอน login ซึ่งอาจยังไม่พร้อมเวลาเปิดฟีเจอร์นี้จริง (ยืนยันแล้วด้วยข้อความ debug ชั่วคราว) เปลี่ยนให้ตรวจระดับโดเนทสดจากฐานข้อมูลทุกครั้งที่เปิด Smart Classroom แทน ไม่พึ่งค่าที่อาจไม่ทันอัปเดตอีกต่อไป (ลบข้อความ debug ออกแล้ว)'
   ],
