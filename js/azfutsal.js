@@ -3798,8 +3798,8 @@ function certPreviewOrFallback(r, templateUrl) {
 function certCard(r, idx, templateUrl) {
   const t = T[r.level]
   return `
-  <div data-act="certFull" data-idx="${idx}" style="cursor:pointer;border:1px solid ${t.border};border-radius:14px;padding:10px;margin-bottom:12px;background:#fff">
-    <div style="max-width:200px;margin:0 auto">${certPreviewOrFallback(r, templateUrl)}</div>
+  <div data-act="certFull" data-idx="${idx}" style="cursor:pointer;margin-bottom:18px">
+    <div style="max-width:320px;margin:0 auto;border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.12)">${certPreviewOrFallback(r, templateUrl)}</div>
     <div style="margin-top:8px;text-align:center;font-size:12.5px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
     <div style="text-align:center;font-size:10.5px;color:#9ca3af;margin-top:2px">แตะเพื่อดูเต็มจอ / พิมพ์</div>
   </div>`
