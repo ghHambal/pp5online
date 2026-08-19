@@ -2,6 +2,28 @@ import QRCode from 'qrcode'
 import { promptpayQRDataURL } from './promptpay.js'
 import { uploadAzfutsalPlayerPhoto } from './storage.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
+import { openFutsalCertificatePrint } from './azfutsal-certificate.js'
+
+// ข้อความรางวัลเกียรติบัตรแยกตามประเภท แก้ไขได้จากหน้าตั้งค่า (คีย์ CERT_TEXT_<type>) — นี่คือค่าเริ่มต้น
+// {event} จะถูกแทนที่ด้วยชื่อกิจกรรม (EVENT_NAME) อัตโนมัติ
+const CERT_TEXT_DEFAULTS = {
+  champion: 'ได้รับรางวัลชนะเลิศ การแข่งขัน{event}',
+  runner_up: 'ได้รับรางวัลรองชนะเลิศอันดับที่ 1 การแข่งขัน{event}',
+  third: 'ได้รับรางวัลรองชนะเลิศอันดับที่ 2 การแข่งขัน{event}',
+  mvp: 'ได้รับรางวัลผู้เล่นยอดเยี่ยม (MVP) การแข่งขัน{event}',
+  top_scorer: 'ได้รับรางวัลดาวซัลโว การแข่งขัน{event}',
+  best_gk: 'ได้รับรางวัลผู้รักษาประตูยอดเยี่ยม การแข่งขัน{event}',
+  participant: 'เข้าร่วมการแข่งขัน{event}',
+}
+const CERT_TEXT_LABELS = {
+  champion: 'แชมป์',
+  runner_up: 'รองแชมป์',
+  third: 'อันดับ 3',
+  mvp: 'MVP',
+  top_scorer: 'ดาวซัลโว',
+  best_gk: 'ผู้รักษาประตูยอดเยี่ยม',
+  participant: 'ผู้เข้าร่วม (ค่าเริ่มต้น)',
+}
 
 const T = {
   MS: { label: 'ม.ต้น', accent: '#db2777', base: '#ec4899', soft: '#fdf2f8', border: '#f9d4e6' },
@@ -226,6 +248,11 @@ let S = {
 }
 
 function cfg(key, fallback = '') { return S.config[key] ?? fallback }
+
+function certAwardText(type) {
+  const template = cfg(`CERT_TEXT_${type}`, CERT_TEXT_DEFAULTS[type] || CERT_TEXT_DEFAULTS.participant)
+  return template.replaceAll('{event}', cfg('EVENT_NAME', 'AZFUTSALCUP2026'))
+}
 
 function hasMsFirstRoundBye() {
   return msTeamFormat() === '12' && S.teams.filter(team => team.level === 'MS').length === 13
@@ -3748,6 +3775,7 @@ function certModal() {
           <div style="font-size:14px;color:#6b7280;margin-bottom:16px">${esc(r.team)} · ${t.label}</div>
           <div style="font-size:18px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
         </div>
+        ${cfg('CERT_TEMPLATE_URL', '') ? `<button data-act="certPrint" style="width:100%;max-width:320px;padding:12px;border-radius:10px;border:none;background:${t.accent};color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🖨️ พิมพ์เกียรติบัตร</button>` : ''}
         <div style="display:flex;gap:10px;width:100%;max-width:320px">
           <button data-act="certBack" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:13.5px;cursor:pointer">ย้อนกลับ</button>
           <button data-act="certClose" style="flex:1;padding:12px;border-radius:10px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">ปิด</button>
@@ -5721,6 +5749,12 @@ function bindEvents() {
     if (act === 'certClose') { S.certModalOpen = false; S.certFullscreen = false; draw(); return }
     if (act === 'certBack') { S.certFullscreen = false; draw(); return }
     if (act === 'certFull') { S.certFullscreen = true; draw(); return }
+    if (act === 'certPrint') {
+      const r = S.certResult
+      if (!r) return
+      openFutsalCertificatePrint({ name: r.name, award: certAwardText(r.awardType), templateUrl: cfg('CERT_TEMPLATE_URL', '') }, azToast)
+      return
+    }
     if (act === 'certSearch') {
       const code = gid('az-certInput').value.trim()
       S.certInput = code
@@ -5731,13 +5765,14 @@ function bindEvents() {
       const level = team.level
       const sum = computeSummary(level)
       let award = 'ผู้เข้าร่วมการแข่งขัน'
-      if (sum.mvp === st.full_name) award = 'รางวัล MVP'
-      else if (sum.topScorer === st.full_name) award = 'รางวัลดาวซัลโว'
-      else if (sum.bestGK === st.full_name) award = 'รางวัลผู้รักษาประตูยอดเยี่ยม'
-      else if (sum.champion === team.name) award = 'ทีมชนะเลิศ'
-      else if (sum.runnerUp === team.name) award = 'ทีมรองชนะเลิศ'
-      else if (sum.third === team.name || sum.third2 === team.name) award = sum.thirdLabel === 'อันดับ 3 ร่วม' ? 'ทีมอันดับที่ 3 ร่วม' : 'ทีมอันดับที่ 3'
-      S.certResult = { name: st.full_name, team: team.name, level, award }
+      let awardType = 'participant'
+      if (sum.mvp === st.full_name) { award = 'รางวัล MVP'; awardType = 'mvp' }
+      else if (sum.topScorer === st.full_name) { award = 'รางวัลดาวซัลโว'; awardType = 'top_scorer' }
+      else if (sum.bestGK === st.full_name) { award = 'รางวัลผู้รักษาประตูยอดเยี่ยม'; awardType = 'best_gk' }
+      else if (sum.champion === team.name) { award = 'ทีมชนะเลิศ'; awardType = 'champion' }
+      else if (sum.runnerUp === team.name) { award = 'ทีมรองชนะเลิศ'; awardType = 'runner_up' }
+      else if (sum.third === team.name || sum.third2 === team.name) { award = sum.thirdLabel === 'อันดับ 3 ร่วม' ? 'ทีมอันดับที่ 3 ร่วม' : 'ทีมอันดับที่ 3'; awardType = 'third' }
+      S.certResult = { name: st.full_name, team: team.name, level, award, awardType }
       draw(); return
     }
     if (act === 'createTeam') { await handleCreateTeam(btn.dataset.admin === '1'); return }
@@ -5794,6 +5829,12 @@ function bindEvents() {
       const cur = cfg('CERT_ENABLED', '1') === '1'
       await SB.from('azfutsal_config').upsert({ key: 'CERT_ENABLED', value: cur ? '0' : '1' })
       await refresh(); return
+    }
+    if (act === 'saveCertTexts') {
+      const rows = [...document.querySelectorAll('.cert-text-input')].map(input => ({ key: `CERT_TEXT_${input.dataset.type}`, value: input.value }))
+      const { error } = await SB.from('azfutsal_config').upsert(rows)
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); azToast('บันทึกข้อความรางวัลแล้ว'); return
     }
     if (act === 'toggleRegistration') {
       const level = btn.dataset.level
@@ -6549,6 +6590,16 @@ function adminCertificates() {
       <button data-act="uploadCertSong" style="font-size:11px;padding:7px 10px;border-radius:8px;border:none;background:#db2777;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">อัปโหลด</button>
     </div>
     ${songName ? `<div style="font-size:11px;color:#6b7280;margin-top:6px">ไฟล์ปัจจุบัน: ${esc(songName)}</div>` : ''}
+  `) + box(`
+    <div style="font-weight:700;font-size:14px;margin-bottom:6px">ข้อความรางวัลบนเกียรติบัตร</div>
+    <div style="font-size:11.5px;color:#6b7280;margin-bottom:12px">ใช้ <code>{event}</code> แทนตำแหน่งที่จะแทรกชื่อกิจกรรม (ตอนนี้คือ "${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2026'))}" — แก้ได้ที่แท็บ "เวลา/รางวัล") แก้ข้อความแล้วกดบันทึกด้านล่าง</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${Object.keys(CERT_TEXT_DEFAULTS).map(type => `
+        <label style="font-size:11.5px;color:#6b7280">${esc(CERT_TEXT_LABELS[type])}
+          <input class="cert-text-input" data-type="${type}" value="${esc(cfg(`CERT_TEXT_${type}`, CERT_TEXT_DEFAULTS[type]))}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:12.5px"/>
+        </label>`).join('')}
+    </div>
+    <button data-act="saveCertTexts" style="margin-top:12px;width:100%;padding:10px;border-radius:10px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:13px;cursor:pointer">บันทึกข้อความรางวัล</button>
   `)
 }
 

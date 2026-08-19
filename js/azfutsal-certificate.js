@@ -1,0 +1,39 @@
+// js/azfutsal-certificate.js — สร้าง HTML เกียรติบัตรฟุตซอล AZFUTSALCUP
+// แยกออกมาจาก azfutsal.js (ไฟล์หลักใหญ่มากแล้ว) ตามแนวทางเดียวกับ council-certificate.js
+// วางข้อความ "ชื่อ-สกุล" กับ "ข้อความรางวัล" ทับพื้นหลังที่แอดมินอัปโหลด (เว้นช่องว่าง 2 จุดไว้ในรูปแล้ว)
+// ตำแหน่ง % วัดจากไฟล์เทมเพลตจริงที่ใช้งาน (ขนาด 2000x1414px, สัดส่วน A4 แนวนอน 1.414:1)
+const _esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+
+export function buildFutsalCertificateHtml({ name, award, templateUrl }) {
+  const safeName = _esc(name)
+  const safeAward = _esc(award)
+  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>เกียรติบัตร ${safeName}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Charmonman:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: 'Sarabun', sans-serif; margin: 0; background: #fff; }
+      .cert { position: relative; width: 100%; max-width: 1000px; margin: 0 auto; aspect-ratio: 2000 / 1414; background: url('${_esc(templateUrl)}') center/contain no-repeat; }
+      .field-name { position: absolute; left: 8%; right: 8%; top: 41.4%; height: 12.0%; display: flex; align-items: center; justify-content: center; }
+      .field-name span { font-family: 'Charmonman', cursive; font-size: 40px; font-weight: 700; color: #1b3a2b; line-height: 1; overflow-wrap: anywhere; }
+      .field-award { position: absolute; left: 11%; right: 11%; top: 54.0%; height: 8.5%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      .field-award span { font-family: 'Charmonman', cursive; font-size: 22px; font-weight: 700; color: #1b3a2b; line-height: 1.3; }
+      .no-print { text-align: center; margin-top: 20px; }
+      @media print { body { margin: 0 } .no-print { display: none } }
+    </style></head>
+    <body>
+      <div class="cert">
+        <div class="field-name"><span>${safeName}</span></div>
+        <div class="field-award"><span>${safeAward}</span></div>
+      </div>
+      <div class="no-print"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+    </body></html>`
+}
+
+export function openFutsalCertificatePrint({ name, award, templateUrl }, showToast) {
+  if (!templateUrl) { showToast?.('ยังไม่ได้อัปโหลดพื้นหลังเกียรติบัตร กรุณาแจ้งแอดมิน'); return }
+  const win = window.open('', '_blank', 'width=900,height=700')
+  if (!win) { showToast?.('เบราว์เซอร์บล็อกหน้าต่างเกียรติบัตร กรุณาอนุญาตป๊อปอัป'); return }
+  win.document.open()
+  win.document.write(buildFutsalCertificateHtml({ name, award, templateUrl }))
+  win.document.close()
+}
