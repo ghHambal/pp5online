@@ -29,6 +29,22 @@ export function buildFutsalCertificateHtml({ name, award, templateUrl }) {
     </body></html>`
 }
 
+// ใช้ฝัง preview เกียรติบัตรจริงตรงในการ์ด (ไม่ต้องเปิดป๊อปอัพพิมพ์ถึงจะเห็น) — ใช้ container query
+// units (cqw) แทน vw เพื่อให้สัดส่วนตัวอักษรอิงตามความกว้างของการ์ดเอง ไม่ใช่ viewport ทั้งหน้า
+// ต้องมี Charmonman โหลดไว้แล้วในหน้าเพจ (azfutsal.html โหลด Google Fonts ไว้ที่ <head>)
+export function buildFutsalCertificateFragment({ name, award, templateUrl }) {
+  const safeName = _esc(name)
+  const safeAward = _esc(award)
+  return `<div style="container-type:inline-size;position:relative;width:100%;aspect-ratio:2000/1414;border-radius:10px;overflow:hidden;background:#fff url('${_esc(templateUrl)}') center/contain no-repeat">
+    <div style="position:absolute;left:8%;right:8%;top:41.4%;height:12.0%;display:flex;align-items:center;justify-content:center">
+      <span style="font-family:'Charmonman',cursive;font-size:4cqw;font-weight:700;color:#1b3a2b;line-height:1;overflow-wrap:anywhere;text-align:center">${safeName}</span>
+    </div>
+    <div style="position:absolute;left:11%;right:11%;top:54.0%;height:8.5%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+      <span style="font-family:'Charmonman',cursive;font-size:2.2cqw;font-weight:700;color:#1b3a2b;line-height:1.3">${safeAward}</span>
+    </div>
+  </div>`
+}
+
 export function openFutsalCertificatePrint({ name, award, templateUrl }, showToast) {
   if (!templateUrl) { showToast?.('ยังไม่ได้อัปโหลดพื้นหลังเกียรติบัตร กรุณาแจ้งแอดมิน'); return }
   const win = window.open('', '_blank', 'width=900,height=700')

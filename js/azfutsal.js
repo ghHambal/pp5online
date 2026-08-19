@@ -2,7 +2,7 @@ import QRCode from 'qrcode'
 import { promptpayQRDataURL } from './promptpay.js'
 import { uploadAzfutsalPlayerPhoto } from './storage.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
-import { openFutsalCertificatePrint } from './azfutsal-certificate.js'
+import { openFutsalCertificatePrint, buildFutsalCertificateFragment } from './azfutsal-certificate.js'
 
 // ข้อความรางวัลเกียรติบัตรแยกตามประเภท แก้ไขได้จากหน้าตั้งค่า (คีย์ CERT_TEXT_<type>) — นี่คือค่าเริ่มต้น
 // {event} จะถูกแทนที่ด้วยชื่อกิจกรรม (EVENT_NAME) อัตโนมัติ
@@ -216,8 +216,8 @@ let S = {
   liveDraw: null, // { level, order:[teamId...] (สับแล้ว), slotSeq:[{code,side}], pickIndex, filled:{`${code}_${side}`:teamId}, phase:'idle'|'spinning' }
   certModalOpen: false,
   certInput: '',
-  certResult: null,
-  certFullscreen: false,
+  certResults: null, // array ของเกียรติบัตรที่ได้ (นักเรียนคนเดียวอาจได้หลายใบ เช่น รางวัลทีม + รางวัลส่วนตัว) — null = ยังไม่ค้นหา
+  certFullscreenIndex: null, // index ใน certResults ที่กำลังดูเต็มจอ — null = ยังไม่ได้เปิด
   knownStudentCode: null, // รหัสนักเรียนจากผู้ใช้ที่ login ผ่านระบบหลัก (student.html) ส่งมาทาง URL param — ถ้ามีข้ามการพิมพ์รหัสค้นหาเอง
   editMatch: null, // { level, code }
   eventPicker: null, // { team: 'a'|'b', type: 'goal'|'yellow'|'red' }
@@ -255,22 +255,24 @@ function certAwardText(type) {
   return template.replaceAll('{event}', cfg('EVENT_NAME', 'AZFUTSALCUP2026'))
 }
 
-function lookupCertByCode(code) {
+// นักเรียนคนเดียวอาจได้เกียรติบัตรมากกว่า 1 ใบ (เช่น ทีมได้แชมป์ + ตัวเองได้ MVP) จึงคืนเป็น array เสมอ
+// คืนค่า null เฉพาะกรณีไม่เจอรหัสนักเรียนนี้ในระบบเลย — ถ้าเจอแต่ไม่ได้รางวัลอะไรจะได้ใบ "ผู้เข้าร่วม" อัตโนมัติ
+function lookupCertsByCode(code) {
   const st = [...(S.players.map(p => p.students))].find(s => s?.student_code === code)
   if (!st) return null
   const player = S.players.find(p => p.student_id === st.id)
   const team = S.teams.find(t => t.id === player.team_id)
   const level = team.level
   const sum = computeSummary(level)
-  let award = 'ผู้เข้าร่วมการแข่งขัน'
-  let awardType = 'participant'
-  if (sum.mvp === st.full_name) { award = 'รางวัล MVP'; awardType = 'mvp' }
-  else if (sum.topScorer === st.full_name) { award = 'รางวัลดาวซัลโว'; awardType = 'top_scorer' }
-  else if (sum.bestGK === st.full_name) { award = 'รางวัลผู้รักษาประตูยอดเยี่ยม'; awardType = 'best_gk' }
-  else if (sum.champion === team.name) { award = 'ทีมชนะเลิศ'; awardType = 'champion' }
-  else if (sum.runnerUp === team.name) { award = 'ทีมรองชนะเลิศ'; awardType = 'runner_up' }
-  else if (sum.third === team.name || sum.third2 === team.name) { award = sum.thirdLabel === 'อันดับ 3 ร่วม' ? 'ทีมอันดับที่ 3 ร่วม' : 'ทีมอันดับที่ 3'; awardType = 'third' }
-  return { name: st.full_name, team: team.name, level, award, awardType }
+  const awards = []
+  if (sum.champion === team.name) awards.push({ awardType: 'champion', award: 'ทีมชนะเลิศ' })
+  if (sum.runnerUp === team.name) awards.push({ awardType: 'runner_up', award: 'ทีมรองชนะเลิศ' })
+  if (sum.third === team.name || sum.third2 === team.name) awards.push({ awardType: 'third', award: sum.thirdLabel === 'อันดับ 3 ร่วม' ? 'ทีมอันดับที่ 3 ร่วม' : 'ทีมอันดับที่ 3' })
+  if (sum.mvp === st.full_name) awards.push({ awardType: 'mvp', award: 'รางวัล MVP' })
+  if (sum.topScorer === st.full_name) awards.push({ awardType: 'top_scorer', award: 'รางวัลดาวซัลโว' })
+  if (sum.bestGK === st.full_name) awards.push({ awardType: 'best_gk', award: 'รางวัลผู้รักษาประตูยอดเยี่ยม' })
+  if (!awards.length) awards.push({ awardType: 'participant', award: 'ผู้เข้าร่วมการแข่งขัน' })
+  return awards.map(a => ({ name: st.full_name, team: team.name, level, ...a }))
 }
 
 function hasMsFirstRoundBye() {
@@ -3780,22 +3782,46 @@ function summaryView() {
   </section>`
 }
 
+function certPreviewOrFallback(r, templateUrl) {
+  const t = T[r.level]
+  if (templateUrl) return buildFutsalCertificateFragment({ name: r.name, award: certAwardText(r.awardType), templateUrl })
+  return `
+  <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:22px;text-align:center">
+    <div style="font-size:11px;letter-spacing:.08em;color:${t.accent};font-weight:700;margin-bottom:8px">เกียรติบัตร</div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:2px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))}</div>
+    <div style="font-size:19px;font-weight:800;margin:10px 0 4px">${esc(r.name)}</div>
+    <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">${esc(r.team)} · ${t.label}</div>
+    <div style="font-size:14px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
+  </div>`
+}
+
+function certCard(r, idx, templateUrl) {
+  const t = T[r.level]
+  return `
+  <div style="border:1px solid ${t.border};border-radius:14px;padding:12px;margin-bottom:14px;background:#fff">
+    ${certPreviewOrFallback(r, templateUrl)}
+    <div style="margin-top:10px;text-align:center;font-size:13px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button data-act="certFull" data-idx="${idx}" style="flex:1;padding:10px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:12.5px;cursor:pointer">ดูเต็มจอ</button>
+      ${templateUrl ? `<button data-act="certPrint" data-idx="${idx}" style="flex:1;padding:10px;border-radius:9px;border:none;background:${t.accent};color:#fff;font-weight:700;font-size:12.5px;cursor:pointer">🖨️ พิมพ์</button>` : ''}
+    </div>
+  </div>`
+}
+
 function certModal() {
   const enabled = cfg('CERT_ENABLED', '1') === '1'
-  const r = S.certResult
-  if (S.certFullscreen && r) {
+  const results = S.certResults
+  const templateUrl = cfg('CERT_TEMPLATE_URL', '')
+  const fsIdx = S.certFullscreenIndex
+  if (fsIdx !== null && results && results[fsIdx]) {
+    const r = results[fsIdx]
     const t = T[r.level]
     return `
     <div style="position:fixed;inset:0;z-index:65;background:#fff;display:flex;flex-direction:column">
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:20px">
-        <div style="border:2px solid ${t.border};background:${t.soft};border-radius:20px;padding:40px 32px;text-align:center;width:100%;max-width:340px">
-          <div style="font-size:12px;letter-spacing:.1em;color:${t.accent};font-weight:700;margin-bottom:14px">เกียรติบัตร</div>
-          <div style="font-size:14px;color:#6b7280;margin-bottom:4px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))}</div>
-          <div style="font-size:26px;font-weight:800;margin:16px 0 6px">${esc(r.name)}</div>
-          <div style="font-size:14px;color:#6b7280;margin-bottom:16px">${esc(r.team)} · ${t.label}</div>
-          <div style="font-size:18px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
-        </div>
-        ${cfg('CERT_TEMPLATE_URL', '') ? `<button data-act="certPrint" style="width:100%;max-width:320px;padding:12px;border-radius:10px;border:none;background:${t.accent};color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🖨️ พิมพ์เกียรติบัตร</button>` : ''}
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:20px;overflow-y:auto">
+        <div style="width:100%;max-width:420px">${certPreviewOrFallback(r, templateUrl)}</div>
+        <div style="font-size:15px;font-weight:700;color:${t.accent};text-align:center">${esc(r.award)}</div>
+        ${templateUrl ? `<button data-act="certPrint" data-idx="${fsIdx}" style="width:100%;max-width:320px;padding:12px;border-radius:10px;border:none;background:${t.accent};color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🖨️ พิมพ์เกียรติบัตร</button>` : ''}
         <div style="display:flex;gap:10px;width:100%;max-width:320px">
           <button data-act="certBack" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:13.5px;cursor:pointer">ย้อนกลับ</button>
           <button data-act="certClose" style="flex:1;padding:12px;border-radius:10px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">ปิด</button>
@@ -3817,20 +3843,8 @@ function certModal() {
         <input id="az-certInput" value="${esc(S.certInput)}" placeholder="รหัสนักเรียน" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:10px;padding:11px 14px;font-size:14px"/>
         <button data-act="certSearch" style="padding:0 18px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">ค้นหา</button>
       </div>`}
-      ${r ? (() => {
-        const t = T[r.level]
-        return `
-        <div style="border:1px solid ${t.border};background:${t.soft};border-radius:14px;padding:22px;text-align:center">
-          <div style="font-size:11px;letter-spacing:.08em;color:${t.accent};font-weight:700;margin-bottom:8px">เกียรติบัตร</div>
-          <div style="font-size:13px;color:#6b7280;margin-bottom:2px">${esc(cfg('EVENT_NAME', 'AZFUTSALCUP2025'))}</div>
-          <div style="font-size:19px;font-weight:800;margin:10px 0 4px">${esc(r.name)}</div>
-          <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">${esc(r.team)} · ${t.label}</div>
-          <div style="font-size:14px;font-weight:700;color:${t.accent}">${esc(r.award)}</div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:14px">
-          <button data-act="certFull" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:13.5px;cursor:pointer">เปิดเต็มจอ</button>
-        </div>`
-      })() : (S.knownStudentCode ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูลเกียรติบัตรของคุณ อาจยังไม่ได้ลงทะเบียนแข่งขันฟุตซอล</div>` : (S.certInput && S.certResult === null ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูล กรุณาตรวจสอบรหัสนักเรียน</div>` : ''))}
+      ${results && results.length ? results.map((r, idx) => certCard(r, idx, templateUrl)).join('')
+        : (S.knownStudentCode ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูลเกียรติบัตรของคุณ อาจยังไม่ได้ลงทะเบียนแข่งขันฟุตซอล</div>` : (S.certInput && results === null ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูล กรุณาตรวจสอบรหัสนักเรียน</div>` : ''))}
       `}
     </div>
   </div>`
@@ -5644,7 +5658,7 @@ function bindEvents() {
       }
       draw(); return
     }
-    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreen = false; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
+    if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreenIndex = null; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
     if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
     if (act === 'confirmActionYes') {
       const pc = S.pendingConfirm
@@ -5768,15 +5782,16 @@ function bindEvents() {
     }
     if (act === 'openCert') {
       S.certModalOpen = true
-      if (S.knownStudentCode) { S.certInput = S.knownStudentCode; S.certResult = lookupCertByCode(S.knownStudentCode) }
-      else { S.certResult = null; S.certInput = '' }
+      S.certFullscreenIndex = null
+      if (S.knownStudentCode) { S.certInput = S.knownStudentCode; S.certResults = lookupCertsByCode(S.knownStudentCode) }
+      else { S.certResults = null; S.certInput = '' }
       draw(); return
     }
-    if (act === 'certClose') { S.certModalOpen = false; S.certFullscreen = false; draw(); return }
-    if (act === 'certBack') { S.certFullscreen = false; draw(); return }
-    if (act === 'certFull') { S.certFullscreen = true; draw(); return }
+    if (act === 'certClose') { S.certModalOpen = false; S.certFullscreenIndex = null; draw(); return }
+    if (act === 'certBack') { S.certFullscreenIndex = null; draw(); return }
+    if (act === 'certFull') { S.certFullscreenIndex = Number(btn.dataset.idx); draw(); return }
     if (act === 'certPrint') {
-      const r = S.certResult
+      const r = (S.certResults || [])[Number(btn.dataset.idx)]
       if (!r) return
       openFutsalCertificatePrint({ name: r.name, award: certAwardText(r.awardType), templateUrl: cfg('CERT_TEMPLATE_URL', '') }, azToast)
       return
@@ -5784,7 +5799,8 @@ function bindEvents() {
     if (act === 'certSearch') {
       const code = gid('az-certInput').value.trim()
       S.certInput = code
-      S.certResult = lookupCertByCode(code)
+      S.certResults = lookupCertsByCode(code)
+      S.certFullscreenIndex = null
       draw(); return
     }
     if (act === 'createTeam') { await handleCreateTeam(btn.dataset.admin === '1'); return }

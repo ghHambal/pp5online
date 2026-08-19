@@ -11,7 +11,7 @@
   <title>AZFUTSALCUP2025</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Charmonman:wght@400;700&display=swap" rel="stylesheet" />
   <style>
     body{margin:0;background:#f7f5f3;font-family:'Noto Sans Thai',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
     input,select,button,textarea{font-family:inherit}
@@ -79,7 +79,7 @@
 
   <script type="module">
     import { supabase } from './js/supabase.js'
-    import { renderAzfutsal } from './js/azfutsal.js?v=10.22.471'
+    import { renderAzfutsal } from './js/azfutsal.js?v=10.22.473'
 
     async function init() {
       await renderAzfutsal(document.getElementById('azfutsal-root'), supabase)
