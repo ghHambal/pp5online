@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.467'
+import { APP_VERSION } from './version.js?v=10.22.468'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.468': [
+    '🐛 แก้บั๊กสำคัญ: ไฟล์ HTML หลัก (azfutsal.html, dashboard.html, student.html, teacher.html, terangganu.html) ใช้เลขเวอร์ชันเก่าค้างในพารามิเตอร์กันแคช (?v=...) ของสคริปต์หลัก ทำให้ผู้ใช้ยังโดนเบราว์เซอร์/แคชส่งโค้ด JS เวอร์ชันเก่ากลับมาแม้ deploy โค้ดใหม่ไปแล้ว — อัปเดตให้ตรงเวอร์ชันปัจจุบันทั้งหมด'
+  ],
   '10.22.467': [
     '🐛 แก้บั๊กอัปโหลดพื้นหลัง/เพลงเกียรติบัตรฟุตซอลไม่สำเร็จเมื่อชื่อไฟล์เป็นภาษาไทย (Supabase Storage ปฏิเสธชื่อไฟล์ที่มีอักขระนอก ASCII) — ตัดชื่อไฟล์ให้ปลอดภัยก่อนอัปโหลดเหมือนจุดอัปโหลดโลโก้ใบเสร็จคืนเงิน'
   ],
