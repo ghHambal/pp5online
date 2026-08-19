@@ -2,16 +2,17 @@ import { APP_VERSION } from './version.js'
 
 const AZFUTSAL_PATH = 'azfutsal.html'
 
-const getAzfutsalUrl = () => {
+const getAzfutsalUrl = (studentCode) => {
   const url = new URL(AZFUTSAL_PATH, window.location.href)
   url.searchParams.set('v', APP_VERSION)
+  if (studentCode) url.searchParams.set('studentCode', studentCode)
   return url.href
 }
 
-export function openAzfutsalModal() {
+export function openAzfutsalModal(studentCode) {
   document.getElementById('azfutsal-modal')?.remove()
 
-  const url = getAzfutsalUrl()
+  const url = getAzfutsalUrl(studentCode)
   const previousOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
 

@@ -218,6 +218,7 @@ let S = {
   certInput: '',
   certResult: null,
   certFullscreen: false,
+  knownStudentCode: null, // รหัสนักเรียนจากผู้ใช้ที่ login ผ่านระบบหลัก (student.html) ส่งมาทาง URL param — ถ้ามีข้ามการพิมพ์รหัสค้นหาเอง
   editMatch: null, // { level, code }
   eventPicker: null, // { team: 'a'|'b', type: 'goal'|'yellow'|'red' }
   eventPickerFilter: '',
@@ -252,6 +253,24 @@ function cfg(key, fallback = '') { return S.config[key] ?? fallback }
 function certAwardText(type) {
   const template = cfg(`CERT_TEXT_${type}`, CERT_TEXT_DEFAULTS[type] || CERT_TEXT_DEFAULTS.participant)
   return template.replaceAll('{event}', cfg('EVENT_NAME', 'AZFUTSALCUP2026'))
+}
+
+function lookupCertByCode(code) {
+  const st = [...(S.players.map(p => p.students))].find(s => s?.student_code === code)
+  if (!st) return null
+  const player = S.players.find(p => p.student_id === st.id)
+  const team = S.teams.find(t => t.id === player.team_id)
+  const level = team.level
+  const sum = computeSummary(level)
+  let award = 'ผู้เข้าร่วมการแข่งขัน'
+  let awardType = 'participant'
+  if (sum.mvp === st.full_name) { award = 'รางวัล MVP'; awardType = 'mvp' }
+  else if (sum.topScorer === st.full_name) { award = 'รางวัลดาวซัลโว'; awardType = 'top_scorer' }
+  else if (sum.bestGK === st.full_name) { award = 'รางวัลผู้รักษาประตูยอดเยี่ยม'; awardType = 'best_gk' }
+  else if (sum.champion === team.name) { award = 'ทีมชนะเลิศ'; awardType = 'champion' }
+  else if (sum.runnerUp === team.name) { award = 'ทีมรองชนะเลิศ'; awardType = 'runner_up' }
+  else if (sum.third === team.name || sum.third2 === team.name) { award = sum.thirdLabel === 'อันดับ 3 ร่วม' ? 'ทีมอันดับที่ 3 ร่วม' : 'ทีมอันดับที่ 3'; awardType = 'third' }
+  return { name: st.full_name, team: team.name, level, award, awardType }
 }
 
 function hasMsFirstRoundBye() {
@@ -911,6 +930,7 @@ function applyAzTheme() {
 export async function renderAzfutsal(root, supabaseClient) {
   ROOT = root
   SB = supabaseClient
+  S.knownStudentCode = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentCode') : null) || null
   applyAzTheme()
   root.innerHTML = `<div style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px">กำลังโหลด...</div>`
   await loadAll()
@@ -3786,16 +3806,17 @@ function certModal() {
   return `
   <div style="position:fixed;inset:0;z-index:65;background:#fff;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #ececec;flex-shrink:0">
-      <h3 style="margin:0;font-size:15px;font-weight:800">ค้นหาเกียรติบัตร</h3>
+      <h3 style="margin:0;font-size:15px;font-weight:800">${S.knownStudentCode ? 'เกียรติบัตรของฉัน' : 'ค้นหาเกียรติบัตร'}</h3>
       <button data-act="certClose" style="border:none;background:none;color:#9ca3af;font-size:20px;cursor:pointer">✕</button>
     </div>
     <div style="padding:20px;overflow-y:auto;flex:1">
       ${!enabled ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ยังไม่เปิดใช้งานเกียรติบัตรสำหรับรุ่นนี้</div>` : `
+      ${S.knownStudentCode ? '' : `
       <p style="margin:0 0 12px;font-size:13px;color:#6b7280">กรอกรหัสนักเรียนของคุณเพื่อค้นหาเกียรติบัตร</p>
       <div style="display:flex;gap:8px;margin-bottom:18px">
         <input id="az-certInput" value="${esc(S.certInput)}" placeholder="รหัสนักเรียน" style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:10px;padding:11px 14px;font-size:14px"/>
         <button data-act="certSearch" style="padding:0 18px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">ค้นหา</button>
-      </div>
+      </div>`}
       ${r ? (() => {
         const t = T[r.level]
         return `
@@ -3809,7 +3830,7 @@ function certModal() {
         <div style="display:flex;gap:8px;margin-top:14px">
           <button data-act="certFull" style="flex:1;padding:12px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:13.5px;cursor:pointer">เปิดเต็มจอ</button>
         </div>`
-      })() : (S.certInput && S.certResult === null ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูล กรุณาตรวจสอบรหัสนักเรียน</div>` : '')}
+      })() : (S.knownStudentCode ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูลเกียรติบัตรของคุณ อาจยังไม่ได้ลงทะเบียนแข่งขันฟุตซอล</div>` : (S.certInput && S.certResult === null ? `<div style="text-align:center;padding:24px 0;color:#9ca3af;font-size:13px">ไม่พบข้อมูล กรุณาตรวจสอบรหัสนักเรียน</div>` : ''))}
       `}
     </div>
   </div>`
@@ -5745,7 +5766,12 @@ function bindEvents() {
       if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
       await refresh(); azToast(`ตั้งรูปแบบสายการแข่ง ม.ต้น เป็น ${btn.dataset.v} ทีมแล้ว`); return
     }
-    if (act === 'openCert') { S.certModalOpen = true; S.certResult = null; S.certInput = ''; draw(); return }
+    if (act === 'openCert') {
+      S.certModalOpen = true
+      if (S.knownStudentCode) { S.certInput = S.knownStudentCode; S.certResult = lookupCertByCode(S.knownStudentCode) }
+      else { S.certResult = null; S.certInput = '' }
+      draw(); return
+    }
     if (act === 'certClose') { S.certModalOpen = false; S.certFullscreen = false; draw(); return }
     if (act === 'certBack') { S.certFullscreen = false; draw(); return }
     if (act === 'certFull') { S.certFullscreen = true; draw(); return }
@@ -5758,21 +5784,7 @@ function bindEvents() {
     if (act === 'certSearch') {
       const code = gid('az-certInput').value.trim()
       S.certInput = code
-      const st = [...(S.players.map(p => p.students))].find(s => s?.student_code === code)
-      if (!st) { S.certResult = null; draw(); return }
-      const player = S.players.find(p => p.student_id === st.id)
-      const team = S.teams.find(t => t.id === player.team_id)
-      const level = team.level
-      const sum = computeSummary(level)
-      let award = 'ผู้เข้าร่วมการแข่งขัน'
-      let awardType = 'participant'
-      if (sum.mvp === st.full_name) { award = 'รางวัล MVP'; awardType = 'mvp' }
-      else if (sum.topScorer === st.full_name) { award = 'รางวัลดาวซัลโว'; awardType = 'top_scorer' }
-      else if (sum.bestGK === st.full_name) { award = 'รางวัลผู้รักษาประตูยอดเยี่ยม'; awardType = 'best_gk' }
-      else if (sum.champion === team.name) { award = 'ทีมชนะเลิศ'; awardType = 'champion' }
-      else if (sum.runnerUp === team.name) { award = 'ทีมรองชนะเลิศ'; awardType = 'runner_up' }
-      else if (sum.third === team.name || sum.third2 === team.name) { award = sum.thirdLabel === 'อันดับ 3 ร่วม' ? 'ทีมอันดับที่ 3 ร่วม' : 'ทีมอันดับที่ 3'; awardType = 'third' }
-      S.certResult = { name: st.full_name, team: team.name, level, award, awardType }
+      S.certResult = lookupCertByCode(code)
       draw(); return
     }
     if (act === 'createTeam') { await handleCreateTeam(btn.dataset.admin === '1'); return }

@@ -370,7 +370,7 @@ function navigate(view) {
     window._activePrayerScannerState = null
   }
 
-  if (view === 'futsal') { openAzfutsalModal(); return }
+  if (view === 'futsal') { openAzfutsalModal(_student?.student_code); return }
 
   _activeClassId = null
   _activeSubjectTab = 'todo'
