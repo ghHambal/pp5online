@@ -134,14 +134,9 @@ export async function getClassStudentCount(classId) {
 }
 
 export async function getMySubjects(teacherId) {
-  if (!teacherId) {
-    const { data, error } = await supabase
-      .from('master_subjects')
-      .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id')
-      .order('subject_name')
-    if (error) throw error
-    return data ?? []
-  }
+  // ไม่มี teacherId = คืน [] เสมอ (fail closed) — ถ้าต้องการวิชาทั้งระบบจริงๆ ให้เรียก getMasterSubjects() ตรงๆ
+  // (เดิมคืนทุกวิชาทั้งโรงเรียนถ้า teacherId ว่าง กลายเป็นช่องโหว่ถ้ามีจุดเรียกที่ teacher ยังโหลดไม่เสร็จ)
+  if (!teacherId) return []
 
   // 1. owned subjects
   const ownPromise = supabase

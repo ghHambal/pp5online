@@ -61,6 +61,14 @@ function _openExamDocsForClass(classId) {
 export async function renderMyClasses(teacher) {
   setActiveNav('my-classes')
   setTitle('ห้องเรียนของฉัน', 'classes')
+  // กัน getMySubjects/getMyClasses ตกไปโหมด "ไม่ระบุครู" (คืนทุกวิชาทั้งระบบ) ถ้า teacher ยังโหลดไม่เสร็จ
+  if (!teacher?.id) {
+    setContent(`<div class="max-w-md mx-auto text-center py-16 text-gray-400">
+      <p class="text-4xl mb-3">⚠️</p>
+      <p class="font-medium text-gray-600">ไม่พบข้อมูลครู กรุณาลองรีเฟรชหน้าใหม่</p>
+    </div>`)
+    return
+  }
   setContent(`<div class="flex justify-center py-12 text-gray-400">
     <svg class="animate-spin h-6 w-6 mr-3 text-emerald-400" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>

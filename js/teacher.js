@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.462'
+import { APP_VERSION } from './version.js?v=10.22.463'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -47,6 +47,10 @@ let _positionPerms = {}   // { feature: boolean } สำหรับ position �
 let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
 window._pp5DonorTierIndex = 0
 window._pp5SystemCfg      = {}
+// resolve เมื่อ _initDonationFlow คำนวณ tier จริงเสร็จแล้ว — จุดที่อ่าน _pp5DonorTierIndex
+// เพื่อ gate ฟีเจอร์ (เช่น Smart Classroom) ควร await ตัวนี้ก่อนเสมอ กัน race condition
+// ตอนคลิกเร็วกว่าที่ _initDonationFlow (เรียกแบบ fire-and-forget) จะโหลดเสร็จ
+window._pp5DonorTierReady = Promise.resolve()
 
 async function _loadSportsVisibility() {
   try {
@@ -3023,7 +3027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // บริการประจำหน้าครูใช้ตัวตนครูที่มีผล ทั้งโหมดปกติและสวมบทบาท
   _updateRequestsBadge()
   _startPolling()
-  if (_teacher?.id) _initDonationFlow(_teacher.id)
+  if (_teacher?.id) window._pp5DonorTierReady = _initDonationFlow(_teacher.id).catch(() => {})
   if (_teacher?.id) _checkScheduleLinkPopup()
   if (_teacher?.id) _checkTeacherShirtSizePopup()
   if (_teacher?.id) _initNotifications(_teacher.id)

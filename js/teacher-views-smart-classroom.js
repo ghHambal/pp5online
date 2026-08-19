@@ -179,6 +179,7 @@ export async function findCurrentOrNextClass(teacher) {
 // ครูระดับ 4+ ที่ติ๊ก "ไม่ต้องโชว์อีก" จะข้ามป๊อบอัพนี้ไปเปิดคลาสรูมอัตโนมัติทันทีในครั้งถัดไป
 // ครูที่ยังไม่ถึงระดับจะเห็นป๊อบอัพนี้ทุกครั้งที่กด (ไม่มีปุ่มข้าม) พร้อมปุ่มไปหน้าสนับสนุนโครงการ
 export async function openSmartClassroomLanding(teacher) {
+  await (window._pp5DonorTierReady ?? Promise.resolve()).catch(() => {})
   const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
   const unlocked = isSmartClassroomUnlocked(cfg)
 
@@ -279,6 +280,7 @@ export async function renderSmartClassroom(teacher, classId) {
     </svg>
   </div>`)
 
+  await (window._pp5DonorTierReady ?? Promise.resolve()).catch(() => {})
   const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
 
   if (!canUseSmartClassroomForClass(teacher, cfg, classId)) {
