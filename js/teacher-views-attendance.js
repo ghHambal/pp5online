@@ -1,7 +1,7 @@
 import {
   saveAttendance, getAttendanceByDate, getClassStudents,
   getClassAttendanceAll, saveAttendanceCell, getSchoolHolidays,
-  upsertHoliday, deleteHolidayByDate, getExternalAttendanceStaging,
+  getExternalAttendanceStaging,
   getExternalAttendanceStagingByRoom, exportAttendanceToStudentCare,
   getLifeSkillColumns, getLifeSkillScores, upsertLifeSkillScore,
   getReadingScoreColumns, getReadingScores, upsertReadingScore,
@@ -196,23 +196,8 @@ export async function renderAttendanceGrid(teacher, classData) {
              </div>`
           : `<table class="border-collapse text-xs" style="min-width: max-content">
           <thead>
-            <!-- Row 1: holiday checkboxes -->
+            <!-- Row 1: dates (clickable) -->
             <tr style="position:sticky;top:0;z-index:30">
-              <th class="${stickyL} text-gray-400 font-normal" style="width:32px;min-width:32px">#</th>
-              <th class="${stickyM}" style="left:32px;width:72px;min-width:72px">รหัส</th>
-              <th class="${stickyM} text-left px-2" style="left:104px;min-width:${nameW}px">ชื่อ-นามสกุล</th>
-              ${sessions.map(s => {
-                const isHol = holidaySet.has(s.ds)
-                return `<th class="${thBase} ${isHol?'bg-red-50':'bg-gray-50'}"
-                  style="width:${colW}px;min-width:${colW}px">
-                  <input type="checkbox" class="att-holiday-cb w-3 h-3 accent-red-500"
-                    data-session="${s.n}" data-date="${s.ds}" ${isHol?'checked':''}
-                    title="${s.ds}" />
-                </th>`
-              }).join('')}
-            </tr>
-            <!-- Row 2: dates (clickable) -->
-            <tr style="position:sticky;top:24px;z-index:30">
               <th class="${stickyL} bg-emerald-50/60" style="width:32px"></th>
               <th class="${stickyM} bg-emerald-50/60" style="left:32px;width:72px"></th>
               <th class="${stickyM} bg-emerald-50/60 text-left px-2" style="left:104px;min-width:${nameW}px">
@@ -232,8 +217,8 @@ export async function renderAttendanceGrid(teacher, classData) {
                 </th>`
               }).join('')}
             </tr>
-            <!-- Row 3: session numbers -->
-            <tr style="position:sticky;top:48px;z-index:30">
+            <!-- Row 2: session numbers -->
+            <tr style="position:sticky;top:24px;z-index:30">
               <th class="${stickyL} bg-gray-100 font-semibold text-gray-500" style="width:32px">#</th>
               <th class="${stickyM} bg-gray-100 font-semibold text-gray-500" style="left:32px;width:72px">รหัส</th>
               <th class="${stickyM} bg-gray-100 font-semibold text-gray-500 text-left px-2"
@@ -390,29 +375,6 @@ export async function renderAttendanceGrid(teacher, classData) {
       ))
       showToast(`ลบข้อมูลเช็คชื่อในวันหยุดเรียบร้อย ${holAttRows.length} รายการ`, 'success')
       renderAttendanceGrid(teacher, classData)
-    })
-
-    // ติ๊ก/ปลดวันหยุดที่ครูกำหนดเองจากหน้าเช็คชื่อ — เดิมช่องนี้แค่แสดงเฉยๆ ไม่มี handler เลย
-    // ติ๊กแล้วรีเฟรชค่าจะกลับไปเป็นเดิมทุกครั้งเพราะไม่เคยบันทึกลง school_holidays จริง
-    wrap.addEventListener('change', async e => {
-      const cb = e.target.closest('.att-holiday-cb')
-      if (!cb) return
-      const date = cb.dataset.date
-      cb.disabled = true
-      try {
-        if (cb.checked) {
-          await upsertHoliday({ holiday_date: date, description: 'ครูกำหนดเอง', academic_year: curYear, semester: curSem })
-          showToast('กำหนดเป็นวันหยุดแล้ว', 'success')
-        } else {
-          await deleteHolidayByDate(curYear, curSem, date)
-          showToast('ยกเลิกวันหยุดแล้ว', 'success')
-        }
-        renderAttendanceGrid(teacher, classData)
-      } catch (err) {
-        cb.checked = !cb.checked
-        cb.disabled = false
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      }
     })
 
     // คลิกชื่อนักเรียน → สถิติรายบุคคล
