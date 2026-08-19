@@ -42,9 +42,28 @@ function _smartClassroomMinTier(cfg) {
     .map(line => { const p = line.split('|'); return { text: p[1] ?? '', minTier: parseInt(p[2]) || 1 } })
     .find(f => f.text.includes('Smart Classroom'))?.minTier ?? 4
 }
-export function isSmartClassroomUnlocked(cfg) {
-  const tierIndex = window._pp5DonorTierIndex ?? 0
-  return tierIndex >= _smartClassroomMinTier(cfg)
+// ตรวจสิทธิ์ Smart Classroom โดยดึงระดับโดเนทสดจาก DB ทุกครั้ง — ตั้งใจไม่พึ่ง
+// window._pp5DonorTierIndex/_pp5SystemCfg เพราะเป็นค่าที่ _initDonationFlow (teacher.js)
+// ตั้งแบบ fire-and-forget ไม่มีจุดไหน await คอยแน่นอนก่อนหน้านี้ — ยืนยันด้วย debug จริงแล้วว่า
+// ค่า global ยังเป็นค่าเริ่มต้น (tier=0, cfg={}) ได้แม้ init() หน้าอื่นจะรันไปไกลแล้วก็ตาม
+// (เช่น ตอนคลิกจากการ์ดห้องเรียนหลังนำทางไปมาหลายหน้า) ในขณะที่ query สดตรงๆ ถูกต้องเสมอ
+async function _resolveSmartClassroomAccess(teacher) {
+  const cfg = await getSystemConfig().catch(() => window._pp5SystemCfg ?? {})
+  const minTier = _smartClassroomMinTier(cfg)
+  let tierIndex = window._pp5DonorTierIndex ?? 0
+  if (teacher?.id) {
+    try {
+      const requests = await getMyDonationRequests(teacher.id)
+      const totalApproved = requests
+        .filter(r => r.package_type === 'donation' && r.status === 'approved')
+        .reduce((sum, r) => sum + (r.amount ?? 0), 0)
+      const minAmt = _toPositiveInt(cfg.donationMinAmount, 49)
+      const step   = _toPositiveInt(cfg.donationAmountStep, 50)
+      const tiers  = _parseDonationStickers(cfg, minAmt, step)
+      tierIndex = _getDonorTierIndex(cfg, tiers, totalApproved)
+    } catch { /* query สดล้มเหลว — ใช้ค่า global เดิมเป็น fallback สุดท้าย */ }
+  }
+  return { cfg, minTier, unlocked: tierIndex >= minTier }
 }
 
 // ─── ห้องฟรี 1 ห้อง สำหรับครูที่ยังไม่ถึงระดับโดเนทที่ปลดล็อก Smart Classroom ────
@@ -55,25 +74,8 @@ function _donationTierAmount(cfg, tier) {
   return tiers[tier - 1]?.amount ?? null
 }
 
-// DEBUG ชั่วคราว — คำนวณ tier สดใหม่จาก DB ตรงๆ ไม่พึ่ง window._pp5DonorTierIndex เลย เทียบดูว่าตรงกันไหม
-async function _debugFreshTier(teacher, cfg) {
-  try {
-    const requests = await getMyDonationRequests(teacher.id)
-    const totalApproved = requests
-      .filter(r => r.package_type === 'donation' && r.status === 'approved')
-      .reduce((sum, r) => sum + (r.amount ?? 0), 0)
-    const minAmt = _toPositiveInt(cfg.donationMinAmount, 49)
-    const step   = _toPositiveInt(cfg.donationAmountStep, 50)
-    const tiers  = _parseDonationStickers(cfg, minAmt, step)
-    const fresh  = _getDonorTierIndex(cfg, tiers, totalApproved)
-    return `fresh=${fresh} totalApproved=${totalApproved} nRequests=${requests.length}`
-  } catch (e) {
-    return `fresh-ERROR: ${e.message ?? e}`
-  }
-}
-
-export function canUseSmartClassroomForClass(teacher, cfg, classId) {
-  if (isSmartClassroomUnlocked(cfg)) return true
+export function canUseSmartClassroomForClass(unlocked, teacher, classId) {
+  if (unlocked) return true
   return teacher?.smart_classroom_free_class_id === classId
 }
 
@@ -196,9 +198,7 @@ export async function findCurrentOrNextClass(teacher) {
 // ครูระดับ 4+ ที่ติ๊ก "ไม่ต้องโชว์อีก" จะข้ามป๊อบอัพนี้ไปเปิดคลาสรูมอัตโนมัติทันทีในครั้งถัดไป
 // ครูที่ยังไม่ถึงระดับจะเห็นป๊อบอัพนี้ทุกครั้งที่กด (ไม่มีปุ่มข้าม) พร้อมปุ่มไปหน้าสนับสนุนโครงการ
 export async function openSmartClassroomLanding(teacher) {
-  await (window._pp5DonorTierReady ?? Promise.resolve()).catch(() => {})
-  const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
-  const unlocked = isSmartClassroomUnlocked(cfg)
+  const { cfg, minTier, unlocked } = await _resolveSmartClassroomAccess(teacher)
 
   if (unlocked && localStorage.getItem(SC_SKIP_POPUP_KEY) === '1') {
     _launchAuto(teacher)
@@ -210,7 +210,6 @@ export async function openSmartClassroomLanding(teacher) {
   }
 
   document.getElementById('sc-landing-modal')?.remove()
-  const minTier = _smartClassroomMinTier(cfg)
   const title  = cfg.smartClassroomLandingTitle?.trim() || 'Smart Classroom — หน้าควบคุมขณะสอนสด'
   const desc   = cfg.smartClassroomLandingDesc?.trim() || 'ทุกวินาทีระหว่างสอนสดมีค่า — ไม่ต้องเสียเวลาสลับหน้าจอไปมาระหว่างเช็คชื่อ คุมเวลา เปิดควิซ หรือสั่งงาน อีกต่อไป Smart Classroom รวมทุกเครื่องมือที่คุณใช้บ่อยที่สุดไว้จอเดียว ให้คุณโฟกัสกับการสอนได้เต็มที่ นักเรียนก็ได้รับข่าวสารถึงมือถือทันทีโดยไม่พลาด และแผนการสอน/บันทึกหลังสอนของคุณจะถูกเก็บเป็นระบบ พร้อมให้ตรวจสอบได้ทุกเมื่อโดยไม่ต้องมานั่งรวบรวมทีหลัง'
   const images = [cfg.smartClassroomLandingImg1, cfg.smartClassroomLandingImg2, cfg.smartClassroomLandingImg3].filter(Boolean)
@@ -235,7 +234,6 @@ export async function openSmartClassroomLanding(teacher) {
         <h2 class="text-white font-extrabold text-xl">${_htmlEsc(title)}</h2>
       </div>
       <div class="p-6 space-y-4">
-        <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} unlocked=${unlocked} freeClassId=${teacher?.smart_classroom_free_class_id} cfgHasFeat=${!!cfg.donationSpecialFeatures} featLine=${JSON.stringify((cfg.donationSpecialFeatures ?? '').split('\n').find(l => l.includes('Smart Classroom')) ?? null)} ${await _debugFreshTier(teacher, cfg)}</p>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           ${WHY_REASONS.map(r => `
             <div class="px-3 py-3 rounded-xl bg-amber-50 border border-amber-100 text-center">
@@ -298,16 +296,13 @@ export async function renderSmartClassroom(teacher, classId) {
     </svg>
   </div>`)
 
-  await (window._pp5DonorTierReady ?? Promise.resolve()).catch(() => {})
-  const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
+  const { cfg, minTier, unlocked } = await _resolveSmartClassroomAccess(teacher)
 
-  if (!canUseSmartClassroomForClass(teacher, cfg, classId)) {
-    const minTier = _smartClassroomMinTier(cfg)
+  if (!canUseSmartClassroomForClass(unlocked, teacher, classId)) {
     const freeClassId = teacher?.smart_classroom_free_class_id
 
     if (!freeClassId) {
       setContent(`<div class="max-w-md mx-auto text-center py-14 px-6 bg-white rounded-2xl border border-amber-200 shadow-sm">
-        <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all text-left mb-4">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} classId=${classId} freeClassId=${freeClassId} cfgHasFeat=${!!cfg.donationSpecialFeatures}</p>
         <div class="text-6xl mb-4">🎁</div>
         <p class="font-bold text-gray-800 text-lg">ใช้ Smart Classroom ฟรีได้ 1 ห้องเรียน</p>
         <p class="text-sm text-gray-500 mt-2 leading-relaxed">คุณยังไม่ได้สนับสนุนระบบระดับ ${minTier} ขึ้นไป แต่ใช้ Smart Classroom ฟรีได้ 1 ห้องเรียนครับ<br>เลือกแล้วจะล็อกใช้ได้เฉพาะห้องนี้ตลอด (เปลี่ยนภายหลังต้องติดต่อแอดมิน)</p>
@@ -344,9 +339,7 @@ export async function renderSmartClassroom(teacher, classId) {
     const myClasses = await getMyClasses(teacher.id).catch(() => [])
     const freeClassName = myClasses.find(c => c.id === freeClassId)?.class_name ?? `ห้อง #${freeClassId}`
     const tierAmount = _donationTierAmount(cfg, minTier)
-    const _dbgFresh = await _debugFreshTier(teacher, cfg)
     setContent(`<div class="max-w-md mx-auto text-center py-14 px-6 bg-white rounded-2xl border border-amber-200 shadow-sm">
-      <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all text-left mb-4">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} classId=${classId} freeClassId=${freeClassId} unlocked=${isSmartClassroomUnlocked(cfg)} cfgHasFeat=${!!cfg.donationSpecialFeatures} ${_dbgFresh}</p>
       <div class="text-6xl mb-4">🔒</div>
       <p class="font-bold text-gray-800 text-lg">Smart Classroom</p>
       <p class="text-sm text-gray-500 mt-2 leading-relaxed">คุณใช้สิทธิ์ฟรีกับห้อง <b>${_htmlEsc(freeClassName)}</b> ไปแล้ว<br>หากต้องการใช้ห้องนี้ด้วย กรุณาสนับสนุนระบบระดับ ${minTier}${tierAmount ? ` (${tierAmount} บาท)` : ''} ขึ้นไปเพื่อใช้ได้ไม่จำกัดห้องครับ</p>
