@@ -15,7 +15,7 @@ import {
   getLessonPlanReflection, upsertLessonPlanReflection, getAnnouncementTypeSuggestions,
   setSmartClassroomFreeClass,
 } from './api.js'
-import { _toPositiveInt, _parseDonationStickers } from './teacher.js'
+import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './teacher.js'
 import { getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
@@ -53,6 +53,23 @@ function _donationTierAmount(cfg, tier) {
   const step   = _toPositiveInt(cfg.donationAmountStep, 50)
   const tiers  = _parseDonationStickers(cfg, minAmt, step)
   return tiers[tier - 1]?.amount ?? null
+}
+
+// DEBUG ชั่วคราว — คำนวณ tier สดใหม่จาก DB ตรงๆ ไม่พึ่ง window._pp5DonorTierIndex เลย เทียบดูว่าตรงกันไหม
+async function _debugFreshTier(teacher, cfg) {
+  try {
+    const requests = await getMyDonationRequests(teacher.id)
+    const totalApproved = requests
+      .filter(r => r.package_type === 'donation' && r.status === 'approved')
+      .reduce((sum, r) => sum + (r.amount ?? 0), 0)
+    const minAmt = _toPositiveInt(cfg.donationMinAmount, 49)
+    const step   = _toPositiveInt(cfg.donationAmountStep, 50)
+    const tiers  = _parseDonationStickers(cfg, minAmt, step)
+    const fresh  = _getDonorTierIndex(cfg, tiers, totalApproved)
+    return `fresh=${fresh} totalApproved=${totalApproved} nRequests=${requests.length}`
+  } catch (e) {
+    return `fresh-ERROR: ${e.message ?? e}`
+  }
 }
 
 export function canUseSmartClassroomForClass(teacher, cfg, classId) {
@@ -218,7 +235,7 @@ export async function openSmartClassroomLanding(teacher) {
         <h2 class="text-white font-extrabold text-xl">${_htmlEsc(title)}</h2>
       </div>
       <div class="p-6 space-y-4">
-        <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} unlocked=${unlocked} freeClassId=${teacher?.smart_classroom_free_class_id} cfgHasFeat=${!!cfg.donationSpecialFeatures} featLine=${JSON.stringify((cfg.donationSpecialFeatures ?? '').split('\n').find(l => l.includes('Smart Classroom')) ?? null)}</p>
+        <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} unlocked=${unlocked} freeClassId=${teacher?.smart_classroom_free_class_id} cfgHasFeat=${!!cfg.donationSpecialFeatures} featLine=${JSON.stringify((cfg.donationSpecialFeatures ?? '').split('\n').find(l => l.includes('Smart Classroom')) ?? null)} ${await _debugFreshTier(teacher, cfg)}</p>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           ${WHY_REASONS.map(r => `
             <div class="px-3 py-3 rounded-xl bg-amber-50 border border-amber-100 text-center">
@@ -327,7 +344,9 @@ export async function renderSmartClassroom(teacher, classId) {
     const myClasses = await getMyClasses(teacher.id).catch(() => [])
     const freeClassName = myClasses.find(c => c.id === freeClassId)?.class_name ?? `ห้อง #${freeClassId}`
     const tierAmount = _donationTierAmount(cfg, minTier)
+    const _dbgFresh = await _debugFreshTier(teacher, cfg)
     setContent(`<div class="max-w-md mx-auto text-center py-14 px-6 bg-white rounded-2xl border border-amber-200 shadow-sm">
+      <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all text-left mb-4">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} classId=${classId} freeClassId=${freeClassId} unlocked=${isSmartClassroomUnlocked(cfg)} cfgHasFeat=${!!cfg.donationSpecialFeatures} ${_dbgFresh}</p>
       <div class="text-6xl mb-4">🔒</div>
       <p class="font-bold text-gray-800 text-lg">Smart Classroom</p>
       <p class="text-sm text-gray-500 mt-2 leading-relaxed">คุณใช้สิทธิ์ฟรีกับห้อง <b>${_htmlEsc(freeClassName)}</b> ไปแล้ว<br>หากต้องการใช้ห้องนี้ด้วย กรุณาสนับสนุนระบบระดับ ${minTier}${tierAmount ? ` (${tierAmount} บาท)` : ''} ขึ้นไปเพื่อใช้ได้ไม่จำกัดห้องครับ</p>

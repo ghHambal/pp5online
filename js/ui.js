@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.464'
+import { APP_VERSION } from './version.js?v=10.22.465'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.465': [
+    '🔧 ขยายข้อความ debug ใน Smart Classroom ให้คำนวณระดับโดเนทสดใหม่เทียบด้วย (ยังเป็นเวอร์ชันวินิจฉัยชั่วคราว จะลบออกเมื่อแก้เสร็จ)'
+  ],
   '10.22.464': [
     '🔧 เพิ่มข้อความ debug ชั่วคราวในป๊อบอัพ Smart Classroom เพื่อตรวจสอบบั๊กที่แก้ใน 10.22.463 ยังไม่หายขาด (จะลบออกในเวอร์ชันถัดไป)'
   ],

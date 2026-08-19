@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.464'
+import { APP_VERSION } from './version.js?v=10.22.465'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -356,7 +356,7 @@ const _parseDonationFeatures = cfg => {
 }
 
 // คืน tier index (1-4) ของ approved donation — 0 = ไม่มี
-const _getDonorTierIndex = (cfg, tiers, amount) => {
+export const _getDonorTierIndex = (cfg, tiers, amount) => {
   if (!amount) return 0
   const idx = [...tiers].map((t,i) => ({t,i})).reverse().find(({t}) => amount >= t.amount)?.i
   return idx !== undefined ? idx + 1 : 0
