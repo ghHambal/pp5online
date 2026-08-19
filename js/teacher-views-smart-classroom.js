@@ -218,6 +218,7 @@ export async function openSmartClassroomLanding(teacher) {
         <h2 class="text-white font-extrabold text-xl">${_htmlEsc(title)}</h2>
       </div>
       <div class="p-6 space-y-4">
+        <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} unlocked=${unlocked} freeClassId=${teacher?.smart_classroom_free_class_id} cfgHasFeat=${!!cfg.donationSpecialFeatures} featLine=${JSON.stringify((cfg.donationSpecialFeatures ?? '').split('\n').find(l => l.includes('Smart Classroom')) ?? null)}</p>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           ${WHY_REASONS.map(r => `
             <div class="px-3 py-3 rounded-xl bg-amber-50 border border-amber-100 text-center">
@@ -289,6 +290,7 @@ export async function renderSmartClassroom(teacher, classId) {
 
     if (!freeClassId) {
       setContent(`<div class="max-w-md mx-auto text-center py-14 px-6 bg-white rounded-2xl border border-amber-200 shadow-sm">
+        <p class="text-[10px] font-mono bg-gray-900 text-lime-300 rounded-lg p-2 break-all text-left mb-4">DEBUG tier=${window._pp5DonorTierIndex} minTier=${minTier} classId=${classId} freeClassId=${freeClassId} cfgHasFeat=${!!cfg.donationSpecialFeatures}</p>
         <div class="text-6xl mb-4">🎁</div>
         <p class="font-bold text-gray-800 text-lg">ใช้ Smart Classroom ฟรีได้ 1 ห้องเรียน</p>
         <p class="text-sm text-gray-500 mt-2 leading-relaxed">คุณยังไม่ได้สนับสนุนระบบระดับ ${minTier} ขึ้นไป แต่ใช้ Smart Classroom ฟรีได้ 1 ห้องเรียนครับ<br>เลือกแล้วจะล็อกใช้ได้เฉพาะห้องนี้ตลอด (เปลี่ยนภายหลังต้องติดต่อแอดมิน)</p>
