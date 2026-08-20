@@ -155,8 +155,8 @@ function renderStudent() {
         ${field('nickname','ชื่อเล่น',r?.nickname,'text',true,canEdit)}
         ${field('thai_name','ชื่อภาษาไทย',r?.thai_name || s.full_name,'text',true,canEdit)}
         ${field('english_name','ชื่อภาษาอังกฤษ',r?.english_name,'text',true,canEdit)}
-        ${field('passport_number','เลขที่หนังสือเดินทาง',r?.passport_number,'text',true,canEdit)}
-        ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง',r?.passport_expiry,'date',true,canEdit)}
+        ${field('passport_number','เลขบัตรประชาชน / เลขที่หนังสือเดินทาง (ถ้ามี)',r?.passport_number,'text',false,canEdit)}
+        ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ถ้ามี)',r?.passport_expiry,'date',false,canEdit)}
         ${field('birth_date','วันเดือนปีเกิด',r?.birth_date,'date',true,canEdit)}
         ${field('nationality','สัญชาติ',r?.nationality || 'ไทย','text',true,canEdit)}
         <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r?.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
@@ -272,8 +272,8 @@ function teacherSurveyForm(teacher, registration, canEdit) {
     ${field('nickname','ชื่อเล่น',r.nickname,'text',true,canEdit)}
     ${field('thai_name','ชื่อภาษาไทย',r.thai_name || teacher?.full_name,'text',true,canEdit)}
     ${field('english_name','ชื่อภาษาอังกฤษ',r.english_name,'text',true,canEdit)}
-    ${field('passport_number','เลขที่หนังสือเดินทาง',r.passport_number,'text',true,canEdit)}
-    ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง',r.passport_expiry,'date',true,canEdit)}
+    ${field('passport_number','เลขบัตรประชาชน / เลขที่หนังสือเดินทาง (ถ้ามี)',r.passport_number,'text',false,canEdit)}
+    ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ถ้ามี)',r.passport_expiry,'date',false,canEdit)}
     ${field('birth_date','วันเดือนปีเกิด',r.birth_date,'date',true,canEdit)}
     ${field('nationality','สัญชาติ',r.nationality || 'ไทย','text',true,canEdit)}
     <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
