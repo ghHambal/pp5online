@@ -4,7 +4,7 @@
 // รองรับกิจกรรมที่เปิดให้นักเรียนทั่วไปเข้าร่วมด้วย (openToGeneral) — ถ้าสแกนแล้วไม่เจอในรายชื่อ
 // สมาชิกสภาที่โหลดมา จะค้นหานักเรียนทั่วไปด้วย student_code แทน (ไม่โหลดรายชื่อนักเรียนทั้งโรงเรียน
 // มาไว้ล่วงหน้าเพราะมีเป็นพันคน — ค้นแบบ on-demand ทีละคนตอนสแกนเจอ)
-import { checkInAttendance, searchStudentsForCouncil } from './council-api.js'
+import { checkInAttendance, undoCheckInAttendance, searchStudentsForCouncil } from './council-api.js'
 import { showToast } from './ui.js'
 
 function _playScanBeep(type = 'success') {
@@ -47,7 +47,7 @@ function _esc(s) {
 // opts: { activityId, activityTitle, members: [{ id, student_id, students:{full_name, student_code, image_url, photo_url} }],
 //   alreadyChecked: Set<studentId>, onCheckedIn: (studentId) => void, openToGeneral: boolean }
 export function openCouncilCheckinScanner(opts) {
-  const { activityId, activityTitle, members, alreadyChecked, onCheckedIn, openToGeneral } = opts
+  const { activityId, activityTitle, members, alreadyChecked, onCheckedIn, onUndo, openToGeneral } = opts
   document.getElementById('council-checkin-overlay')?.remove()
 
   const overlay = document.createElement('div')
@@ -117,6 +117,7 @@ export function openCouncilCheckinScanner(opts) {
       <div class="flex items-center gap-2 text-xs py-1.5 border-b border-slate-800/60 last:border-b-0">
         <span class="font-medium text-slate-200 truncate flex-1 min-w-0">${_esc(r.name)}</span>
         <span class="text-emerald-400 font-bold text-[11px] flex-shrink-0">✓ เช็คอินแล้ว</span>
+        <button data-ccs-undo="${_esc(r.studentId)}" class="px-2 py-0.5 rounded-md border border-red-800/60 bg-red-950/40 text-red-400 text-[10.5px] font-bold flex-shrink-0">✕ ยกเลิก</button>
       </div>`).join('')
   }
 
@@ -156,7 +157,7 @@ export function openCouncilCheckinScanner(opts) {
       checked.add(resolved.studentId)
       _playScanBeep('success'); flash(true)
       feedback.innerHTML = `<div class="bg-emerald-950/40 border border-emerald-800/80 rounded-2xl p-3 text-center text-xs text-emerald-300">✓ เช็คอิน ${_esc(resolved.name)} สำเร็จ</div>`
-      recentList.unshift({ name: resolved.name })
+      recentList.unshift({ name: resolved.name, studentId: resolved.studentId })
       renderHistory()
       onCheckedIn?.(resolved.studentId)
     } catch (err) {
@@ -191,6 +192,24 @@ export function openCouncilCheckinScanner(opts) {
     await processCode(code)
     input.value = ''
     input.focus()
+  })
+
+  overlay.querySelector('#ccs-history-list').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-ccs-undo]')
+    if (!btn) return
+    const studentId = Number(btn.dataset.ccsUndo)
+    btn.disabled = true
+    try {
+      await undoCheckInAttendance({ activityId, studentId })
+      checked.delete(studentId)
+      const idx = recentList.findIndex(r => r.studentId === studentId)
+      if (idx !== -1) recentList.splice(idx, 1)
+      renderHistory()
+      onUndo?.(studentId)
+    } catch (err) {
+      showToast('ยกเลิกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      btn.disabled = false
+    }
   })
 
   overlay.querySelector('#ccs-close').addEventListener('click', async () => {

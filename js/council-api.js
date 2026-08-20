@@ -545,6 +545,13 @@ export async function checkInAttendance({ activityId, studentId }) {
   if (error) throw error
 }
 
+// ยกเลิกเช็คอินที่กดผิด — ใช้ตอนสแกน/กรอกรหัสผิดคนแล้วอยากลบออกจากรายการ
+export async function undoCheckInAttendance({ activityId, studentId }) {
+  const { error } = await supabase.from('council_activity_attendance')
+    .delete().eq('activity_id', activityId).eq('student_id', studentId)
+  if (error) throw error
+}
+
 // ─── เกียรติบัตรกิจกรรม — เทมเพลต/เงื่อนไขต่อกิจกรรม/สถานะต่อนักเรียน ──────────────────────
 export async function getCertificateTemplates() {
   const { data, error } = await supabase.from('council_certificate_templates').select('*').order('created_at')

@@ -4721,6 +4721,7 @@ function wireActivitiesEvents() {
         activityId, activityTitle: btn.dataset.title, openToGeneral: !!btn.dataset.openGeneral,
         members: eligibleMembers, alreadyChecked: attendanceByActivity[activityId],
         onCheckedIn: studentId => { attendanceByActivity[activityId]?.add(studentId); render() },
+        onUndo: studentId => { attendanceByActivity[activityId]?.delete(studentId); render() },
       })
     })
   })
