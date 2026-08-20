@@ -185,9 +185,9 @@ export async function declineApplicationEndorsement({ applicationId, teacherId, 
 
 // ─── รับรองจากสภานักเรียนปัจจุบัน — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 ─────────────────────
 // 2026-08-20: ผู้สมัครเลือกได้เองว่าอยากให้ "พี่สภา" คนไหนรับรอง (requested_peer_endorser_id)
-// คิวนี้จึงเจาะจงเฉพาะคนที่ถูกเลือกเท่านั้น ไม่ใช่ pool กลางที่สมาชิกเพศเดียวกันคนไหนก็รับรองได้
-// เหมือนเดิมอีกต่อไป — ยังกรอง gender ควบคู่ไปด้วยเผื่อใบสมัครเก่าก่อนฟีเจอร์นี้ที่ไม่ได้ระบุคนไว้
-// (requested_peer_endorser_id เป็น null) จะได้ไม่มีใครเห็นเลยเฉยๆ ให้ยังตกไปอยู่ pool กลางแบบเดิม
+// คิวนี้เจาะจงเฉพาะคนที่ถูกเลือกเท่านั้น — ใบสมัครที่ไม่ได้ระบุใครไว้ (requested_peer_endorser_id
+// เป็น null) จะไม่โผล่ในคิวของใครเลย (ยืนยันกับผู้ใช้แล้ว 2026-08-20 ว่าไม่ต้องมี pool กลางอีก
+// ต่อไป — ใบสมัครแบบนี้ต้องให้เจ้าของใบสมัครกลับไปเลือกพี่สภาเองก่อน ถึงจะมีคนรับรองให้ได้)
 export async function getPendingPeerEndorsements(gender, memberId) {
   const { data, error } = await supabase.from('council_applications')
     .select(`id, position_id, motivation, photo_url, status, created_at, requested_peer_endorser_id,
@@ -195,11 +195,10 @@ export async function getPendingPeerEndorsements(gender, memberId) {
       students(id, full_name, student_code, main_room, image_url, photo_url)`)
     .eq('status', 'pending').is('peer_endorsed_at', null)
     .eq('council_positions.gender', gender)
+    .eq('requested_peer_endorser_id', memberId)
     .order('created_at')
   if (error) throw error
-  // เทียบแบบ string เพราะ bigint จาก Postgres มักถูกส่งมาเป็น string ผ่าน supabase-js
-  // (กัน type mismatch แบบ "5" !== 5 ที่ทำให้ filter หลุดเงียบๆ)
-  return (data ?? []).filter(a => a.requested_peer_endorser_id == null || String(a.requested_peer_endorser_id) === String(memberId))
+  return data ?? []
 }
 
 // ให้เจ้าของใบสมัคร (นักเรียน) เลือก/เปลี่ยนพี่สภาที่ต้องการให้รับรองได้เอง หลังส่งใบสมัครไปแล้ว
@@ -212,13 +211,15 @@ export async function updateRequestedPeerEndorser({ applicationId, memberId }) {
   if (error) throw error
 }
 
-// ต้องเป็นคนที่ถูกผู้สมัครระบุชื่อไว้เท่านั้นถึงจะรับรองได้ (ใบสมัครเก่าที่ไม่ได้ระบุใครไว้ยังเปิดกว้างเหมือนเดิม)
+// ต้องเป็นคนที่ถูกผู้สมัครระบุชื่อไว้เท่านั้นถึงจะรับรองได้ — ใบสมัครที่ไม่ได้ระบุใครไว้เลย
+// (requested_peer_endorser_id เป็น null) ก็รับรองผ่านทางนี้ไม่ได้เช่นกัน (ไม่มี pool กลางแล้ว
+// ตามที่ยืนยันกับผู้ใช้ 2026-08-20) — เจ้าของใบสมัครต้องกลับไปเลือกพี่สภาก่อนถึงจะมีคนรับรองได้
 export async function submitPeerEndorsement({ applicationId, memberId, comment }) {
   const { data: app, error: fetchError } = await supabase.from('council_applications')
     .select('requested_peer_endorser_id').eq('id', applicationId).single()
   if (fetchError) throw fetchError
-  if (app.requested_peer_endorser_id != null && String(app.requested_peer_endorser_id) !== String(memberId)) {
-    throw new Error('ใบสมัครนี้ผู้สมัครระบุให้พี่สภาคนอื่นเป็นผู้รับรอง ไม่สามารถรับรองแทนได้')
+  if (String(app.requested_peer_endorser_id) !== String(memberId)) {
+    throw new Error('ใบสมัครนี้ไม่ได้ระบุให้คุณเป็นผู้รับรอง')
   }
   const { error } = await supabase.from('council_applications')
     .update({ peer_endorsed_by_member_id: memberId, peer_endorsement_comment: comment, peer_endorsed_at: new Date().toISOString() })
