@@ -118,8 +118,10 @@ export async function getMyCouncilApplications(studentId) {
       gpa_general, gpa_religious, intro_video_url, certificates,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
       peer_endorsed_by_member_id, peer_endorsement_comment, peer_endorsed_at,
+      requested_peer_endorser_id,
       teachers(full_name),
       council_members!council_applications_peer_endorsed_by_member_id_fkey(students(full_name)),
+      requested_peer_endorser:council_members!council_applications_requested_peer_endorser_id_fkey(students(full_name)),
       council_positions(position_name, gender, is_elected)`)
     .eq('student_id', studentId).order('created_at', { ascending: false })
   if (error) throw error
@@ -134,13 +136,16 @@ export async function getMyCouncilMembership(studentId) {
   return data ?? []
 }
 
-// ─── สมัครสภานักเรียน — wizard 5 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
-export async function submitCouncilApplication({ studentId, positionId, academicYear, motivation, photoUrl, gpaGeneral, gpaReligious, introVideoUrl, certificates }) {
+// ─── สมัครสภานักเรียน — wizard 5-6 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
+// ขั้นเลือก "พี่สภาที่ต้องการให้รับรอง" (requestedPeerEndorserId) เป็นขั้นที่ 6 แบบมีเงื่อนไข
+// (โผล่เฉพาะตอน council_require_peer_endorsement เปิดอยู่) — ผู้สมัครเลือกได้ 2026-08-20
+export async function submitCouncilApplication({ studentId, positionId, academicYear, motivation, photoUrl, gpaGeneral, gpaReligious, introVideoUrl, certificates, requestedPeerEndorserId }) {
   const { error } = await supabase.from('council_applications').insert({
     student_id: studentId, position_id: positionId, academic_year: academicYear,
     motivation, photo_url: photoUrl,
     gpa_general: gpaGeneral, gpa_religious: gpaReligious, intro_video_url: introVideoUrl,
     certificates: certificates ?? [],
+    requested_peer_endorser_id: requestedPeerEndorserId ?? null,
   })
   if (error) throw error
 }
@@ -178,23 +183,31 @@ export async function declineApplicationEndorsement({ applicationId, teacherId, 
   if (error) throw error
 }
 
-// ─── รับรองจากสภานักเรียนปัจจุบัน (เพศเดียวกัน) — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 ─────────────
-// เกิดขึ้นคู่ขนานกับการรับรองของครูที่ปรึกษาสามัญ (ไม่ใช่ทีหลัง) — ตำแหน่งที่สมัครกำหนดเพศ
-// ของคิวอยู่แล้ว จึงกรองแค่ status='pending' + peer_endorsed_at ยังว่าง + position gender ตรง
-// (ฝั่ง UI จะกรองคนที่เป็นสมาชิกสภาปัจจุบันอยู่แล้วออกอีกชั้น เพราะคนกลุ่มนั้นข้ามขั้นตอนนี้ได้)
-export async function getPendingPeerEndorsements(gender) {
+// ─── รับรองจากสภานักเรียนปัจจุบัน — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 ─────────────────────
+// 2026-08-20: ผู้สมัครเลือกได้เองว่าอยากให้ "พี่สภา" คนไหนรับรอง (requested_peer_endorser_id)
+// คิวนี้จึงเจาะจงเฉพาะคนที่ถูกเลือกเท่านั้น ไม่ใช่ pool กลางที่สมาชิกเพศเดียวกันคนไหนก็รับรองได้
+// เหมือนเดิมอีกต่อไป — ยังกรอง gender ควบคู่ไปด้วยเผื่อใบสมัครเก่าก่อนฟีเจอร์นี้ที่ไม่ได้ระบุคนไว้
+// (requested_peer_endorser_id เป็น null) จะได้ไม่มีใครเห็นเลยเฉยๆ ให้ยังตกไปอยู่ pool กลางแบบเดิม
+export async function getPendingPeerEndorsements(gender, memberId) {
   const { data, error } = await supabase.from('council_applications')
-    .select(`id, position_id, motivation, photo_url, status, created_at,
+    .select(`id, position_id, motivation, photo_url, status, created_at, requested_peer_endorser_id,
       council_positions!inner(position_name, gender),
       students(id, full_name, student_code, main_room, image_url, photo_url)`)
     .eq('status', 'pending').is('peer_endorsed_at', null)
     .eq('council_positions.gender', gender)
     .order('created_at')
   if (error) throw error
-  return data ?? []
+  return (data ?? []).filter(a => a.requested_peer_endorser_id == null || a.requested_peer_endorser_id === memberId)
 }
 
+// ต้องเป็นคนที่ถูกผู้สมัครระบุชื่อไว้เท่านั้นถึงจะรับรองได้ (ใบสมัครเก่าที่ไม่ได้ระบุใครไว้ยังเปิดกว้างเหมือนเดิม)
 export async function submitPeerEndorsement({ applicationId, memberId, comment }) {
+  const { data: app, error: fetchError } = await supabase.from('council_applications')
+    .select('requested_peer_endorser_id').eq('id', applicationId).single()
+  if (fetchError) throw fetchError
+  if (app.requested_peer_endorser_id != null && app.requested_peer_endorser_id !== memberId) {
+    throw new Error('ใบสมัครนี้ผู้สมัครระบุให้พี่สภาคนอื่นเป็นผู้รับรอง ไม่สามารถรับรองแทนได้')
+  }
   const { error } = await supabase.from('council_applications')
     .update({ peer_endorsed_by_member_id: memberId, peer_endorsement_comment: comment, peer_endorsed_at: new Date().toISOString() })
     .eq('id', applicationId)

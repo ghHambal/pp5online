@@ -67,8 +67,8 @@ let ctx = null
 let activeView = 'overview'
 // ─── สมัครสภานักเรียน — wizard 5 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
 let showApplyForm = false // true = กำลังแสดง wizard (แทนปุ่มเปิดฟอร์ม)
-let applyStep = 1 // 1 เลือกตำแหน่ง / 2 เกรด+แรงจูงใจ / 3 รูปถ่าย / 4 วิดีโอแนะนำตัว / 5 เกียรติบัตร/รางวัล
-let applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '' }
+let applyStep = 1 // 1 เลือกตำแหน่ง / 2 เกรด+แรงจูงใจ / 3 รูปถ่าย / 4 วิดีโอแนะนำตัว / 5 เกียรติบัตร/รางวัล / 6 เลือกพี่สภารับรอง (มีเงื่อนไข)
+let applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '', peerEndorserId: '' }
 let applyPhotoFile = null
 let applyPhotoPreviewUrl = null // object URL สำหรับพรีวิวรูปก่อนอัปโหลดจริง
 const MIN_APPLY_CERTIFICATES = 5 // ค่า fallback ก่อนโหลด ctx.cfg เสร็จ/ก่อนแอดมินตั้งค่าเอง — ค่าจริงที่ใช้บังคับดู minApplyCertificates()
@@ -85,7 +85,7 @@ let applyDraftPrompt = null // ร่างที่กู้คืนได้�
 function resetApplyWizard() {
   showApplyForm = false
   applyStep = 1
-  applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '' }
+  applyData = { positionId: '', gpaGeneral: '', gpaReligious: '', motivation: '', videoUrl: '', peerEndorserId: '' }
   applyPhotoFile = null
   if (applyPhotoPreviewUrl) URL.revokeObjectURL(applyPhotoPreviewUrl)
   applyPhotoPreviewUrl = null
@@ -724,7 +724,8 @@ function renderApplyView() {
     : applyStep === 2 ? renderApplyStep2()
     : applyStep === 3 ? renderApplyStep3()
     : applyStep === 4 ? renderApplyStep4()
-    : renderApplyStep5()
+    : applyStep === 5 ? renderApplyStep5()
+    : renderApplyStep6(gender)
 
   return `
     <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--primary-45)] p-4">
@@ -739,13 +740,13 @@ function renderApplyView() {
 }
 
 function renderApplyDraftPrompt() {
-  const stepLabel = APPLY_STEP_LABELS[applyDraftPrompt.step - 1] ?? ''
+  const stepLabel = applyStepLabels()[applyDraftPrompt.step - 1] ?? ''
   const savedDate = applyDraftPrompt.savedAt ? new Date(applyDraftPrompt.savedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''
   return `
     <div class="text-center py-4 space-y-3">
       <p class="text-3xl">📝</p>
       <p class="text-sm font-bold text-[var(--ink)]">พบข้อมูลที่กรอกค้างไว้</p>
-      <p class="text-xs text-[var(--muted-2)]">กรอกถึงขั้นตอนที่ ${applyDraftPrompt.step}/5 · ${esc(stepLabel)}${savedDate ? ` · บันทึกล่าสุด ${savedDate}` : ''}</p>
+      <p class="text-xs text-[var(--muted-2)]">กรอกถึงขั้นตอนที่ ${applyDraftPrompt.step}/${applyStepLabels().length} · ${esc(stepLabel)}${savedDate ? ` · บันทึกล่าสุด ${savedDate}` : ''}</p>
       <p class="text-[0.6875rem] text-[var(--gold-ink)] bg-[var(--gold-soft)] border border-[var(--gold-soft-line)] rounded-xl p-2.5 text-left">⚠️ รูปถ่าย/ไฟล์เกียรติบัตรที่เคยแนบไว้ต้องแนบใหม่อีกครั้ง (เบราว์เซอร์เก็บไฟล์ข้ามการปิดหน้าไม่ได้) ส่วนข้อความอื่นๆ กู้คืนให้ครบ</p>
       <div class="flex gap-2 pt-1">
         <button type="button" id="btn-apply-draft-discard" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">เริ่มใหม่</button>
@@ -754,14 +755,23 @@ function renderApplyDraftPrompt() {
     </div>`
 }
 
-const APPLY_STEP_LABELS = ['เลือกตำแหน่ง', 'เกรดเฉลี่ย & แรงจูงใจ', 'รูปถ่าย', 'วิดีโอแนะนำตัว', 'เกียรติบัตร/รางวัล']
+const APPLY_STEP_LABELS_BASE = ['เลือกตำแหน่ง', 'เกรดเฉลี่ย & แรงจูงใจ', 'รูปถ่าย', 'วิดีโอแนะนำตัว', 'เกียรติบัตร/รางวัล']
+
+// ขั้น "เลือกพี่สภาที่ต้องการให้รับรอง" โผล่เฉพาะตอนแอดมินเปิดใช้ council_require_peer_endorsement
+function applyRequiresPeerEndorserStep() {
+  return ctx.cfg.council_require_peer_endorsement === 'true'
+}
+function applyStepLabels() {
+  return applyRequiresPeerEndorserStep() ? [...APPLY_STEP_LABELS_BASE, 'เลือกพี่สภารับรอง'] : APPLY_STEP_LABELS_BASE
+}
 
 function renderApplyProgress() {
+  const labels = applyStepLabels()
   return `
     <div class="flex items-center gap-1.5 mb-3">
-      ${[1, 2, 3, 4, 5].map(n => `<div class="flex-1 h-1.5 rounded-full ${n <= applyStep ? 'bg-[var(--primary)]' : 'bg-[var(--line-soft)]'}"></div>`).join('')}
+      ${labels.map((_, i) => `<div class="flex-1 h-1.5 rounded-full ${i + 1 <= applyStep ? 'bg-[var(--primary)]' : 'bg-[var(--line-soft)]'}"></div>`).join('')}
     </div>
-    <p class="text-xs font-bold text-[var(--muted)] mb-3">ขั้นตอนที่ ${applyStep}/5 · ${APPLY_STEP_LABELS[applyStep - 1]}</p>`
+    <p class="text-xs font-bold text-[var(--muted)] mb-3">ขั้นตอนที่ ${applyStep}/${labels.length} · ${labels[applyStep - 1]}</p>`
 }
 
 function renderApplyStep1(openPositions) {
@@ -874,7 +884,48 @@ function renderApplyStep5() {
       <button type="button" id="btn-add-cert" class="w-full py-2 rounded-xl border border-dashed border-[var(--line)] text-xs font-bold text-[var(--muted)] hover:bg-[var(--surface-2)]">＋ เพิ่มรายการ</button>
       <div class="flex gap-2 pt-1">
         <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
-        <button type="button" id="btn-apply-step5-next" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ตรวจสอบและยืนยัน →</button>
+        <button type="button" id="btn-apply-step5-next" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">${applyRequiresPeerEndorserStep() ? 'ถัดไป →' : 'ตรวจสอบและยืนยัน →'}</button>
+      </div>
+    </div>`
+}
+
+// ขั้นเลือก "พี่สภาที่ต้องการให้รับรอง" — โผล่เฉพาะตอนแอดมินเปิด council_require_peer_endorsement
+// แสดงเฉพาะสมาชิกสภา active เพศเดียวกับตำแหน่งที่สมัคร (ไม่รวมตัวเอง กันเลือกตัวเองรับรองตัวเอง)
+// เลือกได้คนเดียว — ใบสมัครจะไปเข้าคิวเฉพาะของคนที่ถูกเลือกเท่านั้น (ไม่ใช่ pool กลางเหมือนเดิม)
+function renderApplyStep6(gender) {
+  const candidates = (ctx.members || [])
+    .filter(m => m.council_positions?.gender === gender && m.student_id !== ctx.student.id)
+    .sort((a, b) => (a.council_positions?.sort_order ?? 0) - (b.council_positions?.sort_order ?? 0))
+
+  if (!candidates.length) {
+    return `
+      <div class="space-y-3">
+        <div class="bg-[var(--gold-soft)] border border-[var(--gold-soft-line)] rounded-xl p-3 text-xs text-[var(--gold-ink)]">
+          ⚠️ ตอนนี้ยังไม่มีสมาชิกสภานักเรียน${GENDER_LABEL[gender]}ในระบบให้เลือกเป็นผู้รับรอง กรุณาติดต่อครูที่ปรึกษาสภาหรือผู้ดูแลระบบ
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
+        </div>
+      </div>`
+  }
+
+  const card = m => `
+    <button type="button" class="btn-pick-peer-endorser w-full flex items-center gap-3 rounded-xl border p-3 text-left transition ${String(applyData.peerEndorserId) === String(m.id) ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line)] hover:border-[var(--primary-45)]'}" data-id="${m.id}">
+      ${studentPhoto(m.students, 'w-11 h-14')}
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
+        <p class="text-xs text-[var(--muted)] truncate">${esc(m.council_positions?.position_name ?? '—')} · ${esc(m.students?.main_room ?? '—')}</p>
+      </div>
+      ${String(applyData.peerEndorserId) === String(m.id) ? `<span class="text-[var(--primary)] text-lg flex-shrink-0">✓</span>` : ''}
+    </button>`
+
+  return `
+    <div class="space-y-3">
+      <p class="text-xs text-[var(--muted-2)]">เลือกสมาชิกสภานักเรียน${GENDER_LABEL[gender]}ที่ต้องการให้เป็นผู้รับรองใบสมัครของคุณ — ใบสมัครจะรอเฉพาะคนที่เลือกเท่านั้น</p>
+      <div class="space-y-2 max-h-96 overflow-y-auto">${candidates.map(card).join('')}</div>
+      <div class="flex gap-2 pt-1">
+        <button type="button" id="btn-apply-back" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm text-[var(--ink-2)]">← ย้อนกลับ</button>
+        <button type="button" id="btn-apply-step6-next" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold" ${applyData.peerEndorserId ? '' : 'disabled'}>ตรวจสอบและยืนยัน →</button>
       </div>
     </div>`
 }
@@ -883,6 +934,7 @@ function renderApplyStep5() {
 function renderApplyConfirmModal() {
   const position = ctx.positions.find(p => p.id === Number(applyData.positionId))
   const s = ctx.student
+  const peerEndorser = applyData.peerEndorserId ? (ctx.members || []).find(m => String(m.id) === String(applyData.peerEndorserId)) : null
   return `
     <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="apply-confirm-backdrop">
       <div class="bg-[var(--surface)] rounded-2xl shadow-[0_8px_28px_rgba(11,20,16,0.25)] max-w-md w-full max-h-[85vh] overflow-y-auto p-5">
@@ -901,6 +953,7 @@ function renderApplyConfirmModal() {
           <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">รูปถ่าย</span><span class="font-bold ${applyPhotoFile ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}">${applyPhotoFile ? '✅ แนบแล้ว' : '❌ ยังไม่ได้แนบ'}</span></div>
           <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">วิดีโอ</span><span class="font-bold text-[var(--ink)] truncate">${esc(applyData.videoUrl)}</span></div>
           <div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">เกียรติบัตร/รางวัล</span><span class="font-bold text-[var(--ok)]">✅ ${applyCertificates.filter(c => c.file && c.title.trim()).length} รายการ</span></div>
+          ${peerEndorser ? `<div class="flex justify-between gap-2"><span class="text-[var(--muted)] flex-shrink-0">พี่สภาที่ขอให้รับรอง</span><span class="font-bold text-[var(--ink)] text-right">${esc(peerEndorser.students?.full_name ?? '—')}</span></div>` : ''}
           <div>
             <p class="text-[var(--muted)] mb-1">แรงจูงใจ</p>
             <p class="text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(applyData.motivation)}</p>
@@ -1658,13 +1711,13 @@ function renderEndorseView() {
   return `<div class="space-y-3">${ctx.pendingEndorsements.map(card).join('')}</div>`
 }
 
-// ─── รับรองจากสภานักเรียนปัจจุบัน (เพศเดียวกัน) — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 ──────────────
-// สมาชิกสภา active คนไหนก็ได้ (เพศเดียวกับตำแหน่งที่สมัคร) รับรอง 1 คนพอ ไม่บังคับคอมเมนต์
-// (ต่างจากครูที่ปรึกษาสามัญที่บังคับคอมเมนต์ทั้งรับรอง/ไม่รับรอง — อันนี้เบากว่า ไม่มีปุ่ม "ไม่รับรอง")
-const peerEndorsements = {} // { M: [...], W: [...] } — undefined = ยังไม่โหลด
+// ─── รับรองจากสภานักเรียนปัจจุบัน — เพิ่มตามที่ผู้ใช้ขอ 2026-08-16 ──────────────────────
+// 2026-08-20: ผู้สมัครเลือกเองว่าอยากให้ "พี่สภา" คนไหนรับรอง คิวนี้จึงเจาะจงเฉพาะคนที่ถูก
+// เลือกเท่านั้น (ใบสมัครเก่าก่อนฟีเจอร์นี้ที่ไม่ได้ระบุใครไว้ ยังเป็น pool กลางเหมือนเดิม)
+const peerEndorsements = {} // { [memberId]: [...] } — undefined = ยังไม่โหลด
 
-async function loadPeerEndorsements(gender) {
-  peerEndorsements[gender] = await getPendingPeerEndorsements(gender).catch(() => [])
+async function loadPeerEndorsements(gender, memberId) {
+  peerEndorsements[memberId] = await getPendingPeerEndorsements(gender, memberId).catch(() => [])
   render()
 }
 
@@ -1673,8 +1726,8 @@ function renderPeerEndorseView() {
   if (!myMember) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะสมาชิกสภานักเรียนปัจจุบันเท่านั้น</p>`
   const gender = myMember.council_positions?.gender
   if (!gender) return ''
-  if (peerEndorsements[gender] === undefined) { loadPeerEndorsements(gender); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
-  const list = peerEndorsements[gender]
+  if (peerEndorsements[myMember.id] === undefined) { loadPeerEndorsements(gender, myMember.id); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  const list = peerEndorsements[myMember.id]
   if (!list.length) return `<div class="bg-[var(--ok-soft)] border border-[var(--ok-soft-line)] rounded-2xl p-6 text-center text-[#106143] text-sm">✅ ไม่มีใบสมัครค้างรับรองในตอนนี้</div>`
 
   const card = a => `
@@ -1685,6 +1738,7 @@ function renderPeerEndorseView() {
           <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
           <p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · สมัคร${esc(a.council_positions?.position_name ?? '—')}</p>
         </div>
+        ${a.requested_peer_endorser_id != null ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--primary-soft)] text-[var(--primary-dark)] flex-shrink-0">ขอให้คุณรับรอง</span>` : `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--surface-2)] text-[var(--muted)] flex-shrink-0">ใบสมัครเก่า/ไม่ระบุ</span>`}
       </div>
       ${a.motivation ? `<p class="text-xs text-[var(--ink-2)] bg-[var(--surface-2)] rounded-[10px] p-2.5">${esc(a.motivation)}</p>` : ''}
       <textarea class="peer-endorse-comment w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm resize-none" data-id="${a.id}" rows="2"
@@ -1703,7 +1757,7 @@ async function handlePeerEndorsement(applicationId) {
   try {
     await submitPeerEndorsement({ applicationId: Number(applicationId), memberId: myMember.id, comment })
     showToast('รับรองในนามสภานักเรียนแล้ว ✅', 'success')
-    delete peerEndorsements[myMember.council_positions?.gender]
+    delete peerEndorsements[myMember.id]
     render()
   } catch (err) {
     showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
@@ -3755,6 +3809,19 @@ function wireContentEvents() {
     const validCount = applyCertificates.filter(c => c.file && c.title.trim()).length
     const minCerts = minApplyCertificates()
     if (validCount < minCerts) { showToast(`กรุณาแนบเกียรติบัตร/รางวัลอย่างน้อย ${minCerts} รายการ (พร้อมชื่อรางวัล)`, 'warning'); return }
+    if (applyRequiresPeerEndorserStep()) { applyStep = 6 } else { showApplyConfirm = true }
+    saveApplyDraft()
+    render()
+  })
+  document.querySelectorAll('.btn-pick-peer-endorser').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyData.peerEndorserId = btn.dataset.id
+      saveApplyDraft()
+      render()
+    })
+  })
+  document.getElementById('btn-apply-step6-next')?.addEventListener('click', () => {
+    if (!applyData.peerEndorserId) { showToast('กรุณาเลือกพี่สภาที่ต้องการให้รับรอง', 'warning'); return }
     showApplyConfirm = true
     saveApplyDraft()
     render()
@@ -3787,6 +3854,7 @@ function wireContentEvents() {
         gpaReligious: Number(applyData.gpaReligious),
         introVideoUrl: applyData.videoUrl,
         certificates,
+        requestedPeerEndorserId: applyData.peerEndorserId ? Number(applyData.peerEndorserId) : null,
       })
       showToast('ส่งใบสมัครสำเร็จ ✅', 'success')
       clearApplyDraft()
