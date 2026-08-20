@@ -3104,7 +3104,8 @@ export async function getActiveAnnouncements(forRole = null) {
     .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, video_url, audience, teachers(id, full_name)')
     .eq('is_active', true)
     .is('target_class_ids', null)
-  if (forRole === 'teacher' || forRole === 'student') q = q.in('audience', ['all', forRole])
+  if (forRole === 'teacher') q = q.in('audience', ['all', 'teacher'])
+  else if (forRole === 'student') q = q.in('audience', ['all', 'student', 'futsal_player'])
   const { data, error } = await q
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })

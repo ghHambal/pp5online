@@ -8594,15 +8594,18 @@ function _getAnnSessions(m, pfx) {
 const _ANN_AUDIENCE_BADGE = {
   teacher: '<span class="px-2 py-0.5 bg-sky-100 text-sky-700 rounded-full text-[11px] font-bold">👩‍🏫 ครูเท่านั้น</span>',
   student: '<span class="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-[11px] font-bold">🎒 นักเรียนเท่านั้น</span>',
+  futsal_player: '<span class="px-2 py-0.5 bg-pink-100 text-pink-700 rounded-full text-[11px] font-bold">⚽ นักกีฬาฟุตซอลเท่านั้น</span>',
 }
 const _annAudienceBadge = a => _ANN_AUDIENCE_BADGE[a] ?? ''
 
 // ยิง push notification จริงไปหากลุ่มเป้าหมายเมื่อมีประกาศใหม่ (Edge Function 'send-push')
 // เป็นของเสริม — ถ้ายิงไม่สำเร็จ (เช่นยังไม่มีใครสมัครรับ) ไม่บล็อกการบันทึกประกาศหลัก
+// audience='futsal_player' ยังไม่มี target เฉพาะใน edge function เลยไม่ยิง push (กันยิงกว้างเกินไปหาทุกคน) — ยังเห็นได้ผ่าน popup ในแอปตามปกติ
 async function _sendAnnouncementPush(title, body, audience = 'all') {
   try {
     const targets = audience === 'teacher' ? ['all_teachers']
       : audience === 'student' ? ['all_students']
+      : audience === 'futsal_player' ? []
       : ['all_teachers', 'all_students']
     await Promise.all(targets.map(target => supabase.functions.invoke('send-push', {
       body: { title: `📢 ${title}`, body: (body ?? '').slice(0, 150), url: target === 'all_students' ? 'student.html' : 'teacher.html', target },
@@ -8871,10 +8874,11 @@ export async function renderAnnouncements() {
           <!-- กลุ่มเป้าหมาย -->
           <div>
             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">แสดงให้ใครเห็น</label>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <button type="button" data-audience="all" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.audience ?? 'all') === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">👥 ทั้งหมด</button>
               <button type="button" data-audience="teacher" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'teacher' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}">👩‍🏫 ครูเท่านั้น</button>
               <button type="button" data-audience="student" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'student' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-300'}">🎒 นักเรียนเท่านั้น</button>
+              <button type="button" data-audience="futsal_player" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'futsal_player' ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-gray-600 border-gray-200 hover:border-pink-300'}">⚽ นักกีฬาฟุตซอล</button>
             </div>
           </div>
           <!-- Training fields -->
@@ -9528,10 +9532,11 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
           <!-- กลุ่มเป้าหมาย -->
           <div>
             <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">แสดงให้ใครเห็น</label>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <button type="button" data-audience="all" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${(item?.audience ?? 'all') === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">👥 ทั้งหมด</button>
               <button type="button" data-audience="teacher" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'teacher' ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:border-sky-300'}">👩‍🏫 ครูเท่านั้น</button>
               <button type="button" data-audience="student" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'student' ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-300'}">🎒 นักเรียนเท่านั้น</button>
+              <button type="button" data-audience="futsal_player" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'futsal_player' ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-gray-600 border-gray-200 hover:border-pink-300'}">⚽ นักกีฬาฟุตซอล</button>
             </div>
           </div>
           <!-- Training fields (แสดงเมื่อเลือก อบรม) -->
