@@ -1344,13 +1344,13 @@ function openPeerEndorserPickerModal(applicationId, gender) {
     .sort((a2, b2) => (a2.council_positions?.sort_order ?? 0) - (b2.council_positions?.sort_order ?? 0))
 
   const card = m => `
-    <button type="button" class="btn-peer-picker-choose w-full flex items-center gap-3 rounded-xl border p-3 text-left transition ${currentApp?.requested_peer_endorser_id === m.id ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line)] hover:border-[var(--primary-45)]'}" data-id="${m.id}">
+    <button type="button" class="btn-peer-picker-choose w-full flex items-center gap-3 rounded-xl border p-3 text-left transition ${String(currentApp?.requested_peer_endorser_id) === String(m.id) ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line)] hover:border-[var(--primary-45)]'}" data-id="${m.id}">
       ${studentPhoto(m.students, 'w-11 h-14')}
       <div class="min-w-0 flex-1">
         <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
         <p class="text-xs text-[var(--muted)] truncate">${esc(m.council_positions?.position_name ?? '—')} · ${esc(m.students?.main_room ?? '—')}</p>
       </div>
-      ${currentApp?.requested_peer_endorser_id === m.id ? `<span class="text-[var(--primary)] text-lg flex-shrink-0">✓</span>` : ''}
+      ${String(currentApp?.requested_peer_endorser_id) === String(m.id) ? `<span class="text-[var(--primary)] text-lg flex-shrink-0">✓</span>` : ''}
     </button>`
 
   const m = document.createElement('div')

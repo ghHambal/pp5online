@@ -197,10 +197,11 @@ export async function getPendingPeerEndorsements(gender, memberId) {
     .eq('council_positions.gender', gender)
     .order('created_at')
   if (error) throw error
-  return (data ?? []).filter(a => a.requested_peer_endorser_id == null || a.requested_peer_endorser_id === memberId)
+  // เทียบแบบ string เพราะ bigint จาก Postgres มักถูกส่งมาเป็น string ผ่าน supabase-js
+  // (กัน type mismatch แบบ "5" !== 5 ที่ทำให้ filter หลุดเงียบๆ)
+  return (data ?? []).filter(a => a.requested_peer_endorser_id == null || String(a.requested_peer_endorser_id) === String(memberId))
 }
 
-// ต้องเป็นคนที่ถูกผู้สมัครระบุชื่อไว้เท่านั้นถึงจะรับรองได้ (ใบสมัครเก่าที่ไม่ได้ระบุใครไว้ยังเปิดกว้างเหมือนเดิม)
 // ให้เจ้าของใบสมัคร (นักเรียน) เลือก/เปลี่ยนพี่สภาที่ต้องการให้รับรองได้เอง หลังส่งใบสมัครไปแล้ว
 // — RLS (council_applications_self_update) อนุญาตเฉพาะตอนสถานะยัง 'pending' เท่านั้น, ฝั่ง UI
 // จะซ่อนปุ่มนี้เพิ่มถ้ามีคนรับรองไปแล้ว (peer_endorsed_at ไม่ว่าง) กันข้อมูลไม่ตรงกัน
@@ -211,11 +212,12 @@ export async function updateRequestedPeerEndorser({ applicationId, memberId }) {
   if (error) throw error
 }
 
+// ต้องเป็นคนที่ถูกผู้สมัครระบุชื่อไว้เท่านั้นถึงจะรับรองได้ (ใบสมัครเก่าที่ไม่ได้ระบุใครไว้ยังเปิดกว้างเหมือนเดิม)
 export async function submitPeerEndorsement({ applicationId, memberId, comment }) {
   const { data: app, error: fetchError } = await supabase.from('council_applications')
     .select('requested_peer_endorser_id').eq('id', applicationId).single()
   if (fetchError) throw fetchError
-  if (app.requested_peer_endorser_id != null && app.requested_peer_endorser_id !== memberId) {
+  if (app.requested_peer_endorser_id != null && String(app.requested_peer_endorser_id) !== String(memberId)) {
     throw new Error('ใบสมัครนี้ผู้สมัครระบุให้พี่สภาคนอื่นเป็นผู้รับรอง ไม่สามารถรับรองแทนได้')
   }
   const { error } = await supabase.from('council_applications')
