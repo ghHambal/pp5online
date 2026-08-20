@@ -201,6 +201,16 @@ export async function getPendingPeerEndorsements(gender, memberId) {
 }
 
 // ต้องเป็นคนที่ถูกผู้สมัครระบุชื่อไว้เท่านั้นถึงจะรับรองได้ (ใบสมัครเก่าที่ไม่ได้ระบุใครไว้ยังเปิดกว้างเหมือนเดิม)
+// ให้เจ้าของใบสมัคร (นักเรียน) เลือก/เปลี่ยนพี่สภาที่ต้องการให้รับรองได้เอง หลังส่งใบสมัครไปแล้ว
+// — RLS (council_applications_self_update) อนุญาตเฉพาะตอนสถานะยัง 'pending' เท่านั้น, ฝั่ง UI
+// จะซ่อนปุ่มนี้เพิ่มถ้ามีคนรับรองไปแล้ว (peer_endorsed_at ไม่ว่าง) กันข้อมูลไม่ตรงกัน
+export async function updateRequestedPeerEndorser({ applicationId, memberId }) {
+  const { error } = await supabase.from('council_applications')
+    .update({ requested_peer_endorser_id: memberId })
+    .eq('id', applicationId)
+  if (error) throw error
+}
+
 export async function submitPeerEndorsement({ applicationId, memberId, comment }) {
   const { data: app, error: fetchError } = await supabase.from('council_applications')
     .select('requested_peer_endorser_id').eq('id', applicationId).single()

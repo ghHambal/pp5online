@@ -14,7 +14,7 @@ import {
   submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
   addEndorsementPhrase, removeEndorsementPhrase,
   confirmApplicationEndorsement, declineApplicationEndorsement,
-  getPendingPeerEndorsements, submitPeerEndorsement,
+  getPendingPeerEndorsements, submitPeerEndorsement, updateRequestedPeerEndorser,
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
   getCandidatesForElection, publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
@@ -1325,14 +1325,66 @@ function renderAdminAppDetailModal() {
 }
 
 // นักเรียนดูใบสมัครของตัวเองแบบเต็ม (เหมือนที่แอดมิน/ครูเห็น) — reuse modal เดียวกัน
+// isOwner=true เท่านั้นถึงจะโชว์ปุ่มเลือก/เปลี่ยนพี่สภาที่ต้องการให้รับรอง (แก้ไขได้เอง 2026-08-20)
 function renderMyAppDetailModal() {
   if (!myAppDetailId) return ''
   const a = ctx.applications?.find(x => x.id === myAppDetailId)
   if (!a) return ''
-  return renderAppDetailModalBody(a, ctx.student, { closeId: 'btn-my-app-detail-close', backdropId: 'my-app-detail-backdrop' })
+  return renderAppDetailModalBody(a, ctx.student, { closeId: 'btn-my-app-detail-close', backdropId: 'my-app-detail-backdrop', isOwner: true })
 }
 
-function renderAppDetailModalBody(a, student, { closeId, backdropId }) {
+// ป๊อบอัพเลือก/เปลี่ยนพี่สภาที่ต้องการให้รับรอง — ใช้ได้ทั้งตอนสมัครใหม่ (renderApplyStep6)
+// และตอนแก้ไขใบสมัครที่ส่งไปแล้ว (จากปุ่มในรายละเอียดใบสมัครของตัวเอง) — เจ้าของใบสมัครเท่านั้น
+// เห็นปุ่มนี้ และแก้ได้แค่ตอนยังไม่มีใครรับรอง (เช็คซ้ำทั้ง UI และ RLS/submitPeerEndorsement)
+function openPeerEndorserPickerModal(applicationId, gender) {
+  document.getElementById('peer-endorser-picker-modal')?.remove()
+  const currentApp = ctx.applications?.find(x => x.id === applicationId)
+  const candidates = (ctx.members || [])
+    .filter(m => m.council_positions?.gender === gender && m.student_id !== ctx.student.id)
+    .sort((a2, b2) => (a2.council_positions?.sort_order ?? 0) - (b2.council_positions?.sort_order ?? 0))
+
+  const card = m => `
+    <button type="button" class="btn-peer-picker-choose w-full flex items-center gap-3 rounded-xl border p-3 text-left transition ${currentApp?.requested_peer_endorser_id === m.id ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line)] hover:border-[var(--primary-45)]'}" data-id="${m.id}">
+      ${studentPhoto(m.students, 'w-11 h-14')}
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
+        <p class="text-xs text-[var(--muted)] truncate">${esc(m.council_positions?.position_name ?? '—')} · ${esc(m.students?.main_room ?? '—')}</p>
+      </div>
+      ${currentApp?.requested_peer_endorser_id === m.id ? `<span class="text-[var(--primary)] text-lg flex-shrink-0">✓</span>` : ''}
+    </button>`
+
+  const m = document.createElement('div')
+  m.id = 'peer-endorser-picker-modal'
+  m.className = 'fixed inset-0 z-[85] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4'
+  m.innerHTML = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_8px_28px_rgba(11,20,16,0.25)] max-w-md w-full max-h-[85vh] overflow-y-auto p-5">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <p class="text-base font-bold text-[var(--ink)]">🙋 เลือกพี่สภาที่ต้องการให้รับรอง</p>
+        <button type="button" id="btn-peer-picker-close" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
+      </div>
+      ${candidates.length ? `<div class="space-y-2">${candidates.map(card).join('')}</div>` : `<p class="text-sm text-[var(--muted-2)] text-center py-8">ยังไม่มีสมาชิกสภานักเรียน${GENDER_LABEL[gender] ?? ''}ในระบบให้เลือก</p>`}
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#btn-peer-picker-close').addEventListener('click', () => m.remove())
+  m.querySelectorAll('.btn-peer-picker-choose').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      try {
+        await updateRequestedPeerEndorser({ applicationId, memberId: Number(btn.dataset.id) })
+        await refreshMyApplications()
+        showToast('เลือกพี่สภาที่ต้องการให้รับรองแล้ว ✅', 'success')
+        m.remove()
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+}
+
+function renderAppDetailModalBody(a, student, { closeId, backdropId, isOwner = false }) {
   const genderCls = GENDER_BADGE_FIXED[a.council_positions?.gender] ?? 'bg-[var(--bg-2)] text-[var(--muted)]'
   return `
     <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="${backdropId}">
@@ -1395,6 +1447,14 @@ function renderAppDetailModalBody(a, student, { closeId, backdropId }) {
                 : a.peer_endorsed_at
                   ? `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">รับรองแล้ว (ไม่มีความเห็นเพิ่มเติม)</p>`
                   : `<p class="text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl p-3">ยังไม่ได้รับรอง</p>`}
+          </div>` : ''}
+          ${isOwner && peerEndorsementRequired() && !applicantIsCurrentMember(a) && !a.peer_endorsed_at ? `
+          <div class="rounded-xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-3 space-y-2">
+            <p class="text-xs font-bold text-[var(--primary-dark)]">🙋 พี่สภาที่ต้องการให้รับรอง</p>
+            <p class="text-sm text-[var(--ink)]">${a.requested_peer_endorser?.students?.full_name ? esc(a.requested_peer_endorser.students.full_name) : 'ยังไม่ได้เลือก'}</p>
+            <button type="button" id="btn-pick-my-app-endorser" class="w-full py-2 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold" data-app-id="${a.id}" data-gender="${esc(a.council_positions?.gender ?? '')}">
+              ${a.requested_peer_endorser_id ? '🔄 เปลี่ยนพี่สภา' : '➕ เลือกพี่สภา'}
+            </button>
           </div>` : ''}
         </div>
       </div>
@@ -3661,6 +3721,9 @@ function wireContentEvents() {
   document.getElementById('btn-my-app-detail-close')?.addEventListener('click', () => { myAppDetailId = null; render() })
   document.getElementById('my-app-detail-backdrop')?.addEventListener('click', e => {
     if (e.target.id === 'my-app-detail-backdrop') { myAppDetailId = null; render() }
+  })
+  document.getElementById('btn-pick-my-app-endorser')?.addEventListener('click', e => {
+    openPeerEndorserPickerModal(Number(e.target.dataset.appId), e.target.dataset.gender)
   })
   document.getElementById('btn-add-council-member')?.addEventListener('click', () => {
     openMemberModal({ mode: 'add', gender: rosterGenderTab })
