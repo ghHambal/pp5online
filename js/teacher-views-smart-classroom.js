@@ -16,7 +16,10 @@ import {
   setSmartClassroomFreeClass,
 } from './api.js'
 import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './teacher.js'
-import { getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt } from './quiz-api.js'
+import {
+  getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt,
+  getQuizBanks, getQuizQuestions, createQuizBank, bulkImportQuizQuestions, createQuiz,
+} from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
   openAttendanceScanSetup, _openLeaveRequestModal, _openLeaveQuotaModal,
@@ -604,6 +607,227 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>`).join('')}</div>`
   }
 
+  // ── เปิดควิซแบบเร็ว: เลือกจากคลังข้อสอบเดิม หรือสร้างใหม่เดี๋ยวนี้ — ยิงเข้าห้องนี้ทันที ──
+  function _openQuickQuizModal() {
+    document.getElementById('sc-quiz-quick')?.remove()
+    const m = document.createElement('div')
+    m.id = 'sc-quiz-quick'
+    m.className = 'fixed inset-0 z-[97] bg-black/40 flex items-center justify-center p-4 overflow-y-auto'
+    document.body.appendChild(m)
+
+    const _renderChoice = () => {
+      m.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8">
+          <h3 class="font-bold text-gray-800 text-lg mb-1">🧠 เปิดควิซให้ห้องนี้</h3>
+          <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.class_name ?? '')}</p>
+          <div class="space-y-2.5">
+            <button id="sqq-pick" class="w-full py-3.5 rounded-2xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition text-left px-4">
+              <span class="font-bold text-sm text-gray-700">📚 เลือกจากคลังข้อสอบ</span>
+              <p class="text-[11px] text-gray-400 mt-0.5">ใช้ชุดคำถามที่เคยสร้างไว้แล้ว</p>
+            </button>
+            <button id="sqq-new" class="w-full py-3.5 rounded-2xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition text-left px-4">
+              <span class="font-bold text-sm text-gray-700">✏️ สร้างใหม่เดี๋ยวนี้</span>
+              <p class="text-[11px] text-gray-400 mt-0.5">พิมพ์คำถามสดๆ แล้วเปิดให้ทำได้เลย</p>
+            </button>
+          </div>
+          <button id="sqq-cancel" class="w-full mt-4 py-2 text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
+        </div>`
+      m.querySelector('#sqq-cancel').addEventListener('click', () => m.remove())
+      m.querySelector('#sqq-pick').addEventListener('click', _renderBankPicker)
+      m.querySelector('#sqq-new').addEventListener('click', _renderComposer)
+    }
+
+    // ── เส้นทาง A: เลือกจากคลังข้อสอบเดิม ────────────────────────────────────
+    const _renderBankPicker = async () => {
+      m.innerHTML = `<div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8 text-center text-sm text-gray-400 py-10">กำลังโหลดคลังข้อสอบ...</div>`
+      const banks = await getQuizBanks(teacher.id).catch(() => [])
+      if (!banks.length) {
+        m.innerHTML = `
+          <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8 text-center">
+            <p class="text-sm text-gray-500 mb-4">ยังไม่มีคลังข้อสอบเลย ลองสร้างใหม่ดูก่อนได้ครับ</p>
+            <button id="sqq-back" class="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold">← กลับ</button>
+          </div>`
+        m.querySelector('#sqq-back').addEventListener('click', _renderChoice)
+        return
+      }
+      m.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8">
+          <h3 class="font-bold text-gray-800 text-lg mb-1">📚 เลือกคลังข้อสอบ</h3>
+          <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.class_name ?? '')}</p>
+          <div class="space-y-1.5 max-h-72 overflow-y-auto">
+            ${banks.map(b => `
+              <button class="sqq-bank-pick w-full text-left px-3.5 py-2.5 rounded-xl border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/50 transition" data-id="${b.id}">
+                <span class="text-sm font-semibold text-gray-700">${_htmlEsc(b.name)}</span>
+                ${b.description ? `<p class="text-[11px] text-gray-400 truncate">${_htmlEsc(b.description)}</p>` : ''}
+              </button>`).join('')}
+          </div>
+          <button id="sqq-back" class="w-full mt-4 py-2 text-xs text-gray-400 hover:text-gray-600">← กลับ</button>
+        </div>`
+      m.querySelector('#sqq-back').addEventListener('click', _renderChoice)
+      m.querySelectorAll('.sqq-bank-pick').forEach(btn => btn.addEventListener('click', () => _renderLaunchForm(banks.find(b => b.id === btn.dataset.id))))
+    }
+
+    const _renderLaunchForm = async (bank) => {
+      m.innerHTML = `<div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8 text-center text-sm text-gray-400 py-10">กำลังโหลด...</div>`
+      const questions = await getQuizQuestions(bank.id).catch(() => [])
+      if (!questions.length) {
+        m.innerHTML = `
+          <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8 text-center">
+            <p class="text-sm text-gray-500 mb-4">คลัง "${_htmlEsc(bank.name)}" ยังไม่มีคำถามเลย เพิ่มคำถามก่อนถึงจะเปิดสอบได้</p>
+            <button id="sqq-back" class="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold">← กลับ</button>
+          </div>`
+        m.querySelector('#sqq-back').addEventListener('click', _renderBankPicker)
+        return
+      }
+      const todayLabel = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+      m.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8">
+          <h3 class="font-bold text-gray-800 text-lg mb-1">🚀 เปิดสอบ: ${_htmlEsc(bank.name)}</h3>
+          <p class="text-xs text-gray-400 mb-4">คลังนี้มีคำถามทั้งหมด ${questions.length} ข้อ · ${_htmlEsc(cls.class_name ?? '')}</p>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs font-semibold text-gray-500 mb-1 block">ชื่อการสอบครั้งนี้</label>
+              <input id="sqq-title" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="${_htmlEsc(bank.name)} (${todayLabel})" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-semibold text-gray-500 mb-1 block">จำนวนข้อที่สุ่ม</label>
+                <input id="sqq-num" type="number" min="1" max="${questions.length}" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="${Math.min(10, questions.length)}" />
+              </div>
+              <div>
+                <label class="text-xs font-semibold text-gray-500 mb-1 block">เวลาสอบ (นาที)</label>
+                <input id="sqq-time" type="number" min="1" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="30" />
+              </div>
+            </div>
+            <p class="text-[11px] text-gray-400 leading-relaxed">ตั้งค่าอื่นๆ (สลับข้อ, ล็อกคำตอบ, ผูกคะแนน ฯลฯ) ใช้ค่าเริ่มต้นไว้ก่อน — ปรับเพิ่มได้ภายหลังจากหน้า "คลังข้อสอบ"</p>
+          </div>
+          <div class="flex gap-2 mt-5">
+            <button id="sqq-back" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">← กลับ</button>
+            <button id="sqq-launch" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">เปิดให้ห้องนี้</button>
+          </div>
+        </div>`
+      m.querySelector('#sqq-back').addEventListener('click', _renderBankPicker)
+      m.querySelector('#sqq-launch').addEventListener('click', async (e) => {
+        const title = m.querySelector('#sqq-title').value.trim()
+        const numQuestions = parseInt(m.querySelector('#sqq-num').value, 10)
+        if (!title) { showToast('กรุณาระบุชื่อการสอบ', 'warning'); return }
+        if (!numQuestions || numQuestions < 1 || numQuestions > questions.length) {
+          showToast(`จำนวนข้อต้องอยู่ระหว่าง 1 – ${questions.length}`, 'warning'); return
+        }
+        const btn = e.target
+        btn.disabled = true; btn.textContent = 'กำลังเปิด...'
+        try {
+          await createQuiz({
+            bank_id: bank.id, class_id: classId, title,
+            num_questions: numQuestions,
+            time_limit_minutes: parseInt(m.querySelector('#sqq-time').value, 10) || null,
+            status: 'announced',
+          })
+          showToast('สร้างควิซให้ห้องนี้แล้ว 🧠 กด "▶ เริ่ม" ในรายการเพื่อเปิดสอบสดได้เลย', 'success')
+          m.remove()
+          _reload()
+        } catch (err) {
+          showToast('เปิดควิซไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = 'เปิดให้ห้องนี้'
+        }
+      })
+    }
+
+    // ── เส้นทาง B: สร้างคลัง+คำถามใหม่สดๆ แล้วเปิดทันที ────────────────────────
+    const _renderComposer = () => {
+      let qCount = 1
+      const _questionBlock = (idx) => `
+        <div class="sqq-qblock border border-gray-100 rounded-xl p-3 space-y-2" data-q="${idx}">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-indigo-600">ข้อที่ ${idx + 1}</span>
+            ${idx > 0 ? `<button type="button" class="sqq-remove-q text-red-400 hover:text-red-600 text-xs" data-q="${idx}">✕ ลบ</button>` : ''}
+          </div>
+          <input class="sqq-q-text w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="พิมพ์คำถาม..." />
+          ${[0, 1, 2, 3].map(ci => `
+            <label class="flex items-center gap-2">
+              <input type="radio" name="sqq-correct-${idx}" value="${ci}" ${ci === 0 ? 'checked' : ''} class="flex-shrink-0" />
+              <input class="sqq-choice flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs" placeholder="ตัวเลือกที่ ${ci + 1}" />
+            </label>`).join('')}
+        </div>`
+
+      m.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl my-8">
+          <h3 class="font-bold text-gray-800 text-lg mb-1">✏️ สร้างควิซใหม่เดี๋ยวนี้</h3>
+          <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.class_name ?? '')} — เว้นตัวเลือกว่างได้ถ้ามีไม่ครบ 4 ตัวเลือก (ต้องมีอย่างน้อย 2)</p>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs font-semibold text-gray-500 mb-1 block">ชื่อควิซ</label>
+              <input id="sqq-c-title" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="เช่น ควิซท้ายคาบ" />
+            </div>
+            <div id="sqq-qlist" class="space-y-2.5">${_questionBlock(0)}</div>
+            <button type="button" id="sqq-add-q" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">＋ เพิ่มข้อ</button>
+            <div>
+              <label class="text-xs font-semibold text-gray-500 mb-1 block">เวลาสอบ (นาที)</label>
+              <input id="sqq-c-time" type="number" min="1" class="input-field w-32 border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="30" />
+            </div>
+          </div>
+          <div class="flex gap-2 mt-5">
+            <button id="sqq-back" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">← กลับ</button>
+            <button id="sqq-c-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">สร้างและเปิดให้ห้องนี้</button>
+          </div>
+        </div>`
+
+      const _bindRemove = () => {
+        m.querySelectorAll('.sqq-remove-q').forEach(btn => {
+          btn.onclick = () => m.querySelector(`.sqq-qblock[data-q="${btn.dataset.q}"]`)?.remove()
+        })
+      }
+      _bindRemove()
+      m.querySelector('#sqq-add-q').addEventListener('click', () => {
+        const wrap = document.createElement('div')
+        wrap.innerHTML = _questionBlock(qCount)
+        m.querySelector('#sqq-qlist').appendChild(wrap.firstElementChild)
+        qCount++
+        _bindRemove()
+      })
+      m.querySelector('#sqq-back').addEventListener('click', _renderChoice)
+
+      m.querySelector('#sqq-c-save').addEventListener('click', async (e) => {
+        const title = m.querySelector('#sqq-c-title').value.trim()
+        if (!title) { showToast('กรุณาระบุชื่อควิซ', 'warning'); return }
+
+        const rows = []
+        for (const block of m.querySelectorAll('.sqq-qblock')) {
+          const qText = block.querySelector('.sqq-q-text').value.trim()
+          const choiceInputs = [...block.querySelectorAll('.sqq-choice')]
+          const choices = choiceInputs.map(inp => inp.value.trim()).filter(Boolean)
+          if (!qText || choices.length < 2) continue
+          const correctInput = block.querySelector(`input[name="sqq-correct-${block.dataset.q}"]:checked`)
+          const correctIdx = Math.min(parseInt(correctInput?.value ?? '0', 10), choices.length - 1)
+          rows.push({ question_text: qText, choices, correct_choice_index: correctIdx })
+        }
+        if (!rows.length) { showToast('กรุณากรอกคำถามอย่างน้อย 1 ข้อ พร้อมตัวเลือกอย่างน้อย 2 ตัวเลือก', 'warning'); return }
+
+        const btn = e.target
+        btn.disabled = true; btn.textContent = 'กำลังสร้าง...'
+        try {
+          const bank = await createQuizBank({ teacher_id: teacher.id, subject_id: courseId, name: title })
+          await bulkImportQuizQuestions(bank.id, rows)
+          await createQuiz({
+            bank_id: bank.id, class_id: classId, title,
+            num_questions: rows.length,
+            time_limit_minutes: parseInt(m.querySelector('#sqq-c-time').value, 10) || null,
+            status: 'announced',
+          })
+          showToast('สร้างควิซให้ห้องนี้แล้ว 🧠 กด "▶ เริ่ม" ในรายการเพื่อเปิดสอบสดได้เลย', 'success')
+          m.remove()
+          _reload()
+        } catch (err) {
+          showToast('สร้างไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = 'สร้างและเปิดให้ห้องนี้'
+        }
+      })
+    }
+
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    _renderChoice()
+  }
+
   // ── ประกาศของห้องนี้ (ทุกแหล่ง ไม่ใช่แค่ที่ส่งจากตรงนี้) ──────────────────────
   const _annHistoryHTML = () => {
     if (!classAnnouncements.length) return `<p class="text-xs text-gray-400 mb-2">ยังไม่มีประกาศสำหรับห้องนี้</p>`
@@ -817,7 +1041,10 @@ export async function renderSmartClassroom(teacher, classId) {
 
       <div>
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-          <h2 class="text-sm font-bold text-gray-700 mb-3">🧠 เปิดควิซสด</h2>
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-bold text-gray-700">🧠 เปิดควิซสด</h2>
+            <button id="sc-quiz-add" class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800">+ ควิซ</button>
+          </div>
           <div id="sc-quiz-list">${_quizHTML()}</div>
         </div>
 
@@ -1368,6 +1595,7 @@ export async function renderSmartClassroom(teacher, classId) {
   document.getElementById('sc-dashboard').addEventListener('click', () => openClassDashboard(classId, cls, window._pp5DonorTierIndex ?? 0, cfg))
 
   // ── Wiring: quiz launch / ประวัติ-สถิติ ───────────────────────────────────
+  document.getElementById('sc-quiz-add').addEventListener('click', () => _openQuickQuizModal())
   document.getElementById('sc-quiz-list').addEventListener('click', async e => {
     const startBtn = e.target.closest('.sc-quiz-start')
     const monitorBtn = e.target.closest('.sc-quiz-monitor')
