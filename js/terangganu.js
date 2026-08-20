@@ -154,8 +154,9 @@ function renderStudent() {
         ${canEdit ? ocrUploadBlock('student') : ''}
         ${field('nickname','ชื่อเล่น',r?.nickname,'text',true,canEdit)}
         ${field('thai_name','ชื่อภาษาไทย',r?.thai_name || s.full_name,'text',true,canEdit)}
-        ${field('english_name','ชื่อภาษาอังกฤษ',r?.english_name,'text',true,canEdit)}
-        ${field('national_id','เลขประจำตัวประชาชน',r?.national_id,'text',true,canEdit)}
+        <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r?.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
+        <label><span class="camp-label">ชื่อภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r?.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
+        <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r?.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
         ${field('passport_number','เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_number,'text',false,canEdit)}
         ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_expiry,'date',false,canEdit)}
         ${field('birth_date','วันเดือนปีเกิด',r?.birth_date,'date',true,canEdit)}
@@ -223,7 +224,7 @@ async function ocrFillCampForm(formEl, file, btn) {
     for (const [key, value] of Object.entries(data)) {
       if (!value) continue
       const input = formEl.querySelector(`[name="${key}"]`)
-      if (input && !input.disabled) { input.value = value; filled++ }
+      if (input && !input.disabled) { input.value = key === 'english_name' ? String(value).toUpperCase() : value; filled++ }
     }
     toast(filled ? `อ่านข้อมูลสำเร็จ เติมให้ ${filled} ช่อง กรุณาตรวจสอบความถูกต้องก่อนบันทึก` : 'อ่านรูปไม่พบข้อมูลที่ใช้ได้ กรุณากรอกเอง', filled ? 'success' : 'warning')
   } catch (error) {
@@ -273,8 +274,9 @@ function teacherSurveyForm(teacher, registration, canEdit) {
     ${canEdit ? ocrUploadBlock('teacher') : ''}
     ${field('nickname','ชื่อเล่น',r.nickname,'text',true,canEdit)}
     ${field('thai_name','ชื่อภาษาไทย',r.thai_name || teacher?.full_name,'text',true,canEdit)}
-    ${field('english_name','ชื่อภาษาอังกฤษ',r.english_name,'text',true,canEdit)}
-    ${field('national_id','เลขประจำตัวประชาชน',r.national_id,'text',true,canEdit)}
+    <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
+    <label><span class="camp-label">ชื่อภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
+    <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
     ${field('passport_number','เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_number,'text',false,canEdit)}
     ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_expiry,'date',false,canEdit)}
     ${field('birth_date','วันเดือนปีเกิด',r.birth_date,'date',true,canEdit)}
@@ -495,11 +497,11 @@ function openRosterPrint(type,rows,mode='internal'){
     head='<th>ลำดับ</th><th>รหัสครู</th><th>ชื่อ-สกุล</th><th>ฝ่าย/ตำแหน่ง</th><th>โทรศัพท์</th><th>ไซซ์เสื้อ</th><th>แบบสำรวจ</th><th>หมายเหตุ</th>'
     colgroup=''
   } else if(isOfficial){
-    body=sortedRows.map(({s,r},i)=>`<tr><td class="nowrap">${i+1}</td><td class="nowrap">${esc(s?.student_code)}</td><td class="name">${esc(s?.full_name)}</td><td class="name">${esc(r?.english_name||'')}</td><td class="nowrap">${esc(r?.national_id||'')}</td><td class="nowrap">${thaiDate(r?.birth_date)}</td><td class="nowrap">${esc(officialRoomLabel(s?.main_room))}</td><td class="nowrap">${esc(s?.gender||'')}</td><td class="nowrap">${esc(r?.phone||'')}</td><td class="addr">${esc(r?.current_address||'')}</td><td></td></tr>`).join('')
+    body=sortedRows.map(({s,r},i)=>`<tr><td class="nowrap">${i+1}</td><td class="nowrap">${esc(s?.student_code)}</td><td class="name">${esc(s?.full_name)}</td><td class="name">${esc([r?.english_title,r?.english_name].filter(Boolean).join(' '))}</td><td class="nowrap">${esc(r?.national_id||'')}</td><td class="nowrap">${thaiDate(r?.birth_date)}</td><td class="nowrap">${esc(officialRoomLabel(s?.main_room))}</td><td class="nowrap">${esc(s?.gender||'')}</td><td class="nowrap">${esc(r?.phone||'')}</td><td class="addr">${esc(r?.current_address||'')}</td><td></td></tr>`).join('')
     head='<th>ลำดับ</th><th>รหัส</th><th>ชื่อ-สกุล</th><th>ชื่อ-สกุลภาษาอังกฤษ</th><th>เลขบัตรประชาชน</th><th>วันเดือนปีเกิด</th><th>ชั้น</th><th>เพศ</th><th>โทรศัพท์ผู้ปกครอง</th><th>ที่อยู่</th><th>หมายเหตุ</th>'
     colgroup='<colgroup><col style="width:3%"><col style="width:5%"><col style="width:18%"><col style="width:18%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:4%"><col style="width:9%"><col style="width:14%"><col style="width:4%"></colgroup>'
   } else {
-    body=sortedRows.map(({s,r,p},i)=>`<tr><td class="nowrap">${i+1}</td><td class="nowrap">${esc(s?.student_code)}</td><td class="name">${esc(s?.full_name)}</td><td class="name">${esc(r?.english_name||'')}</td><td class="nowrap">${esc(r?.national_id||'')}</td><td class="nowrap">${thaiDate(r?.birth_date)}</td><td class="nowrap">${esc(s?.main_room||'')}</td><td class="nowrap">${esc(s?.gender||'')}</td><td class="nowrap">${esc(r?.phone||'')}</td><td class="addr">${esc(r?.current_address||'')}</td><td class="nowrap">${esc(r?.shirt_size||'')}</td><td class="fee">มัดจำ ${p?.deposit?'✓':'✗'}<br>คงเหลือ ${p?.balance?'✓':'✗'}</td><td></td></tr>`).join('')
+    body=sortedRows.map(({s,r,p},i)=>`<tr><td class="nowrap">${i+1}</td><td class="nowrap">${esc(s?.student_code)}</td><td class="name">${esc(s?.full_name)}</td><td class="name">${esc([r?.english_title,r?.english_name].filter(Boolean).join(' '))}</td><td class="nowrap">${esc(r?.national_id||'')}</td><td class="nowrap">${thaiDate(r?.birth_date)}</td><td class="nowrap">${esc(s?.main_room||'')}</td><td class="nowrap">${esc(s?.gender||'')}</td><td class="nowrap">${esc(r?.phone||'')}</td><td class="addr">${esc(r?.current_address||'')}</td><td class="nowrap">${esc(r?.shirt_size||'')}</td><td class="fee">มัดจำ ${p?.deposit?'✓':'✗'}<br>คงเหลือ ${p?.balance?'✓':'✗'}</td><td></td></tr>`).join('')
     head='<th>ลำดับ</th><th>รหัส</th><th>ชื่อ-สกุล</th><th>ชื่อ-สกุลภาษาอังกฤษ</th><th>เลขบัตรประชาชน</th><th>วันเดือนปีเกิด</th><th>ชั้น</th><th>เพศ</th><th>โทรศัพท์ผู้ปกครอง</th><th>ที่อยู่</th><th>ไซซ์เสื้อ</th><th>ค่าค่าย</th><th>หมายเหตุ</th>'
     colgroup='<colgroup><col style="width:3%"><col style="width:5%"><col style="width:15%"><col style="width:15%"><col style="width:8%"><col style="width:7%"><col style="width:8%"><col style="width:4%"><col style="width:8%"><col style="width:12%"><col style="width:5%"><col style="width:6%"><col style="width:4%"></colgroup>'
   }
@@ -530,13 +532,13 @@ function renderRegistrations() {
 
 function showRegistrationDetail(studentId) {
   const {students,regs}=maps(),s=students.get(studentId),r=regs.get(studentId)
-  modal(`<div class="p-6"><div class="flex justify-between gap-3"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">${esc(s?.full_name)}</h3><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room)}</p></div></div><button data-close>✕</button></div><div class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">${detail('ชื่อเล่น',r.nickname)}${detail('ชื่ออังกฤษ',r.english_name)}${detail('เพศ',s.gender)}${detail('วันเกิด',thaiDate(r.birth_date))}${detail('สัญชาติ',r.nationality)}${detail('กรุ๊ปเลือด',r.blood_group)}${detail('เลขประจำตัวประชาชน',r.national_id)}${detail('เลขหนังสือเดินทาง',r.passport_number)}${detail('หมดอายุ',thaiDate(r.passport_expiry))}${detail('เบอร์โทรศัพท์ผู้ปกครอง',r.phone)}${detail('ไซซ์เสื้อ',r.shirt_size)}<div class="sm:col-span-2">${detail('ที่อยู่',r.current_address)}</div><div class="sm:col-span-2">${detail('โรคประจำตัว',r.medical_conditions)}</div></div></div>`)
+  modal(`<div class="p-6"><div class="flex justify-between gap-3"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">${esc(s?.full_name)}</h3><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room)}</p></div></div><button data-close>✕</button></div><div class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">${detail('ชื่อเล่น',r.nickname)}${detail('คำนำหน้าอังกฤษ',r.english_title)}${detail('ชื่ออังกฤษ',r.english_name)}${detail('เพศ',s.gender)}${detail('วันเกิด',thaiDate(r.birth_date))}${detail('สัญชาติ',r.nationality)}${detail('กรุ๊ปเลือด',r.blood_group)}${detail('เลขประจำตัวประชาชน',r.national_id)}${detail('เลขหนังสือเดินทาง',r.passport_number)}${detail('หมดอายุ',thaiDate(r.passport_expiry))}${detail('เบอร์โทรศัพท์ผู้ปกครอง',r.phone)}${detail('ไซซ์เสื้อ',r.shirt_size)}<div class="sm:col-span-2">${detail('ที่อยู่',r.current_address)}</div><div class="sm:col-span-2">${detail('โรคประจำตัว',r.medical_conditions)}</div></div></div>`)
 }
 function detail(label,value){return `<div class="bg-gray-50 rounded-xl p-3"><p class="text-[11px] text-gray-400">${label}</p><p class="font-semibold mt-1">${esc(value||'—')}</p></div>`}
 
 function exportRegistrations(){
-  const {students,participants,regs,payments}=maps();const bom='\ufeff';const headers=['รหัสนักเรียน','ชื่อไทย','ชื่ออังกฤษ','ห้อง','เพศ','ชื่อเล่น','เลขประจำตัวประชาชน','เลขหนังสือเดินทาง','วันหมดอายุ','วันเกิด','สัญชาติ','กรุ๊ปเลือด','เบอร์โทรศัพท์ผู้ปกครอง','ไซซ์เสื้อ','โรคประจำตัว','ที่อยู่','มัดจำ','ส่วนที่เหลือ']
-  const quote=v=>`"${String(v??'').replace(/"/g,'""')}"`;const lines=[headers,...[...regs.values()].filter(r=>participants.has(Number(r.student_id))).map(r=>{const s=students.get(Number(r.student_id)),p=payments.get(Number(r.student_id))||{};return[s?.student_code,s?.full_name,r.english_name,s?.main_room,s?.gender,r.nickname,r.national_id,r.passport_number,r.passport_expiry,r.birth_date,r.nationality,r.blood_group,r.phone,r.shirt_size,r.medical_conditions,r.current_address,p.deposit?'ชำระแล้ว':'',p.balance?'ชำระแล้ว':'']})].map(row=>row.map(quote).join(','))
+  const {students,participants,regs,payments}=maps();const bom='\ufeff';const headers=['รหัสนักเรียน','ชื่อไทย','คำนำหน้าอังกฤษ','ชื่ออังกฤษ','ห้อง','เพศ','ชื่อเล่น','เลขประจำตัวประชาชน','เลขหนังสือเดินทาง','วันหมดอายุ','วันเกิด','สัญชาติ','กรุ๊ปเลือด','เบอร์โทรศัพท์ผู้ปกครอง','ไซซ์เสื้อ','โรคประจำตัว','ที่อยู่','มัดจำ','ส่วนที่เหลือ']
+  const quote=v=>`"${String(v??'').replace(/"/g,'""')}"`;const lines=[headers,...[...regs.values()].filter(r=>participants.has(Number(r.student_id))).map(r=>{const s=students.get(Number(r.student_id)),p=payments.get(Number(r.student_id))||{};return[s?.student_code,s?.full_name,r.english_title,r.english_name,s?.main_room,s?.gender,r.nickname,r.national_id,r.passport_number,r.passport_expiry,r.birth_date,r.nationality,r.blood_group,r.phone,r.shirt_size,r.medical_conditions,r.current_address,p.deposit?'ชำระแล้ว':'',p.balance?'ชำระแล้ว':'']})].map(row=>row.map(quote).join(','))
   const url=URL.createObjectURL(new Blob([bom+lines.join('\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='TERANGGANU2026_ข้อมูลผู้เข้าร่วม.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
 }
 
