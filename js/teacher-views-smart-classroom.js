@@ -18,7 +18,7 @@ import {
 import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './teacher.js'
 import {
   getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt,
-  getQuizBanks, getQuizQuestions, createQuizBank, bulkImportQuizQuestions, createQuiz,
+  getQuizBanks, getQuizQuestions, createQuizBank, createQuiz,
 } from './quiz-api.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
@@ -634,7 +634,7 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>`
       m.querySelector('#sqq-cancel').addEventListener('click', () => m.remove())
       m.querySelector('#sqq-pick').addEventListener('click', _renderBankPicker)
-      m.querySelector('#sqq-new').addEventListener('click', _renderComposer)
+      m.querySelector('#sqq-new').addEventListener('click', _renderNewBankPrompt)
     }
 
     // ── เส้นทาง A: เลือกจากคลังข้อสอบเดิม ────────────────────────────────────
@@ -733,93 +733,36 @@ export async function renderSmartClassroom(teacher, classId) {
       })
     }
 
-    // ── เส้นทาง B: สร้างคลัง+คำถามใหม่สดๆ แล้วเปิดทันที ────────────────────────
-    const _renderComposer = () => {
-      let qCount = 1
-      const _questionBlock = (idx) => `
-        <div class="sqq-qblock border border-gray-100 rounded-xl p-3 space-y-2" data-q="${idx}">
-          <div class="flex items-center justify-between">
-            <span class="text-[11px] font-bold text-indigo-600">ข้อที่ ${idx + 1}</span>
-            ${idx > 0 ? `<button type="button" class="sqq-remove-q text-red-400 hover:text-red-600 text-xs" data-q="${idx}">✕ ลบ</button>` : ''}
-          </div>
-          <input class="sqq-q-text w-full border border-gray-200 rounded-lg px-3 py-2 text-xs" placeholder="พิมพ์คำถาม..." />
-          ${[0, 1, 2, 3].map(ci => `
-            <label class="flex items-center gap-2">
-              <input type="radio" name="sqq-correct-${idx}" value="${ci}" ${ci === 0 ? 'checked' : ''} class="flex-shrink-0" />
-              <input class="sqq-choice flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs" placeholder="ตัวเลือกที่ ${ci + 1}" />
-            </label>`).join('')}
-        </div>`
-
+    // ── เส้นทาง B: สร้างคลังใหม่ แล้วส่งต่อไปหน้าคลังข้อสอบจริง (มีเครื่องมือ AI/CSV/แก้ไขครบ) ──
+    const _renderNewBankPrompt = () => {
       m.innerHTML = `
-        <div class="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl my-8">
-          <h3 class="font-bold text-gray-800 text-lg mb-1">✏️ สร้างควิซใหม่เดี๋ยวนี้</h3>
-          <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.class_name ?? '')} — เว้นตัวเลือกว่างได้ถ้ามีไม่ครบ 4 ตัวเลือก (ต้องมีอย่างน้อย 2)</p>
-          <div class="space-y-3">
-            <div>
-              <label class="text-xs font-semibold text-gray-500 mb-1 block">ชื่อควิซ</label>
-              <input id="sqq-c-title" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="เช่น ควิซท้ายคาบ" />
-            </div>
-            <div id="sqq-qlist" class="space-y-2.5">${_questionBlock(0)}</div>
-            <button type="button" id="sqq-add-q" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">＋ เพิ่มข้อ</button>
-            <div>
-              <label class="text-xs font-semibold text-gray-500 mb-1 block">เวลาสอบ (นาที)</label>
-              <input id="sqq-c-time" type="number" min="1" class="input-field w-32 border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="30" />
-            </div>
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl my-8">
+          <h3 class="font-bold text-gray-800 text-lg mb-1">✏️ สร้างคลังข้อสอบใหม่</h3>
+          <p class="text-xs text-gray-400 mb-4">${_htmlEsc(cls.class_name ?? '')} — ตั้งชื่อคลังก่อน แล้วไปเพิ่มคำถามได้ต่อ (พิมพ์เอง / ให้ AI ช่วยคิด / นำเข้า CSV)</p>
+          <div>
+            <label class="text-xs font-semibold text-gray-500 mb-1 block">ชื่อคลังข้อสอบ</label>
+            <input id="sqq-c-title" class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="เช่น ควิซท้ายคาบ - เรื่องสมการ" />
           </div>
           <div class="flex gap-2 mt-5">
             <button id="sqq-back" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm">← กลับ</button>
-            <button id="sqq-c-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">สร้างและเปิดให้ห้องนี้</button>
+            <button id="sqq-c-save" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">สร้างคลัง → เพิ่มคำถาม</button>
           </div>
         </div>`
-
-      const _bindRemove = () => {
-        m.querySelectorAll('.sqq-remove-q').forEach(btn => {
-          btn.onclick = () => m.querySelector(`.sqq-qblock[data-q="${btn.dataset.q}"]`)?.remove()
-        })
-      }
-      _bindRemove()
-      m.querySelector('#sqq-add-q').addEventListener('click', () => {
-        const wrap = document.createElement('div')
-        wrap.innerHTML = _questionBlock(qCount)
-        m.querySelector('#sqq-qlist').appendChild(wrap.firstElementChild)
-        qCount++
-        _bindRemove()
-      })
       m.querySelector('#sqq-back').addEventListener('click', _renderChoice)
-
       m.querySelector('#sqq-c-save').addEventListener('click', async (e) => {
         const title = m.querySelector('#sqq-c-title').value.trim()
-        if (!title) { showToast('กรุณาระบุชื่อควิซ', 'warning'); return }
-
-        const rows = []
-        for (const block of m.querySelectorAll('.sqq-qblock')) {
-          const qText = block.querySelector('.sqq-q-text').value.trim()
-          const choiceInputs = [...block.querySelectorAll('.sqq-choice')]
-          const choices = choiceInputs.map(inp => inp.value.trim()).filter(Boolean)
-          if (!qText || choices.length < 2) continue
-          const correctInput = block.querySelector(`input[name="sqq-correct-${block.dataset.q}"]:checked`)
-          const correctIdx = Math.min(parseInt(correctInput?.value ?? '0', 10), choices.length - 1)
-          rows.push({ question_text: qText, choices, correct_choice_index: correctIdx })
-        }
-        if (!rows.length) { showToast('กรุณากรอกคำถามอย่างน้อย 1 ข้อ พร้อมตัวเลือกอย่างน้อย 2 ตัวเลือก', 'warning'); return }
-
+        if (!title) { showToast('กรุณาระบุชื่อคลังข้อสอบ', 'warning'); return }
         const btn = e.target
         btn.disabled = true; btn.textContent = 'กำลังสร้าง...'
         try {
           const bank = await createQuizBank({ teacher_id: teacher.id, subject_id: courseId, name: title })
-          await bulkImportQuizQuestions(bank.id, rows)
-          await createQuiz({
-            bank_id: bank.id, class_id: classId, title,
-            num_questions: rows.length,
-            time_limit_minutes: parseInt(m.querySelector('#sqq-c-time').value, 10) || null,
-            status: 'announced',
-          })
-          showToast('สร้างควิซให้ห้องนี้แล้ว 🧠 กด "▶ เริ่ม" ในรายการเพื่อเปิดสอบสดได้เลย', 'success')
+          const { _renderBankQuestions } = await import('./teacher-views-quiz-banks.js')
           m.remove()
-          _reload()
+          showToast('สร้างคลังแล้ว — เพิ่มคำถามให้ครบก่อนไปสร้างแบบทดสอบนะครับ', 'success')
+          _renderBankQuestions(teacher, bank, classId)
         } catch (err) {
           showToast('สร้างไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-          btn.disabled = false; btn.textContent = 'สร้างและเปิดให้ห้องนี้'
+          btn.disabled = false; btn.textContent = 'สร้างคลัง → เพิ่มคำถาม'
         }
       })
     }

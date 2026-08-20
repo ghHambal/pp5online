@@ -20,7 +20,7 @@ const WRITE_MODE_LABEL = {
   add: { label: 'บวกเพิ่มจากคะแนนเดิม', hint: 'บวกคะแนนที่ได้จากควิซนี้เข้ากับคะแนนที่มีอยู่แล้วในคอลัมน์ เหมาะกับคอลัมน์สะสมคะแนนจากหลายควิซ' },
 }
 
-export async function renderBankQuizzes(teacher, bank) {
+export async function renderBankQuizzes(teacher, bank, preferredClassId = null) {
   if (!bank) return
   setTitle(`แบบทดสอบจากคลัง: ${bank.name}`)
   setContent(`<div class="flex justify-center py-12 text-gray-400">กำลังโหลดข้อมูล...</div>`)
@@ -107,7 +107,7 @@ export async function renderBankQuizzes(teacher, bank) {
   })
 
   document.getElementById('btn-create-quiz').addEventListener('click', () =>
-    _renderQuizForm(teacher, bank, classes, questions.length, null))
+    _renderQuizForm(teacher, bank, classes, questions.length, null, preferredClassId))
 
   document.querySelectorAll('.btn-edit-quiz').forEach(btn =>
     btn.addEventListener('click', () => _renderQuizForm(teacher, bank, classes, questions.length, quizzes.find(q => q.id === btn.dataset.id))))
@@ -164,7 +164,7 @@ export async function renderBankQuizzes(teacher, bank) {
     }))
 }
 
-async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) {
+async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, preferredClassId = null) {
   const modal = document.createElement('div')
   modal.className = 'fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4 overflow-y-auto'
   modal.innerHTML = `
@@ -179,7 +179,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz) 
         <div>
           <label class="text-xs font-semibold text-gray-500 mb-1 block">ห้องเรียนที่จะให้สอบ</label>
           <select id="qz-class" class="${SELECT_CLS}">
-            ${classes.map(c => `<option value="${c.id}" ${quiz?.class_id === c.id ? 'selected' : ''}>${_htmlEsc(c.master_subjects?.subject_name ?? '')} (${_htmlEsc(c.class_name ?? '—')})</option>`).join('')}
+            ${classes.map(c => `<option value="${c.id}" ${(quiz ? quiz.class_id === c.id : c.id === preferredClassId) ? 'selected' : ''}>${_htmlEsc(c.master_subjects?.subject_name ?? '')} (${_htmlEsc(c.class_name ?? '—')})</option>`).join('')}
           </select>
         </div>
         <div class="grid grid-cols-2 gap-3">

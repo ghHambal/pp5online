@@ -122,7 +122,7 @@ function _renderBankForm(teacher, bank) {
   })
 }
 
-export async function _renderBankQuestions(teacher, bank) {
+export async function _renderBankQuestions(teacher, bank, preferredClassId = null) {
   if (!bank) return
   setTitle(`คำถามในคลัง: ${bank.name}`)
   setContent(`<div class="flex justify-center py-12 text-gray-400">กำลังโหลดข้อมูล...</div>`)
@@ -214,7 +214,7 @@ export async function _renderBankQuestions(teacher, bank) {
         }
         await bulkImportQuizQuestions(bank.id, mapped)
         showToast(`นำเข้าสำเร็จ ${mapped.length} ข้อ`, 'success')
-        _renderBankQuestions(teacher, bank)
+        _renderBankQuestions(teacher, bank, preferredClassId)
       } catch (err) {
         showToast('นำเข้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       } finally {
@@ -233,7 +233,7 @@ export async function _renderBankQuestions(teacher, bank) {
 
   document.getElementById('btn-go-quizzes').addEventListener('click', async () => {
     const { renderBankQuizzes } = await import('./teacher-views-quiz-config.js')
-    renderBankQuizzes(teacher, bank)
+    renderBankQuizzes(teacher, bank, preferredClassId)
   })
 
   document.querySelectorAll('.btn-delete-q').forEach(btn =>
@@ -242,7 +242,7 @@ export async function _renderBankQuestions(teacher, bank) {
       if (!ok) return
       await deleteQuizQuestion(btn.dataset.id)
       showToast('ลบคำถามแล้ว', 'success')
-      _renderBankQuestions(teacher, bank)
+      _renderBankQuestions(teacher, bank, preferredClassId)
     }))
 }
 
