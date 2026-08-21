@@ -155,7 +155,7 @@ function renderStudent() {
         ${field('nickname','ชื่อเล่น',r?.nickname,'text',true,canEdit)}
         ${field('thai_name','ชื่อภาษาไทย',r?.thai_name || s.full_name,'text',true,canEdit)}
         <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r?.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
-        <label><span class="camp-label">ชื่อภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r?.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
+        <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r?.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
         <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r?.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
         ${field('passport_number','เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_number,'text',false,canEdit)}
         ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_expiry,'date',false,canEdit)}
@@ -164,7 +164,7 @@ function renderStudent() {
         <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r?.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
         ${field('phone','เบอร์โทรศัพท์ผู้ปกครอง',r?.phone,'tel',true,canEdit)}
         <label><span class="camp-label">ไซซ์เสื้อ *</span><select name="shirt_size" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกไซซ์</option>${['XS','S','M','L','XL','2XL','3XL','4XL','อื่น ๆ'].map(v=>`<option ${r?.shirt_size===v?'selected':''}>${v}</option>`).join('')}</select></label>
-        <label class="sm:col-span-2"><span class="camp-label">ที่อยู่ปัจจุบัน *</span><textarea name="current_address" rows="3" class="camp-input" required ${canEdit?'':'disabled'}>${esc(r?.current_address||'')}</textarea></label>
+        ${addressCascadeBlock('student', r?.current_address, canEdit)}
         <label class="sm:col-span-2"><span class="camp-label">โรคประจำตัว</span><textarea name="medical_conditions" rows="2" class="camp-input" ${canEdit?'':'disabled'}>${esc(r?.medical_conditions||'ไม่มี')}</textarea></label>
         ${canEdit ? '<button class="sm:col-span-2 camp-btn bg-teal-700 hover:bg-teal-800 text-white py-3" type="submit">💾 บันทึกแบบสำรวจ</button>' : ''}
       </form>
@@ -172,6 +172,7 @@ function renderStudent() {
   content.querySelector('#student-camp-form')?.addEventListener('submit', saveStudentForm)
   content.querySelectorAll('[data-receipt]').forEach(btn => btn.addEventListener('click', () => openReceipt(btn.dataset.receipt)))
   wireOcrUploadBlock('student', content.querySelector('#student-camp-form'))
+  wireAddressCascade('student', r?.current_address)
 }
 
 function field(name,label,value,type='text',required=false,enabled=true) {
@@ -223,8 +224,12 @@ async function ocrFillCampForm(formEl, file, btn) {
     let filled = 0
     for (const [key, value] of Object.entries(data)) {
       if (!value) continue
-      const input = formEl.querySelector(`[name="${key}"]`)
-      if (input && !input.disabled) { input.value = key === 'english_name' ? String(value).toUpperCase() : value; filled++ }
+      const input = key === 'current_address' ? formEl.querySelector('[id$="-addr-detail"]') : formEl.querySelector(`[name="${key}"]`)
+      if (input && !input.disabled) {
+        input.value = key === 'english_name' ? String(value).toUpperCase() : value
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        filled++
+      }
     }
     toast(filled ? `อ่านข้อมูลสำเร็จ เติมให้ ${filled} ช่อง กรุณาตรวจสอบความถูกต้องก่อนบันทึก` : 'อ่านรูปไม่พบข้อมูลที่ใช้ได้ กรุณากรอกเอง', filled ? 'success' : 'warning')
   } catch (error) {
@@ -242,6 +247,77 @@ function wireOcrUploadBlock(idPrefix, formEl) {
     const file = e.target.files?.[0]
     if (file) ocrFillCampForm(formEl, file, btn)
     e.target.value = ''
+  })
+}
+
+// ── ที่อยู่แบบเลือกจังหวัด → อำเภอ/เขต → ตำบล/แขวง (พิมพ์ค้นหาได้) ──
+let _thAddressPromise = null
+function loadThAddress() {
+  if (!_thAddressPromise) _thAddressPromise = fetch('/pp5online/data/th-address.json').then(r => r.json())
+  return _thAddressPromise
+}
+
+function addressCascadeBlock(idPrefix, existingAddress, enabled) {
+  return `<div class="sm:col-span-2 grid sm:grid-cols-2 gap-4">
+    <label class="sm:col-span-2"><span class="camp-label">ที่อยู่ (บ้านเลขที่ / หมู่ / ถนน) *</span><input id="${idPrefix}-addr-detail" type="text" class="camp-input" required placeholder="เช่น 123 หมู่ 4 ถนนสุขุมวิท" ${enabled ? '' : 'disabled'} /></label>
+    <label><span class="camp-label">จังหวัด</span><input list="${idPrefix}-province-list" id="${idPrefix}-addr-province" class="camp-input" placeholder="พิมพ์ค้นหาจังหวัด" autocomplete="off" ${enabled ? '' : 'disabled'} /><datalist id="${idPrefix}-province-list"></datalist></label>
+    <label><span class="camp-label">อำเภอ/เขต</span><input list="${idPrefix}-district-list" id="${idPrefix}-addr-district" class="camp-input" placeholder="เลือกจังหวัดก่อน" autocomplete="off" disabled /><datalist id="${idPrefix}-district-list"></datalist></label>
+    <label><span class="camp-label">ตำบล/แขวง</span><input list="${idPrefix}-subdistrict-list" id="${idPrefix}-addr-subdistrict" class="camp-input" placeholder="เลือกอำเภอ/เขตก่อน" autocomplete="off" disabled /><datalist id="${idPrefix}-subdistrict-list"></datalist></label>
+    <label><span class="camp-label">รหัสไปรษณีย์</span><input id="${idPrefix}-addr-zip" class="camp-input bg-gray-50" readonly placeholder="เลือกตำบล/แขวงก่อน" /></label>
+    <input type="hidden" name="current_address" id="${idPrefix}-addr-final" value="${esc(existingAddress || '')}" />
+  </div>`
+}
+
+async function wireAddressCascade(idPrefix, existingAddress) {
+  const detailInput = content.querySelector(`#${idPrefix}-addr-detail`)
+  const provinceInput = content.querySelector(`#${idPrefix}-addr-province`)
+  const districtInput = content.querySelector(`#${idPrefix}-addr-district`)
+  const subdistrictInput = content.querySelector(`#${idPrefix}-addr-subdistrict`)
+  const zipInput = content.querySelector(`#${idPrefix}-addr-zip`)
+  const finalInput = content.querySelector(`#${idPrefix}-addr-final`)
+  const provinceList = content.querySelector(`#${idPrefix}-province-list`)
+  const districtList = content.querySelector(`#${idPrefix}-district-list`)
+  const subdistrictList = content.querySelector(`#${idPrefix}-subdistrict-list`)
+  if (!detailInput || !finalInput) return
+  detailInput.value = existingAddress || ''
+  let province = null, district = null, subdistrict = null
+  const recompute = () => {
+    const parts = [detailInput.value.trim()]
+    if (subdistrict) parts.push((province?.id === 1 ? 'แขวง' : 'ตำบล') + subdistrict.n)
+    if (district) parts.push(province?.id === 1 ? district.n : 'อำเภอ' + district.n)
+    if (province) parts.push(province.id === 1 ? 'กรุงเทพมหานคร' : 'จังหวัด' + province.n)
+    if (subdistrict?.z) parts.push(String(subdistrict.z))
+    finalInput.value = parts.filter(Boolean).join(' ')
+  }
+  detailInput.addEventListener('input', recompute)
+  let data
+  try { data = await loadThAddress() } catch { return }
+  provinceList.innerHTML = data.provinces.map(p => `<option value="${esc(p.n)}">`).join('')
+  provinceInput.addEventListener('input', () => {
+    province = data.provinces.find(p => p.n === provinceInput.value.trim()) || null
+    district = null; subdistrict = null
+    districtInput.value = ''; subdistrictInput.value = ''; zipInput.value = ''
+    districtList.innerHTML = ''; subdistrictList.innerHTML = ''
+    districtInput.disabled = !province; subdistrictInput.disabled = true
+    districtInput.placeholder = province ? 'พิมพ์ค้นหาอำเภอ/เขต' : 'เลือกจังหวัดก่อน'
+    subdistrictInput.placeholder = 'เลือกอำเภอ/เขตก่อน'
+    if (province) districtList.innerHTML = data.districts.filter(d => d.p === province.id).map(d => `<option value="${esc(d.n)}">`).join('')
+    recompute()
+  })
+  districtInput.addEventListener('input', () => {
+    district = province ? data.districts.find(d => d.p === province.id && d.n === districtInput.value.trim()) || null : null
+    subdistrict = null
+    subdistrictInput.value = ''; zipInput.value = ''
+    subdistrictList.innerHTML = ''
+    subdistrictInput.disabled = !district
+    subdistrictInput.placeholder = district ? 'พิมพ์ค้นหาตำบล/แขวง' : 'เลือกอำเภอ/เขตก่อน'
+    if (district) subdistrictList.innerHTML = data.subdistricts.filter(s => s.d === district.id).map(s => `<option value="${esc(s.n)}">`).join('')
+    recompute()
+  })
+  subdistrictInput.addEventListener('input', () => {
+    subdistrict = district ? data.subdistricts.find(s => s.d === district.id && s.n === subdistrictInput.value.trim()) || null : null
+    zipInput.value = subdistrict?.z || ''
+    recompute()
   })
 }
 
@@ -275,7 +351,7 @@ function teacherSurveyForm(teacher, registration, canEdit) {
     ${field('nickname','ชื่อเล่น',r.nickname,'text',true,canEdit)}
     ${field('thai_name','ชื่อภาษาไทย',r.thai_name || teacher?.full_name,'text',true,canEdit)}
     <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
-    <label><span class="camp-label">ชื่อภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
+    <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
     <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
     ${field('passport_number','เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_number,'text',false,canEdit)}
     ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_expiry,'date',false,canEdit)}
@@ -284,7 +360,7 @@ function teacherSurveyForm(teacher, registration, canEdit) {
     <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
     ${field('phone','หมายเลขโทรศัพท์',r.phone || teacher?.phone,'tel',true,canEdit)}
     <label><span class="camp-label">ไซซ์เสื้อ *</span><select name="shirt_size" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกไซซ์</option>${['XS','S','M','L','XL','2XL','3XL','4XL','อื่น ๆ'].map(v=>`<option ${r.shirt_size===v?'selected':''}>${v}</option>`).join('')}</select></label>
-    <label class="sm:col-span-2"><span class="camp-label">ที่อยู่ปัจจุบัน *</span><textarea name="current_address" rows="3" class="camp-input" required ${canEdit?'':'disabled'}>${esc(r.current_address||'')}</textarea></label>
+    ${addressCascadeBlock('teacher', r.current_address, canEdit)}
     <label class="sm:col-span-2"><span class="camp-label">โรคประจำตัว</span><textarea name="medical_conditions" rows="2" class="camp-input" ${canEdit?'':'disabled'}>${esc(r.medical_conditions||'ไม่มี')}</textarea></label>
     ${canEdit ? '<button class="sm:col-span-2 camp-btn bg-teal-700 hover:bg-teal-800 text-white py-3" type="submit">💾 บันทึกแบบสำรวจครู</button>' : ''}
   </form>`
@@ -305,6 +381,7 @@ function renderTeacherSurvey(teacher, registration, insideManager = false) {
     catch(error){ toast(error.message||'บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='💾 บันทึกแบบสำรวจครู' }
   })
   wireOcrUploadBlock('teacher', content.querySelector('#teacher-camp-form'))
+  wireAddressCascade('teacher', registration?.current_address)
 }
 
 // ─── Manager ────────────────────────────────────────────────────────────────
