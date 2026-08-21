@@ -24,6 +24,22 @@ let channel = null
 let refreshTimer = null
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c]))
+const normalizeGender = value => {
+  const v = String(value || '').trim().toUpperCase()
+  if (v === 'ชาย' || v === 'M' || v === 'MALE') return 'M'
+  if (v === 'หญิง' || v === 'F' || v === 'FEMALE') return 'F'
+  return ''
+}
+const teacherGenderFromName = fullName => {
+  const n = String(fullName || '').trim()
+  if (/^นาย/.test(n)) return 'M'
+  if (/^นาง/.test(n)) return 'F' // ครอบคลุมทั้ง "นาง" และ "นางสาว"
+  return ''
+}
+function englishTitleOptions(genderCode, currentValue) {
+  const byGender = genderCode === 'M' ? ['MR.', 'MASTER'] : genderCode === 'F' ? ['MRS.', 'MS.', 'MISS'] : ['MR.', 'MRS.', 'MS.', 'MASTER', 'MISS']
+  return currentValue && !byGender.includes(currentValue) ? [...byGender, currentValue] : byGender
+}
 const money = value => Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 const thaiDate = value => value ? new Date(value).toLocaleDateString('th-TH', { day:'numeric', month:'short', year:'numeric' }) : '—'
 const inputDateTime = value => {
@@ -154,7 +170,7 @@ function renderStudent() {
         ${canEdit ? ocrUploadBlock('student') : ''}
         ${field('nickname','ชื่อเล่น',r?.nickname,'text',true,canEdit)}
         ${field('thai_name','ชื่อภาษาไทย',r?.thai_name || s.full_name,'text',true,canEdit)}
-        <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r?.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
+        <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${englishTitleOptions(normalizeGender(s.gender),r?.english_title).map(v=>`<option ${r?.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
         <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r?.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
         <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r?.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
         ${field('passport_number',e.passport_required?'เลขที่หนังสือเดินทาง':'เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_number,'text',Boolean(e.passport_required),canEdit)}
@@ -266,12 +282,17 @@ function loadThAddress() {
 }
 
 function addressCascadeBlock(idPrefix, existingAddress, enabled) {
+  const hasExisting = Boolean(String(existingAddress || '').trim())
+  const showCascade = !hasExisting
   return `<div class="sm:col-span-2 grid sm:grid-cols-2 gap-4">
     <label class="sm:col-span-2"><span class="camp-label">ที่อยู่ (บ้านเลขที่ / หมู่ / ถนน) *</span><input id="${idPrefix}-addr-detail" type="text" class="camp-input" required placeholder="เช่น 123 หมู่ 4 ถนนสุขุมวิท" ${enabled ? '' : 'disabled'} /></label>
-    <label><span class="camp-label">จังหวัด</span><input list="${idPrefix}-province-list" id="${idPrefix}-addr-province" class="camp-input" placeholder="พิมพ์ค้นหาจังหวัด" autocomplete="off" ${enabled ? '' : 'disabled'} /><datalist id="${idPrefix}-province-list"></datalist></label>
-    <label><span class="camp-label">อำเภอ/เขต</span><input list="${idPrefix}-district-list" id="${idPrefix}-addr-district" class="camp-input" placeholder="เลือกจังหวัดก่อน" autocomplete="off" disabled /><datalist id="${idPrefix}-district-list"></datalist></label>
-    <label><span class="camp-label">ตำบล/แขวง</span><input list="${idPrefix}-subdistrict-list" id="${idPrefix}-addr-subdistrict" class="camp-input" placeholder="เลือกอำเภอ/เขตก่อน" autocomplete="off" disabled /><datalist id="${idPrefix}-subdistrict-list"></datalist></label>
-    <label><span class="camp-label">รหัสไปรษณีย์</span><input id="${idPrefix}-addr-zip" class="camp-input bg-gray-50" readonly placeholder="เลือกตำบล/แขวงก่อน" /></label>
+    ${enabled ? `<button type="button" id="${idPrefix}-addr-toggle" class="sm:col-span-2 text-left text-xs font-semibold text-teal-700 hover:underline">${showCascade ? '▲ ซ่อนตัวเลือกจังหวัด/อำเภอ/ตำบล' : '📍 แก้ที่อยู่ด้วยตัวเลือกจังหวัด/อำเภอ/ตำบล'}</button>` : ''}
+    <div id="${idPrefix}-addr-cascade" class="sm:col-span-2 grid sm:grid-cols-2 gap-4 ${showCascade ? '' : 'hidden'}">
+      <label><span class="camp-label">จังหวัด</span><input list="${idPrefix}-province-list" id="${idPrefix}-addr-province" class="camp-input" placeholder="พิมพ์ค้นหาจังหวัด" autocomplete="off" ${enabled ? '' : 'disabled'} /><datalist id="${idPrefix}-province-list"></datalist></label>
+      <label><span class="camp-label">อำเภอ/เขต</span><input list="${idPrefix}-district-list" id="${idPrefix}-addr-district" class="camp-input" placeholder="เลือกจังหวัดก่อน" autocomplete="off" disabled /><datalist id="${idPrefix}-district-list"></datalist></label>
+      <label><span class="camp-label">ตำบล/แขวง</span><input list="${idPrefix}-subdistrict-list" id="${idPrefix}-addr-subdistrict" class="camp-input" placeholder="เลือกอำเภอ/เขตก่อน" autocomplete="off" disabled /><datalist id="${idPrefix}-subdistrict-list"></datalist></label>
+      <label><span class="camp-label">รหัสไปรษณีย์</span><input id="${idPrefix}-addr-zip" class="camp-input bg-gray-50" readonly placeholder="เลือกตำบล/แขวงก่อน" /></label>
+    </div>
     <input type="hidden" name="current_address" id="${idPrefix}-addr-final" value="${esc(existingAddress || '')}" />
   </div>`
 }
@@ -288,6 +309,12 @@ async function wireAddressCascade(idPrefix, existingAddress) {
   const subdistrictList = content.querySelector(`#${idPrefix}-subdistrict-list`)
   if (!detailInput || !finalInput) return
   detailInput.value = existingAddress || ''
+  const toggleBtn = content.querySelector(`#${idPrefix}-addr-toggle`)
+  const cascadeBox = content.querySelector(`#${idPrefix}-addr-cascade`)
+  toggleBtn?.addEventListener('click', () => {
+    const nowHidden = cascadeBox.classList.toggle('hidden')
+    toggleBtn.textContent = nowHidden ? '📍 แก้ที่อยู่ด้วยตัวเลือกจังหวัด/อำเภอ/ตำบล' : '▲ ซ่อนตัวเลือกจังหวัด/อำเภอ/ตำบล'
+  })
   let province = null, district = null, subdistrict = null
   const recompute = () => {
     const parts = [detailInput.value.trim()]
@@ -358,7 +385,7 @@ function teacherSurveyForm(teacher, registration, canEdit) {
     ${canEdit ? ocrUploadBlock('teacher') : ''}
     ${field('nickname','ชื่อเล่น',r.nickname,'text',true,canEdit)}
     ${field('thai_name','ชื่อภาษาไทย',r.thai_name || teacher?.full_name,'text',true,canEdit)}
-    <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
+    <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${englishTitleOptions(teacherGenderFromName(teacher?.full_name),r.english_title).map(v=>`<option ${r.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
     <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
     <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
     ${field('passport_number',ctx.event?.passport_required?'เลขที่หนังสือเดินทาง':'เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_number,'text',Boolean(ctx.event?.passport_required),canEdit)}
