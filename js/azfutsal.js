@@ -5716,11 +5716,14 @@ async function handleReviewPayment(id, status) {
   azToast('ยืนยันการชำระเงินแล้ว')
 }
 
+// คืนค่า 'success' | 'already' | 'error' — แยก 'already' ออกมาเพราะ S.refunds ฝั่ง client อาจไม่ใหม่พอ
+// (เช่นอีกเซสชัน/แท็บเพิ่งยืนยันทีมเดียวกันไปก่อนหน้า) เจอ duplicate key จาก unique constraint บน team_id
 async function handleConfirmRefund(teamId, extra = {}) {
-  if (refundForTeam(teamId)) { azToast('ทีมนี้ยืนยันคืนเงินแล้ว'); return false }
+  const { data: existing } = await SB.from('azfutsal_refunds').select('id').eq('team_id', teamId).maybeSingle()
+  if (existing) { azToast('ทีมนี้ถูกยืนยันคืนเงินไปแล้ว (อาจมีคนอื่นยืนยันไปก่อนหน้านี้) กำลังรีเฟรชข้อมูล...'); await refresh(); return 'already' }
   const team = S.teams.find(item => item.id === teamId)
   const payment = S.payments.find(item => item.team_id === teamId && item.status === 'verified')
-  if (!team || !payment) { azToast('ยืนยันไม่ได้: ไม่พบการชำระค่าประกันที่ผ่านการตรวจสอบ'); return false }
+  if (!team || !payment) { azToast('ยืนยันไม่ได้: ไม่พบการชำระค่าประกันที่ผ่านการตรวจสอบ'); return 'error' }
   const payload = {
     team_id: team.id,
     payment_id: payment.id,
@@ -5732,10 +5735,16 @@ async function handleConfirmRefund(teamId, extra = {}) {
     confirmed_at: new Date().toISOString(),
   }
   const { error } = await SB.from('azfutsal_refunds').insert(payload)
-  if (error) { azToast('ยืนยันคืนเงินไม่สำเร็จ: ' + error.message); return false }
+  if (error) {
+    if (error.code === '23505' || /duplicate key/i.test(error.message)) {
+      azToast('ทีมนี้ถูกยืนยันคืนเงินไปแล้วโดยผู้อื่นพอดี กำลังรีเฟรชข้อมูล...')
+      await refresh(); return 'already'
+    }
+    azToast('ยืนยันคืนเงินไม่สำเร็จ: ' + error.message); return 'error'
+  }
   await refresh()
   azToast(`ยืนยันคืนเงินทีม ${team.name} แล้ว`)
-  return true
+  return 'success'
 }
 
 async function handleViewProof(path) {
@@ -5837,8 +5846,9 @@ function bindEvents() {
           if (!upErr) { const { data } = SB.storage.from('azfutsal-assets').getPublicUrl(path); signatureUrl = data.publicUrl }
         }
       }
-      const ok = await handleConfirmRefund(teamId, { recipientSignatureUrl: signatureUrl, paymentMethod: method, proofUrl: proofPath })
-      if (ok) { S.refundConfirmSign = null; S.refundConfirmDone = { teamId }; draw() }
+      const result = await handleConfirmRefund(teamId, { recipientSignatureUrl: signatureUrl, paymentMethod: method, proofUrl: proofPath })
+      if (result === 'success') { S.refundConfirmSign = null; S.refundConfirmDone = { teamId }; draw() }
+      else if (result === 'already') { S.refundConfirmSign = null; draw() }
       return
     }
     if (act === 'printRefundReceiptDone') { openRefundReceipt(btn.dataset.team); return }
