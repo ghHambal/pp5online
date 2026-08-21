@@ -14,8 +14,9 @@ import {
   openEmailLinkPrompt,
 } from './student-views.js'
 import { getSystemConfig, updateLastSeen, logLogin, getActiveAnnouncements } from './api.js'
+import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { applyThemeForRole } from './theme.js'
-import { injectFeedbackWidget, showToast, showAnnouncementPopups } from './ui.js'
+import { injectFeedbackWidget, showToast, showAnnouncementPopups, showTerangganuUrgentModal } from './ui.js'
 import { ensurePushSubscription } from './push-notify.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { renderStudentSportsHome } from './sports-portals.js'
@@ -109,6 +110,14 @@ async function _loadAnnouncementBanners() {
     const items = (await getActiveAnnouncements('student'))
       .filter(a => a.audience !== 'futsal_player' || _futsalRegistered)
     showAnnouncementPopups(items, `pp5_ann_dismissed_stu_${_student?.id ?? ''}`)
+  } catch { /* ไม่ block */ }
+}
+
+// ป๊อบอัพเตือนกรอกแบบสำรวจค่ายลูกเสือ TERANGGANU — โชว์เฉพาะนักเรียนที่เป็นผู้เข้าร่วมค่ายจริงและยังไม่กรอก
+async function _checkTerangganuSurveyNudge() {
+  try {
+    const status = await getMyTerangganuSurveyStatus()
+    if (status?.is_participant && !status.completed) showTerangganuUrgentModal('student')
   } catch { /* ไม่ block */ }
 }
 
@@ -209,6 +218,7 @@ async function init() {
   _initNotifications()
   if (_student?.id) _checkStudentShirtSizePopup()
   _loadAnnouncementBanners()
+  _checkTerangganuSurveyNudge()
 
   // เด้งขอเชื่อมอีเมลส่วนตัวทุกครั้งหลัง login จนกว่าจะเชื่อม (ยังเป็นอีเมลปลอมเริ่มต้นอยู่)
   if (session.user.email?.endsWith('@student.pp5.local')) {

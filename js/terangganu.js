@@ -685,6 +685,7 @@ function renderSettings(){
   const e=ctx.event||{}, staff=ctx.staff||[]
   content.innerHTML=`<div class="mb-4"><h2 class="text-xl font-bold">ตั้งค่าระบบค่าย</h2><p class="text-xs text-gray-400">กำหนดการเปิดระบบ ค่าใช้จ่าย และข้อมูลใบเสร็จ</p></div>
   <section class="camp-card p-5 mb-4"><h3 class="font-bold">การเปิดใช้งาน</h3><div class="grid sm:grid-cols-2 gap-3 mt-4"><div class="rounded-xl border p-4"><p class="text-sm font-semibold">ปุ่มในหน้าภาพรวมนักเรียน</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.visible_to_students?'เปิดใช้งาน':'ปิดใช้งาน'}</p><button data-toggle-visible="${!e.visible_to_students}" class="camp-btn mt-3 ${e.visible_to_students?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.visible_to_students?'ปิดใช้งาน':'เปิดใช้งาน'}</button></div><div class="rounded-xl border p-4"><p class="text-sm font-semibold">รับแบบสำรวจ</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.form_open?'เปิดรับข้อมูล':'ปิดรับข้อมูล'}</p><button data-toggle-form="${!e.form_open}" class="camp-btn mt-3 ${e.form_open?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.form_open?'ปิดรับข้อมูล':'เปิดรับข้อมูล'}</button></div><div class="sm:col-span-2 rounded-xl border p-4"><p class="text-sm font-semibold">นักเรียนที่เห็นปุ่มค่าย</p><p class="text-xs text-gray-400 mt-1">ปัจจุบัน: ${e.student_visibility_scope==='all'?'นักเรียนทั้งโรง':'เฉพาะนักเรียนที่ถูกเพิ่มในระบบค่าย'}</p><div class="flex flex-wrap gap-2 mt-3"><button data-visibility-scope="participants" class="camp-btn ${e.student_visibility_scope!=='all'?'bg-teal-700 text-white':'bg-gray-100 text-gray-600'}">เฉพาะรายชื่อที่เพิ่ม</button><button data-visibility-scope="all" class="camp-btn ${e.student_visibility_scope==='all'?'bg-teal-700 text-white':'bg-gray-100 text-gray-600'}">นักเรียนทั้งโรง</button></div></div>
+  <div class="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50/40 p-4"><p class="text-sm font-semibold">⚠️ แจ้งเตือนด่วน: ยังไม่กรอกแบบสำรวจเลย</p><p class="text-xs text-gray-500 mt-1">นักเรียน/ครูที่ยังไม่กรอกแบบสำรวจแม้แต่ช่องเดียว จะเห็นป๊อบอัพเต็มจอเตือนอัตโนมัติทุกครั้งที่เปิดแอปอยู่แล้ว — ปุ่มนี้ช่วยส่ง push notification เพิ่มไปเตือนถึงเครื่อง เผื่อช่วงนี้ยังไม่ได้เปิดแอป</p><button id="notify-incomplete-survey" type="button" class="camp-btn bg-red-600 hover:bg-red-700 text-white mt-3">📢 แจ้งเตือนด่วนตอนนี้</button></div>
   <div class="sm:col-span-2 rounded-xl border p-4"><p class="text-sm font-semibold">บังคับกรอกข้อมูลหนังสือเดินทาง</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.passport_required?'บังคับกรอก':'ยังไม่บังคับ (เปิดเมื่อพร้อมให้ทุกคนกรอกจริง)'}</p><div class="flex flex-wrap gap-2 mt-3"><button data-toggle-passport="${!e.passport_required}" class="camp-btn ${e.passport_required?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.passport_required?'ปิดการบังคับ':'เปิดการบังคับ'}</button><button id="notify-missing-passport" type="button" class="camp-btn bg-indigo-50 text-indigo-700">🔔 แจ้งเตือนผู้ที่ยังไม่กรอกให้กรอก</button></div><p class="text-[11px] text-gray-400 mt-2">ปุ่มแจ้งเตือนจะส่ง push notification ไปหาทุกคนที่ยังไม่กรอกเลขที่หนังสือเดินทาง พร้อมเด้งข้อความเตือนในแอปให้คนนั้นเห็นทันทีที่เปิดแบบสำรวจ</p></div></div></section>
   <form id="camp-settings-form" class="camp-card p-5 grid sm:grid-cols-2 gap-4">
     ${field('name','ชื่อกิจกรรม',e.name,'text',true,true)}${field('location','สถานที่',e.location)}
@@ -706,6 +707,7 @@ function renderSettings(){
   document.querySelectorAll('[data-visibility-scope]').forEach(btn=>btn.addEventListener('click',async e=>{await quickSetting({student_visibility_scope:e.currentTarget.dataset.visibilityScope})}))
   document.querySelector('[data-toggle-passport]').addEventListener('click',async e=>{await quickSetting({passport_required:e.currentTarget.dataset.togglePassport==='true'})})
   document.getElementById('notify-missing-passport').addEventListener('click',notifyMissingPassport)
+  document.getElementById('notify-incomplete-survey').addEventListener('click',notifyIncompleteSurvey)
   document.getElementById('camp-settings-form').addEventListener('submit',saveSettings)
   const teacherSelect=document.getElementById('receipt-teacher-select')
   const drawReceiptTeacherSignature=()=>{
@@ -732,6 +734,23 @@ async function notifyMissingPassport(){
       title:'กรุณากรอกข้อมูลหนังสือเดินทาง',
       body:'ค่ายลูกเสือ TERANGGANU ต้องใช้ข้อมูลหนังสือเดินทาง กรุณาเข้าระบบเพื่อกรอกให้ครบถ้วน',
       url:'terangganu.html',tag:'terangganu-passport',target:'terangganu_missing_passport',
+    }})
+    if(error)throw new Error(error.message||'ส่งแจ้งเตือนไม่สำเร็จ')
+    if(data?.error)throw new Error(data.error)
+    toast(typeof data?.sent==='number'?`ส่งแจ้งเตือนสำเร็จ ${data.sent} คน`:(data?.message||'ส่งแจ้งเตือนแล้ว'))
+  }catch(error){toast(error.message||'ส่งแจ้งเตือนไม่สำเร็จ','error')}
+  finally{btn.disabled=false;btn.textContent=original}
+}
+async function notifyIncompleteSurvey(){
+  const btn=document.getElementById('notify-incomplete-survey')
+  if(!btn)return
+  const original=btn.textContent
+  btn.disabled=true;btn.textContent='กำลังส่ง...'
+  try{
+    const {data,error}=await supabase.functions.invoke('send-push',{body:{
+      title:'ด่วน! กรุณากรอกแบบสำรวจค่ายลูกเสือ TERANGGANU',
+      body:'ระบบยังไม่พบข้อมูลของท่าน กรุณาเข้าระบบเพื่อกรอกแบบสำรวจให้เสร็จโดยเร็วที่สุด',
+      url:'terangganu.html',tag:'terangganu-incomplete-survey',target:'terangganu_incomplete_survey',
     }})
     if(error)throw new Error(error.message||'ส่งแจ้งเตือนไม่สำเร็จ')
     if(data?.error)throw new Error(data.error)

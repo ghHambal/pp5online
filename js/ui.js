@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.496'
+import { APP_VERSION } from './version.js?v=10.22.497'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.497': [
+    '📢 ระบบลูกเสือ (TERANGGANU): เพิ่มระบบแจ้งเตือนด่วนให้กรอกแบบสำรวจ — ครู/นักเรียนที่เป็นผู้เข้าร่วมค่ายจริงและยังไม่กรอกข้อมูลเลย จะเห็นป๊อบอัพเต็มจอเตือนอัตโนมัติทันทีที่เข้าหน้าแดชบอร์ดหลัก พร้อมปุ่มลัดไปกรอกและคำแนะนำจุดที่ต้องกดแยกสำหรับนักเรียน/ครู (คนที่ไม่เกี่ยวข้องจะไม่เห็นเลย) — เพิ่มปุ่ม "📢 แจ้งเตือนด่วนตอนนี้" ในหน้าตั้งค่าค่าย ส่ง push notification เสริมไปเครื่องคนที่ยังไม่กรอก — แก้บั๊กแฝง: เมนู "ค่ายลูกเสือ TERANGGANU" ในแดชบอร์ดครู เดิมเห็นเฉพาะครูที่เป็นผู้จัดการ ครูทั่วไปที่แค่ไปร่วมค่ายไม่มีทางเข้าเมนูได้เลย แก้ให้เห็นเมนูด้วยแล้ว'
+  ],
   '10.22.496': [
     '🇬🇧 ระบบลูกเสือ (TERANGGANU): ช่อง "คำนำหน้าภาษาอังกฤษ" กรองตัวเลือกตามเพศให้อัตโนมัติแล้ว (ชาย: MR./MASTER, หญิง: MRS./MS./MISS) ไม่ต้องไล่หาเองในตัวเลือกที่ไม่เกี่ยวกับตัวเอง — ช่องที่อยู่: พอบันทึกที่อยู่แล้ว ตัวเลือกจังหวัด/อำเภอ/ตำบลจะซ่อนอัตโนมัติ (ข้อมูลอยู่ในช่องรายละเอียดที่อยู่ครบแล้ว) กันสับสนว่าต้องกรอกซ้ำ พร้อมปุ่ม "แก้ที่อยู่ด้วยตัวเลือก" ไว้เรียกกลับมาใช้ได้เสมอถ้าต้องการแก้ไข'
   ],
@@ -2998,4 +3001,42 @@ export function showAnnouncementPopups(items, seenKey) {
   }
 
   showNext()
+}
+
+// ป๊อบอัพเต็มจอเร่งด่วนให้กรอกแบบสำรวจค่ายลูกเสือ TERANGGANU — โชว์เฉพาะผู้เข้าร่วมค่ายจริงที่ยังไม่กรอก
+// (เช็คสิทธิ์/ขอบเขตจาก get_my_terangganu_survey_status() ก่อนเรียกฟังก์ชันนี้เสมอ ไม่ใช่โชว์ทุกคน)
+export function showTerangganuUrgentModal(role) {
+  const key = 'terangganu_survey_nudge_dismissed'
+  const today = new Date().toISOString().slice(0, 10)
+  if (localStorage.getItem(key) === today) return
+
+  const guide = role === 'teacher'
+    ? 'จากเมนูด้านซ้าย มองหาเมนู <b>"ค่ายลูกเสือ TERANGGANU"</b> แล้วกดเข้าไป หรือกดปุ่มด้านล่างนี้ได้เลย'
+    : 'จากหน้าแรก มองหาการ์ดสีเขียว <b>"⚜️ ค่ายลูกเสือ TERANGGANU 2026"</b> แล้วกด "เปิดแบบฟอร์ม →" หรือกดปุ่มด้านล่างนี้ได้เลย'
+
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center bg-gradient-to-br from-amber-900/90 to-red-900/90 backdrop-blur-sm p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden text-center" style="animation: ui-pop-in .25s ease-out">
+      <div class="bg-gradient-to-r from-amber-500 to-red-500 text-white px-6 py-6">
+        <div class="text-5xl mb-2">⚜️⚠️</div>
+        <h3 class="font-extrabold text-lg leading-snug">ด่วน! กรุณากรอกแบบสำรวจ<br>ค่ายลูกเสือ TERANGGANU 2026</h3>
+      </div>
+      <div class="px-6 py-5">
+        <p class="text-sm text-gray-600 leading-relaxed">ระบบยังไม่พบข้อมูลของท่านสำหรับการเดินทางเข้าค่าย กรุณากรอกข้อมูลให้เสร็จโดยเร็วที่สุด</p>
+        <p class="text-xs text-gray-500 mt-3 leading-relaxed">${guide}</p>
+      </div>
+      <div class="px-6 pb-6 flex flex-col gap-2">
+        <a href="terangganu.html" class="block py-3.5 bg-teal-700 hover:bg-teal-800 text-white rounded-2xl text-sm font-bold shadow-md transition active:scale-95">📝 ไปกรอกข้อมูลตอนนี้ →</a>
+        <button id="btn-terangganu-nudge-dismiss" class="py-2 text-xs text-gray-400 font-semibold">เตือนอีกครั้งพรุ่งนี้</button>
+      </div>
+    </div>
+    <style>
+      @keyframes ui-pop-in { from { opacity: 0; transform: scale(0.9) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+    </style>`
+  document.body.appendChild(modal)
+  modal.querySelector('#btn-terangganu-nudge-dismiss').addEventListener('click', () => {
+    localStorage.setItem(key, today)
+    modal.remove()
+  })
 }

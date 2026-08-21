@@ -10,6 +10,12 @@ export async function getTerangganuAccess() {
   return unwrap(data)
 }
 
+export async function getMyTerangganuSurveyStatus() {
+  const { data, error } = await supabase.rpc('get_my_terangganu_survey_status')
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function getMyTerangganuContext() {
   const { data, error } = await supabase.rpc('get_my_terangganu_context')
   if (error) throw error

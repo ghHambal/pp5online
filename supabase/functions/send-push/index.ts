@@ -3,8 +3,9 @@
 // เรียกจากฝั่ง client ผ่าน supabase.functions.invoke('send-push', { body: {...} })
 // - แอดมิน/is_also_admin: ยิงได้ทั้ง target: 'all_teachers'/'all_students' หรือ profileIds ที่ระบุเอง (ไม่จำกัดขอบเขต)
 // - ครูทั่วไป: ยิงได้เฉพาะ profileIds ที่เป็น "นักเรียนในวิชาที่ตัวเองสอน" เท่านั้น (เช็คจริงฝั่งเซิร์ฟเวอร์ ไม่เชื่อ client)
-// - target: 'terangganu_missing_passport': ผู้รับผิดชอบค่าย TERANGGANU ยิงได้ (ไม่ต้องเป็นแอดมิน) — สิทธิ์และรายชื่อเป้าหมาย
-//   ตรวจ/คำนวณผ่าน RPC get_terangganu_missing_passport_targets() ด้วย JWT ของผู้เรียกเอง (terangganu_can(...,'settings'))
+// - target: 'terangganu_missing_passport' / 'terangganu_incomplete_survey': ผู้รับผิดชอบค่าย TERANGGANU ยิงได้
+//   (ไม่ต้องเป็นแอดมิน) — สิทธิ์และรายชื่อเป้าหมายตรวจ/คำนวณผ่าน RPC ของระบบนั้นๆ (ดู TERANGGANU_RPC_TARGETS ด้านล่าง)
+//   ด้วย JWT ของผู้เรียกเอง (แต่ละ RPC เช็ค terangganu_can(...,'settings') เอง) — เพิ่ม target ใหม่ได้โดยเพิ่ม entry ในแมปนี้
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
@@ -60,12 +61,19 @@ Deno.serve(async (req: Request) => {
 
     let targetIds: string[] | null = Array.isArray(profileIds) ? profileIds : null
 
-    if (!targetIds && target === 'terangganu_missing_passport') {
-      const { data: ids, error: rpcErr } = await supabaseUser.rpc('get_terangganu_missing_passport_targets')
+    // target ที่คำนวณรายชื่อ+สิทธิ์ผ่าน RPC ของระบบย่อยเอง (ดูหมายเหตุด้านบน) — เพิ่ม target ใหม่ที่นี่ได้เรื่อยๆ
+    const TERANGGANU_RPC_TARGETS: Record<string, { rpc: string, emptyMessage: string }> = {
+      terangganu_missing_passport: { rpc: 'get_terangganu_missing_passport_targets', emptyMessage: 'ไม่มีใครขาดข้อมูลหนังสือเดินทางแล้ว' },
+      terangganu_incomplete_survey: { rpc: 'get_terangganu_incomplete_survey_targets', emptyMessage: 'ทุกคนกรอกแบบสำรวจครบแล้ว' },
+    }
+    const terangganuTarget = target ? TERANGGANU_RPC_TARGETS[target] : undefined
+
+    if (!targetIds && terangganuTarget) {
+      const { data: ids, error: rpcErr } = await supabaseUser.rpc(terangganuTarget.rpc)
       if (rpcErr) return new Response(JSON.stringify({ error: rpcErr.message }), { status: 403, headers: corsHeaders })
       targetIds = Array.isArray(ids) ? ids : []
       if (!targetIds.length) {
-        return new Response(JSON.stringify({ sent: 0, message: 'ไม่มีใครขาดข้อมูลหนังสือเดินทางแล้ว' }), { status: 200, headers: corsHeaders })
+        return new Response(JSON.stringify({ sent: 0, message: terangganuTarget.emptyMessage }), { status: 200, headers: corsHeaders })
       }
     } else if (isAdmin) {
       if (!targetIds && target === 'all_teachers') {

@@ -1,5 +1,5 @@
 import { supabase }            from './supabase.js'
-import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog, showAnnouncementPopups } from './ui.js'
+import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog, showAnnouncementPopups, showTerangganuUrgentModal } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getCourseDocPage2, saveCourseDocPage2,
@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.496'
+import { APP_VERSION } from './version.js?v=10.22.497'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -38,6 +38,7 @@ import {
 } from './teacher-views.js'
 import { renderSupervisorDashboard } from './supervisor.js'
 import { renderTutorial } from './tutorial.js'
+import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
@@ -617,7 +618,7 @@ async function _applyRoleMenus() {
   toggle('menu-council', councilCfg.council_visible_to_all !== 'false' || _isAlsoAdmin)
   try {
     const { data: campAccess } = await supabase.rpc('get_terangganu_access')
-    toggle('menu-terangganu', campAccess?.is_manager === true)
+    toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
   } catch {
     toggle('menu-terangganu', false)
   }
@@ -2116,6 +2117,14 @@ async function _loadAnnouncementBanners() {
   } catch { /* ไม่ block */ }
 }
 
+// ป๊อบอัพเตือนกรอกแบบสำรวจค่ายลูกเสือ TERANGGANU — โชว์เฉพาะครูที่เป็นผู้เข้าร่วมค่ายจริงและยังไม่กรอก
+async function _checkTerangganuSurveyNudge() {
+  try {
+    const status = await getMyTerangganuSurveyStatus()
+    if (status?.is_participant && !status.completed) showTerangganuUrgentModal('teacher')
+  } catch { /* ไม่ block */ }
+}
+
 // map feature key → { icon, label, renderFn }
 const _SV_MENU_ITEMS = [
   { key:'announce_create',  icon:'📢', label:'จัดการประกาศ',   fn: (t, isAdmin) => { import('./views.js').then(({renderSupervisorAnnouncements}) => renderSupervisorAnnouncements(t, isAdmin)) }},
@@ -3029,6 +3038,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (_teacher?.id) _initNotifications(_teacher.id)
   initInstallPrompt()
   _loadAnnouncementBanners()
+  _checkTerangganuSurveyNudge()
   if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
 
   const verEl = document.getElementById('app-version')
