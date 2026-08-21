@@ -978,6 +978,7 @@ function draw() {
     </div>
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
+  if (S.identity.isAdmin && S.adminSection === 'refunds') setupSignaturePad()
 }
 
 function header() {
@@ -1146,9 +1147,13 @@ function buildRefundReceiptDocument(team, refund, isPreview) {
   const note = isPreview
     ? 'นี่คือตัวอย่างคำนวณจากข้อมูลปัจจุบัน (ใบเหลือง/ใบแดงล่าสุด) ยังไม่ใช่เอกสารทางการ ยอดเงินอาจเปลี่ยนได้ถ้ามีการแก้ไขผลการแข่งขันเพิ่มเติมก่อนผู้จัดกดยืนยันจริง'
     : 'เอกสารนี้ออกจากระบบหลังผู้จัดการแข่งขันยืนยันการคืนเงินแล้ว รายละเอียดและยอดเงินเป็นข้อมูลที่บันทึก ณ เวลายืนยัน'
+  const payerName = cfg('REFUND_PAYER_NAME', '')
+  const payerTitle = cfg('REFUND_PAYER_TITLE', '')
+  const payerSig = cfg('REFUND_PAYER_SIGNATURE_URL', '')
+  const captainName = team.captain?.full_name || ''
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(isPreview ? `ตัวอย่างใบเสร็จ · ${team.name}` : refund.receipt_no)}</title>
   <style>
-    @page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Tahoma,"Noto Sans Thai",sans-serif;color:#111827;margin:0;font-size:13px}.sheet{max-width:760px;margin:auto;border:1px solid #d1d5db;padding:28px;position:relative}${isPreview ? '.sheet::before{content:"ตัวอย่าง";position:absolute;top:40%;left:0;right:0;text-align:center;font-size:80px;font-weight:900;color:rgba(217,119,6,.14);transform:rotate(-18deg);pointer-events:none}' : ''}.head{display:flex;align-items:center;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px}.logo{width:82px;height:82px;object-fit:contain}.head h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin:18px 0}.meta b{display:inline-block;min-width:105px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d1d5db;padding:9px;vertical-align:top}th{background:#f3f4f6;text-align:left}.num{text-align:right;white-space:nowrap}td span{color:#4b5563;font-size:12px}.empty{text-align:center;color:#6b7280}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .total{border-top:2px solid #111827;margin-top:5px;padding-top:10px;font-size:17px;font-weight:800}.note{margin-top:22px;padding:10px 12px;background:${isPreview ? '#fffbeb' : '#f9fafb'};color:${isPreview ? '#92400e' : '#4b5563'};font-size:11.5px}.actions{text-align:center;margin:20px}.actions button{padding:10px 22px;border:0;border-radius:8px;background:#111827;color:white;font-weight:700;cursor:pointer}@media print{.actions{display:none}.sheet{border:0;padding:0}}
+    @page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Tahoma,"Noto Sans Thai",sans-serif;color:#111827;margin:0;font-size:13px}.sheet{max-width:760px;margin:auto;border:1px solid #d1d5db;padding:28px;position:relative}${isPreview ? '.sheet::before{content:"ตัวอย่าง";position:absolute;top:40%;left:0;right:0;text-align:center;font-size:80px;font-weight:900;color:rgba(217,119,6,.14);transform:rotate(-18deg);pointer-events:none}' : ''}.head{display:flex;align-items:center;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px}.logo{width:82px;height:82px;object-fit:contain}.head h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin:18px 0}.meta b{display:inline-block;min-width:105px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d1d5db;padding:9px;vertical-align:top}th{background:#f3f4f6;text-align:left}.num{text-align:right;white-space:nowrap}td span{color:#4b5563;font-size:12px}.empty{text-align:center;color:#6b7280}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .total{border-top:2px solid #111827;margin-top:5px;padding-top:10px;font-size:17px;font-weight:800}.note{margin-top:22px;padding:10px 12px;background:${isPreview ? '#fffbeb' : '#f9fafb'};color:${isPreview ? '#92400e' : '#4b5563'};font-size:11.5px}.signatures{display:flex;justify-content:space-around;gap:30px;margin-top:44px}.sig-box{flex:1;max-width:230px;text-align:center}.sig-img-wrap{height:60px;display:flex;align-items:flex-end;justify-content:center}.sig-img-wrap img{max-height:60px;max-width:100%;object-fit:contain}.sig-rule{border-top:1px solid #111827;margin-top:4px;padding-top:6px}.sig-label{font-weight:700}.sig-name{color:#4b5563;margin-top:2px;font-size:12px}.actions{text-align:center;margin:20px}.actions button{padding:10px 22px;border:0;border-radius:8px;background:#111827;color:white;font-weight:700;cursor:pointer}@media print{.actions{display:none}.sheet{border:0;padding:0}}
   </style></head><body><div class="actions"><button onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button></div><main class="sheet">
     <header class="head"><img class="logo" src="${esc(refund.logo_url || refundReceiptLogoUrl())}" alt="โลโก้โรงเรียน"><div><h1>${esc(title)}</h1><div>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))}</div><div class="muted">${esc(cfg('INFO_VENUE', ''))}</div></div></header>
     <section class="meta">${metaRow}<div><b>ทีม</b> ${esc(team.name)}</div><div><b>ระดับ</b> ${esc(T[team.level]?.label || team.level)}</div></section>
@@ -1162,6 +1167,22 @@ function buildRefundReceiptDocument(team, refund, isPreview) {
       <div class="total"><span>ยอดเงินคืนสุทธิ</span><span>${money(refund.refund_amount)} บาท</span></div>
     </section>
     <div class="note">${esc(note)}</div>
+    <section class="signatures">
+      <div class="sig-box">
+        <div class="sig-img-wrap">${payerSig ? `<img src="${esc(payerSig)}" alt="ลายเซ็นผู้จ่ายเงิน">` : ''}</div>
+        <div class="sig-rule">
+          <div class="sig-label">ผู้จ่ายเงิน</div>
+          ${payerName ? `<div class="sig-name">(${esc(payerName)}${payerTitle ? ' ' + esc(payerTitle) : ''})</div>` : ''}
+        </div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-img-wrap"></div>
+        <div class="sig-rule">
+          <div class="sig-label">ผู้รับเงิน</div>
+          ${captainName ? `<div class="sig-name">(${esc(captainName)})</div>` : ''}
+        </div>
+      </div>
+    </section>
   </main></body></html>`
 }
 
@@ -5096,6 +5117,41 @@ function manualPoolAssignModal() {
     </div>`)
 }
 
+// ---------------- signature pad (ผู้จ่ายคืนเงิน) ----------------
+// draw() วาด innerHTML ใหม่ทั้งก้อนทุกครั้ง แปลว่า canvas เป็น element ใหม่เสมอ ต้อง bind event ใหม่หลัง render ทุกครั้ง
+function setupSignaturePad() {
+  const canvas = gid('refund-payer-sigpad')
+  if (!canvas || canvas.dataset.bound) return
+  canvas.dataset.bound = '1'
+  const ctx = canvas.getContext('2d')
+  ctx.strokeStyle = '#111827'
+  ctx.lineWidth = 2.5
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  let drawing = false
+  let last = null
+  const getPos = e => {
+    const rect = canvas.getBoundingClientRect()
+    const point = e.touches ? e.touches[0] : e
+    return { x: (point.clientX - rect.left) * (canvas.width / rect.width), y: (point.clientY - rect.top) * (canvas.height / rect.height) }
+  }
+  const start = e => { e.preventDefault(); drawing = true; last = getPos(e) }
+  const move = e => {
+    if (!drawing) return
+    e.preventDefault()
+    const pos = getPos(e)
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(pos.x, pos.y); ctx.stroke()
+    last = pos
+  }
+  const end = () => { drawing = false }
+  canvas.addEventListener('mousedown', start)
+  canvas.addEventListener('mousemove', move)
+  window.addEventListener('mouseup', end)
+  canvas.addEventListener('touchstart', start, { passive: false })
+  canvas.addEventListener('touchmove', move, { passive: false })
+  canvas.addEventListener('touchend', end)
+}
+
 // ---------------- staff search ----------------
 async function loadStaffList() {
   const { data: rows } = await SB.from('azfutsal_admins').select('id, profile_id, note, created_at, scopes').order('created_at')
@@ -5895,6 +5951,48 @@ function bindEvents() {
       if (saveErr) { azToast('บันทึกโลโก้ไม่สำเร็จ: ' + saveErr.message); return }
       await refresh(); azToast('อัปโหลดโลโก้สำหรับใบเสร็จแล้ว'); return
     }
+    if (act === 'saveRefundPayerInfo') {
+      const name = gid('refund-payer-name')?.value?.trim() || ''
+      const title = gid('refund-payer-title')?.value?.trim() || ''
+      const { error } = await SB.from('azfutsal_config').upsert([
+        { key: 'REFUND_PAYER_NAME', value: name },
+        { key: 'REFUND_PAYER_TITLE', value: title },
+      ])
+      if (error) { azToast('บันทึกไม่สำเร็จ: ' + error.message); return }
+      await refresh(); azToast('บันทึกข้อมูลผู้จ่ายเงินแล้ว'); return
+    }
+    if (act === 'clearSignaturePad') {
+      const canvas = gid('refund-payer-sigpad')
+      if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+    if (act === 'saveDrawnSignature') {
+      const canvas = gid('refund-payer-sigpad')
+      if (!canvas) return
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+      if (!blob) { azToast('ไม่มีลายเซ็นให้บันทึก'); return }
+      const path = `refund-payer-signature_${Date.now()}.png`
+      const { error: upErr } = await SB.storage.from('azfutsal-assets').upload(path, blob, { upsert: true, contentType: 'image/png' })
+      if (upErr) { azToast('บันทึกลายเซ็นไม่สำเร็จ: ' + upErr.message); return }
+      const { data } = SB.storage.from('azfutsal-assets').getPublicUrl(path)
+      const { error: saveErr } = await SB.from('azfutsal_config').upsert({ key: 'REFUND_PAYER_SIGNATURE_URL', value: data.publicUrl })
+      if (saveErr) { azToast('บันทึกลายเซ็นไม่สำเร็จ: ' + saveErr.message); return }
+      await refresh(); azToast('บันทึกลายเซ็นแล้ว'); return
+    }
+    if (act === 'uploadPayerSignature') {
+      const file = gid('refund-payer-sig-file')?.files?.[0]
+      if (!file) { azToast('กรุณาเลือกไฟล์รูปลายเซ็น'); return }
+      if (!file.type.startsWith('image/')) { azToast('กรุณาเลือกไฟล์รูปภาพ'); return }
+      if (file.size > 5 * 1024 * 1024) { azToast('ไฟล์ลายเซ็นต้องไม่เกิน 5 MB'); return }
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `refund-payer-signature_${Date.now()}_${safeName}`
+      const { error: upErr } = await SB.storage.from('azfutsal-assets').upload(path, file, { upsert: true })
+      if (upErr) { azToast('อัปโหลดไม่สำเร็จ: ' + upErr.message); return }
+      const { data } = SB.storage.from('azfutsal-assets').getPublicUrl(path)
+      const { error: saveErr } = await SB.from('azfutsal_config').upsert({ key: 'REFUND_PAYER_SIGNATURE_URL', value: data.publicUrl })
+      if (saveErr) { azToast('บันทึกลายเซ็นไม่สำเร็จ: ' + saveErr.message); return }
+      await refresh(); azToast('อัปโหลดลายเซ็นแล้ว'); return
+    }
     if (act === 'uploadCertSong') {
       const file = gid('cert-song-file')?.files?.[0]
       if (!file) { azToast('กรุณาเลือกไฟล์เพลง'); return }
@@ -6559,6 +6657,40 @@ function adminPayments() {
   `)
 }
 
+function refundPayerSettingsBox() {
+  const name = cfg('REFUND_PAYER_NAME', '')
+  const title = cfg('REFUND_PAYER_TITLE', '')
+  const sigUrl = cfg('REFUND_PAYER_SIGNATURE_URL', '')
+  return box(`
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px">ผู้จ่ายคืนเงิน</div>
+    <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ชื่อ/ตำแหน่ง/ลายเซ็นนี้จะแสดงในใบเสร็จคืนเงินทุกใบ</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <label style="flex:1;font-size:11.5px;color:#6b7280">ชื่อ-สกุล
+        <input id="refund-payer-name" value="${esc(name)}" placeholder="เช่น นายฮัมบาลีย์ วาจิ" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:12.5px"/>
+      </label>
+      <label style="flex:1;font-size:11.5px;color:#6b7280">ตำแหน่ง
+        <input id="refund-payer-title" value="${esc(title)}" placeholder="เช่น ครูฝ่ายปกครอง" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:12.5px"/>
+      </label>
+    </div>
+    <button data-act="saveRefundPayerInfo" style="width:100%;padding:9px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:14px">บันทึกชื่อ-ตำแหน่ง</button>
+    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">ลายเซ็นปัจจุบัน</div>
+    <div style="margin-bottom:12px">
+      ${sigUrl ? `<img src="${esc(sigUrl)}" style="height:56px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;padding:4px"/>` : `<div style="font-size:11.5px;color:#9ca3af">ยังไม่มีลายเซ็น</div>`}
+    </div>
+    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">วาดลายเซ็นใหม่</div>
+    <canvas id="refund-payer-sigpad" width="400" height="150" style="width:100%;max-width:400px;height:150px;border:1px dashed #e5e7eb;border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;display:block"></canvas>
+    <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:14px">
+      <button data-act="clearSignaturePad" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:12px;font-weight:700;cursor:pointer">ล้าง</button>
+      <button data-act="saveDrawnSignature" style="flex:1;padding:8px;border-radius:8px;border:none;background:#db2777;color:#fff;font-size:12px;font-weight:700;cursor:pointer">บันทึกลายเซ็นที่วาด</button>
+    </div>
+    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">หรืออัปโหลดรูปลายเซ็น</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <input type="file" accept="image/*" id="refund-payer-sig-file" style="flex:1;min-width:0;font-size:11.5px"/>
+      <button data-act="uploadPayerSignature" style="font-size:11px;padding:7px 10px;border-radius:8px;border:none;background:#db2777;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">อัปโหลด</button>
+    </div>
+  `)
+}
+
 function adminRefunds() {
   const level = S.adminRefundLevel || 'MS'
   const verifiedPayments = S.payments.filter(payment => {
@@ -6566,7 +6698,7 @@ function adminRefunds() {
     return payment.status === 'verified' && team?.level === level
   })
   const confirmedCount = verifiedPayments.filter(payment => refundForTeam(payment.team_id)).length
-  return boxFill(`
+  return refundPayerSettingsBox() + boxFill(`
     <div style="flex-shrink:0;margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div><div style="font-weight:700;font-size:14px">คืนเงินค่าประกันทีม</div><div style="font-size:11px;color:#6b7280;margin-top:2px">ยืนยันแล้ว ${confirmedCount}/${verifiedPayments.length} ทีม</div></div>
