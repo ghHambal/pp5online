@@ -157,8 +157,8 @@ function renderStudent() {
         <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r?.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
         <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r?.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
         <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r?.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
-        ${field('passport_number','เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_number,'text',false,canEdit)}
-        ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_expiry,'date',false,canEdit)}
+        ${field('passport_number',e.passport_required?'เลขที่หนังสือเดินทาง':'เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_number,'text',Boolean(e.passport_required),canEdit)}
+        ${field('passport_expiry',e.passport_required?'วันหมดอายุหนังสือเดินทาง':'วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_expiry,'date',Boolean(e.passport_required),canEdit)}
         ${field('birth_date','วันเดือนปีเกิด',r?.birth_date,'date',true,canEdit)}
         ${field('nationality','สัญชาติ',r?.nationality || 'ไทย','text',true,canEdit)}
         <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r?.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
@@ -173,6 +173,14 @@ function renderStudent() {
   content.querySelectorAll('[data-receipt]').forEach(btn => btn.addEventListener('click', () => openReceipt(btn.dataset.receipt)))
   wireOcrUploadBlock('student', content.querySelector('#student-camp-form'))
   wireAddressCascade('student', r?.current_address)
+  maybeNudgePassport(e, r)
+}
+
+let _passportNudgeShown = false
+function maybeNudgePassport(event, registration) {
+  if (!event?.passport_required || !registration || registration.passport_number || _passportNudgeShown) return
+  _passportNudgeShown = true
+  modal(`<div class="p-6 text-center"><div class="text-4xl mb-3">🛂</div><h3 class="font-bold text-lg">กรุณากรอกข้อมูลหนังสือเดินทาง</h3><p class="text-sm text-gray-500 mt-2">ค่ายนี้ต้องใช้ข้อมูลหนังสือเดินทางในการเดินทาง กรุณาเลื่อนลงไปกรอกเลขที่และวันหมดอายุหนังสือเดินทางในแบบสำรวจให้ครบถ้วน</p><button data-close class="camp-btn bg-teal-700 text-white mt-5 px-6">รับทราบ</button></div>`)
 }
 
 function field(name,label,value,type='text',required=false,enabled=true) {
@@ -353,8 +361,8 @@ function teacherSurveyForm(teacher, registration, canEdit) {
     <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${['MR.','MRS.','MS.','MASTER','MISS'].map(v=>`<option ${r.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
     <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
     <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
-    ${field('passport_number','เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_number,'text',false,canEdit)}
-    ${field('passport_expiry','วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_expiry,'date',false,canEdit)}
+    ${field('passport_number',ctx.event?.passport_required?'เลขที่หนังสือเดินทาง':'เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_number,'text',Boolean(ctx.event?.passport_required),canEdit)}
+    ${field('passport_expiry',ctx.event?.passport_required?'วันหมดอายุหนังสือเดินทาง':'วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r.passport_expiry,'date',Boolean(ctx.event?.passport_required),canEdit)}
     ${field('birth_date','วันเดือนปีเกิด',r.birth_date,'date',true,canEdit)}
     ${field('nationality','สัญชาติ',r.nationality || 'ไทย','text',true,canEdit)}
     <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
@@ -382,6 +390,7 @@ function renderTeacherSurvey(teacher, registration, insideManager = false) {
   })
   wireOcrUploadBlock('teacher', content.querySelector('#teacher-camp-form'))
   wireAddressCascade('teacher', registration?.current_address)
+  maybeNudgePassport(e, registration)
 }
 
 // ─── Manager ────────────────────────────────────────────────────────────────
@@ -648,7 +657,8 @@ async function voidPayment(id){const reason=prompt('ระบุเหตุผ�
 function renderSettings(){
   const e=ctx.event||{}, staff=ctx.staff||[]
   content.innerHTML=`<div class="mb-4"><h2 class="text-xl font-bold">ตั้งค่าระบบค่าย</h2><p class="text-xs text-gray-400">กำหนดการเปิดระบบ ค่าใช้จ่าย และข้อมูลใบเสร็จ</p></div>
-  <section class="camp-card p-5 mb-4"><h3 class="font-bold">การเปิดใช้งาน</h3><div class="grid sm:grid-cols-2 gap-3 mt-4"><div class="rounded-xl border p-4"><p class="text-sm font-semibold">ปุ่มในหน้าภาพรวมนักเรียน</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.visible_to_students?'เปิดใช้งาน':'ปิดใช้งาน'}</p><button data-toggle-visible="${!e.visible_to_students}" class="camp-btn mt-3 ${e.visible_to_students?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.visible_to_students?'ปิดใช้งาน':'เปิดใช้งาน'}</button></div><div class="rounded-xl border p-4"><p class="text-sm font-semibold">รับแบบสำรวจ</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.form_open?'เปิดรับข้อมูล':'ปิดรับข้อมูล'}</p><button data-toggle-form="${!e.form_open}" class="camp-btn mt-3 ${e.form_open?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.form_open?'ปิดรับข้อมูล':'เปิดรับข้อมูล'}</button></div><div class="sm:col-span-2 rounded-xl border p-4"><p class="text-sm font-semibold">นักเรียนที่เห็นปุ่มค่าย</p><p class="text-xs text-gray-400 mt-1">ปัจจุบัน: ${e.student_visibility_scope==='all'?'นักเรียนทั้งโรง':'เฉพาะนักเรียนที่ถูกเพิ่มในระบบค่าย'}</p><div class="flex flex-wrap gap-2 mt-3"><button data-visibility-scope="participants" class="camp-btn ${e.student_visibility_scope!=='all'?'bg-teal-700 text-white':'bg-gray-100 text-gray-600'}">เฉพาะรายชื่อที่เพิ่ม</button><button data-visibility-scope="all" class="camp-btn ${e.student_visibility_scope==='all'?'bg-teal-700 text-white':'bg-gray-100 text-gray-600'}">นักเรียนทั้งโรง</button></div></div></div></section>
+  <section class="camp-card p-5 mb-4"><h3 class="font-bold">การเปิดใช้งาน</h3><div class="grid sm:grid-cols-2 gap-3 mt-4"><div class="rounded-xl border p-4"><p class="text-sm font-semibold">ปุ่มในหน้าภาพรวมนักเรียน</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.visible_to_students?'เปิดใช้งาน':'ปิดใช้งาน'}</p><button data-toggle-visible="${!e.visible_to_students}" class="camp-btn mt-3 ${e.visible_to_students?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.visible_to_students?'ปิดใช้งาน':'เปิดใช้งาน'}</button></div><div class="rounded-xl border p-4"><p class="text-sm font-semibold">รับแบบสำรวจ</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.form_open?'เปิดรับข้อมูล':'ปิดรับข้อมูล'}</p><button data-toggle-form="${!e.form_open}" class="camp-btn mt-3 ${e.form_open?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.form_open?'ปิดรับข้อมูล':'เปิดรับข้อมูล'}</button></div><div class="sm:col-span-2 rounded-xl border p-4"><p class="text-sm font-semibold">นักเรียนที่เห็นปุ่มค่าย</p><p class="text-xs text-gray-400 mt-1">ปัจจุบัน: ${e.student_visibility_scope==='all'?'นักเรียนทั้งโรง':'เฉพาะนักเรียนที่ถูกเพิ่มในระบบค่าย'}</p><div class="flex flex-wrap gap-2 mt-3"><button data-visibility-scope="participants" class="camp-btn ${e.student_visibility_scope!=='all'?'bg-teal-700 text-white':'bg-gray-100 text-gray-600'}">เฉพาะรายชื่อที่เพิ่ม</button><button data-visibility-scope="all" class="camp-btn ${e.student_visibility_scope==='all'?'bg-teal-700 text-white':'bg-gray-100 text-gray-600'}">นักเรียนทั้งโรง</button></div></div>
+  <div class="sm:col-span-2 rounded-xl border p-4"><p class="text-sm font-semibold">บังคับกรอกข้อมูลหนังสือเดินทาง</p><p class="text-xs text-gray-400 mt-1">สถานะ: ${e.passport_required?'บังคับกรอก':'ยังไม่บังคับ (เปิดเมื่อพร้อมให้ทุกคนกรอกจริง)'}</p><div class="flex flex-wrap gap-2 mt-3"><button data-toggle-passport="${!e.passport_required}" class="camp-btn ${e.passport_required?'bg-red-50 text-red-600':'bg-emerald-600 text-white'}">${e.passport_required?'ปิดการบังคับ':'เปิดการบังคับ'}</button><button id="notify-missing-passport" type="button" class="camp-btn bg-indigo-50 text-indigo-700">🔔 แจ้งเตือนผู้ที่ยังไม่กรอกให้กรอก</button></div><p class="text-[11px] text-gray-400 mt-2">ปุ่มแจ้งเตือนจะส่ง push notification ไปหาทุกคนที่ยังไม่กรอกเลขที่หนังสือเดินทาง พร้อมเด้งข้อความเตือนในแอปให้คนนั้นเห็นทันทีที่เปิดแบบสำรวจ</p></div></div></section>
   <form id="camp-settings-form" class="camp-card p-5 grid sm:grid-cols-2 gap-4">
     ${field('name','ชื่อกิจกรรม',e.name,'text',true,true)}${field('location','สถานที่',e.location)}
     ${field('event_start_date','วันเริ่มกิจกรรม',e.event_start_date,'date')}${field('event_end_date','วันสิ้นสุดกิจกรรม',e.event_end_date,'date')}
@@ -667,6 +677,8 @@ function renderSettings(){
   document.querySelector('[data-toggle-visible]').addEventListener('click',async e=>{await quickSetting({visible_to_students:e.currentTarget.dataset.toggleVisible==='true'})})
   document.querySelector('[data-toggle-form]').addEventListener('click',async e=>{await quickSetting({form_open:e.currentTarget.dataset.toggleForm==='true'})})
   document.querySelectorAll('[data-visibility-scope]').forEach(btn=>btn.addEventListener('click',async e=>{await quickSetting({student_visibility_scope:e.currentTarget.dataset.visibilityScope})}))
+  document.querySelector('[data-toggle-passport]').addEventListener('click',async e=>{await quickSetting({passport_required:e.currentTarget.dataset.togglePassport==='true'})})
+  document.getElementById('notify-missing-passport').addEventListener('click',notifyMissingPassport)
   document.getElementById('camp-settings-form').addEventListener('submit',saveSettings)
   const teacherSelect=document.getElementById('receipt-teacher-select')
   const drawReceiptTeacherSignature=()=>{
@@ -683,6 +695,23 @@ function renderSettings(){
 }
 
 async function quickSetting(payload){try{await updateTerangganuEvent(payload);toast('อัปเดตสถานะแล้ว');await loadManager(true)}catch(error){toast(error.message,'error')}}
+async function notifyMissingPassport(){
+  const btn=document.getElementById('notify-missing-passport')
+  if(!btn)return
+  const original=btn.textContent
+  btn.disabled=true;btn.textContent='กำลังส่ง...'
+  try{
+    const {data,error}=await supabase.functions.invoke('send-push',{body:{
+      title:'กรุณากรอกข้อมูลหนังสือเดินทาง',
+      body:'ค่ายลูกเสือ TERANGGANU ต้องใช้ข้อมูลหนังสือเดินทาง กรุณาเข้าระบบเพื่อกรอกให้ครบถ้วน',
+      url:'terangganu.html',tag:'terangganu-passport',target:'terangganu_missing_passport',
+    }})
+    if(error)throw new Error(error.message||'ส่งแจ้งเตือนไม่สำเร็จ')
+    if(data?.error)throw new Error(data.error)
+    toast(typeof data?.sent==='number'?`ส่งแจ้งเตือนสำเร็จ ${data.sent} คน`:(data?.message||'ส่งแจ้งเตือนแล้ว'))
+  }catch(error){toast(error.message||'ส่งแจ้งเตือนไม่สำเร็จ','error')}
+  finally{btn.disabled=false;btn.textContent=original}
+}
 async function saveSettings(e){e.preventDefault();const btn=e.submitter;btn.disabled=true;try{const payload=Object.fromEntries(new FormData(e.currentTarget).entries());for(const key of ['form_open_at','form_close_at'])payload[key]=payload[key]?new Date(payload[key]).toISOString():null;await updateTerangganuEvent(payload);toast('บันทึกการตั้งค่าแล้ว');await loadManager(true)}catch(error){toast(error.message,'error');btn.disabled=false}}
 function openDirectorSignatureModal(){
   const wrap=modal(`<div class="p-6"><div class="flex justify-between"><div><h3 class="font-bold text-lg">ลายเซ็นผู้อำนวยการ</h3><p class="text-xs text-gray-400">วาดบนช่องหรืออัปโหลดไฟล์ภาพ</p></div><button data-close>✕</button></div>${ctx.event?.director_signature_url?`<img src="${esc(ctx.event.director_signature_url)}" class="h-16 max-w-52 object-contain border rounded-lg mt-4 p-1">`:''}<div class="mt-4"><span class="camp-label">วาดลายเซ็น</span><canvas width="700" height="220" class="w-full h-32 border rounded-xl bg-white touch-none"></canvas><button data-sign-clear type="button" class="text-xs text-red-500 mt-1">ล้างลายเซ็น</button></div><div class="mt-3"><span class="camp-label">หรืออัปโหลดภาพ</span><input data-sign-file type="file" accept="image/*" class="text-xs"></div><button data-sign-save class="camp-btn w-full bg-teal-700 text-white mt-5">บันทึกลายเซ็นผู้อำนวยการ</button></div>`)

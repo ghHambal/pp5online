@@ -3,6 +3,8 @@
 // เรียกจากฝั่ง client ผ่าน supabase.functions.invoke('send-push', { body: {...} })
 // - แอดมิน/is_also_admin: ยิงได้ทั้ง target: 'all_teachers'/'all_students' หรือ profileIds ที่ระบุเอง (ไม่จำกัดขอบเขต)
 // - ครูทั่วไป: ยิงได้เฉพาะ profileIds ที่เป็น "นักเรียนในวิชาที่ตัวเองสอน" เท่านั้น (เช็คจริงฝั่งเซิร์ฟเวอร์ ไม่เชื่อ client)
+// - target: 'terangganu_missing_passport': ผู้รับผิดชอบค่าย TERANGGANU ยิงได้ (ไม่ต้องเป็นแอดมิน) — สิทธิ์และรายชื่อเป้าหมาย
+//   ตรวจ/คำนวณผ่าน RPC get_terangganu_missing_passport_targets() ด้วย JWT ของผู้เรียกเอง (terangganu_can(...,'settings'))
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
@@ -58,7 +60,14 @@ Deno.serve(async (req: Request) => {
 
     let targetIds: string[] | null = Array.isArray(profileIds) ? profileIds : null
 
-    if (isAdmin) {
+    if (!targetIds && target === 'terangganu_missing_passport') {
+      const { data: ids, error: rpcErr } = await supabaseUser.rpc('get_terangganu_missing_passport_targets')
+      if (rpcErr) return new Response(JSON.stringify({ error: rpcErr.message }), { status: 403, headers: corsHeaders })
+      targetIds = Array.isArray(ids) ? ids : []
+      if (!targetIds.length) {
+        return new Response(JSON.stringify({ sent: 0, message: 'ไม่มีใครขาดข้อมูลหนังสือเดินทางแล้ว' }), { status: 200, headers: corsHeaders })
+      }
+    } else if (isAdmin) {
       if (!targetIds && target === 'all_teachers') {
         const { data: teachers } = await admin.from('teachers').select('profile_id').not('profile_id', 'is', null)
         targetIds = (teachers ?? []).map((t: { profile_id: string }) => t.profile_id)
