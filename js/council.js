@@ -5,7 +5,8 @@ import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
 import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate, uploadCertificateTemplateBackground } from './storage.js'
 import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
-import { CERT_PRESET_LABELS, openActivityCertificatePrint } from './council-certificate.js'
+import { CERT_PRESET_LABELS, defaultLayoutFor, openActivityCertificatePrint } from './council-certificate.js'
+import { openCertificateLayoutEditor } from './council-certificate-editor.js'
 import QRCode from 'qrcode'
 import {
   getCouncilConfig, updateCouncilConfig, getCouncilPositions, getCouncilMembers,
@@ -20,7 +21,7 @@ import {
   getCandidatesForElection, publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
   getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
   getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
-  getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate,
+  getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
   getCertificateRule, upsertCertificateRule,
   getActivityCertificateOverrides, setCertificateOverride, issueActivityCertificate,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
@@ -3078,12 +3079,17 @@ function renderSettingsCriteria() {
     <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
       <p class="text-sm font-bold text-[var(--ink-2)] mb-2">🏅 เทมเพลตเกียรติบัตรกิจกรรม</p>
       <div class="space-y-1.5 mb-3">
-        ${certTemplates.map(t => `
+        ${certTemplates.map(t => {
+          const bg = t.layout?.background
+          const thumbUrl = bg ? (bg.type === 'image' ? bg.imageUrl : null) : (t.type === 'custom' ? t.background_image_url : null)
+          return `
           <div class="flex items-center gap-2 text-xs">
-            ${t.type === 'custom' && t.background_image_url ? `<img src="${esc(t.background_image_url)}" class="w-10 h-7 object-cover rounded border border-[var(--line)] flex-shrink-0" />` : `<span class="flex-shrink-0">${esc((CERT_PRESET_LABELS[t.preset_key] ?? '🏅').split(' ')[0])}</span>`}
+            ${thumbUrl ? `<img src="${esc(thumbUrl)}" class="w-10 h-7 object-cover rounded border border-[var(--line)] flex-shrink-0" />` : `<span class="flex-shrink-0">${esc((CERT_PRESET_LABELS[t.preset_key] ?? '🏅').split(' ')[0])}</span>`}
             <span class="flex-1 text-[var(--ink-2)] truncate">${esc(t.name)} ${t.type === 'preset' ? '· ' + esc(CERT_PRESET_LABELS[t.preset_key] ?? t.preset_key) : '· อัปโหลดเอง'}</span>
-            <button type="button" class="btn-remove-cert-template text-[var(--bad)] hover:text-[#8a2f22]" data-id="${t.id}">✕</button>
-          </div>`).join('') || '<p class="text-xs text-[var(--muted-2)]">ยังไม่มีเทมเพลต</p>'}
+            <button type="button" class="btn-design-cert-template text-[var(--primary)] hover:text-[var(--primary-dark)] font-bold flex-shrink-0" data-id="${t.id}">🎨 ออกแบบ</button>
+            <button type="button" class="btn-remove-cert-template text-[var(--bad)] hover:text-[#8a2f22] flex-shrink-0" data-id="${t.id}">✕</button>
+          </div>`
+        }).join('') || '<p class="text-xs text-[var(--muted-2)]">ยังไม่มีเทมเพลต</p>'}
       </div>
       <form id="cert-template-form" class="space-y-2 pt-2 border-t border-[var(--line-soft)]">
         <input name="name" placeholder="ชื่อเทมเพลต เช่น เกียรติบัตรกิจกรรม YLA" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)]" required />
@@ -4378,9 +4384,12 @@ function wireSettingsEvents() {
         if (!file) { showToast('กรุณาอัปโหลดรูปพื้นหลังเทมเพลต', 'warning'); btn.disabled = false; btn.textContent = 'เพิ่มเทมเพลต'; return }
         backgroundImageUrl = await uploadCertificateTemplateBackground(file)
       }
+      const presetKey = isCustom ? null : f.preset_key.value
+      const layout = defaultLayoutFor(isCustom ? 'custom' : presetKey)
+      if (isCustom) layout.background = { type: 'image', imageUrl: backgroundImageUrl }
       await createCertificateTemplate({
         name, type: isCustom ? 'custom' : 'preset',
-        presetKey: isCustom ? null : f.preset_key.value, backgroundImageUrl,
+        presetKey, backgroundImageUrl, layout,
       })
       showToast('เพิ่มเทมเพลตแล้ว ✅', 'success')
       certTemplates = null
@@ -4395,6 +4404,21 @@ function wireSettingsEvents() {
       if (!confirm('ลบเทมเพลตนี้?')) return
       try { await deleteCertificateTemplate(Number(btn.dataset.id)); certTemplates = null; render() }
       catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    })
+  })
+  document.querySelectorAll('.btn-design-cert-template').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const template = certTemplates?.find(t => t.id === Number(btn.dataset.id))
+      if (!template) return
+      openCertificateLayoutEditor({
+        template, cfg: ctx.cfg,
+        onSave: async (layout, backgroundImageUrl) => {
+          await updateCertificateTemplateLayout({ id: template.id, layout, backgroundImageUrl })
+          showToast('บันทึกดีไซน์แล้ว ✅', 'success')
+          certTemplates = null
+          render()
+        },
+      })
     })
   })
 

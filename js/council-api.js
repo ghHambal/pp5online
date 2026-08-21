@@ -558,13 +558,20 @@ export async function getCertificateTemplates() {
   if (error) throw error
   return data ?? []
 }
-export async function createCertificateTemplate({ name, type, presetKey, backgroundImageUrl }) {
+export async function createCertificateTemplate({ name, type, presetKey, backgroundImageUrl, layout }) {
   const { error } = await supabase.from('council_certificate_templates')
-    .insert({ name, type, preset_key: presetKey || null, background_image_url: backgroundImageUrl || null })
+    .insert({ name, type, preset_key: presetKey || null, background_image_url: backgroundImageUrl || null, layout: layout ?? null })
   if (error) throw error
 }
 export async function deleteCertificateTemplate(id) {
   const { error } = await supabase.from('council_certificate_templates').delete().eq('id', id)
+  if (error) throw error
+}
+// บันทึกดีไซน์จากตัวแก้ไขลากวาง (council-certificate-editor.js) — layout คุมทั้งพื้นหลัง+ตำแหน่งข้อความทั้งหมด
+export async function updateCertificateTemplateLayout({ id, layout, backgroundImageUrl }) {
+  const patch = { layout }
+  if (backgroundImageUrl) patch.background_image_url = backgroundImageUrl
+  const { error } = await supabase.from('council_certificate_templates').update(patch).eq('id', id)
   if (error) throw error
 }
 
@@ -615,7 +622,7 @@ export async function getMyActivityCertificates(studentId) {
   if (!certs.length) return certs
   const activityIds = [...new Set(certs.map(c => c.activity_id))]
   const { data: rules } = await supabase.from('council_activity_certificate_rules')
-    .select('activity_id, council_certificate_templates(id, name, type, preset_key, background_image_url)')
+    .select('activity_id, council_certificate_templates(id, name, type, preset_key, background_image_url, layout)')
     .in('activity_id', activityIds)
   const templateByActivity = Object.fromEntries((rules ?? []).map(r => [r.activity_id, r.council_certificate_templates]))
   return certs.map(c => ({ ...c, template: templateByActivity[c.activity_id] ?? null }))
