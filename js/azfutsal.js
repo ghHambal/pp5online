@@ -1,6 +1,6 @@
 import QRCode from 'qrcode'
 import { promptpayQRDataURL } from './promptpay.js'
-import { uploadAzfutsalPlayerPhoto } from './storage.js'
+import { uploadAzfutsalPlayerPhoto, compressImage } from './storage.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { openFutsalCertificatePrint, buildFutsalCertificateFragment } from './azfutsal-certificate.js'
 
@@ -198,6 +198,8 @@ let S = {
   myTeamTab: 'roster', // 'roster' | 'matches' | 'finance' — แท็บย่อยในหน้าทีมของฉัน
   adminManageTeamId: null,
   adminCreatingTeam: false,
+  refundConfirmSign: null, // { teamId } — เปิดป๊อบอัพให้หัวหน้าทีมเซ็นชื่อ+เลือกวิธีคืนเงินก่อนล็อกยอด
+  refundConfirmDone: null, // { teamId } — ป๊อบอัพ "คืนเงินสำเร็จ" หลังยืนยัน พร้อมปุ่มพิมพ์/อัปโหลดหลักฐานเงินสด
   capLookupCode: '',
   capLookupResult: null, // student row or 'notfound' | null
   adminLoginOpen: false,
@@ -441,7 +443,7 @@ async function loadAll() {
   // สถานะการชำระเงินเปิดอ่านสาธารณะ (ไม่มีข้อมูลอ่อนไหว) เพื่อให้แท็บ "สถานะทีม" ใช้ได้โดยไม่ต้อง login
   const [{ data: payments }, { data: refunds }] = await Promise.all([
     SB.from('azfutsal_payments').select('*').order('created_at', { ascending: false }),
-    SB.from('azfutsal_refunds').select('id, team_id, receipt_no, deposit_amount, operation_fee, yellow_count, yellow_rate, yellow_deduction, red_count, red_rate, red_deduction, refund_amount, deduction_snapshot, logo_url, confirmed_at, created_at').order('confirmed_at', { ascending: false }),
+    SB.from('azfutsal_refunds').select('id, team_id, receipt_no, deposit_amount, operation_fee, yellow_count, yellow_rate, yellow_deduction, red_count, red_rate, red_deduction, refund_amount, deduction_snapshot, logo_url, recipient_signature_url, payment_method, proof_url, confirmed_at, created_at').order('confirmed_at', { ascending: false }),
   ])
   S.payments = payments || []
   S.refunds = refunds || []
@@ -975,9 +977,12 @@ function draw() {
       ${s.manualPoolAssign ? manualPoolAssignModal() : ''}
       ${s.pendingConfirm ? confirmActionModal() : ''}
       ${s.staffScopeEdit ? staffScopeModal() : ''}
+      ${s.refundConfirmSign ? refundSignModal() : ''}
+      ${s.refundConfirmDone ? refundDoneModal() : ''}
     </div>
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
+  if (S.refundConfirmSign) setupRefundConfirmModal()
   if (S.identity.isAdmin && S.adminSection === 'refunds') setupSignaturePad()
 }
 
@@ -1151,12 +1156,14 @@ function buildRefundReceiptDocument(team, refund, isPreview) {
   const payerTitle = cfg('REFUND_PAYER_TITLE', '')
   const payerSig = cfg('REFUND_PAYER_SIGNATURE_URL', '')
   const captainName = team.captain?.full_name || ''
+  const recipientSig = refund.recipient_signature_url || ''
+  const methodLabel = refund.payment_method === 'transfer' ? 'โอนเงิน' : refund.payment_method === 'cash' ? 'เงินสด' : ''
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(isPreview ? `ตัวอย่างใบเสร็จ · ${team.name}` : refund.receipt_no)}</title>
   <style>
     @page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Tahoma,"Noto Sans Thai",sans-serif;color:#111827;margin:0;font-size:13px}.sheet{max-width:760px;margin:auto;border:1px solid #d1d5db;padding:28px;position:relative}${isPreview ? '.sheet::before{content:"ตัวอย่าง";position:absolute;top:40%;left:0;right:0;text-align:center;font-size:80px;font-weight:900;color:rgba(217,119,6,.14);transform:rotate(-18deg);pointer-events:none}' : ''}.head{display:flex;align-items:center;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px}.logo{width:82px;height:82px;object-fit:contain}.head h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin:18px 0}.meta b{display:inline-block;min-width:105px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d1d5db;padding:9px;vertical-align:top}th{background:#f3f4f6;text-align:left}.num{text-align:right;white-space:nowrap}td span{color:#4b5563;font-size:12px}.empty{text-align:center;color:#6b7280}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .total{border-top:2px solid #111827;margin-top:5px;padding-top:10px;font-size:17px;font-weight:800}.note{margin-top:22px;padding:10px 12px;background:${isPreview ? '#fffbeb' : '#f9fafb'};color:${isPreview ? '#92400e' : '#4b5563'};font-size:11.5px}.signatures{display:flex;justify-content:space-around;gap:30px;margin-top:44px}.sig-box{flex:1;max-width:230px;text-align:center}.sig-img-wrap{height:60px;display:flex;align-items:flex-end;justify-content:center}.sig-img-wrap img{max-height:60px;max-width:100%;object-fit:contain}.sig-rule{border-top:1px solid #111827;margin-top:4px;padding-top:6px}.sig-label{font-weight:700}.sig-name{color:#4b5563;margin-top:2px;font-size:12px}.actions{text-align:center;margin:20px}.actions button{padding:10px 22px;border:0;border-radius:8px;background:#111827;color:white;font-weight:700;cursor:pointer}@media print{.actions{display:none}.sheet{border:0;padding:0}}
   </style></head><body><div class="actions"><button onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button></div><main class="sheet">
     <header class="head"><img class="logo" src="${esc(refund.logo_url || refundReceiptLogoUrl())}" alt="โลโก้โรงเรียน"><div><h1>${esc(title)}</h1><div>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))}</div><div class="muted">${esc(cfg('INFO_VENUE', ''))}</div></div></header>
-    <section class="meta">${metaRow}<div><b>ทีม</b> ${esc(team.name)}</div><div><b>ระดับ</b> ${esc(T[team.level]?.label || team.level)}</div></section>
+    <section class="meta">${metaRow}<div><b>ทีม</b> ${esc(team.name)}</div><div><b>ระดับ</b> ${esc(T[team.level]?.label || team.level)}</div>${methodLabel ? `<div><b>วิธีคืนเงิน</b> ${esc(methodLabel)}</div>` : ''}</section>
     <div><b>รายละเอียดการหักจากใบเหลืองและใบแดง</b> <span class="muted">(แสดงเฉพาะนัดและคู่แข่งขัน ไม่ระบุผู้ได้รับใบ)</span></div>
     <table><thead><tr><th>นัดที่แข่งขัน / คู่แข่งขัน</th><th class="num">ใบเหลือง (ใบ × บาท)</th><th class="num">ใบแดง (ใบ × บาท)</th><th class="num">หัก (บาท)</th></tr></thead><tbody>${detailRows}</tbody></table>
     <section class="summary">
@@ -1176,7 +1183,7 @@ function buildRefundReceiptDocument(team, refund, isPreview) {
         </div>
       </div>
       <div class="sig-box">
-        <div class="sig-img-wrap"></div>
+        <div class="sig-img-wrap">${recipientSig ? `<img src="${esc(recipientSig)}" alt="ลายเซ็นผู้รับเงิน">` : ''}</div>
         <div class="sig-rule">
           <div class="sig-label">ผู้รับเงิน</div>
           ${captainName ? `<div class="sig-name">(${esc(captainName)})</div>` : ''}
@@ -4254,6 +4261,67 @@ function confirmActionModal() {
   </div>`
 }
 
+function refundSignModal() {
+  const { teamId } = S.refundConfirmSign
+  const team = S.teams.find(item => item.id === teamId)
+  if (!team) return ''
+  const draft = teamRefundDraft(team)
+  return `
+  <div style="position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px">
+    <div id="refund-confirm-modal" style="background:#fff;border-radius:16px;padding:20px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto">
+      <div style="font-weight:800;font-size:15px;margin-bottom:4px">เซ็นรับเงินคืนค่าประกันทีม</div>
+      <div style="font-size:12.5px;color:#6b7280;margin-bottom:16px">${esc(team.name)} · คืนเงิน ${money(draft.refund_amount)} บาท${team.captain?.full_name ? ` · หัวหน้าทีม: ${esc(team.captain.full_name)}` : ' · ยังไม่มีหัวหน้าทีม'}</div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <label style="font-size:11.5px;color:#6b7280">สีลายเซ็น</label>
+        <input type="color" id="refund-recipient-sig-color" value="#1e3a8a" style="width:40px;height:28px;border:none;padding:0;cursor:pointer;background:none"/>
+      </div>
+      <canvas id="refund-recipient-sigpad" width="400" height="170" style="width:100%;height:170px;border:1px dashed #e5e7eb;border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;display:block"></canvas>
+      <div style="font-size:11px;color:#9ca3af;margin-top:6px;margin-bottom:16px">ให้หัวหน้าทีม (หรือผู้รับเงินแทน) เซ็นชื่อในกรอบด้านบน</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button data-act="clearRecipientSignature" style="flex:1;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:12px;cursor:pointer">ล้างลายเซ็น</button>
+      </div>
+
+      <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">วิธีคืนเงิน</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button type="button" class="refund-method-btn" data-method="transfer" style="flex:1;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#111827;font-weight:700;font-size:12.5px;cursor:pointer">💳 โอน</button>
+        <button type="button" class="refund-method-btn" data-method="cash" style="flex:1;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#111827;font-weight:700;font-size:12.5px;cursor:pointer">💵 เงินสด</button>
+      </div>
+      <div id="refund-method-transfer-block" style="display:none;margin-bottom:14px">
+        <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">อัปโหลดสลิปการโอน</div>
+        <input type="file" accept="image/*" id="refund-proof-file-transfer" style="width:100%;font-size:11.5px"/>
+      </div>
+      <div id="refund-method-cash-block" style="display:none;margin-bottom:14px">
+        <div style="font-size:11px;color:#6b7280;background:#f9fafb;border-radius:8px;padding:8px">ให้ถ่ายรูปนักเรียนถือเงินสดพร้อมใบเสร็จ แล้วอัปโหลดเป็นหลักฐานได้หลังพิมพ์ใบเสร็จ (ปุ่มจะปรากฏในขั้นถัดไป)</div>
+      </div>
+
+      <button data-act="confirmRefundWithSignature" data-team="${team.id}" style="width:100%;padding:11px;border-radius:9px;border:none;background:${T[team.level].base};color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;margin-bottom:8px">ยืนยันคืนเงิน ${money(draft.refund_amount)} บาท</button>
+      <button data-act="cancelRefundSign" style="width:100%;padding:9px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:12.5px;cursor:pointer">ยกเลิก</button>
+    </div>
+  </div>`
+}
+
+function refundDoneModal() {
+  const { teamId } = S.refundConfirmDone
+  const team = S.teams.find(item => item.id === teamId)
+  const refund = refundForTeam(teamId)
+  if (!team || !refund) return ''
+  return `
+  <div style="position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:360px;width:100%;text-align:center">
+      <div style="font-size:40px;margin-bottom:8px">✅</div>
+      <div style="font-weight:800;font-size:15px;margin-bottom:4px">คืนเงินสำเร็จ</div>
+      <div style="font-size:12.5px;color:#6b7280;margin-bottom:18px">${esc(team.name)} · เลขที่ใบเสร็จ ${esc(refund.receipt_no)}</div>
+      <button data-act="printRefundReceiptDone" data-team="${team.id}" style="width:100%;padding:11px;border-radius:9px;border:none;background:#111827;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;margin-bottom:8px">🖨️ พิมพ์ใบเสร็จ</button>
+      ${refund.payment_method === 'cash' && !refund.proof_url ? `
+      <div style="font-size:11px;color:#b45309;background:#fffbeb;border-radius:8px;padding:8px;margin-bottom:8px;text-align:left">📷 อย่าลืมถ่ายรูปนักเรียนถือเงินสดพร้อมใบเสร็จ แล้วอัปโหลดเป็นหลักฐาน</div>
+      <input type="file" accept="image/*" id="refund-cash-proof-file" style="width:100%;font-size:11.5px;margin-bottom:6px"/>
+      <button type="button" data-act="uploadCashRefundProof" data-team="${team.id}" style="width:100%;padding:10px;border-radius:9px;border:none;background:#d97706;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:8px">อัปโหลดรูปหลักฐาน</button>` : ''}
+      <button data-act="closeRefundDone" style="width:100%;padding:10px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;font-weight:700;font-size:13px;cursor:pointer">ปิด</button>
+    </div>
+  </div>`
+}
+
 function viewProofModal() {
   return `
   <div style="position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px">
@@ -5119,12 +5187,11 @@ function manualPoolAssignModal() {
 
 // ---------------- signature pad (ผู้จ่ายคืนเงิน) ----------------
 // draw() วาด innerHTML ใหม่ทั้งก้อนทุกครั้ง แปลว่า canvas เป็น element ใหม่เสมอ ต้อง bind event ใหม่หลัง render ทุกครั้ง
-function setupSignaturePad() {
-  const canvas = gid('refund-payer-sigpad')
+// ผูก event วาดลายเซ็นให้ canvas หนึ่งอัน — getColor() เรียกทุกครั้งที่เริ่มลากเส้นใหม่ เพื่อรองรับเปลี่ยนสีกลางคันได้โดยไม่ต้อง draw() ใหม่ (ซึ่งจะล้าง canvas)
+function bindSignatureCanvas(canvas, getColor) {
   if (!canvas || canvas.dataset.bound) return
   canvas.dataset.bound = '1'
   const ctx = canvas.getContext('2d')
-  ctx.strokeStyle = '#111827'
   ctx.lineWidth = 2.5
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -5135,7 +5202,7 @@ function setupSignaturePad() {
     const point = e.touches ? e.touches[0] : e
     return { x: (point.clientX - rect.left) * (canvas.width / rect.width), y: (point.clientY - rect.top) * (canvas.height / rect.height) }
   }
-  const start = e => { e.preventDefault(); drawing = true; last = getPos(e) }
+  const start = e => { e.preventDefault(); drawing = true; last = getPos(e); ctx.strokeStyle = getColor ? getColor() : '#111827' }
   const move = e => {
     if (!drawing) return
     e.preventDefault()
@@ -5150,6 +5217,28 @@ function setupSignaturePad() {
   canvas.addEventListener('touchstart', start, { passive: false })
   canvas.addEventListener('touchmove', move, { passive: false })
   canvas.addEventListener('touchend', end)
+}
+
+function setupSignaturePad() {
+  bindSignatureCanvas(gid('refund-payer-sigpad'), () => '#111827')
+}
+
+function setupRefundConfirmModal() {
+  const modal = gid('refund-confirm-modal')
+  if (!modal || modal.dataset.bound) return
+  modal.dataset.bound = '1'
+  const colorInput = gid('refund-recipient-sig-color')
+  bindSignatureCanvas(gid('refund-recipient-sigpad'), () => colorInput?.value || '#1e3a8a')
+  const methodBtns = [...modal.querySelectorAll('.refund-method-btn')]
+  const transferBlock = gid('refund-method-transfer-block')
+  const cashBlock = gid('refund-method-cash-block')
+  methodBtns.forEach(btn => btn.addEventListener('click', () => {
+    methodBtns.forEach(b => { b.style.background = '#fff'; b.style.color = '#111827'; b.style.borderColor = '#e5e7eb' })
+    btn.style.background = '#db2777'; btn.style.color = '#fff'; btn.style.borderColor = '#db2777'
+    modal.dataset.method = btn.dataset.method
+    if (transferBlock) transferBlock.style.display = btn.dataset.method === 'transfer' ? 'block' : 'none'
+    if (cashBlock) cashBlock.style.display = btn.dataset.method === 'cash' ? 'block' : 'none'
+  }))
 }
 
 // ---------------- staff search ----------------
@@ -5625,22 +5714,26 @@ async function handleReviewPayment(id, status) {
   azToast('ยืนยันการชำระเงินแล้ว')
 }
 
-async function handleConfirmRefund(teamId) {
-  if (refundForTeam(teamId)) { azToast('ทีมนี้ยืนยันคืนเงินแล้ว'); return }
+async function handleConfirmRefund(teamId, extra = {}) {
+  if (refundForTeam(teamId)) { azToast('ทีมนี้ยืนยันคืนเงินแล้ว'); return false }
   const team = S.teams.find(item => item.id === teamId)
   const payment = S.payments.find(item => item.team_id === teamId && item.status === 'verified')
-  if (!team || !payment) { azToast('ยืนยันไม่ได้: ไม่พบการชำระค่าประกันที่ผ่านการตรวจสอบ'); return }
+  if (!team || !payment) { azToast('ยืนยันไม่ได้: ไม่พบการชำระค่าประกันที่ผ่านการตรวจสอบ'); return false }
   const payload = {
     team_id: team.id,
     payment_id: payment.id,
     ...teamRefundDraft(team),
+    recipient_signature_url: extra.recipientSignatureUrl || null,
+    payment_method: extra.paymentMethod || null,
+    proof_url: extra.proofUrl || null,
     confirmed_by: S.identity.profile?.id,
     confirmed_at: new Date().toISOString(),
   }
   const { error } = await SB.from('azfutsal_refunds').insert(payload)
-  if (error) { azToast('ยืนยันคืนเงินไม่สำเร็จ: ' + error.message); return }
+  if (error) { azToast('ยืนยันคืนเงินไม่สำเร็จ: ' + error.message); return false }
   await refresh()
   azToast(`ยืนยันคืนเงินทีม ${team.name} แล้ว`)
+  return true
 }
 
 async function handleViewProof(path) {
@@ -5706,12 +5799,60 @@ function bindEvents() {
     if (act === 'confirmRefund') {
       const team = S.teams.find(item => item.id === btn.dataset.team)
       if (!team) return
-      const draft = teamRefundDraft(team)
-      S.pendingConfirm = {
-        message: `ยืนยันว่าได้คืนเงินทีม ${team.name} จำนวน ${money(draft.refund_amount)} บาทแล้วหรือไม่? หลังยืนยัน ยอดและรายละเอียดในใบเสร็จจะถูกล็อก`,
-        run: () => handleConfirmRefund(team.id),
-      }
+      S.refundConfirmSign = { teamId: team.id }
       draw(); return
+    }
+    if (act === 'clearRecipientSignature') {
+      const canvas = gid('refund-recipient-sigpad')
+      if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+    if (act === 'cancelRefundSign') { S.refundConfirmSign = null; draw(); return }
+    if (act === 'confirmRefundWithSignature') {
+      const teamId = btn.dataset.team
+      const modal = gid('refund-confirm-modal')
+      const method = modal?.dataset.method
+      if (!method) { azToast('กรุณาเลือกวิธีคืนเงิน (โอน/เงินสด)'); return }
+      let proofPath = null
+      if (method === 'transfer') {
+        const file = gid('refund-proof-file-transfer')?.files?.[0]
+        if (!file) { azToast('กรุณาอัปโหลดสลิปการโอน'); return }
+        const blob = await compressImage(file, { maxWidth: 1200, quality: 0.85 })
+        const path = `refund-proof/${teamId}_${Date.now()}.jpg`
+        const { error: upErr } = await SB.storage.from('azfutsal-payments').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+        if (upErr) { azToast('อัปโหลดสลิปไม่สำเร็จ: ' + upErr.message); return }
+        proofPath = path
+      }
+      const canvas = gid('refund-recipient-sigpad')
+      let signatureUrl = null
+      if (canvas) {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+        if (blob) {
+          const path = `refund-recipient-signature_${teamId}_${Date.now()}.png`
+          const { error: upErr } = await SB.storage.from('azfutsal-assets').upload(path, blob, { upsert: true, contentType: 'image/png' })
+          if (!upErr) { const { data } = SB.storage.from('azfutsal-assets').getPublicUrl(path); signatureUrl = data.publicUrl }
+        }
+      }
+      const ok = await handleConfirmRefund(teamId, { recipientSignatureUrl: signatureUrl, paymentMethod: method, proofUrl: proofPath })
+      if (ok) { S.refundConfirmSign = null; S.refundConfirmDone = { teamId }; draw() }
+      return
+    }
+    if (act === 'printRefundReceiptDone') { openRefundReceipt(btn.dataset.team); return }
+    if (act === 'closeRefundDone') { S.refundConfirmDone = null; draw(); return }
+    if (act === 'uploadCashRefundProof' || act === 'uploadCashRefundProofInline') {
+      const teamId = btn.dataset.team
+      const fileInputId = act === 'uploadCashRefundProofInline' ? `refund-cash-proof-file-${teamId}` : 'refund-cash-proof-file'
+      const file = gid(fileInputId)?.files?.[0]
+      if (!file) { azToast('กรุณาเลือกไฟล์รูปภาพ'); return }
+      const blob = await compressImage(file, { maxWidth: 1200, quality: 0.85 })
+      const path = `refund-proof/${teamId}_${Date.now()}.jpg`
+      const { error: upErr } = await SB.storage.from('azfutsal-payments').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+      if (upErr) { azToast('อัปโหลดไม่สำเร็จ: ' + upErr.message); return }
+      const refund = refundForTeam(teamId)
+      if (!refund) { azToast('ไม่พบข้อมูลคืนเงินของทีมนี้'); return }
+      const { error: saveErr } = await SB.from('azfutsal_refunds').update({ proof_url: path }).eq('id', refund.id)
+      if (saveErr) { azToast('บันทึกไม่สำเร็จ: ' + saveErr.message); return }
+      await refresh(); azToast('อัปโหลดรูปหลักฐานแล้ว'); return
     }
     if (act === 'closeModal') { S.editMatch = null; S.eventPicker = null; S.eventPickerFilter = ''; S.certModalOpen = false; S.certFullscreenIndex = null; S.rejectPaymentId = null; S.rejectReasonText = ''; S.staffScopeEdit = null; S.manualPoolAssign = null; draw(); return }
     if (act === 'confirmActionNo') { S.pendingConfirm = null; draw(); return }
@@ -6698,13 +6839,38 @@ function adminRefunds() {
     return payment.status === 'verified' && team?.level === level
   })
   const confirmedCount = verifiedPayments.filter(payment => refundForTeam(payment.team_id)).length
+  const totalToRefund = verifiedPayments.reduce((sum, payment) => {
+    const team = S.teams.find(item => item.id === payment.team_id)
+    const refund = refundForTeam(payment.team_id)
+    const draft = refund || teamRefundDraft(team)
+    return sum + Number(draft.refund_amount)
+  }, 0)
+  const totalRefunded = verifiedPayments.reduce((sum, payment) => {
+    const refund = refundForTeam(payment.team_id)
+    return sum + (refund ? Number(refund.refund_amount) : 0)
+  }, 0)
+  const totalRemaining = totalToRefund - totalRefunded
   return refundPayerSettingsBox() + boxFill(`
     <div style="flex-shrink:0;margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div><div style="font-weight:700;font-size:14px">คืนเงินค่าประกันทีม</div><div style="font-size:11px;color:#6b7280;margin-top:2px">ยืนยันแล้ว ${confirmedCount}/${verifiedPayments.length} ทีม</div></div>
         <div style="display:flex;gap:6px">${['MS', 'HS'].map(value => `<button data-act="adminRefundLevel" data-v="${value}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === value ? T[value].base : '#e5e7eb'};background:${level === value ? T[value].base : '#fff'};color:${level === value ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[value].label}</button>`).join('')}</div>
       </div>
-      <div style="font-size:11px;color:#6b7280;background:#f9fafb;border-radius:9px;padding:8px 10px;margin-top:9px">เมื่อกดยืนยัน ระบบจะล็อกยอดคืนเงิน รายละเอียดใบเหลือง/แดงแยกตามนัดและคู่แข่งขัน รวมถึงโลโก้ ณ เวลานั้น แล้วจึงเปิดปุ่มใบเสร็จให้ทีม</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px">
+        <div style="background:#f9fafb;border-radius:9px;padding:8px 6px;text-align:center">
+          <div style="font-size:10px;color:#6b7280">ต้องคืนทั้งหมด</div>
+          <div style="font-size:13.5px;font-weight:800">${money(totalToRefund)}</div>
+        </div>
+        <div style="background:#dcfce7;border-radius:9px;padding:8px 6px;text-align:center">
+          <div style="font-size:10px;color:#16a34a">คืนไปแล้ว</div>
+          <div style="font-size:13.5px;font-weight:800;color:#16a34a">${money(totalRefunded)}</div>
+        </div>
+        <div style="background:#fef3c7;border-radius:9px;padding:8px 6px;text-align:center">
+          <div style="font-size:10px;color:#b45309">คงเหลือ</div>
+          <div style="font-size:13.5px;font-weight:800;color:#b45309">${money(totalRemaining)}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#6b7280;background:#f9fafb;border-radius:9px;padding:8px 10px;margin-top:9px">เมื่อกดยืนยัน ต้องให้หัวหน้าทีมเซ็นรับเงิน + เลือกวิธีคืนเงิน (โอน/เงินสด) ก่อนระบบจะล็อกยอดคืนเงินและเปิดปุ่มใบเสร็จให้ทีม</div>
     </div>
     <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:9px;overflow-y:auto">
       ${verifiedPayments.length ? verifiedPayments.map(payment => {
@@ -6716,7 +6882,14 @@ function adminRefunds() {
             <div><div style="font-size:13px;font-weight:800">${esc(team.name)}</div><div style="font-size:11px;color:#6b7280;margin-top:2px">ใบเหลือง ${Number(draft.yellow_count)} · ใบแดง ${Number(draft.red_count)} · คืนสุทธิ <b>${money(draft.refund_amount)} บาท</b></div></div>
             ${refund ? `<span style="font-size:10.5px;font-weight:700;color:#16a34a;background:#dcfce7;border-radius:999px;padding:4px 8px;white-space:nowrap">ยืนยันแล้ว</span>` : `<span style="font-size:10.5px;font-weight:700;color:#b45309;background:#fef3c7;border-radius:999px;padding:4px 8px;white-space:nowrap">รอยืนยัน</span>`}
           </div>
-          ${refund ? `<button data-act="openRefundReceipt" data-team="${team.id}" style="width:100%;margin-top:9px;padding:8px;border-radius:8px;border:1px solid ${T[level].border};background:${T[level].soft};color:${T[level].accent};font-size:12px;font-weight:800;cursor:pointer">🧾 เปิดใบเสร็จ ${esc(refund.receipt_no)}</button>` : `
+          ${refund ? `<div style="display:flex;gap:6px;margin-top:9px">
+            <button data-act="openRefundReceipt" data-team="${team.id}" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${T[level].border};background:${T[level].soft};color:${T[level].accent};font-size:12px;font-weight:800;cursor:pointer">🧾 เปิดใบเสร็จ ${esc(refund.receipt_no)}</button>
+            ${refund.proof_url ? `<button data-act="viewProof" data-path="${esc(refund.proof_url)}" style="padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">📎 หลักฐาน</button>` : ''}
+          </div>
+          ${refund.payment_method === 'cash' && !refund.proof_url ? `
+          <div style="margin-top:8px;font-size:10.5px;color:#b45309;background:#fffbeb;border-radius:7px;padding:6px 8px">📷 ยังไม่มีรูปหลักฐานเงินสด</div>
+          <input type="file" accept="image/*" id="refund-cash-proof-file-${team.id}" style="width:100%;font-size:11px;margin-top:6px"/>
+          <button type="button" data-act="uploadCashRefundProofInline" data-team="${team.id}" style="width:100%;margin-top:6px;padding:7px;border-radius:7px;border:none;background:#d97706;color:#fff;font-size:11.5px;font-weight:700;cursor:pointer">อัปโหลดรูปหลักฐาน</button>` : ''}` : `
           <div style="display:flex;gap:6px;margin-top:9px">
             <button data-act="openRefundReceiptPreview" data-team="${team.id}" style="flex:1;padding:8px;border-radius:8px;border:1px dashed ${T[level].border};background:#fff;color:${T[level].accent};font-size:12px;font-weight:800;cursor:pointer">👁️ ดูตัวอย่าง</button>
             <button data-act="confirmRefund" data-team="${team.id}" style="flex:1;padding:8px;border-radius:8px;border:none;background:${T[level].base};color:#fff;font-size:12px;font-weight:800;cursor:pointer">ยืนยันคืนเงิน ${money(draft.refund_amount)} บาท</button>
