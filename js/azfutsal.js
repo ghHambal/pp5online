@@ -200,6 +200,7 @@ let S = {
   adminCreatingTeam: false,
   refundConfirmSign: null, // { teamId } — เปิดป๊อบอัพให้หัวหน้าทีมเซ็นชื่อ+เลือกวิธีคืนเงินก่อนล็อกยอด
   refundConfirmDone: null, // { teamId } — ป๊อบอัพ "คืนเงินสำเร็จ" หลังยืนยัน พร้อมปุ่มพิมพ์/อัปโหลดหลักฐานเงินสด
+  refundPayerSettingsOpen: false, // ป๊อบอัพตั้งค่าผู้จ่ายคืนเงิน (ชื่อ/ตำแหน่ง/ลายเซ็น) — แยกจากหน้าหลักกันบังรายชื่อทีม
   capLookupCode: '',
   capLookupResult: null, // student row or 'notfound' | null
   adminLoginOpen: false,
@@ -979,11 +980,12 @@ function draw() {
       ${s.staffScopeEdit ? staffScopeModal() : ''}
       ${s.refundConfirmSign ? refundSignModal() : ''}
       ${s.refundConfirmDone ? refundDoneModal() : ''}
+      ${s.refundPayerSettingsOpen ? refundPayerSettingsModal() : ''}
     </div>
   </div>`
   if (S.identity.isAdmin && S.adminSection === 'staff') loadStaffList()
   if (S.refundConfirmSign) setupRefundConfirmModal()
-  if (S.identity.isAdmin && S.adminSection === 'refunds') setupSignaturePad()
+  if (S.refundPayerSettingsOpen) setupSignaturePad()
 }
 
 function header() {
@@ -5802,6 +5804,8 @@ function bindEvents() {
       S.refundConfirmSign = { teamId: team.id }
       draw(); return
     }
+    if (act === 'openRefundPayerSettings') { S.refundPayerSettingsOpen = true; draw(); return }
+    if (act === 'closeRefundPayerSettings') { S.refundPayerSettingsOpen = false; draw(); return }
     if (act === 'clearRecipientSignature') {
       const canvas = gid('refund-recipient-sigpad')
       if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
@@ -6798,38 +6802,44 @@ function adminPayments() {
   `)
 }
 
-function refundPayerSettingsBox() {
+function refundPayerSettingsModal() {
   const name = cfg('REFUND_PAYER_NAME', '')
   const title = cfg('REFUND_PAYER_TITLE', '')
   const sigUrl = cfg('REFUND_PAYER_SIGNATURE_URL', '')
-  return box(`
-    <div style="font-weight:700;font-size:14px;margin-bottom:4px">ผู้จ่ายคืนเงิน</div>
-    <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ชื่อ/ตำแหน่ง/ลายเซ็นนี้จะแสดงในใบเสร็จคืนเงินทุกใบ</div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <label style="flex:1;font-size:11.5px;color:#6b7280">ชื่อ-สกุล
-        <input id="refund-payer-name" value="${esc(name)}" placeholder="เช่น นายฮัมบาลีย์ วาจิ" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:12.5px"/>
-      </label>
-      <label style="flex:1;font-size:11.5px;color:#6b7280">ตำแหน่ง
-        <input id="refund-payer-title" value="${esc(title)}" placeholder="เช่น ครูฝ่ายปกครอง" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:12.5px"/>
-      </label>
+  return `
+  <div style="position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-weight:800;font-size:15px">ผู้จ่ายคืนเงิน</div>
+        <button data-act="closeRefundPayerSettings" style="border:none;background:none;color:#9ca3af;font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:14px">ชื่อ/ตำแหน่ง/ลายเซ็นนี้จะแสดงในใบเสร็จคืนเงินทุกใบ</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <label style="flex:1;font-size:11.5px;color:#6b7280">ชื่อ-สกุล
+          <input id="refund-payer-name" value="${esc(name)}" placeholder="เช่น นายฮัมบาลีย์ วาจิ" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:12.5px"/>
+        </label>
+        <label style="flex:1;font-size:11.5px;color:#6b7280">ตำแหน่ง
+          <input id="refund-payer-title" value="${esc(title)}" placeholder="เช่น ครูฝ่ายปกครอง" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;border:1px solid #e5e7eb;border-radius:9px;padding:8px 10px;font-size:12.5px"/>
+        </label>
+      </div>
+      <button data-act="saveRefundPayerInfo" style="width:100%;padding:9px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:14px">บันทึกชื่อ-ตำแหน่ง</button>
+      <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">ลายเซ็นปัจจุบัน</div>
+      <div style="margin-bottom:12px">
+        ${sigUrl ? `<img src="${esc(sigUrl)}" style="height:56px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;padding:4px"/>` : `<div style="font-size:11.5px;color:#9ca3af">ยังไม่มีลายเซ็น</div>`}
+      </div>
+      <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">วาดลายเซ็นใหม่</div>
+      <canvas id="refund-payer-sigpad" width="400" height="150" style="width:100%;max-width:400px;height:150px;border:1px dashed #e5e7eb;border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;display:block"></canvas>
+      <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:14px">
+        <button data-act="clearSignaturePad" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:12px;font-weight:700;cursor:pointer">ล้าง</button>
+        <button data-act="saveDrawnSignature" style="flex:1;padding:8px;border-radius:8px;border:none;background:#db2777;color:#fff;font-size:12px;font-weight:700;cursor:pointer">บันทึกลายเซ็นที่วาด</button>
+      </div>
+      <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">หรืออัปโหลดรูปลายเซ็น</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="file" accept="image/*" id="refund-payer-sig-file" style="flex:1;min-width:0;font-size:11.5px"/>
+        <button data-act="uploadPayerSignature" style="font-size:11px;padding:7px 10px;border-radius:8px;border:none;background:#db2777;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">อัปโหลด</button>
+      </div>
     </div>
-    <button data-act="saveRefundPayerInfo" style="width:100%;padding:9px;border-radius:9px;border:none;background:#db2777;color:#fff;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:14px">บันทึกชื่อ-ตำแหน่ง</button>
-    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">ลายเซ็นปัจจุบัน</div>
-    <div style="margin-bottom:12px">
-      ${sigUrl ? `<img src="${esc(sigUrl)}" style="height:56px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;padding:4px"/>` : `<div style="font-size:11.5px;color:#9ca3af">ยังไม่มีลายเซ็น</div>`}
-    </div>
-    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">วาดลายเซ็นใหม่</div>
-    <canvas id="refund-payer-sigpad" width="400" height="150" style="width:100%;max-width:400px;height:150px;border:1px dashed #e5e7eb;border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;display:block"></canvas>
-    <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:14px">
-      <button data-act="clearSignaturePad" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:12px;font-weight:700;cursor:pointer">ล้าง</button>
-      <button data-act="saveDrawnSignature" style="flex:1;padding:8px;border-radius:8px;border:none;background:#db2777;color:#fff;font-size:12px;font-weight:700;cursor:pointer">บันทึกลายเซ็นที่วาด</button>
-    </div>
-    <div style="font-size:11.5px;color:#6b7280;margin-bottom:6px">หรืออัปโหลดรูปลายเซ็น</div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <input type="file" accept="image/*" id="refund-payer-sig-file" style="flex:1;min-width:0;font-size:11.5px"/>
-      <button data-act="uploadPayerSignature" style="font-size:11px;padding:7px 10px;border-radius:8px;border:none;background:#db2777;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">อัปโหลด</button>
-    </div>
-  `)
+  </div>`
 }
 
 function adminRefunds() {
@@ -6850,11 +6860,14 @@ function adminRefunds() {
     return sum + (refund ? Number(refund.refund_amount) : 0)
   }, 0)
   const totalRemaining = totalToRefund - totalRefunded
-  return refundPayerSettingsBox() + boxFill(`
+  return boxFill(`
     <div style="flex-shrink:0;margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div><div style="font-weight:700;font-size:14px">คืนเงินค่าประกันทีม</div><div style="font-size:11px;color:#6b7280;margin-top:2px">ยืนยันแล้ว ${confirmedCount}/${verifiedPayments.length} ทีม</div></div>
-        <div style="display:flex;gap:6px">${['MS', 'HS'].map(value => `<button data-act="adminRefundLevel" data-v="${value}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === value ? T[value].base : '#e5e7eb'};background:${level === value ? T[value].base : '#fff'};color:${level === value ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[value].label}</button>`).join('')}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button data-act="openRefundPayerSettings" title="ตั้งค่าผู้จ่ายคืนเงิน" style="width:34px;height:34px;flex-shrink:0;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;cursor:pointer;font-size:15px">⚙️</button>
+          ${['MS', 'HS'].map(value => `<button data-act="adminRefundLevel" data-v="${value}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === value ? T[value].base : '#e5e7eb'};background:${level === value ? T[value].base : '#fff'};color:${level === value ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[value].label}</button>`).join('')}
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px">
         <div style="background:#f9fafb;border-radius:9px;padding:8px 6px;text-align:center">
