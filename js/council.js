@@ -135,6 +135,11 @@ let adminApps = null // null = ยังไม่โหลด, [] = โหลด
 let adminAppDetailId = null // id ของใบสมัครที่กำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
 let myAppDetailId = null // id ของใบสมัครของตัวเองที่นักเรียนกำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
 let appsFilter = 'all' // ฟิลเตอร์สถานะในหน้า "จัดการใบสมัคร" (สเปคข้อ 8.4)
+let appsGenderTab = 'M' // แถบสลับชาย/หญิงในหน้า "จัดการใบสมัคร" — เพิ่มตามที่ผู้ใช้ขอ 2026-08-23
+let appsGradeFilter = '' // '' = ทุกระดับชั้น
+let appsPositionFilter = '' // '' = ทุกฝ่าย — ตั้งค่าแล้วจะสลับจากมุมมอง "จัดกลุ่มตามฝ่าย" เป็นรายการเรียบ
+let appsAdvisorEndorseFilter = '' // '' | 'yes' | 'no'
+let appsPeerEndorseFilter = '' // '' | 'yes' | 'no'
 let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์ (ใช้ร่วมกับหน้ามอบสิทธิ์ด้วย)
 let councilAdvisors = null // null = ยังไม่โหลด — ทำเนียบครูที่ปรึกษาสภานักเรียน (หน้า "มอบสิทธิ์")
 const candidatesByGender = {} // { M: [...], W: [...] }
@@ -1280,6 +1285,14 @@ function endorsementStatusNote(a) {
   return notes.join(' และ')
 }
 
+// ระดับชั้นจาก main_room (เช่น "ม.5/4 Kristal" → "ม.5", "ปวช.2/1" → "ปวช.2") — ไม่มีคอลัมน์แยกเก็บ
+// ระดับชั้นในตาราง students จึงต้องตัดจากรูปแบบห้องที่ใช้ทั่วทั้งระบบ ใช้ religion_room เป็น fallback
+// เผื่อนักเรียนสายศาสนาไม่มี main_room
+function studentGradeLevel(student) {
+  const room = student?.main_room || student?.religion_room || ''
+  return room.match(/^(ม\.\d+|ปวช\.\d+)/)?.[1] ?? null
+}
+
 function appPipelineStage(a) {
   if (a.status === 'rejected') return 'rejected'
   if (a.status === 'pending') return (a.endorsed_at && peerEndorsementSatisfied(a)) ? 'endorsed' : 'awaiting_endorsement'
@@ -1463,7 +1476,7 @@ function renderAppDetailModalBody(a, student, { closeId, backdropId, isOwner = f
 }
 
 function renderApplicationsAdminView() {
-  if (!ctx.isAdmin) return ''
+  if (!ctx.isAdmin && !ctx.isCouncilAdvisor) return ''
   if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
   if (interviewCriteria === null) { loadInterviewCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
   if (ivTeachers === null) { loadIvTeachers(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
@@ -1471,24 +1484,74 @@ function renderApplicationsAdminView() {
   const maxWeight = interviewCriteria.reduce((t, c) => t + Number(c.weight), 0)
   const passThreshold = maxWeight / 2
 
-  const counts = { all: adminApps.length }
-  adminApps.forEach(a => { const s = appPipelineStage(a); counts[s] = (counts[s] ?? 0) + 1 })
+  // แถบสลับชาย/หญิง — เพิ่มตามที่ผู้ใช้ขอ 2026-08-23 กันดูปนกันยาก แยกกรอง/นับทุกอย่างเฉพาะเพศที่เลือก
+  if (appsGenderTab !== 'M' && appsGenderTab !== 'W') appsGenderTab = 'M'
+  const genderApps = adminApps.filter(a => a.council_positions?.gender === appsGenderTab)
+
+  const genderTabs = `
+    <div class="flex gap-2 mb-3">
+      ${['M', 'W'].map(g => `
+        <button type="button" class="apps-gender-tab-btn flex-1 py-2.5 rounded-full text-sm font-bold transition ${g === appsGenderTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-gender="${g}">
+          สภา${GENDER_LABEL[g]} <span class="${g === appsGenderTab ? 'text-white/80' : 'text-[var(--muted-2)]'}">${adminApps.filter(a => a.council_positions?.gender === g).length}</span>
+        </button>`).join('')}
+    </div>`
+
+  const counts = { all: genderApps.length }
+  genderApps.forEach(a => { const s = appPipelineStage(a); counts[s] = (counts[s] ?? 0) + 1 })
   if (!APPS_FILTERS.some(f => f.id === appsFilter)) appsFilter = 'all'
 
   const filterBar = `
-    <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
+    <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
       ${APPS_FILTERS.map(f => `
         <button type="button" class="apps-filter-btn flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition ${f.id === appsFilter ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-filter="${f.id}">
           ${esc(f.label)} <span class="${f.id === appsFilter ? 'text-white/80' : 'text-[var(--muted-2)]'}">${counts[f.id] ?? 0}</span>
         </button>`).join('')}
     </div>`
 
+  // ตัวเลือกกรองเพิ่มเติม — ตามที่ผู้ใช้ขอ 2026-08-23: ระดับชั้น/ฝ่ายที่สมัคร/รับรองครูที่ปรึกษา/
+  // รับรองพี่สภา ตัวเลือกคำนวณจากใบสมัครในแท็บเพศที่เลือกอยู่เท่านั้น
+  const gradeOptions = [...new Set(genderApps.map(a => studentGradeLevel(a.students)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'))
+  const positionsForGenderTab = ctx.positions.filter(p => p.gender === appsGenderTab).sort((a, b) => a.sort_order - b.sort_order)
+
+  const extraFilterBar = `
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+      <select id="apps-grade-filter" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">
+        <option value="">ทุกระดับชั้น</option>
+        ${gradeOptions.map(g => `<option value="${esc(g)}" ${g === appsGradeFilter ? 'selected' : ''}>${esc(g)}</option>`).join('')}
+      </select>
+      <select id="apps-position-filter" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">
+        <option value="">ทุกฝ่าย</option>
+        ${positionsForGenderTab.map(p => `<option value="${p.id}" ${String(p.id) === String(appsPositionFilter) ? 'selected' : ''}>${esc(p.position_name)}</option>`).join('')}
+      </select>
+      <select id="apps-advisor-endorse-filter" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">
+        <option value="">รับรองครูที่ปรึกษา: ทั้งหมด</option>
+        <option value="yes" ${appsAdvisorEndorseFilter === 'yes' ? 'selected' : ''}>รับรองแล้ว</option>
+        <option value="no" ${appsAdvisorEndorseFilter === 'no' ? 'selected' : ''}>ยังไม่รับรอง</option>
+      </select>
+      ${peerEndorsementRequired() ? `
+      <select id="apps-peer-endorse-filter" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">
+        <option value="">รับรองพี่สภา: ทั้งหมด</option>
+        <option value="yes" ${appsPeerEndorseFilter === 'yes' ? 'selected' : ''}>รับรองแล้ว</option>
+        <option value="no" ${appsPeerEndorseFilter === 'no' ? 'selected' : ''}>ยังไม่รับรอง</option>
+      </select>` : ''}
+    </div>`
+
   const datalist = `<datalist id="council-teacher-datalist">${ivTeachers.map(t => `<option value="${esc(t.full_name)} · รหัส ${t.id}"></option>`).join('')}</datalist>`
 
-  if (!adminApps.length) return `${filterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-16">ยังไม่มีใบสมัครสภานักเรียน</p>`
+  if (!genderApps.length) return `${genderTabs}${filterBar}${extraFilterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-16">ยังไม่มีใบสมัครสภา${GENDER_LABEL[appsGenderTab]}</p>`
 
-  const list = adminApps.filter(a => appsFilter === 'all' || appPipelineStage(a) === appsFilter)
-  if (!list.length) return `${filterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-10">ไม่มีใบสมัครในหมวดนี้</p>`
+  const matchesExtraFilters = a => {
+    if (appsGradeFilter && studentGradeLevel(a.students) !== appsGradeFilter) return false
+    if (appsPositionFilter && String(a.position_id) !== String(appsPositionFilter)) return false
+    if (appsAdvisorEndorseFilter === 'yes' && !a.endorsed_at) return false
+    if (appsAdvisorEndorseFilter === 'no' && a.endorsed_at) return false
+    if (appsPeerEndorseFilter === 'yes' && !peerEndorsementSatisfied(a)) return false
+    if (appsPeerEndorseFilter === 'no' && peerEndorsementSatisfied(a)) return false
+    return true
+  }
+
+  const list = genderApps.filter(a => (appsFilter === 'all' || appPipelineStage(a) === appsFilter) && matchesExtraFilters(a))
+  if (!list.length) return `${genderTabs}${filterBar}${extraFilterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-10">ไม่มีใบสมัครในหมวดนี้</p>`
 
   const card = a => {
     const iv = a.council_interviews?.[0]
@@ -1557,7 +1620,21 @@ function renderApplicationsAdminView() {
       ${a.status === 'rejected' && iv?.comment ? `<p class="text-xs text-[var(--bad)] pt-1 border-t border-[var(--line-soft)]">${esc(iv.comment)}</p>` : ''}
     </div>`
   }
-  return `${filterBar}${datalist}<div class="space-y-3">${list.map(card).join('')}</div>${renderAdminAppDetailModal()}`
+  // ยังไม่ได้กรองฝ่าย — จัดกลุ่มแสดงแยกตามฝ่ายที่สมัคร (ตามที่ผู้ใช้ขอ 2026-08-23) กรองฝ่ายเจาะจง
+  // แล้วถือว่าเหลือฝ่ายเดียวอยู่แล้ว แสดงเป็นรายการเรียบไปเลยไม่ต้องมีหัวข้อกลุ่มซ้ำ
+  const body = !appsPositionFilter
+    ? positionsForGenderTab.map(p => {
+        const groupList = list.filter(a => a.position_id === p.id)
+        if (!groupList.length) return ''
+        return `
+          <div class="mb-5">
+            <p class="text-xs font-bold text-[var(--muted)] mb-2 px-1">${esc(p.position_name)} <span class="text-[var(--muted-2)]">(${groupList.length})</span></p>
+            <div class="space-y-3">${groupList.map(card).join('')}</div>
+          </div>`
+      }).join('')
+    : `<div class="space-y-3">${list.map(card).join('')}</div>`
+
+  return `${genderTabs}${filterBar}${extraFilterBar}${datalist}${body}${renderAdminAppDetailModal()}`
 }
 
 // ─── รายชื่อสภานักเรียนปัจจุบัน (public, จัดกลุ่มตามเพศ→ตำแหน่ง) ──────────────────
@@ -4907,6 +4984,13 @@ function wireApplicationsAdminEvents() {
   document.querySelectorAll('.apps-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => { appsFilter = btn.dataset.filter; render() })
   })
+  document.querySelectorAll('.apps-gender-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { appsGenderTab = btn.dataset.gender; appsPositionFilter = ''; render() })
+  })
+  document.getElementById('apps-grade-filter')?.addEventListener('change', e => { appsGradeFilter = e.target.value; render() })
+  document.getElementById('apps-position-filter')?.addEventListener('change', e => { appsPositionFilter = e.target.value; render() })
+  document.getElementById('apps-advisor-endorse-filter')?.addEventListener('change', e => { appsAdvisorEndorseFilter = e.target.value; render() })
+  document.getElementById('apps-peer-endorse-filter')?.addEventListener('change', e => { appsPeerEndorseFilter = e.target.value; render() })
 
   document.querySelectorAll('.btn-view-app-detail').forEach(btn => {
     btn.addEventListener('click', () => { adminAppDetailId = Number(btn.dataset.id); render() })
