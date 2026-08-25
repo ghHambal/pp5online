@@ -2,12 +2,29 @@
 -- (category='qr_card_request', patch_feedback_qr_card_request.sql) เพราะพบว่าระบบมี
 -- qr_reissue_logs (ประวัติออก QR ใหม่ที่ครู/แอดมินบันทึกอยู่แล้วในหน้า "พิมพ์ QR Code นักเรียน")
 -- อยู่ก่อนแล้ว — ทำใหม่ให้ต่อยอดจากระบบนี้แทน ไม่ปนกับ Feedback ทั่วไป
+-- หมายเหตุ: qr_reissue_logs.id เป็น uuid (ตรวจสอบจริงจาก production แล้ว 2026-08-25)
 
 -- ── ล้างของเดิมที่ทำไว้ผิดทาง (คอลัมน์ยังไม่มีใครใช้แล้วหลังแก้โค้ด) ─────────────
 alter table app_feedback drop column if exists qr_printed_at;
 alter table app_feedback drop column if exists qr_picked_up_at;
 alter table app_feedback drop column if exists qr_fine_paid_at;
 -- get_admin_profile_ids() ยังใช้ต่อ (reuse สำหรับแจ้งเตือนแอดมินทุกกรณี) ไม่ต้องลบ
+
+-- ── มอบสิทธิ์ครูให้เข้าหน้า "พิมพ์ QR Code นักเรียน" + จัดการคำขอได้เหมือนแอดมิน ─────────
+-- (สร้างก่อน qr_reissue_requests เพราะ RLS policy ของตารางนั้นอ้างถึงตารางนี้)
+create table if not exists qr_reissue_managers (
+  profile_id uuid primary key references profiles(id) on delete cascade,
+  granted_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table qr_reissue_managers enable row level security;
+create policy qr_reissue_managers_read on qr_reissue_managers for select using (true);
+create policy qr_reissue_managers_write on qr_reissue_managers for all
+  using (get_user_role() = 'admin' or exists (select 1 from profiles where id = auth.uid() and is_also_admin = true))
+  with check (get_user_role() = 'admin' or exists (select 1 from profiles where id = auth.uid() and is_also_admin = true));
+
+comment on table qr_reissue_managers is 'ครูที่แอดมินมอบสิทธิ์ให้เข้าหน้าพิมพ์/จัดการคำขอ QR Code ได้เหมือนแอดมิน (แยกจากสิทธิ์ครูที่ปรึกษาพิมพ์เฉพาะห้องตัวเอง)';
 
 -- ── คำขอทำบัตร QR Code ที่นักเรียนแจ้งเอง (สถานะรอดำเนินการ) ────────────────────
 create table if not exists qr_reissue_requests (
@@ -17,7 +34,7 @@ create table if not exists qr_reissue_requests (
   printed_at timestamptz,
   picked_up_at timestamptz,
   fine_paid_at timestamptz,
-  reissue_log_id bigint references qr_reissue_logs(id) on delete set null
+  reissue_log_id uuid references qr_reissue_logs(id) on delete set null
 );
 create index if not exists qr_reissue_requests_student_idx on qr_reissue_requests(student_id);
 
@@ -43,18 +60,3 @@ create policy qr_reissue_requests_manager_all on qr_reissue_requests for all
   );
 
 comment on table qr_reissue_requests is 'คำขอทำบัตร QR Code ที่นักเรียนแจ้งความจำนงเอง — พอทำเสร็จจริงจะสร้างแถวคู่กันใน qr_reissue_logs ด้วย';
-
--- ── มอบสิทธิ์ครูให้เข้าหน้า "พิมพ์ QR Code นักเรียน" + จัดการคำขอได้เหมือนแอดมิน ─────────
-create table if not exists qr_reissue_managers (
-  profile_id uuid primary key references profiles(id) on delete cascade,
-  granted_by uuid references profiles(id) on delete set null,
-  created_at timestamptz not null default now()
-);
-
-alter table qr_reissue_managers enable row level security;
-create policy qr_reissue_managers_read on qr_reissue_managers for select using (true);
-create policy qr_reissue_managers_write on qr_reissue_managers for all
-  using (get_user_role() = 'admin' or exists (select 1 from profiles where id = auth.uid() and is_also_admin = true))
-  with check (get_user_role() = 'admin' or exists (select 1 from profiles where id = auth.uid() and is_also_admin = true));
-
-comment on table qr_reissue_managers is 'ครูที่แอดมินมอบสิทธิ์ให้เข้าหน้าพิมพ์/จัดการคำขอ QR Code ได้เหมือนแอดมิน (แยกจากสิทธิ์ครูที่ปรึกษาพิมพ์เฉพาะห้องตัวเอง)';
