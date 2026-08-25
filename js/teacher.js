@@ -235,7 +235,6 @@ const ROUTES = {
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
   'quiz-system': () => import('./teacher-views-quiz-banks.js').then(m => m.renderQuizBanks(_teacher)),
   'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.18.25').then(m => m.renderExamDocuments(_teacher)),
-  'donor-chat':  () => import('./teacher-views-donor-chat.js').then(m => m.renderDonorChat(_teacher)),
   'sports':      () => {
     // ครูตำแหน่ง house_color_admin (หรือได้รับสิทธิ์ menu_sports_admin/เป็นแอดมิน) ที่กด
     // ทางลัด "ระบบกีฬาสี" จากเมนูปกตินี้ ต้องเข้าเป็นแอดมิน AZIZGAMES ทันทีเหมือนกับที่เข้าทาง
@@ -3050,6 +3049,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
   if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
+  if (_teacher?.id) import('./teacher-views-donor-chat.js').then(m => m.injectDonorChatWidget(_teacher))
 
   const verEl = document.getElementById('app-version')
   if (verEl) {

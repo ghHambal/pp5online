@@ -1,6 +1,7 @@
 // js/teacher-views-donor-chat.js
 // Phase 2 — กลุ่มแชทใหญ่สำหรับครูผู้สนับสนุน (text only, ยังไม่มีรูป/สติกเกอร์/ปักหมุด/บันทึกโน้ต)
-// ใช้ร่วมกันทั้งฝั่งครู (renderDonorChat) และฝั่งแอดมิน (renderDonorChatAdmin)
+// ฝั่งครู: ปุ่มลอย (FAB) แบบเดียวกับ feedback widget เปิดเป็นป๊อปอัพ — ไม่ใช่เปลี่ยนหน้าเต็ม
+// ฝั่งแอดมิน: หน้าเต็มในแดชบอร์ด (renderDonorChatAdmin) ต่อยอด pattern feedback-admin
 import {
   checkDonorChatAccess, getDonorGroupRoomId, getChatMessages, sendChatMessage, getTeacherNamesByProfileIds,
 } from './api.js'
@@ -19,34 +20,76 @@ function _teardown() {
 }
 window._cleanupDonorChat = _teardown
 
-export async function renderDonorChat(teacher) {
+// ─── ฝั่งครู — ปุ่มลอย ──────────────────────────────────────────────────────
+export function injectDonorChatWidget(teacher) {
+  if (!teacher?.id || document.getElementById('donor-chat-fab')) return
+
+  const fab = document.createElement('button')
+  fab.id = 'donor-chat-fab'
+  fab.title = 'แชทครูผู้สนับสนุน'
+  fab.className = 'fixed z-40 w-11 h-11 sm:w-14 sm:h-14 rounded-full text-white shadow-lg flex items-center justify-center overflow-hidden transition-transform hover:scale-105'
+  // ซ้อนเหนือปุ่ม feedback (💬) อีกชั้น กันทับกัน
+  fab.style.cssText = 'position:fixed;right:max(0.75rem, env(safe-area-inset-right));left:auto;top:auto;bottom:calc(max(0.75rem, env(safe-area-inset-bottom)) + 68px + 64px);background:linear-gradient(135deg,#f59e0b,#b45309);font-size:1.3rem;'
+  fab.textContent = '👑'
+  document.body.appendChild(fab)
+  fab.addEventListener('click', () => openDonorChatWidget(teacher))
+}
+
+function _closeWidget() {
   _teardown()
-  setActiveNav('donor-chat')
-  setTitle('💬 แชทครูผู้สนับสนุน')
-  setContent(`<div class="flex justify-center py-12 text-gray-400">กำลังโหลด...</div>`)
+  document.getElementById('donor-chat-widget')?.remove()
+}
+
+export async function openDonorChatWidget(teacher) {
+  document.getElementById('donor-chat-widget')?.remove()
+  _teardown()
+
+  const m = document.createElement('div')
+  m.id = 'donor-chat-widget'
+  m.className = 'fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50'
+  m.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
+      <div style="background:linear-gradient(135deg,#f59e0b,#b45309);" class="px-5 py-4 flex items-center justify-between flex-shrink-0">
+        <div class="min-w-0">
+          <h3 class="text-white font-bold text-base">👑 แชทครูผู้สนับสนุน</h3>
+          <p class="text-white/80 text-xs mt-0.5">กลุ่มแชทเฉพาะครูผู้สนับสนุนภาคเรียนนี้</p>
+        </div>
+        <button id="donor-chat-close" class="text-white/90 hover:text-white text-3xl leading-none px-2 flex-shrink-0">&times;</button>
+      </div>
+      <div id="donor-chat-body" class="flex-1 min-h-0 flex flex-col"></div>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) _closeWidget() })
+  m.querySelector('#donor-chat-close').addEventListener('click', _closeWidget)
+
+  const bodyEl = m.querySelector('#donor-chat-body')
+  bodyEl.innerHTML = `<div class="flex-1 flex items-center justify-center py-12 text-gray-400">กำลังโหลด...</div>`
 
   const ok = await checkDonorChatAccess(teacher.id, 1).catch(() => false)
   if (!ok) {
-    setContent(`
-      <div class="bg-white rounded-3xl border border-amber-200 p-8 text-center shadow-sm max-w-md mx-auto">
+    bodyEl.innerHTML = `
+      <div class="p-8 text-center">
         <p class="text-4xl mb-3">⭐</p>
         <p class="font-bold text-gray-700 mb-2">สิทธิ์เฉพาะครูผู้สนับสนุน</p>
         <p class="text-sm text-gray-500 mb-4">โดเนทในภาคเรียนนี้เพื่อเข้าร่วมกลุ่มแชทครูผู้สนับสนุน พูดคุย/แลกเปลี่ยนกับครูท่านอื่น และคุยกับแอดมินได้โดยตรง</p>
         <button id="btn-donor-chat-donate" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
-      </div>`)
-    document.getElementById('btn-donor-chat-donate')?.addEventListener('click', () =>
-      document.getElementById('btn-donate-float')?.click())
+      </div>`
+    bodyEl.querySelector('#btn-donor-chat-donate')?.addEventListener('click', () => {
+      _closeWidget()
+      document.getElementById('btn-donate-float')?.click()
+    })
     return
   }
 
   const roomId = await getDonorGroupRoomId()
   if (!roomId) {
-    setContent(`<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท กรุณาติดต่อแอดมิน</p>`)
+    bodyEl.innerHTML = `<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท กรุณาติดต่อแอดมิน</p>`
     return
   }
-  await _renderRoom(roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+  await _renderRoom(bodyEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
 }
 
+// ─── ฝั่งแอดมิน — หน้าเต็มในแดชบอร์ด ─────────────────────────────────────────
 export async function renderDonorChatAdmin() {
   _teardown()
   setActiveNav('donor-chat-admin')
@@ -58,29 +101,31 @@ export async function renderDonorChatAdmin() {
     setContent(`<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท</p>`)
     return
   }
-  await _renderRoom(roomId, { myProfileId: user?.id, sendAsRole: 'admin' })
+
+  setContent(`<div id="donor-chat-admin-body" class="flex-1 min-h-0 flex flex-col h-[75vh]"></div>`)
+  const bodyEl = document.getElementById('donor-chat-admin-body')
+  await _renderRoom(bodyEl, roomId, { myProfileId: user?.id, sendAsRole: 'admin' })
 }
 
-async function _renderRoom(roomId, { myProfileId, sendAsRole }) {
-  setContent(`
-    <div class="flex flex-col h-[75vh] bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-      <div id="chat-msg-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
-      <form id="chat-send-form" class="flex items-center gap-2 p-3 border-t border-gray-100 flex-shrink-0">
-        <input id="chat-msg-input" type="text" maxlength="2000" placeholder="พิมพ์ข้อความ..."
-          class="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-        <button type="submit" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">ส่ง</button>
-      </form>
-    </div>`)
+// ─── ตัวแสดงห้องแชท ใช้ร่วมกันทั้งป๊อปอัพครูและหน้าแอดมิน ───────────────────────
+async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
+  containerEl.innerHTML = `
+    <div id="chat-msg-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+    <form id="chat-send-form" class="flex items-center gap-2 p-3 border-t border-gray-100 flex-shrink-0">
+      <input id="chat-msg-input" type="text" maxlength="2000" placeholder="พิมพ์ข้อความ..."
+        class="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+      <button type="submit" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">ส่ง</button>
+    </form>`
 
-  const listEl = document.getElementById('chat-msg-list')
+  const listEl = containerEl.querySelector('#chat-msg-list')
   const messages = await getChatMessages(roomId)
   await _renderMessages(listEl, messages, myProfileId)
   listEl.scrollTop = listEl.scrollHeight
   _lastMessageId = messages.at(-1)?.id ?? 0
 
-  document.getElementById('chat-send-form').addEventListener('submit', async (e) => {
+  containerEl.querySelector('#chat-send-form').addEventListener('submit', async (e) => {
     e.preventDefault()
-    const input = document.getElementById('chat-msg-input')
+    const input = containerEl.querySelector('#chat-msg-input')
     const body = input.value.trim()
     if (!body) return
     input.value = ''
