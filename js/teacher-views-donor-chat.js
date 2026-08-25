@@ -1,10 +1,11 @@
 // js/teacher-views-donor-chat.js
-// Phase 3 — เพิ่มรูปภาพ (บีบอัดอัตโนมัติ) + สติกเกอร์ระดับโดเนท (เฉพาะภาคเรียนนี้)
+// Phase 4 — แชทย่อยกับแอดมิน (ครูกดสร้างเอง) + room switcher ฝั่งแอดมิน
 // ฝั่งครู: ปุ่มลอย (FAB) แบบเดียวกับ feedback widget เปิดเป็นป๊อปอัพ — ไม่ใช่เปลี่ยนหน้าเต็ม
 // ฝั่งแอดมิน: หน้าเต็มในแดชบอร์ด (renderDonorChatAdmin) ต่อยอด pattern feedback-admin
 import {
   checkDonorChatAccess, getDonorGroupRoomId, getChatMessages, sendChatMessage,
   getTeacherNamesByProfileIds, getChatTiersByProfileIds, getSystemConfig,
+  getMyAdminDmRoomId, getOrCreateAdminDmRoomId, getAdminDmRoomsForAdmin,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
@@ -85,34 +86,113 @@ export async function openDonorChatWidget(teacher) {
     return
   }
 
-  const roomId = await getDonorGroupRoomId()
-  if (!roomId) {
-    bodyEl.innerHTML = `<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท กรุณาติดต่อแอดมิน</p>`
-    return
+  // แท็บสลับ: กลุ่มใหญ่ / แอดมิน — ครูกดปุ่มสร้างแชทกับแอดมินเองครั้งแรก
+  bodyEl.innerHTML = `
+    <div class="flex border-b border-gray-100 flex-shrink-0">
+      <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="group">👥 กลุ่มใหญ่</button>
+      <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="admin">🛡️ แอดมิน</button>
+    </div>
+    <div id="donor-chat-slot" class="flex-1 min-h-0 flex flex-col"></div>`
+
+  const tabs = [...bodyEl.querySelectorAll('.donor-chat-tab')]
+  const slotEl = bodyEl.querySelector('#donor-chat-slot')
+
+  const setTab = (tab) => {
+    tabs.forEach(t => {
+      const on = t.dataset.tab === tab
+      t.className = `donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition ${on ? 'text-amber-600 border-b-2 border-amber-500' : 'text-gray-400 hover:text-gray-600'}`
+    })
+    if (tab === 'group') _loadGroupTab(slotEl, teacher)
+    else _loadAdminTab(slotEl, teacher)
   }
-  await _renderRoom(bodyEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+  tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)))
+  setTab('group')
 }
 
-// ─── ฝั่งแอดมิน — หน้าเต็มในแดชบอร์ด ─────────────────────────────────────────
+async function _loadGroupTab(slotEl, teacher) {
+  _teardown()
+  slotEl.innerHTML = `<div class="flex-1 flex items-center justify-center py-12 text-gray-400">กำลังโหลด...</div>`
+  const roomId = await getDonorGroupRoomId()
+  if (!roomId) {
+    slotEl.innerHTML = `<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท กรุณาติดต่อแอดมิน</p>`
+    return
+  }
+  await _renderRoom(slotEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+}
+
+async function _loadAdminTab(slotEl, teacher) {
+  _teardown()
+  slotEl.innerHTML = `<div class="flex-1 flex items-center justify-center py-12 text-gray-400">กำลังโหลด...</div>`
+  const existingRoomId = await getMyAdminDmRoomId(teacher.id).catch(() => null)
+  if (existingRoomId) {
+    await _renderRoom(slotEl, existingRoomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+    return
+  }
+  slotEl.innerHTML = `
+    <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+      <p class="text-4xl mb-3">🛡️</p>
+      <p class="font-bold text-gray-700 mb-2">ยังไม่มีแชทกับแอดมิน</p>
+      <p class="text-sm text-gray-500 mb-4">เริ่มแชทส่วนตัวกับแอดมินได้เลย เห็นเฉพาะคุณครูกับแอดมินเท่านั้น</p>
+      <button id="btn-create-admin-dm" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm">+ เริ่มแชทกับแอดมิน</button>
+    </div>`
+  slotEl.querySelector('#btn-create-admin-dm').addEventListener('click', async (e) => {
+    const btn = e.currentTarget
+    btn.disabled = true
+    btn.textContent = 'กำลังสร้าง...'
+    try {
+      const roomId = await getOrCreateAdminDmRoomId()
+      await _renderRoom(slotEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+    } catch (err) {
+      showToast(err.message ?? 'สร้างแชทไม่สำเร็จ', 'error')
+      btn.disabled = false
+      btn.textContent = '+ เริ่มแชทกับแอดมิน'
+    }
+  })
+}
+
+// ─── ฝั่งแอดมิน — หน้าเต็มในแดชบอร์ด พร้อม room switcher ─────────────────────────
 export async function renderDonorChatAdmin() {
   _teardown()
   setActiveNav('donor-chat-admin')
   setTitle('💬 แชทครูผู้สนับสนุน')
 
   const { data: { user } } = await supabase.auth.getUser()
-  const roomId = await getDonorGroupRoomId()
-  if (!roomId) {
-    setContent(`<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท</p>`)
-    return
-  }
+  const groupRoomId = await getDonorGroupRoomId()
+  const dmRooms = await getAdminDmRoomsForAdmin().catch(() => [])
 
-  setContent(`<div id="donor-chat-admin-body" class="flex-1 min-h-0 flex flex-col h-[75vh]"></div>`)
+  const chipHtml = (id, label, active) =>
+    `<button class="donor-chat-chip flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${active ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}" data-room-id="${id}">${_htmlEsc(label)}</button>`
+
+  setContent(`
+    <div class="flex flex-col h-[75vh]">
+      <div id="donor-chat-room-switcher" class="flex items-center gap-2 pb-3 overflow-x-auto flex-shrink-0">
+        ${groupRoomId ? chipHtml(groupRoomId, '👥 กลุ่มใหญ่', true) : ''}
+        ${dmRooms.map(r => chipHtml(r.id, `🛡️ ${r.teachers?.full_name ?? 'ครู'}`, false)).join('')}
+        ${!dmRooms.length ? `<span class="text-xs text-gray-400 flex-shrink-0">ยังไม่มีครูสร้างแชทกับแอดมิน</span>` : ''}
+      </div>
+      <div id="donor-chat-admin-body" class="flex-1 min-h-0 flex flex-col border border-gray-100 rounded-2xl overflow-hidden"></div>
+    </div>`)
+
+  const switcherEl = document.getElementById('donor-chat-room-switcher')
   const bodyEl = document.getElementById('donor-chat-admin-body')
-  await _renderRoom(bodyEl, roomId, { myProfileId: user?.id, sendAsRole: 'admin' })
+
+  const activate = async (roomId) => {
+    switcherEl.querySelectorAll('.donor-chat-chip').forEach(c => {
+      const on = c.dataset.roomId === String(roomId)
+      c.className = `donor-chat-chip flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${on ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`
+    })
+    await _renderRoom(bodyEl, roomId, { myProfileId: user?.id, sendAsRole: 'admin' })
+  }
+  switcherEl.querySelectorAll('.donor-chat-chip').forEach(c =>
+    c.addEventListener('click', () => activate(c.dataset.roomId)))
+
+  if (groupRoomId) await activate(groupRoomId)
+  else bodyEl.innerHTML = `<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท</p>`
 }
 
 // ─── ตัวแสดงห้องแชท ใช้ร่วมกันทั้งป๊อปอัพครูและหน้าแอดมิน ───────────────────────
 async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
+  _teardown()
   containerEl.innerHTML = `
     <div id="chat-msg-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
     <form id="chat-send-form" class="flex items-center gap-2 p-3 border-t border-gray-100 flex-shrink-0" style="padding-bottom:max(0.75rem, env(safe-area-inset-bottom));">

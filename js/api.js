@@ -110,6 +110,26 @@ export async function getOrCreateAdminDmRoomId() {
   return data
 }
 
+// เช็คว่าครูคนนี้เคยกดสร้างแชทกับแอดมินไว้แล้วหรือยัง (ไม่สร้างใหม่ — ต่างจาก
+// getOrCreateAdminDmRoomId ด้านบนที่สร้างให้อัตโนมัติถ้ายังไม่มี ใช้ตัวนี้เช็คก่อน
+// แสดงปุ่ม "สร้าง" ให้ครูกดเองตามสเปค ไม่ใช่สร้างเงียบๆ ให้)
+export async function getMyAdminDmRoomId(teacherId) {
+  const { data, error } = await supabase.from('chat_rooms')
+    .select('id').eq('room_type', 'admin_dm').eq('teacher_id', teacherId).maybeSingle()
+  if (error) throw error
+  return data?.id ?? null
+}
+
+// ฝั่งแอดมิน — รายชื่อครูที่เคยสร้างแชทย่อยไว้ (สำหรับ room switcher)
+export async function getAdminDmRoomsForAdmin() {
+  const { data, error } = await supabase.from('chat_rooms')
+    .select('id, teacher_id, created_at, teachers:teacher_id(id, full_name, teacher_code)')
+    .eq('room_type', 'admin_dm')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getChatMessages(roomId, { limit = 200 } = {}) {
   const { data, error } = await supabase.from('chat_messages')
     .select('id, room_id, author_profile_id, author_role, body, image_url, created_at')
