@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import {
   getTerangganuAccess, getMyTerangganuContext, saveMyTerangganuRegistration, saveTerangganuRegistrationForStudent,
+  assignTerangganuHelper, getTerangganuHelpers, getTerangganuHelperStudents, getTerangganuStudentForHelperFill,
   getMyTerangganuTeacherContext, saveMyTerangganuTeacherRegistration,
   getTerangganuManagerContext, updateTerangganuEvent, assignTerangganuStaff,
   getTerangganuSchedule, saveTerangganuScheduleItem, deleteTerangganuScheduleItem,
@@ -94,6 +95,7 @@ async function init() {
     access = await getTerangganuAccess()
     if (profile?.role === 'student') await loadStudent()
     else if (access?.is_manager) await loadManager()
+    else if (access?.is_helper) await loadHelper()
     else if (access?.teacher_participant) await loadTeacher()
     else errorView('บัญชีนี้ยังไม่ได้รับมอบหมายให้ดูแลค่าย TERANGGANU 2026')
   } catch (error) {
@@ -111,7 +113,7 @@ function subscribe() {
   if (channel) supabase.removeChannel(channel)
   channel = subscribeTerangganu(access?.event_id, () => {
     clearTimeout(refreshTimer)
-    refreshTimer = setTimeout(() => profile?.role === 'student' ? loadStudent(true) : access?.is_manager ? loadManager(true) : loadTeacher(true), 500)
+    refreshTimer = setTimeout(() => profile?.role === 'student' ? loadStudent(true) : access?.is_manager ? loadManager(true) : access?.is_helper ? loadHelper(true) : loadTeacher(true), 500)
   })
 }
 
@@ -427,6 +429,42 @@ function renderTeacherSurvey(teacher, registration, insideManager = false) {
   maybeNudgePassport(e, registration)
 }
 
+// ─── Helper (ครูที่ได้รับมอบหมายให้กรอกแบบสำรวจแทนนักเรียนเท่านั้น ไม่ใช่ผู้รับผิดชอบเต็มรูปแบบ) ──
+async function loadHelper(silent = false) {
+  if (!silent) content.innerHTML = '<div class="text-center py-20 text-teal-600">กำลังโหลดข้อมูล...</div>'
+  nav.classList.add('hidden')
+  const rows = await getTerangganuHelperStudents()
+  renderHelper(rows)
+}
+
+function renderHelper(rows) {
+  content.innerHTML = `
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <div><h2 class="text-xl font-bold">📝 กรอกแบบสำรวจแทนนักเรียน</h2><p class="text-xs text-gray-400 mt-1">คุณได้รับมอบหมายให้ช่วยกรอกข้อมูลแทนนักเรียนที่เข้าไม่ถึงระบบเอง</p></div>
+      ${access.teacher_participant ? `<button type="button" id="helper-my-survey" class="camp-btn bg-indigo-50 text-indigo-700 flex-shrink-0">✍️ แบบสำรวจของฉัน</button>` : ''}
+    </div>
+    <div class="camp-card p-4 mb-4"><input id="helper-search" type="text" placeholder="ค้นหาชื่อ/รหัส/ห้อง" class="camp-input" /></div>
+    <p id="helper-count" class="text-xs text-gray-400 mb-3"></p>
+    <div id="helper-list" class="space-y-3"></div>`
+  document.getElementById('helper-my-survey')?.addEventListener('click', () => loadTeacher())
+  const draw = () => {
+    const q = document.getElementById('helper-search').value.trim().toLowerCase()
+    const filtered = rows.filter(s => [s.student_code, s.full_name, s.main_room].join(' ').toLowerCase().includes(q))
+    document.getElementById('helper-count').textContent = `แสดง ${filtered.length} คน · กรอกแล้ว ${filtered.filter(s => s.filled).length} คน`
+    document.getElementById('helper-list').innerHTML = filtered.map(s => `<article class="camp-card p-4 flex items-center gap-3">${studentAvatar(s)}<div class="flex-1 min-w-0"><b class="block truncate">${esc(s.full_name)}</b><p class="text-xs text-gray-400">${esc(s.student_code)} · ${esc(s.main_room||'—')} · ${esc(s.gender||'ไม่ระบุเพศ')}</p></div><span class="px-2 py-1 rounded-lg text-xs font-bold ${s.filled?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${s.filled?'กรอกแล้ว':'รอกรอก'}</span><button type="button" data-helper-fill="${s.student_id}" class="camp-btn bg-indigo-50 text-indigo-700 hover:bg-indigo-100 py-2 px-3 flex-shrink-0">📝 <span class="hidden sm:inline">${s.filled?'แก้ไข':'กรอกแทน'}</span></button></article>`).join('') || '<div class="text-center py-16 text-gray-400">ไม่พบรายชื่อ</div>'
+    document.querySelectorAll('[data-helper-fill]').forEach(btn => btn.addEventListener('click', () => openHelperFillModal(Number(btn.dataset.helperFill))))
+  }
+  document.getElementById('helper-search').addEventListener('input', draw)
+  draw()
+}
+
+async function openHelperFillModal(studentId) {
+  let data
+  try { data = await getTerangganuStudentForHelperFill(studentId) }
+  catch (error) { toast(error.message || 'โหลดข้อมูลไม่สำเร็จ', 'error'); return }
+  openAdminFillStudentModal(studentId, data.student, data.registration, data.event, () => loadHelper(true))
+}
+
 // ─── Manager ────────────────────────────────────────────────────────────────
 const MANAGER_TABS = [
   ['dashboard','📊','ภาพรวม'],['schedule','📅','กำหนดการ'],['participants','👥','นักเรียน'],['teacher_participants','🧑‍🏫','ครูร่วมค่าย'],['registrations','📝','แบบสำรวจ'],['payments','💰','รับชำระ'],['my_teacher_survey','✍️','แบบสำรวจของฉัน'],['settings','⚙️','ตั้งค่า'],['staff','👩‍🏫','ผู้รับผิดชอบ'],
@@ -565,7 +603,7 @@ function renderParticipants(){
   content.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-bold">รายชื่อนักเรียนเข้าร่วมค่าย</h2><p class="text-xs text-gray-400">เพิ่มรหัสได้หลายรายการ โดยคั่นด้วยเว้นวรรค จุลภาค หรือขึ้นบรรทัดใหม่</p></div><div class="flex flex-wrap gap-2"><button id="print-student-roster-internal" class="camp-btn bg-white border border-teal-200 text-teal-700">🖨️ พิมพ์ (ใช้ภายใน)</button><button id="print-student-roster-official" class="camp-btn bg-white border border-teal-200 text-teal-700">📜 พิมพ์ (ส่งราชการ)</button></div></div>
   ${access.can_settings?`<section class="camp-card p-5 mb-5"><div class="mb-4"><label><span class="camp-label">🔎 ค้นหานักเรียนจากฐานข้อมูล</span><input id="participant-add-search" class="camp-input" autocomplete="off" placeholder="ค้นหาอะไรก็เจอ เช่น ชื่อบางส่วน รหัส ห้องสามัญ หรือห้องศาสนา"></label><div id="participant-add-search-results" class="hidden mt-2 max-h-72 overflow-y-auto rounded-xl border bg-white divide-y shadow-lg"></div><p class="text-[11px] text-gray-400 mt-1">คลิกชื่อนักเรียนเพื่อเติมรหัสลงในรายการด้านล่าง</p></div><label><span class="camp-label">รหัสนักเรียนที่เลือกหรือกรอกเอง</span><textarea id="participant-codes" class="camp-input font-mono" rows="5" placeholder="เช่น&#10;25944&#10;25945&#10;25946"></textarea></label><div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700 mt-3">ปุ่มบันทึกมัดจำจะสร้างใบเสร็จ 1,000 บาทให้โดยอัตโนมัติ จึงต้องตั้งชื่อและลายเซ็นผู้อำนวยการ รวมถึงลายเซ็นครูผู้ลงนามให้เรียบร้อยก่อน</div><div class="grid sm:grid-cols-2 gap-3 mt-4"><button id="add-participants-paid" class="camp-btn bg-teal-700 text-white py-3">💰 เพิ่มรายชื่อ + บันทึกมัดจำแล้ว</button><button id="add-participants-only" class="camp-btn border border-teal-200 text-teal-700 py-3">👥 เพิ่มเฉพาะรายชื่อ</button></div><div id="participant-result" class="hidden mt-4 rounded-xl p-3 text-sm"></div></section>`:''}
   <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><div><b>เพิ่มแล้ว ${rows.length} คน</b><span id="participant-count" class="text-xs text-gray-400 ml-2">กรอกแบบสำรวจ ${rows.filter(x=>x.r).length} คน</span></div><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 w-full lg:w-auto"><select id="participant-grade" class="camp-input"><option value="">ทุกระดับชั้น</option>${[...new Set(rows.map(x=>x.grade))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true})).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select><select id="participant-room" class="camp-input"><option value="">ทุกห้อง</option>${[...new Set(rows.map(x=>x.room))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true})).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select><select id="participant-survey" class="camp-input"><option value="">แบบสำรวจ: ทั้งหมด</option><option value="filled">กรอกแล้ว</option><option value="notfilled">ยังไม่กรอก</option></select><select id="participant-deposit" class="camp-input"><option value="">มัดจำ: ทั้งหมด</option><option value="paid">ชำระแล้ว</option><option value="unpaid">ยังไม่ชำระ</option></select><select id="participant-balance" class="camp-input"><option value="">ส่วนที่เหลือ: ทั้งหมด</option><option value="paid">ชำระแล้ว</option><option value="unpaid">ยังไม่ชำระ</option></select><input id="participant-search" class="camp-input" placeholder="ค้นหาอะไรก็เจอ"></div></div><div id="participant-list" class="space-y-3"></div>`
-  const draw=()=>{const q=document.getElementById('participant-search').value.trim().toLowerCase(),grade=document.getElementById('participant-grade').value,room=document.getElementById('participant-room').value,survey=document.getElementById('participant-survey').value,deposit=document.getElementById('participant-deposit').value,balance=document.getElementById('participant-balance').value;const filtered=rows.filter(({s,r,p,grade:g,room:rm})=>{const haystack=[s?.student_code,s?.full_name,s?.main_room,s?.religion_room,s?.gender,r?.nickname,r?.thai_name,r?.english_name,r?.national_id,r?.phone,r?.shirt_size,r?.medical_conditions,p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ',r?'กรอกแล้ว':'รอกรอก'].join(' ').toLowerCase();return(!grade||g===grade)&&(!room||rm===room)&&(!survey||(survey==='filled'?!!r:!r))&&(!deposit||(deposit==='paid'?!!p.deposit:!p.deposit))&&(!balance||(balance==='paid'?!!p.balance:!p.balance))&&(!q||haystack.includes(q))});document.getElementById('participant-count').textContent=`แสดง ${filtered.length} คน · กรอกแบบสำรวจ ${filtered.filter(x=>x.r).length} คน`;document.getElementById('participant-list').innerHTML=filtered.map(({s,r,p})=>`<article class="camp-card p-4 flex items-center gap-3">${studentAvatar(s)}<div class="flex-1 min-w-0"><b class="block truncate">${esc(s?.full_name)}</b><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room||'—')} · ${esc(s?.gender||'ไม่ระบุเพศ')}</p><div class="flex flex-wrap gap-2 mt-2"><span class="px-2 py-1 rounded-lg text-xs font-bold ${r?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${r?'กรอกข้อมูลแล้ว':'รอกรอกข้อมูล'}</span><span class="px-2 py-1 rounded-lg text-xs font-bold ${p.deposit?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-400'}">${p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ'}</span></div></div>${access.can_settings?`<button type="button" data-fill-for-student="${s.id}" class="camp-btn bg-indigo-50 text-indigo-700 hover:bg-indigo-100 py-2 px-3 flex-shrink-0" title="กรอก/แก้ไขแบบสำรวจแทนนักเรียน">📝 <span class="hidden sm:inline">${r?'แก้ไข':'กรอกแทน'}</span></button>`:''}${access.can_settings?`<button type="button" data-remove-participant="${s.id}" data-remove-name="${esc(s.full_name)}" class="camp-btn bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 flex-shrink-0" title="ลบออกจากรายชื่อค่าย">🗑️ <span class="hidden sm:inline">ลบ</span></button>`:''}</article>`).join('')||'<div class="text-center py-16 text-gray-400">ไม่พบรายชื่อนักเรียน</div>';document.querySelectorAll('[data-fill-for-student]').forEach(btn=>btn.addEventListener('click',()=>openAdminFillStudentModal(Number(btn.dataset.fillForStudent))));document.querySelectorAll('[data-remove-participant]').forEach(btn=>btn.addEventListener('click',async()=>{const name=btn.dataset.removeName;if(!confirm(`ยืนยันลบ ${name} ออกจากรายชื่อผู้เข้าร่วมค่าย?\n\nข้อมูลแบบสำรวจและประวัติใบเสร็จเดิมจะยังถูกเก็บไว้เพื่อการตรวจสอบ`))return;btn.disabled=true;btn.textContent='กำลังลบ...';try{await removeTerangganuParticipant(Number(btn.dataset.removeParticipant));toast(`ลบ ${name} ออกจากรายชื่อแล้ว`);await loadManager(true)}catch(error){toast(error.message||'ลบรายชื่อไม่สำเร็จ','error');btn.disabled=false;btn.textContent='🗑️ ลบ'}}))}
+  const draw=()=>{const q=document.getElementById('participant-search').value.trim().toLowerCase(),grade=document.getElementById('participant-grade').value,room=document.getElementById('participant-room').value,survey=document.getElementById('participant-survey').value,deposit=document.getElementById('participant-deposit').value,balance=document.getElementById('participant-balance').value;const filtered=rows.filter(({s,r,p,grade:g,room:rm})=>{const haystack=[s?.student_code,s?.full_name,s?.main_room,s?.religion_room,s?.gender,r?.nickname,r?.thai_name,r?.english_name,r?.national_id,r?.phone,r?.shirt_size,r?.medical_conditions,p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ',r?'กรอกแล้ว':'รอกรอก'].join(' ').toLowerCase();return(!grade||g===grade)&&(!room||rm===room)&&(!survey||(survey==='filled'?!!r:!r))&&(!deposit||(deposit==='paid'?!!p.deposit:!p.deposit))&&(!balance||(balance==='paid'?!!p.balance:!p.balance))&&(!q||haystack.includes(q))});document.getElementById('participant-count').textContent=`แสดง ${filtered.length} คน · กรอกแบบสำรวจ ${filtered.filter(x=>x.r).length} คน`;document.getElementById('participant-list').innerHTML=filtered.map(({s,r,p})=>`<article class="camp-card p-4 flex items-center gap-3">${studentAvatar(s)}<div class="flex-1 min-w-0"><b class="block truncate">${esc(s?.full_name)}</b><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room||'—')} · ${esc(s?.gender||'ไม่ระบุเพศ')}</p><div class="flex flex-wrap gap-2 mt-2"><span class="px-2 py-1 rounded-lg text-xs font-bold ${r?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${r?'กรอกข้อมูลแล้ว':'รอกรอกข้อมูล'}</span><span class="px-2 py-1 rounded-lg text-xs font-bold ${p.deposit?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-400'}">${p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ'}</span></div></div>${access.can_settings?`<button type="button" data-fill-for-student="${s.id}" class="camp-btn bg-indigo-50 text-indigo-700 hover:bg-indigo-100 py-2 px-3 flex-shrink-0" title="กรอก/แก้ไขแบบสำรวจแทนนักเรียน">📝 <span class="hidden sm:inline">${r?'แก้ไข':'กรอกแทน'}</span></button>`:''}${access.can_settings?`<button type="button" data-remove-participant="${s.id}" data-remove-name="${esc(s.full_name)}" class="camp-btn bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 flex-shrink-0" title="ลบออกจากรายชื่อค่าย">🗑️ <span class="hidden sm:inline">ลบ</span></button>`:''}</article>`).join('')||'<div class="text-center py-16 text-gray-400">ไม่พบรายชื่อนักเรียน</div>';document.querySelectorAll('[data-fill-for-student]').forEach(btn=>btn.addEventListener('click',()=>{const row=filtered.find(x=>Number(x.s.id)===Number(btn.dataset.fillForStudent));openAdminFillStudentModal(Number(btn.dataset.fillForStudent),row?.s,row?.r,ctx.event)}));document.querySelectorAll('[data-remove-participant]').forEach(btn=>btn.addEventListener('click',async()=>{const name=btn.dataset.removeName;if(!confirm(`ยืนยันลบ ${name} ออกจากรายชื่อผู้เข้าร่วมค่าย?\n\nข้อมูลแบบสำรวจและประวัติใบเสร็จเดิมจะยังถูกเก็บไว้เพื่อการตรวจสอบ`))return;btn.disabled=true;btn.textContent='กำลังลบ...';try{await removeTerangganuParticipant(Number(btn.dataset.removeParticipant));toast(`ลบ ${name} ออกจากรายชื่อแล้ว`);await loadManager(true)}catch(error){toast(error.message||'ลบรายชื่อไม่สำเร็จ','error');btn.disabled=false;btn.textContent='🗑️ ลบ'}}))}
   draw();document.getElementById('participant-search').addEventListener('input',draw);['participant-grade','participant-room','participant-survey','participant-deposit','participant-balance'].forEach(id=>document.getElementById(id).addEventListener('change',draw))
   const addSearch=document.getElementById('participant-add-search'),addResults=document.getElementById('participant-add-search-results'),codesBox=document.getElementById('participant-codes')
   const addCode=code=>{const current=codesBox.value.split(/[\s,;]+/).map(v=>v.trim()).filter(Boolean);if(!current.includes(String(code)))current.push(String(code));codesBox.value=current.join('\n');codesBox.dispatchEvent(new Event('input'));addSearch.value='';addResults.classList.add('hidden');addSearch.focus()}
@@ -653,16 +691,16 @@ function renderRegistrations() {
 function showRegistrationDetail(studentId) {
   const {students,regs}=maps(),s=students.get(studentId),r=regs.get(studentId)
   const wrap=modal(`<div class="p-6"><div class="flex justify-between gap-3"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">${esc(s?.full_name)}</h3><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room)}</p></div></div><button data-close>✕</button></div><div class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">${detail('ชื่อเล่น',r.nickname)}${detail('คำนำหน้าอังกฤษ',r.english_title)}${detail('ชื่ออังกฤษ',r.english_name)}${detail('เพศ',s.gender)}${detail('วันเกิด',thaiDate(r.birth_date))}${detail('สัญชาติ',r.nationality)}${detail('กรุ๊ปเลือด',r.blood_group)}${detail('เลขประจำตัวประชาชน',r.national_id)}${detail('เลขหนังสือเดินทาง',r.passport_number)}${detail('หมดอายุ',thaiDate(r.passport_expiry))}${detail('เบอร์โทรศัพท์ผู้ปกครอง',r.phone)}${detail('ไซซ์เสื้อ',r.shirt_size)}<div class="sm:col-span-2">${detail('ที่อยู่',r.current_address)}</div><div class="sm:col-span-2">${detail('โรคประจำตัว',r.medical_conditions)}</div></div>${access.can_settings?`<button type="button" id="detail-edit-for-student" class="camp-btn bg-teal-700 text-white w-full mt-5">✏️ แก้ไขข้อมูลแทนนักเรียน</button>`:''}</div>`)
-  wrap.querySelector('#detail-edit-for-student')?.addEventListener('click',()=>openAdminFillStudentModal(studentId))
+  wrap.querySelector('#detail-edit-for-student')?.addEventListener('click',()=>openAdminFillStudentModal(studentId,s,r,ctx.event))
 }
 function detail(label,value){return `<div class="bg-gray-50 rounded-xl p-3"><p class="text-[11px] text-gray-400">${label}</p><p class="font-semibold mt-1">${esc(value||'—')}</p></div>`}
 
-// ป๊อปอัพให้แอดมิน/ครูผู้รับผิดชอบ (can_settings) กรอก/แก้ไขแบบสำรวจแทนนักเรียนที่เข้าไม่ถึงระบบเอง
-function openAdminFillStudentModal(studentId) {
-  const {students,regs}=maps()
-  const s=students.get(Number(studentId))
-  const r=regs.get(Number(studentId))
-  const e=ctx.event||{}
+// ป๊อปอัพให้แอดมิน/ผู้รับผิดชอบ/ผู้ช่วยกรอกข้อมูล กรอก/แก้ไขแบบสำรวจแทนนักเรียนที่เข้าไม่ถึงระบบเอง
+// รับข้อมูล s(student)/r(registration)/e(event) ตรงๆ แทนการดึงจาก ctx/maps() เอง เพราะผู้ช่วยกรอกข้อมูล
+// (helper) ไม่มีสิทธิ์เข้าถึง manager context เต็มรูปแบบ — ต้องส่งข้อมูลที่โหลดมาแล้วเข้ามาเสมอ
+// onSaved: callback หลังบันทึกสำเร็จ (ดีฟอลต์ refresh หน้า Manager — ฝั่ง helper ส่ง callback ของตัวเองมาแทน)
+function openAdminFillStudentModal(studentId, s, r, e, onSaved) {
+  e = e || ctx.event || {}
   const wrap=modal(`<div class="p-6">
     <div class="flex items-start justify-between gap-3 mb-4"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">📝 กรอกแบบสำรวจแทนนักเรียน</h3><p class="text-xs text-gray-400 mt-1">${esc(s?.full_name)} · ${esc(s?.student_code)} · ${esc(s?.main_room||'—')}</p></div></div><button type="button" data-close>✕</button></div>
     <div class="mb-4 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">กำลังกรอกแทนนักเรียน กรุณาตรวจสอบข้อมูลกับนักเรียน/ผู้ปกครองให้ถูกต้องก่อนบันทึก</div>
@@ -680,7 +718,8 @@ function openAdminFillStudentModal(studentId) {
       await saveTerangganuRegistrationForStudent(studentId,payload)
       toast('บันทึกข้อมูลแทนนักเรียนเรียบร้อยแล้ว')
       wrap.remove()
-      await loadManager(true)
+      if (onSaved) await onSaved()
+      else await loadManager(true)
     } catch (error) { toast(error.message||'บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='💾 บันทึกข้อมูล' }
   })
   wireOcrUploadBlock('admin-fill', formEl, wrap)
@@ -802,12 +841,25 @@ function openDirectorSignatureModal(){
   wireSignatureInput(wrap,async source=>{const url=await uploadTerangganuDirectorSignature(source);await updateTerangganuEvent({director_signature_url:url});wrap.remove();toast('บันทึกลายเซ็นผู้อำนวยการแล้ว');await loadManager(true)})
 }
 
-function renderStaff(){
+async function renderStaff(){
   const assigned=new Set((ctx.staff||[]).filter(x=>x.active).map(x=>Number(x.teacher_id)))
-  content.innerHTML=`<div class="mb-4"><h2 class="text-xl font-bold">ครูผู้รับผิดชอบ</h2><p class="text-xs text-gray-400">สิทธิ์นี้จำกัดเฉพาะโมดูลค่าย ไม่ใช่สิทธิ์แอดมิน PP5</p></div><section class="camp-card p-5 mb-4"><div class="flex gap-2"><select id="staff-teacher" class="camp-input"><option value="">เลือกครู</option>${(ctx.teachers||[]).filter(t=>!assigned.has(Number(t.id))).map(t=>`<option value="${t.id}">${esc(t.full_name)} (${esc(t.teacher_code)})</option>`).join('')}</select><button id="staff-add" class="camp-btn bg-teal-700 text-white whitespace-nowrap">+ มอบหมาย</button></div></section><div class="space-y-3">${(ctx.staff||[]).map(st=>`<article class="camp-card p-4 flex flex-col sm:flex-row sm:items-center gap-3 ${st.active?'':'opacity-50'}"><div class="flex-1"><b>${esc(st.display_name||st.full_name)}</b><p class="text-xs text-gray-400">${esc(st.teacher_code)} · ${esc(st.title)} · ${st.signature_url?'มีลายเซ็นแล้ว':'ยังไม่มีลายเซ็น'}</p></div><div class="flex gap-2">${Number(access.teacher_id)===Number(st.teacher_id)?`<button data-sign-staff="${st.teacher_id}" class="camp-btn bg-indigo-50 text-indigo-700">✍️ ลายเซ็นของฉัน</button>`:`<span class="camp-btn bg-gray-50 text-gray-400">${st.signature_url?'ลงนามแล้ว':'รอครูลงนาม'}</span>`}<button data-staff-active="${st.teacher_id}" data-next="${!st.active}" class="camp-btn ${st.active?'bg-red-50 text-red-600':'bg-emerald-50 text-emerald-700'}">${st.active?'ปิดสิทธิ์':'เปิดสิทธิ์'}</button></div></article>`).join('')}</div>`
+  content.innerHTML=`<div class="mb-4"><h2 class="text-xl font-bold">ครูผู้รับผิดชอบ</h2><p class="text-xs text-gray-400">สิทธิ์นี้จำกัดเฉพาะโมดูลค่าย ไม่ใช่สิทธิ์แอดมิน PP5</p></div><section class="camp-card p-5 mb-4"><div class="flex gap-2"><select id="staff-teacher" class="camp-input"><option value="">เลือกครู</option>${(ctx.teachers||[]).filter(t=>!assigned.has(Number(t.id))).map(t=>`<option value="${t.id}">${esc(t.full_name)} (${esc(t.teacher_code)})</option>`).join('')}</select><button id="staff-add" class="camp-btn bg-teal-700 text-white whitespace-nowrap">+ มอบหมาย</button></div></section><div class="space-y-3">${(ctx.staff||[]).map(st=>`<article class="camp-card p-4 flex flex-col sm:flex-row sm:items-center gap-3 ${st.active?'':'opacity-50'}"><div class="flex-1"><b>${esc(st.display_name||st.full_name)}</b><p class="text-xs text-gray-400">${esc(st.teacher_code)} · ${esc(st.title)} · ${st.signature_url?'มีลายเซ็นแล้ว':'ยังไม่มีลายเซ็น'}</p></div><div class="flex gap-2">${Number(access.teacher_id)===Number(st.teacher_id)?`<button data-sign-staff="${st.teacher_id}" class="camp-btn bg-indigo-50 text-indigo-700">✍️ ลายเซ็นของฉัน</button>`:`<span class="camp-btn bg-gray-50 text-gray-400">${st.signature_url?'ลงนามแล้ว':'รอครูลงนาม'}</span>`}<button data-staff-active="${st.teacher_id}" data-next="${!st.active}" class="camp-btn ${st.active?'bg-red-50 text-red-600':'bg-emerald-50 text-emerald-700'}">${st.active?'ปิดสิทธิ์':'เปิดสิทธิ์'}</button></div></article>`).join('')}</div>
+  <div class="mt-8 mb-4"><h2 class="text-xl font-bold">ผู้ช่วยกรอกข้อมูลแทนนักเรียน</h2><p class="text-xs text-gray-400">เห็นแค่ปุ่มกรอกแทนต่อรายชื่อนักเรียนเท่านั้น ไม่เห็นตั้งค่า/การชำระเงิน/แท็บอื่นของผู้รับผิดชอบ</p></div>
+  <section class="camp-card p-5 mb-4"><div class="flex gap-2"><select id="helper-teacher" class="camp-input"><option value="">เลือกครู</option></select><button id="helper-add" class="camp-btn bg-indigo-600 text-white whitespace-nowrap">+ มอบหมาย</button></div></section>
+  <div id="helper-staff-list" class="space-y-3"><div class="text-center py-6 text-gray-400 text-sm">กำลังโหลด...</div></div>`
   document.getElementById('staff-add').addEventListener('click',async()=>{const id=document.getElementById('staff-teacher').value;if(!id)return;try{await assignTerangganuStaff(id);toast('มอบหมายครูแล้ว');await loadManager(true)}catch(error){toast(error.message,'error')}})
   document.querySelectorAll('[data-staff-active]').forEach(btn=>btn.addEventListener('click',async()=>{try{await assignTerangganuStaff(btn.dataset.staffActive,{active:btn.dataset.next==='true'});toast('อัปเดตสิทธิ์แล้ว');await loadManager(true)}catch(error){toast(error.message,'error')}}))
   document.querySelectorAll('[data-sign-staff]').forEach(btn=>btn.addEventListener('click',()=>openSignatureModal(Number(btn.dataset.signStaff))))
+  try {
+    const helpers = await getTerangganuHelpers()
+    const helperAssigned = new Set(helpers.filter(h=>h.active).map(h=>Number(h.teacher_id)))
+    document.getElementById('helper-teacher').innerHTML = `<option value="">เลือกครู</option>${(ctx.teachers||[]).filter(t=>!helperAssigned.has(Number(t.id))).map(t=>`<option value="${t.id}">${esc(t.full_name)} (${esc(t.teacher_code)})</option>`).join('')}`
+    document.getElementById('helper-staff-list').innerHTML = helpers.length ? helpers.map(h=>`<article class="camp-card p-4 flex items-center gap-3 ${h.active?'':'opacity-50'}"><div class="flex-1"><b>${esc(h.full_name)}</b><p class="text-xs text-gray-400">${esc(h.teacher_code)}</p></div><button data-helper-active="${h.teacher_id}" data-next="${!h.active}" class="camp-btn ${h.active?'bg-red-50 text-red-600':'bg-emerald-50 text-emerald-700'}">${h.active?'ถอดสิทธิ์':'เปิดสิทธิ์'}</button></article>`).join('') : '<div class="text-center py-6 text-gray-400 text-sm">ยังไม่มีผู้ช่วยกรอกข้อมูล</div>'
+    document.getElementById('helper-add').addEventListener('click',async()=>{const id=document.getElementById('helper-teacher').value;if(!id)return;try{await assignTerangganuHelper(id);toast('มอบหมายผู้ช่วยกรอกข้อมูลแล้ว');await loadManager(true)}catch(error){toast(error.message,'error')}})
+    document.querySelectorAll('[data-helper-active]').forEach(btn=>btn.addEventListener('click',async()=>{try{await assignTerangganuHelper(btn.dataset.helperActive,btn.dataset.next==='true');toast('อัปเดตสิทธิ์แล้ว');await loadManager(true)}catch(error){toast(error.message,'error')}}))
+  } catch (error) {
+    document.getElementById('helper-staff-list').innerHTML = `<div class="text-center py-6 text-red-500 text-sm">${esc(error.message||'โหลดรายชื่อผู้ช่วยกรอกข้อมูลไม่สำเร็จ')}</div>`
+  }
 }
 
 function openSignatureModal(teacherId){

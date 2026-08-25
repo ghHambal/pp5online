@@ -34,6 +34,29 @@ export async function saveTerangganuRegistrationForStudent(studentId, payload) {
   return unwrap(data)
 }
 
+export async function assignTerangganuHelper(teacherId, active = true) {
+  const { error } = await supabase.rpc('assign_terangganu_helper', { p_teacher_id: Number(teacherId), p_active: active })
+  if (error) throw error
+}
+
+export async function getTerangganuHelpers() {
+  const { data, error } = await supabase.rpc('get_terangganu_helpers')
+  if (error) throw error
+  return Array.isArray(data) ? data : []
+}
+
+export async function getTerangganuHelperStudents() {
+  const { data, error } = await supabase.rpc('get_terangganu_helper_students')
+  if (error) throw error
+  return Array.isArray(data) ? data : []
+}
+
+export async function getTerangganuStudentForHelperFill(studentId) {
+  const { data, error } = await supabase.rpc('get_terangganu_student_for_helper_fill', { p_student_id: Number(studentId) })
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function getMyTerangganuTeacherContext() {
   const { data, error } = await supabase.rpc('get_my_terangganu_teacher_context')
   if (error) throw error
