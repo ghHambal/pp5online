@@ -149,6 +149,107 @@ export async function sendChatMessage({ roomId, authorRole, body, imageUrl = nul
   return data
 }
 
+// ─── ประกาศปักหมุด (chat_announcements) — เฉพาะห้องกลุ่มใหญ่ ───────────────────
+// "บนสุด" = แถว is_active=true ล่าสุด — สร้างใหม่ไม่ลบของเก่า (ยังดูได้ในประวัติ)
+export async function getActiveChatAnnouncement(roomId) {
+  const { data, error } = await supabase.from('chat_announcements')
+    .select('id, room_id, created_by, body, image_url, is_active, created_at')
+    .eq('room_id', roomId).eq('is_active', true)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function getChatAnnouncementHistory(roomId) {
+  const { data, error } = await supabase.from('chat_announcements')
+    .select('id, room_id, created_by, body, image_url, is_active, created_at')
+    .eq('room_id', roomId).order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createChatAnnouncement({ roomId, body }) {
+  const { data, error } = await supabase.from('chat_announcements')
+    .insert({ room_id: roomId, body }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function unpinChatAnnouncement(id) {
+  const { error } = await supabase.from('chat_announcements').update({ is_active: false }).eq('id', id)
+  if (error) throw error
+}
+
+// ─── บันทึกโน้ต (chat_bookmarks) — ทุกคนบันทึกข้อความสำคัญไว้ดูทีหลังได้ ──────────
+export async function getMyBookmarkedMessageIds(messageIds) {
+  const ids = [...new Set(messageIds)].filter(Boolean)
+  if (!ids.length) return new Set()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Set()
+  const { data, error } = await supabase.from('chat_bookmarks')
+    .select('message_id').eq('profile_id', user.id).in('message_id', ids)
+  if (error) throw error
+  return new Set((data ?? []).map(r => r.message_id))
+}
+
+// toggle ตามสถานะเดิมที่ caller รู้อยู่แล้ว (กันต้อง query ซ้ำ) — คืนสถานะใหม่หลัง toggle
+export async function toggleBookmark(messageId, wasBookmarked) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('ไม่พบผู้ใช้')
+  if (wasBookmarked) {
+    const { error } = await supabase.from('chat_bookmarks').delete()
+      .eq('message_id', messageId).eq('profile_id', user.id)
+    if (error) throw error
+    return false
+  }
+  const { error } = await supabase.from('chat_bookmarks').insert({ message_id: messageId })
+  if (error) throw error
+  return true
+}
+
+// รายการโน้ตของฉันทั้งหมด (ทุกห้องที่เคยบันทึกไว้) — query แยกขั้นตอนกันปัญหา
+// nested embed ข้าม 2 ชั้น (bookmarks→messages→rooms) พังเงียบถ้า FK ไม่ชัดเจน
+export async function getMyBookmarkedMessages() {
+  const { data: bookmarks, error } = await supabase.from('chat_bookmarks')
+    .select('id, message_id, created_at').order('created_at', { ascending: false })
+  if (error) throw error
+  const rows = bookmarks ?? []
+  if (!rows.length) return []
+
+  const messageIds = rows.map(r => r.message_id)
+  const { data: messages, error: msgErr } = await supabase.from('chat_messages')
+    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at')
+    .in('id', messageIds)
+  if (msgErr) throw msgErr
+  const messageById = new Map((messages ?? []).map(m => [m.id, m]))
+
+  const roomIds = [...new Set((messages ?? []).map(m => m.room_id))]
+  const { data: rooms, error: roomErr } = await supabase.from('chat_rooms')
+    .select('id, room_type, teacher_id').in('id', roomIds)
+  if (roomErr) throw roomErr
+  const roomById = new Map((rooms ?? []).map(r => [r.id, r]))
+
+  const dmTeacherIds = [...new Set((rooms ?? []).filter(r => r.room_type === 'admin_dm' && r.teacher_id).map(r => r.teacher_id))]
+  let teacherNameById = new Map()
+  if (dmTeacherIds.length) {
+    const { data: teacherRows } = await supabase.from('teachers').select('id, full_name').in('id', dmTeacherIds)
+    teacherNameById = new Map((teacherRows ?? []).map(t => [t.id, t.full_name]))
+  }
+
+  const roomLabel = room => {
+    if (!room) return ''
+    if (room.room_type === 'donor_group') return '👥 กลุ่มใหญ่'
+    if (room.room_type === 'admin_dm') return `🛡️ แชทกับแอดมิน${room.teacher_id && teacherNameById.get(room.teacher_id) ? ` (${teacherNameById.get(room.teacher_id)})` : ''}`
+    return '🏫 แชทห้องเรียน'
+  }
+
+  return rows.map(r => {
+    const msg = messageById.get(r.message_id)
+    if (!msg) return null
+    return { bookmarkId: r.id, ...msg, roomLabel: roomLabel(roomById.get(msg.room_id)) }
+  }).filter(Boolean)
+}
+
 // batch-fetch ชื่อครูจาก profile_id หลายคนพร้อมกัน (กัน N+1 ตอน render ข้อความ)
 export async function getTeacherNamesByProfileIds(profileIds) {
   const ids = [...new Set(profileIds)].filter(Boolean)

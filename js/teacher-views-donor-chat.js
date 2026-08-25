@@ -1,11 +1,13 @@
 // js/teacher-views-donor-chat.js
-// Phase 4 — แชทย่อยกับแอดมิน (ครูกดสร้างเอง) + room switcher ฝั่งแอดมิน
+// Phase 5 — ประกาศปักหมุด (เฉพาะกลุ่มใหญ่ แอดมินสร้าง) + บันทึกโน้ต (ทุกคน ทุกห้อง)
 // ฝั่งครู: ปุ่มลอย (FAB) แบบเดียวกับ feedback widget เปิดเป็นป๊อปอัพ — ไม่ใช่เปลี่ยนหน้าเต็ม
 // ฝั่งแอดมิน: หน้าเต็มในแดชบอร์ด (renderDonorChatAdmin) ต่อยอด pattern feedback-admin
 import {
   checkDonorChatAccess, getDonorGroupRoomId, getChatMessages, sendChatMessage,
   getTeacherNamesByProfileIds, getChatTiersByProfileIds, getSystemConfig,
   getMyAdminDmRoomId, getOrCreateAdminDmRoomId, getAdminDmRoomsForAdmin,
+  getActiveChatAnnouncement, getChatAnnouncementHistory, createChatAnnouncement, unpinChatAnnouncement,
+  getMyBookmarkedMessageIds, toggleBookmark, getMyBookmarkedMessages,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
@@ -23,6 +25,8 @@ function _teardown() {
   _lastMessageId = 0
 }
 window._cleanupDonorChat = _teardown
+
+const _fmtDateTime = iso => new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
 
 // ─── ฝั่งครู — ปุ่มลอย ──────────────────────────────────────────────────────
 export function injectDonorChatWidget(teacher) {
@@ -59,7 +63,10 @@ export async function openDonorChatWidget(teacher) {
           <h3 class="text-white font-bold text-base">👑 แชทครูผู้สนับสนุน</h3>
           <p class="text-white/80 text-xs mt-0.5">กลุ่มแชทเฉพาะครูผู้สนับสนุนภาคเรียนนี้</p>
         </div>
-        <button id="donor-chat-close" class="text-white/90 hover:text-white text-3xl leading-none px-2 flex-shrink-0">&times;</button>
+        <div class="flex items-center gap-1 flex-shrink-0">
+          <button id="donor-chat-notes-btn" class="text-white/90 hover:text-white text-xl px-1.5" title="โน้ตของฉัน">🔖</button>
+          <button id="donor-chat-close" class="text-white/90 hover:text-white text-3xl leading-none px-2">&times;</button>
+        </div>
       </div>
       <div id="donor-chat-body" class="flex-1 min-h-0 flex flex-col"></div>
     </div>`
@@ -86,27 +93,34 @@ export async function openDonorChatWidget(teacher) {
     return
   }
 
-  // แท็บสลับ: กลุ่มใหญ่ / แอดมิน — ครูกดปุ่มสร้างแชทกับแอดมินเองครั้งแรก
-  bodyEl.innerHTML = `
-    <div class="flex border-b border-gray-100 flex-shrink-0">
-      <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="group">👥 กลุ่มใหญ่</button>
-      <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="admin">🛡️ แอดมิน</button>
-    </div>
-    <div id="donor-chat-slot" class="flex-1 min-h-0 flex flex-col"></div>`
-
-  const tabs = [...bodyEl.querySelectorAll('.donor-chat-tab')]
-  const slotEl = bodyEl.querySelector('#donor-chat-slot')
-
-  const setTab = (tab) => {
-    tabs.forEach(t => {
-      const on = t.dataset.tab === tab
-      t.className = `donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition ${on ? 'text-amber-600 border-b-2 border-amber-500' : 'text-gray-400 hover:text-gray-600'}`
-    })
-    if (tab === 'group') _loadGroupTab(slotEl, teacher)
-    else _loadAdminTab(slotEl, teacher)
+  let activeTab = 'group'
+  const showTabsUI = () => {
+    bodyEl.innerHTML = `
+      <div class="flex border-b border-gray-100 flex-shrink-0">
+        <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="group">👥 กลุ่มใหญ่</button>
+        <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="admin">🛡️ แอดมิน</button>
+      </div>
+      <div id="donor-chat-slot" class="flex-1 min-h-0 flex flex-col"></div>`
+    const tabs = [...bodyEl.querySelectorAll('.donor-chat-tab')]
+    const slotEl = bodyEl.querySelector('#donor-chat-slot')
+    const setTab = (tab) => {
+      activeTab = tab
+      tabs.forEach(t => {
+        const on = t.dataset.tab === tab
+        t.className = `donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition ${on ? 'text-amber-600 border-b-2 border-amber-500' : 'text-gray-400 hover:text-gray-600'}`
+      })
+      if (tab === 'group') _loadGroupTab(slotEl, teacher)
+      else _loadAdminTab(slotEl, teacher)
+    }
+    tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)))
+    setTab(activeTab)
   }
-  tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)))
-  setTab('group')
+  showTabsUI()
+
+  m.querySelector('#donor-chat-notes-btn').addEventListener('click', () => {
+    _teardown()
+    _renderMyNotes(bodyEl, showTabsUI)
+  })
 }
 
 async function _loadGroupTab(slotEl, teacher) {
@@ -117,7 +131,7 @@ async function _loadGroupTab(slotEl, teacher) {
     slotEl.innerHTML = `<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท กรุณาติดต่อแอดมิน</p>`
     return
   }
-  await _renderRoom(slotEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+  await _renderRoom(slotEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher', isGroupRoom: true, isAdmin: false })
 }
 
 async function _loadAdminTab(slotEl, teacher) {
@@ -125,7 +139,7 @@ async function _loadAdminTab(slotEl, teacher) {
   slotEl.innerHTML = `<div class="flex-1 flex items-center justify-center py-12 text-gray-400">กำลังโหลด...</div>`
   const existingRoomId = await getMyAdminDmRoomId(teacher.id).catch(() => null)
   if (existingRoomId) {
-    await _renderRoom(slotEl, existingRoomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+    await _renderRoom(slotEl, existingRoomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher', isGroupRoom: false, isAdmin: false })
     return
   }
   slotEl.innerHTML = `
@@ -141,7 +155,7 @@ async function _loadAdminTab(slotEl, teacher) {
     btn.textContent = 'กำลังสร้าง...'
     try {
       const roomId = await getOrCreateAdminDmRoomId()
-      await _renderRoom(slotEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher' })
+      await _renderRoom(slotEl, roomId, { myProfileId: teacher.profile_id, sendAsRole: 'teacher', isGroupRoom: false, isAdmin: false })
     } catch (err) {
       showToast(err.message ?? 'สร้างแชทไม่สำเร็จ', 'error')
       btn.disabled = false
@@ -165,35 +179,46 @@ export async function renderDonorChatAdmin() {
 
   setContent(`
     <div class="flex flex-col h-[75vh]">
-      <div id="donor-chat-room-switcher" class="flex items-center gap-2 pb-3 overflow-x-auto flex-shrink-0">
-        ${groupRoomId ? chipHtml(groupRoomId, '👥 กลุ่มใหญ่', true) : ''}
-        ${dmRooms.map(r => chipHtml(r.id, `🛡️ ${r.teachers?.full_name ?? 'ครู'}`, false)).join('')}
-        ${!dmRooms.length ? `<span class="text-xs text-gray-400 flex-shrink-0">ยังไม่มีครูสร้างแชทกับแอดมิน</span>` : ''}
+      <div class="flex items-center gap-2 pb-3 flex-shrink-0">
+        <button id="donor-chat-notes-chip" class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50">🔖 โน้ตของฉัน</button>
+        <div id="donor-chat-room-switcher" class="flex items-center gap-2 overflow-x-auto">
+          ${groupRoomId ? chipHtml(groupRoomId, '👥 กลุ่มใหญ่', true) : ''}
+          ${dmRooms.map(r => chipHtml(r.id, `🛡️ ${r.teachers?.full_name ?? 'ครู'}`, false)).join('')}
+          ${!dmRooms.length ? `<span class="text-xs text-gray-400 flex-shrink-0">ยังไม่มีครูสร้างแชทกับแอดมิน</span>` : ''}
+        </div>
       </div>
       <div id="donor-chat-admin-body" class="flex-1 min-h-0 flex flex-col border border-gray-100 rounded-2xl overflow-hidden"></div>
     </div>`)
 
   const switcherEl = document.getElementById('donor-chat-room-switcher')
   const bodyEl = document.getElementById('donor-chat-admin-body')
+  let lastActiveRoomId = null
 
   const activate = async (roomId) => {
+    lastActiveRoomId = roomId
     switcherEl.querySelectorAll('.donor-chat-chip').forEach(c => {
       const on = c.dataset.roomId === String(roomId)
       c.className = `donor-chat-chip flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${on ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`
     })
-    await _renderRoom(bodyEl, roomId, { myProfileId: user?.id, sendAsRole: 'admin' })
+    await _renderRoom(bodyEl, roomId, { myProfileId: user?.id, sendAsRole: 'admin', isGroupRoom: String(roomId) === String(groupRoomId), isAdmin: true })
   }
   switcherEl.querySelectorAll('.donor-chat-chip').forEach(c =>
     c.addEventListener('click', () => activate(c.dataset.roomId)))
+
+  document.getElementById('donor-chat-notes-chip').addEventListener('click', () => {
+    _teardown()
+    _renderMyNotes(bodyEl, () => activate(lastActiveRoomId ?? groupRoomId))
+  })
 
   if (groupRoomId) await activate(groupRoomId)
   else bodyEl.innerHTML = `<p class="text-center text-gray-400 py-12">ไม่พบห้องแชท</p>`
 }
 
 // ─── ตัวแสดงห้องแชท ใช้ร่วมกันทั้งป๊อปอัพครูและหน้าแอดมิน ───────────────────────
-async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
+async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole, isGroupRoom, isAdmin }) {
   _teardown()
   containerEl.innerHTML = `
+    ${isGroupRoom ? `<div id="chat-announcement-banner" class="flex-shrink-0"></div>` : ''}
     <div id="chat-msg-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
     <form id="chat-send-form" class="flex items-center gap-2 p-3 border-t border-gray-100 flex-shrink-0" style="padding-bottom:max(0.75rem, env(safe-area-inset-bottom));">
       <input type="file" id="chat-img-input" accept="image/*" class="hidden" />
@@ -204,6 +229,8 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
       <button type="submit" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">ส่ง</button>
     </form>`
 
+  if (isGroupRoom) _renderAnnouncementBanner(containerEl, roomId, isAdmin)
+
   // ดึง cfg + สติกเกอร์ครั้งเดียวตอนเปิดห้อง (ไม่ผูกกับ window._pp5DonorTierIndex ที่เป็นยอดสะสมตลอดชีพ)
   const cfg = await getSystemConfig().catch(() => ({}))
   const stickerTiers = _parseDonationStickers(cfg)
@@ -213,6 +240,24 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
   await _renderMessages(listEl, messages, myProfileId, stickerTiers)
   listEl.scrollTop = listEl.scrollHeight
   _lastMessageId = messages.at(-1)?.id ?? 0
+
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.bm-toggle')
+    if (!btn) return
+    const messageId = parseInt(btn.dataset.messageId, 10)
+    const wasBookmarked = btn.dataset.bookmarked === '1'
+    btn.disabled = true
+    try {
+      const nowBookmarked = await toggleBookmark(messageId, wasBookmarked)
+      btn.dataset.bookmarked = nowBookmarked ? '1' : '0'
+      btn.className = `bm-toggle text-xs px-1 ${nowBookmarked ? 'text-amber-500' : 'text-gray-300 hover:text-gray-400'}`
+      btn.title = nowBookmarked ? 'เอาออกจากโน้ตของฉัน' : 'บันทึกโน้ต'
+    } catch (err) {
+      showToast(err.message ?? 'บันทึกโน้ตไม่สำเร็จ', 'error')
+    } finally {
+      btn.disabled = false
+    }
+  })
 
   containerEl.querySelector('#chat-send-form').addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -271,13 +316,155 @@ async function _pollNewMessages(roomId, listEl, myProfileId, stickerTiers) {
 
 async function _renderMessages(listEl, messages, myProfileId, stickerTiers, { append = false } = {}) {
   const teacherProfileIds = messages.filter(m => m.author_role === 'teacher').map(m => m.author_profile_id)
-  const [nameByProfile, tierByProfile] = await Promise.all([
+  const messageIds = messages.map(m => m.id)
+  const [nameByProfile, tierByProfile, bookmarkedIds] = await Promise.all([
     getTeacherNamesByProfileIds(teacherProfileIds),
     getChatTiersByProfileIds(teacherProfileIds),
+    getMyBookmarkedMessageIds(messageIds),
   ])
-  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers)).join('')
+  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds)).join('')
   if (append) listEl.insertAdjacentHTML('beforeend', html)
   else listEl.innerHTML = html
+}
+
+// ─── ประกาศปักหมุด ────────────────────────────────────────────────────────────
+async function _renderAnnouncementBanner(containerEl, roomId, isAdmin) {
+  const bannerEl = containerEl.querySelector('#chat-announcement-banner')
+  if (!bannerEl) return
+  const announcement = await getActiveChatAnnouncement(roomId).catch(() => null)
+  const refresh = () => _renderAnnouncementBanner(containerEl, roomId, isAdmin)
+
+  if (announcement) {
+    bannerEl.innerHTML = `
+      <div class="px-4 py-2.5 flex items-start gap-2" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border-bottom:1px solid #fbbf24;">
+        <span class="text-base flex-shrink-0">📌</span>
+        <button type="button" id="ann-history-btn" class="flex-1 min-w-0 text-left">
+          <p class="text-xs font-bold text-amber-900 truncate">${_htmlEsc(announcement.body)}</p>
+        </button>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          ${isAdmin ? `<button type="button" id="ann-compose-btn" class="text-[11px] font-bold text-amber-700 hover:text-amber-900">➕</button>` : ''}
+          ${isAdmin ? `<button type="button" id="ann-unpin-btn" class="text-[11px] font-bold text-amber-700 hover:text-amber-900">✕</button>` : ''}
+        </div>
+      </div>`
+  } else {
+    bannerEl.innerHTML = isAdmin ? `
+      <div class="px-4 py-2 flex items-center justify-between" style="background:#fafaf9;border-bottom:1px solid #eee;">
+        <span class="text-xs text-gray-400">ยังไม่มีประกาศปักหมุด</span>
+        <button type="button" id="ann-compose-btn" class="text-xs font-bold text-amber-600 hover:text-amber-700">➕ สร้างประกาศ</button>
+      </div>` : ''
+  }
+
+  bannerEl.querySelector('#ann-history-btn')?.addEventListener('click', () => _openAnnouncementHistory(roomId))
+  bannerEl.querySelector('#ann-compose-btn')?.addEventListener('click', () => _openAnnouncementCompose(roomId, refresh))
+  bannerEl.querySelector('#ann-unpin-btn')?.addEventListener('click', async () => {
+    try {
+      await unpinChatAnnouncement(announcement.id)
+      await refresh()
+    } catch (err) { showToast(err.message ?? 'ยกเลิกปักหมุดไม่สำเร็จ', 'error') }
+  })
+}
+
+function _openAnnouncementCompose(roomId, onDone) {
+  const ov = document.createElement('div')
+  ov.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+  ov.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+      <h4 class="font-bold text-gray-800 mb-3">📌 สร้างประกาศใหม่</h4>
+      <textarea id="ann-compose-text" rows="4" maxlength="2000" placeholder="พิมพ์ข้อความประกาศ..."
+        class="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 mb-3"></textarea>
+      <div class="flex justify-end gap-2">
+        <button type="button" id="ann-compose-cancel" class="px-4 py-2 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-50">ยกเลิก</button>
+        <button type="button" id="ann-compose-submit" class="px-4 py-2 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white">ประกาศ</button>
+      </div>
+    </div>`
+  document.body.appendChild(ov)
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove() })
+  ov.querySelector('#ann-compose-cancel').addEventListener('click', () => ov.remove())
+  ov.querySelector('#ann-compose-submit').addEventListener('click', async () => {
+    const body = ov.querySelector('#ann-compose-text').value.trim()
+    if (!body) return
+    const btn = ov.querySelector('#ann-compose-submit')
+    btn.disabled = true
+    try {
+      await createChatAnnouncement({ roomId, body })
+      ov.remove()
+      await onDone()
+    } catch (err) {
+      showToast(err.message ?? 'สร้างประกาศไม่สำเร็จ', 'error')
+      btn.disabled = false
+    }
+  })
+}
+
+async function _openAnnouncementHistory(roomId) {
+  const ov = document.createElement('div')
+  ov.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+  ov.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[75vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <h4 class="font-bold text-gray-800">📌 ประวัติประกาศ</h4>
+        <button type="button" id="ann-history-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="ann-history-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-center text-gray-400 text-sm">กำลังโหลด...</div>
+    </div>`
+  document.body.appendChild(ov)
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove() })
+  ov.querySelector('#ann-history-close').addEventListener('click', () => ov.remove())
+
+  const list = await getChatAnnouncementHistory(roomId).catch(() => [])
+  const listEl = ov.querySelector('#ann-history-list')
+  listEl.innerHTML = list.length ? list.map(a => `
+    <div class="rounded-xl border ${a.is_active ? 'border-amber-300 bg-amber-50' : 'border-gray-100'} p-3 text-left">
+      <p class="text-[10px] text-gray-400 mb-1">${_fmtDateTime(a.created_at)}${a.is_active ? ' · กำลังปักหมุด' : ''}</p>
+      <p class="text-sm text-gray-700 whitespace-pre-wrap break-words">${_htmlEsc(a.body)}</p>
+    </div>`).join('') : `<p class="text-center text-gray-400 text-sm py-8">ยังไม่เคยมีประกาศ</p>`
+}
+
+// ─── โน้ตของฉัน ────────────────────────────────────────────────────────────
+async function _renderMyNotes(containerEl, onBack) {
+  containerEl.innerHTML = `
+    <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0">
+      <button type="button" id="notes-back-btn" class="text-sm text-gray-500 hover:text-gray-700 font-semibold">← กลับ</button>
+      <h4 class="font-bold text-gray-700 text-sm">🔖 โน้ตของฉัน</h4>
+    </div>
+    <div id="notes-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-center text-gray-400 text-sm">กำลังโหลด...</div>`
+  containerEl.querySelector('#notes-back-btn').addEventListener('click', onBack)
+
+  const listEl = containerEl.querySelector('#notes-list')
+  const items = await getMyBookmarkedMessages().catch(() => [])
+  if (!items.length) {
+    listEl.innerHTML = `<p class="text-center text-gray-400 text-sm py-12">ยังไม่มีข้อความที่บันทึกไว้ — กด 🔖 ใต้ข้อความในแชทเพื่อบันทึก</p>`
+    return
+  }
+
+  listEl.className = 'flex-1 overflow-y-auto p-4 space-y-3'
+  listEl.innerHTML = items.map(item => `
+    <div class="rounded-xl border border-gray-100 p-3" data-note-card="${item.id}">
+      <div class="flex items-center justify-between mb-1 gap-2">
+        <p class="text-[10px] font-bold text-indigo-500 truncate">${_htmlEsc(item.roomLabel)}</p>
+        <button type="button" class="bm-toggle text-xs flex-shrink-0 text-amber-500" data-message-id="${item.id}" data-bookmarked="1" title="เอาออกจากโน้ตของฉัน">🔖</button>
+      </div>
+      ${item.image_url ? `<img src="${_htmlEsc(item.image_url)}" class="rounded-lg max-w-full max-h-48 object-contain mb-1" />` : ''}
+      ${item.body ? `<p class="text-sm text-gray-700 whitespace-pre-wrap break-words">${_htmlEsc(item.body)}</p>` : ''}
+      <p class="text-[10px] text-gray-300 mt-1">${_fmtDateTime(item.created_at)}</p>
+    </div>`).join('')
+
+  listEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.bm-toggle')
+    if (!btn) return
+    const messageId = parseInt(btn.dataset.messageId, 10)
+    btn.disabled = true
+    try {
+      await toggleBookmark(messageId, true) // ทุกอันในหน้านี้ถูกบันทึกอยู่แล้ว กดคือเอาออกเสมอ
+      btn.closest('[data-note-card]')?.remove()
+      if (!listEl.querySelector('[data-note-card]')) {
+        listEl.innerHTML = `<p class="text-center text-gray-400 text-sm py-12">ยังไม่มีข้อความที่บันทึกไว้ — กด 🔖 ใต้ข้อความในแชทเพื่อบันทึก</p>`
+      }
+    } catch (err) {
+      showToast(err.message ?? 'ลบโน้ตไม่สำเร็จ', 'error')
+      btn.disabled = false
+    }
+  })
 }
 
 // โปรไฟล์ผู้ส่ง — สติกเกอร์ตามระดับโดเนท (ภาคเรียนนี้) เป็น "รูปโปรไฟล์" วงกลม + ชื่อเล็กๆ ด้านล่าง
@@ -309,18 +496,23 @@ function _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) {
     </div>`
 }
 
-function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers) {
+function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds) {
   const isMine = m.author_profile_id === myProfileId
   const imageHtml = m.image_url
     ? `<img src="${_htmlEsc(m.image_url)}" class="rounded-xl max-w-full max-h-64 object-contain cursor-pointer mb-1" onclick="window.open('${_htmlEsc(m.image_url)}','_blank')" />`
     : ''
   const avatar = !isMine ? _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) : ''
+  const isBookmarked = bookmarkedIds.has(m.id)
+  const bookmarkBtn = `<button type="button" class="bm-toggle text-xs px-1 ${isBookmarked ? 'text-amber-500' : 'text-gray-300 hover:text-gray-400'}" data-message-id="${m.id}" data-bookmarked="${isBookmarked ? '1' : '0'}" title="${isBookmarked ? 'เอาออกจากโน้ตของฉัน' : 'บันทึกโน้ต'}">🔖</button>`
   return `
     <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
       ${avatar}
-      <div class="max-w-[70%] ${isMine ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
-        ${imageHtml}
-        ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
+      <div class="flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-[70%]">
+        <div class="${isMine ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
+          ${imageHtml}
+          ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
+        </div>
+        ${bookmarkBtn}
       </div>
     </div>`
 }
