@@ -120,6 +120,41 @@ export async function getMyAdminDmRoomId(teacherId) {
   return data?.id ?? null
 }
 
+// ─── แชทห้องเรียน — ครูโดเนทระดับ 3+ คุยกับนักเรียนในห้องที่สอน ──────────────────
+// ครูทั่วไปทดลองได้ 1 ห้อง/ภาคเรียน (chat_classroom_free_pick, คีย์ผสม
+// teacher_id+academic_year+semester ทำให้ "รีเซ็ตทุกภาคเรียน" เกิดเองอัตโนมัติ)
+export async function isClassroomChatUnlocked(classId) {
+  const { data, error } = await supabase.rpc('classroom_chat_unlocked', { p_class_id: classId })
+  if (error) throw error
+  return data === true
+}
+
+export async function getOrCreateClassroomChatRoomId(classId) {
+  const { data, error } = await supabase.rpc('get_or_create_classroom_chat_room', { p_class_id: classId })
+  if (error) throw error
+  return data
+}
+
+// ห้องฟรีที่ครูเลือกไว้ "ภาคเรียนนี้" เท่านั้น (กรองด้วย academicYear/semester
+// จาก system_config สด — ตารางเก็บได้หลายภาคเรียนสะสม ต้องกรองเองเสมอ)
+export async function getMyClassroomFreePick(teacherId) {
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const { data, error } = await supabase.from('chat_classroom_free_pick')
+    .select('class_id, classes:class_id(id, class_name)')
+    .eq('teacher_id', teacherId)
+    .eq('academic_year', cfg.academicYear ?? '')
+    .eq('semester', cfg.semester ?? '')
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function pickClassroomChatFreeRoom(classId) {
+  const { data, error } = await supabase.rpc('pick_classroom_chat_free_room', { p_class_id: classId })
+  if (error) throw error
+  return data === true // false = มีคนอื่นแย่งตั้งไปแล้วในเสี้ยววินาทีเดียวกัน (unique constraint กันไว้)
+}
+
 // ฝั่งแอดมิน — รายชื่อครูที่เคยสร้างแชทย่อยไว้ (สำหรับ room switcher)
 export async function getAdminDmRoomsForAdmin() {
   const { data, error } = await supabase.from('chat_rooms')
@@ -698,9 +733,11 @@ export async function submitAppFeedback({ profileId, senderRole, senderName, cat
     throw err
   }
 
-  const { error } = await supabase.from('app_feedback')
+  const { data, error } = await supabase.from('app_feedback')
     .insert({ profile_id: profileId, sender_role: senderRole, sender_name: senderName, category, message })
+    .select('id').single()
   if (error) throw error
+  return data.id
 }
 
 export async function getAllAppFeedback() {
@@ -830,14 +867,21 @@ async function _notifyProfiles(profileIds, { title, body, url }) {
 // qr_reissue_logs (ประวัติที่ครู/แอดมินบันทึกหลังทำเสร็จจริงแล้ว) — พอแอดมิน/ครูที่ได้รับสิทธิ์
 // กดทำเสร็จ ระบบจะสร้างแถวใน qr_reissue_logs จริงให้ด้วย (ดู markQrReissueRequestPrinted) เพื่อให้
 // ประวัติ/ใบเสร็จของสองระบบสอดคล้องกัน ไม่แยกกันเป็นข้อมูลคนละชุด
-export async function submitQrReissueRequest({ studentId }) {
-  const { error } = await supabase.from('qr_reissue_requests').insert({ student_id: studentId })
+// สร้างคู่กับ app_feedback (category='qr_card_request') ด้วยเสมอ — เพื่อให้นักเรียนเห็นสถานะคำขอ
+// ของตัวเองในแท็บ "ประวัติของฉัน" ของวิดเจ็ต Feedback ได้ (qr_reissue_requests เองไม่มีหน้าให้นักเรียน
+// ดูย้อนหลัง) ผูกกันไว้ผ่าน feedback_id เพื่อให้ตอบกลับเข้าเธรดเดิมได้ตอนทำเสร็จ (ดู markQrReissueRequestPrinted)
+export async function submitQrReissueRequest({ studentId, profileId, senderName }) {
+  const feedbackId = await submitAppFeedback({
+    profileId, senderRole: 'student', senderName,
+    category: 'qr_card_request', message: 'แจ้งขอทำบัตร QR Code ใหม่',
+  })
+  const { error } = await supabase.from('qr_reissue_requests').insert({ student_id: studentId, feedback_id: feedbackId })
   if (error) throw error
 }
 
 export async function getQrReissueRequests({ limit = 200 } = {}) {
   const { data, error } = await supabase.from('qr_reissue_requests')
-    .select('id, student_id, requested_at, printed_at, picked_up_at, fine_paid_at, reissue_log_id, students(id, student_code, full_name, main_room)')
+    .select('id, student_id, requested_at, printed_at, picked_up_at, fine_paid_at, reissue_log_id, feedback_id, students(id, student_code, full_name, main_room)')
     .order('requested_at', { ascending: false })
     .limit(limit)
   if (error) throw error
@@ -852,12 +896,18 @@ export async function setQrReissueRequestStatus(id, field, value) {
 }
 
 // กด "ทำเสร็จแล้ว" — สร้างประวัติจริงใน qr_reissue_logs (ได้เลขที่ใบเสร็จ) แล้วผูกกลับมาที่คำขอนี้
-export async function markQrReissueRequestPrinted({ requestId, studentId, teacherId, reason = 'ทำหาย' }) {
+export async function markQrReissueRequestPrinted({ requestId, studentId, teacherId, reason = 'ทำหาย', feedbackId }) {
   const log = await logQrReissue({ studentId, teacherId, reason, note: 'ออกจากคำขอที่นักเรียนแจ้งเอง' })
   const { error } = await supabase.from('qr_reissue_requests')
     .update({ printed_at: new Date().toISOString(), reissue_log_id: log.id })
     .eq('id', requestId)
   if (error) throw error
+  // ตอบกลับเข้าเธรด Feedback เดิมของนักเรียน ให้เห็นในแท็บ "ประวัติของฉัน" ว่าทำเสร็จแล้ว (ของเสริม
+  // ไม่บล็อกงานหลักถ้าพลาด — เช่น ยังไม่ได้ติดตั้งตารางแชท)
+  if (feedbackId) {
+    await sendFeedbackMessage({ feedbackId, authorRole: 'admin', message: 'ทำบัตร QR Code ให้เรียบร้อยแล้วครับ มารับได้ที่ห้องธุรการ' }).catch(() => {})
+    await supabase.from('app_feedback').update({ status: 'resolved' }).eq('id', feedbackId)
+  }
   return log
 }
 

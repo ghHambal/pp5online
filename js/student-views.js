@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.509'
+import { APP_VERSION } from './version.js?v=10.22.514'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getMyActivityCertificates } from './council-api.js'
@@ -612,6 +612,20 @@ export async function renderStudentOverview(student) {
         <p class="relative text-white text-lg flex-shrink-0">→</p>
       </button>`
     })()}
+
+    <!-- ปุ่มแชทห้องเรียน — แสดงตลอด (แม้ยังไม่มีวิชาไหนเปิดใช้งาน) หน้าถัดไปจะอธิบายเองถ้ายังไม่มี -->
+    <button onclick="window._stuNav('classroom-chat')"
+      class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150 w-full mb-4 flex items-center gap-3"
+      style="background:linear-gradient(135deg,#f59e0b,#b45309)">
+      <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
+      <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
+      <p class="text-2xl relative flex-shrink-0">🏫</p>
+      <div class="relative min-w-0 flex-1">
+        <p class="font-bold text-sm text-white">แชทห้องเรียน</p>
+        <p class="text-[11px] text-amber-100 mt-0.5 truncate">คุยกับคุณครูในรายวิชาที่เปิดใช้งานแชท</p>
+      </div>
+      <p class="relative text-white text-lg flex-shrink-0">→</p>
+    </button>
 
     <!-- Quick actions — 4 ปุ่มใน grid เดียว: 2×2 บนมือถือ, 4×1 บน tablet -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -3000,7 +3014,7 @@ export async function renderStudentProfile(student, onLogout) {
       const okBtn = c.querySelector('#qr-request-ok')
       okBtn.disabled = true; okBtn.textContent = 'กำลังส่ง...'
       try {
-        await submitQrReissueRequest({ studentId: student.id })
+        await submitQrReissueRequest({ studentId: student.id, profileId: student.profile_id, senderName: student.full_name })
         notifyQrReissueManagers({
           title: '🎫 มีคำขอทำบัตร QR Code ใหม่',
           body: `${student.full_name || 'นักเรียน'} (${student.student_code || ''}) แจ้งขอทำบัตร QR Code`,

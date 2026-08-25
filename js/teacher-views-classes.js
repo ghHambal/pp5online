@@ -1363,6 +1363,11 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
             style="background:linear-gradient(135deg,#a9781a,#e6c988);">
             👑 <span>Smart Classroom</span>
           </button>
+          <button onclick="window._openClassroomChat(${classId})"
+            class="cd-action-btn flex-shrink-0 px-3 py-2 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5"
+            style="background:linear-gradient(135deg,#f59e0b,#b45309);">
+            🏫 <span>แชทห้องเรียน</span>
+          </button>
 
           <div class="flex-shrink-0 w-px bg-gray-200 my-0.5"></div>
           <button onclick="window._openCombinedEdit2(${classId})"
@@ -1472,6 +1477,10 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     }
     window._openSmartClassroom = (cid) => {
       import('./teacher-views-smart-classroom.js').then(m => m.renderSmartClassroom(teacher, cid))
+    }
+    window._openClassroomChat = (cid) => {
+      const c = window._classCache?.[cid]
+      import('./chat-classroom.js').then(m => m.openTeacherClassroomChat(teacher, cid, c?.class_name))
     }
     window._openClassFlashcardsModal = async (cid) => {
       const c = window._classCache?.[cid]
@@ -6774,21 +6783,64 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
     }
   }
 
-  const _fulfillRequest = async (id) => {
+  // เด้งป๊อบอัพให้เลือกเหตุผล+จำนวนซ้ำก่อนพิมพ์จริง (แบบเดียวกับหน้าพิมพ์รายบุคคลปกติ) แทนที่จะพิมพ์
+  // ทันทีแบบเดิม — ตามที่ผู้ใช้ขอ 2026-08-26 เก็บค่าจำนวนซ้ำล่าสุดไว้ใน localStorage คีย์เดียวกัน
+  const _openFulfillModal = (id) => {
     const req = requests.find(r => r.id === id)
     if (!req?.students?.id) { showToast('ไม่พบข้อมูลนักเรียนสำหรับคำขอนี้', 'warning'); return }
-    try {
-      await markQrReissueRequestPrinted({ requestId: id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason: 'ทำหาย' })
-      await _executePrint([{
-        className: 'รายบุคคล', countLabel: '1 ใบ',
-        students: [{ id: req.students.id, full_name: req.students.full_name, student_code: req.students.student_code, seat_no: null, _roomName: req.students.main_room }],
-        hideHeader: true,
-      }], cols, showCode, showSeat, showRoom, [])
-      showToast('ทำเสร็จแล้ว บันทึกเข้าประวัติแล้ว ✅', 'success')
-      await _loadRequests()
-    } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-    }
+    document.getElementById('qr-fulfill-modal')?.remove()
+    let savedRepeat = parseInt(localStorage.getItem('qr_print_individual_repeat') || '4')
+    if (!Number.isFinite(savedRepeat) || savedRepeat < 1) savedRepeat = 4
+    const m = document.createElement('div')
+    m.id = 'qr-fulfill-modal'
+    m.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-4">
+        <div>
+          <p class="font-bold text-gray-800 text-sm">🖨️ ทำบัตร QR Code ให้ ${_htmlEsc(req.students.full_name || '-')}</p>
+          <p class="text-xs text-gray-400 mt-0.5">รหัส ${_htmlEsc(req.students.student_code || '-')} · ห้อง ${_htmlEsc(req.students.main_room || '-')}</p>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">เหตุผล</label>
+          <select id="qr-fulfill-reason" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-indigo-500">
+            <option value="ทำหาย" selected>ทำหาย</option>
+            <option value="ชำรุด">ชำรุด</option>
+            <option value="อื่นๆ">อื่นๆ</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">จำนวนซ้ำ (ใบ)</label>
+          <input id="qr-fulfill-repeat" type="number" min="1" max="40" value="${savedRepeat}" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button id="qr-fulfill-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="qr-fulfill-ok" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold">🖨️ พิมพ์ + บันทึก</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#qr-fulfill-cancel').addEventListener('click', () => m.remove())
+    m.querySelector('#qr-fulfill-ok').addEventListener('click', async () => {
+      const reason = m.querySelector('#qr-fulfill-reason').value
+      const repeat = Math.max(1, Math.min(40, parseInt(m.querySelector('#qr-fulfill-repeat').value) || 1))
+      localStorage.setItem('qr_print_individual_repeat', String(repeat))
+      const okBtn = m.querySelector('#qr-fulfill-ok')
+      okBtn.disabled = true; okBtn.textContent = 'กำลังดำเนินการ...'
+      try {
+        await markQrReissueRequestPrinted({ requestId: id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason, feedbackId: req.feedback_id })
+        const repeated = Array.from({ length: repeat }, (_, idx) => ({
+          id: req.students.id, full_name: req.students.full_name, student_code: req.students.student_code,
+          seat_no: null, _roomName: req.students.main_room, _print_copy: idx + 1,
+        }))
+        await _executePrint([{ className: 'รายบุคคล', countLabel: `${repeat} ใบ`, students: repeated, hideHeader: true }], cols, showCode, showSeat, showRoom, [])
+        m.remove()
+        showToast('ทำเสร็จแล้ว บันทึกเข้าประวัติ + แจ้งนักเรียนแล้ว ✅', 'success')
+        await _loadRequests()
+      } catch (err) {
+        okBtn.disabled = false; okBtn.textContent = '🖨️ พิมพ์ + บันทึก'
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
   }
 
   const _toggleStatus = async (id, field) => {
@@ -6823,7 +6875,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
     const btn = e.target.closest('[data-action]')
     if (!btn) return
     const id = parseInt(btn.dataset.id)
-    if (btn.dataset.action === 'fulfill') _fulfillRequest(id)
+    if (btn.dataset.action === 'fulfill') _openFulfillModal(id)
     else if (btn.dataset.action === 'toggle-pickup') _toggleStatus(id, 'picked_up_at')
     else if (btn.dataset.action === 'toggle-fine') _toggleStatus(id, 'fine_paid_at')
     else if (btn.dataset.action === 'delete') _deleteRequest(id)

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.513'
+import { APP_VERSION } from './version.js?v=10.22.514'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -241,7 +241,10 @@ const _FB_STATUS = {
     return                                     { icon: '⏳', text: 'รอรับเรื่อง',    cls: 'text-gray-500 bg-gray-50 border-gray-200' }
   },
 }
-const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', password_reset:'🔑', other:'💬' }
+const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', password_reset:'🔑', qr_card_request:'🎫', other:'💬' }
+// หมวดที่สร้างจากโค้ดโดยตรง (ไม่ได้อยู่ในตัวเลือกกดเองของ FEEDBACK_CATEGORIES) — ใช้แค่ตอนแสดงชื่อ
+// หมวดในแท็บ "ประวัติของฉัน" กันโชว์เป็น raw category string ตรงๆ
+const _FB_EXTRA_LABELS = { qr_card_request: 'ขอทำบัตร QR Code' }
 
 function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory }) {
   document.getElementById('feedback-modal')?.remove()
@@ -459,7 +462,7 @@ function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCate
         return `
           <div class="rounded-2xl border border-gray-100 bg-gray-50/60 p-3.5 space-y-2" data-feedback-thread="${item.id}">
             <div class="flex items-center justify-between gap-2 flex-wrap">
-              <span class="text-xs font-semibold text-gray-600">${cat} ${FEEDBACK_CATEGORIES.find(c => c.value === item.category)?.label?.replace(/^.\s/,'') ?? item.category}</span>
+              <span class="text-xs font-semibold text-gray-600">${cat} ${FEEDBACK_CATEGORIES.find(c => c.value === item.category)?.label?.replace(/^.\s/,'') ?? _FB_EXTRA_LABELS[item.category] ?? item.category}</span>
               <span class="text-[10px] border rounded-full px-2 py-0.5 font-semibold ${st.cls}">${st.icon} ${st.text}</span>
             </div>
             <div class="space-y-2 rounded-xl border border-slate-100 bg-white/70 p-2.5">
@@ -739,6 +742,10 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.514': [
+    '🖨️ แท็บ "คำขอใหม่" (พิมพ์ QR Code นักเรียน): กด "ทำเสร็จแล้ว" ตอนนี้เด้งป๊อบอัพให้เลือกเหตุผล (ทำหาย/ชำรุด/อื่นๆ) และจำนวนซ้ำก่อนพิมพ์จริง แบบเดียวกับหน้าพิมพ์รายบุคคลปกติ แทนที่จะพิมพ์ทันที 1 ใบแบบเดิม',
+    '💬 คำขอทำบัตร QR Code ของนักเรียนตอนนี้ขึ้นในแท็บ "ประวัติของฉัน" ของวิดเจ็ต Feedback ด้วย — ติดตามสถานะได้เอง พอแอดมิน/ครูกดทำเสร็จแล้ว จะมีข้อความแจ้งกลับไปในเธรดเดิมทันทีว่าทำเสร็จแล้ว มารับได้ที่ไหน',
+  ],
   '10.22.513': [
     '👑 แชทครูผู้สนับสนุน — เพิ่มประกาศปักหมุด (แอดมินสร้างได้จากกลุ่มใหญ่ ตรึงบนสุด คลิกดูประวัติย้อนหลังได้) และปุ่ม 🔖 บันทึกโน้ตใต้ทุกข้อความ กดเก็บข้อความสำคัญไว้ดูทีหลังผ่านหน้า "โน้ตของฉัน" ได้ทุกห้องแชท',
   ],
