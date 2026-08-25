@@ -49,10 +49,11 @@ export async function openDonorChatWidget(teacher) {
 
   const m = document.createElement('div')
   m.id = 'donor-chat-widget'
-  m.className = 'fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50'
+  // มือถือ (ต่ำกว่า sm): เต็มจอสนิท ไม่มีขอบ/มุมโค้ง — desktop (sm ขึ้นไป): การ์ดลอยกลางจอเหมือนเดิม
+  m.className = 'fixed inset-0 z-[200] flex items-center justify-center sm:p-4 bg-black/50'
   m.innerHTML = `
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
-      <div style="background:linear-gradient(135deg,#f59e0b,#b45309);" class="px-5 py-4 flex items-center justify-between flex-shrink-0">
+    <div class="bg-white sm:rounded-3xl shadow-2xl w-full h-full sm:h-auto sm:max-w-lg overflow-hidden sm:max-h-[85vh] flex flex-col">
+      <div style="background:linear-gradient(135deg,#f59e0b,#b45309);padding-top:max(1rem, env(safe-area-inset-top));" class="px-5 pb-4 flex items-center justify-between flex-shrink-0">
         <div class="min-w-0">
           <h3 class="text-white font-bold text-base">👑 แชทครูผู้สนับสนุน</h3>
           <p class="text-white/80 text-xs mt-0.5">กลุ่มแชทเฉพาะครูผู้สนับสนุนภาคเรียนนี้</p>
@@ -114,7 +115,7 @@ export async function renderDonorChatAdmin() {
 async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
   containerEl.innerHTML = `
     <div id="chat-msg-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
-    <form id="chat-send-form" class="flex items-center gap-2 p-3 border-t border-gray-100 flex-shrink-0">
+    <form id="chat-send-form" class="flex items-center gap-2 p-3 border-t border-gray-100 flex-shrink-0" style="padding-bottom:max(0.75rem, env(safe-area-inset-bottom));">
       <input type="file" id="chat-img-input" accept="image/*" class="hidden" />
       <button type="button" id="chat-img-btn" title="แนบรูปภาพ"
         class="w-10 h-10 flex-shrink-0 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 flex items-center justify-center text-lg">📷</button>
@@ -199,29 +200,45 @@ async function _renderMessages(listEl, messages, myProfileId, stickerTiers, { ap
   else listEl.innerHTML = html
 }
 
-function _stickerBadgeHTML(tierIndex, stickerTiers) {
-  if (!tierIndex) return ''
-  const tier = stickerTiers[tierIndex - 1]
-  if (!tier) return ''
-  const sticker = String(tier.sticker ?? '')
-  const isImg = /^https?:\/\//.test(sticker)
-  return isImg
-    ? `<img src="${_htmlEsc(sticker)}" title="${_htmlEsc(tier.title)}" class="w-4 h-4 object-contain inline-block align-middle" />`
-    : `<span title="${_htmlEsc(tier.title)}" class="inline-block align-middle">${_htmlEsc(sticker)}</span>`
+// โปรไฟล์ผู้ส่ง — สติกเกอร์ตามระดับโดเนท (ภาคเรียนนี้) เป็น "รูปโปรไฟล์" วงกลม + ชื่อเล็กๆ ด้านล่าง
+function _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) {
+  const isAdmin = m.author_role === 'admin'
+  const displayName = isAdmin ? 'แอดมิน' : (nameByProfile[m.author_profile_id] ?? 'ครู')
+  let inner = '🛡️'
+  let ringColor = '#f59e0b' // amber-500
+  if (!isAdmin) {
+    const tierIndex = tierByProfile[m.author_profile_id]
+    const tier = tierIndex ? stickerTiers[tierIndex - 1] : null
+    if (tier) {
+      const sticker = String(tier.sticker ?? '')
+      inner = /^https?:\/\//.test(sticker)
+        ? `<img src="${_htmlEsc(sticker)}" class="w-full h-full object-contain" />`
+        : _htmlEsc(sticker || '🏅')
+      ringColor = tier.color || '#6366f1'
+    } else {
+      inner = '👤'
+      ringColor = '#9ca3af' // gray-400
+    }
+  }
+  return `
+    <div class="flex flex-col items-center w-11 flex-shrink-0">
+      <div class="w-9 h-9 rounded-full flex items-center justify-center text-lg overflow-hidden bg-white shadow-sm" style="border:2px solid ${_htmlEsc(ringColor)};">
+        ${inner}
+      </div>
+      <p class="text-[9px] text-gray-400 font-semibold mt-0.5 leading-tight text-center truncate w-11" title="${_htmlEsc(displayName)}">${_htmlEsc(displayName)}</p>
+    </div>`
 }
 
 function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers) {
   const isMine = m.author_profile_id === myProfileId
-  const isAdmin = m.author_role === 'admin'
-  const displayName = isAdmin ? 'แอดมิน' : (nameByProfile[m.author_profile_id] ?? 'ครู')
-  const sticker = isAdmin ? '' : _stickerBadgeHTML(tierByProfile[m.author_profile_id], stickerTiers)
   const imageHtml = m.image_url
     ? `<img src="${_htmlEsc(m.image_url)}" class="rounded-xl max-w-full max-h-64 object-contain cursor-pointer mb-1" onclick="window.open('${_htmlEsc(m.image_url)}','_blank')" />`
     : ''
+  const avatar = !isMine ? _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) : ''
   return `
-    <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
-      <div class="max-w-[75%] ${isMine ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
-        ${!isMine ? `<p class="text-[0.7rem] font-bold ${isAdmin ? 'text-amber-600' : 'text-indigo-500'} mb-0.5 flex items-center gap-1">${isAdmin ? '🛡️ ' : ''}${_htmlEsc(displayName)} ${sticker}</p>` : ''}
+    <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
+      ${avatar}
+      <div class="max-w-[70%] ${isMine ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
         ${imageHtml}
         ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
       </div>
