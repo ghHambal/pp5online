@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.508'
+import { APP_VERSION } from './version.js?v=10.22.509'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -739,6 +739,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.509': [
+    '🐛 แก้บั๊ก: หน้า "มอบสิทธิ์ครูจัดการ QR Code" โหลดรายชื่อครูที่ได้รับสิทธิ์แล้วไม่ขึ้นเลย (query ผิดพลาดภายใน ไม่กระทบการมอบสิทธิ์จริงที่บันทึกสำเร็จอยู่แล้ว) — แก้ให้แสดงรายชื่อถูกต้องแล้ว',
+  ],
   '10.22.508': [
     '👑 ปรับทางเข้า "แชทครูผู้สนับสนุน" ฝั่งครูเป็นปุ่มลอยมุมขวาล่าง (ซ้อนเหนือปุ่ม 💬 Feedback) เปิดเป็นป๊อปอัพเข้าถึงได้จากทุกหน้าโดยไม่ต้องออกจากงานที่ทำอยู่ — ย้ายจากเมนู sidebar เดิม',
   ],

@@ -138,6 +138,16 @@ export async function getTeacherNamesByProfileIds(profileIds) {
   return Object.fromEntries((data ?? []).map(t => [t.profile_id, t.full_name]))
 }
 
+// batch-fetch ระดับโดเนทของภาคเรียนปัจจุบัน (สำหรับสติกเกอร์) — คนละระบบกับ
+// window._pp5DonorTierIndex ที่เป็นยอดสะสมตลอดชีพ ห้ามใช้ปนกัน
+export async function getChatTiersByProfileIds(profileIds) {
+  const ids = [...new Set(profileIds)].filter(Boolean)
+  if (!ids.length) return {}
+  const { data, error } = await supabase.rpc('donor_chat_current_tiers_by_profile', { p_profile_ids: ids })
+  if (error) throw error
+  return Object.fromEntries((data ?? []).map(r => [r.profile_id, r.tier]))
+}
+
 export async function getMyClasses(teacherId) {
   // ดึงคอร์สก่อน แล้วหา classes ที่ผูกกับคอร์สเหล่านั้น
   const subjects = await getMySubjects(teacherId)
@@ -736,12 +746,19 @@ export async function deleteQrReissueRequest(id) {
 }
 
 // ─── มอบสิทธิ์ครูให้เข้าหน้า "พิมพ์ QR Code" + จัดการคำขอ ได้เหมือนแอดมิน (qr_reissue_managers) ──
+// qr_reissue_managers.profile_id อ้างถึง profiles(id) ไม่ใช่ teachers(id) โดยตรง — PostgREST
+// embed ข้ามแบบ teachers:profile_id(...) ในคำสั่งเดียวไม่ได้ (ไม่มี FK ตรงระหว่างสองตารางนี้)
+// ต้อง query แยกแล้วต่อเองฝั่ง client
 export async function getQrReissueManagers() {
-  const { data, error } = await supabase.from('qr_reissue_managers')
-    .select('profile_id, created_at, teachers:profile_id(id, full_name, teacher_code)')
-    .order('created_at')
+  const { data, error } = await supabase.from('qr_reissue_managers').select('profile_id, created_at').order('created_at')
   if (error) throw error
-  return data ?? []
+  const rows = data ?? []
+  if (!rows.length) return rows
+  const { data: teacherRows } = await supabase.from('teachers')
+    .select('id, full_name, teacher_code, profile_id')
+    .in('profile_id', rows.map(r => r.profile_id))
+  const teacherByProfile = new Map((teacherRows ?? []).map(t => [t.profile_id, t]))
+  return rows.map(r => ({ ...r, teachers: teacherByProfile.get(r.profile_id) ?? null }))
 }
 
 export async function isQrReissueManager(profileId) {
