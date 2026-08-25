@@ -40,7 +40,8 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
   // กับบัญชีจริงเสมอ) — ทดลองทำเองผ่านปุ่ม "ทดลองทำข้อสอบ" ทำได้ไม่จำกัดเสมอ
   const donorTier = window._pp5DonorTierIndex ?? 0
   const isDonor = donorTier >= 2
-  const freeStartLimit = parseInt(cfg.quizFreeStartLimit ?? 2, 10)
+  const parsedFreeStartLimit = parseInt(cfg.quizFreeStartLimit, 10)
+  const freeStartLimit = Number.isFinite(parsedFreeStartLimit) ? parsedFreeStartLimit : 2
   const canStartFree = isDonor || startedCount < freeStartLimit
 
   const classNameById = Object.fromEntries(classes.map(c => [
