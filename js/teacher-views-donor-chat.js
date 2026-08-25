@@ -1,13 +1,16 @@
 // js/teacher-views-donor-chat.js
-// Phase 2 — กลุ่มแชทใหญ่สำหรับครูผู้สนับสนุน (text only, ยังไม่มีรูป/สติกเกอร์/ปักหมุด/บันทึกโน้ต)
+// Phase 3 — เพิ่มรูปภาพ (บีบอัดอัตโนมัติ) + สติกเกอร์ระดับโดเนท (เฉพาะภาคเรียนนี้)
 // ฝั่งครู: ปุ่มลอย (FAB) แบบเดียวกับ feedback widget เปิดเป็นป๊อปอัพ — ไม่ใช่เปลี่ยนหน้าเต็ม
 // ฝั่งแอดมิน: หน้าเต็มในแดชบอร์ด (renderDonorChatAdmin) ต่อยอด pattern feedback-admin
 import {
-  checkDonorChatAccess, getDonorGroupRoomId, getChatMessages, sendChatMessage, getTeacherNamesByProfileIds,
+  checkDonorChatAccess, getDonorGroupRoomId, getChatMessages, sendChatMessage,
+  getTeacherNamesByProfileIds, getChatTiersByProfileIds, getSystemConfig,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
+import { uploadChatImage } from './storage.js'
+import { _parseDonationStickers } from './teacher.js'
 
 let _channel = null
 let _pollInterval = null
@@ -112,14 +115,21 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
   containerEl.innerHTML = `
     <div id="chat-msg-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
     <form id="chat-send-form" class="flex items-center gap-2 p-3 border-t border-gray-100 flex-shrink-0">
+      <input type="file" id="chat-img-input" accept="image/*" class="hidden" />
+      <button type="button" id="chat-img-btn" title="แนบรูปภาพ"
+        class="w-10 h-10 flex-shrink-0 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 flex items-center justify-center text-lg">📷</button>
       <input id="chat-msg-input" type="text" maxlength="2000" placeholder="พิมพ์ข้อความ..."
         class="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
       <button type="submit" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm">ส่ง</button>
     </form>`
 
+  // ดึง cfg + สติกเกอร์ครั้งเดียวตอนเปิดห้อง (ไม่ผูกกับ window._pp5DonorTierIndex ที่เป็นยอดสะสมตลอดชีพ)
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const stickerTiers = _parseDonationStickers(cfg)
+
   const listEl = containerEl.querySelector('#chat-msg-list')
   const messages = await getChatMessages(roomId)
-  await _renderMessages(listEl, messages, myProfileId)
+  await _renderMessages(listEl, messages, myProfileId, stickerTiers)
   listEl.scrollTop = listEl.scrollHeight
   _lastMessageId = messages.at(-1)?.id ?? 0
 
@@ -131,49 +141,89 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole }) {
     input.value = ''
     try {
       await sendChatMessage({ roomId, authorRole: sendAsRole, body })
-      await _pollNewMessages(roomId, listEl, myProfileId)
+      await _pollNewMessages(roomId, listEl, myProfileId, stickerTiers)
     } catch (err) {
       showToast(err.message ?? 'ส่งข้อความไม่สำเร็จ', 'error')
     }
   })
 
+  const imgInput = containerEl.querySelector('#chat-img-input')
+  containerEl.querySelector('#chat-img-btn').addEventListener('click', () => imgInput.click())
+  imgInput.addEventListener('change', async () => {
+    const file = imgInput.files?.[0]
+    imgInput.value = ''
+    if (!file) return
+    const btn = containerEl.querySelector('#chat-img-btn')
+    btn.disabled = true
+    btn.textContent = '⏳'
+    try {
+      const imageUrl = await uploadChatImage(roomId, file)
+      await sendChatMessage({ roomId, authorRole: sendAsRole, body: null, imageUrl })
+      await _pollNewMessages(roomId, listEl, myProfileId, stickerTiers)
+    } catch (err) {
+      showToast(err.message ?? 'ส่งรูปไม่สำเร็จ', 'error')
+    } finally {
+      btn.disabled = false
+      btn.textContent = '📷'
+    }
+  })
+
   _channel = supabase.channel(`chat-room-${roomId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${roomId}` },
-      () => _pollNewMessages(roomId, listEl, myProfileId))
+      () => _pollNewMessages(roomId, listEl, myProfileId, stickerTiers))
     .subscribe()
 
   // backup polling — realtime เป็น optimization ไม่ใช่ source of truth (ตาม pattern quiz-monitor.js)
-  _pollInterval = setInterval(() => _pollNewMessages(roomId, listEl, myProfileId), 5000)
+  _pollInterval = setInterval(() => _pollNewMessages(roomId, listEl, myProfileId, stickerTiers), 5000)
 }
 
-async function _pollNewMessages(roomId, listEl, myProfileId) {
+async function _pollNewMessages(roomId, listEl, myProfileId, stickerTiers) {
   const all = await getChatMessages(roomId).catch(() => null)
   if (!all || !listEl.isConnected) return
   const fresh = all.filter(m => m.id > _lastMessageId)
   if (!fresh.length) return
   const wasAtBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60
-  await _renderMessages(listEl, fresh, myProfileId, { append: true })
+  await _renderMessages(listEl, fresh, myProfileId, stickerTiers, { append: true })
   _lastMessageId = all.at(-1).id
   if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight
 }
 
-async function _renderMessages(listEl, messages, myProfileId, { append = false } = {}) {
+async function _renderMessages(listEl, messages, myProfileId, stickerTiers, { append = false } = {}) {
   const teacherProfileIds = messages.filter(m => m.author_role === 'teacher').map(m => m.author_profile_id)
-  const nameByProfile = await getTeacherNamesByProfileIds(teacherProfileIds)
-  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile)).join('')
+  const [nameByProfile, tierByProfile] = await Promise.all([
+    getTeacherNamesByProfileIds(teacherProfileIds),
+    getChatTiersByProfileIds(teacherProfileIds),
+  ])
+  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers)).join('')
   if (append) listEl.insertAdjacentHTML('beforeend', html)
   else listEl.innerHTML = html
 }
 
-function _bubbleHTML(m, myProfileId, nameByProfile) {
+function _stickerBadgeHTML(tierIndex, stickerTiers) {
+  if (!tierIndex) return ''
+  const tier = stickerTiers[tierIndex - 1]
+  if (!tier) return ''
+  const sticker = String(tier.sticker ?? '')
+  const isImg = /^https?:\/\//.test(sticker)
+  return isImg
+    ? `<img src="${_htmlEsc(sticker)}" title="${_htmlEsc(tier.title)}" class="w-4 h-4 object-contain inline-block align-middle" />`
+    : `<span title="${_htmlEsc(tier.title)}" class="inline-block align-middle">${_htmlEsc(sticker)}</span>`
+}
+
+function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers) {
   const isMine = m.author_profile_id === myProfileId
   const isAdmin = m.author_role === 'admin'
   const displayName = isAdmin ? 'แอดมิน' : (nameByProfile[m.author_profile_id] ?? 'ครู')
+  const sticker = isAdmin ? '' : _stickerBadgeHTML(tierByProfile[m.author_profile_id], stickerTiers)
+  const imageHtml = m.image_url
+    ? `<img src="${_htmlEsc(m.image_url)}" class="rounded-xl max-w-full max-h-64 object-contain cursor-pointer mb-1" onclick="window.open('${_htmlEsc(m.image_url)}','_blank')" />`
+    : ''
   return `
     <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
       <div class="max-w-[75%] ${isMine ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
-        ${!isMine ? `<p class="text-[0.7rem] font-bold ${isAdmin ? 'text-amber-600' : 'text-indigo-500'} mb-0.5">${isAdmin ? '🛡️ ' : ''}${_htmlEsc(displayName)}</p>` : ''}
-        <p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body ?? '')}</p>
+        ${!isMine ? `<p class="text-[0.7rem] font-bold ${isAdmin ? 'text-amber-600' : 'text-indigo-500'} mb-0.5 flex items-center gap-1">${isAdmin ? '🛡️ ' : ''}${_htmlEsc(displayName)} ${sticker}</p>` : ''}
+        ${imageHtml}
+        ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
       </div>
     </div>`
 }

@@ -159,6 +159,13 @@ export async function uploadGalleryPhoto(eventId, colorId, file) {
   return uploadFile('sports-gallery', `${eventId}/${colorId}/${key}.jpg`, blob)
 }
 
+// รูปแนบในแชทครูผู้สนับสนุน → บีบ max 1200px quality 0.85 (พอชัดในแชท ไม่หนักเกิน)
+export async function uploadChatImage(roomId, file) {
+  const blob = await compressImage(file, { maxWidth: 1200, quality: 0.85 })
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return uploadFile('chat-images', `room_${roomId}/${key}.jpg`, blob)
+}
+
 // ไฟล์งานที่มอบหมาย/ไฟล์ที่นักเรียนส่ง — เก็บไฟล์ต้นฉบับตรงๆ ไม่บีบ (รองรับ PDF/Word/PPT/รูป ฯลฯ)
 export async function uploadAssignmentFile(file, prefix) {
   const ext = file.name.split('.').pop()
