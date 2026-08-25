@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.502'
+import { APP_VERSION } from './version.js?v=10.22.503'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getMyActivityCertificates } from './council-api.js'
@@ -2802,6 +2802,11 @@ export async function renderStudentProfile(student, onLogout) {
           title="ใบอนุญาตออกนอกห้อง">
           🚪
         </button>
+        <button id="btn-request-qr-card"
+          class="w-12 h-12 rounded-2xl bg-pink-50 hover:bg-pink-100 active:scale-95 text-pink-600 flex items-center justify-center shadow-sm border border-pink-100/50 transition-all text-xl"
+          title="แจ้งขอทำบัตร QR Code">
+          🎫
+        </button>
       </div>
     </div>
 
@@ -2973,7 +2978,12 @@ export async function renderStudentProfile(student, onLogout) {
   })
 
   // Bind click event to generate dynamic expiring QR Code
+  document.getElementById('btn-request-qr-card').addEventListener('click', () => {
+    window._openQrCardRequest?.()
+  })
+
   document.getElementById('btn-show-my-qr').addEventListener('click', async () => {
+    const cfg = window._pp5SystemCfg ?? await getSystemConfig().catch(() => ({}))
     const dailyLimit = parseInt(cfg.studentQrDailyLimit || '3', 10)
     const expirySeconds = parseInt(cfg.studentQrExpirySeconds || '60', 10)
     const storageKey = `qr_generation_logs_${student.id}`

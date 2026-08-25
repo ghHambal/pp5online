@@ -631,6 +631,31 @@ export async function sendFeedbackMessage({ feedbackId, authorRole, message }) {
   }
 }
 
+// อัปเดตสถานะเฉพาะทางของคำขอทำบัตร QR Code (category='qr_card_request') — พิมพ์เสร็จ/มารับแล้ว/
+// ชำระค่าปรับแล้ว แต่ละอันเป็น timestamp (null = ยังไม่ทำ) ไม่ใช่ boolean เผื่ออยากรู้ว่าทำเมื่อไหร่ทีหลัง
+const QR_STATUS_FIELDS = ['qr_printed_at', 'qr_picked_up_at', 'qr_fine_paid_at']
+export async function setFeedbackQrStatus(id, field, value) {
+  if (!QR_STATUS_FIELDS.includes(field)) throw new Error('ฟิลด์สถานะไม่ถูกต้อง')
+  const { error } = await supabase.from('app_feedback').update({ [field]: value }).eq('id', id)
+  if (error) throw error
+}
+
+// รายชื่อ profile_id ของแอดมินทั้งหมด — ใช้ยิง push notification หาแอดมิน (เช่น มีคำขอทำบัตร QR ใหม่)
+// ผ่านฟังก์ชัน get_admin_profile_ids() (SECURITY DEFINER คืนแค่ uuid ไม่รั่วข้อมูลอื่น)
+export async function getAdminProfileIds() {
+  const { data, error } = await supabase.rpc('get_admin_profile_ids')
+  if (error) throw error
+  return data ?? []
+}
+
+// ยิง push แจ้งแอดมินทุกคน (ของเสริม ไม่บล็อกการทำงานหลักถ้าพลาด — เช่น แอดมินยังไม่เคยกดอนุญาต
+// แจ้งเตือน หรือฟังก์ชัน get_admin_profile_ids ยังไม่ถูกติดตั้ง) reuse Edge Function 'send-push' เดิม
+export async function notifyAdminsNewFeedback({ title, body, url }) {
+  const profileIds = await getAdminProfileIds().catch(() => [])
+  if (!profileIds.length) return
+  await supabase.functions.invoke('send-push', { body: { title, body, url, profileIds } }).catch(() => {})
+}
+
 export async function getStudentByCode(studentCode) {
   const code = String(studentCode ?? '').trim()
   if (!code) return null

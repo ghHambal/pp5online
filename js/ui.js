@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.502'
+import { APP_VERSION } from './version.js?v=10.22.503'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -204,6 +204,7 @@ const FEEDBACK_CATEGORIES = [
   { value: 'suggestion',     label: '💡 ข้อเสนอแนะ' },
   { value: 'problem',        label: '🐞 แจ้งปัญหา / ข้อบกพร่อง' },
   { value: 'password_reset', label: '🔑 ขอรีเซ็ทรหัสผ่าน' },
+  { value: 'qr_card_request', label: '🎫 ขอทำบัตร QR Code' },
   { value: 'other',          label: '💬 อื่นๆ' },
 ]
 
@@ -230,6 +231,9 @@ export function injectFeedbackWidget({ profileId, role, name }) {
   window._openPasswordResetRequest = () => {
     _openFeedbackModal({ profileId, role, name, prefillCategory: 'password_reset' })
   }
+  window._openQrCardRequest = () => {
+    _openFeedbackModal({ profileId, role, name, prefillCategory: 'qr_card_request' })
+  }
 }
 
 const _FB_STATUS = {
@@ -241,7 +245,7 @@ const _FB_STATUS = {
     return                                     { icon: '⏳', text: 'รอรับเรื่อง',    cls: 'text-gray-500 bg-gray-50 border-gray-200' }
   },
 }
-const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', password_reset:'🔑', other:'💬' }
+const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', password_reset:'🔑', qr_card_request:'🎫', other:'💬' }
 
 function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory }) {
   document.getElementById('feedback-modal')?.remove()
@@ -347,7 +351,64 @@ function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCate
       })
     }
 
+    // แจ้งขอทำบัตร QR Code — ป๊อบอัพยืนยันก่อนส่งจริง เหมือนแพทเทิร์นรีเซ็ทรหัสผ่านด้านบน (ไม่ต้องพิมพ์อะไร)
+    // ยิง push notification แจ้งแอดมินทุกคนต่อเลย (ของเสริม ไม่บล็อกถ้าพลาด) พร้อมลิงก์เด้งเข้าหน้า
+    // Feedback ของแอดมินโดยตรง (dashboard.html?view=feedback-admin)
+    function openQrCardRequestConfirm() {
+      document.getElementById('fb-qrreq-confirm')?.remove()
+      const c = document.createElement('div')
+      c.id = 'fb-qrreq-confirm'
+      c.className = 'fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/50'
+      c.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 text-center space-y-4 animate-fade">
+          <div class="text-4xl">🎫</div>
+          <p class="text-sm text-gray-700 leading-relaxed">ต้องการแจ้งแอดมินให้ทำบัตร QR Code ให้คุณใหม่จริงๆ ใช่ไหม?<br><span class="text-xs text-gray-400">แอดมินจะพิมพ์บัตรให้แล้วนัดให้มารับที่ห้องธุรการ</span></p>
+          <div class="flex gap-2">
+            <button id="fb-qrreq-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+            <button id="fb-qrreq-ok" class="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold" style="background:linear-gradient(135deg,#db2777,#9d174d);">ยืนยัน</button>
+          </div>
+        </div>`
+      document.body.appendChild(c)
+      c.addEventListener('click', e => { if (e.target === c) c.remove() })
+      c.querySelector('#fb-qrreq-cancel').addEventListener('click', () => c.remove())
+      c.querySelector('#fb-qrreq-ok').addEventListener('click', async () => {
+        const okBtn = c.querySelector('#fb-qrreq-ok')
+        setButtonLoading(okBtn, true)
+        try {
+          const { submitAppFeedback, notifyAdminsNewFeedback } = await import('./api.js')
+          await submitAppFeedback({
+            profileId, senderRole: role, senderName: name, category: 'qr_card_request',
+            message: 'นักเรียนแจ้งขอให้แอดมินทำบัตร QR Code ใหม่ให้',
+          })
+          notifyAdminsNewFeedback({
+            title: '🎫 มีคำขอทำบัตร QR Code ใหม่',
+            body: `${name || 'นักเรียน'} แจ้งขอทำบัตร QR Code`,
+            url: 'dashboard.html?view=feedback-admin',
+          })
+          c.remove()
+          showToast('แจ้งแอดมินแล้ว รอแอดมินดำเนินการนะครับ 🙏', 'success')
+          setTab('history')
+        } catch (err) {
+          setButtonLoading(okBtn, false, 'ยืนยัน')
+          if (err?.code === 'FEEDBACK_LIMIT_REACHED') showToast(`ส่งครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
+          else showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
+        }
+      })
+    }
+
     function renderDynamic() {
+      if (category === 'qr_card_request') {
+        dynEl.innerHTML = `
+          <div class="space-y-3">
+            <div class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 leading-relaxed">
+              🎫 ระบบจะแจ้งแอดมินให้พิมพ์บัตร QR Code ใหม่ให้คุณ — แอดมินจะติดต่อนัดวันมารับอีกครั้ง
+            </div>
+            <button id="fb-qrreq-btn" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition active:scale-[0.98]"
+              style="background:linear-gradient(135deg,#db2777,#9d174d);">🎫 แจ้งแอดมินขอทำบัตร QR Code</button>
+          </div>`
+        dynEl.querySelector('#fb-qrreq-btn').addEventListener('click', openQrCardRequestConfirm)
+        return
+      }
       if (category === 'password_reset') {
         dynEl.innerHTML = `
           <div class="space-y-3">
@@ -739,6 +800,11 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.503': [
+    '🐛 แก้บั๊กสำคัญ: ปุ่ม "แสดง QR Code ของฉัน" ในหน้าโปรไฟล์นักเรียนกดไม่ได้เลย (ค้าง error ปิดเงียบ) เพราะโค้ดอ้างถึงตัวแปรตั้งค่าระบบที่ไม่ได้โหลดไว้ในหน้านี้ — แก้แล้ว',
+    '🎫 เพิ่มปุ่ม "แจ้งขอทำบัตร QR Code" ในหน้าโปรไฟล์นักเรียน กดแล้วยืนยันครั้งเดียวส่งถึงแอดมินทันที (ต่อยอดจากระบบความคิดเห็นเดิม ไม่ต้องพิมพ์อะไรเอง) พร้อมส่ง Push Notification แจ้งแอดมินทุกคนที่เปิดรับการแจ้งเตือนไว้ กดที่การแจ้งเตือนแล้วเด้งเข้าหน้า "Feedback ถึงแอดมิน" ให้ทันที',
+    '📋 หน้า "Feedback ถึงแอดมิน" เพิ่มสถานะเฉพาะคำขอทำบัตร QR Code — ปุ่มกดสลับ "ทำเสร็จแล้ว/มารับแล้ว/ชำระค่าปรับแล้ว" แยกกัน 3 อัน ต่อ 1 คำขอ',
+  ],
   '10.22.502': [
     '📋 ระบบสภานักเรียน: หน้า "ใบสมัคร" (แอดมิน/ครูที่ปรึกษาสภา) เพิ่มแถบสลับ สภาชาย/สภาหญิง แยกดูไม่ปนกัน — เพิ่มตัวกรอง ระดับชั้น, ฝ่ายที่สมัคร, สถานะรับรองครูที่ปรึกษาสามัญ, สถานะรับรองพี่สภา ใช้ร่วมกับตัวกรองสถานะเดิมได้ทั้งหมด — ถ้ายังไม่ได้เลือกฝ่าย หน้าจะจัดกลุ่มแสดงแยกตามฝ่ายให้อัตโนมัติ — แก้บั๊กเดิมที่ครูที่ปรึกษาสภา (ไม่ใช่แอดมิน) เปิดหน้านี้แล้วเจอหน้าว่างเปล่าด้วย (เมนูให้เข้าได้แต่โค้ดกันไว้)'
   ],
