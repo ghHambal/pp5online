@@ -89,6 +89,55 @@ export async function resetSmartClassroomFreeClass(teacherId) {
   if (error) throw error
 }
 
+// ─── Donor Chat — แชทสำหรับครูผู้สนับสนุน ──────────────────────────────────────
+// สิทธิ์คำนวณจากยอดโดเนทเฉพาะภาคเรียนปัจจุบัน (donor_chat_min_tier_ok ฝั่ง SQL)
+// แยกจาก window._pp5DonorTierIndex เดิมที่เป็นยอดสะสมตลอดชีพ — ห้ามใช้ปนกัน
+export async function checkDonorChatAccess(teacherId, minTier) {
+  const { data, error } = await supabase.rpc('donor_chat_min_tier_ok', { p_teacher_id: teacherId, p_min_tier: minTier })
+  if (error) throw error
+  return data === true
+}
+
+export async function getDonorGroupRoomId() {
+  const { data, error } = await supabase.from('chat_rooms').select('id').eq('room_type', 'donor_group').maybeSingle()
+  if (error) throw error
+  return data?.id ?? null
+}
+
+export async function getOrCreateAdminDmRoomId() {
+  const { data, error } = await supabase.rpc('get_or_create_admin_dm_room')
+  if (error) throw error
+  return data
+}
+
+export async function getChatMessages(roomId, { limit = 200 } = {}) {
+  const { data, error } = await supabase.from('chat_messages')
+    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function sendChatMessage({ roomId, authorRole, body, imageUrl = null }) {
+  const { data, error } = await supabase.from('chat_messages')
+    .insert({ room_id: roomId, author_role: authorRole, body, image_url: imageUrl })
+    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at')
+    .single()
+  if (error) throw error
+  return data
+}
+
+// batch-fetch ชื่อครูจาก profile_id หลายคนพร้อมกัน (กัน N+1 ตอน render ข้อความ)
+export async function getTeacherNamesByProfileIds(profileIds) {
+  const ids = [...new Set(profileIds)].filter(Boolean)
+  if (!ids.length) return {}
+  const { data, error } = await supabase.from('teachers').select('profile_id, full_name').in('profile_id', ids)
+  if (error) throw error
+  return Object.fromEntries((data ?? []).map(t => [t.profile_id, t.full_name]))
+}
+
 export async function getMyClasses(teacherId) {
   // ดึงคอร์สก่อน แล้วหา classes ที่ผูกกับคอร์สเหล่านั้น
   const subjects = await getMySubjects(teacherId)

@@ -806,6 +806,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
     'donations':        () => renderDonations(),
     'feedback-admin':   () => renderFeedbackAdmin(),
+    'donor-chat-admin': () => import('./teacher-views-donor-chat.js').then(m => m.renderDonorChatAdmin()),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
     'classroom-leaders': () => renderClassroomLeaders(),
   }
@@ -814,6 +815,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     link.addEventListener('click', e => {
       e.preventDefault()
       const view = link.dataset.nav
+      if (typeof window._cleanupDonorChat === 'function') {
+        try { window._cleanupDonorChat() } catch (e) {}
+      }
       if (routes[view]) routes[view]()
       // ปิด sidebar บน mobile หลังคลิก nav item
       document.getElementById('sidebar')?.classList.add('-translate-x-full')
