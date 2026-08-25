@@ -291,6 +291,7 @@ const ROUTES = {
   prayer_scanner: () => renderStudentPrayerScanner(_student),
   prayer_scan_history: () => renderStudentPrayerScanHistory(_student),
   assignments: () => renderStudentAllAssignments(_student),
+  'classroom-chat': () => import('./chat-classroom.js').then(m => m.renderStudentClassroomChat(_student)),
 }
 
 function _navButtonHTML(view, icon, label, mode = 'main') {
@@ -369,6 +370,9 @@ function _setBottomNavActive(activeView) {
 }
 
 function navigate(view) {
+  if (typeof window._cleanupClassroomChat === 'function') {
+    try { window._cleanupClassroomChat() } catch (e) {}
+  }
   // Cleanup active scanner if navigating away from prayer_scanner
   if (window._activePrayerScannerState) {
     try {
