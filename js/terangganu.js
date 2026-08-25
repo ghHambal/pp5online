@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import {
-  getTerangganuAccess, getMyTerangganuContext, saveMyTerangganuRegistration,
+  getTerangganuAccess, getMyTerangganuContext, saveMyTerangganuRegistration, saveTerangganuRegistrationForStudent,
   getMyTerangganuTeacherContext, saveMyTerangganuTeacherRegistration,
   getTerangganuManagerContext, updateTerangganuEvent, assignTerangganuStaff,
   getTerangganuSchedule, saveTerangganuScheduleItem, deleteTerangganuScheduleItem,
@@ -167,21 +167,7 @@ function renderStudent() {
       <div class="flex items-start justify-between gap-3 mb-5"><div><h2 class="font-bold text-lg">📝 แบบสำรวจนักเรียน</h2><p class="text-xs text-gray-400 mt-1">${r ? `ส่งข้อมูลแล้ว ${thaiDate(r.updated_at)}` : 'กรอกข้อมูลสำหรับการเดินทางเข้าค่าย'}</p></div><span class="px-2.5 py-1 rounded-full text-xs font-bold ${r ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${r ? 'ครบแล้ว' : 'ยังไม่กรอก'}</span></div>
       ${!canEdit ? `<div class="mb-5 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">แบบสำรวจปิดรับข้อมูลแล้ว สามารถดูข้อมูลเดิมได้</div>` : ''}
       <form id="student-camp-form" class="grid sm:grid-cols-2 gap-4">
-        ${canEdit ? ocrUploadBlock('student') : ''}
-        ${field('nickname','ชื่อเล่น',r?.nickname,'text',true,canEdit)}
-        ${field('thai_name','ชื่อภาษาไทย',r?.thai_name || s.full_name,'text',true,canEdit)}
-        <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${englishTitleOptions(normalizeGender(s.gender),r?.english_title).map(v=>`<option ${r?.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
-        <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r?.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
-        <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r?.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
-        ${field('passport_number',e.passport_required?'เลขที่หนังสือเดินทาง':'เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_number,'text',Boolean(e.passport_required),canEdit)}
-        ${field('passport_expiry',e.passport_required?'วันหมดอายุหนังสือเดินทาง':'วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_expiry,'date',Boolean(e.passport_required),canEdit)}
-        ${field('birth_date','วันเดือนปีเกิด',r?.birth_date,'date',true,canEdit)}
-        ${field('nationality','สัญชาติ',r?.nationality || 'ไทย','text',true,canEdit)}
-        <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r?.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
-        ${field('phone','เบอร์โทรศัพท์ผู้ปกครอง',r?.phone,'tel',true,canEdit)}
-        <label><span class="camp-label">ไซซ์เสื้อ *</span><select name="shirt_size" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกไซซ์</option>${['XS','S','M','L','XL','2XL','3XL','4XL','อื่น ๆ'].map(v=>`<option ${r?.shirt_size===v?'selected':''}>${v}</option>`).join('')}</select></label>
-        ${addressCascadeBlock('student', r?.current_address, canEdit)}
-        <label class="sm:col-span-2"><span class="camp-label">โรคประจำตัว</span><textarea name="medical_conditions" rows="2" class="camp-input" ${canEdit?'':'disabled'}>${esc(r?.medical_conditions||'ไม่มี')}</textarea></label>
+        ${studentSurveyFieldsHtml(s, r, e, canEdit, 'student')}
         ${canEdit ? '<button class="sm:col-span-2 camp-btn bg-teal-700 hover:bg-teal-800 text-white py-3" type="submit">💾 บันทึกแบบสำรวจ</button>' : ''}
       </form>
     </section>`
@@ -190,6 +176,27 @@ function renderStudent() {
   wireOcrUploadBlock('student', content.querySelector('#student-camp-form'))
   wireAddressCascade('student', r?.current_address)
   maybeNudgePassport(e, r)
+}
+
+// ฟิลด์แบบสำรวจนักเรียน แยกไว้ใช้ซ้ำทั้งหน้ากรอกของตัวเอง (renderStudent) และป๊อปอัพ
+// "กรอกแทน/แก้ไขแทน" ที่แอดมิน/ครูผู้รับผิดชอบ (can_settings) ใช้กรอกแทนนักเรียนที่เข้าไม่ถึงระบบเอง
+function studentSurveyFieldsHtml(s, r, e, canEdit, idPrefix) {
+  return `
+    ${canEdit ? ocrUploadBlock(idPrefix) : ''}
+    ${field('nickname','ชื่อเล่น',r?.nickname,'text',true,canEdit)}
+    ${field('thai_name','ชื่อภาษาไทย',r?.thai_name || s.full_name,'text',true,canEdit)}
+    <label><span class="camp-label">คำนำหน้าภาษาอังกฤษ *</span><select name="english_title" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกคำนำหน้า</option>${englishTitleOptions(normalizeGender(s.gender),r?.english_title).map(v=>`<option ${r?.english_title===v?'selected':''}>${v}</option>`).join('')}</select></label>
+    <label><span class="camp-label">ชื่อ-สกุลภาษาอังกฤษ * <span class="text-gray-300 font-normal normal-case">(พิมพ์เล็ก/ใหญ่ก็ได้ ระบบแปลงเป็นตัวพิมพ์ใหญ่ให้อัตโนมัติ)</span></span><input name="english_name" type="text" value="${esc(r?.english_name||'')}" class="camp-input" required style="text-transform:uppercase" ${canEdit?'':'disabled'} /></label>
+    <label><span class="camp-label">เลขประจำตัวประชาชน *</span><input name="national_id" type="text" value="${esc(r?.national_id||'')}" class="camp-input" required pattern="[0-9]{13}" maxlength="13" inputmode="numeric" placeholder="กรอกให้ครบ 13 หลัก" title="เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก" ${canEdit?'':'disabled'} /></label>
+    ${field('passport_number',e.passport_required?'เลขที่หนังสือเดินทาง':'เลขที่หนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_number,'text',Boolean(e.passport_required),canEdit)}
+    ${field('passport_expiry',e.passport_required?'วันหมดอายุหนังสือเดินทาง':'วันหมดอายุหนังสือเดินทาง (ยังไม่บังคับตอนนี้)',r?.passport_expiry,'date',Boolean(e.passport_required),canEdit)}
+    ${field('birth_date','วันเดือนปีเกิด',r?.birth_date,'date',true,canEdit)}
+    ${field('nationality','สัญชาติ',r?.nationality || 'ไทย','text',true,canEdit)}
+    <label><span class="camp-label">กรุ๊ปเลือด *</span><select name="blood_group" class="camp-input" ${canEdit?'':'disabled'}>${['ไม่ทราบ','A','B','AB','O'].map(v=>`<option ${r?.blood_group===v?'selected':''}>${v}</option>`).join('')}</select></label>
+    ${field('phone','เบอร์โทรศัพท์ผู้ปกครอง',r?.phone,'tel',true,canEdit)}
+    <label><span class="camp-label">ไซซ์เสื้อ *</span><select name="shirt_size" class="camp-input" ${canEdit?'':'disabled'}><option value="">เลือกไซซ์</option>${['XS','S','M','L','XL','2XL','3XL','4XL','อื่น ๆ'].map(v=>`<option ${r?.shirt_size===v?'selected':''}>${v}</option>`).join('')}</select></label>
+    ${addressCascadeBlock(idPrefix, r?.current_address, canEdit)}
+    <label class="sm:col-span-2"><span class="camp-label">โรคประจำตัว</span><textarea name="medical_conditions" rows="2" class="camp-input" ${canEdit?'':'disabled'}>${esc(r?.medical_conditions||'ไม่มี')}</textarea></label>`
 }
 
 let _passportNudgeShown = false
@@ -263,8 +270,8 @@ async function ocrFillCampForm(formEl, file, btn) {
   }
 }
 
-function wireOcrUploadBlock(idPrefix, formEl) {
-  const btn = content.querySelector(`#${idPrefix}-ocr-btn`), input = content.querySelector(`#${idPrefix}-ocr-input`)
+function wireOcrUploadBlock(idPrefix, formEl, root = content) {
+  const btn = root.querySelector(`#${idPrefix}-ocr-btn`), input = root.querySelector(`#${idPrefix}-ocr-input`)
   if (!btn || !input) return
   btn.addEventListener('click', () => input.click())
   input.addEventListener('change', e => {
@@ -297,20 +304,20 @@ function addressCascadeBlock(idPrefix, existingAddress, enabled) {
   </div>`
 }
 
-async function wireAddressCascade(idPrefix, existingAddress) {
-  const detailInput = content.querySelector(`#${idPrefix}-addr-detail`)
-  const provinceInput = content.querySelector(`#${idPrefix}-addr-province`)
-  const districtInput = content.querySelector(`#${idPrefix}-addr-district`)
-  const subdistrictInput = content.querySelector(`#${idPrefix}-addr-subdistrict`)
-  const zipInput = content.querySelector(`#${idPrefix}-addr-zip`)
-  const finalInput = content.querySelector(`#${idPrefix}-addr-final`)
-  const provinceList = content.querySelector(`#${idPrefix}-province-list`)
-  const districtList = content.querySelector(`#${idPrefix}-district-list`)
-  const subdistrictList = content.querySelector(`#${idPrefix}-subdistrict-list`)
+async function wireAddressCascade(idPrefix, existingAddress, root = content) {
+  const detailInput = root.querySelector(`#${idPrefix}-addr-detail`)
+  const provinceInput = root.querySelector(`#${idPrefix}-addr-province`)
+  const districtInput = root.querySelector(`#${idPrefix}-addr-district`)
+  const subdistrictInput = root.querySelector(`#${idPrefix}-addr-subdistrict`)
+  const zipInput = root.querySelector(`#${idPrefix}-addr-zip`)
+  const finalInput = root.querySelector(`#${idPrefix}-addr-final`)
+  const provinceList = root.querySelector(`#${idPrefix}-province-list`)
+  const districtList = root.querySelector(`#${idPrefix}-district-list`)
+  const subdistrictList = root.querySelector(`#${idPrefix}-subdistrict-list`)
   if (!detailInput || !finalInput) return
   detailInput.value = existingAddress || ''
-  const toggleBtn = content.querySelector(`#${idPrefix}-addr-toggle`)
-  const cascadeBox = content.querySelector(`#${idPrefix}-addr-cascade`)
+  const toggleBtn = root.querySelector(`#${idPrefix}-addr-toggle`)
+  const cascadeBox = root.querySelector(`#${idPrefix}-addr-cascade`)
   toggleBtn?.addEventListener('click', () => {
     const nowHidden = cascadeBox.classList.toggle('hidden')
     toggleBtn.textContent = nowHidden ? '📍 แก้ที่อยู่ด้วยตัวเลือกจังหวัด/อำเภอ/ตำบล' : '▲ ซ่อนตัวเลือกจังหวัด/อำเภอ/ตำบล'
@@ -558,7 +565,7 @@ function renderParticipants(){
   content.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-bold">รายชื่อนักเรียนเข้าร่วมค่าย</h2><p class="text-xs text-gray-400">เพิ่มรหัสได้หลายรายการ โดยคั่นด้วยเว้นวรรค จุลภาค หรือขึ้นบรรทัดใหม่</p></div><div class="flex flex-wrap gap-2"><button id="print-student-roster-internal" class="camp-btn bg-white border border-teal-200 text-teal-700">🖨️ พิมพ์ (ใช้ภายใน)</button><button id="print-student-roster-official" class="camp-btn bg-white border border-teal-200 text-teal-700">📜 พิมพ์ (ส่งราชการ)</button></div></div>
   ${access.can_settings?`<section class="camp-card p-5 mb-5"><div class="mb-4"><label><span class="camp-label">🔎 ค้นหานักเรียนจากฐานข้อมูล</span><input id="participant-add-search" class="camp-input" autocomplete="off" placeholder="ค้นหาอะไรก็เจอ เช่น ชื่อบางส่วน รหัส ห้องสามัญ หรือห้องศาสนา"></label><div id="participant-add-search-results" class="hidden mt-2 max-h-72 overflow-y-auto rounded-xl border bg-white divide-y shadow-lg"></div><p class="text-[11px] text-gray-400 mt-1">คลิกชื่อนักเรียนเพื่อเติมรหัสลงในรายการด้านล่าง</p></div><label><span class="camp-label">รหัสนักเรียนที่เลือกหรือกรอกเอง</span><textarea id="participant-codes" class="camp-input font-mono" rows="5" placeholder="เช่น&#10;25944&#10;25945&#10;25946"></textarea></label><div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700 mt-3">ปุ่มบันทึกมัดจำจะสร้างใบเสร็จ 1,000 บาทให้โดยอัตโนมัติ จึงต้องตั้งชื่อและลายเซ็นผู้อำนวยการ รวมถึงลายเซ็นครูผู้ลงนามให้เรียบร้อยก่อน</div><div class="grid sm:grid-cols-2 gap-3 mt-4"><button id="add-participants-paid" class="camp-btn bg-teal-700 text-white py-3">💰 เพิ่มรายชื่อ + บันทึกมัดจำแล้ว</button><button id="add-participants-only" class="camp-btn border border-teal-200 text-teal-700 py-3">👥 เพิ่มเฉพาะรายชื่อ</button></div><div id="participant-result" class="hidden mt-4 rounded-xl p-3 text-sm"></div></section>`:''}
   <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><div><b>เพิ่มแล้ว ${rows.length} คน</b><span id="participant-count" class="text-xs text-gray-400 ml-2">กรอกแบบสำรวจ ${rows.filter(x=>x.r).length} คน</span></div><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 w-full lg:w-auto"><select id="participant-grade" class="camp-input"><option value="">ทุกระดับชั้น</option>${[...new Set(rows.map(x=>x.grade))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true})).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select><select id="participant-room" class="camp-input"><option value="">ทุกห้อง</option>${[...new Set(rows.map(x=>x.room))].sort((a,b)=>a.localeCompare(b,'th',{numeric:true})).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select><select id="participant-survey" class="camp-input"><option value="">แบบสำรวจ: ทั้งหมด</option><option value="filled">กรอกแล้ว</option><option value="notfilled">ยังไม่กรอก</option></select><select id="participant-deposit" class="camp-input"><option value="">มัดจำ: ทั้งหมด</option><option value="paid">ชำระแล้ว</option><option value="unpaid">ยังไม่ชำระ</option></select><select id="participant-balance" class="camp-input"><option value="">ส่วนที่เหลือ: ทั้งหมด</option><option value="paid">ชำระแล้ว</option><option value="unpaid">ยังไม่ชำระ</option></select><input id="participant-search" class="camp-input" placeholder="ค้นหาอะไรก็เจอ"></div></div><div id="participant-list" class="space-y-3"></div>`
-  const draw=()=>{const q=document.getElementById('participant-search').value.trim().toLowerCase(),grade=document.getElementById('participant-grade').value,room=document.getElementById('participant-room').value,survey=document.getElementById('participant-survey').value,deposit=document.getElementById('participant-deposit').value,balance=document.getElementById('participant-balance').value;const filtered=rows.filter(({s,r,p,grade:g,room:rm})=>{const haystack=[s?.student_code,s?.full_name,s?.main_room,s?.religion_room,s?.gender,r?.nickname,r?.thai_name,r?.english_name,r?.national_id,r?.phone,r?.shirt_size,r?.medical_conditions,p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ',r?'กรอกแล้ว':'รอกรอก'].join(' ').toLowerCase();return(!grade||g===grade)&&(!room||rm===room)&&(!survey||(survey==='filled'?!!r:!r))&&(!deposit||(deposit==='paid'?!!p.deposit:!p.deposit))&&(!balance||(balance==='paid'?!!p.balance:!p.balance))&&(!q||haystack.includes(q))});document.getElementById('participant-count').textContent=`แสดง ${filtered.length} คน · กรอกแบบสำรวจ ${filtered.filter(x=>x.r).length} คน`;document.getElementById('participant-list').innerHTML=filtered.map(({s,r,p})=>`<article class="camp-card p-4 flex items-center gap-3">${studentAvatar(s)}<div class="flex-1 min-w-0"><b class="block truncate">${esc(s?.full_name)}</b><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room||'—')} · ${esc(s?.gender||'ไม่ระบุเพศ')}</p><div class="flex flex-wrap gap-2 mt-2"><span class="px-2 py-1 rounded-lg text-xs font-bold ${r?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${r?'กรอกข้อมูลแล้ว':'รอกรอกข้อมูล'}</span><span class="px-2 py-1 rounded-lg text-xs font-bold ${p.deposit?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-400'}">${p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ'}</span></div></div>${access.can_settings?`<button type="button" data-remove-participant="${s.id}" data-remove-name="${esc(s.full_name)}" class="camp-btn bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 flex-shrink-0" title="ลบออกจากรายชื่อค่าย">🗑️ <span class="hidden sm:inline">ลบ</span></button>`:''}</article>`).join('')||'<div class="text-center py-16 text-gray-400">ไม่พบรายชื่อนักเรียน</div>';document.querySelectorAll('[data-remove-participant]').forEach(btn=>btn.addEventListener('click',async()=>{const name=btn.dataset.removeName;if(!confirm(`ยืนยันลบ ${name} ออกจากรายชื่อผู้เข้าร่วมค่าย?\n\nข้อมูลแบบสำรวจและประวัติใบเสร็จเดิมจะยังถูกเก็บไว้เพื่อการตรวจสอบ`))return;btn.disabled=true;btn.textContent='กำลังลบ...';try{await removeTerangganuParticipant(Number(btn.dataset.removeParticipant));toast(`ลบ ${name} ออกจากรายชื่อแล้ว`);await loadManager(true)}catch(error){toast(error.message||'ลบรายชื่อไม่สำเร็จ','error');btn.disabled=false;btn.textContent='🗑️ ลบ'}}))}
+  const draw=()=>{const q=document.getElementById('participant-search').value.trim().toLowerCase(),grade=document.getElementById('participant-grade').value,room=document.getElementById('participant-room').value,survey=document.getElementById('participant-survey').value,deposit=document.getElementById('participant-deposit').value,balance=document.getElementById('participant-balance').value;const filtered=rows.filter(({s,r,p,grade:g,room:rm})=>{const haystack=[s?.student_code,s?.full_name,s?.main_room,s?.religion_room,s?.gender,r?.nickname,r?.thai_name,r?.english_name,r?.national_id,r?.phone,r?.shirt_size,r?.medical_conditions,p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ',r?'กรอกแล้ว':'รอกรอก'].join(' ').toLowerCase();return(!grade||g===grade)&&(!room||rm===room)&&(!survey||(survey==='filled'?!!r:!r))&&(!deposit||(deposit==='paid'?!!p.deposit:!p.deposit))&&(!balance||(balance==='paid'?!!p.balance:!p.balance))&&(!q||haystack.includes(q))});document.getElementById('participant-count').textContent=`แสดง ${filtered.length} คน · กรอกแบบสำรวจ ${filtered.filter(x=>x.r).length} คน`;document.getElementById('participant-list').innerHTML=filtered.map(({s,r,p})=>`<article class="camp-card p-4 flex items-center gap-3">${studentAvatar(s)}<div class="flex-1 min-w-0"><b class="block truncate">${esc(s?.full_name)}</b><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room||'—')} · ${esc(s?.gender||'ไม่ระบุเพศ')}</p><div class="flex flex-wrap gap-2 mt-2"><span class="px-2 py-1 rounded-lg text-xs font-bold ${r?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}">${r?'กรอกข้อมูลแล้ว':'รอกรอกข้อมูล'}</span><span class="px-2 py-1 rounded-lg text-xs font-bold ${p.deposit?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-400'}">${p.deposit?'มัดจำแล้ว':'ยังไม่มีมัดจำ'}</span></div></div>${access.can_settings?`<button type="button" data-fill-for-student="${s.id}" class="camp-btn bg-indigo-50 text-indigo-700 hover:bg-indigo-100 py-2 px-3 flex-shrink-0" title="กรอก/แก้ไขแบบสำรวจแทนนักเรียน">📝 <span class="hidden sm:inline">${r?'แก้ไข':'กรอกแทน'}</span></button>`:''}${access.can_settings?`<button type="button" data-remove-participant="${s.id}" data-remove-name="${esc(s.full_name)}" class="camp-btn bg-red-50 text-red-600 hover:bg-red-100 py-2 px-3 flex-shrink-0" title="ลบออกจากรายชื่อค่าย">🗑️ <span class="hidden sm:inline">ลบ</span></button>`:''}</article>`).join('')||'<div class="text-center py-16 text-gray-400">ไม่พบรายชื่อนักเรียน</div>';document.querySelectorAll('[data-fill-for-student]').forEach(btn=>btn.addEventListener('click',()=>openAdminFillStudentModal(Number(btn.dataset.fillForStudent))));document.querySelectorAll('[data-remove-participant]').forEach(btn=>btn.addEventListener('click',async()=>{const name=btn.dataset.removeName;if(!confirm(`ยืนยันลบ ${name} ออกจากรายชื่อผู้เข้าร่วมค่าย?\n\nข้อมูลแบบสำรวจและประวัติใบเสร็จเดิมจะยังถูกเก็บไว้เพื่อการตรวจสอบ`))return;btn.disabled=true;btn.textContent='กำลังลบ...';try{await removeTerangganuParticipant(Number(btn.dataset.removeParticipant));toast(`ลบ ${name} ออกจากรายชื่อแล้ว`);await loadManager(true)}catch(error){toast(error.message||'ลบรายชื่อไม่สำเร็จ','error');btn.disabled=false;btn.textContent='🗑️ ลบ'}}))}
   draw();document.getElementById('participant-search').addEventListener('input',draw);['participant-grade','participant-room','participant-survey','participant-deposit','participant-balance'].forEach(id=>document.getElementById(id).addEventListener('change',draw))
   const addSearch=document.getElementById('participant-add-search'),addResults=document.getElementById('participant-add-search-results'),codesBox=document.getElementById('participant-codes')
   const addCode=code=>{const current=codesBox.value.split(/[\s,;]+/).map(v=>v.trim()).filter(Boolean);if(!current.includes(String(code)))current.push(String(code));codesBox.value=current.join('\n');codesBox.dispatchEvent(new Event('input'));addSearch.value='';addResults.classList.add('hidden');addSearch.focus()}
@@ -645,9 +652,40 @@ function renderRegistrations() {
 
 function showRegistrationDetail(studentId) {
   const {students,regs}=maps(),s=students.get(studentId),r=regs.get(studentId)
-  modal(`<div class="p-6"><div class="flex justify-between gap-3"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">${esc(s?.full_name)}</h3><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room)}</p></div></div><button data-close>✕</button></div><div class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">${detail('ชื่อเล่น',r.nickname)}${detail('คำนำหน้าอังกฤษ',r.english_title)}${detail('ชื่ออังกฤษ',r.english_name)}${detail('เพศ',s.gender)}${detail('วันเกิด',thaiDate(r.birth_date))}${detail('สัญชาติ',r.nationality)}${detail('กรุ๊ปเลือด',r.blood_group)}${detail('เลขประจำตัวประชาชน',r.national_id)}${detail('เลขหนังสือเดินทาง',r.passport_number)}${detail('หมดอายุ',thaiDate(r.passport_expiry))}${detail('เบอร์โทรศัพท์ผู้ปกครอง',r.phone)}${detail('ไซซ์เสื้อ',r.shirt_size)}<div class="sm:col-span-2">${detail('ที่อยู่',r.current_address)}</div><div class="sm:col-span-2">${detail('โรคประจำตัว',r.medical_conditions)}</div></div></div>`)
+  const wrap=modal(`<div class="p-6"><div class="flex justify-between gap-3"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">${esc(s?.full_name)}</h3><p class="text-xs text-gray-400">${esc(s?.student_code)} · ${esc(s?.main_room)}</p></div></div><button data-close>✕</button></div><div class="grid sm:grid-cols-2 gap-3 mt-5 text-sm">${detail('ชื่อเล่น',r.nickname)}${detail('คำนำหน้าอังกฤษ',r.english_title)}${detail('ชื่ออังกฤษ',r.english_name)}${detail('เพศ',s.gender)}${detail('วันเกิด',thaiDate(r.birth_date))}${detail('สัญชาติ',r.nationality)}${detail('กรุ๊ปเลือด',r.blood_group)}${detail('เลขประจำตัวประชาชน',r.national_id)}${detail('เลขหนังสือเดินทาง',r.passport_number)}${detail('หมดอายุ',thaiDate(r.passport_expiry))}${detail('เบอร์โทรศัพท์ผู้ปกครอง',r.phone)}${detail('ไซซ์เสื้อ',r.shirt_size)}<div class="sm:col-span-2">${detail('ที่อยู่',r.current_address)}</div><div class="sm:col-span-2">${detail('โรคประจำตัว',r.medical_conditions)}</div></div>${access.can_settings?`<button type="button" id="detail-edit-for-student" class="camp-btn bg-teal-700 text-white w-full mt-5">✏️ แก้ไขข้อมูลแทนนักเรียน</button>`:''}</div>`)
+  wrap.querySelector('#detail-edit-for-student')?.addEventListener('click',()=>openAdminFillStudentModal(studentId))
 }
 function detail(label,value){return `<div class="bg-gray-50 rounded-xl p-3"><p class="text-[11px] text-gray-400">${label}</p><p class="font-semibold mt-1">${esc(value||'—')}</p></div>`}
+
+// ป๊อปอัพให้แอดมิน/ครูผู้รับผิดชอบ (can_settings) กรอก/แก้ไขแบบสำรวจแทนนักเรียนที่เข้าไม่ถึงระบบเอง
+function openAdminFillStudentModal(studentId) {
+  const {students,regs}=maps()
+  const s=students.get(Number(studentId))
+  const r=regs.get(Number(studentId))
+  const e=ctx.event||{}
+  const wrap=modal(`<div class="p-6">
+    <div class="flex items-start justify-between gap-3 mb-4"><div class="flex items-center gap-3">${studentAvatar(s)}<div><h3 class="font-bold text-lg">📝 กรอกแบบสำรวจแทนนักเรียน</h3><p class="text-xs text-gray-400 mt-1">${esc(s?.full_name)} · ${esc(s?.student_code)} · ${esc(s?.main_room||'—')}</p></div></div><button type="button" data-close>✕</button></div>
+    <div class="mb-4 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">กำลังกรอกแทนนักเรียน กรุณาตรวจสอบข้อมูลกับนักเรียน/ผู้ปกครองให้ถูกต้องก่อนบันทึก</div>
+    <form id="admin-fill-form" class="grid sm:grid-cols-2 gap-4">
+      ${studentSurveyFieldsHtml(s, r, e, true, 'admin-fill')}
+      <button class="sm:col-span-2 camp-btn bg-teal-700 hover:bg-teal-800 text-white py-3" type="submit">💾 บันทึกข้อมูล</button>
+    </form></div>`, 'max-w-2xl')
+  const formEl=wrap.querySelector('#admin-fill-form')
+  formEl.addEventListener('submit', async event => {
+    event.preventDefault()
+    const btn=event.submitter
+    btn.disabled=true;btn.textContent='กำลังบันทึก...'
+    try {
+      const payload=Object.fromEntries(new FormData(event.currentTarget).entries())
+      await saveTerangganuRegistrationForStudent(studentId,payload)
+      toast('บันทึกข้อมูลแทนนักเรียนเรียบร้อยแล้ว')
+      wrap.remove()
+      await loadManager(true)
+    } catch (error) { toast(error.message||'บันทึกไม่สำเร็จ','error'); btn.disabled=false; btn.textContent='💾 บันทึกข้อมูล' }
+  })
+  wireOcrUploadBlock('admin-fill', formEl, wrap)
+  wireAddressCascade('admin-fill', r?.current_address, wrap)
+}
 
 function exportRegistrations(){
   const {students,participants,regs,payments}=maps();const bom='\ufeff';const headers=['รหัสนักเรียน','ชื่อไทย','คำนำหน้าอังกฤษ','ชื่ออังกฤษ','ห้อง','เพศ','ชื่อเล่น','เลขประจำตัวประชาชน','เลขหนังสือเดินทาง','วันหมดอายุ','วันเกิด','สัญชาติ','กรุ๊ปเลือด','เบอร์โทรศัพท์ผู้ปกครอง','ไซซ์เสื้อ','โรคประจำตัว','ที่อยู่','มัดจำ','ส่วนที่เหลือ']

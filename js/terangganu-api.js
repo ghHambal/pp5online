@@ -28,6 +28,12 @@ export async function saveMyTerangganuRegistration(payload) {
   return unwrap(data)
 }
 
+export async function saveTerangganuRegistrationForStudent(studentId, payload) {
+  const { data, error } = await supabase.rpc('save_terangganu_registration_for_student', { p_student_id: Number(studentId), p_payload: payload })
+  if (error) throw error
+  return unwrap(data)
+}
+
 export async function getMyTerangganuTeacherContext() {
   const { data, error } = await supabase.rpc('get_my_terangganu_teacher_context')
   if (error) throw error
