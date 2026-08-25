@@ -14,12 +14,12 @@ import {
   updateStudentEmail, getMyClassAssignments, getMyAllAssignments, submitAssignment, getClassSyllabus,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
-import { getSystemConfig } from './api.js'
+import { getSystemConfig, submitQrReissueRequest, notifyQrReissueManagers } from './api.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.504'
+import { APP_VERSION } from './version.js?v=10.22.505'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getMyActivityCertificates } from './council-api.js'
@@ -2977,9 +2977,42 @@ export async function renderStudentProfile(student, onLogout) {
     _openMyLeaveModal(student)
   })
 
-  // Bind click event to generate dynamic expiring QR Code
+  // แจ้งขอทำบัตร QR Code ใหม่ — ป๊อบอัพยืนยันครั้งเดียวไม่ต้องพิมพ์อะไร เข้าคิวในหน้า "พิมพ์ QR Code
+  // นักเรียน" ของแอดมิน/ครูที่ได้รับสิทธิ์ (แท็บ "คำขอใหม่") พร้อมส่ง push แจ้งทันที
   document.getElementById('btn-request-qr-card').addEventListener('click', () => {
-    window._openQrCardRequest?.()
+    document.getElementById('qr-request-confirm')?.remove()
+    const c = document.createElement('div')
+    c.id = 'qr-request-confirm'
+    c.className = 'fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/50'
+    c.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 text-center space-y-4 animate-fade">
+        <div class="text-4xl">🎫</div>
+        <p class="text-sm text-gray-700 leading-relaxed">ต้องการแจ้งขอทำบัตร QR Code ใหม่จริงๆ ใช่ไหม?<br><span class="text-xs text-gray-400">แอดมิน/ครูจะพิมพ์บัตรให้แล้วนัดให้มารับที่ห้องธุรการ</span></p>
+        <div class="flex gap-2">
+          <button id="qr-request-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="qr-request-ok" class="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold bg-pink-600 hover:bg-pink-700">ยืนยัน</button>
+        </div>
+      </div>`
+    document.body.appendChild(c)
+    c.addEventListener('click', e => { if (e.target === c) c.remove() })
+    c.querySelector('#qr-request-cancel').addEventListener('click', () => c.remove())
+    c.querySelector('#qr-request-ok').addEventListener('click', async () => {
+      const okBtn = c.querySelector('#qr-request-ok')
+      okBtn.disabled = true; okBtn.textContent = 'กำลังส่ง...'
+      try {
+        await submitQrReissueRequest({ studentId: student.id })
+        notifyQrReissueManagers({
+          title: '🎫 มีคำขอทำบัตร QR Code ใหม่',
+          body: `${student.full_name || 'นักเรียน'} (${student.student_code || ''}) แจ้งขอทำบัตร QR Code`,
+          url: 'teacher.html?view=student-qr-print&tab=requests',
+        })
+        c.remove()
+        showToast('แจ้งขอทำบัตรแล้ว รอแอดมิน/ครูดำเนินการนะครับ 🙏', 'success')
+      } catch (err) {
+        okBtn.disabled = false; okBtn.textContent = 'ยืนยัน'
+        showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
   })
 
   document.getElementById('btn-show-my-qr').addEventListener('click', async () => {

@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.504'
+import { APP_VERSION } from './version.js?v=10.22.505'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -43,6 +43,7 @@ import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
 let _isAlsoAdmin   = false
+let _isQrReissueManager = false // ครูที่แอดมินมอบสิทธิ์ให้เข้าหน้าพิมพ์/จัดการคำขอ QR Code ได้เหมือนแอดมิน
 let _hasAdminAccess = false
 let _positionPerms = {}   // { feature: boolean } สำหรับ position ของครูคนนี้
 let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
@@ -253,7 +254,7 @@ const ROUTES = {
   'student-qr-print': () => {
     const classId = window._pendingQRClassId || null
     window._pendingQRClassId = null
-    import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId))
+    import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(_teacher, classId, { isQrManager: _isQrReissueManager }))
   },
   'student-leave-scanner': () => {
     import('./teacher-views-leave-scanner.js?v=10.18.25').then(m => m.renderStudentLeaveScanner(_teacher))
@@ -642,6 +643,11 @@ async function _applyRoleMenus() {
     isShirtVoteManager = !!manager
   } catch { isShirtVoteManager = false }
   toggle('menu-shirt-vote-dashboard', !!(isSportsManager || isShirtVoteManager))
+  try {
+    const { data: qrManager } = await supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle()
+    _isQrReissueManager = !!qrManager
+  } catch { _isQrReissueManager = false }
+  toggle('menu-qr-reissue-requests', _isQrReissueManager)
 }
 
 // refresh profile หลัง save
@@ -3170,11 +3176,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   showPageLoader(false)
 
   // ถ้ามาจากหน้า register → เปิด setup form
-  const isSetup = new URLSearchParams(window.location.search).get('setup') === '1'
+  const initParams = new URLSearchParams(window.location.search)
+  const isSetup = initParams.get('setup') === '1'
+  const deepLinkView = initParams.get('view')
   if (isSetup) {
     navigate('setup')
     // ลบ ?setup=1 ออกจาก URL
     history.replaceState({}, '', 'teacher.html')
+  } else if (deepLinkView && ROUTES[deepLinkView]) {
+    // เปิดตรงเข้าหน้าที่ระบุผ่าน ?view=xxx (เผื่อ ?tab=yyy ให้หน้านั้นเลือกแท็บย่อยเอง) — ใช้ตอนกด
+    // ลิงก์ push notification ให้เด้งเข้าหน้านั้นทันทีแทนที่จะเปิดภาพรวมเฉยๆ แล้วต้องไปหาเมนูเอง
+    window._pendingQRTab = initParams.get('tab') || null
+    navigate(deepLinkView)
   } else {
     navigate('overview')
   }

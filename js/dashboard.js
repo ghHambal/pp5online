@@ -21,7 +21,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.504'
+import { APP_VERSION } from './version.js?v=10.22.505'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -835,9 +835,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('pp5:open-shirt-vote-settings', () => routes['shirt-vote-settings']())
   window.addEventListener('pp5:open-shirt-vote-dashboard', () => routes['shirt-vote-dashboard']())
 
-  // เปิดตรงเข้าหน้าที่ระบุผ่าน ?view=xxx ใน URL — ใช้ตอนกดลิงก์ push notification (เช่น มีคำขอทำบัตร
-  // QR Code ใหม่) ให้เด้งเข้าหน้านั้นทันทีแทนที่จะเปิดหน้าภาพรวมเฉยๆ แล้วต้องไปหาเมนูเอง
-  const deepLinkView = new URLSearchParams(location.search).get('view')
-  if (deepLinkView && routes[deepLinkView]) routes[deepLinkView]()
-  else await renderOverview()
+  // เปิดตรงเข้าหน้าที่ระบุผ่าน ?view=xxx ใน URL (เผื่อ ?tab=yyy ให้หน้านั้นเลือกแท็บย่อยเองด้วย)
+  // ใช้ตอนกดลิงก์ push notification ให้เด้งเข้าหน้านั้นทันทีแทนที่จะเปิดหน้าภาพรวมเฉยๆ แล้วต้องไปหาเมนูเอง
+  const deepLinkParams = new URLSearchParams(location.search)
+  const deepLinkView = deepLinkParams.get('view')
+  if (deepLinkView && routes[deepLinkView]) {
+    window._pendingQRTab = deepLinkParams.get('tab') || null
+    routes[deepLinkView]()
+  } else {
+    await renderOverview()
+  }
 })

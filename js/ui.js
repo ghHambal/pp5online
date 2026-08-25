@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.504'
+import { APP_VERSION } from './version.js?v=10.22.505'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -204,7 +204,6 @@ const FEEDBACK_CATEGORIES = [
   { value: 'suggestion',     label: '💡 ข้อเสนอแนะ' },
   { value: 'problem',        label: '🐞 แจ้งปัญหา / ข้อบกพร่อง' },
   { value: 'password_reset', label: '🔑 ขอรีเซ็ทรหัสผ่าน' },
-  { value: 'qr_card_request', label: '🎫 ขอทำบัตร QR Code' },
   { value: 'other',          label: '💬 อื่นๆ' },
 ]
 
@@ -231,9 +230,6 @@ export function injectFeedbackWidget({ profileId, role, name }) {
   window._openPasswordResetRequest = () => {
     _openFeedbackModal({ profileId, role, name, prefillCategory: 'password_reset' })
   }
-  window._openQrCardRequest = () => {
-    _openFeedbackModal({ profileId, role, name, prefillCategory: 'qr_card_request' })
-  }
 }
 
 const _FB_STATUS = {
@@ -245,7 +241,7 @@ const _FB_STATUS = {
     return                                     { icon: '⏳', text: 'รอรับเรื่อง',    cls: 'text-gray-500 bg-gray-50 border-gray-200' }
   },
 }
-const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', password_reset:'🔑', qr_card_request:'🎫', other:'💬' }
+const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', password_reset:'🔑', other:'💬' }
 
 function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory }) {
   document.getElementById('feedback-modal')?.remove()
@@ -351,64 +347,7 @@ function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCate
       })
     }
 
-    // แจ้งขอทำบัตร QR Code — ป๊อบอัพยืนยันก่อนส่งจริง เหมือนแพทเทิร์นรีเซ็ทรหัสผ่านด้านบน (ไม่ต้องพิมพ์อะไร)
-    // ยิง push notification แจ้งแอดมินทุกคนต่อเลย (ของเสริม ไม่บล็อกถ้าพลาด) พร้อมลิงก์เด้งเข้าหน้า
-    // Feedback ของแอดมินโดยตรง (dashboard.html?view=feedback-admin)
-    function openQrCardRequestConfirm() {
-      document.getElementById('fb-qrreq-confirm')?.remove()
-      const c = document.createElement('div')
-      c.id = 'fb-qrreq-confirm'
-      c.className = 'fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/50'
-      c.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 text-center space-y-4 animate-fade">
-          <div class="text-4xl">🎫</div>
-          <p class="text-sm text-gray-700 leading-relaxed">ต้องการแจ้งแอดมินให้ทำบัตร QR Code ให้คุณใหม่จริงๆ ใช่ไหม?<br><span class="text-xs text-gray-400">แอดมินจะพิมพ์บัตรให้แล้วนัดให้มารับที่ห้องธุรการ</span></p>
-          <div class="flex gap-2">
-            <button id="fb-qrreq-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
-            <button id="fb-qrreq-ok" class="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold" style="background:linear-gradient(135deg,#db2777,#9d174d);">ยืนยัน</button>
-          </div>
-        </div>`
-      document.body.appendChild(c)
-      c.addEventListener('click', e => { if (e.target === c) c.remove() })
-      c.querySelector('#fb-qrreq-cancel').addEventListener('click', () => c.remove())
-      c.querySelector('#fb-qrreq-ok').addEventListener('click', async () => {
-        const okBtn = c.querySelector('#fb-qrreq-ok')
-        setButtonLoading(okBtn, true)
-        try {
-          const { submitAppFeedback, notifyAdminsNewFeedback } = await import('./api.js')
-          await submitAppFeedback({
-            profileId, senderRole: role, senderName: name, category: 'qr_card_request',
-            message: 'นักเรียนแจ้งขอให้แอดมินทำบัตร QR Code ใหม่ให้',
-          })
-          notifyAdminsNewFeedback({
-            title: '🎫 มีคำขอทำบัตร QR Code ใหม่',
-            body: `${name || 'นักเรียน'} แจ้งขอทำบัตร QR Code`,
-            url: 'dashboard.html?view=feedback-admin',
-          })
-          c.remove()
-          showToast('แจ้งแอดมินแล้ว รอแอดมินดำเนินการนะครับ 🙏', 'success')
-          setTab('history')
-        } catch (err) {
-          setButtonLoading(okBtn, false, 'ยืนยัน')
-          if (err?.code === 'FEEDBACK_LIMIT_REACHED') showToast(`ส่งครบโควต้าของเดือนนี้แล้ว (${err.limit} ครั้ง/เดือน)`, 'warning')
-          else showToast('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
-        }
-      })
-    }
-
     function renderDynamic() {
-      if (category === 'qr_card_request') {
-        dynEl.innerHTML = `
-          <div class="space-y-3">
-            <div class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 leading-relaxed">
-              🎫 ระบบจะแจ้งแอดมินให้พิมพ์บัตร QR Code ใหม่ให้คุณ — แอดมินจะติดต่อนัดวันมารับอีกครั้ง
-            </div>
-            <button id="fb-qrreq-btn" class="w-full py-3 rounded-2xl text-white font-bold text-sm shadow-lg transition active:scale-[0.98]"
-              style="background:linear-gradient(135deg,#db2777,#9d174d);">🎫 แจ้งแอดมินขอทำบัตร QR Code</button>
-          </div>`
-        dynEl.querySelector('#fb-qrreq-btn').addEventListener('click', openQrCardRequestConfirm)
-        return
-      }
       if (category === 'password_reset') {
         dynEl.innerHTML = `
           <div class="space-y-3">
@@ -800,6 +739,10 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.505': [
+    '🎫 ปรับระบบ "แจ้งขอทำบัตร QR Code" ใหม่ทั้งหมด — เดิมฝากไว้ในระบบความคิดเห็นทั่วไป ย้ายมาต่อยอดกับระบบ "พิมพ์ QR Code นักเรียน" ที่มีอยู่แล้วแทน (หน้าเดียวกับที่ครู/แอดมินใช้พิมพ์บัตรอยู่ปกติ) เพิ่มแท็บ "🙋 คำขอใหม่" แสดงคำขอจากนักเรียน กดทำเสร็จแล้วพิมพ์บัตร+บันทึกประวัติให้อัตโนมัติในขั้นตอนเดียว พร้อมทำเครื่องหมาย "มารับแล้ว/ชำระค่าปรับแล้ว" แยกกัน',
+    '👥 เพิ่มหน้า "มอบสิทธิ์ครูจัดการ QR Code" ให้แอดมินมอบสิทธิ์ครูคนไหนก็ได้ให้เข้าหน้านี้และรับ Push Notification คำขอใหม่ได้เหมือนแอดมิน (เมนู "พิมพ์/คำขอ QR Code" จะโผล่ในแถบเมนูของครูที่ได้รับสิทธิ์)',
+  ],
   '10.22.504': [
     '📝 ระบบลูกเสือ (TERANGGANU): แอดมิน/ครูผู้รับผิดชอบเปิดฟอร์มกรอกแบบสำรวจแทนนักเรียนที่เข้าไม่ถึงระบบเองได้แล้ว (ปุ่ม "กรอกแทน"/"แก้ไข" ในแท็บนักเรียน) แก้ปัญหานักเรียน ม.1/ม.2 บางส่วนทำให้การสำรวจล่าช้า',
     '🔐 ระบบลูกเสือ (TERANGGANU): เพิ่มบทบาท "ผู้ช่วยกรอกข้อมูลแทนนักเรียน" แยกจาก "ผู้รับผิดชอบ" — มอบหมายได้จากแท็บผู้รับผิดชอบ ครูที่ได้รับมอบหมายเห็นแค่รายชื่อนักเรียน+ปุ่มกรอกแทนเท่านั้น ไม่เห็นตั้งค่า/การชำระเงิน/ข้อมูลอื่นของระบบค่าย',

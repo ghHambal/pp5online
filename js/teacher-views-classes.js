@@ -22,6 +22,8 @@ import {
   logQrReissue, getQrReissueLogs, updateQrReissueLog, deleteQrReissueLog,
   getClassScoreSummary,
   getAttendanceByDate,
+  getQrReissueRequests, markQrReissueRequestPrinted, setQrReissueRequestStatus, deleteQrReissueRequest,
+  getQrReissueManagers, grantQrReissueManager, revokeQrReissueManager, findTeacherForQrManagerGrant,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -5518,7 +5520,8 @@ async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts
   printArea.remove()
 }
 
-export async function renderStudentQRPrint(teacher, classId = null) {
+export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
+  const isQrManager = !teacher || !!opts.isQrManager
   setActiveNav('student-qr-print')
   setTitle('พิมพ์ QR Code นักเรียน')
   setContent(`
@@ -5680,6 +5683,12 @@ export async function renderStudentQRPrint(teacher, classId = null) {
               class="px-4 py-2 rounded-xl text-sm font-bold transition text-gray-500 hover:text-gray-700">
               🧾 ประวัติ
             </button>
+            ${isQrManager ? `
+            <button type="button" id="qr-page-tab-requests" data-tab="requests"
+              class="px-4 py-2 rounded-xl text-sm font-bold transition text-gray-500 hover:text-gray-700 relative">
+              🙋 คำขอใหม่
+              <span id="qr-requests-badge" class="hidden absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center"></span>
+            </button>` : ''}
           </div>
 
           <div id="qr-tab-print" class="space-y-6">
@@ -5813,6 +5822,7 @@ export async function renderStudentQRPrint(teacher, classId = null) {
           </div>
 
           <div id="qr-tab-history" class="hidden"></div>
+          ${isQrManager ? `<div id="qr-tab-requests" class="hidden"></div>` : ''}
         </div>
       `)
 
@@ -5834,26 +5844,39 @@ export async function renderStudentQRPrint(teacher, classId = null) {
         reissueReason = reissueReasonSelect.value
       })
 
-      // แถบสลับ พิมพ์ QR / ประวัติ
-      const tabPrintBtn = document.getElementById('qr-page-tab-print')
-      const tabHistoryBtn = document.getElementById('qr-page-tab-history')
-      const tabPrintPanel = document.getElementById('qr-tab-print')
-      const tabHistoryPanel = document.getElementById('qr-tab-history')
+      // แถบสลับ พิมพ์ QR / ประวัติ / คำขอใหม่ (แท็บสุดท้ายเห็นเฉพาะแอดมิน/ครูที่ได้รับสิทธิ์)
       const _activeTabClass = 'px-4 py-2 rounded-xl text-sm font-bold transition bg-white text-indigo-600 shadow-sm'
-      const _inactiveTabClass = 'px-4 py-2 rounded-xl text-sm font-bold transition text-gray-500 hover:text-gray-700'
-      tabPrintBtn.addEventListener('click', () => {
-        tabPrintBtn.className = _activeTabClass
-        tabHistoryBtn.className = _inactiveTabClass
-        tabPrintPanel.classList.remove('hidden')
-        tabHistoryPanel.classList.add('hidden')
-      })
-      tabHistoryBtn.addEventListener('click', () => {
-        tabHistoryBtn.className = _activeTabClass
-        tabPrintBtn.className = _inactiveTabClass
-        tabHistoryPanel.classList.remove('hidden')
-        tabPrintPanel.classList.add('hidden')
-        _initReissueHistoryPanel(tabHistoryPanel, { cols, showCode, showSeat, showRoom, qrReissueFee, isAdmin: !teacher })
-      })
+      const _inactiveTabClass = 'px-4 py-2 rounded-xl text-sm font-bold transition text-gray-500 hover:text-gray-700 relative'
+      const _tabs = {
+        print:    { btn: document.getElementById('qr-page-tab-print'), panel: document.getElementById('qr-tab-print') },
+        history:  { btn: document.getElementById('qr-page-tab-history'), panel: document.getElementById('qr-tab-history') },
+        requests: { btn: document.getElementById('qr-page-tab-requests'), panel: document.getElementById('qr-tab-requests') },
+      }
+      const _selectTab = (name) => {
+        Object.entries(_tabs).forEach(([key, t]) => {
+          if (!t.btn || !t.panel) return
+          t.btn.className = key === name ? _activeTabClass : _inactiveTabClass
+          t.panel.classList.toggle('hidden', key !== name)
+        })
+        if (name === 'history') _initReissueHistoryPanel(_tabs.history.panel, { cols, showCode, showSeat, showRoom, qrReissueFee, isAdmin: !teacher })
+        if (name === 'requests' && isQrManager) _initQrRequestsPanel(_tabs.requests.panel, { teacher, cols, showCode, showSeat, showRoom })
+      }
+      _tabs.print.btn.addEventListener('click', () => _selectTab('print'))
+      _tabs.history.btn.addEventListener('click', () => _selectTab('history'))
+      _tabs.requests.btn?.addEventListener('click', () => _selectTab('requests'))
+
+      // เด้งเข้าแท็บ "คำขอใหม่" อัตโนมัติถ้ามาจากลิงก์ push notification (?view=student-qr-print&tab=requests)
+      if (isQrManager && window._pendingQRTab === 'requests') {
+        window._pendingQRTab = null
+        _selectTab('requests')
+      }
+      if (isQrManager) {
+        getQrReissueRequests({ limit: 500 }).then(rows => {
+          const pending = rows.filter(r => !r.printed_at).length
+          const badge = document.getElementById('qr-requests-badge')
+          if (badge && pending > 0) { badge.textContent = String(pending); badge.classList.remove('hidden') }
+        }).catch(() => {})
+      }
 
       // Bind Settings Card Events
       individualSearch.addEventListener('input', () => _renderIndividualResults(individualSearch.value.trim()))
@@ -6662,4 +6685,211 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
   })
 
   _loadReissueHistory()
+}
+
+// แท็บ "คำขอใหม่" — คำขอที่นักเรียนแจ้งความจำนงเองจากปุ่มในหน้าโปรไฟล์ (แยกจาก "ประวัติ" ที่เป็น
+// รายการที่ครู/แอดมินบันทึกไว้แล้ว) เห็นเฉพาะแอดมิน/ครูที่ได้รับสิทธิ์ (isQrManager) เท่านั้น
+async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, showSeat, showRoom }) {
+  if (!containerEl || containerEl.dataset.loaded) return
+  containerEl.dataset.loaded = '1'
+  const isRealAdmin = !teacher
+
+  containerEl.innerHTML = `
+    <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-3">
+      <div>
+        <h4 class="font-bold text-gray-800 text-sm">🙋 คำขอทำบัตร QR Code ใหม่จากนักเรียน</h4>
+        <p class="text-xs text-gray-400 mt-0.5">กด "ทำเสร็จแล้ว" เพื่อพิมพ์บัตรและบันทึกเข้าประวัติ แล้วทำเครื่องหมายเมื่อนักเรียนมารับ/ชำระค่าปรับ</p>
+      </div>
+      <input id="qr-requests-search" type="search"
+        class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition"
+        placeholder="ค้นหาชื่อ รหัส หรือห้อง..." />
+      <div id="qr-requests-list" class="bg-gray-50/50 rounded-2xl px-3">
+        <p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>
+      </div>
+    </div>
+    ${isRealAdmin ? `
+    <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-3 mt-6">
+      <div>
+        <h4 class="font-bold text-gray-800 text-sm">👥 มอบสิทธิ์ครูจัดการหน้านี้</h4>
+        <p class="text-xs text-gray-400 mt-0.5">ครูที่ได้รับสิทธิ์จะเห็นเมนู "พิมพ์/คำขอ QR Code" เหมือนแอดมิน และได้รับแจ้งเตือนคำขอใหม่ด้วย</p>
+      </div>
+      <div class="flex gap-2">
+        <input id="qr-manager-search" type="search"
+          class="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition"
+          placeholder="ค้นหาชื่อหรือรหัสครู..." />
+      </div>
+      <div id="qr-manager-search-results" class="hidden border border-gray-100 rounded-2xl overflow-hidden divide-y divide-gray-100"></div>
+      <div id="qr-manager-list" class="pt-2 border-t border-gray-100"><p class="text-xs text-gray-400 text-center py-4">กำลังโหลด...</p></div>
+    </div>` : ''}
+  `
+
+  // ── รายการคำขอ ──────────────────────────────────────────────────────────────
+  let requests = []
+  let requestsSearch = ''
+
+  const _renderRequestsList = () => {
+    const listEl = containerEl.querySelector('#qr-requests-list')
+    if (!listEl) return
+    const q = requestsSearch.trim().toLowerCase()
+    const filtered = !q ? requests : requests.filter(r => {
+      const s = r.students || {}
+      return String(s.full_name || '').toLowerCase().includes(q) ||
+        String(s.student_code || '').toLowerCase().includes(q) ||
+        String(s.main_room || '').toLowerCase().includes(q)
+    })
+    const pending = filtered.filter(r => !r.printed_at)
+    const done = filtered.filter(r => r.printed_at)
+
+    const card = (r, isPending) => `
+      <div class="py-3 ${isPending ? 'bg-amber-50/60 -mx-3 px-3 rounded-xl' : ''}">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="min-w-0">
+            <p class="font-bold text-gray-700 text-xs truncate">${_htmlEsc(r.students?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(r.students?.student_code || '-')})</span></p>
+            <p class="text-gray-400 text-[11px] mt-0.5">ห้อง ${_htmlEsc(r.students?.main_room || '-')} · แจ้งเมื่อ ${new Date(r.requested_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+          ${!isPending ? `<span class="text-[11px] font-bold text-emerald-600 flex-shrink-0">✅ ทำเสร็จแล้ว</span>` : ''}
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-2">
+          ${isPending ? `<button type="button" data-action="fulfill" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px]">🖨️ ทำเสร็จแล้ว (พิมพ์บัตร)</button>` : ''}
+          <button type="button" data-action="toggle-pickup" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg font-bold text-[11px] border ${r.picked_up_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}">🤝 ${r.picked_up_at ? 'มารับแล้ว' : 'มารับหรือยัง'}</button>
+          <button type="button" data-action="toggle-fine" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg font-bold text-[11px] border ${r.fine_paid_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}">💰 ${r.fine_paid_at ? 'ชำระค่าปรับแล้ว' : 'ชำระค่าปรับหรือยัง'}</button>
+          <button type="button" data-action="delete" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]">🗑️ ลบ</button>
+        </div>
+      </div>`
+
+    listEl.innerHTML = !filtered.length ? `
+      <p class="text-xs text-gray-400 text-center py-6">${requests.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีคำขอจากนักเรียน'}</p>
+    ` : `<div class="divide-y divide-gray-100">${[...pending, ...done].map(r => card(r, !r.printed_at)).join('')}</div>`
+  }
+
+  const _loadRequests = async () => {
+    const listEl = containerEl.querySelector('#qr-requests-list')
+    if (listEl) listEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>`
+    try {
+      requests = await getQrReissueRequests({ limit: 500 })
+      _renderRequestsList()
+    } catch (err) {
+      console.error('Failed to load QR reissue requests:', err)
+      if (listEl) listEl.innerHTML = `<p class="text-xs text-red-400 text-center py-6">โหลดรายการไม่สำเร็จ</p>`
+    }
+  }
+
+  const _fulfillRequest = async (id) => {
+    const req = requests.find(r => r.id === id)
+    if (!req?.students?.id) { showToast('ไม่พบข้อมูลนักเรียนสำหรับคำขอนี้', 'warning'); return }
+    try {
+      await markQrReissueRequestPrinted({ requestId: id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason: 'ทำหาย' })
+      await _executePrint([{
+        className: 'รายบุคคล', countLabel: '1 ใบ',
+        students: [{ id: req.students.id, full_name: req.students.full_name, student_code: req.students.student_code, seat_no: null, _roomName: req.students.main_room }],
+        hideHeader: true,
+      }], cols, showCode, showSeat, showRoom, [])
+      showToast('ทำเสร็จแล้ว บันทึกเข้าประวัติแล้ว ✅', 'success')
+      await _loadRequests()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  }
+
+  const _toggleStatus = async (id, field) => {
+    const req = requests.find(r => r.id === id)
+    const next = req?.[field] ? null : new Date().toISOString()
+    try {
+      await setQrReissueRequestStatus(id, field, next)
+      req[field] = next
+      _renderRequestsList()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  }
+
+  const _deleteRequest = async (id) => {
+    if (!confirm('ลบคำขอนี้?')) return
+    try {
+      await deleteQrReissueRequest(id)
+      requests = requests.filter(r => r.id !== id)
+      _renderRequestsList()
+      showToast('ลบแล้ว', 'success')
+    } catch (err) {
+      showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    }
+  }
+
+  containerEl.querySelector('#qr-requests-search')?.addEventListener('input', e => {
+    requestsSearch = e.target.value
+    _renderRequestsList()
+  })
+  containerEl.querySelector('#qr-requests-list')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]')
+    if (!btn) return
+    const id = parseInt(btn.dataset.id)
+    if (btn.dataset.action === 'fulfill') _fulfillRequest(id)
+    else if (btn.dataset.action === 'toggle-pickup') _toggleStatus(id, 'picked_up_at')
+    else if (btn.dataset.action === 'toggle-fine') _toggleStatus(id, 'fine_paid_at')
+    else if (btn.dataset.action === 'delete') _deleteRequest(id)
+  })
+
+  _loadRequests()
+
+  // ── มอบสิทธิ์ครู (เฉพาะแอดมินจริง) ───────────────────────────────────────────
+  if (!isRealAdmin) return
+
+  let managers = []
+  const _renderManagerList = () => {
+    const el = containerEl.querySelector('#qr-manager-list')
+    if (!el) return
+    el.innerHTML = !managers.length ? `
+      <p class="text-xs text-gray-400 text-center py-4">ยังไม่มีครูที่ได้รับสิทธิ์</p>
+    ` : managers.map(m => `
+      <div class="flex items-center justify-between gap-2 py-2 text-xs">
+        <span class="font-semibold text-gray-700">${_htmlEsc(m.teachers?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(m.teachers?.teacher_code || '-')})</span></span>
+        <button type="button" data-revoke="${m.profile_id}" class="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]">ยกเลิกสิทธิ์</button>
+      </div>`).join('')
+  }
+  const _loadManagers = async () => {
+    try { managers = await getQrReissueManagers(); _renderManagerList() }
+    catch { const el = containerEl.querySelector('#qr-manager-list'); if (el) el.innerHTML = `<p class="text-xs text-red-400 text-center py-4">โหลดไม่สำเร็จ</p>` }
+  }
+  containerEl.querySelector('#qr-manager-list')?.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-revoke]')
+    if (!btn) return
+    try {
+      await revokeQrReissueManager(btn.dataset.revoke)
+      await _loadManagers()
+      showToast('ยกเลิกสิทธิ์แล้ว', 'success')
+    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  })
+
+  const managerSearch = containerEl.querySelector('#qr-manager-search')
+  const managerResults = containerEl.querySelector('#qr-manager-search-results')
+  let managerSearchTimer = null
+  managerSearch?.addEventListener('input', () => {
+    clearTimeout(managerSearchTimer)
+    const q = managerSearch.value.trim()
+    if (!q) { managerResults.classList.add('hidden'); managerResults.innerHTML = ''; return }
+    managerSearchTimer = setTimeout(async () => {
+      try {
+        const found = await findTeacherForQrManagerGrant(q)
+        managerResults.classList.toggle('hidden', !found.length)
+        managerResults.innerHTML = found.map(t => `
+          <button type="button" data-grant="${t.profile_id}" data-name="${_htmlEsc(t.full_name)}" class="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-gray-50 text-left">
+            <span class="font-semibold text-gray-700">${_htmlEsc(t.full_name)} <span class="font-normal text-gray-400">(${_htmlEsc(t.teacher_code || '-')})</span></span>
+            <span class="text-indigo-600 font-bold">+ มอบสิทธิ์</span>
+          </button>`).join('')
+      } catch { /* เงียบไว้ */ }
+    }, 300)
+  })
+  managerResults?.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-grant]')
+    if (!btn) return
+    try {
+      await grantQrReissueManager(btn.dataset.grant)
+      managerSearch.value = ''
+      managerResults.classList.add('hidden'); managerResults.innerHTML = ''
+      await _loadManagers()
+      showToast(`มอบสิทธิ์ให้ ${btn.dataset.name} แล้ว ✅`, 'success')
+    } catch (err) { showToast('มอบสิทธิ์ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  })
+
+  _loadManagers()
 }

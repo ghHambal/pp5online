@@ -631,15 +631,6 @@ export async function sendFeedbackMessage({ feedbackId, authorRole, message }) {
   }
 }
 
-// อัปเดตสถานะเฉพาะทางของคำขอทำบัตร QR Code (category='qr_card_request') — พิมพ์เสร็จ/มารับแล้ว/
-// ชำระค่าปรับแล้ว แต่ละอันเป็น timestamp (null = ยังไม่ทำ) ไม่ใช่ boolean เผื่ออยากรู้ว่าทำเมื่อไหร่ทีหลัง
-const QR_STATUS_FIELDS = ['qr_printed_at', 'qr_picked_up_at', 'qr_fine_paid_at']
-export async function setFeedbackQrStatus(id, field, value) {
-  if (!QR_STATUS_FIELDS.includes(field)) throw new Error('ฟิลด์สถานะไม่ถูกต้อง')
-  const { error } = await supabase.from('app_feedback').update({ [field]: value }).eq('id', id)
-  if (error) throw error
-}
-
 // รายชื่อ profile_id ของแอดมินทั้งหมด — ใช้ยิง push notification หาแอดมิน (เช่น มีคำขอทำบัตร QR ใหม่)
 // ผ่านฟังก์ชัน get_admin_profile_ids() (SECURITY DEFINER คืนแค่ uuid ไม่รั่วข้อมูลอื่น)
 export async function getAdminProfileIds() {
@@ -648,12 +639,101 @@ export async function getAdminProfileIds() {
   return data ?? []
 }
 
-// ยิง push แจ้งแอดมินทุกคน (ของเสริม ไม่บล็อกการทำงานหลักถ้าพลาด — เช่น แอดมินยังไม่เคยกดอนุญาต
-// แจ้งเตือน หรือฟังก์ชัน get_admin_profile_ids ยังไม่ถูกติดตั้ง) reuse Edge Function 'send-push' เดิม
-export async function notifyAdminsNewFeedback({ title, body, url }) {
-  const profileIds = await getAdminProfileIds().catch(() => [])
-  if (!profileIds.length) return
+// ยิง push แจ้งกลุ่มเป้าหมาย (ของเสริม ไม่บล็อกการทำงานหลักถ้าพลาด — เช่น ยังไม่เคยกดอนุญาตแจ้งเตือน)
+// reuse Edge Function 'send-push' เดิม
+async function _notifyProfiles(profileIds, { title, body, url }) {
+  if (!profileIds?.length) return
   await supabase.functions.invoke('send-push', { body: { title, body, url, profileIds } }).catch(() => {})
+}
+
+// ─── คำขอทำบัตร QR Code ใหม่ (qr_reissue_requests) — นักเรียนแจ้งความจำนงเอง แยกจาก
+// qr_reissue_logs (ประวัติที่ครู/แอดมินบันทึกหลังทำเสร็จจริงแล้ว) — พอแอดมิน/ครูที่ได้รับสิทธิ์
+// กดทำเสร็จ ระบบจะสร้างแถวใน qr_reissue_logs จริงให้ด้วย (ดู markQrReissueRequestPrinted) เพื่อให้
+// ประวัติ/ใบเสร็จของสองระบบสอดคล้องกัน ไม่แยกกันเป็นข้อมูลคนละชุด
+export async function submitQrReissueRequest({ studentId }) {
+  const { error } = await supabase.from('qr_reissue_requests').insert({ student_id: studentId })
+  if (error) throw error
+}
+
+export async function getQrReissueRequests({ limit = 200 } = {}) {
+  const { data, error } = await supabase.from('qr_reissue_requests')
+    .select('id, student_id, requested_at, printed_at, picked_up_at, fine_paid_at, reissue_log_id, students(id, student_code, full_name, main_room)')
+    .order('requested_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data ?? []
+}
+
+const QR_REQUEST_STATUS_FIELDS = ['picked_up_at', 'fine_paid_at']
+export async function setQrReissueRequestStatus(id, field, value) {
+  if (!QR_REQUEST_STATUS_FIELDS.includes(field)) throw new Error('ฟิลด์สถานะไม่ถูกต้อง')
+  const { error } = await supabase.from('qr_reissue_requests').update({ [field]: value }).eq('id', id)
+  if (error) throw error
+}
+
+// กด "ทำเสร็จแล้ว" — สร้างประวัติจริงใน qr_reissue_logs (ได้เลขที่ใบเสร็จ) แล้วผูกกลับมาที่คำขอนี้
+export async function markQrReissueRequestPrinted({ requestId, studentId, teacherId, reason = 'ทำหาย' }) {
+  const log = await logQrReissue({ studentId, teacherId, reason, note: 'ออกจากคำขอที่นักเรียนแจ้งเอง' })
+  const { error } = await supabase.from('qr_reissue_requests')
+    .update({ printed_at: new Date().toISOString(), reissue_log_id: log.id })
+    .eq('id', requestId)
+  if (error) throw error
+  return log
+}
+
+export async function deleteQrReissueRequest(id) {
+  const { error } = await supabase.from('qr_reissue_requests').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─── มอบสิทธิ์ครูให้เข้าหน้า "พิมพ์ QR Code" + จัดการคำขอ ได้เหมือนแอดมิน (qr_reissue_managers) ──
+export async function getQrReissueManagers() {
+  const { data, error } = await supabase.from('qr_reissue_managers')
+    .select('profile_id, created_at, teachers:profile_id(id, full_name, teacher_code)')
+    .order('created_at')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function isQrReissueManager(profileId) {
+  if (!profileId) return false
+  const { data, error } = await supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', profileId).maybeSingle()
+  if (error) return false
+  return !!data
+}
+
+// ค้นครูด้วยรหัส/ชื่อ (เฉพาะที่มีบัญชีล็อกอินแล้ว มี profile_id) ใช้ตอนแอดมินมอบสิทธิ์จัดการ QR Code
+export async function findTeacherForQrManagerGrant(query) {
+  const q = String(query ?? '').trim()
+  if (!q) return []
+  const { data, error } = await supabase.from('teachers')
+    .select('id, full_name, teacher_code, image_url, profile_id')
+    .not('profile_id', 'is', null)
+    .or(`teacher_code.ilike.%${q}%,full_name.ilike.%${q}%`)
+    .limit(10)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function grantQrReissueManager(profileId) {
+  const { data: { user } } = await supabase.auth.getUser()
+  const { error } = await supabase.from('qr_reissue_managers').insert({ profile_id: profileId, granted_by: user?.id ?? null })
+  if (error) throw error
+}
+
+export async function revokeQrReissueManager(profileId) {
+  const { error } = await supabase.from('qr_reissue_managers').delete().eq('profile_id', profileId)
+  if (error) throw error
+}
+
+// แจ้งเตือนแอดมินทุกคน + ครูที่ได้รับสิทธิ์จัดการ QR Code ทั้งหมด (ของเสริม ไม่บล็อกงานหลักถ้าพลาด)
+export async function notifyQrReissueManagers({ title, body, url }) {
+  const [adminIds, managers] = await Promise.all([
+    getAdminProfileIds().catch(() => []),
+    supabase.from('qr_reissue_managers').select('profile_id').then(r => r.data ?? []).catch(() => []),
+  ])
+  const profileIds = [...new Set([...adminIds, ...managers.map(m => m.profile_id)])]
+  await _notifyProfiles(profileIds, { title, body, url })
 }
 
 export async function getStudentByCode(studentCode) {

@@ -28,7 +28,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getAnnouncementComments, deleteAnnouncementComment,
          getHouseGroups, updateHouseGroupTeacher, assignStudentsHouseColor,
          autoEnrollStudentsByRoom,
-         getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback, setFeedbackQrStatus,
+         getAllAppFeedback, setFeedbackRead, setFeedbackCategory, setFeedbackStatusReply, deleteAppFeedback,
          advisorResetStudentPassword, markStudentPasswordResetNotice,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
@@ -11207,10 +11207,9 @@ export async function renderFeedbackAdmin() {
     suggestion:     '💡 ข้อเสนอแนะ',
     problem:        '🐞 แจ้งปัญหา / ข้อบกพร่อง',
     password_reset: '🔑 ขอรีเซ็ทรหัสผ่าน',
-    qr_card_request: '🎫 ขอทำบัตร QR Code',
     other:          '💬 อื่นๆ',
   }
-  const ACTIONABLE_CATS = ['suggestion', 'problem', 'password_reset', 'qr_card_request']
+  const ACTIONABLE_CATS = ['suggestion', 'problem', 'password_reset']
   const STATUS_OPTS = [
     { value: 'pending',     label: '🕐 รอดำเนินการ',  cls: 'bg-gray-100 text-gray-600' },
     { value: 'in_progress', label: '🔧 กำลังแก้ไข',   cls: 'bg-amber-100 text-amber-700' },
@@ -11243,7 +11242,6 @@ export async function renderFeedbackAdmin() {
         <option value="suggestion">ข้อเสนอแนะ</option>
         <option value="problem">แจ้งปัญหา</option>
         <option value="password_reset">ขอรีเซ็ทรหัสผ่าน</option>
-        <option value="qr_card_request">ขอทำบัตร QR Code</option>
         <option value="other">อื่นๆ</option>
       </select>
       <select id="fb-filter-read" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none">
@@ -11355,15 +11353,6 @@ export async function renderFeedbackAdmin() {
                 🔑 รีเซ็ทรหัสผ่าน (= รหัสนักเรียน ${_esc(f.student.student_code || '')})
               </button>`
         ) : ''}
-        ${f.category === 'qr_card_request' ? `
-        <div class="mt-3 pt-3 border-t border-gray-100">
-          <p class="text-[11px] font-semibold text-gray-500 mb-2">🎫 สถานะทำบัตร QR Code</p>
-          <div class="grid grid-cols-3 gap-2">
-            <button class="fb-qr-toggle border rounded-xl py-2 text-[11px] font-semibold transition ${f.qr_printed_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}" data-id="${f.id}" data-field="qr_printed_at">🖨️ ${f.qr_printed_at ? 'ทำเสร็จแล้ว' : 'ทำเสร็จหรือยัง'}</button>
-            <button class="fb-qr-toggle border rounded-xl py-2 text-[11px] font-semibold transition ${f.qr_picked_up_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}" data-id="${f.id}" data-field="qr_picked_up_at">🤝 ${f.qr_picked_up_at ? 'มารับแล้ว' : 'มารับหรือยัง'}</button>
-            <button class="fb-qr-toggle border rounded-xl py-2 text-[11px] font-semibold transition ${f.qr_fine_paid_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}" data-id="${f.id}" data-field="qr_fine_paid_at">💰 ${f.qr_fine_paid_at ? 'ชำระค่าปรับแล้ว' : 'ชำระค่าปรับหรือยัง'}</button>
-          </div>
-        </div>` : ''}
         <div class="mt-3 flex items-center gap-2">
           <button class="fb-toggle-read px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition" data-id="${f.id}" data-read="${f.is_read}">
             ${f.is_read ? '↩️ ทำเป็นยังไม่อ่าน' : '✓ ทำเครื่องหมายว่าอ่านแล้ว'}
@@ -11409,19 +11398,6 @@ export async function renderFeedbackAdmin() {
       } catch { showToast('เปลี่ยนหมวดหมู่ไม่สำเร็จ', 'error'); sel.disabled = false; sel.value = oldCat; return }
       if (item) item.category = newCat
       showToast('เปลี่ยนหมวดหมู่แล้ว — ตอนนี้สามารถตอบกลับ/อัปเดตสถานะได้แล้ว', 'success')
-      _render()
-    }))
-
-    box.querySelectorAll('.fb-qr-toggle').forEach(btn => btn.addEventListener('click', async () => {
-      const id    = parseInt(btn.dataset.id)
-      const field = btn.dataset.field
-      const item  = _all.find(x => x.id === id)
-      const next  = item?.[field] ? null : new Date().toISOString()
-      btn.disabled = true
-      try {
-        await setFeedbackQrStatus(id, field, next)
-      } catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled = false; return }
-      if (item) item[field] = next
       _render()
     }))
 
