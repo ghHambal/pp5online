@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.519'
+import { APP_VERSION } from './version.js?v=10.22.521'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -598,6 +598,10 @@ async function _applyRoleMenus() {
   const hasReading   = _teacher?.dept === 'THAI'
   let hasPrayer = _homeroomRooms.some(r => r.category === 'ศาสนา')
 
+  // ห่อด้วย Promise.resolve() เสมอ — ผลลัพธ์จาก .maybeSingle()/.rpc() ของ supabase-js เวอร์ชันนี้
+  // ไม่ได้มีเมธอด .catch() ให้เชนต่อได้ตรงๆ เสมอไป (เจอจริง TypeError "...catch is not a function"
+  // ทำหน้าค้างทั้งหน้าตอนล็อกอิน) การห่อแบบนี้รับประกันว่าได้ Promise แท้ๆ ที่มี .catch() แน่นอน
+  const safe = (p, fallback) => Promise.resolve(p).catch(() => fallback)
   const [
     cfg,
     profileRes,
@@ -606,12 +610,12 @@ async function _applyRoleMenus() {
     activeEventRes,
     qrManagerRes,
   ] = await Promise.all([
-    getSystemConfig().catch(() => ({})),
-    _teacher ? supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle().catch(() => ({ data: null })) : Promise.resolve({ data: null }),
-    supabase.rpc('get_terangganu_access').catch(() => ({ data: null })),
-    supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true).catch(() => ({ data: [] })),
-    supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle().catch(() => ({ data: null })),
-    supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle().catch(() => ({ data: null })),
+    safe(getSystemConfig(), {}),
+    _teacher ? safe(supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle(), { data: null }) : Promise.resolve({ data: null }),
+    safe(supabase.rpc('get_terangganu_access'), { data: null }),
+    safe(supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true), { data: [] }),
+    safe(supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle(), { data: null }),
+    safe(supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle(), { data: null }),
   ])
 
   if (!hasPrayer && _teacher) {
