@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.517'
+import { APP_VERSION } from './version.js?v=10.22.518'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -270,7 +270,16 @@ const ROUTES = {
 }
 
 let _currentView = 'overview'
-function navigate(view) {
+async function navigate(view) {
+  // กันคลิกช่วงที่ _teacher ยังโหลดไม่เสร็จ/หลุดชั่วคราว (เจอจริง: กด "ห้องเรียน" จากการ์ดหน้าภาพรวม
+  // เร็วๆ แล้วเจอ "ไม่พบข้อมูลครู" เพราะ renderMyClasses อ่าน _teacher เป็น null) — ทางลัดออกทันทีถ้า
+  // โหลดแล้ว ไม่กระทบความเร็วการนำทางปกติ
+  if (!_teacher?.id) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.id) _teacher = (await getMyTeacherProfile(user.id).catch(() => null)) ?? _teacher
+    } catch {}
+  }
   document.body.classList.remove('sc-fullscreen') // กันค้างโหมดเต็มจอ Smart Classroom เวลาสลับเมนูด้วยทางอื่น
   if (window._scClockInterval) { clearInterval(window._scClockInterval); window._scClockInterval = null }
   if (window._scQuizPollInterval) { clearInterval(window._scQuizPollInterval); window._scQuizPollInterval = null }
