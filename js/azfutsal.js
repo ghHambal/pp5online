@@ -442,10 +442,15 @@ async function loadAll() {
   }
 
   // สถานะการชำระเงินเปิดอ่านสาธารณะ (ไม่มีข้อมูลอ่อนไหว) เพื่อให้แท็บ "สถานะทีม" ใช้ได้โดยไม่ต้อง login
-  const [{ data: payments }, { data: refunds }] = await Promise.all([
+  const [{ data: payments, error: paymentsErr }, { data: refunds, error: refundsErr }] = await Promise.all([
     SB.from('azfutsal_payments').select('*').order('created_at', { ascending: false }),
     SB.from('azfutsal_refunds').select('id, team_id, receipt_no, deposit_amount, operation_fee, yellow_count, yellow_rate, yellow_deduction, red_count, red_rate, red_deduction, refund_amount, deduction_snapshot, logo_url, recipient_signature_url, payment_method, proof_url, confirmed_at, created_at').order('confirmed_at', { ascending: false }),
   ])
+  // เจอจริง (2026-08-26): ตาราง azfutsal_refunds ขาด GRANT SELECT ให้ anon/authenticated (มีแค่ insert/update/delete)
+  // ทำให้ query นี้ error เงียบๆ ทุกครั้ง S.refunds กลายเป็น [] ตลอด (สถานะคืนเงินไม่เคยขึ้น ทั้งที่ insert สำเร็จจริง)
+  // แต่ก่อนหน้านี้โค้ดไม่เช็ค error เลยจึงไม่มีใครสังเกตเห็น — เพิ่ม toast แจ้งเตือนกันเงียบซ้ำอีกในอนาคต
+  if (paymentsErr) azToast('โหลดข้อมูลชำระเงินไม่สำเร็จ: ' + paymentsErr.message)
+  if (refundsErr) azToast('โหลดข้อมูลคืนเงินไม่สำเร็จ: ' + refundsErr.message)
   S.payments = payments || []
   S.refunds = refunds || []
 
