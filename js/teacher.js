@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.518'
+import { APP_VERSION } from './version.js?v=10.22.519'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -76,13 +76,18 @@ async function requireAuth() {
 
 // ─── Load teacher info ────────────────────────────────────────────────────────
 async function loadTeacherInfo(userId) {
-  _teacher = await getMyTeacherProfile(userId)
-  const { data: { session } } = await supabase.auth.getSession()
-  if (_teacher) _teacher.auth_email = session?.user?.email ?? ''
+  // 3 query นี้ไม่ต้องพึ่งข้อมูลกันเลย เดิม await ทีละก้อนต่อกัน (คนละ round-trip) — ยิงพร้อมกันแทน
+  const [teacherData, sessionRes, profileRes] = await Promise.all([
+    getMyTeacherProfile(userId),
+    supabase.auth.getSession(),
+    supabase.from('profiles').select('role, is_also_admin').eq('id', userId).maybeSingle(),
+  ])
+  _teacher = teacherData
+  if (_teacher) _teacher.auth_email = sessionRes?.data?.session?.user?.email ?? ''
   await applyThemeForRole('teacher', _teacher ?? {})
 
   // เช็ค is_also_admin — ถ้าใช่แสดงปุ่มสลับเป็นแอดมิน
-  const { data: profileRow } = await supabase.from('profiles').select('role, is_also_admin').eq('id', userId).maybeSingle()
+  const profileRow = profileRes?.data
   _isAlsoAdmin = profileRow?.is_also_admin === true
   _hasAdminAccess = profileRow?.role === 'admin' || _isAlsoAdmin
   const headerRight = document.querySelector('header .flex.items-center.gap-3:last-child')
@@ -585,33 +590,38 @@ function _startPolling() {
   })
 }
 
+// เดิมฟังก์ชันนี้ await ทีละก้อนเรียงต่อกัน 6-7 รอบ (คนละ round-trip เครือข่ายทั้งหมด แม้แต่ละ query
+// จะไม่เกี่ยวข้องกันเลยก็ตาม) ทำให้รู้สึกว่าล็อกอินแล้วโหลดช้า — รวบยิงพร้อมกันด้วย Promise.all แทน
+// เหลือแค่คู่ที่มีข้อมูลต้องพึ่งกันจริง (activeEvent → sports_shirt_vote_managers) ที่ต้องรอต่อกัน
 async function _applyRoleMenus() {
   const hasLifeSkill = _homeroomRooms.some(r => r.category === 'สามัญ')
   const hasReading   = _teacher?.dept === 'THAI'
-
   let hasPrayer = _homeroomRooms.some(r => r.category === 'ศาสนา')
-  if (!hasPrayer && _teacher) {
-    try {
-      const [cfg, profileRes] = await Promise.all([
-        getSystemConfig().catch(() => ({})),
-        supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle()
-      ])
-      const teacherCodes = (cfg.prayerScannerTeachers || '')
-        .split(/[\s,]+/)
-        .map(c => c.trim())
-        .filter(Boolean)
-      const profile = profileRes?.data ?? null
 
-      const isAllowedScanner = teacherCodes.includes(_teacher.teacher_code) ||
-                               _teacher.staff_type === 'แอดมิน' ||
-                               _teacher.position === 'admin' ||
-                               profile?.role === 'admin'
-      if (isAllowedScanner) {
-        hasPrayer = true
-      }
-    } catch (e) {
-      console.error('Error checking teacher scanner permission in sidebar:', e)
-    }
+  const [
+    cfg,
+    profileRes,
+    campAccessRes,
+    sportsMembershipsRes,
+    activeEventRes,
+    qrManagerRes,
+  ] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    _teacher ? supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle().catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+    supabase.rpc('get_terangganu_access').catch(() => ({ data: null })),
+    supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true).catch(() => ({ data: [] })),
+    supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle().catch(() => ({ data: null })),
+    supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle().catch(() => ({ data: null })),
+  ])
+
+  if (!hasPrayer && _teacher) {
+    const teacherCodes = (cfg.prayerScannerTeachers || '').split(/[\s,]+/).map(c => c.trim()).filter(Boolean)
+    const profile = profileRes?.data ?? null
+    const isAllowedScanner = teacherCodes.includes(_teacher.teacher_code) ||
+                             _teacher.staff_type === 'แอดมิน' ||
+                             _teacher.position === 'admin' ||
+                             profile?.role === 'admin'
+    if (isAllowedScanner) hasPrayer = true
   }
 
   const toggle = (id, show) => {
@@ -627,38 +637,30 @@ async function _applyRoleMenus() {
   toggle('menu-prayer',     hasPrayer)
   toggle('menu-advisor-students', hasAdvisorRoom)
   // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) — ปิดแล้วเห็นเฉพาะครูที่ is_also_admin
-  const councilCfg = await getSystemConfig().catch(() => ({}))
-  toggle('menu-council', councilCfg.council_visible_to_all !== 'false' || _isAlsoAdmin)
-  try {
-    const { data: campAccess } = await supabase.rpc('get_terangganu_access')
-    toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
-  } catch {
-    toggle('menu-terangganu', false)
-  }
-  let sportsMemberships = []
-  try {
-    const { data: memberships } = await supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true)
-    sportsMemberships = memberships || []
-    toggle('menu-my-team', sportsMemberships.length > 0)
-  } catch { toggle('menu-my-team', false) }
+  toggle('menu-council', cfg.council_visible_to_all !== 'false' || _isAlsoAdmin)
+
+  const campAccess = campAccessRes?.data
+  toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
+
+  const sportsMemberships = sportsMembershipsRes?.data || []
+  toggle('menu-my-team', sportsMemberships.length > 0)
+
   const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
   toggle('menu-sports-fund-admin', !!isSportsManager)
+
   let isShirtVoteManager = false
   try {
-    const { data: activeEvent } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
-    const eventId = activeEvent?.id || '00000000-0000-0000-0000-000000000001'
+    const eventId = activeEventRes?.data?.id || '00000000-0000-0000-0000-000000000001'
     const { data: manager } = await supabase.from('sports_shirt_vote_managers')
       .select('id').eq('event_id', eventId).eq('profile_id', _teacher?.profile_id).maybeSingle()
     isShirtVoteManager = !!manager
   } catch { isShirtVoteManager = false }
   toggle('menu-shirt-vote-dashboard', !!(isSportsManager || isShirtVoteManager))
-  try {
-    const { data: qrManager } = await supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle()
-    _isQrReissueManager = !!qrManager
-  } catch { _isQrReissueManager = false }
+
+  _isQrReissueManager = !!qrManagerRes?.data
   toggle('menu-qr-reissue-requests', _isQrReissueManager)
 }
 

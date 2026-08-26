@@ -369,7 +369,12 @@ function _setBottomNavActive(activeView) {
   })
 }
 
-function navigate(view) {
+async function navigate(view) {
+  // กันคลิกช่วงที่ _student ยังโหลดไม่เสร็จ/หลุดชั่วคราว (บั๊กคลาสเดียวกับหน้าครู — การ์ด/ปุ่มลัดที่
+  // กดเร็วกว่าโปรไฟล์นักเรียนโหลดเสร็จ จะเจอหน้าโล่ง/error เพราะ ROUTES อ่าน _student เป็น null)
+  if (!_student?.id) {
+    try { _student = (await getMyStudentProfile().catch(() => null)) ?? _student } catch {}
+  }
   if (typeof window._cleanupClassroomChat === 'function') {
     try { window._cleanupClassroomChat() } catch (e) {}
   }
