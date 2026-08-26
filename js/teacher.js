@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.514'
+import { APP_VERSION } from './version.js?v=10.22.516'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -2096,6 +2096,13 @@ async function _enterSupervisorMode() {
   const main = document.getElementById('main-content') ?? document.querySelector('main') ?? document.getElementById('content-area')
   const nav  = document.querySelector('#sidebar nav')
   if (!main || _supervisorMode) return
+  // กันคลิกช่วงที่ _teacher ยังโหลดไม่เสร็จ/หลุดชั่วคราว (เจอจริง TypeError ตอน renderSupervisorDashboard
+  // อ่าน .positions จาก teacher เป็น null) — โหลดซ้ำอีกครั้งก่อนเข้าโหมดนี้เสมอ
+  if (!_teacher?.id) {
+    showToast('กำลังโหลดข้อมูลครู กรุณารอสักครู่แล้วลองใหม่', 'warning')
+    try { _teacher = await getMyTeacherProfile((await supabase.auth.getUser()).data.user?.id) } catch {}
+    if (!_teacher?.id) return
+  }
   _supervisorMode = true
   if (nav) _savedNavHTML = nav.innerHTML
   await _loadSportsVisibility()

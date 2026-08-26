@@ -156,10 +156,14 @@ let _svContainer = null
 let _isAdminView = false
 
 export async function renderSupervisorDashboard(container, teacher, isAdmin = false) {
+  if (!teacher) {
+    container.innerHTML = `<div style="padding:40px;text-align:center;color:#dc2626;">โหลดข้อมูลครูไม่สำเร็จ กรุณาปิดหน้าต่างนี้แล้วลองใหม่</div>`
+    return
+  }
   _selfTeacher = teacher
   _svContainer = container
   _isAdminView = isAdmin
-  const activePositions = teacher.positions?.length ? teacher.positions : [teacher.position].filter(Boolean)
+  const activePositions = teacher?.positions?.length ? teacher.positions : [teacher?.position].filter(Boolean)
   const labels = activePositions.map(p => POS_LABEL[p] ?? 'หัวหน้า').join(', ')
   const roleLabel = isAdmin ? 'แอดมิน (ดูทั้งหมด)' : (labels || 'หัวหน้า')
   container.innerHTML = `<div id="sv-root" style="padding:20px;max-width:1100px;margin:0 auto;">
