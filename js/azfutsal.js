@@ -5813,6 +5813,7 @@ function bindEvents() {
       S.refundConfirmSign = { teamId: team.id }
       draw(); return
     }
+    if (act === 'refreshRefunds') { await refresh(); azToast('รีเฟรชข้อมูลแล้ว'); return }
     if (act === 'openRefundPayerSettings') { S.refundPayerSettingsOpen = true; draw(); return }
     if (act === 'closeRefundPayerSettings') { S.refundPayerSettingsOpen = false; draw(); return }
     if (act === 'clearRecipientSignature') {
@@ -6875,6 +6876,7 @@ function adminRefunds() {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div><div style="font-weight:700;font-size:14px">คืนเงินค่าประกันทีม</div><div style="font-size:11px;color:#6b7280;margin-top:2px">ยืนยันแล้ว ${confirmedCount}/${verifiedPayments.length} ทีม</div></div>
         <div style="display:flex;gap:6px;align-items:center">
+          <button data-act="refreshRefunds" title="รีเฟรชข้อมูล" style="width:34px;height:34px;flex-shrink:0;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;cursor:pointer;font-size:15px">🔄</button>
           <button data-act="openRefundPayerSettings" title="ตั้งค่าผู้จ่ายคืนเงิน" style="width:34px;height:34px;flex-shrink:0;border-radius:9px;border:1px solid #e5e7eb;background:#fff;color:#374151;cursor:pointer;font-size:15px">⚙️</button>
           ${['MS', 'HS'].map(value => `<button data-act="adminRefundLevel" data-v="${value}" style="font-size:11.5px;padding:6px 11px;border-radius:9px;border:1px solid ${level === value ? T[value].base : '#e5e7eb'};background:${level === value ? T[value].base : '#fff'};color:${level === value ? '#fff' : '#374151'};font-weight:700;cursor:pointer">${T[value].label}</button>`).join('')}
         </div>
