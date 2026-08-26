@@ -2656,20 +2656,15 @@ export async function renderSettings() {
                 : 'border:2px solid #e5e7eb;color:#d1d5db;background:#fff'
 
               const rowHtml = (f, i) => `
-                <div class="feat-row flex items-center gap-2 p-2 bg-gray-50 rounded-xl" data-idx="${i}">
+                <div class="feat-row flex items-center gap-2 p-2 bg-gray-50 rounded-xl" data-idx="${i}" data-min-tier="${f.minTier}">
                   <input type="text" class="feat-icon w-10 text-center text-lg border border-gray-200 rounded-lg py-1 bg-white"
                     value="${f.icon}" placeholder="🏅" maxlength="4" />
                   <input type="text" class="feat-text flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white min-w-0"
                     value="${f.text}" placeholder="ชื่อฟีเจอร์" />
                   <div class="flex gap-1 flex-shrink-0">
                     ${[1,2,3,4,5].map(n => `
-                    <label class="cursor-pointer" title="ระดับ ${n}">
-                      <input type="radio" name="feat-tier-${i}" class="sr-only feat-tier-radio" value="${n}" ${f.minTier===n?'checked':''} />
-                      <span class="feat-tier-btn w-7 h-7 rounded-lg flex items-center justify-center text-xs transition cursor-pointer"
-                        style="${tierBtnStyle(n, f.minTier===n)}" data-n="${n}">
-                        ${n}
-                      </span>
-                    </label>`).join('')}
+                    <button type="button" class="feat-tier-btn w-7 h-7 rounded-lg flex items-center justify-center text-xs transition cursor-pointer"
+                      style="${tierBtnStyle(n, f.minTier===n)}" data-n="${n}" title="ระดับ ${n}">${n}</button>`).join('')}
                   </div>
                   <button type="button" class="feat-del text-red-300 hover:text-red-500 text-lg flex-shrink-0" title="ลบ">✕</button>
                 </div>`
@@ -2956,8 +2951,7 @@ export async function renderSettings() {
         const val = rows.map(row => {
           const icon     = row.querySelector('.feat-icon')?.value.trim() || '✨'
           const text     = row.querySelector('.feat-text')?.value.trim() || ''
-          const tierRadio = row.querySelector('.feat-tier-radio:checked')
-          const minTier  = tierRadio ? tierRadio.value : '1'
+          const minTier  = row.dataset.minTier || '1'
           return text ? `${icon}|${text}|${minTier}` : null
         }).filter(Boolean).join('\n')
         const hidden = document.getElementById('cfg-donationSpecialFeatures')
@@ -2966,10 +2960,13 @@ export async function renderSettings() {
 
       const FEAT_TIER_HEX = ['#22C55E','#A855F7','#F59E0B','#3B82F6','#D4A017']
       const _attachFeatRowEvents = (row) => {
-        // radio tier — ใช้ inline style แทน className เพื่อหลีกเลี่ยง layout พัง
-        row.querySelectorAll('.feat-tier-radio').forEach(radio => {
-          radio.addEventListener('change', () => {
-            const selected = parseInt(radio.value)
+        // ปุ่มระดับ — เดิมใช้ radio ซ่อน (.sr-only) ห่อด้วย <label> ให้คลิก span ข้างในแล้ว forward
+        // ไปกดแทน แต่กดไม่ติดบางจังหวะ (เจอจริง) เปลี่ยนเป็นปุ่มธรรมดาคลิกตรงๆ ไม่ผ่าน label เลย
+        // ตัดปัญหาเรื่อง browser forward click ไปหา input ที่ซ่อนอยู่ทั้งหมด
+        row.querySelectorAll('.feat-tier-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const selected = parseInt(btn.dataset.n)
+            row.dataset.minTier = String(selected)
             row.querySelectorAll('.feat-tier-btn').forEach(span => {
               const n = parseInt(span.dataset.n)
               span.style.cssText = n === selected
@@ -2995,19 +2992,15 @@ export async function renderSettings() {
         const div = document.createElement('div')
         div.className = 'feat-row flex items-center gap-2 p-2 bg-gray-50 rounded-xl'
         div.dataset.idx = idx
+        div.dataset.minTier = '1'
         div.innerHTML = `
           <input type="text" class="feat-icon w-10 text-center text-lg border border-gray-200 rounded-lg py-1 bg-white" value="✨" placeholder="🏅" maxlength="4" />
           <input type="text" class="feat-text flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white" value="" placeholder="ชื่อฟีเจอร์" />
           <div class="flex gap-1 flex-shrink-0">
             ${[1,2,3,4,5].map(n => `
-            <label class="cursor-pointer" title="ระดับ ${n}">
-              <input type="radio" name="feat-tier-${idx}" class="sr-only feat-tier-radio" value="${n}" ${n===1?'checked':''} />
-              <span class="feat-tier-btn w-7 h-7 rounded-lg flex items-center justify-center text-xs transition cursor-pointer"
-                style="${n===1?`border:2px solid ${FEAT_TIER_HEX[0]};color:${FEAT_TIER_HEX[0]};background:#fff;font-weight:700`:'border:2px solid #e5e7eb;color:#d1d5db;background:#fff'}"
-                data-n="${n}">
-                ${n}
-              </span>
-            </label>`).join('')}
+            <button type="button" class="feat-tier-btn w-7 h-7 rounded-lg flex items-center justify-center text-xs transition cursor-pointer"
+              style="${n===1?`border:2px solid ${FEAT_TIER_HEX[0]};color:${FEAT_TIER_HEX[0]};background:#fff;font-weight:700`:'border:2px solid #e5e7eb;color:#d1d5db;background:#fff'}"
+              data-n="${n}" title="ระดับ ${n}">${n}</button>`).join('')}
           </div>
           <button type="button" class="feat-del text-red-300 hover:text-red-500 text-lg flex-shrink-0" title="ลบ">✕</button>`
         editor.appendChild(div)
