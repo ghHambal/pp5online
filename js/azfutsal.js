@@ -5734,7 +5734,10 @@ async function handleConfirmRefund(teamId, extra = {}) {
     confirmed_by: S.identity.profile?.id,
     confirmed_at: new Date().toISOString(),
   }
-  const { error } = await SB.from('azfutsal_refunds').insert(payload)
+  const { data: inserted, error } = await SB.from('azfutsal_refunds')
+    .insert(payload)
+    .select('id, team_id, receipt_no, deposit_amount, operation_fee, yellow_count, yellow_rate, yellow_deduction, red_count, red_rate, red_deduction, refund_amount, deduction_snapshot, logo_url, recipient_signature_url, payment_method, proof_url, confirmed_at, created_at')
+    .single()
   if (error) {
     if (error.code === '23505' || /duplicate key/i.test(error.message)) {
       azToast('ทีมนี้ถูกยืนยันคืนเงินไปแล้วโดยผู้อื่นพอดี กำลังรีเฟรชข้อมูล...')
@@ -5742,8 +5745,12 @@ async function handleConfirmRefund(teamId, extra = {}) {
     }
     azToast('ยืนยันคืนเงินไม่สำเร็จ: ' + error.message); return 'error'
   }
-  await refresh()
+  // อัปเดต state ทันทีจากผลลัพธ์ insert เลย (มีเลขที่ใบเสร็จมาแล้ว) ไม่ต้องรอ refresh() ทั้งหน้า
+  // (โหลด 9+ ตารางพร้อมกัน ช้า) ก่อนถึงจะเปลี่ยนสถานะ/เด้งใบเสร็จได้ — refresh() ยังรันต่อเบื้องหลัง
+  // เพื่อซิงก์การเปลี่ยนแปลงจากอุปกรณ์อื่นแต่ไม่บล็อก UI ตรงนี้แล้ว
+  S.refunds = [inserted, ...S.refunds.filter(r => r.team_id !== teamId)]
   azToast(`ยืนยันคืนเงินทีม ${team.name} แล้ว`)
+  refresh()
   return 'success'
 }
 
