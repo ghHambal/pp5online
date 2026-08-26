@@ -120,16 +120,18 @@ export async function markGradeEntered(subjectRowId) {
 }
 
 // ─── สิทธิ์ผู้ดูแลระบบ/เจ้าหน้าที่ทะเบียน (regrade_admins / regrade_registrar_staff) ─
+// ระบุ FK ตรงๆ ด้วย profiles!profile_id(...) เพราะทั้ง profile_id และ granted_by
+// ต่างก็อ้างไป profiles(id) ทั้งคู่ — ถ้าไม่ระบุ PostgREST จะ error "more than one relationship found"
 export async function getRegradeAdmins() {
   const { data, error } = await supabase.from('regrade_admins')
-    .select('profile_id, created_at, profiles(user_code)')
+    .select('profile_id, created_at, profiles!profile_id(user_code)')
   if (error) throw error
   return data ?? []
 }
 
 export async function getRegradeRegistrarStaff() {
   const { data, error } = await supabase.from('regrade_registrar_staff')
-    .select('profile_id, created_at, profiles(user_code)')
+    .select('profile_id, created_at, profiles!profile_id(user_code)')
   if (error) throw error
   return data ?? []
 }
