@@ -847,9 +847,26 @@ function applyThemeColors() {
 // ============================================================================
 let currentSection = null
 
+// รายการ "หน้าที่" ที่บัญชีนี้เข้าถึงได้ทั้งหมด — ใช้ทั้งไซด์บาร์เดสก์ท็อปและแถบสลับบทบาทบนมือถือ
+// เรียงตามลำดับความสำคัญ: งานสอน (ถ้ามี) → ฝ่ายทะเบียน → ผู้บริหาร → ตั้งค่า
+function getAvailableSections() {
+  const sections = []
+  if (ctx.role === 'student' && ctx.studentRow && (ctx.cfg.visibility?.student_menu || ctx.isAdmin)) sections.push({ key: 'student', icon: '🎓', label: 'ของฉัน' })
+  if (ctx.role === 'teacher' && ctx.teacherRow && (ctx.cfg.visibility?.teacher_menu || ctx.isAdmin)) sections.push({ key: 'teacher', icon: '📚', label: 'งานสอนของฉัน' })
+  if (ctx.isRegistrar) sections.push({ key: 'registrar', icon: '📋', label: 'ฝ่ายทะเบียน' })
+  if (ctx.isAdmin) {
+    sections.push({ key: 'dashboard', icon: '📊', label: 'ผู้บริหาร' })
+    sections.push({ key: 'settings', icon: '⚙️', label: 'ตั้งค่าระบบ' })
+  }
+  return sections
+}
+
 async function goSection(section) {
   currentSection = section
   document.getElementById('regrade-bottom-tabs').innerHTML = ''
+  const sections = getAvailableSections()
+  renderSidebarNav_(sections)
+  renderRoleSwitcher(sections)
   if (section === 'student') return renderStudent()
   if (section === 'teacher') return renderTeacher()
   if (section === 'registrar') return renderRegistrar()
@@ -857,19 +874,24 @@ async function goSection(section) {
   if (section === 'settings') return renderSettings()
 }
 
-function buildSidebar() {
-  const sections = []
-  if (ctx.role === 'teacher' && (ctx.cfg.visibility?.teacher_menu || ctx.isAdmin)) sections.push({ key: 'teacher', icon: '📚', label: 'งานสอนของฉัน' })
-  if (ctx.isRegistrar) sections.push({ key: 'registrar', icon: '📋', label: 'ฝ่ายทะเบียน' })
-  if (ctx.isAdmin) {
-    sections.push({ key: 'dashboard', icon: '📊', label: 'ผู้บริหาร' })
-    sections.push({ key: 'settings', icon: '⚙️', label: 'ตั้งค่าระบบ' })
-  }
+function renderSidebarNav_(sections) {
   if (sections.length > 1) {
     renderSidebarNav(sections, currentSection, goSection)
   } else {
     document.getElementById('regrade-sidebar-nav').innerHTML = ''
   }
+}
+
+// แถบสลับบทบาทแนวนอน — โชว์เฉพาะตอนบัญชีเข้าถึงได้มากกว่า 1 หน้าที่ (เช่น ครูที่ได้รับสิทธิ์แอดมิน/ทะเบียนเพิ่ม)
+// ทำงานได้ทั้งมือถือ (ที่ไซด์บาร์เดสก์ท็อปถูกซ่อนไว้) และเดสก์ท็อป
+function renderRoleSwitcher(sections) {
+  const el = document.getElementById('regrade-role-switcher')
+  if (!el) return
+  if (sections.length <= 1) { el.innerHTML = ''; return }
+  el.innerHTML = `<div class="flex gap-2 overflow-x-auto px-4 py-2 border-b border-[var(--line-soft)]">${sections.map(s => `
+    <button data-switch-sec="${s.key}" class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition"
+      style="${currentSection === s.key ? 'background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;' : 'background:var(--surface-2);color:var(--muted);'}">${s.icon} ${escHtml(s.label)}</button>`).join('')}</div>`
+  el.querySelectorAll('[data-switch-sec]').forEach(btn => btn.addEventListener('click', () => goSection(btn.dataset.switchSec)))
 }
 
 function renderNoAccess() {
@@ -902,35 +924,19 @@ async function init() {
   }
   applyThemeColors()
 
-  if (ctx.role === 'student') {
-    ctx.studentRow = await getMyStudentRow()
-    if (!ctx.studentRow || (!ctx.cfg.visibility?.student_menu && !ctx.isAdmin)) { renderNoAccess(); return }
-    await goSection('student')
-    return
-  }
+  if (ctx.role === 'student') ctx.studentRow = await getMyStudentRow()
+  if (ctx.role === 'teacher') ctx.teacherRow = await getMyTeacherRow()
 
-  if (ctx.role === 'teacher') {
-    ctx.teacherRow = await getMyTeacherRow()
-    if (!ctx.teacherRow) { renderNoAccess(); return }
-    buildSidebar()
-    if (ctx.cfg.visibility?.teacher_menu || ctx.isAdmin) { await goSection('teacher'); return }
-    if (ctx.isRegistrar) { await goSection('registrar'); return }
-    renderNoAccess()
-    return
-  }
+  if (ctx.role === 'student' && !ctx.studentRow) { renderNoAccess(); return }
+  if (ctx.role === 'teacher' && !ctx.teacherRow) { renderNoAccess(); return }
 
-  if (ctx.isAdmin) {
-    buildSidebar()
-    await goSection('dashboard')
-    return
-  }
-  if (ctx.isRegistrar) {
-    buildSidebar()
-    await goSection('registrar')
-    return
-  }
+  const sections = getAvailableSections()
+  if (!sections.length) { renderNoAccess(); return }
 
-  renderNoAccess()
+  // แอดมิน/ทะเบียนที่บังเอิญมีบัญชีครูด้วย ให้เห็นแดชบอร์ด/ฝ่ายทะเบียนเป็นหน้าหลักก่อนเสมอ
+  // (ไม่ใช่หน้าครูของตัวเอง) แล้วสลับไปดูงานสอนของตัวเองเพิ่มได้ผ่านแถบสลับบทบาท
+  const defaultSection = ctx.isAdmin ? 'dashboard' : ctx.isRegistrar ? 'registrar' : sections[0].key
+  await goSection(defaultSection)
 }
 
 init()
