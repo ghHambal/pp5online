@@ -30,6 +30,7 @@ export default defineConfig({
         council:       resolve(__dirname, 'council.html'),
         councilElection: resolve(__dirname, 'council-election.html'),
         terangganu:     resolve(__dirname, 'terangganu.html'),
+        regrade:        resolve(__dirname, 'regrade.html'),
       },
     },
     chunkSizeWarningLimit: 600,
