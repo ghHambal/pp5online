@@ -896,16 +896,18 @@ export async function setQrReissueRequestStatus(id, field, value) {
 }
 
 // กด "ทำเสร็จแล้ว" — สร้างประวัติจริงใน qr_reissue_logs (ได้เลขที่ใบเสร็จ) แล้วผูกกลับมาที่คำขอนี้
-export async function markQrReissueRequestPrinted({ requestId, studentId, teacherId, reason = 'ทำหาย', feedbackId }) {
+export async function markQrReissueRequestPrinted({ requestId, studentId, teacherId, reason = 'ทำหาย', feedbackId, message }) {
   const log = await logQrReissue({ studentId, teacherId, reason, note: 'ออกจากคำขอที่นักเรียนแจ้งเอง' })
   const { error } = await supabase.from('qr_reissue_requests')
     .update({ printed_at: new Date().toISOString(), reissue_log_id: log.id })
     .eq('id', requestId)
   if (error) throw error
   // ตอบกลับเข้าเธรด Feedback เดิมของนักเรียน ให้เห็นในแท็บ "ประวัติของฉัน" ว่าทำเสร็จแล้ว (ของเสริม
-  // ไม่บล็อกงานหลักถ้าพลาด — เช่น ยังไม่ได้ติดตั้งตารางแชท)
+  // ไม่บล็อกงานหลักถ้าพลาด — เช่น ยังไม่ได้ติดตั้งตารางแชท) — ข้อความแก้ไขได้จากหน้าตั้งค่า
+  // (cfg.qrReissueDoneMessage) ผู้เรียกส่ง message มาได้ ไม่งั้น fallback เป็นข้อความเริ่มต้น
   if (feedbackId) {
-    await sendFeedbackMessage({ feedbackId, authorRole: 'admin', message: 'ทำบัตร QR Code ให้เรียบร้อยแล้วครับ มารับได้ที่ห้องธุรการ' }).catch(() => {})
+    const doneMessage = message?.trim() || 'ทำบัตร QR Code ให้เรียบร้อยแล้วครับ มารับได้ที่ห้องปกครอง'
+    await sendFeedbackMessage({ feedbackId, authorRole: 'admin', message: doneMessage }).catch(() => {})
     await supabase.from('app_feedback').update({ status: 'resolved' }).eq('id', feedbackId)
   }
   return log

@@ -2770,9 +2770,12 @@ export async function renderSettings() {
           { key:'studentQrExpirySeconds', label:'อายุการใช้งานของ QR Code (วินาที)', type:'text',
             placeholder:'เช่น 60', description:'ระบุเวลาหมดอายุของ QR Code หน่วยเป็นวินาที (ค่าเริ่มต้นคือ 60 วินาที)' },
         ]),
-        section('ค่าธรรมเนียมออก QR Code ใหม่ (กรณีทำหาย/ชำรุด)', [
+        section('ออก QR Code ใหม่ (กรณีทำหาย/ชำรุด)', [
           { key:'qrReissueFee', label:'ค่าธรรมเนียมออกใหม่ (บาท)', type:'text',
             placeholder:'เช่น 10', description:'จำนวนเงินที่แสดงในใบเสร็จตอนครูออก QR Code ใหม่ให้นักเรียน (ค่าเริ่มต้นคือ 10 บาท)' },
+          { key:'qrReissueDoneMessage', label:'ข้อความแจ้งนักเรียนตอนทำเสร็จแล้ว', type:'text',
+            placeholder:'ทำบัตร QR Code ให้เรียบร้อยแล้วครับ มารับได้ที่ห้องปกครอง',
+            description:'ข้อความที่จะส่งกลับเข้าแท็บ "ประวัติของฉัน" ของนักเรียนอัตโนมัติ ทันทีที่แอดมิน/ครูกด "ทำเสร็จแล้ว" ในแท็บคำขอใหม่ (ค่าเริ่มต้น: มารับได้ที่ห้องปกครอง)' },
         ]),
         section('ตัวเลือกบังคับเกรด (คอลัมน์บังคับเกรดในหน้าคะแนน)', [
           { key:'forceGradeOptions', label:'รายการเกรด (คั่นด้วยจุลภาค)', type:'text',

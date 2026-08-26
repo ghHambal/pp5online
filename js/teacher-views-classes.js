@@ -5547,6 +5547,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
     const allStudents = await getStudents()
     const cfg = await getSystemConfig().catch(() => ({}))
     const qrReissueFee = cfg.qrReissueFee?.trim?.() || '10'
+    const qrReissueDoneMessage = cfg.qrReissueDoneMessage?.trim?.() || 'ทำบัตร QR Code ให้เรียบร้อยแล้วครับ มารับได้ที่ห้องปกครอง'
 
     // ดึง classes เพื่อใช้เป็น metadata (grade_level, subject_group) เท่านั้น
     const { data: allClassRows } = await supabase
@@ -5868,7 +5869,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
           t.panel.classList.toggle('hidden', key !== name)
         })
         if (name === 'history') _initReissueHistoryPanel(_tabs.history.panel, { cols, showCode, showSeat, showRoom, qrReissueFee, isAdmin: !teacher })
-        if (name === 'requests' && isQrManager) _initQrRequestsPanel(_tabs.requests.panel, { teacher, cols, showCode, showSeat, showRoom })
+        if (name === 'requests' && isQrManager) _initQrRequestsPanel(_tabs.requests.panel, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage })
       }
       _tabs.print.btn.addEventListener('click', () => _selectTab('print'))
       _tabs.history.btn.addEventListener('click', () => _selectTab('history'))
@@ -6698,7 +6699,7 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
 
 // แท็บ "คำขอใหม่" — คำขอที่นักเรียนแจ้งความจำนงเองจากปุ่มในหน้าโปรไฟล์ (แยกจาก "ประวัติ" ที่เป็น
 // รายการที่ครู/แอดมินบันทึกไว้แล้ว) เห็นเฉพาะแอดมิน/ครูที่ได้รับสิทธิ์ (isQrManager) เท่านั้น
-async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, showSeat, showRoom }) {
+async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage }) {
   if (!containerEl || containerEl.dataset.loaded) return
   containerEl.dataset.loaded = '1'
   const isRealAdmin = !teacher
@@ -6827,7 +6828,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
       const okBtn = m.querySelector('#qr-fulfill-ok')
       okBtn.disabled = true; okBtn.textContent = 'กำลังดำเนินการ...'
       try {
-        await markQrReissueRequestPrinted({ requestId: id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason, feedbackId: req.feedback_id })
+        await markQrReissueRequestPrinted({ requestId: id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason, feedbackId: req.feedback_id, message: qrReissueDoneMessage })
         const repeated = Array.from({ length: repeat }, (_, idx) => ({
           id: req.students.id, full_name: req.students.full_name, student_code: req.students.student_code,
           seat_no: null, _roomName: req.students.main_room, _print_copy: idx + 1,
