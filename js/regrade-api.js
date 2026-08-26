@@ -160,6 +160,16 @@ export async function removeRegradeRegistrarStaff(profileId) {
   if (error) throw error
 }
 
+// เฉพาะครูที่มีบัญชีผู้ใช้ (profile_id ไม่ว่าง) เท่านั้นที่มอบสิทธิ์ได้ — ใช้ทำช่องค้นหาชื่อ/รหัสครู
+export async function getAllTeachersForPicker() {
+  const { data, error } = await supabase.from('teachers')
+    .select('id, full_name, teacher_code, profile_id')
+    .not('profile_id', 'is', null)
+    .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
 // ─── สิทธิ์ของฉันเอง (ใช้แค่ตัดสินใจโชว์/ซ่อนเมนูฝั่ง client — ของจริงคุมที่ RLS) ──
 export async function checkMyRegradePermissions() {
   const [{ data: isAdmin }, { data: isRegistrar }] = await Promise.all([

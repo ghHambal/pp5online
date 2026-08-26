@@ -8,7 +8,7 @@ import {
   getPendingCloseOut, closeOutSubject, getGradeTrackingRows, markGradeEntered,
   getAllRegradeSubjectsForDashboard,
   getRegradeAdmins, getRegradeRegistrarStaff, addRegradeAdmin, removeRegradeAdmin,
-  addRegradeRegistrarStaff, removeRegradeRegistrarStaff,
+  addRegradeRegistrarStaff, removeRegradeRegistrarStaff, getAllTeachersForPicker,
   previewRegradeCsvRows, importRegradeSubjectsCsv,
 } from './regrade-api.js'
 
@@ -619,11 +619,14 @@ function renderDashboardDrilldown(scoped) {
 async function renderSettings() {
   setHeaderTitle('ตั้งค่าระบบ', `⚙️ ตั้งค่า${ctx.cfg.system_name || 'แก้ค้างเก่า'}`)
   const content = document.getElementById('regrade-content')
-  let admins, staff
-  try { [admins, staff] = await Promise.all([getRegradeAdmins(), getRegradeRegistrarStaff()]) } catch (err) {
+  let admins, staff, teacherPicker
+  try {
+    [admins, staff, teacherPicker] = await Promise.all([getRegradeAdmins(), getRegradeRegistrarStaff(), getAllTeachersForPicker()])
+  } catch (err) {
     content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
     return
   }
+  const teacherByProfileId = new Map(teacherPicker.map(t => [t.profile_id, t]))
   const c = ctx.cfg
   content.innerHTML = `
     <div class="max-w-2xl mx-auto p-4 flex flex-col gap-4">
@@ -689,21 +692,23 @@ async function renderSettings() {
 
       <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">ผู้ดูแลระบบ (เข้าหน้าตั้งค่านี้ได้)</p>
-        <div class="flex flex-wrap gap-2 mb-3">${admins.map(a => adminChip(a, 'admin')).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
+        <div class="flex flex-wrap gap-2 mb-3">${admins.map(a => adminChip(a, 'admin', teacherByProfileId)).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
         <div class="flex gap-2">
-          <input id="regrade-new-admin" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-sm" placeholder="profile_id (uuid) ของครู">
+          <input id="regrade-new-admin" list="regrade-teacher-datalist" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-sm" placeholder="พิมพ์ชื่อหรือรหัสครู แล้วเลือกจากรายการ...">
           <button id="regrade-add-admin" class="px-4 py-2 rounded-lg text-white text-sm font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">+ เพิ่ม</button>
         </div>
       </div>
 
       <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">เจ้าหน้าที่ฝ่ายทะเบียน (เข้าหน้าปิดงานได้)</p>
-        <div class="flex flex-wrap gap-2 mb-3">${staff.map(a => adminChip(a, 'registrar')).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
+        <div class="flex flex-wrap gap-2 mb-3">${staff.map(a => adminChip(a, 'registrar', teacherByProfileId)).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
         <div class="flex gap-2">
-          <input id="regrade-new-registrar" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-sm" placeholder="profile_id (uuid) ของครู">
+          <input id="regrade-new-registrar" list="regrade-teacher-datalist" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-sm" placeholder="พิมพ์ชื่อหรือรหัสครู แล้วเลือกจากรายการ...">
           <button id="regrade-add-registrar" class="px-4 py-2 rounded-lg text-white text-sm font-bold" style="background:linear-gradient(135deg,var(--secondary),var(--secondary-dark))">+ เพิ่ม</button>
         </div>
       </div>
+
+      <datalist id="regrade-teacher-datalist">${teacherPicker.map(t => `<option value="${escHtml(t.full_name)}${t.teacher_code ? ` (${escHtml(t.teacher_code)})` : ''} · รหัส ${t.id}"></option>`).join('')}</datalist>
     </div>`
 
   content.querySelectorAll('[data-remove-admin]').forEach(btn => btn.addEventListener('click', async () => {
@@ -717,18 +722,22 @@ async function renderSettings() {
     try { await removeRegradeRegistrarStaff(btn.dataset.removeRegistrar); showToast('ถอดสิทธิ์แล้ว', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
   }))
   document.getElementById('regrade-add-admin').addEventListener('click', async () => {
-    const id = document.getElementById('regrade-new-admin').value.trim()
-    if (!id) return
-    const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มผู้ดูแลระบบ', message: `เพิ่ม profile_id นี้เป็นผู้ดูแลระบบแก้ค้างเก่าใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
+    const input = document.getElementById('regrade-new-admin')
+    const teacher = resolveTeacherFromPickerInput(input.value, teacherPicker)
+    if (!teacher) { showToast('กรุณาพิมพ์แล้วเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
+    if (admins.some(a => a.profile_id === teacher.profile_id)) { showToast('ครูคนนี้เป็นผู้ดูแลระบบอยู่แล้ว', 'warning'); return }
+    const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มผู้ดูแลระบบ', message: `เพิ่ม "${teacher.full_name}" เป็นผู้ดูแลระบบแก้ค้างเก่าใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
     if (!ok) return
-    try { await addRegradeAdmin(id); showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+    try { await addRegradeAdmin(teacher.profile_id); input.value = ''; showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
   })
   document.getElementById('regrade-add-registrar').addEventListener('click', async () => {
-    const id = document.getElementById('regrade-new-registrar').value.trim()
-    if (!id) return
-    const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มเจ้าหน้าที่ทะเบียน', message: `เพิ่ม profile_id นี้เป็นเจ้าหน้าที่ฝ่ายทะเบียนใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
+    const input = document.getElementById('regrade-new-registrar')
+    const teacher = resolveTeacherFromPickerInput(input.value, teacherPicker)
+    if (!teacher) { showToast('กรุณาพิมพ์แล้วเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
+    if (staff.some(a => a.profile_id === teacher.profile_id)) { showToast('ครูคนนี้เป็นเจ้าหน้าที่ทะเบียนอยู่แล้ว', 'warning'); return }
+    const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มเจ้าหน้าที่ทะเบียน', message: `เพิ่ม "${teacher.full_name}" เป็นเจ้าหน้าที่ฝ่ายทะเบียนใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
     if (!ok) return
-    try { await addRegradeRegistrarStaff(id); showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+    try { await addRegradeRegistrarStaff(teacher.profile_id); input.value = ''; showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
   })
   document.getElementById('regrade-set-save').addEventListener('click', async () => {
     const ok = await showRegradeConfirm({ title: 'ยืนยันบันทึกการตั้งค่า', message: 'บันทึกการตั้งค่าทั้งหมดนี้ใช่หรือไม่? จะมีผลกับทุกคนทันที', confirmText: 'บันทึก' })
@@ -826,8 +835,17 @@ function wireCsvImport(content) {
   })
 }
 
-function adminChip(row, kind) {
-  const label = row.profiles?.user_code || row.profile_id
+// รับค่าจากช่อง input ที่ผูกกับ <datalist> (แพทเทิร์นเดียวกับ council.js) — ต้อง "เลือกจากรายการ" จริง
+// ไม่ใช่พิมพ์เองมั่วๆ เพราะรหัสท้ายข้อความ (· รหัส {teachers.id}) คือตัวยืนยันว่าเลือกตรงกับครูคนไหน
+function resolveTeacherFromPickerInput(text, teacherPicker) {
+  const m = text.trim().match(/· รหัส (\d+)$/)
+  if (!m) return null
+  return teacherPicker.find(t => t.id === Number(m[1])) ?? null
+}
+
+function adminChip(row, kind, teacherByProfileId) {
+  const teacher = teacherByProfileId?.get(row.profile_id)
+  const label = teacher ? `${teacher.full_name}${teacher.teacher_code ? ` (${teacher.teacher_code})` : ''}` : (row.profiles?.user_code || row.profile_id)
   const attr = kind === 'admin' ? `data-remove-admin="${escHtml(row.profile_id)}"` : `data-remove-registrar="${escHtml(row.profile_id)}"`
   return `<span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">
     ${escHtml(label)}
