@@ -25,6 +25,7 @@ import { APP_VERSION } from './version.js?v=10.22.526'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
+import { openRegradeModal } from './regrade-modal.js'
 import { renderShirtSummary, renderSportsFundAdmin, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.419'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
@@ -800,6 +801,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'house-colors':     () => renderHouseColors(),
     'sports-admin':     () => openAzizGamesModal({ admin: true }),
     'azfutsal':         () => openAzfutsalModal(),
+    'regrade':          () => openRegradeModal(),
     'sports-shirt-summary': () => renderShirtSummary(),
     'sports-fund-admin': () => renderSportsFundAdmin(),
     'shirt-vote-settings': () => renderShirtVoteSettings(),

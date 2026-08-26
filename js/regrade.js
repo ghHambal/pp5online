@@ -1,0 +1,936 @@
+import { supabase } from './supabase.js'
+import { showToast } from './ui.js'
+import { parseCSV } from './import.js'
+import {
+  getRegradeConfig, updateRegradeConfig, getMyStudentRow, getMyTeacherRow, checkMyRegradePermissions,
+  getMyRegradeSubjects, declareIntent,
+  getMyTeachingRegradeSubjects, assignWork,
+  getPendingCloseOut, closeOutSubject, getGradeTrackingRows, markGradeEntered,
+  getAllRegradeSubjectsForDashboard,
+  getRegradeAdmins, getRegradeRegistrarStaff, addRegradeAdmin, removeRegradeAdmin,
+  addRegradeRegistrarStaff, removeRegradeRegistrarStaff,
+  previewRegradeCsvRows, importRegradeSubjectsCsv,
+} from './regrade-api.js'
+
+// ============================================================================
+// helpers ทั่วไป
+// ============================================================================
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+}
+
+function statusMeta(status) {
+  const map = {
+    'ยังไม่แจ้ง': { bg: '#f3f4f6', text: '#6b7280', border: '#e5e7eb', label: 'ยังไม่แจ้ง' },
+    'จำนงแล้ว': { bg: 'var(--gold-soft)', text: 'var(--gold-ink)', border: 'var(--gold-soft-line)', label: 'จำนงแล้ว · รอครูตอบรับ' },
+    'กำลังดำเนินการปรับแก้': { bg: 'var(--info-soft)', text: 'var(--info)', border: 'var(--info-soft-line)', label: 'กำลังดำเนินการปรับแก้' },
+    'ปรับแก้สำเร็จ': { bg: 'var(--ok-soft)', text: 'var(--ok)', border: 'var(--ok-soft-line)', label: 'ปรับแก้สำเร็จ ✓' },
+  }
+  return map[status] || map['ยังไม่แจ้ง']
+}
+const badgeStyle = (status) => { const m = statusMeta(status); return `background:${m.bg};color:${m.text};border:1px solid ${m.border};` }
+const categoryChipStyle = (category) => category === 'ศาสนา'
+  ? 'background:var(--secondary-soft);color:var(--secondary-dark);border:1px solid var(--secondary-soft-line);'
+  : 'background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line);'
+
+const NAME_PREFIXES = ['เด็กชาย', 'เด็กหญิง', 'ด.ช.', 'ด.ญ.', 'นางสาว', 'น.ส.', 'นาย', 'นาง']
+function initialOf(name) {
+  let n = String(name || '')
+  for (const p of NAME_PREFIXES) if (n.startsWith(p)) { n = n.slice(p.length).trim(); break }
+  return n.charAt(0) || '?'
+}
+function avatarStyle(name, portrait) {
+  let sum = 0
+  for (let i = 0; i < String(name || '').length; i++) sum += name.charCodeAt(i)
+  const palette = [['#eef2ff', '#4f46e5'], ['#ecfdf5', '#059669'], ['#fef3c7', '#b45309'], ['#fce7f3', '#be185d'], ['#e0f2fe', '#0284c7'], ['#f3e8ff', '#7c3aed']]
+  const [bg, fg] = palette[sum % palette.length]
+  return portrait
+    ? `width:34px;height:44px;border-radius:8px;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);`
+    : `width:30px;height:30px;border-radius:9999px;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;`
+}
+
+// popup ยืนยันกลางๆ (ไม่ใช้สีแดงแบบ showDangerConfirm ของ ui.js) — เก็บไว้ในไฟล์นี้เอง
+// ตั้งใจไม่ดันขึ้น js/ui.js ที่ใช้ร่วมกันทั้งเว็บ เพราะต้องไล่ bump เวอร์ชัน/แคชทุกหน้าที่ import
+// ทั้งที่ตอนนี้มีแค่โมดูลนี้ใช้ — ย้ายขึ้นไปทีหลังได้ถ้ามีจุดอื่นอยากใช้ซ้ำ
+function showRegradeConfirm({ title = 'ยืนยันการดำเนินการ', message = '', confirmText = 'ยืนยัน', cancelText = 'ยกเลิก' } = {}) {
+  return new Promise(resolve => {
+    document.getElementById('regrade-confirm-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'regrade-confirm-modal'
+    m.className = 'fixed inset-0 z-[99999] flex items-center justify-center p-4'
+    m.innerHTML = `
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="rgc-overlay"></div>
+      <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="h-1.5" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark))"></div>
+        <div class="px-6 pt-6 pb-5 text-center">
+          <h3 class="text-lg font-bold text-gray-900 mb-2">${escHtml(title)}</h3>
+          ${message ? `<p class="text-sm text-gray-600 leading-relaxed">${escHtml(message)}</p>` : ''}
+        </div>
+        <div class="px-6 pb-6 grid grid-cols-2 gap-3">
+          <button id="rgc-cancel" class="py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 active:scale-[0.97] transition-all">${escHtml(cancelText)}</button>
+          <button id="rgc-confirm" class="py-3 rounded-2xl text-sm font-bold text-white shadow-lg active:scale-[0.97] transition-all"
+            style="background: linear-gradient(135deg, var(--primary), var(--primary-dark))">${escHtml(confirmText)}</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    const cleanup = (result) => { m.remove(); resolve(result) }
+    m.querySelector('#rgc-overlay').addEventListener('click', () => cleanup(false))
+    m.querySelector('#rgc-cancel').addEventListener('click', () => cleanup(false))
+    m.querySelector('#rgc-confirm').addEventListener('click', () => cleanup(true))
+  })
+}
+
+function pill(active, variant = 'primary') {
+  const grad = variant === 'secondary' ? 'var(--secondary),var(--secondary-dark)' : 'var(--primary),var(--primary-dark)'
+  return active
+    ? `flex:1;padding:8px;border-radius:10px;font-size:.75rem;font-weight:800;text-align:center;color:#fff;background:linear-gradient(135deg,${grad});`
+    : `flex:1;padding:8px;border-radius:10px;font-size:.75rem;font-weight:800;text-align:center;color:var(--muted);background:var(--surface-2);`
+}
+function tab(active) {
+  return active
+    ? 'padding:8px 16px;border-radius:9999px;font-size:.72rem;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));'
+    : 'padding:8px 16px;border-radius:9999px;font-size:.72rem;font-weight:700;color:var(--muted);background:var(--surface-2);'
+}
+
+// แถบเมนูล่าง (มือถือ) — 3 ปุ่ม ใช้ร่วมกันทั้งฝั่งนักเรียน/ครู
+function renderBottomNav(items, active, onPick) {
+  const bar = document.getElementById('regrade-bottom-tabs')
+  bar.innerHTML = `<div class="flex">${items.map(it => `
+    <button data-nav="${it.key}" class="flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5" style="transition:transform .15s ease;${active === it.key ? 'transform:scale(1.12)' : ''}">
+      <span class="text-lg">${it.icon}</span>
+      <span class="text-[10px] font-bold" style="color:${active === it.key ? 'var(--primary)' : 'var(--muted-2)'}">${escHtml(it.label)}</span>
+    </button>`).join('')}</div>`
+  bar.querySelectorAll('[data-nav]').forEach(btn => btn.addEventListener('click', () => onPick(btn.dataset.nav)))
+}
+
+// ============================================================================
+// context ของผู้ใช้ปัจจุบัน (ตั้งค่าใน init() ครั้งเดียว)
+// ============================================================================
+const ctx = { role: null, isAdmin: false, isRegistrar: false, studentRow: null, teacherRow: null, cfg: {} }
+
+function setHeaderTitle(mobile, full) {
+  document.getElementById('regrade-title-mobile').textContent = mobile
+  document.getElementById('regrade-view-title').textContent = full
+}
+
+function renderSidebarNav(sections, active, onPick) {
+  const nav = document.getElementById('regrade-sidebar-nav')
+  nav.innerHTML = sections.map(s => `
+    <button data-sec="${s.key}" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-left"
+      style="${active === s.key ? 'background:var(--primary);color:#fff;' : 'color:var(--primary-45);'}">
+      <span>${s.icon}</span> ${escHtml(s.label)}
+    </button>`).join('')
+  nav.querySelectorAll('[data-sec]').forEach(btn => btn.addEventListener('click', () => onPick(btn.dataset.sec)))
+}
+
+// ============================================================================
+// ฝั่งนักเรียน
+// ============================================================================
+const student = { subView: 'catalog', categoryTab: 'สามัญ', subjects: [] }
+
+async function loadStudentSubjects() {
+  student.subjects = await getMyRegradeSubjects(ctx.studentRow.id)
+}
+
+function studentFabVisible() { return !!ctx.cfg.intent_open }
+
+async function renderStudent() {
+  setHeaderTitle('แก้ค้างเก่า', 'รายวิชาค้างของฉัน')
+  document.getElementById('regrade-sidebar-nav').innerHTML = ''
+  const content = document.getElementById('regrade-content')
+
+  if (!student.subjects.length && student.subjects !== null) {
+    try { await loadStudentSubjects() } catch (err) {
+      content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
+      return
+    }
+  }
+
+  const s = student.subjects
+  const genCount = s.filter(x => x.category === 'สามัญ').length
+  const relCount = s.filter(x => x.category === 'ศาสนา').length
+  const myWork = s.filter(x => x.status === 'กำลังดำเนินการปรับแก้')
+  const total = s.length, requested = s.filter(x => x.status === 'จำนงแล้ว').length
+  const assigned = myWork.length, done = s.filter(x => x.status === 'ปรับแก้สำเร็จ').length
+
+  let inner = ''
+  if (student.subView === 'catalog') {
+    const shown = s.filter(x => x.category === student.categoryTab)
+    inner = `
+      <div class="flex gap-2 mb-4">
+        <button data-tab="สามัญ" style="${pill(student.categoryTab === 'สามัญ')}">รายวิชาสามัญ (${genCount})</button>
+        <button data-tab="ศาสนา" style="${pill(student.categoryTab === 'ศาสนา', 'secondary')}">รายวิชาศาสนา (${relCount})</button>
+      </div>
+      <div class="flex flex-col gap-3">
+        ${shown.length ? shown.map(x => studentSubjectCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีรายวิชาค้างในหมวดนี้ 🎉</div>`}
+      </div>`
+  } else if (student.subView === 'overview') {
+    inner = `
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 mb-4">
+        <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
+        <div class="grid grid-cols-2 gap-3">
+          ${statCard(total, 'วิชาค้างทั้งหมด', 'var(--ink)')}
+          ${statCard(requested, 'จำนงแล้ว', 'var(--gold-ink)')}
+          ${statCard(assigned, 'กำลังดำเนินการ', 'var(--info)')}
+          ${statCard(done, 'สำเร็จแล้ว', 'var(--ok)')}
+        </div>
+      </div>`
+  } else if (student.subView === 'myWork') {
+    inner = `<div class="flex flex-col gap-3">
+      ${myWork.length ? myWork.map(x => studentSubjectCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ยังไม่มีงานที่ต้องทำตอนนี้ 🎉</div>`}
+    </div>`
+  }
+
+  content.innerHTML = `
+    <div class="max-w-lg mx-auto p-4 relative" style="min-height:60vh;">
+      ${inner}
+    </div>
+    ${studentFabVisible() ? `
+    <button id="regrade-student-fab" class="fixed md:absolute bottom-24 md:bottom-6 right-4 md:right-8 px-4 py-3 rounded-full text-white font-bold text-xs shadow-lg flex items-center gap-2 z-20"
+      style="background:linear-gradient(135deg,var(--gold),var(--gold-ink))">📝 จำนงขอแก้/ปรับ</button>` : ''}`
+
+  content.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => { student.categoryTab = btn.dataset.tab; renderStudent() }))
+  content.querySelectorAll('[data-declare]').forEach(btn => btn.addEventListener('click', () => handleDeclare(btn)))
+  document.getElementById('regrade-student-fab')?.addEventListener('click', () => { student.subView = 'catalog'; renderStudent() })
+
+  renderBottomNav([
+    { key: 'catalog', icon: '📚', label: 'รายวิชาที่ค้าง' },
+    { key: 'overview', icon: '🏠', label: 'ภาพรวม' },
+    { key: 'myWork', icon: '📝', label: 'ภาระงานของฉัน' },
+  ], student.subView, (key) => { student.subView = key; renderStudent() })
+}
+
+function statCard(value, label, color) {
+  return `<div class="bg-[var(--surface-2)] rounded-xl p-3 text-center">
+    <p class="text-xl font-extrabold" style="color:${color}">${value}</p>
+    <p class="text-[10px] text-[var(--muted-2)] mt-0.5">${escHtml(label)}</p>
+  </div>`
+}
+
+function studentSubjectCard(x) {
+  const teacherName = x.teachers?.full_name || '-'
+  return `
+  <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 shadow-sm">
+    <div class="flex justify-between gap-2 items-start">
+      <div class="min-w-0">
+        <p class="font-bold text-sm text-[var(--ink)]">${escHtml(x.subject_name)}</p>
+        <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(x.subject_code)} · ${escHtml(x.semester)}</p>
+      </div>
+      <span class="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
+    </div>
+    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-dashed border-[var(--line-soft)]">
+      <div style="${avatarStyle(teacherName, false)}">${initialOf(teacherName)}</div>
+      <div><p class="text-[10px] text-[var(--muted-2)]">ครูผู้สอน</p><p class="text-xs font-bold text-[var(--ink-2)]">${escHtml(teacherName)}</p></div>
+    </div>
+    ${x.status === 'ยังไม่แจ้ง' ? `
+      <button data-declare="${x.id}" data-subject="${escHtml(x.subject_name)}"
+        class="mt-3 w-full py-2.5 rounded-xl text-white font-bold text-xs"
+        style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">แจ้งความจำนง</button>` : ''}
+    ${x.status === 'กำลังดำเนินการปรับแก้' ? `
+      <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
+        <p class="text-xs font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
+        <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(x.due_text || '-')}</p>
+      </div>` : ''}
+  </div>`
+}
+
+async function handleDeclare(btn) {
+  const id = Number(btn.dataset.declare)
+  const ok = await showRegradeConfirm({
+    title: 'ยืนยันแจ้งความจำนง',
+    message: `ยืนยันแจ้งความจำนงขอปรับแก้วิชา "${btn.dataset.subject}" ใช่หรือไม่? เมื่อกดยืนยัน ครูผู้สอนจะได้รับแจ้งเตือนทันที`,
+    confirmText: 'ยืนยันแจ้งความจำนง',
+  })
+  if (!ok) return
+  try {
+    await declareIntent(id)
+    showToast('แจ้งความจำนงเรียบร้อย ครูผู้สอนจะได้รับแจ้งเตือนทันที ✅', 'success')
+    await loadStudentSubjects()
+    renderStudent()
+  } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
+}
+
+// ============================================================================
+// ฝั่งครู
+// ============================================================================
+const teacher = { subView: 'overview', subjects: [], form: null }
+
+async function loadTeacherSubjects() {
+  teacher.subjects = await getMyTeachingRegradeSubjects(ctx.teacherRow.id)
+}
+
+async function renderTeacher() {
+  setHeaderTitle('แก้ค้างเก่า', 'งานแก้ค้างเก่า')
+  document.getElementById('regrade-sidebar-nav').innerHTML = ''
+  const content = document.getElementById('regrade-content')
+
+  try { await loadTeacherSubjects() } catch (err) {
+    content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
+    return
+  }
+
+  const all = teacher.subjects
+  const respondList = all.filter(x => x.status === 'จำนงแล้ว')
+  const assignedList = all.filter(x => x.status === 'กำลังดำเนินการปรับแก้')
+  const doneCount = all.filter(x => x.status === 'ปรับแก้สำเร็จ').length
+
+  let inner = ''
+  if (teacher.subView === 'catalog') {
+    inner = `<div class="flex flex-col gap-3">${all.length ? all.map(x => `
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+        <div class="flex justify-between gap-2 items-start">
+          <div class="min-w-0">
+            <p class="font-bold text-sm text-[var(--ink)]">${escHtml(x.subject_name)}</p>
+            <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(x.subject_code)}</p>
+            <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
+          </div>
+          <span class="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
+        </div>
+      </div>`).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีรายวิชาค้างในความรับผิดชอบตอนนี้ 🎉</div>`}</div>`
+  } else if (teacher.subView === 'overview') {
+    inner = `
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 mb-4">
+        <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
+        <div class="grid grid-cols-2 gap-3">
+          ${statCard(all.length, 'วิชาค้างทั้งหมด', 'var(--ink)')}
+          ${statCard(respondList.length, 'รอตอบรับ', 'var(--gold-ink)')}
+          ${statCard(assignedList.length, 'มอบหมายแล้ว', 'var(--info)')}
+          ${statCard(doneCount, 'สำเร็จแล้ว', 'var(--ok)')}
+        </div>
+      </div>`
+  } else if (teacher.subView === 'assigned') {
+    inner = `<div class="flex flex-col gap-3">${assignedList.length ? assignedList.map(x => teacherAssignedCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ยังไม่มีงานที่มอบหมายอยู่</div>`}</div>`
+  } else if (teacher.subView === 'respond') {
+    inner = `
+      <div class="flex items-center gap-2 mb-3">
+        <button id="regrade-teacher-back" class="w-8 h-8 rounded-full bg-[var(--surface-2)] text-[var(--muted)] text-sm">←</button>
+        <p class="text-sm font-bold text-[var(--ink)]">ตอบรับคำร้อง</p>
+      </div>
+      <div class="flex flex-col gap-3">${respondList.length ? respondList.map(x => teacherRespondCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ตอบรับครบหมดแล้ว 🎉</div>`}</div>`
+  }
+
+  content.innerHTML = `
+    <div class="max-w-lg mx-auto p-4 relative" style="min-height:60vh;">${inner}</div>
+    ${respondList.length ? `
+    <button id="regrade-teacher-fab" class="fixed md:absolute bottom-24 md:bottom-6 right-4 md:right-8 px-4 py-3 rounded-full text-white font-bold text-xs shadow-lg flex items-center gap-2 z-20"
+      style="background:linear-gradient(135deg,var(--secondary),var(--secondary-dark))">
+      ✅ ตอบรับ
+      <span class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">${respondList.length}</span>
+    </button>` : ''}`
+
+  document.getElementById('regrade-teacher-fab')?.addEventListener('click', () => { teacher.subView = 'respond'; renderTeacher() })
+  document.getElementById('regrade-teacher-back')?.addEventListener('click', () => { teacher.subView = 'overview'; renderTeacher() })
+  content.querySelectorAll('[data-open-exam]').forEach(btn => btn.addEventListener('click', () => { teacher.form = { id: Number(btn.dataset.openExam), method: 'นัดสอบปรับ', dueText: '', fileUrl: '' }; renderTeacher() }))
+  content.querySelectorAll('[data-open-work]').forEach(btn => btn.addEventListener('click', () => { teacher.form = { id: Number(btn.dataset.openWork), method: 'ให้งานแก้', dueText: '', fileUrl: '' }; renderTeacher() }))
+  content.querySelectorAll('[data-cancel-form]').forEach(btn => btn.addEventListener('click', () => { teacher.form = null; renderTeacher() }))
+  content.querySelectorAll('[data-due-input]').forEach(el => el.addEventListener('input', () => { teacher.form.dueText = el.value }))
+  content.querySelectorAll('[data-file-input]').forEach(el => el.addEventListener('input', () => { teacher.form.fileUrl = el.value }))
+  content.querySelectorAll('[data-confirm-assign]').forEach(btn => btn.addEventListener('click', () => handleAssign(btn)))
+
+  renderBottomNav([
+    { key: 'catalog', icon: '📚', label: 'รายวิชาที่ค้าง' },
+    { key: 'overview', icon: '🏠', label: 'ภาพรวม' },
+    { key: 'assigned', icon: '📝', label: 'มอบหมายงาน' },
+  ], teacher.subView === 'respond' ? 'overview' : teacher.subView, (key) => { teacher.subView = key; renderTeacher() })
+}
+
+function teacherAssignedCard(x) {
+  const studentName = x.students?.full_name || '-'
+  return `
+  <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+    <div class="flex gap-2">
+      <div style="${avatarStyle(studentName, true)}">${initialOf(studentName)}</div>
+      <div class="min-w-0"><p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p><p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</p></div>
+    </div>
+    <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
+      <p class="text-xs font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
+      <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(x.due_text || '-')}</p>
+    </div>
+  </div>`
+}
+
+function teacherRespondCard(x) {
+  const studentName = x.students?.full_name || '-'
+  const f = teacher.form
+  const openExam = f && f.id === x.id && f.method === 'นัดสอบปรับ'
+  const openWork = f && f.id === x.id && f.method === 'ให้งานแก้'
+  return `
+  <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+    <div class="flex gap-2">
+      <div style="${avatarStyle(studentName, true)}">${initialOf(studentName)}</div>
+      <div class="min-w-0">
+        <p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p>
+        <p class="text-[10px] text-[var(--muted-2)]">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || '')})</p>
+        <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</p>
+        <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
+      </div>
+    </div>
+    ${!f || f.id !== x.id ? `
+    <div class="flex gap-2 mt-3">
+      <button data-open-exam="${x.id}" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:var(--info-soft);color:var(--info);border:1px solid var(--info-soft-line)">🗓 นัดสอบปรับ</button>
+      <button data-open-work="${x.id}" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:var(--gold-soft);color:var(--gold-ink);border:1px solid var(--gold-soft-line)">📎 ให้งานแก้</button>
+    </div>` : ''}
+    ${openExam ? `
+    <div class="mt-3 rounded-xl p-3 bg-[var(--surface-2)]">
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">วันเวลานัดสอบปรับ</label>
+      <input data-due-input class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs" placeholder="เช่น 15 ก.พ. 2569 09:00 น." value="${escHtml(f.dueText)}">
+      <div class="flex gap-2 mt-2">
+        <button data-confirm-assign="${x.id}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ยืนยันนัดสอบ</button>
+        <button data-cancel-form class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface-2)] text-[var(--muted)]">ยกเลิก</button>
+      </div>
+    </div>` : ''}
+    ${openWork ? `
+    <div class="mt-3 rounded-xl p-3 bg-[var(--surface-2)]">
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">ลิงก์ไฟล์งานแก้</label>
+      <input data-file-input class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs mb-2" placeholder="วางลิงก์ไฟล์" value="${escHtml(f.fileUrl)}">
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">กำหนดส่งงาน</label>
+      <input data-due-input class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs" placeholder="เช่น 20 ก.พ. 2569" value="${escHtml(f.dueText)}">
+      <div class="flex gap-2 mt-2">
+        <button data-confirm-assign="${x.id}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ยืนยันมอบหมายงาน</button>
+        <button data-cancel-form class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface-2)] text-[var(--muted)]">ยกเลิก</button>
+      </div>
+    </div>` : ''}
+  </div>`
+}
+
+async function handleAssign(btn) {
+  const id = Number(btn.dataset.confirmAssign)
+  const f = teacher.form
+  if (!f.dueText.trim()) { showToast('กรุณากรอกวันที่/เวลาก่อนยืนยัน', 'warning'); return }
+  const x = teacher.subjects.find(r => r.id === id)
+  const msg = f.method === 'นัดสอบปรับ'
+    ? `นัดสอบปรับวิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} วันที่ ${f.dueText.trim()} ใช่หรือไม่?`
+    : `มอบหมายงานแก้วิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} กำหนดส่ง ${f.dueText.trim()} ใช่หรือไม่?`
+  const ok = await showRegradeConfirm({ title: f.method === 'นัดสอบปรับ' ? 'ยืนยันนัดสอบปรับ' : 'ยืนยันมอบหมายงานแก้', message: msg, confirmText: 'ยืนยัน' })
+  if (!ok) return
+  try {
+    await assignWork(id, { method: f.method, dueText: f.dueText.trim(), fileUrl: f.fileUrl.trim() || null })
+    showToast('บันทึกการมอบหมายเรียบร้อย ✅', 'success')
+    teacher.form = null
+    renderTeacher()
+  } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
+}
+
+// ============================================================================
+// ฝ่ายทะเบียน
+// ============================================================================
+const registrar = { view: 'close', query: '', gradeCategory: 'สามัญ' }
+
+async function renderRegistrar() {
+  setHeaderTitle('ฝ่ายทะเบียน', 'แก้ค้างเก่า — ฝ่ายทะเบียน')
+  const content = document.getElementById('regrade-content')
+  content.innerHTML = `<div class="max-w-3xl mx-auto p-4">
+    <div class="flex gap-2 mb-4">
+      <button data-rview="close" style="${tab(registrar.view === 'close')}">📋 รอปิดงาน</button>
+      <button data-rview="grade" style="${tab(registrar.view === 'grade')}">🎓 เกรดที่ต้องอัปเดต</button>
+    </div>
+    <div id="regrade-registrar-body"></div>
+  </div>`
+  content.querySelectorAll('[data-rview]').forEach(btn => btn.addEventListener('click', () => { registrar.view = btn.dataset.rview; renderRegistrar() }))
+
+  const body = document.getElementById('regrade-registrar-body')
+  if (registrar.view === 'close') {
+    body.innerHTML = `<input id="regrade-registrar-search" class="w-full max-w-sm px-3 py-2 rounded-lg border border-[var(--line)] text-sm mb-4" placeholder="ค้นหาชื่อหรือเลขประจำตัวนักเรียน...">
+      <div id="regrade-close-list" class="flex flex-col gap-3"></div>`
+    const search = document.getElementById('regrade-registrar-search')
+    search.value = registrar.query
+    search.addEventListener('input', () => { registrar.query = search.value; renderCloseList() })
+    await renderCloseList()
+  } else {
+    body.innerHTML = `<div class="flex gap-2 mb-4">
+        <button data-gcat="สามัญ" style="${pill(registrar.gradeCategory === 'สามัญ')}">สามัญ</button>
+        <button data-gcat="ศาสนา" style="${pill(registrar.gradeCategory === 'ศาสนา', 'secondary')}">ศาสนา</button>
+      </div>
+      <div class="overflow-x-auto"><table class="w-full text-xs" id="regrade-grade-table"></table></div>`
+    body.querySelectorAll('[data-gcat]').forEach(btn => btn.addEventListener('click', () => { registrar.gradeCategory = btn.dataset.gcat; renderRegistrar() }))
+    await renderGradeTable()
+  }
+}
+
+async function renderCloseList() {
+  const list = document.getElementById('regrade-close-list')
+  let rows
+  try { rows = await getPendingCloseOut(registrar.query) } catch (err) {
+    list.innerHTML = `<div class="text-center text-red-500 text-sm py-8">โหลดไม่สำเร็จ: ${escHtml(err.message)}</div>`
+    return
+  }
+  list.innerHTML = rows.length ? rows.map(x => {
+    const name = x.students?.full_name || '-'
+    return `
+    <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 flex justify-between items-center gap-3 flex-wrap">
+      <div class="flex gap-2.5 items-center min-w-0">
+        <div style="${avatarStyle(name, true)}">${initialOf(name)}</div>
+        <div class="min-w-0">
+          <p class="font-bold text-sm text-[var(--ink)]">${escHtml(name)} <span class="text-[var(--muted-2)] font-normal">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || '')})</span></p>
+          <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)}) · ${escHtml(x.method || '')} — กำหนด ${escHtml(x.due_text || '-')}</p>
+          <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
+        </div>
+      </div>
+      <button data-closeout="${x.id}" data-name="${escHtml(name)}" data-subject="${escHtml(x.subject_name)}"
+        class="px-4 py-2 rounded-xl text-white text-xs font-bold flex-shrink-0" style="background:linear-gradient(135deg,var(--secondary),var(--secondary-dark))">✓ ปิดงาน (ปรับแก้สำเร็จ)</button>
+    </div>`
+  }).join('') : `<div class="text-center text-[var(--muted-2)] text-sm py-12">📭 ไม่พบรายการที่รอปิดงาน</div>`
+
+  list.querySelectorAll('[data-closeout]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = Number(btn.dataset.closeout)
+    const ok = await showRegradeConfirm({
+      title: 'ยืนยันปิดงาน',
+      message: `ยืนยันบันทึกว่า ${btn.dataset.name} ปรับแก้วิชา "${btn.dataset.subject}" สำเร็จแล้วใช่หรือไม่? สถานะจะเปลี่ยนเป็น "ปรับแก้สำเร็จ" ทันที`,
+      confirmText: 'ยืนยันปิดงาน',
+    })
+    if (!ok) return
+    try { await closeOutSubject(id); showToast('ปิดงานเรียบร้อย ✅', 'success'); await renderCloseList() }
+    catch (err) { showToast('ไม่สำเร็จ: ' + err.message, 'error') }
+  }))
+}
+
+async function renderGradeTable() {
+  const table = document.getElementById('regrade-grade-table')
+  let rows
+  try { rows = await getGradeTrackingRows(registrar.gradeCategory) } catch (err) {
+    table.innerHTML = `<tr><td class="text-red-500 text-sm py-8 text-center">โหลดไม่สำเร็จ: ${escHtml(err.message)}</td></tr>`
+    return
+  }
+  table.innerHTML = `
+    <thead><tr class="border-b-2 border-[var(--line)] text-left text-[var(--muted-2)]">
+      <th class="py-2 px-2">นักเรียน</th><th class="py-2 px-2">รายวิชา</th><th class="py-2 px-2">ครูผู้สอน</th><th class="py-2 px-2">สถานะเกรด</th><th class="py-2 px-2 text-right">จัดการ</th>
+    </tr></thead>
+    <tbody>${rows.length ? rows.map(x => {
+      const name = x.students?.full_name || '-'
+      return `<tr class="border-b border-[var(--line-soft)]">
+        <td class="py-2 px-2"><div class="flex items-center gap-2"><div style="${avatarStyle(name, true)}">${initialOf(name)}</div><div><p class="font-bold text-[var(--ink)]">${escHtml(name)}</p><p class="text-[10px] text-[var(--muted-2)]">(${escHtml(x.students?.student_code || '')})</p></div></div></td>
+        <td class="py-2 px-2 text-[var(--ink-2)]">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</td>
+        <td class="py-2 px-2 text-[var(--ink-2)]">${escHtml(x.teachers?.full_name || '-')}</td>
+        <td class="py-2 px-2">${x.grade_entered
+          ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold" style="background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-soft-line)">อัปเดตแล้ว ✓</span>`
+          : `<span class="px-2 py-1 rounded-full text-[10px] font-bold" style="background:var(--gold-soft);color:var(--gold-ink);border:1px solid var(--gold-soft-line)">รอกรอกเกรด</span>`}</td>
+        <td class="py-2 px-2 text-right">${x.grade_entered ? '' : `<button data-mark-entered="${x.id}" data-name="${escHtml(name)}" data-subject="${escHtml(x.subject_name)}" class="px-3 py-1.5 rounded-lg text-white text-[11px] font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">กรอกข้อมูลแล้ว</button>`}</td>
+      </tr>`
+    }).join('') : `<tr><td colspan="5" class="text-center text-[var(--muted-2)] text-sm py-10">ไม่มีรายการในหมวดนี้</td></tr>`}</tbody>`
+
+  table.querySelectorAll('[data-mark-entered]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = Number(btn.dataset.markEntered)
+    const ok = await showRegradeConfirm({
+      title: 'ยืนยันกรอกข้อมูลเกรดแล้ว',
+      message: `ยืนยันว่าได้นำเกรดของ ${btn.dataset.name} วิชา "${btn.dataset.subject}" ไปกรอกในระบบเกรด (แยกต่างหาก) เรียบร้อยแล้วใช่หรือไม่?`,
+      confirmText: 'ยืนยัน',
+    })
+    if (!ok) return
+    try { await markGradeEntered(id); showToast('บันทึกแล้ว ✅', 'success'); await renderGradeTable() }
+    catch (err) { showToast('ไม่สำเร็จ: ' + err.message, 'error') }
+  }))
+}
+
+// ============================================================================
+// บอร์ดผู้บริหาร
+// ============================================================================
+const dashboard = { categoryTab: 'all', drilldown: null }
+
+async function renderDashboard() {
+  setHeaderTitle('ผู้บริหาร', 'ภาพรวมทั้งโรงเรียน — บอร์ดผู้บริหาร')
+  const content = document.getElementById('regrade-content')
+  let rows
+  try { rows = await getAllRegradeSubjectsForDashboard() } catch (err) {
+    content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
+    return
+  }
+  const scoped = dashboard.categoryTab === 'all' ? rows : rows.filter(r => r.category === dashboard.categoryTab)
+  const total = scoped.length
+  const notYet = scoped.filter(r => r.status === 'ยังไม่แจ้ง').length
+  const onlyReq = scoped.filter(r => r.status === 'จำนงแล้ว').length
+  const assigned = scoped.filter(r => r.status === 'กำลังดำเนินการปรับแก้').length
+  const done = scoped.filter(r => r.status === 'ปรับแก้สำเร็จ').length
+  const requested = onlyReq + assigned
+
+  const teacherGroups = {}
+  scoped.forEach(r => { const n = r.teachers?.full_name || '-'; (teacherGroups[n] ??= []).push(r) })
+  const teacherRows = Object.entries(teacherGroups).map(([name, list]) => ({
+    name,
+    total: list.length,
+    pending: list.filter(x => x.status === 'จำนงแล้ว').length,
+    assigned: list.filter(x => x.status === 'กำลังดำเนินการปรับแก้').length,
+    done: list.filter(x => x.status === 'ปรับแก้สำเร็จ').length,
+  })).sort((a, b) => b.pending - a.pending)
+
+  const genTotal = rows.filter(r => r.category === 'สามัญ').length
+  const relTotal = rows.filter(r => r.category === 'ศาสนา').length
+
+  content.innerHTML = `
+    <div class="max-w-4xl mx-auto p-4">
+      <div class="flex gap-2 mb-4 flex-wrap">
+        <button data-dcat="all" style="${tab(dashboard.categoryTab === 'all')}">📊 ทั้งหมด (${rows.length})</button>
+        <button data-dcat="สามัญ" style="${tab(dashboard.categoryTab === 'สามัญ')}">📘 สามัญ (${genTotal})</button>
+        <button data-dcat="ศาสนา" style="${tab(dashboard.categoryTab === 'ศาสนา')}">🕌 ศาสนา (${relTotal})</button>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <button data-drill="all" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(total, 'รายวิชาค้างทั้งหมด', 'var(--ink)')}</button>
+        <button data-drill="requested" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(requested, 'จำนงแล้ว', 'var(--gold-ink)')}</button>
+        <button data-drill="assigned" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(assigned, 'กำลังดำเนินการปรับแก้', 'var(--info)')}</button>
+        <button data-drill="done" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(done, 'ปรับแก้สำเร็จ', 'var(--ok)')}</button>
+      </div>
+      <div id="regrade-drilldown"></div>
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+        <p class="text-xs font-bold text-[var(--ink-2)] mb-1">ความคืบหน้าแยกรายครูผู้สอน</p>
+        <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากครูที่มีคำร้องรอตอบรับมากที่สุดก่อน</p>
+        <div class="overflow-x-auto"><table class="w-full text-xs">
+          <thead><tr class="border-b-2 border-[var(--line)] text-left text-[var(--muted-2)]"><th class="py-2 px-2">ครูผู้สอน</th><th class="py-2 px-2 text-center">ทั้งหมด</th><th class="py-2 px-2 text-center">รอตอบรับ</th><th class="py-2 px-2 text-center">มอบหมายแล้ว</th><th class="py-2 px-2 text-center">สำเร็จ</th></tr></thead>
+          <tbody>${teacherRows.map(t => `<tr class="border-b border-[var(--line-soft)]">
+            <td class="py-2 px-2 font-bold text-[var(--ink-2)]">${escHtml(t.name)}</td>
+            <td class="py-2 px-2 text-center text-[var(--muted)]">${t.total}</td>
+            <td class="py-2 px-2 text-center">${t.pending > 0 ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:var(--gold-soft);color:var(--gold-ink)">${t.pending}</span>` : t.pending}</td>
+            <td class="py-2 px-2 text-center" style="color:var(--info)">${t.assigned}</td>
+            <td class="py-2 px-2 text-center" style="color:var(--ok)">${t.done}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>
+    </div>`
+
+  content.querySelectorAll('[data-dcat]').forEach(btn => btn.addEventListener('click', () => { dashboard.categoryTab = btn.dataset.dcat; dashboard.drilldown = null; renderDashboard() }))
+  content.querySelectorAll('[data-drill]').forEach(btn => btn.addEventListener('click', () => { dashboard.drilldown = btn.dataset.drill; renderDashboardDrilldown(scoped) }))
+  if (dashboard.drilldown) renderDashboardDrilldown(scoped)
+}
+
+function statNum(v, label, color) { return `<p class="text-2xl font-extrabold" style="color:${color}">${v}</p><p class="text-[10px] text-[var(--muted-2)] mt-1">${escHtml(label)}</p>` }
+
+function renderDashboardDrilldown(scoped) {
+  const el = document.getElementById('regrade-drilldown')
+  if (!dashboard.drilldown) { el.innerHTML = ''; return }
+  const titles = { all: 'รายวิชาค้างทั้งหมด', requested: 'จำนงแล้ว', assigned: 'กำลังดำเนินการปรับแก้', done: 'ปรับแก้สำเร็จ' }
+  let rows = []
+  if (dashboard.drilldown === 'all') rows = scoped
+  else if (dashboard.drilldown === 'requested') rows = scoped.filter(x => x.status === 'จำนงแล้ว' || x.status === 'กำลังดำเนินการปรับแก้')
+  else if (dashboard.drilldown === 'assigned') rows = scoped.filter(x => x.status === 'กำลังดำเนินการปรับแก้')
+  else if (dashboard.drilldown === 'done') rows = scoped.filter(x => x.status === 'ปรับแก้สำเร็จ')
+
+  el.innerHTML = `<div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 mb-4">
+    <div class="flex justify-between items-center mb-3">
+      <p class="text-xs font-bold text-[var(--ink-2)]">รายละเอียด: ${escHtml(titles[dashboard.drilldown])}</p>
+      <button id="regrade-drill-close" class="w-6 h-6 rounded-full bg-[var(--surface-2)] text-[var(--muted)] text-xs">✕</button>
+    </div>
+    <p class="text-xs text-[var(--muted-2)]">${rows.length} รายการ · ${rows.map(r => escHtml(r.category)).length ? '' : ''}</p>
+    <p class="text-[11px] text-[var(--muted)] mt-2">แยกตามชั้น: ${Object.entries(rows.reduce((acc, r) => ((acc[r.class_level || '-'] = (acc[r.class_level || '-'] || 0) + 1), acc), {})).map(([k, v]) => `${escHtml(k)} (${v})`).join(', ') || '-'}</p>
+  </div>`
+  document.getElementById('regrade-drill-close').addEventListener('click', () => { dashboard.drilldown = null; el.innerHTML = '' })
+}
+
+// ============================================================================
+// ตั้งค่าระบบ
+// ============================================================================
+async function renderSettings() {
+  setHeaderTitle('ตั้งค่าระบบ', `⚙️ ตั้งค่า${ctx.cfg.system_name || 'แก้ค้างเก่า'}`)
+  const content = document.getElementById('regrade-content')
+  let admins, staff
+  try { [admins, staff] = await Promise.all([getRegradeAdmins(), getRegradeRegistrarStaff()]) } catch (err) {
+    content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
+    return
+  }
+  const c = ctx.cfg
+  content.innerHTML = `
+    <div class="max-w-2xl mx-auto p-4 flex flex-col gap-4">
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-1">การแจ้งความจำนงของนักเรียน</p>
+        <p class="text-xs text-[var(--muted-2)] mb-3">ควบคุมปุ่มลอย "จำนงขอแก้/ปรับ" ที่นักเรียนเห็น</p>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input id="regrade-set-intent" type="checkbox" ${c.intent_open ? 'checked' : ''} class="w-5 h-5">
+          <span class="text-sm text-[var(--ink-2)]">เปิดรับคำร้องตอนนี้</span>
+        </label>
+      </div>
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-3">การมองเห็นเมนู</p>
+        <label class="flex items-center gap-3 cursor-pointer mb-2">
+          <input id="regrade-set-vis-student" type="checkbox" ${c.visibility?.student_menu ? 'checked' : ''} class="w-5 h-5">
+          <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้านักเรียน</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input id="regrade-set-vis-teacher" type="checkbox" ${c.visibility?.teacher_menu ? 'checked' : ''} class="w-5 h-5">
+          <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้าครู</span>
+        </label>
+      </div>
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-3">ตั้งค่าสีธีม</p>
+        <div class="grid grid-cols-3 gap-3">
+          <div><label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">🎀 สีหลัก (สามัญ)</label><input id="regrade-set-primary" type="color" value="${c.primary_color || '#9d174d'}" class="w-full h-9"></div>
+          <div><label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">🕌 สีรอง (ศาสนา)</label><input id="regrade-set-secondary" type="color" value="${c.secondary_color || '#065f46'}" class="w-full h-9"></div>
+          <div><label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">✨ สีทอง</label><input id="regrade-set-gold" type="color" value="${c.gold_color || '#b45309'}" class="w-full h-9"></div>
+        </div>
+      </div>
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-3">ข้อความประกาศ</p>
+        <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">🎓 สำหรับนักเรียน</label>
+        <textarea id="regrade-set-ann-student" rows="2" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm mb-3">${escHtml(c.student_announcement || '')}</textarea>
+        <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">👨‍🏫 สำหรับครูผู้สอน</label>
+        <textarea id="regrade-set-ann-teacher" rows="2" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">${escHtml(c.teacher_announcement || '')}</textarea>
+      </div>
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-1">ชื่อระบบ</p>
+        <input id="regrade-set-name" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm" value="${escHtml(c.system_name || 'แก้ค้างเก่า')}">
+      </div>
+
+      <button id="regrade-set-save" class="w-full py-3 rounded-2xl text-white font-bold text-sm" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">บันทึกการตั้งค่า</button>
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-1">นำเข้าข้อมูลย้อนหลัง (CSV)</p>
+        <p class="text-xs text-[var(--muted-2)] mb-3">สำหรับรายวิชาค้างของภาคเรียนก่อนหน้าภาคเรียนปัจจุบันเท่านั้น (ภาคเรียนปัจจุบันระบบดึงจากฐานข้อมูล ปพ.5 อัตโนมัติ)</p>
+        <div class="bg-[var(--surface-2)] rounded-xl p-3 mb-3 text-[11px] text-[var(--muted)] leading-relaxed">
+          <b>คอลัมน์ที่ต้องมี:</b> student_code (รหัสนักเรียน), subject_code (รหัสวิชา), subject_name (รายวิชา), category (หมวด: สามัญ/ศาสนา เท่านั้น), semester (ภาคเรียน)<br>
+          <b>ไม่บังคับ:</b> class_level (ชั้นที่ติด), teacher_code (รหัสครู), grade_failed_at (เกรดที่ติด)<br>
+          แถวที่มีอยู่แล้วในระบบ (นักเรียน+รหัสวิชา+ภาคเรียนเดียวกัน) จะถูกข้าม ไม่ทับข้อมูลเดิม
+        </div>
+        <input id="regrade-csv-file" type="file" accept=".csv,text/csv" class="w-full text-sm mb-3">
+        <div id="regrade-csv-preview"></div>
+        <button id="regrade-csv-import-btn" class="hidden mt-3 w-full py-2.5 rounded-xl text-white font-bold text-xs" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">นำเข้าข้อมูล</button>
+        <div id="regrade-csv-result" class="mt-3 text-xs"></div>
+      </div>
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-3">ผู้ดูแลระบบ (เข้าหน้าตั้งค่านี้ได้)</p>
+        <div class="flex flex-wrap gap-2 mb-3">${admins.map(a => adminChip(a, 'admin')).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
+        <div class="flex gap-2">
+          <input id="regrade-new-admin" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-sm" placeholder="profile_id (uuid) ของครู">
+          <button id="regrade-add-admin" class="px-4 py-2 rounded-lg text-white text-sm font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">+ เพิ่ม</button>
+        </div>
+      </div>
+
+      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-3">เจ้าหน้าที่ฝ่ายทะเบียน (เข้าหน้าปิดงานได้)</p>
+        <div class="flex flex-wrap gap-2 mb-3">${staff.map(a => adminChip(a, 'registrar')).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
+        <div class="flex gap-2">
+          <input id="regrade-new-registrar" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-sm" placeholder="profile_id (uuid) ของครู">
+          <button id="regrade-add-registrar" class="px-4 py-2 rounded-lg text-white text-sm font-bold" style="background:linear-gradient(135deg,var(--secondary),var(--secondary-dark))">+ เพิ่ม</button>
+        </div>
+      </div>
+    </div>`
+
+  content.querySelectorAll('[data-remove-admin]').forEach(btn => btn.addEventListener('click', async () => {
+    const ok = await showRegradeConfirm({ title: 'ยืนยันถอดสิทธิ์', message: `ถอดสิทธิ์ผู้ดูแลระบบของ "${btn.dataset.name}" ใช่หรือไม่?`, confirmText: 'ยืนยันถอดสิทธิ์' })
+    if (!ok) return
+    try { await removeRegradeAdmin(btn.dataset.removeAdmin); showToast('ถอดสิทธิ์แล้ว', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+  }))
+  content.querySelectorAll('[data-remove-registrar]').forEach(btn => btn.addEventListener('click', async () => {
+    const ok = await showRegradeConfirm({ title: 'ยืนยันถอดสิทธิ์', message: `ถอดสิทธิ์เจ้าหน้าที่ทะเบียนของ "${btn.dataset.name}" ใช่หรือไม่?`, confirmText: 'ยืนยันถอดสิทธิ์' })
+    if (!ok) return
+    try { await removeRegradeRegistrarStaff(btn.dataset.removeRegistrar); showToast('ถอดสิทธิ์แล้ว', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+  }))
+  document.getElementById('regrade-add-admin').addEventListener('click', async () => {
+    const id = document.getElementById('regrade-new-admin').value.trim()
+    if (!id) return
+    const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มผู้ดูแลระบบ', message: `เพิ่ม profile_id นี้เป็นผู้ดูแลระบบแก้ค้างเก่าใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
+    if (!ok) return
+    try { await addRegradeAdmin(id); showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+  })
+  document.getElementById('regrade-add-registrar').addEventListener('click', async () => {
+    const id = document.getElementById('regrade-new-registrar').value.trim()
+    if (!id) return
+    const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มเจ้าหน้าที่ทะเบียน', message: `เพิ่ม profile_id นี้เป็นเจ้าหน้าที่ฝ่ายทะเบียนใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
+    if (!ok) return
+    try { await addRegradeRegistrarStaff(id); showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+  })
+  document.getElementById('regrade-set-save').addEventListener('click', async () => {
+    const ok = await showRegradeConfirm({ title: 'ยืนยันบันทึกการตั้งค่า', message: 'บันทึกการตั้งค่าทั้งหมดนี้ใช่หรือไม่? จะมีผลกับทุกคนทันที', confirmText: 'บันทึก' })
+    if (!ok) return
+    try {
+      await updateRegradeConfig({
+        intent_open: document.getElementById('regrade-set-intent').checked,
+        visibility: {
+          student_menu: document.getElementById('regrade-set-vis-student').checked,
+          teacher_menu: document.getElementById('regrade-set-vis-teacher').checked,
+        },
+        primary_color: document.getElementById('regrade-set-primary').value,
+        secondary_color: document.getElementById('regrade-set-secondary').value,
+        gold_color: document.getElementById('regrade-set-gold').value,
+        student_announcement: document.getElementById('regrade-set-ann-student').value,
+        teacher_announcement: document.getElementById('regrade-set-ann-teacher').value,
+        system_name: document.getElementById('regrade-set-name').value.trim() || 'แก้ค้างเก่า',
+      })
+      showToast('บันทึกการตั้งค่าเรียบร้อย ✅', 'success')
+      ctx.cfg = await getRegradeConfig()
+      applyThemeColors()
+      renderSettings()
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
+  })
+
+  wireCsvImport(content)
+}
+
+function buildCsvPreviewTable(mapped) {
+  if (!mapped.length) return `<p class="text-xs text-[var(--muted-2)] text-center py-4">ไม่พบข้อมูลในไฟล์</p>`
+  const headers = ['student_code', 'subject_code', 'subject_name', 'category', 'semester', 'class_level', 'teacher_code']
+  const preview = mapped.slice(0, 10)
+  return `<div class="overflow-x-auto rounded-xl border border-[var(--line)]">
+    <table class="w-full text-[11px]">
+      <thead class="bg-[var(--surface-2)] text-[var(--muted-2)]"><tr>${headers.map(h => `<th class="px-2 py-1.5 text-left">${h}</th>`).join('')}</tr></thead>
+      <tbody>${preview.map(r => `<tr class="border-t border-[var(--line-soft)]">${headers.map(h => `<td class="px-2 py-1.5 text-[var(--ink-2)]">${escHtml(r[h] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>
+    ${mapped.length > 10 ? `<p class="text-center text-[10px] text-[var(--muted-2)] py-1.5">แสดง 10 จาก ${mapped.length} แถว</p>` : ''}
+  </div>`
+}
+
+function wireCsvImport(content) {
+  let csvRawRows = null
+  const fileInput = content.querySelector('#regrade-csv-file')
+  const previewEl = content.querySelector('#regrade-csv-preview')
+  const importBtn = content.querySelector('#regrade-csv-import-btn')
+  const resultEl = content.querySelector('#regrade-csv-result')
+
+  fileInput?.addEventListener('change', async () => {
+    resultEl.innerHTML = ''
+    const file = fileInput.files?.[0]
+    if (!file) { csvRawRows = null; previewEl.innerHTML = ''; importBtn.classList.add('hidden'); return }
+    try {
+      const text = await file.text()
+      csvRawRows = parseCSV(text)
+      previewEl.innerHTML = buildCsvPreviewTable(previewRegradeCsvRows(csvRawRows))
+      importBtn.classList.toggle('hidden', csvRawRows.length === 0)
+    } catch (err) {
+      previewEl.innerHTML = ''
+      showToast('อ่านไฟล์ CSV ไม่สำเร็จ: ' + err.message, 'error')
+    }
+  })
+
+  importBtn?.addEventListener('click', async () => {
+    if (!csvRawRows?.length) return
+    const ok = await showRegradeConfirm({
+      title: 'ยืนยันนำเข้าข้อมูล CSV',
+      message: `นำเข้าข้อมูลรายวิชาค้าง ${csvRawRows.length} แถวเข้าสู่ระบบใช่หรือไม่? แถวที่มีอยู่แล้วในระบบจะถูกข้าม ไม่ทับข้อมูลเดิม`,
+      confirmText: 'ยืนยันนำเข้า',
+    })
+    if (!ok) return
+    importBtn.disabled = true
+    importBtn.textContent = 'กำลังนำเข้า...'
+    try {
+      const summary = await importRegradeSubjectsCsv(csvRawRows)
+      resultEl.innerHTML = `
+        <div class="rounded-xl p-3" style="background:var(--ok-soft);border:1px solid var(--ok-soft-line);color:var(--ok)">
+          นำเข้าสำเร็จ ${summary.imported} แถว จากทั้งหมด ${summary.total} แถว
+          ${summary.skippedDuplicate ? `<br>ข้าม ${summary.skippedDuplicate} แถว (มีอยู่แล้วในระบบ)` : ''}
+          ${summary.skippedNoStudent ? `<br>ข้าม ${summary.skippedNoStudent} แถว (ไม่พบรหัสนักเรียนในระบบ)` : ''}
+          ${summary.skippedInvalid ? `<br>ข้าม ${summary.skippedInvalid} แถว (ข้อมูลไม่ครบ/หมวดไม่ถูกต้อง)` : ''}
+          ${summary.unmatchedTeacher ? `<br>⚠️ ${summary.unmatchedTeacher} แถว ไม่พบรหัสครู (นำเข้าแล้วแต่ยังไม่ผูกครูผู้สอน)` : ''}
+        </div>`
+      showToast('นำเข้าข้อมูลเรียบร้อย ✅', 'success')
+      csvRawRows = null
+      fileInput.value = ''
+      previewEl.innerHTML = ''
+      importBtn.classList.add('hidden')
+    } catch (err) {
+      showToast('นำเข้าไม่สำเร็จ: ' + err.message, 'error')
+    } finally {
+      importBtn.disabled = false
+      importBtn.textContent = 'นำเข้าข้อมูล'
+    }
+  })
+}
+
+function adminChip(row, kind) {
+  const label = row.profiles?.user_code || row.profile_id
+  const attr = kind === 'admin' ? `data-remove-admin="${escHtml(row.profile_id)}"` : `data-remove-registrar="${escHtml(row.profile_id)}"`
+  return `<span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">
+    ${escHtml(label)}
+    <button ${attr} data-name="${escHtml(label)}" class="w-4 h-4 rounded-full text-[10px]" style="background:var(--primary-soft-line)">×</button>
+  </span>`
+}
+
+function applyThemeColors() {
+  const root = document.documentElement
+  if (ctx.cfg.primary_color) root.style.setProperty('--primary', ctx.cfg.primary_color)
+  if (ctx.cfg.secondary_color) root.style.setProperty('--secondary', ctx.cfg.secondary_color)
+  if (ctx.cfg.gold_color) root.style.setProperty('--gold', ctx.cfg.gold_color)
+}
+
+// ============================================================================
+// Auth guard + role routing
+// ============================================================================
+let currentSection = null
+
+async function goSection(section) {
+  currentSection = section
+  document.getElementById('regrade-bottom-tabs').innerHTML = ''
+  if (section === 'student') return renderStudent()
+  if (section === 'teacher') return renderTeacher()
+  if (section === 'registrar') return renderRegistrar()
+  if (section === 'dashboard') return renderDashboard()
+  if (section === 'settings') return renderSettings()
+}
+
+function buildSidebar() {
+  const sections = []
+  if (ctx.role === 'teacher' && (ctx.cfg.visibility?.teacher_menu || ctx.isAdmin)) sections.push({ key: 'teacher', icon: '📚', label: 'งานสอนของฉัน' })
+  if (ctx.isRegistrar) sections.push({ key: 'registrar', icon: '📋', label: 'ฝ่ายทะเบียน' })
+  if (ctx.isAdmin) {
+    sections.push({ key: 'dashboard', icon: '📊', label: 'ผู้บริหาร' })
+    sections.push({ key: 'settings', icon: '⚙️', label: 'ตั้งค่าระบบ' })
+  }
+  if (sections.length > 1) {
+    renderSidebarNav(sections, currentSection, goSection)
+  } else {
+    document.getElementById('regrade-sidebar-nav').innerHTML = ''
+  }
+}
+
+function renderNoAccess() {
+  document.getElementById('regrade-content').innerHTML = `
+    <div class="max-w-md mx-auto p-6 text-center text-[var(--muted)]">
+      <p class="text-4xl mb-3">🔒</p>
+      <p class="text-sm">บัญชีนี้ยังไม่มีสิทธิ์เข้าใช้งานระบบแก้ค้างเก่า</p>
+    </div>`
+}
+
+async function init() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) { window.location.replace('index.html'); return }
+
+  const { data: profile } = await supabase.from('profiles').select('role, is_also_admin').eq('id', session.user.id).single()
+  ctx.role = profile?.role
+  const BACK_HREF = { student: 'student.html', teacher: 'teacher.html', admin: 'dashboard.html' }
+  const backHref = BACK_HREF[ctx.role] || 'index.html'
+  document.getElementById('regrade-back-btn-desktop').href = backHref
+  document.getElementById('regrade-back-btn-mobile').href = backHref
+
+  try {
+    ctx.cfg = await getRegradeConfig()
+    const perms = await checkMyRegradePermissions()
+    ctx.isAdmin = perms.isAdmin || ctx.role === 'admin' || profile?.is_also_admin === true
+    ctx.isRegistrar = perms.isRegistrar || ctx.isAdmin
+  } catch (err) {
+    document.getElementById('regrade-content').innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดการตั้งค่าไม่สำเร็จ: ${escHtml(err.message)}</div>`
+    return
+  }
+  applyThemeColors()
+
+  if (ctx.role === 'student') {
+    ctx.studentRow = await getMyStudentRow()
+    if (!ctx.studentRow || (!ctx.cfg.visibility?.student_menu && !ctx.isAdmin)) { renderNoAccess(); return }
+    await goSection('student')
+    return
+  }
+
+  if (ctx.role === 'teacher') {
+    ctx.teacherRow = await getMyTeacherRow()
+    if (!ctx.teacherRow) { renderNoAccess(); return }
+    buildSidebar()
+    if (ctx.cfg.visibility?.teacher_menu || ctx.isAdmin) { await goSection('teacher'); return }
+    if (ctx.isRegistrar) { await goSection('registrar'); return }
+    renderNoAccess()
+    return
+  }
+
+  if (ctx.isAdmin) {
+    buildSidebar()
+    await goSection('dashboard')
+    return
+  }
+  if (ctx.isRegistrar) {
+    buildSidebar()
+    await goSection('registrar')
+    return
+  }
+
+  renderNoAccess()
+}
+
+init()

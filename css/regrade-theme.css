@@ -1,0 +1,58 @@
+/* โทเคนสี/พื้นผิวของระบบ "แก้ค้างเก่า" — โหลดเฉพาะหน้า regrade.html
+   สีหลัก (--primary) ผูกกับรายวิชาสามัญ, สีรอง (--secondary) ผูกกับรายวิชาศาสนา,
+   สีทอง (--gold) เป็นสีแบรนด์ของโมดูล — ค่าเริ่มต้นอ่านจากตาราง regrade_config
+   (primary_color/secondary_color/gold_color) แล้วเขียนทับ 3 ตัวแปรนี้ตอนรันไทม์ได้
+   จากหน้าตั้งค่า (ดู js/regrade.js applyThemeColors()) โครงสร้างโทเคนที่เหลือ
+   คัดลอกแพทเทิร์นจาก css/council-theme.css ให้เข้ากับระบบเดิม */
+
+html { font-size: clamp(16px, 13px + 0.4vw, 22px); }
+
+:root {
+  --bg: #f8fafc; --bg-2: #f3f4f6; --surface: #ffffff; --surface-2: #f9fafb;
+  --line: #e5e7eb; --line-soft: #f3f4f6;
+  --ink: #1f2937; --ink-2: #374151; --muted: #6b7280; --muted-2: #9ca3af;
+
+  --primary: #9d174d; --primary-dark: #701138; --primary-soft: #fdf2f6; --primary-soft-line: #f3d4e2;
+  --primary-25: #f3d4e2; --primary-45: #d8799f; --primary-70: #b8386e;
+
+  --secondary: #065f46; --secondary-dark: #043d2d; --secondary-soft: #ecfdf5; --secondary-soft-line: #a7f3d0;
+  --secondary-25: #a7f3d0; --secondary-45: #34d399; --secondary-70: #059669;
+
+  --gold: #b45309; --gold-ink: #92400e; --gold-soft: #fffbeb; --gold-soft-line: #fde68a;
+
+  --ok: #059669; --ok-soft: #ecfdf5; --ok-soft-line: #a7f3d0;
+  --bad: #dc2626; --bad-soft: #fef2f2; --bad-soft-line: #fecaca;
+  --info: #1d4ed8; --info-soft: #eff6ff; --info-soft-line: #bfdbfe;
+
+  --btn-dark-bg: #1f2937; --btn-dark-fg: #ffffff;
+  --toast-bg: #1f2937; --toast-fg: #ffffff;
+  --hero-1: var(--primary); --hero-2: var(--primary-dark); --hero-3: #4c0e30;
+  --hero-btn: #ffffff; --hero-btn-fg: var(--primary);
+
+  --glass: rgba(255,255,255,.72); --glass-on: rgba(253,242,246,.86); --glass-line: rgba(255,255,255,.6);
+}
+
+:root[data-dark] {
+  --bg: #14100f; --bg-2: #1b1615; --surface: #201a1e; --surface-2: #272026;
+  --line: #3a3038; --line-soft: #2e262c;
+  --ink: #f6eff2; --ink-2: #dcccd4; --muted: #a99ba3; --muted-2: #8d8089;
+
+  --primary: #e2578f; --primary-dark: #a3134f; --primary-soft: #331420; --primary-soft-line: #55253a;
+  --primary-25: #55253a; --primary-45: #b8386e; --primary-70: #d8799f;
+
+  --secondary: #35a273; --secondary-dark: #1c5f43; --secondary-soft: #142a20; --secondary-soft-line: #2a4a3a;
+  --secondary-25: #2a4a3a; --secondary-45: #2f9268; --secondary-70: #4fb488;
+
+  --gold: #d9a94a; --gold-ink: #e5bc66; --gold-soft: #2b2214; --gold-soft-line: #4a3a1c;
+
+  --ok: #35a273; --ok-soft: #142a20; --ok-soft-line: #29513c;
+  --bad: #e07a68; --bad-soft: #2e1a17; --bad-soft-line: #4d2a24;
+  --info: #60a5fa; --info-soft: #17233a; --info-soft-line: #2b3f5c;
+
+  --btn-dark-bg: #701138; --btn-dark-fg: #ffffff;
+  --toast-bg: #3a2f33; --toast-fg: #ffffff;
+  --hero-1: #6e1136; --hero-2: #530d29; --hero-3: #38081c;
+  --hero-btn: #f3e7ea; --hero-btn-fg: #a3134f;
+
+  --glass: rgba(38,32,32,.68); --glass-on: rgba(40,22,31,.82); --glass-line: rgba(255,255,255,.12);
+}
