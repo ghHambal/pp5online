@@ -1,14 +1,16 @@
 // js/chat-classroom.js
 // Phase 6 — แชทห้องเรียน: ครูโดเนทระดับ 3+ (หรือใช้ห้องฟรี 1 ห้อง/ภาคเรียน) คุยกับ
 // นักเรียนในห้องที่สอน — ผูกกับ classes.id ตรงๆ (หน่วยเดียวกับหน้า "ห้องเรียนของฉัน")
-// ใช้ร่วมกันทั้งฝั่งครู (openTeacherClassroomChat) และนักเรียน (renderStudentClassroomChat)
-// เรียบง่ายกว่า donor chat โดยตั้งใจ — ไม่มีสติกเกอร์/ประกาศปักหมุด/บันทึกโน้ต
+// ใช้ร่วมกันทั้งฝั่งครู (openTeacherClassroomChat / loadTeacherClassroomAccessInto —
+// ตัวหลังถูกเรียกซ้ำจาก teacher-views-donor-chat.js แท็บ "🏫 ห้องเรียน" ในปุ่มลอยเดียวกัน)
+// และนักเรียน (renderStudentClassroomChat)
+// เรียบง่ายกว่า donor chat โดยตั้งใจ — ไม่มีสติกเกอร์โดเนท/ประกาศปักหมุด/บันทึกโน้ต
 // (ไม่ได้อยู่ในสเปคที่ขอ และนักเรียนไม่มีระดับโดเนท จึงไม่ import จาก teacher.js
 // เพื่อกันดึง module graph ฝั่งครูเข้ามาที่หน้านักเรียนโดยไม่จำเป็น)
 import {
   isClassroomChatUnlocked, getOrCreateClassroomChatRoomId,
   getMyClassroomFreePick, pickClassroomChatFreeRoom,
-  getChatMessages, sendChatMessage, getTeacherNamesByProfileIds,
+  getChatMessages, sendChatMessage, getTeacherNamesByProfileIds, getClassStudents,
 } from './api.js'
 import { getMyEnrolledClasses } from './student-api.js'
 import { supabase } from './supabase.js'
@@ -35,7 +37,7 @@ function _teardown() {
 }
 window._cleanupClassroomChat = _teardown
 
-// ─── ฝั่งครู — เปิดจากหน้ารายละเอียดห้องเรียน (teacher-views-classes.js) ──────────
+// ─── ฝั่งครู — ป๊อปอัพเดี่ยว เปิดจากหน้ารายละเอียดห้องเรียน (ทางลัด มี classId อยู่แล้ว) ──
 export async function openTeacherClassroomChat(teacher, classId, className) {
   document.getElementById('classroom-chat-widget')?.remove()
   _teardown()
@@ -59,38 +61,40 @@ export async function openTeacherClassroomChat(teacher, classId, className) {
   m.querySelector('#classroom-chat-close').addEventListener('click', () => { _teardown(); m.remove() })
 
   const bodyEl = m.querySelector('#classroom-chat-body')
-  await _loadTeacherAccess(bodyEl, teacher, classId, className)
+  await loadTeacherClassroomAccessInto(bodyEl, teacher, classId, className, {
+    onDonateClick: () => { m.remove(); document.getElementById('btn-donate-float')?.click() },
+  })
 }
 
-async function _loadTeacherAccess(bodyEl, teacher, classId, className) {
-  bodyEl.innerHTML = `<div class="flex-1 flex items-center justify-center py-12 text-gray-400">กำลังโหลด...</div>`
+// ─── ฝั่งครู — ตัวตรวจสิทธิ์+เรนเดอร์ ใช้ซ้ำได้ทั้งจากป๊อปอัพเดี่ยวข้างบน และแท็บ
+// "🏫 ห้องเรียน" ใน widget เดียวกับ donor chat (teacher-views-donor-chat.js) ───────
+export async function loadTeacherClassroomAccessInto(containerEl, teacher, classId, className, { onDonateClick } = {}) {
+  const goDonate = onDonateClick ?? (() => document.getElementById('btn-donate-float')?.click())
+  containerEl.innerHTML = `<div class="flex-1 flex items-center justify-center py-12 text-gray-400">กำลังโหลด...</div>`
 
   const unlocked = await isClassroomChatUnlocked(classId).catch(() => false)
   if (unlocked) {
     const roomId = await getOrCreateClassroomChatRoomId(classId).catch(() => null)
-    if (!roomId) { bodyEl.innerHTML = `<p class="text-center text-gray-400 py-12">เปิดห้องแชทไม่สำเร็จ</p>`; return }
-    await _renderRoom(bodyEl, roomId, teacher.profile_id, 'teacher')
+    if (!roomId) { containerEl.innerHTML = `<p class="text-center text-gray-400 py-12">เปิดห้องแชทไม่สำเร็จ</p>`; return }
+    await _renderRoom(containerEl, roomId, classId, teacher.profile_id, 'teacher')
     return
   }
 
   const myPick = await getMyClassroomFreePick(teacher.id).catch(() => null)
   if (myPick && myPick.class_id !== classId) {
-    bodyEl.innerHTML = `
+    containerEl.innerHTML = `
       <div class="p-8 text-center">
         <p class="text-4xl mb-3">🔒</p>
         <p class="font-bold text-gray-700 mb-2">ห้องนี้ยังไม่เปิดใช้งานแชท</p>
         <p class="text-sm text-gray-500 mb-4">ภาคเรียนนี้คุณใช้สิทธิ์ห้องฟรีกับ "${_htmlEsc(myPick.classes?.class_name ?? '')}" ไปแล้ว — โดเนทระดับ 3 ขึ้นไปเพื่อเปิดแชทได้ทุกห้องไม่จำกัด</p>
         <button id="btn-classroom-chat-donate" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
       </div>`
-    bodyEl.querySelector('#btn-classroom-chat-donate')?.addEventListener('click', () => {
-      document.getElementById('classroom-chat-widget')?.remove()
-      document.getElementById('btn-donate-float')?.click()
-    })
+    containerEl.querySelector('#btn-classroom-chat-donate')?.addEventListener('click', goDonate)
     return
   }
 
   // ยังไม่เคยใช้สิทธิ์ห้องฟรีภาคเรียนนี้เลย
-  bodyEl.innerHTML = `
+  containerEl.innerHTML = `
     <div class="p-8 text-center">
       <p class="text-4xl mb-3">🎁</p>
       <p class="font-bold text-gray-700 mb-2">ทดลองใช้ฟรี 1 ห้อง/ภาคเรียน</p>
@@ -100,11 +104,8 @@ async function _loadTeacherAccess(bodyEl, teacher, classId, className) {
         <button id="btn-classroom-chat-donate" class="px-5 py-2.5 rounded-xl border border-amber-300 text-amber-700 hover:bg-amber-50 font-bold text-sm">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
       </div>
     </div>`
-  bodyEl.querySelector('#btn-classroom-chat-donate')?.addEventListener('click', () => {
-    document.getElementById('classroom-chat-widget')?.remove()
-    document.getElementById('btn-donate-float')?.click()
-  })
-  bodyEl.querySelector('#btn-use-free-room').addEventListener('click', async (e) => {
+  containerEl.querySelector('#btn-classroom-chat-donate')?.addEventListener('click', goDonate)
+  containerEl.querySelector('#btn-use-free-room').addEventListener('click', async (e) => {
     const btn = e.currentTarget
     btn.disabled = true
     btn.textContent = 'กำลังตั้งค่า...'
@@ -112,10 +113,10 @@ async function _loadTeacherAccess(bodyEl, teacher, classId, className) {
       const ok = await pickClassroomChatFreeRoom(classId)
       if (!ok) {
         showToast('มีคนเลือกห้องฟรีไปพร้อมกันแล้ว กรุณาลองใหม่', 'error')
-        await _loadTeacherAccess(bodyEl, teacher, classId, className)
+        await loadTeacherClassroomAccessInto(containerEl, teacher, classId, className, { onDonateClick: goDonate })
         return
       }
-      await _loadTeacherAccess(bodyEl, teacher, classId, className)
+      await loadTeacherClassroomAccessInto(containerEl, teacher, classId, className, { onDonateClick: goDonate })
     } catch (err) {
       showToast(err.message ?? 'ตั้งค่าไม่สำเร็จ', 'error')
       btn.disabled = false
@@ -173,7 +174,7 @@ export async function renderStudentClassroomChat(student) {
     })
     const roomId = await getOrCreateClassroomChatRoomId(classId).catch(() => null)
     if (!roomId) { bodyEl.innerHTML = `<p class="text-center text-gray-400 py-12">เปิดห้องแชทไม่สำเร็จ</p>`; return }
-    await _renderRoom(bodyEl, roomId, student.profile_id, 'student')
+    await _renderRoom(bodyEl, roomId, classId, student.profile_id, 'student')
   }
   tabsEl.querySelectorAll('.stu-classroom-chip').forEach(chip =>
     chip.addEventListener('click', () => activate(chip.dataset.classId)))
@@ -182,7 +183,7 @@ export async function renderStudentClassroomChat(student) {
 }
 
 // ─── ตัวแสดงห้องแชท ใช้ร่วมกันทั้งฝั่งครูและนักเรียน ─────────────────────────────
-async function _renderRoom(containerEl, roomId, myProfileId, viewerRole) {
+async function _renderRoom(containerEl, roomId, classId, myProfileId, viewerRole) {
   _teardown()
   containerEl.innerHTML = `
     <div id="cc-msg-list" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
@@ -195,9 +196,15 @@ async function _renderRoom(containerEl, roomId, myProfileId, viewerRole) {
       <button type="submit" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm">ส่ง</button>
     </form>`
 
+  // โปรไฟล์นักเรียน (รูป+เลขที่+ชื่อ) ดึงจาก roster ของห้องนี้ครั้งเดียวตอนเปิดห้อง
+  // เลขที่ = ลำดับหลัง sort ตาม student_code (pattern เดียวกับที่ตารางนักเรียนในหน้า
+  // รายละเอียดห้องเรียนใช้อยู่แล้ว — getClassStudents คืนมาเรียงตาม student_code)
+  const roster = await getClassStudents(classId).catch(() => [])
+  const studentByProfile = new Map(roster.map((s, i) => [s.profile_id, { ...s, seatNo: i + 1 }]))
+
   const listEl = containerEl.querySelector('#cc-msg-list')
   const messages = await getChatMessages(roomId)
-  await _renderMessages(listEl, messages, myProfileId)
+  await _renderMessages(listEl, messages, myProfileId, studentByProfile)
   listEl.scrollTop = listEl.scrollHeight
   _lastMessageId = messages.at(-1)?.id ?? 0
 
@@ -209,7 +216,7 @@ async function _renderRoom(containerEl, roomId, myProfileId, viewerRole) {
     input.value = ''
     try {
       await sendChatMessage({ roomId, authorRole: viewerRole, body })
-      await _pollNewMessages(roomId, listEl, myProfileId)
+      await _pollNewMessages(roomId, listEl, myProfileId, studentByProfile)
     } catch (err) {
       showToast(err.message ?? 'ส่งข้อความไม่สำเร็จ', 'error')
     }
@@ -227,7 +234,7 @@ async function _renderRoom(containerEl, roomId, myProfileId, viewerRole) {
     try {
       const imageUrl = await uploadChatImage(roomId, file)
       await sendChatMessage({ roomId, authorRole: viewerRole, body: null, imageUrl })
-      await _pollNewMessages(roomId, listEl, myProfileId)
+      await _pollNewMessages(roomId, listEl, myProfileId, studentByProfile)
     } catch (err) {
       showToast(err.message ?? 'ส่งรูปไม่สำเร็จ', 'error')
     } finally {
@@ -238,50 +245,61 @@ async function _renderRoom(containerEl, roomId, myProfileId, viewerRole) {
 
   _channel = supabase.channel(`chat-room-${roomId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${roomId}` },
-      () => _pollNewMessages(roomId, listEl, myProfileId))
+      () => _pollNewMessages(roomId, listEl, myProfileId, studentByProfile))
     .subscribe()
 
-  _pollInterval = setInterval(() => _pollNewMessages(roomId, listEl, myProfileId), 5000)
+  _pollInterval = setInterval(() => _pollNewMessages(roomId, listEl, myProfileId, studentByProfile), 5000)
 }
 
-async function _pollNewMessages(roomId, listEl, myProfileId) {
+async function _pollNewMessages(roomId, listEl, myProfileId, studentByProfile) {
   const all = await getChatMessages(roomId).catch(() => null)
   if (!all || !listEl.isConnected) return
   const fresh = all.filter(m => m.id > _lastMessageId)
   if (!fresh.length) return
   const wasAtBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60
-  await _renderMessages(listEl, fresh, myProfileId, { append: true })
+  await _renderMessages(listEl, fresh, myProfileId, studentByProfile, { append: true })
   _lastMessageId = all.at(-1).id
   if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight
 }
 
-async function _renderMessages(listEl, messages, myProfileId, { append = false } = {}) {
+async function _renderMessages(listEl, messages, myProfileId, studentByProfile, { append = false } = {}) {
   const teacherProfileIds = messages.filter(m => m.author_role === 'teacher').map(m => m.author_profile_id)
   const nameByProfile = await getTeacherNamesByProfileIds(teacherProfileIds)
-  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile)).join('')
+  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile)).join('')
   if (append) listEl.insertAdjacentHTML('beforeend', html)
   else listEl.innerHTML = html
 }
 
-// อวตารแบบเรียบง่าย — role-based เท่านั้น ไม่มีสติกเกอร์โดเนท (นักเรียนไม่มีระดับโดเนท)
-function _avatarHTML(m, nameByProfile) {
+// อวตาร — ครูเป็นไอคอนธรรมดา (ยังไม่ขอรูปจริงสำหรับฝั่งครู) นักเรียนใช้รูปโปรไฟล์จริง
+// + "(เลขที่) ชื่อ-สกุล" ใต้รูป ตามที่ขอ — ไม่มีสติกเกอร์โดเนท (นักเรียนไม่มีระดับโดเนท)
+function _avatarHTML(m, nameByProfile, studentByProfile) {
   const isTeacher = m.author_role === 'teacher'
-  const displayName = isTeacher ? (nameByProfile[m.author_profile_id] ?? 'ครู') : 'นักเรียน'
-  const inner = isTeacher ? '🧑‍🏫' : '👤'
-  const ringColor = isTeacher ? '#f59e0b' : '#9ca3af'
+  if (isTeacher) {
+    const displayName = nameByProfile[m.author_profile_id] ?? 'ครู'
+    return `
+      <div class="flex flex-col items-center w-11 flex-shrink-0">
+        <div class="w-9 h-9 rounded-full flex items-center justify-center text-lg bg-white shadow-sm" style="border:2px solid #f59e0b;">🧑‍🏫</div>
+        <p class="text-[9px] text-gray-400 font-semibold mt-0.5 leading-tight text-center truncate w-11" title="${_htmlEsc(displayName)}">${_htmlEsc(displayName)}</p>
+      </div>`
+  }
+  const s = studentByProfile.get(m.author_profile_id)
+  const label = s ? `(${s.seatNo}) ${s.full_name ?? ''}` : 'นักเรียน'
+  const photoInner = s?.image_url
+    ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover" />`
+    : '👤'
   return `
     <div class="flex flex-col items-center w-11 flex-shrink-0">
-      <div class="w-9 h-9 rounded-full flex items-center justify-center text-lg bg-white shadow-sm" style="border:2px solid ${ringColor};">${inner}</div>
-      <p class="text-[9px] text-gray-400 font-semibold mt-0.5 leading-tight text-center truncate w-11" title="${_htmlEsc(displayName)}">${_htmlEsc(displayName)}</p>
+      <div class="w-9 h-9 rounded-full flex items-center justify-center text-lg bg-white shadow-sm overflow-hidden" style="border:2px solid #9ca3af;">${photoInner}</div>
+      <p class="text-[9px] text-gray-400 font-semibold mt-0.5 leading-tight text-center truncate w-11" title="${_htmlEsc(label)}">${_htmlEsc(label)}</p>
     </div>`
 }
 
-function _bubbleHTML(m, myProfileId, nameByProfile) {
+function _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile) {
   const isMine = m.author_profile_id === myProfileId
   const imageHtml = m.image_url
     ? `<img src="${_htmlEsc(m.image_url)}" class="rounded-xl max-w-full max-h-64 object-contain cursor-pointer mb-1" onclick="window.open('${_htmlEsc(m.image_url)}','_blank')" />`
     : ''
-  const avatar = !isMine ? _avatarHTML(m, nameByProfile) : ''
+  const avatar = !isMine ? _avatarHTML(m, nameByProfile, studentByProfile) : ''
   return `
     <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
       ${avatar}

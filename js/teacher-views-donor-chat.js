@@ -7,7 +7,7 @@ import {
   getTeacherNamesByProfileIds, getChatTiersByProfileIds, getSystemConfig,
   getMyAdminDmRoomId, getOrCreateAdminDmRoomId, getAdminDmRoomsForAdmin,
   getActiveChatAnnouncement, getChatAnnouncementHistory, createChatAnnouncement, unpinChatAnnouncement,
-  getMyBookmarkedMessageIds, toggleBookmark, getMyBookmarkedMessages,
+  getMyBookmarkedMessageIds, toggleBookmark, getMyBookmarkedMessages, getMyClasses,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
@@ -25,6 +25,15 @@ function _teardown() {
   _lastMessageId = 0
 }
 window._cleanupDonorChat = _teardown
+
+// แท็บ "🏫 ห้องเรียน" (ในวิดเจ็ตเดียวกัน) เปิดห้องผ่าน js/chat-classroom.js ซึ่งมี
+// channel/poll ของตัวเองแยกต่างหาก — ต้อง teardown คู่กันเสมอตอนสลับแท็บ/ปิดวิดเจ็ต
+function _teardownAll() {
+  _teardown()
+  if (typeof window._cleanupClassroomChat === 'function') {
+    try { window._cleanupClassroomChat() } catch (e) {}
+  }
+}
 
 const _fmtDateTime = iso => new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -44,13 +53,13 @@ export function injectDonorChatWidget(teacher) {
 }
 
 function _closeWidget() {
-  _teardown()
+  _teardownAll()
   document.getElementById('donor-chat-widget')?.remove()
 }
 
 export async function openDonorChatWidget(teacher) {
   document.getElementById('donor-chat-widget')?.remove()
-  _teardown()
+  _teardownAll()
 
   const m = document.createElement('div')
   m.id = 'donor-chat-widget'
@@ -99,18 +108,21 @@ export async function openDonorChatWidget(teacher) {
       <div class="flex border-b border-gray-100 flex-shrink-0">
         <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="group">👥 กลุ่มใหญ่</button>
         <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="admin">🛡️ แอดมิน</button>
+        <button class="donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition" data-tab="classroom">🏫 ห้องเรียน</button>
       </div>
       <div id="donor-chat-slot" class="flex-1 min-h-0 flex flex-col"></div>`
     const tabs = [...bodyEl.querySelectorAll('.donor-chat-tab')]
     const slotEl = bodyEl.querySelector('#donor-chat-slot')
     const setTab = (tab) => {
       activeTab = tab
+      _teardownAll()
       tabs.forEach(t => {
         const on = t.dataset.tab === tab
         t.className = `donor-chat-tab flex-1 py-2.5 text-sm font-semibold transition ${on ? 'text-amber-600 border-b-2 border-amber-500' : 'text-gray-400 hover:text-gray-600'}`
       })
       if (tab === 'group') _loadGroupTab(slotEl, teacher)
-      else _loadAdminTab(slotEl, teacher)
+      else if (tab === 'admin') _loadAdminTab(slotEl, teacher)
+      else _loadClassroomTab(slotEl, teacher)
     }
     tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)))
     setTab(activeTab)
@@ -118,7 +130,7 @@ export async function openDonorChatWidget(teacher) {
   showTabsUI()
 
   m.querySelector('#donor-chat-notes-btn').addEventListener('click', () => {
-    _teardown()
+    _teardownAll()
     _renderMyNotes(bodyEl, showTabsUI)
   })
 }
@@ -162,6 +174,51 @@ async function _loadAdminTab(slotEl, teacher) {
       btn.textContent = '+ เริ่มแชทกับแอดมิน'
     }
   })
+}
+
+// ─── แท็บ "🏫 ห้องเรียน" — เลือกห้องที่สอนแล้วเปิดแชทของห้องนั้น (js/chat-classroom.js) ──
+async function _loadClassroomTab(slotEl, teacher) {
+  slotEl.innerHTML = `<div class="flex-1 flex items-center justify-center py-12 text-gray-400">กำลังโหลด...</div>`
+  const classes = await getMyClasses(teacher.id).catch(() => [])
+  if (!classes.length) {
+    slotEl.innerHTML = `<p class="text-center text-gray-400 py-12">ยังไม่มีห้องเรียนที่สอน</p>`
+    return
+  }
+  _renderClassPicker(slotEl, teacher, classes)
+}
+
+function _renderClassPicker(slotEl, teacher, classes) {
+  slotEl.innerHTML = `
+    <div class="flex-1 overflow-y-auto p-3 space-y-2">
+      <p class="text-xs text-gray-400 px-1 mb-1">เลือกห้องเรียนที่จะเปิดแชท</p>
+      ${classes.map(c => `
+        <button type="button" class="classroom-pick-btn w-full text-left px-4 py-3 rounded-xl border border-gray-100 hover:bg-amber-50 hover:border-amber-200 transition flex items-center justify-between gap-2" data-class-id="${c.id}">
+          <span class="text-sm font-semibold text-gray-700 truncate">${_htmlEsc(c.master_subjects?.subject_name ?? '—')}</span>
+          <span class="text-xs text-gray-400 flex-shrink-0">${_htmlEsc(c.class_name ?? '')}</span>
+        </button>`).join('')}
+    </div>`
+  slotEl.querySelectorAll('.classroom-pick-btn').forEach(btn => {
+    const cid = parseInt(btn.dataset.classId, 10)
+    const cls = classes.find(c => c.id === cid)
+    const label = `${cls?.master_subjects?.subject_name ?? ''} (${cls?.class_name ?? ''})`
+    btn.addEventListener('click', () => _openClassroomRoomInTab(slotEl, teacher, cid, label, classes))
+  })
+}
+
+async function _openClassroomRoomInTab(slotEl, teacher, classId, className, classes) {
+  slotEl.innerHTML = `
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-100 flex-shrink-0">
+      <button type="button" id="cc-back-to-list" class="text-sm text-gray-500 hover:text-gray-700 font-semibold flex-shrink-0">← เปลี่ยนห้อง</button>
+      <p class="text-xs text-gray-400 truncate">${_htmlEsc(className)}</p>
+    </div>
+    <div id="cc-tab-room-slot" class="flex-1 min-h-0 flex flex-col"></div>`
+  slotEl.querySelector('#cc-back-to-list').addEventListener('click', () => {
+    if (typeof window._cleanupClassroomChat === 'function') { try { window._cleanupClassroomChat() } catch (e) {} }
+    _renderClassPicker(slotEl, teacher, classes)
+  })
+  const roomSlot = slotEl.querySelector('#cc-tab-room-slot')
+  const { loadTeacherClassroomAccessInto } = await import('./chat-classroom.js')
+  await loadTeacherClassroomAccessInto(roomSlot, teacher, classId, className)
 }
 
 // ─── ฝั่งแอดมิน — หน้าเต็มในแดชบอร์ด พร้อม room switcher ─────────────────────────
