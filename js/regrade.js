@@ -890,10 +890,18 @@ function wireThemePicker(content) {
   const previewSec = content.querySelector('#regrade-theme-preview-sec')
   const previewGold = content.querySelector('#regrade-theme-preview-gold')
 
+  const root = document.documentElement
+
   function renderPreview() {
     preview.style.background = primaryInput.value
     previewSec.style.background = secondaryInput.value
     previewGold.style.background = goldInput.value
+    // อัปเดต CSS variable จริงของทั้งหน้าทันที (ไม่ใช่แค่การ์ดพรีวิวเล็กๆ) ให้เห็นผลจริง
+    // แบบเรียลไทม์บนการ์ด/ปุ่ม/กระจกทั้งหมด — ยังไม่ได้บันทึกจนกว่าจะกด "บันทึกการตั้งค่า"
+    root.style.setProperty('--primary', primaryInput.value)
+    root.style.setProperty('--secondary', secondaryInput.value)
+    root.style.setProperty('--gold', goldInput.value)
+    root.style.setProperty('--glass-alpha', alphaInput.value)
   }
   renderPreview()
 
