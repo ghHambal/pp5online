@@ -5383,7 +5383,7 @@ function _qrReceiptHalfHtml(r, qrReissueFee, halfTitle, qrIssuer = null) {
   `
 }
 
-async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts = [], qrReissueFee = '10', qrIssuer = null) {
+async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts = [], qrReissueFee = '5', qrIssuer = null) {
   // ฉีด @media print style
   let styleEl = document.getElementById('qr-print-media-styles')
   if (!styleEl) {
@@ -5555,7 +5555,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
     // ─── โหลดนักเรียนทั้งหมดของโรงเรียน (บายพาส limit 1000) ─────────────────
     const allStudents = await getStudents()
     const cfg = await getSystemConfig().catch(() => ({}))
-    const qrReissueFee = cfg.qrReissueFee?.trim?.() || '10'
+    const qrReissueFee = cfg.qrReissueFee?.trim?.() || '5'
     const qrReissueDoneMessage = cfg.qrReissueDoneMessage?.trim?.() || 'ทำบัตร QR Code ให้เรียบร้อยแล้วครับ มารับได้ที่ห้องปกครอง'
     // ลายเซ็นผู้ออกให้ที่บันทึกไว้ล่วงหน้า (ตั้งค่าครั้งเดียวในหน้านี้) ใช้พิมพ์ลงใบเสร็จอัตโนมัติ
     // แทนต้องเซ็นสดด้วยปากกาทุกใบ — ไม่มีลายเซ็น fallback เป็นเส้นประเซ็นสดเหมือนเดิม
@@ -6562,6 +6562,7 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
       <input id="qr-reissue-search" type="search"
         class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition"
         placeholder="ค้นหาชื่อ รหัส หรือห้อง..." />
+      <div id="qr-reissue-summary" class="grid grid-cols-2 gap-2"></div>
       <div id="qr-reissue-history" class="bg-gray-50/50 rounded-2xl px-3">
         <p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>
       </div>
@@ -6583,6 +6584,23 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
         String(s.student_code || '').toLowerCase().includes(q) ||
         String(s.main_room || '').toLowerCase().includes(q)
     })
+
+    // สรุปจำนวน+ยอดค่าปรับ — ตาราง qr_reissue_logs ไม่ได้เก็บค่าธรรมเนียมรายแถว (อ่านจาก
+    // cfg.qrReissueFee สดทุกครั้งตอนพิมพ์ใบเสร็จเหมือนกันทุกใบ) เลยคำนวณยอดรวมจาก
+    // จำนวนรายการ × อัตราปัจจุบัน ไม่ใช่ผลรวมของค่าธรรมเนียมย้อนหลังจริงแต่ละใบ (เผื่อเคยปรับราคา)
+    const summaryEl = containerEl.querySelector('#qr-reissue-summary')
+    if (summaryEl) {
+      const feeNum = Number(qrReissueFee) || 0
+      summaryEl.innerHTML = `
+        <div class="bg-indigo-50 rounded-xl px-3 py-2 text-center">
+          <p class="text-[10px] text-indigo-500 font-bold">จำนวนรายการ${q ? ' (ที่กรอง)' : ''}</p>
+          <p class="text-base font-extrabold text-indigo-700">${filtered.length}</p>
+        </div>
+        <div class="bg-amber-50 rounded-xl px-3 py-2 text-center">
+          <p class="text-[10px] text-amber-600 font-bold">ยอดค่าธรรมเนียมรวม (${feeNum} บาท/ใบ)</p>
+          <p class="text-base font-extrabold text-amber-700">${(filtered.length * feeNum).toLocaleString('th-TH')} บาท</p>
+        </div>`
+    }
 
     historyEl.innerHTML = !filtered.length ? `
       <p class="text-xs text-gray-400 text-center py-6">${reissueHistoryLogs.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีประวัติการออก QR ใหม่'}</p>
