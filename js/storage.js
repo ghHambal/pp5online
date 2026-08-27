@@ -145,6 +145,13 @@ export async function uploadTerangganuReceiptLogo(fileOrBlob) {
   return uploadFile('terangganu-assets', 'receipt-logo.jpg', blob)
 }
 
+// ลายเซ็นผู้ออกให้บัตร QR Code ใหม่ (พิมพ์ลงใบเสร็จ "ผู้ออกให้" อัตโนมัติ แทนเซ็นสดทุกใบ) —
+// ลายเซ็นเดียวใช้ร่วมกันทั้งระบบ ไม่แยกต่อครู รองรับทั้งไฟล์ภาพและ Blob จาก canvas
+export async function uploadQrIssuerSignature(fileOrBlob) {
+  const blob = await compressImage(fileOrBlob, { maxWidth: 1000, quality: 0.9, background: '#fff' })
+  return uploadFile('system-assets', 'qr-issuer-signature.jpg', blob)
+}
+
 // รูปแนบประกาศ (เช่น อินโฟกราฟิก) → บีบ max 1600px คุณภาพสูงเพราะเป็นภาพนำเสนอ
 export async function uploadAnnouncementImage(file) {
   const blob = await compressImage(file, { maxWidth: 1600, quality: 0.88 })

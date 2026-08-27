@@ -1,6 +1,6 @@
 import {
   getMyClasses, getMySubjects, getDepartments,
-  createClass, updateClass, deleteClass, enrollStudents, getSystemConfig,
+  createClass, updateClass, deleteClass, enrollStudents, getSystemConfig, updateSystemConfig,
   getRoomsByGrade, getStudentsByRoom, getStudentsByReligionRoom, getReligionRoomsByGrade,
   getStudents,
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
@@ -30,6 +30,7 @@ import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm } from './ui.js'
 import { openPP5Doc } from './pp5-doc.js'
+import { uploadQrIssuerSignature } from './storage.js'
 import { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
 import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
@@ -5352,7 +5353,15 @@ function _promptPrintReceipt(count) {
 // สร้างพื้นที่พิมพ์ QR Code / ใบเสร็จ แล้วเรียก window.print() — ใช้ร่วมกันทั้งหน้าพิมพ์ QR และหน้าประวัติ
 // rooms = [{ className, students, countLabel?, hideHeader? }]
 // สร้าง HTML ครึ่งเดียวของใบเสร็จ (ใช้ซ้ำ 2 ครั้งต่อใบ: ต้นขั้ว + มอบให้นักเรียน)
-function _qrReceiptHalfHtml(r, qrReissueFee, halfTitle) {
+// qrIssuer = { name, title, url } — ลายเซ็นผู้ออกให้ที่บันทึกไว้ล่วงหน้า (ตั้งค่าครั้งเดียว ใช้ซ้ำ
+// ทุกใบ) ถ้ายังไม่ได้ตั้งค่าไว้ fallback เป็นเส้นประให้เซ็นสดเหมือนเดิม
+function _qrReceiptHalfHtml(r, qrReissueFee, halfTitle, qrIssuer = null) {
+  const issuerBlock = qrIssuer?.url
+    ? `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:1px">
+         <img src="${_htmlEsc(qrIssuer.url)}" style="height:22px;object-fit:contain" />
+         <span style="font-size:8px;color:#374151">${_htmlEsc(qrIssuer.name || 'ผู้ออกให้')}${qrIssuer.title ? ' · ' + _htmlEsc(qrIssuer.title) : ''}</span>
+       </span>`
+    : `<span>ผู้ออกให้: .................. (ลงชื่อ)</span>`
   return `
     <div class="receipt-half">
       <div style="text-align: center; font-weight: bold; font-size: 11px; color: #4338ca; margin-bottom: 6px;">${halfTitle}</div>
@@ -5366,15 +5375,15 @@ function _qrReceiptHalfHtml(r, qrReissueFee, halfTitle) {
         <tr><td style="padding: 1.5px 0; color: #6b7280;">ค่าธรรมเนียม:</td><td style="text-align: right; font-weight: bold;">${_htmlEsc(qrReissueFee)} บาท</td></tr>
         <tr><td style="padding: 1.5px 0; color: #6b7280;">ออกให้โดย:</td><td style="text-align: right;">${_htmlEsc(r.teachers?.full_name || 'แอดมิน')}</td></tr>
       </table>
-      <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #d1d5db; font-size: 9px; color: #6b7280; display: flex; justify-content: space-between; gap: 6px;">
+      <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #d1d5db; font-size: 9px; color: #6b7280; display: flex; justify-content: space-between; align-items: flex-end; gap: 6px;">
         <span>ผู้รับ: .................. (ลงชื่อ)</span>
-        <span>ผู้ออกให้: .................. (ลงชื่อ)</span>
+        ${issuerBlock}
       </div>
     </div>
   `
 }
 
-async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts = [], qrReissueFee = '10') {
+async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts = [], qrReissueFee = '10', qrIssuer = null) {
   // ฉีด @media print style
   let styleEl = document.getElementById('qr-print-media-styles')
   if (!styleEl) {
@@ -5502,9 +5511,9 @@ async function _executePrint(rooms, cols, showCode, showSeat, showRoom, receipts
       <div class="receipt-grid">
         ${receipts.map(r => `
           <div class="qr-receipt-slip">
-            ${_qrReceiptHalfHtml(r, qrReissueFee, '🏫 ต้นขั้ว (โรงเรียนเก็บ)')}
+            ${_qrReceiptHalfHtml(r, qrReissueFee, '🏫 ต้นขั้ว (โรงเรียนเก็บ)', qrIssuer)}
             <div class="receipt-cut-line-v"></div>
-            ${_qrReceiptHalfHtml(r, qrReissueFee, '🎓 มอบให้นักเรียน')}
+            ${_qrReceiptHalfHtml(r, qrReissueFee, '🎓 มอบให้นักเรียน', qrIssuer)}
           </div>
         `).join('')}
       </div>
@@ -5548,6 +5557,13 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
     const cfg = await getSystemConfig().catch(() => ({}))
     const qrReissueFee = cfg.qrReissueFee?.trim?.() || '10'
     const qrReissueDoneMessage = cfg.qrReissueDoneMessage?.trim?.() || 'ทำบัตร QR Code ให้เรียบร้อยแล้วครับ มารับได้ที่ห้องปกครอง'
+    // ลายเซ็นผู้ออกให้ที่บันทึกไว้ล่วงหน้า (ตั้งค่าครั้งเดียวในหน้านี้) ใช้พิมพ์ลงใบเสร็จอัตโนมัติ
+    // แทนต้องเซ็นสดด้วยปากกาทุกใบ — ไม่มีลายเซ็น fallback เป็นเส้นประเซ็นสดเหมือนเดิม
+    let qrIssuer = {
+      name: cfg.qrIssuerSignatureName?.trim() || '',
+      title: cfg.qrIssuerSignatureTitle?.trim() || '',
+      url: cfg.qrIssuerSignatureUrl || '',
+    }
 
     // ดึง classes เพื่อใช้เป็น metadata (grade_level, subject_group) เท่านั้น
     const { data: allClassRows } = await supabase
@@ -5787,7 +5803,10 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
           <!-- แผงตั้งค่าจัดพิมพ์ (Persistent Settings Card) -->
           <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div class="space-y-2">
-              <h4 class="font-bold text-gray-800 text-sm">🎛️ ตั้งค่ากระดาษสั่งพิมพ์</h4>
+              <div class="flex items-center gap-2 flex-wrap">
+                <h4 class="font-bold text-gray-800 text-sm">🎛️ ตั้งค่ากระดาษสั่งพิมพ์</h4>
+                <button type="button" id="btn-qr-issuer-sig" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded-lg px-2 py-1">✍️ ตั้งค่าลายเซ็นผู้ออกให้</button>
+              </div>
               <div class="flex flex-wrap gap-4 items-center text-xs text-gray-600">
                 <label class="flex items-center gap-1.5 cursor-pointer">
                   <input type="checkbox" id="show-seat" ${showSeat ? 'checked' : ''} class="rounded text-indigo-600 focus:ring-indigo-500" />
@@ -5854,6 +5873,10 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
         reissueReason = reissueReasonSelect.value
       })
 
+      document.getElementById('btn-qr-issuer-sig')?.addEventListener('click', () => {
+        _openQrIssuerSignatureModal(qrIssuer, updated => { qrIssuer = updated })
+      })
+
       // แถบสลับ พิมพ์ QR / ประวัติ / คำขอใหม่ (แท็บสุดท้ายเห็นเฉพาะแอดมิน/ครูที่ได้รับสิทธิ์)
       const _activeTabClass = 'px-4 py-2 rounded-xl text-sm font-bold transition bg-white text-indigo-600 shadow-sm'
       const _inactiveTabClass = 'px-4 py-2 rounded-xl text-sm font-bold transition text-gray-500 hover:text-gray-700 relative'
@@ -5868,7 +5891,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
           t.btn.className = key === name ? _activeTabClass : _inactiveTabClass
           t.panel.classList.toggle('hidden', key !== name)
         })
-        if (name === 'history') _initReissueHistoryPanel(_tabs.history.panel, { cols, showCode, showSeat, showRoom, qrReissueFee, isAdmin: !teacher })
+        if (name === 'history') _initReissueHistoryPanel(_tabs.history.panel, { cols, showCode, showSeat, showRoom, qrReissueFee, qrIssuer, isAdmin: !teacher })
         if (name === 'requests' && isQrManager) _initQrRequestsPanel(_tabs.requests.panel, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage })
       }
       _tabs.print.btn.addEventListener('click', () => _selectTab('print'))
@@ -6331,7 +6354,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
         if (receipts.length > 0) {
           showToast(`บันทึกสถิติออก QR ใหม่ ${receipts.length} คนแล้ว (${reissueReason})`, 'success')
           const wantsReceipt = await _promptPrintReceipt(receipts.length)
-          if (wantsReceipt) await _executePrint([], cols, showCode, showSeat, showRoom, receipts, qrReissueFee)
+          if (wantsReceipt) await _executePrint([], cols, showCode, showSeat, showRoom, receipts, qrReissueFee, qrIssuer)
         }
       })
       document.getElementById('btn-download-individual-qr')?.addEventListener('click', async () => {
@@ -6526,7 +6549,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
 }
 
 // เรียกครั้งแรกที่เปิดแถบ "ประวัติ" ในหน้าพิมพ์ QR — โหลดเข้า containerEl ที่กำหนด (lazy, กันโหลดซ้ำด้วย dataset.loaded)
-async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat, showRoom, qrReissueFee, isAdmin }) {
+async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat, showRoom, qrReissueFee, qrIssuer, isAdmin }) {
   if (!containerEl || containerEl.dataset.loaded) return
   containerEl.dataset.loaded = '1'
 
@@ -6625,7 +6648,7 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
   }
 
   const _reprintReceiptForLog = async (log) => {
-    await _executePrint([], cols, showCode, showSeat, showRoom, [log], qrReissueFee)
+    await _executePrint([], cols, showCode, showSeat, showRoom, [log], qrReissueFee, qrIssuer)
   }
 
   const _saveEditReissueLog = async (logId) => {
@@ -6699,6 +6722,148 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
 
 // แท็บ "คำขอใหม่" — คำขอที่นักเรียนแจ้งความจำนงเองจากปุ่มในหน้าโปรไฟล์ (แยกจาก "ประวัติ" ที่เป็น
 // รายการที่ครู/แอดมินบันทึกไว้แล้ว) เห็นเฉพาะแอดมิน/ครูที่ได้รับสิทธิ์ (isQrManager) เท่านั้น
+// วาดลายเซ็นด้วยเมาส์/นิ้วบน canvas — ลอกแพทเทิร์นเดียวกับที่ใช้ในระบบฟุตซอล (bindSignatureCanvas)
+// เขียนแยกไว้ในไฟล์นี้เองเพราะ azfutsal.js เป็น SPA แยกต่างหาก ไม่ได้ export ให้ import ข้ามไฟล์
+function _bindQrSignatureCanvas(canvas) {
+  if (!canvas || canvas.dataset.bound) return
+  canvas.dataset.bound = '1'
+  const ctx = canvas.getContext('2d')
+  ctx.lineWidth = 2.5
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = '#111827'
+  let drawing = false
+  let last = null
+  const getPos = e => {
+    const rect = canvas.getBoundingClientRect()
+    const point = e.touches ? e.touches[0] : e
+    return { x: (point.clientX - rect.left) * (canvas.width / rect.width), y: (point.clientY - rect.top) * (canvas.height / rect.height) }
+  }
+  const start = e => { e.preventDefault(); drawing = true; last = getPos(e) }
+  const move = e => {
+    if (!drawing) return
+    e.preventDefault()
+    const pos = getPos(e)
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(pos.x, pos.y); ctx.stroke()
+    last = pos
+  }
+  const end = () => { drawing = false }
+  canvas.addEventListener('mousedown', start)
+  canvas.addEventListener('mousemove', move)
+  window.addEventListener('mouseup', end)
+  canvas.addEventListener('touchstart', start, { passive: false })
+  canvas.addEventListener('touchmove', move, { passive: false })
+  canvas.addEventListener('touchend', end)
+}
+
+// ป๊อบอัพตั้งค่าลายเซ็นผู้ออกให้บัตร QR Code — บันทึกครั้งเดียวใช้ซ้ำทุกใบเสร็จ ไม่ต้องเซ็นสดอีก
+// (ตามที่ผู้ใช้ขอ 2026-08-27) วาดเองหรืออัปโหลดรูปก็ได้ เก็บใน system_config เหมือนแพทเทิร์น
+// ผู้จ่ายคืนเงินของระบบฟุตซอล — onSaved(updatedQrIssuer) ให้หน้าเรียกอัปเดต closure ตัวเองทันที
+function _openQrIssuerSignatureModal(current, onSaved) {
+  document.getElementById('qr-issuer-sig-modal')?.remove()
+  const m = document.createElement('div')
+  m.id = 'qr-issuer-sig-modal'
+  m.className = 'fixed inset-0 z-[230] flex items-center justify-center p-4 bg-black/50'
+  m.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <p class="font-bold text-gray-800 text-sm">✍️ ลายเซ็นผู้ออกให้บัตร QR Code</p>
+        <button type="button" id="qr-sig-close" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      </div>
+      <p class="text-[11px] text-gray-400">ชื่อ/ตำแหน่ง/ลายเซ็นนี้จะพิมพ์ลงใบเสร็จออก QR ใหม่ทุกใบอัตโนมัติ แทนต้องเซ็นสดด้วยปากกา</p>
+      <div class="flex gap-2">
+        <input id="qr-sig-name" type="text" value="${_htmlEsc(current?.name || '')}" placeholder="ชื่อ-สกุล เช่น นายฮัมบาลีย์ วาจิ" class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-2 text-xs bg-white focus:outline-none focus:border-indigo-500" />
+      </div>
+      <input id="qr-sig-title" type="text" value="${_htmlEsc(current?.title || '')}" placeholder="ตำแหน่ง เช่น ครูฝ่ายปกครอง (ไม่บังคับ)" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs bg-white focus:outline-none focus:border-indigo-500" />
+      <button type="button" id="qr-sig-save-info" class="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">บันทึกชื่อ-ตำแหน่ง</button>
+
+      <div class="pt-2 border-t border-gray-100">
+        <p class="text-[11px] font-bold text-gray-500 mb-1.5">ลายเซ็นปัจจุบัน</p>
+        <div id="qr-sig-preview">
+          ${current?.url ? `<img src="${_htmlEsc(current.url)}" class="h-14 border border-gray-200 rounded-lg bg-white p-1" />` : `<p class="text-[11px] text-gray-400">ยังไม่มีลายเซ็น</p>`}
+        </div>
+      </div>
+
+      <div>
+        <p class="text-[11px] font-bold text-gray-500 mb-1.5">วาดลายเซ็นใหม่</p>
+        <canvas id="qr-sig-canvas" width="400" height="150" class="w-full border border-dashed border-gray-300 rounded-xl bg-white" style="height:120px;touch-action:none;cursor:crosshair"></canvas>
+        <div class="flex gap-2 mt-2">
+          <button type="button" id="qr-sig-clear" class="flex-1 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50">ล้าง</button>
+          <button type="button" id="qr-sig-save-drawn" class="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">บันทึกลายเซ็นที่วาด</button>
+        </div>
+      </div>
+
+      <div>
+        <p class="text-[11px] font-bold text-gray-500 mb-1.5">หรืออัปโหลดรูปลายเซ็น</p>
+        <div class="flex items-center gap-2">
+          <input type="file" accept="image/*" id="qr-sig-file" class="flex-1 min-w-0 text-[11px]" />
+          <button type="button" id="qr-sig-upload" class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex-shrink-0">อัปโหลด</button>
+        </div>
+      </div>
+    </div>`
+  document.body.appendChild(m)
+  m.addEventListener('click', e => { if (e.target === m) m.remove() })
+  m.querySelector('#qr-sig-close').addEventListener('click', () => m.remove())
+  _bindQrSignatureCanvas(m.querySelector('#qr-sig-canvas'))
+
+  const refreshPreview = url => {
+    m.querySelector('#qr-sig-preview').innerHTML = url
+      ? `<img src="${_htmlEsc(url)}" class="h-14 border border-gray-200 rounded-lg bg-white p-1" />`
+      : `<p class="text-[11px] text-gray-400">ยังไม่มีลายเซ็น</p>`
+  }
+
+  m.querySelector('#qr-sig-save-info').addEventListener('click', async () => {
+    const name = m.querySelector('#qr-sig-name').value.trim()
+    const title = m.querySelector('#qr-sig-title').value.trim()
+    try {
+      await Promise.all([updateSystemConfig('qrIssuerSignatureName', name), updateSystemConfig('qrIssuerSignatureTitle', title)])
+      current = { ...current, name, title }
+      onSaved(current)
+      showToast('บันทึกชื่อ-ตำแหน่งแล้ว ✅', 'success')
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+  })
+
+  m.querySelector('#qr-sig-clear').addEventListener('click', () => {
+    const canvas = m.querySelector('#qr-sig-canvas')
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+  })
+
+  m.querySelector('#qr-sig-save-drawn').addEventListener('click', async () => {
+    const canvas = m.querySelector('#qr-sig-canvas')
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) { showToast('ยังไม่มีลายเซ็นให้บันทึก', 'warning'); return }
+    const btn = m.querySelector('#qr-sig-save-drawn')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      const url = await uploadQrIssuerSignature(blob)
+      await updateSystemConfig('qrIssuerSignatureUrl', url)
+      current = { ...current, url }
+      onSaved(current)
+      refreshPreview(url)
+      showToast('บันทึกลายเซ็นแล้ว ✅', 'success')
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally { btn.disabled = false; btn.textContent = 'บันทึกลายเซ็นที่วาด' }
+  })
+
+  m.querySelector('#qr-sig-upload').addEventListener('click', async () => {
+    const file = m.querySelector('#qr-sig-file').files?.[0]
+    if (!file) { showToast('กรุณาเลือกไฟล์รูปลายเซ็น', 'warning'); return }
+    const btn = m.querySelector('#qr-sig-upload')
+    btn.disabled = true; btn.textContent = 'กำลังอัปโหลด...'
+    try {
+      const url = await uploadQrIssuerSignature(file)
+      await updateSystemConfig('qrIssuerSignatureUrl', url)
+      current = { ...current, url }
+      onSaved(current)
+      refreshPreview(url)
+      showToast('อัปโหลดลายเซ็นแล้ว ✅', 'success')
+    } catch (err) {
+      showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally { btn.disabled = false; btn.textContent = 'อัปโหลด' }
+  })
+}
+
 async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage }) {
   if (!containerEl || containerEl.dataset.loaded) return
   containerEl.dataset.loaded = '1'
