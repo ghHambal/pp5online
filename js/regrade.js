@@ -949,6 +949,25 @@ async function goSection(section) {
   const sections = getAvailableSections()
   renderSidebarNav_(sections)
   renderRoleSwitcher(sections)
+
+  // 🔧 debug ชั่วคราวรอบ 2 — position:fixed คราวนี้ ไม่แตะ document.body โดยตรงแล้ว
+  // เช็คว่า element มีอยู่จริงไหม, ตั้งค่า innerHTML สำเร็จไหม, และมีอะไรมาเคลียร์ทิ้งทีหลังไหม
+  let dbg2 = document.getElementById('regrade-debug2')
+  if (!dbg2) {
+    dbg2 = document.createElement('div')
+    dbg2.id = 'regrade-debug2'
+    dbg2.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#000;color:#0f0;font-size:9px;line-height:1.4;padding:4px 8px;font-family:monospace;white-space:pre-wrap;pointer-events:none;'
+    document.body.appendChild(dbg2)
+  }
+  const switcherEl = document.getElementById('regrade-role-switcher')
+  const rect = switcherEl?.getBoundingClientRect()
+  dbg2.textContent = `[D2] sections=${sections.length} switcherFound=${!!switcherEl} htmlLen=${switcherEl?.innerHTML.length ?? 'N/A'} rect=${rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}` : 'N/A'} display=${switcherEl ? getComputedStyle(switcherEl).display : 'N/A'}`
+  setTimeout(() => {
+    const el2 = document.getElementById('regrade-role-switcher')
+    const r2 = el2?.getBoundingClientRect()
+    dbg2.textContent += ` | +300ms htmlLen=${el2?.innerHTML.length ?? 'N/A'} rect=${r2 ? `${Math.round(r2.width)}x${Math.round(r2.height)}` : 'N/A'}`
+  }, 300)
+
   if (section === 'student') return renderStudent()
   if (section === 'teacher') return renderTeacher()
   if (section === 'registrar') return renderRegistrar()
