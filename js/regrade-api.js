@@ -163,9 +163,35 @@ export async function removeRegradeRegistrarStaff(profileId) {
 // เฉพาะครูที่มีบัญชีผู้ใช้ (profile_id ไม่ว่าง) เท่านั้นที่มอบสิทธิ์ได้ — ใช้ทำช่องค้นหาชื่อ/รหัสครู
 export async function getAllTeachersForPicker() {
   const { data, error } = await supabase.from('teachers')
-    .select('id, full_name, teacher_code, profile_id')
+    .select('id, full_name, teacher_code, profile_id, category')
     .not('profile_id', 'is', null)
     .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+// ─── หัวหน้ากลุ่มสาระ: จัดการวิชาที่ยังไม่มีครูผู้สอน (เฉพาะหมวดของตัวเอง — คุมจริงที่ RLS) ──
+export async function getUnassignedRegradeSubjects(category) {
+  const { data, error } = await supabase.from('regrade_subjects')
+    .select('*, students(full_name, student_code, main_room, religion_room, photo_url, image_url)')
+    .is('teacher_id', null)
+    .eq('category', category)
+    .order('subject_code')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function assignSubjectTeacherBulk(subjectCode, category, teacherId) {
+  const { data, error } = await supabase.from('regrade_subjects')
+    .update({ teacher_id: teacherId, updated_at: new Date().toISOString() })
+    .eq('subject_code', subjectCode).eq('category', category).is('teacher_id', null)
+    .select('id')
+  if (error) throw error
+  return data?.length ?? 0
+}
+
+export async function getRegradeDistinctClassLevels() {
+  const { data, error } = await supabase.rpc('regrade_distinct_class_levels')
   if (error) throw error
   return data ?? []
 }
