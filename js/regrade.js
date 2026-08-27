@@ -316,7 +316,11 @@ async function handleDeclare(btn) {
 // ============================================================================
 // ฝั่งครู
 // ============================================================================
-const teacher = { subView: 'overview', subjects: [], form: null, catalogFilter: { query: '', category: 'all', semester: 'all', status: 'all' } }
+const teacher = {
+  subView: 'overview', subjects: [], form: null,
+  catalogExpanded: new Set(), catalogSemesterFilter: {},
+  assignedExpanded: new Set(), assignedSemesterFilter: {},
+}
 
 async function loadTeacherSubjects() {
   teacher.subjects = await getMyTeachingRegradeSubjects(ctx.teacherRow.id)
@@ -339,46 +343,35 @@ async function renderTeacher() {
 
   let inner = ''
   if (teacher.subView === 'catalog') {
-    const semesters = [...new Set(all.map(x => x.semester).filter(Boolean))].sort().reverse()
-    const f = teacher.catalogFilter
-    inner = `
-      <div class="rg-card p-3 mb-4">
-        <input id="regrade-catalog-search" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs mb-2" placeholder="ค้นหาชื่อหรือเลขประจำตัวนักเรียน..." value="${escHtml(f.query)}">
-        <div class="flex gap-2 flex-wrap">
-          <select id="regrade-catalog-cat" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
-            <option value="all">ทุกหมวด</option>
-            <option value="สามัญ" ${f.category === 'สามัญ' ? 'selected' : ''}>สามัญ</option>
-            <option value="ศาสนา" ${f.category === 'ศาสนา' ? 'selected' : ''}>ศาสนา</option>
-          </select>
-          <select id="regrade-catalog-sem" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
-            <option value="all">ทุกภาคเรียน</option>
-            ${semesters.map(s => `<option value="${escHtml(s)}" ${f.semester === s ? 'selected' : ''}>${escHtml(s)}</option>`).join('')}
-          </select>
-          <select id="regrade-catalog-status" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
-            <option value="all">ทุกสถานะ</option>
-            <option value="ยังไม่แจ้ง" ${f.status === 'ยังไม่แจ้ง' ? 'selected' : ''}>ยังไม่แจ้ง</option>
-            <option value="จำนงแล้ว" ${f.status === 'จำนงแล้ว' ? 'selected' : ''}>จำนงแล้ว</option>
-            <option value="กำลังดำเนินการปรับแก้" ${f.status === 'กำลังดำเนินการปรับแก้' ? 'selected' : ''}>กำลังดำเนินการปรับแก้</option>
-            <option value="ปรับแก้สำเร็จ" ${f.status === 'ปรับแก้สำเร็จ' ? 'selected' : ''}>ปรับแก้สำเร็จ</option>
-          </select>
-        </div>
-      </div>
-      <p id="regrade-catalog-count" class="text-xs text-[var(--muted-2)] mb-2"></p>
-      <div id="regrade-catalog-list" class="flex flex-col gap-3"></div>`
+    const groups = groupBySubject(all)
+    inner = `<div class="flex flex-col gap-3">${groups.length ? groups.map(g => subjectGroupCard(g, {
+      scope: 'catalog', expandedSet: teacher.catalogExpanded, semesterFilterMap: teacher.catalogSemesterFilter, renderRow: catalogStudentRow,
+    })).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีรายวิชาค้างในความรับผิดชอบตอนนี้ 🎉</div>`}</div>`
   } else if (teacher.subView === 'overview') {
+    const notYetCount = all.length - respondList.length - assignedList.length - doneCount
+    const donePercent = all.length ? Math.round(doneCount / all.length * 100) : 0
     inner = `
       ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.response_window_start, ctx.cfg.response_window_end, 'กำหนดตอบรับคำร้องของนักเรียน', '--secondary', 'ไปตอบรับ', 'respond') : ''}
       <div class="rg-card p-4 mb-4">
-        <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
-        <div class="grid grid-cols-2 gap-3">
-          ${statCard(all.length, 'วิชาค้างทั้งหมด', 'var(--ink)')}
-          ${statCard(respondList.length, 'รอตอบรับ', 'var(--gold-ink)')}
-          ${statCard(assignedList.length, 'มอบหมายแล้ว', 'var(--info)')}
-          ${statCard(doneCount, 'สำเร็จแล้ว', 'var(--ok)')}
+        <p class="text-xs font-bold text-[var(--ink-2)] mb-3">สรุปของฉัน</p>
+        ${all.length ? donutChartHtml([
+          { value: notYetCount, color: '#9ca3af', label: 'ยังไม่แจ้ง' },
+          { value: respondList.length, color: 'var(--gold-ink)', label: 'รอตอบรับ' },
+          { value: assignedList.length, color: 'var(--info)', label: 'กำลังดำเนินการ' },
+          { value: doneCount, color: 'var(--ok)', label: 'สำเร็จแล้ว' },
+        ], `${donePercent}%`, 'สำเร็จแล้ว') : `<p class="text-center text-xs text-[var(--muted-2)] py-4">ยังไม่มีรายวิชาค้างในความรับผิดชอบ</p>`}
+        <div class="grid grid-cols-2 gap-3 mt-4">
+          ${statCardLink(all.length, 'วิชาค้างทั้งหมด', 'var(--ink)', 'catalog')}
+          ${statCardLink(respondList.length, 'รอตอบรับ', 'var(--gold-ink)', 'respond')}
+          ${statCardLink(assignedList.length, 'กำลังดำเนินการ', 'var(--info)', 'assigned')}
+          ${statCardLink(doneCount, 'สำเร็จแล้ว', 'var(--ok)', 'catalog')}
         </div>
       </div>`
   } else if (teacher.subView === 'assigned') {
-    inner = `<div class="flex flex-col gap-3">${assignedList.length ? assignedList.map(x => teacherAssignedCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ยังไม่มีงานที่มอบหมายอยู่</div>`}</div>`
+    const groups = groupBySubject(assignedList)
+    inner = `<div class="flex flex-col gap-3">${groups.length ? groups.map(g => subjectGroupCard(g, {
+      scope: 'assigned', expandedSet: teacher.assignedExpanded, semesterFilterMap: teacher.assignedSemesterFilter, renderRow: assignedStudentRow,
+    })).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ยังไม่มีงานที่มอบหมายอยู่</div>`}</div>`
   } else if (teacher.subView === 'respond') {
     inner = `
       <div class="flex items-center gap-2 mb-3">
@@ -406,14 +399,19 @@ async function renderTeacher() {
   content.querySelectorAll('[data-due-input]').forEach(el => el.addEventListener('input', () => { teacher.form.dueText = el.value }))
   content.querySelectorAll('[data-file-input]').forEach(el => el.addEventListener('input', () => { teacher.form.fileUrl = el.value }))
   content.querySelectorAll('[data-confirm-assign]').forEach(btn => btn.addEventListener('click', () => handleAssign(btn)))
-
-  if (teacher.subView === 'catalog') {
-    renderCatalogList()
-    document.getElementById('regrade-catalog-search').addEventListener('input', (e) => { teacher.catalogFilter.query = e.target.value; renderCatalogList() })
-    document.getElementById('regrade-catalog-cat').addEventListener('change', (e) => { teacher.catalogFilter.category = e.target.value; renderCatalogList() })
-    document.getElementById('regrade-catalog-sem').addEventListener('change', (e) => { teacher.catalogFilter.semester = e.target.value; renderCatalogList() })
-    document.getElementById('regrade-catalog-status').addEventListener('change', (e) => { teacher.catalogFilter.status = e.target.value; renderCatalogList() })
-  }
+  content.querySelectorAll('[data-toggle-group]').forEach(btn => btn.addEventListener('click', () => {
+    const [scope, code] = btn.dataset.toggleGroup.split('|')
+    const set = scope === 'catalog' ? teacher.catalogExpanded : teacher.assignedExpanded
+    if (set.has(code)) set.delete(code); else set.add(code)
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-group-sem]').forEach(sel => sel.addEventListener('change', (e) => {
+    const [scope, code] = sel.dataset.groupSem.split('|')
+    const map = scope === 'catalog' ? teacher.catalogSemesterFilter : teacher.assignedSemesterFilter
+    map[code] = e.target.value
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-goto-sub]').forEach(btn => btn.addEventListener('click', () => { teacher.subView = btn.dataset.gotoSub; renderTeacher() }))
 
   renderBottomNav([
     { key: 'catalog', icon: '📚', label: 'รายวิชาที่ค้าง' },
@@ -422,59 +420,113 @@ async function renderTeacher() {
   ], teacher.subView === 'respond' ? 'overview' : teacher.subView, (key) => { teacher.subView = key; renderTeacher() })
 }
 
-// อัปเดตเฉพาะรายการในแท็บ "รายวิชาที่ค้าง" ของครู ไม่แตะช่องค้นหา/ตัวกรอง
-// (แยกออกจาก renderTeacher() เพราะไม่งั้นพิมพ์ค้นหาแต่ละตัวอักษรจะ rebuild ทั้งหน้า ทำให้ช่องค้นหาเสีย focus)
-function renderCatalogList() {
-  const list = document.getElementById('regrade-catalog-list')
-  const count = document.getElementById('regrade-catalog-count')
-  if (!list) return
-  const f = teacher.catalogFilter
-  let shown = teacher.subjects
-  if (f.category !== 'all') shown = shown.filter(x => x.category === f.category)
-  if (f.semester !== 'all') shown = shown.filter(x => x.semester === f.semester)
-  if (f.status !== 'all') shown = shown.filter(x => x.status === f.status)
-  if (f.query.trim()) {
-    const q = f.query.trim().toLowerCase()
-    shown = shown.filter(x => (x.students?.full_name || '').toLowerCase().includes(q) || (x.students?.student_code || '').includes(q))
-  }
-  count.textContent = `พบ ${shown.length} รายการ`
-  list.innerHTML = shown.length ? shown.map(x => teacherCatalogCard(x)).join('')
-    : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่พบรายวิชาที่ตรงกับเงื่อนไข</div>`
+// จัดกลุ่มรายวิชาค้างของครู — การ์ดระดับบนสุดคือ "รายวิชา" ไม่ใช่ "นักเรียนแต่ละคน"
+// เพื่อให้เห็นภาพรวมว่าวิชาไหนติดเยอะก่อน ค่อยกดขยายดูรายชื่อนักเรียนทีหลัง
+function groupBySubject(list) {
+  const map = new Map()
+  list.forEach(x => {
+    if (!map.has(x.subject_code)) map.set(x.subject_code, { subject_code: x.subject_code, subject_name: x.subject_name, category: x.category, items: [] })
+    map.get(x.subject_code).items.push(x)
+  })
+  return [...map.values()].sort((a, b) => b.items.length - a.items.length)
 }
 
-function teacherCatalogCard(x) {
-  const studentName = x.students?.full_name || '-'
+function subjectGroupCard(group, { scope, expandedSet, semesterFilterMap, renderRow }) {
+  const code = group.subject_code
+  const isOpen = expandedSet.has(code)
+  const semesters = [...new Set(group.items.map(x => x.semester).filter(Boolean))].sort().reverse()
+  const selectedSem = semesterFilterMap[code] || 'all'
+  const shown = selectedSem === 'all' ? group.items : group.items.filter(x => x.semester === selectedSem)
   return `
   <div class="rg-card p-4">
-    <div class="flex gap-2.5 items-start">
-      ${personAvatarHtml(x.students, true)}
+    <button data-toggle-group="${scope}|${escHtml(code)}" class="w-full flex justify-between items-start gap-2 text-left">
+      <div class="min-w-0">
+        <p class="font-bold text-sm text-[var(--ink)]">${escHtml(group.subject_name)}</p>
+        <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(code)}</p>
+        <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(group.category)}">${escHtml(group.category)}</span>
+      </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">นักเรียนติด ${group.items.length} คน</span>
+        <span class="text-[var(--muted-2)] text-sm inline-block transition-transform" style="transform:rotate(${isOpen ? '180deg' : '0deg'})">▾</span>
+      </div>
+    </button>
+    ${isOpen ? `
+    <div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)]">
+      ${semesters.length > 1 ? `
+      <select data-group-sem="${scope}|${escHtml(code)}" class="w-full mb-3 px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
+        <option value="all">ทุกภาคเรียน (${group.items.length})</option>
+        ${semesters.map(s => `<option value="${escHtml(s)}" ${selectedSem === s ? 'selected' : ''}>${escHtml(s)} (${group.items.filter(x => x.semester === s).length})</option>`).join('')}
+      </select>` : ''}
+      <div class="flex flex-col gap-2">${shown.map(x => renderRow(x)).join('')}</div>
+    </div>` : ''}
+  </div>`
+}
+
+function catalogStudentRow(x) {
+  const name = x.students?.full_name || '-'
+  return `
+  <div class="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--surface-2)]">
+    ${personAvatarHtml(x.students, false)}
+    <div class="min-w-0 flex-1">
+      <p class="text-xs font-bold text-[var(--ink)] truncate">${escHtml(name)}</p>
+      <p class="text-[10px] text-[var(--muted-2)] truncate">${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')} · ${escHtml(x.semester)}</p>
+    </div>
+    <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
+  </div>`
+}
+
+function assignedStudentRow(x) {
+  const name = x.students?.full_name || '-'
+  return `
+  <div class="p-2.5 rounded-xl bg-[var(--surface-2)]">
+    <div class="flex items-center gap-2.5">
+      ${personAvatarHtml(x.students, false)}
       <div class="min-w-0 flex-1">
-        <div class="flex justify-between gap-2 items-start">
-          <div class="min-w-0">
-            <p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)} <span class="text-[var(--muted-2)] font-normal">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')})</span></p>
-            <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)}) · ติดภาคเรียน ${escHtml(x.semester)}</p>
-            <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
-          </div>
-          <span class="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
-        </div>
+        <p class="text-xs font-bold text-[var(--ink)] truncate">${escHtml(name)}</p>
+        <p class="text-[10px] text-[var(--muted-2)] truncate">${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')} · ${escHtml(x.semester)}</p>
       </div>
     </div>
+    <div class="mt-2 rounded-lg p-2" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
+      <p class="text-[11px] font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
+      <p class="text-[11px] mt-0.5" style="color:var(--info)">กำหนด: ${escHtml(x.due_text || '-')}</p>
+    </div>
   </div>`
 }
 
-function teacherAssignedCard(x) {
-  const studentName = x.students?.full_name || '-'
+// แผนภูมิวงกลมแบบเบา — ใช้ conic-gradient ล้วนๆ ไม่พึ่ง library ภายนอก
+function donutChartHtml(segments, centerLabel, centerSub) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1
+  let acc = 0
+  const stops = segments.map(seg => {
+    const start = (acc / total) * 360
+    acc += seg.value
+    const end = (acc / total) * 360
+    return `${seg.color} ${start}deg ${end}deg`
+  }).join(', ')
   return `
-  <div class="rg-card p-4">
-    <div class="flex gap-2">
-      ${personAvatarHtml(x.students, true)}
-      <div class="min-w-0"><p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p><p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</p></div>
+  <div class="flex items-center gap-4">
+    <div style="width:96px;height:96px;border-radius:9999px;background:conic-gradient(${stops});flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <div style="width:64px;height:64px;border-radius:9999px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <p class="text-base font-extrabold text-[var(--ink)]">${escHtml(centerLabel)}</p>
+        <p class="text-[9px] text-[var(--muted-2)]">${escHtml(centerSub)}</p>
+      </div>
     </div>
-    <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
-      <p class="text-xs font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
-      <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(x.due_text || '-')}</p>
+    <div class="flex-1 min-w-0 grid grid-cols-1 gap-1.5">
+      ${segments.map(seg => `
+      <div class="flex items-center gap-1.5 text-[11px]">
+        <span style="width:8px;height:8px;border-radius:9999px;background:${seg.color};flex-shrink:0;"></span>
+        <span class="text-[var(--muted)] truncate">${escHtml(seg.label)}</span>
+        <span class="ml-auto font-bold text-[var(--ink-2)]">${seg.value}</span>
+      </div>`).join('')}
     </div>
   </div>`
+}
+
+function statCardLink(value, label, color, gotoKey) {
+  return `<button data-goto-sub="${escHtml(gotoKey)}" class="bg-[var(--surface-2)] rounded-xl p-3 text-center hover:opacity-80 active:scale-[0.98] transition cursor-pointer">
+    <p class="text-xl font-extrabold" style="color:${color}">${value}</p>
+    <p class="text-[10px] text-[var(--muted-2)] mt-0.5">${escHtml(label)}</p>
+  </button>`
 }
 
 function teacherRespondCard(x) {
