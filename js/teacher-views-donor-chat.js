@@ -8,6 +8,7 @@ import {
   getMyAdminDmRoomId, getOrCreateAdminDmRoomId, getAdminDmRoomsForAdmin,
   getActiveChatAnnouncement, getChatAnnouncementHistory, createChatAnnouncement, unpinChatAnnouncement,
   getMyBookmarkedMessageIds, toggleBookmark, getMyBookmarkedMessages, getMyClasses,
+  markChatRoomRead, getChatRoomReaders,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm } from './ui.js'
@@ -299,9 +300,10 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole, isGro
 
   const listEl = containerEl.querySelector('#chat-msg-list')
   const messages = await getChatMessages(roomId)
-  await _renderMessages(listEl, messages, myProfileId, stickerTiers, isAdmin)
+  await _renderMessages(listEl, messages, myProfileId, stickerTiers, isAdmin, roomId)
   listEl.scrollTop = listEl.scrollHeight
   _lastSignature = _msgSignature(messages)
+  markChatRoomRead(roomId, messages.at(-1)?.id).catch(() => {})
 
   listEl.addEventListener('click', async (e) => {
     const bmBtn = e.target.closest('.bm-toggle')
@@ -393,20 +395,59 @@ async function _refreshMessages(roomId, listEl, myProfileId, stickerTiers, isAdm
   const sig = _msgSignature(all)
   if (!force && sig === _lastSignature) return
   const wasAtBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60
-  await _renderMessages(listEl, all, myProfileId, stickerTiers, isAdmin)
+  await _renderMessages(listEl, all, myProfileId, stickerTiers, isAdmin, roomId)
   _lastSignature = sig
   if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight
+  markChatRoomRead(roomId, all.at(-1)?.id).catch(() => {})
 }
 
-async function _renderMessages(listEl, messages, myProfileId, stickerTiers, isAdmin) {
+async function _renderMessages(listEl, messages, myProfileId, stickerTiers, isAdmin, roomId) {
   const teacherProfileIds = messages.filter(m => m.author_role === 'teacher').map(m => m.author_profile_id)
   const messageIds = messages.map(m => m.id)
-  const [nameByProfile, tierByProfile, bookmarkedIds] = await Promise.all([
+  const [nameByProfile, tierByProfile, bookmarkedIds, readers] = await Promise.all([
     getTeacherNamesByProfileIds(teacherProfileIds),
     getChatTiersByProfileIds(teacherProfileIds),
     getMyBookmarkedMessageIds(messageIds),
+    getChatRoomReaders(roomId).catch(() => []),
   ])
-  listEl.innerHTML = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds, isAdmin)).join('')
+
+  // "อ่านแล้ว" โชว์แค่ใต้ข้อความล่าสุดสุดของฉันเท่านั้น (แบบ LINE) ไม่ใช่ทุกข้อความ —
+  // เพราะคนที่อ่านข้อความล่าสุดแล้ว ก็อ่านข้อความก่อนหน้าทั้งหมดไปแล้วโดยปริยาย
+  // (cursor-based) โชว์ซ้ำทุกข้อความจะรกไม่มีประโยชน์เพิ่ม
+  const lastMsg = messages.filter(m => !m.deleted_at).at(-1)
+  let seenByForLastMsg = null
+  if (lastMsg && lastMsg.author_profile_id === myProfileId) {
+    const readerIds = readers
+      .filter(r => r.profile_id !== myProfileId && r.last_read_message_id >= lastMsg.id)
+      .map(r => r.profile_id)
+    seenByForLastMsg = readerIds.map(pid => ({ profileId: pid, name: nameByProfile[pid] ?? 'แอดมิน' }))
+  }
+
+  listEl.innerHTML = messages.map(m => _bubbleHTML(
+    m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds, isAdmin,
+    m === lastMsg ? seenByForLastMsg : null,
+  )).join('')
+
+  listEl.querySelectorAll('.seen-more-btn').forEach(btn =>
+    btn.addEventListener('click', () => _openSeenByList(JSON.parse(btn.dataset.names))))
+}
+
+function _openSeenByList(names) {
+  const ov = document.createElement('div')
+  ov.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+  ov.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs max-h-[70vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <h4 class="font-bold text-gray-800 text-sm">👁️ อ่านแล้ว (${names.length})</h4>
+        <button type="button" id="seen-list-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-4 space-y-2">
+        ${names.map(n => `<p class="text-sm text-gray-700">${_htmlEsc(n)}</p>`).join('')}
+      </div>
+    </div>`
+  document.body.appendChild(ov)
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove() })
+  ov.querySelector('#seen-list-close').addEventListener('click', () => ov.remove())
 }
 
 // ─── ประกาศปักหมุด ────────────────────────────────────────────────────────────
@@ -580,7 +621,23 @@ function _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) {
     </div>`
 }
 
-function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds, isAdmin) {
+// อ่านแล้ว — โชว์วงกลมเล็กๆ สูงสุด 3 คน ที่เหลือยุบเป็น "+N" กดดูรายชื่อทั้งหมดได้
+function _seenByHTML(seenBy) {
+  if (!seenBy || !seenBy.length) return ''
+  const shown = seenBy.slice(0, 3)
+  const overflow = seenBy.length - shown.length
+  const dots = shown.map(r => `<div class="w-4 h-4 rounded-full border border-white bg-gray-200 flex items-center justify-center text-[7px] font-bold text-gray-500 overflow-hidden" title="${_htmlEsc(r.name)}">${_htmlEsc(r.name.charAt(0))}</div>`).join('')
+  const namesJson = _htmlEsc(JSON.stringify(seenBy.map(r => r.name)))
+  return `
+    <div class="flex items-center gap-1 mt-1 px-1">
+      <div class="flex -space-x-1.5">${dots}</div>
+      ${overflow > 0
+        ? `<button type="button" class="seen-more-btn text-[9px] text-gray-400 hover:text-gray-600" data-names="${namesJson}">+${overflow}</button>`
+        : `<span class="text-[9px] text-gray-400">อ่านแล้ว</span>`}
+    </div>`
+}
+
+function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds, isAdmin, seenBy) {
   const isMine = m.author_profile_id === myProfileId
   const avatar = !isMine ? _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) : ''
 
@@ -621,6 +678,7 @@ function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers,
           ${bookmarkBtn}
           ${deleteBtn}
         </div>
+        ${_seenByHTML(seenBy)}
       </div>
     </div>`
 }

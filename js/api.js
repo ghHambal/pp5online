@@ -167,7 +167,7 @@ export async function getAdminDmRoomsForAdmin() {
 
 export async function getChatMessages(roomId, { limit = 200 } = {}) {
   const { data, error } = await supabase.from('chat_messages')
-    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at, deleted_at, deleted_by')
+    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at, deleted_at, deleted_by, requires_ack')
     .eq('room_id', roomId)
     .order('created_at', { ascending: true })
     .limit(limit)
@@ -182,6 +182,45 @@ export async function deleteChatMessage(messageId) {
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', messageId)
   if (error) throw error
+}
+
+// ─── อ่านแล้ว (chat_room_reads) — cursor ต่อคนต่อห้อง ────────────────────────────
+export async function markChatRoomRead(roomId, lastMessageId) {
+  if (!lastMessageId) return
+  const { error } = await supabase.from('chat_room_reads')
+    .upsert({ room_id: roomId, last_read_message_id: lastMessageId, last_read_at: new Date().toISOString() }, { onConflict: 'room_id,profile_id' })
+  if (error) throw error
+}
+
+export async function getChatRoomReaders(roomId) {
+  const { data, error } = await supabase.from('chat_room_reads')
+    .select('profile_id, last_read_message_id')
+    .eq('room_id', roomId)
+  if (error) throw error
+  return data ?? []
+}
+
+// ─── ประกาศให้นักเรียนรับทราบ (เฉพาะแชทห้องเรียน — ครูเจ้าของห้องเท่านั้น) ─────────────
+export async function setChatMessageAck(messageId, requiresAck) {
+  const { error } = await supabase.from('chat_messages')
+    .update({ requires_ack: requiresAck })
+    .eq('id', messageId)
+  if (error) throw error
+}
+
+export async function acknowledgeChatMessage(messageId) {
+  const { error } = await supabase.from('chat_message_acks').insert({ message_id: messageId })
+  if (error) throw error
+}
+
+export async function getChatMessageAcks(messageIds) {
+  const ids = [...new Set(messageIds)].filter(Boolean)
+  if (!ids.length) return []
+  const { data, error } = await supabase.from('chat_message_acks')
+    .select('message_id, profile_id, acked_at')
+    .in('message_id', ids)
+  if (error) throw error
+  return data ?? []
 }
 
 export async function sendChatMessage({ roomId, authorRole, body, imageUrl = null }) {

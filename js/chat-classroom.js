@@ -4,13 +4,15 @@
 // ใช้ร่วมกันทั้งฝั่งครู (openTeacherClassroomChat / loadTeacherClassroomAccessInto —
 // ตัวหลังถูกเรียกซ้ำจาก teacher-views-donor-chat.js แท็บ "🏫 ห้องเรียน" ในปุ่มลอยเดียวกัน)
 // และนักเรียน (renderStudentClassroomChat)
-// เรียบง่ายกว่า donor chat โดยตั้งใจ — ไม่มีสติกเกอร์โดเนท/ประกาศปักหมุด/บันทึกโน้ต
-// (ไม่ได้อยู่ในสเปคที่ขอ และนักเรียนไม่มีระดับโดเนท จึงไม่ import จาก teacher.js
+// + อ่านแล้ว (read receipts) และ "ประกาศให้นักเรียนรับทราบ" (ครูกดค้างข้อความตัวเอง)
+// ไม่มีสติกเกอร์โดเนท/ประกาศปักหมุด/บันทึกโน้ตแบบ donor chat โดยตั้งใจ (ไม่ได้อยู่ใน
+// สเปคที่ขอสำหรับห้องเรียน และนักเรียนไม่มีระดับโดเนท จึงไม่ import จาก teacher.js
 // เพื่อกันดึง module graph ฝั่งครูเข้ามาที่หน้านักเรียนโดยไม่จำเป็น)
 import {
   isClassroomChatUnlocked, getOrCreateClassroomChatRoomId,
   getMyClassroomFreePick, pickClassroomChatFreeRoom,
   getChatMessages, sendChatMessage, deleteChatMessage, getTeacherNamesByProfileIds, getClassStudents,
+  markChatRoomRead, getChatRoomReaders, setChatMessageAck, acknowledgeChatMessage, getChatMessageAcks,
 } from './api.js'
 import { getMyEnrolledClasses } from './student-api.js'
 import { supabase } from './supabase.js'
@@ -29,16 +31,18 @@ function _setStudentContent(html) {
 let _channel = null
 let _pollInterval = null
 let _lastSignature = ''
+let _longPressTimer = null
 
 function _teardown() {
   if (_channel) { supabase.removeChannel(_channel); _channel = null }
   if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null }
+  if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null }
   _lastSignature = ''
 }
 window._cleanupClassroomChat = _teardown
 
 const _fmtTime = iso => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
-const _msgSignature = messages => messages.map(m => `${m.id}:${m.deleted_at ?? ''}`).join('|')
+const _msgSignature = messages => messages.map(m => `${m.id}:${m.deleted_at ?? ''}:${m.requires_ack ? 1 : 0}`).join('|')
 
 // ─── ฝั่งครู — ป๊อปอัพเดี่ยว เปิดจากหน้ารายละเอียดห้องเรียน (ทางลัด มี classId อยู่แล้ว) ──
 export async function openTeacherClassroomChat(teacher, classId, className) {
@@ -207,28 +211,69 @@ async function _renderRoom(containerEl, roomId, classId, myProfileId, viewerRole
 
   const listEl = containerEl.querySelector('#cc-msg-list')
   const messages = await getChatMessages(roomId)
-  await _renderMessages(listEl, messages, myProfileId, studentByProfile, viewerRole)
+  await _renderMessages(listEl, messages, myProfileId, studentByProfile, viewerRole, roomId)
   listEl.scrollTop = listEl.scrollHeight
   _lastSignature = _msgSignature(messages)
+  markChatRoomRead(roomId, messages.at(-1)?.id).catch(() => {})
 
   listEl.addEventListener('click', async (e) => {
     const delBtn = e.target.closest('.msg-delete-btn')
-    if (!delBtn) return
-    const messageId = parseInt(delBtn.dataset.messageId, 10)
-    const isOwn = delBtn.dataset.own === '1'
-    const ok = await showDangerConfirm({
-      title: isOwn ? 'ยกเลิกการส่งข้อความนี้?' : 'ลบข้อความนี้?',
-      message: isOwn ? 'ทุกคนในห้องจะเห็นว่าข้อความนี้ถูกยกเลิกการส่งแล้ว' : 'ข้อความจะถูกลบออกจากแชท (กู้คืนไม่ได้)',
-      confirmText: isOwn ? 'ยกเลิกการส่ง' : 'ลบเลย',
-    })
-    if (!ok) return
-    try {
-      await deleteChatMessage(messageId)
-      await _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole, { force: true })
-    } catch (err) {
-      showToast(err.message ?? 'ลบข้อความไม่สำเร็จ', 'error')
+    if (delBtn) {
+      const messageId = parseInt(delBtn.dataset.messageId, 10)
+      const isOwn = delBtn.dataset.own === '1'
+      const ok = await showDangerConfirm({
+        title: isOwn ? 'ยกเลิกการส่งข้อความนี้?' : 'ลบข้อความนี้?',
+        message: isOwn ? 'ทุกคนในห้องจะเห็นว่าข้อความนี้ถูกยกเลิกการส่งแล้ว' : 'ข้อความจะถูกลบออกจากแชท (กู้คืนไม่ได้)',
+        confirmText: isOwn ? 'ยกเลิกการส่ง' : 'ลบเลย',
+      })
+      if (!ok) return
+      try {
+        await deleteChatMessage(messageId)
+        await _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole, { force: true })
+      } catch (err) {
+        showToast(err.message ?? 'ลบข้อความไม่สำเร็จ', 'error')
+      }
+      return
+    }
+    const ackBtn = e.target.closest('.ack-btn')
+    if (ackBtn) {
+      const messageId = parseInt(ackBtn.dataset.messageId, 10)
+      ackBtn.disabled = true
+      try {
+        await acknowledgeChatMessage(messageId)
+        await _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole, { force: true })
+      } catch (err) {
+        showToast(err.message ?? 'รับทราบไม่สำเร็จ', 'error')
+        ackBtn.disabled = false
+      }
+      return
+    }
+    const ackSummaryBtn = e.target.closest('.ack-summary-btn')
+    if (ackSummaryBtn) {
+      _openAckDetailList(JSON.parse(ackSummaryBtn.dataset.acked), JSON.parse(ackSummaryBtn.dataset.notAcked))
+      return
+    }
+    const seenMoreBtn = e.target.closest('.seen-more-btn')
+    if (seenMoreBtn) {
+      _openSeenByList(JSON.parse(seenMoreBtn.dataset.names))
     }
   })
+
+  // กดค้างข้อความของตัวเอง (เฉพาะครู) เปิดเมนู "ประกาศให้นักเรียนรับทราบ"
+  if (viewerRole === 'teacher') {
+    const startPress = (e) => {
+      const bubble = e.target.closest('.own-teacher-bubble')
+      if (!bubble) return
+      _longPressTimer = setTimeout(() => {
+        _openAckMenu(parseInt(bubble.dataset.messageId, 10), bubble.dataset.requiresAck === '1',
+          () => _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole, { force: true }))
+      }, 550)
+    }
+    const cancelPress = () => { if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null } }
+    listEl.addEventListener('mousedown', startPress)
+    listEl.addEventListener('touchstart', startPress, { passive: true })
+    ;['mouseup', 'mouseleave', 'touchend', 'touchcancel', 'touchmove'].forEach(evt => listEl.addEventListener(evt, cancelPress))
+  }
 
   containerEl.querySelector('#cc-send-form').addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -274,22 +319,156 @@ async function _renderRoom(containerEl, roomId, classId, myProfileId, viewerRole
 }
 
 // ดึงข้อความทั้งหมดใหม่เสมอ เทียบลายเซ็นก่อนว่าเปลี่ยนจริงไหม (ข้อความใหม่ หรือมีข้อความ
-// เดิมถูกลบ/ยกเลิกการส่ง — เป็น UPDATE ไม่ใช่แถวใหม่ append-only เดิมจะไม่เห็นเลย)
+// เดิมถูกลบ/ยกเลิกการส่ง/สลับ requires_ack — เป็น UPDATE ไม่ใช่แถวใหม่ append-only เดิมจะไม่เห็นเลย)
 async function _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole, { force = false } = {}) {
   const all = await getChatMessages(roomId).catch(() => null)
   if (!all || !listEl.isConnected) return
   const sig = _msgSignature(all)
   if (!force && sig === _lastSignature) return
   const wasAtBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60
-  await _renderMessages(listEl, all, myProfileId, studentByProfile, viewerRole)
+  await _renderMessages(listEl, all, myProfileId, studentByProfile, viewerRole, roomId)
   _lastSignature = sig
   if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight
+  markChatRoomRead(roomId, all.at(-1)?.id).catch(() => {})
 }
 
-async function _renderMessages(listEl, messages, myProfileId, studentByProfile, viewerRole) {
+async function _renderMessages(listEl, messages, myProfileId, studentByProfile, viewerRole, roomId) {
   const teacherProfileIds = messages.filter(m => m.author_role === 'teacher').map(m => m.author_profile_id)
-  const nameByProfile = await getTeacherNamesByProfileIds(teacherProfileIds)
-  listEl.innerHTML = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile, viewerRole)).join('')
+  const ackMessageIds = messages.filter(m => m.requires_ack).map(m => m.id)
+  const [nameByProfile, readers, ackRows] = await Promise.all([
+    getTeacherNamesByProfileIds(teacherProfileIds),
+    getChatRoomReaders(roomId).catch(() => []),
+    getChatMessageAcks(ackMessageIds).catch(() => []),
+  ])
+
+  const _nameFor = (profileId) => {
+    const s = studentByProfile.get(profileId)
+    if (s) return `(${s.seatNo}) ${s.full_name ?? ''}`
+    return nameByProfile[profileId] ?? 'ครู'
+  }
+
+  // อ่านแล้ว — โชว์แค่ใต้ข้อความล่าสุดของฉันเท่านั้น (แบบ LINE) ไม่ใช่ทุกข้อความ
+  const lastMsg = messages.filter(m => !m.deleted_at).at(-1)
+  let seenByForLastMsg = null
+  if (lastMsg && lastMsg.author_profile_id === myProfileId) {
+    seenByForLastMsg = readers
+      .filter(r => r.profile_id !== myProfileId && r.last_read_message_id >= lastMsg.id)
+      .map(r => ({ profileId: r.profile_id, name: _nameFor(r.profile_id) }))
+  }
+
+  const ackByMessage = new Map()
+  ackMessageIds.forEach(id => ackByMessage.set(id, new Set()))
+  ackRows.forEach(r => ackByMessage.get(r.message_id)?.add(r.profile_id))
+
+  listEl.innerHTML = messages.map(m => _bubbleHTML(
+    m, myProfileId, nameByProfile, studentByProfile, viewerRole,
+    m === lastMsg ? seenByForLastMsg : null,
+    m.requires_ack ? ackByMessage.get(m.id) : null,
+  )).join('')
+}
+
+function _openSeenByList(names) {
+  const ov = document.createElement('div')
+  ov.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+  ov.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs max-h-[70vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <h4 class="font-bold text-gray-800 text-sm">👁️ อ่านแล้ว (${names.length})</h4>
+        <button type="button" id="seen-list-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-4 space-y-2">
+        ${names.map(n => `<p class="text-sm text-gray-700">${_htmlEsc(n)}</p>`).join('')}
+      </div>
+    </div>`
+  document.body.appendChild(ov)
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove() })
+  ov.querySelector('#seen-list-close').addEventListener('click', () => ov.remove())
+}
+
+// ─── ประกาศให้นักเรียนรับทราบ ─────────────────────────────────────────────────
+function _openAckMenu(messageId, currentlyRequired, onDone) {
+  const ov = document.createElement('div')
+  ov.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+  ov.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-2">
+      <button type="button" id="ack-menu-toggle" class="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-700 flex items-center gap-2.5">
+        📢 <span>${currentlyRequired ? 'ยกเลิกประกาศให้รับทราบ' : 'ประกาศให้นักเรียนรับทราบ'}</span>
+      </button>
+      <button type="button" id="ack-menu-cancel" class="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm text-gray-400">ปิด</button>
+    </div>`
+  document.body.appendChild(ov)
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove() })
+  ov.querySelector('#ack-menu-cancel').addEventListener('click', () => ov.remove())
+  ov.querySelector('#ack-menu-toggle').addEventListener('click', async () => {
+    ov.remove()
+    try {
+      await setChatMessageAck(messageId, !currentlyRequired)
+      await onDone()
+    } catch (err) {
+      showToast(err.message ?? 'ตั้งค่าไม่สำเร็จ', 'error')
+    }
+  })
+}
+
+function _openAckDetailList(acked, notAcked) {
+  const ov = document.createElement('div')
+  ov.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+  ov.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs max-h-[75vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <h4 class="font-bold text-gray-800 text-sm">📢 สถานะรับทราบ</h4>
+        <button type="button" id="ack-detail-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <div>
+          <p class="text-xs font-bold text-emerald-600 mb-1.5">✔️ รับทราบแล้ว (${acked.length})</p>
+          ${acked.length ? acked.map(n => `<p class="text-sm text-gray-700">${_htmlEsc(n)}</p>`).join('') : `<p class="text-xs text-gray-300">ยังไม่มี</p>`}
+        </div>
+        <div>
+          <p class="text-xs font-bold text-gray-400 mb-1.5">⏳ ยังไม่รับทราบ (${notAcked.length})</p>
+          ${notAcked.length ? notAcked.map(n => `<p class="text-sm text-gray-500">${_htmlEsc(n)}</p>`).join('') : `<p class="text-xs text-gray-300">ครบทุกคนแล้ว</p>`}
+        </div>
+      </div>
+    </div>`
+  document.body.appendChild(ov)
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove() })
+  ov.querySelector('#ack-detail-close').addEventListener('click', () => ov.remove())
+}
+
+function _seenByHTML(seenBy) {
+  if (!seenBy || !seenBy.length) return ''
+  const shown = seenBy.slice(0, 3)
+  const overflow = seenBy.length - shown.length
+  const dots = shown.map(r => `<div class="w-4 h-4 rounded-full border border-white bg-gray-200 flex items-center justify-center text-[7px] font-bold text-gray-500 overflow-hidden" title="${_htmlEsc(r.name)}">${_htmlEsc(r.name.replace(/^\(\d+\)\s*/, '').charAt(0))}</div>`).join('')
+  const namesJson = _htmlEsc(JSON.stringify(seenBy.map(r => r.name)))
+  return `
+    <div class="flex items-center gap-1 mt-1 px-1">
+      <div class="flex -space-x-1.5">${dots}</div>
+      ${overflow > 0
+        ? `<button type="button" class="seen-more-btn text-[9px] text-gray-400 hover:text-gray-600" data-names="${namesJson}">+${overflow}</button>`
+        : `<span class="text-[9px] text-gray-400">อ่านแล้ว</span>`}
+    </div>`
+}
+
+// สรุปรับทราบ — จำนวนนักเรียนในห้อง (studentByProfile.size) เป็นตัวหาร ไม่นับครู
+function _ackSummaryHTML(m, ackedSet, studentByProfile, viewerRole, myProfileId) {
+  if (!m.requires_ack) return ''
+  const total = studentByProfile.size
+  const acked = [...ackedSet]
+  const ackedNames = acked.map(pid => { const s = studentByProfile.get(pid); return s ? `(${s.seatNo}) ${s.full_name ?? ''}` : 'นักเรียน' })
+  const notAckedNames = [...studentByProfile.values()].filter(s => !ackedSet.has(s.profile_id)).map(s => `(${s.seatNo}) ${s.full_name ?? ''}`)
+  const iAcked = ackedSet.has(myProfileId)
+  const ackBtn = (viewerRole === 'student' && !iAcked)
+    ? `<button type="button" class="ack-btn text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2.5 py-1 rounded-full flex-shrink-0" data-message-id="${m.id}">✅ รับทราบ</button>`
+    : (viewerRole === 'student' ? `<span class="text-[10px] text-emerald-500 font-semibold flex-shrink-0">✔️ รับทราบแล้ว</span>` : '')
+  return `
+    <div class="flex items-center gap-2 mt-1 px-1 flex-wrap">
+      <button type="button" class="ack-summary-btn text-[10px] font-bold text-amber-600 hover:text-amber-700"
+        data-acked="${_htmlEsc(JSON.stringify(ackedNames))}" data-not-acked="${_htmlEsc(JSON.stringify(notAckedNames))}">
+        📢 รับทราบแล้ว ${acked.length}/${total} คน
+      </button>
+      ${ackBtn}
+    </div>`
 }
 
 // อวตาร — ครูเป็นไอคอนธรรมดา (ยังไม่ขอรูปจริงสำหรับฝั่งครู) นักเรียนใช้รูปโปรไฟล์จริง
@@ -316,7 +495,7 @@ function _avatarHTML(m, nameByProfile, studentByProfile) {
     </div>`
 }
 
-function _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile, viewerRole) {
+function _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile, viewerRole, seenBy, ackedSet) {
   const isMine = m.author_profile_id === myProfileId
   const avatar = !isMine ? _avatarHTML(m, nameByProfile, studentByProfile) : ''
 
@@ -344,11 +523,16 @@ function _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile, viewerRole
   const deleteBtn = canDelete
     ? `<button type="button" class="msg-delete-btn text-xs px-1 text-gray-300 hover:text-red-400" data-message-id="${m.id}" data-own="${isMine ? '1' : '0'}" title="${isMine ? 'ยกเลิกการส่ง' : 'ลบข้อความ'}">🗑️</button>`
     : ''
+  // ข้อความของครูตัวเอง — ติด class/data attribute ไว้ให้ delegated long-press หา target ได้
+  const isOwnTeacherBubble = isMine && viewerRole === 'teacher'
+  const bubbleAttrs = isOwnTeacherBubble
+    ? `class="own-teacher-bubble bg-amber-500 text-white rounded-2xl px-4 py-2.5 ${m.requires_ack ? 'ring-2 ring-offset-1 ring-amber-300' : ''}" data-message-id="${m.id}" data-requires-ack="${m.requires_ack ? '1' : '0'}"`
+    : `class="${isMine ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5 ${m.requires_ack ? 'ring-2 ring-offset-1 ring-amber-300' : ''}"`
   return `
     <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
       ${avatar}
       <div class="flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-[70%]">
-        <div class="${isMine ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
+        <div ${bubbleAttrs}>
           ${imageHtml}
           ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
         </div>
@@ -356,6 +540,8 @@ function _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile, viewerRole
           <span class="text-[10px] text-gray-300">${_fmtTime(m.created_at)}</span>
           ${deleteBtn}
         </div>
+        ${_ackSummaryHTML(m, ackedSet ?? new Set(), studentByProfile, viewerRole, myProfileId)}
+        ${_seenByHTML(seenBy)}
       </div>
     </div>`
 }
