@@ -3,10 +3,14 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { showToast } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
-import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate, uploadCertificateTemplateBackground } from './storage.js'
+import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate, uploadCertificateTemplateImage } from './storage.js'
 import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
-import { CERT_PRESET_LABELS, defaultLayoutFor, openActivityCertificatePrint } from './council-certificate.js'
-import { openCertificateLayoutEditor } from './council-certificate-editor.js'
+import { CERT_PRESET_LABELS, defaultLayoutFor, openCertificatePrint as openCentralCertificatePrint } from './certificate-engine.js'
+import { openCertificateLayoutEditor } from './certificate-editor.js'
+import {
+  getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
+  issueCertificate as issueCentralCertificate, getCertificatesBySource,
+} from './certificates-api.js'
 import QRCode from 'qrcode'
 import {
   getCouncilConfig, updateCouncilConfig, getCouncilPositions, getCouncilMembers,
@@ -21,9 +25,8 @@ import {
   getCandidatesForElection, publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
   getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
   getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
-  getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
   getCertificateRule, upsertCertificateRule,
-  getActivityCertificateOverrides, setCertificateOverride, issueActivityCertificate,
+  getActivityCertificateOverrides, setCertificateOverride,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
   getAnnouncementAckCounts, getTotalActiveStudentCount,
   getOpenPositionsForNomination, getInterviewedForNomination, proposeNomination, getPendingNominations, decideNomination,
@@ -152,7 +155,8 @@ const attendanceByActivity = {} // { [activityId]: Set<studentId> }
 let certTemplates = null // null = ยังไม่โหลด — เทมเพลตเกียรติบัตร (ใช้ร่วมกันทุกกิจกรรม)
 let certManageActivityId = null // id กิจกรรมที่กำลังเปิดแผงจัดการเกียรติบัตรอยู่ — null = ปิดอยู่
 const certRuleByActivity = {} // { [activityId]: rule row | null }
-const certOverridesByActivity = {} // { [activityId]: [{student_id, override_decision, certificate_no, issued_at, ...}] }
+const certOverridesByActivity = {} // { [activityId]: [{student_id, override_decision, comment, ...}] } — เฉพาะ decision override (ระบบกลางแยกออกไปแล้ว)
+const certIssuedByActivity = {} // { [activityId]: { [studentId]: centralCertRow } } — ใบที่ออกจริงจากระบบกลาง (source_system='council_activity')
 const certAttendanceDetailByActivity = {} // { [activityId]: [{student_id, checked_in_at, students:{...}}] }
 let announcements = null // null = ยังไม่โหลด
 let myAcks = null // Set<announcementId> — เฉพาะนักเรียนที่ล็อกอินอยู่
@@ -1959,14 +1963,16 @@ async function loadCertTemplates() {
 }
 
 async function loadCertManageData(activityId) {
-  const [rule, overrides, detail] = await Promise.all([
+  const [rule, overrides, detail, issued] = await Promise.all([
     getCertificateRule(activityId).catch(() => null),
     getActivityCertificateOverrides(activityId).catch(() => []),
     getActivityAttendanceDetailed(activityId).catch(() => []),
+    getCertificatesBySource('council_activity', activityId).catch(() => []),
   ])
   certRuleByActivity[activityId] = rule
   certOverridesByActivity[activityId] = overrides
   certAttendanceDetailByActivity[activityId] = detail
+  certIssuedByActivity[activityId] = Object.fromEntries(issued.map(c => [c.student_id, c]))
   render()
 }
 
@@ -2099,6 +2105,7 @@ function renderCertManagePanel(a) {
   const overrides = certOverridesByActivity[a.id] ?? []
   const detail = certAttendanceDetailByActivity[a.id] ?? []
   const overrideByStudent = Object.fromEntries(overrides.map(o => [o.student_id, o]))
+  const issuedByStudent = certIssuedByActivity[a.id] ?? {}
 
   // จัดกลุ่มเช็คชื่อทั้งหมดของกิจกรรมนี้ตามนักเรียน (คนนึงอาจเช็คชื่อหลายวัน/หลายรอบ)
   const byStudent = {}
@@ -2134,7 +2141,7 @@ function renderCertManagePanel(a) {
     const override = overrideByStudent[sid]
     const eligibility = computeCertEligibility({ rule, override, attendanceRows })
     const [label, cls] = ELIGIBILITY_BADGE[eligibility]
-    const issued = override?.issued_at
+    const issued = issuedByStudent[sid]
     return `
       <div class="rounded-xl border border-[var(--line-soft)] p-2.5 space-y-1.5" data-cert-row="${sid}">
         <div class="flex items-center gap-2">
@@ -4459,14 +4466,14 @@ function wireSettingsEvents() {
       if (isCustom) {
         const file = f.background_image.files?.[0]
         if (!file) { showToast('กรุณาอัปโหลดรูปพื้นหลังเทมเพลต', 'warning'); btn.disabled = false; btn.textContent = 'เพิ่มเทมเพลต'; return }
-        backgroundImageUrl = await uploadCertificateTemplateBackground(file)
+        backgroundImageUrl = await uploadCertificateTemplateImage(file)
       }
       const presetKey = isCustom ? null : f.preset_key.value
       const layout = defaultLayoutFor(isCustom ? 'custom' : presetKey)
       if (isCustom) layout.background = { type: 'image', imageUrl: backgroundImageUrl }
       await createCertificateTemplate({
         name, type: isCustom ? 'custom' : 'preset',
-        presetKey, backgroundImageUrl, layout,
+        presetKey, backgroundImageUrl, layout, createdByTeacherId: ctx.teacher?.id ?? null,
       })
       showToast('เพิ่มเทมเพลตแล้ว ✅', 'success')
       certTemplates = null
@@ -4488,7 +4495,9 @@ function wireSettingsEvents() {
       const template = certTemplates?.find(t => t.id === Number(btn.dataset.id))
       if (!template) return
       openCertificateLayoutEditor({
-        template, cfg: ctx.cfg,
+        template,
+        previewVariables: { reason: 'เข้าร่วมกิจกรรมตัวอย่างจนสำเร็จ' },
+        placeholderTokens: [{ token: '{{reason}}', label: 'เหตุผล/รายละเอียด' }],
         onSave: async (layout, backgroundImageUrl) => {
           await updateCertificateTemplateLayout({ id: template.id, layout, backgroundImageUrl })
           showToast('บันทึกดีไซน์แล้ว ✅', 'success')
@@ -4900,12 +4909,21 @@ function wireActivitiesEvents() {
     btn.addEventListener('click', async () => {
       const activityId = Number(btn.dataset.activityId)
       const studentId = Number(btn.dataset.studentId)
+      const activity = activities.find(a => a.id === activityId)
+      const rule = certRuleByActivity[activityId]
+      const detail = certAttendanceDetailByActivity[activityId] ?? []
+      const student = detail.find(r => r.student_id === studentId)?.students
+      if (!rule?.template_id) { showToast('กรุณาเลือกเทมเพลตเกียรติบัตรก่อน', 'warning'); return }
       btn.disabled = true; btn.textContent = 'กำลังออก...'
       try {
-        const certNo = `ACT-${activityId}-${studentId}-${Date.now().toString(36).toUpperCase()}`
-        await issueActivityCertificate({ activityId, studentId, certificateNo: certNo })
-        delete certOverridesByActivity[activityId]
-        loadCertManageData(activityId)
+        const cert = await issueCentralCertificate({
+          templateId: rule.template_id, studentId, studentName: student?.full_name ?? '—',
+          variables: { reason: `เข้าร่วมกิจกรรม "${activity?.title ?? ''}" ของสภานักเรียนจนสำเร็จ` },
+          title: activity?.title ?? null, issuedByTeacherId: ctx.teacher?.id ?? null,
+          sourceSystem: 'council_activity', sourceRefId: activityId,
+        })
+        certIssuedByActivity[activityId] = { ...(certIssuedByActivity[activityId] ?? {}), [studentId]: cert }
+        render()
       } catch (err) {
         showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
         btn.disabled = false; btn.textContent = '🏅 ออกเกียรติบัตร'
@@ -4917,13 +4935,13 @@ function wireActivitiesEvents() {
     btn.addEventListener('click', () => {
       const activityId = Number(btn.dataset.activityId)
       const studentId = Number(btn.dataset.studentId)
-      const activity = activities.find(a => a.id === activityId)
-      const rule = certRuleByActivity[activityId]
-      const template = certTemplates?.find(t => t.id === rule?.template_id)
-      const certRow = (certOverridesByActivity[activityId] ?? []).find(o => o.student_id === studentId)
-      const detail = certAttendanceDetailByActivity[activityId] ?? []
-      const student = detail.find(r => r.student_id === studentId)?.students
-      openActivityCertificatePrint({ student, activity, template, certRow, cfg: ctx.cfg }, showToast)
+      const certRow = certIssuedByActivity[activityId]?.[studentId]
+      if (!certRow) return
+      openCentralCertificatePrint({
+        layout: certRow.layout_snapshot,
+        variables: { name: certRow.student_name ?? '', date: new Date(certRow.issued_at).toLocaleDateString('th-TH', { dateStyle: 'long' }), no: certRow.certificate_no, ...certRow.variables },
+        docTitle: certRow.title,
+      }, showToast)
     })
   })
 }

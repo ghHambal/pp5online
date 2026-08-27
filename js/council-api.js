@@ -552,29 +552,9 @@ export async function undoCheckInAttendance({ activityId, studentId }) {
   if (error) throw error
 }
 
-// ─── เกียรติบัตรกิจกรรม — เทมเพลต/เงื่อนไขต่อกิจกรรม/สถานะต่อนักเรียน ──────────────────────
-export async function getCertificateTemplates() {
-  const { data, error } = await supabase.from('council_certificate_templates').select('*').order('created_at')
-  if (error) throw error
-  return data ?? []
-}
-export async function createCertificateTemplate({ name, type, presetKey, backgroundImageUrl, layout }) {
-  const { error } = await supabase.from('council_certificate_templates')
-    .insert({ name, type, preset_key: presetKey || null, background_image_url: backgroundImageUrl || null, layout: layout ?? null })
-  if (error) throw error
-}
-export async function deleteCertificateTemplate(id) {
-  const { error } = await supabase.from('council_certificate_templates').delete().eq('id', id)
-  if (error) throw error
-}
-// บันทึกดีไซน์จากตัวแก้ไขลากวาง (council-certificate-editor.js) — layout คุมทั้งพื้นหลัง+ตำแหน่งข้อความทั้งหมด
-export async function updateCertificateTemplateLayout({ id, layout, backgroundImageUrl }) {
-  const patch = { layout }
-  if (backgroundImageUrl) patch.background_image_url = backgroundImageUrl
-  const { error } = await supabase.from('council_certificate_templates').update(patch).eq('id', id)
-  if (error) throw error
-}
-
+// ─── เกียรติบัตรกิจกรรม — เงื่อนไขต่อกิจกรรม/สถานะต่อนักเรียน ──────────────────────────────────
+// เทมเพลต+การออกใบจริงย้ายไปอยู่ระบบกลางแล้ว (certificates-api.js) เหลือเฉพาะส่วนที่ยัง
+// council-specific จริงๆ ไว้ที่นี่: เงื่อนไขรับสิทธิ์ต่อกิจกรรม + override การตัดสินใจรายคน
 export async function getCertificateRule(activityId) {
   const { data, error } = await supabase.from('council_activity_certificate_rules').select('*').eq('activity_id', activityId).maybeSingle()
   if (error) throw error
@@ -602,32 +582,6 @@ export async function setCertificateOverride({ activityId, studentId, decision, 
   }, { onConflict: 'activity_id,student_id' })
   if (error) throw error
 }
-export async function issueActivityCertificate({ activityId, studentId, certificateNo }) {
-  const { error } = await supabase.from('council_activity_certificates').upsert({
-    activity_id: activityId, student_id: studentId, certificate_no: certificateNo, issued_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'activity_id,student_id' })
-  if (error) throw error
-}
-
-// เกียรติบัตรกิจกรรมของนักเรียนคนหนึ่ง (เฉพาะที่ออกแล้วจริง) — ใช้แสดงในหน้าของตัวเอง (นอกโมดูลสภา)
-// แนบเทมเพลตของแต่ละกิจกรรมมาด้วย (query แยกอีกรอบ เพราะ certificates กับ rules ไม่มี FK ตรงกัน
-// เป็นตารางพี่น้องที่อ้าง activity_id คนละแถวกัน — PostgREST embed ข้ามแบบนี้ไม่ได้ในคำสั่งเดียว)
-export async function getMyActivityCertificates(studentId) {
-  const { data, error } = await supabase.from('council_activity_certificates')
-    .select('id, activity_id, certificate_no, issued_at, council_activities(title, detail, activity_date)')
-    .eq('student_id', studentId).not('issued_at', 'is', null).order('issued_at', { ascending: false })
-  if (error) throw error
-  const certs = data ?? []
-  if (!certs.length) return certs
-  const activityIds = [...new Set(certs.map(c => c.activity_id))]
-  const { data: rules } = await supabase.from('council_activity_certificate_rules')
-    .select('activity_id, council_certificate_templates(id, name, type, preset_key, background_image_url, layout)')
-    .in('activity_id', activityIds)
-  const templateByActivity = Object.fromEntries((rules ?? []).map(r => [r.activity_id, r.council_certificate_templates]))
-  return certs.map(c => ({ ...c, template: templateByActivity[c.activity_id] ?? null }))
-}
-
 // ─── รูทีนประจำสัปดาห์ของสมาชิกสภา — จัดการเองได้ (self-service checklist ส่วนตัว, สเปคข้อ 8.8) ──
 export async function getMyRoutines(memberId) {
   const { data, error } = await supabase.from('council_routines')
@@ -936,6 +890,14 @@ export async function getAdvisorsForPosition(positionId) {
     .select('teacher_id').eq('position_id', positionId)
   if (error) throw error
   return (data ?? []).map(r => r.teacher_id)
+}
+
+// ทั้งหมดในตารางเดียว (ไม่กรองรายครู) — ใช้ทำสรุป "ครูที่ปรึกษาคนไหนดูแลฝ่ายไหนบ้าง"
+// ในหน้าภาพรวมผู้บริหาร กันเรียก getAdvisorPositions ทีละครู (N+1)
+export async function getAllAdvisorPositions() {
+  const { data, error } = await supabase.from('council_advisor_positions').select('teacher_id, position_id')
+  if (error) throw error
+  return data ?? []
 }
 
 // ─── ลายเซ็น/รูปประจำตัวของตัวเอง — ครูที่ปรึกษาสภา/หัวหน้าฝ่ายฯ/ผู้อำนวยการตั้งเองได้

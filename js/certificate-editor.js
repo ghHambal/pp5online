@@ -1,17 +1,23 @@
-// js/council-certificate-editor.js — ตัวแก้ไขเทมเพลตเกียรติบัตรกิจกรรมแบบลากวาง (drag & drop)
-// ผู้ใช้ (แอดมิน/ครูที่ปรึกษาสภา) แก้ตำแหน่ง/ข้อความ/สี/พื้นหลังของเกียรติบัตรได้เองทั้งหมดจากหน้าตั้งค่า
-// ไม่ต้องแตะโค้ด — ใช้เอนจินเรนเดอร์เดียวกับ council-certificate.js (renderCertificateCanvasHtml) เพื่อให้
-// พรีวิวตรงกับของจริงที่พิมพ์ออกมา 100%
-import { renderCertificateCanvasHtml, defaultLayoutFor, CERT_PLACEHOLDER_TOKENS, CERT_PRESETS } from './council-certificate.js'
-import { uploadCertificateTemplateBackground } from './storage.js'
+// js/certificate-editor.js — ตัวแก้ไขเทมเพลตเกียรติบัตรแบบลากวาง (drag & drop) ใช้ร่วมกันทุกระบบ
+// พอร์ตมาจาก council-certificate-editor.js เดิม generalize ให้ผู้เรียก (ระบบไหนก็ตาม) ส่ง
+// previewVariables + placeholderTokens ของตัวเองเข้ามาได้ ไม่ผูกกับ "สภา"/"กิจกรรม" ตายตัวอีกต่อไป
+// ใช้เอนจินเรนเดอร์เดียวกับ certificate-engine.js (renderCertificateCanvasHtml) เพื่อให้พรีวิวตรงกับ
+// ของจริงที่พิมพ์ออกมา 100%
+import { renderCertificateCanvasHtml, defaultLayoutFor, UNIVERSAL_PLACEHOLDER_TOKENS, CERT_PRESETS } from './certificate-engine.js'
+import { uploadCertificateTemplateImage } from './storage.js'
 import { showToast } from './ui.js'
 
 const _esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n))
 
-// opts: { template: {id, type, preset_key, background_image_url, layout}, cfg, activityTitle, onSave: async (layout, backgroundImageUrl) => void }
+// opts: {
+//   template: {id, type, preset_key, background_image_url, layout},
+//   previewVariables: { name, date, no, ...customKeys } — ค่าตัวอย่างไว้พรีวิวในตัวแก้ไขเท่านั้น,
+//   placeholderTokens: [{token,label}] — ปุ่มแทรกด่วนเฉพาะของระบบที่เรียก (จะรวมกับ UNIVERSAL_PLACEHOLDER_TOKENS ให้อัตโนมัติ),
+//   onSave: async (layout, backgroundImageUrl) => void,
+// }
 export function openCertificateLayoutEditor(opts) {
-  const { template, cfg, activityTitle, onSave } = opts
+  const { template, previewVariables, placeholderTokens = [], onSave } = opts
   document.getElementById('cce-overlay')?.remove()
 
   let layout = JSON.parse(JSON.stringify(
@@ -24,10 +30,8 @@ export function openCertificateLayoutEditor(opts) {
   let selectedId = null
   let pendingBgFile = null
 
-  const previewCtx = {
-    name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', activityTitle: activityTitle || 'ชื่อกิจกรรมตัวอย่าง',
-    councilName: cfg?.council_name || 'สภานักเรียน', issuedAt: new Date().toLocaleDateString('th-TH', { dateStyle: 'long' }), no: '0001',
-  }
+  const allTokens = [...UNIVERSAL_PLACEHOLDER_TOKENS, ...placeholderTokens]
+  const previewVars = { name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', date: new Date().toLocaleDateString('th-TH', { dateStyle: 'long' }), no: '0001', ...previewVariables }
 
   const overlay = document.createElement('div')
   overlay.id = 'cce-overlay'
@@ -63,7 +67,7 @@ export function openCertificateLayoutEditor(opts) {
   const panel = overlay.querySelector('#cce-panel')
 
   function renderCanvas() {
-    canvasWrap.innerHTML = renderCertificateCanvasHtml({ layout, ...previewCtx })
+    canvasWrap.innerHTML = renderCertificateCanvasHtml({ layout, variables: previewVars })
     canvasWrap.querySelectorAll('[data-cert-el-id]').forEach(elDiv => {
       const id = elDiv.dataset.certElId
       elDiv.style.cursor = 'move'
@@ -82,7 +86,7 @@ export function openCertificateLayoutEditor(opts) {
           <label class="text-[11px] font-bold text-[var(--muted)] block mb-1">ข้อความ</label>
           <textarea id="cce-f-text" rows="3" class="w-full border border-[var(--line)] rounded-lg px-2 py-1.5 text-xs bg-[var(--surface)]">${_esc(el.text)}</textarea>
           <div class="flex flex-wrap gap-1 mt-1.5">
-            ${CERT_PLACEHOLDER_TOKENS.map(t => `<button type="button" class="cce-insert-token px-1.5 py-0.5 rounded bg-[var(--primary-soft)] text-[var(--primary-dark)] text-[10px] font-bold" data-token="${_esc(t.token)}">${_esc(t.label)}</button>`).join('')}
+            ${allTokens.map(t => `<button type="button" class="cce-insert-token px-1.5 py-0.5 rounded bg-[var(--primary-soft)] text-[var(--primary-dark)] text-[10px] font-bold" data-token="${_esc(t.token)}">${_esc(t.label)}</button>`).join('')}
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2">
@@ -170,7 +174,7 @@ export function openCertificateLayoutEditor(opts) {
     saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
     try {
       let backgroundImageUrl
-      if (pendingBgFile) backgroundImageUrl = await uploadCertificateTemplateBackground(pendingBgFile)
+      if (pendingBgFile) backgroundImageUrl = await uploadCertificateTemplateImage(pendingBgFile)
       if (backgroundImageUrl) layout.background = { type: 'image', imageUrl: backgroundImageUrl }
       await onSave(layout, backgroundImageUrl)
       overlay.remove()

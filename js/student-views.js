@@ -19,12 +19,11 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.542'
+import { APP_VERSION } from './version.js?v=10.22.556'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
-import { getMyActivityCertificates } from './council-api.js'
 import { getRegradeConfig } from './regrade-api.js'
-import { openActivityCertificatePrint } from './council-certificate.js'
+import { openMyCertificatesModal } from './student-certificates-modal.js'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
@@ -401,7 +400,7 @@ export async function renderStudentOverview(student) {
     </svg>
   </div>`)
 
-  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole, myAssignments, myActivityCerts] = await Promise.all([
+  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole, myAssignments] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
@@ -410,7 +409,6 @@ export async function renderStudentOverview(student) {
     getSystemConfig().catch(()=>({})),
     getStudentClassroomRole(student.main_room).catch(()=>null),
     getMyAllAssignments(student.id).catch(()=>[]),
-    getMyActivityCertificates(student.id).catch(()=>[]),
   ])
   const pendingAssignments = myAssignments.filter(_assignmentNeedsAction)
     .sort((x, y) => (x.due_at ? new Date(x.due_at).getTime() : Infinity) - (y.due_at ? new Date(y.due_at).getTime() : Infinity))
@@ -438,7 +436,6 @@ export async function renderStudentOverview(student) {
 
   const isHead = classroomRole && Number(classroomRole.head_student_id) === Number(student.id)
   const isVice = classroomRole && Number(classroomRole.vice_head_student_id) === Number(student.id)
-  const certUrl = isHead ? classroomRole.head_cert_url : (isVice ? classroomRole.vice_head_cert_url : null)
 
   // ปุ่มเมนูสภานักเรียนโชว์ถ้าเปิดให้ทุกคนเห็น หรือรหัสนักเรียนคนนี้อยู่ในรายชื่อทดสอบที่แอดมินตั้งไว้
   // (council_test_student_codes) — ให้ทดสอบระบบจริงได้แม้ปิดปุ่มไว้สำหรับนักเรียนทั่วไป
@@ -489,33 +486,17 @@ export async function renderStudentOverview(student) {
       </div>
     </div>
 
-    <!-- Certificate Banner -->
-    ${certUrl ? `
-    <a href="${certUrl}" target="_blank" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
-      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🎓</div>
+    <!-- บัตรของฉัน — รวบรวมเกียรติบัตรจากทุกระบบที่เชื่อมกับปพ.5 ไว้ที่เดียว -->
+    <button type="button" id="btn-stu-my-certificates" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all w-full text-left">
+      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🎖️</div>
       <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">🎓 เกียรติบัตรแต่งตั้งประจำห้องเรียน</h4>
-        <p class="text-[10px] text-amber-50 mt-0.5">คุณได้รับเกียรติบัตรแต่งตั้งเป็น${isHead ? 'หัวหน้าห้อง' : 'รองหัวหน้าห้อง'}ประจำชั้นปีการศึกษานี้</p>
+        <h4 class="font-bold text-xs sm:text-sm">🎖️ บัตรของฉัน</h4>
+        <p class="text-[10px] text-amber-50 mt-0.5">เกียรติบัตรทั้งหมดที่คุณได้รับ</p>
       </div>
       <span class="relative z-10 px-3 py-1.5 bg-white text-amber-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
-        📄 เปิดดูเกียรติบัตร
-      </span>
-    </a>
-    ` : ''}
-
-    <!-- เกียรติบัตรกิจกรรมสภานักเรียน — ออกให้แล้วจริงเท่านั้น (ยังไม่ออก/แค่มีสิทธิ์ยังไม่แสดงที่นี่) -->
-    ${myActivityCerts.map(c => `
-    <button type="button" class="btn-stu-activity-cert relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all w-full text-left" data-cert-id="${c.id}">
-      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🏅</div>
-      <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">🏅 เกียรติบัตรกิจกรรม: ${c.council_activities?.title ?? ''}</h4>
-        <p class="text-[10px] text-amber-50 mt-0.5">คุณได้รับเกียรติบัตรจากการเข้าร่วมกิจกรรมนี้ของสภานักเรียน</p>
-      </div>
-      <span class="relative z-10 px-3 py-1.5 bg-white text-amber-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
-        📄 เปิดดูเกียรติบัตร
+        📄 เปิดดู
       </span>
     </button>
-    `).join('')}
 
     <!-- ระบบสภานักเรียน — ลิงก์ไป council.html เพื่อติดตามกิจกรรม/รายชื่อสภา/สมัคร/โหวต
          ปิดได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) ยกเว้นรหัสนักเรียนที่อยู่ใน
@@ -875,16 +856,7 @@ export async function renderStudentOverview(student) {
     if (diffH < 24) return `<span class="text-orange-500 text-xs font-semibold">🟠 อีก ${diffH} ชม. ${diffMin%60} น. · ${str}</span>`
     return `<span class="text-amber-600 text-xs">📅 อีก ${Math.floor(diffH/24)} วัน · ${str}</span>`
   }
-  document.querySelectorAll('.btn-stu-activity-cert').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const c = myActivityCerts.find(x => x.id === Number(btn.dataset.certId))
-      if (!c) return
-      openActivityCertificatePrint({
-        student, activity: c.council_activities, template: c.template,
-        certRow: { certificate_no: c.certificate_no, issued_at: c.issued_at }, cfg,
-      }, showToast)
-    })
-  })
+  document.getElementById('btn-stu-my-certificates')?.addEventListener('click', () => openMyCertificatesModal(student))
 
   document.getElementById('btn-stu-anns')?.addEventListener('click', () => {
     // mark ทุกประกาศว่าอ่านแล้ว → badge หาย
@@ -2860,6 +2832,17 @@ export async function renderStudentProfile(student, onLogout) {
       </div>` : ''}
     </div>
 
+    <button type="button" id="btn-stu-my-certificates-profile" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all w-full text-left">
+      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🎖️</div>
+      <div class="min-w-0 z-10">
+        <h4 class="font-bold text-xs sm:text-sm">🎖️ บัตรของฉัน</h4>
+        <p class="text-[10px] text-amber-50 mt-0.5">เกียรติบัตรทั้งหมดที่คุณได้รับ</p>
+      </div>
+      <span class="relative z-10 px-3 py-1.5 bg-white text-amber-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
+        📄 เปิดดู
+      </span>
+    </button>
+
     ${_contactLinks()}
 
     <button id="stu-logout-btn"
@@ -2874,6 +2857,7 @@ export async function renderStudentProfile(student, onLogout) {
     </p>
   `)
 
+  document.getElementById('btn-stu-my-certificates-profile')?.addEventListener('click', () => openMyCertificatesModal(student))
   document.getElementById('btn-stu-contact-admin')?.addEventListener('click', () => {
     window._openFeedbackWidget?.()
   })

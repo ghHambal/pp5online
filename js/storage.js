@@ -104,12 +104,11 @@ export async function uploadCouncilTeacherSignature(teacherId, fileOrBlob) {
   return uploadFile('system-assets', `council/signatures/${teacherId}/${key}.jpg`, blob)
 }
 
-// พื้นหลังเทมเพลตเกียรติบัตรกิจกรรมที่แอดมิน/ครูที่ปรึกษาสภาอัปโหลดเอง — บีบอัดคุณภาพสูงเพราะ
-// ใช้พิมพ์/แสดงเต็มหน้าเกียรติบัตร
-export async function uploadCertificateTemplateBackground(file) {
+// รูปพื้นหลังเทมเพลตเกียรติบัตร — ระบบกลาง (ครูคนใดก็ได้ ไม่ผูกเฉพาะสภาอีกต่อไป)
+export async function uploadCertificateTemplateImage(file) {
   const blob = await compressImage(file, { maxWidth: 1600, quality: 0.9 })
   const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  return uploadFile('system-assets', `council/certificate-templates/${key}.jpg`, blob)
+  return uploadFile('system-assets', `certificates/templates/${key}.jpg`, blob)
 }
 
 // เกียรติบัตร/รางวัลแนบตอนสมัครสภานักเรียน — รับได้ทั้งรูปภาพ (บีบอัด) และ PDF (เก็บไฟล์ต้นฉบับตรงๆ ไม่ผ่าน canvas)

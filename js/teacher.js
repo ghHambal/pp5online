@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.542'
+import { APP_VERSION } from './version.js?v=10.22.556'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -239,6 +239,7 @@ const ROUTES = {
   'schedule':    () => renderSchedule(_teacher),
   'tutorial':    () => renderTutorial(),
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
+  'certificates': () => import('./teacher-views-certificates.js').then(m => m.renderCertificateManager(_teacher)),
   'quiz-system': () => import('./teacher-views-quiz-banks.js').then(m => m.renderQuizBanks(_teacher)),
   'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.18.25').then(m => m.renderExamDocuments(_teacher)),
   'sports':      () => {
