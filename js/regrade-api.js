@@ -40,7 +40,7 @@ export async function getMyTeacherRow() {
 // ─── ฝั่งนักเรียน ─────────────────────────────────────────────────────────────
 export async function getMyRegradeSubjects(studentId) {
   const { data, error } = await supabase.from('regrade_subjects')
-    .select('*, teachers(full_name)')
+    .select('*, teachers(full_name, image_url)')
     .eq('student_id', studentId)
     .order('semester', { ascending: false })
   if (error) throw error

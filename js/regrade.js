@@ -200,10 +200,15 @@ async function loadStudentSubjects() {
 function studentFabVisible() { return !!ctx.cfg.intent_open }
 
 // ระดับชั้นที่เปิดรับแจ้งความจำนง — ถ้าไม่ได้ตั้งค่าไว้ (ว่าง/ไม่มี) = เปิดทุกระดับชั้น (ค่าเริ่มต้น)
-function isLevelOpen(category, classLevel) {
+// เช็คตามระดับชั้น "ปัจจุบัน" ของนักเรียนจากห้องเรียนตอนนี้ (ไม่ใช่ระดับชั้นตอนติดวิชาในอดีต
+// ที่บันทึกไว้ใน regrade_subjects.class_level ซึ่งชื่อเรียกอาจต่างจากปัจจุบันไปแล้ว)
+function isLevelOpen(category) {
   const levels = ctx.cfg.intent_open_levels
   if (!levels || !levels.length) return true
-  return levels.includes(`${category}|${classLevel}`)
+  const room = category === 'ศาสนา' ? ctx.studentRow?.religion_room : ctx.studentRow?.main_room
+  const level = room ? room.split('/')[0].trim() : null
+  if (!level) return false
+  return levels.includes(`${category}|${level}`)
 }
 
 async function renderStudent() {
@@ -239,6 +244,10 @@ async function renderStudent() {
   } else if (student.subView === 'overview') {
     inner = `
       ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.intent_window_start, ctx.cfg.intent_window_end, 'กำหนดแจ้งความจำนงขอแก้/ปรับ', '--primary', 'ไปแจ้งความจำนง', 'catalog') : ''}
+      <div class="flex flex-col sm:flex-row gap-4 mb-4">
+        ${categorySummaryDonut(s.filter(x => x.category === 'สามัญ'), '📘 สามัญ', 'var(--primary-dark)')}
+        ${categorySummaryDonut(s.filter(x => x.category === 'ศาสนา'), '🕌 ศาสนา', 'var(--secondary-dark)')}
+      </div>
       <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
         <div class="grid grid-cols-2 gap-3">
@@ -289,7 +298,7 @@ function statCard(value, label, color) {
 
 function studentSubjectCard(x) {
   const teacherName = x.teachers?.full_name || '-'
-  const canDeclare = studentFabVisible() && isLevelOpen(x.category, x.class_level)
+  const canDeclare = studentFabVisible() && isLevelOpen(x.category)
   return `
   <div class="rg-card p-4 shadow-sm">
     <div class="flex justify-between gap-2 items-start">
@@ -300,7 +309,7 @@ function studentSubjectCard(x) {
       <span class="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
     </div>
     <div class="flex items-center gap-2 mt-2 pt-2 border-t border-dashed border-[var(--line-soft)]">
-      <div style="${avatarStyle(teacherName, false)}">${initialOf(teacherName)}</div>
+      ${personAvatarHtml(x.teachers, false)}
       <div><p class="text-[10px] text-[var(--muted-2)]">ครูผู้สอน</p><p class="text-xs font-bold text-[var(--ink-2)]">${escHtml(teacherName)}</p></div>
     </div>
     ${x.status === 'ยังไม่แจ้ง' && canDeclare ? `
@@ -636,6 +645,25 @@ function donutChartHtml(segments, centerLabel, centerSub) {
         <span class="ml-auto font-bold text-[var(--ink-2)]">${seg.value}</span>
       </div>`).join('')}
     </div>
+  </div>`
+}
+
+function categorySummaryDonut(list, label, accentColor) {
+  const notYet = list.filter(x => x.status === 'ยังไม่แจ้ง').length
+  const req = list.filter(x => x.status === 'จำนงแล้ว').length
+  const assigned = list.filter(x => x.status === 'กำลังดำเนินการปรับแก้').length
+  const done = list.filter(x => x.status === 'ปรับแก้สำเร็จ').length
+  const total = list.length
+  const donePercent = total ? Math.round(done / total * 100) : 0
+  return `
+  <div class="rg-card p-4 flex-1 min-w-0">
+    <p class="text-xs font-bold mb-3" style="color:${accentColor}">${escHtml(label)} (${total})</p>
+    ${total ? donutChartHtml([
+      { value: notYet, color: '#9ca3af', label: 'ยังไม่แจ้ง' },
+      { value: req, color: 'var(--gold-ink)', label: 'จำนงแล้ว' },
+      { value: assigned, color: 'var(--info)', label: 'กำลังดำเนินการ' },
+      { value: done, color: 'var(--ok)', label: 'สำเร็จแล้ว' },
+    ], `${donePercent}%`, 'สำเร็จแล้ว') : `<p class="text-center text-xs text-[var(--muted-2)] py-4">ไม่มีวิชาค้างในหมวดนี้ 🎉</p>`}
   </div>`
 }
 
