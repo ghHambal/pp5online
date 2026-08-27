@@ -654,6 +654,8 @@ async function renderGradeTable() {
 // ============================================================================
 const dashboard = { categoryTab: 'all', drilldown: null }
 
+const sumCnt = (list) => list.reduce((s, r) => s + Number(r.cnt), 0)
+
 async function renderDashboard() {
   setHeaderTitle('ผู้บริหาร', 'ภาพรวมทั้งโรงเรียน — บอร์ดผู้บริหาร')
   const content = document.getElementById('regrade-content')
@@ -663,25 +665,25 @@ async function renderDashboard() {
     return
   }
   const scoped = dashboard.categoryTab === 'all' ? rows : rows.filter(r => r.category === dashboard.categoryTab)
-  const total = scoped.length
-  const notYet = scoped.filter(r => r.status === 'ยังไม่แจ้ง').length
-  const onlyReq = scoped.filter(r => r.status === 'จำนงแล้ว').length
-  const assigned = scoped.filter(r => r.status === 'กำลังดำเนินการปรับแก้').length
-  const done = scoped.filter(r => r.status === 'ปรับแก้สำเร็จ').length
+  const total = sumCnt(scoped)
+  const notYet = sumCnt(scoped.filter(r => r.status === 'ยังไม่แจ้ง'))
+  const onlyReq = sumCnt(scoped.filter(r => r.status === 'จำนงแล้ว'))
+  const assigned = sumCnt(scoped.filter(r => r.status === 'กำลังดำเนินการปรับแก้'))
+  const done = sumCnt(scoped.filter(r => r.status === 'ปรับแก้สำเร็จ'))
   const requested = onlyReq + assigned
 
   const teacherGroups = {}
-  scoped.forEach(r => { const n = r.teachers?.full_name || '-'; (teacherGroups[n] ??= []).push(r) })
+  scoped.forEach(r => { (teacherGroups[r.teacher_name] ??= []).push(r) })
   const teacherRows = Object.entries(teacherGroups).map(([name, list]) => ({
     name,
-    total: list.length,
-    pending: list.filter(x => x.status === 'จำนงแล้ว').length,
-    assigned: list.filter(x => x.status === 'กำลังดำเนินการปรับแก้').length,
-    done: list.filter(x => x.status === 'ปรับแก้สำเร็จ').length,
+    total: sumCnt(list),
+    pending: sumCnt(list.filter(x => x.status === 'จำนงแล้ว')),
+    assigned: sumCnt(list.filter(x => x.status === 'กำลังดำเนินการปรับแก้')),
+    done: sumCnt(list.filter(x => x.status === 'ปรับแก้สำเร็จ')),
   })).sort((a, b) => b.pending - a.pending)
 
-  const genTotal = rows.filter(r => r.category === 'สามัญ').length
-  const relTotal = rows.filter(r => r.category === 'ศาสนา').length
+  const genTotal = sumCnt(rows.filter(r => r.category === 'สามัญ'))
+  const relTotal = sumCnt(rows.filter(r => r.category === 'ศาสนา'))
 
   content.innerHTML = `
     <div class="max-w-4xl mx-auto p-4">
@@ -730,13 +732,14 @@ function renderDashboardDrilldown(scoped) {
   else if (dashboard.drilldown === 'assigned') rows = scoped.filter(x => x.status === 'กำลังดำเนินการปรับแก้')
   else if (dashboard.drilldown === 'done') rows = scoped.filter(x => x.status === 'ปรับแก้สำเร็จ')
 
+  const byClass = rows.reduce((acc, r) => ((acc[r.class_level || '-'] = (acc[r.class_level || '-'] || 0) + Number(r.cnt)), acc), {})
   el.innerHTML = `<div class="rg-card p-4 mb-4">
     <div class="flex justify-between items-center mb-3">
       <p class="text-xs font-bold text-[var(--ink-2)]">รายละเอียด: ${escHtml(titles[dashboard.drilldown])}</p>
       <button id="regrade-drill-close" class="w-6 h-6 rounded-full bg-[var(--surface-2)] text-[var(--muted)] text-xs">✕</button>
     </div>
-    <p class="text-xs text-[var(--muted-2)]">${rows.length} รายการ · ${rows.map(r => escHtml(r.category)).length ? '' : ''}</p>
-    <p class="text-[11px] text-[var(--muted)] mt-2">แยกตามชั้น: ${Object.entries(rows.reduce((acc, r) => ((acc[r.class_level || '-'] = (acc[r.class_level || '-'] || 0) + 1), acc), {})).map(([k, v]) => `${escHtml(k)} (${v})`).join(', ') || '-'}</p>
+    <p class="text-xs text-[var(--muted-2)]">${sumCnt(rows)} รายการ</p>
+    <p class="text-[11px] text-[var(--muted)] mt-2">แยกตามชั้น: ${Object.entries(byClass).map(([k, v]) => `${escHtml(k)} (${v})`).join(', ') || '-'}</p>
   </div>`
   document.getElementById('regrade-drill-close').addEventListener('click', () => { dashboard.drilldown = null; el.innerHTML = '' })
 }

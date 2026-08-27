@@ -180,20 +180,14 @@ export async function checkMyRegradePermissions() {
 }
 
 // ─── บอร์ดผู้บริหาร ───────────────────────────────────────────────────────────
-// ต้อง paginate ด้วย .range() เอง เพราะ PostgREST จำกัดผลลัพธ์เริ่มต้นไว้ที่ 1000 แถวต่อคำขอ
-// (ตารางนี้มีนำเข้าข้อมูลย้อนหลังหลักหมื่นแถว ถ้าไม่ loop จะนับสถิติผิดแบบเงียบๆ)
+// ใช้ RPC ที่รวมผลสรุป (group by category/status/class_level/ครู) ในฐานข้อมูลแล้วส่งกลับ
+// เป็นแถวสรุป ไม่ใช่ทุกแถวดิบ — บอร์ดนี้แสดงแค่ตัวเลขสถิติ ไม่เคยแสดงรายชื่อนักเรียนทีละคน
+// จึงไม่จำเป็นต้องดึงข้อมูลดิบหลักหมื่นแถวมาที่เครื่องผู้ใช้เลย (เร็วกว่ามาก + payload เล็กกว่ามาก
+// เทียบกับการ paginate ดึงทุกแถวมาแล้วนับที่ฝั่ง client)
 export async function getAllRegradeSubjectsForDashboard() {
-  const pageSize = 1000
-  let all = []
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase.from('regrade_subjects')
-      .select('id, category, class_level, status, teacher_id, teachers(full_name)')
-      .range(from, from + pageSize - 1)
-    if (error) throw error
-    all = all.concat(data ?? [])
-    if (!data || data.length < pageSize) break
-  }
-  return all
+  const { data, error } = await supabase.rpc('regrade_dashboard_stats')
+  if (error) throw error
+  return data ?? []
 }
 
 // ─── นำเข้าข้อมูลย้อนหลังด้วย CSV (เฉพาะภาคเรียนก่อนหน้าปัจจุบัน, source='csv') ───
