@@ -180,11 +180,20 @@ export async function checkMyRegradePermissions() {
 }
 
 // ─── บอร์ดผู้บริหาร ───────────────────────────────────────────────────────────
+// ต้อง paginate ด้วย .range() เอง เพราะ PostgREST จำกัดผลลัพธ์เริ่มต้นไว้ที่ 1000 แถวต่อคำขอ
+// (ตารางนี้มีนำเข้าข้อมูลย้อนหลังหลักหมื่นแถว ถ้าไม่ loop จะนับสถิติผิดแบบเงียบๆ)
 export async function getAllRegradeSubjectsForDashboard() {
-  const { data, error } = await supabase.from('regrade_subjects')
-    .select('id, category, class_level, status, teacher_id, teachers(full_name)')
-  if (error) throw error
-  return data ?? []
+  const pageSize = 1000
+  let all = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase.from('regrade_subjects')
+      .select('id, category, class_level, status, teacher_id, teachers(full_name)')
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    all = all.concat(data ?? [])
+    if (!data || data.length < pageSize) break
+  }
+  return all
 }
 
 // ─── นำเข้าข้อมูลย้อนหลังด้วย CSV (เฉพาะภาคเรียนก่อนหน้าปัจจุบัน, source='csv') ───

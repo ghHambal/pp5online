@@ -68,6 +68,16 @@ function avatarStyle(name, portrait) {
     ? `width:34px;height:44px;border-radius:8px;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);`
     : `width:30px;height:30px;border-radius:9999px;background:${bg};color:${fg};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0;`
 }
+// รูปนักเรียนจริงถ้ามี (photo_url/image_url) ไม่งั้น fallback เป็นวงกลม/กล่องอักษรย่อแบบเดิม
+function personAvatarHtml(person, portrait) {
+  const name = person?.full_name || '-'
+  const photo = person?.photo_url || person?.image_url
+  if (!photo) return `<div style="${avatarStyle(name, portrait)}">${initialOf(name)}</div>`
+  const box = portrait
+    ? 'width:34px;height:44px;border-radius:8px;flex-shrink:0;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);object-fit:cover;'
+    : 'width:30px;height:30px;border-radius:9999px;flex-shrink:0;object-fit:cover;'
+  return `<img src="${escHtml(photo)}" alt="${escHtml(name)}" style="${box}">`
+}
 
 // popup ยืนยันกลางๆ (ไม่ใช้สีแดงแบบ showDangerConfirm ของ ui.js) — เก็บไว้ในไฟล์นี้เอง
 // ตั้งใจไม่ดันขึ้น js/ui.js ที่ใช้ร่วมกันทั้งเว็บ เพราะต้องไล่ bump เวอร์ชัน/แคชทุกหน้าที่ import
@@ -273,10 +283,12 @@ function studentSubjectCard(x) {
       <div style="${avatarStyle(teacherName, false)}">${initialOf(teacherName)}</div>
       <div><p class="text-[10px] text-[var(--muted-2)]">ครูผู้สอน</p><p class="text-xs font-bold text-[var(--ink-2)]">${escHtml(teacherName)}</p></div>
     </div>
-    ${x.status === 'ยังไม่แจ้ง' ? `
+    ${x.status === 'ยังไม่แจ้ง' && studentFabVisible() ? `
       <button data-declare="${x.id}" data-subject="${escHtml(x.subject_name)}"
         class="mt-3 w-full py-2.5 rounded-xl text-white font-bold text-xs"
         style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">แจ้งความจำนง</button>` : ''}
+    ${x.status === 'ยังไม่แจ้ง' && !studentFabVisible() ? `
+      <p class="mt-3 text-center text-[10px] text-[var(--muted-2)]">ยังไม่เปิดให้แจ้งความจำนงในขณะนี้</p>` : ''}
     ${x.status === 'กำลังดำเนินการปรับแก้' ? `
       <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
         <p class="text-xs font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
@@ -304,7 +316,7 @@ async function handleDeclare(btn) {
 // ============================================================================
 // ฝั่งครู
 // ============================================================================
-const teacher = { subView: 'overview', subjects: [], form: null }
+const teacher = { subView: 'overview', subjects: [], form: null, catalogFilter: { query: '', category: 'all', semester: 'all', status: 'all' } }
 
 async function loadTeacherSubjects() {
   teacher.subjects = await getMyTeachingRegradeSubjects(ctx.teacherRow.id)
@@ -327,17 +339,32 @@ async function renderTeacher() {
 
   let inner = ''
   if (teacher.subView === 'catalog') {
-    inner = `<div class="flex flex-col gap-3">${all.length ? all.map(x => `
-      <div class="rg-card p-4">
-        <div class="flex justify-between gap-2 items-start">
-          <div class="min-w-0">
-            <p class="font-bold text-sm text-[var(--ink)]">${escHtml(x.subject_name)}</p>
-            <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(x.subject_code)}</p>
-            <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
-          </div>
-          <span class="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
+    const semesters = [...new Set(all.map(x => x.semester).filter(Boolean))].sort().reverse()
+    const f = teacher.catalogFilter
+    inner = `
+      <div class="rg-card p-3 mb-4">
+        <input id="regrade-catalog-search" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs mb-2" placeholder="ค้นหาชื่อหรือเลขประจำตัวนักเรียน..." value="${escHtml(f.query)}">
+        <div class="flex gap-2 flex-wrap">
+          <select id="regrade-catalog-cat" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
+            <option value="all">ทุกหมวด</option>
+            <option value="สามัญ" ${f.category === 'สามัญ' ? 'selected' : ''}>สามัญ</option>
+            <option value="ศาสนา" ${f.category === 'ศาสนา' ? 'selected' : ''}>ศาสนา</option>
+          </select>
+          <select id="regrade-catalog-sem" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
+            <option value="all">ทุกภาคเรียน</option>
+            ${semesters.map(s => `<option value="${escHtml(s)}" ${f.semester === s ? 'selected' : ''}>${escHtml(s)}</option>`).join('')}
+          </select>
+          <select id="regrade-catalog-status" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
+            <option value="all">ทุกสถานะ</option>
+            <option value="ยังไม่แจ้ง" ${f.status === 'ยังไม่แจ้ง' ? 'selected' : ''}>ยังไม่แจ้ง</option>
+            <option value="จำนงแล้ว" ${f.status === 'จำนงแล้ว' ? 'selected' : ''}>จำนงแล้ว</option>
+            <option value="กำลังดำเนินการปรับแก้" ${f.status === 'กำลังดำเนินการปรับแก้' ? 'selected' : ''}>กำลังดำเนินการปรับแก้</option>
+            <option value="ปรับแก้สำเร็จ" ${f.status === 'ปรับแก้สำเร็จ' ? 'selected' : ''}>ปรับแก้สำเร็จ</option>
+          </select>
         </div>
-      </div>`).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีรายวิชาค้างในความรับผิดชอบตอนนี้ 🎉</div>`}</div>`
+      </div>
+      <p id="regrade-catalog-count" class="text-xs text-[var(--muted-2)] mb-2"></p>
+      <div id="regrade-catalog-list" class="flex flex-col gap-3"></div>`
   } else if (teacher.subView === 'overview') {
     inner = `
       ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.response_window_start, ctx.cfg.response_window_end, 'กำหนดตอบรับคำร้องของนักเรียน', '--secondary', 'ไปตอบรับ', 'respond') : ''}
@@ -380,6 +407,14 @@ async function renderTeacher() {
   content.querySelectorAll('[data-file-input]').forEach(el => el.addEventListener('input', () => { teacher.form.fileUrl = el.value }))
   content.querySelectorAll('[data-confirm-assign]').forEach(btn => btn.addEventListener('click', () => handleAssign(btn)))
 
+  if (teacher.subView === 'catalog') {
+    renderCatalogList()
+    document.getElementById('regrade-catalog-search').addEventListener('input', (e) => { teacher.catalogFilter.query = e.target.value; renderCatalogList() })
+    document.getElementById('regrade-catalog-cat').addEventListener('change', (e) => { teacher.catalogFilter.category = e.target.value; renderCatalogList() })
+    document.getElementById('regrade-catalog-sem').addEventListener('change', (e) => { teacher.catalogFilter.semester = e.target.value; renderCatalogList() })
+    document.getElementById('regrade-catalog-status').addEventListener('change', (e) => { teacher.catalogFilter.status = e.target.value; renderCatalogList() })
+  }
+
   renderBottomNav([
     { key: 'catalog', icon: '📚', label: 'รายวิชาที่ค้าง' },
     { key: 'overview', icon: '🏠', label: 'ภาพรวม' },
@@ -387,12 +422,52 @@ async function renderTeacher() {
   ], teacher.subView === 'respond' ? 'overview' : teacher.subView, (key) => { teacher.subView = key; renderTeacher() })
 }
 
+// อัปเดตเฉพาะรายการในแท็บ "รายวิชาที่ค้าง" ของครู ไม่แตะช่องค้นหา/ตัวกรอง
+// (แยกออกจาก renderTeacher() เพราะไม่งั้นพิมพ์ค้นหาแต่ละตัวอักษรจะ rebuild ทั้งหน้า ทำให้ช่องค้นหาเสีย focus)
+function renderCatalogList() {
+  const list = document.getElementById('regrade-catalog-list')
+  const count = document.getElementById('regrade-catalog-count')
+  if (!list) return
+  const f = teacher.catalogFilter
+  let shown = teacher.subjects
+  if (f.category !== 'all') shown = shown.filter(x => x.category === f.category)
+  if (f.semester !== 'all') shown = shown.filter(x => x.semester === f.semester)
+  if (f.status !== 'all') shown = shown.filter(x => x.status === f.status)
+  if (f.query.trim()) {
+    const q = f.query.trim().toLowerCase()
+    shown = shown.filter(x => (x.students?.full_name || '').toLowerCase().includes(q) || (x.students?.student_code || '').includes(q))
+  }
+  count.textContent = `พบ ${shown.length} รายการ`
+  list.innerHTML = shown.length ? shown.map(x => teacherCatalogCard(x)).join('')
+    : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่พบรายวิชาที่ตรงกับเงื่อนไข</div>`
+}
+
+function teacherCatalogCard(x) {
+  const studentName = x.students?.full_name || '-'
+  return `
+  <div class="rg-card p-4">
+    <div class="flex gap-2.5 items-start">
+      ${personAvatarHtml(x.students, true)}
+      <div class="min-w-0 flex-1">
+        <div class="flex justify-between gap-2 items-start">
+          <div class="min-w-0">
+            <p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)} <span class="text-[var(--muted-2)] font-normal">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')})</span></p>
+            <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)}) · ติดภาคเรียน ${escHtml(x.semester)}</p>
+            <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
+          </div>
+          <span class="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
+        </div>
+      </div>
+    </div>
+  </div>`
+}
+
 function teacherAssignedCard(x) {
   const studentName = x.students?.full_name || '-'
   return `
   <div class="rg-card p-4">
     <div class="flex gap-2">
-      <div style="${avatarStyle(studentName, true)}">${initialOf(studentName)}</div>
+      ${personAvatarHtml(x.students, true)}
       <div class="min-w-0"><p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p><p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</p></div>
     </div>
     <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
@@ -410,7 +485,7 @@ function teacherRespondCard(x) {
   return `
   <div class="rg-card p-4">
     <div class="flex gap-2">
-      <div style="${avatarStyle(studentName, true)}">${initialOf(studentName)}</div>
+      ${personAvatarHtml(x.students, true)}
       <div class="min-w-0">
         <p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p>
         <p class="text-[10px] text-[var(--muted-2)]">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || '')})</p>
@@ -512,7 +587,7 @@ async function renderCloseList() {
     return `
     <div class="rg-card p-4 flex justify-between items-center gap-3 flex-wrap">
       <div class="flex gap-2.5 items-center min-w-0">
-        <div style="${avatarStyle(name, true)}">${initialOf(name)}</div>
+        ${personAvatarHtml(x.students, true)}
         <div class="min-w-0">
           <p class="font-bold text-sm text-[var(--ink)]">${escHtml(name)} <span class="text-[var(--muted-2)] font-normal">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || '')})</span></p>
           <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)}) · ${escHtml(x.method || '')} — กำหนด ${escHtml(x.due_text || '-')}</p>
@@ -551,7 +626,7 @@ async function renderGradeTable() {
     <tbody>${rows.length ? rows.map(x => {
       const name = x.students?.full_name || '-'
       return `<tr class="border-b border-[var(--line-soft)]">
-        <td class="py-2 px-2"><div class="flex items-center gap-2"><div style="${avatarStyle(name, true)}">${initialOf(name)}</div><div><p class="font-bold text-[var(--ink)]">${escHtml(name)}</p><p class="text-[10px] text-[var(--muted-2)]">(${escHtml(x.students?.student_code || '')})</p></div></div></td>
+        <td class="py-2 px-2"><div class="flex items-center gap-2">${personAvatarHtml(x.students, true)}<div><p class="font-bold text-[var(--ink)]">${escHtml(name)}</p><p class="text-[10px] text-[var(--muted-2)]">(${escHtml(x.students?.student_code || '')})</p></div></div></td>
         <td class="py-2 px-2 text-[var(--ink-2)]">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</td>
         <td class="py-2 px-2 text-[var(--ink-2)]">${escHtml(x.teachers?.full_name || '-')}</td>
         <td class="py-2 px-2">${x.grade_entered
