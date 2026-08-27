@@ -947,6 +947,17 @@ async function goSection(section) {
   currentSection = section
   document.getElementById('regrade-bottom-tabs').innerHTML = ''
   const sections = getAvailableSections()
+
+  // 🔧 debug ชั่วคราว — เอาไว้หาสาเหตุแถบสลับบทบาทหาย ลบทิ้งเมื่อเจอสาเหตุแล้ว
+  let dbg = document.getElementById('regrade-debug')
+  if (!dbg) {
+    dbg = document.createElement('div')
+    dbg.id = 'regrade-debug'
+    dbg.style.cssText = 'background:#000;color:#0f0;font-size:10px;line-height:1.5;padding:6px 10px;font-family:monospace;white-space:pre-wrap;position:relative;z-index:9999;'
+    document.body.insertBefore(dbg, document.body.firstChild)
+  }
+  dbg.textContent = `[DEBUG] role=${ctx.role} isAdmin=${ctx.isAdmin} isRegistrar=${ctx.isRegistrar} teacherRow=${!!ctx.teacherRow} sections=[${sections.map(s => s.key).join(',')}] visibility=${JSON.stringify(ctx.cfg.visibility)}`
+
   renderSidebarNav_(sections)
   renderRoleSwitcher(sections)
   if (section === 'student') return renderStudent()
@@ -992,8 +1003,24 @@ async function init() {
   ctx.role = profile?.role
   const BACK_HREF = { student: 'student.html', teacher: 'teacher.html', admin: 'dashboard.html' }
   const backHref = BACK_HREF[ctx.role] || 'index.html'
-  document.getElementById('regrade-back-btn-desktop').href = backHref
-  document.getElementById('regrade-back-btn-mobile').href = backHref
+  const backBtnDesktop = document.getElementById('regrade-back-btn-desktop')
+  const backBtnMobile = document.getElementById('regrade-back-btn-mobile')
+  // เปิดผ่าน modal ใน dashboard.html (iframe) — ปุ่ม "←" ต้องสั่งปิด modal ของหน้าแม่แทนการ navigate
+  // iframe ไปเป็น teacher.html ตรงๆ ไม่งั้นแถบดำของ modal จะค้างอยู่เหนือหน้าที่ navigate ไปแล้ว
+  if (window.self !== window.top) {
+    const closeParentModal = (e) => {
+      e.preventDefault()
+      if (typeof window.parent.closeRegradeModal === 'function') window.parent.closeRegradeModal()
+      else window.parent.location.href = backHref
+    }
+    backBtnDesktop.removeAttribute('href')
+    backBtnMobile.removeAttribute('href')
+    backBtnDesktop.addEventListener('click', closeParentModal)
+    backBtnMobile.addEventListener('click', closeParentModal)
+  } else {
+    backBtnDesktop.href = backHref
+    backBtnMobile.href = backHref
+  }
 
   try {
     ctx.cfg = await getRegradeConfig()

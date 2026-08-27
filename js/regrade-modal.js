@@ -77,6 +77,7 @@ export function openRegradeModal() {
     document.removeEventListener('keydown', onKeydown)
     document.body.style.overflow = previousOverflow
     modal.remove()
+    if (window.closeRegradeModal === close) window.closeRegradeModal = null
   }
   const onKeydown = (event) => {
     if (event.key === 'Escape') close()
@@ -84,6 +85,9 @@ export function openRegradeModal() {
 
   document.addEventListener('keydown', onKeydown)
   document.body.appendChild(modal)
+  // เปิดให้ regrade.html (ที่รันอยู่ใน iframe นี้) เรียกปิด modal ได้เอง — ใช้ตอนกดปุ่ม "←" ย้อนกลับ
+  // ในตัวเพจ แทนที่จะ navigate iframe ไปเป็น teacher.html แล้วเหลือแถบดำของ modal ค้างอยู่
+  window.closeRegradeModal = close
   const statusEl = modal.querySelector('[data-regrade-status]')
   modal.querySelector('[data-regrade-close]')?.addEventListener('click', close)
   modal.querySelector('[data-regrade-copy]')?.addEventListener('click', () => copyRegradeLink(url, statusEl))
