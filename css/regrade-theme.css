@@ -29,7 +29,7 @@ html { font-size: clamp(16px, 13px + 0.4vw, 22px); }
   --hero-1: var(--primary); --hero-2: var(--primary-dark); --hero-3: #4c0e30;
   --hero-btn: #ffffff; --hero-btn-fg: var(--primary);
 
-  --glass: rgba(255,255,255,.72); --glass-on: rgba(253,242,246,.86); --glass-line: rgba(255,255,255,.6);
+  --glass-alpha: .55; --glass: rgb(255 255 255 / var(--glass-alpha)); --glass-on: rgba(253,242,246,.86); --glass-line: rgba(255,255,255,.6);
 }
 
 :root[data-dark] {
@@ -54,5 +54,53 @@ html { font-size: clamp(16px, 13px + 0.4vw, 22px); }
   --hero-1: #6e1136; --hero-2: #530d29; --hero-3: #38081c;
   --hero-btn: #f3e7ea; --hero-btn-fg: #a3134f;
 
-  --glass: rgba(38,32,32,.68); --glass-on: rgba(40,22,31,.82); --glass-line: rgba(255,255,255,.12);
+  --glass-alpha: .55; --glass: rgb(38 32 32 / var(--glass-alpha)); --glass-on: rgba(40,22,31,.82); --glass-line: rgba(255,255,255,.12);
+}
+
+/* ─── Liquid Glass — เฉพาะจอมือถือ (< md) ─────────────────────────────────────
+   เดสก์ท็อป (md ขึ้นไป) มีไซด์บาร์ซ้ายอยู่แล้ว ให้คงพื้นเรียบสะอาดตาแบบเดิม
+   ไม่ใส่กระจก/เบลอ — ผู้ใช้ยืนยันไว้ 2026-08-27 ว่าอยากให้จอกว้างดูเรียบง่าย
+   ดูภาพอ้างอิงสไตล์ที่ [[design_reference_ios_customize_glass]] ก่อนแก้ต่อจากนี้ */
+.rg-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.rg-switcher-bar { background: var(--surface); }
+.rg-modal-panel { background: var(--surface); border-radius: 20px; }
+
+@media (max-width: 767px) {
+  #regrade-content { position: relative; z-index: 1; }
+  #regrade-content::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(circle at 12% 15%, var(--primary-soft) 0%, transparent 42%),
+      radial-gradient(circle at 88% 12%, var(--secondary-soft) 0%, transparent 42%),
+      radial-gradient(circle at 50% 96%, var(--gold-soft) 0%, transparent 48%),
+      var(--bg);
+  }
+  .rg-card {
+    background: var(--glass);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--glass-line);
+    box-shadow: 0 8px 30px rgba(0,0,0,.10);
+  }
+  .rg-switcher-bar {
+    background: var(--glass);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+  }
+  .rg-modal-panel {
+    background: var(--glass-on);
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+  }
+}
+
+/* เบราว์เซอร์ที่ไม่รองรับ backdrop-filter เลย — กันจอแตก (ยังอ่านออกได้ปกติ) */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 767px) {
+    .rg-card, .rg-switcher-bar, .rg-modal-panel { background: var(--surface) !important; }
+  }
 }

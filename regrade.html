@@ -60,8 +60,8 @@
       </div>
     </header>
 
-    <!-- แถบสลับบทบาท (โชว์เฉพาะบัญชีที่เข้าถึงได้มากกว่า 1 หน้าที่ เช่น ครูที่ได้รับสิทธิ์แอดมิน/ทะเบียนเพิ่ม) -->
-    <div id="regrade-role-switcher" class="flex-shrink-0"></div>
+    <!-- แถบสลับบทบาท (มือถือเท่านั้น — เดสก์ท็อปใช้ไซด์บาร์ซ้ายแทน) โชว์เฉพาะบัญชีที่เข้าถึงได้มากกว่า 1 หน้าที่ -->
+    <div id="regrade-role-switcher" class="md:hidden flex-shrink-0"></div>
 
     <!-- Page Content -->
     <main id="regrade-content" class="flex-1 overflow-y-auto pb-20 md:pb-0">
@@ -74,7 +74,7 @@
     </main>
 
     <!-- Bottom tab bar (มือถือเท่านั้น) -->
-    <nav id="regrade-bottom-tabs" class="md:hidden bg-[var(--surface)] border-t border-[var(--line-soft)] shadow-[0_-1px_4px_rgba(0,0,0,0.06)] flex-shrink-0 fixed bottom-0 inset-x-0 z-30 safe-area-bottom"></nav>
+    <nav id="regrade-bottom-tabs" class="md:hidden rg-switcher-bar border-t border-[var(--line-soft)] shadow-[0_-1px_4px_rgba(0,0,0,0.06)] flex-shrink-0 fixed bottom-0 inset-x-0 z-30 safe-area-bottom"></nav>
   </div>
 
   <script type="module" src="/js/regrade.js"></script>

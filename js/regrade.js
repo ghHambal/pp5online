@@ -60,7 +60,7 @@ function showRegradeConfirm({ title = 'ยืนยันการดำเน�
     m.className = 'fixed inset-0 z-[99999] flex items-center justify-center p-4'
     m.innerHTML = `
       <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="rgc-overlay"></div>
-      <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+      <div class="rg-modal-panel relative shadow-2xl w-full max-w-sm overflow-hidden">
         <div class="h-1.5" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark))"></div>
         <div class="px-6 pt-6 pb-5 text-center">
           <h3 class="text-lg font-bold text-gray-900 mb-2">${escHtml(title)}</h3>
@@ -88,8 +88,8 @@ function pill(active, variant = 'primary') {
 }
 function tab(active) {
   return active
-    ? 'padding:8px 16px;border-radius:9999px;font-size:.72rem;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));'
-    : 'padding:8px 16px;border-radius:9999px;font-size:.72rem;font-weight:700;color:var(--muted);background:var(--surface-2);'
+    ? 'padding:8px 16px;border-radius:12px;font-size:.72rem;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));'
+    : 'padding:8px 16px;border-radius:12px;font-size:.72rem;font-weight:700;color:var(--muted);background:var(--surface-2);'
 }
 
 // แถบเมนูล่าง (มือถือ) — 3 ปุ่ม ใช้ร่วมกันทั้งฝั่งนักเรียน/ครู
@@ -166,7 +166,7 @@ async function renderStudent() {
       </div>`
   } else if (student.subView === 'overview') {
     inner = `
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 mb-4">
+      <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
         <div class="grid grid-cols-2 gap-3">
           ${statCard(total, 'วิชาค้างทั้งหมด', 'var(--ink)')}
@@ -186,7 +186,7 @@ async function renderStudent() {
       ${inner}
     </div>
     ${studentFabVisible() ? `
-    <button id="regrade-student-fab" class="fixed md:absolute bottom-24 md:bottom-6 right-4 md:right-8 px-4 py-3 rounded-full text-white font-bold text-xs shadow-lg flex items-center gap-2 z-20"
+    <button id="regrade-student-fab" class="fixed md:absolute bottom-24 md:bottom-6 right-4 md:right-8 px-4 py-3 rounded-2xl text-white font-bold text-xs shadow-lg flex items-center gap-2 z-20"
       style="background:linear-gradient(135deg,var(--gold),var(--gold-ink))">📝 จำนงขอแก้/ปรับ</button>` : ''}`
 
   content.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => { student.categoryTab = btn.dataset.tab; renderStudent() }))
@@ -210,7 +210,7 @@ function statCard(value, label, color) {
 function studentSubjectCard(x) {
   const teacherName = x.teachers?.full_name || '-'
   return `
-  <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 shadow-sm">
+  <div class="rg-card p-4 shadow-sm">
     <div class="flex justify-between gap-2 items-start">
       <div class="min-w-0">
         <p class="font-bold text-sm text-[var(--ink)]">${escHtml(x.subject_name)}</p>
@@ -277,7 +277,7 @@ async function renderTeacher() {
   let inner = ''
   if (teacher.subView === 'catalog') {
     inner = `<div class="flex flex-col gap-3">${all.length ? all.map(x => `
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+      <div class="rg-card p-4">
         <div class="flex justify-between gap-2 items-start">
           <div class="min-w-0">
             <p class="font-bold text-sm text-[var(--ink)]">${escHtml(x.subject_name)}</p>
@@ -289,7 +289,7 @@ async function renderTeacher() {
       </div>`).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีรายวิชาค้างในความรับผิดชอบตอนนี้ 🎉</div>`}</div>`
   } else if (teacher.subView === 'overview') {
     inner = `
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 mb-4">
+      <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
         <div class="grid grid-cols-2 gap-3">
           ${statCard(all.length, 'วิชาค้างทั้งหมด', 'var(--ink)')}
@@ -312,7 +312,7 @@ async function renderTeacher() {
   content.innerHTML = `
     <div class="max-w-lg mx-auto p-4 relative" style="min-height:60vh;">${inner}</div>
     ${respondList.length ? `
-    <button id="regrade-teacher-fab" class="fixed md:absolute bottom-24 md:bottom-6 right-4 md:right-8 px-4 py-3 rounded-full text-white font-bold text-xs shadow-lg flex items-center gap-2 z-20"
+    <button id="regrade-teacher-fab" class="fixed md:absolute bottom-24 md:bottom-6 right-4 md:right-8 px-4 py-3 rounded-2xl text-white font-bold text-xs shadow-lg flex items-center gap-2 z-20"
       style="background:linear-gradient(135deg,var(--secondary),var(--secondary-dark))">
       ✅ ตอบรับ
       <span class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">${respondList.length}</span>
@@ -337,7 +337,7 @@ async function renderTeacher() {
 function teacherAssignedCard(x) {
   const studentName = x.students?.full_name || '-'
   return `
-  <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+  <div class="rg-card p-4">
     <div class="flex gap-2">
       <div style="${avatarStyle(studentName, true)}">${initialOf(studentName)}</div>
       <div class="min-w-0"><p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p><p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</p></div>
@@ -355,7 +355,7 @@ function teacherRespondCard(x) {
   const openExam = f && f.id === x.id && f.method === 'นัดสอบปรับ'
   const openWork = f && f.id === x.id && f.method === 'ให้งานแก้'
   return `
-  <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+  <div class="rg-card p-4">
     <div class="flex gap-2">
       <div style="${avatarStyle(studentName, true)}">${initialOf(studentName)}</div>
       <div class="min-w-0">
@@ -457,7 +457,7 @@ async function renderCloseList() {
   list.innerHTML = rows.length ? rows.map(x => {
     const name = x.students?.full_name || '-'
     return `
-    <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 flex justify-between items-center gap-3 flex-wrap">
+    <div class="rg-card p-4 flex justify-between items-center gap-3 flex-wrap">
       <div class="flex gap-2.5 items-center min-w-0">
         <div style="${avatarStyle(name, true)}">${initialOf(name)}</div>
         <div class="min-w-0">
@@ -563,13 +563,13 @@ async function renderDashboard() {
         <button data-dcat="ศาสนา" style="${tab(dashboard.categoryTab === 'ศาสนา')}">🕌 ศาสนา (${relTotal})</button>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <button data-drill="all" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(total, 'รายวิชาค้างทั้งหมด', 'var(--ink)')}</button>
-        <button data-drill="requested" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(requested, 'จำนงแล้ว', 'var(--gold-ink)')}</button>
-        <button data-drill="assigned" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(assigned, 'กำลังดำเนินการปรับแก้', 'var(--info)')}</button>
-        <button data-drill="done" class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 text-center">${statNum(done, 'ปรับแก้สำเร็จ', 'var(--ok)')}</button>
+        <button data-drill="all" class="rg-card p-4 text-center">${statNum(total, 'รายวิชาค้างทั้งหมด', 'var(--ink)')}</button>
+        <button data-drill="requested" class="rg-card p-4 text-center">${statNum(requested, 'จำนงแล้ว', 'var(--gold-ink)')}</button>
+        <button data-drill="assigned" class="rg-card p-4 text-center">${statNum(assigned, 'กำลังดำเนินการปรับแก้', 'var(--info)')}</button>
+        <button data-drill="done" class="rg-card p-4 text-center">${statNum(done, 'ปรับแก้สำเร็จ', 'var(--ok)')}</button>
       </div>
       <div id="regrade-drilldown"></div>
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+      <div class="rg-card p-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-1">ความคืบหน้าแยกรายครูผู้สอน</p>
         <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากครูที่มีคำร้องรอตอบรับมากที่สุดก่อน</p>
         <div class="overflow-x-auto"><table class="w-full text-xs">
@@ -602,7 +602,7 @@ function renderDashboardDrilldown(scoped) {
   else if (dashboard.drilldown === 'assigned') rows = scoped.filter(x => x.status === 'กำลังดำเนินการปรับแก้')
   else if (dashboard.drilldown === 'done') rows = scoped.filter(x => x.status === 'ปรับแก้สำเร็จ')
 
-  el.innerHTML = `<div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4 mb-4">
+  el.innerHTML = `<div class="rg-card p-4 mb-4">
     <div class="flex justify-between items-center mb-3">
       <p class="text-xs font-bold text-[var(--ink-2)]">รายละเอียด: ${escHtml(titles[dashboard.drilldown])}</p>
       <button id="regrade-drill-close" class="w-6 h-6 rounded-full bg-[var(--surface-2)] text-[var(--muted)] text-xs">✕</button>
@@ -631,7 +631,7 @@ async function renderSettings() {
   content.innerHTML = `
     <div class="max-w-2xl mx-auto p-4 flex flex-col gap-4">
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+      <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-1">การแจ้งความจำนงของนักเรียน</p>
         <p class="text-xs text-[var(--muted-2)] mb-3">ควบคุมปุ่มลอย "จำนงขอแก้/ปรับ" ที่นักเรียนเห็น</p>
         <label class="flex items-center gap-3 cursor-pointer">
@@ -640,7 +640,7 @@ async function renderSettings() {
         </label>
       </div>
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+      <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">การมองเห็นเมนู</p>
         <label class="flex items-center gap-3 cursor-pointer mb-2">
           <input id="regrade-set-vis-student" type="checkbox" ${c.visibility?.student_menu ? 'checked' : ''} class="w-5 h-5">
@@ -652,16 +652,39 @@ async function renderSettings() {
         </label>
       </div>
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
-        <p class="text-sm font-bold text-[var(--ink)] mb-3">ตั้งค่าสีธีม</p>
-        <div class="grid grid-cols-3 gap-3">
+      <div class="rg-card p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-1">ตั้งค่าสีธีม</p>
+        <p class="text-xs text-[var(--muted-2)] mb-3">เลือกพรีเซ็ตด่วน หรือปรับเองทีละสี — พรีวิวด้านล่างอัปเดตทันที ยังไม่บันทึกจนกว่าจะกด "บันทึกการตั้งค่า"</p>
+
+        <div id="regrade-theme-preview" class="rounded-2xl p-4 mb-4 text-white" style="transition:background .15s ease">
+          <p class="text-[11px] opacity-80 mb-1">ตัวอย่างพรีวิว</p>
+          <p class="font-extrabold text-sm">คณิตศาสตร์พื้นฐาน</p>
+          <div class="flex gap-2 mt-2.5">
+            <span id="regrade-theme-preview-sec" class="px-2.5 py-1 rounded-lg text-[10px] font-bold">ศาสนา</span>
+            <span id="regrade-theme-preview-gold" class="px-2.5 py-1 rounded-lg text-[10px] font-bold">ทอง</span>
+          </div>
+        </div>
+
+        <p class="text-[11px] font-bold text-[var(--ink-2)] mb-2">พรีเซ็ตด่วน</p>
+        <div class="grid grid-cols-4 gap-2 mb-4">
+          ${Object.entries(REGRADE_THEME_PRESETS).map(([key, p]) => `
+          <button data-preset="${key}" class="flex flex-col items-center gap-1.5">
+            <span class="block w-11 h-11 rounded-xl border border-[var(--line)]" style="background:linear-gradient(135deg, ${p.primary} 30%, ${p.secondary} 65%, ${p.gold} 100%)"></span>
+            <span class="text-[10px] font-bold text-[var(--muted)]">${escHtml(p.label)}</span>
+          </button>`).join('')}
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 mb-4">
           <div><label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">🎀 สีหลัก (สามัญ)</label><input id="regrade-set-primary" type="color" value="${c.primary_color || '#9d174d'}" class="w-full h-9"></div>
           <div><label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">🕌 สีรอง (ศาสนา)</label><input id="regrade-set-secondary" type="color" value="${c.secondary_color || '#065f46'}" class="w-full h-9"></div>
           <div><label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">✨ สีทอง</label><input id="regrade-set-gold" type="color" value="${c.gold_color || '#b45309'}" class="w-full h-9"></div>
         </div>
+
+        <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">ความโปร่งของกระจก (เฉพาะหน้าจอมือถือ)</label>
+        <input id="regrade-set-glass-alpha" type="range" min="0.2" max="0.9" step="0.05" value="${c.glass_alpha ?? 0.55}" class="w-full">
       </div>
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+      <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">ข้อความประกาศ</p>
         <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">🎓 สำหรับนักเรียน</label>
         <textarea id="regrade-set-ann-student" rows="2" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm mb-3">${escHtml(c.student_announcement || '')}</textarea>
@@ -669,14 +692,14 @@ async function renderSettings() {
         <textarea id="regrade-set-ann-teacher" rows="2" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">${escHtml(c.teacher_announcement || '')}</textarea>
       </div>
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+      <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-1">ชื่อระบบ</p>
         <input id="regrade-set-name" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm" value="${escHtml(c.system_name || 'แก้ค้างเก่า')}">
       </div>
 
       <button id="regrade-set-save" class="w-full py-3 rounded-2xl text-white font-bold text-sm" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">บันทึกการตั้งค่า</button>
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+      <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-1">นำเข้าข้อมูลย้อนหลัง (CSV)</p>
         <p class="text-xs text-[var(--muted-2)] mb-3">สำหรับรายวิชาค้างของภาคเรียนก่อนหน้าภาคเรียนปัจจุบันเท่านั้น (ภาคเรียนปัจจุบันระบบดึงจากฐานข้อมูล ปพ.5 อัตโนมัติ)</p>
         <div class="bg-[var(--surface-2)] rounded-xl p-3 mb-3 text-[11px] text-[var(--muted)] leading-relaxed">
@@ -690,7 +713,7 @@ async function renderSettings() {
         <div id="regrade-csv-result" class="mt-3 text-xs"></div>
       </div>
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+      <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">ผู้ดูแลระบบ (เข้าหน้าตั้งค่านี้ได้)</p>
         <div class="flex flex-wrap gap-2 mb-3">${admins.map(a => adminChip(a, 'admin', teacherByProfileId)).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
         <div class="flex gap-2">
@@ -699,7 +722,7 @@ async function renderSettings() {
         </div>
       </div>
 
-      <div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5">
+      <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">เจ้าหน้าที่ฝ่ายทะเบียน (เข้าหน้าปิดงานได้)</p>
         <div class="flex flex-wrap gap-2 mb-3">${staff.map(a => adminChip(a, 'registrar', teacherByProfileId)).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
         <div class="flex gap-2">
@@ -752,6 +775,7 @@ async function renderSettings() {
         primary_color: document.getElementById('regrade-set-primary').value,
         secondary_color: document.getElementById('regrade-set-secondary').value,
         gold_color: document.getElementById('regrade-set-gold').value,
+        glass_alpha: Number(document.getElementById('regrade-set-glass-alpha').value),
         student_announcement: document.getElementById('regrade-set-ann-student').value,
         teacher_announcement: document.getElementById('regrade-set-ann-teacher').value,
         system_name: document.getElementById('regrade-set-name').value.trim() || 'แก้ค้างเก่า',
@@ -764,6 +788,45 @@ async function renderSettings() {
   })
 
   wireCsvImport(content)
+  wireThemePicker(content)
+}
+
+// พรีเซ็ตสีธีมด่วน (แนวคิดจากแผงปรับแต่งไอคอน iOS — ดู design_reference_ios_customize_glass ในความจำ)
+// ระบบนี้มี 2 สีที่มีความหมายตายตัว (ชมพู=สามัญ, เขียว=ศาสนา) เลยใช้พรีเซ็ตสำเร็จรูปแทน hue slider เดี่ยว
+const REGRADE_THEME_PRESETS = {
+  default: { primary: '#9d174d', secondary: '#065f46', gold: '#b45309', glassAlpha: 0.55, label: 'ค่าเริ่มต้น' },
+  dark:    { primary: '#701138', secondary: '#043d2d', gold: '#78350f', glassAlpha: 0.45, label: 'เข้ม' },
+  airy:    { primary: '#9d174d', secondary: '#065f46', gold: '#b45309', glassAlpha: 0.25, label: 'โปร่งใส' },
+  tint:    { primary: '#db2777', secondary: '#059669', gold: '#d97706', glassAlpha: 0.65, label: 'ย้อมสี' },
+}
+
+function wireThemePicker(content) {
+  const primaryInput = content.querySelector('#regrade-set-primary')
+  const secondaryInput = content.querySelector('#regrade-set-secondary')
+  const goldInput = content.querySelector('#regrade-set-gold')
+  const alphaInput = content.querySelector('#regrade-set-glass-alpha')
+  const preview = content.querySelector('#regrade-theme-preview')
+  const previewSec = content.querySelector('#regrade-theme-preview-sec')
+  const previewGold = content.querySelector('#regrade-theme-preview-gold')
+
+  function renderPreview() {
+    preview.style.background = primaryInput.value
+    previewSec.style.background = secondaryInput.value
+    previewGold.style.background = goldInput.value
+  }
+  renderPreview()
+
+  ;[primaryInput, secondaryInput, goldInput, alphaInput].forEach(el => el.addEventListener('input', renderPreview))
+
+  content.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', () => {
+    const p = REGRADE_THEME_PRESETS[btn.dataset.preset]
+    if (!p) return
+    primaryInput.value = p.primary
+    secondaryInput.value = p.secondary
+    goldInput.value = p.gold
+    alphaInput.value = p.glassAlpha
+    renderPreview()
+  }))
 }
 
 function buildCsvPreviewTable(mapped) {
@@ -858,6 +921,7 @@ function applyThemeColors() {
   if (ctx.cfg.primary_color) root.style.setProperty('--primary', ctx.cfg.primary_color)
   if (ctx.cfg.secondary_color) root.style.setProperty('--secondary', ctx.cfg.secondary_color)
   if (ctx.cfg.gold_color) root.style.setProperty('--gold', ctx.cfg.gold_color)
+  if (ctx.cfg.glass_alpha != null) root.style.setProperty('--glass-alpha', ctx.cfg.glass_alpha)
 }
 
 // ============================================================================
@@ -906,8 +970,8 @@ function renderRoleSwitcher(sections) {
   const el = document.getElementById('regrade-role-switcher')
   if (!el) return
   if (sections.length <= 1) { el.innerHTML = ''; return }
-  el.innerHTML = `<div class="flex gap-2 overflow-x-auto px-4 py-2 border-b border-[var(--line-soft)]">${sections.map(s => `
-    <button data-switch-sec="${s.key}" class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition"
+  el.innerHTML = `<div class="rg-switcher-bar flex gap-2 overflow-x-auto px-4 py-2 border-b border-[var(--line-soft)]">${sections.map(s => `
+    <button data-switch-sec="${s.key}" class="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition"
       style="${currentSection === s.key ? 'background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;' : 'background:var(--surface-2);color:var(--muted);'}">${s.icon} ${escHtml(s.label)}</button>`).join('')}</div>`
   el.querySelectorAll('[data-switch-sec]').forEach(btn => btn.addEventListener('click', () => goSection(btn.dataset.switchSec)))
 }
