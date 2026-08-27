@@ -114,7 +114,6 @@ export async function openTeacherModal(id = null) {
   document.getElementById('modal-username').value  = ''
   document.getElementById('modal-image-url').value = ''
   window._clearPositionRows?.()
-  document.getElementById('modal-pos-dept-wrap').style.display = 'none'
   document.getElementById('modal-title').textContent = id ? 'แก้ไขข้อมูลครู' : 'เพิ่มครูใหม่'
 
   // โหลด dept options
@@ -672,28 +671,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 
   // Dynamic position rows
-  const POS_OPTIONS = [
-    { value: 'dept_head',            label: 'หัวหน้ากลุ่มสาระ' },
-    { value: 'religion_group_head',  label: 'หัวหน้ากลุ่ม (ศาสนา)' },
-    { value: 'religion_subgroup_head', label: 'หัวหน้ากลุ่มย่อย (ศาสนา)' },
-    { value: 'registrar_samai',      label: 'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
-    { value: 'registrar_religion',   label: 'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
-    { value: 'registrar_pvch',       label: 'หัวหน้าฝ่ายทะเบียน (ปวช)' },
-    { value: 'academic_samai',       label: 'หัวหน้าวิชาการสามัญ' },
-    { value: 'academic_religion',    label: 'หัวหน้าวิชาการศาสนา' },
-    { value: 'academic_pvch',        label: 'หัวหน้าวิชาการปวช' },
-    { value: 'house_color_admin',    label: 'ผู้รับผิดชอบสีนักเรียน' },
-    { value: 'classroom_leaders_admin', label: 'ผู้ดูแลหัวหน้า/รองหัวหน้า' },
-    { value: 'council_advisor',      label: 'ครูที่ปรึกษาสภานักเรียน' },
+  const POS_GROUPS = [
+    { label: '🗂️ หัวหน้ากลุ่มสาระ/กลุ่มศาสนา', options: [
+      { value: 'dept_head',              label: 'หัวหน้ากลุ่มสาระ' },
+      { value: 'religion_group_head',    label: 'หัวหน้ากลุ่ม (ศาสนา)' },
+      { value: 'religion_subgroup_head', label: 'หัวหน้ากลุ่มย่อย (ศาสนา)' },
+    ] },
+    { label: '📋 ฝ่ายทะเบียน', options: [
+      { value: 'registrar_samai',    label: 'หัวหน้าฝ่ายทะเบียน (สามัญ)' },
+      { value: 'registrar_religion', label: 'หัวหน้าฝ่ายทะเบียน (ศาสนา)' },
+      { value: 'registrar_pvch',     label: 'หัวหน้าฝ่ายทะเบียน (ปวช)' },
+    ] },
+    { label: '🎓 ฝ่ายวิชาการ', options: [
+      { value: 'academic_samai',    label: 'หัวหน้าวิชาการสามัญ' },
+      { value: 'academic_religion', label: 'หัวหน้าวิชาการศาสนา' },
+      { value: 'academic_pvch',     label: 'หัวหน้าวิชาการปวช' },
+    ] },
+    { label: '⚙️ อื่นๆ', options: [
+      { value: 'house_color_admin',       label: 'ผู้รับผิดชอบสีนักเรียน' },
+      { value: 'classroom_leaders_admin', label: 'ผู้ดูแลหัวหน้า/รองหัวหน้า' },
+      { value: 'council_advisor',         label: 'ครูที่ปรึกษาสภานักเรียน' },
+    ] },
   ]
   const posOptHtml = () =>
     `<option value="">— ไม่มี —</option>` +
-    POS_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('')
+    POS_GROUPS.map(g => `<optgroup label="${g.label}">${g.options.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</optgroup>`).join('')
 
   function _refreshDeptWrap() {
     const vals = [...document.querySelectorAll('.pos-row-sel')].map(s => s.value)
-    document.getElementById('modal-pos-dept-wrap').style.display =
-      vals.includes('dept_head') ? 'block' : 'none'
+    document.getElementById('modal-pos-dept-wrap').classList.toggle('hidden', !vals.includes('dept_head'))
+  }
+
+  // กันเลือกตำแหน่งซ้ำข้ามแถว — ตำแหน่งที่ถูกเลือกในแถวอื่นแล้วจะถูกปิด (disabled) ไว้ในแถวนี้
+  function _refreshPosOptionAvailability() {
+    const selects = [...document.querySelectorAll('.pos-row-sel')]
+    const chosen = selects.map(s => s.value).filter(Boolean)
+    selects.forEach(sel => {
+      [...sel.options].forEach(opt => {
+        if (!opt.value) return
+        opt.disabled = chosen.includes(opt.value) && sel.value !== opt.value
+      })
+    })
   }
 
   function _addPositionRow(value = '') {
@@ -706,13 +724,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       </select>
       <button type="button" class="pos-row-del flex-shrink-0 text-gray-400 hover:text-red-500 text-lg leading-none">✕</button>`
     row.querySelector('.pos-row-sel').value = value
-    row.querySelector('.pos-row-sel').addEventListener('change', _refreshDeptWrap)
+    row.querySelector('.pos-row-sel').addEventListener('change', () => { _refreshDeptWrap(); _refreshPosOptionAvailability() })
     row.querySelector('.pos-row-del').addEventListener('click', () => {
       row.remove()
       _refreshDeptWrap()
+      _refreshPosOptionAvailability()
     })
     list.appendChild(row)
     _refreshDeptWrap()
+    _refreshPosOptionAvailability()
   }
 
   window._addPositionRow = _addPositionRow

@@ -31,7 +31,7 @@ export async function getMyTeacherRow() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
   const { data, error } = await supabase.from('teachers')
-    .select('id, full_name, category, image_url, position, positions')
+    .select('id, full_name, category, image_url, position, positions, position_dept_id')
     .eq('profile_id', session.user.id).maybeSingle()
   if (error) throw error
   return data
@@ -194,6 +194,14 @@ export async function getRegradeDistinctClassLevels() {
   const { data, error } = await supabase.rpc('regrade_distinct_class_levels')
   if (error) throw error
   return data ?? []
+}
+
+export async function getDepartmentById(id) {
+  if (!id) return null
+  const { data, error } = await supabase.from('departments')
+    .select('id, dept_code, dept_name').eq('id', id).maybeSingle()
+  if (error) throw error
+  return data
 }
 
 // ─── สิทธิ์ของฉันเอง (ใช้แค่ตัดสินใจโชว์/ซ่อนเมนูฝั่ง client — ของจริงคุมที่ RLS) ──

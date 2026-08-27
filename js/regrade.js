@@ -11,7 +11,12 @@ import {
   addRegradeRegistrarStaff, removeRegradeRegistrarStaff, getAllTeachersForPicker,
   previewRegradeCsvRows, importRegradeSubjectsCsv,
   getUnassignedRegradeSubjects, assignSubjectTeacherBulk, getRegradeDistinctClassLevels,
+  getDepartmentById,
 } from './regrade-api.js'
+
+// ตัวหน้ารหัสวิชา -> กลุ่มสาระ (เฉพาะฝั่งสามัญ) — ตรวจสอบแล้วว่าตรง 1:1 กับข้อมูลค้างเก่าจริง
+// ไม่ครอบคลุมฝั่งศาสนา เพราะรหัสวิชาศาสนาปนกันหลายกลุ่มสาระ ไม่น่าเชื่อถือพอจะกรองอัตโนมัติ
+const SUBJECT_PREFIX_TO_DEPT = { 'ว': 'SC', 'อ': 'ENG', 'จ': 'ENG', 'ค': 'MATH', 'ท': 'THAI', 'ส': 'SOC', 'ง': 'OCC', 'ศ': 'ART', 'พ': 'HEALTH' }
 
 // ============================================================================
 // helpers ทั่วไป
@@ -336,6 +341,7 @@ const teacher = {
   catalogExpanded: new Set(), catalogSemesterFilter: {},
   assignedExpanded: new Set(), assignedSemesterFilter: {},
   deptHeadExpanded: new Set(), unassigned: [], deptHeadTeacherOptions: null,
+  deptHeadDept: undefined, deptHeadShowAll: false,
 }
 
 function isDeptHead() {
@@ -353,9 +359,18 @@ async function loadDeptHeadData() {
   const [unassigned, allTeachers] = await Promise.all([
     getUnassignedRegradeSubjects(ctx.teacherRow.category),
     teacher.deptHeadTeacherOptions ? Promise.resolve(teacher.deptHeadTeacherOptions) : getAllTeachersForPicker(),
+    teacher.deptHeadDept !== undefined ? Promise.resolve(teacher.deptHeadDept) : getDepartmentById(ctx.teacherRow.position_dept_id).then(d => { teacher.deptHeadDept = d }),
   ])
   teacher.unassigned = unassigned
   teacher.deptHeadTeacherOptions = allTeachers.filter(t => t.category === ctx.teacherRow.category)
+}
+
+// กรองเฉพาะกลุ่มสาระของหัวหน้าเอง (ถ้ารู้จักรหัสกลุ่มสาระ + สโคปด้วยรหัสวิชาตัวหน้าได้) — ไม่ใช่ขอบเขตสิทธิ์จริง
+// (คุมจริงที่ RLS ระดับหมวดสามัญ/ศาสนา) แค่ช่วยกรองให้ดูง่ายขึ้น ยังสลับดูทั้งหมดได้เสมอ
+function deptHeadFilterableGroups(groups) {
+  const deptCode = teacher.deptHeadDept?.dept_code
+  if (!deptCode || teacher.deptHeadShowAll) return groups
+  return groups.filter(g => SUBJECT_PREFIX_TO_DEPT[g.subject_code.charAt(0)] === deptCode)
 }
 
 async function renderTeacher() {
@@ -415,9 +430,18 @@ async function renderTeacher() {
       </div>
       <div class="flex flex-col gap-3">${respondList.length ? respondList.map(x => teacherRespondCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ตอบรับครบหมดแล้ว 🎉</div>`}</div>`
   } else if (teacher.subView === 'depthead') {
-    const groups = groupBySubject(teacher.unassigned)
+    const allGroups = groupBySubject(teacher.unassigned)
+    const deptCode = teacher.deptHeadDept?.dept_code
+    const canFilterByDept = deptCode && Object.values(SUBJECT_PREFIX_TO_DEPT).includes(deptCode)
+    const groups = deptHeadFilterableGroups(allGroups)
     inner = `
       <div class="rg-card p-3 mb-4 text-xs text-[var(--muted-2)]">🗂️ วิชาในหมวด${escHtml(ctx.teacherRow.category)}ที่ยังไม่มีครูผู้สอน — มอบหมายครูที่สอนอยู่จริงตอนนี้ให้แต่ละวิชาได้เลย</div>
+      ${canFilterByDept ? `
+      <div class="flex gap-2 mb-4">
+        <button data-depthead-scope="own" style="${pill(!teacher.deptHeadShowAll)}">📘 เฉพาะกลุ่มสาระของฉัน (${escHtml(teacher.deptHeadDept.dept_name)}) · ${allGroups.filter(g => SUBJECT_PREFIX_TO_DEPT[g.subject_code.charAt(0)] === deptCode).length}</button>
+        <button data-depthead-scope="all" style="${pill(teacher.deptHeadShowAll, 'secondary')}">ดูทั้งหมด · ${allGroups.length}</button>
+      </div>
+      <p class="text-[10px] text-[var(--muted-2)] mb-3">การกรองนี้ช่วยดูง่ายขึ้นเท่านั้น ยังมอบหมายวิชานอกกลุ่มสาระของตัวเองได้ถ้าจำเป็น — ระบบจะรู้ตำแหน่งวิชาแค่แบบคร่าวๆ จากรหัสวิชา อาจไม่ครบ 100%</p>` : ''}
       <div class="flex flex-col gap-3">${groups.length ? groups.map(g => unassignedSubjectGroupCard(g, teacher.deptHeadExpanded, teacher.deptHeadTeacherOptions)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีวิชาที่ขาดครูผู้สอนแล้ว 🎉</div>`}</div>
       <datalist id="regrade-depthead-teacher-list">${teacher.deptHeadTeacherOptions.map(t => `<option value="${escHtml(t.full_name)}${t.teacher_code ? ` (${escHtml(t.teacher_code)})` : ''} · รหัส ${t.id}"></option>`).join('')}</datalist>`
   }
@@ -447,6 +471,7 @@ async function renderTeacher() {
     renderTeacher()
   }))
   content.querySelectorAll('[data-depthead-assign]').forEach(btn => btn.addEventListener('click', () => handleDeptHeadAssign(btn)))
+  content.querySelectorAll('[data-depthead-scope]').forEach(btn => btn.addEventListener('click', () => { teacher.deptHeadShowAll = btn.dataset.deptheadScope === 'all'; renderTeacher() }))
   content.querySelectorAll('[data-group-sem]').forEach(sel => sel.addEventListener('change', (e) => {
     const [scope, code] = sel.dataset.groupSem.split('|')
     const map = scope === 'catalog' ? teacher.catalogSemesterFilter : teacher.assignedSemesterFilter
