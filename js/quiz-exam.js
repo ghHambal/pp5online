@@ -888,17 +888,37 @@ async function _renderResultScreen(root) {
   })
 
   document.getElementById('btn-quiz-finalize')?.addEventListener('click', async e => {
-    const ok = await showDangerConfirm({
-      title: 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย?',
-      message: 'คะแนนจะถูกบันทึกเข้าสมุดคะแนนจริงตอนนี้ และหลังยืนยันแล้วจะไม่สามารถกลับเข้ามาทำแบบทดสอบนี้ได้อีก',
-      confirmText: 'ยืนยันจบการสอบ',
-    })
-    if (!ok) return
-    setButtonLoading(e.currentTarget, true)
+    // DEBUG ชั่วคราว (2026-08-27) — ไล่บั๊กปุ่มกดแล้วไม่มีอะไรเกิดขึ้น ลบออกทีหลัง
+    const dbg = document.getElementById('quiz-finalize-debug') ?? (() => {
+      const d = document.createElement('div')
+      d.id = 'quiz-finalize-debug'
+      d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:999999;background:#111;color:#0f0;font:11px monospace;padding:8px;border-radius:8px;white-space:pre-wrap;max-height:40vh;overflow:auto'
+      document.body.appendChild(d)
+      return d
+    })()
+    dbg.textContent = '1) คลิกปุ่มแล้ว\n'
+    let ok
     try {
+      ok = await showDangerConfirm({
+        title: 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย?',
+        message: 'คะแนนจะถูกบันทึกเข้าสมุดคะแนนจริงตอนนี้ และหลังยืนยันแล้วจะไม่สามารถกลับเข้ามาทำแบบทดสอบนี้ได้อีก',
+        confirmText: 'ยืนยันจบการสอบ',
+      })
+    } catch (err) {
+      dbg.textContent += `2) showDangerConfirm ERROR: ${err?.message ?? err}\n`
+      return
+    }
+    dbg.textContent += `2) ป๊อบอัพปิดแล้ว ผลลัพธ์ = ${ok}\n`
+    if (!ok) { dbg.textContent += '(กดยกเลิก จบที่นี่)\n'; return }
+    setButtonLoading(e.currentTarget, true)
+    dbg.textContent += `3) quiz_id ที่จะส่ง = ${fresh?.quiz_id}\n`
+    try {
+      dbg.textContent += '4) กำลังเรียก rpcConfirmQuizFinal...\n'
       await rpcConfirmQuizFinal(fresh.quiz_id)
+      dbg.textContent += '5) สำเร็จ! กำลัง render ใหม่...\n'
       await _renderResultScreen(root)
     } catch (err) {
+      dbg.textContent += `5) ERROR: ${err?.message ?? err}\ncode=${err?.code ?? '-'} details=${err?.details ?? '-'} hint=${err?.hint ?? '-'}\n`
       showToast('ยืนยันไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       setButtonLoading(e.currentTarget, false, 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย')
     }
