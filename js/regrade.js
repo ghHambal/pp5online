@@ -39,13 +39,14 @@ function formatThaiDateTime(isoLocal) {
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543} เวลา ${hh}:${mm} น.`
 }
-function deadlineBannerHtml(startVal, endVal, title, colorVar) {
+function deadlineBannerHtml(startVal, endVal, title, colorVar, ctaLabel, ctaAction) {
   const start = formatThaiDateTime(startVal)
   const end = formatThaiDateTime(endVal)
   if (!start && !end) return ''
   return `<div class="rg-card p-4 mb-4" style="border-left:4px solid var(${colorVar})">
     <p class="text-xs font-bold" style="color:var(${colorVar})">🗓 ${escHtml(title)}</p>
     <p class="text-sm font-bold text-[var(--ink)] mt-1">${start ? `เริ่ม ${start}` : ''}${start && end ? ' — ' : ''}${end ? `ถึง ${end}` : ''}</p>
+    <button data-deadline-cta="${escHtml(ctaAction)}" class="mt-3 w-full py-2 rounded-xl text-white font-bold text-xs" style="background:linear-gradient(135deg,var(${colorVar}),var(${colorVar}-dark))">${escHtml(ctaLabel)} →</button>
   </div>`
 }
 const categoryChipStyle = (category) => category === 'ศาสนา'
@@ -105,23 +106,30 @@ function pill(active, variant = 'primary') {
     ? `flex:1;padding:8px;border-radius:10px;font-size:.75rem;font-weight:800;text-align:center;color:#fff;background:linear-gradient(135deg,${grad});`
     : `flex:1;padding:8px;border-radius:10px;font-size:.75rem;font-weight:800;text-align:center;color:var(--muted);background:var(--surface-2);`
 }
-// สวิตช์ปุ่มเปิดปิด (แทน checkbox ธรรมดา) — ใช้ data-on="1"/"0" เป็น source of truth
-function toggleSwitchHtml(id, checked) {
-  return `<button type="button" id="${id}" data-on="${checked ? '1' : '0'}"
-    class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
-    style="background:${checked ? 'var(--primary)' : 'var(--line)'}">
-    <span class="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform" style="transform:translateX(${checked ? '22px' : '2px'})"></span>
-  </button>`
+// ปุ่มเปิด/ปิดใช้งาน (แทน checkbox/สวิตช์) — แพทเทิร์นเดียวกับหน้าสรุปไซซ์เสื้อ (sports-portals.js actionCard):
+// badge สถานะ + ปุ่มข้อความ "เปิดใช้งาน"/"ปิดใช้งาน" สลับสี ใช้ data-on="1"/"0" เป็น source of truth
+function actionToggleHtml(id, checked) {
+  return `<div class="flex items-center gap-2 flex-shrink-0">
+    <span data-badge class="px-2 py-1 rounded-full text-[11px] font-bold" style="background:${checked ? 'var(--ok-soft)' : 'var(--surface-2)'};color:${checked ? 'var(--ok)' : 'var(--muted)'}">${checked ? 'เปิดใช้งานอยู่' : 'ปิดใช้งานอยู่'}</span>
+    <button type="button" id="${id}" data-on="${checked ? '1' : '0'}" class="px-3 py-1.5 rounded-xl text-xs font-bold flex-shrink-0"
+      style="${checked ? 'background:var(--bad-soft);color:var(--bad);' : 'background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;'}">${checked ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}</button>
+  </div>`
 }
-function wireToggleSwitches(content, ids) {
+function wireActionToggles(content, ids) {
   ids.forEach(id => {
     const btn = content.querySelector('#' + id)
     if (!btn) return
     btn.addEventListener('click', () => {
       const on = btn.dataset.on !== '1'
       btn.dataset.on = on ? '1' : '0'
-      btn.style.background = on ? 'var(--primary)' : 'var(--line)'
-      btn.querySelector('span').style.transform = on ? 'translateX(22px)' : 'translateX(2px)'
+      btn.style.cssText = on ? 'background:var(--bad-soft);color:var(--bad);' : 'background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;'
+      btn.textContent = on ? 'ปิดใช้งาน' : 'เปิดใช้งาน'
+      const badge = btn.parentElement.querySelector('[data-badge]')
+      if (badge) {
+        badge.textContent = on ? 'เปิดใช้งานอยู่' : 'ปิดใช้งานอยู่'
+        badge.style.background = on ? 'var(--ok-soft)' : 'var(--surface-2)'
+        badge.style.color = on ? 'var(--ok)' : 'var(--muted)'
+      }
     })
   })
 }
@@ -207,7 +215,7 @@ async function renderStudent() {
       </div>`
   } else if (student.subView === 'overview') {
     inner = `
-      ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.intent_window_start, ctx.cfg.intent_window_end, 'กำหนดแจ้งความจำนงขอแก้/ปรับ', '--primary') : ''}
+      ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.intent_window_start, ctx.cfg.intent_window_end, 'กำหนดแจ้งความจำนงขอแก้/ปรับ', '--primary', 'ไปแจ้งความจำนง', 'catalog') : ''}
       <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
         <div class="grid grid-cols-2 gap-3">
@@ -233,6 +241,7 @@ async function renderStudent() {
 
   content.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => { student.categoryTab = btn.dataset.tab; renderStudent() }))
   content.querySelectorAll('[data-declare]').forEach(btn => btn.addEventListener('click', () => handleDeclare(btn)))
+  content.querySelectorAll('[data-deadline-cta]').forEach(btn => btn.addEventListener('click', () => { student.subView = btn.dataset.deadlineCta; renderStudent() }))
   document.getElementById('regrade-student-fab')?.addEventListener('click', () => { student.subView = 'catalog'; renderStudent() })
 
   renderBottomNav([
@@ -331,7 +340,7 @@ async function renderTeacher() {
       </div>`).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีรายวิชาค้างในความรับผิดชอบตอนนี้ 🎉</div>`}</div>`
   } else if (teacher.subView === 'overview') {
     inner = `
-      ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.response_window_start, ctx.cfg.response_window_end, 'กำหนดตอบรับคำร้องของนักเรียน', '--secondary') : ''}
+      ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.response_window_start, ctx.cfg.response_window_end, 'กำหนดตอบรับคำร้องของนักเรียน', '--secondary', 'ไปตอบรับ', 'respond') : ''}
       <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
         <div class="grid grid-cols-2 gap-3">
@@ -363,6 +372,7 @@ async function renderTeacher() {
 
   document.getElementById('regrade-teacher-fab')?.addEventListener('click', () => { teacher.subView = 'respond'; renderTeacher() })
   document.getElementById('regrade-teacher-back')?.addEventListener('click', () => { teacher.subView = 'overview'; renderTeacher() })
+  content.querySelectorAll('[data-deadline-cta]').forEach(btn => btn.addEventListener('click', () => { teacher.subView = btn.dataset.deadlineCta; renderTeacher() }))
   content.querySelectorAll('[data-open-exam]').forEach(btn => btn.addEventListener('click', () => { teacher.form = { id: Number(btn.dataset.openExam), method: 'นัดสอบปรับ', dueText: '', fileUrl: '' }; renderTeacher() }))
   content.querySelectorAll('[data-open-work]').forEach(btn => btn.addEventListener('click', () => { teacher.form = { id: Number(btn.dataset.openWork), method: 'ให้งานแก้', dueText: '', fileUrl: '' }; renderTeacher() }))
   content.querySelectorAll('[data-cancel-form]').forEach(btn => btn.addEventListener('click', () => { teacher.form = null; renderTeacher() }))
@@ -677,7 +687,7 @@ async function renderSettings() {
       <div class="rg-card p-5">
         <div class="flex items-center justify-between mb-1">
           <p class="text-sm font-bold text-[var(--ink)]">การแจ้งความจำนงของนักเรียน</p>
-          ${toggleSwitchHtml('regrade-set-intent', c.intent_open)}
+          ${actionToggleHtml('regrade-set-intent', c.intent_open)}
         </div>
         <p class="text-xs text-[var(--muted-2)] mb-3">ควบคุมปุ่มลอย "จำนงขอแก้/ปรับ" ที่นักเรียนเห็น</p>
         <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">เปิดรับตั้งแต่</label>
@@ -699,9 +709,9 @@ async function renderSettings() {
         <div class="flex items-center justify-between">
           <div class="min-w-0 pr-3">
             <p class="text-sm font-bold text-[var(--ink)]">แสดงกำหนดเวลาในหน้าภาพรวม</p>
-            <p class="text-xs text-[var(--muted-2)] mt-0.5">เปิดแล้วนักเรียนจะเห็นกำหนดการแจ้งความจำนง และครูจะเห็นกำหนดการตอบรับ ในแท็บ "ภาพรวม" ของตัวเอง</p>
+            <p class="text-xs text-[var(--muted-2)] mt-0.5">เปิดแล้วนักเรียนจะเห็นกำหนดการแจ้งความจำนงพร้อมปุ่มไปแจ้งความจำนง และครูจะเห็นกำหนดการตอบรับพร้อมปุ่มไปตอบรับ ในแท็บ "ภาพรวม" ของตัวเอง</p>
           </div>
-          ${toggleSwitchHtml('regrade-set-show-deadline', c.show_deadline_banner)}
+          ${actionToggleHtml('regrade-set-show-deadline', c.show_deadline_banner)}
         </div>
       </div>
 
@@ -709,11 +719,11 @@ async function renderSettings() {
         <p class="text-sm font-bold text-[var(--ink)] mb-3">การมองเห็นเมนู</p>
         <div class="flex items-center justify-between mb-3">
           <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้านักเรียน</span>
-          ${toggleSwitchHtml('regrade-set-vis-student', c.visibility?.student_menu)}
+          ${actionToggleHtml('regrade-set-vis-student', c.visibility?.student_menu)}
         </div>
         <div class="flex items-center justify-between">
           <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้าครู</span>
-          ${toggleSwitchHtml('regrade-set-vis-teacher', c.visibility?.teacher_menu)}
+          ${actionToggleHtml('regrade-set-vis-teacher', c.visibility?.teacher_menu)}
         </div>
       </div>
 
@@ -857,7 +867,7 @@ async function renderSettings() {
     } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
   })
 
-  wireToggleSwitches(content, ['regrade-set-intent', 'regrade-set-vis-student', 'regrade-set-vis-teacher', 'regrade-set-show-deadline'])
+  wireActionToggles(content, ['regrade-set-intent', 'regrade-set-vis-student', 'regrade-set-vis-teacher', 'regrade-set-show-deadline'])
   wireCsvImport(content)
   wireThemePicker(content)
 }
