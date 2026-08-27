@@ -262,6 +262,12 @@ async function renderStudent() {
   content.querySelectorAll('[data-deadline-cta]').forEach(btn => btn.addEventListener('click', () => { student.subView = btn.dataset.deadlineCta; renderStudent() }))
   document.getElementById('regrade-student-fab')?.addEventListener('click', () => { student.subView = 'catalog'; renderStudent() })
 
+  const studentTabs = [
+    { key: 'catalog', icon: '📚', label: 'รายวิชาที่ค้าง' },
+    { key: 'overview', icon: '🏠', label: 'ภาพรวม' },
+    { key: 'myWork', icon: '📝', label: 'ภาระงานของฉัน' },
+  ]
+  renderSidebarNav(studentTabs, student.subView, (key) => { student.subView = key; renderStudent() })
   renderBottomNav([
     { key: 'catalog', icon: '📚', label: 'รายวิชาที่ค้าง' },
     { key: 'overview', icon: '🏠', label: 'ภาพรวม' },
@@ -333,7 +339,9 @@ const teacher = {
 }
 
 function isDeptHead() {
-  const positions = ctx.teacherRow?.positions || []
+  // เผื่อบัญชีเก่าที่ยังไม่ถูกย้ายมาเก็บใน positions[] (มีแค่คอลัมน์ position เดี่ยวๆ) — เช็คสำรองแบบเดียวกับ dashboard.js
+  const t = ctx.teacherRow
+  const positions = t?.positions?.length ? t.positions : (t?.position ? [t.position] : [])
   return ['dept_head', 'religion_group_head', 'religion_subgroup_head'].some(p => positions.includes(p))
 }
 
@@ -453,7 +461,9 @@ async function renderTeacher() {
     { key: 'assigned', icon: '📝', label: 'มอบหมายงาน' },
   ]
   if (isDeptHead()) teacherTabs.push({ key: 'depthead', icon: '🗂️', label: 'จัดการรายวิชา' })
-  renderBottomNav(teacherTabs, teacher.subView === 'respond' ? 'overview' : teacher.subView, (key) => { teacher.subView = key; renderTeacher() })
+  const teacherActiveKey = teacher.subView === 'respond' ? 'overview' : teacher.subView
+  renderSidebarNav(teacherTabs, teacherActiveKey, (key) => { teacher.subView = key; renderTeacher() })
+  renderBottomNav(teacherTabs, teacherActiveKey, (key) => { teacher.subView = key; renderTeacher() })
 }
 
 // จัดกลุ่มรายวิชาค้างของครู — การ์ดระดับบนสุดคือ "รายวิชา" ไม่ใช่ "นักเรียนแต่ละคน"
