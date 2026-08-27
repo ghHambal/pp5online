@@ -3,28 +3,33 @@
 // ฝั่งครู: ปุ่มลอย (FAB) แบบเดียวกับ feedback widget เปิดเป็นป๊อปอัพ — ไม่ใช่เปลี่ยนหน้าเต็ม
 // ฝั่งแอดมิน: หน้าเต็มในแดชบอร์ด (renderDonorChatAdmin) ต่อยอด pattern feedback-admin
 import {
-  checkDonorChatAccess, getDonorGroupRoomId, getChatMessages, sendChatMessage,
+  checkDonorChatAccess, getDonorGroupRoomId, getChatMessages, sendChatMessage, deleteChatMessage,
   getTeacherNamesByProfileIds, getChatTiersByProfileIds, getSystemConfig,
   getMyAdminDmRoomId, getOrCreateAdminDmRoomId, getAdminDmRoomsForAdmin,
   getActiveChatAnnouncement, getChatAnnouncementHistory, createChatAnnouncement, unpinChatAnnouncement,
   getMyBookmarkedMessageIds, toggleBookmark, getMyBookmarkedMessages, getMyClasses,
 } from './api.js'
 import { supabase } from './supabase.js'
-import { showToast } from './ui.js'
+import { showToast, showDangerConfirm } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 import { uploadChatImage } from './storage.js'
 import { _parseDonationStickers } from './teacher.js'
 
 let _channel = null
 let _pollInterval = null
-let _lastMessageId = 0
+let _lastSignature = ''
 
 function _teardown() {
   if (_channel) { supabase.removeChannel(_channel); _channel = null }
   if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null }
-  _lastMessageId = 0
+  _lastSignature = ''
 }
 window._cleanupDonorChat = _teardown
+
+const _fmtTime = iso => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+// ลายเซ็นรายการข้อความ (id:deleted_at) ต่อกัน — ใช้เทียบว่ามีอะไรเปลี่ยนจริงก่อน
+// re-render (ข้อความใหม่ หรือข้อความเดิมถูกลบ/ยกเลิกการส่ง) กันจอกระพริบ/เลื่อนโดยไม่จำเป็น
+const _msgSignature = messages => messages.map(m => `${m.id}:${m.deleted_at ?? ''}`).join('|')
 
 // แท็บ "🏫 ห้องเรียน" (ในวิดเจ็ตเดียวกัน) เปิดห้องผ่าน js/chat-classroom.js ซึ่งมี
 // channel/poll ของตัวเองแยกต่างหาก — ต้อง teardown คู่กันเสมอตอนสลับแท็บ/ปิดวิดเจ็ต
@@ -294,25 +299,44 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole, isGro
 
   const listEl = containerEl.querySelector('#chat-msg-list')
   const messages = await getChatMessages(roomId)
-  await _renderMessages(listEl, messages, myProfileId, stickerTiers)
+  await _renderMessages(listEl, messages, myProfileId, stickerTiers, isAdmin)
   listEl.scrollTop = listEl.scrollHeight
-  _lastMessageId = messages.at(-1)?.id ?? 0
+  _lastSignature = _msgSignature(messages)
 
   listEl.addEventListener('click', async (e) => {
-    const btn = e.target.closest('.bm-toggle')
-    if (!btn) return
-    const messageId = parseInt(btn.dataset.messageId, 10)
-    const wasBookmarked = btn.dataset.bookmarked === '1'
-    btn.disabled = true
-    try {
-      const nowBookmarked = await toggleBookmark(messageId, wasBookmarked)
-      btn.dataset.bookmarked = nowBookmarked ? '1' : '0'
-      btn.className = `bm-toggle text-xs px-1 ${nowBookmarked ? 'text-amber-500' : 'text-gray-300 hover:text-gray-400'}`
-      btn.title = nowBookmarked ? 'เอาออกจากโน้ตของฉัน' : 'บันทึกโน้ต'
-    } catch (err) {
-      showToast(err.message ?? 'บันทึกโน้ตไม่สำเร็จ', 'error')
-    } finally {
-      btn.disabled = false
+    const bmBtn = e.target.closest('.bm-toggle')
+    if (bmBtn) {
+      const messageId = parseInt(bmBtn.dataset.messageId, 10)
+      const wasBookmarked = bmBtn.dataset.bookmarked === '1'
+      bmBtn.disabled = true
+      try {
+        const nowBookmarked = await toggleBookmark(messageId, wasBookmarked)
+        bmBtn.dataset.bookmarked = nowBookmarked ? '1' : '0'
+        bmBtn.className = `bm-toggle text-xs px-1 ${nowBookmarked ? 'text-amber-500' : 'text-gray-300 hover:text-gray-400'}`
+        bmBtn.title = nowBookmarked ? 'เอาออกจากโน้ตของฉัน' : 'บันทึกโน้ต'
+      } catch (err) {
+        showToast(err.message ?? 'บันทึกโน้ตไม่สำเร็จ', 'error')
+      } finally {
+        bmBtn.disabled = false
+      }
+      return
+    }
+    const delBtn = e.target.closest('.msg-delete-btn')
+    if (delBtn) {
+      const messageId = parseInt(delBtn.dataset.messageId, 10)
+      const isOwn = delBtn.dataset.own === '1'
+      const ok = await showDangerConfirm({
+        title: isOwn ? 'ยกเลิกการส่งข้อความนี้?' : 'ลบข้อความนี้?',
+        message: isOwn ? 'เพื่อนในแชทจะเห็นว่าข้อความนี้ถูกยกเลิกการส่งแล้ว' : 'ข้อความจะถูกลบออกจากแชท (กู้คืนไม่ได้)',
+        confirmText: isOwn ? 'ยกเลิกการส่ง' : 'ลบเลย',
+      })
+      if (!ok) return
+      try {
+        await deleteChatMessage(messageId)
+        await _refreshMessages(roomId, listEl, myProfileId, stickerTiers, isAdmin, { force: true })
+      } catch (err) {
+        showToast(err.message ?? 'ลบข้อความไม่สำเร็จ', 'error')
+      }
     }
   })
 
@@ -324,7 +348,7 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole, isGro
     input.value = ''
     try {
       await sendChatMessage({ roomId, authorRole: sendAsRole, body })
-      await _pollNewMessages(roomId, listEl, myProfileId, stickerTiers)
+      await _refreshMessages(roomId, listEl, myProfileId, stickerTiers, isAdmin)
     } catch (err) {
       showToast(err.message ?? 'ส่งข้อความไม่สำเร็จ', 'error')
     }
@@ -342,7 +366,7 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole, isGro
     try {
       const imageUrl = await uploadChatImage(roomId, file)
       await sendChatMessage({ roomId, authorRole: sendAsRole, body: null, imageUrl })
-      await _pollNewMessages(roomId, listEl, myProfileId, stickerTiers)
+      await _refreshMessages(roomId, listEl, myProfileId, stickerTiers, isAdmin)
     } catch (err) {
       showToast(err.message ?? 'ส่งรูปไม่สำเร็จ', 'error')
     } finally {
@@ -352,26 +376,29 @@ async function _renderRoom(containerEl, roomId, { myProfileId, sendAsRole, isGro
   })
 
   _channel = supabase.channel(`chat-room-${roomId}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${roomId}` },
-      () => _pollNewMessages(roomId, listEl, myProfileId, stickerTiers))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${roomId}` },
+      () => _refreshMessages(roomId, listEl, myProfileId, stickerTiers, isAdmin))
     .subscribe()
 
   // backup polling — realtime เป็น optimization ไม่ใช่ source of truth (ตาม pattern quiz-monitor.js)
-  _pollInterval = setInterval(() => _pollNewMessages(roomId, listEl, myProfileId, stickerTiers), 5000)
+  _pollInterval = setInterval(() => _refreshMessages(roomId, listEl, myProfileId, stickerTiers, isAdmin), 5000)
 }
 
-async function _pollNewMessages(roomId, listEl, myProfileId, stickerTiers) {
+// ดึงข้อความทั้งหมดใหม่เสมอ (ไม่ใช่แค่ข้อความใหม่) เทียบลายเซ็นก่อนว่าเปลี่ยนจริงไหม
+// (ข้อความใหม่ หรือมีข้อความเดิมถูกลบ/ยกเลิกการส่ง) — จำเป็นเพราะการลบเป็น UPDATE
+// ไม่ใช่แถวใหม่ ตัว "append เฉพาะ id ที่มากกว่าเดิม" แบบเดิมจะไม่เห็นการเปลี่ยนแปลงนี้เลย
+async function _refreshMessages(roomId, listEl, myProfileId, stickerTiers, isAdmin, { force = false } = {}) {
   const all = await getChatMessages(roomId).catch(() => null)
   if (!all || !listEl.isConnected) return
-  const fresh = all.filter(m => m.id > _lastMessageId)
-  if (!fresh.length) return
+  const sig = _msgSignature(all)
+  if (!force && sig === _lastSignature) return
   const wasAtBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60
-  await _renderMessages(listEl, fresh, myProfileId, stickerTiers, { append: true })
-  _lastMessageId = all.at(-1).id
+  await _renderMessages(listEl, all, myProfileId, stickerTiers, isAdmin)
+  _lastSignature = sig
   if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight
 }
 
-async function _renderMessages(listEl, messages, myProfileId, stickerTiers, { append = false } = {}) {
+async function _renderMessages(listEl, messages, myProfileId, stickerTiers, isAdmin) {
   const teacherProfileIds = messages.filter(m => m.author_role === 'teacher').map(m => m.author_profile_id)
   const messageIds = messages.map(m => m.id)
   const [nameByProfile, tierByProfile, bookmarkedIds] = await Promise.all([
@@ -379,9 +406,7 @@ async function _renderMessages(listEl, messages, myProfileId, stickerTiers, { ap
     getChatTiersByProfileIds(teacherProfileIds),
     getMyBookmarkedMessageIds(messageIds),
   ])
-  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds)).join('')
-  if (append) listEl.insertAdjacentHTML('beforeend', html)
-  else listEl.innerHTML = html
+  listEl.innerHTML = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds, isAdmin)).join('')
 }
 
 // ─── ประกาศปักหมุด ────────────────────────────────────────────────────────────
@@ -501,8 +526,10 @@ async function _renderMyNotes(containerEl, onBack) {
         <p class="text-[10px] font-bold text-indigo-500 truncate">${_htmlEsc(item.roomLabel)}</p>
         <button type="button" class="bm-toggle text-xs flex-shrink-0 text-amber-500" data-message-id="${item.id}" data-bookmarked="1" title="เอาออกจากโน้ตของฉัน">🔖</button>
       </div>
-      ${item.image_url ? `<img src="${_htmlEsc(item.image_url)}" class="rounded-lg max-w-full max-h-48 object-contain mb-1" />` : ''}
-      ${item.body ? `<p class="text-sm text-gray-700 whitespace-pre-wrap break-words">${_htmlEsc(item.body)}</p>` : ''}
+      ${item.deleted_at
+        ? `<p class="text-sm italic text-gray-400">🚫 ${item.deleted_by === item.author_profile_id ? 'ข้อความนี้ถูกยกเลิกการส่งแล้ว' : 'ข้อความนี้ถูกลบแล้ว'}</p>`
+        : `${item.image_url ? `<img src="${_htmlEsc(item.image_url)}" class="rounded-lg max-w-full max-h-48 object-contain mb-1" />` : ''}
+           ${item.body ? `<p class="text-sm text-gray-700 whitespace-pre-wrap break-words">${_htmlEsc(item.body)}</p>` : ''}`}
       <p class="text-[10px] text-gray-300 mt-1">${_fmtDateTime(item.created_at)}</p>
     </div>`).join('')
 
@@ -553,14 +580,34 @@ function _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) {
     </div>`
 }
 
-function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds) {
+function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers, bookmarkedIds, isAdmin) {
   const isMine = m.author_profile_id === myProfileId
+  const avatar = !isMine ? _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) : ''
+
+  if (m.deleted_at) {
+    const isOwnUnsend = m.deleted_by === m.author_profile_id
+    const label = isOwnUnsend ? '🚫 ข้อความนี้ถูกยกเลิกการส่งแล้ว' : '🚫 ข้อความนี้ถูกลบแล้ว'
+    return `
+      <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
+        ${avatar}
+        <div class="flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-[70%]">
+          <div class="border border-dashed border-gray-200 rounded-2xl px-4 py-2.5">
+            <p class="text-sm italic text-gray-400">${label}</p>
+          </div>
+          <span class="text-[10px] text-gray-300 px-1 mt-0.5">${_fmtTime(m.created_at)}</span>
+        </div>
+      </div>`
+  }
+
   const imageHtml = m.image_url
     ? `<img src="${_htmlEsc(m.image_url)}" class="rounded-xl max-w-full max-h-64 object-contain cursor-pointer mb-1" onclick="window.open('${_htmlEsc(m.image_url)}','_blank')" />`
     : ''
-  const avatar = !isMine ? _avatarHTML(m, nameByProfile, tierByProfile, stickerTiers) : ''
   const isBookmarked = bookmarkedIds.has(m.id)
   const bookmarkBtn = `<button type="button" class="bm-toggle text-xs px-1 ${isBookmarked ? 'text-amber-500' : 'text-gray-300 hover:text-gray-400'}" data-message-id="${m.id}" data-bookmarked="${isBookmarked ? '1' : '0'}" title="${isBookmarked ? 'เอาออกจากโน้ตของฉัน' : 'บันทึกโน้ต'}">🔖</button>`
+  const canDelete = isMine || isAdmin
+  const deleteBtn = canDelete
+    ? `<button type="button" class="msg-delete-btn text-xs px-1 text-gray-300 hover:text-red-400" data-message-id="${m.id}" data-own="${isMine ? '1' : '0'}" title="${isMine ? 'ยกเลิกการส่ง' : 'ลบข้อความ'}">🗑️</button>`
+    : ''
   return `
     <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
       ${avatar}
@@ -569,7 +616,11 @@ function _bubbleHTML(m, myProfileId, nameByProfile, tierByProfile, stickerTiers,
           ${imageHtml}
           ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
         </div>
-        ${bookmarkBtn}
+        <div class="flex items-center gap-1.5 mt-0.5 px-1">
+          <span class="text-[10px] text-gray-300">${_fmtTime(m.created_at)}</span>
+          ${bookmarkBtn}
+          ${deleteBtn}
+        </div>
       </div>
     </div>`
 }

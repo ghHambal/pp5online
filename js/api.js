@@ -167,12 +167,21 @@ export async function getAdminDmRoomsForAdmin() {
 
 export async function getChatMessages(roomId, { limit = 200 } = {}) {
   const { data, error } = await supabase.from('chat_messages')
-    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at')
+    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at, deleted_at, deleted_by')
     .eq('room_id', roomId)
     .order('created_at', { ascending: true })
     .limit(limit)
   if (error) throw error
   return data ?? []
+}
+
+// ลบ/ยกเลิกการส่ง — soft-delete (body/image_url ถูก null ทิ้งจริงฝั่ง DB โดย trigger
+// เจ้าของข้อความเอง/แอดมิน/ครูเจ้าของห้องเรียนนั้นทำได้ ดู patch_donor_chat_message_delete.sql)
+export async function deleteChatMessage(messageId) {
+  const { error } = await supabase.from('chat_messages')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', messageId)
+  if (error) throw error
 }
 
 export async function sendChatMessage({ roomId, authorRole, body, imageUrl = null }) {
@@ -253,7 +262,7 @@ export async function getMyBookmarkedMessages() {
 
   const messageIds = rows.map(r => r.message_id)
   const { data: messages, error: msgErr } = await supabase.from('chat_messages')
-    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at')
+    .select('id, room_id, author_profile_id, author_role, body, image_url, created_at, deleted_at, deleted_by')
     .in('id', messageIds)
   if (msgErr) throw msgErr
   const messageById = new Map((messages ?? []).map(m => [m.id, m]))

@@ -10,11 +10,11 @@
 import {
   isClassroomChatUnlocked, getOrCreateClassroomChatRoomId,
   getMyClassroomFreePick, pickClassroomChatFreeRoom,
-  getChatMessages, sendChatMessage, getTeacherNamesByProfileIds, getClassStudents,
+  getChatMessages, sendChatMessage, deleteChatMessage, getTeacherNamesByProfileIds, getClassStudents,
 } from './api.js'
 import { getMyEnrolledClasses } from './student-api.js'
 import { supabase } from './supabase.js'
-import { showToast } from './ui.js'
+import { showToast, showDangerConfirm } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
 import { uploadChatImage } from './storage.js'
 
@@ -28,14 +28,17 @@ function _setStudentContent(html) {
 
 let _channel = null
 let _pollInterval = null
-let _lastMessageId = 0
+let _lastSignature = ''
 
 function _teardown() {
   if (_channel) { supabase.removeChannel(_channel); _channel = null }
   if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null }
-  _lastMessageId = 0
+  _lastSignature = ''
 }
 window._cleanupClassroomChat = _teardown
+
+const _fmtTime = iso => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+const _msgSignature = messages => messages.map(m => `${m.id}:${m.deleted_at ?? ''}`).join('|')
 
 // ─── ฝั่งครู — ป๊อปอัพเดี่ยว เปิดจากหน้ารายละเอียดห้องเรียน (ทางลัด มี classId อยู่แล้ว) ──
 export async function openTeacherClassroomChat(teacher, classId, className) {
@@ -204,9 +207,28 @@ async function _renderRoom(containerEl, roomId, classId, myProfileId, viewerRole
 
   const listEl = containerEl.querySelector('#cc-msg-list')
   const messages = await getChatMessages(roomId)
-  await _renderMessages(listEl, messages, myProfileId, studentByProfile)
+  await _renderMessages(listEl, messages, myProfileId, studentByProfile, viewerRole)
   listEl.scrollTop = listEl.scrollHeight
-  _lastMessageId = messages.at(-1)?.id ?? 0
+  _lastSignature = _msgSignature(messages)
+
+  listEl.addEventListener('click', async (e) => {
+    const delBtn = e.target.closest('.msg-delete-btn')
+    if (!delBtn) return
+    const messageId = parseInt(delBtn.dataset.messageId, 10)
+    const isOwn = delBtn.dataset.own === '1'
+    const ok = await showDangerConfirm({
+      title: isOwn ? 'ยกเลิกการส่งข้อความนี้?' : 'ลบข้อความนี้?',
+      message: isOwn ? 'ทุกคนในห้องจะเห็นว่าข้อความนี้ถูกยกเลิกการส่งแล้ว' : 'ข้อความจะถูกลบออกจากแชท (กู้คืนไม่ได้)',
+      confirmText: isOwn ? 'ยกเลิกการส่ง' : 'ลบเลย',
+    })
+    if (!ok) return
+    try {
+      await deleteChatMessage(messageId)
+      await _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole, { force: true })
+    } catch (err) {
+      showToast(err.message ?? 'ลบข้อความไม่สำเร็จ', 'error')
+    }
+  })
 
   containerEl.querySelector('#cc-send-form').addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -216,7 +238,7 @@ async function _renderRoom(containerEl, roomId, classId, myProfileId, viewerRole
     input.value = ''
     try {
       await sendChatMessage({ roomId, authorRole: viewerRole, body })
-      await _pollNewMessages(roomId, listEl, myProfileId, studentByProfile)
+      await _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole)
     } catch (err) {
       showToast(err.message ?? 'ส่งข้อความไม่สำเร็จ', 'error')
     }
@@ -234,7 +256,7 @@ async function _renderRoom(containerEl, roomId, classId, myProfileId, viewerRole
     try {
       const imageUrl = await uploadChatImage(roomId, file)
       await sendChatMessage({ roomId, authorRole: viewerRole, body: null, imageUrl })
-      await _pollNewMessages(roomId, listEl, myProfileId, studentByProfile)
+      await _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole)
     } catch (err) {
       showToast(err.message ?? 'ส่งรูปไม่สำเร็จ', 'error')
     } finally {
@@ -244,30 +266,30 @@ async function _renderRoom(containerEl, roomId, classId, myProfileId, viewerRole
   })
 
   _channel = supabase.channel(`chat-room-${roomId}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${roomId}` },
-      () => _pollNewMessages(roomId, listEl, myProfileId, studentByProfile))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${roomId}` },
+      () => _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole))
     .subscribe()
 
-  _pollInterval = setInterval(() => _pollNewMessages(roomId, listEl, myProfileId, studentByProfile), 5000)
+  _pollInterval = setInterval(() => _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole), 5000)
 }
 
-async function _pollNewMessages(roomId, listEl, myProfileId, studentByProfile) {
+// ดึงข้อความทั้งหมดใหม่เสมอ เทียบลายเซ็นก่อนว่าเปลี่ยนจริงไหม (ข้อความใหม่ หรือมีข้อความ
+// เดิมถูกลบ/ยกเลิกการส่ง — เป็น UPDATE ไม่ใช่แถวใหม่ append-only เดิมจะไม่เห็นเลย)
+async function _refreshMessages(roomId, listEl, myProfileId, studentByProfile, viewerRole, { force = false } = {}) {
   const all = await getChatMessages(roomId).catch(() => null)
   if (!all || !listEl.isConnected) return
-  const fresh = all.filter(m => m.id > _lastMessageId)
-  if (!fresh.length) return
+  const sig = _msgSignature(all)
+  if (!force && sig === _lastSignature) return
   const wasAtBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 60
-  await _renderMessages(listEl, fresh, myProfileId, studentByProfile, { append: true })
-  _lastMessageId = all.at(-1).id
+  await _renderMessages(listEl, all, myProfileId, studentByProfile, viewerRole)
+  _lastSignature = sig
   if (wasAtBottom) listEl.scrollTop = listEl.scrollHeight
 }
 
-async function _renderMessages(listEl, messages, myProfileId, studentByProfile, { append = false } = {}) {
+async function _renderMessages(listEl, messages, myProfileId, studentByProfile, viewerRole) {
   const teacherProfileIds = messages.filter(m => m.author_role === 'teacher').map(m => m.author_profile_id)
   const nameByProfile = await getTeacherNamesByProfileIds(teacherProfileIds)
-  const html = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile)).join('')
-  if (append) listEl.insertAdjacentHTML('beforeend', html)
-  else listEl.innerHTML = html
+  listEl.innerHTML = messages.map(m => _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile, viewerRole)).join('')
 }
 
 // อวตาร — ครูเป็นไอคอนธรรมดา (ยังไม่ขอรูปจริงสำหรับฝั่งครู) นักเรียนใช้รูปโปรไฟล์จริง
@@ -294,18 +316,46 @@ function _avatarHTML(m, nameByProfile, studentByProfile) {
     </div>`
 }
 
-function _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile) {
+function _bubbleHTML(m, myProfileId, nameByProfile, studentByProfile, viewerRole) {
   const isMine = m.author_profile_id === myProfileId
+  const avatar = !isMine ? _avatarHTML(m, nameByProfile, studentByProfile) : ''
+
+  if (m.deleted_at) {
+    const isOwnUnsend = m.deleted_by === m.author_profile_id
+    const label = isOwnUnsend ? '🚫 ข้อความนี้ถูกยกเลิกการส่งแล้ว' : '🚫 ข้อความนี้ถูกลบแล้ว'
+    return `
+      <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
+        ${avatar}
+        <div class="flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-[70%]">
+          <div class="border border-dashed border-gray-200 rounded-2xl px-4 py-2.5">
+            <p class="text-sm italic text-gray-400">${label}</p>
+          </div>
+          <span class="text-[10px] text-gray-300 px-1 mt-0.5">${_fmtTime(m.created_at)}</span>
+        </div>
+      </div>`
+  }
+
   const imageHtml = m.image_url
     ? `<img src="${_htmlEsc(m.image_url)}" class="rounded-xl max-w-full max-h-64 object-contain cursor-pointer mb-1" onclick="window.open('${_htmlEsc(m.image_url)}','_blank')" />`
     : ''
-  const avatar = !isMine ? _avatarHTML(m, nameByProfile, studentByProfile) : ''
+  // ครูในห้องนี้ (viewerRole==='teacher') มีสิทธิ์ลบข้อความใครก็ได้ในห้องที่ตัวเองสอน
+  // ตรงกับ RLS (has_class_access) — เจ้าของข้อความเองยกเลิกการส่งได้เสมอไม่ว่าบทบาทไหน
+  const canDelete = isMine || viewerRole === 'teacher'
+  const deleteBtn = canDelete
+    ? `<button type="button" class="msg-delete-btn text-xs px-1 text-gray-300 hover:text-red-400" data-message-id="${m.id}" data-own="${isMine ? '1' : '0'}" title="${isMine ? 'ยกเลิกการส่ง' : 'ลบข้อความ'}">🗑️</button>`
+    : ''
   return `
     <div class="flex items-end gap-2 ${isMine ? 'justify-end' : 'justify-start'}">
       ${avatar}
-      <div class="max-w-[70%] ${isMine ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
-        ${imageHtml}
-        ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
+      <div class="flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-[70%]">
+        <div class="${isMine ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-800'} rounded-2xl px-4 py-2.5">
+          ${imageHtml}
+          ${m.body ? `<p class="text-sm whitespace-pre-wrap break-words">${_htmlEsc(m.body)}</p>` : ''}
+        </div>
+        <div class="flex items-center gap-1.5 mt-0.5 px-1">
+          <span class="text-[10px] text-gray-300">${_fmtTime(m.created_at)}</span>
+          ${deleteBtn}
+        </div>
       </div>
     </div>`
 }
