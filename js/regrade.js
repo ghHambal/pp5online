@@ -9,6 +9,7 @@ import {
   getAllRegradeSubjectsForDashboard,
   getRegradeAdmins, getRegradeRegistrarStaff, addRegradeAdmin, removeRegradeAdmin,
   addRegradeRegistrarStaff, removeRegradeRegistrarStaff, getAllTeachersForPicker,
+  getRegradeExecutives, addRegradeExecutive, removeRegradeExecutive,
   previewRegradeCsvRows, importRegradeSubjectsCsv,
   getUnassignedRegradeSubjects, assignSubjectTeacherBulk, getRegradeDistinctClassLevels,
   getDepartmentById,
@@ -171,7 +172,7 @@ function renderBottomNav(items, active, onPick) {
 // ============================================================================
 // context ของผู้ใช้ปัจจุบัน (ตั้งค่าใน init() ครั้งเดียว)
 // ============================================================================
-const ctx = { role: null, isAdmin: false, isRegistrar: false, studentRow: null, teacherRow: null, cfg: {} }
+const ctx = { role: null, isAdmin: false, isRegistrar: false, isExecutive: false, studentRow: null, teacherRow: null, cfg: {} }
 
 function setHeaderTitle(mobile, full) {
   document.getElementById('regrade-title-mobile').textContent = mobile
@@ -309,7 +310,7 @@ function studentSubjectCard(x) {
       <span class="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
     </div>
     <div class="flex items-center gap-2 mt-2 pt-2 border-t border-dashed border-[var(--line-soft)]">
-      ${personAvatarHtml(x.teachers, false)}
+      ${personAvatarHtml(x.teachers, true)}
       <div><p class="text-[10px] text-[var(--muted-2)]">ครูผู้สอน</p><p class="text-xs font-bold text-[var(--ink-2)]">${escHtml(teacherName)}</p></div>
     </div>
     ${x.status === 'ยังไม่แจ้ง' && canDeclare ? `
@@ -966,9 +967,9 @@ function showSettingsTab(content, key) {
 async function renderSettings() {
   setHeaderTitle('ตั้งค่าระบบ', `⚙️ ตั้งค่า${ctx.cfg.system_name || 'แก้ค้างเก่า'}`)
   const content = document.getElementById('regrade-content')
-  let admins, staff, teacherPicker, classLevels
+  let admins, staff, executives, teacherPicker, classLevels
   try {
-    [admins, staff, teacherPicker, classLevels] = await Promise.all([getRegradeAdmins(), getRegradeRegistrarStaff(), getAllTeachersForPicker(), getRegradeDistinctClassLevels()])
+    [admins, staff, executives, teacherPicker, classLevels] = await Promise.all([getRegradeAdmins(), getRegradeRegistrarStaff(), getRegradeExecutives(), getAllTeachersForPicker(), getRegradeDistinctClassLevels()])
   } catch (err) {
     content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
     return
@@ -1121,6 +1122,15 @@ async function renderSettings() {
         </div>
 
         <div class="rg-card p-5">
+          <p class="text-sm font-bold text-[var(--ink)] mb-3">ผู้บริหาร (เข้าดูบอร์ดผู้บริหารได้ ไม่แก้ตั้งค่า)</p>
+          <div class="flex flex-wrap gap-2 mb-3">${executives.map(a => adminChip(a, 'executive', teacherByProfileId)).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
+          <div class="flex gap-2">
+            <input id="regrade-new-executive" list="regrade-teacher-datalist" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-sm" placeholder="พิมพ์ชื่อหรือรหัสครู แล้วเลือกจากรายการ...">
+            <button id="regrade-add-executive" class="px-4 py-2 rounded-lg text-white text-sm font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">+ เพิ่ม</button>
+          </div>
+        </div>
+
+        <div class="rg-card p-5">
           <p class="text-sm font-bold text-[var(--ink)] mb-3">เจ้าหน้าที่ฝ่ายทะเบียน (เข้าหน้าปิดงานได้)</p>
           <div class="flex flex-wrap gap-2 mb-3">${staff.map(a => adminChip(a, 'registrar', teacherByProfileId)).join('') || '<span class="text-xs text-[var(--muted-2)]">ยังไม่มี</span>'}</div>
           <div class="flex gap-2">
@@ -1151,6 +1161,11 @@ async function renderSettings() {
     if (!ok) return
     try { await removeRegradeRegistrarStaff(btn.dataset.removeRegistrar); showToast('ถอดสิทธิ์แล้ว', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
   }))
+  content.querySelectorAll('[data-remove-executive]').forEach(btn => btn.addEventListener('click', async () => {
+    const ok = await showRegradeConfirm({ title: 'ยืนยันถอดสิทธิ์', message: `ถอดสิทธิ์ผู้บริหารของ "${btn.dataset.name}" ใช่หรือไม่?`, confirmText: 'ยืนยันถอดสิทธิ์' })
+    if (!ok) return
+    try { await removeRegradeExecutive(btn.dataset.removeExecutive); showToast('ถอดสิทธิ์แล้ว', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+  }))
   document.getElementById('regrade-add-admin').addEventListener('click', async () => {
     const input = document.getElementById('regrade-new-admin')
     const teacher = resolveTeacherFromPickerInput(input.value, teacherPicker)
@@ -1168,6 +1183,15 @@ async function renderSettings() {
     const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มเจ้าหน้าที่ทะเบียน', message: `เพิ่ม "${teacher.full_name}" เป็นเจ้าหน้าที่ฝ่ายทะเบียนใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
     if (!ok) return
     try { await addRegradeRegistrarStaff(teacher.profile_id); input.value = ''; showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
+  })
+  document.getElementById('regrade-add-executive').addEventListener('click', async () => {
+    const input = document.getElementById('regrade-new-executive')
+    const teacher = resolveTeacherFromPickerInput(input.value, teacherPicker)
+    if (!teacher) { showToast('กรุณาพิมพ์แล้วเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
+    if (executives.some(a => a.profile_id === teacher.profile_id)) { showToast('ครูคนนี้เป็นผู้บริหารอยู่แล้ว', 'warning'); return }
+    const ok = await showRegradeConfirm({ title: 'ยืนยันเพิ่มผู้บริหาร', message: `เพิ่ม "${teacher.full_name}" เป็นผู้บริหาร (เข้าดูบอร์ดผู้บริหารได้) ใช่หรือไม่?`, confirmText: 'ยืนยันเพิ่ม' })
+    if (!ok) return
+    try { await addRegradeExecutive(teacher.profile_id); input.value = ''; showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
   })
   document.getElementById('regrade-set-save').addEventListener('click', async () => {
     const ok = await showRegradeConfirm({ title: 'ยืนยันบันทึกการตั้งค่า', message: 'บันทึกการตั้งค่าทั้งหมดนี้ใช่หรือไม่? จะมีผลกับทุกคนทันที', confirmText: 'บันทึก' })
@@ -1331,7 +1355,9 @@ function resolveTeacherFromPickerInput(text, teacherPicker) {
 function adminChip(row, kind, teacherByProfileId) {
   const teacher = teacherByProfileId?.get(row.profile_id)
   const label = teacher ? `${teacher.full_name}${teacher.teacher_code ? ` (${teacher.teacher_code})` : ''}` : (row.profiles?.user_code || row.profile_id)
-  const attr = kind === 'admin' ? `data-remove-admin="${escHtml(row.profile_id)}"` : `data-remove-registrar="${escHtml(row.profile_id)}"`
+  const attr = kind === 'admin' ? `data-remove-admin="${escHtml(row.profile_id)}"`
+    : kind === 'executive' ? `data-remove-executive="${escHtml(row.profile_id)}"`
+    : `data-remove-registrar="${escHtml(row.profile_id)}"`
   return `<span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">
     ${escHtml(label)}
     <button ${attr} data-name="${escHtml(label)}" class="w-4 h-4 rounded-full text-[10px]" style="background:var(--primary-soft-line)">×</button>
@@ -1358,10 +1384,8 @@ function getAvailableSections() {
   if (ctx.role === 'student' && ctx.studentRow && (ctx.cfg.visibility?.student_menu || ctx.isAdmin)) sections.push({ key: 'student', icon: '🎓', label: 'ของฉัน' })
   if (ctx.role === 'teacher' && ctx.teacherRow && (ctx.cfg.visibility?.teacher_menu || ctx.isAdmin)) sections.push({ key: 'teacher', icon: '📚', label: 'งานสอนของฉัน' })
   if (ctx.isRegistrar) sections.push({ key: 'registrar', icon: '📋', label: 'ฝ่ายทะเบียน' })
-  if (ctx.isAdmin) {
-    sections.push({ key: 'dashboard', icon: '📊', label: 'ผู้บริหาร' })
-    sections.push({ key: 'settings', icon: '⚙️', label: 'ตั้งค่าระบบ' })
-  }
+  if (ctx.isExecutive) sections.push({ key: 'dashboard', icon: '📊', label: 'ผู้บริหาร' })
+  if (ctx.isAdmin) sections.push({ key: 'settings', icon: '⚙️', label: 'ตั้งค่าระบบ' })
   return sections
 }
 
@@ -1438,6 +1462,7 @@ async function init() {
     const perms = await checkMyRegradePermissions()
     ctx.isAdmin = perms.isAdmin || ctx.role === 'admin' || profile?.is_also_admin === true
     ctx.isRegistrar = perms.isRegistrar || ctx.isAdmin
+    ctx.isExecutive = perms.isExecutive || ctx.isAdmin
   } catch (err) {
     document.getElementById('regrade-content').innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดการตั้งค่าไม่สำเร็จ: ${escHtml(err.message)}</div>`
     return
@@ -1455,7 +1480,7 @@ async function init() {
 
   // แอดมิน/ทะเบียนที่บังเอิญมีบัญชีครูด้วย ให้เห็นแดชบอร์ด/ฝ่ายทะเบียนเป็นหน้าหลักก่อนเสมอ
   // (ไม่ใช่หน้าครูของตัวเอง) แล้วสลับไปดูงานสอนของตัวเองเพิ่มได้ผ่านแถบสลับบทบาท
-  const defaultSection = ctx.isAdmin ? 'dashboard' : ctx.isRegistrar ? 'registrar' : sections[0].key
+  const defaultSection = (ctx.isAdmin || ctx.isExecutive) ? 'dashboard' : ctx.isRegistrar ? 'registrar' : sections[0].key
   await goSection(defaultSection)
 }
 

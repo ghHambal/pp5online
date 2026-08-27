@@ -160,6 +160,25 @@ export async function removeRegradeRegistrarStaff(profileId) {
   if (error) throw error
 }
 
+export async function getRegradeExecutives() {
+  const { data, error } = await supabase.from('regrade_executives')
+    .select('profile_id, created_at, profiles!profile_id(user_code)')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addRegradeExecutive(profileId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const { error } = await supabase.from('regrade_executives')
+    .insert({ profile_id: profileId, granted_by: session?.user?.id ?? null })
+  if (error) throw error
+}
+
+export async function removeRegradeExecutive(profileId) {
+  const { error } = await supabase.from('regrade_executives').delete().eq('profile_id', profileId)
+  if (error) throw error
+}
+
 // เฉพาะครูที่มีบัญชีผู้ใช้ (profile_id ไม่ว่าง) เท่านั้นที่มอบสิทธิ์ได้ — ใช้ทำช่องค้นหาชื่อ/รหัสครู
 export async function getAllTeachersForPicker() {
   const { data, error } = await supabase.from('teachers')
@@ -206,11 +225,12 @@ export async function getDepartmentById(id) {
 
 // ─── สิทธิ์ของฉันเอง (ใช้แค่ตัดสินใจโชว์/ซ่อนเมนูฝั่ง client — ของจริงคุมที่ RLS) ──
 export async function checkMyRegradePermissions() {
-  const [{ data: isAdmin }, { data: isRegistrar }] = await Promise.all([
+  const [{ data: isAdmin }, { data: isRegistrar }, { data: isExecutive }] = await Promise.all([
     supabase.rpc('is_regrade_admin'),
     supabase.rpc('is_regrade_registrar'),
+    supabase.rpc('is_regrade_executive'),
   ])
-  return { isAdmin: !!isAdmin, isRegistrar: !!isRegistrar }
+  return { isAdmin: !!isAdmin, isRegistrar: !!isRegistrar, isExecutive: !!isExecutive }
 }
 
 // ─── บอร์ดผู้บริหาร ───────────────────────────────────────────────────────────
