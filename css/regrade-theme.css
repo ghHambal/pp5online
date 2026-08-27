@@ -70,7 +70,12 @@ html { font-size: clamp(16px, 13px + 0.4vw, 22px); }
 .rg-modal-panel { background: var(--surface); border-radius: 20px; }
 
 @media (max-width: 767px) {
-  #regrade-content { position: relative; z-index: 1; }
+  /* ห้ามใส่ position:relative/z-index ให้ #regrade-content ตรงนี้ — เคยเจอบั๊กจริงว่า
+     การทำให้ #regrade-content เป็น positioned element ที่มี z-index บวก ทำให้ทั้ง
+     stacking context ของมัน (รวม ::before ที่ fixed เต็มจอด้านล่างนี้) ไปวาดทับ
+     header/แถบสลับบทบาทที่เป็น sibling แบบ unpositioned จนมองไม่เห็นอะไรเลย —
+     ::before ที่ z-index:-1 ระดับ root อยู่แล้วก็เพียงพอให้วาดหลังทุกอย่างที่เป็น
+     normal-flow ปกติ ไม่ต้องพึ่ง stacking context ของ #regrade-content เลย */
   #regrade-content::before {
     content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
     background:
