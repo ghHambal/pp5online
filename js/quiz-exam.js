@@ -875,52 +875,39 @@ async function _renderResultScreen(root) {
   `
   document.getElementById('btn-back-overview').addEventListener('click', () => { window.location.href = 'student.html' })
 
+  // หมายเหตุ: ต้องจับ reference ปุ่มไว้ในตัวแปรก่อน await ใดๆ เสมอ — e.currentTarget
+  // จะกลายเป็น null ทันทีที่ handler ข้ามจุด await แรกไป (พฤติกรรมมาตรฐานของ
+  // DOM event object ไม่ใช่บั๊ก browser) ถ้าใช้ e.currentTarget หลัง await จะ
+  // throw เงียบๆ แบบจับไม่ได้ (อยู่นอก try) ทำให้ทั้ง handler หยุดทำงานทันทีโดย
+  // ไม่มี error ให้เห็นเลย — เจอบั๊กนี้จริงกับปุ่มยืนยันคะแนนขั้นสุดท้าย (2026-08-27)
   document.getElementById('btn-quiz-retake')?.addEventListener('click', async e => {
-    const originalLabel = e.currentTarget.textContent
-    setButtonLoading(e.currentTarget, true)
+    const btn = e.currentTarget
+    const originalLabel = btn.textContent
+    setButtonLoading(btn, true)
     try {
       const next = await rpcStartAttempt(fresh.quiz_id)
       window.location.href = `quiz-exam.html?attempt=${next.id}`
     } catch (err) {
       showToast('เริ่มรอบใหม่ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      setButtonLoading(e.currentTarget, false, originalLabel)
+      setButtonLoading(btn, false, originalLabel)
     }
   })
 
   document.getElementById('btn-quiz-finalize')?.addEventListener('click', async e => {
-    // DEBUG ชั่วคราว (2026-08-27) — ไล่บั๊กปุ่มกดแล้วไม่มีอะไรเกิดขึ้น ลบออกทีหลัง
-    const dbg = document.getElementById('quiz-finalize-debug') ?? (() => {
-      const d = document.createElement('div')
-      d.id = 'quiz-finalize-debug'
-      d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:999999;background:#111;color:#0f0;font:11px monospace;padding:8px;border-radius:8px;white-space:pre-wrap;max-height:40vh;overflow:auto'
-      document.body.appendChild(d)
-      return d
-    })()
-    dbg.textContent = '1) คลิกปุ่มแล้ว\n'
-    let ok
+    const btn = e.currentTarget
+    const ok = await showDangerConfirm({
+      title: 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย?',
+      message: 'คะแนนจะถูกบันทึกเข้าสมุดคะแนนจริงตอนนี้ และหลังยืนยันแล้วจะไม่สามารถกลับเข้ามาทำแบบทดสอบนี้ได้อีก',
+      confirmText: 'ยืนยันจบการสอบ',
+    })
+    if (!ok) return
+    setButtonLoading(btn, true)
     try {
-      ok = await showDangerConfirm({
-        title: 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย?',
-        message: 'คะแนนจะถูกบันทึกเข้าสมุดคะแนนจริงตอนนี้ และหลังยืนยันแล้วจะไม่สามารถกลับเข้ามาทำแบบทดสอบนี้ได้อีก',
-        confirmText: 'ยืนยันจบการสอบ',
-      })
-    } catch (err) {
-      dbg.textContent += `2) showDangerConfirm ERROR: ${err?.message ?? err}\n`
-      return
-    }
-    dbg.textContent += `2) ป๊อบอัพปิดแล้ว ผลลัพธ์ = ${ok}\n`
-    if (!ok) { dbg.textContent += '(กดยกเลิก จบที่นี่)\n'; return }
-    setButtonLoading(e.currentTarget, true)
-    dbg.textContent += `3) quiz_id ที่จะส่ง = ${fresh?.quiz_id}\n`
-    try {
-      dbg.textContent += '4) กำลังเรียก rpcConfirmQuizFinal...\n'
       await rpcConfirmQuizFinal(fresh.quiz_id)
-      dbg.textContent += '5) สำเร็จ! กำลัง render ใหม่...\n'
       await _renderResultScreen(root)
     } catch (err) {
-      dbg.textContent += `5) ERROR: ${err?.message ?? err}\ncode=${err?.code ?? '-'} details=${err?.details ?? '-'} hint=${err?.hint ?? '-'}\n`
       showToast('ยืนยันไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-      setButtonLoading(e.currentTarget, false, 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย')
+      setButtonLoading(btn, false, 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย')
     }
   })
 
