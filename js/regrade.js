@@ -947,17 +947,6 @@ async function goSection(section) {
   currentSection = section
   document.getElementById('regrade-bottom-tabs').innerHTML = ''
   const sections = getAvailableSections()
-
-  // 🔧 debug ชั่วคราว — เอาไว้หาสาเหตุแถบสลับบทบาทหาย ลบทิ้งเมื่อเจอสาเหตุแล้ว
-  let dbg = document.getElementById('regrade-debug')
-  if (!dbg) {
-    dbg = document.createElement('div')
-    dbg.id = 'regrade-debug'
-    dbg.style.cssText = 'background:#000;color:#0f0;font-size:10px;line-height:1.5;padding:6px 10px;font-family:monospace;white-space:pre-wrap;position:relative;z-index:9999;'
-    document.body.insertBefore(dbg, document.body.firstChild)
-  }
-  dbg.textContent = `[DEBUG] role=${ctx.role} isAdmin=${ctx.isAdmin} isRegistrar=${ctx.isRegistrar} teacherRow=${!!ctx.teacherRow} sections=[${sections.map(s => s.key).join(',')}] visibility=${JSON.stringify(ctx.cfg.visibility)}`
-
   renderSidebarNav_(sections)
   renderRoleSwitcher(sections)
   if (section === 'student') return renderStudent()
