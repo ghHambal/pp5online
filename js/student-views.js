@@ -23,6 +23,7 @@ import { APP_VERSION } from './version.js?v=10.22.526'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getMyActivityCertificates } from './council-api.js'
+import { getRegradeConfig } from './regrade-api.js'
 import { openActivityCertificatePrint } from './council-certificate.js'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
@@ -453,6 +454,14 @@ export async function renderStudentOverview(student) {
     terangganuVisible = false
   }
 
+  let regradeVisible = false
+  try {
+    const regradeCfg = await getRegradeConfig()
+    regradeVisible = regradeCfg.visibility?.student_menu === true
+  } catch (_) {
+    regradeVisible = false
+  }
+
   setContent(`
     <!-- Profile card -->
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 mb-4 flex items-center gap-4 sm:gap-6">
@@ -532,6 +541,17 @@ export async function renderStudentOverview(student) {
         <p class="text-[10px] text-teal-100 mt-0.5">กรอกแบบสำรวจ ตรวจสอบการชำระเงิน และดาวน์โหลดใบเสร็จ</p>
       </div>
       <span class="relative z-10 px-3 py-1.5 bg-white text-teal-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">เปิดแบบฟอร์ม →</span>
+    </a>
+    ` : ''}
+
+    ${regradeVisible ? `
+    <a href="regrade.html" class="relative overflow-hidden bg-gradient-to-r from-rose-800 to-pink-700 rounded-2xl border border-rose-600 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
+      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">📋</div>
+      <div class="min-w-0 z-10">
+        <h4 class="font-bold text-xs sm:text-sm">📋 แก้ค้างเก่า</h4>
+        <p class="text-[10px] text-rose-100 mt-0.5">แจ้งความจำนงขอปรับแก้วิชาที่ค้าง ติดตามสถานะได้ที่นี่</p>
+      </div>
+      <span class="relative z-10 px-3 py-1.5 bg-white text-rose-800 font-bold text-[10px] rounded-xl shadow flex-shrink-0">เข้าสู่ระบบ →</span>
     </a>
     ` : ''}
 

@@ -29,6 +29,25 @@ function statusMeta(status) {
   return map[status] || map['ยังไม่แจ้ง']
 }
 const badgeStyle = (status) => { const m = statusMeta(status); return `background:${m.bg};color:${m.text};border:1px solid ${m.border};` }
+
+const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+function formatThaiDateTime(isoLocal) {
+  if (!isoLocal) return null
+  const d = new Date(isoLocal)
+  if (isNaN(d.getTime())) return null
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543} เวลา ${hh}:${mm} น.`
+}
+function deadlineBannerHtml(startVal, endVal, title, colorVar) {
+  const start = formatThaiDateTime(startVal)
+  const end = formatThaiDateTime(endVal)
+  if (!start && !end) return ''
+  return `<div class="rg-card p-4 mb-4" style="border-left:4px solid var(${colorVar})">
+    <p class="text-xs font-bold" style="color:var(${colorVar})">🗓 ${escHtml(title)}</p>
+    <p class="text-sm font-bold text-[var(--ink)] mt-1">${start ? `เริ่ม ${start}` : ''}${start && end ? ' — ' : ''}${end ? `ถึง ${end}` : ''}</p>
+  </div>`
+}
 const categoryChipStyle = (category) => category === 'ศาสนา'
   ? 'background:var(--secondary-soft);color:var(--secondary-dark);border:1px solid var(--secondary-soft-line);'
   : 'background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line);'
@@ -86,6 +105,28 @@ function pill(active, variant = 'primary') {
     ? `flex:1;padding:8px;border-radius:10px;font-size:.75rem;font-weight:800;text-align:center;color:#fff;background:linear-gradient(135deg,${grad});`
     : `flex:1;padding:8px;border-radius:10px;font-size:.75rem;font-weight:800;text-align:center;color:var(--muted);background:var(--surface-2);`
 }
+// สวิตช์ปุ่มเปิดปิด (แทน checkbox ธรรมดา) — ใช้ data-on="1"/"0" เป็น source of truth
+function toggleSwitchHtml(id, checked) {
+  return `<button type="button" id="${id}" data-on="${checked ? '1' : '0'}"
+    class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
+    style="background:${checked ? 'var(--primary)' : 'var(--line)'}">
+    <span class="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform" style="transform:translateX(${checked ? '22px' : '2px'})"></span>
+  </button>`
+}
+function wireToggleSwitches(content, ids) {
+  ids.forEach(id => {
+    const btn = content.querySelector('#' + id)
+    if (!btn) return
+    btn.addEventListener('click', () => {
+      const on = btn.dataset.on !== '1'
+      btn.dataset.on = on ? '1' : '0'
+      btn.style.background = on ? 'var(--primary)' : 'var(--line)'
+      btn.querySelector('span').style.transform = on ? 'translateX(22px)' : 'translateX(2px)'
+    })
+  })
+}
+const isToggleOn = (content, id) => content.querySelector('#' + id)?.dataset.on === '1'
+
 function tab(active) {
   return active
     ? 'padding:8px 16px;border-radius:12px;font-size:.72rem;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));'
@@ -166,6 +207,7 @@ async function renderStudent() {
       </div>`
   } else if (student.subView === 'overview') {
     inner = `
+      ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.intent_window_start, ctx.cfg.intent_window_end, 'กำหนดแจ้งความจำนงขอแก้/ปรับ', '--primary') : ''}
       <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
         <div class="grid grid-cols-2 gap-3">
@@ -289,6 +331,7 @@ async function renderTeacher() {
       </div>`).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่มีรายวิชาค้างในความรับผิดชอบตอนนี้ 🎉</div>`}</div>`
   } else if (teacher.subView === 'overview') {
     inner = `
+      ${ctx.cfg.show_deadline_banner ? deadlineBannerHtml(ctx.cfg.response_window_start, ctx.cfg.response_window_end, 'กำหนดตอบรับคำร้องของนักเรียน', '--secondary') : ''}
       <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-2">สรุปของฉัน</p>
         <div class="grid grid-cols-2 gap-3">
@@ -632,24 +675,46 @@ async function renderSettings() {
     <div class="max-w-2xl mx-auto p-4 flex flex-col gap-4">
 
       <div class="rg-card p-5">
-        <p class="text-sm font-bold text-[var(--ink)] mb-1">การแจ้งความจำนงของนักเรียน</p>
+        <div class="flex items-center justify-between mb-1">
+          <p class="text-sm font-bold text-[var(--ink)]">การแจ้งความจำนงของนักเรียน</p>
+          ${toggleSwitchHtml('regrade-set-intent', c.intent_open)}
+        </div>
         <p class="text-xs text-[var(--muted-2)] mb-3">ควบคุมปุ่มลอย "จำนงขอแก้/ปรับ" ที่นักเรียนเห็น</p>
-        <label class="flex items-center gap-3 cursor-pointer">
-          <input id="regrade-set-intent" type="checkbox" ${c.intent_open ? 'checked' : ''} class="w-5 h-5">
-          <span class="text-sm text-[var(--ink-2)]">เปิดรับคำร้องตอนนี้</span>
-        </label>
+        <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">เปิดรับตั้งแต่</label>
+        <input id="regrade-set-intent-start" type="datetime-local" value="${escHtml(c.intent_window_start || '')}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm mb-3">
+        <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">ถึงวันที่</label>
+        <input id="regrade-set-intent-end" type="datetime-local" value="${escHtml(c.intent_window_end || '')}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
+      </div>
+
+      <div class="rg-card p-5">
+        <p class="text-sm font-bold text-[var(--ink)] mb-1">กำหนดเวลาตอบรับของครูผู้สอน</p>
+        <p class="text-xs text-[var(--muted-2)] mb-3">ช่วงเวลาที่ครูควรตอบรับ (นัดสอบปรับ/ให้งานแก้) หลังนักเรียนแจ้งความจำนง</p>
+        <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">เริ่มตอบรับได้ตั้งแต่</label>
+        <input id="regrade-set-response-start" type="datetime-local" value="${escHtml(c.response_window_start || '')}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm mb-3">
+        <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">ตอบรับให้เสร็จภายใน</label>
+        <input id="regrade-set-response-end" type="datetime-local" value="${escHtml(c.response_window_end || '')}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
+      </div>
+
+      <div class="rg-card p-5">
+        <div class="flex items-center justify-between">
+          <div class="min-w-0 pr-3">
+            <p class="text-sm font-bold text-[var(--ink)]">แสดงกำหนดเวลาในหน้าภาพรวม</p>
+            <p class="text-xs text-[var(--muted-2)] mt-0.5">เปิดแล้วนักเรียนจะเห็นกำหนดการแจ้งความจำนง และครูจะเห็นกำหนดการตอบรับ ในแท็บ "ภาพรวม" ของตัวเอง</p>
+          </div>
+          ${toggleSwitchHtml('regrade-set-show-deadline', c.show_deadline_banner)}
+        </div>
       </div>
 
       <div class="rg-card p-5">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">การมองเห็นเมนู</p>
-        <label class="flex items-center gap-3 cursor-pointer mb-2">
-          <input id="regrade-set-vis-student" type="checkbox" ${c.visibility?.student_menu ? 'checked' : ''} class="w-5 h-5">
+        <div class="flex items-center justify-between mb-3">
           <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้านักเรียน</span>
-        </label>
-        <label class="flex items-center gap-3 cursor-pointer">
-          <input id="regrade-set-vis-teacher" type="checkbox" ${c.visibility?.teacher_menu ? 'checked' : ''} class="w-5 h-5">
+          ${toggleSwitchHtml('regrade-set-vis-student', c.visibility?.student_menu)}
+        </div>
+        <div class="flex items-center justify-between">
           <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้าครู</span>
-        </label>
+          ${toggleSwitchHtml('regrade-set-vis-teacher', c.visibility?.teacher_menu)}
+        </div>
       </div>
 
       <div class="rg-card p-5">
@@ -767,10 +832,15 @@ async function renderSettings() {
     if (!ok) return
     try {
       await updateRegradeConfig({
-        intent_open: document.getElementById('regrade-set-intent').checked,
+        intent_open: isToggleOn(content, 'regrade-set-intent'),
+        intent_window_start: document.getElementById('regrade-set-intent-start').value,
+        intent_window_end: document.getElementById('regrade-set-intent-end').value,
+        response_window_start: document.getElementById('regrade-set-response-start').value,
+        response_window_end: document.getElementById('regrade-set-response-end').value,
+        show_deadline_banner: isToggleOn(content, 'regrade-set-show-deadline'),
         visibility: {
-          student_menu: document.getElementById('regrade-set-vis-student').checked,
-          teacher_menu: document.getElementById('regrade-set-vis-teacher').checked,
+          student_menu: isToggleOn(content, 'regrade-set-vis-student'),
+          teacher_menu: isToggleOn(content, 'regrade-set-vis-teacher'),
         },
         primary_color: document.getElementById('regrade-set-primary').value,
         secondary_color: document.getElementById('regrade-set-secondary').value,
@@ -787,6 +857,7 @@ async function renderSettings() {
     } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
   })
 
+  wireToggleSwitches(content, ['regrade-set-intent', 'regrade-set-vis-student', 'regrade-set-vis-teacher', 'regrade-set-show-deadline'])
   wireCsvImport(content)
   wireThemePicker(content)
 }

@@ -39,6 +39,7 @@ import {
 import { renderSupervisorDashboard } from './supervisor.js'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
+import { getRegradeConfig } from './regrade-api.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
@@ -613,6 +614,7 @@ async function _applyRoleMenus() {
     sportsMembershipsRes,
     activeEventRes,
     qrManagerRes,
+    regradeCfg,
   ] = await Promise.all([
     safe(getSystemConfig(), {}),
     _teacher ? safe(supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle(), { data: null }) : Promise.resolve({ data: null }),
@@ -620,6 +622,7 @@ async function _applyRoleMenus() {
     safe(supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true), { data: [] }),
     safe(supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle(), { data: null }),
     safe(supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle(), { data: null }),
+    safe(getRegradeConfig(), {}),
   ])
 
   if (!hasPrayer && _teacher) {
@@ -649,6 +652,7 @@ async function _applyRoleMenus() {
 
   const campAccess = campAccessRes?.data
   toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
+  toggle('menu-regrade', regradeCfg.visibility?.teacher_menu === true || _isAlsoAdmin)
 
   const sportsMemberships = sportsMembershipsRes?.data || []
   toggle('menu-my-team', sportsMemberships.length > 0)
