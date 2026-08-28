@@ -67,6 +67,16 @@ function elementStyle(el) {
   return `position:absolute;left:${el.x}%;top:${el.y}%;transform:${alignTransform};font-size:${el.fontSize}px;font-weight:${el.bold ? 700 : 400};color:${_esc(el.color)};text-align:${el.align};line-height:1.6;${widthRule}${borderRule}font-family:'Sarabun',sans-serif;`
 }
 
+// element ปกติเป็นข้อความ (text, ค่าเริ่มต้นถ้าไม่ระบุ type) — type:'image' คือรูปโลโก้/ตราสัญลักษณ์ที่วาง
+// ลงบนการ์ดได้อิสระ (คนละแนวคิดกับพื้นหลังเต็มใบ) width เป็น % ของความกว้างการ์ด สูงปรับตามสัดส่วนรูปเอง
+function renderElement(el, escapedVars) {
+  if (el.type === 'image') {
+    const w = el.width ?? 20
+    return `<img data-cert-el-id="${_esc(el.id)}" src="${_esc(el.imageUrl)}" style="position:absolute;left:${el.x}%;top:${el.y}%;width:${w}%;height:auto;transform:translate(-50%,-50%);" />`
+  }
+  return `<div data-cert-el-id="${_esc(el.id)}" style="${elementStyle(el)}">${substitutePlaceholders(_esc(el.text), escapedVars)}</div>`
+}
+
 // variables: { name, date, no, ...customKeys } — ค่าดิบยังไม่ escape (ฟังก์ชันนี้ escape ให้เอง)
 // canvasStyleExtra: ให้ตัวแก้ไข (certificate-editor.js) ส่ง style เพิ่มเติมสำหรับ container ได้ (เช่น cursor)
 export function renderCertificateCanvasHtml({ layout, variables }, canvasStyleExtra = '') {
@@ -75,9 +85,7 @@ export function renderCertificateCanvasHtml({ layout, variables }, canvasStyleEx
   const bgStyle = bg.type === 'image' && bg.imageUrl
     ? `background:url('${_esc(bg.imageUrl)}') center/cover no-repeat;`
     : `background:${_esc(bg.color || '#fffdf8')};border:${bg.borderWidth ?? 4}px ${bg.borderStyle || 'solid'} ${_esc(bg.borderColor || '#999')};`
-  const elementsHtml = (layout.elements ?? []).map(el =>
-    `<div data-cert-el-id="${_esc(el.id)}" style="${elementStyle(el)}">${substitutePlaceholders(_esc(el.text), escapedVars)}</div>`
-  ).join('')
+  const elementsHtml = (layout.elements ?? []).map(el => renderElement(el, escapedVars)).join('')
   const aspectRatio = layout.orientation === 'portrait' ? '1/1.414' : '1.414/1'
   return `<div class="cert-canvas" style="position:relative;width:100%;aspect-ratio:${aspectRatio};${bgStyle}${canvasStyleExtra}">${elementsHtml}</div>`
 }

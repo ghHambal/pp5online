@@ -48,6 +48,9 @@ export function openCertificateLayoutEditor(opts) {
     <div class="flex items-center gap-3 px-4 sm:px-5 py-3 border-b border-gray-200 flex-shrink-0 shadow-sm">
       <h3 class="flex-1 min-w-0 font-bold text-sm text-gray-800 truncate">🎨 ออกแบบเทมเพลตเกียรติบัตร — ${_esc(template?.name ?? '')}</h3>
       <button id="cce-add-el" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex-shrink-0">+ เพิ่มข้อความ</button>
+      <label id="cce-add-logo" class="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold flex-shrink-0 cursor-pointer">
+        + เพิ่มโลโก้/รูป<input type="file" id="cce-add-logo-file" accept="image/*" class="hidden" />
+      </label>
       <button id="cce-save" type="button" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex-shrink-0">💾 บันทึก</button>
       <button id="cce-close" type="button" class="text-gray-400 hover:text-gray-700 text-2xl leading-none px-2 flex-shrink-0">&times;</button>
     </div>
@@ -98,9 +101,56 @@ export function openCertificateLayoutEditor(opts) {
     overlay.querySelector('#cce-orient-portrait').className = `cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold ${isPortrait ? activeCls : inactiveCls}`
   }
 
+  function renderImagePanel(el) {
+    const sectionLabel = t => `<p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">${t}</p>`
+    panel.innerHTML = `
+      <div class="space-y-5">
+        <div>
+          ${sectionLabel('โลโก้/รูปภาพ')}
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-2 flex items-center justify-center">
+            <img src="${_esc(el.imageUrl)}" class="max-h-24 object-contain" />
+          </div>
+          <label class="mt-2.5 block w-full text-center px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs font-bold cursor-pointer bg-white">
+            📤 เปลี่ยนรูป<input type="file" id="cce-f-image-replace" accept="image/*" class="hidden" />
+          </label>
+        </div>
+        <div class="pt-4 border-t border-gray-200">
+          ${sectionLabel('ขนาด')}
+          <label class="text-[11px] text-gray-500 block mb-1">ความกว้าง (% ของการ์ด — สูงปรับตามสัดส่วนรูปเอง)</label>
+          <input id="cce-f-width" type="number" min="3" max="100" value="${el.width ?? 20}" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" />
+        </div>
+        <div class="pt-4 border-t border-gray-200">
+          <button id="cce-f-delete" type="button" class="w-full py-2 rounded-lg border border-red-400 text-red-500 text-xs font-bold hover:bg-red-50 transition">🗑️ ลบรูปนี้</button>
+        </div>
+      </div>`
+
+    const commit = (patch) => { Object.assign(el, patch); renderCanvas() }
+    panel.querySelector('#cce-f-width').addEventListener('input', e => commit({ width: clamp(Number(e.target.value) || 20, 3, 100) }))
+    panel.querySelector('#cce-f-image-replace').addEventListener('change', async e => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      const input = e.target
+      input.disabled = true
+      try {
+        const url = await uploadCertificateTemplateImage(file)
+        commit({ imageUrl: url })
+        renderImagePanel(el)
+      } catch (err) {
+        showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        input.disabled = false
+      }
+    })
+    panel.querySelector('#cce-f-delete').addEventListener('click', () => {
+      layout.elements = layout.elements.filter(x => x.id !== el.id)
+      selectedId = null
+      renderCanvas(); renderPanel()
+    })
+  }
+
   function renderPanel() {
     const el = layout.elements.find(e => e.id === selectedId)
-    if (!el) { panel.innerHTML = `<p class="text-xs text-gray-400 text-center py-8">คลิกข้อความบนเกียรติบัตรเพื่อแก้ไข</p>`; return }
+    if (!el) { panel.innerHTML = `<p class="text-xs text-gray-400 text-center py-8">คลิกข้อความหรือรูปบนเกียรติบัตรเพื่อแก้ไข</p>`; return }
+    if (el.type === 'image') { renderImagePanel(el); return }
     const sectionLabel = t => `<p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">${t}</p>`
     panel.innerHTML = `
       <div class="space-y-5">
@@ -209,6 +259,27 @@ export function openCertificateLayoutEditor(opts) {
     layout.elements.push({ id, text: 'ข้อความใหม่', x: 50, y: 50, fontSize: 16, color: '#1d1519', align: 'center', bold: false })
     selectedId = id
     renderCanvas(); renderPanel()
+  })
+
+  overlay.querySelector('#cce-add-logo-file').addEventListener('change', async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const label = overlay.querySelector('#cce-add-logo')
+    label.style.pointerEvents = 'none'
+    label.style.opacity = '0.5'
+    try {
+      const url = await uploadCertificateTemplateImage(file)
+      const id = 'img-' + Date.now().toString(36)
+      layout.elements.push({ id, type: 'image', imageUrl: url, x: 50, y: 15, width: 15 })
+      selectedId = id
+      renderCanvas(); renderPanel()
+    } catch (err) {
+      showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    } finally {
+      label.style.pointerEvents = ''
+      label.style.opacity = ''
+      e.target.value = ''
+    }
   })
 
   overlay.querySelector('#cce-orient-landscape').addEventListener('click', () => { layout.orientation = 'landscape'; renderCanvas() })
